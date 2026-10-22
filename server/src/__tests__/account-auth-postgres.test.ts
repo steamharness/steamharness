@@ -23,7 +23,7 @@ test("native PostgreSQL auth preserves sessions, invitations, API keys, locks, t
       displayName: "SteamHarness Admin",
     });
     const adminProfile = await accountDb.getUserProfileOrThrow(admin.user.userId);
-    assert.ok(adminProfile.permissions.includes("system.admin"));
+    assert.ok(adminProfile.isSystemAdmin);
 
     const signedInAdmin = await auth.signInWithPassword({
       email: "admin@example.com",
@@ -99,7 +99,7 @@ test("native PostgreSQL auth preserves sessions, invitations, API keys, locks, t
     });
     const acceptedProfile = await accountDb.getUserProfileOrThrow(accepted.user.userId);
     assert.equal(acceptedProfile.status, "active");
-    assert.deepEqual(acceptedProfile.roleIds, ["builtin_viewer"]);
+    assert.equal(acceptedProfile.isSystemAdmin,false);
     await assert.rejects(
       auth.acceptInvitation({ token: invitationToken, password: "another-password" }),
       /already been accepted/u,

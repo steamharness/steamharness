@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
 import { create as createTar, list as listTar } from "tar";
-import { Storage, type PreparationStage, type ProjectRole } from "../storage";
+import { Storage, type PreparationStage } from "../storage";
 import type { ArtifactStorage } from "../persistence";
 
 const projectId = "00000000-0000-4000-8000-000000000091";
@@ -129,18 +129,5 @@ test("draft replacement waits for a publication and preserves the snapshot's ver
     releaseUpload?.();
     await storage.close();
     await rm(dataRoot, { recursive: true, force: true });
-  }
-});
-
-test("project data roles, management and source downloads have independent permissions", () => {
-  const storage = new Storage({ serverRoot: process.cwd(), repoRoot: process.cwd(), dataRoot: tmpdir() });
-  for (const role of ["owner", "manager", "writer", "viewer"] as ProjectRole[]) {
-    const access = { projectId: projectId, projectName: "Static upload", visibility: "private" as const,
-      member: { projectId: projectId, userId: "member", role, createdAt: "2026-10-16T00:00:00.000Z" } };
-    assert.equal(storage.canReadProject({ access, userId: "member" }), true);
-    assert.equal(storage.canWriteProjectData({ access, userId: "member" }), role !== "viewer");
-    assert.equal(storage.canManageProject({ access, userId: "member" }), role === "owner" || role === "manager");
-    assert.equal(storage.canDownloadProjectSource({ access, userId: "member" }), role === "owner" || role === "manager");
-    assert.equal(storage.canDownloadProjectSource({ access, userId: "member", canDownloadSource: true }), true);
   }
 });

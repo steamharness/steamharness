@@ -16,14 +16,14 @@ An uploaded package must declare `workflow`, `conversation`, or `kanban` in `pac
 ## Projects and data
 
 - Use [Workspace CLI](/en/cli/server-workspace) to create, upload, publish, and download projects.
-- Configure members, source access, and bilateral related-project grants in [Project management](/en/guides/server/project-management).
+- Configure members, group ownership, and bilateral related-project grants in [Project management](/en/guides/server/project-management).
 - Knowledge supports document creation, editing, deletion, search, and line reads; KV and PersistentValue store project or conversation data.
 - `dataStorage.mode` can be `server` or `both` for Server data access; `local` projects can still store and download source.
 - Kanban keeps static previews, configuration, and the data Bridge. A preview uses a short-lived capability bound to a project, user, and version; its iframe does not inherit account credentials.
 
 ## Accounts and settings
 
-Server Web supports password sign-in, device authorization, member invitations, user roles, API keys, audit logs, and theme settings. Server validates account, project, and data permissions; credentials appear only in redacted form in the console and audit records.
+Server Web supports password sign-in, device authorization, member invitations, project and group roles, API keys, audit logs, and theme settings. Server validates account, project, and data permissions; credentials appear only in redacted form in the console and audit records.
 
 Settings and Admin Center expand submenus in the main sidebar. Selecting a page keeps Project Workbench and the other entries available. Admin Center only shows entries the current account can access; opening a page directly expands its group and highlights the current page.
 

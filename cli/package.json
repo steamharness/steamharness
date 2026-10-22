@@ -60,7 +60,8 @@
     "tsup": "^8.5.1",
     "typescript": "^6.0.3",
     "vitest": "^4.1.7",
-    "@steamharness/project-configuration": "workspace:*"
+    "@steamharness/project-configuration": "workspace:*",
+    "@steamharness/project-access": "workspace:*"
   },
   "repository": {
     "type": "git",

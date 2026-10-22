@@ -1,3 +1,5 @@
+import { createGroupRouter, requestActor, pageQuery } from "./groups";
+import { resolveResourceAccess, type AccessCapability } from "@steamharness/project-access";
 import type { ProjectConfigurationAction } from "@steamharness/project-configuration";
 
 import {readFile} from "node:fs/promises";
@@ -228,163 +230,36 @@ async function enrichAuditPage(page: AuditEventPage): Promise<AuditEventPage> {
   };
 }
 
-async function requireProjectReadAccess(
-  req: Request,
-  storage: Storage,
-): Promise<{ principal: AuthenticatedPrincipal; access: Awaited<ReturnType<Storage["getProjectAccessSummary"]>> }> {
-  const principal = requireRequestPrincipal(req);
-  const userId = "userId" in principal ? principal.userId : undefined;
-  const access = await storage.getProjectAccessSummary(req.params["name"], userId);
-  storage.assertReadableProject({
-    access,
-    canReadAll: hasPermission(principal, "projects.read_all"),
-    canReadPublic: hasPermission(principal, "projects.read_public"),
-    userId,
-  });
-  return { principal, access };
-}
-
-async function assertProjectReadableForPrincipal(
-  storage: Storage,
-  principal: AuthenticatedPrincipal,
-  projectName: string,
-): Promise<void> {
-  const userId = "userId" in principal ? principal.userId : undefined;
-  const access = await storage.getProjectAccessSummary(projectName, userId);
-  storage.assertReadableProject({
-    access,
-    canReadAll: hasPermission(principal, "projects.read_all"),
-    canReadPublic: hasPermission(principal, "projects.read_public"),
-    userId,
-  });
-}
-async function assertProjectStorageAccessForPrincipal(storage: Storage, principal: AuthenticatedPrincipal, projectId: string, write: boolean): Promise<void> {
-  const userId = "userId" in principal ? principal.userId : undefined;
-  const access = await storage.getProjectAccessSummary(projectId, userId);
-  storage.assertReadableProject({ access, canReadAll: hasPermission(principal, "projects.read_all"), canReadPublic: hasPermission(principal, "projects.read_public"), userId });
-  if (write) storage.assertDataWritableProject({ access, userId, canWriteAll: hasPermission(principal, "storage.write") });
-}
-async function requireProjectStorageWriteAccess(req: Request, storage: Storage): Promise<void> {
-  await assertProjectStorageAccessForPrincipal(storage, requireRequestPrincipal(req), req.params["name"], true);
-}
-
-
-async function canDownloadProjectSourceForPrincipal(
-  storage: Storage,
-  principal: AuthenticatedPrincipal,
-  projectId: string,
-): Promise<boolean> {
-  const userId = "userId" in principal ? principal.userId : undefined;
-  try {
-    const access = await storage.getProjectAccessSummary(projectId, userId);
-    const canReadProject = storage.canReadProject({
-      access,
-      canReadAll: hasPermission(principal, "projects.read_all"),
-      canReadPublic: hasPermission(principal, "projects.read_public"),
-      userId,
-    });
-    if (canReadProject && storage.canDownloadProjectSource({
-      access,
-      canDownloadSource: hasPermission(principal, "projects.download_source"),
-      userId,
-    })) return true;
-  } catch {}
-  return userId !== undefined && storage.hasProjectSourceCapability(projectId, userId);
-}
-
-function parseJsonBodyField(value:unknown):unknown {
-  if(typeof value!=='string'||value.length>8192) throw new HttpError(400,400,'Invalid configuration field.');
-  try{return JSON.parse(value);}catch{throw new HttpError(400,400,'Invalid configuration field.');}
-}
-async function requireConfigurationAccess(req:Request,storage:Storage):Promise<AuthenticatedPrincipal> {
-  const principal=requireRequestPrincipal(req),projectId=req.params['name'];
-  try {await requireProjectReadAccess(req,storage);return principal;}
+async function requireProjectAction(req:Request,storage:Storage,capability:AccessCapability,projectId=req.params["name"]) {
+  const principal=requireRequestPrincipal(req);
+  let authorization;
+  try {authorization=await storage.requireProjectCapability(projectId,requestActor(req),capability);}
   catch(error) {
-    if(!await canDownloadProjectSourceForPrincipal(storage,principal,projectId)) throw error;
-    return principal;
+    if(error instanceof HttpError && error.statusCode===403) await recordRouteAudit(req,{principal,eventType:"project.access.denied",outcome:"denied",resourceType:"project",resourceId:projectId,context:{capability}});
+    throw error;
   }
+  const access=await storage.getProjectAccessSummary(projectId,'userId' in principal?principal.userId:undefined);
+  return {principal,access:{...access,access:authorization}};
 }
-
-async function canManageProjectForPrincipal(
-  storage: Storage,
-  principal: AuthenticatedPrincipal,
-  projectId: string,
-): Promise<boolean> {
-  const userId = "userId" in principal ? principal.userId : undefined;
-  try {
-    const access = await storage.getProjectAccessSummary(projectId, userId);
-    return storage.canManageProject({
-      access,
-      canManageAll: hasPermission(principal, "projects.manage_all"),
-      canManageOwn: hasPermission(principal, "projects.manage_own"),
-      canUpload: hasPermission(principal, "projects.upload"),
-      canPublish: hasPermission(principal, "projects.publish"),
-      userId,
-    });
-  } catch {
-    return false;
-  }
+async function requireProjectReadAccess(req:Request,storage:Storage) {return requireProjectAction(req,storage,'read');}
+async function assertProjectReadableForPrincipal(storage:Storage,principal:AuthenticatedPrincipal,id:string):Promise<void> {await storage.requireProjectCapability(id,{userId:'userId' in principal?principal.userId:undefined,isSystemAdmin:principal.isSystemAdmin},'read');}
+async function assertProjectStorageAccessForPrincipal(storage:Storage,principal:AuthenticatedPrincipal,id:string,write:boolean):Promise<void> {await storage.requireProjectCapability(id,{userId:'userId' in principal?principal.userId:undefined,isSystemAdmin:principal.isSystemAdmin},write?'writeData':'read');}
+async function requireProjectStorageWriteAccess(req:Request,storage:Storage):Promise<void> {await requireProjectAction(req,storage,'writeData');}
+async function canDownloadProjectSourceForPrincipal(storage:Storage,principal:AuthenticatedPrincipal,id:string):Promise<boolean> {try{await storage.requireProjectCapability(id,{userId:'userId' in principal?principal.userId:undefined,isSystemAdmin:principal.isSystemAdmin},'downloadSource');return true;}catch(error){if(error instanceof HttpError&&(error.statusCode===403||error.statusCode===404))return false;throw error;}}
+function parseJsonBodyField(value:unknown):unknown {if(typeof value!=='string'||value.length>8192)throw new HttpError(400,400,'Invalid configuration field.');try{return JSON.parse(value);}catch{throw new HttpError(400,400,'Invalid configuration field.');}}
+async function requireConfigurationAccess(req:Request,storage:Storage):Promise<AuthenticatedPrincipal> {return (await requireProjectReadAccess(req,storage)).principal;}
+async function canManageProjectForPrincipal(storage:Storage,principal:AuthenticatedPrincipal,id:string):Promise<boolean> {try{await storage.requireProjectCapability(id,{userId:'userId' in principal?principal.userId:undefined,isSystemAdmin:principal.isSystemAdmin},'manageSettings');return true;}catch(error){if(error instanceof HttpError&&(error.statusCode===403||error.statusCode===404))return false;throw error;}}
+async function readableTarget(req:Request,storage:Storage,value:unknown):Promise<string> {
+  const {access}=await requireProjectReadAccess(req,storage);
+  const target=readOptionalString(value,"target")?.trim() || (access.access.capabilities.includes("readDraft")?"draft":"latest");
+  if(target==="draft")await requireProjectAction(req,storage,"readDraft");
+  return target;
 }
-
-function requirePrincipalUserId(principal: AuthenticatedPrincipal, action: string): string {
-  if (!("userId" in principal) || principal.userId.trim() === "") {
-    throw new HttpError(400, 400, `A user account is required to ${action}.`);
-  }
-  return principal.userId;
-}
-
-function readProjectGroupManifest(value: unknown): ProjectGroupManifestV1 {
-  try {
-    return parseProjectGroupManifest(value);
-  } catch (error) {
-    throw toHttpErrorWithStatus(error, 400, 400, "Project group manifest is invalid.");
-  }
-}
-
-async function requireProjectManageAccess(
-  req: Request,
-  storage: Storage,
-): Promise<{ principal: AuthenticatedPrincipal; access: Awaited<ReturnType<Storage["getProjectAccessSummary"]>> }> {
-  return requireManageAccess(req, storage, req.params["name"]);
-}
-
-async function requireManageAccess(
-  req: Request,
-  storage: Storage,
-  projectName: string,
-): Promise<{ principal: AuthenticatedPrincipal; access: Awaited<ReturnType<Storage["getProjectAccessSummary"]>> }> {
-  const principal = requireRequestPrincipal(req);
-  const userId = "userId" in principal ? principal.userId : undefined;
-  const access = await storage.getProjectAccessSummary(projectName, userId);
-  storage.assertManageableProject({
-    access,
-    canManageAll: hasPermission(principal, "projects.manage_all"),
-    canManageOwn: hasPermission(principal, "projects.manage_own"),
-    canUpload: hasPermission(principal, "projects.upload"),
-    canPublish: hasPermission(principal, "projects.publish"),
-    userId,
-  });
-  return { principal, access };
-}
-
-async function requireProjectMemberManageAccess(
-  req: Request,
-  storage: Storage,
-): Promise<{ principal: AuthenticatedPrincipal; access: Awaited<ReturnType<Storage["getProjectAccessSummary"]>> }> {
-  const principal = requireRequestPrincipal(req);
-  const userId = "userId" in principal ? principal.userId : undefined;
-  const access = await storage.getProjectAccessSummary(req.params["name"], userId);
-  const isProjectCreator = userId !== undefined && access.createdByUserId === userId;
-  storage.assertManageableProject({
-    access,
-    canManageAll: hasPermission(principal, "projects.manage_all"),
-    canManageOwn: hasPermission(principal, "projects.manage_own") || isProjectCreator,
-    canUpload: hasPermission(principal, "projects.upload"),
-    canPublish: hasPermission(principal, "projects.publish"),
-    userId,
-  });
-  return { principal, access };
-}
+function requirePrincipalUserId(principal:AuthenticatedPrincipal,action:string):string {if(!('userId' in principal))throw new HttpError(401,401,`Account login is required to ${action}.`);return principal.userId;}
+function readProjectGroupManifest(value:unknown):ProjectGroupManifestV1 {try{return parseProjectGroupManifest(value);}catch(error){throw toHttpErrorWithStatus(error,400,400,'Project group manifest is invalid.');}}
+async function requireProjectManageAccess(req:Request,storage:Storage){return requireProjectAction(req,storage,'manageSettings');}
+async function requireManageAccess(req:Request,storage:Storage,id:string){return requireProjectAction(req,storage,'upload',id);}
+async function requireProjectMemberManageAccess(req:Request,storage:Storage){return requireProjectAction(req,storage,'manageMembers');}
 
 function assertStringArray(value: unknown, fieldName: string): string[] {
   if (!Array.isArray(value) || value.some((item) => typeof item !== "string")) {
@@ -946,6 +821,7 @@ export function createApiRouter(
   storage: Storage,
 ): Router {
   const router = Router();
+  router.use(createGroupRouter(storage));
   const authenticateRequest = requireAuthenticatedPrincipal();
   const authenticate = (req: Request, res: Response, next: NextFunction): void => {
     if (getRequestPrincipal(req)) next();
@@ -1084,7 +960,17 @@ export function createApiRouter(
     authenticate,
     asyncHandler(async (req, res) => {
       await requireProjectReadAccess(req, storage);
-      res.json(ok(await storage.listRelatedProjects(req.params.name)));
+      const result = await storage.listRelatedProjects(req.params.name);
+      const visible = await Promise.all(result.relatedProjects.map(async related => {
+        try {
+          await storage.requireProjectCapability(related.relation.projectId, requestActor(req), "read");
+          return related;
+        } catch (error) {
+          if (error instanceof HttpError && [403, 404].includes(error.statusCode)) return undefined;
+          throw error;
+        }
+      }));
+      res.json(ok({ ...result, relatedProjects: visible.filter(item => item !== undefined) }));
     }),
   );
 
@@ -1154,14 +1040,8 @@ export function createApiRouter(
         throw new HttpError(404, 404, `Workflow file "${req.params.fileId}" does not exist.`);
       }
       const userId = "userId" in principal ? principal.userId : undefined;
-      const access = await storage.getProjectAccessSummary(metadata.projectId, userId);
       await storage.assertManagedFileAccountAccess(req.params.fileId,userId);
-      storage.assertReadableProject({
-        access,
-        canReadAll: hasPermission(principal, "projects.read_all"),
-        canReadPublic: hasPermission(principal, "projects.read_public"),
-        userId,
-      });
+      await assertProjectReadableForPrincipal(storage,principal,metadata.projectId);
       sendManagedFile(res, metadata, filePath, req.query["download"] === "1");
     }),
   );
@@ -1189,59 +1069,15 @@ export function createApiRouter(
     "/projects",
     authenticate,
     asyncHandler(async (req, res) => {
-      const principal = requireRequestPrincipal(req);
-      const userId = "userId" in principal ? principal.userId : undefined;
-      const items = await storage.listProjects();
-      const accountDb = getProjectAuthContext().accountDb;
-      // enriches the project workbench with uploader profile summaries.
-      const createdByProfiles = accountDb
-        ? await accountDb.getUserProfilesByIds(
-            items
-              .map((item) => item.createdByUserId)
-              .filter((createdByUserId): createdByUserId is string => typeof createdByUserId === "string" && createdByUserId.length > 0),
-          )
-        : new Map();
-      const filtered = [];
-      for (const item of items) {
-        if (!isProjectUuid(item.id)) {
-          // Legacy non-UUID projects are migration leftovers and are
-          // intentionally hidden from the API once UUID-only sync is in place.
-          continue;
-        }
-        const access = await storage.getProjectAccessSummary(item.id, userId);
-        if (storage.canReadProject({
-          access,
-          canReadAll: hasPermission(principal, "projects.read_all"),
-          canReadPublic: hasPermission(principal, "projects.read_public"),
-          userId,
-        })) {
-          const sourceAvailability = await storage.getSourceDownloadAvailability(item.id);
-          filtered.push({
-            ...item,
-            canManage: await canManageProjectForPrincipal(storage, principal, item.id),
-            canWriteData: storage.canWriteProjectData({ access, userId, canWriteAll: hasPermission(principal, "storage.write") }),
-            sourceDownload: {
-              ...sourceAvailability,
-              allowed: await canDownloadProjectSourceForPrincipal(storage, principal, item.id),
-            },
-            createdByProfile: item.createdByUserId
-              ? (() => {
-                  const profile = createdByProfiles.get(item.createdByUserId);
-                  if (!profile) {
-                    return undefined;
-                  }
-                  return {
-                    userId: profile.userId,
-                    displayName: profile.displayName,
-                    email: profile.email,
-                    avatarUrl: profile.avatarUrl,
-                  };
-                })()
-              : undefined,
-          });
-        }
-      }
-      res.json(ok(filtered));
+      const page=await storage.accessRepository.listProjectIds(requestActor(req),pageQuery(req));
+      const items=await Promise.all(page.items.map(id=>storage.getProjectSummary(id)));
+      const profiles = await loadUserProfileSummaries(items.map(item => item.createdByUserId));
+      const filtered=await Promise.all(items.map(async item=>({
+        ...item,access:await storage.accessRepository.resolve('project',item.id,requestActor(req)),
+        createdByProfile: pickProfile(profiles, item.createdByUserId),
+        sourceDownload:{...await storage.getSourceDownloadAvailability(item.id),allowed:true}
+      })));
+      res.json(ok({...page,items:filtered}));
     }),
   );
 
@@ -1277,7 +1113,7 @@ export function createApiRouter(
         res.json(ok(await invokeServerKanbanBridge(storage, req.params.name, call)));
         return;
       }
-      const target = readOptionalString(body["target"], "target");
+      const target = await readableTarget(req,storage,body["target"]);
       const workspace = await storage.getKanbanWorkspace({
         projectName: req.params.name,
         target,
@@ -1290,6 +1126,7 @@ export function createApiRouter(
         {
           target: workspace.resolvedTarget,
           runtimeLocale: resolveRequestLocale(req),
+          authorizeRelatedProject:(id,write)=>assertProjectStorageAccessForPrincipal(storage,principal,id,write),
         },
       )));
     }),
@@ -1300,7 +1137,7 @@ export function createApiRouter(
     authenticate,
     asyncHandler(async (req, res) => {
       const { principal } = await requireProjectReadAccess(req, storage);
-      const target = readOptionalString(req.query["target"], "target");
+      const target = await readableTarget(req,storage,req.query["target"]);
       const bindings = await storage.getKanbanRelatedProjectBindings({
         projectName: req.params.name,
         target,
@@ -1310,6 +1147,7 @@ export function createApiRouter(
         try {
           const access = await storage.resolveConfirmedRelatedProject(req.params.name, relation.alias);
           if (access.targetProjectId === relation.projectId && access.grant.read.mode !== "none") {
+            await assertProjectReadableForPrincipal(storage,principal,relation.projectId);
             authorizedRelations.push(relation);
           }
         } catch {}
@@ -1369,6 +1207,7 @@ export function createApiRouter(
           JSON.stringify(current.relatedProjects) !== JSON.stringify(bindings.relatedProjects)
         ) throw new Error("Kanban related-project binding changed.");
         for (const relation of authorizedRelations) {
+          await assertProjectReadableForPrincipal(storage,principal,relation.projectId);
           const access = await storage.resolveConfirmedRelatedProject(req.params.name, relation.alias);
           if (access.targetProjectId !== relation.projectId || access.grant.read.mode === "none") {
             throw new Error("Kanban related-project access changed.");
@@ -1425,12 +1264,22 @@ export function createApiRouter(
     }),
   );
 
+  router.get("/projects/:name",authenticate,asyncHandler(async(req,res)=>{
+    const {access}=await requireProjectReadAccess(req,storage);
+    const summary = await storage.getProjectSummary(req.params.name);
+    const profiles = await loadUserProfileSummaries([summary.createdByUserId]);
+    res.json(ok({...summary,access:access.access,
+      createdByProfile:pickProfile(profiles,summary.createdByUserId),
+      sourceDownload:{...await storage.getSourceDownloadAvailability(summary.id),allowed:true},
+    }));
+  }));
+
   router.post(
     "/projects",
     authenticate,
     json,
     asyncHandler(async (req, res) => {
-      const principal = requireRequestPermission(req, "projects.create");
+      const principal = requireRequestPrincipal(req);
       const body = isRecord(req.body) ? req.body : {};
       const projectName = requireString(body["name"], "name");
       const projectId = requireString(body["projectId"], "projectId");
@@ -1444,6 +1293,8 @@ export function createApiRouter(
         projectType,
         projectInfo,
         ownerUserId: "userId" in principal ? principal.userId : undefined,
+        groupId: readOptionalString(body["groupId"],"groupId"),
+        isSystemAdmin: principal.isSystemAdmin,
         createdByUserId: "userId" in principal ? principal.userId : undefined,
         visibility: visibility === "public" ? "public" : "private",
         ...(projectCard === undefined ? {} : { projectCard }),
@@ -1504,6 +1355,7 @@ export function createApiRouter(
               : "update",
         });
         targetProjectId = access.targetProjectId;
+        await assertProjectStorageAccessForPrincipal(storage,principal,targetProjectId,write);
         if (body.source?.projectId !== undefined && body.source.projectId !== consumerProjectId) {
           throw new HttpError(400, 400, "source.projectId must match consumerProjectId.");
         }
@@ -1545,7 +1397,7 @@ export function createApiRouter(
     "/token-usage",
     authenticate,
     asyncHandler(async (req, res) => {
-      requireRequestPermission(req, "audit.read");
+      requireRequestPermission(req, "system.admin");
       res.json(ok(await storage.getSystemTokenUsage({
         pageSize: readOptionalPositiveInteger(req.query["pageSize"], "pageSize"),
         cursor: readOptionalString(req.query["cursor"], "cursor"),
@@ -1558,7 +1410,7 @@ export function createApiRouter(
     "/audit-events",
     authenticate,
     asyncHandler(async (req, res) => {
-      const principal = requireRequestPermission(req, "audit.read");
+      const principal = requireRequestPermission(req, "system.admin");
       const page = await listAuditEvents({
         pageSize: readOptionalPositiveInteger(req.query["pageSize"], "pageSize"),
         cursor: readAuditCursor(req.query["cursor"]),
@@ -1673,9 +1525,9 @@ export function createApiRouter(
       const deployment = await storage.getProjectGroupDeployment(req.params.deploymentId);
       let principal: AuthenticatedPrincipal | undefined;
       for (const project of deployment.manifest.projects) {
-        ({ principal } = await requireManageAccess(req, storage, project.projectId));
+        ({ principal } = await requireProjectAction(req, storage, "publish", project.projectId));
       }
-      const result = await storage.publishProjectGroupDeployment(deployment.id,{actorId:principal&&'userId' in principal?principal.userId:undefined,administrator:!!principal&&hasPermission(principal,'projects.manage_all')});
+      const result = await storage.publishProjectGroupDeployment(deployment.id,{actorId:principal&&'userId' in principal?principal.userId:undefined,administrator:!!principal&&principal.isSystemAdmin});
       await recordRouteAudit(req, {
         principal: principal!,
         eventType: "project.deployment.publish",
@@ -1694,7 +1546,7 @@ export function createApiRouter(
     authenticate,
     json,
     asyncHandler(async (req, res) => {
-      await requireProjectManageAccess(req, storage);
+      await requireProjectAction(req, storage, "upload");
       const { name } = req.params;
       const body = isRecord(req.body) ? req.body : {};
       const files = readProjectFileInputs(body["files"]);
@@ -1708,7 +1560,7 @@ export function createApiRouter(
     authenticate,
     raw,
     asyncHandler(async (req, res) => {
-      const { principal } = await requireProjectManageAccess(req, storage);
+      const { principal } = await requireProjectAction(req, storage, "upload");
       const { name } = req.params;
       const archiveName =
         (req.query["fileName"] as string | undefined) ??
@@ -1746,7 +1598,7 @@ export function createApiRouter(
     "/projects/:name/preparations/latest",
     authenticate,
     asyncHandler(async (req, res) => {
-      await requireProjectReadAccess(req, storage);
+      await requireProjectAction(req, storage, "readDraft");
       const result = await storage.getLatestPreparationJob(req.params.name);
       if (result === undefined) {
         throw new HttpError(404, 404, `Workflow "${req.params.name}" has no preparation jobs.`);
@@ -1759,7 +1611,7 @@ export function createApiRouter(
     "/projects/:name/preparations/:jobId",
     authenticate,
     asyncHandler(async (req, res) => {
-      await requireProjectReadAccess(req, storage);
+      await requireProjectAction(req, storage, "readDraft");
       res.json(ok(await storage.getPreparationJob(req.params.name, req.params.jobId)));
     }),
   );
@@ -1773,8 +1625,8 @@ export function createApiRouter(
         throw new HttpError(403, 403, "Permission denied.");
       }
       const { name } = req.params;
-      const target = readOptionalString(req.query["target"], "target")?.trim() || "draft";
-      if (target === "draft" && !await canManageProjectForPrincipal(storage, requireRequestPrincipal(req), name)) {
+      const target = readOptionalString(req.query["target"], "target")?.trim() || "latest";
+      if (target === "draft" && !((await storage.requireProjectCapability(name,requestActor(req),"readDraft")).capabilities.includes("readDraft"))) {
         throw new HttpError(403, 403, "Source download access only includes published project versions.");
       }
       const includeBinary = req.query["includeBinary"] === "true";
@@ -1807,12 +1659,15 @@ export function createApiRouter(
     authenticate,
     asyncHandler(async (req, res) => {
       const principal = requireRequestPrincipal(req);
-      if (!await canDownloadProjectSourceForPrincipal(storage, principal, req.params.name)) {
-        throw new HttpError(403, 403, "Permission denied.");
-      }
       const version = readOptionalString(req.query["target"], "target") ?? "";
+      const share = await storage.getSourceShare(req.params.name, version);
       res.setHeader("Cache-Control", "no-store");
-      res.json(ok(await storage.getSourceShare(req.params.name, version)));
+      if (!await canDownloadProjectSourceForPrincipal(storage, principal, req.params.name)) {
+        throw new HttpError(403, 403, "Permission denied.", {
+          requestUrl: storage.createProjectAccessRequestUrl(getRequestOrigin(req), req.params.name),
+        });
+      }
+      res.json(ok(share));
     }),
   );
 
@@ -1840,7 +1695,7 @@ export function createApiRouter(
       const origin = getRequestOrigin(req);
       res.json(ok(await storage.getProjectDependencyStatus({
         projectName: req.params.name,
-        target: readOptionalString(req.query["target"], "target"),
+        target: (readOptionalString(req.query["target"],"target")==="draft"?await readableTarget(req,storage,"draft"):readOptionalString(req.query["target"],"target")??"latest"),
         canDownloadProject: (projectId) => canDownloadProjectSourceForPrincipal(storage, principal, projectId),
         requestUrlForProject: (projectId) => storage.createProjectAccessRequestUrl(origin, projectId),
       })));
@@ -1858,7 +1713,7 @@ export function createApiRouter(
       const origin = getRequestOrigin(req);
       const result = await storage.getProjectGroupDownload({
         projectName: req.params.name,
-        target: readOptionalString(req.query["target"], "target"),
+        target: (readOptionalString(req.query["target"],"target")==="draft"?await readableTarget(req,storage,"draft"):readOptionalString(req.query["target"],"target")??"latest"),
         canDownloadProject: (projectId) => canDownloadProjectSourceForPrincipal(storage, principal, projectId),
         requestUrlForProject: (projectId) => storage.createProjectAccessRequestUrl(origin, projectId),
       });
@@ -1868,19 +1723,18 @@ export function createApiRouter(
   );
 
   router.get(
-    "/projects/:name/source-access-requests",
+    "/projects/:name/access-requests",
     authenticate,
     asyncHandler(async (req, res) => {
       await requireProjectManageAccess(req, storage);
       res.json(ok({
         requests: await storage.listProjectAccessRequests(req.params.name),
-        grants: await storage.listProjectSourceCapabilities(req.params.name),
       }));
     }),
   );
 
   router.patch(
-    "/projects/:name/source-access-requests/:requestId",
+    "/projects/:name/access-requests/:requestId",
     authenticate,
     json,
     asyncHandler(async (req, res) => {
@@ -1899,21 +1753,9 @@ export function createApiRouter(
     }),
   );
 
-  router.delete(
-    "/projects/:name/source-capabilities/:userId",
-    authenticate,
-    asyncHandler(async (req, res) => {
-      const { principal } = await requireProjectManageAccess(req, storage);
-      res.json(ok(await storage.revokeProjectSourceCapability({
-        projectId: req.params.name,
-        userId: req.params.userId,
-        revokedByUserId: "userId" in principal ? principal.userId : undefined,
-      })));
-    }),
-  );
 
   router.get(
-    "/project-source-access/:token",
+    "/project-access/:token",
     authenticate,
     asyncHandler(async (req, res) => {
       const principal = requireRequestPrincipal(req);
@@ -1925,7 +1767,7 @@ export function createApiRouter(
   );
 
   router.post(
-    "/project-source-access/:token/requests",
+    "/project-access/:token/requests",
     authenticate,
     json,
     asyncHandler(async (req, res) => {
@@ -1948,7 +1790,7 @@ export function createApiRouter(
       const { principal } = await requireProjectReadAccess(req, storage);
       const workspace = await storage.getKanbanWorkspace({
         projectName: req.params.name,
-        target: readOptionalString(req.query["target"], "target"),
+        target: await readableTarget(req,storage,req.query["target"]),
         actorId: requireProjectConfigurationActorId(principal),
       });
       const previewCapability = await storage.issueKanbanPreviewCapability({
@@ -1978,7 +1820,7 @@ export function createApiRouter(
   router.post('/projects/:name/configurations/files',authenticate,raw,asyncHandler(async(req,res)=>{
     const principal=await requireConfigurationAccess(req,storage);
     res.json(ok(await storage.uploadConfigurationFile({projectName:req.params.name,actorId:requireProjectConfigurationActorId(principal),
-      administrator:hasPermission(principal,'projects.manage_all'),key:requireString(req.query['key'],'key'),
+      administrator:principal.isSystemAdmin,key:requireString(req.query['key'],'key'),
       target:readOptionalString(req.query['target'],'target'),field:req.query['field']===undefined?undefined:parseJsonBodyField(req.query['field']),name:requireString(req.query['fileName'],'fileName'),
       mimeType:requireString(req.query['mimeType'],'mimeType'),buffer:Buffer.isBuffer(req.body)?req.body:Buffer.from(req.body as Uint8Array)})));
   }));
@@ -1991,195 +1833,21 @@ export function createApiRouter(
   router.get("/projects/:name/configurations", authenticate, asyncHandler(async (req,res) => {
     const principal = await requireConfigurationAccess(req,storage);
     res.setHeader("Cache-Control", "no-store");
-    res.json(ok(await storage.projectConfigurations({projectName:req.params.name,actorId:requireProjectConfigurationActorId(principal),administrator:hasPermission(principal,"projects.manage_all"),target:readOptionalString(req.query["target"],"target")},{action:"get"})));
+    res.json(ok(await storage.projectConfigurations({projectName:req.params.name,actorId:requireProjectConfigurationActorId(principal),administrator:principal.isSystemAdmin,target:readOptionalString(req.query["target"],"target")},{action:"get"})));
   }));
   router.post("/projects/:name/configurations", authenticate, json, asyncHandler(async (req,res) => {
     const principal = await requireConfigurationAccess(req,storage);
     const body = readRequiredRecord(req.body,"body");
     const call = readRequiredRecord(body["call"],"call") as unknown as ProjectConfigurationAction;
     res.setHeader("Cache-Control", "no-store");
-    res.json(ok(await storage.projectConfigurations({projectName:req.params.name,actorId:requireProjectConfigurationActorId(principal),administrator:hasPermission(principal,"projects.manage_all"),target:readOptionalString(body["target"],"target")},call)));
+    res.json(ok(await storage.projectConfigurations({projectName:req.params.name,actorId:requireProjectConfigurationActorId(principal),administrator:principal.isSystemAdmin,target:readOptionalString(body["target"],"target")},call)));
   }));
 
-  router.get(
-    "/projects/:name/members",
-    authenticate,
-    asyncHandler(async (req, res) => {
-      await requireProjectReadAccess(req, storage);
-      res.json(ok(await enrichProjectMembers(await storage.listProjectMembers(req.params["name"]))));
-    }),
-  );
-
-  router.put(
-    "/projects/:name/members/:userId",
-    authenticate,
-    json,
-    asyncHandler(async (req, res) => {
-      const { principal, access } = await requireProjectMemberManageAccess(req, storage);
-      const body = isRecord(req.body) ? req.body : {};
-      const role = requireString(body["role"], "role");
-      if (role !== "owner" && role !== "manager" && role !== "writer" && role !== "viewer") {
-        throw new HttpError(400, 400, `Invalid role "${role}".`);
-      }
-      if (req.params["userId"] === access.ownerUserId && role !== "owner") {
-        throw new HttpError(409, 409, "issue #95 owner role cannot be changed through member management.");
-      }
-      if (role === "owner" && req.params["userId"] !== access.ownerUserId) {
-        if (access.member?.role === "manager") {
-          throw new HttpError(403, 403, "issue #95 managers cannot transfer project ownership.");
-        }
-        throw new HttpError(409, 409, "issue #95 owner transfer is not supported in phase three.");
-      }
-      const result = await storage.setProjectMember({
-        projectId: req.params["name"],
-        userId: req.params["userId"],
-        role: role as ProjectRole,
-        createdBy: "userId" in principal ? principal.userId : undefined,
-      });
-      await recordRouteAudit(req, {
-        principal,
-        eventType: "project.member.upsert",
-        outcome: "success",
-        resourceType: "project_member",
-        resourceId: `${req.params["name"]}:${req.params["userId"]}`,
-        context: {
-          projectId: req.params["name"],
-          userId: req.params["userId"],
-          role: result.role,
-          ownerUserId: access.ownerUserId,
-        },
-      });
-      const [enrichedResult] = await enrichProjectMembers([result]);
-      res.json(ok(enrichedResult ?? result));
-    }),
-  );
-
-  router.delete(
-    "/projects/:name/members/:userId",
-    authenticate,
-    asyncHandler(async (req, res) => {
-      const { principal, access } = await requireProjectMemberManageAccess(req, storage);
-      if (req.params["userId"] === access.ownerUserId) {
-        throw new HttpError(409, 409, "issue #95 owner membership cannot be removed.");
-      }
-      const result = await storage.removeProjectMember(req.params["name"], req.params["userId"]);
-      await recordRouteAudit(req, {
-        principal,
-        eventType: "project.member.remove",
-        outcome: "success",
-        resourceType: "project_member",
-        resourceId: `${req.params["name"]}:${req.params["userId"]}`,
-        context: {
-          projectId: req.params["name"],
-          userId: req.params["userId"],
-          removed: result.removed,
-        },
-      });
-      res.json(ok(result));
-    }),
-  );
-
-  // Generate a single-use, time-boxed invitation that lets an existing
-  // user join this project via a server-issued token. The API does not email
-  // the link; the inviter copies it from the UI and shares it manually.
-  router.post(
-    "/projects/:name/invitations",
-    authenticate,
-    json,
-    asyncHandler(async (req, res) => {
-      const { principal } = await requireProjectMemberManageAccess(req, storage);
-      const body = isRecord(req.body) ? req.body : {};
-      const role = requireString(body["role"], "role");
-      if (role !== "manager" && role !== "writer" && role !== "viewer") {
-        throw new HttpError(400, 400, `Invalid role "${role}".`);
-      }
-      const { invitation, token } = await storage.createProjectInvitation({
-        projectId: req.params["name"],
-        role: role as ProjectRole,
-        createdBy: "userId" in principal ? principal.userId : undefined,
-      });
-      await recordRouteAudit(req, {
-        principal,
-        eventType: "project.invitation.create",
-        outcome: "success",
-        resourceType: "project_invitation",
-        resourceId: invitation.id,
-        context: {
-          projectId: invitation.projectId,
-          role: invitation.role,
-          expiresAt: invitation.expiresAt,
-        },
-      });
-      const [enrichedInvitation] = await enrichProjectInvitations([invitation]);
-      res.status(201).json(ok({ invitation: enrichedInvitation ?? invitation, token }));
-    }),
-  );
-
-  router.get(
-    "/projects/:name/invitations",
-    authenticate,
-    asyncHandler(async (req, res) => {
-      await requireProjectMemberManageAccess(req, storage);
-      res.json(ok(await enrichProjectInvitations(await storage.listProjectInvitations(req.params["name"]))));
-    }),
-  );
-
-  router.delete(
-    "/projects/:name/invitations/:invitationId",
-    authenticate,
-    asyncHandler(async (req, res) => {
-      const { principal } = await requireProjectMemberManageAccess(req, storage);
-      const result = await storage.revokeProjectInvitation(
-        req.params["name"],
-        req.params["invitationId"],
-      );
-      if (!result.revoked) {
-        throw new HttpError(409, 409, "Invitation cannot be revoked (already accepted or revoked).");
-      }
-      await recordRouteAudit(req, {
-        principal,
-        eventType: "project.invitation.revoke",
-        outcome: "success",
-        resourceType: "project_invitation",
-        resourceId: req.params["invitationId"],
-        context: {
-          projectId: req.params["name"],
-        },
-      });
-      res.json(ok(result));
-    }),
-  );
-
-  // Public lookup: anyone holding the token can read its summary before
-  // accepting. We intentionally do not require auth here so the accept page
-  // can prompt anonymous visitors to log in first; the token itself is the
-  // bearer credential and exposes no secret beyond what the inviter shares.
-  router.get(
-    "/invitations/:token",
-    authenticate,
-    asyncHandler(async (req, res) => {
-      const principal = getRequestPrincipal(req);
-      const invitation = await storage.getInvitationByToken(req.params["token"]);
-      if (!invitation) {
-        throw new HttpError(404, 404, "Invitation not found.");
-      }
-      const summary = await storage.getProjectAccessSummary(
-        invitation.projectId,
-        principal && "userId" in principal ? principal.userId : undefined,
-      );
-      const [enrichedInvitation] = await enrichProjectInvitations([invitation]);
-      res.json(
-        ok({
-          invitation: enrichedInvitation ?? invitation,
-          project: {
-            id: summary.projectId,
-            name: summary.projectName,
-          },
-        }),
-      );
-    }),
-  );
-
+  router.get('/invitations/:token',authenticate,asyncHandler(async(req,res)=>{
+    const invitation=await storage.accessRepository.getInvitation(req.params.token);
+    if(!invitation)throw new HttpError(404,404,'Invitation not found.');
+    res.json(ok({invitation,project:{id:invitation.resourceId,name:invitation.resourceName??invitation.resourceId}}));
+  }));
   // Accept an invitation: requires an authenticated user. Joins them to the
   // project with the role specified by the invitation. Idempotent re-acceptance
   // is rejected via the storage layer (single-use).
@@ -2191,10 +1859,9 @@ export function createApiRouter(
       if (!("userId" in principal)) {
         throw new HttpError(401, 401, "Account login is required to accept invitations.");
       }
-      const result = await storage.acceptInvitation({
-        token: req.params["token"],
-        acceptedBy: principal.userId,
-      });
+      const invitation=await storage.accessRepository.acceptInvitation(req.params.token,principal.userId);
+      const access=await storage.accessRepository.resolve(invitation.resourceType,invitation.resourceId,requestActor(req));
+      const result={invitation,member:{projectId:invitation.resourceId,resourceId:invitation.resourceId,userId:principal.userId,role:access.effectiveRole!,access,createdAt:invitation.acceptedAt!}};
       await recordRouteAudit(req, {
         principal,
         eventType: "project.invitation.accept",
@@ -2251,7 +1918,7 @@ export function createApiRouter(
     authenticate,
     json,
     asyncHandler(async (req, res) => {
-      const { principal } = await requireProjectManageAccess(req, storage);
+      const { principal } = await requireProjectAction(req, storage, "upload");
       const { name } = req.params;
       const body = isRecord(req.body) ? req.body : {};
       const files = readProjectFileInputs(body["files"]);
@@ -2283,7 +1950,7 @@ export function createApiRouter(
     authenticate,
     json,
     asyncHandler(async (req, res) => {
-      const principal = requireRequestPermission(req, "projects.create");
+      const principal = requireRequestPrincipal(req);
       const { name } = req.params;
       if (!await canDownloadProjectSourceForPrincipal(storage, principal, name)) {
         throw new HttpError(403, 403, "Permission denied.");
@@ -2292,10 +1959,11 @@ export function createApiRouter(
         targetProjectName?: unknown;
         displayName?: unknown;
         sourceTarget?: unknown;
+        groupId?: unknown;
       };
       const targetProjectName = requireString(body.targetProjectName, "targetProjectName");
       const sourceTarget = readOptionalString(body.sourceTarget, "sourceTarget")?.trim() || "latest";
-      if (sourceTarget === "draft" && !await canManageProjectForPrincipal(storage, principal, name)) {
+      if (sourceTarget === "draft" && !((await storage.requireProjectCapability(name,requestActor(req),"readDraft")).capabilities.includes("readDraft"))) {
         throw new HttpError(403, 403, "Source download access only includes published project versions.");
       }
       const result = await storage.cloneProject({
@@ -2304,6 +1972,8 @@ export function createApiRouter(
         ownerUserId: "userId" in principal ? principal.userId : undefined,
         displayName: typeof body.displayName === "string" ? body.displayName : undefined,
         sourceTarget,
+        groupId: readOptionalString(body.groupId,"groupId"),
+        isSystemAdmin: principal.isSystemAdmin,
       });
       await recordRouteAudit(req, {
         principal,
@@ -2361,9 +2031,9 @@ export function createApiRouter(
     "/projects/:name",
     authenticate,
     asyncHandler(async (req, res) => {
-      const { principal } = await requireProjectManageAccess(req, storage);
+      const { principal } = await requireProjectAction(req, storage, "delete");
       const { name } = req.params;
-      const result = await storage.deleteProject(name);
+      const result = await storage.deleteProject(name,requestActor(req));
       await recordRouteAudit(req, {
         principal,
         eventType: "project.delete",
@@ -2381,7 +2051,7 @@ export function createApiRouter(
     authenticate,
     json,
     asyncHandler(async (req, res) => {
-      const { principal } = await requireProjectManageAccess(req, storage);
+      const { principal } = await requireProjectAction(req, storage, "publish");
       const { name } = req.params;
       const body = isRecord(req.body) ? req.body : {};
       const result = await storage.publish({
@@ -2390,7 +2060,7 @@ export function createApiRouter(
         expectedVersion: readOptionalString(body["expectedVersion"], "expectedVersion"),
         expectedSourceHash: readOptionalString(body["expectedSourceHash"], "expectedSourceHash"),
         expectedConfigurationRevision: readOptionalNonNegativeInteger(body["expectedConfigurationRevision"], "expectedConfigurationRevision"),
-        administrator: hasPermission(principal,"projects.manage_all"),
+        administrator: principal.isSystemAdmin,
         createdByUserId: "userId" in principal ? principal.userId : undefined,
       });
       await recordRouteAudit(req, {

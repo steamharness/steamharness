@@ -1,3 +1,4 @@
+import { AccountRepository } from "../account-db";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
@@ -40,6 +41,10 @@ test("PostgreSQL stores static project groups, immutable versions and independen
   });
   try {
     await db.init();
+    const accounts=new AccountRepository(connection.toString());
+    await accounts.init();
+    for(const userId of ["owner","maintainer","developer","guest","viewer","copier"])await accounts.upsertUserProfile({userId,email:`${userId}@test.local`});
+    await accounts.close();
     const groupDir = path.join(root, "group");
     await mkdir(groupDir);
     for (const [id, type, info] of [
@@ -55,8 +60,8 @@ test("PostgreSQL stores static project groups, immutable versions and independen
       await storage.createProject({ projectId: id, projectName: type, projectType: type, projectInfo: info, ownerUserId: "owner" });
       assert.deepEqual((await db.getProject(id))!.projectCard, card);
       assert.equal((await storage.getProjectAccessSummary(id, "owner")).member?.role, "owner");
-      for (const role of ["manager", "writer", "viewer"] as const) {
-        await storage.setProjectMember({ projectId: id, userId: role, role });
+      for (const role of ["maintainer", "developer", "guest"] as const) {
+        await db.access.setMember("project",id,role,role,{userId:"owner",isSystemAdmin:false});
         assert.equal((await storage.getProjectAccessSummary(id, role)).member?.role, role);
       }
       const manifest = { id, name: type, version: "1.0.0",
@@ -82,7 +87,7 @@ test("PostgreSQL stores static project groups, immutable versions and independen
       storage.projectConfigurations(configurationOptions,{action:"create",revision:state.revision,name:"Second"}),
     ]);
     assert.equal(results.filter(result=>result.status==="fulfilled").length,1);
-    const other=await storage.projectConfigurations({...configurationOptions,actorId:"viewer"},{action:"get"}) as typeof state;
+    const other=await storage.projectConfigurations({...configurationOptions,actorId:"developer"},{action:"get"}) as typeof state;
     assert.equal(other.configurations.length,1);
     assert.notEqual(other.activeConfigurationId,state.activeConfigurationId);
     const saved=await storage.projectConfigurations(configurationOptions,{action:"get"}) as typeof state;
@@ -100,7 +105,16 @@ test("PostgreSQL stores static project groups, immutable versions and independen
     const deployment = await storage.createProjectGroupDeployment({ manifest, releaseLog: "Static snapshots", createdByUserId: "owner" });
     assert.equal((await storage.prepareProjectGroupDeployment({ deploymentId: deployment.id,
       archiveName: "group.tar.gz", archiveBuffer: await readFile(groupArchive) })).status, "prepared");
-    assert.equal((await storage.publishProjectGroupDeployment(deployment.id)).status, "published");
+    const ownerActor = {userId:"owner",isSystemAdmin:false};
+    await db.access.setMember("project",workerId,"developer","guest",ownerActor);
+    await assert.rejects(storage.publishProjectGroupDeployment(deployment.id,{actorId:"developer"}), /Permission denied/);
+    assert.equal((await storage.listVersions(boardId)).latest,null);
+    await db.access.setMember("project",workerId,"developer","developer",ownerActor);
+    await db.access.setMember("project",boardId,"developer","guest",ownerActor);
+    await assert.rejects(storage.publishProjectGroupDeployment(deployment.id,{actorId:"developer"}), /Permission denied/);
+    assert.equal((await storage.listVersions(boardId)).latest,null);
+    await db.access.setMember("project",boardId,"developer","developer",ownerActor);
+    assert.equal((await storage.publishProjectGroupDeployment(deployment.id,{actorId:"developer"})).status, "published");
     const versions = await storage.listVersions(boardId);
     assert.equal(versions.latest, "1.0.0");
     assert.equal(versions.versions[0]?.dependencies[0]?.version, "1.0.0");
@@ -139,7 +153,7 @@ test("PostgreSQL stores static project groups, immutable versions and independen
     const official=await storage.projectConfigurations(officialOptions,{action:'get'}) as typeof state;
     const draftWrites=await Promise.allSettled([1,2].map(()=>storage.projectConfigurations(officialOptions,{action:'publication.save',revision:official.revision,publication:official.publication})));
     assert.equal(draftWrites.filter(result=>result.status==='fulfilled').length,1,JSON.stringify(draftWrites.map(result=>result.status==='rejected'?(result.reason as Error).message:'saved')));
-    await assert.rejects(storage.projectConfigurations({...officialOptions,actorId:'manager'},{action:'publication.save',revision:official.revision,publication:official.publication}),/owner/);
+    await assert.rejects(storage.projectConfigurations({...officialOptions,actorId:'developer'},{action:'publication.save',revision:official.revision,publication:official.publication}),/Maintainer/);
     await storage.publish({projectName:publicationId,createdByUserId:'owner',expectedConfigurationRevision:1,expectedSourceHash:official.sourceHash});
     const immutable=(await db.readConfigurationTemplate(publicationId,'1.0.0'))!;
     assert.equal(immutable.configurations[0]!.values.fixed,false);assert.ok(!JSON.stringify(immutable).includes('do-not-ship'));

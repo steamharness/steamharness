@@ -47,6 +47,7 @@ interface CliOptions {
   noWait?: boolean;
   dependencies: string[];
   projectGroup?: boolean;
+  groupId?: string;
   deployment?: string;
   publishGroup?: boolean;
 }
@@ -359,6 +360,7 @@ async function commandUpload(parsed: ParsedArgs): Promise<void> {
   if (parsed.options.create === true) {
     const created = await ensureProjectCreated({
       packageContext,
+      groupId: parsed.options.groupId,
       server: parsed.options.server,
       token: parsed.options.token,
     });
@@ -439,6 +441,7 @@ async function commandProjectGroupUpload(
   if (parsed.options.create === true || rootContext.projectId !== undefined) {
     await ensureProjectCreated({
       packageContext: rootContext,
+      groupId: parsed.options.groupId,
       server: parsed.options.server,
       token: parsed.options.token,
     });
@@ -456,6 +459,7 @@ async function commandProjectGroupUpload(
   for (const dependency of contexts.dependencies) {
     await ensureProjectCreated({
       packageContext: dependency.packageContext,
+      groupId: parsed.options.groupId,
       server: parsed.options.server,
       token: parsed.options.token,
     });
@@ -1393,6 +1397,7 @@ async function readProjectPackageContext(
 
 async function ensureProjectCreated(options: {
   packageContext: PackageContext;
+  groupId?: string;
   server: string;
   token: string;
 }): Promise<ProjectCreateResult> {
@@ -1414,6 +1419,7 @@ async function ensureProjectCreated(options: {
       projectType: options.packageContext.projectType,
       projectId,
       projectInfo,
+      ...(options.groupId?{groupId:options.groupId}:{}),
     },
   });
   if (created.errCode !== 0 || created.data === undefined) {
@@ -1576,7 +1582,8 @@ async function fetchApi<T = unknown>(options: {
   if(options.method==='POST' && /^\/api\/projects\/[^/]+\/publish$/.test(options.path) && options.body && typeof options.body==='object') {
     const configurations=await fetchApi<ProjectConfigurationState>({server:options.server,token:options.token,path:options.path.replace(/\/publish$/,'/configurations?target=draft')});
     assertApiOk(configurations);
-    if(configurations.data?.publication?.revision) options={...options,body:{...options.body,expectedSourceHash:configurations.data.sourceHash,...options.body,expectedConfigurationRevision:configurations.data.publication.revision}};
+    const publicationRevision=configurations.data?.publicationRevision??configurations.data?.publication?.revision;
+    if(publicationRevision) options={...options,body:{...options.body,expectedSourceHash:configurations.data?.sourceHash,...options.body,expectedConfigurationRevision:publicationRevision}};
   }
   const response = await fetch(`${trimTrailingSlash(options.server)}${options.path}`, {
     method: options.method ?? "GET",
@@ -1790,6 +1797,9 @@ export function parseArgs(argv: string[]): ParsedArgs {
       case "--token":
         options.token = requireValue(rest, (index += 1), "--token");
         effective.tokenSource = "flag";
+        break;
+      case "--group-id":
+        options.groupId = requireValue(rest, (index += 1), "--group-id");
         break;
       case "--target":
         options.target = requireValue(rest, (index += 1), "--target");

@@ -1,6 +1,7 @@
+import type { AccessPage, ProjectGroup, ProjectRole } from "./types";
 import type { ProjectConfigurationAction, ProjectConfigurationState, ProjectConfigurationExport, ProjectConfigurationFile } from "@steamharness/project-configuration";
 
-import type { AuthSessionState, ApiResponse, AdminUserSummary, AccountInvitationLookupResult, ApiKeyCreateResult, ApiKeyRecord, AuditEventPage, AuditOutcome, DeviceCodeResult, KVEntryDetail, KVEntryPage, KVEntryScope, KVEntryValueType, KnowledgeDocument, KnowledgeDocumentPageRecord, KnowledgeDocumentLinesResult, KnowledgeDocumentSummaryRecord, KnowledgeSearchResultRecord, MeResult, PermissionGroup, ProjectInvitation, RelatedProjectListResult, ProjectAccessLinkInfo, ProjectAccessRequest, ProjectDependencyStatusResult, ProjectSourceAccessSummary, InvitationAcceptResult, InvitationLookupResult, InvitationRole, ProjectMember, RoleRecord, UserInvitationResult, ServerHealthData, Summary, VersionSummary } from "./types";
+import type { AuthSessionState, ApiResponse, AdminUserSummary, AccountInvitationLookupResult, ApiKeyCreateResult, ApiKeyRecord, AuditEventPage, AuditOutcome, DeviceCodeResult, KVEntryDetail, KVEntryPage, KVEntryScope, KVEntryValueType, KnowledgeDocument, KnowledgeDocumentPageRecord, KnowledgeDocumentLinesResult, KnowledgeDocumentSummaryRecord, KnowledgeSearchResultRecord, MeResult, ProjectInvitation, RelatedProjectListResult, ProjectAccessLinkInfo, ProjectAccessRequest, ProjectDependencyStatusResult, ProjectSourceAccessSummary, InvitationAcceptResult, InvitationLookupResult, InvitationRole, ProjectMember, UserInvitationResult, ServerHealthData, Summary, VersionSummary } from "./types";
 import { getCurrentLocale, translateDynamicKey, translateSteamHarnessError, type CommonResourceKey } from "@steamharness/i18n";
 
 import type { ProjectDataSummary, SourceShare } from "./types";
@@ -236,42 +237,6 @@ export class ServerApiClient {
     });
   }
 
-  listAdminPermissions(): Promise<ApiResponse<{ groups: PermissionGroup[] }>> {
-    return this.request("/api/auth/admin/permissions");
-  }
-
-  listAdminRoles(): Promise<ApiResponse<{ items: RoleRecord[] }>> {
-    return this.request("/api/auth/admin/roles");
-  }
-
-  createAdminRole(payload: {
-    name: string;
-    description?: string;
-    permissions: string[];
-  }): Promise<ApiResponse<{ role: RoleRecord }>> {
-    return this.request("/api/auth/admin/roles", {
-      method: "POST",
-      body: JSON.stringify(payload),
-    });
-  }
-
-  updateAdminRole(roleId: string, payload: {
-    name?: string;
-    description?: string;
-    permissions?: string[];
-  }): Promise<ApiResponse<{ role: RoleRecord }>> {
-    return this.request(`/api/auth/admin/roles/${encodeURIComponent(roleId)}`, {
-      method: "PATCH",
-      body: JSON.stringify(payload),
-    });
-  }
-
-  deleteAdminRole(roleId: string): Promise<ApiResponse<{ deleted: boolean }>> {
-    return this.request(`/api/auth/admin/roles/${encodeURIComponent(roleId)}`, {
-      method: "DELETE",
-    });
-  }
-
   listAdminUsers(params?: {
     search?: string;
     status?: string;
@@ -353,16 +318,30 @@ export class ServerApiClient {
     });
   }
 
-  updateAdminUserRoles(userId: string, roleIds: string[]): Promise<ApiResponse<{ profile: MeResult["profile"] }>> {
-    return this.request(`/api/auth/admin/users/${encodeURIComponent(userId)}/roles`, {
+  updateSystemAdministrator(userId: string, isSystemAdmin: boolean): Promise<ApiResponse<{ profile: MeResult["profile"] }>> {
+    return this.request(`/api/auth/admin/users/${encodeURIComponent(userId)}/administrator`, {
       method: "PUT",
-      body: JSON.stringify({ roleIds }),
+      body: JSON.stringify({ isSystemAdmin }),
     });
   }
 
-  listProjects(): Promise<ApiResponse<Summary[]>> {
-    return this.request<Summary[]>("/api/projects");
+  listProjects(params: {page?:number;pageSize?:number;q?:string;groupId?:string|null;status?:string}={}): Promise<ApiResponse<AccessPage<Summary>>> {
+    return this.request(`/api/projects?${resourceQuery(params)}`);
   }
+  createProject(input:Record<string,unknown>):Promise<ApiResponse<{projectId:string}>> {return this.request("/api/projects",{method:"POST",body:JSON.stringify(input)});}
+  deleteProject(id:string):Promise<ApiResponse<unknown>> {return this.request(`/api/projects/${encodeURIComponent(id)}`,{method:"DELETE"});}
+  getProject(id:string):Promise<ApiResponse<Summary>> {return this.request(`/api/projects/${encodeURIComponent(id)}`);}
+  listGroups(params:{page?:number;pageSize?:number;q?:string;parentId?:string|null;minRole?:string}={}):Promise<ApiResponse<AccessPage<ProjectGroup>>> {return this.request(`/api/groups?${resourceQuery(params)}`);}
+  getGroup(id:string):Promise<ApiResponse<ProjectGroup>> {return this.request(`/api/groups/${encodeURIComponent(id)}`);}
+  saveGroup(id:string|undefined,input:{name?:string;description?:string;parentId?:string|null}):Promise<ApiResponse<ProjectGroup>> {return this.request(`/api/groups${id?`/${encodeURIComponent(id)}`:""}`,{method:id?"PATCH":"POST",body:JSON.stringify(input)});}
+  deleteGroup(id:string):Promise<ApiResponse<{deleted:boolean}>> {return this.request(`/api/groups/${encodeURIComponent(id)}`,{method:"DELETE"});}
+  transferProject(id:string,groupId:string|null):Promise<ApiResponse<unknown>> {return this.request(`/api/projects/${encodeURIComponent(id)}/group`,{method:"PUT",body:JSON.stringify({groupId})});}
+  resourceMembers(type:"project"|"group",id:string,page:number):Promise<ApiResponse<AccessPage<ProjectMember>>> {return this.request(`/api/${type}s/${encodeURIComponent(id)}/members?page=${page}`);}
+  setResourceMember(type:"project"|"group",id:string,userId:string,role?:ProjectRole):Promise<ApiResponse<unknown>> {return this.request(`/api/${type}s/${encodeURIComponent(id)}/members/${encodeURIComponent(userId)}`,{method:role?"PUT":"DELETE",...(role?{body:JSON.stringify({role})}:{})});}
+  resourceInvitations(type:"project"|"group",id:string):Promise<ApiResponse<ProjectInvitation[]>> {return this.request(`/api/${type}s/${encodeURIComponent(id)}/invitations`);}
+  inviteResourceMember(type:"project"|"group",id:string,role:ProjectRole):Promise<ApiResponse<{invitation:ProjectInvitation;token:string}>> {return this.request(`/api/${type}s/${encodeURIComponent(id)}/invitations`,{method:"POST",body:JSON.stringify({role})});}
+  revokeResourceInvitation(type:"project"|"group",id:string,invitationId:string):Promise<ApiResponse<unknown>> {return this.request(`/api/${type}s/${encodeURIComponent(id)}/invitations/${encodeURIComponent(invitationId)}`,{method:"DELETE"});}
+
 
   listVersions(projectName: string): Promise<ApiResponse<VersionSummary>> {
     return this.request<VersionSummary>(
@@ -415,7 +394,7 @@ export class ServerApiClient {
     projectName: string,
   ): Promise<ApiResponse<ProjectSourceAccessSummary>> {
     return this.request<ProjectSourceAccessSummary>(
-      `/api/projects/${encodeURIComponent(projectName)}/source-access-requests`,
+      `/api/projects/${encodeURIComponent(projectName)}/access-requests`,
     );
   }
 
@@ -425,26 +404,17 @@ export class ServerApiClient {
     status: "approved" | "rejected",
   ): Promise<ApiResponse<ProjectAccessRequest>> {
     return this.request<ProjectAccessRequest>(
-      `/api/projects/${encodeURIComponent(projectName)}/source-access-requests/${encodeURIComponent(requestId)}`,
+      `/api/projects/${encodeURIComponent(projectName)}/access-requests/${encodeURIComponent(requestId)}`,
       { method: "PATCH", body: JSON.stringify({ status }) },
     );
   }
 
-  revokeSourceCapability(
-    projectName: string,
-    userId: string,
-  ): Promise<ApiResponse<{ revoked: boolean }>> {
-    return this.request<{ revoked: boolean }>(
-      `/api/projects/${encodeURIComponent(projectName)}/source-capabilities/${encodeURIComponent(userId)}`,
-      { method: "DELETE" },
-    );
-  }
 
   getProjectSourceAccessLink(
     token: string,
   ): Promise<ApiResponse<ProjectAccessLinkInfo>> {
     return this.request<ProjectAccessLinkInfo>(
-      `/api/project-source-access/${encodeURIComponent(token)}`,
+      `/api/project-access/${encodeURIComponent(token)}`,
     );
   }
 
@@ -453,19 +423,19 @@ export class ServerApiClient {
     reason: string,
   ): Promise<ApiResponse<ProjectAccessRequest>> {
     return this.request<ProjectAccessRequest>(
-      `/api/project-source-access/${encodeURIComponent(token)}/requests`,
+      `/api/project-access/${encodeURIComponent(token)}/requests`,
       { method: "POST", body: JSON.stringify({ reason }) },
     );
   }
 
-  listProjectMembers(projectName: string): Promise<ApiResponse<ProjectMember[]>> {
+  listProjectMembers(projectName: string): Promise<ApiResponse<AccessPage<ProjectMember>>> {
     return this.request(`/api/projects/${encodeURIComponent(projectName)}/members`);
   }
 
   setProjectMember(
     projectName: string,
     userId: string,
-    payload: { role: "owner" | "manager" | "writer" | "viewer" },
+    payload: { role: ProjectRole },
   ): Promise<ApiResponse<ProjectMember>> {
     return this.request(
       `/api/projects/${encodeURIComponent(projectName)}/members/${encodeURIComponent(userId)}`,
@@ -760,3 +730,5 @@ function trim(value: string): string {
 }
 
 export const apiClient = new ServerApiClient();
+
+function resourceQuery(params:Record<string,unknown>):string {const query=new URLSearchParams();for(const [key,value] of Object.entries(params))if(value!==undefined)query.set(key,value===null?"":String(value));return query.toString();}

@@ -642,5 +642,9 @@
   "Split Terminal": "Split Terminal",
   "Rename Terminal": "Rename Terminal",
   "Workflow workspace has closed.": "Workflow workspace has closed.",
-  "Workflow recovery did not restore the original project address.": "Workflow recovery did not restore the original project address."
+  "Workflow recovery did not restore the original project address.": "Workflow recovery did not restore the original project address.",
+  "Your project or group role does not allow this operation.": "Your project or group role does not allow this operation.",
+  "Personal project": "Personal project",
+  "Choose the project group": "Choose the project group",
+  "Cancelled.": "Cancelled."
 }

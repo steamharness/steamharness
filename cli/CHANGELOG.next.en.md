@@ -1,5 +1,7 @@
 # Unreleased
 
+- Added --group-id for creation and first uploads. Uploads and publication require developer access; published downloads require guest access, using current Server memberships.
+
 - Improved Studio and CLI Web recovery: host restarts and internal continuations stay running without flashing “Run interrupted” or finished-answer actions. Only connection retries show Retry; final failures retain their cause.
 
 - Improved: Studio and CLI Web open project configurations as a list with separate detail views, explicit execution selection, and draft protection on back navigation.

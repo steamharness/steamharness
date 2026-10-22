@@ -46,7 +46,7 @@ await context.storage.server.persistentValue.setValue("release", "ready");
 
 服务器数据按项目 UUID 隔离。访问 `context.storage.server` 时，顶层 `package.json.id` 必须是已绑定云端项目的 UUID，且调用方必须具有该项目权限。CLI 可以从 `STEAMHARNESS_SERVER_URL`、`STEAMHARNESS_SERVER_ADMIN_KEY` 或 workspace 登录配置取得服务器连接；没有有效登录或绑定时，服务器位置不可用。
 
-Server Web 只提供服务器数据。`server` 或 `both` 声明允许访问数据，`local` 或缺少声明时阻止服务器数据访问；源码上传下载仍按独立权限处理。
+Server Web 只提供服务器数据。`server` 或 `both` 声明允许访问数据，`local` 或缺少声明时阻止服务器数据访问；源码上传需要开发者，已发布源码下载需要访客。
 
 :::info
 

@@ -66,7 +66,7 @@ export function KnowledgeTab({
       <KnowledgeTableWorkspace
         key={project.id}
         repository={knowledgeRepository ?? serverRepository}
-        readOnly={!project.canWriteData}
+        readOnly={!project.access?.capabilities.includes("writeData")}
         refreshToken={knowledgeRefreshToken}
         onBusyChange={onContentBusyChange}
         resolveImageSrc={onResolveKnowledgeImageSrc ?? resolveServerImage}

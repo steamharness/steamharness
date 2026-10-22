@@ -1,5 +1,7 @@
 # Unreleased
 
+- Changed Server projects to use effective project and group access. First uploads select an owning group, published downloads require guest access, uploads require developer access and permission errors are localized.
+
 - Fix: Assistant startup retries immediately show progress and a spinner, prevent duplicate clicks, and display the original reason if retry fails before allowing another attempt.
 
 - [Fixed] Restore an exited project or Assistant CLI on its original port from Retry or Stop without replacing the page or drafts. Coalesce recovery requests, retain the latest account and related projects, and cancel recovery when the workspace closes.

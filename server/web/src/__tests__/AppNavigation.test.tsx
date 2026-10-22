@@ -9,7 +9,7 @@ const principal: AuthPrincipal = {
   kind: "user_session",
   userId: "navigation-user",
   displayName: "Navigation User",
-  permissions: ["projects.read_public", "users.read", "roles.read", "audit.read"],
+  isSystemAdmin: true,
 };
 
 beforeEach(async () => {
@@ -23,12 +23,10 @@ beforeEach(async () => {
     },
   });
   vi.spyOn(apiClient, "getSession").mockResolvedValue({ errCode: 0, errMessage: "", data: { authenticated: true, principal } });
-  vi.spyOn(apiClient, "listProjects").mockResolvedValue({ errCode: 0, errMessage: "", data: [] });
+  vi.spyOn(apiClient, "listProjects").mockResolvedValue({ errCode: 0, errMessage: "", data: {items:[],total:0,page:1,pageSize:20} });
   vi.spyOn(apiClient, "getMe").mockResolvedValue({ errCode: 0, errMessage: "", data: { principal, profile: null } });
   vi.spyOn(apiClient, "listApiKeys").mockResolvedValue({ errCode: 0, errMessage: "", data: { items: [] } });
-  vi.spyOn(apiClient, "listAdminRoles").mockResolvedValue({ errCode: 0, errMessage: "", data: { items: [] } });
-  vi.spyOn(apiClient, "listAdminPermissions").mockResolvedValue({ errCode: 0, errMessage: "", data: { groups: [] } });
-  vi.spyOn(apiClient, "listAdminUsers");
+  vi.spyOn(apiClient, "listAdminUsers").mockResolvedValue({errCode:0,errMessage:"",data:{items:[]}});
   vi.spyOn(apiClient, "listAuditEvents");
 });
 
@@ -54,7 +52,6 @@ describe("main sidebar submenus", () => {
     expect(screen.getByRole("heading", { name: "项目工作台" })).toBeTruthy();
     expect(apiClient.getMe).not.toHaveBeenCalled();
     expect(apiClient.listAdminUsers).not.toHaveBeenCalled();
-    expect(apiClient.listAdminRoles).not.toHaveBeenCalled();
     expect(apiClient.listAuditEvents).not.toHaveBeenCalled();
 
     fireEvent.click(settings);
@@ -83,7 +80,7 @@ describe("main sidebar submenus", () => {
 
   it.each([
     { path: "/settings/appearance", group: "设置", child: "系统设置" },
-    { path: "/admin/roles", group: "管理中心", child: "角色管理" },
+    { path: "/admin/users", group: "管理中心", child: "用户管理" },
   ])("expands the current group when opening $path directly", async ({ path, group, child }) => {
     window.history.replaceState(null, "", path);
     render(<App />);
@@ -97,29 +94,9 @@ describe("main sidebar submenus", () => {
     expect(nav.querySelectorAll('[aria-current="page"]')).toHaveLength(1);
   });
 
-  it("only exposes authorized administration children and retains the main entries", async () => {
-    vi.mocked(apiClient.getSession).mockResolvedValue({ errCode: 0, errMessage: "", data: {
-      authenticated: true, principal: { ...principal, permissions: ["projects.read_public", "roles.read"] },
-    } });
-    render(<App />);
-    const homeNav = await screen.findByRole("navigation", { name: "主导航" });
-    fireEvent.click(within(homeNav).getByRole("button", { name: "管理中心" }));
-    expect(within(homeNav).queryByRole("button", { name: "用户管理" })).toBeNull();
-    expect(within(homeNav).queryByRole("button", { name: "审计日志" })).toBeNull();
-    fireEvent.click(within(homeNav).getByRole("button", { name: "角色管理" }));
-    expect(await screen.findByRole("heading", { name: "角色管理" })).toBeTruthy();
-    const nav = screen.getByRole("navigation", { name: "主导航" });
-    expect(window.location.pathname).toBe("/admin/roles");
-    expect(within(nav).getByRole("button", { name: "项目工作台" })).toBeTruthy();
-    expect(within(nav).getByRole("button", { name: "设置" })).toBeTruthy();
-    expect(within(nav).getByRole("button", { name: "角色管理" })).toHaveAttribute("aria-current", "page");
-    expect(apiClient.listAdminUsers).not.toHaveBeenCalled();
-    expect(apiClient.listAuditEvents).not.toHaveBeenCalled();
-  });
-
   it("hides the administration group without administration permissions", async () => {
     vi.mocked(apiClient.getSession).mockResolvedValue({ errCode: 0, errMessage: "", data: {
-      authenticated: true, principal: { ...principal, permissions: ["projects.read_public"] },
+      authenticated: true, principal: { ...principal, isSystemAdmin: false },
     } });
     render(<App />);
     const nav = await screen.findByRole("navigation", { name: "主导航" });

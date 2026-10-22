@@ -22,9 +22,9 @@ function fixture(t, options = {}) {
   const local = { uri: 'file:///demo', folderPath: path.resolve('/demo'), id, name: 'Demo', projectType: 'workflow', fields: [], entrypoints: [], manifest: { version: '1.0.0' } };
   const f = { local, storage, requests, errors: [], infos: [], uploads: [], downloads: [], opens: [], notes: 'New version',
     connection: options.signedOut ? undefined : { serverUrl: 'https://steamharness.test', accessToken: 'host-token' },
-    projects: [{ id, name: 'Demo', latest: '0.9.0', canManage: true, sourceDownload: { allowed: true, available: true } },
-      { id: otherId, name: 'Other', latest: '2.0.0', canManage: false, sourceDownload: { allowed: false, available: true } }],
-    versions: new Map([[id, [{ version: '0.9.0', latest: true, releaseLog: '<script>project notes</script>', dependencies: [] }]], [otherId, [{ version: '2.0.0', latest: true, dependencies: [] }]]]),
+    projects: [{ id, name: 'Demo', latest: '0.9.0', access: { effectiveRole: 'developer', capabilities: ['read', 'downloadSource', 'readDraft', 'upload', 'publish', 'writeData'], sources: [] }, sourceDownload: { allowed: true, available: true } },
+      { id: otherId, name: 'Other', latest: '2.0.0', access: { effectiveRole: null, capabilities: [], sources: [] }, sourceDownload: { allowed: false, available: true } }],
+    groups: [], versions: new Map([[id, [{ version: '0.9.0', latest: true, releaseLog: '<script>project notes</script>', dependencies: [] }]], [otherId, [{ version: '2.0.0', latest: true, dependencies: [] }]]]),
     manifest: { id, version: '1.0.0' }, documents: [], openDownload: false, windowChoice: 'new' };
   const context = { subscriptions: [], extensionUri: uri(path.resolve('/extension')), globalState: { get: key => storage.get(key), update: async (key, value) => storage.set(key, value) } };
   const view = { visible: true, webview: { cspSource: 'vscode-resource:', asWebviewUri: value => value, postMessage: value => { messages.push(plain(value)); return Promise.resolve(true); }, onDidReceiveMessage: new Emitter().event },
@@ -54,14 +54,14 @@ function fixture(t, options = {}) {
         if (typeof action === 'object' && action.modal) { return f.windowChoice === 'new' ? newWindow : f.windowChoice === 'current' ? currentWindow : undefined; }
         return f.openDownload ? action : undefined;
       },
-      showQuickPick: async items => { await f.pick?.(items); return items[0]; }, showInputBox: async () => { await f.input?.(); return f.notes; },
+      showQuickPick: async items => { return await f.pick?.(items) ?? items[0]; }, showInputBox: async () => { await f.input?.(); return f.notes; },
       withProgress: async (_options, action) => { await f.beforeProgress?.(); const changed = new Emitter(); f.cancel = () => changed.fire(); return action({ report() {} }, { onCancellationRequested: changed.event, isCancellationRequested: false }); } },
   };
   const fetcher = async (url, init) => {
     requests.push({ url, init });
     if (f.read) { const result = await f.read(url, init); if (result) { return result; } }
     const selected = /\/projects\/([^/]+)\/versions$/.exec(url)?.[1];
-    return Response.json({ errCode: 0, data: selected ? { id: selected, versions: f.versions.get(selected) ?? [] } : f.projects });
+    return Response.json({ errCode: 0, data: selected ? { id: selected, versions: f.versions.get(selected) ?? [] } : { items: url.includes('/groups?') ? f.groups : f.projects, total: url.includes('/groups?') ? f.groups.length : f.projects.length, page: 1, pageSize: 100 } });
   };
   const module = { exports: {} };
   runInNewContext(compiled.outputFiles[0].text, { module, exports: module.exports, require: name => name === 'vscode' ? vscode : require(name),
@@ -69,7 +69,7 @@ function fixture(t, options = {}) {
     setInterval: () => ({}), clearInterval() {}, crypto: globalThis.crypto, Error, DOMException });
   if (options.uploadProvider) { context.subscriptions.push(module.exports.registerProjectUploadProvider(options.uploadProvider)); }
   const launcher = {
-    uploadProject: async (project, notes, signal) => { f.uploads.push({ project, notes }); await f.upload?.(signal); f.versions.set(project.id, [...f.versions.get(project.id), { version: project.manifest.version, latest: true, dependencies: [] }]); },
+    uploadProject: async (project, notes, signal, _progress, groupId) => { f.uploads.push({ project, notes, groupId }); await f.upload?.(signal); f.versions.set(project.id, [...f.versions.get(project.id), { version: project.manifest.version, latest: true, dependencies: [] }]); },
     downloadProject: async (projectId, version, signal) => { f.downloads.push({ projectId, version }); await f.download?.(signal); return [{ id: projectId, name: 'Demo', version, directory: path.resolve('/defaults/demo-0.9.0'), role: 'root' }]; },
   };
   if (options.noTransfers) { delete launcher.uploadProject; delete launcher.downloadProject; }
@@ -83,7 +83,7 @@ function fixture(t, options = {}) {
     accountChange: connection => { f.connection = connection; accountChanged.fire({ status: connection ? 'authenticated' : 'signed-out' }); } });
 }
 
-test('version tab reads server history with a local version and respects independent source permissions', async t => {
+test("version tab reads server history and respects the user's project access", async t => {
   const f = fixture(t); await f.command('studio.refreshVersions');
   assert.equal(f.state().localVersion, '1.0.0'); assert.equal(f.state().project.id, id); assert.equal(f.state().canDownload, true);
   assert.equal(f.state().versions[0].version, '0.9.0');
@@ -199,11 +199,12 @@ test('an unsaved package version is saved before duplicate-version checks', asyn
   assert.equal(f.uploads[0].project.manifest.version, '1.0.1'); assert.equal(f.errors.length, 0);
 });
 
-test('data write access alone does not enable an upload', async t => {
-  const f = fixture(t); f.projects[0].canManage = false; f.projects[0].canWriteData = true;
+test('guests can download published source but cannot upload', async t => {
+  const f = fixture(t); f.projects[0].access = { effectiveRole: 'guest', capabilities: ['read', 'downloadSource'], sources: [] };
   await f.command('studio.refreshVersions');
   await f.command('studio.uploadProject');
-  assert.equal(f.uploads.length, 0); assert.match(f.uploadResult.error, /management permission/);
+  assert.equal(f.state().canDownload, true);
+  assert.equal(f.uploads.length, 0); assert.match(f.uploadResult.error, /role does not allow/);
 });
 
 test('downloads register exact version directories and open only the downloaded root in a new window', async t => {
@@ -333,4 +334,16 @@ test('account changes while loading upload options cannot open or submit a stale
   await uploading;
   assert.equal(f.uploadDialog, undefined); assert.equal(f.uploads.length, 0);
   assert.match(f.errors.at(-1), /Account changed/);
+});
+
+
+test('first upload lets the user select a project group and passes its ownership to the CLI', async t => {
+  const f = fixture(t); f.projects = [];
+  f.groups = [{ id: 'engineering', name: 'Engineering' }];
+  f.pick = items => items.find(item => item.id === 'engineering');
+  await f.command('studio.refreshVersions');
+  await f.command('studio.uploadProject');
+  assert.equal(f.errors.length, 0);
+  assert.equal(f.uploads[0].groupId, 'engineering');
+  assert.ok(f.requests.some(request => request.url.includes('/api/groups?minRole=developer')));
 });

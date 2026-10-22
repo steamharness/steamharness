@@ -1,3 +1,4 @@
+import {resolveResourceAccess} from "@steamharness/project-access";
 import assert from "node:assert/strict";
 import { EventEmitter } from "node:events";
 import { lstat, mkdir, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
@@ -457,7 +458,7 @@ test("DatabaseRepository.init creates project deployment locks and access-contro
     assert.match(schema, /create table if not exists related_project_dependencies/);
     assert.doesNotMatch(schema, /create table if not exists data_source_grants/);
     assert.match(schema, /create table if not exists project_access_requests/);
-    assert.match(schema, /create table if not exists project_capability_grants/);
+    assert.match(schema, /create table if not exists group_members/);
     assert.match(
       schema,
       /create unique index if not exists project_deployment_items_active_version_idx[\s\S]*project_id, planned_version[\s\S]*published_version is null[\s\S]*status in \('planned', 'preparing', 'prepared', 'publishing'\)/,
@@ -530,91 +531,6 @@ test("DatabaseRepository reserves active deployment versions and claims deployme
   }
 });
 
-test("DatabaseRepository keeps one pending source request and grants capability in the approval transaction", async () => {
-  const repository = new DatabaseRepository("postgresql://example.invalid/postgres");
-  const requestRow = {
-    id: "00000000-0000-4000-8000-000000000051",
-    project_id: DEMO_WF_ID,
-    requester_user_id: "user-requester",
-    capability: "download_source",
-    reason: "Need local source",
-    status: "pending",
-    resolved_by_user_id: null,
-    resolved_at: null,
-    created_at: new Date("2026-08-05T00:00:00.000Z"),
-    updated_at: new Date("2026-08-05T00:00:00.000Z"),
-  };
-  const directQueries: Array<{ sql: string; params: unknown[] }> = [];
-  const transactionQueries: Array<{ sql: string; params: unknown[] }> = [];
-  const pool = Reflect.get(repository, "pool") as {
-    query: (sql: string, params?: unknown[]) => Promise<{ rows: unknown[] }>;
-    connect: () => Promise<{
-      query: (sql: string, params?: unknown[]) => Promise<{ rows: unknown[] }>;
-      release: () => void;
-    }>;
-    end: () => Promise<void>;
-  };
-  const originalQuery = pool.query;
-  const originalConnect = pool.connect;
-  const originalEnd = pool.end;
-
-  pool.query = async (sql: string, params: unknown[] = []) => {
-    directQueries.push({ sql, params });
-    return { rows: [requestRow] };
-  };
-  pool.connect = async () => ({
-    query: async (sql: string, params: unknown[] = []) => {
-      transactionQueries.push({ sql, params });
-      if (/update project_access_requests/.test(sql)) return { rows: [requestRow] };
-      return { rows: [] };
-    },
-    release: () => {},
-  });
-  pool.end = async () => {};
-
-  try {
-    const first = await repository.createProjectAccessRequest({
-      id: requestRow.id,
-      projectId: DEMO_WF_ID,
-      requesterUserId: "user-requester",
-      capability: "download_source",
-      reason: requestRow.reason,
-    });
-    const second = await repository.createProjectAccessRequest({
-      id: "00000000-0000-4000-8000-000000000052",
-      projectId: DEMO_WF_ID,
-      requesterUserId: "user-requester",
-      capability: "download_source",
-      reason: "Duplicate request",
-    });
-    assert.equal(first.id, requestRow.id);
-    assert.equal(second.id, requestRow.id);
-    assert.ok(directQueries.every((query) => (
-      /on conflict \(project_id, requester_user_id, capability\)[\s\S]*where status = 'pending'/.test(query.sql)
-    )));
-
-    const approved = await repository.resolveProjectAccessRequest({
-      projectId: DEMO_WF_ID,
-      requestId: requestRow.id,
-      status: "approved",
-      resolvedByUserId: "owner-1",
-    });
-    assert.equal(approved?.id, requestRow.id);
-    assert.match(transactionQueries[0]?.sql ?? "", /^begin$/);
-    assert.ok(transactionQueries.some((query) => (
-      /update project_access_requests[\s\S]*status = 'pending'/.test(query.sql)
-    )));
-    assert.ok(transactionQueries.some((query) => (
-      /insert into project_capability_grants[\s\S]*revoked_at = null/.test(query.sql)
-    )));
-    assert.match(transactionQueries.at(-1)?.sql ?? "", /^commit$/);
-  } finally {
-    pool.query = originalQuery;
-    pool.connect = originalConnect;
-    pool.end = originalEnd;
-    await pool.end();
-  }
-});
 
 test("DatabaseRepository.listProjectKVEntries uses a stable full-key cursor", async () => {
   const repository = new DatabaseRepository("postgresql://example.invalid/postgres");
@@ -1597,14 +1513,14 @@ test("Storage creates a readable random avatar when no projectCard is supplied",
     } } as unknown as DatabaseRepository });
   try {
     for (const projectType of ["workflow", "conversation", "kanban"] as const) {
-      await storage.createProject({ projectId: DEMO_WF_ID, projectName: "Demo", projectType, projectInfo: DECLARED_SERVER_PROJECT_INFO });
+      await storage.createProject({ projectId: DEMO_WF_ID, projectName: "Demo", projectType, projectInfo: DECLARED_SERVER_PROJECT_INFO,ownerUserId:"owner" });
       assert.equal(saved!.icon, defaultProjectCardIcon(projectType));
       assert.ok(getProjectCardColorContrastRatio(saved!.iconColor!, saved!.iconBackgroundColor) >= 4.5);
     }
   } finally { await rm(dataRoot, { recursive: true, force: true }); }
 });
 
-test("Storage restores an owned UUID binding and synchronizes its full declaration atomically", async () => {
+test("Storage reuses an existing project without overwriting management fields", async () => {
   const dataRoot = await mkdtemp(path.join(tmpdir(), "workflow-storage-project-restore-"));
   const existing = {
     ...createDbProjectRecord(DEMO_WF_ID, null),
@@ -1632,6 +1548,7 @@ test("Storage restores an owned UUID binding and synchronizes its full declarati
     repoRoot: process.cwd(),
     dataRoot,
     db: {
+      access:{assert:async()=>resolveResourceAccess([{type:"project",id:DEMO_WF_ID,role:"developer"}])},
       getProject: async () => existing,
       getProjectMember: async () => undefined,
       updateProjectInfo: async (projectId: string, projectName: string, value: unknown) => {
@@ -1656,11 +1573,8 @@ test("Storage restores an owned UUID binding and synchronizes its full declarati
       createdByUserId: "owner-1",
     });
 
-    assert.deepEqual(updates, [
-      { projectId: DEMO_WF_ID, projectName: DEMO_WF_ID, projectInfo },
-      { projectId: DEMO_WF_ID, projectCard },
-    ]);
-    assert.deepEqual(restored.projectInfo, projectInfo);
+    assert.deepEqual(updates, []);
+    assert.deepEqual(restored.projectInfo, existing.projectInfo);
     assert.equal(restored.projectId, DEMO_WF_ID);
   } finally {
     await rm(dataRoot, { recursive: true, force: true });
@@ -1841,6 +1755,7 @@ test("Storage atomically checks project configuration versions and isolates acco
   const dataRoot = await mkdtemp(path.join(tmpdir(), "project-configuration-storage-"));
   const sourceRoot = path.join(dataRoot, "projects", DEMO_WF_ID, "draft", "source");
   const storage = new Storage({serverRoot:process.cwd(),repoRoot:process.cwd(),dataRoot,buildInfo:testBuildInfo});
+  storage.getProjectAccessSummary=async()=>({projectId:DEMO_WF_ID,projectName:"Config",visibility:"private",access:resolveResourceAccess([{type:"project",id:DEMO_WF_ID,role:"developer"}])});
   try {
     await mkdir(sourceRoot,{recursive:true});
     await writeFile(path.join(sourceRoot,"package.json"),JSON.stringify({id:DEMO_WF_ID,name:"Configurations",version:"0.1.0",devDependencies:testToolchainDependencies,steamHarness:{projectType:"kanban",projectInfo:DECLARED_SERVER_PROJECT_INFO}}));
@@ -1869,6 +1784,7 @@ test("Storage keeps draft configuration values when an older version is read and
   const draft = path.join(dataRoot,"projects",DEMO_WF_ID,"draft","source");
   const version = path.join(dataRoot,"projects",DEMO_WF_ID,"versions","0.1.0","source");
   const storage = new Storage({serverRoot:process.cwd(),repoRoot:process.cwd(),dataRoot,buildInfo:testBuildInfo});
+  storage.getProjectAccessSummary=async()=>({projectId:DEMO_WF_ID,projectName:"Config",visibility:"private",access:resolveResourceAccess([{type:"project",id:DEMO_WF_ID,role:"developer"}])});
   try {
     await mkdir(draft,{recursive:true});await mkdir(version,{recursive:true});
     await writeFile(path.join(draft,"package.json"),JSON.stringify({id:DEMO_WF_ID,name:"Configuration targets",version:"0.1.1",devDependencies:testToolchainDependencies,steamHarness:{projectType:"workflow",projectInfo:DECLARED_SERVER_PROJECT_INFO}}));

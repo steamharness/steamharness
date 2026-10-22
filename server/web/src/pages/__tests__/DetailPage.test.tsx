@@ -1,3 +1,4 @@
+import { resolveResourceAccess } from "@steamharness/project-access";
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { i18n } from "@steamharness/i18n/react";
@@ -40,7 +41,7 @@ describe("DetailPage management tabs", () => {
     });
     const requests = vi.spyOn(apiClient, "listSourceAccessRequests");
     const projects = vi.spyOn(apiClient, "listProjects");
-    renderDetailPage({ activeTab: "dependencies", project: { ...createProject(), canManage: false, canWriteData: false } });
+    renderDetailPage({ activeTab: "dependencies", project: { ...createProject(), access: resolveResourceAccess([{type:"project",id:"demo",role:"guest"}]) } });
     await screen.findByText("没有关联项目");
     expect(requests).not.toHaveBeenCalled();
     expect(projects).not.toHaveBeenCalled();
@@ -63,7 +64,7 @@ describe("DetailPage management tabs", () => {
       errMessage: "",
       data: { requests: [], grants: [] },
     });
-    const listProjects = vi.spyOn(apiClient, "listProjects").mockResolvedValue({ errCode: 0, errMessage: "", data: [] });
+    const listProjects = vi.spyOn(apiClient, "listProjects").mockResolvedValue({ errCode: 0, errMessage: "", data: {items:[],total:0,page:1,pageSize:20} });
 
     renderDetailPage({
       activeTab: "dependencies",
@@ -73,7 +74,7 @@ describe("DetailPage management tabs", () => {
     await waitFor(() => expect(getDependencies).toHaveBeenCalledWith("demo", "latest"));
     expect(relatedProjects).toHaveBeenCalledWith("demo");
     expect(listRequests).toHaveBeenCalledWith("demo");
-    expect(listProjects).toHaveBeenCalledTimes(1);
+    expect(listProjects).not.toHaveBeenCalled();
     expect(screen.getByRole("heading", { name: "关联项目" })).toBeTruthy();
     expect(screen.getByText("当前项目版本依赖")).toBeTruthy();
   });
@@ -93,14 +94,14 @@ describe("DetailPage management tabs", () => {
     const listProjects = vi.spyOn(apiClient, "listProjects").mockResolvedValue({
       errCode: 0,
       errMessage: "",
-      data: [],
+      data: {items:[],total:0,page:1,pageSize:20},
     });
 
     renderDetailPage({ activeTab: "dependencies", project: createProject() });
 
     await waitFor(() => expect(relations).toHaveBeenCalledWith("demo"));
     expect(listRequests).toHaveBeenCalledWith("demo");
-    expect(listProjects).toHaveBeenCalledTimes(1);
+    expect(listProjects).not.toHaveBeenCalled();
     expect(getDependencies).not.toHaveBeenCalled();
     expect(screen.getByRole("heading", { name: "关联项目" })).toBeTruthy();
     expect(screen.getByText("项目关系")).toBeTruthy();
@@ -124,14 +125,14 @@ describe("DetailPage management tabs", () => {
     vi.spyOn(apiClient, "listProjects").mockResolvedValue({
       errCode: 0,
       errMessage: "",
-      data: [],
+      data: {items:[],total:0,page:1,pageSize:20},
     });
 
     renderDetailPage({ activeTab: "dependencies", project: createProject() });
 
     expect(await screen.findByRole("heading", { name: "Related projects" })).toBeVisible();
     expect(screen.getByText("Project relationships")).toBeVisible();
-    expect(screen.getByText("Source access requests")).toBeVisible();
+    expect(screen.getByText("Project access requests")).toBeVisible();
     expect(screen.getByRole("button", { name: "Add related project" })).toBeVisible();
   });
 
@@ -144,7 +145,7 @@ describe("DetailPage management tabs", () => {
     vi.spyOn(apiClient, "listSourceAccessRequests").mockReturnValue(new Promise((resolve) => {
       resolveRequests = resolve;
     }));
-    vi.spyOn(apiClient, "listProjects").mockResolvedValue({ errCode: 0, errMessage: "", data: [] });
+    vi.spyOn(apiClient, "listProjects").mockResolvedValue({ errCode: 0, errMessage: "", data: {items:[],total:0,page:1,pageSize:20} });
 
     renderDetailPage({ activeTab: "dependencies", project: createProject() });
 
@@ -227,7 +228,8 @@ describe("DetailPage management tabs", () => {
   it("creates both sides with explicit default read and write rules", async () => {
     const targetProject = { ...createProject(), id: "11111111-1111-4111-8111-111111111111", name: "股票看板", projectType: "kanban" as const };
     const otherProject = { ...createProject(), id: "22222222-2222-4222-8222-222222222222", name: "报表工具", projectType: "kanban" as const };
-    mockRelatedProjectManagement({ projects: [createProject(), targetProject, otherProject] });
+    const {listProjects} = mockRelatedProjectManagement({ projects: [createProject(), targetProject, otherProject] });
+    listProjects.mockImplementation(async (query = {}) => ({errCode:0,errMessage:"",data:{items:query.q?[targetProject]:[targetProject,otherProject],total:query.q?1:2,page:1,pageSize:20}}));
     const saveRelation = vi.spyOn(apiClient, "setRelatedProject").mockResolvedValue({
       errCode: 0,
       errMessage: "",
@@ -246,7 +248,8 @@ describe("DetailPage management tabs", () => {
       target: { value: "股票" },
     });
     expect(screen.queryByRole("menuitemradio", { name: /报表工具/ })).toBeNull();
-    fireEvent.click(screen.getByRole("menuitemradio", { name: /股票看板/ }));
+    fireEvent.click(await screen.findByRole("menuitemradio", { name: /股票看板/ }));
+    expect(listProjects).toHaveBeenLastCalledWith({q:"股票",page:1});
     fireEvent.change(screen.getByLabelText("当前项目 alias"), { target: { value: "inventory" } });
     fireEvent.change(screen.getByLabelText("对方项目 alias"), { target: { value: "orders" } });
     fireEvent.click(screen.getByRole("button", { name: "保存关联" }));
@@ -483,21 +486,19 @@ describe("DetailPage management tabs", () => {
       knowledgeRepository: createKnowledgeRepository({ page, searchResult, onUpdate, onSearch, onSearchMore, onDelete, onListMore }),
     });
 
-    const documentButton = await screen.findByRole("button", { name: "Guide" });
+    await screen.findByRole("button", { name: "Guide" });
     expect(screen.queryByText("项目知识库")).toBeNull();
     // Summaries page through the repository's cursors instead of loading more
     // as the list is scrolled.
-    expect(screen.getByText("第 1 / 2 页")).toBeTruthy();
+    expect(screen.getByText("1 / 2")).toBeTruthy();
     expect(screen.queryByText(createKnowledgeSummary().markdownPreview)).toBeNull();
 
     const documentList = screen.getByRole("region", { name: "知识库文档列表" });
-    const documentBody = screen.getByRole("region", { name: "知识库文档主体" });
     expect(documentList.getAttribute("aria-label")).toBe("知识库文档列表");
-    expect(documentBody.getAttribute("aria-label")).toBe("知识库文档主体");
     fireEvent.click(screen.getByRole("button", { name: "下一页" }));
     await waitFor(() => expect(onListMore).toHaveBeenCalledTimes(1));
 
-    fireEvent.click(documentButton);
+    fireEvent.click(await screen.findByRole("button", { name: "Guide" }));
     expect((await screen.findAllByRole("heading", { name: "Guide" })).length).toBeGreaterThan(0);
     expect(screen.getByRole("button", { name: "编辑" })).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "编辑" }));
@@ -508,23 +509,17 @@ describe("DetailPage management tabs", () => {
       markdown: "# Guide\n\nUpdated knowledge.",
     }, expect.anything()));
 
+    fireEvent.click((await screen.findAllByRole("button", { name: "关闭" }))[0]!);
     const searchInput = screen.getByRole("searchbox", { name: "搜索知识库文档" });
     fireEvent.change(searchInput, { target: { value: "persistent" } });
     fireEvent.submit(searchInput.closest("form") as HTMLFormElement);
-    await screen.findByText("1 / 300 条");
+    await screen.findByText("第 1 条到第 1 条，共 300 条");
     expect(onSearch).toHaveBeenCalledWith(expect.objectContaining({ query: "persistent" }));
-    fireEvent.click(screen.getByRole("button", { name: "加载更多结果" }));
+    fireEvent.click(screen.getByRole("button", { name: "下一页" }));
     await waitFor(() => expect(onSearchMore).toHaveBeenCalledWith(expect.objectContaining({ cursor: "200" })));
-
-    fireEvent.click(screen.getByRole("button", { name: "查看知识库信息" }));
-    const infoDialog = screen.getByRole("dialog", { name: "知识库信息" });
-    expect(within(infoDialog).getByText(createKnowledgeDocument().id)).toBeTruthy();
-    expect(within(infoDialog).getByText(createKnowledgeSummary().markdownPreview)).toBeTruthy();
-    expect(within(infoDialog).getByRole("button", { name: "关闭知识库信息" })).toBeTruthy();
-    fireEvent.click(within(infoDialog).getByRole("button", { name: "关闭" }));
-
-    fireEvent.click(screen.getByRole("button", { name: "删除" }));
-    fireEvent.click(within(screen.getByRole("dialog", { name: "删除文档" })).getByRole("button", { name: "删除" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Guide" }));
+    fireEvent.click(await screen.findByRole("button", { name: "删除文档" }));
+    fireEvent.click(within(screen.getByRole("alertdialog", { name: "删除文档" })).getByRole("button", { name: "删除文档" }));
     await waitFor(() => expect(onDelete).toHaveBeenCalledWith(createKnowledgeDocument().id, expect.anything()));
   });
 
@@ -561,7 +556,7 @@ describe("DetailPage management tabs", () => {
     }));
 
     expect(screen.queryByRole("button", { name: "First guide" })).toBeNull();
-    expect(screen.getByRole("progressbar", { name: "正在加载知识库" })).toBeTruthy();
+    expect(screen.getByRole("table", { name: "知识库文档列表" })).toHaveAttribute("aria-busy", "true");
     secondPage.resolve({
       errCode: 0,
       errMessage: "",
@@ -574,7 +569,7 @@ describe("DetailPage management tabs", () => {
     expect(await screen.findByRole("button", { name: "Second guide" })).toBeTruthy();
   });
 
-  it("keeps knowledge actions in the document header and avoids rendering huge markdown previews", async () => {
+  it("keeps large knowledge documents readable as plain text and editable", async () => {
     const document = { ...createKnowledgeDocument(), markdown: "x".repeat(200_001) };
     renderDetailPage({
       activeTab: "knowledge",
@@ -582,9 +577,8 @@ describe("DetailPage management tabs", () => {
     });
 
     fireEvent.click(await screen.findByRole("button", { name: "Guide" }));
-    expect(await screen.findByText("文档内容较大")).toBeTruthy();
-    expect(screen.getByRole("button", { name: "新建文档" })).toBeTruthy();
-    expect(screen.getByText(/切换到编辑模式查看/)).toBeTruthy();
+    expect((await screen.findByText(document.markdown)).tagName).toBe("PRE");
+    expect(screen.getByRole("button", {name: "编辑"})).toBeTruthy();
   });
 
   it("resolves knowledge server file images before rendering markdown previews", async () => {
@@ -692,7 +686,7 @@ function mockRelatedProjectManagement(options: {
   const listProjects = vi.spyOn(apiClient, "listProjects").mockResolvedValue({
     errCode: 0,
     errMessage: "",
-    data: options.projects ?? [],
+    data: {items: options.projects ?? [],total:options.projects?.length??0,page:1,pageSize:20},
   });
   const listRequests = vi.spyOn(apiClient, "listSourceAccessRequests").mockResolvedValue({
     errCode: 0,
@@ -706,7 +700,7 @@ function createProject(): Summary {
   return {
     id: "demo",
     name: "Demo Project",
-    projectType: "workflow", canManage: true, canWriteData: true,
+    projectType: "workflow", access: resolveResourceAccess([{type:"project",id:"demo",role:"owner"}]),
     visibility: "private",
     projectCard: {
       icon: "workflow",

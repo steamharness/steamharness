@@ -67,3 +67,5 @@ steamharness workspace file-delete <文件 ID>
 CLI 读取当前目录及源码仓库根目录的 `.env`，已有进程环境优先。登录态使用 `workflow-auth.json`，默认保存到操作系统应用配置目录，可用 `STEAMHARNESS_CLI_AUTH_DIR` 指定位置。
 
 成功输出 `{ errCode: 0, errMessage: "", data }`；服务端错误和本地参数错误返回非零退出码。准备任务保留进度和失败反馈；失败上传不会替换已有发布快照。
+
+创建或首次上传可用 `--group-id <id>` 选择归属组（至少开发者）；未指定则创建个人项目并成为所有者。上传、发布和服务器数据写入需要开发者，已发布源码下载和数据读取需要访客。Cookie 与 API Key 均按最新项目、组成员关系鉴权。

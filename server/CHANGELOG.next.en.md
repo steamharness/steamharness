@@ -1,8 +1,11 @@
 # Unreleased
 
+- Fixed startup initialization of administrator and group columns on existing account and project tables, preventing login and project-query failures while preserving data across repeated initialization.
+- Changed business authorization to fixed guest, developer, maintainer and owner roles per project and nested group, with inheritance sources, invitations, guest requests, ownership transfers and last-owner protection. Accounts retain only system administrator identity; the new API and schema do not migrate old role data.
+
 - Fixed publication filtering to retain inherited editing and value inclusion rules beneath omitted JSON parents, preventing whole-object replacement or imports from changing locked values.
 
-- Added author publication drafts and immutable version templates with filtered fields, values, defaults and attachments; actual ownership, source hashes and draft revisions are checked, personal data stays account isolated, and denied edits/imports are atomic.
+- Added author publication drafts and immutable version templates with filtered fields, values, defaults and attachments; maintainer access, source hashes and draft revisions are checked, personal data stays account isolated, and denied edits/imports are atomic.
 
 - Fixed: project configuration file fields choose and upload files to Server storage, then save references. Type restrictions, replacement and clearing preserve the previous value when uploads fail.
 
@@ -23,7 +26,7 @@
 ### Changes
 
 - Changed publication to check version and source hash against concurrent draft changes.
-- Make Server a project and data storage service: remove project execution and Runner while retaining safe uploads, immutable source versions, Knowledge, KV and files; authorize writer data access separately from source downloads.
+- Make Server a project and data storage service: remove project execution and Runner while retaining safe uploads, immutable source versions, Knowledge, KV and files; authorize data writes and source downloads through the fixed roles.
 - Remove obsolete execution errors and permission descriptions; data access errors describe server storage authorization only.
 
 ### New Features

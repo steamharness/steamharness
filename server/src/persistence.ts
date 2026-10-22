@@ -1,3 +1,6 @@
+import { HttpError } from "./protocol";
+import { ProjectAccessRepository } from "./project-access";
+import type { ProjectRole } from "@steamharness/project-access";
 import type { ProjectConfigurationState, ConfigurationPublicationDraft, ProjectConfigurationTemplate } from "@steamharness/project-configuration";
 
 import { createHash } from "node:crypto";
@@ -12,7 +15,7 @@ import { normalizeProjectCardMetadata, type ProjectCardMetadata } from "@steamha
 import { normalizeProjectInfo, writeProjectInfo, type DeclaredProjectInfo, type ProjectInfoContract } from "@steamharness/project-info";
 import { isProjectKind, STEAMHARNESS_PROJECT_TYPES, type ProjectKind } from "@steamharness/project-types";
 import type { ObjectStorage } from "./object-storage";
-import { parseProjectGroupManifest, type ProjectAccessRequest, type ProjectAccessRequestStatus, type ProjectCapabilityGrant, type ProjectDependencyLock, type ProjectGroupManifestV1 } from "@steamharness/project-dependencies";
+import { parseProjectGroupManifest, type ProjectAccessRequest, type ProjectAccessRequestStatus, type ProjectDependencyLock, type ProjectGroupManifestV1 } from "@steamharness/project-dependencies";
 const STEAMHARNESS_PROJECT_TYPES_SQL = createPostgresTextList(STEAMHARNESS_PROJECT_TYPES);
 // PostgreSQL assigns a new xmin to each externally visible row version. It is
 // a stronger compare-and-set token than updated_at, whose transaction-start
@@ -41,6 +44,7 @@ export interface DbRecord {
   hasDraft: boolean;
   latest: string | null;
   ownerUserId?: string;
+  groupId?: string | null;
   visibility: "private" | "public";
   createdByUserId?: string;
   createdAt: string;
@@ -73,6 +77,7 @@ export interface SaveProjectDraftInput {
   projectInfo: ProjectInfoContract;
   files: File[];
   ownerUserId?: string;
+  groupId?: string | null;
   visibility?: "private" | "public";
   createdByUserId?: string;
 }
@@ -85,6 +90,7 @@ export interface CreateProjectInput {
   projectInfo: DeclaredProjectInfo;
   packageVersion?: string;
   ownerUserId?: string;
+  groupId?: string | null;
   visibility?: "private" | "public";
   createdByUserId?: string;
 }
@@ -149,7 +155,7 @@ export interface DeploymentRecord {
   items: DeploymentItemRecord[];
 }
 
-export type ProjectRole = "owner" | "manager" | "writer" | "viewer";
+export type { ProjectRole } from "@steamharness/project-access";
 export type Visibility = "private" | "public";
 
 export interface ProjectMemberRecord {
@@ -160,9 +166,8 @@ export interface ProjectMemberRecord {
   createdAt: string;
 }
 
-// Project-scoped invitations: single-use, time-boxed tokens that let
-// an existing user join a workflow as manager/writer/viewer. Owner role is
-// never grantable through invitations.
+// Project invitations use the fixed business roles and are rechecked against
+// the inviter's current access when accepted, including owner invitations.
 export interface ProjectInvitationRecord {
   id: string;
   projectId: string;
@@ -178,6 +183,7 @@ export interface ProjectInvitationRecord {
 
 export class DatabaseRepository implements KVStore {
   private readonly pool: pg.Pool;
+  readonly access: ProjectAccessRepository;
   private readonly publishLockPool: pg.Pool;
   private readonly projectKVRevisionReconnectDelayMs = STEAMHARNESS_KV_REVISION_RECONNECT_DELAY_MS;
 
@@ -186,15 +192,21 @@ export class DatabaseRepository implements KVStore {
       connectionString,
       label: "project storage",
     });
+    this.access = new ProjectAccessRepository(this.pool);
     this.publishLockPool = createPostgresPool({
       connectionString,
       label: "project publish lock",
     });
   }
 
+  async getAccessAccount(userId:string):Promise<{status:string;isSystemAdmin:boolean}|undefined> {
+    const result=await this.pool.query("select status,is_system_admin from user_profiles where user_id=$1",[userId]);
+    const row=result.rows[0];return row?{status:row.status,isSystemAdmin:row.is_system_admin}:undefined;
+  }
   async close(): Promise<void> { await Promise.all([this.pool.end(), this.publishLockPool.end()]); }
 
   async init(): Promise<void> {
+    await this.access.init();
     await this.pool.query(`
       create table if not exists projects (
         id text primary key,
@@ -206,11 +218,15 @@ export class DatabaseRepository implements KVStore {
         has_draft boolean not null default false,
         latest_version text,
         owner_user_id text,
+        group_id text references project_groups(id),
         visibility text not null default 'private',
         created_by_user_id text,
         created_at timestamptz not null default now(),
         updated_at timestamptz not null default now()
       );
+
+      alter table projects
+        add column if not exists group_id text references project_groups(id);
 
       create table if not exists project_draft_files (
         project_id text not null references projects(id) on delete cascade,
@@ -248,25 +264,11 @@ export class DatabaseRepository implements KVStore {
       create table if not exists project_members (
         project_id text not null references projects(id) on delete cascade,
         user_id text not null,
-        role text not null,
+        role text not null check(role in ('guest','developer','maintainer','owner')),
         created_by text,
         created_at timestamptz not null default now(),
         primary key (project_id, user_id)
       );
-
-      create table if not exists project_invitations (
-        id text primary key,
-        project_id text not null references projects(id) on delete cascade,
-        token text not null unique,
-        role text not null,
-        created_by text,
-        created_at timestamptz not null default now(),
-        expires_at timestamptz not null,
-        accepted_by text,
-        accepted_at timestamptz,
-        revoked_at timestamptz
-      );
-
 
       create table if not exists project_storage (
         storage_kind text not null check (storage_kind in ('kv', 'persistent_value')),
@@ -389,7 +391,6 @@ export class DatabaseRepository implements KVStore {
         id text primary key,
         project_id text not null references projects(id) on delete cascade,
         requester_user_id text not null,
-        capability text not null,
         reason text not null,
         status text not null,
         resolved_by_user_id text,
@@ -398,27 +399,12 @@ export class DatabaseRepository implements KVStore {
         updated_at timestamptz not null
       );
 
-      create table if not exists project_capability_grants (
-        project_id text not null references projects(id) on delete cascade,
-        user_id text not null,
-        capability text not null,
-        created_by_user_id text,
-        created_at timestamptz not null,
-        revoked_by_user_id text,
-        revoked_at timestamptz,
-        primary key (project_id, user_id, capability)
-      );
-
       alter table project_deployment_items add column if not exists prepared_configuration_revision integer;
 
       create index if not exists project_versions_created_at_idx
         on project_versions(project_id, created_at desc);
       create index if not exists project_members_user_idx
         on project_members(user_id, project_id);
-      create index if not exists project_invitations_project_idx
-        on project_invitations(project_id);
-      create index if not exists project_invitations_token_idx
-        on project_invitations(token);
       create index if not exists project_kanban_configurations_user_updated_idx
         on project_kanban_configurations(project_id, user_id, updated_at desc);
       create index if not exists project_deployments_root_idx
@@ -439,11 +425,8 @@ export class DatabaseRepository implements KVStore {
       create index if not exists project_access_requests_project_idx
         on project_access_requests(project_id, created_at desc);
       create unique index if not exists project_access_requests_pending_idx
-        on project_access_requests(project_id, requester_user_id, capability)
+        on project_access_requests(project_id, requester_user_id)
         where status = 'pending';
-      create index if not exists project_capability_grants_user_idx
-        on project_capability_grants(user_id, project_id)
-        where revoked_at is null;
 
     `);
     await this.pool.query(`
@@ -507,7 +490,7 @@ export class DatabaseRepository implements KVStore {
   async listProjects(): Promise<DbRecord[]> {
     const result = await this.pool.query<Row>(`
       select id, name, project_type, project_card, project_info, package_version, has_draft, latest_version,
-        owner_user_id, visibility, created_by_user_id,
+        owner_user_id, group_id, visibility, created_by_user_id,
         created_at, updated_at
       from projects
       order by name asc, id asc
@@ -519,7 +502,7 @@ export class DatabaseRepository implements KVStore {
   async getProject(projectId: string): Promise<DbRecord | undefined> {
     const result = await this.pool.query<Row>(
       `select id, name, project_type, project_card, project_info, package_version, has_draft, latest_version,
-        owner_user_id, visibility, created_by_user_id,
+        owner_user_id, group_id, visibility, created_by_user_id,
         created_at, updated_at
        from projects
        where id = $1`,
@@ -538,7 +521,7 @@ export class DatabaseRepository implements KVStore {
        set project_card = $2::jsonb, updated_at = now()
        where id = $1
        returning id, name, project_type, project_card, project_info, package_version, has_draft, latest_version,
-         owner_user_id, visibility, created_by_user_id, created_at, updated_at`,
+         owner_user_id, group_id, visibility, created_by_user_id, created_at, updated_at`,
       [projectId, JSON.stringify(projectCard)],
     );
 
@@ -572,7 +555,7 @@ export class DatabaseRepository implements KVStore {
            set name = $2, project_info = $3::jsonb, updated_at = now()
            where id = $1
            returning id, name, project_type, project_card, project_info, package_version, has_draft, latest_version,
-             owner_user_id, visibility, created_by_user_id, created_at, updated_at`,
+             owner_user_id, group_id, visibility, created_by_user_id, created_at, updated_at`,
           [update.projectId, update.projectName, JSON.stringify(update.projectInfo)],
         );
         const row = result.rows[0];
@@ -618,8 +601,16 @@ export class DatabaseRepository implements KVStore {
     }
   }
 
-  async createProjectRecord(input: CreateProjectInput): Promise<DbRecord> {
-    const result = await this.pool.query<Row>(
+  async createProjectRecord(input: CreateProjectInput, actor: import("@steamharness/project-access").AccessActor): Promise<DbRecord> {
+    const client=await this.pool.connect();
+    try {
+    await client.query("begin");
+    await client.query("select pg_advisory_xact_lock(hashtext('steamharness-resource-access'))");
+    if (!actor.userId) throw new HttpError(401,401,"Account login is required to create a project.");
+    const account=await client.query("select status from user_profiles where user_id=$1",[actor.userId]);
+    if(account.rows[0]?.status!=="active") throw new HttpError(403,403,"An active account is required.");
+    if (input.groupId) await this.access.assert("group",input.groupId,actor,"createProject",client);
+    const result = await client.query<Row>(
       `insert into projects (
          id,
          name,
@@ -633,12 +624,13 @@ export class DatabaseRepository implements KVStore {
          visibility,
          created_by_user_id,
          created_at,
-         updated_at
+         updated_at,
+         group_id
        )
-       values ($1, $2, $3, $4::jsonb, $5::jsonb, $6, false, null, $7, $8, $9, now(), now())
+       values ($1, $2, $3, $4::jsonb, $5::jsonb, $6, false, null, $7, $8, $9, now(), now(), $10)
        on conflict (id) do nothing
        returning id, name, project_type, project_card, project_info, package_version, has_draft, latest_version,
-         owner_user_id, visibility, created_by_user_id, created_at, updated_at`,
+         owner_user_id, group_id, visibility, created_by_user_id, created_at, updated_at`,
       [
         input.projectId,
         input.projectName,
@@ -649,6 +641,7 @@ export class DatabaseRepository implements KVStore {
         input.ownerUserId ?? null,
         input.visibility ?? "private",
         input.createdByUserId ?? null,
+        input.groupId ?? null,
       ],
     );
 
@@ -657,7 +650,10 @@ export class DatabaseRepository implements KVStore {
       throw new Error(`Workflow "${input.projectId}" already exists.`);
     }
 
+    if (!input.groupId && input.ownerUserId) await client.query("insert into project_members(project_id,user_id,role,created_by) values($1,$2,'owner',$2)",[input.projectId,input.ownerUserId]);
+    await client.query("commit");
     return toProjectRecord(row);
+    } catch(error) {await client.query("rollback");throw error;} finally {client.release();}
   }
 
   async listProjectMemberRecords(projectId: string): Promise<ProjectMemberRecord[]> {
@@ -668,9 +664,9 @@ export class DatabaseRepository implements KVStore {
        order by
          case role
            when 'owner' then 0
-           when 'manager' then 1
-           when 'writer' then 2
-           when 'viewer' then 3
+           when 'maintainer' then 1
+           when 'developer' then 2
+           when 'guest' then 3
            else 4
          end,
          created_at asc,
@@ -943,126 +939,23 @@ export class DatabaseRepository implements KVStore {
     );
   }
 
-  async hasProjectCapabilityGrant(input: {
-    projectId: string;
-    userId: string;
-    capability: "download_source";
-  }): Promise<boolean> {
-    const result = await this.pool.query(
-      `select 1 from project_capability_grants
-       where project_id = $1 and user_id = $2 and capability = $3
-         and revoked_at is null`,
-      [input.projectId, input.userId, input.capability],
-    );
-    return result.rows.length > 0;
-  }
-
-  async listProjectCapabilityGrants(
-    projectId: string,
-  ): Promise<ProjectCapabilityGrant[]> {
-    const result = await this.pool.query<ProjectCapabilityGrantRow>(
-      `select project_id, user_id, capability, created_by_user_id,
-        created_at, revoked_by_user_id, revoked_at
-       from project_capability_grants
-       where project_id = $1
-       order by created_at desc`,
-      [projectId],
-    );
-    return result.rows.map(toProjectCapabilityGrant);
-  }
-
-  async upsertProjectCapabilityGrant(input: {
-    projectId: string;
-    userId: string;
-    capability: "download_source";
-    createdByUserId?: string;
-  }): Promise<ProjectCapabilityGrant> {
-    const result = await this.pool.query<ProjectCapabilityGrantRow>(
-      `insert into project_capability_grants (
-         project_id, user_id, capability, created_by_user_id, created_at
-       ) values ($1, $2, $3, $4, now())
-       on conflict (project_id, user_id, capability) do update set
-         created_by_user_id = excluded.created_by_user_id,
-         created_at = now(),
-         revoked_by_user_id = null,
-         revoked_at = null
-       returning project_id, user_id, capability, created_by_user_id,
-         created_at, revoked_by_user_id, revoked_at`,
-      [input.projectId, input.userId, input.capability, input.createdByUserId ?? null],
-    );
-    return toProjectCapabilityGrant(result.rows[0]!);
-  }
-
-  async revokeProjectCapabilityGrant(input: {
-    projectId: string;
-    userId: string;
-    capability: "download_source";
-    revokedByUserId?: string;
-  }): Promise<boolean> {
-    const client = await this.pool.connect();
-    try {
-      await client.query("begin");
-      const result = await client.query(
-        `update project_capability_grants
-         set revoked_by_user_id = $4, revoked_at = now()
-         where project_id = $1 and user_id = $2 and capability = $3
-           and revoked_at is null`,
-        [input.projectId, input.userId, input.capability, input.revokedByUserId ?? null],
-      );
-      if ((result.rowCount ?? 0) > 0) {
-        await client.query(
-          `update project_access_requests
-           set status = 'revoked', resolved_by_user_id = $4,
-             resolved_at = now(), updated_at = now()
-           where project_id = $1 and requester_user_id = $2
-             and capability = $3 and status = 'approved'`,
-          [input.projectId, input.userId, input.capability, input.revokedByUserId ?? null],
-        );
-      }
-      await client.query("commit");
-      return (result.rowCount ?? 0) > 0;
-    } catch (error) {
-      await client.query("rollback");
-      throw error;
-    } finally {
-      client.release();
-    }
-  }
-
-  async getPendingProjectAccessRequest(input: {
-    projectId: string;
-    requesterUserId: string;
-    capability: "download_source";
-  }): Promise<ProjectAccessRequest | undefined> {
-    const result = await this.pool.query<ProjectAccessRequestRow>(
-      `select id, project_id, requester_user_id, capability, reason, status,
-        resolved_by_user_id, resolved_at, created_at, updated_at
-       from project_access_requests
-       where project_id = $1 and requester_user_id = $2 and capability = $3
-         and status = 'pending'`,
-      [input.projectId, input.requesterUserId, input.capability],
-    );
-    return result.rows[0] === undefined ? undefined : toProjectAccessRequest(result.rows[0]);
-  }
-
   async createProjectAccessRequest(input: {
     id: string;
     projectId: string;
     requesterUserId: string;
-    capability: "download_source";
     reason: string;
   }): Promise<ProjectAccessRequest> {
     const result = await this.pool.query<ProjectAccessRequestRow>(
       `insert into project_access_requests (
-         id, project_id, requester_user_id, capability, reason, status,
+         id, project_id, requester_user_id, reason, status,
          created_at, updated_at
-       ) values ($1, $2, $3, $4, $5, 'pending', now(), now())
-       on conflict (project_id, requester_user_id, capability)
+       ) values ($1, $2, $3, $4, 'pending', now(), now())
+       on conflict (project_id, requester_user_id)
          where status = 'pending'
        do update set updated_at = project_access_requests.updated_at
-       returning id, project_id, requester_user_id, capability, reason, status,
+       returning id, project_id, requester_user_id, reason, status,
          resolved_by_user_id, resolved_at, created_at, updated_at`,
-      [input.id, input.projectId, input.requesterUserId, input.capability, input.reason],
+      [input.id, input.projectId, input.requesterUserId, input.reason],
     );
     return toProjectAccessRequest(result.rows[0]!);
   }
@@ -1071,7 +964,7 @@ export class DatabaseRepository implements KVStore {
     projectId: string,
   ): Promise<ProjectAccessRequest[]> {
     const result = await this.pool.query<ProjectAccessRequestRow>(
-      `select id, project_id, requester_user_id, capability, reason, status,
+      `select id, project_id, requester_user_id, reason, status,
         resolved_by_user_id, resolved_at, created_at, updated_at
        from project_access_requests
        where project_id = $1
@@ -1086,7 +979,7 @@ export class DatabaseRepository implements KVStore {
     requestId: string,
   ): Promise<ProjectAccessRequest | undefined> {
     const result = await this.pool.query<ProjectAccessRequestRow>(
-      `select id, project_id, requester_user_id, capability, reason, status,
+      `select id, project_id, requester_user_id, reason, status,
         resolved_by_user_id, resolved_at, created_at, updated_at
        from project_access_requests
        where project_id = $1 and id = $2`,
@@ -1098,151 +991,18 @@ export class DatabaseRepository implements KVStore {
   async resolveProjectAccessRequest(input: {
     projectId: string;
     requestId: string;
-    status: Exclude<ProjectAccessRequestStatus, "pending">;
+    status: "approved" | "rejected";
     resolvedByUserId?: string;
   }): Promise<ProjectAccessRequest | undefined> {
-    const client = await this.pool.connect();
-    try {
-      await client.query("begin");
-      const result = await client.query<ProjectAccessRequestRow>(
-        `update project_access_requests
-         set status = $3, resolved_by_user_id = $4, resolved_at = now(), updated_at = now()
-         where project_id = $1 and id = $2 and status = 'pending'
-         returning id, project_id, requester_user_id, capability, reason, status,
-           resolved_by_user_id, resolved_at, created_at, updated_at`,
-        [input.projectId, input.requestId, input.status, input.resolvedByUserId ?? null],
-      );
-      const row = result.rows[0];
-      if (row !== undefined && input.status === "approved") {
-        await client.query(
-          `insert into project_capability_grants (
-             project_id, user_id, capability, created_by_user_id, created_at
-           ) values ($1, $2, $3, $4, now())
-           on conflict (project_id, user_id, capability) do update set
-             created_by_user_id = excluded.created_by_user_id,
-             created_at = now(), revoked_by_user_id = null, revoked_at = null`,
-          [input.projectId, row.requester_user_id, row.capability, input.resolvedByUserId ?? null],
-        );
-      }
-      await client.query("commit");
-      return row === undefined ? undefined : toProjectAccessRequest(row);
-    } catch (error) {
-      await client.query("rollback");
-      throw error;
-    } finally {
-      client.release();
-    }
-  }
-
-  async createProjectInvitation(input: {
-    id: string;
-    projectId: string;
-    token: string;
-    role: ProjectRole;
-    createdBy?: string;
-    expiresAt: string;
-  }): Promise<ProjectInvitationRecord> {
-    const result = await this.pool.query<ProjectInvitationRow>(
-      `insert into project_invitations (
-         id, project_id, token, role, created_by, created_at, expires_at
-       )
-       values ($1, $2, $3, $4, $5, now(), $6)
-       returning id, project_id, token, role, created_by, created_at,
-                 expires_at, accepted_by, accepted_at, revoked_at`,
-      [
-        input.id,
-        input.projectId,
-        input.token,
-        input.role,
-        input.createdBy ?? null,
-        new Date(input.expiresAt),
-      ],
-    );
-    return toProjectInvitationRecord(result.rows[0]!);
-  }
-
-  async listProjectInvitations(
-    projectId: string,
-  ): Promise<ProjectInvitationRecord[]> {
-    const result = await this.pool.query<ProjectInvitationRow>(
-      `select id, project_id, token, role, created_by, created_at,
-              expires_at, accepted_by, accepted_at, revoked_at
-       from project_invitations
-       where project_id = $1
-       order by created_at desc`,
-      [projectId],
-    );
-    return result.rows.map(toProjectInvitationRecord);
-  }
-
-  async getProjectInvitationByToken(
-    token: string,
-  ): Promise<ProjectInvitationRecord | undefined> {
-    const result = await this.pool.query<ProjectInvitationRow>(
-      `select id, project_id, token, role, created_by, created_at,
-              expires_at, accepted_by, accepted_at, revoked_at
-       from project_invitations
-       where token = $1`,
-      [token],
-    );
-    return result.rows[0] === undefined
-      ? undefined
-      : toProjectInvitationRecord(result.rows[0]);
-  }
-
-  async getProjectInvitationById(
-    id: string,
-  ): Promise<ProjectInvitationRecord | undefined> {
-    const result = await this.pool.query<ProjectInvitationRow>(
-      `select id, project_id, token, role, created_by, created_at,
-              expires_at, accepted_by, accepted_at, revoked_at
-       from project_invitations
-       where id = $1`,
-      [id],
-    );
-    return result.rows[0] === undefined
-      ? undefined
-      : toProjectInvitationRecord(result.rows[0]);
-  }
-
-  async revokeProjectInvitation(
-    projectId: string,
-    id: string,
-  ): Promise<boolean> {
-    const result = await this.pool.query(
-      `update project_invitations
-       set revoked_at = now()
-       where id = $1
-         and project_id = $2
-         and accepted_at is null
-         and revoked_at is null`,
-      [id, projectId],
-    );
-    return (result.rowCount ?? 0) > 0;
-  }
-
-  async acceptProjectInvitation(input: {
-    id: string;
-    acceptedBy: string;
-  }): Promise<ProjectInvitationRecord | undefined> {
-    const result = await this.pool.query<ProjectInvitationRow>(
-      `update project_invitations
-       set accepted_by = $2, accepted_at = now()
-       where id = $1
-         and accepted_at is null
-         and revoked_at is null
-       returning id, project_id, token, role, created_by, created_at,
-                 expires_at, accepted_by, accepted_at, revoked_at`,
-      [input.id, input.acceptedBy],
-    );
-    return result.rows[0] === undefined
-      ? undefined
-      : toProjectInvitationRecord(result.rows[0]);
+    const account=input.resolvedByUserId?await this.getAccessAccount(input.resolvedByUserId):undefined;
+    const row=await this.access.approveRequest(input.projectId,input.requestId,input.status,{userId:input.resolvedByUserId,isSystemAdmin:account?.isSystemAdmin===true});
+    return toProjectAccessRequest(row);
   }
 
   async updateProjectAccess(input: {
     projectId: string;
     ownerUserId?: string;
+  groupId?: string | null;
     visibility?: Visibility;
     createdByUserId?: string;
   }): Promise<DbRecord | undefined> {
@@ -1255,7 +1015,7 @@ export class DatabaseRepository implements KVStore {
          updated_at = now()
        where id = $1
        returning id, name, project_type, project_card, project_info, package_version, has_draft, latest_version,
-         owner_user_id, visibility, created_by_user_id, created_at, updated_at`,
+         owner_user_id, group_id, visibility, created_by_user_id, created_at, updated_at`,
       [
         input.projectId,
         input.ownerUserId ?? null,
@@ -1287,10 +1047,6 @@ export class DatabaseRepository implements KVStore {
          )
          values ($1, $2, $3, $4::jsonb, $5::jsonb, $6, true, $7, $8, $9, now())
          on conflict (id) do update set
-           name = excluded.name,
-           project_type = excluded.project_type,
-           project_card = excluded.project_card,
-           project_info = excluded.project_info,
            package_version = excluded.package_version,
            has_draft = true,
            owner_user_id = coalesce(projects.owner_user_id, excluded.owner_user_id),
@@ -1437,10 +1193,9 @@ export class DatabaseRepository implements KVStore {
       }
       await client.query(
         `update projects
-         set name = $2,
-           latest_version = case when $4 then $3 else latest_version end,
+         set latest_version = case when $4 then $3 else latest_version end,
            updated_at = now()
-         where id = $1`,
+         where id = $1 and $2::text is not null`,
         [input.projectId, input.projectName, input.version, updateLatest],
       );
       await client.query("commit");
@@ -1453,8 +1208,8 @@ export class DatabaseRepository implements KVStore {
   }
 
   async markVersionLatest(input: { projectId: string; projectName: string; version: string }): Promise<void> {
-    await this.pool.query(`update projects set name = $2, latest_version = $3, updated_at = now()
-      where id = $1 and exists (select 1 from project_versions where project_id = $1 and version = $3)`,
+    await this.pool.query(`update projects set latest_version = $3, updated_at = now()
+      where id = $1 and $2::text is not null and exists (select 1 from project_versions where project_id = $1 and version = $3)`,
       [input.projectId, input.projectName, input.version]);
   }
 
@@ -2691,6 +2446,7 @@ interface Row {
   has_draft: boolean;
   latest_version: string | null;
   owner_user_id: string | null;
+  group_id: string | null;
   visibility: string | null;
   created_by_user_id: string | null;
   created_at: Date;
@@ -2776,21 +2532,11 @@ interface DeploymentItemRow {
   updated_at: Date;
 }
 
-interface ProjectCapabilityGrantRow {
-  project_id: string;
-  user_id: string;
-  capability: string;
-  created_by_user_id: string | null;
-  created_at: Date;
-  revoked_by_user_id: string | null;
-  revoked_at: Date | null;
-}
 
 interface ProjectAccessRequestRow {
   id: string;
   project_id: string;
   requester_user_id: string;
-  capability: string;
   reason: string;
   status: string;
   resolved_by_user_id: string | null;
@@ -2799,18 +2545,6 @@ interface ProjectAccessRequestRow {
   updated_at: Date;
 }
 
-interface ProjectInvitationRow {
-  id: string;
-  project_id: string;
-  token: string;
-  role: string;
-  created_by: string | null;
-  created_at: Date;
-  expires_at: Date;
-  accepted_by: string | null;
-  accepted_at: Date | null;
-  revoked_at: Date | null;
-}
 
 interface KVEntryRow {
   storage_kind: string;
@@ -2850,6 +2584,7 @@ function toProjectRecord(row: Row): DbRecord {
     hasDraft: row.has_draft,
     latest: row.latest_version,
     ownerUserId: row.owner_user_id ?? undefined,
+    groupId: row.group_id ?? null,
     visibility: row.visibility === "public" ? "public" : "private",
     createdByUserId: row.created_by_user_id ?? undefined,
     createdAt: row.created_at.toISOString(),
@@ -2891,16 +2626,17 @@ function toKanbanConfigurationRecord(
 }
 
 function isProjectRole(value: unknown): value is ProjectRole {
-  return value === "owner" || value === "manager" || value === "writer" || value === "viewer";
+  return value === "owner" || value === "maintainer" || value === "developer" || value === "guest";
 }
 
 function toProjectMemberRecord(
   row: ProjectMemberRow,
 ): ProjectMemberRecord {
+  if (!isProjectRole(row.role)) throw new Error("Invalid project member role.");
   return {
     projectId: row.project_id,
     userId: row.user_id,
-    role: isProjectRole(row.role) ? row.role : "viewer",
+    role: row.role,
     createdBy: row.created_by ?? undefined,
     createdAt: row.created_at.toISOString(),
   };
@@ -2940,19 +2676,6 @@ function toProjectDeploymentRecord(
   };
 }
 
-function toProjectCapabilityGrant(
-  row: ProjectCapabilityGrantRow,
-): ProjectCapabilityGrant {
-  return {
-    projectId: row.project_id,
-    userId: row.user_id,
-    capability: "download_source",
-    createdByUserId: row.created_by_user_id ?? undefined,
-    createdAt: row.created_at.toISOString(),
-    revokedByUserId: row.revoked_by_user_id ?? undefined,
-    revokedAt: row.revoked_at?.toISOString(),
-  };
-}
 
 function toProjectAccessRequest(
   row: ProjectAccessRequestRow,
@@ -2961,7 +2684,6 @@ function toProjectAccessRequest(
     id: row.id,
     projectId: row.project_id,
     requesterUserId: row.requester_user_id,
-    capability: "download_source",
     reason: row.reason,
     status: isProjectAccessRequestStatus(row.status) ? row.status : "rejected",
     createdAt: row.created_at.toISOString(),
@@ -2971,22 +2693,6 @@ function toProjectAccessRequest(
   };
 }
 
-function toProjectInvitationRecord(
-  row: ProjectInvitationRow,
-): ProjectInvitationRecord {
-  return {
-    id: row.id,
-    projectId: row.project_id,
-    token: row.token,
-    role: isProjectRole(row.role) ? row.role : "viewer",
-    createdBy: row.created_by ?? undefined,
-    createdAt: row.created_at.toISOString(),
-    expiresAt: row.expires_at.toISOString(),
-    acceptedBy: row.accepted_by ?? undefined,
-    acceptedAt: row.accepted_at ? row.accepted_at.toISOString() : undefined,
-    revokedAt: row.revoked_at ? row.revoked_at.toISOString() : undefined,
-  };
-}
 
 function isProjectDeploymentStatus(value: unknown): value is DeploymentStatus {
   return value === "planned" || value === "preparing" || value === "prepared" ||

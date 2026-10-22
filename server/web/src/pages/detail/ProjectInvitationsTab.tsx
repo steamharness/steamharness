@@ -7,16 +7,16 @@ import { TableLoadingRows } from "@/components/ui/table-loading-rows";
 import { ConfirmActionDialog, type ConfirmAction } from "@/components/ConfirmActionDialog";
 import { CopyButton } from "./CopyButton";
 import type { InvitationRole } from "../../types";
-import { PROJECT_MEMBER_ROLE_OPTIONS, type DetailPageProps } from "./types";
+import { projectMemberRoleOptions, type DetailPageProps } from "./types";
 
 export function ProjectInvitationsTab({ project, detail, busy, onCreateProjectInvitation, onRevokeProjectInvitation }: DetailPageProps) {
   const { t } = useTranslation("serverWeb");
-  const [role, setRole] = useState<InvitationRole>("viewer");
+  const [role, setRole] = useState<InvitationRole>("guest");
   const [shareUrl, setShareUrl] = useState("");
   const [action, setAction] = useState<ConfirmAction | null>(null);
   const loading = Boolean(busy.project || busy.invitation || busy.revokeInvitationId);
 
-  if (!project.canManage) return null;
+  if (!project.access?.capabilities.includes("manageMembers")) return null;
 
   return (
     <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-4 p-4 lg:p-6">
@@ -32,7 +32,7 @@ export function ProjectInvitationsTab({ project, detail, busy, onCreateProjectIn
         <FieldGroup className="max-w-3xl flex-row flex-wrap items-end gap-3">
           <Field className="w-40" data-disabled={loading}>
             <FieldLabel htmlFor="invitation-role">{t("storageRole")}</FieldLabel>
-            <SelectField id="invitation-role" options={PROJECT_MEMBER_ROLE_OPTIONS} value={role}
+            <SelectField id="invitation-role" options={projectMemberRoleOptions().filter(option=>project.access?.capabilities.includes("manageOwners") || ["guest","developer"].includes(option.value))} value={role}
               disabled={loading} onValueChange={value => setRole(value as InvitationRole)} />
           </Field>
           <Button type="submit" disabled={loading}>
@@ -60,7 +60,7 @@ export function ProjectInvitationsTab({ project, detail, busy, onCreateProjectIn
               <TableCell><Badge variant="secondary">{invitation.role}</Badge></TableCell>
               <TableCell>{formatDateTime(invitation.expiresAt)}</TableCell>
               <TableCell>{t(invitation.revokedAt ? "storageRevoked" : invitation.acceptedAt ? "storageAccepted" : Date.parse(invitation.expiresAt) <= Date.now() ? "storageExpired" : "storagePending")}</TableCell>
-              <TableActionCell>{!invitation.revokedAt && !invitation.acceptedAt && <IconActionButton
+              <TableActionCell>{!invitation.revokedAt && !invitation.acceptedAt && (project.access?.capabilities.includes("manageOwners") || ["guest","developer"].includes(invitation.role)) && <IconActionButton
                 label={t("commonDelete")} disabled={loading} onClick={() => setAction({
                   title: t("commonDelete"), description: invitation.id, confirmLabel: t("commonDelete"),
                   tone: "destructive", onConfirm: () => onRevokeProjectInvitation(invitation.id),

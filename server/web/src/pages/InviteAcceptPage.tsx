@@ -11,6 +11,7 @@ interface InviteAcceptPageProps {
   onNavigateProjects: () => void;
   onNavigateProject: (projectId: string) => void;
   onNavigateLogin: () => void;
+  onNavigateGroup?: (id:string)=>void;
 }
 
 type InviteState =
@@ -27,6 +28,7 @@ export function InviteAcceptPage({
   onNavigateProjects,
   onNavigateProject,
   onNavigateLogin,
+  onNavigateGroup,
 }: InviteAcceptPageProps) {
   const { t } = useTranslation("serverWeb");
   const [state, setState] = useState<InviteState>({ phase: "loading" });
@@ -52,7 +54,7 @@ export function InviteAcceptPage({
     setSignedIn(true);
     const lookup = res.data;
     if (lookup.invitation.acceptedAt) {
-      setState({ phase: "accepted", result: { invitation: lookup.invitation, member: { projectId: lookup.project.id, userId: "", role: lookup.invitation.role, createdAt: lookup.invitation.acceptedAt } }, projectId: lookup.project.id });
+      setState({ phase: "accepted", result: { invitation: lookup.invitation }, projectId: lookup.project.id });
       return;
     }
     if (lookup.invitation.revokedAt) setState({ phase: "revoked" });
@@ -171,7 +173,7 @@ export function InviteAcceptPage({
           <div className="text-base font-semibold text-foreground">{t("inviteSuccessJoined", { projectId: state.result.invitation.projectId })}</div>
           <div className="text-sm text-muted-foreground">{t("inviteRoleLabel")}{state.result.invitation.role}</div>
           <div className="flex gap-2 pt-2">
-            <Button onClick={() => onNavigateProject(state.projectId)}>{t("inviteOpenProject")}</Button>
+            <Button onClick={() => state.result.invitation.resourceType=== "group"?onNavigateGroup?.(state.projectId):onNavigateProject(state.projectId)}>{t("inviteOpenProject")}</Button>
             <Button variant="outline" onClick={onNavigateProjects}>{t("appHeaderBackToProjects")}</Button>
           </div>
         </CardContent>

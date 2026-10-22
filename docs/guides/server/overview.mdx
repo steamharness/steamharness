@@ -16,14 +16,14 @@ Server Web 是 SteamHarness Server 的浏览器管理端。登录后可查找 Wo
 ## 项目与数据
 
 - 使用 [Workspace CLI](/cli/server-workspace) 创建、上传、发布和下载项目。
-- 在 [项目管理](/guides/server/project-management) 中配置成员、源码授权和双方关联权限。
+- 在 [项目管理](/guides/server/project-management) 中配置成员、组归属和双方关联权限。
 - 知识库支持文档创建、编辑、删除、检索和按行读取；KV 与 PersistentValue 保存项目或会话数据。
 - `dataStorage.mode` 为 `server` 或 `both` 时可访问服务器数据；`local` 项目仍可存储与下载源码。
 - Kanban 保留静态预览、配置和数据 Bridge。预览使用绑定项目、用户和版本的短期 capability，iframe 不继承账号凭据。
 
 ## 账号与设置
 
-Server Web 支持邮箱密码登录、设备授权、成员邀请、用户角色、API Key、审计和主题设置。账号、项目和数据权限由 Server 统一校验，凭据只以脱敏形式出现在管理界面和审计记录中。
+Server Web 支持邮箱密码登录、设备授权、成员邀请、组与项目成员角色、API Key、审计和主题设置。账号、项目和数据权限由 Server 统一校验，凭据只以脱敏形式出现在管理界面和审计记录中。
 
 主侧栏中的「设置」和「管理中心」可展开子菜单；选择子页后仍保留项目工作台和其他入口。管理中心仅展示当前账号有权访问的菜单，直接打开子页时会自动展开对应分组并高亮当前页面。
 

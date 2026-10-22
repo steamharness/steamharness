@@ -94,7 +94,7 @@ Core 仓库的 `workspace/workflow` 提供两组可运行的数据访问示例�
 
 每组只声明相邻关系：父项目以 `child` 连接子项目，子项目以 `parent` / `grandchild` 连接两侧，孙项目以 `parent` 连接子项目。示例为直接关系显式授予双向读写，便于验证自动 id 的当前项目隔离、父子和子孙双向访问，以及 local/server 位置不回退。父项目与孙项目没有直接关系，使用未声明 alias 的越级 KV 访问会失败，不会递归穿过子项目。这些合同由 workspace 结构快照和层级访问测试持续维护。
 
-Server 上，读取要求消费项目 A 的读取权限；写入还要求 A 的数据写权限。用户无需成为 B 成员，但双方关系和 B 对 A 的对应 key 授权必须有效。直接打开或管理 B、以及绕过 A 直接请求 B 数据，仍按 B 自身权限校验。关联请求只提交消费项目 UUID 和 alias，调用方不能指定目标 UUID。
+Server 上，读取要求用户在消费项目 A 和目标项目 B 均具有访客及以上权限，写入要求两侧均为开发者及以上角色；同时必须满足双方声明和 B 对 A 的对应 key 授权。关联请求只提交消费项目 UUID 和 alias，调用方不能指定目标 UUID。
 
 Kanban 使用同一关系和授权：
 
@@ -153,7 +153,7 @@ const result = await workflow.searchKnowledgeDocuments(storage, {
 
 可用方法包括 `listKnowledgeDocuments`、`getKnowledgeDocument`、`createKnowledgeDocument`、`editKnowledgeDocument`、`deleteKnowledgeDocument`、`searchKnowledgeDocuments` 和 `readKnowledgeDocumentLines`。`listKnowledgeDocumentPage()` 的游标是只可原样回传的不透明 token，首次读取只访问元数据和所需页块，不读取正文或扫描旧页。索引固定为 v2 页块格式，旧的单数组索引不会被读取或迁移。这些方法不会把知识库写入普通 CLI 本地 KV；设置 `STEAMHARNESS_PERSISTENT_VALUE_STORE_DIR` 时会写入本地知识库，显式使用服务器存储时会写入服务器数据库。本地与服务器知识库使用各自后端，读取数据不会传输到另一端。创建、编辑和删除会在同一 PersistentValue namespace 中串行执行；使用服务器连接的本地运行会把这类变更作为一个服务端请求完成，并在同一 PostgreSQL 事务内提交或回滚文档索引、正文和 tombstone，避免并发写入或单次失败留下不一致数据。用于列表和写入 summary 响应的 markdownPreview 只扫描正文开头最多 16K 字符，避免多 MB 文档额外复制或阻塞保存；读取完整正文仍使用 get 接口。
 
-Kanban 的 `knowledge.listDocuments/getDocument/createDocument/editDocument/deleteDocument/searchDocuments/readDocumentLines` 复用这些文档格式和存储语义。本地资源面板展示本地数据，Server Web 静态预览展示服务器数据。命名配置按用户隔离；项目 KV 与知识库按项目共享，writer 及管理角色可写，viewer 只读。
+Kanban 的 `knowledge.listDocuments/getDocument/createDocument/editDocument/deleteDocument/searchDocuments/readDocumentLines` 复用这些文档格式和存储语义。本地资源面板展示本地数据，Server Web 静态预览展示服务器数据。命名配置按用户隔离；项目 KV 与知识库按项目共享，开发者及以上角色可写，访客只读。
 
 ### Agent 内置项目 MCP
 

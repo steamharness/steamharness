@@ -67,3 +67,5 @@ Upload accepts ordinary files up to 50 MiB and returns a FileReference with `sto
 CLI reads `.env` from the current directory and source repository root; existing process variables take priority. Credentials use `workflow-auth.json` in the operating system application configuration directory, overridable with `STEAMHARNESS_CLI_AUTH_DIR`.
 
 Success returns `{ errCode: 0, errMessage: "", data }`; server and local argument errors produce a nonzero exit code. Processing jobs retain progress and failure details. Failed uploads preserve published snapshots.
+
+Use `--group-id <id>` when creating or first uploading into a group with developer access. Omit it to own a personal project. Upload, publication and Server writes require developer access; published downloads and data reads require guest access. Cookies and API keys both use current project and group memberships.

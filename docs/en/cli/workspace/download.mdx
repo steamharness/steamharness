@@ -23,7 +23,7 @@ Pending related-project declarations do not prevent root source downloads. Downl
 
 ## Permissions and Files
 
-Source download is authorized independently of data reads. Owners, managers and users with a source grant can download. Writer/viewer data roles alone do not grant sources. Inaccessible dependencies return request links while authorized projects remain downloadable.
+Published source requires guest access. Public projects grant signed-in users implicit guest access. Private project requests require maintainer or owner approval, which adds guest membership. Each dependency checks target-project access separately; source never includes Server data.
 
 New projects are staged before moving. Validation or move failures remove directories added by this operation. Existing projects are reused only when both UUID and version match, preserving local edits. A different version is not reported as already downloaded. Occupied destinations are rejected; use `--path` to select another directory. Text and base64 binary files restore original bytes and verify SHA-256.
 
@@ -31,9 +31,9 @@ Groups exclude KV, PersistentValue, file stores, environment variables, run hist
 
 ## API
 
-- Draft: `GET /api/workflows/{workflow}/files?target=draft&includeBinary=true`.
-- Group: `GET /api/workflows/{workflow}/project-group-download?target=<target>`.
-- Version tar.gz: `GET /api/workflows/{workflow}/source-archive?target=<version>`.
+- Draft: `GET /api/projects/{projectId}/files?target=draft&includeBinary=true`.
+- Group: `GET /api/projects/{projectId}/project-group-download?target=<target>`.
+- Version tar.gz: `GET /api/projects/{projectId}/source-archive?target=<version>`.
 
 ```bash
 steamharness workspace download hello --target 1.2.0 --path ./hello-copy

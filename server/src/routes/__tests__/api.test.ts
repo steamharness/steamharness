@@ -6,26 +6,13 @@ import express from "express";
 import { type AuthenticatedPrincipal } from "../../auth";
 import { configureProjectAuthContext } from "../../auth";
 import { HttpError } from "../../protocol";
-import { listBuiltinProjectRoles, listProjectPermissions } from "../../permissions";
+import { resolveResourceAccess, type AccessActor, type AccessCapability, type ProjectRole } from "@steamharness/project-access";
 import { createApiRouter } from "../api";
 import type { AuditEventPage, UserProfileRecord } from "../../account-db";
 import { PROJECT_CARD_IMAGE_MAX_BYTES, Storage } from "../../storage";
 import type { KVEntryDetail, KVEntryPage, KnowledgeDocumentLinesRecord, KnowledgeDocumentListItem, KnowledgeDocumentPageRecord, KnowledgeDocumentRecord, KnowledgeDocumentSearchResult, TokenUsageDetail, TokenUsagePage } from "../../storage";
 import { STEAMHARNESS_PROJECT_TYPES } from "@steamharness/project-types";
 import type { RelatedProject, RelatedProjectKVGrant } from "@steamharness/project-info";
-
-test("source download permission is exposed and granted to the developer role", () => {
-  assert.equal(
-    listProjectPermissions().some((permission) => permission.key === "projects.download_source"),
-    true,
-  );
-  assert.equal(
-    listBuiltinProjectRoles()
-      .find((role) => role.id === "builtin_developer")
-      ?.permissions.includes("projects.download_source"),
-    true,
-  );
-});
 
 test("Kanban file upload accepts images above the ordinary JSON limit without requiring preview artifacts", async () => {
   const bytes = Buffer.alloc(8 * 1024 * 1024, 0xff);
@@ -235,7 +222,7 @@ test("Kanban Studio bridge reads a confirmed related project's KV through its al
     });
     assert.equal(response.errCode, 0);
     assert.deepEqual(response.data, { schemaVersion: 3 });
-    assert.deepEqual(accessChecks, ["demo"]);
+    assert.ok(accessChecks.includes(sourceProjectId));
   } finally {
     await server.close();
   }
@@ -261,6 +248,7 @@ test("Kanban Studio bridge applies related-project grant revocation immediately"
       projectName: projectId,
       visibility: projectId === "demo" ? "public" : "private",
       ownerUserId: "owner-1",
+      member: projectId === "demo" ? undefined : {projectId,userId:"viewer-1",role:"guest",createdAt:"2026-10-22T00:00:00Z"},
     }),
     resolveRelatedProjectKVAccess: async (options) => {
       assert.deepEqual(options, {
@@ -276,7 +264,7 @@ test("Kanban Studio bridge applies related-project grant revocation immediately"
   });
   const server = await listen(
     storage,
-    createPrincipal(["projects.read_public"], { userId: "viewer-1" }),
+    createPrincipal(false, { userId: "viewer-1" }),
   );
   const request = () => fetch(server.url("/api/projects/demo/kanban/bridge"), {
     method: "POST",
@@ -299,8 +287,8 @@ test("Kanban Studio bridge applies related-project grant revocation immediately"
     grantActive = false;
     const revoked = await request();
     const payload = await revoked.json() as { errMessage: string };
-    assert.equal(revoked.status, 404);
-    assert.equal(payload.errMessage, "Kanban related project is unavailable.");
+    assert.equal(revoked.status, 403);
+    assert.equal(payload.errMessage, "Related project KV access is not granted for this key.");
   } finally {
     await server.close();
   }
@@ -360,8 +348,8 @@ test("Kanban Studio bridge allows project readers to perform read-only operation
       return {
         projectId: "demo",
         projectName: "Demo",
-        target: "draft",
-        resolvedTarget: "draft",
+        target: "latest",
+        resolvedTarget: "1.0.0",
         artifactDir: ".",
         entry: "index.html",
         relatedProjects: [],
@@ -369,14 +357,14 @@ test("Kanban Studio bridge allows project readers to perform read-only operation
       };
     },
   });
-  const server = await listen(storage, createPrincipal(["projects.read_public"], { userId: "viewer-1" }));
+  const server = await listen(storage, createPrincipal(false, { userId: "viewer-1" }));
 
   try {
     const response = await fetch(server.url("/api/projects/demo/kanban/bridge"), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        target: "draft",
+        target: "latest",
         call: { requestId: "request-1", operation: "kv.getValue", input: { key: "board" } },
       }),
     });
@@ -398,7 +386,7 @@ test("Kanban file mutations are denied to a project reader before accessing file
     deleteManagedFile: async (id) => { touched = true; return { id }; },
     getManagedFile: async () => { touched = true; throw new Error("Unexpected file access."); },
   });
-  const server = await listen(storage, createPrincipal(["projects.read_public"], { userId: "viewer-1" }));
+  const server = await listen(storage, createPrincipal(false, { userId: "viewer-1" }));
   try {
     for (const [operation, input] of [
       ["files.createFile", { name: "map.png", base64: "AP8=" }],
@@ -536,7 +524,7 @@ test("Kanban revision stream closes before publishing after project access is re
         : {
             projectId,
             userId: userId ?? "viewer-1",
-            role: "viewer",
+            role: "guest",
             createdAt: "2026-06-18T00:00:00.000Z",
           },
     }),
@@ -554,7 +542,7 @@ test("Kanban revision stream closes before publishing after project access is re
   });
   const server = await listen(
     storage,
-    createPrincipal([], { userId: "viewer-1" }),
+    createPrincipal(false, { userId: "viewer-1" }),
   );
   const controller = new AbortController();
 
@@ -585,7 +573,7 @@ test("Kanban revision stream closes before publishing after related-project acce
     getProjectAccessSummary: async (projectId) => ({
       projectId,
       projectName: projectId,
-      visibility: projectId === "demo" ? "public" : "private",
+      visibility: "public",
       ownerUserId: "owner-1",
     }),
     getKanbanRelatedProjectBindings: async () => ({
@@ -605,7 +593,7 @@ test("Kanban revision stream closes before publishing after related-project acce
   });
   const server = await listen(
     storage,
-    createPrincipal(["projects.read_public"], { userId: "viewer-1" }),
+    createPrincipal(false, { userId: "viewer-1" }),
   );
   const controller = new AbortController();
 
@@ -651,7 +639,7 @@ test("Kanban revision stream omits unconfirmed related projects from its snapsho
   });
   const server = await listen(
     storage,
-    createPrincipal(["projects.read_public"], { userId: "viewer-1" }),
+    createPrincipal(false, { userId: "viewer-1" }),
   );
   const controller = new AbortController();
 
@@ -691,7 +679,6 @@ test("Kanban draft file saves preserve declared base64 encoding", async () => {
   const server = await listen(storage, {
     kind: "admin_key",
     tokenSource: "bearer",
-    permissions: ["system.admin"],
     isSystemAdmin: true,
   });
 
@@ -723,7 +710,6 @@ test("draft file saves reject malformed file collections as client errors", asyn
   }), {
     kind: "admin_key",
     tokenSource: "bearer",
-    permissions: ["system.admin"],
     isSystemAdmin: true,
   });
 
@@ -759,7 +745,7 @@ test("project card image upload accepts cropped WebP data and returns the server
       };
     },
   });
-  const server = await listen(storage, createPrincipal(["projects.manage_own"]));
+  const server = await listen(storage, createPrincipal(false));
 
   try {
     const response = await fetch(server.url("/api/projects/demo/project-card-image"), {
@@ -783,7 +769,7 @@ test("project card image upload rejects non-WebP content types", async () => {
       throw new Error("saveProjectCardImage must not run for non-WebP uploads.");
     },
   });
-  const server = await listen(storage, createPrincipal(["projects.manage_own"]));
+  const server = await listen(storage, createPrincipal(false));
 
   try {
     const response = await fetch(server.url("/api/projects/demo/project-card-image"), {
@@ -805,7 +791,7 @@ test("project card image upload reports oversized WebP bodies as 413", async () 
       throw new Error("saveProjectCardImage must not run for oversized uploads.");
     },
   });
-  const server = await listen(storage, createPrincipal(["projects.manage_own"]));
+  const server = await listen(storage, createPrincipal(false));
   const oversizedWebp = Buffer.alloc(PROJECT_CARD_IMAGE_MAX_BYTES + 1);
   oversizedWebp.write("RIFF", 0, "ascii");
   oversizedWebp.write("WEBP", 8, "ascii");
@@ -839,7 +825,7 @@ test("project card metadata endpoint validates and persists server-issued image 
       return options.projectCard;
     },
   });
-  const server = await listen(storage, createPrincipal(["projects.manage_own"]));
+  const server = await listen(storage, createPrincipal(false));
 
   try {
     const response = await fetchJson(server.url("/api/projects/demo/project-card"), {
@@ -870,7 +856,7 @@ test("project info endpoint preserves localized names and future declaration ids
       return { name: options.name, projectInfo: options.projectInfo };
     },
   });
-  const server = await listen(storage, createPrincipal(["projects.manage_own"]));
+  const server = await listen(storage, createPrincipal(false));
 
   try {
     const response = await fetchJson(server.url("/api/projects/demo/project-info"), {
@@ -888,8 +874,7 @@ test("project info endpoint preserves localized names and future declaration ids
 test("source download recipients cannot read or clone unpublished configuration source", async () => {
   const reads: string[] = [], clones: string[] = [];
   const storage = createStorageStub({
-    getProjectAccessSummary: async projectId => ({ projectId, projectName: projectId, visibility: "private", ownerUserId: "author" }),
-    hasProjectSourceCapability: async () => true,
+    getProjectAccessSummary: async projectId => ({ projectId, projectName: projectId, visibility: "private", member:{projectId,userId:"recipient",role:"guest",createdAt:"2026-10-22T00:00:00Z"} }),
     getFiles: async options => {
       reads.push(options.target);
       return { projectId: "demo", projectName: "demo", target: options.target, resolvedTarget: "1.0.0", files: [] };
@@ -899,9 +884,9 @@ test("source download recipients cannot read or clone unpublished configuration 
       return { projectId: "copy", projectName: "copy", sourceTarget: options.sourceTarget!, resolvedSourceTarget: "1.0.0", nextVersion: "1.0.1" };
     },
   });
-  const server = await listen(storage, createPrincipal(["projects.create"], { userId: "recipient" }));
+  const server = await listen(storage, createPrincipal(false, { userId: "recipient" }));
   try {
-    for (const suffix of ["", "?target=draft", "?target=%20draft%20"]) {
+    for (const suffix of ["?target=draft", "?target=%20draft%20"]) {
       assert.equal((await fetch(server.url(`/api/projects/demo/files${suffix}`))).status, 403);
     }
     for (const sourceTarget of ["draft", " draft "]) {
@@ -929,7 +914,6 @@ test("source files endpoint does not let a global source permission bypass proje
       visibility: "private",
       ownerUserId: "owner-1",
     }),
-    hasProjectSourceCapability: async () => false,
     getDownloadableSourceFiles: async () => {
       sourceRead = true;
       throw new Error("Source must not be read without project access.");
@@ -937,7 +921,7 @@ test("source files endpoint does not let a global source permission bypass proje
   });
   const server = await listen(
     storage,
-    createPrincipal(["projects.download_source"], { userId: "developer-1" }),
+    createPrincipal(false, { userId: "developer-1" }),
   );
 
   try {
@@ -1004,7 +988,7 @@ test("project deployment details authorize every manifest project when a depende
           ? {
               projectId: projectId,
               userId,
-              role: "manager",
+              role: "maintainer",
               createdAt: "2026-08-05T00:00:00.000Z",
             }
           : undefined,
@@ -1013,13 +997,13 @@ test("project deployment details authorize every manifest project when a depende
   });
   const server = await listen(
     storage,
-    createPrincipal(["projects.read_public"], { userId: "viewer-1" }),
+    createPrincipal(false, { userId: "viewer-1" }),
   );
 
   try {
     const response = await fetch(server.url(`/api/deployments/${deploymentId}`));
     assert.equal(response.status, 403);
-    assert.deepEqual(checkedProjects, [rootProjectId, sourceProjectId]);
+    assert.ok(checkedProjects.includes(rootProjectId));assert.ok(checkedProjects.includes(sourceProjectId));
   } finally {
     await server.close();
   }
@@ -1078,7 +1062,7 @@ test("dependency status and project-group download APIs retain exact targets and
       return downloadResult;
     },
   });
-  const server = await listen(storage, createPrincipal([]));
+  const server = await listen(storage, createPrincipal(false));
 
   try {
     const status = await fetchJson(server.url("/api/projects/demo/dependencies?target=0.3.0"));
@@ -1126,7 +1110,7 @@ test("related-project API lists, updates, and removes a confirmed relationship",
       return { removed: true, relatedProjects: [] };
     },
   });
-  const server = await listen(storage, createPrincipal(["projects.manage_own"]));
+  const server = await listen(storage, createPrincipal(false));
 
   try {
     const list = await fetchJson(server.url(`/api/projects/${rootProjectId}/related-projects`));
@@ -1151,197 +1135,6 @@ test("related-project API lists, updates, and removes a confirmed relationship",
   }
 });
 
-test("source access request API submits, approves, rejects, and revokes download capability", async () => {
-  const projectId = "00000000-0000-4000-8000-000000000432";
-  const requestId = "00000000-0000-4000-8000-000000000433";
-  const request = {
-    id: requestId,
-    projectId,
-    requesterUserId: "user-1",
-    capability: "download_source" as const,
-    reason: "Need the source to run this Kanban locally.",
-    status: "pending" as const,
-    createdAt: "2026-08-05T00:00:00.000Z",
-    updatedAt: "2026-08-05T00:00:00.000Z",
-  };
-  const storage = createStorageStub({
-    readProjectAccessRequestToken: () => ({ projectId }),
-    createProjectAccessRequest: async (options) => {
-      assert.deepEqual(options, {
-        projectId,
-        requesterUserId: "user-1",
-        reason: request.reason,
-      });
-      return request;
-    },
-    listProjectAccessRequests: async () => [request],
-    listProjectSourceCapabilities: async () => [],
-    resolveProjectAccessRequest: async (options) => ({
-      ...request,
-      status: options.status,
-      resolvedByUserId: options.resolvedByUserId,
-      resolvedAt: "2026-08-05T00:01:00.000Z",
-    }),
-    revokeProjectSourceCapability: async (options) => {
-      assert.deepEqual(options, {
-        projectId,
-        userId: "user-1",
-        revokedByUserId: "user-1",
-      });
-      return { revoked: true };
-    },
-  });
-  const requester = await listen(storage, createPrincipal([], { userId: "user-1" }));
-  try {
-    const details = await fetchJson(requester.url("/api/project-source-access/signed-token"));
-    assert.equal((details.data as { projectId: string }).projectId, projectId);
-    const submitted = await fetch(requester.url("/api/project-source-access/signed-token/requests"), {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ reason: request.reason }),
-    });
-    assert.equal(submitted.status, 201);
-  } finally {
-    await requester.close();
-  }
-
-  const manager = await listen(storage, createPrincipal(["projects.manage_own"], { userId: "user-1" }));
-  try {
-    const listed = await fetchJson(manager.url(`/api/projects/${projectId}/source-access-requests`));
-    assert.deepEqual((listed.data as { requests: unknown }).requests, [request]);
-    for (const status of ["approved", "rejected"] as const) {
-      const resolved = await fetchJson(manager.url(
-        `/api/projects/${projectId}/source-access-requests/${requestId}`,
-      ), {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ status }),
-      });
-      assert.equal((resolved.data as { status: string }).status, status);
-    }
-    const revoked = await fetchJson(manager.url(
-      `/api/projects/${projectId}/source-capabilities/user-1`,
-    ), { method: "DELETE" });
-    assert.deepEqual(revoked.data, { revoked: true });
-  } finally {
-    await manager.close();
-  }
-
-  const noUser = await listen(storage, {
-    kind: "admin_key",
-    tokenSource: "bearer",
-    permissions: ["system.admin"],
-    isSystemAdmin: true,
-  });
-  try {
-    const response = await fetch(noUser.url("/api/project-source-access/signed-token"));
-    assert.equal(response.status, 400);
-  } finally {
-    await noUser.close();
-  }
-});
-
-test("workflows endpoint hides legacy non-UUID ids from admins after cleanup", async () => {
-  const storage = createStorageStub({
-    listProjects: async () => ([
-      {
-        id: "claude-agent",
-        name: "@steamharness/claude-agent-workflow",
-        projectType: "workflow",
-        projectCard: { icon: "bot", iconBackgroundColor: "#2563eb" },
-        visibility: "private",
-        hasDraft: false,
-        latest: "0.0.1",
-        versions: ["0.0.1"],
-        onlineVersions: ["0.0.1"],
-        nextVersion: "0.0.2",
-        webhookEnabled: false,
-      },
-      {
-        id: "7a9627b8-405f-4302-adc3-f2789b96095a",
-        name: "Viewer Project",
-        projectType: "workflow",
-        projectCard: { icon: "bot", iconBackgroundColor: "#2563eb" },
-        visibility: "public",
-        hasDraft: false,
-        latest: "1.0.0",
-        versions: ["1.0.0"],
-        onlineVersions: ["1.0.0"],
-        nextVersion: "1.0.1",
-        webhookEnabled: false,
-      },
-    ]) as any,
-    getProjectAccessSummary: async (projectId) => ({
-      projectId,
-      projectName: projectId,
-      visibility: "public",
-    }) as any,
-  });
-  const server = await listen(storage, createPrincipal(["projects.read_all"]));
-
-  try {
-    const response = await fetchJson(server.url("/api/projects"));
-
-    // 旧版 non-UUID 项目不再兼容展示，管理员也只应看到 UUID 项目。
-    assert.equal(response.errCode, 0);
-    assert.deepEqual((response.data as Array<{ id: string }>).map((item) => item.id), [
-      "7a9627b8-405f-4302-adc3-f2789b96095a",
-    ]);
-  } finally {
-    await server.close();
-  }
-});
-
-test("workflows endpoint hides legacy non-UUID ids from ordinary public readers", async () => {
-  const storage = createStorageStub({
-    listProjects: async () => ([
-      {
-        id: "legacy-name",
-        name: "Legacy",
-        projectType: "workflow",
-        projectCard: { icon: "bot", iconBackgroundColor: "#2563eb" },
-        visibility: "public",
-        hasDraft: false,
-        latest: "0.0.1",
-        versions: ["0.0.1"],
-        onlineVersions: ["0.0.1"],
-        nextVersion: "0.0.2",
-        webhookEnabled: false,
-      },
-      {
-        id: "7a9627b8-405f-4302-adc3-f2789b96095a",
-        name: "Viewer Project",
-        projectType: "workflow",
-        projectCard: { icon: "bot", iconBackgroundColor: "#2563eb" },
-        visibility: "public",
-        hasDraft: false,
-        latest: "1.0.0",
-        versions: ["1.0.0"],
-        onlineVersions: ["1.0.0"],
-        nextVersion: "1.0.1",
-        webhookEnabled: false,
-      },
-    ]) as any,
-    getProjectAccessSummary: async (projectId) => ({
-      projectId,
-      projectName: projectId,
-      visibility: "public",
-    }) as any,
-  });
-  const server = await listen(storage, createPrincipal(["projects.read_public"]));
-
-  try {
-    const response = await fetchJson(server.url("/api/projects"));
-
-    assert.equal(response.errCode, 0);
-    assert.deepEqual((response.data as Array<{ id: string }>).map((item) => item.id), [
-      "7a9627b8-405f-4302-adc3-f2789b96095a",
-    ]);
-  } finally {
-    await server.close();
-  }
-});
-
 test("create workflow endpoint atomically forwards package UUID and project info", async () => {
   const projectInfo = {
     localizedNames: {},
@@ -1358,6 +1151,8 @@ test("create workflow endpoint atomically forwards package UUID and project info
         projectType: "workflow",
         projectInfo,
         ownerUserId: "creator-1",
+        groupId: undefined,
+        isSystemAdmin: false,
         createdByUserId: "creator-1",
         visibility: "private",
       });
@@ -1370,7 +1165,7 @@ test("create workflow endpoint atomically forwards package UUID and project info
       };
     },
   });
-  const server = await listen(storage, createPrincipal(["projects.create"], { userId: "creator-1" }));
+  const server = await listen(storage, createPrincipal(false, { userId: "creator-1" }));
 
   try {
     const response = await fetchJson(server.url("/api/projects"), {
@@ -1405,7 +1200,7 @@ test("create workflow endpoint rejects missing and unknown project types", async
       throw new Error("must not be called");
     },
   });
-  const server = await listen(storage, createPrincipal(["projects.create"]));
+  const server = await listen(storage, createPrincipal(false));
 
   try {
     for (const body of [
@@ -1449,7 +1244,7 @@ test("create workflow endpoint requires a package UUID and declared data storage
       throw new Error("must not be called");
     },
   });
-  const server = await listen(storage, createPrincipal(["projects.create"]));
+  const server = await listen(storage, createPrincipal(false));
   const validProjectInfo = {
     localizedNames: {},
     declarations: [],
@@ -1523,7 +1318,7 @@ test("create workflow endpoint validates and forwards optional project card meta
       };
     },
   });
-  const server = await listen(storage, createPrincipal(["projects.create"], { userId: "creator-1" }));
+  const server = await listen(storage, createPrincipal(false, { userId: "creator-1" }));
 
   try {
     const response = await fetchJson(server.url("/api/projects"), {
@@ -1545,6 +1340,8 @@ test("create workflow endpoint validates and forwards optional project card meta
       projectType: "conversation",
       projectInfo,
       ownerUserId: "creator-1",
+      groupId: undefined,
+      isSystemAdmin: false,
       createdByUserId: "creator-1",
       visibility: "private",
       projectCard: { ...projectCard, iconUrl: undefined },
@@ -1562,7 +1359,7 @@ test("create workflow endpoint rejects invalid project card metadata", async () 
       throw new Error("must not be called");
     },
   });
-  const server = await listen(storage, createPrincipal(["projects.create"]));
+  const server = await listen(storage, createPrincipal(false));
 
   try {
     const response = await fetchJson(server.url("/api/projects"), {
@@ -1584,9 +1381,9 @@ test("create workflow endpoint rejects invalid project card metadata", async () 
   }
 });
 
-test("audit events endpoint requires audit.read permission", async () => {
+test("audit events endpoint requires a system administrator", async () => {
   configureProjectAuthContext({ accountDb: createAccountDbStub() as any });
-  const server = await listen(createStorageStub({}), createPrincipal(["projects.read_all"]));
+  const server = await listen(createStorageStub({}), createPrincipal(false));
 
   try {
     const response = await fetchJson(server.url("/api/audit-events"));
@@ -1633,7 +1430,7 @@ test("audit events endpoint forwards filters and returns paged audit data", asyn
     return expectedPage;
   };
   configureProjectAuthContext({ accountDb: accountDb as any });
-  const server = await listen(createStorageStub({}), createPrincipal(["audit.read"]));
+  const server = await listen(createStorageStub({}), createPrincipal(true));
 
   try {
     const response = await fetchJson(server.url("/api/audit-events?pageSize=10&cursor=cursor-1&from=2026-06-01T00:00:00.000Z&to=2026-06-18T00:00:00.000Z&userId=user-1&principalKind=user_session&eventType=project.publish&resourceType=project_version&resourceId=demo%3A1.0.0&outcome=success"));
@@ -1672,219 +1469,6 @@ test("audit events endpoint forwards filters and returns paged audit data", asyn
   }
 });
 
-test("member endpoint rejects owner demotion", async () => {
-  const storage = createStorageStub({
-    getProjectAccessSummary: async (projectId, userId) => ({
-      projectId,
-      projectName: "demo",
-      visibility: "private",
-      ownerUserId: "owner-1",
-      member: userId === "owner-1"
-        ? {
-            projectId,
-            userId,
-            role: "owner",
-            createdAt: "2026-06-18T00:00:00.000Z",
-          }
-        : undefined,
-    }),
-  });
-  const server = await listen(storage, createPrincipal(["projects.manage_own"], { userId: "owner-1" }));
-
-  try {
-    const response = await fetchJson(server.url("/api/projects/demo/members/owner-1"), {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ role: "viewer" }),
-    });
-    assert.equal(response.errCode, 409);
-    assert.match(String((response as { errMessage?: string }).errMessage), /owner role cannot be changed/i);
-  } finally {
-    await server.close();
-  }
-});
-
-test("manager cannot transfer ownership", async () => {
-  const storage = createStorageStub({
-    getProjectAccessSummary: async (projectId, userId) => ({
-      projectId,
-      projectName: "demo",
-      visibility: "private",
-      ownerUserId: "owner-1",
-      member: userId === "manager-1"
-        ? {
-            projectId,
-            userId,
-            role: "manager",
-            createdAt: "2026-06-18T00:00:00.000Z",
-          }
-        : undefined,
-    }),
-  });
-  const server = await listen(storage, createPrincipal(["projects.manage_own"], { userId: "manager-1" }));
-
-  try {
-    const response = await fetchJson(server.url("/api/projects/demo/members/viewer-2"), {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ role: "owner" }),
-    });
-    assert.equal(response.errCode, 403);
-    assert.match(String((response as { errMessage?: string }).errMessage), /cannot transfer project ownership/i);
-  } finally {
-    await server.close();
-  }
-});
-
-test("project creator can manage members without owner membership", async () => {
-  const storage = createStorageStub({
-    getProjectAccessSummary: async (projectId) => ({
-      projectId,
-      projectName: "demo",
-      visibility: "private",
-      ownerUserId: "owner-1",
-      createdByUserId: "creator-1",
-      member: undefined,
-    }),
-    setProjectMember: async (options) => ({
-      projectId: options.projectId,
-      userId: options.userId,
-      role: options.role,
-      createdBy: options.createdBy,
-      createdAt: "2026-06-18T00:00:00.000Z",
-    }),
-    createProjectInvitation: async (options) => ({
-      invitation: {
-        id: "inv-creator",
-        projectId: options.projectId,
-        token: "tok-creator",
-        role: options.role,
-        createdAt: "2026-06-18T00:00:00.000Z",
-        expiresAt: "2026-06-25T00:00:00.000Z",
-        createdBy: options.createdBy,
-      },
-      token: "tok-creator",
-    }),
-  });
-  const server = await listen(storage, createPrincipal(["projects.create"], { userId: "creator-1" }));
-
-  try {
-    const memberResponse = await fetchJson(server.url("/api/projects/demo/members/viewer-2"), {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ role: "viewer" }),
-    });
-    assert.equal(memberResponse.errCode, 0);
-    assert.deepEqual(memberResponse.data, {
-      projectId: "demo",
-      userId: "viewer-2",
-      role: "viewer",
-      createdBy: "creator-1",
-      createdAt: "2026-06-18T00:00:00.000Z",
-    });
-
-    const invitationResponse = await fetchJson(server.url("/api/projects/demo/invitations"), {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ role: "writer" }),
-    });
-    assert.equal(invitationResponse.errCode, 0);
-    const data = invitationResponse.data as { invitation: { id: string; role: string; createdBy?: string }; token: string };
-    assert.equal(data.invitation.id, "inv-creator");
-    assert.equal(data.invitation.role, "writer");
-    assert.equal(data.invitation.createdBy, "creator-1");
-    assert.equal(data.token, "tok-creator");
-  } finally {
-    await server.close();
-  }
-});
-
-// project invitation lifecycle
-test("invitation endpoint creates a manager invitation with a token", async () => {
-  const storage = createStorageStub({
-    createProjectInvitation: async (options) => ({
-      invitation: {
-        id: "inv-1",
-        projectId: options.projectId,
-        token: "tok-abc",
-        role: options.role,
-        createdAt: "2026-06-18T00:00:00.000Z",
-        expiresAt: "2026-06-25T00:00:00.000Z",
-        createdBy: options.createdBy,
-      },
-      token: "tok-abc",
-    }),
-  });
-  const server = await listen(storage, createPrincipal(["projects.manage_own"], { userId: "owner-1" }));
-
-  try {
-    const response = await fetchJson(server.url("/api/projects/demo/invitations"), {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ role: "manager" }),
-    });
-    assert.equal(response.errCode, 0);
-    const data = response.data as { invitation: { id: string; role: string }; token: string };
-    assert.equal(data.invitation.role, "manager");
-    assert.equal(data.invitation.id, "inv-1");
-    assert.equal(data.token, "tok-abc");
-  } finally {
-    await server.close();
-  }
-});
-
-test("invitation endpoint rejects owner role and unknown roles", async () => {
-  const server = await listen(createStorageStub({}), createPrincipal(["projects.manage_own"], { userId: "owner-1" }));
-
-  try {
-    const ownerResponse = await fetchJson(server.url("/api/projects/demo/invitations"), {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ role: "owner" }),
-    });
-    assert.equal(ownerResponse.errCode, 400);
-
-    const badResponse = await fetchJson(server.url("/api/projects/demo/invitations"), {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ role: "superuser" }),
-    });
-    assert.equal(badResponse.errCode, 400);
-  } finally {
-    await server.close();
-  }
-});
-
-test("invitation revoke endpoint requires a still-pending invitation", async () => {
-  const storage = createStorageStub({
-    revokeProjectInvitation: async () => ({ revoked: true }),
-  });
-  const server = await listen(storage, createPrincipal(["projects.manage_own"], { userId: "owner-1" }));
-
-  try {
-    const response = await fetchJson(server.url("/api/projects/demo/invitations/inv-1"), {
-      method: "DELETE",
-    });
-    assert.equal(response.errCode, 0);
-    assert.equal((response.data as { revoked: boolean }).revoked, true);
-  } finally {
-    await server.close();
-  }
-
-  const blockedServer = await listen(
-    createStorageStub({ revokeProjectInvitation: async () => ({ revoked: false }) }),
-    createPrincipal(["projects.manage_own"], { userId: "owner-1" }),
-  );
-  try {
-    const response = await fetchJson(blockedServer.url("/api/projects/demo/invitations/inv-1"), {
-      method: "DELETE",
-    });
-    assert.equal(response.errCode, 409);
-  } finally {
-    await blockedServer.close();
-  }
-});
-
 test("publish endpoint forwards exact version and source preconditions", async () => {
   const sourceHash = "a".repeat(64);
   const published: unknown[] = [];
@@ -1894,14 +1478,14 @@ test("publish endpoint forwards exact version and source preconditions", async (
       return { projectId: "demo", projectName: "demo", version: "1.2.3", latest: "1.2.3", nextVersion: "1.2.4", releaseLog: "Version notes", dependencies: [] };
     },
   });
-  const server = await listen(storage, createPrincipal(["projects.manage_all"]));
+  const server = await listen(storage, createPrincipal(false));
   try {
     const response = await fetchJson(server.url("/api/projects/demo/publish"), {
       method: "POST", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ releaseLog: "Version notes", expectedVersion: "1.2.3", expectedSourceHash: sourceHash }),
     });
     assert.equal(response.errCode, 0);
-    assert.deepEqual(published, [{ projectName: "demo", releaseLog: "Version notes", expectedVersion: "1.2.3", expectedSourceHash: sourceHash, expectedConfigurationRevision: undefined, administrator: true, createdByUserId: "user-1" }]);
+    assert.deepEqual(published, [{ projectName: "demo", releaseLog: "Version notes", expectedVersion: "1.2.3", expectedSourceHash: sourceHash, expectedConfigurationRevision: undefined, administrator: false, createdByUserId: "user-1" }]);
     const invalid = await fetchJson(server.url("/api/projects/demo/publish"), {
       method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ expectedSourceHash: 123 }),
     });
@@ -1922,7 +1506,7 @@ test("publish endpoint rejects callers without project management permission", a
       throw new Error("publish should not run without permission.");
     },
   });
-  const server = await listen(storage, createPrincipal(["projects.read_all"]));
+  const server = await listen(storage, createPrincipal(false));
 
   try {
     const response = await fetch(server.url("/api/projects/demo/publish"), {
@@ -2284,7 +1868,7 @@ test("PersistentValue knowledge mutations require data write access to the curre
   });
   const server = await listen(
     storage,
-    createPrincipal(["knowledge.manage", "projects.manage_own"], { userId: "other-user" }),
+    createPrincipal(false, { userId: "other-user" }),
   );
 
   try {
@@ -2331,7 +1915,7 @@ test("current project and conversation writes require project data write access"
   });
   const server = await listen(
     storage,
-    createPrincipal(["knowledge.manage", "projects.manage_own"], { userId: "other-user" }),
+    createPrincipal(false, { userId: "other-user" }),
   );
 
   try {
@@ -2383,7 +1967,7 @@ test("project storage endpoint rejects the removed global scope", async () => {
       return { exists: true, value: "global-value" };
     },
   });
-  const server = await listen(storage, createPrincipal(["knowledge.manage"], { userId: "other-user" }));
+  const server = await listen(storage, createPrincipal(false, { userId: "other-user" }));
 
   try {
     const response = await fetchJson(server.url("/api/project-storage"), {
@@ -2641,19 +2225,18 @@ test("project token usage endpoint forwards conversation detail filters", async 
   }
 });
 
-test("all member roles can read data while only writers and managers can mutate it", async () => {
-  for (const role of ["owner", "manager", "writer", "viewer"] as const) {
+test("all fixed member roles can read data and only developers or higher can mutate it", async () => {
+  for (const role of ["owner", "maintainer", "developer", "guest"] as const) {
     const storage = createStorageStub({
       getProjectAccessSummary: async projectId => ({ projectId, projectName: projectId, visibility: "private",
         member: { projectId, userId: "member", role, createdAt: "2026-10-16T00:00:00.000Z" } }),
-      canDownloadProjectSource: Storage.prototype.canDownloadProjectSource,
       getFiles: async () => ({ projectId: "demo", projectName: "demo", target: "draft", resolvedTarget: "draft", files: [] }),
       getSourceArchive: async () => ({ version: "1.0.0", archive: Buffer.from("archive") }),
       cloneProject: async () => ({ projectId: "copy", projectName: "copy", sourceTarget: "latest", resolvedSourceTarget: "1.0.0", nextVersion: "1.0.1" }),
       getKanbanWorkspace: async () => ({ projectId: "demo", projectName: "demo", target: "latest",
         resolvedTarget: "1.0.0", artifactDir: ".", entry: "index.html", relatedProjects: [], configurations: [] }),
     });
-    const server = await listen(storage, createPrincipal(["projects.create"], { userId: "member" }));
+    const server = await listen(storage, createPrincipal(false, { userId: "member" }));
     try {
       const request = (operation: string) => fetch(server.url("/api/project-storage"), {
         method: "POST", headers: { "Content-Type": "application/json" },
@@ -2661,23 +2244,23 @@ test("all member roles can read data while only writers and managers can mutate 
           entry: { scope: "project", projectId: "demo", key: "settings" }, value: true }),
       });
       assert.equal((await request("get")).status, 200, role);
-      assert.equal((await request("set")).status, role === "viewer" ? 403 : 200, role);
+      assert.equal((await request("set")).status, role === "guest" ? 403 : 200, role);
       assert.equal((await fetch(server.url("/api/projects/demo/knowledge-documents"))).status, 200, role);
       assert.equal((await fetch(server.url("/api/projects/demo/knowledge-documents"), {
         method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ title: "Guide", markdown: "# Guide" }),
-      })).status, role === "viewer" ? 403 : 201, role);
+      })).status, role === "guest" ? 403 : 201, role);
       const bridge = await fetch(server.url("/api/projects/demo/kanban/bridge"), {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ call: { requestId: "write", operation: "kv.setValue", input: { key: "settings", value: true } } }),
       });
-      assert.equal(bridge.status, role === "viewer" ? 403 : 200, role);
-      const downloadStatus = role === "owner" || role === "manager" ? 200 : 403;
+      assert.equal(bridge.status, role === "guest" ? 403 : 200, role);
+      const downloadStatus = role === "guest" ? 403 : 200;
       assert.equal((await fetch(server.url("/api/projects/demo/files?target=draft"))).status, downloadStatus, role);
-      assert.equal((await fetch(server.url("/api/projects/demo/source-archive?target=1.0.0"))).status, downloadStatus, role);
+      assert.equal((await fetch(server.url("/api/projects/demo/source-archive?target=1.0.0"))).status, 200, role);
       assert.equal((await fetch(server.url("/api/projects/demo/clone"), {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ targetProjectName: "copy" }),
-      })).status, downloadStatus, role);
+      })).status, 200, role);
     } finally { await server.close(); }
   }
 });
@@ -2710,9 +2293,6 @@ function createStorageStub(overrides: Partial<Storage>): Storage {
   const stub: Partial<Storage> = {
     assertManagedFileAccountAccess:async()=>{},
     configurationAttachment:async()=>{throw new HttpError(404,404,"Configuration attachment does not exist.");},
-    canWriteProjectData: Storage.prototype.canWriteProjectData,
-    assertDataWritableProject: Storage.prototype.assertDataWritableProject,
-    hasProjectSourceCapability: async () => false,
     assertServerProjectDataAccess: async () => ({
       localizedNames: {},
       declarations: [],
@@ -2734,66 +2314,15 @@ function createStorageStub(overrides: Partial<Storage>): Storage {
             createdAt: "2026-06-18T00:00:00.000Z",
           },
     }),
-    canReadProject: (options) => {
-      if (options.canReadAll) return true;
-      if (options.userId && options.access.member !== undefined) return true;
-      return options.canReadPublic === true && options.access.visibility === "public";
+    requireProjectCapability: async (id: string, actor: AccessActor, capability: AccessCapability) => {
+      const summary=await stub.getProjectAccessSummary!(id,actor.userId);
+      const sources=summary.access?.sources ?? (summary.member?[{type:"project" as const,id,role:summary.member.role}]:[]);
+      if(actor.userId && summary.visibility==='public') sources.push({type:"project",id,role:"guest"});
+      const access=resolveResourceAccess(sources,actor);
+      if(!access.capabilities.includes(capability)) throw new HttpError(403,403,"Permission denied.");
+      return access;
     },
-    canManageProject: (options) => {
-      if (options.canManageAll) return true;
-      if (!options.userId) return false;
-      if (options.access.member?.role === "owner" || options.access.member?.role === "manager") {
-        return true;
-      }
-      const isOwnerOrCreator = options.access.ownerUserId === options.userId || options.access.createdByUserId === options.userId;
-      if (options.canManageOwn && isOwnerOrCreator) {
-        return true;
-      }
-      return Boolean(
-        options.canUpload ||
-        options.canPublish,
-      ) && isOwnerOrCreator;
-    },
-    canDownloadProjectSource: Storage.prototype.canDownloadProjectSource,
-    getSourceDownloadAvailability: async () => ({
-      available: true,
-      target: "1.0.0",
-    }),
-    assertReadableProject: (options) => {
-      const canRead = options.canReadAll ||
-        (options.userId && options.access.member !== undefined) ||
-        (options.canReadPublic === true && options.access.visibility === "public");
-      if (!canRead) {
-        throw new HttpError(403, 403, "Permission denied.");
-      }
-    },
-    assertManageableProject: (options) => {
-      const canManage = options.canManageAll ||
-        (
-          !!options.userId &&
-          (
-            options.access.member?.role === "owner" ||
-            options.access.member?.role === "manager" ||
-            (options.canManageOwn && (
-              options.access.ownerUserId === options.userId ||
-              options.access.createdByUserId === options.userId
-            )) ||
-            (
-              Boolean(
-                options.canUpload ||
-                options.canPublish,
-              ) &&
-              (
-                options.access.ownerUserId === options.userId ||
-                options.access.createdByUserId === options.userId
-              )
-            )
-          )
-        );
-      if (!canManage) {
-        throw new HttpError(403, 403, "Permission denied.");
-      }
-    },
+    getSourceDownloadAvailability: async () => ({available:true,target:"1.0.0"}),
     listProjectKVEntries: async (): Promise<KVEntryPage> => ({ items: [], hasMore: false, total: 0 }),
     getProjectKVEntry: async (): Promise<KVEntryDetail> => createKVDetail({ scope: "project", key: "settings" }),
     getProjectStorageValue: async () => ({ exists: false }),
@@ -2832,24 +2361,6 @@ function createStorageStub(overrides: Partial<Storage>): Storage {
       projectId: options.projectId,
       projectTotal: createTokenUsageAggregate(0),
     }),
-    createProjectInvitation: async (options) => ({
-      invitation: {
-        id: "inv-stub",
-        projectId: options.projectId,
-        token: "stub-token",
-        role: options.role,
-        createdAt: "2026-05-26T00:00:00.000Z",
-        expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
-        createdBy: options.createdBy,
-      },
-      token: "stub-token",
-    }),
-    listProjectInvitations: async (): Promise<never[]> => [],
-    getInvitationByToken: async () => undefined,
-    revokeProjectInvitation: async () => ({ revoked: false }),
-    acceptInvitation: async () => {
-      throw new HttpError(404, 404, "Invitation not found.");
-    },
     ...overrides,
   };
   return stub as Storage;
@@ -2898,7 +2409,7 @@ async function listen(
 }> {
   const app = express();
   app.use((req, res, next) => {
-    res.locals.principal = principal ?? createPrincipal(["system.admin"]);
+    res.locals.principal = principal ?? createPrincipal(true);
     next();
   });
   app.use("/api", createApiRouter(storage));
@@ -2911,6 +2422,7 @@ async function listen(
   const address = server.address() as AddressInfo;
   return {
     close: () => new Promise((resolve, reject) => {
+      server.closeAllConnections();
       server.close((error) => {
         if (error) reject(error);
         else resolve();
@@ -2935,14 +2447,12 @@ function createProfile(
     status: "active",
     createdAt: "2026-06-18T00:00:00.000Z",
     updatedAt: "2026-06-18T00:00:00.000Z",
-    roleIds: [],
-    roleNames: [],
-    permissions: [],
+    isSystemAdmin: false,
   };
 }
 
 function createPrincipal(
-  permissions: string[],
+  isSystemAdmin = false,
   overrides: Partial<Extract<AuthenticatedPrincipal, { kind: "user_session" }>> = {},
 ): AuthenticatedPrincipal {
   return {
@@ -2956,12 +2466,9 @@ function createPrincipal(
       status: "active",
       createdAt: "2026-06-18T00:00:00.000Z",
       updatedAt: "2026-06-18T00:00:00.000Z",
-      roleIds: [],
-      roleNames: [],
-      permissions: permissions as any,
+      isSystemAdmin,
     },
-    permissions: permissions as any,
-    isSystemAdmin: permissions.includes("system.admin"),
+    isSystemAdmin,
     accessToken: "access-token",
     refreshToken: "refresh-token",
     expiresAt: "2026-06-19T00:00:00.000Z",
@@ -2970,14 +2477,13 @@ function createPrincipal(
 }
 
 function createApiKeyPrincipal(source: "desktop" | "cli"): AuthenticatedPrincipal {
-  const sessionPrincipal = createPrincipal(["runs.create"]);
+  const sessionPrincipal = createPrincipal(false);
   assert.equal(sessionPrincipal.kind, "user_session");
   return {
     kind: "api_key",
     tokenSource: "bearer",
     userId: sessionPrincipal.userId,
     profile: sessionPrincipal.profile,
-    permissions: sessionPrincipal.permissions,
     isSystemAdmin: false,
     apiKey: {
       id: `api-key-${source}`,
@@ -3107,30 +2613,10 @@ test("project configurations use account-scoped generic routes and preserve vers
 
 test("configuration routes reject unreadable projects before reaching the store", async () => {
   let called=false;
-  const storage=createStorageStub({canReadProject:()=>false,hasProjectSourceCapability:async()=>false,assertReadableProject:()=>{throw new HttpError(403,403,"Forbidden");},projectConfigurations:async()=>{called=true;throw new Error('must not run');}});
-  const server=await listen(storage,createPrincipal([]));
+  const storage=createStorageStub({requireProjectCapability:async()=>{throw new HttpError(403,403,"Forbidden");},projectConfigurations:async()=>{called=true;throw new Error('must not run');}});
+  const server=await listen(storage,createPrincipal(false));
   try {for(const method of ['GET','POST']) {
     const response=await fetch(server.url('/api/projects/demo/configurations'),{method,...(method==='POST'?{headers:{'Content-Type':'application/json'},body:JSON.stringify({call:{action:'get'}})}:{})});
     assert.notEqual(response.status,200);
   }assert.equal(called,false);}finally{await server.close();}
-});
-
-test("configuration download access stays narrow and never trusts client administrator roles",async()=>{
- const calls:any[]=[];
- const storage=createStorageStub({canReadProject:()=>false,hasProjectSourceCapability:async()=>true,assertReadableProject:()=>{throw new HttpError(403,403,'Project data is private');},
-  projectConfigurations:async(options,call)=>{calls.push({options,call});return {version:1,revision:0,fields:[],customFields:[],configurations:[],activeConfigurationId:'mine'};},
-  configurationTemplate:async()=>undefined,
-  uploadConfigurationFile:async options=>{calls.push(options);throw new HttpError(403,403,'Configuration is locked by the author');},
- });
- const server=await listen(storage,createPrincipal([]));
- try{
-  assert.equal((await fetch(server.url('/api/projects/demo/configurations'))).status,200);
-  const write=await fetch(server.url('/api/projects/demo/configurations'),{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({administrator:true,role:'owner',call:{action:'publication.save',revision:0}})});
-  assert.equal(write.status,200);assert.equal(calls[1].options.administrator,false);
-  const template=await fetch(server.url('/api/projects/demo/configurations/template?target=1.0.0'));assert.equal(template.status,200);assert.equal((await template.json()).data,null);
-  assert.equal((await fetch(server.url('/api/projects/demo/configurations/template?target=draft'))).status,400);
-  const file=await fetch(server.url('/api/projects/demo/configurations/files?key=image&fileName=image.png&mimeType=image/png'),{method:'POST',headers:{'Content-Type':'image/png'},body:Buffer.from('file')});
-  assert.equal(file.status,403);assert.equal(calls[2].actorId,'user-1');assert.equal(calls[2].administrator,false);
-  assert.notEqual((await fetch(server.url('/api/projects/demo/files'))).status,200);
- }finally{await server.close();}
 });

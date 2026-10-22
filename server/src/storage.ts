@@ -1,3 +1,4 @@
+import { type AccessActor, type AccessCapability, type ResourceAccess } from "@steamharness/project-access";
 import {isDeepStrictEqual} from "node:util";
 import { bindConfigurationTemplate, createPublicationDraft, parsePublicationDraft, freezeConfigurationTemplate, parseConfigurationTemplate, CONFIGURATION_TEMPLATE_FILE, type ConfigurationPublicationDraft, type ProjectConfigurationTemplate, configurationCapability, parseConfigurationFile, validateConfigurationFileSelection, type ProjectConfigurationField,parseConfigurationField, applyConfigurationAction, configurationSnapshot, exportConfigurations, parseConfigurationDefinition, readConfigurationState, validateConfigurationAction, ProjectConfigurationError, type ProjectConfigurationAction, type ProjectConfigurationState, type ProjectConfigurationExport, type ProjectConfiguration } from "@steamharness/project-configuration";
 import { createLocalProjectConfigurationStore } from "steamharness";
@@ -24,7 +25,7 @@ import { assertProjectDataStorageLocationAllowed, createDefaultProjectRelatedPro
 import { createKanbanContentSecurityPolicy, createKanbanArtifactEntryPath, injectKanbanBridge, isSafeKanbanPublicAssetPath, readKanbanArtifactConfig, readKanbanAssetMimeType, readPackageProjectType, type KanbanArtifactConfig } from "@steamharness/kanban-project";
 import { readRequiredCoreVersion } from "@steamharness/runtime-compatibility";
 import { readServerBuildInfo, type ServerBuildInfo } from "./build-info";
-import { STEAMHARNESS_PROJECT_GROUP_MANIFEST_FILE, createExternalProjectDependencyLocks, finalizeProjectDependencyLock, isProjectGroupHostDataPath, parseProjectDependencyLocks, parseProjectGroupManifest, type ProjectAccessRequest, type ProjectCapabilityGrant, type ProjectDependencyLock, type ProjectDependencyStatusResult, type ProjectDownloadPlan, type ProjectGroupManifestV1 } from "@steamharness/project-dependencies";
+import { STEAMHARNESS_PROJECT_GROUP_MANIFEST_FILE, createExternalProjectDependencyLocks, finalizeProjectDependencyLock, isProjectGroupHostDataPath, parseProjectDependencyLocks, parseProjectGroupManifest, type ProjectAccessRequest, type ProjectDependencyLock, type ProjectDependencyStatusResult, type ProjectDownloadPlan, type ProjectGroupManifestV1 } from "@steamharness/project-dependencies";
 export const PROJECT_CARD_IMAGE_MAX_BYTES = 1024 * 1024;
 const PROJECT_CARD_IMAGE_HASH_PATTERN = /^[a-f0-9]{64}$/;
 const MAX_KANBAN_ASSET_SIZE_BYTES = 20 * 1024 * 1024;
@@ -104,8 +105,8 @@ export interface Summary {
   versions: string[];
   nextVersion: string;
   sourceDownload?: SourceDownloadAvailability;
-  canManage?: boolean;
-  canWriteData?: boolean;
+  groupId?: string | null;
+  access?: ResourceAccess;
 }
 
 export interface SourceDownloadAvailability {
@@ -398,6 +399,8 @@ export interface ProjectAccessSummary {
   visibility: Visibility;
   createdByUserId?: string;
   member?: ProjectMember;
+  groupId?: string | null;
+  access?: ResourceAccess;
 }
 
 export interface ProjectCreateResult {
@@ -552,6 +555,8 @@ export class Storage {
     visibility?: Visibility;
     createdByUserId?: string;
     projectCard?: ProjectCardMetadata;
+    groupId?: string | null;
+    isSystemAdmin?: boolean;
   }): Promise<ProjectCreateResult> {
     if (this.db === undefined) {
       throw new HttpError(501, 501, "Project creation API requires PostgreSQL storage.");
@@ -567,46 +572,13 @@ export class Storage {
 
     const existing = await this.db.getProject(projectId);
     if (existing) {
-      if (existing.name !== projectName) {
-        throw new HttpError(409, 409, `Workflow "${projectId}" is already bound to "${existing.name}".`);
-      }
-      if (existing.projectType !== options.projectType) {
-        throw new HttpError(
-          409,
-          409,
-          `Workflow "${projectId}" was created as projectType "${existing.projectType}", not "${options.projectType}".`,
-        );
-      }
-      if (options.ownerUserId) {
-        const existingMember = await this.db.getProjectMember(projectId, options.ownerUserId);
-        const ownsExisting = existing.ownerUserId === options.ownerUserId ||
-          existing.createdByUserId === options.ownerUserId ||
-          existingMember?.role === "owner" ||
-          existingMember?.role === "manager";
-        if (!ownsExisting) {
-          throw new HttpError(409, 409, `Workflow "${projectId}" already exists and is owned by another account.`);
-        }
-      }
-      const updated = await this.db.updateProjectInfo(
-        projectId,
-        projectName,
-        projectInfo,
-      );
-      if (updated === undefined) {
-        throw new HttpError(404, 404, `Workflow "${projectId}" does not exist.`);
-      }
-      if (options.projectCard !== undefined) {
-        await this.db.updateProjectCard(projectId, options.projectCard);
-      }
-      await this.updateMaterializedDraftProjectInfo(projectId, projectName, projectInfo);
-      return {
-        projectId: updated.id,
-        projectName: updated.name,
-        projectType: updated.projectType,
-        projectInfo,
-        visibility: updated.visibility,
-      };
+      await this.db.access.assert("project", projectId, {userId: options.ownerUserId,isSystemAdmin: options.isSystemAdmin === true}, "upload");
+      if (existing.projectType !== options.projectType) throw new HttpError(409,409,"Project type cannot be changed.");
+      if (options.groupId !== undefined && options.groupId !== existing.groupId) throw new HttpError(403,403,"Use the project transfer API to change its group.");
+      return {projectId:existing.id,projectName:existing.name,projectType:existing.projectType,projectInfo:this.normalizeDeclaredProjectInfo(existing.projectInfo),visibility:existing.visibility};
     }
+    if (!options.ownerUserId) throw new HttpError(401,401,"Account login is required to create a project.");
+    if (options.groupId) await this.db.access.assert("group",options.groupId,{userId:options.ownerUserId,isSystemAdmin:options.isSystemAdmin===true},"createProject");
 
     let created: DbRecord;
     try {
@@ -618,9 +590,10 @@ export class Storage {
         projectInfo,
         packageVersion: "0.0.0",
         ownerUserId: options.ownerUserId,
+        groupId: options.groupId,
         visibility: options.visibility ?? "private",
         createdByUserId: options.createdByUserId,
-      });
+      },{userId:options.ownerUserId,isSystemAdmin:options.isSystemAdmin===true});
     } catch (error) {
       if (error instanceof Error && /already exists/i.test(error.message)) {
         throw new HttpError(409, 409, `Workflow "${projectName}" already exists.`);
@@ -628,14 +601,6 @@ export class Storage {
       throw error;
     }
 
-    if (options.ownerUserId) {
-      await this.db.upsertProjectMember({
-        projectId,
-        userId: options.ownerUserId,
-        role: "owner",
-        createdBy: options.createdByUserId ?? options.ownerUserId,
-      });
-    }
 
     return {
       projectId: created.id,
@@ -978,125 +943,6 @@ export class Storage {
     return this.assertServerProjectStorageMode(projectId, "access server data");
   }
 
-  async listProjectMembers(projectId: string): Promise<ProjectMember[]> {
-    this.assertProjectId(projectId);
-    if (this.db === undefined) {
-      return [];
-    }
-    return await this.db.listProjectMemberRecords(projectId);
-  }
-
-  async setProjectMember(options: {
-    projectId: string;
-    userId: string;
-    role: ProjectRole;
-    createdBy?: string;
-  }): Promise<ProjectMember> {
-    this.assertProjectId(options.projectId);
-    if (this.db === undefined) {
-      throw new HttpError(501, 501, "Project member management requires PostgreSQL storage.");
-    }
-    return this.db.upsertProjectMember(options);
-  }
-
-  async removeProjectMember(projectId: string, userId: string): Promise<{ removed: boolean }> {
-    this.assertProjectId(projectId);
-    if (this.db === undefined) {
-      throw new HttpError(501, 501, "Project member management requires PostgreSQL storage.");
-    }
-    return { removed: await this.db.deleteProjectMember(projectId, userId) };
-  }
-
-  async createProjectInvitation(options: {
-    projectId: string;
-    role: ProjectRole;
-    createdBy?: string;
-    ttlMs?: number;
-  }): Promise<{ invitation: ProjectInvitation; token: string }> {
-    this.assertProjectId(options.projectId);
-    if (this.db === undefined) {
-      throw new HttpError(501, 501, "Project invitations require PostgreSQL storage.");
-    }
-    if (options.role === "owner") {
-      throw new HttpError(400, 400, "Owner role cannot be granted via invitation.");
-    }
-    const id = randomUUID();
-    const token = randomBytes(24).toString("base64url");
-    const ttl = options.ttlMs ?? 7 * 24 * 60 * 60 * 1000;
-    const expiresAt = new Date(Date.now() + ttl).toISOString();
-    const invitation = await this.db.createProjectInvitation({
-      id,
-      projectId: options.projectId,
-      token,
-      role: options.role,
-      createdBy: options.createdBy,
-      expiresAt,
-    });
-    return { invitation, token };
-  }
-
-  async listProjectInvitations(projectId: string): Promise<ProjectInvitation[]> {
-    this.assertProjectId(projectId);
-    if (this.db === undefined) {
-      return [];
-    }
-    return await this.db.listProjectInvitations(projectId);
-  }
-
-  async getInvitationByToken(token: string): Promise<ProjectInvitation | undefined> {
-    if (this.db === undefined) {
-      return undefined;
-    }
-    return await this.db.getProjectInvitationByToken(token);
-  }
-
-  async revokeProjectInvitation(
-    projectId: string,
-    invitationId: string,
-  ): Promise<{ revoked: boolean }> {
-    this.assertProjectId(projectId);
-    if (this.db === undefined) {
-      throw new HttpError(501, 501, "Project invitations require PostgreSQL storage.");
-    }
-    return { revoked: await this.db.revokeProjectInvitation(projectId, invitationId) };
-  }
-
-  async acceptInvitation(input: {
-    token: string;
-    acceptedBy: string;
-  }): Promise<{ invitation: ProjectInvitation; member: ProjectMember }> {
-    if (this.db === undefined) {
-      throw new HttpError(501, 501, "Project invitations require PostgreSQL storage.");
-    }
-    const pending = await this.db.getProjectInvitationByToken(input.token);
-    if (!pending) {
-      throw new HttpError(404, 404, "Invitation not found.");
-    }
-    if (pending.acceptedAt) {
-      throw new HttpError(409, 409, "Invitation already accepted.");
-    }
-    if (pending.revokedAt) {
-      throw new HttpError(410, 410, "Invitation was revoked.");
-    }
-    if (Date.parse(pending.expiresAt) <= Date.now()) {
-      throw new HttpError(410, 410, "Invitation expired.");
-    }
-    const accepted = await this.db.acceptProjectInvitation({
-      id: pending.id,
-      acceptedBy: input.acceptedBy,
-    });
-    if (!accepted) {
-      throw new HttpError(409, 409, "Invitation could not be accepted.");
-    }
-    const member = await this.db.upsertProjectMember({
-      projectId: pending.projectId,
-      userId: input.acceptedBy,
-      role: pending.role,
-      createdBy: pending.createdBy ?? input.acceptedBy,
-    });
-    return { invitation: accepted, member };
-  }
-
   async updateProjectVisibility(options: {
     projectId: string;
     visibility: Visibility;
@@ -1121,78 +967,9 @@ export class Storage {
     return this.createProjectAccessSummary(record, userId);
   }
 
-  canReadProject(options: {
-    access: ProjectAccessSummary;
-    canReadAll?: boolean;
-    canReadPublic?: boolean;
-    userId?: string;
-  }): boolean {
-    if (options.canReadAll) return true;
-    if (options.userId && options.access.member !== undefined) return true;
-    return options.canReadPublic === true && options.access.visibility === "public";
-  }
-
-  canManageProject(options: {
-    access: ProjectAccessSummary;
-    canManageAll?: boolean;
-    canManageOwn?: boolean;
-    canUpload?: boolean;
-    canPublish?: boolean;
-    userId?: string;
-  }): boolean {
-    if (options.canManageAll) return true;
-    if (!options.userId) return false;
-    if (options.access.member?.role === "owner" || options.access.member?.role === "manager") {
-      return true;
-    }
-    const isOwnerOrCreator = options.access.ownerUserId === options.userId || options.access.createdByUserId === options.userId;
-    if (options.canManageOwn && isOwnerOrCreator) {
-      return true;
-    }
-    return Boolean(
-      options.canUpload ||
-      options.canPublish,
-    ) && isOwnerOrCreator;
-  }
-
-  canDownloadProjectSource(options: {
-    access: ProjectAccessSummary;
-    canDownloadSource?: boolean;
-    userId?: string;
-  }): boolean {
-    if (options.canDownloadSource) return true;
-    if (!options.userId) return false;
-    return options.access.member?.role === "owner" ||
-      options.access.member?.role === "manager";
-  }
-
-  assertReadableProject(options: {
-    access: ProjectAccessSummary;
-    canReadAll?: boolean;
-    canReadPublic?: boolean;
-    userId?: string;
-  }): void {
-    if (!this.canReadProject(options)) {
-      throw new HttpError(403, 403, "Permission denied.");
-    }
-  }
-
-  assertManageableProject(options: Parameters<Storage["canManageProject"]>[0]): void {
-    if (!this.canManageProject(options)) {
-      throw new HttpError(403, 403, "Permission denied.");
-    }
-  }
-
-  assertDataWritableProject(options: { access: ProjectAccessSummary; userId?: string; canWriteAll?: boolean }): void {
-    if (this.canWriteProjectData(options)) return;
-    throw new HttpError(403, 403, "Project data write access is required.");
-  }
-
-  canWriteProjectData(options: { access: ProjectAccessSummary; userId?: string; canWriteAll?: boolean }): boolean {
-    const role = options.access.member?.role;
-    return options.canWriteAll === true || Boolean(options.userId && (role === "owner" || role === "manager" || role === "writer"));
-  }
-
+  get accessRepository() {return this.requireProjectDependencyDatabase().access;}
+  async requireProjectCapability(projectId:string,actor:AccessActor,capability:AccessCapability):Promise<ResourceAccess> {return this.accessRepository.assert("project",projectId,actor,capability);}
+  async getProjectSummary(projectId:string):Promise<Summary> {return this.summarizeDbProject(await this.readProjectRecordForAccess(projectId));}
   async listProjects(): Promise<Summary[]> {
     if (this.db) {
       const workflows = await this.db.listProjects();
@@ -1318,9 +1095,8 @@ export class Storage {
         options.projectName,
       );
 
-      const sourceHash = await hashDirectory(stagedSourceDir);
       await options.onStage?.("committing");
-      await this.commitStagedDraft(options.projectName, stagedDraftDir);
+      const sourceHash = await this.commitStagedDraft(options.projectName, stagedDraftDir);
 
       return {
         projectId: metadata.id,
@@ -1513,7 +1289,10 @@ export class Storage {
   }): Promise<UploadPackageResult> {
     this.assertProjectId(options.projectName);
 
-    await this.assertProjectDoesNotExist(options.projectName);
+    if (this.db) {
+      const record = await this.db.getProject(options.projectName);
+      if (!record || record.hasDraft || record.latest) throw new HttpError(409,409,"Create an empty project before initializing its source.");
+    } else await this.assertProjectDoesNotExist(options.projectName);
 
     const tempDir = path.join(this.dataRoot, "tmp", randomUUID());
     const stagedDraftDir = path.join(tempDir, "draft");
@@ -1976,6 +1755,7 @@ export class Storage {
         const publishedDependencies = new Map<string, { version: string; sourceHash: string }>();
         const dependencyProjects = deployment.manifest.projects.filter((project) => project.role === "dependency");
         for (const project of dependencyProjects) {
+          if(authority.actorId||authority.administrator) await this.requireProjectCapability(project.projectId,{userId:authority.actorId,isSystemAdmin:authority.administrator===true},"publish");
           const item = deployment.items.find((candidate) => candidate.projectId === project.projectId)!;
           const existing = await this.resolvePublishedDeploymentItem(item);
           if (existing !== undefined) {
@@ -2027,6 +1807,9 @@ export class Storage {
           finalizeProjectDependencyLock(dependency, publishedDependencies.get(dependency.projectId))
         ));
         const rootProject = deployment.manifest.projects.find((project) => project.role === "root")!;
+        if (authority.actorId || authority.administrator) {
+          await this.requireProjectCapability(rootProject.projectId, {userId:authority.actorId,isSystemAdmin:authority.administrator===true}, "publish");
+        }
         const rootItem = deployment.items.find((item) => item.projectId === rootProject.projectId)!;
         const existingRoot = await this.resolvePublishedDeploymentItem(rootItem);
         let rootVersion: string;
@@ -2232,19 +2015,6 @@ export class Storage {
     return { ...plan, projects };
   }
 
-  async hasProjectSourceCapability(projectId: string, userId: string): Promise<boolean> {
-    return this.requireProjectDependencyDatabase().hasProjectCapabilityGrant({
-      projectId,
-      userId,
-      capability: "download_source",
-    });
-  }
-
-  async listProjectSourceCapabilities(projectId: string): Promise<ProjectCapabilityGrant[]> {
-    this.assertProjectId(projectId);
-    return this.requireProjectDependencyDatabase().listProjectCapabilityGrants(projectId);
-  }
-
   async listProjectAccessRequests(projectId: string): Promise<ProjectAccessRequest[]> {
     this.assertProjectId(projectId);
     return this.requireProjectDependencyDatabase().listProjectAccessRequests(projectId);
@@ -2269,7 +2039,6 @@ export class Storage {
       id: randomUUID(),
       projectId: options.projectId,
       requesterUserId: options.requesterUserId,
-      capability: "download_source",
       reason,
     });
   }
@@ -2287,19 +2056,6 @@ export class Storage {
       throw new HttpError(404, 404, `Pending access request "${options.requestId}" does not exist.`);
     }
     return resolved;
-  }
-
-  async revokeProjectSourceCapability(options: {
-    projectId: string;
-    userId: string;
-    revokedByUserId?: string;
-  }): Promise<{ revoked: boolean }> {
-    return {
-      revoked: await this.requireProjectDependencyDatabase().revokeProjectCapabilityGrant({
-        ...options,
-        capability: "download_source",
-      }),
-    };
   }
 
   createProjectAccessRequestUrl(origin: string, projectId: string): string {
@@ -2639,6 +2395,11 @@ export class Storage {
           options.target,
         )
       : requireKanbanActorId(options.actorId ?? "");
+    if (this.db) {
+      const user = await this.db.getAccessAccount(actorId);
+      if (!user || user.status !== 'active') throw new HttpError(403,403,"Permission denied.");
+      await this.requireProjectCapability(options.projectName,{userId:actorId,isSystemAdmin:user.isSystemAdmin}, options.target==='draft'?'readDraft':'read');
+    }
     const project = await this.resolveKanbanProject(
       options.projectName,
       options.target,
@@ -2784,7 +2545,7 @@ export class Storage {
       const owner=await readJson<{projectId:string;userId:string}>(path.join(this.managedFileDir(fileId),'configuration-owner.json'));
       if(owner?.projectId===options.projectName && owner.userId===options.actorId) return file;
       const access=await this.getProjectAccessSummary(options.projectName,options.actorId);
-      if(!owner && access.ownerUserId===options.actorId && file.metadata.projectId===options.projectName) return file;
+      if(!owner && access.access?.capabilities.includes("manageSettings") && file.metadata.projectId===options.projectName) return file;
     } catch(error) {if(!(error instanceof HttpError && error.statusCode===404))throw error;}
     const template=state.template ?? (options.target && options.target!=='draft'?await this.configurationTemplate(options.projectName,options.target):undefined);
     const asset=template?.attachments?.find(a=>a.id===fileId);
@@ -2838,13 +2599,11 @@ export class Storage {
     this.assertProjectId(options.projectName);
     const actor = requireKanbanActorId(options.actorId);
     const access = await this.getProjectAccessSummary(options.projectName, actor);
-    const canManagePublication = access.ownerUserId === actor || options.administrator === true;
-    if(String(call?.action).startsWith("publication.") && !canManagePublication)throw new HttpError(403,403,"Only the project owner or an administrator can manage official configurations.");
+    const canManagePublication = options.administrator === true || access.access?.capabilities.includes("manageSettings") === true;
+    if(String(call?.action).startsWith("publication.") && !canManagePublication)throw new HttpError(403,403,"Maintainer access is required to manage official configurations.");
     let target = options.target ?? "draft";
-    if (!canManagePublication && target === "draft") {
-      const publication = await this.configurationPublicationDraft(options.projectName);
-      // Never expose an author's unpublished schema, defaults or private profiles.
-      if (publication) target = "latest";
+    if (!access.access?.capabilities.includes("readDraft") && !canManagePublication && target === "draft") {
+      target = "latest";
     }
     const source = await this.resolveSourceTarget(options.projectName, target);
     try {
@@ -2881,7 +2640,7 @@ export class Storage {
       }
       const initialId = `default-${createHash("sha256").update(JSON.stringify([options.projectName, actor])).digest("hex").slice(0,24)}`;
       const publicationCall = call.action.startsWith('publication.');
-      if (publicationCall && !canManagePublication) throw new HttpError(403,403,"Only the project owner or an administrator can manage official configurations.");
+      if (publicationCall && !canManagePublication) throw new HttpError(403,403,"Maintainer access is required to manage official configurations.");
       let state: ProjectConfigurationState;
       if (!this.db) {
         const store = await createLocalProjectConfigurationStore(source.sourceDir, {
@@ -2916,6 +2675,10 @@ export class Storage {
         };
         await operation();
       } else state.canManagePublication = false;
+      if(access.access?.capabilities.includes("publish")) {
+        state.publicationRevision=(await this.configurationPublicationDraft(options.projectName))?.revision;
+        state.sourceHash=await hashDirectory((await this.resolveSourceTarget(options.projectName,"draft")).sourceDir);
+      }
       state.fieldCapabilities=Object.fromEntries(state.fields.map(field=>[field.name,{...configurationCapability(state,field),paths:Object.fromEntries(Object.keys(field.paths??{}).map(pointer=>[pointer,configurationCapability(state,field,pointer)]))}]));
       return call.action === "export" ? exportConfigurations(state,call.id) : state;
     } catch (error) {
@@ -2990,6 +2753,8 @@ export class Storage {
     targetProjectName: string;
     displayName?: string;
     ownerUserId?: string;
+    groupId?: string | null;
+    isSystemAdmin?: boolean;
   }): Promise<CloneProjectResult> {
     this.assertProjectId(options.projectName);
     this.assertProjectId(options.targetProjectName);
@@ -3049,6 +2814,8 @@ export class Storage {
         projectCard: metadata.projectCard,
         ownerUserId: options.ownerUserId,
         createdByUserId: options.ownerUserId,
+        groupId: options.groupId,
+        isSystemAdmin: options.isSystemAdmin,
       });
       await this.commitStagedDraft(
         options.targetProjectName,
@@ -3128,7 +2895,7 @@ export class Storage {
     };
   }
 
-  async deleteProject(projectName: string): Promise<DeleteProjectResult> {
+  async deleteProject(projectName: string, actor?: AccessActor): Promise<DeleteProjectResult> {
     this.assertProjectId(projectName);
     const hasDbProject = this.db !== undefined
       ? (await this.db.getProject(projectName)) !== undefined
@@ -3140,7 +2907,11 @@ export class Storage {
     }
 
     if (this.db !== undefined) {
-      await this.db.deleteProject(projectName);
+      if(actor) await this.db.access.transaction(async client=>{
+        await this.db!.access.assert("project",projectName,actor,"delete",client);
+        await client.query("delete from resource_invitations where resource_type='project' and resource_id=$1",[projectName]);
+        await client.query("delete from projects where id=$1",[projectName]);
+      }); else await this.db.deleteProject(projectName);
     }
     await rm(this.projectDirectory(projectName), {
       recursive: true,
@@ -3172,6 +2943,12 @@ export class Storage {
     projectName: string; releaseLog?: string; createdByUserId?: string; dependencies?: ProjectDependencyLock[];
     expectedVersion?: string; expectedSourceHash?: string; reservationDeploymentId?: string; expectedConfigurationRevision?: number; administrator?: boolean;
   }): Promise<PublishResult> {
+    const assertPublisher = async () => {
+      if (this.db && (options.createdByUserId || options.administrator)) {
+        await this.requireProjectCapability(options.projectName, {userId:options.createdByUserId,isSystemAdmin:options.administrator===true}, "publish");
+      }
+    };
+    await assertPublisher();
     const tempDir = path.join(this.dataRoot, "tmp", randomUUID());
     const stagedVersionDir = path.join(tempDir, "version");
     const sourceDir = path.join(stagedVersionDir, "source");
@@ -3209,7 +2986,7 @@ export class Storage {
       if (publication) {
         if(options.expectedSourceHash===undefined) throw new HttpError(409,409,"Confirm the current project source hash before publishing configurations.");
         const access = await this.getProjectAccessSummary(options.projectName, options.createdByUserId);
-        if (access.ownerUserId !== options.createdByUserId && !options.administrator) throw new HttpError(403,403,"Only the project owner or an administrator can publish official configurations.");
+
         if(options.expectedConfigurationRevision !== publication.revision) throw new HttpError(409,409,"Confirm the current configuration publication draft before publishing.");
         const configurationAccountId=publication.configurationAccountId??access.ownerUserId??options.createdByUserId!;
         // Publication authority was checked above. Read the recorded author's personal revision without binding a recipient template.
@@ -3225,7 +3002,7 @@ export class Storage {
           const definition=parseConfigurationDefinition(JSON.parse(await readFile(path.join(sourceDir,'configuration.json'),'utf8')));
           if(definition.version===2) {
             const access=await this.getProjectAccessSummary(options.projectName,options.createdByUserId);
-            if(access.ownerUserId && access.ownerUserId!==options.createdByUserId && !options.administrator)throw new HttpError(403,403,'Only the project owner or an administrator can publish official configurations.');
+
             const empty=readConfigurationState(undefined,definition.fields,()=> 'default');
             configurationTemplate=freezeConfigurationTemplate(createPublicationDraft(empty),{projectId:options.projectName,projectVersion:version,sourceHash:authoredSourceHash});
             await this.freezeConfigurationAttachments(options.projectName,sourceDir,configurationTemplate,options.createdByUserId);
@@ -3240,6 +3017,7 @@ export class Storage {
         createdAt: new Date().toISOString(), createdByUserId: options.createdByUserId, releaseLog, sourceHash,
         sourceObjectPath: artifacts?.sourceObjectPath, projectType: metadata.projectType, dependencies };
       await writeJson(path.join(stagedVersionDir, "manifest.json"), manifest);
+      await assertPublisher();
       await moveDirectoryIfAbsent(stagedVersionDir, this.versionDir(options.projectName, version), "Project version already exists.");
       versionDirCreated = true;
       if (this.db) {
@@ -3758,15 +3536,17 @@ export class Storage {
     }
   }
 
-  private async commitStagedDraft(projectName: string, stagedDraftDir: string): Promise<void> {
-    await this.withProjectPublishLock(projectName, async () => {
+  private async commitStagedDraft(projectName: string, stagedDraftDir: string): Promise<string> {
+    return this.withProjectPublishLock(projectName, async () => {
       const sourceDir = path.join(stagedDraftDir, "source");
       const metadata = await validateProjectPackage(sourceDir, projectName);
       await this.persistDraftFromSourceDir(projectName, sourceDir);
+      const committedHash=await hashDirectory(sourceDir);
       await replaceDirectory(stagedDraftDir, this.draftDir(projectName));
       this.materializedDraftSourceRevisions.delete(projectName);
       if (!this.db) await writeJson(this.projectInfoMetadataPath(projectName), {
         name: metadata.name, projectInfo: this.normalizeDeclaredProjectInfo(metadata.projectInfo) });
+      return committedHash;
     });
   }
 
@@ -4353,7 +4133,7 @@ export class Storage {
   private async summarizeDbProject(record: DbRecord, records?: Array<{ version: string }>): Promise<Summary> {
     const versions = (records ?? await this.db?.listVersions(record.id) ?? []).map(item => item.version).sort(compareSemverVersions);
     return { id: record.id, name: record.name, projectType: record.projectType, projectCard: record.projectCard,
-      projectInfo: record.projectInfo, ownerUserId: record.ownerUserId, visibility: record.visibility,
+      projectInfo: record.projectInfo, ownerUserId: record.ownerUserId, groupId:record.groupId, visibility: record.visibility,
       createdByUserId: record.createdByUserId, createdAt: record.createdAt, updatedAt: record.updatedAt,
       hasDraft: record.hasDraft, latest: record.latest, versions, nextVersion: resolveNextManagedVersionFromRecords(record.latest, versions) };
   }
@@ -4389,7 +4169,8 @@ export class Storage {
 
   private async createProjectAccessSummary(record: DbRecord, userId?: string): Promise<ProjectAccessSummary> {
     return { projectId: record.id, projectName: record.name, ownerUserId: record.ownerUserId, visibility: record.visibility,
-      createdByUserId: record.createdByUserId, member: this.db && userId ? await this.db.getProjectMember(record.id, userId) : undefined };
+      createdByUserId: record.createdByUserId, groupId: record.groupId, member: this.db && userId ? await this.db.getProjectMember(record.id, userId) : undefined,
+      access: this.db ? await this.db.access.resolve("project",record.id,{userId,isSystemAdmin:false}) : undefined };
   }
 
   private async readFileProjectTimestamps(
@@ -4418,6 +4199,11 @@ export class Storage {
     if (!this.db) return;
     const metadata = await validateProjectPackage(sourceDir, projectName);
     await this.assertUploadedProjectType(projectName, metadata.projectType);
+    const record=await this.db.getProject(projectName);
+    if(record) {
+      const packageJson=await readPackageJson(sourceDir);
+      await writeJson(path.join(sourceDir,"package.json"),writeProjectInfo({...packageJson,name:record.name,steamHarness:{...(isRecord(packageJson.steamHarness)?packageJson.steamHarness:{}),projectCard:record.projectCard}},this.normalizeDeclaredProjectInfo(record.projectInfo)));
+    }
     await this.db.saveDraft({ projectId: metadata.id, projectName: metadata.name, projectType: metadata.projectType,
       packageVersion: metadata.version, projectCard: metadata.projectCard, projectInfo: this.normalizeDeclaredProjectInfo(metadata.projectInfo),
       files: await readProjectFiles(sourceDir, true) });
@@ -4432,8 +4218,6 @@ export class Storage {
     }
     const existing = await this.db.getProject(projectId);
     if (existing === undefined || existing.projectType === sourceProjectType) return;
-    if (existing.hasDraft) return;
-    if ((await this.db.listVersions(projectId)).length > 0) return;
 
     throw new HttpError(
       409,

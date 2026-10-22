@@ -5,7 +5,8 @@ import type { ProjectKind } from './workflow-types';
 
 export interface ServerProject {
   id: string; name: string; projectType: ProjectKind; projectCard?: ProjectCardMetadata; latest: string | null;
-  canManage?: boolean;
+  access?: {effectiveRole:'guest'|'developer'|'maintainer'|'owner'|null;capabilities:string[];sources:Array<{type:string;id:string;role:string}>};
+  groupId?:string|null;
   sourceDownload?: { allowed: boolean; available: boolean; target: string | null };
 }
 export interface ServerProjectVersion {
@@ -91,14 +92,21 @@ export class ProjectServerClient {
       throw new AuthError(t('The server returned an invalid response.'), response.status);
     }
     if (!response.ok || payload.errCode !== 0 || payload.data === undefined) {
-      const message = response.status === 401 ? t('Sign-in expired. Sign in again.')
+      const message = response.status===403 ? t('Your project or group role does not allow this operation.') : response.status === 401 ? t('Sign-in expired. Sign in again.')
         : payload.errMessage || t('SteamHarness Server request failed ({0}).', response.status);
       throw new AuthError(message.replaceAll(this.connection.accessToken, '[redacted]'), response.status);
     }
     return payload.data;
   }
 
-  projects(signal: AbortSignal): Promise<ServerProject[]> { return this.request('/api/projects', signal); }
+  async projects(signal: AbortSignal): Promise<ServerProject[]> {
+    const items:ServerProject[]=[];
+    for(let page=1;;page++) {const result=await this.request<{items:ServerProject[];total:number}>(`/api/projects?page=${page}&pageSize=100`,signal);items.push(...result.items);if(items.length>=result.total||!result.items.length)return items;}
+  }
+  async groups(signal:AbortSignal):Promise<Array<{id:string;name:string}>> {
+    const items:Array<{id:string;name:string}>=[];
+    for(let page=1;;page++){const result=await this.request<{items:Array<{id:string;name:string}>;total:number}>(`/api/groups?minRole=developer&pageSize=100&page=${page}`,signal);items.push(...result.items);if(items.length>=result.total||!result.items.length)return items;}
+  }
   versions(id: string, signal: AbortSignal): Promise<ServerProjectVersions> {
     return this.request(`/api/projects/${encodeURIComponent(id)}/versions`, signal);
   }

@@ -111,7 +111,6 @@ export async function readRequestPrincipal(req: Request): Promise<AuthenticatedP
         return {
           kind: "admin_key",
           tokenSource: "cookie",
-          permissions: ["system.admin"],
           isSystemAdmin: true,
         };
       }
@@ -121,7 +120,6 @@ export async function readRequestPrincipal(req: Request): Promise<AuthenticatedP
       return {
         kind: "admin_key",
         tokenSource: "bearer",
-        permissions: ["system.admin"],
         isSystemAdmin: true,
       };
     }

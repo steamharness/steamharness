@@ -1,5 +1,6 @@
+import { NewProjectButton } from "@/components/NewProjectButton";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Bot, Boxes, Brain, Code2, Cpu, Database, FileText, FolderKanban, GitBranch, MessageCircle, Search, Workflow, Zap } from "lucide-react";
 import { translateDynamicKey, useTranslation } from "@steamharness/i18n/react";
 import { i18n } from "@steamharness/i18n";
@@ -58,6 +59,7 @@ function getProjectTypeIconComponent(projectType: ProjectKind) {
 
 interface ProjectListPageProps {
   projects: Summary[];
+  total?:number; serverPage?:number; onServerPageChange?:(page:number)=>void; onServerSearch?:(query:string,status:string)=>void;
   selectedId: string;
   loading?: string;
   onRefresh: () => void;
@@ -70,14 +72,16 @@ export function ProjectListPage({
   projects,
   selectedId,
   loading,
-  onOpenDetail,
+  onRefresh, onOpenDetail, total,serverPage,onServerPageChange,onServerSearch,
 }: ProjectListPageProps) {
   const { t, i18n: serverWebI18n } = useTranslation("serverWeb");
   const [query, setQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
   const [pageIndex, setPageIndex] = useState(0);
 
+  useEffect(()=>{if(!onServerSearch)return;const timer=setTimeout(()=>onServerSearch(query,statusFilter),250);return()=>clearTimeout(timer);},[query,statusFilter]);
   const filteredProjects = useMemo(() => {
+    if(onServerSearch)return projects;
     const needle = query.trim().toLowerCase();
     return projects.filter((p) => {
       const kindLabel = getProjectKindLabel(p.projectType);
@@ -97,9 +101,9 @@ export function ProjectListPage({
     }).sort(compareProjectsByUpdatedAt);
   }, [projects, query, serverWebI18n.language, statusFilter]);
 
-  const pageCount = Math.max(1, Math.ceil(filteredProjects.length / PROJECT_TABLE_PAGE_SIZE));
-  const safePageIndex = Math.min(pageIndex, pageCount - 1);
-  const visibleProjects = filteredProjects.slice(
+  const pageCount = Math.max(1, Math.ceil((total??filteredProjects.length) / PROJECT_TABLE_PAGE_SIZE));
+  const safePageIndex = serverPage===undefined?Math.min(pageIndex,pageCount-1):serverPage-1;
+  const visibleProjects = onServerSearch?filteredProjects:filteredProjects.slice(
     safePageIndex * PROJECT_TABLE_PAGE_SIZE,
     safePageIndex * PROJECT_TABLE_PAGE_SIZE + PROJECT_TABLE_PAGE_SIZE,
   );
@@ -108,7 +112,7 @@ export function ProjectListPage({
   const publishedCount = projects.filter(project => project.latest).length;
   const preparingCount = projects.filter((project) => !project.latest).length;
   const summaryItems = [
-    { label: t("projectListStatProjects"), value: projects.length },
+    { label: t("projectListStatProjects"), value: total??projects.length },
     { label: t("storagePublished"), value: publishedCount },
     { label: t("storageVersions"), value: versionCount },
   ];
@@ -126,7 +130,7 @@ export function ProjectListPage({
           <h1 className="text-xl font-semibold text-foreground">{t("projectListTitle")}</h1>
           <p className="mt-1 text-sm text-muted-foreground">{t("projectListSubtitle")}</p>
         </div>
-        <PageStats items={summaryItems} />
+        <Button variant="outline" disabled={!!loading} onClick={onRefresh}>{t("commonRefresh")}</Button><PageStats items={onServerSearch?summaryItems.slice(0,1):summaryItems} /><NewProjectButton onCreated={id=>{window.location.assign(`/detail/${encodeURIComponent(id)}/settings`);}}/>
       </div>
 
       <div className="flex flex-wrap items-center gap-3">
@@ -162,7 +166,7 @@ export function ProjectListPage({
                 value={item.value}
                 title={`${item.label} ${item.count}`}
               >
-                {item.label} {item.count}
+                {item.label} {onServerSearch?"":item.count}
               </ToggleGroupItem>
             ))}
           </ToggleGroup>
@@ -173,14 +177,14 @@ export function ProjectListPage({
 
       <TablePanel className="min-w-[1000px] table-fixed" panelClassName="min-h-64 flex-1" footer={
         <PaginationFooter
-          total={filteredProjects.length}
+          total={total??filteredProjects.length}
           pageIndex={safePageIndex}
           pageSize={PROJECT_TABLE_PAGE_SIZE}
           rowsOnPage={visibleProjects.length}
           previousDisabled={!!loading || safePageIndex <= 0}
           nextDisabled={!!loading || safePageIndex >= pageCount - 1}
-          onPrevious={() => setPageIndex((current) => Math.max(0, current - 1))}
-          onNext={() => setPageIndex((current) => Math.min(pageCount - 1, current + 1))}
+          onPrevious={() => onServerPageChange?onServerPageChange((serverPage??1)-1):setPageIndex((current) => Math.max(0, current - 1))}
+          onNext={() => onServerPageChange?onServerPageChange((serverPage??1)+1):setPageIndex((current) => Math.min(pageCount - 1, current + 1))}
         />
       }>
           <TableHeader className="sticky top-0 bg-background">
@@ -278,7 +282,7 @@ function ProjectUploaderSummary({ project }: { project: Summary }) {
   const uploader = getProjectUploaderIdentity(project);
   if (!uploader.userId && !uploader.displayName && !uploader.email) return <span className="text-sm text-muted-foreground">—</span>;
   return (
-    <UserIdentity user={uploader} fallbackLabel={t("projectListUploaderFallback")} size="sm" showUserId={false} />
+    <UserIdentity user={uploader} fallbackLabel={t("projectListUploaderFallback")} size="sm" showUserId />
   );
 }
 

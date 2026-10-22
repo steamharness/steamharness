@@ -25,6 +25,7 @@ export async function invokeServerKanbanBridge(
   options: {
     target?: string;
     runtimeLocale?: RuntimeLocale;
+    authorizeRelatedProject?: (projectId:string,write:boolean)=>Promise<void>;
   } = {},
 ): Promise<unknown> {
   const input = call.input;
@@ -94,6 +95,7 @@ export async function invokeServerKanbanBridge(
           if (access.targetProjectId !== declared.projectId) {
             throw new Error("Kanban related project changed.");
           }
+          await options.authorizeRelatedProject?.(access.targetProjectId,false);
           const result = await storage.getProjectStorageValue({
             storageKind: "kv",
             scope: "project",
@@ -101,7 +103,8 @@ export async function invokeServerKanbanBridge(
             key: input["key"] as string,
           });
           return result.exists ? result.value : undefined;
-        } catch {
+        } catch(error) {
+          if(error instanceof HttpError && error.statusCode===403)throw error;
           throw new HttpError(404, 404, "Kanban related project is unavailable.");
         }
       }
@@ -121,6 +124,7 @@ export async function invokeServerKanbanBridge(
           if (access.targetProjectId !== declared.projectId) {
             throw new Error("Kanban related project changed.");
           }
+          await options.authorizeRelatedProject?.(access.targetProjectId,true);
           await storage.setProjectStorageValue({
             storageKind: "kv",
             scope: "project",
@@ -130,7 +134,8 @@ export async function invokeServerKanbanBridge(
             source: { projectId: projectName },
           });
           return undefined;
-        } catch {
+        } catch(error) {
+          if(error instanceof HttpError && error.statusCode===403)throw error;
           throw new HttpError(404, 404, "Kanban related project is unavailable.");
         }
       }

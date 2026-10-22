@@ -44,22 +44,22 @@ export const DETAIL_NAV_GROUPS: Array<{
 ];
 
 export function getDetailNavGroups(
-  project: Pick<Summary, "projectType" | "canManage"> | undefined,
+  project: Pick<Summary, "projectType" | "access"> | undefined,
 ) {
   if (!project) return [];
   return DETAIL_NAV_GROUPS.map(group => ({ ...group,
-    items: group.items.filter(item => item.tab !== "invitations" || project.canManage),
+    items: group.items.filter(item => item.tab !== "invitations" || project.access?.capabilities.includes("manageMembers")),
   }));
 }
 
 export function getDetailNavItems(
-  project: Pick<Summary, "projectType" | "canManage"> | undefined,
+  project: Pick<Summary, "projectType" | "access"> | undefined,
 ) {
   return getDetailNavGroups(project).flatMap(group => group.items);
 }
 
 export function resolveDetailTab(
-  project: Pick<Summary, "projectType" | "latest" | "canManage">,
+  project: Pick<Summary, "projectType" | "latest" | "access">,
   requestedTab: DetailTab,
 ): DetailTab {
   return getDetailNavItems(project).some((item) => item.tab === requestedTab)
@@ -101,7 +101,7 @@ export function DetailPage(props: DetailPageProps) {
               onRefresh={onRefresh}
               onPageChange={props.onKVPageChange}
               onLoadEntry={props.onLoadKVEntry}
-              onDeleteEntry={props.project.canWriteData ? props.onDeleteKVEntry : undefined}
+              onDeleteEntry={props.project.access?.capabilities.includes("writeData") ? props.onDeleteKVEntry : undefined}
             />
           </div>
         )}

@@ -30,7 +30,6 @@ describe("ProjectSourceAccessRequestPage", () => {
         id: "00000000-0000-4000-8000-000000000002",
         projectId: "00000000-0000-4000-8000-000000000001",
         requesterUserId: "viewer-1",
-        capability: "download_source",
         reason: "下载股票看板引用的 Workflow",
         status: "pending",
         createdAt: "2026-08-05T00:00:00.000Z",
@@ -46,7 +45,7 @@ describe("ProjectSourceAccessRequestPage", () => {
     );
 
     expect(screen.getByText("正在校验申请链接")).toBeTruthy();
-    await waitFor(() => expect(screen.getByText("申请项目源码访问")).toBeTruthy());
+    await waitFor(() => expect(screen.getByText("申请项目访问")).toBeTruthy());
     expect(getLink).toHaveBeenCalledWith("signed-token");
 
     fireEvent.change(screen.getByLabelText("申请原因"), {
@@ -83,7 +82,7 @@ describe("ProjectSourceAccessRequestPage", () => {
     );
 
     expect(screen.getByText("Checking access request link")).toBeVisible();
-    expect(await screen.findByText("Request project source access")).toBeVisible();
+    expect(await screen.findByText("Request project access")).toBeVisible();
     expect(screen.getByLabelText("Reason for request")).toBeVisible();
     expect(screen.getByRole("button", { name: "Submit request" })).toBeVisible();
   });

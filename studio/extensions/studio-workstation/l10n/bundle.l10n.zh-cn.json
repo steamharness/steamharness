@@ -642,5 +642,9 @@
   "Split Terminal": "拆分终端",
   "Rename Terminal": "重命名终端",
   "Workflow workspace has closed.": "项目工作区已关闭。",
-  "Workflow recovery did not restore the original project address.": "项目恢复未能还原原来的服务地址。"
+  "Workflow recovery did not restore the original project address.": "项目恢复未能还原原来的服务地址。",
+  "Your project or group role does not allow this operation.": "你的项目或组角色不允许执行此操作。",
+  "Personal project": "个人项目",
+  "Choose the project group": "选择项目归属组",
+  "Cancelled.": "已取消。"
 }

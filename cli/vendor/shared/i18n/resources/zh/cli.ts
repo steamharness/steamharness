@@ -66,7 +66,7 @@ export const cli: typeof Encli = {
         "  status",
         "  health",
         "  pack <workflow> [--path <workflow-dir>] [--output <file.tgz>] [--project-group] [--dependency <alias>=<path>]",
-        "  upload <workflow> [--path <workflow-dir>] [--file <archive>] [--release-log <text>] [--no-wait] [--create] [--project-group] [--publish-group] [--dependency <alias>=<path>]",
+        "  upload <workflow> [--path <workflow-dir>] [--file <archive>] [--release-log <text>] [--no-wait] [--create] [--group-id <group-id>] [--project-group] [--publish-group] [--dependency <alias>=<path>]",
         "  preparation <workflow-id> <job-id>",
         "  file-upload <workflow> --file <path> [--path <workflow-dir>] [--mime-type <type>]",
         "  file-download <file-id> --output <new-file>",

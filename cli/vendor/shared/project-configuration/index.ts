@@ -43,6 +43,7 @@ export interface ProjectConfigurationState {
   template?: ProjectConfigurationTemplate;
   publication?: ConfigurationPublicationDraft;
   canManagePublication?: boolean;
+  publicationRevision?: number;
   sourceHash?: string;
   fieldCapabilities?: Record<string,{editable:boolean;reason?:string;paths:Record<string,{editable:boolean;reason?:string}>}>;
   publicationPreview?: ProjectConfigurationTemplate;

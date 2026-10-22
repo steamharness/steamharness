@@ -70,8 +70,9 @@ for (const projectType of ['workflow', 'conversation', 'kanban']) {
     const options = { cliEntry: path.resolve(cliEntry), runtimeDirectory: directory, nodePath: process.execPath,
       connection: { serverUrl: `http://127.0.0.1:${http.address().port}`, accessToken: 'local-test-token' },
       signal: new AbortController().signal, progress() {}, projectId, version: manifest.version };
-    await uploadServerProject({ ...options, directory: source, releaseLog: 'Version notes' });
+    await uploadServerProject({ ...options, directory: source, groupId: 'engineering', releaseLog: 'Version notes' });
     assert.equal(JSON.parse(requests.find(request => request.url === '/api/projects').body).projectType, projectType);
+    assert.equal(JSON.parse(requests.find(request => request.url === '/api/projects').body).groupId, 'engineering');
     const upload = requests.find(request => request.url.includes('/package?'));
     assert.ok(upload.body.length > 0);
     const archive = path.join(directory, 'upload.tgz'); await fs.writeFile(archive, upload.body);

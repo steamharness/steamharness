@@ -56,7 +56,7 @@ export function runWorkspaceTransfer(options: TransferOptions, args: string[], p
   });
 }
 
-export async function uploadServerProject(options: TransferOptions & { projectId: string; version: string; directory: string; releaseLog: string }): Promise<void> {
+export async function uploadServerProject(options: TransferOptions & { projectId: string; version: string; directory: string; releaseLog: string; groupId?:string }): Promise<void> {
   if (!/^\d+\.\d+\.\d+$/.test(options.version)) { throw new Error(t('Declare a valid project UUID and version in package.json first.')); }
   const temporary = await mkdtemp(path.join(tmpdir(), 'studio-upload-'));
   try {
@@ -64,10 +64,10 @@ export async function uploadServerProject(options: TransferOptions & { projectId
     let create = false;
     try { await client.versions(options.projectId, options.signal); }
     catch (error) { if (error instanceof AuthError && error.status === 404) { create = true; } else { throw error; } }
-    const configurations=create?undefined:await client.request<{publication?:{revision:number}}>(`/api/projects/${encodeURIComponent(options.projectId)}/configurations?target=draft`,options.signal);
-    const expectedConfigurationRevision=configurations?.publication?.revision;
+    const configurations=create?undefined:await client.request<{publication?:{revision:number};publicationRevision?:number}>(`/api/projects/${encodeURIComponent(options.projectId)}/configurations?target=draft`,options.signal);
+    const expectedConfigurationRevision=configurations?.publicationRevision??configurations?.publication?.revision;
     options.progress({ message: t('Packing and uploading project') });
-    const job = await runWorkspaceTransfer(options, ['upload', options.projectId, '--path', options.directory, ...(create ? ['--create'] : []), '--no-wait'], temporary) as { jobId: string };
+    const job = await runWorkspaceTransfer(options, ['upload', options.projectId, '--path', options.directory, ...(create ? ['--create',...(options.groupId?['--group-id',options.groupId]:[])] : []), '--no-wait'], temporary) as { jobId: string };
     if (typeof job?.jobId !== 'string') { throw new Error(t('The server returned an invalid response.')); }
     const signal = AbortSignal.any([options.signal, AbortSignal.timeout(10 * 60_000)]);
     const stages: Record<string, string> = { queued: t('Waiting for file processing'), extracting: t('Extracting project files'),

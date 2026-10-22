@@ -14,11 +14,13 @@ tags:
   - name: Health
     description: 健康检查。
   - name: Auth & Accounts
-    description: 登录、会话、device flow、用户、角色与 API Key。
+    description: 登录、账号状态、系统管理员、会话与 API Key。
   - name: Admin Projects
     description: 项目源码、版本与静态元数据管理。
   - name: Admin Files
     description: 项目文件上传、读取、下载与删除。
+  - name: Projects & Groups
+    description: 固定角色、多级组继承、成员、邀请和归属管理。 / Fixed roles, hierarchy and membership.
 paths:
   /health:
     get:
@@ -107,8 +109,7 @@ paths:
                                 type: string
                               body:
                                 type: string
-                                description: 按请求语言返回的 Markdown 格式完整更新说明；旧 metadata 没有本地化字段时回退到
-                                  `releaseNotes.body`。
+                                description: 按请求语言返回的 Markdown 格式完整更新说明；旧 metadata 没有本地化字段时回退到 `releaseNotes.body`。
                               docsUrl:
                                 type: string
                                 format: uri
@@ -429,8 +430,7 @@ paths:
         - BearerAuth: []
       responses:
         "200":
-          description: 返回当前 principal 以及用户资料；管理员密钥登录时 `profile` 为 `null`。Desktop API Key
-            成功鉴权时，`principal.expiresAt` 返回滑动续期后的到期时间。
+          description: 返回当前 principal 以及用户资料；管理员密钥登录时 `profile` 为 `null`。Desktop API Key 成功鉴权时，`principal.expiresAt` 返回滑动续期后的到期时间。
           content:
             application/json:
               schema:
@@ -527,126 +527,6 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ApiKeyRevokeResponse"
-        "401":
-          $ref: "#/components/responses/HarnessError"
-        "403":
-          $ref: "#/components/responses/HarnessError"
-  /api/auth/admin/permissions:
-    get:
-      tags:
-        - Auth & Accounts
-      summary: 列出权限分组与定义
-      operationId: listAccountPermissionGroups
-      security:
-        - SessionCookie: []
-        - BearerAuth: []
-      responses:
-        "200":
-          description: 返回角色编辑器使用的权限注册表。
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/PermissionGroupListResponse"
-        "401":
-          $ref: "#/components/responses/HarnessError"
-        "403":
-          $ref: "#/components/responses/HarnessError"
-  /api/auth/admin/roles:
-    get:
-      tags:
-        - Auth & Accounts
-      summary: 列出所有全局角色
-      operationId: listAccountRoles
-      security:
-        - SessionCookie: []
-        - BearerAuth: []
-      responses:
-        "200":
-          description: 内置角色和自定义角色统一返回。
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/RoleListResponse"
-        "401":
-          $ref: "#/components/responses/HarnessError"
-        "403":
-          $ref: "#/components/responses/HarnessError"
-    post:
-      tags:
-        - Auth & Accounts
-      summary: 创建自定义角色
-      operationId: createAccountRole
-      security:
-        - SessionCookie: []
-        - BearerAuth: []
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/CreateRoleRequest"
-      responses:
-        "201":
-          description: 创建成功并返回角色详情。
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/RoleResponse"
-        "400":
-          $ref: "#/components/responses/HarnessError"
-        "401":
-          $ref: "#/components/responses/HarnessError"
-        "403":
-          $ref: "#/components/responses/HarnessError"
-  /api/auth/admin/roles/{roleId}:
-    patch:
-      tags:
-        - Auth & Accounts
-      summary: 更新角色名称、说明或权限
-      operationId: updateAccountRole
-      security:
-        - SessionCookie: []
-        - BearerAuth: []
-      parameters:
-        - $ref: "#/components/parameters/RoleId"
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/UpdateRoleRequest"
-      responses:
-        "200":
-          description: 返回更新后的角色。
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/RoleResponse"
-        "400":
-          $ref: "#/components/responses/HarnessError"
-        "401":
-          $ref: "#/components/responses/HarnessError"
-        "403":
-          $ref: "#/components/responses/HarnessError"
-    delete:
-      tags:
-        - Auth & Accounts
-      summary: 删除一个自定义角色
-      operationId: deleteAccountRole
-      security:
-        - SessionCookie: []
-        - BearerAuth: []
-      parameters:
-        - $ref: "#/components/parameters/RoleId"
-      responses:
-        "200":
-          description: 删除成功。
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/DeletedResponse"
-        "400":
-          $ref: "#/components/responses/HarnessError"
         "401":
           $ref: "#/components/responses/HarnessError"
         "403":
@@ -780,36 +660,6 @@ paths:
           $ref: "#/components/responses/HarnessError"
         "403":
           $ref: "#/components/responses/HarnessError"
-  /api/auth/admin/users/{userId}/roles:
-    put:
-      tags:
-        - Auth & Accounts
-      summary: 覆盖指定用户的角色集合
-      operationId: replaceAccountUserRoles
-      security:
-        - SessionCookie: []
-        - BearerAuth: []
-      parameters:
-        - $ref: "#/components/parameters/UserId"
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/SetUserRolesRequest"
-      responses:
-        "200":
-          description: 返回新的聚合用户资料。
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/UserProfileResponse"
-        "400":
-          $ref: "#/components/responses/HarnessError"
-        "401":
-          $ref: "#/components/responses/HarnessError"
-        "403":
-          $ref: "#/components/responses/HarnessError"
   /api/projects:
     get:
       tags:
@@ -823,25 +673,53 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/SummaryListResponse"
+      parameters:
+        - name: page
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            default: 1
+        - name: pageSize
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+        - name: q
+          in: query
+          required: false
+          schema: &a4
+            type: string
+        - name: groupId
+          in: query
+          required: false
+          schema: *a4
+        - name: status
+          in: query
+          required: false
+          schema:
+            type: string
+            enum:
+              - all
+              - published
+              - draft
+        - name: minRole
+          in: query
+          required: false
+          schema:
+            $ref: "#/components/schemas/ProjectRole"
+      description: 先按登录账号权限筛选，再执行搜索与分页。groupId 为空字符串时查询个人项目；省略时查询所有可访问项目。公开项目对登录账号提供隐式访客权限。 / Authorization precedes
+        pagination. Public projects grant signed-in users implicit guest access.
     post:
       tags:
         - Admin Projects
       summary: 使用指定 UUID 原子创建 server 项目
-      description: |
-        登录用户或管理员使用本地 `package.json.id` 中的 UUID 创建或恢复同 UUID server 项目。
-        `projectId`、`name`、`projectType` 和包含 `dataStorage.mode` 的完整 `projectInfo` 必填；
-        `projectCard` 与 `visibility` 可选。Server 在一个请求中原子保存完整项目声明并把创建者记为
-        owner，不先创建默认记录再二次同步，也不接收项目源码。已有且由同一账号管理的同 UUID、
-        名称与类型请求会恢复绑定并刷新声明；其它冲突返回 `409`。
-        新项目省略 `projectCard` 时使用项目类型图标，随机生成并保存对比度至少为 4.5:1 的配色；
-        已有项目省略该字段时保持原头像。
-
-        An authenticated user or administrator creates or recovers a same-UUID server project from the
-        UUID in local `package.json.id`. `projectId`, `name`, `projectType`, and complete `projectInfo`
-        containing `dataStorage.mode` are required. Server stores the complete declaration atomically;
-        it does not create a default record first or accept project source.
-        Omitting `projectCard` on a new project generates and persists a type icon with random colors
-        whose contrast ratio is at least 4.5:1. Omitting it on an existing project preserves its avatar.
+      description: 登录账号可创建个人项目，创建者成为所有者。groupId 指定归属组时需要该组开发者权限，创建者只保留原有继承角色。已有项目的开发者上传不会修改管理信息或归属。 / Signed-in users may
+        create personal projects as owners. Group projects require developer access and do not promote the creator.
       operationId: createProject
       requestBody:
         required: true
@@ -961,17 +839,14 @@ paths:
                       markdown: "# Runbook"
       responses:
         "200":
-          description: "get 返回 `{ exists, value?, revision? }`；set 返回 `{ ok: true
-            }`；compare-and-set 返回 `{ applied, revision? }`；knowledge-mutation
-            返回文档或删除结果。"
+          description: "get 返回 `{ exists, value?, revision? }`；set 返回 `{ ok: true }`；compare-and-set 返回 `{ applied, revision?
+            }`；knowledge-mutation 返回文档或删除结果。"
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/ProjectStorageResponse"
         "400":
-          description: 地址、storageKind、scope、projectId
-            绑定、conversationId、key、value、expectedRevision 或 knowledge-mutation
-            输入无效。
+          description: 地址、storageKind、scope、projectId 绑定、conversationId、key、value、expectedRevision 或 knowledge-mutation 输入无效。
         "401":
           $ref: "#/components/responses/HarnessError"
         "403":
@@ -1339,8 +1214,7 @@ paths:
       tags:
         - Admin Projects
       summary: 下载可本地化的已发布源码快照
-      description: 下载已发布不可变源码快照，独立校验源码下载权限，无平台限制。成功发送 GET
-        响应后为实际返回的精确版本累加一次下载量；HEAD、失败和中断响应不计数。
+      description: 下载已发布不可变源码快照，独立校验源码下载权限，无平台限制。成功发送 GET 响应后为实际返回的精确版本累加一次下载量；HEAD、失败和中断响应不计数。
       operationId: getDownloadableSourceFiles
       parameters:
         - $ref: "#/components/parameters/ProjectName"
@@ -1580,133 +1454,6 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/RelatedProjectRemoveResponse"
-  /api/projects/{projectId}/source-access-requests:
-    get:
-      tags:
-        - Admin Projects
-      summary: 列出源码访问申请与授权
-      operationId: listSourceAccessRequests
-      parameters:
-        - $ref: "#/components/parameters/ProjectName"
-      responses:
-        "200":
-          description: 项目的申请记录和有效或已撤销能力授权。
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/SourceAccessStateResponse"
-  /api/projects/{projectId}/source-access-requests/{requestId}:
-    patch:
-      tags:
-        - Admin Projects
-      summary: 审批源码访问申请
-      operationId: resolveSourceAccessRequest
-      parameters:
-        - $ref: "#/components/parameters/ProjectName"
-        - name: requestId
-          in: path
-          required: true
-          schema:
-            type: string
-            format: uuid
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              properties:
-                status:
-                  type: string
-                  enum:
-                    - approved
-                    - rejected
-              required:
-                - status
-      responses:
-        "200":
-          description: 已处理的申请；批准时生成项目级 `download_source` 能力。
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ProjectAccessRequestResponse"
-        "404":
-          $ref: "#/components/responses/HarnessError"
-  /api/projects/{projectId}/source-capabilities/{userId}:
-    delete:
-      tags:
-        - Admin Projects
-      summary: 撤销用户的项目源码下载能力
-      operationId: revokeSourceCapability
-      parameters:
-        - $ref: "#/components/parameters/ProjectName"
-        - name: userId
-          in: path
-          required: true
-          schema:
-            type: string
-      responses:
-        "200":
-          description: 撤销结果。
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/RevokedResultResponse"
-  /api/project-source-access/{token}:
-    get:
-      tags:
-        - Admin Projects
-      summary: 解析短期源码申请链接
-      operationId: getSourceAccessLink
-      parameters:
-        - name: token
-          in: path
-          required: true
-          schema:
-            type: string
-      responses:
-        "200":
-          description: 登录用户可见的来源项目摘要。
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/SourceAccessLinkResponse"
-        "410":
-          $ref: "#/components/responses/HarnessError"
-  /api/project-source-access/{token}/requests:
-    post:
-      tags:
-        - Admin Projects
-      summary: 提交源码下载权限申请
-      operationId: createSourceAccessRequest
-      parameters:
-        - name: token
-          in: path
-          required: true
-          schema:
-            type: string
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              properties:
-                reason:
-                  type: string
-                  minLength: 2
-                  maxLength: 1000
-              required:
-                - reason
-      responses:
-        "201":
-          description: 已创建或返回该用户唯一的 pending 申请。
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ProjectAccessRequestResponse"
-        "410":
-          $ref: "#/components/responses/HarnessError"
   /project-card-images/{projectId}/{fileName}:
     get:
       tags:
@@ -1751,8 +1498,7 @@ paths:
       tags:
         - Admin Account
       summary: 读取本地对象存储中的公开头像
-      description: 仅在 Server 以 STEAMHARNESS_STORAGE_DRIVER=local 运行时挂载。按内容哈希读取不可变头像；
-        该路由只服务头像，`storage/workflows/**` 始终不可达。
+      description: 仅在 Server 以 STEAMHARNESS_STORAGE_DRIVER=local 运行时挂载。按内容哈希读取不可变头像； 该路由只服务头像，`storage/workflows/**` 始终不可达。
       security: []
       operationId: getLocalStorageAvatar
       parameters:
@@ -1939,12 +1685,20 @@ paths:
       tags:
         - Admin Projects
       summary: 读取 capability 保护的 Kanban 静态资源
-      description: |
+      description: >-
         使用工作区接口签发的短期 capability 读取固定版本资源。`assetPath` 可以表示
+
         配置的 HTML 入口或产物目录内的多段相对路径；目录穿越、符号链接、敏感文件和目录外文件均被拒绝。
+
         HTML 入口响应会注入带 nonce 的配置与项目数据 Bridge，并返回只允许产物同源资源、data 与 blob 的离线 CSP。
+
         capability 本身是限定项目、用户、固定目标与有效期的临时凭据，因此 sandbox iframe 加载 ES module、WASM
+
         和项目内数据文件时不需要登录 Cookie 或 API Key；其它项目 API 仍要求登录鉴权。
+
+
+        预览凭据不替代账号权限；每次请求重新校验账号状态、当前成员关系及目标版本权限。 / Preview credentials never replace authorization; each request checks
+        current account and membership state.
       security: []
       operationId: getKanbanPreviewAsset
       parameters:
@@ -1993,7 +1747,7 @@ paths:
           $ref: "#/components/responses/HarnessError"
   /api/projects/{projectId}/configurations/template:
     get:
-      tags: [Admin Projects]
+      tags: [ Admin Projects ]
       summary: Read an immutable published configuration template
       operationId: getProjectConfigurationTemplate
       parameters:
@@ -2001,7 +1755,8 @@ paths:
         - $ref: "#/components/parameters/TargetQuery"
       responses:
         "200":
-          description: Version template with filtered fields, values, rules and attachment hashes. Requires project read or source-download permission. Missing templates return null data.
+          description: Version template with filtered fields, values, rules and attachment hashes. Requires project read or
+            source-download permission. Missing templates return null data.
           content:
             application/json:
               schema:
@@ -2015,44 +1770,47 @@ paths:
           $ref: "#/components/responses/HarnessError"
   /api/projects/{projectId}/configurations/files:
     post:
-      tags: [Admin Projects]
+      tags: [ Admin Projects ]
       summary: Upload a personal configuration attachment after checking field permissions
       operationId: uploadProjectConfigurationFile
-      description: Set target to the installed published version to check its field permissions. Omitting target uses the author's draft or the recipient's latest published template.
+      description: Set target to the installed published version to check its field permissions. Omitting target uses the
+        author's draft or the recipient's latest published template.
       parameters:
         - $ref: "#/components/parameters/ProjectName"
         - $ref: "#/components/parameters/TargetQuery"
         - in: query
           name: key
           required: true
-          schema: {type: string}
+          schema: { type: string }
         - in: query
           name: fileName
           required: true
-          schema: {type: string}
+          schema: { type: string }
         - in: query
           name: mimeType
           required: true
-          schema: {type: string}
+          schema: { type: string }
         - in: query
           name: field
-          description: Optional JSON descriptor for a local custom file field; never overrides an author field. At most 8192 characters.
-          schema: {type: string, maxLength: 8192}
+          description: Optional JSON descriptor for a local custom file field; never overrides an author field. At most 8192
+            characters.
+          schema: { type: string, maxLength: 8192 }
       requestBody:
         required: true
         content:
           application/octet-stream:
-            schema: {type: string, format: binary}
+            schema: { type: string, format: binary }
       responses:
         "200":
-          description: One server file reference. Uploads are account isolated and limited to 50 MiB; save the returned reference in a separate configuration mutation.
+          description: One server file reference. Uploads are account isolated and limited to 50 MiB; save the returned reference
+            in a separate configuration mutation.
         "400":
           $ref: "#/components/responses/HarnessError"
         "403":
           $ref: "#/components/responses/HarnessError"
   /api/projects/{projectId}/configurations/files/{fileId}:
     get:
-      tags: [Admin Projects]
+      tags: [ Admin Projects ]
       summary: Read an allowed personal or immutable version attachment
       operationId: readProjectConfigurationFile
       parameters:
@@ -2061,20 +1819,23 @@ paths:
         - in: path
           name: fileId
           required: true
-          schema: {type: string}
+          schema: { type: string }
       responses:
         "200":
-          description: File bytes. Source-download access grants only the template attachments; personal uploads are restricted to their uploading account.
+          description: File bytes. Source-download access grants only the template attachments; personal uploads are restricted to
+            their uploading account.
           content:
             application/octet-stream:
-              schema: {type: string, format: binary}
+              schema: { type: string, format: binary }
         "404":
           $ref: "#/components/responses/HarnessError"
   /api/projects/{projectId}/configurations:
     get:
-      tags: [Admin Projects]
+      tags: [ Admin Projects ]
       summary: Read account-scoped configurations for any project type
-      description: Requires project read or source-download access and an account identity. Values are isolated by project and account. Download access only exposes the version template and permitted personal values. Official drafts require the actual original owner or an administrator. The Server never executes project code.
+      description: Requires project read or source-download access and an account identity. Values are isolated by project and
+        account. Download access only exposes the version template and permitted personal values. Official drafts
+        require the actual a maintainer, owner or system administrator. The Server never executes project code.
       operationId: getProjectConfigurations
       parameters:
         - $ref: "#/components/parameters/ProjectName"
@@ -2091,9 +1852,11 @@ paths:
         "403":
           $ref: "#/components/responses/HarnessError"
     post:
-      tags: [Admin Projects]
+      tags: [ Admin Projects ]
       summary: Manage or export account-scoped project configurations
-      description: Mutations require the queried revision. Imports and path permission checks are atomic. Exports contain all readable effective values, including sensitive fields. The last personal profile cannot be deleted. publication.save manages an online author draft using its own revision, and publication.preview filters an optional draft without saving. Both require the original owner or an administrator. Client role fields never grant ownership.
+      description: 个人配置可由任何访客使用，写入遵循已发布模板字段限制及 revision 校验；官方配置管理 publication.* 需要维护者或所有者。 / Guests may manage their own
+        configurations subject to published field rules and revision checks. Official publication.* actions require
+        maintainer or owner access.
       operationId: manageProjectConfigurations
       parameters:
         - $ref: "#/components/parameters/ProjectName"
@@ -2109,7 +1872,7 @@ paths:
                   default: draft
                 call:
                   $ref: "#/components/schemas/ProjectConfigurationAction"
-              required: [call]
+              required: [ call ]
       responses:
         "200":
           description: Committed state, or portable export for the export action. Cache-Control is no-store.
@@ -2186,6 +1949,10 @@ paths:
                 sourceTarget:
                   type: string
                   example: latest
+                groupId:
+                  type:
+                    - string
+                    - "null"
               required:
                 - targetProjectName
       responses:
@@ -2279,6 +2046,39 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/DeleteProjectResultResponse"
+    get:
+      tags:
+        - Projects & Groups
+      summary: 读取项目和有效权限 / Read project and effective access
+      operationId: getProject
+      parameters:
+        - name: projectId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: 成功 / Success
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessBase"
+                  - type: object
+                    properties:
+                      data:
+                        $ref: "#/components/schemas/Summary"
+                    required:
+                      - data
+        "401":
+          $ref: "#/components/responses/HarnessError"
+        "403":
+          $ref: "#/components/responses/HarnessError"
+        "404":
+          $ref: "#/components/responses/HarnessError"
+        "409":
+          $ref: "#/components/responses/HarnessError"
   /api/projects/{projectId}/publish:
     post:
       tags:
@@ -2322,32 +2122,81 @@ paths:
   /api/projects/{projectId}/members:
     get:
       tags:
-        - Admin Projects
-      summary: 列出项目成员
-      operationId: listProjectMembers
+        - Projects & Groups
+      summary: 列出直接与继承成员 / List direct and inherited members
+      operationId: listprojectMembers
+      description: 有效角色取项目直接角色、所属组及全部祖先组角色的最高值。维护者只能管理有效角色低于维护者的用户，且只能授予访客或开发者；所有者可管理全部角色。删除直接成员不影响继承权限，最后一名活跃所有者不可删除或降级。 /
+        Effective access is the maximum direct and inherited role. Maintainers manage only lower roles. Owners manage
+        all roles; the last active owner is protected.
       parameters:
-        - $ref: "#/components/parameters/ProjectName"
+        - name: projectId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: page
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            default: 1
+        - name: pageSize
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+        - name: q
+          in: query
+          required: false
+          schema:
+            type: string
       responses:
         "200":
-          description: 当前项目的 owner/manager/writer/viewer 成员列表。
+          description: 成功 / Success
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/ProjectMemberListResponse"
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessBase"
+                  - type: object
+                    properties:
+                      data:
+                        $ref: "#/components/schemas/ResourceMemberPage"
+                    required:
+                      - data
+        "401":
+          $ref: "#/components/responses/HarnessError"
         "403":
+          $ref: "#/components/responses/HarnessError"
+        "404":
+          $ref: "#/components/responses/HarnessError"
+        "409":
           $ref: "#/components/responses/HarnessError"
   /api/projects/{projectId}/members/{userId}:
     put:
       tags:
-        - Admin Projects
-      summary: 设置项目成员角色
-      description: |
-        owner 和 manager 可以授予 manager/writer/viewer；该接口不支持转移 owner。
-        manager 也不能把其它成员提升为 owner。
-      operationId: setProjectMember
+        - Projects & Groups
+      summary: 设置直接成员角色 / Set direct member role
+      operationId: setprojectMember
+      description: 有效角色取项目直接角色、所属组及全部祖先组角色的最高值。维护者只能管理有效角色低于维护者的用户，且只能授予访客或开发者；所有者可管理全部角色。删除直接成员不影响继承权限，最后一名活跃所有者不可删除或降级。 /
+        Effective access is the maximum direct and inherited role. Maintainers manage only lower roles. Owners manage
+        all roles; the last active owner is protected.
       parameters:
-        - $ref: "#/components/parameters/ProjectName"
-        - $ref: "#/components/parameters/UserId"
+        - &a8
+          name: projectId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: userId
+          in: path
+          required: true
+          schema:
+            type: string
       requestBody:
         required: true
         content:
@@ -2359,67 +2208,123 @@ paths:
                   $ref: "#/components/schemas/ProjectRole"
               required:
                 - role
-            example:
-              role: writer
       responses:
         "200":
-          description: 更新后的成员记录。
+          description: 成功 / Success
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/ProjectMemberResponse"
-        "400":
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessBase"
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          userId:
+                            type: string
+                          role:
+                            $ref: "#/components/schemas/ProjectRole"
+                        required:
+                          - userId
+                          - role
+                    required:
+                      - data
+        "401":
           $ref: "#/components/responses/HarnessError"
         "403":
+          $ref: "#/components/responses/HarnessError"
+        "404":
           $ref: "#/components/responses/HarnessError"
         "409":
           $ref: "#/components/responses/HarnessError"
     delete:
       tags:
-        - Admin Projects
-      summary: 删除项目成员
-      operationId: deleteProjectMember
+        - Projects & Groups
+      summary: 移除直接成员 / Remove direct membership
+      operationId: removeprojectMember
+      description: 有效角色取项目直接角色、所属组及全部祖先组角色的最高值。维护者只能管理有效角色低于维护者的用户，且只能授予访客或开发者；所有者可管理全部角色。删除直接成员不影响继承权限，最后一名活跃所有者不可删除或降级。 /
+        Effective access is the maximum direct and inherited role. Maintainers manage only lower roles. Owners manage
+        all roles; the last active owner is protected.
       parameters:
-        - $ref: "#/components/parameters/ProjectName"
-        - $ref: "#/components/parameters/UserId"
+        - *a8
+        - name: userId
+          in: path
+          required: true
+          schema:
+            type: string
       responses:
         "200":
-          description: 删除结果。
+          description: 成功 / Success
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/RemovedResponse"
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessBase"
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          removed:
+                            type: boolean
+                        required:
+                          - removed
+                    required:
+                      - data
+        "401":
+          $ref: "#/components/responses/HarnessError"
         "403":
+          $ref: "#/components/responses/HarnessError"
+        "404":
           $ref: "#/components/responses/HarnessError"
         "409":
           $ref: "#/components/responses/HarnessError"
   /api/projects/{projectId}/invitations:
     get:
       tags:
-        - Admin Projects
-      summary: 列出项目邀请
-      operationId: listProjectInvitations
-      parameters:
-        - $ref: "#/components/parameters/ProjectName"
+        - Projects & Groups
+      summary: 列出邀请 / List invitations
+      operationId: listprojectInvitations
+      parameters: &a9
+        - name: projectId
+          in: path
+          required: true
+          schema:
+            type: string
       responses:
         "200":
-          description: 项目下全部邀请记录，包含 pending / accepted / revoked / expired。
+          description: 成功 / Success
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/ProjectInvitationListResponse"
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessBase"
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: "#/components/schemas/ProjectInvitation"
+                    required:
+                      - data
+        "401":
+          $ref: "#/components/responses/HarnessError"
         "403":
+          $ref: "#/components/responses/HarnessError"
+        "404":
+          $ref: "#/components/responses/HarnessError"
+        "409":
           $ref: "#/components/responses/HarnessError"
     post:
       tags:
-        - Admin Projects
-      summary: 生成项目邀请链接
-      description: |
-        owner / manager 可生成单次有效、7 天过期的邀请 token。owner 角色不可通过邀请授予。
-        API 仅返回 token；邀请人需要自行拼接 `${origin}/invite/${token}` 并把链接发给同事。
-      operationId: createProjectInvitation
-      parameters:
-        - $ref: "#/components/parameters/ProjectName"
+        - Projects & Groups
+      summary: 创建角色邀请 / Create role invitation
+      operationId: createprojectInvitation
+      description: 有效角色取项目直接角色、所属组及全部祖先组角色的最高值。维护者只能管理有效角色低于维护者的用户，且只能授予访客或开发者；所有者可管理全部角色。删除直接成员不影响继承权限，最后一名活跃所有者不可删除或降级。 /
+        Effective access is the maximum direct and inherited role. Maintainers manage only lower roles. Owners manage
+        all roles; the last active owner is protected.
+      parameters: *a9
       requestBody:
         required: true
         content:
@@ -2428,30 +2333,54 @@ paths:
               type: object
               properties:
                 role:
-                  $ref: "#/components/schemas/InvitationRole"
+                  $ref: "#/components/schemas/ProjectRole"
               required:
                 - role
-            example:
-              role: viewer
       responses:
-        "201":
-          description: 创建成功，data 中包含邀请记录和服务端签发的 token。
+        "200":
+          description: 成功 / Success
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/ProjectInvitationCreateResponse"
-        "400":
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessBase"
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          invitation:
+                            $ref: "#/components/schemas/ProjectInvitation"
+                          token:
+                            type: string
+                        required:
+                          - invitation
+                          - token
+                    required:
+                      - data
+        "401":
           $ref: "#/components/responses/HarnessError"
         "403":
+          $ref: "#/components/responses/HarnessError"
+        "404":
+          $ref: "#/components/responses/HarnessError"
+        "409":
           $ref: "#/components/responses/HarnessError"
   /api/projects/{projectId}/invitations/{invitationId}:
     delete:
       tags:
-        - Admin Projects
-      summary: 撤销未接受的邀请
-      operationId: revokeProjectInvitation
+        - Projects & Groups
+      summary: 撤销邀请 / Revoke invitation
+      operationId: revokeprojectInvitation
+      description: 有效角色取项目直接角色、所属组及全部祖先组角色的最高值。维护者只能管理有效角色低于维护者的用户，且只能授予访客或开发者；所有者可管理全部角色。删除直接成员不影响继承权限，最后一名活跃所有者不可删除或降级。 /
+        Effective access is the maximum direct and inherited role. Maintainers manage only lower roles. Owners manage
+        all roles; the last active owner is protected.
       parameters:
-        - $ref: "#/components/parameters/ProjectName"
+        - name: projectId
+          in: path
+          required: true
+          schema:
+            type: string
         - name: invitationId
           in: path
           required: true
@@ -2459,27 +2388,37 @@ paths:
             type: string
       responses:
         "200":
-          description: 撤销结果。
+          description: 成功 / Success
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/RemovedResponse"
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessBase"
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          revoked:
+                            type: boolean
+                        required:
+                          - revoked
+                    required:
+                      - data
+        "401":
+          $ref: "#/components/responses/HarnessError"
         "403":
           $ref: "#/components/responses/HarnessError"
+        "404":
+          $ref: "#/components/responses/HarnessError"
         "409":
-          description: 邀请已接受或已撤销，无法再撤销。
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ApiFailure"
+          $ref: "#/components/responses/HarnessError"
   /api/invitations/{token}:
     get:
       tags:
         - Admin Projects
       summary: 查看邀请详情
-      description: |
-        接受邀请前必须先调用本接口查询 token 是否仍然有效。token 本身就是 bearer 凭据，接口不需要登录即可访问；
-        未登录用户可以通过返回的 `project.name` 与 `invitation.role` 看到加入信息，再被引导到登录。
+      description: 需要登录才能查看邀请；资源可为项目或组，project 字段显示对应资源的 ID 和名称。 / Sign-in required; resourceType identifies project or group.
       operationId: lookupProjectInvitation
       parameters:
         - name: token
@@ -2501,9 +2440,8 @@ paths:
       tags:
         - Admin Projects
       summary: 接受项目邀请
-      description: |
-        调用方必须是已登录用户。接受成功后该用户被加入到项目成员表中，对应角色由邀请决定。
-        每个 token 只能被接受一次；接受后再次请求会返回 409。
+      description: 接受时重新校验邀请者当前权限、接收者活跃状态及邀请有效性；不会降低已有直接或继承角色。 / Acceptance rechecks current roles, active account status and
+        invitation validity; higher roles are preserved.
       operationId: acceptProjectInvitation
       parameters:
         - name: token
@@ -2641,8 +2579,7 @@ paths:
             type: string
       responses:
         "200":
-          description: 当前项目 project / conversation KV 分页。列表只返回
-            `valuePreview`、类型和大小等摘要，不返回完整 `value`。
+          description: 当前项目 project / conversation KV 分页。列表只返回 `valuePreview`、类型和大小等摘要，不返回完整 `value`。
           content:
             application/json:
               schema:
@@ -3030,8 +2967,7 @@ paths:
       tags:
         - Admin Projects
       summary: 读取分享版本的静态元数据
-      description: 需要登录和独立源码下载权限，包含项目级源码授权。只读取精确已发布版本，不加载项目代码、不计下载量。Web 分享地址为
-        /share/projects/{projectId}/{version}，不携带凭据或授予权限。
+      description: 需要登录和独立源码下载权限，包含项目级源码授权。只读取精确已发布版本，不加载项目代码、不计下载量。Web 分享地址为 /share/projects/{projectId}/{version}，不携带凭据或授予权限。
       operationId: getProjectSourceShare
       parameters:
         - $ref: "#/components/parameters/ProjectName"
@@ -3054,7 +2990,30 @@ paths:
         "401":
           $ref: "#/components/responses/HarnessError"
         "403":
-          $ref: "#/components/responses/HarnessError"
+          description: 需要项目访问权限。data.requestUrl 返回短期同源申请链接，批准后成为访客。 / Access required; data.requestUrl provides a short-lived
+            request link for guest membership.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  errCode:
+                    type: integer
+                    const: 403
+                  errMessage:
+                    type: string
+                  data:
+                    type: object
+                    properties:
+                      requestUrl:
+                        type: string
+                        format: uri
+                    required:
+                      - requestUrl
+                required:
+                  - errCode
+                  - errMessage
+                  - data
         "404":
           $ref: "#/components/responses/HarnessError"
   /api/projects/{projectId}/source-archive:
@@ -3087,6 +3046,738 @@ paths:
         "403":
           $ref: "#/components/responses/HarnessError"
         "404":
+          $ref: "#/components/responses/HarnessError"
+  /api/auth/admin/users/{userId}/administrator:
+    put:
+      tags:
+        - Auth & Accounts
+      summary: 设置系统管理员 / Set system administrator
+      operationId: setSystemAdministrator
+      description: 仅系统管理员可操作；禁止取消最后一名活跃系统管理员。 / System administrators only; the last active administrator is protected.
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                isSystemAdmin:
+                  type: boolean
+              required:
+                - isSystemAdmin
+      responses:
+        "200":
+          description: 成功 / Success
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessBase"
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          profile:
+                            $ref: "#/components/schemas/UserProfile"
+                        required:
+                          - profile
+                    required:
+                      - data
+        "401":
+          $ref: "#/components/responses/HarnessError"
+        "403":
+          $ref: "#/components/responses/HarnessError"
+        "404":
+          $ref: "#/components/responses/HarnessError"
+        "409":
+          $ref: "#/components/responses/HarnessError"
+  /api/projects/{projectId}/access-requests:
+    get:
+      tags:
+        - Admin Projects
+      summary: 列出项目访问申请 / List project access requests
+      operationId: listSourceAccessRequests
+      parameters:
+        - $ref: "#/components/parameters/ProjectName"
+      responses:
+        "200":
+          description: 维护者或所有者可列出项目访问申请。 / Maintainer or owner access required.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SourceAccessStateResponse"
+  /api/projects/{projectId}/access-requests/{requestId}:
+    patch:
+      tags:
+        - Admin Projects
+      summary: 审批项目访问申请
+      operationId: resolveSourceAccessRequest
+      parameters:
+        - $ref: "#/components/parameters/ProjectName"
+        - name: requestId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                status:
+                  type: string
+                  enum:
+                    - approved
+                    - rejected
+              required:
+                - status
+      responses:
+        "200":
+          description: 批准时添加访客成员，不降低已有高角色。事务内重新校验审批者与申请者状态。 / Approval adds a guest without lowering existing roles; permissions
+            and account status are checked in the transaction.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProjectAccessRequestResponse"
+        "404":
+          $ref: "#/components/responses/HarnessError"
+  /api/project-access/{token}:
+    get:
+      tags:
+        - Admin Projects
+      summary: 解析短期源码申请链接
+      operationId: getSourceAccessLink
+      parameters:
+        - name: token
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: 登录用户可见的来源项目摘要。
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SourceAccessLinkResponse"
+        "410":
+          $ref: "#/components/responses/HarnessError"
+  /api/project-access/{token}/requests:
+    post:
+      tags:
+        - Admin Projects
+      summary: 申请项目访客权限 / Request project guest access
+      operationId: createSourceAccessRequest
+      parameters:
+        - name: token
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                reason:
+                  type: string
+                  minLength: 2
+                  maxLength: 1000
+              required:
+                - reason
+      responses:
+        "201":
+          description: 已创建或返回该用户唯一的 pending 申请。
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProjectAccessRequestResponse"
+        "410":
+          $ref: "#/components/responses/HarnessError"
+  /api/projects/{projectId}/group:
+    put:
+      tags:
+        - Projects & Groups
+      summary: 转移项目归属 / Transfer project ownership
+      operationId: transferProject
+      description: 需同时拥有项目、来源组（如有）和目标组的所有者权限；转为个人项目时确保至少一名活跃直接所有者。 / Requires owner access to the resource, source and
+        destination; personal resources retain an active direct owner.
+      parameters:
+        - name: projectId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                groupId: &a5
+                  type:
+                    - string
+                    - "null"
+              required:
+                - groupId
+      responses:
+        "200":
+          description: 成功 / Success
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessBase"
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          groupId: *a5
+                        required:
+                          - groupId
+                    required:
+                      - data
+        "401":
+          $ref: "#/components/responses/HarnessError"
+        "403":
+          $ref: "#/components/responses/HarnessError"
+        "404":
+          $ref: "#/components/responses/HarnessError"
+        "409":
+          $ref: "#/components/responses/HarnessError"
+  /api/groups:
+    get:
+      tags:
+        - Projects & Groups
+      summary: 列出可访问组 / List visible groups
+      operationId: listGroups
+      parameters:
+        - name: page
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            default: 1
+        - name: pageSize
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+        - name: q
+          in: query
+          required: false
+          schema: &a6
+            type: string
+        - name: parentId
+          in: query
+          required: false
+          schema: *a6
+        - name: minRole
+          in: query
+          required: false
+          schema:
+            $ref: "#/components/schemas/ProjectRole"
+      responses:
+        "200":
+          description: 成功 / Success
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessBase"
+                  - type: object
+                    properties:
+                      data:
+                        $ref: "#/components/schemas/GroupPage"
+                    required:
+                      - data
+        "401":
+          $ref: "#/components/responses/HarnessError"
+        "403":
+          $ref: "#/components/responses/HarnessError"
+        "404":
+          $ref: "#/components/responses/HarnessError"
+        "409":
+          $ref: "#/components/responses/HarnessError"
+    post:
+      tags:
+        - Projects & Groups
+      summary: 创建顶级组或子组 / Create group
+      operationId: createGroup
+      description: 登录用户可创建顶级组并成为所有者；在组内创建子组需要维护者权限，创建者不自动升级。 / Any signed-in user can own a top-level group; subgroups require
+        maintainer access without promotion.
+      parameters: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name: *a6
+                description: *a6
+                parentId:
+                  type:
+                    - string
+                    - "null"
+              required:
+                - name
+      responses:
+        "200":
+          description: 成功 / Success
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessBase"
+                  - type: object
+                    properties:
+                      data:
+                        $ref: "#/components/schemas/Group"
+                    required:
+                      - data
+        "401":
+          $ref: "#/components/responses/HarnessError"
+        "403":
+          $ref: "#/components/responses/HarnessError"
+        "404":
+          $ref: "#/components/responses/HarnessError"
+        "409":
+          $ref: "#/components/responses/HarnessError"
+  /api/groups/{groupId}:
+    get:
+      tags:
+        - Projects & Groups
+      summary: 读取组 / Read group
+      operationId: getGroup
+      parameters:
+        - name: groupId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: 成功 / Success
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessBase"
+                  - type: object
+                    properties:
+                      data:
+                        $ref: "#/components/schemas/Group"
+                    required:
+                      - data
+        "401":
+          $ref: "#/components/responses/HarnessError"
+        "403":
+          $ref: "#/components/responses/HarnessError"
+        "404":
+          $ref: "#/components/responses/HarnessError"
+        "409":
+          $ref: "#/components/responses/HarnessError"
+    patch:
+      tags:
+        - Projects & Groups
+      summary: 修改或转移组 / Update or transfer group
+      operationId: updateGroup
+      description: 修改信息需要维护者权限；移动需要来源和目标所有者权限，禁止循环嵌套。 / Settings require maintainer access. Moving requires source and
+        destination owners; cycles are rejected.
+      parameters:
+        - name: groupId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name: &a7
+                  type: string
+                description: *a7
+                parentId:
+                  type:
+                    - string
+                    - "null"
+              required: []
+      responses:
+        "200":
+          description: 成功 / Success
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessBase"
+                  - type: object
+                    properties:
+                      data:
+                        $ref: "#/components/schemas/Group"
+                    required:
+                      - data
+        "401":
+          $ref: "#/components/responses/HarnessError"
+        "403":
+          $ref: "#/components/responses/HarnessError"
+        "404":
+          $ref: "#/components/responses/HarnessError"
+        "409":
+          $ref: "#/components/responses/HarnessError"
+    delete:
+      tags:
+        - Projects & Groups
+      summary: 删除空组 / Delete empty group
+      operationId: deleteGroup
+      description: 仅所有者可删除；含项目或子组时返回 409。 / Owners only; nonempty groups return 409.
+      parameters:
+        - name: groupId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: 成功 / Success
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessBase"
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          deleted:
+                            type: boolean
+                        required:
+                          - deleted
+                    required:
+                      - data
+        "401":
+          $ref: "#/components/responses/HarnessError"
+        "403":
+          $ref: "#/components/responses/HarnessError"
+        "404":
+          $ref: "#/components/responses/HarnessError"
+        "409":
+          $ref: "#/components/responses/HarnessError"
+  /api/groups/{groupId}/members:
+    get:
+      tags:
+        - Projects & Groups
+      summary: 列出直接与继承成员 / List direct and inherited members
+      operationId: listgroupMembers
+      description: 有效角色取项目直接角色、所属组及全部祖先组角色的最高值。维护者只能管理有效角色低于维护者的用户，且只能授予访客或开发者；所有者可管理全部角色。删除直接成员不影响继承权限，最后一名活跃所有者不可删除或降级。 /
+        Effective access is the maximum direct and inherited role. Maintainers manage only lower roles. Owners manage
+        all roles; the last active owner is protected.
+      parameters:
+        - name: groupId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: page
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            default: 1
+        - name: pageSize
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+        - name: q
+          in: query
+          required: false
+          schema:
+            type: string
+      responses:
+        "200":
+          description: 成功 / Success
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessBase"
+                  - type: object
+                    properties:
+                      data:
+                        $ref: "#/components/schemas/ResourceMemberPage"
+                    required:
+                      - data
+        "401":
+          $ref: "#/components/responses/HarnessError"
+        "403":
+          $ref: "#/components/responses/HarnessError"
+        "404":
+          $ref: "#/components/responses/HarnessError"
+        "409":
+          $ref: "#/components/responses/HarnessError"
+  /api/groups/{groupId}/members/{userId}:
+    put:
+      tags:
+        - Projects & Groups
+      summary: 设置直接成员角色 / Set direct member role
+      operationId: setgroupMember
+      description: 有效角色取项目直接角色、所属组及全部祖先组角色的最高值。维护者只能管理有效角色低于维护者的用户，且只能授予访客或开发者；所有者可管理全部角色。删除直接成员不影响继承权限，最后一名活跃所有者不可删除或降级。 /
+        Effective access is the maximum direct and inherited role. Maintainers manage only lower roles. Owners manage
+        all roles; the last active owner is protected.
+      parameters:
+        - &a10
+          name: groupId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: userId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                role:
+                  $ref: "#/components/schemas/ProjectRole"
+              required:
+                - role
+      responses:
+        "200":
+          description: 成功 / Success
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessBase"
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          userId:
+                            type: string
+                          role:
+                            $ref: "#/components/schemas/ProjectRole"
+                        required:
+                          - userId
+                          - role
+                    required:
+                      - data
+        "401":
+          $ref: "#/components/responses/HarnessError"
+        "403":
+          $ref: "#/components/responses/HarnessError"
+        "404":
+          $ref: "#/components/responses/HarnessError"
+        "409":
+          $ref: "#/components/responses/HarnessError"
+    delete:
+      tags:
+        - Projects & Groups
+      summary: 移除直接成员 / Remove direct membership
+      operationId: removegroupMember
+      description: 有效角色取项目直接角色、所属组及全部祖先组角色的最高值。维护者只能管理有效角色低于维护者的用户，且只能授予访客或开发者；所有者可管理全部角色。删除直接成员不影响继承权限，最后一名活跃所有者不可删除或降级。 /
+        Effective access is the maximum direct and inherited role. Maintainers manage only lower roles. Owners manage
+        all roles; the last active owner is protected.
+      parameters:
+        - *a10
+        - name: userId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: 成功 / Success
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessBase"
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          removed:
+                            type: boolean
+                        required:
+                          - removed
+                    required:
+                      - data
+        "401":
+          $ref: "#/components/responses/HarnessError"
+        "403":
+          $ref: "#/components/responses/HarnessError"
+        "404":
+          $ref: "#/components/responses/HarnessError"
+        "409":
+          $ref: "#/components/responses/HarnessError"
+  /api/groups/{groupId}/invitations:
+    get:
+      tags:
+        - Projects & Groups
+      summary: 列出邀请 / List invitations
+      operationId: listgroupInvitations
+      parameters: &a11
+        - name: groupId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: 成功 / Success
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessBase"
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: "#/components/schemas/ProjectInvitation"
+                    required:
+                      - data
+        "401":
+          $ref: "#/components/responses/HarnessError"
+        "403":
+          $ref: "#/components/responses/HarnessError"
+        "404":
+          $ref: "#/components/responses/HarnessError"
+        "409":
+          $ref: "#/components/responses/HarnessError"
+    post:
+      tags:
+        - Projects & Groups
+      summary: 创建角色邀请 / Create role invitation
+      operationId: creategroupInvitation
+      description: 有效角色取项目直接角色、所属组及全部祖先组角色的最高值。维护者只能管理有效角色低于维护者的用户，且只能授予访客或开发者；所有者可管理全部角色。删除直接成员不影响继承权限，最后一名活跃所有者不可删除或降级。 /
+        Effective access is the maximum direct and inherited role. Maintainers manage only lower roles. Owners manage
+        all roles; the last active owner is protected.
+      parameters: *a11
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                role:
+                  $ref: "#/components/schemas/ProjectRole"
+              required:
+                - role
+      responses:
+        "200":
+          description: 成功 / Success
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessBase"
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          invitation:
+                            $ref: "#/components/schemas/ProjectInvitation"
+                          token:
+                            type: string
+                        required:
+                          - invitation
+                          - token
+                    required:
+                      - data
+        "401":
+          $ref: "#/components/responses/HarnessError"
+        "403":
+          $ref: "#/components/responses/HarnessError"
+        "404":
+          $ref: "#/components/responses/HarnessError"
+        "409":
+          $ref: "#/components/responses/HarnessError"
+  /api/groups/{groupId}/invitations/{invitationId}:
+    delete:
+      tags:
+        - Projects & Groups
+      summary: 撤销邀请 / Revoke invitation
+      operationId: revokegroupInvitation
+      description: 有效角色取项目直接角色、所属组及全部祖先组角色的最高值。维护者只能管理有效角色低于维护者的用户，且只能授予访客或开发者；所有者可管理全部角色。删除直接成员不影响继承权限，最后一名活跃所有者不可删除或降级。 /
+        Effective access is the maximum direct and inherited role. Maintainers manage only lower roles. Owners manage
+        all roles; the last active owner is protected.
+      parameters:
+        - name: groupId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: invitationId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: 成功 / Success
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiSuccessBase"
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          revoked:
+                            type: boolean
+                        required:
+                          - revoked
+                    required:
+                      - data
+        "401":
+          $ref: "#/components/responses/HarnessError"
+        "403":
+          $ref: "#/components/responses/HarnessError"
+        "404":
+          $ref: "#/components/responses/HarnessError"
+        "409":
           $ref: "#/components/responses/HarnessError"
 components:
   securitySchemes:
@@ -3150,13 +3841,6 @@ components:
       schema:
         type: string
       example: api-key-001
-    RoleId:
-      name: roleId
-      in: path
-      required: true
-      schema:
-        type: string
-      example: builtin_viewer
     UserId:
       name: userId
       in: path
@@ -3199,27 +3883,7 @@ components:
       type: string
       enum:
         - system.admin
-        - users.read
-        - users.manage
-        - roles.read
-        - roles.manage
-        - api_keys.manage_self
-        - api_keys.manage_all
-        - projects.create
-        - projects.read_public
-        - projects.read_all
-        - projects.manage_own
-        - projects.manage_all
-        - projects.delete
-        - projects.upload
-        - projects.publish
-        - projects.download_source
-        - storage.write
-        - kv.read
-        - kv.manage
-        - knowledge.manage
-        - audit.read
-        - audit.export
+      description: 仅用于系统管理，不表示项目业务权限。 / System administration only.
     AuthPrincipalKind:
       type: string
       enum:
@@ -3245,22 +3909,17 @@ components:
         email:
           type: string
           format: email
-        permissions:
-          type: array
-          items:
-            $ref: "#/components/schemas/PermissionKey"
         apiKeyId:
           type: string
         expiresAt:
           type: string
           format: date-time
           description: 当前 API Key 的到期时间；Desktop Key 成功鉴权时会滑动续期。
-        roleNames:
-          type: array
-          items:
-            type: string
+        isSystemAdmin:
+          type: boolean
       required:
         - kind
+        - isSystemAdmin
     UserProfile:
       type: object
       properties:
@@ -3286,18 +3945,8 @@ components:
         lastLoginAt:
           type: string
           format: date-time
-        roleIds:
-          type: array
-          items:
-            type: string
-        roleNames:
-          type: array
-          items:
-            type: string
-        permissions:
-          type: array
-          items:
-            $ref: "#/components/schemas/PermissionKey"
+        isSystemAdmin:
+          type: boolean
       required:
         - userId
         - email
@@ -3305,9 +3954,7 @@ components:
         - status
         - createdAt
         - updatedAt
-        - roleIds
-        - roleNames
-        - permissions
+        - isSystemAdmin
     ApiKeyRecord:
       type: object
       properties:
@@ -3421,71 +4068,6 @@ components:
         - intervalSeconds
         - createdAt
         - updatedAt
-    PermissionDefinition:
-      type: object
-      properties:
-        key:
-          $ref: "#/components/schemas/PermissionKey"
-        label:
-          type: string
-        description:
-          type: string
-        group:
-          type: string
-      required:
-        - key
-        - label
-        - description
-        - group
-    PermissionGroup:
-      type: object
-      properties:
-        id:
-          type: string
-        label:
-          type: string
-        permissions:
-          type: array
-          items:
-            $ref: "#/components/schemas/PermissionDefinition"
-      required:
-        - id
-        - label
-        - permissions
-    RoleRecord:
-      type: object
-      properties:
-        id:
-          type: string
-        name:
-          type: string
-        description:
-          type: string
-        builtin:
-          type: boolean
-        protected:
-          type: boolean
-        permissions:
-          type: array
-          items:
-            $ref: "#/components/schemas/PermissionKey"
-        createdByUserId:
-          type: string
-        createdAt:
-          type: string
-          format: date-time
-        updatedAt:
-          type: string
-          format: date-time
-      required:
-        - id
-        - name
-        - description
-        - builtin
-        - protected
-        - permissions
-        - createdAt
-        - updatedAt
     AdminUserSummary:
       type: object
       properties:
@@ -3504,21 +4086,14 @@ components:
         createdAt:
           type: string
           format: date-time
-        roles:
-          type: array
-          items:
-            type: string
-        permissions:
-          type: array
-          items:
-            $ref: "#/components/schemas/PermissionKey"
+        isSystemAdmin:
+          type: boolean
       required:
         - userId
         - email
         - displayName
         - status
-        - roles
-        - permissions
+        - isSystemAdmin
     AuthUserInfo:
       type: object
       properties:
@@ -3671,52 +4246,6 @@ components:
               required:
                 - revoked
                 - id
-          required:
-            - data
-    PermissionGroupListResponse:
-      allOf:
-        - $ref: "#/components/schemas/ApiSuccessBase"
-        - type: object
-          properties:
-            data:
-              type: object
-              properties:
-                groups:
-                  type: array
-                  items:
-                    $ref: "#/components/schemas/PermissionGroup"
-              required:
-                - groups
-          required:
-            - data
-    RoleListResponse:
-      allOf:
-        - $ref: "#/components/schemas/ApiSuccessBase"
-        - type: object
-          properties:
-            data:
-              type: object
-              properties:
-                items:
-                  type: array
-                  items:
-                    $ref: "#/components/schemas/RoleRecord"
-              required:
-                - items
-          required:
-            - data
-    RoleResponse:
-      allOf:
-        - $ref: "#/components/schemas/ApiSuccessBase"
-        - type: object
-          properties:
-            data:
-              type: object
-              properties:
-                role:
-                  $ref: "#/components/schemas/RoleRecord"
-              required:
-                - role
           required:
             - data
     UserListResponse:
@@ -3968,32 +4497,6 @@ components:
             type: string
       required:
         - name
-    CreateRoleRequest:
-      type: object
-      properties:
-        name:
-          type: string
-        description:
-          type: string
-        permissions:
-          type: array
-          items:
-            $ref: "#/components/schemas/PermissionKey"
-      required:
-        - name
-        - permissions
-    UpdateRoleRequest:
-      type: object
-      properties:
-        name:
-          type: string
-        description:
-          type: string
-        permissions:
-          type: array
-          items:
-            $ref: "#/components/schemas/PermissionKey"
-      minProperties: 1
     InviteUserRequest:
       type: object
       properties:
@@ -4032,15 +4535,6 @@ components:
         disabled:
           type: boolean
       minProperties: 1
-    SetUserRolesRequest:
-      type: object
-      properties:
-        roleIds:
-          type: array
-          items:
-            type: string
-      required:
-        - roleIds
     SourceFileInput:
       type: object
       properties:
@@ -4112,8 +4606,7 @@ components:
         iconColor:
           type: string
           pattern: ^#[0-9a-fA-F]{6}$
-          description: Optional built-in icon foreground color. Defaults to white for
-            older metadata.
+          description: Optional built-in icon foreground color. Defaults to white for older metadata.
         iconBackgroundColor:
           type: string
           pattern: ^#[0-9a-fA-F]{6}$
@@ -4178,6 +4671,7 @@ components:
           $ref: "#/components/schemas/ProjectInfoContract"
         ownerUserId:
           type: string
+          description: 历史创建者字段，不用于授权。 / Historical creator; never an authorization source.
         visibility:
           $ref: "#/components/schemas/Visibility"
         createdByUserId:
@@ -4205,12 +4699,12 @@ components:
           type: string
         sourceDownload:
           $ref: "#/components/schemas/SourceDownloadAvailability"
-        canManage:
-          type: boolean
-          description: 当前账号是否可管理项目。
-        canWriteData:
-          type: boolean
-          description: 当前账号是否可写入项目数据。
+        groupId:
+          type:
+            - string
+            - "null"
+        access:
+          $ref: "#/components/schemas/ResourceAccess"
       required:
         - id
         - name
@@ -4222,6 +4716,7 @@ components:
         - latest
         - versions
         - nextVersion
+        - access
     SummaryResponse:
       allOf:
         - $ref: "#/components/schemas/ApiSuccessBase"
@@ -4237,9 +4732,7 @@ components:
         - type: object
           properties:
             data:
-              type: array
-              items:
-                $ref: "#/components/schemas/Summary"
+              $ref: "#/components/schemas/ProjectPage"
           required:
             - data
     UserProfileSummary:
@@ -4797,7 +5290,6 @@ components:
         - pending
         - approved
         - rejected
-        - revoked
     ProjectAccessRequest:
       type: object
       properties:
@@ -4809,9 +5301,6 @@ components:
           format: uuid
         requesterUserId:
           type: string
-        capability:
-          type: string
-          const: download_source
         reason:
           type: string
         status:
@@ -4831,7 +5320,6 @@ components:
         - id
         - projectId
         - requesterUserId
-        - capability
         - reason
         - status
         - createdAt
@@ -4845,32 +5333,6 @@ components:
               $ref: "#/components/schemas/ProjectAccessRequest"
           required:
             - data
-    ProjectCapabilityGrant:
-      type: object
-      properties:
-        projectId:
-          type: string
-          format: uuid
-        userId:
-          type: string
-        capability:
-          type: string
-          const: download_source
-        createdByUserId:
-          type: string
-        createdAt:
-          type: string
-          format: date-time
-        revokedByUserId:
-          type: string
-        revokedAt:
-          type: string
-          format: date-time
-      required:
-        - projectId
-        - userId
-        - capability
-        - createdAt
     SourceAccessStateResponse:
       allOf:
         - $ref: "#/components/schemas/ApiSuccessBase"
@@ -4883,13 +5345,8 @@ components:
                   type: array
                   items:
                     $ref: "#/components/schemas/ProjectAccessRequest"
-                grants:
-                  type: array
-                  items:
-                    $ref: "#/components/schemas/ProjectCapabilityGrant"
               required:
                 - requests
-                - grants
           required:
             - data
     RevokedResultResponse:
@@ -5005,8 +5462,8 @@ components:
         projectId:
           type: string
           format: uuid
-          description: 本地 package.json.id 中的必填 UUID，作为 server 项目主键。 / Required UUID from
-            local package.json.id; used as the server project primary key.
+          description: 本地 package.json.id 中的必填 UUID，作为 server 项目主键。 / Required UUID from local package.json.id; used as the server
+            project primary key.
         name:
           type: string
         projectType:
@@ -5017,6 +5474,10 @@ components:
           $ref: "#/components/schemas/Visibility"
         projectCard:
           $ref: "#/components/schemas/ProjectCardMetadata"
+        groupId:
+          type:
+            - string
+            - "null"
       required:
         - projectId
         - name
@@ -5212,8 +5673,8 @@ components:
         platformSupport:
           $ref: "#/components/schemas/ProjectPlatformSupport"
         dataStorage:
-          description: 严格限定项目可访问的数据位置；null 只表示尚未迁移的旧项目。 / Strictly limits accessible data
-            locations; null represents an undeclared legacy project only.
+          description: 严格限定项目可访问的数据位置；null 只表示尚未迁移的旧项目。 / Strictly limits accessible data locations; null represents an undeclared
+            legacy project only.
           oneOf:
             - $ref: "#/components/schemas/ProjectDataStorage"
             - type: "null"
@@ -5238,9 +5699,8 @@ components:
             - local
             - server
             - both
-          description: local 仅本地，server 仅服务器，both 允许显式选择两端。 / local permits local storage
-            only, server permits server storage only, and both permits an
-            explicit choice.
+          description: local 仅本地，server 仅服务器，both 允许显式选择两端。 / local permits local storage only, server permits server storage
+            only, and both permits an explicit choice.
       required:
         - mode
       additionalProperties: false
@@ -5280,16 +5740,14 @@ components:
     ProjectRole:
       type: string
       enum:
+        - guest
+        - developer
+        - maintainer
         - owner
-        - manager
-        - writer
-        - viewer
+      description: 权限逐级累加：访客只读；开发者编辑草稿、上传、发布、写服务器数据；维护者管理设置和低级成员；所有者管理全部成员、删除与转移。 / Cumulative guest, developer, maintainer
+        and owner roles.
     InvitationRole:
-      type: string
-      enum:
-        - manager
-        - writer
-        - viewer
+      $ref: "#/components/schemas/ProjectRole"
     ProjectInvitation:
       type: object
       properties:
@@ -5322,6 +5780,14 @@ components:
         revokedAt:
           type: string
           format: date-time
+        resourceType:
+          type: string
+          enum:
+            - project
+            - group
+        resourceId: &a3
+          type: string
+        resourceName: *a3
       required:
         - id
         - projectId
@@ -5329,6 +5795,8 @@ components:
         - role
         - createdAt
         - expiresAt
+        - resourceType
+        - resourceId
     ProjectInvitationListResponse:
       allOf:
         - $ref: "#/components/schemas/ApiSuccessBase"
@@ -5417,11 +5885,19 @@ components:
         createdAt:
           type: string
           format: date-time
+        resourceId:
+          type: string
+        directRole:
+          $ref: "#/components/schemas/ProjectRole"
+        access:
+          $ref: "#/components/schemas/ResourceAccess"
       required:
         - projectId
         - userId
         - role
         - createdAt
+        - resourceId
+        - access
     ProjectMemberResponse:
       allOf:
         - $ref: "#/components/schemas/ApiSuccessBase"
@@ -5437,9 +5913,7 @@ components:
         - type: object
           properties:
             data:
-              type: array
-              items:
-                $ref: "#/components/schemas/ProjectMember"
+              $ref: "#/components/schemas/ResourceMemberPage"
           required:
             - data
     AuditOutcome:
@@ -5739,8 +6213,8 @@ components:
             - mode
         resolveOnInput:
           type: boolean
-          description: Whether main composer input changes trigger the selected entrypoint
-            resolver (or the Conversation executor resolver). Defaults to false.
+          description: Whether main composer input changes trigger the selected entrypoint resolver (or the Conversation executor
+            resolver). Defaults to false.
         options:
           type: array
           items:
@@ -5806,68 +6280,86 @@ components:
       type: object
       additionalProperties: false
       properties:
-        publish: {type: boolean, default: true}
-        includeValue: {type: boolean, default: false}
-        editable: {type: boolean, default: true}
+        publish: { type: boolean, default: true }
+        includeValue: { type: boolean, default: false }
+        editable: { type: boolean, default: true }
     ConfigurationPublicationProfile:
       type: object
       properties:
-        id: {type: string}
-        name: {type: string, minLength: 1, maxLength: 200}
-        values: {type: object, additionalProperties: true}
-      required: [id, name, values]
+        id: { type: string }
+        name: { type: string, minLength: 1, maxLength: 200 }
+        values: { type: object, additionalProperties: true }
+      required: [ id, name, values ]
     ConfigurationPublicationDraft:
       type: object
       properties:
-        revision: {type: integer, minimum: 0}
-        configurationRevision: {type: integer, minimum: 0}
-        configurationAccountId: {type: string, readOnly: true, description: Server-assigned source account for personal revision checks; client values do not grant authority.}
+        revision: { type: integer, minimum: 0 }
+        configurationRevision: { type: integer, minimum: 0 }
+        configurationAccountId:
+          {
+            type: string,
+            readOnly: true,
+            description: Server-assigned source account for personal revision checks; client values do not grant authority.
+          }
         fields:
           type: array
-          items: {$ref: "#/components/schemas/ProjectConfigurationField"}
+          items: { $ref: "#/components/schemas/ProjectConfigurationField" }
         configurations:
           type: array
           minItems: 1
-          items: {$ref: "#/components/schemas/ConfigurationPublicationProfile"}
-        defaultConfigurationId: {type: string}
-      required: [revision, configurationRevision, fields, configurations, defaultConfigurationId]
+          items: { $ref: "#/components/schemas/ConfigurationPublicationProfile" }
+        defaultConfigurationId: { type: string }
+      required: [ revision, configurationRevision, fields, configurations, defaultConfigurationId ]
     ProjectConfigurationTemplate:
       type: object
-      description: Immutable, filtered version data; defaultValue is omitted. Arrays are indivisible. Excluded names are represented only by opaque deny hashes. The authenticated download validates source and attachment hashes before caching outside project source.
+      description: Immutable, filtered version data; defaultValue is omitted. Arrays are indivisible. Excluded names are
+        represented only by opaque deny hashes. The authenticated download validates source and attachment hashes before
+        caching outside project source.
       properties:
-        version: {type: integer, enum: [2]}
-        kind: {type: string, enum: [steamharness-configuration-template]}
-        projectId: {type: string}
-        projectVersion: {type: string}
-        sourceHash: {type: string, pattern: '^[a-f0-9]{64}$'}
-        draftRevision: {type: integer, minimum: 0}
+        version: { type: integer, enum: [ 2 ] }
+        kind: { type: string, enum: [ steamharness-configuration-template ] }
+        projectId: { type: string }
+        projectVersion: { type: string }
+        sourceHash: { type: string, pattern: '^[a-f0-9]{64}$' }
+        draftRevision: { type: integer, minimum: 0 }
         fields:
           type: array
-          items: {$ref: "#/components/schemas/ProjectConfigurationField"}
+          items: { $ref: "#/components/schemas/ProjectConfigurationField" }
         configurations:
           type: array
           minItems: 1
-          items: {$ref: "#/components/schemas/ConfigurationPublicationProfile"}
-        defaultConfigurationId: {type: string}
+          items: { $ref: "#/components/schemas/ConfigurationPublicationProfile" }
+        defaultConfigurationId: { type: string }
         reservedFields:
           type: array
-          items: {type: string, pattern: '^[a-f0-9]{64}$'}
+          items: { type: string, pattern: '^[a-f0-9]{64}$' }
         attachments:
           type: array
           items:
             type: object
             properties:
-              id: {type: string}
-              path: {type: string}
-              sha256: {type: string, pattern: '^[a-f0-9]{64}$'}
-            required: [id, path, sha256]
-      required: [version, kind, projectId, projectVersion, sourceHash, draftRevision, fields, configurations, defaultConfigurationId]
+              id: { type: string }
+              path: { type: string }
+              sha256: { type: string, pattern: '^[a-f0-9]{64}$' }
+            required: [ id, path, sha256 ]
+      required:
+        [
+          version,
+          kind,
+          projectId,
+          projectVersion,
+          sourceHash,
+          draftRevision,
+          fields,
+          configurations,
+          defaultConfigurationId
+        ]
     ProjectConfigurationCapability:
       type: object
       properties:
-        editable: {type: boolean}
-        reason: {type: string}
-      required: [editable]
+        editable: { type: boolean }
+        reason: { type: string }
+      required: [ editable ]
     ProjectConfigurationField:
       type: object
       additionalProperties: false
@@ -5877,7 +6369,7 @@ components:
           pattern: '^[A-Za-z_][A-Za-z0-9_.-]{0,199}$'
         type:
           type: string
-          enum: [string, number, boolean, json, file]
+          enum: [ string, number, boolean, json, file ]
         label:
           type: string
         description:
@@ -5893,10 +6385,11 @@ components:
           description: String arrays for string fields; up to 32 server file references for file fields.
         control:
           type: string
-          enum: [text, textarea, select, radio, checkboxes]
+          enum: [ text, textarea, select, radio, checkboxes ]
         accept:
           type: array
-          description: File fields only. Accepted MIME types or extensions. Files upload through POST /api/projects/{projectId}/configurations/files and values contain server metadata, never file bytes.
+          description: File fields only. Accepted MIME types or extensions. Files upload through POST
+            /api/projects/{projectId}/configurations/files and values contain server metadata, never file bytes.
           items:
             type: string
         options:
@@ -5908,18 +6401,19 @@ components:
                 type: string
               label:
                 type: string
-            required: [value]
+            required: [ value ]
         sharing:
           $ref: "#/components/schemas/ConfigurationSharingRule"
         paths:
           type: object
-          description: JSON Pointer rules, inherited from the parent with more specific rules taking precedence. Excluding the whole field excludes every descendant.
-          additionalProperties: {$ref: "#/components/schemas/ConfigurationSharingRule"}
+          description: JSON Pointer rules, inherited from the parent with more specific rules taking precedence. Excluding the
+            whole field excludes every descendant.
+          additionalProperties: { $ref: "#/components/schemas/ConfigurationSharingRule" }
         omittedPaths:
           description: Generated opaque deny hashes for omitted JSON paths, without private path names.
           type: array
-          items: {type: string, pattern: '^[a-f0-9]{64}$'}
-      required: [name, type]
+          items: { type: string, pattern: '^[a-f0-9]{64}$' }
+      required: [ name, type ]
     ProjectConfigurationProfile:
       type: object
       properties:
@@ -5928,7 +6422,7 @@ components:
           type: object
           additionalProperties:
             type: array
-            items: {type: string}
+            items: { type: string }
         templateId:
           type: string
         id:
@@ -5944,13 +6438,13 @@ components:
         updatedAt:
           type: string
           format: date-time
-      required: [id, name, values, createdAt, updatedAt]
+      required: [ id, name, values, createdAt, updatedAt ]
     ProjectConfigurationState:
       type: object
       properties:
         version:
           type: integer
-          enum: [1]
+          enum: [ 1 ]
         revision:
           type: integer
           minimum: 0
@@ -5980,8 +6474,8 @@ components:
           $ref: "#/components/schemas/ConfigurationPublicationDraft"
         publicationPreview:
           $ref: "#/components/schemas/ProjectConfigurationTemplate"
-        canManagePublication: {type: boolean}
-        sourceHash: {type: string}
+        canManagePublication: { type: boolean }
+        sourceHash: { type: string }
         fieldCapabilities:
           type: object
           additionalProperties:
@@ -5991,27 +6485,27 @@ components:
                 properties:
                   paths:
                     type: object
-                    additionalProperties: {$ref: "#/components/schemas/ProjectConfigurationCapability"}
+                    additionalProperties: { $ref: "#/components/schemas/ProjectConfigurationCapability" }
         conflicts:
           type: array
           description: Preserved personal drafts whose field types changed on upgrade.
           items:
             type: object
             properties:
-              configurationId: {type: string}
-              key: {type: string}
+              configurationId: { type: string }
+              key: { type: string }
               value: {}
-              reason: {type: string}
-      required: [version, revision, fields, customFields, configurations, activeConfigurationId]
+              reason: { type: string }
+      required: [ version, revision, fields, customFields, configurations, activeConfigurationId ]
     ProjectConfigurationExport:
       type: object
       properties:
         version:
           type: integer
-          enum: [1]
+          enum: [ 1 ]
         kind:
           type: string
-          enum: [steamharness-project-configurations]
+          enum: [ steamharness-project-configurations ]
         fields:
           type: array
           items:
@@ -6029,15 +6523,32 @@ components:
               values:
                 type: object
                 additionalProperties: true
-            required: [name, values]
-      required: [version, kind, fields, configurations]
+            required: [ name, values ]
+      required: [ version, kind, fields, configurations ]
     ProjectConfigurationAction:
       type: object
-      description: At most 1 MiB. Revision is mandatory for every mutation. Profile mutations require id; create takes optional name. Save merges typed values and removes overrides named in unset. Field edits use field and optional old key. Import takes a complete document. Export optionally filters by id.
+      description: At most 1 MiB. Revision is mandatory for every mutation. Profile mutations require id; create takes
+        optional name. Save merges typed values and removes overrides named in unset. Field edits use field and optional
+        old key. Import takes a complete document. Export optionally filters by id.
       properties:
         action:
           type: string
-          enum: [get, export, create, duplicate, rename, save, select, delete, field.save, field.delete, import, publication.save, publication.preview]
+          enum:
+            [
+              get,
+              export,
+              create,
+              duplicate,
+              rename,
+              save,
+              select,
+              delete,
+              field.save,
+              field.delete,
+              import,
+              publication.save,
+              publication.preview
+            ]
         revision:
           type: integer
           minimum: 0
@@ -6062,7 +6573,7 @@ components:
           $ref: "#/components/schemas/ProjectConfigurationExport"
         publication:
           $ref: "#/components/schemas/ConfigurationPublicationDraft"
-      required: [action]
+      required: [ action ]
     ProjectConfigurationResponse:
       allOf:
         - $ref: "#/components/schemas/ApiSuccessBase"
@@ -6072,7 +6583,7 @@ components:
               oneOf:
                 - $ref: "#/components/schemas/ProjectConfigurationState"
                 - $ref: "#/components/schemas/ProjectConfigurationExport"
-          required: [data]
+          required: [ data ]
     KanbanConfiguration:
       $ref: "#/components/schemas/ProjectConfigurationProfile"
     KanbanPreview:
@@ -7050,3 +7561,146 @@ components:
             - components
             - releaseNotes
             - source
+    AccessCapability:
+      type: string
+      enum:
+        - read
+        - downloadSource
+        - readDraft
+        - upload
+        - publish
+        - writeData
+        - manageSettings
+        - manageMembers
+        - manageOwners
+        - transfer
+        - delete
+        - createProject
+        - createSubgroup
+    AccessSource:
+      type: object
+      properties:
+        type:
+          type: string
+          enum:
+            - project
+            - group
+            - public
+            - system
+        id: &a1
+          type: string
+        name: *a1
+        role:
+          $ref: "#/components/schemas/ProjectRole"
+      required:
+        - type
+        - id
+        - role
+    ResourceAccess:
+      type: object
+      properties:
+        effectiveRole:
+          oneOf:
+            - $ref: "#/components/schemas/ProjectRole"
+            - type: "null"
+        sources:
+          type: array
+          items:
+            $ref: "#/components/schemas/AccessSource"
+        capabilities:
+          type: array
+          items:
+            $ref: "#/components/schemas/AccessCapability"
+      required:
+        - effectiveRole
+        - sources
+        - capabilities
+    Group:
+      type: object
+      properties:
+        id: &a2
+          type: string
+        name: *a2
+        description: *a2
+        parentId:
+          type:
+            - string
+            - "null"
+        createdAt:
+          type: string
+          format: date-time
+        access:
+          $ref: "#/components/schemas/ResourceAccess"
+      required:
+        - id
+        - name
+        - description
+        - parentId
+        - createdAt
+        - access
+    GroupPage:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/Group"
+        total:
+          type: integer
+          minimum: 0
+        page:
+          type: integer
+          minimum: 1
+        pageSize:
+          type: integer
+          minimum: 1
+          maximum: 100
+      required:
+        - items
+        - total
+        - page
+        - pageSize
+    ProjectPage:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/Summary"
+        total:
+          type: integer
+          minimum: 0
+        page:
+          type: integer
+          minimum: 1
+        pageSize:
+          type: integer
+          minimum: 1
+          maximum: 100
+      required:
+        - items
+        - total
+        - page
+        - pageSize
+    ResourceMemberPage:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/ProjectMember"
+        total:
+          type: integer
+          minimum: 0
+        page:
+          type: integer
+          minimum: 1
+        pageSize:
+          type: integer
+          minimum: 1
+          maximum: 100
+      required:
+        - items
+        - total
+        - page
+        - pageSize

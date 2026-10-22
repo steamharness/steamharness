@@ -140,9 +140,9 @@ export function createProjectRuntime(context: vscode.ExtensionContext, account: 
     validateProjectCreation: templates.validate,
     createProject: templates.create,
     installDependencies: (directory, signal, log) => installProjectDependencies({ directory, signal: AbortSignal.any([signal, controller.signal]), log }),
-    uploadProject: (project, releaseLog, signal, progress) => {
+    uploadProject: (project, releaseLog, signal, progress,groupId) => {
       assertAvailable();
-      return transfer(signal, options => uploadServerProject({ ...options, projectId: project.id, version: project.manifest?.version ?? '', directory: project.folderPath, releaseLog, progress }));
+      return transfer(signal, options => uploadServerProject({ ...options, projectId: project.id, version: project.manifest?.version ?? '', directory: project.folderPath, releaseLog, progress,groupId }));
     },
     downloadProject: (projectId, version, signal, progress) => transfer(signal, options => downloadServerProject({ ...options, projectId, version,
       parentDirectory: defaultProjectParentDirectory(), progress })),

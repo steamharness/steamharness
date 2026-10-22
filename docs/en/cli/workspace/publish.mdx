@@ -22,8 +22,8 @@ Retry a prepared group with `--deployment <id>`, without local paths or group-cr
 
 ## API
 
-Single project: `POST /api/workflows/{workflow}/publish`, with optional `releaseLog`. Groups: `POST /api/deployments/{deploymentId}/publish`.
+Single project: `POST /api/projects/{projectId}/publish`, with optional `releaseLog`. Groups: `POST /api/deployments/{deploymentId}/publish`.
 
 Inspect [versions](/en/cli/workspace/versions), then [download](/en/cli/workspace/download) any historical snapshot.
 
-When a configuration publication draft exists, CLI sends its revision and the prepared source hash. Server rejects stale source, changed personal configuration revisions or a stale publication draft. It filters version configuration files and freezes selected attachments without changing the author directory. Only the original owner or existing administrators can publish official templates. See [Project configurations](/en/concepts/project-configuration).
+When a configuration publication draft exists, CLI sends its revision and the prepared source hash. Server rejects stale source, changed personal configuration revisions or a stale publication draft. It filters version configuration files and freezes selected attachments without changing the author directory. Only maintainers, owners or system administrators can publish official templates. See [Project configurations](/en/concepts/project-configuration).

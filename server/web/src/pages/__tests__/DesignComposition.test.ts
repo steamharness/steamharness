@@ -9,9 +9,8 @@ describe("server web design composition", () => {
     expect(versionsTabSource).not.toContain("versionsOfflineAction");
   });
 
-  it("groups user role checkboxes with shadcn fieldset structure", () => {
-    expect(usersPageSource).toContain("<FieldSet>");
-    expect(usersPageSource).toContain("<FieldLegend variant=\"label\">{t(\"usersAssignableRoles\")}</FieldLegend>");
-    expect(usersPageSource).toContain('FieldGroup data-slot="checkbox-group"');
+  it("only exposes the fixed administrator account setting", () => {
+    expect(usersPageSource).toContain('isSystemAdmin');
+    expect(usersPageSource).not.toContain('usersAssignableRoles');
   });
 });

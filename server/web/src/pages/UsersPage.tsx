@@ -2,7 +2,7 @@ import { Link, MailPlus, Pencil, RefreshCw, ShieldCheck, UserCheck, UserCog, Use
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "@steamharness/i18n/react";
 import { formatDateTime, i18n } from "@steamharness/i18n";
-import type { AdminUserSummary, RoleRecord, UserInvitationResult } from "../types";
+import type { AdminUserSummary, UserInvitationResult } from "../types";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -24,7 +24,6 @@ import { getAvatarFallbackText } from "@steamharness/avatar-fallback";
 
 interface UsersPageProps {
   users: AdminUserSummary[] | null;
-  roles: RoleRecord[];
   loading?: string;
   inviteBusy?: string;
   updateBusyUserId?: string;
@@ -40,14 +39,13 @@ interface UsersPageProps {
   onRefresh: () => void;
   onInvite: (payload: { email: string; displayName?: string }) => void;
   onUpdateUser: (user: AdminUserSummary, patch: { email?: string; displayName?: string; disabled?: boolean; avatarUrl?: string | null }) => void;
-  onUpdateRoles: (user: AdminUserSummary, roleIds: string[]) => void;
+  onUpdateAdministrator: (user: AdminUserSummary, isSystemAdmin: boolean) => void;
   onUpdateAvatar: (user: AdminUserSummary, file: File) => void;
   onFetchInviteLink: (userId: string) => Promise<string | null>;
 }
 
 export function UsersPage({
   users,
-  roles,
   loading,
   inviteBusy,
   updateBusyUserId,
@@ -62,7 +60,7 @@ export function UsersPage({
   onPageChange,
   onInvite,
   onUpdateUser,
-  onUpdateRoles,
+  onUpdateAdministrator,
   onUpdateAvatar,
   onFetchInviteLink,
 }: UsersPageProps) {
@@ -79,7 +77,7 @@ export function UsersPage({
   const [inviteDisplayName, setInviteDisplayName] = useState("");
   const [inviteDialogOpen, setInviteDialogOpen] = useState(false);
   const [selectedUserId, setSelectedUserId] = useState<string | null>(null);
-  const [selectedRoleIds, setSelectedRoleIds] = useState<string[]>([]);
+  const [selectedAdmin,setSelectedAdmin]=useState(false);
   const [managementTab, setManagementTab] = useState("profile");
   const [editEmail, setEditEmail] = useState("");
   const [editDisplayName, setEditDisplayName] = useState("");
@@ -138,12 +136,12 @@ export function UsersPage({
   const openManagementDialog = useCallback((user: AdminUserSummary) => {
     setSelectedUserId(user.userId);
     setManagementTab("profile");
-    setSelectedRoleIds(roles.filter((role) => user.roles.includes(role.name)).map((role) => role.id));
+    setSelectedAdmin(user.isSystemAdmin);
     setEditEmail(user.email);
     setEditDisplayName(user.displayName);
     setSelectedAvatarFile(null);
     setAvatarPreview(user.avatarUrl ?? "");
-  }, [roles]);
+  }, []);
 
   const closeManagementDialog = useCallback(() => {
     if (avatarObjectUrlRef.current) {
@@ -152,7 +150,7 @@ export function UsersPage({
     }
     setSelectedUserId(null);
     setManagementTab("profile");
-    setSelectedRoleIds([]);
+    setSelectedAdmin(false);
     setEditEmail("");
     setEditDisplayName("");
     setSelectedAvatarFile(null);
@@ -246,7 +244,7 @@ export function UsersPage({
                     <TableCell>
                       <UserIdentity user={user} fallbackLabel={t("usersUnrecordedUser")} size="sm" />
                     </TableCell>
-                    <TableCell className="text-xs text-muted-foreground">{user.roles.join(" · ") || t("usersNoRoles")}</TableCell>
+                    <TableCell className="text-xs text-muted-foreground">{t(user.isSystemAdmin?"accessSystemAdmin":"accessRegularUser")}</TableCell>
                     <TableCell>
                       <SemanticBadge tone={user.status === "active" ? "success" : user.status === "disabled" ? "danger" : "warning"}>{user.status}</SemanticBadge>
                     </TableCell>
@@ -338,7 +336,7 @@ export function UsersPage({
               <Tabs value={managementTab} onValueChange={setManagementTab} className="min-h-0 flex-1 flex-col gap-0">
                 <TabsList variant="line" className="w-full shrink-0 justify-start overflow-x-auto rounded-none border-b border-border px-5 py-2">
                   <TabsTrigger value="profile"><Pencil data-icon="inline-start" />{t("usersEditProfileTab")}</TabsTrigger>
-                  <TabsTrigger value="roles"><ShieldCheck data-icon="inline-start" />{t("usersRolesTab")}</TabsTrigger>
+                  <TabsTrigger value="administrator"><ShieldCheck data-icon="inline-start" />{t("accessSystemAdmin")}</TabsTrigger>
                   <TabsTrigger value="account"><UserCog data-icon="inline-start" />{t("usersAccountStatus")}</TabsTrigger>
                 </TabsList>
 
@@ -397,63 +395,10 @@ export function UsersPage({
                   </FieldGroup>
                 </TabsContent>
 
-                <TabsContent value="roles" className="min-h-0 overflow-y-auto px-5 py-5">
-                  <FieldGroup className="gap-5">
-                    <FieldSet>
-                      <FieldLegend variant="label">{t("usersAssignableRoles")}</FieldLegend>
-                      <FieldDescription>{t("usersAssignableRolesDescription")}</FieldDescription>
-                      <TablePanel className="min-w-[560px]" aria-label={t("usersAssignableRoles")}>
-                        <TableHeader><TableRow><TableHead>{t("rolesHeaderRole")}</TableHead><TableHead>{t("usersHeaderStatus")}</TableHead><TableHead>{t("rolesHeaderDescription")}</TableHead></TableRow></TableHeader>
-                        <TableBody>
-                        {roles.map((role) => {
-                          const checked = selectedRoleIds.includes(role.id);
-                          const roleCheckboxId = `user-role-${role.id}`;
-                          return (
-                            <TableRow key={role.id} data-state={checked ? "selected" : undefined}>
-                              <TableCell>
-                              <Field orientation="horizontal">
-                                <Checkbox
-                                  id={roleCheckboxId}
-                                  checked={checked}
-                                  onCheckedChange={(nextChecked) => {
-                                    setSelectedRoleIds((current) => (
-                                      nextChecked === true
-                                        ? [...new Set([...current, role.id])]
-                                        : current.filter((id) => id !== role.id)
-                                    ));
-                                  }}
-                                />
-                                <FieldLabel htmlFor={roleCheckboxId}>{role.name}</FieldLabel>
-                              </Field>
-                              </TableCell>
-                              <TableCell><div className="flex flex-wrap gap-2">
-                                {role.builtin ? <Badge variant="secondary">{t("usersRolesBuiltin")}</Badge> : null}
-                                {role.protected ? <Badge variant="outline">{t("usersRolesProtected")}</Badge> : null}
-                                {!role.builtin && !role.protected ? "-" : null}
-                              </div></TableCell>
-                              <TableCell className="whitespace-normal text-muted-foreground">{role.description || t("rolesNoDescription")}</TableCell>
-                            </TableRow>
-                          );
-                        })}
-                        </TableBody>
-                      </TablePanel>
-                    </FieldSet>
-                    <div className="flex justify-end">
-                      <Button
-                        disabled={editingBusy}
-                        onClick={() => setConfirmAction({
-                          title: t("usersSaveUserRolesTitle"),
-                          description: t("usersSaveUserRolesDescription"),
-                          details: <span>{t("usersSaveUserRolesDetailsRoles")}{roles.filter((role) => selectedRoleIds.includes(role.id)).map((role) => role.name).join(" · ") || t("usersSaveUserRolesNoRoles")}</span>,
-                          confirmLabel: t("usersSaveUserRolesConfirm"),
-                          tone: "warning",
-                          onConfirm: () => onUpdateRoles(activeUser, selectedRoleIds),
-                        })}
-                      >
-                        {editingBusy ? <RefreshCw data-icon="inline-start" className="animate-spin" /> : null}
-                        {t("usersSaveUserRolesConfirm")}
-                      </Button>
-                    </div>
+                <TabsContent value="administrator" className="p-5">
+                  <FieldGroup><Field orientation="horizontal"><Checkbox id="system-administrator" checked={selectedAdmin} disabled={editingBusy} onCheckedChange={value=>setSelectedAdmin(value===true)}/><FieldLabel htmlFor="system-administrator">{t("accessSystemAdmin")}</FieldLabel></Field>
+                    <FieldDescription>{t("accessAccountHelp")}</FieldDescription>
+                    <Button disabled={editingBusy} onClick={()=>setConfirmAction({title:t("accessSystemAdmin"),description:activeUser.displayName,confirmLabel:t("commonSave"),tone:"warning",onConfirm:()=>onUpdateAdministrator(activeUser,selectedAdmin)})}>{t("commonSave")}</Button>
                   </FieldGroup>
                 </TabsContent>
 

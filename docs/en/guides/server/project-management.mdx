@@ -15,29 +15,54 @@ Older projects without avatar metadata use their project type's default icon and
 
 Click a project list avatar to open its details, or a standalone detail avatar to preview it. User avatars in member and uploader lists open the currently visible profile information. The account menu avatar opens its menu, while the personal profile avatar selects an upload. Dialogs support keyboard dismissal and return focus to their trigger.
 
-## Members and invitations
+## Fixed roles
 
-Member roles are `owner`, `manager`, `writer`, and `viewer`. A role controls settings, membership, versions, and data actions; source-download permission is checked independently from data permission.
+Accounts are ordinary users or system administrators. Business access is assigned per project or group using four fixed roles.
 
-Invitation links are single-use and short-lived. An invited user sets a password on the acceptance page. Revoking an invitation invalidates its link immediately. Server does not send email for a project.
+| Role | Cumulative capabilities |
+| --- | --- |
+| `guest` | Read projects, published versions, KV, Knowledge, project files and previews; download published source to run locally. |
+| `developer` | Edit drafts, upload, publish and write Server KV, Knowledge and project files. |
+| `maintainer` | Manage project information, icons, visibility and official configurations; manage guests and developers. |
+| `owner` | Assign every role, manage owners, delete projects and transfer ownership. |
+
+Cookie and API key requests use current account status and memberships. Revocation, disabling an account or making a public project private affects subsequent requests immediately, including previews. Guests may use local data when running downloaded projects; Server writes fail with a permission error. Personal configurations remain available within published field rules.
+
+## Groups and subgroups
+
+Open Groups in the sidebar to create a top-level group or navigate its projects, subgroups and breadcrumbs. A project belongs to one group or is an ungrouped personal project. Permission groups are independent of multi-project upload and publication bundles.
+
+Any signed-in user can create a personal project or top-level group and become its owner. Group developers may create projects and maintainers may create subgroups. Their creators retain inherited roles without automatic promotion.
+
+Effective access is the highest direct project role or role inherited from the containing group and every ancestor. Lower levels cannot reduce inherited access. Member pages show direct and effective roles with links to the source group. Removing direct membership preserves inherited permissions.
+
+Directories and member lists search and paginate authorized records on the Server. A public project neither grants group membership nor exposes private projects in the same group.
+
+## Members, invitations and requests
+
+Maintainers may grant guest or developer roles and manage users whose effective role is below maintainer. Owners manage every role. Invitation acceptance and request approval recheck current permissions and preserve existing higher roles. Membership invitations expire and are single use; recipients must sign in. Account invitations and password setup are separate from project and group invitations. Server does not send email.
+
+Public projects grant every signed-in user guest access without inserting membership records. Private projects accept access requests through published-version share links; approval by a maintainer or owner adds the requester as a guest. Source downloads no longer use separate grants. Revoke approved access through the member page and inspect inherited sources.
+
+Top-level groups and personal projects retain at least one active owner, protected by transactions. Group resources may inherit owners. Transfers require owner access to the resource, its source group when present and its destination. Cycles are prohibited. Only empty groups may be deleted; move their projects and subgroups first.
 
 ## Source and versions
 
-Upload jobs unpack archives and perform static checks. A failure preserves the existing draft and historical versions. Publishing creates an immutable version snapshot and updates `latest`; a duplicate version returns `409` without replacing an existing version.
+Uploads only extract, statically validate and save files. Server never installs dependencies, builds or executes uploaded code. Failures preserve drafts and published versions. Publication saves an immutable snapshot and updates `latest`; duplicate versions return `409`.
 
-Source downloads require the project's separate download permission. Version archives exclude KV, PersistentValue, SQLite, environment files, and CLI credentials.
+A developer upload cannot modify management metadata or ownership. Guests download published versions; draft reads require developer access. Archives exclude KV, PersistentValue, SQLite, environment files and CLI credentials.
 
-## Related projects
+## Related projects and batch publication
 
-A related project declaration contains an alias, target project UUID, and read/write grants for target data. Both declarations must point to each other; rules support `none`, `all`, and `prefixes`. Revocation takes effect immediately and does not delegate permissions recursively.
+Related declarations contain aliases, target UUIDs and read/write grants. Both declarations must agree, using `none`, `all` or `prefixes` rules. Related reads require the user's read access on both projects. Writes require developer access on both sides and valid bilateral write grants. Membership or relationship revocation affects subsequent calls immediately.
 
-A related write checks consumer data-write permission and target write grants. Source downloads and project management remain separate permissions.
+Multi-project publication rechecks developer access on each dependency and the root. Downloads check guest access per project and return missing dependencies and request links. Source operations never copy Server data.
 
-## Project groups and audit
+## System administration and audit
 
-Project-group publication statically validates archives and hashes, then locks dependencies to exact versions. Downloads check source permission per project and return skip reasons.
+User administration sets account status and system administrator identity. System administrators have global management access and handle accounts, system audit and administrative tools. System audit is administrator-only, with credentials redacted.
 
-Account, permission, API key, device sign-in, upload, publication, and data administration are audited. Reading audit logs requires `audit.read`, and credential fields are always redacted.
+HTTP responses expose `access: { effectiveRole, sources, capabilities }`. Clients use capabilities to control actions, and Server independently authorizes every operation. Client-supplied role fields never grant access. See the OpenAPI specification for the full contract.
 
 ## Project configurations
 

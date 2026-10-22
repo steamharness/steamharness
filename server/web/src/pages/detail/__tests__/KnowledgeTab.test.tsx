@@ -1,3 +1,4 @@
+import { resolveResourceAccess } from "@steamharness/project-access";
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { DetailPageProps } from "../types";
@@ -18,7 +19,7 @@ describe("KnowledgeTab server image lifecycle", () => {
       }));
       throw new Error(`Unexpected request: ${url}`);
     });
-    renderKnowledgeTab({ ...createProject("project-a", "Project A"), canManage: false, canWriteData: false });
+    renderKnowledgeTab({ ...createProject("project-a", "Project A"), access: resolveResourceAccess([{type:"project",id:"demo",role:"guest"}]) });
     fireEvent.click(await screen.findByRole("button", { name: "Read-only guide" }));
     expect(await screen.findByText("Visible to viewers.")).toBeTruthy();
     for (const name of ["新建文档", "编辑", "保存", "删除"]) {
@@ -135,7 +136,7 @@ function createProject(id: string, name: string): Summary {
   return {
     id,
     name,
-    projectType: "workflow", canManage: true, canWriteData: true,
+    projectType: "workflow", access: resolveResourceAccess([{type:"project",id:"demo",role:"owner"}]),
     projectCard: {
       icon: "workflow",
       iconBackgroundColor: "#2563eb",

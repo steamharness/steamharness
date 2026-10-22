@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { compareStrings, translateDynamicKey, useTranslation } from "@steamharness/i18n/react";
+import { translateDynamicKey, useTranslation } from "@steamharness/i18n/react";
 import type {
   ProjectKVAccessRule,
   RelatedProjectKVGrant,
@@ -26,7 +26,6 @@ import {
   type ProjectSourceAccessSummary,
   type RelatedProjectListResult,
   type RelatedProjectStatus,
-  type Summary,
 } from "../../types";
 import { ConfirmActionDialog, type ConfirmAction } from "@/components/ConfirmActionDialog";
 import { UserIdentity } from "@/components/UserIdentity";
@@ -51,6 +50,7 @@ import { SelectField } from "@/components/ui/select-field";
 import { TableLoadingRows } from "@/components/ui/table-loading-rows";
 import { TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { TablePanel } from "@/components/ui/table-panel";
+import { PaginationFooter } from "@/components/ui/pagination-footer";
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
 import { formatDate } from "../../utils/format";
@@ -86,7 +86,8 @@ const DEFAULT_GRANT_DRAFT: GrantDraft = {
 function SearchableProjectSelect({
   id,
   value,
-  options,
+  projectId,
+  excludedIds,
   placeholder,
   disabled,
   invalid,
@@ -94,20 +95,40 @@ function SearchableProjectSelect({
 }: {
   id: string;
   value: string;
-  options: SearchableProjectOption[];
+  projectId: string;
+  excludedIds: string[];
   placeholder: string;
   disabled?: boolean;
   invalid?: boolean;
   onValueChange: (value: string) => void;
 }) {
-  const { t, i18n } = useTranslation("serverWeb");
+  const { t } = useTranslation("serverWeb");
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
-  const selected = options.find((option) => option.value === value);
-  const normalizedQuery = query.trim().toLocaleLowerCase(i18n.language);
-  const filtered = normalizedQuery
-    ? options.filter((option) => option.label.toLocaleLowerCase(i18n.language).includes(normalizedQuery))
-    : options;
+  const [page, setPage] = useState(1);
+  const [result, setResult] = useState<{items: SearchableProjectOption[]; total: number}>({items: [], total: 0});
+  const [selected, setSelected] = useState<SearchableProjectOption>();
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+  const [revision, setRevision] = useState(0);
+  useEffect(() => {
+    if (!open) return;
+    let current = true;
+    setLoading(true);
+    const timer = setTimeout(() => {
+      void apiClient.listProjects({q: query, page}).then(response => {
+        if (!current) return;
+        if (!isApiSuccess(response)) throw new Error(response.errMessage);
+        const items = response.data.items.map(item => ({value: item.id, label: `${item.name} - ${translateDynamicKey(getProjectKindLabelKey(item.projectType))}`}));
+        setResult({items, total: response.data.total});
+        setError("");
+      }).catch(cause => { if (current) setError(cause instanceof Error ? cause.message : t("relatedProjectsLoadFailed")); })
+        .finally(() => { if (current) setLoading(false); });
+    }, 200);
+    return () => { current = false; clearTimeout(timer); };
+  }, [open, query, page, revision, t]);
+  const options = result.items.filter(item => item.value !== projectId && !excludedIds.includes(item.value));
+  const selectedLabel = result.items.find(item => item.value === value)?.label ?? (selected?.value === value ? selected.label : value || placeholder);
 
   return (
     <DropdownMenu
@@ -116,7 +137,7 @@ function SearchableProjectSelect({
       onOpenChange={(nextOpen) => {
         if (disabled) return;
         setOpen(nextOpen);
-        if (!nextOpen) setQuery("");
+        if (!nextOpen) {setQuery(""); setPage(1);}
       }}
     >
       <DropdownMenuTrigger asChild>
@@ -131,8 +152,8 @@ function SearchableProjectSelect({
           disabled={disabled}
           className="w-full justify-between font-normal"
         >
-          <span className={cn("min-w-0 truncate text-left", !selected && "text-muted-foreground")}>
-            {selected?.label ?? placeholder}
+          <span className={cn("min-w-0 truncate text-left", !value && "text-muted-foreground")}>
+            {selectedLabel}
           </span>
           <ChevronsUpDown data-icon="inline-end" />
         </Button>
@@ -146,14 +167,14 @@ function SearchableProjectSelect({
             aria-label={t("relatedProjectsSearchAria")}
             placeholder={t("relatedProjectsSearchPlaceholder")}
             value={query}
-            onChange={(event) => setQuery(event.target.value)}
+            onChange={(event) => { setQuery(event.target.value); setPage(1); }}
             onKeyDown={(event) => {
               if (event.key !== "ArrowDown" && event.key !== "Escape") event.stopPropagation();
             }}
           />
         </DropdownMenuLabel>
         <DropdownMenuSeparator />
-        {filtered.length === 0 ? (
+        {error ? <div role="alert" className="p-2 text-sm text-destructive">{error}<Button variant="outline" size="sm" onClick={() => setRevision(value => value + 1)}>{t("commonRetry")}</Button></div> : loading ? <div role="status" className="p-2 text-sm">{t("loginLoading")}</div> : options.length === 0 ? (
           <div role="status" className="px-2 py-6 text-center text-sm text-muted-foreground">
             {t("relatedProjectsNoMatches")}
           </div>
@@ -162,12 +183,13 @@ function SearchableProjectSelect({
             <DropdownMenuRadioGroup
               value={value}
               onValueChange={(nextValue) => {
+                setSelected(result.items.find(item => item.value === nextValue));
                 onValueChange(nextValue);
                 setOpen(false);
                 setQuery("");
               }}
             >
-              {filtered.map((option) => (
+              {options.map((option) => (
                 <DropdownMenuRadioItem key={option.value} value={option.value}>
                   {option.label}
                 </DropdownMenuRadioItem>
@@ -175,6 +197,9 @@ function SearchableProjectSelect({
             </DropdownMenuRadioGroup>
           </DropdownMenuGroup>
         )}
+        <PaginationFooter pageIndex={page-1} total={result.total} rowsOnPage={result.items.length}
+          previousDisabled={loading || page===1} nextDisabled={loading || page*20>=result.total}
+          onPrevious={() => setPage(page => page-1)} onNext={() => setPage(page => page+1)} />
       </DropdownMenuContent>
     </DropdownMenu>
   );
@@ -248,7 +273,6 @@ export function DependenciesTab({ project, detail, onNavigateProjectTab, refresh
   const [target, setTarget] = useState(project.latest ? "latest" : "draft");
   const [relations, setRelations] = useState<RelatedProjectListResult | null>(null);
   const [dependencyStatus, setDependencyStatus] = useState<ProjectDependencyStatusResult | null>(null);
-  const [projectCatalog, setProjectCatalog] = useState<Summary[] | null>(null);
   const [sourceAccess, setSourceAccess] = useState<ProjectSourceAccessSummary | null>(null);
   const [loadError, setLoadError] = useState("");
   const [dependencyError, setDependencyError] = useState("");
@@ -270,20 +294,17 @@ export function DependenciesTab({ project, detail, onNavigateProjectTab, refresh
     setLoadError("");
     setDependencyError("");
     try {
-      const [relationsResponse, projectsResponse, accessResponse, dependenciesResponse] = await Promise.all([
+      const [relationsResponse, accessResponse, dependenciesResponse] = await Promise.all([
         apiClient.listRelatedProjects(project.id),
-        project.canManage ? apiClient.listProjects() : undefined,
-        project.canManage ? apiClient.listSourceAccessRequests(project.id) : undefined,
+        project.access?.capabilities.includes("manageSettings") ? apiClient.listSourceAccessRequests(project.id) : undefined,
         project.projectType === "kanban"
           ? apiClient.getProjectDependencies(project.id, target)
           : undefined,
       ]);
       if (loadRequestIdRef.current !== requestId) return;
       if (!isApiSuccess(relationsResponse)) throw new Error(relationsResponse.errMessage);
-      if (projectsResponse && !isApiSuccess(projectsResponse)) throw new Error(projectsResponse.errMessage);
       if (accessResponse && !isApiSuccess(accessResponse)) throw new Error(accessResponse.errMessage);
       setRelations(relationsResponse.data);
-      setProjectCatalog(projectsResponse?.data ?? null);
       setSourceAccess(accessResponse?.data ?? null);
       if (dependenciesResponse !== undefined) {
         if (isApiSuccess(dependenciesResponse)) setDependencyStatus(dependenciesResponse.data);
@@ -297,14 +318,13 @@ export function DependenciesTab({ project, detail, onNavigateProjectTab, refresh
     } catch (error) {
       if (loadRequestIdRef.current !== requestId) return;
       setRelations(null);
-      setProjectCatalog(null);
       setSourceAccess(null);
       setDependencyStatus(null);
       setLoadError(error instanceof Error && error.message ? error.message : t("relatedProjectsLoadFailed"));
     } finally {
       if (loadRequestIdRef.current === requestId) setLoading(false);
     }
-  }, [project.id, project.projectType, project.canManage, t, target]);
+  }, [project.id, project.projectType, project.access?.capabilities.includes("manageSettings"), t, target]);
 
   useEffect(() => {
     void load();
@@ -328,20 +348,8 @@ export function DependenciesTab({ project, detail, onNavigateProjectTab, refresh
     }));
   }, [detail.versions?.versions, project.hasDraft, project.latest]);
 
-  const projectsById = useMemo(
-    () => new Map((projectCatalog ?? []).map((item) => [item.id, item])),
-    [projectCatalog],
-  );
-  const relatedProjectIds = new Set((relations?.relatedProjects ?? []).map((item) => item.relation.projectId));
-  const selectableProjects = (projectCatalog ?? [])
-    .filter((item) => item.id !== project.id && (editingAlias !== null || !relatedProjectIds.has(item.id)))
-    .sort((left, right) => compareStrings(left.name, right.name));
-  const projectOptions = selectableProjects.map((item) => ({
-    value: item.id,
-    label: `${item.name} - ${translateDynamicKey(getProjectKindLabelKey(item.projectType))}`,
-  }));
+  const relatedProjectIds = (relations?.relatedProjects ?? []).map(item => item.relation.projectId);
   const pendingRequests = sourceAccess?.requests.filter((request) => request.status === "pending") ?? [];
-  const activeCapabilities = sourceAccess?.grants.filter((grant) => grant.revokedAt === undefined) ?? [];
   const incompleteSources = dependencyStatus?.dependencies.filter((item) => (
     item.projectAvailable && item.relationshipConfirmed && !item.dataInitialized
   )) ?? [];
@@ -374,7 +382,7 @@ export function DependenciesTab({ project, detail, onNavigateProjectTab, refresh
   }
 
   async function saveRelation() {
-    if (saving || !project.canManage) return;
+    if (saving || !project.access?.capabilities.includes("manageSettings")) return;
     const alias = draft.alias.trim();
     const targetAlias = draft.targetAlias.trim();
     if (!/^[a-z][a-z0-9_-]{0,63}$/.test(alias) || !/^[a-z][a-z0-9_-]{0,63}$/.test(targetAlias)) {
@@ -436,7 +444,7 @@ export function DependenciesTab({ project, detail, onNavigateProjectTab, refresh
         <section className="flex min-w-0 flex-col gap-3">
           <header className="flex flex-wrap items-center justify-between gap-3">
             <div><h3 className="text-base font-semibold">{t("relatedProjectsCardTitle")}</h3><p className="text-sm text-muted-foreground">{t("relatedProjectsCardDescription")}</p></div>
-            {project.canManage ? <IconActionButton size="icon" variant="outline" label={t("relatedProjectsAdd")} disabled={loading || saving !== "" || projectOptions.length === 0} onClick={openCreateEditor}><Plus /></IconActionButton> : null}
+            {project.access?.capabilities.includes("manageSettings") ? <IconActionButton size="icon" variant="outline" label={t("relatedProjectsAdd")} disabled={loading || saving !== ""} onClick={openCreateEditor}><Plus /></IconActionButton> : null}
           </header>
           <div className="flex min-w-0 flex-col gap-4">
             {loadError ? (
@@ -448,8 +456,7 @@ export function DependenciesTab({ project, detail, onNavigateProjectTab, refresh
                     {loading && relations === null ? <TableLoadingRows colSpan={6} /> : (relations?.relatedProjects.length ?? 0) === 0 ? (
                       <TableEmptyRow colSpan={6} title={t("relatedProjectsEmptyTitle")} description={t("relatedProjectsEmptyDescription")} icon={<Link2 />} />
                     ) : relations!.relatedProjects.map((status) => {
-                      const targetProject = projectsById.get(status.relation.projectId);
-                      const targetName = status.projectName ?? targetProject?.name ?? t("relatedProjectsProjectUnavailable");
+                      const targetName = status.projectName ?? t("relatedProjectsProjectUnavailable");
                       return (
                         <TableRow key={status.relation.alias}>
                           <TableCell><code className="text-xs">{status.relation.alias}</code></TableCell>
@@ -458,9 +465,9 @@ export function DependenciesTab({ project, detail, onNavigateProjectTab, refresh
                           <TableCell><GrantSummary grant={status.relation.grantToRelatedProject} /></TableCell>
                           <TableCell><GrantSummary grant={status.grantFromRelatedProject} /></TableCell>
                           <TableActionCell contentClassName="gap-2">
-                            {project.canManage ? <IconActionButton disabled={saving !== ""} label={t("relatedProjectsEdit", { name: targetName })} onClick={() => openEditEditor(status)}><Pencil /></IconActionButton> : null}
-                            {targetProject ? <IconActionButton label={t("relatedProjectsOpen", { name: targetName })} onClick={() => onNavigateProjectTab(status.relation.projectId, "project")}><Workflow /></IconActionButton> : null}
-                            {project.canManage ? <IconActionButton danger disabled={saving !== ""} label={t("relatedProjectsRemove", { name: targetName })} onClick={() => setConfirmAction({ title: t("relatedProjectsRemoveConfirmTitle"), description: t("relatedProjectsRemoveConfirmDescription"), details: <span>{targetName}</span>, confirmLabel: t("relatedProjectsRemoveConfirmLabel"), tone: "destructive", onConfirm: async () => { setSaving(`remove:${status.relation.alias}`); const response = await apiClient.removeRelatedProject(project.id, status.relation.alias); setSaving(""); if (!isApiSuccess(response)) setLoadError(response.errMessage); else await load(); } })}><Trash2 /></IconActionButton> : null}
+                            {project.access?.capabilities.includes("manageSettings") ? <IconActionButton disabled={saving !== ""} label={t("relatedProjectsEdit", { name: targetName })} onClick={() => openEditEditor(status)}><Pencil /></IconActionButton> : null}
+                            {status.projectName ? <IconActionButton label={t("relatedProjectsOpen", { name: targetName })} onClick={() => onNavigateProjectTab(status.relation.projectId, "project")}><Workflow /></IconActionButton> : null}
+                            {project.access?.capabilities.includes("manageSettings") ? <IconActionButton danger disabled={saving !== ""} label={t("relatedProjectsRemove", { name: targetName })} onClick={() => setConfirmAction({ title: t("relatedProjectsRemoveConfirmTitle"), description: t("relatedProjectsRemoveConfirmDescription"), details: <span>{targetName}</span>, confirmLabel: t("relatedProjectsRemoveConfirmLabel"), tone: "destructive", onConfirm: async () => { setSaving(`remove:${status.relation.alias}`); const response = await apiClient.removeRelatedProject(project.id, status.relation.alias); setSaving(""); if (!isApiSuccess(response)) setLoadError(response.errMessage); else await load(); } })}><Trash2 /></IconActionButton> : null}
                           </TableActionCell>
                         </TableRow>
                       );
@@ -502,13 +509,12 @@ export function DependenciesTab({ project, detail, onNavigateProjectTab, refresh
           </section>
         ) : null}
 
-        {project.canManage ? <section className="flex min-w-0 flex-col gap-3">
+        {project.access?.capabilities.includes("manageSettings") ? <section className="flex min-w-0 flex-col gap-3">
           <header><h3 className="text-base font-semibold">{t("dependenciesSourceRequestsTitle")}</h3><p className="text-sm text-muted-foreground">{t("dependenciesSourceRequestsDescription")}</p></header>
           <div className="flex min-w-0 flex-col gap-4">
             {loading && sourceAccess === null ? <TablePanel><TableBody><TableLoadingRows colSpan={4} /></TableBody></TablePanel> : loadError ? null : (
               <>
                 <TablePanel className="min-w-[760px]"><TableHeader><TableRow><TableHead>{t("dependenciesHeaderRequester")}</TableHead><TableHead>{t("dependenciesHeaderReason")}</TableHead><TableHead>{t("dependenciesHeaderSubmittedAt")}</TableHead><TableHead className="text-right">{t("dependenciesHeaderActions")}</TableHead></TableRow></TableHeader><TableBody>{pendingRequests.length === 0 ? <TableEmptyRow colSpan={4} title={t("dependenciesNoPendingRequestsTitle")} description={t("dependenciesNoPendingRequestsDescription")} icon={<KeyRound />} /> : pendingRequests.map((request) => <TableRow key={request.id}><TableCell><UserIdentity user={{ userId: request.requesterUserId }} size="sm" showEmail={false} /></TableCell><TableCell className="max-w-[420px] whitespace-pre-wrap text-sm">{request.reason}</TableCell><TableCell className="text-xs text-muted-foreground">{formatDate(request.createdAt)}</TableCell><TableActionCell contentClassName="gap-2"><Button size="sm" variant="outline" disabled={saving !== ""} onClick={() => void resolveRequest(request.id, "rejected")}>{saving === `request:${request.id}:rejected` ? <Loader2 data-icon="inline-start" className="animate-spin" /> : <ShieldX data-icon="inline-start" />}{t("dependenciesRejectRequest")}</Button><Button size="sm" disabled={saving !== ""} onClick={() => void resolveRequest(request.id, "approved")}>{saving === `request:${request.id}:approved` ? <Loader2 data-icon="inline-start" className="animate-spin" /> : <Check data-icon="inline-start" />}{t("dependenciesApproveRequest")}</Button></TableActionCell></TableRow>)}</TableBody></TablePanel>
-                <TablePanel className="min-w-[760px]"><TableHeader><TableRow><TableHead>{t("dependenciesHeaderAuthorizedUser")}</TableHead><TableHead>{t("dependenciesHeaderGrantedAt")}</TableHead><TableHead>{t("dependenciesHeaderCapability")}</TableHead><TableHead className="text-right">{t("dependenciesHeaderActions")}</TableHead></TableRow></TableHeader><TableBody>{activeCapabilities.length === 0 ? <TableEmptyRow colSpan={4} title={t("dependenciesNoSourceGrantsTitle")} description={t("dependenciesNoSourceGrantsDescription")} icon={<ShieldCheck />} /> : activeCapabilities.map((grant) => <TableRow key={grant.userId}><TableCell><UserIdentity user={{ userId: grant.userId }} size="sm" showEmail={false} /></TableCell><TableCell className="text-xs text-muted-foreground">{formatDate(grant.createdAt)}</TableCell><TableCell><Badge variant="secondary">download_source</Badge></TableCell><TableActionCell><IconActionButton danger label={t("dependenciesRevokeSourceAccessLabel")} onClick={() => setConfirmAction({ title: t("dependenciesRevokeSourceAccessConfirmTitle"), description: t("dependenciesRevokeSourceAccessConfirmDescription"), details: <span className="font-mono text-xs break-all">{grant.userId}</span>, confirmLabel: t("dependenciesRevokeSourceAccessConfirmLabel"), tone: "destructive", onConfirm: async () => { setSaving(grant.userId); const response = await apiClient.revokeSourceCapability(project.id, grant.userId); setSaving(""); if (!isApiSuccess(response)) setLoadError(response.errMessage); else await load(); } })}><Trash2 /></IconActionButton></TableActionCell></TableRow>)}</TableBody></TablePanel>
               </>
             )}
           </div>
@@ -520,7 +526,7 @@ export function DependenciesTab({ project, detail, onNavigateProjectTab, refresh
           <DialogHeader><DialogTitle>{editingAlias ? t("relatedProjectsEditTitle") : t("relatedProjectsAddTitle")}</DialogTitle><DialogDescription>{t("relatedProjectsEditorDescription")}</DialogDescription></DialogHeader>
           <form id="related-project-editor" onSubmit={(event) => { event.preventDefault(); void saveRelation(); }}>
             <FieldGroup>
-              <Field><FieldLabel htmlFor="related-project-target">{t("relatedProjectsTargetProject")}</FieldLabel><SearchableProjectSelect id="related-project-target" value={draft.targetProjectId} options={projectOptions} placeholder={t("relatedProjectsTargetPlaceholder")} disabled={saving === "relation" || editingAlias !== null} invalid={formError !== "" && !draft.targetProjectId} onValueChange={(targetProjectId) => setDraft((current) => ({ ...current, targetProjectId }))} /></Field>
+              <Field><FieldLabel htmlFor="related-project-target">{t("relatedProjectsTargetProject")}</FieldLabel><SearchableProjectSelect id="related-project-target" value={draft.targetProjectId} projectId={project.id} excludedIds={editingAlias ? [] : relatedProjectIds} placeholder={t("relatedProjectsTargetPlaceholder")} disabled={saving === "relation" || editingAlias !== null} invalid={formError !== "" && !draft.targetProjectId} onValueChange={(targetProjectId) => setDraft((current) => ({ ...current, targetProjectId }))} /></Field>
               <div className="grid gap-4 md:grid-cols-2"><Field><FieldLabel htmlFor="related-project-alias">{t("relatedProjectsAlias")}</FieldLabel><Input id="related-project-alias" value={draft.alias} disabled={saving === "relation" || editingAlias !== null} onChange={(event) => setDraft((current) => ({ ...current, alias: event.target.value }))} /><FieldDescription>{t("relatedProjectsAliasDescription")}</FieldDescription></Field><Field><FieldLabel htmlFor="related-project-target-alias">{t("relatedProjectsTargetAlias")}</FieldLabel><Input id="related-project-target-alias" value={draft.targetAlias} disabled={saving === "relation"} onChange={(event) => setDraft((current) => ({ ...current, targetAlias: event.target.value }))} /><FieldDescription>{t("relatedProjectsTargetAliasDescription")}</FieldDescription></Field></div>
               <div className="grid gap-5 md:grid-cols-2">
                 <FieldSet><FieldLegend>{t("relatedProjectsGrantOutboundTitle")}</FieldLegend><FieldDescription>{t("relatedProjectsGrantOutboundDescription")}</FieldDescription><AccessRuleEditor id="outbound-read" label={t("relatedProjectsRead")} mode={draft.grantToRelatedProject.readMode} prefixes={draft.grantToRelatedProject.readPrefixes} disabled={saving === "relation"} onChange={(value) => setDraft((current) => ({ ...current, grantToRelatedProject: { ...current.grantToRelatedProject, readMode: value.mode, readPrefixes: value.prefixes } }))} /><AccessRuleEditor id="outbound-write" label={t("relatedProjectsWrite")} mode={draft.grantToRelatedProject.writeMode} prefixes={draft.grantToRelatedProject.writePrefixes} disabled={saving === "relation"} onChange={(value) => setDraft((current) => ({ ...current, grantToRelatedProject: { ...current.grantToRelatedProject, writeMode: value.mode, writePrefixes: value.prefixes } }))} /></FieldSet>

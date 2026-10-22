@@ -1,11 +1,13 @@
+import type { ResourceAccess, AccessPage, ProjectRole as FixedProjectRole } from "@steamharness/project-access";
+export type { ResourceAccess, AccessPage };
 
 import type { ProjectKind as SharedProjectKind } from "@steamharness/project-types";
 import type { ProjectInfoContract, RelatedProject, RelatedProjectKVGrant } from "@steamharness/project-info";
-import type { ProjectAccessRequest, ProjectCapabilityGrant, ProjectDependencyLock, ProjectDependencyStatusResult } from "@steamharness/project-dependencies";
+import type { ProjectAccessRequest, ProjectDependencyLock, ProjectDependencyStatusResult } from "@steamharness/project-dependencies";
 
 export type {
   ProjectAccessRequest,
-  ProjectCapabilityGrant,
+
   ProjectDependencyLock,
   ProjectDependencyStatusResult,
 };
@@ -70,30 +72,6 @@ export interface ServerHealthData {
   };
 }
 
-export type PermissionKey =
-  | "system.admin"
-  | "users.read"
-  | "users.manage"
-  | "roles.read"
-  | "roles.manage"
-  | "api_keys.manage_self"
-  | "api_keys.manage_all"
-  | "projects.create"
-  | "projects.read_public"
-  | "projects.read_all"
-  | "projects.manage_own"
-  | "projects.manage_all"
-  | "projects.delete"
-  | "projects.upload"
-  | "projects.publish"
-  | "projects.download_source"
-  | "storage.write"
-  | "kv.read"
-  | "kv.manage"
-  | "knowledge.manage"
-  | "audit.read"
-  | "audit.export";
-
 export type UserProfileStatus = "invited" | "active" | "disabled";
 
 export type AuthPrincipalKind =
@@ -111,9 +89,8 @@ export interface AuthPrincipal {
   // surface avatarUrl on the session so the header avatar renders on
   // every page without waiting for the settings-page profile fetch.
   avatarUrl?: string;
-  permissions?: PermissionKey[];
   apiKeyId?: string;
-  roleNames?: string[];
+  isSystemAdmin?: boolean;
 }
 
 export interface AuthSessionState {
@@ -131,9 +108,7 @@ export interface UserProfileRecord {
   createdAt: string;
   updatedAt: string;
   lastLoginAt?: string;
-  roleIds: string[];
-  roleNames: string[];
-  permissions: PermissionKey[];
+  isSystemAdmin: boolean;
 }
 
 export interface MeResult {
@@ -190,31 +165,6 @@ export interface DeviceCodeResult {
   updatedAt: string;
 }
 
-export interface PermissionDefinition {
-  key: PermissionKey;
-  label: string;
-  description: string;
-  group: string;
-}
-
-export interface PermissionGroup {
-  id: string;
-  label: string;
-  permissions: PermissionDefinition[];
-}
-
-export interface RoleRecord {
-  id: string;
-  name: string;
-  description: string;
-  builtin: boolean;
-  protected: boolean;
-  permissions: PermissionKey[];
-  createdByUserId?: string;
-  createdAt: string;
-  updatedAt: string;
-}
-
 export interface AdminUserSummary {
   userId: string;
   email: string;
@@ -222,8 +172,7 @@ export interface AdminUserSummary {
   status: UserProfileStatus;
   lastSignInAt?: string;
   createdAt?: string;
-  roles: string[];
-  permissions: PermissionKey[];
+  isSystemAdmin: boolean;
   avatarUrl?: string;
 }
 
@@ -273,8 +222,8 @@ export interface UserProfileSummary {
 }
 
 export interface Summary {
-  canManage?: boolean;
-  canWriteData?: boolean;
+  access?: ResourceAccess;
+  groupId?: string | null;
   sourceDownload?: {allowed: boolean; available: boolean; target: string | null};
   id: string;
   name: string;
@@ -328,7 +277,6 @@ export interface VersionSummary {
 
 export interface ProjectSourceAccessSummary {
   requests: ProjectAccessRequest[];
-  grants: ProjectCapabilityGrant[];
 }
 
 export interface ProjectAccessLinkInfo {
@@ -475,10 +423,12 @@ export interface KnowledgeDocumentLinesResult {
 
 
 
-export type ProjectRole = "owner" | "manager" | "writer" | "viewer";
-export type InvitationRole = "manager" | "writer" | "viewer";
+export type ProjectRole = FixedProjectRole;
+export type InvitationRole = FixedProjectRole;
 
 export interface ProjectMember {
+  directRole?: ProjectRole;
+  access: ResourceAccess;
   projectId: string;
   userId: string;
   profile?: UserProfileSummary;
@@ -491,6 +441,8 @@ export interface ProjectMember {
 export interface ProjectInvitation {
   id: string;
   projectId: string;
+  resourceType?: "project" | "group";
+  resourceId?: string;
   token: string;
   role: InvitationRole;
   createdBy?: string;
@@ -510,5 +462,7 @@ export interface InvitationLookupResult {
 
 export interface InvitationAcceptResult {
   invitation: ProjectInvitation;
-  member: ProjectMember;
+  member?: ProjectMember;
 }
+
+export interface ProjectGroup { id:string; name:string; description:string; parentId:string|null; createdAt:string; access:ResourceAccess }

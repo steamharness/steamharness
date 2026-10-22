@@ -1319,7 +1319,7 @@ describe("server workspace CLI helpers", () => {
     }
   });
 
-  it("ensures an existing package UUID is created on the server when requested", async () => {
+  it.each([undefined, "team-group"])("creates a project with the selected ownership group %s", async (groupId) => {
     const root = await mkdtemp(path.join(os.tmpdir(), "workflow-cli-create-bound-"));
     const projectDir = path.join(root, "workspace", "workflow", "hello");
     await mkdir(projectDir, { recursive: true });
@@ -1348,6 +1348,7 @@ describe("server workspace CLI helpers", () => {
       const packageContext = await readProjectPackageContext("hello", undefined);
       const created = await ensureProjectCreated({
         packageContext,
+        groupId,
         server: "http://127.0.0.1:7125",
         token: "api-key",
       });
@@ -1368,6 +1369,7 @@ describe("server workspace CLI helpers", () => {
               dataStorage: { mode: "both" },
               relatedProjects: [],
             },
+            ...(groupId ? {groupId} : {}),
           }),
         }),
       );

@@ -31,7 +31,7 @@ export interface Launcher {
   validateProjectCreation?(input: ProjectCreationInput): Promise<void>;
   createProject?(input: { templateId: string; name: string; parentDirectory: string }, signal?: AbortSignal): Promise<CreatedProject>;
   installDependencies?(directory: string, signal: AbortSignal, log: (message: string) => void): Promise<void>;
-  uploadProject?(project: Project, releaseLog: string, signal: AbortSignal, progress: (value: ProjectTransferProgress) => void): Promise<void>;
+  uploadProject?(project: Project, releaseLog: string, signal: AbortSignal, progress: (value: ProjectTransferProgress) => void, groupId?:string): Promise<void>;
   downloadProject?(projectId: string, version: string, signal: AbortSignal, progress: (value: ProjectTransferProgress) => void): Promise<DownloadedServerProject[]>;
   upgradeProject?(project: Project, version: string, signal: AbortSignal, progress: (value: ProjectTransferProgress) => void,
     beforeReplace: () => Promise<void>, afterReplace: (projects: DownloadedServerProject[]) => Promise<void>): Promise<UpdatedServerProject>;

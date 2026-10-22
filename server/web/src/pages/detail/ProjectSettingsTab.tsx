@@ -1,3 +1,4 @@
+import { ProjectOwnership } from "@/components/ProjectOwnership";
 import { useState, type ReactNode } from "react";
 import { ProjectAvatar } from "@/components/ProjectAvatar";
 import { ArrowUpRight, BookOpenText, Check, Copy, Database, Link2, Users } from "lucide-react";
@@ -19,7 +20,7 @@ import {
 import { CopyButton } from "./CopyButton";
 import type { DetailPageProps } from "./types";
 
-export function ProjectSettingsTab({ project, busy, onUpdateVisibility, onNavigateTab }: DetailPageProps) {
+export function ProjectSettingsTab({ project, busy, onUpdateVisibility, onNavigateTab, onRefresh }: DetailPageProps) {
   const { t, i18n } = useTranslation("serverWeb");
   const [action, setAction] = useState<ConfirmAction | null>(null);
   const loading = Boolean(busy.project);
@@ -111,12 +112,12 @@ export function ProjectSettingsTab({ project, busy, onUpdateVisibility, onNaviga
           </CardHeader>
           <CardContent className="flex flex-col gap-5">
             <FieldGroup>
-              <Field orientation="horizontal" data-disabled={loading || !project.canManage}>
+              <Field orientation="horizontal" data-disabled={loading || !project.access?.capabilities.includes("manageSettings")}>
                 <FieldContent className="min-w-0">
                   <FieldLabel htmlFor="project-public">{t("storagePublicProject")}</FieldLabel>
                   <FieldDescription>{t("storagePublicProjectDescription")}</FieldDescription>
                 </FieldContent>
-                <Switch id="project-public" checked={isPublic} disabled={loading || !project.canManage} onCheckedChange={checked => setAction({
+                <Switch id="project-public" checked={isPublic} disabled={loading || !project.access?.capabilities.includes("manageSettings")} onCheckedChange={checked => setAction({
                   title: t(checked ? "projectSettingsSetPublicConfirm" : "projectSettingsSetPrivateConfirm"),
                   description: t(checked ? "projectSettingsSetPublicConfirmDescription" : "projectSettingsSetPrivateConfirmDescription"),
                   details: <span className="break-words">{getProjectDisplayName(project, i18n.language)}</span>,
@@ -127,7 +128,7 @@ export function ProjectSettingsTab({ project, busy, onUpdateVisibility, onNaviga
             </FieldGroup>
             <p className="text-sm text-muted-foreground">{t(isPublic ? "projectSettingsPublicDescription" : "projectSettingsPrivateDescription")}</p>
             <dl className="grid grid-cols-1 gap-4 text-sm sm:grid-cols-2">
-              <SettingsDetail label={t("projectSettingsMembersManage")}>{permissionBadge(project.canManage)}</SettingsDetail>
+              <SettingsDetail label={t("projectSettingsMembersManage")}>{permissionBadge(project.access?.capabilities.includes("manageSettings"))}</SettingsDetail>
               <SettingsDetail label={t("dependenciesHeaderSourcePermission")}>{permissionBadge(project.sourceDownload?.allowed)}</SettingsDetail>
             </dl>
           </CardContent>
@@ -140,7 +141,7 @@ export function ProjectSettingsTab({ project, busy, onUpdateVisibility, onNaviga
               <SettingsDetail label={t("projectStorageModeLabel")}><Badge variant="secondary">{storageModeLabel}</Badge></SettingsDetail>
               <SettingsDetail label={t("projectStorageAllowedLocations")}>{allowedLocationsLabel}</SettingsDetail>
               <SettingsDetail label={t("projectStorageServerAccess")}>{permissionBadge(storageAccess.allowed)}</SettingsDetail>
-              <SettingsDetail label={t("relatedProjectsWrite")}>{permissionBadge(storageAccess.allowed && project.canWriteData)}</SettingsDetail>
+              <SettingsDetail label={t("relatedProjectsWrite")}>{permissionBadge(storageAccess.allowed && project.access?.capabilities.includes("writeData"))}</SettingsDetail>
             </dl>
             <p className="text-sm text-muted-foreground">{storageAccess.allowed
               ? t("projectStorageServerAccessAllowedDescription")
@@ -184,6 +185,7 @@ export function ProjectSettingsTab({ project, busy, onUpdateVisibility, onNaviga
           </CardContent>
         </Card>
       </div>
+      <ProjectOwnership key={project.id} project={project} onRefresh={onRefresh}/>
       <ConfirmActionDialog action={action} onOpenChange={open => { if (!open) setAction(null); }} />
     </div>
   );

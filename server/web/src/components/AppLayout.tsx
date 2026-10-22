@@ -218,6 +218,5 @@ export const CONSOLE_NAV_ICONS = { projects: FolderKanban, settings: Settings, a
 
 export const ADMIN_TAB_META: Record<import("../state").AdminTab, { labelKey: ServerWebResourceKey; icon: LucideIcon }> = {
   users: { labelKey: "adminTabUsers", icon: Users },
-  roles: { labelKey: "adminTabRoles", icon: ShieldCheck },
   audit: { labelKey: "adminTabAudit", icon: ScrollText },
 };

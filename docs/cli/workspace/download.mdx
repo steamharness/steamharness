@@ -23,7 +23,7 @@ Workflow、Conversation 和 Kanban 均可下载正式版本；项目类型不会
 
 ## 权限和写入
 
-源码下载与数据读取独立授权。owner、manager 或获得源码下载授权的用户可下载；writer/viewer 的数据权限本身不授予源码。缺权限的依赖返回申请链接，其余项目仍可下载。
+已发布源码下载要求访客及以上角色。公开项目向登录用户提供隐式访客权限；私有项目通过分享链接申请后，由维护者或所有者批准加入为访客。每个依赖独立校验目标项目权限，源码不包含服务器数据。
 
 新项目先写 staging，再移动到目标路径；校验或移动失败会移除本次新增目录。已有项目仅在 UUID 和版本均匹配时复用，保留其本地修改；不同版本不会被误报为已下载，已占用的目标目录拒绝覆盖，可通过 `--path` 选择其他目录。文本与 base64 二进制文件按原始字节恢复并校验 SHA-256。
 
@@ -31,9 +31,9 @@ Workflow、Conversation 和 Kanban 均可下载正式版本；项目类型不会
 
 ## API
 
-- 草稿：`GET /api/workflows/{workflow}/files?target=draft&includeBinary=true`。
-- 项目组：`GET /api/workflows/{workflow}/project-group-download?target=<target>`。
-- 单版本 tar.gz：`GET /api/workflows/{workflow}/source-archive?target=<version>`。
+- 草稿：`GET /api/projects/{projectId}/files?target=draft&includeBinary=true`。
+- 项目组：`GET /api/projects/{projectId}/project-group-download?target=<target>`。
+- 单版本 tar.gz：`GET /api/projects/{projectId}/source-archive?target=<version>`。
 
 ```bash
 steamharness workspace download hello --target 1.2.0 --path ./hello-copy

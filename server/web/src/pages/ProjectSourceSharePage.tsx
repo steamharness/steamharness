@@ -16,7 +16,7 @@ import { projectSourceArchivePath } from "@/utils/routes";
 export function ProjectSourceSharePage({ id, version, onNavigateProjects }: { id: string; version: string; onNavigateProjects: () => void }) {
   const { t } = useTranslation("serverWeb");
   const [revision, setRevision] = useState(0);
-  const [state, setState] = useState<{ loading: boolean; data?: SourceShare; error?: string }>({ loading: true });
+  const [state, setState] = useState<{ loading: boolean; data?: SourceShare; error?: string; requestPath?: string }>({ loading: true });
   useEffect(() => {
     const controller = new AbortController();
     setState({ loading: true });
@@ -24,7 +24,7 @@ export function ProjectSourceSharePage({ id, version, onNavigateProjects }: { id
       if (controller.signal.aborted) return;
       setState(isApiSuccess(result) && result.data
         ? { loading: false, data: result.data }
-        : { loading: false, error: result.errMessage || t("sourceShareUnavailable") });
+        : { loading: false, error: result.errMessage || t("sourceShareUnavailable"), requestPath: accessRequestPath(result.data) });
     });
     return () => controller.abort();
   }, [id, version, revision, t]);
@@ -37,7 +37,7 @@ export function ProjectSourceSharePage({ id, version, onNavigateProjects }: { id
       <main className="mx-auto flex w-full max-w-2xl flex-col gap-6 px-4 py-8 lg:px-6">
         <h1 className="flex items-center gap-2 text-xl font-semibold"><Package className="size-5" />{t("sourceShareTitle")}</h1>
         {state.loading ? <div aria-busy="true" className="flex flex-col gap-4"><Skeleton className="h-8 w-2/3" /><Skeleton className="h-40 w-full" /></div>
-          : state.error ? <Alert variant="destructive"><CircleAlert /><AlertDescription>{state.error}</AlertDescription></Alert>
+          : state.error ? <div className="flex flex-col gap-4"><Alert variant="destructive"><CircleAlert /><AlertDescription>{state.error}</AlertDescription></Alert>{state.requestPath && <Button asChild><a href={state.requestPath}>{t("sourceAccessTitle")}</a></Button>}</div>
           : state.data && <Card>
             <CardHeader><CardTitle className="break-words">{state.data.name}</CardTitle><Badge variant="secondary">{state.data.version}</Badge></CardHeader>
             <CardContent>
@@ -56,4 +56,12 @@ export function ProjectSourceSharePage({ id, version, onNavigateProjects }: { id
       </main>
     </div>
   );
+}
+
+function accessRequestPath(data: unknown): string | undefined {
+  if (!data || typeof data !== "object" || !("requestUrl" in data) || typeof data.requestUrl !== "string") return;
+  try {
+    const url = new URL(data.requestUrl, window.location.origin);
+    if (url.origin === window.location.origin && /^\/access-requests\/[^/]+$/.test(url.pathname)) return url.pathname;
+  } catch { /* Invalid request links are not navigable. */ }
 }

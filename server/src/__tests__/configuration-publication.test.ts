@@ -1,3 +1,4 @@
+import {resolveResourceAccess} from "@steamharness/project-access";
 import assert from 'node:assert/strict';
 import {mkdtemp,readFile,rm} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
@@ -15,7 +16,7 @@ async function fixture(fields:ProjectConfigurationField[]) {
     {path:'index.ts',content:'throw new Error("Server must never execute source");'},
     {path:'configuration.json',content:JSON.stringify({version:2,fields})},
   ]});
-  storage.getProjectAccessSummary=async()=>({projectId,projectName:'Config test',ownerUserId:'author',visibility:'private'});
+  storage.getProjectAccessSummary=async(_id,userId)=>({projectId,projectName:"Config test",visibility:"private",access:resolveResourceAccess([{type:"project",id:projectId,role:userId==="author"?"owner":userId==="downloader"?"guest":"developer"}])});
   const options={projectName:projectId,actorId:'author'};
   return {root,storage,options,prepared};
 }
@@ -31,7 +32,7 @@ test('official templates filter source, lock JSON edits, isolate accounts and re
     const draft=author.publication!;
     const attempts=await Promise.allSettled([1,2].map(()=>storage.projectConfigurations(options,{action:'publication.save',revision:author.revision,publication:draft})));
     assert.equal(attempts.filter(r=>r.status==='fulfilled').length,1);
-    await assert.rejects(storage.projectConfigurations({...options,actorId:'downloader',administrator:false},{action:'publication.save',revision:0,publication:draft}),/owner/);
+    await assert.rejects(storage.projectConfigurations({...options,actorId:'downloader',administrator:false},{action:'publication.save',revision:0,publication:draft}),/Maintainer/);
     await assert.rejects(storage.publish({projectName:projectId,createdByUserId:'author',expectedSourceHash:prepared.sourceHash,expectedConfigurationRevision:0}),/draft/);
     await storage.publish({projectName:projectId,createdByUserId:'author',expectedSourceHash:prepared.sourceHash,expectedConfigurationRevision:1});
     const distributed=await storage.getFiles({projectName:projectId,target:'1.0.0',includeBinary:true});
@@ -49,7 +50,7 @@ test('official templates filter source, lock JSON edits, isolate accounts and re
     assert.equal(configurationSnapshot(next).values.own,'user-token');
     const other=await storage.projectConfigurations({...recipientOptions,actorId:'other'},{action:'get'}) as ProjectConfigurationState;
     assert.ok(!Object.hasOwn(configurationSnapshot(other,undefined,false).values,'own'));
-    await assert.rejects(storage.projectConfigurations({...options,actorId:'manager'},{action:'publication.save',revision:author.revision,publication:{...draft,revision:1}}),/owner/);
+    await assert.rejects(storage.projectConfigurations({...options,actorId:'manager'},{action:'publication.save',revision:author.revision,publication:{...draft,revision:1}}),/Maintainer/);
   } finally {await rm(root,{recursive:true,force:true});}
 });
 test('publication freezes only included attachments and preserves bytes after original deletion',async()=>{

@@ -82,17 +82,8 @@ export function AccountPage({
     }
   }, [createdToken]);
 
-  const permissionSummary = useMemo(() => {
-    const permissions = me?.principal?.permissions ?? profile?.permissions ?? [];
-    if (permissions.length === 0) {
-      return t("accountPermissionSummaryNone");
-    }
-    return permissions.join(" · ");
-  }, [me?.principal?.permissions, profile?.permissions, t]);
-
-  const roleSummary = profile?.roleNames.length
-    ? profile.roleNames.join(" · ")
-    : me?.principal?.roleNames?.join(" · ") ?? t("accountRoleBase");
+  const roleSummary=t((profile?.isSystemAdmin ?? me?.principal?.isSystemAdmin)?"accessSystemAdmin":"accessRegularUser");
+  const permissionSummary=t("accessAccountHelp");
 
   const profileDirty =
     displayName.trim() !== (profile?.displayName ?? "").trim() ||

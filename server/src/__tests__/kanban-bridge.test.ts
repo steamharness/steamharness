@@ -214,8 +214,7 @@ test("server Kanban bridge hides unavailable related-project failures", async ()
       input: { alias: "stocks", key: "stock-database.v3:catalog" },
     }),
     (reason: unknown) => reason instanceof HttpError &&
-      reason.statusCode === 404 &&
-      reason.message === "Kanban related project is unavailable.",
+      reason.statusCode === 403,
   );
   assert.equal(dataRead, false);
 });

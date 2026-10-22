@@ -1,13 +1,9 @@
 import { createHash, randomBytes, randomUUID } from "node:crypto";
 import type pg from "pg";
 import { createPostgresPool } from "./postgres";
+import { HttpError } from "./protocol";
 import { resolveStorageAvatarBaseUrlOrigin } from "./storage-driver";
-import {
-  DEFAULT_AUTHENTICATED_PERMISSION_KEYS,
-  listBuiltinProjectRoles,
-  normalizeProjectPermissionKeys,
-  type PermissionKey,
-} from "./permissions";
+
 
 export type UserProfileStatus = "invited" | "active" | "disabled";
 export type DeviceCodeState = "pending" | "approved" | "denied" | "expired" | "consumed";
@@ -21,21 +17,7 @@ export interface UserProfileRecord {
   createdAt: string;
   updatedAt: string;
   lastLoginAt?: string;
-  roleIds: string[];
-  roleNames: string[];
-  permissions: PermissionKey[];
-}
-
-export interface RoleRecord {
-  id: string;
-  name: string;
-  description: string;
-  builtin: boolean;
-  protected: boolean;
-  permissions: PermissionKey[];
-  createdByUserId?: string;
-  createdAt: string;
-  updatedAt: string;
+  isSystemAdmin: boolean;
 }
 
 export interface ApiKeyRecord {
@@ -150,32 +132,11 @@ interface UserProfileRow {
   display_name: string;
   avatar_url: string | null;
   status: string;
+  is_system_admin: boolean;
   created_by_user_id: string | null;
   created_at: Date;
   updated_at: Date;
   last_login_at: Date | null;
-}
-
-interface RoleRow {
-  id: string;
-  name: string;
-  description: string;
-  builtin: boolean;
-  protected: boolean;
-  created_by_user_id: string | null;
-  created_at: Date;
-  updated_at: Date;
-}
-
-interface RolePermissionRow {
-  role_id: string;
-  permission_key: string;
-}
-
-interface UserRoleRow {
-  user_id: string;
-  role_id: string;
-  role_name: string;
 }
 
 interface ApiKeyRow {
@@ -263,6 +224,7 @@ export class AccountRepository {
         display_name text not null default '',
         avatar_url text,
         status text not null default 'invited',
+        is_system_admin boolean not null default false,
         created_by_user_id text,
         created_at timestamptz not null default now(),
         updated_at timestamptz not null default now(),
@@ -271,6 +233,9 @@ export class AccountRepository {
 
       alter table user_profiles
         add column if not exists avatar_url text;
+
+      alter table user_profiles
+        add column if not exists is_system_admin boolean not null default false;
 
       create unique index if not exists user_profiles_email_idx
         on user_profiles (lower(email));
@@ -340,32 +305,7 @@ export class AccountRepository {
       create index if not exists audit_events_created_at_idx
         on audit_events(created_at desc);
 
-      create table if not exists roles (
-        id text primary key,
-        name text not null unique,
-        description text not null default '',
-        builtin boolean not null default false,
-        protected boolean not null default false,
-        created_by_user_id text,
-        created_at timestamptz not null default now(),
-        updated_at timestamptz not null default now()
-      );
-
-      create table if not exists role_permissions (
-        role_id text not null references roles(id) on delete cascade,
-        permission_key text not null,
-        primary key (role_id, permission_key)
-      );
-
-      create table if not exists user_roles (
-        user_id text not null references user_profiles(user_id) on delete cascade,
-        role_id text not null references roles(id) on delete cascade,
-        primary key (user_id, role_id)
-      );
-
     `);
-
-    await this.ensureBuiltinRoles();
   }
 
   async upsertUserProfile(input: {
@@ -376,6 +316,9 @@ export class AccountRepository {
     createdByUserId?: string;
     lastLoginAt?: string;
   }): Promise<UserProfileRecord> {
+    if (input.status && input.status !== "active" && await this.getUserProfile(input.userId)) {
+      await this.updateUserProfile(input.userId, {status: input.status});
+    }
     const displayName = normalizeDisplayName(input.displayName, input.email);
     await this.pool.query(
       `insert into user_profiles (
@@ -385,7 +328,7 @@ export class AccountRepository {
        on conflict (user_id) do update set
          email = excluded.email,
          display_name = excluded.display_name,
-         status = excluded.status,
+         status = case when user_profiles.status = 'disabled' then user_profiles.status else excluded.status end,
          updated_at = now(),
          last_login_at = coalesce(excluded.last_login_at, user_profiles.last_login_at)`,
       [
@@ -415,7 +358,7 @@ export class AccountRepository {
       return new Map();
     }
     const result = await this.pool.query<UserProfileRow>(
-      `select user_id, email, display_name, status, created_by_user_id, created_at, updated_at, last_login_at
+      `select user_id, email, display_name, status, is_system_admin, created_by_user_id, created_at, updated_at, last_login_at
       , avatar_url
        from user_profiles
        where user_id = any($1::text[])
@@ -451,7 +394,7 @@ export class AccountRepository {
     }
 
     const result = await this.pool.query<UserProfileRow>(
-      `select user_id, email, display_name, status, created_by_user_id, created_at, updated_at, last_login_at
+      `select user_id, email, display_name, status, is_system_admin, created_by_user_id, created_at, updated_at, last_login_at
       , avatar_url
        from user_profiles
        ${where.length > 0 ? `where ${where.join(" and ")}` : ""}
@@ -491,167 +434,49 @@ export class AccountRepository {
     }
 
     if (updates.length > 0) {
-      await this.pool.query(
-        `update user_profiles
-         set ${updates.join(", ")}, updated_at = now()
-         where user_id = $1`,
-        params,
-      );
+      const client=await this.pool.connect();
+      try {
+        await client.query("begin");
+        await client.query("select pg_advisory_xact_lock(hashtext('steamharness-resource-access'))");
+        await client.query("select pg_advisory_xact_lock(hashtext('steamharness-account-admin'))");
+        if (patch.status && patch.status !== 'active') await this.assertCanDisableAccount(userId,client);
+        await client.query(`update user_profiles set ${updates.join(", ")},updated_at=now() where user_id=$1`,params);
+        await client.query("commit");
+      } catch(error) {await client.query("rollback");throw error;} finally {client.release();}
     }
 
     return this.getUserProfileOrThrow(userId);
   }
 
-  async listRoles(): Promise<RoleRecord[]> {
-    const roles = await this.readRoleRows();
-    const permissions = await this.readRolePermissions();
-    return roles.map((row) => toRoleRecord(row, permissions.get(row.id) ?? []));
+  /** The caller holds the resource-access and account-admin transaction locks. */
+  async assertCanDisableAccount(userId: string, client: pg.PoolClient): Promise<void> {
+          const admin=await client.query("select 1 from user_profiles where user_id=$1 and status='active' and is_system_admin and not exists(select 1 from user_profiles where user_id<>$1 and status='active' and is_system_admin)",[userId]);
+          if(admin.rowCount) throw new HttpError(409,409,"The last system administrator cannot be disabled.");
+          const schema=await client.query("select to_regclass('projects') as projects");
+          if(schema.rows[0].projects) {
+            const unowned=await client.query(`select 1 from projects p join project_members m on m.project_id=p.id where p.group_id is null and m.user_id=$1 and m.role='owner'
+              and not exists(select 1 from project_members other join user_profiles u on u.user_id=other.user_id where other.project_id=p.id and other.user_id<>$1 and other.role='owner' and u.status='active')
+              union all select 1 from project_groups g join group_members m on m.group_id=g.id where g.parent_id is null and m.user_id=$1 and m.role='owner'
+              and not exists(select 1 from group_members other join user_profiles u on u.user_id=other.user_id where other.group_id=g.id and other.user_id<>$1 and other.role='owner' and u.status='active') limit 1`,[userId]);
+            if(unowned.rowCount) throw new HttpError(409,409,"Transfer sole ownership before disabling this account.");
+          }
   }
 
-  async getRole(roleId: string): Promise<RoleRecord | undefined> {
-    const result = await this.pool.query<RoleRow>(
-      `select id, name, description, builtin, protected, created_by_user_id, created_at, updated_at
-       from roles
-       where id = $1`,
-      [roleId],
-    );
-    const row = result.rows[0];
-    if (row === undefined) {
-      return undefined;
-    }
-    const permissions = await this.readRolePermissions([roleId]);
-    return toRoleRecord(row, permissions.get(roleId) ?? []);
-  }
-
-  async createRole(input: {
-    name: string;
-    description?: string;
-    permissions: PermissionKey[];
-    createdByUserId?: string;
-  }): Promise<RoleRecord> {
-    const roleId = randomUUID();
-    const permissions = normalizeProjectPermissionKeys(input.permissions);
+  async setSystemAdministrator(userId: string, isSystemAdmin: boolean): Promise<UserProfileRecord> {
     const client = await this.pool.connect();
     try {
       await client.query("begin");
-      await client.query(
-        `insert into roles (
-           id, name, description, builtin, protected, created_by_user_id, created_at, updated_at
-         )
-         values ($1, $2, $3, false, false, $4, now(), now())`,
-        [
-          roleId,
-          input.name.trim(),
-          input.description?.trim() ?? "",
-          input.createdByUserId ?? null,
-        ],
-      );
-      for (const permission of permissions) {
-        await client.query(
-          `insert into role_permissions (role_id, permission_key)
-           values ($1, $2)`,
-          [roleId, permission],
-        );
+      await client.query("select pg_advisory_xact_lock(hashtext('steamharness-account-admin'))");
+      if (!isSystemAdmin) {
+        const owners = await client.query("select user_id from user_profiles where is_system_admin and status='active' and user_id<>$1", [userId]);
+        const current = await client.query("select is_system_admin from user_profiles where user_id=$1", [userId]);
+        if (current.rows[0]?.is_system_admin && !owners.rowCount) throw new HttpError(409,409,"The last system administrator cannot be demoted.");
       }
+      await client.query("update user_profiles set is_system_admin=$2,updated_at=now() where user_id=$1", [userId,isSystemAdmin]);
       await client.query("commit");
-    } catch (error) {
-      await client.query("rollback");
-      throw error;
-    } finally {
-      client.release();
-    }
-    return (await this.getRole(roleId))!;
-  }
-
-  async updateRole(
-    roleId: string,
-    input: {
-      name?: string;
-      description?: string;
-      permissions?: PermissionKey[];
-    },
-  ): Promise<RoleRecord> {
-    const existing = await this.getRole(roleId);
-    if (existing === undefined) {
-      throw new Error(`Role "${roleId}" not found.`);
-    }
-    if (existing.builtin || existing.protected) {
-      throw new Error(`Built-in role "${existing.name}" is read-only.`);
-    }
-
-    const client = await this.pool.connect();
-    try {
-      await client.query("begin");
-      if (input.name !== undefined || input.description !== undefined) {
-        await client.query(
-          `update roles
-           set name = coalesce($2, name),
-             description = coalesce($3, description),
-             updated_at = now()
-           where id = $1`,
-          [
-            roleId,
-            input.name?.trim() || null,
-            input.description?.trim() || null,
-          ],
-        );
-      }
-      if (input.permissions !== undefined) {
-        const permissions = normalizeProjectPermissionKeys(input.permissions);
-        await client.query(`delete from role_permissions where role_id = $1`, [roleId]);
-        for (const permission of permissions) {
-          await client.query(
-            `insert into role_permissions (role_id, permission_key)
-             values ($1, $2)`,
-            [roleId, permission],
-          );
-        }
-      }
-      await client.query("commit");
-    } catch (error) {
-      await client.query("rollback");
-      throw error;
-    } finally {
-      client.release();
-    }
-    return (await this.getRole(roleId))!;
-  }
-
-  async deleteRole(roleId: string): Promise<void> {
-    const existing = await this.getRole(roleId);
-    if (existing === undefined) {
-      return;
-    }
-    if (existing.builtin || existing.protected) {
-      throw new Error(`Built-in role "${existing.name}" cannot be deleted.`);
-    }
-    await this.pool.query(`delete from roles where id = $1`, [roleId]);
-  }
-
-  async setUserRoles(userId: string, roleIds: string[]): Promise<UserProfileRecord> {
-    const normalizedRoleIds = [...new Set(roleIds)];
-    const client = await this.pool.connect();
-    try {
-      await client.query("begin");
-      await client.query(`delete from user_roles where user_id = $1`, [userId]);
-      for (const roleId of normalizedRoleIds) {
-        await client.query(
-          `insert into user_roles (user_id, role_id)
-           values ($1, $2)
-           on conflict (user_id, role_id) do nothing`,
-          [userId, roleId],
-        );
-      }
-      await client.query("commit");
-    } catch (error) {
-      await client.query("rollback");
-      throw error;
-    } finally {
-      client.release();
-    }
+    } catch(error) { await client.query("rollback"); throw error; } finally { client.release(); }
     return this.getUserProfileOrThrow(userId);
   }
-
 
   async createApiKey(input: {
     userId: string;
@@ -1148,46 +973,9 @@ export class AccountRepository {
     return result.rows.map(toAuthUserRecord);
   }
 
-  private async ensureBuiltinRoles(): Promise<void> {
-    const client = await this.pool.connect();
-    try {
-      await client.query("begin");
-      for (const role of listBuiltinProjectRoles()) {
-        await client.query(
-          `insert into roles (
-             id, name, description, builtin, protected, created_at, updated_at
-           )
-           values ($1, $2, $3, true, $4, now(), now())
-           on conflict (id) do update set
-             name = excluded.name,
-             description = excluded.description,
-             builtin = true,
-             protected = excluded.protected,
-             updated_at = now()`,
-          [role.id, role.name, role.description, role.protected],
-        );
-        await client.query(`delete from role_permissions where role_id = $1`, [role.id]);
-        for (const permission of role.permissions) {
-          await client.query(
-            `insert into role_permissions (role_id, permission_key)
-             values ($1, $2)
-             on conflict (role_id, permission_key) do nothing`,
-            [role.id, permission],
-          );
-        }
-      }
-      await client.query("commit");
-    } catch (error) {
-      await client.query("rollback");
-      throw error;
-    } finally {
-      client.release();
-    }
-  }
-
   private async readProfileRow(userId: string): Promise<UserProfileRow | undefined> {
     const result = await this.pool.query<UserProfileRow>(
-      `select user_id, email, display_name, status, created_by_user_id, created_at, updated_at, last_login_at
+      `select user_id, email, display_name, status, is_system_admin, created_by_user_id, created_at, updated_at, last_login_at
       , avatar_url
        from user_profiles
        where user_id = $1`,
@@ -1200,13 +988,7 @@ export class AccountRepository {
     if (rows.length === 0) {
       return [];
     }
-    const userIds = rows.map((row) => row.user_id);
-    const [roles, permissions] = await Promise.all([
-      this.readUserRoles(userIds),
-      this.readUserPermissions(userIds),
-    ]);
     return rows.map((row) => {
-      const userRoles = roles.get(row.user_id) ?? [];
       return {
         userId: row.user_id,
         email: row.email,
@@ -1217,77 +999,11 @@ export class AccountRepository {
         createdAt: row.created_at.toISOString(),
         updatedAt: row.updated_at.toISOString(),
         lastLoginAt: row.last_login_at?.toISOString(),
-        roleIds: userRoles.map((role) => role.roleId),
-        roleNames: userRoles.map((role) => role.name),
-        permissions: permissions.get(row.user_id) ?? [...DEFAULT_AUTHENTICATED_PERMISSION_KEYS],
+        isSystemAdmin: row.is_system_admin === true,
       };
     });
   }
 
-  private async readRoleRows(): Promise<RoleRow[]> {
-    const result = await this.pool.query<RoleRow>(
-      `select id, name, description, builtin, protected, created_by_user_id, created_at, updated_at
-       from roles
-       order by builtin desc, name asc, id asc`,
-    );
-    return result.rows;
-  }
-
-  private async readRolePermissions(roleIds?: string[]): Promise<Map<string, PermissionKey[]>> {
-    const result = await this.pool.query<RolePermissionRow>(
-      `select role_id, permission_key
-       from role_permissions
-       ${roleIds && roleIds.length > 0 ? `where role_id = any($1::text[])` : ""}
-       order by role_id asc, permission_key asc`,
-      roleIds && roleIds.length > 0 ? [roleIds] : [],
-    );
-    const grouped = new Map<string, PermissionKey[]>();
-    for (const row of result.rows) {
-      const list = grouped.get(row.role_id) ?? [];
-      list.push(row.permission_key as PermissionKey);
-      grouped.set(row.role_id, list);
-    }
-    return grouped;
-  }
-
-  private async readUserRoles(userIds: string[]): Promise<Map<string, Array<{ roleId: string; name: string }>>> {
-    const result = await this.pool.query<UserRoleRow>(
-      `select ur.user_id, ur.role_id, r.name as role_name
-       from user_roles ur
-       join roles r on r.id = ur.role_id
-       where ur.user_id = any($1::text[])
-       order by r.builtin desc, r.name asc, ur.role_id asc`,
-      [userIds],
-    );
-    const grouped = new Map<string, Array<{ roleId: string; name: string }>>();
-    for (const row of result.rows) {
-      const list = grouped.get(row.user_id) ?? [];
-      list.push({ roleId: row.role_id, name: row.role_name });
-      grouped.set(row.user_id, list);
-    }
-    return grouped;
-  }
-
-  private async readUserPermissions(userIds: string[]): Promise<Map<string, PermissionKey[]>> {
-    const result = await this.pool.query<UserRoleRow & { permission_key: string }>(
-      `select ur.user_id, ur.role_id, r.name as role_name, rp.permission_key
-       from user_roles ur
-       join roles r on r.id = ur.role_id
-       join role_permissions rp on rp.role_id = ur.role_id
-       where ur.user_id = any($1::text[])`,
-      [userIds],
-    );
-    const grouped = new Map<string, Set<PermissionKey>>();
-    for (const userId of userIds) {
-      grouped.set(userId, new Set(DEFAULT_AUTHENTICATED_PERMISSION_KEYS));
-    }
-    for (const row of result.rows) {
-      const set = grouped.get(row.user_id) ?? new Set<PermissionKey>(DEFAULT_AUTHENTICATED_PERMISSION_KEYS);
-      set.add(row.permission_key as PermissionKey);
-      grouped.set(row.user_id, set);
-    }
-    return new Map([...grouped.entries()].map(([userId, permissions]) => [userId, [...permissions].sort()]));
-  }
 }
 
 export function createProjectApiKeyToken(): { token: string; prefix: string } {
@@ -1311,20 +1027,6 @@ function createProjectUserCode(): string {
     chars.push(alphabet[randomBytes(1)[0]! % alphabet.length]!);
   }
   return `${chars.slice(0, 4).join("")}-${chars.slice(4).join("")}`;
-}
-
-function toRoleRecord(row: RoleRow, permissions: PermissionKey[]): RoleRecord {
-  return {
-    id: row.id,
-    name: row.name,
-    description: row.description,
-    builtin: row.builtin,
-    protected: row.protected,
-    permissions: normalizeProjectPermissionKeys(permissions),
-    createdByUserId: row.created_by_user_id ?? undefined,
-    createdAt: row.created_at.toISOString(),
-    updatedAt: row.updated_at.toISOString(),
-  };
 }
 
 function toApiKeyRecord(row: ApiKeyRow): ApiKeyRecord {

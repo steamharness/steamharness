@@ -46,7 +46,7 @@ A `local` project can use only `context.storage.local`, and a `server` project c
 
 Server data is isolated by project UUID. To access `context.storage.server`, the top-level `package.json.id` must be the UUID of the bound cloud project and the caller must have access to that project. CLI can obtain the server connection from `STEAMHARNESS_SERVER_URL`, `STEAMHARNESS_SERVER_ADMIN_KEY`, or workspace login configuration. The server location is unavailable without a valid login and binding.
 
-Server Web exposes server data only. A `server` or `both` declaration permits data access. A `local` or missing declaration blocks server data access; source upload and download use separate permissions.
+Server Web exposes server data only. A `server` or `both` declaration permits data access. A `local` or missing declaration blocks server data access; source uploads require developer access and published downloads require guest access.
 
 :::info
 

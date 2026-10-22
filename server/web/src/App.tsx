@@ -23,10 +23,10 @@ import { DeviceApprovalPage } from "./pages/DeviceApprovalPage";
 import type { KVFilters } from "./pages/ProjectKVPage";
 import { ProjectListPage } from "./pages/ProjectListPage";
 import { ProjectAvatar } from "./components/ProjectAvatar";
-import { RolesPage } from "./pages/RolesPage";
+import { GroupsPage } from "./pages/GroupsPage";
 import { UsersPage } from "./pages/UsersPage";
-import { type AccountViewState, type AuditFilters, type AuditViewState, type AdminRolesState, type AdminUsersState, DEFAULT_AUDIT_FILTERS, DEFAULT_DETAIL, LOCALE_STORAGE_KEY, THEME_STORAGE_KEY, type AppRoute, type AsyncState, type DetailTab, type DetailState, type SettingsTab, type SessionState, type ThemeMode } from "./state";
-import { isApiSuccess, type AdminUserSummary, type KVEntrySummary, type PermissionKey, type RoleRecord, type Summary, type UserInvitationResult } from "./types";
+import { type AccountViewState, type AuditFilters, type AuditViewState, type AdminUsersState, DEFAULT_AUDIT_FILTERS, DEFAULT_DETAIL, LOCALE_STORAGE_KEY, THEME_STORAGE_KEY, type AppRoute, type AsyncState, type DetailTab, type DetailState, type SettingsTab, type SessionState, type ThemeMode } from "./state";
+import { isApiSuccess, type AdminUserSummary, type KVEntrySummary, type Summary, type UserInvitationResult } from "./types";
 import { parseRoute, readRouteProjectId, replaceCurrentRouteIfNeeded, routeToPath } from "./utils/routes";
 import { normalizeDateTimeFilter } from "./utils/date-filters";
 import { consumeUnseenServerRelease } from "./lib/server-release-notes";
@@ -86,6 +86,10 @@ function AppContent() {
   const [passwordInput, setPasswordInput] = useState("");
   const [deviceUserCode, setDeviceUserCode] = useState(() => route.page === "device" ? route.userCode ?? "" : "");
   const [deviceStatusMessage, setDeviceStatusMessage] = useState<string | null>(null);
+  const [projectPage,setProjectPage]=useState(1);
+  const [projectTotal,setProjectTotal]=useState(0);
+  const [projectQuery,setProjectQuery]=useState("");
+  const [projectStatus,setProjectStatus]=useState("all");
   const [projects, setProjects] = useState<Summary[]>([]);
   const [accountView, setAccountView] = useState<AccountViewState>({ me: null, apiKeys: null });
   const [auditView, setAuditView] = useState<AuditViewState>({ page: null, selectedEventId: null });
@@ -98,7 +102,6 @@ function AppContent() {
     search: "",
     status: "",
   });
-  const [adminRoles, setAdminRoles] = useState<AdminRolesState>({ items: null, groups: null });
   const [createdApiKeyToken, setCreatedApiKeyToken] = useState<string | null>(null);
   const [latestInvitation, setLatestInvitation] = useState<UserInvitationResult | null>(null);
   const [selectedId, setSelectedId] = useState(() => readRouteProjectId(parseRoute(window.location.pathname)));
@@ -141,30 +144,10 @@ function AppContent() {
   const selectedProjectServerStorageAllowed = selectedProject
     ? getProjectServerStorageAccess(selectedProject).allowed
     : false;
-  const principalPermissions = useMemo(
-    () => new Set<PermissionKey>((session.status === "ready" ? (session.principal.permissions ?? []) : []) as PermissionKey[]),
-    [session],
-  );
-  const isSystemAdmin =
-    session.status === "ready" &&
-    (
-      session.principal.kind === "admin_key" ||
-      session.principal.kind === "admin_session" ||
-      principalPermissions.has("system.admin")
-    );
-  const hasAssignedGlobalRole =
-    session.status === "ready" &&
-    (session.principal.roleNames?.length ?? 0) > 0;
-  const canViewProjects =
-    isSystemAdmin ||
-    // ordinary project users need the project workspace entry; the
-    // backend still filters unreadable private projects from the list.
-    principalPermissions.has("projects.read_all") ||
-    principalPermissions.has("projects.read_public");
-  const canViewAudit = isSystemAdmin || principalPermissions.has("audit.read");
-  const canViewUsers = isSystemAdmin || principalPermissions.has("users.read");
-  const canViewRoles = isSystemAdmin || principalPermissions.has("roles.read");
-  const canManageRoles = isSystemAdmin || principalPermissions.has("roles.manage");
+  const isSystemAdmin = session.status === "ready" && session.principal.isSystemAdmin === true;
+  const canViewProjects=session.status === "ready";
+  const canViewAudit=isSystemAdmin;
+  const canViewUsers=isSystemAdmin;
   const detailBelongsToSelectedProject = page !== "detail" || !selectedProject || detailProjectIdRef.current === selectedProject.id;
   const renderedDetail = detailBelongsToSelectedProject ? detail : DEFAULT_DETAIL;
   const renderedBusy = detailBelongsToSelectedProject ? busy : { ...busy, project: busy.project ?? t("busyLoadProjectDetail") };
@@ -229,15 +212,12 @@ function AppContent() {
       if (route.tab === "users" && !canViewUsers) {
         navigateTo({ page: "settings", tab: "profile" }, { replace: true });
       }
-      if (route.tab === "roles" && !canViewRoles) {
-        navigateTo({ page: "settings", tab: "profile" }, { replace: true });
-      }
     }
     if (session.status === "ready" && route.page === "device" && !deviceUserCode.trim()) {
       navigateTo({ page: "settings", tab: "profile" }, { replace: true });
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [session.status, route.page, route.page === "admin" ? route.tab : "", canViewProjects, canViewAudit, canViewUsers, canViewRoles, isSystemAdmin, deviceUserCode]);
+  }, [session.status, route.page, route.page === "admin" ? route.tab : "", canViewProjects, canViewAudit, canViewUsers, isSystemAdmin, deviceUserCode]);
 
   useEffect(() => {
     void validateSession();
@@ -248,7 +228,9 @@ function AppContent() {
     if (session.status !== "ready") return;
     void loadProjects({ keepSelection: true });
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [session.status]);
+  }, [session.status,projectPage,projectQuery,projectStatus]);
+
+  useEffect(()=>{if(session.status!=="ready"||route.page!=="detail")return;let live=true;void apiClient.getProject(route.id).then(result=>{if(!live)return;if(isApiSuccess(result))setProjects(items=>[...items.filter(item=>item.id!==route.id),result.data]);else pushToast("error",result.errMessage);});return()=>{live=false;};},[session.status,route.page,route.page==="detail"?route.id:""]);
 
   useEffect(() => {
     if (route.page !== "detail" || !selectedProject || !activeDetailTab || route.tab === activeDetailTab) return;
@@ -267,11 +249,6 @@ function AppContent() {
     }
     if (route.page === "admin" && route.tab === "users" && canViewUsers) {
       void loadAdminUsers();
-      void ensureAdminRolesLoaded();
-      return;
-    }
-    if (route.page === "admin" && route.tab === "roles" && canViewRoles) {
-      void loadAdminRoles();
       return;
     }
     if (route.page === "admin" && route.tab === "audit" && canViewAudit) {
@@ -279,14 +256,14 @@ function AppContent() {
       return;
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [session.status, route.page, route.page === "admin" || route.page === "settings" ? route.tab : "", canViewAudit, canViewUsers, canViewRoles]);
+  }, [session.status, route.page, route.page === "admin" || route.page === "settings" ? route.tab : "", canViewAudit, canViewUsers]);
 
   useEffect(() => {
     if (session.status !== "ready" || page !== "detail" || !selectedProject) return;
     void loadProjectDetail(selectedProject.id);
     return () => { projectDetailRequestRef.current += 1; };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [session.status, page, selectedProject?.id, selectedProject?.canManage, activeDetailTab, selectedProjectServerStorageAllowed]);
+  }, [session.status, page, selectedProject?.id, selectedProject?.access?.capabilities.includes("manageMembers"), activeDetailTab, selectedProjectServerStorageAllowed]);
 
   useEffect(() => {
     if (session.status !== "ready" || !selectedProject || !selectedProjectServerStorageAllowed || page !== "detail" || route.page !== "detail" || route.tab !== "kv") return;
@@ -366,8 +343,13 @@ function AppContent() {
     setSession({ status: "ready", principal: sessionState.data.principal });
     setAccountView({ me: null, apiKeys: null });
     setAdminUsers({ items: null, total: 0, page: 1, pageSize: 20, totalPages: 0, search: "", status: "" });
-    setAdminRoles({ items: null, groups: null });
-    const uploadedProjects = workflows.data.filter(isUploadedVersionProject);
+    const uploadedProjects = workflows.data.items;
+    setProjectTotal(workflows.data.total);
+    const selected=readRouteProjectId(routeRef.current);
+    if(selected && !uploadedProjects.some(p=>p.id===selected)) {
+      const detailResult=await apiClient.getProject(selected);
+      if(isApiSuccess(detailResult)) uploadedProjects.push(detailResult.data);
+    }
     setProjects(uploadedProjects);
     setSelectedId((current) => {
       const routeProjectId = readRouteProjectId(route);
@@ -398,13 +380,6 @@ function AppContent() {
     }));
   }
 
-  async function ensureAdminRolesLoaded() {
-    if (adminRoles.items && adminRoles.groups) {
-      return;
-    }
-    await loadAdminRoles();
-  }
-
   async function loadAdminUsers(params?: { search?: string; status?: string; page?: number; pageSize?: number }) {
     const search = params?.search ?? adminUsers.search;
     const status = params?.status ?? adminUsers.status;
@@ -430,33 +405,18 @@ function AppContent() {
     });
   }
 
-  async function loadAdminRoles() {
-    setBusy((state) => ({ ...state, roles: t("busyLoadRoles") }));
-    const [rolesResult, permissionsResult] = await Promise.all([
-      apiClient.listAdminRoles(),
-      apiClient.listAdminPermissions(),
-    ]);
-    setBusy((state) => ({ ...state, roles: undefined }));
-    if (!isApiSuccess(rolesResult)) {
-      pushToast("error", rolesResult.errMessage);
-      return;
-    }
-    if (!isApiSuccess(permissionsResult)) {
-      pushToast("error", permissionsResult.errMessage);
-      return;
-    }
-    setAdminRoles({
-      items: rolesResult.data.items,
-      groups: permissionsResult.data.groups,
-    });
-  }
-
   async function loadProjects(options: { keepSelection?: boolean } = {}) {
     setBusy((s) => ({ ...s, global: t("busyGlobalRefreshProjects") }));
-    const res = await apiClient.listProjects();
+    const res = await apiClient.listProjects({page:projectPage,q:projectQuery,status:projectStatus});
     setBusy((s) => ({ ...s, global: undefined }));
     if (!isApiSuccess(res)) { pushToast("error", res.errMessage); return; }
-    const uploadedProjects = res.data.filter(isUploadedVersionProject);
+    const uploadedProjects = res.data.items;
+    setProjectTotal(res.data.total);
+    const selected=readRouteProjectId(routeRef.current);
+    if(selected && !uploadedProjects.some(p=>p.id===selected)) {
+      const detailResult=await apiClient.getProject(selected);
+      if(isApiSuccess(detailResult)) uploadedProjects.push(detailResult.data);
+    }
     setProjects(uploadedProjects);
     setSelectedId((current) => {
       const routeProjectId = readRouteProjectId(route);
@@ -473,14 +433,14 @@ function AppContent() {
     setBusy(state => ({...state, project: t("busyLoadProjectDetail")}));
     const [versions, members, invitations, dataSummary] = await Promise.all([
       apiClient.listVersions(projectName), apiClient.listProjectMembers(projectName),
-      activeDetailTab === "invitations" && selectedProject?.canManage ? apiClient.listProjectInvitations(projectName) : undefined,
+      activeDetailTab === "invitations" && selectedProject?.access?.capabilities.includes("manageMembers") ? apiClient.listProjectInvitations(projectName) : undefined,
       activeDetailTab === "project" && selectedProjectServerStorageAllowed ? apiClient.getProjectDataSummary(projectName) : undefined,
     ]);
     if (requestId !== projectDetailRequestRef.current || selectedIdRef.current !== projectName) return;
     setBusy(state => ({...state, project: undefined}));
     for (const result of [versions, members, invitations, dataSummary]) if (result && !isApiSuccess(result)) pushToast("error", result.errMessage);
     setDetail(state => ({...state, versions: isApiSuccess(versions) ? versions.data : null,
-      members: isApiSuccess(members) ? members.data : null,
+      members: isApiSuccess(members) ? members.data.items : null,
       invitations: invitations ? isApiSuccess(invitations) ? invitations.data : null : state.invitations,
       dataSummary: dataSummary ? isApiSuccess(dataSummary) ? dataSummary.data : null : state.dataSummary,
       loadErrors: {
@@ -506,7 +466,7 @@ function AppContent() {
     void loadProjectDetail(selectedProject.id);
   }
 
-  async function setProjectMember(userId: string, role: "owner" | "manager" | "writer" | "viewer") {
+  async function setProjectMember(userId: string, role: "owner" | "maintainer" | "developer" | "guest") {
     if (!selectedProject) return;
     setBusy((s) => ({ ...s, project: t("busySetProjectMember") }));
     const res = await apiClient.setProjectMember(selectedProject.id, userId, { role });
@@ -532,7 +492,7 @@ function AppContent() {
     void loadProjectDetail(selectedProject.id);
   }
 
-  async function createProjectInvitation(role: "manager" | "writer" | "viewer"): Promise<{
+  async function createProjectInvitation(role: "owner" | "maintainer" | "developer" | "guest"): Promise<{
     invitation: import("./types").ProjectInvitation;
     token: string;
     shareUrl: string;
@@ -831,9 +791,9 @@ function AppContent() {
     return result.data.invitationLink;
   }
 
-  async function updateUserRoles(user: AdminUserSummary, roleIds: string[]) {
+  async function updateUserAdministrator(user: AdminUserSummary, isSystemAdmin: boolean) {
     setBusy((state) => ({ ...state, updateBusyUserId: user.userId }));
-    const result = await apiClient.updateAdminUserRoles(user.userId, roleIds);
+    const result = await apiClient.updateSystemAdministrator(user.userId, isSystemAdmin);
     setBusy((state) => ({ ...state, updateBusyUserId: undefined }));
     if (!isApiSuccess(result)) {
       pushToast("error", result.errMessage);
@@ -855,49 +815,12 @@ function AppContent() {
     await loadAdminUsers();
   }
 
-  async function createRole(payload: { name: string; description?: string; permissions: string[] }) {
-    setBusy((state) => ({ ...state, saveRole: t("busyCreateRole") }));
-    const result = await apiClient.createAdminRole(payload);
-    setBusy((state) => ({ ...state, saveRole: undefined }));
-    if (!isApiSuccess(result)) {
-      pushToast("error", result.errMessage);
-      return;
-    }
-    pushToast("success", t("toastRoleCreated", { name: result.data.role.name }));
-    await loadAdminRoles();
-  }
-
-  async function updateRole(role: RoleRecord, payload: { name?: string; description?: string; permissions?: string[] }) {
-    setBusy((state) => ({ ...state, saveRole: t("busySaveRole") }));
-    const result = await apiClient.updateAdminRole(role.id, payload);
-    setBusy((state) => ({ ...state, saveRole: undefined }));
-    if (!isApiSuccess(result)) {
-      pushToast("error", result.errMessage);
-      return;
-    }
-    pushToast("success", t("toastRoleUpdated", { name: result.data.role.name }));
-    await loadAdminRoles();
-  }
-
-  async function deleteRole(role: RoleRecord) {
-    setBusy((state) => ({ ...state, deleteRoleId: role.id }));
-    const result = await apiClient.deleteAdminRole(role.id);
-    setBusy((state) => ({ ...state, deleteRoleId: undefined }));
-    if (!isApiSuccess(result)) {
-      pushToast("error", result.errMessage);
-      return;
-    }
-    pushToast("success", t("toastRoleDeleted", { name: role.name }));
-    await loadAdminRoles();
-  }
-
   async function completeLogout() {
     await apiClient.logout();
     setSession({ status: "anonymous" });
     setProjects([]);
     setAccountView({ me: null, apiKeys: null });
     setAdminUsers({ items: null, total: 0, page: 1, pageSize: 20, totalPages: 0, search: "", status: "" });
-    setAdminRoles({ items: null, groups: null });
     setSelectedId("");
     navigateTo({ page: "login" }, { replace: true, skipKnowledgeGuard: true });
     detailProjectIdRef.current = null;
@@ -935,9 +858,6 @@ function AppContent() {
           nextRoute = { page: "settings", tab: "profile" };
       }
       if (nextRoute.page === "admin" && nextRoute.tab === "users" && !canViewUsers) {
-          nextRoute = { page: "settings", tab: "profile" };
-      }
-      if (nextRoute.page === "admin" && nextRoute.tab === "roles" && !canViewRoles) {
           nextRoute = { page: "settings", tab: "profile" };
       }
     }
@@ -1020,6 +940,7 @@ function AppContent() {
       <InviteAcceptPage
         token={route.token}
         onNavigateProjects={() => navigateTo({ page: "projects" })}
+        onNavigateGroup={id=>navigateTo({page:"groups",id})}
         onNavigateProject={(projectId) => navigateTo({ page: "detail", id: projectId, tab: "project" })}
         onNavigateLogin={() => navigateTo({ page: "login" }, { replace: true })}
       />
@@ -1069,7 +990,7 @@ function AppContent() {
       onClick: () => navigateTo({ page: "settings", tab: "api-keys" }),
     },
   ];
-  const adminTab = route.page === "admin" ? route.tab : canViewUsers ? "users" : canViewRoles ? "roles" : "audit";
+  const adminTab = route.page === "admin" ? route.tab : canViewUsers ? "users" : "audit";
   const adminNavItems = [
     canViewUsers ? {
       id: "admin-users",
@@ -1077,13 +998,6 @@ function AppContent() {
       icon: ADMIN_TAB_META.users.icon,
       active: page === "admin" && adminTab === "users",
       onClick: () => navigateTo({ page: "admin", tab: "users" }),
-    } : null,
-    canViewRoles ? {
-      id: "admin-roles",
-      label: translateDynamicKey(ADMIN_TAB_META.roles.labelKey, "serverWeb"),
-      icon: ADMIN_TAB_META.roles.icon,
-      active: page === "admin" && adminTab === "roles",
-      onClick: () => navigateTo({ page: "admin", tab: "roles" }),
     } : null,
     canViewAudit ? {
       id: "admin-audit",
@@ -1094,6 +1008,7 @@ function AppContent() {
     } : null,
   ].filter((item): item is NonNullable<typeof item> => item !== null);
   const consoleNavItems = [
+    {id:"groups",label:t("accessGroups"),icon:CONSOLE_NAV_ICONS.projects,active:page==="groups",onClick:()=>navigateTo({page:"groups"})},
     canViewProjects ? {
       id: "projects",
       label: t("navProjects"),
@@ -1148,7 +1063,6 @@ function AppContent() {
   };
   const adminBusy = {
     users: busy.users || busy.inviteUser || busy.updateBusyUserId,
-    roles: busy.roles || busy.saveRole || busy.deleteRoleId,
     audit: busy.audit,
   };
   const refreshBusy = Boolean(busy.global || (
@@ -1169,7 +1083,6 @@ function AppContent() {
     if (page === "admin") {
       switch (adminTab) {
         case "users": return loadAdminUsers({ page: adminUsers.page, pageSize: adminUsers.pageSize });
-        case "roles": return loadAdminRoles();
         case "audit": return loadAuditEvents({ reset: true });
       }
     }
@@ -1195,7 +1108,7 @@ function AppContent() {
     loading: refreshBusy,
   }];
 
-  if (page === "projects") {
+  if (page === "projects" || page === "groups") {
     return (
       <AppLayout
         principalLabel={principalLabel}
@@ -1208,13 +1121,15 @@ function AppContent() {
         onBrandClick={() => navigateTo({ page: "projects" })}
         onLogout={logout}
       >
-        <ProjectListPage
+        {page==="groups" ? <GroupsPage key={route.page==="groups"?route.id??"root":"root"} id={route.page==="groups"?route.id:undefined} onOpenGroup={id=>navigateTo({page:"groups",id})} onOpenProject={id=>navigateTo({page:"detail",id,tab:"project"})}/> : <ProjectListPage
+          total={projectTotal} serverPage={projectPage} onServerPageChange={setProjectPage}
+          onServerSearch={(q,status)=>{setProjectQuery(q);setProjectStatus(status);setProjectPage(1);}}
           projects={projects}
           selectedId={selectedProject?.id ?? ""}
           loading={busy.global}
           onRefresh={() => void loadProjects({ keepSelection: true })}
           onOpenDetail={(project) => openProject(project)}
-        />
+        />}
       </AppLayout>
     );
   }
@@ -1237,6 +1152,7 @@ function AppContent() {
       breadcrumbs={
         page === "detail"
           ? [
+            ...(selectedProject?.groupId?[{label:t("accessGroup"),onClick:()=>navigateTo({page:"groups",id:selectedProject.groupId!})}]:[]),
             { label: t("navProjects"), onClick: canViewProjects ? () => navigateTo({ page: "projects" }) : undefined },
             { label: selectedProjectDisplayName ?? t("appBreadcrumbProjectDetail"), onClick: () => navigateDetail("project") },
             { label: detailNavItems.find(item => item.active)?.label ?? t("detailNavOverview") },
@@ -1286,7 +1202,6 @@ function AppContent() {
       ) : page === "admin" && adminTab === "users" ? (
         <UsersPage
           users={adminUsers.items}
-          roles={adminRoles.items ?? []}
           loading={busy.users}
           inviteBusy={busy.inviteUser}
           updateBusyUserId={busy.updateBusyUserId}
@@ -1302,21 +1217,9 @@ function AppContent() {
           onRefresh={() => void loadAdminUsers({ page: adminUsers.page, pageSize: adminUsers.pageSize })}
           onInvite={(payload) => void inviteUser(payload)}
           onUpdateUser={(user, patch) => void updateUser(user, patch)}
-          onUpdateRoles={(user, roleIds) => void updateUserRoles(user, roleIds)}
+          onUpdateAdministrator={(user, value) => void updateUserAdministrator(user, value)}
           onUpdateAvatar={(user, file) => void updateUserAvatar(user, file)}
           onFetchInviteLink={(userId) => fetchInviteLink(userId)}
-        />
-      ) : page === "admin" && adminTab === "roles" ? (
-        <RolesPage
-          roles={adminRoles.items}
-          groups={adminRoles.groups}
-          loading={busy.roles}
-          saveBusy={busy.saveRole}
-          deleteRoleId={busy.deleteRoleId}
-          onRefresh={() => void loadAdminRoles()}
-          onCreateRole={(payload) => void createRole(payload)}
-          onUpdateRole={(role, payload) => void updateRole(role, payload)}
-          onDeleteRole={(role) => void deleteRole(role)}
         />
       ) : page === "admin" && adminTab === "audit" ? (
         <AuditPage

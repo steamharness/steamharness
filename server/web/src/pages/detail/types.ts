@@ -11,9 +11,9 @@ export interface DetailPageProps {
   activeTab: DetailTab;
   busy: AsyncState;
   onUpdateVisibility: (visibility: "private" | "public") => void;
-  onSetProjectMember: (userId: string, role: "owner" | "manager" | "writer" | "viewer") => void;
+  onSetProjectMember: (userId: string, role: "owner" | "maintainer" | "developer" | "guest") => void;
   onRemoveProjectMember: (userId: string) => void;
-  onCreateProjectInvitation: (role: "manager" | "writer" | "viewer") => Promise<{
+  onCreateProjectInvitation: (role: "owner" | "maintainer" | "developer" | "guest") => Promise<{
     invitation: ProjectInvitation;
     token: string;
     shareUrl: string;
@@ -53,11 +53,7 @@ export function getTabLabel(tab: DetailTab): string {
   return translateDynamicKey(map[tab], "serverWeb");
 }
 
-export const PROJECT_MEMBER_ROLE_OPTIONS: Array<{ value: InvitationRole; label: string }> = [
-  { value: "manager", label: "Manager" },
-  { value: "writer", label: "Writer" },
-  { value: "viewer", label: "Viewer" },
-];
+export const projectMemberRoleOptions = () => ["guest","developer","maintainer","owner"].map(role=>({value:role as InvitationRole,label:translateDynamicKey(`accessRole${role[0].toUpperCase()}${role.slice(1)}`,"serverWeb")}));
 
 // keeps detail tab management tables aligned on a fixed 20-row page size.
 export const MANAGEMENT_TABLE_PAGE_SIZE = 20;

@@ -233,7 +233,7 @@ const unsubscribe = window.steamHarnessKanban.relatedProjects.get("stocks").kv.s
 window.addEventListener("pagehide", unsubscribe, { once: true });
 ```
 
-Server Web 静态预览要求访问者能够读取当前 Kanban，不要求成为目标项目成员；双方当前声明和目标对 Kanban 的授权仍必须有效。关联写入还要求当前 Kanban 的数据写权限。鉴权 SSE 在连接和重连时先发送完整 revision 快照。目标不存在、关系待确认、授权不足、alias 无效或 key 越界都只返回安全的“关联项目不可用”错误；关系或读权限撤销、绑定失效时会关闭 revision 流。服务器按看板页面固定的 `resolvedTarget` 读取关系声明，但目标 KV 是项目级数据库，不随目标项目版本切换。
+Server Web 静态预览要求访问者能够读取当前 Kanban，还要求对目标项目具有访客权限；双方当前声明和目标对 Kanban 的授权必须有效。关联写入要求当前 Kanban 和目标项目均具备开发者权限。鉴权 SSE 在连接和重连时先发送完整 revision 快照。目标不存在、关系待确认、授权不足、alias 无效或 key 越界都只返回安全的“关联项目不可用”错误；关系或读权限撤销、绑定失效时会关闭 revision 流。服务器按看板页面固定的 `resolvedTarget` 读取关系声明，但目标 KV 是项目级数据库，不随目标项目版本切换。
 
 自动联动只发生在同一存储后端。本地客户端或管理端更新 Server KV 后，连接该 Server 的静态预览会收到通知；本地与服务器 KV 不会自动同步。
 
@@ -348,7 +348,7 @@ dist/**/*.map
 
 CLI 可以按 `.steamharnessignore` 选择本地 Kanban 的文本和二进制静态资源并上传到 Server。服务器不会为 Kanban 执行 tsup、安装依赖或生成 Node runtime，而是校验配置的 HTML 入口后保留静态产物；Server Web 只查看和管理已经上传的服务器版本。
 
-Server Web 静态预览固定当前项目与所选 target。读取需要项目读取权限，当前项目 KV 和知识库写入需要数据写权限，viewer 只读；关联访问还校验双方声明和目标授予的 key 权限。站点接口签发绑定项目、用户和固定版本的短期签名 capability，资源 URL 带有 CSP nonce，不能读取其它项目或版本。签名使用 `STEAMHARNESS_AUTH_COOKIE_SECRET`，未配置时回退到 `STEAMHARNESS_SERVER_ADMIN_KEY`；多实例应使用同一稳定密钥。预览会在 capability 到期前换发，保留命名配置并重载 iframe；失败时重试，到期后仍失败则显示错误。Bridge 与配置操作始终携带首次加载得到的 `resolvedTarget`。命名配置按用户隔离，项目 KV 和知识库按项目共享。
+Server Web 静态预览固定当前项目与所选 target。读取需要项目读取权限，当前项目 KV 和知识库写入需要数据写权限，访客只读；关联访问还校验双方声明和目标授予的 key 权限。站点接口签发绑定项目、用户和固定版本的短期签名 capability，资源 URL 带有 CSP nonce，不能读取其它项目或版本。签名使用 `STEAMHARNESS_AUTH_COOKIE_SECRET`，未配置时回退到 `STEAMHARNESS_SERVER_ADMIN_KEY`；多实例应使用同一稳定密钥。预览会在 capability 到期前换发，保留命名配置并重载 iframe；失败时重试，到期后仍失败则显示错误。Bridge 与配置操作始终携带首次加载得到的 `resolvedTarget`。命名配置按用户隔离，项目 KV 和知识库按项目共享。
 
 ## Studio 本地分析接口
 
@@ -371,7 +371,7 @@ Studio 的内置 `build-in-analysis` 项目可通过 `await window.steamHarnessK
 
 源码交付与运行数据彼此独立：项目组归档、上传、发布和下载都拒绝携带 `.env*`、KV、定时计划、运行历史、SQLite 或宿主用户配置。本地 KV 与 Server KV 始终是两套数据库。上传后的 Server 数据需要开发者在本地运行关联 Workflow entrypoint、通过已授权的服务器连接写入或使用业务同步接口初始化；下载到本地后同样需要在本地重新运行同步。平台只维护调用和 Bridge API，不自动复制数据。
 
-KV 权限完全来自双方 `projectInfo`，Server 不维护独立数据授权记录。目标项目可以向当前 Kanban 授予 `none/all/prefixes` 的读写能力；这不授予源码下载、运行或项目管理权限，撤销后新的 Bridge 访问和现有 revision 订阅立即失效。included 源码下载权限仍通过独立的 `download_source` 申请审批。
+项目间 KV 授权来自双方 `projectInfo`，Server 不维护独立数据授权记录。目标项目可以向当前 Kanban 授予 `none/all/prefixes` 的读写能力；这不授予源码下载、运行或项目管理权限，撤销后新的 Bridge 访问和现有 revision 订阅立即失效。关联数据访问还必须满足用户在目标项目的角色权限。included 源码下载要求目标项目访客权限；申请审批后加入为访客。
 
 ## 发布、下载与 CLI
 
@@ -407,3 +407,5 @@ python .agents/skills/workflow-generator/scripts/create_workflow.py roadmap \
 两条命令都会生成完整的可编辑看板工程，包括 `.steamharnessignore`、`package.json`、`index.html`、`board-state.js`、`board-storage.js`、README 和纯逻辑测试。所有 scaffold 都生成 `configuration.json`；`--with-kanban-params` 加入标题和强调色字段；任务始终在页面内新建、编辑、拖拽和删除，并通过 KV Bridge 按配置隔离保存。
 
 生成器默认创建简体中文项目，不会自动加入翻译资源、语言切换或 locale 检测。只有明确要求国际化或多语言支持，并说明目标语言后，才会为项目加入对应适配。
+
+权限分组与此处的批量上传、发布项目组独立。预览每次请求复核账号状态、成员关系和目标权限；公开项目仍要求登录。

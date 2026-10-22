@@ -1,5 +1,5 @@
 
-import type { AdminUserSummary, AuditEventPage, ApiKeyRecord, KVEntryPage, MeResult, PermissionGroup, ProjectDataSummary, ProjectMember, ProjectInvitation, RoleRecord, VersionSummary } from "./types";
+import type { AdminUserSummary, AuditEventPage, ApiKeyRecord, KVEntryPage, MeResult, ProjectDataSummary, ProjectMember, ProjectInvitation, VersionSummary } from "./types";
 
 export type SessionState =
   | { status: "checking" }
@@ -15,23 +15,23 @@ export type SessionState =
         // surface avatarUrl on the session so the header avatar
         // renders on every page without waiting for the settings-page fetch.
         avatarUrl?: string;
-        permissions?: string[];
         apiKeyId?: string;
-        roleNames?: string[];
+        isSystemAdmin?: boolean;
       };
     };
 
 export type DetailTab = "configurations" | "project" | "settings" | "members" | "invitations" | "dependencies" | "knowledge" | "versions" | "kv";
 
-export type AdminTab = "users" | "roles" | "audit";
+export type AdminTab = "users" | "audit";
 export type SettingsTab = "profile" | "appearance" | "api-keys";
-export type Page = "login" | "device" | "projects" | "settings" | "admin" | "detail" | "invite" | "account-invite" | "access-request" | "source-share";
+export type Page = "login" | "device" | "projects" | "groups" | "settings" | "admin" | "detail" | "invite" | "account-invite" | "access-request" | "source-share";
 export type ThemeMode = "light" | "dark" | "system";
 
 export type AppRoute =
   | { page: "login" }
   | { page: "device"; userCode?: string }
   | { page: "projects" }
+  | { page: "groups"; id?: string }
   | { page: "settings"; tab: SettingsTab }
   | { page: "admin"; tab: AdminTab }
   | { page: "detail"; id: string; tab: DetailTab; }
@@ -52,7 +52,6 @@ export type AsyncState = {
   users?: string;
   inviteUser?: string;
   updateUser?: string;
-  roles?: string;
   saveRole?: string;
   saveProfile?: string;
   createKeyBusy?: string;
@@ -98,11 +97,6 @@ export interface AdminUsersState {
   totalPages: number;
   search: string;
   status: string;
-}
-
-export interface AdminRolesState {
-  items: RoleRecord[] | null;
-  groups: PermissionGroup[] | null;
 }
 
 export interface AuditFilters {

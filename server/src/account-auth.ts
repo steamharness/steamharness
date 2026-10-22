@@ -39,7 +39,6 @@ export type AuthenticatedPrincipal =
   | {
       kind: "admin_key";
       tokenSource: "bearer" | "query" | "cookie";
-      permissions: PermissionKey[];
       isSystemAdmin: true;
     }
   | {
@@ -47,7 +46,6 @@ export type AuthenticatedPrincipal =
       tokenSource: "cookie";
       userId: string;
       profile: UserProfileRecord;
-      permissions: PermissionKey[];
       isSystemAdmin: true;
       accessToken: string;
       refreshToken: string;
@@ -58,7 +56,6 @@ export type AuthenticatedPrincipal =
       tokenSource: "cookie";
       userId: string;
       profile: UserProfileRecord;
-      permissions: PermissionKey[];
       isSystemAdmin: boolean;
       accessToken: string;
       refreshToken: string;
@@ -69,7 +66,6 @@ export type AuthenticatedPrincipal =
       tokenSource: "bearer";
       userId: string;
       profile: UserProfileRecord;
-      permissions: PermissionKey[];
       isSystemAdmin: boolean;
       apiKey: ApiKeyLookupRecord;
     };
@@ -193,9 +189,6 @@ export class AuthService {
       status: "active",
       lastLoginAt: new Date().toISOString(),
     });
-    if (profile.roleIds.length === 0) {
-      await this.accountDb.setUserRoles(profile.userId, ["builtin_viewer"]);
-    }
     return this.createSession({ ...user, last_sign_in_at: new Date() });
   }
 
@@ -403,9 +396,6 @@ export class AuthService {
       status: "active",
       lastLoginAt: new Date().toISOString(),
     });
-    if (profile.roleIds.length === 0) {
-      await this.accountDb.setUserRoles(profile.userId, ["builtin_viewer"]);
-    }
     return this.createSession(await this.getUserById(invitation.user_id));
   }
 
@@ -449,12 +439,18 @@ export class AuthService {
     const client = await this.pool.connect();
     try {
       await client.query("begin");
+      await client.query("select pg_advisory_xact_lock(hashtext('steamharness-resource-access'))");
+      await client.query("select pg_advisory_xact_lock(hashtext('steamharness-account-admin'))");
+      if (input.disabled === true) await this.accountDb.assertCanDisableAccount(input.userId,client);
       await client.query(
         `update steamharness_auth_users
          set email = $2, password_hash = $3, display_name = $4, disabled = $5, updated_at = now()
          where id = $1`,
         [input.userId, email, passwordHash, displayName, disabled],
       );
+      await client.query(`update user_profiles set email=$2,display_name=$3,
+        status=case when $4::boolean is null then status when $4 then 'disabled' when status='invited' then 'invited' else 'active' end,
+        updated_at=now() where user_id=$1`,[input.userId,email,displayName,input.disabled??null]);
       if (passwordChanged || input.disabled === true) await this.revokeUserSessions(input.userId, client);
       await client.query("commit");
     } catch (error) {
@@ -463,13 +459,6 @@ export class AuthService {
     } finally {
       client.release();
     }
-    const profile = await this.accountDb.getUserProfile(input.userId);
-    await this.accountDb.upsertUserProfile({
-      userId: input.userId,
-      email,
-      displayName,
-      status: disabled ? "disabled" : profile?.status === "invited" ? "invited" : "active",
-    });
     return this.getUserById(input.userId);
   }
 
@@ -487,7 +476,7 @@ export class AuthService {
     if (bearer) {
       const adminKey = getConfiguredAdminKey();
       if (adminKey && bearer === adminKey) {
-        return { kind: "admin_key", tokenSource: "bearer", permissions: ["system.admin"], isSystemAdmin: true };
+        return { kind: "admin_key", tokenSource: "bearer", isSystemAdmin: true };
       }
       const apiKey = await this.accountDb.findApiKeyByToken(bearer);
       if (apiKey) {
@@ -504,8 +493,7 @@ export class AuthService {
           tokenSource: "bearer",
           userId: apiKey.user.userId,
           profile: apiKey.user,
-          permissions: apiKey.user.permissions,
-          isSystemAdmin: apiKey.user.permissions.includes("system.admin"),
+          isSystemAdmin: apiKey.user.isSystemAdmin,
           apiKey: refreshedApiKey,
         };
       }
@@ -516,7 +504,7 @@ export class AuthService {
     const cookie = readCookieSession(cookieValue);
     if (!cookie) throw new HttpError(401, 401, "Unauthorized.");
     if (cookie.kind === "admin_key") {
-      return { kind: "admin_key", tokenSource: "cookie", permissions: ["system.admin"], isSystemAdmin: true };
+      return { kind: "admin_key", tokenSource: "cookie", isSystemAdmin: true };
     }
     const session = await this.refreshSession(cookie.refreshToken);
     const profile = await this.accountDb.getUserProfileOrThrow(session.user.userId);
@@ -524,12 +512,11 @@ export class AuthService {
       tokenSource: "cookie" as const,
       userId: profile.userId,
       profile,
-      permissions: profile.permissions,
       accessToken: session.accessToken,
       refreshToken: session.refreshToken,
       expiresAt: session.expiresAt,
     };
-    return profile.permissions.includes("system.admin")
+    return profile.isSystemAdmin
       ? { kind: "admin_session", ...principalBase, isSystemAdmin: true }
       : { kind: "user_session", ...principalBase, isSystemAdmin: false };
   }
@@ -689,8 +676,8 @@ export class AuthService {
       status: "active",
       lastLoginAt: new Date().toISOString(),
     });
-    if (profile.roleIds.includes("builtin_admin")) return profile;
-    return this.accountDb.setUserRoles(profile.userId, [...new Set([...profile.roleIds, "builtin_admin"])]);
+    if (profile.isSystemAdmin) return profile;
+    return this.accountDb.setSystemAdministrator(profile.userId, true);
   }
 }
 
@@ -715,7 +702,7 @@ export function hasPermission(
   principal: AuthenticatedPrincipal | undefined,
   permission: PermissionKey,
 ): boolean {
-  return Boolean(principal && (principal.permissions.includes("system.admin") || principal.permissions.includes(permission)));
+  return Boolean(principal?.isSystemAdmin);
 }
 
 export function encodeCookieSession(session: AuthCookieSession): string {

@@ -6,7 +6,7 @@ import type { AccountRepository, UserProfileRecord } from "../account-db";
 import { createApiKeyExpiresAt } from "../api-key-lifetime";
 import { createAuditActor, recordAuditEventForRequest, readRequestIp } from "../audit";
 import { clearAuthSessionCookie, getRequestPrincipal, getProjectAuthContext, hasConfiguredAdminKey, hasPermission, readRequestPrincipal, requireAuthenticatedPrincipal, writeAdminKeySessionCookie, writeAuthSessionCookie, type AuthenticatedPrincipal } from "../auth";
-import { listProjectPermissionGroups, type PermissionKey } from "../permissions";
+import { type PermissionKey } from "../permissions";
 import { fail, HttpError, ok } from "../protocol";
 import type { StorageDriver } from "../object-storage";
 import { getRequestT, localizeServerMessage } from "../i18n";
@@ -21,10 +21,9 @@ interface AuthSessionResponse {
     // surface avatarUrl on the session so the header avatar loads on
     // every page instead of waiting for the settings-page profile fetch.
     avatarUrl?: string;
-    permissions?: PermissionKey[];
+    isSystemAdmin?: boolean;
     apiKeyId?: string;
     expiresAt?: string;
-    roleNames?: string[];
   };
   // The non-web login flows (Desktop / CLI) also receive a long-lived
   // API key so they can keep using Authorization: Bearer headers instead of
@@ -134,7 +133,7 @@ export function createAuthRouter(): Router {
         authenticated: true,
         principal: {
           kind: "admin_key",
-          permissions: ["system.admin"],
+          isSystemAdmin: true,
         },
       }));
       return;
@@ -166,7 +165,7 @@ export function createAuthRouter(): Router {
           userId: session.user.userId,
           displayName: session.user.displayName,
           email: session.user.email,
-          permissions: profile?.permissions ?? ["system.admin"],
+          isSystemAdmin: profile?.isSystemAdmin ?? true,
         },
       }));
       return;
@@ -182,7 +181,7 @@ export function createAuthRouter(): Router {
       authenticated: true,
       principal: {
         kind: "admin_key",
-        permissions: ["system.admin"],
+        isSystemAdmin: true,
       },
     }));
   });
@@ -231,7 +230,7 @@ export function createAuthRouter(): Router {
             authenticated: true,
             principal: {
               kind: "admin_key",
-              permissions: ["system.admin"],
+              isSystemAdmin: true,
             },
           }));
           return;
@@ -265,7 +264,7 @@ export function createAuthRouter(): Router {
             authenticated: true,
             principal: {
               kind: "admin_key",
-              permissions: ["system.admin"],
+              isSystemAdmin: true,
             },
           }));
           return;
@@ -292,7 +291,7 @@ export function createAuthRouter(): Router {
       writeAuthSessionCookie(res, session);
       const accountDb = getProjectAuthContext().accountDb;
       const profile = await accountDb?.getUserProfileOrThrow(session.user.userId);
-      const principalKind = profile?.permissions.includes("system.admin") ? "admin_session" : "user_session";
+      const principalKind = profile?.isSystemAdmin ? "admin_session" : "user_session";
       await recordAuthAudit(req, {
         principalKind,
         actorUserId: session.user.userId,
@@ -371,7 +370,7 @@ export function createAuthRouter(): Router {
           userId: session.user.userId,
           displayName: session.user.displayName,
           email: session.user.email,
-          permissions: profile?.permissions,
+          isSystemAdmin: profile?.isSystemAdmin,
         },
       };
       if (apiKeyRecord && apiKeyToken) {
@@ -741,7 +740,7 @@ export function createAuthRouter(): Router {
       if (principal.kind === "api_key") {
         throw new HttpError(403, 403, "Permission denied.");
       }
-      const list = hasPermission(principal, "api_keys.manage_all")
+      const list = principal.isSystemAdmin
         ? await accountDb.listApiKeys()
         : "userId" in principal
           ? await accountDb.listApiKeys({ userId: principal.userId })
@@ -817,7 +816,7 @@ export function createAuthRouter(): Router {
         throw new HttpError(403, 403, "Permission denied.");
       }
       const apiKey = await accountDb.getApiKeyOrThrow(req.params.id);
-      if (!hasPermission(principal, "api_keys.manage_all") && (!("userId" in principal) || principal.userId !== apiKey.userId)) {
+      if (!principal.isSystemAdmin && (!("userId" in principal) || principal.userId !== apiKey.userId)) {
         throw new HttpError(403, 403, "Permission denied.");
       }
       await accountDb.revokeApiKey(apiKey.id);
@@ -949,105 +948,7 @@ export function createAuthRouter(): Router {
     }
   });
 
-  router.get("/admin/permissions", requirePermissionRoute("roles.read"), async (_req, res) => {
-    res.json(ok({ groups: listProjectPermissionGroups() }));
-  });
-
-  router.get("/admin/roles", requirePermissionRoute("roles.read"), async (_req, res, next) => {
-    try {
-      const accountDb = getProjectAuthContext().accountDb;
-      if (!accountDb) {
-        throw new HttpError(503, 503, "Account storage is not configured.");
-      }
-      const roles = await accountDb.listRoles();
-      res.json(ok({ items: roles }));
-    } catch (error) {
-      next(error);
-    }
-  });
-
-  router.post("/admin/roles", requirePermissionRoute("roles.manage"), json, async (req, res, next) => {
-    try {
-      const accountDb = getProjectAuthContext().accountDb;
-      const principal = getRequestPrincipal(req);
-      if (!accountDb || !principal || !("userId" in principal)) {
-        throw new HttpError(401, 401, "Unauthorized.");
-      }
-      const role = await accountDb.createRole({
-        name: requireString(req.body?.name, "name"),
-        description: typeof req.body?.description === "string" ? req.body.description : undefined,
-        permissions: readPermissionArray(req.body?.permissions),
-        createdByUserId: principal.userId,
-      });
-      await recordAuthAudit(req, {
-        ...createAuditActor(principal),
-        eventType: "auth.role.create",
-        outcome: "success",
-        resourceType: "role",
-        resourceId: role.id,
-        context: {
-          name: role.name,
-          permissions: role.permissions,
-        },
-      });
-      res.status(201).json(ok({ role }));
-    } catch (error) {
-      next(error);
-    }
-  });
-
-  router.patch("/admin/roles/:roleId", requirePermissionRoute("roles.manage"), json, async (req, res, next) => {
-    try {
-      const accountDb = getProjectAuthContext().accountDb;
-      if (!accountDb) {
-        throw new HttpError(503, 503, "Account storage is not configured.");
-      }
-      const role = await accountDb.updateRole(req.params.roleId, {
-        name: typeof req.body?.name === "string" ? req.body.name : undefined,
-        description: typeof req.body?.description === "string" ? req.body.description : undefined,
-        permissions: req.body?.permissions === undefined ? undefined : readPermissionArray(req.body.permissions),
-      });
-      const principal = getRequestPrincipal(req);
-      await recordAuthAudit(req, {
-        ...createAuditActor(principal),
-        eventType: "auth.role.update",
-        outcome: "success",
-        resourceType: "role",
-        resourceId: role.id,
-        context: {
-          name: role.name,
-          permissions: role.permissions,
-        },
-      });
-      res.json(ok({ role }));
-    } catch (error) {
-      next(error);
-    }
-  });
-
-  router.delete("/admin/roles/:roleId", requirePermissionRoute("roles.manage"), async (req, res, next) => {
-    try {
-      const accountDb = getProjectAuthContext().accountDb;
-      if (!accountDb) {
-        throw new HttpError(503, 503, "Account storage is not configured.");
-      }
-      const role = await accountDb.getRole(req.params.roleId);
-      await accountDb.deleteRole(req.params.roleId);
-      await recordAuthAudit(req, {
-        ...createAuditActor(getRequestPrincipal(req)),
-        eventType: "auth.role.delete",
-        outcome: "success",
-        resourceType: "role",
-        resourceId: req.params.roleId,
-        context: role ? { name: role.name } : undefined,
-      });
-      res.json(ok({ deleted: true }));
-    } catch (error) {
-      next(error);
-    }
-  });
-
-  router.get("/admin/users", requirePermissionRoute("users.read"), async (req, res, next) => {
+  router.get("/admin/users", requirePermissionRoute("system.admin"), async (req, res, next) => {
     try {
       const authService = getProjectAuthContext().authService;
       const accountDb = getProjectAuthContext().accountDb;
@@ -1069,8 +970,7 @@ export function createAuthRouter(): Router {
         status: profile?.status ?? "invited",
         lastSignInAt: user.lastSignInAt ?? profile?.lastLoginAt,
         createdAt: user.createdAt,
-        roles: profile?.roleNames ?? [],
-        permissions: profile?.permissions ?? [],
+        isSystemAdmin: profile?.isSystemAdmin ?? false,
         avatarUrl: profile?.avatarUrl,
       }));
 
@@ -1080,8 +980,7 @@ export function createAuthRouter(): Router {
       if (search) {
         items = items.filter((u) =>
           u.email.toLowerCase().includes(search) ||
-          u.displayName.toLowerCase().includes(search) ||
-          u.roles.some((r) => r.toLowerCase().includes(search)),
+          u.displayName.toLowerCase().includes(search),
         );
       }
 
@@ -1096,7 +995,7 @@ export function createAuthRouter(): Router {
 
 
 
-  router.get("/admin/users/invitation-link/:userId", requirePermissionRoute("users.manage"), async (req, res, next) => {
+  router.get("/admin/users/invitation-link/:userId", requirePermissionRoute("system.admin"), async (req, res, next) => {
     try {
       const authService = getProjectAuthContext().authService;
       const accountDb = getProjectAuthContext().accountDb;
@@ -1114,7 +1013,7 @@ export function createAuthRouter(): Router {
     }
   });
 
-  router.post("/admin/users/invitations", requirePermissionRoute("users.manage"), json, async (req, res, next) => {
+  router.post("/admin/users/invitations", requirePermissionRoute("system.admin"), json, async (req, res, next) => {
     try {
       const authService = getProjectAuthContext().authService;
       const principal = getRequestPrincipal(req);
@@ -1146,7 +1045,7 @@ export function createAuthRouter(): Router {
     }
   });
 
-  router.patch("/admin/users/:userId", requirePermissionRoute("users.manage"), json, async (req, res, next) => {
+  router.patch("/admin/users/:userId", requirePermissionRoute("system.admin"), json, async (req, res, next) => {
     try {
       const authService = getProjectAuthContext().authService;
       const accountDb = getProjectAuthContext().accountDb;
@@ -1194,7 +1093,7 @@ export function createAuthRouter(): Router {
     }
   });
 
-  router.post("/admin/users/:userId/avatar", requirePermissionRoute("users.manage"), rawBody, async (req, res, next) => {
+  router.post("/admin/users/:userId/avatar", requirePermissionRoute("system.admin"), rawBody, async (req, res, next) => {
     try {
       const accountDb = getProjectAuthContext().accountDb;
       if (!accountDb) {
@@ -1225,31 +1124,15 @@ export function createAuthRouter(): Router {
     }
   });
 
-  router.put("/admin/users/:userId/roles", requirePermissionRoute("users.manage"), json, async (req, res, next) => {
+  router.put("/admin/users/:userId/administrator", requirePermissionRoute("system.admin"), json, async (req,res,next) => {
     try {
-      const accountDb = getProjectAuthContext().accountDb;
-      if (!accountDb) {
-        throw new HttpError(503, 503, "Account storage is not configured.");
-      }
-      const roleIds = Array.isArray(req.body?.roleIds)
-        ? req.body.roleIds.filter((item: unknown): item is string => typeof item === "string")
-        : [];
-      const profile = await accountDb.setUserRoles(req.params.userId, roleIds);
-      await recordAuthAudit(req, {
-        ...createAuditActor(getRequestPrincipal(req)),
-        eventType: "auth.user.roles.update",
-        outcome: "success",
-        resourceType: "user",
-        resourceId: req.params.userId,
-        context: {
-          roleIds,
-          roleNames: profile.roleNames,
-        },
-      });
-      res.json(ok({ profile }));
-    } catch (error) {
-      next(error);
-    }
+      if (typeof req.body?.isSystemAdmin !== "boolean") throw new HttpError(400,400,"isSystemAdmin must be a boolean.");
+      const accountDb=getProjectAuthContext().accountDb;
+      if(!accountDb) throw new HttpError(503,503,"Account storage is not configured.");
+      const profile=await accountDb.setSystemAdministrator(req.params.userId,req.body.isSystemAdmin);
+      await recordAuthAudit(req,{...createAuditActor(getRequestPrincipal(req)),eventType:"auth.user.administrator.update",outcome:"success",resourceType:"user",resourceId:req.params.userId,context:{isSystemAdmin:profile.isSystemAdmin}});
+      res.json(ok({profile}));
+    } catch(error) {next(error);}
   });
 
   return router;
@@ -1363,7 +1246,7 @@ function serializePrincipal(principal: AuthenticatedPrincipal | undefined): Auth
   if (principal.kind === "admin_key") {
     return {
       kind: principal.kind,
-      permissions: principal.permissions,
+      isSystemAdmin: principal.isSystemAdmin,
     };
   }
   if (principal.kind === "api_key") {
@@ -1373,10 +1256,9 @@ function serializePrincipal(principal: AuthenticatedPrincipal | undefined): Auth
       displayName: principal.profile.displayName,
       email: principal.profile.email,
       avatarUrl: principal.profile.avatarUrl,
-      permissions: principal.permissions,
+      isSystemAdmin: principal.isSystemAdmin,
       apiKeyId: principal.apiKey.id,
       expiresAt: principal.apiKey.expiresAt,
-      roleNames: principal.profile.roleNames,
     };
   }
   return {
@@ -1385,8 +1267,7 @@ function serializePrincipal(principal: AuthenticatedPrincipal | undefined): Auth
     displayName: principal.profile.displayName,
     email: principal.profile.email,
     avatarUrl: principal.profile.avatarUrl,
-    permissions: principal.permissions,
-    roleNames: principal.profile.roleNames,
+    isSystemAdmin: principal.isSystemAdmin,
   };
 }
 
@@ -1413,13 +1294,6 @@ function requireString(value: unknown, fieldName: string): string {
     throw new HttpError(400, 400, `${fieldName} is required.`);
   }
   return value.trim();
-}
-
-function readPermissionArray(value: unknown): PermissionKey[] {
-  if (!Array.isArray(value)) {
-    throw new HttpError(400, 400, "permissions must be an array.");
-  }
-  return value.filter((item): item is PermissionKey => typeof item === "string") as PermissionKey[];
 }
 
 function readRequestOrigin(req: express.Request): string {

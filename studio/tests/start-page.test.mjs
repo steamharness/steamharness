@@ -65,7 +65,7 @@ function fixture(t, options = {}) {
   };
   const module = { exports: {} };
   runInNewContext(compiled.outputFiles[0].text, { module, exports: module.exports, require: name => name === 'vscode' ? vscode : require(name),
-    AbortController, AbortSignal, Error, DOMException, structuredClone, TextDecoder, setTimeout, clearTimeout,
+    AbortController, AbortSignal, Error, DOMException, structuredClone, TextDecoder, process, setTimeout, clearTimeout,
     setInterval: (callback, ms) => { const key = {}; intervals.set(key, { callback, ms }); return key; }, clearInterval: key => intervals.delete(key) });
   const controller = new module.exports.StudioStartController({ extension: { packageJSON: { version: '0.1.0' } }, globalState: {
     get: key => storage.get(key), update: async (key, value) => storage.set(key, value) } }, launcher,

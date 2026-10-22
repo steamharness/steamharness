@@ -8,7 +8,7 @@ description: "上传项目源码并可选发布不可变版本。"
 上传仅进行安全解包、静态元数据和文件校验、哈希与保存。服务器不会安装依赖、构建或加载项目代码。未传 `--file` 时，CLI 按项目根 `.steamharnessignore` 打包；`.gitignore` 不参与。
 
 ```bash
-steamharness workspace upload <project> [--path <dir>] [--file <archive>] [--create] [--release-log <text>] [--no-wait]
+steamharness workspace upload <project> [--path <dir>] [--file <archive>] [--create] [--group-id <id>] [--release-log <text>] [--no-wait]
 ```
 
 | 参数 | 用途 |
@@ -16,6 +16,7 @@ steamharness workspace upload <project> [--path <dir>] [--file <archive>] [--cre
 | `--path` | 本地项目目录。 |
 | `--file` | 已有 tar.gz、tgz 或 zip 包。 |
 | `--create` | 按 package 顶层 UUID、静态 projectType 与完整 projectInfo 创建或复用项目。 |
+| `--group-id` | 首次创建时选择归属组；需要该组开发者权限，不自动提升创建者角色。 |
 | `--release-log` | 上传成功后发布，并保存发布说明。 |
 | `--no-wait` | 返回文件处理任务 ID；不能与自动发布或项目组组合。 |
 
@@ -23,7 +24,7 @@ steamharness workspace upload <project> [--path <dir>] [--file <archive>] [--cre
 
 ## 文件处理
 
-`POST /api/workflows/{workflow}/package` 返回任务。CLI 默认轮询 `GET /api/workflows/{workflow}/preparations/{jobId}`。阶段为 `queued`、`extracting`、`validating`、`committing`，状态为 `queued`、`preparing`、`success`、`failed`。可用 `workspace preparation <project> <jobId>` 继续查询。
+`POST /api/projects/{projectId}/package` 返回任务。CLI 默认轮询 `GET /api/projects/{projectId}/preparations/{jobId}`。阶段为 `queued`、`extracting`、`validating`、`committing`，状态为 `queued`、`preparing`、`success`、`failed`。可用 `workspace preparation <project> <jobId>` 继续查询。
 
 解包拒绝路径穿越、符号链接、特殊成员和大小冲突。失败上传不会替换已有草稿或历史快照。请在 `.steamharnessignore` 中明确排除本机凭据、依赖和用户数据。
 
@@ -37,3 +38,5 @@ steamharness workspace upload <project> [--path <dir>] [--file <archive>] [--cre
 steamharness workspace upload hello --path ./hello --create --release-log "首次发布"
 steamharness workspace upload dashboard --path ./dashboard --dependency data=./data-project --publish-group
 ```
+
+已有项目上传、发布需要开发者及以上角色。上传不能修改项目信息、图标、可见性或组归属。`--group-id` 与 `--project-group` 独立，后者仍表示批量源码发布。

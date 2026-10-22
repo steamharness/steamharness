@@ -3,7 +3,6 @@ import { isProjectUuid } from "../workflow-ids/index";
 
 export const STEAMHARNESS_PROJECT_GROUP_VERSION = 1;
 export const STEAMHARNESS_PROJECT_GROUP_MANIFEST_FILE = "project-group.json";
-export const STEAMHARNESS_PROJECT_DEPENDENCY_CAPABILITY = "download_source" as const;
 
 export interface ProjectDependencyLocalizedError extends Error {
   steamHarnessI18n: {
@@ -94,30 +93,18 @@ export interface ProjectDependencyStatusResult {
 export type ProjectAccessRequestStatus =
   | "pending"
   | "approved"
-  | "rejected"
-  | "revoked";
+  | "rejected";
 
 export interface ProjectAccessRequest {
   id: string;
   projectId: string;
   requesterUserId: string;
-  capability: typeof STEAMHARNESS_PROJECT_DEPENDENCY_CAPABILITY;
   reason: string;
   status: ProjectAccessRequestStatus;
   createdAt: string;
   updatedAt: string;
   resolvedByUserId?: string;
   resolvedAt?: string;
-}
-
-export interface ProjectCapabilityGrant {
-  projectId: string;
-  userId: string;
-  capability: typeof STEAMHARNESS_PROJECT_DEPENDENCY_CAPABILITY;
-  createdByUserId?: string;
-  createdAt: string;
-  revokedByUserId?: string;
-  revokedAt?: string;
 }
 
 export function createExternalProjectDependencyLocks(

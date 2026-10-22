@@ -112,9 +112,6 @@ importers:
       import-meta-resolve:
         specifier: 4.2.0
         version: 4.2.0
-      steamharness:
-        specifier: link:../harness
-        version: link:../harness
       tsx:
         specifier: ^4.21.0
         version: 4.23.15
@@ -137,6 +134,9 @@ importers:
       '@steamharness/openai-responses':
         specifier: workspace:*
         version: link:../shared/openai-responses
+      '@steamharness/project-access':
+        specifier: workspace:*
+        version: link:../shared/project-access
       '@steamharness/project-card-metadata':
         specifier: workspace:*
         version: link:../shared/project-card-metadata
@@ -185,6 +185,9 @@ importers:
       semver:
         specifier: ^7.7.4
         version: 7.8.5
+      steamharness:
+        specifier: link:../harness
+        version: link:../harness
       tsup:
         specifier: ^8.5.1
         version: 8.5.1(jiti@2.7.0)(postcss@8.5.30)(tsx@4.23.15)(typescript@6.0.3)(yaml@2.9.1)
@@ -288,9 +291,15 @@ importers:
       '@steamharness/kanban-project':
         specifier: workspace:*
         version: link:../shared/kanban-project
+      '@steamharness/project-access':
+        specifier: workspace:*
+        version: link:../shared/project-access
       '@steamharness/project-card-metadata':
         specifier: workspace:*
         version: link:../shared/project-card-metadata
+      '@steamharness/project-configuration':
+        specifier: workspace:*
+        version: link:../shared/project-configuration
       '@steamharness/project-dependencies':
         specifier: workspace:*
         version: link:../shared/project-dependencies
@@ -340,9 +349,6 @@ importers:
       '@steamharness/cli':
         specifier: link:../cli
         version: link:../cli
-      '@steamharness/project-configuration':
-        specifier: workspace:*
-        version: link:../shared/project-configuration
       '@steamharness/repository-boundary':
         specifier: workspace:*
         version: link:../shared/repository-boundary
@@ -406,6 +412,12 @@ importers:
       '@steamharness/knowledge-base':
         specifier: workspace:*
         version: link:../../shared/knowledge-base
+      '@steamharness/project-access':
+        specifier: workspace:*
+        version: link:../../shared/project-access
+      '@steamharness/project-configuration':
+        specifier: workspace:*
+        version: link:../../shared/project-configuration
       '@steamharness/project-dependencies':
         specifier: workspace:*
         version: link:../../shared/project-dependencies
@@ -473,9 +485,6 @@ importers:
         specifier: ^6.3.0
         version: 6.4.4(@types/node@25.9.9)(jiti@2.7.0)(lightningcss@1.32.0)(tsx@4.23.15)(yaml@2.9.1)
     devDependencies:
-      '@steamharness/project-configuration':
-        specifier: workspace:*
-        version: link:../../shared/project-configuration
       '@testing-library/jest-dom':
         specifier: 6.9.1
         version: 6.9.1
@@ -500,6 +509,9 @@ importers:
       '@steamharness/i18n':
         specifier: workspace:*
         version: link:i18n
+      '@steamharness/project-access':
+        specifier: workspace:*
+        version: link:project-access
       '@testing-library/jest-dom':
         specifier: 6.9.1
         version: 6.9.1
@@ -626,6 +638,8 @@ importers:
         version: 6.0.3
 
   shared/openai-responses: {}
+
+  shared/project-access: {}
 
   shared/project-card-metadata:
     dependencies:

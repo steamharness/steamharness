@@ -182,11 +182,10 @@ test("admin alias routes forward to the auth admin handlers", async () => {
     });
     const cookie = login.headers.get("set-cookie") ?? "";
 
-    const response = await fetchJson(server.url("/api/admin/permissions"), {
+    const response = await fetch(server.url("/api/admin/permissions"), {
       headers: { Cookie: cookie },
     });
-    assert.equal(response.errCode, 0);
-    assert.ok(Array.isArray(response.data?.groups));
+    assert.equal(response.status, 404);
   } finally {
     await server.close();
     delete process.env.STEAMHARNESS_SERVER_ADMIN_KEY;
@@ -222,11 +221,9 @@ test("admin key login upgrades to admin_session when auth service is configured"
           status: "active" as const,
           createdAt: "2026-06-18T00:00:00.000Z",
           updatedAt: "2026-06-18T00:00:00.000Z",
-          roleIds: ["builtin_admin"],
-          roleNames: ["Admin"],
-          permissions: ["system.admin"],
+
+          isSystemAdmin: true,
         },
-        permissions: ["system.admin"],
         isSystemAdmin: true,
         accessToken: "access-token-auth-service",
         refreshToken: "refresh-token-auth-service",
@@ -249,9 +246,8 @@ test("admin key login upgrades to admin_session when auth service is configured"
         status: "active" as const,
         createdAt: "2026-06-18T00:00:00.000Z",
         updatedAt: "2026-06-18T00:00:00.000Z",
-        roleIds: ["builtin_admin"],
-        roleNames: ["Admin"],
-        permissions: ["system.admin"],
+
+        isSystemAdmin: true,
       };
     },
     async createAuditEvent() {},
@@ -279,11 +275,10 @@ test("admin key login upgrades to admin_session when auth service is configured"
     assert.equal(session.data?.authenticated, true);
     assert.equal(session.data?.principal?.kind, "admin_session");
 
-    const response = await fetchJson(server.url("/api/admin/permissions"), {
+    const response = await fetch(server.url("/api/admin/permissions"), {
       headers: { Cookie: cookie },
     });
-    assert.equal(response.errCode, 0);
-    assert.ok(Array.isArray(response.data?.groups));
+    assert.equal(response.status, 404);
   } finally {
     configureProjectAuthContext({});
     await server.close();
@@ -308,7 +303,6 @@ test("valid admin key keeps its signed cookie when bootstrap account login is re
       return {
         kind: "admin_key" as const,
         tokenSource: "cookie" as const,
-        permissions: ["system.admin"],
         isSystemAdmin: true,
       };
     },
@@ -377,11 +371,9 @@ test("password login can bootstrap the env-configured admin account into an admi
           status: "active" as const,
           createdAt: "2026-06-20T00:00:00.000Z",
           updatedAt: "2026-06-20T00:00:00.000Z",
-          roleIds: ["builtin_admin"],
-          roleNames: ["Admin"],
-          permissions: ["system.admin"],
+
+          isSystemAdmin: true,
         },
-        permissions: ["system.admin"],
         isSystemAdmin: true,
         accessToken: "access-token-bootstrap-admin",
         refreshToken: "refresh-token-bootstrap-admin",
@@ -404,9 +396,8 @@ test("password login can bootstrap the env-configured admin account into an admi
         status: "active" as const,
         createdAt: "2026-06-20T00:00:00.000Z",
         updatedAt: "2026-06-20T00:00:00.000Z",
-        roleIds: ["builtin_admin"],
-        roleNames: ["Admin"],
-        permissions: ["system.admin"],
+
+        isSystemAdmin: true,
       };
     },
     async createAuditEvent() {},
@@ -460,7 +451,6 @@ test("bootstrap password login falls back to admin key session when auth service
       return {
         kind: "admin_key" as const,
         tokenSource: "cookie" as const,
-        permissions: ["system.admin"],
         isSystemAdmin: true,
       };
     },
@@ -592,9 +582,8 @@ test("admin users list merges compatible auth user summaries with workflow profi
             createdAt: "2026-06-20T00:00:00.000Z",
             updatedAt: "2026-06-21T00:00:00.000Z",
             lastLoginAt: "2026-06-21T00:00:00.000Z",
-            roleIds: ["builtin_admin"],
-            roleNames: ["Admin"],
-            permissions: ["system.admin"],
+
+            isSystemAdmin: true,
           },
         },
         {
@@ -620,11 +609,9 @@ test("admin users list merges compatible auth user summaries with workflow profi
           status: "active" as const,
           createdAt: "2026-06-20T00:00:00.000Z",
           updatedAt: "2026-06-21T00:00:00.000Z",
-          roleIds: ["builtin_admin"],
-          roleNames: ["Admin"],
-          permissions: ["system.admin"],
+
+          isSystemAdmin: true,
         },
-        permissions: ["system.admin"],
         isSystemAdmin: true,
         accessToken: "access-token-admin",
         refreshToken: "refresh-token-admin",
@@ -649,7 +636,7 @@ test("admin users list merges compatible auth user summaries with workflow profi
     assert.equal(response.data?.pageSize, 1);
     assert.equal(response.data?.items?.[0]?.userId, "user-admin");
     assert.equal(response.data?.items?.[0]?.displayName, "Profile Admin");
-    assert.deepEqual(response.data?.items?.[0]?.roles, ["Admin"]);
+    assert.equal(response.data?.items?.[0]?.isSystemAdmin, true);
     assert.equal(response.data?.items?.[0]?.lastSignInAt, "2026-06-22T00:00:00.000Z");
   } finally {
     configureProjectAuthContext({});
@@ -728,9 +715,7 @@ test("password login mints an API key when called with source=desktop for non-we
         status: "active" as const,
         createdAt: "2026-06-20T00:00:00.000Z",
         updatedAt: "2026-06-20T00:00:00.000Z",
-        roleIds: [],
-        roleNames: [],
-        permissions: [],
+
       };
     },
     async createApiKey(input: { userId: string; name: string; source: string; expiresAt: string }) {
@@ -827,9 +812,7 @@ test("me exposes the refreshed expiration for a Desktop API key principal", asyn
     status: "active" as const,
     createdAt: "2026-06-20T00:00:00.000Z",
     updatedAt: "2026-06-20T00:00:00.000Z",
-    roleIds: [],
-    roleNames: [],
-    permissions: [],
+
   };
   const authService = {
     async resolvePrincipal() {
@@ -838,7 +821,7 @@ test("me exposes the refreshed expiration for a Desktop API key principal", asyn
         tokenSource: "bearer" as const,
         userId: profile.userId,
         profile,
-        permissions: [],
+
         isSystemAdmin: false,
         apiKey: {
           id: "api-key-desktop",
@@ -892,11 +875,9 @@ test("me patch updates display name and avatar url for authenticated sessions", 
           status: "active" as const,
           createdAt: "2026-06-21T00:00:00.000Z",
           updatedAt: "2026-06-21T00:00:00.000Z",
-          roleIds: ["builtin_viewer"],
-          roleNames: ["Viewer"],
-          permissions: ["api_keys.manage_self"],
+
         },
-        permissions: ["api_keys.manage_self"],
+
         isSystemAdmin: false,
         accessToken: "access-token-profile",
         refreshToken: "refresh-token-profile",
@@ -921,9 +902,7 @@ test("me patch updates display name and avatar url for authenticated sessions", 
         status: "active" as const,
         createdAt: "2026-06-21T00:00:00.000Z",
         updatedAt: "2026-06-21T00:00:00.000Z",
-        roleIds: ["builtin_viewer"],
-        roleNames: ["Viewer"],
-        permissions: ["api_keys.manage_self"],
+
       };
     },
     async createAuditEvent() {},
@@ -1235,9 +1214,7 @@ test("logout revokes a PostgreSQL refresh session before clearing its cookie", a
     status: "active" as const,
     createdAt: "2026-08-01T00:00:00.000Z",
     updatedAt: "2026-08-01T00:00:00.000Z",
-    roleIds: ["builtin_viewer"],
-    roleNames: ["Viewer"],
-    permissions: [] as const,
+
   };
   const authService = {
     async resolvePrincipal() {
@@ -1246,7 +1223,7 @@ test("logout revokes a PostgreSQL refresh session before clearing its cookie", a
         tokenSource: "cookie" as const,
         userId: profile.userId,
         profile,
-        permissions: [],
+
         isSystemAdmin: false,
         accessToken: "wf_access_logout",
         refreshToken: "wf_refresh_logout",

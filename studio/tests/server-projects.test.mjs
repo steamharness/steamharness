@@ -62,10 +62,10 @@ async function server(t, handler) {
 test('project API reads use the host account, host language and cancellable requests', async () => {
   const reads = [];
   const client = new ProjectServerClient({ serverUrl: 'https://steamharness.test/', accessToken: 'host-token' }, async (url, options) => {
-    reads.push({ url, options }); return Response.json({ errCode: 0, data: [] });
+    reads.push({ url, options }); return Response.json({ errCode: 0, data: {items:[],total:0,page:1,pageSize:100} });
   });
   await client.projects(signal());
-  assert.equal(reads[0].url, 'https://steamharness.test/api/projects');
+  assert.equal(reads[0].url, 'https://steamharness.test/api/projects?page=1&pageSize=100');
   assert.equal(reads[0].options.headers.Authorization, 'Bearer host-token');
   assert.equal(reads[0].options.redirect, 'error');
   const cancelled = new AbortController(); cancelled.abort();
@@ -75,7 +75,7 @@ test('project API reads use the host account, host language and cancellable requ
 
 test('API errors redact credentials and retain permission status', async () => {
   const client = new ProjectServerClient({ serverUrl: 'https://steamharness.test', accessToken: 'private-token' }, async () => Response.json({ errCode: 403, errMessage: 'private-token forbidden' }, { status: 403 }));
-  await assert.rejects(client.projects(signal()), error => error.status === 403 && error.message === '[redacted] forbidden');
+  await assert.rejects(client.projects(signal()), error => error.status === 403 && error.message === 'Your project or group role does not allow this operation.' && !error.message.includes('private-token'));
 });
 
 test('malformed API envelopes produce a readable error', async () => {
