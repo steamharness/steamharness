@@ -157,7 +157,7 @@ export class ServerClient {
     if (!email.trim() || !password) { throw new AuthError(t("Enter your email and password.")); }
     let sessionCookie: string | undefined;
     const result = await this.request<LoginResponse>('/api/auth/login', {
-      body: { email: email.trim(), password, source: 'desktop', clientName: 'Studio Workstation' },
+      body: { email: email.trim(), password, source: 'desktop', clientName: 'SteamHarness Studio' },
       headersReceived: (headers) => {
         const cookies = headers.getSetCookie?.() ?? [];
         sessionCookie = cookies.map((cookie) => cookie.split(';', 1)[0]).join('; ') || undefined;
