@@ -366,7 +366,7 @@ export function validateProjectValues(fields: Field[], values: ParamValues, stat
       if (field.required && (field.type === 'file' || field.control === 'audio') && (parsed === null || Array.isArray(parsed) && !parsed.length)) { throw new Error(t("Please enter {0}.", label)); }
     }
     const choices = states[field.name]?.resolvedOptions ?? field.options;
-    if (choices && choices.length > 0) {
+    if (choices) {
       const allowed = new Set(choices.filter((option) => states[field.name]?.options?.[option.value]?.visible !== false && !states[field.name]?.options?.[option.value]?.disabled).map((option) => option.value));
       if ((Array.isArray(value) ? value : [value]).some((entry) => !allowed.has(entry))) { throw new Error(t("The options for {0} have changed. Please select again.", label)); }
     }

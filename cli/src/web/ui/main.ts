@@ -81,6 +81,7 @@ function initialize(): void {
   let state: State | undefined;
   let renderedProject = '';
   let renderedSession = '';
+  let renderedParameterDefinition = '';
   let formKey = '';
   let paramStates: Record<string, ParamState> = {};
   let resolving = false;
@@ -148,14 +149,16 @@ function initialize(): void {
   const sessionActions = Array.from(sessionMenu.querySelectorAll<HTMLButtonElement>('.session-action'));
   const fields = new Map<string, FieldView>();
   const messages = new Map<string, MessageView>();
-  const saved = (vscode.getState() ?? {}) as { drafts?: Record<string, string>; params?: Record<string, ParamValues>; panelOpen?: boolean; projectUri?: string; navigation?: SavedNavigation; submissions?: ConversationSubmission[] };
+  const saved = (vscode.getState() ?? {}) as { drafts?: Record<string, string>; params?: Record<string, ParamValues>; parameterEdits?: Record<string, Record<string, string | null>>; panelOpen?: boolean; projectUri?: string; navigation?: SavedNavigation; submissions?: ConversationSubmission[] };
   const drafts = saved.drafts ?? {};
   const paramValues = saved.params ?? {};
   const submissions = new ConversationSubmissions(saved.submissions, t('Message delivery was not confirmed. Retry to check or send it again.'));
-  const editedParams = new Set<string>();
+  const parameterEdits = saved.parameterEdits ?? {};
+  const editedParams = (): Record<string, string | null> => parameterEdits[formKey] ??= {};
+  const markParameterEdited = (name: string): void => { editedParams()[name] = currentSession()?.parameterRevisions?.[entrypoint.value]?.[name] ?? null; };
   const narrow = window.matchMedia('(max-width: 680px)');
   let panelOpen = saved.panelOpen ?? document.body.dataset.surface !== 'assistant';
-  const persist = (): void => { vscode.setState({ drafts, params: paramValues, panelOpen, submissions: submissions.list(), projectUri: state?.project.uri ?? saved.projectUri,
+  const persist = (): void => { vscode.setState({ drafts, params: paramValues, parameterEdits, panelOpen, submissions: submissions.list(), projectUri: state?.project.uri ?? saved.projectUri,
     navigation: state ? (navigationNeeded || draftUpdates.size) ? { projectUri: state.project.uri, activeId: preferredSessionId ?? state.activeId, updates: [...draftUpdates.values()] } : undefined : saved.navigation }); };
   const post = (message: Record<string, unknown>): void => { if (state) { vscode.postMessage({ projectUri: state.project.uri, sessionId: state.activeId, ...message }); } };
   const currentSession = () => state?.sessions.find((session) => session.id === state?.activeId);
@@ -192,6 +195,7 @@ function initialize(): void {
     onReset: (names) => {
       for (const name of names) {
         const field = fields.get(name)!.field;
+        markParameterEdited(name);
         values()[name] = projectParamValue(field);
       }
       persist(); updateFields(); requestParams({ kind: 'param', paramName: names[0] });
@@ -259,6 +263,7 @@ function initialize(): void {
     const signature = parameterSignature();
     const cached = parameterCache.get(formKey);
     if (!force && cached?.signature === signature) {
+      if (parameterRequest && parameterRequest.signature !== signature) { cancelParameterRequest(); }
       paramsNeedInit = false; pendingParameterTrigger = undefined;
       paramStates = structuredClone(cached.states); parametersReady = true; parameterOptionsStale = false;
       updateFields(); return;
@@ -330,7 +335,7 @@ function initialize(): void {
       control.addEventListener('change', () => changeField(field.name));
       if (control instanceof HTMLTextAreaElement || control instanceof HTMLInputElement && !['checkbox', 'hidden'].includes(control.type)) {
         control.addEventListener('input', () => {
-          editedParams.add(field.name);
+          markParameterEdited(field.name);
           values()[field.name] = control.value;
           persist();
           scheduleParams({ kind: 'param', paramName: field.name }, 200);
@@ -349,8 +354,11 @@ function initialize(): void {
   function renderParameters(): void {
     const project = state!.project;
     const parameters = currentParameters();
+    cancelParameterRequest();
+    renderedParameterDefinition = JSON.stringify(parameters);
     formKey = `${project.uri}:${state!.activeId}:${entrypoint.value}`;
-    paramValues[formKey] = { ...paramValues[formKey], ...state!.parameterValues?.[entrypoint.value] };
+    const serverValues = state!.parameterValues?.[entrypoint.value] ?? {};
+    const revisions = currentSession()?.parameterRevisions?.[entrypoint.value] ?? {};
     paramStates = {};
     parameterOptionsStale = false;
     parametersReady = !parameters.paramResolver?.enabled;
@@ -360,6 +368,14 @@ function initialize(): void {
     const container = document.querySelector<HTMLDivElement>('#main-fields')!;
     container.replaceChildren();
     for (const field of parameters.fields) {
+      // Local edits belong to a conversation and entrypoint. Only a newly
+      // accepted input effect can replace them, including while it was hidden.
+      const edited = Object.hasOwn(editedParams(), field.name);
+      const effectChanged = edited && editedParams()[field.name] !== (revisions[field.name] ?? null);
+      if (effectChanged) { delete editedParams()[field.name]; }
+      if ((!edited || effectChanged) && (state!.parameterValues?.[entrypoint.value] !== undefined || effectChanged || revisions[field.name] !== undefined)) {
+        values()[field.name] = projectParamValue(field, serverValues[field.name]);
+      }
       values()[field.name] = projectParamValue(field, values()[field.name] ?? field.defaultValue ?? (field.type === 'boolean' ? 'false' : ''));
       fields.set(field.name, createField(field));
       if (project.projectType !== 'conversation' && (field.panel === undefined || field.panel === 'main')) { container.append(fields.get(field.name)!.root); }
@@ -369,6 +385,7 @@ function initialize(): void {
     parameterActions.render(parameters);
     paramError.hidden = true;
     updateFields();
+    persist();
     requestParams({ kind: 'init' });
   }
 
@@ -384,7 +401,7 @@ function initialize(): void {
   }
 
   function setFieldValue(name: string, value: ParamValue): void {
-    editedParams.add(name);
+    markParameterEdited(name);
     values()[name] = value;
     persist(); updateFields(); requestParams({ kind: 'param', paramName: name });
   }
@@ -462,7 +479,7 @@ function initialize(): void {
     if (composerArea.hidden !== hidden) {
       composerArea.hidden = hidden;
       if (hidden) {
-        paramsNeedInit ||= resolving;
+        paramsNeedInit ||= resolving || inputTimer !== undefined;
         cancelParameterRequest();
       } else { sizeComposer(); }
       syncTranscriptLayout();
@@ -1012,16 +1029,16 @@ function initialize(): void {
     document.querySelector('#project-name')!.textContent = next.project.name;
     document.querySelector<HTMLElement>('#project-name')!.hidden = !session.messages.length;
     document.querySelector('#conversation-title')!.textContent = session.messages.length ? session.title : next.project.name;
-    if (projectChanged) {
+    if (projectChanged || JSON.stringify(previous?.project.entrypoints) !== JSON.stringify(next.project.entrypoints)) {
       historyLimit = historyPageSize;
+      const selected = projectChanged ? undefined : entrypoint.value;
       entrypoint.replaceChildren(...next.project.entrypoints.map((entry) => new Option(entry.title || entry.id, entry.id)));
-      entrypoint.value = next.project.defaultEntrypoint || next.project.entrypoints[0]?.id || '';
+      entrypoint.value = next.project.entrypoints.some(entry => entry.id === selected) ? selected! : next.project.defaultEntrypoint || next.project.entrypoints[0]?.id || '';
       entrypoint.hidden = conversation || next.project.entrypoints.length === 0;
       textarea.placeholder = conversation ? t("Write anything") : '["--name", "Studio"]';
       renderedProject = next.project.uri;
     }
     if (switching) {
-      editedParams.clear();
       pendingParameterTrigger = undefined;
       closeSessionMenu();
       cancelParameterRequest();
@@ -1078,10 +1095,15 @@ function initialize(): void {
     contentSearch.refresh();
     if (fromServer) { retryingMessage = undefined; }
     updateConnectionFeedback();
-    if (switching || editingChanged) { renderParameters(); }
+    if (switching || editingChanged || formKey !== `${next.project.uri}:${next.activeId}:${entrypoint.value}`
+      || renderedParameterDefinition !== JSON.stringify(currentParameters())) { renderParameters(); }
     else if (JSON.stringify(previous?.parameterValues) !== JSON.stringify(next.parameterValues)) {
-      for (const [name, value] of Object.entries(next.parameterValues?.[entrypoint.value] ?? {})) {
-        if (editedParams.has(name) || JSON.stringify(values()[name]) === JSON.stringify(value)) { continue; }
+      const previousValues = previous?.parameterValues?.[entrypoint.value] ?? {};
+      const nextValues = next.parameterValues?.[entrypoint.value] ?? {};
+      for (const name of new Set([...Object.keys(previousValues), ...Object.keys(nextValues)])) {
+        if (!fields.has(name) || Object.hasOwn(editedParams(), name)) { continue; }
+        const value = projectParamValue(fields.get(name)!.field, nextValues[name]);
+        if (JSON.stringify(values()[name]) === JSON.stringify(value)) { continue; }
         values()[name] = value;
         if (currentParameters().paramResolver?.enabled) { paramsNeedInit = true; parameterOptionsStale = true; parameterCache.delete(formKey); }
       }
@@ -1097,7 +1119,7 @@ function initialize(): void {
       for (const name of updatedParams) {
         if (!fields.has(name)) { continue; }
         values()[name] = projectParamValue(fields.get(name)!.field, session.parameterValues?.[entrypoint.value]?.[name]);
-        editedParams.delete(name);
+        delete editedParams()[name];
       }
       paramsNeedInit = fields.size > 0;
       persist(); updateFields();
@@ -1128,7 +1150,10 @@ function initialize(): void {
     if (!connectionAvailable || state.project.projectType !== 'conversation' && !navigationReady()) { return; }
     if (conversationComposer.submitCommand()) { return; }
     if (busy() || state.project.projectType !== 'conversation' && resolving || uploading || state.project.projectType === 'conversation' && !hasInput) { return; }
+    const validateOnServer = state.project.projectType === 'conversation' && currentParameters().paramResolver?.enabled
+      && (!parametersReady || resolving || parameterOptionsStale || paramsNeedInit || inputTimer !== undefined || !paramError.hidden);
     for (const [name, view] of fields) {
+      if (validateOnServer) { break; }
       if (view.root.hidden || paramStates[name]?.disabled) { continue; }
       const value = values()[name];
       const missing = view.field.required && (!value || Array.isArray(value) && value.length === 0);
@@ -1148,9 +1173,9 @@ function initialize(): void {
         attachments: structuredClone(draftFiles), createdAt: Date.now() };
       submissions.add({ projectUri: state.project.uri, sessionId: session.id, input, phase: 'pending', replacesId: editingQueueId,
         queued: !!editingQueueId || state.running || !!session.queuedInputs?.length });
-      paramsNeedInit ||= resolving || currentParameters().fields.some(field => field.resolveOnInput);
+      paramsNeedInit ||= resolving || inputTimer !== undefined || currentParameters().fields.some(field => field.resolveOnInput);
       cancelParameterRequest();
-      editedParams.clear(); textarea.value = ''; draftFiles = []; editingQueueId = undefined;
+      delete parameterEdits[formKey]; textarea.value = ''; draftFiles = []; editingQueueId = undefined;
       session.draft = { text: '', attachments: [] };
       followingLatest = true; sizeComposer(); saveDraft(false); render(state, false);
       persist(); syncNavigation(); dispatchSubmissions(); textarea.focus(); return;
@@ -1475,7 +1500,7 @@ function initialize(): void {
     } else if (message.type === 'command-executed' && message.sessionId === state?.activeId) {
       submitting = false; updateControls();
     } else if (message.type === 'sent' && state && message.sessionId === state.activeId) {
-      editedParams.clear();
+      delete parameterEdits[formKey];
       submitting = false; textarea.value = ''; draftFiles = []; editingQueueId = undefined; drafts[`${state.project.uri}:${state.activeId}`] = ''; sizeComposer(); persist();
       attachmentList(document.querySelector('#draft-attachments')!, draftFiles, true); updateControls(); textarea.focus();
     } else if (message.type === 'usage' && message.sessionId === state?.activeId) { dialogs.usageResult(message.requestId, message.usage); }

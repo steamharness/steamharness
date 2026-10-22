@@ -954,6 +954,30 @@ describe('steamharness web', () => {
     expect(runtime.run).not.toHaveBeenCalled(); expect(app.controller.current.messages).toEqual([]);
   });
 
+  it('rejects a cached selection when fresh resolution returns no available options', async () => {
+    const { app, runtime, post } = await fixture();
+    app.project.fields[0].control = 'select';
+    vi.mocked(runtime.resolveParams).mockResolvedValueOnce({ params: { model: { resolvedOptions: [{ value: 'cached' }] } } });
+    await post({ type: 'resolve', requestId: 1, params: { model: 'cached' } });
+    vi.mocked(runtime.resolveParams).mockResolvedValueOnce({ params: { model: { resolvedOptions: [] } } });
+    const response = await post({ type: 'send', text: 'All models were removed', params: { model: 'cached' }, attachments: [] });
+    expect(response.status).toBe(400);
+    expect(runtime.run).not.toHaveBeenCalled(); expect(app.controller.current.messages).toEqual([]);
+    expect(app.controller.current.parameterValues?.['']?.model).toBe('cached');
+  });
+
+  it('resolves a required dynamic default on send after initial background resolution fails', async () => {
+    const { app, runtime, post } = await fixture();
+    Object.assign(app.project.fields[0], { control: 'select', required: true, options: [] });
+    vi.mocked(runtime.resolveParams).mockRejectedValueOnce(new Error('Catalogue unavailable'));
+    const background = await post({ type: 'resolve', requestId: 1, params: { model: '' } }).then(response => response.json());
+    expect(background.messages[0].error).toBe('Catalogue unavailable');
+    vi.mocked(runtime.resolveParams).mockResolvedValueOnce({ params: { model: { value: 'current', resolvedOptions: [{ value: 'current' }] } } });
+    expect((await post({ type: 'send', text: 'Use fresh default', params: { model: '' }, attachments: [] })).status).toBe(200);
+    await app.controller.idle();
+    expect(runtime.run).toHaveBeenCalledWith(expect.objectContaining({ args: ['--model', 'current', '--message', 'Use fresh default'] }), expect.any(Function));
+  });
+
   it('translates the composer parameter protocol and saves edited parameters before sending', async () => {
     const { app, runtime, post } = await fixture();
     const response = await post({ type: 'resolve', requestId: 3, params: { model: 'chosen-model' }, draftText: 'draft', trigger: { kind: 'param', paramName: 'model' } }).then(response => response.json());

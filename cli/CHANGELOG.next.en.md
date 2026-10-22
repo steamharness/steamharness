@@ -1,5 +1,7 @@
 # Unreleased
 
+- Fixed parameter edits and resets being lost across conversations, cleared values lingering, and missed refreshes after approvals or service restarts. Messages can be submitted during initial dynamic loading or after a loading failure for server validation; an empty model catalog rejects stale selections.
+
 - Improved Conversation parameter loading with per-conversation caching, immediate static fields, coalesced edits and background refreshes that preserve options, drafts and Slash menus. Background resolution pauses during runs; configuration and identity changes invalidate caches, every send is revalidated, and obsolete requests or connection failures no longer leave loading stuck.
 
 - Fixed conversation submission applying resolved model values before validation and execution, so the first configured model is used by default and removed selections are resolved correctly.

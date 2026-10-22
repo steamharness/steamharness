@@ -14,8 +14,10 @@ afterEach(() => {
   Reflect.deleteProperty(HTMLElement.prototype, 'scrollIntoView');
 });
 
-async function fixture({ dynamic = true, resolveOnInput = false, running = false } = {}) {
-  vi.resetModules(); vi.useFakeTimers(); host.postMessage.mockReset(); host.getState.mockReturnValue(undefined); host.setState.mockReset();
+async function fixture({ dynamic = true, resolveOnInput = false, running = false, requiredModel = false, savedState }: {
+  dynamic?: boolean; resolveOnInput?: boolean; running?: boolean; requiredModel?: boolean; savedState?: object;
+} = {}) {
+  vi.resetModules(); vi.useFakeTimers(); host.postMessage.mockReset(); host.getState.mockReturnValue(savedState); host.setState.mockReset();
   for (const target of [window, document]) {
     const add = target.addEventListener.bind(target);
     vi.spyOn(target, 'addEventListener').mockImplementation((type, listener, options) => {
@@ -38,7 +40,8 @@ async function fixture({ dynamic = true, resolveOnInput = false, running = false
   await import('../web/ui/main');
   const project: Project = { id: 'parameters', uri: 'file:///parameters', folderPath: '/parameters', name: 'Parameters', projectType: 'conversation',
     fields: [
-      { name: 'model', type: 'string', control: 'select', panel: 'auxiliary', resolveOnInput, options: [{ value: 'alpha', label: 'Alpha' }, { value: 'beta', label: 'Beta' }], defaultValue: 'alpha' },
+      { name: 'model', type: 'string', control: 'select', panel: 'auxiliary', resolveOnInput, required: requiredModel,
+        options: requiredModel ? [] : [{ value: 'alpha', label: 'Alpha' }, { value: 'beta', label: 'Beta' }], defaultValue: requiredModel ? undefined : 'alpha' },
       { name: 'note', type: 'string', panel: 'auxiliary' },
       { name: 'mode', type: 'string', panel: 'mode', options: [{ value: 'build' }, { value: 'plan' }], defaultValue: 'build' },
     ],
@@ -199,4 +202,115 @@ it('offers a compact manual refresh that bypasses a valid cache without blocking
   expect(refresh.classList.contains('refreshing')).toBe(false);
   f.reply({ model: { resolvedOptions: [{ value: 'alpha', label: 'New catalogue' }] } });
   expect(f.action('ai').textContent).toContain('New catalogue');
+});
+
+it('keeps pending parameter edits when switching conversations and applies newer accepted effects on return', async () => {
+  const f = await fixture(); f.reply();
+  f.sessions[0] = { ...f.sessions[0], parameterValues: { '': { note: 'saved' } } };
+  f.receive({ sessions: [...f.sessions] }); f.reply();
+  f.action('advanced').click();
+  const note = document.querySelector<HTMLInputElement>('#param-note')!;
+  note.value = 'unsaved draft'; note.dispatchEvent(new Event('input'));
+  f.receive({ activeId: 'second' }); f.reply();
+  f.receive({ activeId: 'first' });
+  expect(f.requests().at(-1)!.params.note).toBe('unsaved draft');
+  f.reply(); f.action('advanced').click();
+  expect(document.querySelector<HTMLInputElement>('#param-note')!.value).toBe('unsaved draft');
+  f.receive({ activeId: 'second' }); f.reply();
+  f.sessions[0] = { ...f.sessions[0], parameterValues: { '': {} }, parameterRevisions: { '': { note: 'accepted-clear' } } };
+  f.receive({ sessions: [...f.sessions], activeId: 'first' });
+  expect(f.requests().at(-1)!.params.note).toBe('');
+});
+
+it('restores saved parameter edits without replacing them with server values after reopening', async () => {
+  const key = 'file:///parameters:first:';
+  const f = await fixture({ savedState: { params: { [key]: { model: 'beta', note: 'restored draft' } }, parameterEdits: { [key]: { model: null, note: null } } } });
+  expect(f.requests()[0].params).toMatchObject({ model: 'beta', note: 'restored draft' }); f.reply();
+  f.sessions[0] = { ...f.sessions[0], parameterValues: { '': { model: 'alpha', note: 'older server value' } } };
+  f.receive({ sessions: [...f.sessions] });
+  f.action('advanced').click();
+  expect(document.querySelector<HTMLInputElement>('#param-note')!.value).toBe('restored draft');
+  expect(f.action('ai').textContent).toContain('Beta');
+  f.sessions[0] = { ...f.sessions[0], parameterValues: { '': { model: 'alpha' } }, parameterRevisions: { '': { note: 'new-effect' } } };
+  f.receive({ sessions: [...f.sessions] });
+  expect(document.querySelector<HTMLInputElement>('#param-note')!.value).toBe('');
+  expect(f.requests().at(-1)!.params.model).toBe('beta');
+});
+
+it('clears a removed server value', async () => {
+  const f = await fixture(); f.reply();
+  f.sessions[0] = { ...f.sessions[0], parameterValues: { '': { note: 'saved' } } };
+  f.receive({ sessions: [...f.sessions] }); f.reply();
+  f.sessions[0] = { ...f.sessions[0], parameterValues: { '': {} } };
+  f.receive({ sessions: [...f.sessions] });
+  expect(f.requests().at(-1)!.params.note).toBe('');
+});
+
+it('protects a parameter reset from an older server value while other fields refresh', async () => {
+  const f = await fixture(); f.reply();
+  f.sessions[0] = { ...f.sessions[0], parameterValues: { '': { model: 'beta', note: 'saved' } } };
+  f.receive({ sessions: [...f.sessions] }); f.reply();
+  f.action('ai').click(); document.querySelector<HTMLButtonElement>('.quick-reset')!.click();
+  expect(f.action('ai').textContent).toContain('Alpha');
+  f.sessions[0] = { ...f.sessions[0], parameterValues: { '': { model: 'beta', note: 'remote update' } } };
+  f.receive({ sessions: [...f.sessions] });
+  expect(f.action('ai').textContent).toContain('Alpha');
+});
+
+it('releases obsolete background loading immediately when an edit returns to its cached value', async () => {
+  const f = await fixture(); f.reply(); f.action('mode').click();
+  const obsolete = f.requests().at(-1)!;
+  f.action('mode').click();
+  const refresh = document.querySelector<HTMLButtonElement>('#refresh-params')!;
+  expect(f.requests()).toHaveLength(2); expect(refresh.disabled).toBe(false);
+  f.reply({ mode: { value: 'plan' } }, obsolete);
+  expect(f.action('mode').textContent).toContain('build');
+  refresh.click(); expect(f.requests()).toHaveLength(3);
+});
+
+it.each(['pending', 'failed'])('validates required dynamic defaults on send while initial loading is %s', async phase => {
+  const f = await fixture({ requiredModel: true });
+  const request = f.requests()[0];
+  if (phase === 'failed') f.emit({ ...request, type: 'params', error: 'Catalogue unavailable' });
+  f.type('resolve defaults when sending');
+  document.querySelector<HTMLButtonElement>('#send')!.click();
+  const send = host.postMessage.mock.calls.map(([message]) => message).find(message => message.type === 'send');
+  expect(send?.text).toBe('resolve defaults when sending');
+  expect(f.loading()).toBe(false);
+  f.reply({ model: { value: 'obsolete' } }, request);
+  f.type('next draft');
+  expect(f.input.value).toBe('next draft');
+});
+
+it('rebuilds changed parameter definitions after a service restart at the same project URI', async () => {
+  const f = await fixture(); f.reply();
+  const fields: Project['fields'] = [{ name: 'temperature', type: 'number', panel: 'auxiliary', defaultValue: '0.5' }];
+  f.receive({ serverInstanceId: 'replacement', project: { ...f.project, fields, paramResolver: undefined,
+    paramLayout: { actions: [{ kind: 'auxiliary', id: 'new-options', label: 'New options', params: ['temperature'] }] } } });
+  expect(f.action('advanced')).toBeNull();
+  f.action('new-options').click();
+  expect(document.querySelector<HTMLInputElement>('#param-temperature')!.value).toBe('0.5');
+  expect(f.requests()).toHaveLength(1); expect(f.loading()).toBe(false);
+});
+
+it('changes the parameter cache scope when an entrypoint is replaced with an identical definition', async () => {
+  const f = await fixture(); f.reply();
+  const parameters = { fields: f.project.fields, paramResolver: f.project.paramResolver, paramLayout: f.project.paramLayout };
+  f.receive({ project: { ...f.project, projectType: 'workflow', entrypoints: [{ ...parameters, id: 'replacement' }] } });
+  expect(f.requests()).toHaveLength(2); expect(f.requests().at(-1)!.entrypointId).toBe('replacement');
+  f.reply();
+  expect(host.setState.mock.calls.at(-1)![0].params['file:///parameters:first:replacement']).toBeDefined();
+});
+
+it('resumes a debounced parameter edit after a user-input prompt hides and restores the composer', async () => {
+  const f = await fixture(); f.reply(); f.action('advanced').click();
+  const note = document.querySelector<HTMLInputElement>('#param-note')!;
+  note.value = 'pending edit'; note.dispatchEvent(new Event('input'));
+  f.sessions[0] = { ...f.sessions[0], messages: [{ id: 'approval', role: 'assistant', content: '', status: 'waiting',
+    pendingInput: { requestId: 'approval-input', nodeName: 'approval', title: 'Approval', params: [] } }] };
+  f.receive({ sessions: [...f.sessions] });
+  await vi.advanceTimersByTimeAsync(500);
+  expect(f.requests()).toHaveLength(1);
+  f.sessions[0] = { ...f.sessions[0], messages: [] }; f.receive({ sessions: [...f.sessions] });
+  expect(f.requests()).toHaveLength(2); expect(f.requests().at(-1)!.params.note).toBe('pending edit');
 });
