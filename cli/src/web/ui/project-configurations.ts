@@ -3,6 +3,7 @@ import { iconButton, iconHtml, updateIcon } from './ui';
 import { requestAction } from './action-dialog';
 import { applyTemplateValues,configurationCapability,configurationSnapshot,configurationPointerPart,createPublicationDraft,freezeConfigurationTemplate,type ConfigurationPublicationDraft, parseConfigurationField, parseConfigurationFile, validateConfigurationFileSelection, type ProjectConfigurationFile, type ProjectConfigurationAction, type ProjectConfigurationField, type ProjectConfigurationState, type ConfigurationValues } from '@steamharness/project-configuration';
 import './project-configurations.css';
+import { createAgentModelsControl } from './agent-models';
 
 type Host = { postMessage(message: Record<string, unknown>): void };
 export function projectConfigurationsButton(): string {
@@ -69,6 +70,8 @@ export function mountProjectConfigurations(host: Host): void {
   body.append(fieldsHeader,fields); dialog.append(heading,listToolbar,listBody,toolbar,tabs,body,publicationBody,actions,publicationFooter); document.body.append(dialog);
   let latest: ProjectConfigurationState | undefined, draft: ProjectConfigurationState | undefined, dirty = false, working = false, editingField = false;
   const readers = new Map<string, () => unknown>(), overrides = new Set<string>(), resets = new Map<string, HTMLButtonElement>();
+  const modelControls: ReturnType<typeof createAgentModelsControl>[] = [];
+  let authenticationRevision: number | undefined;
   const pending = new Map<string,{resolve(value:any):void;reject(error:Error):void;timer:ReturnType<typeof setTimeout>}>();
   const error = (e: unknown) => { for(const output of [status,publicationStatus]){output.textContent = t((e as Error).message ?? String(e)); output.classList.add('error');} };
   function button(text: string, run: () => void): HTMLButtonElement { const b = document.createElement('button'); b.type = 'button'; b.textContent = text; b.onclick = run; return b; }
@@ -323,9 +326,9 @@ export function mountProjectConfigurations(host: Host): void {
     const table=publicationTable(['Configuration fields','Publish field','Include value','Allow user edits']);table.ariaLabel=t('Publication and permissions');
     const columns=[['publish','Publish field'],['includeValue','Include value'],['editable','Allow user edits']]as const;
     for(const field of publication.fields){
-      const group=table.createTBody(),row=group.insertRow(),name=document.createElement('th');name.scope='row';name.textContent=field.label||field.name;row.append(name);
+      const group=table.createTBody(),row=group.insertRow(),name=document.createElement('th');name.scope='row';name.textContent=field.control==='ai-models'?t('AI models'):field.label||field.name;row.append(name);
       for(const [key,label]of columns){
-        const cell=row.insertCell(),check=document.createElement('input');check.type='checkbox';check.ariaLabel=`${field.label||field.name}: ${t(label)}`;check.checked=({publish:true,includeValue:false,editable:true,...field.sharing})[key];
+        const cell=row.insertCell(),check=document.createElement('input');check.type='checkbox';check.ariaLabel=`${field.control==='ai-models'?t('AI models'):field.label||field.name}: ${t(label)}`;check.checked=({publish:true,includeValue:false,editable:true,...field.sharing})[key];
         check.onchange=()=>{field.sharing={...field.sharing,[key]:check.checked};publicationEdited();};cell.append(check);
       }
       if(field.type==='json'){
@@ -368,7 +371,7 @@ export function mountProjectConfigurations(host: Host): void {
     if ((editingField || working) && draft) return;
     if ((dirty||publicationDirty) && draft) { if (draft.revision !== next.revision) error(new Error(t('Configuration changed. Your draft is preserved. Refresh before saving.'))); return; }
     if (draft?.revision === next.revision && JSON.stringify(draft)===JSON.stringify(next)) return;
-    draft = structuredClone(next); dirty = false; fields.replaceChildren(); readers.clear(); overrides.clear(); resets.clear();
+    draft = structuredClone(next); dirty = false; fields.replaceChildren(); readers.clear(); overrides.clear(); resets.clear(); modelControls.length = 0;
     if(detailId&&!next.configurations.some(c=>c.id===detailId)){detailId=undefined;publicationDraft=undefined;showView(false);}
     list.replaceChildren();listActionButtons.length=0;
     for(const profile of next.configurations) {
@@ -394,9 +397,9 @@ export function mountProjectConfigurations(host: Host): void {
     status.textContent = next.conflicts?.length?t('Some field types changed. Saved drafts are preserved; resolve them before running.'):''; status.classList.remove('error'); save.disabled=true; fieldCount.textContent=String(next.fields.length); updateActions();
     if(!detailId)return;
     if (!next.fields.length) { const empty=document.createElement('div'); empty.className='configuration-empty'; empty.innerHTML=iconHtml('settings-gear'); const text=document.createElement('p'); text.textContent=t('No configuration fields. Add a custom field to get started.'); empty.append(text); fields.append(empty); }
-    for (const field of next.fields) {
+    for (const field of [...next.fields].sort((a,b)=>Number(b.control==='ai-models')-Number(a.control==='ai-models'))) {
       const row=document.createElement('section'); row.className='configuration-field'; const fieldHeading=document.createElement('div'); fieldHeading.className='configuration-field-heading';
-      const title=document.createElement('label'); title.htmlFor=`configuration-field-${field.name}`; title.textContent=(field.label || field.name)+(field.required?' *':''); fieldHeading.append(title); row.append(fieldHeading);
+      const title=document.createElement('label'); title.htmlFor=`configuration-field-${field.name}`; title.textContent=(field.control==='ai-models'?t('AI models'):field.label || field.name)+(field.required?' *':''); fieldHeading.append(title); row.append(fieldHeading);
       const controls=document.createElement('div'); controls.className='configuration-field-actions'; fieldHeading.append(controls);
       if (next.customFields.some(f=>f.name===field.name)) {
         const remove=iconButton('trash',t('Delete field'),()=>{if(clean())void dispatch({action:'field.delete',key:field.name});}); remove.dataset.action='delete';
@@ -404,6 +407,10 @@ export function mountProjectConfigurations(host: Host): void {
       }
       const value=Object.hasOwn(values,field.name)?values[field.name]:field.defaultValue,capability=configurationCapability(next,field);
       if(!capability.editable){const locked=document.createElement('span');locked.innerHTML=iconHtml('lock');locked.title=t('Locked by the project author for this version');fieldHeading.append(locked);}
+      if (field.control === 'ai-models') {
+        const models = createAgentModelsControl({ value, disabled: !capability.editable, changed: () => changed(field.name), loadCatalog: () => send({type:'project-ai-catalog'}) });
+        modelControls.push(models); readers.set(field.name, () => models.read()); row.append(models.element); fields.append(row); continue;
+      }
       if(field.type==='file') {
         const file=fileControl(field,value,defaults[field.name]);if(!capability.editable)for(const control of file.querySelectorAll<HTMLButtonElement|HTMLInputElement>('button,input'))control.disabled=true;row.append(file);
         const help=document.createElement('small');help.textContent=field.description??t('Files are uploaded to the server. Save to apply the selection.');row.append(help);fields.append(row);continue;
@@ -442,6 +449,9 @@ export function mountProjectConfigurations(host: Host): void {
     if(message?.requestId && pending.has(message.requestId)) { const wait=pending.get(message.requestId)!; clearTimeout(wait.timer); pending.delete(message.requestId); message.type==='error'?wait.reject(new Error(message.message)):wait.resolve(message.value); }
     if(message?.type==='state'&&message.configurations) render(message.configurations);
     if(message?.type==='state'&&message.configurationError) error(new Error(message.configurationError));
+    if (message?.type === 'state' && typeof message.authenticationRevision === 'number' && message.authenticationRevision !== authenticationRevision) {
+      authenticationRevision = message.authenticationRevision; modelControls.forEach(control => control.invalidate());
+    }
     if(message?.type==='project-configurations-open') (trigger as HTMLButtonElement).click();
   });
 }

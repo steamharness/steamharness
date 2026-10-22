@@ -9,6 +9,8 @@ description: "创建一个把 Agent 跑成 workflow 节点的流式节点。"
 
 需要自己安排前后节点时用它；整个项目都是 agent 时用 [defineAgentConversationExecutor](./define-agent-conversation-executor.mdx) 更省事。
 
+未显式提供端点或注入模型集合时，节点优先使用当前项目配置中的 `STEAMHARNESS_AGENT_MODELS` 列表。`model` 指定条目 ID，未指定时选第一项；系统订阅由当前账号重新鉴权，第三方条目直接使用保存的连接。参见[项目配置](/concepts/project-configuration)。
+
 ## 签名
 
 ```ts

@@ -6388,7 +6388,8 @@ components:
           description: String arrays for string fields; up to 32 server file references for file fields.
         control:
           type: string
-          enum: [ text, textarea, select, radio, checkboxes ]
+          enum: [ text, textarea, select, radio, checkboxes, ai-models ]
+          description: ai-models is reserved for the STEAMHARNESS_AGENT_MODELS JSON field. Entries contain id, name, model and source. System entries use credentialId; third-party entries use apiKind, baseUrl and apiKey. Values are private unless explicitly included in publication.
         accept:
           type: array
           description: File fields only. Accepted MIME types or extensions. Files upload through POST

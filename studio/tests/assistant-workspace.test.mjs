@@ -10,6 +10,7 @@ test('the assistant keeps every supported Studio Control tool and the template p
     const field = { name: 'permissionPolicy', defaultValue: policy };
     const project = createAssistantProject({ fields: [field], tools: [...tools, { name: 'arbitrary_command' }] }, target, [target]);
     assert.deepEqual(project.tools, tools);
+    assert.equal(project.requiresLogin, false, 'third-party Agent models work without a system AI login');
     assert.equal(project.fields[0].defaultValue, policy);
     assert.notEqual(project.fields[0], field);
     assert.equal(field.defaultValue, policy);

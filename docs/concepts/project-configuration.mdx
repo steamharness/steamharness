@@ -54,6 +54,20 @@ Studio、独立 CLI 与 CLI Web 共用本机用户目录下的配置存储，按
 
 导入默认新增配置、重新生成 ID 并保留当前选择。未存在的字段添加为自定义字段；同名字段类型、多选属性、选项或文件类型限制冲突、未知字段值、无效类型、无效 JSON 或超过 1 MiB 的请求会整批拒绝，不留下部分字段或配置。妥善保管含敏感值的导出文件。
 
+## Agent 模型列表
+
+使用 Core Agent 的项目在配置详情第一项展示“AI 模型”。点击“系统 AI”或“第三方 AI”打开对应的添加表单，两种表单互斥显示；模型列表可同时包含两种来源。
+
+- 系统 AI：按需读取当前账号订阅，选择订阅和模型。没有可用订阅时提示管理订阅；未配置系统 AI 连接时仍可添加第三方模型。
+- 第三方 AI：填写模型名称、模型 ID、API Key、Base URL 与 API 协议。支持 `openai-completions`、`openai-responses`、`anthropic-messages`；API Key 使用密码框，列表不展示密钥。
+- 加入列表后可编辑、删除、设为默认。先应用正在编辑的模型，再保存整套配置；未完成的模型草稿会阻止保存或离开。列表第一项是默认模型，输入框只提供已保存模型的选择，不再管理 Provider。
+
+模型列表使用保留字段 `STEAMHARNESS_AGENT_MODELS`（`type: "json"`、`control: "ai-models"`）。Core 静态识别 `createAgentNode`、`createAgentConversationProject`、`createAgentProjectParamResolver` 或 `defineAgentConversationExecutor` 的调用后自动补入字段，不执行项目代码。间接封装无法被静态识别时，可在 `configuration.json` 显式声明此字段，使用 `secret: true`、`defaultValue: []` 与 `sharing: { "publish": true, "includeValue": false, "editable": true }`。
+
+每个条目包含唯一 `id`、`name`、`model` 和 `source`。`source: "system"` 使用 `credentialId`；`source: "third-party"` 使用 `apiKind`、`baseUrl`、`apiKey`。输入参数 `model` 是列表条目的 ID，运行时再映射到真实模型 ID。系统模型运行前校验当前账号仍有对应订阅和模型，不回退到其他订阅；第三方模型直接访问配置端点，不要求系统 AI 登录。
+
+模型值按命名配置保存并随运行快照冻结。保存非当前配置保留运行选择；下一轮或下一次执行读取当前配置。模型列表与其他配置使用相同的导入导出、版本检查、权限和小助手 CRUD。自动字段默认发布结构而不携带值，API Key 不会自动进入发布模板；完整备份仍包含密钥，须妥善保管。
+
 ## 运行时读取
 
 ```ts

@@ -12,7 +12,7 @@ export function createAssistantProject(
 ): Project {
   const roots = [target, ...folders.filter((folder) => folder.uri !== target.uri)];
   return { ...template, uri: `studio-assistant:${encodeURIComponent(target.folderPath)}`,
-    assistant: { ...template.assistant, workdir: target.folderPath, roots }, requiresLogin: true,
+    assistant: { ...template.assistant, workdir: target.folderPath, roots }, requiresLogin: false,
     fields: template.fields.map((field) => ({ ...field })),
     tools: template.tools?.filter((tool) => assistantTools.has(tool.name)),
   };

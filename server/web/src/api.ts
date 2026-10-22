@@ -7,6 +7,10 @@ import { getCurrentLocale, translateDynamicKey, translateSteamHarnessError, type
 import type { ProjectDataSummary, SourceShare } from "./types";
 
 export class ServerApiClient {
+  async systemAiModelCatalog(_signal?: AbortSignal): Promise<ApiResponse<unknown>> {
+    // Account subscription catalogues are supplied by the hosting service.
+    return { errCode: 404, errMessage: "" };
+  }
   uploadProjectConfigurationFile(id: string, file: File, key: string, target = "draft"): Promise<ApiResponse<ProjectConfigurationFile[]>> {
     const mimeType = file.type || "application/octet-stream";
     const query = new URLSearchParams({fileName:file.name,mimeType,key,target});

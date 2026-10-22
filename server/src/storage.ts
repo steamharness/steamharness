@@ -1,7 +1,7 @@
 import { type AccessActor, type AccessCapability, type ResourceAccess } from "@steamharness/project-access";
 import {isDeepStrictEqual} from "node:util";
 import { bindConfigurationTemplate, createPublicationDraft, parsePublicationDraft, freezeConfigurationTemplate, parseConfigurationTemplate, CONFIGURATION_TEMPLATE_FILE, type ConfigurationPublicationDraft, type ProjectConfigurationTemplate, configurationCapability, parseConfigurationFile, validateConfigurationFileSelection, type ProjectConfigurationField,parseConfigurationField, applyConfigurationAction, configurationSnapshot, exportConfigurations, parseConfigurationDefinition, readConfigurationState, validateConfigurationAction, ProjectConfigurationError, type ProjectConfigurationAction, type ProjectConfigurationState, type ProjectConfigurationExport, type ProjectConfiguration } from "@steamharness/project-configuration";
-import { createLocalProjectConfigurationStore } from "steamharness";
+import { createLocalProjectConfigurationStore, readProjectConfigurationDefinition } from "steamharness";
 
 import { createHash, createHmac, randomBytes, randomUUID, timingSafeEqual } from "node:crypto";
 import { cp, lstat, mkdir, open, readFile, readdir, realpath, rename, rm, stat, writeFile } from "node:fs/promises";
@@ -2610,7 +2610,7 @@ export class Storage {
       validateConfigurationAction(call);
       let fields: ProjectConfigurationState["fields"] = [];
       let definitionVersion = 1;
-      try { const definition = parseConfigurationDefinition(JSON.parse(await readFile(path.join(source.sourceDir, "configuration.json"), "utf8"))); fields = definition.fields; definitionVersion = definition.version; }
+      try { const definition = readProjectConfigurationDefinition(source.sourceDir); fields = definition.fields; definitionVersion = definition.version; }
       catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error; }
       const template = !canManagePublication && source.resolvedTarget !== 'draft' ? await this.configurationTemplate(options.projectName,source.resolvedTarget) : undefined;
       if (!canManagePublication && definitionVersion === 2 && !template) fields = [];

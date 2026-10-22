@@ -8,6 +8,8 @@ import type { NodeContext } from "../types/index";
 import { defineProject, runNode, runStreamNode } from "../workflow/index";
 import type { Definition } from "../types/index";
 import { HarnessError } from "../workflow/errors";
+import { createAgentProjectParamResolver } from "./system-llm";
+import { normalizeProjectParamDeclarations } from "../executor/param-definition";
 import {
   createAgentNode,
   readAgentRunContextUsage,
@@ -190,6 +192,11 @@ export function defineAgentConversationExecutor(
       ...(options.session.subagents ? [{ name: "subagent", label: "Delegate task", enabled: true, autoApprove: true }] : []),
     ] : [])],
     params: options.params ?? createAgentProjectParams(options),
+    async resolveParams(context) {
+      const result = await createAgentProjectParamResolver()(context);
+      const names = new Set(normalizeProjectParamDeclarations(definition.params).params.map(param => param.name));
+      return { params: Object.fromEntries(Object.entries(result.params ?? {}).filter(([name]) => names.has(name))) };
+    },
     createInput({ args }) {
       return createAgentProjectInput(args, options);
     },
@@ -243,9 +250,7 @@ export function createAgentProjectParams(options: AgentProjectOptions = {}): Con
       summary: ["model", "effort"],
       fields: [
         {
-          // Provider and model are host-owned: the catalogue lives on the Workflow
-          // Server, so the options arrive from `resolveParams` rather than from
-          // this declaration.
+          // Hidden by the resolver; retained for existing project declarations.
           name: "provider",
           flag: "--provider",
           type: "string",
@@ -263,7 +268,7 @@ export function createAgentProjectParams(options: AgentProjectOptions = {}): Con
           required: true,
           control: "select",
           label: "模型",
-          description: "该 AI 配置下可用的模型。",
+          description: "先在项目配置中添加模型。默认使用列表中的第一项。",
           options: [],
         },
         {

@@ -1,5 +1,7 @@
 # Unreleased
 
+- Added system and third-party model lists as the first project configuration field, with on-demand subscriptions, add/edit/delete/default actions and draft protection. Composers only select saved models.
+
 - Improved long-conversation and multi-window performance: reuse unchanged history, skip redundant writes, and checkpoint durable Agent web progress once per second while saving inputs and controls immediately. Coalesce Trace updates, skip hidden panel and inactive timeline work, and share attachment lists during transcript refreshes.
 
 - Fixed repeated connection interruptions with large conversation histories: live snapshots carry output and trace summaries while exports retain full events. Pending history writes and slow-client snapshots coalesce, and pages share state serialization. Studio records exit codes, signals, and redacted service diagnostics.

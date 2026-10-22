@@ -9,6 +9,8 @@ description: "Create a streaming node that runs an agent as a workflow node."
 
 Reach for it when you need to arrange nodes around the agent. When the whole project is an agent, [defineAgentConversationExecutor](./define-agent-conversation-executor.mdx) does more for you.
 
+Without an explicit endpoint or injected model collection, the node uses the current project configuration `STEAMHARNESS_AGENT_MODELS` list. `model` selects an entry ID and omission selects the first entry. System subscriptions are authorized for the current account; third-party entries use their saved connection. See [Project configurations](/en/concepts/project-configuration).
+
 ## Signature
 
 ```ts

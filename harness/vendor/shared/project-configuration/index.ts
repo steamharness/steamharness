@@ -1,4 +1,6 @@
 /** The portable business configuration contract. This module is browser safe. */
+import { parseAgentModels, AGENT_MODELS_CONFIGURATION_KEY } from "./agent-models";
+export * from "./agent-models";
 export const PROJECT_CONFIGURATION_FILE = "configuration.json";
 export type ConfigurationValue = null | string | number | boolean | ConfigurationValue[] | { [key: string]: ConfigurationValue };
 export type ConfigurationValues = Record<string, ConfigurationValue>;
@@ -11,7 +13,7 @@ export interface ProjectConfigurationField {
   required?: boolean;
   secret?: boolean;
   multiple?: boolean;
-  control?: "text" | "textarea" | "select" | "radio" | "checkboxes";
+  control?: "text" | "textarea" | "select" | "radio" | "checkboxes" | "ai-models";
   options?: { value: string; label?: string }[];
   /** File extensions or MIME types, using the HTML file input accept syntax. */
   accept?: string[];
@@ -90,7 +92,9 @@ export function parseConfigurationField(value: unknown): ProjectConfigurationFie
   if (value.multiple && value.type !== "string" && value.type !== "file") return invalid("Only string and file fields support multiple values.");
   if (value.accept !== undefined && (value.type !== "file" || !Array.isArray(value.accept) || !value.accept.every(entry => typeof entry === "string" && /^(?:\.[a-zA-Z0-9.+_-]+|[a-zA-Z0-9!#$&^_.+-]+\/(?:[a-zA-Z0-9!#$&^_.+-]+|\*))$/.test(entry)))) return invalid("Invalid configuration file accept types.");
   if (value.type === "file" && value.control !== undefined) return invalid("File fields use the file picker control.");
-  if (value.control !== undefined && !["text", "textarea", "select", "radio", "checkboxes"].includes(String(value.control))) return invalid("Invalid configuration control.");
+  if (value.control !== undefined && !["text", "textarea", "select", "radio", "checkboxes", "ai-models"].includes(String(value.control))) return invalid("Invalid configuration control.");
+  if (value.control === "ai-models" && (value.type !== "json" || value.name !== AGENT_MODELS_CONFIGURATION_KEY || value.multiple)) return invalid("AI models require the reserved JSON configuration field.");
+  if (value.name === AGENT_MODELS_CONFIGURATION_KEY && (value.type !== "json" || value.control !== "ai-models")) return invalid("AI models require the reserved JSON configuration field.");
   if (value.options !== undefined && (!Array.isArray(value.options) || value.options.some(option => !record(option) || typeof option.value !== "string" || option.label !== undefined && typeof option.label !== "string"))) return invalid("Invalid configuration options.");
   if (value.options !== undefined && (value.type !== "string" || new Set((value.options as {value: string}[]).map(option => option.value)).size !== (value.options as unknown[]).length)) return invalid("Options require unique string values.");
   if (value.sharing !== undefined) validateSharingRule(value.sharing);
@@ -116,6 +120,7 @@ function validateSharingRule(value: unknown): void {
   if (!record(value) || Object.entries(value).some(([key,entry]) => !['publish','includeValue','editable'].includes(key) || typeof entry !== 'boolean')) return invalid('Invalid configuration sharing rule.');
 }
 export function validateConfigurationValue(field: ProjectConfigurationField, value: unknown): asserts value is ConfigurationValue {
+  if (field.control === "ai-models") { parseAgentModels(value); return; }
   if (field.type === "file") {
     const files = field.multiple ? value : [value];
     if (!Array.isArray(files) || files.length > 32) return invalid(`Invalid value for configuration field: ${field.name}.`);

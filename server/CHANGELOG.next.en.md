@@ -1,5 +1,7 @@
 # Unreleased
 
+- Added static discovery of Core Agent model configuration fields with account isolation, import/export and publication permissions. Model secrets are excluded from publication by default.
+
 - Fixed invitation lists to expose only guest and developer invitations to maintainers, preventing project and group privilege escalation through higher-role tokens.
 - Fixed admin-key request approval to retain system administrator identity. Guest requests use a separate membership-request table without migrating retired source grants or depending on their constraints.
 - Fixed published personal configuration reads, saves and exports to work without a draft; draft publication checks are returned only for the selected draft.

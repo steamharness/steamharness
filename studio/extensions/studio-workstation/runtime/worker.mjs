@@ -37,7 +37,7 @@ async function requiresSystemAi(directory) {
         const name = ts.isPropertyAccessExpression(expression) ? expression.name.text
           : ts.isIdentifier(expression) ? expression.text
           : ts.isElementAccessExpression(expression) && ts.isStringLiteral(expression.argumentExpression) ? expression.argumentExpression.text : undefined;
-        if (name === 'getServerLLMCredentials' || name === 'createAgentProjectParamResolver') { required = true; return; }
+        if (name === 'getServerLLMCredentials') { required = true; return; }
       }
       ts.forEachChild(node, visit);
     };

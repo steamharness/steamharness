@@ -214,3 +214,5 @@ steamharness run . -- --message "hello"
 ```
 
 分隔符之后的参数会进入所选 entrypoint（Conversation 则为 executor）的 `args` 数组，即使参数名与 CLI 自身选项相同也不会再被 `steamharness` 消费。例如 `steamharness run . --entrypoint validate -- --entrypoint workflow-owned` 会选择 `validate`，并把第二个 `--entrypoint workflow-owned` 原样交给业务 workflow。
+
+项目接入 Core Agent 时，配置详情第一项提供系统 AI／第三方 AI 切换与统一模型列表。输入框只选择已保存模型，默认第一项；模型编辑、连接信息和订阅加载均移入配置面板，详见[Agent 模型列表](/concepts/project-configuration#agent-模型列表)。

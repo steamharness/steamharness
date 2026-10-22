@@ -37,7 +37,7 @@ it('loads the dedicated assistant declaration instead of the workspace executor'
   const result = await inspectWebProject(runtime, workdir, host);
   expect(runtime.inspect).toHaveBeenCalledWith([assistantProjectDir]);
   expect(result.assistantProtocolVersion).toBe(1);
-  expect(result.projects[0]).toMatchObject({ id: 'dedicated-assistant', folderPath: assistantProjectDir, assistant, requiresLogin: true,
+  expect(result.projects[0]).toMatchObject({ id: 'dedicated-assistant', folderPath: assistantProjectDir, assistant, requiresLogin: false,
     fields: [{ name: 'permissionPolicy', defaultValue: 'auto' }], tools: [{ name: 'skill' }, { name: 'read' }, { name: 'workflow-memory_global_memory' },
       { name: 'workflow-studio_studio_state' }, { name: 'workflow-studio_get_diagnostics' }, { name: 'workflow-studio_open_file' },
       { name: 'workflow-studio_set_theme' }, { name: 'workflow-studio_open_terminal' }, { name: 'workflow-studio_show_view' }],

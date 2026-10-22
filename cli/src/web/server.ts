@@ -1,6 +1,7 @@
 import {configurationCapability} from '@steamharness/project-configuration';
 import { ProjectConfigurations } from './project-configurations';
 import { uploadConfigurationFile } from './configuration-files';
+import { loadAgentModelCatalog } from './agent-model-catalog';
 import { t } from './localization';
 import { locale } from './localization';
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
@@ -158,7 +159,7 @@ export async function startWebServer(options: WebOptions) {
   let conversationController: ConversationController | undefined;
   let kanbanController: KanbanController | undefined;
   let configurationSignature = '';
-  const configurations = new ProjectConfigurations(projectDir, () => {
+  const configurations = new ProjectConfigurations(project.assistant ? project.folderPath : projectDir, () => {
     const signature=JSON.stringify(configurations.state);
     if(signature!==configurationSignature) {
       configurationSignature=signature;
@@ -363,6 +364,12 @@ export async function startWebServer(options: WebOptions) {
     if (message.type === 'kanban-refresh') await configurations.refresh();
     if (message.type === 'project-configuration') {
       return [{ type: 'project-configuration-result', requestId: message.requestId, value: await configurations.dispatch(message.call) }];
+    }
+    if (message.type === 'project-ai-catalog') {
+      const epoch = authEpoch;
+      const value = await loadAgentModelCatalog(connection);
+      if (epoch !== authEpoch) throw new Error('Account changed. Refresh AI models.');
+      return [{ type: 'project-ai-catalog-result', requestId: message.requestId, value }];
     }
     if (message.type === 'project-configuration-upload') {
       const current = await configurations.refresh(), epoch = authEpoch;

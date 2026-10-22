@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import {afterEach,beforeEach,expect,it,vi} from 'vitest';
-import {createConfigurationState,bindConfigurationTemplate,createPublicationDraft,freezeConfigurationTemplate,applyConfigurationAction,type ProjectConfigurationState} from '@steamharness/project-configuration';
+import {AGENT_MODELS_CONFIGURATION_FIELD,AGENT_MODELS_CONFIGURATION_KEY,createConfigurationState,bindConfigurationTemplate,createPublicationDraft,freezeConfigurationTemplate,applyConfigurationAction,type ProjectConfigurationState} from '@steamharness/project-configuration';
 import {readFileSync} from 'node:fs';
 import path from 'node:path';
 import {mountProjectConfigurations,projectConfigurationsButton} from '../web/ui/project-configurations';
@@ -86,6 +86,16 @@ async function openPanel() {
 }
 const button=(text:string)=>[...document.querySelectorAll<HTMLButtonElement>('button')].find(b=>b.ariaLabel===text||b.textContent===text)!;
 const title=()=>document.querySelector<HTMLInputElement>('input[aria-label="title"]')!;
+it('saves Agent models through the profile service and blocks unapplied model drafts',async()=>{
+ state=createConfigurationState([AGENT_MODELS_CONFIGURATION_FIELD,{name:'title',type:'string'}],()=> 'profile');
+ await openPanel();button('Third-party AI').click();
+ const fill=(label:string,value:string)=>{const row=[...document.querySelectorAll('label')].find(row=>row.firstChild?.textContent===label)!;const input=row.querySelector('input')!;input.value=value;input.dispatchEvent(new Event('input'));};
+ fill('Model name','My model');fill('Base URL','https://models.example/v1');fill('Model ID','actual-model');fill('API key','test-only-key');
+ button('Save').click();await settle();expect(state.revision).toBe(0);expect(document.body.textContent).toContain('Add or cancel the model being edited first.');
+ button('Apply model').click();button('Save').click();await settle();
+ expect(state.configurations[0]!.values[AGENT_MODELS_CONFIGURATION_KEY]).toMatchObject([{name:'My model',model:'actual-model',source:'third-party',apiKey:'test-only-key'}]);
+ expect(state.activeConfigurationId).toBe('profile');expect(document.querySelector('input[type=password]')).toBeNull();
+});
 it('edits inherited values directly and resets overrides without saving untouched defaults',async()=>{
  state=createConfigurationState([
   {name:'title',type:'string',defaultValue:'Original'}, {name:'blank',type:'string'},

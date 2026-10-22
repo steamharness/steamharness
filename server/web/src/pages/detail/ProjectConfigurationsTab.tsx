@@ -8,6 +8,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuGroup, DropdownMenuItem,
 import type { DetailPageProps } from "./types";
 import {ConfigurationPublicationEditor} from "./ConfigurationPublicationEditor";
 import {ConfigurationJsonInput} from "./ConfigurationJsonInput";
+import {AgentModelsInput} from "./AgentModelsInput";
 import {Tabs, TabsList, TabsTrigger, TabsContent} from "@/components/ui/tabs";
 import { formatBytes } from "../../utils/format";
 import { cn } from "@/lib/utils";
@@ -24,6 +25,7 @@ export function ProjectConfigurationsTab({project}: Pick<DetailPageProps,"projec
   const [modal,setModal] = useState<"create"|"duplicate"|"rename"|"delete">(), [name,setName] = useState("");
   const [detailId,setDetailId] = useState<string>(), detailRef = useRef<string>(undefined), [modalId,setModalId] = useState<string>();
   const [detailTab,setDetailTab] = useState("values"), publicationDirtyRef = useRef(false);
+  const modelDraftRef = useRef(false), [editorGeneration,setEditorGeneration] = useState(0);
   const [field,setField] = useState<Partial<ProjectConfigurationField>>(), [originalKey,setOriginalKey] = useState(""), [defaultText,setDefaultText] = useState(""), [optionsText,setOptionsText] = useState("");
   const file = useRef<HTMLInputElement>(null);
   const [loading,setLoading] = useState(true), [retry,setRetry] = useState(0);
@@ -35,6 +37,7 @@ export function ProjectConfigurationsTab({project}: Pick<DetailPageProps,"projec
     if (latestRef.current && next.revision < latestRef.current.revision) return;
     latestRef.current=next;setLatest(next);
     if ((dirtyRef.current || publicationDirtyRef.current || editingRef.current || busyRef.current) && !force) return;
+    if(force){modelDraftRef.current=false;setEditorGeneration(value=>value+1);}
     if(!next.canManagePublication)setDetailTab("values");
     if(detailRef.current&&!next.configurations.some(item=>item.id===detailRef.current)){detailRef.current=undefined;setDetailId(undefined);publicationDirtyRef.current=false;}
     const current=next.configurations.find(item=>item.id===(detailRef.current??next.activeConfigurationId))!;
@@ -86,6 +89,7 @@ export function ProjectConfigurationsTab({project}: Pick<DetailPageProps,"projec
   }
   function save() {
     if(!state||!detailId)return;
+    if(modelDraftRef.current){setError(t("configurationAiFinishDraft"));return;}
     try {
       const typed: ConfigurationValues = {};
       for(const f of state.fields) if(setKeys.includes(f.name)) {
@@ -189,7 +193,7 @@ export function ProjectConfigurationsTab({project}: Pick<DetailPageProps,"projec
       <Separator/>
       <div className="flex items-center justify-between gap-2"><h3>{t("configurationFields")} <span className="text-muted-foreground">{state.fields.length}</span></h3><Button variant="outline" size="sm" disabled={busy} onClick={()=>startField()}><PlusIcon data-icon="inline-start"/>{t("configurationAddField")}</Button></div>
       {!state.fields.length?<Empty><EmptyHeader><EmptyTitle>{t("configurationEmpty")}</EmptyTitle></EmptyHeader></Empty>:<FieldGroup className="grid gap-4 md:grid-cols-2">
-        {state.fields.map(f=>{
+        {[...state.fields].sort((a,b)=>Number(b.control==="ai-models")-Number(a.control==="ai-models")).map(f=>{
           const set=setKeys.includes(f.name),value=values[f.name]??"",custom=state.customFields.some(c=>c.name===f.name);
           const capability=configurationCapability(state,f), disabled=busy||!capability.editable;
           const inlineBoolean=f.type==="boolean"&&!f.options&&!f.multiple;
@@ -198,19 +202,20 @@ export function ProjectConfigurationsTab({project}: Pick<DetailPageProps,"projec
           const reset=()=>{setValues(values=>({...values,[f.name]:fieldValueText(f,defaultValue)}));setSetKeys(keys=>keys.filter(key=>key!==f.name));edit();};
           const resetLabel=t(defaultValue===undefined?"configurationClearValue":"configurationRestoreDefault",{name:f.label||f.name});
           return <Field key={f.name} data-disabled={disabled} className={cn("min-w-0 gap-2",(f.type==="file"||f.type==="json"||f.multiple)&&"md:col-span-2")}>
-            <div className="flex items-center gap-2"><FieldLabel htmlFor={`configuration-${f.name}`} className="min-w-0 flex-1 wrap-anywhere">{f.label||f.name}{f.required?" *":""}</FieldLabel>{!capability.editable&&<LockIcon aria-label={t("configurationLocked")}><title>{t("configurationLocked")}</title></LockIcon>}
+            <div className="flex items-center gap-2"><FieldLabel htmlFor={`configuration-${f.name}`} className="min-w-0 flex-1 wrap-anywhere">{f.control==="ai-models"?t("configurationAiModels"):f.label||f.name}{f.required?" *":""}</FieldLabel>{!capability.editable&&<LockIcon aria-label={t("configurationLocked")}><title>{t("configurationLocked")}</title></LockIcon>}
               {inlineBoolean&&<Checkbox id={`configuration-${f.name}`} disabled={disabled} checked={value==="true"} onCheckedChange={checked=>change(String(checked))}/>}
-              {f.type!=="file"&&<Button variant="ghost" size="icon" disabled={disabled||!set} title={resetLabel} aria-label={resetLabel} onClick={reset}><RotateCcwIcon/></Button>}
+              {f.type!=="file"&&f.control!=="ai-models"&&<Button variant="ghost" size="icon" disabled={disabled||!set} title={resetLabel} aria-label={resetLabel} onClick={reset}><RotateCcwIcon/></Button>}
               {custom&&<div className="flex gap-1"><Button variant="ghost" size="icon" disabled={busy} title={t("configurationEditField")} aria-label={t("configurationEditField")} onClick={()=>startField(f)}><PencilIcon/></Button><Button variant="ghost" size="icon" disabled={busy} title={t("configurationDeleteField")} aria-label={t("configurationDeleteField")} onClick={()=>{if(clean())void dispatch({action:"field.delete",key:f.name});}}><Trash2Icon/></Button></div>}
             </div>
-            {f.type==="file"?<ConfigurationFileInput field={f} value={value} busy={disabled} uploading={uploading===f.name} overridden={set} onUpload={files=>void uploadFiles(f,files)} onClear={reset}/>
+            {f.control==="ai-models"?<AgentModelsInput key={`${current.id}:${state.revision}:${editorGeneration}`} value={value} disabled={disabled} onChange={change} onDraftChange={dirty=>{modelDraftRef.current=dirty;if(dirty)edit();}}/>
+            :f.type==="file"?<ConfigurationFileInput field={f} value={value} busy={disabled} uploading={uploading===f.name} overridden={set} onUpload={files=>void uploadFiles(f,files)} onClear={reset}/>
             :f.options&&f.multiple?<FieldSet disabled={disabled} className="gap-3"><FieldLegend variant="label" className="sr-only">{f.label||f.name}</FieldLegend><div className="flex flex-wrap gap-x-4 gap-y-2">{f.options.map(option=>{let selected:string[]=[];try{const parsed:unknown=JSON.parse(value||"[]");if(Array.isArray(parsed))selected=parsed.filter((item):item is string=>typeof item==="string");}catch{}return <Field key={option.value} orientation="horizontal" className="w-auto"><Checkbox id={`configuration-${f.name}-${option.value}`} checked={selected.includes(option.value)} onCheckedChange={checked=>change(JSON.stringify(checked?[...selected,option.value]:selected.filter(v=>v!==option.value)))}/><FieldLabel htmlFor={`configuration-${f.name}-${option.value}`}>{option.label||option.value}</FieldLabel></Field>;})}</div></FieldSet>
             :f.options?<SelectField id={`configuration-${f.name}`} disabled={disabled} value={value} options={f.options.map(o=>({value:o.value,label:o.label||o.value}))} onValueChange={change}/>
             :f.type==="json"?<ConfigurationJsonInput field={f} state={state} value={value} busy={busy} onChange={change}/>
             :f.multiple?<Textarea id={`configuration-${f.name}`} disabled={disabled} rows={4} value={value} onChange={event=>change(event.target.value)}/>
             :inlineBoolean?null
             :<Input id={`configuration-${f.name}`} disabled={disabled} type={f.type==="number"?"number":f.secret?"password":"text"} step="any" value={value} onChange={event=>change(event.target.value)}/>}
-            <FieldDescription>{!capability.editable?t("configurationLocked"):f.description||f.name}</FieldDescription>
+            {(!capability.editable||f.control!=="ai-models")&&<FieldDescription>{!capability.editable?t("configurationLocked"):f.description||f.name}</FieldDescription>}
           </Field>;
         })}
       </FieldGroup>}

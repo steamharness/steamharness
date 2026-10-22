@@ -5,11 +5,13 @@ import { mkdir, readFile, realpath, rename, rm, writeFile } from "node:fs/promis
 import os from "node:os";
 import { DatabaseSync } from "node:sqlite";
 import path from "node:path";
+import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
+import ts from "typescript";
 import { setTimeout as delay } from "node:timers/promises";
 import {
   applyConfigurationAction, configurationSnapshot, exportConfigurations, parseConfigurationDefinition, readConfigurationState,
   bindConfigurationTemplate, configurationCapability, parseConfigurationTemplate, CONFIGURATION_TEMPLATE_FILE, type ProjectConfigurationTemplate,
-  PROJECT_CONFIGURATION_FILE, ProjectConfigurationError, validateConfigurationAction, isConfigurationValue,
+  PROJECT_CONFIGURATION_FILE, ProjectConfigurationError, validateConfigurationAction, isConfigurationValue, AGENT_MODELS_CONFIGURATION_FIELD, AGENT_MODELS_CONFIGURATION_KEY,
   type ProjectConfigurationField, type ConfigurationValue, type ConfigurationValues, type ProjectConfigurationAction, type ProjectConfigurationSnapshot, type ProjectConfigurationState,
 } from "@steamharness/project-configuration";
 export * from "@steamharness/project-configuration";
@@ -27,15 +29,65 @@ export function withProjectConfiguration<T>(snapshot: ProjectConfigurationSnapsh
 }
 export function currentConfigurationValues(): ConfigurationValues { return scope.getStore()?.values ?? {}; }
 
+/** Static discovery only: opening configuration never imports or executes project code. */
+export function projectUsesConfiguredAgentModels(projectDir: string): boolean {
+  const skipped = new Set(["node_modules", "vendor", "dist", "out", "build", "test", "tests", "__tests__", "fixtures"]);
+  const scan = (directory: string): boolean => {
+    if (!existsSync(directory)) return false;
+    for (const entry of readdirSync(directory, { withFileTypes: true })) {
+      if (entry.name.startsWith(".") || skipped.has(entry.name.toLowerCase())) continue;
+      const file = path.join(directory, entry.name);
+      if (entry.isDirectory()) { if (scan(file)) return true; continue; }
+      if (!entry.isFile() || !/\.[cm]?[jt]sx?$/.test(entry.name) || /(?:\.d|\.test|\.spec)\.[cm]?[jt]sx?$/.test(entry.name) || statSync(file).size > 1024 * 1024) continue;
+      const source = ts.createSourceFile(file, readFileSync(file, "utf8"), ts.ScriptTarget.Latest, true);
+      const factories = new Set(["createAgentNode", "createAgentConversationProject", "createAgentProjectParamResolver", "defineAgentConversationExecutor"]);
+      const imports = new Set<string>(), namespaces = new Set(["steamharness"]);
+      for (const statement of source.statements) {
+        if (!ts.isImportDeclaration(statement) || !ts.isStringLiteral(statement.moduleSpecifier) || !["steamharness", "steamharness/agent"].includes(statement.moduleSpecifier.text) || statement.importClause?.isTypeOnly) continue;
+        const clause = statement.importClause;
+        if (clause?.name) namespaces.add(clause.name.text);
+        if (clause?.namedBindings && ts.isNamespaceImport(clause.namedBindings)) namespaces.add(clause.namedBindings.name.text);
+        if (clause?.namedBindings && ts.isNamedImports(clause.namedBindings)) for (const binding of clause.namedBindings.elements) {
+          if (!binding.isTypeOnly && factories.has(binding.propertyName?.text ?? binding.name.text)) imports.add(binding.name.text);
+        }
+      }
+      let found = false;
+      const visit = (node: ts.Node): void => {
+        if (found) return;
+        if (ts.isCallExpression(node)) {
+          const expression = node.expression;
+          if (ts.isIdentifier(expression) && imports.has(expression.text) ||
+            ts.isPropertyAccessExpression(expression) && ts.isIdentifier(expression.expression) && namespaces.has(expression.expression.text) && factories.has(expression.name.text)) { found = true; return; }
+        }
+        ts.forEachChild(node, visit);
+      };
+      visit(source); if (found) return true;
+    }
+    return false;
+  };
+  return scan(projectDir);
+}
+
+export function readProjectConfigurationDefinition(projectDir: string) {
+  const file = path.join(projectDir, PROJECT_CONFIGURATION_FILE);
+  const definition = existsSync(file) ? parseConfigurationDefinition(JSON.parse(readFileSync(file, "utf8"))) : { version: 1 as const, fields: [] as ProjectConfigurationField[] };
+  if (!definition.fields.some(field => field.name === AGENT_MODELS_CONFIGURATION_KEY) && projectUsesConfiguredAgentModels(projectDir)) definition.fields.unshift(structuredClone(AGENT_MODELS_CONFIGURATION_FIELD));
+  return definition;
+}
+
 /** Shared by Studio, CLI Web, CLI and direct local SDK execution. Values never enter project source. */
 export async function createLocalProjectConfigurationStore(projectDir: string, options: { rootDir?: string; storageKey?: string; template?: ProjectConfigurationTemplate | null; fields?: ProjectConfigurationField[]; templateCacheDir?: string } = {}) {
   const directory = await realpath(projectDir);
+  const usesAgentModels = projectUsesConfiguredAgentModels(directory);
   const root = options.rootDir ?? path.join(os.homedir(), ".steamharness", "configurations");
   const key = createHash("sha256").update(options.storageKey ?? directory).digest("hex");
   const filename = path.join(root, `${key}.json`), lock = `${filename}.lock.sqlite`;
   const declared = async () => {
-    try { return parseConfigurationDefinition(JSON.parse(await readFile(path.join(directory, PROJECT_CONFIGURATION_FILE), "utf8"))).fields; }
-    catch (error) { if ((error as NodeJS.ErrnoException).code === "ENOENT") return []; throw error; }
+    let fields: ProjectConfigurationField[] = [];
+    try { fields = parseConfigurationDefinition(JSON.parse(await readFile(path.join(directory, PROJECT_CONFIGURATION_FILE), "utf8"))).fields; }
+    catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error; }
+    if (usesAgentModels && !fields.some(field => field.name === AGENT_MODELS_CONFIGURATION_KEY)) fields.unshift(structuredClone(AGENT_MODELS_CONFIGURATION_FIELD));
+    return fields;
   };
   const load = async (): Promise<ProjectConfigurationState> => {
     let stored: unknown;

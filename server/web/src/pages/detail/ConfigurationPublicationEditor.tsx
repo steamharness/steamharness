@@ -68,8 +68,8 @@ export function ConfigurationPublicationEditor({ state, busy, onSave, onDirtyCha
         <TableRow>
           <TableCell className="whitespace-normal">
             <div className="flex items-center gap-2">
-              {field.type === "json" && <CollapsibleTrigger asChild><Button variant="ghost" size="icon-sm" className="group shrink-0" disabled={busy} aria-label={`${field.label || field.name}: ${t("configurationJsonPointer")}`} title={t("configurationJsonPointer")}><ChevronRightIcon className="transition-transform group-data-[state=open]:rotate-90" /></Button></CollapsibleTrigger>}
-              <span id={`${id}-field-${index}`}>{field.label || field.name}</span>
+              {field.type === "json" && <CollapsibleTrigger asChild><Button variant="ghost" size="icon-sm" className="group shrink-0" disabled={busy} aria-label={`${field.control === "ai-models" ? t("configurationAiModels") : field.label || field.name}: ${t("configurationJsonPointer")}`} title={t("configurationJsonPointer")}><ChevronRightIcon className="transition-transform group-data-[state=open]:rotate-90" /></Button></CollapsibleTrigger>}
+              <span id={`${id}-field-${index}`}>{field.control === "ai-models" ? t("configurationAiModels") : field.label || field.name}</span>
             </div>
           </TableCell>
           {ruleKeys.map(key => <TableCell key={key}>
@@ -103,7 +103,7 @@ function JsonPathRules({ field, onChange, disabled }: { field: ProjectConfigurat
   const { t } = useTranslation("serverWeb"), [pointer, setPointer] = useState("");
   const id = useId();
   return <FieldGroup className="gap-3">
-    {!!Object.keys(field.paths ?? {}).length && <Table aria-label={`${field.label || field.name}: ${t("configurationJsonPointer")}`}>
+    {!!Object.keys(field.paths ?? {}).length && <Table aria-label={`${field.control === "ai-models" ? t("configurationAiModels") : field.label || field.name}: ${t("configurationJsonPointer")}`}>
       <TableHeader><TableRow>
         <TableHead scope="col">{t("configurationJsonPointer")}</TableHead>
         {ruleKeys.map(key => <TableHead key={key} scope="col">{t(`configurationRule_${key}`)}</TableHead>)}

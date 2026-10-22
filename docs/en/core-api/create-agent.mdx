@@ -223,7 +223,7 @@ An explicit `contextWindow` / `maxTokens` option still outranks `modelAttributes
 
 Attributes written as JSON text (a project param or `--model-attributes`) are validated first: a key outside `name`, `reasoning`, `webSearch`, `input`, `cost`, `contextWindow`, `maxTokens` and `thinkingLevelMap`, a mistyped value, or an out-of-range number fails with `input_validation` instead of being silently dropped — a typo that got dropped would make the run look like the model ignored the setting. A programmatic caller that passes the object directly is not re-validated: its fields reach the runtime as given.
 
-`modelAttributes` is for declaring a model on an endpoint owned by the caller. System service configuration is not part of the public workflow configuration surface; public projects should provide their own provider environment variables and model attributes.
+`modelAttributes` is for declaring a model on an endpoint owned by the caller. Projects manage system and third-party models in the configuration panel; custom endpoint attributes use explicit configuration rather than business environment variables.
 
 ## Web search
 

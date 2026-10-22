@@ -1,5 +1,7 @@
 # Unreleased
 
+- Added configured Agent model lists for system subscriptions and third-party APIs. Composers select saved models, execution freezes configuration and validates subscription access, and third-party connections work without system AI sign-in.
+
 - Improved Agent retry outputs with continuation kinds. Host recovery uses `recovery` for silent continuation while connection retries and final failures remain visible.
 
 - Fixed durable Agent suspension on host disconnect while retaining checkpoints. Unexpected provider aborts and interrupted streams use transport retries; follow-up turns and exhausted continuations preserve their failure details.

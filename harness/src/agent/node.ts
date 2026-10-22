@@ -13,6 +13,8 @@ import {
 import type { NodeContext, UserInputRequest } from "../types/index";
 import { createToolApprovalGate } from "../tool-permissions/index";
 import { HarnessError } from "../workflow/errors";
+import { getProjectConfiguration } from "../configuration";
+import { AGENT_MODELS_CONFIGURATION_KEY, parseAgentModels } from "@steamharness/project-configuration";
 import { createAgentAskRequest, readAgentAskAnswers, readAgentQuestions } from "./ask";
 import { parseAgentPermissionPolicy } from "./permission";
 import {
@@ -41,6 +43,7 @@ import {
 } from "./plan";
 import {
   readAgentSystemCredentials,
+  resolveAgentBridgeBaseUrl,
   shouldFallbackFromSystemAI,
   startAgentSystemLLMRuntime,
 } from "./system-llm";
@@ -710,6 +713,27 @@ export async function resolveAgentSystemAIInput(
     options.resolvedModel !== undefined
   ) {
     return passthrough;
+  }
+
+  const configuration = getProjectConfiguration();
+  if (configuration !== undefined) {
+    const models = parseAgentModels(configuration.values[AGENT_MODELS_CONFIGURATION_KEY] ?? []);
+    const requested = input.model ?? options.model;
+    const selected = requested === undefined ? models[0] : models.find(model => model.id === requested);
+    if (!selected) throw new HarnessError({ type: "input_validation", message: models.length ? "The selected AI model is no longer configured. Select a model again." : "Add a model in Project configurations before running the Agent." });
+    if (selected.source === "third-party") {
+      return { input: { ...input, provider: `configured-${selected.id}`, model: selected.model,
+        baseUrl: selected.apiKind === "anthropic-messages" ? resolveAgentBridgeBaseUrl("anthropic", selected.baseUrl) : selected.baseUrl,
+        apiKey: selected.apiKey, apiKind: selected.apiKind }, close: async () => undefined };
+    }
+    const credentials = await readAgentSystemCredentials(signal);
+    const credential = credentials.find(credential => credential.id === selected.credentialId);
+    if (!credential || !credential.models.includes(selected.model)) throw new HarnessError({ type: "input_validation", message: "This system AI model is unavailable. Check your subscription in Project configurations." });
+    const runtime = await startAgentSystemLLMRuntime({ provider: credential.id, model: selected.model, credentials: [credential], signal });
+    return { input: { ...input, provider: runtime.providerId, model: runtime.model, baseUrl: runtime.baseUrl,
+      apiKey: runtime.apiKey, apiKind: runtime.protocol === "anthropic" ? "anthropic-messages" : "openai-responses",
+      modelAttributes: { ...runtime.modelAttributes, ...input.modelAttributes,
+        ...(runtime.modelAttributes?.webSearch === undefined ? {} : { webSearch: runtime.modelAttributes.webSearch }) } }, close: runtime.close };
   }
 
   let credentials;

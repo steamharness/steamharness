@@ -44,6 +44,8 @@ Every [createAgentNode](./create-agent-node.mdx) option, plus:
 
 Parameter defaults come from the options you pass: `provider: "anthropic"`, for instance, becomes the provider parameter's default.
 
+`resolveParams` reads the project configuration model list, hides the compatibility `provider` parameter and defaults to its first entry. The `model` parameter stores an entry ID; execution maps it to the real model and connection. Custom `params` receive patches only for declared fields. See [Project configurations](/en/concepts/project-configuration) for system and third-party setup.
+
 ## Input and output
 
 Input is [createAgent](./create-agent.mdx)'s `AgentInput`. `createInput` reads the host composer's message and the params above (`--workdir` / `-C`, `--provider`, `--model` / `-m`, `--effort`, `--agent`, `--permission-policy`), and joins the remaining positional arguments into the prompt when the composer supplied no message.

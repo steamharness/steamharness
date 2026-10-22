@@ -1307,7 +1307,7 @@ Core 内置一层基于 pi agent SDK 的 agent 能力，覆盖输入、输出、
 
   `steamharness.createAgentConversationProject(...)` 返回整个 workflow（输入节点、agent 节点、输出节点与 conversation 落库），`steamharness.createAgentProjectInput(args)` 从 executor 的 `createInput({ args })` 调用。`steamharness.createAgentProjectParams(...)` 返回 Core 的完整默认参数表；项目按需选择字段并保持内联字面量，沿用默认表的字段时可在测试中比对，防止漂移。
 
-  `resolveParams: steamharness.createAgentProjectParamResolver()` 把 provider 与 model 参数接到宿主的**系统 AI**：选项来自 `steamharness.getServerLLMCredentials(...)`，因此这两个参数要声明成 `control: "select"`、`options: []`、`required: true`，不要写死 anthropic / openai 这类静态选项。运行时 Core 会为每一轮通过凭据的 `startLLMProxyBridge()` 建立回环代理，把 agent 指向它，并在本轮结束时关闭；因此**项目里不要保存任何 LLM Key**。仅当调用方自己给了 `baseUrl`，或注入了 `models`/`resolvedModel`（测试、自建端点）时才会跳过系统 AI。
+  `resolveParams: steamharness.createAgentProjectParamResolver()` 从项目配置的 `STEAMHARNESS_AGENT_MODELS` JSON 列表生成模型选项，并隐藏兼容的 provider 参数。保留 provider/model 的 `control: "select"`、`options: []` 声明；model 的值是列表条目 ID，缺省使用第一项。项目配置第一项提供系统 AI／第三方 AI 切换及统一模型列表的增删改查：系统条目含 `id/name/model/source: "system"/credentialId`，第三方条目含 `id/name/model/source: "third-party"/apiKind/baseUrl/apiKey`。Core 静态识别 Agent 工厂调用并补入 `control: "ai-models"` 字段；间接封装可显式声明。系统运行严格校验当前账号的订阅和模型，每轮建立并关闭回环代理；第三方直接使用配置连接，不请求系统 AI。不要把 Key 写入源码、参数或日志。模型值按运行快照冻结，分享默认只发布结构，完整备份包含值。调用方显式提供端点或注入 `models`/`resolvedModel` 时保留独立调用语义。
 
 - **不需要过结构校验的调用方**（宿主嵌入、测试）可以直接用 `steamharness.defineAgentConversationExecutor(...)` 一次拿到完整 executor；它内部复用同一个 workflow 实现。
 

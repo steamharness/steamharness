@@ -29,7 +29,7 @@ import {
   type ProjectDataStorageLocation,
   type ProjectInfoContract,
 } from "@steamharness/project-info";
-import { createLocalProjectConfigurationStore, withProjectConfiguration, currentConfigurationValues, type ProjectConfigurationSnapshot, parseConfigurationDefinition, PROJECT_CONFIGURATION_FILE } from "../configuration";
+import { createLocalProjectConfigurationStore, withProjectConfiguration, currentConfigurationValues, readProjectConfigurationDefinition, type ProjectConfigurationSnapshot } from "../configuration";
 import {
   combineNodeExecutionHooks,
   createNodeExecutionReporter,
@@ -1234,8 +1234,7 @@ export function inspectLocalProjectStructure(options: {
 }
 
 function readConfigurationDeclaration(projectDir: string) {
-  const file = path.join(projectDir, PROJECT_CONFIGURATION_FILE);
-  return existsSync(file) ? parseConfigurationDefinition(JSON.parse(readFileSync(file, "utf8"))) : { version: 1 as const, fields: [] };
+  return readProjectConfigurationDefinition(projectDir);
 }
 
 function resolveInspectedProjectType(

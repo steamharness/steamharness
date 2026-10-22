@@ -105,3 +105,17 @@
 .configuration-json-properties label { display:flex; flex-direction:column; gap:4px; }
 .configuration-recipient-preview { margin:0; padding:12px; border:1px solid var(--border); border-radius:4px; white-space:pre-wrap; overflow:auto; max-height:40vh; font-size:12px; }
 .project-configurations [hidden] { display:none !important; }
+.configuration-ai-models { display:flex; flex-direction:column; gap:10px; }
+.configuration-ai-toolbar, .configuration-ai-sources, .configuration-ai-form-actions { display:flex; align-items:center; gap:6px; }
+.configuration-ai-toolbar > .icon-button { margin-left:auto; }
+.configuration-ai-sources button[aria-pressed=true] { outline:1px solid var(--vscode-focusBorder); }
+.configuration-ai-form { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:10px; }
+.configuration-ai-form > label { display:flex; flex-direction:column; gap:6px; }
+.configuration-ai-catalog, .configuration-ai-form-actions { grid-column:1/-1; }
+.configuration-ai-form-actions { justify-content:flex-end; }
+.configuration-ai-catalog { display:flex; flex-wrap:wrap; align-items:center; gap:6px; color:var(--muted); font-size:13px; }
+.configuration-ai-list { list-style:none; padding:0; margin:0; }
+.configuration-ai-list > li { display:flex; align-items:center; gap:6px; padding:8px 0; border-bottom:1px solid var(--border); }
+.configuration-ai-model-name { flex:1; min-width:0; overflow-wrap:anywhere; }
+.configuration-ai-model-name small { margin-top:2px; }
+@media(max-width:480px) { .configuration-ai-form { grid-template-columns:minmax(0,1fr); } }

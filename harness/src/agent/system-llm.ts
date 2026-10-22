@@ -1,4 +1,4 @@
-import type { ParamResolveResult, ParamStatePatch } from "../executor/types";
+import type { ParamResolveResult } from "../executor/types";
 import {
   getServerLLMCredentials,
   type ServerLLMCredential,
@@ -6,6 +6,8 @@ import {
 } from "../provider/llm/server";
 import { HarnessError } from "../workflow/errors";
 import type { AgentInputModality, AgentModelAttributes } from "./types";
+import { currentConfigurationValues } from "../configuration";
+import { AGENT_MODELS_CONFIGURATION_KEY, parseAgentModels, type ConfigurationValues } from "@steamharness/project-configuration";
 
 /**
  * How the agent reaches the host's system AI.
@@ -254,65 +256,25 @@ export function resolveAgentBridgeBaseUrl(protocol: AgentSystemLLMProtocol, base
 /**
  * The `resolveParams` implementation for an agent project.
  *
- * Provider and model are host-owned: the catalogue lives on the Workflow
- * Server, so the static param declarations only carry the defaults the project
- * ships with and this fills in the real options.
+ * Model choices come from the current project's configuration snapshot. Loading
+ * the composer never fetches credentials or the account's subscription catalogue.
  */
 export function createAgentProjectParamResolver(): (
-  context: { paramValues?: Record<string, unknown>; abortSignal?: AbortSignal },
+  context: { paramValues?: Record<string, unknown>; config?: ConfigurationValues; abortSignal?: AbortSignal },
 ) => Promise<ParamResolveResult> {
   return async (context) => {
-    const credentials = await readAgentSystemCredentials(context.abortSignal);
-    const requested = readRequestedModel(context.paramValues);
-    const selection = selectAgentSystemLLM(credentials, requested);
-
-    const params: Record<string, ParamStatePatch> = {
-      provider: {
-        value: selection.credential.id,
-        disabled: false,
-        resolvedOptions: credentials.map((credential) => ({
-          value: credential.id,
-          label: credential.name,
-          description: credential.platform,
-        })),
-      },
+    const values = context.config ?? currentConfigurationValues();
+    const models = parseAgentModels(values[AGENT_MODELS_CONFIGURATION_KEY] ?? []);
+    const selected = models.find(model => model.id === context.paramValues?.model) ?? models[0];
+    return { params: {
+      // Kept as a hidden wire parameter for existing inline Agent declarations.
+      provider: { value: null, visible: false, disabled: true, resolvedOptions: [] },
       model: {
-        value: selection.model,
+        value: selected?.id ?? null,
         disabled: false,
-        resolvedOptions: listAgentSystemModels(selection.credential).map((model) => (
-          createAgentModelOption(selection.credential, model)
-        )),
+        resolvedOptions: models.map(model => ({ value: model.id, label: model.name, description: model.model })),
       },
-    };
-
-    return { params };
-  };
-}
-
-function readRequestedModel(
-  paramValues: Record<string, unknown> | undefined,
-): { provider?: string; model?: string } {
-  const provider = paramValues?.["provider"];
-  const model = paramValues?.["model"];
-  return {
-    ...(typeof provider === "string" && provider.trim() !== "" ? { provider: provider.trim() } : {}),
-    ...(typeof model === "string" && model.trim() !== "" ? { model: model.trim() } : {}),
-  };
-}
-
-function createAgentModelOption(credential: ServerLLMCredential, model: string) {
-  const details = credential.modelDetails.find((entry) => entry.id === model);
-  const capabilities = details?.capabilities;
-  const labels = [
-    capabilities?.vision === true ? "视觉" : "",
-    capabilities?.reasoning === true ? "推理" : "",
-    capabilities?.toolCalling === true ? "工具调用" : "",
-  ].filter((label) => label !== "");
-
-  return {
-    value: model,
-    label: details !== undefined && details.name !== model ? `${details.name} (${model})` : model,
-    description: labels.length > 0 ? labels.join(" / ") : "能力未声明",
+    } };
   };
 }
 

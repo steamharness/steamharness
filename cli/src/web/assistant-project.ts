@@ -17,7 +17,7 @@ export async function inspectWebProject(runtime: Runtime, projectDir: string, ho
       if (host?.assistant) {
         project.assistant = host.assistant;
         project.uri = `studio-assistant:${encodeURIComponent(project.assistant.workdir)}`;
-        project.requiresLogin = true;
+        project.requiresLogin = false;
         project.tools = project.tools?.filter(tool => assistantTools.has(tool.name));
       }
       return project;

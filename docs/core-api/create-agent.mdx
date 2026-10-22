@@ -226,7 +226,7 @@ const agent = await workflow.createAgent({
 
 属性写成 JSON 文本时（项目参数或 `--model-attributes`）会先经过校验：出现 `name`、`reasoning`、`webSearch`、`input`、`cost`、`contextWindow`、`maxTokens`、`thinkingLevelMap` 之外的键，或者类型不符、取值越界，都会以 `input_validation` 失败，而不是被静默丢弃——一个拼错的字段被丢掉，运行看起来就像模型忽略了它。编程式调用直接传对象时，Core 不会再替调用方校验一遍，字段按原样交给运行时。
 
-`modelAttributes` 只用于调用方自建端点的模型声明。系统服务配置不属于公开 workflow 的配置面；公开项目应通过自己的 provider 环境变量提供模型属性。
+`modelAttributes` 只用于调用方自建端点的模型声明。项目通过配置面板维护系统 AI 与第三方模型列表；自建端点的属性使用显式配置，不读取业务环境变量。
 
 ## 联网搜索
 
