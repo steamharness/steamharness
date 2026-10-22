@@ -24,7 +24,7 @@
 .configuration-field:last-child { border-bottom: 0; padding-bottom: 0; }
 .configuration-field-heading { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; min-height: 28px; }
 .configuration-field-heading label { display: flex; align-items: center; gap: 8px; min-width: 0; flex: 1; overflow-wrap: anywhere; }
-.configuration-fields input[type=checkbox] { flex-shrink: 0; min-height: 14px; width: 14px; height: 14px; margin: 0; accent-color: var(--vscode-button-background); }
+:is(.configuration-fields, .configuration-publication) input[type=checkbox] { flex-shrink: 0; min-height: 14px; width: 14px; height: 14px; margin: 0; accent-color: var(--vscode-button-background); }
 .configuration-field-actions { display: flex; align-items: center; gap: 2px; }
 .configuration-field-actions button[data-action=delete]:hover { color: var(--vscode-errorForeground); }
 .configuration-field-control { position: relative; }
@@ -64,8 +64,35 @@
 .configuration-file-reference small { flex: none; }
 .configuration-file-actions { display: flex; align-items: center; gap: 6px; }
 
-.configuration-view-tabs { display:flex; gap:8px; padding:0 16px 8px; border-bottom:1px solid var(--border); }
+.configuration-view-tabs { display:flex; flex-shrink:0; flex-wrap:wrap; gap:4px; padding:8px 16px; border-bottom:1px solid var(--border); }
+.project-configurations .configuration-view-tabs button[role=tab] { background:transparent; border-color:transparent; color:var(--muted); }
+.project-configurations .configuration-view-tabs button[aria-selected=true] { background:var(--vscode-toolbar-hoverBackground); color:var(--vscode-foreground); border-color:var(--vscode-focusBorder); }
+.configuration-publication { display:flex; flex:1 1 auto; flex-direction:column; gap:16px; }
+.configuration-publication-help { margin:0; color:var(--muted); font-size:12px; line-height:1.5; }
+.configuration-publication-toolbar { display:flex; flex-wrap:wrap; align-items:flex-end; gap:12px; }
+.configuration-publication-profiles { flex:1 1 180px; min-width:0; padding:0; margin:0; border:0; }
+.configuration-publication-profiles legend { padding:0; margin-bottom:8px; font-size:12px; color:var(--muted); }
+.configuration-publication-choices { display:flex; flex-wrap:wrap; gap:8px 16px; min-height:32px; align-items:center; }
+.configuration-publication-choices label { display:inline-flex; align-items:center; gap:8px; overflow-wrap:anywhere; }
+.configuration-publication-default { display:flex; flex:0 1 220px; min-width:0; flex-direction:column; gap:8px; font-size:12px; color:var(--muted); }
+.configuration-publication-default select { min-width:0; width:100%; }
+.configuration-publication-table-scroll { flex-shrink:0; min-width:0; overflow-x:auto; }
+.configuration-publication-table { width:100%; min-width:520px; border-collapse:collapse; font-size:12px; }
+.configuration-publication-table th, .configuration-publication-table td { padding:10px 8px; text-align:center; vertical-align:middle; }
+.configuration-publication-table thead { border-bottom:1px solid var(--border); color:var(--muted); }
+.configuration-publication-table th { font-weight:500; }
+.configuration-publication-table th:first-child { text-align:left; overflow-wrap:anywhere; }
+.configuration-publication-table thead th:not(:first-child) { width:110px; }
+.configuration-publication-table tbody + tbody { border-top:1px solid var(--border); }
+.configuration-publication-table tbody th { max-width:240px; }
+.configuration-publication-table tbody tr:has(details) td { padding-top:0; text-align:left; }
+.configuration-publication-paths summary { width:fit-content; cursor:pointer; color:var(--muted); padding:4px 0; }
+.configuration-publication-path-body { display:flex; flex-direction:column; gap:12px; padding:8px 0; }
+.configuration-publication-path-body select { min-width:100px; width:100%; }
+.configuration-publication-add-path { display:flex; flex-direction:column; gap:6px; color:var(--muted); }
+.configuration-publication-add-path > div { display:flex; align-items:center; gap:8px; }
+.configuration-publication-add-path input { flex:1; min-width:0; }
 .configuration-json-properties { display:flex; flex-direction:column; gap:8px; }
 .configuration-json-properties label { display:flex; flex-direction:column; gap:4px; }
-.configuration-recipient-preview { white-space:pre-wrap; overflow:auto; max-height:40vh; }
+.configuration-recipient-preview { margin:0; padding:12px; border:1px solid var(--border); border-radius:4px; white-space:pre-wrap; overflow:auto; max-height:40vh; font-size:12px; }
 .project-configurations [hidden] { display:none; }

@@ -100,6 +100,8 @@ Read Server configuration with `GET /api/projects/:id/configurations?target=draf
 
 Personal values, publication drafts and immutable version templates are separate. In **Publication and permissions**, authors select profiles and a default profile, then control `publish` (include the field), `includeValue` (carry its value) and `editable` (allow recipient edits) independently. Defaults are public fields, editable values and no carried values. `defaultValue` is filtered as a value too. Existing v1 projects keep their behavior until an author explicitly saves a publication draft; historical personal values are never automatically published.
 
+Server Web arranges configuration values in responsive columns, with inline boolean controls and wrapping multiple-choice options. Publication editors in Server Web, Studio, and CLI Web group profiles and the default selection in a compact toolbar and align field permissions in columns. Expand JSON paths when needed, use the action menu to refresh published values or fields, and use the eye icon to preview the recipient configuration.
+
 ```json
 {
   "version": 2,

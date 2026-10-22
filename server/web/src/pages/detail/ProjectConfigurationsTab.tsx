@@ -10,6 +10,7 @@ import {ConfigurationPublicationEditor} from "./ConfigurationPublicationEditor";
 import {ConfigurationJsonInput} from "./ConfigurationJsonInput";
 import {Tabs, TabsList, TabsTrigger, TabsContent} from "@/components/ui/tabs";
 import { formatBytes } from "../../utils/format";
+import { cn } from "@/lib/utils";
 
 function fieldValueText(field:ProjectConfigurationField, value:unknown):string {
   return value===undefined?"":field.type==="json"||field.type==="file"||field.multiple?JSON.stringify(value,null,2):String(value);
@@ -122,7 +123,7 @@ export function ProjectConfigurationsTab({project}: Pick<DetailPageProps,"projec
   return <section className="flex flex-col gap-6 p-6">
     <h2>{t("projectConfigurations")}</h2>
     {error&&<Alert variant="destructive"><AlertDescription>{error}</AlertDescription></Alert>}
-    {!state?<>{loading?<Skeleton className="h-10 w-full"/>:<Button variant="outline" onClick={()=>setRetry(value=>value+1)}>{t("configurationRefresh")}</Button>}</>:<Tabs defaultValue="values"><TabsList><TabsTrigger value="values">{t("configurationValues")}</TabsTrigger>{state.canManagePublication&&<TabsTrigger value="publication">{t("configurationPublication")}</TabsTrigger>}</TabsList><TabsContent value="values"><>
+    {!state?<>{loading?<Skeleton className="h-10 w-full"/>:<Button variant="outline" onClick={()=>setRetry(value=>value+1)}>{t("configurationRefresh")}</Button>}</>:<Tabs defaultValue="values"><TabsList><TabsTrigger value="values">{t("configurationValues")}</TabsTrigger>{state.canManagePublication&&<TabsTrigger value="publication">{t("configurationPublication")}</TabsTrigger>}</TabsList><TabsContent value="values"><div className="flex flex-col gap-4">
       {!!state.conflicts?.length&&<Alert><AlertDescription>{t("configurationTypeConflict")}<pre>{JSON.stringify(state.conflicts,null,2)}</pre></AlertDescription></Alert>}
       {dirty&&latest?.revision!==state.revision&&<Alert><AlertDescription>{t("configurationConflict")}</AlertDescription></Alert>}
       <Field>
@@ -153,25 +154,27 @@ export function ProjectConfigurationsTab({project}: Pick<DetailPageProps,"projec
       </Field>
       <Separator/>
       <div className="flex items-center justify-between gap-2"><h3>{t("configurationFields")} <span className="text-muted-foreground">{state.fields.length}</span></h3><Button variant="outline" size="sm" disabled={busy} onClick={()=>startField()}><PlusIcon data-icon="inline-start"/>{t("configurationAddField")}</Button></div>
-      {!state.fields.length?<Empty><EmptyHeader><EmptyTitle>{t("configurationEmpty")}</EmptyTitle></EmptyHeader></Empty>:<FieldGroup>
+      {!state.fields.length?<Empty><EmptyHeader><EmptyTitle>{t("configurationEmpty")}</EmptyTitle></EmptyHeader></Empty>:<FieldGroup className="grid gap-4 md:grid-cols-2">
         {state.fields.map(f=>{
           const set=setKeys.includes(f.name),value=values[f.name]??"",custom=state.customFields.some(c=>c.name===f.name);
           const capability=configurationCapability(state,f), disabled=busy||!capability.editable;
+          const inlineBoolean=f.type==="boolean"&&!f.options&&!f.multiple;
           const change=(value:string)=>{setValues(values=>({...values,[f.name]:value}));setSetKeys(keys=>[...new Set([...keys,f.name])]);edit();};
           const defaultValue=templateDefaults?templateDefaults[f.name]:f.defaultValue;
           const reset=()=>{setValues(values=>({...values,[f.name]:fieldValueText(f,defaultValue)}));setSetKeys(keys=>keys.filter(key=>key!==f.name));edit();};
           const resetLabel=t(defaultValue===undefined?"configurationClearValue":"configurationRestoreDefault",{name:f.label||f.name});
-          return <Field key={f.name} data-disabled={disabled}>
+          return <Field key={f.name} data-disabled={disabled} className={cn("min-w-0 gap-2",(f.type==="file"||f.type==="json"||f.multiple)&&"md:col-span-2")}>
             <div className="flex items-center gap-2"><FieldLabel htmlFor={`configuration-${f.name}`} className="min-w-0 flex-1 wrap-anywhere">{f.label||f.name}{f.required?" *":""}</FieldLabel>{!capability.editable&&<LockIcon aria-label={t("configurationLocked")}><title>{t("configurationLocked")}</title></LockIcon>}
+              {inlineBoolean&&<Checkbox id={`configuration-${f.name}`} disabled={disabled} checked={value==="true"} onCheckedChange={checked=>change(String(checked))}/>}
               {f.type!=="file"&&<Button variant="ghost" size="icon" disabled={disabled||!set} title={resetLabel} aria-label={resetLabel} onClick={reset}><RotateCcwIcon/></Button>}
               {custom&&<div className="flex gap-1"><Button variant="ghost" size="icon" disabled={busy} title={t("configurationEditField")} aria-label={t("configurationEditField")} onClick={()=>startField(f)}><PencilIcon/></Button><Button variant="ghost" size="icon" disabled={busy} title={t("configurationDeleteField")} aria-label={t("configurationDeleteField")} onClick={()=>{if(clean())void dispatch({action:"field.delete",key:f.name});}}><Trash2Icon/></Button></div>}
             </div>
             {f.type==="file"?<ConfigurationFileInput field={f} value={value} busy={disabled} uploading={uploading===f.name} overridden={set} onUpload={files=>void uploadFiles(f,files)} onClear={reset}/>
-            :f.options&&f.multiple?<FieldSet disabled={disabled}><FieldLegend variant="label">{f.label||f.name}</FieldLegend>{f.options.map(option=>{let selected:string[]=[];try{const parsed:unknown=JSON.parse(value||"[]");if(Array.isArray(parsed))selected=parsed.filter((item):item is string=>typeof item==="string");}catch{}return <Field key={option.value} orientation="horizontal"><Checkbox id={`configuration-${f.name}-${option.value}`} checked={selected.includes(option.value)} onCheckedChange={checked=>change(JSON.stringify(checked?[...selected,option.value]:selected.filter(v=>v!==option.value)))}/><FieldLabel htmlFor={`configuration-${f.name}-${option.value}`}>{option.label||option.value}</FieldLabel></Field>;})}</FieldSet>
+            :f.options&&f.multiple?<FieldSet disabled={disabled} className="gap-3"><FieldLegend variant="label" className="sr-only">{f.label||f.name}</FieldLegend><div className="flex flex-wrap gap-x-4 gap-y-2">{f.options.map(option=>{let selected:string[]=[];try{const parsed:unknown=JSON.parse(value||"[]");if(Array.isArray(parsed))selected=parsed.filter((item):item is string=>typeof item==="string");}catch{}return <Field key={option.value} orientation="horizontal" className="w-auto"><Checkbox id={`configuration-${f.name}-${option.value}`} checked={selected.includes(option.value)} onCheckedChange={checked=>change(JSON.stringify(checked?[...selected,option.value]:selected.filter(v=>v!==option.value)))}/><FieldLabel htmlFor={`configuration-${f.name}-${option.value}`}>{option.label||option.value}</FieldLabel></Field>;})}</div></FieldSet>
             :f.options?<SelectField id={`configuration-${f.name}`} disabled={disabled} value={value} options={f.options.map(o=>({value:o.value,label:o.label||o.value}))} onValueChange={change}/>
             :f.type==="json"?<ConfigurationJsonInput field={f} state={state} value={value} busy={busy} onChange={change}/>
             :f.multiple?<Textarea id={`configuration-${f.name}`} disabled={disabled} rows={4} value={value} onChange={event=>change(event.target.value)}/>
-            :f.type==="boolean"?<Checkbox id={`configuration-${f.name}`} disabled={disabled} checked={value==="true"} onCheckedChange={checked=>change(String(checked))}/>
+            :inlineBoolean?null
             :<Input id={`configuration-${f.name}`} disabled={disabled} type={f.type==="number"?"number":f.secret?"password":"text"} step="any" value={value} onChange={event=>change(event.target.value)}/>}
             <FieldDescription>{!capability.editable?t("configurationLocked"):f.description||f.name}</FieldDescription>
           </Field>;
@@ -179,7 +182,7 @@ export function ProjectConfigurationsTab({project}: Pick<DetailPageProps,"projec
       </FieldGroup>}
       <Separator/>
       <div className="sticky bottom-0 flex flex-wrap items-center justify-between gap-3 bg-background py-3"><p role="status" className="text-sm text-muted-foreground">{dirty?t("configurationUnsaved"):""}</p><div className="ml-auto flex items-center gap-2"><Button variant="ghost" size="icon" disabled={busy} title={t("configurationDiscard")} aria-label={t("configurationDiscard")} onClick={()=>{if(latest){accept(latest,true);setError("");}}}><RotateCcwIcon/></Button><Button disabled={busy||!dirty} onClick={save}><CheckIcon data-icon="inline-start"/>{t("configurationSave")}</Button></div></div>
-    </></TabsContent>{state.canManagePublication&&<TabsContent value="publication"><ConfigurationPublicationEditor state={state} busy={busy} onSave={publication=>dispatch({action:"publication.save",publication})}/></TabsContent>}</Tabs>}
+    </div></TabsContent>{state.canManagePublication&&<TabsContent value="publication"><ConfigurationPublicationEditor state={state} busy={busy} onSave={publication=>dispatch({action:"publication.save",publication})}/></TabsContent>}</Tabs>}
     <Dialog open={!!modal} onOpenChange={open=>{if(!open&&!busy){editingRef.current=false;setModal(undefined);if(latest)accept(latest);}}}><DialogContent><DialogHeader><DialogTitle>{modal?t(`configurationAction_${modal}`):""}</DialogTitle></DialogHeader>
       {error&&<Alert variant="destructive"><AlertDescription>{error}</AlertDescription></Alert>}
       {(modal==="create"||modal==="rename")&&<FieldGroup><Field><FieldLabel htmlFor="configuration-name">{t("configurationName")}</FieldLabel><Input id="configuration-name" disabled={busy} value={name} onChange={e=>setName(e.target.value)}/></Field></FieldGroup>}

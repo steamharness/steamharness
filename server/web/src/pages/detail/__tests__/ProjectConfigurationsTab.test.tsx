@@ -232,3 +232,26 @@ it("keeps publication controls separate, previews filtered values and preserves 
  fireEvent.click(screen.getByRole("button",{name:"Save publication draft"}));
  expect(await screen.findByText("Publication draft changed")).toBeTruthy();expect(include).toBeChecked();
 });
+it("preserves JSON publication edits across folding and refreshes fields through the action menu",async()=>{
+ const state=createConfigurationState([{name:"settings",type:"json",defaultValue:{host:"local",token:"private"},sharing:{includeValue:true},paths:{"/token":{publish:false}}}],()=>"author");
+ state.canManagePublication=true;state.publication=createPublicationDraft(state);
+ const service=vi.spyOn(apiClient,"projectConfigurations").mockImplementation(async(_id,call)=>call.action==="get"?ok(state):{errCode:409,errMessage:"Publication draft changed"} as any);
+ render(<ProjectConfigurationsTab project={project}/>);await screen.findByLabelText("settings");
+ fireEvent.mouseDown(screen.getByRole("tab",{name:"Publication and permissions"}),{button:0,ctrlKey:false});
+ const expand=screen.getByRole("button",{name:"settings: JSON path (JSON Pointer)"});
+ expect(expand).toHaveAttribute("aria-expanded","false");fireEvent.click(expand);
+ fireEvent.change(screen.getByLabelText("JSON path (JSON Pointer)"),{target:{value:"/host"}});
+ fireEvent.click(screen.getByRole("button",{name:"Add path rule"}));
+ fireEvent.keyDown(screen.getByRole("combobox",{name:"/host: Allow user edits"}),{key:"ArrowDown"});
+ fireEvent.click(await screen.findByRole("option",{name:/^No$/}));
+ fireEvent.click(expand);fireEvent.click(expand);
+ expect(screen.getByRole("combobox",{name:"/host: Allow user edits"})).toHaveTextContent("No");
+ fireEvent.pointerDown(screen.getByRole("button",{name:"Configuration actions"}),{button:0,ctrlKey:false});
+ fireEvent.click(await screen.findByRole("menuitem",{name:"Refresh fields from the project"}));
+ fireEvent.click(screen.getByRole("button",{name:"Recipient preview"}));
+ const preview=JSON.parse((screen.getByRole("textbox",{name:"Recipient preview"}) as HTMLTextAreaElement).value);
+ expect(preview.configurations[0].values.settings).toEqual({host:"local"});
+ fireEvent.click(screen.getByRole("button",{name:"Save publication draft"}));
+ await waitFor(()=>expect(service).toHaveBeenLastCalledWith(project.id,expect.objectContaining({action:"publication.save",publication:expect.objectContaining({fields:[expect.objectContaining({paths:{"/token":{publish:false},"/host":{editable:false}}})]})}),"draft"));
+ expect(await screen.findByText("Publication draft changed")).toBeTruthy();
+});

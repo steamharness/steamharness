@@ -1,5 +1,7 @@
 # Unreleased
 
+- Improved: configuration publication uses a compact profile toolbar and aligned permission columns, expandable JSON paths, an icon action menu, and a fixed preview/save footer shared by Studio and CLI Web.
+
 - Fix: Preserve Node built-in module prefixes in CLI bundles so Assistant and Web startup resolve `node:sqlite` instead of looking for a third-party `sqlite` package.
 
 - [Fixed] Recover an exited Assistant service through Studio when retrying or stopping, restore its original port and refresh connection credentials while preserving the page and drafts. Accept the replacement service state sequence, reject retired snapshots, and bind cancellation to the original run and tasks.

@@ -33,15 +33,36 @@ export function mountProjectConfigurations(host: Host): void {
   footerButtons.append(refresh, save); actions.append(status, footerButtons);
   fieldsHeader.append(fieldsTitle, fieldCount);
   const tabs=document.createElement('nav');tabs.className='configuration-view-tabs';tabs.ariaLabel=t('Project configurations');
-  const valuesTab=button(t('Configuration values'),()=>{body.hidden=false;toolbar.hidden=false;actions.hidden=false;publicationBody.hidden=true;});
-  const publicationTab=button(t('Publication and permissions'),()=>{if(clean()){body.hidden=true;toolbar.hidden=true;actions.hidden=true;publicationBody.hidden=false;renderPublication();}});
-  const publicationBody=document.createElement('div');publicationBody.className='dialog-body configuration-fields';publicationBody.hidden=true;
+  const valuesTab=button(t('Configuration values'),()=>showView(false));
+  const publicationTab=button(t('Publication and permissions'),()=>{if(clean()){showView(true);renderPublication();}});
+  const publicationBody=document.createElement('div');publicationBody.className='dialog-body configuration-publication';publicationBody.hidden=true;
+  const publicationFooter=document.createElement('footer');publicationFooter.className='configuration-footer';publicationFooter.hidden=true;
+  const publicationStatus=document.createElement('p');publicationStatus.className='configuration-status';publicationStatus.role='status';
+  const publicationPreview=document.createElement('pre');publicationPreview.className='configuration-recipient-preview';publicationPreview.hidden=true;
+  const publicationButtons=document.createElement('div');publicationButtons.className='configuration-footer-actions';
+  const previewPublication=iconButton('eye',t('Recipient preview'),()=>{
+    if(!publicationDraft)return;
+    try{publicationPreview.textContent=JSON.stringify(freezeConfigurationTemplate(publicationDraft,{projectId:'preview',projectVersion:'preview',sourceHash:'0'.repeat(64)}),null,2);publicationPreview.hidden=false;publicationStatus.textContent='';publicationStatus.classList.remove('error');}
+    catch(e){error(e);}
+  });
+  const savePublication=button(t('Save publication draft'),()=>void(async()=>{
+    if(!publicationDraft)return;
+    try{freezeConfigurationTemplate(publicationDraft,{projectId:'preview',projectVersion:'preview',sourceHash:'0'.repeat(64)});if(await dispatch({action:'publication.save',publication:publicationDraft})){publicationDraft=undefined;renderPublication();publicationStatus.textContent='';publicationStatus.classList.remove('error');}}
+    catch(e){error(e);}
+  })());
+  savePublication.className='configuration-primary';savePublication.prepend(document.createRange().createContextualFragment(iconHtml('check')));
+  publicationButtons.append(previewPublication,savePublication);publicationFooter.append(publicationStatus,publicationButtons);
+  tabs.role='tablist';
+  for(const [tab,panel,id]of [[valuesTab,body,'values'],[publicationTab,publicationBody,'publication']]as const){tab.role='tab';tab.id=`configuration-${id}-tab`;panel.id=`configuration-${id}-panel`;panel.role='tabpanel';panel.setAttribute('aria-labelledby',tab.id);tab.setAttribute('aria-controls',panel.id);}
+  function showView(publication:boolean){body.hidden=publication;toolbar.hidden=publication;actions.hidden=publication;publicationBody.hidden=!publication;publicationFooter.hidden=!publication;valuesTab.ariaSelected=String(!publication);publicationTab.ariaSelected=String(publication);valuesTab.tabIndex=publication?-1:0;publicationTab.tabIndex=publication?0:-1;}
+  showView(false);
+  tabs.onkeydown=event=>{if(!['ArrowLeft','ArrowRight','Home','End'].includes(event.key)||publicationTab.hidden)return;event.preventDefault();const next=event.key==='Home'?valuesTab:event.key==='End'?publicationTab:document.activeElement===valuesTab?publicationTab:valuesTab;next.click();next.focus();};
   tabs.append(valuesTab,publicationTab);
-  body.append(fieldsHeader,fields); dialog.append(heading,tabs,toolbar,body,publicationBody,actions); document.body.append(dialog);
+  body.append(fieldsHeader,fields); dialog.append(heading,tabs,toolbar,body,publicationBody,actions,publicationFooter); document.body.append(dialog);
   let latest: ProjectConfigurationState | undefined, draft: ProjectConfigurationState | undefined, dirty = false, working = false, editingField = false;
   const readers = new Map<string, () => unknown>(), overrides = new Set<string>(), resets = new Map<string, HTMLButtonElement>();
   const pending = new Map<string,{resolve(value:any):void;reject(error:Error):void;timer:ReturnType<typeof setTimeout>}>();
-  const error = (e: unknown) => { status.textContent = t((e as Error).message ?? String(e)); status.classList.add('error'); };
+  const error = (e: unknown) => { for(const output of [status,publicationStatus]){output.textContent = t((e as Error).message ?? String(e)); output.classList.add('error');} };
   function button(text: string, run: () => void): HTMLButtonElement { const b = document.createElement('button'); b.type = 'button'; b.textContent = text; b.onclick = run; return b; }
   const menus: { trigger: HTMLButtonElement; panel: HTMLDivElement; items: HTMLButtonElement[] }[] = [];
   function hideMenus() { for (const menu of menus) if (menu.trigger.ariaExpanded === 'true') menu.panel.hidePopover(); }
@@ -135,6 +156,10 @@ export function mountProjectConfigurations(host: Host): void {
     {icon:'export',label:t('Export all'),run:() => void download(true)},
   ], t('Exports include all values, including sensitive fields.'));
   transferMenu.trigger.classList.add('configuration-transfer');
+  const publicationMenu=menu('ellipsis',t('Configuration actions'),[
+    {icon:'refresh',label:t('Refresh published values from current profiles'),run:()=>{if(publicationDraft&&draft){publicationDraft.configurationRevision=draft.revision;for(const profile of publicationDraft.configurations)if(draft.configurations.some(c=>c.id===profile.id))profile.values=configurationSnapshot(draft,profile.id,false).values;publicationEdited();}}},
+    {icon:'refresh',label:t('Refresh fields from the project'),run:()=>{if(publicationDraft&&draft){publicationDraft.fields=draft.fields.map(field=>({...field,sharing:publicationDraft!.fields.find(old=>old.name===field.name)?.sharing??field.sharing,paths:publicationDraft!.fields.find(old=>old.name===field.name)?.paths??field.paths}));publicationEdited();renderPublication();}}},
+  ]);
   const addField = button(t('Add field'), () => { if (draft && clean()) void editField(); });
   addField.className = 'configuration-add-field'; addField.prepend(document.createRange().createContextualFragment(iconHtml('add')));
   fieldsHeader.append(addField); profileControls.append(select,create,profilesMenu.trigger,transferMenu.trigger); toolbar.append(profileLabel,profileControls);
@@ -250,43 +275,79 @@ export function mountProjectConfigurations(host: Host): void {
     };walk(value,[]);return group;
   }
   let publicationDraft:ConfigurationPublicationDraft|undefined;
+  const openPublicationPaths=new Set<string>();
+  function publicationEdited() {
+    publicationPreview.hidden=true;
+    publicationStatus.textContent=t('Unsaved changes');publicationStatus.classList.remove('error');
+  }
+  function publicationTable(headings:string[]) {
+    const table=document.createElement('table');table.className='configuration-publication-table';
+    const head=table.createTHead().insertRow();
+    for(const text of headings){const cell=document.createElement('th');cell.scope='col';cell.textContent=t(text);head.append(cell);}
+    return table;
+  }
   function renderPublication() {
-    if(!draft)return;publicationBody.replaceChildren();
+    if(!draft)return;publicationBody.replaceChildren();publicationPreview.hidden=true;
     publicationDraft??=structuredClone(draft.publication??createPublicationDraft(draft));
     const publication=publicationDraft;
-    const help=document.createElement('p');help.textContent=t('Only selected profiles are published. Personal values are never included automatically. Save the draft before publishing a project version.');publicationBody.append(help);
+    const help=document.createElement('p');help.className='configuration-publication-help';help.textContent=t('Only selected profiles are published. Personal values are never included automatically. Save the draft before publishing a project version.');
+    const toolbar=document.createElement('section');toolbar.className='configuration-publication-toolbar';
+    const profiles=document.createElement('fieldset');profiles.className='configuration-publication-profiles';
+    const legend=document.createElement('legend');legend.textContent=t('Published profiles');profiles.append(legend);
+    const choices=document.createElement('div');choices.className='configuration-publication-choices';profiles.append(choices);
     const available=[...draft.configurations,...publication.configurations.filter(profile=>!draft!.configurations.some(c=>c.id===profile.id))];
-    for(const profile of available){const row=document.createElement('label'),check=document.createElement('input');check.type='checkbox';check.checked=publication.configurations.some(p=>p.id===profile.id);check.onchange=()=>{publication.configurations=check.checked?[...publication.configurations,{id:profile.id,name:profile.name,values:draft!.configurations.some(c=>c.id===profile.id)?configurationSnapshot(draft!,profile.id,false).values:profile.values}]:publication.configurations.filter(p=>p.id!==profile.id);if(!publication.configurations.some(p=>p.id===publication.defaultConfigurationId))publication.defaultConfigurationId=publication.configurations[0]?.id??'';renderPublication();};row.append(check,profile.name);publicationBody.append(row);}
-    const defaultLabel=document.createElement('label');defaultLabel.textContent=t('Default recipient profile');const defaultSelect=document.createElement('select');for(const profile of publication.configurations)defaultSelect.add(new Option(profile.name,profile.id));defaultSelect.value=publication.defaultConfigurationId;defaultSelect.onchange=()=>publication.defaultConfigurationId=defaultSelect.value;defaultLabel.append(defaultSelect);publicationBody.append(defaultLabel);
-    publicationBody.append(button(t('Refresh published values from current profiles'),()=>{for(const profile of publication.configurations)if(draft!.configurations.some(c=>c.id===profile.id))profile.values=configurationSnapshot(draft!,profile.id,false).values;status.textContent=t('Unsaved changes');}));
-    publicationBody.append(button(t('Refresh fields from the project'),()=>{publication.fields=draft!.fields.map(field=>({...field,sharing:publication.fields.find(old=>old.name===field.name)?.sharing??field.sharing,paths:publication.fields.find(old=>old.name===field.name)?.paths??field.paths}));renderPublication();}));
-    for(const field of publication.fields){const section=document.createElement('fieldset'),legend=document.createElement('legend');legend.textContent=field.label||field.name;section.append(legend);
-      for(const [key,label]of [['publish','Publish field'],['includeValue','Include value'],['editable','Allow user edits']] as const){const row=document.createElement('label'),check=document.createElement('input');check.type='checkbox';check.checked=({publish:true,includeValue:false,editable:true,...field.sharing})[key];check.onchange=()=>{field.sharing={...field.sharing,[key]:check.checked};};row.append(check,t(label));section.append(row);}
-      if(field.type==='json') {
-        for(const [pointer,rule] of Object.entries(field.paths??{})) {
-          const group=document.createElement('fieldset'),heading=document.createElement('legend');heading.textContent=pointer;group.append(heading);
-          for(const [key,label]of [['publish','Publish field'],['includeValue','Include value'],['editable','Allow user edits']] as const) {
-            const row=document.createElement('label'),select=document.createElement('select');row.textContent=t(label);select.ariaLabel=`${pointer}: ${t(label)}`;
-            for(const [value,label]of [['inherit','Inherit'],['true','Yes'],['false','No']])select.add(new Option(t(label!),value));
-            select.value=rule[key]===undefined?'inherit':String(rule[key]);select.onchange=()=>{if(select.value==='inherit')delete rule[key];else rule[key]=select.value==='true';};row.append(select);group.append(row);
-          }
-          group.append(iconButton('trash',t('Delete path'),()=>{delete field.paths![pointer];renderPublication();}));section.append(group);
-        }
-        const row=document.createElement('label'),pointer=document.createElement('input');row.textContent=t('JSON Pointer');pointer.ariaLabel=`${field.name}: ${t('JSON Pointer')}`;pointer.placeholder='/connection/host';row.append(pointer);
-        row.append(button(t('Add path'),()=>{try{const next=parseConfigurationField({...field,paths:{...field.paths,[pointer.value]:{}}});field.paths=next.paths;renderPublication();}catch(e){error(e);}}));section.append(row);
-      }
-      publicationBody.append(section);
+    for(const profile of available){
+      const row=document.createElement('label'),check=document.createElement('input');check.type='checkbox';check.checked=publication.configurations.some(p=>p.id===profile.id);
+      check.onchange=()=>{publication.configurations=check.checked?[...publication.configurations,{id:profile.id,name:profile.name,values:draft!.configurations.some(c=>c.id===profile.id)?configurationSnapshot(draft!,profile.id,false).values:profile.values}]:publication.configurations.filter(p=>p.id!==profile.id);if(!publication.configurations.some(p=>p.id===publication.defaultConfigurationId))publication.defaultConfigurationId=publication.configurations[0]?.id??'';publicationEdited();renderPublication();};
+      row.append(check,profile.name);choices.append(row);
     }
-    const preview=document.createElement('pre');preview.className='configuration-recipient-preview';preview.hidden=true;
-    const message=document.createElement('p');message.role='alert';
-    publicationBody.append(button(t('Recipient preview'),()=>{try{preview.textContent=JSON.stringify(freezeConfigurationTemplate(publication,{projectId:'preview',projectVersion:'preview',sourceHash:'0'.repeat(64)}),null,2);preview.hidden=false;message.textContent='';}catch(e){message.textContent=(e as Error).message;}}),button(t('Save publication draft'),()=>void(async()=>{try{freezeConfigurationTemplate(publication,{projectId:'preview',projectVersion:'preview',sourceHash:'0'.repeat(64)});if(await dispatch({action:'publication.save',publication})){publicationDraft=undefined;renderPublication();}else message.textContent=status.textContent;}catch(e){message.textContent=(e as Error).message;}})()),message,preview);
+    const defaultLabel=document.createElement('label');defaultLabel.className='configuration-publication-default';defaultLabel.textContent=t('Default recipient profile');
+    const defaultSelect=document.createElement('select');defaultSelect.disabled=!publication.configurations.length;
+    for(const profile of publication.configurations)defaultSelect.add(new Option(profile.name,profile.id));defaultSelect.value=publication.defaultConfigurationId;
+    defaultSelect.onchange=()=>{publication.defaultConfigurationId=defaultSelect.value;publicationEdited();};defaultLabel.append(defaultSelect);
+    toolbar.append(profiles,defaultLabel,publicationMenu.trigger);publicationBody.append(help,toolbar);
+    const table=publicationTable(['Configuration fields','Publish field','Include value','Allow user edits']);table.ariaLabel=t('Publication and permissions');
+    const columns=[['publish','Publish field'],['includeValue','Include value'],['editable','Allow user edits']]as const;
+    for(const field of publication.fields){
+      const group=table.createTBody(),row=group.insertRow(),name=document.createElement('th');name.scope='row';name.textContent=field.label||field.name;row.append(name);
+      for(const [key,label]of columns){
+        const cell=row.insertCell(),check=document.createElement('input');check.type='checkbox';check.ariaLabel=`${field.label||field.name}: ${t(label)}`;check.checked=({publish:true,includeValue:false,editable:true,...field.sharing})[key];
+        check.onchange=()=>{field.sharing={...field.sharing,[key]:check.checked};publicationEdited();};cell.append(check);
+      }
+      if(field.type==='json'){
+        const cell=group.insertRow().insertCell();cell.colSpan=4;
+        const details=document.createElement('details');details.className='configuration-publication-paths';details.open=openPublicationPaths.has(field.name);
+        details.ontoggle=()=>{if(details.open)openPublicationPaths.add(field.name);else openPublicationPaths.delete(field.name);};
+        const summary=document.createElement('summary');summary.textContent=t('JSON Pointer');details.append(summary);
+        const pathBody=document.createElement('div');pathBody.className='configuration-publication-path-body';details.append(pathBody);
+        if(Object.keys(field.paths??{}).length){
+          const paths=publicationTable(['JSON Pointer','Publish field','Include value','Allow user edits','Configuration actions']);
+          const body=paths.createTBody();
+          for(const [pointer,rule]of Object.entries(field.paths??{})){
+            const pathRow=body.insertRow(),name=document.createElement('th');name.scope='row';name.textContent=pointer;pathRow.append(name);
+            for(const [key,label]of columns){
+              const select=document.createElement('select');select.ariaLabel=`${pointer}: ${t(label)}`;
+              for(const [value,label]of [['inherit','Inherit'],['true','Yes'],['false','No']])select.add(new Option(t(label!),value));
+              select.value=rule[key]===undefined?'inherit':String(rule[key]);select.onchange=()=>{if(select.value==='inherit')delete rule[key];else rule[key]=select.value==='true';publicationEdited();};pathRow.insertCell().append(select);
+            }
+            pathRow.insertCell().append(iconButton('trash',t('Delete path'),()=>{delete field.paths![pointer];publicationEdited();renderPublication();}));
+          }
+          const scroll=document.createElement('div');scroll.className='configuration-publication-table-scroll';scroll.tabIndex=0;scroll.append(paths);pathBody.append(scroll);
+        }
+        const label=document.createElement('label');label.className='configuration-publication-add-path';label.textContent=t('JSON Pointer');
+        const controls=document.createElement('div'),pointer=document.createElement('input');pointer.ariaLabel=`${field.name}: ${t('JSON Pointer')}`;pointer.placeholder='/connection/host';
+        const add=iconButton('add',t('Add path'),()=>{try{const next=parseConfigurationField({...field,paths:{...field.paths,[pointer.value]:{}}});field.paths=next.paths;openPublicationPaths.add(field.name);publicationEdited();renderPublication();}catch(e){error(e);}});
+        controls.append(pointer,add);label.append(controls);pathBody.append(label);cell.append(details);
+      }
+    }
+    const scroll=document.createElement('div');scroll.className='configuration-publication-table-scroll';scroll.tabIndex=0;scroll.append(table);publicationBody.append(scroll,publicationPreview);
   }
   function render(next: ProjectConfigurationState) {
     if (latest && next.revision < latest.revision) return;
     latest = next;
     publicationTab.hidden=!next.canManagePublication;
     if(!next.canManagePublication) {
-      publicationDraft=undefined;publicationBody.replaceChildren();
+      publicationDraft=undefined;publicationBody.replaceChildren();publicationStatus.textContent='';publicationStatus.classList.remove('error');publicationPreview.textContent='';
       if(!publicationBody.hidden)valuesTab.click();
       if(draft) {draft.canManagePublication=false;delete draft.publication;delete draft.publicationPreview;}
     }

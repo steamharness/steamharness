@@ -102,6 +102,8 @@ Server API 使用 `GET /api/projects/:id/configurations?target=draft` 读取，`
 
 配置值、发布模板和个人覆盖值相互独立。作者在“发布与权限”中选择配置集与默认配置，分别设置 `publish`（发布字段）、`includeValue`（携带值）、`editable`（允许接收者修改）。未设置的规则默认是发布字段、允许修改、不携带值；`defaultValue` 也按值过滤。v1 项目保持原行为，保存发布草稿后才启用分享过滤，不会自动发布历史个人值。
 
+Server Web 的配置值在宽屏分列展示，布尔值与名称同排，多选项横向排列。Server Web、Studio 与 CLI Web 的发布界面集中展示配置集与默认配置，字段权限按列对齐；JSON 子路径按需展开，更新发布值和字段从操作菜单进入，预览使用眼睛图标。
+
 ```json
 {
   "version": 2,

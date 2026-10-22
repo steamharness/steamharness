@@ -1,5 +1,7 @@
 # Unreleased
 
+- Improved: project configurations use responsive columns and inline boolean controls without stretched checkboxes. Publication permissions use aligned table columns, a compact profile/action toolbar, and expandable JSON paths.
+
 - Added a publication and permissions tab with profile/default selection, recipient previews, JSON child editors and lock reasons; conflicts preserve edited drafts.
 
 - [Improved] Edit project configuration fields directly without a Set value checkbox. Reset icons restore defaults or clear overrides; boolean and multiple-choice controls retain their checkboxes.

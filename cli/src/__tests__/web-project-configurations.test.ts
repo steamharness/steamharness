@@ -208,7 +208,10 @@ it('applies published lock rules to direct fields, nested JSON and file controls
 it('updates author permissions at the same configuration revision and provides per-path publication controls',async()=>{
  document.getElementById('project-configurations')!.click();await settle();
  state={...state,canManagePublication:true,publication:createPublicationDraft(state)};message({type:'state',configurations:state});await settle();
- button('Publication and permissions').click();
+ button('Configuration values').focus();
+ document.querySelector('.configuration-view-tabs')!.dispatchEvent(new KeyboardEvent('keydown',{key:'ArrowRight',bubbles:true}));
+ expect(button('Publication and permissions')).toBe(document.activeElement);
+ const properties=document.querySelector<HTMLDetailsElement>('.configuration-publication-paths')!;properties.open=true;
  const pointer=document.querySelector<HTMLInputElement>('[aria-label="data: JSON Pointer"]')!;pointer.value='/connection/host';button('Add path').click();
  expect(document.querySelector('select[aria-label="/connection/host: Allow user edits"]')).toBeTruthy();
  button('Recipient preview').click();expect(document.body.textContent).toContain('steamharness-configuration-template');
