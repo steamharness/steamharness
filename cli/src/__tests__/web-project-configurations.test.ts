@@ -10,12 +10,14 @@ let upload=vi.fn();
 let listener: ((event:MessageEvent)=>void) | undefined;
 let panel: ProjectConfigurationsPanel;
 let readConfiguration: () => Promise<ProjectConfigurationState>;
+let beforeSelect: () => Promise<void>;
 const message=(data:unknown)=>window.dispatchEvent(new MessageEvent('message',{data,source:null}));
 const settle=()=>new Promise(resolve=>setTimeout(resolve,0));
 beforeEach(()=>{
  state=createConfigurationState([{name:'title',type:'string',defaultValue:'Original'},{name:'data',type:'json',defaultValue:null}],()=> 'profile');
  fail=false;
  readConfiguration=async()=>state;
+ beforeSelect=async()=>{};
  upload=vi.fn();
  Object.defineProperty(HTMLDialogElement.prototype,'showModal',{configurable:true,value:function(this:HTMLDialogElement){this.open=true;}});
  Object.defineProperty(HTMLDialogElement.prototype,'close',{configurable:true,value:function(this:HTMLDialogElement){this.open=false;this.dispatchEvent(new Event('close'));}});
@@ -32,6 +34,7 @@ beforeEach(()=>{
       const value=await upload(message);
       window.dispatchEvent(new MessageEvent('message',{data:{type:'project-configuration-upload-result',requestId:message.requestId,value},source:null}));return;
     }
+    if(message.call.action==='select')await beforeSelect();
     const value=message.call.action==='get'?await readConfiguration():(state=applyConfigurationAction(state,message.call,()=>crypto.randomUUID()));
     window.dispatchEvent(new MessageEvent('message',{data:{type:'project-configuration-result',requestId:message.requestId,value},source:null}));
    }catch(error){window.dispatchEvent(new MessageEvent('message',{data:{type:'error',requestId:message.requestId,message:(error as Error).message},source:null}));}
@@ -322,8 +325,49 @@ it('starts with the list and edits another profile without selecting it for runs
  title().value='Edited second';title().dispatchEvent(new Event('input'));button('Save').click();await settle();
  expect(state.configurations[1]!.values.title).toBe('Edited second');expect(state.configurations[0]!.values.title).toBe('Original');expect(state.activeConfigurationId).toBe('profile');
  button('Back to list').click();expect(document.querySelector('[aria-label="title"]')).toBeNull();
- button('Select configuration: Secondary').click();await settle();expect(state.activeConfigurationId).toBe('secondary');
+ button('Use this configuration: Secondary').click();await settle();expect(state.activeConfigurationId).toBe('secondary');
  expect(document.querySelector<HTMLElement>('.configuration-list')!.hidden).toBe(false);
+});
+it('distinguishes the active profile from explicit use actions in the list and details',async()=>{
+ state=applyConfigurationAction(state,{action:'create',name:'Secondary',revision:0},()=> 'secondary');state.activeConfigurationId='profile';
+ document.getElementById('project-configurations')!.click();await settle();
+ const active=button('Default');expect(active.getAttribute('aria-current')).toBe('true');
+ expect(active.closest('li')!.dataset.active).toBe('true');expect(active.closest('li')!.textContent).toContain('In use');
+ expect(button('Secondary').hasAttribute('aria-current')).toBe(false);
+ expect(button('Use this configuration: Secondary').textContent).toBe('Use this configuration');
+ expect([...document.querySelectorAll('button')].some(control=>control.ariaLabel==='Use this configuration: Default'&&!control.hidden)).toBe(false);
+ button('Secondary').click();expect(state.activeConfigurationId).toBe('profile');
+ const details=document.querySelector<HTMLElement>('.configuration-profiles:not(.configuration-list-toolbar)')!;
+ expect(details.querySelector('.configuration-active')).toBeNull();expect(details.querySelector<HTMLButtonElement>('.configuration-use')!.hidden).toBe(false);
+ button('Back to list').click();button('Default').click();
+ expect(details.querySelector('.configuration-active')!.textContent).toBe('In use');expect(details.querySelector<HTMLButtonElement>('.configuration-use')!.hidden).toBe(true);
+});
+it('keeps the committed selection during a pending or failed switch and updates it only on success',async()=>{
+ state=applyConfigurationAction(state,{action:'create',name:'Secondary',revision:0},()=> 'secondary');state.activeConfigurationId='profile';
+ let finish!:()=>void,reject!:(error:Error)=>void;
+ beforeSelect=vi.fn(()=>new Promise<void>((resolve,fail)=>{finish=resolve;reject=fail;}));
+ document.getElementById('project-configurations')!.click();await settle();
+ const use=button('Use this configuration: Secondary');use.click();await settle();
+ expect(use.disabled).toBe(true);expect(use.getAttribute('aria-busy')).toBe('true');expect(use.textContent).toBe('Switching...');
+ expect(button('Default').getAttribute('aria-current')).toBe('true');use.click();expect(beforeSelect).toHaveBeenCalledTimes(1);
+ reject(new Error('Configuration changed'));await settle();
+ expect(use.disabled).toBe(false);expect(use.getAttribute('aria-busy')).toBe('false');expect(use.textContent).toBe('Use this configuration');
+ expect(button('Default').getAttribute('aria-current')).toBe('true');expect(document.body.textContent).toContain('Configuration changed');
+ use.click();await settle();finish();await settle();
+ expect(button('Secondary').getAttribute('aria-current')).toBe('true');expect(button('Default').hasAttribute('aria-current')).toBe(false);
+ expect(button('Secondary').closest('li')!.textContent).toContain('In use');expect(button('Use this configuration: Default').disabled).toBe(false);
+ state=applyConfigurationAction(state,{action:'select',id:'profile',revision:state.revision},()=> 'unused');message({type:'state',configurations:state});
+ expect(button('Default').getAttribute('aria-current')).toBe('true');expect(button('Secondary').hasAttribute('aria-current')).toBe(false);
+});
+it('updates detail usage after an external switch without overwriting unsaved values',async()=>{
+ state=applyConfigurationAction(state,{action:'create',name:'Secondary',revision:0},()=> 'secondary');state.activeConfigurationId='profile';
+ await openPanel();title().value='Keep draft';title().dispatchEvent(new Event('input'));
+ const header=document.querySelector('.configuration-profile-name')!;expect(header.textContent).toContain('In use');
+ state=applyConfigurationAction(state,{action:'select',id:'secondary',revision:state.revision},()=> 'unused');message({type:'state',configurations:state});
+ expect(title().value).toBe('Keep draft');expect(header.textContent).not.toContain('In use');
+ const use=document.querySelector<HTMLButtonElement>('.configuration-profiles:not(.configuration-list-toolbar) .configuration-use')!;
+ expect(use.hidden).toBe(false);use.click();await settle();expect(state.activeConfigurationId).toBe('secondary');expect(title().value).toBe('Keep draft');
+ expect(document.body.textContent).toContain('Save or discard');
 });
 it('protects both value and publication drafts when returning to the list',async()=>{
  state=createConfigurationState([AGENT_MODELS_CONFIGURATION_FIELD,...state.fields],()=> 'profile');

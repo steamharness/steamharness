@@ -10,19 +10,33 @@
 .project-configurations button:disabled { opacity: .5; cursor: default; }
 .project-configurations button:focus-visible, .project-configurations input:focus-visible, .project-configurations textarea:focus-visible, .project-configurations select:focus-visible { outline: 1px solid var(--vscode-focusBorder); outline-offset: 2px; }
 .configuration-profiles { display:flex; align-items:center; gap:8px; padding:14px 16px; border-bottom:1px solid var(--border); }
-.configuration-profile-name { flex:1; min-width:0; margin:0; font-size:13px; font-weight:500; overflow-wrap:anywhere; }
+.configuration-profiles:not(.configuration-list-toolbar) { flex-wrap:wrap; }
+.configuration-profile-name { flex:1 1 160px; min-width:0; margin:0; font-size:13px; font-weight:500; overflow-wrap:anywhere; }
 .configuration-profile-name .configuration-active { margin-left:8px; }
 .configuration-list-toolbar > h3 { flex:1; min-width:0; margin:0; font-size:13px; font-weight:500; }
-.configuration-list { flex:1 1 auto; }
+.configuration-list { flex:1 1 auto; container-type:inline-size; }
 .configuration-list > ul { list-style:none; padding:0; margin:0; border:1px solid var(--border); border-radius:6px; overflow:hidden; }
-.configuration-list li { display:flex; align-items:center; gap:8px; border-bottom:1px solid var(--border); padding:8px; }
+.configuration-list li { display:grid; grid-template-columns:minmax(0,1fr) auto auto; align-items:center; gap:8px; border-bottom:1px solid var(--border); padding:8px; }
 .configuration-list li:last-child { border-bottom:0; }
-.project-configurations button.configuration-profile-link { flex:1; min-width:0; justify-content:flex-start; text-align:left; overflow-wrap:anywhere; background:transparent; border-color:transparent; color:inherit; }
+.configuration-list li[data-active=true] { background:var(--vscode-list-inactiveSelectionBackground, var(--selection)); box-shadow:inset 3px 0 0 var(--vscode-focusBorder, var(--focus)); }
+.project-configurations .configuration-list button.configuration-profile-link { flex:1; min-width:0; justify-content:flex-start; text-align:left; overflow-wrap:anywhere; background:transparent; border-color:transparent; color:inherit; }
+.project-configurations .configuration-list button.configuration-profile-link:hover:not(:disabled) { background:var(--vscode-list-hoverBackground, var(--selection)); }
 .configuration-profile-link > .codicon { margin-left:auto; flex-shrink:0; }
 .configuration-profile-text { display:flex; flex:1; min-width:0; flex-wrap:wrap; align-items:center; gap:6px; }
+.configuration-profile-usage { display:flex; align-items:center; justify-content:center; min-width:10.5em; }
 .configuration-active { display:inline-flex; flex-shrink:0; padding:2px 6px; border-radius:4px; background:var(--vscode-badge-background); color:var(--vscode-badge-foreground); font-size:11px; font-weight:400; }
+.configuration-in-use { align-items:center; gap:4px; padding:4px 8px; background:var(--vscode-button-background); color:var(--vscode-button-foreground); font-size:12px; font-weight:500; white-space:nowrap; }
+.configuration-in-use > .codicon { font-size:14px; }
+.project-configurations button.configuration-use:not(.icon-button):not(.session-action) { white-space:nowrap; background:transparent; color:inherit; border-color:var(--vscode-button-border, var(--border)); }
 .configuration-profile-controls { display: flex; align-items: center; gap: 6px; }
+.configuration-profiles > .configuration-profile-controls { margin-left:auto; }
 .configuration-profile-controls .configuration-transfer { margin-left: 6px; }
+@container (max-width:480px) {
+  .configuration-list li { grid-template-columns:minmax(0,1fr) auto; gap:6px; }
+  .configuration-list .configuration-profile-link { grid-column:1/-1; }
+  .configuration-profile-usage { min-width:0; justify-content:flex-start; }
+  .configuration-list .configuration-profile-controls { justify-self:end; }
+}
 .configuration-body { flex: 1 1 auto; }
 .configuration-fields-heading { display: flex; align-items: center; gap: 8px; margin-bottom: 16px; }
 .configuration-fields-heading h3 { margin: 0; font-size: 12px; font-weight: 500; }

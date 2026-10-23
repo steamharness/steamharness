@@ -1,5 +1,7 @@
 # Unreleased
 
+- [Improved] Highlight the configuration in use and offer an explicit Use this configuration button for other profiles. Prevent duplicate switches, preserve the selection on failure, and refresh usage after external switches without replacing drafts.
+
 - [Fixed] Keep user-message index visibility and left spacing consistent at fractional viewport widths caused by scaling or split panes, avoiding incorrect hiding and gaps between breakpoints.
 
 - Fixed local configuration reads retaining source system-only restrictions with older publication templates, including hidden model fields.

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { ArrowLeftIcon, ArrowRightLeftIcon, CheckIcon, ChevronRightIcon, CopyIcon, DownloadIcon, FileIcon, ImportIcon, MoreHorizontalIcon, PencilIcon, PlusIcon, RotateCcwIcon, Trash2Icon, UploadIcon, XIcon, LockIcon } from "lucide-react";
+import { ArrowLeftIcon, ArrowRightLeftIcon, CheckIcon, CircleCheckIcon, ChevronRightIcon, CopyIcon, DownloadIcon, FileIcon, ImportIcon, MoreHorizontalIcon, PencilIcon, PlusIcon, RotateCcwIcon, Trash2Icon, UploadIcon, XIcon, LockIcon } from "lucide-react";
 import { useTranslation } from "@steamharness/i18n/react";
 import {applyTemplateValues, configurationCapability, configurationSnapshot, parseConfigurationField, parseConfigurationFile, validateConfigurationFileSelection, type ProjectConfigurationFile, type ConfigurationValues, type ProjectConfigurationAction, type ProjectConfigurationField, type ProjectConfigurationState, type ProjectConfigurationExport } from "@steamharness/project-configuration";
 import { apiClient } from "../../api";
@@ -24,6 +24,7 @@ export function ProjectConfigurationsTab({project}: Pick<DetailPageProps,"projec
   const [dirty,setDirty] = useState(false), dirtyRef = useRef(false), [busy,setBusy] = useState(false), [error,setError] = useState("");
   const [modal,setModal] = useState<"create"|"duplicate"|"rename"|"delete">(), [name,setName] = useState("");
   const [detailId,setDetailId] = useState<string>(), detailRef = useRef<string>(undefined), [modalId,setModalId] = useState<string>();
+  const [selectingId,setSelectingId] = useState<string>();
   const [detailTab,setDetailTab] = useState("values"), publicationDirtyRef = useRef(false);
   const modelDraftRef = useRef(false), [editorGeneration,setEditorGeneration] = useState(0);
   const [field,setField] = useState<Partial<ProjectConfigurationField>>(), [originalKey,setOriginalKey] = useState(""), [defaultText,setDefaultText] = useState(""), [optionsText,setOptionsText] = useState("");
@@ -51,7 +52,7 @@ export function ProjectConfigurationsTab({project}: Pick<DetailPageProps,"projec
     scopeRef.current=Symbol();
     let closed=false, reading=false;
     dirtyRef.current=false;editingRef.current=false;latestRef.current=undefined;busyRef.current=false;setBusy(false);
-    detailRef.current=undefined;setDetailId(undefined);setDetailTab("values");publicationDirtyRef.current=false;
+    detailRef.current=undefined;setDetailId(undefined);setSelectingId(undefined);setDetailTab("values");publicationDirtyRef.current=false;
     setState(undefined);setLatest(undefined);setDirty(false);setLoading(true);setError("");setModal(undefined);setField(undefined);setUploading("");
     const load=async()=>{
       if(reading)return; reading=true;
@@ -76,7 +77,7 @@ export function ProjectConfigurationsTab({project}: Pick<DetailPageProps,"projec
   async function dispatch(call:ProjectConfigurationAction) {
     if(!state||busyRef.current)return;
     const scope=scopeRef.current;
-    busyRef.current=true;setBusy(true);setError("");
+    busyRef.current=true;setBusy(true);setError("");setSelectingId(call.action==="select"?call.id:undefined);
     try {
       const result=await apiClient.projectConfigurations(project.id,{...call,revision:state.revision},target);
       if(scope!==scopeRef.current)return;
@@ -85,7 +86,7 @@ export function ProjectConfigurationsTab({project}: Pick<DetailPageProps,"projec
         detailRef.current=(result.data as ProjectConfigurationState).activeConfigurationId;setDetailId(detailRef.current);setDetailTab("values");
       }
       editingRef.current=false;accept(result.data as ProjectConfigurationState,true);setModal(undefined);setField(undefined);return true;
-    } catch(e) {if(scope===scopeRef.current)setError((e as Error).message);} finally {if(scope===scopeRef.current){busyRef.current=false;setBusy(false);}}
+    } catch(e) {if(scope===scopeRef.current)setError((e as Error).message);} finally {if(scope===scopeRef.current){busyRef.current=false;setBusy(false);setSelectingId(undefined);}}
   }
   function save() {
     if(!state||!detailId)return;
@@ -136,6 +137,7 @@ export function ProjectConfigurationsTab({project}: Pick<DetailPageProps,"projec
   const startField=(value?:ProjectConfigurationField)=>{if(!clean())return;editingRef.current=true;setError("");setOriginalKey(value?.name??"");setField(value??{name:"",type:"string"});setDefaultText(value?.defaultValue===undefined?"":JSON.stringify(value.defaultValue));setOptionsText(value?.options?.map(o=>o.value).join("\n")??"");};
   const open=(action:"create"|"duplicate"|"rename"|"delete",id=detailId)=>{if(!clean())return;editingRef.current=true;setError("");setModalId(id);setName(action==="rename"?state!.configurations.find(c=>c.id===id)!.name:"");setModal(action);};
   const current=state?.configurations.find(profile=>profile.id===detailId);
+  const activeConfigurationId=latest?.activeConfigurationId??state?.activeConfigurationId;
   const templateDefaults=state?.template&&current?{...Object.fromEntries(state.fields.filter(field=>field.defaultValue!==undefined).map(field=>[field.name,field.defaultValue])),...applyTemplateValues(state,{...current,deletedPaths:undefined},{})}:undefined;
   const profileMenu=(id:string)=><DropdownMenu>
     <DropdownMenuTrigger asChild><Button variant="ghost" size="icon" disabled={busy} title={t("configurationActions")} aria-label={detailId?t("configurationActions"):t("configurationActions")+": "+state?.configurations.find(c=>c.id===id)?.name}><MoreHorizontalIcon/></Button></DropdownMenuTrigger>
@@ -170,21 +172,18 @@ export function ProjectConfigurationsTab({project}: Pick<DetailPageProps,"projec
         </div>
       </div>
       <div className="overflow-hidden rounded-md border"><Table aria-label={t("projectConfigurations")}>
-        <TableHeader><TableRow><TableHead>{t("configurationName")}</TableHead><TableHead>{t("configurationCurrent")}</TableHead><TableHead className="text-right">{t("configurationActions")}</TableHead></TableRow></TableHeader>
-        <TableBody>{state.configurations.map(profile=><TableRow key={profile.id}>
-          <TableCell className="w-full whitespace-normal"><Button variant="ghost" className="h-auto w-full justify-between gap-2 whitespace-normal text-left" disabled={busy} onClick={()=>showDetails(profile.id)}><span className="min-w-0 wrap-anywhere">{profile.name}</span><ChevronRightIcon data-icon="inline-end"/></Button></TableCell>
-          <TableCell>{profile.id===state.activeConfigurationId&&<Badge variant="secondary">{t("configurationCurrent")}</Badge>}</TableCell>
-          <TableCell><div className="flex items-center justify-end gap-1">
-            {profile.id!==state.activeConfigurationId&&<Button variant="ghost" size="icon" disabled={busy} title={t("selectConfiguration",{ns:"common"})} aria-label={t("selectConfiguration",{ns:"common"})+": "+profile.name} onClick={()=>void dispatch({action:"select",id:profile.id})}><CheckIcon/></Button>}
-            {profileMenu(profile.id)}
-          </div></TableCell>
+        <TableHeader><TableRow><TableHead>{t("configurationName")}</TableHead><TableHead>{t("configurationUsage")}</TableHead><TableHead className="text-right">{t("configurationActions")}</TableHead></TableRow></TableHeader>
+        <TableBody>{state.configurations.map(profile=><TableRow key={profile.id} data-state={profile.id===activeConfigurationId?"selected":undefined}>
+          <TableCell className="w-full whitespace-normal"><Button variant="ghost" className="h-auto w-full justify-between gap-2 whitespace-normal text-left" disabled={busy} aria-current={profile.id===activeConfigurationId?"true":undefined} onClick={()=>showDetails(profile.id)}><span className="min-w-0 wrap-anywhere">{profile.name}</span><ChevronRightIcon data-icon="inline-end"/></Button></TableCell>
+          <TableCell>{profile.id===activeConfigurationId?<Badge><CircleCheckIcon aria-hidden="true"/>{t("configurationCurrent")}</Badge>:<Button variant="outline" size="sm" disabled={busy} aria-busy={selectingId===profile.id} aria-label={t("configurationUse")+": "+profile.name} onClick={()=>{if(clean())void dispatch({action:"select",id:profile.id});}}><ArrowRightLeftIcon data-icon="inline-start"/>{t(selectingId===profile.id?"configurationSwitching":"configurationUse")}</Button>}</TableCell>
+          <TableCell>{profileMenu(profile.id)}</TableCell>
         </TableRow>)}</TableBody>
       </Table></div>
     </>:<>
       <div className="flex flex-wrap items-center gap-2">
         <Button variant="ghost" size="icon" disabled={busy} title={t("backToList",{ns:"common"})} aria-label={t("backToList",{ns:"common"})} onClick={()=>showDetails()}><ArrowLeftIcon/></Button>
         <h3 className="min-w-0 flex-1 wrap-anywhere">{current.name}</h3>
-        {current.id===state.activeConfigurationId?<Badge variant="secondary">{t("configurationCurrent")}</Badge>:<Button variant="outline" size="sm" disabled={busy} onClick={()=>{if(clean())void dispatch({action:"select",id:current.id});}}><CheckIcon data-icon="inline-start"/>{t("selectConfiguration",{ns:"common"})}</Button>}
+        {current.id===activeConfigurationId?<Badge><CircleCheckIcon aria-hidden="true"/>{t("configurationCurrent")}</Badge>:<Button variant="outline" size="sm" disabled={busy} aria-busy={selectingId===current.id} aria-label={t("configurationUse")+": "+current.name} onClick={()=>{if(clean())void dispatch({action:"select",id:current.id});}}><ArrowRightLeftIcon data-icon="inline-start"/>{t(selectingId===current.id?"configurationSwitching":"configurationUse")}</Button>}
         {detailTab==="values"&&<>{profileMenu(current.id)}{transferMenu()}</>}
       </div>
       <Tabs value={detailTab} onValueChange={value=>{if(clean())setDetailTab(value);}}>{state.canManagePublication&&<TabsList><TabsTrigger value="values">{t("configurationValues")}</TabsTrigger><TabsTrigger value="publication">{t("configurationPublication")}</TabsTrigger></TabsList>}<TabsContent value="values" aria-label={t("configurationFields")}><div className="flex flex-col gap-4">

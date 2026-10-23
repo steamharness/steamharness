@@ -268,8 +268,53 @@ it('starts with profiles and edits a non-current profile without changing the ru
  fireEvent.change(screen.getByLabelText('label'),{target:{value:'Edited second'}});fireEvent.click(screen.getByRole('button',{name:'Save'}));
  await waitFor(()=>expect(state.configurations[1]!.values.label).toBe('Edited second'));expect(state.configurations[0]!.values.label).toBe('Original');expect(state.activeConfigurationId).toBe('default');
  await waitFor(()=>expect(screen.getByRole('button',{name:'Back to list'})).toBeEnabled());fireEvent.click(screen.getByRole('button',{name:'Back to list'}));
- expect(screen.queryByLabelText('label')).toBeNull();fireEvent.click(screen.getByRole('button',{name:'Select configuration: Secondary'}));
+ expect(screen.queryByLabelText('label')).toBeNull();fireEvent.click(screen.getByRole('button',{name:'Use this configuration: Secondary'}));
  await waitFor(()=>expect(state.activeConfigurationId).toBe('secondary'));expect(screen.getByRole('table',{name:'Project configurations'})).toBeTruthy();
+});
+it('shows the active configuration distinctly and offers explicit use actions for other profiles',async()=>{
+ const state=applyConfigurationAction(initial(),{action:'create',name:'Secondary',revision:0},()=> 'secondary');state.activeConfigurationId='default';
+ vi.spyOn(apiClient,'projectConfigurations').mockResolvedValue(ok(state));
+ renderPage(<ProjectConfigurationsTab project={project}/>);
+ const active=await screen.findByRole('button',{name:'Default'});
+ expect(active).toHaveAttribute('aria-current','true');expect(active.closest('tr')).toHaveAttribute('data-state','selected');
+ expect(active.closest('tr')).toHaveTextContent('In use');expect(screen.queryByRole('button',{name:'Use this configuration: Default'})).toBeNull();
+ expect(screen.getByRole('button',{name:'Secondary'})).not.toHaveAttribute('aria-current');
+ expect(screen.getByRole('button',{name:'Use this configuration: Secondary'})).toHaveTextContent('Use this configuration');
+ await openConfiguration('Secondary');expect(state.activeConfigurationId).toBe('default');expect(screen.queryByText('In use')).toBeNull();
+ expect(screen.getByRole('button',{name:'Use this configuration: Secondary'})).toBeEnabled();
+ fireEvent.click(screen.getByRole('button',{name:'Back to list'}));await openConfiguration();
+ expect(screen.getByText('In use')).toBeTruthy();expect(screen.queryByRole('button',{name:/Use this configuration/})).toBeNull();
+});
+it('keeps the committed active profile while switching and recovers a failed use action',async()=>{
+ let state=applyConfigurationAction(initial(),{action:'create',name:'Secondary',revision:0},()=> 'secondary');state.activeConfigurationId='default';
+ let finish!:(result:any)=>void;
+ const service=vi.spyOn(apiClient,'projectConfigurations').mockImplementation(async(_id,call)=>call.action==='get'?ok(state):new Promise(resolve=>{finish=resolve;}));
+ renderPage(<ProjectConfigurationsTab project={project}/>);
+ const use=await screen.findByRole('button',{name:'Use this configuration: Secondary'});
+ fireEvent.click(use);expect(use).toBeDisabled();expect(use).toHaveAttribute('aria-busy','true');expect(use).toHaveTextContent('Switching...');
+ expect(screen.getByRole('button',{name:'Default'})).toHaveAttribute('aria-current','true');fireEvent.click(use);
+ expect(service.mock.calls.filter(([,call])=>call.action==='select')).toHaveLength(1);
+ await act(async()=>finish({errCode:409,errMessage:'Configuration changed'}));
+ expect(use).toBeEnabled();expect(use).toHaveAttribute('aria-busy','false');expect(use).toHaveTextContent('Use this configuration');
+ expect(screen.getByRole('button',{name:'Default'})).toHaveAttribute('aria-current','true');expect(screen.getByRole('alert')).toHaveTextContent('Configuration changed');
+ fireEvent.click(use);state=applyConfigurationAction(state,{action:'select',id:'secondary',revision:state.revision},()=> 'unused');
+ await act(async()=>finish(ok(state)));
+ expect(screen.getByRole('button',{name:'Secondary'})).toHaveAttribute('aria-current','true');
+ expect(screen.getByRole('button',{name:'Default'})).not.toHaveAttribute('aria-current');
+ expect(screen.getByRole('button',{name:'Secondary'}).closest('tr')).toHaveTextContent('In use');
+ expect(screen.getByRole('button',{name:'Use this configuration: Default'})).toBeEnabled();
+});
+it('refreshes detail usage after an external switch while preserving an unsaved draft',async()=>{
+ let state=applyConfigurationAction(initial(),{action:'create',name:'Secondary',revision:0},()=> 'secondary');state.activeConfigurationId='default';
+ let poll!:()=>void;
+ vi.spyOn(globalThis,'setInterval').mockImplementationOnce(callback=>{poll=callback as ()=>void;return 0 as unknown as ReturnType<typeof setInterval>;});
+ const service=vi.spyOn(apiClient,'projectConfigurations').mockImplementation(async()=>ok(state));
+ await render(<ProjectConfigurationsTab project={project}/>);expect(screen.getByText('In use')).toBeTruthy();
+ fireEvent.change(screen.getByLabelText('label'),{target:{value:'Keep draft'}});
+ state=applyConfigurationAction(state,{action:'select',id:'secondary',revision:state.revision},()=> 'unused');await act(async()=>{poll();});
+ expect(screen.getByLabelText('label')).toHaveValue('Keep draft');expect(screen.queryByText('In use')).toBeNull();
+ fireEvent.click(screen.getByRole('button',{name:'Use this configuration: Default'}));expect(state.activeConfigurationId).toBe('secondary');
+ expect(screen.getByText('Save or discard your draft before changing configurations.')).toBeTruthy();expect(service.mock.calls.every(([,call])=>call.action==='get')).toBe(true);
 });
 it('preserves unsaved values and publication rules on back navigation until saved or discarded',async()=>{
  const state=initial();state.canManagePublication=true;state.publication=createPublicationDraft(state);
