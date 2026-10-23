@@ -91,6 +91,8 @@ Every entry has a unique `id`, `name`, `model` and `source`. System entries use 
 
 Lists belong to named profiles and freeze with execution snapshots. Saving another profile preserves the execution selection; the next turn or run reads the selected profile. Model lists share import/export, revision checks, permissions and assistant CRUD with other configuration fields. Automatically added fields publish their structure without values by default, so keys are not automatically included in templates. Complete backups still contain keys and must be kept private.
 
+Conversation and Studio Assistant support switching models within the same conversation. Editing, deleting or replacing configured models preserves completed replies and the model names recorded for those turns. Subsequent messages use the currently selected available model and retain conversation context. If the new model fails to start, that send operation returns the error while completed replies remain visible.
+
 ## Runtime access
 
 ```ts
@@ -108,7 +110,7 @@ The SDK exposes `ProjectConfigurationSnapshot`, `context.config` and `steamharne
 Explicit snapshots are also persisted by `runId`: resuming without `configuration` reuses the original values. Hosts that reload configuration for a durable session retaining its `runId` pass a new `configurationRunId`; resuming that generation must keep the same `configurationRunId`. The local store's `snapshot({ runId, configuration })` also persists the supplied snapshot only on the first use of that identity.
 
 - Workflow freezes configuration at execution start and reuses it when resuming a waiting task.
-- Conversation uses current configuration on the next turn. Durable agents reload after their current tasks, queued inputs and approvals finish, preserving history, branches and recovery state.
+- Conversation uses current configuration on the next turn. Durable agents stop the old worker after current tasks, queued inputs and approvals finish, then reload with the next input's parameters while preserving history, branches and recovery state.
 - Saving Kanban configuration updates both the main page and resource previews. HTML reads native values from `window.steamHarnessKanban.getConfiguration().params` and listens for `steamharness:kanban-configuration-change`. Previews with an explicit profile ID keep that reference; deleting the profile makes it unavailable.
 
 Business configuration does not load `.env`, use `.env.example`, or fall back to process variables. Existing project env and old Kanban profiles are not migrated. Enter values again in the panel. Server deployment, CI and internal Studio transport variables remain host managed.

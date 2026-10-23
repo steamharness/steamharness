@@ -315,14 +315,16 @@ export class ConversationController {
     const task: RunTask = { sessionId: entry.id, cancelled: false, finished: Promise.resolve() };
     this.tasks.set(answer.runId!, task);
     this.changed();
-    task.finished = this.execute(entry, answer, request, task).catch((error) => this.options.log(`Workflow persistence: ${String(error)}`));
+    // Reattaching the durable owner is a control operation. Its bootstrap answer
+    // identifies the worker, but an already settled reply is historical output.
+    task.finished = this.execute(entry, answer, request, task, resumeAgent && !!settled).catch((error) => this.options.log(`Workflow persistence: ${String(error)}`));
   }
   private rawArgs(text: string): string[] {
     const raw: unknown = JSON.parse(text);
     if (!Array.isArray(raw) || !raw.every((arg) => typeof arg === 'string')) { throw new Error(t("Run arguments must be an array of strings.")); }
     return raw;
   }
-  private async execute(entry: ConversationSession, answer: ConversationMessage, request: Run, task: RunTask): Promise<void> {
+  private async execute(entry: ConversationSession, answer: ConversationMessage, request: Run, task: RunTask, historical = false): Promise<void> {
     const pending = answer.pendingInput;
     let restart = false;
     try {
@@ -333,11 +335,11 @@ export class ConversationController {
         const chunk = event.type === 'node_chunk' ? event.chunk as any : undefined;
         const sessionFrame = chunk?.item?.metadata?.kind === 'agent-session' || chunk?.itemId === 'agent-session';
         // Full session frames already live in entry.agent; retaining each frame grows every saved trace.
-        if (!sessionFrame) (answer.events ??= []).push(event);
-        if (event.type === 'node_chunk') answer.recovering = false;
+        if (!sessionFrame && !historical) (answer.events ??= []).push(event);
+        if (event.type === 'node_chunk' && !historical) answer.recovering = false;
         if (event.type === 'node_chunk') {
           if (chunk?.type === 'output_item_start' && chunk.item?.metadata?.kind === 'agent-session') this.projectAgent(entry, chunk.item.content);
-          else if (chunk?.itemId !== 'agent-session' && (!this.project.conversation?.durable?.enabled || !entry.agent || chunk?.item?.display)) {
+          else if (!historical && chunk?.itemId !== 'agent-session' && (!this.project.conversation?.durable?.enabled || !entry.agent || chunk?.item?.display)) {
             applyOutputChunk(answer.items ??= [], event.chunk); answer.content = outputText(answer.items);
           }
         }
@@ -370,6 +372,15 @@ export class ConversationController {
         this.changed();
       });
       if (task.cancelled || this.disposed) { throw new Error(t("Stopped")); }
+      if (historical) {
+        if (report.status === 'failed') {
+          const error = new Error(report.result?.error?.message ?? t("Run failed"));
+          this.failAgentTurns(entry, error.message);
+          this.rejectAgentWaiters(entry.id, error);
+          this.options.log(`Agent reconnection: ${error.message}`);
+        }
+        return;
+      }
       const primaryDone = entry.agent?.turns.some(turn => turn.requestId === answer.sessionRequestId && turn.status === 'done');
       answer.report = report; answer.status = primaryDone && report.status !== 'waiting_for_input' && report.status !== 'failed' ? 'success' : report.status;
       answer.durationMs = report.durationMs; answer.recovering = false;
@@ -402,9 +413,16 @@ export class ConversationController {
       if (interrupted) {
         answer.recoveryAttempts = (answer.recoveryAttempts ?? 0) + (this.disposed ? 0 : 1);
         restart = !this.disposed && answer.recoveryAttempts <= 3;
-        answer.status = this.disposed || restart ? 'running' : 'failed';
-        answer.recovering = true;
-        answer.error = restart || this.disposed ? undefined : t("Run interrupted");
+        if (!historical) {
+          answer.status = this.disposed || restart ? 'running' : 'failed';
+          answer.recovering = true;
+          answer.error = restart || this.disposed ? undefined : t("Run interrupted");
+        }
+        if (historical && !restart && !this.disposed) this.failAgentTurns(entry, t("Run interrupted"), true);
+      } else if (historical) {
+        if (!task.cancelled) this.failAgentTurns(entry, error instanceof Error ? error.message : String(error));
+        this.rejectAgentWaiters(entry.id, error instanceof Error ? error : new Error(String(error)));
+        if (!task.cancelled) this.options.log(`Agent reconnection: ${String(error)}`);
       } else {
         answer.recovering = false;
         answer.error = error instanceof Error ? error.message : String(error);
@@ -416,18 +434,18 @@ export class ConversationController {
         this.options.log(`Workflow run: ${answer.error}`);
       }
     } finally {
-      if (answer.status !== 'running' && answer.status !== 'failed') answer.recovering = false;
-      if (answer.status !== 'waiting_for_input' && answer.status !== 'running') {
+      if (!historical && answer.status !== 'running' && answer.status !== 'failed') answer.recovering = false;
+      if (!historical && answer.status !== 'waiting_for_input' && answer.status !== 'running') {
         answer.timers = answer.timers?.map((timer) => timer.status === 'running'
           ? { ...timer, status: 'cleared', endedAt: new Date().toISOString(), durationMs: Math.max(0, Date.now() - new Date(timer.startedAt).getTime()) }
           : timer);
       }
-      if (answer.status !== 'running' && !answer.recovering) delete answer.submittingInput;
+      if (!historical && answer.status !== 'running' && !answer.recovering) delete answer.submittingInput;
       if (task.cancelled && answer.cancelRequested) {
         try {
           if (this.project.conversation?.recovery?.enabled) await this.runtime.cancelConversation(this.project, entry.id);
           delete answer.cancelRequested;
-        } catch (error) { answer.error = String(error); this.options.log(`Workflow cancellation: ${String(error)}`); }
+        } catch (error) { if (!historical) answer.error = String(error); this.options.log(`Workflow cancellation: ${String(error)}`); }
       }
       if (entry.activeRunId === answer.runId) { delete entry.activeRunId; }
       if (!restart) this.rejectAgentWaiters(entry.id, Object.assign(new Error('The agent owner disconnected.'), { code: 'STEAMHARNESS_WORKER_INTERRUPTED' }));
@@ -535,7 +553,17 @@ export class ConversationController {
           for (const usage of usages) for (const [name, value] of Object.entries(usage)) run[name] = typeof value === 'number' ? Number(run[name] ?? 0) + value : value;
           answer.tokenUsage = { enabled: true, display: this.project.tokenUsage?.enabled !== false && this.project.tokenUsage?.display !== false, run };
         }
-        if (answer.status !== 'failed' && (!restore || answer.status === undefined)) {
+        // Older hosts could write a configuration-startup failure onto this
+        // completed bootstrap reply. Durable output proves it already finished;
+        // unrelated execution failures must remain visible.
+        const configurationFailure = answer.status === 'failed' && turn.status === 'done' && !!continuation
+          && [
+            'The selected AI model is no longer configured. Select a model again.',
+            'Add a model in Project configurations before running the Agent.',
+            'This system AI model is unavailable. Check your subscription in Project configurations.',
+          ].includes(answer.error ?? '');
+        if (configurationFailure) { delete answer.report; delete answer.durationMs; answer.recovering = false; }
+        if (configurationFailure || answer.status !== 'failed' && (!restore || answer.status === undefined)) {
           const stopped = turn.reason === 'aborted';
           answer.status = turn.status === 'done' ? 'success' : turn.status === 'unanswered' ? stopped ? 'aborted' : 'failed' : 'running';
           answer.error = turn.detail ?? (turn.status === 'unanswered' ? stopped ? t('Stopped') : turn.reason : undefined);
@@ -614,8 +642,8 @@ export class ConversationController {
       await this.retireAgentOwner(owner);
       if (this.disposed || !this.sessions.includes(owner)) return;
       owner.agentParameters!.configurationRevision = this.options.configurationRevision?.();
-      const anchor = this.agentAnchor(owner);
-      if (anchor) this.start(owner, { id: anchor.id!, text: '', params: {}, attachments: [], createdAt: Date.now() }, anchor);
+      // Keep the owner stopped until the next input supplies resolved parameters.
+      // The old model ID may have been removed from the new configuration.
       await this.persist();
     }).finally(() => { if (this.reloading.get(owner.id) === reload) this.reloading.delete(owner.id); });
     this.reloading.set(owner.id, reload);
@@ -636,6 +664,16 @@ export class ConversationController {
   }
   private rejectAgentWaiters(ownerId: string, error: Error): void {
     for (const [id, waiter] of this.agentWaiters) if (waiter.ownerId === ownerId) { waiter.reject(error); this.agentWaiters.delete(id); }
+  }
+  private failAgentTurns(owner: ConversationSession, error: string, recovering = false): void {
+    for (const entry of this.sessions.filter(session => (session.agentOwnerId ?? session.id) === owner.id)) {
+      for (const answer of entry.messages) {
+        const turn = entry.agent?.turns.find(turn => turn.requestId === answer.sessionRequestId && turn.conversationId === answer.sessionConversationId);
+        if (answer.role === 'assistant' && turn?.status === 'placed') {
+          answer.status = 'failed'; answer.error = error; answer.recovering = recovering;
+        }
+      }
+    }
   }
   private async retireAgentOwner(owner: ConversationSession): Promise<void> {
     const task = owner.activeRunId && this.tasks.get(owner.activeRunId);
@@ -775,6 +813,8 @@ export class ConversationController {
     const index = entry.messages.findIndex((message) => message.id === id && message.role === 'assistant');
     const answer = entry.messages[index];
     if (answer?.recovering && !entry.activeRunId && !answer.cancelRequested) {
+      const anchor = this.project.conversation?.durable?.enabled ? this.agentAnchor(this.owner(entry)) : undefined;
+      if (anchor) anchor.recoveryAttempts = 0;
       answer.recoveryAttempts = 0; answer.status = 'running'; this.recover(); await this.persist(); return;
     }
     const user = [...entry.messages.slice(0, index)].reverse().find((message) => message.role === 'user');

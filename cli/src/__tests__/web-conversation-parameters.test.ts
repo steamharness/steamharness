@@ -112,6 +112,29 @@ it('shows the configured model name in the immediate reply and the persisted ans
   expect(f.requests()).toHaveLength(1);
 });
 
+it('keeps historical prose and model names visible after replacing the configured models and sending another turn', async () => {
+  const f = await fixture(); f.reply({ model: { value: 'old', resolvedOptions: [{ value: 'old', label: 'Original model' }] } });
+  const configurations = createConfigurationState([AGENT_MODELS_CONFIGURATION_FIELD], () => 'current');
+  const original = { id: 'old-reply', role: 'assistant' as const, content: 'Original model response', status: 'success', model: 'Original model',
+    items: [{ id: 'old-output', content: 'Original model response', contentType: 'markdown', collapsed: false }] };
+  f.sessions[0].messages = [{ role: 'user', content: 'First input' }, original];
+  f.receive({ configurations, sessions: [...f.sessions] });
+  const updated = applyConfigurationAction(configurations, { action: 'save', revision: configurations.revision, id: 'current', values: {
+    [AGENT_MODELS_CONFIGURATION_KEY]: [{ id: 'new', name: 'New model', source: 'system', credentialId: 'subscription', model: 'new-model' }],
+  } }, () => crypto.randomUUID());
+  f.receive({ configurations: updated, parameterRevision: 2 });
+  f.reply({ model: { value: 'new', resolvedOptions: [{ value: 'new', label: 'New model' }] } });
+  f.type('Next input'); document.querySelector<HTMLButtonElement>('#send')!.click();
+  const sent = host.postMessage.mock.calls.map(([message]) => message).find(message => message.type === 'send');
+  expect(sent.params.model).toBe('new');
+  const messages = Array.from(document.querySelectorAll('.message.assistant'));
+  expect(messages).toHaveLength(2);
+  expect(messages[0].querySelector('.message-metadata')?.textContent).toBe('Original model');
+  const prose = messages[0].querySelector('.message-output')!;
+  expect(prose.textContent).toContain('Original model response'); expect(prose.querySelector('.conversation-process')).toBeNull();
+  expect(messages[1].querySelector('.message-metadata')?.textContent).toContain('New model');
+});
+
 it('guides an empty Agent model list to the active configuration and preserves the message draft', async () => {
   const f=await fixture();f.reply({model:{value:null,resolvedOptions:[]}});
   const configurations=createConfigurationState([AGENT_MODELS_CONFIGURATION_FIELD],()=> 'current');

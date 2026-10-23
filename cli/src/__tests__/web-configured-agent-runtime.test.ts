@@ -156,3 +156,106 @@ it('runs saved system and third-party models through the real Web worker with re
     await Promise.all([rm(path.join(configurationRoot, `${configurationKey}.json`), { force: true }), rm(path.join(configurationRoot, `${configurationKey}.json.lock.sqlite`), { force: true }), rm(path.join(configurationRoot, 'snapshots', runKey), { recursive: true, force: true })]);
   }
 }, 40_000);
+
+it('switches configured models in a durable conversation without hiding prior replies or replaying inputs', async () => {
+  const directory = await mkdtemp(path.join(os.tmpdir(), 'configured-durable-models-'));
+  const applicationId = crypto.randomUUID();
+  const configurationKey = createHash('sha256').update(`application:${applicationId}`).digest('hex');
+  const runKey = createHash('sha256').update(await realpath(directory)).digest('hex');
+  const configurationRoot = path.join(os.homedir(), '.steamharness', 'configurations');
+  const calls: { model: string; body: any; token: string }[] = [];
+  let app: Awaited<ReturnType<typeof startWebServer>> | undefined;
+  const upstream = createServer(async (request, response) => {
+    response.setHeader('content-type', 'application/json');
+    if (request.url === '/api/auth/me') {
+      response.end(JSON.stringify({ errCode: 0, errMessage: '', data: { profile: { userId: 'fixture', email: 'fixture@example.test', displayName: 'Fixture' } } })); return;
+    }
+    if (request.url === '/api/ai/catalog') {
+      response.end(JSON.stringify({ errCode: 0, errMessage: '', data: { fetchedAt: new Date().toISOString(), credentials: [
+        { id: 'subscription', name: 'Subscription', platform: 'fixture', providerType: 'openai-responses', models: ['system-old', 'system-new'],
+          proxyPath: '/proxy/responses', credentialToken: 'system-identity', expiresAt: new Date(Date.now() + 60_000).toISOString() },
+      ] } })); return;
+    }
+    const chunks: Buffer[] = []; for await (const chunk of request) chunks.push(chunk);
+    const body = JSON.parse(Buffer.concat(chunks).toString('utf8'));
+    calls.push({ model: body.model, body, token: String(request.headers.authorization) });
+    response.writeHead(200, { 'content-type': 'text/event-stream' });
+    const text = `Reply ${calls.length} from ${body.model}`;
+    const item = { id: `message-${calls.length}`, type: 'message', role: 'assistant', status: 'completed', content: [{ type: 'output_text', text, annotations: [] }] };
+    for (const event of [
+      { type: 'response.created', response: { id: `response-${calls.length}`, status: 'in_progress' } },
+      { type: 'response.output_item.added', output_index: 0, item: { ...item, content: [] } },
+      { type: 'response.output_text.delta', output_index: 0, content_index: 0, delta: text },
+      { type: 'response.output_item.done', output_index: 0, item },
+      { type: 'response.completed', response: { id: `response-${calls.length}`, status: 'completed', output: [item], usage: { input_tokens: 5, output_tokens: 4, total_tokens: 9 } } },
+    ]) response.write(`event: ${event.type}\ndata: ${JSON.stringify(event)}\n\n`);
+    response.end();
+  });
+  upstream.listen(0, '127.0.0.1'); await once(upstream, 'listening');
+  const origin = `http://127.0.0.1:${(upstream.address() as { port: number }).port}`;
+  try {
+    await mkdir(path.join(directory, 'node_modules'));
+    await symlink(await resolveHarnessRoot(), path.join(directory, 'node_modules/steamharness'), process.platform === 'win32' ? 'junction' : 'dir');
+    await writeFile(path.join(directory, 'package.json'), JSON.stringify({ id: applicationId, name: 'durable-model-switch', version: '1.0.0', type: 'module', steamHarness: { projectType: 'conversation', projectInfo: { dataStorage: { mode: 'local' } } }, devDependencies: { steamharness: await resolveHarnessVersion() } }));
+    await writeFile(path.join(directory, 'index.ts'), `
+      export const executor = steamharness.defineExecutor({ projectType: 'conversation',
+        workflow: steamharness.createAgentConversationProject({ projectName: 'Switch models', outputItemId: 'answer', tools: [], session: { compaction: { enabled: false } } }),
+        conversation: { durable: { enabled: true }, recovery: { enabled: true } },
+        params: [{ kind: 'quick', id: 'ai', label: 'AI', summary: ['model'], fields: [
+          { name: 'provider', flag: '--provider', type: 'string', required: true, control: 'select', options: [] },
+          { name: 'model', flag: '--model', type: 'string', required: true, control: 'select', options: [] },
+        ] }], resolveParams: steamharness.createAgentProjectParamResolver(),
+        createInput({ args }) { return steamharness.createAgentProjectInput(args); },
+      });
+    `);
+    const options = { projectDir: directory, dataDir: path.join(directory, 'data'), host: { surface: 'editor' as const, connection: {
+      serverUrl: origin, accessToken: 'identity', aiServerUrl: origin, aiAccessToken: 'ai-identity',
+    } } };
+    app = await startWebServer(options);
+    const post = async (message: object) => {
+      const token = new URL(app!.url).hash.slice('#session='.length);
+      const response = await fetch(`${app!.origin}/api/message`, { method: 'POST', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }, body: JSON.stringify(message) });
+      const result = await response.json(); expect(response.status, JSON.stringify(result)).toBe(200); return result.messages;
+    };
+    const models = [
+      { id: 'old', name: 'Original model', source: 'system', credentialId: 'subscription', model: 'system-old' },
+      { id: 'custom', name: 'Custom model', source: 'third-party', apiKind: 'openai-responses', model: 'third-party', baseUrl: `${origin}/v1`, apiKey: 'third-identity' },
+      { id: 'new', name: 'Replacement model', source: 'system', credentialId: 'subscription', model: 'system-new' },
+    ];
+    const expected: { status: string; content: string; model: string }[] = [];
+    let sessionId: string | undefined;
+    for (const [index, model] of models.entries()) {
+      const state = app.configurations.state;
+      await post({ type: 'project-configuration', call: { action: 'save', revision: state.revision, id: state.activeConfigurationId, values: { [AGENT_MODELS_CONFIGURATION_KEY]: [model] } } });
+      if (index) await expect.poll(() => app!.controller.hasRuns).toBe(false);
+      expect(calls).toHaveLength(index);
+      expect(app.controller.current.messages.filter(message => message.role === 'assistant')).toMatchObject(expected);
+      // A stale selection is resolved against the new configuration, never used
+      // to restart the owner before the new input's parameters are available.
+      const result = await post({ type: 'send', requestId: crypto.randomUUID(), text: `Input ${index}`, params: index ? { model: models[index - 1].id } : {}, attachments: [] });
+      expect(result.some((message: { type: string }) => message.type === 'error'), JSON.stringify(result)).toBe(false);
+      await expect.poll(() => {
+        const answer = app!.controller.current.messages.at(-1);
+        if (answer?.status === 'failed') throw new Error(`Turn ${index}: ${answer.error}`);
+        return answer?.status;
+      }, { timeout: 12_000 }).toBe('success');
+      expected.push({ status: 'success', model: model.name, content: `Reply ${index + 1} from ${model.model}` });
+      expect(app.controller.current.messages.filter(message => message.role === 'assistant')).toMatchObject(expected);
+      expect(app.controller.current.messages.filter(message => message.role === 'user').map(message => message.content)).toEqual(models.slice(0, index + 1).map((_, i) => `Input ${i}`));
+      expect(calls).toHaveLength(index + 1); expect(calls.at(-1)?.model).toBe(model.model);
+      expect(calls.at(-1)?.token).toBe(model.source === 'system' ? 'Bearer system-identity' : 'Bearer third-identity');
+      if (index) expect(JSON.stringify(calls.at(-1)?.body)).toContain(expected[index - 1].content);
+      if (sessionId) expect(app.controller.current.id).toBe(sessionId); else sessionId = app.controller.current.id;
+    }
+    await app.close(); app = await startWebServer(options);
+    expect(app.controller.current.id).toBe(sessionId);
+    expect(app.controller.current.messages.filter(message => message.role === 'assistant')).toMatchObject(expected);
+    expect(calls).toHaveLength(3);
+    expect(JSON.stringify(app.controller.current)).not.toContain('third-identity');
+  } finally {
+    await app?.close();
+    await new Promise<void>(resolve => { upstream.close(() => resolve()); upstream.closeAllConnections(); });
+    await rm(directory, { recursive: true, force: true });
+    await Promise.all([rm(path.join(configurationRoot, `${configurationKey}.json`), { force: true }), rm(path.join(configurationRoot, `${configurationKey}.json.lock.sqlite`), { force: true }), rm(path.join(configurationRoot, 'snapshots', runKey), { recursive: true, force: true })]);
+  }
+}, 40_000);

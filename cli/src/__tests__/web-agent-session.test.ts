@@ -9,10 +9,10 @@ afterEach(() => { for (const controller of controllers.splice(0)) controller.dis
 function fixture(configurationRevision?: () => number) {
   const project: Project = { id: 'durable', uri: '', folderPath: '/fixture', name: 'Agent', projectType: 'conversation', entrypoints: [],
     fields: [{ name: 'model', flag: '--model', type: 'string' }], conversation: { durable: { enabled: true }, recovery: { enabled: true }, inputQueue: { enabled: true } } };
-  const runs: { emit(event: Record<string, unknown>): void; finish(report: Report): void }[] = [];
+  const runs: { emit(event: Record<string, unknown>): void; finish(report: Report): void; fail(error: Error): void }[] = [];
   const runtime: Runtime = { available: true, inspect: vi.fn(), resolveParams: vi.fn(), uploadFiles: vi.fn(), readFile: vi.fn(), readResource: vi.fn(), deleteFiles: vi.fn(),
     cancelConversation: vi.fn(async () => {}), deleteConversation: vi.fn(async () => {}), dispose: vi.fn(), agentControl: vi.fn(),
-    run: vi.fn((_request, emit) => new Promise<Report>(resolve => runs.push({ emit, finish: resolve }))),
+    run: vi.fn((_request, emit) => new Promise<Report>((resolve, reject) => runs.push({ emit, finish: resolve, fail: reject }))),
     cancel: vi.fn(() => runs.at(-1)?.finish({ status: 'aborted' })),
   };
   const save = vi.fn(async () => {});
@@ -562,10 +562,11 @@ it('reloads configuration only at an idle boundary and retains history and queue
   expect(f.runtime.cancel).not.toHaveBeenCalled();
   await f.controller.send({text:'Next configuration',params:{model:'one'},attachments:[]},owner,true,'next-config');
   expect(owner.queuedInputs).toHaveLength(1);expect(f.runtime.agentControl).not.toHaveBeenCalled();
-  vi.mocked(f.runtime.agentControl!).mockResolvedValue({requestId:'next-config',conversationId:1,status:'accepted'});
   f.emit({...f.snapshot(),revision:3});
   await vi.waitFor(()=>expect(f.runs).toHaveLength(2));
-  await vi.waitFor(()=>expect(f.runtime.agentControl).toHaveBeenCalledOnce());
+  expect(f.runtime.agentControl).not.toHaveBeenCalled();
+  f.emit({...f.snapshot(),ownerId:'reloaded',receipts:[{requestId:'next-config',conversationId:1,status:'accepted'}]});
+  await vi.waitFor(()=>expect(owner.agentCommands).toEqual([]));
   expect(f.runtime.run).toHaveBeenLastCalledWith(expect.objectContaining({runId:originalRun,conversationId:owner.id,configurationRunId:`${originalRun}:configuration:1`}),expect.any(Function));
   expect(owner.messages[1].content).toBe(history);expect(owner.queuedInputs).toHaveLength(0);
   expect(f.runtime.deleteConversation).not.toHaveBeenCalled();
@@ -575,12 +576,118 @@ it('waits for an in-flight configuration reload before accepting another input',
   let revision=0;const f=fixture(()=>revision);await f.start();
   let release!:()=>void;
   vi.mocked(f.runtime.cancel).mockImplementation(()=>{release=()=>f.runs[0].finish({status:'aborted'});});
-  vi.mocked(f.runtime.agentControl!).mockResolvedValue({requestId:'after-reload',conversationId:1,status:'accepted'});
   revision=1;f.controller.configurationChanged();
   await vi.waitFor(()=>expect(release).toBeDefined());
   const sending=f.controller.send({text:'After reload',params:{model:'one'},attachments:[]},f.controller.current,true,'after-reload');
   await Promise.resolve();expect(f.runtime.agentControl).not.toHaveBeenCalled();
-  release();await sending;
-  expect(f.runs).toHaveLength(2);expect(f.runtime.agentControl).toHaveBeenCalledOnce();
+  release();
+  await vi.waitFor(()=>expect(f.runs).toHaveLength(2));
+  expect(f.runtime.agentControl).not.toHaveBeenCalled();
+  f.emit({...f.snapshot(),ownerId:'reloaded',receipts:[{requestId:'after-reload',conversationId:1,status:'accepted'}]});
+  await sending;
   await f.finish();
+});
+
+it('defers configuration reattachment until the next input supplies the new model', async () => {
+  let revision = 0;
+  const f = fixture(() => revision); await f.start();
+  const owner = f.controller.current, original = owner.messages[1], initial = f.snapshot();
+  revision = 1; f.controller.configurationChanged(); await f.controller.idle();
+  expect(f.runs).toHaveLength(1); expect(owner.activeRunId).toBeUndefined();
+  expect(original).toMatchObject({ status: 'success', content: 'First answer', model: 'one' });
+  const sending = f.controller.send({ text: 'Use the replacement model', params: { model: 'two' }, attachments: [] }, owner, true, 'replacement');
+  await vi.waitFor(() => expect(f.runs).toHaveLength(2));
+  expect(vi.mocked(f.runtime.run).mock.calls[1][0]).toMatchObject({ resumeAgent: true, runId: original.runId,
+    configurationRunId: `${original.runId}:configuration:1`, args: ['--model', 'two', '--message', 'First'] });
+  f.emit({ ...initial, ownerId: 'new-owner', revision: 1, receipts: [{ requestId: 'replacement', conversationId: 1, status: 'accepted' }], turns: [...initial.turns,
+    { requestId: 'replacement', conversationId: 1, prompt: 'Use the replacement model', mode: 'followUp', status: 'done', epoch: 0, entryId: 3, answerId: 4,
+      items: [{ id: 'replacement-answer', title: 'Output', content: 'Second answer', contentType: 'markdown', collapsed: false }] }] });
+  await sending;
+  expect(owner.messages.filter(message => message.role === 'assistant').map(message => [message.status, message.model, message.content]))
+    .toEqual([['success', 'one', 'First answer'], ['success', 'two', 'Second answer']]);
+  await f.finish();
+  expect(original).toMatchObject({ status: 'success', content: 'First answer', model: 'one' });
+});
+
+it.each(['report', 'exception'])('keeps completed replies intact when model reattachment fails via %s', async failure => {
+  const f = fixture(); await f.start();
+  f.runs[0].finish({ status: 'success', durationMs: 123 }); await f.controller.idle();
+  const original = structuredClone(f.controller.current.messages[1]);
+  const sending = f.controller.send({ text: 'New input', params: { model: 'two' }, attachments: [] }, f.controller.current, true, 'failed-reconnect');
+  const rejected = expect(sending).rejects.toThrow('Fixture model unavailable');
+  await vi.waitFor(() => expect(f.runs).toHaveLength(2));
+  if (failure === 'report') f.runs[1].finish({ status: 'failed', durationMs: 1, result: { error: { message: 'Fixture model unavailable' } } });
+  else f.runs[1].fail(new Error('Fixture model unavailable'));
+  await rejected; await f.controller.idle();
+  expect(f.controller.current.messages[1]).toEqual(original);
+  expect(f.controller.current.agentCommands).toEqual([]);
+});
+
+it.each(['report', 'exception'])('reports a reattached worker failure on the unfinished turn via %s', async failure => {
+  const f = fixture(); await f.start(); await f.finish();
+  const original = structuredClone(f.controller.current.messages[1]), initial = f.snapshot();
+  const sending = f.controller.send({ text: 'Next', params: { model: 'two' }, attachments: [] }, f.controller.current, true, 'unfinished');
+  await vi.waitFor(() => expect(f.runs).toHaveLength(2));
+  f.emit({ ...initial, ownerId: 'new-owner', revision: 1, foreground: true, receipts: [{ requestId: 'unfinished', conversationId: 1, status: 'accepted' }],
+    turns: [...initial.turns, { requestId: 'unfinished', conversationId: 1, prompt: 'Next', mode: 'followUp', status: 'placed', epoch: 0, entryId: 3, items: [] }] });
+  await sending;
+  if (failure === 'report') f.runs[1].finish({ status: 'failed', result: { error: { message: 'New model connection failed' } } });
+  else f.runs[1].fail(new Error('New model connection failed'));
+  await f.controller.idle();
+  expect(f.controller.current.messages[1]).toEqual(original);
+  expect(f.controller.current.messages.at(-1)).toMatchObject({ status: 'failed', error: 'New model connection failed', model: 'two' });
+});
+
+it('bounds interrupted owner reconnects without changing a completed reply or replaying its input', async () => {
+  const f = fixture(); await f.start(); await f.finish();
+  const owner = f.controller.current, original = owner.messages[1];
+  const control = f.controller.agentCommand(owner.id, { type: 'snapshot', requestId: 'bounded-reconnect' });
+  const rejected = expect(control).rejects.toMatchObject({ code: 'STEAMHARNESS_WORKER_INTERRUPTED' });
+  for (let count = 2; count <= 5; count++) {
+    await vi.waitFor(() => expect(f.runs).toHaveLength(count));
+    f.runs.at(-1)!.fail(Object.assign(new Error('Interrupted'), { code: 'STEAMHARNESS_WORKER_INTERRUPTED' }));
+  }
+  await rejected; await f.controller.idle();
+  expect(f.runs).toHaveLength(5);
+  expect(original).toMatchObject({ status: 'success', content: 'First answer', model: 'one' });
+  expect(vi.mocked(f.runtime.run).mock.calls.slice(1).every(([request]) => request.resumeAgent && request.runId === original.runId)).toBe(true);
+  expect(owner.agentCommands).toHaveLength(1);
+});
+
+it('allows retrying an interrupted follow-up after the reattached worker exhausts its recovery attempts', async () => {
+  const f = fixture(); await f.start(); await f.finish();
+  const owner = f.controller.current, initial = f.snapshot();
+  const sending = f.controller.send({ text: 'Next', params: { model: 'two' }, attachments: [] }, owner, true, 'retry-followup');
+  await vi.waitFor(() => expect(f.runs).toHaveLength(2));
+  f.emit({ ...initial, ownerId: 'new-owner', revision: 1, foreground: true, receipts: [{ requestId: 'retry-followup', conversationId: 1, status: 'accepted' }],
+    turns: [...initial.turns, { requestId: 'retry-followup', conversationId: 1, prompt: 'Next', mode: 'followUp', status: 'placed', epoch: 0, entryId: 3, items: [] }] });
+  await sending;
+  for (let count = 2; count <= 5; count++) {
+    await vi.waitFor(() => expect(f.runs).toHaveLength(count));
+    f.runs.at(-1)!.fail(Object.assign(new Error('Interrupted'), { code: 'STEAMHARNESS_WORKER_INTERRUPTED' }));
+  }
+  await f.controller.idle();
+  const answer = owner.messages.at(-1)!;
+  expect(answer).toMatchObject({ status: 'failed', recovering: true });
+  await f.controller.retry(answer.id!);
+  await vi.waitFor(() => expect(f.runs).toHaveLength(6));
+  expect(owner.messages[1].recoveryAttempts).toBe(0);
+  expect(owner.messages[1]).toMatchObject({ status: 'success', content: 'First answer' });
+  expect(vi.mocked(f.runtime.run).mock.calls[5][0]).toMatchObject({ resumeAgent: true, runId: owner.messages[1].runId });
+  await f.finish();
+});
+
+it.each([
+  'The selected AI model is no longer configured. Select a model again.',
+  'Add a model in Project configurations before running the Agent.',
+  'This system AI model is unavailable. Check your subscription in Project configurations.',
+])('repairs a completed reply previously overwritten by configuration startup error: %s', async error => {
+  const f = fixture(); await f.start(); await f.finish();
+  const saved = structuredClone({ sessions: f.controller.sessions, activeId: f.controller.activeId });
+  Object.assign(saved.sessions[0].messages[1], { status: 'failed', error, report: { status: 'failed', result: { error: { message: error } } }, durationMs: 1 });
+  const restored = new ConversationController(f.controller.project, f.runtime, saved, { save: f.save, changed: vi.fn(), log: vi.fn() });
+  controllers.push(restored);
+  expect(restored.current.messages[1]).toMatchObject({ status: 'success', content: 'First answer', model: 'one' });
+  expect(restored.current.messages[1].error).toBeUndefined(); expect(restored.current.messages[1].report).toBeUndefined();
+  restored.recover(); expect(f.runtime.run).toHaveBeenCalledOnce();
 });

@@ -91,6 +91,8 @@ Studio 与 CLI Web 中，当前配置的模型列表为空时，Workflow 和 Con
 
 模型值按命名配置保存并随运行快照冻结。保存非当前配置保留运行选择；下一轮或下一次执行读取当前配置。模型列表与其他配置使用相同的导入导出、版本检查、权限和小助手 CRUD。自动字段默认发布结构而不携带值，API Key 不会自动进入发布模板；完整备份仍包含密钥，须妥善保管。
 
+Conversation 与 Studio 小助手允许在同一会话中更换模型。修改、删除或替换配置中的模型不会隐藏已经完成的回复，也不会更改历史回复记录的模型名称；后续消息使用当前选中的可用模型并保留会话上下文。若新模型启动失败，错误由本次发送操作返回，已完成的历史回复继续正常展示。
+
 ## 运行时读取
 
 ```ts
@@ -110,7 +112,7 @@ SDK 提供 `ProjectConfigurationSnapshot`、`context.config` 和 `steamharness.g
 显式快照也按 `runId` 保存，恢复时可省略 `configuration`，仍使用最初保存的值。宿主为保留同一 `runId` 的持久会话更新配置时，传入新的 `configurationRunId`；之后恢复该代配置需继续传入相同的 `configurationRunId`。本地存储的 `snapshot({ runId, configuration })` 同样只在该身份首次使用时保存传入快照。
 
 - Workflow 开始执行时冻结配置；恢复等待任务继续使用原快照。
-- Conversation 的下一轮执行使用新配置；持久 Agent 在当前任务、排队输入和审批处理结束后重建运行配置，保留会话历史、分支和恢复状态。
+- Conversation 的下一轮执行使用新配置；持久 Agent 等当前任务、排队输入和审批处理结束后停止旧运行，在下一次输入时用新参数重建运行配置，保留会话历史、分支和恢复状态。
 - Kanban 保存后更新主页面与资源卡片预览，HTML 仍通过 `window.steamHarnessKanban.getConfiguration().params` 读取原生值，并监听 `steamharness:kanban-configuration-change`。指定配置 ID 的预览引用该配置；配置删除后显示不可用。
 
 项目业务配置不自动读取 `.env`，不使用 `.env.example`，也不回退到进程环境变量。旧项目 env 和旧 Kanban 配置不迁移。请重新在面板填写配置。Server 部署、CI 和 Studio 内部通信变量继续由宿主管理。
