@@ -8,7 +8,7 @@
 
 - Studio and CLI Web honor system-only AI declarations, hide third-party controls, and share validation across saves, imports and assistant operations.
 
-- [Added] Successful Conversation turns can fold intermediate text, reasoning and tools while retaining each final reply, plan and resource card. Expand each turn with Worked for; a toolbar toggle remembers the project preference, with Core Agent enabled by default.
+- [Added] Conversation can collapse intermediate text, reasoning and tools, keeping the final reply, plan and resource cards on success or only the red error on failure. A button after the model name and turn usage shows or hides each turn's process without a separate row; the toolbar toggle remembers the project preference, and Core Agent defaults to enabled.
 
 - [Fixed] Show each answer's model name instead of its configuration entry ID in Assistant and Conversation, including sending previews and durable follow-ups. Recover older names from saved parameters and preserve them across configuration changes.
 

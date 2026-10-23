@@ -124,7 +124,8 @@ main { grid-area: main; min-width: 0; min-height: 0; display: flex; flex-directi
 .user .message-body { width: fit-content; max-width: min(calc(84% - 40px), calc(100% - 128px)); }
 .message-header { display: flex; align-items: center; gap: 8px; min-height: 26px; padding-bottom: 8px; margin-bottom: 12px; border-bottom: 1px solid var(--border); }
 .user .message-header { display: none; }
-.message-metadata { flex: 1; min-width: 0; font-size: 11px; line-height: 1.6; color: var(--muted); overflow-wrap: anywhere; }
+.message-heading { display: flex; align-items: center; gap: 4px; flex: 1; min-width: 0; font-size: 11px; line-height: 1.6; overflow-wrap: anywhere; }
+.message-metadata { min-width: 0; color: var(--muted); }
 .message-actions { display: flex; align-items: center; justify-content: flex-start; gap: 4px; min-height: 32px; padding-top: 4px; }
 .user .message-actions { position: absolute; right: 100%; top: 50%; transform: translateY(-50%); width: 88px; min-height: 0; padding: 0 8px 0 0; flex-direction: column; align-items: flex-end; justify-content: center; gap: 2px; opacity: 0; pointer-events: none; }
 .user .message-actions .message-date { margin-left: 0; max-width: 100%; white-space: normal; text-wrap: balance; }
@@ -475,11 +476,11 @@ textarea::placeholder { color: var(--vscode-input-placeholderForeground); }
 .conversation-access { flex: none; padding: 10px 16px; color: var(--vscode-editorWarning-foreground, #b89500); background: var(--vscode-editorWarning-background, transparent); border-bottom: 1px solid var(--vscode-panel-border, #444); user-select: text; }
 .conversation-access[hidden] { display: none; }
 
-/* Successful turns keep their final answer outside this expandable process. */
-.conversation-process { margin: 10px 0 14px; min-width: 0; }
-.conversation-process > summary { display: flex; align-items: center; gap: 6px; padding: 6px 0 9px; border-bottom: 1px solid var(--border); color: var(--muted); font-size: 12px; cursor: pointer; list-style: none; }
-.conversation-process > summary::-webkit-details-marker { display: none; }
-.conversation-process > summary > .codicon { font-size: 12px; }
-.conversation-process[open] > summary > .codicon { transform: rotate(90deg); }
-.conversation-process-content { padding-top: 12px; min-width: 0; }
+/* The per-turn disclosure lives beside the model and usage in the header. */
+.conversation-process-toggle { width: 22px; height: 22px; color: var(--muted); }
+.conversation-process-toggle > .codicon { font-size: 12px; }
+.conversation-process-toggle[aria-expanded="true"] > .codicon { transform: rotate(90deg); }
+.conversation-process { margin: 0 0 12px; min-width: 0; }
+.conversation-process:not([open]) { display: none; }
+.conversation-process-content { min-width: 0; }
 #collapse-intermediate[aria-pressed="true"] { color: var(--vscode-editor-foreground); background: var(--vscode-toolbar-activeBackground, var(--vscode-toolbar-hoverBackground)); }

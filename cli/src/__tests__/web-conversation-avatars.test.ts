@@ -39,7 +39,8 @@ it('keeps message avatars in the requested positions, opens their identities, an
   emit();
   const user = document.querySelector<HTMLButtonElement>('.user > .message-avatar')!, assistant = document.querySelector<HTMLButtonElement>('.assistant .message-header > .message-avatar')!;
   expect(user.previousElementSibling?.className).toBe('message-body');
-  expect(assistant.nextElementSibling?.className).toBe('message-metadata');
+  expect(assistant.nextElementSibling?.className).toBe('message-heading');
+  expect(assistant.nextElementSibling?.querySelector('.message-metadata')).not.toBeNull();
   expect(assistant.nextElementSibling?.textContent).toContain('Duration');
   expect(assistant.type).toBe('button'); expect(assistant.getAttribute('aria-haspopup')).toBe('dialog');
   expect(getComputedStyle(user).width).toBe('32px'); expect(getComputedStyle(user).flexShrink).toBe('0');

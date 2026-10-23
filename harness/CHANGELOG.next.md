@@ -4,7 +4,7 @@
 
 - 【新增】AI 模型字段支持源码声明 allowThirdParty: false；按运行冻结系统 AI 限制，拒绝第三方模型及直连覆盖，旧配置保留可清理。
 
-- 【新增】Conversation 支持 collapseIntermediate 显示默认值；Agent executor 默认开启成功回合的中间过程折叠，允许显式关闭，完整输出保持保留。
+- 【新增】Conversation 支持 collapseIntermediate 显示默认值；Agent executor 默认开启已结束回合的中间过程折叠，成功保留最终回复，失败保留错误原因，允许显式关闭，完整输出保持保留。
 
 - 【修复】本地配置存储随项目源码变更重新识别 Agent 模型字段，无需重开面板；未变源码复用静态分析结果。
 

@@ -18,10 +18,12 @@ const text = (id: string, content: string): OutputItem => ({ id, content, conten
 const tool: OutputItem = { id: 'tool', content: { tool: 'bash', status: 'success', input: { command: 'pwd' }, output: '/workspace' },
   contentType: 'json', collapsed: true, metadata: { kind: 'agent-part', partType: 'tool' } };
 const turn = (): ConversationMessage => ({ id: 'a', role: 'assistant', content: 'Checking files\nFinal reply', status: 'success', durationMs: 1056000,
+  model: 'MiniMax-M3.1-Flash', tokenUsage: { enabled: true, display: true, run: { totalTokens: 1677738 } },
   items: [text('progress', 'Checking files'), tool, text('final', 'Final reply')] });
 function setup() {
-  const root = document.createElement('div'); document.body.append(root);
+  const header = document.createElement('header'), root = document.createElement('div'); document.body.append(header, root);
   const output = new ConversationOutput(root, { copy() {}, plan() {}, file() {}, image() {}, resource() {} }); outputs.push(output);
+  header.append(output.processToggle);
   const update = (message: ConversationMessage, enabled = true) => output.update(message, 'project', 'session', [], 'local', '[]', enabled);
   return { root, output, update, process: () => root.querySelector<HTMLDetailsElement>('.conversation-process')! };
 }
@@ -30,38 +32,79 @@ it('collapses each completed turn independently, preserves final replies and ret
   const first = setup(), second = setup();
   first.update(turn()); second.update({ ...turn(), id: 'b', items: [text('progress', 'Next steps'), tool, text('final', 'Second final')] });
   expect(first.process().open).toBe(false); expect(second.process().open).toBe(false);
-  expect(first.process().querySelector('summary')!.textContent).toContain('Worked for 17m 36s');
+  expect(first.process().querySelector('summary')!.hidden).toBe(true);
+  expect(first.output.processToggle.getAttribute('aria-controls')).toBe(first.process().id);
+  expect(second.process().id).not.toBe(first.process().id);
+  expect(first.output.processToggle.getAttribute('aria-expanded')).toBe('false');
+  expect(first.output.processToggle.title).toBe('Show intermediate steps');
   expect(first.process().textContent).toContain('Checking files'); expect(first.process().textContent).not.toContain('Final reply');
   expect(first.root.lastElementChild!.textContent?.trim()).toBe('Final reply');
   expect(second.root.lastElementChild!.textContent?.trim()).toBe('Second final');
   const process = first.process(), final = first.root.lastElementChild;
-  process.open = true;
+  first.output.processToggle.click();
+  expect(first.output.processToggle.getAttribute('aria-expanded')).toBe('true');
+  expect(first.output.processToggle.title).toBe('Hide intermediate steps');
   const detail = process.querySelector<HTMLDetailsElement>('.agent-activity-item')!; detail.open = true; detail.dispatchEvent(new Event('toggle'));
   first.update(turn());
   expect(first.process()).toBe(process); expect(process.open).toBe(true); expect(detail.open).toBe(true);
   expect(first.root.lastElementChild).toBe(final); expect(detail.querySelector('pre')!.textContent).toContain('pwd');
   first.update(turn(), false); expect(first.process()).toBeNull();
+  expect(first.output.processToggle.hidden).toBe(true);
   expect([...first.root.children].map(child => child.className)).toEqual(['message-content', 'activity-group single-activity', 'message-content']);
   expect(first.root.lastElementChild).toBe(final); expect(second.process().open).toBe(false);
   first.update(turn()); expect(first.process().open).toBe(false);
 });
 
-it.each(['running', 'sending', 'failed', 'aborted', 'waiting', undefined])('keeps %s output fully visible and folds when it succeeds', status => {
+it.each(['running', 'sending', 'aborted', 'waiting_for_input', undefined])('keeps %s output fully visible and folds when it succeeds', status => {
   const view = setup(); view.update({ ...turn(), status });
   expect(view.process()).toBeNull(); expect(view.root.firstElementChild!.textContent?.trim()).toBe('Checking files');
   view.update(turn()); expect(view.process().open).toBe(false);
 });
 
-it('does not hide unresolved input, errors, or a turn without a final result', () => {
+it('does not hide unresolved input, inconsistent success errors, or a turn without a final result', () => {
   const view = setup();
   for (const patch of [
     { pendingInput: { requestId: 'review', fields: [] } }, { error: 'Run failed' },
+    { cancelRequested: true }, { submittingInput: { requestId: 'review', values: {} } },
     { items: [tool] }, { items: [text('only', 'Only final reply')] },
   ]) { view.update({ ...turn(), ...patch } as ConversationMessage); expect(view.process()).toBeNull(); }
   view.update({ ...turn(), items: [text('progress', 'Checking'), tool, text('empty', '  ')] });
   // Text before a trailing tool/empty part is progress, without a final result yet.
   expect(view.process()).toBeNull();
   expect(view.root.querySelector(':scope > .message-content')!.textContent?.trim()).toBe('Checking');
+});
+
+it.each(['failed', 'timed_out'])('folds all %s output behind the header control and restores it during retry or when disabled', status => {
+  const view = setup(), failed = { ...turn(), status, error: 'The model request timed out' };
+  view.update(failed);
+  expect([...view.root.children]).toEqual([view.process()]);
+  expect(view.process().textContent).toContain('Final reply');
+  const prose = view.process().querySelector('.message-content');
+  view.output.processToggle.click(); expect(view.process().open).toBe(true);
+  view.update(failed); expect(view.process().open).toBe(true);
+  view.update({ ...failed, status: 'running' });
+  expect(view.process()).toBeNull(); expect(view.output.processToggle.hidden).toBe(true);
+  expect(view.root.firstElementChild).toBe(prose); expect(view.root.querySelector('.pending')).not.toBeNull();
+  view.update(failed); expect(view.process().open).toBe(false);
+  view.update(failed, false); expect(view.process()).toBeNull(); expect(view.output.processToggle.hidden).toBe(true);
+  expect(view.root.textContent).toContain('Checking files'); expect(view.root.textContent).toContain('Final reply');
+  // Even a failed turn without final prose can fold when its error is visible separately.
+  view.update({ ...failed, items: [tool] }); expect(view.process().open).toBe(false);
+  view.update({ ...failed, items: [], content: 'Partial reply' }); expect(view.process().textContent).toContain('Partial reply');
+  view.update({ ...failed, items: [], content: '' }); expect(view.process()).toBeNull(); expect(view.output.processToggle.hidden).toBe(true);
+});
+
+it('keeps diagnostics visible when a failed turn has no error or still needs user input', () => {
+  const view = setup();
+  for (const patch of [
+    { error: undefined }, { error: '' }, { error: '  ' },
+    { pendingInput: { requestId: 'review', fields: [] } }, { cancelRequested: true },
+    { submittingInput: { requestId: 'review', values: {} } },
+  ]) {
+    view.update({ ...turn(), status: 'failed', error: 'Run failed', ...patch } as ConversationMessage);
+    expect(view.process()).toBeNull(); expect(view.output.processToggle.hidden).toBe(true);
+    expect(view.root.firstElementChild!.textContent?.trim()).toBe('Checking files');
+  }
 });
 
 it('keeps a plan, trailing citations, usage and resource previews visible outside the process', () => {
@@ -81,6 +124,11 @@ it('keeps a plan, trailing citations, usage and resource previews visible outsid
   expect(mount.mock.calls.some(([node]) => node === resource)).toBe(false);
   expect(view.root.querySelector('.resource-card')).toBe(resource); expect(frame.isConnected).toBe(true);
   expect(view.process().contains(frame)).toBe(false);
+  view.update({ ...message, status: 'failed', error: 'Run failed' });
+  expect(view.process().contains(resource)).toBe(true); expect(view.process().contains(frame)).toBe(true);
+  view.output.processToggle.click(); view.output.processToggle.click();
+  view.update({ ...message, status: 'failed', error: 'Run failed' }, false);
+  expect(view.root.querySelector(':scope > .resource-card')).toBe(resource); expect(resource.contains(frame)).toBe(true);
   view.update({ ...turn(), items: [text('progress', 'Planning'), tool, { id: 'plan', content: 'The final plan', contentType: 'markdown', collapsed: true, metadata: { kind: 'agent-notice', plan: true } }] });
   expect(view.root.querySelector(':scope > .plan-card')).not.toBeNull(); expect(view.process().textContent).toContain('Planning');
 });
@@ -111,16 +159,19 @@ it('offers a persistent project preference, replays folded history, and clears e
   Object.defineProperties(transcript, { scrollHeight: { get: () => height }, clientHeight: { get: () => 400 },
     scrollTop: { get: () => top, set: value => { top = Math.max(0, Math.min(value, height - 400)); } } });
   const project: Project = { id: 'project', uri: 'file:///project', folderPath: '/project', name: 'Agent', projectType: 'conversation', fields: [], entrypoints: [] };
-  const emit = (id = 'one') => {
+  const emit = (id = 'one', message = turn()) => {
     window.dispatchEvent(new MessageEvent('message', { data: { type: 'state', project, activeId: id, running: false,
-      sessions: [{ id, title: 'Conversation', messages: [turn()], createdAt: 1, updatedAt: 1 }] } }));
+      sessions: [{ id, title: 'Conversation', messages: [message], createdAt: 1, updatedAt: 1 }] } }));
     for (let i = 0; i < 2; i++) for (const frame of frames.splice(0)) frame(0);
   };
   emit(); const button = document.querySelector<HTMLButtonElement>('#collapse-intermediate')!;
   expect(button.hidden).toBe(false); expect(button.getAttribute('aria-pressed')).toBe('true');
+  const toggle = document.querySelector<HTMLButtonElement>('.message-header .conversation-process-toggle')!;
+  expect(toggle.previousElementSibling?.textContent).toContain('MiniMax-M3.1-Flash · Turn usage: 1,677,738 tokens');
+  expect(toggle.parentElement?.className).toBe('message-heading');
   const process = document.querySelector<HTMLDetailsElement>('.conversation-process')!; process.open = true;
   emit(); expect(document.querySelector('.conversation-process')).toBe(process); expect(process.open).toBe(true);
-  expect(top).toBe(600); process.open = false; process.querySelector('summary')!.click();
+  expect(top).toBe(600); process.open = false; toggle.click();
   height = 1600; for (const resize of resizes) resize();
   for (let i = 0; i < 2; i++) for (const frame of frames.splice(0)) frame(0);
   expect(top).toBe(600);
@@ -130,16 +181,26 @@ it('offers a persistent project preference, replays folded history, and clears e
   button.click(); expect(document.querySelector<HTMLDetailsElement>('.conversation-process')!.open).toBe(false);
   document.querySelector<HTMLDetailsElement>('.conversation-process')!.open = true;
   emit('three'); expect(document.querySelector<HTMLDetailsElement>('.conversation-process')!.open).toBe(false);
+  emit('three', { ...turn(), status: 'failed', error: 'Request timed out after retrying' });
+  const failed = document.querySelector<HTMLDetailsElement>('.conversation-process')!;
+  expect(failed.open).toBe(false); expect(failed.parentElement!.children).toHaveLength(1);
+  const error = document.querySelector<HTMLElement>('.message-error')!;
+  expect(error.hidden).toBe(false); expect(error.textContent).toBe('Request timed out after retrying');
+  document.querySelector<HTMLButtonElement>('.conversation-process-toggle')!.click(); expect(failed.open).toBe(true);
+  emit('three', { ...turn(), status: 'running' });
+  expect(document.querySelector('.conversation-process')).toBeNull(); expect(error.hidden).toBe(true);
+  expect(document.querySelector<HTMLButtonElement>('.conversation-process-toggle')!.hidden).toBe(true);
   project.uri = 'file:///other'; emit('four'); expect(button.getAttribute('aria-pressed')).toBe('false');
 });
 
-it('reveals matching intermediate prose when searching a folded turn', () => {
-  const view = setup(); view.update(turn());
+it.each(['success', 'failed'])('reveals matching intermediate prose when searching a folded %s turn', async status => {
+  const view = setup(); view.update({ ...turn(), status, error: status === 'failed' ? 'Run failed' : undefined });
   const scroll = vi.fn(); Object.defineProperty(HTMLElement.prototype, 'scrollIntoView', { configurable: true, value: scroll });
   const navigate = vi.fn(); const search = new ContentSearch(view.root, navigate); search.open();
   const input = document.querySelector<HTMLInputElement>('.content-search input')!;
   input.value = 'Checking files'; input.dispatchEvent(new Event('input'));
   expect(view.process().open).toBe(true); expect(navigate).toHaveBeenCalledOnce(); expect(scroll).toHaveBeenCalledOnce();
   expect(view.process().querySelector('mark')!.textContent).toBe('Checking files');
+  await vi.waitFor(() => expect(view.output.processToggle.getAttribute('aria-expanded')).toBe('true'));
   search.close(); expect(view.process().querySelector('mark')).toBeNull();
 });

@@ -28,7 +28,7 @@ workflow.defineAgentConversationExecutor(options?: AgentProjectOptions):
 | --- | --- | --- | --- |
 | `projectName` | `string` | — | 项目展示名。 |
 | `projectName` | `string` | `agent` | workflow 名，也是节点名前缀（`<name>-input`、`<name>-output`、`<name>-agent`）。 |
-| `collapseIntermediate` | `boolean` | `true` | 成功后默认收起中间过程，写入 `conversation.collapseIntermediate`；用户可在界面中覆盖。 |
+| `collapseIntermediate` | `boolean` | `true` | 结束后默认收起中间过程，成功保留最终回复，失败保留错误原因；写入 `conversation.collapseIntermediate`；用户可在界面中覆盖。 |
 | `outputItemId` | `string` | `agent-answer` | 助手正文回答的 item id，同时写入 `conversation.openai.outputItemId`。正文 item 用的就是这个值本身，因此适配器按 id 查找时一定能找到它。 |
 | `params` | `ConversationParamDeclaration[]` | 见下 | 完全覆盖默认参数表，只允许 Auxiliary、Quick 和 Mode。标准主输入框始终展示。 |
 

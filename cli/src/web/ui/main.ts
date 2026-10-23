@@ -898,7 +898,7 @@ function initialize(): void {
     root.className = `message ${message.role}`;
     root.dataset.messageId = message.id;
     const timestamp = message.createdAt ? new Date(message.createdAt).toLocaleString(locale(), { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : '';
-    root.innerHTML = `<div class="message-body"><header class="message-header"><span class="message-metadata"></span><time class="message-date"${!timestamp ? ' hidden' : ''}>${escape(timestamp)}</time></header><div class="attachments" hidden></div><div class="message-content"></div><div class="message-prompt"></div><p class="message-error" hidden></p><div class="message-actions"><button class="icon-button copy-message" title="${t("Copy message")}" aria-label="${t("Copy message")}">${icon('copy')}</button></div></div>`;
+    root.innerHTML = `<div class="message-body"><header class="message-header"><span class="message-heading"><span class="message-metadata"></span></span><time class="message-date"${!timestamp ? ' hidden' : ''}>${escape(timestamp)}</time></header><div class="attachments" hidden></div><div class="message-content"></div><div class="message-prompt"></div><p class="message-error" hidden></p><div class="message-actions"><button class="icon-button copy-message" title="${t("Copy message")}" aria-label="${t("Copy message")}">${icon('copy')}</button></div></div>`;
     if (timestamp) { root.querySelector<HTMLTimeElement>('.message-date')!.dateTime = new Date(message.createdAt!).toISOString(); }
     if (message.role === 'user') { root.querySelector('.message-actions')!.prepend(root.querySelector('.message-date')!); }
     const avatar = iconButton('account', message.role === 'user' ? t("SteamHarness Account") : t("Project information"), () => {
@@ -924,6 +924,7 @@ function initialize(): void {
         copy, plan: (text) => dialogs.plan(text), file: (id) => post({ type: 'open-file', id }),
         image: (src, title) => dialogs.image(src, title), resource: (card, action, requestId) => post({ type: 'resource', messageId: view.message.id, cardId: card.id, action, requestId }),
       });
+      view.metadata.after(view.output.processToggle);
       const actions = root.querySelector('.message-actions')!;
       const fork = iconButton('git-branch', t('Fork conversation'), async () => {
         const entryId = view.message.entryId, sessionId = state?.activeId, projectUri = state?.project.uri;
@@ -1350,7 +1351,7 @@ function initialize(): void {
   }, { passive: true });
   // Reader input takes precedence even when a resize is waiting for its frame.
   transcript.addEventListener('click', event => {
-    if (event.target instanceof Element && event.target.closest('.conversation-process > summary')) followingLatest = false;
+    if (event.target instanceof Element && event.target.closest('.conversation-process-toggle')) followingLatest = false;
   });
   transcript.addEventListener('wheel', event => { if (event.deltaY < 0) { followingLatest = false; } }, { passive: true });
   transcript.addEventListener('keydown', event => {

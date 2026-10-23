@@ -20,12 +20,13 @@ interface ActivityGroup { root: HTMLDetailsElement; list: HTMLDivElement }
 type OutputBlock = OutputEntry | { key: string; entries: OutputEntry[] };
 
 export class ConversationOutput {
+  readonly processToggle: HTMLButtonElement;
   private readonly views = new Map<string, OutputView>();
   private readonly groups = new Map<string, ActivityGroup>();
   private readonly activities = new Map<string, AgentActivity>();
   private readonly displays = new Map<HTMLElement, RingOutput>();
   private pending?: HTMLDivElement;
-  private process?: { root: HTMLDetailsElement; list: HTMLDivElement; label: HTMLSpanElement };
+  private process?: { root: HTMLDetailsElement; list: HTMLDivElement };
   private readonly resourceTheme = new MutationObserver(() => this.syncResourceTheme());
   private syncResourceTheme(): void {
     for (const frame of this.root.querySelectorAll<HTMLIFrameElement>('.resource-inline > iframe')) {
@@ -50,10 +51,25 @@ export class ConversationOutput {
   constructor(private readonly root: HTMLElement, private readonly options: OutputOptions) {
     root.className = 'message-output'; window.addEventListener('message', this.resourceReply);
     this.resourceTheme.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
+    this.processToggle = document.createElement('button'); this.processToggle.type = 'button';
+    this.processToggle.className = 'icon-button conversation-process-toggle'; this.processToggle.hidden = true;
+    this.processToggle.innerHTML = iconHtml('chevron-right');
+    this.processToggle.addEventListener('click', () => {
+      if (!this.process || this.processToggle.hidden) return;
+      this.process.root.open = !this.process.root.open; this.syncProcessToggle();
+    });
+    this.syncProcessToggle();
   }
   dispose(): void {
     window.removeEventListener('message', this.resourceReply); this.resourceTheme.disconnect();
+    this.processToggle.remove();
     for (const display of this.displays.values()) { display.dispose(); } this.displays.clear();
+  }
+
+  private syncProcessToggle(): void {
+    const open = this.process?.root.open ?? false;
+    this.processToggle.setAttribute('aria-expanded', String(open));
+    this.processToggle.title = this.processToggle.ariaLabel = open ? t('Hide intermediate steps') : t('Show intermediate steps');
   }
 
   private release(root: HTMLElement): void { this.displays.get(root)?.dispose(); this.displays.delete(root); }
@@ -124,27 +140,28 @@ export class ConversationOutput {
       if (!('entries' in block) && block.card) lastCardIndex = index;
     }
     if (finalIndex < 0) finalIndex = lastCardIndex;
+    // A failed turn keeps its separate error message visible; all prior output
+    // belongs to its process. Without an error, keep the available diagnostics.
+    const failed = (message.status === 'failed' || message.status === 'timed_out') && !!message.error?.trim();
     const intermediate = new Set(blocks.filter((block, index) => {
+      if (failed) return true;
       if (!('entries' in block) && (block.card || block.item && ringOutputContent(block.item))) return false;
       return index < finalIndex || 'entries' in block || !!block.answer || !!block.timer;
     }));
     const hasFinal = finalIndex >= 0 && !blocks.slice(finalIndex + 1).some(block => 'entries' in block);
-    const fold = collapseIntermediate && message.status === 'success' && !message.error && !message.pendingInput
-      && !message.submittingInput && hasFinal && intermediate.size > 0;
+    const fold = collapseIntermediate && !message.pendingInput && !message.submittingInput && !message.cancelRequested
+      && (failed || message.status === 'success' && !message.error && hasFinal) && intermediate.size > 0;
     if (fold && !this.process) {
       const root = document.createElement('details'); root.className = 'conversation-process';
-      const summary = document.createElement('summary');
-      const label = document.createElement('span'); summary.append(label); summary.insertAdjacentHTML('beforeend', iconHtml('chevron-right'));
+      root.id = `conversation-process-${crypto.randomUUID()}`;
+      // Keep native details semantics for search, with the visible control in the header.
+      const summary = document.createElement('summary'); summary.hidden = true; summary.textContent = t('Intermediate steps');
       const list = document.createElement('div'); list.className = 'conversation-process-content';
-      root.append(summary, list); this.process = { root, list, label };
+      root.append(summary, list); this.process = { root, list };
+      root.addEventListener('toggle', () => this.syncProcessToggle());
+      this.processToggle.setAttribute('aria-controls', root.id);
     }
-    if (fold) {
-      const seconds = Math.max(0, Math.round((message.durationMs ?? 0) / 1000));
-      const duration = seconds >= 60 ? t('{0}m {1}s', Math.floor(seconds / 60), seconds % 60) : t('{0}s', seconds);
-      const label = message.durationMs === undefined ? t('Intermediate steps') : t('Worked for {0}', duration);
-      this.process!.label.textContent = label;
-      this.process!.root.firstElementChild!.setAttribute('aria-label', t('Show or hide intermediate steps: {0}', label));
-    }
+    this.processToggle.hidden = !fold;
     const activeGroups = new Set<string>();
     const visibleRoots: HTMLElement[] = [], processRoots: HTMLElement[] = [];
     for (const block of blocks) {
@@ -183,21 +200,31 @@ export class ConversationOutput {
       } else { visibleRoots.push(root); }
       if (followList) { followList.scrollTop = followList.scrollHeight; }
     }
+    const move = (parent: HTMLElement, root: HTMLElement, before: Element | null): void => {
+      // Preserve live previews when a failed turn moves them into/out of its process.
+      if (parent.moveBefore && parent.isConnected && root.isConnected) parent.moveBefore(root, before);
+      else parent.insertBefore(root, before);
+    };
     const place = (parent: HTMLElement, roots: HTMLElement[]): void => {
-      for (const [index, root] of roots.entries()) {
-        const current = parent.children[index] ?? null;
-        if (current !== root) parent.insertBefore(root, current);
+      let index = 0;
+      for (const root of roots) {
+        let current = parent.children[index] ?? null;
+        if (!fold && current && current === this.process?.root) current = parent.children[++index] ?? null;
+        if (current !== root) move(parent, root, current);
+        index++;
       }
     };
     for (const [key, view] of this.views) { if (!active.has(key)) { this.release(view.root); view.root.remove(); this.views.delete(key); this.activities.delete(key); } }
     for (const [key, group] of this.groups) { if (!activeGroups.has(key)) { group.root.remove(); this.groups.delete(key); } }
-    if (fold) place(this.process!.list, processRoots);
-    else if (this.process) {
-      // Detach the wrapper first; place its children around the cards without moving iframes.
-      this.process.root.remove();
-      this.process.root.open = false;
+    if (fold) {
+      if (this.process!.root.parentElement !== this.root) {
+        this.root.insertBefore(this.process!.root, processRoots.find(root => root.parentElement === this.root) ?? null);
+      }
+      place(this.process!.list, processRoots);
     }
     place(this.root, visibleRoots);
+    if (!fold && this.process) { this.process.root.remove(); this.process.root.open = false; }
+    this.syncProcessToggle();
     if ((message.status === 'running' || message.status === 'sending') && !message.pendingInput) {
       if (!this.pending) {
         this.pending = document.createElement('div'); this.pending.className = 'pending';
