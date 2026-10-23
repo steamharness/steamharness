@@ -12,6 +12,16 @@ function submission(queued = false, id = 'request'): ConversationSubmission {
 }
 
 describe('Immediate conversation submission', () => {
+  it('keeps the model display name in pending replies after restore and retry while retaining the selected ID', () => {
+    const pending = new ConversationSubmissions();
+    pending.add({ ...submission(), modelName: 'Configured model' });
+    const restored = new ConversationSubmissions(JSON.parse(JSON.stringify(pending.list())), 'Interrupted');
+    expect(restored.project('project', session(), false).messages[1].model).toBe('Configured model');
+    restored.retry('request');
+    expect(restored.project('project', session(), false).messages[1].model).toBe('Configured model');
+    expect(restored.get('request')?.input.params.model).toBe('chosen');
+  });
+
   it('shows text, attachments and a sending response before any backend snapshot, retaining the next draft', () => {
     const pending = new ConversationSubmissions(); pending.add(submission());
     const original = session(), displayed = pending.project('project', original, false);

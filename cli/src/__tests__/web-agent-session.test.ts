@@ -149,6 +149,27 @@ it('changes settings by reattaching the owner and then submitting the new messag
   await f.finish();
 });
 
+it('captures configured model names for durable follow-ups without relabeling completed turns', async () => {
+  const f = fixture();
+  f.controller.project.fields[0].options = [{ value: 'one', label: 'First model' }];
+  await f.start();
+  const initial = f.snapshot();
+  const turn: AgentSessionTurn = { requestId: 'follow-up-name', conversationId: 1, prompt: 'Next', mode: 'followUp',
+    status: 'placed', epoch: 0, entryId: 3, items: [] };
+  const frame = { ...initial, revision: 2, turns: [...initial.turns, turn] };
+  vi.mocked(f.runtime.agentControl!).mockImplementationOnce(async (_runId, command) => {
+    const receipt: AgentSessionReceipt = { requestId: command.requestId, conversationId: 1, status: 'accepted' };
+    f.emit({ ...frame, receipts: [receipt] }); return receipt;
+  });
+  await f.controller.send({ text: 'Next', params: { model: 'one' }, attachments: [],
+    states: { model: { resolvedOptions: [{ value: 'one', label: 'Follow-up model' }] } } }, f.controller.current, false, turn.requestId);
+  expect(f.controller.current.messages.filter(message => message.role === 'assistant').map(message => message.model)).toEqual(['First model', 'Follow-up model']);
+  f.emit({ ...frame, revision: 3, configuration: { ...initial.configuration, model: 'another-model' },
+    turns: [...initial.turns, { ...turn, status: 'done', answerId: 4 }] });
+  expect(f.controller.current.messages.filter(message => message.role === 'assistant').map(message => message.model)).toEqual(['First model', 'Follow-up model']);
+  await f.finish();
+});
+
 it('starts a newly enabled Plan workflow with the new input and its approval lifecycle', async () => {
   const f = fixture(); await f.start();
   f.controller.project.fields.push({ name: 'plan', flag: '--plan', type: 'string' });

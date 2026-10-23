@@ -222,6 +222,7 @@ export interface ConversationMessage {
   recoveryAttempts?: number;
   durationMs?: number;
   createdAt?: number;
+  /** Model display name captured for this answer, independent of the selection ID. */
   model?: string;
   attachments?: Attachment[];
   args?: string[];
@@ -264,6 +265,14 @@ export interface ConversationSession {
 }
 
 export interface ConversationDraftUpdate { id: string; create?: boolean; draft: NonNullable<ConversationSession['draft']> }
+
+export function conversationModelName(input: Pick<ConversationQueuedInput, 'params' | 'states'>, fields: Field[] = []): string | undefined {
+  const field = fields.find(field => field.name === 'model');
+  const model = input.params.model ?? input.states?.model?.value ?? field?.defaultValue;
+  if (typeof model !== 'string' || !model) return;
+  const options = input.states?.model?.resolvedOptions ?? field?.options;
+  return options?.find(option => option.value === model)?.label?.trim() || model;
+}
 
 export function messageSettled(message: ConversationMessage): boolean {
   return !['sending', 'running', 'waiting_for_input'].includes(message.status ?? '')

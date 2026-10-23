@@ -27,6 +27,7 @@ import {
   mergeProjectParamStates,
   messageSettled,
   sessionRunning,
+  conversationModelName,
   type ConversationMessage, type ConversationSession, type ConversationDraftUpdate, type Project, type Field,
   type ParamValues, type ParamValue, type ParamState, type ParamRequest,
   type Attachment,
@@ -1208,6 +1209,7 @@ function initialize(): void {
       const input = { id: crypto.randomUUID(), text: textarea.value, params: structuredClone(values()), entrypointId: entrypoint.value,
         attachments: structuredClone(draftFiles), createdAt: Date.now() };
       submissions.add({ projectUri: state.project.uri, sessionId: session.id, input, phase: 'pending', replacesId: editingQueueId,
+        modelName: conversationModelName({ params: input.params, states: paramStates }, currentParameters().fields),
         queued: !!editingQueueId || state.running || !!session.queuedInputs?.length });
       paramsNeedInit ||= resolving || inputTimer !== undefined || currentParameters().fields.some(field => field.resolveOnInput);
       cancelParameterRequest();

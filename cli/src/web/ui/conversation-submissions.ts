@@ -1,10 +1,11 @@
-import type { ConversationMessage, ConversationQueuedInput, ConversationSession } from '../workflow-types';
+import { conversationModelName, type ConversationMessage, type ConversationQueuedInput, type ConversationSession } from '../workflow-types';
 
 export interface ConversationSubmission {
   projectUri: string;
   sessionId: string;
   input: ConversationQueuedInput;
   queued: boolean;
+  modelName?: string;
   replacesId?: string;
   phase: 'pending' | 'sending' | 'accepted' | 'failed';
   error?: string;
@@ -31,7 +32,7 @@ export class ConversationSubmissions {
     const pair: ConversationMessage[] = [
       { id: `submission:${entry.input.id}:input`, role: 'user', content: entry.input.text, attachments: entry.input.attachments, createdAt: entry.input.createdAt },
       { id: `submission:${entry.input.id}:answer`, role: 'assistant', content: '', status: 'sending', createdAt: entry.input.createdAt,
-        model: typeof entry.input.params.model === 'string' ? entry.input.params.model : undefined },
+        model: entry.modelName ?? conversationModelName(entry.input) },
     ];
     for (const message of pair) this.localMessages.add(message);
     this.previews.set(entry.input.id, pair);

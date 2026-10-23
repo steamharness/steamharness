@@ -1,4 +1,4 @@
-import type { ConversationMessage, ConversationSession, Report } from './workflow-types';
+import { conversationModelName, type ConversationMessage, type ConversationSession, type Report } from './workflow-types';
 
 type Event = Record<string, unknown>;
 interface EventSummary { count: number; events: Event[]; starts: Map<string, number>; ends: Map<string, number> }
@@ -10,7 +10,20 @@ export class ConversationState {
   private readonly reports = new WeakMap<Report, { report: Report; nodes: Map<unknown, Record<string, unknown>> }>();
 
   sessions(sessions: ConversationSession[]): ConversationSession[] {
-    return sessions.map(session => ({ ...session, agent: this.agent(session.agent), messages: session.messages.map(message => this.message(message)) }));
+    return sessions.map(session => {
+      let input: ConversationMessage['input'];
+      const messages = session.messages.map(message => {
+        const view = this.message(message);
+        if (message.role === 'user') input = message.input;
+        // Histories can also arrive through cross-window refresh. Recover old
+        // selection IDs from that turn's saved options, without changing storage.
+        else if (input && (!message.model || message.model === input.params.model)) {
+          view.model = conversationModelName(input) ?? message.model;
+        }
+        return view;
+      });
+      return { ...session, agent: this.agent(session.agent), messages };
+    });
   }
 
   private agent(agent: ConversationSession['agent']): ConversationSession['agent'] {

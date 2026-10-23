@@ -108,6 +108,8 @@ Core Agent declares context occupancy through a standard output item's `display:
 
 The answer header's Turn usage totals model calls for that turn; its tooltip shows calls, input, output and cache counts. The composer ring instead measures current context occupancy. A turn with multiple tool rounds can consume 60,000 tokens while its final request holds only 10,000 tokens of context. Durable sessions attribute usage to each answer and fork separately, so later fork activity cannot change the original answer's total. The ring follows the open conversation's latest snapshot after follow-ups, compaction and resets. Nonzero occupancy below one percent displays Less than 1% full.
 
+Answer headers also show the selected model's name for that turn. Configuration entry IDs continue to identify model selections. Sending previews, durable follow-ups and reopened history retain each turn's name; later renaming or configuration changes do not rewrite saved names. Older records recover display names when their original parameter options are available.
+
 Partial streamed ring updates retain the existing limit and unit. Inline ring updates preserve keyboard focus and an open tooltip. When multiple rings coexist, only the currently inspected tooltip is shown.
 
 Quick parameter triggers display an icon and the current selection. Limited toolbar space hides text from right to left and restores it when space returns, keeping full selections in tooltips. Project Assistant uses sparkle and shield icons for AI and permissions without repeating the Permission label or showing an up arrow. Its Context parameter menu is removed and the context window comes from the model configuration.

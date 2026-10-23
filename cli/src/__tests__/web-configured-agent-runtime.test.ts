@@ -109,6 +109,7 @@ it('runs saved system and third-party models through the real Web worker with re
       await app.controller.idle();
       const answer = app.controller.current.messages.at(-1)!;
       expect(answer.status, answer.error).toBe('success'); expect(answer.content).toContain(`Answer from ${model.model}`);
+      expect(answer.model).toBe(model.name);
       expect(calls.at(-1)?.model).toBe(model.model);
       if (model.source === 'system') {
         expect(catalogRequests.length - catalogsBefore).toBe(2);
@@ -141,6 +142,8 @@ it('runs saved system and third-party models through the real Web worker with re
     await app.controller.idle();
     expect(app.controller.current.messages.at(-1)?.status).toBe('success');
     expect(app.controller.current.messages.at(-1)?.content).toContain('Answer from third-next-model');
+    expect(app.controller.current.messages.at(-1)?.model).toBe('Third-party');
+    expect(app.controller.current.messages.filter(message => message.role === 'assistant').slice(0, 3).map(message => message.model)).toEqual(models.map(model => model.name));
     expect(calls.at(-1)).toMatchObject({ path: '/v1/chat/completions', model: 'third-next-model', token: 'Bearer third-next-identity' });
     expect(catalogRequests).toHaveLength(offlineAt);
     for (const secret of ['next-ai-identity', 'next-project-identity', 'third-next-identity']) expect(JSON.stringify(app.controller.current)).not.toContain(secret);

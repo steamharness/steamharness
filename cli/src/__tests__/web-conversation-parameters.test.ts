@@ -93,6 +93,25 @@ it('renders static parameters without a worker or loading state while typing and
   expect(f.input.value).toBe('next turn');
 });
 
+it('shows the configured model name in the immediate reply and the persisted answer without reloading options', async () => {
+  const f = await fixture();
+  const id = '11111111-2222-4333-8444-555555555555';
+  f.reply({ model: { value: id, resolvedOptions: [{ value: id, label: 'Configured AI model' }] } });
+  f.type('Hello');
+  document.querySelector<HTMLButtonElement>('#send')!.click();
+  const sent = host.postMessage.mock.calls.map(([message]) => message).find(message => message.type === 'send');
+  expect(sent.params.model).toBe(id);
+  expect(document.querySelector('.message.assistant .message-metadata')?.textContent).toContain('Configured AI model');
+  expect(document.querySelector('.message.assistant .message-metadata')?.textContent).not.toContain(id);
+  f.sessions[0].messages = [
+    { role: 'user', content: 'Hello' },
+    { id: sent.requestId, role: 'assistant', content: 'Hi', status: 'success', model: 'Configured AI model' },
+  ];
+  f.receive({ sessions: [...f.sessions] });
+  expect(document.querySelector('.message.assistant .message-metadata')?.textContent).toBe('Configured AI model');
+  expect(f.requests()).toHaveLength(1);
+});
+
 it('guides an empty Agent model list to the active configuration and preserves the message draft', async () => {
   const f=await fixture();f.reply({model:{value:null,resolvedOptions:[]}});
   const configurations=createConfigurationState([AGENT_MODELS_CONFIGURATION_FIELD],()=> 'current');

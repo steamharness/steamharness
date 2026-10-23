@@ -2,7 +2,7 @@ import { t } from './localization';
 import { isDeepStrictEqual } from 'node:util';
 import type { AgentSessionCommand, AgentSessionReceipt, AgentSessionSnapshot } from 'steamharness/agent';
 import {
-  applyOutputChunk, outputText, validateProjectValues, projectParameters, projectParamArgs, resolvedProjectValues, projectFormValue, sessionRunning,
+  applyOutputChunk, outputText, validateProjectValues, projectParameters, projectParamArgs, resolvedProjectValues, projectFormValue, sessionRunning, conversationModelName,
   type ConversationSession, type ConversationMessage, type ConversationQueuedInput, type ConversationDraftUpdate, type Attachment,
   type Project, type Runtime, type Run, type ParamValues,
   type ResolvedInput,
@@ -292,7 +292,7 @@ export class ConversationController {
       if (this.project.conversation?.durable?.enabled) entry.agentParameters = { configurationRevision: this.options.configurationRevision?.(), args: projectParamArgs(parameters.fields, input.params, input.states), entrypointId: input.entrypointId, policies: JSON.parse(JSON.stringify(entry.toolPermissionPolicies ?? {})) };
       if (!entry.messages.length && !entry.titleLocked) { entry.title = (input.text || input.attachments[0]?.name || t("Workflow run")).slice(0, 80); }
       entry.messages.push({ id: globalThis.crypto.randomUUID(), role: 'user', content: input.text || '', attachments: input.attachments, args, input, entrypointId: input.entrypointId, createdAt: Date.now() });
-      answer = { id: input.id, role: 'assistant', content: '', items: [], status: 'running', createdAt: Date.now(), model: typeof input.params.model === 'string' ? input.params.model : undefined, args, entrypointId: input.entrypointId, events: [] };
+      answer = { id: input.id, role: 'assistant', content: '', items: [], status: 'running', createdAt: Date.now(), model: conversationModelName(input, parameters.fields), args, entrypointId: input.entrypointId, events: [] };
       answer.runId = answer.id;
       entry.messages.push(answer);
     }
@@ -515,7 +515,8 @@ export class ConversationController {
           const pending = entry.agentCommands?.find(item => item.command.requestId === turn.requestId);
           entry.messages.push({ id: `${id}:input`, role: 'user', content: turn.prompt, createdAt: input?.createdAt ?? Date.now(), contextEpoch: turn.epoch,
             attachments: input?.attachments ?? pending?.attachments, ...(input ? { input } : {}) });
-          answer = { id, role: 'assistant', content: '', items: [], createdAt: Date.now(), sessionRequestId: turn.requestId, sessionConversationId: turn.conversationId };
+          answer = { id, role: 'assistant', content: '', items: [], createdAt: Date.now(), sessionRequestId: turn.requestId, sessionConversationId: turn.conversationId,
+            model: input ? conversationModelName(input, projectParameters(this.project, input.entrypointId).fields) : undefined };
           entry.messages.push(answer);
         }
         if (turn.mode === 'steer') {
