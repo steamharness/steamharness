@@ -94,6 +94,7 @@ description: 生成、修改或迁移 steamharness Workflow、Conversation 或 K
 - Vue、React、Vite 等构建工具由项目开发者维护，SteamHarness Desktop/Server 宿主不会自动安装依赖、运行构建或连接 dev server。使用本 skill 修改框架源码时，小助手或其它开发 agent 属于开发者侧：如果 `package.json` 已定义非 watch 的一次性 `build` 脚本，完成源码修改后必须执行该脚本，使配置的 `artifactDir` / `entry` 与源码一致；依赖缺失时按「依赖安装与环境」判断环境并补齐，而不是跳过构建。
 - 执行构建前先读取脚本内容，优先使用 `packageManager` 声明的包管理器，否则按现有 lockfile 选择，并只运行现有的 `<manager> run build`。禁止启动 `dev`、`watch`、`serve`、HMR 或任何长期占用端口的任务；安装的许可条件与边界（只补缺、不改依赖图、不编造构建脚本）以「依赖安装与环境」为准。
 - 构建完成后必须确认 `<artifactDir>/<entry>` 存在，再运行 Kanban structure 检查。构建脚本缺失、依赖装不上、脚本实际是 watch 任务或构建失败时，保留真实错误并明确说明预览产物未更新，不能声称预览已经更新；直接修改 `artifactDir` 内静态文件时不需要额外构建。
+- 只允许系统 AI 的项目在 `configuration.json` 显式声明 `STEAMHARNESS_AGENT_MODELS`（`type: "json"`、`control: "ai-models"`、`allowThirdParty: false`、`defaultValue: []`、`secret: true`），并保留模型字段的发布结构；不要生成自定义 URL/API Key 直连分支。省略限制时仍可添加第三方模型。
 - 底图、初始化文件等文件配置声明 `type: "file"` 和 `accept`，由项目配置面板选择并上传到服务器；不要将文件配置降级为要求用户填写引用的 JSON 文本框。单文件保存服务器元数据对象，多文件保存引用数组，文件内容和本机路径不进入配置。
 - 无声明字段时生成 `{ "version": 1, "fields": [] }` 的 `configuration.json`。三种类型始终保留项目配置入口，用户可以添加自定义字段。
 - Kanban 页面必须同时适配全屏工作区、手机、平板和 Conversation 对话卡片中的小预览；“小卡片”是对话资源卡片内的 Kanban 页面，不是另一种设备。Desktop 标题栏提供全屏（默认填满可用区域）、手机 `390×844`、平板 `768×1024`、小卡片 `360×200` 的真实 iframe 视口；对话卡片的实际宽高还会随容器变化，至少覆盖 `340–500px` 宽及 `180–200px` 高的紧凑场景，不能只适配这几个固定数字。

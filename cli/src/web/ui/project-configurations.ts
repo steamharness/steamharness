@@ -375,7 +375,7 @@ export function mountProjectConfigurations(host: Host): ProjectConfigurationsPan
       const models = field && current ? applyTemplateValues(next, current, {
         [field.name]: Object.hasOwn(current.values, field.name) ? current.values[field.name]! : field.defaultValue ?? [],
       })[field.name] ?? [] : undefined;
-      missingAgentModels = Array.isArray(models) && models.length === 0;
+      missingAgentModels = Array.isArray(models) && !models.some(model => field?.allowThirdParty !== false || !!model && typeof model === 'object' && !Array.isArray(model) && model.source === 'system');
     }
     latest = next;
     publicationTab.hidden=!next.canManagePublication;
@@ -427,7 +427,7 @@ export function mountProjectConfigurations(host: Host): ProjectConfigurationsPan
       const value=Object.hasOwn(values,field.name)?values[field.name]:field.defaultValue,capability=configurationCapability(next,field);
       if(!capability.editable){const locked=document.createElement('span');locked.innerHTML=iconHtml('lock');locked.title=t('Locked by the project author for this version');fieldHeading.append(locked);}
       if (field.control === 'ai-models') {
-        const models = createAgentModelsControl({ value, disabled: !capability.editable, changed: () => changed(field.name), loadCatalog: () => send({type:'project-ai-catalog'}) });
+        const models = createAgentModelsControl({ value, disabled: !capability.editable, allowThirdParty: field.allowThirdParty, changed: () => changed(field.name), loadCatalog: () => send({type:'project-ai-catalog'}) });
         modelControls.push(models); readers.set(field.name, () => models.read()); row.append(models.element); fields.append(row); continue;
       }
       if(field.type==='file') {

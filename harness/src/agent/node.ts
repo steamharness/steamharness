@@ -704,21 +704,25 @@ export async function resolveAgentSystemAIInput(
   signal: AbortSignal | undefined,
 ): Promise<{ input: AgentInput; close: () => Promise<void> }> {
   const passthrough = { input, close: async () => undefined };
-  if (
+  const configuration = getProjectConfiguration();
+  const systemOnly = configuration?.agentModelPolicy?.allowThirdParty === false;
+  const explicitEndpoint =
     input.baseUrl !== undefined ||
     input.apiKey !== undefined ||
     options.baseUrl !== undefined ||
     options.apiKey !== undefined ||
     options.models !== undefined ||
-    options.resolvedModel !== undefined
-  ) {
+    options.resolvedModel !== undefined;
+  if (explicitEndpoint) {
+    if (systemOnly) throw new HarnessError({ type: "input_validation", message: "This project only allows system AI. Custom endpoints and model providers are disabled." });
     return passthrough;
   }
 
-  const configuration = getProjectConfiguration();
   if (configuration !== undefined) {
-    const models = parseAgentModels(configuration.values[AGENT_MODELS_CONFIGURATION_KEY] ?? []);
+    const configured = parseAgentModels(configuration.values[AGENT_MODELS_CONFIGURATION_KEY] ?? []);
     const requested = input.model ?? options.model;
+    if (systemOnly && configured.some(model => model.id === requested && model.source === "third-party")) throw new HarnessError({ type: "input_validation", message: "This project only allows system AI. Select a system AI model in Project configurations." });
+    const models = configured.filter(model => !systemOnly || model.source === "system");
     const selected = requested === undefined ? models[0] : models.find(model => model.id === requested);
     if (!selected) throw new HarnessError({ type: "input_validation", message: models.length ? "The selected AI model is no longer configured. Select a model again." : "Add a model in Project configurations before running the Agent." });
     if (selected.source === "third-party") {

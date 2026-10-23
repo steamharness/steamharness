@@ -11,6 +11,8 @@ Reach for it when you need to arrange nodes around the agent. When the whole pro
 
 Without an explicit endpoint or injected model collection, the node uses the current project configuration `STEAMHARNESS_AGENT_MODELS` list. `model` selects an entry ID and omission selects the first entry. System subscriptions are authorized for the current account; third-party entries use their saved connection. See [Project configurations](/en/concepts/project-configuration).
 
+When the model field declares `allowThirdParty: false`, the node only selects system models and rejects explicit endpoints, API keys and injected model collections. The policy is stored in `ProjectConfigurationSnapshot.agentModelPolicy`; resumed runs retain their original snapshot.
+
 ## Signature
 
 ```ts

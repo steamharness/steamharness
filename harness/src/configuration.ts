@@ -189,6 +189,8 @@ function parseSnapshot(value: unknown): ProjectConfigurationSnapshot {
   if (!value || typeof value !== "object" || Array.isArray(value)) throw new ProjectConfigurationError("Invalid run configuration snapshot.");
   const snapshot = value as ProjectConfigurationSnapshot;
   if (typeof snapshot.id !== "string" || typeof snapshot.name !== "string" || !Number.isSafeInteger(snapshot.revision) || snapshot.revision < 0 || !isConfigurationValue(snapshot.values) || !snapshot.values || typeof snapshot.values !== "object" || Array.isArray(snapshot.values)) throw new ProjectConfigurationError("Invalid run configuration snapshot.");
+  const policy = snapshot.agentModelPolicy;
+  if (policy !== undefined && (!policy || typeof policy !== "object" || Array.isArray(policy) || Object.keys(policy).some(key => key !== "allowThirdParty") || policy.allowThirdParty !== undefined && typeof policy.allowThirdParty !== "boolean")) throw new ProjectConfigurationError("Invalid Agent model policy in configuration snapshot.");
   return snapshot;
 }
 

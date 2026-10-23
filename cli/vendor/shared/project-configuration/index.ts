@@ -1,5 +1,5 @@
 /** The portable business configuration contract. This module is browser safe. */
-import { parseAgentModels, AGENT_MODELS_CONFIGURATION_KEY } from "./agent-models";
+import { parseAgentModels, AGENT_MODELS_CONFIGURATION_KEY, type AgentModelPolicy } from "./agent-models";
 export * from "./agent-models";
 export const PROJECT_CONFIGURATION_FILE = "configuration.json";
 export type ConfigurationValue = null | string | number | boolean | ConfigurationValue[] | { [key: string]: ConfigurationValue };
@@ -14,6 +14,8 @@ export interface ProjectConfigurationField {
   secret?: boolean;
   multiple?: boolean;
   control?: "text" | "textarea" | "select" | "radio" | "checkboxes" | "ai-models";
+  /** Only for the reserved AI models field; configured in project source. */
+  allowThirdParty?: boolean;
   options?: { value: string; label?: string }[];
   /** File extensions or MIME types, using the HTML file input accept syntax. */
   accept?: string[];
@@ -51,7 +53,7 @@ export interface ProjectConfigurationState {
   publicationPreview?: ProjectConfigurationTemplate;
   conflicts?: { configurationId: string; key: string; value: ConfigurationValue; reason: string }[];
 }
-export interface ProjectConfigurationSnapshot { id: string; name: string; revision: number; values: ConfigurationValues }
+export interface ProjectConfigurationSnapshot { id: string; name: string; revision: number; values: ConfigurationValues; agentModelPolicy?: AgentModelPolicy }
 export interface ProjectConfigurationExport {
   version: 1; kind: "steamharness-project-configurations"; fields: ProjectConfigurationField[]; configurations: { name: string; values: ConfigurationValues; templateId?: string }[];
 }
@@ -85,7 +87,7 @@ export function isConfigurationValue(value: unknown, depth = 0): value is Config
 export function parseConfigurationField(value: unknown): ProjectConfigurationField {
   if (!record(value) || typeof value.type!=='string' || !["string", "number", "boolean", "json", "file"].includes(value.type)) return invalid("Invalid configuration field type.");
   configurationKey(value.name);
-  const allowed = ["name", "type", "label", "description", "defaultValue", "required", "secret", "multiple", "control", "options", "accept", "sharing", "paths", "omittedPaths"];
+  const allowed = ["name", "type", "label", "description", "defaultValue", "required", "secret", "multiple", "control", "allowThirdParty", "options", "accept", "sharing", "paths", "omittedPaths"];
   if (Object.keys(value).some(key => !allowed.includes(key))) return invalid("Unknown configuration field property.");
   for (const key of ["label", "description"]) if (value[key] !== undefined && typeof value[key] !== "string") return invalid(`Invalid field ${key}.`);
   for (const key of ["required", "secret", "multiple"]) if (value[key] !== undefined && typeof value[key] !== "boolean") return invalid(`Invalid field ${key}.`);
@@ -95,6 +97,7 @@ export function parseConfigurationField(value: unknown): ProjectConfigurationFie
   if (value.control !== undefined && !["text", "textarea", "select", "radio", "checkboxes", "ai-models"].includes(String(value.control))) return invalid("Invalid configuration control.");
   if (value.control === "ai-models" && (value.type !== "json" || value.name !== AGENT_MODELS_CONFIGURATION_KEY || value.multiple)) return invalid("AI models require the reserved JSON configuration field.");
   if (value.name === AGENT_MODELS_CONFIGURATION_KEY && (value.type !== "json" || value.control !== "ai-models")) return invalid("AI models require the reserved JSON configuration field.");
+  if (value.allowThirdParty !== undefined && (value.control !== "ai-models" || typeof value.allowThirdParty !== "boolean")) return invalid("allowThirdParty requires an AI models field and a boolean value.");
   if (value.options !== undefined && (!Array.isArray(value.options) || value.options.some(option => !record(option) || typeof option.value !== "string" || option.label !== undefined && typeof option.label !== "string"))) return invalid("Invalid configuration options.");
   if (value.options !== undefined && (value.type !== "string" || new Set((value.options as {value: string}[]).map(option => option.value)).size !== (value.options as unknown[]).length)) return invalid("Options require unique string values.");
   if (value.sharing !== undefined) validateSharingRule(value.sharing);
@@ -120,7 +123,7 @@ function validateSharingRule(value: unknown): void {
   if (!record(value) || Object.entries(value).some(([key,entry]) => !['publish','includeValue','editable'].includes(key) || typeof entry !== 'boolean')) return invalid('Invalid configuration sharing rule.');
 }
 export function validateConfigurationValue(field: ProjectConfigurationField, value: unknown): asserts value is ConfigurationValue {
-  if (field.control === "ai-models") { parseAgentModels(value); return; }
+  if (field.control === "ai-models") { parseAgentModels(value, field); return; }
   if (field.type === "file") {
     const files = field.multiple ? value : [value];
     if (!Array.isArray(files) || files.length > 32) return invalid(`Invalid value for configuration field: ${field.name}.`);
@@ -133,6 +136,10 @@ export function validateConfigurationValue(field: ProjectConfigurationField, val
   if(field.type==='json') assertArrayRules(field,value as ConfigurationValue);
   if (field.options && (field.multiple ? value as string[] : [value]).some(item => !field.options!.some(option => option.value === String(item)))) invalid(`Invalid option for configuration field: ${field.name}.`);
 }
+function validateStoredConfigurationValue(field: ProjectConfigurationField, value: unknown): void {
+  if (field.control === "ai-models") parseAgentModels(value);
+  else validateConfigurationValue(field, value);
+}
 export function validateConfigurationFileSelection(field: ProjectConfigurationField, file: {name: string; mimeType: string; size: number}): void {
   if (!file.name || file.name.length > 255 || /[/\\\0\r\n]/.test(file.name) || !Number.isSafeInteger(file.size) || file.size < 0 || file.size > CONFIGURATION_FILE_MAX_BYTES) return invalid("Invalid file or file exceeds 50 MiB.");
   if (!/^[a-zA-Z0-9!#$&^_.+-]+\/[a-zA-Z0-9!#$&^_.+-]+$/.test(file.mimeType)) return invalid("Invalid file MIME type.");
@@ -144,13 +151,16 @@ export function parseConfigurationFile(value: unknown): ProjectConfigurationFile
   validateConfigurationFileSelection({name:"file",type:"file"}, value as ProjectConfigurationFile);
   return structuredClone(value) as ProjectConfigurationFile;
 }
-function values(fields: ProjectConfigurationField[], input: unknown): ConfigurationValues {
+function values(fields: ProjectConfigurationField[], input: unknown, enforceAgentModelPolicy = true): ConfigurationValues {
   if (!record(input)) return invalid("Configuration values must be an object.");
   for (const [key, value] of Object.entries(input)) {
     configurationKey(key);
     const field = fields.find(item => item.name === key);
     if (!field) return invalid(`Unknown configuration field: ${key}.`);
-    validateConfigurationValue(field, value);
+    // Existing entries remain readable/exportable after an author disables a source.
+    // Writes enforce the policy; runtime selection uses the frozen snapshot policy.
+    if (!enforceAgentModelPolicy) validateStoredConfigurationValue(field, value);
+    else validateConfigurationValue(field, value);
   }
   if (JSON.stringify(input).length > 1024 * 1024) return invalid("Configuration exceeds 1 MiB.");
   return structuredClone(input) as ConfigurationValues;
@@ -187,12 +197,14 @@ export function configurationSnapshot(state: ProjectConfigurationState, configur
   const current = state.configurations.find(item => item.id === configurationId);
   if (!current) return invalid("Configuration no longer exists.");
   const resolved = applyTemplateValues(state, current, { ...configurationDefaults(state.fields), ...Object.fromEntries(state.fields.flatMap(field => Object.hasOwn(current.values, field.name) ? [[field.name, current.values[field.name]!]] : [])) });
-  values(state.fields, resolved);
+  values(state.fields, resolved, false);
   if (required) for (const field of state.fields) {
     const value = resolved[field.name];
     if (field.required && (!Object.hasOwn(resolved,field.name) || value === "" || value === null || field.multiple && Array.isArray(value) && !value.length)) invalid(`Missing required configuration: ${field.name}. Open Project configurations.`);
   }
-  return { id: current.id, name: current.name, revision: state.revision, values: resolved };
+  const field = state.fields.find(field => field.control === "ai-models");
+  return { id: current.id, name: current.name, revision: state.revision, values: resolved,
+    ...(field?.allowThirdParty === false ? { agentModelPolicy: { allowThirdParty: false } } : {}) };
 }
 export function exportConfigurations(state: ProjectConfigurationState, id?: string): ProjectConfigurationExport {
   if (id && !state.configurations.some(item => item.id === id)) return invalid("Configuration no longer exists.");
@@ -207,6 +219,7 @@ export function applyConfigurationAction(state: ProjectConfigurationState, call:
     case "create": case "duplicate": {
       const source = call.action === "duplicate" ? current() : undefined;
       const entry = { id: id(), name: name(call.name ?? (source ? `${source.name} (copy)` : `Configuration ${next.configurations.length + 1}`)), values: source ? next.template ? configurationSnapshot(next,source.id,false).values : structuredClone(source.values) : configurationDefaults(next.fields), ...(source?.deletedPaths?{deletedPaths:structuredClone(source.deletedPaths)}:{}), ...(next.template ? {templateId: source?.templateId ?? next.template.defaultConfigurationId} : {}), createdAt: now, updatedAt: now };
+      values(next.fields, Object.fromEntries(Object.entries(entry.values).filter(([key]) => next.fields.some(field => field.name === key))));
       next.configurations.push(entry); next.activeConfigurationId = entry.id; break;
     }
     case "rename": current().name = name(call.name); current().updatedAt = now; break;
@@ -258,7 +271,10 @@ export function applyConfigurationAction(state: ProjectConfigurationState, call:
       for (const entry of document.configurations) {
         if (!record(entry)) return invalid("Invalid imported configuration.");
         if(entry.templateId!==undefined && (typeof entry.templateId!=='string' || next.template && !next.template.configurations.some(item=>item.id===entry.templateId))) return invalid('Invalid imported template profile.');
-        next.configurations.push({ id: id(), name: name(entry.name), values: values(imported, entry.values), ...(next.template?{templateId:entry.templateId??next.template.defaultConfigurationId}:{}), createdAt: now, updatedAt: now });
+        // Imported metadata cannot relax the policy declared by the target project.
+        const importedValues = values(imported, entry.values);
+        values(next.fields, importedValues);
+        next.configurations.push({ id: id(), name: name(entry.name), values: importedValues, ...(next.template?{templateId:entry.templateId??next.template.defaultConfigurationId}:{}), createdAt: now, updatedAt: now });
       }
       break;
     }
@@ -515,7 +531,7 @@ export function bindConfigurationTemplate(state:ProjectConfigurationState, input
     if(!template.configurations.some(item=>item.id===profile.templateId)) profile.templateId=template.defaultConfigurationId;
     const valid:ConfigurationValues={};
     for(const field of next.fields) if(Object.hasOwn(profile.values,field.name)) {
-      try {validateConfigurationValue(field,profile.values[field.name]);valid[field.name]=profile.values[field.name]!;}
+      try {validateStoredConfigurationValue(field,profile.values[field.name]);valid[field.name]=profile.values[field.name]!;}
       catch {const conflict={configurationId:profile.id,key:field.name,value:profile.values[field.name]!,reason:'Field type changed. Resolve this saved draft.'};next.conflicts=[...(next.conflicts??[]).filter(c=>c.configurationId!==profile.id||c.key!==field.name),conflict];}
     }
     const inactive=Object.fromEntries((next.shadowedCustomFields??[]).filter(field=>!template.fields.some(author=>author.name===field.name)&&Object.hasOwn(profile.values,field.name)).map(field=>[field.name,profile.values[field.name]!]));

@@ -220,3 +220,5 @@ steamharness run . -- --message "hello"
 Parameters following the delimiter will be placed into the `args` array of the selected entrypoint (where Conversation corresponds to executor), and even if the parameter name matches one of CLI’s own options, it will no longer be consumed by `steamharness`. For example, `steamharness run . --entrypoint validate -- --entrypoint workflow-owned` selects `validate` and gives the second `--entrypoint workflow-owned` to the service workflow as it is.
 
 Core Agent projects manage system and third-party models in the first configuration field. The composer selects saved entries and defaults to the first; editing, connection details and subscription loading live in the configuration panel. See [Agent model list](/en/concepts/project-configuration#agent-model-list).
+
+When the AI models field declares `allowThirdParty: false`, configuration only offers system AI. Saves, imports and execution reject third-party models and direct endpoint overrides. Omitting it allows both sources.

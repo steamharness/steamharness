@@ -9,12 +9,13 @@ import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 type ModelDraft = { id?: string; name: string; source: "system" | "third-party"; credentialId: string; model: string; apiKind: AgentModelProtocol; baseUrl: string; apiKey: string };
 const blank = (source: ModelDraft["source"]): ModelDraft => ({ source, name: "", model: "", credentialId: "", apiKind: "openai-completions", baseUrl: "", apiKey: "" });
 
-export function AgentModelsInput({ value, disabled, onChange, onDraftChange }: {
-  value: string; disabled: boolean; onChange(value: string): void; onDraftChange(dirty: boolean): void;
+export function AgentModelsInput({ value, disabled, allowThirdParty = true, onChange, onDraftChange }: {
+  value: string; disabled: boolean; allowThirdParty?: boolean; onChange(value: string): void; onDraftChange(dirty: boolean): void;
 }) {
   const { t } = useTranslation("serverWeb"), id = useId();
   const opener = useRef<HTMLButtonElement>(null);
   const models = parseAgentModels(value ? JSON.parse(value) : []);
+  const defaultIndex = models.findIndex(model => allowThirdParty || model.source === "system");
   const [source, setSource] = useState<ModelDraft["source"]>("system");
   const [draft, setDraft] = useState<ModelDraft>(), [draftDirty, setDraftDirty] = useState(false);
   const [catalog, setCatalog] = useState<AgentModelCatalogEntry[]>(), [catalogError, setCatalogError] = useState("");
@@ -25,22 +26,22 @@ export function AgentModelsInput({ value, disabled, onChange, onDraftChange }: {
     const controller = new AbortController(); setLoading(true); setCatalog(undefined); setCatalogError("");
     void apiClient.systemAiModelCatalog(controller.signal).then(result => {
       if (controller.signal.aborted) return;
-      if (result.errCode !== 0) throw new Error(result.errCode === 404 ? t("configurationAiUnavailable") : result.errMessage);
+      if (result.errCode !== 0) throw new Error(result.errCode === 404 ? t(allowThirdParty ? "configurationAiUnavailable" : "configurationAiUnavailableSystemOnly") : result.errMessage);
       setCatalog(parseAgentModelCatalog(result.data));
     }).catch(error => { if (!controller.signal.aborted) setCatalogError((error as Error).message); })
       .finally(() => { if (!controller.signal.aborted) setLoading(false); });
     return () => controller.abort();
-  }, [systemOpen, retry, t]);
+  }, [systemOpen, retry, t, allowThirdParty]);
   const guard = () => { if (draftDirty) { setError(t("configurationAiFinishDraft")); return false; } return true; };
   const open = (trigger: HTMLButtonElement, entry?: ConfiguredAgentModel) => {
     if (!guard()) return;
     opener.current = trigger;
-    const next = { ...blank(entry?.source ?? source), ...entry };
+    const next = !allowThirdParty && entry?.source === "third-party" ? { ...blank("system"), id: entry.id } : { ...blank(allowThirdParty ? entry?.source ?? source : "system"), ...entry };
     setSource(next.source); setDraft(next); setDraftDirty(false); onDraftChange(false); setError("");
   };
   const close = () => { setDraft(undefined); setDraftDirty(false); onDraftChange(false); setError(""); };
   const switchSource = (value: string) => {
-    if (!value || value === source || !guard()) return;
+    if (!value || value === source || !allowThirdParty && value === "third-party" || !guard()) return;
     const nextSource = value as ModelDraft["source"];
     const saved = models.find(entry => entry.id === draft?.id && entry.source === nextSource);
     setSource(nextSource); setDraft({ ...blank(nextSource), ...saved, id: draft?.id });
@@ -53,12 +54,14 @@ export function AgentModelsInput({ value, disabled, onChange, onDraftChange }: {
       const modelName = catalog?.find(entry=>entry.id===draft.credentialId)?.models.find(model=>model.id===draft.model)?.name;
       const common = { id: draft.id ?? crypto.randomUUID(), name: draft.source === "system" ? modelName || draft.name || draft.model.trim() : draft.name.trim() || draft.model.trim(), model: draft.model.trim() };
       const entry = draft.source === "system" ? { ...common, source: draft.source, credentialId: draft.credentialId } : { ...common, source: draft.source, apiKind: draft.apiKind, baseUrl: draft.baseUrl, apiKey: draft.apiKey };
+      parseAgentModels([entry], { allowThirdParty });
       const index = models.findIndex(model => model.id === draft.id), next = [...models];
       if (index < 0) next.push(entry); else next[index] = entry;
       change(next); close();
     } catch { setError(t("configurationAiInvalid")); }
   };
   return <div className="flex flex-col gap-4">
+    {!allowThirdParty && <Alert><AlertDescription>{t("configurationAiSystemOnly")}</AlertDescription></Alert>}
     <div className="flex items-center justify-between gap-2">
       <Badge variant="secondary">{models.length}</Badge>
       <Button variant="outline" size="sm" disabled={disabled} aria-haspopup="dialog" onClick={event => open(event.currentTarget)}><PlusIcon data-icon="inline-start"/>{t("configurationAiAdd")}</Button>
@@ -66,10 +69,10 @@ export function AgentModelsInput({ value, disabled, onChange, onDraftChange }: {
     {error && !draft && <Alert variant="destructive"><AlertDescription>{error}</AlertDescription></Alert>}
     <Dialog open={!!draft} onOpenChange={open=>{if(!open&&!disabled)close();}}><DialogContent className="max-h-[90dvh] overflow-y-auto" onCloseAutoFocus={event=>{event.preventDefault();opener.current?.focus();}}>
       <DialogHeader><DialogTitle>{t(draft?.id?"configurationAiEdit":"configurationAiAdd")}</DialogTitle><DialogDescription>{t("configurationAiDefaultHelp")}</DialogDescription></DialogHeader>
-      <ToggleGroup type="single" variant="segmented" size="sm" spacing={1} value={source} disabled={disabled} onValueChange={switchSource} aria-label={t("configurationAiSource")}>
+      {allowThirdParty && <ToggleGroup type="single" variant="segmented" size="sm" spacing={1} value={source} disabled={disabled} onValueChange={switchSource} aria-label={t("configurationAiSource")}>
         <ToggleGroupItem value="system">{t("configurationAiSystem")}</ToggleGroupItem>
         <ToggleGroupItem value="third-party">{t("configurationAiThirdParty")}</ToggleGroupItem>
-      </ToggleGroup>
+      </ToggleGroup>}
       {error && <Alert variant="destructive"><AlertDescription>{error}</AlertDescription></Alert>}
       {draft && <FieldGroup className="grid gap-4 sm:grid-cols-2">
       {source === "system" ? <>
@@ -98,13 +101,13 @@ export function AgentModelsInput({ value, disabled, onChange, onDraftChange }: {
     </FieldGroup>}
     <DialogFooter><Button variant="outline" disabled={disabled} onClick={close}>{t("cancel",{ns:"common"})}</Button><Button disabled={disabled || source === "system" && (loading || !draft?.credentialId || !draft.model)} onClick={apply}>{t("configurationAiApply")}</Button></DialogFooter>
     </DialogContent></Dialog>
-    {!models.length ? <Empty><EmptyHeader><EmptyTitle>{t("configurationAiEmpty")}</EmptyTitle></EmptyHeader></Empty> : <div className="overflow-hidden rounded-md border"><Table aria-label={t("configurationAiModels")}>
+    {!models.length ? <Empty><EmptyHeader><EmptyTitle>{t(allowThirdParty ? "configurationAiEmpty" : "configurationAiEmptySystemOnly")}</EmptyTitle></EmptyHeader></Empty> : <div className="overflow-hidden rounded-md border"><Table aria-label={t("configurationAiModels")}>
       <TableHeader><TableRow><TableHead>{t("configurationAiName")}</TableHead><TableHead>{t("configurationAiSource")}</TableHead><TableHead className="text-right">{t("configurationActions")}</TableHead></TableRow></TableHeader>
       <TableBody>{models.map((model,index)=><TableRow key={model.id}>
-        <TableCell className="whitespace-normal"><div className="flex flex-wrap items-center gap-2"><span>{model.name}</span>{index===0&&<Badge variant="secondary">{t("configurationAiDefault")}</Badge>}</div><FieldDescription className="wrap-anywhere">{model.model}</FieldDescription></TableCell>
+        <TableCell className="whitespace-normal"><div className="flex flex-wrap items-center gap-2"><span>{model.name}</span>{index===defaultIndex&&<Badge variant="secondary">{t("configurationAiDefault")}</Badge>}{!allowThirdParty&&model.source==="third-party"&&<Badge variant="outline">{t("configurationAiDisabled")}</Badge>}</div><FieldDescription className="wrap-anywhere">{model.model}</FieldDescription></TableCell>
         <TableCell>{t(model.source==="system"?"configurationAiSystem":"configurationAiThirdParty")}</TableCell>
         <TableCell><div className="flex justify-end gap-1">
-          {index>0&&<Button variant="ghost" size="icon" disabled={disabled} title={t("configurationAiSetDefault")} aria-label={`${t("configurationAiSetDefault")}: ${model.name}`} onClick={()=>{if(guard())change([model,...models.filter(entry=>entry.id!==model.id)]);}}><ArrowUpIcon data-icon="inline-start"/></Button>}
+          {index!==defaultIndex&&(allowThirdParty||model.source==="system")&&<Button variant="ghost" size="icon" disabled={disabled} title={t("configurationAiSetDefault")} aria-label={`${t("configurationAiSetDefault")}: ${model.name}`} onClick={()=>{if(guard())change([model,...models.filter(entry=>entry.id!==model.id)]);}}><ArrowUpIcon data-icon="inline-start"/></Button>}
           <Button variant="ghost" size="icon" disabled={disabled} title={t("configurationAiEdit")} aria-label={`${t("configurationAiEdit")}: ${model.name}`} onClick={event=>open(event.currentTarget,model)}><PencilIcon data-icon="inline-start"/></Button>
           <Button variant="ghost" size="icon" disabled={disabled} title={t("configurationAiDelete")} aria-label={`${t("configurationAiDelete")}: ${model.name}`} onClick={()=>{if(guard())change(models.filter(entry=>entry.id!==model.id));}}><Trash2Icon data-icon="inline-start"/></Button>
         </div></TableCell>

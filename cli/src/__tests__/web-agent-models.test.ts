@@ -10,11 +10,33 @@ beforeEach(() => {
 afterEach(() => { document.body.replaceChildren(); vi.restoreAllMocks(); vi.unstubAllGlobals(); });
 const third = { id: 'third', name: 'Custom', source: 'third-party', model: 'custom-model', apiKind: 'openai-completions', baseUrl: 'https://models.example/v1', apiKey: 'private-test-key' };
 const system = { id: 'system', name: 'Subscribed', source: 'system', model: 'system-model', credentialId: 'subscription' };
-function mount(value: unknown = [], disabled = false, loadCatalog = vi.fn(async () => ({ entries: [{ id: 'subscription', name: 'Plan', models: [{ id: 'system-model', name: 'System model' }] }] }))) {
-  const changed = vi.fn(), control = createAgentModelsControl({ value, disabled, loadCatalog, changed }); document.body.append(control.element);
+function mount(value: unknown = [], disabled = false, loadCatalog = vi.fn(async () => ({ entries: [{ id: 'subscription', name: 'Plan', models: [{ id: 'system-model', name: 'System model' }] }] })), allowThirdParty = true) {
+  const changed = vi.fn(), control = createAgentModelsControl({ value, disabled, loadCatalog, changed, allowThirdParty }); document.body.append(control.element);
   return { ...control, changed, loadCatalog };
 }
 const click = (name: string) => [...document.querySelectorAll<HTMLButtonElement>('button')].find(button => button.ariaLabel === name || button.textContent === name)!.click();
+it('limits a system-only project to subscribed models and lets old third-party entries be removed or replaced', async () => {
+  const control = mount([third, {...third,id:'other-third',name:'Other custom'}, system], false, undefined, false);
+  expect(document.body.textContent).toContain('This project only allows system AI');
+  expect(document.querySelector('.configuration-active')?.parentElement?.textContent).toContain(system.name);
+  expect(() => control.read()).toThrow(/only allows system AI/);
+  click('Edit model: Custom');
+  expect(document.querySelector<HTMLElement>('[role="radiogroup"]')!.hidden).toBe(true);
+  expect(document.querySelector('input[type=password]')).toBeNull();
+  await vi.waitFor(() => expect(document.querySelector('select[aria-label="Model"]')?.textContent).toContain('System model'));
+  click('Apply model'); expect(document.querySelector('dialog')!.open).toBe(false);
+  expect(() => control.read()).toThrow(/only allows system AI/);
+  click('Delete model: Other custom'); expect(control.read()[0]).toMatchObject({id:'third',source:'system',model:'system-model'});
+  click('Delete model: Subscribed'); expect(control.read()).toHaveLength(1);
+});
+it('only suggests system AI when a restricted project has no configured models or account', async () => {
+  const control = mount([], false, vi.fn(async () => ({entries:[],unavailable:true})), false);
+  expect(document.body.textContent).toContain('No models configured. Add a system AI model.');
+  click('Add model');
+  await vi.waitFor(() => expect(document.body.textContent).toContain('Sign in and configure system AI.'));
+  expect(document.body.textContent).not.toContain('or use a third-party model');
+  click('Cancel'); expect(control.read()).toEqual([]);
+});
 function fill(label: string, value: string) {
   const row = [...document.querySelectorAll('label')].find(row => row.firstChild?.textContent === label)!;
   const input = row.querySelector('input')!; input.value = value; input.dispatchEvent(new Event('input'));

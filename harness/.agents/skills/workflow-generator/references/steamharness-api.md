@@ -1308,6 +1308,7 @@ Core 内置一层基于 pi agent SDK 的 agent 能力，覆盖输入、输出、
   `steamharness.createAgentConversationProject(...)` 返回整个 workflow（输入节点、agent 节点、输出节点与 conversation 落库），`steamharness.createAgentProjectInput(args)` 从 executor 的 `createInput({ args })` 调用。`steamharness.createAgentProjectParams(...)` 返回 Core 的完整默认参数表；项目按需选择字段并保持内联字面量，沿用默认表的字段时可在测试中比对，防止漂移。
 
   `resolveParams: steamharness.createAgentProjectParamResolver()` 从项目配置的 `STEAMHARNESS_AGENT_MODELS` JSON 列表生成模型选项，并隐藏兼容的 provider 参数。保留 provider/model 的 `control: "select"`、`options: []` 声明；model 的值是列表条目 ID，缺省使用第一项。项目配置第一项提供系统 AI／第三方 AI 切换及统一模型列表的增删改查：系统条目含 `id/name/model/source: "system"/credentialId`，第三方条目含 `id/name/model/source: "third-party"/apiKind/baseUrl/apiKey`。Core 静态识别 Agent 工厂调用并补入 `control: "ai-models"` 字段；间接封装可显式声明。系统运行严格校验当前账号的订阅和模型，每轮建立并关闭回环代理；第三方直接使用配置连接，不请求系统 AI。不要把 Key 写入源码、参数或日志。模型值按运行快照冻结，分享默认只发布结构，完整备份包含值。调用方显式提供端点或注入 `models`/`resolvedModel` 时保留独立调用语义。
+  仅允许系统 AI 时，显式声明模型字段 `allowThirdParty: false`（只允许用于 `control: "ai-models"`）。配置面板隐藏第三方入口，保存和导入拒绝第三方条目；运行快照 `agentModelPolicy` 冻结限制，参数选项跳过旧第三方条目，Core 拒绝直接 URL/API Key、`models` 与 `resolvedModel` 覆盖。完整备份保留旧值供清理；不要为此项目生成自建直连分支。保持 `sharing.publish: true` 以随发布模板分发限制。
 
 - **完成后的过程展示。** `conversation.collapseIntermediate: true | false` 是静态可读取的显示默认值；`defineAgentConversationExecutor({ collapseIntermediate })` 默认 `true`。Core Agent 标准输出在未声明默认值时也默认收起成功回合的中间文字、思考和工具过程，保留最终回复、计划和资源卡片；普通 Conversation 默认关闭。CLI Web / Studio 提供项目级开关和每轮“已运行 …”展开入口，运行中、失败、停止或待输入时不自动隐藏。不要通过删减输出或历史实现折叠。
 

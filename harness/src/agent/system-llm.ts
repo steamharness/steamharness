@@ -6,7 +6,7 @@ import {
 } from "../provider/llm/server";
 import { HarnessError } from "../workflow/errors";
 import type { AgentInputModality, AgentModelAttributes } from "./types";
-import { currentConfigurationValues } from "../configuration";
+import { currentConfigurationValues, getProjectConfiguration } from "../configuration";
 import { AGENT_MODELS_CONFIGURATION_KEY, parseAgentModels, type ConfigurationValues } from "@steamharness/project-configuration";
 
 /**
@@ -264,7 +264,8 @@ export function createAgentProjectParamResolver(): (
 ) => Promise<ParamResolveResult> {
   return async (context) => {
     const values = context.config ?? currentConfigurationValues();
-    const models = parseAgentModels(values[AGENT_MODELS_CONFIGURATION_KEY] ?? []);
+    const policy = getProjectConfiguration()?.agentModelPolicy;
+    const models = parseAgentModels(values[AGENT_MODELS_CONFIGURATION_KEY] ?? []).filter(model => policy?.allowThirdParty !== false || model.source === "system");
     const selected = models.find(model => model.id === context.paramValues?.model) ?? models[0];
     return { params: {
       // Kept as a hidden wire parameter for existing inline Agent declarations.

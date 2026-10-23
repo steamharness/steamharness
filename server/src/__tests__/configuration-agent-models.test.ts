@@ -4,16 +4,42 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
 import { resolveResourceAccess } from '@steamharness/project-access';
-import { AGENT_MODELS_CONFIGURATION_KEY as key, configurationSnapshot, type ProjectConfigurationState } from '@steamharness/project-configuration';
+import { AGENT_MODELS_CONFIGURATION_FIELD, AGENT_MODELS_CONFIGURATION_KEY as key, configurationSnapshot, type ProjectConfigurationState, type ProjectConfigurationExport } from '@steamharness/project-configuration';
 import { Storage } from '../storage';
-const pkg = JSON.parse(await readFile(new URL('../../package.json', import.meta.url), 'utf8'));
+const corePackage = JSON.parse(await readFile(new URL('../../node_modules/steamharness/package.json', import.meta.url), 'utf8'));
 const projectId = '00000000-0000-4000-8000-000000000095';
+test('Server saves, imports and published configurations retain a source-declared system-only AI policy', async () => {
+  const root=await mkdtemp(path.join(tmpdir(),'server-system-only-'));
+  try {
+    const storage=new Storage({serverRoot:process.cwd(),repoRoot:process.cwd(),dataRoot:root});
+    await storage.createProjectFromFiles({projectName:projectId,files:[
+      {path:'package.json',content:JSON.stringify({id:projectId,name:'System Agent',version:'1.0.0',devDependencies:{steamharness:corePackage.version},steamHarness:{projectType:'conversation',projectInfo:{localizedNames:{},declarations:[],platformSupport:{mode:'agnostic'},dataStorage:{mode:'server'},relatedProjects:[]}}})},
+      {path:'index.ts',content:'throw new Error("must not execute"); steamharness.createAgentProjectParamResolver();'},
+      {path:'configuration.json',content:JSON.stringify({version:2,fields:[{...AGENT_MODELS_CONFIGURATION_FIELD,allowThirdParty:false},{name:'title',type:'string'}]})},
+    ]});
+    storage.getProjectAccessSummary=async (_id,actorId)=>({projectId,projectName:'System Agent',visibility:'private',access:resolveResourceAccess([{type:'project',id:projectId,role:actorId==='author'?'owner':'developer'}])});
+    const options={projectName:projectId,actorId:'author'};
+    const state=await storage.projectConfigurations(options,{action:'get'}) as ProjectConfigurationState;
+    assert.equal(state.fields[0]!.allowThirdParty,false);
+    const third={id:'third',name:'Custom',source:'third-party',model:'custom',apiKind:'openai-responses',baseUrl:'https://models.example/v1',apiKey:'test-only-key'};
+    await assert.rejects(storage.projectConfigurations(options,{action:'save',revision:state.revision,id:state.activeConfigurationId,values:{title:'Must not save',[key]:[third]}}),/only allows system AI/);
+    const document=await storage.projectConfigurations(options,{action:'export'}) as ProjectConfigurationExport;
+    document.fields[0]!.allowThirdParty=true;document.configurations[0]!.values[key]=[third];
+    await assert.rejects(storage.projectConfigurations(options,{action:'import',revision:state.revision,document}),/only allows system AI/);
+    const unchanged=await storage.projectConfigurations(options,{action:'get'}) as ProjectConfigurationState;
+    assert.equal(unchanged.revision,state.revision);assert.equal(unchanged.configurations.length,1);assert.equal(configurationSnapshot(unchanged).values.title,undefined);
+    const published=await storage.projectConfigurations(options,{action:'publication.save',revision:state.revision,publication:unchanged.publication}) as ProjectConfigurationState;
+    await storage.publish({projectName:projectId,createdByUserId:'author',expectedConfigurationRevision:published.publication!.revision,expectedSourceHash:published.sourceHash});
+    const recipient=await storage.projectConfigurations({...options,actorId:'other',target:'1.0.0'},{action:'get'}) as ProjectConfigurationState;
+    assert.equal(recipient.fields[0]!.allowThirdParty,false);assert.deepEqual(configurationSnapshot(recipient).agentModelPolicy,{allowThirdParty:false});
+  } finally {await rm(root,{recursive:true,force:true});}
+});
 test('Server discovers Agent model fields without executing source, isolates accounts and excludes published keys', async () => {
   const root = await mkdtemp(path.join(tmpdir(), 'server-configured-agent-'));
   try {
     const storage = new Storage({ serverRoot: process.cwd(), repoRoot: process.cwd(), dataRoot: root });
     await storage.createProjectFromFiles({ projectName: projectId, files: [
-      { path: 'package.json', content: JSON.stringify({ id: projectId, name: 'Agent config', version: '1.0.0', devDependencies: { steamharness: pkg.dependencies.steamharness }, steamHarness: { projectType: 'workflow', projectInfo: { localizedNames: {}, declarations: [], platformSupport: { mode: 'agnostic' }, dataStorage: { mode: 'server' }, relatedProjects: [] } } }) },
+      { path: 'package.json', content: JSON.stringify({ id: projectId, name: 'Agent config', version: '1.0.0', devDependencies: { steamharness: corePackage.version }, steamHarness: { projectType: 'workflow', projectInfo: { localizedNames: {}, declarations: [], platformSupport: { mode: 'agnostic' }, dataStorage: { mode: 'server' }, relatedProjects: [] } } }) },
       { path: 'index.ts', content: 'throw new Error("must not execute"); const node = steamharness.createAgentNode();' },
       { path: 'configuration.json', content: JSON.stringify({ version: 2, fields: [{ name: 'title', type: 'string' }] }) },
     ] });

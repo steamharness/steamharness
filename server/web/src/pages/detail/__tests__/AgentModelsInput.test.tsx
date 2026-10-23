@@ -12,11 +12,35 @@ const system = { id: "system", name: "Subscribed", source: "system", model: "sys
 const changed = vi.fn<(models: unknown[]) => void>(), draftChanged = vi.fn<(dirty: boolean) => void>();
 beforeEach(async () => { await i18n.changeLanguage("en"); changed.mockReset(); draftChanged.mockReset(); });
 afterEach(() => vi.restoreAllMocks());
-function Editor({ initial = [], disabled = false }: { initial?: unknown[]; disabled?: boolean }) {
+function Editor({ initial = [], disabled = false, allowThirdParty = true }: { initial?: unknown[]; disabled?: boolean; allowThirdParty?: boolean }) {
   const [value, setValue] = useState(JSON.stringify(initial));
-  return <AgentModelsInput value={value} disabled={disabled} onChange={next => { changed(JSON.parse(next)); setValue(next); }} onDraftChange={draftChanged}/>;
+  return <AgentModelsInput value={value} disabled={disabled} allowThirdParty={allowThirdParty} onChange={next => { changed(JSON.parse(next)); setValue(next); }} onDraftChange={draftChanged}/>;
 }
 const click = (name: string) => fireEvent.click(screen.getByRole("button", { name }));
+it("offers only system models in a restricted project and can replace an old third-party entry", async () => {
+  vi.spyOn(apiClient,"systemAiModelCatalog").mockResolvedValue({errCode:0,errMessage:"",data:{credentials:[{id:"subscription",name:"Plan",providerType:"anthropic",models:["system-model"]}]}});
+  const other={...third,id:"other-third",name:"Other custom"};
+  render(<Editor initial={[third,other,system]} allowThirdParty={false}/>);
+  expect(screen.getAllByText("Unavailable")).toHaveLength(2);
+  expect(screen.getByText("Default model").closest("tr")?.textContent).toContain(system.name);
+  click("Edit model: Custom");
+  expect(screen.queryByRole("radiogroup")).toBeNull(); expect(screen.queryByLabelText("API Key")).toBeNull();
+  await waitFor(()=>expect(screen.getByRole("combobox",{name:"Provider"})).toBeEnabled());
+  fireEvent.keyDown(screen.getByRole("combobox",{name:"Provider"}),{key:"ArrowDown"});fireEvent.click(await screen.findByRole("option",{name:"Plan"}));click("Apply model");
+  expect(changed).toHaveBeenLastCalledWith([expect.objectContaining({id:"third",source:"system"}),other,system]);
+  click("Delete model: Other custom");
+  expect(changed).toHaveBeenLastCalledWith([expect.objectContaining({id:"third",source:"system"}),system]);
+});
+it("passes the project's restriction to the Web configuration editor", async () => {
+  const state=createConfigurationState([{...AGENT_MODELS_CONFIGURATION_FIELD,allowThirdParty:false}],()=>"default");
+  vi.spyOn(apiClient,"projectConfigurations").mockResolvedValue({errCode:0,errMessage:"",data:state});
+  vi.spyOn(apiClient,"systemAiModelCatalog").mockResolvedValue({errCode:404,errMessage:"Unavailable"});
+  render(<ProjectConfigurationsTab project={{id:"project-a",hasDraft:true,projectType:"conversation"} as Summary}/>);
+  fireEvent.click(await screen.findByRole("button",{name:"Default"}));
+  expect(screen.getByText("No models configured. Add a system AI model.")).toBeTruthy();
+  click("Add model"); expect(screen.queryByRole("radiogroup")).toBeNull();
+  expect(await screen.findByText("System AI is unavailable. Sign in and configure a system AI account.")).toBeTruthy();
+});
 it("uses mutually exclusive source forms, loads subscriptions on demand and manages a mixed list", async () => {
   const catalog = vi.spyOn(apiClient, "systemAiModelCatalog").mockResolvedValue({ errCode: 0, errMessage: "", data: { credentials: [{ id: "subscription", name: "Plan", providerType: "anthropic", models: ["system-model"] }] } });
   const { container } = render(<Editor initial={[system]}/>); expect(catalog).not.toHaveBeenCalled();

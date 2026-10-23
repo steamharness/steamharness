@@ -1,9 +1,36 @@
 import { describe, expect, it } from "vitest";
-import { AGENT_MODELS_CONFIGURATION_FIELD as field, AGENT_MODELS_CONFIGURATION_KEY as key, applyConfigurationAction, bindConfigurationTemplate, configurationSnapshot, createConfigurationState, createPublicationDraft, exportConfigurations, freezeConfigurationTemplate, parseAgentModelCatalog, parseAgentModels } from "../index";
+import { AGENT_MODELS_CONFIGURATION_FIELD as field, AGENT_MODELS_CONFIGURATION_KEY as key, applyConfigurationAction, bindConfigurationTemplate, configurationSnapshot, createConfigurationState, createPublicationDraft, exportConfigurations, freezeConfigurationTemplate, parseAgentModelCatalog, parseAgentModels, parseConfigurationField, readConfigurationState } from "../index";
 
 const third = { id: "third", name: "Private endpoint", source: "third-party", model: "custom-model", apiKind: "openai-completions", baseUrl: "https://models.example/v1", apiKey: "test-only-key" };
 const system = { id: "system", name: "Subscription", source: "system", model: "system-model", credentialId: "subscription-a" };
 describe("configured Agent models", () => {
+  it("enforces a declared system-only policy on direct saves, defaults and imports without partial writes", () => {
+    const restricted = { ...field, allowThirdParty: false };
+    const state = createConfigurationState([restricted, {name:"title",type:"string"}], () => "profile");
+    expect(() => parseConfigurationField({...restricted,defaultValue:[third]})).toThrow(/only allows system AI/);
+    expect(() => parseConfigurationField({name:"ordinary",type:"string",allowThirdParty:false})).toThrow(/allowThirdParty/);
+    expect(() => parseConfigurationField({...field,allowThirdParty:"false"})).toThrow(/boolean/);
+    expect(() => applyConfigurationAction(state, {action:"save",revision:0,id:"profile",values:{title:"must not save",[key]:[third] as any}}, () => "new")).toThrow(/only allows system AI/);
+    const document = {version:1 as const,kind:"steamharness-project-configurations" as const,fields:[{...field,allowThirdParty:true}],configurations:[{name:"valid first",values:{[key]:[system] as any}},{name:"invalid second",values:{[key]:[third] as any}}]};
+    expect(() => applyConfigurationAction(state,{action:"import",revision:0,document},()=>"new")).toThrow(/only allows system AI/);
+    expect(state.configurations).toHaveLength(1); expect(state.revision).toBe(0); expect(state.configurations[0]!.values).toEqual({[key]:[]});
+    const saved = applyConfigurationAction(state,{action:"save",revision:0,id:"profile",values:{[key]:[system] as any}},()=>"new");
+    expect(configurationSnapshot(saved).agentModelPolicy).toEqual({allowThirdParty:false});
+    const template=freezeConfigurationTemplate(createPublicationDraft(saved),{projectId:"project",projectVersion:"1",sourceHash:"0".repeat(64)});
+    const recipient=bindConfigurationTemplate(createConfigurationState(template.fields,()=>"personal"),template);
+    expect(template.fields[0]!.allowThirdParty).toBe(false);
+    expect(configurationSnapshot(recipient).agentModelPolicy).toEqual({allowThirdParty:false});
+    expect(() => applyConfigurationAction(recipient,{action:"save",revision:recipient.revision,id:recipient.activeConfigurationId,values:{[key]:[third] as any}},()=>"new")).toThrow(/only allows system AI/);
+  });
+  it("keeps previously saved third-party entries readable and exportable after a code policy change", () => {
+    const before = createConfigurationState([field],()=>"profile"); before.configurations[0]!.values[key]=[third,system] as any;
+    const state=readConfigurationState(before,[{...field,allowThirdParty:false}],()=>"new");
+    expect(configurationSnapshot(state).values[key]).toEqual([third,system]);
+    expect(exportConfigurations(state).configurations[0]!.values[key]).toEqual([third,system]);
+    expect(() => applyConfigurationAction(state,{action:"save",revision:0,id:"profile",values:{[key]:[third,system] as any}},()=>"new")).toThrow(/only allows system AI/);
+    const cleaned=applyConfigurationAction(state,{action:"save",revision:0,id:"profile",values:{[key]:[system] as any}},()=>"new");
+    expect(configurationSnapshot(cleaned).values[key]).toEqual([system]);
+  });
   it("validates a mixed ordered list and normalizes only connection whitespace", () => {
     expect(parseAgentModels([system, { ...third, baseUrl: " https://models.example/v1/ " }])).toEqual([system, third]);
   });

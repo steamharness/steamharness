@@ -6,13 +6,51 @@ import os from "node:os";
 import { createServer } from "node:http";
 import { createPiRuntime } from "../agent/pi";
 import { defineAgentConversationExecutor } from "../agent/project";
-import { AGENT_MODELS_CONFIGURATION_KEY as key, createLocalProjectConfigurationStore, readProjectConfigurationDefinition, withProjectConfiguration } from "../configuration";
+import { AGENT_MODELS_CONFIGURATION_FIELD, AGENT_MODELS_CONFIGURATION_KEY as key, createLocalProjectConfigurationStore, readProjectConfigurationDefinition, withProjectConfiguration } from "../configuration";
 import { createAgentProjectParamResolver } from "../agent/system-llm";
 import { resolveAgentSystemAIInput } from "../agent/node";
 
 const third = { id: "third", name: "Custom", source: "third-party", model: "actual-model", apiKind: "openai-responses", baseUrl: "http://localhost:1234/v1", apiKey: "test-only-key" };
 const system = { id: "system", name: "Subscribed", source: "system", model: "subscribed-model", credentialId: "subscription-a" };
 const snapshot = (models: unknown[]) => ({ id: "profile", name: "Default", revision: 1, values: { [key]: models as any } });
+
+test("system-only model options exclude old third-party entries and cannot use direct endpoint overrides", async () => {
+  const previousFetch=globalThis.fetch;
+  globalThis.fetch=async()=>{throw new Error("A disabled model must not contact any endpoint.");};
+  try {
+    const restricted={...snapshot([third,system]),agentModelPolicy:{allowThirdParty:false}};
+    const result=await withProjectConfiguration(restricted,()=>createAgentProjectParamResolver()({paramValues:{model:"third"}}));
+    assert.equal(result.params?.model?.value,"system"); assert.deepEqual(result.params?.model?.resolvedOptions?.map(item=>item.value),["system"]);
+    const input={errCode:0,errMessage:"",prompt:"Hello"};
+    await assert.rejects(withProjectConfiguration(restricted,()=>resolveAgentSystemAIInput({...input,model:"third"},{},undefined)),/only allows system AI/);
+    for(const overrides of [{baseUrl:third.baseUrl},{apiKey:third.apiKey}]) {
+      await assert.rejects(withProjectConfiguration(restricted,()=>resolveAgentSystemAIInput({...input,...overrides},{},undefined)),/only allows system AI/);
+      await assert.rejects(withProjectConfiguration(restricted,()=>resolveAgentSystemAIInput(input,overrides,undefined)),/only allows system AI/);
+    }
+    await assert.rejects(withProjectConfiguration(restricted,()=>resolveAgentSystemAIInput(input,{models:{} as any},undefined)),/only allows system AI/);
+    await assert.rejects(withProjectConfiguration(restricted,()=>resolveAgentSystemAIInput(input,{resolvedModel:{} as any},undefined)),/only allows system AI/);
+    const empty={...restricted,values:{[key]:[third] as any}};
+    const options=await withProjectConfiguration(empty,()=>createAgentProjectParamResolver()({}));
+    assert.deepEqual(options.params?.model?.resolvedOptions,[]);
+    await assert.rejects(withProjectConfiguration(empty,()=>resolveAgentSystemAIInput(input,{},undefined)),/Add a model/);
+  } finally {globalThis.fetch=previousFetch;}
+});
+
+test("the local project declaration freezes system-only policy and rejects third-party writes", async () => {
+  const root=await mkdtemp(path.join(os.tmpdir(),"agent-system-only-"));
+  try {
+    await writeFile(path.join(root,"configuration.json"),JSON.stringify({version:1,fields:[{...AGENT_MODELS_CONFIGURATION_FIELD,allowThirdParty:false}]}));
+    const store=await createLocalProjectConfigurationStore(root,{rootDir:path.join(root,".configurations")});
+    const state=await store.read();
+    assert.equal(readProjectConfigurationDefinition(root).fields[0]!.allowThirdParty,false);
+    await assert.rejects(store.dispatch({action:"save",revision:state.revision,id:state.activeConfigurationId,values:{[key]:[third] as any}}),/only allows system AI/);
+    const first=await store.snapshot({runId:"frozen"}); assert.deepEqual(first.agentModelPolicy,{allowThirdParty:false});
+    await writeFile(path.join(root,"configuration.json"),JSON.stringify({version:1,fields:[AGENT_MODELS_CONFIGURATION_FIELD]}));
+    assert.equal((await store.snapshot()).agentModelPolicy,undefined);
+    assert.deepEqual((await store.snapshot({runId:"frozen"})).agentModelPolicy,{allowThirdParty:false});
+    const next=await store.read(); await store.dispatch({action:"save",revision:next.revision,id:next.activeConfigurationId,values:{[key]:[third] as any}});
+  } finally {await rm(root,{recursive:true,force:true});}
+});
 
 test("Agent parameter options come only from the frozen configuration and default to its first model", async () => {
   const previousFetch = globalThis.fetch;
@@ -120,6 +158,10 @@ test("a system model cannot fall back to another subscription or a removed model
   try {
     await assert.rejects(withProjectConfiguration(snapshot([system]), () => resolveAgentSystemAIInput({ errCode: 0, errMessage: '', prompt: 'Hello' }, {}, undefined)), /system AI model is unavailable/);
     await assert.rejects(withProjectConfiguration(snapshot([{ ...system, credentialId: record.id, model: 'removed-model' }]), () => resolveAgentSystemAIInput({ errCode: 0, errMessage: '', prompt: 'Hello' }, {}, undefined)), /system AI model is unavailable/);
+    const restricted={...snapshot([third,{...system,credentialId:record.id}]),agentModelPolicy:{allowThirdParty:false}};
+    const resolved=await withProjectConfiguration(restricted,()=>resolveAgentSystemAIInput({errCode:0,errMessage:'',prompt:'Hello'}, {}, undefined));
+    try {assert.equal(resolved.input.model,system.model);assert.equal(resolved.input.apiKind,'openai-responses');assert.ok(resolved.input.baseUrl?.startsWith('http://127.0.0.1:'));}
+    finally {await resolved.close();}
   } finally { globalThis.fetch = previousFetch; names.forEach((name, index) => { if (previous[index] === undefined) delete process.env[name]; else process.env[name] = previous[index]; }); }
 });
 

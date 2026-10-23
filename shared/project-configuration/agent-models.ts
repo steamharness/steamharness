@@ -3,6 +3,8 @@ import { ProjectConfigurationError, type ProjectConfigurationField } from "./ind
 export const AGENT_MODELS_CONFIGURATION_KEY = "STEAMHARNESS_AGENT_MODELS";
 export const AGENT_MODEL_PROTOCOLS = ["openai-completions", "openai-responses", "anthropic-messages"] as const;
 export type AgentModelProtocol = typeof AGENT_MODEL_PROTOCOLS[number];
+/** Project-declared policy; omitted means both model sources are available. */
+export interface AgentModelPolicy { allowThirdParty?: boolean }
 export type ConfiguredAgentModel = { id: string; name: string; model: string } & (
   | { source: "system"; credentialId: string }
   | { source: "third-party"; apiKind: AgentModelProtocol; baseUrl: string; apiKey: string }
@@ -13,7 +15,7 @@ export const AGENT_MODELS_CONFIGURATION_FIELD: ProjectConfigurationField = {
 };
 
 /** Validated at every write boundary, including imports and direct API requests. */
-export function parseAgentModels(value: unknown): ConfiguredAgentModel[] {
+export function parseAgentModels(value: unknown, policy: AgentModelPolicy = {}): ConfiguredAgentModel[] {
   const fail = (message: string): never => { throw new ProjectConfigurationError(message); };
   if (!Array.isArray(value) || value.length > 100) return fail("AI models must be a list of at most 100 entries.");
   const ids = new Set<string>();
@@ -33,6 +35,7 @@ export function parseAgentModels(value: unknown): ConfiguredAgentModel[] {
       return { ...common, source: "system", credentialId: text("credentialId") };
     }
     if (entry.source !== "third-party" || !AGENT_MODEL_PROTOCOLS.includes(entry.apiKind)) return fail("Invalid third-party AI protocol.");
+    if (policy.allowThirdParty === false) throw new ProjectConfigurationError("This project only allows system AI. Remove third-party models before saving.", "CONFIGURATION_AI_SOURCE_FORBIDDEN");
     if (Object.keys(entry).some(key => !["id", "name", "model", "source", "apiKind", "baseUrl", "apiKey"].includes(key))) return fail("Unknown third-party AI model property.");
     const baseUrl = text("baseUrl", 2048);
     let url: URL;

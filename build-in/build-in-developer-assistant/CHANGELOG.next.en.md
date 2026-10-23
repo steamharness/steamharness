@@ -1,5 +1,7 @@
 # Unreleased
 
+- Project generation guidance documents system-only AI model declarations and direct endpoint restrictions.
+
 - [Improved] Generator reference documents Conversation process folding, Core Agent defaults and the UI override.
 
 - Removed the assistant Code Mode configuration parameter and its legacy value lookup. Code Mode remains off by default and requires explicit SDK opt-in by project hosts.

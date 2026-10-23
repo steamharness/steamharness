@@ -6390,6 +6390,9 @@ components:
           type: string
           enum: [ text, textarea, select, radio, checkboxes, ai-models ]
           description: ai-models is reserved for the STEAMHARNESS_AGENT_MODELS JSON field. Entries contain id, name, model and source. System entries use credentialId; third-party entries use apiKind, baseUrl and apiKey. Values are private unless explicitly included in publication.
+        allowThirdParty:
+          type: boolean
+          description: Only valid for ai-models. Set false in configuration.json to allow only system AI. Saves and imports cannot add third-party entries or relax the project's declared policy. Omitted or true allows both sources.
         accept:
           type: array
           description: File fields only. Accepted MIME types or extensions. Files upload through POST
