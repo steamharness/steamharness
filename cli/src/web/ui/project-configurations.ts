@@ -70,7 +70,7 @@ export function mountProjectConfigurations(host: Host): ProjectConfigurationsPan
   publicationButtons.append(discardPublication,previewPublication,savePublication);publicationFooter.append(publicationStatus,publicationButtons);
   tabs.role='tablist';
   for(const [tab,panel,id]of [[valuesTab,body,'values'],[publicationTab,publicationBody,'publication']]as const){tab.role='tab';tab.id=`configuration-${id}-tab`;panel.id=`configuration-${id}-panel`;panel.role='tabpanel';panel.setAttribute('aria-labelledby',tab.id);tab.setAttribute('aria-controls',panel.id);}
-  function showView(publication:boolean){publicationView=publication;body.hidden=!detailId||publication;toolbar.hidden=!detailId;profileControls.hidden=publication;tabs.hidden=!detailId;listToolbar.hidden=!!detailId;listBody.hidden=!!detailId;actions.hidden=!!detailId&&publication;save.hidden=!detailId;publicationBody.hidden=!detailId||!publication;publicationFooter.hidden=!detailId||!publication;valuesTab.ariaSelected=String(!publication);publicationTab.ariaSelected=String(publication);valuesTab.tabIndex=publication?-1:0;publicationTab.tabIndex=publication?0:-1;}
+  function showView(publication:boolean){publicationView=publication;body.hidden=!detailId||publication;toolbar.hidden=!detailId;profileControls.hidden=publication;tabs.hidden=!detailId||publicationTab.hidden;listToolbar.hidden=!!detailId;listBody.hidden=!!detailId;actions.hidden=!!detailId&&publication;save.hidden=!detailId;publicationBody.hidden=!detailId||!publication;publicationFooter.hidden=!detailId||!publication;valuesTab.ariaSelected=String(!publication);publicationTab.ariaSelected=String(publication);valuesTab.tabIndex=publication?-1:0;publicationTab.tabIndex=publication?0:-1;}
   showView(false);
   tabs.onkeydown=event=>{if(!['ArrowLeft','ArrowRight','Home','End'].includes(event.key)||publicationTab.hidden)return;event.preventDefault();const next=event.key==='Home'?valuesTab:event.key==='End'?publicationTab:document.activeElement===valuesTab?publicationTab:valuesTab;next.click();next.focus();};
   tabs.append(valuesTab,publicationTab);
@@ -379,6 +379,7 @@ export function mountProjectConfigurations(host: Host): ProjectConfigurationsPan
     }
     latest = next;
     publicationTab.hidden=!next.canManagePublication;
+    tabs.hidden=!detailId||publicationTab.hidden;
     if(!next.canManagePublication) {
       publicationDraft=undefined;publicationDirty=false;publicationBody.replaceChildren();publicationStatus.textContent='';publicationStatus.classList.remove('error');publicationPreview.textContent='';
       if(!publicationBody.hidden)showView(false);
@@ -387,6 +388,7 @@ export function mountProjectConfigurations(host: Host): ProjectConfigurationsPan
     if ((editingField || working) && draft) return;
     if ((dirty||publicationDirty) && draft) { if (draft.revision !== next.revision) error(new Error(t('Configuration changed. Your draft is preserved. Refresh before saving.'))); return; }
     if (draft?.revision === next.revision && JSON.stringify(draft)===JSON.stringify(next)) return;
+    modelControls.forEach(control=>control.dispose());
     draft = structuredClone(next); dirty = false; fields.replaceChildren(); fieldRows.clear(); readers.clear(); overrides.clear(); resets.clear(); modelControls.length = 0;
     if(detailId&&!next.configurations.some(c=>c.id===detailId)){detailId=undefined;publicationDraft=undefined;showView(false);}
     list.replaceChildren();listActionButtons.length=0;

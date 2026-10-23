@@ -106,7 +106,7 @@ it('guides an empty Agent model list to the active configuration and preserves t
   f.emit({type:'project-configuration-result',requestId:request.requestId,value:configurations});await Promise.resolve();
   const dialog=document.querySelector<HTMLDialogElement>('.project-configurations')!;
   expect(dialog.open).toBe(true);expect(document.querySelector<HTMLElement>('.configuration-body')!.hidden).toBe(false);
-  expect(document.activeElement?.textContent).toBe('System AI');expect(f.input.value).toBe('Keep my message');
+  expect(document.activeElement?.textContent).toBe('Add model');expect(f.input.value).toBe('Keep my message');
   dialog.close();expect(document.activeElement).toBe(f.action('ai'));
   const saved=applyConfigurationAction(configurations,{action:'save',id:'current',revision:configurations.revision,values:{[AGENT_MODELS_CONFIGURATION_KEY]:[
     {id:'saved',name:'Saved model',model:'example',source:'third-party',apiKind:'openai-completions',baseUrl:'https://models.example/v1',apiKey:'test-only-key'},

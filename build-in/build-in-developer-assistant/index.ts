@@ -35,8 +35,7 @@ const toolApproval = steamharness.createToolApprovalGate();
 const assistantProject = steamharness.createAgentConversationProject({
   executorName: STEAMHARNESS_NAME,
   outputItemId: OUTPUT_ITEM_ID,
-  session: { subagents: { tools: ["read", "grep", "find", "ls"], maxAgents: 4 }, planFork: "asOf", toolSearch: {},
-    codeMode: steamharness.getConfig("STEAMHARNESS_DEVELOPER_ASSISTANT_CODE_MODE") === true ? {} : undefined },
+  session: { subagents: { tools: ["read", "grep", "find", "ls"], maxAgents: 4 }, planFork: "asOf", toolSearch: {} },
   async createTools(context): Promise<AgentToolSet> {
     readAssistantHost();
     const approve = async (toolId: string, args: unknown): Promise<void> => {

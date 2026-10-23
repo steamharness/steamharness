@@ -56,11 +56,11 @@ Import adds profiles with new IDs and preserves the active selection. Missing fi
 
 ## Agent model list
 
-Core Agent projects show AI models as the first field in configuration details. Click System AI or Third-party AI to open its add form; only one form is visible. The saved list can contain both sources.
+Core Agent projects show AI models as the first field in configuration details. Add model and row edit actions open a separate dialog. A segmented source selector shows either the System AI or Third-party AI form. The saved list can contain both sources. Cancel or Escape discards only the model draft and restores focus to the list action.
 
 In Studio and CLI Web, an empty model list in the active profile makes the Workflow and Conversation model button display Configure model. Click it to open the active profile directly at AI models. Failed Conversation messages offer the same action. Adding and saving a model restores the saved-model selector. Navigation preserves the message draft and execution profile; save or discard existing configuration or publication drafts before using the shortcut. The toolbar gear still opens the configuration list.
 
-- System AI loads the current account's subscriptions on demand. Select a subscription and model; refreshing preserves the model draft. A removed selection never switches automatically to another subscription or model, and execution asks you to check its availability. An empty catalogue links to subscription management. A missing system AI connection does not prevent third-party setup.
+- System AI loads the current account's subscriptions on demand. Select Provider, then model; the display name comes from the model automatically, with no name input. Refreshing preserves the model draft. A removed selection never switches automatically to another subscription or model, and execution asks you to check its availability. An empty catalogue links to subscription management. A missing system AI connection does not prevent third-party setup.
 - Third-party AI accepts a display name, model ID, API Key, Base URL and API protocol: `openai-completions`, `openai-responses` or `anthropic-messages`. Keys use password inputs and never appear in list rows.
 - Edit, delete or set a model as default in the list. Apply the model draft before saving the profile; unfinished drafts block saving or navigation. The first entry is the default. The composer only selects saved models and no longer manages Provider.
 
@@ -118,7 +118,7 @@ Read Server configuration with `GET /api/projects/:id/configurations?target=draf
 
 Personal values, publication drafts and immutable version templates are separate. In **Publication and permissions**, authors select profiles and a default profile, then control `publish` (include the field), `includeValue` (carry its value) and `editable` (allow recipient edits) independently. Defaults are public fields, editable values and no carried values. `defaultValue` is filtered as a value too. Existing v1 projects keep their behavior until an author explicitly saves a publication draft; historical personal values are never automatically published.
 
-Server Web arranges configuration values in responsive columns, with inline boolean controls and wrapping multiple-choice options. Publication editors in Server Web, Studio, and CLI Web group profiles and the default selection in a compact toolbar and align field permissions in columns. Expand JSON paths when needed, use the action menu to refresh published values or fields, and use the eye icon to preview the recipient configuration.
+Configuration fields have distinct bordered groups, and model lists mark their default entry. When publication management is unavailable, fields appear directly without a lone Configuration values tab. Authors retain both tabs. Server Web arranges configuration values in responsive columns, with inline boolean controls and wrapping multiple-choice options. Publication editors in Server Web, Studio, and CLI Web group profiles and the default selection in a compact toolbar and align field permissions in columns. Expand JSON paths when needed, use the action menu to refresh published values or fields, and use the eye icon to preview the recipient configuration.
 
 ```json
 {

@@ -28,9 +28,9 @@ const timer = runtime.defineAgentTask<{ wakeAt: number }, { phase: "sleep"; wake
 registry.install(runtime.defineAgentExtension({ name: "fixture", tasks: [timer] }));
 let scriptWaiting = false;
 // Keep the real assistant declaration, persona, tools and nodes; only the model is scripted.
-globalThis.steamharness = { ...runtime, getConfig: ((key: string) => key === "STEAMHARNESS_DEVELOPER_ASSISTANT_CODE_MODE" ? scenario === "extensions" : undefined) as typeof runtime.getConfig, createAgentConversationProject: options => runtime.createAgentConversationProject({
+globalThis.steamharness = { ...runtime, createAgentConversationProject: options => runtime.createAgentConversationProject({
   ...options, models: injectedModels, resolvedModel: models.getModel("faux", "fixture")!,
-  ...(scenario === "extensions" ? { session: { ...options?.session, registry, nativeTools: [{ name: "checkpoint", description: "Fixture restart barrier", replay: "safe" as const,
+  ...(scenario === "extensions" ? { session: { ...options?.session, codeMode: {}, registry, nativeTools: [{ name: "checkpoint", description: "Fixture restart barrier", replay: "safe" as const,
     parameters: ai.Type.Object({}), execute: async () => { scriptWaiting = true;
       if (phase === "initial") return new Promise(() => undefined);
       return { output: [{ type: "text" as const, text: "Resumed checkpoint" }] };

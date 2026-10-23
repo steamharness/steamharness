@@ -1,5 +1,7 @@
 # Unreleased
 
+- Improved model editing with a separate dialog and segmented source selection. System AI only needs Provider and model selections and generates names automatically. Fields and model lists have clearer borders, and the lone Configuration values tab is hidden without publication management.
+
 - Added system and third-party model management in configuration details, with exclusive source forms, on-demand subscription catalogues, model CRUD, default ordering, draft protection and read-only permissions.
 
 - Added group and subgroup navigation, ownership selection and direct/inherited member management. Effective capabilities control upload, publication, configurations, data and settings. Removed global role editing and added guest requests from private share links.

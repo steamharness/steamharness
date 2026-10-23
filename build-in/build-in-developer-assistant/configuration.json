@@ -1,6 +1,4 @@
 {
   "version": 1,
-  "fields": [
-    { "name": "STEAMHARNESS_DEVELOPER_ASSISTANT_CODE_MODE", "type": "boolean", "label": "Code Mode", "description": "Allow the assistant to compose authorized tools in QuickJS scripts.", "defaultValue": false }
-  ]
+  "fields": []
 }

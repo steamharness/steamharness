@@ -1,5 +1,7 @@
 # Unreleased
 
+- Improved model editing in a separate dialog with a segmented source selector. System AI only needs Provider and model selections and generates names automatically. Bordered fields and model lists clarify grouping; a lone Configuration values tab is hidden without publication management.
+
 - [Improved] Show user-message timestamps and copy controls to the left of the bubble on hover or keyboard focus. Remove the footer space, tighten the gap before project replies, and increase bubble contrast while keeping controls accessible on narrow and touch screens.
 
 - [Improved] Show a clickable Configure model action in Studio and CLI Web when no Agent models are configured. Open AI models in the active profile directly, also offer the action on failed messages, and restore model selection after saving while preserving message and configuration drafts.

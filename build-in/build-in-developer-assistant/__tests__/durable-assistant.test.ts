@@ -22,8 +22,7 @@ function worker(directory: string, scenario: string, phase: string) {
   const child = spawn(process.execPath, ["--import", pathToFileURL(loader).href, "--conditions=development",
     path.join(import.meta.dirname, "fixtures/durable-assistant-worker.ts"), directory, scenario, phase], {
     cwd: root, env: { ...process.env, STEAMHARNESS_DEVELOPER_ASSISTANT_HOST: "vscode", STEAMHARNESS_DEVELOPER_ASSISTANT_WORKDIR: directory,
-      STEAMHARNESS_DEVELOPER_ASSISTANT_WORKSPACE_MANIFEST: path.join(directory, "workspace.json"), STEAMHARNESS_STUDIO_CONTROL_MCP_SERVER: "",
-      STEAMHARNESS_DEVELOPER_ASSISTANT_CODE_MODE: scenario === "extensions" ? "true" : "false" },
+      STEAMHARNESS_DEVELOPER_ASSISTANT_WORKSPACE_MANIFEST: path.join(directory, "workspace.json"), STEAMHARNESS_STUDIO_CONTROL_MCP_SERVER: "" },
     stdio: ["ignore", "pipe", "pipe", "ipc"],
   });
   children.push(child); return child;

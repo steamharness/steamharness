@@ -169,7 +169,7 @@ export function ProjectConfigurationsTab({project}: Pick<DetailPageProps,"projec
           {transferMenu()}
         </div>
       </div>
-      <Table aria-label={t("projectConfigurations")}>
+      <div className="overflow-hidden rounded-md border"><Table aria-label={t("projectConfigurations")}>
         <TableHeader><TableRow><TableHead>{t("configurationName")}</TableHead><TableHead>{t("configurationCurrent")}</TableHead><TableHead className="text-right">{t("configurationActions")}</TableHead></TableRow></TableHeader>
         <TableBody>{state.configurations.map(profile=><TableRow key={profile.id}>
           <TableCell className="w-full whitespace-normal"><Button variant="ghost" className="h-auto w-full justify-between gap-2 whitespace-normal text-left" disabled={busy} onClick={()=>showDetails(profile.id)}><span className="min-w-0 wrap-anywhere">{profile.name}</span><ChevronRightIcon data-icon="inline-end"/></Button></TableCell>
@@ -179,7 +179,7 @@ export function ProjectConfigurationsTab({project}: Pick<DetailPageProps,"projec
             {profileMenu(profile.id)}
           </div></TableCell>
         </TableRow>)}</TableBody>
-      </Table>
+      </Table></div>
     </>:<>
       <div className="flex flex-wrap items-center gap-2">
         <Button variant="ghost" size="icon" disabled={busy} title={t("backToList",{ns:"common"})} aria-label={t("backToList",{ns:"common"})} onClick={()=>showDetails()}><ArrowLeftIcon/></Button>
@@ -187,12 +187,12 @@ export function ProjectConfigurationsTab({project}: Pick<DetailPageProps,"projec
         {current.id===state.activeConfigurationId?<Badge variant="secondary">{t("configurationCurrent")}</Badge>:<Button variant="outline" size="sm" disabled={busy} onClick={()=>{if(clean())void dispatch({action:"select",id:current.id});}}><CheckIcon data-icon="inline-start"/>{t("selectConfiguration",{ns:"common"})}</Button>}
         {detailTab==="values"&&<>{profileMenu(current.id)}{transferMenu()}</>}
       </div>
-      <Tabs value={detailTab} onValueChange={value=>{if(clean())setDetailTab(value);}}><TabsList><TabsTrigger value="values">{t("configurationValues")}</TabsTrigger>{state.canManagePublication&&<TabsTrigger value="publication">{t("configurationPublication")}</TabsTrigger>}</TabsList><TabsContent value="values"><div className="flex flex-col gap-4">
+      <Tabs value={detailTab} onValueChange={value=>{if(clean())setDetailTab(value);}}>{state.canManagePublication&&<TabsList><TabsTrigger value="values">{t("configurationValues")}</TabsTrigger><TabsTrigger value="publication">{t("configurationPublication")}</TabsTrigger></TabsList>}<TabsContent value="values" aria-label={t("configurationFields")}><div className="flex flex-col gap-4">
       {!!state.conflicts?.length&&<Alert><AlertDescription>{t("configurationTypeConflict")}<pre>{JSON.stringify(state.conflicts,null,2)}</pre></AlertDescription></Alert>}
       {dirty&&latest?.revision!==state.revision&&<Alert><AlertDescription>{t("configurationConflict")}</AlertDescription></Alert>}
       <Separator/>
       <div className="flex items-center justify-between gap-2"><h3>{t("configurationFields")} <span className="text-muted-foreground">{state.fields.length}</span></h3><Button variant="outline" size="sm" disabled={busy} onClick={()=>startField()}><PlusIcon data-icon="inline-start"/>{t("configurationAddField")}</Button></div>
-      {!state.fields.length?<Empty><EmptyHeader><EmptyTitle>{t("configurationEmpty")}</EmptyTitle></EmptyHeader></Empty>:<FieldGroup className="grid gap-4 md:grid-cols-2">
+      {!state.fields.length?<Empty><EmptyHeader><EmptyTitle>{t("configurationEmpty")}</EmptyTitle></EmptyHeader></Empty>:<FieldGroup aria-label={t("configurationFields")} className="grid items-start gap-4 md:grid-cols-2">
         {[...state.fields].sort((a,b)=>Number(b.control==="ai-models")-Number(a.control==="ai-models")).map(f=>{
           const set=setKeys.includes(f.name),value=values[f.name]??"",custom=state.customFields.some(c=>c.name===f.name);
           const capability=configurationCapability(state,f), disabled=busy||!capability.editable;
@@ -201,7 +201,7 @@ export function ProjectConfigurationsTab({project}: Pick<DetailPageProps,"projec
           const defaultValue=templateDefaults?templateDefaults[f.name]:f.defaultValue;
           const reset=()=>{setValues(values=>({...values,[f.name]:fieldValueText(f,defaultValue)}));setSetKeys(keys=>keys.filter(key=>key!==f.name));edit();};
           const resetLabel=t(defaultValue===undefined?"configurationClearValue":"configurationRestoreDefault",{name:f.label||f.name});
-          return <Field key={f.name} data-disabled={disabled} className={cn("min-w-0 gap-2",(f.type==="file"||f.type==="json"||f.multiple)&&"md:col-span-2")}>
+          return <Field key={f.name} data-disabled={disabled} className={cn("min-w-0 gap-3 rounded-lg border p-4",(f.type==="file"||f.type==="json"||f.multiple)&&"md:col-span-2")}>
             <div className="flex items-center gap-2"><FieldLabel htmlFor={`configuration-${f.name}`} className="min-w-0 flex-1 wrap-anywhere">{f.control==="ai-models"?t("configurationAiModels"):f.label||f.name}{f.required?" *":""}</FieldLabel>{!capability.editable&&<LockIcon aria-label={t("configurationLocked")}><title>{t("configurationLocked")}</title></LockIcon>}
               {inlineBoolean&&<Checkbox id={`configuration-${f.name}`} disabled={disabled} checked={value==="true"} onCheckedChange={checked=>change(String(checked))}/>}
               {f.type!=="file"&&f.control!=="ai-models"&&<Button variant="ghost" size="icon" disabled={disabled||!set} title={resetLabel} aria-label={resetLabel} onClick={reset}><RotateCcwIcon/></Button>}

@@ -91,7 +91,7 @@ const button=(text:string)=>[...document.querySelectorAll<HTMLButtonElement>('bu
 const title=()=>document.querySelector<HTMLInputElement>('input[aria-label="title"]')!;
 it('saves Agent models through the profile service and blocks unapplied model drafts',async()=>{
  state=createConfigurationState([AGENT_MODELS_CONFIGURATION_FIELD,{name:'title',type:'string'}],()=> 'profile');
- await openPanel();button('Third-party AI').click();
+ await openPanel();button('Add model').click();button('Third-party AI').click();
  const fill=(label:string,value:string)=>{const row=[...document.querySelectorAll('label')].find(row=>row.firstChild?.textContent===label)!;const input=row.querySelector('input')!;input.value=value;input.dispatchEvent(new Event('input'));};
  fill('Model name','My model');fill('Base URL','https://models.example/v1');fill('Model ID','actual-model');fill('API key','test-only-key');
  button('Save').click();await settle();expect(state.revision).toBe(0);expect(document.body.textContent).toContain('Add or cancel the model being edited first.');
@@ -109,9 +109,9 @@ it('opens the active profile AI models directly without changing the selected co
  expect(document.querySelector<HTMLDialogElement>('.project-configurations')!.open).toBe(true);
  expect(document.querySelector<HTMLElement>('.configuration-body')!.hidden).toBe(false);
  expect(document.querySelector('.configuration-profile-name')!.textContent).toContain('Default');
- expect(document.activeElement).toBe(button('System AI'));
+ expect(document.activeElement).toBe(button('Add model'));
  expect(state.activeConfigurationId).toBe('profile');
- expect(document.querySelector<HTMLElement>('.configuration-ai-form')!.hidden).toBe(true);
+ expect(document.querySelector<HTMLDialogElement>('.configuration-ai-editor')!.open).toBe(false);
  button('Close').click();document.getElementById('project-configurations')!.click();await settle();
  expect(document.querySelector<HTMLElement>('.configuration-list')!.hidden).toBe(false);
 });
@@ -135,7 +135,7 @@ it('opens cached model settings immediately and keeps later navigation when the 
  readConfiguration=()=>new Promise(resolve=>{finish=resolve;});
  panel.openAgentModels();await settle();
  expect(document.querySelector<HTMLElement>('.configuration-body')!.hidden).toBe(false);
- expect(document.activeElement).toBe(button('System AI'));
+ expect(document.activeElement).toBe(button('Add model'));
  button('Back to list').click();button('Close').click();
  finish(state);await settle();
  expect(document.querySelector<HTMLDialogElement>('.project-configurations')!.open).toBe(false);
@@ -294,7 +294,9 @@ it('applies published lock rules to direct fields, nested JSON and file controls
 });
 it('updates author permissions at the same configuration revision and provides per-path publication controls',async()=>{
  await openPanel();
+ expect(document.querySelector<HTMLElement>('.configuration-view-tabs')!.hidden).toBe(true);
  state={...state,canManagePublication:true,publication:createPublicationDraft(state)};message({type:'state',configurations:state});await settle();
+ expect(document.querySelector<HTMLElement>('.configuration-view-tabs')!.hidden).toBe(false);
  button('Configuration values').focus();
  document.querySelector('.configuration-view-tabs')!.dispatchEvent(new KeyboardEvent('keydown',{key:'ArrowRight',bubbles:true}));
  expect(button('Publication and permissions')).toBe(document.activeElement);
@@ -304,6 +306,7 @@ it('updates author permissions at the same configuration revision and provides p
  button('Recipient preview').click();expect(document.body.textContent).toContain('steamharness-configuration-template');
  state={...state,canManagePublication:false,publication:undefined};message({type:'state',configurations:state});await settle();
  expect(button('Publication and permissions').hidden).toBe(true);
+ expect(document.querySelector<HTMLElement>('.configuration-view-tabs')!.hidden).toBe(true);
  expect(document.querySelector('.configuration-recipient-preview')).toBeNull();
  expect(document.querySelector<HTMLElement>('.configuration-body')!.hidden).toBe(false);
 });

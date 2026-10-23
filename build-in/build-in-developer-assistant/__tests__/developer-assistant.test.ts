@@ -21,6 +21,10 @@ const SESSION_TOOL_NAMES = ["tool_search", "codemode", "update_plan", "subagent"
 const EXPECTED_TOOL_NAMES = [...SESSION_TOOL_NAMES, ...CONTROL_TOOL_NAMES, ...CORE_TOOL_NAMES, ...CODING_TOOL_NAMES];
 
 describe("developer assistant workflow", () => {
+  it("does not offer a Code Mode configuration parameter", async () => {
+    const manifest = JSON.parse(await readFile(path.join(projectDir, "configuration.json"), "utf8"));
+    expect(manifest.fields).toEqual([]);
+  });
   it("runs on Core's agent with system AI quick params and declared tools", async () => {
     const structure = inspectLocalProjectStructure({ projectDir });
     const source = await readFile(path.join(projectDir, "index.ts"), "utf8");
