@@ -1,5 +1,7 @@
 # Unreleased
 
+- [Improved] Show user-message timestamps and copy controls to the left of the bubble on hover or keyboard focus. Remove the footer space, tighten the gap before project replies, and increase bubble contrast while keeping controls accessible on narrow and touch screens.
+
 - [Improved] Show a clickable Configure model action in Studio and CLI Web when no Agent models are configured. Open AI models in the active profile directly, also offer the action on failed messages, and restore model selection after saving while preserving message and configuration drafts.
 
 - Improved the fork confirmation dialog with an explanation of the inherited history, opening the new conversation, and preserving the original conversation.
