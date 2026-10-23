@@ -48,7 +48,7 @@ async function build(upstream) {
   await run(npm, ['run', 'build-fast'], upstream.directory);
 }
 
-async function buildReady(upstream) {
+async function hasWorkbenchOutput(upstream) {
   const stateFile = path.join(upstream.directory, '.build/build-fast/state.json');
   if (!await exists(stateFile)) {
     return false;
@@ -102,12 +102,12 @@ async function doctor() {
     await requireDependencies(await assertUpstream());
     return 'native modules and built-in extension dependencies installed';
   });
-  await check('Workbench output', async () => {
+  await check('Workbench output files', async () => {
     const upstream = await assertUpstream();
-    if (!await buildReady(upstream)) {
+    if (!await hasWorkbenchOutput(upstream)) {
       throw new Error('Run npm run build.');
     }
-    return 'successful development build for the pinned revision';
+    return 'development output exists for the pinned revision; startup checks source changes with build-fast';
   });
   if (process.platform === 'darwin') {
     await check('Xcode toolchain', () => execFileSync('xcode-select', ['-p'], { encoding: 'utf8' }).trim());
@@ -176,9 +176,9 @@ async function main() {
     case 'dev': {
       const { upstream, product } = await prepare();
       await requireDependencies(upstream);
-      if (!await buildReady(upstream)) {
-        await build(upstream);
-      }
+      // Patches and local edits can change source without changing HEAD.
+      // Let build-fast validate its own input fingerprints on every launch.
+      await build(upstream);
       const executable = process.platform === 'darwin'
         ? path.join(upstream.directory, '.build/electron', `${product.nameLong}.app`, 'Contents/MacOS', product.nameShort)
         : path.join(upstream.directory, '.build/electron', process.platform === 'win32' ? `${product.nameShort}.exe` : product.applicationName);
@@ -220,9 +220,7 @@ async function main() {
     case 'web': {
       const { upstream } = await prepare();
       await requireDependencies(upstream);
-      if (!await buildReady(upstream)) {
-        await build(upstream);
-      }
+      await build(upstream);
       await run(npm, ['run', 'download-builtin-extensions'], upstream.directory);
       const extensionsDirectory = path.join(ROOT, '.studio/web-extensions');
       const defaults = [

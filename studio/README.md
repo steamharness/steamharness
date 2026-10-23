@@ -34,7 +34,7 @@ npm run setup
 npm run build
 ```
 
-`setup` 初始化子模块、应用品牌及补丁、构建 Studio 扩展、安装上游依赖和固定版本的调试扩展，并跳过开发构建不需要的 Playwright 浏览器下载。`build` 使用上游 `build-fast` 生成工作台和内置扩展；这是开发转译构建，不代表上游全部 TypeScript 检查通过。
+`setup` 初始化子模块、应用品牌及补丁、构建 Studio 扩展、安装上游依赖和固定版本的调试扩展，并跳过开发构建不需要的 Playwright 浏览器下载。`build` 使用上游 `build-fast` 生成工作台和内置扩展；这是开发转译构建，不代表上游全部 TypeScript 检查通过。桌面和 Web 启动都会在应用补丁后运行 `build-fast`，根据源码、依赖与环境变化决定是否增量重建；上游提交号不变时也会检查，避免重启后继续运行旧内核。
 
 Foundry Local / ONNX 原生运行库用于上游聊天的本地语音听写，Studio 的编辑器和 Workflow 功能不依赖它。`setup` 默认使用 SDK 的 `FOUNDRY_LOCAL_SKIP_INSTALL=1` 跳过这项 NuGet 下载，其它依赖的安装脚本正常执行。需要上游本地语音听写时，将 `FOUNDRY_LOCAL_SKIP_INSTALL` 设为 `0` 后重新运行 `npm run setup`；下载源可通过 SDK 的 `FOUNDRY_LOCAL_NUGET_FEEDS` 指定。
 
@@ -143,7 +143,7 @@ npm run test:conversation-server-ui # 需要真实 dev 服务及模型的登录�
 
 Studio 内置 PDF、DOCX、PPTX、XLSX、图片（含 HEIC / HEIF）及 LaTeX 公式的只读预览，源文件修改后自动更新。使用方式和验证入口见 [文件预览](docs/document-preview.md) / [File Previews](docs/document-preview.en.md)。
 
-`watch` 使用上游 `watch-transpile` 和 Studio 扩展监听；需要检查上游内核类型时，单独执行 `npm --prefix upstream/vscode run typecheck-client`。修改内核后使用 `npm run build` 或 `watch`，再重启桌面应用或 Web 服务。
+`watch` 使用上游 `watch-transpile` 和 Studio 扩展监听；需要检查上游内核类型时，单独执行 `npm --prefix upstream/vscode run typecheck-client`。修改内核后重新运行 `npm run dev` 或 `npm run dev:web` 会自动检查并构建；也可先使用 `npm run build` 或 `watch`，再重启桌面应用或 Web 服务。仅在应用内重载窗口不会运行启动脚本。
 
 正常启动跳过上游的内部 API 测试扩展，测试命令再将它作为独立开发宿主加载。
 

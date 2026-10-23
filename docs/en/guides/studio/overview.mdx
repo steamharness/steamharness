@@ -134,6 +134,8 @@ By default, `setup` skips the NuGet download of the Foundry Local / ONNX native 
 
 Use `npm run dev:web` for the browser workstation. This guide covers source execution; installation packages and release channels are configured separately.
 
+Desktop and Web startup apply kernel patches, then check build fingerprints for sources, dependencies, and the environment. Changes are rebuilt automatically even when the upstream commit is unchanged. After updating source, exit the application and rerun the launch command; reloading a window inside the application does not run this step. A failed build stops startup; fix the error and retry.
+
 ## Project configurations
 
 All three project types expose fields, named profiles and complete import/export. Studio and local CLI share local storage; Server values are per project and account. Studio Control can query and manage configurations even when the panel is closed. See [Project configurations](/en/concepts/project-configuration) for the JSON actions, version checks and execution snapshot rules.
