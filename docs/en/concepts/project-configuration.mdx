@@ -46,7 +46,7 @@ Removing a declaration or visiting another source version retains saved values, 
 
 Writes check `revision` and commit atomically. Changes from another window or the assistant update committed state. Unsaved drafts keep their original version and content, with a conflict message. Refresh and discard the draft before editing again. Failed requests do not partially write data.
 
-Studio, standalone CLI and CLI Web share local user storage, isolated by the canonical real project path. Server storage is isolated by project and signed-in account. Accounts with project read access manage their own profiles. Values stay outside source files, source downloads and immutable source versions. Transfer configurations between local and Server storage with import/export.
+Studio, standalone CLI and CLI Web share local user storage. A valid UUID in `package.json.id` binds profiles, custom fields, values and the active selection to the application across windows and installation directories, with automatic updates. Different application IDs remain separate; directories without a valid application ID keep canonical real-path isolation. When no application store exists, first use adopts the current directory's existing profiles. Existing application data takes precedence over legacy values in another directory. Sessions and run state remain independent, and waiting runs retain their original directory-scoped configuration snapshots. Server storage is isolated by project and signed-in account. Accounts with project read access manage their own profiles. Values stay outside source files, source downloads and immutable source versions. Transfer configurations between local and Server storage with import/export.
 
 ## Import and export
 

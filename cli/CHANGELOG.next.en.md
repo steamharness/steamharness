@@ -1,5 +1,7 @@
 # Unreleased
 
+- Improvement: Share application configurations across Studio assistant, Workflow, Conversation and Kanban windows, automatically synchronizing values and active selection while keeping sessions and runs independent and enforcing shared revisions on save.
+
 - [Improved] Group Configure model with the missing-model error in Conversation and Studio Assistant, separate from message action icons. The guidance wraps in narrow panes and opens model settings without losing the draft.
 
 - Added file and folder drops from VS Code, the desktop, and other locations to Conversation, with removable path cards and Core Agent context. Drafts, queues, and retries retain references; browser folder imports preserve nested files and empty folders.

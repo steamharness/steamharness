@@ -6,7 +6,7 @@ import { request as httpRequest, ServerResponse } from 'node:http';
 import { createServer as createProxy, connect as connectSocket, type Socket } from 'node:net';
 import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { createHash } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { parseWebArgs } from '../web';
 import { startWebServer } from '../web/server';
 import { createWebRuntime, sanitizeWebWorkerEnvironment } from '../web/runtime';
@@ -24,9 +24,14 @@ const services: Awaited<ReturnType<typeof startWebServer>>[] = [];
 afterEach(async () => {
   for (const app of services.splice(0)) await app.close();
   for (const folder of folders.splice(0)) {
-    const key = createHash('sha256').update(await realpath(folder)).digest('hex');
-    const config = path.join(os.homedir(), '.steamharness', 'configurations', `${key}.json`);
-    for (const suffix of ['', '.lock.sqlite', '.lock.sqlite-wal', '.lock.sqlite-shm']) await rm(`${config}${suffix}`, { force: true });
+    const directoryKey = createHash('sha256').update(await realpath(folder)).digest('hex');
+    const manifest = await readFile(path.join(folder, 'package.json'), 'utf8').then(JSON.parse).catch(() => ({}));
+    const keys = [directoryKey, ...(manifest.id ? [createHash('sha256').update(`application:${manifest.id}`).digest('hex')] : [])];
+    for (const key of keys) {
+      const config = path.join(os.homedir(), '.steamharness', 'configurations', `${key}.json`);
+      for (const suffix of ['', '.lock.sqlite', '.lock.sqlite-wal', '.lock.sqlite-shm']) await rm(`${config}${suffix}`, { force: true });
+    }
+    await rm(path.join(os.homedir(), '.steamharness', 'configurations', 'snapshots', directoryKey), { recursive: true, force: true });
     await rm(folder, { recursive: true, force: true });
   }
   vi.useRealTimers(); vi.unstubAllEnvs(); vi.restoreAllMocks();
@@ -55,7 +60,7 @@ async function initialState(events: Response) {
 async function fixture(host?: WebHostConfiguration, beforeStart?: () => Promise<void>, projectType: Project['projectType'] = 'conversation') {
   const directory = await mkdtemp(path.join(os.tmpdir(), 'steamharness-web-')); folders.push(directory);
   vi.stubEnv('STEAMHARNESS_CLI_AUTH_DIR', path.join(directory, 'auth')); vi.stubEnv('STEAMHARNESS_SERVER_URL', ''); vi.stubEnv('STEAMHARNESS_SERVER_ADMIN_KEY', '');
-  const project: Project = { id: '364764e9-ef0e-4e86-9e56-77d0410e1723', uri: '', folderPath: directory, name: 'Test conversation', projectType, fields: [{ name: 'model', flag: '--model', type: 'string', panel: 'auxiliary' }], paramLayout: { actions: [{ kind: 'auxiliary', id: 'ai', label: 'AI', params: ['model'] }] }, paramResolver: { enabled: true }, entrypoints: [], tools: [{ name: 'read', enabled: true, autoApprove: false }] };
+  const project: Project = { id: randomUUID(), uri: '', folderPath: directory, name: 'Test conversation', projectType, fields: [{ name: 'model', flag: '--model', type: 'string', panel: 'auxiliary' }], paramLayout: { actions: [{ kind: 'auxiliary', id: 'ai', label: 'AI', params: ['model'] }] }, paramResolver: { enabled: true }, entrypoints: [], tools: [{ name: 'read', enabled: true, autoApprove: false }] };
   if (projectType === 'kanban') {
     await writeFile(path.join(directory, 'package.json'), JSON.stringify({ id: project.id, steamHarness: { projectType } }));
   }
@@ -1202,7 +1207,7 @@ describe('steamharness web', () => {
     const harnessRoot = await resolveHarnessRoot();
     await symlink(harnessRoot, path.join(directory, 'node_modules/steamharness'), process.platform === 'win32' ? 'junction' : 'dir');
     const harnessVersion = JSON.parse(await readFile(path.join(harnessRoot, 'package.json'), 'utf8')).version;
-    await writeFile(path.join(directory, 'package.json'), JSON.stringify({ id: '364764e9-ef0e-4e86-9e56-77d0410e1723', name: 'project-runtime', type: 'module', devDependencies: { 'steamharness': harnessVersion }, steamHarness: { projectInfo: { dataStorage: { mode: 'local' } } } }));
+    await writeFile(path.join(directory, 'package.json'), JSON.stringify({ id: randomUUID(), name: 'project-runtime', type: 'module', devDependencies: { 'steamharness': harnessVersion }, steamHarness: { projectInfo: { dataStorage: { mode: 'local' } } } }));
     await writeFile(path.join(directory, 'index.ts'), `
       const flow = steamharness.defineProject({ name: 'test', run() { return {
         errCode: 0, errMessage: '', text: 'project runtime',

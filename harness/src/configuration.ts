@@ -85,13 +85,27 @@ export function readProjectConfigurationDefinition(projectDir: string) {
   return definition;
 }
 
-/** Shared by Studio, CLI Web, CLI and direct local SDK execution. Values never enter project source. */
+async function localConfigurationIdentity(directory: string): Promise<string> {
+  let manifest: unknown;
+  try { manifest = JSON.parse(await readFile(path.join(directory, "package.json"), "utf8")); }
+  catch (error) { if ((error as NodeJS.ErrnoException).code === "ENOENT") return directory; throw error; }
+  const id = manifest && typeof manifest === "object" && !Array.isArray(manifest) ? (manifest as {id?: unknown}).id : undefined;
+  // Package names, working directories and immutable installation versions are not application identities.
+  return typeof id === "string" && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(id.trim())
+    ? `application:${id.trim().toLowerCase()}` : directory;
+}
+
+/** Shared by application ID across Studio, CLI Web, CLI and local SDK execution. Values never enter project source. */
 export async function createLocalProjectConfigurationStore(projectDir: string, options: { rootDir?: string; storageKey?: string; template?: ProjectConfigurationTemplate | null; fields?: ProjectConfigurationField[]; agentModelPolicy?: AgentModelPolicy; templateCacheDir?: string } = {}) {
   const directory = await realpath(projectDir);
   const agentModelSources: AgentModelSourceCache = new Map();
   const root = options.rootDir ?? path.join(os.homedir(), ".steamharness", "configurations");
-  const key = createHash("sha256").update(options.storageKey ?? directory).digest("hex");
+  const directoryKey = createHash("sha256").update(directory).digest("hex");
+  const key = createHash("sha256").update(options.storageKey ?? await localConfigurationIdentity(directory)).digest("hex");
   const filename = path.join(root, `${key}.json`), lock = `${filename}.lock.sqlite`;
+  const legacyFilename = options.storageKey === undefined && key !== directoryKey ? path.join(root, `${directoryKey}.json`) : undefined;
+  // Runs remain bound to their original directory, including snapshots created before application binding.
+  const runKey = options.storageKey === undefined ? directoryKey : key;
   const declared = async () => {
     let definition: ProjectConfigurationDefinition = {version:1,fields:[]};
     try { definition = parseConfigurationDefinition(JSON.parse(await readFile(path.join(directory, PROJECT_CONFIGURATION_FILE), "utf8"))); }
@@ -103,6 +117,11 @@ export async function createLocalProjectConfigurationStore(projectDir: string, o
     let stored: unknown;
     try { stored = JSON.parse(await readFile(filename, "utf8")); }
     catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error; }
+    const adopting = stored === undefined && legacyFilename !== undefined;
+    if (adopting) {
+      try { stored = JSON.parse(await readFile(legacyFilename, "utf8")); }
+      catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error; }
+    }
     let template = options.template;
     if (template === undefined && options.storageKey === undefined) {
       let source: string | undefined;
@@ -128,8 +147,9 @@ export async function createLocalProjectConfigurationStore(projectDir: string, o
     const policy = configurationAgentModelPolicy(definition,template??{fields:[]});
     let state = readConfigurationState(stored, template?.fields ?? definition.fields, () => `default-${key.slice(0, 24)}`,policy);
     if (template) state = bindConfigurationTemplate(state, template);
-    if (!stored || !isDeepStrictEqual(stored,state)) {
-      if (stored && state.revision === (stored as ProjectConfigurationState).revision) state.revision++;
+    const changed = !isDeepStrictEqual(stored,state);
+    if (adopting || !stored || changed) {
+      if (stored && changed && state.revision === (stored as ProjectConfigurationState).revision) state.revision++;
       await atomic(filename, state);
     }
     return state;
@@ -174,7 +194,7 @@ export async function createLocalProjectConfigurationStore(projectDir: string, o
     },
     async snapshot(options: { id?: string; runId?: string; required?: boolean; configuration?: ProjectConfigurationSnapshot } = {}): Promise<ProjectConfigurationSnapshot> {
       const provided = options.configuration === undefined ? undefined : structuredClone(parseSnapshot(options.configuration));
-      const runFile = options.runId ? path.join(root, "snapshots", key, `${createHash("sha256").update(options.runId).digest("hex")}.json`) : undefined;
+      const runFile = options.runId ? path.join(root, "snapshots", runKey, `${createHash("sha256").update(options.runId).digest("hex")}.json`) : undefined;
       if (runFile) return exclusive(async () => {
         try { return parseSnapshot(JSON.parse(await readFile(runFile, "utf8"))); }
         catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error; }

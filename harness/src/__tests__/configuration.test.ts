@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { mkdtemp, mkdir, readFile, realpath, rm, writeFile, symlink } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import {cacheVerifiedConfigurationTemplate,readCachedConfigurationFile,createConfigurationState,createPublicationDraft,freezeConfigurationTemplate,CONFIGURATION_TEMPLATE_FILE, createLocalProjectConfigurationStore, getConfig, withProjectConfiguration, currentConfigurationValues, type ProjectConfigurationState } from "../configuration";
@@ -104,10 +104,12 @@ test("independent local processes enforce the same configuration revision", asyn
 for (const explicit of [false,true]) test(`an automatically assigned run ID keeps its ${explicit ? "explicit" : "local"} configuration when waiting input resumes`, async () => {
   const {runLocalProjectWithReport} = await import("../index");
   const project = await mkdtemp(path.join(os.tmpdir(), "configuration-resume-"));
-  const key = createHash("sha256").update(await realpath(project)).digest("hex");
+  const applicationId = randomUUID();
+  const key = createHash("sha256").update(`application:${applicationId}`).digest("hex");
+  const runKey = createHash("sha256").update(await realpath(project)).digest("hex");
   const root = path.join(os.homedir(), ".steamharness", "configurations");
   try {
-    await writeFile(path.join(project, "package.json"), JSON.stringify({id:"793fdc09-0b24-4750-9f88-3a19fa777712", name:"config-resume", type:"module", steamHarness:{projectInfo:{dataStorage:{mode:"local"}}}}));
+    await writeFile(path.join(project, "package.json"), JSON.stringify({id:applicationId, name:"config-resume", type:"module", steamHarness:{projectInfo:{dataStorage:{mode:"local"}}}}));
     await writeFile(path.join(project, "configuration.json"), JSON.stringify({version:1, fields:[{name:"label", type:"string", defaultValue:"before"}]}));
     await writeFile(path.join(project, "index.ts"), `
       const approvalNode = steamharness.createUserInputNode({name:"confirm", params:[{name:"approved", type:"boolean", flag:"--approved"}]});
@@ -131,17 +133,19 @@ for (const explicit of [false,true]) test(`an automatically assigned run ID keep
     assert.equal(next.result.ok && (next.result.data as any).output.label, "after");
   } finally {
     await rm(project, {recursive:true, force:true});
-    await Promise.all([rm(path.join(root, `${key}.json`), {force:true}), rm(path.join(root, `${key}.json.lock.sqlite`), {force:true}), rm(path.join(root, "snapshots", key), {recursive:true, force:true})]);
+    await Promise.all([rm(path.join(root, `${key}.json`), {force:true}), rm(path.join(root, `${key}.json.lock.sqlite`), {force:true}), rm(path.join(root, "snapshots", runKey), {recursive:true, force:true})]);
   }
 });
 
 test("executor, parameter resolver, nodes and provider factory share one immutable run configuration", async () => {
   const {runLocalProjectWithReport,resolveLocalProjectParams,createLLMProviderFromConfig}=await import("../index");
   const project=await mkdtemp(path.join(os.tmpdir(),"configuration-executor-"));
-  const key=createHash("sha256").update(await realpath(project)).digest("hex");
+  const applicationId=randomUUID();
+  const key=createHash("sha256").update(`application:${applicationId}`).digest("hex");
+  const runKey=createHash("sha256").update(await realpath(project)).digest("hex");
   const root=path.join(os.homedir(),".steamharness","configurations");
   try {
-    await writeFile(path.join(project,"package.json"),JSON.stringify({id:"4c225ac1-1ab8-4196-8cba-4d5548eefcb0",name:"Configuration",type:"module",steamHarness:{projectInfo:{dataStorage:{mode:"local"}}}}));
+    await writeFile(path.join(project,"package.json"),JSON.stringify({id:applicationId,name:"Configuration",type:"module",steamHarness:{projectInfo:{dataStorage:{mode:"local"}}}}));
     await writeFile(path.join(project,"index.ts"), `
 const task=steamharness.defineProject({name:"configuration",async run(_input,context){return {errCode:0,errMessage:"",value:steamharness.getConfig("label"),nested:context.config.nested};}});
 export const executor=steamharness.defineExecutor({projectType:"workflow",defaultEntrypoint:"main",entrypoints:[steamharness.defineEntrypoint({id:"main",title:"Main",workflow:task,params:[{name:"label",type:"string",flag:"--label"}],createInput({paramValues}){return paramValues;},resolveParams(context){return {params:{label:{value:context.config.label}}};}})]});
@@ -164,7 +168,7 @@ export default task;
     assert.throws(()=>createLLMProviderFromConfig({}),/Missing required configuration/);
   }finally{
     await rm(project,{recursive:true,force:true});
-    await Promise.all([rm(path.join(root,`${key}.json`),{force:true}),rm(path.join(root,`${key}.json.lock.sqlite`),{force:true}),rm(path.join(root,"snapshots",key),{recursive:true,force:true})]);
+    await Promise.all([rm(path.join(root,`${key}.json`),{force:true}),rm(path.join(root,`${key}.json.lock.sqlite`),{force:true}),rm(path.join(root,"snapshots",runKey),{recursive:true,force:true})]);
   }
 });
 

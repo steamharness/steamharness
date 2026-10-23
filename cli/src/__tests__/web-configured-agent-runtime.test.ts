@@ -13,7 +13,9 @@ import { resolveHarnessRoot, resolveHarnessVersion } from './harness-source';
 // Agent and loopback credential bridge. Only the upstream HTTP service is fake.
 it('runs saved system and third-party models through the real Web worker with refreshed scoped credentials', async () => {
   const directory = await mkdtemp(path.join(os.tmpdir(), 'configured-agent-runtime-'));
-  const configurationKey = createHash('sha256').update(await realpath(directory)).digest('hex');
+  const applicationId = crypto.randomUUID();
+  const configurationKey = createHash('sha256').update(`application:${applicationId}`).digest('hex');
+  const runKey = createHash('sha256').update(await realpath(directory)).digest('hex');
   const configurationRoot = path.join(os.homedir(), '.steamharness', 'configurations');
   let app: Awaited<ReturnType<typeof startWebServer>> | undefined;
   let generation = 0, subscribed = true;
@@ -68,7 +70,7 @@ it('runs saved system and third-party models through the real Web worker with re
     const origin = `http://127.0.0.1:${(upstream.address() as { port: number }).port}`;
     await mkdir(path.join(directory, 'node_modules'));
     await symlink(await resolveHarnessRoot(), path.join(directory, 'node_modules/steamharness'), process.platform === 'win32' ? 'junction' : 'dir');
-    await writeFile(path.join(directory, 'package.json'), JSON.stringify({ type: 'module', id: crypto.randomUUID(), name: 'configured-agent', version: '1.0.0', devDependencies: { steamharness: await resolveHarnessVersion() }, steamHarness: { projectType: 'conversation', projectInfo: { dataStorage: { mode: 'local' } } } }));
+    await writeFile(path.join(directory, 'package.json'), JSON.stringify({ type: 'module', id: applicationId, name: 'configured-agent', version: '1.0.0', devDependencies: { steamharness: await resolveHarnessVersion() }, steamHarness: { projectType: 'conversation', projectInfo: { dataStorage: { mode: 'local' } } } }));
     await writeFile(path.join(directory, 'index.ts'), `
       const agent = steamharness.createAgentConversationProject({ tools: [], outputItemId: 'answer' });
       export const executor = steamharness.defineExecutor({ projectType: 'conversation', workflow: agent,
@@ -151,6 +153,6 @@ it('runs saved system and third-party models through the real Web worker with re
     await app?.close();
     await new Promise<void>(resolve => { upstream.close(() => resolve()); upstream.closeAllConnections(); });
     await rm(directory, { recursive: true, force: true });
-    await Promise.all([rm(path.join(configurationRoot, `${configurationKey}.json`), { force: true }), rm(path.join(configurationRoot, `${configurationKey}.json.lock.sqlite`), { force: true }), rm(path.join(configurationRoot, 'snapshots', configurationKey), { recursive: true, force: true })]);
+    await Promise.all([rm(path.join(configurationRoot, `${configurationKey}.json`), { force: true }), rm(path.join(configurationRoot, `${configurationKey}.json.lock.sqlite`), { force: true }), rm(path.join(configurationRoot, 'snapshots', runKey), { recursive: true, force: true })]);
   }
 }, 40_000);

@@ -14,7 +14,9 @@ import { resolveHarnessRoot } from './harness-source';
 
 it('preserves the live generation when the worker loses its IPC owner and resumes it after reconnect', async () => {
   const directory = await mkdtemp(path.join(os.tmpdir(), 'workflow-agent-disconnect-'));
-  const configurationKey = createHash('sha256').update(await realpath(directory)).digest('hex');
+  const applicationId = crypto.randomUUID();
+  const configurationKey = createHash('sha256').update(`application:${applicationId}`).digest('hex');
+  const runKey = createHash('sha256').update(await realpath(directory)).digest('hex');
   const configurationRoot = path.join(os.homedir(), '.steamharness', 'configurations');
   const runtime = createWebRuntime(directory, path.join(directory, 'data'), () => undefined);
   let calls = 0, child: ChildProcess | undefined, resumed: Promise<unknown> | undefined;
@@ -32,7 +34,7 @@ it('preserves the live generation when the worker loses its IPC owner and resume
   try {
     await mkdir(path.join(directory, 'node_modules'));
     await symlink(await resolveHarnessRoot(), path.join(directory, 'node_modules/steamharness'), process.platform === 'win32' ? 'junction' : 'dir');
-    await writeFile(path.join(directory, 'package.json'), JSON.stringify({ type: 'module', id: crypto.randomUUID(), name: 'owner-disconnect', version: '1.0.0', steamHarness: { projectType: 'conversation', projectInfo: { dataStorage: { mode: 'local' } } } }));
+    await writeFile(path.join(directory, 'package.json'), JSON.stringify({ type: 'module', id: applicationId, name: 'owner-disconnect', version: '1.0.0', steamHarness: { projectType: 'conversation', projectInfo: { dataStorage: { mode: 'local' } } } }));
     model.listen(0, '127.0.0.1'); await once(model, 'listening');
     await writeFile(path.join(directory, 'index.ts'), `
       export const executor = steamharness.defineExecutor({ projectType: 'conversation',
@@ -84,19 +86,21 @@ it('preserves the live generation when the worker loses its IPC owner and resume
     runtime.dispose(); await resumed;
     await new Promise<void>(resolve => { model.close(() => resolve()); model.closeAllConnections(); });
     await rm(directory, { recursive: true, force: true });
-    await Promise.all([rm(path.join(configurationRoot, `${configurationKey}.json`), { force: true }), rm(path.join(configurationRoot, `${configurationKey}.json.lock.sqlite`), { force: true }), rm(path.join(configurationRoot, 'snapshots', configurationKey), { recursive: true, force: true })]);
+    await Promise.all([rm(path.join(configurationRoot, `${configurationKey}.json`), { force: true }), rm(path.join(configurationRoot, `${configurationKey}.json.lock.sqlite`), { force: true }), rm(path.join(configurationRoot, 'snapshots', runKey), { recursive: true, force: true })]);
   }
 }, 30_000);
 
 it('reports the original workflow failure to commands waiting for session startup', async () => {
   const directory = await mkdtemp(path.join(os.tmpdir(), 'workflow-agent-startup-'));
-  const configurationKey = createHash('sha256').update(await realpath(directory)).digest('hex');
+  const applicationId = crypto.randomUUID();
+  const configurationKey = createHash('sha256').update(`application:${applicationId}`).digest('hex');
+  const runKey = createHash('sha256').update(await realpath(directory)).digest('hex');
   const configurationRoot = path.join(os.homedir(), '.steamharness', 'configurations');
   const runtime = createWebRuntime(directory, path.join(directory, 'data'), () => undefined);
   try {
     await mkdir(path.join(directory, 'node_modules'));
     await symlink(await resolveHarnessRoot(), path.join(directory, 'node_modules/steamharness'), process.platform === 'win32' ? 'junction' : 'dir');
-    await writeFile(path.join(directory, 'package.json'), JSON.stringify({ type: 'module', id: crypto.randomUUID(), name: 'startup-failure', version: '1.0.0', steamHarness: { projectType: 'conversation', projectInfo: { dataStorage: { mode: 'local' } } } }));
+    await writeFile(path.join(directory, 'package.json'), JSON.stringify({ type: 'module', id: applicationId, name: 'startup-failure', version: '1.0.0', steamHarness: { projectType: 'conversation', projectInfo: { dataStorage: { mode: 'local' } } } }));
     await writeFile(path.join(directory, 'index.ts'), `
       export const executor = steamharness.defineExecutor({
         projectType: 'conversation',
@@ -117,13 +121,15 @@ it('reports the original workflow failure to commands waiting for session startu
     expect(events.find(event => event.type === 'agent_command_failed')).toMatchObject({ requestId: 'waiting-snapshot', message: expect.stringContaining('Fixture tool initialization failed') });
   } finally {
     runtime.dispose(); await rm(directory, { recursive: true, force: true });
-    await Promise.all([rm(path.join(configurationRoot, `${configurationKey}.json`), { force: true }), rm(path.join(configurationRoot, `${configurationKey}.json.lock.sqlite`), { force: true }), rm(path.join(configurationRoot, 'snapshots', configurationKey), { recursive: true, force: true })]);
+    await Promise.all([rm(path.join(configurationRoot, `${configurationKey}.json`), { force: true }), rm(path.join(configurationRoot, `${configurationKey}.json.lock.sqlite`), { force: true }), rm(path.join(configurationRoot, 'snapshots', runKey), { recursive: true, force: true })]);
   }
 }, 15_000);
 
 it('controls the real worker over IPC and replays pending commands after reopening SQLite', async () => {
   const directory = await mkdtemp(path.join(os.tmpdir(), 'workflow-agent-ipc-'));
-  const configurationKey = createHash('sha256').update(await realpath(directory)).digest('hex');
+  const applicationId = crypto.randomUUID();
+  const configurationKey = createHash('sha256').update(`application:${applicationId}`).digest('hex');
+  const runKey = createHash('sha256').update(await realpath(directory)).digest('hex');
   const configurationRoot = path.join(os.homedir(), '.steamharness', 'configurations');
   let calls = 0;
   const model = createServer(async (request, response) => {
@@ -142,7 +148,7 @@ it('controls the real worker over IPC and replays pending commands after reopeni
     const harnessRoot = await resolveHarnessRoot();
     await mkdir(path.join(directory, 'node_modules'));
     await symlink(harnessRoot, path.join(directory, 'node_modules/steamharness'), process.platform === 'win32' ? 'junction' : 'dir');
-    await writeFile(path.join(directory, 'package.json'), JSON.stringify({ type: 'module', id: '8912f599-21e5-4ef3-9008-ccf0ac7c242d', name: 'agent-ipc', version: '1.0.0', steamHarness: { projectType: 'conversation', projectInfo: { dataStorage: { mode: 'local' } } } }));
+    await writeFile(path.join(directory, 'package.json'), JSON.stringify({ type: 'module', id: applicationId, name: 'agent-ipc', version: '1.0.0', steamHarness: { projectType: 'conversation', projectInfo: { dataStorage: { mode: 'local' } } } }));
     const declareConfiguration = (label: string) => writeFile(path.join(directory, 'configuration.json'), JSON.stringify({version:1,fields:[{name:'label',type:'string',defaultValue:label}]}));
     await declareConfiguration('first');
     model.listen(0, '127.0.0.1'); await once(model, 'listening');
@@ -234,6 +240,6 @@ it('controls the real worker over IPC and replays pending commands after reopeni
     runtime.dispose(); await run;
     await new Promise<void>(resolve => { model.close(() => resolve()); model.closeAllConnections(); });
     await rm(directory, { recursive: true, force: true });
-    await Promise.all([rm(path.join(configurationRoot,`${configurationKey}.json`),{force:true}),rm(path.join(configurationRoot,`${configurationKey}.json.lock.sqlite`),{force:true}),rm(path.join(configurationRoot,'snapshots',configurationKey),{recursive:true,force:true})]);
+    await Promise.all([rm(path.join(configurationRoot,`${configurationKey}.json`),{force:true}),rm(path.join(configurationRoot,`${configurationKey}.json.lock.sqlite`),{force:true}),rm(path.join(configurationRoot,'snapshots',runKey),{recursive:true,force:true})]);
   }
 }, 40_000);
