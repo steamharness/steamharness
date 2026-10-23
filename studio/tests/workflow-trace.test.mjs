@@ -179,7 +179,8 @@ test('the outer webview configures an immediately loaded frame and validates tra
     MouseEvent: class { constructor(type, options) { this.type = type; Object.assign(this, options); } },
     Event: class { constructor(type, options) { this.type = type; Object.assign(this, options); } },
   });
-  assert.deepEqual(JSON.parse(JSON.stringify(frameMessages)), [[{ type: 'workflow-host', theme: 'dark', locale: 'zh-CN', traceVersion: 1, clipboardVersion: 1, nativePasteVersion: 1, resourceVersion: 1, recoveryVersion: 1 }, 'http://127.0.0.1:3000']]);
+  assert.deepEqual(JSON.parse(JSON.stringify(frameMessages)), [[{ type: 'workflow-host', theme: 'dark', locale: 'zh-CN', traceVersion: 1, clipboardVersion: 1, nativePasteVersion: 1, resourceVersion: 1, recoveryVersion: 1, dropVersion: 1 }, 'http://127.0.0.1:3000']]);
+  assert.equal(sent.shift().type, 'workflow-drop-target');
   assert.equal(sent.shift().type, 'workflow-frame-ready');
   const data = { type: 'workflow-trace', version: 1, kind: 'open' };
   listeners.message({ source: {}, origin: 'http://127.0.0.1:3000', data });
@@ -215,6 +216,12 @@ test('the outer webview configures an immediately loaded frame and validates tra
   assert.equal(sent.length, 4);
   listeners.message({ source: child, origin: 'http://127.0.0.1:3000', data: recovery });
   assert.equal(sent.pop(), recovery);
+  const dropTarget = { type: 'workflow-drop-target', version: 1, target: 'conversation:2' };
+  listeners.message({ source: {}, origin: 'http://127.0.0.1:3000', data: dropTarget });
+  listeners.message({ source: child, origin: 'http://foreign', data: dropTarget });
+  assert.equal(sent.length, 4);
+  listeners.message({ source: child, origin: 'http://127.0.0.1:3000', data: dropTarget });
+  assert.equal(sent.pop(), dropTarget);
   const edit = detail => { let prevented = false; listeners['vscode-webview-exec-command']({ detail, preventDefault: () => { prevented = true; } }); return prevented; };
   assert.equal(edit('paste'), false);
   const capability = { type: 'workflow-edit', version: 1 };

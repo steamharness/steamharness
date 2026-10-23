@@ -1,5 +1,6 @@
 import { t } from './localization';
 import { isDeepStrictEqual } from 'node:util';
+import { conversationPrompt, type PathReference } from './conversation-paths';
 import type { AgentSessionCommand, AgentSessionReceipt, AgentSessionSnapshot } from 'steamharness/agent';
 import {
   applyOutputChunk, outputText, validateProjectValues, projectParameters, projectParamArgs, resolvedProjectValues, projectFormValue, sessionRunning, conversationModelName,
@@ -115,7 +116,7 @@ export class ConversationController {
   }
   private changed(): void { if (!this.disposed) { this.options.changed(); } }
   async create(force = false): Promise<void> {
-    const blank = force ? undefined : this.sessions.find((entry) => !entry.messages.length && !entry.activeRunId && !entry.queuedInputs?.length && !entry.draft?.text && !entry.draft?.attachments.length);
+    const blank = force ? undefined : this.sessions.find((entry) => !entry.messages.length && !entry.activeRunId && !entry.queuedInputs?.length && !entry.draft?.text && !entry.draft?.attachments.length && !entry.draft?.references?.length);
     const next = blank ?? this.blank();
     next.updatedAt = Date.now();
     if (blank) { this.sessions.splice(this.sessions.indexOf(blank), 1); }
@@ -190,10 +191,10 @@ export class ConversationController {
       this.changed(); await this.persist();
     } finally { this.removing.delete(id); }
   }
-  async updateDraft(id: string, text: string, attachments: Attachment[], editingQueueId?: string): Promise<void> {
+  async updateDraft(id: string, text: string, attachments: Attachment[], editingQueueId?: string, references?: PathReference[]): Promise<void> {
     const entry = this.sessions.find((entry) => entry.id === id);
     if (!entry) { return; }
-    entry.draft = { text: text.slice(0, 100_000), attachments, editingQueueId: editingQueueId ?? entry.draft?.editingQueueId };
+    entry.draft = { text: text.slice(0, 100_000), attachments, ...(references?.length ? { references } : {}), editingQueueId: editingQueueId ?? entry.draft?.editingQueueId };
     await this.persist();
   }
   async recordCommand(command: string, content: string, entry = this.current): Promise<void> {
@@ -208,7 +209,7 @@ export class ConversationController {
     validateProjectValues(parameters.fields, input.params, input.states);
     if (this.disposed || this.removing.has(entry.id) || !this.sessions.includes(entry)) { throw new Error(t("Conversation no longer exists.")); }
     if (this.project.projectType !== 'conversation' && input.text) { this.rawArgs(input.text); }
-    if (this.project.projectType === 'conversation' && !input.text.trim() && !input.attachments.length) { return; }
+    if (this.project.projectType === 'conversation' && !input.text.trim() && !input.attachments.length && !input.references?.length) { return; }
     const id = requestId ?? globalThis.crypto.randomUUID();
     const queued: ConversationQueuedInput = { ...input, id, requestId: id, createdAt: Date.now(), params: { ...input.params }, attachments: [...input.attachments] };
     if (entry.messages.some(message => message.id === id || message.sessionRequestId === id || message.input?.requestId === id) || entry.queuedInputs?.some(item => item.id === id || item.requestId === id)) return;
@@ -244,11 +245,11 @@ export class ConversationController {
       const planIndex = previous?.args.indexOf('--plan') ?? -1;
       if (planIndex >= 0 && previous!.args[planIndex + 1] !== 'false' && owner.activeRunId) throw new Error(t("The current session is running."));
       if (attachmentsUnsupported(input.attachments)) throw new Error(t('This session accepts image attachments.'));
-      if (input.text === '/compact' || input.text === '/summarize') {
+      if (!input.references?.length && (input.text === '/compact' || input.text === '/summarize')) {
         await this.agentCommand(entry.id, { type: 'compact', requestId: queued.id });
       } else {
         (entry.agentInputs ??= {})[queued.id] = queued;
-        try { await this.agentCommand(entry.id, { type: 'submit', requestId: queued.id, prompt: input.text, mode }, input.attachments); }
+        try { await this.agentCommand(entry.id, { type: 'submit', requestId: queued.id, prompt: conversationPrompt(input.text, input.references), mode }, input.attachments); }
         catch (error) {
           if (!entry.agentCommands?.some(item => item.command.requestId === queued.id)) { delete entry.agentInputs[queued.id]; await this.persist(); }
           throw error;
@@ -281,7 +282,7 @@ export class ConversationController {
     const parameters = projectParameters(this.project, input.entrypointId);
     const args = projectParamArgs(parameters.fields, input.params, input.states);
     if (this.project.projectType === 'conversation') {
-      args.push('--message', input.text);
+      args.push('--message', conversationPrompt(input.text, input.references));
       for (const [flag, files] of [
         ['--images', input.attachments.filter((file) => file.kind === 'image')],
         ['--videos', input.attachments.filter((file) => file.mimeType.startsWith('video/'))],
@@ -290,8 +291,8 @@ export class ConversationController {
     } else if (input.text) { args.push(...this.rawArgs(input.text)); }
     if (!answer) {
       if (this.project.conversation?.durable?.enabled) entry.agentParameters = { configurationRevision: this.options.configurationRevision?.(), args: projectParamArgs(parameters.fields, input.params, input.states), entrypointId: input.entrypointId, policies: JSON.parse(JSON.stringify(entry.toolPermissionPolicies ?? {})) };
-      if (!entry.messages.length && !entry.titleLocked) { entry.title = (input.text || input.attachments[0]?.name || t("Workflow run")).slice(0, 80); }
-      entry.messages.push({ id: globalThis.crypto.randomUUID(), role: 'user', content: input.text || '', attachments: input.attachments, args, input, entrypointId: input.entrypointId, createdAt: Date.now() });
+      if (!entry.messages.length && !entry.titleLocked) { entry.title = (input.text || input.attachments[0]?.name || input.references?.[0]?.name || t("Workflow run")).slice(0, 80); }
+      entry.messages.push({ id: globalThis.crypto.randomUUID(), role: 'user', content: input.text || '', attachments: input.attachments, references: input.references, args, input, entrypointId: input.entrypointId, createdAt: Date.now() });
       answer = { id: input.id, role: 'assistant', content: '', items: [], status: 'running', createdAt: Date.now(), model: conversationModelName(input, parameters.fields), args, entrypointId: input.entrypointId, events: [] };
       answer.runId = answer.id;
       entry.messages.push(answer);
@@ -513,15 +514,15 @@ export class ConversationController {
         if (!answer && turn.mode !== 'steer') {
           const id = `session:${turn.conversationId}:${turn.requestId}`;
           const pending = entry.agentCommands?.find(item => item.command.requestId === turn.requestId);
-          entry.messages.push({ id: `${id}:input`, role: 'user', content: turn.prompt, createdAt: input?.createdAt ?? Date.now(), contextEpoch: turn.epoch,
-            attachments: input?.attachments ?? pending?.attachments, ...(input ? { input } : {}) });
+          entry.messages.push({ id: `${id}:input`, role: 'user', content: input?.text ?? turn.prompt, createdAt: input?.createdAt ?? Date.now(), contextEpoch: turn.epoch,
+            attachments: input?.attachments ?? pending?.attachments, references: input?.references, ...(input ? { input } : {}) });
           answer = { id, role: 'assistant', content: '', items: [], createdAt: Date.now(), sessionRequestId: turn.requestId, sessionConversationId: turn.conversationId,
             model: input ? conversationModelName(input, projectParameters(this.project, input.entrypointId).fields) : undefined };
           entry.messages.push(answer);
         }
         if (turn.mode === 'steer') {
           const id = `steer:${turn.requestId}`;
-          if (!entry.messages.some(message => message.id === id)) entry.messages.push({ id, role: 'user', content: turn.prompt, status: 'steer', createdAt: Date.now(), attachments: input?.attachments });
+          if (!entry.messages.some(message => message.id === id)) entry.messages.push({ id, role: 'user', content: input?.text ?? turn.prompt, status: 'steer', createdAt: Date.now(), attachments: input?.attachments, references: input?.references });
         }
         if (entry.agentInputs) delete entry.agentInputs[turn.requestId];
         if (!answer) continue;
@@ -734,7 +735,7 @@ export class ConversationController {
   async editQueued(id: string, entry = this.current): Promise<void> {
     const input = entry.queuedInputs?.find((input) => input.id === id);
     if (!input) { return; }
-    entry.draft = { text: input.text, attachments: input.attachments, editingQueueId: id };
+    entry.draft = { text: input.text, attachments: input.attachments, references: input.references, editingQueueId: id };
     (entry.parameterValues ??= {})[input.entrypointId ?? ''] = input.params;
     this.changed(); await this.persist();
   }
@@ -782,7 +783,7 @@ export class ConversationController {
     const parameters = projectParameters(this.project, user.entrypointId);
     const params: ParamValues = {};
     for (const field of parameters.fields) { const index = user.args?.indexOf(field.flag ?? '') ?? -1; if (index >= 0) { params[field.name] = user.args![index + 1]; } }
-    await this.send({ text: user.content, params, entrypointId: user.entrypointId, attachments: user.attachments ?? [] }, entry);
+    await this.send({ text: user.content, params, entrypointId: user.entrypointId, attachments: user.attachments ?? [], references: user.references }, entry);
   }
   async idle(): Promise<void> { while (this.tasks.size) { await Promise.all([...this.tasks.values()].map((task) => task.finished)); } }
   dispose(): void {

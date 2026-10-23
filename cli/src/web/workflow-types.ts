@@ -2,6 +2,7 @@ import { t } from './localization';
 import type { KanbanArtifactConfig, KanbanBridgeCall } from '@steamharness/kanban-project';
 import type { ProjectInfoContract } from '@steamharness/project-info';
 import type { AgentSessionCommand, AgentSessionReceipt, AgentSessionSnapshot } from 'steamharness/agent';
+import type { PathReference } from './conversation-paths';
 
 export type ProjectKind = 'conversation' | 'workflow' | 'kanban';
 
@@ -226,6 +227,7 @@ export interface ConversationMessage {
   /** Model display name captured for this answer, independent of the selection ID. */
   model?: string;
   attachments?: Attachment[];
+  references?: PathReference[];
   args?: string[];
   entrypointId?: string;
   runId?: string;
@@ -240,7 +242,7 @@ export interface ConversationMessage {
   timers?: TimerRecord[];
 }
 
-export interface ConversationQueuedInput { configurationPending?: boolean; id: string; requestId?: string; text: string; params: ParamValues; states?: Record<string, ParamState>; entrypointId?: string; attachments: Attachment[]; createdAt: number }
+export interface ConversationQueuedInput { configurationPending?: boolean; id: string; requestId?: string; text: string; params: ParamValues; states?: Record<string, ParamState>; entrypointId?: string; attachments: Attachment[]; references?: PathReference[]; createdAt: number }
 
 export interface ConversationSession {
   agentParameters?: { configurationRevision?: number; args: string[]; entrypointId?: string; policies: unknown };
@@ -260,7 +262,7 @@ export interface ConversationSession {
   parameterRevisions?: Record<string, Record<string, string>>;
   toolPermissionPolicies?: ToolPolicies;
   queuedInputs?: ConversationQueuedInput[];
-  draft?: { text: string; attachments: Attachment[]; editingQueueId?: string };
+  draft?: { text: string; attachments: Attachment[]; references?: PathReference[]; editingQueueId?: string };
   titleLocked?: boolean;
   activeRunId?: string;
 }

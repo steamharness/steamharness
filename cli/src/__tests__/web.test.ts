@@ -82,6 +82,28 @@ async function fixture(host?: WebHostConfiguration, beforeStart?: () => Promise<
 }
 
 describe('steamharness web', () => {
+  it('resolves and persists dropped paths, imports browser folders, and passes readable context to Core', async () => {
+    const { app, directory, runtime, post } = await fixture();
+    const folder = path.join(directory, 'dropped folder'); await mkdir(folder); await writeFile(path.join(folder, 'source.txt'), 'original bytes');
+    const resolved = await (await post({ type: 'resolve-paths', paths: [folder], requestId: 'resolve-drop' })).json();
+    const references = resolved.messages.find((message: any) => message.type === 'path-references').references;
+    expect(references).toEqual([{ path: folder, name: 'dropped folder', kind: 'directory' }]);
+    await post({ type: 'draft', text: '', attachments: [], references });
+    expect(app.controller.current.draft).toMatchObject({ text: '', references });
+    await post({ type: 'send', text: '', params: {}, attachments: [], references }); await app.controller.idle();
+    expect(vi.mocked(runtime.run).mock.calls[0][0].args.join('\n')).toContain(folder);
+    expect(app.controller.current.messages[0]).toMatchObject({ content: '', references });
+    const imported = await (await post({ type: 'import-drop', entries: [{ name: 'browser/nested.txt', kind: 'file', data: Buffer.from('browser bytes').toString('base64') }, { name: 'browser/empty', kind: 'directory' }], requestId: 'import-drop' })).json();
+    const reference = imported.messages.find((message: any) => message.type === 'path-references').references[0];
+    expect(await readFile(path.join(reference.path, 'nested.txt'), 'utf8')).toBe('browser bytes');
+    await post({ type: 'send', text: 'Read the imported folder', params: {}, attachments: [], references: [reference] }); await app.controller.idle();
+    expect(vi.mocked(runtime.run).mock.calls[1][0].args.join('\n')).toContain(reference.path);
+    expect((await post({ type: 'import-drop', entries: [{ name: '../escape', kind: 'directory' }] })).status).toBeGreaterThanOrEqual(400);
+    await post({ type: 'session-action', id: app.controller.current.id, action: 'delete' });
+    await expect(readFile(path.join(reference.path, 'nested.txt'))).rejects.toThrow();
+    expect(await readFile(path.join(folder, 'source.txt'), 'utf8')).toBe('original bytes');
+  });
+
   it('keeps raw trace and export data out of live snapshots without changing persisted history', async () => {
     const { app, cookie, post } = await fixture();
     const clientId = crypto.randomUUID();

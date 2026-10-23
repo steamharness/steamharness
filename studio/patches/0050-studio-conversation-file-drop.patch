@@ -1,0 +1,98 @@
+diff --git a/src/vs/workbench/contrib/webview/browser/studioWebviewDrop.ts b/src/vs/workbench/contrib/webview/browser/studioWebviewDrop.ts
+new file mode 100644
+--- /dev/null
++++ b/src/vs/workbench/contrib/webview/browser/studioWebviewDrop.ts
+@@ -0,0 +1,53 @@
++/*---------------------------------------------------------------------------------------------
++ *  Copyright (c) Microsoft Corporation. All rights reserved.
++ *  Licensed under the MIT License. See License.txt in the project root for license information.
++ *--------------------------------------------------------------------------------------------*/
++
++import { addDisposableListener, EventType } from '../../../../base/browser/dom.js';
++import { Disposable } from '../../../../base/common/lifecycle.js';
++import { URI } from '../../../../base/common/uri.js';
++import { containsDragType, extractEditorsDropData } from '../../../../platform/dnd/browser/dnd.js';
++
++/** Native paths are resolved before a drop crosses the sandboxed project frame. */
++export class StudioWebviewDrop extends Disposable {
++	private target: string | undefined;
++
++	constructor(private readonly send: (message: unknown) => void) { super(); }
++
++	update(target: unknown): void {
++		this.target = typeof target === 'string' && target.length > 0 && target.length <= 512 ? target : undefined;
++	}
++
++	mount(container: HTMLElement, targetWindow: Window): void {
++		for (const type of [EventType.DRAG_OVER, EventType.DROP]) {
++			this._register(addDisposableListener(targetWindow, type, (event: DragEvent) => {
++				if (!this.target || !event.dataTransfer || !containsDragType(event, 'Files', 'CodeFiles', 'ResourceURLs', 'CodeEditors', 'text/uri-list')) {
++					return;
++				}
++				if (container.checkVisibility?.({ checkVisibilityCSS: true, checkOpacity: true }) === false) {
++					return;
++				}
++				const rect = container.getBoundingClientRect();
++				if (rect.width <= 0 || rect.height <= 0 || event.clientX < rect.left || event.clientX >= rect.right || event.clientY < rect.top || event.clientY >= rect.bottom) {
++					return;
++				}
++				event.preventDefault();
++				event.stopImmediatePropagation();
++				event.dataTransfer.dropEffect = 'copy';
++				if (type !== EventType.DROP) {
++					return;
++				}
++				const resources = extractEditorsDropData(event).map(editor => editor.resource).filter(resource => resource?.scheme === 'file');
++				for (const line of event.dataTransfer.getData('text/uri-list').split(/\r?\n/)) {
++					if (line.startsWith('file:')) {
++						try { resources.push(URI.parse(line)); } catch { /* Invalid external URI. */ }
++					}
++				}
++				const paths = [...new Set(resources.map(resource => resource!.toString()))];
++				if (paths.length) {
++					this.send({ type: 'workflow-host', drop: { target: this.target, paths } });
++				}
++			}, true));
++		}
++	}
++}
+diff --git a/src/vs/workbench/contrib/webview/browser/webviewElement.ts b/src/vs/workbench/contrib/webview/browser/webviewElement.ts
+--- a/src/vs/workbench/contrib/webview/browser/webviewElement.ts
++++ b/src/vs/workbench/contrib/webview/browser/webviewElement.ts
+@@ -38,6 +38,7 @@
+ import { areWebviewContentOptionsEqual, IWebviewElement, WebviewContentOptions, WebviewExtensionDescription, WebviewInitInfo, WebviewMessageReceivedEvent, WebviewOptions } from './webview.js';
+ import { WebviewFindDelegate, WebviewFindWidget } from './webviewFindWidget.js';
+ import { StudioWindowDragRegions } from './studioWindowDrag.js';
++import { StudioWebviewDrop } from './studioWebviewDrop.js';
+ import { FromWebviewMessage, KeyEvent, ToWebviewMessage, WebViewDragEvent } from './webviewMessages.js';
+ 
+ interface WebviewContent {
+@@ -78,6 +79,7 @@
+ export class WebviewElement extends Disposable implements IWebviewElement, WebviewFindDelegate {
+ 
+ 	protected readonly id = generateUuid();
++	private readonly _studioFileDrop = this._register(new StudioWebviewDrop(message => { void this.postMessage(message); }));
+ 
+ 	/**
+ 	 * The provided identifier of this webview.
+@@ -213,6 +215,10 @@
+ 		}));
+ 
+ 		this._register(this.on('onmessage', ({ message, transfer }) => {
++			if (message?.type === 'workflow-drop-target' && message.version === 1 && this.extension?.id.value === 'studio.studio-workstation') {
++				this._studioFileDrop.update(message.target);
++				return;
++			}
+ 			if (message?.type === 'studio-window-drag-regions' && this.providedViewType === 'studio.project'
+ 				&& this.extension?.id.value === 'studio.studio-workstation' && this.element?.parentElement) {
+ 				const drag = this._studioWindowDrag.value ?? (this._studioWindowDrag.value = new StudioWindowDragRegions(this.element));
+@@ -498,6 +504,9 @@
+ 			}
+ 		});
+ 		this._registerMessageHandler(targetWindow);
++		if (this.extension?.id.value === 'studio.studio-workstation') {
++			this._studioFileDrop.mount(element, targetWindow);
++		}
+ 
+ 		if (this._webviewFindWidget) {
+ 			this._webviewFindWidget.getDomNode().style.setProperty('-webkit-app-region', 'no-drag');

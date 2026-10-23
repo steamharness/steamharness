@@ -1,6 +1,7 @@
 import { afterEach, expect, it, vi } from 'vitest';
 import type { AgentSessionCommand, AgentSessionReceipt, AgentSessionSnapshot, AgentSessionTurn } from 'steamharness/agent';
 import { ConversationController } from '../web/conversation-controller';
+import { conversationPrompt } from '../web/conversation-paths';
 import { messageSettled, type Project, type Report, type Runtime } from '../web/workflow-types';
 
 const controllers: ConversationController[] = [];
@@ -370,6 +371,18 @@ it('deletes owned child views with their fork while retaining independent forks'
   expect(f.runtime.deleteConversation).toHaveBeenCalledWith(f.controller.project, child);
   expect(f.runtime.cancel).not.toHaveBeenCalled();
   await f.finish();
+});
+
+it('submits file and folder references to a running Core Agent and retains their presentation after consumption', async () => {
+  const f = fixture(); await f.start();
+  const references = [{ path: '/workspace/folder', name: 'folder', kind: 'directory' as const }, { path: '/tmp/notes.txt', name: 'notes.txt', kind: 'file' as const }];
+  vi.mocked(f.runtime.agentControl!).mockImplementation(async (_runId, command) => ({ requestId: command.requestId, conversationId: 1, status: 'accepted' }));
+  await f.controller.send({ text: 'Inspect these', params: { model: 'one' }, attachments: [], references }, f.controller.current, false, 'paths-input');
+  expect(f.runtime.agentControl).toHaveBeenCalledWith(expect.any(String), expect.objectContaining({ type: 'submit', prompt: conversationPrompt('Inspect these', references), requestId: 'paths-input' }), f.controller.current.id, []);
+  const first = f.snapshot();
+  f.emit({ ...first, revision: 2, turns: [...first.turns, { requestId: 'paths-input', conversationId: 1, prompt: conversationPrompt('Inspect these', references), mode: 'followUp', status: 'done', epoch: 0, entryId: 3, answerId: 4, items: [] }] });
+  expect(f.controller.current.messages.find(message => message.role === 'user' && message.content === 'Inspect these')).toMatchObject({ references });
+  expect(f.controller.current.draft?.references).toBeUndefined(); await f.finish();
 });
 
 it('retains queued image metadata after acknowledgement and projects it when Harness consumes the input', async () => {

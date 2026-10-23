@@ -144,7 +144,7 @@ export class ConversationQueue {
       const promoted = action?.type === 'queue-promote' && action.phase === 'accepted'
         || state.session.agent?.turns.some(turn => turn.requestId === input.id && turn.mode === 'steer') === true;
       const submitting = state.pendingIds.has(input.id);
-      const text = input.text || input.attachments.map(file => file.name).join(', ');
+      const text = input.text || [...input.attachments, ...(input.references ?? [])].map(file => file.name).join(', ');
       if (row.label.textContent !== text) row.label.textContent = text;
       row.label.title = text;
       const status = pending ? action.type === 'queue-remove' ? t('Withdrawing...') : t('Sending now...') : submitting ? t('Sending message...') : promoted ? t('Send requested') : '';

@@ -13,6 +13,8 @@ import { ContentSearch } from './content-search';
 import { ConversationOutput } from './conversation-output';
 import { collapseIntermediateDefault } from './conversation-presentation';
 import { attachmentSignature } from './attachment-state';
+import { conversationPrompt, pathReferences, type PathReference } from '../conversation-paths';
+import { captureFileDrop, isFileDrop } from './conversation-drop';
 import { activeAgentActivity } from './agent-activity';
 import { ComposerOutput, composerOutputItems } from './output-display';
 import type { ConnectionState } from './connection';
@@ -120,6 +122,11 @@ function initialize(): void {
   let inputTimer: ReturnType<typeof setTimeout> | undefined;
   let composing = false;
   let draftFiles: Attachment[] = [];
+  let draftReferences: PathReference[] = [];
+  let dropGeneration = 0;
+  let advertisedDropTarget: string | undefined;
+  const pendingDrops = new Set<string>();
+  const dropScope = (): string => JSON.stringify([state?.project.id, state?.activeId, dropGeneration]);
   let draftTimer: ReturnType<typeof setTimeout> | undefined;
   let uploading = 0;
   let editingQueueId: string | undefined;
@@ -220,7 +227,7 @@ function initialize(): void {
   const conversationComposer = new ConversationComposer(textarea, document.querySelector('#slash-menu')!, document.querySelector('#composer-footer')!, {
     current: () => state ? { scope: formKey, enabled: state.project.projectType === 'conversation', parameters: currentParameters(),
       values: values(), states: paramStates, footer: state.project.conversation?.footer, commands: state.project.conversation?.commands,
-      commandDisabled: !connectionAvailable || !navigationReady() || submitting || pendingSend() || uploading > 0 || !!editingQueueId || state.running || !!currentSession()?.messages.some(message => message.pendingInput),
+      commandDisabled: !connectionAvailable || !navigationReady() || submitting || pendingSend() || uploading > 0 || draftReferences.length > 0 || !!editingQueueId || state.running || !!currentSession()?.messages.some(message => message.pendingInput),
       disabled: busy(), loading: parametersLoading() } : undefined,
     onChange: (name, value) => setFieldValue(name, value),
     onCommand: (command) => {
@@ -517,7 +524,7 @@ function initialize(): void {
     document.querySelector<HTMLElement>('#parameter-login')!.hidden = !authenticationRequired || state.account?.status === 'authenticated';
     parameterActions.update();
     conversationComposer.update();
-    const hasInput = !!textarea.value.trim() || draftFiles.length > 0;
+    const hasInput = !!textarea.value.trim() || draftFiles.length > 0 || draftReferences.length > 0;
     const stopping = stopRequests.get(`${state.project.uri}:${state.activeId}`);
     const pendingStop = stopping?.phase === 'pending';
     const stop = state.running && (!connectionAvailable || !canQueue() || !hasInput);
@@ -545,6 +552,8 @@ function initialize(): void {
     const attach = document.querySelector<HTMLButtonElement>('#attach')!;
     attach.hidden = !conversation || !Object.values(state.project.conversation?.attachments ?? {}).some(Boolean);
     attach.disabled = busy() || uploading > 0 || !navigationReady();
+    const dropTarget = conversation && connectionAvailable && navigationReady() && !busy() ? dropScope() : undefined;
+    if (dropTarget !== advertisedDropTarget) { advertisedDropTarget = dropTarget; vscode.postMessage({ type: 'drop-target', target: dropTarget }); }
     for (const control of Array.from(document.querySelectorAll<HTMLButtonElement>('.param-file-button'))) { control.disabled = busy() || parametersLoading(); }
     renderQueue();
   }
@@ -700,7 +709,7 @@ function initialize(): void {
     draftTimer = undefined;
     if (!state || submitting) { return; }
     drafts[`${state.project.uri}:${state.activeId}`] = textarea.value;
-    const draft = { text: textarea.value, attachments: [...draftFiles], editingQueueId };
+    const draft = { text: textarea.value, attachments: [...draftFiles], ...(draftReferences.length ? { references: [...draftReferences] } : {}), editingQueueId };
     currentSession()!.draft = draft;
     draftUpdates.set(state.activeId, { id: state.activeId, create: localSessions.has(state.activeId), draft });
     persist();
@@ -715,7 +724,7 @@ function initialize(): void {
   function navigate(id?: string): void {
     if (!state) { return; }
     saveDraft(false);
-    let session = id ? state.sessions.find(entry => entry.id === id) : state.sessions.find(entry => !entry.messages.length && !entry.activeRunId && !entry.queuedInputs?.length && !entry.draft?.text && !entry.draft?.attachments.length);
+    let session = id ? state.sessions.find(entry => entry.id === id) : state.sessions.find(entry => !entry.messages.length && !entry.activeRunId && !entry.queuedInputs?.length && !entry.draft?.text && !entry.draft?.attachments.length && !entry.draft?.references?.length);
     if (!session && id) { return; }
     if (!session) {
       session = blankSession(crypto.randomUUID());
@@ -746,7 +755,7 @@ function initialize(): void {
       entry.phase = 'sending'; changed = true;
       const { input } = entry;
       vscode.postMessage({ type: 'send', projectUri: entry.projectUri, sessionId: entry.sessionId, requestId: input.id,
-        mode: 'followUp', text: input.text, params: input.params, entrypointId: input.entrypointId, attachments: input.attachments,
+        mode: 'followUp', text: input.text, params: input.params, entrypointId: input.entrypointId, attachments: input.attachments, ...(input.references?.length ? { references: input.references } : {}),
         preserveDraft: true, editingQueueId: entry.replacesId });
     }
     if (changed) persist();
@@ -833,8 +842,8 @@ function initialize(): void {
     }
   }
 
-  function attachmentList(container: HTMLElement, attachments: Attachment[], removable: boolean): void {
-    container.replaceChildren(); container.hidden = !attachments.length;
+  function attachmentList(container: HTMLElement, attachments: Attachment[], removable: boolean, references: PathReference[] = []): void {
+    container.replaceChildren(); container.hidden = !attachments.length && !references.length;
     for (const file of attachments) {
       const isImage = file.kind === 'image';
       const item = document.createElement('div'); item.className = `attachment${isImage ? ' attachment-image' : ''}`;
@@ -847,8 +856,36 @@ function initialize(): void {
       });
       item.append(preview);
       if (!isImage) { const name = document.createElement('span'); name.textContent = file.name; name.title = file.name; item.append(name); }
-      if (removable) { item.append(iconButton('close', t("Remove attachment"), () => { draftFiles = draftFiles.filter((entry) => entry.id !== file.id); attachmentList(container, draftFiles, true); saveDraft(); updateControls(); })); }
+      if (removable) { item.append(iconButton('close', t("Remove attachment"), () => { draftFiles = draftFiles.filter((entry) => entry.id !== file.id); attachmentList(container, draftFiles, true, draftReferences); saveDraft(); updateControls(); })); }
       container.append(item);
+    }
+    for (const reference of references) {
+      const item = document.createElement('div'); item.className = 'attachment path-reference'; item.dataset.path = reference.path;
+      const symbol = document.createElement('span'); symbol.className = 'path-reference-icon'; symbol.innerHTML = icon(reference.kind === 'directory' ? 'folder' : 'file');
+      symbol.title = reference.kind === 'directory' ? t("Folder") : t("File");
+      const description = document.createElement('div'); description.className = 'path-reference-description';
+      const name = document.createElement('span'); name.className = 'path-reference-name'; name.textContent = reference.name;
+      const location = document.createElement('span'); location.className = 'path-reference-path'; location.textContent = reference.path;
+      description.title = reference.path; description.append(name, location); item.append(symbol, description);
+      if (removable) item.append(iconButton('close', t("Remove path reference"), () => {
+        draftReferences = draftReferences.filter(entry => entry.path !== reference.path); attachmentList(container, draftFiles, true, draftReferences); saveDraft(); updateControls();
+      }));
+      container.append(item);
+    }
+  }
+
+  async function applyFileDrop(drop: ReturnType<typeof captureFileDrop>): Promise<void> {
+    if (!state || !advertisedDropTarget) return;
+    const scope = dropScope(), projectUri = state.project.uri, sessionId = state.activeId, requestId = crypto.randomUUID();
+    pendingDrops.add(requestId); uploading++; updateControls();
+    try {
+      const entries = drop.paths.length ? undefined : await drop.read();
+      if (scope !== dropScope() || !pendingDrops.has(requestId)) return;
+      if (!drop.paths.length && !entries?.length) throw new Error('No files or folders were found in the drop.');
+      vscode.postMessage({ type: drop.paths.length ? 'resolve-paths' : 'import-drop', projectUri, sessionId, requestId,
+        ...(drop.paths.length ? { paths: drop.paths } : { entries }) });
+    } catch (error) {
+      if (scope === dropScope() && pendingDrops.delete(requestId)) { uploading = Math.max(0, uploading - 1); showError(t((error as Error).message)); updateControls(); }
     }
   }
 
@@ -904,7 +941,7 @@ function initialize(): void {
       avatar, feedback: root.querySelector('.message-feedback')!,
       attachments: root.querySelector('.attachments')!, promptRoot: root.querySelector('.message-prompt')!,
     };
-    root.querySelector<HTMLButtonElement>('.copy-message')!.addEventListener('click', (event) => copy(view.message.content, event.currentTarget as HTMLButtonElement));
+    root.querySelector<HTMLButtonElement>('.copy-message')!.addEventListener('click', (event) => copy(conversationPrompt(view.message.content, view.message.references), event.currentTarget as HTMLButtonElement));
     if (message.role === 'assistant') {
       view.configureModel = iconButton('settings-gear', t('Configure model'), () => configurationPanel.openAgentModels());
       view.configureModel.append(document.createTextNode(t('Configure model')));
@@ -983,12 +1020,12 @@ function initialize(): void {
     view.feedback.hidden = !error;
     view.feedback.classList.toggle('model-configuration-required', configureModel);
     if (view.configureModel) view.configureModel.hidden = !configureModel;
-    view.root.querySelector<HTMLButtonElement>('.copy-message')!.disabled = !message.content;
+    view.root.querySelector<HTMLButtonElement>('.copy-message')!.disabled = !message.content && !message.references?.length;
     const fork = view.root.querySelector<HTMLButtonElement>('.fork-message');
     if (fork) { fork.hidden = !state?.project.conversation?.durable?.enabled || !message.entryId; fork.disabled = !connectionAvailable; }
-    const signature = JSON.stringify(message.attachments);
+    const signature = JSON.stringify([message.attachments, message.references]);
     if (signature !== view.extrasSignature) {
-      view.extrasSignature = signature; attachmentList(view.attachments, message.attachments ?? [], false);
+      view.extrasSignature = signature; attachmentList(view.attachments, message.attachments ?? [], false, message.references);
     }
     if (message.pendingInput && view.prompt?.request.requestId !== message.pendingInput.requestId) {
       view.prompt?.root.remove(); view.prompt = new InputPrompt(message.pendingInput, {
@@ -1087,9 +1124,9 @@ function initialize(): void {
       composing = false;
       retryingMessage = undefined;
       clearTimeout(inputTimer);
-      clearTimeout(draftTimer); draftTimer = undefined; uploading = 0; dialogs.close(); contentSearch.close();
+      clearTimeout(draftTimer); draftTimer = undefined; uploading = 0; dropGeneration++; pendingDrops.clear(); dialogs.close(); contentSearch.close();
       textarea.value = session.draft?.text ?? drafts[`${next.project.uri}:${next.activeId}`] ?? '';
-      draftFiles = session.draft?.attachments ?? [];
+      draftFiles = session.draft?.attachments ?? []; draftReferences = session.draft?.references ?? [];
       editingQueueId = session.draft?.editingQueueId;
       renderedSession = next.activeId;
       for (const view of messages.values()) { view.output?.dispose(); } messages.clear();
@@ -1098,16 +1135,17 @@ function initialize(): void {
       sizeComposer();
     }
     const editingChanged = editingQueueId !== session.draft?.editingQueueId;
+    if (editingChanged) { dropGeneration++; uploading = Math.max(0, uploading - pendingDrops.size); pendingDrops.clear(); }
     if (editingChanged) {
       editingQueueId = session.draft?.editingQueueId;
-      textarea.value = session.draft?.text ?? ''; draftFiles = session.draft?.attachments ?? [];
+      textarea.value = session.draft?.text ?? ''; draftFiles = session.draft?.attachments ?? []; draftReferences = session.draft?.references ?? [];
       const queued = session.queuedInputs?.find((input) => input.id === editingQueueId);
       if (queued?.entrypointId) { entrypoint.value = queued.entrypointId; }
       sizeComposer();
     }
     renderHistory(switching); updateSessionMenu();
     document.querySelector<HTMLElement>('#editing-queue')!.hidden = !editingQueueId;
-    attachmentList(document.querySelector('#draft-attachments')!, draftFiles, true);
+    attachmentList(document.querySelector('#draft-attachments')!, draftFiles, true, draftReferences);
     const indexedMessages: IndexedUserMessage[] = [];
     if (!session.messages.length) {
       if (!transcriptContent.querySelector('.empty')) { transcriptContent.innerHTML = `<div class="empty">${icon(conversation ? 'comment-discussion' : 'run-all')}</div>`; }
@@ -1190,10 +1228,10 @@ function initialize(): void {
   function send(): void {
     if (!state) { return; }
     if (stopRequests.get(`${state.project.uri}:${state.activeId}`)?.phase === 'pending') { return; }
-    const hasInput = !!textarea.value.trim() || draftFiles.length > 0;
+    const hasInput = !!textarea.value.trim() || draftFiles.length > 0 || draftReferences.length > 0;
     if (state.running && (!connectionAvailable || !canQueue() || !hasInput)) { void stopCurrent(); return; }
     if (!connectionAvailable || state.project.projectType !== 'conversation' && !navigationReady()) { return; }
-    if (conversationComposer.submitCommand()) { return; }
+    if (!draftReferences.length && conversationComposer.submitCommand()) { return; }
     if (busy() || state.project.projectType !== 'conversation' && resolving || uploading || state.project.projectType === 'conversation' && !hasInput) { return; }
     const validateOnServer = state.project.projectType === 'conversation' && currentParameters().paramResolver?.enabled
       && (!parametersReady || resolving || parameterOptionsStale || paramsNeedInit || inputTimer !== undefined || !paramError.hidden);
@@ -1215,13 +1253,13 @@ function initialize(): void {
     if (state.project.projectType === 'conversation') {
       const session = currentSession()!;
       const input = { id: crypto.randomUUID(), text: textarea.value, params: structuredClone(values()), entrypointId: entrypoint.value,
-        attachments: structuredClone(draftFiles), createdAt: Date.now() };
+        attachments: structuredClone(draftFiles), ...(draftReferences.length ? { references: structuredClone(draftReferences) } : {}), createdAt: Date.now() };
       submissions.add({ projectUri: state.project.uri, sessionId: session.id, input, phase: 'pending', replacesId: editingQueueId,
         modelName: conversationModelName({ params: input.params, states: paramStates }, currentParameters().fields),
         queued: !!editingQueueId || state.running || !!session.queuedInputs?.length });
       paramsNeedInit ||= resolving || inputTimer !== undefined || currentParameters().fields.some(field => field.resolveOnInput);
       cancelParameterRequest();
-      delete parameterEdits[formKey]; textarea.value = ''; draftFiles = []; editingQueueId = undefined;
+      delete parameterEdits[formKey]; textarea.value = ''; draftFiles = []; draftReferences = []; editingQueueId = undefined;
       session.draft = { text: '', attachments: [] };
       followingLatest = true; sizeComposer(); saveDraft(false); render(state, false);
       persist(); syncNavigation(); dispatchSubmissions(); textarea.focus(); return;
@@ -1371,13 +1409,15 @@ function initialize(): void {
   latest.addEventListener('click', () => { followingLatest = true; syncTranscriptLayout(); });
   window.addEventListener('resize', () => { closeSessionMenu(); sizeComposer(); syncTranscriptLayout(); positionHistory(); });
   window.addEventListener('pagehide', () => {
+    vscode.postMessage({ type: 'drop-target' }); advertisedDropTarget = undefined;
+    dropGeneration++; uploading = Math.max(0, uploading - pendingDrops.size); pendingDrops.clear();
     transcriptScrollbarActive = false; transcriptTouchY = undefined;
     messageIndex.closePreview();
     transcriptResize.disconnect();
     if (transcriptLayoutFrame !== undefined) { cancelAnimationFrame(transcriptLayoutFrame); transcriptLayoutFrame = undefined; }
   });
   window.addEventListener('pageshow', event => {
-    if (event.persisted) { transcriptResize.observe(transcript); transcriptResize.observe(transcriptContent); syncTranscriptLayout(); }
+    if (event.persisted) { transcriptResize.observe(transcript); transcriptResize.observe(transcriptContent); syncTranscriptLayout(); updateControls(); }
   });
   document.addEventListener('keydown', (event) => {
     if (sessionMenu.matches(':popover-open')) {
@@ -1407,8 +1447,24 @@ function initialize(): void {
     }
   });
   document.querySelector('main')!.addEventListener('click', dismissNarrowMenu);
-  document.querySelector('main')!.addEventListener('dragover', (event) => { if (event.dataTransfer?.types.includes('Files') && !document.querySelector<HTMLElement>('#attach')!.hidden) { event.preventDefault(); } });
-  document.querySelector('main')!.addEventListener('drop', (event) => { const files = Array.from(event.dataTransfer?.files ?? []); if (files.length) { event.preventDefault(); void uploadFiles(files); } });
+  const dropArea = document.querySelector('main')!;
+  dropArea.addEventListener('dragover', event => {
+    if (!event.dataTransfer || !isFileDrop(event.dataTransfer)) return;
+    event.preventDefault();
+    event.dataTransfer.dropEffect = advertisedDropTarget ? 'copy' : 'none';
+    dropArea.classList.toggle('file-drop-active', !!advertisedDropTarget);
+  });
+  dropArea.addEventListener('dragleave', event => { if (!(event.relatedTarget instanceof Node) || !dropArea.contains(event.relatedTarget)) dropArea.classList.remove('file-drop-active'); });
+  dropArea.addEventListener('drop', event => {
+    dropArea.classList.remove('file-drop-active');
+    if (!event.dataTransfer || !isFileDrop(event.dataTransfer)) return;
+    event.preventDefault(); event.stopPropagation();
+    if (!advertisedDropTarget) return;
+    const drop = captureFileDrop(event.dataTransfer);
+    if (!drop.paths.length && !drop.directories && drop.files?.length && drop.files.every(file => file.type.startsWith('image/')) && state?.project.conversation?.attachments?.images) {
+      void uploadFiles(drop.files);
+    } else void applyFileDrop(drop);
+  });
   let pendingState: State | undefined;
   const stateRevisions = new StateRevisions();
   let renderScheduled = false;
@@ -1527,6 +1583,16 @@ function initialize(): void {
       }
       if (paramsNeedInit && !inputTimer) { requestParams(pendingParameterTrigger ?? { kind: 'init' }); }
       updateControls();
+    } else if (message.type === 'paths-dropped' && message.target === advertisedDropTarget && Array.isArray(message.paths)) {
+      void applyFileDrop({ paths: message.paths, read: async () => [] });
+    } else if (message.type === 'path-references' && state && message.projectUri === state.project.uri && message.sessionId === state.activeId) {
+      if (!pendingDrops.delete(message.requestId)) return;
+      uploading = Math.max(0, uploading - 1);
+      try {
+        draftReferences = pathReferences([...new Map([...draftReferences, ...pathReferences(message.references)].map(reference => [reference.path, reference])).values()]);
+        attachmentList(document.querySelector('#draft-attachments')!, draftFiles, true, draftReferences); saveDraft(); textarea.focus();
+      } catch (error) { showError(t((error as Error).message)); }
+      updateControls();
     } else if (message.type === 'attachment-cancelled' && message.sessionId === state?.activeId) {
       uploading = Math.max(0, uploading - 1); updateControls();
     } else if (message.type === 'attachments' && state && message.projectUri === state.project.uri && message.sessionId === state.activeId) {
@@ -1545,19 +1611,20 @@ function initialize(): void {
         const allowed = state.project.conversation?.attachments;
         const accepted = (message.files as Attachment[]).filter((file) => file.kind === 'image' ? allowed?.images : file.mimeType.startsWith('video/') ? allowed?.videos : allowed?.files);
         if (accepted.length !== message.files.length) { showError(t("The project does not support this attachment type.")); }
-        draftFiles = [...new Map([...draftFiles, ...accepted].map((file) => [file.id, file])).values()].slice(0, 32); attachmentList(document.querySelector('#draft-attachments')!, draftFiles, true); saveDraft();
+        draftFiles = [...new Map([...draftFiles, ...accepted].map((file) => [file.id, file])).values()].slice(0, 32); attachmentList(document.querySelector('#draft-attachments')!, draftFiles, true, draftReferences); saveDraft();
       }
       updateControls();
     } else if (message.type === 'command-executed' && message.sessionId === state?.activeId) {
       submitting = false; updateControls();
     } else if (message.type === 'sent' && state && message.sessionId === state.activeId) {
       delete parameterEdits[formKey];
-      submitting = false; textarea.value = ''; draftFiles = []; editingQueueId = undefined; drafts[`${state.project.uri}:${state.activeId}`] = ''; sizeComposer(); persist();
-      attachmentList(document.querySelector('#draft-attachments')!, draftFiles, true); updateControls(); textarea.focus();
+      submitting = false; textarea.value = ''; draftFiles = []; draftReferences = []; editingQueueId = undefined; drafts[`${state.project.uri}:${state.activeId}`] = ''; sizeComposer(); persist();
+      attachmentList(document.querySelector('#draft-attachments')!, draftFiles, true, draftReferences); updateControls(); textarea.focus();
     } else if (message.type === 'usage' && message.sessionId === state?.activeId) { dialogs.usageResult(message.requestId, message.usage); }
     else if (message.type === 'exported' && message.sessionId === state?.activeId) {
       const button = messages.get(message.messageId)?.root.querySelector<HTMLButtonElement>('.export-message'); if (button) { button.disabled = false; button.innerHTML = icon('export'); }
     } else if (message.type === 'error' && (!message.sessionId || message.sessionId === state?.activeId)) {
+      if (['resolve-paths', 'import-drop'].includes(message.requestType) && !pendingDrops.delete(message.requestId)) return;
       if (message.requestType === 'usage') { dialogs.usageResult(message.requestId, undefined, message.message); return; }
       if (message.requestType === 'resume' && messages.get(message.messageId)?.prompt?.request.requestId !== message.requestId) { return; }
       submitting = false;

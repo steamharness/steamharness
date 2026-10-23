@@ -6,7 +6,7 @@ import { t } from './localization';
 import { locale } from './localization';
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
 import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
-import { mkdir, readFile, rename, writeFile, realpath } from 'node:fs/promises';
+import { mkdir, readFile, rename, writeFile, realpath, rm } from 'node:fs/promises';
 import path from 'node:path';
 import os from 'node:os';
 import { spawn, type ChildProcess } from 'node:child_process';
@@ -30,6 +30,8 @@ import { createLocalActivityWriter, summarizeLocalRuns } from './local-analysis'
 import { ConversationOwnership } from './conversation-ownership';
 import { ConversationHistory } from './conversation-history';
 import { ConversationState } from './conversation-state';
+import { pathReferences } from './conversation-paths';
+import { importDroppedEntries, resolveDroppedPaths } from './dropped-paths';
 
 type Message = Record<string, any>;
 export interface WebOptions { projectDir: string; port?: number; dataDir?: string; theme?: 'auto' | 'light' | 'dark'; runtime?: Runtime; host?: WebHostConfiguration }
@@ -426,7 +428,8 @@ export async function startWebServer(options: WebOptions) {
         if (typeof update?.id !== 'string' || ids.has(update.id) || update.create && !sessionIdPattern.test(update.id)
           || typeof update.draft?.text !== 'string' || update.draft.text.length > 100_000 || update.draft.editingQueueId !== undefined && typeof update.draft.editingQueueId !== 'string') { throw new Error('Invalid conversation draft.'); }
         ids.add(update.id);
-        updates.push({ id: update.id, create: update.create === true, draft: { text: update.draft.text, editingQueueId: update.draft.editingQueueId, attachments: await readAttachments(update.draft.attachments, update.id) } });
+        const references = pathReferences(update.draft.references);
+        updates.push({ id: update.id, create: update.create === true, draft: { text: update.draft.text, editingQueueId: update.draft.editingQueueId, attachments: await readAttachments(update.draft.attachments, update.id), ...(references.length ? { references } : {}) } });
       }
       if (navigationSequences.get(message.clientId) === message.requestId) {
         const writable = updates.filter(update => {
@@ -555,7 +558,8 @@ export async function startWebServer(options: WebOptions) {
         if (message.mode !== undefined && !['steer', 'followUp', 'reject'].includes(message.mode)) throw new Error('Invalid input mode.');
         if (message.requestId !== undefined && (typeof message.requestId !== 'string' || !sessionIdPattern.test(message.requestId))) throw new Error('Invalid input identity.');
         if (message.editingQueueId !== undefined && typeof message.editingQueueId !== 'string') throw new Error('Invalid queued input identity.');
-        await controller.send({ text, params, states, entrypointId, attachments }, current, !!command || message.preserveDraft === true, message.requestId, message.mode, message.editingQueueId);
+        const references = command ? [] : pathReferences(message.references);
+        await controller.send({ text, params, states, entrypointId, attachments, ...(references.length ? { references } : {}) }, current, !!command || message.preserveDraft === true, message.requestId, message.mode, message.editingQueueId);
         replies.push(state(message.clientId), { type: command ? 'command-executed' : 'sent', ...(command ? { command: command.command } : {}), projectUri: project.uri, sessionId: current.id, requestId: message.requestId }); break;
       }
       case 'stop': {
@@ -565,7 +569,7 @@ export async function startWebServer(options: WebOptions) {
         break;
       }
       case 'new':
-        if (!ownership || !message.clientId || !ownership.select(message.clientId, current.id).readOnly) await controller.updateDraft(current.id, String(message.text ?? ''), await readAttachments(message.attachments ?? [], current.id));
+        if (!ownership || !message.clientId || !ownership.select(message.clientId, current.id).readOnly) await controller.updateDraft(current.id, String(message.text ?? ''), await readAttachments(message.attachments ?? [], current.id), undefined, pathReferences(message.references));
         await controller.create(true);
         if (message.clientId) rememberSelection(message.clientId, controller.activeId);
         break;
@@ -573,7 +577,7 @@ export async function startWebServer(options: WebOptions) {
         await controller.select(String(message.id));
         if (message.clientId) rememberSelection(message.clientId, controller.activeId);
         break;
-      case 'draft': await controller.updateDraft(current.id, String(message.text ?? ''), await readAttachments(message.attachments ?? [], current.id)); break;
+      case 'draft': await controller.updateDraft(current.id, String(message.text ?? ''), await readAttachments(message.attachments ?? [], current.id), undefined, pathReferences(message.references)); break;
       case 'retry': await controller.retry(String(message.messageId), current); break;
       case 'resume': await controller.resume(String(message.messageId), String(message.requestId), message.values ?? {}, current); break;
       case 'tool-policy': {
@@ -598,8 +602,19 @@ export async function startWebServer(options: WebOptions) {
         if (!session) { throw new Error('Conversation no longer exists.'); }
         if (message.action === 'rename') { await controller.rename(session.id, String(message.title ?? '')); }
         else if (message.action === 'lock') { await controller.lockTitle(session.id, !session.titleLocked); }
-        else if (message.action === 'delete') { await controller.remove(session.id); }
+        else if (message.action === 'delete') {
+          const previous = controller.sessions.map(session => session.id);
+          await controller.remove(session.id);
+          await Promise.all(previous.filter(id => !controller.sessions.some(session => session.id === id)).map(id => rm(path.join(storageDir, key, 'conversation-imports', path.basename(id)), { recursive: true, force: true })));
+        }
         else if (message.action === 'export') { replies.push({ type: 'download', name: `conversation-${session.id}.json`, content: JSON.stringify(redactProjectData(session, [...sensitiveTokens], false), null, 2) }); }
+        break;
+      }
+      case 'resolve-paths':
+      case 'import-drop': {
+        const references = message.type === 'resolve-paths' ? await resolveDroppedPaths(message.paths)
+          : await importDroppedEntries(path.join(storageDir, key, 'conversation-imports', current.id), message.entries);
+        replies.push({ type: 'path-references', projectUri: project.uri, sessionId: current.id, requestId: message.requestId, references });
         break;
       }
       case 'upload': {

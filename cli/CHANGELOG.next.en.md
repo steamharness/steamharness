@@ -2,6 +2,8 @@
 
 - [Improved] Group Configure model with the missing-model error in Conversation and Studio Assistant, separate from message action icons. The guidance wraps in narrow panes and opens model settings without losing the draft.
 
+- Added file and folder drops from VS Code, the desktop, and other locations to Conversation, with removable path cards and Core Agent context. Drafts, queues, and retries retain references; browser folder imports preserve nested files and empty folders.
+
 - [Improved] Highlight the configuration in use and offer an explicit Use this configuration button for other profiles. Prevent duplicate switches, preserve the selection on failure, and refresh usage after external switches without replacing drafts.
 
 - [Fixed] Keep user-message index visibility and left spacing consistent at fractional viewport widths caused by scaling or split panes, avoiding incorrect hiding and gaps between breakpoints.

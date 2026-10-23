@@ -30,7 +30,7 @@ export class ConversationSubmissions {
     this.entries.set(entry.input.id, entry);
     this.localInputs.add(entry.input);
     const pair: ConversationMessage[] = [
-      { id: `submission:${entry.input.id}:input`, role: 'user', content: entry.input.text, attachments: entry.input.attachments, createdAt: entry.input.createdAt },
+      { id: `submission:${entry.input.id}:input`, role: 'user', content: entry.input.text, attachments: entry.input.attachments, references: entry.input.references, createdAt: entry.input.createdAt },
       { id: `submission:${entry.input.id}:answer`, role: 'assistant', content: '', status: 'sending', createdAt: entry.input.createdAt,
         model: entry.modelName ?? conversationModelName(entry.input) },
     ];
@@ -96,6 +96,6 @@ export class ConversationSubmissions {
     }
     const first = messages.find(message => message.role === 'user');
     return { ...session, messages, queuedInputs,
-      ...(!session.messages.length && first && !session.titleLocked ? { title: (first.content || first.attachments?.[0]?.name || session.title).slice(0, 80) } : {}) };
+      ...(!session.messages.length && first && !session.titleLocked ? { title: (first.content || first.attachments?.[0]?.name || first.references?.[0]?.name || session.title).slice(0, 80) } : {}) };
   }
 }

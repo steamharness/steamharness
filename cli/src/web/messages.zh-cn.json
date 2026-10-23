@@ -584,5 +584,21 @@
   "{0}m {1}s": "{0} 分 {1} 秒",
   "{0}s": "{0} 秒",
   "On": "开启",
-  "Off": "关闭"
+  "Off": "关闭",
+  "Folder": "文件夹",
+  "Remove path reference": "移除路径引用",
+  "Invalid path references.": "路径引用无效，最多支持 32 个文件或文件夹。",
+  "Invalid path reference.": "路径引用无效。",
+  "Invalid dropped paths.": "拖入的路径无效，最多支持 32 个文件或文件夹。",
+  "Invalid dropped path.": "拖入的路径无效。",
+  "Only files and folders can be referenced.": "仅支持引用文件和文件夹。",
+  "Invalid dropped files.": "拖入的文件无效，最多支持 1,000 个文件和文件夹。",
+  "Invalid dropped file name.": "拖入的文件名无效。",
+  "Duplicate dropped file name.": "拖入的文件名重复。",
+  "Invalid dropped file data.": "拖入的文件内容无效。",
+  "Dropped files exceed 50 MiB.": "拖入的文件总大小超过 50 MiB。",
+  "A dropped file conflicts with a folder.": "拖入的文件与文件夹路径冲突。",
+  "Too many path references.": "路径引用数量超过 32 个。",
+  "A drop can contain up to 1,000 files and folders.": "一次最多拖入 1,000 个文件和文件夹。",
+  "No files or folders were found in the drop.": "没有找到拖入的文件或文件夹。"
 }

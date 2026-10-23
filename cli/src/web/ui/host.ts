@@ -37,6 +37,8 @@ export function acquireProjectHost(options: { live?: boolean; connectionBanner?:
   const emit = (message: Message) => window.dispatchEvent(new MessageEvent('message', { data: message }));
   const trace = new TraceBridge(message => { if (window.parent !== window) { window.parent.postMessage(message, '*'); } });
   let resourceHost = false, editHost = false, nativePasteHost = false;
+  let dropTarget: string | undefined;
+  const advertiseDropTarget = () => { if (window.parent !== window) window.parent.postMessage({ type: 'workflow-drop-target', version: 1, target: dropTarget }, '*'); };
   const captureInput = (input: HTMLElement): EditTarget => {
     const field = input as HTMLInputElement | HTMLTextAreaElement;
     return { element: input, selection: typeof field.selectionStart === 'number' && typeof field.selectionEnd === 'number'
@@ -144,6 +146,10 @@ export function acquireProjectHost(options: { live?: boolean; connectionBanner?:
       if (editHost) { window.parent.postMessage({ type: 'workflow-edit', version: 1 }, '*'); }
     }
     if (event.data.openConfigurations === true) emit({type:'project-configurations-open'});
+    if (event.data.dropVersion === 1) advertiseDropTarget();
+    if (event.data.drop?.target === dropTarget && dropTarget && Array.isArray(event.data.drop.paths)) {
+      emit({ type: 'paths-dropped', target: dropTarget, paths: event.data.drop.paths });
+    }
     if (event.data.resourceVersion === 1) { resourceHost = true; }
     if (event.data.recoveryVersion === 1) recovery.enabled = true;
     if (event.data.recovery) recovery.receive(event.data.recovery);
@@ -228,6 +234,7 @@ export function acquireProjectHost(options: { live?: boolean; connectionBanner?:
   });
   return {
     postMessage: async (message) => {
+      if (message.type === 'drop-target') { dropTarget = message.target; advertiseDropTarget(); return; }
       if (message.type === 'ready') { return; }
       if (message.type === 'trace-active') { trace.select(message.sessionId); return; }
       if (message.type === 'reconnect') { await connection.reconnect(); return; }

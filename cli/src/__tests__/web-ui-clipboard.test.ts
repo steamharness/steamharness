@@ -162,5 +162,14 @@ it('the UI host accepts clipboard replies only from its parent and exposes the c
   receive(parent, { editCommand: 'copy', restoreFocus: true }); acknowledgeCopy('selection');
   contextMenu(); sent.length = 0; input.value = 'Changed';
   receive(parent, { editCommand: 'copy', restoreFocus: true }); expect(sent).toEqual([]);
+  await host.postMessage({ type: 'drop-target', target: 'conversation:2' });
+  expect(sent.pop()).toEqual({ type: 'workflow-drop-target', version: 1, target: 'conversation:2' });
+  const drop = { target: 'conversation:2', paths: ['file:///Desktop/folder'] };
+  const beforeDrop = emitted.length;
+  receive({}, { drop }); receive(parent, { drop: { ...drop, target: 'old-conversation' } });
+  expect(emitted).toHaveLength(beforeDrop);
+  receive(parent, { drop }); expect(emitted.at(-1)).toEqual({ type: 'paths-dropped', ...drop });
+  await host.postMessage({ type: 'drop-target' }); receive(parent, { drop });
+  expect(emitted).toHaveLength(beforeDrop + 1);
   await Promise.resolve();
 });

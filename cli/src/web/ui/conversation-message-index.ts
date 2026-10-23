@@ -137,7 +137,7 @@ export class ConversationMessageIndex {
     const marker = this.previewed!;
     this.heading.textContent = t('User message {0} of {1}', marker.number, this.markers.length);
     const message = marker.message;
-    const text = [message.content.trim() || message.args?.join(' '), ...(message.attachments ?? []).map(file => file.name)].filter(Boolean).join('\n');
+    const text = [message.content.trim() || (!message.references?.length ? message.args?.join(' ') : ''), ...(message.attachments ?? []).map(file => file.name), ...(message.references ?? []).map(reference => reference.path)].filter(Boolean).join('\n');
     this.content.textContent = text ? text.slice(0, 2000) + (text.length > 2000 ? '…' : '') : t('Message without text');
     this.preview.hidden = false; this.positionPreview();
   }

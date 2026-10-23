@@ -1,5 +1,7 @@
 # Unreleased
 
+- Added native Conversation drag and drop for VS Code files and folders and desktop folders, preserving real paths for CLI Web display and submission.
+
 - Changed Server projects to use effective project and group access. First uploads select an owning group, published downloads require guest access, uploads require developer access and permission errors are localized.
 
 - Fix: Assistant startup retries immediately show progress and a spinner, prevent duplicate clicks, and display the original reason if retry fails before allowing another attempt.
