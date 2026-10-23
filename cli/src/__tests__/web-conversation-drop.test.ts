@@ -178,8 +178,14 @@ it.each(['en', 'zh-CN'])('opens typed path cards in drafts and messages while ke
   f.emit({ type: 'path-references', requestId: selected.requestId, projectUri: project.uri, sessionId: 'first', references: paths });
   f.acknowledgeDraft();
   const cards = document.querySelectorAll<HTMLElement>('#draft-attachments .path-reference');
-  expect(cards[0].querySelector('[data-file-type=document] .codicon-file-text')).not.toBeNull();
-  expect(cards[1].querySelector('[data-file-type=folder] .codicon-folder')).not.toBeNull();
+  f.emit({ type: 'file-icons-changed', enabled: true }); await vi.advanceTimersByTimeAsync(16);
+  const iconRequest = f.requests('file-icons').at(-1)!;
+  expect(iconRequest.files).toEqual(paths.map(ref => ({ path: ref.path, kind: ref.kind })));
+  f.emit({ type: 'file-icons', requestId: iconRequest.requestId,
+    fonts: [{ id: 'sh-file-icon-0-0', src: 'data:font/woff2;base64,d29mMg==', format: 'woff2', weight: 'normal', style: 'normal' }],
+    icons: paths.map((ref, index) => ({ ...ref, font: 'sh-file-icon-0-0', glyph: index ? '\ue618' : '\ue9ed', color: index ? '#90a959' : '#46788d' })) });
+  expect(cards[0].querySelector('.path-reference-icon')?.textContent).toBe('\ue9ed');
+  expect(cards[1].querySelector('.path-reference-icon')?.textContent).toBe('\ue618');
   const open = cards[0].querySelector<HTMLButtonElement>('.path-reference-open')!;
   expect(open.type).toBe('button'); open.focus(); expect(document.activeElement).toBe(open);
   expect(open.ariaLabel).toContain(language === 'en' ? 'Open file in Studio' : '在 Studio 中打开文件');

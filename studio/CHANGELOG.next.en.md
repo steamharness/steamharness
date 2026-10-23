@@ -1,5 +1,7 @@
 # Unreleased
 
+- [Fixed] Conversation and Assistant file cards now use the active VS Code file icon theme to match Explorer file and named-folder icons, refreshing on theme changes while ignoring stale responses.
+
 - Improvement: File path cards in Conversation and Assistant can be opened with a click. Documents use Studio previews, code uses the editor, and folders open in the system file manager. Cards show icons for common file types and report missing paths.
 
 - [Fixed] Conversation and Assistant file menus now offer native file and folder selection, preserving original paths and sharing the same path cards and Core Agent context as drag and drop.

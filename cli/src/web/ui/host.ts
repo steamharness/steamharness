@@ -38,17 +38,18 @@ export function acquireProjectHost(options: { live?: boolean; connectionBanner?:
   let navigationSignature: string | undefined;
   const emit = (message: Message) => window.dispatchEvent(new MessageEvent('message', { data: message }));
   const trace = new TraceBridge(message => { if (window.parent !== window) { window.parent.postMessage(message, '*'); } });
-  let resourceHost = false, editHost = false, nativePasteHost = false, pathPickerHost = false, pathOpenHost = false;
+  let resourceHost = false, editHost = false, nativePasteHost = false, pathPickerHost = false, pathOpenHost = false, fileIconsHost = false;
   let dropTarget: string | undefined;
   const pathPickers = new Map<string, Message>();
   const pathOpens = new Map<string, Message>();
+  const fileIconRequests = new Set<string>();
   const selectedFiles = (message: Message, selection?: FileImport, error?: string) => {
     if (pathPickers.get(message.requestId) !== message) return;
     pathPickers.delete(message.requestId);
     emit({ type: error ? 'error' : 'files-selected', requestType: 'select-paths', requestId: message.requestId,
       projectUri: message.projectUri, sessionId: message.sessionId, target: message.target, selection, message: error });
   };
-  addEventListener('pagehide', () => { pathPickers.clear(); pathOpens.clear(); });
+  addEventListener('pagehide', () => { pathPickers.clear(); pathOpens.clear(); fileIconRequests.clear(); });
   const advertiseDropTarget = () => { if (window.parent !== window) window.parent.postMessage({ type: 'workflow-drop-target', version: 1, target: dropTarget }, '*'); };
   const captureInput = (input: HTMLElement): EditTarget => {
     const field = input as HTMLInputElement | HTMLTextAreaElement;
@@ -160,6 +161,14 @@ export function acquireProjectHost(options: { live?: boolean; connectionBanner?:
     if (event.data.dropVersion === 1) advertiseDropTarget();
     if (event.data.pathPickerVersion !== undefined) pathPickerHost = event.data.pathPickerVersion === 1;
     if (event.data.pathOpenVersion !== undefined) pathOpenHost = event.data.pathOpenVersion === 1;
+    if (event.data.fileIconsVersion !== undefined || event.data.fileIconsChanged?.version === 1) {
+      if (event.data.fileIconsVersion !== undefined) fileIconsHost = event.data.fileIconsVersion === 1;
+      fileIconRequests.clear(); emit({ type: 'file-icons-changed', enabled: fileIconsHost });
+    }
+    const fileIcons = event.data.fileIcons;
+    if (fileIcons?.version === 1 && fileIconRequests.delete(fileIcons.requestId)) {
+      emit({ type: 'file-icons', requestId: fileIcons.requestId, icons: fileIcons.icons, fonts: fileIcons.fonts });
+    }
     const pathOpened = event.data.pathOpened;
     if (pathOpened?.version === 1) {
       const pending = pathOpens.get(pathOpened.requestId);
@@ -262,6 +271,13 @@ export function acquireProjectHost(options: { live?: boolean; connectionBanner?:
   });
   return {
     postMessage: async (message) => {
+      if (message.type === 'file-icons') {
+        if (fileIconsHost) {
+          fileIconRequests.add(message.requestId);
+          window.parent.postMessage({ type: 'workflow-file-icons', version: 1, requestId: message.requestId, files: message.files }, '*');
+        }
+        return;
+      }
       if (message.type === 'drop-target') {
         if (message.target) for (const [id, pending] of pathPickers) { if (pending.target !== message.target) pathPickers.delete(id); }
         dropTarget = message.target; advertiseDropTarget(); return;

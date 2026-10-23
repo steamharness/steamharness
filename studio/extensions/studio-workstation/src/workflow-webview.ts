@@ -31,7 +31,7 @@ export function projectFrameHtml(url: string, title: string, projectUri: string,
         if(!editCommands||document.activeElement!==frame&&!contextMenu||!['paste','copy','cut','selectAll','undo','redo'].includes(command))return;
         event.preventDefault();frame.contentWindow.postMessage({type:'workflow-host',editCommand:command,...(contextMenu?{restoreFocus:true}:{}),...(command==='paste'&&event.detail?.clipboard?{clipboardData:event.detail.clipboard}:{})},origin);contextMenu=false;
       });
-      frame.addEventListener('load',()=>{if(windowChrome?.active)clearDragRegions();editCommands=false;contextMenu=false;vscode.postMessage({type:'workflow-drop-target',version:1});frame.contentWindow.postMessage({type:'workflow-host',theme,windowChrome,locale:${literal(locale)},traceVersion:1,clipboardVersion:1,nativePasteVersion:document.documentElement.dataset.vscodeNativeClipboard==='1'?1:0,resourceVersion:1,recoveryVersion:1,dropVersion:1,pathPickerVersion:1,pathOpenVersion:1},origin);vscode.postMessage({type:'workflow-frame-ready'});});
+      frame.addEventListener('load',()=>{if(windowChrome?.active)clearDragRegions();editCommands=false;contextMenu=false;vscode.postMessage({type:'workflow-drop-target',version:1});frame.contentWindow.postMessage({type:'workflow-host',theme,windowChrome,locale:${literal(locale)},traceVersion:1,clipboardVersion:1,nativePasteVersion:document.documentElement.dataset.vscodeNativeClipboard==='1'?1:0,resourceVersion:1,recoveryVersion:1,dropVersion:1,pathPickerVersion:1,pathOpenVersion:1,fileIconsVersion:1},origin);vscode.postMessage({type:'workflow-frame-ready'});});
       addEventListener('message',event=>{
         if(event.source===frame.contentWindow){
           ${conversationView ? `
@@ -53,7 +53,7 @@ export function projectFrameHtml(url: string, title: string, projectUri: string,
               contextMenu=true;frame.dispatchEvent(new MouseEvent('contextmenu',{bubbles:true,cancelable:true,clientX:rect.left+x,clientY:rect.top+y}));
             }
           }
-          if(event.origin===origin&&['workflow-trace','workflow-account','workflow-clipboard','workflow-resource','workflow-reconnect','workflow-drop-target','workflow-path-picker','workflow-path-open'].includes(event.data?.type)&&event.data.version===1)vscode.postMessage(event.data);
+          if(event.origin===origin&&['workflow-trace','workflow-account','workflow-clipboard','workflow-resource','workflow-reconnect','workflow-drop-target','workflow-path-picker','workflow-path-open','workflow-file-icons'].includes(event.data?.type)&&event.data.version===1)vscode.postMessage(event.data);
           return;
         }
         if(event.data?.type!=='workflow-host')return;

@@ -500,6 +500,7 @@ describe('steamharness web', () => {
     for (const [pathname, stylesheet] of [['/', ui], [`/resource/${crypto.randomUUID()}`, 'resource-preview']]) {
       const response = await fetch(`${app.origin}${pathname}`);
       expect(response.status).toBe(200);
+      expect(response.headers.get('content-security-policy')?.split(';').map(directive => directive.trim()).find(directive => directive.startsWith('font-src'))).toBe("font-src 'self' data:");
       const html = await response.text();
       expect(html).toContain(`<link rel="stylesheet" href="/assets/${stylesheet}.css"><link rel="stylesheet" href="/assets/theme.css">`);
     }

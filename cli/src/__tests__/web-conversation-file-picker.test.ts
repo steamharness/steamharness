@@ -150,3 +150,20 @@ it('opens referenced paths through the authenticated Studio bridge and reports s
   f.receive({ pathOpenVersion: 0 }); await f.host.postMessage(request);
   expect(f.messages().at(-1).message).toContain('Open this conversation in Studio');
 });
+
+it('authenticates and correlates Studio theme responses and refreshes after host invalidation', async () => {
+  const f = hostFixture(), request = { type: 'file-icons', requestId: 'icons-1', files: [{ path: '/src/index.ts', kind: 'file' }] };
+  f.receive({ fileIconsVersion: 1 }, {}); await f.host.postMessage(request); expect(f.sent).toHaveLength(0);
+  f.receive({ fileIconsVersion: 1 }); expect(f.messages().at(-1)).toEqual({ type: 'file-icons-changed', enabled: true });
+  await f.host.postMessage(request); expect(f.sent.at(-1)).toEqual({ ...request, type: 'workflow-file-icons', version: 1 });
+  const result = { version: 1, requestId: request.requestId, icons: [{ ...request.files[0], glyph: '\u02a6' }], fonts: [] }, before = f.messages().length;
+  f.receive({ fileIcons: result }, {}); f.receive({ fileIcons: { ...result, version: 2 } }); f.receive({ fileIcons: { ...result, requestId: 'foreign' } });
+  expect(f.messages()).toHaveLength(before);
+  f.receive({ fileIcons: result }); expect(f.messages().at(-1)).toEqual({ type: 'file-icons', requestId: request.requestId, icons: result.icons, fonts: [] });
+  f.receive({ fileIcons: result }); expect(f.messages()).toHaveLength(before + 1);
+  await f.host.postMessage(request); f.receive({ fileIconsChanged: { version: 1 } });
+  expect(f.messages().at(-1)).toEqual({ type: 'file-icons-changed', enabled: true });
+  const invalidated = f.messages().length; f.receive({ fileIcons: result }); expect(f.messages()).toHaveLength(invalidated);
+  await f.host.postMessage(request); f.close(); f.receive({ fileIcons: result }); expect(f.messages()).toHaveLength(invalidated);
+  f.receive({ fileIconsVersion: 0 }); expect(f.messages().at(-1)).toEqual({ type: 'file-icons-changed', enabled: false });
+});

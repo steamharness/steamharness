@@ -16,7 +16,7 @@ import { attachmentSignature } from './attachment-state';
 import { conversationPrompt, pathReferences, type PathReference } from '../conversation-paths';
 import { captureFileDrop, isFileDrop, type FileImport } from './conversation-drop';
 import { ConversationFileMenu } from './conversation-file-menu';
-import { fileIcon } from './file-icons';
+import { FileIcons } from './file-icons';
 import { activeAgentActivity } from './agent-activity';
 import { ComposerOutput, composerOutputItems } from './output-display';
 import type { ConnectionState } from './connection';
@@ -44,6 +44,7 @@ function initialize(): void {
   const app = document.querySelector<HTMLDivElement>('#app')!;
   if (app.dataset.initialized === 'true') { return; }
   const vscode = acquireProjectHost({ connectionBanner: false });
+  const fileIcons = new FileIcons(message => { void vscode.postMessage(message); });
   const viewQuery = new URLSearchParams(location.search);
   const conversationView = viewQuery.has('projectView');
   let initialConversation = conversationView ? viewQuery.get('conversationId') : undefined;
@@ -858,7 +859,7 @@ function initialize(): void {
       const item = document.createElement('div'); item.className = `attachment${isImage ? ' attachment-image' : ''}`;
       const preview = document.createElement('button'); preview.type = 'button'; preview.className = 'attachment-preview'; preview.title = isImage ? t("Image") : file.name; preview.setAttribute('aria-label', preview.title);
       if (isImage && file.previewUrl) { const image = document.createElement('img'); image.src = file.previewUrl; image.alt = t("Image"); preview.append(image); }
-      else { const type = fileIcon(file.name, file.mimeType); preview.innerHTML = icon(type.icon); preview.dataset.fileType = type.type; }
+      else { const symbol = document.createElement('span'); fileIcons.bind(symbol, file.name); preview.append(symbol); }
       preview.addEventListener('click', () => {
         if (isImage && file.previewUrl) { dialogs.image(file.previewUrl, t("Image")); }
         else { post({ type: 'open-file', id: file.id }); }
@@ -873,8 +874,7 @@ function initialize(): void {
       const preview = document.createElement('button'); preview.type = 'button'; preview.className = 'path-reference-open';
       preview.title = `${reference.kind === 'directory' ? t("Open folder in file manager") : t("Open file in Studio")}\n${reference.path}`;
       preview.setAttribute('aria-label', preview.title.replace('\n', ': '));
-      const type = fileIcon(reference.name, '', reference.kind === 'directory');
-      const symbol = document.createElement('span'); symbol.className = 'path-reference-icon'; symbol.innerHTML = icon(type.icon); symbol.dataset.fileType = type.type;
+      const symbol = document.createElement('span'); symbol.className = 'path-reference-icon'; fileIcons.bind(symbol, reference.path, reference.kind);
       symbol.title = reference.kind === 'directory' ? t("Folder") : t("File");
       const description = document.createElement('span'); description.className = 'path-reference-description';
       const name = document.createElement('span'); name.className = 'path-reference-name'; name.textContent = reference.name;
@@ -1435,7 +1435,8 @@ function initialize(): void {
   window.addEventListener('pointercancel', releaseTranscriptScrollbar, { passive: true });
   latest.addEventListener('click', () => { followingLatest = true; syncTranscriptLayout(); });
   window.addEventListener('resize', () => { fileMenu.close(); closeSessionMenu(); sizeComposer(); syncTranscriptLayout(); positionHistory(); });
-  window.addEventListener('pagehide', () => {
+  window.addEventListener('pagehide', event => {
+    if (!event.persisted) fileIcons.dispose();
     fileMenu.close();
     vscode.postMessage({ type: 'drop-target' }); advertisedDropTarget = undefined;
     dropGeneration++; uploading = Math.max(0, uploading - pendingDrops.size); pendingDrops.clear();
@@ -1495,6 +1496,7 @@ function initialize(): void {
   let renderScheduled = false;
   window.addEventListener('message', (event) => {
     const message = event.data;
+    if (fileIcons.receive(message)) return;
     if (message.type === 'error' && message.requestType === 'resolve') {
       if (state && message.requestId === parameterRequest?.id && (!message.sessionId || message.sessionId === state.activeId)) {
         window.dispatchEvent(new MessageEvent('message', { data: { ...message, type: 'params', error: message.message,

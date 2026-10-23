@@ -1,5 +1,7 @@
 # Unreleased
 
+- [Fixed] Conversation and Assistant file cards in Studio now reuse the active Explorer file icon theme, including its icons, fonts and filename mappings. Cards follow icon and color theme changes and render the same icons for dropped and selected files.
+
 - Improvement: Conversation file cards show icons for common document, code, media, and archive formats. In Studio, clicking a file opens its editor or document preview, and clicking a folder opens the system file manager, in both drafts and message history.
 
 - [Fixed] Keep completed replies and their original model names when changing configured models in Conversation and Studio Assistant. The next turn uses the new model; durable reconnection failures no longer overwrite historical replies, and completed output previously hidden by this configuration error is restored.
