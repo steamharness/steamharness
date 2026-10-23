@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "commit": "3b1c0fa52f5f1ecc942a47c0e25b217065a26338",
+  "commit": "cfb458c0b176bf442930c8171efeb47bfe4a5601",
   "patches": {
     "0001-use-upstream-builtin-artifacts.patch": "3985e1ced03ed5abb341fd4535cb14bf46cdc5ddcf377c6b07ee1c0764e65114",
     "0002-studio-hide-accounts.patch": "b7a9e68aebc06f53ede2b74f45345e410cd1e11320a5a9c7055354f33157f220",
@@ -49,6 +49,7 @@
     "0044-studio-steam-tab-actions.patch": "d3fc189585a478003bc95e47dca1d268b546cb2bc55e708ebb2dcd226c8abf38",
     "0045-studio-steam-editor.patch": "d6839c02fd02a663cb9ea3586f7a7b3da6c31f0c56a02ab00171281d73a2a775",
     "0046-studio-steam-tools-width.patch": "e68733bd15525d57e604bf0dd54e7986d78b97568c7bdf824cb1abff979334e0",
-    "0047-studio-steam-tab-hierarchy.patch": "6eed92a6ccf830b8fa799d752f985d8cc68224f0213d45e012c2c58c7fbe6dee"
+    "0047-studio-steam-tab-hierarchy.patch": "6eed92a6ccf830b8fa799d752f985d8cc68224f0213d45e012c2c58c7fbe6dee",
+    "0048-studio-mode-motion.patch": "a5a62fc9c2186290cc81b243f044ce87e83e487f9a462429e3b8cd87d079fe37"
   }
 }

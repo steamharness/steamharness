@@ -1,0 +1,436 @@
+diff --git a/src/vs/workbench/browser/parts/media/studioMode.css b/src/vs/workbench/browser/parts/media/studioMode.css
+index a0d5268762b3529faa0838493c240084c8b281bd..1df2b62347b87eb4002444d4dbb246320ad2c72a 100644
+--- a/src/vs/workbench/browser/parts/media/studioMode.css
++++ b/src/vs/workbench/browser/parts/media/studioMode.css
+@@ -1,65 +1,80 @@
++.monaco-workbench .studio-mode-slot,
+ .monaco-workbench .studio-mode-switcher {
+-	/* Match native title bar actions above the window's draggable layer. */
+-	position: relative;
+-	z-index: 2500;
+-	display: flex;
++	box-sizing: border-box;
+ 	flex: 0 0 auto;
+-	align-items: center;
+-	gap: 2px;
++	width: 92px;
++	height: var(--vscode-spacing-size320);
+ 	margin: var(--vscode-spacing-size60) var(--vscode-spacing-size80);
+-	padding: 2px;
+-	border: 1px solid var(--vscode-widget-border, transparent);
+-	border-radius: 7px;
+-	background: color-mix(in srgb, var(--vscode-foreground) 4%, var(--vscode-sideBar-background, var(--vscode-editor-background)));
+-	-webkit-app-region: no-drag;
+ }
+ 
+-/* Native macOS leaves the left title bar empty for its unscaled window buttons. */
+-.monaco-workbench.mac:not(.web):not(.fullscreen) .studio-mode-switcher {
++/* Native window controls stay unscaled when the workbench is zoomed. */
++.monaco-workbench.mac:not(.web):not(.fullscreen) .studio-mode-slot,
++.monaco-workbench.mac:not(.web):not(.fullscreen) .studio-steam-window-chrome:not(.studio-mode-in-ide) .studio-mode-switcher {
+ 	margin-left: calc(70px / var(--zoom-factor, 1) + 8px);
+ }
++.monaco-workbench.mac:not(.web):not(.fullscreen) .titlebar-container.counter-zoom .studio-mode-slot { margin-left: 78px; }
+ 
+-.monaco-workbench.mac:not(.web):not(.fullscreen) .titlebar-container.counter-zoom .studio-mode-switcher {
+-	margin-left: 78px;
++.monaco-workbench .studio-mode-switcher {
++	position: relative;
++	z-index: 2500;
++	padding: var(--vscode-spacing-size20);
++	border: var(--vscode-strokeThickness) solid var(--vscode-contrastBorder, color-mix(in srgb, var(--vscode-foreground) 10%, transparent));
++	border-radius: var(--vscode-cornerRadius-medium);
++	background: color-mix(in srgb, var(--vscode-foreground) 8%, var(--vscode-titleBar-activeBackground, var(--vscode-editor-background)));
++	color: var(--vscode-titleBar-activeForeground, var(--vscode-foreground));
++	-webkit-app-region: no-drag;
++	transition: background-color 220ms ease, border-color 220ms ease;
++}
++.monaco-workbench .studio-mode-switcher.steam {
++	background: color-mix(in srgb, var(--vscode-testing-iconPassed, var(--vscode-textLink-foreground)) 12%, var(--vscode-editor-background));
++	border-color: color-mix(in srgb, var(--vscode-testing-iconPassed, var(--vscode-textLink-foreground)) 24%, var(--vscode-contrastBorder, transparent));
++	color: var(--vscode-testing-iconPassed, var(--vscode-textLink-foreground));
+ }
+-
+ .monaco-workbench .studio-mode-switcher button,
+ .monaco-workbench .studio-steam-toggle-tools {
+ 	position: relative;
+ 	z-index: 2500;
+-	display: inline-flex;
+-	align-items: center;
+-	justify-content: center;
+-	gap: 6px;
+-	min-height: 24px;
+-	padding: 2px 8px;
+ 	border: 0;
+-	border-radius: 5px;
++	border-radius: var(--vscode-cornerRadius-small);
+ 	background: transparent;
+ 	color: inherit;
+ 	font: inherit;
+-	font-size: 11px;
+ 	cursor: pointer;
+ 	white-space: nowrap;
+ 	user-select: text;
+ 	-webkit-user-select: text;
+ 	-webkit-app-region: no-drag;
+-	transition: background-color 160ms ease, color 160ms ease, opacity 160ms ease;
+ }
+-
+-.monaco-workbench .studio-mode-switcher button[aria-pressed="true"] {
++.monaco-workbench .studio-mode-toggle { display: block; width: 100%; height: 100%; padding: 0; }
++.monaco-workbench .studio-mode-thumb {
++	position: absolute;
++	inset: 0 auto 0 0;
++	display: flex;
++	align-items: center;
++	justify-content: center;
++	width: var(--vscode-spacing-size240);
++	border-radius: var(--vscode-cornerRadius-small);
+ 	background: var(--vscode-editor-background);
+-	box-shadow: 0 1px 3px #0002;
+-}
+-
+-.monaco-workbench .studio-mode-switcher .studio-mode-steam[aria-pressed="true"] {
+-	color: var(--vscode-testing-iconPassed, var(--vscode-textLink-foreground));
+-}
+-
+-.monaco-workbench .studio-mode-switcher button:disabled {
+-	opacity: .45;
+-	cursor: default;
++	color: var(--vscode-foreground);
++	box-shadow: var(--vscode-shadow-sm);
++	transition: left 220ms cubic-bezier(.22, 1, .36, 1);
+ }
++.monaco-workbench .studio-mode-switcher.steam .studio-mode-thumb { left: calc(100% - var(--vscode-spacing-size240)); }
++.monaco-workbench .studio-mode-label {
++	position: absolute;
++	inset: 0 0 0 var(--vscode-spacing-size240);
++	display: flex;
++	align-items: center;
++	justify-content: center;
++	font-size: var(--vscode-fontSize-label1);
++	font-weight: var(--vscode-fontWeight-semiBold);
++	transition: opacity 160ms ease, transform 220ms ease;
++}
++.monaco-workbench .studio-mode-label-steam { inset: 0 var(--vscode-spacing-size240) 0 0; opacity: 0; transform: translateX(4px); }
++.monaco-workbench .studio-mode-switcher.steam .studio-mode-label-ide { opacity: 0; transform: translateX(-4px); }
++.monaco-workbench .studio-mode-switcher.steam .studio-mode-label-steam { opacity: 1; transform: translateX(0); }
++.monaco-workbench .studio-mode-toggle:disabled { opacity: .45; cursor: default; }
++.monaco-workbench .studio-mode-toggle:hover .studio-mode-thumb { box-shadow: var(--vscode-shadow-md); }
+ 
+ .monaco-workbench .studio-mode-switcher button:focus-visible,
+ .monaco-workbench .studio-steam-toggle-tools:focus-visible,
+@@ -71,6 +86,9 @@
+ .monaco-workbench .studio-steam-toggle-tools[hidden] { display: none; }
+ .monaco-workbench .studio-steam-toggle-tools:hover { background: var(--vscode-toolbar-hoverBackground); }
+ .monaco-workbench .studio-steam-toggle-tools {
++	display: inline-flex;
++	align-items: center;
++	justify-content: center;
+ 	order: 1;
+ 	flex-shrink: 0;
+ 	width: var(--vscode-spacing-size280);
+@@ -229,7 +247,9 @@
+ 	-webkit-user-select: text;
+ }
+ 
+-.monaco-workbench .studio-mode-loading[hidden] { display: none; }
++.monaco-workbench .studio-mode-loading { opacity: 1; transition: opacity 160ms ease, display 160ms allow-discrete; }
++.monaco-workbench .studio-mode-loading[hidden] { display: none; opacity: 0; pointer-events: none; }
++@starting-style { .monaco-workbench .studio-mode-loading { opacity: 0; } }
+ 
+ .monaco-workbench .studio-steam-tools {
+ 	height: 100%;
+@@ -288,24 +308,12 @@
+ 	.monaco-workbench .studio-steam-tools-grid { grid-template-columns: minmax(0, 1fr); }
+ }
+ 
+-html.studio-mode-enter-steam { --studio-mode-slide-in: 100%; --studio-mode-slide-out: -100%; }
+-html.studio-mode-enter-ide { --studio-mode-slide-in: -100%; --studio-mode-slide-out: 100%; }
+-
+-html.studio-mode-transition .monaco-workbench .part.titlebar { view-transition-name: studio-mode-titlebar; }
+-html.studio-mode-transition .monaco-workbench .part.statusbar { view-transition-name: studio-mode-statusbar; }
+-html.studio-mode-transition::view-transition-group(root) { overflow: clip; }
+-html.studio-mode-transition::view-transition-old(root) { animation: studio-mode-out 320ms cubic-bezier(.22, 1, .36, 1) both; mix-blend-mode: normal; }
+-html.studio-mode-transition::view-transition-new(root) { animation: studio-mode-in 320ms cubic-bezier(.22, 1, .36, 1) both; mix-blend-mode: normal; }
+-html.studio-mode-transition::view-transition-group(studio-mode-titlebar),
+-html.studio-mode-transition::view-transition-group(studio-mode-statusbar),
+-html.studio-mode-transition::view-transition-new(studio-mode-titlebar),
+-html.studio-mode-transition::view-transition-new(studio-mode-statusbar) { animation: none; }
+-html.studio-mode-transition::view-transition-old(studio-mode-titlebar),
+-html.studio-mode-transition::view-transition-old(studio-mode-statusbar) { display: none; }
+-@keyframes studio-mode-out { to { transform: translateX(var(--studio-mode-slide-out)); } }
+-@keyframes studio-mode-in { from { transform: translateX(var(--studio-mode-slide-in)); } to { transform: translateX(0); } }
++.monaco-workbench.monaco-reduce-motion :is(.studio-mode-switcher, .studio-mode-thumb, .studio-mode-label, .studio-mode-loading) { transition: none; }
+ 
+ @media (prefers-reduced-motion: reduce) {
++	.monaco-workbench .studio-mode-switcher,
++	.monaco-workbench .studio-mode-switcher *,
++	.monaco-workbench .studio-mode-loading,
+ 	.monaco-workbench .studio-mode-switcher button,
+ 	.monaco-workbench .studio-steam-toggle-tools,
+ 	.monaco-workbench .studio-steam-tab,
+@@ -313,8 +321,6 @@ html.studio-mode-transition::view-transition-old(studio-mode-statusbar) { displa
+ 	.monaco-workbench .studio-steam-tool:hover { transform: none; }
+ 	.monaco-workbench .studio-mode-loading .codicon-modifier-spin,
+ 	.monaco-workbench .studio-mode-switcher .codicon-modifier-spin { animation: none; }
+-	html.studio-mode-transition::view-transition-old(root),
+-	html.studio-mode-transition::view-transition-new(root) { animation: none; }
+ }
+ 
+ /* Retain the actual controls above the root webview overlay while the window chrome is hidden. */
+@@ -329,6 +335,7 @@ html.studio-mode-transition::view-transition-old(studio-mode-statusbar) { displa
+ 	-webkit-app-region: drag;
+ }
+ .monaco-workbench .studio-steam-window-chrome { left: 0; }
++.monaco-workbench .studio-steam-window-chrome.studio-mode-in-ide .studio-mode-switcher { margin: 0; }
+ .monaco-workbench .studio-steam-tools-chrome { right: 0; height: var(--vscode-spacing-size400); }
+ .monaco-workbench .studio-steam-tools-chrome.tools-hidden { height: 52px; }
+ .monaco-workbench .studio-steam-window-chrome[hidden],
+diff --git a/src/vs/workbench/browser/parts/studioMode.ts b/src/vs/workbench/browser/parts/studioMode.ts
+index d381737acbd0e55d10d908a7d597aa6d843c08f5..ae3302ccf2e67926167d84e6cb5b82b977dafb43 100644
+--- a/src/vs/workbench/browser/parts/studioMode.ts
++++ b/src/vs/workbench/browser/parts/studioMode.ts
+@@ -84,21 +84,42 @@ export class StudioModeSwitcher extends Disposable {
+ 		@IHoverService hoverService: IHoverService,
+ 	) {
+ 		super();
+-		const element = append(left, $('.studio-mode-switcher', { role: 'group' }));
+-		const ide = append(element, $('button.studio-mode-ide', { type: 'button' })) as HTMLButtonElement;
+-		const ideIcon = append(ide, $('span.codicon.codicon-code', { 'aria-hidden': 'true' }));
+-		append(ide, $('span', undefined, 'IDE'));
+-		const steam = append(element, $('button.studio-mode-steam', { type: 'button' })) as HTMLButtonElement;
+-		const steamIcon = append(steam, $('span.codicon.codicon-rocket', { 'aria-hidden': 'true' }));
+-		append(steam, $('span', undefined, 'Steam'));
++		// Reserve title-bar space while the actual control stays in one live overlay.
++		const slot = append(left, $('.studio-mode-slot', { 'aria-hidden': 'true' }));
++		const dock = append(layout.mainContainer, $('.studio-steam-window-chrome'));
++		const element = append(dock, $('.studio-mode-switcher', { role: 'group' }));
++		const mode = append(element, $('button.studio-mode-toggle', { type: 'button' })) as HTMLButtonElement;
++		append(mode, $('span.studio-mode-label.studio-mode-label-ide', { 'aria-hidden': 'true' }, 'IDE'));
++		append(mode, $('span.studio-mode-label.studio-mode-label-steam', { 'aria-hidden': 'true' }, 'Steam'));
++		const thumb = append(mode, $('span.studio-mode-thumb', { 'aria-hidden': 'true' }));
++		append(thumb, $('span.codicon.codicon-code'));
++		const modeHover = this._register(hoverService.setupManagedHover(getDefaultHoverDelegate('mouse'), mode, ''));
+ 		const toggle = append(right, $('button.studio-steam-toggle-tools', { type: 'button', 'aria-controls': Parts.AUXILIARYBAR_PART })) as HTMLButtonElement;
+ 		const toggleIcon = append(toggle, $('span.codicon', { 'aria-hidden': 'true' }));
+ 		const toggleHover = this._register(hoverService.setupManagedHover(getDefaultHoverDelegate('mouse'), toggle, ''));
+-		const dock = append(layout.mainContainer, $('.studio-steam-window-chrome'));
+ 		const toolsDock = append(layout.mainContainer, $('.studio-steam-tools-chrome'));
+-		dock.hidden = toolsDock.hidden = true;
++		toolsDock.hidden = true;
+ 		let lastChrome = '', timer: number | undefined;
++		const positionMode = () => {
++			const active = studioModeState.steam;
++			dock.classList.toggle('studio-mode-in-ide', !active);
++			if (active) {
++				dock.style.left = dock.style.top = '0px';
++				dock.style.height = `${studioWindowChrome.height}px`;
++				dock.style.zoom = '';
++			} else {
++				const rect = slot.getBoundingClientRect();
++				if (!rect.width || !rect.height) { return; }
++				const parent = layout.mainContainer.getBoundingClientRect();
++				const scale = rect.width / slot.offsetWidth;
++				dock.style.zoom = String(scale);
++				dock.style.left = `${(rect.left - parent.left) / scale}px`;
++				dock.style.top = `${(rect.top - parent.top) / scale}px`;
++				dock.style.height = `${rect.height / scale}px`;
++			}
++		};
+ 		const publishChrome = () => {
++			positionMode();
+ 			const visible = layout.isVisible(Parts.AUXILIARYBAR_PART);
+ 			studioWindowChrome.active = studioModeState.steam;
+ 			studioWindowChrome.left = dock.offsetWidth;
+@@ -116,14 +137,12 @@ export class StudioModeSwitcher extends Disposable {
+ 			timer = getWindow(dock).setTimeout(publishChrome, 0);
+ 		};
+ 		const observer = new (getWindow(dock).ResizeObserver)(scheduleChrome);
+-		observer.observe(dock); observer.observe(toolsDock);
+-		this._register(toDisposable(() => { observer.disconnect(); getWindow(dock).clearTimeout(timer); dock.remove(); toolsDock.remove(); }));
++		observer.observe(dock); observer.observe(toolsDock); observer.observe(slot); observer.observe(left);
++		this._register(toDisposable(() => { observer.disconnect(); getWindow(dock).clearTimeout(timer); slot.remove(); dock.remove(); toolsDock.remove(); }));
+ 		const update = () => {
+ 			const { state, steam: active, busy, targetSteam } = studioModeState;
+-			dock.hidden = toolsDock.hidden = !active;
+-			const modeParent = active ? dock : left;
++			toolsDock.hidden = !active;
+ 			const toolsParent = active ? toolsDock : right;
+-			if (element.parentElement !== modeParent) { modeParent.append(element); }
+ 			if (toggle.parentElement !== toolsParent) { toolsParent.append(toggle); }
+ 			const toolsVisible = layout.isVisible(Parts.AUXILIARYBAR_PART);
+ 			const title = active && toolsVisible ? layout.getContainer(getWindow(dock), Parts.AUXILIARYBAR_PART)?.querySelector(':scope > .title') : undefined;
+@@ -132,14 +151,14 @@ export class StudioModeSwitcher extends Disposable {
+ 			toolsDock.classList.toggle('tools-hidden', !toolsVisible);
+ 			element.setAttribute('aria-label', state.labels.mode ?? 'Workspace Mode');
+ 			element.setAttribute('aria-busy', String(busy));
+-			ide.title = state.labels.switchToIde ?? 'Switch to IDE Mode';
+-			steam.title = state.labels[state.available ? 'switchToSteam' : 'unavailable'] ?? 'Steam Mode';
+-			ide.setAttribute('aria-pressed', String(!active));
+-			steam.setAttribute('aria-pressed', String(active));
+-			ideIcon.className = busy && !targetSteam ? 'codicon codicon-loading codicon-modifier-spin' : 'codicon codicon-code';
+-			steamIcon.className = busy && targetSteam ? 'codicon codicon-loading codicon-modifier-spin' : 'codicon codicon-rocket';
+-			ide.disabled = busy && !targetSteam;
+-			steam.disabled = !state.available || busy && targetSteam;
++			element.classList.toggle('steam', active);
++			const leavingSteam = busy ? targetSteam : active;
++			const modeLabel = leavingSteam ? state.labels.switchToIde ?? 'Switch to IDE Mode'
++				: state.labels[state.available ? 'switchToSteam' : 'unavailable'] ?? 'Steam Mode';
++			mode.setAttribute('aria-label', modeLabel);
++			mode.setAttribute('aria-pressed', String(active));
++			modeHover.update(modeLabel);
++			mode.disabled = !state.available && !active && !busy;
+ 			const visible = layout.isVisible(Parts.AUXILIARYBAR_PART);
+ 			toggle.hidden = !active;
+ 			toggle.disabled = busy;
+@@ -148,9 +167,10 @@ export class StudioModeSwitcher extends Disposable {
+ 			toggle.setAttribute('aria-label', toggleLabel);
+ 			toggleHover.update(toggleLabel);
+ 			toggleIcon.className = `codicon codicon-layout-sidebar-right${visible ? '' : '-off'}`;
++			positionMode();
+ 			scheduleChrome();
+ 		};
+-		for (const [button, command] of [[ide, 'studio.internalEnterIdeMode'], [steam, 'studio.internalEnterSteamMode'], [toggle, 'workbench.action.toggleAuxiliaryBar']] as const) {
++		for (const [button, command] of [[mode, 'studio.internalToggleMode'], [toggle, 'workbench.action.toggleAuxiliaryBar']] as const) {
+ 			this._register(addDisposableListener(button, 'click', () => {
+ 				void this.commands.executeCommand(command).catch(error => this.notifications.error(error));
+ 			}));
+@@ -165,7 +185,7 @@ export class StudioModeSwitcher extends Disposable {
+ 	}
+ }
+ 
+-/** Keep project startup visible without holding a frozen view-transition snapshot. */
++/** Keep project startup visible while asynchronous preparation is pending. */
+ export class StudioModeLoading extends Disposable {
+ 	private readonly element: HTMLElement;
+ 	private readonly label: HTMLElement;
+diff --git a/src/vs/workbench/contrib/studioMode/browser/studioMode.contribution.ts b/src/vs/workbench/contrib/studioMode/browser/studioMode.contribution.ts
+index ded6839f1293d106da24df4e3f5241081034f3ec..45dffb473e30cc606da371ef70f580e561b43f13 100644
+--- a/src/vs/workbench/contrib/studioMode/browser/studioMode.contribution.ts
++++ b/src/vs/workbench/contrib/studioMode/browser/studioMode.contribution.ts
+@@ -93,6 +93,7 @@ export class StudioModeContribution extends Disposable {
+ 	private requested: boolean;
+ 	private initialized = false;
+ 	private revision = 0;
++	private readonly animations = new Set<Animation>();
+ 
+ 	constructor(
+ 		@IWorkbenchLayoutService private readonly layout: IWorkbenchLayoutService,
+@@ -149,6 +150,7 @@ export class StudioModeContribution extends Disposable {
+ 	private request(steam: boolean): Promise<void> {
+ 		this.requested = steam && studioModeState.state.available;
+ 		const revision = ++this.revision;
++		for (const animation of this.animations) { animation.cancel(); }
+ 		if (!this.requested && studioModeState.busy) {
+ 			void this.commands.executeCommand('studio.internalCancelSteamPreparation').catch(() => undefined);
+ 		}
+@@ -176,10 +178,9 @@ export class StudioModeContribution extends Disposable {
+ 					};
+ 					if (!this.steam) {
+ 						await this.transition(true, async () => {
+-							await this.enterSteam(projectUri);
+ 							this.loading.show();
+-							studioModeState.setMode(true, true, true);
+-							// A retained frame can be revealed in the snapshot without a loading flash.
++							await this.enterSteam(projectUri);
++							// Reveal retained content before the incoming animation, without a loading flash.
+ 							if (studioModeState.state.ready && revision === this.revision) {
+ 								prepared = await prepare();
+ 								if (prepared) { this.loading.hide(); }
+@@ -189,7 +190,7 @@ export class StudioModeContribution extends Disposable {
+ 						this.loading.show();
+ 					}
+ 					if (revision !== this.revision || this._store.isDisposed) { return; }
+-					// Cold startup runs after the live loading layout, outside the frozen snapshot.
++					// Cold startup runs after the live loading layout has entered.
+ 					prepared ??= await prepare();
+ 					if (revision !== this.revision || !studioModeState.state.available || this._store.isDisposed) { return; }
+ 					if (!prepared) {
+@@ -259,6 +260,7 @@ export class StudioModeContribution extends Disposable {
+ 		await this.configuration.updateValue('workbench.sideBar.location', 'left', ConfigurationTarget.MEMORY);
+ 		this.steam = true;
+ 		studioWindowChrome.projectUri = projectUri;
++		studioModeState.setMode(true, true, true);
+ 		this.contextKeys.createKey<boolean>('studio.steamMode', false).set(true);
+ 		this.layout.mainContainer.classList.add('studio-steam-mode');
+ 		this.layout.setWindowChromeHidden(true);
+@@ -303,6 +305,7 @@ export class StudioModeContribution extends Disposable {
+ 		if (!snapshot) { return; }
+ 		await this.workspace.deactivate(this.groups.mainPart.getGroup(snapshot.activeGroup) ?? this.groups.mainPart.activeGroup);
+ 		this.steam = false;
++		studioModeState.setMode(false, true, false);
+ 		this.projectReady = false;
+ 		this.contextKeys.createKey('studio.steamMode', false).set(false);
+ 		this.layout.mainContainer.classList.remove('studio-steam-mode');
+@@ -337,33 +340,47 @@ export class StudioModeContribution extends Disposable {
+ 
+ 	private async transition(steam: boolean, change: () => Promise<void>): Promise<void> {
+ 		const win = getWindow(this.layout.mainContainer);
+-		const document = win.document;
+-		if (win.matchMedia('(prefers-reduced-motion: reduce)').matches) { await change(); return; }
+-		if (document.startViewTransition) {
+-			const direction = steam ? 'studio-mode-enter-steam' : 'studio-mode-enter-ide';
+-			document.documentElement.classList.add('studio-mode-transition', direction);
+-			try {
+-				const transition = document.startViewTransition(async () => {
+-					// Slow view restoration must not freeze the workbench behind a captured image.
+-					const timeout = win.setTimeout(() => transition.skipTransition(), 120);
+-					try { await change(); } finally { win.clearTimeout(timeout); }
++		if (win.matchMedia('(prefers-reduced-motion: reduce)').matches || this.layout.mainContainer.classList.contains('monaco-reduce-motion')) { await change(); return; }
++		const effects: Animation[] = [];
++		const animate = async (leaving: boolean) => {
++			const parts = [Parts.TITLEBAR_PART, Parts.STATUSBAR_PART, ...sideParts, Parts.EDITOR_PART] as const;
++			const elements = parts.filter(part => this.layout.isVisible(part, win)).flatMap(part => this.layout.getContainer(win, part) ?? []);
++			const titlebar = this.layout.getContainer(win, Parts.TITLEBAR_PART);
++			const statusbar = this.layout.getContainer(win, Parts.STATUSBAR_PART);
++			// Webviews live outside the grid so their iframes survive layout changes.
++			for (const overlay of this.layout.mainContainer.querySelectorAll<HTMLElement>('.webview-overlay-content, .studio-steam-tools-chrome')) {
++				if (overlay.checkVisibility({ visibilityProperty: true }) && !elements.some(element => element.contains(overlay))) { elements.push(overlay); }
++			}
++			for (const element of elements) {
++				// Fade window chrome in place so its reserved control geometry stays stable.
++				const distance = element === titlebar || element === statusbar ? 0 : (steam ? 1 : -1) * (leaving ? -24 : 32);
++				const resting = { opacity: 1, transform: 'translateX(0)' };
++				const shifted = { opacity: 0, transform: `translateX(${distance}px)` };
++				const animation = element.animate(leaving ? [resting, shifted] : [shifted, resting], {
++					duration: leaving ? 140 : 220, easing: 'cubic-bezier(.22, 1, .36, 1)', fill: 'both',
+ 				});
+-				// A background tab or skipped animation can reject ready even when the layout succeeds.
+-				void transition.ready.catch(() => undefined);
+-				const finished = transition.finished.catch(() => undefined);
+-				await transition.updateCallbackDone;
+-				await finished;
+-			} finally { document.documentElement.classList.remove('studio-mode-transition', direction); }
+-		} else {
+-			await change();
+-			const animations: Animation[] = [];
+-			for (const part of [Parts.EDITOR_PART, Parts.AUXILIARYBAR_PART]) {
+-				const animation = this.layout.getContainer(win, part)?.animate([{ opacity: .7, transform: `translateX(${steam ? 48 : -48}px)` }, { opacity: 1, transform: 'translateX(0)' }], { duration: 300, easing: 'cubic-bezier(.22,1,.36,1)' });
+-				if (animation) { animations.push(animation); }
++				effects.push(animation); this.animations.add(animation);
+ 			}
+-			await Promise.all(animations.map(animation => animation.finished.catch(() => undefined)));
++			await Promise.all(effects.map(animation => animation.finished.catch(() => undefined)));
++		};
++		try {
++			// Finish the outgoing chrome before the grid hides it. Animate the live
++			// incoming parts after async restoration, including cold project startup.
++			await animate(true);
++			if (this._store.isDisposed) { return; }
++			await change();
++			for (const animation of effects.splice(0)) { this.animations.delete(animation); animation.cancel(); }
++			if (this._store.isDisposed) { return; }
++			await animate(false);
++		} finally {
++			for (const animation of effects) { this.animations.delete(animation); animation.cancel(); }
+ 		}
+ 	}
++
++	override dispose(): void {
++		for (const animation of this.animations) { animation.cancel(); }
++		super.dispose();
++	}
+ }
+ 
+ registerWorkbenchContribution2(StudioModeContribution.ID, StudioModeContribution, WorkbenchPhase.AfterRestored);

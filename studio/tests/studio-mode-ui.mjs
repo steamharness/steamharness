@@ -11,6 +11,7 @@ import { ROOT, assertRuntime, assertUpstream, exists } from '../scripts/distribu
 
 await assertRuntime();
 const upstream = await assertUpstream();
+const sourceRoot = path.resolve(process.env.STUDIO_STEAMHARNESS_SOURCE ?? path.join(ROOT, '..'));
 const proof = path.resolve(ROOT, process.env.STEAMHARNESS_UI_PROOF ?? '.studio/studio-mode-ui');
 await mkdir(proof, { recursive: true });
 const checks = [], errors = [];
@@ -75,7 +76,7 @@ for (const language of process.env.STEAMHARNESS_UI_LANGUAGES?.split(',') ?? ['en
       '--connection-token', token, '--server-data-dir', path.join(directory, 'server'), '--extensions-dir', path.join(directory, 'extensions'),
       '--builtin-extensions-dir', path.join(upstream.directory, 'extensions'), '--disable-workspace-trust', '--force-disable-user-env',
       '--telemetry-level', 'off', '--default-folder', folder], { cwd: upstream.directory, detached: true, stdio: ['ignore', 'pipe', 'pipe'], env: { ...process.env,
-      NODE_ENV: 'development', VSCODE_DEV: '1', STUDIO_STEAMHARNESS_SOURCE: path.resolve(ROOT, '..'),
+      NODE_ENV: 'development', VSCODE_DEV: '1', STUDIO_STEAMHARNESS_SOURCE: sourceRoot,
       STEAMHARNESS_CLI_AUTH_DIR: path.join(directory, 'auth'), STEAMHARNESS_SERVER_URL: '', STEAMHARNESS_SERVER_ADMIN_KEY: '',
       STUDIO_START_TEST_READY: readyFile, STUDIO_START_TEST_TOKEN: token,
       VSCODE_SKIP_BUILTIN_EXTENSIONS: 'vscode.vscode-api-tests,GitHub.copilot,GitHub.copilot-chat' } });
@@ -129,7 +130,7 @@ for (const language of process.env.STEAMHARNESS_UI_LANGUAGES?.split(',') ?? ['en
     const command = (command, ...args) => call({ action: 'command', command, args });
     assert.equal((await call({ action: 'state' })).language, language);
     if (workstation) { assert.equal((await call({ action: 'state' })).extensionPath, workstation); }
-    const steam = page.locator('.studio-mode-steam');
+    const steam = page.locator('.studio-mode-toggle');
     await steam.waitFor(); assert.equal(await steam.isDisabled(), true);
     await command('studio.enterSteamMode'); assert.equal(await page.locator('.studio-steam-mode').count(), 0);
     check(`${language}: ordinary folder stays in IDE mode`);
@@ -140,18 +141,18 @@ for (const language of process.env.STEAMHARNESS_UI_LANGUAGES?.split(',') ?? ['en
         shell.style.cssText = 'position:fixed;left:-10000px;top:0;width:800px;height:35px;';
         shell.innerHTML = '<div class="part titlebar"><div class="titlebar-container"><div class="titlebar-left"></div></div></div>';
         const titlebar = shell.querySelector('.titlebar-container');
-        const left = shell.querySelector('.titlebar-left'); left.append(switcher.cloneNode(true));
+        const left = shell.querySelector('.titlebar-left'); const slot = document.createElement('div'); slot.className = 'studio-mode-slot'; left.append(slot);
         document.body.append(shell);
         const measurements = [];
         for (const zoom of [1, 1.5, .8]) {
           // Match Electron's zoomed content while its native window controls remain unscaled.
           shell.style.zoom = String(zoom); shell.style.setProperty('--zoom-factor', String(zoom));
           titlebar.classList.toggle('counter-zoom', zoom < 1);
-          const rect = left.querySelector('.studio-mode-switcher').getBoundingClientRect();
+          const rect = left.querySelector('.studio-mode-slot').getBoundingClientRect();
           measurements.push(rect.left - left.getBoundingClientRect().left);
         }
         shell.style.zoom = '1'; shell.classList.add('fullscreen'); titlebar.classList.remove('counter-zoom');
-        const fullscreen = left.querySelector('.studio-mode-switcher').getBoundingClientRect().left - left.getBoundingClientRect().left;
+        const fullscreen = left.querySelector('.studio-mode-slot').getBoundingClientRect().left - left.getBoundingClientRect().left;
         shell.remove(); return { measurements, fullscreen };
       });
       assert.ok(geometry.measurements.every(inset => inset >= 70), JSON.stringify(geometry));
@@ -161,13 +162,13 @@ for (const language of process.env.STEAMHARNESS_UI_LANGUAGES?.split(',') ?? ['en
 
     const project = path.join(folder, 'conversation'); await mkdir(project);
     await mkdir(path.join(project, 'node_modules/@steamharness'), { recursive: true });
-    await symlink(path.resolve(ROOT, '../harness'), path.join(project, 'node_modules/steamharness'), 'dir');
-    await symlink(path.resolve(ROOT, '../cli'), path.join(project, 'node_modules/@steamharness/cli'), 'dir');
+    await symlink(path.join(sourceRoot, 'harness'), path.join(project, 'node_modules/steamharness'), 'dir');
+    await symlink(path.join(sourceRoot, 'cli'), path.join(project, 'node_modules/@steamharness/cli'), 'dir');
     await copyFile(path.join(ROOT, 'examples/conversation/index.ts'), path.join(project, 'index.ts'));
     const manifest = JSON.parse(await readFile(path.join(ROOT, 'examples/conversation/package.json'), 'utf8'));
     manifest.devDependencies = {
-      steamharness: JSON.parse(await readFile(path.resolve(ROOT, '../harness/package.json'), 'utf8')).version,
-      '@steamharness/cli': JSON.parse(await readFile(path.resolve(ROOT, '../cli/package.json'), 'utf8')).version,
+      steamharness: JSON.parse(await readFile(path.join(sourceRoot, 'harness/package.json'), 'utf8')).version,
+      '@steamharness/cli': JSON.parse(await readFile(path.join(sourceRoot, 'cli/package.json'), 'utf8')).version,
     };
     await writeFile(path.join(project, 'package.json'), JSON.stringify(manifest));
     await writeFile(path.join(project, 'configuration.json'), JSON.stringify({ version: 1,
@@ -203,7 +204,7 @@ for (const language of process.env.STEAMHARNESS_UI_LANGUAGES?.split(',') ?? ['en
       assert.equal(await page.locator('.studio-mode-switcher').getAttribute('aria-busy'), 'true');
       assert.equal(await page.locator('html.studio-mode-transition').count(), 0);
       await page.screenshot({ path: path.join(proof, `${language}-loading.png`) });
-      await page.locator('.studio-mode-ide').click();
+      await page.locator('.studio-mode-toggle').click();
       await until(() => page.locator('.studio-mode-switcher').getAttribute('aria-busy'), value => value === 'false', 'IDE waited for the blocked project iframe');
       assert.equal(await steam.getAttribute('aria-pressed'), 'false');
       assert.equal(await page.locator('.studio-mode-loading').isVisible(), false);
@@ -214,18 +215,13 @@ for (const language of process.env.STEAMHARNESS_UI_LANGUAGES?.split(',') ?? ['en
     check(`${language}: slow frame loading stays visible and returning to IDE cancels the wait`);
 
     await page.evaluate(() => {
-      const start = document.startViewTransition.bind(document);
       window.studioModeTransitions = [];
-      document.startViewTransition = callback => {
-        const direction = document.documentElement.classList.contains('studio-mode-enter-steam') ? 'steam' : 'ide';
-        const transition = start(callback);
-        void transition.ready.then(() => {
-          window.studioModeTransitions.push({ direction, animations: document.getAnimations().filter(animation =>
-            ['studio-mode-in', 'studio-mode-out'].includes(animation.animationName)).map(animation => ({
-            name: animation.animationName, transforms: animation.effect.getKeyframes().map(frame => frame.transform),
-          })), titlebar: getComputedStyle(document.documentElement, '::view-transition-new(studio-mode-titlebar)').animationName });
-        }, () => undefined);
-        return transition;
+      const animate = Element.prototype.animate;
+      Element.prototype.animate = function(frames, options) {
+        if (Array.isArray(frames) && frames.length === 2 && options?.fill === 'both') {
+          window.studioModeTransitions.push({ frames, part: this.className, duration: options.duration });
+        }
+        return animate.call(this, frames, options);
       };
     });
     await steam.click(); await page.locator('.studio-steam-tools').waitFor({ timeout: 90_000 });
@@ -321,6 +317,76 @@ for (const language of process.env.STEAMHARNESS_UI_LANGUAGES?.split(',') ?? ['en
     await frame.locator('#hide-menu').click();
     await assertChromeSlot('.project-title');
     check(`${language}: native mode controls integrate with the project menu or title and stay clear in narrow layouts`);
+    if (process.env.STEAMHARNESS_UI_FOCUS === 'mode-motion') {
+      await frame.locator('#message').fill(`Retain this draft ${language}`);
+      await page.evaluate(() => {
+        const button = document.querySelector('.studio-mode-toggle'), parent = button.parentElement.parentElement;
+        window.modeControlSamples = [];
+        window.monitorModeControl = true;
+        const sample = () => {
+          window.modeControlSamples.push({ visible: button.checkVisibility({ visibilityProperty: true, opacityProperty: true }),
+            same: button === document.querySelector('.studio-mode-toggle') && parent === button.parentElement.parentElement });
+          if (window.monitorModeControl) requestAnimationFrame(sample);
+        };
+        requestAnimationFrame(sample);
+      });
+      const assertControl = async active => {
+        assert.equal(await steam.getAttribute('aria-pressed'), String(active));
+        assert.equal(await steam.getAttribute('aria-label'), language === 'en'
+          ? active ? 'Switch to IDE Mode' : 'Switch to Steam Mode'
+          : active ? '切换到 IDE 模式' : '切换到 Steam 模式');
+        const geometry = await page.locator('.studio-mode-switcher').evaluate(element => {
+          const rect = element.getBoundingClientRect(), thumb = element.querySelector('.studio-mode-thumb').getBoundingClientRect();
+          return { width: rect.width, left: rect.left, right: rect.right, thumb: thumb.left - rect.left };
+        });
+        assert.ok(geometry.width < 110 && geometry.left >= 0 && geometry.right <= 800, JSON.stringify(geometry));
+        assert.ok(active ? geometry.thumb > 40 : geometry.thumb < 8, JSON.stringify(geometry));
+      };
+      for (const theme of ['Default Dark Modern', 'Default Light Modern']) {
+        assert.equal(await call({ action: 'theme', theme }), theme);
+        await page.locator(`.monaco-workbench.${theme.includes('Dark') ? 'vs-dark' : 'vs'}`).waitFor();
+        for (const active of [false, true, false, true]) {
+          await steam.click();
+          await until(() => page.locator('.studio-mode-switcher').getAttribute('aria-busy'), value => value === 'false', 'Mode animation did not finish');
+          await assertControl(active);
+          if (active) assert.equal(await frame.locator('#message').inputValue(), `Retain this draft ${language}`);
+          await page.screenshot({ path: path.join(proof, `${language}-${theme.includes('Dark') ? 'dark' : 'light'}-${active ? 'steam' : 'ide'}.png`) });
+        }
+      }
+      await command('studio.enterIdeMode');
+      const transitions = await page.evaluate(() => window.studioModeTransitions);
+      for (const distance of ['translateX(32px)', 'translateX(-32px)']) {
+        assert.ok(transitions.some(effect => effect.frames[0].transform === distance && effect.frames[0].opacity === 0));
+      }
+      for (const part of ['titlebar', 'statusbar', 'sidebar', 'activitybar', 'webview-overlay-content']) {
+        assert.ok(transitions.some(effect => effect.part.includes(part) && effect.frames[1].opacity === 0), `${part} must exit before it is hidden`);
+      }
+      await writeFile(path.join(proof, `${language}-transitions.json`), JSON.stringify(transitions, null, 2));
+      const samples = await page.evaluate(() => { window.monitorModeControl = false; return window.modeControlSamples; });
+      assert.ok(samples.length > 30); assert.ok(samples.every(sample => sample.visible && sample.same), JSON.stringify(samples));
+      check(`${language}: the compact switch keeps its live control visible during every frame and animates both directions, including webviews and outgoing chrome`);
+      await page.setViewportSize({ width: 800, height: 700 });
+      await assertControl(false); await command('studio.enterSteamMode'); await assertControl(true);
+      const ide = command('studio.enterIdeMode');
+      await page.waitForTimeout(40);
+      const latest = command('studio.enterSteamMode');
+      await Promise.all([ide, latest]); await assertControl(true);
+      assert.equal(await frame.locator('#message').inputValue(), `Retain this draft ${language}`);
+      check(`${language}: narrow layouts and rapid reversals preserve the latest mode and the project draft`);
+      await page.emulateMedia({ reducedMotion: 'reduce' });
+      const count = await page.evaluate(() => window.studioModeTransitions.length);
+      await command('studio.enterIdeMode'); await command('studio.enterSteamMode');
+      assert.equal(await page.evaluate(() => window.studioModeTransitions.length), count);
+      check(`${language}: reduced motion changes modes without workspace animations`);
+      await page.emulateMedia({ reducedMotion: 'no-preference' });
+      await page.locator('.monaco-workbench.monaco-enable-motion').waitFor();
+      assert.equal(await call({ action: 'configure', key: 'workbench.reduceMotion', value: 'on' }), 'on');
+      await page.locator('.monaco-workbench.monaco-reduce-motion').waitFor();
+      await command('studio.enterIdeMode'); await command('studio.enterSteamMode');
+      assert.equal(await page.evaluate(() => window.studioModeTransitions.length), count);
+      check(`${language}: the workbench reduced-motion setting also skips the switch effects`);
+      continue;
+    }
     if (process.env.STEAMHARNESS_UI_FOCUS !== 'new-tool-content') {
       await frame.locator('#message').fill(`mode-persistence-${language}`); await frame.locator('#send').click();
       await frame.locator('#app[data-run-state=idle]').waitFor();
@@ -847,12 +913,11 @@ for (const language of process.env.STEAMHARNESS_UI_LANGUAGES?.split(',') ?? ['en
     await command('studio.enterIdeMode');
     await frame.locator('html:not([data-studio-window-chrome])').waitFor({ state: 'attached' });
     const transitions = await page.evaluate(() => window.studioModeTransitions);
-    for (const direction of ['steam', 'ide']) {
-      const transition = transitions.find(transition => transition.direction === direction && transition.animations.length === 2);
-      assert.ok(transition, JSON.stringify(transitions));
-      assert.equal(transition.titlebar, 'none');
-      const incoming = transition.animations.find(animation => animation.name === 'studio-mode-in');
-      assert.ok(incoming.transforms[0].includes(direction === 'steam' ? '100%' : '-100%'), JSON.stringify(incoming));
+    for (const distance of ['translateX(32px)', 'translateX(-32px)']) {
+      assert.ok(transitions.some(effect => effect.frames[0].transform === distance && effect.frames[0].opacity === 0), JSON.stringify(transitions));
+    }
+    for (const part of ['titlebar', 'statusbar', 'sidebar', 'activitybar']) {
+      assert.ok(transitions.some(effect => effect.part.includes(part) && effect.frames[1].opacity === 0), `${part} exits smoothly`);
     }
     await writeFile(path.join(proof, `${language}-transitions.json`), JSON.stringify(transitions, null, 2));
     check(`${language}: the workspace slides in opposite directions while the mode controls remain accessible`);
@@ -962,13 +1027,17 @@ for (const language of process.env.STEAMHARNESS_UI_LANGUAGES?.split(',') ?? ['en
 
     await page.emulateMedia({ reducedMotion: 'no-preference' });
     await page.evaluate(() => {
-      const start = document.startViewTransition.bind(document);
-      document.startViewTransition = callback => { const transition = start(callback); transition.skipTransition(); return transition; };
+      const animate = Element.prototype.animate;
+      Element.prototype.animate = function(frames, options) {
+        const effect = animate.call(this, frames, options);
+        if (options?.fill === 'both') queueMicrotask(() => effect.cancel());
+        return effect;
+      };
     });
     await command('studio.enterSteamMode'); await command('studio.enterIdeMode');
     await page.waitForTimeout(100);
     assert.equal(await page.locator('html.studio-mode-transition').count(), 0);
-    check(`${language}: skipped transition animations still finish without page errors`);
+    check(`${language}: cancelled transition animations still finish without page errors`);
 
     await command('workbench.action.terminal.focus');
     await page.locator('.part.panel .integrated-terminal').waitFor();
@@ -1048,8 +1117,8 @@ for (const language of process.env.STEAMHARNESS_UI_LANGUAGES?.split(',') ?? ['en
     await page.locator('.quick-input-widget').waitFor(); await page.locator('.quick-input-widget input').press('Escape');
     const otherProject = path.join(directory, 'external-project'); await mkdir(otherProject);
     await mkdir(path.join(otherProject, 'node_modules/@steamharness'), { recursive: true });
-    await symlink(path.resolve(ROOT, '../harness'), path.join(otherProject, 'node_modules/steamharness'), 'dir');
-    await symlink(path.resolve(ROOT, '../cli'), path.join(otherProject, 'node_modules/@steamharness/cli'), 'dir');
+    await symlink(path.join(sourceRoot, 'harness'), path.join(otherProject, 'node_modules/steamharness'), 'dir');
+    await symlink(path.join(sourceRoot, 'cli'), path.join(otherProject, 'node_modules/@steamharness/cli'), 'dir');
     await copyFile(path.join(project, 'index.ts'), path.join(otherProject, 'index.ts'));
     const otherManifest = structuredClone(manifest); otherManifest.id = '71d1bc8c-7701-4a75-9ab0-1e301c353239'; otherManifest.name = 'external-tool-project';
     otherManifest.steamHarness.projectInfo.localizedNames = { en: 'External Tool Project', 'zh-cn': '工具区外部项目' };

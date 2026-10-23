@@ -33,7 +33,7 @@ class Sequencer {
   current = Promise.resolve();
   queue(task) { const next = this.current.then(task, task); this.current = next; return next; }
 }
-const parts = { ACTIVITYBAR_PART: 'activity', SIDEBAR_PART: 'sidebar', PANEL_PART: 'panel', AUXILIARYBAR_PART: 'auxiliary', EDITOR_PART: 'editor' };
+const parts = { ACTIVITYBAR_PART: 'activity', SIDEBAR_PART: 'sidebar', PANEL_PART: 'panel', AUXILIARYBAR_PART: 'auxiliary', EDITOR_PART: 'editor', TITLEBAR_PART: 'titlebar', STATUSBAR_PART: 'statusbar' };
 const locations = { Sidebar: 0, Panel: 1, AuxiliaryBar: 2 };
 
 function fixture(t, saved = new Map()) {
@@ -58,13 +58,16 @@ function fixture(t, saved = new Map()) {
   const document = { documentElement: { classList: { add: (...names) => names.forEach(name => classes.add(name)), remove: (...names) => names.forEach(name => classes.delete(name)) } },
     startViewTransition: callback => { calls.push('transition'); const finished = Promise.resolve().then(callback); return { ready: Promise.resolve(), updateCallbackDone: finished, finished, skipTransition: () => calls.push('skipTransition') }; } };
   const win = { document, setTimeout, clearTimeout, matchMedia: () => ({ matches: false }) };
-  const mainContainer = { classList: { add() {}, remove() {} } };
+  const mainContainer = { classList: { add() {}, remove() {}, contains: () => false }, querySelectorAll: () => [] };
   let maximized = false, groupMaximized = false, options = false;
   const layout = {
     onDidResizeParts: resized.event, onDidChangePartVisibility: visibilityChanged.event, onDidLayoutMainContainer: windowResized.event,
     setWindowChromeHidden: value => { f.chromeHidden = value; calls.push(['windowChrome', value]); },
     mainContainer, mainContainerDimension: { width: 1440, height: 900 },
-    getContainer: () => ({ animate: frames => { calls.push(['animate', frames]); return { finished: Promise.resolve() }; } }),
+    getContainer: (_window, part) => ({ animate: (frames, options) => {
+      calls.push(['animate', frames, part, options]);
+      return f.animate?.(frames, part) ?? { finished: Promise.resolve(), cancel() {} };
+    } }),
     isVisible: part => visible.get(part), getSize: part => ({ ...sizes.get(part) }),
     setPartHidden: (hidden, part) => {
       if (visible.get(part) === !hidden) { return; }
@@ -350,32 +353,42 @@ test('returning to IDE cancels pending preparation without waiting for project r
   assert.equal(f.calls.includes('cancelPreparation'), true);
 });
 
-test('a retained project frame is revealed before capturing the incoming Steam view', async t => {
+test('a retained project frame is revealed before animating the incoming Steam view', async t => {
   const f = fixture(t); f.state.state.ready = true; f.publish(true);
-  const start = f.win.document.startViewTransition;
   let incomingLoading;
-  f.win.document.startViewTransition = callback => start(async () => { await callback(); incomingLoading = f.loading; });
+  f.animate = frames => {
+    if (frames[0].opacity === 0) incomingLoading = f.loading;
+    return { finished: Promise.resolve(), cancel() {} };
+  };
   await f.run('EnterSteamMode');
   assert.equal(incomingLoading, false); assert.equal(f.group.activeEditor, f.result);
 });
 
-test('a slow layout releases its captured snapshot instead of freezing rendering', async t => {
+test('slow view initialization retains a live loading state and still animates its incoming layout', async t => {
   const f = fixture(t); f.publish(true);
   let finish;
   const open = f.views.openView;
   f.views.openView = async (...args) => { await new Promise(resolve => { finish = resolve; }); return open(...args); };
   const entering = f.run('EnterSteamMode');
-  await new Promise(resolve => setTimeout(resolve, 180));
-  assert.equal(f.calls.includes('skipTransition'), true);
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(f.loading, true); assert.equal(f.calls.includes('transition'), false);
   finish(); await entering;
-  assert.equal(f.classes.size, 0);
+  assert.ok(f.calls.some(call => call[0] === 'animate' && call[1][0].opacity === 0));
 });
 
-test('the animation fallback slides horizontally in opposite directions', async t => {
-  const f = fixture(t); f.win.document.startViewTransition = undefined; f.publish(true);
+test('both directions fade outgoing chrome before hiding it and fade in every visible incoming part', async t => {
+  const f = fixture(t); f.publish(true);
   await f.run('EnterSteamMode'); await f.run('EnterIdeMode');
-  assert.deepEqual(f.calls.filter(call => Array.isArray(call) && call[0] === 'animate').map(call => call[1][0].transform),
-    ['translateX(48px)', 'translateX(48px)', 'translateX(-48px)', 'translateX(-48px)']);
+  const effects = f.calls.filter(call => call[0] === 'animate');
+  assert.deepEqual([...new Set(effects.map(call => call[1].map(frame => frame.opacity).join(',')))].sort(), ['0,1', '1,0']);
+  assert.ok(effects.some(call => call[1][0].transform === 'translateX(32px)'));
+  assert.ok(effects.some(call => call[1][0].transform === 'translateX(-32px)'));
+  for (const part of ['titlebar', 'statusbar', 'activity', 'sidebar', 'panel']) {
+    assert.ok(effects.some(call => call[2] === part && call[1][1].opacity === 0), `${part} has an exit effect`);
+    assert.ok(effects.some(call => call[2] === part && call[1][0].opacity === 0), `${part} has an entrance effect`);
+  }
+  const firstHide = f.calls.findIndex(call => call[0] === 'windowChrome' && call[1]);
+  assert.ok(f.calls.slice(0, firstHide).some(call => call[0] === 'animate' && call[1][1].opacity === 0));
 });
 
 test('reduced motion applies the layout immediately and each mode retains its own tool width', async t => {
@@ -383,7 +396,29 @@ test('reduced motion applies the layout immediately and each mode retains its ow
   f.publish(true); await f.run('EnterSteamMode'); f.resizeTools(512);
   await f.run('EnterIdeMode'); await f.run('EnterSteamMode');
   assert.equal(f.sizes.get('auxiliary').width, 512);
-  assert.equal(f.calls.includes('transition'), false);
+  assert.equal(f.calls.some(call => call[0] === 'animate'), false);
+});
+
+test('the workbench reduced-motion preference also skips the workspace effects', async t => {
+  const f = fixture(t); f.layout.mainContainer.classList.contains = name => name === 'monaco-reduce-motion';
+  f.publish(true); await f.run('EnterSteamMode'); await f.run('EnterIdeMode');
+  assert.equal(f.calls.some(call => call[0] === 'animate'), false);
+});
+
+test('layout visibility changes wait until outgoing elements finish fading', async t => {
+  const f = fixture(t), finish = []; f.publish(true);
+  f.animate = frames => {
+    if (frames[1].opacity !== 0) return { finished: Promise.resolve(), cancel() {} };
+    let resolve;
+    const finished = new Promise(done => { resolve = done; }); finish.push(resolve);
+    return { finished, cancel: resolve };
+  };
+  const entering = f.run('EnterSteamMode');
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(f.chromeHidden, undefined); assert.ok(finish.length > 0);
+  for (const resolve of finish) resolve();
+  await entering;
+  assert.equal(f.chromeHidden, true);
 });
 
 test('tools default to a third of the window until the user chooses a width', async t => {
@@ -493,13 +528,11 @@ test('Steam maximizes the result column while IDE restores a different maximized
   assert.deepEqual(f.calls.filter(call => Array.isArray(call) && call[0] === 'maximizeGroupTarget').map(call => call[1]), [2, 1, 2]);
 });
 
-test('a skipped animation still completes the mode change without an unhandled rejection', async t => {
-  const f = fixture(t);
-  f.win.document.startViewTransition = callback => {
-    const finished = Promise.resolve().then(callback);
-    return { ready: Promise.reject(new Error('Transition was skipped')), updateCallbackDone: finished, finished };
-  };
-  f.publish(true); await f.run('EnterSteamMode'); await f.run('EnterIdeMode');
+test('interrupted animations complete the mode request and release all effects', async t => {
+  const f = fixture(t); f.publish(true);
+  let cancelled = 0;
+  f.animate = () => ({ finished: Promise.reject(new Error('Animation was cancelled')), cancel() { cancelled++; } });
+  await f.run('EnterSteamMode'); await f.run('EnterIdeMode');
   await new Promise(resolve => setImmediate(resolve));
-  assert.equal(f.state.steam, false); assert.equal(f.state.busy, false);
+  assert.equal(f.state.steam, false); assert.equal(f.state.busy, false); assert.ok(cancelled > 0);
 });

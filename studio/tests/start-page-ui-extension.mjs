@@ -52,6 +52,10 @@ export async function activate(context) {
         } else if (input.action === 'theme') {
           await vscode.workspace.getConfiguration('window').update('autoDetectColorScheme', false, vscode.ConfigurationTarget.Global);
           await vscode.workspace.getConfiguration('workbench').update('colorTheme', input.theme, vscode.ConfigurationTarget.Global);
+          result = vscode.workspace.getConfiguration('workbench').get('colorTheme');
+        } else if (input.action === 'configure') {
+          await vscode.workspace.getConfiguration().update(input.key, input.value, vscode.ConfigurationTarget.Global);
+          result = vscode.workspace.getConfiguration().get(input.key);
         } else if (input.action === 'replace') {
           const editor = vscode.window.activeTextEditor, document = editor.document;
           await editor.edit(edit => edit.replace(new vscode.Range(document.positionAt(0), document.positionAt(document.getText().length)), input.text));
@@ -65,7 +69,7 @@ export async function activate(context) {
             active: vscode.window.activeTextEditor?.document.uri.toString(),
             documents: vscode.workspace.textDocuments.map(document => ({ uri: document.uri.toString(), text: document.getText(), dirty: document.isDirty })),
             groups: vscode.window.tabGroups.all.map(group => ({ column: group.viewColumn, active: group.isActive, tabs: group.tabs.map(tab => ({ label: tab.label, active: tab.isActive, dirty: tab.isDirty, uri: tab.input?.uri?.toString(), viewType: tab.input?.viewType })) })) };
-        }
+        } else { throw new Error(`Unknown test action: ${input.action}`); }
         response.end(JSON.stringify({ ok: true, result }));
       } catch (error) { response.writeHead(500).end(JSON.stringify({ error: error.stack })); }
     });
