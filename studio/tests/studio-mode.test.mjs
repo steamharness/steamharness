@@ -133,7 +133,8 @@ function fixture(t, saved = new Map()) {
   const service = () => undefined;
   const common = {
     getWindow: () => win, Sequencer, Codicon: { tools: {} }, Disposable, DisposableStore, MutableDisposable, localize2: (key, value) => ({ value, original: value }),
-    CommandsRegistry: { registerCommand: register }, ConfigurationTarget: { MEMORY: 8 }, ContextKeyExpr: { has: () => true },
+    MenuRegistry: { appendMenuItem: () => ({ dispose() {} }) }, MenuId: { EditorTitle: 'editorTitle' },
+    CommandsRegistry: { registerCommand: register }, ConfigurationTarget: { MEMORY: 8 }, ContextKeyExpr: { has: () => true, and: () => true, or: () => true, equals: () => true, notEquals: () => true },
     SyncDescriptor: class {}, Registry: { as: () => ({ registerViewContainer: value => containers.get(value.id) ?? value, registerViews() {} }) },
     StorageScope: { WORKSPACE: 1 }, StorageTarget: { MACHINE: 1 }, StudioSteamTools: class {}, studioModeState: state, studioWindowChrome: {},
     studioSteamToolDefinitions: Object.keys(viewContainers).filter(view => view !== 'studio.steamTools').map(view => ({

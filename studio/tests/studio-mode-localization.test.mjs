@@ -37,6 +37,8 @@ for (const language of ['en', 'zh-cn']) {
     assert.equal(labels.loading, language === 'en' ? 'Loading project...' : '正在加载项目…');
     assert.equal(labels.workspace, language === 'en' ? 'Tool Workspace' : '工具工作区');
     assert.equal(labels.addTool, language === 'en' ? 'Open Tool' : '打开工具');
+    assert.equal(labels.closeOthers, language === 'en' ? 'Close Others' : '关闭其他');
+    assert.equal(labels.newToolInstance, language === 'en' ? 'New Tool Instance' : '新建工具标签');
     assert.equal(labels.closeTab, language === 'en' ? 'Close {0}' : '关闭 {0}');
     assert.equal(labels.moveEditorsError, language === 'en' ? 'Unable to move tool workspace editors back to the IDE.' : '无法将工具工作区的编辑器移回 IDE。');
     assert.equal(labels.editorEmpty, language === 'en' ? 'Open a file from Explorer or Quick Open to start editing.' : '从资源管理器或快速打开中选择文件，开始编辑。');

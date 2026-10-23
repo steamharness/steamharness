@@ -2,6 +2,8 @@
 
 - [Fixed] Conversation and Assistant file menus now offer native file and folder selection, preserving original paths and sharing the same path cards and Core Agent context as drag and drop.
 
+- [Improved] Use native VS Code tabs and context menus for Steam tool instances, including file previews, pinning, splitting and close actions. Tool categories offer Close, Close Others and Close All. Each tool keeps its own editor groups, content and selection across mode switches and reloads; closing the terminal category retains its sessions.
+
 - [Fixed] Desktop and Web startup now check incremental build inputs after applying kernel patches, rebuilding changed sources even when the upstream commit is unchanged so features such as file drops no longer keep using an old workbench after restart.
 
 - Added native Conversation drag and drop for VS Code files and folders and desktop folders, preserving real paths for CLI Web display and submission.

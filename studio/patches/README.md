@@ -76,4 +76,6 @@
 
 `0049-studio-mode-transition-cancellation.patch` 在每个切换阶段检查请求版本，避免反向操作执行过期布局或初始化，并保存取消启动后的模式选择；异步恢复期间隐藏新出现的区域，先清除临时位移再测量布局，动画结束后重新对齐加载遮罩。
 
+`0051-studio-steam-native-tool-tabs.patch` 将下层工具实例切换为各分类独立的原生编辑器组，复用 VS Code 标签、预览、固定、拆分和右键关闭操作；默认工具视图保留控制器并支持原生序列化，终端关闭分类或返回 IDE 时保留 shell 会话。上层分类提供关闭、关闭其他和全部关闭。
+
 新内核修改应通过 `git diff` 导出统一格式补丁，并排除脚本生成的 `product.json` 及 Studio 扩展链接。品牌配置由 `config/product.json` 维护。

@@ -42,6 +42,7 @@ class EditorInput {
   getName() { return this.name; }
   isDirty() { return !!this.dirty; }
   isDisposed() { return !!this.disposed; }
+  matches(other) { return this === other; }
   dispose() { this.disposed = true; this.disposedEvent.fire(); }
 }
 class WebviewInput extends EditorInput {
@@ -52,6 +53,14 @@ class CustomEditorInput extends WebviewInput {
 }
 const tools = [{ id: 'editor', icon: 'code', editor: true }, ...['kv', 'knowledge', 'info', 'assistant', 'versions', 'trace'].map(id => ({ id, icon: id, view: `studio.${id}` })),
   { id: 'terminal', icon: 'terminal', view: 'terminal' }, { id: 'browser', command: 'simpleBrowser.show' }, { id: 'project', command: 'studio.openProjectInTab' }];
+class StudioToolViewInput extends EditorInput {
+  constructor(toolId, viewId) { super(toolId); this.toolId = toolId; this.viewId = viewId; }
+  matches(other) { return other instanceof StudioToolViewInput && other.viewId === this.viewId; }
+}
+class TerminalEditorInput extends EditorInput {
+  typeId = 'workbench.editors.terminal';
+  constructor(instance) { super(instance.title); this.terminalInstance = instance; }
+}
 function fixture(t, saved = new Map()) {
   const toDisposable = dispose => ({ dispose });
   const load = (code, common) => {
@@ -60,14 +69,14 @@ function fixture(t, saved = new Map()) {
     return module.exports;
   };
   const policy = load(policyCode, { toDisposable });
-  let activeGroup;
+  let activeGroup, nextGroup = 4, workspace;
+  const parts = new Map(), noEvent = new Emitter(), viewChange = new Emitter(), stateChange = new Emitter();
   const createGroup = id => {
     const model = new Emitter(), active = new Emitter(), opening = new Emitter(), closed = new Emitter();
     const group = { id, editors: [], activeEditor: undefined, veto: false,
-      onDidModelChange: model.event, onDidActiveEditorChange: active.event, onWillOpenEditor: opening.event,
-      onDidCloseEditor: closed.event,
-      getEditors: () => group.editors, focus() { activeGroup = group; },
-      contains: editor => group.editors.includes(editor),
+      scopedContextKeyService: { createKey() {} },
+      onDidModelChange: model.event, onDidActiveEditorChange: active.event, onWillOpenEditor: opening.event, onDidCloseEditor: closed.event,
+      getEditors: () => group.editors.slice(), focus() { activeGroup = group; }, contains: editor => group.editors.includes(editor),
       notifyActive: () => active.fire({ editor: group.activeEditor }),
       openEditor: async (editor, options) => {
         opening.fire({ editor });
@@ -77,30 +86,51 @@ function fixture(t, saved = new Map()) {
         model.fire();
       },
       closeEditor: async editor => {
-        if (group.veto) { return false; }
+        if (group.veto || editor.terminalInstance?.veto) { return false; }
+        if (group.beforeClose) { await group.beforeClose(editor); }
         group.editors = group.editors.filter(value => value !== editor);
-        group.activeEditor = group.editors.at(-1); active.fire({}); model.fire(); closed.fire({ editor }); return true;
+        group.activeEditor = group.editors.at(-1); active.fire({}); model.fire(); closed.fire({ editor });
+        if (editor.terminalInstance) { terminals.instances = terminals.instances.filter(instance => instance !== editor.terminalInstance); }
+        return true;
       },
       moveEditors: (entries, target) => {
         if (group === target) { return true; }
+        if (group.moveVeto) { return false; }
         for (const { editor } of entries) { if (!target.editors.includes(editor)) { target.editors.push(editor); } }
         group.editors = group.editors.filter(editor => !entries.some(entry => entry.editor === editor));
-        group.activeEditor = group.editors.at(-1);
-        model.fire(); return true;
+        group.activeEditor = group.editors.at(-1); model.fire(); return true;
       },
     };
     return group;
   };
   const left = createGroup(1), right = createGroup(2), auxiliary = createGroup(3);
-  const stateChange = new Emitter(), viewChange = new Emitter(), noEvent = new Emitter(), addedGroup = new Emitter();
-  const state = { state: { projectUri: 'file:///project', labels: Object.fromEntries(tools.map(tool => [tool.id, tool.id])) }, onDidChangeState: stateChange.event };
-  let tabs, active, instances, activeInstance, partVisible;
-  const workspaceState = { update: (items, selected, children, selectedChild) => { tabs = items; active = selected; instances = children; activeInstance = selectedChild; } };
+  let locked = false;
+  const main = { groups: [left], activeGroup: left, windowId: 1, getGroups: () => [left], getGroup: id => id === left.id ? left : undefined,
+    enforceSingleGroup: () => { locked = true; return toDisposable(() => { locked = false; }); } };
+  const allGroups = () => [left, auxiliary, ...[...parts.values()].flatMap(part => part.groups)];
+  const groups = { mainPart: main, get activeGroup() { return activeGroup; },
+    activateGroup: group => { activeGroup = group; },
+    getGroup: id => allGroups().find(group => group.id === id), getPart: group => ({ windowId: group === auxiliary ? 2 : 1 }),
+    createEmbeddedEditorPart: (host, id) => {
+      const category = id.replace('workbench.parts.studioSteamEditors', '').replace(/^\./, '') || 'editor';
+      const added = new Emitter();
+      const part = { host, groups: [category === 'editor' ? right : createGroup(nextGroup++)], windowId: 1, whenReady: Promise.resolve(), visible: false,
+        get activeGroup() { return part.groups.find(group => group === activeGroup) ?? part.groups[0]; },
+        enforcePartOptions: options => { part.options = options; return toDisposable(() => undefined); },
+        onDidAddGroup: added.event, onDidRemoveGroup: noEvent.event, onDidActivateGroup: noEvent.event,
+        addGroup() { const group = createGroup(nextGroup++); part.groups.push(group); added.fire(group); return group; },
+        layout() {}, setVisible: visible => { part.visible = visible; }, dispose() { parts.delete(category); } };
+      parts.set(category, part); return part;
+    } };
+  let visibleView, sidebarVisible = false, sidebarRequest, sidebarDisposed = false, toolsVisible = true;
+  const views = { onDidChangeViewVisibility: viewChange.event, openView: async id => { visibleView = id; viewChange.fire({ id, visible: true }); },
+    openViewContainer: async id => { visibleView = id; } };
   const parent = { classList: { toggle() {} }, querySelector: () => undefined };
   const elements = new Map();
   const element = selector => {
-    const node = { parentElement: parent, style: {}, hidden: true, clientWidth: 600, clientHeight: 800,
-      getBoundingClientRect: () => ({ width: 600, height: 800 }), remove() {} };
+    const node = { parentElement: parent, children: [], style: {}, hidden: true, classList: { toggle() {} }, clientWidth: 600, clientHeight: 800,
+      querySelector: () => undefined, querySelectorAll: () => node.children.filter(child => child.selector?.includes('studio-steam-editors')),
+      getBoundingClientRect: () => ({ width: 600, height: 800 }), remove() { this.parentElement.children = this.parentElement.children?.filter(child => child !== this); }, selector };
     elements.set(selector, node); return node;
   };
   class SplitView {
@@ -111,23 +141,8 @@ function fixture(t, saved = new Map()) {
     getViewSize(index) { return this.views[index].size; }
     resizeView(index, size) { this.views[index].size = size; }
     layout() { for (const [index, { view, size }] of this.views.entries()) { if (this.visible[index]) { view.layout(size); } } }
-    onDidSashChange = noEvent.event;
-    dispose() {}
+    onDidSashChange = noEvent.event; dispose() {}
   }
-  const part = { groups: [right], activeGroup: right, windowId: 1, whenReady: Promise.resolve(),
-    enforcePartOptions: () => toDisposable(() => undefined),
-    onDidAddGroup: addedGroup.event, onDidRemoveGroup: noEvent.event, onDidActivateGroup: noEvent.event,
-    layout() {}, setVisible: visible => { partVisible = visible; }, dispose() {} };
-  let locked = false;
-  const main = { groups: [left], activeGroup: left, windowId: 1, getGroups: () => [left], getGroup: id => id === left.id ? left : undefined,
-    enforceSingleGroup: () => { locked = true; return toDisposable(() => { locked = false; }); } };
-  const groups = { mainPart: main, createEmbeddedEditorPart: () => part,
-    get activeGroup() { return activeGroup; },
-    getGroup: id => [left, right, auxiliary].find(group => group.id === id), getPart: group => ({ windowId: group === auxiliary ? 2 : 1 }) };
-  let visibleView;
-  const views = { onDidChangeViewVisibility: viewChange.event, openView: async id => { visibleView = id; viewChange.fire({ id, visible: true }); },
-    openViewContainer: async id => { visibleView = id; } };
-  let sidebarVisible = false, sidebarRequest, sidebarDisposed = false, toolsVisible = true;
   const layoutChange = new Emitter();
   const layout = { onDidChangePartVisibility: layoutChange.event, isVisible: () => toolsVisible,
     createEmbeddedSideBar: (_container, request) => { sidebarRequest = request; return {
@@ -135,311 +150,272 @@ function fixture(t, saved = new Map()) {
     }; } };
   const storage = { get: key => saved.get(key), getObject: key => saved.get(key), getNumber: (key, _scope, fallback) => saved.get(key) ?? fallback,
     store: (key, value) => saved.set(key, structuredClone(value)) };
-  const calls = [], terminalChanged = new Emitter(), terminalSelected = new Emitter();
-  const terminalGroups = { instances: [], activeInstance: undefined, onDidChangeInstances: terminalChanged.event,
-    onDidChangeActiveInstance: terminalSelected.event,
-    focusInstance: async instance => { terminalGroups.activeInstance = instance; terminalSelected.fire(instance); } };
-  let terminalId = 0;
-  const terminals = { onAnyInstanceTitleChange: noEvent.event,
-    createTerminal: async () => { const instance = { instanceId: ++terminalId, title: `Shell ${terminalId}` }; terminalGroups.instances.push(instance); terminalChanged.fire(); return instance; },
-    safeDisposeTerminal: async instance => { if (instance.veto) { return; } terminalGroups.instances = terminalGroups.instances.filter(value => value !== instance);
-      if (terminalGroups.activeInstance === instance) { terminalGroups.activeInstance = terminalGroups.instances.at(-1); }
-      terminalChanged.fire(); } };
+  const calls = [], terminalChanged = new Emitter(), terminalInputs = new Map();
+  const terminalGroups = { instances: [], onDidChangeInstances: terminalChanged.event };
+  const editors = { openEditor: async (editor, options, preferred) => {
+    const target = policy.getEditorOpenTarget(editor, preferred) ?? preferred ?? right;
+    await target.openEditor(editor, options);
+    if (editor instanceof StudioToolViewInput && !options?.inactive) { await views.openView(editor.viewId); }
+  } };
+  const terminals = { instances: [], createTerminal: async () => {
+    const instance = { instanceId: terminals.instances.length + 1, title: 'Shell' };
+    terminals.instances.push(instance); const input = new TerminalEditorInput(instance); terminalInputs.set(instance, input);
+    await editors.openEditor(input); return instance;
+  }, moveToEditor: (instance, id) => {
+    terminalGroups.instances = terminalGroups.instances.filter(value => value !== instance); terminalChanged.fire();
+    const input = terminalInputs.get(instance) ?? new TerminalEditorInput(instance); terminalInputs.set(instance, input);
+    void editors.openEditor(input, {}, groups.getGroup(id));
+  }, moveToTerminalView: async instance => {
+    const input = terminalInputs.get(instance);
+    for (const group of allGroups()) { if (group.contains(input)) { group.editors = group.editors.filter(editor => editor !== input); group.activeEditor = group.editors.at(-1); group.notifyActive(); } }
+    terminalGroups.instances.push(instance); terminalChanged.fire();
+    await views.openView('terminal');
+  } };
   const commands = { executeCommand: async (name, ...args) => { calls.push([name, ...args]); } };
-  const exports = load(workspaceCode, { Disposable, DisposableStore, MutableDisposable, RunOnceScheduler, toDisposable, EditorInput, WebviewInput, CustomEditorInput,
-    $: element, append: (parent, node) => { node.parentElement = parent; return node; }, clearNode() {}, addDisposableListener: () => toDisposable(() => undefined),
+  const state = { state: { projectUri: 'file:///project', labels: Object.fromEntries(tools.map(tool => [tool.id, tool.id])) }, onDidChangeState: stateChange.event };
+  const workspaceState = { tabs: [], update: (items, selected, children, selectedChild, tool) => {
+    Object.assign(workspaceState, { tabs: items, active: selected, instances: children, activeInstance: selectedChild, tool }); } };
+  const exports = load(workspaceCode, { Disposable, DisposableStore, MutableDisposable, RunOnceScheduler, toDisposable, EditorInput, WebviewInput, CustomEditorInput, StudioToolViewInput, TerminalEditorInput,
+    $: element, append: (parent, node) => { node.parentElement = parent; parent.children?.push(node); return node; }, clearNode() {}, addDisposableListener: () => toDisposable(() => undefined),
     getWindow: () => ({ ResizeObserver: class { observe() {} disconnect() {} } }), SplitView, Orientation: { HORIZONTAL: 1 }, Event: { None: noEvent.event },
-    StorageScope: { WORKSPACE: 1 }, StorageTarget: { MACHINE: 1 }, EditorsOrder: {}, GroupsOrder: {}, Parts: { AUXILIARYBAR_PART: 'auxiliary' }, TerminalLocation: { Panel: 1 },
+    StorageScope: { WORKSPACE: 1 }, StorageTarget: { MACHINE: 1 }, EditorsOrder: {}, GroupsOrder: {}, Parts: { AUXILIARYBAR_PART: 'auxiliary' },
     EditorResourceAccessor: { getOriginalUri: editor => editor.resource }, SideBySideEditor: { PRIMARY: 1 },
-    studioModeState: state, studioSteamToolDefinitions: tools, studioSteamWorkspaceState: workspaceState,
-    registerEditorOpenTarget: policy.registerEditorOpenTarget,
+    studioModeState: state, studioSteamToolDefinitions: tools, studioSteamWorkspaceState: workspaceState, registerEditorOpenTarget: policy.registerEditorOpenTarget,
   });
-  const workspace = new exports.StudioSteamWorkspace(parent, groups, views, { getViewContainerByViewId: () => ({}) }, layout, storage, commands, terminals, terminalGroups,
-    { openEditor: (editor, options, group) => group.openEditor(editor, options) });
-  const host = elements.get('.part.editor.studio-steam-editors');
+  workspace = new exports.StudioSteamWorkspace(parent, groups, views, { getViewContainerByViewId: () => ({}) }, layout, storage, commands, terminals, terminalGroups, editors);
   t.after(() => workspace.dispose());
-  return { workspace, policy, left, right, auxiliary, state, saved, viewChange, host, calls, terminalGroups,
-    get activeGroup() { return activeGroup; },
-    addToolGroup: () => { const group = createGroup(4 + part.groups.length); part.groups.push(group); addedGroup.fire(group); return group; },
-    get locked() { return locked; },
-    get tabs() { return tabs; }, get active() { return active; }, get instances() { return instances; }, get activeInstance() { return activeInstance; },
-    get partVisible() { return partVisible; }, get visibleView() { return visibleView; },
+  return { workspace, policy, left, right, auxiliary, state, saved, viewChange, calls, terminalGroups, terminals, parts,
+    open: (editor, options, preferred) => editors.openEditor(editor, options, preferred),
+    get activeGroup() { return activeGroup; }, get locked() { return locked; },
+    get tabs() { return workspaceState.tabs; }, get active() { return workspaceState.active; },
+    get instances() { return workspaceState.instances; }, get activeInstance() { return workspaceState.activeInstance; },
+    get partVisible() { return [...parts.values()].some(part => part.visible); }, get visibleView() { return visibleView; },
     get sidebarVisible() { return sidebarVisible; }, get sidebarDisposed() { return sidebarDisposed; },
-    requestSidebar: visible => sidebarRequest(visible),
-    setToolsVisible: visible => { toolsVisible = visible; layoutChange.fire(); } };
+    requestSidebar: visible => sidebarRequest(visible), setToolsVisible: visible => { toolsVisible = visible; layoutChange.fire(); },
+  };
 }
+const file = name => Object.assign(new EditorInput(name), { resource: `file:///project/${name}` });
+const panel = (tool, name = `${tool} 2`) => { const input = new WebviewInput(name); input.webview.providedViewType = `studio.tool.${tool}`; return input; };
+const settle = () => new Promise(resolve => setTimeout(resolve, 5));
 
-test('Steam reserves only the selected project and routes every other editor and explicit first-column target to tools', async t => {
-  const f = fixture(t), project = new WebviewInput('Project', 'file:///project');
-  await f.left.openEditor(project); await f.workspace.activate();
-  assert.equal(f.policy.getEditorOpenTarget(project, f.right), f.left);
-  assert.equal(f.policy.getEditorOpenTarget(project, f.auxiliary), f.left);
-  for (const name of ['Account', 'Settings', 'File', 'Preview', 'Store']) {
-    const editor = new EditorInput(name);
-    for (const preferred of [undefined, 1, f.left, -2, -3, -4]) { assert.equal(f.policy.getEditorOpenTarget(editor, preferred), f.right); }
-  }
-  assert.equal(f.policy.getEditorOpenTarget(new WebviewInput('Other project', 'file:///other'), f.left), f.right);
-  assert.equal(f.policy.getEditorOpenTarget(new WebviewInput('Another new project'), f.left), f.right);
-  assert.equal(f.policy.getEditorOpenTarget(new EditorInput('Auxiliary window'), f.auxiliary), undefined);
-  assert.equal(f.left.activeEditor, project);
-  await f.workspace.deactivate(f.left);
-  assert.equal(f.policy.getEditorOpenTarget(new EditorInput('IDE file'), f.left), undefined);
-});
-
-test('tool tabs deduplicate and switch alongside retained native inputs; closing selects the neighboring tab', async t => {
-  const f = fixture(t); await f.workspace.activate();
-  assert.equal(f.tabs.length, 0);
-  await f.workspace.openTool('kv'); await f.workspace.openTool('info'); await f.workspace.openTool('kv');
-  assert.deepEqual(Array.from(f.tabs, tab => tab.id), ['kv', 'info']);
-  const editor = new EditorInput('Account'); await f.right.openEditor(editor);
-  const editorId = f.active;
-  assert.ok(editorId.startsWith('editor:')); assert.equal(f.partVisible, true);
-  await f.workspace.select('kv'); assert.equal(f.partVisible, false);
-  await f.workspace.select(editorId); assert.equal(f.right.activeEditor, editor); assert.equal(f.partVisible, true);
-  await f.workspace.close('info'); assert.equal(f.active, editorId);
-  await f.workspace.close(editorId); assert.equal(f.active, 'kv'); assert.equal(f.partVisible, false);
-  await f.workspace.close('kv'); assert.equal(f.tabs.length, 0); assert.equal(f.visibleView, 'studio.steamTools');
-});
-
-test('native close veto preserves dirty tabs and returning to IDE transfers the exact unsaved input', async t => {
-  const f = fixture(t); await f.workspace.activate();
-  const editor = new EditorInput('Unsaved'); editor.dirty = true;
-  await f.right.openEditor(editor); f.right.veto = true;
-  const id = f.active; await f.workspace.close(id);
-  assert.equal(f.active, id); assert.equal(f.tabs.find(tab => tab.id === id).dirty, true);
-  await f.workspace.deactivate(f.left);
-  assert.ok(f.left.editors.includes(editor)); assert.equal(editor.isDirty(), true);
-  assert.equal(f.right.editors.length, 0); assert.equal(f.host.hidden, true);
-});
-
-test('tool order and selection restore after reload and externally opened views join the same workspace', async t => {
-  const saved = new Map(), first = fixture(t, saved); await first.workspace.activate();
-  await first.workspace.openTool('knowledge'); await first.workspace.openTool('kv');
-  const second = fixture(t, saved); await second.workspace.activate();
-  assert.deepEqual(Array.from(second.tabs, tab => tab.id), ['knowledge', 'kv']); assert.equal(second.active, 'kv');
-  second.viewChange.fire({ id: 'studio.trace', visible: true });
-  assert.equal(second.active, 'trace'); assert.equal(second.tabs.length, 3);
-  second.viewChange.fire({ id: 'terminal', visible: true });
-  assert.equal(second.active, 'terminal'); assert.equal(second.tabs.length, 4);
-  await second.workspace.close('terminal');
-  second.viewChange.fire({ id: 'terminal', visible: true });
-  assert.equal(second.active, 'terminal'); assert.equal(second.tabs.length, 4);
-});
-
-test('closing and reopening a project routes a new uninitialized panel to the runtime without a stale input reference', async t => {
-  const f = fixture(t), project = new WebviewInput('Project', 'file:///project');
-  await f.left.openEditor(project); await f.workspace.activate();
-  await f.left.closeEditor(project); project.dispose();
-  const reopened = new WebviewInput('Project'); reopened.webview.state = undefined;
-  assert.equal(f.policy.getEditorOpenTarget(reopened, f.right), f.left);
-  assert.equal(f.policy.getEditorOpenTarget(new WebviewInput('Other project', 'file:///other'), f.left), f.right);
+test('the runtime remains pinned while files, explicit targets and separate windows keep their ownership', async t => {
+  const f = fixture(t), runtime = new WebviewInput('Runtime', 'file:///project');
+  await f.left.openEditor(runtime); await f.workspace.activate();
+  for (const preferred of [undefined, 1, f.left, -2, -3, -4]) { assert.equal(f.policy.getEditorOpenTarget(file('source.ts'), preferred), f.right); }
+  assert.equal(f.policy.getEditorOpenTarget(runtime, f.right), f.left);
+  assert.equal(f.policy.getEditorOpenTarget(file('external.ts'), f.auxiliary), undefined);
   assert.equal(f.locked, true);
-  await f.workspace.deactivate(f.left); assert.equal(f.locked, false);
+  await f.workspace.deactivate(f.left);
+  assert.equal(f.policy.getEditorOpenTarget(file('ide.ts'), f.left), undefined); assert.equal(f.locked, false);
 });
 
-test('restoring multiple projects uses the pinned runtime URI even when the other project is active', async t => {
-  const f = fixture(t), original = new WebviewInput('Original', 'file:///original'), other = new WebviewInput('Other', 'file:///other');
-  await f.left.openEditor(other); await f.right.openEditor(original);
-  f.state.state.projectUri = 'file:///other';
-  await f.workspace.activate('file:///original');
-  assert.ok(f.left.contains(original)); assert.ok(f.right.contains(other));
-  await f.left.closeEditor(original); original.dispose();
-  const uninitializedTool = new WebviewInput('Other tool project'); uninitializedTool.webview.providedViewType = 'studio.projectTool';
-  assert.equal(f.policy.getEditorOpenTarget(uninitializedTool, f.left), f.right);
-  const reopened = new WebviewInput('Original', 'file:///original');
-  assert.equal(f.policy.getEditorOpenTarget(reopened, f.left), f.left);
-  assert.equal(f.policy.getEditorOpenTarget(other, f.left), f.right);
-});
-
-test('moving IDE sources during reload preserves the restored active tool editor', async t => {
-  const saved = new Map([['studio.steamWorkspaceTabs', { tools: [], active: 'editor' }], ['studio.workbenchMode', 'steam']]);
-  const f = fixture(t, saved), project = new WebviewInput('Project', 'file:///project');
-  const source = new EditorInput('IDE source'), other = new WebviewInput('Other project', 'file:///other');
-  await f.left.openEditor(project); await f.left.openEditor(source); await f.right.openEditor(other);
-  const move = f.left.moveEditors;
-  f.left.moveEditors = (entries, target) => { const result = move(entries, target); target.activeEditor = source; return result; };
-  await f.workspace.activate();
-  assert.equal(f.right.activeEditor, other);
-  assert.equal(f.tabs.find(tab => tab.id === f.active)?.label, 'Other project');
-});
-
-test('split copies get independent tabs and closing one preserves the other group input', async t => {
+test('native file and resource parts have separate groups and preserve their exact inputs when switching categories', async t => {
   const f = fixture(t); await f.workspace.activate();
-  const editor = new EditorInput('shared.txt'), second = f.addToolGroup();
-  await f.right.openEditor(editor); await second.openEditor(editor);
-  const ids = Array.from(f.tabs.filter(tab => tab.label === 'shared.txt'), tab => tab.id);
-  assert.equal(ids.length, 2); assert.notEqual(ids[0], ids[1]);
-  await f.workspace.select(ids[0]); assert.equal(f.active, ids[0]);
-  await f.workspace.close(ids[0]);
-  assert.equal(f.right.editors.length, 0); assert.ok(second.editors.includes(editor));
-  assert.deepEqual(Array.from(f.tabs.filter(tab => tab.label === 'shared.txt'), tab => tab.id), [ids[1]]);
+  const source = file('index.ts'); source.dirty = true;
+  await f.open(source); await f.workspace.openTool('kv');
+  const retained = f.parts.get('kv').activeGroup.activeEditor;
+  await f.open(panel('kv')); await f.workspace.openTool('editor');
+  assert.equal(f.right.activeEditor, source); assert.equal(f.sidebarVisible, true);
+  await f.workspace.openTool('kv');
+  assert.deepEqual(Array.from(f.instances, tab => tab.label), ['kv', 'kv 2']);
+  assert.equal(f.parts.get('kv').groups[0].contains(retained), true);
+  assert.equal(f.parts.get('kv').options.showTabs, 'multiple'); assert.equal(f.parts.get('kv').options.editorActionsLocation, 'default');
+  assert.equal(f.right.contains(source), true); assert.equal(f.sidebarVisible, false);
 });
 
-test('source documents move away from the runtime and return to their original IDE group', async t => {
-  const f = fixture(t), source = new EditorInput('Source'), project = new WebviewInput('Project', 'file:///project');
-  await f.left.openEditor(source); await f.left.openEditor(project); await f.workspace.activate();
-  assert.deepEqual(f.left.editors, [project]); assert.ok(f.right.editors.includes(source));
-  await f.workspace.deactivate(f.auxiliary);
-  assert.ok(f.left.editors.includes(source)); assert.equal(f.auxiliary.editors.length, 0);
-});
-
-test('a runtime restored in the tool part is recovered before routing is enabled', async t => {
-  const f = fixture(t), project = new WebviewInput('Project', 'file:///project');
-  await f.right.openEditor(project); await f.workspace.activate();
-  assert.ok(f.left.editors.includes(project)); assert.equal(f.right.editors.length, 0);
-});
-
-test('background native editor restoration keeps the selected tool visible', async t => {
-  const f = fixture(t), project = new WebviewInput('Project', 'file:///project');
-  await f.left.openEditor(project); await f.workspace.activate();
-  await f.workspace.openTool('kv'); f.left.focus();
-  await f.right.openEditor(new EditorInput('Background file'), { preserveFocus: true });
-  assert.equal(f.active, 'kv'); assert.equal(f.partVisible, false);
-});
-
-test('an editor opened before leaving Steam cannot focus its retired tool group after completion', async t => {
+test('all six retained views and independent panels share their own native category without duplicating the retained input', async t => {
   const f = fixture(t); await f.workspace.activate();
-  const editor = new EditorInput('Slow editor'); await f.right.openEditor(editor);
-  const id = f.active;
-  let finish;
-  f.right.openEditor = () => new Promise(resolve => { finish = resolve; });
-  const selecting = f.workspace.select(id);
-  await f.workspace.deactivate(f.left); f.left.focus(); finish(); await selecting;
+  for (const kind of ['kv', 'knowledge', 'info', 'assistant', 'versions', 'trace']) {
+    await f.workspace.openTool(kind); const retained = f.parts.get(kind).groups[0].editors[0];
+    await f.workspace.openTool(kind); await f.open(panel(kind));
+    assert.equal(f.instances.length, 2); assert.equal(f.parts.get(kind).groups[0].editors[0], retained);
+    await f.workspace.newInstance(kind); assert.deepEqual(f.calls.at(-1), ['studio.createToolInstance', kind]);
+  }
+});
+
+test('closing a native child selects a sibling in the same tool and respects a close veto', async t => {
+  const f = fixture(t); await f.workspace.activate(); await f.workspace.openTool('kv');
+  await f.open(panel('kv')); const second = f.activeInstance;
+  await f.open(panel('kv', 'kv 3')); const third = f.activeInstance;
+  const group = f.parts.get('kv').groups[0]; group.veto = true;
+  assert.equal(await f.workspace.close(third, true), false); assert.equal(f.instances.length, 3);
+  group.veto = false; await f.workspace.close(third, true);
+  assert.equal(f.active, 'kv'); assert.equal(f.activeInstance, second);
+});
+
+test('a dirty close cancellation stops Close Others and preserves remaining tool categories', async t => {
+  const f = fixture(t); await f.workspace.activate(); await f.workspace.openTool('kv');
+  const source = file('dirty.ts'); source.dirty = true; await f.open(source);
+  await f.workspace.openTool('knowledge'); f.right.veto = true;
+  await f.workspace.closeTabs('kv', 'others');
+  assert.deepEqual(Array.from(f.tabs, tab => tab.id), ['kv', 'editor', 'knowledge']);
+  assert.equal(f.right.contains(source), true);
+});
+
+test('Close Others and Close All operate on tool categories while preserving the runtime', async t => {
+  const f = fixture(t), runtime = new WebviewInput('Runtime', 'file:///project');
+  await f.left.openEditor(runtime); await f.workspace.activate();
+  await f.workspace.openTool('kv'); await f.workspace.openTool('knowledge'); await f.open(file('index.ts'));
+  await f.workspace.closeTabs('kv', 'others');
+  assert.deepEqual(Array.from(f.tabs, tab => tab.id), ['kv']); assert.equal(f.left.activeEditor, runtime);
+  await f.workspace.closeTabs('kv', 'all');
+  assert.equal(f.tabs.length, 0); assert.equal(f.visibleView, 'studio.steamTools'); assert.equal(f.left.activeEditor, runtime);
+});
+
+test('a selection made while close is awaiting a native confirmation owns the visible tool', async t => {
+  const f = fixture(t); await f.workspace.activate(); await f.open(file('dirty.ts'));
+  const id = f.activeInstance; let release;
+  f.right.beforeClose = () => new Promise(resolve => { release = resolve; });
+  const closing = f.workspace.close(id, true);
+  await f.workspace.openTool('kv'); release(); await closing;
+  assert.equal(f.active, 'kv'); assert.equal(f.instances[0].label, 'kv');
+});
+
+test('returning to IDE keeps dirty objects and retires synthetic view tabs without recreating controllers', async t => {
+  const f = fixture(t), source = file('dirty.ts'); source.dirty = true;
+  await f.left.openEditor(source); await f.workspace.activate(); await f.workspace.openTool('assistant');
+  await f.open(panel('assistant')); const input = f.parts.get('assistant').groups[0].activeEditor;
+  await f.workspace.deactivate(f.left);
+  assert.equal(f.left.contains(source), true); assert.equal(source.isDirty(), true); assert.equal(f.left.contains(input), true);
+  assert.equal(f.left.editors.some(editor => editor instanceof StudioToolViewInput), false); assert.equal(f.sidebarDisposed, true);
+  await f.workspace.activate(); assert.equal(f.parts.get('assistant').groups[0].contains(input), true);
+  assert.equal(f.parts.get('assistant').groups[0].editors.some(editor => editor instanceof StudioToolViewInput), true);
+});
+
+test('the selected retained view survives mode changes with additional instances, and closing it prevents resurrection', async t => {
+  const f = fixture(t); await f.workspace.activate(); await f.workspace.openTool('kv');
+  const original = f.activeInstance; await f.open(panel('kv'));
+  await f.workspace.select(original, true); await f.workspace.deactivate(f.left); await f.workspace.activate();
+  assert.equal(f.instances.length, 2);
+  assert.equal(f.parts.get('kv').activeGroup.activeEditor instanceof StudioToolViewInput, true);
+  await f.workspace.close(f.activeInstance, true);
+  await f.workspace.deactivate(f.left); await f.workspace.activate();
+  assert.equal(f.instances.length, 1);
+  assert.equal(f.parts.get('kv').activeGroup.editors.some(editor => editor instanceof StudioToolViewInput), false);
+});
+
+test('closing the last native tool tab does not reopen the category on a later mode change', async t => {
+  const f = fixture(t); await f.workspace.activate(); await f.workspace.openTool('knowledge');
+  await f.parts.get('knowledge').activeGroup.closeEditor(f.parts.get('knowledge').activeGroup.activeEditor);
+  assert.equal(f.visibleView, 'studio.steamTools');
+  await f.workspace.deactivate(f.left); await f.workspace.activate();
+  assert.equal(f.tabs.some(tab => tab.id === 'knowledge'), false);
+});
+
+test('old mixed part restoration redistributes real inputs and preserves a saved empty Editor category', async t => {
+  const saved = new Map([['studio.steamWorkspaceTabs', { tools: ['editor'], active: 'editor', emptyEditor: true }], ['studio.workbenchMode', 'steam']]);
+  const f = fixture(t, saved), kv = panel('kv');
+  await f.right.openEditor(kv); await f.workspace.activate();
+  assert.equal(f.active, 'editor'); assert.equal(f.instances.length, 0); assert.equal(f.sidebarVisible, true);
+  assert.equal(f.parts.get('kv').groups[0].contains(kv), true); assert.equal(f.right.contains(kv), false);
+});
+
+test('each saved category restores its native part and inactive default views without stealing selection', async t => {
+  const saved = new Map([['studio.steamWorkspaceTabs', { tools: ['kv', 'knowledge'], parts: ['editor', 'kv', 'knowledge'], active: 'kv' }], ['studio.workbenchMode', 'steam']]);
+  const f = fixture(t, saved); await f.workspace.activate();
+  assert.equal(f.parts.size, 3); assert.deepEqual(Array.from(f.tabs, tab => tab.id), ['kv', 'knowledge']); assert.equal(f.active, 'kv');
+  assert.deepEqual(saved.get('studio.steamWorkspaceTabs').parts, ['editor', 'kv', 'knowledge']);
+});
+
+test('split groups keep a copied file independently and preserve their ownership after one tab closes', async t => {
+  const f = fixture(t); await f.workspace.activate(); const source = file('index.ts'); await f.open(source);
+  const first = f.activeInstance, split = f.parts.get('editor').addGroup(); await f.open(source, {}, split);
+  assert.equal(f.instances.length, 2); assert.notEqual(f.activeInstance, first);
+  await f.workspace.close(f.activeInstance, true); assert.equal(f.right.contains(source), true); assert.equal(split.contains(source), false);
+});
+
+test('native toolbar additions honor the group in their command context instead of the globally active category', async t => {
+  const f = fixture(t); await f.workspace.activate(); await f.workspace.openTool('kv');
+  const kvGroup = f.parts.get('kv').addGroup(); await f.workspace.openTool('knowledge');
+  await f.workspace.newInstance(undefined, kvGroup.id);
+  assert.equal(f.activeGroup, kvGroup); assert.deepEqual(f.calls.at(-1), ['studio.createToolInstance', 'kv']);
+});
+
+test('Explorer previews keep sidebar focus, native close leaves an empty Editor, and hide/show retains the input', async t => {
+  const f = fixture(t); await f.workspace.activate(); await f.workspace.openTool('editor'); f.left.focus();
+  const source = file('index.ts'); await f.open(source, { preserveFocus: true });
+  assert.equal(f.active, 'editor'); assert.equal(f.activeGroup, f.left); assert.equal(f.partVisible, true);
+  f.setToolsVisible(false); assert.equal(f.partVisible, false); assert.equal(f.sidebarVisible, false);
+  f.setToolsVisible(true); assert.equal(f.right.activeEditor, source); assert.equal(f.sidebarVisible, true);
+  await f.workspace.close(f.activeInstance, true); assert.equal(f.active, 'editor'); assert.equal(f.instances.length, 0);
+  await f.workspace.newInstance('editor'); assert.deepEqual(f.calls.at(-1), ['workbench.action.files.newUntitledFile']);
+});
+
+test('late native selection cannot focus a retired Steam group after returning to IDE', async t => {
+  const f = fixture(t); await f.workspace.activate(); await f.open(file('index.ts')); const id = f.activeInstance;
+  let finish; f.right.openEditor = () => new Promise(resolve => { finish = resolve; });
+  const selecting = f.workspace.select(id, true); await f.workspace.deactivate(f.left); f.left.focus(); finish(); await selecting;
   assert.equal(f.activeGroup, f.left); assert.equal(f.partVisible, false);
 });
 
-test('all resource instances group under their tool and closing one selects a sibling before another category', async t => {
-  const f = fixture(t); await f.workspace.activate();
-  for (const kind of ['kv', 'knowledge', 'info', 'assistant', 'versions', 'trace']) {
-    await f.workspace.openTool(kind);
-    const first = new WebviewInput(`${kind} 2`); first.webview.providedViewType = `studio.tool.${kind}`;
-    const second = new WebviewInput(`${kind} 3`); second.webview.providedViewType = `studio.tool.${kind}`;
-    await f.right.openEditor(first); const firstId = f.activeInstance;
-    await f.right.openEditor(new EditorInput('Interleaved file'));
-    await f.right.openEditor(second); const secondId = f.activeInstance;
-    assert.equal(f.tabs.filter(tab => tab.id === kind).length, 1);
-    assert.deepEqual(Array.from(f.instances, tab => tab.id), [kind, firstId, secondId]);
-    await f.workspace.close(secondId, true);
-    assert.equal(f.active, kind); assert.equal(f.activeInstance, firstId);
-    await f.workspace.select(kind); assert.equal(f.activeInstance, firstId);
-    await f.workspace.newInstance(kind); assert.deepEqual(f.calls.at(-1), ['studio.createToolInstance', kind]);
-    first.dirty = true; f.right.veto = true;
-    await f.workspace.close(kind);
-    assert.equal(f.instances.find(tab => tab.id === firstId).label, `${kind} 2`);
-    f.right.veto = false; await f.workspace.close(kind);
-    assert.equal(f.tabs.some(tab => tab.id === kind), false);
-  }
+test('closing and reopening the runtime repairs its identity without stealing secondary projects', async t => {
+  const f = fixture(t), runtime = new WebviewInput('Runtime', 'file:///project');
+  await f.left.openEditor(runtime); await f.workspace.activate(); await f.left.closeEditor(runtime);
+  const reopened = new WebviewInput('Reopened'); assert.equal(f.policy.getEditorOpenTarget(reopened, f.right), f.left);
+  await f.left.openEditor(reopened);
+  const other = new WebviewInput('Other', 'file:///other'); other.webview.providedViewType = 'studio.projectTool';
+  await f.open(other); assert.equal(f.active, 'project'); assert.equal(f.left.activeEditor, reopened);
 });
 
-test('browser instances and secondary projects use child tabs while the original runtime stays pinned', async t => {
-  const f = fixture(t), runtime = new WebviewInput('Runtime', 'file:///project');
-  await f.left.openEditor(runtime); await f.workspace.activate();
-  await f.workspace.openTool('browser'); assert.deepEqual(f.calls.at(-1), ['simpleBrowser.show']);
-  const browser = new WebviewInput('Browser 1'); browser.webview.providedViewType = 'simpleBrowser.view';
-  const next = new EditorInput('Browser 2'); next.typeId = 'workbench.editorinputs.browser';
-  await f.right.openEditor(browser); const firstId = f.activeInstance;
-  await f.right.openEditor(next);
-  assert.equal(f.active, 'browser'); assert.equal(f.instances.length, 2);
-  await f.workspace.openTool('browser'); assert.equal(f.calls.length, 1);
-  await f.workspace.newInstance('browser'); assert.equal(f.calls.at(-1)[0], 'simpleBrowser.show'); assert.equal(f.calls.at(-1)[2].forceNew, true);
-  await f.workspace.close(firstId, true); assert.ok(f.right.contains(next));
-  const other = new WebviewInput('Other project', 'file:///other'); other.webview.providedViewType = 'studio.projectTool';
-  await f.right.openEditor(other); assert.equal(f.active, 'project');
-  assert.deepEqual(f.left.editors, [runtime]);
+test('browser add uses a fresh page and category routing retains files and secondary projects', async t => {
+  const f = fixture(t); await f.workspace.activate(); await f.workspace.openTool('browser');
+  assert.deepEqual(f.calls.at(-1), ['simpleBrowser.show']);
+  const browser = new WebviewInput('Browser'); browser.webview.providedViewType = 'simpleBrowser.view'; await f.open(browser);
+  await f.workspace.newInstance('browser'); assert.equal(f.calls.at(-1)[2].forceNew, true);
+  assert.equal(f.parts.get('browser').groups[0].contains(browser), true);
+  const other = new WebviewInput('Other', 'file:///other'); other.webview.providedViewType = 'studio.projectTool'; await f.open(other);
+  assert.equal(f.parts.get('project').groups[0].contains(other), true); assert.equal(f.parts.get('browser').groups[0].contains(browser), true);
+});
+
+test('terminal native tabs close actual sessions with veto, while hiding the category preserves sessions', async t => {
+  const f = fixture(t); await f.workspace.activate(); await f.workspace.newInstance('terminal'); await f.workspace.newInstance('terminal');
+  const first = f.instances[0].id; f.terminals.instances[0].veto = true;
+  assert.equal(await f.workspace.close(first, true), false); assert.equal(f.instances.length, 2);
+  f.terminals.instances[0].veto = false; await f.workspace.close(first, true); assert.equal(f.instances.length, 1);
+  await f.workspace.close('terminal'); assert.equal(f.terminals.instances.length, 1); assert.equal(f.terminalGroups.instances.length, 1);
+  assert.equal(f.tabs.some(tab => tab.id === 'terminal'), false);
+  await f.workspace.openTool('terminal'); await settle(); assert.equal(f.instances.length, 1); assert.equal(f.terminals.instances.length, 1);
+});
+
+test('moving the last panel terminal does not create a duplicate during its asynchronous editor attachment', async t => {
+  const f = fixture(t); await f.workspace.activate();
+  const instance = { instanceId: 1, title: 'Existing shell' };
+  f.terminals.instances = [instance]; f.terminalGroups.instances = [instance];
+  let created = 0;
+  f.terminals.createTerminal = async () => { ++created; };
+  f.terminals.moveToEditor = () => {
+    f.terminals.instances = []; f.terminalGroups.instances = [];
+    f.viewChange.fire({ id: 'terminal', visible: true });
+    f.terminals.instances = [instance];
+  };
+  await f.workspace.openTool('terminal'); await settle(); assert.equal(created, 0);
+});
+
+test('closing the terminal category reveals the selected fallback and a later terminal focus can reopen it', async t => {
+  const f = fixture(t); await f.workspace.activate(); await f.open(new EditorInput('file.ts', 'file:///file.ts'));
+  await f.workspace.newInstance('terminal'); await f.workspace.close('terminal'); await settle();
+  assert.equal(f.active, 'editor'); assert.equal(f.visibleView, 'studio.steamTools');
+  f.viewChange.fire({ id: 'terminal', visible: true }); await settle();
+  assert.equal(f.active, 'terminal'); assert.equal(f.instances.length, 1); assert.equal(f.terminals.instances.length, 1);
+});
+
+test('Steam terminals return to the panel on exit while preexisting IDE terminal editors retain their placement', async t => {
+  const f = fixture(t), instance = { instanceId: 99, title: 'IDE terminal' }, input = new TerminalEditorInput(instance);
+  await f.left.openEditor(input); await f.workspace.activate(); await f.workspace.newInstance('terminal');
   await f.workspace.deactivate(f.left);
-  assert.ok(f.left.contains(other) && f.left.contains(next));
+  assert.equal(f.left.contains(input), true); assert.equal(f.terminalGroups.instances.length, 1);
+  assert.equal(f.left.editors.filter(editor => editor instanceof TerminalEditorInput).length, 1);
 });
 
-test('asynchronous native fallback after closing a child cannot replace the selected sibling tool view', async t => {
-  const f = fixture(t); await f.workspace.activate();
-  await f.right.openEditor(new EditorInput('Source behind the tool'));
-  await f.workspace.openTool('kv');
-  const instance = new WebviewInput('KV 2'); instance.webview.providedViewType = 'studio.tool.kv';
-  await f.right.openEditor(instance); const id = f.activeInstance;
-  await f.workspace.close(id, true); f.right.notifyActive();
-  assert.equal(f.active, 'kv'); assert.equal(f.activeInstance, 'kv'); assert.equal(f.partVisible, false);
+test('file-backed custom editors use file tabs and standalone native inputs keep separate category groups', async t => {
+  const f = fixture(t); await f.workspace.activate(); await f.open(new CustomEditorInput('image.svg', 'file:///project/image.svg'));
+  const account = new EditorInput('Account'); account.typeId = 'studio.account'; await f.open(account);
+  assert.deepEqual(Array.from(f.tabs, tab => tab.label), ['editor', 'Account']); assert.equal(f.sidebarVisible, false);
+  assert.equal(f.parts.get('studio.account').groups[0].contains(account), true); assert.equal(f.right.editors.length, 1);
 });
 
-test('terminal child tabs select and close actual sessions, honor veto and retain sessions when hiding their category', async t => {
-  const f = fixture(t); await f.workspace.activate();
-  await f.workspace.newInstance('terminal'); await f.workspace.newInstance('terminal');
-  assert.equal(f.active, 'terminal'); assert.equal(f.instances.length, 2);
-  const [first, second] = f.terminalGroups.instances;
-  await f.workspace.select(`terminal:${first.instanceId}`, true); assert.equal(f.terminalGroups.activeInstance, first);
-  first.veto = true; await f.workspace.close(`terminal:${first.instanceId}`, true); assert.equal(f.instances.length, 2);
-  first.veto = false; await f.workspace.close(`terminal:${first.instanceId}`, true);
-  assert.equal(f.activeInstance, `terminal:${second.instanceId}`);
-  await f.workspace.close('terminal'); assert.equal(f.terminalGroups.instances.length, 1);
-  await f.workspace.openTool('terminal'); assert.equal(f.instances.length, 1);
-  await f.workspace.deactivate(f.left); assert.equal(f.terminalGroups.instances[0], second);
-});
-
-test('the Editor tool opens an empty native workspace with Explorer and creates real untitled files', async t => {
-  const f = fixture(t); await f.workspace.activate();
-  await f.workspace.openTool('editor');
-  assert.equal(f.active, 'editor'); assert.equal(f.instances.length, 0);
-  assert.equal(f.sidebarVisible, true); assert.equal(f.partVisible, false);
-  assert.ok(f.tabs.some(tab => tab.id === 'editor'));
-  await f.workspace.newInstance('editor');
-  assert.deepEqual(f.calls.at(-1), ['workbench.action.files.newUntitledFile']);
-  await f.workspace.deactivate(f.left); assert.equal(f.sidebarDisposed, true);
-});
-
-test('Explorer can show a file in the selected Editor tool while retaining sidebar focus', async t => {
-  const f = fixture(t); await f.workspace.activate();
-  await f.workspace.openTool('editor'); f.left.focus();
-  const source = new EditorInput('index.ts'); source.resource = 'file:///project/index.ts';
-  await f.right.openEditor(source, { preserveFocus: true });
-  assert.equal(f.instances.find(tab => tab.id === f.activeInstance)?.label, 'index.ts');
-  assert.equal(f.partVisible, true); assert.equal(f.activeGroup, f.left);
-});
-
-test('files share one Editor category, retain dirty inputs across tools, and keep an empty editor after closing the last file', async t => {
-  const f = fixture(t), runtime = new WebviewInput('Runtime', 'file:///project');
-  await f.left.openEditor(runtime); await f.workspace.activate();
-  const source = new EditorInput('index.ts'); source.resource = 'file:///project/index.ts'; source.dirty = true;
-  const config = new EditorInput('package.json'); config.resource = 'file:///project/package.json';
-  await f.right.openEditor(source); const sourceId = f.activeInstance;
-  await f.right.openEditor(config); const configId = f.activeInstance;
-  assert.deepEqual(Array.from(f.tabs, tab => tab.id), ['editor']);
-  assert.deepEqual(Array.from(f.instances, tab => tab.label), ['index.ts', 'package.json']);
-  assert.equal(f.tabs[0].dirty, true);
-  await f.workspace.openTool('kv'); assert.equal(f.sidebarVisible, false);
-  await f.workspace.openTool('editor'); assert.equal(f.activeInstance, configId); assert.equal(f.sidebarVisible, true);
-  f.setToolsVisible(false); assert.equal(f.sidebarVisible, false); assert.equal(f.partVisible, false);
-  f.setToolsVisible(true); assert.equal(f.sidebarVisible, true); assert.equal(f.right.activeEditor, config);
-  await f.workspace.close(sourceId, true); await f.workspace.close(configId, true);
-  assert.equal(f.active, 'editor'); assert.equal(f.instances.length, 0); assert.equal(f.partVisible, false);
-  assert.deepEqual(f.left.editors, [runtime]);
-});
-
-test('Editor category close honors the native veto and native sidebar commands reveal the Editor tool', async t => {
-  const f = fixture(t); await f.workspace.activate();
-  const source = new EditorInput('unsaved.ts'); source.resource = 'untitled:unsaved.ts'; source.dirty = true;
-  await f.right.openEditor(source); f.right.veto = true;
-  await f.workspace.close('editor'); assert.equal(f.active, 'editor'); assert.ok(f.right.contains(source));
-  await f.workspace.openTool('kv'); f.requestSidebar(true);
-  assert.equal(f.active, 'editor'); assert.equal(f.sidebarVisible, true);
-  f.requestSidebar(false); assert.equal(f.sidebarVisible, false); assert.equal(f.partVisible, true);
-  f.right.veto = false; await f.workspace.close('editor');
-  assert.equal(f.tabs.some(tab => tab.id === 'editor'), false); assert.equal(f.active, 'kv');
-});
-
-test('file-backed custom editors share Editor tabs while standalone webviews keep their own tool', async t => {
-  const f = fixture(t); await f.workspace.activate();
-  await f.right.openEditor(new CustomEditorInput('image.svg', 'file:///project/image.svg'));
-  assert.deepEqual(Array.from(f.instances, tab => tab.label), ['image.svg']);
-  assert.equal(f.active, 'editor'); assert.equal(f.sidebarVisible, true);
-  const account = new WebviewInput('Account'); account.webview.providedViewType = 'studio.account';
-  await f.right.openEditor(account);
-  assert.deepEqual(Array.from(f.tabs, tab => tab.label), ['editor', 'Account']);
-  assert.equal(f.instances.length, 0); assert.equal(f.sidebarVisible, false);
-});
-
-test('reload restores an empty Editor tool without revealing another tool input underneath', async t => {
-  const saved = new Map([['studio.steamWorkspaceTabs', { tools: ['editor'], active: 'editor', emptyEditor: true }], ['studio.workbenchMode', 'steam']]);
-  const f = fixture(t, saved), browser = new WebviewInput('Browser'); browser.webview.providedViewType = 'simpleBrowser.view';
-  await f.right.openEditor(browser); await f.workspace.activate();
-  assert.equal(f.active, 'editor'); assert.equal(f.instances.length, 0);
-  assert.equal(f.partVisible, false); assert.equal(f.sidebarVisible, true); assert.ok(f.right.contains(browser));
+test('failed transfer back to IDE reports the failure and retains the live dirty input', async t => {
+  const f = fixture(t); await f.workspace.activate(); const source = file('dirty.ts'); source.dirty = true; await f.open(source);
+  f.right.moveVeto = true; await assert.rejects(f.workspace.deactivate(f.left), /Unable to move/);
+  assert.equal(f.right.contains(source), true); assert.equal(source.isDirty(), true);
 });

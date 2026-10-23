@@ -647,6 +647,9 @@
   "Personal project": "Personal project",
   "Choose the project group": "Choose the project group",
   "Cancelled.": "Cancelled.",
+  "Close Others": "Close Others",
+  "Close All": "Close All",
+  "New Tool Instance": "New Tool Instance",
   "Choose files": "Choose files",
   "Choose folders": "Choose folders",
   "Only local files and folders can be referenced.": "Only local files and folders can be referenced."

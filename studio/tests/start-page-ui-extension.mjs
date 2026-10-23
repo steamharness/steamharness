@@ -25,7 +25,7 @@ export async function activate(context) {
         else if (input.action === 'untitled') {
           const document = await vscode.workspace.openTextDocument({ content: input.text ?? '' }); await vscode.window.showTextDocument(document);
           result = document.uri.toString();
-        } else if (input.action === 'file') { await vscode.window.showTextDocument(vscode.Uri.file(input.path), { viewColumn: input.column }); }
+        } else if (input.action === 'file') { await vscode.window.showTextDocument(vscode.Uri.file(input.path), { viewColumn: input.column, preview: input.preview }); }
         else if (input.action === 'webview') {
           const panel = vscode.window.createWebviewPanel(input.viewType ?? 'studio-test.generic', input.title ?? 'Workspace Probe', vscode.ViewColumn.One, { enableScripts: true, retainContextWhenHidden: true });
           panel.webview.html = '<html><body><input id="workspace-probe" value="retained-tool-state"></body></html>';
@@ -67,6 +67,7 @@ export async function activate(context) {
             start: await vscode.commands.executeCommand('studio.internalGetStartState'),
             folders: vscode.workspace.workspaceFolders?.map(folder => folder.uri.fsPath),
             active: vscode.window.activeTextEditor?.document.uri.toString(),
+            terminals: vscode.window.terminals.map(terminal => terminal.name),
             documents: vscode.workspace.textDocuments.map(document => ({ uri: document.uri.toString(), text: document.getText(), dirty: document.isDirty })),
             groups: vscode.window.tabGroups.all.map(group => ({ column: group.viewColumn, active: group.isActive, tabs: group.tabs.map(tab => ({ label: tab.label, active: tab.isActive, dirty: tab.isDirty, uri: tab.input?.uri?.toString(), viewType: tab.input?.viewType })) })) };
         } else { throw new Error(`Unknown test action: ${input.action}`); }

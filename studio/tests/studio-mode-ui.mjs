@@ -323,6 +323,212 @@ for (const language of process.env.STEAMHARNESS_UI_LANGUAGES?.split(',') ?? ['en
     await frame.locator('#hide-menu').click();
     await assertChromeSlot('.project-title');
     check(`${language}: native mode controls integrate with the project menu or title and stay clear in narrow layouts`);
+    if (process.env.STEAMHARNESS_UI_FOCUS === 'native-tabs') {
+      const native = tool => page.locator(`.studio-steam-editors[data-tool="${tool}"]:visible`);
+      const visibleTool = selector => until(async () => {
+        for (const candidate of page.frames()) {
+          if (!await candidate.locator(selector).isVisible().catch(() => false)) { continue; }
+          let current = candidate, visible = true;
+          while (current.parentFrame()) {
+            if (!await (await current.frameElement()).isVisible()) { visible = false; break; }
+            current = current.parentFrame();
+          }
+          if (visible) { return candidate; }
+        }
+      }, Boolean, `Native tool did not become visible: ${selector}`);
+      const contextMenu = async target => {
+        await target.click({ button: 'right' });
+        const menu = page.locator('.context-view .monaco-menu');
+        await menu.waitFor(); await page.waitForTimeout(180);
+        return menu;
+      };
+      const firstFile = path.join(project, 'first.ts'), secondFile = path.join(project, 'second.ts');
+      await writeFile(firstFile, 'export const first = 1;\n'); await writeFile(secondFile, 'export const second = 2;\n');
+      await call({ action: 'file', path: firstFile, column: 1, preview: false });
+      await call({ action: 'file', path: secondFile, column: 1, preview: false });
+      await native('editor').locator('.tab').filter({ hasText: 'second.ts' }).waitFor();
+      assert.equal(await page.locator('.studio-steam-instances').count(), 0);
+      assert.ok(await native('editor').locator('.tabs-container .tab').count() >= 2);
+      await writeFile(path.join(proof, `${language}-native-state.json`), JSON.stringify({ state: await call({ action: 'state' }), tabs: await native('editor').locator('.tab').allTextContents() }, null, 2));
+      const firstTab = native('editor').locator('.tab').filter({ hasText: 'first.ts' });
+      const secondTab = native('editor').locator('.tab').filter({ hasText: 'second.ts' });
+      const menu = await contextMenu(firstTab);
+      const items = await menu.innerText();
+      // Source builds keep native VS Code NLS in English. Studio menu labels still follow the host locale.
+      const coreLabel = (english, chinese) => items.includes('Close Others') ? english : chinese;
+      assert.ok(items.includes(coreLabel('Close Others', '关闭其他')), items);
+      assert.ok(items.includes(coreLabel('Copy Path', '复制路径')), items);
+      assert.ok(!items.includes('Secondary Side Bar'), items);
+      await page.screenshot({ path: path.join(proof, `${language}-native-editor-menu.png`) });
+      await menu.getByText(coreLabel('Close to the Right', '关闭右侧标签页'), { exact: true }).click();
+      await until(() => secondTab.count(), count => count === 0, 'Native Close Right targeted the wrong file');
+      assert.equal(await firstTab.count(), 1);
+      await contextMenu(firstTab);
+      await menu.getByText(coreLabel('Close Others', '关闭其他'), { exact: true }).click();
+      const saveDialog = page.locator('.monaco-dialog-box');
+      await saveDialog.waitFor(); await page.keyboard.press('Escape'); await saveDialog.waitFor({ state: 'detached' });
+      assert.ok((await call({ action: 'state' })).documents.some(document => document.uri === documentUri && document.dirty));
+      await contextMenu(firstTab);
+      await menu.getByText(coreLabel('Pin', '固定'), { exact: true }).click();
+      await until(() => firstTab.getAttribute('class'), value => value.includes('sticky'), 'Native Pin did not pin the right-clicked file');
+      await contextMenu(firstTab);
+      await menu.getByText(coreLabel('Unpin', '取消固定'), { exact: true }).click();
+      await contextMenu(firstTab);
+      await menu.getByText(coreLabel('Split Right', '向右拆分'), { exact: true }).click();
+      await until(() => native('editor').locator('.editor-group-container').count(), count => count === 2, 'Native Split Right did not split the tool workspace');
+      assert.equal(await firstTab.count(), 2);
+      await firstTab.last().locator('.tab-actions .action-label').click();
+      await until(() => native('editor').locator('.editor-group-container').count(), count => count === 1, 'The empty native split did not close');
+      await call({ action: 'file', path: secondFile, column: 1, preview: true });
+      assert.equal(await secondTab.locator('.label-name').evaluate(element => getComputedStyle(element).fontStyle), 'italic');
+      await secondTab.dblclick();
+      await until(() => secondTab.locator('.label-name').evaluate(element => getComputedStyle(element).fontStyle), value => value !== 'italic', 'Double clicking did not keep the native preview open');
+      check(`${language}: native file menu targets the right-clicked tab, honors dirty-close cancellation, pins, splits and keeps previews open`);
+      await command('studio.internalOpenSteamTool', 'kv');
+      await native('kv').locator('.tab').waitFor();
+      const original = await visibleTool('body[data-resource-kind=kv] #resource-search');
+      await original.locator('#resource-search').fill('original-query');
+      await native('kv').locator('.editor-actions .codicon-add').click();
+      await until(() => native('kv').locator('.tab').count(), count => count === 2, 'The KV instances did not share a native tab group');
+      const second = await visibleTool('body[data-resource-kind=kv] #resource-search');
+      assert.notEqual(second, original);
+      assert.equal(await second.locator('#resource-search').inputValue(), '');
+      await second.locator('#resource-search').fill('second-query');
+      const originalKvTab = native('kv').locator('.tab:not([data-resource-name])');
+      await originalKvTab.click();
+      assert.equal(await original.locator('#resource-search').inputValue(), 'original-query');
+      const kvLabels = await native('kv').locator('.tab').allTextContents();
+      assert.equal(kvLabels.some(label => label.includes('first.ts') || label.includes('second.ts')), false);
+      await command('studio.internalOpenSteamTool', 'editor');
+      assert.equal(await native('editor').locator('.tab').filter({ hasText: 'first.ts' }).count(), 1);
+      assert.equal(await native('editor').locator('.tab').filter({ hasText: 'second.ts' }).count(), 1);
+      await contextMenu(page.locator('.studio-steam-tab[data-tab="kv"]'));
+      const categoryMenu = await menu.innerText();
+      for (const label of language === 'en' ? ['Close', 'Close Others', 'Close All'] : ['关闭', '关闭其他', '全部关闭']) { assert.ok(categoryMenu.includes(label), categoryMenu); }
+      assert.equal(categoryMenu.includes('Activity Bar'), false);
+      await page.screenshot({ path: path.join(proof, `${language}-tool-category-menu.png`) });
+      await page.keyboard.press('Escape');
+      check(`${language}: tool categories have useful close actions and native instance tabs stay inside their category`);
+      await command('studio.internalOpenSteamTool', 'kv');
+      for (const [theme, width] of [['Default Light Modern', 1440], ['Default Dark Modern', 1024]]) {
+        await call({ action: 'theme', theme }); await page.setViewportSize({ width, height: 760 });
+        await original.locator('#resource-search').click({ trial: true });
+        await page.waitForTimeout(200);
+        await page.screenshot({ path: path.join(proof, `${language}-native-tool-tabs-${width}.png`) });
+      }
+      await page.setViewportSize({ width: 1440, height: 960 });
+      await command('studio.enterIdeMode'); await command('studio.enterSteamMode');
+      await until(() => native('kv').locator('.tab').count(), count => count === 2, 'Mode switching lost a native tool tab');
+      assert.equal(await native('kv').locator('.tab.active').getAttribute('data-resource-name'), null);
+      const returnedOriginal = await visibleTool('body[data-resource-kind=kv] #resource-search');
+      assert.equal(await returnedOriginal.locator('#resource-search').inputValue(), 'original-query');
+      await returnedOriginal.locator('#resource-search').click({ trial: true });
+      await native('kv').locator('.tab[data-resource-name]').click();
+      assert.equal(await second.locator('#resource-search').inputValue(), 'second-query');
+      await rm(readyFile, { force: true }); await call({ action: 'reload' });
+      bridge = await until(readReady, value => value.port || value.error, 'Reloaded test bridge did not start', 120_000);
+      assert.equal(bridge.error, undefined);
+      await until(() => native('kv').locator('.tab').count(), count => count === 2, 'Reload lost a native tool tab', 120_000);
+      const restoredSecond = await visibleTool('body[data-resource-kind=kv] #resource-search');
+      assert.equal(await restoredSecond.locator('#resource-search').inputValue(), 'second-query');
+      await originalKvTab.click();
+      const restoredOriginal = await visibleTool('body[data-resource-kind=kv] #resource-search');
+      assert.equal(await restoredOriginal.locator('#resource-search').inputValue(), 'original-query');
+      check(`${language}: native tools preserve independent queries and selection across themes, narrow windows, IDE round trips and reload`);
+      await command('studio.internalOpenSteamTool', 'knowledge');
+      await visibleTool('body[data-resource-kind=knowledge] #resource-search');
+      await contextMenu(page.locator('.studio-steam-tab[data-tab=knowledge]'));
+      await menu.getByText(language === 'en' ? 'Close' : '关闭', { exact: true }).click();
+      await until(() => page.locator('.studio-steam-tab[data-tab=knowledge]').count(), count => count === 0, 'Category Close did not remove its tool');
+      await contextMenu(page.locator('.studio-steam-tab[data-tab=kv]'));
+      await menu.getByText(language === 'en' ? 'Close Others' : '关闭其他', { exact: true }).click();
+      await saveDialog.waitFor(); await page.keyboard.press('Escape'); await saveDialog.waitFor({ state: 'detached' });
+      assert.equal(await page.locator('.studio-steam-tab[data-tab=editor]').count(), 1);
+      assert.equal(await page.locator('.studio-steam-tab[data-tab=kv]').count(), 1);
+      check(`${language}: category Close executes and Close Others stops on a native unsaved-file cancellation`);
+      await contextMenu(page.locator('.studio-steam-tab[data-tab=editor]'));
+      await menu.getByText(language === 'en' ? 'Close' : '关闭', { exact: true }).click();
+      await saveDialog.waitFor();
+      await saveDialog.getByRole('button', { name: coreLabel("Don't Save", '不保存'), exact: true }).click();
+      await until(() => page.locator('.studio-steam-tab[data-tab=editor]').count(), count => count === 0, 'Discarding the temporary dirty document did not close its category');
+      await command('studio.internalOpenSteamTool', 'knowledge');
+      await contextMenu(page.locator('.studio-steam-tab[data-tab=kv]'));
+      await menu.getByText(language === 'en' ? 'Close Others' : '关闭其他', { exact: true }).click();
+      await until(() => page.locator('.studio-steam-tab').count(), count => count === 1, 'Category Close Others did not leave only the clicked tool');
+      await contextMenu(page.locator('.studio-steam-tab[data-tab=kv]'));
+      await menu.getByText(language === 'en' ? 'Close All' : '全部关闭', { exact: true }).click();
+      await until(() => page.locator('.studio-steam-tab').count(), count => count === 0, 'Category Close All did not remove every tool');
+      await page.locator('.studio-steam-tools h2').waitFor();
+      await command('studio.internalOpenSteamTool', 'knowledge');
+      await visibleTool('body[data-resource-kind=knowledge] #resource-search');
+      await native('knowledge').locator('.tab-actions .action-label').click();
+      await page.locator('.studio-steam-tools h2').waitFor();
+      assert.equal(await page.locator('.studio-steam-tab').count(), 0);
+      check(`${language}: all category close actions execute, and closing the final native child returns to Open Tools`);
+      continue;
+    }
+    if (process.env.STEAMHARNESS_UI_FOCUS === 'native-runtime') {
+      const native = tool => page.locator(`.studio-steam-editors[data-tool="${tool}"]:visible`);
+      await command('studio.enterIdeMode');
+      await command('workbench.action.terminal.killAll');
+      await until(async () => (await call({ action: 'state' })).terminals.length, count => count === 0, 'The shell regression must start without existing terminals');
+      await command('workbench.action.terminal.new');
+      await page.locator('.part.panel .integrated-terminal').waitFor();
+      await call({ action: 'terminalInput', text: `export STEAMHARNESS_MODE_TEST='native-${language}'` });
+      await command('studio.enterSteamMode'); await command('studio.internalOpenSteamTool', 'terminal');
+      await native('terminal').locator('.terminal-editor').waitFor();
+      await until(() => native('terminal').locator('.tab').count(), count => count === 1, 'The panel terminal did not become a native tool tab');
+      await native('terminal').locator('.editor-actions .codicon-plus').click();
+      await until(() => native('terminal').locator('.tab').count(), count => count === 2, 'The native terminal add button did not create a new session');
+      await native('terminal').locator('.tab.active .tab-actions .action-label').click();
+      await until(() => native('terminal').locator('.tab').count(), count => count === 1, 'Closing a terminal child did not end its session');
+      await command('studio.internalCloseSteamTab', 'terminal');
+      await until(() => page.locator('.studio-steam-tab[data-tab=terminal]').count(), count => count === 0, 'The terminal category reopened during close');
+      await page.waitForTimeout(150);
+      assert.equal(await page.locator('.studio-steam-tab[data-tab=terminal]').count(), 0);
+      await command('workbench.action.terminal.focus');
+      await native('terminal').locator('.terminal-editor').waitFor();
+      await command('studio.enterIdeMode'); await command('workbench.action.terminal.focus');
+      await page.locator('.part.panel .integrated-terminal').waitFor();
+      const terminalProbe = path.join(directory, 'native-terminal.txt');
+      const quotedProbe = `'${terminalProbe.replaceAll("'", "'\\''")}'`;
+      await call({ action: 'terminalInput', text: `printf '%s' "$STEAMHARNESS_MODE_TEST" > ${quotedProbe}` });
+      await until(async () => await exists(terminalProbe) ? readFile(terminalProbe, 'utf8') : undefined, value => value === `native-${language}`, 'Native tool tabs lost the existing shell session');
+      await command('workbench.action.terminal.killAll');
+      check(`${language}: native terminal children create and end sessions while category close and IDE round trips retain the original shell`);
+      await command('studio.enterSteamMode');
+      const browserUrl = 'https://steam-browser.example.test/';
+      await context.route(url => url.origin === new URL(browserUrl).origin, route => route.fulfill({ contentType: 'text/html', body: '<input id="browser-tool-probe" value="Browser tool">' }));
+      const browserFrame = () => until(async () => {
+        for (const candidate of page.frames()) {
+          if (!await candidate.locator('#browser-tool-probe').isVisible().catch(() => false)) { continue; }
+          let current = candidate, visible = true;
+          while (current.parentFrame()) {
+            if (!await (await current.frameElement()).isVisible()) { visible = false; break; }
+            current = current.parentFrame();
+          }
+          if (visible) { return candidate; }
+        }
+      }, Boolean, 'The browser tool did not load its page');
+      const openingBrowser = command('studio.internalOpenSteamTool', 'browser');
+      const urlPicker = page.locator('.quick-input-widget input'); await urlPicker.fill(browserUrl); await urlPicker.press('Enter');
+      await openingBrowser;
+      const first = await browserFrame(); await first.locator('#browser-tool-probe').fill('First browser state');
+      await native('browser').locator('.editor-actions .codicon-add').click();
+      await urlPicker.fill(`${browserUrl}second`); await urlPicker.press('Enter');
+      await until(() => native('browser').locator('.tab').count(), count => count === 2, 'The browser add button reused its existing page');
+      const second = await browserFrame(); assert.notEqual(first, second);
+      await second.locator('#browser-tool-probe').fill('Second browser state');
+      await native('browser').locator('.tab').first().click();
+      assert.equal(await first.locator('#browser-tool-probe').inputValue(), 'First browser state');
+      await native('browser').locator('.tab').last().click();
+      assert.equal(await second.locator('#browser-tool-probe').inputValue(), 'Second browser state');
+      await native('browser').locator('.tab.active .tab-actions .action-label').click();
+      await first.locator('#browser-tool-probe').click({ trial: true });
+      assert.equal(await native('browser').locator('.tab').count(), 1);
+      check(`${language}: native browser tabs create independent pages, retain input and close independently`);
+      continue;
+    }
     if (process.env.STEAMHARNESS_UI_FOCUS === 'mode-motion') {
       await frame.locator('#message').fill(`Retain this draft ${language}`);
       await page.evaluate(() => {
@@ -410,7 +616,7 @@ for (const language of process.env.STEAMHARNESS_UI_LANGUAGES?.split(',') ?? ['en
       continue;
     }
     if (process.env.STEAMHARNESS_UI_FOCUS !== 'new-tool-content') {
-      await frame.locator('#message').fill(`mode-persistence-${language}`); await frame.locator('#send').click();
+      await frame.locator('#message').fill(`mode-persistence-${language}`); await frame.locator('#send').press('Enter');
       await frame.locator('#app[data-run-state=idle]').waitFor();
       await until(() => frame.locator('.message.assistant').count(), value => value > 0, 'Local project did not produce a result');
       await frame.locator('#project-info').click();
@@ -422,7 +628,9 @@ for (const language of process.env.STEAMHARNESS_UI_LANGUAGES?.split(',') ?? ['en
       check(`${language}: project header drag regions exclude controls and text, follow menu layout and suspend for dialogs`);
     }
     if (process.env.STEAMHARNESS_UI_FOCUS === 'new-tool-content') {
-      const instances = page.locator('.studio-steam-instance-list');
+      const instances = page.locator('.studio-steam-editors[data-tool=assistant]:visible .tabs-container');
+      const newAssistant = () => page.locator('.studio-steam-editors[data-tool=assistant]:visible .editor-actions .codicon-add').click();
+      const originalTab = instances.locator('.tab:not([data-resource-name])');
       const assistantFrame = () => until(async () => {
         for (const candidate of page.frames()) {
           if (!await candidate.locator('body[data-surface=assistant] #message').count().catch(() => 0)) { continue; }
@@ -439,30 +647,32 @@ for (const language of process.env.STEAMHARNESS_UI_LANGUAGES?.split(',') ?? ['en
       await original.locator('#message').fill('slow'); await original.locator('#send').press('Enter');
       await original.locator('#app[data-run-state=running]').waitFor();
       await original.locator('#message').fill('Original next turn');
-      await page.locator('.studio-steam-new-instance').click();
-      await until(() => instances.locator('.studio-steam-instance').count(), count => count === 2, 'New Assistant tab was not created');
-      const secondId = await instances.locator('.active').getAttribute('data-tab'), second = await assistantFrame();
+      await newAssistant();
+      await until(() => instances.locator('.tab').count(), count => count === 2, 'New Assistant tab was not created');
+      const secondLabel = await instances.locator('.tab.active .label-name').innerText();
+      const secondTab = instances.locator('.tab').filter({ hasText: secondLabel });
+      const second = await assistantFrame();
       assert.notEqual(second, original);
       await second.locator('#app[data-run-state=idle]').waitFor();
       assert.equal(await second.locator('.message').count(), 0); assert.equal(await second.locator('#message').inputValue(), '');
       await second.locator('#message').fill('Second tab draft');
-      await instances.locator('[data-tab=assistant] [role=tab]').click();
+      await originalTab.click();
       assert.equal(await original.locator('#app').getAttribute('data-run-state'), 'running');
       assert.equal(await original.locator('#message').inputValue(), 'Original next turn');
-      await page.locator('.studio-steam-new-instance').click();
-      await until(() => instances.locator('.studio-steam-instance').count(), count => count === 3, 'Third Assistant tab was not created');
-      const thirdId = await instances.locator('.active').getAttribute('data-tab'), third = await assistantFrame();
+      await newAssistant();
+      await until(() => instances.locator('.tab').count(), count => count === 3, 'Third Assistant tab was not created');
+      const third = await assistantFrame();
       await third.locator('#app[data-run-state=idle]').waitFor();
       assert.equal(await third.locator('.message').count(), 0); assert.equal(await third.locator('#message').inputValue(), '');
       assert.notEqual(new URL(third.url()).searchParams.get('conversationId'), new URL(second.url()).searchParams.get('conversationId'));
       await page.screenshot({ path: path.join(proof, `${language}-new-assistant.png`) });
-      await instances.locator(`[data-tab="${thirdId}"] .studio-steam-tab-close`).click();
-      await instances.locator(`[data-tab="${secondId}"] [role=tab]`).click();
+      await instances.locator('.tab.active .tab-actions .action-label').click();
+      await secondTab.click();
       assert.equal(await second.locator('#message').inputValue(), 'Second tab draft');
       await second.locator('#send').press('Enter'); await second.locator('#app[data-run-state=idle]').waitFor();
       await until(() => second.locator('.message.assistant').allTextContents(), values => values.join('').includes('Second tab draft'), 'Second Assistant did not run independently');
       await second.locator('#message').fill('Second next turn');
-      await instances.locator('[data-tab=assistant] [role=tab]').click();
+      await originalTab.click();
       assert.equal(await original.locator('#app').getAttribute('data-run-state'), 'running');
       assert.equal(await original.locator('#message').inputValue(), 'Original next turn');
       check(`${language}: repeated child-tab additions open distinct blank conversations while the original keeps running and each tab retains its draft`);
@@ -470,15 +680,15 @@ for (const language of process.env.STEAMHARNESS_UI_LANGUAGES?.split(',') ?? ['en
       await original.locator('#app[data-run-state=idle]').waitFor(); await original.locator('#message').fill('Original next turn');
       // Switch before reloading so the two restored selections cannot both
       // accidentally pass by opening the shared last-selected conversation.
-      await instances.locator(`[data-tab="${secondId}"] [role=tab]`).click();
+      await secondTab.click();
       await page.waitForTimeout(500);
       await rm(readyFile, { force: true }); await call({ action: 'reload' });
       bridge = await until(readReady, value => value.port || value.error, 'Reloaded test bridge did not start', 120_000);
-      await until(() => instances.locator('.studio-steam-instance').count(), count => count === 2, 'Assistant tabs did not restore', 120_000);
+      await until(() => instances.locator('.tab').count(), count => count === 2, 'Assistant tabs did not restore', 120_000);
       const restoredSecond = await assistantFrame();
       assert.equal(await restoredSecond.locator('#message').inputValue(), 'Second next turn');
       assert.ok((await restoredSecond.locator('.message.assistant').allTextContents()).join('').includes('Second tab draft'));
-      await instances.locator('[data-tab=assistant] [role=tab]').click();
+      await originalTab.click();
       const restoredOriginal = await assistantFrame();
       assert.equal(await restoredOriginal.locator('#message').inputValue(), 'Original next turn');
       assert.ok((await restoredOriginal.locator('.message.user').allTextContents()).join('').includes('slow'));
@@ -653,7 +863,7 @@ for (const language of process.env.STEAMHARNESS_UI_LANGUAGES?.split(',') ?? ['en
     for (const tool of ['kv', 'knowledge', 'info', 'assistant', 'versions', 'trace', 'terminal']) {
       await command('studio.openSteamTools'); await page.locator(`.studio-steam-tool[data-tool="${tool}"]`).click();
       if (tool === 'terminal') {
-        const terminal = page.locator('.part.auxiliarybar .integrated-terminal');
+        const terminal = page.locator('.studio-steam-editors[data-tool=terminal]:visible .terminal-editor').first();
         await terminal.waitFor();
         const rect = await terminal.boundingBox(); assert.ok(rect.x >= toolsGeometry.x && rect.width > 100);
         assert.equal(await page.locator('.studio-steam-tab[data-tab=terminal] .studio-steam-tab-select').innerText(), language === 'en' ? 'Terminal' : '终端');
@@ -681,27 +891,28 @@ for (const language of process.env.STEAMHARNESS_UI_LANGUAGES?.split(',') ?? ['en
     assert.equal(await toolTabs.count(), 8);
     check(`${language}: tools use dynamic closable tabs and the add menu reopens tools without duplicate tabs`);
 
-    const instanceList = page.locator('.studio-steam-instance-list');
+    const instanceList = page.locator('.studio-steam-editors:visible .tabs-container');
+    const newInstanceButton = page.locator('.studio-steam-editors:visible .editor-group-container.active .editor-actions .codicon-add');
     for (const tool of ['kv', 'knowledge', 'info', 'assistant', 'versions', 'trace']) {
       await command('studio.internalOpenSteamTool', tool);
       const original = await visibleToolFrame(toolSelectors[tool]);
       if (['kv', 'knowledge'].includes(tool)) { await original.locator('#resource-search').fill(`${tool}-first`); }
-      await page.locator('.studio-steam-new-instance').click();
-      await until(() => instanceList.locator('.studio-steam-instance').count(), value => value === 2, `Missing second ${tool} instance`);
+      await newInstanceButton.click();
+      await until(() => instanceList.locator('.tab').count(), value => value === 2, `Missing second ${tool} instance`);
       const created = await visibleToolFrame(toolSelectors[tool]); assert.notEqual(created, original);
       if (tool === 'assistant') { await assertAssistantFits(created, 'new'); }
-      const createdId = await instanceList.locator('.active').getAttribute('data-tab');
+      const createdTab = instanceList.locator('.tab').nth(1);
       if (['kv', 'knowledge'].includes(tool)) { await created.locator('#resource-search').fill(`${tool}-second`); }
       assert.equal(await tabList.locator(`.studio-steam-tab[data-tab=${tool}]`).count(), 1);
-      await instanceList.locator(`[data-tab=${tool}] [role=tab]`).click();
+      await instanceList.locator('.tab').first().click();
       if (['kv', 'knowledge'].includes(tool)) { assert.equal(await original.locator('#resource-search').inputValue(), `${tool}-first`); }
-      await instanceList.locator(`[data-tab="${createdId}"] [role=tab]`).click();
+      await createdTab.click();
       if (['kv', 'knowledge'].includes(tool)) { assert.equal(await created.locator('#resource-search').inputValue(), `${tool}-second`); }
-      const row = await page.locator('.studio-steam-instances').boundingBox();
+      const row = await instanceList.boundingBox();
       const primary = await page.locator('.studio-steam-tabs').boundingBox();
       assert.ok(row.y >= primary.y + primary.height - 1);
-      await instanceList.locator(`[data-tab="${createdId}"] .studio-steam-tab-close`).click();
-      await until(() => instanceList.locator('.studio-steam-instance').count(), value => value === 1, `${tool} instance did not close`);
+      await createdTab.locator('.tab-actions .action-label').click();
+      await until(() => instanceList.locator('.tab').count(), value => value === 1, `${tool} instance did not close`);
       assert.equal(await page.locator('.studio-steam-tab.active').getAttribute('data-tab'), tool);
       assert.equal(frame.isDetached(), false);
       assert.ok((await call({ action: 'state' })).groups.find(group => group.column === 1).tabs.some(tab => tab.active && tab.viewType?.endsWith('studio.project')));
@@ -771,8 +982,8 @@ for (const language of process.env.STEAMHARNESS_UI_LANGUAGES?.split(',') ?? ['en
       assert.deepEqual(state.groups.find(group => group.column === 1).tabs, projectGroupBefore.tabs);
       assert.equal(frame.isDetached(), false); assert.equal(frame.url(), resultUrl);
       assert.ok((await frame.locator('.message.assistant').allTextContents()).join('').includes(`mode-persistence-${language}`));
-      assert.equal(await page.locator('.studio-steam-editors').isVisible(), true);
-      await until(() => page.locator('.studio-steam-editors').evaluate(element => {
+      assert.equal(await page.locator('.studio-steam-editors:visible').isVisible(), true);
+      await until(() => page.locator('.studio-steam-editors:visible').evaluate(element => {
         const rect = element.getBoundingClientRect(), parent = element.parentElement.getBoundingClientRect();
         return getComputedStyle(element).position === 'absolute' && rect.width > 200 && rect.height > 300
           && rect.left >= parent.left && rect.right <= parent.right + 1
@@ -791,17 +1002,17 @@ for (const language of process.env.STEAMHARNESS_UI_LANGUAGES?.split(',') ?? ['en
     const toolsFile = path.join(project, 'tools-only.txt'); await writeFile(toolsFile, 'Opened explicitly in the first editor column.');
     await call({ action: 'file', path: toolsFile, column: 1 });
     const fileState = await assertProjectKept();
-    await page.locator('.studio-steam-editors .view-line').first().click({ trial: true });
+    await page.locator('.studio-steam-editors:visible .view-line').first().click({ trial: true });
     assert.ok(fileState.groups.filter(group => group.column !== 1).some(group => group.tabs.some(tab => tab.uri === pathToFileURL(toolsFile).href)));
-    const toolsGroups = () => page.locator('.studio-steam-editors .editor-group-container').count();
-    const fileTabs = instanceList.locator('.studio-steam-instance').filter({ has: page.getByRole('tab', { name: 'tools-only.txt', exact: true }) });
+    const toolsGroups = () => page.locator('.studio-steam-editors:visible .editor-group-container').count();
+    const fileTabs = instanceList.locator('.tab').filter({ hasText: 'tools-only.txt' });
     const editorTab = tabList.locator('.studio-steam-tab[data-tab=editor]');
     assert.equal(await editorTab.count(), 1);
     assert.equal(await editorTab.getByRole('tab').innerText(), language === 'en' ? 'Editor' : '编辑器');
     const codeSidebar = page.locator('.studio-steam-code-sidebar .part.sidebar');
     await codeSidebar.waitFor();
     await until(async () => {
-      const sidebar = await codeSidebar.boundingBox(), editor = await page.locator('.studio-steam-editors').boundingBox();
+      const sidebar = await codeSidebar.boundingBox(), editor = await page.locator('.studio-steam-editors:visible').boundingBox();
       return sidebar && editor && sidebar.x >= editor.x + editor.width - 1 && sidebar.width >= 140 && sidebar.height > 600;
     }, Boolean, 'Native Explorer must sit to the right of the code editor inside the tool workspace');
     assert.ok(await codeSidebar.locator('.composite-bar-container .action-item').count() > 0);
@@ -814,17 +1025,17 @@ for (const language of process.env.STEAMHARNESS_UI_LANGUAGES?.split(',') ?? ['en
     await command('workbench.files.action.showActiveFileInExplorer');
     const explorerFile = codeSidebar.locator('.explorer-folders-view').getByText('tools-only.txt', { exact: true });
     await explorerFile.waitFor();
-    await fileTabs.locator('.studio-steam-tab-close').click();
+    await fileTabs.locator('.tab-actions .action-label').click();
     await until(() => fileTabs.count(), count => count === 0, 'The file did not close');
     await frame.locator('#message').click();
     await explorerFile.click();
     await fileTabs.waitFor(); await assertProjectKept();
     await until(() => fileTabs.getAttribute('class'), value => value.includes('active'), 'A single Explorer click must show its file even when the runtime had focus');
-    await fileTabs.getByRole('tab').click();
+    await fileTabs.click();
     await until(async () => (await call({ action: 'state' })).active, value => value === pathToFileURL(toolsFile).href, 'Explorer did not activate the opened file in the extension host');
     await call({ action: 'replace', text: 'Edited and saved from the Steam Editor.' });
     await until(async () => (await call({ action: 'state' })).documents.find(document => document.uri === pathToFileURL(toolsFile).href), document => document?.dirty && document.text === 'Edited and saved from the Steam Editor.', 'The project file did not retain the unsaved edit');
-    const closingDirtyFile = fileTabs.locator('.studio-steam-tab-close').click();
+    const closingDirtyFile = fileTabs.locator('.tab-actions .action-label').click();
     const saveConfirmation = page.locator('.monaco-dialog-box');
     await saveConfirmation.waitFor(); await page.keyboard.press('Escape'); await closingDirtyFile;
     await saveConfirmation.waitFor({ state: 'detached' });
@@ -838,7 +1049,7 @@ for (const language of process.env.STEAMHARNESS_UI_LANGUAGES?.split(',') ?? ['en
     await searchInput.fill('Edited and saved from the Steam Editor.'); await searchInput.press('Enter');
     const searchFile = codeSidebar.locator('.results .filematch').getByText('tools-only.txt', { exact: true });
     await searchFile.waitFor();
-    await fileTabs.locator('.studio-steam-tab-close').click();
+    await fileTabs.locator('.tab-actions .action-label').click();
     await until(() => fileTabs.count(), count => count === 0, 'The file did not close before opening a search result');
     await codeSidebar.locator('.results a.match').first().click();
     await fileTabs.waitFor(); await assertProjectKept();
@@ -851,17 +1062,17 @@ for (const language of process.env.STEAMHARNESS_UI_LANGUAGES?.split(',') ?? ['en
     await until(() => codeSidebar.boundingBox(), rect => Math.abs(rect.width - sidebarWidth) < 2, `Hiding tools must preserve the resized sidebar width (${sidebarWidth})`);
     await page.screenshot({ path: path.join(proof, `${language}-editor-explorer.png`) });
     check(`${language}: Editor groups file tabs, opens project files from native Explorer and Search, saves edits, honors dirty-close cancellation and retains the sidebar across tools`);
-    await fileTabs.getByRole('tab').click();
+    await fileTabs.click();
     await until(async () => (await call({ action: 'state' })).active, value => value === pathToFileURL(toolsFile).href, 'The source tab must have focus before editor commands');
     for (const action of ['splitEditorRight', 'splitEditorDown']) {
       await command(`workbench.action.${action}`);
       await until(toolsGroups, value => value === 2, 'Tool workspace did not split');
       await until(() => fileTabs.count(), value => value === 2, 'Split copies must have independent tabs');
-      await fileTabs.last().locator('.studio-steam-tab-close').click();
+      await fileTabs.last().locator('.tab-actions .action-label').click();
       await until(toolsGroups, value => value === 1, 'Closing the split tab did not remove its empty group');
       await until(() => fileTabs.count(), value => value === 1, 'Closing a split removed the surviving file tab');
       await assertProjectKept();
-      await fileTabs.getByRole('tab').click();
+      await fileTabs.click();
     }
     for (const action of ['moveEditorToFirstGroup', 'splitEditorToFirstGroup']) {
       await command(`workbench.action.${action}`); await assertProjectKept();
@@ -962,8 +1173,8 @@ for (const language of process.env.STEAMHARNESS_UI_LANGUAGES?.split(',') ?? ['en
     assert.equal(await page.locator('html.studio-mode-transition').count(), 0);
     check(`${language}: reduced motion skips transition effects`);
     await call({ action: 'file', path: toolsFile, column: 1 });
-    await instanceList.getByRole('tab', { name: 'tools-only.txt', exact: true }).waitFor();
-    await page.locator('.studio-steam-editors .view-line').first().click({ trial: true });
+    await instanceList.locator('.tab').filter({ hasText: 'tools-only.txt' }).waitFor();
+    await page.locator('.studio-steam-editors:visible .view-line').first().click({ trial: true });
     assert.equal(await call({ action: 'closeTab', column: 1, viewType: 'studio.project' }), true);
     await until(() => page.frames().includes(frame), value => !value, 'Closing the runtime did not dispose its frame');
     assert.equal(await mainGroups(), initialGroups);
@@ -982,9 +1193,9 @@ for (const language of process.env.STEAMHARNESS_UI_LANGUAGES?.split(',') ?? ['en
     assert.ok(reopenedRect.x >= runtimeRect.x && reopenedRect.x < runtimeRect.x + runtimeRect.width);
     assert.ok(!(await call({ action: 'state' })).groups.filter(group => group.column !== 1).some(group => group.tabs.some(tab => tab.viewType?.endsWith('studio.project'))));
     check(`${language}: closing and reopening the runtime keeps the project on the left with working content`);
-    await command('studio.internalOpenSteamTool', 'kv'); await page.locator('.studio-steam-new-instance').click();
-    await until(() => instanceList.locator('.studio-steam-instance').count(), value => value === 2, 'The KV panel did not open before saving its query');
-    await until(() => instanceList.locator('.active').getAttribute('data-tab'), value => value?.startsWith('editor:'), 'The new KV panel did not become active');
+    await command('studio.internalOpenSteamTool', 'kv'); await newInstanceButton.click();
+    await until(() => instanceList.locator('.tab').count(), value => value === 2, 'The KV panel did not open before saving its query');
+    await instanceList.locator('.tab.active').nth(0).waitFor();
     const persistedKv = await visibleToolFrame(toolSelectors.kv);
     await persistedKv.locator('#resource-search').fill(`kv-reload-${language}`);
     await call({ action: 'file', path: toolsFile, column: 1 });
@@ -996,11 +1207,11 @@ for (const language of process.env.STEAMHARNESS_UI_LANGUAGES?.split(',') ?? ['en
     bridge = await until(readReady, value => value.port || value.error, 'Studio extension restart timed out', 120_000);
     assert.equal(bridge.error, undefined, bridge.error);
     await until(() => steam.getAttribute('aria-pressed').catch(() => undefined), value => value === 'true', 'Saved Steam mode was not restored after reload', 120_000);
-    await instanceList.getByRole('tab', { name: 'tools-only.txt', exact: true }).waitFor();
-    await page.locator('.studio-steam-editors .view-line').first().click({ trial: true });
+    await instanceList.locator('.tab').filter({ hasText: 'tools-only.txt' }).waitFor();
+    await page.locator('.studio-steam-editors:visible .view-line').first().click({ trial: true });
     await command('studio.internalOpenSteamTool', 'kv');
-    await until(() => instanceList.locator('.studio-steam-instance').count(), value => value === 2, 'Reload did not restore the KV instance');
-    await instanceList.locator('.studio-steam-instance[data-tab^="editor:"] [role=tab]').click();
+    await until(() => instanceList.locator('.tab').count(), value => value === 2, 'Reload did not restore the KV instance');
+    await instanceList.locator('.tab').nth(1).click();
     const restoredKv = await visibleToolFrame(toolSelectors.kv);
     assert.equal(await restoredKv.locator('#resource-search').inputValue(), `kv-reload-${language}`);
     check(`${language}: tool instances and their independent KV query survive workbench reload`);
@@ -1066,28 +1277,26 @@ for (const language of process.env.STEAMHARNESS_UI_LANGUAGES?.split(',') ?? ['en
     await call({ action: 'terminalInput', text: `export STEAMHARNESS_MODE_TEST='mode-${language}'` });
     await command('studio.enterSteamMode');
     await command('workbench.action.terminal.focus');
-    await page.locator('.part.auxiliarybar .integrated-terminal').waitFor();
+    await page.locator('.studio-steam-editors[data-tool=terminal]:visible .terminal-editor').first().waitFor();
     await command('workbench.action.terminal.new');
     await command('workbench.action.terminal.split');
-    await until(() => instanceList.locator('.studio-steam-instance').count(), value => value >= 3, 'Terminal sessions did not appear in the child tab row');
+    await until(() => instanceList.locator('.tab').count(), value => value >= 3, 'Terminal sessions did not appear in the child tab row');
     assert.equal(await page.locator('.part.auxiliarybar > .title > .title-actions').isVisible(), false);
-    assert.equal(await page.locator('.part.auxiliarybar .tabs-container').isVisible(), false);
-    const firstTerminalId = await instanceList.locator('.studio-steam-instance').first().getAttribute('data-tab');
-    await instanceList.locator('.studio-steam-instance').first().getByRole('tab').click();
-    assert.equal(await instanceList.locator('.active').getAttribute('data-tab'), firstTerminalId);
-    const terminalsBeforeNew = await instanceList.locator('.studio-steam-instance').count();
-    await page.locator('.studio-steam-new-instance').click();
-    await until(() => instanceList.locator('.studio-steam-instance').count(), value => value === terminalsBeforeNew + 1, 'The child-row add button did not create a shell session');
-    const createdTerminal = instanceList.locator('.studio-steam-instance.active');
-    const createdTerminalId = await createdTerminal.getAttribute('data-tab');
-    assert.notEqual(createdTerminalId, firstTerminalId);
-    await createdTerminal.locator('.studio-steam-tab-close').click();
-    await until(() => instanceList.locator(`[data-tab="${createdTerminalId}"]`).count(), value => value === 0, 'Terminal child close did not dispose its session');
+    assert.ok(await instanceList.count() > 0);
+    await instanceList.locator('.tab').first().click();
+    assert.equal(await instanceList.locator('.tab').first().getAttribute('aria-selected'), 'true');
+    const terminalsBeforeNew = await instanceList.locator('.tab').count();
+    await page.locator('.studio-steam-editors[data-tool=terminal]:visible .editor-group-container.active .codicon-plus').click();
+    await until(() => instanceList.locator('.tab').count(), value => value === terminalsBeforeNew + 1, 'The child-row add button did not create a shell session');
+    const createdTerminal = page.locator('.studio-steam-editors:visible .editor-group-container.active .tab.active');
+    await createdTerminal.locator('.tab-actions .action-label').click();
+    await until(() => instanceList.locator('.tab').count(), value => value === terminalsBeforeNew, 'Terminal child close did not dispose its session');
     assert.equal((await partState()).panel.visible, false);
     assert.equal(await page.locator('.studio-steam-tab[data-tab=terminal]').count(), 1);
     await page.locator('.studio-steam-tab[data-tab=terminal] .studio-steam-tab-close').click();
+    await until(() => page.locator('.studio-steam-tab[data-tab=terminal]').count(), value => value === 0, 'Closing the terminal category immediately reopened it');
     await command('workbench.action.terminal.focus');
-    await page.locator('.part.auxiliarybar .integrated-terminal').waitFor();
+    await page.locator('.studio-steam-editors[data-tool=terminal]:visible .terminal-editor').first().waitFor();
     assert.equal(await page.locator('.studio-steam-tab[data-tab=terminal]').count(), 1);
     assert.equal((await partState()).panel.visible, false);
     await command('studio.enterIdeMode');
@@ -1118,20 +1327,20 @@ for (const language of process.env.STEAMHARNESS_UI_LANGUAGES?.split(',') ?? ['en
     assert.equal(await browserFrame.locator('#browser-tool-probe').inputValue(), 'Retain this browser state');
     await browserFrame.locator('#browser-tool-probe').click({ trial: true });
     check(`${language}: the browser tool loads an interactive page on the right and retains its tab state`);
-    const firstBrowserId = await instanceList.locator('.active').getAttribute('data-tab');
-    await page.locator('.studio-steam-new-instance').click();
+    const firstBrowserId = await instanceList.locator('.tab.active').getAttribute('data-resource-name');
+    await newInstanceButton.click();
     await urlPicker.fill(`${browserUrl}second`); await urlPicker.press('Enter');
-    await until(() => instanceList.locator('.studio-steam-instance').count(), value => value === 2, 'The browser did not create an independent page');
+    await until(() => instanceList.locator('.tab').count(), value => value === 2, 'The browser did not create an independent page');
     const secondBrowser = await visibleToolFrame('#browser-tool-probe'); assert.notEqual(secondBrowser, browserFrame);
-    const secondBrowserId = await instanceList.locator('.active').getAttribute('data-tab');
+    const secondBrowserId = await instanceList.locator('.tab.active').getAttribute('data-resource-name');
     await secondBrowser.locator('#browser-tool-probe').fill('Second browser state');
-    await instanceList.locator(`[data-tab="${firstBrowserId}"] [role=tab]`).click();
+    await instanceList.locator(`[data-resource-name="${firstBrowserId}"]`).click();
     assert.equal(await browserFrame.locator('#browser-tool-probe').inputValue(), 'Retain this browser state');
-    await instanceList.locator(`[data-tab="${secondBrowserId}"] [role=tab]`).click();
+    await instanceList.locator(`[data-resource-name="${secondBrowserId}"]`).click();
     assert.equal(await secondBrowser.locator('#browser-tool-probe').inputValue(), 'Second browser state');
-    await instanceList.locator(`[data-tab="${secondBrowserId}"] .studio-steam-tab-close`).click();
+    await instanceList.locator(`[data-resource-name="${secondBrowserId}"] .tab-actions .action-label`).click();
     await browserFrame.locator('#browser-tool-probe').click({ trial: true });
-    assert.equal(await instanceList.locator('.studio-steam-instance').count(), 1);
+    assert.equal(await instanceList.locator('.tab').count(), 1);
     assert.ok((await call({ action: 'state' })).groups.find(group => group.column === 1).tabs.some(tab => tab.active && tab.viewType?.endsWith('studio.project')));
     check(`${language}: browser child tabs keep separate interactive pages and closing one preserves the other`);
 
@@ -1183,6 +1392,7 @@ for (const language of process.env.STEAMHARNESS_UI_LANGUAGES?.split(',') ?? ['en
     }
     await writeFile(path.join(proof, `${language}-server.log`), log);
     await writeFile(path.join(proof, `${language}-errors.json`), JSON.stringify({ errors, consoleMessages,
+      nativeTabs: await page?.locator('.studio-steam-editors:visible .tab').evaluateAll(elements => elements.map(element => element.outerHTML)),
       auxiliary: await page?.locator('.part.auxiliarybar').evaluate(element => element.innerHTML.slice(0, 15_000)).catch(() => ''),
       frames: page?.frames().map(frame => frame.url()),
       frameContents: await Promise.all((page?.frames() ?? []).map(async frame => ({
@@ -1197,6 +1407,7 @@ for (const language of process.env.STEAMHARNESS_UI_LANGUAGES?.split(',') ?? ['en
     await page?.screenshot({ path: path.join(proof, `${language}-failure.png`) }).catch(() => undefined);
     throw error;
   } finally {
+    await writeFile(path.join(proof, `${language}-console.json`), JSON.stringify({ consoleMessages }, null, 2));
     await browser?.close();
     if (child?.pid) { try { process.kill(-child.pid, 'SIGTERM'); } catch {} }
     await rm(directory, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
