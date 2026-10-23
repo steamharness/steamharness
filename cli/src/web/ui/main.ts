@@ -5,6 +5,7 @@ import { ParameterActions } from './parameter-actions';
 import { ConversationComposer } from './conversation-composer';
 import { ConversationSubmissions, type ConversationSubmission } from './conversation-submissions';
 import { ConversationQueue } from './conversation-queue';
+import { ConversationMessageIndex, type IndexedUserMessage } from './conversation-message-index';
 import { InputPrompt } from './input-prompt';
 import { ConversationTools } from './conversation-tools';
 import { requestAction } from './action-dialog';
@@ -138,6 +139,12 @@ function initialize(): void {
   let transcriptScrollbarActive = false;
   let transcriptTouchY: number | undefined;
   let transcriptLayoutFrame: number | undefined;
+  const messageIndex = new ConversationMessageIndex(transcript, target => {
+    followingLatest = false;
+    transcript.scrollTop += target.getBoundingClientRect().top - transcript.getBoundingClientRect().top - 18;
+    transcriptScrollTop = transcript.scrollTop;
+    syncTranscriptLayout();
+  });
   const transcriptResize = new ResizeObserver(syncTranscriptLayout);
   transcriptResize.observe(transcript);
   transcriptResize.observe(transcriptContent);
@@ -986,6 +993,7 @@ function initialize(): void {
       transcriptScrollHeight = transcript.scrollHeight;
       transcriptViewportHeight = transcript.clientHeight;
       updateLatest();
+      messageIndex.syncLayout();
     });
   }
   setInterval(() => { for (const view of messages.values()) { view.output?.tick(); if (view.message.status === 'running') { updateMessageMetadata(view); } } }, 200);
@@ -1078,6 +1086,7 @@ function initialize(): void {
     renderHistory(switching); updateSessionMenu();
     document.querySelector<HTMLElement>('#editing-queue')!.hidden = !editingQueueId;
     attachmentList(document.querySelector('#draft-attachments')!, draftFiles, true);
+    const indexedMessages: IndexedUserMessage[] = [];
     if (!session.messages.length) {
       if (!transcriptContent.querySelector('.empty')) { transcriptContent.innerHTML = `<div class="empty">${icon(conversation ? 'comment-discussion' : 'run-all')}</div>`; }
     } else {
@@ -1094,6 +1103,7 @@ function initialize(): void {
         const current = transcriptContent.children[index] ?? null;
         if (current !== view.root) transcriptContent.insertBefore(view.root, current);
         updateMessage(view, message, files, filesSignature);
+        if (message.role === 'user') indexedMessages.push({ root: view.root, message });
         let divider = view.root.querySelector<HTMLElement>('.context-epoch');
         if ((message.contextEpoch ?? 0) > epoch) {
           if (!divider) { divider = document.createElement('div'); divider.className = 'context-epoch'; divider.setAttribute('role', 'separator'); view.root.prepend(divider); }
@@ -1103,6 +1113,7 @@ function initialize(): void {
       });
       for (const [id, view] of messages) { if (!active.has(id)) { view.output?.dispose(); view.root.remove(); messages.delete(id); } }
     }
+    messageIndex.update(indexedMessages);
     contentSearch.refresh();
     if (fromServer) { retryingMessage = undefined; }
     updateConnectionFeedback();
@@ -1304,6 +1315,7 @@ function initialize(): void {
     }
     if (followingLatest && resized) { syncTranscriptLayout(); }
     updateLatest();
+    messageIndex.syncLayout();
   }, { passive: true });
   // Reader input takes precedence even when a resize is waiting for its frame.
   transcript.addEventListener('wheel', event => { if (event.deltaY < 0) { followingLatest = false; } }, { passive: true });
@@ -1333,6 +1345,7 @@ function initialize(): void {
   window.addEventListener('resize', () => { closeSessionMenu(); sizeComposer(); syncTranscriptLayout(); positionHistory(); });
   window.addEventListener('pagehide', () => {
     transcriptScrollbarActive = false; transcriptTouchY = undefined;
+    messageIndex.closePreview();
     transcriptResize.disconnect();
     if (transcriptLayoutFrame !== undefined) { cancelAnimationFrame(transcriptLayoutFrame); transcriptLayoutFrame = undefined; }
   });

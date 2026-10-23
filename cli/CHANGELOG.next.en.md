@@ -1,5 +1,7 @@
 # Unreleased
 
+- [Added] A subtle user-message index on the left of long conversations. Each marker previews its message and position on hover or keyboard focus; clicking jumps to it and keeps your reading position. The narrow index shows the total count, scrolls for long lists, and previews attachments.
+
 - Improved model editing in a separate dialog with a segmented source selector. System AI only needs Provider and model selections and generates names automatically. Bordered fields and model lists clarify grouping; a lone Configuration values tab is hidden without publication management.
 
 - [Improved] Show user-message timestamps and copy controls to the left of the bubble on hover or keyboard focus. Remove the footer space, tighten the gap before project replies, and increase bubble contrast while keeping controls accessible on narrow and touch screens.

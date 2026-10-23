@@ -101,6 +101,19 @@ main { grid-area: main; min-width: 0; min-height: 0; display: flex; flex-directi
 .transcript { position: absolute; inset: 0; overflow: auto; overflow-anchor: none; scrollbar-gutter: stable; padding: 18px max(28px, calc((100% - 820px) / 2)) 10px; }
 .transcript-content { display: flow-root; min-height: 100%; }
 .transcript-content:has(> .empty) { height: 100%; }
+.transcript-area.has-message-index .transcript { padding-left: max(30px, calc((100% - 820px) / 2)); }
+.conversation-message-index { position: absolute; z-index: 6; left: 2px; top: 50%; transform: translateY(-50%); display: flex; flex-direction: column; align-items: center; gap: 5px; width: 24px; max-height: calc(100% - 32px); color: var(--muted); }
+.message-index-count { flex: none; max-width: 100%; font-size: 9px; line-height: 14px; font-variant-numeric: tabular-nums; opacity: .55; }
+.message-index-list { position: relative; min-height: 0; width: 100%; overflow: auto; scrollbar-width: none; overscroll-behavior: contain; }
+.message-index-list::-webkit-scrollbar { display: none; }
+.message-index-marker { display: flex; align-items: center; justify-content: center; width: 100%; height: 16px; min-height: 16px; margin: 0; padding: 0; border: 0; border-radius: 3px; background: transparent; color: inherit; cursor: pointer; }
+.message-index-marker::before { content: ''; width: 8px; height: 2px; border-radius: 1px; background: currentColor; opacity: .3; transition: width .12s, opacity .12s; }
+.message-index-marker[aria-current]::before { width: 12px; opacity: .6; }
+.message-index-marker:hover, .message-index-marker:focus-visible { background: transparent; }
+.message-index-marker:hover::before, .message-index-marker:focus-visible::before { width: 14px; opacity: .85; }
+.message-index-preview { position: absolute; z-index: 7; left: 32px; width: min(320px, calc(100% - 44px)); max-height: calc(100% - 16px); overflow: auto; padding: 10px 12px; border: 1px solid var(--border); border-radius: 7px; background: var(--vscode-editor-background); color: var(--vscode-editor-foreground); box-shadow: 0 3px 12px #0002; }
+.message-index-heading { margin-bottom: 5px; color: var(--muted); font-size: 10px; font-variant-numeric: tabular-nums; }
+.message-index-content { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 7; overflow: hidden; white-space: pre-wrap; overflow-wrap: anywhere; font-size: 12px; line-height: 1.6; }
 .empty { min-height: 100px; height: 100%; display: flex; align-items: center; justify-content: center; color: var(--muted); opacity: .3; }
 .empty > .codicon { font-size: 40px; }
 .message { min-width: 0; margin-bottom: 30px; }
