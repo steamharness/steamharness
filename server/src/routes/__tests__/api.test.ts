@@ -2605,7 +2605,7 @@ test("project configurations use account-scoped generic routes and preserve vers
     const input = {target:'latest',call:{action:'save',revision:1,id:'profile',values:{enabled:false,data:{nested:[null,1]}}}};
     const write = await fetch(server.url('/api/projects/demo/configurations'),{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(input)});
     assert.equal(write.status,409); assert.deepEqual((await write.json()).data,{code:'CONFIGURATION_CONFLICT'});
-    assert.deepEqual(calls,[{options:{projectName:'demo',actorId:'user-1',administrator:false,target:'latest'},call:{action:'get'}},{options:{projectName:'demo',actorId:'user-1',administrator:false,target:'latest'},call:input.call}]);
+    assert.deepEqual(calls,[{options:{projectName:'demo',actorId:'user-1',administrator:false,actor:{userId:'user-1',isSystemAdmin:false},target:'latest'},call:{action:'get'}},{options:{projectName:'demo',actorId:'user-1',administrator:false,actor:{userId:'user-1',isSystemAdmin:false},target:'latest'},call:input.call}]);
     const old=await fetch(server.url('/api/projects/demo/kanban/configurations'),{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});
     assert.equal(old.status,404);
   } finally {await server.close();}

@@ -172,7 +172,7 @@ try {
         abortSignal: controller.signal,
       }));
     } else if (request.method === 'run') {
-      const configuration = await (await core.createLocalProjectConfigurationStore(projectDir)).snapshot({runId:request.configurationRunId ?? request.runId,configuration:request.configuration});
+      const configuration = await (await core.createLocalProjectConfigurationStore(projectDir)).snapshot({runId:request.configurationRunId ?? request.runId,configuration:request.configuration,requireExisting:request.resumeConfiguration});
       let agentControl;
       let runFinished = false;
       let runFailure;
@@ -181,6 +181,7 @@ try {
         agentHost = agent.createAgentSessionHost(request.conversationId, { resume: request.resumeAgent === true });
         agentControl = async ({ command, scopeId, attachments }) => core.withProjectConfiguration(configuration, async () => {
           if (typeof scopeId !== 'string' || !command || typeof command.requestId !== 'string') throw new Error('Invalid agent command.');
+          if(command.type!=='cancel')await core.assertProjectConfigurationAccess(projectDir,configuration);
           let prepared = command;
           if (attachments?.length) {
             if (command.type !== 'submit' || attachments.length > 32) throw new Error('Invalid agent attachments.');
@@ -201,7 +202,7 @@ try {
               await new Promise(resolve => setTimeout(resolve, 25));
             }
           }
-        });
+        },projectDir);
         process.on('message', async message => {
           if (message?.type !== 'agent-control') return;
           try {

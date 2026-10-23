@@ -1,5 +1,7 @@
 # Unreleased
 
+- Added role-filtered configuration lists with capability, role and active-state labels. Guests edit allowed values only; mode labels follow the selected profile, and drafts survive access changes.
+
 - [Improved] Conversation and Assistant file and folder references use compact icon-and-name tags that wrap horizontally and show the full path on hover. Sent tags appear with the text inside the same user message bubble.
 
 - [Fixed] Conversation and Assistant file cards in Studio now reuse the active Explorer file icon theme, including its icons, fonts and filename mappings. Cards follow icon and color theme changes and render the same icons for dropped and selected files.
@@ -30,8 +32,9 @@
 
 - [Fixed] Show each answer's model name instead of its configuration entry ID in Assistant and Conversation, including sending previews and durable follow-ups. Recover older names from saved parameters and preserve them across configuration changes.
 
-- [Fixed] Open an independent new conversation when creating an Assistant tab in Studio, preserve running conversations and drafts in existing tabs, and restore each tab's own selection.
 - [Added] A subtle user-message index on the left of long conversations. Each marker previews its message and position on hover or keyboard focus; clicking jumps to it and keeps your reading position. The narrow index shows the total count, scrolls for long lists, and previews attachments.
+
+- [Fixed] Open an independent new conversation when creating an Assistant tab in Studio, preserve running conversations and drafts in existing tabs, and restore each tab's own selection.
 
 - Improved model editing in a separate dialog with a segmented source selector. System AI only needs Provider and model selections and generates names automatically. Bordered fields and model lists clarify grouping; a lone Configuration values tab is hidden without publication management.
 

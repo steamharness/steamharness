@@ -1,6 +1,6 @@
 import { createGroupRouter, requestActor, pageQuery } from "./groups";
 import { resolveResourceAccess, type AccessCapability } from "@steamharness/project-access";
-import type { ProjectConfigurationAction } from "@steamharness/project-configuration";
+import type { ProjectConfigurationAction, ProjectConfigurationState } from "@steamharness/project-configuration";
 
 import {readFile} from "node:fs/promises";
 import { randomBytes } from "node:crypto";
@@ -1815,32 +1815,33 @@ export function createApiRouter(
     const target=readOptionalString(req.query['target'],'target')??'latest';
     if(target==='draft') throw new HttpError(400,400,'Select a published configuration version.');
     res.setHeader('Cache-Control','private, no-store');
-    res.json(ok(await storage.configurationTemplate(req.params.name,target)??null));
+    const state=await storage.projectConfigurations({projectName:req.params.name,actorId:requireProjectConfigurationActorId(principal),administrator:principal.isSystemAdmin,actor:requestActor(req),target},{action:'get'}) as ProjectConfigurationState;
+    res.json(ok(state.template??(state.canManagePublication?await storage.configurationTemplate(req.params.name,target):undefined)??null));
   }));
   router.post('/projects/:name/configurations/files',authenticate,raw,asyncHandler(async(req,res)=>{
     const principal=await requireConfigurationAccess(req,storage);
     res.json(ok(await storage.uploadConfigurationFile({projectName:req.params.name,actorId:requireProjectConfigurationActorId(principal),
-      administrator:principal.isSystemAdmin,key:requireString(req.query['key'],'key'),
+      administrator:principal.isSystemAdmin,actor:requestActor(req),key:requireString(req.query['key'],'key'),
       target:readOptionalString(req.query['target'],'target'),field:req.query['field']===undefined?undefined:parseJsonBodyField(req.query['field']),name:requireString(req.query['fileName'],'fileName'),
       mimeType:requireString(req.query['mimeType'],'mimeType'),buffer:Buffer.isBuffer(req.body)?req.body:Buffer.from(req.body as Uint8Array)})));
   }));
   router.get('/projects/:name/configurations/files/:fileId',authenticate,asyncHandler(async(req,res)=>{
     const principal=await requireConfigurationAccess(req,storage);
-    const file=await storage.configurationAttachment({projectName:req.params.name,actorId:requireProjectConfigurationActorId(principal),target:readOptionalString(req.query['target'],'target')},req.params.fileId);
+    const file=await storage.configurationAttachment({projectName:req.params.name,actorId:requireProjectConfigurationActorId(principal),administrator:principal.isSystemAdmin,actor:requestActor(req),target:readOptionalString(req.query['target'],'target')},req.params.fileId);
     res.setHeader('Cache-Control','private, no-store');sendManagedFile(res,file.metadata,file.filePath,req.query['download']==='1');
   }));
 
   router.get("/projects/:name/configurations", authenticate, asyncHandler(async (req,res) => {
     const principal = await requireConfigurationAccess(req,storage);
     res.setHeader("Cache-Control", "no-store");
-    res.json(ok(await storage.projectConfigurations({projectName:req.params.name,actorId:requireProjectConfigurationActorId(principal),administrator:principal.isSystemAdmin,target:readOptionalString(req.query["target"],"target")},{action:"get"})));
+    res.json(ok(await storage.projectConfigurations({projectName:req.params.name,actorId:requireProjectConfigurationActorId(principal),administrator:principal.isSystemAdmin,actor:requestActor(req),target:readOptionalString(req.query["target"],"target")},{action:"get"})));
   }));
   router.post("/projects/:name/configurations", authenticate, json, asyncHandler(async (req,res) => {
     const principal = await requireConfigurationAccess(req,storage);
     const body = readRequiredRecord(req.body,"body");
     const call = readRequiredRecord(body["call"],"call") as unknown as ProjectConfigurationAction;
     res.setHeader("Cache-Control", "no-store");
-    res.json(ok(await storage.projectConfigurations({projectName:req.params.name,actorId:requireProjectConfigurationActorId(principal),administrator:principal.isSystemAdmin,target:readOptionalString(body["target"],"target")},call)));
+    res.json(ok(await storage.projectConfigurations({projectName:req.params.name,actorId:requireProjectConfigurationActorId(principal),administrator:principal.isSystemAdmin,actor:requestActor(req),target:readOptionalString(body["target"],"target")},call)));
   }));
 
   router.get('/invitations/:token',authenticate,asyncHandler(async(req,res)=>{

@@ -1,6 +1,6 @@
 import { type AccessActor, type AccessCapability, type ResourceAccess } from "@steamharness/project-access";
 import {isDeepStrictEqual} from "node:util";
-import { bindConfigurationTemplate, configurationAgentModelPolicy, createPublicationDraft, parsePublicationDraft, freezeConfigurationTemplate, parseConfigurationTemplate, CONFIGURATION_TEMPLATE_FILE, type ConfigurationPublicationDraft, type ProjectConfigurationTemplate, configurationCapability, parseConfigurationFile, validateConfigurationFileSelection, type ProjectConfigurationField,parseConfigurationField, applyConfigurationAction, configurationSnapshot, exportConfigurations, parseConfigurationDefinition, readConfigurationState, validateConfigurationAction, ProjectConfigurationError, type ProjectConfigurationAction, type ProjectConfigurationState, type ProjectConfigurationExport, type ProjectConfiguration } from "@steamharness/project-configuration";
+import { bindConfigurationProfiles, configurationAccessView, type ConfigurationProfilePolicy, type ConfigurationAccess, bindConfigurationTemplate, configurationAgentModelPolicy, createPublicationDraft, parsePublicationDraft, freezeConfigurationTemplate, parseConfigurationTemplate, CONFIGURATION_TEMPLATE_FILE, type ConfigurationPublicationDraft, type ProjectConfigurationTemplate, configurationCapability, parseConfigurationFile, validateConfigurationFileSelection, type ProjectConfigurationField,parseConfigurationField, applyConfigurationAction, configurationSnapshot, exportConfigurations, parseConfigurationDefinition, readConfigurationState, validateConfigurationAction, ProjectConfigurationError, type ProjectConfigurationAction, type ProjectConfigurationState, type ProjectConfigurationExport, type ProjectConfiguration } from "@steamharness/project-configuration";
 import { createLocalProjectConfigurationStore, readProjectConfigurationDefinition } from "steamharness";
 
 import { createHash, createHmac, randomBytes, randomUUID, timingSafeEqual } from "node:crypto";
@@ -2526,19 +2526,19 @@ export class Storage {
     if(!template.attachments.length) delete template.attachments;
   }
 
-  async uploadConfigurationFile(options:{projectName:string;actorId:string;key:string;name:string;mimeType:string;buffer:Buffer;target?:string;administrator?:boolean;field?:unknown}):Promise<ManagedFileReference[]> {
+  async uploadConfigurationFile(options:{projectName:string;actorId:string;key:string;name:string;mimeType:string;buffer:Buffer;target?:string;administrator?:boolean;actor?:AccessActor;field?:unknown}):Promise<ManagedFileReference[]> {
     try {
     const state=await this.projectConfigurations(options,{action:'get'}) as ProjectConfigurationState;
     const field=state.fields.find(f=>f.name===options.key) ?? (options.field===undefined?undefined:parseConfigurationField(options.field));
     if(!field || field.type!=='file'||field.name!==options.key) throw new HttpError(400,400,'Unknown configuration file field.');
-    if(!state.fields.some(existing=>existing.name===field.name)) applyConfigurationAction(state,{action:'field.save',revision:state.revision,field},randomUUID);
+    if(!state.fields.some(existing=>existing.name===field.name)) applyConfigurationAction(state,{action:'field.save',revision:state.revision,field},randomUUID,undefined,state.capabilities?{subject:options.actorId,role:state.capabilities.role,online:state.capabilities.online}:undefined);
     if(!configurationCapability(state,field).editable) throw new HttpError(403,403,'Configuration is locked by the author.');
     validateConfigurationFileSelection(field,{name:options.name,mimeType:options.mimeType,size:options.buffer.length});
     return await this.saveManagedFiles({projectName:options.projectName,configurationOwnerUserId:options.actorId,files:[{name:options.name,mimeType:options.mimeType,buffer:options.buffer}]});
     } catch(error) {if(error instanceof ProjectConfigurationError)throw new HttpError(error.code==='CONFIGURATION_FORBIDDEN'?403:400,400,error.message,{code:error.code});throw error;}
   }
 
-  async configurationAttachment(options:{projectName:string;actorId:string;target?:string},fileId:string):Promise<{metadata:ManagedFileReference;filePath:string}> {
+  async configurationAttachment(options:{projectName:string;actorId:string;target?:string;actor?:AccessActor;administrator?:boolean},fileId:string):Promise<{metadata:ManagedFileReference;filePath:string}> {
     const state=await this.projectConfigurations(options,{action:'get'}) as ProjectConfigurationState;
     try {
       const file=await this.getManagedFile(fileId);
@@ -2584,7 +2584,7 @@ export class Storage {
     return next;
   }
 
-  async projectConfigurations(options: { projectName: string; actorId: string; target?: string; administrator?: boolean }, call: ProjectConfigurationAction): Promise<ProjectConfigurationState | ProjectConfigurationExport> {
+  async projectConfigurations(options: { projectName: string; actorId: string; target?: string; administrator?: boolean; actor?: AccessActor }, call: ProjectConfigurationAction): Promise<ProjectConfigurationState | ProjectConfigurationExport> {
     try {
       validateConfigurationAction(call);
       const run=()=>this.projectConfigurationsUnlocked(options,call);
@@ -2595,11 +2595,13 @@ export class Storage {
     }
   }
 
-  private async projectConfigurationsUnlocked(options: { projectName: string; actorId: string; target?: string; administrator?: boolean }, call: ProjectConfigurationAction): Promise<ProjectConfigurationState | ProjectConfigurationExport> {
+  private async projectConfigurationsUnlocked(options: { projectName: string; actorId: string; target?: string; administrator?: boolean; actor?: AccessActor }, call: ProjectConfigurationAction): Promise<ProjectConfigurationState | ProjectConfigurationExport> {
     this.assertProjectId(options.projectName);
     const actor = requireKanbanActorId(options.actorId);
     const access = await this.getProjectAccessSummary(options.projectName, actor);
-    const canManagePublication = options.administrator === true || access.access?.capabilities.includes("manageSettings") === true;
+    const resolvedAccess = this.db ? await this.requireProjectCapability(options.projectName,options.actor??{userId:actor,isSystemAdmin:options.administrator===true},"read") : access.access;
+    const configurationAccess:ConfigurationAccess={subject:actor,role:options.administrator===true?"owner":resolvedAccess?.effectiveRole??"guest",online:true};
+    const canManagePublication = options.administrator === true || resolvedAccess?.capabilities.includes("manageSettings") === true;
     if(String(call?.action).startsWith("publication.") && !canManagePublication)throw new HttpError(403,403,"Maintainer access is required to manage official configurations.");
     let target = options.target ?? "draft";
     if (!access.access?.capabilities.includes("readDraft") && !canManagePublication && target === "draft") {
@@ -2611,10 +2613,12 @@ export class Storage {
       let fields: ProjectConfigurationState["fields"] = [];
       let agentModelPolicy: ProjectConfigurationState["agentModelPolicy"];
       let definitionVersion = 1;
-      try { const definition = readProjectConfigurationDefinition(source.sourceDir); fields = definition.fields; definitionVersion = definition.version; agentModelPolicy=definition.agentModelPolicy; }
+      let profilePolicy:ConfigurationProfilePolicy|undefined;
+      try { const definition = readProjectConfigurationDefinition(source.sourceDir); fields = definition.fields; definitionVersion = definition.version; agentModelPolicy=definition.agentModelPolicy;profilePolicy=definition.profilePolicy; }
       catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error; }
       const template = !canManagePublication && source.resolvedTarget !== 'draft' ? await this.configurationTemplate(options.projectName,source.resolvedTarget) : undefined;
       agentModelPolicy=configurationAgentModelPolicy({fields,agentModelPolicy},template??{fields:[]});
+      profilePolicy=template?.profilePolicy??profilePolicy;
       if (!canManagePublication && definitionVersion === 2 && !template) fields = [];
       const references = async (definitions:ProjectConfigurationField[], input:Record<string,unknown>) => {
         for(const field of definitions.filter(f=>f.type==='file')) {
@@ -2646,7 +2650,7 @@ export class Storage {
       let state: ProjectConfigurationState;
       if (!this.db) {
         const store = await createLocalProjectConfigurationStore(source.sourceDir, {
-          rootDir: path.join(this.dataRoot, "project-configurations"), storageKey: JSON.stringify([options.projectName, actor]), template:template??null,fields,agentModelPolicy,
+          rootDir: path.join(this.dataRoot, "project-configurations"), storageKey: JSON.stringify([options.projectName, actor]), template:template??null,fields,agentModelPolicy,profilePolicy,access:configurationAccess,
         });
         const result = await store.dispatch(publicationCall ? {action:'get'} : call);
         if(call.action === 'export') return result;
@@ -2656,12 +2660,14 @@ export class Storage {
           let current = readConfigurationState(stored, template?.fields ?? fields, () => initialId,agentModelPolicy);
           if (template) current = bindConfigurationTemplate(current,template);
           else delete current.template;
-          if (stored && current.revision === (stored as ProjectConfigurationState).revision && (!isDeepStrictEqual((stored as ProjectConfigurationState).fields,current.fields) || !isDeepStrictEqual((stored as ProjectConfigurationState).agentModelPolicy,current.agentModelPolicy))) current.revision++;
-          return call.action === "get" || call.action === "export" || publicationCall ? current : applyConfigurationAction(current,call,randomUUID);
+          if(profilePolicy)current=bindConfigurationProfiles(current,profilePolicy);
+          if(current.profilePolicy)current.activeConfigurationId=configurationAccessView(current,configurationAccess).activeConfigurationId;
+          if (stored && current.revision === (stored as ProjectConfigurationState).revision && (!isDeepStrictEqual((stored as ProjectConfigurationState).fields,current.fields) || !isDeepStrictEqual((stored as ProjectConfigurationState).agentModelPolicy,current.agentModelPolicy) || !isDeepStrictEqual((stored as ProjectConfigurationState).profilePolicy,current.profilePolicy) || (stored as ProjectConfigurationState).activeConfigurationId!==current.activeConfigurationId)) current.revision++;
+          return call.action === "get" || call.action === "export" || publicationCall ? current : applyConfigurationAction(current,call,randomUUID,undefined,configurationAccess);
         });
       }
       if (canManagePublication) {
-        const withSourcePolicy = (draft: ConfigurationPublicationDraft) => parsePublicationDraft({...draft,agentModelPolicy:configurationAgentModelPolicy(state,draft)});
+        const withSourcePolicy = (draft: ConfigurationPublicationDraft) => parsePublicationDraft({...draft,profilePolicy:state.profilePolicy,agentModelPolicy:configurationAgentModelPolicy(state,draft)});
         const operation = async () => {
           let draft = await this.configurationPublicationDraft(options.projectName);
           if(call.action === 'publication.save') {
@@ -2684,7 +2690,7 @@ export class Storage {
         state.sourceHash=await hashDirectory(source.sourceDir);
       }
       state.fieldCapabilities=Object.fromEntries(state.fields.map(field=>[field.name,{...configurationCapability(state,field),paths:Object.fromEntries(Object.keys(field.paths??{}).map(pointer=>[pointer,configurationCapability(state,field,pointer)]))}]));
-      return call.action === "export" ? exportConfigurations(state,call.id) : state;
+      return call.action === "export" ? exportConfigurations(state,call.id,configurationAccess) : configurationAccessView(state,configurationAccess);
     } catch (error) {
       if (error instanceof ProjectConfigurationError) { const status = error.code === "CONFIGURATION_CONFLICT" ? 409 : error.code === "CONFIGURATION_FORBIDDEN" ? 403 : 400; throw new HttpError(status,status,error.message,{code:error.code}); }
       throw error;
@@ -2996,9 +3002,9 @@ export class Storage {
         // Publication authority was checked above. Read the recorded author's personal revision without binding a recipient template.
         const ownerState = await this.projectConfigurations({projectName:options.projectName,actorId:configurationAccountId,administrator:true},{action:'get'}) as ProjectConfigurationState;
         if(ownerState.revision !== publication.configurationRevision) throw new HttpError(409,409,"Configuration changed after publication preparation. Save the publication draft again.");
-        configurationTemplate = freezeConfigurationTemplate({...publication,agentModelPolicy:configurationAgentModelPolicy(ownerState,publication)},{projectId:options.projectName,projectVersion:version,sourceHash:authoredSourceHash});
+        configurationTemplate = freezeConfigurationTemplate({...publication,agentModelPolicy:configurationAgentModelPolicy(ownerState,publication),profilePolicy:ownerState.profilePolicy},{projectId:options.projectName,projectVersion:version,sourceHash:authoredSourceHash});
         await this.freezeConfigurationAttachments(options.projectName,sourceDir,configurationTemplate,configurationAccountId);
-        await writeJson(path.join(sourceDir, "configuration.json"), {version:2,fields:configurationTemplate.fields,...(configurationTemplate.agentModelPolicy?{agentModelPolicy:configurationTemplate.agentModelPolicy}:{})});
+        await writeJson(path.join(sourceDir, "configuration.json"), {version:2,fields:configurationTemplate.fields,...(configurationTemplate.agentModelPolicy?{agentModelPolicy:configurationTemplate.agentModelPolicy}:{}),...(configurationTemplate.profilePolicy?{profilePolicy:configurationTemplate.profilePolicy}:{})});
         await writeJson(path.join(sourceDir, CONFIGURATION_TEMPLATE_FILE),configurationTemplate);
       } else {
         // v2 opts in to safe sharing defaults, without publishing historical personal values.
@@ -3007,10 +3013,11 @@ export class Storage {
           if(definition.version===2) {
             const access=await this.getProjectAccessSummary(options.projectName,options.createdByUserId);
 
-            const empty=readConfigurationState(undefined,definition.fields,()=> 'default',definition.agentModelPolicy);
+            let empty=readConfigurationState(undefined,definition.fields,()=> 'default',definition.agentModelPolicy);
+            if(definition.profilePolicy)empty=bindConfigurationProfiles(empty,definition.profilePolicy);
             configurationTemplate=freezeConfigurationTemplate(createPublicationDraft(empty),{projectId:options.projectName,projectVersion:version,sourceHash:authoredSourceHash});
             await this.freezeConfigurationAttachments(options.projectName,sourceDir,configurationTemplate,options.createdByUserId);
-            await writeJson(path.join(sourceDir,'configuration.json'),{version:2,fields:configurationTemplate.fields,...(configurationTemplate.agentModelPolicy?{agentModelPolicy:configurationTemplate.agentModelPolicy}:{})});
+            await writeJson(path.join(sourceDir,'configuration.json'),{version:2,fields:configurationTemplate.fields,...(configurationTemplate.agentModelPolicy?{agentModelPolicy:configurationTemplate.agentModelPolicy}:{}),...(configurationTemplate.profilePolicy?{profilePolicy:configurationTemplate.profilePolicy}:{})});
             await writeJson(path.join(sourceDir,CONFIGURATION_TEMPLATE_FILE),configurationTemplate);
           }
         } catch(error) {if((error as NodeJS.ErrnoException).code!=='ENOENT') throw error;}

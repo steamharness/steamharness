@@ -17,10 +17,13 @@ export function projectConfigurationsButton(): string {
 export function mountProjectConfigurations(host: Host): ProjectConfigurationsPanel {
   const trigger = document.getElementById('project-configurations')!;
   const dialog = document.createElement('dialog'); dialog.id = 'project-configurations-dialog'; dialog.className = 'conversation-dialog project-configurations';
+  let suspendedDetailId:string|undefined;
   let detailId:string|undefined, selectingId:string|undefined, publicationView=false, publicationDirty=false, missingAgentModels=false;
   let opening = 0;
   let opener: HTMLElement | undefined;
   const fieldRows = new Map<string, HTMLElement>();
+  const modeStatus=document.createElement('span');modeStatus.className='configuration-current-profile';modeStatus.hidden=true;
+  document.querySelector('.composer-toolbar .run-options')?.append(modeStatus);
   const listActionButtons:HTMLButtonElement[]=[];
   const heading = document.createElement('header'), title = document.createElement('h2'); title.textContent = t('Project configurations');
   title.id = 'project-configurations-title'; dialog.setAttribute('aria-labelledby', title.id);
@@ -138,7 +141,7 @@ export function mountProjectConfigurations(host: Host): ProjectConfigurationsPan
   async function reload() {
     if (working) return;
     hideMenus(); working = true; const unlock = lockControls(dialog);
-    try { const next = await request({action:'get'}); dirty = false; draft = undefined; render(latest && latest.revision > next.revision ? latest : next); }
+    try { const next = await request({action:'get'}); dirty = false; draft = undefined; suspendedDetailId=undefined; render(latest && latest.revision > next.revision ? latest : next); }
     catch (e) { error(e); }
     finally { working = false; unlock(); updateActions(); }
   }
@@ -193,16 +196,47 @@ export function mountProjectConfigurations(host: Host): ProjectConfigurationsPan
   const addField = button(t('Add field'), () => { if (draft && clean()) void editField(); });
   addField.className = 'configuration-add-field'; addField.prepend(document.createRange().createContextualFragment(iconHtml('add')));
   fieldsHeader.append(addField); profileControls.append(useCurrent,profilesMenu.trigger); toolbar.append(back,profileLabel,profileControls);listToolbar.append(create,transferMenu.trigger);
+  function renderList(next:ProjectConfigurationState) {
+    list.replaceChildren();listActionButtons.length=0;
+    for(const profile of next.configurations) {
+      const active=profile.id===next.activeConfigurationId;
+      const row=document.createElement('li'),open=button('',()=>openDetails(profile.id));row.dataset.active=String(active);open.className='configuration-profile-link';open.ariaLabel=profile.name;
+      const label=document.createElement('span');label.className='configuration-profile-text';label.textContent=profile.name;open.append(label);
+      const capability=next.configurationCapabilities?.[profile.id];
+      if(capability){
+        const summary=document.createElement('span');summary.className='configuration-profile-summary';
+        if(capability.description){const description=document.createElement('small');description.textContent=capability.description;summary.append(description);}
+        for(const text of [...capability.tags,t({guest:'Available to guests',developer:'Developer and above',maintainer:'Maintainer and above',owner:'Owner only'}[capability.minimumRole])]){const badge=document.createElement('span');badge.className='configuration-profile-badge';badge.textContent=text;summary.append(badge);}
+        label.append(summary);
+      }
+      if(active){open.setAttribute('aria-current','true');open.setAttribute('aria-description',t('In use'));}
+      open.append(document.createRange().createContextualFragment(iconHtml('chevron-right')));
+      const usage=document.createElement('div');usage.className='configuration-profile-usage';
+      if(active)usage.append(activeBadge());
+      else {
+        const use=useButton(()=>{if(clean())void dispatch({action:'select',id:profile.id});});use.dataset.configurationId=profile.id;
+        use.ariaLabel=t('Use this configuration')+': '+profile.name;usage.append(use);listActionButtons.push(use);
+      }
+      const controls=document.createElement('div');controls.className='configuration-profile-controls';
+      if(next.capabilities?.manageConfigurations!==false){controls.append(iconButton('copy',t('Copy')+': '+profile.name,()=>void profileOperation('duplicate',profile.id)));if(capability?.rename!==false)controls.append(iconButton('edit',t('Rename')+': '+profile.name,()=>void profileOperation('rename',profile.id)));}
+      const remove=iconButton('trash',t('Delete')+': '+profile.name,()=>void profileOperation('delete',profile.id));remove.dataset.last=String(next.configurations.length<=1||!!next.profilePolicy&&next.configurations.filter(item=>item.profileKey===profile.profileKey).length===1);if(next.capabilities?.manageConfigurations!==false&&capability?.delete!==false)controls.append(remove);
+      listActionButtons.push(open,...controls.querySelectorAll<HTMLButtonElement>('button'));row.append(open,usage,controls);list.append(row);
+    }
+  }
   function updateActions() {
     for (const control of [back,useCurrent,create,addField,...listActionButtons,...menus.flatMap(menu => [menu.trigger,...menu.items])]) control.disabled = working || !draft;
     for(const control of listActionButtons)if(control.dataset.last==='true')control.disabled=true;
     transferMenu.items[1]!.hidden=!detailId;
+    const manage=(latest??draft)?.capabilities?.manageConfigurations!==false;
+    create.hidden=!manage; addField.hidden=!manage; profilesMenu.trigger.hidden=!manage; transferMenu.items[0]!.hidden=!manage;
     useCurrent.hidden=!detailId||detailId===(latest??draft)?.activeConfigurationId;
     for(const control of dialog.querySelectorAll<HTMLButtonElement>('.configuration-use')) {
       const selecting=working&&!!selectingId&&control.dataset.configurationId===selectingId;
       control.setAttribute('aria-busy',String(selecting));
       control.querySelector('.configuration-use-label')!.textContent=t(selecting?'Switching...':'Use this configuration');
     }
+    profilesMenu.items[1]!.hidden = (latest??draft)?.configurationCapabilities?.[detailId??'']?.rename===false;
+    profilesMenu.items[2]!.hidden = (latest??draft)?.configurationCapabilities?.[detailId??'']?.delete===false;
     profilesMenu.items[2]!.disabled = working || !draft || draft.configurations.length <= 1;
     refresh.disabled = working; save.disabled = working || !dirty || !draft;
     for (const [key, reset] of resets) reset.disabled = working || !overrides.has(key) || !!draft && !configurationCapability(draft,draft.fields.find(f=>f.name===key)!).editable;
@@ -337,7 +371,7 @@ export function mountProjectConfigurations(host: Host): ProjectConfigurationsPan
     const available=[...draft.configurations,...publication.configurations.filter(profile=>!draft!.configurations.some(c=>c.id===profile.id))];
     for(const profile of available){
       const row=document.createElement('label'),check=document.createElement('input');check.type='checkbox';check.checked=publication.configurations.some(p=>p.id===profile.id);
-      check.onchange=()=>{publication.configurations=check.checked?[...publication.configurations,{id:profile.id,name:profile.name,values:draft!.configurations.some(c=>c.id===profile.id)?configurationSnapshot(draft!,profile.id,false).values:profile.values}]:publication.configurations.filter(p=>p.id!==profile.id);if(!publication.configurations.some(p=>p.id===publication.defaultConfigurationId))publication.defaultConfigurationId=publication.configurations[0]?.id??'';publicationEdited();renderPublication();};
+      check.onchange=()=>{publication.configurations=check.checked?[...publication.configurations,{id:profile.id,name:profile.name,...(profile.profileKey?{profileKey:profile.profileKey}:{}),values:draft!.configurations.some(c=>c.id===profile.id)?configurationSnapshot(draft!,profile.id,false).values:profile.values}]:publication.configurations.filter(p=>p.id!==profile.id);if(!publication.configurations.some(p=>p.id===publication.defaultConfigurationId))publication.defaultConfigurationId=publication.configurations[0]?.id??'';publicationEdited();renderPublication();};
       row.append(check,profile.name);choices.append(row);
     }
     const defaultLabel=document.createElement('label');defaultLabel.className='configuration-publication-default';defaultLabel.textContent=t('Default recipient profile');
@@ -382,7 +416,7 @@ export function mountProjectConfigurations(host: Host): ProjectConfigurationsPan
     const scroll=document.createElement('div');scroll.className='configuration-publication-table-scroll';scroll.tabIndex=0;scroll.append(table);publicationBody.append(scroll,publicationPreview);
   }
   function render(next: ProjectConfigurationState) {
-    if (latest && next.revision < latest.revision) return;
+    if (latest && next.capabilities?.subject===latest.capabilities?.subject && next.revision < latest.revision) return;
     if (!latest || latest.revision !== next.revision || latest.activeConfigurationId !== next.activeConfigurationId) {
       const field = next.fields.find(field => field.name === AGENT_MODELS_CONFIGURATION_KEY && field.control === 'ai-models');
       const current = next.configurations.find(profile => profile.id === next.activeConfigurationId);
@@ -393,6 +427,9 @@ export function mountProjectConfigurations(host: Host): ProjectConfigurationsPan
       missingAgentModels = Array.isArray(models) && !models.some(model => field?.allowThirdParty !== false || !!model && typeof model === 'object' && !Array.isArray(model) && model.source === 'system');
     }
     latest = next;
+    const activeProfile=next.configurations.find(profile=>profile.id===next.activeConfigurationId);
+    modeStatus.hidden=!next.profilePolicy;modeStatus.textContent=activeProfile?.name??'';
+    modeStatus.title=next.configurationCapabilities?.[next.activeConfigurationId]?.description??'';
     // Usage reflects committed state even when value or publication drafts must be preserved.
     profileLabel.querySelector('.configuration-in-use')?.remove();
     if(detailId===next.activeConfigurationId)profileLabel.append(activeBadge());
@@ -404,30 +441,21 @@ export function mountProjectConfigurations(host: Host): ProjectConfigurationsPan
       if(!publicationBody.hidden)showView(false);
       if(draft) {draft.canManagePublication=next.canManagePublication;delete draft.publication;delete draft.publicationPreview;}
     }
+    const sameAccount=!draft||draft.capabilities?.subject===next.capabilities?.subject;
+    if(detailId&&(!sameAccount||!next.configurations.some(profile=>profile.id===detailId))){
+      suspendedDetailId=detailId;detailId=undefined;hideMenus();showView(false);
+    }else if(suspendedDetailId&&sameAccount&&next.configurations.some(profile=>profile.id===suspendedDetailId)){
+      detailId=suspendedDetailId;suspendedDetailId=undefined;showView(false);
+    }
+    if(draft&&next.capabilities){draft.capabilities={...next.capabilities!,subject:draft.capabilities?.subject??next.capabilities?.subject??'guest'};draft.configurationCapabilities=next.configurationCapabilities;}
+    renderList(next);updateActions();
     if ((editingField || working) && draft) return;
     if ((dirty||publicationDirty) && draft) { if (draft.revision !== next.revision) error(new Error(t('Configuration changed. Your draft is preserved. Refresh before saving.'))); return; }
     if (draft?.revision === next.revision && JSON.stringify(draft)===JSON.stringify(next)) return;
     modelControls.forEach(control=>control.dispose());
     draft = structuredClone(next); dirty = false; fields.replaceChildren(); fieldRows.clear(); readers.clear(); overrides.clear(); resets.clear(); modelControls.length = 0;
     if(detailId&&!next.configurations.some(c=>c.id===detailId)){detailId=undefined;publicationDraft=undefined;showView(false);}
-    list.replaceChildren();listActionButtons.length=0;
-    for(const profile of next.configurations) {
-      const active=profile.id===next.activeConfigurationId;
-      const row=document.createElement('li'),open=button('',()=>openDetails(profile.id));row.dataset.active=String(active);open.className='configuration-profile-link';open.ariaLabel=profile.name;
-      const label=document.createElement('span');label.className='configuration-profile-text';label.textContent=profile.name;open.append(label);
-      if(active){open.setAttribute('aria-current','true');open.setAttribute('aria-description',t('In use'));}
-      open.append(document.createRange().createContextualFragment(iconHtml('chevron-right')));
-      const usage=document.createElement('div');usage.className='configuration-profile-usage';
-      if(active)usage.append(activeBadge());
-      else {
-        const use=useButton(()=>{if(clean())void dispatch({action:'select',id:profile.id});});use.dataset.configurationId=profile.id;
-        use.ariaLabel=t('Use this configuration')+': '+profile.name;usage.append(use);listActionButtons.push(use);
-      }
-      const controls=document.createElement('div');controls.className='configuration-profile-controls';
-      controls.append(iconButton('copy',t('Copy')+': '+profile.name,()=>void profileOperation('duplicate',profile.id)),iconButton('edit',t('Rename')+': '+profile.name,()=>void profileOperation('rename',profile.id)));
-      const remove=iconButton('trash',t('Delete')+': '+profile.name,()=>void profileOperation('delete',profile.id));remove.dataset.last=String(next.configurations.length<=1);controls.append(remove);
-      listActionButtons.push(open,...controls.querySelectorAll<HTMLButtonElement>('button'));row.append(open,usage,controls);list.append(row);
-    }
+    renderList(next);
     const current=next.configurations.find(c=>c.id===(detailId??next.activeConfigurationId))!;
     profileLabel.textContent=current.name;
     useCurrent.dataset.configurationId=current.id;useCurrent.ariaLabel=t('Use this configuration')+': '+current.name;
@@ -446,7 +474,7 @@ export function mountProjectConfigurations(host: Host): ProjectConfigurationsPan
       row.tabIndex=-1;fieldRows.set(field.name,row);
       const title=document.createElement('label'); title.htmlFor=`configuration-field-${field.name}`; title.textContent=(field.control==='ai-models'?t('AI models'):field.label || field.name)+(field.required?' *':''); fieldHeading.append(title); row.append(fieldHeading);
       const controls=document.createElement('div'); controls.className='configuration-field-actions'; fieldHeading.append(controls);
-      if (next.customFields.some(f=>f.name===field.name)) {
+      if (next.capabilities?.manageConfigurations!==false && next.customFields.some(f=>f.name===field.name)) {
         const remove=iconButton('trash',t('Delete field'),()=>{if(clean())void dispatch({action:'field.delete',key:field.name});}); remove.dataset.action='delete';
         controls.append(iconButton('edit',t('Edit field'),()=>{if(clean())void editField(field);}),remove);
       }

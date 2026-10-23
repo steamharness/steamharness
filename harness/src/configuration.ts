@@ -8,24 +8,28 @@ import path from "node:path";
 import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import ts from "typescript";
 import { setTimeout as delay } from "node:timers/promises";
+import {resolveProjectConfigurationAccess,type ConfigurationConnection} from './configuration-access';
+export {resolveProjectConfigurationAccess} from './configuration-access';
 import {
   applyConfigurationAction, configurationSnapshot, configurationAgentModelPolicy, exportConfigurations, parseAgentModelPolicy, parseConfigurationDefinition, readConfigurationState,
   bindConfigurationTemplate, configurationCapability, parseConfigurationTemplate, CONFIGURATION_TEMPLATE_FILE, type ProjectConfigurationTemplate,
   PROJECT_CONFIGURATION_FILE, ProjectConfigurationError, validateConfigurationAction, isConfigurationValue, AGENT_MODELS_CONFIGURATION_FIELD, AGENT_MODELS_CONFIGURATION_KEY,
+  bindConfigurationProfiles,configurationAccessView,validateConfigurationSnapshotAccess,type ConfigurationAccess,type ConfigurationProfilePolicy,
   type AgentModelPolicy, type ProjectConfigurationDefinition, type ProjectConfigurationField, type ConfigurationValue, type ConfigurationValues, type ProjectConfigurationAction, type ProjectConfigurationSnapshot, type ProjectConfigurationState,
 } from "@steamharness/project-configuration";
 export * from "@steamharness/project-configuration";
 
 const scope = new AsyncLocalStorage<ProjectConfigurationSnapshot>();
+const directoryScope = new AsyncLocalStorage<string>();
 export function getConfig<T extends ConfigurationValue = ConfigurationValue>(key: string): T | undefined {
   const values = scope.getStore()?.values;
   return values && Object.hasOwn(values, key) ? values[key] as T : undefined;
 }
 export function getProjectConfiguration(): ProjectConfigurationSnapshot | undefined { return scope.getStore(); }
-export function withProjectConfiguration<T>(snapshot: ProjectConfigurationSnapshot, run: () => T): T {
+export function withProjectConfiguration<T>(snapshot: ProjectConfigurationSnapshot, run: () => T, projectDir?:string): T {
   const value = structuredClone(snapshot);
   const freeze = (item: unknown): void => { if (item && typeof item === "object") { Object.values(item).forEach(freeze); Object.freeze(item); } };
-  freeze(value); return scope.run(value, run);
+  freeze(value); return scope.run(value,()=>projectDir?directoryScope.run(projectDir,run):run());
 }
 export function currentConfigurationValues(): ConfigurationValues { return scope.getStore()?.values ?? {}; }
 
@@ -96,9 +100,52 @@ async function localConfigurationIdentity(directory: string): Promise<string> {
 }
 
 /** Shared by application ID across Studio, CLI Web, CLI and local SDK execution. Values never enter project source. */
-export async function createLocalProjectConfigurationStore(projectDir: string, options: { rootDir?: string; storageKey?: string; template?: ProjectConfigurationTemplate | null; fields?: ProjectConfigurationField[]; agentModelPolicy?: AgentModelPolicy; templateCacheDir?: string } = {}) {
-  const directory = await realpath(projectDir);
+export interface LocalProjectConfigurationOptions {
+  rootDir?: string; storageKey?: string; template?: ProjectConfigurationTemplate | null;
+  fields?: ProjectConfigurationField[]; agentModelPolicy?: AgentModelPolicy; templateCacheDir?: string;
+  profilePolicy?: ConfigurationProfilePolicy;
+  /** Trusted host injection. These options are never taken from RPC action payloads. */
+  access?: ConfigurationAccess;
+  connection?:()=>ConfigurationConnection|null;
+}
+export async function createLocalProjectConfigurationStore(projectDir: string, options: LocalProjectConfigurationOptions = {}) {
+  const directory=await realpath(projectDir);
+  await localConfigurationIdentity(directory);
   const agentModelSources: AgentModelSourceCache = new Map();
+  const target=async(fresh:boolean)=>{
+    let definition: Pick<ProjectConfigurationDefinition,'profilePolicy'> = options;
+    if(options.fields===undefined){
+      try { definition=parseConfigurationDefinition(JSON.parse(await readFile(path.join(directory,PROJECT_CONFIGURATION_FILE),'utf8'))); }
+      catch(error){if((error as NodeJS.ErrnoException).code!=='ENOENT')throw error;definition={};}
+    }
+    let template=options.template;
+    if(template===undefined){try{template=parseConfigurationTemplate(JSON.parse(await readFile(path.join(directory,CONFIGURATION_TEMPLATE_FILE),'utf8')));}catch(error){if((error as NodeJS.ErrnoException).code!=='ENOENT')throw error;}}
+    const profilePolicy=template?.profilePolicy??definition.profilePolicy;
+    const access=profilePolicy?(options.access??await resolveProjectConfigurationAccess(directory,options.connection?.(),fresh)):undefined;
+    const storageKey=profilePolicy&&options.storageKey===undefined?JSON.stringify([await localConfigurationIdentity(directory),access!.subject]):options.storageKey;
+    return createProjectConfigurationStoreForIdentity(directory,{...options,storageKey,profilePolicy,access},agentModelSources,options.storageKey===undefined);
+  };
+  return {
+    read:async(fresh=false)=>(await target(fresh)).read(),
+    dispatch:async(call:ProjectConfigurationAction)=>(await target(true)).dispatch(call),
+    snapshot:async(input:{id?:string;runId?:string;required?:boolean;configuration?:ProjectConfigurationSnapshot;refreshAccess?:boolean;requireExisting?:boolean}={})=>(await target(input.refreshAccess!==false)).snapshot(input),
+  };
+}
+
+/** Rechecked before a restricted tool executes; a saved run is not an authorization grant. */
+export async function assertProjectConfigurationAccess(projectDir:string,configuration=getProjectConfiguration()):Promise<void>{
+  if(configuration?.profilePolicyVersion!==undefined)await (await createLocalProjectConfigurationStore(projectDir)).snapshot({configuration,required:false});
+}
+export async function assertCurrentProjectConfigurationAccess():Promise<void>{
+  const snapshot=getProjectConfiguration();
+  if(snapshot?.profilePolicyVersion===undefined)return;
+  const directory=directoryScope.getStore();
+  if(!directory)throw new ProjectConfigurationError('A restricted run requires a verified project directory.','CONFIGURATION_FORBIDDEN');
+  await assertProjectConfigurationAccess(directory,snapshot);
+}
+
+async function createProjectConfigurationStoreForIdentity(projectDir: string, options: LocalProjectConfigurationOptions = {}, agentModelSources:AgentModelSourceCache=new Map(), local=options.storageKey===undefined) {
+  const directory = await realpath(projectDir);
   const root = options.rootDir ?? path.join(os.homedir(), ".steamharness", "configurations");
   const directoryKey = createHash("sha256").update(directory).digest("hex");
   const key = createHash("sha256").update(options.storageKey ?? await localConfigurationIdentity(directory)).digest("hex");
@@ -123,7 +170,7 @@ export async function createLocalProjectConfigurationStore(projectDir: string, o
       catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error; }
     }
     let template = options.template;
-    if (template === undefined && options.storageKey === undefined) {
+    if (template === undefined && local) {
       let source: string | undefined;
       try { source = await readFile(path.join(directory, CONFIGURATION_TEMPLATE_FILE), "utf8"); }
       catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error; }
@@ -147,6 +194,8 @@ export async function createLocalProjectConfigurationStore(projectDir: string, o
     const policy = configurationAgentModelPolicy(definition,template??{fields:[]});
     let state = readConfigurationState(stored, template?.fields ?? definition.fields, () => `default-${key.slice(0, 24)}`,policy);
     if (template) state = bindConfigurationTemplate(state, template);
+    if(options.profilePolicy)state=bindConfigurationProfiles(state,options.profilePolicy);
+    if(state.profilePolicy)state.activeConfigurationId=configurationAccessView(state,options.access).activeConfigurationId;
     const changed = !isDeepStrictEqual(stored,state);
     if (adopting || !stored || changed) {
       if (stored && changed && state.revision === (stored as ProjectConfigurationState).revision) state.revision++;
@@ -178,7 +227,7 @@ export async function createLocalProjectConfigurationStore(projectDir: string, o
       try { return await run(); } finally { guard.exec("ROLLBACK"); }
     } finally { guard.close(); }
   };
-  const capabilities = (state: ProjectConfigurationState): ProjectConfigurationState => ({...state,fieldCapabilities:Object.fromEntries(state.fields.map(field=>[field.name,{...configurationCapability(state,field),paths:Object.fromEntries(Object.keys(field.paths??{}).map(pointer=>[pointer,configurationCapability(state,field,pointer)]))}]))});
+  const capabilities = (state: ProjectConfigurationState): ProjectConfigurationState => ({...configurationAccessView(state,options.access),fieldCapabilities:Object.fromEntries(state.fields.map(field=>[field.name,{...configurationCapability(state,field),paths:Object.fromEntries(Object.keys(field.paths??{}).map(pointer=>[pointer,configurationCapability(state,field,pointer)]))}]))});
   const read = async () => capabilities(await exclusive(load));
   return {
     read,
@@ -186,23 +235,31 @@ export async function createLocalProjectConfigurationStore(projectDir: string, o
       validateConfigurationAction(call);
       if (call.action.startsWith('publication.')) throw new ProjectConfigurationError("Official configuration publication requires an online connection.", "CONFIGURATION_ONLINE_REQUIRED");
       if (call.action === "get") return read();
-      if (call.action === "export") return exportConfigurations(await read(), call.id);
+      if (call.action === "export") return exportConfigurations(await read(), call.id,options.access);
       return exclusive(async () => {
-        const next = applyConfigurationAction(await load(), call, randomUUID);
+        const next = applyConfigurationAction(await load(), call, randomUUID,undefined,options.access);
         await atomic(filename, next); return capabilities(next);
       });
     },
-    async snapshot(options: { id?: string; runId?: string; required?: boolean; configuration?: ProjectConfigurationSnapshot } = {}): Promise<ProjectConfigurationSnapshot> {
-      const provided = options.configuration === undefined ? undefined : structuredClone(parseSnapshot(options.configuration));
-      const runFile = options.runId ? path.join(root, "snapshots", runKey, `${createHash("sha256").update(options.runId).digest("hex")}.json`) : undefined;
+    async snapshot(snapshotOptions: { id?: string; runId?: string; required?: boolean; configuration?: ProjectConfigurationSnapshot; requireExisting?:boolean } = {}): Promise<ProjectConfigurationSnapshot> {
+      const provided = snapshotOptions.configuration === undefined ? undefined : structuredClone(parseSnapshot(snapshotOptions.configuration));
+      const runFile = snapshotOptions.runId ? path.join(root, "snapshots", runKey, `${createHash("sha256").update(snapshotOptions.runId).digest("hex")}.json`) : undefined;
       if (runFile) return exclusive(async () => {
-        try { return parseSnapshot(JSON.parse(await readFile(runFile, "utf8"))); }
+        try {
+          const saved=parseSnapshot(JSON.parse(await readFile(runFile, "utf8")));
+          return options.profilePolicy||saved.profilePolicyVersion!==undefined?validateConfigurationSnapshotAccess(await load(),saved,options.access):saved;
+        }
         catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error; }
-        const snapshot = provided ?? configurationSnapshot(await load(), options.id, options.required !== false);
+        if (snapshotOptions.requireExisting && options.profilePolicy) throw new ProjectConfigurationError('This restricted run has no verified configuration snapshot. Start a new task.', 'CONFIGURATION_FORBIDDEN');
+        const state=await load();
+        if(snapshotOptions.id && state.profilePolicy && !configurationAccessView(state,options.access).configurations.some(profile=>profile.id===snapshotOptions.id))throw new ProjectConfigurationError('This configuration is not available to this account.','CONFIGURATION_FORBIDDEN');
+        const snapshot = validateConfigurationSnapshotAccess(state,provided ?? configurationSnapshot(configurationAccessView(state,options.access), snapshotOptions.id, snapshotOptions.required !== false),options.access);
         await atomic(runFile, snapshot);
         return snapshot;
       });
-      return provided ?? configurationSnapshot(await read(), options.id, options.required !== false);
+      const state=await exclusive(load);
+      if(snapshotOptions.id && state.profilePolicy && !configurationAccessView(state,options.access).configurations.some(profile=>profile.id===snapshotOptions.id))throw new ProjectConfigurationError('This configuration is not available to this account.','CONFIGURATION_FORBIDDEN');
+      return validateConfigurationSnapshotAccess(state,provided ?? configurationSnapshot(configurationAccessView(state,options.access),snapshotOptions.id,snapshotOptions.required!==false),options.access);
     },
   };
 }

@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { spawn, type ChildProcess } from "node:child_process";
 import { once } from "node:events";
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
@@ -9,6 +9,7 @@ import * as ai from "@earendil-works/pi-ai";
 import { DurableAgent } from "../agent/durable-agent";
 import { agentConversationDirectory, cancelAgentConversation } from "../agent/storage";
 import { HarnessError } from "../workflow/errors";
+import {createLocalProjectConfigurationStore,withProjectConfiguration} from '../configuration';
 
 function worker(directory: string, scenario: string, phase: string) {
   return spawn(process.execPath, ["--import", "tsx", "--conditions=development",
@@ -32,6 +33,31 @@ function agent(databasePath?: string, retryDelayMs?: number) {
   } });
   return { instance, faux };
 }
+
+test('durable model steps retain the verified configuration scope and stop after a role downgrade', async t => {
+  const directory=await mkdtemp(path.join(tmpdir(),'durable-profile-'));
+  const originalFetch=globalThis.fetch,originalUrl=process.env.STEAMHARNESS_SERVER_URL,originalKey=process.env.STEAMHARNESS_SERVER_ADMIN_KEY;
+  let role='developer';
+  let instance:DurableAgent|undefined;
+  t.after(async()=>{
+    await instance?.close();globalThis.fetch=originalFetch;
+    if(originalUrl===undefined)delete process.env.STEAMHARNESS_SERVER_URL;else process.env.STEAMHARNESS_SERVER_URL=originalUrl;
+    if(originalKey===undefined)delete process.env.STEAMHARNESS_SERVER_ADMIN_KEY;else process.env.STEAMHARNESS_SERVER_ADMIN_KEY=originalKey;
+    await rm(directory,{recursive:true,force:true});
+  });
+  await writeFile(path.join(directory,'package.json'),JSON.stringify({id:crypto.randomUUID()}));
+  await writeFile(path.join(directory,'configuration.json'),JSON.stringify({version:2,fields:[{name:'mode',type:'string'}],profilePolicy:{version:1,defaultProfileKey:'ask',manageMinimumRole:'developer',profiles:[{key:'ask',name:'Ask',minimumRole:'guest',fixedValues:{mode:'ask'}},{key:'build',name:'Build',minimumRole:'developer',fixedValues:{mode:'build'}}]}}));
+  process.env.STEAMHARNESS_SERVER_URL='https://durable-access.test';process.env.STEAMHARNESS_SERVER_ADMIN_KEY=directory;
+  globalThis.fetch=async input=>new Response(JSON.stringify({errCode:0,data:String(input).endsWith('/api/auth/me')?{profile:{userId:'alice'}}:{access:{effectiveRole:role}}}));
+  const store=await createLocalProjectConfigurationStore(directory);
+  const snapshot=await store.snapshot({id:'profile-build'});
+  const created=withProjectConfiguration(snapshot,()=>agent(undefined,0),directory);instance=created.instance;
+  instance.state.tools=[{name:'revoke',label:'Revoke',description:'Test',parameters:ai.Type.Object({}),execute:async()=>{role='guest';return {content:[ai.fauxText('Role changed')],details:{}};}}];
+  created.faux.setResponses([ai.fauxAssistantMessage([ai.fauxToolCall('revoke',{})],{stopReason:'toolUse'}),ai.fauxAssistantMessage('Must not run')]);
+  await instance.prompt('Revoke and continue').catch(()=>undefined);
+  assert.equal(created.faux.state.callCount,1);
+  assert.match(instance.state.errorMessage??'',/not available/);
+});
 
 for (const partial of [false, true]) test(`unexpected provider aborts retry without replaying completed tools (partial=${partial})`, async t => {
   const { instance, faux } = agent(undefined, 0);

@@ -5,16 +5,52 @@ import {tmpdir} from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
 import {Storage} from '../storage';
-import {configurationSnapshot,type ProjectConfigurationState,type ProjectConfigurationField} from '@steamharness/project-configuration';
+import {configurationSnapshot,type ConfigurationProfilePolicy,type ProjectConfigurationState,type ProjectConfigurationField} from '@steamharness/project-configuration';
 const projectId='00000000-0000-4000-8000-000000000094';
 const pkg=JSON.parse(await readFile(new URL('../../package.json',import.meta.url),'utf8'));
-async function fixture(fields:ProjectConfigurationField[]) {
+test('role profiles filter guest responses and exports and enforce writes in the storage service',async()=>{
+  const {root,storage,options}=await fixture([
+    {name:'mode',type:'string',sharing:{publish:true,includeValue:true,editable:false}},
+    {name:'model',type:'string'},
+  ],{version:1,defaultProfileKey:'ask',manageMinimumRole:'developer',profiles:[
+    {key:'ask',name:'Ask',minimumRole:'guest',fixedValues:{mode:'ask'}},
+    {key:'build',name:'Build',minimumRole:'developer',fixedValues:{mode:'build'}},
+  ]});
+  try{
+    const author=await storage.projectConfigurations(options,{action:'get'}) as ProjectConfigurationState;
+    assert.deepEqual(author.configurations.map(profile=>profile.profileKey),['ask','build']);
+    await storage.projectConfigurations(options,{action:'publication.save',revision:author.revision,publication:author.publication});
+    await storage.publish({projectName:projectId,createdByUserId:'author',expectedConfigurationRevision:1,expectedSourceHash:author.sourceHash});
+    const guestOptions={...options,actorId:'downloader',target:'1.0.0'};
+    let guest=await storage.projectConfigurations(guestOptions,{action:'get'}) as ProjectConfigurationState;
+    assert.deepEqual(guest.configurations.map(profile=>profile.profileKey),['ask']);
+    assert.equal(guest.capabilities?.manageConfigurations,false);
+    assert.ok(!JSON.stringify(guest).includes('"mode":"build"'));
+    const originalRevision=guest.revision;
+    for(const action of ['create','duplicate','rename','delete','field.save'] as const)await assert.rejects(storage.projectConfigurations(guestOptions,{action,id:guest.activeConfigurationId,revision:originalRevision,name:'Build'}),/Developer access/);
+    await assert.rejects(storage.projectConfigurations(guestOptions,{action:'save',id:guest.activeConfigurationId,revision:originalRevision,values:{mode:'build',model:'must-not-save'}}),/fixes/);
+    guest=await storage.projectConfigurations(guestOptions,{action:'get'}) as ProjectConfigurationState;
+    assert.equal(guest.revision,originalRevision);
+    assert.equal(configurationSnapshot(guest).values.model,undefined);
+    guest=await storage.projectConfigurations(guestOptions,{action:'save',id:guest.activeConfigurationId,revision:guest.revision,values:{model:'guest-model'}}) as ProjectConfigurationState;
+    assert.equal(configurationSnapshot(guest).values.model,'guest-model');
+    const exported=await storage.projectConfigurations(guestOptions,{action:'export'});
+    assert.ok(!JSON.stringify(exported).includes('"mode":"build"'));
+    const devOptions={...guestOptions,actorId:'developer'};
+    let developer=await storage.projectConfigurations(devOptions,{action:'get'}) as ProjectConfigurationState;
+    const build=developer.configurations.find(profile=>profile.profileKey==='build')!;
+    developer=await storage.projectConfigurations(devOptions,{action:'select',revision:developer.revision,id:build.id}) as ProjectConfigurationState;
+    assert.equal(configurationSnapshot(developer).values.mode,'build');
+    assert.equal(configurationSnapshot(developer).values.model,undefined);
+  }finally{await rm(root,{recursive:true,force:true});}
+});
+async function fixture(fields:ProjectConfigurationField[],profilePolicy?:ConfigurationProfilePolicy) {
   const root=await mkdtemp(path.join(tmpdir(),'configuration-publication-'));
   const storage=new Storage({serverRoot:process.cwd(),repoRoot:process.cwd(),dataRoot:root});
   const prepared=await storage.createProjectFromFiles({projectName:projectId,files:[
     {path:'package.json',content:JSON.stringify({id:projectId,name:'Config test',version:'1.0.0',devDependencies:{steamharness:pkg.dependencies.steamharness},steamHarness:{projectType:'workflow',projectInfo:{localizedNames:{},declarations:[],platformSupport:{mode:'agnostic'},dataStorage:{mode:'server'},relatedProjects:[]}}})},
     {path:'index.ts',content:'throw new Error("Server must never execute source");'},
-    {path:'configuration.json',content:JSON.stringify({version:2,fields})},
+    {path:'configuration.json',content:JSON.stringify({version:2,fields,...(profilePolicy?{profilePolicy}:{})})},
   ]});
   storage.getProjectAccessSummary=async(_id,userId)=>({projectId,projectName:"Config test",visibility:"private",access:resolveResourceAccess([{type:"project",id:projectId,role:userId==="author"?"owner":userId==="downloader"?"guest":"developer"}])});
   const options={projectName:projectId,actorId:'author'};

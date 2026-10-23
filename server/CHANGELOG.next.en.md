@@ -1,5 +1,7 @@
 # Unreleased
 
+- Added authoritative project and inherited group role checks for configuration use and management. Responses, exports and attachments are filtered; version 3 templates freeze role policies and fixed assignments.
+
 - Fixed publication drafts, previews and distributed templates honoring source system-only restrictions. Drafts cannot relax policy, and excluded historical third-party values do not block publication.
 
 - Project configuration APIs honor source-declared system-only AI rules, atomically reject third-party saves and imports, and preserve source restrictions in published model fields.

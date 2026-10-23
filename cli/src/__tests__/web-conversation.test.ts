@@ -149,7 +149,7 @@ describe('Conversation execution lifecycle', () => {
       .mockResolvedValueOnce({ status: 'success' });
     await controller.send({ text: 'Hello', params: {}, attachments: [] }); await controller.idle();
     expect(runtime.run).toHaveBeenCalledTimes(2);
-    expect(vi.mocked(runtime.run).mock.calls[1][0]).toEqual(vi.mocked(runtime.run).mock.calls[0][0]);
+    expect(vi.mocked(runtime.run).mock.calls[1][0]).toEqual({...vi.mocked(runtime.run).mock.calls[0][0],resumeConfiguration:true});
     expect(controller.current.messages).toHaveLength(2);
     expect(controller.current.messages.at(-1)?.status).toBe('success');
   });

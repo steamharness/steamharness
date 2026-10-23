@@ -6291,6 +6291,7 @@ components:
       properties:
         id: { type: string }
         name: { type: string, minLength: 1, maxLength: 200 }
+        profileKey: { type: string, description: Stable source-declared role profile. }
         values: { type: object, additionalProperties: true }
       required: [ id, name, values ]
     AgentModelPolicy:
@@ -6299,11 +6300,33 @@ components:
       description: Source-declared restriction retained independently of published field visibility. Draft and template metadata cannot relax the current source restriction.
       properties:
         allowThirdParty: { type: boolean }
+    ConfigurationProfilePolicy:
+      type: object
+      description: Source-owned role policy. Client labels, role claims and personal metadata never grant authority. Projects without this policy keep their existing behavior.
+      properties:
+        version: { type: integer, enum: [ 1 ] }
+        defaultProfileKey: { type: string, description: Must identify a guest profile. }
+        manageMinimumRole: { $ref: "#/components/schemas/ProjectRole" }
+        profiles:
+          type: array
+          minItems: 1
+          items:
+            type: object
+            properties:
+              key: { type: string }
+              name: { type: string }
+              minimumRole: { $ref: "#/components/schemas/ProjectRole" }
+              fixedValues: { type: object, additionalProperties: true }
+              description: { type: string }
+              tags: { type: array, items: { type: string } }
+            required: [ key, name, minimumRole, fixedValues ]
+      required: [ version, defaultProfileKey, manageMinimumRole, profiles ]
     ConfigurationPublicationDraft:
       type: object
       properties:
         revision: { type: integer, minimum: 0 }
         configurationRevision: { type: integer, minimum: 0 }
+        profilePolicy: { $ref: "#/components/schemas/ConfigurationProfilePolicy" }
         agentModelPolicy:
           $ref: "#/components/schemas/AgentModelPolicy"
         configurationAccountId:
@@ -6323,16 +6346,17 @@ components:
       required: [ revision, configurationRevision, fields, configurations, defaultConfigurationId ]
     ProjectConfigurationTemplate:
       type: object
-      description: Immutable, filtered version data; defaultValue is omitted. Arrays are indivisible. Excluded names are
+      description: Version 3 freezes role policies and is rejected by unsupported hosts. Immutable, filtered version data; defaultValue is omitted. Arrays are indivisible. Excluded names are
         represented only by opaque deny hashes. The authenticated download validates source and attachment hashes before
         caching outside project source.
       properties:
-        version: { type: integer, enum: [ 2 ] }
+        version: { type: integer, enum: [ 2, 3 ] }
         kind: { type: string, enum: [ steamharness-configuration-template ] }
         projectId: { type: string }
         projectVersion: { type: string }
         sourceHash: { type: string, pattern: '^[a-f0-9]{64}$' }
         draftRevision: { type: integer, minimum: 0 }
+        profilePolicy: { $ref: "#/components/schemas/ConfigurationProfilePolicy" }
         agentModelPolicy:
           $ref: "#/components/schemas/AgentModelPolicy"
         fields:
@@ -6440,6 +6464,8 @@ components:
           additionalProperties:
             type: array
             items: { type: string }
+        profileKey: { type: string }
+        baseProfile: { type: boolean, readOnly: true }
         templateId:
           type: string
         id:
@@ -6458,7 +6484,9 @@ components:
       required: [ id, name, values, createdAt, updatedAt ]
     ProjectConfigurationState:
       type: object
+      description: Role-filtered personal state. Guests receive only accessible base profiles and attachments.
       properties:
+        profilePolicy: { $ref: "#/components/schemas/ConfigurationProfilePolicy" }
         agentModelPolicy:
           $ref: "#/components/schemas/AgentModelPolicy"
         version:
@@ -6480,6 +6508,29 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/ProjectConfigurationField"
+        capabilities:
+          type: object
+          readOnly: true
+          properties:
+            manageConfigurations: { type: boolean }
+            role: { $ref: "#/components/schemas/ProjectRole" }
+            online: { type: boolean }
+            subject: { type: string, description: Host-verified application account scope; not an authorization input. }
+            reason: { type: string }
+        configurationCapabilities:
+          type: object
+          readOnly: true
+          additionalProperties:
+            type: object
+            properties:
+              use: { type: boolean }
+              edit: { type: boolean }
+              rename: { type: boolean }
+              delete: { type: boolean }
+              minimumRole: { $ref: "#/components/schemas/ProjectRole" }
+              description: { type: string }
+              tags: { type: array, items: { type: string } }
+              reason: { type: string }
         configurations:
           type: array
           minItems: 1
@@ -6540,6 +6591,7 @@ components:
           items:
             type: object
             properties:
+              profileKey: { type: string }
               templateId:
                 type: string
               name:
@@ -6553,7 +6605,7 @@ components:
       type: object
       description: At most 1 MiB. Revision is mandatory for every mutation. Profile mutations require id; create takes
         optional name. Save merges typed values and removes overrides named in unset. Field edits use field and optional
-        old key. Import takes a complete document. Export optionally filters by id.
+        old key. Import takes a complete document. Export optionally filters by id and always applies the current role. Fixed values and base names cannot be changed. Unauthorized batches are rejected atomically.
       properties:
         action:
           type: string
@@ -6582,6 +6634,7 @@ components:
           type: string
           minLength: 1
           maxLength: 200
+        profileKey: { type: string, description: Base policy inherited by a newly created personal configuration. }
         values:
           type: object
           additionalProperties: true

@@ -114,7 +114,8 @@
     "semver": "^7.7.4",
     "tsup": "^8.5.1",
     "tsx": "^4.21.0",
-    "@steamharness/project-configuration": "workspace:*"
+    "@steamharness/project-configuration": "workspace:*",
+    "@steamharness/project-access": "workspace:*"
   },
   "engines": {
     "node": ">=22.19.0"

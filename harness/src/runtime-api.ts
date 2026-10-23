@@ -73,7 +73,7 @@ import {
   endTimer,
 } from "./timer/index";
 import { HarnessError, defineProject, runFor, runIf, runNode, runStreamNode, runWhile, runProject } from "./workflow/index";
-import { getConfig } from "./configuration";
+import { getConfig, getProjectConfiguration } from "./configuration";
 import { getRuntimeLocale } from "./runtime-locale";
 import { getRuntimePlatform, isCli, isDesktop } from "./runtime-platform";
 
@@ -122,6 +122,7 @@ export const projectRuntimeApi = {
   editKnowledgeDocument,
   endTimer,
   getConfig,
+  getProjectConfiguration,
   getKnowledgeDocument,
   getRuntimeLocale,
   getRuntimePlatform,

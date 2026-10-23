@@ -1,5 +1,7 @@
 # Unreleased
 
+- Added source-owned profile role policies and fixed assignments. Restricted local values are scoped by application, Server and account; execution, restores and tool calls recheck authority, with guest-only access offline.
+
 - Improvement: Share local project profiles, custom fields, values and active selection by application UUID across windows and installation directories. Adopt existing values on first use and keep run recovery snapshots scoped to their original directory.
 
 - Fixed system-only source restrictions being overwritten by older templates. Distribution retains policy independently of hidden fields, and historical third-party drafts are validated after publication filtering.

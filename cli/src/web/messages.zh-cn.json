@@ -605,5 +605,16 @@
   "Choose folders": "选择文件夹",
   "Open folder in file manager": "在文件管理器中打开文件夹",
   "Open file in Studio": "在 Studio 中打开文件",
-  "Open this conversation in Studio to open referenced files and folders.": "请在 Studio 中打开此对话，以打开引用的文件和文件夹。"
+  "Open this conversation in Studio to open referenced files and folders.": "请在 Studio 中打开此对话，以打开引用的文件和文件夹。",
+  "Available to guests": "访客可用",
+  "Developer and above": "开发者及以上",
+  "This value is fixed by the project profile.": "此值由项目模式固定。",
+  "Maintainer and above": "维护者及以上",
+  "Owner only": "仅所有者",
+  "Project base configurations cannot be renamed or deleted.": "项目基础配置不能改名或删除。",
+  "This configuration is not available to this account.": "当前账号无权使用此配置。",
+  "This run configuration is not available to this account.": "当前账号无权恢复此运行配置。",
+  "Developer access is required to manage configurations.": "管理配置需要开发者及以上权限。",
+  "Configuration access changed. Your draft is preserved.": "配置权限已变化，编辑草稿已保留。",
+  "This restricted run has no verified configuration snapshot. Start a new task.": "此受限任务缺少已验证的配置快照，请新建任务。"
 }

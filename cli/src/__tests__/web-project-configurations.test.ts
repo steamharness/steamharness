@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import {afterEach,beforeEach,expect,it,vi} from 'vitest';
-import {AGENT_MODELS_CONFIGURATION_FIELD,AGENT_MODELS_CONFIGURATION_KEY,createConfigurationState,bindConfigurationTemplate,createPublicationDraft,freezeConfigurationTemplate,applyConfigurationAction,type ProjectConfigurationState} from '@steamharness/project-configuration';
+import {bindConfigurationProfiles,configurationAccessView,AGENT_MODELS_CONFIGURATION_FIELD,AGENT_MODELS_CONFIGURATION_KEY,createConfigurationState,bindConfigurationTemplate,createPublicationDraft,freezeConfigurationTemplate,applyConfigurationAction,type ProjectConfigurationState} from '@steamharness/project-configuration';
 import {readFileSync} from 'node:fs';
 import path from 'node:path';
 import {mountProjectConfigurations,projectConfigurationsButton,type ProjectConfigurationsPanel} from '../web/ui/project-configurations';
@@ -26,7 +26,7 @@ beforeEach(()=>{
  }});
  const original=window.addEventListener.bind(window);
  vi.spyOn(window,'addEventListener').mockImplementation(((type:any,callback:any,...args:any[])=>{if(type==='message')listener=callback;original(type,callback,...args);}) as typeof window.addEventListener);
- document.body.innerHTML=projectConfigurationsButton();
+ document.body.innerHTML=projectConfigurationsButton()+'<div class="composer-toolbar"><div class="run-options"></div></div>';
  const styles=document.createElement('style');styles.textContent=readFileSync(path.join(import.meta.dirname,'../web/ui/project-configurations.css'),'utf8');document.body.append(styles);
  panel=mountProjectConfigurations({postMessage(message:any){queueMicrotask(async()=>{
    try {if(fail)throw new Error('Configuration changed');
@@ -401,4 +401,31 @@ it('creates, renames and deletes configurations from the list',async()=>{
  button('Back to list').click();button('Rename: Created').click();prompt().querySelector<HTMLInputElement>('input')!.value='Renamed';prompt().querySelector('form')!.dispatchEvent(new Event('submit',{cancelable:true}));await settle();
  expect(button('Renamed')).toBeTruthy();button('Delete: Renamed').click();prompt().querySelector('form')!.dispatchEvent(new Event('submit',{cancelable:true}));await settle();
  expect(state.configurations).toHaveLength(1);expect(button('Delete: Default').disabled).toBe(true);
+});
+
+it('shows guests only Ask with editable values and no configuration management controls',async()=>{
+ const raw=bindConfigurationProfiles(createConfigurationState([{name:'mode',type:'string'},{name:'title',type:'string'}],()=> 'legacy'),{version:1,defaultProfileKey:'ask',manageMinimumRole:'developer',profiles:[{key:'ask',name:'Ask',minimumRole:'guest',fixedValues:{mode:'ask'},tags:['Read only']},{key:'build',name:'Build',minimumRole:'developer',fixedValues:{mode:'build'}}]});
+ state=configurationAccessView(raw,{subject:'alice',role:'guest',online:true});
+ await openPanel();
+ expect([...document.querySelectorAll('.configuration-profile-link')].map(row=>row.textContent)).toEqual([expect.stringContaining('Ask')]);
+ expect(document.body.textContent).not.toContain('Build');
+ const mode=document.querySelector<HTMLElement>('.composer-toolbar .configuration-current-profile')!;
+ expect(mode.hidden).toBe(false);expect(mode.textContent).toContain('Ask');expect(mode.tagName).toBe('SPAN');
+ expect(button('New configuration').hidden).toBe(true);expect(button('Add field').hidden).toBe(true);
+ expect(document.querySelector<HTMLInputElement>('input[aria-label="mode"]')!.disabled).toBe(true);
+ expect(title().disabled).toBe(false);
+});
+it('hides a restricted detail on role downgrade and restores its untouched editing draft on renewed access',async()=>{
+ const raw=bindConfigurationProfiles(createConfigurationState([{name:'mode',type:'string'},{name:'title',type:'string'}],()=> 'legacy'),{version:1,defaultProfileKey:'ask',manageMinimumRole:'developer',profiles:[{key:'ask',name:'Ask',minimumRole:'guest',fixedValues:{mode:'ask'}},{key:'build',name:'Build',minimumRole:'developer',fixedValues:{mode:'build'}}]});
+ const access={subject:'alice',role:'developer' as const,online:true};state=configurationAccessView(raw,access);
+ document.getElementById('project-configurations')!.click();await settle();
+ [...document.querySelectorAll<HTMLButtonElement>('.configuration-profile-link')].find(row=>row.ariaLabel==='Build')!.click();
+ title().value='saved draft';title().dispatchEvent(new Event('input'));
+ message({type:'state',configurations:configurationAccessView(raw,{...access,role:'guest'})});
+ expect([...document.querySelectorAll('.configuration-profile-link')].map(row=>row.textContent)).toEqual([expect.stringContaining('Ask')]);
+ expect(document.querySelector<HTMLElement>('#configuration-values-panel')!.hidden).toBe(true);
+ expect(button('New configuration').hidden).toBe(true);
+ message({type:'state',configurations:configurationAccessView(raw,access)});
+ expect(document.querySelector<HTMLElement>('#configuration-values-panel')!.hidden).toBe(false);
+ expect(title().value).toBe('saved draft');
 });

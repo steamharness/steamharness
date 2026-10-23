@@ -1,4 +1,6 @@
 import { randomUUID } from "node:crypto";
+import { AsyncLocalStorage } from "node:async_hooks";
+import { assertCurrentProjectConfigurationAccess } from "../configuration";
 import { BACKGROUND_CONTEXT, awaitWithContext, type Context } from "@earendil-works/chord/context";
 import { copyJson, type JsonValue } from "@earendil-works/chord";
 import { applyImmutable } from "@earendil-works/chord/delta";
@@ -74,6 +76,8 @@ type ApprovalResult = { block: true; reason: string; pause?: HarnessError } | un
 
 /** One Harness owns the transcript. `state` is a disposable projection for Workflow's run policy. */
 export class DurableAgent {
+  // Durable tasks use their own async context. Keep the host's run snapshot for every later check.
+  private readonly checkConfigurationAccess = AsyncLocalStorage.bind(assertCurrentProjectConfigurationAccess);
   readonly state: DurableAgentState;
   models: Models;
   requestId?: string;
@@ -413,6 +417,7 @@ export class DurableAgent {
           return continuation === undefined ? undefined : { continue: continuation };
         },
         beforeRequest: async (_request, api, requestContext) => {
+          await this.checkConfigurationAccess();
           const root = (await harness.conversation(api.conversationId, context))!;
           const logicalRequestId = this.session ? await this.session.requestIdFor(root.id) : requestId;
           const history = await root.context(context);
@@ -492,6 +497,7 @@ export class DurableAgent {
         },
       }), hook(ToolTask, {
         beforeTool: async (call, api, callContext) => {
+          await this.checkConfigurationAccess();
           const decision = await this.approve(call, callContext, `${api.conversationId}:${api.taskId}:`);
           return decision?.block ? { block: decision.reason } : undefined;
         },
@@ -594,6 +600,7 @@ export class DurableAgent {
       prepareArguments: tool.prepareArguments,
       structuredOutputSchema: tool.outputSchema,
       execute: async (args, api, callContext) => {
+        await this.checkConfigurationAccess();
         const prefix = `${api.conversationId}:${api.taskId}:`;
         if (!this.approvedCalls.has(`${prefix}${api.callId}`)) {
           const decision = await this.approve({ type: "toolCall", id: api.callId, name: tool.name, arguments: json(args) as JsonObject }, callContext, prefix);

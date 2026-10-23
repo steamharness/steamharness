@@ -42,7 +42,7 @@ export default defineConfig({
   splitting: true,
   clean: true,
   dts: {
-    resolve: ["@steamharness/project-configuration", "@steamharness/openai-responses", "@steamharness/project-types"],
+    resolve: ["@steamharness/project-configuration", "@steamharness/project-access", "@steamharness/openai-responses", "@steamharness/project-types"],
     entry: { index: "src/index.ts", agent: "src/agent/index.ts", "runtime-api": "src/runtime-api.ts", "node/output": "src/node/output/index.ts",
       "types/context": "src/types/context.ts", "executor/rules": "src/executor/rules.ts" },
   },

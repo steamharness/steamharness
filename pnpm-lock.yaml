@@ -252,6 +252,9 @@ importers:
       '@steamharness/openai-responses':
         specifier: workspace:*
         version: link:../shared/openai-responses
+      '@steamharness/project-access':
+        specifier: workspace:*
+        version: link:../shared/project-access
       '@steamharness/project-configuration':
         specifier: workspace:*
         version: link:../shared/project-configuration
@@ -647,7 +650,11 @@ importers:
         specifier: ^0.468.0
         version: 0.468.0
 
-  shared/project-configuration: {}
+  shared/project-configuration:
+    dependencies:
+      '@steamharness/project-access':
+        specifier: workspace:*
+        version: link:../project-access
 
   shared/project-dependencies:
     dependencies:

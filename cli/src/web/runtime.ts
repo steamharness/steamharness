@@ -2,7 +2,7 @@ import { spawn, type ChildProcess } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { STEAMHARNESS_RUNTIME_LOCALE_ENV } from 'steamharness';
+import { STEAMHARNESS_RUNTIME_LOCALE_ENV, createLocalProjectConfigurationStore, type ProjectConfigurationSnapshot } from 'steamharness';
 import { locale } from './localization';
 import { redactProjectData, type Runtime, type Report, type Project } from './workflow-types';
 import type { CliRelatedProjectSpec } from '../related-projects';
@@ -34,6 +34,8 @@ export function createWebRuntime(projectDir: string, storageDir: string, connect
   const active = new Map<string, ChildProcess>();
   const controls = new Map<string, (command: AgentSessionCommand, scopeId: string, attachments?: unknown[]) => Promise<AgentSessionReceipt>>();
   let disposed = false;
+  let configurationStore:ReturnType<typeof createLocalProjectConfigurationStore>|undefined;
+  const configurations=()=>configurationStore??=createLocalProjectConfigurationStore(projectDir,{connection:()=>connection()??null});
   const invoke = <T>(request: Record<string, unknown>, onEvent?: (event: Record<string, unknown>) => void): Promise<T> => new Promise((resolve, reject) => {
     if (disposed) { reject(new Error('Web runtime has stopped.')); return; }
     const auth = connection();
@@ -59,10 +61,13 @@ export function createWebRuntime(projectDir: string, storageDir: string, connect
     if (request.method === 'run') { active.set(String(request.runId), child); }
     const pending = new Map<string, { resolve(value: AgentSessionReceipt): void; reject(error: Error): void }>();
     if (request.method === 'run') controls.set(String(request.runId), (command, scopeId, attachments) => new Promise((resolve, reject) => {
-      const id = globalThis.crypto.randomUUID(); pending.set(id, { resolve, reject });
+      const send=()=>{const id = globalThis.crypto.randomUUID(); pending.set(id, { resolve, reject });
       child.send({ type: 'agent-control', id, command, scopeId, attachments }, error => {
         if (error) { pending.delete(id); reject(Object.assign(error, { code: 'STEAMHARNESS_WORKER_INTERRUPTED' })); }
-      });
+      });};
+      const configuration=request.configuration as ProjectConfigurationSnapshot|undefined;
+      if(command.type==='cancel'||!configuration?.profilePolicyVersion)send();
+      else void configurations().then(store=>store.snapshot({configuration,required:false})).then(send,reject);
     }));
     child.on('message', (message: any) => {
       if (message?.type !== 'agent-receipt' || typeof message.id !== 'string') return;
@@ -121,7 +126,13 @@ export function createWebRuntime(projectDir: string, storageDir: string, connect
     kanbanBridge: (project, call) => invoke({ method: 'kanban-bridge', project, call }),
     inspect: (paths) => invoke({ method: 'inspect', paths }),
     resolveParams: (project, request, entrypointId) => invoke({ method: 'resolve', project, request, entrypointId }),
-    run: (request, onEvent) => invoke({ method: 'run', ...request }, onEvent),
+    run: async (request, onEvent) => {
+      if(!request.configurationSelection)return invoke({method:'run',...request},onEvent);
+      const selection=request.configurationSelection;
+      const configuration=await (await configurations()).snapshot({id:selection.id,runId:request.configurationRunId??request.runId,requireExisting:request.resumeConfiguration});
+      if(configuration.accessSubject!==selection.subject||configuration.profileKey!==selection.profileKey)throw new Error('This run configuration is not available to this account.');
+      return invoke({method:'run',...request,configuration},onEvent);
+    },
     uploadFiles: (project, conversationId, files) => invoke({ method: 'upload', project, conversationId, files }),
     readFile: (project, id) => invoke({ method: 'file', project, id }),
     deleteFiles: async (project, conversationId, ids) => { await invoke({ method: 'delete-files', project, conversationId, ids }); },

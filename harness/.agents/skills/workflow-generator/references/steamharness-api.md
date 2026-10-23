@@ -1619,4 +1619,11 @@ steamharness run . -- [...args]
 
 ### 版本化分享配置
 
-configuration.json v2 字段支持 sharing: {publish?, includeValue?, editable?} 和 JSON Pointer paths: Record<string, rule>。默认发布字段、允许个人修改、不携带值；defaultValue 同样过滤。JSON 对象逐路径检查实际变化，数组整体处理。只有实际项目所有者或管理员能在线保存 publication.save 草稿，选择配置集与默认配置；发布校验源码摘要和草稿版本，冻结模板及附件。get_configurations 返回 fieldCapabilities，preview:true 返回接收者预览。个人导入、重命名和自定义字段不能覆盖锁定值或作者定义。SDK getConfig/context.config 保持冻结快照，已验证模板和附件缓存到源码之外，升级只保留仍允许的个人值，Workflow 恢复沿用原快照。
+configuration.json v2 字段支持 sharing: {publish?, includeValue?, editable?} 和 JSON Pointer paths: Record<string, rule>。默认发布字段、允许个人修改、不携带值；defaultValue 同样过滤。JSON 对象逐路径检查实际变化，数组整体处理。只有项目维护者及以上或管理员能在线保存 publication.save 草稿，选择配置集与默认配置；发布校验源码摘要和草稿版本，冻结模板及附件。get_configurations 返回 fieldCapabilities，preview:true 返回接收者预览。个人导入、重命名和自定义字段不能覆盖锁定值或作者定义。SDK getConfig/context.config 保持冻结快照，已验证模板和附件缓存到源码之外，升级只保留仍允许的个人值，Workflow 恢复沿用原快照。
+
+
+### 按项目角色限制命名配置
+
+`configuration.json` v2 可声明 `profilePolicy: {version:1, defaultProfileKey, manageMinimumRole, profiles:[{key,name,minimumRole,fixedValues,description?,tags?}]}`，角色为 guest/developer/maintainer/owner，默认 profile 必须 guest。稳定 key、固定字段、权限与标签由源码维护，个人元数据、导入和旧逐轮参数不能放宽。访客仅见可访问的基础配置，只可编辑开放值；开发者可管理继承基础 profile 的个人配置。响应含集合 `capabilities` 和每配置 `configurationCapabilities`；小助手应先查能力，不能伪造角色。官方模板 v3 冻结此策略，旧宿主必须拒绝。
+
+`steamharness.getProjectConfiguration()` 返回本轮冻结的 `ProjectConfigurationSnapshot | undefined`，受限快照包含 `profileKey`、`profilePolicyVersion:1` 和宿主认证的 `accessSubject`。代码仍用 getConfig/context.config 读值；业务项目应检查宿主支持策略并拒绝输入中的模式覆盖。快照及持久恢复在发送、队列启动、恢复和工具执行前重新验证账号与在线角色。断网或退出登录仅有 Ask，不能继续历史 Build 任务，不清除历史对话与个人值。本地受限配置按应用、Server、账号隔离，同账号多窗口共享；只读参数发现复用缓存，不能把历史快照当作授权。

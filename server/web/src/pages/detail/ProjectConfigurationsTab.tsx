@@ -35,7 +35,7 @@ export function ProjectConfigurationsTab({project}: Pick<DetailPageProps,"projec
   const scopeRef = useRef<symbol|undefined>(undefined);
   const target = project.hasDraft ? "draft" : "latest";
   const accept = (next: ProjectConfigurationState, force = false) => {
-    if (latestRef.current && next.revision < latestRef.current.revision) return;
+    if (latestRef.current && next.capabilities?.subject===latestRef.current.capabilities?.subject && next.revision < latestRef.current.revision) return;
     latestRef.current=next;setLatest(next);
     if ((dirtyRef.current || publicationDirtyRef.current || editingRef.current || busyRef.current) && !force) return;
     if(force){modelDraftRef.current=false;setEditorGeneration(value=>value+1);}
@@ -136,23 +136,25 @@ export function ProjectConfigurationsTab({project}: Pick<DetailPageProps,"projec
   }
   const startField=(value?:ProjectConfigurationField)=>{if(!clean())return;editingRef.current=true;setError("");setOriginalKey(value?.name??"");setField(value??{name:"",type:"string"});setDefaultText(value?.defaultValue===undefined?"":JSON.stringify(value.defaultValue));setOptionsText(value?.options?.map(o=>o.value).join("\n")??"");};
   const open=(action:"create"|"duplicate"|"rename"|"delete",id=detailId)=>{if(!clean())return;editingRef.current=true;setError("");setModalId(id);setName(action==="rename"?state!.configurations.find(c=>c.id===id)!.name:"");setModal(action);};
-  const current=state?.configurations.find(profile=>profile.id===detailId);
+  const visible=latest??state;
+  const sameAccount=state?.capabilities?.subject===visible?.capabilities?.subject;
+  const current=sameAccount&&visible?.configurations.some(profile=>profile.id===detailId)?state?.configurations.find(profile=>profile.id===detailId):undefined;
   const activeConfigurationId=latest?.activeConfigurationId??state?.activeConfigurationId;
   const templateDefaults=state?.template&&current?{...Object.fromEntries(state.fields.filter(field=>field.defaultValue!==undefined).map(field=>[field.name,field.defaultValue])),...applyTemplateValues(state,{...current,deletedPaths:undefined},{})}:undefined;
-  const profileMenu=(id:string)=><DropdownMenu>
+  const profileMenu=(id:string)=>visible?.capabilities?.manageConfigurations===false?null:<DropdownMenu>
     <DropdownMenuTrigger asChild><Button variant="ghost" size="icon" disabled={busy} title={t("configurationActions")} aria-label={detailId?t("configurationActions"):t("configurationActions")+": "+state?.configurations.find(c=>c.id===id)?.name}><MoreHorizontalIcon/></Button></DropdownMenuTrigger>
     <DropdownMenuContent align="end"><DropdownMenuGroup>
       <DropdownMenuLabel>{t("configurationActions")}</DropdownMenuLabel>
       <DropdownMenuItem onSelect={()=>{if(clean())void dispatch({action:"duplicate",id});}} disabled={busy||dirty}><CopyIcon/>{t("configurationAction_duplicate")}</DropdownMenuItem>
-      <DropdownMenuItem onSelect={()=>open("rename",id)} disabled={busy}><PencilIcon/>{t("configurationAction_rename")}</DropdownMenuItem>
+      <DropdownMenuItem onSelect={()=>open("rename",id)} disabled={busy||visible?.configurationCapabilities?.[id]?.rename===false}><PencilIcon/>{t("configurationAction_rename")}</DropdownMenuItem>
       <DropdownMenuItem onSelect={()=>void download(false,id)} disabled={busy}><DownloadIcon/>{t("configurationExportCurrent")}</DropdownMenuItem>
-      <DropdownMenuItem variant="destructive" onSelect={()=>open("delete",id)} disabled={busy||state?.configurations.length===1}><Trash2Icon/>{t("configurationAction_delete")}</DropdownMenuItem>
+      <DropdownMenuItem variant="destructive" onSelect={()=>open("delete",id)} disabled={busy||state?.configurations.length===1||visible?.configurationCapabilities?.[id]?.delete===false}><Trash2Icon/>{t("configurationAction_delete")}</DropdownMenuItem>
     </DropdownMenuGroup></DropdownMenuContent>
   </DropdownMenu>;
   const transferMenu=()=><DropdownMenu><DropdownMenuTrigger asChild><Button variant="ghost" size="icon" disabled={busy} title={t("configurationTransfer")} aria-label={t("configurationTransfer")}><ArrowRightLeftIcon/></Button></DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="max-w-72"><DropdownMenuGroup>
               <DropdownMenuLabel>{t("configurationTransfer")}</DropdownMenuLabel>
-              <DropdownMenuItem onSelect={()=>{if(clean())file.current?.click();}}><ImportIcon/>{t("configurationImport")}</DropdownMenuItem>
+              {visible?.capabilities?.manageConfigurations!==false&&<DropdownMenuItem onSelect={()=>{if(clean())file.current?.click();}}><ImportIcon/>{t("configurationImport")}</DropdownMenuItem>}
               <DropdownMenuSeparator/>
               {detailId&&<DropdownMenuItem onSelect={()=>void download(false)}><DownloadIcon/>{t("configurationExportCurrent")}</DropdownMenuItem>}
               <DropdownMenuItem onSelect={()=>void download(true)}><DownloadIcon/>{t("configurationExportAll")}</DropdownMenuItem>
@@ -163,18 +165,19 @@ export function ProjectConfigurationsTab({project}: Pick<DetailPageProps,"projec
     {error&&<Alert variant="destructive"><AlertDescription>{error}</AlertDescription></Alert>}
     {!state?<>{loading?<Skeleton className="h-10 w-full"/>:<Button variant="outline" onClick={()=>setRetry(value=>value+1)}>{t("configurationRefresh")}</Button>}</>:<>
     <input ref={file} type="file" accept=".json,application/json" hidden onChange={event=>{const scope=scopeRef.current;const input=event.currentTarget,selected=input.files?.[0];input.value="";if(!selected)return;void(async()=>{try{if(selected.size>1024*1024)throw new Error(t("configurationTooLarge"));const document=JSON.parse(await selected.text()) as ProjectConfigurationExport;if(scope===scopeRef.current&&clean())await dispatch({action:"import",document});}catch(e){if(scope===scopeRef.current)setError((e as Error).message);}})();}}/>
+    {!current&&dirty&&<Alert><AlertDescription>{t("configurationAccessChanged")}<Button variant="ghost" size="icon" title={t("configurationDiscard")} aria-label={t("configurationDiscard")} onClick={()=>{if(latest)accept(latest,true);}}><RotateCcwIcon/></Button></AlertDescription></Alert>}
     {!current?<>
       <div className="flex items-center justify-between gap-2">
-        <h3>{t("namedConfigurations",{ns:"common"})} <span className="text-muted-foreground">{state.configurations.length}</span></h3>
+        <h3>{t("namedConfigurations",{ns:"common"})} <span className="text-muted-foreground">{visible!.configurations.length}</span></h3>
         <div className="flex items-center gap-2">
-          <Button variant="ghost" size="icon" disabled={busy} title={t("configurationAction_create")} aria-label={t("configurationAction_create")} onClick={()=>open("create")}><PlusIcon/></Button>
+          {visible?.capabilities?.manageConfigurations!==false&&<Button variant="ghost" size="icon" disabled={busy} title={t("configurationAction_create")} aria-label={t("configurationAction_create")} onClick={()=>open("create")}><PlusIcon/></Button>}
           {transferMenu()}
         </div>
       </div>
       <div className="overflow-hidden rounded-md border"><Table aria-label={t("projectConfigurations")}>
         <TableHeader><TableRow><TableHead>{t("configurationName")}</TableHead><TableHead>{t("configurationUsage")}</TableHead><TableHead className="text-right">{t("configurationActions")}</TableHead></TableRow></TableHeader>
-        <TableBody>{state.configurations.map(profile=><TableRow key={profile.id} data-state={profile.id===activeConfigurationId?"selected":undefined}>
-          <TableCell className="w-full whitespace-normal"><Button variant="ghost" className="h-auto w-full justify-between gap-2 whitespace-normal text-left" disabled={busy} aria-current={profile.id===activeConfigurationId?"true":undefined} onClick={()=>showDetails(profile.id)}><span className="min-w-0 wrap-anywhere">{profile.name}</span><ChevronRightIcon data-icon="inline-end"/></Button></TableCell>
+        <TableBody>{visible!.configurations.map(profile=><TableRow key={profile.id} data-state={profile.id===activeConfigurationId?"selected":undefined}>
+          <TableCell className="w-full whitespace-normal"><Button variant="ghost" className="h-auto w-full justify-between gap-2 whitespace-normal text-left" disabled={busy} aria-current={profile.id===activeConfigurationId?"true":undefined} onClick={()=>showDetails(profile.id)}><span className="min-w-0 wrap-anywhere">{profile.name}{visible!.configurationCapabilities?.[profile.id]&&<span className="mt-1 flex flex-wrap items-center gap-2"><span className="w-full text-muted-foreground">{visible!.configurationCapabilities[profile.id].description}</span>{visible!.configurationCapabilities[profile.id].tags.map(tag=><Badge key={tag} variant="secondary">{tag}</Badge>)}<Badge variant="outline">{t(({guest:"configurationGuestProfile",developer:"configurationDeveloperProfile",maintainer:"configurationMaintainerProfile",owner:"configurationOwnerProfile"} as const)[visible!.configurationCapabilities[profile.id].minimumRole])}</Badge></span>}</span><ChevronRightIcon data-icon="inline-end"/></Button></TableCell>
           <TableCell>{profile.id===activeConfigurationId?<Badge><CircleCheckIcon aria-hidden="true"/>{t("configurationCurrent")}</Badge>:<Button variant="outline" size="sm" disabled={busy} aria-busy={selectingId===profile.id} aria-label={t("configurationUse")+": "+profile.name} onClick={()=>{if(clean())void dispatch({action:"select",id:profile.id});}}><ArrowRightLeftIcon data-icon="inline-start"/>{t(selectingId===profile.id?"configurationSwitching":"configurationUse")}</Button>}</TableCell>
           <TableCell>{profileMenu(profile.id)}</TableCell>
         </TableRow>)}</TableBody>
@@ -186,14 +189,14 @@ export function ProjectConfigurationsTab({project}: Pick<DetailPageProps,"projec
         {current.id===activeConfigurationId?<Badge><CircleCheckIcon aria-hidden="true"/>{t("configurationCurrent")}</Badge>:<Button variant="outline" size="sm" disabled={busy} aria-busy={selectingId===current.id} aria-label={t("configurationUse")+": "+current.name} onClick={()=>{if(clean())void dispatch({action:"select",id:current.id});}}><ArrowRightLeftIcon data-icon="inline-start"/>{t(selectingId===current.id?"configurationSwitching":"configurationUse")}</Button>}
         {detailTab==="values"&&<>{profileMenu(current.id)}{transferMenu()}</>}
       </div>
-      <Tabs value={detailTab} onValueChange={value=>{if(clean())setDetailTab(value);}}>{state.canManagePublication&&<TabsList><TabsTrigger value="values">{t("configurationValues")}</TabsTrigger><TabsTrigger value="publication">{t("configurationPublication")}</TabsTrigger></TabsList>}<TabsContent value="values" aria-label={t("configurationFields")}><div className="flex flex-col gap-4">
+      <Tabs value={detailTab} onValueChange={value=>{if(clean())setDetailTab(value);}}>{visible?.canManagePublication&&<TabsList><TabsTrigger value="values">{t("configurationValues")}</TabsTrigger><TabsTrigger value="publication">{t("configurationPublication")}</TabsTrigger></TabsList>}<TabsContent value="values" aria-label={t("configurationFields")}><div className="flex flex-col gap-4">
       {!!state.conflicts?.length&&<Alert><AlertDescription>{t("configurationTypeConflict")}<pre>{JSON.stringify(state.conflicts,null,2)}</pre></AlertDescription></Alert>}
       {dirty&&latest?.revision!==state.revision&&<Alert><AlertDescription>{t("configurationConflict")}</AlertDescription></Alert>}
       <Separator/>
-      <div className="flex items-center justify-between gap-2"><h3>{t("configurationFields")} <span className="text-muted-foreground">{state.fields.length}</span></h3><Button variant="outline" size="sm" disabled={busy} onClick={()=>startField()}><PlusIcon data-icon="inline-start"/>{t("configurationAddField")}</Button></div>
+      <div className="flex items-center justify-between gap-2"><h3>{t("configurationFields")} <span className="text-muted-foreground">{state.fields.length}</span></h3>{visible?.capabilities?.manageConfigurations!==false&&<Button variant="outline" size="sm" disabled={busy} onClick={()=>startField()}><PlusIcon data-icon="inline-start"/>{t("configurationAddField")}</Button>}</div>
       {!state.fields.length?<Empty><EmptyHeader><EmptyTitle>{t("configurationEmpty")}</EmptyTitle></EmptyHeader></Empty>:<FieldGroup aria-label={t("configurationFields")} className="grid items-start gap-4 md:grid-cols-2">
         {[...state.fields].sort((a,b)=>Number(b.control==="ai-models")-Number(a.control==="ai-models")).map(f=>{
-          const set=setKeys.includes(f.name),value=values[f.name]??"",custom=state.customFields.some(c=>c.name===f.name);
+          const set=setKeys.includes(f.name),value=values[f.name]??"",custom=visible?.capabilities?.manageConfigurations!==false&&state.customFields.some(c=>c.name===f.name);
           const capability=configurationCapability(state,f), disabled=busy||!capability.editable;
           const inlineBoolean=f.type==="boolean"&&!f.options&&!f.multiple;
           const change=(value:string)=>{setValues(values=>({...values,[f.name]:value}));setSetKeys(keys=>[...new Set([...keys,f.name])]);edit();};
@@ -220,15 +223,15 @@ export function ProjectConfigurationsTab({project}: Pick<DetailPageProps,"projec
       </FieldGroup>}
       <Separator/>
       <div className="sticky bottom-0 flex flex-wrap items-center justify-between gap-3 bg-background py-3"><p role="status" className="text-sm text-muted-foreground">{dirty?t("configurationUnsaved"):""}</p><div className="ml-auto flex items-center gap-2"><Button variant="ghost" size="icon" disabled={busy} title={t("configurationDiscard")} aria-label={t("configurationDiscard")} onClick={()=>{if(latest){accept(latest,true);setError("");}}}><RotateCcwIcon/></Button><Button disabled={busy||!dirty} onClick={save}><CheckIcon data-icon="inline-start"/>{t("configurationSave")}</Button></div></div>
-    </div></TabsContent>{state.canManagePublication&&<TabsContent value="publication"><ConfigurationPublicationEditor state={state} busy={busy} onDirtyChange={dirty=>{publicationDirtyRef.current=dirty;}} onSave={publication=>dispatch({action:"publication.save",publication})}/></TabsContent>}</Tabs>
+    </div></TabsContent>{visible?.canManagePublication&&<TabsContent value="publication"><ConfigurationPublicationEditor state={state} busy={busy} onDirtyChange={dirty=>{publicationDirtyRef.current=dirty;}} onSave={publication=>dispatch({action:"publication.save",publication})}/></TabsContent>}</Tabs>
     </>}
     </>}
-    <Dialog open={!!modal} onOpenChange={open=>{if(!open&&!busy){editingRef.current=false;setModal(undefined);if(latest)accept(latest);}}}><DialogContent><DialogHeader><DialogTitle>{modal?t(`configurationAction_${modal}`):""}</DialogTitle></DialogHeader>
+    <Dialog open={!!modal&&visible?.capabilities?.manageConfigurations!==false} onOpenChange={open=>{if(!open&&!busy){editingRef.current=false;setModal(undefined);if(latest)accept(latest);}}}><DialogContent><DialogHeader><DialogTitle>{modal?t(`configurationAction_${modal}`):""}</DialogTitle></DialogHeader>
       {error&&<Alert variant="destructive"><AlertDescription>{error}</AlertDescription></Alert>}
       {(modal==="create"||modal==="rename")&&<FieldGroup><Field><FieldLabel htmlFor="configuration-name">{t("configurationName")}</FieldLabel><Input id="configuration-name" disabled={busy} value={name} onChange={e=>setName(e.target.value)}/></Field></FieldGroup>}
       <DialogFooter><Button disabled={busy} onClick={()=>void dispatch({action:modal!,id:modalId,...(modal==="create"||modal==="rename"?{name}:{})})}>{t("configurationConfirm")}</Button></DialogFooter>
     </DialogContent></Dialog>
-    <Dialog open={!!field} onOpenChange={open=>{if(!open&&!busy){editingRef.current=false;setField(undefined);if(latest)accept(latest);}}}><DialogContent className="max-h-[90dvh] overflow-y-auto"><DialogHeader><DialogTitle>{t("configurationEditField")}</DialogTitle></DialogHeader>
+    <Dialog open={!!field&&visible?.capabilities?.manageConfigurations!==false} onOpenChange={open=>{if(!open&&!busy){editingRef.current=false;setField(undefined);if(latest)accept(latest);}}}><DialogContent className="max-h-[90dvh] overflow-y-auto"><DialogHeader><DialogTitle>{t("configurationEditField")}</DialogTitle></DialogHeader>
       {error&&<Alert variant="destructive"><AlertDescription>{error}</AlertDescription></Alert>}
       {field&&<FieldSet disabled={busy}><FieldGroup>
         <Field><FieldLabel htmlFor="configuration-key">{t("configurationKey")}</FieldLabel><Input id="configuration-key" value={field.name??""} onChange={e=>setField({...field,name:e.target.value})}/></Field>

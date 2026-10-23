@@ -559,7 +559,9 @@ export async function startWebServer(options: WebOptions) {
         if (message.requestId !== undefined && (typeof message.requestId !== 'string' || !sessionIdPattern.test(message.requestId))) throw new Error('Invalid input identity.');
         if (message.editingQueueId !== undefined && typeof message.editingQueueId !== 'string') throw new Error('Invalid queued input identity.');
         const references = command ? [] : pathReferences(message.references);
-        await controller.send({ text, params, states, entrypointId, attachments, ...(references.length ? { references } : {}) }, current, !!command || message.preserveDraft === true, message.requestId, message.mode, message.editingQueueId);
+        const configurationSelection=await configurations.selection();
+        if(revision!==authRevision)throw new Error('Workflow login changed. Send the message again.');
+        await controller.send({ text, params, states, entrypointId, attachments, configurationSelection, ...(references.length ? { references } : {}) }, current, !!command || message.preserveDraft === true, message.requestId, message.mode, message.editingQueueId);
         replies.push(state(message.clientId), { type: command ? 'command-executed' : 'sent', ...(command ? { command: command.command } : {}), projectUri: project.uri, sessionId: current.id, requestId: message.requestId }); break;
       }
       case 'stop': {

@@ -182,3 +182,33 @@ Studio Control 的 `get_configurations` 会返回权限，`preview: true` 返回
 分发模板不会包含被排除的字段或子路径名称；生成的不可读规则摘要保留同名冲突与隐藏路径覆盖检查。这些摘要不替代源码下载的身份和完整性验证。
 
 业务角色由项目及祖先组继承计算。所有访客均可管理自己的个人配置，仍受已发布版本字段限制；维护者及以上角色才可管理官方配置与发布规则。此角色规则不改变本地配置和运行快照。
+
+## 按项目角色限制配置
+
+需要固定运行模式时，在 `configuration.json` v2 中声明 `profilePolicy`。未声明的项目继续使用原来的个人配置行为。
+
+```json
+{
+  "version": 2,
+  "fields": [{"name":"MODE","type":"string","sharing":{"publish":true,"includeValue":true,"editable":false}}],
+  "profilePolicy": {
+    "version": 1,
+    "defaultProfileKey": "ask",
+    "manageMinimumRole": "developer",
+    "profiles": [
+      {"key":"ask","name":"Ask","minimumRole":"guest","fixedValues":{"MODE":"ask"},"tags":["Read only"]},
+      {"key":"build","name":"Build","minimumRole":"developer","fixedValues":{"MODE":"build"},"tags":["Collect and write"]}
+    ]
+  }
+}
+```
+
+`key` 是不可由个人元数据更改的稳定标识；`minimumRole` 使用项目与所属群组继承后的 `guest`、`developer`、`maintainer`、`owner` 角色。`description` 和 `tags` 用于列表摘要，不展示密钥。每个基础配置必须固定相同的字段集合；固定值覆盖个人值且不能清除。默认配置必须向访客开放，固定值必须允许随模板发布。
+
+访客只看到可用的基础配置，不能增删、复制、改名、导入或管理字段，可以编辑作者开放的模型等值。达到 `manageMinimumRole` 后可新建、复制、管理个人配置；每套个人配置继承关联的 `profileKey`、最低角色与固定值，不能以改名、标签、导入或指定 `templateId` 降低限制。基础配置的名字与身份由源码维护。列表返回 `capabilities`、`configurationCapabilities` 和锁定原因；打开详情不会切换运行配置，输入框只读显示当前模式。
+
+本地受限配置按应用、Server 与账号分别保存，同账号多窗口共享。未登录、退出登录或联网确认失败时仅提供访客默认配置，不复用先前的 Build 权限。读取和参数发现复用短期角色缓存，不随输入逐键联网；保存、发送、队列启动、恢复和受限工具执行前重新联网确认。历史消息及磁盘上的个人值保留，编辑中的草稿不会成为授权依据。
+
+提供的 `configuration` 与旧运行快照必须重新校验当前角色、账号、稳定标识和固定值；无权使用的配置明确拒绝，运行中的 Build 不会被改成 Ask 继续执行。官方发布模板使用版本 `3` 冻结策略；旧宿主应提示升级并拒绝执行。项目可使用 `steamharness.getProjectConfiguration()?.profilePolicyVersion` 检查宿主支持情况。个人导出和配置响应只含当前可见的配置与附件；源码分发仍使用作者冻结的完整官方模板，个人凭据不会自动发布。
+
+Server 依据实际认证身份及项目、群组角色授权，客户端提供的角色和标签无效。维护者及以上沿用官方模板管理权限。Studio Control 面板关闭时也使用同一服务；其只读模式另外拒绝写入。本规则不阻止用户修改自己的源码副本。

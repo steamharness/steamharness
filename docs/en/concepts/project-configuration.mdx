@@ -180,3 +180,33 @@ Studio Control `get_configurations` returns permissions; `preview: true` request
 Distributed templates omit excluded field and child-path names. Generated opaque rule hashes retain collision and hidden-path checks; they do not replace authenticated source download and integrity verification.
 
 Business roles combine project and ancestor-group memberships. Guests may manage personal configurations within published field rules. Managing official configurations and publication rules requires maintainer access. Local configurations and frozen execution snapshots retain their existing behavior.
+
+## Restrict profiles by project role
+
+Declare `profilePolicy` in `configuration.json` v2 to bind runtime modes to roles. Projects without this policy keep their existing personal configuration behavior.
+
+```json
+{
+  "version": 2,
+  "fields": [{"name":"MODE","type":"string","sharing":{"publish":true,"includeValue":true,"editable":false}}],
+  "profilePolicy": {
+    "version": 1,
+    "defaultProfileKey": "ask",
+    "manageMinimumRole": "developer",
+    "profiles": [
+      {"key":"ask","name":"Ask","minimumRole":"guest","fixedValues":{"MODE":"ask"},"tags":["Read only"]},
+      {"key":"build","name":"Build","minimumRole":"developer","fixedValues":{"MODE":"build"},"tags":["Collect and write"]}
+    ]
+  }
+}
+```
+
+`key` is a stable source-owned identity. `minimumRole` uses effective project and inherited group roles: `guest`, `developer`, `maintainer`, and `owner`. Optional `description` and `tags` supply list summaries without exposing secrets. All base profiles fix the same set of fields. Fixed assignments override personal values and cannot be cleared. The default must be available to guests, and fixed values must be included in published templates.
+
+Guests see only accessible base profiles. They may edit author-approved values, including models, but cannot create, copy, rename, delete, import, or manage fields. Users meeting `manageMinimumRole` may manage personal profiles; each inherits its `profileKey`, minimum role, and fixed assignments. Names, tags, imported metadata, and `templateId` cannot lower permission requirements. Base names and identities remain source-owned. Responses include `capabilities`, `configurationCapabilities`, and lock reasons. Opening details does not select a runtime profile; the composer displays a read-only mode label.
+
+Restricted local values are scoped by application, Server, and account, and shared between windows of the same account. Signed-out users and failed online checks get only the guest default; previous Build permission is not reused. Reads and parameter discovery use a short-lived role cache rather than requests on each keystroke. Writes, sends, queue starts, restores, and restricted tool calls recheck online authority. Conversation history, stored personal values, and editing drafts are preserved; a draft does not grant authority.
+
+Supplied `configuration` snapshots and resumed runs revalidate the current account, role, stable identity, and fixed assignments. Unauthorized profiles are rejected; an active Build task is never silently continued as Ask. Published templates freeze the policy using version `3`, which unsupported hosts must reject with an upgrade prompt. Projects can check `steamharness.getProjectConfiguration()?.profilePolicyVersion`. Personal exports and configuration responses include only visible profiles and attachments; source archives still carry the complete official template and never automatically include personal credentials.
+
+Server authorizes the actual authenticated actor and inherited roles, ignoring client roles and tags. Maintainers and above keep official template management. Studio Control uses the same service even with the panel closed; read-only mode additionally rejects writes. This policy does not prevent users from modifying their own source copies.

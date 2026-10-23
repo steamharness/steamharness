@@ -1,5 +1,6 @@
 /** The portable business configuration contract. This module is browser safe. */
 import { parseAgentModels, AGENT_MODELS_CONFIGURATION_KEY, type AgentModelPolicy } from "./agent-models";
+import { isProjectRole, roleAtLeast, type ProjectRole } from "@steamharness/project-access";
 export * from "./agent-models";
 export const PROJECT_CONFIGURATION_FILE = "configuration.json";
 export type ConfigurationValue = null | string | number | boolean | ConfigurationValue[] | { [key: string]: ConfigurationValue };
@@ -31,11 +32,27 @@ export type ProjectConfigurationFile = {
   id: string; name: string; mimeType: string; size: number; storage: "server";
   kind?: "image" | "file"; projectId?: string; createdAt?: string;
 };
-export interface ProjectConfigurationDefinition { version: 1 | 2; fields: ProjectConfigurationField[]; agentModelPolicy?: AgentModelPolicy }
+export interface ConfigurationProfileDefinition {
+  key: string; name: string; minimumRole: ProjectRole;
+  /** These assignments belong to project source, never to personal overrides. */
+  fixedValues: ConfigurationValues;
+  description?: string; tags?: string[];
+}
+export interface ConfigurationProfilePolicy {
+  version: 1; defaultProfileKey: string; manageMinimumRole: ProjectRole;
+  profiles: ConfigurationProfileDefinition[];
+}
+export interface ConfigurationAccess {
+  /** Host-verified identity. Never accepted from a configuration request. */
+  subject: string; role: ProjectRole; online: boolean;
+}
+export interface ProjectConfigurationDefinition { version: 1 | 2; fields: ProjectConfigurationField[]; agentModelPolicy?: AgentModelPolicy; profilePolicy?: ConfigurationProfilePolicy }
 export interface ProjectConfiguration {
   /** For distributed projects, values contain personal overrides rather than template defaults. */
   id: string; name: string; values: ConfigurationValues; createdAt: string; updatedAt: string;
   templateId?: string;
+  profileKey?: string;
+  baseProfile?: boolean;
   /** JSON deletions are personal overlays, kept separately from version defaults. */
   deletedPaths?: Record<string,string[]>;
 }
@@ -43,6 +60,9 @@ export interface ProjectConfigurationState {
   version: 1; revision: number; fields: ProjectConfigurationField[]; customFields: ProjectConfigurationField[];
   /** Retained independently of field visibility in a distributed project. */
   agentModelPolicy?: AgentModelPolicy;
+  profilePolicy?: ConfigurationProfilePolicy;
+  capabilities?: { manageConfigurations: boolean; role: ProjectRole; online: boolean; subject: string; reason?: string };
+  configurationCapabilities?: Record<string,{use:boolean;edit:boolean;rename:boolean;delete:boolean;reason?:string;description?:string;tags:string[];minimumRole:ProjectRole}>;
   /** Custom definitions temporarily hidden by a declaration with the same name. */
   shadowedCustomFields?: ProjectConfigurationField[];
   configurations: ProjectConfiguration[]; activeConfigurationId: string;
@@ -55,13 +75,13 @@ export interface ProjectConfigurationState {
   publicationPreview?: ProjectConfigurationTemplate;
   conflicts?: { configurationId: string; key: string; value: ConfigurationValue; reason: string }[];
 }
-export interface ProjectConfigurationSnapshot { id: string; name: string; revision: number; values: ConfigurationValues; agentModelPolicy?: AgentModelPolicy }
+export interface ProjectConfigurationSnapshot { id: string; name: string; revision: number; values: ConfigurationValues; agentModelPolicy?: AgentModelPolicy; profileKey?: string; profilePolicyVersion?: 1; accessSubject?: string }
 export interface ProjectConfigurationExport {
-  version: 1; kind: "steamharness-project-configurations"; fields: ProjectConfigurationField[]; configurations: { name: string; values: ConfigurationValues; templateId?: string }[];
+  version: 1; kind: "steamharness-project-configurations"; fields: ProjectConfigurationField[]; configurations: { name: string; values: ConfigurationValues; templateId?: string; profileKey?: string }[];
 }
 export interface ProjectConfigurationAction {
   action: "get" | "export" | "create" | "duplicate" | "rename" | "save" | "select" | "delete" | "field.save" | "field.delete" | "import" | "publication.save" | "publication.preview";
-  revision?: number; id?: string; name?: string; values?: ConfigurationValues; unset?: string[];
+  revision?: number; id?: string; name?: string; profileKey?: string; values?: ConfigurationValues; unset?: string[];
   field?: ProjectConfigurationField; key?: string; document?: ProjectConfigurationExport;
   publication?: ConfigurationPublicationDraft;
 }
@@ -132,7 +152,100 @@ function parseConfigurationDefinitionValue(value: unknown, stored = false): Proj
   const agentModelPolicy = configurationAgentModelPolicy({ fields, agentModelPolicy: policy });
   const resolved = fieldsWithAgentModelPolicy(fields,agentModelPolicy);
   if (!stored) for (const field of resolved) if (field.defaultValue !== undefined) validateConfigurationValue(field,field.defaultValue);
-  return { version: value.version as 1 | 2, fields: resolved, ...(agentModelPolicy ? {agentModelPolicy} : {}) };
+  const profilePolicy = value.profilePolicy === undefined ? undefined : parseConfigurationProfilePolicy(value.profilePolicy,resolved);
+  if (profilePolicy && value.version !== 2) return invalid('Profile policies require configuration version 2.');
+  return { version: value.version as 1 | 2, fields: resolved, ...(agentModelPolicy ? {agentModelPolicy} : {}), ...(profilePolicy?{profilePolicy}:{}) };
+}
+
+export function parseConfigurationProfilePolicy(value: unknown, fields: ProjectConfigurationField[]): ConfigurationProfilePolicy {
+  if (!record(value) || value.version !== 1 || !isProjectRole(value.manageMinimumRole) || typeof value.defaultProfileKey !== 'string' || !Array.isArray(value.profiles) || !value.profiles.length) return invalid('Unsupported or invalid configuration profile policy. Upgrade the host if necessary.');
+  const profiles = value.profiles.map(entry => {
+    if (!record(entry) || !isProjectRole(entry.minimumRole) || !record(entry.fixedValues) || entry.description !== undefined && typeof entry.description !== 'string' || entry.tags !== undefined && (!Array.isArray(entry.tags) || !entry.tags.every(tag=>typeof tag==='string' && tag.length<=200))) return invalid('Invalid configuration profile.');
+    return {key:configurationKey(entry.key),name:name(entry.name),minimumRole:entry.minimumRole,fixedValues:values(fields,entry.fixedValues),...(entry.description!==undefined?{description:entry.description as string}:{}),...(entry.tags?{tags:[...entry.tags] as string[]}: {})};
+  });
+  const fallback = profiles.find(profile=>profile.key===value.defaultProfileKey);
+  if (new Set(profiles.map(profile=>profile.key)).size!==profiles.length || !fallback || fallback.minimumRole!=='guest') return invalid('The default profile must be unique and available to guests.');
+  // All modes own the same discriminator keys, preventing an Ask overlay from adding Build-only assignments.
+  const keys=Object.keys(fallback.fixedValues).sort().join('\0');
+  if(profiles.some(profile=>Object.keys(profile.fixedValues).sort().join('\0')!==keys))return invalid('Profiles must fix the same configuration keys.');
+  return {version:1,defaultProfileKey:value.defaultProfileKey,manageMinimumRole:value.manageMinimumRole,profiles};
+}
+
+export function bindConfigurationProfiles(state: ProjectConfigurationState, policy: ConfigurationProfilePolicy): ProjectConfigurationState {
+  const next=structuredClone(state); next.profilePolicy=parseConfigurationProfilePolicy(policy,next.fields);
+  for(const definition of policy.profiles) {
+    if(!next.configurations.some(profile=>profile.profileKey===definition.key)) {
+      const templateProfile=next.template?.configurations.find(profile=>profile.profileKey===definition.key);
+      const existing=templateProfile && next.configurations.find(profile=>profile.templateId===templateProfile.id);
+      if(existing)existing.profileKey=definition.key;
+      else next.configurations.push({id:`profile-${definition.key}`,name:definition.name,profileKey:definition.key,values:{...configurationDefaults(next.fields),...definition.fixedValues},...(templateProfile?{templateId:templateProfile.id}:{}),createdAt:new Date().toISOString(),updatedAt:new Date().toISOString()});
+    }
+    const base=next.configurations.find(profile=>profile.profileKey===definition.key&&profile.baseProfile)??next.configurations.find(profile=>profile.profileKey===definition.key);
+    if(base)base.baseProfile=true;
+  }
+  // Unbound legacy entries remain stored but never gain a role by their name or mutable values.
+  if(!next.configurations.some(profile=>profile.id===next.activeConfigurationId&&policy.profiles.some(definition=>definition.key===profile.profileKey)))next.activeConfigurationId=next.configurations.find(profile=>profile.profileKey===policy.defaultProfileKey)!.id;
+  return next;
+}
+
+export function configurationAccessView(state: ProjectConfigurationState, access?: ConfigurationAccess): ProjectConfigurationState {
+  if(!state.profilePolicy)return state;
+  const policy=state.profilePolicy,role=access?.online?access.role:'guest';
+  const next=structuredClone(state),manage=roleAtLeast(role,policy.manageMinimumRole);
+  next.configurations=next.configurations.filter(profile=>{
+    const definition=policy.profiles.find(item=>item.key===profile.profileKey);
+    return !!definition && roleAtLeast(role,definition.minimumRole) && (manage||profile.baseProfile===true);
+  });
+  const allowedKeys=new Set(next.configurations.map(profile=>profile.profileKey));
+  next.profilePolicy={...policy,profiles:policy.profiles.filter(profile=>allowedKeys.has(profile.key))};
+  if(next.template){
+    const templateIds=new Set(next.configurations.map(profile=>profile.templateId));
+    next.template.configurations=next.template.configurations.filter(profile=>allowedKeys.has(profile.profileKey)&&(manage||templateIds.has(profile.id)));
+    next.template.profilePolicy=next.profilePolicy;
+    const fileIds=new Set(next.template.configurations.flatMap(profile=>next.template!.fields.filter(field=>field.type==='file').flatMap(field=>{
+      const value=profile.values[field.name];
+      return (field.multiple && Array.isArray(value)?value:[value]).flatMap(file=>record(file)&&typeof file.id==='string'?[file.id]:[]);
+    })));
+    if(next.template.attachments)next.template.attachments=next.template.attachments.filter(asset=>fileIds.has(asset.id));
+  }
+  if(!next.configurations.some(profile=>profile.id===next.activeConfigurationId))next.activeConfigurationId=next.configurations.find(profile=>profile.profileKey===policy.defaultProfileKey)?.id ?? next.configurations[0]?.id ?? '';
+  next.capabilities={manageConfigurations:manage,role,online:access?.online===true,subject:access?.subject??'guest',...(!manage?{reason:'Project role does not allow managing configurations.'}:{})};
+  next.configurationCapabilities=Object.fromEntries(next.configurations.map(profile=>{
+    const definition=policy.profiles.find(item=>item.key===profile.profileKey)!;
+    if(!manage||profile.baseProfile)profile.name=definition.name;
+    profile.values={...profile.values,...structuredClone(definition.fixedValues)};
+    return [profile.id,{use:true,edit:true,rename:manage&&!profile.baseProfile,delete:manage&&!profile.baseProfile,minimumRole:definition.minimumRole,tags:definition.tags??[],...(definition.description?{description:definition.description}:{})}];
+  }));
+  if(next.conflicts)next.conflicts=next.conflicts.filter(conflict=>next.configurations.some(profile=>profile.id===conflict.configurationId));
+  if(!access?.online||!roleAtLeast(role,'maintainer')){
+    delete next.publication;delete next.publicationPreview;next.canManagePublication=false;
+  }
+  return next;
+}
+
+function assertProfileAction(state: ProjectConfigurationState, call: ProjectConfigurationAction, access?: ConfigurationAccess): void {
+  if(!state.profilePolicy)return;
+  const view=configurationAccessView(state,access);
+  if(!['get','export','save','select'].includes(call.action)&&!view.capabilities?.manageConfigurations)throw new ProjectConfigurationError('Developer access is required to manage configurations.','CONFIGURATION_FORBIDDEN');
+  if(call.id && !view.configurations.some(profile=>profile.id===call.id))throw new ProjectConfigurationError('This configuration is not available to this account.','CONFIGURATION_FORBIDDEN');
+  if((call.action==='rename'||call.action==='delete')&&state.configurations.find(profile=>profile.id===call.id)?.baseProfile)throw new ProjectConfigurationError('Project base configurations cannot be renamed or deleted.','CONFIGURATION_FORBIDDEN');
+  if(call.action==='save') {
+    const profile=state.configurations.find(item=>item.id===call.id),definition=state.profilePolicy.profiles.find(item=>item.key===profile?.profileKey);
+    for(const [key,value] of Object.entries(definition?.fixedValues??{}))if(call.unset?.includes(key)||Object.hasOwn(call.values??{},key)&&!equal(call.values![key],value))throw new ProjectConfigurationError('The project fixes this configuration value: '+key,'CONFIGURATION_FORBIDDEN');
+  }
+}
+
+export function validateConfigurationSnapshotAccess(state: ProjectConfigurationState, snapshot: ProjectConfigurationSnapshot, access?: ConfigurationAccess): ProjectConfigurationSnapshot {
+  if(!state.profilePolicy) {
+    if(snapshot.profilePolicyVersion!==undefined)throw new ProjectConfigurationError('The snapshot requires a configuration profile policy.','CONFIGURATION_FORBIDDEN');
+    return snapshot;
+  }
+  const profile=state.configurations.find(item=>item.id===snapshot.id);
+  const key=profile?.profileKey;
+  const definition=state.profilePolicy.profiles.find(item=>item.key===key);
+  if(snapshot.profilePolicyVersion!==1 || !definition || snapshot.profileKey!==key || !configurationAccessView(state,access).configurations.some(profile=>profile.id===snapshot.id) || snapshot.accessSubject!==undefined && snapshot.accessSubject!==(access?.subject??'guest'))throw new ProjectConfigurationError('This run configuration is not available to this account.','CONFIGURATION_FORBIDDEN');
+  for(const [field,value] of Object.entries(definition.fixedValues))if(!Object.hasOwn(snapshot.values,field)||!equal(snapshot.values[field],value))throw new ProjectConfigurationError('The run configuration changed a fixed value.','CONFIGURATION_FORBIDDEN');
+  return {...snapshot,profileKey:key,profilePolicyVersion:1,accessSubject:access?.subject??'guest'};
 }
 export function parseAgentModelPolicy(value: unknown): AgentModelPolicy {
   if (!record(value) || Object.keys(value).some(key => key !== "allowThirdParty") || value.allowThirdParty !== undefined && typeof value.allowThirdParty !== "boolean") return invalid("Invalid Agent model policy.");
@@ -217,6 +330,7 @@ export function readConfigurationState(stored: unknown, declared: ProjectConfigu
   });
   if (new Set(configurations.map(item => item.id)).size !== configurations.length) return invalid("Duplicate configuration ID.");
   return { version: 1, revision: Number(stored.revision), fields, customFields, ...(agentModelPolicy?{agentModelPolicy}:{}), ...(shadowedCustomFields.length ? {shadowedCustomFields} : {}), configurations,
+    ...(stored.profilePolicy ? {profilePolicy:parseConfigurationProfilePolicy(stored.profilePolicy,fields)} : {}),
     ...(stored.template ? {template: stored.template as ProjectConfigurationTemplate} : {}),
     ...(Array.isArray(stored.conflicts) ? {conflicts: structuredClone(stored.conflicts) as ProjectConfigurationState['conflicts']} : {}),
     activeConfigurationId: configurations.some(item => item.id === stored.activeConfigurationId) ? String(stored.activeConfigurationId) : configurations[0]!.id };
@@ -224,7 +338,8 @@ export function readConfigurationState(stored: unknown, declared: ProjectConfigu
 export function configurationSnapshot(state: ProjectConfigurationState, configurationId = state.activeConfigurationId, required = true): ProjectConfigurationSnapshot {
   const current = state.configurations.find(item => item.id === configurationId);
   if (!current) return invalid("Configuration no longer exists.");
-  const resolved = applyTemplateValues(state, current, { ...configurationDefaults(state.fields), ...Object.fromEntries(state.fields.flatMap(field => Object.hasOwn(current.values, field.name) ? [[field.name, current.values[field.name]!]] : [])) });
+  const fixed=state.profilePolicy?.profiles.find(profile=>profile.key===current.profileKey)?.fixedValues??{};
+  const resolved = {...applyTemplateValues(state, current, { ...configurationDefaults(state.fields), ...Object.fromEntries(state.fields.flatMap(field => Object.hasOwn(current.values, field.name) ? [[field.name, current.values[field.name]!]] : [])) }),...structuredClone(fixed)};
   values(state.fields, resolved, false);
   if (required) for (const field of state.fields) {
     const value = resolved[field.name];
@@ -232,14 +347,17 @@ export function configurationSnapshot(state: ProjectConfigurationState, configur
   }
   const agentModelPolicy = configurationAgentModelPolicy(state);
   return { id: current.id, name: current.name, revision: state.revision, values: resolved,
-    ...(agentModelPolicy ? { agentModelPolicy } : {}) };
+    ...(agentModelPolicy ? { agentModelPolicy } : {}),...(state.profilePolicy?{profileKey:current.profileKey,profilePolicyVersion:1 as const}:{}) };
 }
-export function exportConfigurations(state: ProjectConfigurationState, id?: string): ProjectConfigurationExport {
+export function exportConfigurations(state: ProjectConfigurationState, id?: string, access?: ConfigurationAccess): ProjectConfigurationExport {
+  assertProfileAction(state,{action:'export',id},access);
+  state=configurationAccessView(state,access);
   if (id && !state.configurations.some(item => item.id === id)) return invalid("Configuration no longer exists.");
-  return { version: 1, kind: "steamharness-project-configurations", fields: structuredClone(state.fields), configurations: state.configurations.filter(item => !id || item.id === id).map(item => ({ name: item.name, values: configurationSnapshot(state, item.id, false).values, ...(item.templateId ? {templateId:item.templateId}: {}) })) };
+  return { version: 1, kind: "steamharness-project-configurations", fields: structuredClone(state.fields), configurations: state.configurations.filter(item => !id || item.id === id).map(item => ({ name: item.name, values: configurationSnapshot(state, item.id, false).values, ...(item.templateId ? {templateId:item.templateId}: {}),...(item.profileKey?{profileKey:item.profileKey}:{}) })) };
 }
-export function applyConfigurationAction(state: ProjectConfigurationState, call: ProjectConfigurationAction, id: () => string, now = new Date().toISOString()): ProjectConfigurationState {
+export function applyConfigurationAction(state: ProjectConfigurationState, call: ProjectConfigurationAction, id: () => string, now = new Date().toISOString(), access?: ConfigurationAccess): ProjectConfigurationState {
   validateConfigurationAction(call);
+  assertProfileAction(state,call,access);
   if (call.revision !== state.revision) throw new ProjectConfigurationError("Configuration changed. Refresh before saving your draft.", "CONFIGURATION_CONFLICT");
   const next = structuredClone(state), item = next.configurations.find(entry => entry.id === call.id);
   const policy = configurationAgentModelPolicy(state);
@@ -248,7 +366,10 @@ export function applyConfigurationAction(state: ProjectConfigurationState, call:
   switch (call.action) {
     case "create": case "duplicate": {
       const source = call.action === "duplicate" ? current() : undefined;
-      const entry = { id: id(), name: name(call.name ?? (source ? `${source.name} (copy)` : `Configuration ${next.configurations.length + 1}`)), values: source ? next.template ? configurationSnapshot(next,source.id,false).values : structuredClone(source.values) : configurationDefaults(next.fields), ...(source?.deletedPaths?{deletedPaths:structuredClone(source.deletedPaths)}:{}), ...(next.template ? {templateId: source?.templateId ?? next.template.defaultConfigurationId} : {}), createdAt: now, updatedAt: now };
+      const profileKey=source?.profileKey??call.profileKey??next.profilePolicy?.defaultProfileKey;
+      const definition=next.profilePolicy?.profiles.find(profile=>profile.key===profileKey);
+      if(next.profilePolicy&&(!definition||!roleAtLeast(access?.online?access.role:'guest',definition.minimumRole)))throw new ProjectConfigurationError('This configuration profile is not available.','CONFIGURATION_FORBIDDEN');
+      const entry = { id: id(), name: name(call.name ?? (source ? `${source.name} (copy)` : `Configuration ${next.configurations.length + 1}`)), values: {...(source ? next.template ? configurationSnapshot(next,source.id,false).values : structuredClone(source.values) : configurationDefaults(next.fields)),...structuredClone(definition?.fixedValues??{})}, ...(profileKey?{profileKey}:{}),...(source?.deletedPaths?{deletedPaths:structuredClone(source.deletedPaths)}:{}), ...(next.template ? {templateId: source?.templateId ?? (profileKey?next.template.configurations.find(profile=>profile.profileKey===profileKey)?.id:undefined) ?? next.template.defaultConfigurationId} : {}), createdAt: now, updatedAt: now };
       values(next.fields, Object.fromEntries(Object.entries(entry.values).filter(([key]) => next.fields.some(field => field.name === key))));
       next.configurations.push(entry); next.activeConfigurationId = entry.id; break;
     }
@@ -263,6 +384,7 @@ export function applyConfigurationAction(state: ProjectConfigurationState, call:
     case "select": next.activeConfigurationId = current().id; break;
     case "delete": {
       current(); if (next.configurations.length === 1) return invalid("The last configuration cannot be deleted.");
+      if(next.profilePolicy && next.configurations.filter(profile=>profile.profileKey===current().profileKey).length===1)throw new ProjectConfigurationError('The last configuration for a project profile cannot be deleted.','CONFIGURATION_FORBIDDEN');
       next.configurations = next.configurations.filter(entry => entry.id !== call.id);
       if (next.activeConfigurationId === call.id) next.activeConfigurationId = next.configurations[0]!.id; break;
     }
@@ -304,7 +426,11 @@ export function applyConfigurationAction(state: ProjectConfigurationState, call:
         // Imported metadata cannot relax the policy declared by the target project.
         const importedValues = values(imported, entry.values);
         values(next.fields, importedValues);
-        next.configurations.push({ id: id(), name: name(entry.name), values: importedValues, ...(next.template?{templateId:entry.templateId??next.template.defaultConfigurationId}:{}), createdAt: now, updatedAt: now });
+        const definition=next.profilePolicy?.profiles.find(profile=>profile.key===entry.profileKey);
+        if(next.profilePolicy && (!definition || !roleAtLeast(access?.online?access.role:'guest',definition.minimumRole) || Object.entries(definition.fixedValues).some(([key,value])=>!Object.hasOwn(importedValues,key)||!equal(importedValues[key],value))))throw new ProjectConfigurationError('Imported configuration changes a protected profile.','CONFIGURATION_FORBIDDEN');
+        const templateId=(definition?next.template?.configurations.find(profile=>profile.profileKey===definition.key)?.id:undefined)??entry.templateId??next.template?.defaultConfigurationId;
+        if(definition && entry.templateId && next.template?.configurations.find(profile=>profile.id===entry.templateId)?.profileKey!==definition.key)throw new ProjectConfigurationError('Imported template profile does not match its role policy.','CONFIGURATION_FORBIDDEN');
+        next.configurations.push({ id: id(), name: name(entry.name), values: importedValues,...(definition?{profileKey:definition.key}:{}), ...(next.template?{templateId}:{}), createdAt: now, updatedAt: now });
       }
       break;
     }
@@ -326,7 +452,7 @@ export function validateConfigurationAction(value: unknown): asserts value is Pr
     for(const entry of value.document.configurations) if(!record(entry)||!record(entry.values)) return invalid('Invalid imported configuration.');
   }
   if(value.publication!==undefined) parsePublicationDraft(value.publication);
-  for (const key of ["id", "name", "key"]) if (value[key] !== undefined && typeof value[key] !== "string") return invalid(`Invalid configuration ${key}.`);
+  for (const key of ["id", "name", "key", "profileKey"]) if (value[key] !== undefined && typeof value[key] !== "string") return invalid(`Invalid configuration ${key}.`);
   if (!["get", "export", "publication.preview"].includes(String(value.action)) && (!Number.isSafeInteger(value.revision) || Number(value.revision) < 0)) return invalid("A configuration revision is required.");
 }
 
@@ -339,11 +465,12 @@ export interface ConfigurationPublicationDraft {
   configurationAccountId?: string;
   fields: ProjectConfigurationField[];
   agentModelPolicy?: AgentModelPolicy;
-  configurations: { id: string; name: string; values: ConfigurationValues }[];
+  profilePolicy?: ConfigurationProfilePolicy;
+  configurations: { id: string; name: string; values: ConfigurationValues; profileKey?: string }[];
   defaultConfigurationId: string;
 }
 export interface ProjectConfigurationTemplate {
-  version: 2;
+  version: 2 | 3;
   kind: 'steamharness-configuration-template';
   projectId: string;
   projectVersion: string;
@@ -352,7 +479,8 @@ export interface ProjectConfigurationTemplate {
   draftRevision: number;
   fields: ProjectConfigurationField[];
   agentModelPolicy?: AgentModelPolicy;
-  configurations: { id: string; name: string; values: ConfigurationValues }[];
+  profilePolicy?: ConfigurationProfilePolicy;
+  configurations: { id: string; name: string; values: ConfigurationValues; profileKey?: string }[];
   defaultConfigurationId: string;
   attachments?: {id:string;path:string;sha256:string}[];
   /** Omitted author fields remain reserved without exposing their names. */
@@ -395,6 +523,7 @@ export function configurationRule(field: ProjectConfigurationField, pointer = ''
   return result;
 }
 export function configurationCapability(state: ProjectConfigurationState, field: ProjectConfigurationField, pointer = ''): { editable: boolean; reason?: string } {
+  if(state.profilePolicy?.profiles.some(profile=>Object.hasOwn(profile.fixedValues,field.name)))return {editable:false,reason:'This value is fixed by the project profile.'};
   const editable = !state.template || state.customFields.some(f=>f.name===field.name) || configurationRule(field,pointer).editable && configurationRule(field,pointer).publish;
   return editable ? {editable:true} : {editable:false,reason:'Locked by the project author for this version.'};
 }
@@ -418,27 +547,33 @@ function publishedValue(field: ProjectConfigurationField, value: ConfigurationVa
 }
 export function createPublicationDraft(state: ProjectConfigurationState): ConfigurationPublicationDraft {
   const agentModelPolicy = configurationAgentModelPolicy(state);
-  return {revision:0,configurationRevision:state.revision,fields:structuredClone(state.fields),...(agentModelPolicy?{agentModelPolicy}:{}),
-    configurations:state.configurations.map(item=>({id:item.id,name:item.name,values:configurationSnapshot(state,item.id,false).values})),defaultConfigurationId:state.activeConfigurationId};
+  return {revision:0,configurationRevision:state.revision,fields:structuredClone(state.fields),...(agentModelPolicy?{agentModelPolicy}:{}),...(state.profilePolicy?{profilePolicy:structuredClone(state.profilePolicy)}:{}),
+    configurations:state.configurations.filter(item=>!state.profilePolicy||item.profileKey).map(item=>({id:item.id,name:item.name,values:configurationSnapshot(state,item.id,false).values,...(item.profileKey?{profileKey:item.profileKey}:{})})),defaultConfigurationId:state.profilePolicy?state.configurations.find(item=>item.profileKey===state.profilePolicy!.defaultProfileKey)!.id:state.activeConfigurationId};
 }
 export function parsePublicationDraft(value: unknown): ConfigurationPublicationDraft {
   if (!object(value) || !Number.isSafeInteger(value.revision) || Number(value.revision)<0 || !Number.isSafeInteger(value.configurationRevision) || Number(value.configurationRevision)<0 || !Array.isArray(value.configurations) || !value.configurations.length || typeof value.defaultConfigurationId!=='string') return fail('Invalid publication draft.');
   if(value.configurationAccountId!==undefined && (typeof value.configurationAccountId!=='string'||!value.configurationAccountId.trim())) return fail('Invalid publication configuration account.');
-  const {fields,agentModelPolicy} = parseConfigurationDefinitionValue({version:2,fields:value.fields,agentModelPolicy:value.agentModelPolicy},true);
+  const {fields,agentModelPolicy,profilePolicy} = parseConfigurationDefinitionValue({version:2,fields:value.fields,agentModelPolicy:value.agentModelPolicy,profilePolicy:value.profilePolicy},true);
   const configurations = value.configurations.map(entry => {
     if (!object(entry) || typeof entry.id!=='string' || !entry.id || typeof entry.name!=='string' || !entry.name.trim() || entry.name.length>200 || !object(entry.values) || !isConfigurationValue(entry.values)) return fail('Invalid publication configuration.');
     for (const [key,val] of Object.entries(entry.values)) {
       const field=fields.find(f=>f.name===key); if(!field) return fail(`Unknown publication field: ${key}.`);
       validateStoredConfigurationValue(field,val); assertArrayRules(field,val);
     }
-    return {id:entry.id,name:entry.name,values:structuredClone(entry.values)};
+    if(profilePolicy && (typeof entry.profileKey!=='string'||!profilePolicy.profiles.some(profile=>profile.key===entry.profileKey)))return fail('Publication profile is missing its role policy.');
+    return {id:entry.id,name:entry.name,values:structuredClone(entry.values),...(profilePolicy?{profileKey:entry.profileKey as string}:{})};
   });
   if(new Set(configurations.map(c=>c.id)).size!==configurations.length || !configurations.some(c=>c.id===value.defaultConfigurationId)) return fail('Invalid default publication configuration.');
   if(JSON.stringify(value).length>1024*1024) return fail('Publication exceeds 1 MiB.');
-  return {revision:Number(value.revision),configurationRevision:Number(value.configurationRevision),...(value.configurationAccountId?{configurationAccountId:value.configurationAccountId as string}:{}),fields,...(agentModelPolicy?{agentModelPolicy}:{}),configurations,defaultConfigurationId:value.defaultConfigurationId};
+  if(profilePolicy && (configurations.find(profile=>profile.id===value.defaultConfigurationId)?.profileKey!==profilePolicy.defaultProfileKey || profilePolicy.profiles.some(definition=>!configurations.some(profile=>profile.profileKey===definition.key))))return fail('Publish every declared profile and use the guest default.');
+  return {revision:Number(value.revision),configurationRevision:Number(value.configurationRevision),...(value.configurationAccountId?{configurationAccountId:value.configurationAccountId as string}:{}),fields,...(agentModelPolicy?{agentModelPolicy}:{}),...(profilePolicy?{profilePolicy}:{}),configurations,defaultConfigurationId:value.defaultConfigurationId};
 }
 export function freezeConfigurationTemplate(input: ConfigurationPublicationDraft, binding: {projectId:string;projectVersion:string;sourceHash:string}): ProjectConfigurationTemplate {
   const draft=parsePublicationDraft(input);
+  if(draft.profilePolicy)for(const profile of draft.profilePolicy.profiles)for(const [key,value] of Object.entries(profile.fixedValues)){
+    const field=draft.fields.find(field=>field.name===key)!;
+    if(!equal(publishedValue(field,value),value))return fail('Fixed profile values must be published without filtering.');
+  }
   const fields=draft.fields.filter(field=>configurationRule(field).publish).map(field=>{
     const result=structuredClone(field);
     delete result.defaultValue;
@@ -462,14 +597,15 @@ export function freezeConfigurationTemplate(input: ConfigurationPublicationDraft
       if(field.required && configurationRule(field).publish && !configurationRule(field).editable && (filtered===undefined || filtered===null || filtered==='' || field.multiple && Array.isArray(filtered) && !filtered.length)) fail(`Required locked field needs a published value: ${field.name}.`);
     }
     for (const field of fields) if (Object.hasOwn(values,field.name)) validateConfigurationValue(field,values[field.name]);
-    return {id:item.id,name:item.name,values};
+    return {id:item.id,name:item.name,values,...(item.profileKey?{profileKey:item.profileKey}:{})};
   });
   const reservedFields=draft.fields.filter(field=>!configurationRule(field).publish).map(field=>configurationRuleHash(field.name));
-  return {version:2,kind:'steamharness-configuration-template',...binding,draftRevision:draft.revision,fields,...(draft.agentModelPolicy?{agentModelPolicy:draft.agentModelPolicy}:{}),configurations,defaultConfigurationId:draft.defaultConfigurationId,...(reservedFields.length?{reservedFields}:{})};
+  return {version:draft.profilePolicy?3:2,kind:'steamharness-configuration-template',...binding,draftRevision:draft.revision,fields,...(draft.agentModelPolicy?{agentModelPolicy:draft.agentModelPolicy}:{}),...(draft.profilePolicy?{profilePolicy:draft.profilePolicy}:{}),configurations,defaultConfigurationId:draft.defaultConfigurationId,...(reservedFields.length?{reservedFields}:{})};
 }
 export function parseConfigurationTemplate(value: unknown): ProjectConfigurationTemplate {
-  if(!object(value) || value.version!==2 || value.kind!=='steamharness-configuration-template' || typeof value.projectId!=='string' || !value.projectId || typeof value.projectVersion!=='string' || typeof value.sourceHash!=='string' || !/^[a-f0-9]{64}$/.test(value.sourceHash)) return fail('Invalid configuration template.');
+  if(!object(value) || ![2,3].includes(value.version as number) || value.kind!=='steamharness-configuration-template' || typeof value.projectId!=='string' || !value.projectId || typeof value.projectVersion!=='string' || typeof value.sourceHash!=='string' || !/^[a-f0-9]{64}$/.test(value.sourceHash)) return fail('Invalid configuration template.');
   const draft=parsePublicationDraft({...value,revision:value.draftRevision,configurationRevision:0});
+  if((value.version===3)!==!!draft.profilePolicy)return fail('Unsupported configuration profile policy version.');
   // A template is already filtered. Never re-enable omitted defaults on a client.
   if(draft.fields.some(field=>field.defaultValue!==undefined || !configurationRule(field).publish)) return fail('Invalid template field defaults.');
   for (const profile of draft.configurations) values(draft.fields,profile.values);
@@ -477,7 +613,7 @@ export function parseConfigurationTemplate(value: unknown): ProjectConfiguration
   if(value.reservedFields!==undefined && (!Array.isArray(value.reservedFields)||!value.reservedFields.every(isRuleHash))) return fail('Invalid reserved configuration fields.');
   if(attachments!==undefined && (!Array.isArray(attachments) || attachments.some(a=>!object(a)||typeof a.id!=='string'||!/^wf_[a-f0-9]+$/.test(a.id)||a.path!==`configuration-assets/${a.id}`||typeof a.sha256!=='string'||!/^[a-f0-9]{64}$/.test(a.sha256)))) return fail('Invalid template attachments.');
   // Preserve legacy template serialization: verified offline cache keys hash this exact metadata.
-  return {...(attachments?{attachments:structuredClone(attachments) as unknown as ProjectConfigurationTemplate['attachments']}:{}),...(value.reservedFields?{reservedFields:[...value.reservedFields] as string[]}:{}),version:2,kind:'steamharness-configuration-template',projectId:value.projectId,projectVersion:value.projectVersion,sourceHash:value.sourceHash,draftRevision:draft.revision,fields:draft.fields,...(value.agentModelPolicy!==undefined&&draft.agentModelPolicy?{agentModelPolicy:draft.agentModelPolicy}:{}),configurations:draft.configurations,defaultConfigurationId:draft.defaultConfigurationId};
+  return {...(attachments?{attachments:structuredClone(attachments) as unknown as ProjectConfigurationTemplate['attachments']}:{}),...(value.reservedFields?{reservedFields:[...value.reservedFields] as string[]}:{}),version:value.version as 2|3,kind:'steamharness-configuration-template',projectId:value.projectId,projectVersion:value.projectVersion,sourceHash:value.sourceHash,draftRevision:draft.revision,fields:draft.fields,...(value.agentModelPolicy!==undefined&&draft.agentModelPolicy?{agentModelPolicy:draft.agentModelPolicy}:{}),...(draft.profilePolicy?{profilePolicy:draft.profilePolicy}:{}),configurations:draft.configurations,defaultConfigurationId:draft.defaultConfigurationId};
 }
 /** Merge full personal values with the version's authoritative values. Never apply old locked overrides. */
 function allowedValue(field:ProjectConfigurationField, base:ConfigurationValue|undefined, personal:ConfigurationValue|undefined, pointer='', deleted:readonly string[]=[]):ConfigurationValue|undefined {
@@ -553,7 +689,7 @@ export function bindConfigurationTemplate(state:ProjectConfigurationState, input
   next.fields=fieldsWithAgentModelPolicy([...template.fields,...next.customFields],agentModelPolicy);
   if(!previous) {
     const fresh=next.revision===0 && !next.customFields.length && next.configurations.length===1 && !Object.keys(next.configurations[0]!.values).length;
-    const imported=template.configurations.map((item,index)=>({id:`template-${index}-${item.id}`,templateId:item.id,name:item.name,values:{},createdAt:new Date().toISOString(),updatedAt:new Date().toISOString()}));
+    const imported=template.configurations.map((item,index)=>({id:`template-${index}-${item.id}`,templateId:item.id,name:item.name,values:{},...(item.profileKey?{profileKey:item.profileKey}:{}),createdAt:new Date().toISOString(),updatedAt:new Date().toISOString()}));
     if(fresh) {
       next.configurations=imported;
       next.activeConfigurationId=next.configurations.find(item=>item.templateId===template.defaultConfigurationId)!.id;
@@ -562,11 +698,11 @@ export function bindConfigurationTemplate(state:ProjectConfigurationState, input
       next.configurations.push(...imported.filter(item=>!next.configurations.some(profile=>profile.templateId===item.templateId)));
     }
   } else if(!equal(previous,template)) {
-    for(const item of template.configurations) if(!previous.configurations.some(old=>old.id===item.id) && !next.configurations.some(profile=>profile.templateId===item.id)) next.configurations.push({id:`template-${item.id}`,templateId:item.id,name:item.name,values:{},createdAt:new Date().toISOString(),updatedAt:new Date().toISOString()});
+    for(const item of template.configurations) if(!previous.configurations.some(old=>old.id===item.id) && !next.configurations.some(profile=>profile.templateId===item.id)) next.configurations.push({id:`template-${item.id}`,templateId:item.id,name:item.name,values:{},...(item.profileKey?{profileKey:item.profileKey}:{}),createdAt:new Date().toISOString(),updatedAt:new Date().toISOString()});
   }
   if(next.conflicts) next.conflicts=next.conflicts.filter(conflict=>next.fields.some(field=>field.name===conflict.key));
   for(const profile of next.configurations) {
-    if(!template.configurations.some(item=>item.id===profile.templateId)) profile.templateId=template.defaultConfigurationId;
+    if(!template.configurations.some(item=>item.id===profile.templateId)) profile.templateId=template.configurations.find(item=>item.profileKey&&item.profileKey===profile.profileKey)?.id??template.defaultConfigurationId;
     const valid:ConfigurationValues={};
     for(const field of next.fields) if(Object.hasOwn(profile.values,field.name)) {
       try {validateStoredConfigurationValue(field,profile.values[field.name]);valid[field.name]=profile.values[field.name]!;}
@@ -576,7 +712,7 @@ export function bindConfigurationTemplate(state:ProjectConfigurationState, input
     profile.values={...inactive,...personalConfigurationValues(next,profile,valid)};
   }
   if(!equal(previous,template)) next.revision++;
-  return next;
+  return template.profilePolicy?bindConfigurationProfiles(next,template.profilePolicy):next;
 }
 function assertEditableDifference(field:ProjectConfigurationField,before:ConfigurationValue|undefined,after:ConfigurationValue|undefined,pointer=''):void {
   if(equal(before,after)) return;

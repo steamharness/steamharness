@@ -35,7 +35,7 @@ export function ConfigurationPublicationEditor({ state, busy, onSave, onDirtyCha
           {available.map(profile => <Field key={profile.id} orientation="horizontal" className="w-auto">
             <Checkbox id={`${id}-profile-${profile.id}`} disabled={busy} checked={draft.configurations.some(c => c.id === profile.id)} onCheckedChange={checked => {
               const configurations = checked
-                ? [...draft.configurations, { id: profile.id, name: profile.name, values: state.configurations.some(c => c.id === profile.id) ? configurationSnapshot(state, profile.id, false).values : profile.values }]
+                ? [...draft.configurations, { id: profile.id, name: profile.name, ...(profile.profileKey?{profileKey:profile.profileKey}:{}), values: state.configurations.some(c => c.id === profile.id) ? configurationSnapshot(state, profile.id, false).values : profile.values }]
                 : draft.configurations.filter(c => c.id !== profile.id);
               update({ ...draft, configurations, defaultConfigurationId: configurations.some(c => c.id === draft.defaultConfigurationId) ? draft.defaultConfigurationId : configurations[0]?.id ?? "" });
             }} />

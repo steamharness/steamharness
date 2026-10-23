@@ -180,6 +180,8 @@ export interface Run {
   /** Reattach the durable owner without resubmitting a historical input. */
   resumeAgent?: boolean;
   configurationRunId?: string;
+  configurationSelection?: {id:string;profileKey:string;subject:string};
+  resumeConfiguration?: boolean;
   agentCommands?: { command: AgentSessionCommand; scopeId: string; attachments?: Attachment[] }[];
   project: Project;
   conversationId: string;
@@ -209,6 +211,7 @@ export interface Runtime {
 }
 
 export interface ConversationMessage {
+  configurationSelection?: Run['configurationSelection'];
   contextEpoch?: number;
   sessionRequestId?: string;
   sessionConversationId?: number;
@@ -242,10 +245,10 @@ export interface ConversationMessage {
   timers?: TimerRecord[];
 }
 
-export interface ConversationQueuedInput { configurationPending?: boolean; id: string; requestId?: string; text: string; params: ParamValues; states?: Record<string, ParamState>; entrypointId?: string; attachments: Attachment[]; references?: PathReference[]; createdAt: number }
+export interface ConversationQueuedInput { configurationSelection?: Run['configurationSelection']; configurationPending?: boolean; id: string; requestId?: string; text: string; params: ParamValues; states?: Record<string, ParamState>; entrypointId?: string; attachments: Attachment[]; references?: PathReference[]; createdAt: number }
 
 export interface ConversationSession {
-  agentParameters?: { configurationRevision?: number; args: string[]; entrypointId?: string; policies: unknown };
+  agentParameters?: { configurationRevision?: number; configurationSelection?: Run['configurationSelection']; args: string[]; entrypointId?: string; policies: unknown };
   agent?: AgentSessionSnapshot;
   agentOwnerId?: string;
   agentConversationId?: number;

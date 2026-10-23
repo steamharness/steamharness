@@ -1,7 +1,7 @@
 import {act,fireEvent,render as renderPage,screen,waitFor} from "@testing-library/react";
 import {afterEach,beforeEach,expect,it,vi} from "vitest";
 import {i18n} from "@steamharness/i18n/react";
-import {applyConfigurationAction,bindConfigurationTemplate,configurationSnapshot,createPublicationDraft,freezeConfigurationTemplate,createConfigurationState} from "@steamharness/project-configuration";
+import {applyConfigurationAction,bindConfigurationProfiles,configurationAccessView,bindConfigurationTemplate,configurationSnapshot,createPublicationDraft,freezeConfigurationTemplate,createConfigurationState} from "@steamharness/project-configuration";
 import {apiClient} from "../../../api";
 import {ProjectConfigurationsTab} from "../ProjectConfigurationsTab";
 import type {Summary} from "../../../types";
@@ -346,4 +346,29 @@ it('returns to the list if a clean viewed configuration is removed by another ed
  state=applyConfigurationAction(state,{action:'delete',id:'secondary',revision:state.revision},()=> 'unused');
  await act(async()=>{poll();});
  expect(screen.getByRole('table',{name:'Project configurations'})).toBeTruthy();expect(screen.queryByLabelText('label')).toBeNull();
+});
+
+it("filters guest lists and keeps only allowed profile values editable",async()=>{
+ const raw=bindConfigurationProfiles(createConfigurationState([{name:"mode",type:"string"},{name:"model",type:"string"}],()=>"legacy"),{version:1,defaultProfileKey:"ask",manageMinimumRole:"developer",profiles:[{key:"ask",name:"Ask",minimumRole:"guest",fixedValues:{mode:"ask"},tags:["Read only"]},{key:"build",name:"Build",minimumRole:"developer",fixedValues:{mode:"build"}}]});
+ vi.spyOn(apiClient,"projectConfigurations").mockResolvedValue(ok(configurationAccessView(raw,{subject:"alice",role:"guest",online:true})));
+ renderPage(<ProjectConfigurationsTab project={project}/>);
+ fireEvent.click(await screen.findByRole("button",{name:/^Ask/}));
+ expect(screen.queryByText("Build")).toBeNull();
+ expect(screen.queryByRole("button",{name:"Create"})).toBeNull();
+ expect(screen.queryByRole("button",{name:"Add field"})).toBeNull();
+ expect(screen.getByLabelText("mode")).toBeDisabled();expect(screen.getByLabelText("model")).toBeEnabled();
+});
+it("withdraws Build details after a role downgrade while preserving the editing draft",async()=>{
+ const raw=bindConfigurationProfiles(createConfigurationState([{name:"mode",type:"string"},{name:"model",type:"string"}],()=>"legacy"),{version:1,defaultProfileKey:"ask",manageMinimumRole:"developer",profiles:[{key:"ask",name:"Ask",minimumRole:"guest",fixedValues:{mode:"ask"}},{key:"build",name:"Build",minimumRole:"developer",fixedValues:{mode:"build"}}]});
+ let role:"guest"|"developer"="developer";
+ vi.spyOn(apiClient,"projectConfigurations").mockImplementation(async()=>ok(configurationAccessView(raw,{subject:"alice",role,online:true})));
+ renderPage(<ProjectConfigurationsTab project={project}/>);
+ fireEvent.click(await screen.findByRole("button",{name:/^Build/}));
+ fireEvent.change(screen.getByLabelText("model"),{target:{value:"draft model"}});
+ role="guest";
+ await waitFor(()=>expect(screen.queryByText("Build")).toBeNull(),{timeout:4000});
+ expect(screen.queryByLabelText("model")).toBeNull();
+ expect(screen.queryByRole("button",{name:"Add field"})).toBeNull();
+ role="developer";
+ await waitFor(()=>expect(screen.getByLabelText("model")).toHaveValue("draft model"),{timeout:4000});
 });

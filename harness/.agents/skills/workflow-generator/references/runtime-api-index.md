@@ -82,6 +82,7 @@
 - `steamharness.editKnowledgeDocument(...)`
 - `steamharness.endTimer(...)`
 - `steamharness.getConfig(...)`
+- `steamharness.getProjectConfiguration(...)`
 - `steamharness.getKnowledgeDocument(...)`
 - `steamharness.getRuntimeLocale(...)`
 - `steamharness.getRuntimePlatform(...)`

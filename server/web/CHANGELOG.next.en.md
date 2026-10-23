@@ -1,5 +1,7 @@
 # Unreleased
 
+- Added mode capability and minimum-role labels to configuration lists. Guests see accessible base profiles, with collection and field management hidden and fixed modes read-only.
+
 - [Improved] Highlight the configuration in use with a clear badge and provide Use this configuration buttons for other profiles. Keep list and detail usage in sync, preserve selection on failure, and retain drafts during external switches.
 
 - AI configuration honors source-declared allowThirdParty restrictions, hides source switching for system-only projects, and marks existing third-party entries unavailable for cleanup.

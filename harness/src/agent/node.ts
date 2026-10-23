@@ -13,7 +13,7 @@ import {
 import type { NodeContext, UserInputRequest } from "../types/index";
 import { createToolApprovalGate } from "../tool-permissions/index";
 import { HarnessError } from "../workflow/errors";
-import { getProjectConfiguration } from "../configuration";
+import { getProjectConfiguration, assertCurrentProjectConfigurationAccess } from "../configuration";
 import { AGENT_MODELS_CONFIGURATION_KEY, parseAgentModels } from "@steamharness/project-configuration";
 import { createAgentAskRequest, readAgentAskAnswers, readAgentQuestions } from "./ask";
 import { parseAgentPermissionPolicy } from "./permission";
@@ -243,6 +243,7 @@ class AgentStreamNode extends BaseStreamNode<AgentInput, OutputItemStreamChunk, 
     // provider and model come from the host's catalogue names a credential,
     // not a provider the SDK knows, so building the runtime from the raw input
     // would fail on an "unknown model" before the bridge is ever considered.
+    await assertCurrentProjectConfigurationAccess();
     const system = await resolveAgentSystemAIInput({ ...input,
       requestId: input.requestId ?? `${String(context.metadata?.["runId"] ?? randomUUID())}:${this.name}`,
     }, this.options, context.abortSignal);
