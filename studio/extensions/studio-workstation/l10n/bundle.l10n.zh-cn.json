@@ -646,5 +646,8 @@
   "Your project or group role does not allow this operation.": "你的项目或组角色不允许执行此操作。",
   "Personal project": "个人项目",
   "Choose the project group": "选择项目归属组",
-  "Cancelled.": "已取消。"
+  "Cancelled.": "已取消。",
+  "Choose files": "选择文件",
+  "Choose folders": "选择文件夹",
+  "Only local files and folders can be referenced.": "只能引用本地文件和文件夹。"
 }

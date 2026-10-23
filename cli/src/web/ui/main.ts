@@ -14,7 +14,8 @@ import { ConversationOutput } from './conversation-output';
 import { collapseIntermediateDefault } from './conversation-presentation';
 import { attachmentSignature } from './attachment-state';
 import { conversationPrompt, pathReferences, type PathReference } from '../conversation-paths';
-import { captureFileDrop, isFileDrop } from './conversation-drop';
+import { captureFileDrop, isFileDrop, type FileImport } from './conversation-drop';
+import { ConversationFileMenu } from './conversation-file-menu';
 import { activeAgentActivity } from './agent-activity';
 import { ComposerOutput, composerOutputItems } from './output-display';
 import type { ConnectionState } from './connection';
@@ -57,7 +58,7 @@ function initialize(): void {
       <section id="chats"><nav id="session-list" aria-label="${t("Conversation history")}"></nav><button id="load-more-history" class="all-history" hidden>${icon('chevron-down')}<span>${t("Load more")}</span></button><button id="all-history" class="all-history" aria-haspopup="dialog" aria-controls="history-popover" aria-expanded="false" popovertarget="history-popover" hidden></button><div id="no-history" class="no-history" hidden>${t("No conversations")}</div></section>
     </aside>
     <main><div class="transcript-area"><div id="transcript" class="transcript" role="log" aria-label="${t("Conversation messages")}" aria-live="polite" aria-relevant="additions"><div id="transcript-content" class="transcript-content"></div></div><button id="latest" class="icon-button latest-button" title="${t("Go to latest message")}" aria-label="${t("Go to latest message")}" hidden>${icon('arrow-down')}</button></div>
-      <footer class="composer-area"><div id="error" class="error" role="alert" hidden></div><div id="input-queue" class="input-queue" hidden></div><div id="editing-queue" class="editing-queue" hidden><span>${t("Edit queued message")}</span><button id="cancel-queue-edit" class="icon-button" title="${t("Cancel editing")}" aria-label="${t("Cancel editing")}">${icon('close')}</button></div><section id="parameters" aria-label="${t("Run parameters")}"><div class="parameter-feedback"><div id="parameter-status" class="parameter-status" role="status" hidden>${icon('loading')}<span>${t("Loading parameters...")}</span></div><div id="parameter-error" class="parameter-error" role="alert" hidden></div><button id="parameter-login" class="parameter-login" hidden>${icon('sign-in')}<span>${t("Sign in to SteamHarness")}</span></button></div><div id="slash-menu" class="slash-menu" hidden></div><div class="composer"><div class="composer-body"><div id="main-fields" class="composer-main-fields" hidden></div><div id="draft-attachments" class="attachments" hidden></div><textarea id="message" rows="2" placeholder="${t("Send a message...")}" aria-label="${t("Message")}"></textarea></div><div class="composer-toolbar"><div class="run-options"><button id="attach" class="icon-button" title="${t("Add attachment")}" aria-label="${t("Add attachment")}" hidden>${icon('attach')}</button><select id="entrypoint" aria-label="${t("Entrypoints")}" hidden></select><div id="parameter-actions" class="parameter-actions" role="group" aria-label="${t("Run parameters")}"></div><button id="refresh-params" class="icon-button" title="${t("Refresh parameters")}" aria-label="${t("Refresh parameters")}" hidden>${icon('refresh')}</button></div><div class="composer-actions"><button id="send" class="send-button" title="${t("Send")}" aria-label="${t("Send")}">${icon('arrow-up')}</button></div></div></div><div id="composer-footer" class="composer-footer" role="status" hidden></div></section></footer>
+      <footer class="composer-area"><div id="error" class="error" role="alert" hidden></div><div id="input-queue" class="input-queue" hidden></div><div id="editing-queue" class="editing-queue" hidden><span>${t("Edit queued message")}</span><button id="cancel-queue-edit" class="icon-button" title="${t("Cancel editing")}" aria-label="${t("Cancel editing")}">${icon('close')}</button></div><section id="parameters" aria-label="${t("Run parameters")}"><div class="parameter-feedback"><div id="parameter-status" class="parameter-status" role="status" hidden>${icon('loading')}<span>${t("Loading parameters...")}</span></div><div id="parameter-error" class="parameter-error" role="alert" hidden></div><button id="parameter-login" class="parameter-login" hidden>${icon('sign-in')}<span>${t("Sign in to SteamHarness")}</span></button></div><div id="slash-menu" class="slash-menu" hidden></div><div class="composer"><div class="composer-body"><div id="main-fields" class="composer-main-fields" hidden></div><div id="draft-attachments" class="attachments" hidden></div><textarea id="message" rows="2" placeholder="${t("Send a message...")}" aria-label="${t("Message")}"></textarea></div><div class="composer-toolbar"><div class="run-options"><button id="attach" class="icon-button" title="${t("Add files or folders")}" aria-label="${t("Add files or folders")}" hidden>${icon('attach')}</button><select id="entrypoint" aria-label="${t("Entrypoints")}" hidden></select><div id="parameter-actions" class="parameter-actions" role="group" aria-label="${t("Run parameters")}"></div><button id="refresh-params" class="icon-button" title="${t("Refresh parameters")}" aria-label="${t("Refresh parameters")}" hidden>${icon('refresh')}</button></div><div class="composer-actions"><button id="send" class="send-button" title="${t("Send")}" aria-label="${t("Send")}">${icon('arrow-up')}</button></div></div></div><div id="composer-footer" class="composer-footer" role="status" hidden></div></section></footer>
     </main>
     <div id="history-popover" class="history-popover" popover="auto" role="dialog" aria-label="${t("All conversations")}"><div class="history-popover-toolbar"><label class="history-search">${icon('search')}<input id="search-all-history" type="search" placeholder="${t("Search conversations")}" aria-label="${t("Search all conversations")}"></label><button id="close-history" class="icon-button" title="${t("Close conversation history")}" aria-label="${t("Close conversation history")}">${icon('close')}</button></div><nav id="all-session-list" aria-label="${t("All chats")}"></nav><div id="history-empty" class="no-history" hidden>${t("No matching conversations")}</div></div>
     <div id="session-menu" class="session-menu" popover="manual" role="menu" aria-label="${t("Conversation actions")}">
@@ -206,6 +207,12 @@ function initialize(): void {
   const pendingSend = (): boolean => !!state && submissions.busy(state.project.uri, state.activeId);
   const busy = (): boolean => readOnly() || submitting || pendingSend() || hideComposer() || (!!state?.running || !!currentSession()?.messages.some((message) => message.pendingInput)) && !canQueue();
   const navigationReady = (): boolean => !!state && !navigationNeeded && !navigationRequest && !localSessions.has(state.activeId) && state.activeId === serverSessionId;
+  const fileMenu = new ConversationFileMenu(document.querySelector<HTMLButtonElement>('#attach')!, kind => {
+    if (!state || !advertisedDropTarget || uploading) return;
+    const requestId = crypto.randomUUID();
+    pendingDrops.add(requestId); uploading++; updateControls();
+    post({ type: 'select-paths', kind, target: dropScope(), requestId });
+  });
   const emptyConnection = connectionFeedback();
   transcript.append(emptyConnection);
   const stopFeedback = document.createElement('div'); stopFeedback.id = 'stop-feedback'; stopFeedback.hidden = true;
@@ -550,8 +557,9 @@ function initialize(): void {
     // open-source CLI web.
     document.querySelector<HTMLElement>('#usage')!.hidden = !state.account?.aiConfigured || !state.project.requiresLogin || state.account?.status !== 'authenticated';
     const attach = document.querySelector<HTMLButtonElement>('#attach')!;
-    attach.hidden = !conversation || !Object.values(state.project.conversation?.attachments ?? {}).some(Boolean);
-    attach.disabled = busy() || uploading > 0 || !navigationReady();
+    attach.hidden = !conversation;
+    attach.disabled = busy() || uploading > 0 || !navigationReady() || !connectionAvailable;
+    if (attach.hidden || attach.disabled) fileMenu.close();
     const dropTarget = conversation && connectionAvailable && navigationReady() && !busy() ? dropScope() : undefined;
     if (dropTarget !== advertisedDropTarget) { advertisedDropTarget = dropTarget; vscode.postMessage({ type: 'drop-target', target: dropTarget }); }
     for (const control of Array.from(document.querySelectorAll<HTMLButtonElement>('.param-file-button'))) { control.disabled = busy() || parametersLoading(); }
@@ -874,10 +882,13 @@ function initialize(): void {
     }
   }
 
-  async function applyFileDrop(drop: ReturnType<typeof captureFileDrop>): Promise<void> {
-    if (!state || !advertisedDropTarget) return;
-    const scope = dropScope(), projectUri = state.project.uri, sessionId = state.activeId, requestId = crypto.randomUUID();
-    pendingDrops.add(requestId); uploading++; updateControls();
+  async function applyFileImport(drop: FileImport, selectedRequestId?: string): Promise<void> {
+    if (!state || !selectedRequestId && !advertisedDropTarget) return;
+    const scope = dropScope(), projectUri = state.project.uri, sessionId = state.activeId, requestId = selectedRequestId ?? crypto.randomUUID();
+    if (!selectedRequestId) { pendingDrops.add(requestId); uploading++; updateControls(); }
+    if (!drop.paths.length && !drop.directories && drop.files?.length && drop.files.every(file => file.type.startsWith('image/')) && state.project.conversation?.attachments?.images) {
+      await uploadFiles(drop.files, requestId); return;
+    }
     try {
       const entries = drop.paths.length ? undefined : await drop.read();
       if (scope !== dropScope() || !pendingDrops.has(requestId)) return;
@@ -897,19 +908,24 @@ function initialize(): void {
       pendingIds: new Set(submissions.list().filter(entry => entry.projectUri === state!.project.uri).map(entry => entry.input.id)) });
   }
 
-  async function uploadFiles(files: File[]): Promise<void> {
-    if (!state || !navigationReady() || busy() || !files.length || document.querySelector<HTMLElement>('#attach')!.hidden) { return; }
+  async function uploadFiles(files: File[], importRequestId?: string): Promise<void> {
+    if (!state || !importRequestId && !navigationReady() || busy() || !files.length || document.querySelector<HTMLElement>('#attach')!.hidden) { return; }
     const sessionId = state.activeId; const projectUri = state.project.uri;
     const allowed = state.project.conversation?.attachments;
     const selected = files.filter((file) => file.type.startsWith('image/') ? allowed?.images : file.type.startsWith('video/') ? allowed?.videos : allowed?.files);
-    if (selected.length !== files.length || draftFiles.length + selected.length > 32 || selected.some((file) => file.size > 50 * 1024 * 1024)) { showError(t("Unsupported attachment type, or the 50 MiB per file / 32 attachment limit was exceeded.")); return; }
-    uploading++; updateControls();
+    if (selected.length !== files.length || draftFiles.length + selected.length > 32 || selected.some((file) => file.size > 50 * 1024 * 1024)) {
+      if (importRequestId && pendingDrops.delete(importRequestId)) uploading = Math.max(0, uploading - 1);
+      showError(t("Unsupported attachment type, or the 50 MiB per file / 32 attachment limit was exceeded.")); updateControls(); return;
+    }
+    const scope = dropScope();
+    if (!importRequestId) { uploading++; updateControls(); }
     try {
       const encoded = await Promise.all(selected.map((file) => new Promise<{ name: string; mimeType: string; data: string }>((resolve, reject) => {
         const reader = new FileReader(); reader.onload = () => resolve({ name: file.name, mimeType: file.type, data: String(reader.result).split(',', 2)[1] }); reader.onerror = () => reject(reader.error); reader.readAsDataURL(file);
       })));
-      vscode.postMessage({ type: 'upload', projectUri, sessionId, files: encoded });
-    } catch (error) { if (state.activeId === sessionId) { uploading = Math.max(0, uploading - 1); showError(String(error)); updateControls(); } }
+      if (scope !== dropScope() || importRequestId && !pendingDrops.has(importRequestId)) return;
+      vscode.postMessage({ type: 'upload', projectUri, sessionId, files: encoded, ...(importRequestId ? { requestId: importRequestId } : {}) });
+    } catch (error) { if (scope === dropScope() && (!importRequestId || pendingDrops.delete(importRequestId))) { uploading = Math.max(0, uploading - 1); showError(String(error)); updateControls(); } }
   }
 
   function showError(message: string): void { const error = document.querySelector<HTMLElement>('#error')!; error.textContent = message; error.hidden = false; }
@@ -1117,6 +1133,7 @@ function initialize(): void {
       renderedProject = next.project.uri;
     }
     if (switching) {
+      fileMenu.close();
       pendingParameterTrigger = undefined;
       closeSessionMenu();
       cancelParameterRequest();
@@ -1135,7 +1152,7 @@ function initialize(): void {
       sizeComposer();
     }
     const editingChanged = editingQueueId !== session.draft?.editingQueueId;
-    if (editingChanged) { dropGeneration++; uploading = Math.max(0, uploading - pendingDrops.size); pendingDrops.clear(); }
+    if (editingChanged) { fileMenu.close(); dropGeneration++; uploading = Math.max(0, uploading - pendingDrops.size); pendingDrops.clear(); }
     if (editingChanged) {
       editingQueueId = session.draft?.editingQueueId;
       textarea.value = session.draft?.text ?? ''; draftFiles = session.draft?.attachments ?? []; draftReferences = session.draft?.references ?? [];
@@ -1326,7 +1343,6 @@ function initialize(): void {
   sendButton.addEventListener('click', send);
   document.querySelector('#new')!.addEventListener('click', () => navigate());
   document.querySelector('#project-info')!.addEventListener('click', () => { if (state) { parameterActions.close(); dialogs.projectInfo(state.project); } });
-  document.querySelector('#attach')!.addEventListener('click', () => post({ type: 'attach' }));
   document.querySelector('#cancel-queue-edit')!.addEventListener('click', () => post({ type: 'queue-cancel-edit' }));
   document.querySelector('#tools')!.addEventListener('click', () => dialogs.permissions(currentParameters(), currentSession()?.toolPermissionPolicies ?? {}, (policies) => post({ type: 'tool-policy', entrypointId: entrypoint.value, policies })));
   document.querySelector('#usage')!.addEventListener('click', () => dialogs.usage(requestId => post({ type: 'usage', requestId })));
@@ -1407,8 +1423,9 @@ function initialize(): void {
   window.addEventListener('pointerup', releaseTranscriptScrollbar, { passive: true });
   window.addEventListener('pointercancel', releaseTranscriptScrollbar, { passive: true });
   latest.addEventListener('click', () => { followingLatest = true; syncTranscriptLayout(); });
-  window.addEventListener('resize', () => { closeSessionMenu(); sizeComposer(); syncTranscriptLayout(); positionHistory(); });
+  window.addEventListener('resize', () => { fileMenu.close(); closeSessionMenu(); sizeComposer(); syncTranscriptLayout(); positionHistory(); });
   window.addEventListener('pagehide', () => {
+    fileMenu.close();
     vscode.postMessage({ type: 'drop-target' }); advertisedDropTarget = undefined;
     dropGeneration++; uploading = Math.max(0, uploading - pendingDrops.size); pendingDrops.clear();
     transcriptScrollbarActive = false; transcriptTouchY = undefined;
@@ -1460,10 +1477,7 @@ function initialize(): void {
     if (!event.dataTransfer || !isFileDrop(event.dataTransfer)) return;
     event.preventDefault(); event.stopPropagation();
     if (!advertisedDropTarget) return;
-    const drop = captureFileDrop(event.dataTransfer);
-    if (!drop.paths.length && !drop.directories && drop.files?.length && drop.files.every(file => file.type.startsWith('image/')) && state?.project.conversation?.attachments?.images) {
-      void uploadFiles(drop.files);
-    } else void applyFileDrop(drop);
+    void applyFileImport(captureFileDrop(event.dataTransfer));
   });
   let pendingState: State | undefined;
   const stateRevisions = new StateRevisions();
@@ -1583,8 +1597,12 @@ function initialize(): void {
       }
       if (paramsNeedInit && !inputTimer) { requestParams(pendingParameterTrigger ?? { kind: 'init' }); }
       updateControls();
+    } else if (message.type === 'files-selected' && pendingDrops.has(message.requestId)) {
+      if (state && message.target === dropScope() && message.projectUri === state.project.uri && message.sessionId === state.activeId && !busy() && connectionAvailable && message.selection) {
+        void applyFileImport(message.selection, message.requestId);
+      } else { pendingDrops.delete(message.requestId); uploading = Math.max(0, uploading - 1); updateControls(); }
     } else if (message.type === 'paths-dropped' && message.target === advertisedDropTarget && Array.isArray(message.paths)) {
-      void applyFileDrop({ paths: message.paths, read: async () => [] });
+      void applyFileImport({ paths: message.paths, read: async () => [] });
     } else if (message.type === 'path-references' && state && message.projectUri === state.project.uri && message.sessionId === state.activeId) {
       if (!pendingDrops.delete(message.requestId)) return;
       uploading = Math.max(0, uploading - 1);
@@ -1596,6 +1614,7 @@ function initialize(): void {
     } else if (message.type === 'attachment-cancelled' && message.sessionId === state?.activeId) {
       uploading = Math.max(0, uploading - 1); updateControls();
     } else if (message.type === 'attachments' && state && message.projectUri === state.project.uri && message.sessionId === state.activeId) {
+      if (!message.messageId && !message.paramName && message.requestId && !pendingDrops.delete(message.requestId)) return;
       uploading = Math.max(0, uploading - 1);
       if (message.messageId) {
         const prompt = messages.get(message.messageId)?.prompt;
@@ -1624,7 +1643,7 @@ function initialize(): void {
     else if (message.type === 'exported' && message.sessionId === state?.activeId) {
       const button = messages.get(message.messageId)?.root.querySelector<HTMLButtonElement>('.export-message'); if (button) { button.disabled = false; button.innerHTML = icon('export'); }
     } else if (message.type === 'error' && (!message.sessionId || message.sessionId === state?.activeId)) {
-      if (['resolve-paths', 'import-drop'].includes(message.requestType) && !pendingDrops.delete(message.requestId)) return;
+      if ((['select-paths', 'resolve-paths', 'import-drop'].includes(message.requestType) || message.requestType === 'upload' && message.requestId && !message.messageId && !message.paramName) && !pendingDrops.delete(message.requestId)) return;
       if (message.requestType === 'usage') { dialogs.usageResult(message.requestId, undefined, message.message); return; }
       if (message.requestType === 'resume' && messages.get(message.messageId)?.prompt?.request.requestId !== message.requestId) { return; }
       submitting = false;

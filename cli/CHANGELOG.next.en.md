@@ -1,5 +1,7 @@
 # Unreleased
 
+- [Fixed] Conversation file selection and drag and drop now share file and folder import logic. Studio preserves original paths, browsers retain directory structure, and imports no longer depend on attachment type declarations.
+
 - Improvement: Share application configurations across Studio assistant, Workflow, Conversation and Kanban windows, automatically synchronizing values and active selection while keeping sessions and runs independent and enforcing shared revisions on save.
 
 - [Improved] Group Configure model with the missing-model error in Conversation and Studio Assistant, separate from message action icons. The guidance wraps in narrow panes and opens model settings without losing the draft.

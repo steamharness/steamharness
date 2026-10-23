@@ -646,5 +646,8 @@
   "Your project or group role does not allow this operation.": "Your project or group role does not allow this operation.",
   "Personal project": "Personal project",
   "Choose the project group": "Choose the project group",
-  "Cancelled.": "Cancelled."
+  "Cancelled.": "Cancelled.",
+  "Choose files": "Choose files",
+  "Choose folders": "Choose folders",
+  "Only local files and folders can be referenced.": "Only local files and folders can be referenced."
 }

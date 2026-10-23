@@ -1,4 +1,7 @@
 export interface DroppedEntry { name: string; kind: 'file' | 'directory'; data?: string }
+export interface FileImport { paths: string[]; files?: File[]; directories?: boolean; read(): Promise<DroppedEntry[]> }
+interface PickedFile { kind: 'file'; name: string; getFile(): Promise<File> }
+export interface PickedDirectory { kind: 'directory'; name: string; values(): AsyncIterable<PickedDirectory | PickedFile> }
 interface Entry {
   name: string; isDirectory: boolean;
   file(success: (file: File) => void, error: (error: DOMException) => void): void;
@@ -9,7 +12,7 @@ const formats = ['files', 'codefiles', 'resourceurls', 'codeeditors', 'text/uri-
 export function isFileDrop(transfer: DataTransfer): boolean { return Array.from(transfer.types).some(type => formats.includes(type.toLowerCase())); }
 
 /** Capture protected drag data synchronously, before awaiting directory reads. */
-export function captureFileDrop(transfer: DataTransfer): { paths: string[]; files?: File[]; directories?: boolean; read(): Promise<DroppedEntry[]> } {
+export function captureFileDrop(transfer: DataTransfer): FileImport {
   const paths: string[] = [];
   const add = (value: unknown) => { if (typeof value === 'string' && /^(?:file:|\/|[a-z]:[\\/]|\\\\)/i.test(value)) paths.push(value); };
   for (const format of ['CodeFiles', 'ResourceURLs', 'CodeEditors']) {
@@ -28,7 +31,29 @@ export function captureFileDrop(transfer: DataTransfer): { paths: string[]; file
   const files = Array.from(transfer.files);
   for (const file of files) add((file as File & { path?: string }).path);
   const entries = Array.from(transfer.items ?? []).filter(item => item.kind === 'file').map(item => item.webkitGetAsEntry?.() as Entry | null);
-  return { paths: [...new Set(paths)], files, directories: entries.some(entry => entry?.isDirectory), read: async () => {
+  return captureEntries([...new Set(paths)], files, entries);
+}
+
+export function capturePickedFiles(files: File[], directories = false): FileImport {
+  const paths = files.map(file => (file as File & { path?: string }).path).filter((value): value is string => !!value);
+  return { ...captureEntries(paths.length === files.length ? [...new Set(paths)] : [], files, []), directories };
+}
+
+export function capturePickedDirectory(directory: PickedDirectory): FileImport {
+  const entry = (handle: PickedDirectory | PickedFile): Entry => ({
+    name: handle.name, isDirectory: handle.kind === 'directory',
+    file: (success, error) => { if (handle.kind === 'file') void handle.getFile().then(success, error); },
+    createReader: () => {
+      if (handle.kind !== 'directory') throw new Error('Only files and folders can be referenced.');
+      const iterator = handle.values()[Symbol.asyncIterator]();
+      return { readEntries: (success, error) => { void iterator.next().then(result => success(result.done ? [] : [entry(result.value)]), error); } };
+    },
+  });
+  return captureEntries([], [], [entry(directory)]);
+}
+
+function captureEntries(paths: string[], files: File[], entries: (Entry | null)[]): FileImport {
+  return { paths, files, directories: entries.some(entry => entry?.isDirectory), read: async () => {
     const output: DroppedEntry[] = [];
     let bytes = 0;
     const append = (entry: DroppedEntry) => { output.push(entry); if (output.length > 1000) throw new Error('A drop can contain up to 1,000 files and folders.'); };
@@ -56,7 +81,7 @@ export function captureFileDrop(transfer: DataTransfer): { paths: string[]; file
         if (entry) await walk(entry, entry.name);
         else if (files[index]) await read(files[index], files[index].name);
       }
-    } else for (const file of files) await read(file, file.name);
+    } else for (const file of files) await read(file, file.webkitRelativePath || file.name);
     return output;
   } };
 }

@@ -7,6 +7,8 @@ import { TraceBridge } from './trace-bridge';
 import { ClipboardBridge } from './clipboard-bridge';
 import { editText, pasteHostClipboard, selectedText, textEditShortcut, type TextEditCommand } from './edit-commands';
 import { ProjectWindowChrome } from './window-chrome';
+import { chooseConversationFiles } from './conversation-file-picker';
+import type { FileImport } from './conversation-drop';
 
 type Message = Record<string, any>;
 interface Host { postMessage(message: Message): void | Promise<void | boolean>; getState(): unknown; setState(state: unknown): void }
@@ -36,8 +38,16 @@ export function acquireProjectHost(options: { live?: boolean; connectionBanner?:
   let navigationSignature: string | undefined;
   const emit = (message: Message) => window.dispatchEvent(new MessageEvent('message', { data: message }));
   const trace = new TraceBridge(message => { if (window.parent !== window) { window.parent.postMessage(message, '*'); } });
-  let resourceHost = false, editHost = false, nativePasteHost = false;
+  let resourceHost = false, editHost = false, nativePasteHost = false, pathPickerHost = false;
   let dropTarget: string | undefined;
+  const pathPickers = new Map<string, Message>();
+  const selectedFiles = (message: Message, selection?: FileImport, error?: string) => {
+    if (pathPickers.get(message.requestId) !== message) return;
+    pathPickers.delete(message.requestId);
+    emit({ type: error ? 'error' : 'files-selected', requestType: 'select-paths', requestId: message.requestId,
+      projectUri: message.projectUri, sessionId: message.sessionId, target: message.target, selection, message: error });
+  };
+  addEventListener('pagehide', () => pathPickers.clear());
   const advertiseDropTarget = () => { if (window.parent !== window) window.parent.postMessage({ type: 'workflow-drop-target', version: 1, target: dropTarget }, '*'); };
   const captureInput = (input: HTMLElement): EditTarget => {
     const field = input as HTMLInputElement | HTMLTextAreaElement;
@@ -147,6 +157,14 @@ export function acquireProjectHost(options: { live?: boolean; connectionBanner?:
     }
     if (event.data.openConfigurations === true) emit({type:'project-configurations-open'});
     if (event.data.dropVersion === 1) advertiseDropTarget();
+    if (event.data.pathPickerVersion !== undefined) pathPickerHost = event.data.pathPickerVersion === 1;
+    const pathSelection = event.data.pathSelection;
+    if (pathSelection?.version === 1) {
+      const pending = pathPickers.get(pathSelection.requestId);
+      if (pending && pending.target === pathSelection.target && Array.isArray(pathSelection.paths) && pathSelection.paths.every((path: unknown) => typeof path === 'string')) {
+        selectedFiles(pending, pathSelection.paths.length ? { paths: pathSelection.paths, read: async () => [] } : undefined, pathSelection.error);
+      }
+    }
     if (event.data.drop?.target === dropTarget && dropTarget && Array.isArray(event.data.drop.paths)) {
       emit({ type: 'paths-dropped', target: dropTarget, paths: event.data.drop.paths });
     }
@@ -234,7 +252,21 @@ export function acquireProjectHost(options: { live?: boolean; connectionBanner?:
   });
   return {
     postMessage: async (message) => {
-      if (message.type === 'drop-target') { dropTarget = message.target; advertiseDropTarget(); return; }
+      if (message.type === 'drop-target') {
+        if (message.target) for (const [id, pending] of pathPickers) { if (pending.target !== message.target) pathPickers.delete(id); }
+        dropTarget = message.target; advertiseDropTarget(); return;
+      }
+      if (message.type === 'select-paths') {
+        if (!dropTarget || message.target !== dropTarget || !['files', 'folders'].includes(message.kind)) return;
+        pathPickers.set(message.requestId, message);
+        if (pathPickerHost) {
+          window.parent.postMessage({ type: 'workflow-path-picker', version: 1, kind: message.kind, requestId: message.requestId, target: message.target }, '*');
+        } else {
+          try { selectedFiles(message, await chooseConversationFiles(message.kind)); }
+          catch (error) { selectedFiles(message, undefined, (error as Error).message); }
+        }
+        return;
+      }
       if (message.type === 'ready') { return; }
       if (message.type === 'trace-active') { trace.select(message.sessionId); return; }
       if (message.type === 'reconnect') { await connection.reconnect(); return; }
