@@ -101,7 +101,6 @@ main { grid-area: main; min-width: 0; min-height: 0; display: flex; flex-directi
 .transcript { position: absolute; inset: 0; overflow: auto; overflow-anchor: none; scrollbar-gutter: stable; padding: 18px max(28px, calc((100% - 820px) / 2)) 10px; }
 .transcript-content { display: flow-root; min-height: 100%; }
 .transcript-content:has(> .empty) { height: 100%; }
-.transcript-area.has-message-index .transcript { padding-left: max(30px, calc((100% - 820px) / 2)); }
 .conversation-message-index { position: absolute; z-index: 6; left: 2px; top: 50%; transform: translateY(-50%); display: flex; flex-direction: column; align-items: center; gap: 5px; width: 24px; max-height: calc(100% - 32px); color: var(--muted); }
 .message-index-count { flex: none; max-width: 100%; font-size: 9px; line-height: 14px; font-variant-numeric: tabular-nums; opacity: .55; }
 .message-index-list { position: relative; min-height: 0; width: 100%; overflow: auto; scrollbar-width: none; overscroll-behavior: contain; }
@@ -435,6 +434,7 @@ textarea::placeholder { color: var(--vscode-input-placeholderForeground); }
 @keyframes spin { to { transform: rotate(360deg); } }
 @media (prefers-reduced-motion: reduce) { *, *::before { animation: none !important; transition: none !important; } }
 @media (max-width: 900px) { #app.menu-open { grid-template-columns: 248px minmax(0, 1fr); } .transcript { padding: 18px 22px 8px; } .composer-area { padding: 8px 22px 12px; } }
+@media (min-width: 681px) { .transcript-area.has-message-index .transcript { padding-left: max(30px, calc((100% - 820px) / 2)); } }
 @media (max-width: 680px) {
   #app.menu-open { grid-template-areas: "toolbar" "menu" "main"; grid-template-columns: minmax(0, 1fr); grid-template-rows: auto auto minmax(0, 1fr); }
   .toolbar { padding: 8px 12px; gap: 6px; }
@@ -446,6 +446,7 @@ textarea::placeholder { color: var(--vscode-input-placeholderForeground); }
   .project-menu .session { height: 34px; }
   .project-menu .all-history { padding: 6px 18px; }
   #hide-menu .codicon { transform: rotate(90deg); }
+  .conversation-message-index, .message-index-preview { display: none; }
   .transcript { padding: 16px 18px 6px; }
   .composer-area { padding: 8px 18px 10px; }
 }

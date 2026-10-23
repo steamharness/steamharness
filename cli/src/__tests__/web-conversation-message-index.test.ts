@@ -83,6 +83,41 @@ it('previews literal user text and attachments, keeps markers stable, and closes
   view.index.update([]); view.index.syncLayout(); expect(view.buttons()).toHaveLength(0);
 });
 
+it('hides the index on narrow screens, closes previews, and restores navigation when widened', () => {
+  vi.stubGlobal('innerWidth', 390);
+  const view = setup();
+  for (const text of ['first', 'second', 'third']) view.add(text);
+  view.render();
+  expect(view.index.root.hidden).toBe(true);
+  expect(view.area.classList.contains('has-message-index')).toBe(false);
+  view.buttons()[0].dispatchEvent(new Event('pointerenter'));
+  expect(view.preview.hidden).toBe(true);
+
+  vi.stubGlobal('innerWidth', 681); view.index.syncLayout();
+  expect(view.index.root.hidden).toBe(false);
+  expect(view.area.classList.contains('has-message-index')).toBe(true);
+  const markers = view.buttons();
+  markers[1].dispatchEvent(new Event('pointerenter'));
+  expect(view.preview.hidden).toBe(false);
+  view.transcript.scrollTop = 350;
+
+  vi.stubGlobal('innerWidth', 680); view.index.syncLayout();
+  expect(view.index.root.hidden).toBe(true);
+  expect(view.preview.hidden).toBe(true);
+  expect(markers[1].hasAttribute('aria-describedby')).toBe(false);
+  expect(view.area.classList.contains('has-message-index')).toBe(false);
+
+  vi.stubGlobal('innerWidth', 1024); view.index.syncLayout();
+  expect(view.index.root.hidden).toBe(false);
+  expect(view.buttons()).toEqual(markers);
+  expect(view.preview.hidden).toBe(true);
+  expect(view.transcript.scrollTop).toBe(350);
+  expect(markers[1].getAttribute('aria-current')).toBe('location');
+  markers[1].dispatchEvent(new Event('pointerenter'));
+  expect(view.preview.textContent).toContain('second');
+  markers[1].click(); expect(view.jump).toHaveBeenCalledWith(view.entries[1].root);
+});
+
 it('supports keyboard previews and navigation without jumping until a marker is activated', () => {
   const view = setup();
   for (const text of ['first', 'second', 'third', 'last']) view.add(text);
@@ -194,9 +229,16 @@ it('indexes rendered user messages once and keeps a clicked historical message i
   expect(top).toBe(282);
   height = 2200; messages[7].content += ' More streamed content'; emit();
   expect(top).toBe(282); expect(buttons()).toHaveLength(4);
+  buttons()[1].dispatchEvent(new Event('pointerenter'));
+  const preview = document.querySelector<HTMLElement>('.message-index-preview')!;
+  vi.stubGlobal('innerWidth', 680); window.dispatchEvent(new Event('resize')); frame(); frame();
+  expect(document.querySelector<HTMLElement>('.conversation-message-index')!.hidden).toBe(true);
+  expect(preview.hidden).toBe(true); expect(top).toBe(282);
+  vi.stubGlobal('innerWidth', 681); window.dispatchEvent(new Event('resize')); frame(); frame();
+  expect(document.querySelector<HTMLElement>('.conversation-message-index')!.hidden).toBe(false);
+  expect(preview.hidden).toBe(true); expect(top).toBe(282); expect(buttons()).toHaveLength(4);
   document.querySelector<HTMLButtonElement>('#latest')!.click(); frame(); expect(top).toBe(1800);
   buttons()[0].dispatchEvent(new Event('pointerenter'));
-  const preview = document.querySelector<HTMLElement>('.message-index-preview')!;
   expect(preview.hidden).toBe(false);
   emit('another-session', messages.slice(0, 2));
   expect(document.querySelector<HTMLElement>('.conversation-message-index')!.hidden).toBe(true);

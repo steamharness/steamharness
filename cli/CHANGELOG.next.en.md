@@ -1,5 +1,7 @@
 # Unreleased
 
+- [Improved] Show the user-message index only on wide screens. At page widths of 680px or less, hide the index, count and hover preview without reserving left-side space; restore the index when widened.
+
 - Studio and CLI Web honor system-only AI declarations, hide third-party controls, and share validation across saves, imports and assistant operations.
 
 - [Added] Successful Conversation turns can fold intermediate text, reasoning and tools while retaining each final reply, plan and resource card. Expand each turn with Worked for; a toolbar toggle remembers the project preference, with Core Agent enabled by default.
