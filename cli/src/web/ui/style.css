@@ -131,7 +131,11 @@ main { grid-area: main; min-width: 0; min-height: 0; display: flex; flex-directi
 .user .message-actions .message-date { margin-left: 0; max-width: 100%; white-space: normal; text-wrap: balance; }
 .user:hover .message-actions, .user:has(:focus-visible) .message-actions { opacity: 1; pointer-events: auto; }
 .message-actions .icon-button { width: 28px; height: 28px; color: var(--muted); }
-.message-actions .configure-model-message { width: auto; gap: 5px; padding: 0 6px; font-size: 12px; color: var(--vscode-textLink-foreground); }
+.message-feedback.model-configuration-required { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 16px; margin: 12px 0 8px; padding: 10px 12px; border: 1px solid var(--border); border-radius: 6px; background: var(--vscode-textCodeBlock-background); }
+.model-configuration-required .message-error { flex: 1 1 260px; min-width: 0; margin: 0; }
+.configure-model-message { display: inline-flex; align-items: center; justify-content: center; gap: 6px; max-width: 100%; min-height: 30px; padding: 5px 10px; border: 1px solid var(--vscode-button-border, var(--border)); border-radius: 4px; background: var(--vscode-button-secondaryBackground); color: var(--vscode-button-secondaryForeground); font-size: 12px; line-height: 1.5; }
+.configure-model-message > .codicon { flex: none; }
+.configure-model-message:hover:not(:disabled) { background: var(--vscode-button-secondaryHoverBackground, var(--vscode-toolbar-hoverBackground)); }
 .message-connection { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 12px; min-width: 0; margin: 8px 0; font-size: 12px; line-height: 1.6; color: var(--muted); }
 .message-connection-status { min-width: 0; overflow-wrap: anywhere; }
 .message-connection .connection-retry { width: auto; min-height: 28px; }

@@ -120,6 +120,11 @@ it('guides an empty Agent model list to the active configuration and preserves t
   expect(f.action('ai').textContent).toContain('Configure model');expect(f.action('ai').disabled).toBe(false);
   const errorAction=document.querySelector<HTMLButtonElement>('.configure-model-message')!;
   expect(errorAction.hidden).toBe(false);
+  const feedback=errorAction.closest<HTMLElement>('.message-feedback')!;
+  expect(feedback.hidden).toBe(false);expect(feedback.classList.contains('model-configuration-required')).toBe(true);
+  expect(feedback.querySelector('.message-error')?.textContent).toBe(f.sessions[0].messages[0].error);
+  expect(errorAction.closest('.message-actions')).toBeNull();
+  expect(errorAction.getAttribute('aria-haspopup')).toBe('dialog');expect(errorAction.getAttribute('aria-controls')).toBe('project-configurations-dialog');
   f.action('ai').focus();f.action('ai').click();
   const request=host.postMessage.mock.calls.map(([message])=>message).find(message=>message.type==='project-configuration'&&message.call.action==='get');
   f.emit({type:'project-configuration-result',requestId:request.requestId,value:configurations});await Promise.resolve();
@@ -127,11 +132,21 @@ it('guides an empty Agent model list to the active configuration and preserves t
   expect(dialog.open).toBe(true);expect(document.querySelector<HTMLElement>('.configuration-body')!.hidden).toBe(false);
   expect(document.activeElement?.textContent).toBe('Add model');expect(f.input.value).toBe('Keep my message');
   dialog.close();expect(document.activeElement).toBe(f.action('ai'));
+  errorAction.focus();errorAction.click();
+  const errorRequest=host.postMessage.mock.calls.map(([message])=>message).filter(message=>message.type==='project-configuration'&&message.call.action==='get').at(-1)!;
+  f.emit({type:'project-configuration-result',requestId:errorRequest.requestId,value:configurations});await Promise.resolve();
+  expect(dialog.open).toBe(true);expect(document.activeElement?.textContent).toBe('Add model');expect(f.input.value).toBe('Keep my message');
+  dialog.close();expect(document.activeElement).toBe(errorAction);
   const saved=applyConfigurationAction(configurations,{action:'save',id:'current',revision:configurations.revision,values:{[AGENT_MODELS_CONFIGURATION_KEY]:[
     {id:'saved',name:'Saved model',model:'example',source:'third-party',apiKind:'openai-completions',baseUrl:'https://models.example/v1',apiKey:'test-only-key'},
   ]}}, () => crypto.randomUUID());
   f.receive({configurations:saved,parameterRevision:2});f.reply({model:{value:'saved',resolvedOptions:[{value:'saved',label:'Saved model'}]}});
   expect(f.action('ai').textContent).toContain('Saved model');expect(errorAction.hidden).toBe(true);expect(f.input.value).toBe('Keep my message');
+  expect(feedback.classList.contains('model-configuration-required')).toBe(false);
+  expect(feedback.querySelector('.message-error')?.textContent).toBe(f.sessions[0].messages[0].error);
+  f.sessions[0].messages=[{id:'failed',role:'assistant',content:'',status:'running',error:'Previous model error'}];
+  f.receive({sessions:[...f.sessions]});
+  expect(feedback.hidden).toBe(true);expect(errorAction.hidden).toBe(true);
 });
 
 it('loads dynamic parameters once and reuses the per-conversation cache on navigation', async () => {

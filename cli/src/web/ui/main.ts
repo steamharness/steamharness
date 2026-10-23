@@ -75,7 +75,7 @@ function initialize(): void {
     description: HTMLDivElement; optionsSignature?: string;
   }
   interface MessageView {
-    root: HTMLElement; content: HTMLDivElement; metadata: HTMLSpanElement; error: HTMLParagraphElement;
+    root: HTMLElement; content: HTMLDivElement; metadata: HTMLSpanElement; error: HTMLParagraphElement; feedback: HTMLDivElement;
     avatar: HTMLButtonElement;
     message: ConversationMessage; output?: ConversationOutput;
     attachments: HTMLDivElement; promptRoot: HTMLDivElement; prompt?: InputPrompt;
@@ -889,7 +889,7 @@ function initialize(): void {
     root.className = `message ${message.role}`;
     root.dataset.messageId = message.id;
     const timestamp = message.createdAt ? new Date(message.createdAt).toLocaleString(locale(), { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : '';
-    root.innerHTML = `<div class="message-body"><header class="message-header"><span class="message-heading"><span class="message-metadata"></span></span><time class="message-date"${!timestamp ? ' hidden' : ''}>${escape(timestamp)}</time></header><div class="attachments" hidden></div><div class="message-content"></div><div class="message-prompt"></div><p class="message-error" hidden></p><div class="message-actions"><button class="icon-button copy-message" title="${t("Copy message")}" aria-label="${t("Copy message")}">${icon('copy')}</button></div></div>`;
+    root.innerHTML = `<div class="message-body"><header class="message-header"><span class="message-heading"><span class="message-metadata"></span></span><time class="message-date"${!timestamp ? ' hidden' : ''}>${escape(timestamp)}</time></header><div class="attachments" hidden></div><div class="message-content"></div><div class="message-prompt"></div><div class="message-feedback" hidden><p class="message-error" hidden></p></div><div class="message-actions"><button class="icon-button copy-message" title="${t("Copy message")}" aria-label="${t("Copy message")}">${icon('copy')}</button></div></div>`;
     if (timestamp) { root.querySelector<HTMLTimeElement>('.message-date')!.dateTime = new Date(message.createdAt!).toISOString(); }
     if (message.role === 'user') { root.querySelector('.message-actions')!.prepend(root.querySelector('.message-date')!); }
     const avatar = iconButton('account', message.role === 'user' ? t("SteamHarness Account") : t("Project information"), () => {
@@ -901,15 +901,16 @@ function initialize(): void {
     if (message.role === 'user') { root.append(avatar); }
     else { root.querySelector('.message-header')!.prepend(avatar); }
     const view: MessageView = { root, content: root.querySelector('.message-content')!, metadata: root.querySelector('.message-metadata')!, error: root.querySelector('.message-error')!, message,
-      avatar,
+      avatar, feedback: root.querySelector('.message-feedback')!,
       attachments: root.querySelector('.attachments')!, promptRoot: root.querySelector('.message-prompt')!,
     };
     root.querySelector<HTMLButtonElement>('.copy-message')!.addEventListener('click', (event) => copy(view.message.content, event.currentTarget as HTMLButtonElement));
     if (message.role === 'assistant') {
       view.configureModel = iconButton('settings-gear', t('Configure model'), () => configurationPanel.openAgentModels());
       view.configureModel.append(document.createTextNode(t('Configure model')));
-      view.configureModel.classList.add('configure-model-message'); view.configureModel.hidden = true;
-      root.querySelector('.message-actions')!.append(view.configureModel);
+      view.configureModel.className = 'configure-model-message'; view.configureModel.hidden = true;
+      view.configureModel.setAttribute('aria-haspopup', 'dialog'); view.configureModel.setAttribute('aria-controls', 'project-configurations-dialog');
+      view.feedback.append(view.configureModel);
       view.output = new ConversationOutput(view.content, {
         composer: true,
         copy, plan: (text) => dialogs.plan(text), file: (id) => post({ type: 'open-file', id }),
@@ -978,7 +979,10 @@ function initialize(): void {
     const error = message.status === 'running' || message.status === 'sending' ? undefined : message.error;
     view.error.textContent = error ?? '';
     view.error.hidden = !error;
-    if (view.configureModel) view.configureModel.hidden = !error || !configurationPanel.needsAgentModels() || !currentParameters().fields.some(field => field.name === 'model');
+    const configureModel = !!view.configureModel && !!error && configurationPanel.needsAgentModels() && currentParameters().fields.some(field => field.name === 'model');
+    view.feedback.hidden = !error;
+    view.feedback.classList.toggle('model-configuration-required', configureModel);
+    if (view.configureModel) view.configureModel.hidden = !configureModel;
     view.root.querySelector<HTMLButtonElement>('.copy-message')!.disabled = !message.content;
     const fork = view.root.querySelector<HTMLButtonElement>('.fork-message');
     if (fork) { fork.hidden = !state?.project.conversation?.durable?.enabled || !message.entryId; fork.disabled = !connectionAvailable; }
