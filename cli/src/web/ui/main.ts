@@ -890,7 +890,11 @@ function initialize(): void {
       const fork = iconButton('git-branch', t('Fork conversation'), async () => {
         const entryId = view.message.entryId, sessionId = state?.activeId, projectUri = state?.project.uri;
         if (!entryId || !connectionAvailable || !navigationReady()) return;
-        const result = await requestAction({ title: t('Fork from this response?'), confirm: t('Fork') });
+        const result = await requestAction({
+          title: t('Fork from this response?'),
+          description: t('Create and open a new conversation with the history up to and including this response. Later messages are not included. The original conversation stays unchanged, so you can explore a different direction in the new one.'),
+          confirm: t('Fork'),
+        });
         if (result !== undefined && state?.activeId === sessionId && state?.project.uri === projectUri && connectionAvailable && navigationReady()) {
           post({ type: 'agent-command', command: { type: 'fork', requestId: crypto.randomUUID(), entryId } });
         }

@@ -1,13 +1,17 @@
 import { t } from '../localization';
 import { iconButton } from './ui';
 
-export function requestAction(options: { title: string; confirm: string; label?: string; value?: string; danger?: boolean; multiline?: boolean; required?: boolean }): Promise<string | undefined> {
+export function requestAction(options: { title: string; confirm: string; description?: string; label?: string; value?: string; danger?: boolean; multiline?: boolean; required?: boolean }): Promise<string | undefined> {
   return new Promise(resolve => {
     const dialog = document.createElement('dialog'); dialog.className = 'conversation-dialog action-dialog';
     const title = document.createElement('h2'); title.id = `action-${crypto.randomUUID()}`; title.textContent = options.title;
     dialog.setAttribute('aria-labelledby', title.id);
     const header = document.createElement('header'); header.append(title, iconButton('close', t("Close"), () => dialog.close()));
     const form = document.createElement('form'); form.className = 'dialog-body';
+    if (options.description) {
+      const description = document.createElement('p'); description.id = `${title.id}-description`; description.className = 'action-description'; description.textContent = options.description;
+      dialog.setAttribute('aria-describedby', description.id); form.append(description);
+    }
     let input: HTMLInputElement | HTMLTextAreaElement | undefined, result: string | undefined;
     if (options.label) {
       const label = document.createElement('label'); label.textContent = options.label;

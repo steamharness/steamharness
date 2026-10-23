@@ -434,6 +434,7 @@
   "Withdraw input": "撤回输入",
   "Fork conversation": "分叉会话",
   "Fork from this response?": "从这条回答创建分叉会话？",
+  "Create and open a new conversation with the history up to and including this response. Later messages are not included. The original conversation stays unchanged, so you can explore a different direction in the new one.": "将截至这条回答（包含本条）的对话历史复制到新会话并打开，不包含之后的消息。原会话保持不变，你可以在新会话中探索其他思路。",
   "Fork": "分叉",
   "Wait for active tasks before changing session settings.": "活动任务结束后才能修改会话设置。",
   "Change workflow settings in the main conversation.": "请在主会话中修改工作流设置。",
