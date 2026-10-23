@@ -1,6 +1,6 @@
 import { type AccessActor, type AccessCapability, type ResourceAccess } from "@steamharness/project-access";
 import {isDeepStrictEqual} from "node:util";
-import { bindConfigurationTemplate, createPublicationDraft, parsePublicationDraft, freezeConfigurationTemplate, parseConfigurationTemplate, CONFIGURATION_TEMPLATE_FILE, type ConfigurationPublicationDraft, type ProjectConfigurationTemplate, configurationCapability, parseConfigurationFile, validateConfigurationFileSelection, type ProjectConfigurationField,parseConfigurationField, applyConfigurationAction, configurationSnapshot, exportConfigurations, parseConfigurationDefinition, readConfigurationState, validateConfigurationAction, ProjectConfigurationError, type ProjectConfigurationAction, type ProjectConfigurationState, type ProjectConfigurationExport, type ProjectConfiguration } from "@steamharness/project-configuration";
+import { bindConfigurationTemplate, configurationAgentModelPolicy, createPublicationDraft, parsePublicationDraft, freezeConfigurationTemplate, parseConfigurationTemplate, CONFIGURATION_TEMPLATE_FILE, type ConfigurationPublicationDraft, type ProjectConfigurationTemplate, configurationCapability, parseConfigurationFile, validateConfigurationFileSelection, type ProjectConfigurationField,parseConfigurationField, applyConfigurationAction, configurationSnapshot, exportConfigurations, parseConfigurationDefinition, readConfigurationState, validateConfigurationAction, ProjectConfigurationError, type ProjectConfigurationAction, type ProjectConfigurationState, type ProjectConfigurationExport, type ProjectConfiguration } from "@steamharness/project-configuration";
 import { createLocalProjectConfigurationStore, readProjectConfigurationDefinition } from "steamharness";
 
 import { createHash, createHmac, randomBytes, randomUUID, timingSafeEqual } from "node:crypto";
@@ -2609,10 +2609,12 @@ export class Storage {
     try {
       validateConfigurationAction(call);
       let fields: ProjectConfigurationState["fields"] = [];
+      let agentModelPolicy: ProjectConfigurationState["agentModelPolicy"];
       let definitionVersion = 1;
-      try { const definition = readProjectConfigurationDefinition(source.sourceDir); fields = definition.fields; definitionVersion = definition.version; }
+      try { const definition = readProjectConfigurationDefinition(source.sourceDir); fields = definition.fields; definitionVersion = definition.version; agentModelPolicy=definition.agentModelPolicy; }
       catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error; }
       const template = !canManagePublication && source.resolvedTarget !== 'draft' ? await this.configurationTemplate(options.projectName,source.resolvedTarget) : undefined;
+      agentModelPolicy=configurationAgentModelPolicy({fields,agentModelPolicy},template??{fields:[]});
       if (!canManagePublication && definitionVersion === 2 && !template) fields = [];
       const references = async (definitions:ProjectConfigurationField[], input:Record<string,unknown>) => {
         for(const field of definitions.filter(f=>f.type==='file')) {
@@ -2644,34 +2646,36 @@ export class Storage {
       let state: ProjectConfigurationState;
       if (!this.db) {
         const store = await createLocalProjectConfigurationStore(source.sourceDir, {
-          rootDir: path.join(this.dataRoot, "project-configurations"), storageKey: JSON.stringify([options.projectName, actor]), template:template??null,fields,
+          rootDir: path.join(this.dataRoot, "project-configurations"), storageKey: JSON.stringify([options.projectName, actor]), template:template??null,fields,agentModelPolicy,
         });
         const result = await store.dispatch(publicationCall ? {action:'get'} : call);
         if(call.action === 'export') return result;
         state = result as ProjectConfigurationState;
       } else {
         state = await this.db.projectConfigurationState(options.projectName, actor, stored => {
-          let current = readConfigurationState(stored, template?.fields ?? fields, () => initialId);
+          let current = readConfigurationState(stored, template?.fields ?? fields, () => initialId,agentModelPolicy);
           if (template) current = bindConfigurationTemplate(current,template);
-          else {delete current.template;if (stored && !isDeepStrictEqual((stored as ProjectConfigurationState).fields,current.fields)) current.revision++;}
+          else delete current.template;
+          if (stored && current.revision === (stored as ProjectConfigurationState).revision && (!isDeepStrictEqual((stored as ProjectConfigurationState).fields,current.fields) || !isDeepStrictEqual((stored as ProjectConfigurationState).agentModelPolicy,current.agentModelPolicy))) current.revision++;
           return call.action === "get" || call.action === "export" || publicationCall ? current : applyConfigurationAction(current,call,randomUUID);
         });
       }
       if (canManagePublication) {
+        const withSourcePolicy = (draft: ConfigurationPublicationDraft) => parsePublicationDraft({...draft,agentModelPolicy:configurationAgentModelPolicy(state,draft)});
         const operation = async () => {
           let draft = await this.configurationPublicationDraft(options.projectName);
           if(call.action === 'publication.save') {
             if(call.revision !== state.revision) throw new ProjectConfigurationError("Configuration changed. Refresh before saving your draft.","CONFIGURATION_CONFLICT");
-            const input = parsePublicationDraft(call.publication);
+            const input = withSourcePolicy(parsePublicationDraft(call.publication));
             draft = await this.configurationPublicationDraft(options.projectName, stored => {
               if(input.revision !== (stored ? parsePublicationDraft(stored).revision : 0)) throw new ProjectConfigurationError("Publication draft changed. Refresh before saving.","CONFIGURATION_CONFLICT");
               return {...input,revision:input.revision+1,configurationRevision:state.revision,configurationAccountId:actor};
             });
           }
-          state.publication = draft ?? createPublicationDraft(state);
+          state.publication = draft ? withSourcePolicy(draft) : createPublicationDraft(state);
           state.canManagePublication = true;
         state.sourceHash = await hashDirectory(source.sourceDir);
-          if(call.action === 'publication.preview') state.publicationPreview = freezeConfigurationTemplate(call.publication??state.publication,{projectId:options.projectName,projectVersion:'preview',sourceHash:'0'.repeat(64)});
+          if(call.action === 'publication.preview') state.publicationPreview = freezeConfigurationTemplate(withSourcePolicy(call.publication??state.publication),{projectId:options.projectName,projectVersion:'preview',sourceHash:'0'.repeat(64)});
         };
         await operation();
       } else state.canManagePublication = false;
@@ -2992,21 +2996,21 @@ export class Storage {
         // Publication authority was checked above. Read the recorded author's personal revision without binding a recipient template.
         const ownerState = await this.projectConfigurations({projectName:options.projectName,actorId:configurationAccountId,administrator:true},{action:'get'}) as ProjectConfigurationState;
         if(ownerState.revision !== publication.configurationRevision) throw new HttpError(409,409,"Configuration changed after publication preparation. Save the publication draft again.");
-        configurationTemplate = freezeConfigurationTemplate(publication,{projectId:options.projectName,projectVersion:version,sourceHash:authoredSourceHash});
+        configurationTemplate = freezeConfigurationTemplate({...publication,agentModelPolicy:configurationAgentModelPolicy(ownerState,publication)},{projectId:options.projectName,projectVersion:version,sourceHash:authoredSourceHash});
         await this.freezeConfigurationAttachments(options.projectName,sourceDir,configurationTemplate,configurationAccountId);
-        await writeJson(path.join(sourceDir, "configuration.json"), {version:2,fields:configurationTemplate.fields});
+        await writeJson(path.join(sourceDir, "configuration.json"), {version:2,fields:configurationTemplate.fields,...(configurationTemplate.agentModelPolicy?{agentModelPolicy:configurationTemplate.agentModelPolicy}:{})});
         await writeJson(path.join(sourceDir, CONFIGURATION_TEMPLATE_FILE),configurationTemplate);
       } else {
         // v2 opts in to safe sharing defaults, without publishing historical personal values.
         try {
-          const definition=parseConfigurationDefinition(JSON.parse(await readFile(path.join(sourceDir,'configuration.json'),'utf8')));
+          const definition=readProjectConfigurationDefinition(sourceDir);
           if(definition.version===2) {
             const access=await this.getProjectAccessSummary(options.projectName,options.createdByUserId);
 
-            const empty=readConfigurationState(undefined,definition.fields,()=> 'default');
+            const empty=readConfigurationState(undefined,definition.fields,()=> 'default',definition.agentModelPolicy);
             configurationTemplate=freezeConfigurationTemplate(createPublicationDraft(empty),{projectId:options.projectName,projectVersion:version,sourceHash:authoredSourceHash});
             await this.freezeConfigurationAttachments(options.projectName,sourceDir,configurationTemplate,options.createdByUserId);
-            await writeJson(path.join(sourceDir,'configuration.json'),{version:2,fields:configurationTemplate.fields});
+            await writeJson(path.join(sourceDir,'configuration.json'),{version:2,fields:configurationTemplate.fields,...(configurationTemplate.agentModelPolicy?{agentModelPolicy:configurationTemplate.agentModelPolicy}:{})});
             await writeJson(path.join(sourceDir,CONFIGURATION_TEMPLATE_FILE),configurationTemplate);
           }
         } catch(error) {if((error as NodeJS.ErrnoException).code!=='ENOENT') throw error;}

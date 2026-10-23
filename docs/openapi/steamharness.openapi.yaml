@@ -6293,11 +6293,19 @@ components:
         name: { type: string, minLength: 1, maxLength: 200 }
         values: { type: object, additionalProperties: true }
       required: [ id, name, values ]
+    AgentModelPolicy:
+      type: object
+      additionalProperties: false
+      description: Source-declared restriction retained independently of published field visibility. Draft and template metadata cannot relax the current source restriction.
+      properties:
+        allowThirdParty: { type: boolean }
     ConfigurationPublicationDraft:
       type: object
       properties:
         revision: { type: integer, minimum: 0 }
         configurationRevision: { type: integer, minimum: 0 }
+        agentModelPolicy:
+          $ref: "#/components/schemas/AgentModelPolicy"
         configurationAccountId:
           {
             type: string,
@@ -6325,6 +6333,8 @@ components:
         projectVersion: { type: string }
         sourceHash: { type: string, pattern: '^[a-f0-9]{64}$' }
         draftRevision: { type: integer, minimum: 0 }
+        agentModelPolicy:
+          $ref: "#/components/schemas/AgentModelPolicy"
         fields:
           type: array
           items: { $ref: "#/components/schemas/ProjectConfigurationField" }
@@ -6449,6 +6459,8 @@ components:
     ProjectConfigurationState:
       type: object
       properties:
+        agentModelPolicy:
+          $ref: "#/components/schemas/AgentModelPolicy"
         version:
           type: integer
           enum: [ 1 ]

@@ -2,6 +2,8 @@
 
 - [Fixed] Keep user-message index visibility and left spacing consistent at fractional viewport widths caused by scaling or split panes, avoiding incorrect hiding and gaps between breakpoints.
 
+- Fixed local configuration reads retaining source system-only restrictions with older publication templates, including hidden model fields.
+
 - [Improved] Show the user-message index only on wide screens. At page widths of 680px or less, hide the index, count and hover preview without reserving left-side space; restore the index when widened.
 
 - Studio and CLI Web honor system-only AI declarations, hide third-party controls, and share validation across saves, imports and assistant operations.

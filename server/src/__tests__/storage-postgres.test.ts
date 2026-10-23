@@ -13,8 +13,60 @@ import { defaultProjectCardIcon, getProjectCardColorContrastRatio } from "@steam
 import { LocalStorage } from "../local-storage";
 import { ArtifactStorage, DatabaseRepository } from "../persistence";
 import { Storage } from "../storage";
+import { AGENT_MODELS_CONFIGURATION_FIELD, AGENT_MODELS_CONFIGURATION_KEY as key, configurationSnapshot, type ProjectConfigurationState } from "@steamharness/project-configuration";
 
 const databaseUrl = process.env.STEAMHARNESS_TEST_DATABASE_URL?.trim();
+
+test("PostgreSQL preserves source AI policy through stale drafts and hidden published fields", {
+  skip: databaseUrl ? false : "STEAMHARNESS_TEST_DATABASE_URL is not configured",
+}, async () => {
+  const schema = `ai_policy_${randomUUID().replaceAll("-", "")}`;
+  const admin = new pg.Pool({connectionString:databaseUrl});
+  await admin.query(`create schema ${schema}`);
+  const connection = new URL(databaseUrl!); connection.searchParams.set("options",`-c search_path=${schema}`);
+  const db = new DatabaseRepository(connection.toString());
+  const accounts = new AccountRepository(connection.toString());
+  const root = await mkdtemp(path.join(tmpdir(),"postgres-ai-policy-"));
+  const objects = new LocalStorage({root:path.join(root,"objects"),publicBaseUrl:"http://localhost/"});
+  const storage = new Storage({serverRoot:process.cwd(),repoRoot:process.cwd(),dataRoot:path.join(root,"data"),db,objectStorage:objects,artifacts:new ArtifactStorage(objects)});
+  try {
+    await db.init(); await accounts.init();
+    for (const userId of ["author","recipient"]) await accounts.upsertUserProfile({userId,email:`${userId}@test.local`});
+    const id=randomUUID(),projectInfo={localizedNames:{},declarations:[],platformSupport:{mode:"agnostic" as const},dataStorage:{mode:"server" as const},relatedProjects:[]};
+    await storage.createProject({projectId:id,projectName:"AI policy",projectType:"conversation",ownerUserId:"author",projectInfo});
+    const core = JSON.parse(await readFile(new URL("../../node_modules/steamharness/package.json",import.meta.url),"utf8"));
+    const definition = (restricted:boolean)=>JSON.stringify({version:2,fields:[{...AGENT_MODELS_CONFIGURATION_FIELD,...(restricted?{allowThirdParty:false}:{})}]});
+    await storage.saveDraftFiles({projectName:id,files:[
+      {path:"package.json",content:JSON.stringify({id,name:"AI policy",version:"1.0.0",devDependencies:{steamharness:core.version},steamHarness:{projectType:"conversation",projectInfo}})},
+      {path:"index.ts",content:'throw new Error("must not execute"); steamharness.createAgentNode();'},
+      {path:"configuration.json",content:definition(false)},
+    ]});
+    const options={projectName:id,actorId:"author"};
+    let state=await storage.projectConfigurations(options,{action:"get"}) as ProjectConfigurationState;
+    const third={id:"third",name:"Custom",source:"third-party",model:"model",apiKind:"openai-responses",baseUrl:"https://example.test/v1",apiKey:"test-only-key"};
+    state=await storage.projectConfigurations(options,{action:"save",revision:state.revision,id:state.activeConfigurationId,values:{[key]:[third]}}) as ProjectConfigurationState;
+    state=await storage.projectConfigurations(options,{action:"publication.save",revision:state.revision,publication:state.publication}) as ProjectConfigurationState;
+    const oldRevision=state.revision;
+    await storage.saveDraftFiles({projectName:id,files:[{path:"configuration.json",content:definition(true)}]});
+    state=await storage.projectConfigurations(options,{action:"get"}) as ProjectConfigurationState;
+    assert.ok(state.revision>oldRevision);assert.equal(state.publication!.fields[0]!.allowThirdParty,false);
+    assert.deepEqual(configurationSnapshot(state).values[key],[third]);
+    await assert.rejects(storage.projectConfigurations(options,{action:"save",revision:oldRevision,id:state.activeConfigurationId,values:{[key]:[]}}),/changed/);
+    const publication=structuredClone(state.publication!);
+    delete publication.agentModelPolicy;publication.fields[0]!.allowThirdParty=true;publication.fields[0]!.sharing={publish:false};
+    state=await storage.projectConfigurations(options,{action:"publication.save",revision:state.revision,publication}) as ProjectConfigurationState;
+    const preview=await storage.projectConfigurations(options,{action:"publication.preview",publication}) as ProjectConfigurationState;
+    assert.deepEqual(preview.publicationPreview!.agentModelPolicy,{allowThirdParty:false});
+    await storage.publish({projectName:id,createdByUserId:"author",expectedSourceHash:state.sourceHash,expectedConfigurationRevision:state.publication!.revision});
+    const template=(await db.readConfigurationTemplate(id,"1.0.0"))!;
+    assert.deepEqual(template.agentModelPolicy,{allowThirdParty:false});assert.deepEqual(template.fields,[]);assert.ok(!JSON.stringify(template).includes(third.apiKey));
+    const recipient=await storage.projectConfigurations({projectName:id,actorId:"recipient",target:"1.0.0"},{action:"get"}) as ProjectConfigurationState;
+    assert.deepEqual(recipient.fields,[]);assert.deepEqual(configurationSnapshot(recipient).agentModelPolicy,{allowThirdParty:false});
+  } finally {
+    await accounts.close();await db.close();await rm(root,{recursive:true,force:true});
+    await admin.query(`drop schema ${schema} cascade`);await admin.end();
+  }
+});
 
 test("PostgreSQL stores static project groups, immutable versions and independent project data", {
   skip: databaseUrl ? false : "STEAMHARNESS_TEST_DATABASE_URL is not configured",

@@ -1,5 +1,7 @@
 # Unreleased
 
+- Fixed system-only source restrictions being overwritten by older templates. Distribution retains policy independently of hidden fields, and historical third-party drafts are validated after publication filtering.
+
 - Added source-declared allowThirdParty: false for AI model fields. Freeze system-only restrictions per run, reject third-party models and direct endpoint overrides, and retain existing values for cleanup.
 
 - [Added] Conversation collapseIntermediate presentation defaults; Agent executors enable folding of successful turns by default, with explicit opt-out and complete output preserved.

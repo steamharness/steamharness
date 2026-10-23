@@ -9,10 +9,10 @@ import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import ts from "typescript";
 import { setTimeout as delay } from "node:timers/promises";
 import {
-  applyConfigurationAction, configurationSnapshot, exportConfigurations, parseConfigurationDefinition, readConfigurationState,
+  applyConfigurationAction, configurationSnapshot, configurationAgentModelPolicy, exportConfigurations, parseAgentModelPolicy, parseConfigurationDefinition, readConfigurationState,
   bindConfigurationTemplate, configurationCapability, parseConfigurationTemplate, CONFIGURATION_TEMPLATE_FILE, type ProjectConfigurationTemplate,
   PROJECT_CONFIGURATION_FILE, ProjectConfigurationError, validateConfigurationAction, isConfigurationValue, AGENT_MODELS_CONFIGURATION_FIELD, AGENT_MODELS_CONFIGURATION_KEY,
-  type ProjectConfigurationField, type ConfigurationValue, type ConfigurationValues, type ProjectConfigurationAction, type ProjectConfigurationSnapshot, type ProjectConfigurationState,
+  type AgentModelPolicy, type ProjectConfigurationDefinition, type ProjectConfigurationField, type ConfigurationValue, type ConfigurationValues, type ProjectConfigurationAction, type ProjectConfigurationSnapshot, type ProjectConfigurationState,
 } from "@steamharness/project-configuration";
 export * from "@steamharness/project-configuration";
 
@@ -80,24 +80,24 @@ function discoverProjectAgentModels(projectDir: string, cache?: AgentModelSource
 
 export function readProjectConfigurationDefinition(projectDir: string) {
   const file = path.join(projectDir, PROJECT_CONFIGURATION_FILE);
-  const definition = existsSync(file) ? parseConfigurationDefinition(JSON.parse(readFileSync(file, "utf8"))) : { version: 1 as const, fields: [] as ProjectConfigurationField[] };
-  if (!definition.fields.some(field => field.name === AGENT_MODELS_CONFIGURATION_KEY) && projectUsesConfiguredAgentModels(projectDir)) definition.fields.unshift(structuredClone(AGENT_MODELS_CONFIGURATION_FIELD));
+  const definition: ProjectConfigurationDefinition = existsSync(file) ? parseConfigurationDefinition(JSON.parse(readFileSync(file, "utf8"))) : { version: 1, fields: [] };
+  if (!definition.fields.some(field => field.name === AGENT_MODELS_CONFIGURATION_KEY) && projectUsesConfiguredAgentModels(projectDir)) definition.fields.unshift({...structuredClone(AGENT_MODELS_CONFIGURATION_FIELD),...definition.agentModelPolicy});
   return definition;
 }
 
 /** Shared by Studio, CLI Web, CLI and direct local SDK execution. Values never enter project source. */
-export async function createLocalProjectConfigurationStore(projectDir: string, options: { rootDir?: string; storageKey?: string; template?: ProjectConfigurationTemplate | null; fields?: ProjectConfigurationField[]; templateCacheDir?: string } = {}) {
+export async function createLocalProjectConfigurationStore(projectDir: string, options: { rootDir?: string; storageKey?: string; template?: ProjectConfigurationTemplate | null; fields?: ProjectConfigurationField[]; agentModelPolicy?: AgentModelPolicy; templateCacheDir?: string } = {}) {
   const directory = await realpath(projectDir);
   const agentModelSources: AgentModelSourceCache = new Map();
   const root = options.rootDir ?? path.join(os.homedir(), ".steamharness", "configurations");
   const key = createHash("sha256").update(options.storageKey ?? directory).digest("hex");
   const filename = path.join(root, `${key}.json`), lock = `${filename}.lock.sqlite`;
   const declared = async () => {
-    let fields: ProjectConfigurationField[] = [];
-    try { fields = parseConfigurationDefinition(JSON.parse(await readFile(path.join(directory, PROJECT_CONFIGURATION_FILE), "utf8"))).fields; }
+    let definition: ProjectConfigurationDefinition = {version:1,fields:[]};
+    try { definition = parseConfigurationDefinition(JSON.parse(await readFile(path.join(directory, PROJECT_CONFIGURATION_FILE), "utf8"))); }
     catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error; }
-    if (!fields.some(field => field.name === AGENT_MODELS_CONFIGURATION_KEY) && discoverProjectAgentModels(directory, agentModelSources)) fields.unshift(structuredClone(AGENT_MODELS_CONFIGURATION_FIELD));
-    return fields;
+    if (!definition.fields.some(field => field.name === AGENT_MODELS_CONFIGURATION_KEY) && discoverProjectAgentModels(directory, agentModelSources)) definition.fields.unshift({...structuredClone(AGENT_MODELS_CONFIGURATION_FIELD),...definition.agentModelPolicy});
+    return definition;
   };
   const load = async (): Promise<ProjectConfigurationState> => {
     let stored: unknown;
@@ -124,7 +124,9 @@ export async function createLocalProjectConfigurationStore(projectDir: string, o
       }
     }
     if(options.template===null && stored) delete (stored as ProjectConfigurationState).template;
-    let state = readConfigurationState(stored, template?.fields ?? options.fields ?? await declared(), () => `default-${key.slice(0, 24)}`);
+    const definition = options.fields === undefined ? await declared() : {fields:options.fields,agentModelPolicy:options.agentModelPolicy};
+    const policy = configurationAgentModelPolicy(definition,template??{fields:[]});
+    let state = readConfigurationState(stored, template?.fields ?? definition.fields, () => `default-${key.slice(0, 24)}`,policy);
     if (template) state = bindConfigurationTemplate(state, template);
     if (!stored || !isDeepStrictEqual(stored,state)) {
       if (stored && state.revision === (stored as ProjectConfigurationState).revision) state.revision++;
@@ -189,8 +191,7 @@ function parseSnapshot(value: unknown): ProjectConfigurationSnapshot {
   if (!value || typeof value !== "object" || Array.isArray(value)) throw new ProjectConfigurationError("Invalid run configuration snapshot.");
   const snapshot = value as ProjectConfigurationSnapshot;
   if (typeof snapshot.id !== "string" || typeof snapshot.name !== "string" || !Number.isSafeInteger(snapshot.revision) || snapshot.revision < 0 || !isConfigurationValue(snapshot.values) || !snapshot.values || typeof snapshot.values !== "object" || Array.isArray(snapshot.values)) throw new ProjectConfigurationError("Invalid run configuration snapshot.");
-  const policy = snapshot.agentModelPolicy;
-  if (policy !== undefined && (!policy || typeof policy !== "object" || Array.isArray(policy) || Object.keys(policy).some(key => key !== "allowThirdParty") || policy.allowThirdParty !== undefined && typeof policy.allowThirdParty !== "boolean")) throw new ProjectConfigurationError("Invalid Agent model policy in configuration snapshot.");
+  if (snapshot.agentModelPolicy !== undefined) parseAgentModelPolicy(snapshot.agentModelPolicy);
   return snapshot;
 }
 

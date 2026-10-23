@@ -4,9 +4,10 @@ import { mkdtemp, writeFile, rm, mkdir } from "node:fs/promises";
 import path from "node:path";
 import os from "node:os";
 import { createServer } from "node:http";
+import { createHash } from "node:crypto";
 import { createPiRuntime } from "../agent/pi";
 import { defineAgentConversationExecutor } from "../agent/project";
-import { AGENT_MODELS_CONFIGURATION_FIELD, AGENT_MODELS_CONFIGURATION_KEY as key, createLocalProjectConfigurationStore, readProjectConfigurationDefinition, withProjectConfiguration } from "../configuration";
+import { AGENT_MODELS_CONFIGURATION_FIELD, AGENT_MODELS_CONFIGURATION_KEY as key, CONFIGURATION_TEMPLATE_FILE, cacheVerifiedConfigurationTemplate, createConfigurationState, createPublicationDraft, freezeConfigurationTemplate, createLocalProjectConfigurationStore, readProjectConfigurationDefinition, withProjectConfiguration } from "../configuration";
 import { createAgentProjectParamResolver } from "../agent/system-llm";
 import { resolveAgentSystemAIInput } from "../agent/node";
 
@@ -50,6 +51,45 @@ test("the local project declaration freezes system-only policy and rejects third
     assert.deepEqual((await store.snapshot({runId:"frozen"})).agentModelPolicy,{allowThirdParty:false});
     const next=await store.read(); await store.dispatch({action:"save",revision:next.revision,id:next.activeConfigurationId,values:{[key]:[third] as any}});
   } finally {await rm(root,{recursive:true,force:true});}
+});
+
+test("local templates cannot discard a code policy, including when the AI field is private", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "agent-template-policy-"));
+  try {
+    const configuration = path.join(root, "configuration.json");
+    const field = { ...AGENT_MODELS_CONFIGURATION_FIELD, allowThirdParty: false };
+    await writeFile(configuration, JSON.stringify({ version: 2, fields: [field] }));
+    const binding = { projectId: "project", projectVersion: "1.0.0", sourceHash: "0".repeat(64) };
+    const previous = freezeConfigurationTemplate(createPublicationDraft(createConfigurationState([AGENT_MODELS_CONFIGURATION_FIELD], () => "official")), binding);
+    const oldStore = await createLocalProjectConfigurationStore(root, { rootDir: path.join(root, ".previous"), template: previous });
+    const state = await oldStore.read();
+    assert.equal(state.fields[0]!.allowThirdParty, false);
+    assert.deepEqual((await oldStore.snapshot()).agentModelPolicy, { allowThirdParty: false });
+    await assert.rejects(oldStore.dispatch({ action: "save", revision: state.revision, id: state.activeConfigurationId, values: { [key]: [third] as any } }), /only allows system AI/);
+
+    // Model fields carried the policy before templates had independent policy metadata.
+    const legacy = freezeConfigurationTemplate(createPublicationDraft(createConfigurationState([field], () => "official")), binding);
+    delete legacy.agentModelPolicy;
+    const legacyCache = path.join(root, ".legacy-cache");
+    await mkdir(legacyCache);
+    await writeFile(path.join(legacyCache, `${createHash("sha256").update(JSON.stringify(legacy)).digest("hex")}.json`), JSON.stringify(legacy));
+    await writeFile(path.join(root, CONFIGURATION_TEMPLATE_FILE), JSON.stringify(legacy));
+    const legacyStore = await createLocalProjectConfigurationStore(root, { rootDir: path.join(root, ".legacy"), templateCacheDir: legacyCache });
+    assert.deepEqual((await legacyStore.snapshot()).agentModelPolicy, { allowThirdParty: false });
+
+    const template = freezeConfigurationTemplate(createPublicationDraft(createConfigurationState([{ ...field, sharing: { publish: false } }], () => "official")), binding);
+    await writeFile(configuration, JSON.stringify({ version: 2, fields: template.fields, agentModelPolicy: template.agentModelPolicy }));
+    await writeFile(path.join(root, "index.ts"), "steamharness.createAgentNode();");
+    await writeFile(path.join(root, CONFIGURATION_TEMPLATE_FILE), JSON.stringify(template));
+    const cacheDir = path.join(root, ".cache");
+    await cacheVerifiedConfigurationTemplate(template, [], { cacheDir });
+    const store = await createLocalProjectConfigurationStore(root, { rootDir: path.join(root, ".private"), templateCacheDir: cacheDir });
+    assert.deepEqual((await store.read()).fields, []);
+    assert.equal(readProjectConfigurationDefinition(root).fields[0]!.allowThirdParty, false);
+    const snapshot = await store.snapshot({ runId: "offline" });
+    assert.deepEqual(snapshot.agentModelPolicy, { allowThirdParty: false });
+    await assert.rejects(withProjectConfiguration(snapshot, () => resolveAgentSystemAIInput({ errCode: 0, errMessage: "", prompt: "Hello", baseUrl: third.baseUrl }, {}, undefined)), /only allows system AI/);
+  } finally { await rm(root, { recursive: true, force: true }); }
 });
 
 test("Agent parameter options come only from the frozen configuration and default to its first model", async () => {

@@ -31,7 +31,7 @@ export type ProjectConfigurationFile = {
   id: string; name: string; mimeType: string; size: number; storage: "server";
   kind?: "image" | "file"; projectId?: string; createdAt?: string;
 };
-export interface ProjectConfigurationDefinition { version: 1 | 2; fields: ProjectConfigurationField[] }
+export interface ProjectConfigurationDefinition { version: 1 | 2; fields: ProjectConfigurationField[]; agentModelPolicy?: AgentModelPolicy }
 export interface ProjectConfiguration {
   /** For distributed projects, values contain personal overrides rather than template defaults. */
   id: string; name: string; values: ConfigurationValues; createdAt: string; updatedAt: string;
@@ -41,6 +41,8 @@ export interface ProjectConfiguration {
 }
 export interface ProjectConfigurationState {
   version: 1; revision: number; fields: ProjectConfigurationField[]; customFields: ProjectConfigurationField[];
+  /** Retained independently of field visibility in a distributed project. */
+  agentModelPolicy?: AgentModelPolicy;
   /** Custom definitions temporarily hidden by a declaration with the same name. */
   shadowedCustomFields?: ProjectConfigurationField[];
   configurations: ProjectConfiguration[]; activeConfigurationId: string;
@@ -85,6 +87,9 @@ export function isConfigurationValue(value: unknown, depth = 0): value is Config
   return record(value) && Object.entries(value).every(([key, entry]) => !unsafe.has(key) && isConfigurationValue(entry, depth + 1));
 }
 export function parseConfigurationField(value: unknown): ProjectConfigurationField {
+  return parseConfigurationFieldValue(value);
+}
+function parseConfigurationFieldValue(value: unknown, stored = false): ProjectConfigurationField {
   if (!record(value) || typeof value.type!=='string' || !["string", "number", "boolean", "json", "file"].includes(value.type)) return invalid("Invalid configuration field type.");
   configurationKey(value.name);
   const allowed = ["name", "type", "label", "description", "defaultValue", "required", "secret", "multiple", "control", "allowThirdParty", "options", "accept", "sharing", "paths", "omittedPaths"];
@@ -110,14 +115,35 @@ export function parseConfigurationField(value: unknown): ProjectConfigurationFie
     }
   }
   const field = structuredClone(Object.fromEntries(Object.entries(value).filter(([,entry]) => entry !== undefined))) as unknown as ProjectConfigurationField;
-  if (field.defaultValue !== undefined) validateConfigurationValue(field, field.defaultValue);
+  if (field.defaultValue !== undefined) {
+    if (stored) validateStoredConfigurationValue(field,field.defaultValue);
+    else validateConfigurationValue(field,field.defaultValue);
+  }
   return field;
 }
 export function parseConfigurationDefinition(value: unknown): ProjectConfigurationDefinition {
+  return parseConfigurationDefinitionValue(value);
+}
+function parseConfigurationDefinitionValue(value: unknown, stored = false): ProjectConfigurationDefinition {
   if (!record(value) || ![1,2].includes(value.version as number) || !Array.isArray(value.fields)) return invalid("Invalid configuration.json: expected version 1 or 2 and fields.");
-  const fields = value.fields.map(parseConfigurationField), keys = fields.map(field => field.name);
+  const fields = value.fields.map(field => parseConfigurationFieldValue(field,stored)), keys = fields.map(field => field.name);
   if (new Set(keys).size !== keys.length) return invalid("Duplicate configuration field.");
-  return { version: value.version as 1 | 2, fields };
+  const policy = value.agentModelPolicy === undefined ? undefined : parseAgentModelPolicy(value.agentModelPolicy);
+  const agentModelPolicy = configurationAgentModelPolicy({ fields, agentModelPolicy: policy });
+  const resolved = fieldsWithAgentModelPolicy(fields,agentModelPolicy);
+  if (!stored) for (const field of resolved) if (field.defaultValue !== undefined) validateConfigurationValue(field,field.defaultValue);
+  return { version: value.version as 1 | 2, fields: resolved, ...(agentModelPolicy ? {agentModelPolicy} : {}) };
+}
+export function parseAgentModelPolicy(value: unknown): AgentModelPolicy {
+  if (!record(value) || Object.keys(value).some(key => key !== "allowThirdParty") || value.allowThirdParty !== undefined && typeof value.allowThirdParty !== "boolean") return invalid("Invalid Agent model policy.");
+  return value.allowThirdParty === undefined ? {} : {allowThirdParty:value.allowThirdParty};
+}
+/** A template or publication draft may tighten, but never relax, a code restriction. */
+export function configurationAgentModelPolicy(...definitions: {fields: ProjectConfigurationField[]; agentModelPolicy?: AgentModelPolicy}[]): AgentModelPolicy | undefined {
+  return definitions.some(definition => definition.agentModelPolicy?.allowThirdParty === false || definition.fields.some(field => field.control === "ai-models" && field.allowThirdParty === false)) ? {allowThirdParty:false} : undefined;
+}
+function fieldsWithAgentModelPolicy(fields: ProjectConfigurationField[], policy?: AgentModelPolicy): ProjectConfigurationField[] {
+  return policy?.allowThirdParty === false ? fields.map(field => field.control === "ai-models" ? {...field,allowThirdParty:false} : field) : fields;
 }
 function validateSharingRule(value: unknown): void {
   if (!record(value) || Object.entries(value).some(([key,entry]) => !['publish','includeValue','editable'].includes(key) || typeof entry !== 'boolean')) return invalid('Invalid configuration sharing rule.');
@@ -172,15 +198,17 @@ export function createConfigurationState(fields: ProjectConfigurationField[], id
   const initialId = id();
   return { version: 1, revision: 0, fields: structuredClone(fields), customFields: [], activeConfigurationId: initialId, configurations: [{ id: initialId, name: "Default", values: configurationDefaults(fields), createdAt: now, updatedAt: now }] };
 }
-export function readConfigurationState(stored: unknown, declared: ProjectConfigurationField[], id: () => string): ProjectConfigurationState {
-  if (stored === undefined) { const state = createConfigurationState(declared, id); state.activeConfigurationId = state.configurations[0]!.id; return state; }
+export function readConfigurationState(stored: unknown, declared: ProjectConfigurationField[], id: () => string, policy?: AgentModelPolicy): ProjectConfigurationState {
+  const agentModelPolicy = configurationAgentModelPolicy({fields:declared,agentModelPolicy:policy});
+  declared = fieldsWithAgentModelPolicy(declared,agentModelPolicy);
+  if (stored === undefined) { const state = createConfigurationState(declared, id); state.activeConfigurationId = state.configurations[0]!.id; return {...state,...(agentModelPolicy?{agentModelPolicy}:{})}; }
   if (!record(stored) || stored.version !== 1 || !Number.isSafeInteger(stored.revision) || Number(stored.revision) < 0 || !Array.isArray(stored.customFields) || !Array.isArray(stored.configurations) || !stored.configurations.length) return invalid("Invalid project configuration store.");
   if (stored.shadowedCustomFields !== undefined && !Array.isArray(stored.shadowedCustomFields)) return invalid("Invalid shadowed custom configuration fields.");
   const allCustomFields = [...stored.customFields, ...(stored.shadowedCustomFields as unknown[] | undefined ?? [])].map(parseConfigurationField);
   if (new Set(allCustomFields.map(field => field.name)).size !== allCustomFields.length) return invalid("Duplicate custom configuration field.");
   const customFields = allCustomFields.filter(field => !declared.some(item => item.name === field.name));
   const shadowedCustomFields = allCustomFields.filter(field => declared.some(item => item.name === field.name));
-  const fields = [...declared, ...customFields];
+  const fields = fieldsWithAgentModelPolicy([...declared, ...customFields],agentModelPolicy);
   if (new Set(fields.map(field => field.name)).size !== fields.length) return invalid("Duplicate configuration field.");
   const configurations = stored.configurations.map(entry => {
     if (!record(entry) || typeof entry.id !== "string" || !entry.id || !record(entry.values) || !isConfigurationValue(entry.values) || typeof entry.createdAt !== "string" || typeof entry.updatedAt !== "string") return invalid("Invalid stored configuration.");
@@ -188,7 +216,7 @@ export function readConfigurationState(stored: unknown, declared: ProjectConfigu
     return { ...entry, name: name(entry.name), values: structuredClone(entry.values) } as ProjectConfiguration;
   });
   if (new Set(configurations.map(item => item.id)).size !== configurations.length) return invalid("Duplicate configuration ID.");
-  return { version: 1, revision: Number(stored.revision), fields, customFields, ...(shadowedCustomFields.length ? {shadowedCustomFields} : {}), configurations,
+  return { version: 1, revision: Number(stored.revision), fields, customFields, ...(agentModelPolicy?{agentModelPolicy}:{}), ...(shadowedCustomFields.length ? {shadowedCustomFields} : {}), configurations,
     ...(stored.template ? {template: stored.template as ProjectConfigurationTemplate} : {}),
     ...(Array.isArray(stored.conflicts) ? {conflicts: structuredClone(stored.conflicts) as ProjectConfigurationState['conflicts']} : {}),
     activeConfigurationId: configurations.some(item => item.id === stored.activeConfigurationId) ? String(stored.activeConfigurationId) : configurations[0]!.id };
@@ -202,9 +230,9 @@ export function configurationSnapshot(state: ProjectConfigurationState, configur
     const value = resolved[field.name];
     if (field.required && (!Object.hasOwn(resolved,field.name) || value === "" || value === null || field.multiple && Array.isArray(value) && !value.length)) invalid(`Missing required configuration: ${field.name}. Open Project configurations.`);
   }
-  const field = state.fields.find(field => field.control === "ai-models");
+  const agentModelPolicy = configurationAgentModelPolicy(state);
   return { id: current.id, name: current.name, revision: state.revision, values: resolved,
-    ...(field?.allowThirdParty === false ? { agentModelPolicy: { allowThirdParty: false } } : {}) };
+    ...(agentModelPolicy ? { agentModelPolicy } : {}) };
 }
 export function exportConfigurations(state: ProjectConfigurationState, id?: string): ProjectConfigurationExport {
   if (id && !state.configurations.some(item => item.id === id)) return invalid("Configuration no longer exists.");
@@ -214,6 +242,8 @@ export function applyConfigurationAction(state: ProjectConfigurationState, call:
   validateConfigurationAction(call);
   if (call.revision !== state.revision) throw new ProjectConfigurationError("Configuration changed. Refresh before saving your draft.", "CONFIGURATION_CONFLICT");
   const next = structuredClone(state), item = next.configurations.find(entry => entry.id === call.id);
+  const policy = configurationAgentModelPolicy(state);
+  next.fields = fieldsWithAgentModelPolicy(next.fields,policy);
   const current = (): ProjectConfiguration => item ?? invalid("Configuration no longer exists.");
   switch (call.action) {
     case "create": case "duplicate": {
@@ -237,7 +267,7 @@ export function applyConfigurationAction(state: ProjectConfigurationState, call:
       if (next.activeConfigurationId === call.id) next.activeConfigurationId = next.configurations[0]!.id; break;
     }
     case "field.save": {
-      const field = parseConfigurationField(call.field);
+      const field = parseConfigurationField(fieldsWithAgentModelPolicy([parseConfigurationField(call.field)],policy)[0]);
       if (next.template?.reservedFields?.includes(configurationRuleHash(field.name))) return invalid('Custom field conflicts with an author field.');
       if (call.key !== undefined && call.key !== field.name) {
         const oldKey = configurationKey(call.key);
@@ -260,7 +290,7 @@ export function applyConfigurationAction(state: ProjectConfigurationState, call:
     case "import": {
       const document = call.document;
       if (!document || document.version !== 1 || document.kind !== "steamharness-project-configurations" || !Array.isArray(document.configurations) || !document.configurations.length) return invalid("Invalid configuration export.");
-      const imported = parseConfigurationDefinition(document).fields;
+      const imported = parseConfigurationDefinition({...document,agentModelPolicy:policy}).fields;
       for (const field of imported) {
         if (next.template?.reservedFields?.includes(configurationRuleHash(field.name))) return invalid('Imported field conflicts with an author field.');
         const existing = next.fields.find(entry => entry.name === field.name);
@@ -308,6 +338,7 @@ export interface ConfigurationPublicationDraft {
   /** Set by Server from the authenticated account; never accepted as authority from clients. */
   configurationAccountId?: string;
   fields: ProjectConfigurationField[];
+  agentModelPolicy?: AgentModelPolicy;
   configurations: { id: string; name: string; values: ConfigurationValues }[];
   defaultConfigurationId: string;
 }
@@ -320,6 +351,7 @@ export interface ProjectConfigurationTemplate {
   sourceHash: string;
   draftRevision: number;
   fields: ProjectConfigurationField[];
+  agentModelPolicy?: AgentModelPolicy;
   configurations: { id: string; name: string; values: ConfigurationValues }[];
   defaultConfigurationId: string;
   attachments?: {id:string;path:string;sha256:string}[];
@@ -385,24 +417,25 @@ function publishedValue(field: ProjectConfigurationField, value: ConfigurationVa
   return rule.publish && rule.includeValue ? structuredClone(value) : undefined;
 }
 export function createPublicationDraft(state: ProjectConfigurationState): ConfigurationPublicationDraft {
-  return {revision:0,configurationRevision:state.revision,fields:structuredClone(state.fields),
+  const agentModelPolicy = configurationAgentModelPolicy(state);
+  return {revision:0,configurationRevision:state.revision,fields:structuredClone(state.fields),...(agentModelPolicy?{agentModelPolicy}:{}),
     configurations:state.configurations.map(item=>({id:item.id,name:item.name,values:configurationSnapshot(state,item.id,false).values})),defaultConfigurationId:state.activeConfigurationId};
 }
 export function parsePublicationDraft(value: unknown): ConfigurationPublicationDraft {
   if (!object(value) || !Number.isSafeInteger(value.revision) || Number(value.revision)<0 || !Number.isSafeInteger(value.configurationRevision) || Number(value.configurationRevision)<0 || !Array.isArray(value.configurations) || !value.configurations.length || typeof value.defaultConfigurationId!=='string') return fail('Invalid publication draft.');
   if(value.configurationAccountId!==undefined && (typeof value.configurationAccountId!=='string'||!value.configurationAccountId.trim())) return fail('Invalid publication configuration account.');
-  const fields = parseConfigurationDefinition({version:2,fields:value.fields}).fields;
+  const {fields,agentModelPolicy} = parseConfigurationDefinitionValue({version:2,fields:value.fields,agentModelPolicy:value.agentModelPolicy},true);
   const configurations = value.configurations.map(entry => {
     if (!object(entry) || typeof entry.id!=='string' || !entry.id || typeof entry.name!=='string' || !entry.name.trim() || entry.name.length>200 || !object(entry.values) || !isConfigurationValue(entry.values)) return fail('Invalid publication configuration.');
     for (const [key,val] of Object.entries(entry.values)) {
       const field=fields.find(f=>f.name===key); if(!field) return fail(`Unknown publication field: ${key}.`);
-      validateConfigurationValue(field,val); assertArrayRules(field,val);
+      validateStoredConfigurationValue(field,val); assertArrayRules(field,val);
     }
     return {id:entry.id,name:entry.name,values:structuredClone(entry.values)};
   });
   if(new Set(configurations.map(c=>c.id)).size!==configurations.length || !configurations.some(c=>c.id===value.defaultConfigurationId)) return fail('Invalid default publication configuration.');
   if(JSON.stringify(value).length>1024*1024) return fail('Publication exceeds 1 MiB.');
-  return {revision:Number(value.revision),configurationRevision:Number(value.configurationRevision),...(value.configurationAccountId?{configurationAccountId:value.configurationAccountId as string}:{}),fields,configurations,defaultConfigurationId:value.defaultConfigurationId};
+  return {revision:Number(value.revision),configurationRevision:Number(value.configurationRevision),...(value.configurationAccountId?{configurationAccountId:value.configurationAccountId as string}:{}),fields,...(agentModelPolicy?{agentModelPolicy}:{}),configurations,defaultConfigurationId:value.defaultConfigurationId};
 }
 export function freezeConfigurationTemplate(input: ConfigurationPublicationDraft, binding: {projectId:string;projectVersion:string;sourceHash:string}): ProjectConfigurationTemplate {
   const draft=parsePublicationDraft(input);
@@ -428,20 +461,23 @@ export function freezeConfigurationTemplate(input: ConfigurationPublicationDraft
       if(filtered!==undefined) values[field.name]=filtered;
       if(field.required && configurationRule(field).publish && !configurationRule(field).editable && (filtered===undefined || filtered===null || filtered==='' || field.multiple && Array.isArray(filtered) && !filtered.length)) fail(`Required locked field needs a published value: ${field.name}.`);
     }
+    for (const field of fields) if (Object.hasOwn(values,field.name)) validateConfigurationValue(field,values[field.name]);
     return {id:item.id,name:item.name,values};
   });
   const reservedFields=draft.fields.filter(field=>!configurationRule(field).publish).map(field=>configurationRuleHash(field.name));
-  return {version:2,kind:'steamharness-configuration-template',...binding,draftRevision:draft.revision,fields,configurations,defaultConfigurationId:draft.defaultConfigurationId,...(reservedFields.length?{reservedFields}:{})};
+  return {version:2,kind:'steamharness-configuration-template',...binding,draftRevision:draft.revision,fields,...(draft.agentModelPolicy?{agentModelPolicy:draft.agentModelPolicy}:{}),configurations,defaultConfigurationId:draft.defaultConfigurationId,...(reservedFields.length?{reservedFields}:{})};
 }
 export function parseConfigurationTemplate(value: unknown): ProjectConfigurationTemplate {
   if(!object(value) || value.version!==2 || value.kind!=='steamharness-configuration-template' || typeof value.projectId!=='string' || !value.projectId || typeof value.projectVersion!=='string' || typeof value.sourceHash!=='string' || !/^[a-f0-9]{64}$/.test(value.sourceHash)) return fail('Invalid configuration template.');
   const draft=parsePublicationDraft({...value,revision:value.draftRevision,configurationRevision:0});
   // A template is already filtered. Never re-enable omitted defaults on a client.
   if(draft.fields.some(field=>field.defaultValue!==undefined || !configurationRule(field).publish)) return fail('Invalid template field defaults.');
+  for (const profile of draft.configurations) values(draft.fields,profile.values);
   const attachments = value.attachments;
   if(value.reservedFields!==undefined && (!Array.isArray(value.reservedFields)||!value.reservedFields.every(isRuleHash))) return fail('Invalid reserved configuration fields.');
   if(attachments!==undefined && (!Array.isArray(attachments) || attachments.some(a=>!object(a)||typeof a.id!=='string'||!/^wf_[a-f0-9]+$/.test(a.id)||a.path!==`configuration-assets/${a.id}`||typeof a.sha256!=='string'||!/^[a-f0-9]{64}$/.test(a.sha256)))) return fail('Invalid template attachments.');
-  return {...(attachments?{attachments:structuredClone(attachments) as unknown as ProjectConfigurationTemplate['attachments']}:{}),...(value.reservedFields?{reservedFields:[...value.reservedFields] as string[]}:{}),version:2,kind:'steamharness-configuration-template',projectId:value.projectId,projectVersion:value.projectVersion,sourceHash:value.sourceHash,draftRevision:draft.revision,fields:draft.fields,configurations:draft.configurations,defaultConfigurationId:draft.defaultConfigurationId};
+  // Preserve legacy template serialization: verified offline cache keys hash this exact metadata.
+  return {...(attachments?{attachments:structuredClone(attachments) as unknown as ProjectConfigurationTemplate['attachments']}:{}),...(value.reservedFields?{reservedFields:[...value.reservedFields] as string[]}:{}),version:2,kind:'steamharness-configuration-template',projectId:value.projectId,projectVersion:value.projectVersion,sourceHash:value.sourceHash,draftRevision:draft.revision,fields:draft.fields,...(value.agentModelPolicy!==undefined&&draft.agentModelPolicy?{agentModelPolicy:draft.agentModelPolicy}:{}),configurations:draft.configurations,defaultConfigurationId:draft.defaultConfigurationId};
 }
 /** Merge full personal values with the version's authoritative values. Never apply old locked overrides. */
 function allowedValue(field:ProjectConfigurationField, base:ConfigurationValue|undefined, personal:ConfigurationValue|undefined, pointer='', deleted:readonly string[]=[]):ConfigurationValue|undefined {
@@ -507,12 +543,14 @@ function personalConfigurationValues(state:ProjectConfigurationState, configurat
 }
 export function bindConfigurationTemplate(state:ProjectConfigurationState, input:ProjectConfigurationTemplate):ProjectConfigurationState {
   const template=parseConfigurationTemplate(input),next=structuredClone(state),previous=next.template;
+  const agentModelPolicy = configurationAgentModelPolicy(state,template);
+  if(agentModelPolicy) next.agentModelPolicy=agentModelPolicy; else delete next.agentModelPolicy;
   next.template=template;
   const custom=[...next.customFields,...next.shadowedCustomFields??[]];
   const reserved=(field:ProjectConfigurationField)=>template.fields.some(t=>t.name===field.name)||!!template.reservedFields?.includes(configurationRuleHash(field.name));
   next.customFields=custom.filter(field=>!reserved(field));
   next.shadowedCustomFields=custom.filter(reserved);if(!next.shadowedCustomFields.length)delete next.shadowedCustomFields;
-  next.fields=[...template.fields,...next.customFields];
+  next.fields=fieldsWithAgentModelPolicy([...template.fields,...next.customFields],agentModelPolicy);
   if(!previous) {
     const fresh=next.revision===0 && !next.customFields.length && next.configurations.length===1 && !Object.keys(next.configurations[0]!.values).length;
     const imported=template.configurations.map((item,index)=>({id:`template-${index}-${item.id}`,templateId:item.id,name:item.name,values:{},createdAt:new Date().toISOString(),updatedAt:new Date().toISOString()}));

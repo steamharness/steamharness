@@ -8,6 +8,43 @@ import { AGENT_MODELS_CONFIGURATION_FIELD, AGENT_MODELS_CONFIGURATION_KEY as key
 import { Storage } from '../storage';
 const corePackage = JSON.parse(await readFile(new URL('../../node_modules/steamharness/package.json', import.meta.url), 'utf8'));
 const projectId = '00000000-0000-4000-8000-000000000095';
+for (const mode of ['stale-draft', 'client-override', 'private-field'] as const) {
+  test(`Server cannot relax source AI policy through ${mode}`, async () => {
+    const root = await mkdtemp(path.join(tmpdir(), 'server-source-ai-policy-'));
+    try {
+      const storage = new Storage({ serverRoot: process.cwd(), repoRoot: process.cwd(), dataRoot: root });
+      const definition = (restricted: boolean) => JSON.stringify({ version: 2, fields: [{ ...AGENT_MODELS_CONFIGURATION_FIELD, ...(restricted ? { allowThirdParty: false } : {}) }] });
+      await storage.createProjectFromFiles({ projectName: projectId, files: [
+        { path: 'package.json', content: JSON.stringify({ id: projectId, name: 'Source policy', version: '1.0.0', devDependencies: { steamharness: corePackage.version }, steamHarness: { projectType: 'conversation', projectInfo: { localizedNames: {}, declarations: [], platformSupport: { mode: 'agnostic' }, dataStorage: { mode: 'server' }, relatedProjects: [] } } }) },
+        { path: 'index.ts', content: 'throw new Error("must not execute"); steamharness.createAgentProjectParamResolver();' },
+        { path: 'configuration.json', content: definition(mode !== 'stale-draft') },
+      ] });
+      storage.getProjectAccessSummary = async (_id, actorId) => ({ projectId, projectName: 'Source policy', visibility: 'private', access: resolveResourceAccess([{ type: 'project', id: projectId, role: actorId === 'author' ? 'owner' : 'developer' }]) });
+      const options = { projectName: projectId, actorId: 'author' };
+      let state = await storage.projectConfigurations(options, { action: 'get' }) as ProjectConfigurationState;
+      if (mode === 'stale-draft') {
+        state = await storage.projectConfigurations(options, { action: 'publication.save', revision: state.revision, publication: state.publication }) as ProjectConfigurationState;
+        await storage.saveDraftFiles({ projectName: projectId, files: [{ path: 'configuration.json', content: definition(true) }] });
+        state = await storage.projectConfigurations(options, { action: 'get' }) as ProjectConfigurationState;
+        assert.equal(state.publication!.fields[0]!.allowThirdParty, false);
+      }
+      const publication = structuredClone(state.publication!);
+      if (mode === 'client-override') publication.fields[0]!.allowThirdParty = true;
+      if (mode === 'private-field') publication.fields[0]!.sharing = { publish: false };
+      state = await storage.projectConfigurations(options, { action: 'publication.save', revision: state.revision, publication }) as ProjectConfigurationState;
+      assert.equal(state.publication!.fields[0]!.allowThirdParty, false);
+      await storage.publish({ projectName: projectId, createdByUserId: 'author', expectedConfigurationRevision: state.publication!.revision, expectedSourceHash: state.sourceHash });
+      const recipient = await storage.projectConfigurations({ ...options, actorId: 'other', target: '1.0.0' }, { action: 'get' }) as ProjectConfigurationState;
+      assert.deepEqual(configurationSnapshot(recipient).agentModelPolicy, { allowThirdParty: false });
+      if (mode === 'private-field') assert.ok(!recipient.fields.some(field => field.name === key));
+      else {
+        assert.equal(recipient.fields[0]!.allowThirdParty, false);
+        const third = { id: 'third', name: 'Custom', source: 'third-party', model: 'custom', apiKind: 'openai-responses', baseUrl: 'https://models.example/v1', apiKey: 'test-only-key' };
+        await assert.rejects(storage.projectConfigurations({ ...options, actorId: 'other', target: '1.0.0' }, { action: 'save', revision: recipient.revision, id: recipient.activeConfigurationId, values: { [key]: [third] } }), /only allows system AI/);
+      }
+    } finally { await rm(root, { recursive: true, force: true }); }
+  });
+}
 test('Server saves, imports and published configurations retain a source-declared system-only AI policy', async () => {
   const root=await mkdtemp(path.join(tmpdir(),'server-system-only-'));
   try {

@@ -1,5 +1,7 @@
 # Unreleased
 
+- 【修复】系统 AI 源码限制不再被旧模板覆盖；分发时独立保留策略，隐藏模型字段也不会丢失，历史第三方草稿按最终发布内容校验。
+
 - 【新增】AI 模型字段支持源码声明 allowThirdParty: false；按运行冻结系统 AI 限制，拒绝第三方模型及直连覆盖，旧配置保留可清理。
 
 - 【新增】Conversation 支持 collapseIntermediate 显示默认值；Agent executor 默认开启成功回合的中间过程折叠，允许显式关闭，完整输出保持保留。

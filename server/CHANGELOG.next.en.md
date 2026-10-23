@@ -1,5 +1,7 @@
 # Unreleased
 
+- Fixed publication drafts, previews and distributed templates honoring source system-only restrictions. Drafts cannot relax policy, and excluded historical third-party values do not block publication.
+
 - Project configuration APIs honor source-declared system-only AI rules, atomically reject third-party saves and imports, and preserve source restrictions in published model fields.
 
 - Added static discovery of Core Agent model configuration fields with account isolation, import/export and publication permissions. Model secrets are excluded from publication by default.

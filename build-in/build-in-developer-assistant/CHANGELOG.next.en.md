@@ -1,5 +1,7 @@
 # Unreleased
 
+- Clarified in generation guidance that system-only policy survives hidden model fields and cannot be relaxed by older drafts or templates.
+
 - Project generation guidance documents system-only AI model declarations and direct endpoint restrictions.
 
 - [Improved] Generator reference documents Conversation process folding, Core Agent defaults and the UI override.
