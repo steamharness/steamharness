@@ -876,10 +876,8 @@ function initialize(): void {
       preview.setAttribute('aria-label', preview.title.replace('\n', ': '));
       const symbol = document.createElement('span'); symbol.className = 'path-reference-icon'; fileIcons.bind(symbol, reference.path, reference.kind);
       symbol.title = reference.kind === 'directory' ? t("Folder") : t("File");
-      const description = document.createElement('span'); description.className = 'path-reference-description';
       const name = document.createElement('span'); name.className = 'path-reference-name'; name.textContent = reference.name;
-      const location = document.createElement('span'); location.className = 'path-reference-path'; location.textContent = reference.path;
-      description.title = reference.path; description.append(name, location); preview.append(symbol, description); item.append(preview);
+      preview.append(symbol, name); item.append(preview);
       preview.addEventListener('click', event => {
         const selection = window.getSelection();
         if (event.detail > 0 && selection && !selection.isCollapsed
@@ -955,7 +953,12 @@ function initialize(): void {
     const timestamp = message.createdAt ? new Date(message.createdAt).toLocaleString(locale(), { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : '';
     root.innerHTML = `<div class="message-body"><header class="message-header"><span class="message-heading"><span class="message-metadata"></span></span><time class="message-date"${!timestamp ? ' hidden' : ''}>${escape(timestamp)}</time></header><div class="attachments" hidden></div><div class="message-content"></div><div class="message-prompt"></div><div class="message-feedback" hidden><p class="message-error" hidden></p></div><div class="message-actions"><button class="icon-button copy-message" title="${t("Copy message")}" aria-label="${t("Copy message")}">${icon('copy')}</button></div></div>`;
     if (timestamp) { root.querySelector<HTMLTimeElement>('.message-date')!.dateTime = new Date(message.createdAt!).toISOString(); }
-    if (message.role === 'user') { root.querySelector('.message-actions')!.prepend(root.querySelector('.message-date')!); }
+    if (message.role === 'user') {
+      const bubble = document.createElement('div'); bubble.className = 'message-bubble';
+      const attachments = root.querySelector('.attachments')!;
+      attachments.before(bubble); bubble.append(attachments, root.querySelector('.message-content')!);
+      root.querySelector('.message-actions')!.prepend(root.querySelector('.message-date')!);
+    }
     const avatar = iconButton('account', message.role === 'user' ? t("SteamHarness Account") : t("Project information"), () => {
       if (message.role === 'user') { vscode.postMessage({ type: 'login' }); }
       else if (state) { parameterActions.close(); dialogs.projectInfo(state.project); }

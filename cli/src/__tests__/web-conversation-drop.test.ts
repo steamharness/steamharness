@@ -152,7 +152,7 @@ it('keeps browser image selection and image drops on the same thumbnail upload p
   expect(document.querySelectorAll('#draft-attachments .attachment')).toHaveLength(0);
 });
 
-it.each(['en', 'zh-CN'])('renders removable file/folder cards, persists a path-only draft and submits it (%s)', async language => {
+it.each(['en', 'zh-CN'])('renders compact removable file/folder tags, persists a path-only draft and submits it (%s)', async language => {
   const f = await fixture(language);
   const event = f.drop(transfer({ ResourceURLs: JSON.stringify(['file:///workspace/%E8%B5%84%E6%96%99', 'file:///tmp/a%20b.txt']) }));
   expect(event.defaultPrevented).toBe(true);
@@ -160,7 +160,10 @@ it.each(['en', 'zh-CN'])('renders removable file/folder cards, persists a path-o
   expect(document.querySelector<HTMLButtonElement>('#send')!.disabled).toBe(true);
   f.emit({ type: 'path-references', requestId: request.requestId, projectUri: project.uri, sessionId: 'first', references });
   const cards = document.querySelectorAll('#draft-attachments .path-reference'); expect(cards).toHaveLength(2);
-  expect(cards[0].textContent).toContain('/workspace/资料');
+  expect([...cards].map(card => card.querySelector('.path-reference-name')!.textContent)).toEqual(references.map(reference => reference.name));
+  expect(cards[0].textContent).not.toContain('/workspace/');
+  expect(cards[0].querySelector('.path-reference-open')!.getAttribute('title')).toContain(references[0].path);
+  expect(cards[0].querySelector('.path-reference-open')!.getAttribute('aria-label')).toContain(references[0].path);
   expect(cards[0].querySelector('.path-reference-icon')?.getAttribute('title')).toBe(language === 'en' ? 'Folder' : '文件夹');
   expect(host.setState.mock.calls.at(-1)![0].navigation.updates[0].draft.references).toEqual(references);
   expect(document.querySelector<HTMLButtonElement>('#send')!.disabled).toBe(false);
@@ -169,6 +172,28 @@ it.each(['en', 'zh-CN'])('renders removable file/folder cards, persists a path-o
   document.querySelector<HTMLButtonElement>('#send')!.click();
   expect(f.requests('send').at(-1)).toMatchObject({ text: '', references: [references[0]] });
   expect(document.querySelectorAll('.message .path-reference').length).toBe(1);
+  const bubble = document.querySelector('.message.user .message-bubble')!;
+  expect(bubble.querySelector('.path-reference-name')!.textContent).toBe(references[0].name);
+  expect(bubble.querySelector('.message-content')!.textContent).toBe('');
+  expect(bubble.querySelector('.path-reference > .icon-button')).toBeNull();
+});
+
+it('restores compact reference tags above the text in the same user bubble without wrapping assistant output or controls', async () => {
+  const f = await fixture();
+  f.receive('first', false, [{ ...session('first'), messages: [
+    { id: 'saved', role: 'user', content: 'Review these files', references: references.map(reference => ({ ...reference, kind: reference.kind as 'file' | 'directory' })) },
+    { id: 'plain', role: 'user', content: 'Also check the folder' },
+    { id: 'reply', role: 'assistant', content: 'Checking now', status: 'completed' },
+  ] }, session('second')]);
+  const message = document.querySelector('[data-message-id=saved]')!, bubble = message.querySelector('.message-bubble')!;
+  expect([...bubble.querySelectorAll('.path-reference-name')].map(name => name.textContent)).toEqual(references.map(reference => reference.name));
+  expect(bubble.textContent).toBe('资料a b.txtReview these files');
+  expect(bubble.querySelector('.attachments')!.nextElementSibling).toBe(bubble.querySelector('.message-content'));
+  expect(message.querySelector('.message-actions')!.parentElement).toBe(message.querySelector('.message-body'));
+  expect(bubble.querySelector('.message-feedback')).toBeNull();
+  expect(document.querySelector('[data-message-id=plain] .attachments')!.hasAttribute('hidden')).toBe(true);
+  expect(document.querySelector('[data-message-id=plain] .message-bubble')!.textContent).toBe('Also check the folder');
+  expect(document.querySelector('[data-message-id=reply] .message-bubble')).toBeNull();
 });
 
 it.each(['en', 'zh-CN'])('opens typed path cards in drafts and messages while keeping removal and text selection independent (%s)', async language => {
@@ -191,9 +216,9 @@ it.each(['en', 'zh-CN'])('opens typed path cards in drafts and messages while ke
   expect(open.ariaLabel).toContain(language === 'en' ? 'Open file in Studio' : '在 Studio 中打开文件');
   open.click(); cards[1].querySelector<HTMLButtonElement>('.path-reference-open')!.click();
   expect(f.requests('open-path').map(message => message.path)).toEqual(paths.map(file => file.path));
-  const range = document.createRange(); range.selectNodeContents(cards[0].querySelector('.path-reference-path')!);
+  const range = document.createRange(); range.selectNodeContents(cards[0].querySelector('.path-reference-name')!);
   window.getSelection()!.removeAllRanges(); window.getSelection()!.addRange(range);
-  expect(window.getSelection()!.toString()).toBe(paths[0].path);
+  expect(window.getSelection()!.toString()).toBe(paths[0].name);
   open.dispatchEvent(new MouseEvent('click', { bubbles: true, detail: 1 }));
   expect(f.requests('open-path')).toHaveLength(2); window.getSelection()!.removeAllRanges();
   cards[1].querySelector<HTMLButtonElement>(':scope > .icon-button')!.click();
@@ -210,7 +235,8 @@ it('renders path names as copyable text without interpreting markup', async () =
   f.emit({ type: 'path-references', requestId: selected.requestId, projectUri: project.uri, sessionId: 'first', references: [{ path, kind: 'file' }] });
   const card = document.querySelector('#draft-attachments .path-reference')!;
   expect(card.querySelector('img')).toBeNull();
-  expect(card.querySelector('.path-reference-path')!.textContent).toBe(path);
+  expect(card.querySelector('.path-reference-name')!.textContent).toBe('<img src=x onerror=alert(1)>.docx');
+  expect(card.querySelector('.path-reference-open')!.getAttribute('title')).toContain(path);
   card.querySelector<HTMLButtonElement>('.path-reference-open')!.click();
   expect(f.requests('open-path').at(-1).path).toBe(path);
 });
