@@ -1,0 +1,70 @@
+diff --git a/src/vs/workbench/browser/parts/media/studioMode.css b/src/vs/workbench/browser/parts/media/studioMode.css
+index 69466409ea2185ccb9428b31a48ef970182139d9..a0d5268762b3529faa0838493c240084c8b281bd 100644
+--- a/src/vs/workbench/browser/parts/media/studioMode.css
++++ b/src/vs/workbench/browser/parts/media/studioMode.css
+@@ -108,7 +108,7 @@
+ .monaco-workbench .studio-steam-tab-list {
+ 	display: flex;
+ 	align-items: center;
+-	flex: 0 1 auto;
++	flex: 1;
+ 	min-width: 0;
+ 	height: 100%;
+ 	gap: var(--vscode-spacing-size80);
+@@ -120,14 +120,13 @@
+ .monaco-workbench .studio-steam-tab {
+ 	display: flex;
+ 	align-items: center;
+-	flex: 0 1 auto;
+-	min-width: 72px;
+-	max-width: 220px;
+-	height: var(--vscode-spacing-size240);
++	flex: 1 1 0;
++	min-width: 96px;
++	height: var(--vscode-spacing-size280);
+ 	box-sizing: border-box;
+ 	gap: var(--vscode-spacing-size20);
+ 	padding: 0 var(--vscode-spacing-size60);
+-	font-size: var(--vscode-fontSize-label1);
++	font-size: var(--vscode-fontSize-body1);
+ 	border: var(--vscode-strokeThickness) solid var(--vscode-contrastBorder, transparent);
+ 	border-radius: var(--vscode-cornerRadius-small);
+ 	background: color-mix(in srgb, var(--vscode-foreground) 6%, var(--vscode-sideBar-background, var(--vscode-editor-background)));
+@@ -167,7 +166,7 @@
+ .monaco-workbench .studio-steam-tab:is(.active, :hover, :focus-within) .studio-steam-tab-close { opacity: 1; }
+ .monaco-workbench .studio-steam-tab.dirty .studio-steam-tab-close { opacity: 1; }
+ .monaco-workbench .studio-steam-tab.dirty:not(:hover):not(:focus-within) .studio-steam-tab-close::before { content: ''; display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
+-.monaco-workbench .studio-steam-tabs .studio-steam-add-tab { width: var(--vscode-spacing-size240); height: var(--vscode-spacing-size240); flex-shrink: 0; padding: var(--vscode-spacing-size60); background: color-mix(in srgb, var(--vscode-foreground) 6%, var(--vscode-sideBar-background, var(--vscode-editor-background))); }
++.monaco-workbench .studio-steam-tabs .studio-steam-add-tab { width: var(--vscode-spacing-size280); height: var(--vscode-spacing-size280); flex-shrink: 0; padding: var(--vscode-spacing-size60); background: color-mix(in srgb, var(--vscode-foreground) 6%, var(--vscode-sideBar-background, var(--vscode-editor-background))); }
+ .monaco-workbench .studio-steam-tabs :is(.studio-steam-add-tab, .studio-steam-tab-close):hover { background: var(--vscode-toolbar-hoverBackground); }
+ .monaco-workbench .studio-steam-tabs button:focus-visible { outline: 1px solid var(--vscode-focusBorder); outline-offset: -1px; }
+ .monaco-workbench.studio-steam-mode .part.auxiliarybar { position: relative; }
+@@ -373,7 +372,7 @@ html.studio-mode-transition::view-transition-old(studio-mode-statusbar) { displa
+ 	box-sizing: border-box;
+ 	gap: var(--vscode-spacing-size80);
+ 	padding: 0 var(--vscode-spacing-size120);
+-	background: inherit;
++	background: var(--vscode-editorGroupHeader-tabsBackground, var(--vscode-sideBar-background, var(--vscode-editor-background)));
+ 	user-select: text;
+ 	-webkit-user-select: text;
+ }
+@@ -395,13 +394,13 @@ html.studio-mode-transition::view-transition-old(studio-mode-statusbar) { displa
+ 	display: flex;
+ 	align-items: center;
+ 	flex: 0 0 auto;
+-	min-width: 80px;
+-	max-width: 240px;
+-	height: var(--vscode-spacing-size320);
++	min-width: 64px;
++	max-width: 220px;
++	height: var(--vscode-spacing-size240);
+ 	box-sizing: border-box;
+-	gap: var(--vscode-spacing-size80);
+-	padding: 0 var(--vscode-spacing-size120);
+-	font-size: var(--vscode-fontSize-body1);
++	gap: var(--vscode-spacing-size40);
++	padding: 0 var(--vscode-spacing-size80);
++	font-size: var(--vscode-fontSize-label1);
+ 	color: var(--vscode-tab-inactiveForeground);
+ 	border: var(--vscode-strokeThickness) solid var(--vscode-contrastBorder, transparent);
+ 	border-radius: var(--vscode-cornerRadius-small);
