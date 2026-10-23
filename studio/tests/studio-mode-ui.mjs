@@ -201,6 +201,12 @@ for (const language of process.env.STEAMHARNESS_UI_LANGUAGES?.split(',') ?? ['en
       await page.locator('.studio-mode-loading').waitFor();
       assert.equal(await page.locator('.studio-mode-loading').innerText(), language === 'en' ? 'Loading project...' : '正在加载项目…');
       await until(() => frameHeld, Boolean, 'The project iframe was not requested', 90_000);
+      const loadingBounds = await page.locator('.studio-mode-loading').boundingBox();
+      const editorBounds = await page.locator('.part.editor:not(.studio-steam-editors)').boundingBox();
+      for (const axis of ['x', 'y', 'width', 'height']) {
+        assert.ok(Math.abs(loadingBounds[axis] - editorBounds[axis]) <= 1,
+          `Loading overlay must follow the settled editor layout: ${JSON.stringify({ loadingBounds, editorBounds })}`);
+      }
       assert.equal(await page.locator('.studio-mode-switcher').getAttribute('aria-busy'), 'true');
       assert.equal(await page.locator('html.studio-mode-transition').count(), 0);
       await page.screenshot({ path: path.join(proof, `${language}-loading.png`) });
@@ -331,6 +337,7 @@ for (const language of process.env.STEAMHARNESS_UI_LANGUAGES?.split(',') ?? ['en
         requestAnimationFrame(sample);
       });
       const assertControl = async active => {
+        assert.equal(await page.locator('.studio-mode-changing-layout').count(), 0, 'A finished switch must release its layout mask');
         assert.equal(await steam.getAttribute('aria-pressed'), String(active));
         assert.equal(await steam.getAttribute('aria-label'), language === 'en'
           ? active ? 'Switch to IDE Mode' : 'Switch to Steam Mode'
@@ -366,11 +373,26 @@ for (const language of process.env.STEAMHARNESS_UI_LANGUAGES?.split(',') ?? ['en
       assert.ok(samples.length > 30); assert.ok(samples.every(sample => sample.visible && sample.same), JSON.stringify(samples));
       check(`${language}: the compact switch keeps its live control visible during every frame and animates both directions, including webviews and outgoing chrome`);
       await page.setViewportSize({ width: 800, height: 700 });
-      await assertControl(false); await command('studio.enterSteamMode'); await assertControl(true);
-      const ide = command('studio.enterIdeMode');
-      await page.waitForTimeout(40);
-      const latest = command('studio.enterSteamMode');
-      await Promise.all([ide, latest]); await assertControl(true);
+      await assertControl(false);
+      const assertReversal = async active => {
+        await page.evaluate(() => {
+          window.modeChanges = [];
+          window.modeObserver = new MutationObserver(records => {
+            for (const record of records) window.modeChanges.push(record.oldValue.split(' ').includes('studio-steam-mode'));
+          });
+          window.modeObserver.observe(document.querySelector('.monaco-workbench'), { attributes: true, attributeFilter: ['class'], attributeOldValue: true });
+        });
+        const switching = command(active ? 'studio.enterIdeMode' : 'studio.enterSteamMode');
+        await page.waitForFunction(() => document.querySelector('.studio-mode-switcher').getAttribute('aria-busy') === 'true');
+        await page.waitForTimeout(20);
+        const reverting = command(active ? 'studio.enterSteamMode' : 'studio.enterIdeMode');
+        await Promise.all([switching, reverting]); await assertControl(active);
+        const modes = await page.evaluate(() => { window.modeObserver.disconnect(); return window.modeChanges; });
+        assert.ok(modes.every(mode => mode === active), 'A cancelled exit must not briefly enter the obsolete layout');
+      };
+      await assertReversal(false);
+      await command('studio.enterSteamMode'); await assertControl(true);
+      await assertReversal(true);
       assert.equal(await frame.locator('#message').inputValue(), `Retain this draft ${language}`);
       check(`${language}: narrow layouts and rapid reversals preserve the latest mode and the project draft`);
       await page.emulateMedia({ reducedMotion: 'reduce' });

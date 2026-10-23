@@ -58,16 +58,18 @@ function fixture(t, saved = new Map()) {
   const document = { documentElement: { classList: { add: (...names) => names.forEach(name => classes.add(name)), remove: (...names) => names.forEach(name => classes.delete(name)) } },
     startViewTransition: callback => { calls.push('transition'); const finished = Promise.resolve().then(callback); return { ready: Promise.resolve(), updateCallbackDone: finished, finished, skipTransition: () => calls.push('skipTransition') }; } };
   const win = { document, setTimeout, clearTimeout, matchMedia: () => ({ matches: false }) };
-  const mainContainer = { classList: { add() {}, remove() {}, contains: () => false }, querySelectorAll: () => [] };
+  const mainClasses = new Set();
+  const mainContainer = { classList: { add: name => mainClasses.add(name), remove: name => mainClasses.delete(name), contains: name => mainClasses.has(name) }, querySelectorAll: () => [] };
+  const elements = new Map(Object.values(parts).map(part => [part, { animate: (frames, options) => {
+    calls.push(['animate', frames, part, options]);
+    return f.animate?.(frames, part) ?? { finished: Promise.resolve(), cancel() {} };
+  } }]));
   let maximized = false, groupMaximized = false, options = false;
   const layout = {
     onDidResizeParts: resized.event, onDidChangePartVisibility: visibilityChanged.event, onDidLayoutMainContainer: windowResized.event,
     setWindowChromeHidden: value => { f.chromeHidden = value; calls.push(['windowChrome', value]); },
     mainContainer, mainContainerDimension: { width: 1440, height: 900 },
-    getContainer: (_window, part) => ({ animate: (frames, options) => {
-      calls.push(['animate', frames, part, options]);
-      return f.animate?.(frames, part) ?? { finished: Promise.resolve(), cancel() {} };
-    } }),
+    getContainer: (_window, part) => elements.get(part),
     isVisible: part => visible.get(part), getSize: part => ({ ...sizes.get(part) }),
     setPartHidden: (hidden, part) => {
       if (visible.get(part) === !hidden) { return; }
@@ -137,7 +139,7 @@ function fixture(t, saved = new Map()) {
     studioSteamToolDefinitions: Object.keys(viewContainers).filter(view => view !== 'studio.steamTools').map(view => ({
       id: { 'studio.projectInfo': 'info', 'studio.developerAssistant': 'assistant' }[view] ?? view.replace('studio.', ''), view,
     })).concat([{ id: 'browser', command: 'simpleBrowser.show' }, { id: 'project', command: 'studio.openProjectInTab' }]),
-    StudioModeLoading: class { show() { f.loading = true; calls.push('loading'); } hide() { f.loading = false; } dispose() {} },
+    StudioModeLoading: class { show() { f.loading = true; calls.push('loading'); } hide() { f.loading = false; } layout() {} dispose() {} },
     ViewPane: class {}, ViewPaneContainer: class {}, WorkbenchPhase: { AfterRestored: 3 }, registerWorkbenchContribution2() {},
     Extensions: {}, ViewContainerLocation: locations, GroupsArrangement: { MAXIMIZE: 0 }, GroupsOrder: { GRID_APPEARANCE: 2 }, Parts: parts,
   };
@@ -249,6 +251,44 @@ test('rapid mode requests coalesce while a project is preparing', async t => {
   assert.equal(f.state.steam, false); assert.equal(f.state.busy, false);
   assert.equal(f.saved.has('studio.ideLayout'), false);
   assert.equal(f.calls.filter(call => call === 'maximizeGroup').length, 1);
+});
+
+for (const initialSteam of [false, true]) {
+  test(`reversing during the outgoing animation keeps ${initialSteam ? 'Steam' : 'IDE'} intact and skips obsolete initialization`, async t => {
+    const f = fixture(t); f.publish(true);
+    await f.run(initialSteam ? 'EnterSteamMode' : 'EnterIdeMode');
+    f.calls.length = 0;
+    f.animate = frames => {
+      if (frames[1].opacity !== 0) return { finished: Promise.resolve(), cancel() {} };
+      let finish;
+      return { finished: new Promise(resolve => { finish = resolve; }), cancel: () => finish() };
+    };
+    const switching = f.run(initialSteam ? 'EnterIdeMode' : 'EnterSteamMode');
+    await new Promise(resolve => setImmediate(resolve));
+    const reverting = f.run(initialSteam ? 'EnterSteamMode' : 'EnterIdeMode');
+    await new Promise(resolve => setImmediate(resolve));
+    assert.equal(f.calls.some(call => call[0] === 'windowChrome'), false);
+    assert.equal(f.calls.some(call => call[0] === 'view'), false);
+    assert.equal(f.calls.includes('prepare'), false);
+    await Promise.all([switching, reverting]);
+    await f.flush();
+    assert.equal(f.saved.has('studio.ideLayout'), initialSteam);
+    assert.equal(f.state.steam, initialSteam);
+  });
+}
+
+test('cancelling persisted Steam startup before the layout changes remembers IDE for the next reload', async t => {
+  const f = fixture(t, new Map([['studio.workbenchMode', 'steam']]));
+  f.animate = frames => {
+    if (frames[1].opacity !== 0) return { finished: Promise.resolve(), cancel() {} };
+    let finish;
+    return { finished: new Promise(resolve => { finish = resolve; }), cancel: () => finish() };
+  };
+  f.publish(true);
+  await new Promise(resolve => setImmediate(resolve));
+  await f.run('EnterIdeMode');
+  assert.equal(f.saved.get('studio.workbenchMode'), 'ide');
+  assert.equal(f.calls.includes('prepare'), false);
 });
 
 test('closing the ready project invalidates preparation even when Steam mode remains selected', async t => {
@@ -374,6 +414,23 @@ test('slow view initialization retains a live loading state and still animates i
   assert.equal(f.loading, true); assert.equal(f.calls.includes('transition'), false);
   finish(); await entering;
   assert.ok(f.calls.some(call => call[0] === 'animate' && call[1][0].opacity === 0));
+});
+
+test('asynchronous view restoration measures the layout after outgoing transforms have been removed', async t => {
+  const f = fixture(t), effects = new Set(); f.publish(true);
+  f.animate = () => {
+    const effect = { finished: Promise.resolve(), cancel: () => effects.delete(effect) };
+    effects.add(effect); return effect;
+  };
+  const open = f.views.openView;
+  f.views.openView = async (...args) => {
+    assert.equal(effects.size, 0, 'Layout measurements must not include outgoing translations');
+    assert.equal(f.layout.mainContainer.classList.contains('studio-mode-changing-layout'), true);
+    return open(...args);
+  };
+  await f.run('EnterSteamMode');
+  assert.equal(effects.size, 0);
+  assert.equal(f.layout.mainContainer.classList.contains('studio-mode-changing-layout'), false);
 });
 
 test('both directions fade outgoing chrome before hiding it and fade in every visible incoming part', async t => {
