@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
 import { createHash, randomBytes } from 'node:crypto';
-import { copyFile, mkdir, mkdtemp, readFile, readdir, realpath, rm, symlink, writeFile } from 'node:fs/promises';
+import { copyFile, cp, mkdir, mkdtemp, readFile, readdir, realpath, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
@@ -51,6 +51,25 @@ for (const language of process.env.STEAMHARNESS_UI_LANGUAGES?.split(',') ?? ['en
     await writeFile(path.join(extension, 'package.json'), JSON.stringify({ name: 'mode-test', publisher: 'studio-test', version: '0.0.1',
       engines: { vscode: '^1.140.0' }, main: './extension.cjs', extensionKind: ['workspace'], activationEvents: ['onStartupFinished'] }));
     await build({ entryPoints: [path.join(ROOT, 'tests/start-page-ui-extension.mjs')], bundle: true, platform: 'node', format: 'cjs', external: ['vscode'], outfile: path.join(extension, 'extension.cjs') });
+    let workstation;
+    if (process.env.STEAMHARNESS_UI_FOCUS === 'new-tool-content') {
+      // Use the actual extension and CLI, with a deterministic offline executor
+      // installed only in this isolated workbench's Assistant template.
+      workstation = path.join(directory, 'extensions/studio-workstation');
+      await mkdir(workstation);
+      for (const name of ['package.json', 'package.nls.json', 'package.nls.zh-cn.json', 'l10n', 'dist']) {
+        await cp(path.join(ROOT, 'extensions/studio-workstation', name), path.join(workstation, name), { recursive: true });
+      }
+      // VS Code gives a built-in copy precedence when versions are equal.
+      const metadata = JSON.parse(await readFile(path.join(workstation, 'package.json'), 'utf8'));
+      const version = metadata.version.split('.'); version[2] = String(Number(version[2]) + 1); metadata.version = version.join('.');
+      await writeFile(path.join(workstation, 'package.json'), JSON.stringify(metadata));
+      const template = path.join(workstation, 'dist/developer-assistant');
+      await rm(template, { recursive: true, force: true }); await mkdir(template);
+      await writeFile(path.join(template, 'package.json'), JSON.stringify({ id: 'a3aca697-b086-459b-84e4-d357ad2d9fb2', name: 'Offline Assistant', type: 'module',
+        steamHarness: { projectInfo: { dataStorage: { mode: 'local' } } } }));
+      await copyFile(path.join(ROOT, 'tests/fixtures/assistant-new-tab/index.ts'), path.join(template, 'index.ts'));
+    }
     await useCachedLanguagePack(directory, language);
     child = spawn(process.execPath, [path.join(upstream.directory, 'scripts/code-server.js'), '--host', '127.0.0.1', '--port', '0',
       '--connection-token', token, '--server-data-dir', path.join(directory, 'server'), '--extensions-dir', path.join(directory, 'extensions'),
@@ -109,6 +128,7 @@ for (const language of process.env.STEAMHARNESS_UI_LANGUAGES?.split(',') ?? ['en
     };
     const command = (command, ...args) => call({ action: 'command', command, args });
     assert.equal((await call({ action: 'state' })).language, language);
+    if (workstation) { assert.equal((await call({ action: 'state' })).extensionPath, workstation); }
     const steam = page.locator('.studio-mode-steam');
     await steam.waitFor(); assert.equal(await steam.isDisabled(), true);
     await command('studio.enterSteamMode'); assert.equal(await page.locator('.studio-steam-mode').count(), 0);
@@ -301,17 +321,83 @@ for (const language of process.env.STEAMHARNESS_UI_LANGUAGES?.split(',') ?? ['en
     await frame.locator('#hide-menu').click();
     await assertChromeSlot('.project-title');
     check(`${language}: native mode controls integrate with the project menu or title and stay clear in narrow layouts`);
-    await frame.locator('#message').fill(`mode-persistence-${language}`); await frame.locator('#send').click();
-
-    await frame.locator('#app[data-run-state=idle]').waitFor();
-    await until(() => frame.locator('.message.assistant').count(), value => value > 0, 'Local project did not produce a result');
-    await frame.locator('#project-info').click();
-    await frame.locator('dialog[open]').waitFor();
-    await until(() => page.locator('.studio-project-drag-region').count(), count => count === 0, 'Modal dialogs must suspend native project dragging');
-    await page.keyboard.press('Escape');
-    await frame.locator('dialog[open]').waitFor({ state: 'detached' });
-    await assertDragRegions();
-    check(`${language}: project header drag regions exclude controls and text, follow menu layout and suspend for dialogs`);
+    if (process.env.STEAMHARNESS_UI_FOCUS !== 'new-tool-content') {
+      await frame.locator('#message').fill(`mode-persistence-${language}`); await frame.locator('#send').click();
+      await frame.locator('#app[data-run-state=idle]').waitFor();
+      await until(() => frame.locator('.message.assistant').count(), value => value > 0, 'Local project did not produce a result');
+      await frame.locator('#project-info').click();
+      await frame.locator('dialog[open]').waitFor();
+      await until(() => page.locator('.studio-project-drag-region').count(), count => count === 0, 'Modal dialogs must suspend native project dragging');
+      await page.keyboard.press('Escape');
+      await frame.locator('dialog[open]').waitFor({ state: 'detached' });
+      await assertDragRegions();
+      check(`${language}: project header drag regions exclude controls and text, follow menu layout and suspend for dialogs`);
+    }
+    if (process.env.STEAMHARNESS_UI_FOCUS === 'new-tool-content') {
+      const instances = page.locator('.studio-steam-instance-list');
+      const assistantFrame = () => until(async () => {
+        for (const candidate of page.frames()) {
+          if (!await candidate.locator('body[data-surface=assistant] #message').count().catch(() => 0)) { continue; }
+          let current = candidate, visible = true;
+          while (current.parentFrame()) {
+            if (!await (await current.frameElement()).isVisible()) { visible = false; break; }
+            current = current.parentFrame();
+          }
+          if (visible) return candidate;
+        }
+      }, Boolean, 'Assistant did not become visible', 90_000);
+      await command('studio.internalOpenSteamTool', 'assistant');
+      const original = await assistantFrame();
+      await original.locator('#message').fill('slow'); await original.locator('#send').press('Enter');
+      await original.locator('#app[data-run-state=running]').waitFor();
+      await original.locator('#message').fill('Original next turn');
+      await page.locator('.studio-steam-new-instance').click();
+      await until(() => instances.locator('.studio-steam-instance').count(), count => count === 2, 'New Assistant tab was not created');
+      const secondId = await instances.locator('.active').getAttribute('data-tab'), second = await assistantFrame();
+      assert.notEqual(second, original);
+      await second.locator('#app[data-run-state=idle]').waitFor();
+      assert.equal(await second.locator('.message').count(), 0); assert.equal(await second.locator('#message').inputValue(), '');
+      await second.locator('#message').fill('Second tab draft');
+      await instances.locator('[data-tab=assistant] [role=tab]').click();
+      assert.equal(await original.locator('#app').getAttribute('data-run-state'), 'running');
+      assert.equal(await original.locator('#message').inputValue(), 'Original next turn');
+      await page.locator('.studio-steam-new-instance').click();
+      await until(() => instances.locator('.studio-steam-instance').count(), count => count === 3, 'Third Assistant tab was not created');
+      const thirdId = await instances.locator('.active').getAttribute('data-tab'), third = await assistantFrame();
+      await third.locator('#app[data-run-state=idle]').waitFor();
+      assert.equal(await third.locator('.message').count(), 0); assert.equal(await third.locator('#message').inputValue(), '');
+      assert.notEqual(new URL(third.url()).searchParams.get('conversationId'), new URL(second.url()).searchParams.get('conversationId'));
+      await page.screenshot({ path: path.join(proof, `${language}-new-assistant.png`) });
+      await instances.locator(`[data-tab="${thirdId}"] .studio-steam-tab-close`).click();
+      await instances.locator(`[data-tab="${secondId}"] [role=tab]`).click();
+      assert.equal(await second.locator('#message').inputValue(), 'Second tab draft');
+      await second.locator('#send').press('Enter'); await second.locator('#app[data-run-state=idle]').waitFor();
+      await until(() => second.locator('.message.assistant').allTextContents(), values => values.join('').includes('Second tab draft'), 'Second Assistant did not run independently');
+      await second.locator('#message').fill('Second next turn');
+      await instances.locator('[data-tab=assistant] [role=tab]').click();
+      assert.equal(await original.locator('#app').getAttribute('data-run-state'), 'running');
+      assert.equal(await original.locator('#message').inputValue(), 'Original next turn');
+      check(`${language}: repeated child-tab additions open distinct blank conversations while the original keeps running and each tab retains its draft`);
+      await original.locator('#message').fill(''); await original.locator('#send').press('Enter');
+      await original.locator('#app[data-run-state=idle]').waitFor(); await original.locator('#message').fill('Original next turn');
+      // Switch before reloading so the two restored selections cannot both
+      // accidentally pass by opening the shared last-selected conversation.
+      await instances.locator(`[data-tab="${secondId}"] [role=tab]`).click();
+      await page.waitForTimeout(500);
+      await rm(readyFile, { force: true }); await call({ action: 'reload' });
+      bridge = await until(readReady, value => value.port || value.error, 'Reloaded test bridge did not start', 120_000);
+      await until(() => instances.locator('.studio-steam-instance').count(), count => count === 2, 'Assistant tabs did not restore', 120_000);
+      const restoredSecond = await assistantFrame();
+      assert.equal(await restoredSecond.locator('#message').inputValue(), 'Second next turn');
+      assert.ok((await restoredSecond.locator('.message.assistant').allTextContents()).join('').includes('Second tab draft'));
+      await instances.locator('[data-tab=assistant] [role=tab]').click();
+      const restoredOriginal = await assistantFrame();
+      assert.equal(await restoredOriginal.locator('#message').inputValue(), 'Original next turn');
+      assert.ok((await restoredOriginal.locator('.message.user').allTextContents()).join('').includes('slow'));
+      assert.equal((await restoredOriginal.locator('.message.user').allTextContents()).join('').includes('Second tab draft'), false);
+      check(`${language}: workbench reload restores both Assistant tabs to their own conversations and drafts`);
+      continue;
+    }
     if (process.env.STEAMHARNESS_UI_FOCUS === 'tools-width') {
       const toggleWidth = async expected => {
         await toggleTools.click(); await until(partState, state => !state.auxiliarybar.visible, 'Tools did not collapse');

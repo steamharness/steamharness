@@ -21,8 +21,7 @@ export class TraceStore {
   /** Share live connections and cached runs while keeping each view's selection independent. */
   fork(): TraceStore {
     const store = new TraceStore(this.shared);
-    store.projects = this.projects; store.preferred = this.preferred;
-    store.selection = { ...this.selection };
+    store.projects = this.projects;
     return store;
   }
 

@@ -165,7 +165,7 @@ export async function activateProject(context: vscode.ExtensionContext, launcher
     clearTimeout(entryTimer);
     entryTimer = setTimeout(updateEntry, 150);
   };
-  const createWorkspace = async (project: Project, restored?: vscode.WebviewPanel, sidebar?: vscode.WebviewView, viewColumn = vscode.ViewColumn.Active, signal?: AbortSignal, toolTab = false): Promise<AssistantConversation> => {
+  const createWorkspace = async (project: Project, restored?: vscode.WebviewPanel, sidebar?: vscode.WebviewView, viewColumn = vscode.ViewColumn.Active, signal?: AbortSignal, toolTab = false, conversationView?: 'new' | 'restore'): Promise<AssistantConversation> => {
     await settling.get(project.uri);
     signal?.throwIfAborted();
     if (!projectAvailable(project)) { restored?.dispose(); throw new Error('Workflow workspace is unavailable.'); }
@@ -272,7 +272,7 @@ export async function activateProject(context: vscode.ExtensionContext, launcher
         if (message?.type === 'workflow-account' && message.version === 1) { account.open(); }
         else if (!clipboardBinding.receive(message) && !resourceBinding.receive(message)) { traceBinding.receive(message); }
       }));
-      panel.webview.html = projectFrameHtml(address.href, project.name, project.uri, theme(), globalThis.crypto.randomUUID().replace(/-/g, ''), vscode.env.language, chromeFor(project.uri, 'viewType' in panel && panel.viewType === 'studio.project'));
+      panel.webview.html = projectFrameHtml(address.href, project.name, project.uri, theme(), globalThis.crypto.randomUUID().replace(/-/g, ''), vscode.env.language, chromeFor(project.uri, 'viewType' in panel && panel.viewType === 'studio.project'), conversationView);
       if ('reveal' in panel) {
         panel.title = projectDisplayName(project); panel.iconPath = vscode.Uri.parse(projectAvatarDataUrl(project.projectCard, project.projectType));
         workspaces.set(project.uri, { panel, project, running: true, loaded: false, ready, close });
@@ -375,7 +375,8 @@ export async function activateProject(context: vscode.ExtensionContext, launcher
       catch (error) { preview.dispose(); throw error; }
     }
   };
-  const assistant = new AssistantViewProvider(context, launcher, output, (project, view) => createWorkspace(project, undefined, view));
+  const assistant = new AssistantViewProvider(context, launcher, output,
+    (project, view) => createWorkspace(project, undefined, view, undefined, undefined, false, 'restore'));
   const mode = new StudioModeController(context, output);
   const resources = new ResourceViews(context, launcher, account, output);
   const trace = new TraceView(context, openProject, output);
@@ -424,7 +425,7 @@ export async function activateProject(context: vscode.ExtensionContext, launcher
   const versions = new VersionsView(context, launcher, account, output, prepareUpgrade,
     (projects, replacedRoot) => related.rememberProjectGroup(projects, replacedRoot));
   const info = new InfoView(context, versions);
-  const toolInstances = new ToolInstances(context, (kind, subscriptions) => {
+  const toolInstances = new ToolInstances(context, (kind, subscriptions, restored) => {
     if (kind === 'kv' || kind === 'knowledge') {
       const resources = new ResourceViews(context, launcher, account, output, false, subscriptions);
       return { update: (projects, preferred) => resources.update(projects, preferred), resolve: view => resources.resolve(kind, view) };
@@ -434,7 +435,8 @@ export async function activateProject(context: vscode.ExtensionContext, launcher
       return { update: (projects, preferred) => instance.update(projects, preferred), resolve: view => instance.resolve(view) };
     }
     if (kind === 'assistant') {
-      const instance = new AssistantViewProvider(context, launcher, output, (project, view) => createWorkspace(project, undefined, view), false, subscriptions);
+      const instance = new AssistantViewProvider(context, launcher, output,
+        (project, view) => createWorkspace(project, undefined, view, undefined, undefined, false, restored ? 'restore' : 'new'), false, subscriptions);
       return { update() {}, resolve: view => instance.resolveWebviewView(view) };
     }
     const instance = kind === 'info' ? new InfoView(context, versions, false, subscriptions)

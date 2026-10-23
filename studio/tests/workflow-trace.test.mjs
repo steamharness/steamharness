@@ -33,6 +33,52 @@ test('trace instances share live runs and connection replacement while keeping p
   assert.equal(second.state().snapshot.run.logs, 'live output'); assert.equal(store.selection.runId, undefined);
   replaced.dispose(); assert.equal(second.state().status, 'closed');
 });
+test('a new trace instance starts at the default project without inheriting another view target', () => {
+  const store = new TraceStore(), a = project('a', 'workflow'), b = project('b', 'workflow');
+  store.update([a, b], a);
+  store.select(b.uri, { runId: 'historical', sessionId: 'old-session', messageId: 'old-message' });
+  const second = store.fork(); second.update([a, b], a);
+  assert.deepEqual(second.selection, { projectUri: a.uri });
+  assert.deepEqual(store.selection, { projectUri: b.uri, runId: 'historical', sessionId: 'old-session', messageId: 'old-message' });
+});
+
+test('assistant frames create independent conversations and restore the last selection across new service ports', () => {
+  const render = (mode, saved, port = 3000) => {
+    const listeners = {}, child = { postMessage() {} }, frame = { contentWindow: child, addEventListener() {} };
+    let state;
+    const html = projectFrameHtml(`http://127.0.0.1:${port}/#session=token`, 'Assistant', 'file:///project', 'dark', 'nonce', 'en', undefined, mode);
+    runInNewContext(html.match(/<script nonce="nonce">([\s\S]*?)<\/script>/)[1], {
+      URL, acquireVsCodeApi: () => ({ getState: () => saved, setState: value => { state = JSON.parse(JSON.stringify(value)); }, postMessage() {} }),
+      document: { getElementById: () => frame }, addEventListener: (type, listener) => { listeners[type] = listener; },
+    });
+    return { url: new URL(frame.src), state: () => state, select: (id, create, extra = {}) => listeners.message({
+      source: child, origin: `http://127.0.0.1:${port}`, data: { type: 'workflow-navigation', version: 1, id, create }, ...extra,
+    }) };
+  };
+  const first = render('new'), second = render('new');
+  const id = first.url.searchParams.get('conversationId');
+  assert.ok(id); assert.notEqual(id, second.url.searchParams.get('conversationId'));
+  assert.equal(first.url.searchParams.get('createConversation'), '1');
+  assert.equal(first.url.hash, '#session=token');
+  assert.equal(first.state().conversationView.conversation.create, true);
+  const selected = '12345678-1234-1234-1234-123456789abc';
+  for (const extra of [{ source: {} }, { origin: 'http://foreign' }]) { first.select(selected, false, extra); }
+  first.select('invalid', false); first.select(selected, 'true');
+  assert.equal(first.state().conversationView.conversation.id, id);
+  first.select(id, false); first.select(selected, false);
+  const restored = render('restore', first.state(), 4000);
+  assert.equal(restored.url.searchParams.get('projectView'), first.url.searchParams.get('projectView'));
+  assert.equal(restored.url.searchParams.get('conversationId'), selected);
+  assert.equal(restored.url.searchParams.has('createConversation'), false);
+  assert.equal(second.state().conversationView.conversation.create, true);
+  const pending = render('restore', second.state());
+  assert.equal(pending.url.searchParams.get('conversationId'), second.url.searchParams.get('conversationId'));
+  assert.equal(pending.url.searchParams.get('createConversation'), '1');
+  const legacy = render('restore', { projectUri: 'file:///project' });
+  assert.equal(legacy.url.searchParams.has('conversationId'), false);
+  const changed = render('new', { ...first.state(), projectUri: 'file:///other' });
+  assert.notEqual(changed.url.searchParams.get('conversationId'), selected);
+});
 test('Kanban and a background assistant do not add a trace tab to an ordinary workspace', () => {
   const store = new TraceStore(), assistant = { ...project('assistant'), assistant: { standalone: true } };
   store.update([project('board', 'kanban')]); const binding = store.bind(assistant, 1, () => {});

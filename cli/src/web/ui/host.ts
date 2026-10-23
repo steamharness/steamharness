@@ -31,7 +31,9 @@ export function acquireProjectHost(options: { live?: boolean; connectionBanner?:
     const applyTheme = () => { document.documentElement.dataset.theme = dark.matches ? 'dark' : 'light'; };
     applyTheme(); dark.addEventListener('change', applyTheme);
   }
-  const storageKey = `steamharness-web:${document.querySelector<HTMLMetaElement>('meta[name=steamharness-project]')?.content ?? location.pathname}`;
+  const conversationView = new URLSearchParams(location.search).get('projectView');
+  const storageKey = `steamharness-web:${document.querySelector<HTMLMetaElement>('meta[name=steamharness-project]')?.content ?? location.pathname}${conversationView ? `:${conversationView}` : ''}`;
+  let navigationSignature: string | undefined;
   const emit = (message: Message) => window.dispatchEvent(new MessageEvent('message', { data: message }));
   const trace = new TraceBridge(message => { if (window.parent !== window) { window.parent.postMessage(message, '*'); } });
   let resourceHost = false, editHost = false, nativePasteHost = false;
@@ -260,6 +262,15 @@ export function acquireProjectHost(options: { live?: boolean; connectionBanner?:
       void request(message).catch(error => emit({ type: 'error', silent: error instanceof ConnectionError, connectionError: error instanceof ConnectionError, requestType: message.type, sessionId: message.sessionId, messageId: message.messageId, requestId: message.requestId, errorScope: message.errorScope, message: error.message }));
     },
     getState: () => { try { return JSON.parse(localStorage.getItem(storageKey) ?? 'null'); } catch { return undefined; } },
-    setState: (state) => { try { localStorage.setItem(storageKey, JSON.stringify(state)); } catch {} },
+    setState: (state) => {
+      try { localStorage.setItem(storageKey, JSON.stringify(state)); } catch {}
+      const navigation = (state as { navigation?: { activeId: string; updates: { id: string; create?: boolean }[] } } | undefined)?.navigation;
+      if (conversationView && window.parent !== window && navigation?.activeId) {
+        const selection = { type: 'workflow-navigation', version: 1, id: navigation.activeId,
+          create: (navigation.updates ?? []).some(update => update.id === navigation.activeId && update.create === true) };
+        const signature = JSON.stringify(selection);
+        if (signature !== navigationSignature) { navigationSignature = signature; window.parent.postMessage(selection, '*'); }
+      }
+    },
   };
 }

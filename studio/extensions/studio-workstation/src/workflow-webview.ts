@@ -1,6 +1,6 @@
 export interface ProjectWindowChrome { active: boolean; projectUri?: string; height: number; left: number; right: number; revision: number }
 
-export function projectFrameHtml(url: string, title: string, projectUri: string, theme: 'light' | 'dark', nonce: string, language = 'en', windowChrome?: ProjectWindowChrome): string {
+export function projectFrameHtml(url: string, title: string, projectUri: string, theme: 'light' | 'dark', nonce: string, language = 'en', windowChrome?: ProjectWindowChrome, conversationView?: 'new' | 'restore'): string {
   const address = new URL(url);
   if (address.protocol !== 'http:' && address.protocol !== 'https:') { throw new Error('Invalid SteamHarness Web URL.'); }
   const locale = language.toLowerCase().startsWith('zh') ? 'zh-CN' : 'en';
@@ -15,7 +15,17 @@ export function projectFrameHtml(url: string, title: string, projectUri: string,
       const vscode=acquireVsCodeApi(),frame=document.getElementById('workflow-frame'),origin=${literal(address.origin)};
       let theme=${literal(theme)},windowChrome=${literal(windowChrome)},editCommands=false,contextMenu=false;
       const clearDragRegions=()=>vscode.postMessage({type:'studio-window-drag-regions',version:1,width:1,height:1,regions:[]});
-      vscode.setState({projectUri:${literal(projectUri)}});
+      const saved=vscode.getState?.(),state={...(saved?.projectUri===${literal(projectUri)}?saved:{}),projectUri:${literal(projectUri)}};
+      let frameUrl=${literal(address.href)};
+      ${conversationView ? `
+      const validId=value=>typeof value==='string'&&/^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/i.test(value);
+      const viewId=validId(state.conversationView?.id)?state.conversationView.id:${literal(globalThis.crypto.randomUUID())};
+      const previous=state.conversationView?.conversation;
+      state.conversationView={id:viewId,conversation:validId(previous?.id)?previous:${conversationView === 'new' ? '{id:viewId,create:true}' : 'undefined'}};
+      const address=new URL(frameUrl);address.searchParams.set('projectView',viewId);
+      if(state.conversationView.conversation){address.searchParams.set('conversationId',state.conversationView.conversation.id);if(state.conversationView.conversation.create===true)address.searchParams.set('createConversation','1');}
+      frameUrl=address.href;` : ''}
+      vscode.setState(state);
       addEventListener('vscode-webview-exec-command',event=>{
         const command=typeof event.detail==='string'?event.detail:event.detail?.command;
         if(!editCommands||document.activeElement!==frame&&!contextMenu||!['paste','copy','cut','selectAll','undo','redo'].includes(command))return;
@@ -24,6 +34,10 @@ export function projectFrameHtml(url: string, title: string, projectUri: string,
       frame.addEventListener('load',()=>{if(windowChrome?.active)clearDragRegions();editCommands=false;contextMenu=false;frame.contentWindow.postMessage({type:'workflow-host',theme,windowChrome,locale:${literal(locale)},traceVersion:1,clipboardVersion:1,nativePasteVersion:document.documentElement.dataset.vscodeNativeClipboard==='1'?1:0,resourceVersion:1,recoveryVersion:1},origin);vscode.postMessage({type:'workflow-frame-ready'});});
       addEventListener('message',event=>{
         if(event.source===frame.contentWindow){
+          ${conversationView ? `
+          if(event.origin===origin&&event.data?.type==='workflow-navigation'&&event.data.version===1&&validId(event.data.id)&&typeof event.data.create==='boolean'){
+            state.conversationView.conversation={id:event.data.id,create:event.data.create};vscode.setState(state);
+          }` : ''}
           if(event.origin===origin&&event.data?.type==='workflow-window-drag'&&event.data.version===1&&windowChrome?.active===true){
             const {width,height,regions}=event.data;vscode.postMessage({type:'studio-window-drag-regions',version:1,width,height,regions});
           }
@@ -47,6 +61,6 @@ export function projectFrameHtml(url: string, title: string, projectUri: string,
         if(event.data.windowChrome){windowChrome=event.data.windowChrome;if(!windowChrome.active)clearDragRegions();}
         frame.contentWindow.postMessage(event.data,origin);
       });
-      frame.src=${literal(address.href)};
+      frame.src=frameUrl;
     </script></body></html>`;
 }

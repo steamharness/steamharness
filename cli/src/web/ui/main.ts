@@ -38,6 +38,10 @@ function initialize(): void {
   const app = document.querySelector<HTMLDivElement>('#app')!;
   if (app.dataset.initialized === 'true') { return; }
   const vscode = acquireProjectHost({ connectionBanner: false });
+  const viewQuery = new URLSearchParams(location.search);
+  const conversationView = viewQuery.has('projectView');
+  let initialConversation = conversationView ? viewQuery.get('conversationId') : undefined;
+  const createInitialConversation = viewQuery.get('createConversation') === '1';
   app.dataset.initialized = 'true';
   app.innerHTML = `
     <header class="toolbar">
@@ -167,7 +171,7 @@ function initialize(): void {
   const narrow = window.matchMedia('(max-width: 680px)');
   let panelOpen = saved.panelOpen ?? document.body.dataset.surface !== 'assistant';
   const persist = (): void => { vscode.setState({ drafts, params: paramValues, parameterEdits, panelOpen, submissions: submissions.list(), projectUri: state?.project.uri ?? saved.projectUri,
-    navigation: state ? (navigationNeeded || draftUpdates.size) ? { projectUri: state.project.uri, activeId: preferredSessionId ?? state.activeId, updates: [...draftUpdates.values()] } : undefined : saved.navigation }); };
+    navigation: state ? (conversationView || navigationNeeded || draftUpdates.size) ? { projectUri: state.project.uri, activeId: preferredSessionId ?? state.activeId, updates: [...draftUpdates.values()] } : undefined : saved.navigation }); };
   const post = (message: Record<string, unknown>): void => { if (state) { vscode.postMessage({ projectUri: state.project.uri, sessionId: state.activeId, ...message }); } };
   const currentSession = () => state?.sessions.find((session) => session.id === state?.activeId);
   const readOnly = () => state?.conversationAccess?.readOnly === true;
@@ -757,7 +761,15 @@ function initialize(): void {
           if (update.create) { localSessions.set(update.id, { ...blankSession(update.id), draft: update.draft }); }
         }
         saved.navigation = undefined;
+      } else if (initialConversation) {
+        preferredSessionId = initialConversation;
+        if (createInitialConversation && !next.sessions.some(session => session.id === initialConversation)) {
+          const session = blankSession(initialConversation);
+          localSessions.set(session.id, session);
+          draftUpdates.set(session.id, { id: session.id, create: true, draft: session.draft! });
+        }
       }
+      initialConversation = undefined;
     }
     serverSessionId = next.activeId;
     const sessions = next.sessions.map(entry => draftUpdates.has(entry.id) ? { ...entry, draft: draftUpdates.get(entry.id)!.draft } : entry);
@@ -769,7 +781,8 @@ function initialize(): void {
     const activeId = preferredSessionId ?? next.activeId;
     const current = sessions.find(entry => entry.id === activeId);
     navigationNeeded = activeId !== serverSessionId || localSessions.has(activeId);
-    return { ...next, sessions, activeId, running: current ? sessionRunning(current) : false, parameterValues: current?.parameterValues ?? {} };
+    return { ...next, sessions, activeId, running: current ? sessionRunning(current) : false, parameterValues: current?.parameterValues ?? {},
+      conversationAccess: activeId === next.activeId ? next.conversationAccess : undefined };
   }
 
   function connectionFeedback(): HTMLDivElement {
@@ -1152,6 +1165,7 @@ function initialize(): void {
     if (switching && !next.running && !composerArea.hidden && document.hasFocus()) { textarea.focus(); }
     if (switching) { transcriptScrollTop = transcript.scrollTop; }
     syncTranscriptLayout();
+    if (conversationView && switching) { persist(); }
     if (fromServer) { syncNavigation(); dispatchSubmissions(); }
   }
 

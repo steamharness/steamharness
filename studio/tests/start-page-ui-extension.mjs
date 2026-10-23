@@ -59,7 +59,8 @@ export async function activate(context) {
           await vscode.commands.executeCommand('studio.showProjectSetupLog');
           result = vscode.window.activeTextEditor?.document.getText();
         } else if (input.action === 'state') {
-          result = { language: vscode.env.language, start: await vscode.commands.executeCommand('studio.internalGetStartState'),
+          result = { language: vscode.env.language, extensionPath: vscode.extensions.getExtension('studio.studio-workstation').extensionPath,
+            start: await vscode.commands.executeCommand('studio.internalGetStartState'),
             folders: vscode.workspace.workspaceFolders?.map(folder => folder.uri.fsPath),
             active: vscode.window.activeTextEditor?.document.uri.toString(),
             documents: vscode.workspace.textDocuments.map(document => ({ uri: document.uri.toString(), text: document.getText(), dirty: document.isDirty })),

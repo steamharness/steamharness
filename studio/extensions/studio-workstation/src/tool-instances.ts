@@ -20,7 +20,7 @@ export class ToolInstances implements vscode.Disposable {
   private readonly ordinals = new Map<InstanceTool, number>();
   private readonly panels = new Map<vscode.WebviewPanel, { tool: ToolInstance; preferred?: string; dispose(): void }>();
 
-  constructor(context: vscode.ExtensionContext, private readonly factory: (kind: InstanceTool, subscriptions: vscode.Disposable[]) => ToolInstance) {
+  constructor(context: vscode.ExtensionContext, private readonly factory: (kind: InstanceTool, subscriptions: vscode.Disposable[], restored: boolean) => ToolInstance) {
     context.subscriptions.push(this,
       vscode.commands.registerCommand('studio.createToolInstance', (kind: string) => this.open(kind)),
       vscode.commands.registerCommand('studio.selectToolInstanceProject', async (kind?: string) => {
@@ -30,7 +30,7 @@ export class ToolInstances implements vscode.Disposable {
       }),
       ...Object.keys(toolTitles).map(kind => vscode.window.registerWebviewPanelSerializer(`studio.tool.${kind}`, {
         deserializeWebviewPanel: (panel, state) => this.attach(kind as InstanceTool, panel,
-          state && typeof state === 'object' && 'projectUri' in state && typeof state.projectUri === 'string' ? { projectUri: state.projectUri } : undefined),
+          state && typeof state === 'object' && 'projectUri' in state && typeof state.projectUri === 'string' ? { projectUri: state.projectUri } : undefined, true),
       })),
     );
   }
@@ -52,12 +52,12 @@ export class ToolInstances implements vscode.Disposable {
     await this.attach(tool, panel);
   }
 
-  private async attach(kind: InstanceTool, panel: vscode.WebviewPanel, state?: { projectUri?: string }): Promise<void> {
+  private async attach(kind: InstanceTool, panel: vscode.WebviewPanel, state?: { projectUri?: string }, restored = false): Promise<void> {
     const ordinal = Number(/\s(\d+)$/.exec(panel.title)?.[1]) || 1;
     this.ordinals.set(kind, Math.max(this.ordinals.get(kind) ?? 1, ordinal));
     panel.title = `${t(toolTitles[kind])} ${ordinal}`;
     const subscriptions: vscode.Disposable[] = [];
-    const controller = this.factory(kind, subscriptions);
+    const controller = this.factory(kind, subscriptions, restored);
     const target = this.projects.find(project => project.uri === state?.projectUri) ?? this.preferred;
     let disposed = false;
     const entry = { tool: controller, preferred: state?.projectUri ?? target?.uri, dispose: () => {

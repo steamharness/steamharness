@@ -36,8 +36,8 @@ function fixture(t, options = {}) {
   } };
   const module = { exports: {} };
   runInNewContext(toolCode, { module, exports: module.exports, require: name => name === 'vscode' ? vscode : { t: value => value } });
-  const manager = new module.exports.ToolInstances(context, (kind, subscriptions) => {
-    const instance = { kind, updates: [], selected: undefined,
+  const manager = new module.exports.ToolInstances(context, (kind, subscriptions, restored) => {
+    const instance = { kind, restored, updates: [], selected: undefined,
       update(projects, preferred) { instance.updates.push([projects, preferred]); instance.selected ??= preferred; return options.update?.(); },
       resolve(view) { instance.view = view; }, selectProject: async () => { instance.picked = true; },
     };
@@ -55,6 +55,7 @@ test('each tool creates independent retained panels and closes only its own cont
     await f.commands.get('studio.createToolInstance')(kind); await f.manager.open(kind);
     const [first, second] = f.instances.slice(-2), [a, b] = f.panels.slice(-2);
     assert.notEqual(first, second); assert.notEqual(first.view.webview, second.view.webview);
+    assert.equal(first.restored, false); assert.equal(second.restored, false);
     assert.equal(a.options.retainContextWhenHidden, true);
     first.selected = projects[1]; f.manager.update(projects, projects[1]);
     assert.equal(first.updates.at(-1)[1], projects[0]); assert.equal(first.selected, projects[1]); assert.equal(second.selected, projects[0]);
@@ -69,10 +70,18 @@ test('each tool creates independent retained panels and closes only its own cont
 test('restored panels keep their project URI through delayed discovery and reserve their instance number', async t => {
   const f = fixture(t), restored = f.panel('studio.tool.kv', 'KV Storage 8');
   await f.serializers.get(restored.viewType).deserializeWebviewPanel(restored, { projectUri: 'file:///second' });
+  assert.equal(f.instances[0].restored, true);
   const projects = [{ uri: 'file:///first' }, { uri: 'file:///second' }];
   f.manager.update(projects, projects[0]);
   assert.equal(f.instances[0].updates.at(-1)[1], projects[1]);
   await f.manager.open('kv'); assert.equal(f.panels.at(-1).title, 'KV Storage 9');
+});
+
+test('deserialization without saved state still restores rather than creating another tool session', async t => {
+  const f = fixture(t), restored = f.panel('studio.tool.assistant', 'Assistant 2');
+  await f.serializers.get(restored.viewType).deserializeWebviewPanel(restored, undefined);
+  assert.equal(f.instances[0].restored, true);
+  await f.manager.open('assistant'); assert.equal(f.instances[1].restored, false);
 });
 
 test('closing a tool during asynchronous initialization never resolves or leaks the retired panel', async t => {

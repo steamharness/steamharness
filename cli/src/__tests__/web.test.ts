@@ -352,6 +352,31 @@ describe('steamharness web', () => {
     }
   });
 
+  it('creates a new tool conversation while the original is running and preserves its selection and draft', async () => {
+    const { app, post, runtime } = await fixture();
+    const firstClient = crypto.randomUUID(), secondClient = crypto.randomUUID(), original = app.controller.current;
+    let finish!: (report: Report) => void;
+    vi.mocked(runtime.run).mockImplementationOnce(() => new Promise(resolve => { finish = resolve; }));
+    const ready = async (clientId: string) => (await (await post({ type: 'ready', clientId })).json()).messages.find((reply: any) => reply.type === 'state');
+    await ready(firstClient);
+    expect((await post({ type: 'send', clientId: firstClient, sessionId: original.id, text: 'Keep running', params: {}, attachments: [] })).status).toBe(200);
+    try {
+      await vi.waitFor(() => expect(runtime.run).toHaveBeenCalledOnce());
+      expect((await post({ type: 'navigate', clientId: firstClient, requestId: 1, id: original.id,
+        updates: [{ id: original.id, draft: { text: 'Original next turn', attachments: [] } }] })).status).toBe(200);
+      const id = crypto.randomUUID(), request = { type: 'navigate', clientId: secondClient, requestId: 1, id,
+        updates: [{ id, create: true, draft: { text: '', attachments: [] } }] };
+      expect((await post(request)).status).toBe(200); expect((await post(request)).status).toBe(200);
+      const second = await ready(secondClient), first = await ready(firstClient);
+      expect(second.activeId).toBe(id); expect(second.running).toBe(false);
+      expect(second.sessions.find((session: any) => session.id === id)).toMatchObject({ messages: [], draft: { text: '', attachments: [] } });
+      expect(first.activeId).toBe(original.id); expect(first.running).toBe(true);
+      expect(first.sessions.find((session: any) => session.id === original.id).draft.text).toBe('Original next turn');
+      expect(app.controller.sessions.filter(session => session.id === id)).toHaveLength(1);
+      expect(runtime.cancel).not.toHaveBeenCalled(); expect(runtime.cancelConversation).not.toHaveBeenCalled();
+    } finally { finish?.({ status: 'success', runId: original.activeRunId } as Report); await app.controller.idle(); }
+  });
+
   it.each(['queue-promote', 'queue-remove'] as const)('acknowledges %s only after completion and binds it to the original conversation', async type => {
     const { app, post } = await fixture();
     const original = app.controller.current;

@@ -102,6 +102,8 @@ Studio 活动栏中的 **Workflow 项目** 列出当前文件夹及常见项目�
 
 底部面板默认保留 Terminal。识别到 Workflow、Conversation 或 Kanban 项目后，显示 **KV** 和 **知识库** 标签，提供项目切换、搜索、分页和数据管理，样式跟随 VS Code 主题。数据与项目 CLI 共用存储，详见 [项目资源面板](docs/resource-panel.md)。
 
+Steam 工具区的子标签加号创建独立内容：小助手进入新对话，保留原标签的运行与草稿；各助手标签恢复自己选中的对话。资源、项目信息、版本和轨迹从默认浏览状态打开，编辑器、终端和浏览器分别创建新文件、新会话和新页面。
+
 Workflow 和 Conversation 还提供底部 **轨迹** 面板。对话回复下方的执行图与日志入口合并为一个轨迹入口，点击定位对应执行记录；面板支持时间线、轮次、调用、搜索及参数/结果/日志详情，详见 [执行轨迹](docs/trace-panel.md)。
 
 工作站使用每个项目自己安装的 Core 和 CLI；项目需安装支持 Web 宿主协议的 `@steamharness/cli`。聚合 checkout 的开发入口优先识别同级 Core/CLI，独立 checkout 保留 `../workflow` 布局；也可用 `STUDIO_STEAMHARNESS_SOURCE` 指定源码根目录。详细范围见 [SteamHarness 工作站](docs/workflow-workstation.md)。
