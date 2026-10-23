@@ -38,16 +38,17 @@ export function acquireProjectHost(options: { live?: boolean; connectionBanner?:
   let navigationSignature: string | undefined;
   const emit = (message: Message) => window.dispatchEvent(new MessageEvent('message', { data: message }));
   const trace = new TraceBridge(message => { if (window.parent !== window) { window.parent.postMessage(message, '*'); } });
-  let resourceHost = false, editHost = false, nativePasteHost = false, pathPickerHost = false;
+  let resourceHost = false, editHost = false, nativePasteHost = false, pathPickerHost = false, pathOpenHost = false;
   let dropTarget: string | undefined;
   const pathPickers = new Map<string, Message>();
+  const pathOpens = new Map<string, Message>();
   const selectedFiles = (message: Message, selection?: FileImport, error?: string) => {
     if (pathPickers.get(message.requestId) !== message) return;
     pathPickers.delete(message.requestId);
     emit({ type: error ? 'error' : 'files-selected', requestType: 'select-paths', requestId: message.requestId,
       projectUri: message.projectUri, sessionId: message.sessionId, target: message.target, selection, message: error });
   };
-  addEventListener('pagehide', () => pathPickers.clear());
+  addEventListener('pagehide', () => { pathPickers.clear(); pathOpens.clear(); });
   const advertiseDropTarget = () => { if (window.parent !== window) window.parent.postMessage({ type: 'workflow-drop-target', version: 1, target: dropTarget }, '*'); };
   const captureInput = (input: HTMLElement): EditTarget => {
     const field = input as HTMLInputElement | HTMLTextAreaElement;
@@ -158,6 +159,15 @@ export function acquireProjectHost(options: { live?: boolean; connectionBanner?:
     if (event.data.openConfigurations === true) emit({type:'project-configurations-open'});
     if (event.data.dropVersion === 1) advertiseDropTarget();
     if (event.data.pathPickerVersion !== undefined) pathPickerHost = event.data.pathPickerVersion === 1;
+    if (event.data.pathOpenVersion !== undefined) pathOpenHost = event.data.pathOpenVersion === 1;
+    const pathOpened = event.data.pathOpened;
+    if (pathOpened?.version === 1) {
+      const pending = pathOpens.get(pathOpened.requestId);
+      if (pending) {
+        pathOpens.delete(pathOpened.requestId);
+        if (typeof pathOpened.error === 'string') emit({ type: 'error', requestType: 'open-path', projectUri: pending.projectUri, sessionId: pending.sessionId, message: pathOpened.error });
+      }
+    }
     const pathSelection = event.data.pathSelection;
     if (pathSelection?.version === 1) {
       const pending = pathPickers.get(pathSelection.requestId);
@@ -297,6 +307,11 @@ export function acquireProjectHost(options: { live?: boolean; connectionBanner?:
       if (message.type === 'session-action' && message.action === 'delete'
         && await requestAction({ title: t("Delete this conversation?"), confirm: t("Delete"), danger: true }) === undefined) { return; }
       if (message.type === 'open-file') { window.open(connection.fileUrl(`/api/file/${encodeURIComponent(message.id)}`), '_blank', 'noopener'); return; }
+      if (message.type === 'open-path') {
+        if (!pathOpenHost) { emit({ type: 'error', requestType: 'open-path', projectUri: message.projectUri, sessionId: message.sessionId, message: t('Open this conversation in Studio to open referenced files and folders.') }); return; }
+        const requestId = crypto.randomUUID(); pathOpens.set(requestId, message);
+        window.parent.postMessage({ type: 'workflow-path-open', version: 1, requestId, path: message.path }, '*'); return;
+      }
       if (message.type === 'login') { accountPanel.open(); return; }
       void request(message).catch(error => emit({ type: 'error', silent: error instanceof ConnectionError, connectionError: error instanceof ConnectionError, requestType: message.type, sessionId: message.sessionId, messageId: message.messageId, requestId: message.requestId, errorScope: message.errorScope, message: error.message }));
     },

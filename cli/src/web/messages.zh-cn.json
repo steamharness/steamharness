@@ -602,5 +602,8 @@
   "A drop can contain up to 1,000 files and folders.": "一次最多拖入 1,000 个文件和文件夹。",
   "No files or folders were found in the drop.": "没有找到拖入的文件或文件夹。",
   "Add files or folders": "添加文件或文件夹",
-  "Choose folders": "选择文件夹"
+  "Choose folders": "选择文件夹",
+  "Open folder in file manager": "在文件管理器中打开文件夹",
+  "Open file in Studio": "在 Studio 中打开文件",
+  "Open this conversation in Studio to open referenced files and folders.": "请在 Studio 中打开此对话，以打开引用的文件和文件夹。"
 }

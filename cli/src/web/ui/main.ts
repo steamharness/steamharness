@@ -16,6 +16,7 @@ import { attachmentSignature } from './attachment-state';
 import { conversationPrompt, pathReferences, type PathReference } from '../conversation-paths';
 import { captureFileDrop, isFileDrop, type FileImport } from './conversation-drop';
 import { ConversationFileMenu } from './conversation-file-menu';
+import { fileIcon } from './file-icons';
 import { activeAgentActivity } from './agent-activity';
 import { ComposerOutput, composerOutputItems } from './output-display';
 import type { ConnectionState } from './connection';
@@ -857,7 +858,7 @@ function initialize(): void {
       const item = document.createElement('div'); item.className = `attachment${isImage ? ' attachment-image' : ''}`;
       const preview = document.createElement('button'); preview.type = 'button'; preview.className = 'attachment-preview'; preview.title = isImage ? t("Image") : file.name; preview.setAttribute('aria-label', preview.title);
       if (isImage && file.previewUrl) { const image = document.createElement('img'); image.src = file.previewUrl; image.alt = t("Image"); preview.append(image); }
-      else { preview.innerHTML = icon(file.mimeType.startsWith('audio/') ? 'unmute' : file.mimeType.startsWith('video/') ? 'device-camera-video' : 'file'); }
+      else { const type = fileIcon(file.name, file.mimeType); preview.innerHTML = icon(type.icon); preview.dataset.fileType = type.type; }
       preview.addEventListener('click', () => {
         if (isImage && file.previewUrl) { dialogs.image(file.previewUrl, t("Image")); }
         else { post({ type: 'open-file', id: file.id }); }
@@ -869,12 +870,22 @@ function initialize(): void {
     }
     for (const reference of references) {
       const item = document.createElement('div'); item.className = 'attachment path-reference'; item.dataset.path = reference.path;
-      const symbol = document.createElement('span'); symbol.className = 'path-reference-icon'; symbol.innerHTML = icon(reference.kind === 'directory' ? 'folder' : 'file');
+      const preview = document.createElement('button'); preview.type = 'button'; preview.className = 'path-reference-open';
+      preview.title = `${reference.kind === 'directory' ? t("Open folder in file manager") : t("Open file in Studio")}\n${reference.path}`;
+      preview.setAttribute('aria-label', preview.title.replace('\n', ': '));
+      const type = fileIcon(reference.name, '', reference.kind === 'directory');
+      const symbol = document.createElement('span'); symbol.className = 'path-reference-icon'; symbol.innerHTML = icon(type.icon); symbol.dataset.fileType = type.type;
       symbol.title = reference.kind === 'directory' ? t("Folder") : t("File");
-      const description = document.createElement('div'); description.className = 'path-reference-description';
+      const description = document.createElement('span'); description.className = 'path-reference-description';
       const name = document.createElement('span'); name.className = 'path-reference-name'; name.textContent = reference.name;
       const location = document.createElement('span'); location.className = 'path-reference-path'; location.textContent = reference.path;
-      description.title = reference.path; description.append(name, location); item.append(symbol, description);
+      description.title = reference.path; description.append(name, location); preview.append(symbol, description); item.append(preview);
+      preview.addEventListener('click', event => {
+        const selection = window.getSelection();
+        if (event.detail > 0 && selection && !selection.isCollapsed
+          && (preview.contains(selection.anchorNode) || preview.contains(selection.focusNode) || selection.containsNode(preview, true))) return;
+        post({ type: 'open-path', path: reference.path });
+      });
       if (removable) item.append(iconButton('close', t("Remove path reference"), () => {
         draftReferences = draftReferences.filter(entry => entry.path !== reference.path); attachmentList(container, draftFiles, true, draftReferences); saveDraft(); updateControls();
       }));

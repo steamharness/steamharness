@@ -652,5 +652,9 @@
   "New Tool Instance": "新建工具标签",
   "Choose files": "选择文件",
   "Choose folders": "选择文件夹",
-  "Only local files and folders can be referenced.": "只能引用本地文件和文件夹。"
+  "Only local files and folders can be referenced.": "只能引用本地文件和文件夹。",
+  "Only absolute local file or folder paths can be opened.": "仅支持打开本地文件或文件夹的绝对路径。",
+  "Unable to open the folder in the file manager.": "无法在文件管理器中打开文件夹。",
+  "Only files and folders can be opened.": "仅支持打开文件和文件夹。",
+  "Unable to open the file or folder: {0}": "无法打开文件或文件夹：{0}"
 }

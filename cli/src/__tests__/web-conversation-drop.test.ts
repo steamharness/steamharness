@@ -14,6 +14,7 @@ const transfer = (data: Record<string, string>, extra: object = {}) => ({ types:
 
 afterEach(() => {
   window.dispatchEvent(new Event('pagehide'));
+  window.getSelection()?.removeAllRanges();
   for (const { target, type, listener, options } of listeners.splice(0)) target.removeEventListener(type, listener, options);
   vi.restoreAllMocks(); vi.unstubAllGlobals(); vi.useRealTimers(); document.body.replaceChildren(); document.documentElement.lang = 'en';
   for (const name of ['scrollIntoView', 'showPopover', 'hidePopover']) Reflect.deleteProperty(HTMLElement.prototype, name);
@@ -163,11 +164,49 @@ it.each(['en', 'zh-CN'])('renders removable file/folder cards, persists a path-o
   expect(cards[0].querySelector('.path-reference-icon')?.getAttribute('title')).toBe(language === 'en' ? 'Folder' : '文件夹');
   expect(host.setState.mock.calls.at(-1)![0].navigation.updates[0].draft.references).toEqual(references);
   expect(document.querySelector<HTMLButtonElement>('#send')!.disabled).toBe(false);
-  cards[1].querySelector<HTMLButtonElement>('button')!.click();
+  cards[1].querySelector<HTMLButtonElement>(':scope > .icon-button')!.click();
   expect(document.querySelectorAll('#draft-attachments .path-reference')).toHaveLength(1);
   document.querySelector<HTMLButtonElement>('#send')!.click();
   expect(f.requests('send').at(-1)).toMatchObject({ text: '', references: [references[0]] });
   expect(document.querySelectorAll('.message .path-reference').length).toBe(1);
+});
+
+it.each(['en', 'zh-CN'])('opens typed path cards in drafts and messages while keeping removal and text selection independent (%s)', async language => {
+  const f = await fixture(language), selected = f.choose('files');
+  const paths = [{ path: '/Desktop/preview-sample.DOCX', name: 'preview-sample.DOCX', kind: 'file' }, references[0]];
+  f.emit({ ...selected, type: 'files-selected', selection: { paths: paths.map(file => file.path), read: async () => [] } });
+  f.emit({ type: 'path-references', requestId: selected.requestId, projectUri: project.uri, sessionId: 'first', references: paths });
+  f.acknowledgeDraft();
+  const cards = document.querySelectorAll<HTMLElement>('#draft-attachments .path-reference');
+  expect(cards[0].querySelector('[data-file-type=document] .codicon-file-text')).not.toBeNull();
+  expect(cards[1].querySelector('[data-file-type=folder] .codicon-folder')).not.toBeNull();
+  const open = cards[0].querySelector<HTMLButtonElement>('.path-reference-open')!;
+  expect(open.type).toBe('button'); open.focus(); expect(document.activeElement).toBe(open);
+  expect(open.ariaLabel).toContain(language === 'en' ? 'Open file in Studio' : '在 Studio 中打开文件');
+  open.click(); cards[1].querySelector<HTMLButtonElement>('.path-reference-open')!.click();
+  expect(f.requests('open-path').map(message => message.path)).toEqual(paths.map(file => file.path));
+  const range = document.createRange(); range.selectNodeContents(cards[0].querySelector('.path-reference-path')!);
+  window.getSelection()!.removeAllRanges(); window.getSelection()!.addRange(range);
+  expect(window.getSelection()!.toString()).toBe(paths[0].path);
+  open.dispatchEvent(new MouseEvent('click', { bubbles: true, detail: 1 }));
+  expect(f.requests('open-path')).toHaveLength(2); window.getSelection()!.removeAllRanges();
+  cards[1].querySelector<HTMLButtonElement>(':scope > .icon-button')!.click();
+  expect(f.requests('open-path')).toHaveLength(2);
+  expect(document.querySelectorAll('#draft-attachments .path-reference')).toHaveLength(1);
+  document.querySelector<HTMLButtonElement>('#send')!.click();
+  document.querySelector<HTMLButtonElement>('.message .path-reference-open')!.click();
+  expect(f.requests('open-path').at(-1)).toMatchObject({ path: paths[0].path, projectUri: project.uri, sessionId: 'first' });
+});
+
+it('renders path names as copyable text without interpreting markup', async () => {
+  const f = await fixture(), selected = f.choose('files'), path = '/tmp/<img src=x onerror=alert(1)>.docx';
+  f.emit({ ...selected, type: 'files-selected', selection: { paths: [path], read: async () => [] } });
+  f.emit({ type: 'path-references', requestId: selected.requestId, projectUri: project.uri, sessionId: 'first', references: [{ path, kind: 'file' }] });
+  const card = document.querySelector('#draft-attachments .path-reference')!;
+  expect(card.querySelector('img')).toBeNull();
+  expect(card.querySelector('.path-reference-path')!.textContent).toBe(path);
+  card.querySelector<HTMLButtonElement>('.path-reference-open')!.click();
+  expect(f.requests('open-path').at(-1).path).toBe(path);
 });
 
 it('ignores a late drop result after switching away and back, and accepts a new drop for the current draft', async () => {

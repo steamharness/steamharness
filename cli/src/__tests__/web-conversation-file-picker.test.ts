@@ -129,3 +129,24 @@ it('emits native cancellation and errors with the original project and conversat
   f.receive({ pathSelection: { version: 1, ...f.request, paths: [], error: 'Native denied' } });
   expect(f.messages().at(-1)).toMatchObject({ type: 'error', requestType: 'select-paths', projectUri: f.request.projectUri, sessionId: 'one', message: 'Native denied' });
 });
+
+it('opens referenced paths through the authenticated Studio bridge and reports scoped failures', async () => {
+  const f = hostFixture(), request = { type: 'open-path', path: '/Desktop/a b.docx', projectUri: 'file:///project', sessionId: 'one' };
+  f.receive({ pathOpenVersion: 1 }, {}); await f.host.postMessage(request);
+  expect(f.sent).toHaveLength(0); expect(f.messages().at(-1)).toMatchObject({ type: 'error', requestType: 'open-path' });
+  f.receive({ pathOpenVersion: 1 }); await f.host.postMessage(request);
+  const sent = f.sent.at(-1);
+  expect(sent).toMatchObject({ type: 'workflow-path-open', version: 1, path: request.path });
+  const reply = { version: 1, requestId: sent.requestId, error: 'File moved' }, before = f.messages().length;
+  f.receive({ pathOpened: reply }, {}); f.receive({ pathOpened: { ...reply, version: 2 } }); f.receive({ pathOpened: { ...reply, requestId: 'foreign' } });
+  expect(f.messages()).toHaveLength(before);
+  f.receive({ pathOpened: reply }); expect(f.messages().at(-1)).toMatchObject({ type: 'error', requestType: 'open-path', projectUri: request.projectUri, sessionId: request.sessionId, message: reply.error });
+  f.receive({ pathOpened: reply }); expect(f.messages()).toHaveLength(before + 1);
+  await f.host.postMessage(request); const success = f.sent.at(-1);
+  f.receive({ pathOpened: { version: 1, requestId: success.requestId } });
+  f.receive({ pathOpened: { version: 1, requestId: success.requestId, error: 'late' } }); expect(f.messages()).toHaveLength(before + 1);
+  await f.host.postMessage(request); f.close();
+  f.receive({ pathOpened: { version: 1, requestId: f.sent.at(-1).requestId, error: 'closed' } }); expect(f.messages()).toHaveLength(before + 1);
+  f.receive({ pathOpenVersion: 0 }); await f.host.postMessage(request);
+  expect(f.messages().at(-1).message).toContain('Open this conversation in Studio');
+});

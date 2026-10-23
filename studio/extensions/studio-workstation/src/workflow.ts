@@ -16,6 +16,7 @@ import type { ProjectVersionStatus } from './steamharness-server-projects';
 import { assistantWorkspaceAvailable } from './assistant-workspace';
 import { bindProjectClipboard } from './workflow-clipboard';
 import { bindProjectPathPicker } from './workflow-path-picker';
+import { bindProjectPathOpen } from './workflow-path-open';
 import { bindProjectResourceCards, type ResourceCardResult } from './workflow-resource-cards';
 import type { ProjectIcons } from './project-icons';
 import { openProjectFolder } from './project-window';
@@ -241,11 +242,12 @@ export async function activateProject(context: vscode.ExtensionContext, launcher
       let traceBinding = trace.bind(project, session.ready.traceProtocolVersion, panel.webview);
       const clipboardBinding = bindProjectClipboard(panel.webview);
       const pickerBinding = bindProjectPathPicker(panel.webview, vscode.Uri.file(project.folderPath));
+      const pathOpenBinding = bindProjectPathOpen(panel.webview);
       const resourceBinding = bindProjectResourceCards(panel.webview, () => session.ready.url, async result => {
         if (closed) { throw new Error(t('Unable to open the resource.')); }
         await openCard(result, project, session, address);
       });
-      listeners.push({ dispose: () => traceBinding.dispose() }, clipboardBinding, pickerBinding, resourceBinding, panel.webview.onDidReceiveMessage(message => {
+      listeners.push({ dispose: () => traceBinding.dispose() }, clipboardBinding, pickerBinding, pathOpenBinding, resourceBinding, panel.webview.onDidReceiveMessage(message => {
         if (message?.type === 'workflow-reconnect' && message.version === 1 && typeof message.requestId === 'string' && message.requestId.length <= 64) {
           void recoverable.reconnect().then(async restarted => {
             if (closed) return;
@@ -272,7 +274,7 @@ export async function activateProject(context: vscode.ExtensionContext, launcher
           }, () => undefined);
         }
         if (message?.type === 'workflow-account' && message.version === 1) { account.open(); }
-        else if (!clipboardBinding.receive(message) && !resourceBinding.receive(message) && !pickerBinding.receive(message)) { traceBinding.receive(message); }
+        else if (!clipboardBinding.receive(message) && !resourceBinding.receive(message) && !pickerBinding.receive(message) && !pathOpenBinding.receive(message)) { traceBinding.receive(message); }
       }));
       panel.webview.html = projectFrameHtml(address.href, project.name, project.uri, theme(), globalThis.crypto.randomUUID().replace(/-/g, ''), vscode.env.language, chromeFor(project.uri, 'viewType' in panel && panel.viewType === 'studio.project'), conversationView);
       if ('reveal' in panel) {

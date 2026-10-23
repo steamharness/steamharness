@@ -652,5 +652,9 @@
   "New Tool Instance": "New Tool Instance",
   "Choose files": "Choose files",
   "Choose folders": "Choose folders",
-  "Only local files and folders can be referenced.": "Only local files and folders can be referenced."
+  "Only local files and folders can be referenced.": "Only local files and folders can be referenced.",
+  "Only absolute local file or folder paths can be opened.": "Only absolute local file or folder paths can be opened.",
+  "Unable to open the folder in the file manager.": "Unable to open the folder in the file manager.",
+  "Only files and folders can be opened.": "Only files and folders can be opened.",
+  "Unable to open the file or folder: {0}": "Unable to open the file or folder: {0}"
 }

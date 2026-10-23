@@ -218,7 +218,20 @@ main { grid-area: main; min-width: 0; min-height: 0; display: flex; flex-directi
 .attachment { display: flex; align-items: center; gap: 8px; max-width: min(260px, 100%); padding: 4px 8px 4px 4px; border: 1px solid var(--border); border-radius: 6px; background: var(--vscode-editor-background); }
 .attachment > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; }
 .path-reference { padding: 6px 8px; max-width: min(360px, 100%); min-width: 0; box-sizing: border-box; }
+.path-reference-open { display: flex; align-items: center; gap: 8px; flex: 1; min-width: 0; padding: 2px 0; border: 0; border-radius: 3px; color: inherit; background: transparent; text-align: start; user-select: text; cursor: pointer; }
+.path-reference:has(.path-reference-open:hover) { background: var(--vscode-toolbar-hoverBackground); }
+.path-reference-open:focus-visible { outline: 1px solid var(--vscode-focusBorder); outline-offset: 3px; }
 .path-reference-icon { display: grid; place-items: center; flex: 0 0 24px; color: var(--muted); }
+.path-reference-icon .codicon { font-size: 22px; }
+[data-file-type=folder], [data-file-type=archive], [data-file-type=javascript], [data-file-type=python] { color: var(--vscode-symbolIcon-folderForeground, #c49a43); }
+[data-file-type=document], [data-file-type=typescript], [data-file-type=code] { color: var(--vscode-symbolIcon-classForeground, #5196d8); }
+[data-file-type=spreadsheet], [data-file-type=database] { color: var(--vscode-symbolIcon-enumForeground, #4baf80); }
+[data-file-type=presentation], [data-file-type=markup] { color: var(--vscode-symbolIcon-fieldForeground, #d88652); }
+[data-file-type=pdf] { color: var(--vscode-symbolIcon-operatorForeground, #df6666); }
+[data-file-type=image], [data-file-type=style], [data-file-type=font] { color: var(--vscode-symbolIcon-colorForeground, #b68acb); }
+[data-file-type=audio], [data-file-type=video], [data-file-type=notebook] { color: var(--vscode-symbolIcon-eventForeground, #bb83c4); }
+[data-file-type=json], [data-file-type=config], [data-file-type=key] { color: var(--vscode-symbolIcon-keyForeground, #b89c45); }
+[data-file-type=markdown], [data-file-type=formula], [data-file-type=book], [data-file-type=script], [data-file-type=package] { color: var(--vscode-symbolIcon-interfaceForeground, #4fa8ac); }
 .path-reference-description { display: grid; gap: 2px; min-width: 0; user-select: text; }
 .path-reference-description > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .path-reference-name { font-size: 12px; }

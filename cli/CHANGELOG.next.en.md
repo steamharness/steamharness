@@ -1,5 +1,7 @@
 # Unreleased
 
+- Improvement: Conversation file cards show icons for common document, code, media, and archive formats. In Studio, clicking a file opens its editor or document preview, and clicking a folder opens the system file manager, in both drafts and message history.
+
 - [Fixed] Keep completed replies and their original model names when changing configured models in Conversation and Studio Assistant. The next turn uses the new model; durable reconnection failures no longer overwrite historical replies, and completed output previously hidden by this configuration error is restored.
 
 - [Fixed] Conversation file selection and drag and drop now share file and folder import logic. Studio preserves original paths, browsers retain directory structure, and imports no longer depend on attachment type declarations.
