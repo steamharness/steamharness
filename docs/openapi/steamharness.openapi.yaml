@@ -1835,7 +1835,9 @@ paths:
       summary: Read account-scoped configurations for any project type
       description: Requires project read or source-download access and an account identity. Values are isolated by project and
         account. Download access only exposes the version template and permitted personal values. Official drafts
-        require the actual a maintainer, owner or system administrator. The Server never executes project code.
+        require an actual maintainer, owner or system administrator. For v2 projects, non-managers use the latest published template
+        for default or draft targets even with source-draft read access. Unpublished role-controlled configurations return
+        a publication-required error. The Server never executes project code.
       operationId: getProjectConfigurations
       parameters:
         - $ref: "#/components/parameters/ProjectName"
@@ -1856,7 +1858,8 @@ paths:
       summary: Manage or export account-scoped project configurations
       description: 个人配置可由任何访客使用，写入遵循已发布模板字段限制及 revision 校验；官方配置管理 publication.* 需要维护者或所有者。 / Guests may manage their own
         configurations subject to published field rules and revision checks. Official publication.* actions require
-        maintainer or owner access.
+        maintainer or owner access. For v2 personal configurations, default or draft targets resolve to the latest
+        published template for non-managers; role-controlled projects must be published first.
       operationId: manageProjectConfigurations
       parameters:
         - $ref: "#/components/parameters/ProjectName"

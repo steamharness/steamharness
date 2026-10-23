@@ -1627,3 +1627,5 @@ configuration.json v2 字段支持 sharing: {publish?, includeValue?, editable?}
 `configuration.json` v2 可声明 `profilePolicy: {version:1, defaultProfileKey, manageMinimumRole, profiles:[{key,name,minimumRole,fixedValues,description?,tags?}]}`，角色为 guest/developer/maintainer/owner，默认 profile 必须 guest。稳定 key、固定字段、权限与标签由源码维护，个人元数据、导入和旧逐轮参数不能放宽。访客仅见可访问的基础配置，只可编辑开放值；开发者可管理继承基础 profile 的个人配置。响应含集合 `capabilities` 和每配置 `configurationCapabilities`；小助手应先查能力，不能伪造角色。官方模板 v3 冻结此策略，旧宿主必须拒绝。
 
 `steamharness.getProjectConfiguration()` 返回本轮冻结的 `ProjectConfigurationSnapshot | undefined`，受限快照包含 `profileKey`、`profilePolicyVersion:1` 和宿主认证的 `accessSubject`。代码仍用 getConfig/context.config 读值；业务项目应检查宿主支持策略并拒绝输入中的模式覆盖。快照及持久恢复在发送、队列启动、恢复和工具执行前重新验证账号与在线角色。断网或退出登录仅有 Ask，不能继续历史 Build 任务，不清除历史对话与个人值。本地受限配置按应用、Server、账号隔离，同账号多窗口共享；只读参数发现复用缓存，不能把历史快照当作授权。
+
+显式传入和恢复的运行快照继续校验官方模板的字段及 JSON 子路径锁定；等待任务保留原已验证模板和值，恢复与工具执行仍须满足当前角色、固定模式和源码系统 AI 限制。源码系统 AI 限制与快照取更严格的规则，不能通过删除或放宽 `agentModelPolicy` 绕过。非模板管理者的 v2 Server 配置默认使用最新已发布模板，不因可读源码草稿而开放未发布字段；角色配置需要先发布模板。

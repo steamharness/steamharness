@@ -1,4 +1,5 @@
 export const server = {
+  configurationPublicationRequired: "Publish the project configuration template before using role-controlled configurations.",
   accessCreateLoginRequired: "Account login is required to create a project.",
   accessAccountStorageRequired: "Account storage is not configured.",
   accessCreateBeforeUpload: "Create an empty project before initializing its source.",

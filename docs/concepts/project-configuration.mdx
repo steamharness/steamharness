@@ -172,6 +172,7 @@ JSON 父路径不发布、子路径单独发布时，子路径仍保留继承的
 ### 发布接口与小助手
 
 - `GET /api/projects/:id/configurations` 返回个人配置、`fieldCapabilities` 与锁定原因；作者还会收到 `publication` 和当前 `sourceHash`。
+  对 v2 项目，非模板管理者的默认请求读取最新已发布模板，即使其有权读取源码草稿；尚未发布的角色配置会提示先发布模板。
 - `POST /api/projects/:id/configurations` 支持 `publication.save`（`revision` 加 `publication`，草稿包含自身 `revision`、字段、配置集和 `defaultConfigurationId`）和 `publication.preview`。草稿版本冲突返回 HTTP 409。
 - `GET /api/projects/:id/configurations/template?target=1.0.0` 只读取已发布模板。
 - `POST /api/projects/:id/configurations/files?target=1.0.0&key=background&fileName=map.png&mimeType=image/png` 按指定版本权限上传个人配置附件；`GET /api/projects/:id/configurations/files/:fileId?target=1.0.0` 只读取授权附件。
@@ -212,3 +213,5 @@ Studio Control 的 `get_configurations` 会返回权限，`preview: true` 返回
 提供的 `configuration` 与旧运行快照必须重新校验当前角色、账号、稳定标识和固定值；无权使用的配置明确拒绝，运行中的 Build 不会被改成 Ask 继续执行。官方发布模板使用版本 `3` 冻结策略；旧宿主应提示升级并拒绝执行。项目可使用 `steamharness.getProjectConfiguration()?.profilePolicyVersion` 检查宿主支持情况。个人导出和配置响应只含当前可见的配置与附件；源码分发仍使用作者冻结的完整官方模板，个人凭据不会自动发布。
 
 Server 依据实际认证身份及项目、群组角色授权，客户端提供的角色和标签无效。维护者及以上沿用官方模板管理权限。Studio Control 面板关闭时也使用同一服务；其只读模式另外拒绝写入。本规则不阻止用户修改自己的源码副本。
+
+显式传入及恢复的运行快照同样校验官方模板的字段与 JSON 子路径锁定，并合并当前源码的系统 AI 限制。等待任务随快照记录原已验证模板，升级后继续校验并使用原值；当前角色、固定模式和模型来源限制仍须满足新规则。快照不能通过省略或放宽 `agentModelPolicy` 接入第三方模型。

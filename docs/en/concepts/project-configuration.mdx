@@ -170,6 +170,7 @@ When source changes to an unverified template, configuration reads and writes re
 ### API and assistant access
 
 - `GET /api/projects/:id/configurations` returns personal profiles, `fieldCapabilities` and lock reasons; authors also receive `publication` and the current `sourceHash`.
+  For v2 projects, non-managers default to the latest published template even when they may read source drafts. Unpublished role-controlled configurations require publishing a template first.
 - `POST /api/projects/:id/configurations` accepts `publication.save` (`revision` plus `publication`, including its own `revision`, fields, profiles and `defaultConfigurationId`) and `publication.preview`. Draft conflicts return HTTP 409.
 - `GET /api/projects/:id/configurations/template?target=1.0.0` reads published templates only.
 - `POST /api/projects/:id/configurations/files?target=1.0.0&key=background&fileName=map.png&mimeType=image/png` uploads personal attachments using the specified version's permissions; `GET /api/projects/:id/configurations/files/:fileId?target=1.0.0` reads authorized attachments only.
@@ -210,3 +211,5 @@ Restricted local values are scoped by application, Server, and account, and shar
 Supplied `configuration` snapshots and resumed runs revalidate the current account, role, stable identity, and fixed assignments. Unauthorized profiles are rejected; an active Build task is never silently continued as Ask. Published templates freeze the policy using version `3`, which unsupported hosts must reject with an upgrade prompt. Projects can check `steamharness.getProjectConfiguration()?.profilePolicyVersion`. Personal exports and configuration responses include only visible profiles and attachments; source archives still carry the complete official template and never automatically include personal credentials.
 
 Server authorizes the actual authenticated actor and inherited roles, ignoring client roles and tags. Maintainers and above keep official template management. Studio Control uses the same service even with the panel closed; read-only mode additionally rejects writes. This policy does not prevent users from modifying their own source copies.
+
+Supplied and restored run snapshots also enforce official field and JSON-path locks and the current source system-only AI policy. Waiting runs record their verified template and retain its values across upgrades; the current role, fixed mode and model-source restrictions still apply. Omitting or relaxing `agentModelPolicy` cannot enable third-party models.

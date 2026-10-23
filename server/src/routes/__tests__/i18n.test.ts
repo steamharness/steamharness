@@ -90,6 +90,12 @@ test("localizeHttpErrorMessage maps stable legacy HttpError literals without cha
   );
 });
 
+test("unpublished role configuration guidance is localized", () => {
+  const message = "Publish the project configuration template before using role-controlled configurations.";
+  assert.equal(localizeServerMessage(message, getRequestT({ headers: { "x-steamharness-locale": "en" } })), message);
+  assert.equal(localizeServerMessage(message, getRequestT({ headers: { "x-steamharness-locale": "zh-CN" } })), "请先发布项目配置模板，再使用按角色控制的配置。");
+});
+
 test("localizeServerMessage maps dynamic server errors with captured parameters", () => {
   const zh = getRequestT({ headers: { "x-steamharness-locale": "zh-CN" } });
   assert.equal(

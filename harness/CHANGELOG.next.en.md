@@ -1,5 +1,7 @@
 # Unreleased
 
+- Fixed explicit and restored configuration snapshots to enforce source system-only AI restrictions and published field locks. Waiting runs retain their verified template and values while restores and tool calls still enforce the current role and fixed mode.
+
 - Added source-owned profile role policies and fixed assignments. Restricted local values are scoped by application, Server and account; execution, restores and tool calls recheck authority, with guest-only access offline.
 
 - Improvement: Share local project profiles, custom fields, values and active selection by application UUID across windows and installation directories. Adopt existing values on first use and keep run recovery snapshots scoped to their original directory.

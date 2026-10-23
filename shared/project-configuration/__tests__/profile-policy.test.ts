@@ -50,6 +50,36 @@ describe('role controlled configuration profiles',()=>{
     const ask=configurationSnapshot(s,'profile-ask');ask.values.mode='build';
     expect(()=>validateConfigurationSnapshotAccess(s,ask,guest)).toThrow(/fixed value/);
   });
+  it('keeps the source model restriction on supplied snapshots for both restricted and ordinary projects',()=>{
+    const ai={name:'STEAMHARNESS_AGENT_MODELS',type:'json' as const,control:'ai-models' as const,allowThirdParty:false};
+    for(const restricted of [false,true]) {
+      const plain=createConfigurationState([...fields,ai],()=> 'ordinary');
+      const s=restricted?bindConfigurationProfiles(plain,policy):plain;
+      const snapshot=configurationSnapshot(s,restricted?'profile-ask':undefined);
+      delete snapshot.agentModelPolicy;
+      expect(validateConfigurationSnapshotAccess(s,snapshot,guest).agentModelPolicy?.allowThirdParty).toBe(false);
+      snapshot.agentModelPolicy={allowThirdParty:true};
+      snapshot.values.STEAMHARNESS_AGENT_MODELS=[{id:'third',name:'Third',source:'third-party',apiKind:'openai-responses',model:'model',baseUrl:'https://must-not-run.test/v1',apiKey:'fixture-only'}];
+      expect(()=>validateConfigurationSnapshotAccess(s,snapshot,guest)).toThrow(/only allows system AI/);
+    }
+  });
+  it('validates template locks on snapshots, including JSON parent replacement',()=>{
+    const settings={name:'settings',type:'json' as const,defaultValue:{locked:0,open:false},sharing:{publish:true,includeValue:true},paths:{'/locked':{editable:false}}};
+    for(const restricted of [false,true]) {
+      const plain=createConfigurationState([...fields,settings],()=> 'ordinary');
+      const author=restricted?bindConfigurationProfiles(plain,policy):plain;
+      const template=freezeConfigurationTemplate(createPublicationDraft(author),{projectId:'project',projectVersion:'1',sourceHash:'0'.repeat(64)});
+      const downloaded=bindConfigurationTemplate(createConfigurationState([],()=> 'new'),template);
+      const profile=downloaded.configurations.find(profile=>!restricted||profile.profileKey==='ask')!;
+      const snapshot=configurationSnapshot(downloaded,profile.id);
+      const open={...snapshot,values:{...snapshot.values,settings:{locked:0,open:true}}};
+      expect(validateConfigurationSnapshotAccess(downloaded,open,guest).values.settings).toEqual({locked:0,open:true});
+      const forbidden:import('../index').ConfigurationValue[]=[{locked:1,open:false},{open:true},null];
+      for(const value of forbidden) {
+        expect(()=>validateConfigurationSnapshotAccess(downloaded,{...snapshot,values:{...snapshot.values,settings:value}},guest)).toThrow(/locked/);
+      }
+    }
+  });
   it('freezes policy into a version 3 template and filters hidden template values from responses',()=>{
     const draft=createPublicationDraft(state());
     const template=freezeConfigurationTemplate(draft,{projectId:'project',projectVersion:'1',sourceHash:'0'.repeat(64)});

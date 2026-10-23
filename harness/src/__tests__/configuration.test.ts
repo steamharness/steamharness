@@ -213,8 +213,14 @@ test("unverified source upgrades reject reads and writes without falling back to
     await cacheVerifiedConfigurationTemplate(next,[],{cacheDir});
     state=await store.read();assert.equal(state.template?.projectVersion,'2.0.0');
     assert.deepEqual((await store.snapshot()).values.settings,{locked:2,open:9});
+    assert.deepEqual(await store.snapshot({runId:'waiting'}),waiting);
     await rm(sourceFile);
     assert.deepEqual((await store.snapshot()).values.settings,{locked:2,open:9});
+    const frozenFile=path.join(rootDir,'snapshots',key,createHash('sha256').update('waiting').digest('hex')+'.json');
+    const persisted=JSON.parse(await readFile(frozenFile,'utf8'));
+    persisted.snapshot.values.settings.locked=3;
+    await writeFile(frozenFile,JSON.stringify(persisted));
+    await assert.rejects(store.snapshot({runId:'waiting'}),/locked/);
   } finally {await rm(root,{recursive:true,force:true});}
 });
 

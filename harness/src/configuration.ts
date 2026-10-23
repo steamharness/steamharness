@@ -134,7 +134,13 @@ export async function createLocalProjectConfigurationStore(projectDir: string, o
 
 /** Rechecked before a restricted tool executes; a saved run is not an authorization grant. */
 export async function assertProjectConfigurationAccess(projectDir:string,configuration=getProjectConfiguration()):Promise<void>{
-  if(configuration?.profilePolicyVersion!==undefined)await (await createLocalProjectConfigurationStore(projectDir)).snapshot({configuration,required:false});
+  if(configuration?.profilePolicyVersion!==undefined) {
+    const state=await (await createLocalProjectConfigurationStore(projectDir)).read(true);
+    const capability=state.capabilities;
+    // The run boundary has verified frozen template values. Tool boundaries
+    // recheck current authority without replacing those values after an upgrade.
+    validateConfigurationSnapshotAccess({...state,template:undefined},configuration,capability?{subject:capability.subject,role:capability.role,online:capability.online}:undefined);
+  }
 }
 export async function assertCurrentProjectConfigurationAccess():Promise<void>{
   const snapshot=getProjectConfiguration();
@@ -160,7 +166,11 @@ async function createProjectConfigurationStoreForIdentity(projectDir: string, op
     if (!definition.fields.some(field => field.name === AGENT_MODELS_CONFIGURATION_KEY) && discoverProjectAgentModels(directory, agentModelSources)) definition.fields.unshift({...structuredClone(AGENT_MODELS_CONFIGURATION_FIELD),...definition.agentModelPolicy});
     return definition;
   };
-  const load = async (): Promise<ProjectConfigurationState> => {
+  const verifiedTemplate = async (value: ProjectConfigurationTemplate): Promise<boolean> => {
+    try { return isDeepStrictEqual(JSON.parse(await readFile(configurationTemplateCachePath(value,options.templateCacheDir), "utf8")),value); }
+    catch(error) { if((error as NodeJS.ErrnoException).code==='ENOENT')return false;throw error; }
+  };
+  const load = async (restoring = false): Promise<ProjectConfigurationState> => {
     let stored: unknown;
     try { stored = JSON.parse(await readFile(filename, "utf8")); }
     catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error; }
@@ -179,14 +189,14 @@ async function createProjectConfigurationStoreForIdentity(projectDir: string, op
         template = (stored as ProjectConfigurationState | undefined)?.template;
       } else {
         const candidate = parseConfigurationTemplate(JSON.parse(source));
-        let cached: unknown;
-        try { cached = JSON.parse(await readFile(configurationTemplateCachePath(candidate,options.templateCacheDir), "utf8")); }
-        catch (error) {
-          if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
-          throw new ProjectConfigurationError("Download this configuration version online before using it offline.");
+        if(await verifiedTemplate(candidate))template=candidate;
+        else {
+          // Waiting runs may keep the last verified version while a new source
+          // download is incomplete. New reads and writes still require it.
+          const previous=(stored as ProjectConfigurationState|undefined)?.template;
+          if(!restoring||!previous||!await verifiedTemplate(previous))throw new ProjectConfigurationError("Download this configuration version online before using it offline.");
+          template=parseConfigurationTemplate(previous);
         }
-        if (JSON.stringify(cached) !== JSON.stringify(candidate)) throw new ProjectConfigurationError("Download this configuration version online before using it offline.");
-        template = candidate;
       }
     }
     if(options.template===null && stored) delete (stored as ProjectConfigurationState).template;
@@ -246,15 +256,26 @@ async function createProjectConfigurationStoreForIdentity(projectDir: string, op
       const runFile = snapshotOptions.runId ? path.join(root, "snapshots", runKey, `${createHash("sha256").update(snapshotOptions.runId).digest("hex")}.json`) : undefined;
       if (runFile) return exclusive(async () => {
         try {
-          const saved=parseSnapshot(JSON.parse(await readFile(runFile, "utf8")));
-          return options.profilePolicy||saved.profilePolicyVersion!==undefined?validateConfigurationSnapshotAccess(await load(),saved,options.access):saved;
+          const persisted=JSON.parse(await readFile(runFile, "utf8"));
+          const wrapped=persisted && typeof persisted==='object' && !Array.isArray(persisted) && Object.hasOwn(persisted,'snapshot');
+          const saved=parseSnapshot(wrapped?persisted.snapshot:persisted);
+          let state=await load(true);
+          if(wrapped) {
+            // Values stay frozen to the run's verified template. Authority and
+            // model restrictions still come from the current project state.
+            const template=parseConfigurationTemplate(persisted.template);
+            const trusted=isDeepStrictEqual(template,state.template)||await verifiedTemplate(template);
+            if(!trusted || template.projectId!==state.template?.projectId || !template.configurations.some(profile=>profile.id===persisted.templateId))throw new ProjectConfigurationError('Invalid run configuration snapshot.');
+            state={...state,template,fields:template.fields,configurations:state.configurations.map(profile=>profile.id===saved.id?{...profile,templateId:persisted.templateId}:profile)};
+          }
+          return validateConfigurationSnapshotAccess(state,saved,options.access);
         }
         catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error; }
         if (snapshotOptions.requireExisting && options.profilePolicy) throw new ProjectConfigurationError('This restricted run has no verified configuration snapshot. Start a new task.', 'CONFIGURATION_FORBIDDEN');
         const state=await load();
         if(snapshotOptions.id && state.profilePolicy && !configurationAccessView(state,options.access).configurations.some(profile=>profile.id===snapshotOptions.id))throw new ProjectConfigurationError('This configuration is not available to this account.','CONFIGURATION_FORBIDDEN');
         const snapshot = validateConfigurationSnapshotAccess(state,provided ?? configurationSnapshot(configurationAccessView(state,options.access), snapshotOptions.id, snapshotOptions.required !== false),options.access);
-        await atomic(runFile, snapshot);
+        await atomic(runFile, state.template ? {snapshot,template:state.template,templateId:state.configurations.find(profile=>profile.id===snapshot.id)?.templateId??state.template.defaultConfigurationId} : snapshot);
         return snapshot;
       });
       const state=await exclusive(load);

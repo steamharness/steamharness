@@ -236,6 +236,17 @@ function assertProfileAction(state: ProjectConfigurationState, call: ProjectConf
 }
 
 export function validateConfigurationSnapshotAccess(state: ProjectConfigurationState, snapshot: ProjectConfigurationSnapshot, access?: ConfigurationAccess): ProjectConfigurationSnapshot {
+  // Imported and persisted snapshots carry values, never permission to relax
+  // restrictions declared by the current project or its official template.
+  const agentModelPolicy=configurationAgentModelPolicy(state,{fields:[],agentModelPolicy:snapshot.agentModelPolicy});
+  if(agentModelPolicy?.allowThirdParty===false)parseAgentModels(snapshot.values[AGENT_MODELS_CONFIGURATION_KEY]??[],agentModelPolicy);
+  if(agentModelPolicy)snapshot={...snapshot,agentModelPolicy};
+  if(state.template) {
+    const profile=state.configurations.find(item=>item.id===snapshot.id);
+    if(!profile)throw new ProjectConfigurationError('This run configuration is not available to this account.','CONFIGURATION_FORBIDDEN');
+    const baseline=applyTemplateValues(state,profile,{});
+    for(const field of state.template.fields)assertEditableDifference(field,baseline[field.name],snapshot.values[field.name]);
+  }
   if(!state.profilePolicy) {
     if(snapshot.profilePolicyVersion!==undefined)throw new ProjectConfigurationError('The snapshot requires a configuration profile policy.','CONFIGURATION_FORBIDDEN');
     return snapshot;

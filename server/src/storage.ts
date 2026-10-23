@@ -2616,6 +2616,13 @@ export class Storage {
       let profilePolicy:ConfigurationProfilePolicy|undefined;
       try { const definition = readProjectConfigurationDefinition(source.sourceDir); fields = definition.fields; definitionVersion = definition.version; agentModelPolicy=definition.agentModelPolicy;profilePolicy=definition.profilePolicy; }
       catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error; }
+      // Personal values use the released template. Reading source drafts does
+      // not grant access to an author's unpublished configuration fields.
+      if (!canManagePublication && definitionVersion === 2 && source.resolvedTarget === 'draft') {
+        const latest = await this.readLatest(options.projectName);
+        if (latest) return this.projectConfigurationsUnlocked({...options,target:latest},call);
+        if (profilePolicy) throw new ProjectConfigurationError('Publish the project configuration template before using role-controlled configurations.');
+      }
       const template = !canManagePublication && source.resolvedTarget !== 'draft' ? await this.configurationTemplate(options.projectName,source.resolvedTarget) : undefined;
       agentModelPolicy=configurationAgentModelPolicy({fields,agentModelPolicy},template??{fields:[]});
       profilePolicy=template?.profilePolicy??profilePolicy;

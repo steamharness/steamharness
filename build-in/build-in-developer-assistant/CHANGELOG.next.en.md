@@ -1,5 +1,7 @@
 # Unreleased
 
+- Fixed project-generation guidance to require official field locks and source system-only AI restrictions on supplied and restored snapshots.
+
 - Updated generator references with source-owned profile policies and snapshot authorization; per-turn parameters must not override fixed modes.
 
 - Clarified in generation guidance that system-only policy survives hidden model fields and cannot be relaxed by older drafts or templates.

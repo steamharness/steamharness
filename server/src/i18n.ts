@@ -27,6 +27,7 @@ export type ServerT = (
 let serverI18nStarted = false;
 
 const STABLE_ERROR_MESSAGE_KEYS: Readonly<Record<string, string>> = Object.freeze({
+  "Publish the project configuration template before using role-controlled configurations.": "server:configurationPublicationRequired",
   "Account login is required to create a project.": "server:accessCreateLoginRequired",
   "Account storage is not configured.": "server:accessAccountStorageRequired",
   "Create an empty project before initializing its source.": "server:accessCreateBeforeUpload",

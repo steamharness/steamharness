@@ -60,6 +60,8 @@ test('PostgreSQL configuration profiles use inherited project roles, preserve pe
     const developer={...guest,actorId:'developer',actor:{userId:'developer',isSystemAdmin:false}};
     state=await storage.projectConfigurations(developer,{action:'get'}) as ProjectConfigurationState;
     assert.equal(state.capabilities!.role,'developer');
+    const defaultState=await storage.projectConfigurations({...developer,target:undefined},{action:'get'}) as ProjectConfigurationState;
+    assert.deepEqual(defaultState.configurations.map(profile=>profile.profileKey),['ask','build']);
     const buildId=state.configurations.find(profile=>profile.profileKey==='build')!.id;
     state=await storage.projectConfigurations(developer,{action:'select',id:buildId,revision:state.revision}) as ProjectConfigurationState;
     state=await storage.projectConfigurations(developer,{action:'save',id:buildId,values:{model:'personal-model'},revision:state.revision}) as ProjectConfigurationState;

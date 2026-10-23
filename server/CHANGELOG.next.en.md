@@ -1,5 +1,7 @@
 # Unreleased
 
+- Fixed default personal configurations for developers to use published templates instead of filtered drafts; unpublished role-controlled configurations explain that publication is required.
+
 - Added authoritative project and inherited group role checks for configuration use and management. Responses, exports and attachments are filtered; version 3 templates freeze role policies and fixed assignments.
 
 - Fixed publication drafts, previews and distributed templates honoring source system-only restrictions. Drafts cannot relax policy, and excluded historical third-party values do not block publication.

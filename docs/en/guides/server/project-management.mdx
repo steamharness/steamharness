@@ -85,3 +85,5 @@ Configuration authors use the separate **Publication and permissions** tab to se
 After selecting a published version, users can read and edit permitted personal configurations even when the project has no draft. Draft publication checks are returned only when reading the draft.
 
 Projects declaring `profilePolicy` filter configurations using actual project and inherited group roles. Guests see only guest base profiles such as Ask and may edit permitted values, while developers may use Build and manage personal profiles. Personal requests cannot change fixed modes, role labels, or minimum roles. Configuration responses, personal exports, and attachment reads share these checks. See [Project configurations](/en/concepts/project-configuration).
+
+Personal configurations for v2 projects default to the latest published template. Source-draft access does not expose unpublished author fields or defaults. Maintainers, owners and system administrators retain official draft management. Role-controlled configurations must have a published template before developers use them.

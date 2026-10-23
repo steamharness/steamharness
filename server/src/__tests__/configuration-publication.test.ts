@@ -17,6 +17,7 @@ test('role profiles filter guest responses and exports and enforce writes in the
     {key:'build',name:'Build',minimumRole:'developer',fixedValues:{mode:'build'}},
   ]});
   try{
+    await assert.rejects(storage.projectConfigurations({...options,actorId:'developer'},{action:'get'}),/Publish the project configuration template/);
     const author=await storage.projectConfigurations(options,{action:'get'}) as ProjectConfigurationState;
     assert.deepEqual(author.configurations.map(profile=>profile.profileKey),['ask','build']);
     await storage.projectConfigurations(options,{action:'publication.save',revision:author.revision,publication:author.publication});
@@ -42,6 +43,8 @@ test('role profiles filter guest responses and exports and enforce writes in the
     developer=await storage.projectConfigurations(devOptions,{action:'select',revision:developer.revision,id:build.id}) as ProjectConfigurationState;
     assert.equal(configurationSnapshot(developer).values.mode,'build');
     assert.equal(configurationSnapshot(developer).values.model,undefined);
+    const defaultDeveloper=await storage.projectConfigurations({...devOptions,target:undefined},{action:'get'}) as ProjectConfigurationState;
+    assert.deepEqual(defaultDeveloper.configurations.map(profile=>profile.profileKey),['ask','build']);
   }finally{await rm(root,{recursive:true,force:true});}
 });
 async function fixture(fields:ProjectConfigurationField[],profilePolicy?:ConfigurationProfilePolicy) {

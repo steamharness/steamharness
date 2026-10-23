@@ -1,5 +1,7 @@
 # Unreleased
 
+- Fixed project starts and restores to retain source system-only AI restrictions and official template field locks when using supplied or saved run snapshots.
+
 - Added role-filtered configuration lists with capability, role and active-state labels. Guests edit allowed values only; mode labels follow the selected profile, and drafts survive access changes.
 
 - [Improved] Conversation and Assistant file and folder references use compact icon-and-name tags that wrap horizontally and show the full path on hover. Sent tags appear with the text inside the same user message bubble.
