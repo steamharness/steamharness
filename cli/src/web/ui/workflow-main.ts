@@ -47,7 +47,7 @@ app.innerHTML = `
     <section id="workflow-form" class="workflow-form" aria-label="${t("Entrypoint parameters")}"><div class="workflow-form-top"><div id="input-mode" class="input-mode" role="group" aria-label="${t("Parameter mode")}"><button data-mode="form" aria-pressed="true">${t("Form")}</button><button data-mode="raw" aria-pressed="false">JSON</button></div><button id="refresh-params" class="icon-button" title="${t("Refresh parameters")}" aria-label="${t("Refresh parameters")}">${iconHtml('refresh')}</button></div><div id="main-fields" class="workflow-main-fields"></div><textarea id="raw-args" aria-label="${t("JSON argument array")}" spellcheck="false" rows="4" hidden></textarea><div id="parameter-error" class="error" role="alert" hidden></div><div class="workflow-form-bottom"><div id="parameter-actions" class="parameter-actions"></div><span id="parameter-status" class="parameter-status" hidden>${iconHtml('loading')}</span><button id="run" class="workflow-run-button">${iconHtml('play')}<span>${t("Run")}</span></button></div></section>
   </main><dialog id="history-dialog" class="conversation-dialog"><header><label class="history-search">${iconHtml('search')}<input id="search-history" type="search" placeholder="${t("Search runs")}" aria-label="${t("Search runs")}"></label><button id="close-history" class="icon-button" title="${t("Close")}" aria-label="${t("Close")}">${iconHtml('close')}</button></header><div id="search-results" class="dialog-body"></div><button id="search-more" class="all-history" hidden>${t("Load more")}</button></dialog>
   <dialog id="node-dialog" class="conversation-dialog"><header><h2 id="node-title"></h2><button id="close-node" class="icon-button" title="${t("Close")}" aria-label="${t("Close")}">${iconHtml('close')}</button></header><pre id="node-detail" class="dialog-body web-preview"></pre></dialog>`;
-mountProjectConfigurations(host);
+const configurationPanel = mountProjectConfigurations(host);
 const element = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
 const traceButton = iconButton('history', t("Trace"), () => post({ type: 'trace', runId: state?.run?.id }));
 traceButton.id = 'open-trace'; document.querySelector('.run-heading-actions')!.prepend(traceButton);
@@ -70,6 +70,7 @@ const draft = (): Draft => drafts[entrypointId ?? ''] ??= { scopeId: '', values:
 const disabled = () => !connected || !!state?.running || submitting || !!state?.project.requiresLogin && state.account.status !== 'authenticated';
 const fields = new Fields(element('main-fields'), element('parameter-actions'), {
   values: () => draft().values, states: () => paramStates, disabled, loading: () => resolving,
+  modelConfigurationRequired: () => configurationPanel.needsAgentModels(), configureModel: () => configurationPanel.openAgentModels(),
   change: (name, value) => { draft().values[name] = value; fields.update(); scheduleResolve({ kind: 'param', paramName: name }); },
   file: name => post({ type: 'attach', entrypointId, paramName: name, accept: parameters().fields.find(field => field.name === name)?.accept }),
 });

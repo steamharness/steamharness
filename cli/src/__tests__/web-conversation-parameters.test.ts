@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { afterEach, expect, it, vi } from 'vitest';
 import type { ConversationSession, ParamState, Project } from '../web/workflow-types';
+import { AGENT_MODELS_CONFIGURATION_FIELD, AGENT_MODELS_CONFIGURATION_KEY, createConfigurationState, applyConfigurationAction, type ProjectConfigurationState } from '@steamharness/project-configuration';
 
 const host = vi.hoisted(() => ({ postMessage: vi.fn(), getState: vi.fn(), setState: vi.fn() }));
 vi.mock('../web/ui/host', () => ({ acquireProjectHost: () => host }));
@@ -12,6 +13,8 @@ afterEach(() => {
   for (const { target, type, listener, options } of listeners.splice(0)) target.removeEventListener(type, listener, options);
   vi.restoreAllMocks(); vi.unstubAllGlobals(); vi.useRealTimers(); document.body.replaceChildren();
   Reflect.deleteProperty(HTMLElement.prototype, 'scrollIntoView');
+  Reflect.deleteProperty(HTMLDialogElement.prototype, 'showModal');
+  Reflect.deleteProperty(HTMLDialogElement.prototype, 'close');
 });
 
 async function fixture({ dynamic = true, resolveOnInput = false, running = false, requiredModel = false, savedState }: {
@@ -28,6 +31,8 @@ async function fixture({ dynamic = true, resolveOnInput = false, running = false
   vi.stubGlobal('ResizeObserver', class { observe() {} disconnect() {} });
   vi.stubGlobal('matchMedia', () => ({ matches: false, addEventListener() {} }));
   Object.defineProperty(HTMLElement.prototype, 'scrollIntoView', { configurable: true, value: vi.fn() });
+  Object.defineProperty(HTMLDialogElement.prototype, 'showModal', { configurable: true, value: function (this: HTMLDialogElement) { this.open = true; } });
+  Object.defineProperty(HTMLDialogElement.prototype, 'close', { configurable: true, value: function (this: HTMLDialogElement) { this.open = false; this.dispatchEvent(new Event('close')); } });
   const matches = Element.prototype.matches;
   vi.spyOn(Element.prototype, 'matches').mockImplementation(function (this: Element, selector) {
     return selector === ':popover-open' ? false : matches.call(this, selector);
@@ -53,7 +58,7 @@ async function fixture({ dynamic = true, resolveOnInput = false, running = false
     ] }, entrypoints: [], conversation: { inputQueue: { enabled: true } },
   };
   const sessions: ConversationSession[] = ['first', 'second'].map(id => ({ id, title: id, messages: [], createdAt: 1, updatedAt: 1 }));
-  let state = { type: 'state', project, sessions, activeId: 'first', running, authenticationRevision: 1, parameterRevision: 1, serverInstanceId: 'instance' };
+  let state = { type: 'state', project, sessions, activeId: 'first', running, authenticationRevision: 1, parameterRevision: 1, serverInstanceId: 'instance', configurations: undefined as ProjectConfigurationState | undefined };
   const emit = (message: object) => window.dispatchEvent(new MessageEvent('message', { data: message }));
   host.postMessage.mockImplementation(message => {
     if (message.type === 'navigate') queueMicrotask(() => emit({ ...message, type: 'navigated', activeId: message.id }));
@@ -86,6 +91,28 @@ it('renders static parameters without a worker or loading state while typing and
   f.receive({ running: false });
   expect(f.requests()).toHaveLength(0); expect(f.loading()).toBe(false);
   expect(f.input.value).toBe('next turn');
+});
+
+it('guides an empty Agent model list to the active configuration and preserves the message draft', async () => {
+  const f=await fixture();f.reply({model:{value:null,resolvedOptions:[]}});
+  const configurations=createConfigurationState([AGENT_MODELS_CONFIGURATION_FIELD],()=> 'current');
+  f.sessions[0]={...f.sessions[0],messages:[{id:'failed',role:'assistant',content:'',status:'failed',error:'Add a model in Project configurations before running the Agent.'}]};
+  f.receive({configurations,sessions:[...f.sessions]});f.type('Keep my message');
+  expect(f.action('ai').textContent).toContain('Configure model');expect(f.action('ai').disabled).toBe(false);
+  const errorAction=document.querySelector<HTMLButtonElement>('.configure-model-message')!;
+  expect(errorAction.hidden).toBe(false);
+  f.action('ai').focus();f.action('ai').click();
+  const request=host.postMessage.mock.calls.map(([message])=>message).find(message=>message.type==='project-configuration'&&message.call.action==='get');
+  f.emit({type:'project-configuration-result',requestId:request.requestId,value:configurations});await Promise.resolve();
+  const dialog=document.querySelector<HTMLDialogElement>('.project-configurations')!;
+  expect(dialog.open).toBe(true);expect(document.querySelector<HTMLElement>('.configuration-body')!.hidden).toBe(false);
+  expect(document.activeElement?.textContent).toBe('System AI');expect(f.input.value).toBe('Keep my message');
+  dialog.close();expect(document.activeElement).toBe(f.action('ai'));
+  const saved=applyConfigurationAction(configurations,{action:'save',id:'current',revision:configurations.revision,values:{[AGENT_MODELS_CONFIGURATION_KEY]:[
+    {id:'saved',name:'Saved model',model:'example',source:'third-party',apiKind:'openai-completions',baseUrl:'https://models.example/v1',apiKey:'test-only-key'},
+  ]}}, () => crypto.randomUUID());
+  f.receive({configurations:saved,parameterRevision:2});f.reply({model:{value:'saved',resolvedOptions:[{value:'saved',label:'Saved model'}]}});
+  expect(f.action('ai').textContent).toContain('Saved model');expect(errorAction.hidden).toBe(true);expect(f.input.value).toBe('Keep my message');
 });
 
 it('loads dynamic parameters once and reuses the per-conversation cache on navigation', async () => {

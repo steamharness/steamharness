@@ -59,7 +59,7 @@ function initialize(): void {
       <button class="session-action" data-action="delete" role="menuitem" tabindex="-1">${icon('trash')}<span>${t("Delete conversation")}</span></button>
     </div>`;
 
-  mountProjectConfigurations(vscode);
+  const configurationPanel = mountProjectConfigurations(vscode);
 
   interface State { project: Project; sessions: ConversationSession[]; activeId: string; running: boolean; conversationAccess?: { readOnly: boolean }; parameterValues?: Record<string, ParamValues>; account?: AccountState; authenticationRevision?: number; parameterRevision?: number; serverInstanceId?: string }
   interface FieldView {
@@ -74,6 +74,7 @@ function initialize(): void {
     attachments: HTMLDivElement; promptRoot: HTMLDivElement; prompt?: InputPrompt;
     extrasSignature?: string;
     connection?: HTMLDivElement;
+    configureModel?: HTMLButtonElement;
   }
   interface SavedNavigation { projectUri: string; activeId: string; updates: ConversationDraftUpdate[] }
   interface NavigationRequest { requestId: number; activeId: string; updates: ConversationDraftUpdate[]; refreshParameters: boolean }
@@ -189,9 +190,10 @@ function initialize(): void {
   const stopFeedback = document.createElement('div'); stopFeedback.id = 'stop-feedback'; stopFeedback.hidden = true;
   document.querySelector('.composer-area')!.prepend(stopFeedback);
   const parameterActions = new ParameterActions(document.querySelector('#parameter-actions')!, {
-    current: () => ({ values: values(), states: paramStates, disabled: busy(), loading: parametersLoading() }),
+    current: () => ({ values: values(), states: paramStates, disabled: busy(), loading: parametersLoading(), modelConfigurationRequired: configurationPanel.needsAgentModels() }),
     fieldRoot: (name) => fields.get(name)!.root,
     onChange: (name, value) => setFieldValue(name, value),
+    onConfigureModel: () => configurationPanel.openAgentModels(),
     onReset: (names) => {
       for (const name of names) {
         const field = fields.get(name)!.field;
@@ -881,6 +883,10 @@ function initialize(): void {
     };
     root.querySelector<HTMLButtonElement>('.copy-message')!.addEventListener('click', (event) => copy(view.message.content, event.currentTarget as HTMLButtonElement));
     if (message.role === 'assistant') {
+      view.configureModel = iconButton('settings-gear', t('Configure model'), () => configurationPanel.openAgentModels());
+      view.configureModel.append(document.createTextNode(t('Configure model')));
+      view.configureModel.classList.add('configure-model-message'); view.configureModel.hidden = true;
+      root.querySelector('.message-actions')!.append(view.configureModel);
       view.output = new ConversationOutput(view.content, {
         composer: true,
         copy, plan: (text) => dialogs.plan(text), file: (id) => post({ type: 'open-file', id }),
@@ -948,6 +954,7 @@ function initialize(): void {
     const error = message.status === 'running' || message.status === 'sending' ? undefined : message.error;
     view.error.textContent = error ?? '';
     view.error.hidden = !error;
+    if (view.configureModel) view.configureModel.hidden = !error || !configurationPanel.needsAgentModels() || !currentParameters().fields.some(field => field.name === 'model');
     view.root.querySelector<HTMLButtonElement>('.copy-message')!.disabled = !message.content;
     const fork = view.root.querySelector<HTMLButtonElement>('.fork-message');
     if (fork) { fork.hidden = !state?.project.conversation?.durable?.enabled || !message.entryId; fork.disabled = !connectionAvailable; }

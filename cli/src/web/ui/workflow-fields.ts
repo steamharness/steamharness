@@ -13,6 +13,8 @@ interface Options {
   change(name: string, value: ParamValue): void;
   file(name: string): void;
   downloadFile?(id: string): void;
+  modelConfigurationRequired?(): boolean;
+  configureModel?(): void;
 }
 interface FieldView { field: Field; root: HTMLElement; controls: (HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement)[]; signature?: string }
 
@@ -22,9 +24,10 @@ export class Fields {
   private readonly actions: ParameterActions;
   constructor(private readonly root: HTMLElement, actions: HTMLElement, private readonly options: Options) {
     this.actions = new ParameterActions(actions, {
-      current: () => ({ values: options.values(), states: options.states(), disabled: options.disabled(), loading: options.loading() }),
+      current: () => ({ values: options.values(), states: options.states(), disabled: options.disabled(), loading: options.loading(), modelConfigurationRequired: options.modelConfigurationRequired?.() }),
       fieldRoot: name => this.fields.get(name)!.root,
       onChange: (name, value) => options.change(name, value),
+      onConfigureModel: options.configureModel,
       onReset: names => { for (const name of names) { options.change(name, projectParamValue(this.fields.get(name)!.field)); } },
     });
   }

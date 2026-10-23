@@ -55,7 +55,7 @@ function fixture() {
     observe() {}
   });
   const state = { values: { model: 'long', permission: 'auto' } as ParamValues,
-    states: {} as Record<string, ParamState>, disabled: false, loading: false };
+    states: {} as Record<string, ParamState>, disabled: false, loading: false, modelConfigurationRequired: false };
   const parameters: Parameters = { fields: [
     { name: 'model', type: 'string', control: 'select', options: [{ value: 'long', label: 'A long selected model' }, { value: 'short', label: 'Short' }] },
     { name: 'permission', label: 'Permission', type: 'string', control: 'select', defaultValue: 'auto', options: [
@@ -74,8 +74,9 @@ function fixture() {
     }
     actions.update();
   });
+  const onConfigureModel = vi.fn();
   const actions = new ParameterActions(container as unknown as HTMLElement, { current: () => state,
-    fieldRoot: () => new Element() as unknown as HTMLElement, onChange, onReset });
+    fieldRoot: () => new Element() as unknown as HTMLElement, onChange, onReset, onConfigureModel });
   const flush = () => { for (const callback of frames.splice(0)) { callback(0); } };
   const resize = (width: number) => {
     container.clientWidth = width;
@@ -83,10 +84,26 @@ function fixture() {
     flush();
   };
   actions.render(parameters); flush();
-  return { actions, parameters, container, state, resize, flush, frames, popup: documentState.body.children[0], documentState, onChange, onReset };
+  return { actions, parameters, container, state, resize, flush, frames, popup: documentState.body.children[0], documentState, onChange, onReset, onConfigureModel };
 }
 
 describe('Quick parameter triggers', () => {
+  it('turns an empty configured-model selector into a setup shortcut and restores choices after saving', () => {
+    const f = fixture(), button = f.container.children[0];
+    f.state.states.model = { resolvedOptions: [] };f.state.values.model='';
+    f.state.modelConfigurationRequired = true; f.state.loading = true; f.actions.update();
+    expect(button.disabled).toBe(false);expect(button.ariaLabel).toContain('Configure model');
+    expect(button.attributes.get('aria-haspopup')).toBe('dialog');
+    expect(button.attributes.get('aria-controls')).toBe('project-configurations-dialog');
+    button.dispatchEvent(new Event('click'));expect(f.onConfigureModel).toHaveBeenCalledOnce();
+    expect(f.popup.hidden).toBe(true);expect(f.onChange).not.toHaveBeenCalled();
+    f.state.modelConfigurationRequired=false;f.state.loading=false;
+    f.state.states.model={resolvedOptions:[{value:'saved',label:'Saved model'}]};f.state.values.model='saved';f.actions.update();
+    expect(button.ariaLabel).toContain('Saved model');expect(button.attributes.get('aria-haspopup')).toBe('menu');
+    button.dispatchEvent(new Event('click'));expect(f.popup.hidden).toBe(false);expect(f.onConfigureModel).toHaveBeenCalledOnce();
+    f.state.modelConfigurationRequired=true;f.actions.update();expect(f.popup.hidden).toBe(true);
+  });
+
   it('shows declared icons and selected values, keeping the group name in accessible tooltips', () => {
     const f = fixture();
     const [model, permission] = f.container.children;

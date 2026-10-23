@@ -1,19 +1,26 @@
 import { t } from '../localization';
 import { iconButton, iconHtml, updateIcon } from './ui';
 import { requestAction } from './action-dialog';
-import { applyTemplateValues,configurationCapability,configurationSnapshot,configurationPointerPart,createPublicationDraft,freezeConfigurationTemplate,type ConfigurationPublicationDraft, parseConfigurationField, parseConfigurationFile, validateConfigurationFileSelection, type ProjectConfigurationFile, type ProjectConfigurationAction, type ProjectConfigurationField, type ProjectConfigurationState, type ConfigurationValues } from '@steamharness/project-configuration';
+import { AGENT_MODELS_CONFIGURATION_KEY,applyTemplateValues,configurationCapability,configurationSnapshot,configurationPointerPart,createPublicationDraft,freezeConfigurationTemplate,type ConfigurationPublicationDraft, parseConfigurationField, parseConfigurationFile, validateConfigurationFileSelection, type ProjectConfigurationFile, type ProjectConfigurationAction, type ProjectConfigurationField, type ProjectConfigurationState, type ConfigurationValues } from '@steamharness/project-configuration';
 import './project-configurations.css';
 import { createAgentModelsControl } from './agent-models';
 
 type Host = { postMessage(message: Record<string, unknown>): void };
+export interface ProjectConfigurationsPanel {
+  needsAgentModels(): boolean;
+  openAgentModels(): void;
+}
 export function projectConfigurationsButton(): string {
   return `<button id="project-configurations" class="icon-button" aria-haspopup="dialog" title="${t('Project configurations')}" aria-label="${t('Project configurations')}">${iconHtml('settings-gear')}</button>`;
 }
 /** Shared by all three local project pages. Drafts keep their original revision until saved/discarded. */
-export function mountProjectConfigurations(host: Host): void {
+export function mountProjectConfigurations(host: Host): ProjectConfigurationsPanel {
   const trigger = document.getElementById('project-configurations')!;
-  const dialog = document.createElement('dialog'); dialog.className = 'conversation-dialog project-configurations';
-  let detailId:string|undefined, publicationView=false, publicationDirty=false;
+  const dialog = document.createElement('dialog'); dialog.id = 'project-configurations-dialog'; dialog.className = 'conversation-dialog project-configurations';
+  let detailId:string|undefined, publicationView=false, publicationDirty=false, missingAgentModels=false;
+  let opening = 0;
+  let opener: HTMLElement | undefined;
+  const fieldRows = new Map<string, HTMLElement>();
   const listActionButtons:HTMLButtonElement[]=[];
   const heading = document.createElement('header'), title = document.createElement('h2'); title.textContent = t('Project configurations');
   title.id = 'project-configurations-title'; dialog.setAttribute('aria-labelledby', title.id);
@@ -23,7 +30,7 @@ export function mountProjectConfigurations(host: Host): void {
   const toolbar = document.createElement('section'); toolbar.className = 'configuration-profiles';
   const profileLabel = document.createElement('h3');profileLabel.className='configuration-profile-name';
   const profileControls = document.createElement('div'); profileControls.className = 'configuration-profile-controls';
-  const back=iconButton('arrow-left',t('Back to list'),()=>{if(!working&&clean()){detailId=undefined;showView(false);draft=undefined;if(latest)render(latest);}});
+  const back=iconButton('arrow-left',t('Back to list'),()=>{if(!working&&clean()){++opening;detailId=undefined;showView(false);draft=undefined;if(latest)render(latest);}});
   const useCurrent=iconButton('check',t('Select configuration'),()=>{if(detailId&&clean())void dispatch({action:'select',id:detailId});});
   const listToolbar=document.createElement('section');listToolbar.className='configuration-profiles configuration-list-toolbar';
   const listTitle=document.createElement('h3');listTitle.textContent=t('Project configurations');listToolbar.append(listTitle);
@@ -147,7 +154,7 @@ export function mountProjectConfigurations(host: Host): void {
     } catch (e) { error(e); }
   }
   function clean(): boolean { if (dirty||publicationDirty) { error(new Error(t('Save or discard your draft before changing configurations.'))); return false; } return true; }
-  function openDetails(id:string) {if(working||!clean()||!latest)return;detailId=id;showView(false);draft=undefined;render(latest);back.focus();}
+  function openDetails(id:string) {if(working||!clean()||!latest)return;++opening;detailId=id;showView(false);draft=undefined;render(latest);back.focus();}
   async function profileOperation(action: ProjectConfigurationAction['action'],id=detailId) {
     if (!draft || working || !clean()) return;
     editingField = true;
@@ -361,17 +368,26 @@ export function mountProjectConfigurations(host: Host): void {
   }
   function render(next: ProjectConfigurationState) {
     if (latest && next.revision < latest.revision) return;
+    if (!latest || latest.revision !== next.revision || latest.activeConfigurationId !== next.activeConfigurationId) {
+      const field = next.fields.find(field => field.name === AGENT_MODELS_CONFIGURATION_KEY && field.control === 'ai-models');
+      const current = next.configurations.find(profile => profile.id === next.activeConfigurationId);
+      // Resolve just this field: unrelated schema conflicts must leave the configuration UI usable.
+      const models = field && current ? applyTemplateValues(next, current, {
+        [field.name]: Object.hasOwn(current.values, field.name) ? current.values[field.name]! : field.defaultValue ?? [],
+      })[field.name] ?? [] : undefined;
+      missingAgentModels = Array.isArray(models) && models.length === 0;
+    }
     latest = next;
     publicationTab.hidden=!next.canManagePublication;
     if(!next.canManagePublication) {
       publicationDraft=undefined;publicationDirty=false;publicationBody.replaceChildren();publicationStatus.textContent='';publicationStatus.classList.remove('error');publicationPreview.textContent='';
       if(!publicationBody.hidden)showView(false);
-      if(draft) {draft.canManagePublication=false;delete draft.publication;delete draft.publicationPreview;}
+      if(draft) {draft.canManagePublication=next.canManagePublication;delete draft.publication;delete draft.publicationPreview;}
     }
     if ((editingField || working) && draft) return;
     if ((dirty||publicationDirty) && draft) { if (draft.revision !== next.revision) error(new Error(t('Configuration changed. Your draft is preserved. Refresh before saving.'))); return; }
     if (draft?.revision === next.revision && JSON.stringify(draft)===JSON.stringify(next)) return;
-    draft = structuredClone(next); dirty = false; fields.replaceChildren(); readers.clear(); overrides.clear(); resets.clear(); modelControls.length = 0;
+    draft = structuredClone(next); dirty = false; fields.replaceChildren(); fieldRows.clear(); readers.clear(); overrides.clear(); resets.clear(); modelControls.length = 0;
     if(detailId&&!next.configurations.some(c=>c.id===detailId)){detailId=undefined;publicationDraft=undefined;showView(false);}
     list.replaceChildren();listActionButtons.length=0;
     for(const profile of next.configurations) {
@@ -399,6 +415,7 @@ export function mountProjectConfigurations(host: Host): void {
     if (!next.fields.length) { const empty=document.createElement('div'); empty.className='configuration-empty'; empty.innerHTML=iconHtml('settings-gear'); const text=document.createElement('p'); text.textContent=t('No configuration fields. Add a custom field to get started.'); empty.append(text); fields.append(empty); }
     for (const field of [...next.fields].sort((a,b)=>Number(b.control==='ai-models')-Number(a.control==='ai-models'))) {
       const row=document.createElement('section'); row.className='configuration-field'; const fieldHeading=document.createElement('div'); fieldHeading.className='configuration-field-heading';
+      row.tabIndex=-1;fieldRows.set(field.name,row);
       const title=document.createElement('label'); title.htmlFor=`configuration-field-${field.name}`; title.textContent=(field.control==='ai-models'?t('AI models'):field.label || field.name)+(field.required?' *':''); fieldHeading.append(title); row.append(fieldHeading);
       const controls=document.createElement('div'); controls.className='configuration-field-actions'; fieldHeading.append(controls);
       if (next.customFields.some(f=>f.name===field.name)) {
@@ -441,8 +458,34 @@ export function mountProjectConfigurations(host: Host): void {
     }
     updateActions();
   }
-  trigger.onclick = () => { if(!working&&!dirty&&!publicationDirty){detailId=undefined;draft=undefined;showView(false);}if (latest) render(latest); dialog.showModal(); void request({action:'get'}).then(render).catch(error); };
-  dialog.addEventListener('close',()=>{hideMenus();trigger.focus();});
+  function focusField(field: string) {
+    const row=fieldRows.get(field);
+    row?.scrollIntoView?.({block:'start'});
+    (row?.querySelector<HTMLElement>('button:not(:disabled),input:not(:disabled),select:not(:disabled),textarea:not(:disabled)') ?? row)?.focus();
+  }
+  function showActiveField(field: string) {
+    if (!latest) return;
+    detailId=latest.activeConfigurationId;draft=undefined;showView(false);render(latest);
+    focusField(field);
+  }
+  async function open(field?: string) {
+    const attempt = ++opening, hadState = !!latest;
+    if (!dialog.open) opener = document.activeElement instanceof HTMLElement && document.activeElement !== document.body ? document.activeElement : trigger;
+    const blocked = !!field && (working || editingField || !clean());
+    if(!working&&!editingField&&!dirty&&!publicationDirty){detailId=undefined;draft=undefined;showView(false);}
+    if (latest) render(latest);
+    if (!dialog.open) dialog.showModal();
+    if (blocked) return;
+    if (field && hadState) showActiveField(field);
+    try {
+      render(await request({action:'get'}));
+      // A slow refresh must not navigate again after the user closes or browses the panel.
+      if (!field || hadState || attempt !== opening || !dialog.open || working || editingField || !clean()) return;
+      showActiveField(field);
+    } catch (e) { if (attempt === opening && dialog.open) error(e); }
+  }
+  trigger.onclick = () => { void open(); };
+  dialog.addEventListener('close',()=>{++opening;hideMenus();(opener?.isConnected?opener:trigger).focus();});
   window.addEventListener('message',event=>{
     if(event.source!==null) return;
     const message=event.data;
@@ -454,4 +497,5 @@ export function mountProjectConfigurations(host: Host): void {
     }
     if(message?.type==='project-configurations-open') (trigger as HTMLButtonElement).click();
   });
+  return { needsAgentModels: () => missingAgentModels, openAgentModels: () => { void open(AGENT_MODELS_CONFIGURATION_KEY); } };
 }

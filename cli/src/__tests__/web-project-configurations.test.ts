@@ -3,16 +3,19 @@ import {afterEach,beforeEach,expect,it,vi} from 'vitest';
 import {AGENT_MODELS_CONFIGURATION_FIELD,AGENT_MODELS_CONFIGURATION_KEY,createConfigurationState,bindConfigurationTemplate,createPublicationDraft,freezeConfigurationTemplate,applyConfigurationAction,type ProjectConfigurationState} from '@steamharness/project-configuration';
 import {readFileSync} from 'node:fs';
 import path from 'node:path';
-import {mountProjectConfigurations,projectConfigurationsButton} from '../web/ui/project-configurations';
+import {mountProjectConfigurations,projectConfigurationsButton,type ProjectConfigurationsPanel} from '../web/ui/project-configurations';
 vi.mock('../web/localization',()=>({t:(text:string,...args:unknown[])=>text.replace(/\{(\d+)\}/g,(_,i)=>String(args[Number(i)]))}));
 let state:ProjectConfigurationState,fail=false;
 let upload=vi.fn();
 let listener: ((event:MessageEvent)=>void) | undefined;
+let panel: ProjectConfigurationsPanel;
+let readConfiguration: () => Promise<ProjectConfigurationState>;
 const message=(data:unknown)=>window.dispatchEvent(new MessageEvent('message',{data,source:null}));
 const settle=()=>new Promise(resolve=>setTimeout(resolve,0));
 beforeEach(()=>{
  state=createConfigurationState([{name:'title',type:'string',defaultValue:'Original'},{name:'data',type:'json',defaultValue:null}],()=> 'profile');
  fail=false;
+ readConfiguration=async()=>state;
  upload=vi.fn();
  Object.defineProperty(HTMLDialogElement.prototype,'showModal',{configurable:true,value:function(this:HTMLDialogElement){this.open=true;}});
  Object.defineProperty(HTMLDialogElement.prototype,'close',{configurable:true,value:function(this:HTMLDialogElement){this.open=false;this.dispatchEvent(new Event('close'));}});
@@ -23,14 +26,14 @@ beforeEach(()=>{
  vi.spyOn(window,'addEventListener').mockImplementation(((type:any,callback:any,...args:any[])=>{if(type==='message')listener=callback;original(type,callback,...args);}) as typeof window.addEventListener);
  document.body.innerHTML=projectConfigurationsButton();
  const styles=document.createElement('style');styles.textContent=readFileSync(path.join(import.meta.dirname,'../web/ui/project-configurations.css'),'utf8');document.body.append(styles);
- mountProjectConfigurations({postMessage(message:any){queueMicrotask(async()=>{
+ panel=mountProjectConfigurations({postMessage(message:any){queueMicrotask(async()=>{
    try {if(fail)throw new Error('Configuration changed');
     if(message.type==='project-configuration-upload') {
       const value=await upload(message);
       window.dispatchEvent(new MessageEvent('message',{data:{type:'project-configuration-upload-result',requestId:message.requestId,value},source:null}));return;
     }
-    state=message.call.action==='get'?state:applyConfigurationAction(state,message.call,()=>crypto.randomUUID());
-    window.dispatchEvent(new MessageEvent('message',{data:{type:'project-configuration-result',requestId:message.requestId,value:state},source:null}));
+    const value=message.call.action==='get'?await readConfiguration():(state=applyConfigurationAction(state,message.call,()=>crypto.randomUUID()));
+    window.dispatchEvent(new MessageEvent('message',{data:{type:'project-configuration-result',requestId:message.requestId,value},source:null}));
    }catch(error){window.dispatchEvent(new MessageEvent('message',{data:{type:'error',requestId:message.requestId,message:(error as Error).message},source:null}));}
  });}});
 });
@@ -95,6 +98,72 @@ it('saves Agent models through the profile service and blocks unapplied model dr
  button('Apply model').click();button('Save').click();await settle();
  expect(state.configurations[0]!.values[AGENT_MODELS_CONFIGURATION_KEY]).toMatchObject([{name:'My model',model:'actual-model',source:'third-party',apiKey:'test-only-key'}]);
  expect(state.activeConfigurationId).toBe('profile');expect(document.querySelector('input[type=password]')).toBeNull();
+});
+it('opens the active profile AI models directly without changing the selected configuration',async()=>{
+ state=createConfigurationState([AGENT_MODELS_CONFIGURATION_FIELD,{name:'title',type:'string'}],()=> 'profile');
+ state=applyConfigurationAction(state,{action:'create',name:'Other',revision:state.revision},()=> 'other');
+ state=applyConfigurationAction(state,{action:'select',id:'profile',revision:state.revision},()=>crypto.randomUUID());
+ message({type:'state',configurations:state});expect(panel.needsAgentModels()).toBe(true);
+ await openPanel();button('Close').click();
+ panel.openAgentModels();await settle();
+ expect(document.querySelector<HTMLDialogElement>('.project-configurations')!.open).toBe(true);
+ expect(document.querySelector<HTMLElement>('.configuration-body')!.hidden).toBe(false);
+ expect(document.querySelector('.configuration-profile-name')!.textContent).toContain('Default');
+ expect(document.activeElement).toBe(button('System AI'));
+ expect(state.activeConfigurationId).toBe('profile');
+ expect(document.querySelector<HTMLElement>('.configuration-ai-form')!.hidden).toBe(true);
+ button('Close').click();document.getElementById('project-configurations')!.click();await settle();
+ expect(document.querySelector<HTMLElement>('.configuration-list')!.hidden).toBe(false);
+});
+it('preserves a non-current profile draft when the model setup shortcut is used',async()=>{
+ state=createConfigurationState([AGENT_MODELS_CONFIGURATION_FIELD,{name:'title',type:'string'}],()=> 'profile');
+ state=applyConfigurationAction(state,{action:'create',name:'Other',revision:state.revision},()=> 'other');
+ state=applyConfigurationAction(state,{action:'select',id:'profile',revision:state.revision},()=>crypto.randomUUID());
+ document.getElementById('project-configurations')!.click();await settle();
+ document.querySelectorAll<HTMLButtonElement>('.configuration-profile-link')[1]!.click();
+ title().value='Keep this draft';title().dispatchEvent(new Event('input'));button('Close').click();
+ panel.openAgentModels();await settle();
+ expect(title().value).toBe('Keep this draft');
+ expect(document.querySelector('.configuration-profile-name')!.textContent).toContain('Other');
+ expect(document.querySelector('.configuration-footer > .configuration-status')!.textContent).toContain('Save or discard');
+ expect(state.activeConfigurationId).toBe('profile');
+});
+it('opens cached model settings immediately and keeps later navigation when the refresh is slow',async()=>{
+ state=createConfigurationState([AGENT_MODELS_CONFIGURATION_FIELD],()=> 'profile');
+ message({type:'state',configurations:state});
+ let finish!:(state:ProjectConfigurationState)=>void;
+ readConfiguration=()=>new Promise(resolve=>{finish=resolve;});
+ panel.openAgentModels();await settle();
+ expect(document.querySelector<HTMLElement>('.configuration-body')!.hidden).toBe(false);
+ expect(document.activeElement).toBe(button('System AI'));
+ button('Back to list').click();button('Close').click();
+ finish(state);await settle();
+ expect(document.querySelector<HTMLDialogElement>('.project-configurations')!.open).toBe(false);
+ expect(document.querySelector<HTMLElement>('.configuration-list')!.hidden).toBe(false);
+ expect(document.activeElement).toBe(document.getElementById('project-configurations'));
+});
+it('does not navigate or steal focus after closing before the first configuration response',async()=>{
+ state=createConfigurationState([AGENT_MODELS_CONFIGURATION_FIELD],()=> 'profile');
+ let finish!:(state:ProjectConfigurationState)=>void;
+ readConfiguration=()=>new Promise(resolve=>{finish=resolve;});
+ panel.openAgentModels();await settle();button('Close').click();finish(state);await settle();
+ expect(document.querySelector<HTMLDialogElement>('.project-configurations')!.open).toBe(false);
+ expect(document.querySelector<HTMLElement>('.configuration-body')!.hidden).toBe(true);
+ expect(document.activeElement).toBe(document.getElementById('project-configurations'));
+});
+it('derives missing models from the current effective configuration without validating unrelated conflicts',async()=>{
+ message({type:'state',configurations:state});expect(panel.needsAgentModels()).toBe(false);
+ const model={id:'saved',name:'Saved',model:'example',source:'system',credentialId:'credential'};
+ state=createConfigurationState([{...AGENT_MODELS_CONFIGURATION_FIELD,defaultValue:[model]},{name:'limit',type:'number'}],()=> 'profile');
+ state.revision=1;
+ state.configurations[0]!.values.limit='Old string';
+ state.conflicts=[{configurationId:'profile',key:'limit',value:'Old string',reason:'Field type changed'}];
+ message({type:'state',configurations:state});expect(panel.needsAgentModels()).toBe(false);
+ state={...state,revision:2,configurations:state.configurations.map(profile=>({...profile,values:{...profile.values,[AGENT_MODELS_CONFIGURATION_KEY]:[]}}))};
+ message({type:'state',configurations:state});expect(panel.needsAgentModels()).toBe(true);
+ panel.openAgentModels();await settle();
+ expect(document.querySelector<HTMLElement>('.configuration-body')!.hidden).toBe(false);
+ expect(document.querySelector('.configuration-footer > .configuration-status')!.textContent).toContain('Some field types changed');
 });
 it('edits inherited values directly and resets overrides without saving untouched defaults',async()=>{
  state=createConfigurationState([
@@ -254,6 +323,7 @@ it('starts with the list and edits another profile without selecting it for runs
  expect(document.querySelector<HTMLElement>('.configuration-list')!.hidden).toBe(false);
 });
 it('protects both value and publication drafts when returning to the list',async()=>{
+ state=createConfigurationState([AGENT_MODELS_CONFIGURATION_FIELD,...state.fields],()=> 'profile');
  state={...state,canManagePublication:true,publication:createPublicationDraft(state)};
  await openPanel();title().value='Draft';title().dispatchEvent(new Event('input'));
  button('Back to list').click();expect(title().value).toBe('Draft');expect(document.body.textContent).toContain('Save or discard');
@@ -261,6 +331,9 @@ it('protects both value and publication drafts when returning to the list',async
  button('Default').click();button('Publication and permissions').click();
  const include=document.querySelector<HTMLInputElement>('[aria-label="title: Include value"]')!;include.click();
  button('Back to list').click();expect(include.checked).toBe(true);expect(document.querySelector<HTMLElement>('.configuration-publication')!.hidden).toBe(false);
+ button('Close').click();panel.openAgentModels();await settle();
+ expect(include.checked).toBe(true);expect(document.querySelector<HTMLElement>('.configuration-publication')!.hidden).toBe(false);
+ expect(document.querySelector('.configuration-publication + .configuration-footer + .configuration-footer .configuration-status')!.textContent).toContain('Save or discard');
  button('Refresh and discard publication draft').click();button('Back to list').click();
  expect(document.querySelector<HTMLElement>('.configuration-list')!.hidden).toBe(false);
 });

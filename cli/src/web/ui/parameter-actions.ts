@@ -5,10 +5,11 @@ type Action = ParamLayout['actions'][number];
 type GroupAction = Extract<Action, { kind: 'quick' | 'auxiliary' }>;
 interface ActionView { action: Action; button: HTMLButtonElement; label: HTMLSpanElement; summary?: HTMLSpanElement; count?: HTMLElement }
 interface ParameterActionOptions {
-  current(): { values: ParamValues; states: Record<string, ParamState>; disabled: boolean; loading: boolean };
+  current(): { values: ParamValues; states: Record<string, ParamState>; disabled: boolean; loading: boolean; modelConfigurationRequired?: boolean };
   fieldRoot(name: string): HTMLElement;
   onChange(name: string, value: ParamValue): void;
   onReset(names: string[]): void;
+  onConfigureModel?(): void;
 }
 
 const icon = (name: string): HTMLSpanElement => {
@@ -102,6 +103,9 @@ export class ParameterActions {
         button.setAttribute('aria-expanded', 'false');
       }
       button.addEventListener('click', () => {
+        if (action.kind === 'quick' && this.groupFields(action).some(field => field.name === 'model') && this.options.current().modelConfigurationRequired && this.options.onConfigureModel) {
+          this.close(); this.options.onConfigureModel(); return;
+        }
         if (action.kind === 'mode') {
           const field = this.field(action.name);
           if (!field) { return; }
@@ -128,7 +132,7 @@ export class ParameterActions {
   }
 
   update(): void {
-    const { values, states, disabled, loading } = this.options.current();
+    const { values, states, disabled, loading, modelConfigurationRequired } = this.options.current();
     for (const view of this.views) {
       const { action } = view;
       if (action.kind === 'mode') {
@@ -139,23 +143,27 @@ export class ParameterActions {
         view.label.textContent = field ? `${field.label || field.name}: ${parameterSelectionLabel(field, values[field.name], states[field.name])}` : '';
       } else if (action.kind !== 'slash') {
         const fields = this.groupFields(action);
+        const configureModel = action.kind === 'quick' && fields.some(field => field.name === 'model') && modelConfigurationRequired && !!this.options.onConfigureModel;
         view.button.hidden = fields.length === 0;
-        view.button.disabled = disabled || (action.kind === 'auxiliary' ? loading : fields.every((field) =>
+        view.button.disabled = disabled || !configureModel && (action.kind === 'auxiliary' ? loading : fields.every((field) =>
           states[field.name]?.disabled === true || this.visibleOptions(field).length === 0));
         const summaries = action.summary?.map((name) => fields.find((field) => field.name === name))
           .filter((field): field is Field => !!field && !!values[field.name]?.length)
           .map((field) => parameterSelectionLabel(field, values[field.name], states[field.name])) ?? [];
         view.label.textContent = action.label;
         view.label.hidden = action.kind === 'quick';
-        if (view.summary) { view.summary.textContent = summaries.join(' \u00b7 ') || t("Not selected"); }
+        if (view.summary) { view.summary.textContent = configureModel ? t('Configure model') : summaries.join(' \u00b7 ') || t("Not selected"); }
         if (view.count) { view.count.textContent = String(fields.length); }
-        view.button.setAttribute('aria-busy', String(loading));
+        view.button.dataset.configureModel = String(!!configureModel);
+        view.button.setAttribute('aria-haspopup', configureModel ? 'dialog' : action.kind === 'quick' ? 'menu' : 'dialog');
+        view.button.setAttribute('aria-controls', configureModel ? 'project-configurations-dialog' : this.popup.id);
+        view.button.setAttribute('aria-busy', String(loading && !configureModel));
       }
       view.button.title = view.button.ariaLabel = [view.label.textContent, view.summary?.textContent].filter(Boolean).join(': ');
     }
     this.scheduleLayout();
     if (this.active) {
-      if (disabled || this.active.button.hidden) { this.close(); }
+      if (disabled || this.active.button.hidden || this.active.button.dataset.configureModel === 'true') { this.close(); }
       else if (this.active.action.kind === 'quick') { this.renderQuick(); }
       else {
         const body = this.popup.querySelector('.parameter-popover-fields')!;
@@ -197,6 +205,7 @@ export class ParameterActions {
   openForField(name: string): boolean {
     const view = this.views.find((view) => (view.action.kind === 'quick' || view.action.kind === 'auxiliary') && view.action.params.includes(name));
     if (!view || view.action.kind === 'mode' || view.action.kind === 'slash') { return false; }
+    if (name === 'model' && this.options.current().modelConfigurationRequired && this.options.onConfigureModel) { view.button.focus(); return true; }
     this.open(view as ActionView & { action: GroupAction }, name);
     return true;
   }

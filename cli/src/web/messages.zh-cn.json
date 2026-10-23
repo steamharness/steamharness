@@ -543,6 +543,7 @@
   "The first model is the default. Save configurations to apply model changes.": "默认使用列表中的第一个模型；保存配置后模型变更生效。",
   "Add or cancel the model being edited first.": "请先应用或取消正在编辑的模型。",
   "Configured models": "已配置模型",
+  "Configure model": "配置模型",
   "Base URL": "Base URL",
   "API key": "API Key",
   "Loading system AI models...": "正在加载系统 AI 模型…",

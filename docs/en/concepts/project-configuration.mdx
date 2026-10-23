@@ -58,6 +58,8 @@ Import adds profiles with new IDs and preserves the active selection. Missing fi
 
 Core Agent projects show AI models as the first field in configuration details. Click System AI or Third-party AI to open its add form; only one form is visible. The saved list can contain both sources.
 
+In Studio and CLI Web, an empty model list in the active profile makes the Workflow and Conversation model button display Configure model. Click it to open the active profile directly at AI models. Failed Conversation messages offer the same action. Adding and saving a model restores the saved-model selector. Navigation preserves the message draft and execution profile; save or discard existing configuration or publication drafts before using the shortcut. The toolbar gear still opens the configuration list.
+
 - System AI loads the current account's subscriptions on demand. Select a subscription and model; refreshing preserves the model draft. A removed selection never switches automatically to another subscription or model, and execution asks you to check its availability. An empty catalogue links to subscription management. A missing system AI connection does not prevent third-party setup.
 - Third-party AI accepts a display name, model ID, API Key, Base URL and API protocol: `openai-completions`, `openai-responses` or `anthropic-messages`. Keys use password inputs and never appear in list rows.
 - Edit, delete or set a model as default in the list. Apply the model draft before saving the profile; unfinished drafts block saving or navigation. The first entry is the default. The composer only selects saved models and no longer manages Provider.
