@@ -4,7 +4,7 @@
 
 - Added source-declared allowThirdParty: false for AI model fields. Freeze system-only restrictions per run, reject third-party models and direct endpoint overrides, and retain existing values for cleanup.
 
-- [Added] Conversation collapseIntermediate presentation defaults; Agent executors enable folding of completed turns by default, keeping the final reply on success or the error on failure, with explicit opt-out and complete output preserved.
+- [Added] Code-configured Conversation collapseIntermediate presentation defaults; Agent executors enable folding of completed turns by default, keeping the final reply on success or the error on failure, with explicit opt-out and complete output preserved.
 
 - Fixed live local configuration discovery after Agent source changes without reopening the panel; unchanged sources reuse static analysis results.
 

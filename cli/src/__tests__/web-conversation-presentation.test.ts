@@ -141,7 +141,7 @@ it('uses explicit defaults for ordinary projects and defaults Core Agent output 
   project.conversation!.collapseIntermediate = true; expect(collapseIntermediateDefault(project, [])).toBe(true);
 });
 
-it('offers a persistent project preference, replays folded history, and clears expansion when switching conversations', async () => {
+it('uses code defaults instead of saved UI preferences, replays folded history, and clears expansion when switching conversations', async () => {
   vi.useFakeTimers();
   Object.defineProperty(HTMLElement.prototype, 'scrollIntoView', { configurable: true, value: vi.fn() });
   const resizes: (() => void)[] = [];
@@ -152,7 +152,7 @@ it('offers a persistent project preference, replays folded history, and clears e
   vi.stubGlobal('cancelAnimationFrame', () => {});
   const matches = Element.prototype.matches;
   vi.spyOn(Element.prototype, 'matches').mockImplementation(function (this: Element, selector) { return selector === ':popover-open' ? false : matches.call(this, selector); });
-  host.getState.mockReturnValue({ collapseIntermediate: { 'file:///other': false } });
+  host.getState.mockReturnValue({ collapseIntermediate: { 'file:///project': false, 'file:///other': true } });
   document.body.innerHTML = '<div id="app"></div>'; await import('../web/ui/main');
   const transcript = document.querySelector<HTMLElement>('#transcript')!;
   let height = 1000, top = 0;
@@ -164,8 +164,8 @@ it('offers a persistent project preference, replays folded history, and clears e
       sessions: [{ id, title: 'Conversation', messages: [message], createdAt: 1, updatedAt: 1 }] } }));
     for (let i = 0; i < 2; i++) for (const frame of frames.splice(0)) frame(0);
   };
-  emit(); const button = document.querySelector<HTMLButtonElement>('#collapse-intermediate')!;
-  expect(button.hidden).toBe(false); expect(button.getAttribute('aria-pressed')).toBe('true');
+  emit(); expect(document.querySelector('#collapse-intermediate')).toBeNull();
+  expect(host.setState.mock.lastCall?.[0]).not.toHaveProperty('collapseIntermediate');
   const toggle = document.querySelector<HTMLButtonElement>('.message-header .conversation-process-toggle')!;
   expect(toggle.previousElementSibling?.textContent).toContain('MiniMax-M3.1-Flash · Turn usage: 1,677,738 tokens');
   expect(toggle.parentElement?.className).toBe('message-heading');
@@ -175,10 +175,11 @@ it('offers a persistent project preference, replays folded history, and clears e
   height = 1600; for (const resize of resizes) resize();
   for (let i = 0; i < 2; i++) for (const frame of frames.splice(0)) frame(0);
   expect(top).toBe(600);
-  button.click(); expect(button.getAttribute('aria-pressed')).toBe('false'); expect(document.querySelector('.conversation-process')).toBeNull();
-  expect(host.setState.mock.lastCall?.[0].collapseIntermediate).toEqual({ 'file:///other': false, 'file:///project': false });
+  project.conversation = { collapseIntermediate: false }; emit();
+  expect(document.querySelector('.conversation-process')).toBeNull(); expect(toggle.hidden).toBe(true);
   emit('two'); expect(document.querySelector('.conversation-process')).toBeNull();
-  button.click(); expect(document.querySelector<HTMLDetailsElement>('.conversation-process')!.open).toBe(false);
+  project.conversation.collapseIntermediate = true; emit('two');
+  expect(document.querySelector<HTMLDetailsElement>('.conversation-process')!.open).toBe(false);
   document.querySelector<HTMLDetailsElement>('.conversation-process')!.open = true;
   emit('three'); expect(document.querySelector<HTMLDetailsElement>('.conversation-process')!.open).toBe(false);
   emit('three', { ...turn(), status: 'failed', error: 'Request timed out after retrying' });
@@ -190,7 +191,16 @@ it('offers a persistent project preference, replays folded history, and clears e
   emit('three', { ...turn(), status: 'running' });
   expect(document.querySelector('.conversation-process')).toBeNull(); expect(error.hidden).toBe(true);
   expect(document.querySelector<HTMLButtonElement>('.conversation-process-toggle')!.hidden).toBe(true);
-  project.uri = 'file:///other'; emit('four'); expect(button.getAttribute('aria-pressed')).toBe('false');
+  project.uri = 'file:///other'; project.conversation.collapseIntermediate = false; emit('four');
+  expect(document.querySelector('.conversation-process')).toBeNull();
+  expect(document.querySelector<HTMLButtonElement>('.conversation-process-toggle')!.hidden).toBe(true);
+  project.conversation = undefined; emit('four');
+  expect(document.querySelector<HTMLDetailsElement>('.conversation-process')!.open).toBe(false);
+  const ordinary = { ...turn(), items: [text('progress', 'Checking'), text('final', 'Final')].map(item => ({ ...item, metadata: undefined })) };
+  emit('five', ordinary); expect(document.querySelector('.conversation-process')).toBeNull();
+  project.conversation = { collapseIntermediate: true }; emit('five', ordinary);
+  expect(document.querySelector<HTMLDetailsElement>('.conversation-process')!.open).toBe(false);
+  expect(document.querySelector('#collapse-intermediate')).toBeNull();
 });
 
 it.each(['success', 'failed'])('reveals matching intermediate prose when searching a folded %s turn', async status => {

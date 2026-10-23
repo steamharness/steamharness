@@ -150,7 +150,7 @@ CLI Web 在参数刷新和发送时校验累积的动态选项与执行命令是
 
 `conversation.footer` 是静态数组，显示在标准输入框外下方。每项只能声明非空 `text` 或已有参数名 `param`：文字按原文展示，可通过 `localizedText` 提供语言键到文字的映射，缺失翻译回退到 `text`；参数展示当前选项标签，无标签时显示参数值。可选 `when: { param, value }` 仅在该参数当前值匹配时显示，引用的参数隐藏时也隐藏对应文字。内容始终作为纯文字渲染，不解析 HTML 或 Markdown。
 
-`conversation.collapseIntermediate` 可显式设为 `true` 或 `false`，控制已结束回合是否默认收起中间过程。成功时保留最终回复、计划与资源卡片；失败时收起全部输出，只保留红色失败原因。每轮模型名称与当轮用量后面的按钮可独立展开或收起过程，不另占一行。CLI Web / Studio 的“自动收起中间过程”按钮可随时开关，并记住当前项目的选择。运行中、停止、待输入或没有最终结果／失败原因时继续显示过程。Core Agent 标准输出默认开启；普通 Conversation 默认关闭。此设置只影响显示，完整历史、复制和导出内容仍保留。
+`conversation.collapseIntermediate` 可显式设为 `true` 或 `false`，控制已结束回合是否默认收起中间过程。成功时保留最终回复、计划与资源卡片；失败时收起全部输出，只保留红色失败原因。每轮模型名称与当轮用量后面的按钮可独立展开或收起过程，不另占一行。自动收起由项目代码中的配置控制。运行中、停止、待输入或没有最终结果／失败原因时继续显示过程。Core Agent 标准输出默认开启；普通 Conversation 默认关闭。此设置只影响显示，完整历史、复制和导出内容仍保留。
 
 `conversation.userInput` 是通用用户输入交互配置，必须写为静态对象。`hideComposer` 默认 `true`：当前会话存在待回答问题或审批时隐藏整个底部输入区，运行时确认答案或请求停止后恢复，草稿和附件不清空；设为 `false` 可保留输入区。`effects` 按声明顺序应用，使用 `when.type` 匹配请求的 `metadata.type`、`when.nodeName` 匹配节点名、`when.values` 匹配提交值，可组合且须全部匹配；至少声明一个条件。答案匹配值支持 string、有限 number、boolean 和 string 数组，数组按顺序精确匹配。`params` 是非空的已有参数名到字符串或字符串数组的映射，boolean 使用 `"true"` / `"false"`；它更新当前会话后续输入的参数，Slash 菜单、Quick 和底部文字同步刷新并持久化。当前运行仍按原始参数恢复，不会因参数更新重放已执行步骤。每个请求确认后只应用一次，失败提交不应用，迟到的参数刷新不能覆盖它；多个规则写同一参数时后项生效。例如，普通审核节点也可以声明 `{ when: { nodeName: "review", values: { accepted: true } }, params: { webSearch: "false" } }`，无需宿主为业务添加判断。
 

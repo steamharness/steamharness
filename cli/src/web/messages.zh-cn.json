@@ -575,7 +575,6 @@
   "No models configured. Add a system AI model.": "尚未配置模型，请添加系统 AI 模型。",
   "Sign in and configure system AI.": "请登录并配置系统 AI。",
   "Unavailable": "不可用",
-  "Auto-collapse intermediate steps": "自动收起中间过程",
   "Intermediate steps": "中间过程",
   "Show intermediate steps": "展开中间过程",
   "Hide intermediate steps": "收起中间过程",

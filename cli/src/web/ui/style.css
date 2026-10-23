@@ -483,4 +483,3 @@ textarea::placeholder { color: var(--vscode-input-placeholderForeground); }
 .conversation-process { margin: 0 0 12px; min-width: 0; }
 .conversation-process:not([open]) { display: none; }
 .conversation-process-content { min-width: 0; }
-#collapse-intermediate[aria-pressed="true"] { color: var(--vscode-editor-foreground); background: var(--vscode-toolbar-activeBackground, var(--vscode-toolbar-hoverBackground)); }

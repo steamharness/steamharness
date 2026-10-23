@@ -48,7 +48,7 @@ function initialize(): void {
   app.innerHTML = `
     <header class="toolbar">
       <div class="project-title"><button id="menu-toggle" class="icon-button" title="${t("Show conversations")}" aria-label="${t("Show conversations")}" aria-controls="project-menu">${icon('layout-sidebar-left')}</button><div class="project-heading"><h1 id="conversation-title">Workflow</h1><span id="assistant-folder" hidden></span></div><span id="project-name" class="project-name"></span></div>
-      <div class="toolbar-actions"><span id="running-count" class="running-count" hidden></span><button id="new" class="icon-button" title="${t("New conversation")}" aria-label="${t("New conversation")}">${icon('comment-add')}</button><button id="collapse-intermediate" class="icon-button" aria-pressed="false" title="${t("Auto-collapse intermediate steps")}" aria-label="${t("Auto-collapse intermediate steps")}" hidden>${icon('fold')}</button>${projectConfigurationsButton()}${aiUsageButton()}${toolPermissionsButton()}${projectInfoButton()}</div>
+      <div class="toolbar-actions"><span id="running-count" class="running-count" hidden></span><button id="new" class="icon-button" title="${t("New conversation")}" aria-label="${t("New conversation")}">${icon('comment-add')}</button>${projectConfigurationsButton()}${aiUsageButton()}${toolPermissionsButton()}${projectInfoButton()}</div>
     </header>
     <aside id="project-menu" class="project-menu" aria-label="${t("Conversations")}">
       <div class="menu-heading"><span id="menu-label">${t("Conversations")}</span><div class="menu-actions"><button id="history-toggle" class="icon-button" title="${t("Search conversations")}" aria-label="${t("Search conversations")}" aria-haspopup="dialog" aria-controls="history-popover" aria-expanded="false" popovertarget="history-popover">${icon('search')}</button><button id="hide-menu" class="icon-button" title="${t("Hide conversations")}" aria-label="${t("Hide conversations")}">${icon('chevron-left')}</button></div></div>
@@ -163,8 +163,7 @@ function initialize(): void {
   const sessionActions = Array.from(sessionMenu.querySelectorAll<HTMLButtonElement>('.session-action'));
   const fields = new Map<string, FieldView>();
   const messages = new Map<string, MessageView>();
-  const saved = (vscode.getState() ?? {}) as { collapseIntermediate?: Record<string, boolean>; drafts?: Record<string, string>; params?: Record<string, ParamValues>; parameterEdits?: Record<string, Record<string, string | null>>; panelOpen?: boolean; projectUri?: string; navigation?: SavedNavigation; submissions?: ConversationSubmission[] };
-  const collapsePreferences = saved.collapseIntermediate ?? {};
+  const saved = (vscode.getState() ?? {}) as { drafts?: Record<string, string>; params?: Record<string, ParamValues>; parameterEdits?: Record<string, Record<string, string | null>>; panelOpen?: boolean; projectUri?: string; navigation?: SavedNavigation; submissions?: ConversationSubmission[] };
   let collapseEnabled = false;
   const drafts = saved.drafts ?? {};
   const paramValues = saved.params ?? {};
@@ -174,18 +173,10 @@ function initialize(): void {
   const markParameterEdited = (name: string): void => { editedParams()[name] = currentSession()?.parameterRevisions?.[entrypoint.value]?.[name] ?? null; };
   const narrow = window.matchMedia('(max-width: 680px)');
   let panelOpen = saved.panelOpen ?? document.body.dataset.surface !== 'assistant';
-  const persist = (): void => { vscode.setState({ collapseIntermediate: collapsePreferences, drafts, params: paramValues, parameterEdits, panelOpen, submissions: submissions.list(), projectUri: state?.project.uri ?? saved.projectUri,
+  const persist = (): void => { vscode.setState({ drafts, params: paramValues, parameterEdits, panelOpen, submissions: submissions.list(), projectUri: state?.project.uri ?? saved.projectUri,
     navigation: state ? (conversationView || navigationNeeded || draftUpdates.size) ? { projectUri: state.project.uri, activeId: preferredSessionId ?? state.activeId, updates: [...draftUpdates.values()] } : undefined : saved.navigation }); };
   const post = (message: Record<string, unknown>): void => { if (state) { vscode.postMessage({ projectUri: state.project.uri, sessionId: state.activeId, ...message }); } };
   const currentSession = () => state?.sessions.find((session) => session.id === state?.activeId);
-  const collapseIntermediate = (): boolean => state ? collapsePreferences[state.project.uri]
-    ?? collapseIntermediateDefault(state.project, currentSession()?.messages ?? []) : false;
-  const collapseButton = document.querySelector<HTMLButtonElement>('#collapse-intermediate')!;
-  collapseButton.addEventListener('click', () => {
-    if (!state) return;
-    collapsePreferences[state.project.uri] = !collapseIntermediate();
-    persist(); render(state, false);
-  });
   const readOnly = () => state?.conversationAccess?.readOnly === true;
   const accessNotice = document.createElement('div');
   accessNotice.className = 'conversation-access'; accessNotice.setAttribute('role', 'status'); accessNotice.hidden = true;
@@ -1046,10 +1037,7 @@ function initialize(): void {
     const session = next.sessions.find((entry) => entry.id === next.activeId);
     if (!session) { return; }
     const conversation = next.project.projectType === 'conversation';
-    collapseEnabled = conversation && collapseIntermediate();
-    collapseButton.hidden = !conversation;
-    collapseButton.setAttribute('aria-pressed', String(collapseEnabled));
-    collapseButton.title = t('Auto-collapse intermediate steps') + ': ' + (collapseEnabled ? t('On') : t('Off'));
+    collapseEnabled = conversation && collapseIntermediateDefault(next.project, session.messages);
     const scope = session.agent?.contexts.find(scope => scope.conversationId === (session.agentConversationId ?? session.agent?.conversationId));
     composerOutput.update(conversation ? composerOutputItems(session.messages, scope?.outputs) : [], `${next.project.uri}:${next.activeId}`);
     const projectChanged = renderedProject !== next.project.uri;
