@@ -12,6 +12,7 @@ export class ConversationMessageIndex {
   private readonly preview = document.createElement('div');
   private readonly heading = document.createElement('div');
   private readonly content = document.createElement('div');
+  private readonly narrow = window.matchMedia('(max-width: 680px)');
   private markers: Marker[] = [];
   private current?: Marker;
   private previewed?: Marker;
@@ -84,7 +85,7 @@ export class ConversationMessageIndex {
   }
 
   syncLayout(): void {
-    if (window.innerWidth <= 680 || this.markers.length < 3 || this.transcript.clientHeight === 0 || this.transcript.scrollHeight <= this.transcript.clientHeight + 1) {
+    if (this.narrow.matches || this.markers.length < 3 || this.transcript.clientHeight === 0 || this.transcript.scrollHeight <= this.transcript.clientHeight + 1) {
       this.hide(); return;
     }
     this.root.hidden = false; this.transcript.parentElement!.classList.add('has-message-index');

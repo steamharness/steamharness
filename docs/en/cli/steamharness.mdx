@@ -76,7 +76,7 @@ Run `pnpm exec steamharness web . --no-open` to start the local Web interface fo
 
 Reopening a Conversation project restores the last selected conversation, while each open window retains its own selection. Legacy history initially opens the conversation with the most recent activity, then remembers new selections. Switching conversations does not rerun models or tools.
 
-On wide screens, conversations with at least three user messages and scrollable content show a subtle message index and total count on the left. Hover or keyboard focus previews a user message; click to jump to it. At page widths of 680px or less, the index and preview are hidden without reserving left-side space, then return when widened. Embedded Studio pages use their own width.
+On wide screens, conversations with at least three user messages and scrollable content show a subtle message index and total count on the left. Hover or keyboard focus previews a user message; click to jump to it. At page widths of 680px or less, the index and preview are hidden without reserving left-side space, then return when widened. Embedded Studio pages use their own width. Scaling and split panes that produce fractional viewport widths follow the same breakpoint for visibility and spacing.
 
 Conversation and workflow history use status icons, with a spinning circle for running entries and details on hover. The right side of the page header shows the current project's running conversation or workflow count while any are running, including when the sidebar is collapsed or hidden on narrow screens, independently of search, pagination or the shortened narrow-screen list. Idle durable workers do not count as running.
 

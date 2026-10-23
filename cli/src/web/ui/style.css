@@ -434,7 +434,7 @@ textarea::placeholder { color: var(--vscode-input-placeholderForeground); }
 @keyframes spin { to { transform: rotate(360deg); } }
 @media (prefers-reduced-motion: reduce) { *, *::before { animation: none !important; transition: none !important; } }
 @media (max-width: 900px) { #app.menu-open { grid-template-columns: 248px minmax(0, 1fr); } .transcript { padding: 18px 22px 8px; } .composer-area { padding: 8px 22px 12px; } }
-@media (min-width: 681px) { .transcript-area.has-message-index .transcript { padding-left: max(30px, calc((100% - 820px) / 2)); } }
+@media (width > 680px) { .transcript-area.has-message-index .transcript { padding-left: max(30px, calc((100% - 820px) / 2)); } }
 @media (max-width: 680px) {
   #app.menu-open { grid-template-areas: "toolbar" "menu" "main"; grid-template-columns: minmax(0, 1fr); grid-template-rows: auto auto minmax(0, 1fr); }
   .toolbar { padding: 8px 12px; gap: 6px; }
