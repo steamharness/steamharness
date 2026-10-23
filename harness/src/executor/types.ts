@@ -227,6 +227,8 @@ export interface ConversationUserInputDefinition {
 }
 
 export interface ConversationDefinition {
+  /** Collapse successful turns to their final reply; hosts allow users to override this preference. */
+  collapseIntermediate?: boolean;
   /** Execution commands alongside Slash parameters in the standard input menu. */
   commands?: ConversationCommandDefinition[];
   /** Plain text beneath, and outside, the standard message input. */

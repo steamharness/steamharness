@@ -94,6 +94,7 @@ export interface Project extends Parameters {
   requiresLogin?: boolean;
   assistant?: { workdir: string; roots: AssistantWorkspaceFolder[]; standalone?: boolean };
   conversation?: {
+    collapseIntermediate?: boolean;
     commands?: ConversationCommandDefinition[];
     footer?: ConversationFooterItem[];
     userInput?: {

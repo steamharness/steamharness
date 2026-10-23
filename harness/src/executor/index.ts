@@ -29,7 +29,7 @@ import {
   type ProjectDataStorageLocation,
   type ProjectInfoContract,
 } from "@steamharness/project-info";
-import { createLocalProjectConfigurationStore, withProjectConfiguration, currentConfigurationValues, readProjectConfigurationDefinition, type ProjectConfigurationSnapshot } from "../configuration";
+import { createLocalProjectConfigurationStore, withProjectConfiguration, currentConfigurationValues, readProjectConfigurationDefinition, projectUsesConfiguredAgentModels, type ProjectConfigurationSnapshot } from "../configuration";
 import {
   combineNodeExecutionHooks,
   createNodeExecutionReporter,
@@ -53,6 +53,7 @@ import { STEAMHARNESS_ENTRYPOINT_ID_PATTERN } from "./definition";
 import { assertProjectParamDeclarations, normalizeProjectParamDeclarations } from "./param-definition";
 import { assertConversationFooter } from "./conversation-footer";
 import { assertConversationUserInput } from "./conversation-input";
+import { assertConversationPresentation } from "./conversation-presentation";
 import { assertConversationCommands } from "./conversation-commands";
 import type {
   NodeRegistryEntry,
@@ -1142,7 +1143,7 @@ export function inspectWorkspaceProjectStructure(options: {
           params: scriptInspection.params,
           paramLayout: scriptInspection.paramLayout,
           paramResolver: scriptInspection.paramResolver,
-          conversation: scriptInspection.conversation,
+          conversation: conversationPresentationDefaults(scriptInspection.conversation, projectDir),
           tokenUsage: scriptInspection.tokenUsage,
           tools: scriptInspection.tools,
           registry: scriptInspection.registry,
@@ -1225,12 +1226,17 @@ export function inspectLocalProjectStructure(options: {
           params: scriptInspection.params,
           paramLayout: scriptInspection.paramLayout,
           paramResolver: scriptInspection.paramResolver,
-          conversation: scriptInspection.conversation,
+          conversation: conversationPresentationDefaults(scriptInspection.conversation, projectDir),
           tokenUsage: scriptInspection.tokenUsage,
           tools: scriptInspection.tools,
           registry: scriptInspection.registry,
         }),
   };
+}
+
+function conversationPresentationDefaults(conversation: StructureReport["conversation"], projectDir: string): StructureReport["conversation"] {
+  return conversation?.collapseIntermediate === undefined && projectUsesConfiguredAgentModels(projectDir)
+    ? { ...conversation, collapseIntermediate: true } : conversation;
 }
 
 function readConfigurationDeclaration(projectDir: string) {
@@ -2057,6 +2063,7 @@ function validateExecutorDefinition(
         });
       }
       validateConversationOpenAIAdapter(normalizedDefinition.conversation, projectName);
+      assertConversationPresentation(isRecord(normalizedDefinition.conversation) ? normalizedDefinition.conversation.collapseIntermediate : undefined);
       assertProjectParamDeclarations((normalizedDefinition as ExecutionDefinition<unknown, unknown>).params, "conversation");
       assertConversationFooter(isRecord(normalizedDefinition.conversation) ? normalizedDefinition.conversation.footer : undefined,
         normalizeProjectParamDeclarations((normalizedDefinition as ExecutionDefinition<unknown, unknown>).params).params);

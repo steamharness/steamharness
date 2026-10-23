@@ -567,5 +567,13 @@
   "Invalid AI model model.": "AI 模型的模型 ID不正确。",
   "Invalid AI model credentialId.": "AI 模型的订阅不正确。",
   "Invalid AI model baseUrl.": "AI 模型的Base URL不正确。",
-  "Invalid AI model apiKey.": "AI 模型的API Key不正确。"
+  "Invalid AI model apiKey.": "AI 模型的API Key不正确。",
+  "Auto-collapse intermediate steps": "自动收起中间过程",
+  "Intermediate steps": "中间过程",
+  "Worked for {0}": "已运行 {0}",
+  "Show or hide intermediate steps: {0}": "展开或收起中间过程：{0}",
+  "{0}m {1}s": "{0} 分 {1} 秒",
+  "{0}s": "{0} 秒",
+  "On": "开启",
+  "Off": "关闭"
 }

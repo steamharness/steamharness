@@ -17,6 +17,7 @@ interface OutputOptions {
 interface OutputView { root: HTMLElement; signature: string; filesSignature: string }
 interface OutputEntry { key: string; item?: OutputItem; answer?: ResolvedInput; card?: ResourceCard; text?: string; timer?: TimerRecord; activity?: AgentActivity }
 interface ActivityGroup { root: HTMLDetailsElement; list: HTMLDivElement }
+type OutputBlock = OutputEntry | { key: string; entries: OutputEntry[] };
 
 export class ConversationOutput {
   private readonly views = new Map<string, OutputView>();
@@ -24,6 +25,7 @@ export class ConversationOutput {
   private readonly activities = new Map<string, AgentActivity>();
   private readonly displays = new Map<HTMLElement, RingOutput>();
   private pending?: HTMLDivElement;
+  private process?: { root: HTMLDetailsElement; list: HTMLDivElement; label: HTMLSpanElement };
   private readonly resourceTheme = new MutationObserver(() => this.syncResourceTheme());
   private syncResourceTheme(): void {
     for (const frame of this.root.querySelectorAll<HTMLIFrameElement>('.resource-inline > iframe')) {
@@ -56,7 +58,7 @@ export class ConversationOutput {
 
   private release(root: HTMLElement): void { this.displays.get(root)?.dispose(); this.displays.delete(root); }
 
-  update(message: ConversationMessage, projectId: string, conversationId: string, files: Attachment[], storageSource: 'local' | 'server' = 'local', filesSignature = attachmentSignature(files)): void {
+  update(message: ConversationMessage, projectId: string, conversationId: string, files: Attachment[], storageSource: 'local' | 'server' = 'local', filesSignature = attachmentSignature(files), collapseIntermediate = false): void {
     const items = (message.items ?? []).filter(item => item.metadata?.kind !== 'agent-session' && !isSilentAgentRetry(item) && (!this.options.composer || !isComposerOutputItem(item)));
     const cards = conversationResourceCards(items, projectId, conversationId, storageSource);
     const cardByItem = new Map(cards.map((card) => [card.itemId, card]));
@@ -73,7 +75,7 @@ export class ConversationOutput {
     }
     ordered.push(...remaining);
     const active = new Set<string>();
-    const blocks: (OutputEntry | { key: string; entries: OutputEntry[] })[] = [];
+    const blocks: OutputBlock[] = [];
     for (const entry of ordered) {
       const content = entry.item?.content as { tool?: string; status?: string } | undefined;
       if (content?.tool === 'workflow-ui_present_card' && content.status === 'success' && !entry.card) { continue; }
@@ -110,8 +112,42 @@ export class ConversationOutput {
       view.filesSignature = filesSignature;
       return view.root;
     };
+    // Keep final prose/plans and deliverable cards visible. A trailing tool or usage
+    // item is not a final answer. Without a result, leave the full output accessible.
+    const isFinal = (block: OutputBlock): boolean => !('entries' in block) && !block.card && !block.activity && !!(
+      block.text?.trim() || block.item && typeof block.item.content === 'string' && block.item.content.trim()
+      && (block.item.metadata?.plan === true || !block.item.collapsed && ['markdown', 'text', undefined].includes(block.item.contentType))
+    );
+    let finalIndex = -1, lastCardIndex = -1;
+    for (const [index, block] of blocks.entries()) {
+      if (isFinal(block)) finalIndex = index;
+      if (!('entries' in block) && block.card) lastCardIndex = index;
+    }
+    if (finalIndex < 0) finalIndex = lastCardIndex;
+    const intermediate = new Set(blocks.filter((block, index) => {
+      if (!('entries' in block) && (block.card || block.item && ringOutputContent(block.item))) return false;
+      return index < finalIndex || 'entries' in block || !!block.answer || !!block.timer;
+    }));
+    const hasFinal = finalIndex >= 0 && !blocks.slice(finalIndex + 1).some(block => 'entries' in block);
+    const fold = collapseIntermediate && message.status === 'success' && !message.error && !message.pendingInput
+      && !message.submittingInput && hasFinal && intermediate.size > 0;
+    if (fold && !this.process) {
+      const root = document.createElement('details'); root.className = 'conversation-process';
+      const summary = document.createElement('summary');
+      const label = document.createElement('span'); summary.append(label); summary.insertAdjacentHTML('beforeend', iconHtml('chevron-right'));
+      const list = document.createElement('div'); list.className = 'conversation-process-content';
+      root.append(summary, list); this.process = { root, list, label };
+    }
+    if (fold) {
+      const seconds = Math.max(0, Math.round((message.durationMs ?? 0) / 1000));
+      const duration = seconds >= 60 ? t('{0}m {1}s', Math.floor(seconds / 60), seconds % 60) : t('{0}s', seconds);
+      const label = message.durationMs === undefined ? t('Intermediate steps') : t('Worked for {0}', duration);
+      this.process!.label.textContent = label;
+      this.process!.root.firstElementChild!.setAttribute('aria-label', t('Show or hide intermediate steps: {0}', label));
+    }
     const activeGroups = new Set<string>();
-    for (const [position, block] of blocks.entries()) {
+    const visibleRoots: HTMLElement[] = [], processRoots: HTMLElement[] = [];
+    for (const block of blocks) {
       let root: HTMLElement;
       let followList: HTMLDivElement | undefined;
       if ('entries' in block) {
@@ -141,12 +177,27 @@ export class ConversationOutput {
         if (follow) { followList = group.list; }
         root = group.root;
       } else { root = renderEntry(block); }
-      const current = this.root.children[position] ?? null;
-      if (current !== root) { this.root.insertBefore(root, current); }
+      if (fold && intermediate.has(block)) {
+        processRoots.push(root);
+        if (!visibleRoots.includes(this.process!.root)) visibleRoots.push(this.process!.root);
+      } else { visibleRoots.push(root); }
       if (followList) { followList.scrollTop = followList.scrollHeight; }
     }
+    const place = (parent: HTMLElement, roots: HTMLElement[]): void => {
+      for (const [index, root] of roots.entries()) {
+        const current = parent.children[index] ?? null;
+        if (current !== root) parent.insertBefore(root, current);
+      }
+    };
     for (const [key, view] of this.views) { if (!active.has(key)) { this.release(view.root); view.root.remove(); this.views.delete(key); this.activities.delete(key); } }
     for (const [key, group] of this.groups) { if (!activeGroups.has(key)) { group.root.remove(); this.groups.delete(key); } }
+    if (fold) place(this.process!.list, processRoots);
+    else if (this.process) {
+      // Detach the wrapper first; place its children around the cards without moving iframes.
+      this.process.root.remove();
+      this.process.root.open = false;
+    }
+    place(this.root, visibleRoots);
     if ((message.status === 'running' || message.status === 'sending') && !message.pendingInput) {
       if (!this.pending) {
         this.pending = document.createElement('div'); this.pending.className = 'pending';

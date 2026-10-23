@@ -8,6 +8,7 @@ import { assertProjectParamDeclarations, normalizeProjectParamDeclarations } fro
 import { assertConversationFooter } from "./conversation-footer";
 import { assertConversationCommands } from "./conversation-commands";
 import { assertConversationUserInput } from "./conversation-input";
+import { assertConversationPresentation } from "./conversation-presentation";
 
 export const STEAMHARNESS_ENTRYPOINT_ID_PATTERN = /^[a-z][a-z0-9_-]{0,63}$/;
 
@@ -73,6 +74,7 @@ export function defineProjectExecutor<Input = unknown, Output = unknown>(
     assertConversationFooter(definition.conversation?.footer, normalizeProjectParamDeclarations(definition.params).params);
     assertConversationCommands(definition.conversation?.commands, normalizeProjectParamDeclarations(definition.params).params);
     assertConversationUserInput(definition.conversation?.userInput, normalizeProjectParamDeclarations(definition.params).params);
+    assertConversationPresentation(definition.conversation?.collapseIntermediate);
   }
   return definition;
 }

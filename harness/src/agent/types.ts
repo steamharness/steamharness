@@ -489,6 +489,8 @@ export interface AgentNodeOptions extends AgentRuntimeOptions {
 }
 
 export interface AgentProjectOptions extends AgentNodeOptions {
+  /** Default presentation of completed turns. Defaults to true; does not change stored output. */
+  collapseIntermediate?: boolean;
   /** Display name of the generated project. */
   projectName?: string;
   /** Name used for the executor and its node names. Defaults to `agent`. */

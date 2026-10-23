@@ -250,6 +250,8 @@ test("defineAgentConversationExecutor produces a complete conversation executor"
   assert.equal(executor.workflow.name, "pi");
   assert.equal("defaultInput" in (executor.conversation ?? {}), false);
   assert.equal(executor.conversation?.inputQueue?.enabled, true);
+  assert.equal(executor.conversation?.collapseIntermediate, true);
+  assert.equal(defineAgentConversationExecutor({ collapseIntermediate: false }).conversation?.collapseIntermediate, false);
   assert.equal(executor.conversation?.openai?.enabled, true);
   assert.equal(executor.conversation?.openai?.outputItemId, "pi-answer");
   assert.equal(executor.tokenUsage?.enabled, true);

@@ -125,3 +125,36 @@ test("static inspection carries Slash commands and conditional plain-text footer
       (error as { metadata?: { violations?: { message: string }[] } }).metadata?.violations?.some(violation => /userInput/.test(violation.message)) === true);
   }
 });
+
+test("Conversation process folding validates runtime and static defaults without dropping false", async t => {
+  const definition = { projectType: "conversation" as const, workflow: {} as never, createInput: () => ({}) };
+  for (const collapseIntermediate of [true, false, undefined]) {
+    assert.equal(defineProjectExecutor({ ...definition, conversation: { collapseIntermediate } }).conversation?.collapseIntermediate, collapseIntermediate);
+  }
+  for (const value of [null, "true", {}, 1]) {
+    assert.throws(() => defineProjectExecutor({ ...definition, conversation: { collapseIntermediate: value as never } }), /collapseIntermediate/);
+  }
+  const projectDir = await mkdtemp(path.join(os.tmpdir(), "conversation-presentation-"));
+  t.after(() => rm(projectDir, { recursive: true, force: true }));
+  await writeFile(path.join(projectDir, "package.json"), JSON.stringify({ name: "presentation", type: "module" }));
+  const write = (value: string) => writeFile(path.join(projectDir, "index.ts"), `
+    const task = steamharness.defineProject({ name: "presentation", run(input) { return input; } });
+    export const executor = steamharness.defineExecutor({ projectType: "conversation", workflow: task,
+      conversation: { collapseIntermediate: ${value} }, createInput: () => ({}) });`);
+  for (const enabled of [true, false]) {
+    await write(String(enabled));
+    assert.equal(inspectLocalProjectStructure({ projectDir }).conversation?.collapseIntermediate, enabled);
+  }
+  await writeFile(path.join(projectDir, "agent.ts"), `export const agent = steamharness.createAgentNode({});`);
+  await write("false");
+  assert.equal(inspectLocalProjectStructure({ projectDir }).conversation?.collapseIntermediate, false);
+  await writeFile(path.join(projectDir, "index.ts"), `
+    const task = steamharness.defineProject({ name: "presentation", run(input) { return input; } });
+    export const executor = steamharness.defineExecutor({ projectType: "conversation", workflow: task, createInput: () => ({}) });`);
+  assert.equal(inspectLocalProjectStructure({ projectDir }).conversation?.collapseIntermediate, true);
+  for (const invalid of ['"yes"', '{}', 'getPreference()']) {
+    await write(invalid);
+    assert.throws(() => inspectLocalProjectStructure({ projectDir }), error =>
+      (error as { metadata?: { violations?: { message: string }[] } }).metadata?.violations?.some(violation => /collapseIntermediate/.test(violation.message)) === true);
+  }
+});

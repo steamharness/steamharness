@@ -7,7 +7,7 @@ export class ContentSearch {
   private readonly count = document.createElement('span');
   private matches: HTMLElement[] = [];
   private index = 0;
-  constructor(private readonly content: HTMLElement) {
+  constructor(private readonly content: HTMLElement, private readonly onNavigate?: () => void) {
     this.root.className = 'content-search'; this.root.hidden = true; this.root.setAttribute('role', 'search');
     this.input.type = 'search'; this.input.placeholder = this.input.ariaLabel = t("Search conversation content");
     this.root.append(this.input, this.count, iconButton('chevron-up', t("Previous"), () => this.next(-1)), iconButton('chevron-down', t("Next"), () => this.next(1)), iconButton('close', t("Close search"), () => this.close()));
@@ -41,7 +41,15 @@ export class ContentSearch {
     this.index = Math.min(this.index, Math.max(0, this.matches.length - 1)); this.count.textContent = this.matches.length ? `${this.index + 1}/${this.matches.length}` : '0/0';
     this.matches[this.index]?.classList.add('current-match');
   }
-  private scroll(): void { this.matches[this.index]?.scrollIntoView({ block: 'center' }); }
+  private scroll(): void {
+    const match = this.matches[this.index];
+    if (!match) return;
+    this.onNavigate?.();
+    for (let parent = match.parentElement; parent && this.content.contains(parent); parent = parent.parentElement) {
+      if (parent instanceof HTMLDetailsElement) parent.open = true;
+    }
+    match.scrollIntoView({ block: 'center' });
+  }
   private next(direction: number): void {
     if (!this.matches.length) { return; }
     this.index = (this.index + direction + this.matches.length) % this.matches.length; this.refresh(); this.scroll();

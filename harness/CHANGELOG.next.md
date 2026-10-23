@@ -1,5 +1,7 @@
 # Unreleased
 
+- 【新增】Conversation 支持 collapseIntermediate 显示默认值；Agent executor 默认开启成功回合的中间过程折叠，允许显式关闭，完整输出保持保留。
+
 - 【修复】本地配置存储随项目源码变更重新识别 Agent 模型字段，无需重开面板；未变源码复用静态分析结果。
 
 - 【新增】Core Agent 从项目配置的统一模型列表解析系统订阅与第三方 API，输入框只选择模型；按运行冻结选择并严格校验订阅，第三方连接无需系统 AI 登录。

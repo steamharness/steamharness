@@ -1,5 +1,7 @@
 # Unreleased
 
+- [Added] Successful Conversation turns can fold intermediate text, reasoning and tools while retaining each final reply, plan and resource card. Expand each turn with Worked for; a toolbar toggle remembers the project preference, with Core Agent enabled by default.
+
 - [Fixed] Show each answer's model name instead of its configuration entry ID in Assistant and Conversation, including sending previews and durable follow-ups. Recover older names from saved parameters and preserve them across configuration changes.
 
 - [Fixed] Open an independent new conversation when creating an Assistant tab in Studio, preserve running conversations and drafts in existing tabs, and restore each tab's own selection.

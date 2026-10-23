@@ -28,6 +28,7 @@ Every [createAgentNode](./create-agent-node.mdx) option, plus:
 | --- | --- | --- | --- |
 | `projectName` | `string` | — | Display name of the project. |
 | `projectName` | `string` | `agent` | Workflow name, also the node-name prefix (`<name>-input`, `<name>-output`, `<name>-agent`). |
+| `collapseIntermediate` | `boolean` | `true` | Default folding of successful turns, emitted as `conversation.collapseIntermediate`; users can override it in the UI. |
 | `outputItemId` | `string` | `agent-answer` | Item id of the assistant's answer, also written to `conversation.openai.outputItemId`. The answer item carries exactly this value, so an adapter looking it up by id always finds it. |
 | `params` | `ConversationParamDeclaration[]` | see below | Replaces the default parameter table with Auxiliary, Quick, and Mode entries only. The standard message input is always shown. |
 

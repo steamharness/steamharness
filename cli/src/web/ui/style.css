@@ -167,7 +167,7 @@ main { grid-area: main; min-width: 0; min-height: 0; display: flex; flex-directi
 .plan-card { border: 1px solid var(--border); border-radius: 6px; padding: 10px 14px; color: inherit; cursor: pointer; }
 .plan-card summary { display: grid; grid-template-columns: auto 1fr; }
 .plan-card .plan-preview { grid-column: 1 / -1; }
-.message-output > .message-content + .message-content { margin-top: 12px; }
+.message-output .message-content + .message-content { margin-top: 12px; }
 .activity-group { margin: 16px 0; min-width: 0; color: var(--muted); }
 .activity-group-summary { display: flex; align-items: center; gap: 8px; min-height: 30px; cursor: pointer; list-style: none; font-size: 12px; }
 .activity-group-summary > .codicon { flex-shrink: 0; font-size: 14px; }
@@ -473,3 +473,12 @@ textarea::placeholder { color: var(--vscode-input-placeholderForeground); }
 
 .conversation-access { flex: none; padding: 10px 16px; color: var(--vscode-editorWarning-foreground, #b89500); background: var(--vscode-editorWarning-background, transparent); border-bottom: 1px solid var(--vscode-panel-border, #444); user-select: text; }
 .conversation-access[hidden] { display: none; }
+
+/* Successful turns keep their final answer outside this expandable process. */
+.conversation-process { margin: 10px 0 14px; min-width: 0; }
+.conversation-process > summary { display: flex; align-items: center; gap: 6px; padding: 6px 0 9px; border-bottom: 1px solid var(--border); color: var(--muted); font-size: 12px; cursor: pointer; list-style: none; }
+.conversation-process > summary::-webkit-details-marker { display: none; }
+.conversation-process > summary > .codicon { font-size: 12px; }
+.conversation-process[open] > summary > .codicon { transform: rotate(90deg); }
+.conversation-process-content { padding-top: 12px; min-width: 0; }
+#collapse-intermediate[aria-pressed="true"] { color: var(--vscode-editor-foreground); background: var(--vscode-toolbar-activeBackground, var(--vscode-toolbar-hoverBackground)); }

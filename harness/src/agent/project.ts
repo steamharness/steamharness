@@ -181,6 +181,7 @@ export function defineAgentConversationExecutor(
     projectType: "conversation",
     workflow: createAgentConversationProject(options),
     conversation: {
+      collapseIntermediate: options.collapseIntermediate ?? true,
       recovery: { enabled: true },
       ...(options.session ? { durable: { enabled: true as const } } : {}),
       inputQueue: { enabled: true },

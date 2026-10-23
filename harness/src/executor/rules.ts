@@ -14,6 +14,7 @@ import type {
 import { assertProjectParamDeclarations, normalizeProjectParamDeclarations, readProjectParamDefinitionError } from "./param-definition";
 import { assertConversationFooter } from "./conversation-footer";
 import { assertConversationUserInput } from "./conversation-input";
+import { assertConversationPresentation } from "./conversation-presentation";
 import { assertConversationCommands } from "./conversation-commands";
 import { STEAMHARNESS_ENTRYPOINT_ID_PATTERN } from "./definition";
 import type { TokenUsageDefinition } from "../token-usage/index";
@@ -1777,14 +1778,16 @@ function analyzeSourceFile(
     const footer = readConversationFooterProperty(conversationProperty.initializer);
     const commands = readConversationCommandsProperty(conversationProperty.initializer);
     const userInput = readConversationUserInputProperty(conversationProperty.initializer);
+    const collapseIntermediate = readConversationPresentationProperty(conversationProperty.initializer);
     const recoveryProperty = findStaticPropertyAssignment(conversationProperty.initializer, "recovery");
     const recovery = recoveryProperty !== undefined && ts.isObjectLiteralExpression(recoveryProperty.initializer)
       && readBooleanProperty(recoveryProperty.initializer, "enabled") === true ? { enabled: true as const } : undefined;
     const durableProperty = findStaticPropertyAssignment(conversationProperty.initializer, "durable");
     const durable = durableProperty !== undefined && ts.isObjectLiteralExpression(durableProperty.initializer)
       && readBooleanProperty(durableProperty.initializer, "enabled") === true ? { enabled: true as const } : undefined;
-    if (durable !== undefined || recovery !== undefined || attachments !== undefined || inputQueue !== undefined || openai !== undefined || footer !== undefined || commands !== undefined || userInput !== undefined) {
+    if (collapseIntermediate !== undefined || durable !== undefined || recovery !== undefined || attachments !== undefined || inputQueue !== undefined || openai !== undefined || footer !== undefined || commands !== undefined || userInput !== undefined) {
       analysis.executorConversation = {
+        ...(collapseIntermediate === undefined ? {} : { collapseIntermediate }),
         ...(durable === undefined ? {} : { durable }),
         ...(recovery === undefined ? {} : { recovery }),
         ...(attachments === undefined ? {} : { attachments }),
@@ -2819,6 +2822,22 @@ function analyzeSourceFile(
       .filter((option): option is NonNullable<typeof option> => option !== undefined);
 
     return options.length === 0 ? undefined : options;
+  }
+
+  function readConversationPresentationProperty(obj: ts.ObjectLiteralExpression): boolean | undefined {
+    const property = findStaticPropertyAssignment(obj, "collapseIntermediate");
+    if (!property) return undefined;
+    try {
+      const value = evaluateExpression(property.initializer);
+      if (value.kind !== "literal") throw new Error("Conversation collapseIntermediate must be a static boolean.");
+      assertConversationPresentation(value.value);
+      return value.value;
+    } catch (error) {
+      analysis.executorConfigurationViolations.push({ type: "invalid_executor_param_configuration", name: "collapseIntermediate",
+        message: error instanceof Error ? error.message : String(error),
+        locations: [createLocation(cwd, filePath, sourceFile, property)] });
+      return undefined;
+    }
   }
 
   function readConversationUserInputProperty(obj: ts.ObjectLiteralExpression): ConversationDefinition["userInput"] {
