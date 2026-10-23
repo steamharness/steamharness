@@ -5,6 +5,7 @@ import type { AgentMessage } from "@earendil-works/pi-agent-core";
 import { HarnessError } from "../workflow/errors";
 import { parseAgentWebSearch, type AgentSearchMessage } from "./web-search";
 import { DurableAgent } from "./durable-agent";
+import { BUILTIN_AGENT_SKILLS_PROMPT } from "./builtin-skills";
 import { withStreamingMessage } from "./durable-context";
 import type { AgentSessionCommand, AgentSessionReceipt } from "./session-types";
 import {
@@ -758,9 +759,10 @@ function applyRunConfiguration(
   agent.state.thinkingLevel = clampThinkingLevel(pi, parsed.effort);
   // Plan mode leads: its read-only contract must not be talked out of by a
   // caller's persona, so the persona is appended rather than substituted.
-  agent.state.systemPrompt = parsed.agent === "plan"
+  const systemPrompt = parsed.agent === "plan"
     ? [AGENT_PLAN_SYSTEM_PROMPT, parsed.systemPrompt].filter(isNonEmpty).join("\n\n")
     : parsed.systemPrompt ?? options.systemPrompt ?? defaultAgentSystemPrompt();
+  agent.state.systemPrompt = [systemPrompt, BUILTIN_AGENT_SKILLS_PROMPT].filter(isNonEmpty).join("\n\n");
 
   // The policy decides which tools exist at all; a caller-supplied list can
   // only narrow that further, never widen it.

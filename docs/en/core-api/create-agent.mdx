@@ -9,6 +9,8 @@ description: "Create an agent runtime you can drive programmatically."
 
 The runtime uses Pi Durable 1.2.0 as its only execution backend and requires Node.js `>=22.19.0`.
 
+Core Agent includes the [i-have-adhd](https://github.com/ayghri/i-have-adhd) communication skill. The complete guide ships with the package and is loaded directly into each turn's system prompt, without installation, `/i-have-adhd`, or a configured `skill` tool. It favors action-first answers, short steps and fewer tangents in build mode, plan mode, custom `systemPrompt` personas and durable sessions. The user's language, format and requests for detailed explanations take precedence; `stop adhd mode` or `normal mode` stops the style. The skill shapes communication while task execution, plan-mode constraints and tool permissions retain their own rules.
+
 ## Signature
 
 ```ts
@@ -57,7 +59,7 @@ The returned runtime exposes:
 | `databasePath` | `string` | SQLite file for one isolated session. Omit for an in-memory agent without process recovery. Only one execution owner may open a file at a time. |
 | `session` | `AgentSessionOptions` | Enable durable inputs, task/plan snapshots, and background execution. See below. |
 | `workdir` | `string` | Directory tools resolve relative paths against. Defaults to `process.cwd()`. |
-| `systemPrompt` | `string` | Overrides the default system prompt. |
+| `systemPrompt` | `string` | Overrides the default persona prompt; the runtime still appends the built-in communication skill. |
 | `provider` / `model` | `string` | Provider and model id. A self-hosted endpoint must also provide `baseUrl`. |
 | `baseUrl` / `apiKey` | `string` | Endpoint and key for a self-hosted gateway. Defaults come from the matching environment variables. |
 | `modelAttributes` | `AgentModelAttributes` | The attribute record for the model a custom endpoint serves. See "Model attributes" below. |

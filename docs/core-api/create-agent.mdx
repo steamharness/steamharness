@@ -9,6 +9,8 @@ description: "创建一个可直接编程驱动的 Agent 运行时。"
 
 运行时使用 Pi Durable 1.2.0 作为唯一执行后端，要求 Node.js `>=22.19.0`。
 
+Core Agent 内置 [i-have-adhd](https://github.com/ayghri/i-have-adhd) 沟通技能，完整指南随包分发，并在每轮系统提示词中直接加载，无需安装、执行 `/i-have-adhd` 或配置 `skill` 工具。默认回答行动优先、分步简短、减少旁支；普通模式、plan 模式、自定义 `systemPrompt` 和持久会话都适用。用户的语言、格式和详细解释要求优先，也可以说 `stop adhd mode` 或 `normal mode` 停用这种风格。技能只调整表达方式，执行任务、plan 模式与工具权限继续遵守各自约束。
+
 ## 签名
 
 ```ts
@@ -58,7 +60,7 @@ const agent = await workflow.createAgent({
 | `storage` | `AgentStorageFactory` | 自定义独占后端工厂，与 databasePath 互斥；需自行实现所有权与备份。 |
 | `session` | `AgentSessionOptions` | 启用持久输入、任务/计划快照和后台执行，见下方。 |
 | `workdir` | `string` | 工具解析相对路径的目录，默认 `process.cwd()`。 |
-| `systemPrompt` | `string` | 覆盖默认系统提示词。 |
+| `systemPrompt` | `string` | 覆盖默认角色提示词；运行时仍附加内置沟通技能。 |
 | `provider` / `model` | `string` | 模型提供方与模型 id；自建端点需要同时提供 `baseUrl`。 |
 | `baseUrl` / `apiKey` | `string` | 自建网关或兼容端点的地址与密钥；缺省时从对应环境变量读取。 |
 | `modelAttributes` | `AgentModelAttributes` | 自建端点上该模型的属性声明，见下方「模型属性」。 |

@@ -12,11 +12,14 @@ const root = fileURLToPath(new URL("../", import.meta.url));
 const temporary = await mkdtemp(path.join(tmpdir(), "workflow-agent-dist-"));
 const manifest = JSON.parse(await readFile(path.join(root, "package.json"), "utf8"));
 let requests = 0;
+let systemPrompt = "";
 let codemode = false, scriptOutput = "";
 const server = createServer(async (request, response) => {
   let body = "";
   for await (const chunk of request) body += chunk;
   const input = JSON.parse(body);
+  systemPrompt = input.messages.filter(message => message.role === "system" || message.role === "developer")
+    .map(message => message.content).join("\n");
   requests++;
   response.writeHead(200, { "content-type": "text/event-stream" });
   if (codemode && !input.messages.some(message => message.role === "tool")) {
@@ -35,6 +38,10 @@ const server = createServer(async (request, response) => {
 
 try {
   await cp(path.join(root, "dist"), path.join(temporary, "dist"), { recursive: true });
+  const skillPath = path.join("skills", "i-have-adhd", "SKILL.md");
+  assert.equal(await readFile(path.join(temporary, "dist", skillPath), "utf8"),
+    await readFile(path.join(root, "src", "agent", skillPath), "utf8"));
+  assert.match(await readFile(path.join(temporary, "dist", "skills", "i-have-adhd", "LICENSE"), "utf8"), /Copyright \(c\) 2026 Ayoub Ghriss/);
   await writeFile(path.join(temporary, "package.json"), JSON.stringify({ type: "module" }));
   // Only declared production dependencies are available. Pi, Chord and MCP must
   // load from the copied bundle, without source or development dependencies.
@@ -90,6 +97,8 @@ void session;
     assert.equal(answer, "Dist durable ready.");
   }
   assert.equal(requests, 1);
+  assert.match(systemPrompt, /Use the i-have-adhd skill below by default/);
+  assert.match(systemPrompt, /### 10\. No preamble/);
   assert.equal(usage.length, 2);
   assert.ok(usage[0]);
   assert.equal(usage[0], usage[1]);
@@ -102,7 +111,7 @@ void session;
   try { for await (const _event of sandbox.run({ prompt: "Execute the script", requestId: "code-dist" })) { /* Drain the real worker. */ } }
   finally { await sandbox.close(); }
   assert.match(scriptOutput, /isolated 42/); assert.match(scriptOutput, /undefined/);
-  console.log("Copied dist: typed extension API, SQLite replay and QuickJS worker/WASM nested execution passed with production dependencies only.");
+  console.log("Copied dist: built-in skill and license, typed extension API, SQLite replay and QuickJS worker/WASM nested execution passed with production dependencies only.");
 } finally {
   await new Promise(resolve => { server.close(resolve); server.closeAllConnections(); });
   await rm(temporary, { recursive: true, force: true });

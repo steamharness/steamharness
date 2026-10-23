@@ -34,6 +34,8 @@
 
 ### Skill tools
 
+- Added the built-in `i-have-adhd` communication skill to Core Agent system prompts, including build mode, plan mode and custom personas. The complete guide and MIT license ship with the package; user language, formatting requests and requests to stop the style take precedence.
+
 - Clarify the `skill` display name, purpose and arguments, including discovery, entry and reference reads, result fields and truncation limits.
 
 ### Pi Durable

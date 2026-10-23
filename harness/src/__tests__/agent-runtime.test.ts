@@ -887,7 +887,7 @@ test("the run's context usage is keyed by the input the caller holds", () => {
   assert.deepEqual(readAgentRunContextUsage(original), usage);
 });
 
-test("each run carries its own system prompt", async () => {
+test("each run keeps its own persona and the complete built-in communication skill", async () => {
   const seen: string[] = [];
   const { pi, ai } = await createFauxRuntime([
     (context: { messages: import("@earendil-works/pi-ai").Message[] }) => {
@@ -912,7 +912,16 @@ test("each run carries its own system prompt", async () => {
     })) { void _event; }
 
     // The runtime's own prompt is the fallback; a run may replace it.
-    assert.deepEqual(seen, ["default persona", "per-run persona"]);
+    const skill = await readFile(new URL("../agent/skills/i-have-adhd/SKILL.md", import.meta.url), "utf8");
+    const guide = skill.slice(skill.indexOf("# i-have-adhd")).trim();
+    for (const [index, persona] of ["default persona", "per-run persona"].entries()) {
+      assert.ok(seen[index]?.startsWith(persona));
+      assert.ok(seen[index]?.includes(guide), "the model receives the complete vendored guide");
+      assert.equal(seen[index]?.split("## Built-in communication skill: i-have-adhd").length, 2);
+      assert.match(seen[index] ?? "", /task, plan-mode constraints, tool permissions/u);
+    }
+    assert.equal(seen[1]?.includes("default persona"), false);
+    await runtime.close();
   });
 });
 
@@ -933,8 +942,33 @@ test("plan mode leads with the plan contract and keeps the caller's persona", as
     // The read-only contract has to lead, but the persona must survive.
     assert.match(seen[0] ?? "", /plan mode/u);
     assert.match(seen[0] ?? "", /you are the assistant/u);
+    assert.match(seen[0] ?? "", /Built-in communication skill: i-have-adhd/u);
+    assert.match(seen[0] ?? "", /### 10\. No preamble/u);
     assert.ok((seen[0] ?? "").indexOf("plan mode") < (seen[0] ?? "").indexOf("you are the assistant"));
+    await runtime.close();
   });
+});
+
+test("the default agent loads its built-in skill without project tools", async () => {
+  const { ai } = await createFauxRuntime([]);
+  let seen = "";
+  const { pi } = await createFauxRuntime([
+    (context: { messages: import("@earendil-works/pi-ai").Message[] }) => {
+      seen = ai.getCurrentSystemPrompt(context.messages);
+      return ai.fauxAssistantMessage([ai.fauxText("ok")]);
+    },
+  ] as never[]);
+  const runtime = await createAgentRuntime({ pi, tools: [] });
+  try {
+    for await (const _event of runtime.run({ prompt: "hello", errCode: 0, errMessage: "" })) { void _event; }
+    assert.match(seen, /coding agent running inside a SteamHarness project/u);
+    assert.match(seen, /Use the i-have-adhd skill below by default/u);
+    assert.match(seen, /### 1\. Lead with the next action/u);
+    assert.match(seen, /### 10\. No preamble/u);
+    assert.match(seen, /honor requests to stop this style/u);
+  } finally {
+    await runtime.close();
+  }
 });
 
 test("hands the images to the model as content blocks", async () => {
