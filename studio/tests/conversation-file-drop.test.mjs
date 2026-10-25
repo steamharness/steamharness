@@ -60,13 +60,16 @@ test('native URI drops preserve encoded names and exclude remote resources', () 
   assert.deepEqual(f.messages[0].drop, { target: 'new-target', paths: ['file:///tmp/a%23.txt'] });
 });
 
-test('the drag bridge patch applies and reverses against the pinned kernel without modifying the active checkout', async t => {
+test('the integrated drag bridge patch reverses and reapplies against the pinned kernel without modifying the active checkout', async t => {
   const directory = await mkdtemp(path.join(tmpdir(), 'studio-drop-patch-')); t.after(() => rm(directory, { recursive: true, force: true }));
   const config = JSON.parse(await readFile(path.join(root, 'config/upstream.json'), 'utf8'));
-  const filename = 'src/vs/workbench/contrib/webview/browser/webviewElement.ts';
-  await mkdir(path.dirname(path.join(directory, filename)), { recursive: true });
-  await writeFile(path.join(directory, filename), execFileSync('git', ['show', `${config.commit}:${filename}`], { cwd: path.join(root, config.path) }));
+  const files = ['src/vs/workbench/contrib/webview/browser/webviewElement.ts', 'src/vs/workbench/contrib/webview/browser/studioWebviewDrop.ts'];
+  const original = files.map(filename => execFileSync('git', ['show', `${config.commit}:${filename}`], { cwd: path.join(root, config.path) }));
+  for (const [index, filename] of files.entries()) {
+    await mkdir(path.dirname(path.join(directory, filename)), { recursive: true });
+    await writeFile(path.join(directory, filename), original[index]);
+  }
+  execFileSync('git', ['apply', '--reverse', '--check', patch], { cwd: directory }); execFileSync('git', ['apply', '--reverse', patch], { cwd: directory });
   execFileSync('git', ['apply', '--check', patch], { cwd: directory }); execFileSync('git', ['apply', patch], { cwd: directory });
-  execFileSync('git', ['apply', '--reverse', '--check', patch], { cwd: directory });
-  assert.match(await readFile(path.join(directory, filename), 'utf8'), /_studioFileDrop\.update\(message\.target\)/);
+  assert.deepEqual(await Promise.all(files.map(filename => readFile(path.join(directory, filename)))), original);
 });
