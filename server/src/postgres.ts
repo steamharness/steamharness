@@ -6,9 +6,14 @@ export interface CreatePostgresPoolOptions extends pg.PoolConfig {
   label: string;
 }
 
-export function createPostgresPool(options: CreatePostgresPoolOptions): pg.Pool {
+export function createPostgresPool(options: CreatePostgresPoolOptions, env: NodeJS.ProcessEnv = process.env): pg.Pool {
   const { label, ...poolOptions } = options;
-  const pool = new Pool(poolOptions);
+  const rawMax = env.STEAMHARNESS_SERVER_DATABASE_POOL_MAX?.trim();
+  const configuredMax = rawMax ? Number(rawMax) : undefined;
+  if (configuredMax !== undefined && (!Number.isSafeInteger(configuredMax) || configuredMax < 1)) {
+    throw new Error("STEAMHARNESS_SERVER_DATABASE_POOL_MAX must be a positive integer.");
+  }
+  const pool = new Pool({ ...poolOptions, ...(poolOptions.max === undefined && configuredMax !== undefined ? { max: configuredMax } : {}) });
 
   // PostgreSQL can terminate an idle client asynchronously; pg-pool
   // emits that on the Pool, so consume it here and let later queries reconnect.

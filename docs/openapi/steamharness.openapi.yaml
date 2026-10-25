@@ -113,7 +113,7 @@ paths:
                               docsUrl:
                                 type: string
                                 format: uri
-                                description: 当前 Server 版本在同语言独立 Server 发布日志页面中的完整记录地址。
+                                description: 当前版本或部署的同语言完整更新记录地址。部署可提供当前环境内的相对日志路径。 / Localized version or deployment notes in the current environment.
                                 example: https://docs.steamharness.yuhe.space/en/guides/releases/server#server-v0-1-3
                             required:
                               - summary
@@ -7607,6 +7607,12 @@ components:
                 - string
                 - "null"
               example: abcdef123456
+            deploymentId:
+              type: string
+              description: 可选的部署标识，同产品版本的不同部署可独立识别。 / Optional deployment identifier, independent of product version.
+            docsPath:
+              type: string
+              description: 当前语言的站内日志路径，仅允许以单个斜线开头的相对路径。 / Localized notes path within the documentation site.
             components:
               type: object
               additionalProperties:

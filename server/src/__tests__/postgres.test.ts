@@ -2,6 +2,19 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { createPostgresPool, formatPostgresPoolError } from "../postgres";
 
+test("pool limits apply to each runtime pool and preserve explicit limits", async () => {
+  const env = { STEAMHARNESS_SERVER_DATABASE_POOL_MAX: "2" };
+  const shared = createPostgresPool({ label: "shared" }, env);
+  const explicit = createPostgresPool({ label: "explicit", max: 1 }, env);
+  try {
+    assert.equal(shared.options.max, 2);
+    assert.equal(explicit.options.max, 1);
+  } finally { await Promise.all([shared.end(), explicit.end()]); }
+  for (const value of ["0", "-1", "1.5", "invalid"]) {
+    assert.throws(() => createPostgresPool({ label: "invalid" }, { STEAMHARNESS_SERVER_DATABASE_POOL_MAX: value }), /positive integer/);
+  }
+});
+
 test("createPostgresPool consumes idle client errors", async () => {
   const warnings: unknown[][] = [];
   const originalWarn = console.warn;

@@ -39,6 +39,8 @@ pnpm start
 | --- | --- |
 | `STEAMHARNESS_SERVER_DATA_DIR` | Server 运行数据、缓存和本地对象存储目录。 |
 | `STEAMHARNESS_DATABASE_URL` | PostgreSQL 连接串。 |
+| `STEAMHARNESS_SERVER_DATABASE_POOL_MAX` | 每个连接池的最大连接数，必须为正整数；未设置时使用驱动默认值。共用数据库的多个进程需合并计算连接预算。 |
+| `STEAMHARNESS_SERVER_HOST` | 监听地址；反向代理部署可设置为 `127.0.0.1`，未设置时保持默认监听行为。 |
 | `STEAMHARNESS_STORAGE_DRIVER` | 对象存储后端，只接受 `local`：制品与头像写入本机磁盘。 |
 | `STEAMHARNESS_LOCAL_STORAGE_ROOT` | `local` 驱动使用的绝对路径。 |
 | `STEAMHARNESS_PUBLIC_BASE_URL` | 管理端公开地址。 |
@@ -62,3 +64,5 @@ curl -i "$STEAMHARNESS_PUBLIC_BASE_URL/health"
 Alpha 和正式版使用独立的运行目录、进程、日志和端口。两套环境应使用明确的发布制品和迁移策略；数据库变更保持 expand-only，禁止在部署脚本中删除或重命名线上字段。
 
 发布流水线只从受保护 ref 读取生产变量，并校验构建版本和静态资源。恢复操作不删除数据卷、不提交运行时配置，也不把密钥写入 artifact。
+
+健康信息中的 `deployment.server` 与 `deployment.serverWeb` 可携带独立的 `deploymentId`。相同产品版本多次部署时，用该标识和 `commitSha` 区分实际来源；`currentRelease.docsUrl` 指向本次部署的同语言日志，旧发布元数据继续使用版本日志地址。

@@ -39,6 +39,8 @@ Prepare backups and write access for at least:
 | --- | --- |
 | `STEAMHARNESS_SERVER_DATA_DIR` | Server runtime data, caches, and local object storage. |
 | `STEAMHARNESS_DATABASE_URL` | PostgreSQL connection string. |
+| `STEAMHARNESS_SERVER_DATABASE_POOL_MAX` | Maximum connections per pool; a positive integer. Unset uses the driver default. Budget all pools across processes sharing a database. |
+| `STEAMHARNESS_SERVER_HOST` | Listen address. Set `127.0.0.1` behind a reverse proxy; unset preserves the default binding. |
 | `STEAMHARNESS_STORAGE_DRIVER` | Object storage backend; only `local` is accepted, writing artifacts and avatars to this machine's disk. |
 | `STEAMHARNESS_LOCAL_STORAGE_ROOT` | Absolute path used by the `local` driver. |
 | `STEAMHARNESS_PUBLIC_BASE_URL` | Public administration URL. |
@@ -62,3 +64,5 @@ The reverse proxy should forward HTTPS, Host, and WebSocket headers and expose o
 Alpha and stable use separate runtime directories, processes, logs, and ports. Use explicit artifacts and migration plans for both environments; database changes remain expand-only and must not delete or rename live fields from a deployment script.
 
 Release jobs read production variables only from protected refs and verify build versions and static assets. Recovery does not remove data volumes, commit runtime configuration, or place secrets in artifacts.
+
+The `deployment.server` and `deployment.serverWeb` health records may include a separate `deploymentId`. Use it with `commitSha` to distinguish deployments of the same product version. `currentRelease.docsUrl` links to localized deployment notes; older metadata keeps version-based links.

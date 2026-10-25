@@ -274,3 +274,17 @@ test("health payload falls back to local manifests when release metadata is abse
     await rm(tempRoot, { recursive: true, force: true });
   }
 });
+
+
+test("deployment metadata identifies same-version updates and links the matching localized notes", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "server-health-deployment-"));
+  try {
+    await mkdir(path.join(root, "server", "stable"), {recursive:true});
+    await writeFile(path.join(root,"server/stable/release.json"),JSON.stringify({version:"0.1.0",deploymentId:"rollout-B",docsPaths:{en:"/deployment-notes.en.md","zh-CN":"//foreign.invalid/notes"},releaseNotes:{format:"markdown",body:"Updated deployment"}}));
+    const en=await createProjectServerHealthData({serverRoot:root,metadataRoot:root,locale:"en",docsBaseUrl:"https://docs.example.com"});
+    assert.equal(en.deployment.server?.deploymentId,"rollout-B");
+    assert.equal(en.currentRelease?.docsUrl,"https://docs.example.com/deployment-notes.en.md");
+    const zh=await createProjectServerHealthData({serverRoot:root,metadataRoot:root,locale:"zh-CN",docsBaseUrl:"https://docs.example.com"});
+    assert.equal(zh.currentRelease?.docsUrl,"https://docs.example.com/guides/releases/server/v0.1.0");
+  } finally { await rm(root,{recursive:true,force:true}); }
+});

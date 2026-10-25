@@ -1,5 +1,9 @@
 # Unreleased
 
+- Fixed: deployments include localized Server and Web notes with source identity; health links use the current environment.
+
+- Improved: configure PostgreSQL connection limits per pool and the Server listen address when hosting multiple environments on one machine.
+
 - Fixed default personal configurations for developers to use published templates instead of filtered drafts; unpublished role-controlled configurations explain that publication is required.
 
 - Added authoritative project and inherited group role checks for configuration use and management. Responses, exports and attachments are filtered; version 3 templates freeze role policies and fixed assignments.

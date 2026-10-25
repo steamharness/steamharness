@@ -154,6 +154,7 @@ const port = readNumberEnv("STEAMHARNESS_SERVER_PORT", Number(process.env.PORT) 
 
 const actualPort = await listenServerWithDevPortFallback(server, {
   port,
+  host: process.env.STEAMHARNESS_SERVER_HOST?.trim() || undefined,
   isDev: process.env.STEAMHARNESS_SERVER_DEV === "1",
   strictPort: process.env.STEAMHARNESS_SERVER_STRICT_PORT === "1",
   logger: console,

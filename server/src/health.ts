@@ -15,6 +15,8 @@ export interface ServerHealthRelease {
   commitSha: string | null;
   components: Record<string, string>;
   releaseNotes: { format: "markdown"; body: string } | null;
+  deploymentId?: string;
+  docsPath?: string;
   source: "release-metadata" | "package-manifest";
 }
 
@@ -101,7 +103,7 @@ export async function createProjectServerHealthData(options: {
           body: serverReleaseBody,
           // Server announcements link to the dedicated generated
           // page for this exact version.
-          docsUrl: `${docsBaseUrl}${locale === "en" ? "/en" : ""}/guides/releases/server/v${serverVersion}`,
+          docsUrl: serverRelease?.docsPath ? `${docsBaseUrl}${serverRelease.docsPath}` : `${docsBaseUrl}${locale === "en" ? "/en" : ""}/guides/releases/server/v${serverVersion}`,
         }
       : null,
     deployment: {
@@ -131,6 +133,8 @@ async function resolveDeploymentRelease(options: {
       publishedAt: readOptionalString(metadata.publishedAt),
       commitSha: readOptionalString(metadata.commitSha),
       components: readStringRecord(metadata.components),
+      ...(readOptionalString(metadata.deploymentId) ? { deploymentId: readOptionalString(metadata.deploymentId)! } : {}),
+      ...(readDocsPath(metadata.docsPaths, options.locale) ? { docsPath: readDocsPath(metadata.docsPaths, options.locale)! } : {}),
       releaseNotes: readReleaseNotes(metadata.releaseNotes, options.locale),
       source: "release-metadata",
     });
@@ -163,6 +167,8 @@ function normalizeHealthRelease(input: {
   commitSha: string | null;
   components: Record<string, string>;
   releaseNotes: { format: "markdown"; body: string } | null;
+  deploymentId?: string;
+  docsPath?: string;
   source: "release-metadata" | "package-manifest";
 }): ServerHealthRelease | null {
   if (!input.version) {
@@ -178,6 +184,8 @@ function normalizeHealthRelease(input: {
     commitSha: input.commitSha,
     components: input.components,
     releaseNotes: input.releaseNotes,
+    ...(input.deploymentId ? { deploymentId: input.deploymentId } : {}),
+    ...(input.docsPath ? { docsPath: input.docsPath } : {}),
     source: input.source,
   };
 }
@@ -230,4 +238,10 @@ function summarizeMarkdown(body: string): string {
     .replace(/[`*_]/g, "")
     .trim();
   return summary.length > 160 ? `${summary.slice(0, 157)}...` : summary;
+}
+
+function readDocsPath(value: unknown, locale: SupportedLocale): string | null {
+  if (!isRecord(value)) return null;
+  const candidate = readOptionalString(value[locale]);
+  return candidate && /^\/[a-zA-Z0-9/_.-]+$/.test(candidate) && !candidate.includes("..") && !candidate.startsWith("//") ? candidate : null;
 }
