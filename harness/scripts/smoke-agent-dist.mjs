@@ -10,6 +10,7 @@ import { promisify } from "node:util";
 
 const root = fileURLToPath(new URL("../", import.meta.url));
 const temporary = await mkdtemp(path.join(tmpdir(), "workflow-agent-dist-"));
+const databasePath = path.join(temporary, ...Array.from({ length: 8 }, () => "nested directory with spaces and 中文"), "agent.sqlite");
 const manifest = JSON.parse(await readFile(path.join(root, "package.json"), "utf8"));
 let requests = 0;
 let systemPrompt = "";
@@ -86,7 +87,7 @@ void session;
     const agent = await createAgent({
       provider: "openai", model: "dist-smoke", baseUrl: `http://127.0.0.1:${address.port}/v1`,
       apiKey: "offline-fixture", apiKind: "openai-completions", contextWindow: 8192,
-      workdir: temporary, databasePath: path.join(temporary, "agent.sqlite"), tools: [],
+      workdir: temporary, databasePath, tools: [],
     });
     let answer = "";
     try {
@@ -111,7 +112,7 @@ void session;
   try { for await (const _event of sandbox.run({ prompt: "Execute the script", requestId: "code-dist" })) { /* Drain the real worker. */ } }
   finally { await sandbox.close(); }
   assert.match(scriptOutput, /isolated 42/); assert.match(scriptOutput, /undefined/);
-  console.log("Copied dist: built-in skill and license, typed extension API, SQLite replay and QuickJS worker/WASM nested execution passed with production dependencies only.");
+  console.log("Copied dist: built-in skill and license, typed extension API, SQLite replay at a deep path and QuickJS worker/WASM nested execution passed with production dependencies only.");
 } finally {
   await new Promise(resolve => { server.close(resolve); server.closeAllConnections(); });
   await rm(temporary, { recursive: true, force: true });

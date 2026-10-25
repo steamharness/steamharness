@@ -162,6 +162,8 @@ Studio Trace 在原轨迹页旁提供任务、计划、记录、用量四个 tab
 
 ### 自定义存储与备份
 
+Windows 深层目录中的 Agent SQLite 会话自动使用长路径支持，创建、重开、所有权锁及离线备份与导入均保留原存储位置，无需缩短宿主数据目录。
+
 运行时 `storage: AgentStorageFactory` 与 `databasePath` 互斥：`{ label, open(): Promise<{ storage: AgentStorage, release?() }> }`。宿主必须在 open 时获取独占 owner，Harness 关闭 storage 后再调用 release；恢复仍须使用同一份存储。自定义后端负责自身备份与取消调度，JSONL 不是默认长期运行后端。
 
 `steamharness/agent` 导出 `exportAgentDatabase({ databasePath, destination })` 和 `importAgentDatabase({ source, databasePath })`。先停止并等待执行 worker；两个函数均获取源、目标的独占 owner 锁、检查 Durable SQLite，并通过 SQLite backup 保存含 WAL 的一致快照。目标必须不存在且未被其他 owner 预留，不覆盖任何会话；导入不复制源 owner 锁。数据库和项目工作区须配套保存，快照不包含工作区文件、运行中资源或凭据重建逻辑。
