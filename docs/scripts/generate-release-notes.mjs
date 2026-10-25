@@ -39,13 +39,13 @@ export const RELEASE_UNITS = Object.freeze([
     slug: "server", label: "Server", labelEn: "Server", title: "Server 发布日志",
     description: "SteamHarness Server 的完整版本记录与更新说明。",
     source: "server", packageLabel: "server", target: "当前设备",
-    endpoint: "https://steamharness.yuhe.space",
+    endpoint: "https://server.steamharness.yuhe.space",
   },
   {
     slug: "server-web", label: "Server Web", labelEn: "Server Web", title: "Server Web 发布日志",
     description: "Server Web 管理端的完整版本记录与更新说明。",
     source: "server/web", packageLabel: "server-web", target: "当前设备",
-    endpoint: "https://steamharness.yuhe.space",
+    endpoint: "https://server.steamharness.yuhe.space",
   },
   {
     slug: "builtin-developer-assistant", label: "开发者小助手", labelEn: "Developer Assistant",

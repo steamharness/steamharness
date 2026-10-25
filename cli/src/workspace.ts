@@ -1,3 +1,5 @@
+import { defaultServerUrl } from "./service-url";
+
 import type {ProjectConfigurationState} from '@steamharness/project-configuration';
 import { spawn } from "node:child_process";
 import { createHash, randomUUID } from "node:crypto";
@@ -165,9 +167,6 @@ interface DeviceTokenResult {
   expiresAt?: string;
 }
 
-// keeps the repo-side CLI fallback aligned with the long-lived dev
-// server, while release/deploy docs now call out the separate 7130+ band.
-const DEFAULT_SERVER_URL = "http://localhost:7125";
 const CLI_MODULE_DIR = path.dirname(fileURLToPath(import.meta.url));
 const DEFAULT_DEVICE_FLOW_CLIENT_NAME = "Workflow Workspace CLI";
 
@@ -1766,7 +1765,7 @@ export function parseArgs(argv: string[]): ParsedArgs {
   // (SteamHarness Desktop) passes its own session through the environment,
   // and that is the server the command really talks to.
   const options: CliOptions = {
-    server: envServer ?? authConfig.serverUrl ?? DEFAULT_SERVER_URL,
+    server: envServer ?? (authConfig.serverUrl.trim() || defaultServerUrl()),
     token: envToken ?? authConfig.apiKey ?? "",
     dependencies: [],
   };

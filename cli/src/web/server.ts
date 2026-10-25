@@ -32,6 +32,7 @@ import { ConversationHistory } from './conversation-history';
 import { ConversationState } from './conversation-state';
 import { pathReferences } from './conversation-paths';
 import { importDroppedEntries, resolveDroppedPaths } from './dropped-paths';
+import { defaultServerUrl } from '../service-url';
 
 type Message = Record<string, any>;
 export interface WebOptions { projectDir: string; port?: number; dataDir?: string; theme?: 'auto' | 'light' | 'dark'; runtime?: Runtime; host?: WebHostConfiguration }
@@ -41,7 +42,7 @@ export async function startWebServer(options: WebOptions) {
   const storageDir = path.resolve(options.dataDir ?? path.join(os.homedir(), '.steamharness', 'web'));
   const clients = new Set<ServerResponse>();
   let connection: WebConnection | undefined;
-  let account: AccountState = { status: 'signed-out', serverUrl: 'http://localhost:7126', revision: 0 };
+  let account: AccountState = { status: 'signed-out', serverUrl: defaultServerUrl(), revision: 0 };
   let signedOut = false;
   let authIdentity = '';
   let login: ChildProcess | undefined;
@@ -290,7 +291,7 @@ export async function startWebServer(options: WebOptions) {
     }
     authenticationInitialized = true;
     if (!background) {
-      account = { status: candidate ? 'checking' : 'signed-out', serverUrl: serverUrl || 'http://localhost:7126',
+      account = { status: candidate ? 'checking' : 'signed-out', serverUrl: serverUrl || defaultServerUrl(),
         aiServerUrl: aiServerUrl || undefined, aiConfigured: Boolean(aiServerUrl && aiToken),
         user: candidate ? changed ? hostManaged ? undefined : config.user : account.user : undefined, revision: account.revision + 1 };
     }

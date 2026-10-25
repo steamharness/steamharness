@@ -4,7 +4,7 @@ info:
   version: 0.1.0
   description: SteamHarness Server 提供项目、不可变源码版本和项目数据存储。本地客户端负责执行项目。
 servers:
-  - url: http://localhost:7125
+  - url: http://localhost:7126
     description: Local SteamHarness Server (dev default)
   - url: http://localhost:7130
     description: Deployed SteamHarness Server (release default)
@@ -114,7 +114,7 @@ paths:
                                 type: string
                                 format: uri
                                 description: 当前版本或部署的同语言完整更新记录地址。部署可提供当前环境内的相对日志路径。 / Localized version or deployment notes in the current environment.
-                                example: https://docs.steamharness.yuhe.space/en/guides/releases/server#server-v0-1-3
+                                example: https://docs.steamharness.yuhe.space/en/guides/releases/server/v0.1.3
                             required:
                               - summary
                               - body

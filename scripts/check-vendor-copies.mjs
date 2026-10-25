@@ -33,6 +33,7 @@ export const BUILTIN_PROJECTS = Object.freeze([
 /** `shared` 下的这些目录不是包，不参与 vendor 镜像。 */
 export const SHARED_EXCLUDED_ENTRIES = Object.freeze([
   "node_modules", "scripts", "tests", "__tests__", ".agents", ".codex", ".claude",
+  "dist", "coverage", ".release",
 ]);
 
 /** `shared` 真相源里被内置项目以单文件方式复制的脚本。 */

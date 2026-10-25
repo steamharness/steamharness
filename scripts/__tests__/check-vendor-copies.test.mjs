@@ -63,6 +63,22 @@ test("an in-sync tree reports no drift", async () => {
   }
 });
 
+test("local builds and coverage reports never enter vendor copies", async () => {
+  const root = await createFixture();
+  try {
+    for (const directory of ["dist", "coverage", ".release"]) {
+      await mkdir(path.join(root, "shared", directory), { recursive: true });
+      await writeFile(path.join(root, "shared", directory, "generated.html"), "local artifact\n");
+    }
+    const { drift, copies } = await checkVendorCopies(root);
+    assert.deepEqual(drift, []);
+    assert.ok(copies.every(copy => !/vendor\/shared\/(?:dist|coverage|\.release)\//u.test(copy.copy)));
+    assert.deepEqual(await syncVendorCopies(root), []);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 test("drift is reported per copy and file", async () => {
   const root = await createFixture();
   try {

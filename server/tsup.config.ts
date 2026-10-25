@@ -10,6 +10,7 @@ export default defineConfig({
   // Production Node cannot load workspace packages' TypeScript-only entries.
   // Inline them so deployed releases only load built JavaScript.
   noExternal: [
+    "@steamharness/service-urls",
     "@steamharness/project-access",
     "@steamharness/project-card-metadata",
     "@steamharness/project-configuration",

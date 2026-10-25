@@ -1200,7 +1200,7 @@ describe("server workspace CLI helpers", () => {
     const source = readFileSync(path.resolve("..", "shared", "i18n", "resources", "en", "cli.ts"), "utf8");
 
     expect(source).toContain("Usage: steamharness [--locale <zh-CN|en>] workspace <command> [args]");
-    expect(source).toContain("http://localhost:7125");
+    expect(source).toContain("http://localhost:7126");
   });
 
   it("backs off device polling when the server returns slow_down", async () => {

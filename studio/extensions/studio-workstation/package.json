@@ -209,7 +209,7 @@
           "type": "boolean", "default": true, "description": "%config.startPage.enabled%"
         },
         "studio.project.serverUrl": {
-          "type": "string", "default": "http://localhost:7126", "scope": "application",
+          "type": "string", "default": "", "scope": "application",
           "description": "%config.studio.project.serverUrl%"
         },
         "studio.project.nodePath": {

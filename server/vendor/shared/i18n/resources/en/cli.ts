@@ -78,7 +78,7 @@ export const cli = {
         "  --locale <zh-CN|en>  Select the CLI output language",
         "",
         "Options:",
-        "  --server <url>   Defaults to STEAMHARNESS_SERVER_URL, saved CLI auth, or http://localhost:7125",
+        "  --server <url>   Defaults to STEAMHARNESS_SERVER_URL, saved CLI auth, or the channel default (dev: http://localhost:7126)",
         "  --token <token>  Optional manual override. Defaults to STEAMHARNESS_SERVER_ADMIN_KEY or saved CLI auth API key",
     ].join("\n"),
     invalidLocale: 'Unsupported locale "{{value}}". Expected "zh-CN" or "en".',

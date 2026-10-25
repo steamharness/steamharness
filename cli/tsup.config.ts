@@ -1,4 +1,5 @@
 import { defineConfig } from "tsup";
+import { checkoutServiceChannel } from "./vendor/shared/service-urls/node.mjs";
 
 export default defineConfig({
   entry: ["src/index.ts"],
@@ -9,11 +10,13 @@ export default defineConfig({
   // Prefix-only built-ins such as node:sqlite cannot resolve without node:.
   removeNodeProtocol: false,
   bundle: true,
+  define: { __STEAMHARNESS_SERVICE_CHANNEL__: JSON.stringify(checkoutServiceChannel({ root: import.meta.dirname })) },
   external: ["steamharness"],
   // @steamharness/i18n is a TypeScript-only build dependency. Inline it and
   // i18next so the published CLI has no workspace-only runtime dependency.
   noExternal: [
     "@steamharness/auth-config",
+    "@steamharness/service-urls",
     "@steamharness/i18n",
     "@steamharness/kanban-project",
     "@steamharness/openai-responses",

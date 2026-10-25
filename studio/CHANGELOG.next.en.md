@@ -1,5 +1,7 @@
 # Unreleased
 
+- Fixed: The default project Server follows the build channel: local services for dev and the corresponding site for alpha and main. User-configured addresses retain priority.
+
 - [Fixed] Conversation and Assistant file cards now use the active VS Code file icon theme to match Explorer file and named-folder icons, refreshing on theme changes while ignoring stale responses.
 
 - Improvement: File path cards in Conversation and Assistant can be opened with a click. Documents use Studio previews, code uses the editor, and folders open in the system file manager. Cards show icons for common file types and report missing paths.

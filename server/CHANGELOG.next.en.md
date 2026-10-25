@@ -1,5 +1,7 @@
 # Unreleased
 
+- Fixed: Release-note links follow the dev, alpha and main environments so local and alpha services open the matching documentation.
+
 - Fixed: deployments include localized Server and Web notes with source identity; health links use the current environment.
 
 - Improved: configure PostgreSQL connection limits per pool and the Server listen address when hosting multiple environments on one machine.

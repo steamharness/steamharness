@@ -141,3 +141,5 @@ Desktop and Web startup apply kernel patches, then check build fingerprints for 
 All three project types expose fields, named profiles and complete import/export. Studio and local CLI share local storage; Server values are per project and account. Studio Control can query and manage configurations even when the panel is closed. See [Project configurations](/en/concepts/project-configuration) for the JSON actions, version checks and execution snapshot rules.
 
 First uploads let you select a personal project or a group where you have developer access, without promoting group creators. Permission errors explain that the action is unavailable; retry after access is restored. Private share links offer guest access requests in Server Web.
+
+The default project Server follows the Studio build channel: dev uses `http://localhost:7126`, while alpha and main use their corresponding deployment sites. A Server explicitly selected in settings or at sign-in retains priority.

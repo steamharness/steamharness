@@ -1,5 +1,7 @@
 # Unreleased
 
+- Fixed: Default Server addresses follow the dev, alpha and main channels. Dev uses localhost:7126, empty saved addresses fall back correctly, and explicit connections retain priority.
+
 - Fixed project starts and restores to retain source system-only AI restrictions and official template field locks when using supplied or saved run snapshots.
 
 - Added role-filtered configuration lists with capability, role and active-state labels. Guests edit allowed values only; mode labels follow the selected profile, and drafts survive access changes.

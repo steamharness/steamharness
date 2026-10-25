@@ -5,6 +5,8 @@ import { ROOT, builtinProjectDirectory, resolveMonorepoRoot, readJSON } from './
 import * as fs from 'node:fs/promises';
 import { createRequire } from 'node:module';
 import { buildDocumentPreviews } from './document-preview.mjs';
+import { checkoutServiceChannel } from '../../shared/service-urls/node.mjs';
+import { publicServiceUrls } from '../../shared/service-urls/index.ts';
 
 export async function buildExtension({ watch = false } = {}) {
   const directory = path.join(ROOT, 'extensions/studio-workstation');
@@ -24,6 +26,7 @@ export async function buildExtension({ watch = false } = {}) {
     format: 'cjs',
     sourcemap: true,
     logLevel: 'info',
+    define: { __STEAMHARNESS_DEFAULT_SERVER_URL__: JSON.stringify(publicServiceUrls(checkoutServiceChannel({ root: ROOT })).server) },
   };
   const options = [
     { ...shared, entryPoints: ['src/extension-node.ts'], platform: 'node', target: 'node22', outfile: 'dist/extension.js' },

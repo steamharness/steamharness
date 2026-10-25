@@ -2,7 +2,9 @@ import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
 import { readFileSync, readdirSync } from "node:fs";
 import { resolve } from "node:path";
-import { defineConfig, searchForWorkspaceRoot } from "vite";
+import { defineConfig, loadEnv, searchForWorkspaceRoot } from "vite";
+import { checkoutServiceChannel } from "../vendor/shared/service-urls/node.mjs";
+import { publicServiceUrls } from "../vendor/shared/service-urls/index";
 
 const allowedHosts = [
   "yuhe.space",
@@ -10,16 +12,16 @@ const allowedHosts = [
   "hookcode.win",
   ".hookcode.win",
 ];
-// server/web dev proxy should keep following the 712x dev server by
-// default; 7130+ is reserved for deployed release instances.
-const serverProxyTarget = process.env.STEAMHARNESS_SERVER_WEB_PROXY ?? "http://127.0.0.1:7125";
 const localSourceMode = process.env.STEAMHARNESS_LOCAL_SOURCE_MODE === "1";
 const localSharedRoot = process.env.STEAMHARNESS_LOCAL_SHARED_ROOT?.trim()
   ? resolve(process.env.STEAMHARNESS_LOCAL_SHARED_ROOT)
   : resolve(__dirname, "..", "..", "shared");
 const localSharedAliases = localSourceMode ? readLocalSharedAliases(localSharedRoot) : [];
 
-export default defineConfig({
+export default defineConfig(({ mode }) => {
+  const env = { ...loadEnv(mode, __dirname, ""), ...process.env };
+  const serverProxyTarget = env.STEAMHARNESS_SERVER_WEB_PROXY || publicServiceUrls(checkoutServiceChannel({ root: __dirname, mode, env })).server;
+  return {
   plugins: [react(), tailwindcss()],
   resolve: {
     alias: [
@@ -66,6 +68,7 @@ export default defineConfig({
       },
     },
   },
+  };
 });
 
 export function readLocalSharedAliases(root: string): Array<{ find: RegExp; replacement: string }> {

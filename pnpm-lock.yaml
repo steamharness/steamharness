@@ -161,6 +161,9 @@ importers:
       '@steamharness/runtime-compatibility':
         specifier: workspace:*
         version: link:../shared/runtime-compatibility
+      '@steamharness/service-urls':
+        specifier: workspace:*
+        version: link:../shared/service-urls
       '@steamharness/workflow-ids':
         specifier: workspace:*
         version: link:../shared/workflow-ids
@@ -318,6 +321,9 @@ importers:
       '@steamharness/runtime-compatibility':
         specifier: workspace:*
         version: link:../shared/runtime-compatibility
+      '@steamharness/service-urls':
+        specifier: workspace:*
+        version: link:../shared/service-urls
       '@steamharness/workflow-ids':
         specifier: workspace:*
         version: link:../shared/workflow-ids
@@ -698,6 +704,8 @@ importers:
       '@types/semver':
         specifier: ^7.7.1
         version: 7.8.0
+
+  shared/service-urls: {}
 
   shared/utf8-stream: {}
 

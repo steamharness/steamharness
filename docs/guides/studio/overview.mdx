@@ -141,3 +141,5 @@ npm run dev
 三种项目类型均支持字段、命名配置及完整导入导出。Studio 与本地 CLI 共用本地存储，Server 按项目和账号隔离。面板关闭时 Studio Control 仍能查询和管理配置。JSON 操作、版本检查和运行快照规则见[项目配置](/concepts/project-configuration)。
 
 首次上传时可选择个人项目或具有开发者权限的归属组；组内创建不会自动提升角色。权限错误会提示当前操作不可用；组或项目撤权后需重新获得权限再重试。私有项目分享链接可在 Server Web 中申请访客权限。
+
+项目 Server 的默认地址随 Studio 构建渠道选择：dev 使用 `http://localhost:7126`，alpha 与 main 使用对应的部署站点。用户在设置或登录页明确选择的地址继续优先。

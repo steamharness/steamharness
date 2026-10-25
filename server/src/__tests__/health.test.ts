@@ -5,6 +5,32 @@ import path from "node:path";
 import test from "node:test";
 import { createProjectServerHealthData } from "../health";
 
+test("release links follow dev, alpha and main without overriding an explicit docs origin", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "steamharness-health-links-"));
+  const saved = { channel: process.env.STEAMHARNESS_SERVICE_CHANNEL, docs: process.env.STEAMHARNESS_DOCS_PUBLIC_BASE_URL };
+  try {
+    delete process.env.STEAMHARNESS_DOCS_PUBLIC_BASE_URL;
+    for (const unit of ["server", "server-web"]) for (const channel of ["stable", "alpha"]) {
+      const directory = path.join(root, unit, channel);
+      await mkdir(directory, { recursive: true });
+      await writeFile(path.join(directory, "release.json"), JSON.stringify({ version: "0.1.0", releaseNotes: { format: "markdown", body: "Updated." } }));
+    }
+    for (const channel of ["dev", "alpha", "main"]) {
+      process.env.STEAMHARNESS_SERVICE_CHANNEL = channel;
+      const health = await createProjectServerHealthData({ serverRoot: root, metadataRoot: root, locale: "en" });
+      const origin = channel === "dev" ? "http://localhost:7135" : `https://docs${channel === "alpha" ? "-alpha" : ""}.steamharness.yuhe.space`;
+      assert.equal(health.currentRelease?.docsUrl, `${origin}/en/guides/releases/server/v0.1.0`);
+    }
+    assert.equal((await createProjectServerHealthData({ serverRoot: root, metadataRoot: root, docsBaseUrl: "https://custom.example" })).currentRelease?.docsUrl,
+      "https://custom.example/en/guides/releases/server/v0.1.0");
+  } finally {
+    for (const [key, value] of [["STEAMHARNESS_SERVICE_CHANNEL", saved.channel], ["STEAMHARNESS_DOCS_PUBLIC_BASE_URL", saved.docs]] as const) {
+      if (value === undefined) delete process.env[key]; else process.env[key] = value;
+    }
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 test("health payload prefers deployed release metadata for server and server-web", async () => {
   const tempRoot = await mkdtemp(path.join(os.tmpdir(), "steamharness-server-health-"));
 
@@ -50,6 +76,7 @@ test("health payload prefers deployed release metadata for server and server-web
     );
 
     const health = await createProjectServerHealthData({
+      channel: "stable",
       mode: "production",
       startedAt: "2026-06-29T09:00:00Z",
       serverRoot,
@@ -108,6 +135,7 @@ test("health payload prefers deployed release metadata for server and server-web
     });
 
     const englishHealth = await createProjectServerHealthData({
+      channel: "stable",
       mode: "production",
       startedAt: "2026-06-29T09:00:00Z",
       serverRoot,

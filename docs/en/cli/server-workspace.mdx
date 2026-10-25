@@ -26,7 +26,7 @@ description: "Manage Server project uploads, immutable source versions and data 
 
 | Option | Purpose |
 | --- | --- |
-| `--server <url>` | Overrides `STEAMHARNESS_SERVER_URL`, saved connection and default `http://localhost:7125`. |
+| `--server <url>` | Overrides `STEAMHARNESS_SERVER_URL`, saved connection and channel default (dev: `http://localhost:7126`). |
 | `--token <token>` | Overrides `STEAMHARNESS_SERVER_ADMIN_KEY` and saved credentials. |
 | `--target <version>` | Exact download version or `latest`; draft is rejected. |
 | `--release-log <text>` | Release notes; upload publishes automatically when supplied. |
@@ -44,7 +44,7 @@ Unknown options fail. Declare static type in `package.json.steamHarness.projectT
 ## Upload and Download
 
 ```bash
-steamharness workspace login --server http://localhost:7125
+steamharness workspace login --server http://localhost:7126
 steamharness workspace upload hello --create --release-log "Initial release"
 steamharness workspace versions hello
 steamharness workspace download hello --target latest --path ./downloaded-hello
@@ -69,3 +69,5 @@ CLI reads `.env` from the current directory and source repository root; existing
 Success returns `{ errCode: 0, errMessage: "", data }`; server and local argument errors produce a nonzero exit code. Processing jobs retain progress and failure details. Failed uploads preserve published snapshots.
 
 Use `--group-id <id>` when creating or first uploading into a group with developer access. Omit it to own a personal project. Upload, publication and Server writes require developer access; published downloads and data reads require guest access. Cookies and API keys both use current project and group memberships.
+
+Without an explicit Server, the client uses its build channel: `http://localhost:7126` for dev and the corresponding site for alpha or main. Set `STEAMHARNESS_SERVICE_CHANNEL=dev|alpha|main` to select the default channel explicitly; `--server`, `STEAMHARNESS_SERVER_URL` and saved connections retain higher priority.

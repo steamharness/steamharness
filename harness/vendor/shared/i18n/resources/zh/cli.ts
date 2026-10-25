@@ -80,7 +80,7 @@ export const cli: typeof Encli = {
         "  --locale <zh-CN|en>  选择 CLI 输出语言",
         "",
         "选项：",
-        "  --server <url>   默认读取 STEAMHARNESS_SERVER_URL、已保存的 CLI 认证或 http://localhost:7125",
+        "  --server <url>   默认读取 STEAMHARNESS_SERVER_URL、已保存的 CLI 认证或渠道默认地址（dev：http://localhost:7126）",
         "  --token <token>  可选的手动覆盖值，默认读取 STEAMHARNESS_SERVER_ADMIN_KEY 或已保存的 CLI API key",
     ].join("\n"),
     invalidLocale: "不支持语言 {{value}}，只能使用 zh-CN 或 en。",

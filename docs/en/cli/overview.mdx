@@ -34,8 +34,8 @@ steamharness json workspace/workflow/runtime-timer -- --title "Fixture Timer" --
 When deploying to the server, first check the service status, then log in, upload files, publish a version, and download it.
 
 ```bash
-pnpm exec steamharness workspace health --server http://localhost:7125
-pnpm exec steamharness workspace login --server http://localhost:7125
+pnpm exec steamharness workspace health --server http://localhost:7126
+pnpm exec steamharness workspace login --server http://localhost:7126
 pnpm exec steamharness workspace upload hello
 pnpm exec steamharness workspace publish hello --release-log "Initial release"
 pnpm exec steamharness workspace run hello --target latest --message "hello"

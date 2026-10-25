@@ -64,7 +64,7 @@ workspace is:
 http://yuhe.space:7130/webhooks/gitlab-webhook/trigger
 ```
 
-如果你是在本机开发环境里联调，而不是走发布/部署态入口，通常仍会使用 `http://localhost:7125/...` 这一套 `712x` 端口带。
+如果你是在本机开发环境里联调，而不是走发布/部署态入口，通常仍会使用 `http://localhost:7126/...` 这一套 `712x` 端口带。
 
 GitLab Project hook events to enable:
 

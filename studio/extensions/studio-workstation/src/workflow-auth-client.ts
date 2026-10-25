@@ -1,5 +1,7 @@
 import { t } from './localization';
-export const DEFAULT_STEAMHARNESS_SERVER_URL = 'http://localhost:7126';
+declare const __STEAMHARNESS_DEFAULT_SERVER_URL__: string;
+export const DEFAULT_STEAMHARNESS_SERVER_URL = typeof __STEAMHARNESS_DEFAULT_SERVER_URL__ !== 'undefined'
+  ? __STEAMHARNESS_DEFAULT_SERVER_URL__ : 'http://localhost:7126';
 
 export interface User {
   userId: string;

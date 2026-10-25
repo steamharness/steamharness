@@ -26,7 +26,7 @@ description: "管理 Server 项目上传、不可变源码版本和数据文件�
 
 | 选项 | 说明 |
 | --- | --- |
-| `--server <url>` | 优先于 `STEAMHARNESS_SERVER_URL`、登录态和默认 `http://localhost:7125`。 |
+| `--server <url>` | 优先于 `STEAMHARNESS_SERVER_URL`、登录态和渠道默认地址（dev：`http://localhost:7126`）。 |
 | `--token <token>` | 优先于 `STEAMHARNESS_SERVER_ADMIN_KEY` 和保存的凭据。 |
 | `--target <version>` | 下载的精确版本或 `latest`，不接受 draft。 |
 | `--release-log <text>` | 发布说明；upload 指定后会自动发布。 |
@@ -44,7 +44,7 @@ description: "管理 Server 项目上传、不可变源码版本和数据文件�
 ## 上传与下载
 
 ```bash
-steamharness workspace login --server http://localhost:7125
+steamharness workspace login --server http://localhost:7126
 steamharness workspace upload hello --create --release-log "初始发布"
 steamharness workspace versions hello
 steamharness workspace download hello --target latest --path ./downloaded-hello
@@ -69,3 +69,5 @@ CLI 读取当前目录及源码仓库根目录的 `.env`，已有进程环境优
 成功输出 `{ errCode: 0, errMessage: "", data }`；服务端错误和本地参数错误返回非零退出码。准备任务保留进度和失败反馈；失败上传不会替换已有发布快照。
 
 创建或首次上传可用 `--group-id <id>` 选择归属组（至少开发者）；未指定则创建个人项目并成为所有者。上传、发布和服务器数据写入需要开发者，已发布源码下载和数据读取需要访客。Cookie 与 API Key 均按最新项目、组成员关系鉴权。
+
+未指定 Server 时，地址随客户端构建渠道选择：dev 使用 `http://localhost:7126`，alpha 与 main 使用对应站点。`STEAMHARNESS_SERVICE_CHANNEL=dev|alpha|main` 可显式选择默认渠道；`--server`、`STEAMHARNESS_SERVER_URL` 和已有登录连接的优先级更高。

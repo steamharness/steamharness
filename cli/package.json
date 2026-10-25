@@ -61,7 +61,8 @@
     "typescript": "^6.0.3",
     "vitest": "^4.1.7",
     "@steamharness/project-configuration": "workspace:*",
-    "@steamharness/project-access": "workspace:*"
+    "@steamharness/project-access": "workspace:*",
+    "@steamharness/service-urls": "workspace:*"
   },
   "repository": {
     "type": "git",

@@ -34,8 +34,8 @@ steamharness json workspace/workflow/runtime-timer -- --title "Fixture Timer" --
 发布到 server 时，先检查服务状态，再登录、上传、发布和下载。
 
 ```bash
-pnpm exec steamharness workspace health --server http://localhost:7125
-pnpm exec steamharness workspace login --server http://localhost:7125
+pnpm exec steamharness workspace health --server http://localhost:7126
+pnpm exec steamharness workspace login --server http://localhost:7126
 pnpm exec steamharness workspace upload hello
 pnpm exec steamharness workspace publish hello --release-log "初始发布"
 pnpm exec steamharness workspace run hello --target latest --message "hello"

@@ -5,6 +5,8 @@ import { resolveServerPathRoots } from "./paths";
 import { resolveReleaseMetadataRootFromEnv } from "./release-paths";
 import type { ServerBuildInfo } from "./build-info";
 import type { SupportedLocale } from "@steamharness/i18n";
+import { publicServiceUrls } from "@steamharness/service-urls";
+import { checkoutServiceChannel } from "@steamharness/service-urls/node";
 
 export interface ServerHealthRelease {
   unit: "server" | "server-web";
@@ -53,10 +55,15 @@ export async function createProjectServerHealthData(options: {
 } = {}): Promise<ServerHealthData> {
   const { serverRoot } = resolveServerPathRoots();
   const locale = options.locale ?? "en";
-  const channel = options.channel ?? (process.env.STEAMHARNESS_RELEASE_CHANNEL === "alpha" ? "alpha" : "stable");
   const resolvedServerRoot = options.serverRoot?.trim()
     ? path.resolve(options.serverRoot.trim())
     : serverRoot;
+  const serviceChannel = checkoutServiceChannel({
+    root: resolvedServerRoot,
+    env: options.channel ? { ...process.env, STEAMHARNESS_SERVICE_CHANNEL: options.channel } : process.env,
+    fallback: (options.mode ?? inferServerEnvMode()) === "development" ? "dev" : "main",
+  });
+  const channel = options.channel ?? (serviceChannel === "alpha" ? "alpha" : "stable");
   const metadataRoot = options.metadataRoot?.trim()
     ? path.resolve(options.metadataRoot.trim())
     : resolveReleaseMetadataRootFromEnv();
@@ -81,7 +88,7 @@ export async function createProjectServerHealthData(options: {
   const serverVersion = options.buildInfo?.productVersion ?? serverRelease?.version ?? null;
   const coreVersion = options.buildInfo?.coreVersion ?? serverRelease?.components.core
     ?? readOptionalString((await readJsonIfExists(path.join(resolvedServerRoot, "node_modules", "steamharness", "package.json")))?.version);
-  const docsBaseUrl = (options.docsBaseUrl ?? process.env.STEAMHARNESS_DOCS_PUBLIC_BASE_URL ?? "https://docs.steamharness.yuhe.space")
+  const docsBaseUrl = (options.docsBaseUrl ?? process.env.STEAMHARNESS_DOCS_PUBLIC_BASE_URL ?? publicServiceUrls(serviceChannel).docs)
     .replace(/\/$/, "");
   const serverReleaseBody = serverRelease !== null && serverRelease.version === serverVersion
     ? serverRelease.releaseNotes?.body.trim() ?? ""
