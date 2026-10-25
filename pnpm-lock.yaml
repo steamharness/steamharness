@@ -418,6 +418,9 @@ importers:
       '@steamharness/project-access':
         specifier: workspace:*
         version: link:../../shared/project-access
+      '@steamharness/project-card-metadata':
+        specifier: workspace:*
+        version: link:../../shared/project-card-metadata
       '@steamharness/project-configuration':
         specifier: workspace:*
         version: link:../../shared/project-configuration
