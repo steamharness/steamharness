@@ -97,7 +97,7 @@ function fixture(t, saved = new Map()) {
   const views = {
     getVisibleViewContainer: location => containers.get(active.get(location)),
     openView: async id => { calls.push(['view', id]); const container = containers.get(viewContainers[id]); if (container) { active.set(container.location, container.id); visible.set(container.location === 2 ? 'auxiliary' : container.location === 1 ? 'panel' : 'sidebar', true); } },
-    openViewContainer: async id => { const container = containers.get(id); active.set(container.location, id); },
+    openViewContainer: async id => { calls.push(['container', id]); const container = containers.get(id); active.set(container.location, id); visible.set(container.location === 2 ? 'auxiliary' : container.location === 1 ? 'panel' : 'sidebar', true); },
     closeViewContainer: id => { for (const [key, value] of active) { if (value === id) { active.delete(key); } } },
   };
   const descriptors = {
@@ -120,7 +120,7 @@ function fixture(t, saved = new Map()) {
     getNumber: (key, scope, fallback) => stored(key) ?? fallback,
     store: (key, value) => pending.set(key, structuredClone(value)), remove: key => pending.set(key, undefined),
     flush: async () => { for (const [key, value] of pending) { if (value === undefined) { saved.delete(key); } else { saved.set(key, value); } } pending.clear(); } };
-  const context = { createKey: id => ({ set: value => settings.set(id, value) }) };
+  const context = { createKey: id => ({ set: value => { settings.set(id, value); f.contextChanged?.(id, value); } }) };
   const f = { calls, saved, visible, sizes, active, containers, settings, errors, state, editor, result, group, layout, groups, mainPart, views, win, classes, loading: false, projectOpen: false,
     resizeTools: width => { sizes.set('auxiliary', { ...sizes.get('auxiliary'), width }); resized.fire(); },
     resizeWindow: width => { layout.mainContainerDimension.width = width; windowResized.fire(layout.mainContainerDimension); },
@@ -200,6 +200,32 @@ test('Steam mode keeps the existing result and restores IDE parts, tools, groups
   assert.equal(f.saved.has('studio.ideLayout'), false);
   assert.equal(f.calls.filter(call => call === 'prepare').length, 1);
 });
+
+test('leaving Steam hides the tools before the home context can focus a fallback terminal', async t => {
+  const f = fixture(t); f.visible.set('panel', false); f.publish(true);
+  await f.run('EnterSteamMode');
+  let fallback = false;
+  f.contextChanged = (id, value) => {
+    if (id === 'studio.steamMode' && !value && f.layout.isVisible('auxiliary')) {
+      fallback = true;
+      void f.views.openView('terminal');
+    }
+  };
+  await f.run('EnterIdeMode');
+  assert.equal(fallback, false, 'Removing the Steam home must not reveal and focus another tool');
+  assert.equal(f.visible.get('panel'), false);
+  assert.equal(f.visible.get('auxiliary'), true);
+});
+
+for (const [part, location] of [['sidebar', 0], ['panel', 1], ['auxiliary', 2]]) {
+  test(`returning to IDE does not reopen the container in the originally hidden ${part}`, async t => {
+    const f = fixture(t); f.visible.set(part, false);
+    const container = f.active.get(location);
+    f.publish(true); await f.run('EnterSteamMode'); await f.run('EnterIdeMode');
+    assert.equal(f.visible.get(part), false);
+    assert.equal(f.calls.some(call => Array.isArray(call) && call[0] === 'container' && call[1] === container), false);
+  });
+}
 
 test('terminal tool and native view opens share the right workspace and restore the IDE location', async t => {
   const f = fixture(t); f.publish(true); await f.run('EnterSteamMode');

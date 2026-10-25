@@ -186,6 +186,42 @@ for (const language of process.env.STEAMHARNESS_UI_LANGUAGES?.split(',') ?? ['en
     const layoutButtons = page.locator('.titlebar-right .action-toolbar-container :is([class*="codicon-panel-"], [class*="codicon-auxiliarybar-"][class*="layout-icon"], .codicon-configure-layout-icon)');
     const ideLayoutButtons = await layoutButtons.count(); assert.ok(ideLayoutButtons > 0);
 
+    if (process.env.STEAMHARNESS_UI_FOCUS === 'panel-state') {
+      const roundTrip = async name => {
+        const initial = await partState();
+        const panel = await page.locator('.part.panel').boundingBox();
+        const terminals = (await call({ action: 'state' })).terminals;
+        await command('studio.enterSteamMode');
+        await until(() => page.locator('.studio-mode-switcher').getAttribute('aria-busy'), value => value === 'false', 'Steam mode did not finish');
+        assert.equal((await partState()).panel.visible, false);
+        await command('studio.enterIdeMode');
+        await until(() => page.locator('.studio-mode-switcher').getAttribute('aria-busy'), value => value === 'false', 'IDE mode did not finish');
+        await pause(300);
+        const restored = await partState();
+        assert.deepEqual(Object.values(restored).map(part => part.visible), Object.values(initial).map(part => part.visible), `${language}: ${name} must restore the original IDE parts`);
+        if (initial.panel.visible) {
+          assert.ok(Math.abs((await page.locator('.part.panel').boundingBox()).height - panel.height) <= 1, `${name} must restore the original panel height`);
+        }
+        assert.deepEqual((await call({ action: 'state' })).terminals, terminals, 'Switching modes must retain terminal sessions');
+        check(`${language}: ${name} preserves IDE panel visibility and terminal sessions`);
+      };
+      await command('workbench.action.terminal.killAll');
+      await command('workbench.action.closePanel');
+      await roundTrip('closed panel without terminals');
+      await command('workbench.action.terminal.new');
+      await page.locator('.part.panel .integrated-terminal').waitFor();
+      await until(() => call({ action: 'state' }), state => state.terminals.length === 1 && !!state.terminals[0], 'The terminal did not finish starting');
+      await command('workbench.action.closePanel');
+      await roundTrip('closed panel with an existing terminal');
+      await roundTrip('repeated round trip with a closed terminal panel');
+      await command('workbench.action.terminal.focus');
+      await page.locator('.part.panel .integrated-terminal').waitFor();
+      await roundTrip('open terminal panel');
+      await command('workbench.action.toggleMaximizedPanel');
+      await roundTrip('maximized terminal panel');
+      continue;
+    }
+
     // Hold the real result iframe so startup and cancellation cannot pass on an already loaded page.
     let releaseFrame, frameHeld = false;
     const frameGate = new Promise(resolve => { releaseFrame = resolve; });

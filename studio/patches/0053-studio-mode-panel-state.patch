@@ -1,0 +1,26 @@
+diff --git a/src/vs/workbench/contrib/studioMode/browser/studioMode.contribution.ts b/src/vs/workbench/contrib/studioMode/browser/studioMode.contribution.ts
+index bb63984250c..a1c3717d696 100644
+--- a/src/vs/workbench/contrib/studioMode/browser/studioMode.contribution.ts
++++ b/src/vs/workbench/contrib/studioMode/browser/studioMode.contribution.ts
+@@ -330,6 +330,9 @@ export class StudioModeContribution extends Disposable {
+ 		const snapshot = this.snapshot;
+ 		if (!snapshot) { return; }
+ 		await this.workspace.deactivate(this.groups.mainPart.getGroup(snapshot.activeGroup) ?? this.groups.mainPart.activeGroup);
++		// Hide the tools before removing the Steam home or relocating containers.
++		// Otherwise the visible bar can select and focus a fallback terminal.
++		this.layout.setPartHidden(true, Parts.AUXILIARYBAR_PART);
+ 		this.steam = false;
+ 		studioModeState.setMode(false, true, false);
+ 		this.projectReady = false;
+@@ -339,8 +342,9 @@ export class StudioModeContribution extends Disposable {
+ 		this.editorOptions.clear();
+ 		this.toolLocations.clear();
+ 		await this.configuration.updateValue('workbench.sideBar.location', snapshot.sideBarMemoryLocation, ConfigurationTarget.MEMORY);
+-		this.views.closeViewContainer(TOOLS_CONTAINER);
+-		for (const id of snapshot.containers) { if (id) { await this.views.openViewContainer(id, false); } }
++		for (const [index, id] of snapshot.containers.entries()) {
++			if (id && snapshot.visible[index + 1]) { await this.views.openViewContainer(id, false); }
++		}
+ 		for (const [index, part] of sideParts.entries()) {
+ 			this.layout.setPartHidden(!snapshot.visible[index], part);
+ 			if (snapshot.visible[index]) { this.layout.setSize(part, snapshot.sizes[index]); }

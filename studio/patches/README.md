@@ -80,4 +80,6 @@
 
 `0052-studio-start-empty-badge.patch` 让开始页标识的隐藏状态优先于徽标布局样式，空内容时移除边框及占位。
 
+`0053-studio-mode-panel-state.patch` 在退出 Steam 时先隐藏工具栏，再移除首页上下文并恢复视图位置，避免自动聚焦终端后延迟展开底部面板；只重新打开 IDE 中原本可见的视图容器。
+
 新内核修改应通过 `git diff` 导出统一格式补丁，并排除脚本生成的 `product.json` 及 Studio 扩展链接。品牌配置由 `config/product.json` 维护。
