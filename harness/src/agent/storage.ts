@@ -16,9 +16,14 @@ export interface AgentStorageFactory {
   open(): Promise<{ storage: Storage; release?(): void | Promise<void> }>;
 }
 
+function resolveSqlitePath(file: string): string {
+  // SQLite needs the Windows extended path prefix even when Node's fs accepts a long path.
+  return path.toNamespacedPath(path.resolve(file));
+}
+
 /** Offline, consistent backup. Destination must be new; source must have no running owner. */
 export async function exportAgentDatabase(options: { databasePath: string; destination: string }): Promise<void> {
-  const source = path.resolve(options.databasePath), destination = path.resolve(options.destination);
+  const source = resolveSqlitePath(options.databasePath), destination = resolveSqlitePath(options.destination);
   if (source === destination) throw new Error("The backup destination must be a new database.");
   await mkdir(path.dirname(source), { recursive: true });
   const owner = acquireOwner(source);
@@ -64,7 +69,7 @@ export function agentConversationDirectory(agentStoreDir: string, conversationId
 }
 
 export async function openAgentStorage(databasePath: string): Promise<{ storage: Storage; release: () => void }> {
-  const file = path.resolve(databasePath);
+  const file = resolveSqlitePath(databasePath);
   await mkdir(path.dirname(file), { recursive: true });
   const owner = acquireOwner(file);
   try {

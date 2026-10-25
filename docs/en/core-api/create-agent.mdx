@@ -159,6 +159,8 @@ Studio Trace adds Tasks, Plan, Records and Usage alongside its original timeline
 
 ### Storage And Backups
 
+Agent SQLite sessions automatically support long Windows paths for creation, reopening, owner locks, offline backups and imports. Existing storage locations are preserved; hosts do not need to shorten their data directories.
+
 `storage: AgentStorageFactory` is mutually exclusive with `databasePath`: `{ label, open(): Promise<{ storage: AgentStorage, release?() }> }`. The host acquires an exclusive owner in open; release runs after the Harness closes storage. Reopening must use the same data. Custom backends own their backup and cancellation scheduling. JSONL is not the default long-running backend.
 
 `exportAgentDatabase({ databasePath, destination })` and `importAgentDatabase({ source, databasePath })` are exported from `steamharness/agent`. Stop and join the worker first. Both acquire exclusive owner locks for the source and destination, validate Durable SQLite and create a consistent SQLite backup including WAL. The destination must be new and unreserved by another owner; existing sessions are never overwritten. Import does not copy the source owner lock. Preserve the project workspace alongside the database: file contents and live resources are outside the snapshot.

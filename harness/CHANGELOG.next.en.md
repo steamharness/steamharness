@@ -1,5 +1,7 @@
 # Unreleased
 
+- Fixed durable Agent SQLite creation, reopening, backup and import in deeply nested Windows data directories, avoiding database and owner lock failures caused by long paths.
+
 - Fixed explicit and restored configuration snapshots to enforce source system-only AI restrictions and published field locks. Waiting runs retain their verified template and values while restores and tool calls still enforce the current role and fixed mode.
 
 - Added source-owned profile role policies and fixed assignments. Restricted local values are scoped by application, Server and account; execution, restores and tool calls recheck authority, with guest-only access offline.

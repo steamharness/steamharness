@@ -345,14 +345,17 @@ test("offline cancellation uses the supplied custom task definition for abort cl
   assert.equal(cleaned, 1);
 });
 
-test("SQLite backup includes committed state, refuses a live owner and imports only into new paths", async t => {
-  const directory = await mkdtemp(path.join(tmpdir(), "agent-backup-")); t.after(() => rm(directory, { recursive: true, force: true }));
+for (const layout of ["shallow", "deep"] as const) test(`SQLite backup includes committed state, refuses a live owner and imports only into new paths (${layout})`, async t => {
+  const root = await mkdtemp(path.join(tmpdir(), "agent-backup-")); t.after(() => rm(root, { recursive: true, force: true }));
+  const directory = layout === "deep" ? path.join(root, ...Array.from({ length: 8 }, () => "nested directory with spaces and 中文")) : root;
   const file = path.join(directory, "source.sqlite"), copy = path.join(directory, "backup.sqlite"), restored = path.join(directory, "restored.sqlite");
   const { instance, provider, lease, snapshot } = agent({}, file); provider.setResponses([ai.fauxAssistantMessage("Persisted")]);
   const run = instance.prompt("Hello"); await until(() => snapshot()?.turns.some(turn => turn.status === "done"));
+  await assert.rejects(() => openAgentStorage(file), /owner/);
+  await assert.rejects(() => openAgentStorage(path.toNamespacedPath(file)), /owner/);
   await assert.rejects(() => exportAgentDatabase({ databasePath: file, destination: copy }), /owner/);
   lease.resolve(); await run; await instance.close();
-  const reserved = path.join(directory, "reserved.sqlite"), destinationOwner = new DatabaseSync(`${reserved}.owner`);
+  const reserved = path.join(directory, "reserved.sqlite"), destinationOwner = new DatabaseSync(path.toNamespacedPath(`${reserved}.owner`));
   destinationOwner.exec("BEGIN EXCLUSIVE");
   try {
     await assert.rejects(() => exportAgentDatabase({ databasePath: file, destination: reserved }), /owner/);
@@ -366,7 +369,8 @@ test("SQLite backup includes committed state, refuses a live owner and imports o
   await assert.rejects(() => exportAgentDatabase({ databasePath: invalid, destination: path.join(directory, "invalid-copy.sqlite") }));
   assert.ok(!(await readdir(directory)).some(file => file.endsWith(".tmp")));
   const reopened = agent({}, restored), replay = reopened.instance.prompt("Hello");
-  t.after(async () => { reopened.lease.resolve(); await replay; await reopened.instance.close(); });
-  await until(() => reopened.snapshot()?.turns.some(turn => turn.status === "done")); assert.equal(reopened.provider.state.callCount, 0);
-  const opened = await openAgentStorage(copy); await opened.storage.close((await import("@earendil-works/chord/context")).BACKGROUND_CONTEXT); opened.release();
+  try {
+    await until(() => reopened.snapshot()?.turns.some(turn => turn.status === "done")); assert.equal(reopened.provider.state.callCount, 0);
+    const opened = await openAgentStorage(copy); await opened.storage.close(BACKGROUND_CONTEXT); opened.release();
+  } finally { reopened.lease.resolve(); await replay; await reopened.instance.close(); }
 });
