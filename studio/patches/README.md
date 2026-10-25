@@ -78,4 +78,6 @@
 
 `0051-studio-steam-native-tool-tabs.patch` 将下层工具实例切换为各分类独立的原生编辑器组，复用 VS Code 标签、预览、固定、拆分和右键关闭操作；默认工具视图保留控制器并支持原生序列化，终端关闭分类或返回 IDE 时保留 shell 会话。上层分类提供关闭、关闭其他和全部关闭。
 
+`0052-studio-start-empty-badge.patch` 让开始页标识的隐藏状态优先于徽标布局样式，空内容时移除边框及占位。
+
 新内核修改应通过 `git diff` 导出统一格式补丁，并排除脚本生成的 `product.json` 及 Studio 扩展链接。品牌配置由 `config/product.json` 维护。

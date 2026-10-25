@@ -1,0 +1,12 @@
+diff --git a/src/vs/workbench/browser/parts/editor/media/studioStart.css b/src/vs/workbench/browser/parts/editor/media/studioStart.css
+index 1c192a20ab96a75cbfd05df76a06505ae2715b2f..5f47a0f2d453dc8fefde78bf1040e2a8af06964c 100644
+--- a/src/vs/workbench/browser/parts/editor/media/studioStart.css
++++ b/src/vs/workbench/browser/parts/editor/media/studioStart.css
+@@ -15,6 +15,7 @@
+ .studio-start h1 { grid-column:2; grid-row:1; min-width:0; font-size:24px; font-weight:500; margin:0; line-height:1.3; overflow-wrap:anywhere; }
+ .studio-start-toolbar { display:flex; flex-wrap:nowrap; align-items:center; grid-column:3; grid-row:1; justify-self:end; min-width:0; gap:8px; }
+ .studio-start-badge { display:inline-flex; align-items:center; flex:none; height:20px; padding:0 8px; border:1px solid var(--vscode-textLink-foreground); border-radius:999px; color:var(--vscode-textLink-foreground); font-size:10px; font-weight:600; letter-spacing:.04em; line-height:1; white-space:nowrap; }
++.studio-start-badge[hidden] { display:none; }
+ .studio-start-grid, .studio-start-loading-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(min(100%,300px),1fr)); gap:28px 40px; }
+ .studio-start.loading .studio-start-toolbar, .studio-start.loading .studio-start-grid, .studio-start:not(.loading) .studio-start-loading, .studio-start:not(.loading) .studio-start-loading-indicator { display:none; }
+ .studio-start-loading-indicator { grid-column:3; grid-row:1; justify-self:end; color:var(--vscode-descriptionForeground); }
