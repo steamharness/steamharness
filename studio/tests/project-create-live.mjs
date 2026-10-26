@@ -18,6 +18,7 @@ try {
   for (const template of await templates.templates()) {
     const project = await templates.create({ templateId: template.id, name: template.id, parentDirectory: directory });
     await installProjectDependencies({ directory: project.directory, signal: controller.signal, log: chunk => { log += chunk; } });
+    await templates.prepare(project.directory, process.execPath, controller.signal);
     const cli = path.join(project.directory, 'node_modules/@steamharness/cli/dist/index.js');
     const { stdout } = await promisify(execFile)(process.execPath, [cli, 'web', project.directory, '--inspect'], { timeout: 30_000, maxBuffer: 2 * 1024 * 1024 });
     const inspected = JSON.parse(stdout.trim());
@@ -25,6 +26,13 @@ try {
     const manifest = JSON.parse(await readFile(path.join(project.directory, 'package.json'), 'utf8'));
     for (const [dependency, version] of Object.entries(manifest.devDependencies)) {
       assert.equal(JSON.parse(await readFile(path.join(project.directory, 'node_modules', dependency, 'package.json'), 'utf8')).version, version);
+    }
+    if (template.projectType !== 'kanban') {
+      const args = ['json', project.directory, ...(template.projectType === 'conversation' ? ['--', '--message', 'Local reply'] : [])];
+      const run = JSON.parse((await promisify(execFile)(process.execPath, [cli, ...args], { cwd: project.directory, timeout: 30_000, maxBuffer: 2 * 1024 * 1024 })).stdout.trim());
+      await writeFile(path.join(proof, `${template.id}-run.json`), JSON.stringify(run, null, 2));
+      assert.equal(run.status, 'success', JSON.stringify(run));
+      assert.match(JSON.stringify(run.result?.data?.output ?? run.outputs), /Ready|Hello|Local reply/);
     }
     checks.push(template.id); console.log(`[OK] ${template.id}: actual dependency install and project inspection`);
   }

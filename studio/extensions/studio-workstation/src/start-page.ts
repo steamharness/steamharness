@@ -10,6 +10,7 @@ import { IMPORTED_PROJECTS_KEY, readImportedProjects, rememberImportedProjects, 
 import { chooseProjectWindow, openProjectFolder, type ProjectWindowOptions } from './project-window';
 
 const PENDING_KEY = 'studio.pendingProjectSetups';
+const LAST_SETUP_KEY = 'studio.lastProjectSetupId';
 
 export function startPageLabels(): Record<string, string> {
   return {
@@ -20,8 +21,10 @@ export function startPageLabels(): Record<string, string> {
     source: t('Open Project Source'), noCurrent: t('No Workflow projects in this workspace.'), noRecent: t('No recent projects.'),
     localVersion: t('Local Version'), serverVersion: t('Server Version'), upgrade: t('Upgrade...'), updateAvailable: t('Update Available'),
     upToDate: t('Up to Date'), localNewer: t('Local Version Is Newer'), downloadUnavailable: t('Source download is unavailable.'),
-    removeRecent: t('Remove from Recent Projects'), unavailable: t('Unavailable'), retry: t('Retry Installation'), openSource: t('Open Project Folder'),
-    installFailed: t('Dependencies need attention'), cancelled: t('Installation cancelled'), installing: t('Installing Dependencies'),
+    removeRecent: t('Remove from Recent Projects'), unavailable: t('Unavailable'), retry: t('Retry Project Setup'), openSource: t('Open Project Folder'),
+    installFailed: t('Dependency installation failed'), cancelled: t('Project setup cancelled'), installing: t('Installing Dependencies'),
+    validating: t('Validating Project'), registering: t('Registering Project'),
+    validationFailed: t('Project validation failed'), registrationFailed: t('Server registration needs attention'), details: t('Details'),
     installationLog: t('Show Installation Log'),
     run: t('Run Project'), projectType: t('Project Type'), template: t('Project Template'), starter: t('Minimal Project'),
     projectName: t('Project Name'), parentDirectory: t('Project Parent Folder'), browse: t('Choose Folder'),
@@ -62,8 +65,9 @@ export class StudioStartController implements vscode.Disposable {
   private versionTimer?: ReturnType<typeof setTimeout>;
   private readonly creation = new AbortController();
   private installationLog = '';
-  private readonly logChanges = new vscode.EventEmitter<vscode.Uri>();
-  private readonly logUri = vscode.Uri.parse('studio-project-setup:/installation.log');
+  private logUri?: vscode.Uri;
+  private logDirty = false;
+  private logWrites: Promise<void> = Promise.resolve();
   private logTimer?: ReturnType<typeof setTimeout>;
 
   constructor(private readonly context: vscode.ExtensionContext, private readonly launcher: Launcher,
@@ -104,11 +108,13 @@ export class StudioStartController implements vscode.Disposable {
       }
       catch (error) { return { error: this.errorMessage(error) }; }
     });
-    this.subscriptions.push(this.logChanges, vscode.workspace.registerTextDocumentContentProvider('studio-project-setup', {
-      provideTextDocumentContent: () => this.installationLog,
-      onDidChange: this.logChanges.event,
-    }));
-    register('studio.showProjectSetupLog', async () => vscode.window.showTextDocument(await vscode.workspace.openTextDocument(this.logUri), { preview: true, preserveFocus: true }));
+    register('studio.showProjectSetupLog', async () => {
+      await this.flushInstallationLog();
+      const id = this.pending().find(project => this.isProjectWindow(project))?.id ?? this.context.globalState.get<string>(LAST_SETUP_KEY);
+      if (!id || !/^[a-f0-9-]{36}$/i.test(id)) { throw new Error(t('No project setup log is available yet.')); }
+      const uri = vscode.Uri.joinPath(this.context.globalStorageUri, 'project-setup', id, 'installation.log');
+      await vscode.window.showTextDocument(await vscode.workspace.openTextDocument(uri), { preview: true, preserveFocus: true });
+    });
     register('studio.retryProjectSetup', (id?: string) => this.runCreation(async () => {
       const project = this.pending().find(entry => entry.id === id);
       if (project) { await this.setupInProjectWindow(project); }
@@ -156,7 +162,7 @@ export class StudioStartController implements vscode.Disposable {
     });
   }
 
-  private async openProjectWindow(project: CreatedProject, options?: ProjectWindowOptions): Promise<void> {
+  private async openProjectWindow(project: CreatedProject & Partial<PendingProjectSetup>, options?: ProjectWindowOptions): Promise<void> {
     options ??= await chooseProjectWindow();
     if (!options) { return; }
     this.creation.signal.throwIfAborted();
@@ -261,8 +267,10 @@ export class StudioStartController implements vscode.Disposable {
       const options = await chooseProjectWindow(t('Where would you like to open the new project?'));
       if (!options) { return; }
       this.creation.signal.throwIfAborted();
+      const account = this.account.getState();
+      const registration = { serverUrl: account.serverUrl, ...(account.user ? { userId: account.user.userId } : {}) };
       const project = await this.launcher.createProject!(input, this.creation.signal);
-      await this.openProjectWindow(project, options);
+      await this.openProjectWindow({ ...project, registration }, options);
     });
   }
 
@@ -271,46 +279,87 @@ export class StudioStartController implements vscode.Disposable {
     if (manifest.id !== project.id) { throw new Error(t('Project identity changed. Open the project folder to review it.')); }
   }
 
-  private async install(project: CreatedProject): Promise<void> {
+  private async install(input: PendingProjectSetup): Promise<void> {
     this.creation.signal.throwIfAborted();
+    const account = this.account.getState();
+    let project: PendingProjectSetup = { ...input, installOnOpen: false, registration: input.registration ?? { serverUrl: account.serverUrl,
+      ...(account.user ? { userId: account.user.userId } : {}) } };
+    if (project.dependenciesInstalled && this.launcher.hasProjectDependencies && !await this.launcher.hasProjectDependencies(project.directory)) {
+      project.dependenciesInstalled = false;
+    }
+    let stage: NonNullable<PendingProjectSetup['stage']> = project.dependenciesInstalled ? 'validation' : 'dependencies';
     this.state.installing = project.id;
     this.publish();
-    this.appendInstallationLog(`\nProject: ${project.name} (${project.directory})\n`);
     try {
-      await vscode.window.withProgress({ location: vscode.ProgressLocation.Notification, title: t('Installing Dependencies: {0}', project.name), cancellable: true },
-        async (_progress, token) => {
+      await this.updatePending({ ...project, stage });
+      await this.beginInstallationLog(project.id);
+      this.appendInstallationLog(`\nProject: ${project.name} (${project.directory})\n`);
+      await vscode.window.withProgress({ location: vscode.ProgressLocation.Notification, title: t('Preparing Project: {0}', project.name), cancellable: true },
+        async (progress, token) => {
           const controller = new AbortController();
           const cancellation = token.onCancellationRequested(() => controller.abort());
           const signal = AbortSignal.any([controller.signal, this.creation.signal]);
           try {
             if (token.isCancellationRequested) { controller.abort(); }
-            await this.launcher.installDependencies!(project.directory, signal, message => this.appendInstallationLog(message));
+            if (!project.dependenciesInstalled) {
+              progress.report({ message: t('Installing Dependencies') });
+              await this.launcher.installDependencies!(project.directory, signal, message => this.appendInstallationLog(message));
+              signal.throwIfAborted();
+              project = { ...project, dependenciesInstalled: true };
+              this.appendInstallationLog(`\n${t('Dependencies installed successfully.')}\n`);
+            }
+            stage = 'validation';
+            await this.updatePending({ ...project, stage });
+            progress.report({ message: t('Validating Project') });
+            this.appendInstallationLog(`${t('Validating Project')}\n`);
+            if (await this.launcher.prepareProjectTemplate?.(project.directory, signal)) {
+              this.appendInstallationLog(`${t('Template source matched to the installed SDK.')}\n`);
+            }
             signal.throwIfAborted();
-            const inspected = await this.launcher.inspect([project.directory]);
+            await this.validateCreated(project);
+            const inspected = await this.launcher.inspect([project.directory], { validationDetails: true });
             signal.throwIfAborted();
-            if (!inspected.projects.some(entry => entry.id === project.id) || inspected.errors.length) { throw new Error(inspected.errors.join('\n') || t('Project dependencies are not ready.')); }
+            if (!inspected.projects.some(entry => entry.id === project.id) || inspected.errors.length) { throw new Error(inspected.errors.join('\n') || t('Project validation failed')); }
+            this.appendInstallationLog(`${t('Project validation succeeded.')}\n`);
+            const uri = vscode.Uri.file(project.directory).toString();
+            await this.context.globalState.update(IMPORTED_PROJECTS_KEY, rememberImportedProjects(readImportedProjects(this.context.globalState.get(IMPORTED_PROJECTS_KEY)), [{ id: project.id, name: project.name, uri }]));
+            await this.remember(project);
+            await vscode.commands.executeCommand('studio.refreshProjects');
+            if (this.launcher.registerProject) {
+              stage = 'registration';
+              // Persist the intended owner before any request, including a retry after signing in.
+              const user = this.account.getState().user;
+              if (!project.registration!.userId && user && this.account.getState().serverUrl === project.registration!.serverUrl) {
+                project = { ...project, registration: { ...project.registration!, userId: user.userId } };
+              }
+              await this.updatePending({ ...project, stage });
+              progress.report({ message: t('Registering Project') });
+              this.appendInstallationLog(`${t('Registering project on {0}. Source files stay local.', project.registration!.serverUrl)}\n`);
+              await this.launcher.registerProject(project, project.registration!, signal);
+              signal.throwIfAborted();
+              this.appendInstallationLog(`${t('Project registered successfully. Source files were not uploaded.')}\n`);
+            }
           } finally { cancellation.dispose(); }
         });
     } catch (error) {
       const cancelled = this.creation.signal.aborted || error instanceof Error && error.name === 'AbortError';
-      await this.updatePending({ ...project, status: cancelled ? 'cancelled' : 'failed', installOnOpen: false, error: this.errorMessage(error) });
+      const label = stage === 'dependencies' ? t('Installing Dependencies') : stage === 'validation' ? t('Validating Project') : t('Registering Project');
+      this.appendInstallationLog(`\n${t('Project setup failed at {0}: {1}', label, this.errorMessage(error))}\n`);
+      await this.updatePending({ ...project, stage, status: cancelled ? 'cancelled' : 'failed', installOnOpen: false, error: this.errorMessage(error) });
       if (!this.disposed) {
-        const retry = t('Retry Installation'), open = t('Open Project Folder');
-        void vscode.window.showWarningMessage(t('Project files were created. {0}', cancelled ? t('Installation cancelled') : this.errorMessage(error)), retry, open).then(answer => {
+        const retry = t('Retry Project Setup'), open = t('Open Project Folder');
+        void vscode.window.showWarningMessage(t('Project files were created. {0}', cancelled ? t('Project setup cancelled') : this.errorMessage(error)), retry, open).then(answer => {
           if (answer) { return vscode.commands.executeCommand(answer === retry ? 'studio.retryProjectSetup' : 'studio.openCreatedProject', project.id); }
           return undefined;
         });
       }
       return;
     } finally {
+      await this.flushInstallationLog();
       this.state.installing = undefined;
       this.publish();
     }
     await this.updatePending(undefined, project.id);
-    const uri = vscode.Uri.file(project.directory).toString();
-    await this.context.globalState.update(IMPORTED_PROJECTS_KEY, rememberImportedProjects(readImportedProjects(this.context.globalState.get(IMPORTED_PROJECTS_KEY)), [{ id: project.id, name: project.name, uri }]));
-    await this.remember(project);
-    await vscode.commands.executeCommand('studio.refreshProjects');
   }
 
   private async updatePending(project?: PendingProjectSetup, removeId = project?.id): Promise<void> {
@@ -321,8 +370,30 @@ export class StudioStartController implements vscode.Disposable {
   private appendInstallationLog(message: string): void {
     this.output.append(message);
     this.installationLog = (this.installationLog + message).slice(-200_000);
+    this.logDirty = true;
     clearTimeout(this.logTimer);
-    this.logTimer = setTimeout(() => { if (!this.disposed) { this.logChanges.fire(this.logUri); } }, 150);
+    this.logTimer = setTimeout(() => { void this.flushInstallationLog(); }, 150);
+  }
+
+  private async beginInstallationLog(id: string): Promise<void> {
+    await this.flushInstallationLog();
+    const directory = vscode.Uri.joinPath(this.context.globalStorageUri, 'project-setup', id);
+    await vscode.workspace.fs.createDirectory(directory);
+    this.logUri = vscode.Uri.joinPath(directory, 'installation.log');
+    try { this.installationLog = new TextDecoder().decode(await vscode.workspace.fs.readFile(this.logUri)).slice(-200_000); }
+    catch (error) { if ((error as { code?: string }).code !== 'FileNotFound') { throw error; } this.installationLog = ''; }
+    await this.context.globalState.update(LAST_SETUP_KEY, id);
+  }
+
+  private flushInstallationLog(): Promise<void> {
+    clearTimeout(this.logTimer);
+    if (this.logDirty && this.logUri) {
+      const uri = this.logUri, content = new TextEncoder().encode(this.installationLog);
+      this.logDirty = false;
+      this.logWrites = this.logWrites.then(() => vscode.workspace.fs.writeFile(uri, content))
+        .catch(error => { this.output.appendLine(`Project setup log: ${String(error)}`); });
+    }
+    return this.logWrites;
   }
 
   private errorMessage(error: unknown): string {
@@ -339,6 +410,7 @@ export class StudioStartController implements vscode.Disposable {
   dispose(): void {
     this.disposed = true; ++this.revision; this.creation.abort();
     clearTimeout(this.timer); clearTimeout(this.versionTimer); clearTimeout(this.logTimer); clearInterval(this.interval);
+    void this.flushInstallationLog();
     for (const subscription of this.subscriptions) { subscription.dispose(); }
   }
 }

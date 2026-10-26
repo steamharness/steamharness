@@ -1,7 +1,8 @@
 import { randomUUID } from 'node:crypto';
+import { resolve } from 'import-meta-resolve';
 import { mkdir, readFile, realpath, rm, stat, writeFile } from 'node:fs/promises';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { generateProjectCardMetadata } from '@steamharness/project-card-metadata';
 
 export type ProjectTemplateType = 'workflow' | 'conversation' | 'kanban';
@@ -123,4 +124,40 @@ export async function createProjectFromTemplate(request: CreateProjectFromTempla
 
 function escapeHtml(value: string): string {
   return value.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;').replaceAll('"', '&quot;').replaceAll("'", '&#39;');
+}
+
+function workflowRuntimeSource(source: string): string {
+  return source.replaceAll('RuntimeApi', 'WorkflowRuntimeApi')
+    .replaceAll('const steamharness =', 'const workflow =')
+    .replaceAll('{ steamharness:', '{ workflow:')
+    .replaceAll('}).steamharness;', '}).workflow;')
+    .replaceAll('steamharness.', 'workflow.')
+    .replaceAll('.defineProject', '.defineWorkflow');
+}
+
+/** Match untouched scaffold files to the SDK actually installed, including published SDKs from before the API rename. */
+export async function prepareProjectTemplateRuntime(directory: string, signal?: AbortSignal): Promise<boolean> {
+  signal?.throwIfAborted();
+  const manifest = JSON.parse(await readFile(path.join(directory, 'package.json'), 'utf8'));
+  const templates = (await listProjectTemplates()).filter(template => template.projectType === manifest.steamHarness?.projectType && template.entryFile.endsWith('.ts'));
+  if (!templates.length) { return false; }
+  const runtime = await import(resolve('steamharness/runtime-api', pathToFileURL(path.join(directory, 'package.json')).href));
+  const modern = typeof runtime.projectRuntimeApi?.defineProject === 'function';
+  if (!modern && typeof runtime.workflowRuntimeApi?.defineWorkflow !== 'function') {
+    throw new Error('The installed SDK does not support this project template.');
+  }
+  for (const template of templates) {
+    const filename = path.join(directory, template.entryFile);
+    const source = await readFile(filename, 'utf8');
+    const canonical = await readFile(path.join(templateRoot, template.id, template.entryFile), 'utf8');
+    const published = workflowRuntimeSource(canonical);
+    // A setup retry must never rewrite user-edited source.
+    if (![canonical, published].includes(source.replaceAll('\r\n', '\n'))) { continue; }
+    const target = modern ? canonical : published;
+    if (source.replaceAll('\r\n', '\n') === target) { return false; }
+    signal?.throwIfAborted();
+    await writeFile(filename, source.includes('\r\n') ? target.replaceAll('\n', '\r\n') : target);
+    return true;
+  }
+  return false;
 }

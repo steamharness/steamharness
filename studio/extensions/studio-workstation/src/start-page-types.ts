@@ -30,7 +30,11 @@ export interface StartSummary {
 }
 export interface PendingProjectSetup extends CreatedProject {
   status: 'failed' | 'cancelled'; error?: string; installOnOpen?: boolean;
+  stage?: 'dependencies' | 'validation' | 'registration';
+  dependenciesInstalled?: boolean;
+  registration?: ProjectRegistrationTarget;
 }
+export interface ProjectRegistrationTarget { serverUrl: string; userId?: string }
 export interface StudioStartState {
   version: 1;
   labels: Record<string, string>;

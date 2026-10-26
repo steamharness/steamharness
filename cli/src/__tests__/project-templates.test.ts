@@ -3,7 +3,7 @@ import { mkdtemp, mkdir, readFile, readdir, realpath, rm, symlink, writeFile } f
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { createProjectFromTemplate, listProjectTemplates, validateProjectName } from '../project-templates';
+import { createProjectFromTemplate, listProjectTemplates, prepareProjectTemplateRuntime, validateProjectName } from '../project-templates';
 import { createWebRuntime } from '../web/runtime';
 import { resolveHarnessRoot } from './harness-source';
 import { defaultProjectCardIcon, getProjectCardColorContrastRatio } from '@steamharness/project-card-metadata';
@@ -45,6 +45,7 @@ describe('project templates', () => {
       expect(getProjectCardColorContrastRatio(card.iconColor, card.iconBackgroundColor)).toBeGreaterThanOrEqual(4.5);
       for (const filename of template.files) { expect((await readFile(path.join(created.directory, filename))).length).toBeGreaterThan(0); }
       await linkCore(created.directory);
+      await prepareProjectTemplateRuntime(created.directory);
       const runtime = createWebRuntime(created.directory, path.join(parentDirectory, 'data'), () => {});
       try {
         const inspected = await runtime.inspect([created.directory]); expect(inspected.errors).toEqual([]);
@@ -67,6 +68,34 @@ describe('project templates', () => {
     }
     expect(ids.size).toBe(7);
   }, 60_000);
+
+  it.each(['workflow-starter', 'workflow-hello', 'conversation-starter', 'conversation-round-output'])('matches untouched %s source to a published SDK and preserves edits', async templateId => {
+    const created = await createProjectFromTemplate({ templateId, name: templateId, parentDirectory: await parent(), versions });
+    const sdk = path.join(created.directory, 'node_modules/steamharness'); await mkdir(sdk, { recursive: true });
+    await writeFile(path.join(sdk, 'package.json'), JSON.stringify({ name: 'steamharness', type: 'module', exports: { './runtime-api': { import: './runtime-api.js' } } }));
+    await writeFile(path.join(sdk, 'runtime-api.js'), 'export const workflowRuntimeApi = { defineWorkflow() {} };');
+    expect(await prepareProjectTemplateRuntime(created.directory)).toBe(true);
+    const filename = path.join(created.directory, 'index.ts'), source = await readFile(filename, 'utf8');
+    expect(source).toContain("import type { WorkflowRuntimeApi } from 'steamharness/runtime-api'");
+    expect(source).toContain('workflow.defineWorkflow'); expect(source).toContain('workflow.defineExecutor');
+    expect(source).not.toMatch(/steamharness\.define|\.steamharness;/);
+    expect(await prepareProjectTemplateRuntime(created.directory)).toBe(false);
+    await writeFile(filename, `${source}\n// User changes\n`);
+    expect(await prepareProjectTemplateRuntime(created.directory)).toBe(false);
+    expect(await readFile(filename, 'utf8')).toBe(`${source}\n// User changes\n`);
+  });
+
+  it('retains useful script diagnostics from inspection instead of reporting only the validation summary', async () => {
+    const created = await createProjectFromTemplate({ templateId: 'workflow-starter', name: 'invalid', parentDirectory: await parent(), versions });
+    await linkCore(created.directory);
+    await writeFile(path.join(created.directory, 'index.ts'), 'export const executor = {};');
+    const runtime = createWebRuntime(created.directory, path.join(await parent(), 'data'), () => {});
+    try {
+      const result = await runtime.inspect([created.directory]);
+      expect(result.projects).toEqual([]);
+      expect(result.errors.join('\n')).toMatch(/script validation failed[\s\S]*Project must export steamharness\.defineExecutor/);
+    } finally { runtime.dispose(); }
+  });
 
   it.each(['', '..', '../escape', 'a/b', 'a\\b', 'nul', 'COM1.txt', 'a:b', 'a?', 'trailing.', 'a\u0000b', 'x'.repeat(121)])('rejects unsafe name %j', name => {
     expect(() => validateProjectName(name)).toThrow();

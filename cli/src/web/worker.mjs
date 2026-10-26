@@ -113,7 +113,10 @@ try {
           conversation: structure.conversation,
           requiresLogin: await requiresSystemAi(folderPath),
         });
-      } catch (error) { errors.push(`${folderPath}: ${error.message}`); }
+      } catch (error) {
+        const details = (Array.isArray(error.metadata?.violations) ? error.metadata.violations : []).map(violation => violation?.message).filter(message => typeof message === 'string');
+        errors.push(`${folderPath}: ${[error.message, ...new Set(details)].join('\n')}`);
+      }
     }
     send('result', { projects, errors });
   } else if (request.project?.folderPath) {

@@ -1,9 +1,10 @@
 import { t } from './localization';
-import { spawn, type ChildProcess } from 'node:child_process';
+import { execFile, spawn, type ChildProcess } from 'node:child_process';
 import { createRequire } from 'node:module';
 import { readFile, realpath } from 'node:fs/promises';
 import path from 'node:path';
 import { EventEmitter } from 'node:events';
+import { promisify } from 'node:util';
 import type { Connection } from './workflow-auth-client';
 import { sanitizeProjectEnvironment } from './workflow-auth-client';
 import type { Project } from './workflow-types';
@@ -61,7 +62,7 @@ function environment(studioControl?: StudioControlConfiguration): NodeJS.Process
   return createProjectCliEnvironment(process.env, studioControl);
 }
 
-export async function inspectProjectCli(projectDir: string, nodePath: string, signal?: AbortSignal, assistantProjectDir?: string, assistant?: Project['assistant'], locale = 'en'): Promise<{ projects: Omit<Project, 'uri'>[]; errors: string[] }> {
+export async function inspectProjectCli(projectDir: string, nodePath: string, signal?: AbortSignal, assistantProjectDir?: string, assistant?: Project['assistant'], locale = 'en', validationDetails = false): Promise<{ projects: Omit<Project, 'uri'>[]; errors: string[] }> {
   const { entry } = await resolveProjectCli(projectDir);
   return new Promise((resolve, reject) => {
     const child = spawn(nodePath, [entry, '--locale', locale.toLowerCase().startsWith('zh') ? 'zh-CN' : 'en', 'web', projectDir, '--inspect', '--json', '--no-open', ...(assistantProjectDir ? ['--host-stdio'] : [])], { cwd: projectDir, env: environment(), shell: false, stdio: ['pipe', 'pipe', 'pipe'], signal });
@@ -74,7 +75,7 @@ export async function inspectProjectCli(projectDir: string, nodePath: string, si
     child.stdout.on('data', chunk => { stdout += chunk; if (stdout.length > 2_000_000) { child.kill('SIGKILL'); } });
     child.stderr.on('data', chunk => { stderr = (stderr + chunk).slice(-8_000); });
     child.once('error', error => { clearTimeout(timer); reject(error); });
-    child.once('close', code => {
+    child.once('close', async code => {
       clearTimeout(timer);
       try {
         if (code !== 0) { throw new Error(stderr.trim() || `Project CLI exited (${code}).`); }
@@ -82,6 +83,19 @@ export async function inspectProjectCli(projectDir: string, nodePath: string, si
         if (!Array.isArray(result.projects) || !Array.isArray(result.errors)) { throw new Error('Invalid project CLI inspection response.'); }
         if (assistantProjectDir && result.assistantProtocolVersion !== 1) {
           throw new Error(t("The standalone Assistant CLI is incompatible. Update its @steamharness/cli."));
+        }
+        if (validationDetails && result.errors.some((error: unknown) => typeof error === 'string' && /script validation failed/.test(error))) {
+          // Older published CLIs omit Core's structured violations from web inspection.
+          const args = [entry, '--locale', locale.toLowerCase().startsWith('zh') ? 'zh-CN' : 'en', 'structure', projectDir];
+          const diagnostic = await promisify(execFile)(nodePath, args, { cwd: projectDir, env: environment(), signal,
+            timeout: 30_000, maxBuffer: 2_000_000, windowsHide: true }).catch((error: Error & { stdout?: string }) => ({ stdout: error.stdout ?? '' }));
+          signal?.throwIfAborted();
+          try {
+            const report = JSON.parse(diagnostic.stdout);
+            const violations = report.diagnostics?.error?.metadata?.violations ?? report.diagnostics?.violations ?? [];
+            const details = violations.map((violation: { message?: string }) => violation.message).filter((message: unknown): message is string => typeof message === 'string');
+            for (const detail of new Set<string>(details)) { if (!result.errors.some((error: string) => error.includes(detail))) { result.errors.push(detail); } }
+          } catch { /* Preserve the original inspection error if no structured diagnostics are available. */ }
         }
         resolve({ ...result, projects: result.projects.map((project: Omit<Project, 'uri'>) => ({ ...project, folderPath: path.resolve(assistantProjectDir ?? projectDir) })) });
       } catch (error) { reject(error); }

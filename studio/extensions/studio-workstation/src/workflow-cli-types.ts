@@ -1,7 +1,7 @@
 import type { AssistantWorkspaceFolder, Project } from './workflow-types';
 import type { Connection } from './workflow-auth-client';
 import type { ResourceRequest } from './workflow-resources-types';
-import type { CreatedProject, ProjectCreationInput, StartEnvironment, StartSummary, StartTemplate } from './start-page-types';
+import type { CreatedProject, ProjectCreationInput, ProjectRegistrationTarget, StartEnvironment, StartSummary, StartTemplate } from './start-page-types';
 import type { ProjectType } from './projects';
 import type { DownloadedServerProject, ProjectTransferProgress, UpdatedServerProject } from './steamharness-server-projects';
 
@@ -32,6 +32,9 @@ export interface Launcher {
   validateProjectCreation?(input: ProjectCreationInput): Promise<void>;
   createProject?(input: { templateId: string; name: string; parentDirectory: string }, signal?: AbortSignal): Promise<CreatedProject>;
   installDependencies?(directory: string, signal: AbortSignal, log: (message: string) => void): Promise<void>;
+  hasProjectDependencies?(directory: string): Promise<boolean>;
+  prepareProjectTemplate?(directory: string, signal: AbortSignal): Promise<boolean>;
+  registerProject?(project: CreatedProject, target: ProjectRegistrationTarget, signal: AbortSignal): Promise<void>;
   uploadProject?(project: Project, releaseLog: string, signal: AbortSignal, progress: (value: ProjectTransferProgress) => void, groupId?:string): Promise<void>;
   downloadProject?(projectId: string, version: string, signal: AbortSignal, progress: (value: ProjectTransferProgress) => void): Promise<DownloadedServerProject[]>;
   upgradeProject?(project: Project, version: string, signal: AbortSignal, progress: (value: ProjectTransferProgress) => void,
@@ -39,7 +42,7 @@ export interface Launcher {
   environmentStatus?(): Promise<StartEnvironment>;
   analysisSummary?(): Promise<StartSummary>;
   analyzeProjectType?(sources: Array<{ name: string; text: string }>): Promise<ProjectType | undefined>;
-  inspect(paths: string[]): Promise<{ projects: Omit<Project, 'uri'>[]; errors: string[] }>;
+  inspect(paths: string[], options?: { validationDetails?: boolean }): Promise<{ projects: Omit<Project, 'uri'>[]; errors: string[] }>;
   inspectAssistant(target: AssistantWorkspaceFolder, folders: AssistantWorkspaceFolder[]): Promise<{ projects: Omit<Project, 'uri'>[]; errors: string[] }>;
   inspectAnalysis?(): Promise<Project>;
   updateAnalysisProjects?(projects: Project[]): void;

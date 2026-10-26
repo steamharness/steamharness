@@ -1,8 +1,10 @@
-import { spawn } from 'node:child_process';
+import { execFile, spawn } from 'node:child_process';
 import { lstat, mkdir, readFile, stat } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
+import { promisify } from 'node:util';
+import { createProjectCliEnvironment } from './workflow-cli-process';
 import type { CreatedProject, ProjectCreationInput, StartTemplate } from './start-page-types';
 
 interface TemplateModule {
@@ -45,6 +47,16 @@ export function projectTemplatesRuntime(extensionDirectory: string, locale: stri
       const versions = JSON.parse(await readFile(path.join(directory, 'project-template-versions.json'), 'utf8'));
       if (input.parentDirectory === defaultProjectParentDirectory()) { await mkdir(input.parentDirectory, { recursive: true }); }
       return (await module()).createProjectFromTemplate({ ...input, versions, signal });
+    },
+    prepare: async (projectDirectory: string, nodePath: string, signal: AbortSignal): Promise<boolean> => {
+      // Use a fresh process so a long-lived extension host cannot retain an SDK from before a reinstall.
+      const script = 'const templates = await import(process.argv[1]); const changed = await templates.prepareProjectTemplateRuntime(process.argv[2]); process.stdout.write(JSON.stringify(changed));';
+      const result = await promisify(execFile)(nodePath, ['--input-type=module', '--eval', script,
+        pathToFileURL(path.join(directory, 'project-templates.mjs')).href, projectDirectory], {
+        cwd: projectDirectory, env: createProjectCliEnvironment(), signal, timeout: 30_000, windowsHide: true,
+      });
+      signal.throwIfAborted();
+      return JSON.parse(result.stdout.trim()) === true;
     },
   };
 }

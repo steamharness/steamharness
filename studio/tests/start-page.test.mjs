@@ -16,18 +16,20 @@ class Emitter {
   fire(value) { for (const callback of this.listeners) { callback(value); } }
   dispose() { this.listeners.clear(); }
 }
-const uri = filename => ({ fsPath: filename, toString: () => pathToFileURL(filename).href });
+const uri = filename => ({ scheme: 'file', fsPath: filename, toString: () => pathToFileURL(filename).href });
 function fixture(t, options = {}) {
   const commands = new Map(), storage = options.storage ?? new Map(), calls = [], intervals = new Map(), projectsChanged = new Emitter(), accountChanged = new Emitter(), trustChanged = new Emitter(), windowChanged = new Emitter();
+  const files = storage.get('test.files') ?? new Map(); storage.set('test.files', files);
   const f = { calls, storage, intervals, projectsChanged, accountChanged, projects: [], recent: [], warnings: [], errors: [], installs: [], progress: [],
     name: 'New project', parent: path.resolve('/projects'), newWindow: true, summary: { projects: 2, running: 1, waiting: 1, unavailable: 0, generatedAt: 1 },
     environment: { node: 'v24.18.0', core: '0.2.4', cli: '0.2.4' }, inspectedId: id, manifestId: options.manifestId ?? id,
-    install: options.install, inspect: options.inspect, account: { status: 'signed-out', serverUrl: 'http://localhost:7126' } };
+    files, registrations: [], install: options.install, inspect: options.inspect, register: options.register,
+    account: options.account ?? { status: 'signed-out', serverUrl: 'http://localhost:7126' } };
   const vscode = {
     EventEmitter: Emitter, version: '1.141.0', ProgressLocation: { Notification: 15 },
     ThemeIcon: class { constructor(id) { this.id = id; } },
     Uri: { file: uri, parse: value => ({ fsPath: value.startsWith('file:') ? fileURLToPath(value) : value, toString: () => value }),
-      joinPath: (parent, name) => uri(path.join(parent.fsPath, name)) },
+      joinPath: (parent, ...parts) => uri(path.join(parent.fsPath, ...parts)) },
     commands: { registerCommand: (name, callback) => { commands.set(name, callback); return { dispose: () => commands.delete(name) }; },
       executeCommand: async (name, ...args) => {
         calls.push([name, ...args]);
@@ -39,9 +41,12 @@ function fixture(t, options = {}) {
       } },
     workspace: { isTrusted: options.trusted ?? true, workspaceFolders: (options.folders ?? []).map(directory => ({ uri: uri(directory) })),
       onDidGrantWorkspaceTrust: trustChanged.event, onDidChangeConfiguration: new Emitter().event,
-      registerTextDocumentContentProvider: (_scheme, provider) => { f.logProvider = provider; return { dispose() {} }; },
-      openTextDocument: async value => value,
-      fs: { readFile: async () => Buffer.from(JSON.stringify({ id: f.manifestId })) } },
+      openTextDocument: async value => ({ uri: value, getText: () => new TextDecoder().decode(files.get(value.fsPath)) }),
+      fs: { readFile: async value => {
+        if (path.basename(value.fsPath) === 'package.json') { return Buffer.from(JSON.stringify({ id: f.manifestId })); }
+        if (!files.has(value.fsPath)) { throw Object.assign(new Error('File missing'), { code: 'FileNotFound' }); }
+        return files.get(value.fsPath);
+      }, writeFile: async (value, content) => { files.set(value.fsPath, content); }, createDirectory: async () => {} } },
     window: { onDidChangeWindowState: windowChanged.event,
       showErrorMessage: async message => { f.errors.push(message); }, showWarningMessage: async message => { f.warnings.push(message); },
       showInformationMessage: async (_message, _options, newWindow, currentWindow) => f.newWindow === undefined ? undefined : f.newWindow ? newWindow : currentWindow,
@@ -49,7 +54,7 @@ function fixture(t, options = {}) {
       withProgress: async (options, action) => {
         f.progress.push(options);
         const cancellation = new Emitter(); f.cancel = () => cancellation.fire();
-        return action({}, { onCancellationRequested: cancellation.event, isCancellationRequested: false });
+        return action({ report() {} }, { onCancellationRequested: cancellation.event, isCancellationRequested: false });
       } },
   };
   const launcher = {
@@ -59,15 +64,18 @@ function fixture(t, options = {}) {
     createProject: async input => { f.created = (f.created ?? 0) + 1; await f.create?.(); return { id, name: input.name, directory: path.join(input.parentDirectory, input.name), projectType: 'workflow', entryFile: 'index.ts' }; },
     validateProjectCreation: async input => { await f.validate?.(input); },
     installDependencies: async (directory, signal, log) => { f.installs.push(directory); log('install log'); await f.install?.(signal); },
-    inspect: async () => { await f.inspect?.(); return { projects: [{ id: f.inspectedId }], errors: [] }; },
+    hasProjectDependencies: async () => f.dependenciesPresent !== false,
+    prepareProjectTemplate: async () => { f.prepares = (f.prepares ?? 0) + 1; return false; },
+    registerProject: async (project, target, signal) => { f.registrations.push({ project, target }); await f.register?.(signal); },
+    inspect: async () => { await f.inspect?.(); return { projects: [{ id: f.inspectedId }], errors: f.inspectionErrors ?? [] }; },
     environmentStatus: async () => { if (f.environmentError) { throw f.environmentError; } return f.environment; },
     analysisSummary: async () => { f.summaryReads = (f.summaryReads ?? 0) + 1; if (f.readSummary) { return f.readSummary(); } return f.summary; },
   };
   const module = { exports: {} };
   runInNewContext(compiled.outputFiles[0].text, { module, exports: module.exports, require: name => name === 'vscode' ? vscode : require(name),
-    AbortController, AbortSignal, Error, DOMException, structuredClone, TextDecoder, process, setTimeout, clearTimeout,
+    AbortController, AbortSignal, Error, DOMException, structuredClone, TextDecoder, TextEncoder, process, setTimeout, clearTimeout,
     setInterval: (callback, ms) => { const key = {}; intervals.set(key, { callback, ms }); return key; }, clearInterval: key => intervals.delete(key) });
-  const controller = new module.exports.StudioStartController({ extension: { packageJSON: { version: '0.1.0' } }, globalState: {
+  const controller = new module.exports.StudioStartController({ globalStorageUri: uri(path.resolve('/studio-storage')), extension: { packageJSON: { version: '0.1.0' } }, globalState: {
     get: key => storage.get(key), update: async (key, value) => storage.set(key, value) } }, launcher,
   { getState: () => f.account, onDidChange: accountChanged.event }, {
     getProjects: () => f.projects, onDidChangeProjects: projectsChanged.event,
@@ -130,12 +138,53 @@ test('creation opens the project before installation and hands progress, logs an
   assert.deepEqual([f.installs, f.progress], [[], []]);
   failInstall(); await until(async () => !(await target.state()).busy, 'Installation did not finish');
   assert.equal((await target.state()).pending[0].status, 'failed');
-  await target.execute('studio.showProjectSetupLog'); assert.match(target.logProvider.provideTextDocumentContent(), /install log/);
+  await target.execute('studio.showProjectSetupLog'); assert.match(target.logDocument.getText(), /install log/);
+  assert.equal(target.logDocument.uri.scheme, 'file'); assert.equal(path.basename(target.logDocument.uri.fsPath), 'installation.log');
   target.manifestId = 'changed'; await target.execute('studio.retryProjectSetup', id); assert.match(target.errors.at(-1), /identity changed/);
   target.manifestId = id; target.install = undefined; await target.execute('studio.retryProjectSetup', id);
   assert.equal((await target.state()).pending.length, 0); assert.equal(target.remembered.id, id); assert.equal(f.created, 1);
   assert.equal(target.calls.some(([name]) => name === 'vscode.openFolder'), false);
   assert.ok(target.calls.some(([name]) => name === 'studio.refreshProjects'));
+});
+
+test('validation errors remain separate from dependency installation and retries retain a persistent file log', async t => {
+  const f = fixture(t); await f.execute('studio.createProject', 'workflow');
+  const target = fixture(t, { storage: f.storage, folders: [path.join(f.parent, f.name)], inspect: async () => { target.inspectionErrors = ['specific script violation']; } });
+  await until(async () => !(await target.state()).busy, 'Validation did not settle');
+  const pending = (await target.state()).pending[0];
+  assert.equal(pending.stage, 'validation'); assert.equal(pending.dependenciesInstalled, true);
+  assert.equal(target.registrations.length, 0);
+  await target.execute('studio.showProjectSetupLog');
+  assert.match(target.logDocument.getText(), /Dependencies installed successfully[\s\S]*specific script violation/);
+  target.controller.dispose();
+  const restored = fixture(t, { storage: f.storage, folders: [path.join(f.parent, f.name)] });
+  await restored.execute('studio.showProjectSetupLog'); assert.match(restored.logDocument.getText(), /specific script violation/);
+  await restored.execute('studio.retryProjectSetup', id);
+  assert.deepEqual(restored.installs, []); assert.equal(restored.registrations.length, 1);
+  assert.equal((await restored.state()).pending.length, 0);
+});
+
+test('registration preserves the creating account and a failed registration leaves a runnable local project', async t => {
+  const account = { status: 'authenticated', serverUrl: 'http://localhost:7126', user: { userId: 'creator' } };
+  const f = fixture(t, { account }); await f.execute('studio.createProject', 'workflow');
+  const target = fixture(t, { storage: f.storage, folders: [path.join(f.parent, f.name)], account,
+    register: async () => { throw new Error('registration offline'); } });
+  await until(async () => !(await target.state()).busy, 'Registration did not settle');
+  assert.equal(target.remembered.id, id); assert.equal((await target.state()).pending[0].stage, 'registration');
+  assert.deepEqual({ ...target.registrations[0].target }, { serverUrl: account.serverUrl, userId: 'creator' });
+  assert.equal(target.installs.length, 1);
+  target.register = undefined; await target.execute('studio.retryProjectSetup', id);
+  assert.equal(target.installs.length, 1); assert.equal(target.registrations.length, 2);
+  assert.equal((await target.state()).pending.length, 0);
+});
+
+test('a retry reinstalls dependencies if a successful installation was subsequently removed', async t => {
+  const f = fixture(t); await f.execute('studio.createProject', 'workflow');
+  const target = fixture(t, { storage: f.storage, folders: [path.join(f.parent, f.name)], register: async () => { throw new Error('offline'); } });
+  await until(async () => !(await target.state()).busy, 'Setup did not settle');
+  target.dependenciesPresent = false; target.register = undefined;
+  await target.execute('studio.retryProjectSetup', id);
+  assert.equal(target.installs.length, 2); assert.equal((await target.state()).pending.length, 0);
 });
 
 test('form and window-choice cancellation create nothing, while install cancellation stays in the project window', async t => {

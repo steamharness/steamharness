@@ -1,5 +1,7 @@
 # Unreleased
 
+- Fixed new projects failing validation after a successful install by matching untouched templates to the installed SDK API. Installation, validation, and Server registration now show separate status and diagnostics, and retries skip successful installation. Workflow, Conversation, and Kanban register private personal records with the same UUID without uploading source; registration failure preserves runnable local projects. Setup logs persist as files with native tab path and reveal actions. Fixed the Harness version field on Start.
+
 - [Improved] Place the enhanced badge beside the Start page title and remove its refresh button. The bottom-left gear opens Studio Settings directly.
 
 - Fixed Server storage setup guidance for local Kanban, Workflow and Conversation projects, including the Server address, project ID, account settings, upload dialog and read-only rechecks. History, drafts and Stop remain available; no projects are created or uploaded automatically. Missing Kanban endpoints no longer suggest another upload when the project already exists.

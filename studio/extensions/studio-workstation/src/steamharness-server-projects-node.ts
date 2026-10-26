@@ -5,6 +5,29 @@ import path from 'node:path';
 import { t, locale } from './localization';
 import { AuthError, type Connection } from './workflow-auth-client';
 import { ProjectServerClient, type DownloadedServerProject, type ProjectPreparation, type ProjectTransferProgress } from './steamharness-server-projects';
+import { normalizeDeclaredProjectInfoInput } from '../../../../shared/project-info/index';
+import { readProjectCardMetadataFromPackageJson } from '../../../../shared/project-card-metadata/index';
+import type { CreatedProject } from './start-page-types';
+
+export async function registerCreatedServerProject(options: {
+  project: CreatedProject; connection: Connection; signal: AbortSignal; assertCurrent: () => void;
+}): Promise<void> {
+  options.signal.throwIfAborted();
+  const manifest = JSON.parse(await readFile(path.join(options.project.directory, 'package.json'), 'utf8'));
+  if (manifest.id !== options.project.id || manifest.steamHarness?.projectType !== options.project.projectType) {
+    throw new Error(t('Project identity changed. Open the project folder to review it.'));
+  }
+  const projectInfo = normalizeDeclaredProjectInfoInput(manifest.steamHarness.projectInfo);
+  options.assertCurrent();
+  const result = await new ProjectServerClient(options.connection).request<{ projectId: string; projectType: string }>('/api/projects', options.signal, {
+    projectId: options.project.id, name: options.project.name, projectType: options.project.projectType,
+    visibility: 'private', projectInfo, projectCard: readProjectCardMetadataFromPackageJson(manifest, options.project.projectType),
+  });
+  options.assertCurrent();
+  if (result?.projectId !== options.project.id || result.projectType !== options.project.projectType) {
+    throw new Error(t('The server returned an unexpected project. Retry project setup.'));
+  }
+}
 
 interface TransferOptions {
   cliEntry: string; runtimeDirectory: string; nodePath: string; connection: Connection;

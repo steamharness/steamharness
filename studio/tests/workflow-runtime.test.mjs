@@ -73,6 +73,22 @@ test('a missing project CLI fails without falling back to a workstation runtime'
   await assert.rejects(resolveProjectCli(directory), /@steamharness\/cli/);
 });
 
+test('setup inspection supplements old CLI validation summaries with structured violations', async t => {
+  const { directory, cli } = await fixture(t);
+  await fs.writeFile(path.join(cli, 'dist/index.js'), `
+    const summary = 'Workflow "Created" script validation failed.';
+    if (process.argv.includes('structure')) {
+      console.log(JSON.stringify({ diagnostics: { error: { metadata: { violations: [{ message: 'The executor must declare projectType.' }] } } } }));
+      process.exitCode = 1;
+    } else { console.log(JSON.stringify({ projects: [], errors: [summary] })); }
+  `);
+  const ordinary = await inspectProjectCli(directory, process.execPath);
+  assert.equal(ordinary.errors.length, 1);
+  const detailed = await inspectProjectCli(directory, process.execPath, undefined, undefined, undefined, 'zh-cn', true);
+  assert.equal(detailed.projects.length, 0);
+  assert.match(detailed.errors.join('\n'), /script validation failed[\s\S]*executor must declare projectType/);
+});
+
 test('reinstalling a project CLI uses the new package in the same host process', async t => {
   const first = await fixture(t, '1.2.3');
   const second = await fixture(t, '2.3.4');

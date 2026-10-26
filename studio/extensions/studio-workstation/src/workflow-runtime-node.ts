@@ -2,7 +2,7 @@ import { t } from './localization';
 import { upgradeServerProject } from './workflow-project-update-node';
 import * as vscode from 'vscode';
 import * as path from 'node:path';
-import { realpath } from 'node:fs/promises';
+import { realpath, stat } from 'node:fs/promises';
 import { pathToFileURL } from 'node:url';
 import { inspectProjectCli, resolveProjectCli, startProjectCli, requestProjectCliConfiguration, type StudioControlConfiguration } from './workflow-cli-process';
 import type { Launcher, WebSession } from './workflow-cli-types';
@@ -19,7 +19,7 @@ import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { readFile } from 'node:fs/promises';
 import type { ProjectType } from './projects';
-import { uploadServerProject, downloadServerProject } from './steamharness-server-projects-node';
+import { uploadServerProject, downloadServerProject, registerCreatedServerProject } from './steamharness-server-projects-node';
 
 export function createProjectRuntime(context: vscode.ExtensionContext, account: AccountController): Launcher {
   const sessions = new Set<WebSession>();
@@ -140,6 +140,31 @@ export function createProjectRuntime(context: vscode.ExtensionContext, account: 
     validateProjectCreation: templates.validate,
     createProject: templates.create,
     installDependencies: (directory, signal, log) => installProjectDependencies({ directory, signal: AbortSignal.any([signal, controller.signal]), log }),
+    hasProjectDependencies: async directory => {
+      try {
+        await resolveProjectCli(directory);
+        await stat(path.join(directory, 'node_modules/steamharness/package.json'));
+        return true;
+      } catch { return false; }
+    },
+    prepareProjectTemplate: (directory, signal) => templates.prepare(directory, executable(), AbortSignal.any([signal, controller.signal])),
+    registerProject: async (project, target, signal) => {
+      assertAvailable();
+      const connection = account.getConnection(), state = account.getState();
+      if (!connection || !state.user) { throw new Error(t('Sign in to register this project, then retry project setup.')); }
+      const registration = new AbortController();
+      const current = (): boolean => account.getConnection()?.serverUrl === connection.serverUrl
+        && account.getConnection()?.accessToken === connection.accessToken && account.getState().user?.userId === state.user!.userId;
+      const assertCurrent = (): void => {
+        if (connection.serverUrl !== target.serverUrl || target.userId && target.userId !== state.user!.userId || !current()) {
+          throw new Error(t('The account used to create this project changed. Sign in with that account before retrying registration.'));
+        }
+      };
+      assertCurrent();
+      const changed = account.onDidChange(() => { if (!current()) { registration.abort(); } });
+      try { await registerCreatedServerProject({ project, connection, assertCurrent, signal: AbortSignal.any([signal, controller.signal, registration.signal]) }); }
+      finally { changed.dispose(); }
+    },
     uploadProject: (project, releaseLog, signal, progress,groupId) => {
       assertAvailable();
       return transfer(signal, options => uploadServerProject({ ...options, projectId: project.id, version: project.manifest?.version ?? '', directory: project.folderPath, releaseLog, progress,groupId }));
@@ -177,9 +202,9 @@ export function createProjectRuntime(context: vscode.ExtensionContext, account: 
       if (!project) { throw new Error(result.errors.join('\n') || 'Studio Analysis project is unavailable.'); }
       return { ...project, uri: vscode.Uri.file(directory).toString(), builtin: 'analysis' };
     },
-    inspect: async paths => {
+    inspect: async (paths, options) => {
       assertAvailable();
-      const results = await Promise.allSettled(paths.map(folder => inspectProjectCli(folder, executable(), controller.signal, undefined, undefined, vscode.env.language)));
+      const results = await Promise.allSettled(paths.map(folder => inspectProjectCli(folder, executable(), controller.signal, undefined, undefined, vscode.env.language, options?.validationDetails)));
       const projects = [], errors: string[] = [];
       for (let index = 0; index < results.length; index++) {
         const result = results[index];

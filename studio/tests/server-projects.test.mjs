@@ -7,7 +7,7 @@ import { createServer } from 'node:http';
 import { register } from 'tsx/esm/api';
 register();
 const { ProjectServerClient } = await import('../extensions/studio-workstation/src/steamharness-server-projects.ts');
-const { downloadServerProject, uploadServerProject, runWorkspaceTransfer } = await import('../extensions/studio-workstation/src/steamharness-server-projects-node.ts');
+const { downloadServerProject, uploadServerProject, runWorkspaceTransfer, registerCreatedServerProject } = await import('../extensions/studio-workstation/src/steamharness-server-projects-node.ts');
 const { configureLocalization } = await import('../extensions/studio-workstation/src/localization.ts');
 const id = '784af2d9-240a-45d1-a659-452a21867934';
 const dependencyId = '4c8bed84-e667-446e-860d-663caa5c3587';
@@ -71,6 +71,40 @@ test('project API reads use the host account, host language and cancellable requ
   const cancelled = new AbortController(); cancelled.abort();
   await assert.rejects(client.versions(id, cancelled.signal), { name: 'AbortError' });
   assert.equal(reads.length, 1);
+});
+
+for (const projectType of ['workflow', 'conversation', 'kanban']) test(`new ${projectType} projects register the same UUID privately without uploading or publishing source`, async t => {
+  const directory = await fs.mkdtemp(path.join(tmpdir(), 'studio-register-')); t.after(() => fs.rm(directory, { recursive: true, force: true }));
+  const projectInfo = { localizedNames: { en: 'Created' }, declarations: [], relatedProjects: [], platformSupport: { mode: 'agnostic' }, dataStorage: { mode: 'local' } };
+  const projectCard = { icon: projectType === 'workflow' ? 'workflow' : projectType === 'conversation' ? 'message-circle' : 'boxes', iconColor: '#ffffff', iconBackgroundColor: '#123456' };
+  await fs.writeFile(path.join(directory, 'package.json'), JSON.stringify({ id, steamHarness: { projectType, projectInfo, projectCard } }));
+  await fs.writeFile(path.join(directory, 'index.ts'), "throw new Error('Registration must not read or execute source');");
+  const http = await server(t, () => ({ data: { projectId: id, projectType } }));
+  let checks = 0;
+  const options = { project: { id, name: 'Created', projectType, directory, entryFile: projectType === 'kanban' ? 'index.html' : 'index.ts' },
+    connection: { serverUrl: http.url, accessToken: 'registration-test-token' }, signal: signal(), assertCurrent: () => { checks++; } };
+  await registerCreatedServerProject(options); await registerCreatedServerProject(options);
+  assert.equal(checks, 4); assert.equal(http.requests.length, 2);
+  for (const request of http.requests) {
+    assert.equal(request.url, '/api/projects'); assert.equal(request.method, 'POST');
+    assert.equal(request.auth, 'Bearer registration-test-token');
+    assert.deepEqual(JSON.parse(request.body), { projectId: id, name: 'Created', projectType, visibility: 'private', projectInfo, projectCard });
+  }
+  await assert.rejects(registerCreatedServerProject({ ...options, assertCurrent: () => { throw new Error('account changed'); } }), /account changed/);
+  await assert.rejects(registerCreatedServerProject({ ...options, signal: AbortSignal.abort() }), { name: 'AbortError' });
+  await fs.writeFile(path.join(directory, 'package.json'), JSON.stringify({ id: dependencyId, steamHarness: { projectType, projectInfo } }));
+  await assert.rejects(registerCreatedServerProject(options), /identity changed/);
+  assert.equal(http.requests.length, 2);
+});
+
+test('registration rejects permission errors and an unexpected server identity', async t => {
+  const directory = await fs.mkdtemp(path.join(tmpdir(), 'studio-register-failed-')); t.after(() => fs.rm(directory, { recursive: true, force: true }));
+  await fs.writeFile(path.join(directory, 'package.json'), JSON.stringify({ id, steamHarness: { projectType: 'workflow', projectInfo: { platformSupport: { mode: 'agnostic' }, dataStorage: { mode: 'local' } } } }));
+  let forbidden = true;
+  const http = await server(t, () => forbidden ? { status: 403, payload: { errCode: 403, errMessage: 'denied' } } : { data: { projectId: dependencyId, projectType: 'workflow' } });
+  const options = { project: { id, name: 'Created', projectType: 'workflow', directory, entryFile: 'index.ts' }, connection: { serverUrl: http.url, accessToken: 'test-token' }, signal: signal(), assertCurrent() {} };
+  await assert.rejects(registerCreatedServerProject(options), error => error.status === 403);
+  forbidden = false; await assert.rejects(registerCreatedServerProject(options), /unexpected project/);
 });
 
 test('API errors redact credentials and retain permission status', async () => {
