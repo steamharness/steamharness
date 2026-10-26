@@ -1,5 +1,7 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
+import { readFileSync } from 'node:fs';
+import path from 'node:path';
 import { createAgentModelsControl } from '../web/ui/agent-models';
 import { loadAgentModelCatalog } from '../web/agent-model-catalog';
 vi.mock('../web/localization', () => ({ t: (text: string) => text }));
@@ -41,6 +43,38 @@ function fill(label: string, value: string) {
   const row = [...document.querySelectorAll('label')].find(row => row.firstChild?.textContent === label)!;
   const input = row.querySelector('input')!; input.value = value; input.dispatchEvent(new Event('input'));
 }
+it.each(['light', 'dark'])('highlights the current AI source in the %s theme, including on hover', theme => {
+  const colors: Record<string, string> = {
+    '--vscode-button-background': '#0078d4', '--vscode-button-foreground': '#ffffff', '--vscode-button-hoverBackground': '#006ab1',
+    '--vscode-button-secondaryBackground': theme === 'dark' ? '#333333' : '#eeeeee',
+    '--vscode-button-secondaryForeground': theme === 'dark' ? '#cccccc' : '#333333',
+    '--vscode-editor-background': theme === 'dark' ? '#1f1f1f' : '#ffffff',
+    '--vscode-toolbar-hoverBackground': theme === 'dark' ? '#333333' : '#e8e8e8',
+  };
+  // jsdom does not resolve theme variables or expose a native pointer hover state.
+  let css = readFileSync(path.join(import.meta.dirname, '../web/ui/project-configurations.css'), 'utf8').replaceAll(':hover', '[data-hover]');
+  let previous: string;
+  do {
+    previous = css;
+    css = css.replace(/var\((--[\w-]+)(?:,\s*([^()]*))?\)/g, (expression, token: string, fallback?: string) => colors[token] ?? fallback ?? expression);
+  } while (css !== previous);
+  const style = document.createElement('style'); style.textContent = css; document.body.append(style);
+  mount(); click('Add model');
+  const buttons = [...document.querySelectorAll<HTMLButtonElement>('[role=radio]')];
+  for (const source of ['System AI', 'Third-party AI', 'System AI']) {
+    click(source);
+    const selected = buttons.find(button => button.textContent === source)!;
+    const other = buttons.find(button => button !== selected)!;
+    expect(selected.getAttribute('aria-checked')).toBe('true');
+    expect(other.getAttribute('aria-checked')).toBe('false');
+    for (const hovered of [undefined, selected, other]) {
+      buttons.forEach(button => button.toggleAttribute('data-hover', button === hovered));
+      expect(getComputedStyle(selected).backgroundColor).toBe(hovered === selected ? 'rgb(0, 106, 177)' : 'rgb(0, 120, 212)');
+      expect(getComputedStyle(selected).color).toBe('rgb(255, 255, 255)');
+      expect(getComputedStyle(other).backgroundColor).toBe(hovered === other ? theme === 'dark' ? 'rgb(51, 51, 51)' : 'rgb(232, 232, 232)' : 'rgba(0, 0, 0, 0)');
+    }
+  }
+});
 it('loads subscriptions only on demand and hides the other source form', async () => {
   const control = mount(); expect(control.loadCatalog).not.toHaveBeenCalled();
   expect(document.querySelector('input')).toBeNull();
