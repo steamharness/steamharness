@@ -82,4 +82,6 @@
 
 `0053-studio-mode-panel-state.patch` 在退出 Steam 时先隐藏工具栏，再移除首页上下文并恢复视图位置，避免自动聚焦终端后延迟展开底部面板；只重新打开 IDE 中原本可见的视图容器。
 
+`0057-studio-language-command-service-lifetime.patch` 在语言切换命令的首次异步调用前获取所需服务，避免点击语言或重启应用时使用已失效的服务访问器。
+
 新内核修改应通过 `git diff` 导出统一格式补丁，并排除脚本生成的 `product.json` 及 Studio 扩展链接。品牌配置由 `config/product.json` 维护。

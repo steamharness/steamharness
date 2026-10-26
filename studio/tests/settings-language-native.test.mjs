@@ -8,7 +8,7 @@ import ts from 'typescript';
 
 const kernel = new URL('../upstream/vscode/src/', import.meta.url);
 const require = createRequire(import.meta.url);
-const runtime = await build({ stdin: { contents: `export { parse } from './vs/base/common/jsonc'; export { format } from './vs/base/common/strings'; export { resolveNLSConfiguration } from './vs/base/node/nls'; export { studioLocaleStrings } from './vs/workbench/services/localization/common/studioLocaleStrings';`,
+const runtime = await build({ stdin: { contents: `export { parse } from './vs/base/common/jsonc'; export { format } from './vs/base/common/strings'; export { resolveNLSConfiguration } from './vs/base/node/nls'; export { studioLocaleStrings } from './vs/workbench/services/localization/common/studioLocaleStrings'; export { InstantiationService } from './vs/platform/instantiation/common/instantiationService'; export { ServiceCollection } from './vs/platform/instantiation/common/serviceCollection'; export { createDecorator } from './vs/platform/instantiation/common/instantiation';`,
   resolveDir: kernel.pathname, loader: 'ts' }, bundle: true, platform: 'node', format: 'cjs', write: false });
 
 function core(language = 'en', source = true) {
@@ -28,6 +28,16 @@ async function declaration(file, name, globals = {}, memberNames) {
   const module = { exports: {} };
   runInNewContext(`${compiled}\nmodule.exports = ${name};`, { module, Error, ...globals });
   return module.exports;
+}
+
+async function languageCommand(locale, packs, environment) {
+  const api = core();
+  const localeId = api.createDecorator('testLocale'), packsId = api.createDecorator('testLanguagePacks'), environmentId = api.createDecorator('testEnvironment');
+  const route = await declaration('vs/workbench/contrib/localization/common/localizationsActions.ts', 'setStudioDisplayLanguage', {
+    ILocaleService: localeId, ILanguagePackService: packsId, IEnvironmentService: environmentId, ...api,
+  });
+  const instantiation = new api.InstantiationService(new api.ServiceCollection([localeId, locale], [packsId, packs], [environmentId, environment]), true);
+  return { invoke: language => instantiation.invokeFunction(route, language), dispose: () => instantiation.dispose() };
 }
 
 class FileOperationError extends Error { fileOperationResult = 1; }
@@ -94,9 +104,11 @@ test('packaged Chinese uses the existing language-pack installer before restarti
   assert.equal(await f.service.getLocalePreference(), 'zh-cn');
 });
 
-test('an unapplied saved language can still complete its restart', async () => {
+test('an unapplied saved language completes its native command through the scoped service accessor', async t => {
   const f = await nativeFixture({ preference: 'zh-cn', active: 'en' });
-  await f.service.setLocale({ id: 'zh-cn', label: '简体中文' });
+  const command = await languageCommand(f.service, f.service.languagePackService, f.service.environmentService);
+  t.after(() => command.dispose());
+  assert.equal(await command.invoke('zh-cn'), 'zh-cn');
   assert.equal(f.restarts, 1); assert.equal(f.dialogs.length, 1);
 });
 
@@ -173,11 +185,7 @@ test('browser language preference persists an explicit current language and clea
   assert.equal(restarts, 2);
 });
 
-test('Studio language routing accepts only three modes, reuses packs and reports cancellation', async () => {
-  const localeId = Symbol(), packsId = Symbol(), environmentId = Symbol();
-  const route = await declaration('vs/workbench/contrib/localization/common/localizationsActions.ts', 'setStudioDisplayLanguage', {
-    ILocaleService: localeId, ILanguagePackService: packsId, IEnvironmentService: environmentId, ...core(),
-  });
+test('Studio language routing accepts only three modes, reuses packs and reports cancellation', async t => {
   let preference = 'system', built = false, gallery = 0, canceled = false;
   const selections = [], locale = {
     getLocalePreference: async () => preference === 'system' ? undefined : preference,
@@ -185,16 +193,17 @@ test('Studio language routing accepts only three modes, reuses packs and reports
     clearLocalePreference: async () => { preference = 'system'; },
   };
   const packs = { getInstalledLanguages: async () => [{ id: 'en', label: 'English' }], getAvailableLanguages: async () => { gallery++; return []; } };
-  const accessor = { get: id => id === localeId ? locale : id === packsId ? packs : { isBuilt: built } };
-  assert.equal(await route(accessor, 'zh-cn'), 'zh-cn');
-  assert.equal(await route(accessor, 'en'), 'en');
-  assert.equal(await route(accessor, 'system'), 'system');
+  const command = await languageCommand(locale, packs, { get isBuilt() { return built; } });
+  t.after(() => command.dispose());
+  assert.equal(await command.invoke('zh-cn'), 'zh-cn');
+  assert.equal(await command.invoke('en'), 'en');
+  assert.equal(await command.invoke('system'), 'system');
   assert.equal(gallery, 0);
   canceled = true;
-  assert.equal(await route(accessor, 'zh-cn'), 'system');
-  for (const value of ['fr', '', undefined, { id: 'zh-cn' }]) { await assert.rejects(route(accessor, value), /Unsupported display language/); }
+  assert.equal(await command.invoke('zh-cn'), 'system');
+  for (const value of ['fr', '', undefined, { id: 'zh-cn' }]) { await assert.rejects(command.invoke(value), /Unsupported display language/); }
   assert.equal(selections.length, 3);
   built = true;
-  await assert.rejects(route(accessor, 'zh-cn'), /language pack is unavailable/);
+  await assert.rejects(command.invoke('zh-cn'), /language pack is unavailable/);
   assert.equal(gallery, 1);
 });
