@@ -84,4 +84,6 @@
 
 `0057-studio-language-command-service-lifetime.patch` 在语言切换命令的首次异步调用前获取所需服务，避免点击语言或重启应用时使用已失效的服务访问器。
 
+`0060-studio-start-settings-entry.patch` 将开始页徽标移到左侧标题旁并移除顶部刷新按钮；齿轮入口统一通过鼠标、键盘及触控直接打开 Studio 设置页，使用双语标签与按钮语义。
+
 新内核修改应通过 `git diff` 导出统一格式补丁，并排除脚本生成的 `product.json` 及 Studio 扩展链接。品牌配置由 `config/product.json` 维护。

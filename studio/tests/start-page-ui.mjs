@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
-import { randomBytes } from 'node:crypto';
+import { createHash, randomBytes } from 'node:crypto';
 import { mkdir, mkdtemp, readFile, realpath, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
@@ -30,6 +30,18 @@ for (const language of ['en', 'zh-cn']) {
   let browser, child, page, log = '';
   try {
     await mkdir(workdir, { recursive: true }); await mkdir(extension, { recursive: true });
+    if (language === 'zh-cn' && process.env.STEAMHARNESS_UI_LANGUAGE_PACK) {
+      const location = await realpath(process.env.STEAMHARNESS_UI_LANGUAGE_PACK);
+      const contents = await readFile(path.join(location, 'package.json'), 'utf8'), manifest = JSON.parse(contents);
+      const localization = manifest.contributes?.localizations?.find(entry => entry.languageId === language);
+      assert.ok(localization, `The cached language pack does not support ${language}`);
+      const data = path.join(directory, 'server/data'); await mkdir(data, { recursive: true });
+      await writeFile(path.join(data, 'languagepacks.json'), JSON.stringify({ [language]: {
+        hash: createHash('sha256').update(contents).digest('hex'), label: localization.localizedLanguageName,
+        extensions: [{ extensionIdentifier: { id: `${manifest.publisher}.${manifest.name}` }, version: manifest.version }],
+        translations: Object.fromEntries(localization.translations.map(entry => [entry.id, path.resolve(location, entry.path)])),
+      } }));
+    }
     const bin = path.join(directory, 'bin'); await mkdir(bin);
     const installer = path.join(ROOT, 'tests/start-page-ui-install.cjs');
     await writeFile(path.join(bin, process.platform === 'win32' ? 'pnpm.cmd' : 'pnpm'), process.platform === 'win32'
@@ -96,9 +108,21 @@ for (const language of ['en', 'zh-cn']) {
       }
     };
     await command('workbench.action.closeAllEditors');
-    const initial = await until(() => call({ action: 'state' }), state => state.start.templates.length === 7 && state.start.projects.length === 7, 'Current projects were not scanned');
+    const initial = await until(() => call({ action: 'state' }), state => state.start.templates.length === 7 && (layoutOnly || state.start.projects.length === 7), 'Current projects were not scanned');
     assert.equal(initial.language, language);
     await command('workbench.action.closeSidebar'); await command('workbench.action.closeAuxiliaryBar');
+    const settingsAction = page.locator('.activitybar').getByRole('button', { name: language === 'en' ? 'Settings' : '设置', exact: true });
+    await settingsAction.waitFor();
+    assert.equal(await settingsAction.getAttribute('aria-haspopup'), null, 'Settings is a direct action');
+    for (const input of ['click', 'Enter', 'Space']) {
+      if (input === 'click') { await settingsAction.click(); }
+      else { await settingsAction.focus(); await settingsAction.press(input); }
+      await until(() => call({ action: 'state' }), state => state.groups.some(group => group.tabs.some(tab => tab.viewType?.endsWith('studio.settings'))), 'The activity bar did not open Studio settings');
+      await page.locator('.tabs-container .tab').filter({ hasText: language === 'en' ? 'Settings' : '设置' }).waitFor();
+      assert.equal(await page.locator('.context-view .monaco-menu:visible').count(), 0, 'Settings must open without the Manage popup');
+      await command('workbench.action.closeAllEditors');
+    }
+    check(`${language}: the settings gear opens Studio settings directly with the mouse, Enter and Space`);
     // Exercise the real native view with a delayed state source, independent of extension startup speed.
     await page.evaluate(async () => {
       const { StudioStartView } = await import(new URL('vs/workbench/browser/parts/editor/studioStart.js', globalThis._VSCODE_FILE_ROOT).href);
@@ -122,10 +146,13 @@ for (const language of ['en', 'zh-cn']) {
             await page.evaluate(width => { globalThis.studioStartLoadingTest.host.style.width = `${width}px`; }, width);
             const bounds = await loading.evaluate(element => {
               const header = element.querySelector('.studio-start-header');
+              const badge = header.querySelector('.studio-start-badge');
               return { client: element.clientWidth, scroll: element.scrollWidth,
                 header: header.getBoundingClientRect().toJSON(),
                 logo: header.querySelector('.studio-start-logo').getBoundingClientRect().toJSON(),
                 title: header.querySelector('h1').getBoundingClientRect().toJSON(),
+                badge: { visible: badge.checkVisibility(), ...badge.getBoundingClientRect().toJSON() },
+                refresh: header.querySelectorAll('[data-action="studio.refreshStart"]').length,
                 actions: [...header.querySelectorAll('button')].filter(button => button.checkVisibility()).map(button => button.getBoundingClientRect().toJSON()) };
             });
             const context = `${language} ${theme} ${phase} ${width}: ${JSON.stringify(bounds)}`;
@@ -134,6 +161,14 @@ for (const language of ['en', 'zh-cn']) {
               `The logo must remain beside the title: ${context}`);
             assert.ok(bounds.logo.left >= bounds.header.left && bounds.logo.right <= bounds.title.left && bounds.title.right <= bounds.header.right + 1,
               `Brand elements must fit without overlapping: ${context}`);
+            assert.equal(bounds.refresh, 0, 'The start header must not expose a refresh button');
+            if (phase === 'loaded' && width > 600) {
+              assert.ok(bounds.badge.visible && bounds.badge.left >= bounds.title.right && bounds.badge.right <= bounds.header.right,
+                `The enhanced badge must follow the title: ${context}`);
+              assert.ok(Math.abs((bounds.badge.top + bounds.badge.bottom) / 2 - (bounds.title.top + bounds.title.bottom) / 2) <= 1,
+                `The enhanced badge must align with the title: ${context}`);
+              assert.ok(bounds.actions.every(action => action.left >= bounds.badge.right), `Header actions must follow the brand: ${context}`);
+            }
             for (const action of bounds.actions) {
               assert.ok(action.left >= bounds.header.left && action.right <= bounds.header.right + 1,
                 `Header actions must fit the editor group: ${context}`);
@@ -177,12 +212,20 @@ for (const language of ['en', 'zh-cn']) {
         const fixture = globalThis.studioStartLoadingTest;
         fixture.service.state = state; fixture.change.fire();
         fixture.card = fixture.host.querySelector('.studio-start-current .studio-start-project-card');
-      }, initial.start);
+      }, { ...initial.start, badge: language === 'en' ? 'Enhanced' : '增强版',
+        projects: layoutOnly ? projects.map(project => ({ uri: pathToFileURL(project.directory).href, name: project.name,
+          projectType: project.projectType, folderPath: project.directory })) : initial.start.projects });
       assert.equal(await loading.getAttribute('aria-busy'), 'false');
       assert.equal(await loading.locator('[role="progressbar"]').isVisible(), false);
       assert.equal(await loading.locator('.studio-start-project-card:visible').count(), 7);
       assert.equal(await loading.locator('[data-action="studio.createProject"]').isEnabled(), true);
       await checkHeaderLayouts('loaded');
+      await page.evaluate(() => {
+        const fixture = globalThis.studioStartLoadingTest;
+        fixture.service.state = { ...fixture.service.state, badge: undefined }; fixture.change.fire();
+      });
+      assert.equal(await loading.locator('.studio-start-badge').evaluate(element => getComputedStyle(element).display === 'none' && element.getBoundingClientRect().width === 0), true,
+        'An empty badge must not leave a border or layout space');
       await page.evaluate(error => {
         const fixture = globalThis.studioStartLoadingTest;
         fixture.service.state = { ...fixture.service.state, error }; fixture.change.fire();

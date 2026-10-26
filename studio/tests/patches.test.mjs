@@ -46,7 +46,9 @@ async function receipt(root, upstream) {
 
 test('the pinned kernel skips superseded historical patches even in a shallow checkout with local edits', async t => {
   const files = ['src/vs/workbench/browser/parts/titlebar/media/titlebarpart.css',
-    'src/vs/workbench/browser/parts/titlebar/titlebarActions.ts', 'src/vs/workbench/browser/parts/titlebar/titlebarPart.ts'];
+    'src/vs/workbench/browser/parts/titlebar/titlebarActions.ts', 'src/vs/workbench/browser/parts/titlebar/titlebarPart.ts',
+    'src/vs/workbench/browser/parts/editor/studioStart.ts', 'src/vs/workbench/browser/parts/editor/media/studioStart.css',
+    'src/vs/workbench/browser/parts/globalCompositeBar.ts'];
   const { upstream } = await pinnedKernel(t, [...files, 'src/vs/workbench/contrib/webview/browser/webviewElement.ts']);
   const index = path.join(upstream, '.git/index');
   const before = await Promise.all(files.map(file => fs.readFile(path.join(upstream, file))));

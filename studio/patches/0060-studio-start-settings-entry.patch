@@ -1,0 +1,104 @@
+diff --git a/src/vs/workbench/browser/parts/editor/media/studioStart.css b/src/vs/workbench/browser/parts/editor/media/studioStart.css
+index 5f47a0f2d453dc8fefde78bf1040e2a8af06964c..8dd9370257bddce93f225e021c8e0a6b0f1cf0df 100644
+--- a/src/vs/workbench/browser/parts/editor/media/studioStart.css
++++ b/src/vs/workbench/browser/parts/editor/media/studioStart.css
+@@ -12,7 +12,8 @@
+ .studio-start-inner { max-width:1040px; padding:32px; margin:0 auto; }
+ .studio-start-header { display:grid; grid-template-columns:28px minmax(0,1fr) auto; align-items:center; gap:12px; margin-bottom:28px; }
+ .studio-start .studio-start-logo { display:block; grid-column:1; grid-row:1; width:28px; height:28px; object-fit:contain; }
+-.studio-start h1 { grid-column:2; grid-row:1; min-width:0; font-size:24px; font-weight:500; margin:0; line-height:1.3; overflow-wrap:anywhere; }
++.studio-start-brand { display:flex; align-items:center; grid-column:2; grid-row:1; min-width:0; gap:12px; }
++.studio-start h1 { min-width:0; font-size:24px; font-weight:500; margin:0; line-height:1.3; overflow-wrap:anywhere; }
+ .studio-start-toolbar { display:flex; flex-wrap:nowrap; align-items:center; grid-column:3; grid-row:1; justify-self:end; min-width:0; gap:8px; }
+ .studio-start-badge { display:inline-flex; align-items:center; flex:none; height:20px; padding:0 8px; border:1px solid var(--vscode-textLink-foreground); border-radius:999px; color:var(--vscode-textLink-foreground); font-size:10px; font-weight:600; letter-spacing:.04em; line-height:1; white-space:nowrap; }
+ .studio-start-badge[hidden] { display:none; }
+diff --git a/src/vs/workbench/browser/parts/editor/studioStart.ts b/src/vs/workbench/browser/parts/editor/studioStart.ts
+index 4ec2bcb97080690168f99c236962db0a488c6776..36b585860a3cb71cdbbe159a20c9e99738ee46b7 100644
+--- a/src/vs/workbench/browser/parts/editor/studioStart.ts
++++ b/src/vs/workbench/browser/parts/editor/studioStart.ts
+@@ -96,13 +96,13 @@ export class StudioStartView extends Disposable {
+ 		const header = append(inner, $('header.studio-start-header'));
+ 		const logo = append(header, $('img.studio-start-logo', { alt: '', 'aria-hidden': 'true' })) as HTMLImageElement;
+ 		logo.src = STEAMHARNESS_ICON_DATA_URI;
+-		append(header, $('h1', undefined, 'SteamHarness Studio'));
++		const brand = append(header, $('.studio-start-brand'));
++		append(brand, $('h1', undefined, 'SteamHarness Studio'));
++		this.badge = append(brand, $('span.studio-start-badge'));
++		this.badge.hidden = true;
+ 		append(header, $('span.codicon.codicon-loading.codicon-modifier-spin.studio-start-loading-indicator')).setAttribute('aria-hidden', 'true');
+ 		const top = append(header, $('.studio-start-toolbar'));
+-		this.badge = append(top, $('span.studio-start-badge'));
+-		this.badge.hidden = true;
+ 		this.button(top, 'create', 'add', 'studio.createProject', undefined, true).classList.add('studio-start-primary');
+-		this.button(top, 'refresh', 'refresh', 'studio.refreshStart', undefined, false, true);
+ 		this.createLoadingPlaceholder(inner);
+ 		const grid = append(inner, $('.studio-start-grid'));
+ 		this.section(grid, 'current');
+diff --git a/src/vs/workbench/browser/parts/globalCompositeBar.ts b/src/vs/workbench/browser/parts/globalCompositeBar.ts
+index 639586bbd9149e0bfc1e54cd83409340b7f1c566..72e5316c9f82676fd66d9b798d2d6bda46242c28 100644
+--- a/src/vs/workbench/browser/parts/globalCompositeBar.ts
++++ b/src/vs/workbench/browser/parts/globalCompositeBar.ts
+@@ -45,6 +45,7 @@ import { isString } from '../../../base/common/types.js';
+ import { FileAccess } from '../../../base/common/network.js';
+ import { URI } from '../../../base/common/uri.js';
+ import { KeyCode } from '../../../base/common/keyCodes.js';
++import { language } from '../../../base/common/platform.js';
+ import { ACTIVITY_BAR_BADGE_BACKGROUND, ACTIVITY_BAR_BADGE_FOREGROUND } from '../../common/theme.js';
+ import { IBaseActionViewItemOptions } from '../../../base/browser/ui/actionbar/actionViewItems.js';
+ import { ICommandService } from '../../../platform/commands/common/commands.js';
+@@ -731,13 +732,15 @@ export class GlobalActivityActionViewItem extends AbstractGlobalActivityActionVi
+ 		@IKeybindingService keybindingService: IKeybindingService,
+ 		@IInstantiationService instantiationService: IInstantiationService,
+ 		@IActivityService activityService: IActivityService,
++		@ICommandService private readonly commandService: ICommandService,
+ 	) {
+ 		const action = instantiationService.createInstance(CompositeBarAction, {
+ 			id: GLOBAL_ACTIVITY_ID,
+-			name: localize('manage', "Manage"),
++			// Studio's settings label is not included in upstream language packs.
++			name: language === 'zh-cn' ? "设置" : localize('settings', "Settings"),
+ 			classNames: ThemeIcon.asClassNameArray(userDataProfileService.currentProfile.icon ? ThemeIcon.fromId(userDataProfileService.currentProfile.icon) : DEFAULT_ICON)
+ 		});
+-		super(MenuId.GlobalActivity, action, options, contextMenuActionsProvider, contextMenuAlignmentOptions, themeService, hoverService, menuService, contextMenuService, contextKeyService, configurationService, keybindingService, activityService);
++		super(MenuId.GlobalActivity, action, { ...options, hasPopup: false }, contextMenuActionsProvider, contextMenuAlignmentOptions, themeService, hoverService, menuService, contextMenuService, contextKeyService, configurationService, keybindingService, activityService);
+ 		this._register(action);
+ 		this._register(this.userDataProfileService.onDidChangeCurrentProfile(e => {
+ 			action.compositeBarActionItem = {
+@@ -749,6 +752,7 @@ export class GlobalActivityActionViewItem extends AbstractGlobalActivityActionVi
+ 
+ 	override render(container: HTMLElement): void {
+ 		super.render(container);
++		container.setAttribute('role', 'button');
+ 
+ 		this.profileBadge = append(container, $('.profile-badge'));
+ 		this.profileBadgeContent = append(this.profileBadge, $('.profile-badge-content'));
+@@ -785,8 +789,8 @@ export class GlobalActivityActionViewItem extends AbstractGlobalActivityActionVi
+ 		this.updateProfileBadge();
+ 	}
+ 
+-	protected override computeTitle(): string {
+-		return this.userDataProfileService.currentProfile.isDefault ? super.computeTitle() : localize('manage profile', "Manage {0} (Profile)", this.userDataProfileService.currentProfile.name);
++	protected override async run(): Promise<void> {
++		await this.commandService.executeCommand('studio.openSettings');
+ 	}
+ }
+ 
+@@ -845,7 +849,8 @@ export class SimpleGlobalActivityActionViewItem extends GlobalActivityActionView
+ 		@IInstantiationService instantiationService: IInstantiationService,
+ 		@IActivityService activityService: IActivityService,
+ 		@IStorageService storageService: IStorageService,
+-		@IProductService productService: IProductService
++		@IProductService productService: IProductService,
++		@ICommandService commandService: ICommandService,
+ 	) {
+ 		super(() => simpleActivityContextMenuActions(storageService, productService, false),
+ 			{
+@@ -856,7 +861,7 @@ export class SimpleGlobalActivityActionViewItem extends GlobalActivityActionView
+ 				}),
+ 				hoverOptions,
+ 				compact: true,
+-			}, () => undefined, userDataProfileService, themeService, hoverService, menuService, contextMenuService, contextKeyService, configurationService, environmentService, keybindingService, instantiationService, activityService);
++			}, () => undefined, userDataProfileService, themeService, hoverService, menuService, contextMenuService, contextKeyService, configurationService, environmentService, keybindingService, instantiationService, activityService, commandService);
+ 	}
+ }
+ 
