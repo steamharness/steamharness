@@ -118,7 +118,11 @@ Workflow 和 Conversation 还提供底部 **轨迹** 面板。对话回复下方
 
 简体中文使用官方扩展 `MS-CEINTL.vscode-language-pack-zh-hans`，在扩展市场中搜索并安装即可。桌面和 Web 的扩展目录相互独立，需要分别安装。显示语言沿用上游机制；源码开发模式的核心界面仍使用英文，正式构建按上游语言包流程加载翻译。Studio 自有扩展支持中英文；首版 Workflow 项目界面使用中文文案。
 
-左下角设置按钮上方显示账号入口，提供 SteamHarness 登录、资料管理和退出操作。账号页在编辑器标签页打开，展示头像、昵称、邮箱、用户 ID、服务器连接方式及会话有效期，可复制账号字段、刷新信息，并打开控制台编辑资料或管理登录会话。默认连接本机 dev 服务 `http://localhost:7126`，可通过 `studio.project.serverUrl` 更改。登录凭据保存在 VS Code SecretStorage 中，已打开的 Conversation 会随登录和退出自动刷新参数；Core 和内置 CLI 使用同一份工作站凭据。详见 [SteamHarness 工作站](docs/workflow-workstation.md)。
+设置按钮、设置菜单和 `⌘,` / `Ctrl+,` 打开同一个 **设置** 编辑器标签页，左侧分类提供账号、通用、编辑器与关于；内部扩展可注入额外分类。`studio.openSettings` 默认进入通用，接受 `section`、`query` 和 `target` 参数；`studio.openAccount` 直接进入账号。Steam 模式将设置放入独立工具分类，模式往返保留运行项目、工具与设置内容。重载窗口恢复分类、搜索、配置目标和滚动位置，恢复数据不包含凭据。
+
+通用设置保存到用户配置，包括主题、跟随系统、显示语言、开始页、最近项目数量及运行环境。编辑器设置支持用户与工作区目标，提示工作区覆盖，支持搜索、逐项恢复默认，并保留设置 JSON 和快捷键编辑器入口。显示语言使用现有语言包选择和重启流程；目录和远程高级配置继续使用对应的 JSON 设置文件。
+
+左下角设置按钮上方的账号入口进入设置的账号分类，提供 SteamHarness 登录、资料管理和退出操作，展示头像、昵称、邮箱、用户 ID、服务器连接方式及会话有效期，可复制账号字段、刷新信息，并打开控制台编辑资料或管理登录会话。默认连接本机 dev 服务 `http://localhost:7126`，可通过 `studio.project.serverUrl` 更改。登录凭据保存在 VS Code SecretStorage 中，已打开的 Conversation 会随登录和退出自动刷新参数；Core 和内置 CLI 使用同一份工作站凭据。详见 [SteamHarness 工作站](docs/workflow-workstation.md)。
 
 Studio 启动时排除上游内置的 GitHub Copilot，并通过 `chat.disableAIFeatures` 默认隐藏 AI 入口。桌面和 Web 首次启动自动安装 [File & Folder Icons](https://marketplace.visualstudio.com/items?itemName=nextbook.file-and-folder-icons)，默认图标主题为 `file-icons`；已安装的扩展和用户自行选择的主题会保留。该扩展未发布到 Open VSX，安装包从原 Marketplace 下载，版本与 SHA-256 固定在 `config/default-extensions.json`，缓存位于 `.studio/`。
 

@@ -15,6 +15,9 @@ h3 { display: flex; align-items: center; gap: 8px; font-size: 13px; font-weight:
 .page-title > .codicon { font-size: 20px; color: var(--vscode-descriptionForeground); }
 #account-status { color: var(--vscode-descriptionForeground); margin: 8px 0 24px; }
 #account-status.connected { color: var(--vscode-testing-iconPassed); }
+.account-sign-in { display: grid; justify-items: start; gap: 12px; padding: 28px; }
+.account-sign-in > .codicon { font-size: 32px; color: var(--vscode-descriptionForeground); }
+.account-sign-in .primary { margin-top: 4px; }
 form { display: grid; gap: 8px; max-width: 400px; }
 label:not(:first-child) { margin-top: 12px; }
 input { width: 100%; min-width: 0; height: 34px; border: 1px solid var(--vscode-input-border, var(--vscode-widget-border, transparent)); border-radius: 4px; padding: 6px 10px; background: var(--vscode-input-background); color: var(--vscode-input-foreground); font: inherit; }

@@ -12,12 +12,12 @@ const functions = ['build', 'main'].map(name => {
   return declaration.getText(source);
 }).join('\n');
 
-function launch(command, failure) {
-  const events = [];
+function launch(command, failure, args = []) {
+  const events = [], launches = [];
   const upstream = { directory: '/source/upstream/vscode', commit: 'same-kernel-commit' };
   let output = 'old workbench without the newly applied patch';
   const context = {
-    command, args: [], path, ROOT: '/source', npm: 'npm',
+    command, args, path, ROOT: '/source', npm: 'npm',
     process: { platform: 'linux', pid: 1, execPath: '/node', env: {} },
     console: { log() {} },
     prepare: async () => { events.push('prepare'); return { upstream, product: { nameShort: 'Studio', applicationName: 'studio' } }; },
@@ -31,7 +31,7 @@ function launch(command, failure) {
     ensureDefaultExtensions: async () => {},
     resolveDesktopUserDataDir: value => value,
     resolveMonorepoRoot: async () => '/source',
-    hasFlag: () => false,
+    hasFlag: flag => args.some(argument => argument === flag || argument.startsWith(`${flag}=`)),
     run: async (_executable, args, directory) => {
       if (args[0] !== 'run' || args[1] !== 'build-fast') return;
       assert.equal(directory, upstream.directory);
@@ -39,12 +39,24 @@ function launch(command, failure) {
       if (failure) throw failure;
       output = 'workbench with the applied patch';
     },
-    launch: async () => {
+    launch: async (_upstream, script, args) => {
+      launches.push({ script, args });
       events.push('launch');
       assert.equal(output, 'workbench with the applied patch');
     },
   };
-  return { run: () => vm.runInNewContext(`${functions}\nmain()`, context), events };
+  return { run: () => vm.runInNewContext(`${functions}\nmain()`, context), events, launches };
+}
+
+for (const args of [['--user-data-dir', '/custom-profile'], ['--user-data-dir=/custom-profile']]) {
+  test(`dev passes one user data directory when explicitly set as ${args[0]}`, async () => {
+    const fixture = launch('dev', undefined, args);
+    await fixture.run();
+    const actual = fixture.launches[0].args;
+    assert.equal(actual.filter(argument => argument === '--user-data-dir' || argument.startsWith('--user-data-dir=')).length, 1);
+    assert.equal(actual.some(argument => argument.includes('/custom-profile')), true);
+    assert.equal(actual.some(argument => argument.includes('/.studio/desktop-user-data')), false);
+  });
 }
 
 for (const command of ['dev', 'workflow', 'web', 'workflow:web']) {

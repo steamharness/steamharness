@@ -1,23 +1,26 @@
 import { t, locale } from './localization';
 import './account.css';
-import { renderAccountSections } from './account-sections';
+import { createSettingsView } from './settings';
+import { bindAvatar } from './avatar';
 import type { AccountState } from '../src/workflow-auth-client';
 import { installContextMenu, type ContextAction } from './context-menu';
 
-declare function acquireVsCodeApi(): { postMessage(message: unknown): void };
+declare function acquireVsCodeApi(): { postMessage(message: unknown): void; getState?(): import('../src/settings-types').SettingsViewState | undefined; setState?(state: import('../src/settings-types').SettingsViewState): void };
 
-const app = document.querySelector<HTMLElement>('#account-app')!;
 const vscode = acquireVsCodeApi();
+const settings = createSettingsView(document.querySelector<HTMLElement>('#account-app')!, vscode);
+const app = settings.accountRoot;
 const icon = (name: string): string => `<span class="codicon codicon-${name}" aria-hidden="true"></span>`;
 const copyButton = (field: string, label: string): string => `<button type="button" class="icon-button copy-button" data-copy="${field}" title="${label}" aria-label="${label}">${icon('copy')}</button>`;
 app.innerHTML = `
-  <header class="page-header"><div class="page-title">${icon('account')}<h1>${t("SteamHarness Account")}</h1></div><button id="verify-login" class="icon-button" title="${t("Refresh account")}" aria-label="${t("Refresh account")}" hidden>${icon('refresh')}</button></header>
+  <header class="page-header"><p class="muted">${t('Manage your account and Server connection.')}</p><button id="verify-login" class="icon-button" title="${t("Refresh account")}" aria-label="${t("Refresh account")}" hidden>${icon('refresh')}</button></header>
   <div id="account-status" role="status"></div>
-  <form id="login-form"><label for="server-url">${t("Server")}</label><input id="server-url" type="url" required spellcheck="false" autocomplete="url">
-    <label for="login-email">${t("Email")}</label><input id="login-email" type="email" required autocomplete="username">
-    <label for="login-password">${t("Password")}</label><div class="password-input"><input id="login-password" type="password" required autocomplete="current-password"><button id="show-password" type="button" class="icon-button" title="${t("Show password")}" aria-label="${t("Show password")}">${icon('eye')}</button></div>
-    <button id="login-submit" type="submit" class="primary">${icon('sign-in')}<span>${t("Sign in")}</span></button>
-  </form>
+  <section id="account-sign-in" class="settings-card account-sign-in">
+    <span class="codicon codicon-account" aria-hidden="true"></span><h2>${t('Sign in to SteamHarness')}</h2>
+    <p class="muted">${t('Connect your account to access projects and services.')}</p>
+    <p id="account-server" class="mono"></p>
+    <button id="open-login" type="button" class="primary">${icon('sign-in')}<span>${t('Sign In')}</span></button>
+  </section>
   <section id="profile" hidden>
     <div class="identity"><div class="avatar">${icon('account')}<img id="avatar-image" alt="" hidden></div><div class="identity-text"><h2 id="display-name"></h2><div class="inline-value"><span id="user-email" class="muted"></span>${copyButton('email', t("Copy email"))}</div><div class="inline-value user-id"><span class="muted">${t("User ID")}</span><span id="user-id" class="mono"></span>${copyButton('userId', t("Copy user ID"))}</div></div>
       <button id="edit-profile" class="secondary">${icon('edit')}<span>${t("Edit profile")}</span></button>
@@ -28,23 +31,19 @@ app.innerHTML = `
     </div>
     <div class="account-actions"><button id="logout" class="text-button">${icon('sign-out')}<span>${t("Sign out")}</span></button><span id="copy-status" class="muted" role="status"></span></div>
   </section>
-  <div id="account-error" role="alert" hidden></div>
-  <div id="account-sections" hidden></div>`;
+  <div id="account-error" role="alert" hidden></div>`;
 
-const form = document.querySelector<HTMLFormElement>('#login-form')!;
-const server = document.querySelector<HTMLInputElement>('#server-url')!;
-const email = document.querySelector<HTMLInputElement>('#login-email')!;
-const password = document.querySelector<HTMLInputElement>('#login-password')!;
+const signIn = document.querySelector<HTMLElement>('#account-sign-in')!;
+const openLogin = document.querySelector<HTMLButtonElement>('#open-login')!;
 const error = document.querySelector<HTMLDivElement>('#account-error')!;
 const status = document.querySelector<HTMLDivElement>('#account-status')!;
-const image = document.querySelector<HTMLImageElement>('#avatar-image')!;
-const extensions = document.querySelector<HTMLElement>('#account-sections')!;
+const updateAvatar = bindAvatar(document.querySelector<HTMLImageElement>('#avatar-image')!, app.querySelector<HTMLElement>('.avatar > .codicon')!);
 const verify = document.querySelector<HTMLButtonElement>('#verify-login')!;
 let state: AccountState | undefined;
 let pending = false;
 let copyTimer: ReturnType<typeof setTimeout> | undefined;
 installContextMenu(vscode, target => {
-  if (!target.closest('#account-app')) { return []; }
+  if (!target.closest('#settings-account')) { return []; }
   const actions: ContextAction[] = [];
   const copy = target.closest('.inline-value')?.querySelector<HTMLButtonElement>('[data-copy]');
   if (copy && !copy.disabled) { actions.push({ id: 'copy', run: () => copy.click() }); }
@@ -58,17 +57,15 @@ installContextMenu(vscode, target => {
 
 function render(next: AccountState): void {
   state = next;
+  settings.setAccount(next);
+  updateAvatar(next.user?.avatarUrl);
   pending = next.status === 'checking';
   const signedIn = !!next.user && ['authenticated', 'checking', 'error'].includes(next.status);
-  form.hidden = signedIn;
+  signIn.hidden = signedIn;
   document.querySelector<HTMLElement>('#profile')!.hidden = !signedIn;
   verify.hidden = !signedIn;
-  extensions.hidden = !signedIn || !extensions.childElementCount;
-  if (!signedIn) { extensions.replaceChildren(); }
-  if (document.activeElement !== server) { server.value = next.serverUrl; }
-  document.querySelectorAll<HTMLButtonElement>('#login-submit, #verify-login, #logout, #edit-profile, #manage-sessions').forEach((button) => { button.disabled = pending; });
-  for (const input of [server, email, password]) { input.disabled = pending; }
-  document.querySelector('#login-submit > span:last-child')!.textContent = pending ? t("Signing in...") : t("Sign in");
+  document.querySelector('#account-server')!.textContent = next.serverUrl;
+  document.querySelectorAll<HTMLButtonElement>('#open-login, #verify-login, #logout, #edit-profile, #manage-sessions').forEach((button) => { button.disabled = pending; });
   status.textContent = next.status === 'authenticated' ? t("Signed in; account verified") : next.status === 'checking' ? t("Verifying account...") : next.status === 'expired' ? t("Sign-in expired") : next.status === 'error' && next.user ? t("Connection not verified") : t("Signed out");
   status.classList.toggle('connected', next.status === 'authenticated');
   verify.classList.toggle('refreshing', pending);
@@ -85,30 +82,10 @@ function render(next: AccountState): void {
     document.querySelector('#profile-expiry')!.textContent = Number.isFinite(expiry) ? new Date(expiry).toLocaleString(locale()) : t("Managed by server");
     const days = Math.ceil((expiry - Date.now()) / 86_400_000);
     document.querySelector('#profile-remaining')!.textContent = !Number.isFinite(expiry) ? '' : days <= 0 ? t("Sign-in expired") : days === 1 ? t("Expires within 24 hours") : t("Expires in {0} days", days);
-    if (next.user.avatarUrl && image.getAttribute('src') !== next.user.avatarUrl) { image.src = next.user.avatarUrl; image.hidden = false; }
-    else if (!next.user.avatarUrl) { image.removeAttribute('src'); image.hidden = true; }
-  } else { image.removeAttribute('src'); image.hidden = true; }
+  }
 }
 
-image.addEventListener('error', () => { image.hidden = true; });
-form.addEventListener('submit', (event) => {
-  event.preventDefault();
-  if (pending || !form.reportValidity()) { return; }
-  const credentials = { type: 'login', serverUrl: server.value, email: email.value, password: password.value };
-  password.value = '';
-  error.hidden = true;
-  pending = true;
-  document.querySelector<HTMLButtonElement>('#login-submit')!.disabled = true;
-  vscode.postMessage(credentials);
-});
-document.querySelector('#show-password')!.addEventListener('click', (event) => {
-  const button = event.currentTarget as HTMLButtonElement;
-  const visible = password.type === 'password';
-  password.type = visible ? 'text' : 'password';
-  button.innerHTML = icon(visible ? 'eye-closed' : 'eye');
-  button.title = visible ? t("Hide password") : t("Show password");
-  button.setAttribute('aria-label', button.title);
-});
+openLogin.addEventListener('click', () => { if (!pending) { vscode.postMessage({ type: 'open-login' }); } });
 for (const [id, type] of [['verify-login', 'verify'], ['logout', 'logout'], ['edit-profile', 'open-profile'], ['manage-sessions', 'open-sessions']]) {
   document.getElementById(id)!.addEventListener('click', () => { if (!pending) { vscode.postMessage({ type }); } });
 }
@@ -117,10 +94,7 @@ document.querySelectorAll<HTMLButtonElement>('[data-copy]').forEach(button => {
 });
 window.addEventListener('message', (event) => {
   if (event.data.type === 'account') { render(event.data.state); }
-  else if (event.data.type === 'account-sections') {
-    renderAccountSections(extensions, event.data.states, message => vscode.postMessage(message));
-    extensions.hidden = !state?.user || !extensions.childElementCount;
-  } else if (event.data.type === 'copied') {
+  else if (event.data.type === 'copied') {
     clearTimeout(copyTimer);
     document.querySelector('#copy-status')!.textContent = t("Copied");
     copyTimer = setTimeout(() => { document.querySelector('#copy-status')!.textContent = ''; }, 2500);

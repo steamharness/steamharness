@@ -104,10 +104,10 @@ for (const language of ['en', 'zh-cn']) {
     await page.setViewportSize({ width: 1440, height: 1000 });
     await command('Test: Save clipboard'); clipboardSaved = true;
     await command('Test: Open account');
-    const account = await frameFor('#account-app');
+    const account = await frameFor('#login-app');
     await account.locator('#server-url').fill(server.connection.serverUrl); await account.locator('#login-email').fill(server.profile.email);
     await account.locator('#login-password').fill('offline-password'); await account.locator('#login-submit').click();
-    await account.locator('#display-name').filter({ hasText: server.profile.displayName }).waitFor();
+    await (await frameFor('#account-app')).locator('#display-name').filter({ hasText: server.profile.displayName }).waitFor();
     await command('Test: Focus folder A');
     let frame = await assistant('A'); await frame.locator('#parameters[aria-busy=false]').waitFor({ state: 'attached' });
     await send(frame, 'folder-A');

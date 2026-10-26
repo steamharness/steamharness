@@ -1,0 +1,26 @@
+@import './account.css';
+
+html, body { min-height: 100%; }
+#login-app { min-height: 100vh; display: grid; align-items: center; padding: 48px 24px; }
+.login-shell { width: min(100%, 460px); min-width: 0; margin: 0 auto; }
+.login-header { display: grid; justify-items: center; gap: 10px; margin-bottom: 28px; text-align: center; }
+.login-mark { display: grid; place-items: center; width: 56px; height: 56px; margin-bottom: 8px; border-radius: 14px; background: var(--vscode-button-secondaryBackground); color: var(--vscode-button-secondaryForeground); }
+.login-mark .codicon { font-size: 30px; }
+.login-header h1 { font-size: 26px; font-weight: 600; line-height: 1.3; }
+.login-header > p:first-of-type { font-size: 12px; letter-spacing: .04em; }
+.login-card { padding: 28px; border: 1px solid var(--vscode-widget-border, var(--vscode-panel-border)); border-radius: 12px; background: var(--vscode-sideBar-background, var(--vscode-editor-background)); }
+#login-form { max-width: none; }
+#login-form label { font-weight: 500; }
+#login-form input { height: 40px; }
+#login-form .password-input .icon-button { top: 5px; right: 5px; }
+#login-form .primary, #open-account { min-height: 40px; width: 100%; margin-top: 8px; }
+#login-status:empty { display: none; }
+#login-error { color: var(--vscode-errorForeground); margin-top: 12px; }
+#login-success { display: grid; justify-items: center; gap: 14px; text-align: center; }
+#login-success > .codicon { color: var(--vscode-testing-iconPassed); font-size: 36px; }
+.login-footer { margin-top: 22px; text-align: center; font-size: 12px; }
+@media (max-width: 480px) {
+  #login-app { padding: 28px 16px; }
+  .login-card { padding: 22px 18px; }
+  .login-header h1 { font-size: 23px; }
+}

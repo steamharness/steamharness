@@ -1,0 +1,391 @@
+diff --git a/build/next/nls-plugin.ts b/build/next/nls-plugin.ts
+index b74149d04fb8ad2cd6a70a5389ec61b85e5a21ff..75c38b48a04b7f0fb00284b95e2e785f39982848 100644
+--- a/build/next/nls-plugin.ts
++++ b/build/next/nls-plugin.ts
+@@ -171,7 +171,7 @@ interface NLSEdit {
+ 	newLength: number;  // length of replacement text
+ }
+ 
+-function transformToPlaceholders(
++export function transformToPlaceholders(
+ 	source: string,
+ 	moduleId: string
+ ): { code: string; entries: NLSEntry[]; edits: NLSEdit[] } {
+@@ -239,7 +239,7 @@ function transformToPlaceholders(
+  * original source. esbuild composes this with its own bundle source map so that
+  * the final source map points all the way back to the untransformed TypeScript.
+  */
+-function generateNLSSourceMap(
++export function generateNLSSourceMap(
+ 	originalSource: string,
+ 	filePath: string,
+ 	edits: NLSEdit[]
+diff --git a/build/next/test/transpile.test.ts b/build/next/test/transpile.test.ts
+index e0d22437840ee2e9e86622ae808039f13867c92a..e8b76190c241cfcd6369d6775e8923249ae8faf8 100644
+--- a/build/next/test/transpile.test.ts
++++ b/build/next/test/transpile.test.ts
+@@ -5,9 +5,31 @@
+ 
+ import assert from 'assert';
+ import { suite, test } from 'node:test';
+-import { mapWithConcurrency } from '../transpile.ts';
++import * as fs from 'fs/promises';
++import * as os from 'os';
++import * as path from 'path';
++import { SourceMapConsumer } from 'source-map';
++import { mapWithConcurrency, transpileFile } from '../transpile.ts';
+ 
+ suite('transpile', () => {
++	test('source NLS keeps stable keys and maps code after translated calls to the original source', async t => {
++		const root = await fs.mkdtemp(path.join(os.tmpdir(), 'source-nls-map-'));
++		t.after(() => fs.rm(root, { recursive: true, force: true }));
++		const input = path.join(root, 'src', 'vs', 'sample.ts');
++		const output = path.join(root, 'out', 'vs', 'sample.js');
++		const source = `import { localize } from '../nls.js';\nexport const label = localize({ key: 'name', comment: ['Name'] }, 'Name'); export function sentinel() { return label; }`;
++		await fs.mkdir(path.dirname(input), { recursive: true });
++		await fs.writeFile(input, source);
++		await transpileFile(input, output, path.join(root, 'src'));
++		const code = await fs.readFile(output, 'utf8');
++		assert.match(code, /%%NLS:vs\/sample#name%%/);
++		const encodedMap = /sourceMappingURL=data:application\/json;base64,([^\s]+)/.exec(code)![1];
++		const map = new SourceMapConsumer(JSON.parse(Buffer.from(encodedMap, 'base64').toString()));
++		const lines = code.split('\n');
++		const line = lines.findIndex(line => line.includes('function sentinel'));
++		const original = map.originalPositionFor({ line: line + 1, column: lines[line].indexOf('sentinel') });
++		assert.deepStrictEqual({ line: original.line, column: original.column }, { line: 2, column: source.split('\n')[1].indexOf('sentinel') });
++	});
+ 	test('bounds concurrent work and preserves result order', async () => {
+ 		let active = 0;
+ 		let maximumActive = 0;
+diff --git a/build/next/transpile.ts b/build/next/transpile.ts
+index 2b83883ea0d502028cff17133203aaa405e97443..f519067be1df77089914959c73dd6124275467cd 100644
+--- a/build/next/transpile.ts
++++ b/build/next/transpile.ts
+@@ -6,6 +6,7 @@
+ import * as esbuild from 'esbuild';
+ import * as fs from 'fs';
+ import * as path from 'path';
++import { generateNLSSourceMap, transformToPlaceholders } from './nls-plugin.ts';
+ 
+ const UTF8_BOM = Buffer.from([0xef, 0xbb, 0xbf]);
+ 
+@@ -26,9 +27,20 @@ const transformOptions: esbuild.TransformOptions = {
+ 	}),
+ };
+ 
+-export async function transpileFile(srcPath: string, destPath: string): Promise<void> {
++export async function transpileFile(srcPath: string, destPath: string, sourceRoot = path.resolve(import.meta.dirname, '../../src')): Promise<void> {
+ 	const source = await fs.promises.readFile(srcPath, 'utf-8');
+-	const result = await esbuild.transform(source, {
++	let contents = source;
++	if (source.includes('/nls') && source.includes('localize')) {
++		// Stable module/key identifiers also work when only one file is rebuilt.
++		// Keep the English message for missing translations and English startup.
++		const moduleId = path.relative(sourceRoot, srcPath).replace(/\\/g, '/').replace(/\.ts$/, '');
++		const { code, edits } = transformToPlaceholders(source, moduleId);
++		if (edits.length > 0) {
++			const map = generateNLSSourceMap(source, path.basename(srcPath), edits);
++			contents = code + `\n//# sourceMappingURL=data:application/json;base64,${Buffer.from(map).toString('base64')}\n`;
++		}
++	}
++	const result = await esbuild.transform(contents, {
+ 		...transformOptions,
+ 		sourcefile: srcPath,
+ 	});
+@@ -126,7 +138,7 @@ export async function applyIncrementalClientChanges(repoRoot: string, outDir: st
+ 		if (operation.kind === 'copy') {
+ 			await copyFile(operation.sourcePath, operation.destinationPath);
+ 		} else if (operation.kind === 'transpile') {
+-			await transpileFile(operation.sourcePath, operation.destinationPath);
++			await transpileFile(operation.sourcePath, operation.destinationPath, path.join(repoRoot, 'src'));
+ 		}
+ 	});
+ }
+diff --git a/src/bootstrap-esm.ts b/src/bootstrap-esm.ts
+index 555f0066b11bbd189c227115f3e592ba94855d25..f623bccf407744061a4bf98a3c67222947df875c 100644
+--- a/src/bootstrap-esm.ts
++++ b/src/bootstrap-esm.ts
+@@ -246,16 +246,22 @@ async function doSetupNLS(): Promise<INLSConfiguration | undefined> {
+ 	}
+ 
+ 	if (
+-		process.env['VSCODE_DEV'] ||	// no NLS support in dev mode
++		(process.env['VSCODE_DEV'] && !nlsConfig?.languagePack) || // English source messages are kept inline
+ 		!messagesFile					// no NLS messages file
+ 	) {
+ 		return undefined;
+ 	}
+ 
+ 	try {
+-		globalThis._VSCODE_NLS_MESSAGES = JSON.parse((await fs.promises.readFile(messagesFile)).toString());
++		const messages = JSON.parse((await fs.promises.readFile(messagesFile)).toString());
++		if (process.env['VSCODE_DEV'] ? !messages || typeof messages !== 'object' || Array.isArray(messages) : !Array.isArray(messages)) {
++			throw new Error('Invalid NLS messages format');
++		}
++		globalThis._VSCODE_NLS_MESSAGES = messages;
+ 	} catch (error) {
+ 		console.error(`Error reading NLS messages file ${messagesFile}: ${error}`);
++		globalThis._VSCODE_NLS_LANGUAGE = 'en';
++		globalThis._VSCODE_NLS_MESSAGES = [];
+ 
+ 		// Mark as corrupt: this will re-create the language pack cache next startup
+ 		if (nlsConfig?.languagePack?.corruptMarkerFile) {
+@@ -267,13 +273,17 @@ async function doSetupNLS(): Promise<INLSConfiguration | undefined> {
+ 		}
+ 
+ 		// Fallback to the default message file to ensure english translation at least
+-		if (nlsConfig?.defaultMessagesFile && nlsConfig.defaultMessagesFile !== messagesFile) {
++		if (!process.env['VSCODE_DEV'] && nlsConfig?.defaultMessagesFile && nlsConfig.defaultMessagesFile !== messagesFile) {
+ 			try {
+ 				globalThis._VSCODE_NLS_MESSAGES = JSON.parse((await fs.promises.readFile(nlsConfig.defaultMessagesFile)).toString());
+ 			} catch (error) {
+ 				console.error(`Error reading default NLS messages file ${nlsConfig.defaultMessagesFile}: ${error}`);
+ 			}
+ 		}
++		if (nlsConfig) {
++			nlsConfig = { ...nlsConfig, resolvedLanguage: 'en', languagePack: undefined, availableLanguages: {} };
++			process.env['VSCODE_NLS_CONFIG'] = JSON.stringify(nlsConfig);
++		}
+ 	}
+ 
+ 	performance.mark('code/didLoadNls');
+diff --git a/src/typings/vscode-globals-nls.d.ts b/src/typings/vscode-globals-nls.d.ts
+index 2b5d48e110c8c9766c6b9dd2fb23053012931eec..2ba26ed7a418209e2435162e63acdf2a6201d620 100644
+--- a/src/typings/vscode-globals-nls.d.ts
++++ b/src/typings/vscode-globals-nls.d.ts
+@@ -27,7 +27,8 @@ declare global {
+ 	 *
+ 	 * Instead of accessing this global variable directly, use function getNLSMessages.
+ 	 */
+-	var _VSCODE_NLS_MESSAGES: string[];
++	// Source builds use stable module/key identifiers; packaged builds use numeric indices.
++	var _VSCODE_NLS_MESSAGES: string[] | Record<string, string>;
+ 	/**
+ 	 * The actual language of the NLS messages (e.g. 'en', de' or 'pt-br').
+ 	 *
+diff --git a/src/vs/base/node/nls.ts b/src/vs/base/node/nls.ts
+index db72bde15f9c1cfee59eb5d12c6349e6d58bd94f..91b4c257a36055672d8bef5c150c8652fa8c45e7 100644
+--- a/src/vs/base/node/nls.ts
++++ b/src/vs/base/node/nls.ts
+@@ -46,12 +46,12 @@ export interface IResolveNLSConfigurationContext {
+ 
+ export async function resolveNLSConfiguration({ userLocale, osLocale, userDataPath, commit, nlsMetadataPath, nlsMetadataHash }: IResolveNLSConfigurationContext): Promise<INLSConfiguration> {
+ 	mark('code/willGenerateNls');
++	const sourceBuild = !!process.env['VSCODE_DEV'];
+ 
+ 	if (
+-		process.env['VSCODE_DEV'] ||
+ 		userLocale === 'pseudo' ||
+ 		userLocale.startsWith('en') ||
+-		!commit ||
++		(!sourceBuild && !commit) ||
+ 		!userDataPath
+ 	) {
+ 		return defaultNLSConfiguration(userLocale, osLocale, nlsMetadataPath);
+@@ -63,7 +63,7 @@ export async function resolveNLSConfiguration({ userLocale, osLocale, userDataPa
+ 			return defaultNLSConfiguration(userLocale, osLocale, nlsMetadataPath);
+ 		}
+ 
+-		const resolvedLanguage = resolveLanguagePackLanguage(languagePacks, userLocale);
++		const resolvedLanguage = resolveLanguagePackLanguage(languagePacks, userLocale.toLowerCase().replace(/^zh-hans(?:-|$).*/, 'zh-cn'));
+ 		if (!resolvedLanguage) {
+ 			return defaultNLSConfiguration(userLocale, osLocale, nlsMetadataPath);
+ 		}
+@@ -82,7 +82,8 @@ export async function resolveNLSConfiguration({ userLocale, osLocale, userDataPa
+ 
+ 		const languagePackId = `${languagePack.hash}.${resolvedLanguage}`;
+ 		const globalLanguagePackCachePath = join(userDataPath, 'clp', languagePackId);
+-		const commitLanguagePackCachePath = join(globalLanguagePackCachePath, nlsMetadataHash ?? commit);
++		// Source identifiers don't depend on build order or the current commit.
++		const commitLanguagePackCachePath = join(globalLanguagePackCachePath, sourceBuild ? 'source' : (nlsMetadataHash ?? commit!));
+ 		const languagePackMessagesFile = join(commitLanguagePackCachePath, 'nls.messages.json');
+ 		const translationsConfigFile = join(globalLanguagePackCachePath, 'tcf.json');
+ 		const languagePackCorruptMarkerFile = join(globalLanguagePackCachePath, 'corrupted.info');
+@@ -119,6 +120,25 @@ export async function resolveNLSConfiguration({ userLocale, osLocale, userDataPa
+ 			return result;
+ 		}
+ 
++		if (sourceBuild) {
++			const pack: { contents: Record<string, Record<string, string>> } = JSON.parse(await promises.readFile(mainLanguagePackPath, 'utf-8'));
++			const messages: Record<string, string> = Object.create(null);
++			for (const [moduleId, translations] of Object.entries(pack.contents)) {
++				for (const [key, translation] of Object.entries(translations)) {
++					if (typeof translation === 'string' && translation.length > 0) {
++						messages[`${moduleId}#${key}`] = translation;
++					}
++				}
++			}
++			await promises.mkdir(commitLanguagePackCachePath, { recursive: true });
++			await Promise.all([
++				promises.writeFile(languagePackMessagesFile, JSON.stringify(messages), 'utf-8'),
++				promises.writeFile(translationsConfigFile, JSON.stringify(languagePack.translations), 'utf-8')
++			]);
++			mark('code/didGenerateNls');
++			return result;
++		}
++
+ 		const [
+ 			nlsDefaultKeys,
+ 			nlsDefaultMessages,
+@@ -209,8 +229,7 @@ function defaultNLSConfiguration(userLocale: string, osLocale: string, nlsMetada
+ 	return {
+ 		userLocale,
+ 		osLocale,
+-		// Source builds ship Studio's bilingual catalogs without generated core NLS tables.
+-		resolvedLanguage: process.env['VSCODE_DEV'] && /^zh(?:-|$)/i.test(userLocale) ? 'zh-cn' : 'en',
++		resolvedLanguage: 'en',
+ 		defaultMessagesFile: join(nlsMetadataPath, 'nls.messages.json'),
+ 
+ 		// NLS: below 2 are a relic from old times only used by vscode-nls and deprecated
+diff --git a/src/vs/base/parts/sandbox/common/sandboxTypes.ts b/src/vs/base/parts/sandbox/common/sandboxTypes.ts
+index 869c86f69fddbad1a187d410006e810f8a6c310e..53d49434326bfc736be413c9e711d6ad50767db3 100644
+--- a/src/vs/base/parts/sandbox/common/sandboxTypes.ts
++++ b/src/vs/base/parts/sandbox/common/sandboxTypes.ts
+@@ -63,7 +63,7 @@ export interface ISandboxConfiguration {
+ 		 * All NLS messages produced by `localize` and `localize2` calls
+ 		 * under `src/vs`.
+ 		 */
+-		messages: string[];
++		messages: string[] | Record<string, string>;
+ 
+ 		/**
+ 		 * The actual language of the NLS messages (e.g. 'en', de' or 'pt-br').
+diff --git a/src/vs/code/node/cliProcessMain.ts b/src/vs/code/node/cliProcessMain.ts
+index 41d94cc492faa4bfcdfad2dcbcffe50c1d0d2de8..4b085e1e0fdfe41b9bf239a6ad12040d7ada1d14 100644
+--- a/src/vs/code/node/cliProcessMain.ts
++++ b/src/vs/code/node/cliProcessMain.ts
+@@ -104,6 +104,8 @@ class CliMain extends Disposable {
+ 			const fileService = accessor.get(IFileService);
+ 			const environmentService = accessor.get(INativeEnvironmentService);
+ 			const userDataProfilesService = accessor.get(IUserDataProfilesService);
++			// Register language-pack install/uninstall participants before running the CLI.
++			const languagePackService = accessor.get(ILanguagePackService) as NativeLanguagePackService;
+ 
+ 			// Log info
+ 			logService.info('CLI main', this.argv);
+@@ -117,6 +119,8 @@ class CliMain extends Disposable {
+ 
+ 			// Run based on argv
+ 			await this.doRun(environmentService, fileService, userDataProfilesService, instantiationService);
++			// Also repair the index when an already installed pack is reused by a new user-data directory.
++			await languagePackService.update();
+ 
+ 			// Flush the remaining data in AI adapter (with 1s timeout)
+ 			await Promise.all(appenders.map(a => {
+diff --git a/src/vs/nls.ts b/src/vs/nls.ts
+index 8383ae24d96d4d9361921b89bdf48519d13d4260..80fdbc3e53a390a5688c35fe0ee6c48b65f49885 100644
+--- a/src/vs/nls.ts
++++ b/src/vs/nls.ts
+@@ -3,7 +3,7 @@
+  *  Licensed under the MIT License. See License.txt in the project root for license information.
+  *--------------------------------------------------------------------------------------------*/
+ 
+-export function getNLSMessages(): string[] {
++export function getNLSMessages(): string[] | Record<string, string> {
+ 	return globalThis._VSCODE_NLS_MESSAGES;
+ }
+ 
+@@ -86,7 +86,20 @@ export function localize(data: ILocalizeInfo | string /* | number when built */,
+ 	if (typeof data === 'number') {
+ 		return _format(lookupMessage(data, message), args);
+ 	}
+-	return _format(message, args);
++	return _format(lookupSourceMessage(data, message), args);
++}
++
++/** Looks up stable source-build keys without changing packaged numeric tables. */
++function lookupSourceMessage(data: ILocalizeInfo | string, fallback: string): string {
++	const messages = getNLSMessages();
++	if (typeof data === 'string' && messages && !Array.isArray(messages)) {
++		const key = /^%%NLS2?:(.+)%%$/.exec(data)?.[1];
++		const message = key ? messages[key] : undefined;
++		if (typeof message === 'string') {
++			return message;
++		}
++	}
++	return fallback;
+ }
+ 
+ /**
+@@ -95,7 +108,8 @@ export function localize(data: ILocalizeInfo | string /* | number when built */,
+  * depending on the target context.
+  */
+ function lookupMessage(index: number, fallback: string | null): string {
+-	const message = getNLSMessages()?.[index];
++	const messages = getNLSMessages();
++	const message = Array.isArray(messages) ? messages[index] : undefined;
+ 	if (typeof message !== 'string') {
+ 		if (typeof fallback === 'string') {
+ 			return fallback;
+@@ -143,7 +157,7 @@ export function localize2(data: ILocalizeInfo | string /* | number when built */
+ 	if (typeof data === 'number') {
+ 		message = lookupMessage(data, originalMessage);
+ 	} else {
+-		message = originalMessage;
++		message = lookupSourceMessage(data, originalMessage);
+ 	}
+ 
+ 	const value = _format(message, args);
+@@ -164,7 +178,7 @@ export interface INLSLanguagePackConfiguration {
+ 
+ 	/**
+ 	 * The path to the file containing the translations for this language
+-	 * pack as flat string array.
++	 * pack as a flat string array (packaged) or module/key dictionary (source).
+ 	 */
+ 	readonly messagesFile: string;
+ 
+diff --git a/src/vs/workbench/contrib/localization/common/localizationsActions.ts b/src/vs/workbench/contrib/localization/common/localizationsActions.ts
+index 6d41ee5a54e6b00f417069c670515879c39b5926..5c17ceb8e304909ce969f8b2e3d99d61d0821dc1 100644
+--- a/src/vs/workbench/contrib/localization/common/localizationsActions.ts
++++ b/src/vs/workbench/contrib/localization/common/localizationsActions.ts
+@@ -11,7 +11,6 @@ import { ServicesAccessor } from '../../../../platform/instantiation/common/inst
+ import { ILanguagePackItem, ILanguagePackService } from '../../../../platform/languagePacks/common/languagePacks.js';
+ import { ILocaleService } from '../../../services/localization/common/locale.js';
+ import { IExtensionsWorkbenchService } from '../../extensions/common/extensions.js';
+-import { IEnvironmentService } from '../../../../platform/environment/common/environment.js';
+ import { studioLocaleStrings } from '../../../services/localization/common/studioLocaleStrings.js';
+ 
+ export async function setStudioDisplayLanguage(accessor: ServicesAccessor, language: string): Promise<string> {
+@@ -20,13 +19,11 @@ export async function setStudioDisplayLanguage(accessor: ServicesAccessor, langu
+ 		await localeService.clearLocalePreference();
+ 	} else if (language === 'en' || language === 'zh-cn') {
+ 		const packs = accessor.get(ILanguagePackService);
+-		const source = !accessor.get(IEnvironmentService).isBuilt;
+ 		const installed = await packs.getInstalledLanguages();
+ 		let item = installed.find(item => item.id === language);
+-		if (!item && (source || language === 'en')) { item = { id: language, label: language === 'en' ? 'English' : '简体中文' }; }
++		if (!item && language === 'en') { item = { id: language, label: 'English' }; }
+ 		if (!item) { item = (await packs.getAvailableLanguages()).find(item => item.id === language); }
+ 		if (!item) { throw new Error(studioLocaleStrings.unavailable); }
+-		// Source Studio provides its own en/zh-cn catalogs; packaged builds use the installed/gallery pack.
+ 		await localeService.setLocale(item);
+ 	} else {
+ 		throw new Error(studioLocaleStrings.unsupported);
+diff --git a/src/vs/workbench/services/localization/common/studioLocaleStrings.ts b/src/vs/workbench/services/localization/common/studioLocaleStrings.ts
+index 696c1491eed6041e26aa40a92e93f2ca72f6b31d..036cd596be6277b63a7426a5dfd89b0a29493b44 100644
+--- a/src/vs/workbench/services/localization/common/studioLocaleStrings.ts
++++ b/src/vs/workbench/services/localization/common/studioLocaleStrings.ts
+@@ -16,7 +16,7 @@ const defaults = {
+ 	restartDetail: localize('studio.locale.restartDetail', "To change the display language to {0}, {1} needs to restart."),
+ };
+ 
+-// Source builds have Studio catalogs before any core language pack is installed.
++// Studio-specific messages are not included in upstream language packs.
+ const chinese: typeof defaults = {
+ 	writeFailed: "无法保存显示语言。",
+ 	unsupported: "不支持此显示语言。",
+diff --git a/src/vs/workbench/services/localization/electron-browser/localeService.ts b/src/vs/workbench/services/localization/electron-browser/localeService.ts
+index 52345290054f1a78adeffae716dc42874bd82e59..d70ee92418fdbe4593ae03535b26af52e1ab7739 100644
+--- a/src/vs/workbench/services/localization/electron-browser/localeService.ts
++++ b/src/vs/workbench/services/localization/electron-browser/localeService.ts
+@@ -116,8 +116,7 @@ class NativeLocaleService implements ILocaleService {
+ 
+ 			// Only Desktop has the concept of installing language packs so we only do this for Desktop
+ 			// and only if the language pack is not installed
+-			const studioSourceLanguage = !this.environmentService.isBuilt && (locale === 'zh-cn' || locale === 'en');
+-			if (!studioSourceLanguage && !installedLanguages.some(installedLanguage => installedLanguage.id === languagePackItem.id)) {
++			if (locale !== LANGUAGE_DEFAULT && !installedLanguages.some(installedLanguage => installedLanguage.id === locale)) {
+ 
+ 				// Only actually install a language pack from Microsoft
+ 				if (languagePackItem.galleryExtension?.publisher.toLowerCase() !== 'ms-ceintl') {

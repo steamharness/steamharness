@@ -42,7 +42,7 @@
   "command.newFile": "New File",
   "command.openTerminal": "New Terminal",
   "command.runTask": "Run Task",
-  "command.openSettings": "Workstation Settings",
+  "command.openSettings": "Settings",
   "command.refreshProjects": "Refresh Projects",
   "command.refreshProjectView": "Refresh Project View",
   "command.openRecentProject": "Open Recent Project",

@@ -33,10 +33,11 @@ exports.run = async () => {
   assert.ok(terminal, 'New Terminal must create a native terminal.');
   assert.equal(terminal.name, 'Studio');
   terminal.dispose();
-  assert.ok(Array.isArray(await vscode.authentication.getAccounts('studio-steamharness')), 'Workflow authentication provider must be registered.');
+  const accounts = await vscode.authentication.getAccounts('studio-steamharness');
+  assert.ok(Array.isArray(accounts), 'Workflow authentication provider must be registered.');
   await vscode.commands.executeCommand('studio.openAccount');
   const findAccountTab = () => vscode.window.tabGroups.all.flatMap((group) => group.tabs)
-    .find((tab) => tab.input instanceof vscode.TabInputWebview && tab.label === (vscode.env.language.startsWith('zh') ? 'Workflow \u8d26\u53f7' : 'SteamHarness Account'));
+    .find((tab) => tab.input instanceof vscode.TabInputWebview && tab.label === (vscode.env.language.startsWith('zh') ? accounts.length ? '设置' : '登录' : accounts.length ? 'Settings' : 'Sign In'));
   await new Promise((resolve, reject) => {
     if (findAccountTab()) { resolve(); return; }
     const changed = vscode.window.tabGroups.onDidChangeTabs(() => {

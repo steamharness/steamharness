@@ -10,7 +10,7 @@
   "main": "./dist/extension.js",
   "browser": "./dist/extension-web.js",
   "l10n": "./l10n",
-  "activationEvents": ["onStartupFinished", "onWebviewPanel:studio.tool.kv", "onWebviewPanel:studio.tool.knowledge", "onWebviewPanel:studio.tool.info", "onWebviewPanel:studio.tool.assistant", "onWebviewPanel:studio.tool.versions", "onWebviewPanel:studio.tool.trace", "onWebviewPanel:studio.project", "onWebviewPanel:studio.projectTool", "onCommand:studio.internalStartPageVisibility"],
+  "activationEvents": ["onStartupFinished", "onWebviewPanel:studio.settings", "onWebviewPanel:studio.login", "onWebviewPanel:studio.tool.kv", "onWebviewPanel:studio.tool.knowledge", "onWebviewPanel:studio.tool.info", "onWebviewPanel:studio.tool.assistant", "onWebviewPanel:studio.tool.versions", "onWebviewPanel:studio.tool.trace", "onWebviewPanel:studio.project", "onWebviewPanel:studio.projectTool", "onCommand:studio.internalStartPageVisibility"],
   "extensionKind": ["workspace"],
   "capabilities": {
     "untrustedWorkspaces": { "supported": true },
@@ -100,6 +100,7 @@
       { "command": "studio.openProjectDemo", "title": "%command.openProjectDemo%", "category": "Project", "icon": "$(comment-discussion)" },
       { "command": "studio.openProjectCli", "title": "%command.openProjectCli%", "category": "Project", "icon": "$(terminal)" },
       { "command": "studio.openAccount", "title": "%command.openProjectAccount%", "category": "SteamHarness", "icon": "$(account)" },
+      { "command": "studio.openLogin", "title": "%context.signIn%", "category": "SteamHarness", "icon": "$(sign-in)" },
       { "command": "studio.refreshAccount", "title": "%command.refreshAccount%", "category": "SteamHarness", "icon": "$(refresh)" },
       { "command": "studio.validateLogin", "title": "%command.validateProjectLogin%", "category": "Project", "icon": "$(verified)" },
       { "command": "studio.logout", "title": "%command.logoutProject%", "category": "Project", "icon": "$(sign-out)" }
@@ -227,6 +228,7 @@
       }
     },
     "configurationDefaults": {
+      "editor.fontSize": 18,
       "workbench.iconTheme": "file-icons",
       "window.autoDetectColorScheme": true,
       "chat.disableAIFeatures": true,

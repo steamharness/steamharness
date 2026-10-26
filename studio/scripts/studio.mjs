@@ -194,12 +194,12 @@ async function main() {
       const testing = command === 'test:desktop';
       const extensionsDirectory = path.join(ROOT, testing ? '.studio/test-desktop-extensions' : '.studio/desktop-extensions');
       const directoryArgs = [
-        '--user-data-dir', resolveDesktopUserDataDir(path.join(ROOT, testing ? `.studio/test-${process.pid}` : '.studio/desktop-user-data')),
+        ...(hasFlag('--user-data-dir') ? [] : ['--user-data-dir', resolveDesktopUserDataDir(path.join(ROOT, testing ? `.studio/test-${process.pid}` : '.studio/desktop-user-data'))]),
         '--extensions-dir', extensionsDirectory,
         '--builtin-extensions-dir', path.join(upstream.directory, 'extensions'),
       ];
-      await ensureDefaultExtensions(extensionsDirectory, (vsix) =>
-        launch(upstream, 'code-cli', [...directoryArgs, '--install-extension', vsix]));
+      await ensureDefaultExtensions(extensionsDirectory, (extension) =>
+        launch(upstream, 'code-cli', [...directoryArgs, '--install-extension', extension]));
       const desktopArgs = testing ? [
         `--extensionDevelopmentPath=${path.join(upstream.directory, 'extensions/vscode-api-tests')}`,
         `--extensionTestsPath=${path.join(ROOT, 'tests/extension-host.cjs')}`,
@@ -230,8 +230,8 @@ async function main() {
         '--telemetry-level', 'off',
         '--disable-workspace-trust',
       ];
-      await ensureDefaultExtensions(extensionsDirectory, (vsix) =>
-        launch(upstream, 'code-server', [...defaults, '--install-extension', vsix]));
+      await ensureDefaultExtensions(extensionsDirectory, (extension) =>
+        launch(upstream, 'code-server', [...defaults, '--install-extension', extension]));
       if (!hasFlag('--host')) {
         defaults.push('--host', '127.0.0.1');
       }

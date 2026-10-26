@@ -52,7 +52,8 @@ async function conversation() {
   await page.getByRole('tab', { name: '\u5bf9\u8bdd\u52a9\u624b', exact: true }).click();
   const frame = await frameFor('#message'); await ready(frame); return frame;
 }
-async function account() { await command('Workflow: \u767b\u5f55\u4e0e\u7ba1\u7406\u8d26\u53f7'); return frameFor('#account-app'); }
+async function account() { await command('SteamHarness: SteamHarness 账号'); return frameFor('#account-app'); }
+async function login() { await command('SteamHarness: 登录'); return frameFor('#login-app'); }
 async function credentials(frame, password) {
   await frame.locator('#server-url').fill(serverUrl);
   // Evaluate avoids including credential values in Playwright locator error logs.
@@ -81,12 +82,12 @@ try {
   const run = page.locator('.part.titlebar .studio-workflow-run').getByRole('button', { name: '\u8fd0\u884c\u9879\u76ee', exact: true });
   await run.waitFor({ timeout: 45000 }); await run.click(); let frame = await frameFor('#message'); await ready(frame);
   await frame.locator('#message').fill('Preserve this draft through login');
-  let profile = await account(); await profile.locator('#login-form').waitFor();
-  await credentials(profile, 'studio-test-incorrect-password'); await profile.locator('#account-error').waitFor();
-  assert.equal(await profile.locator('#profile').isVisible(), false); assert.equal(await profile.locator('#login-password').inputValue(), '');
+  let profile = await login(); await profile.locator('#login-form').waitFor();
+  await credentials(profile, 'studio-test-incorrect-password'); await profile.locator('#login-error').waitFor();
+  assert.equal(await profile.locator('#login-success').isVisible(), false); assert.equal(await profile.locator('#login-password').inputValue(), '');
   proof.checks.invalidPasswordRejected = true;
-  await credentials(profile, env.STEAMHARNESS_BOOTSTRAP_ADMIN_PASSWORD); await profile.locator('#account-status.connected').waitFor({ timeout: 45000 }); loggedIn = true;
-  assert.equal(await profile.locator('#login-password').inputValue(), '');
+  await credentials(profile, env.STEAMHARNESS_BOOTSTRAP_ADMIN_PASSWORD); profile = await frameFor('#account-app'); await profile.locator('#account-status.connected').waitFor({ timeout: 45000 }); loggedIn = true;
+  assert.equal(await profile.locator('#login-password').count(), 0);
   await page.locator('.part.activitybar .accounts-avatar').waitFor();
   await page.waitForFunction(() => document.querySelector('.part.activitybar .accounts-avatar')?.naturalWidth > 0);
   const avatar = await page.locator('.part.activitybar .accounts-avatar').evaluate((image) => ({ y: image.getBoundingClientRect().bottom, width: image.naturalWidth }));
@@ -155,7 +156,7 @@ try {
   profile = await account(); await profile.locator('#account-status.connected').waitFor({ timeout: 45000 });
   await profile.locator('#verify-login').click(); await profile.locator('#account-status.connected').waitFor({ timeout: 45000 }); proof.checks.manualCredentialVerification = true;
   await page.screenshot({ path: path.join(proofDir, 'dev-account.png') });
-  await profile.locator('#logout').click(); await profile.locator('#login-form').waitFor({ timeout: 45000 }); loggedIn = false;
+  await profile.locator('#logout').click(); await profile.locator('#account-sign-in').waitFor({ timeout: 45000 }); loggedIn = false;
   frame = await conversation(); await ready(frame); await frame.locator('#parameter-login').waitFor();
   assert.equal(await frame.locator('#message').inputValue(), 'Draft restored after window reload');
   proof.checks.logoutDisconnectsParametersAndKeepsDraft = true; assert.deepEqual(proof.errors, []);
@@ -163,7 +164,7 @@ try {
   proof.failure = error.message; if (page) { await page.screenshot({ path: path.join(proofDir, 'failure.png') }).catch(() => undefined); } process.exitCode = 1;
 } finally {
   if (loggedIn && page) {
-    try { const profile = await account(); await profile.locator('#logout').click(); await profile.locator('#login-form').waitFor(); }
+    try { const profile = await account(); await profile.locator('#logout').click(); await profile.locator('#account-sign-in').waitFor(); }
     catch { proof.cleanupError = 'Unable to revoke the test session in the UI.'; process.exitCode = 1; }
   }
   await fs.writeFile(path.join(proofDir, 'verification.json'), JSON.stringify(proof, null, 2) + '\n'); console.log(JSON.stringify(proof));

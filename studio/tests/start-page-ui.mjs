@@ -437,7 +437,7 @@ for (const language of ['en', 'zh-cn']) {
       return await page.locator('.tab').filter({ hasText: initial.start.labels.account }).count() > 0;
     }, Boolean, 'Account entry did not open');
     await command('studio.openStart'); await start().locator('[data-action="studio.openSettings"]').click();
-    await page.locator('.settings-editor').waitFor({ state: 'visible' });
+    await until(() => findFrame('#settings-navigation'), Boolean, 'Studio settings did not open');
     await command('studio.openStart');
     const before = await call({ action: 'state' }); assert.ok(before.start.recent.length);
     const recentProject = start().locator('.studio-start-recent .studio-start-project').first();

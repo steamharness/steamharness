@@ -39,7 +39,7 @@ export async function buildExtension({ watch = false } = {}) {
       await esbuild.build(option);
     }
   }
-  for (const [entry, name] of [['account', 'account'], ['resources', 'resources'], ['trace', 'trace'], ['info', 'info'], ['versions', 'versions'], ['welcome', 'welcome']]) {
+  for (const [entry, name] of [['account', 'account'], ['login', 'login'], ['resources', 'resources'], ['trace', 'trace'], ['info', 'info'], ['versions', 'versions'], ['welcome', 'welcome']]) {
     const ui = {
       absWorkingDir: directory, entryPoints: [`webview/${entry}.ts`], bundle: true, platform: 'browser',
       target: 'es2022', outfile: `dist/${name}-ui.js`, logLevel: 'info',

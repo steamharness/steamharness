@@ -29,6 +29,9 @@
     "test:start-ui": "node tests/start-page-ui.mjs",
     "test:mode-ui": "node tests/studio-mode-ui.mjs",
     "test:account-menu-ui": "node tests/account-menu-ui.mjs",
+    "test:settings-ui": "node tests/settings-ui.mjs && node tests/settings-regressions-ui.mjs",
+    "test:login-ui": "node tests/login-ui.mjs",
+    "test:onboarding-ui": "node tests/onboarding-ui.mjs",
     "test:create-live": "node tests/project-create-live.mjs",
     "test:desktop": "node scripts/studio.mjs test:desktop",
     "test:assistant-ui": "node tests/assistant-workspace-desktop-ui.mjs",
@@ -78,7 +81,8 @@
     "@types/katex": "^0.16.8",
     "vscode-api": "npm:@types/vscode@1.140.0",
     "esbuild": "0.28.2",
-    "typescript": "5.9.3"
+    "typescript": "5.9.3",
+    "jsdom": "26.1.0"
   },
   "allowScripts": {
     "esbuild@0.28.2": true

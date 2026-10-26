@@ -1,0 +1,14 @@
+diff --git a/src/vs/workbench/contrib/localization/common/localizationsActions.ts b/src/vs/workbench/contrib/localization/common/localizationsActions.ts
+index 44c1d2531776b7c77ed6372ed9839ab419bf3119..6d41ee5a54e6b00f417069c670515879c39b5926 100644
+--- a/src/vs/workbench/contrib/localization/common/localizationsActions.ts
++++ b/src/vs/workbench/contrib/localization/common/localizationsActions.ts
+@@ -20,8 +20,8 @@ export async function setStudioDisplayLanguage(accessor: ServicesAccessor, langu
+ 		await localeService.clearLocalePreference();
+ 	} else if (language === 'en' || language === 'zh-cn') {
+ 		const packs = accessor.get(ILanguagePackService);
+-		const installed = await packs.getInstalledLanguages();
+ 		const source = !accessor.get(IEnvironmentService).isBuilt;
++		const installed = await packs.getInstalledLanguages();
+ 		let item = installed.find(item => item.id === language);
+ 		if (!item && (source || language === 'en')) { item = { id: language, label: language === 'en' ? 'English' : '简体中文' }; }
+ 		if (!item) { item = (await packs.getAvailableLanguages()).find(item => item.id === language); }

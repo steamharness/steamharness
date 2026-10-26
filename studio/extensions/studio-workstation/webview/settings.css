@@ -1,0 +1,116 @@
+#account-app.settings-root { width: 100%; height: 100vh; margin: 0; padding: 0; }
+.settings-layout { display: grid; grid-template-columns: 260px minmax(0, 1fr); max-width: 1360px; height: 100%; margin: 0 auto; }
+.settings-sidebar { display: flex; flex-direction: column; gap: 24px; min-width: 0; min-height: 0; padding: 42px 20px 24px 28px; overflow: auto; }
+.settings-identity { justify-content: flex-start; gap: 10px; width: 100%; padding: 8px; background: transparent; color: var(--vscode-foreground); text-align: left; }
+.settings-identity:hover { background: var(--vscode-toolbar-hoverBackground); }
+.settings-avatar { position: relative; display: grid; place-items: center; flex: 0 0 40px; width: 40px; height: 40px; overflow: hidden; border-radius: 10px; background: var(--vscode-button-secondaryBackground); }
+.settings-avatar > .codicon { font-size: 24px; }
+.settings-avatar img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+.settings-identity-text { display: flex; flex: 1; flex-direction: column; gap: 2px; min-width: 0; line-height: 1.5; }
+.settings-identity-text strong, .settings-identity-text > span { display: block; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; overflow-wrap: normal; }
+.settings-identity-text strong { font-size: 13px; font-weight: 600; }
+.settings-identity-text > span { font-size: 11px; }
+.settings-search { position: relative; }
+.settings-search > .codicon { position: absolute; left: 10px; top: 11px; pointer-events: none; color: var(--vscode-descriptionForeground); }
+.settings-search input { height: 38px; padding-left: 32px; background: var(--vscode-input-background); border-color: var(--vscode-input-border, var(--vscode-panel-border)); border-radius: 7px; }
+#settings-navigation { display: flex; flex-direction: column; gap: 5px; }
+.settings-nav-item { justify-content: flex-start; gap: 12px; width: 100%; min-height: 40px; padding: 9px 12px; text-align: left; color: var(--vscode-foreground); background: transparent; border-radius: 7px; }
+.settings-nav-item > .codicon { flex-shrink: 0; color: var(--vscode-descriptionForeground); font-size: 17px; }
+.settings-nav-item:hover { background: var(--vscode-list-hoverBackground); }
+.settings-nav-item[aria-current="page"] { background: var(--vscode-list-inactiveSelectionBackground, var(--vscode-button-secondaryBackground)); color: var(--vscode-list-inactiveSelectionForeground, var(--vscode-foreground)); border-color: var(--vscode-contrastActiveBorder, transparent); }
+.settings-nav-item[aria-current="page"] > .codicon { color: inherit; }
+.settings-nav-item:last-child { margin-top: 16px; border-top: 1px solid var(--vscode-panel-border); border-top-left-radius: 0; border-top-right-radius: 0; }
+.settings-sidebar-footer { margin: auto 12px 0; padding-top: 24px; font-size: 10px; color: var(--vscode-descriptionForeground); }
+.settings-main { min-width: 0; min-height: 0; padding: 50px 48px 48px 36px; overflow: auto; scroll-behavior: auto; }
+.settings-page-header { display: flex; justify-content: space-between; align-items: flex-end; flex-wrap: wrap; gap: 12px; min-height: 54px; margin-bottom: 30px; }
+.settings-eyebrow { font-size: 11px; letter-spacing: .03em; color: var(--vscode-descriptionForeground); margin-bottom: 4px; }
+.settings-page-header h1 { font-size: 26px; font-weight: 600; line-height: 1.4; }
+#settings-save-status { font-size: 11px; overflow-wrap: anywhere; }
+.settings-panel { min-width: 0; }
+.settings-group { margin-bottom: 28px; }
+.settings-group > h2 { margin-bottom: 10px; font-size: 13px; font-weight: 600; }
+.settings-card { min-width: 0; border: 1px solid var(--vscode-widget-border, var(--vscode-panel-border)); border-radius: 12px; background: var(--vscode-sideBar-background, var(--vscode-editor-background)); overflow: hidden; }
+.setting-row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 230px); align-items: center; gap: 8px 24px; padding: 20px; min-width: 0; }
+.setting-row + .setting-row { border-top: 1px solid var(--vscode-panel-border); }
+.setting-copy { min-width: 0; }
+.setting-row label, .setting-label { display: block; margin: 0; font-size: 13px; font-weight: 500; overflow-wrap: anywhere; }
+.setting-description { margin-top: 4px; font-size: 12px; line-height: 1.6; }
+.setting-language-pending { grid-column: 1 / -1; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px 16px; }
+.setting-language-pending p { margin: 0; font-size: 12px; line-height: 1.6; }
+.setting-controls { display: flex; align-items: center; justify-content: flex-end; gap: 6px; min-width: 0; }
+.setting-controls input, .setting-controls .settings-dropdown { min-width: 0; width: 100%; }
+.settings-dropdown { justify-content: space-between; gap: 10px; min-width: 0; max-width: 100%; min-height: 34px; padding: 5px 10px; text-align: left; border: 1px solid var(--vscode-dropdown-border, var(--vscode-panel-border)); border-radius: 5px; color: var(--vscode-dropdown-foreground, var(--vscode-input-foreground)); background: var(--vscode-dropdown-background, var(--vscode-input-background)); }
+.settings-dropdown:hover:not(:disabled) { border-color: var(--vscode-focusBorder); }
+.settings-dropdown-label { min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.settings-dropdown > .codicon { flex-shrink: 0; }
+.settings-dropdown:focus-visible, .settings-main:focus-visible { outline: 1px solid var(--vscode-focusBorder); outline-offset: 2px; }
+.settings-dropdown-menu { position: fixed; inset: auto; margin: 0; padding: 4px; overflow: auto; border: 1px solid var(--vscode-menu-border, var(--vscode-widget-border, var(--vscode-panel-border))); border-radius: 8px; background: var(--vscode-menu-background, var(--vscode-editorWidget-background, var(--vscode-sideBar-background))); color: var(--vscode-menu-foreground, var(--vscode-foreground)); box-shadow: 0 4px 16px var(--vscode-widget-shadow, #0003); font: inherit; }
+.settings-dropdown-menu::backdrop { background: transparent; }
+.settings-dropdown-option { display: flex; align-items: center; gap: 8px; min-height: 32px; padding: 6px 8px; border: 1px solid transparent; border-radius: 4px; cursor: pointer; }
+.settings-dropdown-option > .codicon { flex-shrink: 0; visibility: hidden; }
+.settings-dropdown-option > span:last-child { min-width: 0; overflow-wrap: anywhere; }
+.settings-dropdown-option[aria-selected="true"] > .codicon { visibility: visible; }
+.settings-dropdown-option.active { background: var(--vscode-menu-selectionBackground, var(--vscode-list-hoverBackground)); color: var(--vscode-menu-selectionForeground, var(--vscode-foreground)); border-color: var(--vscode-menu-selectionBorder, var(--vscode-contrastActiveBorder, transparent)); }
+.settings-dropdown-option[aria-disabled="true"] { opacity: .5; cursor: default; }
+.setting-controls input[type="number"] { max-width: 100px; }
+.setting-controls input[type="checkbox"] { position: relative; appearance: none; width: 36px; height: 21px; flex: 0 0 36px; padding: 0; margin: 0; border-radius: 12px; background: var(--vscode-input-background); border: 1px solid var(--vscode-input-border, var(--vscode-descriptionForeground)); cursor: pointer; }
+.setting-controls input[type="checkbox"]::before { content: ''; position: absolute; width: 15px; height: 15px; top: 2px; left: 2px; border-radius: 50%; background: var(--vscode-descriptionForeground); }
+.setting-controls input[type="checkbox"]:checked { background: var(--vscode-button-background); border-color: var(--vscode-button-background); }
+.setting-controls input[type="checkbox"]:checked::before { left: 17px; background: var(--vscode-button-foreground); }
+.setting-reset { color: var(--vscode-descriptionForeground); }
+.setting-reset:disabled { opacity: .25; }
+.setting-source { margin-top: 4px; font-size: 11px; color: var(--vscode-editorWarning-foreground); }
+.setting-source:empty { display: none; }
+.setting-error { grid-column: 1 / -1; color: var(--vscode-errorForeground); font-size: 12px; }
+.settings-error { padding: 12px 16px; margin-bottom: 20px; border: 1px solid var(--vscode-errorForeground); border-radius: 6px; color: var(--vscode-errorForeground); overflow-wrap: anywhere; }
+.settings-scope { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; margin: -8px 0 24px; }
+.settings-scope label { margin: 0; color: var(--vscode-descriptionForeground); }
+.settings-scope .settings-dropdown { min-width: 140px; }
+.settings-action-card { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; padding: 20px; }
+.settings-action-card > p { width: 100%; margin-bottom: 2px; }
+.settings-about { padding: 32px; }
+.settings-product-icon { display: block; font-size: 32px; color: var(--vscode-descriptionForeground); margin-bottom: 20px; }
+.settings-about > p { margin-top: 8px; }
+.settings-about dl { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 8px 20px; margin: 24px 0; }
+.settings-empty { padding: 24px; color: var(--vscode-descriptionForeground); }
+.settings-empty p + p, .settings-empty button { margin-top: 12px; }
+#settings-account > .page-header { margin-bottom: 4px; }
+#settings-account #profile { padding: 24px; border: 1px solid var(--vscode-panel-border); border-radius: 12px; background: var(--vscode-sideBar-background, var(--vscode-editor-background)); }
+#settings-account #account-sign-in { max-width: 460px; }
+#settings-provider .account-extension { margin: 0; padding: 0; border: 0; }
+#settings-provider .account-extension > .section-heading { justify-content: flex-end; margin-bottom: 16px; }
+#settings-provider .account-extension > .section-heading h2 { display: none; }
+#settings-provider .extension-section { padding: 20px; margin: 0 0 20px; border: 1px solid var(--vscode-panel-border); border-radius: 12px; background: var(--vscode-sideBar-background, var(--vscode-editor-background)); }
+@media (max-width: 1050px) {
+  .settings-layout { grid-template-columns: 210px minmax(0, 1fr); }
+  .settings-sidebar { padding-left: 16px; padding-right: 16px; }
+  .settings-main { padding-left: 24px; padding-right: 24px; }
+  .setting-row { grid-template-columns: minmax(0, 1fr); gap: 12px; }
+  .setting-controls { justify-content: flex-start; }
+  .setting-controls input, .setting-controls .settings-dropdown { max-width: 300px; }
+  .metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .account-details, .meters { grid-template-columns: minmax(0, 1fr); }
+}
+@media (max-width: 700px) {
+  .settings-layout { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr); }
+  .settings-sidebar { gap: 12px; max-height: 245px; padding: 12px 16px; border-bottom: 1px solid var(--vscode-panel-border); }
+  .settings-identity { padding: 0; }
+  .settings-identity-text > span { display: none; }
+  .settings-avatar { width: 28px; height: 28px; flex-basis: 28px; border-radius: 7px; }
+  .settings-avatar > .codicon { font-size: 20px; }
+  .settings-search input { height: 34px; }
+  .settings-search > .codicon { top: 9px; }
+  #settings-navigation { flex-direction: row; flex-wrap: wrap; gap: 4px; }
+  .settings-nav-item { flex: 1 1 auto; width: auto; min-width: 0; min-height: 32px; padding: 6px 8px; gap: 6px; font-size: 12px; }
+  .settings-nav-item:last-child { margin-top: 0; border-top: 1px solid transparent; border-radius: 7px; }
+  .settings-nav-item > .codicon { font-size: 14px; }
+  .settings-sidebar-footer { display: none; }
+  .settings-main { padding: 24px 16px 32px; }
+  .settings-page-header { margin-bottom: 24px; min-height: 0; }
+  .settings-page-header h1 { font-size: 23px; }
+  .setting-row { padding: 16px; }
+  #settings-account #profile, #settings-account #account-sign-in, #settings-provider .extension-section { padding: 16px; }
+  .settings-about { padding: 24px 20px; }
+  .settings-about dl { grid-template-columns: minmax(0, 1fr); gap: 2px; }
+  .settings-about dd { margin-bottom: 10px; }
+}

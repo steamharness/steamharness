@@ -15,10 +15,7 @@ const proof = { cliVersion: undefined, checks: [], errors: [], images: [] };
 const pause = ms => new Promise(resolve => setTimeout(resolve, ms));
 const paste = process.platform === 'darwin' ? 'Meta+v' : 'Control+v';
 const copy = process.platform === 'darwin' ? 'Meta+c' : 'Control+c';
-const sourceMode = process.env.STUDIO_CLIPBOARD_SOURCE_MODE === 'true';
-
-// VS Code source mode forces English; the localized bootstrap covers both languages.
-for (const language of sourceMode ? ['en'] : ['en', 'zh-cn']) {
+for (const language of ['en', 'zh-cn']) {
   const directory = await realpath(await mkdtemp(path.join(os.tmpdir(), 'studio-clipboard-')));
   const projectDir = actualProject ? fixture : path.join(directory, 'project');
   const cliDir = !actualProject && process.env.STEAMHARNESS_UI_CLI_ENTRY ? path.resolve(path.dirname(process.env.STEAMHARNESS_UI_CLI_ENTRY), '..') : await realpath(path.join(fixture, 'node_modules/@steamharness/cli'));
@@ -31,7 +28,7 @@ for (const language of sourceMode ? ['en'] : ['en', 'zh-cn']) {
   }
   const dataDir = path.join(directory, 'user'); await mkdir(path.join(dataDir, 'User'), { recursive: true });
   await writeFile(path.join(dataDir, 'User/settings.json'), JSON.stringify({ 'workbench.colorTheme': 'Light Modern', 'window.autoDetectColorScheme': false, 'git.openRepositoryInParentFolders': 'never' }));
-  const desktop = await desktopLocaleLaunch(language, directory, { sourceMode });
+  const desktop = await desktopLocaleLaunch(language, directory);
   let app, page, savedClipboard, lastClipboard, png;
   async function frameFor() {
     for (let attempt = 0; attempt < 300; attempt++) {

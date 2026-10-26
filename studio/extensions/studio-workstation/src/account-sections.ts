@@ -18,6 +18,10 @@ export class AccountSections {
     return this.connection ? [...this.entries.values()].map(entry => entry.state) : [];
   }
 
+  getProviders(): { id: string; title: string; icon?: string }[] {
+    return [...this.entries.values()].map(({ provider }) => ({ id: provider.id, title: provider.title, icon: provider.icon }));
+  }
+
   register(provider: AccountSectionProvider): { dispose(): void } {
     if (this.entries.has(provider.id)) { throw new Error('Duplicate account section provider.'); }
     const entry: Entry = { provider, state: this.emptyState(provider), refreshedAt: 0 };

@@ -13,6 +13,12 @@ export async function ensureDefaultExtensions(extensionsDirectory, install) {
   for (const extension of defaults) {
     const existing = installed.find((entry) => entry.identifier.id.toLowerCase() === extension.id.toLowerCase());
     if (existing && await exists(path.join(extensionsDirectory, existing.relativeLocation, 'package.json'))) {
+      const manifest = await readJSON(path.join(extensionsDirectory, existing.relativeLocation, 'package.json'));
+      if (manifest.contributes?.localizations?.length) {
+        // The extension directory is shared by profiles; let the native CLI refresh
+        // this profile's languagepacks.json without downloading or reinstalling the pack.
+        await install(`${extension.id}@${manifest.version}`);
+      }
       continue;
     }
 

@@ -2,14 +2,12 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { copyFile, readFile } from 'node:fs/promises';
 import { execFileSync } from 'node:child_process';
-import { createRequire } from 'node:module';
+import { JSDOM } from 'jsdom';
 import path from 'node:path';
 import { build } from 'esbuild';
 import { ROOT, applyPatches } from '../scripts/distribution.mjs';
 import { pinnedKernel } from './helpers/pinned-kernel.mjs';
 
-// Reuse the monorepo's offline DOM test runtime.
-const { JSDOM } = createRequire(new URL('../../shared/package.json', import.meta.url))('jsdom');
 const compiled = await build({ entryPoints: ['extensions/studio-workstation/webview/info.ts'], bundle: true, platform: 'browser', format: 'iife', loader: { '.css': 'empty' }, write: false });
 
 test('project avatar patches apply repeatedly to the pinned kernel without changing the index', async t => {

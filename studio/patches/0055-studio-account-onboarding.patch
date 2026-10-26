@@ -1,0 +1,1924 @@
+diff --git a/src/vs/workbench/browser/parts/editor/studioStart.ts b/src/vs/workbench/browser/parts/editor/studioStart.ts
+index cdf751d940b28fbf56ac8633742941aa17fa3ad1..4ec2bcb97080690168f99c236962db0a488c6776 100644
+--- a/src/vs/workbench/browser/parts/editor/studioStart.ts
++++ b/src/vs/workbench/browser/parts/editor/studioStart.ts
+@@ -11,9 +11,9 @@ import { CommandsRegistry, ICommandService } from '../../../../platform/commands
+ import { createDecorator } from '../../../../platform/instantiation/common/instantiation.js';
+ import { InstantiationType, registerSingleton } from '../../../../platform/instantiation/common/extensions.js';
+ import { studioProjectIcon } from '../../../common/studioProjectIcons.js';
++import { STEAMHARNESS_ICON_DATA_URI } from '../../../common/studioBranding.js';
+ import './media/studioStart.css';
+ 
+-const STEAMHARNESS_ICON_DATA_URI = 'data:image/png;base64,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';
+ 
+ /** Versioned, credential-free state supplied by the Studio extension host. */
+ export interface StudioStartState {
+diff --git a/src/vs/workbench/common/studioBranding.ts b/src/vs/workbench/common/studioBranding.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..47e6a293ea296b86e9ed852ee5a8e681e6bc4636
+--- /dev/null
++++ b/src/vs/workbench/common/studioBranding.ts
+@@ -0,0 +1,6 @@
++/*---------------------------------------------------------------------------------------------
++ *  Copyright (c) Microsoft Corporation. All rights reserved.
++ *  Licensed under the MIT License. See License.txt in the project root for license information.
++ *--------------------------------------------------------------------------------------------*/
++
++export const STEAMHARNESS_ICON_DATA_URI = 'data:image/png;base64,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';
+diff --git a/src/vs/workbench/contrib/welcomeGettingStarted/browser/startupPage.ts b/src/vs/workbench/contrib/welcomeGettingStarted/browser/startupPage.ts
+index 777f3ad872c6de562252c1635e423c63692a3225..6f785eaa4a0510d329e0c8ad955b60521883c56c 100644
+--- a/src/vs/workbench/contrib/welcomeGettingStarted/browser/startupPage.ts
++++ b/src/vs/workbench/contrib/welcomeGettingStarted/browser/startupPage.ts
+@@ -34,7 +34,6 @@ import { getActiveElement } from '../../../../base/browser/dom.js';
+ import { isWeb } from '../../../../base/common/platform.js';
+ import { IOnboardingService } from '../../welcomeOnboarding/common/onboardingService.js';
+ import { ONBOARDING_STORAGE_KEY } from '../../welcomeOnboarding/common/onboardingTypes.js';
+-import { IChatEntitlementService } from '../../../services/chat/common/chatEntitlementService.js';
+ 
+ export const restoreWalkthroughsConfigurationKey = 'workbench.welcomePage.restorableWalkthroughs';
+ export type RestoreWalkthroughsConfigurationValue = { folder: string; category?: string; step?: string };
+@@ -96,7 +95,6 @@ export class StartupPageRunnerContribution extends Disposable implements IWorkbe
+ 		@INotificationService private readonly notificationService: INotificationService,
+ 		@IContextKeyService private readonly contextKeyService: IContextKeyService,
+ 		@IOnboardingService private readonly onboardingService: IOnboardingService,
+-		@IChatEntitlementService private readonly chatEntitlementService: IChatEntitlementService,
+ 	) {
+ 		super();
+ 
+@@ -246,10 +244,6 @@ export class StartupPageRunnerContribution extends Disposable implements IWorkbe
+ 			return; // experimental onboarding is disabled
+ 		}
+ 
+-		if (this.chatEntitlementService.sentiment.hidden) {
+-			return; // AI features are hidden, do not show AI-focused onboarding
+-		}
+-
+ 		if (!this.storageService.isNew(StorageScope.APPLICATION)) {
+ 			return; // only show onboarding for new users who have never used the product before
+ 		}
+diff --git a/src/vs/workbench/contrib/welcomeOnboarding/browser/media/variationA.css b/src/vs/workbench/contrib/welcomeOnboarding/browser/media/variationA.css
+index e3b521c840efc1b2627c8aa6c743091710fba427..0855db13ff56d62d44253239aee3ad0f5f69bcf5 100644
+--- a/src/vs/workbench/contrib/welcomeOnboarding/browser/media/variationA.css
++++ b/src/vs/workbench/contrib/welcomeOnboarding/browser/media/variationA.css
+@@ -27,6 +27,7 @@
+ }
+ 
+ .onboarding-a-overlay.exiting {
++	pointer-events: none;
+ 	opacity: 0;
+ 	transition: opacity 0.2s ease-out;
+ }
+@@ -35,7 +36,8 @@
+ 	background: var(--vscode-editor-background);
+ 	color: var(--vscode-editor-foreground);
+ 	border: 1px solid var(--vscode-widget-border, rgba(255, 255, 255, 0.1));
+-	border-radius: 12px;
++	border-radius: var(--vscode-cornerRadius-large, 8px);
++	user-select: text;
+ 	box-shadow: 0 16px 48px rgba(0, 0, 0, 0.4), 0 0 0 1px rgba(255, 255, 255, 0.05) inset;
+ 	width: min(960px, 92vw);
+ 	height: min(570px, 85vh);
+@@ -137,7 +139,8 @@
+ 	display: flex;
+ 	flex-direction: column;
+ 	padding: 20px 28px 18px;
+-	overflow: hidden;
++	overflow-y: auto;
++	overflow-x: hidden;
+ 	min-height: 0;
+ }
+ 
+@@ -159,7 +162,7 @@
+ }
+ 
+ .onboarding-a-step-content {
+-	flex: 1;
++	flex: 1 0 auto;
+ 	display: flex;
+ 	flex-direction: column;
+ 	min-height: 0;
+@@ -168,6 +171,8 @@
+ 
+ .onboarding-a-footer {
+ 	display: flex;
++	flex-wrap: wrap;
++	gap: 12px;
+ 	align-items: center;
+ 	justify-content: space-between;
+ 	padding: 16px 28px 20px;
+@@ -181,6 +186,7 @@
+ }
+ 
+ .onboarding-a-footer-right {
++	margin-left: auto;
+ 	display: flex;
+ 	gap: 8px;
+ }
+@@ -257,15 +263,14 @@
+ /* Sign-In step */
+ .onboarding-a-signin {
+ 	display: grid;
+-	grid-template-columns: auto auto;
++	grid-template-columns: 152px minmax(0, 1fr);
+ 	position: relative;
+ 	align-items: center;
+ 	justify-content: center;
+-	gap: 34px;
++	gap: 32px;
+ 	width: 100%;
+ 	margin: 0 auto;
+ 	padding: 4px 0;
+-	padding-bottom: 60px;
+ 	min-height: 0;
+ 	flex: 1;
+ }
+@@ -279,19 +284,10 @@
+ }
+ 
+ .onboarding-a-signin-brand-icon {
+-	display: inline-flex;
+-	align-items: center;
+-	justify-content: center;
++	display: block;
+ 	width: 152px;
+ 	height: 152px;
+-	border-radius: 0;
+-	border: none;
+-	background: transparent;
+-	box-shadow: none;
+-	background-image: url('../../../../browser/media/code-icon.svg');
+-	background-repeat: no-repeat;
+-	background-position: center center;
+-	background-size: 148px;
++	object-fit: contain;
+ }
+ 
+ .onboarding-a-signin-content {
+@@ -304,20 +300,12 @@
+ 	max-width: 500px;
+ }
+ 
+-.onboarding-a-signin-content-main {
+-	display: flex;
+-	flex: 1 1 auto;
+-	flex-direction: column;
+-	justify-content: center;
+-	gap: 10px;
+-	min-width: 0;
+-}
+-
+ .onboarding-a-signin-title {
+ 	margin: 0;
+-	font-size: 22px;
++	font-size: var(--vscode-headingFontSize-large, 22px);
+ 	font-weight: 600;
+-	line-height: 1.15;
++	line-height: 1.3;
++	overflow-wrap: anywhere;
+ 	color: var(--vscode-foreground);
+ }
+ 
+@@ -326,7 +314,6 @@
+ 	font-size: 14px;
+ 	line-height: 1.45;
+ 	color: var(--vscode-descriptionForeground);
+-	white-space: nowrap;
+ }
+ 
+ .onboarding-a-signin-actions {
+@@ -338,69 +325,11 @@
+ 	min-width: 0;
+ }
+ 
+-.onboarding-a-signin-footer {
+-	position: absolute;
+-	bottom: 0;
+-	left: 0;
+-	right: 0;
+-	display: flex;
+-	flex-direction: column;
+-	align-items: flex-start;
+-	text-align: left;
+-	gap: 8px;
+-}
+-
+-.onboarding-a-signin-inline-link {
+-	padding: 0;
+-	border: none;
+-	background: none;
+-	color: var(--vscode-textLink-foreground, #3794ff);
+-	font-size: 12px;
+-	font-family: inherit;
+-	text-align: left;
+-	cursor: pointer;
+-	width: fit-content;
+-	max-width: 100%;
+-}
+-
+-.onboarding-a-signin-inline-link:hover {
+-	text-decoration: underline;
+-}
+-
+-.onboarding-a-signin-inline-link:focus-visible {
+-	outline: 2px solid var(--vscode-focusBorder);
+-	outline-offset: 2px;
+-	border-radius: 4px;
+-}
+-
+-.onboarding-a-signin-disclaimer-col {
+-	display: flex;
+-	flex-direction: column;
+-	gap: 4px;
+-}
+-
+-.onboarding-a-signin-disclaimer {
+-	font-size: 11px;
+-	line-height: 1.4;
+-	color: var(--vscode-descriptionForeground);
+-	white-space: normal;
+-}
+-
+-.onboarding-a-signin-disclaimer strong {
+-	color: var(--vscode-editor-foreground);
+-}
+-
+-.onboarding-a-signin-disclaimer p {
++.onboarding-a-signin-hint {
+ 	margin: 0;
+-}
+-
+-.onboarding-a-signin-disclaimer a {
+-	color: var(--vscode-textLink-foreground, #3794ff);
+-	text-decoration: none;
+-}
+-
+-.onboarding-a-signin-disclaimer a:hover {
+-	text-decoration: underline;
++	font-size: var(--vscode-bodyFontSize-small, 12px);
++	line-height: 1.5;
++	color: var(--vscode-descriptionForeground);
+ }
+ 
+ .onboarding-a-signin-btn {
+@@ -411,8 +340,8 @@
+ 	min-width: 0;
+ 	padding: 0 16px;
+ 	height: 40px;
+-	border-radius: 8px;
+-	border: 1px solid var(--vscode-widget-border, rgba(255, 255, 255, 0.1));
++	border-radius: var(--vscode-cornerRadius-small, 4px);
++	border: 1px solid var(--vscode-widget-border);
+ 	background: var(--vscode-editor-background);
+ 	color: var(--vscode-editor-foreground);
+ 	cursor: pointer;
+@@ -436,64 +365,6 @@
+ 	white-space: nowrap;
+ }
+ 
+-/* Inline GitHub Enterprise instance input */
+-.onboarding-a-signin-ghe-input {
+-	display: flex;
+-	flex: 1 1 auto;
+-	flex-direction: column;
+-	gap: 6px;
+-	margin-top: 4px;
+-	min-width: 0;
+-	width: 100%;
+-	max-width: 320px;
+-}
+-
+-.onboarding-a-signin-ghe-input .monaco-inputbox {
+-	height: 40px;
+-	border-radius: 8px;
+-	font-size: 13px;
+-	line-height: 40px;
+-}
+-
+-.onboarding-a-signin-ghe-input .monaco-inputbox .monaco-action-bar {
+-	top: 50%;
+-	right: 6px;
+-	transform: translateY(-50%);
+-}
+-
+-.onboarding-a-signin-ghe-input .monaco-inputbox.error {
+-	box-shadow: inset 0 0 0 1px var(--vscode-inputValidation-errorBorder);
+-}
+-
+-.onboarding-a-signin-ghe-message {
+-	font-size: 12px;
+-	line-height: 1.4;
+-	color: var(--vscode-descriptionForeground);
+-	width: 100%;
+-	max-width: 100%;
+-	box-sizing: border-box;
+-	white-space: normal;
+-	overflow-wrap: anywhere;
+-	word-break: break-word;
+-	min-height: 16px;
+-}
+-
+-.onboarding-a-signin-ghe-message.error {
+-	color: var(--vscode-inputValidation-errorForeground, var(--vscode-errorForeground));
+-}
+-
+-.onboarding-a-signin-ghe-progress {
+-	display: flex;
+-	align-items: center;
+-	gap: 8px;
+-	padding: 8px 0;
+-}
+-
+-.onboarding-a-signin-ghe-progress-message {
+-	font-size: 13px;
+-	color: var(--vscode-descriptionForeground);
+-}
+-
+ .onboarding-a-signin-confirmation {
+ 	display: flex;
+ 	align-items: center;
+@@ -503,57 +374,6 @@
+ 	color: var(--vscode-descriptionForeground);
+ }
+ 
+-.onboarding-a-provider-mark {
+-	display: flex;
+-	width: 18px;
+-	height: 18px;
+-	background-position: center;
+-	background-repeat: no-repeat;
+-	background-size: contain;
+-	align-items: center;
+-	justify-content: center;
+-}
+-
+-.onboarding-a-provider-mark.github {
+-	background-image: none;
+-}
+-
+-.onboarding-a-provider-mark.github .codicon {
+-	font-size: 18px;
+-	color: currentColor;
+-}
+-
+-.onboarding-a-provider-mark.github-enterprise {
+-	background-image: none;
+-}
+-
+-.onboarding-a-provider-mark.github-enterprise .codicon {
+-	font-size: 18px;
+-	color: currentColor;
+-}
+-
+-.onboarding-a-provider-mark.google {
+-	background-image: url('../../../chat/browser/chatSetup/media/google.svg');
+-}
+-
+-.monaco-workbench.hc-light .onboarding-a-provider-mark.apple,
+-.monaco-workbench.vs .onboarding-a-provider-mark.apple {
+-	background-image: url('../../../chat/browser/chatSetup/media/apple-light.svg');
+-}
+-
+-.onboarding-a-provider-mark.apple {
+-	background-image: url('../../../chat/browser/chatSetup/media/apple-dark.svg');
+-}
+-
+-.monaco-workbench.hc-light .onboarding-a-provider-mark.microsoft,
+-.monaco-workbench.vs .onboarding-a-provider-mark.microsoft {
+-	background-image: url('../../../chat/browser/chatSetup/media/microsoft-light.svg');
+-}
+-
+-.onboarding-a-provider-mark.microsoft {
+-	background-image: url('../../../chat/browser/chatSetup/media/microsoft-dark.svg');
+-}
+-
+ /* Personalize step */
+ .onboarding-a-personalize {
+ 	display: flex;
+@@ -813,7 +633,7 @@
+ 	font-size: 12px;
+ 	font-family: inherit;
+ 	cursor: pointer;
+-	white-space: nowrap;
++	white-space: normal;
+ 	transition: background 0.12s ease;
+ }
+ 
+@@ -826,43 +646,6 @@
+ 	outline-offset: -2px;
+ }
+ 
+-/* Sign-in icon row */
+-.onboarding-a-signin-icon-row {
+-	display: flex;
+-	gap: 12px;
+-	justify-content: center;
+-}
+-
+-.onboarding-a-signin-icon-btn {
+-	min-width: 40px;
+-	height: 40px;
+-	padding: 0 10px;
+-	border-radius: 8px;
+-	border: 1px solid var(--vscode-widget-border, rgba(255, 255, 255, 0.1));
+-	background: var(--vscode-editor-background);
+-	color: var(--vscode-editor-foreground);
+-	cursor: pointer;
+-	display: flex;
+-	align-items: center;
+-	justify-content: center;
+-	transition: background 0.12s ease, border-color 0.12s ease;
+-	outline: none;
+-	font-size: 13px;
+-	font-weight: 600;
+-	font-family: inherit;
+-	white-space: nowrap;
+-}
+-
+-.onboarding-a-signin-icon-btn:hover {
+-	background: var(--vscode-list-hoverBackground);
+-	border-color: var(--vscode-focusBorder);
+-}
+-
+-.onboarding-a-signin-icon-btn:focus-visible {
+-	outline: 2px solid var(--vscode-focusBorder);
+-	outline-offset: 2px;
+-}
+-
+ .onboarding-a-signin-btn.primary {
+ 	background: var(--vscode-button-background);
+ 	color: var(--vscode-button-foreground);
+@@ -880,14 +663,6 @@
+ 		0 0 0 4px var(--vscode-focusBorder);
+ }
+ 
+-.onboarding-a-signin-btn.primary .onboarding-a-provider-mark.github .codicon {
+-	color: var(--vscode-button-foreground);
+-}
+-
+-.onboarding-a-signin-btn.primary .onboarding-a-signin-btn-label {
+-	color: var(--vscode-button-foreground);
+-}
+-
+ @media (max-width: 720px) {
+ 	.onboarding-a-signin {
+ 		display: flex;
+@@ -905,13 +680,8 @@
+ 	}
+ 
+ 	.onboarding-a-signin-brand-icon {
+-		width: 124px;
+-		height: 124px;
+-		border-radius: 24px;
+-	}
+-
+-	.onboarding-a-signin-brand-icon {
+-		background-size: 78px;
++		width: 80px;
++		height: 80px;
+ 	}
+ 
+ 	.onboarding-a-signin-content {
+@@ -919,22 +689,6 @@
+ 		width: 100%;
+ 	}
+ 
+-	.onboarding-a-signin-content-main {
+-		justify-content: flex-start;
+-	}
+-
+-	.onboarding-a-signin-actions {
+-		grid-template-columns: repeat(2, minmax(0, 1fr));
+-	}
+-
+-	.onboarding-a-signin-btn {
+-		grid-column: 1 / -1;
+-	}
+-
+-	.onboarding-a-signin-icon-btn {
+-		width: 100%;
+-	}
+-
+ 	.onboarding-a-theme-grid {
+ 		grid-template-columns: repeat(2, minmax(0, 1fr));
+ 	}
+@@ -948,6 +702,12 @@
+ 	}
+ }
+ 
++@media (max-width: 720px) and (max-height: 600px) {
++	.onboarding-a-signin-brand {
++		display: none;
++	}
++}
++
+ /* Keymap pills with icons */
+ .onboarding-a-keymap-pill .codicon {
+ 	font-size: 13px;
+@@ -962,3 +722,27 @@
+ 		transition: none !important;
+ 	}
+ }
++
++/* Keep the welcome copy readable and selectable on smaller windows. */
++.onboarding-a-body {
++	scrollbar-width: thin;
++	scrollbar-color: transparent transparent;
++}
++
++.onboarding-a-body:hover,
++.onboarding-a-body:focus-within {
++	scrollbar-color: var(--vscode-scrollbarSlider-background) transparent;
++}
++
++.onboarding-a-body::-webkit-scrollbar {
++	width: 8px;
++}
++
++.onboarding-a-body::-webkit-scrollbar-thumb {
++	background: transparent;
++}
++
++.onboarding-a-body:hover::-webkit-scrollbar-thumb,
++.onboarding-a-body:focus-within::-webkit-scrollbar-thumb {
++	background: var(--vscode-scrollbarSlider-background);
++}
+diff --git a/src/vs/workbench/contrib/welcomeOnboarding/browser/onboardingVariationA.ts b/src/vs/workbench/contrib/welcomeOnboarding/browser/onboardingVariationA.ts
+index ff993368801eb47ad51e0701e56452f1ae88d28d..927c62d51de39a7e8f3293657ce04a6fb1ccbf97 100644
+--- a/src/vs/workbench/contrib/welcomeOnboarding/browser/onboardingVariationA.ts
++++ b/src/vs/workbench/contrib/welcomeOnboarding/browser/onboardingVariationA.ts
+@@ -4,37 +4,32 @@
+  *--------------------------------------------------------------------------------------------*/
+ 
+ import { Disposable, DisposableStore } from '../../../../base/common/lifecycle.js';
++import { disposableTimeout } from '../../../../base/common/async.js';
+ import { Emitter, Event } from '../../../../base/common/event.js';
+ import { $, append, addDisposableListener, EventType, clearNode, getActiveWindow } from '../../../../base/browser/dom.js';
+-import { isCancellationError } from '../../../../base/common/errors.js';
+-import { StopWatch } from '../../../../base/common/stopwatch.js';
+ import { URI } from '../../../../base/common/uri.js';
+ import { isWindows, isMacintosh, isLinux } from '../../../../base/common/platform.js';
+-import { assertDefined } from '../../../../base/common/types.js';
+ import { FileAccess } from '../../../../base/common/network.js';
+ import { ILayoutService } from '../../../../platform/layout/browser/layoutService.js';
+ import { KeyCode } from '../../../../base/common/keyCodes.js';
+ import { StandardKeyboardEvent } from '../../../../base/browser/keyboardEvent.js';
+-import { InputBox } from '../../../../base/browser/ui/inputbox/inputBox.js';
+ import { localize } from '../../../../nls.js';
++import { format } from '../../../../base/common/strings.js';
++import { IContextKeyService } from '../../../../platform/contextkey/common/contextkey.js';
++import { STEAMHARNESS_ICON_DATA_URI } from '../../../common/studioBranding.js';
++import { onboardingStrings } from '../common/onboardingStrings.js';
+ import { Codicon } from '../../../../base/common/codicons.js';
+ import { ThemeIcon } from '../../../../base/common/themables.js';
+ import { renderIcon } from '../../../../base/browser/ui/iconLabel/iconLabels.js';
+-import { Action } from '../../../../base/common/actions.js';
+ import { IWorkbenchThemeService } from '../../../services/themes/common/workbenchThemeService.js';
+ import { EXTENSION_INSTALL_SKIP_WALKTHROUGH_CONTEXT, IExtensionGalleryService, IExtensionManagementService } from '../../../../platform/extensionManagement/common/extensionManagement.js';
+-import { GitHubPaths, IDefaultAccountService } from '../../../../platform/defaultAccount/common/defaultAccount.js';
+ import { CancellationToken } from '../../../../base/common/cancellation.js';
+ import { INotificationService, Severity } from '../../../../platform/notification/common/notification.js';
+ import { ConfigurationTarget, IConfigurationService } from '../../../../platform/configuration/common/configuration.js';
+-import { defaultInputBoxStyles } from '../../../../platform/theme/browser/defaultStyles.js';
+ import product from '../../../../platform/product/common/product.js';
+ import { IFileService } from '../../../../platform/files/common/files.js';
+ import { IPathService } from '../../../services/path/common/pathService.js';
+ import { ITelemetryService } from '../../../../platform/telemetry/common/telemetry.js';
+-import { InstallChatEvent, InstallChatClassification, ChatSetupStrategy } from '../../chat/browser/chatSetup/chatSetup.js';
+-import { IChatMicrosoftSignInProbeService } from '../../chat/browser/chatSetup/chatSetupMicrosoftProbe.js';
+-import { autorun } from '../../../../base/common/observable.js';
+ import { ICommandService } from '../../../../platform/commands/common/commands.js';
+ import { IAccessibilityService } from '../../../../platform/accessibility/common/accessibility.js';
+ import {
+@@ -47,8 +42,6 @@ import {
+ 	getOnboardingStepSubtitle,
+ } from '../common/onboardingTypes.js';
+ import { IOnboardingService } from '../common/onboardingService.js';
+-import { addGitHubEnterpriseUri, getConfiguredGitHubEnterpriseUris, GheParseResultKind, isValidGitHubEnterpriseUri, parseGheInstanceInput } from '../../../services/accounts/common/githubEnterprise.js';
+-import { IWorkspaceTrustManagementService } from '../../../../platform/workspace/common/workspaceTrust.js';
+ 
+ type OnboardingStepViewClassification = {
+ 	owner: 'cwebster-99';
+@@ -76,10 +69,7 @@ type OnboardingActionEvent = {
+ 	argument: string | undefined;
+ };
+ 
+-type EnterpriseSignInUiState = 'options' | 'instance' | 'progress';
+-
+-assertDefined(product.defaultChatAgent, 'Onboarding requires a default chat agent product configuration.');
+-const defaultChat = product.defaultChatAgent;
++const accountContextKeys = new Set(['studio.authenticated']);
+ 
+ /**
+  * Variation A — Classic Wizard Modal
+@@ -89,8 +79,7 @@ const defaultChat = product.defaultChatAgent;
+  * tab. When dismissed, the welcome tab is revealed underneath.
+  *
+  * Steps:
+- * 1. Sign In — sessions-style sign-in hero with GitHub Copilot, Google, and Apple options, plus
+- *    Microsoft when {@link IChatMicrosoftSignInProbeService} offers it
++ * 1. Sign In — hand off to the shared SteamHarness account settings page
+  * 2. Personalize — Theme selection grid + keymap pills
+  */
+ export class OnboardingVariationA extends Disposable implements IOnboardingService {
+@@ -121,6 +110,7 @@ export class OnboardingVariationA extends Disposable implements IOnboardingServi
+ 	private readonly steps = ONBOARDING_STEPS;
+ 	private readonly disposables = this._register(new DisposableStore());
+ 	private readonly stepDisposables = this._register(new DisposableStore());
++	private readonly footerDisposables = this._register(new DisposableStore());
+ 	private previouslyFocusedElement: HTMLElement | undefined;
+ 	private _isShowing = false;
+ 
+@@ -131,14 +121,12 @@ export class OnboardingVariationA extends Disposable implements IOnboardingServi
+ 	private _detectedEditorIds: Set<string> | undefined;
+ 	private _userSignedIn = false;
+ 	private selectedAiMode: AiCollaborationMode = AiCollaborationMode.Balanced;
+-	private enterpriseSignInUiState: EnterpriseSignInUiState = 'options';
+-	private enterpriseInstanceValue = '';
+-	private enterpriseSignInWatch: StopWatch | undefined;
++	private openingAccount = false;
+ 
+ 	constructor(
+ 		@ILayoutService private readonly layoutService: ILayoutService,
+ 		@IWorkbenchThemeService private readonly themeService: IWorkbenchThemeService,
+-		@IDefaultAccountService private readonly defaultAccountService: IDefaultAccountService,
++		@IContextKeyService private readonly contextKeyService: IContextKeyService,
+ 		@IExtensionGalleryService private readonly extensionGalleryService: IExtensionGalleryService,
+ 		@IExtensionManagementService private readonly extensionManagementService: IExtensionManagementService,
+ 		@IConfigurationService private readonly configurationService: IConfigurationService,
+@@ -148,8 +136,6 @@ export class OnboardingVariationA extends Disposable implements IOnboardingServi
+ 		@ITelemetryService private readonly telemetryService: ITelemetryService,
+ 		@ICommandService private readonly commandService: ICommandService,
+ 		@IAccessibilityService private readonly accessibilityService: IAccessibilityService,
+-		@IChatMicrosoftSignInProbeService private readonly microsoftSignInProbeService: IChatMicrosoftSignInProbeService,
+-		@IWorkspaceTrustManagementService private readonly workspaceTrustManagementService: IWorkspaceTrustManagementService,
+ 	) {
+ 		super();
+ 
+@@ -170,10 +156,11 @@ export class OnboardingVariationA extends Disposable implements IOnboardingServi
+ 	}
+ 
+ 	show(): void {
+-		if (this.overlay) {
++		if (this.overlay || this._store.isDisposed) {
+ 			return;
+ 		}
+ 
++		this._userSignedIn = this.contextKeyService.getContextKeyValue<boolean>('studio.authenticated') === true;
+ 		this._isShowing = true;
+ 		this.previouslyFocusedElement = getActiveWindow().document.activeElement as HTMLElement | undefined;
+ 
+@@ -183,7 +170,7 @@ export class OnboardingVariationA extends Disposable implements IOnboardingServi
+ 		this.overlay = append(container, $('.onboarding-a-overlay'));
+ 		this.overlay.setAttribute('role', 'dialog');
+ 		this.overlay.setAttribute('aria-modal', 'true');
+-		this.overlay.setAttribute('aria-label', localize('onboarding.a.aria', "Welcome to Visual Studio Code"));
++		this.overlay.setAttribute('aria-label', onboardingStrings.welcome);
+ 
+ 		// Card
+ 		this.card = append(this.overlay, $('.onboarding-a-card'));
+@@ -191,7 +178,7 @@ export class OnboardingVariationA extends Disposable implements IOnboardingServi
+ 		// Close button (upper-right corner of card)
+ 		this.closeButton = append(this.card, $<HTMLButtonElement>('button.onboarding-a-close-btn'));
+ 		this.closeButton.type = 'button';
+-		this.closeButton.setAttribute('aria-label', localize('onboarding.close', "Close"));
++		this.closeButton.setAttribute('aria-label', onboardingStrings.close);
+ 		this.closeButton.appendChild(renderIcon(Codicon.close));
+ 
+ 		// Header with progress
+@@ -216,7 +203,7 @@ export class OnboardingVariationA extends Disposable implements IOnboardingServi
+ 		const footerRight = append(footer, $('.onboarding-a-footer-right'));
+ 
+ 		this.backButton = append(footerRight, $<HTMLButtonElement>('button.onboarding-a-btn.onboarding-a-btn-secondary'));
+-		this.backButton.textContent = localize('onboarding.back', "Back");
++		this.backButton.textContent = onboardingStrings.back;
+ 		this.backButton.type = 'button';
+ 		this.footerFocusableElements.push(this.backButton);
+ 
+@@ -231,13 +218,6 @@ export class OnboardingVariationA extends Disposable implements IOnboardingServi
+ 			this._dismiss('skip');
+ 		}));
+ 		this.disposables.add(addDisposableListener(this.backButton, EventType.CLICK, () => {
+-			if (this.currentStepIndex === 0 && this.enterpriseSignInUiState === 'instance') {
+-				this._logAction('cancelEnterpriseInstancePrompt');
+-				this.enterpriseSignInWatch = undefined;
+-				this._setEnterpriseSignInUiState('options');
+-				return;
+-			}
+-
+ 			this._logAction('back');
+ 			this._prevStep();
+ 		}));
+@@ -247,7 +227,7 @@ export class OnboardingVariationA extends Disposable implements IOnboardingServi
+ 				this._logAction('complete');
+ 				this._dismiss('complete');
+ 			} else if (this.currentStepIndex === 0) {
+-				this._logAction('continueWithoutSignIn');
++				this._logAction(this._userSignedIn ? 'next' : 'continueWithoutSignIn');
+ 				this._nextStep();
+ 			} else {
+ 				this._logAction('next');
+@@ -278,6 +258,24 @@ export class OnboardingVariationA extends Disposable implements IOnboardingServi
+ 			}
+ 		}));
+ 
++		this.disposables.add(this.contextKeyService.onDidChangeContext(event => {
++			if (!event.affectsSome(accountContextKeys)) {
++				return;
++			}
++			const signedIn = this.contextKeyService.getContextKeyValue<boolean>('studio.authenticated') === true;
++			if (signedIn !== this._userSignedIn) {
++				this._userSignedIn = signedIn;
++				const hadFocus = this.contentEl?.contains(getActiveWindow().document.activeElement);
++				if (this.steps[this.currentStepIndex] === OnboardingStepId.SignIn) {
++					this._renderStep();
++				}
++				this._updateButtonStates();
++				if (hadFocus) {
++					this._focusCurrentStepElement();
++				}
++			}
++		}));
++
+ 		// Entrance animation
+ 		this.overlay.classList.add('entering');
+ 		getActiveWindow().requestAnimationFrame(() => {
+@@ -288,19 +286,20 @@ export class OnboardingVariationA extends Disposable implements IOnboardingServi
+ 		this._focusCurrentStepElement();
+ 	}
+ 
+-	private _dismiss(reason: 'complete' | 'skip'): void {
+-		if (!this.overlay) {
++	private _dismiss(reason: 'complete' | 'skip', immediate = false): void {
++		const overlay = this.overlay;
++		if (!overlay) {
+ 			return;
+ 		}
+ 
+ 		this._logAction('dismiss', undefined, reason);
+ 
+-		this.overlay.classList.remove('visible');
+-		this.overlay.classList.add('exiting');
++		overlay.classList.remove('visible');
++		overlay.classList.add('exiting');
+ 
+ 		let handled = false;
+ 		const onTransitionEnd = () => {
+-			if (handled) {
++			if (handled || this.overlay !== overlay) {
+ 				return;
+ 			}
+ 			handled = true;
+@@ -311,18 +310,18 @@ export class OnboardingVariationA extends Disposable implements IOnboardingServi
+ 			this._onDidDismiss.fire();
+ 		};
+ 
+-		this.overlay.addEventListener('transitionend', onTransitionEnd, { once: true });
+-		setTimeout(onTransitionEnd, 400);
++		if (immediate) {
++			onTransitionEnd();
++			return;
++		}
++
++		this.disposables.add(addDisposableListener(overlay, 'transitionend', onTransitionEnd));
++		this.disposables.add(disposableTimeout(onTransitionEnd, 400));
+ 	}
+ 
+ 	private _nextStep(): void {
+ 		if (this.currentStepIndex < this.steps.length - 1) {
+ 			const leavingStep = this.steps[this.currentStepIndex];
+-			if (leavingStep === OnboardingStepId.SignIn) {
+-				this.enterpriseSignInUiState = 'options';
+-				this.enterpriseInstanceValue = '';
+-				this.enterpriseSignInWatch = undefined;
+-			}
+ 			this._applyStepSelections(leavingStep);
+ 			this.currentStepIndex++;
+ 			this._renderStep();
+@@ -375,12 +374,7 @@ export class OnboardingVariationA extends Disposable implements IOnboardingServi
+ 		}
+ 
+ 		this.progressContainer.appendChild(this.stepLabelEl);
+-		this.stepLabelEl.textContent = localize(
+-			'onboarding.stepOf',
+-			"{0} of {1}",
+-			this.currentStepIndex + 1,
+-			this.steps.length
+-		);
++		this.stepLabelEl.textContent = format(onboardingStrings.stepOf, this.currentStepIndex + 1, this.steps.length);
+ 	}
+ 
+ 	private _renderStep(): void {
+@@ -416,58 +410,41 @@ export class OnboardingVariationA extends Disposable implements IOnboardingServi
+ 				break;
+ 		}
+ 
+-		this.bodyEl?.setAttribute('aria-label', localize(
+-			'onboarding.step.aria',
+-			"Step {0} of {1}: {2}",
+-			this.currentStepIndex + 1,
+-			this.steps.length,
+-			getOnboardingStepTitle(stepId)
+-		));
++		this.bodyEl?.setAttribute('aria-label', format(onboardingStrings.stepAria, this.currentStepIndex + 1, this.steps.length, getOnboardingStepTitle(stepId)));
+ 	}
+ 
+ 	private _updateButtonStates(): void {
++		this.footerDisposables.clear();
+ 		if (this.backButton) {
+-			const showEnterpriseBack = this.currentStepIndex === 0 && this.enterpriseSignInUiState === 'instance';
+-			this.backButton.style.display = (this.currentStepIndex === 0 && !showEnterpriseBack) ? 'none' : '';
++			this.backButton.style.display = this.currentStepIndex === 0 ? 'none' : '';
+ 		}
+ 		if (this.nextButton) {
+ 			if (this.currentStepIndex === 0) {
+ 				if (this._userSignedIn) {
+ 					this.nextButton.className = 'onboarding-a-btn onboarding-a-btn-primary';
+-					this.nextButton.textContent = localize('onboarding.continue', "Continue");
++					this.nextButton.textContent = onboardingStrings.continue;
+ 				} else {
+ 					// Sign-in step: secondary "Continue without Signing In"
+ 					this.nextButton.className = 'onboarding-a-btn onboarding-a-btn-secondary';
+-					this.nextButton.textContent = localize('onboarding.continueWithoutSignIn', "Continue without Signing In");
++					this.nextButton.textContent = onboardingStrings.skipSignIn;
+ 				}
+ 			} else if (this._isLastStep()) {
+ 				this.nextButton.className = 'onboarding-a-btn onboarding-a-btn-primary';
+-				this.nextButton.textContent = localize('onboarding.getStarted', "Get Started");
++				this.nextButton.textContent = onboardingStrings.getStarted;
+ 			} else {
+ 				this.nextButton.className = 'onboarding-a-btn onboarding-a-btn-primary';
+-				this.nextButton.textContent = localize('onboarding.next', "Continue");
++				this.nextButton.textContent = onboardingStrings.continue;
+ 			}
+ 		}
+ 		if (this.footerLeft) {
+-			if (this._isLastStep()) {
+-				// Show sign-in nudge in footer
+-				if (!this._footerSignInBtn && !this._userSignedIn) {
+-					this._footerSignInBtn = append(this.footerLeft, $<HTMLButtonElement>('button.onboarding-a-signin-nudge-btn'));
+-					this._footerSignInBtn.type = 'button';
+-					this._footerSignInBtn.textContent = localize('onboarding.sessions.signInNudge', "Sign in to use GitHub Copilot");
+-					this.stepDisposables.add(addDisposableListener(this._footerSignInBtn, EventType.CLICK, async () => {
+-						this._logAction('signInNudge');
+-						await this._handleSignIn();
+-						if (this._userSignedIn && this._footerSignInBtn) {
+-							this._footerSignInBtn.style.display = 'none';
+-						}
+-					}));
+-				}
+-			} else {
+-				if (this._footerSignInBtn) {
+-					this._footerSignInBtn.remove();
+-					this._footerSignInBtn = undefined;
+-				}
++			// Rebuild the nudge with each step so its listener never outlives its step.
++			this._footerSignInBtn?.remove();
++			this._footerSignInBtn = undefined;
++			if (this._isLastStep() && !this._userSignedIn) {
++				const button = this._footerSignInBtn = append(this.footerLeft, $<HTMLButtonElement>('button.onboarding-a-signin-nudge-btn'));
++				button.type = 'button';
++				button.textContent = onboardingStrings.signIn;
++				this.footerDisposables.add(addDisposableListener(button, EventType.CLICK, () => { void this._handleSignIn(); }));
+ 			}
+ 		}
+ 	}
+@@ -479,356 +456,56 @@ export class OnboardingVariationA extends Disposable implements IOnboardingServi
+ 	private _renderSignInStep(container: HTMLElement): void {
+ 		const wrapper = append(container, $('.onboarding-a-signin'));
+ 		const brand = append(wrapper, $('.onboarding-a-signin-brand'));
+-		const brandIcon = append(brand, $('span.onboarding-a-signin-brand-icon'));
+-		brandIcon.setAttribute('role', 'img');
+-		brandIcon.setAttribute('aria-label', product.nameLong);
++		const brandIcon = append(brand, $<HTMLImageElement>('img.onboarding-a-signin-brand-icon'));
++		brandIcon.src = STEAMHARNESS_ICON_DATA_URI;
++		brandIcon.alt = '';
++		brandIcon.setAttribute('aria-hidden', 'true');
+ 
+ 		const content = append(wrapper, $('.onboarding-a-signin-content'));
+-		const contentMain = append(content, $('.onboarding-a-signin-content-main'));
+-		const title = append(contentMain, $('h2.onboarding-a-signin-title'));
+-		title.textContent = localize('onboarding.signIn.heroTitle', "Welcome to VS Code");
+-
+-		const subtitle = append(contentMain, $('p.onboarding-a-signin-subtitle'));
+-		subtitle.textContent = localize('onboarding.signIn.heroSubtitle', "Sign in to use GitHub Copilot.");
+-
+-		const actions = append(contentMain, $('.onboarding-a-signin-actions'));
++		const title = append(content, $('h2.onboarding-a-signin-title'));
++		title.textContent = onboardingStrings.welcome;
++		const subtitle = append(content, $('p.onboarding-a-signin-subtitle'));
++		subtitle.textContent = onboardingStrings.description;
+ 
++		const actions = append(content, $('.onboarding-a-signin-actions'));
+ 		if (this._userSignedIn) {
+ 			const signedIn = append(actions, $('.onboarding-a-signin-confirmation'));
++			signedIn.setAttribute('role', 'status');
+ 			const icon = append(signedIn, $('span'));
+ 			icon.classList.add(...ThemeIcon.asClassNameArray(Codicon.check));
+ 			icon.setAttribute('aria-hidden', 'true');
+-			const text = append(signedIn, $('span'));
+-			text.textContent = localize('onboarding.signIn.signedIn', "You're signed in. You can continue to the next step.");
++			append(signedIn, $('span')).textContent = onboardingStrings.signedIn;
+ 		} else {
+-			switch (this.enterpriseSignInUiState) {
+-				case 'instance':
+-					this._renderEnterpriseInstanceForm(actions);
+-					break;
+-				case 'progress':
+-					this._renderEnterpriseSignInProgress(actions);
+-					break;
+-				default:
+-					this._renderDefaultSignInActions(actions);
+-					break;
+-			}
+-		}
+-
+-		const footer = append(wrapper, $('.onboarding-a-signin-footer'));
+-
+-		const disclaimerCol = append(footer, $('.onboarding-a-signin-disclaimer-col'));
+-
+-		// GitHub Copilot disclaimer
+-		const copilotDisclaimer = append(disclaimerCol, $('.onboarding-a-signin-disclaimer'));
+-		copilotDisclaimer.append(localize('onboarding.signIn.disclaimer.prefix', "By signing in, you agree to {0}'s ", defaultChat.provider.default.name));
+-		this._createInlineLink(copilotDisclaimer, localize('onboarding.signIn.disclaimer.terms', "Terms"), defaultChat.termsStatementUrl);
+-		copilotDisclaimer.append(localize('onboarding.signIn.disclaimer.middle', " and "));
+-		this._createInlineLink(copilotDisclaimer, localize('onboarding.signIn.disclaimer.privacy', "Privacy Statement"), defaultChat.privacyStatementUrl);
+-		copilotDisclaimer.append(localize('onboarding.signIn.disclaimer.copilotPrefix', ". {0} Copilot may show ", defaultChat.provider.default.name));
+-		this._createInlineLink(copilotDisclaimer, localize('onboarding.signIn.disclaimer.publicCode', "public code"), defaultChat.publicCodeMatchesUrl);
+-		copilotDisclaimer.append(localize('onboarding.signIn.disclaimer.improveSuffix', " suggestions and use your data to improve the product."));
+-		copilotDisclaimer.append(' ');
+-		copilotDisclaimer.append(localize('onboarding.signIn.disclaimer.settingsPrefix', "You can change these "));
+-		this._createInlineLink(copilotDisclaimer, localize('onboarding.signIn.disclaimer.settings', "settings"), this.defaultAccountService.resolveGitHubUrl(GitHubPaths.copilotSettings));
+-		copilotDisclaimer.append(localize('onboarding.signIn.disclaimer.suffix', " anytime."));
+-	}
+-
+-	private _renderDefaultSignInActions(actions: HTMLElement): void {
+-		const githubBtn = this._registerStepFocusable(this._createSignInButton(actions, 'github', localize('onboarding.signIn.github', "Continue with GitHub"), {
+-			emphasized: true,
+-			label: localize('onboarding.signIn.github.aria', "Continue with GitHub")
+-		}));
+-		this.stepDisposables.add(addDisposableListener(githubBtn, EventType.CLICK, () => {
+-			this._logAction('signIn', undefined, 'github');
+-			this._handleSignIn();
+-		}));
+-
+-		const googleBtn = this._registerStepFocusable(this._createSignInButton(actions, 'google', localize('onboarding.signIn.google', "Continue with Google"), {
+-			iconOnly: true,
+-			label: localize('onboarding.signIn.google', "Continue with Google")
+-		}));
+-		this.stepDisposables.add(addDisposableListener(googleBtn, EventType.CLICK, () => {
+-			this._logAction('signIn', undefined, 'google');
+-			this._handleSignIn('google');
+-		}));
+-
+-		const appleBtn = this._registerStepFocusable(this._createSignInButton(actions, 'apple', localize('onboarding.signIn.apple', "Continue with Apple"), {
+-			iconOnly: true,
+-			label: localize('onboarding.signIn.apple', "Continue with Apple")
+-		}));
+-		this.stepDisposables.add(addDisposableListener(appleBtn, EventType.CLICK, () => {
+-			this._logAction('signIn', undefined, 'apple');
+-			this._handleSignIn('apple');
+-		}));
+-
+-		const microsoftBtn = this._registerStepFocusable(this._createSignInButton(actions, 'microsoft', localize('onboarding.signIn.microsoft', "Continue with Microsoft"), {
+-			iconOnly: true,
+-			label: localize('onboarding.signIn.microsoft', "Continue with Microsoft")
+-		}));
+-		this.stepDisposables.add(addDisposableListener(microsoftBtn, EventType.CLICK, () => {
+-			this._logAction('signIn', undefined, 'microsoft');
+-			this._handleSignIn(defaultChat.provider.microsoft.id);
+-		}));
+-		// Only offered once a linked Microsoft account is found, which can happen while this step shows.
+-		this.microsoftSignInProbeService.notifySignInShown();
+-		this.stepDisposables.add(autorun(reader => {
+-			microsoftBtn.style.display = this.microsoftSignInProbeService.offerMicrosoftSignIn.read(reader) ? '' : 'none';
+-		}));
+-
+-		const gheBtn = this._registerStepFocusable(this._createSignInButton(actions, 'github-enterprise', localize('onboarding.signIn.ghe', "GHE"), {
+-			textOnly: true,
+-			label: localize('onboarding.signIn.ghe.aria', "Continue with GitHub Enterprise")
+-		}));
+-		this.stepDisposables.add(addDisposableListener(gheBtn, EventType.CLICK, () => {
+-			this._logAction('signIn', undefined, 'github-enterprise');
+-			void this._handleEnterpriseSignIn();
+-		}));
+-	}
+-
+-	private static readonly GHE_INPUT_ACTION_PADDING = 28;
+-
+-	private _renderEnterpriseInstanceForm(actions: HTMLElement): void {
+-		const enterprisePromptLabel = this._getEnterpriseInstancePromptLabel();
+-		const replacedUri = getConfiguredGitHubEnterpriseUris(this.configurationService, this.workspaceTrustManagementService.isWorkspaceTrusted(), defaultChat.providerUriSetting).find(uri => !isValidGitHubEnterpriseUri(uri));
+-
+-		const container = append(actions, $('.onboarding-a-signin-ghe-input'));
+-
+-		const submitAction = this.stepDisposables.add(new Action(
+-			'onboarding.signIn.enterprise.submit',
+-			localize('onboarding.signIn.enterprise.continue', "Continue"),
+-			ThemeIcon.asClassName(Codicon.arrowRight),
+-			false,
+-		));
+-
+-		const inputBox = this.stepDisposables.add(new InputBox(container, undefined, {
+-			placeholder: localize('onboarding.signIn.enterprise.placeholder', 'i.e. "octocat" or "https://octocat.ghe.com"...'),
+-			ariaLabel: enterprisePromptLabel,
+-			actions: [submitAction],
+-			inputBoxStyles: defaultInputBoxStyles,
+-		}));
+-		inputBox.value = this.enterpriseInstanceValue;
+-		inputBox.paddingRight = OnboardingVariationA.GHE_INPUT_ACTION_PADDING;
+-		const input = this._registerStepFocusable(inputBox.inputElement);
+-
+-		const submit = async () => {
+-			const result = parseGheInstanceInput(inputBox.value);
+-			if (result.kind === GheParseResultKind.Empty || result.kind === GheParseResultKind.Invalid) {
+-				validate();
+-				return;
+-			}
+-			await this._submitEnterpriseInstance(result.resolvedUri, replacedUri);
+-		};
+-		submitAction.run = submit;
+-
+-		const message = append(container, $('.onboarding-a-signin-ghe-message'));
+-
+-		const validate = (): boolean => {
+-			this.enterpriseInstanceValue = inputBox.value;
+-			inputBox.element.classList.remove('error');
+-			message.classList.remove('error', 'info');
+-
+-			const result = parseGheInstanceInput(inputBox.value);
+-			switch (result.kind) {
+-				case GheParseResultKind.Empty:
+-					message.textContent = enterprisePromptLabel;
+-					submitAction.enabled = false;
+-					return false;
+-				case GheParseResultKind.SingleWord:
+-					message.classList.add('info');
+-					message.textContent = localize('onboarding.signIn.enterprise.resolve', "Will resolve to {0}", result.resolvedUri);
+-					submitAction.enabled = true;
+-					return true;
+-				case GheParseResultKind.FullUri:
+-					submitAction.enabled = true;
+-					message.textContent = '';
+-					return true;
+-				case GheParseResultKind.Invalid:
+-					inputBox.element.classList.add('error');
+-					message.classList.add('error');
+-					message.textContent = localize('onboarding.signIn.enterprise.invalid', "Enter a GHE.com instance name or HTTPS URL.");
+-					submitAction.enabled = false;
+-					return false;
+-			}
+-		};
+-
+-		this.stepDisposables.add(inputBox.onDidChange(() => {
+-			validate();
+-		}));
+-
+-		this.stepDisposables.add(addDisposableListener(input, EventType.KEY_DOWN, e => {
+-			const event = new StandardKeyboardEvent(e);
+-			if (event.keyCode === KeyCode.Enter) {
+-				e.preventDefault();
+-				void submitAction.run();
+-				return;
+-			}
+-
+-			if (event.keyCode === KeyCode.Escape) {
+-				e.preventDefault();
+-				e.stopPropagation();
+-				this._logAction('cancelEnterpriseInstancePrompt');
+-				this.enterpriseSignInWatch = undefined;
+-				this._setEnterpriseSignInUiState('options');
+-			}
+-		}));
+-
+-		validate();
+-	}
+-
+-	private _renderEnterpriseSignInProgress(actions: HTMLElement): void {
+-		const container = append(actions, $('.onboarding-a-signin-ghe-progress'));
+-		container.setAttribute('aria-live', 'polite');
+-		const spinner = append(container, $('span'));
+-		spinner.classList.add(...ThemeIcon.asClassNameArray(Codicon.loading), 'codicon-modifier-spin');
+-		spinner.setAttribute('aria-hidden', 'true');
+-		const message = append(container, $('.onboarding-a-signin-ghe-progress-message'));
+-		message.textContent = localize('onboarding.signIn.enterprise.progress', "Waiting for {0} sign-in to complete...", defaultChat.provider.enterprise.name);
+-	}
+-
+-	private _getEnterpriseInstancePromptLabel(): string {
+-		return localize('onboarding.signIn.enterprise.prompt', "What is your {0} instance?", defaultChat.provider.enterprise.name);
+-	}
+-
+-	private _setEnterpriseSignInUiState(state: EnterpriseSignInUiState): void {
+-		this.enterpriseSignInUiState = state;
+-		if (this.steps[this.currentStepIndex] === OnboardingStepId.SignIn && this.contentEl) {
+-			this._renderStep();
+-			this._updateButtonStates();
+-			this._focusCurrentStepElement();
+-		}
+-	}
+-
+-	private _createSignInButton(parent: HTMLElement, providerClass: 'github' | 'github-enterprise' | 'google' | 'apple' | 'microsoft', label: string, options?: { emphasized?: boolean; iconOnly?: boolean; textOnly?: boolean; label?: string }): HTMLButtonElement {
+-		const isCompact = options?.iconOnly || options?.textOnly;
+-		const btn = append(parent, $<HTMLButtonElement>(isCompact ? 'button.onboarding-a-signin-icon-btn' : 'button.onboarding-a-signin-btn'));
+-		btn.type = 'button';
+-		btn.title = options?.label ?? label;
+-		btn.setAttribute('aria-label', options?.label ?? label);
+-		if (options?.emphasized) {
+-			btn.classList.add('primary');
+-		}
+-
+-		if (!options?.textOnly) {
+-			const mark = append(btn, $('span.onboarding-a-provider-mark'));
+-			mark.classList.add(providerClass);
+-			mark.setAttribute('aria-hidden', 'true');
+-			if (providerClass === 'github' || providerClass === 'github-enterprise') {
+-				mark.appendChild(renderIcon(Codicon.github));
+-			}
++			const button = this._registerStepFocusable(append(actions, $<HTMLButtonElement>('button.onboarding-a-signin-btn.primary')));
++			button.type = 'button';
++			button.textContent = onboardingStrings.signIn;
++			this.stepDisposables.add(addDisposableListener(button, EventType.CLICK, () => { void this._handleSignIn(); }));
+ 		}
+ 
+-		if (!options?.iconOnly) {
+-			const labelEl = append(btn, $('span.onboarding-a-signin-btn-label'));
+-			labelEl.textContent = label;
+-		}
+-
+-		return btn;
++		const hint = append(content, $('p.onboarding-a-signin-hint'));
++		hint.textContent = onboardingStrings.accountHint;
+ 	}
+ 
+-	private async _handleSignIn(socialProvider?: string): Promise<void> {
+-		const provider = socialProvider ?? 'github';
+-		const watch = StopWatch.create();
+-		try {
+-			const account = await this.defaultAccountService.signIn({
+-				extraAuthorizeParameters: { get_started_with: 'copilot-vscode' },
+-				provider: socialProvider,
+-			});
+-			if (account) {
+-				this._userSignedIn = true;
+-				this.telemetryService.publicLog2<InstallChatEvent, InstallChatClassification>('commandCenter.chatInstall', { installResult: 'installed', installDuration: watch.elapsed(), signUpErrorCode: undefined, provider });
+-				// Run chat setup in the background (sign-up, extension install, entitlement resolution)
+-				this.commandService.executeCommand('workbench.action.chat.triggerSetup', undefined, {
+-					disableChatViewReveal: true,
+-					setupStrategy: ChatSetupStrategy.DefaultSetup,
+-				});
+-				this._nextStep();
+-			}
+-		} catch (error) {
+-			if (isCancellationError(error)) {
+-				this.telemetryService.publicLog2<InstallChatEvent, InstallChatClassification>('commandCenter.chatInstall', { installResult: 'cancelled', installDuration: watch.elapsed(), signUpErrorCode: undefined, provider });
+-				return;
+-			}
+-
+-			this.telemetryService.publicLog2<InstallChatEvent, InstallChatClassification>('commandCenter.chatInstall', { installResult: 'failedNotSignedIn', installDuration: watch.elapsed(), signUpErrorCode: undefined, provider });
+-			this.notificationService.notify({
+-				severity: Severity.Error,
+-				message: localize('onboarding.signIn.error', "Sign-in failed. You can try again later from the Accounts menu."),
+-			});
+-		}
+-	}
+-
+-	private async _handleEnterpriseSignIn(): Promise<void> {
+-		let uris: readonly string[];
+-		try {
+-			uris = getConfiguredGitHubEnterpriseUris(this.configurationService, this.workspaceTrustManagementService.isWorkspaceTrusted(), defaultChat.providerUriSetting);
+-		} catch {
+-			this._notifyEnterpriseSignInError();
++	private async _handleSignIn(): Promise<void> {
++		if (this.openingAccount) {
+ 			return;
+ 		}
+-		const invalidUri = uris.find(uri => !isValidGitHubEnterpriseUri(uri));
+-		const hasCloudInstance = uris.some(uri => parseGheInstanceInput(uri).kind === GheParseResultKind.FullUri);
+-		if (!hasCloudInstance || invalidUri !== undefined) {
+-			this.enterpriseInstanceValue = invalidUri ?? '';
+-			this.enterpriseSignInWatch ??= StopWatch.create();
+-			this._setEnterpriseSignInUiState('instance');
+-			return;
+-		}
+-
+-		await this._runEnterpriseSignInSetup();
+-	}
+-
+-	private async _submitEnterpriseInstance(resolvedUri: string, replacedUri?: string): Promise<void> {
++		this.openingAccount = true;
++		this._applyStepSelections(this.steps[this.currentStepIndex]);
++		this._logAction('signIn', undefined, 'steamharness');
++		// Remove the modal and its focus trap before revealing the shared login form.
++		this._dismiss('skip', true);
+ 		try {
+-			await addGitHubEnterpriseUri(this.configurationService, resolvedUri, this.workspaceTrustManagementService.isWorkspaceTrusted(), defaultChat.providerUriSetting, replacedUri);
+-			this.enterpriseInstanceValue = resolvedUri;
+-			await this._handleEnterpriseSignIn();
++			await this.commandService.executeCommand('studio.openAccount');
+ 		} catch {
+-			this.enterpriseSignInWatch = undefined;
+-			this._setEnterpriseSignInUiState('instance');
+-			this._notifyEnterpriseSignInError();
+-		}
+-	}
+-
+-	private async _runEnterpriseSignInSetup(): Promise<void> {
+-		const watch = this.enterpriseSignInWatch ?? StopWatch.create();
+-		const provider = defaultChat.provider.enterprise.id;
+-		this._setEnterpriseSignInUiState('progress');
+-
+-		try {
+-			const success = await this.commandService.executeCommand<boolean>('workbench.action.chat.triggerSetup', undefined, {
+-				disableChatViewReveal: true,
+-				setupStrategy: ChatSetupStrategy.SetupWithEnterpriseProvider,
+-			});
+-
+-			if (success) {
+-				this._userSignedIn = true;
+-				this.telemetryService.publicLog2<InstallChatEvent, InstallChatClassification>('commandCenter.chatInstall', { installResult: 'installed', installDuration: watch.elapsed(), signUpErrorCode: undefined, provider });
+-				this._nextStep();
+-			} else {
+-				this._setEnterpriseSignInUiState('options');
+-			}
+-		} catch (error) {
+-			if (isCancellationError(error)) {
+-				this._setEnterpriseSignInUiState('options');
+-				this.telemetryService.publicLog2<InstallChatEvent, InstallChatClassification>('commandCenter.chatInstall', { installResult: 'cancelled', installDuration: watch.elapsed(), signUpErrorCode: undefined, provider });
+-				return;
++			if (!this._store.isDisposed) {
++				this.notificationService.notify({ severity: Severity.Error, message: onboardingStrings.openAccountError });
+ 			}
+-
+-			this._setEnterpriseSignInUiState('instance');
+-			this.telemetryService.publicLog2<InstallChatEvent, InstallChatClassification>('commandCenter.chatInstall', { installResult: 'failedNotSignedIn', installDuration: watch.elapsed(), signUpErrorCode: undefined, provider });
+-			this._notifyEnterpriseSignInError();
+ 		} finally {
+-			this.enterpriseSignInWatch = undefined;
++			this.openingAccount = false;
+ 		}
+ 	}
+ 
+-	private _notifyEnterpriseSignInError(): void {
+-		this.notificationService.notify({
+-			severity: Severity.Error,
+-			message: localize('onboarding.signIn.enterprise.error', "GitHub Enterprise sign-in failed. Check your instance URL and try again."),
+-		});
+-	}
+-
+ 	// =====================================================================
+ 	// Step: Personalize (Theme + Keymap)
+ 	// =====================================================================
+@@ -838,14 +515,14 @@ export class OnboardingVariationA extends Disposable implements IOnboardingServi
+ 
+ 		// Theme section
+ 		const themeLabel = append(wrapper, $('div.onboarding-a-section-label'));
+-		themeLabel.textContent = localize('onboarding.personalize.theme', "Color Theme");
++		themeLabel.textContent = onboardingStrings.theme;
+ 
+ 		const themeHint = append(wrapper, $('div.onboarding-a-theme-hint'));
+-		themeHint.textContent = localize('onboarding.personalize.themeHint', "You can browse and install more themes later from the Extensions view.");
++		themeHint.textContent = onboardingStrings.themeHint;
+ 
+ 		const themeGrid = append(wrapper, $('.onboarding-a-theme-grid'));
+ 		themeGrid.setAttribute('role', 'radiogroup');
+-		themeGrid.setAttribute('aria-label', localize('onboarding.personalize.themeLabel', "Choose a color theme"));
++		themeGrid.setAttribute('aria-label', onboardingStrings.chooseTheme);
+ 
+ 		const hasOtherEditors = this._hasOtherEditors();
+ 		const allThemes = product.onboardingThemes ?? [];
+@@ -874,14 +551,14 @@ export class OnboardingVariationA extends Disposable implements IOnboardingServi
+ 
+ 		if (hasOtherEditors) {
+ 			const keymapLabel = append(wrapper, $('div.onboarding-a-section-label.onboarding-a-section-label-keymap'));
+-			keymapLabel.textContent = localize('onboarding.personalize.keymap', "Keyboard Mapping");
++			keymapLabel.textContent = onboardingStrings.keymap;
+ 
+ 			const keymapHint = append(wrapper, $('div.onboarding-a-theme-hint'));
+-			keymapHint.textContent = localize('onboarding.personalize.keymapHint', "Coming from another editor? Import your keyboard mapping to feel right at home.");
++			keymapHint.textContent = onboardingStrings.keymapHint;
+ 
+ 			const keymapList = append(wrapper, $('.onboarding-a-keymap-list'));
+ 			keymapList.setAttribute('role', 'radiogroup');
+-			keymapList.setAttribute('aria-label', localize('onboarding.personalize.keymapLabel', "Choose a keyboard mapping"));
++			keymapList.setAttribute('aria-label', onboardingStrings.chooseKeymap);
+ 
+ 			const keymapPills: HTMLButtonElement[] = [];
+ 			for (const keymap of keymapOptions) {
+@@ -909,7 +586,7 @@ export class OnboardingVariationA extends Disposable implements IOnboardingServi
+ 					}
+ 					pill.classList.add('selected');
+ 					pill.setAttribute('aria-checked', 'true');
+-					this.accessibilityService.alert(localize('onboarding.keymap.selected.alert', "{0} keyboard mapping selected", keymap.label));
++					this.accessibilityService.alert(format(onboardingStrings.keymapSelected, keymap.label));
+ 				}));
+ 			}
+ 			const selectedKeymapIndex = keymapOptions.findIndex(k => k.id === this.selectedKeymapId);
+@@ -919,17 +596,7 @@ export class OnboardingVariationA extends Disposable implements IOnboardingServi
+ 	}
+ 
+ 	private _renderPersonalizeSubtitle(container: HTMLElement): void {
+-		clearNode(container);
+-		const modifier = isMacintosh ? 'Cmd' : 'Ctrl';
+-		container.append(
+-			localize('onboarding.personalize.tip.prefix', "Tip: Press "),
+-			this._createKbd(localize({ key: 'onboarding.personalize.tip.modifier', comment: ['This is a keyboard modifier key, Ctrl on Windows/Linux or Cmd on Mac'] }, "{0}", modifier)),
+-			'+',
+-			this._createKbd(localize('onboarding.personalize.tip.shift', "Shift")),
+-			'+',
+-			this._createKbd(localize('onboarding.personalize.tip.p', "P")),
+-			localize('onboarding.personalize.tip.suffix', " to access all VS Code commands."),
+-		);
++		container.textContent = format(onboardingStrings.commandHint, isMacintosh ? '⌘⇧P' : 'Ctrl+Shift+P');
+ 	}
+ 
+ 	private _createThemeCard(parent: HTMLElement, theme: IOnboardingThemeOption, allCards: HTMLElement[]): void {
+@@ -962,7 +629,7 @@ export class OnboardingVariationA extends Disposable implements IOnboardingServi
+ 			}
+ 			card.classList.add('selected');
+ 			card.setAttribute('aria-checked', 'true');
+-			this.accessibilityService.alert(localize('onboarding.theme.selected.alert', "{0} theme selected", theme.label));
++			this.accessibilityService.alert(format(onboardingStrings.themeSelected, theme.label));
+ 		}));
+ 
+ 		this.stepDisposables.add(addDisposableListener(card, EventType.KEY_DOWN, (e: KeyboardEvent) => {
+@@ -1000,7 +667,7 @@ export class OnboardingVariationA extends Disposable implements IOnboardingServi
+ 		} catch {
+ 			this.notificationService.notify({
+ 				severity: Severity.Warning,
+-				message: localize('onboarding.keymap.installError', "Could not install {0} keymap. You can install it later from Extensions.", keymap.label),
++				message: format(onboardingStrings.keymapInstallError, keymap.label),
+ 			});
+ 		}
+ 	}
+@@ -1135,25 +802,6 @@ export class OnboardingVariationA extends Disposable implements IOnboardingServi
+ 		}
+ 	}
+ 
+-	private _createKbd(label: string): HTMLElement {
+-		const kbd = $('kbd.onboarding-a-kbd');
+-		kbd.textContent = label;
+-		return kbd;
+-	}
+-
+-	private _createInlineLink(parent: HTMLElement, label: string, href: string | undefined): void {
+-		if (!href) {
+-			parent.append(label);
+-			return;
+-		}
+-
+-		const link = this._registerStepFocusable(append(parent, $<HTMLAnchorElement>('a.onboarding-a-inline-link')));
+-		link.textContent = label;
+-		link.href = href;
+-		link.target = '_blank';
+-		link.rel = 'noopener';
+-	}
+-
+ 	// =====================================================================
+ 	// Radio-group keyboard navigation (roving tabindex)
+ 	// =====================================================================
+@@ -1226,7 +874,7 @@ export class OnboardingVariationA extends Disposable implements IOnboardingServi
+ 	}
+ 
+ 	private _getFocusableElements(): HTMLElement[] {
+-		return [...(this.closeButton ? [this.closeButton] : []), ...this.stepFocusableElements, ...this.footerFocusableElements].filter(element => this._isTabbable(element));
++		return [...(this.closeButton ? [this.closeButton] : []), ...this.stepFocusableElements, ...(this._footerSignInBtn ? [this._footerSignInBtn] : []), ...this.footerFocusableElements].filter(element => this._isTabbable(element));
+ 	}
+ 
+ 	private _focusCurrentStepElement(): void {
+@@ -1292,12 +940,10 @@ export class OnboardingVariationA extends Disposable implements IOnboardingServi
+ 		this._footerSignInBtn = undefined;
+ 		this.footerFocusableElements.length = 0;
+ 		this.stepFocusableElements.length = 0;
+-		this.enterpriseSignInUiState = 'options';
+-		this.enterpriseInstanceValue = '';
+-		this.enterpriseSignInWatch = undefined;
+ 		this._isShowing = false;
+ 		this.disposables.clear();
+ 		this.stepDisposables.clear();
++		this.footerDisposables.clear();
+ 
+ 		if (this.previouslyFocusedElement) {
+ 			this.previouslyFocusedElement.focus();
+diff --git a/src/vs/workbench/contrib/welcomeOnboarding/common/onboardingStrings.ts b/src/vs/workbench/contrib/welcomeOnboarding/common/onboardingStrings.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..3b0bf7312171a61e57bc1a7ebdf8f3a277a60064
+--- /dev/null
++++ b/src/vs/workbench/contrib/welcomeOnboarding/common/onboardingStrings.ts
+@@ -0,0 +1,70 @@
++/*---------------------------------------------------------------------------------------------
++ *  Copyright (c) Microsoft Corporation. All rights reserved.
++ *  Licensed under the MIT License. See License.txt in the project root for license information.
++ *--------------------------------------------------------------------------------------------*/
++
++import { language } from '../../../../base/common/platform.js';
++import { localize } from '../../../../nls.js';
++
++const defaults = {
++	welcome: localize('studio.onboarding.welcome', "Welcome to SteamHarness Studio"),
++	description: localize('studio.onboarding.description', "Sign in to your SteamHarness server to access your projects and account services."),
++	signIn: localize('studio.onboarding.signIn', "Sign In to SteamHarness"),
++	accountHint: localize('studio.onboarding.accountHint', "Choose your server and sign in on the Account page in Settings. You can also sign in later from the account menu."),
++	signedIn: localize('studio.onboarding.signedIn', "You're signed in to SteamHarness. Continue to personalize your workspace."),
++	openAccountError: localize('studio.onboarding.openAccountError', "Unable to open the account page. Try again from the account menu or Settings > Account."),
++	close: localize('studio.onboarding.close', "Close"),
++	back: localize('studio.onboarding.back', "Back"),
++	continue: localize('studio.onboarding.continue', "Continue"),
++	skipSignIn: localize('studio.onboarding.skipSignIn', "Continue without Signing In"),
++	getStarted: localize('studio.onboarding.getStarted', "Get Started"),
++	stepOf: localize('studio.onboarding.stepOf', "{0} of {1}"),
++	stepAria: localize('studio.onboarding.stepAria', "Step {0} of {1}: {2}"),
++	signInTitle: localize('studio.onboarding.signInTitle', "Sign In"),
++	personalizeTitle: localize('studio.onboarding.personalizeTitle', "Make It Yours"),
++	personalizeSubtitle: localize('studio.onboarding.personalizeSubtitle', "Choose your theme and keyboard mapping"),
++	theme: localize('studio.onboarding.theme', "Color Theme"),
++	themeHint: localize('studio.onboarding.themeHint', "You can browse and install more themes later from the Extensions view."),
++	chooseTheme: localize('studio.onboarding.chooseTheme', "Choose a color theme"),
++	themeSelected: localize('studio.onboarding.themeSelected', "{0} theme selected"),
++	keymap: localize('studio.onboarding.keymap', "Keyboard Mapping"),
++	keymapHint: localize('studio.onboarding.keymapHint', "Coming from another editor? Import your keyboard mapping to feel right at home."),
++	chooseKeymap: localize('studio.onboarding.chooseKeymap', "Choose a keyboard mapping"),
++	keymapSelected: localize('studio.onboarding.keymapSelected', "{0} keyboard mapping selected"),
++	keymapInstallError: localize('studio.onboarding.keymapInstallError', "Could not install {0} keymap. You can install it later from Extensions."),
++	commandHint: localize('studio.onboarding.commandHint', "Tip: Press {0} to access all SteamHarness Studio commands."),
++};
++
++// Studio strings are also available before a language pack has been installed.
++const translations: Record<string, Partial<typeof defaults>> = {
++	'zh-cn': {
++		welcome: "欢迎使用 SteamHarness Studio",
++		description: "登录你的 SteamHarness 服务器，访问项目和账号服务。",
++		signIn: "登录 SteamHarness",
++		accountHint: "在设置的“账号”页选择服务器并登录。你也可以稍后从账号菜单登录。",
++		signedIn: "已登录 SteamHarness，继续设置你的工作区外观。",
++		openAccountError: "无法打开账号页，请从账号菜单或“设置 > 账号”重试。",
++		close: "关闭",
++		back: "上一步",
++		continue: "继续",
++		skipSignIn: "暂不登录，继续",
++		getStarted: "开始使用",
++		stepOf: "第 {0} 步，共 {1} 步",
++		stepAria: "第 {0} 步，共 {1} 步：{2}",
++		signInTitle: "登录",
++		personalizeTitle: "个性化设置",
++		personalizeSubtitle: "选择主题和键盘映射",
++		theme: "颜色主题",
++		themeHint: "稍后可以在扩展视图中浏览和安装更多主题。",
++		chooseTheme: "选择颜色主题",
++		themeSelected: "已选择 {0} 主题",
++		keymap: "键盘映射",
++		keymapHint: "从其他编辑器迁移？导入熟悉的键盘映射。",
++		chooseKeymap: "选择键盘映射",
++		keymapSelected: "已选择 {0} 键盘映射",
++		keymapInstallError: "无法安装 {0} 键盘映射，稍后可以从扩展视图安装。",
++		commandHint: "提示：按 {0} 访问所有 SteamHarness Studio 命令。",
++	},
++};
++
++export const onboardingStrings = { ...defaults, ...translations[language] };
+diff --git a/src/vs/workbench/contrib/welcomeOnboarding/common/onboardingTypes.ts b/src/vs/workbench/contrib/welcomeOnboarding/common/onboardingTypes.ts
+index 2b06b29bebff3d946f2dffff96bccd4d5d50b7c3..0d7042f853e774f3d7e781c226f91f493cd786c4 100644
+--- a/src/vs/workbench/contrib/welcomeOnboarding/common/onboardingTypes.ts
++++ b/src/vs/workbench/contrib/welcomeOnboarding/common/onboardingTypes.ts
+@@ -5,6 +5,7 @@
+ 
+ import { localize } from '../../../../nls.js';
+ import { IProductOnboardingTheme } from '../../../../base/common/product.js';
++import { onboardingStrings } from './onboardingStrings.js';
+ 
+ /**
+  * Step identifiers for the onboarding walkthrough.
+@@ -21,9 +22,9 @@ export const enum OnboardingStepId {
+ export function getOnboardingStepTitle(stepId: OnboardingStepId): string {
+ 	switch (stepId) {
+ 		case OnboardingStepId.SignIn:
+-			return localize('onboarding.step.signIn', "Sign In");
++			return onboardingStrings.signInTitle;
+ 		case OnboardingStepId.Personalize:
+-			return localize('onboarding.step.personalize', "Make It Yours");
++			return onboardingStrings.personalizeTitle;
+ 		case OnboardingStepId.AiPreference:
+ 			return localize('onboarding.step.aiPreference', "Your AI Style");
+ 	}
+@@ -35,9 +36,9 @@ export function getOnboardingStepTitle(stepId: OnboardingStepId): string {
+ export function getOnboardingStepSubtitle(stepId: OnboardingStepId): string {
+ 	switch (stepId) {
+ 		case OnboardingStepId.SignIn:
+-			return localize('onboarding.step.signIn.subtitle', "Sync settings, unlock AI features, and connect to GitHub");
++			return onboardingStrings.description;
+ 		case OnboardingStepId.Personalize:
+-			return localize('onboarding.step.personalize.subtitle', "Choose your theme and keyboard mapping");
++			return onboardingStrings.personalizeSubtitle;
+ 		case OnboardingStepId.AiPreference:
+ 			return localize('onboarding.step.aiPreference.subtitle', "Choose how much AI collaboration fits your workflow");
+ 	}
+diff --git a/src/vs/workbench/contrib/welcomeOnboarding/test/browser/onboardingVariationA.test.ts b/src/vs/workbench/contrib/welcomeOnboarding/test/browser/onboardingVariationA.test.ts
+index 00dd7c1cfc1ce65e8105c6bc6a572e2141f65a75..b16a36d56f0607bb5e39caf42f51d19b8b735dc3 100644
+--- a/src/vs/workbench/contrib/welcomeOnboarding/test/browser/onboardingVariationA.test.ts
++++ b/src/vs/workbench/contrib/welcomeOnboarding/test/browser/onboardingVariationA.test.ts
+@@ -7,303 +7,156 @@ import assert from 'assert';
+ import sinon from 'sinon';
+ import { $ } from '../../../../../base/browser/dom.js';
+ import { mainWindow } from '../../../../../base/browser/window.js';
+-import { DeferredPromise } from '../../../../../base/common/async.js';
++import { Emitter } from '../../../../../base/common/event.js';
+ import { toDisposable } from '../../../../../base/common/lifecycle.js';
+-import { constObservable, observableValue } from '../../../../../base/common/observable.js';
+ import { ensureNoDisposablesAreLeakedInTestSuite } from '../../../../../base/test/common/utils.js';
+ import { ICommandService } from '../../../../../platform/commands/common/commands.js';
+-import { ConfigurationTarget, IConfigurationService } from '../../../../../platform/configuration/common/configuration.js';
++import { IConfigurationService } from '../../../../../platform/configuration/common/configuration.js';
+ import { TestConfigurationService } from '../../../../../platform/configuration/test/common/testConfigurationService.js';
+-import { IDefaultAccountService } from '../../../../../platform/defaultAccount/common/defaultAccount.js';
++import { IContextKeyChangeEvent, IContextKeyService } from '../../../../../platform/contextkey/common/contextkey.js';
+ import { IExtensionGalleryService, IExtensionManagementService } from '../../../../../platform/extensionManagement/common/extensionManagement.js';
++import { IFileService } from '../../../../../platform/files/common/files.js';
+ import { ILayoutService } from '../../../../../platform/layout/browser/layoutService.js';
+-import { IWorkspaceTrustManagementService } from '../../../../../platform/workspace/common/workspaceTrust.js';
++import { MockContextKeyService } from '../../../../../platform/keybinding/test/common/mockKeybindingService.js';
++import { INotificationService } from '../../../../../platform/notification/common/notification.js';
++import { TestNotificationService } from '../../../../../platform/notification/test/common/testNotificationService.js';
+ import { ColorThemeData } from '../../../../services/themes/common/colorThemeData.js';
+ import { IWorkbenchThemeService } from '../../../../services/themes/common/workbenchThemeService.js';
+ import { workbenchInstantiationService } from '../../../../test/browser/workbenchTestServices.js';
+ import { OnboardingVariationA } from '../../browser/onboardingVariationA.js';
+-import { IChatMicrosoftSignInProbeService } from '../../../chat/browser/chatSetup/chatSetupMicrosoftProbe.js';
+-import { ChatSetupStrategy } from '../../../chat/browser/chatSetup/chatSetup.js';
+-import { gitHubEnterpriseUrisSetting } from '../../../../services/accounts/common/githubEnterprise.js';
++import { onboardingStrings } from '../../common/onboardingStrings.js';
+ 
+ suite('OnboardingVariationA', () => {
+ 	const store = ensureNoDisposablesAreLeakedInTestSuite();
+ 	teardown(() => sinon.restore());
+ 
+-	function createOnboarding(configuration = new TestConfigurationService(), settingsUrl?: string, trusted = true, microsoftSignIn: IChatMicrosoftSignInProbeService = { _serviceBrand: undefined, offerMicrosoftSignIn: constObservable(false), notifySignInShown() { } }) {
++	function createOnboarding(signedIn = false) {
+ 		const container = mainWindow.document.body.appendChild($('div'));
+ 		store.add(toDisposable(() => container.remove()));
++		const configuration = new TestConfigurationService();
+ 		store.add(configuration.onDidChangeConfigurationEmitter);
++		const contextChange = store.add(new Emitter<IContextKeyChangeEvent>());
++		const contextKeys = new MockContextKeyService();
++		const authenticated = contextKeys.createKey('studio.authenticated', signedIn);
++		sinon.stub(contextKeys, 'onDidChangeContext').get(() => contextChange.event);
+ 		const instantiationService = workbenchInstantiationService(undefined, store);
+ 		instantiationService.stub(ILayoutService, { activeContainer: container });
+ 		instantiationService.stub(IWorkbenchThemeService, { getColorTheme: () => ColorThemeData.createLoadedEmptyTheme('test', '') });
+ 		instantiationService.stub(IExtensionGalleryService, {});
+ 		instantiationService.stub(IExtensionManagementService, {});
+-		instantiationService.stub(IDefaultAccountService, { resolveGitHubUrl: () => settingsUrl });
+ 		instantiationService.stub(IConfigurationService, configuration);
+-		instantiationService.stub(IWorkspaceTrustManagementService, { isWorkspaceTrusted: () => trusted });
+-		instantiationService.stub(IChatMicrosoftSignInProbeService, microsoftSignIn);
+-		const commandInvoked = new DeferredPromise<void>();
+-		const executeCommand = sinon.stub().callsFake(async () => {
+-			await commandInvoked.complete();
+-			return false;
+-		});
++		instantiationService.stub(IContextKeyService, contextKeys);
++		instantiationService.stub(IFileService, { exists: async () => false });
++		const notifications = new TestNotificationService();
++		const notify = sinon.spy(notifications, 'notify');
++		instantiationService.stub(INotificationService, notifications);
++		const executeCommand = sinon.stub().resolves();
+ 		instantiationService.stub(ICommandService, { executeCommand });
+ 		const onboarding = store.add(instantiationService.createInstance(OnboardingVariationA));
+ 		onboarding.show();
+-		return { container, executeCommand, commandInvoked: commandInvoked.p };
+-	}
+-
+-	function clickEnterpriseSignIn(container: HTMLElement): void {
+-		const button = container.querySelector<HTMLElement>('[aria-label="Continue with GitHub Enterprise"]');
+-		assert.ok(button);
+-		button.click();
+-	}
+-
+-	for (const settingsUrl of [undefined, 'https://tenant.ghe.com/settings/copilot/features']) {
+-		test(`settings disclaimer ${settingsUrl ? 'links to the selected server' : 'has no link or focus stop when the URL is unavailable'}`, () => {
+-			const { container } = createOnboarding(undefined, settingsUrl);
+-
+-			const disclaimer = container.querySelector('.onboarding-a-signin-disclaimer');
+-			assert.ok(disclaimer);
+-			const settingsLinks = Array.from(disclaimer.querySelectorAll('a, [tabindex]'))
+-				.filter(element => element.textContent === 'settings');
+-			assert.deepStrictEqual({
+-				coherentText: disclaimer.textContent?.endsWith('You can change these settings anytime.'),
+-				settingsLinks: settingsLinks.map(link => ({
+-					tag: link.tagName,
+-					href: link.getAttribute('href'),
+-				})),
+-			}, {
+-				coherentText: true,
+-				settingsLinks: settingsUrl ? [{ tag: 'A', href: settingsUrl }] : [],
+-			});
+-		});
++		return {
++			container, onboarding, executeCommand, notify,
++			setSignedIn: (value: boolean) => {
++				authenticated.set(value);
++				contextChange.fire({ affectsSome: keys => keys.has('studio.authenticated'), allKeysContainedIn: () => false });
++			},
++		};
+ 	}
+ 
+-	test('offers Microsoft sign-in as soon as the probe service does, even while the step is showing', () => {
+-		const offered = observableValue('offerMicrosoftSignIn', false);
+-		let shown = 0;
+-		const { container } = createOnboarding(undefined, undefined, true, {
+-			_serviceBrand: undefined,
+-			offerMicrosoftSignIn: offered,
+-			notifySignInShown: () => { shown++; },
+-		});
+-		const microsoftButton = () => container.querySelector<HTMLElement>('.onboarding-a-signin-actions button[aria-label="Continue with Microsoft"]');
+-		const visibleBefore = microsoftButton()?.style.display !== 'none';
+-		offered.set(true, undefined);
+-
+-		assert.deepStrictEqual({ shown, exists: !!microsoftButton(), visibleBefore, visibleOnceOffered: microsoftButton()?.style.display !== 'none' }, {
+-			shown: 1,
+-			exists: true,
+-			visibleBefore: false,
+-			visibleOnceOffered: true,
+-		});
+-	});
+-
+-	for (const uris of [['https://a.ghe.com', 'https://b.ghe.com'], ['https://b.ghe.com', 'https://a.ghe.com']]) {
+-		test(`enterprise setup leaves host selection to authentication (${uris.join(', ')})`, async () => {
+-			const configuration = new TestConfigurationService({ [gitHubEnterpriseUrisSetting]: uris, 'github-enterprise.uri': 'https://legacy.ghe.com' });
+-			const { container, executeCommand, commandInvoked } = createOnboarding(configuration);
+-			clickEnterpriseSignIn(container);
+-			await commandInvoked;
+-			await executeCommand.firstCall.returnValue;
+-			assert.deepStrictEqual({
+-				commands: executeCommand.getCalls().map(call => call.args),
+-				hosts: configuration.getValue(gitHubEnterpriseUrisSetting),
+-				hasInstanceInput: !!container.querySelector('.onboarding-a-signin-ghe-input')
+-			}, {
+-				commands: [['workbench.action.chat.triggerSetup', undefined, { disableChatViewReveal: true, setupStrategy: ChatSetupStrategy.SetupWithEnterpriseProvider }]],
+-				hosts: uris,
+-				hasInstanceInput: false
+-			});
+-		});
++	function button(container: HTMLElement, selector: string): HTMLButtonElement {
++		const element = container.querySelector<HTMLButtonElement>(selector);
++		assert.ok(element);
++		return element;
+ 	}
+ 
+-	test('explicit empty configuration prompts for enrollment without preselecting the deprecated host', () => {
+-		const configuration = new TestConfigurationService({ [gitHubEnterpriseUrisSetting]: [], 'github-enterprise.uri': 'https://legacy.ghe.com' });
+-		const { container, executeCommand } = createOnboarding(configuration);
+-		clickEnterpriseSignIn(container);
+-		assert.deepStrictEqual({
+-			value: container.querySelector<HTMLInputElement>('.onboarding-a-signin-ghe-input input')?.value,
+-			commands: executeCommand.getCalls()
+-		}, { value: '', commands: [] });
++	test('offers the shared SteamHarness account page without Copilot or social providers', () => {
++		const { container } = createOnboarding();
++		assert.strictEqual(container.querySelector('h2.onboarding-a-signin-title')?.textContent, onboardingStrings.welcome);
++		assert.strictEqual(button(container, '.onboarding-a-signin-actions button').textContent, onboardingStrings.signIn);
++		assert.strictEqual(container.querySelectorAll('.onboarding-a-signin-actions button').length, 1);
++		assert.strictEqual(container.querySelector('.onboarding-a-signin-disclaimer'), null);
++		assert.doesNotMatch(container.textContent ?? '', /GitHub|Copilot|Google|Apple|GHE/);
+ 	});
+ 
+-	for (const values of [
+-		{ 'github-enterprise.uri': 'not-a-url' },
+-		{ [gitHubEnterpriseUrisSetting]: ['not-a-url'] },
+-		{ [gitHubEnterpriseUrisSetting]: ['https://valid.ghe.com', 'not-a-url'] },
+-	]) {
+-		test(`corrects invalid enterprise URLs without discarding other hosts (${JSON.stringify(values)})`, async () => {
+-			const configuration = new TestConfigurationService({ ...values });
+-			sinon.stub(configuration, 'updateValue').callsFake((key, value) => configuration.setUserConfiguration(key, value));
+-			const { container, executeCommand, commandInvoked } = createOnboarding(configuration);
+-			clickEnterpriseSignIn(container);
+-			const input = container.querySelector<HTMLInputElement>('.onboarding-a-signin-ghe-input input');
+-			assert.strictEqual(input?.value, 'not-a-url');
+-			assert.ok(input);
+-			input.value = 'https://corrected.ghe.com';
+-			input.dispatchEvent(new mainWindow.Event('input', { bubbles: true }));
+-			input.dispatchEvent(new mainWindow.KeyboardEvent('keydown', { key: 'Enter', keyCode: 13, bubbles: true }));
+-			await commandInvoked;
+-			await executeCommand.firstCall.returnValue;
+-			assert.deepStrictEqual({
+-				hosts: configuration.getValue(gitHubEnterpriseUrisSetting),
+-				setupCalls: executeCommand.callCount
+-			}, {
+-				hosts: [...(values[gitHubEnterpriseUrisSetting] ?? []).filter(uri => uri !== 'not-a-url'), 'https://corrected.ghe.com'],
+-				setupCalls: 1
+-			});
++	test('removes the modal and notifies completion storage before opening Account', async () => {
++		const { container, onboarding, executeCommand } = createOnboarding();
++		let dismissed = 0;
++		store.add(onboarding.onDidDismiss(() => dismissed++));
++		executeCommand.callsFake(async () => {
++			assert.strictEqual(container.querySelector('[role="dialog"]'), null);
++			assert.strictEqual(onboarding.isShowing, false);
++			assert.strictEqual(dismissed, 1);
+ 		});
+-	}
+-
+-	test('cancelling enterprise URL correction does not change the host list', () => {
+-		const hosts = ['https://valid.ghe.com', 'not-a-url'];
+-		const configuration = new TestConfigurationService({ [gitHubEnterpriseUrisSetting]: hosts });
+-		const write = sinon.stub(configuration, 'updateValue').resolves();
+-		const { container, executeCommand } = createOnboarding(configuration);
+-		clickEnterpriseSignIn(container);
+-		const input = container.querySelector<HTMLInputElement>('.onboarding-a-signin-ghe-input input');
+-		assert.ok(input);
+-		input.dispatchEvent(new mainWindow.KeyboardEvent('keydown', { key: 'Escape', keyCode: 27, bubbles: true }));
+-		assert.deepStrictEqual({
+-			hosts: configuration.getValue(gitHubEnterpriseUrisSetting),
+-			writes: write.callCount,
+-			setupCalls: executeCommand.callCount
+-		}, { hosts, writes: 0, setupCalls: 0 });
++		const signIn = button(container, '.onboarding-a-signin-actions button');
++		signIn.click();
++		signIn.click();
++		await executeCommand.firstCall.returnValue;
++		assert.deepStrictEqual(executeCommand.getCalls().map(call => call.args), [['studio.openAccount']]);
+ 	});
+ 
+-	test('Copilot enrollment rejects a GHES URL without changing general enterprise configuration', () => {
+-		const hosts = ['https://github.example.com', 'not-a-url'];
+-		const configuration = new TestConfigurationService({ [gitHubEnterpriseUrisSetting]: hosts });
+-		const write = sinon.stub(configuration, 'updateValue').resolves();
+-		const { container, executeCommand } = createOnboarding(configuration);
+-		clickEnterpriseSignIn(container);
+-		const input = container.querySelector<HTMLInputElement>('.onboarding-a-signin-ghe-input input');
+-		assert.ok(input);
+-		input.value = 'https://another-server.example.com';
+-		input.dispatchEvent(new mainWindow.Event('input', { bubbles: true }));
+-		input.dispatchEvent(new mainWindow.KeyboardEvent('keydown', { key: 'Enter', keyCode: 13, bubbles: true }));
+-		assert.deepStrictEqual({
+-			hosts: configuration.getValue(gitHubEnterpriseUrisSetting),
+-			writes: write.callCount,
+-			setupCalls: executeCommand.callCount,
+-			message: container.querySelector('.onboarding-a-signin-ghe-message')?.textContent
+-		}, { hosts, writes: 0, setupCalls: 0, message: 'Enter a GHE.com instance name or HTTPS URL.' });
++	test('shows an actionable failure and leaves the workbench usable when Account cannot open', async () => {
++		const { container, executeCommand, notify } = createOnboarding();
++		executeCommand.rejects(new Error('extension unavailable'));
++		button(container, '.onboarding-a-signin-actions button').click();
++		await assert.rejects(executeCommand.firstCall.returnValue);
++		assert.strictEqual(notify.firstCall.args[0].message, onboardingStrings.openAccountError);
++		assert.strictEqual(container.querySelector('[role="dialog"]'), null);
+ 	});
+ 
+-	test('a GHES-only configuration prompts for a cloud instance and preserves the server', async () => {
+-		const configuration = new TestConfigurationService({ [gitHubEnterpriseUrisSetting]: ['https://github.example.com/Team'] });
+-		sinon.stub(configuration, 'updateValue').callsFake((key, value) => configuration.setUserConfiguration(key, value));
+-		const { container, executeCommand, commandInvoked } = createOnboarding(configuration);
+-		clickEnterpriseSignIn(container);
+-		const input = container.querySelector<HTMLInputElement>('.onboarding-a-signin-ghe-input input');
+-		assert.ok(input);
+-		assert.deepStrictEqual({ value: input.value, setupCalls: executeCommand.callCount }, { value: '', setupCalls: 0 });
+-		input.value = 'https://cloud.ghe.com';
+-		input.dispatchEvent(new mainWindow.Event('input', { bubbles: true }));
+-		input.dispatchEvent(new mainWindow.KeyboardEvent('keydown', { key: 'Enter', keyCode: 13, bubbles: true }));
+-		await commandInvoked;
+-		await executeCommand.firstCall.returnValue;
+-		assert.deepStrictEqual(configuration.getValue(gitHubEnterpriseUrisSetting), ['https://github.example.com/Team', 'https://cloud.ghe.com']);
++	test('reads the existing session and updates when restoration or sign-out changes it', () => {
++		const { container, setSignedIn } = createOnboarding(true);
++		assert.strictEqual(container.querySelector('.onboarding-a-signin-confirmation')?.textContent, onboardingStrings.signedIn);
++		assert.strictEqual(container.querySelector('.onboarding-a-signin-actions button'), null);
++		assert.strictEqual(button(container, '.onboarding-a-footer-right button:last-child').textContent, onboardingStrings.continue);
++		setSignedIn(false);
++		assert.strictEqual(button(container, '.onboarding-a-signin-actions button').textContent, onboardingStrings.signIn);
++		setSignedIn(true);
++		assert.strictEqual(container.querySelector('.onboarding-a-signin-actions button'), null);
+ 	});
+ 
+-	test('correction preserves hosts added while the invalid URI is being edited', async () => {
+-		const configuration = new TestConfigurationService({ [gitHubEnterpriseUrisSetting]: ['https://valid.ghe.com', 'not-a-url'] });
+-		sinon.stub(configuration, 'updateValue').callsFake((key, value) => configuration.setUserConfiguration(key, value));
+-		const { container, executeCommand, commandInvoked } = createOnboarding(configuration);
+-		clickEnterpriseSignIn(container);
+-		await configuration.setUserConfiguration(gitHubEnterpriseUrisSetting, ['https://valid.ghe.com', 'not-a-url', 'https://added.ghe.com']);
+-		const input = container.querySelector<HTMLInputElement>('.onboarding-a-signin-ghe-input input');
+-		assert.ok(input);
+-		input.value = 'https://corrected.ghe.com';
+-		input.dispatchEvent(new mainWindow.Event('input', { bubbles: true }));
+-		input.dispatchEvent(new mainWindow.KeyboardEvent('keydown', { key: 'Enter', keyCode: 13, bubbles: true }));
+-		await commandInvoked;
+-		await executeCommand.firstCall.returnValue;
+-		assert.deepStrictEqual(configuration.getValue(gitHubEnterpriseUrisSetting), ['https://valid.ghe.com', 'https://added.ghe.com', 'https://corrected.ghe.com']);
+-	});
+-
+-	test('repairs each invalid URI before starting setup and focuses the next correction', async () => {
+-		const configuration = new TestConfigurationService({ [gitHubEnterpriseUrisSetting]: ['first invalid', 'second invalid'] });
+-		sinon.stub(configuration, 'updateValue').callsFake((key, value) => configuration.setUserConfiguration(key, value));
+-		const { container, executeCommand, commandInvoked } = createOnboarding(configuration);
+-		clickEnterpriseSignIn(container);
+-		const first = container.querySelector<HTMLInputElement>('.onboarding-a-signin-ghe-input input');
+-		assert.ok(first);
+-		const nextPrompt = new DeferredPromise<void>();
+-		const observer = new mainWindow.MutationObserver(() => {
+-			if (container.querySelector<HTMLInputElement>('.onboarding-a-signin-ghe-input input')?.value === 'second invalid') {
+-				nextPrompt.complete();
+-			}
+-		});
+-		store.add(toDisposable(() => observer.disconnect()));
+-		observer.observe(container, { childList: true, subtree: true });
+-		first.value = 'https://first.ghe.com';
+-		first.dispatchEvent(new mainWindow.Event('input', { bubbles: true }));
+-		first.dispatchEvent(new mainWindow.KeyboardEvent('keydown', { key: 'Enter', keyCode: 13, bubbles: true }));
+-		await nextPrompt.p;
+-		observer.disconnect();
+-		const second = container.querySelector<HTMLInputElement>('.onboarding-a-signin-ghe-input input');
+-		assert.ok(second);
+-		assert.deepStrictEqual({ setupCalls: executeCommand.callCount, focused: mainWindow.document.activeElement === second }, { setupCalls: 0, focused: true });
+-		second.value = 'https://second.ghe.com';
+-		second.dispatchEvent(new mainWindow.Event('input', { bubbles: true }));
+-		second.dispatchEvent(new mainWindow.KeyboardEvent('keydown', { key: 'Enter', keyCode: 13, bubbles: true }));
+-		await commandInvoked;
+-		await executeCommand.firstCall.returnValue;
+-		assert.deepStrictEqual(configuration.getValue(gitHubEnterpriseUrisSetting), ['https://first.ghe.com', 'https://second.ghe.com']);
++	test('skipping sign-in still allows personalization and completion without authentication', () => {
++		const { container, onboarding, executeCommand } = createOnboarding();
++		let completed = 0, dismissed = 0;
++		store.add(onboarding.onDidComplete(() => completed++));
++		store.add(onboarding.onDidDismiss(() => dismissed++));
++		button(container, '.onboarding-a-footer-right button:last-child').click();
++		assert.ok(container.querySelector('.onboarding-a-personalize'));
++		button(container, '.onboarding-a-footer-right button:last-child').click();
++		container.querySelector('.onboarding-a-overlay')?.dispatchEvent(new mainWindow.Event('transitionend'));
++		assert.strictEqual(container.querySelector('[role="dialog"]'), null);
++		assert.deepStrictEqual({ completed, dismissed, commands: executeCommand.callCount }, { completed: 1, dismissed: 1, commands: 0 });
+ 	});
+ 
+-	test('enrollment preserves hosts added while the instance prompt is open', async () => {
+-		const configuration = new TestConfigurationService({ [gitHubEnterpriseUrisSetting]: [] });
+-		const update = sinon.stub(configuration, 'updateValue').callsFake((key, value) => configuration.setUserConfiguration(key, value));
+-		const { container, executeCommand, commandInvoked } = createOnboarding(configuration);
+-		clickEnterpriseSignIn(container);
+-		await configuration.setUserConfiguration(gitHubEnterpriseUrisSetting, ['https://other.ghe.com']);
+-		const input = container.querySelector<HTMLInputElement>('.onboarding-a-signin-ghe-input input');
+-		assert.ok(input);
+-		input.value = 'chosen';
+-		input.dispatchEvent(new mainWindow.Event('input', { bubbles: true }));
+-		input.dispatchEvent(new mainWindow.KeyboardEvent('keydown', { key: 'Enter', keyCode: 13, bubbles: true }));
+-		await commandInvoked;
++	test('the personalization sign-in nudge still works after navigating back and forward', async () => {
++		const { container, executeCommand } = createOnboarding();
++		button(container, '.onboarding-a-footer-right button:last-child').click();
++		button(container, '.onboarding-a-footer-right button:first-child').click();
++		button(container, '.onboarding-a-footer-right button:last-child').click();
++		button(container, '.onboarding-a-signin-nudge-btn').click();
+ 		await executeCommand.firstCall.returnValue;
+-		assert.deepStrictEqual({
+-			writes: update.getCalls().map(call => call.args),
+-			setupCalls: executeCommand.callCount
+-		}, {
+-			writes: [[gitHubEnterpriseUrisSetting, ['https://other.ghe.com', 'https://chosen.ghe.com'], ConfigurationTarget.USER]],
+-			setupCalls: 1
+-		});
++		assert.deepStrictEqual(executeCommand.firstCall.args, ['studio.openAccount']);
+ 	});
+ 
+-	test('untrusted workspace configuration does not prompt over a legacy user host', async () => {
+-		const configuration = new TestConfigurationService({ [gitHubEnterpriseUrisSetting]: [], 'github-enterprise.uri': 'https://legacy.ghe.com' });
+-		sinon.stub(configuration, 'inspect').returns({ defaultValue: [], workspaceValue: [], value: [] });
+-		const { container, executeCommand, commandInvoked } = createOnboarding(configuration, undefined, false);
+-		clickEnterpriseSignIn(container);
+-		await commandInvoked;
+-		await executeCommand.firstCall.returnValue;
+-		assert.deepStrictEqual({
+-			setupCalls: executeCommand.callCount,
+-			hasInstanceInput: !!container.querySelector('.onboarding-a-signin-ghe-input')
+-		}, { setupCalls: 1, hasInstanceInput: false });
++	test('the personalization nudge follows account changes while the step remains open', () => {
++		const { container, setSignedIn } = createOnboarding();
++		button(container, '.onboarding-a-footer-right button:last-child').click();
++		setSignedIn(true);
++		assert.strictEqual(container.querySelector('.onboarding-a-signin-nudge-btn'), null);
++		setSignedIn(false);
++		assert.ok(container.querySelector('.onboarding-a-signin-nudge-btn'));
+ 	});
+ 
+-	test('untrusted enrollment writes a user host rather than the ignored workspace setting', async () => {
+-		const configuration = new TestConfigurationService({ [gitHubEnterpriseUrisSetting]: [] });
+-		sinon.stub(configuration, 'inspect').callsFake(key => ({ defaultValue: [], userValue: configuration.getValue(key), workspaceValue: [], value: configuration.getValue(key) }));
+-		const update = sinon.stub(configuration, 'updateValue').callsFake((key, value) => configuration.setUserConfiguration(key, value));
+-		const { container, executeCommand, commandInvoked } = createOnboarding(configuration, undefined, false);
+-		clickEnterpriseSignIn(container);
+-		const input = container.querySelector<HTMLInputElement>('.onboarding-a-signin-ghe-input input');
+-		assert.ok(input);
+-		input.value = 'chosen';
+-		input.dispatchEvent(new mainWindow.Event('input', { bubbles: true }));
+-		input.dispatchEvent(new mainWindow.KeyboardEvent('keydown', { key: 'Enter', keyCode: 13, bubbles: true }));
+-		await commandInvoked;
+-		await executeCommand.firstCall.returnValue;
+-		assert.deepStrictEqual(update.firstCall.args, [gitHubEnterpriseUrisSetting, ['https://chosen.ghe.com'], ConfigurationTarget.USER]);
++	test('repeated show uses one modal and reopening reads the latest session', () => {
++		const { container, onboarding, setSignedIn } = createOnboarding();
++		onboarding.show();
++		assert.strictEqual(container.querySelectorAll('[role="dialog"]').length, 1);
++		button(container, '.onboarding-a-close-btn').click();
++		container.querySelector('.onboarding-a-overlay')?.dispatchEvent(new mainWindow.Event('transitionend'));
++		setSignedIn(true);
++		onboarding.show();
++		assert.ok(container.querySelector('.onboarding-a-signin-confirmation'));
++		onboarding.dispose();
++		onboarding.show();
++		assert.strictEqual(container.querySelector('[role="dialog"]'), null);
+ 	});
+ });

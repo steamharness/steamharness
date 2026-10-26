@@ -123,10 +123,10 @@ try {
   });
   await page.setViewportSize({ width: 1440, height: 980 });
   await page.locator('.part.titlebar .studio-workflow-run').waitFor({ timeout: 45_000 });
-  await command(`Workflow: ${catalog['command.openProjectAccount']}`);
-  const account = await frameFor('#account-app');
+  await command(`SteamHarness: ${catalog['context.signIn']}`);
+  const account = await frameFor('#login-app');
   await account.locator('#login-email').fill('connection@example.test'); await account.locator('#login-password').fill('test-password');
-  await account.locator('#login-submit').click(); await account.locator('#account-status.connected').waitFor();
+  await account.locator('#login-submit').click(); await (await frameFor('#account-app')).locator('#account-status.connected').waitFor();
   await page.waitForFunction(() => document.querySelector('.accounts-avatar')?.naturalWidth > 0);
   await page.evaluate(() => {
     window.avatarStability = { removals: 0 };

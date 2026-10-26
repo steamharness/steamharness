@@ -182,10 +182,10 @@ for (const language of languages) {
     assert.equal(JSON.parse(await readFile(path.join(board.data, 'kanban.json'), 'utf8')).configurations[0].values.title, 'Saved map');
     await card('map').scrollIntoViewIfNeeded(); await screenshot('kanban-inline');
     proof.checks.push('the actual Kanban artifact renders tasks using the named configuration and temporary parameters without overwriting saved configuration');
-    await command(`Workflow: ${catalog['command.openProjectAccount']}`);
-    const account = await frameFor('#account-app'); await account.locator('#server-url').fill(serverUrl);
+    await command(`SteamHarness: ${catalog['context.signIn']}`);
+    const account = await frameFor('#login-app'); await account.locator('#server-url').fill(serverUrl);
     await account.locator('#login-email').fill('cards@example.com'); await account.locator('#login-password').fill('offline-password'); await account.locator('#login-submit').click();
-    await account.locator('#display-name').filter({ hasText: 'Card Test' }).waitFor();
+    await (await frameFor('#account-app')).locator('#display-name').filter({ hasText: 'Card Test' }).waitFor();
     await page.getByRole('tab', { name: conversation.manifest.steamHarness.projectInfo.localizedNames[language === 'en' ? 'en' : 'zh-CN'], exact: true }).click();
     conversationFrame = await frameFor('body[data-surface=editor] #message');
     await card('server-doc').locator('[data-action=inline]').click();
