@@ -54,6 +54,10 @@ try {
         assert.equal((await last('settings-update')).value, 'Light');
         await send('settings-saved', { key: 'workbench.colorTheme', target: 'user' });
         const languageChoice = page.locator('#settings-language-choice');
+        assert.equal(await page.locator('#settings-language-current').textContent(), language === 'en'
+          ? 'Current display language: English. Changes take effect after restarting Studio.'
+          : '当前显示语言：简体中文。切换语言需重启 Studio 后生效。');
+        assert.equal(await page.locator('#settings-language-pending').isVisible(), false);
         await languageChoice.click();
         const menu = page.locator('.settings-dropdown-menu:popover-open');
         assert.deepEqual(await menu.locator('[role="option"]').evaluateAll(nodes => nodes.map(node => node.dataset.value)), ['system', 'zh-cn', 'en']);
@@ -76,6 +80,12 @@ try {
         await selectSettingsOption(page, languageChoice, 'zh-cn');
         await send('settings-language-result', { value: 'zh-cn' });
         assert.equal(await page.locator('#settings-language-error').isVisible(), false);
+        assert.equal(await page.locator('#settings-language-pending').isVisible(), language === 'en');
+        await fits();
+        if (language === 'en' && width === 1440) {
+          const name = `settings-${language}-${theme}-pending-language.png`;
+          await page.screenshot({ path: path.join(output, name), fullPage: true }); screenshots.push(name);
+        }
         await page.locator('[data-language-reset]').click();
         assert.equal((await last('settings-language')).value, 'system');
         await send('settings-language-result', { value: 'system' });

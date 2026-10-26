@@ -121,6 +121,40 @@ try {
     assert.equal(await page.locator('#settings-search').evaluate(node => node === document.activeElement), true);
     checks.push(`${language}: dropdown keyboard, refresh and dismissal`);
 
+    state = await setup(language, 'general');
+    const preferred = language === 'en' ? 'zh-cn' : 'en';
+    state = { ...state, languagePreference: preferred };
+    const languageChoice = page.locator('#settings-language-choice');
+    const currentLanguage = page.locator('#settings-language-current');
+    const pendingLanguage = page.locator('#settings-language-pending');
+    const restartLanguage = page.locator('#settings-language-restart');
+    await send('settings', { state });
+    assert.equal(await languageChoice.evaluate(node => node.value), preferred, 'A saved preference remains selected while the old host is running');
+    assert.equal(await currentLanguage.textContent(), language === 'en'
+      ? 'Current display language: English. Changes take effect after restarting Studio.'
+      : '当前显示语言：简体中文。切换语言需重启 Studio 后生效。');
+    assert.equal(await pendingLanguage.locator('p').textContent(), language === 'en'
+      ? 'Restart Studio to apply 简体中文.' : '重启 Studio 后切换为English。');
+    assert.equal(await restartLanguage.textContent(), language === 'en' ? 'Restart to apply' : '重启并应用');
+    await restartLanguage.click();
+    assert.deepEqual(await page.evaluate(() => window.messages.filter(message => message.type === 'settings-language')), [{ type: 'settings-language', value: preferred }]);
+    assert.equal(await languageChoice.isDisabled(), true);
+    await send('settings', { state });
+    assert.equal(await pendingLanguage.isVisible(), false, 'A refresh must not expose a second restart while one is pending');
+    await send('settings-language-result', { value: preferred });
+    assert.equal(await pendingLanguage.isVisible(), true, 'Canceling the restart keeps the unapplied preference visible');
+    assert.equal(await restartLanguage.evaluate(node => node === document.activeElement), true, 'Canceling restart restores keyboard focus');
+    await restartLanguage.click();
+    await send('settings-language-result', { value: preferred, message: 'Fixture restart failure' });
+    assert.equal(await page.locator('#settings-language-error').textContent(), 'Fixture restart failure');
+    assert.equal(await restartLanguage.isEnabled(), true);
+    assert.equal(await restartLanguage.evaluate(node => node === document.activeElement), true);
+    await send('settings', { state: { ...state, languagePreference: language } });
+    assert.equal(await pendingLanguage.isVisible(), false, 'Matching the active language needs no restart');
+    await send('settings', { state: { ...state, languagePreference: 'system' } });
+    assert.equal(await pendingLanguage.isVisible(), false, 'Following the system is a preference rather than a display language');
+    checks.push(`${language}: active language and saved preference, restart retry, cancellation and failure`);
+
     state = await setup(language);
     await send('settings', { state: { ...state, workspaceAvailable: false } });
     const scope = page.locator('#settings-target');

@@ -68,6 +68,7 @@ export function createSettingsView(root: HTMLElement, vscode: WebviewApi): { acc
   let scrollTimer: ReturnType<typeof setTimeout> | undefined;
   let restoredScroll: number | undefined;
   let languageSaving = false;
+  let languageRestarting = false;
   let languageError = '';
   let languageDropdown: SettingsDropdown | undefined;
   const targetDropdown = new SettingsDropdown(target, () => {
@@ -237,28 +238,45 @@ export function createSettingsView(root: HTMLElement, vscode: WebviewApi): { acc
     if (appearance && !root.querySelector('#settings-language')) {
       const row = element('div', 'setting-row'); row.id = 'settings-language';
       const label = element('label', 'setting-label', t('Display language')); label.htmlFor = 'settings-language-choice';
-      const copy = element('div', 'setting-copy'); copy.append(label, element('p', 'muted setting-description', t('Choose the application language. A restart may be required.')));
+      const description = element('p', 'muted setting-description'); description.id = 'settings-language-current';
+      const copy = element('div', 'setting-copy'); copy.append(label, description);
       const controls = element('div', 'setting-controls');
       const button = element('button'); button.id = label.htmlFor; button.setAttribute('aria-label', t('Display language'));
       const reset = element('button', 'icon-button setting-reset'); reset.type = 'button'; reset.dataset.languageReset = '';
       reset.title = t('Restore default'); reset.setAttribute('aria-label', t('Restore default for {0}', t('Display language'))); reset.append(icon('discard'));
       const error = element('p', 'setting-error'); error.id = 'settings-language-error'; error.setAttribute('role', 'alert'); error.hidden = true;
-      button.setAttribute('aria-describedby', error.id);
+      button.setAttribute('aria-describedby', `${description.id} settings-language-pending ${error.id}`);
       const chooseLanguage = (value: string): void => {
         if (languageSaving) { return; }
         languageSaving = true; languageError = ''; saveStatus.textContent = t('Saving...');
         languageDropdown!.update(languageOptions, value, true); reset.disabled = true;
+        find('settings-language-pending').hidden = true;
+        find<HTMLButtonElement>('settings-language-restart').disabled = true;
         error.textContent = ''; error.hidden = true; button.setAttribute('aria-invalid', 'false');
         vscode.postMessage({ type: 'settings-language', value });
       };
       languageDropdown = new SettingsDropdown(button, () => chooseLanguage(button.value), true);
       reset.addEventListener('click', () => chooseLanguage('system'));
-      controls.append(button, reset); row.append(copy, controls, error); appearance.append(row);
+      const pending = element('div', 'setting-language-pending'); pending.id = 'settings-language-pending'; pending.hidden = true;
+      pending.setAttribute('role', 'status'); pending.setAttribute('aria-live', 'polite');
+      const restart = element('button', 'secondary', t('Restart to apply')); restart.id = 'settings-language-restart'; restart.type = 'button';
+      restart.addEventListener('click', () => { if (snapshot && !languageSaving) { languageRestarting = true; chooseLanguage(snapshot.languagePreference); } });
+      pending.append(element('p', 'muted'), restart);
+      controls.append(button, reset); row.append(copy, controls, pending, error); appearance.append(row);
     }
     const language = root.querySelector<HTMLButtonElement>('#settings-language-choice');
     if (language && languageDropdown) {
       languageDropdown.update(languageOptions, languageSaving ? language.value : snapshot.languagePreference, languageSaving);
       find('settings-language').querySelector<HTMLButtonElement>('[data-language-reset]')!.disabled = languageSaving || snapshot.languagePreference === 'system';
+      const active = snapshot.language.toLowerCase();
+      const activeLabel = languageOptions.find(option => option.value === active)?.label ?? snapshot.language;
+      find('settings-language-current').textContent = t('Current display language: {0}. Changes take effect after restarting Studio.', activeLabel);
+      const pending = find('settings-language-pending');
+      const preference = snapshot.languagePreference;
+      const selected = languageOptions.find(option => option.value === preference);
+      pending.hidden = languageSaving || !selected || selected.value === 'system' || selected.value === active;
+      pending.querySelector('p')!.textContent = selected ? t('Restart Studio to apply {0}.', selected.label) : '';
+      find<HTMLButtonElement>('settings-language-restart').disabled = languageSaving;
       language.setAttribute('aria-invalid', String(!!languageError));
       const error = find('settings-language-error'); error.textContent = languageError; error.hidden = !languageError;
     }
@@ -378,6 +396,10 @@ export function createSettingsView(root: HTMLElement, vscode: WebviewApi): { acc
       if (snapshot) { snapshot.languagePreference = message.value; }
       saveStatus.textContent = [...edits.values()].some(edit => edit.saving) ? t('Saving...') : languageError ? t('Unable to save setting.') : '';
       renderSettings();
+      if (languageRestarting) {
+        languageRestarting = false;
+        find<HTMLButtonElement>(find('settings-language-pending').hidden ? 'settings-language-choice' : 'settings-language-restart').focus();
+      }
     } else if (message.type === 'settings-saved' || message.type === 'settings-error') {
       const id = editId(message.key, message.target);
       const edit = edits.get(id);

@@ -35,6 +35,8 @@
 .setting-copy { min-width: 0; }
 .setting-row label, .setting-label { display: block; margin: 0; font-size: 13px; font-weight: 500; overflow-wrap: anywhere; }
 .setting-description { margin-top: 4px; font-size: 12px; line-height: 1.6; }
+.setting-language-pending { grid-column: 1 / -1; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px 16px; }
+.setting-language-pending p { margin: 0; font-size: 12px; line-height: 1.6; }
 .setting-controls { display: flex; align-items: center; justify-content: flex-end; gap: 6px; min-width: 0; }
 .setting-controls input, .setting-controls .settings-dropdown { min-width: 0; width: 100%; }
 .settings-dropdown { justify-content: space-between; gap: 10px; min-width: 0; max-width: 100%; min-height: 34px; padding: 5px 10px; text-align: left; border: 1px solid var(--vscode-dropdown-border, var(--vscode-panel-border)); border-radius: 5px; color: var(--vscode-dropdown-foreground, var(--vscode-input-foreground)); background: var(--vscode-dropdown-background, var(--vscode-input-background)); }
