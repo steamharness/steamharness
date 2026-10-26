@@ -4,11 +4,14 @@ import { chromium } from '../upstream/vscode/node_modules/playwright/index.mjs';
 import { settingsFixture, settingsThemeCss, selectSettingsOption } from './settings-ui-fixture.mjs';
 
 const extension = new URL('../extensions/studio-workstation/', import.meta.url);
-const [js, css, chinese] = await Promise.all([
+const [js, css, icons, fontData, chinese] = await Promise.all([
   readFile(new URL('dist/account-ui.js', extension), 'utf8'),
   readFile(new URL('dist/account-ui.css', extension), 'utf8'),
+  readFile(new URL('dist/codicons/codicon.css', extension), 'utf8'),
+  readFile(new URL('dist/codicons/codicon.ttf', extension)),
   readFile(new URL('l10n/bundle.l10n.zh-cn.json', extension), 'utf8').then(JSON.parse),
 ]);
+const iconCss = icons.replace(/url\([^)]+\)/g, `url(data:font/ttf;base64,${fontData.toString('base64')})`);
 const browser = await chromium.launch({ channel: process.env.STEAMHARNESS_UI_BROWSER ?? 'chrome', headless: true });
 const page = await browser.newPage({ viewport: { width: 1440, height: 800 } });
 const errors = [], checks = [];
@@ -21,6 +24,9 @@ const category = id => page.locator(`#settings-navigation [data-section="${id}"]
 const main = page.locator('#settings-main');
 const font = input('editor.fontSize');
 const account = { status: 'authenticated', revision: 1, serverUrl: 'https://server.example.test', user: { userId: 'user-id', email: 'user@example.test', displayName: 'User' } };
+const avatarSvg = '<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64"><circle cx="32" cy="32" r="16" fill="#0078d4"/></svg>';
+const transparentAvatar = `data:image/svg+xml;base64,${Buffer.from(avatarSvg).toString('base64')}`;
+const avatars = ['.settings-avatar', '#profile .avatar'];
 const provider = { id: 'plugin', title: 'Plugin' };
 const providerState = { ...provider, loading: false, failed: false, sections: [] };
 const loaded = { ...providerState, sections: Array.from({ length: 16 }, (_, i) => ({ id: `details-${i}`, title: `Details ${i}`, rows: [{ label: `Row ${i}`, value: `Value ${i}` }] })) };
@@ -28,7 +34,7 @@ const withFont = (state, value, configured = true) => ({ ...state, items: state.
 
 async function setup(language, section = 'editor', providers = []) {
   await page.goto('about:blank');
-  await page.setContent(`<!doctype html><html lang="${language}"><head><meta charset="utf-8"><style>${settingsThemeCss(language === 'en' ? 'light' : 'dark')}${css}</style></head><body><main id="account-app"></main><script id="studio-localization" type="application/json">${JSON.stringify({ locale: language, bundle: language === 'en' ? {} : chinese }).replace(/</g, '\\u003c')}</script></body></html>`);
+  await page.setContent(`<!doctype html><html lang="${language}"><head><meta charset="utf-8"><style>${settingsThemeCss(language === 'en' ? 'light' : 'dark')}${iconCss}${css}</style></head><body><main id="account-app"></main><script id="studio-localization" type="application/json">${JSON.stringify({ locale: language, bundle: language === 'en' ? {} : chinese }).replace(/</g, '\\u003c')}</script></body></html>`);
   await page.evaluate(() => {
     window.messages = [];
     window.acquireVsCodeApi = () => ({ postMessage: message => window.messages.push(message), setState: state => { window.savedState = state; } });
@@ -41,8 +47,62 @@ async function setup(language, section = 'editor', providers = []) {
   return state;
 }
 
+async function assertAvatars(loaded) {
+  for (const selector of avatars) {
+    assert.equal(await page.locator(`${selector} > img`).isVisible(), loaded, 'Only a loaded avatar image is displayed');
+    assert.equal(await page.locator(`${selector} > .codicon`).isVisible(), !loaded, 'The default avatar must not overlap a transparent image');
+  }
+}
+
+async function waitForAvatar(url, loaded) {
+  await page.waitForFunction(({ url, loaded }) => [...document.querySelectorAll('#settings-avatar-image, #avatar-image')]
+    .every(image => image.getAttribute('src') === url && image.complete && (image.naturalWidth > 0) === loaded && image.hidden !== loaded), { url, loaded });
+}
+
 try {
   for (const language of ['en', 'zh-cn']) {
+    await setup(language, 'account');
+    await assertAvatars(false);
+    const withAvatar = { ...account, user: { ...account.user, avatarUrl: transparentAvatar } };
+    await send('account', { state: withAvatar });
+    await waitForAvatar(transparentAvatar, true);
+    await assertAvatars(true);
+    await send('account', { state: { ...withAvatar, status: 'checking' } });
+    await assertAvatars(true);
+    checks.push(`${language}: transparent avatars and refresh keep the fallback hidden`);
+
+    const delayedUrl = `https://avatars.example.test/${language}/delayed.svg`;
+    let releaseAvatar;
+    const response = new Promise(resolve => { releaseAvatar = resolve; });
+    await page.route(delayedUrl, async route => { await response; await route.fulfill({ contentType: 'image/svg+xml', body: avatarSvg }); });
+    const request = page.waitForRequest(delayedUrl);
+    await send('account', { state: { ...account, user: { ...account.user, avatarUrl: delayedUrl } } });
+    await request;
+    await assertAvatars(false);
+    releaseAvatar();
+    await waitForAvatar(delayedUrl, true);
+    await assertAvatars(true);
+    await page.unroute(delayedUrl);
+    const missingUrl = `https://avatars.example.test/${language}/missing.png`;
+    await send('account', { state: { ...account, user: { ...account.user, avatarUrl: missingUrl } } });
+    await waitForAvatar(missingUrl, false);
+    await assertAvatars(false);
+    await send('account', { state: withAvatar });
+    await waitForAvatar(transparentAvatar, true);
+    await assertAvatars(true);
+    checks.push(`${language}: avatar loading, failure and cached image recovery`);
+
+    await send('account', { state: { ...account, user: { ...account.user, userId: 'another-user' } } });
+    await assertAvatars(false);
+    await send('account', { state: withAvatar });
+    await waitForAvatar(transparentAvatar, true);
+    await send('account', { state: { ...account, status: 'signed-out', user: undefined } });
+    assert.equal(await page.locator('.settings-avatar > .codicon').isVisible(), true);
+    for (const selector of avatars) {
+      assert.equal(await page.locator(`${selector} > img`).getAttribute('src'), null, 'Clearing the account must remove the previous avatar');
+    }
+    checks.push(`${language}: changing accounts and signing out clear the old avatar`);
+
     let state = await setup(language);
     await category('editor').focus();
     await send('settings', { state });

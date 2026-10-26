@@ -1,6 +1,7 @@
 import { t, locale } from './localization';
 import './account.css';
 import { createSettingsView } from './settings';
+import { bindAvatar } from './avatar';
 import type { AccountState } from '../src/workflow-auth-client';
 import { installContextMenu, type ContextAction } from './context-menu';
 
@@ -36,7 +37,7 @@ const signIn = document.querySelector<HTMLElement>('#account-sign-in')!;
 const openLogin = document.querySelector<HTMLButtonElement>('#open-login')!;
 const error = document.querySelector<HTMLDivElement>('#account-error')!;
 const status = document.querySelector<HTMLDivElement>('#account-status')!;
-const image = document.querySelector<HTMLImageElement>('#avatar-image')!;
+const updateAvatar = bindAvatar(document.querySelector<HTMLImageElement>('#avatar-image')!, app.querySelector<HTMLElement>('.avatar > .codicon')!);
 const verify = document.querySelector<HTMLButtonElement>('#verify-login')!;
 let state: AccountState | undefined;
 let pending = false;
@@ -57,6 +58,7 @@ installContextMenu(vscode, target => {
 function render(next: AccountState): void {
   state = next;
   settings.setAccount(next);
+  updateAvatar(next.user?.avatarUrl);
   pending = next.status === 'checking';
   const signedIn = !!next.user && ['authenticated', 'checking', 'error'].includes(next.status);
   signIn.hidden = signedIn;
@@ -80,12 +82,9 @@ function render(next: AccountState): void {
     document.querySelector('#profile-expiry')!.textContent = Number.isFinite(expiry) ? new Date(expiry).toLocaleString(locale()) : t("Managed by server");
     const days = Math.ceil((expiry - Date.now()) / 86_400_000);
     document.querySelector('#profile-remaining')!.textContent = !Number.isFinite(expiry) ? '' : days <= 0 ? t("Sign-in expired") : days === 1 ? t("Expires within 24 hours") : t("Expires in {0} days", days);
-    if (next.user.avatarUrl && image.getAttribute('src') !== next.user.avatarUrl) { image.src = next.user.avatarUrl; image.hidden = false; }
-    else if (!next.user.avatarUrl) { image.removeAttribute('src'); image.hidden = true; }
-  } else { image.removeAttribute('src'); image.hidden = true; }
+  }
 }
 
-image.addEventListener('error', () => { image.hidden = true; });
 openLogin.addEventListener('click', () => { if (!pending) { vscode.postMessage({ type: 'open-login' }); } });
 for (const [id, type] of [['verify-login', 'verify'], ['logout', 'logout'], ['edit-profile', 'open-profile'], ['manage-sessions', 'open-sessions']]) {
   document.getElementById(id)!.addEventListener('click', () => { if (!pending) { vscode.postMessage({ type }); } });

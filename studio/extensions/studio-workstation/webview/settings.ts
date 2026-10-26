@@ -1,6 +1,7 @@
 import { t } from './localization';
 import { renderAccountSections } from './account-sections';
 import { SettingsDropdown } from './settings-dropdown';
+import { bindAvatar } from './avatar';
 import type { AccountState } from '../src/workflow-auth-client';
 import type { AccountSectionState } from '../src/account-section-types';
 import type { SettingState, SettingsState, SettingsTarget, SettingsViewState } from '../src/settings-types';
@@ -57,6 +58,7 @@ export function createSettingsView(root: HTMLElement, vscode: WebviewApi): { acc
   const main = find<HTMLElement>('settings-main');
   const sections = find<HTMLElement>('account-sections');
   const saveStatus = find<HTMLElement>('settings-save-status');
+  const updateAvatar = bindAvatar(find<HTMLImageElement>('settings-avatar-image'), root.querySelector<HTMLElement>('.settings-avatar > .codicon')!);
   const edits = new Map<string, { value: string | number | boolean; saving: boolean; error?: string }>();
   const rows = new Map<string, HTMLElement>();
   const groups = new Map<string, HTMLElement>();
@@ -381,7 +383,6 @@ export function createSettingsView(root: HTMLElement, vscode: WebviewApi): { acc
   };
   find('settings-identity').addEventListener('click', openAccount);
   find('settings-provider-sign-in').addEventListener('click', openAccount);
-  find<HTMLImageElement>('settings-avatar-image').addEventListener('error', event => { (event.target as HTMLElement).hidden = true; });
   window.addEventListener('message', event => {
     const message = event.data;
     if (message.type === 'settings') {
@@ -427,9 +428,7 @@ export function createSettingsView(root: HTMLElement, vscode: WebviewApi): { acc
       const name = find('settings-account-name'), label = find('settings-account-label');
       name.textContent = state.user?.displayName || state.user?.email || 'SteamHarness'; name.title = name.textContent;
       label.textContent = state.user ? state.user.email : t('Signed Out'); label.title = label.textContent;
-      const image = find<HTMLImageElement>('settings-avatar-image');
-      if (state.user?.avatarUrl) { if (image.getAttribute('src') !== state.user.avatarUrl) { image.src = state.user.avatarUrl; image.hidden = false; } }
-      else { image.removeAttribute('src'); image.hidden = true; }
+      updateAvatar(state.user?.avatarUrl);
       if (!state.user || !['authenticated', 'checking', 'error'].includes(state.status)) { providers = []; sections.replaceChildren(); }
       filter();
     },
