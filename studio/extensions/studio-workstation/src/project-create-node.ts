@@ -6,11 +6,13 @@ import { pathToFileURL } from 'node:url';
 import { promisify } from 'node:util';
 import { createProjectCliEnvironment } from './workflow-cli-process';
 import type { CreatedProject, ProjectCreationInput, StartTemplate } from './start-page-types';
+import type { TemplateProjectRegistration } from '../../../vendor/project-templates/project-templates';
 
 interface TemplateModule {
   validateProjectName(value: string): string;
   listProjectTemplates(): Promise<Array<Omit<StartTemplate, 'name' | 'description'> & { name: Record<string, string>; description: Record<string, string> }>>;
-  createProjectFromTemplate(input: { templateId: string; name: string; parentDirectory: string; versions: { harness: string; cli: string }; signal?: AbortSignal }): Promise<CreatedProject>;
+  createProjectFromTemplate(input: { templateId: string; name: string; parentDirectory: string; versions: { harness: string; cli: string }; signal?: AbortSignal;
+    allocateProjectId?: (project: TemplateProjectRegistration) => Promise<string> }): Promise<CreatedProject>;
 }
 
 export function defaultProjectParentDirectory(): string { return path.join(homedir(), 'Documents', 'steamharness-projects'); }
@@ -41,12 +43,13 @@ export function projectTemplatesRuntime(extensionDirectory: string, locale: stri
       return (await (await module()).listProjectTemplates()).map(template => ({ id: template.id, projectType: template.projectType, kind: template.kind,
         name: template.name[language] || template.name.en, description: template.description[language] || template.description.en }));
     },
-    create: async (input: { templateId: string; name: string; parentDirectory: string }, signal?: AbortSignal): Promise<CreatedProject> => {
+    create: async (input: { templateId: string; name: string; parentDirectory: string }, signal?: AbortSignal,
+      allocateProjectId?: (project: TemplateProjectRegistration) => Promise<string>): Promise<CreatedProject> => {
       await validate(input);
       signal?.throwIfAborted();
       const versions = JSON.parse(await readFile(path.join(directory, 'project-template-versions.json'), 'utf8'));
       if (input.parentDirectory === defaultProjectParentDirectory()) { await mkdir(input.parentDirectory, { recursive: true }); }
-      return (await module()).createProjectFromTemplate({ ...input, versions, signal });
+      return (await module()).createProjectFromTemplate({ ...input, versions, signal, allocateProjectId });
     },
     prepare: async (projectDirectory: string, nodePath: string, signal: AbortSignal): Promise<boolean> => {
       // Use a fresh process so a long-lived extension host cannot retain an SDK from before a reinstall.

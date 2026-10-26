@@ -22,7 +22,7 @@ export class ProjectServerGuidance {
       <dl><dt id="server-guidance-server-label">${t("Server")}</dt><dd id="server-guidance-server"></dd><dt>${t("Project ID")}</dt><dd id="server-guidance-project"></dd><dt id="server-guidance-alias-label" hidden>${t('Related project')}</dt><dd id="server-guidance-alias" hidden></dd></dl>
       </details>
       <ol id="server-guidance-steps"></ol>
-      <div class="project-server-guidance-actions"><button id="server-guidance-create" type="button" hidden>${t('New project on Server...')}</button><button id="server-guidance-retry" type="button">${t("Check again")}</button></div>
+      <div class="project-server-guidance-actions"><button id="server-guidance-create" type="button" hidden>${t('Apply for a new application ID...')}</button><button id="server-guidance-retry" type="button">${t("Check again")}</button></div>
     </div>`;
     const find = <T extends HTMLElement>(id: string) => container.querySelector<T>(`#server-guidance-${id}`)!;
     this.title = find('title'); this.description = find('description'); this.server = find('server'); this.project = find('project'); this.steps = find('steps');
@@ -102,11 +102,11 @@ export class ProjectServerGuidance {
         : related ? t('Check the related project Server settings') : t("Complete the Server project setup");
       this.description.textContent = issue.kind === 'project-unavailable'
         ? related ? t('The related project could not be found or accessed on this Server. Its owner needs to check the Server project record and your account access.')
-          : t("This project could not be found or accessed on the connected Server. Importing a local folder does not create a Server project.")
+          : t('This ID is not registered on the connected Server. It cannot be registered as a chosen ID. Apply for a new Server-assigned ID to use this project as a new application.')
         : t('The Server rejected this project data connection. Check the Server version, project type, and storage settings.');
       steps = issue.kind === 'project-unavailable' ? [
-        currentProject ? t('Choose New project on Server and confirm a project with the same ID.')
-          : t('Open the related local project and choose New project on Server with the project ID shown below.'),
+        currentProject ? t('Choose Apply for a new application ID. Confirming replaces the local project ID and opens a new application without uploading source.')
+          : t('Ask the related project owner to check its registration. If a new application ID is needed, update both projects\' relationship declarations and import the matching project again.'),
         t("If the project already exists, ask its owner to check your access."), t("After completing setup, choose Check again.")]
         : [t('Check the Server version and the Server Project Info. Ask the project owner to update the project type, storage settings, or related project grants if needed.'), t("After completing setup, choose Check again.")];
     }

@@ -12,34 +12,42 @@ import { createAssistantDependencyFixture } from './assistant-dependency-fixture
 const compiled = await build({ entryPoints: ['extensions/studio-workstation/src/workflow-runtime-node.ts'], bundle: true, platform: 'node', format: 'cjs', external: ['vscode'], write: false });
 const require = createRequire(import.meta.url);
 
-test('new-project registration stays bound to the creating account and cancels when it changes', async t => {
-  const directory = await mkdtemp(path.join(tmpdir(), 'studio-registration-account-')); t.after(() => rm(directory, { recursive: true, force: true }));
-  const project = { id: 'a3aca697-b086-459b-84e4-d357ad2d9fb2', name: 'Created', projectType: 'workflow', directory, entryFile: 'index.ts' };
-  await writeFile(path.join(directory, 'package.json'), JSON.stringify({ id: project.id, steamHarness: { projectType: 'workflow', projectInfo: { platformSupport: { mode: 'agnostic' }, dataStorage: { mode: 'local' } } } }));
+test('new projects apply for an ID using the current account and cancel when it changes', async t => {
+  const directory = await mkdtemp(path.join(tmpdir(), 'studio-allocation-account-')); t.after(() => rm(directory, { recursive: true, force: true }));
+  const allocatedId = 'a3aca697-b086-459b-84e4-d357ad2d9fb2';
+  const allocationRuntime = await build({ entryPoints: ['extensions/studio-workstation/src/workflow-runtime-node.ts'], bundle: true,
+    platform: 'node', format: 'cjs', external: ['vscode'], write: false,
+    plugins: [{ name: 'template-allocation-fixture', setup(build) {
+      build.onLoad({ filter: /project-create-node\.ts$/ }, () => ({ contents: `
+        export const defaultProjectParentDirectory = () => '/projects';
+        export const installProjectDependencies = async () => {};
+        export const projectTemplatesRuntime = () => ({ create: async (input, signal, allocate) => {
+          const id = await allocate({ name: input.name, projectType: 'workflow', projectInfo: { platformSupport: { mode: 'agnostic' }, dataStorage: { mode: 'local' } } });
+          signal.throwIfAborted(); return { ...input, id, projectType: 'workflow', directory: input.parentDirectory };
+        } });` }));
+    } }] });
   let connection = { serverUrl: 'https://server.example', accessToken: 'owner-token' }, userId = 'owner', requests = 0, changeDuringRequest = false;
   const listeners = new Set();
   const account = { getConnection: () => connection, getState: () => ({ user: { userId } }), onDidChange: callback => { listeners.add(callback); return { dispose: () => listeners.delete(callback) }; } };
   const module = { exports: {} };
   const vscode = { env: { language: 'en' }, workspace: { isTrusted: true, getConfiguration: () => ({ get: () => '' }) } };
-  runInNewContext(compiled.outputFiles[0].text, { module, exports: module.exports, require: name => name === 'vscode' ? vscode : require(name),
+  runInNewContext(allocationRuntime.outputFiles[0].text, { module, exports: module.exports, require: name => name === 'vscode' ? vscode : require(name),
     process, AbortController, AbortSignal, URL, Buffer, setTimeout, clearTimeout, queueMicrotask,
     fetch: async (_url, options) => {
       requests++; assert.equal(options.headers.Authorization, 'Bearer owner-token');
-      if (changeDuringRequest) { userId = 'other'; connection = { ...connection, accessToken: 'other-token' }; for (const listener of listeners) { listener({ status: 'authenticated' }); } }
-      return Response.json({ errCode: 0, data: { projectId: project.id, projectType: project.projectType } });
+      assert.equal(Object.hasOwn(JSON.parse(options.body), 'projectId'), false);
+      if (changeDuringRequest) { userId = 'other'; connection = { ...connection, accessToken: 'other-token' }; for (const listener of listeners) listener({ status: 'authenticated' }); }
+      return Response.json({ errCode: 0, data: { projectId: allocatedId, projectType: 'workflow' } });
     },
   });
   const runtime = module.exports.createProjectRuntime({ extensionUri: { fsPath: directory }, globalStorageUri: { fsPath: directory } }, account); t.after(() => runtime.dispose());
-  const target = { serverUrl: connection.serverUrl, userId: 'owner' };
-  await runtime.registerProject(project, target, new AbortController().signal); assert.equal(requests, 1);
-  await assert.rejects(runtime.registerProject(project, { ...target, userId: 'another-owner' }, new AbortController().signal), /account used to create/);
-  await assert.rejects(runtime.registerProject(project, { ...target, serverUrl: 'https://other.example' }, new AbortController().signal), /account used to create/);
-  assert.equal(requests, 1);
+  const input = { name: 'Created', templateId: 'workflow-starter', parentDirectory: directory };
+  assert.equal((await runtime.createProject(input)).id, allocatedId); assert.equal(requests, 1);
   changeDuringRequest = true;
-  await assert.rejects(runtime.registerProject(project, target, new AbortController().signal), { name: 'AbortError' });
-  assert.equal(requests, 2); assert.equal(listeners.size, 1, 'Only the runtime authentication listener should remain.');
+  await assert.rejects(runtime.createProject(input), error => error.name === 'AbortError' || /account used to create/.test(error.message));
+  assert.equal(requests, 2); assert.equal(listeners.size, 1);
   connection = undefined;
-  await assert.rejects(runtime.registerProject(project, target, new AbortController().signal), /Sign in to register/);
+  await assert.rejects(runtime.createProject(input), /Sign in before creating/); assert.equal(requests, 2);
 });
 
 // The built-in projects live in the monorepo, so the extension resolves the

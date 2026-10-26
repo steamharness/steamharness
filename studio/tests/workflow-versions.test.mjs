@@ -346,13 +346,13 @@ test('account changes while loading upload options cannot open or submit a stale
 });
 
 
-test('first upload lets the user select a project group and passes its ownership to the CLI', async t => {
+test('uploading an unregistered project asks for a new application ID before ownership or upload actions', async t => {
   const f = fixture(t); f.projects = [];
-  f.groups = [{ id: 'engineering', name: 'Engineering' }];
-  f.pick = items => items.find(item => item.id === 'engineering');
+  f.read = async url => url.endsWith('/versions') ? Response.json({ errCode: 404, errMessage: 'missing' }, { status: 404 }) : undefined;
+  f.pick = () => assert.fail('Project groups must be chosen when applying for an ID');
   await f.command('studio.refreshVersions');
   await f.command('studio.uploadProject');
-  assert.equal(f.errors.length, 0);
-  assert.equal(f.uploads[0].groupId, 'engineering');
-  assert.ok(f.requests.some(request => request.url.includes('/api/groups?minRole=developer')));
+  assert.equal(f.uploads.length, 0);
+  assert.match(f.uploadResult.error, /apply for a new application ID/);
+  assert.equal(f.requests.some(request => request.url.includes('/api/groups?minRole=developer')), false);
 });

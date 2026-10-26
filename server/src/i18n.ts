@@ -27,6 +27,7 @@ export type ServerT = (
 let serverI18nStarted = false;
 
 const STABLE_ERROR_MESSAGE_KEYS: Readonly<Record<string, string>> = Object.freeze({
+  "Project IDs are assigned by the Server. Create a new application to obtain a new ID.": "server:projectIdServerAssigned",
   "Publish the project configuration template before using role-controlled configurations.": "server:configurationPublicationRequired",
   "Account login is required to create a project.": "server:accessCreateLoginRequired",
   "Account storage is not configured.": "server:accessAccountStorageRequired",

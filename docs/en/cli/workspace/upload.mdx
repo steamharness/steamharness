@@ -15,7 +15,7 @@ steamharness workspace upload <project> [--path <dir>] [--file <archive>] [--cre
 | --- | --- |
 | `--path` | Local project directory. |
 | `--file` | Existing tar.gz, tgz or zip archive. |
-| `--create` | Create or reuse the UUID, static projectType and full projectInfo declared by the package. |
+| `--create` | Verify an existing registered ID; otherwise allocate a Server ID, replace local package.json.id and upload as a new application. Client-selected IDs are rejected. Incompatible with --file; all group projects must already be registered. |
 | `--group-id` | Select a group for initial creation; requires group developer access without promoting the creator. |
 | `--release-log` | Publish after successful upload and save release notes. |
 | `--no-wait` | Return the file-processing job ID; incompatible with auto-publish or project groups. |

@@ -3,6 +3,7 @@ import { defaultServerUrl } from "./service-url";
 import type {ProjectConfigurationState} from '@steamharness/project-configuration';
 import { spawn } from "node:child_process";
 import { createHash, randomUUID } from "node:crypto";
+import { writeProjectIdentity } from './project-identity';
 import { existsSync } from "node:fs";
 import { copyFile, mkdir, readFile, readdir, rename, rm, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
@@ -348,6 +349,7 @@ async function commandPack(parsed: ParsedArgs): Promise<void> {
 
 async function commandUpload(parsed: ParsedArgs): Promise<void> {
   requireLogin(parsed);
+  if (parsed.options.create && parsed.options.file) { throw new Error(i18n.t('newApplicationArchiveUnsupported', { ns: 'cli' })); }
   const projectArg = requirePositional(parsed, 0, "workflow");
   if (shouldUseProjectGroupUpload(parsed.options)) {
     await commandProjectGroupUpload(parsed, projectArg);
@@ -362,6 +364,7 @@ async function commandUpload(parsed: ParsedArgs): Promise<void> {
       groupId: parsed.options.groupId,
       server: parsed.options.server,
       token: parsed.options.token,
+      allowNewApplication: true,
     });
     projectId = created.projectId;
   }
@@ -1399,15 +1402,26 @@ async function ensureProjectCreated(options: {
   groupId?: string;
   server: string;
   token: string;
+  allowNewApplication?: boolean;
 }): Promise<ProjectCreateResult> {
-  const projectId = options.packageContext.projectId;
-  if (projectId === undefined) {
-    throw new Error(i18n.t("projectIdRequired", { ns: "cli" }));
-  }
   const projectInfo = readProjectInfo(options.packageContext.packageJson);
   if (projectInfo.dataStorage === null) {
     throw new Error(i18n.t("projectInfoDataStorageRequired", { ns: "cli" }));
   }
+  const projectId = options.packageContext.projectId;
+  if (projectId !== undefined) {
+    const existing = await fetchApi<{ id: string; name: string; projectType: ProjectKind; visibility: ProjectCreateResult['visibility'] }>({
+      server: options.server, token: options.token, path: `/api/projects/${encodeURIComponent(projectId)}`, method: 'GET',
+    });
+    if (existing.errCode === 0 && existing.data) {
+      if (typeof existing.data.id !== 'string' || existing.data.id.toLowerCase() !== projectId.toLowerCase() || existing.data.projectType !== options.packageContext.projectType) { throw new Error(i18n.t('projectCreationIdMismatch', { ns: 'cli' })); }
+      return { projectId, projectName: existing.data.name, projectType: existing.data.projectType, visibility: existing.data.visibility };
+    }
+    if (existing.errCode !== 404) { assertApiOk(existing); }
+  }
+  if (!options.allowNewApplication) { throw new Error(i18n.t('projectRegistrationRequired', { ns: 'cli' })); }
+  const source = await readFile(options.packageContext.packageJsonPath, 'utf8');
+  if (JSON.stringify(JSON.parse(source)) !== JSON.stringify(options.packageContext.packageJson)) { throw new Error(i18n.t('projectIdentityChanged', { ns: 'cli' })); }
   const created = await fetchApi<ProjectCreateResult>({
     server: options.server,
     token: options.token,
@@ -1416,7 +1430,6 @@ async function ensureProjectCreated(options: {
     body: {
       name: options.packageContext.projectName,
       projectType: options.packageContext.projectType,
-      projectId,
       projectInfo,
       ...(options.groupId?{groupId:options.groupId}:{}),
     },
@@ -1427,9 +1440,10 @@ async function ensureProjectCreated(options: {
     throw new Error(i18n.t("projectCreationFailed", { ns: "cli" }));
   }
 
-  if (created.data.projectId !== projectId) {
+  if (!isProjectUuid(created.data.projectId) || created.data.projectId.toLowerCase() === projectId?.toLowerCase() || created.data.projectType !== options.packageContext.projectType) {
     throw new Error(i18n.t("projectCreationIdMismatch", { ns: "cli" }));
   }
+  await writeProjectIdentity(options.packageContext.projectDir, source, created.data.projectId);
   return created.data;
 }
 

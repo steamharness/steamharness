@@ -902,6 +902,7 @@ test("source download recipients cannot read or clone unpublished configuration 
       return { projectId: "demo", projectName: "demo", target: options.target, resolvedTarget: "1.0.0", files: [] };
     },
     cloneProject: async options => {
+      assert.match(options.targetProjectName!, /^[a-f0-9-]{36}$/);
       clones.push(options.sourceTarget!);
       return { projectId: "copy", projectName: "copy", sourceTarget: options.sourceTarget!, resolvedSourceTarget: "1.0.0", nextVersion: "1.0.1" };
     },
@@ -914,14 +915,17 @@ test("source download recipients cannot read or clone unpublished configuration 
     for (const sourceTarget of ["draft", " draft "]) {
       assert.equal((await fetch(server.url("/api/projects/demo/clone"), {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ targetProjectName: "copy", sourceTarget }),
+        body: JSON.stringify({ sourceTarget }),
       })).status, 403);
+    }
+    for (const body of [{ targetProjectName: "111" }, { projectId: "8bd4fef2-e083-4201-a89f-6f7d0676df53" }]) {
+      assert.equal((await fetch(server.url("/api/projects/demo/clone"), { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) })).status, 400);
     }
     assert.deepEqual(reads, []); assert.deepEqual(clones, []);
     assert.equal((await fetch(server.url("/api/projects/demo/files?target=1.0.0"))).status, 200);
     assert.equal((await fetch(server.url("/api/projects/demo/clone"), {
       method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ targetProjectName: "copy", sourceTarget: "1.0.0" }),
+      body: JSON.stringify({ sourceTarget: "1.0.0" }),
     })).status, 200);
     assert.deepEqual(reads, ["1.0.0"]); assert.deepEqual(clones, ["1.0.0"]);
   } finally { await server.close(); }
@@ -1157,61 +1161,39 @@ test("related-project API lists, updates, and removes a confirmed relationship",
   }
 });
 
-test("create workflow endpoint atomically forwards package UUID and project info", async () => {
-  const projectInfo = {
-    localizedNames: {},
-    declarations: [],
-    platformSupport: { mode: "agnostic" as const },
-    dataStorage: { mode: "both" as const },
-    relatedProjects: [],
-  };
-  const storage = createStorageStub({
-    createProject: async (options) => {
-      assert.deepEqual(options, {
-        projectId: "8bd4fef2-e083-4201-a89f-6f7d0676df53",
-        projectName: "Hello Workflow",
-        projectType: "workflow",
-        projectInfo,
-        ownerUserId: "creator-1",
-        groupId: undefined,
-        isSystemAdmin: false,
-        createdByUserId: "creator-1",
-        visibility: "private",
-      });
-      return {
-        projectId: "8bd4fef2-e083-4201-a89f-6f7d0676df53",
-        projectName: "Hello Workflow",
-        projectType: "workflow",
-        projectInfo,
-        visibility: "private",
-      };
-    },
-  });
+for (const projectType of STEAMHARNESS_PROJECT_TYPES) test(`create ${projectType} assigns a fresh Server ID and forwards project info`, async () => {
+  const projectInfo = { localizedNames: {}, declarations: [], relatedProjects: [], platformSupport: { mode: "agnostic" as const }, dataStorage: { mode: "both" as const } };
+  const ids: string[] = [];
+  const storage = createStorageStub({ createProject: async options => {
+    assert.match(options.projectId!, /^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/);
+    assert.deepEqual(options, { projectId: options.projectId, projectName: "New Application", projectType, projectInfo,
+      ownerUserId: "creator-1", groupId: undefined, isSystemAdmin: false, createdByUserId: "creator-1", visibility: "private" });
+    ids.push(options.projectId!);
+    return { projectId: options.projectId!, projectName: options.projectName, projectType, projectInfo, visibility: "private" };
+  } });
   const server = await listen(storage, createPrincipal(false, { userId: "creator-1" }));
-
   try {
-    const response = await fetchJson(server.url("/api/projects"), {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        projectId: "8bd4fef2-e083-4201-a89f-6f7d0676df53",
-        name: "Hello Workflow",
-        projectType: "workflow",
-        projectInfo,
-      }),
-    });
+    for (let attempt = 0; attempt < 2; attempt++) {
+      const response = await fetchJson(server.url("/api/projects"), { method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: "New Application", projectType, projectInfo }) });
+      assert.equal(response.errCode, 0); assert.equal((response.data as { projectId: string }).projectId, ids[attempt]);
+    }
+    assert.notEqual(ids[0], ids[1]);
+  } finally { await server.close(); }
+});
 
-    assert.equal(response.errCode, 0);
-    assert.deepEqual(response.data, {
-      projectId: "8bd4fef2-e083-4201-a89f-6f7d0676df53",
-      projectName: "Hello Workflow",
-      projectType: "workflow",
-      projectInfo,
-      visibility: "private",
-    });
-  } finally {
-    await server.close();
-  }
+test("creation refuses every client-selected ID without touching storage", async () => {
+  let calls = 0;
+  const server = await listen(createStorageStub({ createProject: async () => { calls++; throw new Error("must not create"); } }), createPrincipal(false, { userId: "creator-1" }));
+  try {
+    for (const projectId of ["111", 111, null, "", "8bd4fef2-e083-4201-a89f-6f7d0676df53"]) {
+      const response = await fetch(server.url("/api/projects"), { method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ projectId, name: "Chosen", projectType: "workflow", projectInfo: { platformSupport: { mode: "agnostic" }, dataStorage: { mode: "local" } } }) });
+      assert.equal(response.status, 400); assert.match((await response.json()).errMessage, /assigned by the Server/);
+    }
+    const localized = await fetch(server.url("/api/projects"), { method: "POST", headers: { "Content-Type": "application/json", "X-SteamHarness-Locale": "zh-CN" }, body: JSON.stringify({ projectId: "111" }) });
+    assert.match((await localized.json()).errMessage, /服务器分配/); assert.equal(calls, 0);
+  } finally { await server.close(); }
 });
 
 test("create workflow endpoint rejects missing and unknown project types", async () => {
@@ -1227,12 +1209,10 @@ test("create workflow endpoint rejects missing and unknown project types", async
   try {
     for (const body of [
       {
-        projectId: "8bd4fef2-e083-4201-a89f-6f7d0676df53",
         name: "Missing Type",
         projectInfo: { localizedNames: {}, declarations: [], platformSupport: { mode: "agnostic" }, dataStorage: { mode: "both" } },
       },
       {
-        projectId: "8bd4fef2-e083-4201-a89f-6f7d0676df53",
         name: "Unknown Type",
         projectType: "agent",
         projectInfo: { localizedNames: {}, declarations: [], platformSupport: { mode: "agnostic" }, dataStorage: { mode: "both" } },
@@ -1258,7 +1238,7 @@ test("create workflow endpoint rejects missing and unknown project types", async
   }
 });
 
-test("create workflow endpoint requires a package UUID and declared data storage mode", async () => {
+test("create workflow endpoint requires declared data storage mode", async () => {
   let createCalls = 0;
   const storage = createStorageStub({
     createProject: async () => {
@@ -1277,21 +1257,15 @@ test("create workflow endpoint requires a package UUID and declared data storage
   try {
     const cases = [
       {
-        body: { name: "Missing UUID", projectType: "workflow", projectInfo: validProjectInfo },
-        message: /projectId must be a string/i,
-      },
-      {
         body: {
-          projectId: "8bd4fef2-e083-4201-a89f-6f7d0676df53",
-          name: "Missing declaration",
+            name: "Missing declaration",
           projectType: "workflow",
         },
         message: /projectInfo must be an object/i,
       },
       {
         body: {
-          projectId: "8bd4fef2-e083-4201-a89f-6f7d0676df53",
-          name: "Invalid declaration",
+            name: "Invalid declaration",
           projectType: "workflow",
           projectInfo: { ...validProjectInfo, dataStorage: { mode: "archive" } },
         },
@@ -1332,7 +1306,7 @@ test("create workflow endpoint validates and forwards optional project card meta
     createProject: async (options) => {
       receivedOptions = options;
       return {
-        projectId: "8bd4fef2-e083-4201-a89f-6f7d0676df53",
+        projectId: options.projectId,
         projectName: "Round Conversation",
         projectType: "conversation",
         projectInfo,
@@ -1347,7 +1321,6 @@ test("create workflow endpoint validates and forwards optional project card meta
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        projectId: "8bd4fef2-e083-4201-a89f-6f7d0676df53",
         name: "Round Conversation",
         projectType: "conversation",
         projectInfo,
@@ -1357,7 +1330,7 @@ test("create workflow endpoint validates and forwards optional project card meta
 
     assert.equal(response.errCode, 0);
     assert.deepEqual(receivedOptions, {
-      projectId: "8bd4fef2-e083-4201-a89f-6f7d0676df53",
+      projectId: (receivedOptions as { projectId: string }).projectId,
       projectName: "Round Conversation",
       projectType: "conversation",
       projectInfo,
@@ -1388,7 +1361,6 @@ test("create workflow endpoint rejects invalid project card metadata", async () 
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        projectId: "8bd4fef2-e083-4201-a89f-6f7d0676df53",
         name: "Invalid Card",
         projectType: "workflow",
         projectInfo: { localizedNames: {}, declarations: [], platformSupport: { mode: "agnostic" }, dataStorage: { mode: "both" } },
@@ -2281,7 +2253,7 @@ test("all fixed member roles can read data and only developers or higher can mut
       assert.equal((await fetch(server.url("/api/projects/demo/source-archive?target=1.0.0"))).status, 200, role);
       assert.equal((await fetch(server.url("/api/projects/demo/clone"), {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ targetProjectName: "copy" }),
+        body: JSON.stringify({}),
       })).status, 200, role);
     } finally { await server.close(); }
   }

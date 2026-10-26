@@ -5,28 +5,22 @@ import path from 'node:path';
 import { t, locale } from './localization';
 import { AuthError, type Connection } from './workflow-auth-client';
 import { ProjectServerClient, type DownloadedServerProject, type ProjectPreparation, type ProjectTransferProgress } from './steamharness-server-projects';
-import { normalizeDeclaredProjectInfoInput } from '../../../../shared/project-info/index';
-import { readProjectCardMetadataFromPackageJson } from '../../../../shared/project-card-metadata/index';
-import type { CreatedProject } from './start-page-types';
+import { isProjectUuid } from '../../../../shared/workflow-ids/index';
+import type { TemplateProjectRegistration } from '../../../vendor/project-templates/project-templates';
 
-export async function registerCreatedServerProject(options: {
-  project: CreatedProject; connection: Connection; signal: AbortSignal; assertCurrent: () => void;
-}): Promise<void> {
+export async function allocateServerProjectId(options: {
+  project: TemplateProjectRegistration; connection: Connection; signal: AbortSignal; assertCurrent: () => void;
+}): Promise<string> {
   options.signal.throwIfAborted();
-  const manifest = JSON.parse(await readFile(path.join(options.project.directory, 'package.json'), 'utf8'));
-  if (manifest.id !== options.project.id || manifest.steamHarness?.projectType !== options.project.projectType) {
-    throw new Error(t('Project identity changed. Open the project folder to review it.'));
-  }
-  const projectInfo = normalizeDeclaredProjectInfoInput(manifest.steamHarness.projectInfo);
   options.assertCurrent();
   const result = await new ProjectServerClient(options.connection).request<{ projectId: string; projectType: string }>('/api/projects', options.signal, {
-    projectId: options.project.id, name: options.project.name, projectType: options.project.projectType,
-    visibility: 'private', projectInfo, projectCard: readProjectCardMetadataFromPackageJson(manifest, options.project.projectType),
+    ...options.project, visibility: 'private',
   });
   options.assertCurrent();
-  if (result?.projectId !== options.project.id || result.projectType !== options.project.projectType) {
+  if (typeof result?.projectId !== 'string' || !isProjectUuid(result.projectId) || result.projectType !== options.project.projectType) {
     throw new Error(t('The server returned an unexpected project. Retry project setup.'));
   }
+  return result.projectId;
 }
 
 interface TransferOptions {
@@ -79,18 +73,17 @@ export function runWorkspaceTransfer(options: TransferOptions, args: string[], p
   });
 }
 
-export async function uploadServerProject(options: TransferOptions & { projectId: string; version: string; directory: string; releaseLog: string; groupId?:string }): Promise<void> {
+export async function uploadServerProject(options: TransferOptions & { projectId: string; version: string; directory: string; releaseLog: string }): Promise<void> {
   if (!/^\d+\.\d+\.\d+$/.test(options.version)) { throw new Error(t('Declare a valid project UUID and version in package.json first.')); }
   const temporary = await mkdtemp(path.join(tmpdir(), 'studio-upload-'));
   try {
     const client = new ProjectServerClient(options.connection);
-    let create = false;
     try { await client.versions(options.projectId, options.signal); }
-    catch (error) { if (error instanceof AuthError && error.status === 404) { create = true; } else { throw error; } }
-    const configurations=create?undefined:await client.request<{publication?:{revision:number};publicationRevision?:number}>(`/api/projects/${encodeURIComponent(options.projectId)}/configurations?target=draft`,options.signal);
+    catch (error) { if (error instanceof AuthError && error.status === 404) { throw new Error(t('This project ID is not registered. Open the project and apply for a new application ID before uploading.')); } else { throw error; } }
+    const configurations=await client.request<{publication?:{revision:number};publicationRevision?:number}>(`/api/projects/${encodeURIComponent(options.projectId)}/configurations?target=draft`,options.signal);
     const expectedConfigurationRevision=configurations?.publicationRevision??configurations?.publication?.revision;
     options.progress({ message: t('Packing and uploading project') });
-    const job = await runWorkspaceTransfer(options, ['upload', options.projectId, '--path', options.directory, ...(create ? ['--create',...(options.groupId?['--group-id',options.groupId]:[])] : []), '--no-wait'], temporary) as { jobId: string };
+    const job = await runWorkspaceTransfer(options, ['upload', options.projectId, '--path', options.directory, '--no-wait'], temporary) as { jobId: string };
     if (typeof job?.jobId !== 'string') { throw new Error(t('The server returned an invalid response.')); }
     const signal = AbortSignal.any([options.signal, AbortSignal.timeout(10 * 60_000)]);
     const stages: Record<string, string> = { queued: t('Waiting for file processing'), extracting: t('Extracting project files'),

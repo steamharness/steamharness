@@ -97,9 +97,9 @@ it.each([[404, 'project-unavailable'], [403, 'access-denied'], [200, 'related-se
   expect(remote.mock.calls.filter(([, options]) => options?.method === 'POST')).toHaveLength(1);
 });
 
-it('creates a Kanban Server record only after review and resumes its data preview without source upload', async () => {
+it('applies for a new Kanban identity only after review and resumes its data preview without source upload', async () => {
   const { app, post, bridge, runtime } = await fixture({ server: true });
-  const original = fetch, writes = vi.fn(); let created = false;
+  const original = fetch, writes = vi.fn(), newId = '78648759-bcde-4fd5-b3bd-9a2dd46a7192'; let created = false;
   vi.spyOn(globalThis, 'fetch').mockImplementation(async (url, options) => {
     if (!String(url).startsWith('https://new-project.test')) return original(url, options);
     if (String(url).endsWith('/api/auth/me')) return Response.json({ errCode: 0, data: { profile: { userId: 'user', email: 'user@test.com', displayName: 'User' } } });
@@ -107,23 +107,25 @@ it('creates a Kanban Server record only after review and resumes its data previe
     if (options?.method === 'POST') {
       writes(url, options);
       if (String(url).endsWith('/api/projects')) {
-        expect(JSON.parse(String(options.body))).toMatchObject({ projectId: id, projectType: 'kanban', projectInfo: app.project.projectInfo });
-        created = true; return Response.json({ errCode: 0, data: { projectId: id } }, { status: 201 });
+        expect(JSON.parse(String(options.body))).toMatchObject({ projectType: 'kanban', projectInfo: app.project.projectInfo });
+        expect(JSON.parse(String(options.body))).not.toHaveProperty('projectId');
+        created = true; return Response.json({ errCode: 0, data: { projectId: newId, projectType: 'kanban' } }, { status: 201 });
       }
       return Response.json({ errCode: 0, data: 'registered data' });
     }
     if (String(url).includes('related-project-revisions') && created) return revisionStream();
-    return created ? Response.json({ errCode: 0, data: { id } }) : new Response('', { status: 404 });
+    return created && String(url).endsWith(newId) ? Response.json({ errCode: 0, data: { id: newId } }) : new Response('', { status: 404 });
   });
   await app.setHostConnection({ serverUrl: 'https://new-project.test', accessToken: 'private-token' });
   await vi.waitFor(() => expect(app.kanbanController!.serverDataIssue?.kind).toBe('project-unavailable'));
   const context = (await post({ type: 'project-server-create-prepare' }).then(response => response.json())).messages[0].context;
   expect(created).toBe(false); expect(writes).not.toHaveBeenCalled();
   expect((await post({ type: 'project-server-create-confirm', token: context.token, confirmed: true, name: 'Registered map' })).ok).toBe(true);
+  await vi.waitFor(() => expect(app.project.id).toBe(newId));
   await vi.waitFor(() => expect(app.kanbanController!.serverDataIssue).toBeUndefined());
   expect(writes).toHaveBeenCalledOnce(); expect(runtime.run).not.toHaveBeenCalled();
   expect((await bridge('kv.getValue', { key: 'map' })).value).toBe('registered data');
-  expect(writes.mock.calls.map(([url]) => String(url))).toEqual(['https://new-project.test/api/projects', `https://new-project.test/api/projects/${id}/kanban/bridge`]);
+  expect(writes.mock.calls.map(([url]) => String(url))).toEqual(['https://new-project.test/api/projects', `https://new-project.test/api/projects/${newId}/kanban/bridge`]);
 });
 
 it.each([[404, 'project-unavailable'], [200, 'related-setup-required']] as const)('guides a revoked Kanban revision subscription after target HTTP %s without looping retries', async (status, kind) => {
@@ -242,7 +244,7 @@ async function fixture(options: { server?: boolean; artifact?: boolean; noParams
   const artifactRoot = options.artifact ? path.join(directory, 'dist/pages') : directory;
   await mkdir(artifactRoot, { recursive: true }); await writeFile(path.join(artifactRoot, 'index.html'), '<!doctype html><script>window.boardLoaded = true;</script><h1>Board</h1>'); await writeFile(path.join(artifactRoot, 'board.js'), 'window.assetLoaded = true;');
   if (!options.noParams) { await writeFile(path.join(directory, 'configuration.json'), JSON.stringify({ version: 1, fields: [{ name: 'title', type: 'string', defaultValue: 'Roadmap' }, { name: 'limit', type: 'number', defaultValue: 5 }, { name: 'visible', type: 'boolean', defaultValue: true }, { name: 'tags', type: 'string', multiple: true, defaultValue: ['a'] }] })); }
-  const runtime: Runtime = { available: true, inspect: vi.fn(async () => ({ projects: [descriptor], errors: [] })), resolveParams: vi.fn(async () => ({})), run: vi.fn(async () => ({ status: 'success' })), uploadFiles: vi.fn(async () => []), readFile: vi.fn(), deleteFiles: vi.fn(), cancelConversation: vi.fn(async () => {}), deleteConversation: vi.fn(), readResource: vi.fn(), cancel: vi.fn(), dispose: vi.fn(), kanbanBridge: vi.fn(async (_project, call) => ({ operation: call.operation })) };
+  const runtime: Runtime = { available: true, inspect: vi.fn(async () => ({ projects: [{ ...descriptor, id: JSON.parse(await readFile(path.join(directory, 'package.json'), 'utf8')).id }], errors: [] })), resolveParams: vi.fn(async () => ({})), run: vi.fn(async () => ({ status: 'success' })), uploadFiles: vi.fn(async () => []), readFile: vi.fn(), deleteFiles: vi.fn(), cancelConversation: vi.fn(async () => {}), deleteConversation: vi.fn(), readResource: vi.fn(), cancel: vi.fn(), dispose: vi.fn(), kanbanBridge: vi.fn(async (_project, call) => ({ operation: call.operation })) };
   const dataDir = path.join(root, 'data');
   vi.stubEnv('STEAMHARNESS_CLI_AUTH_DIR', path.join(root, 'auth')); vi.stubEnv('STEAMHARNESS_SERVER_URL', ''); vi.stubEnv('STEAMHARNESS_SERVER_ADMIN_KEY', '');
   if (options.real) {

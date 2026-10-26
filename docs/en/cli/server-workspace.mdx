@@ -43,6 +43,8 @@ Unknown options fail. Declare static type in `package.json.steamHarness.projectT
 
 ## Upload and Download
 
+New application IDs must be assigned by the Server. For an unregistered ID, `upload --create` allocates and writes a new ID rather than creating a record with a client-selected ID. Group roots and dependencies must already be registered so relationship identities are never changed implicitly.
+
 ```bash
 steamharness workspace login --server http://localhost:7126
 steamharness workspace upload hello --create --release-log "Initial release"

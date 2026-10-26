@@ -3,7 +3,7 @@ import { resolveResourceAccess, type AccessCapability } from "@steamharness/proj
 import type { ProjectConfigurationAction, ProjectConfigurationState } from "@steamharness/project-configuration";
 
 import {readFile} from "node:fs/promises";
-import { randomBytes } from "node:crypto";
+import { randomBytes, randomUUID } from "node:crypto";
 import { Router, type NextFunction, type Request, type Response } from "express";
 import express from "express";
 import { createKnowledgeMarkdownPreview } from "steamharness";
@@ -1283,14 +1283,16 @@ export function createApiRouter(
     asyncHandler(async (req, res) => {
       const principal = requireRequestPrincipal(req);
       const body = isRecord(req.body) ? req.body : {};
+      if (Object.hasOwn(body, "projectId")) {
+        throw new HttpError(400, 400, "Project IDs are assigned by the Server. Create a new application to obtain a new ID.");
+      }
       const projectName = requireString(body["name"], "name");
-      const projectId = requireString(body["projectId"], "projectId");
       const projectType = requireProjectKind(body["projectType"]);
       const projectInfo = readDeclaredProjectInfo(body["projectInfo"]);
       const visibility = readOptionalString(body["visibility"], "visibility");
       const projectCard = readOptionalProjectCardMetadata(body["projectCard"]);
       const created = await storage.createProject({
-        projectId,
+        projectId: randomUUID(),
         projectName,
         projectType,
         projectInfo,
@@ -1958,13 +1960,11 @@ export function createApiRouter(
       if (!await canDownloadProjectSourceForPrincipal(storage, principal, name)) {
         throw new HttpError(403, 403, "Permission denied.");
       }
-      const body = req.body as {
-        targetProjectName?: unknown;
-        displayName?: unknown;
-        sourceTarget?: unknown;
-        groupId?: unknown;
-      };
-      const targetProjectName = requireString(body.targetProjectName, "targetProjectName");
+      const body = isRecord(req.body) ? req.body : {};
+      if (Object.hasOwn(body, "targetProjectName") || Object.hasOwn(body, "projectId")) {
+        throw new HttpError(400, 400, "Project IDs are assigned by the Server. Create a new application to obtain a new ID.");
+      }
+      const targetProjectName = randomUUID();
       const sourceTarget = readOptionalString(body.sourceTarget, "sourceTarget")?.trim() || "latest";
       if (sourceTarget === "draft" && !((await storage.requireProjectCapability(name,requestActor(req),"readDraft")).capabilities.includes("readDraft"))) {
         throw new HttpError(403, 403, "Source download access only includes published project versions.");

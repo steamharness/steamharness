@@ -1,6 +1,9 @@
 import type { cli as Encli } from "../en/cli.ts";
 
 export const cli: typeof Encli = {
+    projectIdentityChanged: "本地项目已变化，请检查项目后再应用新的应用 ID。",
+    projectRegistrationRequired: "此项目 ID 尚未注册。请在项目中重新申请应用 ID，或显式使用 upload --create 替换本地 ID。",
+    newApplicationArchiveUnsupported: "重新申请应用 ID 需要本地项目目录，不能使用预打包归档。",
     rootHelp: [
         "用法：",
         "  steamharness [--locale <zh-CN|en>] <run|json|structure|resolve-params|mcp> [workflow-dir] [args]",
@@ -99,12 +102,12 @@ export const cli: typeof Encli = {
     invalidUploadFile: "上传内容必须是大小不超过 50 MiB 的普通文件。",
     mimeTypeCommandUnsupported: "--mime-type 仅支持 file-upload。",
     deviceLoginPrompt: "请打开验证页面批准本次登录：\n{{url}}\n用户代码：{{code}}",
-    projectIdRequired: "Workflow package.json 必须预先包含 UUID 格式的 id；--create 只按该 UUID 创建或复用服务端项目，不会分配或回写 id。",
+    projectIdRequired: "项目 package.json 必须声明服务器分配的 UUID。可使用 --create 申请并写回新 ID 后上传。",
     archiveCreateFailed: "创建归档失败：{{details}}",
     projectNotBound: "Workflow \"{{workflow}}\" 尚未绑定服务端 UUID。请先运行 `steamharness workspace upload {{workflow}} --create` 创建或绑定。",
     projectCreationFailed: "创建项目失败。",
     projectInfoDataStorageRequired: "Workflow package.json 必须声明 steamHarness.projectInfo.dataStorage.mode。",
-    projectCreationIdMismatch: "Server 返回的项目 UUID 与 package.json.id 不一致。",
+    projectCreationIdMismatch: "Server 返回的新应用 ID 或项目类型无效。",
     packageMustBeObject: "Workflow 包 \"{{path}}\" 必须包含 JSON 对象。",
     packageReadFailed: "无法读取 Workflow 包 \"{{path}}\"。",
     packageStringRequired: "Workflow package.json 必须包含字符串字段 \"{{key}}\"。",
@@ -155,7 +158,7 @@ export const cli: typeof Encli = {
     projectGroupRootMustBeKanban: "项目组根项目必须是 Kanban 项目。",
     projectGroupRelatedProjectPending: "关联项目 {{alias}} 尚未由双方项目清单确认，不能作为 included 依赖。",
     projectGroupUploadFileUnsupported: "项目组上传不接受 --file；请使用 --path 和 --dependency，以便校验清单。",
-    projectGroupUploadRootIdRequired: "项目组上传要求根 package.json 包含 UUID 格式的 id，或使用 --create。",
+    projectGroupUploadRootIdRequired: "项目组上传要求每个项目都有已注册的服务器 UUID。请先分别申请 ID，再上传项目组。",
     publishGroupCommandUnsupported: "--publish-group 仅支持 upload 命令。",
     unknownWorkspaceOption: "未知的 workspace 选项：{{option}}",
 };

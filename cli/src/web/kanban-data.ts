@@ -1,5 +1,4 @@
 import { readFile, readdir, realpath } from 'node:fs/promises';
-import { createHash } from 'node:crypto';
 import path from 'node:path';
 import { parseKanbanBridgeCall, resolveKanbanRelatedProject, type KanbanBridgeCall } from '@steamharness/kanban-project';
 import { readProjectInfo, resolveProjectRelatedProjectAccess, isProjectAccessAllowed, isProjectDataStorageLocationAllowed } from '@steamharness/project-info';
@@ -8,7 +7,8 @@ import type { CliRelatedProjectSpec } from '../related-projects';
 
 export { readProjectInfo, resolveProjectName } from '@steamharness/project-info';
 export { readProjectCardMetadataFromPackageJson } from '@steamharness/project-card-metadata';
-export const webProjectDataDirectory = (storageDir: string, projectDir: string) => path.join(storageDir, createHash('sha256').update(projectDir).digest('hex').slice(0, 24));
+export { webProjectDataDirectory } from './project-data-directory';
+import { projectDataDirectory } from './project-data-directory';
 
 export async function localKanbanRelatedProjects(project: Project, bindings: readonly CliRelatedProjectSpec[] = []) {
   const info = readProjectInfo(JSON.parse(await readFile(path.join(project.folderPath, 'package.json'), 'utf8')));
@@ -43,7 +43,7 @@ export async function runKanbanDataCall(core: typeof import('steamharness'), pro
   const call = parseKanbanBridgeCall(value), { operation, input } = call;
   const { info, projects } = await localKanbanRelatedProjects(project, bindings);
   if (info.dataStorage?.mode === 'server' || !isProjectDataStorageLocationAllowed(info, 'local')) { throw new Error('Kanban data must use its declared storage location.'); }
-  const directory = webProjectDataDirectory(storageDir, project.folderPath);
+  const directory = await projectDataDirectory(storageDir, project.folderPath, project.id);
   const kv = core.createProjectKVContext({ store: core.createLocalProjectKVStore({ rootDir: path.join(directory, 'kv'), storageKind: 'kv' }), projectId: project.id });
   const knowledge = { persistentValue: core.createProjectPersistentValueContext({ store: core.createLocalProjectKVStore({ rootDir: path.join(directory, 'values'), storageKind: 'persistent_value' }), projectId: project.id }) };
   switch (operation) {
@@ -57,7 +57,7 @@ export async function runKanbanDataCall(core: typeof import('steamharness'), pro
       if (!target) { throw Object.assign(new Error('Related project is unavailable.'), { code: 'KANBAN_RELATED_PROJECT_UNAVAILABLE' }); }
       const access = resolveProjectRelatedProjectAccess({ consumerProjectId: project.id, consumerProjectInfo: info, targetProjectId: target.id, targetProjectInfo: target.projectInfo, alias });
       if (!access || !isProjectAccessAllowed(operation === 'relatedProject.kv.getValue' ? access.grant.read : access.grant.write, key)) { throw Object.assign(new Error('Related project did not grant this key.'), { code: 'KANBAN_RELATED_PROJECT_UNAVAILABLE' }); }
-      const related = core.createProjectKVContext({ projectId: target.id, store: core.createLocalProjectKVStore({ rootDir: path.join(webProjectDataDirectory(storageDir, target.folderPath), 'kv'), storageKind: 'kv' }) });
+      const related = core.createProjectKVContext({ projectId: target.id, store: core.createLocalProjectKVStore({ rootDir: path.join(await projectDataDirectory(storageDir, target.folderPath, target.id), 'kv'), storageKind: 'kv' }) });
       if (operation === 'relatedProject.kv.getValue') { return await related.getValue(key) ?? null; }
       await related.setValue(key, input.value); return null;
     }

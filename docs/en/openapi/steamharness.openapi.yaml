@@ -851,15 +851,12 @@ paths:
     post:
       tags:
         - Admin Projects
-      summary: Atomically create a server project with a specified UUID
+      summary: Create an application with a Server-assigned UUID
       description: |
-        An authenticated user or administrator creates or recovers a same-UUID server project from the UUID in local
-        `package.json.id`. `projectId`, `name`, `projectType`, and complete `projectInfo` containing
-        `dataStorage.mode` are required; `projectCard` and `visibility` are optional. Server atomically stores the
-        complete project declaration and records the creator as owner. It does not create a default record first,
-        perform a second metadata synchronization, or accept project source. If the same account already manages
-        the project, an identical UUID, name, and type recovers the binding and refreshes the declaration; other
-        conflicts return `409`.
+        The Server assigns a fresh UUID and creates a private personal or group project for the signed-in account.
+        Clients must not send projectId or choose their own ID. Name, projectType and complete projectInfo with
+        dataStorage.mode are required. Group projects require developer access in that group. Personal creators
+        become owners; group membership is inherited without promotion. No source files are uploaded.
       operationId: createProject
       requestBody:
         required: true
@@ -868,7 +865,6 @@ paths:
             schema:
               $ref: "#/components/schemas/CreateProjectRequest"
             example:
-              projectId: 8bd4fef2-e083-4201-a89f-6f7d0676df53
               name: "@steamharness/hello-workflow"
               projectType: workflow
               projectInfo:
@@ -885,7 +881,7 @@ paths:
                 iconBackgroundColor: "#2563eb"
       responses:
         "201":
-          description: Created or recovered successfully; returns the specified UUID,
+          description: Created a new application; returns the Server-assigned UUID,
             project type, complete declaration, and visibility.
           content:
             application/json:
@@ -2218,7 +2214,7 @@ paths:
       tags:
         - Admin Projects
       summary: Clone a project
-      description: Source download access includes published versions only. Cloning draft additionally requires management access to the original project. Owning the copy never grants configuration publication access to the original.
+      description: Source download access includes published versions only. Cloning draft additionally requires management access to the original project. Owning the copy never grants configuration publication access to the original. The Server assigns a fresh target UUID; targetProjectName and projectId are rejected.
       operationId: cloneProject
       parameters:
         - $ref: "#/components/parameters/ProjectName"
@@ -2229,17 +2225,16 @@ paths:
             schema:
               type: object
               properties:
-                targetProjectName:
-                  type: string
-                  example: smoke-copy
                 displayName:
                   type: string
                   example: Smoke Copy
                 sourceTarget:
                   type: string
                   example: latest
-              required:
-                - targetProjectName
+              not:
+                anyOf:
+                  - required: [targetProjectName]
+                  - required: [projectId]
       responses:
         "200":
           description: Clone the result.
@@ -5109,12 +5104,10 @@ components:
             - data
     CreateProjectRequest:
       type: object
+      description: The Server assigns a new application ID; client-selected projectId is rejected.
+      not:
+        required: [projectId]
       properties:
-        projectId:
-          type: string
-          format: uuid
-          description: Required UUID from local package.json.id; used as the server
-            project primary key.
         name:
           type: string
         projectType:
@@ -5126,7 +5119,6 @@ components:
         projectCard:
           $ref: "#/components/schemas/ProjectCardMetadata"
       required:
-        - projectId
         - name
         - projectType
         - projectInfo

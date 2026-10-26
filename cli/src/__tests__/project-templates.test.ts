@@ -131,3 +131,21 @@ describe('project templates', () => {
     expect(await readdir(parentDirectory)).toEqual([]);
   });
 });
+
+it.each(['workflow', 'conversation', 'kanban'] as const)('waits for a Server ID before writing a %s project and cleans up allocation failures', async projectType => {
+  const parentDirectory = await parent(), name = `allocated-${projectType}`, allocatedId = '78648759-bcde-4fd5-b3bd-9a2dd46a7192';
+  const input = { templateId: `${projectType}-starter`, name, parentDirectory, versions };
+  const created = await createProjectFromTemplate({ ...input, allocateProjectId: async project => {
+    expect(project).not.toHaveProperty('projectId'); expect(project).toMatchObject({ name, projectType, projectInfo: { dataStorage: { mode: 'local' } } });
+    expect(await readdir(path.join(parentDirectory, name))).toEqual([]);
+    return allocatedId;
+  } });
+  expect(created.id).toBe(allocatedId);
+  expect(JSON.parse(await readFile(path.join(created.directory, 'package.json'), 'utf8')).id).toBe(allocatedId);
+  await expect(createProjectFromTemplate({ ...input, name: 'failed', allocateProjectId: async () => { throw new Error('allocation denied'); } })).rejects.toThrow('allocation denied');
+  await expect(readFile(path.join(parentDirectory, 'failed', 'package.json'))).rejects.toHaveProperty('code', 'ENOENT');
+  await expect(createProjectFromTemplate({ ...input, name: 'invalid', allocateProjectId: async () => '111' })).rejects.toThrow('invalid project ID');
+  const cancellation = new AbortController();
+  await expect(createProjectFromTemplate({ ...input, name: 'cancelled', signal: cancellation.signal, allocateProjectId: async () => { cancellation.abort(); return allocatedId; } })).rejects.toHaveProperty('name', 'AbortError');
+  expect(await readdir(parentDirectory)).toEqual([name]);
+});

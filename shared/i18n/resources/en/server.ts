@@ -1,4 +1,5 @@
 export const server = {
+  projectIdServerAssigned: "Project IDs are assigned by the Server. Create a new application to obtain a new ID.",
   configurationPublicationRequired: "Publish the project configuration template before using role-controlled configurations.",
   accessCreateLoginRequired: "Account login is required to create a project.",
   accessAccountStorageRequired: "Account storage is not configured.",

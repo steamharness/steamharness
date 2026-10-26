@@ -3,7 +3,9 @@ import { resolve } from 'import-meta-resolve';
 import { mkdir, readFile, realpath, rm, stat, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { generateProjectCardMetadata } from '@steamharness/project-card-metadata';
+import { generateProjectCardMetadata, type ProjectCardMetadata } from '@steamharness/project-card-metadata';
+import type { DeclaredProjectInfo } from '@steamharness/project-info';
+import { isProjectUuid } from '@steamharness/workflow-ids';
 
 export type ProjectTemplateType = 'workflow' | 'conversation' | 'kanban';
 export interface ProjectTemplateDefinition {
@@ -22,6 +24,10 @@ export interface CreateProjectFromTemplateRequest {
   parentDirectory: string;
   versions: { harness: string; cli: string };
   signal?: AbortSignal;
+  allocateProjectId?: (project: TemplateProjectRegistration) => Promise<string>;
+}
+export interface TemplateProjectRegistration {
+  name: string; projectType: ProjectTemplateType; projectInfo: DeclaredProjectInfo; projectCard: ProjectCardMetadata;
 }
 export interface CreatedTemplateProject {
   id: string;
@@ -31,7 +37,7 @@ export interface CreatedTemplateProject {
   entryFile: string;
 }
 export class ProjectTemplateError extends Error {
-  constructor(readonly code: 'invalid-name' | 'invalid-template' | 'invalid-version' | 'invalid-parent' | 'directory-exists', message: string) {
+  constructor(readonly code: 'invalid-name' | 'invalid-template' | 'invalid-version' | 'invalid-parent' | 'directory-exists' | 'invalid-id', message: string) {
     super(message);
     this.name = 'ProjectTemplateError';
   }
@@ -84,17 +90,18 @@ export async function createProjectFromTemplate(request: CreateProjectFromTempla
     if (!(await stat(parent)).isDirectory()) { throw new Error('Not a directory'); }
   } catch { throw new ProjectTemplateError('invalid-parent', 'Choose an existing parent folder.'); }
   const directory = path.join(parent, name);
-  const id = randomUUID();
-  const packageName = name.toLowerCase().replace(/[^a-z0-9-]+/g, '-').replace(/^-+|-+$/g, '') || `project-${id.slice(0, 8)}`;
+  const projectCard = generateProjectCardMetadata(template.projectType);
+  const projectInfo: DeclaredProjectInfo = { localizedNames: { en: name, 'zh-CN': name }, declarations: [], relatedProjects: [], platformSupport: { mode: 'agnostic' }, dataStorage: { mode: 'local' } };
+  const packageName = name.toLowerCase().replace(/[^a-z0-9-]+/g, '-').replace(/^-+|-+$/g, '') || 'project';
   const manifest = {
-    id, name: packageName, version: '0.1.0', private: true, type: 'module',
+    id: '', name: packageName, version: '0.1.0', private: true, type: 'module',
     scripts: { dev: 'steamharness web .', inspect: 'steamharness structure .', 'run:json': 'steamharness json .' },
     devDependencies: { 'steamharness': request.versions.harness, '@steamharness/cli': request.versions.cli },
     steamHarness: {
       projectType: template.projectType,
-      projectCard: generateProjectCardMetadata(template.projectType),
+      projectCard,
       ...(template.projectType === 'kanban' ? { kanban: {} } : {}),
-      projectInfo: { localizedNames: { en: name, 'zh-CN': name }, platformSupport: { mode: 'agnostic' }, dataStorage: { mode: 'local' } },
+      projectInfo,
     },
   };
   // Read and render everything before reserving the destination folder.
@@ -109,6 +116,9 @@ export async function createProjectFromTemplate(request: CreateProjectFromTempla
     throw error;
   }
   try {
+    manifest.id = request.allocateProjectId ? await request.allocateProjectId({ name, projectType: template.projectType, projectInfo, projectCard }) : randomUUID();
+    if (!isProjectUuid(manifest.id)) { throw new ProjectTemplateError('invalid-id', 'The Server returned an invalid project ID.'); }
+    request.signal?.throwIfAborted();
     await writeFile(path.join(directory, 'package.json'), `${JSON.stringify(manifest, null, 2)}\n`, { flag: 'wx' });
     await writeFile(path.join(directory, '.gitignore'), 'node_modules/\ndist/\n.env\n.env.*\n*.log\n', { flag: 'wx' });
     await writeFile(path.join(directory, '.steamharnessignore'), '.git/\nnode_modules/\ndist/\n.env\n.env.*\n*.log\n', { flag: 'wx' });
@@ -119,7 +129,7 @@ export async function createProjectFromTemplate(request: CreateProjectFromTempla
       await writeFile(path.join(directory, file.filename), file.content, { flag: 'wx' });
     }
   } catch (error) { await rm(directory, { recursive: true, force: true }); throw error; }
-  return { id, name, directory, projectType: template.projectType, entryFile: template.entryFile };
+  return { id: manifest.id, name, directory, projectType: template.projectType, entryFile: template.entryFile };
 }
 
 function escapeHtml(value: string): string {

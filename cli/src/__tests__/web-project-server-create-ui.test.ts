@@ -22,8 +22,8 @@ function fixture(language: 'en' | 'zh-CN' = 'en') {
 
 it.each(['en', 'zh-CN'] as const)('lets the user review and cancel project creation in %s without writing anything', async language => {
   const f = fixture(language); await f.dialog.open();
-  expect(document.querySelector('h2')!.textContent).toBe(language === 'en' ? 'New project on Server' : '在服务器新建项目');
-  expect(document.querySelector('form')!.textContent).toContain(language === 'en' ? 'Source upload is optional' : '源码上传为可选操作');
+  expect(document.querySelector('h2')!.textContent).toBe(language === 'en' ? 'Apply for a new application ID' : '重新申请应用 ID');
+  expect(document.querySelector('form')!.textContent).toContain(language === 'en' ? 'Existing Server data and access are not transferred' : '现有服务器数据和授权不会转移');
   expect(document.querySelector('dl')!.textContent).toContain(f.context.projectId);
   expect(document.querySelector('select')!.textContent).toContain('<Team>');
   expect(document.querySelector('input')!.value).toBe('<Local map>'); expect(document.querySelector('Team')).toBeNull();

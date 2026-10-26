@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { mkdir, readdir, readFile, realpath, rename, rm, stat, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { performance } from 'node:perf_hooks';
-import { webProjectDataDirectory } from './kanban-data';
+import { projectDataDirectory } from './project-data-directory';
 import type { ConversationSession, Project } from './workflow-types';
 import type { RunRecord } from './workflow-workspace';
 
@@ -105,7 +105,7 @@ export async function readLocalStudioAnalysis(options: { storageDir: string; pro
       const language = options.locale?.toLowerCase().startsWith('zh') ? 'zh-cn' : 'en';
       const name = record(names) ? Object.entries(names).find(([key]) => key.toLowerCase() === language)?.[1] : undefined;
       project.name = typeof name === 'string' && name.trim() ? name : typeof manifest.name === 'string' && manifest.name.trim() ? manifest.name : reference.name;
-      const root = webProjectDataDirectory(options.storageDir, directory);
+      const root = await projectDataDirectory(options.storageDir, directory, reference.id);
       const metadata = await readJson(path.join(root, 'project.json'));
       const type = manifest.steamHarness?.kanban ? 'kanban' : projectType(reference.projectType) ?? projectType(manifest.steamHarness?.projectType)
         ?? (metadata?.version === 1 && sameProjectId(metadata.projectId, reference.id) ? projectType(metadata.projectType) : undefined);

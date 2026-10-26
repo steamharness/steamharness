@@ -15,7 +15,7 @@ steamharness workspace upload <project> [--path <dir>] [--file <archive>] [--cre
 | --- | --- |
 | `--path` | 本地项目目录。 |
 | `--file` | 已有 tar.gz、tgz 或 zip 包。 |
-| `--create` | 按 package 顶层 UUID、静态 projectType 与完整 projectInfo 创建或复用项目。 |
+| `--create` | 已注册 ID 只核验现有项目；未注册时由服务器分配新 ID、写回本地 package.json.id 后上传，作为新应用处理，不接受自选 ID。不能与 --file 同用，项目组内各项目须先分别注册。 |
 | `--group-id` | 首次创建时选择归属组；需要该组开发者权限，不自动提升创建者角色。 |
 | `--release-log` | 上传成功后发布，并保存发布说明。 |
 | `--no-wait` | 返回文件处理任务 ID；不能与自动发布或项目组组合。 |

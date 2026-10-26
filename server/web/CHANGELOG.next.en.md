@@ -1,5 +1,7 @@
 # Unreleased
 
+- New projects use the ID assigned by the Server; the browser no longer generates or submits a client-selected ID.
+
 - Fixed: Standalone Web proxies follow the service channel and use localhost:7126 in dev instead of the PostgreSQL port.
 
 - Fixed: deployments include localized Server and Web notes with source identity; health links use the current environment.

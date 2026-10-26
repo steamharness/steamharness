@@ -1,16 +1,18 @@
 # Unreleased
 
+- Unregistered projects now require confirmation to apply for a Server-assigned application ID and safely replace the local manifest ID. New applications use separate history and data without uploading source or inheriting old access. All three types share this flow; standalone upload only allocates with explicit --create, and groups never change IDs implicitly.
+
 - Fixed generated project templates to match untouched source to the installed SDK API while preserving user edits. Project inspection now includes specific script validation diagnostics instead of only the validation summary.
 
 - Fixed missing local related-project imports to show import guidance, followed by a recheck and deliberate retry. Kanban data and update checks use verified imported folders, including folders outside the project group, and never substitute another copy of the UUID when an explicit binding becomes invalid.
 
 - Improved related-project guidance across Kanban, Workflow and Conversation: verify local imports first, then guide Server access or data grants. Compact related-project notices and expandable connection details distinguish them from missing current projects. Import changes update open pages, rechecks verify folder UUIDs, and no project or grant is changed automatically.
 
-- Simplified Kanban, Workflow and Conversation Server guidance to New project on Server and Check again. Removed source upload and Account / Server actions, along with instructions to switch Servers.
+- Simplified Kanban, Workflow and Conversation Server guidance to Apply for a new application ID and Check again. Removed source upload and Account / Server actions, along with instructions to switch Servers.
 
 - Fixed AI source highlighting when adding or editing project configuration models. The selected source uses the theme accent color, and unselected sources keep a neutral background through hovering and switching.
 
-- Fixed Server setup guidance across Kanban, Workflow and Conversation: users can review and create a private project with the same local ID, without uploading source. Explicit Server storage failures in `both` mode identify the affected project and related grants; local actions remain available and recovery never replays runs or queued inputs.
+- Fixed Server setup guidance across Kanban, Workflow and Conversation: users can review and apply for a new Server-assigned application ID, replacing the local ID without uploading source. Explicit Server storage failures in `both` mode identify the affected project and related grants; local actions remain available and recovery never replays runs or queued inputs.
 
 - Fixed: Default Server addresses follow the dev, alpha and main channels. Dev uses localhost:7126, empty saved addresses fall back correctly, and explicit connections retain priority.
 

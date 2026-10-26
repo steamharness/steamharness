@@ -73,7 +73,9 @@
     "libheif-js": "1.23.5",
     "pdfjs-dist": "6.4.299",
     "pptxviewjs": "1.1.9",
-    "xlsx": "https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz"
+    "xlsx": "https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz",
+    "@steamharness/project-info": "file:../shared/project-info",
+    "@steamharness/workflow-ids": "file:../shared/workflow-ids"
   },
   "devDependencies": {
     "tsx": "4.23.0",

@@ -21,19 +21,19 @@ export class ProjectServerCreateDialog {
     if (this.dialog) { this.dialog.focus(); return; }
     const generation = ++this.generation;
     const dialog = this.dialog = document.createElement('dialog'); dialog.className = 'conversation-dialog project-server-create';
-    const title = document.createElement('h2'); title.id = `create-project-${crypto.randomUUID()}`; title.textContent = t('New project on Server');
+    const title = document.createElement('h2'); title.id = `create-project-${crypto.randomUUID()}`; title.textContent = t('Apply for a new application ID');
     dialog.setAttribute('aria-labelledby', title.id);
     const close = iconButton('close', t('Close'), () => dialog.close());
     const header = document.createElement('header'); header.append(title, close);
     const form = document.createElement('form'); form.className = 'dialog-body';
     const description = document.createElement('p'); description.id = `${title.id}-description`;
-    description.textContent = t('Create a private Server project with the same project ID for Server data access. Source upload is optional and can be done later.');
+    description.textContent = t('The current ID is not registered on this Server. Apply for a Server-assigned ID and replace the local project ID to continue as a new application. Existing Server data and access are not transferred. Source files are not uploaded.');
     dialog.setAttribute('aria-describedby', description.id);
     const status = document.createElement('p'); status.setAttribute('role', 'status'); status.textContent = t('Loading project groups...');
     const error = document.createElement('p'); error.className = 'project-server-create-error'; error.setAttribute('role', 'alert'); error.hidden = true;
     const actions = document.createElement('div'); actions.className = 'prompt-navigation';
     const cancel = document.createElement('button'); cancel.type = 'button'; cancel.className = 'prompt-button'; cancel.textContent = t('Cancel'); cancel.onclick = () => dialog.close();
-    const confirm = document.createElement('button'); confirm.type = 'submit'; confirm.className = 'prompt-button'; confirm.textContent = t('Create project'); confirm.disabled = true;
+    const confirm = document.createElement('button'); confirm.type = 'submit'; confirm.className = 'prompt-button'; confirm.textContent = t('Apply for new ID'); confirm.disabled = true;
     actions.append(cancel, confirm); form.append(description, status, error, actions); dialog.append(header, form);
     let context: ProjectServerCreateContext | undefined, busy = false;
     dialog.addEventListener('cancel', event => { if (busy) event.preventDefault(); });
@@ -52,7 +52,7 @@ export class ProjectServerCreateDialog {
       }
       if (!context) throw new Error(t('Could not load project groups. Try again.'));
       const details = document.createElement('dl');
-      for (const [label, value] of [[t('Server'), context.serverUrl], [t('Project ID'), context.projectId], [t('Project type'), context.projectType]]) {
+      for (const [label, value] of [[t('Server'), context.serverUrl], [t('Current project ID'), context.projectId], [t('Project type'), context.projectType]]) {
         const term = document.createElement('dt'), definition = document.createElement('dd'); term.textContent = label; definition.textContent = value; details.append(term, definition);
       }
       const nameLabel = document.createElement('label'); nameLabel.textContent = t('Project name');
@@ -63,7 +63,7 @@ export class ProjectServerCreateDialog {
       form.onsubmit = async event => {
         event.preventDefault(); if (busy || !name.value.trim()) { if (!busy) name.focus(); return; }
         busy = true; confirm.disabled = true; cancel.disabled = true; close.disabled = true; name.disabled = true; group.disabled = true;
-        status.hidden = false; status.textContent = t('Creating project...'); error.hidden = true;
+        status.hidden = false; status.textContent = t('Applying for a new application ID...'); error.hidden = true;
         try {
           const replies = await this.request({ type: 'project-server-create-confirm', token: context!.token, confirmed: true, name: name.value.trim(), ...(group.value ? { groupId: group.value } : {}) });
           if (!replies.some(reply => reply.type === 'project-server-created')) throw new Error(t('Could not create the Server project. Check the Server and project group, then try again.'));

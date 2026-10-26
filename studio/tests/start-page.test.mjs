@@ -23,7 +23,7 @@ function fixture(t, options = {}) {
   const f = { calls, storage, intervals, projectsChanged, accountChanged, projects: [], recent: [], warnings: [], errors: [], installs: [], progress: [],
     name: 'New project', parent: path.resolve('/projects'), newWindow: true, summary: { projects: 2, running: 1, waiting: 1, unavailable: 0, generatedAt: 1 },
     environment: { node: 'v24.18.0', core: '0.2.4', cli: '0.2.4' }, inspectedId: id, manifestId: options.manifestId ?? id,
-    files, registrations: [], install: options.install, inspect: options.inspect, register: options.register,
+    files, install: options.install, inspect: options.inspect, create: options.create,
     account: options.account ?? { status: 'signed-out', serverUrl: 'http://localhost:7126' } };
   const vscode = {
     EventEmitter: Emitter, version: '1.141.0', ProgressLocation: { Notification: 15 },
@@ -66,7 +66,6 @@ function fixture(t, options = {}) {
     installDependencies: async (directory, signal, log) => { f.installs.push(directory); log('install log'); await f.install?.(signal); },
     hasProjectDependencies: async () => f.dependenciesPresent !== false,
     prepareProjectTemplate: async () => { f.prepares = (f.prepares ?? 0) + 1; return false; },
-    registerProject: async (project, target, signal) => { f.registrations.push({ project, target }); await f.register?.(signal); },
     inspect: async () => { await f.inspect?.(); return { projects: [{ id: f.inspectedId }], errors: f.inspectionErrors ?? [] }; },
     environmentStatus: async () => { if (f.environmentError) { throw f.environmentError; } return f.environment; },
     analysisSummary: async () => { f.summaryReads = (f.summaryReads ?? 0) + 1; if (f.readSummary) { return f.readSummary(); } return f.summary; },
@@ -128,14 +127,14 @@ test('creation opens the project before installation and hands progress, logs an
   await f.execute('studio.createProject', 'workflow'); assert.equal(f.created, 1);
   finishCreate(); await creating;
   const opened = f.calls.find(([name]) => name === 'vscode.openFolder'); assert.equal(opened[2].forceNewWindow, true);
-  assert.deepEqual([f.installs, f.progress], [[], []]);
+  assert.deepEqual(f.installs, []); assert.equal(f.progress.length, 1); assert.equal(f.progress[0].title, 'Applying for a new project ID');
   assert.equal((await f.state()).pending[0].installOnOpen, true);
   const target = fixture(t, { storage: f.storage, folders: [opened[1].fsPath],
     install: () => new Promise((_resolve, reject) => { failInstall = () => reject(new Error('offline registry')); }) });
   await until(() => failInstall, 'The new project window did not start installation');
   assert.equal((await target.state()).installing, id); assert.equal((await target.state()).pending[0].installOnOpen, false);
   assert.equal(target.progress.length, 1); assert.equal(target.installs[0], opened[1].fsPath);
-  assert.deepEqual([f.installs, f.progress], [[], []]);
+  assert.deepEqual(f.installs, []); assert.equal(f.progress.length, 1); assert.equal(f.progress[0].title, 'Applying for a new project ID');
   failInstall(); await until(async () => !(await target.state()).busy, 'Installation did not finish');
   assert.equal((await target.state()).pending[0].status, 'failed');
   await target.execute('studio.showProjectSetupLog'); assert.match(target.logDocument.getText(), /install log/);
@@ -153,36 +152,30 @@ test('validation errors remain separate from dependency installation and retries
   await until(async () => !(await target.state()).busy, 'Validation did not settle');
   const pending = (await target.state()).pending[0];
   assert.equal(pending.stage, 'validation'); assert.equal(pending.dependenciesInstalled, true);
-  assert.equal(target.registrations.length, 0);
+  assert.equal(f.created, 1);
   await target.execute('studio.showProjectSetupLog');
   assert.match(target.logDocument.getText(), /Dependencies installed successfully[\s\S]*specific script violation/);
   target.controller.dispose();
   const restored = fixture(t, { storage: f.storage, folders: [path.join(f.parent, f.name)] });
   await restored.execute('studio.showProjectSetupLog'); assert.match(restored.logDocument.getText(), /specific script violation/);
   await restored.execute('studio.retryProjectSetup', id);
-  assert.deepEqual(restored.installs, []); assert.equal(restored.registrations.length, 1);
+  assert.deepEqual(restored.installs, []); assert.equal(restored.created, undefined);
   assert.equal((await restored.state()).pending.length, 0);
 });
 
-test('registration preserves the creating account and a failed registration leaves a runnable local project', async t => {
-  const account = { status: 'authenticated', serverUrl: 'http://localhost:7126', user: { userId: 'creator' } };
-  const f = fixture(t, { account }); await f.execute('studio.createProject', 'workflow');
-  const target = fixture(t, { storage: f.storage, folders: [path.join(f.parent, f.name)], account,
-    register: async () => { throw new Error('registration offline'); } });
-  await until(async () => !(await target.state()).busy, 'Registration did not settle');
-  assert.equal(target.remembered.id, id); assert.equal((await target.state()).pending[0].stage, 'registration');
-  assert.deepEqual({ ...target.registrations[0].target }, { serverUrl: account.serverUrl, userId: 'creator' });
-  assert.equal(target.installs.length, 1);
-  target.register = undefined; await target.execute('studio.retryProjectSetup', id);
-  assert.equal(target.installs.length, 1); assert.equal(target.registrations.length, 2);
-  assert.equal((await target.state()).pending.length, 0);
+test('ID allocation failure reports the error before a project window is opened', async t => {
+  const f = fixture(t, { create: async () => { throw new Error('ID allocation offline'); } });
+  await f.execute('studio.createProject', 'workflow');
+  assert.equal(f.created, 1); assert.equal(f.remembered, undefined);
+  assert.equal(f.calls.some(call => call[0] === 'vscode.openFolder'), false);
+  assert.match(f.errors[0], /ID allocation offline/);
 });
 
 test('a retry reinstalls dependencies if a successful installation was subsequently removed', async t => {
   const f = fixture(t); await f.execute('studio.createProject', 'workflow');
-  const target = fixture(t, { storage: f.storage, folders: [path.join(f.parent, f.name)], register: async () => { throw new Error('offline'); } });
+  const target = fixture(t, { storage: f.storage, folders: [path.join(f.parent, f.name)], inspect: async () => { throw new Error('validation offline'); } });
   await until(async () => !(await target.state()).busy, 'Setup did not settle');
-  target.dependenciesPresent = false; target.register = undefined;
+  target.dependenciesPresent = false; target.inspect = undefined;
   await target.execute('studio.retryProjectSetup', id);
   assert.equal(target.installs.length, 2); assert.equal((await target.state()).pending.length, 0);
 });
@@ -284,7 +277,7 @@ test('retrying in the source window hands installation back to an existing proje
   const target = fixture(t, { storage: f.storage, folders: [directory], install: async () => { throw new Error('offline registry'); } });
   await until(async () => !(await target.state()).busy, 'The failed setup did not settle');
   await f.execute('studio.retryProjectSetup', id);
-  assert.equal(f.created, 1); assert.deepEqual([f.installs, f.progress], [[], []]);
+  assert.equal(f.created, 1); assert.deepEqual(f.installs, []); assert.equal(f.progress.length, 1); assert.equal(f.progress[0].title, 'Applying for a new project ID');
   assert.equal(f.calls.filter(([name]) => name === 'vscode.openFolder').length, 2);
   target.install = undefined; target.focus(); target.focus();
   await until(() => target.remembered, 'The existing project window did not retry');

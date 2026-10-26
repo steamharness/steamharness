@@ -689,5 +689,17 @@
   "Project name": "项目名称",
   "Project group": "项目组",
   "Personal project": "个人项目",
-  "Creating project...": "正在创建项目…"
+  "Creating project...": "正在创建项目…",
+  "Apply for a new application ID": "重新申请应用 ID",
+  "Apply for a new application ID...": "重新申请应用 ID…",
+  "Apply for new ID": "申请新 ID",
+  "Current project ID": "当前项目 ID",
+  "The Server returned an invalid new application ID.": "服务器返回的新应用 ID 无效。",
+  "The application ID changed. The new application is opening.": "应用 ID 已变更，正在打开新应用。",
+  "The current ID is not registered on this Server. Apply for a Server-assigned ID and replace the local project ID to continue as a new application. Existing Server data and access are not transferred. Source files are not uploaded.": "当前 ID 未在此服务器注册。申请服务器分配的新 ID 并替换本地项目 ID 后，将作为新应用继续使用。现有服务器数据和授权不会转移，也不会上传源码。",
+  "This ID is not registered on the connected Server. It cannot be registered as a chosen ID. Apply for a new Server-assigned ID to use this project as a new application.": "当前 ID 未在已连接的服务器注册，不能使用自选 ID 注册。请重新申请服务器分配的 ID，将此项目作为新应用使用。",
+  "Choose Apply for a new application ID. Confirming replaces the local project ID and opens a new application without uploading source.": "选择“重新申请应用 ID”。确认后将替换本地项目 ID，并以新应用打开，不上传源码。",
+  "Ask the related project owner to check its registration. If a new application ID is needed, update both projects' relationship declarations and import the matching project again.": "请关联项目的所有者检查注册状态。若需要重新申请应用 ID，请更新双方项目的关联声明，并重新导入匹配的项目。",
+  "Applying for a new application ID...": "正在申请新的应用 ID…",
+  "A new ID was already allocated. Retry with the original name and project group.": "新 ID 已分配，请使用原来的名称和项目组重试。"
 }

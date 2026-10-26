@@ -1285,7 +1285,7 @@ describe("server workspace CLI helpers", () => {
     }
   });
 
-  it("rejects project creation when package.json has no UUID", async () => {
+  it("requires explicit application allocation when the local ID is invalid", async () => {
     const root = await mkdtemp(path.join(os.tmpdir(), "workflow-cli-create-"));
     const projectDir = path.join(root, "workspace", "workflow", "hello");
     await mkdir(projectDir, { recursive: true });
@@ -1308,7 +1308,7 @@ describe("server workspace CLI helpers", () => {
         packageContext,
         server: "http://127.0.0.1:7125",
         token: "api-key",
-      })).rejects.toThrow(/UUID/);
+      })).rejects.toThrow(/not registered/);
       expect(fetchMock).not.toHaveBeenCalled();
     } finally {
       if (previousRepoRoot === undefined) {
@@ -1319,71 +1319,23 @@ describe("server workspace CLI helpers", () => {
     }
   });
 
-  it.each([undefined, "team-group"])("creates a project with the selected ownership group %s", async (groupId) => {
-    const root = await mkdtemp(path.join(os.tmpdir(), "workflow-cli-create-bound-"));
-    const projectDir = path.join(root, "workspace", "workflow", "hello");
-    await mkdir(projectDir, { recursive: true });
-    await writeFile(path.join(projectDir, "package.json"), JSON.stringify({
-      id: "8bd4fef2-e083-4201-a89f-6f7d0676df53",
-      name: "Hello Workflow",
-      version: "0.0.1",
-      steamHarness: { projectType: "workflow", projectInfo: createProjectInfo() },
-    }, null, 2));
+  it.each([undefined, "team-group"])("applies for a new ID with selected ownership group %s", async groupId => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "workflow-cli-allocate-"));
+    const projectDir = path.join(root, "hello"); await mkdir(projectDir);
+    const oldId = "8bd4fef2-e083-4201-a89f-6f7d0676df53", newId = "78648759-bcde-4fd5-b3bd-9a2dd46a7192";
+    await writeFile(path.join(projectDir, "package.json"), JSON.stringify({ id: oldId, name: "Hello Workflow", version: "0.0.1", steamHarness: { projectType: "workflow", projectInfo: createProjectInfo() } }, null, 2));
     await writeFile(path.join(projectDir, "index.ts"), VALID_STEAMHARNESS_SOURCE);
-
-    const previousRepoRoot = process.env.STEAMHARNESS_REPO_ROOT;
-    process.env.STEAMHARNESS_REPO_ROOT = root;
-    const fetchMock = vi.fn().mockResolvedValue(createJsonResponse({
-      errCode: 0,
-      errMessage: "",
-      data: {
-        projectId: "8bd4fef2-e083-4201-a89f-6f7d0676df53",
-        projectName: "Hello Workflow",
-        visibility: "private",
-      },
-    }));
+    const fetchMock = vi.fn().mockResolvedValueOnce(createJsonResponse({ errCode: 404, errMessage: "missing" })).mockResolvedValue(createJsonResponse({ errCode: 0, data: { projectId: newId, projectType: "workflow", projectName: "Hello Workflow", visibility: "private" } }));
     vi.stubGlobal("fetch", fetchMock);
-
-    try {
-      const packageContext = await readProjectPackageContext("hello", undefined);
-      const created = await ensureProjectCreated({
-        packageContext,
-        groupId,
-        server: "http://127.0.0.1:7125",
-        token: "api-key",
-      });
-
-      expect(created.projectId).toBe("8bd4fef2-e083-4201-a89f-6f7d0676df53");
-      expect(fetchMock).toHaveBeenCalledWith(
-        "http://127.0.0.1:7125/api/projects",
-        expect.objectContaining({
-          method: "POST",
-          body: JSON.stringify({
-            name: "Hello Workflow",
-            projectType: "workflow",
-            projectId: "8bd4fef2-e083-4201-a89f-6f7d0676df53",
-            projectInfo: {
-              localizedNames: {},
-              declarations: [],
-              platformSupport: { mode: "agnostic" },
-              dataStorage: { mode: "both" },
-              relatedProjects: [],
-            },
-            ...(groupId ? {groupId} : {}),
-          }),
-        }),
-      );
-      expect(JSON.parse(readFileSync(path.join(projectDir, "package.json"), "utf8"))).toMatchObject({
-        id: "8bd4fef2-e083-4201-a89f-6f7d0676df53",
-        name: "Hello Workflow",
-      });
-    } finally {
-      if (previousRepoRoot === undefined) {
-        delete process.env.STEAMHARNESS_REPO_ROOT;
-      } else {
-        process.env.STEAMHARNESS_REPO_ROOT = previousRepoRoot;
-      }
-    }
+    const packageContext = await readProjectPackageContext("hello", projectDir);
+    const created = await ensureProjectCreated({ packageContext, groupId, allowNewApplication: true, server: "http://127.0.0.1:7125", token: "api-key" });
+    expect(created.projectId).toBe(newId);
+    const body = JSON.parse(fetchMock.mock.calls[1][1].body);
+    expect(body).toEqual({ name: "Hello Workflow", projectType: "workflow", projectInfo: { localizedNames: {}, declarations: [], platformSupport: { mode: "agnostic" }, ...createProjectInfo() }, ...(groupId ? { groupId } : {}) });
+    expect(JSON.parse(readFileSync(path.join(projectDir, "package.json"), "utf8"))).toMatchObject({ id: newId, name: "Hello Workflow" });
+    fetchMock.mockReset().mockResolvedValue(createJsonResponse({ errCode: 0, data: { id: newId, name: "Hello Workflow", projectType: "workflow", visibility: "private" } }));
+    await ensureProjectCreated({ packageContext: await readProjectPackageContext("hello", projectDir), server: "http://127.0.0.1:7125", token: "api-key" });
+    expect(fetchMock).toHaveBeenCalledOnce(); expect(fetchMock.mock.calls[0][1].method).toBe("GET");
   });
 
   it("rejects project creation when data storage is undeclared", async () => {

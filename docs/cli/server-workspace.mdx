@@ -50,6 +50,8 @@ steamharness workspace versions hello
 steamharness workspace download hello --target latest --path ./downloaded-hello
 ```
 
+新应用 ID 必须由服务器签发。`upload --create` 在 ID 未注册时申请并写回新 ID，不会用本地自选 ID 新建记录；项目组中的根项目和依赖必须先分别完成注册，避免隐式变更关联身份。
+
 项目参数支持 UUID、名称和本地目录，CLI 优先读取目录中的稳定 `package.json.id`。打包只按每个项目根目录的 `.steamharnessignore` 选择文件，不读取 `.gitignore`；规则文件自身和必需入口不能被排除。项目组 included 依赖锁定精确版本与源码哈希，下载逐项目检查源码权限，并报告跳过原因和申请入口。下载不受操作系统限制。
 
 ## 业务文件

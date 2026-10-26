@@ -347,12 +347,6 @@ export class VersionsView implements vscode.WebviewViewProvider, vscode.Disposab
     assertAvailable();
     const project = session.project;
     if (this.serverProject?.id === project.id && !this.serverProject.access?.capabilities.includes('upload')) { throw new Error(t('Your project or group role does not allow this operation.')); }
-    let groupId:string|undefined;
-    if(!this.serverProject) {
-      const groups=await new ProjectServerClient(session.connection).groups(signal);
-      const chosen=await vscode.window.showQuickPick([{label:t('Personal project'),id:undefined as string|undefined},...groups.map(group=>({label:group.name,id:group.id}))],{title:t('Choose the project group'),ignoreFocusOut:true});
-      if(!chosen)throw new Error(t('Cancelled.'));groupId=chosen.id;
-    }
     const documents = vscode.workspace.textDocuments.filter(document => document.isDirty && document.uri.toString().startsWith(`${project.uri}/`));
     for (const document of documents) {
       if (!await document.save()) { throw new Error(t('Save the project files before uploading.')); }
@@ -372,12 +366,12 @@ export class VersionsView implements vscode.WebviewViewProvider, vscode.Disposab
       if ((await new ProjectServerClient(session.connection).versions(project.id, signal)).versions.some(entry => entry.version === session.version)) {
         throw new Error(t('Version {0} already exists. Change package.json version before uploading.', session.version));
       }
-    } catch (error) { if (!(error instanceof AuthError && error.status === 404)) { throw error; } }
+    } catch (error) { if (error instanceof AuthError && error.status === 404) { throw new Error(t('This project ID is not registered. Open the project and apply for a new application ID before uploading.')); } throw error; }
     assertAvailable();
     await readManifest();
     await this.launcher.uploadProject!({ ...project, manifest: { ...project.manifest, version: session.version } }, releaseLog, signal, progress => {
       void vscode.commands.executeCommand('studio.internalUpdateProjectUpload', { id: session.id, message: progress.message }).then(undefined, () => {});
-    },groupId);
+    });
     session.uploaded = true;
     try {
       assertAvailable();

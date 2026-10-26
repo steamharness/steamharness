@@ -269,7 +269,8 @@ export class StudioStartController implements vscode.Disposable {
       this.creation.signal.throwIfAborted();
       const account = this.account.getState();
       const registration = { serverUrl: account.serverUrl, ...(account.user ? { userId: account.user.userId } : {}) };
-      const project = await this.launcher.createProject!(input, this.creation.signal);
+      const project = await vscode.window.withProgress({ location: vscode.ProgressLocation.Notification, title: t('Applying for a new project ID'), cancellable: false },
+        () => this.launcher.createProject!(input, this.creation.signal));
       await this.openProjectWindow({ ...project, registration }, options);
     });
   }
@@ -325,20 +326,6 @@ export class StudioStartController implements vscode.Disposable {
             await this.context.globalState.update(IMPORTED_PROJECTS_KEY, rememberImportedProjects(readImportedProjects(this.context.globalState.get(IMPORTED_PROJECTS_KEY)), [{ id: project.id, name: project.name, uri }]));
             await this.remember(project);
             await vscode.commands.executeCommand('studio.refreshProjects');
-            if (this.launcher.registerProject) {
-              stage = 'registration';
-              // Persist the intended owner before any request, including a retry after signing in.
-              const user = this.account.getState().user;
-              if (!project.registration!.userId && user && this.account.getState().serverUrl === project.registration!.serverUrl) {
-                project = { ...project, registration: { ...project.registration!, userId: user.userId } };
-              }
-              await this.updatePending({ ...project, stage });
-              progress.report({ message: t('Registering Project') });
-              this.appendInstallationLog(`${t('Registering project on {0}. Source files stay local.', project.registration!.serverUrl)}\n`);
-              await this.launcher.registerProject(project, project.registration!, signal);
-              signal.throwIfAborted();
-              this.appendInstallationLog(`${t('Project registered successfully. Source files were not uploaded.')}\n`);
-            }
           } finally { cancellation.dispose(); }
         });
     } catch (error) {
@@ -401,6 +388,7 @@ export class StudioStartController implements vscode.Disposable {
     if (code === 'invalid-name') { return t('Choose a valid folder name without path separators or reserved characters.'); }
     if (code === 'directory-exists') { return t('The project folder already exists. Choose another name.'); }
     if (code === 'invalid-parent') { return t('Choose an existing parent folder.'); }
+    if (code === 'invalid-id') { return t('The Server returned an invalid project ID.'); }
     if (code === 'invalid-version') { return t('The project template requires exact published dependency versions.'); }
     if (code === 'package-manager-missing') { return t('Install pnpm or npm, then retry dependency installation.'); }
     if (code === 'package-manager-timeout') { return t('Dependency installation timed out. Review the installation log and retry.'); }

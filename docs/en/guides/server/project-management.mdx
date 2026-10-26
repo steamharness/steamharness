@@ -50,7 +50,7 @@ Top-level groups and personal projects retain at least one active owner, protect
 
 ## Source and versions
 
-Creating a project records its UUID, type, Project Info and ownership without requiring source upload. Local Kanban projects can access Server KV, knowledge and related-project revision streams after registration. The default draft data connection uses the current registered declarations; selecting a published target still fixes its recorded declarations. Static Server Web previews and published source versions require a separate source upload.
+The Server assigns a fresh UUID when creating or cloning a project. Creation rejects client-selected `projectId`; cloning rejects `targetProjectName` and `projectId`. An unregistered local ID requires a new application ID instead of registration with the existing ID. Creation records the ID, type, Project Info and ownership without requiring source upload. Local Kanban projects can access Server KV, knowledge and related-project revision streams after registration. The default draft data connection uses the current registered declarations; selecting a published target still fixes its recorded declarations. Static Server Web previews and published source versions require a separate source upload.
 
 Uploads only extract, statically validate and save files. Server never installs dependencies, builds or executes uploaded code. Failures preserve drafts and published versions. Publication saves an immutable snapshot and updates `latest`; duplicate versions return `409`.
 

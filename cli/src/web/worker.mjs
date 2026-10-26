@@ -121,7 +121,9 @@ try {
     send('result', { projects, errors });
   } else if (request.project?.folderPath) {
     const projectKey = createHash('sha256').update(request.project.assistant ? `assistant:${request.project.id}:${request.project.assistant.workdir}` : request.project.folderPath).digest('hex').slice(0, 24);
-    const dataDir = path.join(request.storageDir, projectKey);
+    const { projectDataDirectory } = await import(new URL(import.meta.url.includes('/src/web/') ? './project-data-directory.ts' : './project-data-directory.mjs', import.meta.url));
+    const dataDir = request.project.assistant ? path.join(request.storageDir, projectKey)
+      : await projectDataDirectory(request.storageDir, request.project.folderPath, request.project.id);
     if (request.project.assistant) {
       const assistant = request.project.assistant;
       const primary = assistant.roots.find(root => root.folderPath === assistant.workdir);

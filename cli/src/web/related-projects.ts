@@ -1,7 +1,8 @@
 import path from 'node:path';
+import { readFileSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
 import { createCliRelatedProjectRuntime, type CliRelatedProjectSpec } from '../related-projects';
-import { webProjectDataDirectory } from './kanban-data';
+import { projectDataDirectorySync, webProjectDataDirectory } from './project-data-directory';
 import type { ProjectServerIssue } from './project-server-state';
 import type { Project } from './workflow-types';
 
@@ -60,7 +61,11 @@ export function createWebRelatedProjectRuntime(core: typeof import('steamharness
     relatedProjects: options.relatedProjects,
     localKvStoreDir: local.kvStoreDir,
     localPersistentValueStoreDir: local.persistentValueStoreDir,
-    localStorageForProject: roots,
+    localStorageForProject: directory => {
+      const manifest = JSON.parse(readFileSync(path.join(directory, 'package.json'), 'utf8'));
+      const root = projectDataDirectorySync(options.storageDir, directory, manifest.id);
+      return { kvStoreDir: path.join(root, 'kv'), persistentValueStoreDir: path.join(root, 'values') };
+    },
     storageApi: core as unknown as NonNullable<Parameters<typeof createCliRelatedProjectRuntime>[0]['storageApi']>,
     runId: options.runId,
     conversationId: options.conversationId,

@@ -1,5 +1,5 @@
 import { afterEach, expect, it, vi } from 'vitest';
-import { mkdtemp, realpath, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, readFile, realpath, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { ProjectServerConnection, checkProjectServer, checkProjectStorageFailure, projectServerAccessFailure } from '../web/project-server-state';
@@ -97,7 +97,7 @@ async function fixture(kind: 'workflow' | 'conversation', mode: 'local' | 'both'
   await writeFile(path.join(folderPath, 'package.json'), JSON.stringify(pkg));
   const project: Project = { id, uri: `file://${folderPath}`, folderPath, name: 'Project', projectType: kind,
     fields: [{ name: 'subject', flag: '--subject', type: 'string' }], entrypoints: [], projectInfo: readProjectInfo(pkg) };
-  const runtime: Runtime = { available: true, inspect: vi.fn(async () => ({ projects: [project], errors: [] })),
+  const runtime: Runtime = { available: true, inspect: vi.fn(async () => ({ projects: [{ ...project, id: JSON.parse(await readFile(path.join(folderPath, 'package.json'), 'utf8')).id }], errors: [] })),
     resolveParams: vi.fn(async () => ({ params: {} })), run: vi.fn(async () => ({ status: 'success' })),
     uploadFiles: vi.fn(async () => []), readFile: vi.fn(), readResource: vi.fn(), deleteFiles: vi.fn(), deleteConversation: vi.fn(), cancelConversation: vi.fn(), cancel: vi.fn(), dispose: vi.fn() };
   let status = 404, onRead: ((url: string, options?: RequestInit) => Promise<Response>) | undefined;
@@ -291,17 +291,17 @@ it('does not turn ordinary model errors, foreign Servers, or undeclared IDs into
   expect(f.remote.mock.calls.every(([url]) => String(url).endsWith('/api/auth/me'))).toBe(true);
 });
 
-it.each(['workflow', 'conversation'] as const)('creates a %s record only after confirmation and rechecks without uploading or executing', async kind => {
+it.each(['workflow', 'conversation'] as const)('creates a %s new application only after confirmation and changes identity without uploading or executing', async kind => {
   const f = await fixture(kind, 'server');
   await vi.waitFor(async () => expect((await f.state()).serverData?.issue?.kind).toBe('project-unavailable'));
   let created = false;
   f.hold(async (url, options) => {
     if (url.includes('/api/groups?')) return new Response(JSON.stringify({ errCode: 0, data: { total: 1, items: [{ id: 'group', name: 'Team' }] } }));
     if (url.endsWith('/api/projects') && options?.method === 'POST') {
-      expect(JSON.parse(String(options.body))).toEqual({ name: 'Chosen name', projectId: id, projectType: kind, projectInfo: f.project.projectInfo, groupId: 'group', visibility: 'private' });
-      created = true; return new Response(JSON.stringify({ errCode: 0, data: { projectId: id } }), { status: 201 });
+      expect(JSON.parse(String(options.body))).toEqual({ name: 'Chosen name', projectType: kind, projectInfo: f.project.projectInfo, groupId: 'group', visibility: 'private', projectCard: expect.any(Object) });
+      created = true; return new Response(JSON.stringify({ errCode: 0, data: { projectId: relatedId, projectType: kind } }), { status: 201 });
     }
-    return created ? ok() : new Response('', { status: 404 });
+    return created && url.endsWith(relatedId) ? Response.json({ errCode: 0, data: { id: relatedId } }) : new Response('', { status: 404 });
   });
   const prepare = () => f.post({ type: 'project-server-create-prepare' }).then(response => response.json()).then(body => body.messages[0].context);
   const cancelled = await prepare(); expect(created).toBe(false);
@@ -312,7 +312,10 @@ it.each(['workflow', 'conversation'] as const)('creates a %s record only after c
   expect((await f.post({ ...confirm, confirmed: false })).status).toBe(400); expect(created).toBe(false);
   expect((await f.post({ ...confirm, groupId: 'forged' })).status).toBe(400); expect(created).toBe(false);
   expect((await f.post(confirm)).ok).toBe(true);
-  expect((await f.state()).serverData.issue).toBeUndefined();
+  await vi.waitFor(() => expect(f.app.project.id).toBe(relatedId));
+  expect(JSON.parse(await readFile(path.join(f.project.folderPath, 'package.json'), 'utf8')).id).toBe(relatedId);
+  await vi.waitFor(async () => expect((await f.state()).serverData.issue).toBeUndefined());
+  expect((await f.post({ type: 'ready', applicationId: id })).status).toBe(400);
   expect((await f.post(confirm)).status).toBe(400);
   expect(f.runtime.run).not.toHaveBeenCalled();
   expect(f.remote.mock.calls.filter(([, options]) => options?.method === 'POST')).toHaveLength(1);
@@ -335,7 +338,7 @@ it('locks concurrent confirmations before reading the manifest and rejects cance
   const f = await fixture('workflow', 'both');
   f.hold(async (url, options) => url.includes('/api/groups?')
     ? new Response(JSON.stringify({ errCode: 0, data: { items: [], total: 0 } }))
-    : options?.method === 'POST' ? new Response(JSON.stringify({ errCode: 0, data: { projectId: id } })) : new Response('', { status: 404 }));
+    : options?.method === 'POST' ? new Response(JSON.stringify({ errCode: 0, data: { projectId: relatedId, projectType: 'workflow' } })) : new Response('', { status: 404 }));
   const creation = new ProjectServerCreation(f.project, () => connection, () => 'user', () => ({ kind: 'project-unavailable', serverUrl: connection.serverUrl }));
   try {
     const context = await creation.prepare(), input = { token: context.token, confirmed: true, name: 'Reviewed' };
@@ -343,6 +346,7 @@ it('locks concurrent confirmations before reading the manifest and rejects cance
     expect(results.map(result => result.status)).toEqual(['fulfilled', 'rejected']);
     expect((results[1] as PromiseRejectedResult).reason.message).toContain('already in progress');
     expect(f.remote.mock.calls.filter(([, options]) => options?.method === 'POST')).toHaveLength(1);
+    await writeFile(path.join(f.project.folderPath, 'package.json'), JSON.stringify({ id, steamHarness: { projectType: 'workflow', projectInfo: f.project.projectInfo } }));
     const cancelled = await creation.prepare();
     const pending = creation.confirm({ ...input, token: cancelled.token });
     creation.cancel(cancelled.token);

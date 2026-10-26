@@ -1,5 +1,7 @@
 # Unreleased
 
+- The Server assigns UUIDs when creating and cloning projects and rejects client-selected IDs, preventing registration of arbitrary local IDs. Creating a project does not upload source.
+
 - Fixed local Kanban data access and related revision streams to work from registered project declarations without source uploads or configuration templates. Published targets retain immutable bindings; static previews still require uploaded artifacts.
 
 - Fixed: Profile name changes update the authentication account and survive password login, bootstrap administrator login, and session renewal. Email and password changes preserve the saved name.

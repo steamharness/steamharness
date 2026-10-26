@@ -1,4 +1,7 @@
 export const cli = {
+    newApplicationArchiveUnsupported: "Applying for a new application ID requires a local project directory, not a prebuilt archive.",
+    projectRegistrationRequired: "This project ID is not registered. Apply for a new application ID in the project, or explicitly use upload --create to replace its ID.",
+    projectIdentityChanged: "The local project changed. Review it before applying the new application ID.",
     rootHelp: [
         "Usage:",
         "  steamharness [--locale <zh-CN|en>] <run|json|structure|resolve-params|mcp> [workflow-dir] [args]",
@@ -97,12 +100,12 @@ export const cli = {
     invalidUploadFile: "Upload requires a regular file no larger than 50 MiB.",
     mimeTypeCommandUnsupported: "--mime-type is only supported by file-upload.",
     deviceLoginPrompt: "Open the verification page to approve this login:\n{{url}}\nUser code: {{code}}",
-    projectIdRequired: "Project package.json must declare a UUID id first; --create only creates or reuses that UUID and never assigns or writes back an id.",
+    projectIdRequired: "Project package.json must declare a Server-assigned UUID. Use --create to apply for a new ID and write it locally before uploading.",
     archiveCreateFailed: "Failed to create archive: {{details}}",
     projectNotBound: "Workflow \"{{workflow}}\" is not bound to a server UUID. Create or bind it first with `steamharness workspace upload {{workflow}} --create`.",
     projectCreationFailed: "Project creation failed.",
     projectInfoDataStorageRequired: "Project package.json must declare steamHarness.projectInfo.dataStorage.mode.",
-    projectCreationIdMismatch: "Server returned a project UUID that does not match package.json.id.",
+    projectCreationIdMismatch: "The Server returned an invalid new application ID or project type.",
     packageMustBeObject: "Project package \"{{path}}\" must contain a JSON object.",
     packageReadFailed: "Unable to read workflow package \"{{path}}\".",
     packageStringRequired: "Project package.json must include string \"{{key}}\".",
@@ -153,7 +156,7 @@ export const cli = {
     projectGroupRootMustBeKanban: "A project-group root must be a Kanban project.",
     projectGroupRelatedProjectPending: "Related project {{alias}} is not confirmed by both project manifests and cannot be included.",
     projectGroupUploadFileUnsupported: "Project-group upload does not accept --file; use --path and --dependency so the manifest can be verified.",
-    projectGroupUploadRootIdRequired: "Project-group upload requires the root package.json to contain a UUID id or --create.",
+    projectGroupUploadRootIdRequired: "Project-group upload requires every project to have a registered Server-assigned UUID. Apply for IDs separately before uploading the group.",
     publishGroupCommandUnsupported: "--publish-group is only supported by upload.",
     unknownWorkspaceOption: "Unknown workspace option: {{option}}",
 };

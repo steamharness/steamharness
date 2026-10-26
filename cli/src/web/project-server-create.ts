@@ -2,6 +2,9 @@ import { randomBytes } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { readProjectInfo } from '@steamharness/project-info';
+import { readProjectCardMetadataFromPackageJson } from '@steamharness/project-card-metadata';
+import { isProjectUuid } from '@steamharness/workflow-ids';
+import { writeProjectIdentity } from '../project-identity';
 import type { Project } from './workflow-types';
 import type { WebConnection } from './runtime';
 import type { ProjectServerIssue } from './project-server-state';
@@ -14,14 +17,17 @@ export interface ProjectServerCreateContext {
 interface Confirmation {
   context: ProjectServerCreateContext; connection: WebConnection; identity: string;
   projectInfo: NonNullable<Project['projectInfo']>; expiresAt: number; busy: boolean; abort: AbortController;
+  allocatedId?: string; selection?: string;
 }
 
 /** Preparing/cancelling is read-only. Only a separate, confirmed request creates a record. */
 export class ProjectServerCreation {
   private readonly confirmations = new Map<string, Confirmation>();
   private generation = 0;
+  private applying = false;
   constructor(private readonly project: Project, private readonly connection: () => WebConnection | undefined,
-    private readonly identity: () => string, private readonly issue: () => ProjectServerIssue | undefined) {}
+    private readonly identity: () => string, private readonly issue: () => ProjectServerIssue | undefined,
+    private readonly beforeIdentityChange: () => Promise<void> = async () => {}) {}
 
   async prepare(): Promise<ProjectServerCreateContext> {
     const connection = this.connection(), identity = this.identity(), issue = this.issue(), generation = this.generation;
@@ -57,31 +63,47 @@ export class ProjectServerCreation {
     return context;
   }
 
-  async confirm(input: { token?: unknown; confirmed?: unknown; name?: unknown; groupId?: unknown }): Promise<void> {
+  async confirm(input: { token?: unknown; confirmed?: unknown; name?: unknown; groupId?: unknown }): Promise<string> {
     const confirmation = typeof input.token === 'string' ? this.confirmations.get(input.token) : undefined;
     if (!confirmation || confirmation.expiresAt <= Date.now() || input.confirmed !== true) throw new Error(t('Project creation confirmation expired. Open the dialog again.'));
-    if (confirmation.busy) throw new Error(t('Project creation is already in progress.'));
+    if (this.applying || confirmation.busy) throw new Error(t('Project creation is already in progress.'));
     this.assertCurrent(confirmation.connection, confirmation.identity);
     if (typeof input.name !== 'string' || !input.name.trim() || input.name.length > 200) throw new Error(t('Enter a project name.'));
     if (input.groupId !== undefined && (typeof input.groupId !== 'string' || !confirmation.context.groups.some(group => group.id === input.groupId))) throw new Error(t('Choose an available project group.'));
-    confirmation.busy = true;
+    this.applying = confirmation.busy = true;
     try {
       // Lock before reading: two confirmed requests must not both pass validation.
-      const pkg = JSON.parse(await readFile(path.join(this.project.folderPath, 'package.json'), 'utf8'));
+      const source = await readFile(path.join(this.project.folderPath, 'package.json'), 'utf8'), pkg = JSON.parse(source);
       if (pkg.id?.toLowerCase() !== this.project.id.toLowerCase() || pkg.steamHarness?.projectType !== this.project.projectType
         || JSON.stringify(readProjectInfo(pkg)) !== JSON.stringify(confirmation.projectInfo)) throw new Error(t('The local project changed. Reopen it before creating a Server project.'));
       this.assertCurrent(confirmation.connection, confirmation.identity);
       if (this.confirmations.get(confirmation.context.token) !== confirmation || confirmation.expiresAt <= Date.now() || confirmation.abort.signal.aborted) {
         throw new Error(t('Project creation confirmation expired. Open the dialog again.'));
       }
-      const result = await this.request(confirmation.connection, '/api/projects', confirmation.abort.signal, false, {
-        name: input.name.trim(), projectId: this.project.id, projectType: this.project.projectType,
-        projectInfo: confirmation.projectInfo, visibility: 'private', ...(input.groupId ? { groupId: input.groupId } : {}),
-      });
+      const selection = JSON.stringify([input.name.trim(), input.groupId]);
+      if (confirmation.allocatedId && selection !== confirmation.selection) throw new Error(t('A new ID was already allocated. Retry with the original name and project group.'));
+      if (!confirmation.allocatedId) {
+        const existing = await this.request(confirmation.connection, `/api/projects/${encodeURIComponent(this.project.id)}`, confirmation.abort.signal, true);
+        if (existing.status !== 404) throw new Error(t('The project is already available or needs access. Choose Check again before continuing.'));
+        this.assertCurrent(confirmation.connection, confirmation.identity);
+        const result = await this.request(confirmation.connection, '/api/projects', confirmation.abort.signal, false, {
+          name: input.name.trim(), projectType: this.project.projectType, projectInfo: confirmation.projectInfo,
+          projectCard: readProjectCardMetadataFromPackageJson(pkg, this.project.projectType),
+          visibility: 'private', ...(input.groupId ? { groupId: input.groupId } : {}),
+        });
+        const id = result.data?.projectId;
+        if (typeof id !== 'string' || !isProjectUuid(id) || id.toLowerCase() === this.project.id.toLowerCase()
+          || result.data.projectType !== this.project.projectType) throw new Error(t('The Server returned an invalid new application ID.'));
+        confirmation.allocatedId = id; confirmation.selection = selection;
+      }
       this.assertCurrent(confirmation.connection, confirmation.identity);
-      if (result.data?.projectId?.toLowerCase() !== this.project.id.toLowerCase()) throw new Error(t('The Server returned an unexpected project. Choose Check again.'));
+      confirmation.abort.signal.throwIfAborted();
+      await this.beforeIdentityChange();
+      this.assertCurrent(confirmation.connection, confirmation.identity);
+      await writeProjectIdentity(this.project.folderPath, source, confirmation.allocatedId, confirmation.abort.signal);
       this.confirmations.delete(confirmation.context.token);
-    } finally { confirmation.busy = false; }
+      return confirmation.allocatedId;
+    } finally { this.applying = confirmation.busy = false; }
   }
 
   cancel(token: unknown): void {

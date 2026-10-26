@@ -139,7 +139,12 @@ export function acquireProjectHost(options: { live?: boolean; connectionBanner?:
   });
   const recovery = new HostConnectionRecovery(message => window.parent.postMessage(message, '*'));
   addEventListener('pagehide', () => recovery.close());
+  let applicationId: string | undefined;
   const connection = new BrowserConnection(message => {
+    if (message.type === 'state' && typeof message.project?.id === 'string') {
+      if (applicationId && applicationId !== message.project.id) { location.reload(); return; }
+      applicationId = message.project.id;
+    }
     projectCreation.update(message);
     if (message.type === 'state' && message.account) { accountPanel.update(message.account); }
     trace.receive(message);

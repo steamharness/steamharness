@@ -67,7 +67,6 @@ export function NewProjectButton({
               setBusy(true);
               void apiClient
                 .createProject({
-                  projectId: crypto.randomUUID(),
                   name: name.trim(),
                   projectType: kind,
                   groupId: group,

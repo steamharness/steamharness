@@ -113,9 +113,9 @@ it.each(['en', 'zh-CN'] as const)('offers only project creation and rechecking i
   expect(document.getElementById('server-guidance-project')!.textContent).toBe('map');
   expect(guidance.querySelector('dt:nth-of-type(2)')!.textContent).toBe(language === 'en' ? 'Project ID' : '项目 ID');
   expect([...guidance.querySelectorAll('button')].map(button => button.id)).toEqual(['server-guidance-create', 'server-guidance-retry']);
-  expect(guidance.textContent).not.toMatch(/Account \/ Server|账号 \/ 服务器|switch.*Server|切换.*服务器|[Uu]pload|上传/);
+  expect(guidance.textContent).not.toMatch(/Account \/ Server|账号 \/ 服务器|switch.*Server|切换.*服务器/);
   expect(document.getElementById('server-guidance-create')!.hidden).toBe(false);
-  expect(document.getElementById('server-guidance-create')!.textContent).toBe(language === 'en' ? 'New project on Server...' : '在服务器新建项目…');
+  expect(document.getElementById('server-guidance-create')!.textContent).toBe(language === 'en' ? 'Apply for a new application ID...' : '重新申请应用 ID…');
   expect(document.getElementById('preview-stage')!.hidden).toBe(true);
   expect(document.getElementById('related-warning')!.hidden).toBe(true);
   const frame = document.querySelector<HTMLIFrameElement>('#kanban-preview')!;

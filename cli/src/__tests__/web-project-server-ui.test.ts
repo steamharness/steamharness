@@ -65,7 +65,7 @@ it.each([['workflow', 'en'], ['workflow', 'zh-CN'], ['conversation', 'en'], ['co
     await vi.advanceTimersByTimeAsync(250);
     if (kind === 'workflow') expect(host.postMessage).toHaveBeenCalledWith(expect.objectContaining({ type: 'workflow-draft', params: { subject: 'Keep my new edit' } }));
     expect([...guidance.querySelectorAll('button')].map(button => button.id)).toEqual(['server-guidance-create', 'server-guidance-retry']);
-    expect(guidance.textContent).not.toMatch(/Account \/ Server|账号 \/ 服务器|switch.*Server|切换.*服务器|[Uu]pload|上传/);
+    expect(guidance.textContent).not.toMatch(/Account \/ Server|账号 \/ 服务器|switch.*Server|切换.*服务器/);
     document.getElementById('server-guidance-create')!.click();
     expect(host.postMessage).toHaveBeenCalledWith({ type: 'open-project-create' });
     document.getElementById('server-guidance-retry')!.click();
@@ -78,7 +78,7 @@ it.each([['workflow', 'en'], ['workflow', 'zh-CN'], ['conversation', 'en'], ['co
     expect(host.postMessage.mock.calls.some(([value]) => ['send', 'workflow-run', 'workflow-rerun', 'resume'].includes(value.type))).toBe(false);
     for (const kind of ['sign-in-required', 'access-denied', 'connection-unavailable', 'setup-required', 'related-setup-required'] as const) {
       await f.render({ checking: false, issue: { kind, serverUrl: 'https://server.test' } });
-      expect(guidance.textContent).not.toMatch(/Account \/ Server|账号 \/ 服务器|switch.*Server|切换.*服务器|[Uu]pload|上传/);
+      expect(guidance.textContent).not.toMatch(/Account \/ Server|账号 \/ 服务器|switch.*Server|切换.*服务器/);
       expect(document.getElementById('server-guidance-create')!.hidden).toBe(true);
       expect(document.querySelector<HTMLButtonElement>('#server-guidance-retry')!.disabled).toBe(false);
     }
@@ -106,7 +106,7 @@ it.each(['workflow', 'conversation'] as const)('shows the affected related proje
   expect(document.getElementById('server-guidance-project')!.textContent).toBe('related-database');
   expect(document.getElementById('server-guidance-alias')!.textContent).toBe('database');
   expect(document.getElementById('server-guidance-create')!.hidden).toBe(true);
-  expect(document.getElementById('server-guidance-steps')!.textContent).toContain('打开对应的本地关联项目');
+  expect(document.getElementById('server-guidance-steps')!.textContent).toContain('更新双方项目的关联声明');
   expect(document.querySelector<HTMLButtonElement>(kind === 'workflow' ? '#run' : '#send')!.disabled).toBe(false);
   await f.render({ checking: false, blocking: false, issue: { kind: 'related-setup-required', projectId: 'related-database', relatedProjectAlias: 'database' } });
   expect(document.getElementById('server-guidance-title')!.textContent).toBe('请检查关联项目授权');

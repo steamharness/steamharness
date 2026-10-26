@@ -19,7 +19,7 @@ import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { readFile } from 'node:fs/promises';
 import type { ProjectType } from './projects';
-import { uploadServerProject, downloadServerProject, registerCreatedServerProject } from './steamharness-server-projects-node';
+import { uploadServerProject, downloadServerProject, allocateServerProjectId } from './steamharness-server-projects-node';
 
 export function createProjectRuntime(context: vscode.ExtensionContext, account: AccountController): Launcher {
   const sessions = new Set<WebSession>();
@@ -138,7 +138,22 @@ export function createProjectRuntime(context: vscode.ExtensionContext, account: 
     templates: templates.templates,
     projectCreationDirectory: defaultProjectParentDirectory(),
     validateProjectCreation: templates.validate,
-    createProject: templates.create,
+    createProject: async (input, signal = controller.signal) => {
+      assertAvailable(false);
+      const connection = account.getConnection(), state = account.getState();
+      if (!connection || !state.user) { throw new Error(t('Sign in before creating a project so the Server can assign its ID.')); }
+      const registration = new AbortController();
+      const current = (): boolean => account.getConnection()?.serverUrl === connection.serverUrl
+        && account.getConnection()?.accessToken === connection.accessToken && account.getState().user?.userId === state.user!.userId;
+      const assertCurrent = (): void => {
+        if (!current()) { throw new Error(t('The account used to create this project changed. Sign in with that account before retrying registration.')); }
+      };
+      const changed = account.onDidChange(() => { if (!current()) { registration.abort(); } });
+      const combined = AbortSignal.any([signal, controller.signal, registration.signal]);
+      try {
+        return await templates.create(input, combined, project => allocateServerProjectId({ project, connection, assertCurrent, signal: combined }));
+      } finally { changed.dispose(); }
+    },
     installDependencies: (directory, signal, log) => installProjectDependencies({ directory, signal: AbortSignal.any([signal, controller.signal]), log }),
     hasProjectDependencies: async directory => {
       try {
@@ -148,26 +163,9 @@ export function createProjectRuntime(context: vscode.ExtensionContext, account: 
       } catch { return false; }
     },
     prepareProjectTemplate: (directory, signal) => templates.prepare(directory, executable(), AbortSignal.any([signal, controller.signal])),
-    registerProject: async (project, target, signal) => {
+    uploadProject: (project, releaseLog, signal, progress) => {
       assertAvailable();
-      const connection = account.getConnection(), state = account.getState();
-      if (!connection || !state.user) { throw new Error(t('Sign in to register this project, then retry project setup.')); }
-      const registration = new AbortController();
-      const current = (): boolean => account.getConnection()?.serverUrl === connection.serverUrl
-        && account.getConnection()?.accessToken === connection.accessToken && account.getState().user?.userId === state.user!.userId;
-      const assertCurrent = (): void => {
-        if (connection.serverUrl !== target.serverUrl || target.userId && target.userId !== state.user!.userId || !current()) {
-          throw new Error(t('The account used to create this project changed. Sign in with that account before retrying registration.'));
-        }
-      };
-      assertCurrent();
-      const changed = account.onDidChange(() => { if (!current()) { registration.abort(); } });
-      try { await registerCreatedServerProject({ project, connection, assertCurrent, signal: AbortSignal.any([signal, controller.signal, registration.signal]) }); }
-      finally { changed.dispose(); }
-    },
-    uploadProject: (project, releaseLog, signal, progress,groupId) => {
-      assertAvailable();
-      return transfer(signal, options => uploadServerProject({ ...options, projectId: project.id, version: project.manifest?.version ?? '', directory: project.folderPath, releaseLog, progress,groupId }));
+      return transfer(signal, options => uploadServerProject({ ...options, projectId: project.id, version: project.manifest?.version ?? '', directory: project.folderPath, releaseLog, progress }));
     },
     downloadProject: (projectId, version, signal, progress) => transfer(signal, options => downloadServerProject({ ...options, projectId, version,
       parentDirectory: defaultProjectParentDirectory(), progress })),

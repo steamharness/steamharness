@@ -15,6 +15,7 @@ export class BrowserConnection {
   private handshake?: AbortController;
   private readonly requests = new Map<AbortController, boolean>();
   private epoch = 0;
+  private applicationId?: string;
   private retry?: ReturnType<typeof setTimeout>;
   private connectTimer?: ReturnType<typeof setTimeout>;
   private heartbeatTimer?: ReturnType<typeof setTimeout>;
@@ -160,7 +161,9 @@ export class BrowserConnection {
             let message: Message;
             try { message = this.publicFiles(JSON.parse(event.data)); }
             catch { this.interrupted(); finish(); return; }
-            alive(); this.emit(message);
+            alive();
+            if (message.type === 'state' && typeof message.project?.id === 'string') this.applicationId ??= message.project.id;
+            this.emit(message);
             if (active() && message?.type === 'state' && this.status !== 'connected') {
               clearTimeout(this.connectTimer);
               this.attempts = 0; this.manual = false; this.retryFailed = false; this.update('connected'); finish();
@@ -188,6 +191,7 @@ export class BrowserConnection {
     const state = await response.json();
     if (epoch !== this.epoch || this.closed) { return; }
     if (this.status !== 'connected') { this.attempts = 0; this.manual = false; this.retryFailed = false; this.update('connected'); }
+    if (state.type === 'state' && typeof state.project?.id === 'string') this.applicationId ??= state.project.id;
     this.emit(state);
     this.snapshotTimer = setTimeout(() => {
       void this.snapshot(epoch).catch(() => { if (epoch === this.epoch && !this.closed) { this.interrupted(); } });
@@ -207,7 +211,7 @@ export class BrowserConnection {
       if (control && this.recoverHost && await this.recoverHostSession()) { this.disconnect(); void this.connect(); }
       if (this.status === 'expired') { throw new ConnectionError(t("Project connection expired.")); }
       if (this.closed || signal.aborted) throw new ConnectionError(t('Connection changed.'));
-      const body = { ...message, clientId: this.clientId };
+      const body = { ...message, ...(this.applicationId ? { applicationId: this.applicationId } : {}), clientId: this.clientId };
       // Navigation is independent of the event stream and must not wait on its handshake.
       const timeout = ['ready', 'navigate'].includes(message.type) ? 10_000
         : control || ['queue-promote', 'queue-remove'].includes(message.type) ? 35_000 : 60_000;

@@ -1,7 +1,7 @@
 import type { AssistantWorkspaceFolder, Project } from './workflow-types';
 import type { Connection } from './workflow-auth-client';
 import type { ResourceRequest } from './workflow-resources-types';
-import type { CreatedProject, ProjectCreationInput, ProjectRegistrationTarget, StartEnvironment, StartSummary, StartTemplate } from './start-page-types';
+import type { CreatedProject, ProjectCreationInput, StartEnvironment, StartSummary, StartTemplate } from './start-page-types';
 import type { ProjectType } from './projects';
 import type { DownloadedServerProject, ProjectTransferProgress, UpdatedServerProject } from './steamharness-server-projects';
 
@@ -34,8 +34,7 @@ export interface Launcher {
   installDependencies?(directory: string, signal: AbortSignal, log: (message: string) => void): Promise<void>;
   hasProjectDependencies?(directory: string): Promise<boolean>;
   prepareProjectTemplate?(directory: string, signal: AbortSignal): Promise<boolean>;
-  registerProject?(project: CreatedProject, target: ProjectRegistrationTarget, signal: AbortSignal): Promise<void>;
-  uploadProject?(project: Project, releaseLog: string, signal: AbortSignal, progress: (value: ProjectTransferProgress) => void, groupId?:string): Promise<void>;
+  uploadProject?(project: Project, releaseLog: string, signal: AbortSignal, progress: (value: ProjectTransferProgress) => void): Promise<void>;
   downloadProject?(projectId: string, version: string, signal: AbortSignal, progress: (value: ProjectTransferProgress) => void): Promise<DownloadedServerProject[]>;
   upgradeProject?(project: Project, version: string, signal: AbortSignal, progress: (value: ProjectTransferProgress) => void,
     beforeReplace: () => Promise<void>, afterReplace: (projects: DownloadedServerProject[]) => Promise<void>): Promise<UpdatedServerProject>;
