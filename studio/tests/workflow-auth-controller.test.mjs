@@ -17,6 +17,8 @@ async function fixture(t) {
   const focus = new Emitter(), secretsChanged = new Emitter(), configuration = new Emitter(), intervals = new Set(), sessions = [];
   const serverUrl = 'http://127.0.0.1:7126';
   const f = { profile: { userId: 'user', email: 'user@example.test', displayName: 'User', avatarUrl: 'data:image/png;base64,b2xk' }, requests: 0, messages: [], opened: [], copied: [], commands: new Map(), executed: [] };
+  const defaults = { 'editor.fontSize': 14, 'studio.project.serverUrl': serverUrl };
+  const user = {}, workspace = {}, writes = [];
   let stored = JSON.stringify({ serverUrl, accessToken: 'test-token', apiKeyId: 'test-key', user: f.profile });
   const disposable = { dispose() {} };
   const vscode = {
@@ -34,22 +36,33 @@ async function fixture(t) {
     authentication: { registerAuthenticationProvider: (_id, _label, provider) => {
       f.provider = provider; provider.onDidChangeSessions(event => sessions.push(event)); return disposable;
     } },
-    workspace: { getConfiguration: () => ({ get: key => key === 'project.serverUrl' ? serverUrl : undefined, inspect: () => ({}) }), onDidChangeConfiguration: configuration.event, onDidChangeWorkspaceFolders: configuration.event },
+    workspace: { workspaceFolders: [{}], getConfiguration: (prefix = '') => ({
+      get: key => { key = prefix ? `${prefix}.${key}` : key; return workspace[key] ?? user[key] ?? defaults[key]; },
+      inspect: key => ({ defaultValue: defaults[key], globalValue: user[key], workspaceValue: workspace[key] }),
+      update: async (key, value, target) => {
+        writes.push({ key, value, target });
+        await f.beforeWrite?.({ key, value, target });
+        const values = target === 2 ? workspace : user;
+        if (value === undefined) { delete values[key]; } else { values[key] = value; }
+        configuration.fire({ affectsConfiguration: affected => affected === key });
+      },
+    }), onDidChangeConfiguration: configuration.event, onDidChangeWorkspaceFolders: configuration.event },
     window: { state: { focused: true }, onDidChangeWindowState: focus.event,
       registerWebviewPanelSerializer: (type, serializer) => { f.serializer = serializer; f.viewType = type; return disposable; },
       createStatusBarItem: () => ({ show() {}, dispose() {} }),
       createWebviewPanel: (_type, _title, _column, options) => {
         const disposed = new Emitter(), received = new Emitter(), changed = new Emitter();
+        const messages = [];
         f.panel = { visible: true, options, reveal() {}, onDidDispose: disposed.event, onDidChangeViewState: changed.event,
           dispose: () => disposed.fire(),
-          webview: { cspSource: 'test-source', asWebviewUri: value => value, postMessage: async message => { f.messages.push(message); },
+          webview: { cspSource: 'test-source', messages, asWebviewUri: value => value, postMessage: async message => { messages.push(message); f.messages.push(message); },
             onDidReceiveMessage: callback => { f.message = callback; return received.event(callback); } } };
         return f.panel;
       } },
   };
   const module = { exports: {} };
   runInNewContext(compiled.outputFiles[0].text, {
-    module, exports: module.exports, require: id => id === 'vscode' ? vscode : require(id), URL, AbortSignal, AbortController, crypto: globalThis.crypto, setTimeout, clearTimeout,
+    module, exports: module.exports, require: id => id === 'vscode' ? vscode : require(id), URL, Error, AbortSignal, AbortController, crypto: globalThis.crypto, setTimeout, clearTimeout,
     fetch: async () => { f.requests++; return Response.json({ errCode: 0, data: { profile: f.profile, principal: { apiKeyId: 'test-key' } } }); },
     setInterval: (callback, ms) => { const timer = { callback, ms, unref() {} }; intervals.add(timer); return timer; },
     clearInterval: timer => intervals.delete(timer),
@@ -58,7 +71,7 @@ async function fixture(t) {
   const controller = new module.exports.AccountController(context);
   t.after(() => controller.dispose());
   await controller.initialize();
-  return Object.assign(f, { controller, intervals, sessions, vscode,
+  return Object.assign(f, { controller, intervals, sessions, vscode, user, workspace, writes,
     focus: focused => { vscode.window.state.focused = focused; focus.fire({ focused }); },
     poll: () => { for (const timer of intervals) { timer.callback(); } },
   });
@@ -69,7 +82,7 @@ async function until(read) {
     await new Promise(resolve => setImmediate(resolve));
     if (read()) { return; }
   }
-  assert.fail('Account profile did not refresh');
+  assert.fail('Expected asynchronous operation did not finish');
 }
 
 test('settings and account commands share one tab and navigate to their requested categories', async t => {
@@ -97,6 +110,84 @@ test('deserialization restores navigation only and publishes the existing accoun
   assert.equal(route.section, 'about'); assert.equal(route.scroll, 37);
   assert.equal(f.messages.find(message => message.type === 'account').state.status, 'authenticated');
   assert.ok(!JSON.stringify(f.messages).includes('do-not-restore'));
+});
+
+test('settings save acknowledgements contain the persisted snapshot for the current scope', async t => {
+  const f = await fixture(t);
+  f.commands.get('studio.openSettings')({ section: 'editor' });
+  await f.message({ type: 'ready' });
+  let release;
+  f.beforeWrite = () => new Promise(resolve => { release = resolve; });
+  const saving = f.message({ type: 'settings-update', key: 'editor.fontSize', value: 24, target: 'workspace' });
+  await until(() => release);
+  await f.message({ type: 'settings-target', target: 'workspace' });
+  release(); await saving;
+  const saved = f.messages.filter(message => message.type === 'settings-saved').at(-1);
+  assert.equal(saved.target, 'workspace'); assert.equal(saved.state.target, 'workspace');
+  const font = saved.state.items.find(item => item.key === 'editor.fontSize');
+  assert.equal(font.value, 24); assert.equal(font.configured, true);
+  assert.equal(f.user['editor.fontSize'], undefined); assert.equal(f.workspace['editor.fontSize'], 24);
+});
+
+test('settings failures return a current snapshot without writing invalid configuration', async t => {
+  const f = await fixture(t);
+  f.commands.get('studio.openSettings')({ section: 'editor' });
+  await f.message({ type: 'ready' });
+  for (const request of [
+    { key: 'editor.fontSize', value: -1, target: 'user' },
+    { key: 'studio.terminal.name', value: 'New name', target: 'workspace' },
+    { key: 'unknown.setting', value: true, target: 'user' },
+  ]) {
+    await f.message({ type: 'settings-update', ...request });
+    const failure = f.messages.filter(message => message.type === 'settings-error').at(-1);
+    assert.equal(failure.key, request.key); assert.equal(failure.target, request.target);
+    assert.ok(failure.message); assert.equal(failure.state.items.find(item => item.key === 'editor.fontSize').value, 14);
+  }
+  f.beforeWrite = async () => { throw new Error('Fixture storage failure'); };
+  await f.message({ type: 'settings-update', key: 'editor.fontSize', value: 18, target: 'user' });
+  const failure = f.messages.filter(message => message.type === 'settings-error').at(-1);
+  assert.equal(failure.message, 'Fixture storage failure');
+  assert.equal(failure.state.items.find(item => item.key === 'editor.fontSize').value, 14);
+  assert.equal(f.writes.length, 1); assert.equal(f.user['editor.fontSize'], undefined);
+});
+
+test('closing and reopening settings cannot deliver an old save acknowledgement to the new tab', async t => {
+  const f = await fixture(t);
+  f.commands.get('studio.openSettings')({ section: 'editor' });
+  const oldPanel = f.panel;
+  await f.message({ type: 'ready' });
+  let release;
+  f.beforeWrite = ({ value }) => value === 18 ? new Promise(resolve => { release = resolve; }) : undefined;
+  const oldSave = f.message({ type: 'settings-update', key: 'editor.fontSize', value: 18, target: 'user' });
+  await until(() => release);
+  oldPanel.dispose();
+  f.commands.get('studio.openSettings')({ section: 'editor' });
+  const newPanel = f.panel;
+  assert.notEqual(newPanel, oldPanel);
+  await f.message({ type: 'ready' });
+  const newSave = f.message({ type: 'settings-update', key: 'editor.fontSize', value: 20, target: 'user' });
+  release(); await Promise.all([oldSave, newSave]);
+  assert.equal(oldPanel.webview.messages.some(message => message.type === 'settings-saved'), false);
+  const saved = newPanel.webview.messages.filter(message => message.type === 'settings-saved');
+  assert.equal(saved.length, 1); assert.equal(saved[0].state.items.find(item => item.key === 'editor.fontSize').value, 20);
+  assert.deepEqual(f.writes.map(write => write.value), [18, 20]);
+});
+
+test('recreating a hidden webview cannot acknowledge a save from its previous page', async t => {
+  const f = await fixture(t);
+  f.commands.get('studio.openSettings')({ section: 'editor' });
+  await f.message({ type: 'ready' });
+  let release;
+  f.beforeWrite = ({ value }) => value === 18 ? new Promise(resolve => { release = resolve; }) : undefined;
+  const oldSave = f.message({ type: 'settings-update', key: 'editor.fontSize', value: 18, target: 'user' });
+  await until(() => release);
+  // retainContextWhenHidden is false: the same panel sends ready from its new page.
+  await f.message({ type: 'ready' });
+  const newSave = f.message({ type: 'settings-update', key: 'editor.fontSize', value: 20, target: 'user' });
+  release(); await Promise.all([oldSave, newSave]);
+  const saved = f.messages.filter(message => message.type === 'settings-saved');
+  assert.equal(saved.length, 1);
+  assert.equal(saved[0].state.items.find(item => item.key === 'editor.fontSize').value, 20);
 });
 
 test('returning to Studio refreshes the profile and updates the native authentication avatar', async t => {

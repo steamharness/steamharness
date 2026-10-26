@@ -29,7 +29,7 @@
     "test:start-ui": "node tests/start-page-ui.mjs",
     "test:mode-ui": "node tests/studio-mode-ui.mjs",
     "test:account-menu-ui": "node tests/account-menu-ui.mjs",
-    "test:settings-ui": "node tests/settings-ui.mjs",
+    "test:settings-ui": "node tests/settings-ui.mjs && node tests/settings-regressions-ui.mjs",
     "test:create-live": "node tests/project-create-live.mjs",
     "test:desktop": "node scripts/studio.mjs test:desktop",
     "test:assistant-ui": "node tests/assistant-workspace-desktop-ui.mjs",

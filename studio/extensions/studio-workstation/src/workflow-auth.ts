@@ -7,7 +7,7 @@ import { AccountSections } from './account-sections';
 import type { AccountSectionProvider } from './account-section-types';
 import { accountMenuState } from './account-menu-state';
 import { settingsState, settingsViewState, updateSetting } from './settings';
-import type { SettingsOpenOptions, SettingsTarget, SettingsViewState } from './settings-types';
+import type { SettingsOpenOptions, SettingsState, SettingsTarget, SettingsViewState } from './settings-types';
 import { publicServiceUrls, serviceChannelFromServerUrl } from '../../../../shared/service-urls/index';
 import {
   DEFAULT_STEAMHARNESS_SERVER_URL, Account,
@@ -174,9 +174,13 @@ export class AccountController implements vscode.Disposable {
 
   private publishSettings(): void {
     if (!this.panel) { return; }
+    void this.panel.webview.postMessage({ type: 'settings', state: this.settingsSnapshot() });
+  }
+
+  private settingsSnapshot(): SettingsState {
     const state = settingsState(this.context.extension.packageJSON.version, this.viewState.target ?? 'user', this.sections.getProviders());
     this.viewState.target = state.target;
-    void this.panel.webview.postMessage({ type: 'settings', state });
+    return state;
   }
 
   private scheduleSettings(): void {
@@ -191,6 +195,7 @@ export class AccountController implements vscode.Disposable {
     panel.webview.options = { enableScripts: true, localResourceRoots: [vscode.Uri.joinPath(this.context.extensionUri, 'dist')] };
     panel.webview.html = this.html(panel);
     let busy = false;
+    let pageGeneration = 0;
     const listeners: vscode.Disposable[] = [];
     listeners.push(panel.onDidDispose(() => {
       if (this.panel === panel) { this.panel = undefined; }
@@ -200,6 +205,7 @@ export class AccountController implements vscode.Disposable {
     }), panel.webview.onDidReceiveMessage(async (message) => {
       if (this.panel !== panel || !message || typeof message !== 'object') { return; }
       if (message.type === 'ready') {
+        pageGeneration++;
         this.publishSettings();
         await panel.webview.postMessage({ type: 'account', state: this.getState() });
         await panel.webview.postMessage({ type: 'account-sections', states: this.sections.getStates() });
@@ -217,16 +223,21 @@ export class AccountController implements vscode.Disposable {
         return;
       }
       if (message.type === 'settings-update' && typeof message.key === 'string') {
+        const generation = pageGeneration;
         const target = message.target as SettingsTarget;
         const write = this.settingWrites.then(() => updateSetting(message.key, message.value, target, message.reset === true));
         this.settingWrites = write.catch(() => undefined);
+        let failure: string | undefined;
         try {
           await write;
-          await panel.webview.postMessage({ type: 'settings-saved', key: message.key, target });
         } catch (error) {
-          await panel.webview.postMessage({ type: 'settings-error', key: message.key, target, message: error instanceof Error ? error.message : t('Unable to save setting.') });
+          failure = error instanceof Error ? error.message : t('Unable to save setting.');
         }
-        this.publishSettings();
+        if (this.panel !== panel || pageGeneration !== generation) { this.publishSettings(); return; }
+        await panel.webview.postMessage({
+          type: failure === undefined ? 'settings-saved' : 'settings-error', key: message.key, target,
+          message: failure, state: this.settingsSnapshot(),
+        });
         return;
       }
       if (message.type === 'settings-action') {

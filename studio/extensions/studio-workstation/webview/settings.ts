@@ -46,7 +46,7 @@ export function createSettingsView(root: HTMLElement, vscode: WebviewApi): { acc
         <section id="settings-account" class="settings-panel" aria-label="${t('Account')}" hidden></section>
         <section id="settings-provider" class="settings-panel" hidden><div id="settings-sign-in" class="settings-card settings-empty" hidden><p>${t('Sign in to view this information.')}</p><button type="button" class="secondary" id="settings-provider-sign-in">${t('Sign In')}</button></div><div id="account-sections" hidden></div></section>
         <section id="settings-about" class="settings-panel" aria-label="${t('About')}" hidden><div class="settings-card settings-about"><span class="settings-product-icon codicon codicon-terminal" aria-hidden="true"></span><h2>SteamHarness Studio</h2><p class="muted">${t('Your workspace for building and running SteamHarness projects.')}</p><dl><dt>${t('Studio version')}</dt><dd id="settings-studio-version"></dd><dt>${t('VS Code version')}</dt><dd id="settings-vscode-version"></dd></dl><button type="button" class="secondary" data-settings-action="documentation">${t('Documentation')}</button></div></section>
-        <div id="settings-no-results" class="settings-empty" hidden><p>${t('No matching settings')}</p><p class="muted">${t('Other editor and extension settings are available in settings JSON.')}</p><button type="button" class="secondary" data-settings-action="json-user">${t('Open settings JSON')}</button></div>
+        <div id="settings-no-results" class="settings-empty" hidden><p>${t('No matching settings')}</p><p class="muted">${t('Other editor and extension settings are available in settings JSON.')}</p><button type="button" class="secondary" data-settings-action="json-current">${t('Open settings JSON')}</button></div>
       </section>
     </div>`;
   const find = <T extends HTMLElement>(id: string): T => root.querySelector<T>(`#${id}`)!;
@@ -56,8 +56,7 @@ export function createSettingsView(root: HTMLElement, vscode: WebviewApi): { acc
   const main = find<HTMLElement>('settings-main');
   const sections = find<HTMLElement>('account-sections');
   const saveStatus = find<HTMLElement>('settings-save-status');
-  const errors = new Map<string, string>();
-  const pending = new Set<string>();
+  const edits = new Map<string, { value: string | number | boolean; saving: boolean; error?: string }>();
   const rows = new Map<string, HTMLElement>();
   const groups = new Map<string, HTMLElement>();
   let snapshot: SettingsState | undefined;
@@ -65,9 +64,10 @@ export function createSettingsView(root: HTMLElement, vscode: WebviewApi): { acc
   let providers: AccountSectionState[] = [];
   let view: SettingsViewState = { section: 'general', query: '', target: 'user', ...vscode.getState?.() };
   let scrollTimer: ReturnType<typeof setTimeout> | undefined;
+  let restoredScroll: number | undefined;
 
   function persist(): void {
-    const state: SettingsViewState = { section: view.section, query: search.value, target: view.target, scroll: main.scrollTop };
+    const state: SettingsViewState = { section: view.section, query: search.value, target: view.target, scroll: restoredScroll ?? main.scrollTop };
     vscode.setState?.(state);
     vscode.postMessage({ type: 'settings-view-state', state });
   }
@@ -83,12 +83,25 @@ export function createSettingsView(root: HTMLElement, vscode: WebviewApi): { acc
   }
 
   function navigate(section: string, query = '', scroll = 0): void {
+    restoredScroll = scroll > 0 ? scroll : undefined;
     view.section = section;
     view.query = query;
     search.value = query;
+    if (restoredScroll === undefined) { main.scrollTop = 0; }
     filter();
-    main.scrollTop = scroll;
     persist();
+  }
+
+  function restorePosition(): void {
+    if (restoredScroll === undefined || !snapshot) { return; }
+    if (view.section?.startsWith('provider:')) {
+      const id = view.section.slice('provider:'.length);
+      const provider = providers.find(provider => provider.id === id);
+      if (!snapshot.providers.some(provider => provider.id === id) || !provider || provider.loading ||
+        !provider.sections.length && !provider.updatedAt && !provider.failed) { return; }
+    }
+    main.scrollTop = restoredScroll;
+    restoredScroll = undefined;
   }
 
   function renderNavigation(): void {
@@ -96,24 +109,23 @@ export function createSettingsView(root: HTMLElement, vscode: WebviewApi): { acc
     for (const child of [...navigation.children] as HTMLElement[]) {
       if (!choices.some(choice => choice.id === child.dataset.section)) { child.remove(); }
     }
-    for (const choice of choices) {
+    for (const [index, choice] of choices.entries()) {
       let button = [...navigation.children].find(node => (node as HTMLElement).dataset.section === choice.id) as HTMLButtonElement | undefined;
       if (!button) {
         button = element('button', 'settings-nav-item'); button.type = 'button'; button.dataset.section = choice.id;
         button.addEventListener('click', () => navigate(choice.id));
-        navigation.append(button);
       }
       if (button.dataset.label !== choice.label || button.dataset.icon !== choice.icon) {
         button.replaceChildren(icon(choice.icon), element('span', '', choice.label));
         button.dataset.label = choice.label; button.dataset.icon = choice.icon;
       }
-      navigation.append(button);
+      if (navigation.children[index] !== button) { navigation.insertBefore(button, navigation.children[index] ?? null); }
     }
     filter();
   }
 
   function settingTarget(item: SettingState): SettingsTarget { return item.section === 'editor' ? snapshot?.target ?? 'user' : 'user'; }
-  function pendingId(key: string, target: SettingsTarget): string { return `${target}:${key}`; }
+  function editId(key: string, target: SettingsTarget): string { return `${target}:${key}`; }
 
   function save(key: string, reset = false): void {
     const item = snapshot?.items.find(item => item.key === key);
@@ -121,15 +133,15 @@ export function createSettingsView(root: HTMLElement, vscode: WebviewApi): { acc
     if (!item || !row) { return; }
     const input = row.querySelector<HTMLInputElement | HTMLSelectElement>('[data-setting-input]')!;
     const destination = settingTarget(item);
-    if (pending.has(pendingId(key, destination))) { return; }
+    const id = editId(key, destination);
+    if (edits.get(id)?.saving) { return; }
     let value: string | number | boolean = input.value;
     if (input instanceof HTMLInputElement) {
       if (!reset && !input.reportValidity()) { return; }
       value = item.type === 'boolean' ? input.checked : item.type === 'number' ? input.valueAsNumber : input.value;
     }
-    if (!reset && value === item.value) { return; }
-    errors.delete(key);
-    pending.add(pendingId(key, destination));
+    if (!reset && value === item.value) { edits.delete(id); updateRow(item); return; }
+    edits.set(id, { value, saving: true });
     saveStatus.textContent = t('Saving...');
     vscode.postMessage({ type: 'settings-update', key, value, reset, target: destination });
     updateRow(item);
@@ -142,16 +154,20 @@ export function createSettingsView(root: HTMLElement, vscode: WebviewApi): { acc
       input.replaceChildren(...(item.options ?? []).map(option => { const node = element('option', '', option.label); node.value = option.value; return node; }));
       input.dataset.options = JSON.stringify(item.options);
     }
-    const saving = pending.has(pendingId(item.key, settingTarget(item)));
-    if (document.activeElement !== input && !saving && !errors.has(item.key)) {
-      if (input instanceof HTMLInputElement && item.type === 'boolean') { input.checked = item.value === true; }
-      else { input.value = String(item.value); }
+    const destination = settingTarget(item);
+    const edit = edits.get(editId(item.key, destination));
+    const saving = edit?.saving ?? false;
+    if (input.dataset.target !== destination || input.disabled || document.activeElement !== input) {
+      const value = edit?.value ?? item.value;
+      if (input instanceof HTMLInputElement && item.type === 'boolean') { input.checked = value === true; }
+      else { input.value = String(value); }
     }
+    input.dataset.target = destination;
     input.disabled = saving;
     row.querySelector<HTMLButtonElement>('[data-reset]')!.disabled = !item.configured || saving;
     row.querySelector<HTMLElement>('.setting-source')!.textContent = item.overridden ? t('Overridden by workspace settings') : '';
     const error = row.querySelector<HTMLElement>('.setting-error')!;
-    error.textContent = errors.get(item.key) ?? ''; error.hidden = !error.textContent;
+    error.textContent = edit?.error ?? ''; error.hidden = !error.textContent;
     input.setAttribute('aria-invalid', String(!!error.textContent));
     row.setAttribute('aria-busy', String(saving));
   }
@@ -184,6 +200,8 @@ export function createSettingsView(root: HTMLElement, vscode: WebviewApi): { acc
         }
         const reset = element('button', 'icon-button setting-reset'); reset.type = 'button'; reset.dataset.reset = item.key;
         reset.title = t('Restore default'); reset.setAttribute('aria-label', t('Restore default for {0}', item.label)); reset.append(icon('discard'));
+        // Keep the input focused until the reset click, so blur cannot save a draft first.
+        reset.addEventListener('pointerdown', event => event.preventDefault());
         reset.addEventListener('click', () => save(item.key, true));
         const commit = () => save(item.key);
         if (item.type === 'boolean' || item.type === 'select') { input.addEventListener('change', commit); }
@@ -265,8 +283,12 @@ export function createSettingsView(root: HTMLElement, vscode: WebviewApi): { acc
       node.hidden = searching ? !(snapshot?.providers.find(provider => provider.id === node.dataset.provider)?.title.toLocaleLowerCase().includes(query)) : `provider:${node.dataset.provider}` !== activeSection;
     }
     const signedIn = !!account?.user && ['authenticated', 'checking', 'error'].includes(account.status);
-    find('settings-sign-in').hidden = signedIn || !snapshot?.providers.length;
-    sections.hidden = !signedIn || !sections.childElementCount;
+    const hasProvider = signedIn && [...sections.children].some(node => !(node as HTMLElement).hidden);
+    find('settings-sign-in').hidden = hasProvider || !snapshot?.providers.length;
+    find('settings-sign-in').querySelector('p')!.textContent = account?.status === 'checking' || signedIn && account?.status !== 'error'
+      ? t('Loading...') : signedIn ? t('Account verification failed.') : t('Sign in to view this information.');
+    find('settings-provider-sign-in').textContent = signedIn || account?.status === 'checking' ? t('Account') : t('Sign In');
+    sections.hidden = !hasProvider;
     find('settings-title').textContent = searching ? t('Search results') : selected?.label ?? t('General');
     find('settings-no-results').hidden = !searching || matches > 0;
     find('settings-scope').hidden = !searching && activeSection !== 'editor';
@@ -274,10 +296,11 @@ export function createSettingsView(root: HTMLElement, vscode: WebviewApi): { acc
       if (!searching && button.dataset.section === activeSection) { button.setAttribute('aria-current', 'page'); }
       else { button.removeAttribute('aria-current'); }
     }
+    restorePosition();
   }
 
   search.value = view.query ?? '';
-  search.addEventListener('input', () => { filter(); main.scrollTop = 0; persist(); });
+  search.addEventListener('input', () => { restoredScroll = undefined; filter(); main.scrollTop = 0; persist(); });
   search.addEventListener('keydown', event => { if (event.key === 'Escape') { search.value = ''; filter(); persist(); } });
   navigation.addEventListener('keydown', event => {
     if (!['ArrowUp', 'ArrowDown', 'Home', 'End'].includes(event.key)) { return; }
@@ -287,8 +310,11 @@ export function createSettingsView(root: HTMLElement, vscode: WebviewApi): { acc
     event.preventDefault(); buttons[next]?.focus(); buttons[next]?.click();
   });
   root.addEventListener('keydown', event => { if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'f') { event.preventDefault(); search.focus(); search.select(); } });
-  target.addEventListener('change', () => { errors.clear(); view.target = target.value === 'workspace' ? 'workspace' : 'user'; persist(); vscode.postMessage({ type: 'settings-target', target: view.target }); });
+  target.addEventListener('change', () => { view.target = target.value === 'workspace' ? 'workspace' : 'user'; persist(); vscode.postMessage({ type: 'settings-target', target: view.target }); });
   main.addEventListener('scroll', () => { clearTimeout(scrollTimer); scrollTimer = setTimeout(persist, 100); }, { passive: true });
+  for (const event of ['wheel', 'touchstart', 'pointerdown', 'keydown']) {
+    main.addEventListener(event, () => { restoredScroll = undefined; }, { passive: true });
+  }
   root.addEventListener('click', event => {
     const button = (event.target as HTMLElement).closest<HTMLButtonElement>('[data-settings-action]');
     if (button) {
@@ -313,15 +339,17 @@ export function createSettingsView(root: HTMLElement, vscode: WebviewApi): { acc
       renderAccountSections(sections, providers, message => vscode.postMessage(message));
       filter();
     } else if (message.type === 'settings-saved' || message.type === 'settings-error') {
-      if (message.key && !pending.delete(pendingId(message.key, message.target))) { return; }
+      const id = editId(message.key, message.target);
+      const edit = edits.get(id);
+      if (message.key && !edit?.saving) { return; }
       if (message.key) {
-        const item = snapshot?.items.find(item => item.key === message.key);
-        if (message.type === 'settings-error' && item && settingTarget(item) === message.target) { errors.set(message.key, message.message); }
-        else { errors.delete(message.key); }
+        if (message.type === 'settings-error') { edits.set(id, { ...edit!, saving: false, error: message.message }); }
+        else { edits.delete(id); }
       }
+      if (message.state) { snapshot = message.state; view.target = snapshot?.target; }
       const error = find('settings-error');
       error.textContent = !message.key && message.type === 'settings-error' ? message.message : ''; error.hidden = !error.textContent;
-      saveStatus.textContent = pending.size ? t('Saving...') : message.type === 'settings-saved' ? t('Saved') : t('Unable to save setting.');
+      saveStatus.textContent = [...edits.values()].some(edit => edit.saving) ? t('Saving...') : message.type === 'settings-saved' ? t('Saved') : t('Unable to save setting.');
       renderSettings();
     }
   });
