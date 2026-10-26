@@ -227,6 +227,7 @@
       }
     },
     "configurationDefaults": {
+      "editor.fontSize": 18,
       "workbench.iconTheme": "file-icons",
       "window.autoDetectColorScheme": true,
       "chat.disableAIFeatures": true,
