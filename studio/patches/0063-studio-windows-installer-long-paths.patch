@@ -1,0 +1,20 @@
+diff --git a/build/win32/code.iss b/build/win32/code.iss
+index 5b4306143f6..f1ce334adfb 100644
+--- a/build/win32/code.iss
++++ b/build/win32/code.iss
+@@ -1656,6 +1656,15 @@ begin
+     Result := ExpandConstant('{app}\_')
+   else
+     Result := ExpandConstant('{app}');
++
++  // Nested production dependencies can exceed MAX_PATH in a user install.
++  // Keep the registered app directory canonical and extend filesystem targets.
++  if Copy(Result, 1, 4) <> '\\?\' then begin
++    if Copy(Result, 1, 2) = '\\' then
++      Result := '\\?\UNC\' + Copy(Result, 3, Length(Result) - 2)
++    else
++      Result := '\\?\' + Result;
++  end;
+ end;
+ 
+ function GetVisualElementsManifest(Value: string): string;

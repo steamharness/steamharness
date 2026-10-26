@@ -1,5 +1,7 @@
 # Unreleased
 
+- Fixed Windows per-user installation and background updates for deeply nested dependency paths, avoiding installation rollback when Copilot runtime files exceed the legacy path limit.
+
 - Fixed Server storage setup guidance for local Kanban, Workflow and Conversation projects, including the Server address, project ID, account settings, upload dialog and read-only rechecks. History, drafts and Stop remain available; no projects are created or uploaded automatically. Missing Kanban endpoints no longer suggest another upload when the project already exists.
 
 - Fixed: The default project Server follows the build channel: local services for dev and the corresponding site for alpha and main. User-configured addresses retain priority.
