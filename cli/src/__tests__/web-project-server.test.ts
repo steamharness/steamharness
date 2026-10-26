@@ -222,6 +222,27 @@ it.each(['workflow', 'conversation'] as const)('updates %s guidance live after i
   } finally { await reader.cancel(); }
 });
 
+it.each(['workflow', 'conversation'] as const)('guides a missing local %s import without requiring Server diagnostics or replaying the failed run', async kind => {
+  const f = await fixture(kind, 'local');
+  f.project.projectInfo!.relatedProjects = [{ alias: 'database', projectId: relatedId, grantToRelatedProject: grant }];
+  vi.mocked(f.runtime.run).mockResolvedValueOnce({ status: 'failed', error: { message: 'Unavailable or awaiting confirmation', metadata: { code: 'RELATED_PROJECT_UNAVAILABLE', alias: 'database' } } });
+  await f.post(kind === 'workflow' ? { type: 'workflow-run', params: {} } : { type: 'send', text: 'read', params: {}, attachments: [] });
+  await (kind === 'workflow' ? f.app.projectController!.idle() : f.app.controller.idle());
+  const missing = await f.state();
+  expect(missing.serverData).toMatchObject({ blocking: false, issue: { kind: 'related-import-required', projectId: relatedId, relatedProjectImported: false } });
+  expect(missing.serverData.issue.serverUrl).toBeUndefined();
+  await f.post({ type: 'project-server-check' });
+  expect((await f.state()).serverData.issue.relatedProjectImported).toBe(false);
+  const targetDir = await mkdtemp(path.join(os.tmpdir(), 'local-related-import-')); folders.push(targetDir);
+  await writeFile(path.join(targetDir, 'package.json'), JSON.stringify({ id: relatedId }));
+  await f.app.setHostRelatedProjects([{ alias: 'database', projectDir: targetDir }]);
+  expect((await f.state()).serverData.issue).toMatchObject({ kind: 'related-import-required', relatedProjectImported: true });
+  await f.post({ type: 'project-server-check' });
+  expect((await f.state()).serverData).toBeUndefined();
+  expect(f.runtime.run).toHaveBeenCalledOnce();
+  expect(f.remote.mock.calls.some(([url]) => String(url).includes('/api/projects/'))).toBe(false);
+});
+
 it.each([[404, 'setup-required'], [403, 'access-denied'], [503, 'connection-unavailable']] as const)('keeps data endpoint HTTP %s visible after project records and grants pass', async (status, kind) => {
   const f = await fixture('workflow', 'both');
   f.project.projectInfo!.relatedProjects = [{ alias: 'database', projectId: relatedId, grantToRelatedProject: grant }];

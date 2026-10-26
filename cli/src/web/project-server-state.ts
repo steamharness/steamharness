@@ -5,7 +5,7 @@ import { readProjectInfo, resolveProjectRelatedProjectAccess, isProjectAccessAll
 import type { Project } from './workflow-types';
 
 export interface ProjectServerIssue {
-  kind: 'checking' | 'sign-in-required' | 'project-unavailable' | 'access-denied' | 'setup-required' | 'connection-unavailable' | 'related-setup-required';
+  kind: 'checking' | 'sign-in-required' | 'project-unavailable' | 'access-denied' | 'setup-required' | 'connection-unavailable' | 'related-setup-required' | 'related-import-required';
   serverUrl?: string;
   projectId?: string;
   relatedProjectAlias?: string;

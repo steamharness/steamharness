@@ -419,6 +419,33 @@ describe('Kanban CLI Web workspace', () => {
     expect((await bridge('knowledge.editDocument', { documentId: document.id, markdown: 'Updated' })).ok).toBe(true);
     expect((await bridge('knowledge.deleteDocument', { documentId: document.id })).ok).toBe(true);
   }, 20_000);
+  it('guides a real missing import, uses its imported folder outside the project group, and rejects a changed UUID without falling back', async () => {
+    const { app, directory, root, dataDir, pkg, post, bridge, state } = await fixture({ real: true });
+    const targetId = '44dfc728-27f4-4d80-a19e-a3f39f70950a';
+    const relation = (alias: string, projectId: string) => ({ alias, projectId, grantToRelatedProject: { read: { mode: 'all' }, write: { mode: 'none' } } });
+    await writeFile(path.join(directory, 'package.json'), JSON.stringify({ ...pkg, steamHarness: { ...pkg.steamHarness, projectInfo: { dataStorage: { mode: 'local' }, relatedProjects: [relation('database', targetId)] } } }));
+    await app.setHostRelatedProjects([]); await post({ type: 'kanban-refresh' });
+    const failed = await bridge('relatedProject.kv.getValue', { alias: 'database', key: 'visible:tasks' });
+    expect(failed.ok).toBe(false);
+    expect((await state()).kanban.serverDataIssue).toMatchObject({ kind: 'related-import-required', relatedProjectImported: false });
+    const imported = await realpath(await mkdtemp(path.join(os.tmpdir(), 'kanban-imported-'))); folders.push(imported);
+    const targetPkg = { id: targetId, name: 'Database', steamHarness: { projectInfo: { dataStorage: { mode: 'local' }, relatedProjects: [relation('board', id)] } } };
+    await writeFile(path.join(imported, 'package.json'), JSON.stringify(targetPkg));
+    const sibling = path.join(root, 'other-copy'); await mkdir(sibling);
+    await writeFile(path.join(sibling, 'package.json'), JSON.stringify(targetPkg));
+    const kv = core.createProjectKVContext({ projectId: targetId, store: core.createLocalProjectKVStore({ rootDir: path.join(webProjectDataDirectory(dataDir, imported), 'kv'), storageKind: 'kv' }) });
+    await kv.setValue('visible:tasks', ['imported']);
+    await app.setHostRelatedProjects([{ alias: 'database', projectDir: imported }]);
+    expect((await state()).kanban.serverDataIssue.relatedProjectImported).toBe(true);
+    const checked = await post({ type: 'kanban-refresh' }).then(response => response.json());
+    expect(checked.messages[0].kanban.serverDataIssue).toBeUndefined();
+    expect(checked.messages[0].kanban.missingRelatedProjectAliases).toEqual([]);
+    expect((await bridge('relatedProject.kv.getValue', { alias: 'database', key: 'visible:tasks' })).value).toEqual(['imported']);
+    await writeFile(path.join(imported, 'package.json'), JSON.stringify({ ...targetPkg, id }));
+    await post({ type: 'kanban-refresh' });
+    expect((await bridge('relatedProject.kv.getValue', { alias: 'database', key: 'visible:tasks' })).ok).toBe(false);
+    expect((await state()).kanban.serverDataIssue.relatedProjectImported).toBe(false);
+  }, 30_000);
   it('enforces reciprocal related-project read/write grants and shares the target Web storage', async () => {
     const { app, directory, root, dataDir, pkg, post, bridge, state } = await fixture({ real: true });
     const targetId = '44dfc728-27f4-4d80-a19e-a3f39f70950a', target = path.join(root, 'target'); await mkdir(target);

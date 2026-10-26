@@ -19,9 +19,10 @@ import type { WebConnection } from './runtime';
 import type { Project, Runtime } from './workflow-types';
 import { requestStudioAnalysis } from './local-analysis';
 import { checkProjectServer, checkProjectStorageFailure, projectServerIssue, type ProjectServerIssue } from './project-server-state';
+import type { CliRelatedProjectSpec } from '../related-projects';
 
 type Message = Record<string, any>;
-interface Hooks { changed(): void; emit(message: Record<string, unknown>): void; connection(): WebConnection | undefined; log(message: string): void; serverIssue?(issue: ProjectServerIssue | undefined): ProjectServerIssue | undefined }
+interface Hooks { changed(): void; emit(message: Record<string, unknown>): void; connection(): WebConnection | undefined; log(message: string): void; serverIssue?(issue: ProjectServerIssue | undefined): ProjectServerIssue | undefined; relatedImport?(alias: unknown): ProjectServerIssue | undefined; relatedProjects?(): readonly CliRelatedProjectSpec[] }
 
 export class KanbanController {
   workspace!: ProjectConfigurationState;
@@ -149,7 +150,14 @@ export class KanbanController {
       } finally { this.requests.delete(abort); }
     } else {
       if (!this.runtime.kanbanBridge) { throw new Error('Project Core does not support Kanban data.'); }
-      result = await this.runtime.kanbanBridge(this.project, call);
+      try { result = await this.runtime.kanbanBridge(this.project, call); }
+      catch (error) {
+        if ((error as { code?: string }).code === 'KANBAN_RELATED_PROJECT_UNAVAILABLE' && call.operation.startsWith('relatedProject.') && generation === this.generation && !this.disposed) {
+          const issue = this.hooks.relatedImport?.(call.input.alias);
+          if (issue) { this.serverDataIssue = issue; this.hooks.changed(); }
+        }
+        throw error;
+      }
     }
     if (generation !== this.generation || this.disposed) { throw Object.assign(new Error('Kanban preview changed.'), { code: 'KANBAN_BRIDGE_SESSION_INVALID' }); }
     return result;
@@ -157,7 +165,9 @@ export class KanbanController {
   authenticationChanged(): void {
     this.generation++; this.methods.clear(); for (const request of this.requests) { request.abort(); } this.feed?.abort(); clearTimeout(this.retry);
     this.relatedProjectRevisions = []; this.relatedProjectWarning = '';
-    if (this.project.projectInfo?.dataStorage?.mode !== 'server' || this.serverDataIssue?.serverUrl !== this.hooks.connection()?.serverUrl) { this.serverDataIssue = undefined; }
+    if (this.serverDataIssue?.kind === 'related-import-required') {
+      if (!this.hooks.relatedImport?.(this.serverDataIssue.relatedProjectAlias)) this.serverDataIssue = undefined;
+    } else if (this.project.projectInfo?.dataStorage?.mode !== 'server' || this.serverDataIssue?.serverUrl !== this.hooks.connection()?.serverUrl) { this.serverDataIssue = undefined; }
     this.connectServerRevisions();
   }
   private connectServerRevisions(): void {
@@ -208,7 +218,7 @@ export class KanbanController {
   }
   private async updateLocalRevisions(): Promise<void> {
     if (this.project.projectInfo?.dataStorage?.mode === 'server' || this.disposed) { return; }
-    const generation = this.generation, { info, projects } = await localKanbanRelatedProjects(this.project);
+    const generation = this.generation, { info, projects } = await localKanbanRelatedProjects(this.project, this.hooks.relatedProjects?.());
     const missing = info.relatedProjects.filter(item => !projects.has(item.alias)).map(item => item.alias);
     const revisions = await Promise.all([...projects].sort(([left], [right]) => left.localeCompare(right)).map(async ([alias, target]) => {
       const hash = createHash('sha256'), root = path.join(webProjectDataDirectory(this.storageDir, target.folderPath), 'kv');

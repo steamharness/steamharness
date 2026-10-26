@@ -19,7 +19,7 @@ export class ProjectServerGuidance {
       <div class="project-server-guidance-context" id="server-guidance-context" hidden><span class="codicon codicon-link" aria-hidden="true"></span><span id="server-guidance-related"></span><span id="server-guidance-stage"></span></div>
       <h2 id="server-guidance-title"></h2><p id="server-guidance-description"></p>
       <details id="server-guidance-details" open><summary hidden>${t('Connection details')}</summary>
-      <dl><dt>${t("Server")}</dt><dd id="server-guidance-server"></dd><dt>${t("Project ID")}</dt><dd id="server-guidance-project"></dd><dt id="server-guidance-alias-label" hidden>${t('Related project')}</dt><dd id="server-guidance-alias" hidden></dd></dl>
+      <dl><dt id="server-guidance-server-label">${t("Server")}</dt><dd id="server-guidance-server"></dd><dt>${t("Project ID")}</dt><dd id="server-guidance-project"></dd><dt id="server-guidance-alias-label" hidden>${t('Related project')}</dt><dd id="server-guidance-alias" hidden></dd></dl>
       </details>
       <ol id="server-guidance-steps"></ol>
       <div class="project-server-guidance-actions"><button id="server-guidance-create" type="button" hidden>${t('New project on Server...')}</button><button id="server-guidance-retry" type="button">${t("Check again")}</button></div>
@@ -47,20 +47,30 @@ export class ProjectServerGuidance {
     const signature = JSON.stringify([issue, projectId]);
     if (signature === this.signature) return;
     this.signature = signature;
-    this.server.textContent = issue.serverUrl || t("Not connected"); this.project.textContent = issue.projectId || projectId;
+    const localImport = issue.kind === 'related-import-required';
+    this.server.hidden = localImport;
+    this.container.querySelector<HTMLElement>('#server-guidance-server-label')!.hidden = localImport;
+    this.details.querySelector('summary')!.textContent = localImport ? t('Project details') : t('Connection details');
+    this.server.textContent = localImport ? '' : issue.serverUrl || t("Not connected"); this.project.textContent = issue.projectId || projectId;
     const alias = this.container.querySelector<HTMLElement>('#server-guidance-alias')!;
     alias.textContent = issue.relatedProjectAlias ?? ''; alias.hidden = !issue.relatedProjectAlias;
     this.container.querySelector<HTMLElement>('#server-guidance-alias-label')!.hidden = !issue.relatedProjectAlias;
     this.container.querySelector<HTMLElement>('#server-guidance-related')!.textContent = issue.relatedProjectAlias ? t('Related project: {0}', issue.relatedProjectAlias) : t('Related project');
     const needsImport = related && issue.relatedProjectImported === false;
-    this.container.dataset.stage = needsImport ? 'import' : issue.kind === 'related-setup-required' ? 'authorization' : 'server';
+    this.container.dataset.stage = needsImport ? 'import' : localImport ? 'ready' : issue.kind === 'related-setup-required' ? 'authorization' : 'server';
     this.stage.textContent = needsImport ? t('Not imported') : issue.relatedProjectImported ? t('Imported') : t('Check access');
     let steps: string[];
     if (needsImport) {
       this.title.textContent = t('Import the related project first');
-      this.description.textContent = t('The related project has not been imported, or its local folder is unavailable. Import it before checking Server access or data grants.');
-      steps = [t('In Studio Related Projects, click "{0}", choose Import Project, and select the folder matching the project ID in Connection details.', issue.relatedProjectAlias || issue.projectId),
+      this.description.textContent = localImport
+        ? t('The related project is not available locally. Import the matching project folder to continue.')
+        : t('The related project has not been imported, or its local folder is unavailable. Import it before checking Server access or data grants.');
+      steps = [t('In Studio Related Projects, click "{0}", choose Import Project, and select the folder matching the project ID in the details.', issue.relatedProjectAlias || issue.projectId),
         t('After importing, choose Check again to see the next step.')];
+    } else if (localImport) {
+      this.title.textContent = t('Related project imported');
+      this.description.textContent = t('The local project is available. Check again to dismiss this notice, then manually retry the original operation.');
+      steps = [];
     } else if (issue.kind === 'checking') {
       this.title.textContent = t('Checking project Server');
       this.description.textContent = t('Checking sign-in and project access. Your local history and drafts remain available.');
@@ -100,6 +110,7 @@ export class ProjectServerGuidance {
         t("If the project already exists, ask its owner to check your access."), t("After completing setup, choose Check again.")]
         : [t('Check the Server version and the Server Project Info. Ask the project owner to update the project type, storage settings, or related project grants if needed.'), t("After completing setup, choose Check again.")];
     }
+    this.steps.hidden = !steps.length;
     this.steps.replaceChildren(...steps.map(text => { const step = document.createElement('li'); step.textContent = text; return step; }));
   }
 }

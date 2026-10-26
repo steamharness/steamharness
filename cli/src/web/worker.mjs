@@ -161,7 +161,7 @@ try {
       return { reference, path: reference.path };
     };
     if (request.method === 'kanban-bridge') {
-      send('result', await runKanbanDataCall(core, request.project, request.storageDir, request.call));
+      send('result', await runKanbanDataCall(core, request.project, request.storageDir, request.call, request.relatedProjects ?? []));
     } else if (request.method === 'resolve') {
       send('result', await resolveLocalProjectParams({
         projectDir: request.project.folderPath,
@@ -311,7 +311,7 @@ try {
     } else { throw new Error('Unknown runtime method.'); }
   } else { throw new Error('Unknown runtime method.'); }
 } catch (error) {
-  write(`__STEAMHARNESS_WEB__${JSON.stringify({ kind: 'error', error: error.message, metadata: error.metadata, status: error.metadata?.status })}\n`);
+  write(`__STEAMHARNESS_WEB__${JSON.stringify({ kind: 'error', error: error.message, code: error.code, metadata: error.metadata, status: error.metadata?.status })}\n`);
   process.exitCode = 1;
 } finally {
   agentHost?.close();

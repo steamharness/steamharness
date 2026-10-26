@@ -33,7 +33,7 @@ import { ConversationState } from './conversation-state';
 import { pathReferences } from './conversation-paths';
 import { importDroppedEntries, resolveDroppedPaths } from './dropped-paths';
 import { defaultServerUrl } from '../service-url';
-import { ProjectServerConnection, projectServerAccessFailure } from './project-server-state';
+import { ProjectServerConnection, projectServerAccessFailure, type ProjectServerIssue } from './project-server-state';
 import { ProjectServerCreation } from './project-server-create';
 import { RelatedProjectImports } from './related-projects';
 
@@ -70,6 +70,7 @@ export async function startWebServer(options: WebOptions) {
   await relatedImports.update(relatedProjectsManaged ? relatedProjects : undefined);
   let resourceProjects = options.host?.resourceProjects ?? [];
   let projectServer: ProjectServerConnection | undefined;
+  let relatedImportIssue: ProjectServerIssue | undefined;
   const waitingRuns = new Map<AbortController, string | undefined>();
   const cancelWaitingRuns = (runId?: string) => { for (const [abort, id] of waitingRuns) if (!runId || id === runId) abort.abort(); };
   const executor = options.runtime ?? createWebRuntime(projectDir, storageDir, () => connection, () => relatedProjects, { allowSystemAi: allowAiConnection });
@@ -149,8 +150,9 @@ export async function startWebServer(options: WebOptions) {
   // Preserve project-owned data keys; remove host credentials by their actual values.
   const publicState = (value: unknown) => publicValue(redactProjectData(value, [...sensitiveTokens], false));
   const sharedState = () => {
+    const serverData = projectServer?.state ?? (relatedImportIssue ? { checking: false, blocking: false } : undefined);
     const result = publicState({ type: 'state', serverInstanceId, project, configurationError: configurations.error,
-    serverData: projectServer && { ...projectServer.state, issue: relatedImports.issue(projectServer.state.issue) },
+    serverData: serverData && { ...serverData, issue: relatedImports.issue(projectServer?.state.issue ?? relatedImportIssue) },
     ...(isKanban ? { kanban: kanbanController!.state() } : isProject ? projectActions!.state() : { sessions: conversationState.sessions(controller.sessions) }),
     account: { ...account, user: account.user && { userId: account.user.userId, email: account.user.email, displayName: account.user.displayName, avatarUrl: account.user.avatarUrl } },
     authenticationRevision: authRevision, parameterRevision, resourceRevision: resources.revision });
@@ -203,7 +205,13 @@ export async function startWebServer(options: WebOptions) {
     projectServer = new ProjectServerConnection(project.id, () => connection, broadcast);
   }
   const observeStorageFailure = (metadata: Record<string, unknown> | undefined, previous: WebConnection | undefined) => {
-    if (isKanban || !previous || previous.serverUrl !== connection?.serverUrl || previous.accessToken !== connection.accessToken) return;
+    if (isKanban) return;
+    if (metadata?.code === 'RELATED_PROJECT_UNAVAILABLE') {
+      const issue = relatedImports.missingIssue(metadata.alias, project);
+      if (issue) { relatedImportIssue = issue; broadcast(); }
+      return;
+    }
+    if (!previous || previous.serverUrl !== connection?.serverUrl || previous.accessToken !== connection.accessToken) return;
     const failure = projectServerAccessFailure(metadata, project, connection);
     if (!failure) return;
     projectServer ??= new ProjectServerConnection(project.id, () => connection, broadcast, { blocking: false });
@@ -230,7 +238,7 @@ export async function startWebServer(options: WebOptions) {
   conversationController = isProject || isKanban ? undefined : new ConversationController(project, runtime, saved, {
     canRun: session => ownership?.execute(session.id) ?? true,
     canStart: () => !projectServer?.blocking || projectServer.ready,
-    canDrain: () => !projectServer || projectServer.ready,
+    canDrain: () => (!projectServer || projectServer.ready) && !relatedImportIssue,
     configurationRevision: () => configurations.state.revision,
     changed: broadcast,
     log: message => process.stderr.write(`${message}\n`),
@@ -292,7 +300,11 @@ export async function startWebServer(options: WebOptions) {
     },
   }) : undefined;
   const projectActions = projectController ? createProjectActions(projectController, runtime, project, () => authRevision, broadcast) : undefined;
-  kanbanController = isKanban ? new KanbanController(project, runtime, storageDir, { changed: broadcast, emit: message => { for (const client of clients) { client.write(`data: ${JSON.stringify(message)}\n\n`); } }, connection: () => connection, log: message => process.stderr.write(`${message}\n`), serverIssue: issue => relatedImports.issue(issue) }) : undefined;
+  kanbanController = isKanban ? new KanbanController(project, runtime, storageDir, {
+    changed: broadcast, emit: message => { for (const client of clients) { client.write(`data: ${JSON.stringify(message)}\n\n`); } },
+    connection: () => connection, log: message => process.stderr.write(`${message}\n`),
+    serverIssue: issue => relatedImports.issue(issue), relatedImport: alias => relatedImports.missingIssue(alias, project), relatedProjects: () => relatedProjects,
+  }) : undefined;
   if (kanbanController) kanbanController.configurationChanged(configurations.state);
   if (kanbanController) { try { await kanbanController.initialize(); } catch (error) { configurations.close(); resources.close(); await kanbanController.close(); runtime.dispose(); throw error; } }
   if (projectController) { await projectController.persist(); }
@@ -428,6 +440,7 @@ export async function startWebServer(options: WebOptions) {
     if (message.projectUri && message.projectUri !== project.uri) { throw new Error('Project changed.'); }
     if (message.type === 'project-server-check') {
       await relatedImports.update(relatedProjectsManaged ? relatedProjects : undefined);
+      if (relatedImports.issue(relatedImportIssue)?.relatedProjectImported) relatedImportIssue = undefined;
       await refreshAuth(true);
       await projectServer?.refresh();
       return [state(message.clientId), { type: 'project-server-checked' }];

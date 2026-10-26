@@ -3,6 +3,7 @@ import { readFile } from 'node:fs/promises';
 import { createCliRelatedProjectRuntime, type CliRelatedProjectSpec } from '../related-projects';
 import { webProjectDataDirectory } from './kanban-data';
 import type { ProjectServerIssue } from './project-server-state';
+import type { Project } from './workflow-types';
 
 /** Import status describes local availability, independently of data grants. */
 export class RelatedProjectImports {
@@ -29,6 +30,13 @@ export class RelatedProjectImports {
   issue(issue: ProjectServerIssue | undefined): ProjectServerIssue | undefined {
     if (!issue?.relatedProjectAlias || !issue.projectId || !this.imported) return issue;
     return { ...issue, relatedProjectImported: this.imported.get(issue.relatedProjectAlias) === issue.projectId.toLowerCase() };
+  }
+
+  missingIssue(alias: unknown, project: Project): ProjectServerIssue | undefined {
+    const relation = project.projectInfo?.relatedProjects.find(relation => relation.alias === alias);
+    if (!relation) return;
+    const issue = this.issue({ kind: 'related-import-required', projectId: relation.projectId, relatedProjectAlias: relation.alias });
+    return issue?.relatedProjectImported === false ? issue : undefined;
   }
 
   close(): void { this.disposed = true; ++this.generation; }

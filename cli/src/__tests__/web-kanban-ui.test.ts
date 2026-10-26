@@ -160,6 +160,10 @@ it.each(['en', 'zh-CN'] as const)('distinguishes related import and authorizatio
   sendState(3, 'blocked', { ...issue, kind: 'project-unavailable', relatedProjectImported: true });
   expect(document.getElementById('server-guidance-title')!.textContent).toBe(language === 'en' ? 'Related project unavailable on this Server' : '关联项目在当前服务器上不可用');
   expect(document.getElementById('server-guidance-create')!.hidden).toBe(true);
-  sendState(4, 'ready');
+  sendState(4, 'blocked', { ...issue, kind: 'related-import-required', relatedProjectImported: false });
+  expect(document.getElementById('server-guidance-server-label')!.hidden).toBe(true);
+  sendState(5, 'blocked', { ...issue, kind: 'related-import-required', relatedProjectImported: true });
+  expect(document.getElementById('server-guidance-title')!.textContent).toBe(language === 'en' ? 'Related project imported' : '关联项目已导入');
+  sendState(6, 'ready');
   expect(guidance.hidden).toBe(true); expect(document.getElementById('preview-stage')!.hidden).toBe(false);
 });

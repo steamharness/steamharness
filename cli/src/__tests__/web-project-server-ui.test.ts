@@ -136,9 +136,17 @@ it.each([['workflow', 'en'], ['workflow', 'zh-CN'], ['conversation', 'en'], ['co
     expect(document.getElementById('server-guidance-steps')!.textContent).not.toContain(language === 'en' ? 'choose Import Project' : '选择“导入项目”');
     await f.render({ checking: false, blocking: false, issue: { ...issue, kind: 'access-denied', relatedProjectImported: true } });
     expect(title.textContent).toBe(language === 'en' ? 'Related project account access is required' : '需要关联项目的账号访问权限');
+    await f.render({ checking: false, blocking: false, issue: { ...issue, kind: 'related-import-required', relatedProjectImported: false } });
+    expect(title.textContent).toBe(language === 'en' ? 'Import the related project first' : '请先导入关联项目');
+    expect(document.getElementById('server-guidance-server-label')!.hidden).toBe(true);
+    expect(details.querySelector('summary')!.textContent).toBe(language === 'en' ? 'Project details' : '项目详情');
+    await f.render({ checking: false, blocking: false, issue: { ...issue, kind: 'related-import-required', relatedProjectImported: true } });
+    expect(title.textContent).toBe(language === 'en' ? 'Related project imported' : '关联项目已导入');
+    expect(document.getElementById('server-guidance-steps')!.hidden).toBe(true);
     await f.render({ checking: false, issue: { kind: 'project-unavailable' } });
     expect(guidance.dataset.scope).toBe('project'); expect(details.open).toBe(true);
     expect(document.getElementById('server-guidance-context')!.hidden).toBe(true);
+    expect(document.getElementById('server-guidance-server-label')!.hidden).toBe(false);
     expect(document.getElementById('server-guidance-create')!.hidden).toBe(false);
     await f.render(); expect(guidance.hidden).toBe(true);
   },

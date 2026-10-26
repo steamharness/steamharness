@@ -4,23 +4,28 @@ import path from 'node:path';
 import { parseKanbanBridgeCall, resolveKanbanRelatedProject, type KanbanBridgeCall } from '@steamharness/kanban-project';
 import { readProjectInfo, resolveProjectRelatedProjectAccess, isProjectAccessAllowed, isProjectDataStorageLocationAllowed } from '@steamharness/project-info';
 import type { Project } from './workflow-types';
+import type { CliRelatedProjectSpec } from '../related-projects';
 
 export { readProjectInfo, resolveProjectName } from '@steamharness/project-info';
 export { readProjectCardMetadataFromPackageJson } from '@steamharness/project-card-metadata';
 export const webProjectDataDirectory = (storageDir: string, projectDir: string) => path.join(storageDir, createHash('sha256').update(projectDir).digest('hex').slice(0, 24));
 
-export async function localKanbanRelatedProjects(project: Project) {
+export async function localKanbanRelatedProjects(project: Project, bindings: readonly CliRelatedProjectSpec[] = []) {
   const info = readProjectInfo(JSON.parse(await readFile(path.join(project.folderPath, 'package.json'), 'utf8')));
   const relations = info.relatedProjects;
   const projects = new Map<string, { folderPath: string; id: string; projectInfo: ReturnType<typeof readProjectInfo> }>();
   if (!relations.length) { return { info, projects }; }
   const parent = path.dirname(project.folderPath);
   const directories = (await readdir(parent, { withFileTypes: true })).filter(item => item.isDirectory() && !item.name.startsWith('.') && item.name !== 'node_modules').slice(0, 500);
-  await Promise.all(directories.map(async item => {
+  const boundAliases = new Set(bindings.map(binding => binding.alias));
+  const candidates: { folderPath: string; alias?: string }[] = [...bindings.map(binding => ({ folderPath: binding.projectDir, alias: binding.alias })),
+    ...directories.map(item => ({ folderPath: path.join(parent, item.name) }))];
+  await Promise.all(candidates.map(async candidate => {
     try {
-      const folderPath = await realpath(path.join(parent, item.name));
+      const folderPath = await realpath(candidate.folderPath);
       const pkg = JSON.parse(await readFile(path.join(folderPath, 'package.json'), 'utf8'));
-      const relation = relations.find(relation => relation.projectId.toLowerCase() === String(pkg.id).toLowerCase());
+      const relation = relations.find(relation => relation.projectId.toLowerCase() === String(pkg.id).toLowerCase()
+        && (candidate.alias ? relation.alias === candidate.alias : !boundAliases.has(relation.alias)));
       if (!relation) { return; }
       const projectInfo = readProjectInfo(pkg);
       const access = resolveProjectRelatedProjectAccess({ consumerProjectId: project.id, consumerProjectInfo: info, targetProjectId: pkg.id, targetProjectInfo: projectInfo, alias: relation.alias });
@@ -34,9 +39,9 @@ export async function localKanbanRelatedProjects(project: Project) {
 }
 
 // Core is supplied by the worker after resolving it from the user's project.
-export async function runKanbanDataCall(core: typeof import('steamharness'), project: Project, storageDir: string, value: KanbanBridgeCall): Promise<unknown> {
+export async function runKanbanDataCall(core: typeof import('steamharness'), project: Project, storageDir: string, value: KanbanBridgeCall, bindings: readonly CliRelatedProjectSpec[] = []): Promise<unknown> {
   const call = parseKanbanBridgeCall(value), { operation, input } = call;
-  const { info, projects } = await localKanbanRelatedProjects(project);
+  const { info, projects } = await localKanbanRelatedProjects(project, bindings);
   if (info.dataStorage?.mode === 'server' || !isProjectDataStorageLocationAllowed(info, 'local')) { throw new Error('Kanban data must use its declared storage location.'); }
   const directory = webProjectDataDirectory(storageDir, project.folderPath);
   const kv = core.createProjectKVContext({ store: core.createLocalProjectKVStore({ rootDir: path.join(directory, 'kv'), storageKind: 'kv' }), projectId: project.id });

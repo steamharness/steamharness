@@ -40,7 +40,9 @@ it('executes imported related KV, knowledge and entrypoints using the target Web
     expect(inspection.errors).toEqual([]);
     const project = { ...inspection.projects[0], uri: '' };
     const run = () => runtime.run({ project, conversationId: 'related-test', runId: 'related-test', args: [] }, () => {});
-    expect((await run()).status).toBe('failed');
+    const missing = await run();
+    expect(missing.status).toBe('failed');
+    expect(missing.error?.metadata).toMatchObject({ code: 'RELATED_PROJECT_UNAVAILABLE', alias: 'database' });
     bindings = [{ alias: 'database', projectDir: fixture.targetDir }];
     const report = await run();
     expect(report.status, JSON.stringify(report)).toBe('success');
