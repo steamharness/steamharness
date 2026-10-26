@@ -1,5 +1,7 @@
 # Unreleased
 
+- Fixed Windows per-user installation and background updates for deeply nested dependency paths, avoiding installation rollback when Copilot runtime files exceed the legacy path limit.
+
 - New Workflow, Conversation and Kanban projects apply for a Server ID using the current account before generating local files, without uploading source. Failed allocation or account changes create no project files; installation and validation retries do not allocate again. Uploading an unregistered project guides users to reapply first.
 
 - Fixed new projects failing validation after a successful install by matching untouched templates to the installed SDK API. Installation and validation now show separate status and diagnostics, and retries skip successful installation. Workflow, Conversation, and Kanban apply for Server IDs before creating private personal projects without uploading source; installation or validation failure preserves local source. Setup logs persist as files with native tab path and reveal actions. Fixed the Harness version field on Start.
