@@ -23,6 +23,8 @@ export class AccountController implements vscode.Disposable {
   private readonly sessionChange = new vscode.EventEmitter<vscode.AuthenticationProviderAuthenticationSessionsChangeEvent>();
   private previousSession?: vscode.AuthenticationSession;
   private panel?: vscode.WebviewPanel;
+  private loginPanel?: vscode.WebviewPanel;
+  private loginBusy = false;
   private viewState: SettingsViewState = { section: 'general', target: 'user' };
   private settingsTimer?: ReturnType<typeof setTimeout>;
   private settingWrites: Promise<void> = Promise.resolve();
@@ -46,6 +48,7 @@ export class AccountController implements vscode.Disposable {
       void vscode.commands.executeCommand('setContext', 'studio.authenticated', !!this.account.getSession());
       void vscode.commands.executeCommand('studio.internalUpdateAccountMenuState', accountMenuState(state)).then(undefined, () => undefined);
       void this.panel?.webview.postMessage({ type: 'account', state });
+      this.publishLogin();
       const session = this.authenticationSession();
       if (JSON.stringify(session) !== JSON.stringify(this.previousSession)) {
         this.sessionChange.fire({
@@ -67,7 +70,9 @@ export class AccountController implements vscode.Disposable {
         },
         createSession: async (scopes) => {
           if (scopes.some((scope) => scope !== 'workflow')) { throw new Error('Unsupported Workflow authentication scope.'); }
-          this.open();
+          const existing = this.authenticationSession();
+          if (existing) { return existing; }
+          this.openLogin();
           return new Promise<vscode.AuthenticationSession>((resolve, reject) => {
             const listeners: vscode.Disposable[] = [];
             const finish = (session?: vscode.AuthenticationSession): void => {
@@ -77,7 +82,7 @@ export class AccountController implements vscode.Disposable {
             listeners.push(this.onDidChange(() => {
               const session = this.authenticationSession();
               if (session) { finish(session); }
-            }), this.panel!.onDidDispose(() => finish()));
+            }), this.loginPanel!.onDidDispose(() => finish()));
           });
         },
         removeSession: async (sessionId) => {
@@ -85,7 +90,14 @@ export class AccountController implements vscode.Disposable {
         },
       }, { supportsMultipleAccounts: false }),
       vscode.commands.registerCommand('studio.openAccount', () => this.open()),
+      vscode.commands.registerCommand('studio.openLogin', () => this.openLogin()),
       vscode.commands.registerCommand('studio.openSettings', (options?: SettingsOpenOptions) => this.open(settingsViewState(options))),
+      vscode.window.registerWebviewPanelSerializer('studio.login', {
+        deserializeWebviewPanel: async panel => {
+          if (this.loginPanel && this.loginPanel !== panel) { panel.dispose(); this.loginPanel.reveal(); return; }
+          this.attachLoginPanel(panel);
+        },
+      }),
       vscode.window.registerWebviewPanelSerializer('studio.settings', {
         deserializeWebviewPanel: async (panel, state) => {
           if (this.panel && this.panel !== panel) { panel.dispose(); this.panel.reveal(); return; }
@@ -160,8 +172,9 @@ export class AccountController implements vscode.Disposable {
     if (current?.serverUrl === connection.serverUrl && current.accessToken === connection.accessToken) { await this.account.verify(); }
   }
 
-  open(options: SettingsOpenOptions = { section: 'account' }): void {
-    this.viewState = settingsViewState(options);
+  open(options?: SettingsOpenOptions): void {
+    if (!options && !this.getState().user) { this.openLogin(); return; }
+    this.viewState = settingsViewState(options ?? { section: 'account' });
     if (this.panel) {
       this.panel.reveal();
       this.publishSettings();
@@ -173,6 +186,59 @@ export class AccountController implements vscode.Disposable {
       localResourceRoots: [vscode.Uri.joinPath(this.context.extensionUri, 'dist')],
     });
     this.attachPanel(panel);
+  }
+
+  private openLogin(): void {
+    if (this.getState().status === 'authenticated') { this.open({ section: 'account' }); return; }
+    if (this.loginPanel) { this.loginPanel.reveal(); this.publishLogin(); return; }
+    this.attachLoginPanel(vscode.window.createWebviewPanel('studio.login', t('Sign In'), vscode.ViewColumn.Active, {
+      enableScripts: true, retainContextWhenHidden: false,
+      localResourceRoots: [vscode.Uri.joinPath(this.context.extensionUri, 'dist')],
+    }));
+  }
+
+  private publishLogin(): void {
+    void this.loginPanel?.webview.postMessage({ type: 'account', state: this.getState(), busy: this.loginBusy });
+  }
+
+  private attachLoginPanel(panel: vscode.WebviewPanel): void {
+    this.loginPanel = panel;
+    panel.title = t('Sign In');
+    panel.iconPath = new vscode.ThemeIcon('sign-in');
+    panel.webview.options = { enableScripts: true, localResourceRoots: [vscode.Uri.joinPath(this.context.extensionUri, 'dist')] };
+    panel.webview.html = this.html(panel, true);
+    let pageGeneration = 0;
+    const listeners: vscode.Disposable[] = [];
+    listeners.push(panel.onDidDispose(() => {
+      if (this.loginPanel === panel) { this.loginPanel = undefined; }
+      for (const listener of listeners) { listener.dispose(); }
+    }), panel.webview.onDidReceiveMessage(async message => {
+      if (this.loginPanel !== panel || !message || typeof message !== 'object') { return; }
+      if (message.type === 'ready') { ++pageGeneration; this.publishLogin(); return; }
+      if (message.type === 'open-account') { this.open({ section: 'account' }); panel.dispose(); return; }
+      if (message.type !== 'login' || this.loginBusy || typeof message.serverUrl !== 'string' ||
+        typeof message.email !== 'string' || typeof message.password !== 'string' ||
+        message.email.length >= 320 || message.password.length > 4096) { return; }
+      const generation = pageGeneration;
+      const current = (): boolean => this.loginPanel === panel && generation === pageGeneration;
+      this.loginBusy = true;
+      this.publishLogin();
+      let failure: string | undefined;
+      try {
+        await this.account.login(message.serverUrl, message.email, message.password);
+        if (this.getState().status === 'authenticated') {
+          await vscode.workspace.getConfiguration('studio').update('project.serverUrl', this.getState().serverUrl, vscode.ConfigurationTarget.Global);
+          if (current()) { this.open({ section: 'account' }); panel.dispose(); }
+        }
+      } catch (error) {
+        failure = error instanceof Error ? error.message : t('Sign-in failed.');
+      } finally {
+        this.loginBusy = false;
+        if (current()) {
+          await panel.webview.postMessage({ type: 'login-result', state: this.getState(), message: failure });
+        } else { this.publishLogin(); }
+      }
+    }));
   }
 
   private publishSettings(): void {
@@ -282,16 +348,12 @@ export class AccountController implements vscode.Disposable {
         } catch { await panel.webview.postMessage({ type: 'settings-error', message: t('Unable to complete settings action.') }); }
         return;
       }
-      const exclusive = ['login', 'verify', 'logout'].includes(message.type);
+      if (message.type === 'open-login') { this.openLogin(); return; }
+      const exclusive = ['verify', 'logout'].includes(message.type);
       if (exclusive && busy) { return; }
       if (exclusive) { busy = true; }
       try {
-        if (message.type === 'login' && typeof message.serverUrl === 'string' && typeof message.email === 'string' && typeof message.password === 'string' && message.email.length < 320 && message.password.length <= 4096) {
-          await this.account.login(message.serverUrl, message.email, message.password);
-          if (this.getState().status === 'authenticated') {
-            await vscode.workspace.getConfiguration('studio').update('project.serverUrl', this.getState().serverUrl, vscode.ConfigurationTarget.Global);
-          }
-        } else if (message.type === 'verify') { await this.account.verify(); void this.sections.refresh(true); }
+        if (message.type === 'verify') { await this.account.verify(); void this.sections.refresh(true); }
         else if (message.type === 'logout') { await this.account.logout(); }
         else if (message.type === 'refresh-sections') { await this.sections.refresh(true); }
         else if (message.type === 'section-action' && typeof message.providerId === 'string' && typeof message.action === 'string') {
@@ -319,20 +381,23 @@ export class AccountController implements vscode.Disposable {
     }));
   }
 
-  private html(panel: vscode.WebviewPanel): string {
+  private html(panel: vscode.WebviewPanel, login = false): string {
     const webview = panel.webview;
     const asset = (name: string): string => webview.asWebviewUri(vscode.Uri.joinPath(this.context.extensionUri, 'dist', name)).toString();
     const nonce = globalThis.crypto.randomUUID().replace(/-/g, '');
+    const entry = login ? 'login' : 'account';
+    const title = login ? t('Sign In') : t('Settings');
     return `<!doctype html><html lang="${vscode.env.language}"><head>${webviewContextMenu(this.context, panel)}<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
       <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src ${webview.cspSource}; font-src ${webview.cspSource}; img-src ${webview.cspSource} https: http: data:; script-src 'nonce-${nonce}';">
-      <link rel="stylesheet" href="${asset('codicons/codicon.css')}"><link rel="stylesheet" href="${asset('account-ui.css')}"><title>${t('Settings')}</title></head>
-      <body><main id="account-app"></main>${localizationHtml(nonce)}<script nonce="${nonce}" src="${asset('account-ui.js')}"></script></body></html>`;
+      <link rel="stylesheet" href="${asset('codicons/codicon.css')}"><link rel="stylesheet" href="${asset(`${entry}-ui.css`)}"><title>${title}</title></head>
+      <body><main id="${entry}-app"></main>${localizationHtml(nonce)}<script nonce="${nonce}" src="${asset(`${entry}-ui.js`)}"></script></body></html>`;
   }
 
   dispose(): void {
     clearTimeout(this.settingsTimer);
     void vscode.commands.executeCommand('setContext', 'studio.accountAvailable', false);
     this.panel?.dispose();
+    this.loginPanel?.dispose();
     this.sections.dispose();
     for (const disposable of this.disposables) { disposable.dispose(); }
   }

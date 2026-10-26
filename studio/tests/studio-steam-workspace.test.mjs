@@ -51,7 +51,7 @@ class WebviewInput extends EditorInput {
 class CustomEditorInput extends WebviewInput {
   constructor(name, resource) { super(name); this.resource = resource; this.webview.providedViewType = 'test.file-preview'; }
 }
-const tools = [{ id: 'editor', icon: 'code', editor: true }, { id: 'settings', icon: 'settings-gear', command: 'studio.openSettings' }, ...['kv', 'knowledge', 'info', 'assistant', 'versions', 'trace'].map(id => ({ id, icon: id, view: `studio.${id}` })),
+const tools = [{ id: 'editor', icon: 'code', editor: true }, { id: 'settings', icon: 'settings-gear', command: 'studio.openSettings' }, { id: 'login', icon: 'sign-in', command: 'studio.openLogin' }, ...['kv', 'knowledge', 'info', 'assistant', 'versions', 'trace'].map(id => ({ id, icon: id, view: `studio.${id}` })),
   { id: 'terminal', icon: 'terminal', view: 'terminal' }, { id: 'browser', command: 'simpleBrowser.show' }, { id: 'project', command: 'studio.openProjectInTab' }];
 class StudioToolViewInput extends EditorInput {
   constructor(toolId, viewId) { super(toolId); this.toolId = toolId; this.viewId = viewId; }
@@ -247,6 +247,27 @@ test('settings owns a native category across mode changes and preserves the proj
   assert.equal(f.parts.get('settings').activeGroup.activeEditor, settings); assert.equal(f.left.activeEditor, runtime);
   await f.workspace.close('settings');
   assert.equal(f.tabs.some(tab => tab.id === 'settings'), false); assert.equal(f.left.activeEditor, runtime);
+});
+
+test('login has its own native category and survives mode changes alongside settings and the running project', async t => {
+  const f = fixture(t), runtime = new WebviewInput('Runtime', 'file:///project');
+  await f.left.openEditor(runtime); await f.workspace.activate(); await f.workspace.openTool('kv');
+  const resource = f.parts.get('kv').activeGroup.activeEditor;
+  const settings = new WebviewInput('Settings'); settings.webview.providedViewType = 'studio.settings'; await f.open(settings);
+  await f.workspace.openTool('login'); assert.deepEqual(f.calls.at(-1), ['studio.openLogin']);
+  const login = new WebviewInput('Sign In'); login.webview.providedViewType = 'studio.login'; await f.open(login);
+  assert.equal(f.active, 'login'); assert.equal(f.parts.get('login').activeGroup.activeEditor, login);
+  assert.equal(f.parts.get('settings').activeGroup.activeEditor, settings);
+  assert.equal(f.parts.get('kv').activeGroup.activeEditor, resource);
+  await f.workspace.deactivate(f.left); assert.equal(f.left.contains(login), true);
+  await f.workspace.activate();
+  assert.equal(f.parts.get('login').activeGroup.activeEditor, login);
+  await f.workspace.openTool('kv');
+  assert.equal(f.parts.get('kv').activeGroup.activeEditor.viewId, resource.viewId); assert.equal(f.left.activeEditor, runtime);
+  await f.workspace.openTool('login');
+  await f.workspace.close('login');
+  assert.equal(f.tabs.some(tab => tab.id === 'login'), false);
+  assert.equal(f.parts.get('settings').activeGroup.contains(settings), true); assert.equal(f.left.activeEditor, runtime);
 });
 
 test('closing a native child selects a sibling in the same tool and respects a close veto', async t => {

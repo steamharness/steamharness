@@ -14,11 +14,12 @@ const copyButton = (field: string, label: string): string => `<button type="butt
 app.innerHTML = `
   <header class="page-header"><p class="muted">${t('Manage your account and Server connection.')}</p><button id="verify-login" class="icon-button" title="${t("Refresh account")}" aria-label="${t("Refresh account")}" hidden>${icon('refresh')}</button></header>
   <div id="account-status" role="status"></div>
-  <form id="login-form"><label for="server-url">${t("Server")}</label><input id="server-url" type="url" required spellcheck="false" autocomplete="url">
-    <label for="login-email">${t("Email")}</label><input id="login-email" type="email" required autocomplete="username">
-    <label for="login-password">${t("Password")}</label><div class="password-input"><input id="login-password" type="password" required autocomplete="current-password"><button id="show-password" type="button" class="icon-button" title="${t("Show password")}" aria-label="${t("Show password")}">${icon('eye')}</button></div>
-    <button id="login-submit" type="submit" class="primary">${icon('sign-in')}<span>${t("Sign in")}</span></button>
-  </form>
+  <section id="account-sign-in" class="settings-card account-sign-in">
+    <span class="codicon codicon-account" aria-hidden="true"></span><h2>${t('Sign in to SteamHarness')}</h2>
+    <p class="muted">${t('Connect your account to access projects and services.')}</p>
+    <p id="account-server" class="mono"></p>
+    <button id="open-login" type="button" class="primary">${icon('sign-in')}<span>${t('Sign In')}</span></button>
+  </section>
   <section id="profile" hidden>
     <div class="identity"><div class="avatar">${icon('account')}<img id="avatar-image" alt="" hidden></div><div class="identity-text"><h2 id="display-name"></h2><div class="inline-value"><span id="user-email" class="muted"></span>${copyButton('email', t("Copy email"))}</div><div class="inline-value user-id"><span class="muted">${t("User ID")}</span><span id="user-id" class="mono"></span>${copyButton('userId', t("Copy user ID"))}</div></div>
       <button id="edit-profile" class="secondary">${icon('edit')}<span>${t("Edit profile")}</span></button>
@@ -31,10 +32,8 @@ app.innerHTML = `
   </section>
   <div id="account-error" role="alert" hidden></div>`;
 
-const form = document.querySelector<HTMLFormElement>('#login-form')!;
-const server = document.querySelector<HTMLInputElement>('#server-url')!;
-const email = document.querySelector<HTMLInputElement>('#login-email')!;
-const password = document.querySelector<HTMLInputElement>('#login-password')!;
+const signIn = document.querySelector<HTMLElement>('#account-sign-in')!;
+const openLogin = document.querySelector<HTMLButtonElement>('#open-login')!;
 const error = document.querySelector<HTMLDivElement>('#account-error')!;
 const status = document.querySelector<HTMLDivElement>('#account-status')!;
 const image = document.querySelector<HTMLImageElement>('#avatar-image')!;
@@ -60,13 +59,11 @@ function render(next: AccountState): void {
   settings.setAccount(next);
   pending = next.status === 'checking';
   const signedIn = !!next.user && ['authenticated', 'checking', 'error'].includes(next.status);
-  form.hidden = signedIn;
+  signIn.hidden = signedIn;
   document.querySelector<HTMLElement>('#profile')!.hidden = !signedIn;
   verify.hidden = !signedIn;
-  if (document.activeElement !== server) { server.value = next.serverUrl; }
-  document.querySelectorAll<HTMLButtonElement>('#login-submit, #verify-login, #logout, #edit-profile, #manage-sessions').forEach((button) => { button.disabled = pending; });
-  for (const input of [server, email, password]) { input.disabled = pending; }
-  document.querySelector('#login-submit > span:last-child')!.textContent = pending ? t("Signing in...") : t("Sign in");
+  document.querySelector('#account-server')!.textContent = next.serverUrl;
+  document.querySelectorAll<HTMLButtonElement>('#open-login, #verify-login, #logout, #edit-profile, #manage-sessions').forEach((button) => { button.disabled = pending; });
   status.textContent = next.status === 'authenticated' ? t("Signed in; account verified") : next.status === 'checking' ? t("Verifying account...") : next.status === 'expired' ? t("Sign-in expired") : next.status === 'error' && next.user ? t("Connection not verified") : t("Signed out");
   status.classList.toggle('connected', next.status === 'authenticated');
   verify.classList.toggle('refreshing', pending);
@@ -89,24 +86,7 @@ function render(next: AccountState): void {
 }
 
 image.addEventListener('error', () => { image.hidden = true; });
-form.addEventListener('submit', (event) => {
-  event.preventDefault();
-  if (pending || !form.reportValidity()) { return; }
-  const credentials = { type: 'login', serverUrl: server.value, email: email.value, password: password.value };
-  password.value = '';
-  error.hidden = true;
-  pending = true;
-  document.querySelector<HTMLButtonElement>('#login-submit')!.disabled = true;
-  vscode.postMessage(credentials);
-});
-document.querySelector('#show-password')!.addEventListener('click', (event) => {
-  const button = event.currentTarget as HTMLButtonElement;
-  const visible = password.type === 'password';
-  password.type = visible ? 'text' : 'password';
-  button.innerHTML = icon(visible ? 'eye-closed' : 'eye');
-  button.title = visible ? t("Hide password") : t("Show password");
-  button.setAttribute('aria-label', button.title);
-});
+openLogin.addEventListener('click', () => { if (!pending) { vscode.postMessage({ type: 'open-login' }); } });
 for (const [id, type] of [['verify-login', 'verify'], ['logout', 'logout'], ['edit-profile', 'open-profile'], ['manage-sessions', 'open-sessions']]) {
   document.getElementById(id)!.addEventListener('click', () => { if (!pending) { vscode.postMessage({ type }); } });
 }

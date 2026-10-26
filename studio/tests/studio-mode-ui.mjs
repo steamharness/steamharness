@@ -1028,7 +1028,7 @@ for (const language of process.env.STEAMHARNESS_UI_LANGUAGES?.split(',') ?? ['en
       return state;
     };
     await command('studio.openAccount');
-    const accountTab = tabList.getByRole('tab', { name: language === 'en' ? 'SteamHarness Account' : 'SteamHarness 账号', exact: true });
+    const accountTab = tabList.getByRole('tab', { name: language === 'en' ? 'Sign In' : '登录', exact: true });
     await accountTab.waitFor(); await assertProjectKept();
     const accountFrame = await until(async () => {
       for (const candidate of page.frames()) { if (await candidate.locator('#login-email').isVisible().catch(() => false)) { return candidate; } }

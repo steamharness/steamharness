@@ -75,8 +75,8 @@
 .settings-empty { padding: 24px; color: var(--vscode-descriptionForeground); }
 .settings-empty p + p, .settings-empty button { margin-top: 12px; }
 #settings-account > .page-header { margin-bottom: 4px; }
-#settings-account #profile, #settings-account #login-form { padding: 24px; border: 1px solid var(--vscode-panel-border); border-radius: 12px; background: var(--vscode-sideBar-background, var(--vscode-editor-background)); }
-#settings-account #login-form { max-width: 460px; }
+#settings-account #profile { padding: 24px; border: 1px solid var(--vscode-panel-border); border-radius: 12px; background: var(--vscode-sideBar-background, var(--vscode-editor-background)); }
+#settings-account #account-sign-in { max-width: 460px; }
 #settings-provider .account-extension { margin: 0; padding: 0; border: 0; }
 #settings-provider .account-extension > .section-heading { justify-content: flex-end; margin-bottom: 16px; }
 #settings-provider .account-extension > .section-heading h2 { display: none; }
@@ -109,7 +109,7 @@
   .settings-page-header { margin-bottom: 24px; min-height: 0; }
   .settings-page-header h1 { font-size: 23px; }
   .setting-row { padding: 16px; }
-  #settings-account #profile, #settings-account #login-form, #settings-provider .extension-section { padding: 16px; }
+  #settings-account #profile, #settings-account #account-sign-in, #settings-provider .extension-section { padding: 16px; }
   .settings-about { padding: 24px 20px; }
   .settings-about dl { grid-template-columns: minmax(0, 1fr); gap: 2px; }
   .settings-about dd { margin-bottom: 10px; }

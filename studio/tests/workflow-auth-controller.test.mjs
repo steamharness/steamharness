@@ -13,13 +13,13 @@ class Emitter {
   dispose() { this.listeners.clear(); }
 }
 
-async function fixture(t) {
+async function fixture(t, { signedIn = true } = {}) {
   const focus = new Emitter(), secretsChanged = new Emitter(), configuration = new Emitter(), intervals = new Set(), sessions = [];
   const serverUrl = 'http://127.0.0.1:7126';
-  const f = { profile: { userId: 'user', email: 'user@example.test', displayName: 'User', avatarUrl: 'data:image/png;base64,b2xk' }, languagePreference: 'system', requests: 0, messages: [], opened: [], copied: [], commands: new Map(), executed: [] };
+  const f = { profile: { userId: 'user', email: 'user@example.test', displayName: 'User', avatarUrl: 'data:image/png;base64,b2xk' }, languagePreference: 'system', requests: 0, messages: [], opened: [], copied: [], commands: new Map(), executed: [], serializers: new Map(), panels: [] };
   const defaults = { 'editor.fontSize': 14, 'studio.project.serverUrl': serverUrl };
   const user = {}, workspace = {}, writes = [];
-  let stored = JSON.stringify({ serverUrl, accessToken: 'test-token', apiKeyId: 'test-key', user: f.profile });
+  let stored = signedIn ? JSON.stringify({ serverUrl, accessToken: 'test-token', apiKeyId: 'test-key', user: f.profile }) : undefined;
   const disposable = { dispose() {} };
   const vscode = {
     EventEmitter: Emitter, StatusBarAlignment: { Left: 1 },
@@ -57,22 +57,31 @@ async function fixture(t) {
       },
     }), onDidChangeConfiguration: configuration.event, onDidChangeWorkspaceFolders: configuration.event },
     window: { state: { focused: true }, onDidChangeWindowState: focus.event,
-      registerWebviewPanelSerializer: (type, serializer) => { f.serializer = serializer; f.viewType = type; return disposable; },
+      registerWebviewPanelSerializer: (type, serializer) => { f.serializers.set(type, serializer); if (type === 'studio.settings') { f.serializer = serializer; } return disposable; },
       createStatusBarItem: () => ({ show() {}, dispose() {} }),
-      createWebviewPanel: (_type, _title, _column, options) => {
+      createWebviewPanel: (type, title, _column, options) => {
         const disposed = new Emitter(), received = new Emitter(), changed = new Emitter();
         const messages = [];
-        f.panel = { visible: true, options, reveal() {}, onDidDispose: disposed.event, onDidChangeViewState: changed.event,
-          dispose: () => disposed.fire(),
+        const panel = { type, title, visible: true, options,
+          reveal: () => { f.panel = panel; f.message = panel.message; }, onDidDispose: disposed.event, onDidChangeViewState: changed.event,
+          dispose: () => { if (!panel.disposed) { panel.disposed = true; panel.visible = false; disposed.fire(); } },
           webview: { cspSource: 'test-source', messages, asWebviewUri: value => value, postMessage: async message => { messages.push(message); f.messages.push(message); },
-            onDidReceiveMessage: callback => { f.message = callback; return received.event(callback); } } };
-        return f.panel;
+            onDidReceiveMessage: callback => { f.message = panel.message = callback; return received.event(callback); } } };
+        f.panel = panel; f.viewType = type; f.panels.push(panel);
+        return panel;
       } },
   };
   const module = { exports: {} };
   runInNewContext(compiled.outputFiles[0].text, {
     module, exports: module.exports, require: id => id === 'vscode' ? vscode : require(id), URL, Error, AbortSignal, AbortController, crypto: globalThis.crypto, setTimeout, clearTimeout,
-    fetch: async () => { f.requests++; return Response.json({ errCode: 0, data: { profile: f.profile, principal: { apiKeyId: 'test-key' } } }); },
+    fetch: async (url, options) => {
+      f.requests++;
+      const response = await f.fetch?.(url, options);
+      if (response) { return response; }
+      return Response.json({ errCode: 0, data: url.endsWith('/api/auth/login')
+        ? { authenticated: true, accessToken: 'test-token', apiKey: { id: 'test-key' } }
+        : { profile: f.profile, principal: { apiKeyId: 'test-key' } } });
+    },
     setInterval: (callback, ms) => { const timer = { callback, ms, unref() {} }; intervals.add(timer); return timer; },
     clearInterval: timer => intervals.delete(timer),
   });
@@ -108,6 +117,111 @@ test('settings and account commands share one tab and navigate to their requeste
   assert.equal(f.panel, panel);
   assert.equal(f.messages.filter(message => message.type === 'settings-navigate').at(-1).state.section, 'general');
   assert.ok(!JSON.stringify(f.messages).includes('test-token'));
+});
+
+test('signed-out account entrances reuse a separate login tab and settings cannot accept credentials', async t => {
+  const f = await fixture(t, { signedIn: false });
+  f.commands.get('studio.openSettings')({ section: 'account' });
+  const settings = f.panel;
+  await settings.message({ type: 'ready' });
+  await settings.message({ type: 'login', serverUrl: 'http://127.0.0.1:7126', email: 'user@example.test', password: 'secret' });
+  assert.equal(f.requests, 0);
+  await settings.message({ type: 'open-login' });
+  const login = f.panel;
+  assert.notEqual(login, settings); assert.equal(login.type, 'studio.login');
+  assert.equal(login.title, 'Sign In'); assert.equal(login.iconPath.id, 'sign-in');
+  assert.equal(login.options.retainContextWhenHidden, false);
+  assert.match(login.webview.html, /login-ui\.js/); assert.doesNotMatch(login.webview.html, /account-ui\.js|unsafe-inline/);
+  f.commands.get('studio.openAccount')(); assert.equal(f.panel, login);
+  f.commands.get('studio.openLogin')(); assert.equal(f.panel, login);
+  f.controller.open(); assert.equal(f.panel, login);
+  f.commands.get('studio.openSettings')(); assert.equal(f.panel, settings);
+  assert.equal(f.panels.length, 2);
+});
+
+test('the login serializer ignores persisted form data and keeps one login tab per window', async t => {
+  const f = await fixture(t, { signedIn: false });
+  const serializer = f.serializers.get('studio.login');
+  const restored = f.vscode.window.createWebviewPanel('studio.login', 'Sign In', 1, {});
+  await serializer.deserializeWebviewPanel(restored, { serverUrl: 'https://wrong.example', email: 'old@example.test', password: 'do-not-restore' });
+  await restored.message({ type: 'ready' });
+  assert.equal(restored.webview.messages.at(-1).state.serverUrl, 'http://127.0.0.1:7126');
+  assert.doesNotMatch(JSON.stringify(restored.webview.messages), /do-not-restore|old@example/);
+  const duplicate = f.vscode.window.createWebviewPanel('studio.login', 'Sign In', 1, {});
+  await serializer.deserializeWebviewPanel(duplicate, {});
+  assert.equal(duplicate.disposed, true); assert.equal(f.panel, restored);
+  restored.dispose(); f.commands.get('studio.openLogin')();
+  assert.notEqual(f.panel, restored); assert.equal(f.panel.type, 'studio.login');
+});
+
+test('successful login updates the shared session and returns to the existing account settings tab', async t => {
+  const f = await fixture(t, { signedIn: false });
+  f.commands.get('studio.openSettings')({ section: 'editor' }); const settings = f.panel;
+  f.commands.get('studio.openLogin')(); const login = f.panel;
+  await login.message({ type: 'ready' });
+  await login.message({ type: 'login', serverUrl: 'https://server.example.test', email: 'user@example.test', password: 'fixture-password' });
+  assert.equal(login.disposed, true); assert.equal(f.panel, settings);
+  assert.equal(settings.webview.messages.filter(message => message.type === 'settings-navigate').at(-1).state.section, 'account');
+  assert.equal(f.controller.getState().status, 'authenticated');
+  assert.equal(f.user['project.serverUrl'], 'https://server.example.test');
+  assert.equal((await f.provider.getSessions([], {}))[0].accessToken, 'test-token');
+  assert.doesNotMatch(JSON.stringify(f.messages), /fixture-password|test-token/);
+  f.commands.get('studio.openLogin')(); assert.equal(f.panel, settings); assert.equal(f.panels.length, 2);
+});
+
+test('failed login enables another attempt and the login panel cannot write settings', async t => {
+  const f = await fixture(t, { signedIn: false });
+  f.commands.get('studio.openLogin')(); const login = f.panel;
+  await login.message({ type: 'ready' });
+  await login.message({ type: 'settings-update', key: 'editor.fontSize', value: 30, target: 'user' });
+  assert.equal(f.writes.length, 0);
+  f.fetch = async () => { throw new Error('Fixture login unavailable'); };
+  const credentials = { type: 'login', serverUrl: 'http://127.0.0.1:7126', email: 'user@example.test', password: 'fixture-password' };
+  await login.message(credentials);
+  assert.equal(login.disposed, undefined);
+  assert.equal(login.webview.messages.at(-1).type, 'login-result');
+  assert.ok(login.webview.messages.at(-1).message); assert.equal(f.controller.getConnection(), undefined);
+  f.fetch = undefined;
+  await login.message(credentials);
+  assert.equal(login.disposed, true); assert.equal(f.controller.getState().status, 'authenticated');
+});
+
+test('closing or recreating login during a request cannot submit twice or redirect a newer page', async t => {
+  for (const recreate of [false, true]) {
+    const f = await fixture(t, { signedIn: false });
+    let release;
+    f.fetch = url => url.endsWith('/api/auth/login') ? new Promise(resolve => { release = () => resolve(Response.json({ errCode: 0, data: { authenticated: true, accessToken: 'test-token', apiKey: { id: 'test-key' } } })); }) : undefined;
+    f.commands.get('studio.openLogin')(); const original = f.panel;
+    await original.message({ type: 'ready' });
+    const credentials = { type: 'login', serverUrl: 'http://127.0.0.1:7126', email: 'user@example.test', password: 'fixture-password' };
+    const request = original.message(credentials); await until(() => release);
+    if (!recreate) { original.dispose(); f.commands.get('studio.openLogin')(); }
+    const current = f.panel; await current.message({ type: 'ready' });
+    assert.equal(current.webview.messages.at(-1).busy, true);
+    await current.message(credentials); assert.equal(f.requests, 1);
+    release(); await request;
+    assert.equal(current.disposed, undefined);
+    assert.equal(f.panels.some(panel => panel.type === 'studio.settings'), false);
+    assert.equal(current.webview.messages.at(-1).state.status, 'authenticated');
+    assert.equal(current.webview.messages.some(message => message.type === 'login-result'), false);
+    await current.message({ type: 'open-account' });
+    assert.equal(current.disposed, true); assert.equal(f.panel.type, 'studio.settings');
+  }
+});
+
+test('authentication requests wait on the login tab and closing settings does not cancel sign-in', async t => {
+  const f = await fixture(t, { signedIn: false });
+  f.commands.get('studio.openSettings')(); const settings = f.panel;
+  let settled = false;
+  const session = f.provider.createSession(['workflow']).finally(() => { settled = true; });
+  const login = f.panel; assert.equal(login.type, 'studio.login');
+  settings.dispose(); await new Promise(resolve => setImmediate(resolve));
+  assert.equal(settled, false);
+  const cancelled = assert.rejects(session, /Sign-in cancelled/);
+  login.dispose(); await cancelled;
+  const retry = f.provider.createSession(['workflow']); const next = f.panel;
+  await next.message({ type: 'login', serverUrl: 'http://127.0.0.1:7126', email: 'user@example.test', password: 'fixture-password' });
+  assert.equal((await retry).account.id, 'user');
 });
 
 test('display language uses the native preference, validates modes, and reflects cancellation and failures', async t => {

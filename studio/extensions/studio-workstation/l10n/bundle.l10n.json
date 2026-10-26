@@ -723,5 +723,9 @@
   "Unsupported setting.": "Unsupported setting.",
   "VS Code version": "VS Code version",
   "Word wrap": "Word wrap",
-  "Your workspace for building and running SteamHarness projects.": "Your workspace for building and running SteamHarness projects."
+  "Your workspace for building and running SteamHarness projects.": "Your workspace for building and running SteamHarness projects.",
+  "Sign in to SteamHarness": "Sign in to SteamHarness",
+  "Connect your account to access projects and services.": "Connect your account to access projects and services.",
+  "View account": "View account",
+  "Your sign-in is shared across Studio projects.": "Your sign-in is shared across Studio projects."
 }

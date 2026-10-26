@@ -95,10 +95,10 @@ try {
   assert.match(frame.url(), /^http:\/\/127\.0\.0\.1:/);
   assert.equal(await frame.locator('.workflow-entry[open]').getAttribute('data-entrypoint'), 'report');
   proof.checks.push('folder detection opens the project-owned CLI page in a native VS Code tab');
-  await command('Workflow: \u767b\u5f55\u4e0e\u7ba1\u7406\u8d26\u53f7');
-  const account = await frameFor('#account-app'); await account.locator('#server-url').fill(serverUrl);
+  await command('SteamHarness: 登录');
+  const account = await frameFor('#login-app'); await account.locator('#server-url').fill(serverUrl);
   await account.locator('#login-email').fill('desktop@example.com'); await account.locator('#login-password').fill('offline-password');
-  await account.locator('#login-submit').click(); await account.locator('#display-name').filter({ hasText: 'SteamHarness Desktop' }).waitFor();
+  await account.locator('#login-submit').click(); await (await frameFor('#account-app')).locator('#display-name').filter({ hasText: 'SteamHarness Desktop' }).waitFor();
   await page.getByRole('tab', { name: '\u5de5\u4f5c\u6d41\u793a\u4f8b', exact: true }).click();
   frame = await frameFor('#workflow-title'); await ready(frame); await formReady(frame);
   await frame.locator('#web-account').filter({ hasText: 'SteamHarness Desktop' }).waitFor();

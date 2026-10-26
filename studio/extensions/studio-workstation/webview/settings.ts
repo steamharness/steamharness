@@ -375,8 +375,12 @@ export function createSettingsView(root: HTMLElement, vscode: WebviewApi): { acc
       vscode.postMessage({ type: 'settings-action', action });
     }
   });
-  find('settings-identity').addEventListener('click', () => navigate('account'));
-  find('settings-provider-sign-in').addEventListener('click', () => navigate('account'));
+  const openAccount = (): void => {
+    if (account?.user && ['authenticated', 'checking', 'error'].includes(account.status)) { navigate('account'); }
+    else { vscode.postMessage({ type: 'open-login' }); }
+  };
+  find('settings-identity').addEventListener('click', openAccount);
+  find('settings-provider-sign-in').addEventListener('click', openAccount);
   find<HTMLImageElement>('settings-avatar-image').addEventListener('error', event => { (event.target as HTMLElement).hidden = true; });
   window.addEventListener('message', event => {
     const message = event.data;

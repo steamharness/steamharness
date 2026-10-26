@@ -170,11 +170,11 @@ async function verify(language) {
     assert.equal(await kanban.locator('#methods-dialog h2').innerText(), t('Page methods'));
     await kanban.locator('#close-methods').click(); await screenshot('kanban.png');
     proof.checks.push('Kanban host controls and dialogs follow VS Code; project-owned board content is preserved');
-    await command(`Workflow: ${t('Sign In and Manage Account')}`);
-    const account = await frameFor('#account-app');
-    assert.equal(await account.locator('h1').innerText(), t('SteamHarness Account'));
+    await command(`SteamHarness: ${t('Sign In')}`);
+    const account = await frameFor('#login-app');
+    assert.equal(await account.locator('h1').innerText(), t('Sign in to SteamHarness'));
     assert.equal(await account.locator('#show-password').getAttribute('title'), t('Show password'));
-    assert.equal(await account.locator('#login-submit span:last-child').textContent(), t('Sign in'));
+    assert.equal(await account.locator('#login-submit span:last-child').textContent(), t('Sign In'));
     await screenshot('account.png'); proof.checks.push('Account page headings, labels and password controls follow VS Code');
     assert.deepEqual(proof.errors, []);
     await fs.writeFile(path.join(proofDir, 'proof.json'), JSON.stringify(proof, null, 2) + '\n'); console.log(JSON.stringify(proof));

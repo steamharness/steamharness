@@ -723,5 +723,9 @@
   "Unsupported setting.": "不支持的设置。",
   "VS Code version": "VS Code 版本",
   "Word wrap": "自动换行",
-  "Your workspace for building and running SteamHarness projects.": "用于构建和运行 SteamHarness 项目的工作台。"
+  "Your workspace for building and running SteamHarness projects.": "用于构建和运行 SteamHarness 项目的工作台。",
+  "Sign in to SteamHarness": "登录 SteamHarness",
+  "Connect your account to access projects and services.": "连接账号，访问你的项目和服务。",
+  "View account": "查看账户",
+  "Your sign-in is shared across Studio projects.": "登录后可在 Studio 的各个项目中使用该账号。"
 }

@@ -153,7 +153,12 @@ try {
         await category('provider:plugin').click(); assert.equal(await page.locator('.metric-value').textContent(), '42');
         await send('account', { state: { status: 'expired', serverUrl: account.serverUrl, user: account.user, revision: 2 } });
         assert.equal(await page.locator('[data-provider]').count(), 0); assert.equal(await page.locator('#settings-sign-in').isVisible(), true);
-        await page.locator('#settings-provider-sign-in').click(); assert.equal(await page.locator('#login-form').isVisible(), true);
+        await page.locator('#settings-provider-sign-in').click(); assert.equal((await last('open-login')).type, 'open-login');
+        await category('account').click();
+        assert.equal(await page.locator('#login-form, #login-email, #login-password').count(), 0);
+        assert.equal(await page.locator('#account-sign-in').isVisible(), true);
+        await page.locator('#open-login').click(); assert.equal((await last('open-login')).type, 'open-login');
+        await page.locator('#settings-identity').click(); assert.equal((await last('open-login')).type, 'open-login');
         await category('general').click(); await fits();
         assert.equal(await page.evaluate(() => Object.keys(window.savedState).sort().join(',')), 'query,scroll,section,target');
         if ((width === 1440 && theme !== 'contrast') || (width === 360 && theme === 'light')) {
