@@ -1,0 +1,15 @@
+diff --git a/build/lib/extensions.ts b/build/lib/extensions.ts
+index 10bd9fbd693..f87bb12fab5 100644
+--- a/build/lib/extensions.ts
++++ b/build/lib/extensions.ts
+@@ -181,7 +181,9 @@ function fromLocalEsbuild(extensionPath: string, esbuildConfigFileName: string):
+ 		});
+ 	}).then(() => {
+ 		// After esbuild completes, collect all files using vsce
+-		return vsce.listFiles({ cwd: extensionPath, packageManager: vsce.PackageManager.None });
++		// Copilot externalizes its CLI SDK; its .vscodeignore selects the runtime
++		// files from npm dependencies that a bundled-only scan would omit.
++		return vsce.listFiles({ cwd: extensionPath, packageManager: extensionName === 'copilot' ? vsce.PackageManager.Npm : vsce.PackageManager.None });
+ 	}).then(fileNames => {
+ 		if (packagedDependencies.length > 0) {
+ 			const packagedDependencyFileNames = packagedDependencies.flatMap(dependency =>
