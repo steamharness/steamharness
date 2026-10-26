@@ -30,23 +30,23 @@ async function declaration(file, name, globals = {}, memberNames) {
   return module.exports;
 }
 
-async function languageCommand(locale, packs, environment) {
+async function languageCommand(locale, packs) {
   const api = core();
-  const localeId = api.createDecorator('testLocale'), packsId = api.createDecorator('testLanguagePacks'), environmentId = api.createDecorator('testEnvironment');
+  const localeId = api.createDecorator('testLocale'), packsId = api.createDecorator('testLanguagePacks');
   const route = await declaration('vs/workbench/contrib/localization/common/localizationsActions.ts', 'setStudioDisplayLanguage', {
-    ILocaleService: localeId, ILanguagePackService: packsId, IEnvironmentService: environmentId, ...api,
+    ILocaleService: localeId, ILanguagePackService: packsId, ...api,
   });
-  const instantiation = new api.InstantiationService(new api.ServiceCollection([localeId, locale], [packsId, packs], [environmentId, environment]), true);
+  const instantiation = new api.InstantiationService(new api.ServiceCollection([localeId, locale], [packsId, packs]), true);
   return { invoke: language => instantiation.invokeFunction(route, language), dispose: () => instantiation.dispose() };
 }
 
 class FileOperationError extends Error { fileOperationResult = 1; }
 const FileOperationResult = { FILE_NOT_FOUND: 1 };
-async function nativeFixture({ active = 'en', preference, built = false, confirm = true } = {}) {
+async function nativeFixture({ active = 'en', preference, built = false, confirm = true, installed = ['en', 'zh-cn'] } = {}) {
   const api = core(active);
   const Language = { value: () => active, isDefaultVariant: () => active === 'en' };
   const Service = await declaration('vs/workbench/services/localization/electron-browser/localeService.ts', 'NativeLocaleService', {
-    ...api, Language, FileOperationError, FileOperationResult, Severity: { Error: 3 }, toAction: action => action,
+    ...api, Language, LANGUAGE_DEFAULT: 'en', FileOperationError, FileOperationResult, Severity: { Error: 3 }, toAction: action => action,
     ProgressLocation: { Notification: 1 }, ViewContainerLocation: { Sidebar: 0 }, localize: (_key, value) => value,
   });
   const service = new Service(), writes = [], dialogs = [], notifications = [], order = [];
@@ -60,7 +60,7 @@ async function nativeFixture({ active = 'en', preference, built = false, confirm
     if (edits[0].value === undefined) { delete value.locale; } else { value.locale = edits[0].value; }
     f.content = JSON.stringify(value); f.missing = false;
   } };
-  service.languagePackService = { getInstalledLanguages: async () => [{ id: 'en', label: 'English' }] };
+  service.languagePackService = { getInstalledLanguages: async () => installed.map(id => ({ id, label: id === 'en' ? 'English' : '简体中文' })) };
   service.dialogService = { confirm: async dialog => { dialogs.push(dialog); order.push('confirm'); return { confirmed: f.confirm }; } };
   service.hostService = { restart: async () => { f.restarts++; order.push('restart'); } };
   service.productService = { nameLong: 'SteamHarness Studio' };
@@ -89,7 +89,7 @@ test('pinning the current language persists the choice without a redundant resta
   assert.equal(f.writes.length, 1);
 });
 
-test('source Chinese switches after confirmation without a marketplace dependency', async () => {
+test('source Chinese uses the installed language pack and switches after confirmation', async () => {
   const f = await nativeFixture();
   await f.service.setLocale({ id: 'zh-cn', label: '简体中文' });
   assert.equal(await f.service.getLocalePreference(), 'zh-cn');
@@ -98,7 +98,7 @@ test('source Chinese switches after confirmation without a marketplace dependenc
 });
 
 test('packaged Chinese uses the existing language-pack installer before restarting', async () => {
-  const f = await nativeFixture({ built: true });
+  const f = await nativeFixture({ built: true, installed: ['en'] });
   await f.service.setLocale({ id: 'zh-cn', label: '简体中文', galleryExtension: { publisher: 'MS-CEINTL' } });
   assert.equal(f.installs, 1); assert.equal(f.restarts, 1);
   assert.equal(await f.service.getLocalePreference(), 'zh-cn');
@@ -106,7 +106,7 @@ test('packaged Chinese uses the existing language-pack installer before restarti
 
 test('an unapplied saved language completes its native command through the scoped service accessor', async t => {
   const f = await nativeFixture({ preference: 'zh-cn', active: 'en' });
-  const command = await languageCommand(f.service, f.service.languagePackService, f.service.environmentService);
+  const command = await languageCommand(f.service, f.service.languagePackService);
   t.after(() => command.dispose());
   assert.equal(await command.invoke('zh-cn'), 'zh-cn');
   assert.equal(f.restarts, 1); assert.equal(f.dialogs.length, 1);
@@ -142,9 +142,9 @@ test('invalid runtime JSON and failed writes cannot restart or erase existing op
   assert.equal(f.notifications.length, 1);
 });
 
-test('source locale resolution keeps Studio Chinese, English and the system locale consistent', async () => {
+test('source locale resolution falls back to English when no language pack is installed', async () => {
   const api = core();
-  for (const [locale, expected] of [['zh-cn', 'zh-cn'], ['zh-Hans-CN', 'zh-cn'], ['en-US', 'en'], ['fr', 'en']]) {
+  for (const [locale, expected] of [['zh-cn', 'en'], ['zh-Hans-CN', 'en'], ['en-US', 'en'], ['fr', 'en']]) {
     const result = await api.resolveNLSConfiguration({ userLocale: locale, osLocale: 'zh-CN', userDataPath: '/unused', nlsMetadataPath: '/unused' });
     assert.equal(result.resolvedLanguage, expected); assert.equal(result.osLocale, 'zh-CN');
   }
@@ -186,14 +186,14 @@ test('browser language preference persists an explicit current language and clea
 });
 
 test('Studio language routing accepts only three modes, reuses packs and reports cancellation', async t => {
-  let preference = 'system', built = false, gallery = 0, canceled = false;
+  let preference = 'system', installed = true, gallery = 0, canceled = false;
   const selections = [], locale = {
     getLocalePreference: async () => preference === 'system' ? undefined : preference,
     setLocale: async item => { selections.push(item); if (!canceled) { preference = item.id; } },
     clearLocalePreference: async () => { preference = 'system'; },
   };
-  const packs = { getInstalledLanguages: async () => [{ id: 'en', label: 'English' }], getAvailableLanguages: async () => { gallery++; return []; } };
-  const command = await languageCommand(locale, packs, { get isBuilt() { return built; } });
+  const packs = { getInstalledLanguages: async () => installed ? [{ id: 'zh-cn', label: '简体中文' }] : [], getAvailableLanguages: async () => { gallery++; return []; } };
+  const command = await languageCommand(locale, packs);
   t.after(() => command.dispose());
   assert.equal(await command.invoke('zh-cn'), 'zh-cn');
   assert.equal(await command.invoke('en'), 'en');
@@ -203,7 +203,7 @@ test('Studio language routing accepts only three modes, reuses packs and reports
   assert.equal(await command.invoke('zh-cn'), 'system');
   for (const value of ['fr', '', undefined, { id: 'zh-cn' }]) { await assert.rejects(command.invoke(value), /Unsupported display language/); }
   assert.equal(selections.length, 3);
-  built = true;
+  installed = false;
   await assert.rejects(command.invoke('zh-cn'), /language pack is unavailable/);
   assert.equal(gallery, 1);
 });

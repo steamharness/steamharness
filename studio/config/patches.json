@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "commit": "3d74c7a692557b7523ca63f278c1dcf4a06a6923",
+  "commit": "3c84d95c6f7961ab70c965abbe561212b249525b",
   "patches": {
     "0001-use-upstream-builtin-artifacts.patch": "3985e1ced03ed5abb341fd4535cb14bf46cdc5ddcf377c6b07ee1c0764e65114",
     "0002-studio-hide-accounts.patch": "b7a9e68aebc06f53ede2b74f45345e410cd1e11320a5a9c7055354f33157f220",
@@ -59,6 +59,7 @@
     "0054-studio-settings.patch": "f2e2a6ef057c5374c6c3b14de95a983b65ef71895985810d1ad8ba226a0d7252",
     "0055-studio-account-onboarding.patch": "875c7f69349443d077843dcb18318fca6a4c4a6a57bf6d6aa28d8c00e1f6b657",
     "0056-studio-settings-display-language.patch": "5239a1a14b6a3360f260264999ae078450b7a0aa06e9b67281b58bcf315e3316",
-    "0057-studio-language-command-service-lifetime.patch": "58246e753e6ca05e500a776f73a736842e4b5c89fed4481e9804835efa3f4e4a"
+    "0057-studio-language-command-service-lifetime.patch": "58246e753e6ca05e500a776f73a736842e4b5c89fed4481e9804835efa3f4e4a",
+    "0058-studio-source-native-localization.patch": "0b983b4bd90597320c8e951dd30c23520edee87813c7377e1b958ffb422ae272"
   }
 }
