@@ -18,7 +18,7 @@ import { localKanbanRelatedProjects, readProjectInfo, webProjectDataDirectory } 
 import type { WebConnection } from './runtime';
 import type { Project, Runtime } from './workflow-types';
 import { requestStudioAnalysis } from './local-analysis';
-import { checkProjectServer, projectServerIssue, type ProjectServerIssue } from './project-server-state';
+import { checkProjectServer, checkProjectStorageFailure, projectServerIssue, type ProjectServerIssue } from './project-server-state';
 
 type Message = Record<string, any>;
 interface Hooks { changed(): void; emit(message: Record<string, unknown>): void; connection(): WebConnection | undefined; log(message: string): void }
@@ -130,7 +130,20 @@ export class KanbanController {
         else {
           const response = await fetch(`${connection.serverUrl}/api/projects/${encodeURIComponent(this.project.id)}/kanban/bridge`, { method: 'POST', headers: { Authorization: `Bearer ${connection.accessToken}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ call }), redirect: 'error', signal: AbortSignal.any([abort.signal, AbortSignal.timeout(call.operation.startsWith('files.') ? 120_000 : 15_000)]) });
           const value = await response.json();
-          if (!response.ok || value.errCode !== 0) { throw Object.assign(new Error('Kanban Server operation failed.'), { code: call.operation.startsWith('files.') ? 'KANBAN_FILE_UNAVAILABLE' : 'KANBAN_DATA_OPERATION_FAILED' }); }
+          if (!response.ok || value.errCode !== 0) {
+            if (!call.operation.startsWith('files.') && [401, 403, 404, 409].includes(response.status)) {
+              const relation = call.operation.startsWith('relatedProject.') ? this.project.projectInfo?.relatedProjects.find(item => item.alias === call.input.alias) : undefined;
+              const issue = await checkProjectStorageFailure(this.project.id, {
+                serverUrl: connection.serverUrl, projectId: relation?.projectId ?? this.project.id, relatedProjectAlias: relation?.alias,
+                status: response.status, operation: ['kv.getValue', 'relatedProject.kv.getValue', 'knowledge.listDocuments', 'knowledge.getDocument', 'knowledge.searchDocuments', 'knowledge.readDocumentLines'].includes(call.operation) ? 'get' : 'set',
+                key: typeof call.input.key === 'string' ? call.input.key : undefined,
+              }, connection, abort.signal);
+              if (!abort.signal.aborted && generation === this.generation && !this.disposed) {
+                this.serverDataIssue = issue ?? { kind: 'setup-required', serverUrl: connection.serverUrl }; this.hooks.changed();
+              }
+            }
+            throw Object.assign(new Error('Kanban Server operation failed.'), { code: call.operation.startsWith('files.') ? 'KANBAN_FILE_UNAVAILABLE' : 'KANBAN_DATA_OPERATION_FAILED' });
+          }
           result = value.data ?? null;
         }
       } finally { this.requests.delete(abort); }
@@ -154,6 +167,7 @@ export class KanbanController {
     if (!connection) { this.serverDataIssue = { kind: 'sign-in-required' }; return; }
     const abort = this.feed = new AbortController();
     void (async () => {
+      let unavailable = false;
       try {
         const response = await fetch(`${connection.serverUrl}/api/projects/${encodeURIComponent(this.project.id)}/kanban/related-project-revisions`, { headers: { Authorization: `Bearer ${connection.accessToken}` }, signal: abort.signal, redirect: 'error' });
         if (abort.signal.aborted) { await response.body?.cancel().catch(() => undefined); return; }
@@ -172,8 +186,23 @@ export class KanbanController {
         if (!response.ok || !response.body) { await response.body?.cancel().catch(() => undefined); throw new Error('Kanban related project updates are unavailable.'); }
         this.serverDataIssue = undefined; this.relatedProjectWarning = ''; this.hooks.changed();
         const apply = (revisions: KanbanRelatedProjectRevision[]) => { if (!abort.signal.aborted) { this.relatedProjectRevisions = revisions; this.relatedProjectWarning = ''; this.hooks.changed(); } };
-        await consumeKanbanRelatedProjectRevisionStream(response.body, { onSnapshot: value => apply(value.revisions), onRevision: value => apply([...this.relatedProjectRevisions.filter(item => item.alias !== value.alias), value]), onUnavailable: () => { throw new Error('Related projects are unavailable.'); } }, abort.signal);
-      } catch { if (!abort.signal.aborted) { this.relatedProjectWarning = t("The related project connection was interrupted. Reconnecting."); this.hooks.changed(); } }
+        await consumeKanbanRelatedProjectRevisionStream(response.body, { onSnapshot: value => apply(value.revisions), onRevision: value => apply([...this.relatedProjectRevisions.filter(item => item.alias !== value.alias), value]), onUnavailable: () => { unavailable = true; throw new Error('Related projects are unavailable.'); } }, abort.signal);
+      } catch {
+        if (unavailable && !abort.signal.aborted) {
+          try {
+            let issue = await checkProjectServer(this.project.id, connection, abort.signal);
+            for (const relation of this.project.projectInfo?.relatedProjects ?? []) {
+              if (issue || abort.signal.aborted) break;
+              issue = await checkProjectStorageFailure(this.project.id, { serverUrl: connection.serverUrl,
+                projectId: relation.projectId, relatedProjectAlias: relation.alias, operation: 'get' }, connection, abort.signal);
+            }
+            if (!abort.signal.aborted && issue && issue.kind !== 'connection-unavailable') {
+              this.serverDataIssue = issue; this.relatedProjectWarning = ''; this.hooks.changed(); return;
+            }
+          } catch { /* A temporary diagnostic failure follows the connection retry path. */ }
+        }
+        if (!abort.signal.aborted) { this.relatedProjectWarning = t("The related project connection was interrupted. Reconnecting."); this.hooks.changed(); }
+      }
       if (!abort.signal.aborted && !this.disposed) { this.retry = setTimeout(() => this.connectServerRevisions(), 5_000); this.retry.unref(); }
     })();
   }

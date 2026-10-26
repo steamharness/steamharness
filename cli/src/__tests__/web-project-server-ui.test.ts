@@ -66,6 +66,9 @@ it.each([['workflow', 'en'], ['workflow', 'zh-CN'], ['conversation', 'en'], ['co
     if (kind === 'workflow') expect(host.postMessage).toHaveBeenCalledWith(expect.objectContaining({ type: 'workflow-draft', params: { subject: 'Keep my new edit' } }));
     document.getElementById('server-guidance-account')!.click();
     expect(host.postMessage).toHaveBeenCalledWith({ type: 'open-account' });
+    document.getElementById('server-guidance-create')!.click();
+    expect(host.postMessage).toHaveBeenCalledWith({ type: 'open-project-create' });
+    expect(guidance.textContent).toContain(language === 'en' ? 'Source upload is optional.' : '源码上传为可选操作。');
     document.getElementById('server-guidance-upload')!.click();
     expect(host.postMessage).toHaveBeenCalledWith({ type: 'open-project-upload' });
     document.getElementById('server-guidance-retry')!.click();
@@ -83,6 +86,7 @@ it.each(['workflow', 'conversation'] as const)('keeps Stop available in %s and h
   const f = await fixture(kind, 'en');
   await f.render({ checking: false, issue: { kind: 'access-denied', serverUrl: 'https://server.test' } }, true);
   expect(document.getElementById('server-guidance-upload')!.hidden).toBe(true);
+  expect(document.getElementById('server-guidance-create')!.hidden).toBe(true);
   const stop = document.querySelector<HTMLButtonElement>(kind === 'workflow' ? '#stop-active' : '#send')!;
   expect(stop.disabled).toBe(false);
   await f.render({ checking: false, issue: { kind: 'setup-required', serverUrl: 'https://server.test' } });
@@ -93,4 +97,17 @@ it.each(['workflow', 'conversation'] as const)('keeps Stop available in %s and h
     expect(document.querySelector<HTMLButtonElement>('.queued-input-actions button:nth-child(3)')!.disabled).toBe(true);
     expect(document.querySelector<HTMLButtonElement>('.queued-input-actions button:nth-child(4)')!.disabled).toBe(false);
   }
+});
+
+it.each(['workflow', 'conversation'] as const)('shows the affected related project in %s while preserving local execution', async kind => {
+  const f = await fixture(kind, 'zh-CN');
+  await f.render({ checking: false, blocking: false, issue: { kind: 'project-unavailable', serverUrl: 'https://server.test', projectId: 'related-database', relatedProjectAlias: 'database' } });
+  expect(document.getElementById('server-guidance-project')!.textContent).toBe('related-database');
+  expect(document.getElementById('server-guidance-alias')!.textContent).toBe('database');
+  expect(document.getElementById('server-guidance-create')!.hidden).toBe(true);
+  expect(document.getElementById('server-guidance-upload')!.hidden).toBe(true);
+  expect(document.querySelector<HTMLButtonElement>(kind === 'workflow' ? '#run' : '#send')!.disabled).toBe(false);
+  await f.render({ checking: false, blocking: false, issue: { kind: 'related-setup-required', projectId: 'related-database', relatedProjectAlias: 'database' } });
+  expect(document.getElementById('server-guidance-title')!.textContent).toBe('需要关联项目授权');
+  expect(document.getElementById('server-guidance-create')!.hidden).toBe(true);
 });

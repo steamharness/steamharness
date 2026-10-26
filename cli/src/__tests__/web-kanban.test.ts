@@ -12,7 +12,7 @@ import { resolveHarnessRoot, resolveHarnessVersion } from './harness-source';
 const folders: string[] = [], apps: Awaited<ReturnType<typeof startWebServer>>[] = [];
 afterEach(async () => { for (const app of apps.splice(0)) { await app.close(); } for (const folder of folders.splice(0)) { await rm(folder, { recursive: true, force: true }); } vi.useRealTimers(); vi.unstubAllEnvs(); vi.restoreAllMocks(); });
 const id = '2bf9074d-ef0b-43b2-84c4-f379f920db92';
-const revisionStream = () => new Response('event: snapshot\ndata: {"revisions":[]}\n\n', { headers: { 'Content-Type': 'text/event-stream' } });
+const revisionStream = () => new Response('event: snapshot\ndata: {"resolvedTarget":"draft","revisions":[]}\n\n', { headers: { 'Content-Type': 'text/event-stream' } });
 it.each([
   [401, 'sign-in-required'], [403, 'access-denied'], [404, 'project-unavailable'], [409, 'setup-required'],
 ] as const)('guides users after Server HTTP %s without retrying or creating project data', async (status, kind) => {
@@ -62,6 +62,87 @@ it('does not suggest another upload when the Kanban endpoint is missing but the 
   await app.setHostConnection({ serverUrl: 'https://old-server.test', accessToken: 'token' });
   await vi.waitFor(() => expect(app.kanbanController!.serverDataIssue?.kind).toBe('setup-required'));
   expect(reads.mock.calls.every(([, options]) => !options?.method || options.method === 'GET')).toBe(true);
+  expect(app.kanbanController!.relatedProjectWarning).toBe('');
+});
+
+it.each([[404, 'project-unavailable'], [403, 'access-denied'], [200, 'related-setup-required']] as const)('guides an actual related Kanban access failure when its target returns %s', async (status, kind) => {
+  const { app, directory, pkg, post, bridge, state } = await fixture({ server: true });
+  const targetId = '78648759-bcde-4fd5-b3bd-9a2dd46a7192';
+  await writeFile(path.join(directory, 'package.json'), JSON.stringify({ ...pkg, steamHarness: { ...pkg.steamHarness, projectInfo: {
+    dataStorage: { mode: 'server' }, relatedProjects: [{ alias: 'database', projectId: targetId, grantToRelatedProject: { read: { mode: 'all' }, write: { mode: 'none' } } }],
+  } } }));
+  await post({ type: 'kanban-refresh' });
+  const original = fetch, remote = vi.fn();
+  vi.spyOn(globalThis, 'fetch').mockImplementation(async (url, options) => {
+    if (!String(url).startsWith('https://related-setup.test')) return original(url, options);
+    remote(url, options);
+    if (String(url).endsWith('/api/auth/me')) return Response.json({ errCode: 0, data: { profile: { userId: 'user', email: 'user@test.com', displayName: 'User' } } });
+    if (String(url).includes('related-project-revisions')) return revisionStream();
+    if (String(url).endsWith('kanban/bridge')) return Response.json({ errCode: 404, errMessage: 'Related project is unavailable.' }, { status: 404 });
+    if (String(url).endsWith(id)) return Response.json({ errCode: 0, data: { id, projectInfo: app.project.projectInfo } });
+    return status === 200 ? Response.json({ errCode: 0, data: { id: targetId, projectInfo: { dataStorage: { mode: 'both' }, relatedProjects: [] } } }) : new Response('', { status });
+  });
+  await app.setHostConnection({ serverUrl: 'https://related-setup.test', accessToken: 'private-token' });
+  await vi.waitFor(() => expect(app.kanbanController!.serverDataIssue).toBeUndefined());
+  expect((await bridge('relatedProject.kv.getValue', { alias: 'database', key: 'index' })).ok).toBe(false);
+  expect((await state()).kanban.serverDataIssue).toMatchObject({ kind, projectId: targetId, relatedProjectAlias: 'database' });
+  expect(remote.mock.calls.filter(([, options]) => options?.method === 'POST')).toHaveLength(1);
+});
+
+it('creates a Kanban Server record only after review and resumes its data preview without source upload', async () => {
+  const { app, post, bridge, runtime } = await fixture({ server: true });
+  const original = fetch, writes = vi.fn(); let created = false;
+  vi.spyOn(globalThis, 'fetch').mockImplementation(async (url, options) => {
+    if (!String(url).startsWith('https://new-project.test')) return original(url, options);
+    if (String(url).endsWith('/api/auth/me')) return Response.json({ errCode: 0, data: { profile: { userId: 'user', email: 'user@test.com', displayName: 'User' } } });
+    if (String(url).includes('/api/groups?')) return Response.json({ errCode: 0, data: { items: [], total: 0 } });
+    if (options?.method === 'POST') {
+      writes(url, options);
+      if (String(url).endsWith('/api/projects')) {
+        expect(JSON.parse(String(options.body))).toMatchObject({ projectId: id, projectType: 'kanban', projectInfo: app.project.projectInfo });
+        created = true; return Response.json({ errCode: 0, data: { projectId: id } }, { status: 201 });
+      }
+      return Response.json({ errCode: 0, data: 'registered data' });
+    }
+    if (String(url).includes('related-project-revisions') && created) return revisionStream();
+    return created ? Response.json({ errCode: 0, data: { id } }) : new Response('', { status: 404 });
+  });
+  await app.setHostConnection({ serverUrl: 'https://new-project.test', accessToken: 'private-token' });
+  await vi.waitFor(() => expect(app.kanbanController!.serverDataIssue?.kind).toBe('project-unavailable'));
+  const context = (await post({ type: 'project-server-create-prepare' }).then(response => response.json())).messages[0].context;
+  expect(created).toBe(false); expect(writes).not.toHaveBeenCalled();
+  expect((await post({ type: 'project-server-create-confirm', token: context.token, confirmed: true, name: 'Registered map' })).ok).toBe(true);
+  await vi.waitFor(() => expect(app.kanbanController!.serverDataIssue).toBeUndefined());
+  expect(writes).toHaveBeenCalledOnce(); expect(runtime.run).not.toHaveBeenCalled();
+  expect((await bridge('kv.getValue', { key: 'map' })).value).toBe('registered data');
+  expect(writes.mock.calls.map(([url]) => String(url))).toEqual(['https://new-project.test/api/projects', `https://new-project.test/api/projects/${id}/kanban/bridge`]);
+});
+
+it.each([[404, 'project-unavailable'], [200, 'related-setup-required']] as const)('guides a revoked Kanban revision subscription after target HTTP %s without looping retries', async (status, kind) => {
+  const { app, directory, pkg, post } = await fixture({ server: true });
+  const targetId = '78648759-bcde-4fd5-b3bd-9a2dd46a7192';
+  await writeFile(path.join(directory, 'package.json'), JSON.stringify({ ...pkg, steamHarness: { ...pkg.steamHarness, projectInfo: {
+    dataStorage: { mode: 'server' }, relatedProjects: [{ alias: 'database', projectId: targetId, grantToRelatedProject: { read: { mode: 'all' }, write: { mode: 'none' } } }],
+  } } }));
+  await post({ type: 'kanban-refresh' });
+  const original = fetch, revisions = vi.fn(), writes = vi.fn();
+  vi.spyOn(globalThis, 'fetch').mockImplementation(async (url, options) => {
+    if (!String(url).startsWith('https://revoked.test')) return original(url, options);
+    if (options?.method === 'POST') writes(url, options);
+    if (String(url).endsWith('/api/auth/me')) return Response.json({ errCode: 0, data: { profile: { userId: 'user', email: 'user@test.com', displayName: 'User' } } });
+    if (String(url).includes('related-project-revisions')) {
+      revisions(); return new Response('event: snapshot\ndata: {"resolvedTarget":"draft","revisions":[]}\n\nevent: unavailable\ndata: {}\n\n', { headers: { 'Content-Type': 'text/event-stream' } });
+    }
+    if (String(url).endsWith(id)) return Response.json({ errCode: 0, data: { id, projectInfo: app.project.projectInfo } });
+    return status === 404 ? new Response('', { status }) : Response.json({ errCode: 0, data: { id: targetId, projectInfo: {
+      dataStorage: { mode: 'both' }, relatedProjects: [{ alias: 'board', projectId: id, grantToRelatedProject: { read: { mode: 'none' }, write: { mode: 'none' } } }],
+    } } });
+  });
+  vi.useFakeTimers();
+  await app.setHostConnection({ serverUrl: 'https://revoked.test', accessToken: 'private-token' });
+  await vi.waitFor(() => expect(app.kanbanController!.serverDataIssue).toMatchObject({ kind, projectId: targetId, relatedProjectAlias: 'database' }));
+  await vi.advanceTimersByTimeAsync(15_000);
+  expect(revisions).toHaveBeenCalledOnce(); expect(writes).not.toHaveBeenCalled();
   expect(app.kanbanController!.relatedProjectWarning).toBe('');
 });
 

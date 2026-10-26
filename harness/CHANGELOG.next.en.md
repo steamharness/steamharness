@@ -1,5 +1,7 @@
 # Unreleased
 
+- Fixed runtime reports to retain structured failures in `error`; remote storage failures carry Server, project and related alias context so hosts can guide explicit Server accesses from `both` projects without treating model errors as missing projects.
+
 - Fixed durable Agent SQLite creation, reopening, backup and import in deeply nested Windows data directories, avoiding database and owner lock failures caused by long paths.
 
 - Fixed explicit and restored configuration snapshots to enforce source system-only AI restrictions and published field locks. Waiting runs retain their verified template and values while restores and tool calls still enforce the current role and fixed mode.

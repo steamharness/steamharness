@@ -57,9 +57,10 @@ traceButton.id = 'open-trace'; document.querySelector('.run-heading-actions')!.p
 let state: State | undefined, entrypointId: string | undefined, entrySignature = '', renderedRun = '';
 let connected = false, resolving = false, submitting = false, draftsLoaded = false, requestId = 0, revision = -1;
 let errorScope = 0, uploadAvailable = false, checkingServer = false;
-const serverBlocked = () => !!state?.serverData && (state.serverData.checking || !!state.serverData.issue);
+const serverBlocked = () => !!state?.serverData && state.serverData.blocking !== false && (state.serverData.checking || !!state.serverData.issue);
 const serverGuidance = new ProjectServerGuidance(element('server-guidance'), {
   account: () => { host.postMessage({ type: 'open-account' }); },
+  create: () => { host.postMessage({ type: 'open-project-create' }); },
   upload: () => { host.postMessage({ type: 'open-project-upload' }); },
   retry: () => { checkingServer = true; controls(); post({ type: 'project-server-check' }); },
 });
@@ -266,7 +267,7 @@ function renderRun(): void {
 function applyState(next: State): void {
   // State can arrive before the current request finishes, including a save failure.
   if (state?.project.uri !== next.project.uri || state?.run?.id !== next.run?.id) { clearError(false); }
-  const serverChanged = serverBlocked() !== (!!next.serverData && (next.serverData.checking || !!next.serverData.issue));
+  const serverChanged = serverBlocked() !== (!!next.serverData && next.serverData.blocking !== false && (next.serverData.checking || !!next.serverData.issue));
   const authChanged = revision !== next.authenticationRevision; revision = next.authenticationRevision; state = next;
   if (authChanged) { dialogs.closeUsage(); }
   if (!draftsLoaded) {

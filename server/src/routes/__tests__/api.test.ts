@@ -39,6 +39,29 @@ test("Kanban file upload accepts images above the ordinary JSON limit without re
     await server.close();
   }
 });
+
+test('Kanban data access uses registered project declarations without reading source or configurations', async () => {
+  const writes: unknown[] = [];
+  const storage = createStorageStub({
+    getKanbanWorkspace: async () => { throw new Error('Source and configuration templates are not uploaded.'); },
+    getKanbanRelatedProjectBindings: async options => {
+      assert.deepEqual(options, { projectName: 'demo', target: 'draft' }); return { resolvedTarget: 'draft', relatedProjects: [] };
+    },
+    setProjectStorageValue: async input => { writes.push(input); return { ok: true }; },
+    getProjectStorageValue: async () => ({ exists: true, value: 'registered-only' }),
+  });
+  const server = await listen(storage, createApiKeyPrincipal('desktop'));
+  try {
+    for (const operation of ['kv.setValue', 'kv.getValue']) {
+      const response = await fetchJson(server.url('/api/projects/demo/kanban/bridge'), { method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ call: { requestId: operation, operation, input: { key: 'board', ...(operation === 'kv.setValue' ? { value: 'registered-only' } : {}) } } }) });
+      assert.equal(response.errCode, 0);
+      if (operation === 'kv.getValue') assert.equal(response.data, 'registered-only');
+    }
+    assert.deepEqual(writes, [{ storageKind: 'kv', scope: 'project', projectId: 'demo', key: 'board', value: 'registered-only', source: { projectId: 'demo' } }]);
+  } finally { await server.close(); }
+});
+
 test("configuration file uploads persist exact raw bytes in the authenticated project without a conversation", async () => {
   const bytes=Buffer.from([0,137,255,13,10]), writes:unknown[]=[];
   const storage=createStorageStub({saveManagedFiles:async options=>{
@@ -106,11 +129,10 @@ test("Kanban workspace issues a short-lived preview capability for Bearer-authen
 
 test("Kanban Studio bridge fixes KV access to the authenticated project scope", async () => {
   const storage = createStorageStub({
-    getKanbanWorkspace: async (options) => {
+    getKanbanRelatedProjectBindings: async (options) => {
       assert.deepEqual(options, {
         projectName: "demo",
         target: "draft",
-        actorId: "user-1",
       });
       return {
         projectId: "demo",
@@ -156,7 +178,7 @@ test("Kanban Studio bridge reads a confirmed related project's KV through its al
   const sourceProjectId = "f4ee23d7-abbb-4ba3-8baf-75b7c6c0b964";
   const accessChecks: string[] = [];
   const storage = createStorageStub({
-    getKanbanWorkspace: async () => ({
+    getKanbanRelatedProjectBindings: async () => ({
       projectId: "demo",
       projectName: "Demo",
       target: "draft",
@@ -232,7 +254,7 @@ test("Kanban Studio bridge applies related-project grant revocation immediately"
   const sourceProjectId = "00000000-0000-4000-8000-000000000302";
   let grantActive = true;
   const storage = createStorageStub({
-    getKanbanWorkspace: async () => ({
+    getKanbanRelatedProjectBindings: async () => ({
       projectId: "demo",
       projectName: "Demo",
       target: "1.0.0",
@@ -297,7 +319,7 @@ test("Kanban Studio bridge applies related-project grant revocation immediately"
 test("Kanban Studio bridge rejects operations outside the public whitelist", async () => {
   let storageRead = false;
   const storage = createStorageStub({
-    getKanbanWorkspace: async () => ({
+    getKanbanRelatedProjectBindings: async () => ({
       projectId: "demo",
       projectName: "Demo",
       target: "draft",
@@ -343,7 +365,7 @@ test("Kanban Studio bridge allows project readers to perform read-only operation
       visibility: "public",
       ownerUserId: "owner-1",
     }),
-    getKanbanWorkspace: async () => {
+    getKanbanRelatedProjectBindings: async () => {
       workspaceRead = true;
       return {
         projectId: "demo",
@@ -2233,7 +2255,7 @@ test("all fixed member roles can read data and only developers or higher can mut
       getFiles: async () => ({ projectId: "demo", projectName: "demo", target: "draft", resolvedTarget: "draft", files: [] }),
       getSourceArchive: async () => ({ version: "1.0.0", archive: Buffer.from("archive") }),
       cloneProject: async () => ({ projectId: "copy", projectName: "copy", sourceTarget: "latest", resolvedSourceTarget: "1.0.0", nextVersion: "1.0.1" }),
-      getKanbanWorkspace: async () => ({ projectId: "demo", projectName: "demo", target: "latest",
+      getKanbanRelatedProjectBindings: async () => ({ projectId: "demo", projectName: "demo", target: "latest",
         resolvedTarget: "1.0.0", artifactDir: ".", entry: "index.html", relatedProjects: [], configurations: [] }),
     });
     const server = await listen(storage, createPrincipal(false, { userId: "member" }));

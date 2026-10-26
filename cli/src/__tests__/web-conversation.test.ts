@@ -3,7 +3,7 @@ import { ConversationController } from '../web/conversation-controller';
 import { composerOutputItems } from '../web/ui/output-display';
 import { messageSettled, type ConversationMessage, type ConversationSession, type InputRequest, type Project, type Report, type Runtime } from '../web/workflow-types';
 
-function fixture(options: { canStart?(): boolean } = {}) {
+function fixture(options: { canStart?(): boolean; canDrain?(): boolean } = {}) {
   const project: Project = { id: 'test', uri: '', folderPath: '/test', name: 'Conversation', projectType: 'conversation', fields: [], entrypoints: [] };
   const runtime: Runtime = {
     available: true, inspect: vi.fn(), resolveParams: vi.fn(), run: vi.fn(), cancel: vi.fn(), dispose: vi.fn(),
@@ -29,11 +29,41 @@ it('retains queued inputs while Server setup is required and waits for an explic
   expect(controller.current.queuedInputs?.map(input => input.text)).toEqual(['Keep queued']);
   expect(runtime.run).toHaveBeenCalledOnce();
   await expect(controller.send({ text: 'Blocked', params: {}, attachments: [] })).rejects.toThrow('Check again');
+  await controller.runQueued(); await controller.idle();
+  expect(runtime.run).toHaveBeenCalledOnce();
+  expect(controller.current.queuedInputs?.map(input => input.text)).toEqual(['Keep queued']);
   available = true;
   expect(runtime.run).toHaveBeenCalledOnce();
   vi.mocked(runtime.run).mockResolvedValue({ status: 'success' });
   await controller.runQueued(); await controller.idle();
   expect(runtime.run).toHaveBeenCalledTimes(2); expect(controller.current.queuedInputs).toEqual([]);
+});
+
+it.each(['runQueued', 'promoteQueued'] as const)('pauses automatic queued work after a Server failure while allowing explicit %s and local sends', async action => {
+  let drain = true;
+  const { controller, runtime } = fixture({ canDrain: () => drain });
+  controller.project.conversation = { inputQueue: { enabled: true } };
+  let complete!: (report: Report) => void;
+  vi.mocked(runtime.run).mockImplementationOnce(async () => new Promise(resolve => { complete = resolve; }));
+  await controller.send({ text: 'Server operation', params: {}, attachments: [] });
+  await controller.send({ text: 'Keep queued', params: {}, attachments: [] });
+  await controller.send({ text: 'Run deliberately', params: {}, attachments: [] });
+  drain = false; complete({ status: 'failed' }); await controller.idle();
+  expect(controller.current.queuedInputs?.map(input => input.text)).toEqual(['Keep queued', 'Run deliberately']);
+  expect(runtime.run).toHaveBeenCalledOnce();
+  drain = true; await Promise.resolve(); expect(runtime.run).toHaveBeenCalledOnce();
+  drain = false; vi.mocked(runtime.run).mockResolvedValue({ status: 'success' });
+  if (action === 'runQueued') await controller.runQueued();
+  else await controller.promoteQueued(controller.current.queuedInputs![1].id);
+  await controller.idle();
+  expect(runtime.run).toHaveBeenCalledTimes(2);
+  expect(controller.current.messages.at(-2)?.content).toBe(action === 'runQueued' ? 'Keep queued' : 'Run deliberately');
+  const remaining = action === 'runQueued' ? 'Run deliberately' : 'Keep queued';
+  expect(controller.current.queuedInputs?.map(input => input.text)).toEqual([remaining]);
+  const serverSession = controller.current; await controller.create(true);
+  await controller.send({ text: 'Explicit local operation', params: {}, attachments: [] }); await controller.idle();
+  expect(runtime.run).toHaveBeenCalledTimes(3);
+  expect(serverSession.queuedInputs?.map(input => input.text)).toEqual([remaining]);
 });
 
 describe('Conversation answer action visibility', () => {

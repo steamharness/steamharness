@@ -164,7 +164,8 @@ export interface Report {
   status: string;
   durationMs?: number;
   output?: { items?: OutputItem[] };
-  result?: { success?: boolean; data?: unknown; error?: { message?: string } };
+  error?: { message?: string; metadata?: Record<string, unknown> };
+  result?: { success?: boolean; data?: unknown; error?: { message?: string; metadata?: Record<string, unknown> } };
   runId?: string;
   pendingUserInput?: InputRequest;
   resolvedUserInputs?: ResolvedInput[];

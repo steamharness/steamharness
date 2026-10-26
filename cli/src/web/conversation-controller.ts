@@ -13,6 +13,7 @@ import {
 interface ControllerOptions {
   canRun?(session: ConversationSession): boolean;
   canStart?(): boolean;
+  canDrain?(): boolean;
   configurationRevision?(): number;
   /** Capture mutable inputs synchronously, before returning the save promise. */
   save(sessions: ConversationSession[], activeId: string): Promise<void>;
@@ -721,8 +722,8 @@ export class ConversationController {
     entry.parameterRevisions = { ...entry.parameterRevisions, [key]: { ...entry.parameterRevisions?.[key],
       ...Object.fromEntries(Object.keys(updates).map(name => [name, revision])) } };
   }
-  private drain(entry: ConversationSession): void {
-    if (this.options.canStart?.() === false || this.project.conversation?.durable?.enabled || entry.activeRunId || entry.messages.some((message) => message.pendingInput || message.cancelRequested || message.recovering) || entry.draft?.editingQueueId || this.disposed || this.removing.has(entry.id)) { return; }
+  private drain(entry: ConversationSession, explicit = false): void {
+    if (this.options.canStart?.() === false || !explicit && this.options.canDrain?.() === false || this.project.conversation?.durable?.enabled || entry.activeRunId || entry.messages.some((message) => message.pendingInput || message.cancelRequested || message.recovering) || entry.draft?.editingQueueId || this.disposed || this.removing.has(entry.id)) { return; }
     const input = entry.queuedInputs?.shift();
     if (input) {
       try { this.start(entry, input); }
@@ -804,7 +805,7 @@ export class ConversationController {
   async cancelQueueEdit(entry = this.current): Promise<void> {
     entry.draft = { text: '', attachments: [] }; this.changed(); await this.persist(); this.drain(entry);
   }
-  async runQueued(entry = this.current): Promise<void> { this.drain(entry); await this.persist(); }
+  async runQueued(entry = this.current): Promise<void> { this.drain(entry, true); await this.persist(); }
   async reorderQueued(ids: string[], entry = this.current): Promise<void> {
     const queue = entry.queuedInputs ?? [];
     if (ids.length !== queue.length || new Set(ids).size !== queue.length || ids.some((id) => !queue.some((input) => input.id === id))) { return; }
@@ -821,7 +822,7 @@ export class ConversationController {
     if (entry.draft?.editingQueueId) { entry.draft = { text: '', attachments: [] }; }
     const task = entry.activeRunId && this.tasks.get(entry.activeRunId);
     if (task) task.promote = true;
-    await this.stop(entry); this.drain(entry);
+    await this.stop(entry); this.drain(entry, true);
   }
   async retry(id: string, entry = this.current): Promise<void> {
     const index = entry.messages.findIndex((message) => message.id === id && message.role === 'assistant');

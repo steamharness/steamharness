@@ -1620,6 +1620,7 @@ paths:
         files 操作使用路径固定项目的服务器文件存储，不要求已经上传预览产物，也不受版本 target 影响。
         files.createFile 输入为 name、可选 mimeType、base64，单文件不超过 50 MiB；readFile/deleteFile
         只接受 fileId，拒绝其它项目或带 conversation 作用域的文件。readFile 返回 file 与 base64。
+        target=draft 的数据访问只需登记项目及项目信息，无需上传源码或配置模板；指定发布版本仍使用对应不可变声明。
       operationId: invokeKanbanBridge
       parameters:
         - $ref: "#/components/parameters/ProjectName"
@@ -1656,6 +1657,7 @@ paths:
         请求 target 解析精确看板版本，并读取双方当前声明校验关系和 read 授权。授权撤销或
         关系失效时发送 `unavailable` 后关闭；revision 是不透明字符串，不包含目标项目 ID、
         KV key、scope 或数据库路径。
+        draft 订阅使用登记项目的当前关联声明，无需上传源码；指定发布版本保留版本绑定。
       operationId: streamKanbanRelatedProjectRevisions
       parameters:
         - $ref: "#/components/parameters/ProjectName"

@@ -194,7 +194,7 @@ export class RemoteProjectStorageStore implements KVStore {
         type: "execution",
         message: `Workflow project storage could not connect to server database storage at ${this.serverUrl}. Check STEAMHARNESS_SERVER_URL/STEAMHARNESS_SERVER_ADMIN_KEY or Desktop server connection settings.`,
         metadata: {
-          serverUrl: this.serverUrl,
+          ...this.accessFailureMetadata(options.body),
           cause: error instanceof Error ? error.message : String(error),
         },
       });
@@ -209,12 +209,28 @@ export class RemoteProjectStorageStore implements KVStore {
       type: "execution",
       message: payload.errMessage || `Workflow project storage failed with HTTP ${response.status}.`,
       metadata: {
-        serverUrl: this.serverUrl,
+        ...this.accessFailureMetadata(options.body),
         status: response.status,
         errCode: payload.errCode,
         data: payload.data,
       },
     });
+  }
+
+  private accessFailureMetadata(body: Record<string, unknown>): Record<string, unknown> {
+    const entry = isRecord(body["entry"]) ? body["entry"] : undefined;
+    return {
+      code: "PROJECT_SERVER_ACCESS_FAILED",
+      serverUrl: this.serverUrl,
+      projectId: this.projectId,
+      storageKind: this.storageKind,
+      operation: body["operation"],
+      ...(entry && typeof entry["key"] === "string" ? { key: entry["key"] } : {}),
+      ...(this.relatedProject ? {
+        consumerProjectId: this.relatedProject.consumerProjectId,
+        relatedProjectAlias: this.relatedProject.alias,
+      } : {}),
+    };
   }
 
   private async getStorageEntry(input: KVStoreGetInput): Promise<RemoteProjectStorageGetResult> {

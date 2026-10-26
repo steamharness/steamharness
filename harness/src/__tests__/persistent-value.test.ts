@@ -6,6 +6,7 @@ import os from "node:os";
 import path from "node:path";
 import assert from "node:assert/strict";
 import test from "node:test";
+import { serializeProjectError } from '../workflow/errors';
 import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
 import {
@@ -24,6 +25,31 @@ import {
 } from "../index";
 
 const PERSISTENT_TEST_PROJECT_ID = "11111111-1111-4111-8111-111111111111";
+
+test('remote storage failures retain the real project and relation through report serialization without credentials', async t => {
+  const consumerProjectId = '22222222-2222-4222-8222-222222222222';
+  for (const status of [401, 403, 404]) {
+    const fetcher = t.mock.method(globalThis, 'fetch', async () => new Response(JSON.stringify({ errCode: status, errMessage: 'Project or group does not exist.' }), { status }));
+    try {
+      const store = new RemoteProjectStorageStore({ serverUrl: 'https://project.test/', token: 'private-token', projectId: PERSISTENT_TEST_PROJECT_ID,
+        storageKind: 'kv', relatedProject: { consumerProjectId, alias: 'database' } });
+      await assert.rejects(store.getValue({ storageKind: 'kv', scope: 'project', projectId: PERSISTENT_TEST_PROJECT_ID, key: '@index/knowledge.v1' }), error => {
+        assert.ok(error instanceof HarnessError);
+        const serialized = serializeProjectError(error);
+        assert.deepEqual(serialized.metadata, { code: 'PROJECT_SERVER_ACCESS_FAILED', serverUrl: 'https://project.test', projectId: PERSISTENT_TEST_PROJECT_ID,
+          consumerProjectId, relatedProjectAlias: 'database', storageKind: 'kv', operation: 'get', key: '@index/knowledge.v1', status, errCode: status, data: undefined });
+        assert.ok(!JSON.stringify(serialized).includes('private-token')); return true;
+      });
+    } finally { fetcher.mock.restore(); }
+  }
+  const fetcher = t.mock.method(globalThis, 'fetch', async () => { throw new Error('offline'); });
+  try {
+    const store = new RemoteProjectStorageStore({ serverUrl: 'https://project.test', token: 'private-token', projectId: PERSISTENT_TEST_PROJECT_ID, storageKind: 'kv' });
+    await assert.rejects(store.getValue({ storageKind: 'kv', scope: 'project', projectId: PERSISTENT_TEST_PROJECT_ID, key: 'data' }), error => {
+      assert.ok(error instanceof HarnessError); assert.equal(error.metadata?.code, 'PROJECT_SERVER_ACCESS_FAILED'); assert.equal(error.metadata?.projectId, PERSISTENT_TEST_PROJECT_ID); return true;
+    });
+  } finally { fetcher.mock.restore(); }
+});
 
 test("persistentValue writes current-project and conversation scopes through the injected store", async () => {
   const store = createMemoryKVStore();

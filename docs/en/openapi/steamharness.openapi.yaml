@@ -1917,6 +1917,7 @@ paths:
         File operations use the path-bound project's managed Server storage without requiring uploaded preview artifacts
         or a version target. files.createFile accepts name, optional mimeType, and base64 up to 50 MiB; readFile/deleteFile
         accept only fileId and reject other projects or conversation-scoped files. readFile returns file and base64.
+        With target=draft, registered Project Info is sufficient for data access; source upload and configuration templates are optional. Published targets still use the selected immutable declarations.
       operationId: invokeKanbanBridge
       parameters:
         - $ref: "#/components/parameters/ProjectName"
@@ -1955,6 +1956,7 @@ paths:
         the exact Kanban version from target and rereads both current declarations to verify the relation and read grant.
         Revocation or an invalid relation sends `unavailable` and closes the stream. A revision is opaque and contains
         no target-project ID, KV key, scope, or database path.
+        The draft stream uses registered project declarations without uploaded source; published targets keep their version bindings.
       operationId: streamKanbanRelatedProjectRevisions
       parameters:
         - $ref: "#/components/parameters/ProjectName"

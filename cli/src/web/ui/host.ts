@@ -9,6 +9,7 @@ import { editText, pasteHostClipboard, selectedText, textEditShortcut, type Text
 import { ProjectWindowChrome } from './window-chrome';
 import { chooseConversationFiles } from './conversation-file-picker';
 import type { FileImport } from './conversation-drop';
+import { ProjectServerCreateDialog } from './project-server-create';
 
 type Message = Record<string, any>;
 interface Host { postMessage(message: Message): void | Promise<void | boolean>; getState(): unknown; setState(state: unknown): void }
@@ -139,6 +140,7 @@ export function acquireProjectHost(options: { live?: boolean; connectionBanner?:
   const recovery = new HostConnectionRecovery(message => window.parent.postMessage(message, '*'));
   addEventListener('pagehide', () => recovery.close());
   const connection = new BrowserConnection(message => {
+    projectCreation.update(message);
     if (message.type === 'state' && message.account) { accountPanel.update(message.account); }
     trace.receive(message);
     emit(message);
@@ -146,6 +148,12 @@ export function acquireProjectHost(options: { live?: boolean; connectionBanner?:
   const request = async (message: Message) => {
     for (const entry of await connection.request(message)) { handleReply(entry); }
   };
+  const projectCreation = new ProjectServerCreateDialog(async message => {
+    const replies = await connection.request(message);
+    for (const reply of replies) handleReply(reply);
+    return replies;
+  });
+  addEventListener('pagehide', () => projectCreation.close());
   addEventListener('message', event => {
     if (window.parent === window || event.source !== window.parent || event.data?.type !== 'workflow-host') { return; }
     if (event.data.windowChrome && (event.data.windowChrome.active === true || windowChrome)) {
@@ -228,6 +236,7 @@ export function acquireProjectHost(options: { live?: boolean; connectionBanner?:
     if (event.data.command === 'new' || event.data.command === 'history') { emit({ type: 'assistant-command', command: event.data.command }); }
   });
   const handleReply = (reply: Message) => {
+    projectCreation.update(reply);
     trace.receive(reply);
     if (reply.type === 'trace-run') {
       if (!trace.active) { handleReply({ type: 'preview', title: t("Trace"), content: reply.run }); }
@@ -274,6 +283,7 @@ export function acquireProjectHost(options: { live?: boolean; connectionBanner?:
   return {
     postMessage: async (message) => {
       if (message.type === 'open-account') { accountPanel?.open(); return; }
+      if (message.type === 'open-project-create') { void projectCreation.open(); return; }
       if (message.type === 'open-project-upload') {
         if (projectSetupHost) window.parent.postMessage({ type: 'workflow-project-upload', version: 1 }, '*');
         return;

@@ -95,9 +95,10 @@ function initialize(): void {
 
   let state: State | undefined;
   let uploadAvailable = false, checkingServer = false;
-  const serverBlocked = () => !!state?.serverData && (state.serverData.checking || !!state.serverData.issue);
+  const serverBlocked = () => !!state?.serverData && state.serverData.blocking !== false && (state.serverData.checking || !!state.serverData.issue);
   const serverGuidance = new ProjectServerGuidance(document.getElementById('server-guidance')!, {
     account: () => { vscode.postMessage({ type: 'open-account' }); },
+    create: () => { vscode.postMessage({ type: 'open-project-create' }); },
     upload: () => { vscode.postMessage({ type: 'open-project-upload' }); },
     retry: () => { checkingServer = true; updateControls(); post({ type: 'project-server-check' }); },
   });

@@ -1,5 +1,7 @@
 # Unreleased
 
+- Updated generator guidance to preserve structured Server storage errors and distinguish project registration, optional source upload and related data grants.
+
 - Fixed project-generation guidance to require official field locks and source system-only AI restrictions on supplied and restored snapshots.
 
 - Updated generator references with source-owned profile policies and snapshot authorization; per-turn parameters must not override fixed modes.

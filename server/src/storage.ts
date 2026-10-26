@@ -2291,7 +2291,7 @@ export class Storage {
     target?: string;
     alias: string;
   }): Promise<RelatedProject> {
-    const project = await this.resolveKanbanProject(options.projectName, options.target);
+    const project = await this.getKanbanRelatedProjectBindings(options);
     const relation = project.relatedProjects.find((item) => item.alias === options.alias);
     if (relation === undefined) {
       throw new HttpError(404, 404, "Kanban related project is unavailable.");
@@ -2309,6 +2309,14 @@ export class Storage {
     this.assertProjectId(options.projectName);
     await this.assertServerProjectDataAccess(options.projectName);
     const target = options.target?.trim() || "draft";
+    // Live data belongs to the registered project. A local Kanban can use it
+    // before any source or static preview has been uploaded.
+    if (target === "draft" && this.db) {
+      const project = await this.db.getProject(options.projectName);
+      if (!project) throw new HttpError(404, 404, "Kanban project does not exist.");
+      if (project.projectType !== "kanban") throw new HttpError(409, 409, `Project "${project.name}" is not a Kanban project.`);
+      return { resolvedTarget: "draft", relatedProjects: project.projectInfo.relatedProjects.map(cloneRelatedProject) };
+    }
     const resolved = await this.resolveSourceTarget(options.projectName, target);
     const metadata = await this.readPackageMetadataForTarget(
       options.projectName,

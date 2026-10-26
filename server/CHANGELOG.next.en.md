@@ -1,5 +1,7 @@
 # Unreleased
 
+- Fixed local Kanban data access and related revision streams to work from registered project declarations without source uploads or configuration templates. Published targets retain immutable bindings; static previews still require uploaded artifacts.
+
 - Fixed: Profile name changes update the authentication account and survive password login, bootstrap administrator login, and session renewal. Email and password changes preserve the saved name.
 
 - Fixed: Release-note links follow the dev, alpha and main environments so local and alpha services open the matching documentation.

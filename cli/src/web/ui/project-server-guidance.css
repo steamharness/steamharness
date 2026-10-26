@@ -12,3 +12,14 @@
 .project-server-guidance-actions button { min-height: 32px; padding: 6px 12px; border-radius: 4px; border: 1px solid var(--vscode-panel-border); background: var(--vscode-button-secondaryBackground); color: var(--vscode-button-secondaryForeground); }
 .project-server-guidance-actions button:disabled { opacity: .5; cursor: default; }
 .project-server-guidance-actions button:focus-visible { outline: 1px solid var(--vscode-focusBorder); outline-offset: 2px; }
+.project-server-guidance-actions #server-guidance-create { background: var(--vscode-button-background); color: var(--vscode-button-foreground); }
+.project-server-create { max-width: min(560px, calc(100vw - 32px)); }
+.project-server-create .dialog-body { display: flex; flex-direction: column; gap: 16px; }
+.project-server-create p { margin: 0; line-height: 1.6; user-select: text; }
+.project-server-create dl { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 6px 16px; margin: 0; user-select: text; }
+.project-server-create dt { color: var(--vscode-descriptionForeground); }
+.project-server-create dd { margin: 0; overflow-wrap: anywhere; }
+.project-server-create label { display: flex; flex-direction: column; gap: 6px; }
+.project-server-create-error { color: var(--vscode-errorForeground); }
+.project-server-guidance::-webkit-scrollbar-thumb { background: transparent; }
+.project-server-guidance:hover::-webkit-scrollbar-thumb, .project-server-guidance:focus-within::-webkit-scrollbar-thumb { background: var(--vscode-scrollbarSlider-background); }

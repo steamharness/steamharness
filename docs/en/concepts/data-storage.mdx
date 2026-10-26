@@ -44,6 +44,8 @@ A `local` project can use only `context.storage.local`, and a `server` project c
 
 ## Server identity
 
+Server project registration and source upload are separate operations. Create the Server project with the local UUID and actual Project Info to use Server data; uploading source is optional. CLI Web shows structured storage failures with the affected project ID and related alias, including explicit Server accesses from a `both` project. Storage errors retain `metadata.code: "PROJECT_SERVER_ACCESS_FAILED"`, `serverUrl`, `projectId`, storage kind and operation; related access also retains `consumerProjectId` and `relatedProjectAlias`. Final reports preserve this information in `report.error.metadata` so hosts can guide users without interpreting ordinary model errors as missing projects.
+
 Server data is isolated by project UUID. To access `context.storage.server`, the top-level `package.json.id` must be the UUID of the bound cloud project and the caller must have access to that project. CLI can obtain the server connection from `STEAMHARNESS_SERVER_URL`, `STEAMHARNESS_SERVER_ADMIN_KEY`, or workspace login configuration. The server location is unavailable without a valid login and binding.
 
 Server Web exposes server data only. A `server` or `both` declaration permits data access. A `local` or missing declaration blocks server data access; source uploads require developer access and published downloads require guest access.

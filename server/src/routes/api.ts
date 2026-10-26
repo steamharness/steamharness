@@ -1113,18 +1113,20 @@ export function createApiRouter(
         res.json(ok(await invokeServerKanbanBridge(storage, req.params.name, call)));
         return;
       }
-      const target = await readableTarget(req,storage,body["target"]);
-      const workspace = await storage.getKanbanWorkspace({
+      // An omitted target accesses current registered data, including for
+      // readers without unpublished-source access. Explicit targets retain
+      // their version and source-access checks.
+      const target = body["target"] === undefined ? "draft" : await readableTarget(req,storage,body["target"]);
+      const bindings = await storage.getKanbanRelatedProjectBindings({
         projectName: req.params.name,
         target,
-        actorId: requireProjectConfigurationActorId(principal),
       });
       res.json(ok(await invokeServerKanbanBridge(
         storage,
         req.params.name,
         call,
         {
-          target: workspace.resolvedTarget,
+          target: bindings.resolvedTarget,
           runtimeLocale: resolveRequestLocale(req),
           authorizeRelatedProject:(id,write)=>assertProjectStorageAccessForPrincipal(storage,principal,id,write),
         },
@@ -1137,7 +1139,7 @@ export function createApiRouter(
     authenticate,
     asyncHandler(async (req, res) => {
       const { principal } = await requireProjectReadAccess(req, storage);
-      const target = await readableTarget(req,storage,req.query["target"]);
+      const target = req.query["target"] === undefined ? "draft" : await readableTarget(req,storage,req.query["target"]);
       const bindings = await storage.getKanbanRelatedProjectBindings({
         projectName: req.params.name,
         target,

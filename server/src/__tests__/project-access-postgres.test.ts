@@ -679,6 +679,28 @@ test(
           write: { mode: "all" },
         },
       });
+      // The registered project works with local HTML before source upload.
+      assert.equal((await db.getProject(boardId))?.hasDraft, false);
+      assert.equal((await storage.getKanbanRelatedProjectBindings({ projectName: boardId })).relatedProjects[0]?.projectId, projectId);
+      const registeredBridge = async (operation: string, input: Record<string, unknown>) => request('alice', `/projects/${boardId}/kanban/bridge`, 'POST', {
+        call: { requestId: randomUUID(), operation, input },
+      });
+      assert.equal((await registeredBridge('kv.setValue', { key: 'local-board', value: 'without-upload' })).status, 200);
+      const registeredRead = await registeredBridge('kv.getValue', { key: 'local-board' });
+      assert.equal(registeredRead.status, 200); assert.equal((await registeredRead.json()).data, 'without-upload');
+      await db.access.setMember('project', boardId, bob.userId!, 'guest', alice);
+      const guestRead = await request('bob', `/projects/${boardId}/kanban/bridge`, 'POST', { call: { requestId: randomUUID(), operation: 'kv.getValue', input: { key: 'local-board' } } });
+      assert.equal(guestRead.status, 200); assert.equal((await guestRead.json()).data, 'without-upload');
+      assert.equal((await request('bob', `/projects/${boardId}/kanban/bridge`, 'POST', { call: { requestId: randomUUID(), operation: 'kv.setValue', input: { key: 'local-board', value: 'forbidden' } } })).status, 403);
+      assert.equal((await registeredBridge('relatedProject.kv.getValue', { alias: 'records', key: 'record' })).status, 200);
+      assert.equal((await request('alice', `/projects/${boardId}/kanban?target=draft`)).status, 404);
+      const feedAbort = new AbortController();
+      const feed = await fetch(`${base}/api/projects/${boardId}/kanban/related-project-revisions`, { headers: { Authorization: `Bearer ${tokens.bob}` }, signal: AbortSignal.any([feedAbort.signal, AbortSignal.timeout(5_000)]) });
+      assert.equal(feed.status, 200);
+      const reader = feed.body!.getReader(); let snapshot = '';
+      try { while (!snapshot.includes('event: snapshot')) { const next = await reader.read(); if (next.done) break; snapshot += new TextDecoder().decode(next.value); } }
+      finally { feedAbort.abort(); await reader.cancel().catch(() => undefined); }
+      assert.ok(snapshot.includes('records')); assert.equal((await db.getProject(boardId))?.hasDraft, false);
       const boardPackage = {
         id: boardId,
         name: "Board",

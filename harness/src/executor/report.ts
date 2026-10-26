@@ -234,6 +234,8 @@ export interface ExecutionReport<Output = unknown> {
   definedNodes: DefinedNode[];
   registry: NodeRegistryItem[];
   result: RunResult<Output>;
+  /** Structured failure retained alongside the normalized result payload. */
+  error?: SerializedProjectError;
   nodes: ExecutorNodeExecutionReport[];
   outputs: OutputReport[];
   pendingUserInput?: UserInputRequest;
@@ -641,6 +643,7 @@ export function createProjectExecutionReport<Output>(
   },
 ): ExecutionReport<Output> {
   const outputs = options.outputs ?? [];
+  const error = readProjectResultError(options.result, outputs);
 
   return {
     runId: options.runId,
@@ -656,6 +659,7 @@ export function createProjectExecutionReport<Output>(
     definedNodes: options.definedNodes ?? [],
     registry: options.registry ?? [],
     result: createReportedProjectResult(options.result, outputs),
+    ...(error === undefined ? {} : { error: cloneError(error) }),
     nodes: options.nodes,
     outputs,
     pendingUserInput: options.pendingUserInput,

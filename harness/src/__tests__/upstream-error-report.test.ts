@@ -5,8 +5,20 @@ import path from "node:path";
 import test from "node:test";
 import { runLocalProjectWithReport } from "../index";
 import { serializeProjectError, HarnessError } from "../workflow/errors";
+import { createProjectExecutionReport } from "../executor/report";
 
 const dashedProviderKey = `sk-${"a".repeat(18)}01`;
+
+test("reports preserve structured failures alongside the normalized payload", () => {
+  const error = serializeProjectError(new HarnessError({ type: "execution", message: "Project unavailable.",
+    metadata: { code: "PROJECT_SERVER_ACCESS_FAILED", projectId: "22222222-2222-4222-8222-222222222222", relatedProjectAlias: "database", status: 404 } }));
+  const options = { runId: "failure", projectName: "fixture", startedAt: new Date(), endedAt: new Date(), nodes: [] };
+  const report = createProjectExecutionReport({ ...options, result: { ok: false, error } });
+  assert.equal(report.status, "failed");
+  assert.deepEqual(JSON.parse(JSON.stringify(report)).error, JSON.parse(JSON.stringify(error)));
+  assert.deepEqual(report.result, { ok: true, data: { errCode: 500, errMessage: "Project unavailable.", output: null } });
+  assert.equal(createProjectExecutionReport({ ...options, result: { ok: true, data: { errCode: 0, errMessage: "" } } }).error, undefined);
+});
 
 test("upstream response bodies are redacted for every credential shape we mint or consume", () => {
   const synthetic = (prefix: string, separator = "_"): string => `${prefix}${separator}${"a".repeat(18)}01`;

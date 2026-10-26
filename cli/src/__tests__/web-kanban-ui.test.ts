@@ -110,7 +110,10 @@ it.each(['en', 'zh-CN'] as const)('shows actionable Server guidance, opens host 
   expect(guidance.textContent).toContain(language === 'en' ? 'Project unavailable on this Server' : '当前服务器上的项目不可用');
   expect(guidance.textContent).toContain('https://server.test');
   expect(document.getElementById('server-guidance-project')!.textContent).toBe('map');
-  expect(guidance.querySelector('dt:last-of-type')!.textContent).toBe(language === 'en' ? 'Project ID' : '项目 ID');
+  expect(guidance.querySelector('dt:nth-of-type(2)')!.textContent).toBe(language === 'en' ? 'Project ID' : '项目 ID');
+  expect(guidance.textContent).toContain(language === 'en' ? 'Source upload is optional.' : '源码上传为可选操作。');
+  expect(document.getElementById('server-guidance-create')!.hidden).toBe(false);
+  expect(document.getElementById('server-guidance-create')!.textContent).toBe(language === 'en' ? 'New project on Server...' : '在服务器新建项目…');
   expect(document.getElementById('preview-stage')!.hidden).toBe(true);
   expect(document.getElementById('related-warning')!.hidden).toBe(true);
   const frame = document.querySelector<HTMLIFrameElement>('#kanban-preview')!;
@@ -143,4 +146,5 @@ it('keeps upload hidden without host support or when project access is denied', 
   sendState(2, 'denied', { kind: 'access-denied', serverUrl: 'https://server.test' });
   expect(document.getElementById('server-guidance-title')!.textContent).toBe('Project access is required');
   expect(document.getElementById('server-guidance-upload')!.hidden).toBe(true);
+  expect(document.getElementById('server-guidance-create')!.hidden).toBe(true);
 });

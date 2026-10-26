@@ -76,6 +76,7 @@ export function createWebRuntime(projectDir: string, storageDir: string, connect
       else waiter.resolve(message.receipt);
     });
     let buffer = '', stderr = '', failure: string | undefined;
+    let failureMetadata: Record<string, unknown> | undefined;
     let result: T | undefined;
     // Runs wait for completion or explicit cancellation without a wall-clock deadline.
     const timeout = request.method === 'run' ? undefined : setTimeout(() => { failure = 'Workflow runtime request timed out.'; child.kill('SIGTERM'); }, 30_000);
@@ -92,10 +93,10 @@ export function createWebRuntime(projectDir: string, storageDir: string, connect
         const line = buffer.slice(0, newline); buffer = buffer.slice(newline + 1);
         if (!line.startsWith('__STEAMHARNESS_WEB__')) { continue; }
         try {
-          const message = redactProjectData(JSON.parse(line.slice('__STEAMHARNESS_WEB__'.length)), [runtimeAuth?.accessToken ?? '', runtimeAuth?.aiAccessToken ?? ''], false) as { kind: string; value: T & Record<string, unknown>; error?: string };
+          const message = redactProjectData(JSON.parse(line.slice('__STEAMHARNESS_WEB__'.length)), [runtimeAuth?.accessToken ?? '', runtimeAuth?.aiAccessToken ?? ''], false) as { kind: string; value: T & Record<string, unknown>; error?: string; metadata?: Record<string, unknown> };
           if (message.kind === 'event') { onEvent?.(message.value); }
           if (message.kind === 'result') { result = message.value; }
-          if (message.kind === 'error') { failure = message.error; }
+          if (message.kind === 'error') { failure = message.error; failureMetadata = message.metadata; }
         } catch { failure = 'Invalid workflow runtime response.'; }
       }
     });
@@ -108,7 +109,7 @@ export function createWebRuntime(projectDir: string, storageDir: string, connect
     child.once('error', (error) => { cleanup(); reject(error); });
     child.once('close', (code, signal) => {
       cleanup();
-      if (failure) { reject(new Error(failure)); }
+      if (failure) { reject(Object.assign(new Error(failure), { metadata: failureMetadata })); }
       else if (result !== undefined) { if (request.method === 'run') { (result as Report).logs = String(redactProjectData(stderr, [runtimeAuth?.accessToken ?? '', runtimeAuth?.aiAccessToken ?? ''])); } resolve(result); }
       else { reject(Object.assign(new Error(String(redactProjectData(stderr.trim(), [runtimeAuth?.accessToken ?? '', runtimeAuth?.aiAccessToken ?? ''])) || `Workflow runtime exited (${signal ?? code}).`),
         { code: 'STEAMHARNESS_WORKER_INTERRUPTED' })); }

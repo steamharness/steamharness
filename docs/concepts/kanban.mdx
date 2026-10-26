@@ -346,6 +346,8 @@ dist/**/*.map
 
 ## CLI Web 与 Server Web
 
+本地看板使用服务器数据时，可通过“在服务器新建项目”登记相同 UUID，无需上传源码。草稿数据桥接使用服务器登记的项目信息及双方关联授权；需要 Server Web 静态预览或发布版本时，再另行上传静态源码。
+
 CLI 可以按 `.steamharnessignore` 选择本地 Kanban 的文本和二进制静态资源并上传到 Server。服务器不会为 Kanban 执行 tsup、安装依赖或生成 Node runtime，而是校验配置的 HTML 入口后保留静态产物；Server Web 只查看和管理已经上传的服务器版本。
 
 Server Web 静态预览固定当前项目与所选 target。读取需要项目读取权限，当前项目 KV 和知识库写入需要数据写权限，访客只读；关联访问还校验双方声明和目标授予的 key 权限。站点接口签发绑定项目、用户和固定版本的短期签名 capability，资源 URL 带有 CSP nonce，不能读取其它项目或版本。签名使用 `STEAMHARNESS_AUTH_COOKIE_SECRET`，未配置时回退到 `STEAMHARNESS_SERVER_ADMIN_KEY`；多实例应使用同一稳定密钥。预览会在 capability 到期前换发，保留命名配置并重载 iframe；失败时重试，到期后仍失败则显示错误。Bridge 与配置操作始终携带首次加载得到的 `resolvedTarget`。命名配置按用户隔离，项目 KV 和知识库按项目共享。

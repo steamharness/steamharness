@@ -7,6 +7,8 @@ description: "The standard workflow error class for serializable error reporting
 
 `workflow.HarnessError` is the standard error class used by the business workflow and runtime. It keeps the error type, node name, metadata, and cleaned cause, which eventually goes into the execution report.
 
+When execution fails, `ExecutionReport.error` retains the serializable structured error, while `result.data` provides the standard `errCode`, `errMessage`, and `output`. Hosts read `report.error.metadata` to identify Server project or related-project authorization failures. Successful reports omit `error`.
+
 ## Signature
 
 ```ts

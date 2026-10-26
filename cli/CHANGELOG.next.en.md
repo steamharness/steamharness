@@ -2,7 +2,7 @@
 
 - Fixed AI source highlighting when adding or editing project configuration models. The selected source uses the theme accent color, and unselected sources keep a neutral background through hovering and switching.
 
-- Fixed Server storage setup guidance for local Kanban, Workflow and Conversation projects, including the Server address, project ID, account settings, upload dialog and read-only rechecks. History, drafts and Stop remain available; no projects are created or uploaded automatically. Missing Kanban endpoints no longer suggest another upload when the project already exists.
+- Fixed Server setup guidance across Kanban, Workflow and Conversation: users can review and create a private project with the same local ID, without uploading source. Explicit Server storage failures in `both` mode identify the affected project and related grants; local actions remain available and recovery never replays runs or queued inputs.
 
 - Fixed: Default Server addresses follow the dev, alpha and main channels. Dev uses localhost:7126, empty saved addresses fall back correctly, and explicit connections retain priority.
 

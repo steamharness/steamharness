@@ -42,6 +42,7 @@ let methodSession: ReturnType<typeof createKanbanMethodSession> | undefined;
 const methodCalls = new Map<string, AbortController>();
 const serverGuidance = new ProjectServerGuidance(element('server-guidance'), {
   account: () => { void host.postMessage({ type: 'open-account' }); },
+  create: () => { void host.postMessage({ type: 'open-project-create' }); },
   upload: () => { void host.postMessage({ type: 'open-project-upload' }); },
   retry: () => { void refreshPreview(); },
 });

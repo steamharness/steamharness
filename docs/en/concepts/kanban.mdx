@@ -346,6 +346,8 @@ Do not ignore the actual `artifactDir`. For example, when `artifactDir` is `dist
 
 ## CLI Web and Server Web
 
+A local Kanban that uses Server data can register the same project UUID with New project on Server without uploading source. Its live draft data bridge uses the registered Project Info and mutual related-project grants. Upload static source separately when a Server Web preview or published version is needed.
+
 CLI can select local Kanban text and binary static resources with `.steamharnessignore` and upload them to Server. Server does not run tsup, install dependencies, or create a Node runtime for Kanban. It validates the configured HTML entry point and retains the static artifacts; Server Web only inspects and manages uploaded server versions.
 
 Server Web static previews pin the current project and selected target. Reads require project read access; current-project KV and Knowledge writes require data-write permission, so guests are read-only. Related access also checks both declarations and the target's key grants. The site issues a short-lived signed capability tied to the project, user, and fixed version; resource URLs carry a CSP nonce and cannot read other projects or versions. Signing uses `STEAMHARNESS_AUTH_COOKIE_SECRET`, falling back to `STEAMHARNESS_SERVER_ADMIN_KEY`; all instances should share the same stable key. Previews refresh capabilities before expiry, reload the iframe, and preserve named configurations. Temporary failures retry; an expired capability that cannot be refreshed shows an error. Bridge and configuration operations always carry the initial `resolvedTarget`. Named configurations are isolated by user, while KV and Knowledge are shared within the project.
