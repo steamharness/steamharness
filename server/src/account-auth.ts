@@ -188,8 +188,9 @@ export class AuthService {
       displayName: user.display_name,
       status: "active",
       lastLoginAt: new Date().toISOString(),
+      preserveExistingIdentity: true,
     });
-    return this.createSession({ ...user, last_sign_in_at: new Date() });
+    return this.createSession({ ...user, display_name: profile.displayName, last_sign_in_at: new Date() });
   }
 
   async signInBootstrapAdmin(input: {
@@ -244,8 +245,8 @@ export class AuthService {
     } finally {
       client.release();
     }
-    await this.ensureAdminProfile(user.id, { email, displayName });
-    return this.createSession(user);
+    const profile = await this.ensureAdminProfile(user.id, { email: user.email, displayName: user.display_name });
+    return this.createSession({ ...user, display_name: profile.displayName });
   }
 
   async refreshSession(refreshToken: string): Promise<AuthSession> {
@@ -272,7 +273,7 @@ export class AuthService {
        where id = $1`,
       [row.session_id, sha256Text(accessToken), accessExpiresAt.toISOString()],
     );
-    return toAuthSession(row, accessToken, refreshToken, accessExpiresAt);
+    return toAuthSession({ ...row, display_name: profile.displayName }, accessToken, refreshToken, accessExpiresAt);
   }
 
   async getUserByAccessToken(accessToken: string): Promise<AuthSession> {
@@ -292,7 +293,7 @@ export class AuthService {
     if (!row || row.disabled) throw new HttpError(401, 401, "Session is invalid.");
     const profile = await this.accountDb.getUserProfileOrThrow(row.id);
     if (profile.status === "disabled") throw new HttpError(403, 403, "Account is disabled.");
-    return toAuthSession(row, accessToken, "", row.access_expires_at);
+    return toAuthSession({ ...row, display_name: profile.displayName }, accessToken, "", row.access_expires_at);
   }
 
   async inviteUser(input: {
@@ -430,17 +431,28 @@ export class AuthService {
     disabled?: boolean;
   }): Promise<NativeAuthUserRow> {
     await this.ready;
-    const current = await this.getUserById(input.userId);
-    const email = input.email === undefined ? current.email : normalizeEmail(input.email);
-    const displayName = input.displayName === undefined ? current.display_name : input.displayName.trim() || email;
-    const passwordHash = input.password?.trim() ? await hashPassword(input.password) : current.password_hash;
-    const disabled = input.disabled ?? current.disabled;
     const passwordChanged = Boolean(input.password?.trim());
+    const changedPasswordHash = passwordChanged ? await hashPassword(input.password!) : undefined;
     const client = await this.pool.connect();
     try {
       await client.query("begin");
       await client.query("select pg_advisory_xact_lock(hashtext('steamharness-resource-access'))");
       await client.query("select pg_advisory_xact_lock(hashtext('steamharness-account-admin'))");
+      const current = (await client.query<NativeAuthUserRow>(
+        `select id, email, password_hash, display_name, disabled, created_at, last_sign_in_at
+         from steamharness_auth_users where id=$1 for update`, [input.userId],
+      )).rows[0];
+      if (!current) throw new HttpError(404, 404, "User not found.");
+      const email = input.email === undefined ? current.email : normalizeEmail(input.email);
+      let displayName = input.displayName === undefined ? current.display_name : input.displayName.trim() || email;
+      const passwordHash = changedPasswordHash ?? current.password_hash;
+      const disabled = input.disabled ?? current.disabled;
+      if (input.displayName === undefined) {
+        const profile = (await client.query<{ display_name: string }>(
+          "select display_name from user_profiles where user_id=$1", [input.userId],
+        )).rows[0];
+        displayName = profile?.display_name ?? current.display_name;
+      }
       if (input.disabled === true) await this.accountDb.assertCanDisableAccount(input.userId,client);
       await client.query(
         `update steamharness_auth_users
@@ -675,6 +687,7 @@ export class AuthService {
       displayName: input.displayName?.trim() || normalizeEmail(input.email),
       status: "active",
       lastLoginAt: new Date().toISOString(),
+      preserveExistingIdentity: true,
     });
     if (profile.isSystemAdmin) return profile;
     return this.accountDb.setSystemAdministrator(profile.userId, true);

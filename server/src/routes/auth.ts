@@ -667,7 +667,7 @@ export function createAuthRouter(): Router {
           : undefined;
       const email = typeof req.body?.email === "string" ? req.body.email : undefined;
       const temporaryPassword = typeof req.body?.temporaryPassword === "string" ? req.body.temporaryPassword : undefined;
-      if (email || temporaryPassword) {
+      if (email || temporaryPassword || (displayName !== undefined && authService)) {
         if (!authService) {
           throw new HttpError(503, 503, "Account auth is not configured.");
         }
@@ -678,7 +678,10 @@ export function createAuthRouter(): Router {
           displayName,
         });
       }
-      const profile = await accountDb.updateUserProfile(principal.userId, { displayName, avatarUrl });
+      const profile = await accountDb.updateUserProfile(principal.userId, {
+        displayName: authService ? undefined : displayName,
+        avatarUrl,
+      });
       await recordAuthAudit(req, {
         principalKind: principal.kind,
         actorUserId: principal.userId,

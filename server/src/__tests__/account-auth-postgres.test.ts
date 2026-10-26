@@ -25,6 +25,35 @@ test("native PostgreSQL auth preserves sessions, invitations, API keys, locks, t
     const adminProfile = await accountDb.getUserProfileOrThrow(admin.user.userId);
     assert.ok(adminProfile.isSystemAdmin);
 
+    await auth.updateAuthUser({ userId: admin.user.userId, displayName: "Renamed Administrator" });
+    const bootstrapAgain = await auth.signInBootstrapAdmin({
+      email: "admin@example.com", password: "bootstrap-password", displayName: "SteamHarness Admin",
+    });
+    assert.equal(bootstrapAgain.user.displayName, "Renamed Administrator");
+    assert.equal((await accountDb.getUserProfileOrThrow(admin.user.userId)).displayName, "Renamed Administrator");
+
+    // Older profile-only updates may have left the auth table with a stale name.
+    await accountDb.updateUserProfile(admin.user.userId, { displayName: "Profile Name From Another Instance" });
+    const ordinaryLogin = await auth.signInWithPassword({ email: "admin@example.com", password: "bootstrap-password" });
+    assert.equal(ordinaryLogin.user.displayName, "Profile Name From Another Instance");
+    const bootstrapLogin = await auth.signInBootstrapAdmin({
+      email: "admin@example.com", password: "bootstrap-password", displayName: "Default Must Not Replace Name",
+    });
+    assert.equal(bootstrapLogin.user.displayName, "Profile Name From Another Instance");
+    assert.equal((await auth.getUserByAccessToken(ordinaryLogin.accessToken)).user.displayName, "Profile Name From Another Instance");
+    assert.equal((await auth.refreshSession(ordinaryLogin.refreshToken)).user.displayName, "Profile Name From Another Instance");
+    await auth.updateAuthUser({ userId: admin.user.userId, email: "admin@example.com" });
+    assert.equal((await auth.getUserById(admin.user.userId)).display_name, "Profile Name From Another Instance");
+
+    const secondInstance = new AuthService({ databaseUrl, accountDb });
+    try {
+      assert.equal((await secondInstance.signInBootstrapAdmin({
+        email: "admin@example.com", password: "bootstrap-password", displayName: "Another Instance Default",
+      })).user.displayName, "Profile Name From Another Instance");
+    } finally {
+      await secondInstance.close();
+    }
+
     const signedInAdmin = await auth.signInWithPassword({
       email: "admin@example.com",
       password: "bootstrap-password",

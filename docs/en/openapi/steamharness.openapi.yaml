@@ -207,6 +207,7 @@ paths:
         Ordinary account and administrator account unified use this 1 portal login.
         If the mailbox and password in the request match `STEAMHARNESS_BOOTSTRAP_ADMIN_EMAIL` / `STEAMHARNESS_BOOTSTRAP_ADMIN_PASSWORD`,
         The server creates this `builtin_admin` only while the account table is empty. Later logins verify the current database password and never overwrite a changed password or disabled state from environment variables.
+        Display names follow the saved user profile. Login never replaces a changed name with the bootstrap default or an outdated authentication name.
         Accounts, password hashes, sessions, and invitations are stored in the PostgreSQL database selected by `STEAMHARNESS_DATABASE_URL`.
         Passwords use scrypt with random salts. The browser cookie stores only a signed refresh token and the database stores token hashes only.
       operationId: createPasswordSession
@@ -459,6 +460,7 @@ paths:
       tags:
         - Auth & Accounts
       summary: Update current account information
+      description: Display name changes update both the authentication account and user profile and survive login and session renewal. Updating only an avatar, email, or password preserves the saved name.
       operationId: updateCurrentAccount
       security:
         - SessionCookie: []

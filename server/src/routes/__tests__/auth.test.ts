@@ -858,7 +858,13 @@ test("me exposes the refreshed expiration for a Desktop API key principal", asyn
 
 test("me patch updates display name and avatar url for authenticated sessions", async () => {
   let updatedPatch: { displayName?: string; avatarUrl?: string | null } | undefined;
+  const authUpdates: unknown[] = [];
+  let savedName = "Old Name";
   const authService = {
+    async updateAuthUser(input: { userId: string; displayName?: string }) {
+      authUpdates.push(input);
+      savedName = input.displayName ?? savedName;
+    },
     async resolvePrincipal(req: { headers: { cookie?: string } }) {
       if (!String(req.headers.cookie ?? "").includes("steamharness_auth_session=")) {
         return undefined;
@@ -897,7 +903,7 @@ test("me patch updates display name and avatar url for authenticated sessions", 
       return {
         userId: "user-profile-1",
         email: "user@example.com",
-        displayName: patch.displayName ?? "Old Name",
+        displayName: patch.displayName ?? savedName,
         avatarUrl: patch.avatarUrl ?? undefined,
         status: "active" as const,
         createdAt: "2026-06-21T00:00:00.000Z",
@@ -929,12 +935,27 @@ test("me patch updates display name and avatar url for authenticated sessions", 
 
     assert.equal(response.status, 200);
     assert.equal(payload.errCode, 0);
-    assert.deepEqual(updatedPatch, {
+    assert.deepEqual(authUpdates, [{
+      userId: "user-profile-1",
+      email: undefined,
+      password: undefined,
       displayName: "New Name",
+    }]);
+    assert.deepEqual(updatedPatch, {
+      displayName: undefined,
       avatarUrl: "data:image/png;base64,abc",
     });
     assert.equal(payload.data?.profile?.displayName, "New Name");
     assert.equal(payload.data?.profile?.avatarUrl, "data:image/png;base64,abc");
+
+    const avatarOnly = await fetch(server.url("/api/me"), {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json", Cookie: "steamharness_auth_session=signed-profile-cookie" },
+      body: JSON.stringify({ avatarUrl: null }),
+    });
+    assert.equal(avatarOnly.status, 200);
+    assert.equal((await avatarOnly.json()).data.profile.displayName, "New Name");
+    assert.equal(authUpdates.length, 1, "avatar updates must not rewrite account identity");
   } finally {
     configureProjectAuthContext({});
     await server.close();

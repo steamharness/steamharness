@@ -315,6 +315,8 @@ export class AccountRepository {
     status?: UserProfileStatus;
     createdByUserId?: string;
     lastLoginAt?: string;
+    /** Sign-in records activity without replacing an existing account identity. */
+    preserveExistingIdentity?: boolean;
   }): Promise<UserProfileRecord> {
     if (input.status && input.status !== "active" && await this.getUserProfile(input.userId)) {
       await this.updateUserProfile(input.userId, {status: input.status});
@@ -326,8 +328,8 @@ export class AccountRepository {
        )
        values ($1, $2, $3, $4, $5, now(), now(), $6)
        on conflict (user_id) do update set
-         email = excluded.email,
-         display_name = excluded.display_name,
+         email = case when $7::boolean then user_profiles.email else excluded.email end,
+         display_name = case when $7::boolean then user_profiles.display_name else excluded.display_name end,
          status = case when user_profiles.status = 'disabled' then user_profiles.status else excluded.status end,
          updated_at = now(),
          last_login_at = coalesce(excluded.last_login_at, user_profiles.last_login_at)`,
@@ -338,6 +340,7 @@ export class AccountRepository {
         input.status ?? "active",
         input.createdByUserId ?? null,
         input.lastLoginAt ?? null,
+        input.preserveExistingIdentity ?? false,
       ],
     );
     return this.getUserProfileOrThrow(input.userId);

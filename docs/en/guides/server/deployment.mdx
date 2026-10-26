@@ -49,6 +49,12 @@ Prepare backups and write access for at least:
 
 Server never installs dependencies, builds, or loads uploaded project code. Back up source snapshots, avatars, KV data, and knowledge data according to the deployment policy.
 
+## Administrator names and shared accounts
+
+The bootstrap administrator's default display name is used only when creating the account. Later changes made through personal profiles or user management are stored in PostgreSQL and preserved during password login, bootstrap login, and session renewal. Profile name changes update both the authentication account and user profile; changing an email or password also preserves the saved name.
+
+Server instances connected to the same `STEAMHARNESS_DATABASE_URL` share account profiles. When names differ, first check that the instances use the same database and account ID and that every instance has been updated. Older instances may write an outdated name during login.
+
 ## Health checks and reverse proxy
 
 Check a running service with:

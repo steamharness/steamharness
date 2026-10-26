@@ -1,5 +1,7 @@
 # Unreleased
 
+- Fixed: Profile name changes update the authentication account and survive password login, bootstrap administrator login, and session renewal. Email and password changes preserve the saved name.
+
 - Fixed: Release-note links follow the dev, alpha and main environments so local and alpha services open the matching documentation.
 
 - Fixed: deployments include localized Server and Web notes with source identity; health links use the current environment.

@@ -201,6 +201,7 @@ paths:
         普通账号和管理员账号统一使用这一入口登录。
         如果请求中的邮箱和密码匹配 `STEAMHARNESS_BOOTSTRAP_ADMIN_EMAIL` / `STEAMHARNESS_BOOTSTRAP_ADMIN_PASSWORD`，
         服务端只会在账号表为空时创建该 `builtin_admin`；后续登录验证数据库中的当前密码，不会用环境变量覆盖改密或禁用状态。
+        显示名称以数据库中保存的用户资料为准；登录不会用初始化默认名称或旧认证名称覆盖修改后的名称。
         账号、密码哈希、会话与邀请都保存在 `STEAMHARNESS_DATABASE_URL` 指向的 PostgreSQL 中。
         密码使用 scrypt 加随机盐；浏览器 Cookie 只保存签名后的刷新 token，数据库只保存 token 哈希。
       operationId: createPasswordSession
@@ -441,6 +442,7 @@ paths:
       tags:
         - Auth & Accounts
       summary: 更新当前账号资料
+      description: 显示名称修改同时保存到认证账号和用户资料，重新登录或会话续期后保留；仅修改头像、邮箱或密码不会恢复旧名称。
       operationId: updateCurrentAccount
       security:
         - SessionCookie: []
