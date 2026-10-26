@@ -277,10 +277,14 @@ export async function activateProject(context: vscode.ExtensionContext, launcher
             if (!closed && chrome && chrome.revision >= windowChrome.revision) { windowChrome = chrome; syncWindowChrome(); }
           }, () => undefined);
         }
+        if (message?.type === 'workflow-project-upload' && message.version === 1 && project.projectType === 'kanban' && !closed && projectAvailable(project)) {
+          void vscode.commands.executeCommand('studio.uploadProject', { uri: project.uri }).then(undefined, error => output.appendLine(`Project upload: ${String(error)}`));
+          return;
+        }
         if (message?.type === 'workflow-account' && message.version === 1) { account.open(); }
         else if (!clipboardBinding.receive(message) && !resourceBinding.receive(message) && !pickerBinding.receive(message) && !pathOpenBinding.receive(message) && !fileIconsBinding.receive(message)) { traceBinding.receive(message); }
       }));
-      panel.webview.html = projectFrameHtml(address.href, project.name, project.uri, theme(), globalThis.crypto.randomUUID().replace(/-/g, ''), vscode.env.language, chromeFor(project.uri, 'viewType' in panel && panel.viewType === 'studio.project'), conversationView);
+      panel.webview.html = projectFrameHtml(address.href, project.name, project.uri, theme(), globalThis.crypto.randomUUID().replace(/-/g, ''), vscode.env.language, chromeFor(project.uri, 'viewType' in panel && panel.viewType === 'studio.project'), conversationView, project.projectType === 'kanban' && !!launcher.uploadProject);
       if ('reveal' in panel) {
         panel.title = projectDisplayName(project); panel.iconPath = vscode.Uri.parse(projectAvatarDataUrl(project.projectCard, project.projectType));
         workspaces.set(project.uri, { panel, project, running: true, loaded: false, ready, close });

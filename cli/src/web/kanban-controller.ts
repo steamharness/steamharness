@@ -18,6 +18,7 @@ import { localKanbanRelatedProjects, readProjectInfo, webProjectDataDirectory } 
 import type { WebConnection } from './runtime';
 import type { Project, Runtime } from './workflow-types';
 import { requestStudioAnalysis } from './local-analysis';
+import { kanbanServerIssue, type KanbanServerIssue } from './kanban-server-state';
 
 type Message = Record<string, any>;
 interface Hooks { changed(): void; emit(message: Record<string, unknown>): void; connection(): WebConnection | undefined; log(message: string): void }
@@ -29,6 +30,7 @@ export class KanbanController {
   relatedProjectRevisions: KanbanRelatedProjectRevision[] = [];
   missingRelatedProjectAliases: string[] = [];
   relatedProjectWarning = '';
+  serverDataIssue?: KanbanServerIssue;
   private updates = Promise.resolve();
   private poll?: ReturnType<typeof setInterval>;
   private feed?: AbortController;
@@ -52,7 +54,7 @@ export class KanbanController {
     this.workspace = state;
     if (this.preview) { this.newPreview(); this.hooks.changed(); }
   }
-  state() { return { ...this.workspace, params: this.params, configuration: this.configuration(), preview: { url: this.preview.url, nonce: this.preview.nonce }, relatedProjectRevisions: this.relatedProjectRevisions, missingRelatedProjectAliases: this.missingRelatedProjectAliases, relatedProjectWarning: this.relatedProjectWarning }; }
+  state() { return { ...this.workspace, params: this.params, configuration: this.configuration(), preview: { url: this.preview.url, nonce: this.preview.nonce }, relatedProjectRevisions: this.relatedProjectRevisions, missingRelatedProjectAliases: this.missingRelatedProjectAliases, relatedProjectWarning: this.relatedProjectWarning, serverDataIssue: this.serverDataIssue }; }
   async initialize(): Promise<void> {
     this.workspace ??= await (await createLocalProjectConfigurationStore(this.project.folderPath)).read();
     await this.refresh();
@@ -120,6 +122,7 @@ export class KanbanController {
     } else if (this.project.projectInfo?.dataStorage?.mode === 'server' || call.operation.startsWith('files.')) {
       const connection = this.hooks.connection();
       if (!connection) { throw Object.assign(new Error('SteamHarness Server login is required.'), { code: call.operation.startsWith('files.') ? 'KANBAN_FILE_UNAVAILABLE' : 'KANBAN_BRIDGE_UNAVAILABLE' }); }
+      if (this.project.projectInfo?.dataStorage?.mode === 'server' && this.serverDataIssue) { throw Object.assign(new Error('Kanban Server setup is required.'), { code: 'KANBAN_BRIDGE_UNAVAILABLE' }); }
       const abort = new AbortController(); this.requests.add(abort);
       try {
         const file = call.operation === 'files.readFile' ? await readConfigurationFile(this.project.id, this.workspace, String(call.input.fileId), connection, { target: this.workspace.template?.projectVersion, signal: abort.signal }) : undefined;
@@ -141,18 +144,27 @@ export class KanbanController {
   authenticationChanged(): void {
     this.generation++; this.methods.clear(); for (const request of this.requests) { request.abort(); } this.feed?.abort(); clearTimeout(this.retry);
     this.relatedProjectRevisions = []; this.relatedProjectWarning = '';
+    if (this.project.projectInfo?.dataStorage?.mode !== 'server' || this.serverDataIssue?.serverUrl !== this.hooks.connection()?.serverUrl) { this.serverDataIssue = undefined; }
     this.connectServerRevisions();
   }
   private connectServerRevisions(): void {
     if (this.project.projectInfo?.dataStorage?.mode !== 'server' || this.disposed) { return; }
     this.missingRelatedProjectAliases = [];
     const connection = this.hooks.connection();
-    if (!connection) { this.relatedProjectWarning = t("Sign in to SteamHarness Server to connect Kanban data."); return; }
+    if (!connection) { this.serverDataIssue = { kind: 'sign-in-required' }; return; }
     const abort = this.feed = new AbortController();
     void (async () => {
       try {
         const response = await fetch(`${connection.serverUrl}/api/projects/${encodeURIComponent(this.project.id)}/kanban/related-project-revisions`, { headers: { Authorization: `Bearer ${connection.accessToken}` }, signal: abort.signal, redirect: 'error' });
+        if (abort.signal.aborted) { return; }
+        const issue = kanbanServerIssue(response.status, connection.serverUrl);
+        if (issue) {
+          this.serverDataIssue = issue; this.relatedProjectWarning = ''; this.hooks.changed();
+          await response.body?.cancel().catch(() => undefined);
+          return;
+        }
         if (!response.ok || !response.body) { throw new Error('Kanban related project updates are unavailable.'); }
+        this.serverDataIssue = undefined; this.hooks.changed();
         const apply = (revisions: KanbanRelatedProjectRevision[]) => { if (!abort.signal.aborted) { this.relatedProjectRevisions = revisions; this.relatedProjectWarning = ''; this.hooks.changed(); } };
         await consumeKanbanRelatedProjectRevisionStream(response.body, { onSnapshot: value => apply(value.revisions), onRevision: value => apply([...this.relatedProjectRevisions.filter(item => item.alias !== value.alias), value]), onUnavailable: () => { throw new Error('Related projects are unavailable.'); } }, abort.signal);
       } catch { if (!abort.signal.aborted) { this.relatedProjectWarning = t("The related project connection was interrupted. Reconnecting."); this.hooks.changed(); } }

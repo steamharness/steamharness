@@ -38,6 +38,7 @@ export function acquireProjectHost(options: { live?: boolean; connectionBanner?:
   let navigationSignature: string | undefined;
   const emit = (message: Message) => window.dispatchEvent(new MessageEvent('message', { data: message }));
   const trace = new TraceBridge(message => { if (window.parent !== window) { window.parent.postMessage(message, '*'); } });
+  let projectSetupHost = false;
   let resourceHost = false, editHost = false, nativePasteHost = false, pathPickerHost = false, pathOpenHost = false, fileIconsHost = false;
   let dropTarget: string | undefined;
   const pathPickers = new Map<string, Message>();
@@ -187,6 +188,7 @@ export function acquireProjectHost(options: { live?: boolean; connectionBanner?:
     if (event.data.drop?.target === dropTarget && dropTarget && Array.isArray(event.data.drop.paths)) {
       emit({ type: 'paths-dropped', target: dropTarget, paths: event.data.drop.paths });
     }
+    if (event.data.projectSetupVersion !== undefined) { projectSetupHost = event.data.projectSetupVersion === 1; emit({ type: 'project-setup-available', upload: projectSetupHost }); }
     if (event.data.resourceVersion === 1) { resourceHost = true; }
     if (event.data.recoveryVersion === 1) recovery.enabled = true;
     if (event.data.recovery) recovery.receive(event.data.recovery);
@@ -271,6 +273,11 @@ export function acquireProjectHost(options: { live?: boolean; connectionBanner?:
   });
   return {
     postMessage: async (message) => {
+      if (message.type === 'open-account') { accountPanel?.open(); return; }
+      if (message.type === 'open-project-upload') {
+        if (projectSetupHost) window.parent.postMessage({ type: 'workflow-project-upload', version: 1 }, '*');
+        return;
+      }
       if (message.type === 'file-icons') {
         if (fileIconsHost) {
           fileIconRequests.add(message.requestId);

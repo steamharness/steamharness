@@ -152,6 +152,15 @@ test('upload publishes the saved package version with release notes and refreshe
   assert.equal(f.uploads.length, 1); assert.match(f.uploadResult.error, /already exists/);
 });
 
+test('opening a Kanban upload dialog does not upload until the user submits it', async t => {
+  const f = fixture(t); f.local.projectType = 'kanban'; f.notes = undefined;
+  await f.command('studio.uploadProject', { uri: f.local.uri });
+  assert.equal(f.uploadDialog.folderPath, f.local.folderPath);
+  assert.equal(f.uploadDialog.serverUrl, f.connection.serverUrl);
+  assert.equal(f.uploads.length, 0);
+  assert.equal(f.errors.length, 0);
+});
+
 test('cancelled prompts, account switches and changed manifests cannot upload stale state', async t => {
   const f = fixture(t); await f.command('studio.refreshVersions');
   f.notes = undefined; await f.command('studio.uploadProject'); assert.equal(f.uploads.length, 0);

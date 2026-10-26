@@ -10,8 +10,78 @@ import type { Project, Runtime } from '../web/workflow-types';
 import { resolveHarnessRoot, resolveHarnessVersion } from './harness-source';
 
 const folders: string[] = [], apps: Awaited<ReturnType<typeof startWebServer>>[] = [];
-afterEach(async () => { for (const app of apps.splice(0)) { await app.close(); } for (const folder of folders.splice(0)) { await rm(folder, { recursive: true, force: true }); } vi.unstubAllEnvs(); vi.restoreAllMocks(); });
+afterEach(async () => { for (const app of apps.splice(0)) { await app.close(); } for (const folder of folders.splice(0)) { await rm(folder, { recursive: true, force: true }); } vi.useRealTimers(); vi.unstubAllEnvs(); vi.restoreAllMocks(); });
 const id = '2bf9074d-ef0b-43b2-84c4-f379f920db92';
+const revisionStream = () => new Response('event: snapshot\ndata: {"revisions":[]}\n\n', { headers: { 'Content-Type': 'text/event-stream' } });
+it.each([
+  [401, 'sign-in-required'], [403, 'access-denied'], [404, 'project-unavailable'], [409, 'setup-required'],
+] as const)('guides users after Server HTTP %s without retrying or creating project data', async (status, kind) => {
+  const { app, post, bridge, state, runtime } = await fixture({ server: true });
+  const original = fetch, revisions = vi.fn(), operations = vi.fn();
+  let responseStatus: number = status;
+  vi.spyOn(globalThis, 'fetch').mockImplementation((url, options) => {
+    if (!String(url).startsWith('https://setup.test')) return original(url, options);
+    if (String(url).endsWith('/api/auth/me')) return Promise.resolve(new Response(JSON.stringify({ errCode: 0, data: { profile: { userId: 'user', email: 'user@example.com', displayName: 'User' } } })));
+    if (String(url).includes('/related-project-revisions')) {
+      revisions(options);
+      return Promise.resolve(responseStatus === 200 ? revisionStream() : new Response('private-token server details', { status: responseStatus }));
+    }
+    operations(url, options);
+    return Promise.resolve(new Response(JSON.stringify({ errCode: 0, data: 'server value' })));
+  });
+  vi.useFakeTimers();
+  await app.setHostConnection({ serverUrl: 'https://setup.test', accessToken: 'private-token' });
+  await vi.waitFor(() => expect(app.kanbanController!.serverDataIssue).toEqual({ kind, serverUrl: 'https://setup.test' }));
+  await vi.advanceTimersByTimeAsync(15_000);
+  expect(revisions).toHaveBeenCalledOnce();
+  expect(app.kanbanController!.relatedProjectWarning).toBe('');
+  expect(JSON.stringify(app.kanbanController!.state())).not.toContain('private-token');
+  await expect(app.kanbanController!.bridge({ requestId: 'blocked-write', operation: 'kv.setValue', input: { key: 'map', value: [] } })).rejects.toMatchObject({ code: 'KANBAN_BRIDGE_UNAVAILABLE' });
+  expect(operations).not.toHaveBeenCalled(); expect(runtime.kanbanBridge).not.toHaveBeenCalled();
+  vi.useRealTimers();
+  responseStatus = 200;
+  await post({ type: 'kanban-refresh' });
+  await vi.waitFor(() => expect(app.kanbanController!.serverDataIssue).toBeUndefined());
+  expect((await state()).kanban.serverDataIssue).toBeUndefined();
+  expect((await bridge('kv.getValue', { key: 'map' })).value).toBe('server value');
+  expect(operations).toHaveBeenCalledOnce();
+  expect(JSON.parse(operations.mock.calls[0]![1].body).call.operation).toBe('kv.getValue');
+});
+
+it.each([408, 429, 503])('continues automatic reconnection for transient Server HTTP %s', async status => {
+  const { app } = await fixture({ server: true });
+  const original = fetch, revisions = vi.fn();
+  vi.spyOn(globalThis, 'fetch').mockImplementation((url, options) => {
+    if (!String(url).startsWith('https://transient.test')) return original(url, options);
+    if (String(url).endsWith('/api/auth/me')) return Promise.resolve(new Response(JSON.stringify({ errCode: 0, data: { profile: { userId: 'user', email: 'user@example.com', displayName: 'User' } } })));
+    revisions(); return Promise.resolve(new Response('', { status }));
+  });
+  vi.useFakeTimers();
+  await app.setHostConnection({ serverUrl: 'https://transient.test', accessToken: 'token' });
+  await vi.waitFor(() => expect(app.kanbanController!.relatedProjectWarning).toContain('Reconnecting'));
+  expect(app.kanbanController!.serverDataIssue).toBeUndefined();
+  await vi.advanceTimersByTimeAsync(5_000);
+  expect(revisions).toHaveBeenCalledTimes(2);
+  vi.useRealTimers();
+});
+
+it('ignores a stale project-unavailable response after changing Server accounts', async () => {
+  const { app } = await fixture({ server: true });
+  const original = fetch;
+  let complete: ((response: Response) => void) | undefined;
+  vi.spyOn(globalThis, 'fetch').mockImplementation((url, options) => {
+    if (!String(url).startsWith('https://old.test') && !String(url).startsWith('https://new.test')) return original(url, options);
+    if (String(url).endsWith('/api/auth/me')) return Promise.resolve(new Response(JSON.stringify({ errCode: 0, data: { profile: { userId: 'user', email: 'user@example.com', displayName: 'User' } } })));
+    if (String(url).startsWith('https://old.test')) return new Promise<Response>(resolve => { complete = resolve; });
+    return Promise.resolve(revisionStream());
+  });
+  await app.setHostConnection({ serverUrl: 'https://old.test', accessToken: 'old-token' });
+  await vi.waitFor(() => expect(complete).toBeTypeOf('function'));
+  await app.setHostConnection({ serverUrl: 'https://new.test', accessToken: 'new-token' });
+  complete!(new Response('', { status: 404 }));
+  await new Promise(resolve => setImmediate(resolve));
+  expect(app.kanbanController!.serverDataIssue).toBeUndefined();
+});
 it('uploads configuration files through the project server independently of the preview and rejects stale targets',async()=>{
   const {app,directory,post}=await fixture({noParams:true});
   await writeFile(path.join(directory,'configuration.json'),JSON.stringify({version:1,fields:[{name:'image',type:'file',accept:['image/png']}]}));
@@ -269,7 +339,7 @@ describe('Kanban CLI Web workspace', () => {
       if (!String(url).startsWith('https://kanban.test')) { return realFetch(url, options); }
       expect((options?.headers as Record<string, string>).Authorization).toBe('Bearer private-kanban-token');
       if (String(url).endsWith('/api/auth/me')) { return Promise.resolve(new Response(JSON.stringify({ errCode: 0, data: { profile: { userId: 'user', email: 'user@example.com', displayName: 'User' } } }))); }
-      if (String(url).includes('/related-project-revisions')) { return Promise.resolve(new Response('', { status: 404 })); }
+      if (String(url).includes('/related-project-revisions')) { return Promise.resolve(revisionStream()); }
       return Promise.resolve(new Response(JSON.stringify({ errCode: 0, data: { result: 'server' } })));
     });
     await app.setHostConnection({ serverUrl: 'https://kanban.test', accessToken: 'private-kanban-token' });
@@ -293,7 +363,7 @@ describe('Kanban CLI Web workspace', () => {
       expect(options?.headers).toMatchObject({ Authorization: 'Bearer basemap-token' });
       const route = new URL(String(url)).pathname;
       if (route.endsWith('/api/auth/me')) return Promise.resolve(new Response(JSON.stringify({ errCode: 0, data: { profile: { userId: 'user', email: 'user@example.com', displayName: 'User' } } })));
-      if (route.endsWith('/related-project-revisions')) return Promise.resolve(new Response('', { status: 404 }));
+      if (route.endsWith('/related-project-revisions')) return Promise.resolve(revisionStream());
       routes.push(route);
       if (route.includes('/configurations/files/')) return Promise.resolve(new Response(JSON.stringify({ errCode: 404, errMessage: 'API route not found.' }), { status: 404 }));
       expect(JSON.parse(options!.body as string).call).toMatchObject({ operation: 'files.readFile', input: { fileId: file.id } });
@@ -318,7 +388,7 @@ describe('Kanban CLI Web workspace', () => {
     vi.spyOn(globalThis, 'fetch').mockImplementation((url, options) => {
       if (!String(url).startsWith('https://basemap.test')) return original(url, options);
       if (String(url).endsWith('/api/auth/me')) return Promise.resolve(new Response(JSON.stringify({ errCode: 0, data: { profile: { userId: 'user', email: 'user@example.com', displayName: 'User' } } })));
-      if (String(url).includes('/related-project-revisions')) return Promise.resolve(new Response('', { status: 404 }));
+      if (String(url).includes('/related-project-revisions')) return Promise.resolve(revisionStream());
       requests(url);
       return Promise.resolve(new Response('private server detail', { status }));
     });
@@ -340,7 +410,7 @@ describe('Kanban CLI Web workspace', () => {
     vi.spyOn(globalThis, 'fetch').mockImplementation((url, options) => {
       if (!String(url).startsWith('https://basemap.test')) return original(url, options);
       if (String(url).endsWith('/api/auth/me')) return Promise.resolve(new Response(JSON.stringify({ errCode: 0, data: { profile: { userId: 'user', email: 'user@example.com', displayName: 'User' } } })));
-      if (String(url).includes('/related-project-revisions')) return Promise.resolve(new Response('', { status: 404 }));
+      if (String(url).includes('/related-project-revisions')) return Promise.resolve(revisionStream());
       signal = options!.signal as AbortSignal;
       return new Promise<Response>(resolve => { complete = resolve; });
     });

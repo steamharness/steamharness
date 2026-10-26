@@ -1,5 +1,7 @@
 # Unreleased
 
+- Fixed local Kanban to guide users through missing Server projects, sign-in and access issues with the Server address, account settings, an upload dialog and a recheck action. Setup errors stop automatic reconnection; projects are never created or uploaded automatically.
+
 - Fixed: The default project Server follows the build channel: local services for dev and the corresponding site for alpha and main. User-configured addresses retain priority.
 
 - [Fixed] Conversation and Assistant file cards now use the active VS Code file icon theme to match Explorer file and named-folder icons, refreshing on theme changes while ignoring stale responses.
