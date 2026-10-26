@@ -40,11 +40,10 @@ async function verify(language) {
     const title = extension.contributes.viewsContainers.panel.find(panel => panel.id === id).title;
     return title.startsWith('%') ? nls[title.slice(1, -1)] : title;
   };
-  // In source mode the Chinese OS/locale request resolves to an English workbench.
-  const desktop = await desktopLocaleLaunch(language, directory, { sourceMode: language === 'en' });
+  const desktop = await desktopLocaleLaunch(language, directory);
   const log = await fs.open(path.join(proofDir, 'desktop.log'), 'w');
   const child = spawn(desktop.executable, [...desktop.args, '--user-data-dir', profile,
-    '--extensions-dir', path.join(root, '.studio/desktop-extensions'), '--locale=zh-cn', '--disable-workspace-trust',
+    '--extensions-dir', path.join(root, '.studio/desktop-extensions'), `--locale=${language}`, '--disable-workspace-trust',
     '--disable-telemetry', '--skip-welcome', '--skip-release-notes', `--remote-debugging-port=${port}`, folder],
   { cwd: path.join(root, 'upstream/vscode'), env: { ...process.env, ...desktop.env, LANG: 'zh_CN.UTF-8', LC_ALL: 'zh_CN.UTF-8',
     STEAMHARNESS_LOCALE: 'zh-CN', STEAMHARNESS_RUNTIME_LOCALE: 'zh-CN', STEAMHARNESS_SERVER_URL: '', STEAMHARNESS_SERVER_ADMIN_KEY: '' },

@@ -21,7 +21,7 @@ export async function waitForDesktopReady(file, child, timeout = process.env.CI 
   throw new Error(`Studio test extension activation timed out after ${timeout}ms.`);
 }
 
-export async function desktopLocaleLaunch(language, directory, { sourceMode = false } = {}) {
+export async function desktopLocaleLaunch(language, directory) {
   const root = fileURLToPath(new URL('../upstream/vscode/', import.meta.url));
   const product = JSON.parse(readFileSync(path.join(root, 'product.json'), 'utf8'));
   const executable = process.platform === 'darwin' ? path.join(root, '.build/electron', `${product.nameLong}.app`, 'Contents/MacOS', product.nameShort)
@@ -31,9 +31,8 @@ export async function desktopLocaleLaunch(language, directory, { sourceMode = fa
   await mkdir(extension, { recursive: true });
   await symlink(fileURLToPath(new URL('../vendor/', import.meta.url)), path.join(directory, 'vendor'), process.platform === 'win32' ? 'junction' : 'dir');
   await copyFile(path.join(source, 'package.json'), path.join(extension, 'package.json'));
-  // The source-mode scanner always selects package.nls.json. Use the requested
-  // contribution catalog in an isolated extension with the real built code.
-  await copyFile(path.join(source, language.startsWith('zh') ? 'package.nls.zh-cn.json' : 'package.nls.json'), path.join(extension, 'package.nls.json'));
+  // Exercise the real source-mode locale and manifest scanner with both catalogs.
+  for (const name of ['package.nls.json', 'package.nls.zh-cn.json']) { await copyFile(path.join(source, name), path.join(extension, name)); }
   // VS Code identifies an extension's API caller by its physical entrypoint.
   await cp(path.join(source, 'dist'), path.join(extension, 'dist'), { recursive: true });
   for (const name of ['resources', 'l10n']) {
@@ -50,11 +49,11 @@ export async function desktopLocaleLaunch(language, directory, { sourceMode = fa
   }));
   return {
     executable,
-    args: [sourceMode ? root : fileURLToPath(new URL('./desktop-localization-bootstrap.cjs', import.meta.url)),
+    args: [root, `--locale=${language}`,
       ...(process.platform === 'linux' && process.env.CI ? ['--no-sandbox'] : []),
       '--extensionDevelopmentPath', extension, '--extensionDevelopmentPath', readiness],
     waitUntilReady: child => waitForDesktopReady(readyFile, child),
-    env: { STUDIO_TEST_UI_LANGUAGE: sourceMode ? '' : language, STUDIO_TEST_VSCODE_ROOT: root,
+    env: {
       STUDIO_STEAMHARNESS_SOURCE: await resolveMonorepoRoot(fileURLToPath(new URL("../", import.meta.url))),
       NODE_ENV: 'development', VSCODE_DEV: '1', VSCODE_CLI: '1', ELECTRON_ENABLE_LOGGING: '1' },
   };

@@ -50,7 +50,7 @@ export function themeOptions(): { value: string; label: string }[] {
   return [{ value: SYSTEM_THEME, label: t('Follow system') }, ...[...themes].map(([value, label]) => ({ value, label }))];
 }
 
-export function settingsState(studioVersion: string, target: SettingsTarget, providers: SettingsProvider[]): SettingsState {
+export function settingsState(studioVersion: string, target: SettingsTarget, providers: SettingsProvider[], languagePreference = 'system'): SettingsState {
   const configuration = vscode.workspace.getConfiguration();
   const workspaceAvailable = !!vscode.workspace.workspaceFolders?.length || !!vscode.workspace.workspaceFile;
   if (!workspaceAvailable) { target = 'user'; }
@@ -68,7 +68,7 @@ export function settingsState(studioVersion: string, target: SettingsTarget, pro
     }
     return { ...item, value, configured, overridden: !workspace && item.section === 'editor' && inspected?.workspaceValue !== undefined };
   });
-  return { target, workspaceAvailable, items, language: vscode.env.language, studioVersion, vscodeVersion: vscode.version, providers };
+  return { target, workspaceAvailable, items, language: vscode.env.language, languagePreference, studioVersion, vscodeVersion: vscode.version, providers };
 }
 
 export async function updateSetting(key: string, value: unknown, target: SettingsTarget, reset: boolean): Promise<void> {

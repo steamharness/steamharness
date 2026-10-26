@@ -16,7 +16,7 @@ class Emitter {
 async function fixture(t) {
   const focus = new Emitter(), secretsChanged = new Emitter(), configuration = new Emitter(), intervals = new Set(), sessions = [];
   const serverUrl = 'http://127.0.0.1:7126';
-  const f = { profile: { userId: 'user', email: 'user@example.test', displayName: 'User', avatarUrl: 'data:image/png;base64,b2xk' }, requests: 0, messages: [], opened: [], copied: [], commands: new Map(), executed: [] };
+  const f = { profile: { userId: 'user', email: 'user@example.test', displayName: 'User', avatarUrl: 'data:image/png;base64,b2xk' }, languagePreference: 'system', requests: 0, messages: [], opened: [], copied: [], commands: new Map(), executed: [] };
   const defaults = { 'editor.fontSize': 14, 'studio.project.serverUrl': serverUrl };
   const user = {}, workspace = {}, writes = [];
   let stored = JSON.stringify({ serverUrl, accessToken: 'test-token', apiKeyId: 'test-key', user: f.profile });
@@ -31,7 +31,16 @@ async function fixture(t) {
     ConfigurationTarget: { Global: 1, Workspace: 2 },
     commands: {
       registerCommand: (id, callback) => { f.commands.set(id, callback); return disposable; },
-      executeCommand: async (id, ...args) => { f.executed.push({ id, args }); },
+      executeCommand: async (id, ...args) => {
+        f.executed.push({ id, args });
+        if (id === 'studio.internalGetDisplayLanguage') { return f.languagePreference; }
+        if (id === 'studio.internalSetDisplayLanguage') {
+          await f.beforeLanguage?.(args[0]);
+          if (f.languageError) { throw new Error('Fixture language failure'); }
+          if (!f.cancelLanguage) { f.languagePreference = args[0]; }
+          return f.languagePreference;
+        }
+      },
     },
     authentication: { registerAuthenticationProvider: (_id, _label, provider) => {
       f.provider = provider; provider.onDidChangeSessions(event => sessions.push(event)); return disposable;
@@ -99,6 +108,49 @@ test('settings and account commands share one tab and navigate to their requeste
   assert.equal(f.panel, panel);
   assert.equal(f.messages.filter(message => message.type === 'settings-navigate').at(-1).state.section, 'general');
   assert.ok(!JSON.stringify(f.messages).includes('test-token'));
+});
+
+test('display language uses the native preference, validates modes, and reflects cancellation and failures', async t => {
+  const f = await fixture(t);
+  f.commands.get('studio.openSettings')();
+  f.languagePreference = 'en';
+  await f.message({ type: 'ready' });
+  assert.equal(f.messages.filter(message => message.type === 'settings').at(-1).state.languagePreference, 'en');
+  for (const value of ['zh-cn', 'en', 'system']) {
+    await f.message({ type: 'settings-language', value });
+    const response = f.messages.at(-1);
+    assert.equal(response.type, 'settings-language-result'); assert.equal(response.value, value); assert.equal(response.message, undefined);
+  }
+  f.cancelLanguage = true;
+  await f.message({ type: 'settings-language', value: 'zh-cn' });
+  assert.equal(f.messages.at(-1).value, 'system');
+  f.cancelLanguage = false; f.languageError = true;
+  await f.message({ type: 'settings-language', value: 'en' });
+  assert.equal(f.messages.at(-1).value, 'system'); assert.equal(f.messages.at(-1).message, 'Fixture language failure');
+  const calls = f.executed.filter(call => call.id === 'studio.internalSetDisplayLanguage').length;
+  for (const value of ['fr', undefined, { locale: 'zh-cn' }]) {
+    await f.message({ type: 'settings-language', value });
+    assert.equal(f.messages.at(-1).message, 'Unsupported display language.');
+  }
+  assert.equal(f.executed.filter(call => call.id === 'studio.internalSetDisplayLanguage').length, calls);
+  assert.equal(f.writes.length, 0, 'Display language must not be written as an editor configuration key');
+});
+
+test('a reopened settings tab serializes language changes and discards the previous tab response', async t => {
+  const f = await fixture(t);
+  f.commands.get('studio.openSettings')(); await f.message({ type: 'ready' });
+  const oldPanel = f.panel;
+  let release;
+  f.beforeLanguage = value => value === 'zh-cn' ? new Promise(resolve => { release = resolve; }) : undefined;
+  const oldWrite = f.message({ type: 'settings-language', value: 'zh-cn' });
+  await until(() => release);
+  oldPanel.dispose(); f.commands.get('studio.openSettings')(); await f.message({ type: 'ready' });
+  const newWrite = f.message({ type: 'settings-language', value: 'en' });
+  release(); await Promise.all([oldWrite, newWrite]);
+  assert.equal(oldPanel.webview.messages.some(message => message.type === 'settings-language-result'), false);
+  const responses = f.panel.webview.messages.filter(message => message.type === 'settings-language-result');
+  assert.equal(responses.length, 1); assert.equal(responses[0].value, 'en');
+  assert.equal(f.languagePreference, 'en');
 });
 
 test('deserialization restores navigation only and publishes the existing account session', async t => {

@@ -21,6 +21,11 @@ export function settingsFixture(language = 'en', providers = [], target = 'user'
   return module.exports.settingsState('0.1.0', target, providers);
 }
 
+export async function selectSettingsOption(page, control, value) {
+  await control.click();
+  await page.locator('.settings-dropdown-menu:popover-open').locator(`[role="option"][data-value="${value}"]`).click();
+}
+
 export function settingsThemeCss(theme) {
   const dark = theme !== 'light';
   const variables = {

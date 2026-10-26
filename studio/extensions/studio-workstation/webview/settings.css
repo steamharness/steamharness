@@ -1,14 +1,14 @@
 #account-app.settings-root { width: 100%; height: 100vh; margin: 0; padding: 0; }
-.settings-layout { display: grid; grid-template-columns: 248px minmax(0, 1fr); max-width: 1360px; height: 100%; margin: 0 auto; }
+.settings-layout { display: grid; grid-template-columns: 260px minmax(0, 1fr); max-width: 1360px; height: 100%; margin: 0 auto; }
 .settings-sidebar { display: flex; flex-direction: column; gap: 24px; min-width: 0; min-height: 0; padding: 42px 20px 24px 28px; overflow: auto; }
-.settings-identity { justify-content: flex-start; gap: 12px; width: 100%; padding: 8px; background: transparent; color: var(--vscode-foreground); text-align: left; }
+.settings-identity { justify-content: flex-start; gap: 10px; width: 100%; padding: 8px; background: transparent; color: var(--vscode-foreground); text-align: left; }
 .settings-identity:hover { background: var(--vscode-toolbar-hoverBackground); }
 .settings-avatar { position: relative; display: grid; place-items: center; flex: 0 0 40px; width: 40px; height: 40px; overflow: hidden; border-radius: 10px; background: var(--vscode-button-secondaryBackground); }
 .settings-avatar > .codicon { font-size: 24px; }
 .settings-avatar img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
-.settings-identity-text { display: flex; flex-direction: column; min-width: 0; line-height: 1.5; }
-.settings-identity-text strong, .settings-identity-text > span { overflow-wrap: anywhere; }
-.settings-identity-text strong { font-size: 14px; font-weight: 600; }
+.settings-identity-text { display: flex; flex: 1; flex-direction: column; gap: 2px; min-width: 0; line-height: 1.5; }
+.settings-identity-text strong, .settings-identity-text > span { display: block; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; overflow-wrap: normal; }
+.settings-identity-text strong { font-size: 13px; font-weight: 600; }
 .settings-identity-text > span { font-size: 11px; }
 .settings-search { position: relative; }
 .settings-search > .codicon { position: absolute; left: 10px; top: 11px; pointer-events: none; color: var(--vscode-descriptionForeground); }
@@ -36,9 +36,20 @@
 .setting-row label, .setting-label { display: block; margin: 0; font-size: 13px; font-weight: 500; overflow-wrap: anywhere; }
 .setting-description { margin-top: 4px; font-size: 12px; line-height: 1.6; }
 .setting-controls { display: flex; align-items: center; justify-content: flex-end; gap: 6px; min-width: 0; }
-.setting-controls input, .setting-controls select { min-width: 0; width: 100%; }
-.settings-root select { min-width: 0; max-width: 100%; min-height: 34px; padding: 5px 24px 5px 10px; font: inherit; border: 1px solid var(--vscode-dropdown-border, var(--vscode-panel-border)); border-radius: 5px; color: var(--vscode-dropdown-foreground, var(--vscode-input-foreground)); background: var(--vscode-dropdown-background, var(--vscode-input-background)); }
-.settings-root select:focus-visible, .settings-main:focus-visible { outline: 1px solid var(--vscode-focusBorder); outline-offset: 2px; }
+.setting-controls input, .setting-controls .settings-dropdown { min-width: 0; width: 100%; }
+.settings-dropdown { justify-content: space-between; gap: 10px; min-width: 0; max-width: 100%; min-height: 34px; padding: 5px 10px; text-align: left; border: 1px solid var(--vscode-dropdown-border, var(--vscode-panel-border)); border-radius: 5px; color: var(--vscode-dropdown-foreground, var(--vscode-input-foreground)); background: var(--vscode-dropdown-background, var(--vscode-input-background)); }
+.settings-dropdown:hover:not(:disabled) { border-color: var(--vscode-focusBorder); }
+.settings-dropdown-label { min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.settings-dropdown > .codicon { flex-shrink: 0; }
+.settings-dropdown:focus-visible, .settings-main:focus-visible { outline: 1px solid var(--vscode-focusBorder); outline-offset: 2px; }
+.settings-dropdown-menu { position: fixed; inset: auto; margin: 0; padding: 4px; overflow: auto; border: 1px solid var(--vscode-menu-border, var(--vscode-widget-border, var(--vscode-panel-border))); border-radius: 8px; background: var(--vscode-menu-background, var(--vscode-editorWidget-background, var(--vscode-sideBar-background))); color: var(--vscode-menu-foreground, var(--vscode-foreground)); box-shadow: 0 4px 16px var(--vscode-widget-shadow, #0003); font: inherit; }
+.settings-dropdown-menu::backdrop { background: transparent; }
+.settings-dropdown-option { display: flex; align-items: center; gap: 8px; min-height: 32px; padding: 6px 8px; border: 1px solid transparent; border-radius: 4px; cursor: pointer; }
+.settings-dropdown-option > .codicon { flex-shrink: 0; visibility: hidden; }
+.settings-dropdown-option > span:last-child { min-width: 0; overflow-wrap: anywhere; }
+.settings-dropdown-option[aria-selected="true"] > .codicon { visibility: visible; }
+.settings-dropdown-option.active { background: var(--vscode-menu-selectionBackground, var(--vscode-list-hoverBackground)); color: var(--vscode-menu-selectionForeground, var(--vscode-foreground)); border-color: var(--vscode-menu-selectionBorder, var(--vscode-contrastActiveBorder, transparent)); }
+.settings-dropdown-option[aria-disabled="true"] { opacity: .5; cursor: default; }
 .setting-controls input[type="number"] { max-width: 100px; }
 .setting-controls input[type="checkbox"] { position: relative; appearance: none; width: 36px; height: 21px; flex: 0 0 36px; padding: 0; margin: 0; border-radius: 12px; background: var(--vscode-input-background); border: 1px solid var(--vscode-input-border, var(--vscode-descriptionForeground)); cursor: pointer; }
 .setting-controls input[type="checkbox"]::before { content: ''; position: absolute; width: 15px; height: 15px; top: 2px; left: 2px; border-radius: 50%; background: var(--vscode-descriptionForeground); }
@@ -52,7 +63,7 @@
 .settings-error { padding: 12px 16px; margin-bottom: 20px; border: 1px solid var(--vscode-errorForeground); border-radius: 6px; color: var(--vscode-errorForeground); overflow-wrap: anywhere; }
 .settings-scope { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; margin: -8px 0 24px; }
 .settings-scope label { margin: 0; color: var(--vscode-descriptionForeground); }
-.settings-scope select { min-width: 140px; }
+.settings-scope .settings-dropdown { min-width: 140px; }
 .settings-action-card { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; padding: 20px; }
 .settings-action-card > p { width: 100%; margin-bottom: 2px; }
 .settings-about { padding: 32px; }
@@ -74,7 +85,7 @@
   .settings-main { padding-left: 24px; padding-right: 24px; }
   .setting-row { grid-template-columns: minmax(0, 1fr); gap: 12px; }
   .setting-controls { justify-content: flex-start; }
-  .setting-controls input, .setting-controls select { max-width: 300px; }
+  .setting-controls input, .setting-controls .settings-dropdown { max-width: 300px; }
   .metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .account-details, .meters { grid-template-columns: minmax(0, 1fr); }
 }

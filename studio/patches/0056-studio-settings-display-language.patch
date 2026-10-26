@@ -1,0 +1,270 @@
+diff --git a/src/vs/base/node/nls.ts b/src/vs/base/node/nls.ts
+index 2015d2e098ba1dc65babda700ac604461701a0c4..db72bde15f9c1cfee59eb5d12c6349e6d58bd94f 100644
+--- a/src/vs/base/node/nls.ts
++++ b/src/vs/base/node/nls.ts
+@@ -209,7 +209,8 @@ function defaultNLSConfiguration(userLocale: string, osLocale: string, nlsMetada
+ 	return {
+ 		userLocale,
+ 		osLocale,
+-		resolvedLanguage: 'en',
++		// Source builds ship Studio's bilingual catalogs without generated core NLS tables.
++		resolvedLanguage: process.env['VSCODE_DEV'] && /^zh(?:-|$)/i.test(userLocale) ? 'zh-cn' : 'en',
+ 		defaultMessagesFile: join(nlsMetadataPath, 'nls.messages.json'),
+ 
+ 		// NLS: below 2 are a relic from old times only used by vscode-nls and deprecated
+diff --git a/src/vs/platform/extensionManagement/common/extensionsScannerService.ts b/src/vs/platform/extensionManagement/common/extensionsScannerService.ts
+index df80d99ff537ede4af63d72e2f8bbdd6be38f7a7..06dbdce077b34ec67747be3e91bd7719b4f7cc32 100644
+--- a/src/vs/platform/extensionManagement/common/extensionsScannerService.ts
++++ b/src/vs/platform/extensionManagement/common/extensionsScannerService.ts
+@@ -923,7 +923,7 @@ class ExtensionsScanner extends Disposable {
+ 					}
+ 				});
+ 			};
+-			if (nlsConfiguration.devMode || nlsConfiguration.pseudo || !nlsConfiguration.language) {
++			if (nlsConfiguration.pseudo || !nlsConfiguration.language) {
+ 				return c({ localized: joinPath(extensionLocation, 'package.nls.json'), original: null });
+ 			}
+ 			loop(nlsConfiguration.language);
+diff --git a/src/vs/workbench/contrib/localization/common/localization.contribution.ts b/src/vs/workbench/contrib/localization/common/localization.contribution.ts
+index bd739953ef32fab6380a96409646eb056f6f1e75..3376312b53e5028b7ec1270a83a5f02dd258f598 100644
+--- a/src/vs/workbench/contrib/localization/common/localization.contribution.ts
++++ b/src/vs/workbench/contrib/localization/common/localization.contribution.ts
+@@ -10,10 +10,16 @@ import { IExtensionManifest } from '../../../../platform/extensions/common/exten
+ import { SyncDescriptor } from '../../../../platform/instantiation/common/descriptors.js';
+ import { Registry } from '../../../../platform/registry/common/platform.js';
+ import { IWorkbenchContribution } from '../../../common/contributions.js';
+-import { ClearDisplayLanguageAction, ConfigureDisplayLanguageAction } from './localizationsActions.js';
++import { ClearDisplayLanguageAction, ConfigureDisplayLanguageAction, setStudioDisplayLanguage } from './localizationsActions.js';
++import { CommandsRegistry } from '../../../../platform/commands/common/commands.js';
++import { ILocaleService } from '../../../services/localization/common/locale.js';
+ import { IExtensionFeatureTableRenderer, IRenderedData, ITableData, IRowData, IExtensionFeaturesRegistry, Extensions } from '../../../services/extensionManagement/common/extensionFeatures.js';
+ import { ExtensionsRegistry } from '../../../services/extensions/common/extensionsRegistry.js';
+ 
++// Settings can open before the eventual language-pack suggestion contribution starts.
++CommandsRegistry.registerCommand('studio.internalGetDisplayLanguage', async accessor => await accessor.get(ILocaleService).getLocalePreference() ?? 'system');
++CommandsRegistry.registerCommand('studio.internalSetDisplayLanguage', setStudioDisplayLanguage);
++
+ export class BaseLocalizationWorkbenchContribution extends Disposable implements IWorkbenchContribution {
+ 	constructor() {
+ 		super();
+diff --git a/src/vs/workbench/contrib/localization/common/localizationsActions.ts b/src/vs/workbench/contrib/localization/common/localizationsActions.ts
+index 050dde414fd27f1ecc0af99d412c3679727b92ed..44c1d2531776b7c77ed6372ed9839ab419bf3119 100644
+--- a/src/vs/workbench/contrib/localization/common/localizationsActions.ts
++++ b/src/vs/workbench/contrib/localization/common/localizationsActions.ts
+@@ -11,6 +11,28 @@ import { ServicesAccessor } from '../../../../platform/instantiation/common/inst
+ import { ILanguagePackItem, ILanguagePackService } from '../../../../platform/languagePacks/common/languagePacks.js';
+ import { ILocaleService } from '../../../services/localization/common/locale.js';
+ import { IExtensionsWorkbenchService } from '../../extensions/common/extensions.js';
++import { IEnvironmentService } from '../../../../platform/environment/common/environment.js';
++import { studioLocaleStrings } from '../../../services/localization/common/studioLocaleStrings.js';
++
++export async function setStudioDisplayLanguage(accessor: ServicesAccessor, language: string): Promise<string> {
++	const localeService = accessor.get(ILocaleService);
++	if (language === 'system') {
++		await localeService.clearLocalePreference();
++	} else if (language === 'en' || language === 'zh-cn') {
++		const packs = accessor.get(ILanguagePackService);
++		const installed = await packs.getInstalledLanguages();
++		const source = !accessor.get(IEnvironmentService).isBuilt;
++		let item = installed.find(item => item.id === language);
++		if (!item && (source || language === 'en')) { item = { id: language, label: language === 'en' ? 'English' : '简体中文' }; }
++		if (!item) { item = (await packs.getAvailableLanguages()).find(item => item.id === language); }
++		if (!item) { throw new Error(studioLocaleStrings.unavailable); }
++		// Source Studio provides its own en/zh-cn catalogs; packaged builds use the installed/gallery pack.
++		await localeService.setLocale(item);
++	} else {
++		throw new Error(studioLocaleStrings.unsupported);
++	}
++	return await localeService.getLocalePreference() ?? 'system';
++}
+ 
+ export class ConfigureDisplayLanguageAction extends Action2 {
+ 	public static readonly ID = 'workbench.action.configureLocale';
+diff --git a/src/vs/workbench/services/localization/browser/localeService.ts b/src/vs/workbench/services/localization/browser/localeService.ts
+index 554ecb2bce94303edb50d6897b5b1c2846192cd1..aeb1649045e3d04e2fff14b1515e21a9629e5167 100644
+--- a/src/vs/workbench/services/localization/browser/localeService.ts
++++ b/src/vs/workbench/services/localization/browser/localeService.ts
+@@ -34,6 +34,10 @@ const localeStorage = new class LocaleStorage {
+ 		this.doClearLocaleToCookie();
+ 	}
+ 
++	getLocale(): string | undefined {
++		return localStorage.getItem(LocaleStorage.LOCAL_STORAGE_LOCALE_KEY) ?? undefined;
++	}
++
+ 	private doClearLocaleToCookie(): void {
+ 		document.cookie = `${LocaleStorage.LOCAL_STORAGE_LOCALE_KEY}=;path=/;max-age=0`;
+ 	}
+@@ -61,9 +65,13 @@ export class WebLocaleService implements ILocaleService {
+ 		@IProductService private readonly productService: IProductService
+ 	) { }
+ 
++	async getLocalePreference(): Promise<string | undefined> {
++		return localeStorage.getLocale();
++	}
++
+ 	async setLocale(languagePackItem: ILanguagePackItem, _skipDialog = false): Promise<void> {
+ 		const locale = languagePackItem.id;
+-		if (locale === Language.value() || (!locale && Language.value() === navigator.language.toLowerCase())) {
++		if (locale === Language.value() && locale === await this.getLocalePreference()) {
+ 			return;
+ 		}
+ 		if (locale) {
+diff --git a/src/vs/workbench/services/localization/common/locale.ts b/src/vs/workbench/services/localization/common/locale.ts
+index 87cbf00a7c729d93d29da837ff26b045bba89c7e..228c81242ce3e2157fa867a09accc737f77b871b 100644
+--- a/src/vs/workbench/services/localization/common/locale.ts
++++ b/src/vs/workbench/services/localization/common/locale.ts
+@@ -10,6 +10,7 @@ export const ILocaleService = createDecorator<ILocaleService>('localizationServi
+ 
+ export interface ILocaleService {
+ 	readonly _serviceBrand: undefined;
++	getLocalePreference(): Promise<string | undefined>;
+ 	setLocale(languagePackItem: ILanguagePackItem, skipDialog?: boolean): Promise<void>;
+ 	clearLocalePreference(): Promise<void>;
+ }
+diff --git a/src/vs/workbench/services/localization/common/studioLocaleStrings.ts b/src/vs/workbench/services/localization/common/studioLocaleStrings.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..696c1491eed6041e26aa40a92e93f2ca72f6b31d
+--- /dev/null
++++ b/src/vs/workbench/services/localization/common/studioLocaleStrings.ts
+@@ -0,0 +1,30 @@
++/*---------------------------------------------------------------------------------------------
++ *  Copyright (c) Microsoft Corporation. All rights reserved.
++ *  Licensed under the MIT License. See License.txt in the project root for license information.
++ *--------------------------------------------------------------------------------------------*/
++
++import { language } from '../../../../base/common/platform.js';
++import { localize } from '../../../../nls.js';
++
++const defaults = {
++	writeFailed: localize('studio.locale.writeFailed', "Unable to save display language."),
++	unsupported: localize('studio.locale.unsupported', "Unsupported display language."),
++	unavailable: localize('studio.locale.unavailable', "The selected language pack is unavailable. Please try again."),
++	system: localize('studio.locale.system', "System Language"),
++	restart: localize('studio.locale.restart', "&&Restart"),
++	restartMessage: localize('studio.locale.restartMessage', "Restart {0} to switch to {1}?"),
++	restartDetail: localize('studio.locale.restartDetail', "To change the display language to {0}, {1} needs to restart."),
++};
++
++// Source builds have Studio catalogs before any core language pack is installed.
++const chinese: typeof defaults = {
++	writeFailed: "无法保存显示语言。",
++	unsupported: "不支持此显示语言。",
++	unavailable: "所选语言包暂不可用，请重试。",
++	system: "系统语言",
++	restart: "重启(&&R)",
++	restartMessage: "是否重启 {0} 以切换为{1}？",
++	restartDetail: "需要重启 {1} 才能将显示语言切换为{0}。",
++};
++
++export const studioLocaleStrings = language === 'zh-cn' ? chinese : defaults;
+diff --git a/src/vs/workbench/services/localization/electron-browser/localeService.ts b/src/vs/workbench/services/localization/electron-browser/localeService.ts
+index 20223417ff641a8e95d3b7828ca5001817959bb1..52345290054f1a78adeffae716dc42874bd82e59 100644
+--- a/src/vs/workbench/services/localization/electron-browser/localeService.ts
++++ b/src/vs/workbench/services/localization/electron-browser/localeService.ts
+@@ -22,6 +22,9 @@ import { IHostService } from '../../host/browser/host.js';
+ import { IDialogService } from '../../../../platform/dialogs/common/dialogs.js';
+ import { IProductService } from '../../../../platform/product/common/productService.js';
+ import { InstantiationType, registerSingleton } from '../../../../platform/instantiation/common/extensions.js';
++import { studioLocaleStrings } from '../common/studioLocaleStrings.js';
++import { format } from '../../../../base/common/strings.js';
++import { FileOperationError, FileOperationResult } from '../../../../platform/files/common/files.js';
+ 
+ // duplicate of IExtensionsViewPaneContainer in contrib
+ interface IExtensionsViewPaneContainer extends IViewPaneContainer {
+@@ -51,6 +54,17 @@ class NativeLocaleService implements ILocaleService {
+ 		@IProductService private readonly productService: IProductService
+ 	) { }
+ 
++	async getLocalePreference(): Promise<string | undefined> {
++		try {
++			const content = await this.textFileService.read(this.environmentService.argvResource, { encoding: 'utf8' });
++			const value = parse<{ locale?: unknown }>(content.value)?.locale;
++			return typeof value === 'string' ? value.toLowerCase() : undefined;
++		} catch (error) {
++			if (error instanceof FileOperationError && error.fileOperationResult === FileOperationResult.FILE_NOT_FOUND) { return undefined; }
++			throw error;
++		}
++	}
++
+ 	private async validateLocaleFile(): Promise<boolean> {
+ 		try {
+ 			const content = await this.textFileService.read(this.environmentService.argvResource, { encoding: 'utf8' });
+@@ -59,6 +73,7 @@ class NativeLocaleService implements ILocaleService {
+ 			// https://github.com/microsoft/vscode/blob/32d40cf44e893e87ac33ac4f08de1e5f7fe077fc/src/main.js#L238-L246
+ 			parse(content.value);
+ 		} catch (error) {
++			if (error instanceof FileOperationError && error.fileOperationResult === FileOperationResult.FILE_NOT_FOUND) { return true; }
+ 			this.notificationService.notify({
+ 				severity: Severity.Error,
+ 				message: localize('argvInvalid', 'Unable to write display language. Please open the runtime settings, correct errors/warnings in it and try again.'),
+@@ -87,7 +102,13 @@ class NativeLocaleService implements ILocaleService {
+ 
+ 	async setLocale(languagePackItem: ILanguagePackItem, skipDialog = false): Promise<void> {
+ 		const locale = languagePackItem.id;
+-		if (locale === Language.value() || (!locale && Language.isDefaultVariant())) {
++		const preference = await this.getLocalePreference();
++		if (locale === Language.value() && locale === preference) {
++			return;
++		}
++		// Pinning the currently active language still needs to persist an explicit preference.
++		if (locale === Language.value()) {
++			if (!await this.writeLocaleValue(locale)) { throw new Error(studioLocaleStrings.writeFailed); }
+ 			return;
+ 		}
+ 		const installedLanguages = await this.languagePackService.getInstalledLanguages();
+@@ -95,7 +116,8 @@ class NativeLocaleService implements ILocaleService {
+ 
+ 			// Only Desktop has the concept of installing language packs so we only do this for Desktop
+ 			// and only if the language pack is not installed
+-			if (!installedLanguages.some(installedLanguage => installedLanguage.id === languagePackItem.id)) {
++			const studioSourceLanguage = !this.environmentService.isBuilt && (locale === 'zh-cn' || locale === 'en');
++			if (!studioSourceLanguage && !installedLanguages.some(installedLanguage => installedLanguage.id === languagePackItem.id)) {
+ 
+ 				// Only actually install a language pack from Microsoft
+ 				if (languagePackItem.galleryExtension?.publisher.toLowerCase() !== 'ms-ceintl') {
+@@ -121,34 +143,31 @@ class NativeLocaleService implements ILocaleService {
+ 			if (!skipDialog && !await this.showRestartDialog(languagePackItem.label)) {
+ 				return;
+ 			}
+-			await this.writeLocaleValue(locale);
++			if (!await this.writeLocaleValue(locale)) { throw new Error(studioLocaleStrings.writeFailed); }
+ 			await this.hostService.restart();
+ 		} catch (err) {
+ 			this.notificationService.error(err);
++			throw err;
+ 		}
+ 	}
+ 
+ 	async clearLocalePreference(): Promise<void> {
+ 		try {
+-			await this.writeLocaleValue(undefined);
+-			if (!Language.isDefaultVariant()) {
+-				await this.showRestartDialog('English');
+-			}
++			if (await this.getLocalePreference() === undefined) { return; }
++			if (!await this.showRestartDialog(studioLocaleStrings.system)) { return; }
++			if (!await this.writeLocaleValue(undefined)) { throw new Error(studioLocaleStrings.writeFailed); }
++			await this.hostService.restart();
+ 		} catch (err) {
+ 			this.notificationService.error(err);
++			throw err;
+ 		}
+ 	}
+ 
+ 	private async showRestartDialog(languageName: string): Promise<boolean> {
+ 		const { confirmed } = await this.dialogService.confirm({
+-			message: localize('restartDisplayLanguageMessage1', "Restart {0} to switch to {1}?", this.productService.nameLong, languageName),
+-			detail: localize(
+-				'restartDisplayLanguageDetail1',
+-				"To change the display language to {0}, {1} needs to restart.",
+-				languageName,
+-				this.productService.nameLong
+-			),
+-			primaryButton: localize({ key: 'restart', comment: ['&& denotes a mnemonic character'] }, "&&Restart"),
++			message: format(studioLocaleStrings.restartMessage, this.productService.nameLong, languageName),
++			detail: format(studioLocaleStrings.restartDetail, languageName, this.productService.nameLong),
++			primaryButton: studioLocaleStrings.restart,
+ 		});
+ 
+ 		return confirmed;

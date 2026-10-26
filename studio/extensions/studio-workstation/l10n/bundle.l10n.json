@@ -665,6 +665,8 @@
   "At word wrap column": "At word wrap column",
   "Auto save": "Auto save",
   "Change language": "Change language",
+  "Unsupported display language.": "Unsupported display language.",
+  "Unable to save display language.": "Unable to save display language.",
   "Choose an installed theme or follow your system appearance.": "Choose an installed theme or follow your system appearance.",
   "Choose the application language. A restart may be required.": "Choose the application language. A restart may be required.",
   "Choose when edited files are saved automatically.": "Choose when edited files are saved automatically.",

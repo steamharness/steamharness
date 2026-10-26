@@ -26,6 +26,8 @@ export class AccountController implements vscode.Disposable {
   private viewState: SettingsViewState = { section: 'general', target: 'user' };
   private settingsTimer?: ReturnType<typeof setTimeout>;
   private settingWrites: Promise<void> = Promise.resolve();
+  private languagePreference = 'system';
+  private languageWrites: Promise<void> = Promise.resolve();
   private readonly account: Account;
   private readonly disposables: vscode.Disposable[] = [];
   private readonly sections = new AccountSections(states => {
@@ -126,6 +128,7 @@ export class AccountController implements vscode.Disposable {
 
   async initialize(): Promise<void> {
     await vscode.commands.executeCommand('setContext', 'studio.accountAvailable', true);
+    await this.readLanguagePreference();
     await this.account.restore();
     const refresh = (): void => {
       if (vscode.window.state.focused) {
@@ -178,9 +181,14 @@ export class AccountController implements vscode.Disposable {
   }
 
   private settingsSnapshot(): SettingsState {
-    const state = settingsState(this.context.extension.packageJSON.version, this.viewState.target ?? 'user', this.sections.getProviders());
+    const state = settingsState(this.context.extension.packageJSON.version, this.viewState.target ?? 'user', this.sections.getProviders(), this.languagePreference);
     this.viewState.target = state.target;
     return state;
+  }
+
+  private async readLanguagePreference(): Promise<void> {
+    const value = await vscode.commands.executeCommand<string>('studio.internalGetDisplayLanguage').then(undefined, () => undefined);
+    if (typeof value === 'string') { this.languagePreference = value; }
   }
 
   private scheduleSettings(): void {
@@ -205,7 +213,9 @@ export class AccountController implements vscode.Disposable {
     }), panel.webview.onDidReceiveMessage(async (message) => {
       if (this.panel !== panel || !message || typeof message !== 'object') { return; }
       if (message.type === 'ready') {
-        pageGeneration++;
+        const generation = ++pageGeneration;
+        await this.readLanguagePreference();
+        if (this.panel !== panel || pageGeneration !== generation) { return; }
         this.publishSettings();
         await panel.webview.postMessage({ type: 'account', state: this.getState() });
         await panel.webview.postMessage({ type: 'account-sections', states: this.sections.getStates() });
@@ -240,9 +250,28 @@ export class AccountController implements vscode.Disposable {
         });
         return;
       }
+      if (message.type === 'settings-language') {
+        const generation = pageGeneration;
+        let failure: string | undefined;
+        const write = this.languageWrites.then(async () => {
+          if (!['system', 'en', 'zh-cn'].includes(message.value)) { throw new Error(t('Unsupported display language.')); }
+          const value = await vscode.commands.executeCommand<string>('studio.internalSetDisplayLanguage', message.value);
+          if (typeof value !== 'string') { throw new Error(t('Unable to save display language.')); }
+          this.languagePreference = value;
+        });
+        this.languageWrites = write.catch(() => undefined);
+        try {
+          await write;
+        } catch (error) {
+          failure = error instanceof Error ? error.message : t('Unable to save display language.');
+        }
+        if (this.panel !== panel || pageGeneration !== generation) { this.publishSettings(); return; }
+        await panel.webview.postMessage({ type: 'settings-language-result', value: this.languagePreference, message: failure });
+        return;
+      }
       if (message.type === 'settings-action') {
         const commands: Record<string, string> = {
-          language: 'workbench.action.configureLocale', keybindings: 'workbench.action.openGlobalKeybindings',
+          keybindings: 'workbench.action.openGlobalKeybindings',
           'json-user': 'workbench.action.openSettingsJson', 'json-workspace': 'workbench.action.openWorkspaceSettingsFile',
         };
         try {

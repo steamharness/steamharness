@@ -1,5 +1,6 @@
-import { t, locale } from './localization';
+import { t } from './localization';
 import { renderAccountSections } from './account-sections';
+import { SettingsDropdown } from './settings-dropdown';
 import type { AccountState } from '../src/workflow-auth-client';
 import type { AccountSectionState } from '../src/account-section-types';
 import type { SettingState, SettingsState, SettingsTarget, SettingsViewState } from '../src/settings-types';
@@ -39,7 +40,7 @@ export function createSettingsView(root: HTMLElement, vscode: WebviewApi): { acc
       </aside>
       <section id="settings-main" class="settings-main" aria-label="${t('Settings')}">
         <header class="settings-page-header"><div><p class="settings-eyebrow">SteamHarness Studio</p><h1 id="settings-title">${t('General')}</h1></div><span id="settings-save-status" class="muted" role="status" aria-live="polite"></span></header>
-        <div id="settings-scope" class="settings-scope" hidden><label for="settings-target">${t('Settings scope')}</label><select id="settings-target"><option value="user">${t('User')}</option><option value="workspace">${t('Workspace')}</option></select></div>
+        <div id="settings-scope" class="settings-scope" hidden><label for="settings-target">${t('Settings scope')}</label><button id="settings-target" type="button" aria-label="${t('Settings scope')}"></button></div>
         <div id="settings-error" class="settings-error" role="alert" hidden></div>
         <section id="settings-general" class="settings-panel" aria-label="${t('General')}"></section>
         <section id="settings-editor" class="settings-panel" aria-label="${t('Editor')}" hidden></section>
@@ -52,19 +53,35 @@ export function createSettingsView(root: HTMLElement, vscode: WebviewApi): { acc
   const find = <T extends HTMLElement>(id: string): T => root.querySelector<T>(`#${id}`)!;
   const navigation = find<HTMLElement>('settings-navigation');
   const search = find<HTMLInputElement>('settings-search');
-  const target = find<HTMLSelectElement>('settings-target');
+  const target = find<HTMLButtonElement>('settings-target');
   const main = find<HTMLElement>('settings-main');
   const sections = find<HTMLElement>('account-sections');
   const saveStatus = find<HTMLElement>('settings-save-status');
   const edits = new Map<string, { value: string | number | boolean; saving: boolean; error?: string }>();
   const rows = new Map<string, HTMLElement>();
   const groups = new Map<string, HTMLElement>();
+  const dropdowns = new Map<string, SettingsDropdown>();
   let snapshot: SettingsState | undefined;
   let account: AccountState | undefined;
   let providers: AccountSectionState[] = [];
   let view: SettingsViewState = { section: 'general', query: '', target: 'user', ...vscode.getState?.() };
   let scrollTimer: ReturnType<typeof setTimeout> | undefined;
   let restoredScroll: number | undefined;
+  let languageSaving = false;
+  let languageError = '';
+  let languageDropdown: SettingsDropdown | undefined;
+  const targetDropdown = new SettingsDropdown(target, () => {
+    view.target = target.value === 'workspace' ? 'workspace' : 'user';
+    persist(); vscode.postMessage({ type: 'settings-target', target: view.target });
+  });
+  const languageOptions = [
+    { value: 'system', label: t('Follow system') }, { value: 'zh-cn', label: '简体中文' }, { value: 'en', label: 'English' },
+  ];
+
+  function closeDropdowns(): void {
+    for (const dropdown of dropdowns.values()) { dropdown.close(); }
+    targetDropdown.close(); languageDropdown?.close();
+  }
 
   function persist(): void {
     const state: SettingsViewState = { section: view.section, query: search.value, target: view.target, scroll: restoredScroll ?? main.scrollTop };
@@ -83,6 +100,7 @@ export function createSettingsView(root: HTMLElement, vscode: WebviewApi): { acc
   }
 
   function navigate(section: string, query = '', scroll = 0): void {
+    closeDropdowns();
     restoredScroll = scroll > 0 ? scroll : undefined;
     view.section = section;
     view.query = query;
@@ -131,7 +149,7 @@ export function createSettingsView(root: HTMLElement, vscode: WebviewApi): { acc
     const item = snapshot?.items.find(item => item.key === key);
     const row = rows.get(key);
     if (!item || !row) { return; }
-    const input = row.querySelector<HTMLInputElement | HTMLSelectElement>('[data-setting-input]')!;
+    const input = row.querySelector<HTMLInputElement | HTMLButtonElement>('[data-setting-input]')!;
     const destination = settingTarget(item);
     const id = editId(key, destination);
     if (edits.get(id)?.saving) { return; }
@@ -149,16 +167,14 @@ export function createSettingsView(root: HTMLElement, vscode: WebviewApi): { acc
 
   function updateRow(item: SettingState): void {
     const row = rows.get(item.key)!;
-    const input = row.querySelector<HTMLInputElement | HTMLSelectElement>('[data-setting-input]')!;
-    if (input instanceof HTMLSelectElement && JSON.stringify(item.options) !== input.dataset.options) {
-      input.replaceChildren(...(item.options ?? []).map(option => { const node = element('option', '', option.label); node.value = option.value; return node; }));
-      input.dataset.options = JSON.stringify(item.options);
-    }
+    const input = row.querySelector<HTMLInputElement | HTMLButtonElement>('[data-setting-input]')!;
     const destination = settingTarget(item);
     const edit = edits.get(editId(item.key, destination));
     const saving = edit?.saving ?? false;
+    const value = edit?.value ?? item.value;
+    const dropdown = dropdowns.get(item.key);
+    if (dropdown) { dropdown.update(item.options ?? [], String(value), saving); }
     if (input.dataset.target !== destination || input.disabled || document.activeElement !== input) {
-      const value = edit?.value ?? item.value;
       if (input instanceof HTMLInputElement && item.type === 'boolean') { input.checked = value === true; }
       else { input.value = String(value); }
     }
@@ -187,7 +203,7 @@ export function createSettingsView(root: HTMLElement, vscode: WebviewApi): { acc
         const label = element('label', 'setting-label', item.label); label.htmlFor = `setting-${item.key}`;
         const copy = element('div', 'setting-copy'); copy.append(label, element('p', 'muted setting-description', item.description), element('p', 'setting-source'));
         const controls = element('div', 'setting-controls');
-        const input = item.type === 'select' ? element('select') : element('input');
+        const input = item.type === 'select' ? element('button') : element('input');
         input.id = label.htmlFor; input.dataset.settingInput = item.key; input.setAttribute('aria-label', item.label);
         if (input instanceof HTMLInputElement) {
           input.type = item.type === 'boolean' ? 'checkbox' : item.type === 'number' ? 'number' : 'text';
@@ -204,7 +220,8 @@ export function createSettingsView(root: HTMLElement, vscode: WebviewApi): { acc
         reset.addEventListener('pointerdown', event => event.preventDefault());
         reset.addEventListener('click', () => save(item.key, true));
         const commit = () => save(item.key);
-        if (item.type === 'boolean' || item.type === 'select') { input.addEventListener('change', commit); }
+        if (input instanceof HTMLButtonElement) { dropdowns.set(item.key, new SettingsDropdown(input, commit)); }
+        else if (item.type === 'boolean') { input.addEventListener('change', commit); }
         else {
           input.addEventListener('blur', commit);
           input.addEventListener('keydown', event => { if ((event as KeyboardEvent).key === 'Enter') { input.blur(); } });
@@ -219,12 +236,32 @@ export function createSettingsView(root: HTMLElement, vscode: WebviewApi): { acc
     const appearance = [...groups.values()][0]?.lastElementChild;
     if (appearance && !root.querySelector('#settings-language')) {
       const row = element('div', 'setting-row'); row.id = 'settings-language';
-      const copy = element('div', 'setting-copy'); copy.append(element('span', 'setting-label', t('Display language')), element('p', 'muted setting-description', t('Choose the application language. A restart may be required.')));
-      const button = element('button', 'secondary'); button.type = 'button'; button.dataset.settingsAction = 'language';
-      row.append(copy, button); appearance.append(row);
+      const label = element('label', 'setting-label', t('Display language')); label.htmlFor = 'settings-language-choice';
+      const copy = element('div', 'setting-copy'); copy.append(label, element('p', 'muted setting-description', t('Choose the application language. A restart may be required.')));
+      const controls = element('div', 'setting-controls');
+      const button = element('button'); button.id = label.htmlFor; button.setAttribute('aria-label', t('Display language'));
+      const reset = element('button', 'icon-button setting-reset'); reset.type = 'button'; reset.dataset.languageReset = '';
+      reset.title = t('Restore default'); reset.setAttribute('aria-label', t('Restore default for {0}', t('Display language'))); reset.append(icon('discard'));
+      const error = element('p', 'setting-error'); error.id = 'settings-language-error'; error.setAttribute('role', 'alert'); error.hidden = true;
+      button.setAttribute('aria-describedby', error.id);
+      const chooseLanguage = (value: string): void => {
+        if (languageSaving) { return; }
+        languageSaving = true; languageError = ''; saveStatus.textContent = t('Saving...');
+        languageDropdown!.update(languageOptions, value, true); reset.disabled = true;
+        error.textContent = ''; error.hidden = true; button.setAttribute('aria-invalid', 'false');
+        vscode.postMessage({ type: 'settings-language', value });
+      };
+      languageDropdown = new SettingsDropdown(button, () => chooseLanguage(button.value), true);
+      reset.addEventListener('click', () => chooseLanguage('system'));
+      controls.append(button, reset); row.append(copy, controls, error); appearance.append(row);
     }
-    const language = root.querySelector<HTMLButtonElement>('#settings-language button');
-    if (language) { language.textContent = `${new Intl.DisplayNames([locale()], { type: 'language' }).of(snapshot.language) ?? snapshot.language} · ${t('Change language')}`; }
+    const language = root.querySelector<HTMLButtonElement>('#settings-language-choice');
+    if (language && languageDropdown) {
+      languageDropdown.update(languageOptions, languageSaving ? language.value : snapshot.languagePreference, languageSaving);
+      find('settings-language').querySelector<HTMLButtonElement>('[data-language-reset]')!.disabled = languageSaving || snapshot.languagePreference === 'system';
+      language.setAttribute('aria-invalid', String(!!languageError));
+      const error = find('settings-language-error'); error.textContent = languageError; error.hidden = !languageError;
+    }
     if (!root.querySelector('#settings-editor-actions')) {
       const group = element('section', 'settings-group'); group.id = 'settings-editor-actions';
       group.append(element('h2', '', t('Advanced configuration')));
@@ -235,8 +272,7 @@ export function createSettingsView(root: HTMLElement, vscode: WebviewApi): { acc
       }
       card.prepend(note); group.append(card); find<HTMLElement>('settings-editor').append(group);
     }
-    target.value = snapshot.target;
-    target.options[1].disabled = !snapshot.workspaceAvailable;
+    targetDropdown.update([{ value: 'user', label: t('User') }, { value: 'workspace', label: t('Workspace'), disabled: !snapshot.workspaceAvailable }], snapshot.target);
     find('settings-studio-version').textContent = snapshot.studioVersion;
     find('settings-vscode-version').textContent = snapshot.vscodeVersion;
     filter();
@@ -263,7 +299,7 @@ export function createSettingsView(root: HTMLElement, vscode: WebviewApi): { acc
         }
         const language = root.querySelector<HTMLElement>('#settings-language');
         if (section === 'general' && language) {
-          language.hidden = searching && !`${t('Display language')} ${t('Change language')}`.toLocaleLowerCase().includes(query);
+          language.hidden = searching && !`${t('Display language')} ${languageOptions.map(option => option.label).join(' ')} language locale`.toLocaleLowerCase().includes(query);
           if (searching && !language.hidden) { visible = true; ++matches; }
           if (!language.hidden) { language.closest<HTMLElement>('.settings-group')!.hidden = false; }
         }
@@ -300,7 +336,7 @@ export function createSettingsView(root: HTMLElement, vscode: WebviewApi): { acc
   }
 
   search.value = view.query ?? '';
-  search.addEventListener('input', () => { restoredScroll = undefined; filter(); main.scrollTop = 0; persist(); });
+  search.addEventListener('input', () => { closeDropdowns(); restoredScroll = undefined; filter(); main.scrollTop = 0; persist(); });
   search.addEventListener('keydown', event => { if (event.key === 'Escape') { search.value = ''; filter(); persist(); } });
   navigation.addEventListener('keydown', event => {
     if (!['ArrowUp', 'ArrowDown', 'Home', 'End'].includes(event.key)) { return; }
@@ -310,7 +346,6 @@ export function createSettingsView(root: HTMLElement, vscode: WebviewApi): { acc
     event.preventDefault(); buttons[next]?.focus(); buttons[next]?.click();
   });
   root.addEventListener('keydown', event => { if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'f') { event.preventDefault(); search.focus(); search.select(); } });
-  target.addEventListener('change', () => { view.target = target.value === 'workspace' ? 'workspace' : 'user'; persist(); vscode.postMessage({ type: 'settings-target', target: view.target }); });
   main.addEventListener('scroll', () => { clearTimeout(scrollTimer); scrollTimer = setTimeout(persist, 100); }, { passive: true });
   for (const event of ['wheel', 'touchstart', 'pointerdown', 'keydown']) {
     main.addEventListener(event, () => { restoredScroll = undefined; }, { passive: true });
@@ -338,6 +373,11 @@ export function createSettingsView(root: HTMLElement, vscode: WebviewApi): { acc
       providers = message.states;
       renderAccountSections(sections, providers, message => vscode.postMessage(message));
       filter();
+    } else if (message.type === 'settings-language-result') {
+      languageSaving = false; languageError = message.message ?? '';
+      if (snapshot) { snapshot.languagePreference = message.value; }
+      saveStatus.textContent = [...edits.values()].some(edit => edit.saving) ? t('Saving...') : languageError ? t('Unable to save setting.') : '';
+      renderSettings();
     } else if (message.type === 'settings-saved' || message.type === 'settings-error') {
       const id = editId(message.key, message.target);
       const edit = edits.get(id);
@@ -349,7 +389,7 @@ export function createSettingsView(root: HTMLElement, vscode: WebviewApi): { acc
       if (message.state) { snapshot = message.state; view.target = snapshot?.target; }
       const error = find('settings-error');
       error.textContent = !message.key && message.type === 'settings-error' ? message.message : ''; error.hidden = !error.textContent;
-      saveStatus.textContent = [...edits.values()].some(edit => edit.saving) ? t('Saving...') : message.type === 'settings-saved' ? t('Saved') : t('Unable to save setting.');
+      saveStatus.textContent = languageSaving || [...edits.values()].some(edit => edit.saving) ? t('Saving...') : message.type === 'settings-saved' ? t('Saved') : t('Unable to save setting.');
       renderSettings();
     }
   });
@@ -358,8 +398,9 @@ export function createSettingsView(root: HTMLElement, vscode: WebviewApi): { acc
     accountRoot: find('settings-account'),
     setAccount(state) {
       account = state;
-      find('settings-account-name').textContent = state.user?.displayName || state.user?.email || 'SteamHarness';
-      find('settings-account-label').textContent = state.user ? state.user.email : t('Signed Out');
+      const name = find('settings-account-name'), label = find('settings-account-label');
+      name.textContent = state.user?.displayName || state.user?.email || 'SteamHarness'; name.title = name.textContent;
+      label.textContent = state.user ? state.user.email : t('Signed Out'); label.title = label.textContent;
       const image = find<HTMLImageElement>('settings-avatar-image');
       if (state.user?.avatarUrl) { if (image.getAttribute('src') !== state.user.avatarUrl) { image.src = state.user.avatarUrl; image.hidden = false; } }
       else { image.removeAttribute('src'); image.hidden = true; }

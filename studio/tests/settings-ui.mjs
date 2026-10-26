@@ -3,7 +3,7 @@ import { readFile, mkdir, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { chromium } from '../upstream/vscode/node_modules/playwright/index.mjs';
-import { settingsFixture, settingsThemeCss } from './settings-ui-fixture.mjs';
+import { settingsFixture, settingsThemeCss, selectSettingsOption } from './settings-ui-fixture.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const extension = path.join(root, 'extensions/studio-workstation');
@@ -24,7 +24,7 @@ const send = (type, data) => page.evaluate(message => window.dispatchEvent(new M
 const setting = key => page.locator(`[data-setting-input="${key}"]`);
 const category = id => page.locator(`#settings-navigation [data-section="${id}"]`);
 const last = type => page.evaluate(type => window.messages.filter(message => message.type === type).at(-1), type);
-const account = { status: 'authenticated', revision: 1, serverUrl: 'https://server.example.test', user: { userId: 'user-id', displayName: 'Alex Chen', email: 'alex@example.test' } };
+const account = { status: 'authenticated', revision: 1, serverUrl: 'https://server.example.test', user: { userId: 'user-id', displayName: 'SteamHarness Admin', email: 'admin@steamharness.local' } };
 async function fits() {
   assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true, 'Settings must fit the editor width');
   const overflow = await page.evaluate(() => [...document.querySelectorAll('button,input,select,h1,h2,.setting-label')].filter(node => node.getClientRects().length).filter(node => {
@@ -49,9 +49,36 @@ try {
         assert.equal(await category('general').getAttribute('aria-current'), 'page');
         assert.equal(await page.locator('#settings-navigation button').count(), 4, 'Public settings has no injected category');
         await fits();
-        await setting('workbench.colorTheme').selectOption('Light');
+        assert.equal(await page.locator('select').count(), 0, 'Settings must use page menus, including language and scope');
+        await selectSettingsOption(page, setting('workbench.colorTheme'), 'Light');
         assert.equal((await last('settings-update')).value, 'Light');
         await send('settings-saved', { key: 'workbench.colorTheme', target: 'user' });
+        const languageChoice = page.locator('#settings-language-choice');
+        await languageChoice.click();
+        const menu = page.locator('.settings-dropdown-menu:popover-open');
+        assert.deepEqual(await menu.locator('[role="option"]').evaluateAll(nodes => nodes.map(node => node.dataset.value)), ['system', 'zh-cn', 'en']);
+        assert.deepEqual(await menu.locator('[role="option"] > span:last-child').allTextContents(), [language === 'en' ? 'Follow system' : '跟随系统', '简体中文', 'English']);
+        const menuBounds = await menu.boundingBox();
+        assert.ok(menuBounds.x >= 0 && menuBounds.x + menuBounds.width <= width + 1);
+        assert.ok(menuBounds.y >= 0 && menuBounds.y + menuBounds.height <= 1001);
+        await languageChoice.press('Escape');
+        await selectSettingsOption(page, languageChoice, 'zh-cn');
+        assert.equal((await last('settings-language')).value, 'zh-cn');
+        assert.equal(await languageChoice.isDisabled(), true);
+        await send('settings', { state });
+        assert.equal(await languageChoice.evaluate(node => node.value), 'zh-cn', 'A settings refresh cannot overwrite the pending language');
+        await send('settings-language-result', { value: 'system' });
+        assert.equal(await languageChoice.evaluate(node => node.value), 'system', 'Canceling restart restores the saved mode');
+        await selectSettingsOption(page, languageChoice, 'en');
+        await send('settings-language-result', { value: 'system', message: 'Fixture locale failure' });
+        assert.equal(await page.locator('#settings-language-error').textContent(), 'Fixture locale failure');
+        assert.equal(await languageChoice.isEnabled(), true);
+        await selectSettingsOption(page, languageChoice, 'zh-cn');
+        await send('settings-language-result', { value: 'zh-cn' });
+        assert.equal(await page.locator('#settings-language-error').isVisible(), false);
+        await page.locator('[data-language-reset]').click();
+        assert.equal((await last('settings-language')).value, 'system');
+        await send('settings-language-result', { value: 'system' });
         await setting('studio.recentProjects.limit').fill('22');
         assert.equal((await last('settings-update')).key, 'workbench.colorTheme', 'Text/number controls save on confirmation');
         await setting('studio.recentProjects.limit').press('Enter');
@@ -74,11 +101,11 @@ try {
         await page.locator('[data-reset="editor.fontSize"]').click();
         assert.equal((await last('settings-update')).reset, true);
         await send('settings-saved', { key: 'editor.fontSize', target: 'user' });
-        await setting('editor.wordWrap').selectOption('bounded');
-        await page.locator('#settings-target').selectOption('workspace');
+        await selectSettingsOption(page, setting('editor.wordWrap'), 'bounded');
+        await selectSettingsOption(page, page.locator('#settings-target'), 'workspace');
         assert.equal((await last('settings-target')).target, 'workspace');
         state = { ...state, target: 'workspace' }; await send('settings', { state });
-        await setting('editor.wordWrap').selectOption('on');
+        await selectSettingsOption(page, setting('editor.wordWrap'), 'on');
         assert.equal((await last('settings-update')).target, 'workspace');
         await send('settings-saved', { key: 'editor.wordWrap', target: 'user' });
         assert.equal(await setting('editor.wordWrap').isDisabled(), true, 'A user save cannot acknowledge a pending workspace save');
@@ -91,6 +118,18 @@ try {
         assert.equal(await page.locator('#settings-no-results').isVisible(), true);
         await page.locator('#settings-search').press('Escape');
         await send('account', { state: account }); await category('account').click();
+        for (const [id, value] of [['settings-account-name', account.user.displayName], ['settings-account-label', account.user.email]]) {
+          const node = page.locator(`#${id}`);
+          assert.equal(await node.getAttribute('title'), value);
+          if (await node.isVisible()) {
+            if (width === 1440) { assert.equal(await node.evaluate(node => node.scrollWidth <= node.clientWidth), true, 'The standard account name and email fit the desktop sidebar'); }
+            assert.equal(await node.evaluate(node => node.getBoundingClientRect().height <= parseFloat(getComputedStyle(node).lineHeight) + 1), true, 'Sidebar identity stays on one line');
+            assert.equal(await node.evaluate(node => {
+              const selection = window.getSelection(), range = document.createRange(); range.selectNodeContents(node);
+              selection.removeAllRanges(); selection.addRange(range); const value = selection.toString(); selection.removeAllRanges(); return value;
+            }), value, 'Truncated identity remains fully selectable without the system clipboard');
+          }
+        }
         assert.equal(await page.locator('#profile').isVisible(), true);
         await page.locator('[data-copy="userId"]').click(); assert.equal((await last('copy')).field, 'userId');
         await fits();
@@ -110,6 +149,12 @@ try {
         if ((width === 1440 && theme !== 'contrast') || (width === 360 && theme === 'light')) {
           const name = `settings-${language}-${theme}-${width}.png`;
           await page.screenshot({ path: path.join(output, name), fullPage: true }); screenshots.push(name);
+          if (width === 1440) {
+            await languageChoice.click();
+            const menuName = `settings-${language}-${theme}-language.png`;
+            await page.screenshot({ path: path.join(output, menuName), fullPage: true }); screenshots.push(menuName);
+            await languageChoice.press('Escape');
+          }
         }
         checks.push(`${language}/${theme}/${width}: navigation, scopes, saves, reset, search, account, providers, expiry, layout`);
       }

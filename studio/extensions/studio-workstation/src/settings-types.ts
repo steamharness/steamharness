@@ -40,6 +40,7 @@ export interface SettingsState {
   workspaceAvailable: boolean;
   items: SettingState[];
   language: string;
+  languagePreference: string;
   studioVersion: string;
   vscodeVersion: string;
   providers: SettingsProvider[];

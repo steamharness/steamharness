@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { chromium } from '../upstream/vscode/node_modules/playwright/index.mjs';
-import { settingsFixture, settingsThemeCss } from './settings-ui-fixture.mjs';
+import { settingsFixture, settingsThemeCss, selectSettingsOption } from './settings-ui-fixture.mjs';
 
 const extension = new URL('../extensions/studio-workstation/', import.meta.url);
 const [js, css, chinese] = await Promise.all([
@@ -84,18 +84,69 @@ try {
     checks.push(`${language}: failed edits stay in their scope`);
 
     state = await setup(language);
-    await input('editor.wordWrap').selectOption('bounded');
+    await selectSettingsOption(page, input('editor.wordWrap'), 'bounded');
     await send('settings', { state: workspace });
-    assert.equal(await input('editor.wordWrap').inputValue(), 'off');
+    assert.equal(await input('editor.wordWrap').evaluate(node => node.value), 'off');
     assert.equal(await input('editor.wordWrap').isEnabled(), true);
     await send('settings', { state });
-    assert.equal(await input('editor.wordWrap').inputValue(), 'bounded');
+    assert.equal(await input('editor.wordWrap').evaluate(node => node.value), 'bounded');
     assert.equal(await input('editor.wordWrap').isDisabled(), true);
     state = { ...state, items: state.items.map(item => item.key === 'editor.wordWrap' ? { ...item, value: 'bounded', configured: true } : item) };
     await send('settings-saved', { key: 'editor.wordWrap', target: 'user', state });
-    assert.equal(await input('editor.wordWrap').inputValue(), 'bounded', 'Save acknowledgements must apply the updated snapshot atomically');
+    assert.equal(await input('editor.wordWrap').evaluate(node => node.value), 'bounded', 'Save acknowledgements must apply the updated snapshot atomically');
     assert.equal(await input('editor.wordWrap').isEnabled(), true);
     checks.push(`${language}: pending edits and save acknowledgement`);
+
+    state = await setup(language, 'general');
+    const theme = input('workbench.colorTheme');
+    const menu = page.locator('.settings-dropdown-menu:popover-open');
+    await theme.press('ArrowDown');
+    assert.equal(await theme.getAttribute('aria-expanded'), 'true');
+    await theme.press('End');
+    await send('settings', { state });
+    assert.equal(await menu.isVisible(), true, 'Refreshing unrelated settings must preserve the open menu');
+    assert.equal(await menu.locator('.active').getAttribute('data-value'), 'Light');
+    await theme.press('Escape');
+    assert.equal(await menu.count(), 0); assert.equal((await writes()).length, 0);
+    assert.equal(await theme.evaluate(node => node === document.activeElement), true);
+    await theme.press('Enter'); await theme.press('End'); await theme.press('Enter');
+    assert.equal((await writes()).at(-1).value, 'Light');
+    await send('settings-saved', { key: 'workbench.colorTheme', target: 'user', state: { ...state, items: state.items.map(item => item.key === 'workbench.colorTheme' ? { ...item, value: 'Light' } : item) } });
+    assert.equal(await theme.evaluate(node => node === document.activeElement), true, 'Completing a keyboard selection restores focus');
+    await theme.press('ArrowDown'); await theme.press('Tab');
+    assert.equal(await menu.count(), 0, 'Tab dismisses the menu without committing');
+    assert.equal((await writes()).length, 1);
+    await theme.click(); await page.locator('#settings-search').click();
+    assert.equal(await menu.count(), 0);
+    assert.equal(await page.locator('#settings-search').evaluate(node => node === document.activeElement), true);
+    checks.push(`${language}: dropdown keyboard, refresh and dismissal`);
+
+    state = await setup(language);
+    await send('settings', { state: { ...state, workspaceAvailable: false } });
+    const scope = page.locator('#settings-target');
+    await scope.press('Enter');
+    assert.equal(await menu.locator('[data-value="workspace"]').getAttribute('aria-disabled'), 'true');
+    await scope.press('End'); await scope.press('Enter');
+    assert.equal(await scope.evaluate(node => node.value), 'user');
+    assert.equal(await page.evaluate(() => window.messages.some(message => message.type === 'settings-target')), false);
+    checks.push(`${language}: unavailable workspace is skipped`);
+
+    await page.setViewportSize({ width: 360, height: 450 });
+    state = await setup(language, 'general');
+    const options = Array.from({ length: 35 }, (_, i) => ({ value: `theme-${i}`, label: `Theme ${i} with a long descriptive label` }));
+    state = { ...state, items: state.items.map(item => item.key === 'workbench.colorTheme' ? { ...item, options, value: 'theme-0' } : item) };
+    await send('settings', { state });
+    await theme.click(); await theme.press('End');
+    const bounds = await menu.boundingBox();
+    assert.ok(bounds.x >= 0 && bounds.x + bounds.width <= 361 && bounds.y >= 0 && bounds.y + bounds.height <= 451, 'A long menu fits a short, narrow editor');
+    assert.ok(await menu.evaluate(node => node.scrollTop > 0), 'Keyboard navigation scrolls the option list');
+    assert.equal(await menu.isVisible(), true, 'Scrolling the menu must not close it');
+    await theme.press('Escape');
+    await theme.click();
+    await main.evaluate(node => { node.scrollTop += 24; });
+    await page.waitForFunction(() => !document.querySelector('.settings-dropdown-menu:popover-open'));
+    await page.setViewportSize({ width: 1440, height: 800 });
+    checks.push(`${language}: long menu positioning and scroll`);
 
     state = withFont(await setup(language), 16);
     await send('settings', { state });

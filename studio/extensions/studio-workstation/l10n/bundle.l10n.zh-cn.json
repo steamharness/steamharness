@@ -665,6 +665,8 @@
   "At word wrap column": "按换行列",
   "Auto save": "自动保存",
   "Change language": "切换语言",
+  "Unsupported display language.": "不支持此显示语言。",
+  "Unable to save display language.": "无法保存显示语言。",
   "Choose an installed theme or follow your system appearance.": "选择已安装的主题，或跟随系统外观。",
   "Choose the application language. A restart may be required.": "选择应用的显示语言，切换后可能需要重启。",
   "Choose when edited files are saved automatically.": "选择何时自动保存已编辑的文件。",
