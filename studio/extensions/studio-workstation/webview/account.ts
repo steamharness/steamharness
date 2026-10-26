@@ -1,17 +1,18 @@
 import { t, locale } from './localization';
 import './account.css';
-import { renderAccountSections } from './account-sections';
+import { createSettingsView } from './settings';
 import type { AccountState } from '../src/workflow-auth-client';
 import { installContextMenu, type ContextAction } from './context-menu';
 
-declare function acquireVsCodeApi(): { postMessage(message: unknown): void };
+declare function acquireVsCodeApi(): { postMessage(message: unknown): void; getState?(): import('../src/settings-types').SettingsViewState | undefined; setState?(state: import('../src/settings-types').SettingsViewState): void };
 
-const app = document.querySelector<HTMLElement>('#account-app')!;
 const vscode = acquireVsCodeApi();
+const settings = createSettingsView(document.querySelector<HTMLElement>('#account-app')!, vscode);
+const app = settings.accountRoot;
 const icon = (name: string): string => `<span class="codicon codicon-${name}" aria-hidden="true"></span>`;
 const copyButton = (field: string, label: string): string => `<button type="button" class="icon-button copy-button" data-copy="${field}" title="${label}" aria-label="${label}">${icon('copy')}</button>`;
 app.innerHTML = `
-  <header class="page-header"><div class="page-title">${icon('account')}<h1>${t("SteamHarness Account")}</h1></div><button id="verify-login" class="icon-button" title="${t("Refresh account")}" aria-label="${t("Refresh account")}" hidden>${icon('refresh')}</button></header>
+  <header class="page-header"><p class="muted">${t('Manage your account and Server connection.')}</p><button id="verify-login" class="icon-button" title="${t("Refresh account")}" aria-label="${t("Refresh account")}" hidden>${icon('refresh')}</button></header>
   <div id="account-status" role="status"></div>
   <form id="login-form"><label for="server-url">${t("Server")}</label><input id="server-url" type="url" required spellcheck="false" autocomplete="url">
     <label for="login-email">${t("Email")}</label><input id="login-email" type="email" required autocomplete="username">
@@ -28,8 +29,7 @@ app.innerHTML = `
     </div>
     <div class="account-actions"><button id="logout" class="text-button">${icon('sign-out')}<span>${t("Sign out")}</span></button><span id="copy-status" class="muted" role="status"></span></div>
   </section>
-  <div id="account-error" role="alert" hidden></div>
-  <div id="account-sections" hidden></div>`;
+  <div id="account-error" role="alert" hidden></div>`;
 
 const form = document.querySelector<HTMLFormElement>('#login-form')!;
 const server = document.querySelector<HTMLInputElement>('#server-url')!;
@@ -38,13 +38,12 @@ const password = document.querySelector<HTMLInputElement>('#login-password')!;
 const error = document.querySelector<HTMLDivElement>('#account-error')!;
 const status = document.querySelector<HTMLDivElement>('#account-status')!;
 const image = document.querySelector<HTMLImageElement>('#avatar-image')!;
-const extensions = document.querySelector<HTMLElement>('#account-sections')!;
 const verify = document.querySelector<HTMLButtonElement>('#verify-login')!;
 let state: AccountState | undefined;
 let pending = false;
 let copyTimer: ReturnType<typeof setTimeout> | undefined;
 installContextMenu(vscode, target => {
-  if (!target.closest('#account-app')) { return []; }
+  if (!target.closest('#settings-account')) { return []; }
   const actions: ContextAction[] = [];
   const copy = target.closest('.inline-value')?.querySelector<HTMLButtonElement>('[data-copy]');
   if (copy && !copy.disabled) { actions.push({ id: 'copy', run: () => copy.click() }); }
@@ -58,13 +57,12 @@ installContextMenu(vscode, target => {
 
 function render(next: AccountState): void {
   state = next;
+  settings.setAccount(next);
   pending = next.status === 'checking';
   const signedIn = !!next.user && ['authenticated', 'checking', 'error'].includes(next.status);
   form.hidden = signedIn;
   document.querySelector<HTMLElement>('#profile')!.hidden = !signedIn;
   verify.hidden = !signedIn;
-  extensions.hidden = !signedIn || !extensions.childElementCount;
-  if (!signedIn) { extensions.replaceChildren(); }
   if (document.activeElement !== server) { server.value = next.serverUrl; }
   document.querySelectorAll<HTMLButtonElement>('#login-submit, #verify-login, #logout, #edit-profile, #manage-sessions').forEach((button) => { button.disabled = pending; });
   for (const input of [server, email, password]) { input.disabled = pending; }
@@ -117,10 +115,7 @@ document.querySelectorAll<HTMLButtonElement>('[data-copy]').forEach(button => {
 });
 window.addEventListener('message', (event) => {
   if (event.data.type === 'account') { render(event.data.state); }
-  else if (event.data.type === 'account-sections') {
-    renderAccountSections(extensions, event.data.states, message => vscode.postMessage(message));
-    extensions.hidden = !state?.user || !extensions.childElementCount;
-  } else if (event.data.type === 'copied') {
+  else if (event.data.type === 'copied') {
     clearTimeout(copyTimer);
     document.querySelector('#copy-status')!.textContent = t("Copied");
     copyTimer = setTimeout(() => { document.querySelector('#copy-status')!.textContent = ''; }, 2500);

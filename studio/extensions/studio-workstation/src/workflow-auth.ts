@@ -6,6 +6,9 @@ import { registerProjectConnectionStatus } from './workflow-connection-status';
 import { AccountSections } from './account-sections';
 import type { AccountSectionProvider } from './account-section-types';
 import { accountMenuState } from './account-menu-state';
+import { settingsState, settingsViewState, updateSetting } from './settings';
+import type { SettingsOpenOptions, SettingsTarget, SettingsViewState } from './settings-types';
+import { publicServiceUrls, serviceChannelFromServerUrl } from '../../../../shared/service-urls/index';
 import {
   DEFAULT_STEAMHARNESS_SERVER_URL, Account,
   type AccountState, type Connection,
@@ -20,6 +23,9 @@ export class AccountController implements vscode.Disposable {
   private readonly sessionChange = new vscode.EventEmitter<vscode.AuthenticationProviderAuthenticationSessionsChangeEvent>();
   private previousSession?: vscode.AuthenticationSession;
   private panel?: vscode.WebviewPanel;
+  private viewState: SettingsViewState = { section: 'general', target: 'user' };
+  private settingsTimer?: ReturnType<typeof setTimeout>;
+  private settingWrites: Promise<void> = Promise.resolve();
   private readonly account: Account;
   private readonly disposables: vscode.Disposable[] = [];
   private readonly sections = new AccountSections(states => {
@@ -77,6 +83,14 @@ export class AccountController implements vscode.Disposable {
         },
       }, { supportsMultipleAccounts: false }),
       vscode.commands.registerCommand('studio.openAccount', () => this.open()),
+      vscode.commands.registerCommand('studio.openSettings', (options?: SettingsOpenOptions) => this.open(settingsViewState(options))),
+      vscode.window.registerWebviewPanelSerializer('studio.settings', {
+        deserializeWebviewPanel: async (panel, state) => {
+          if (this.panel && this.panel !== panel) { panel.dispose(); this.panel.reveal(); return; }
+          this.viewState = settingsViewState(state);
+          this.attachPanel(panel);
+        },
+      }),
       vscode.commands.registerCommand('studio.internalGetAccountMenuState', () => accountMenuState(this.getState())),
       vscode.commands.registerCommand('studio.refreshAccount', () => this.account.verify()),
       vscode.commands.registerCommand('studio.validateLogin', () => this.account.verify()),
@@ -85,10 +99,13 @@ export class AccountController implements vscode.Disposable {
         if (event.key === SECRET_KEY) { void this.account.restore().catch(() => undefined); }
       }),
       vscode.workspace.onDidChangeConfiguration((event) => {
+        this.scheduleSettings();
         if (event.affectsConfiguration('studio.project.serverUrl')) {
           void this.account.changeServer(this.configuredServer()).catch(() => undefined);
         }
       }),
+      vscode.workspace.onDidChangeWorkspaceFolders(() => this.scheduleSettings()),
+      vscode.extensions.onDidChange(() => this.scheduleSettings()),
     );
   }
 
@@ -127,8 +144,9 @@ export class AccountController implements vscode.Disposable {
   getConnection(): Connection | undefined { return this.account.getConnection(); }
   registerSectionProvider(provider: AccountSectionProvider): vscode.Disposable {
     const disposable = this.sections.register(provider);
+    this.publishSettings();
     if (this.panel?.visible) { void this.sections.refresh(); }
-    return disposable;
+    return { dispose: () => { disposable.dispose(); this.publishSettings(); } };
   }
   setAiConnection(connection: { serverUrl: string; accessToken: string } | undefined): void {
     this.account.setAiConnection(connection);
@@ -139,28 +157,89 @@ export class AccountController implements vscode.Disposable {
     if (current?.serverUrl === connection.serverUrl && current.accessToken === connection.accessToken) { await this.account.verify(); }
   }
 
-  open(): void {
-    if (this.panel) { this.panel.reveal(); return; }
-    const panel = vscode.window.createWebviewPanel('studio.account', t("SteamHarness Account"), vscode.ViewColumn.Active, {
+  open(options: SettingsOpenOptions = { section: 'account' }): void {
+    this.viewState = settingsViewState(options);
+    if (this.panel) {
+      this.panel.reveal();
+      this.publishSettings();
+      void this.panel.webview.postMessage({ type: 'settings-navigate', state: this.viewState });
+      return;
+    }
+    const panel = vscode.window.createWebviewPanel('studio.settings', t('Settings'), vscode.ViewColumn.Active, {
       enableScripts: true, retainContextWhenHidden: false,
       localResourceRoots: [vscode.Uri.joinPath(this.context.extensionUri, 'dist')],
     });
+    this.attachPanel(panel);
+  }
+
+  private publishSettings(): void {
+    if (!this.panel) { return; }
+    const state = settingsState(this.context.extension.packageJSON.version, this.viewState.target ?? 'user', this.sections.getProviders());
+    this.viewState.target = state.target;
+    void this.panel.webview.postMessage({ type: 'settings', state });
+  }
+
+  private scheduleSettings(): void {
+    clearTimeout(this.settingsTimer);
+    if (this.panel?.visible) { this.settingsTimer = setTimeout(() => this.publishSettings(), 100); }
+  }
+
+  private attachPanel(panel: vscode.WebviewPanel): void {
     this.panel = panel;
-    panel.iconPath = new vscode.ThemeIcon('account');
+    panel.title = t('Settings');
+    panel.iconPath = new vscode.ThemeIcon('settings-gear');
+    panel.webview.options = { enableScripts: true, localResourceRoots: [vscode.Uri.joinPath(this.context.extensionUri, 'dist')] };
     panel.webview.html = this.html(panel);
     let busy = false;
     const listeners: vscode.Disposable[] = [];
     listeners.push(panel.onDidDispose(() => {
-      this.panel = undefined;
+      if (this.panel === panel) { this.panel = undefined; }
       for (const listener of listeners) { listener.dispose(); }
     }), panel.onDidChangeViewState(({ webviewPanel }) => {
-      if (webviewPanel.visible) { void this.sections.refresh(); }
+      if (webviewPanel.visible) { this.publishSettings(); void this.sections.refresh(); }
     }), panel.webview.onDidReceiveMessage(async (message) => {
       if (this.panel !== panel || !message || typeof message !== 'object') { return; }
       if (message.type === 'ready') {
+        this.publishSettings();
         await panel.webview.postMessage({ type: 'account', state: this.getState() });
         await panel.webview.postMessage({ type: 'account-sections', states: this.sections.getStates() });
+        await panel.webview.postMessage({ type: 'settings-navigate', state: this.viewState });
         void this.sections.refresh();
+        return;
+      }
+      if (message.type === 'settings-view-state') {
+        this.viewState = settingsViewState(message.state);
+        return;
+      }
+      if (message.type === 'settings-target' && ['user', 'workspace'].includes(message.target)) {
+        this.viewState.target = message.target;
+        this.publishSettings();
+        return;
+      }
+      if (message.type === 'settings-update' && typeof message.key === 'string') {
+        const target = message.target as SettingsTarget;
+        const write = this.settingWrites.then(() => updateSetting(message.key, message.value, target, message.reset === true));
+        this.settingWrites = write.catch(() => undefined);
+        try {
+          await write;
+          await panel.webview.postMessage({ type: 'settings-saved', key: message.key, target });
+        } catch (error) {
+          await panel.webview.postMessage({ type: 'settings-error', key: message.key, target, message: error instanceof Error ? error.message : t('Unable to save setting.') });
+        }
+        this.publishSettings();
+        return;
+      }
+      if (message.type === 'settings-action') {
+        const commands: Record<string, string> = {
+          language: 'workbench.action.configureLocale', keybindings: 'workbench.action.openGlobalKeybindings',
+          'json-user': 'workbench.action.openSettingsJson', 'json-workspace': 'workbench.action.openWorkspaceSettingsFile',
+        };
+        try {
+          if (Object.hasOwn(commands, message.action)) { await vscode.commands.executeCommand(commands[message.action]); }
+          else if (message.action === 'documentation') {
+            await vscode.env.openExternal(vscode.Uri.parse(publicServiceUrls(serviceChannelFromServerUrl(this.getState().serverUrl) ?? 'main').docs));
+          }
+        } catch { await panel.webview.postMessage({ type: 'settings-error', message: t('Unable to complete settings action.') }); }
         return;
       }
       const exclusive = ['login', 'verify', 'logout'].includes(message.type);
@@ -206,11 +285,12 @@ export class AccountController implements vscode.Disposable {
     const nonce = globalThis.crypto.randomUUID().replace(/-/g, '');
     return `<!doctype html><html lang="${vscode.env.language}"><head>${webviewContextMenu(this.context, panel)}<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
       <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src ${webview.cspSource}; font-src ${webview.cspSource}; img-src ${webview.cspSource} https: http: data:; script-src 'nonce-${nonce}';">
-      <link rel="stylesheet" href="${asset('codicons/codicon.css')}"><link rel="stylesheet" href="${asset('account-ui.css')}"><title>Workflow</title></head>
+      <link rel="stylesheet" href="${asset('codicons/codicon.css')}"><link rel="stylesheet" href="${asset('account-ui.css')}"><title>${t('Settings')}</title></head>
       <body><main id="account-app"></main>${localizationHtml(nonce)}<script nonce="${nonce}" src="${asset('account-ui.js')}"></script></body></html>`;
   }
 
   dispose(): void {
+    clearTimeout(this.settingsTimer);
     void vscode.commands.executeCommand('setContext', 'studio.accountAvailable', false);
     this.panel?.dispose();
     this.sections.dispose();

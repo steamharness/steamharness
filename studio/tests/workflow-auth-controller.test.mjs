@@ -25,6 +25,8 @@ async function fixture(t) {
     Uri: { parse: value => ({ toString: () => value, toJSON: () => value }), joinPath: (_base, ...parts) => ({ toString: () => `file:///extension/${parts.join('/')}` }) },
     ThemeIcon: class { constructor(id) { this.id = id; } }, ViewColumn: { Active: 1 },
     env: { language: 'en', openExternal: async uri => { f.opened.push(uri.toString()); }, clipboard: { writeText: async text => { f.copied.push(text); } } },
+    version: '1.141.0', extensions: { all: [], onDidChange: configuration.event },
+    ConfigurationTarget: { Global: 1, Workspace: 2 },
     commands: {
       registerCommand: (id, callback) => { f.commands.set(id, callback); return disposable; },
       executeCommand: async (id, ...args) => { f.executed.push({ id, args }); },
@@ -32,8 +34,9 @@ async function fixture(t) {
     authentication: { registerAuthenticationProvider: (_id, _label, provider) => {
       f.provider = provider; provider.onDidChangeSessions(event => sessions.push(event)); return disposable;
     } },
-    workspace: { getConfiguration: () => ({ get: () => serverUrl }), onDidChangeConfiguration: configuration.event },
+    workspace: { getConfiguration: () => ({ get: key => key === 'project.serverUrl' ? serverUrl : undefined, inspect: () => ({}) }), onDidChangeConfiguration: configuration.event, onDidChangeWorkspaceFolders: configuration.event },
     window: { state: { focused: true }, onDidChangeWindowState: focus.event,
+      registerWebviewPanelSerializer: (type, serializer) => { f.serializer = serializer; f.viewType = type; return disposable; },
       createStatusBarItem: () => ({ show() {}, dispose() {} }),
       createWebviewPanel: (_type, _title, _column, options) => {
         const disposed = new Emitter(), received = new Emitter(), changed = new Emitter();
@@ -46,16 +49,16 @@ async function fixture(t) {
   };
   const module = { exports: {} };
   runInNewContext(compiled.outputFiles[0].text, {
-    module, exports: module.exports, require: id => id === 'vscode' ? vscode : require(id), URL, AbortSignal, AbortController, crypto: globalThis.crypto,
+    module, exports: module.exports, require: id => id === 'vscode' ? vscode : require(id), URL, AbortSignal, AbortController, crypto: globalThis.crypto, setTimeout, clearTimeout,
     fetch: async () => { f.requests++; return Response.json({ errCode: 0, data: { profile: f.profile, principal: { apiKeyId: 'test-key' } } }); },
     setInterval: (callback, ms) => { const timer = { callback, ms, unref() {} }; intervals.add(timer); return timer; },
     clearInterval: timer => intervals.delete(timer),
   });
-  const context = { subscriptions: [], secrets: { get: async () => stored, store: async value => { stored = value; }, delete: async () => { stored = undefined; }, onDidChange: secretsChanged.event } };
+  const context = { extension: { packageJSON: { version: '0.1.0' } }, subscriptions: [], secrets: { get: async () => stored, store: async value => { stored = value; }, delete: async () => { stored = undefined; }, onDidChange: secretsChanged.event } };
   const controller = new module.exports.AccountController(context);
   t.after(() => controller.dispose());
   await controller.initialize();
-  return Object.assign(f, { controller, intervals, sessions,
+  return Object.assign(f, { controller, intervals, sessions, vscode,
     focus: focused => { vscode.window.state.focused = focused; focus.fire({ focused }); },
     poll: () => { for (const timer of intervals) { timer.callback(); } },
   });
@@ -68,6 +71,33 @@ async function until(read) {
   }
   assert.fail('Account profile did not refresh');
 }
+
+test('settings and account commands share one tab and navigate to their requested categories', async t => {
+  const f = await fixture(t);
+  f.commands.get('studio.openSettings')({ section: 'editor', query: 'editor.fontSize' });
+  const panel = f.panel;
+  await f.message({ type: 'ready' });
+  assert.equal(f.viewType, 'studio.settings');
+  assert.equal(f.messages.filter(message => message.type === 'settings-navigate').at(-1).state.section, 'editor');
+  f.commands.get('studio.openAccount')();
+  assert.equal(f.panel, panel);
+  assert.equal(f.messages.filter(message => message.type === 'settings-navigate').at(-1).state.section, 'account');
+  f.commands.get('studio.openSettings')();
+  assert.equal(f.panel, panel);
+  assert.equal(f.messages.filter(message => message.type === 'settings-navigate').at(-1).state.section, 'general');
+  assert.ok(!JSON.stringify(f.messages).includes('test-token'));
+});
+
+test('deserialization restores navigation only and publishes the existing account session', async t => {
+  const f = await fixture(t);
+  const panel = f.vscode.window.createWebviewPanel('studio.settings', 'Settings', 1, {});
+  await f.serializer.deserializeWebviewPanel(panel, { section: 'about', query: '', scroll: 37, password: 'do-not-restore' });
+  await f.message({ type: 'ready' });
+  const route = f.messages.filter(message => message.type === 'settings-navigate').at(-1).state;
+  assert.equal(route.section, 'about'); assert.equal(route.scroll, 37);
+  assert.equal(f.messages.find(message => message.type === 'account').state.status, 'authenticated');
+  assert.ok(!JSON.stringify(f.messages).includes('do-not-restore'));
+});
 
 test('returning to Studio refreshes the profile and updates the native authentication avatar', async t => {
   const f = await fixture(t);

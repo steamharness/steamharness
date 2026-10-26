@@ -42,7 +42,7 @@
   "command.newFile": "新建文件",
   "command.openTerminal": "新建终端",
   "command.runTask": "运行任务",
-  "command.openSettings": "工作台设置",
+  "command.openSettings": "设置",
   "command.refreshProjects": "刷新项目",
   "command.refreshProjectView": "刷新项目视图",
   "command.openRecentProject": "打开最近项目",

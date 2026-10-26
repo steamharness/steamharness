@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "commit": "144861458ac35caa69324d54fc7e2d12bd8c91a7",
+  "commit": "9fadcfb8702db659a08821a2b4202b38198503fa",
   "patches": {
     "0001-use-upstream-builtin-artifacts.patch": "3985e1ced03ed5abb341fd4535cb14bf46cdc5ddcf377c6b07ee1c0764e65114",
     "0002-studio-hide-accounts.patch": "b7a9e68aebc06f53ede2b74f45345e410cd1e11320a5a9c7055354f33157f220",
@@ -55,6 +55,7 @@
     "0050-studio-conversation-file-drop.patch": "d07f1efe9c500068c0978446611667c3a188472aba230882f9e4443b12b3fb5d",
     "0051-studio-steam-native-tool-tabs.patch": "9d11c3badfb4046cda5342241d47642069c29ce5aa7c55b8cb5a4ed30f87a508",
     "0052-studio-start-empty-badge.patch": "28fe9fe39eb858381242b63db3791c96c768e13ad4605dc6aff19a02dc50ab29",
-    "0053-studio-mode-panel-state.patch": "d73a32789fbc3f7879841c0d8160a0de43aa0a8dcf36b14123f2fda37a6ff587"
+    "0053-studio-mode-panel-state.patch": "d73a32789fbc3f7879841c0d8160a0de43aa0a8dcf36b14123f2fda37a6ff587",
+    "0054-studio-settings.patch": "f2e2a6ef057c5374c6c3b14de95a983b65ef71895985810d1ad8ba226a0d7252"
   }
 }

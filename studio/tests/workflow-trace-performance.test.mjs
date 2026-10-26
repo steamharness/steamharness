@@ -3,10 +3,10 @@ import { test } from 'node:test';
 import { build } from 'esbuild';
 import { runInNewContext } from 'node:vm';
 import { createRequire } from 'node:module';
+import { JSDOM } from 'jsdom';
 import { durableTraceState } from './fixtures/trace-agent.mjs';
 
 const require = createRequire(import.meta.url);
-const { JSDOM } = createRequire(new URL('../../shared/package.json', import.meta.url))('jsdom');
 const host = await build({ entryPoints: ['extensions/studio-workstation/src/workflow-trace-view.ts'], bundle: true, platform: 'node', format: 'cjs', external: ['vscode'], write: false });
 const client = await build({ entryPoints: ['extensions/studio-workstation/webview/trace.ts'], bundle: true, platform: 'browser', format: 'iife', loader: { '.css': 'empty' }, write: false });
 

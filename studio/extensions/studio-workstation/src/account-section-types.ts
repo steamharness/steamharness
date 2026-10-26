@@ -23,6 +23,7 @@ export interface AccountSectionConnection { serverUrl: string; accessToken: stri
 export interface AccountSectionProvider {
   id: string;
   title: string;
+  icon?: string;
   load(connection: AccountSectionConnection, signal: AbortSignal): Promise<AccountSection[]>;
   onAction?(action: string, connection: AccountSectionConnection): PromiseLike<unknown> | void;
 }

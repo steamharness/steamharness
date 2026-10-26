@@ -148,7 +148,6 @@ export async function activate(context: vscode.ExtensionContext, runtime?: Launc
     vscode.window.createTerminal({ name }).show();
   });
   register('studio.runTask', () => vscode.commands.executeCommand('workbench.action.tasks.runTask'));
-  register('studio.openSettings', () => vscode.commands.executeCommand('workbench.action.openSettings', '@ext:studio.studio-workstation'));
 
   const refreshWorkspace = (): void => {
     void rememberCurrentWorkspace().catch((error) => output.appendLine(`Recent projects: ${String(error)}`));

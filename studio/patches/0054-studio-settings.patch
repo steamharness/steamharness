@@ -1,0 +1,260 @@
+diff --git a/src/vs/workbench/browser/parts/studioMode.ts b/src/vs/workbench/browser/parts/studioMode.ts
+index 53eda8f9..be79b517 100644
+--- a/src/vs/workbench/browser/parts/studioMode.ts
++++ b/src/vs/workbench/browser/parts/studioMode.ts
+@@ -24,6 +24,7 @@ CommandsRegistry.registerCommand('studio.internalGetWindowChrome', () => ({ ...s
+ 
+ export const studioSteamToolDefinitions = [
+ 	{ id: 'editor', icon: 'code', editor: true },
++	{ id: 'settings', icon: 'settings-gear', command: 'studio.openSettings' },
+ 	{ id: 'kv', icon: 'database', view: 'studio.kv' },
+ 	{ id: 'knowledge', icon: 'book', view: 'studio.knowledge' },
+ 	{ id: 'info', icon: 'package', view: 'studio.projectInfo' },
+diff --git a/src/vs/workbench/contrib/preferences/browser/preferences.contribution.ts b/src/vs/workbench/contrib/preferences/browser/preferences.contribution.ts
+index ea5c3474..6c6878a5 100644
+--- a/src/vs/workbench/contrib/preferences/browser/preferences.contribution.ts
++++ b/src/vs/workbench/contrib/preferences/browser/preferences.contribution.ts
+@@ -4,6 +4,7 @@
+  *--------------------------------------------------------------------------------------------*/
+ 
+ import { KeyChord, KeyCode, KeyMod } from '../../../../base/common/keyCodes.js';
++import { onUnexpectedError } from '../../../../base/common/errors.js';
+ import { Disposable, DisposableStore, MutableDisposable } from '../../../../base/common/lifecycle.js';
+ import { Schemas } from '../../../../base/common/network.js';
+ import { isBoolean, isObject, isString } from '../../../../base/common/types.js';
+@@ -47,7 +48,6 @@ import { CONTEXT_AI_SETTING_RESULTS_AVAILABLE, CONTEXT_KEYBINDINGS_EDITOR, CONTE
+ import { PreferencesContribution } from '../common/preferencesContribution.js';
+ import { KeybindingsEditor } from './keybindingsEditor.js';
+ import { ConfigureLanguageBasedSettingsAction } from './preferencesActions.js';
+-import { PreferencesEditor } from './preferencesEditor.js';
+ import { preferencesOpenSettingsIcon } from './preferencesIcons.js';
+ import { IPreferencesRenderer, UserSettingsRenderer, WorkspaceSettingsRenderer } from './preferencesRenderers.js';
+ import { SettingsEditor2, SettingsFocusContext } from './settingsEditor2.js';
+@@ -71,40 +71,19 @@ const SETTINGS_EDITOR_COMMAND_FILTER_UNTRUSTED = 'settings.filterUntrusted';
+ const SETTINGS_COMMAND_OPEN_SETTINGS = 'workbench.action.openSettings';
+ const SETTINGS_COMMAND_FILTER_TELEMETRY = 'settings.filterByTelemetry';
+ 
+-Registry.as<IEditorPaneRegistry>(EditorExtensions.EditorPane).registerEditorPane(
+-	EditorPaneDescriptor.create(
+-		SettingsEditor2,
+-		SettingsEditor2.ID,
+-		nls.localize('settingsEditor2', "Settings Editor 2")
+-	),
+-	[
+-		new SyncDescriptor(SettingsEditor2Input)
+-	]
+-);
+-
+-Registry.as<IEditorPaneRegistry>(EditorExtensions.EditorPane).registerEditorPane(
+-	EditorPaneDescriptor.create(
+-		PreferencesEditor,
+-		PreferencesEditor.ID,
+-		nls.localize('preferencesEditor', "Preferences Editor")
+-	),
+-	[
+-		new SyncDescriptor(PreferencesEditorInput)
+-	]
+-);
+-
+ class PreferencesEditorInputSerializer implements IEditorSerializer {
+ 
+ 	canSerialize(editorInput: EditorInput): boolean {
+-		return true;
++		return false;
+ 	}
+ 
+ 	serialize(editorInput: EditorInput): string {
+ 		return '';
+ 	}
+ 
+-	deserialize(instantiationService: IInstantiationService): EditorInput {
+-		return instantiationService.createInstance(PreferencesEditorInput);
++	deserialize(instantiationService: IInstantiationService): EditorInput | undefined {
++		void instantiationService.invokeFunction(accessor => accessor.get(IPreferencesService).openSettings({ jsonEditor: false })).catch(onUnexpectedError);
++		return undefined;
+ 	}
+ }
+ 
+@@ -137,15 +116,16 @@ class KeybindingsEditorInputSerializer implements IEditorSerializer {
+ class SettingsEditor2InputSerializer implements IEditorSerializer {
+ 
+ 	canSerialize(editorInput: EditorInput): boolean {
+-		return true;
++		return false;
+ 	}
+ 
+ 	serialize(input: SettingsEditor2Input): string {
+ 		return '';
+ 	}
+ 
+-	deserialize(instantiationService: IInstantiationService): SettingsEditor2Input {
+-		return instantiationService.createInstance(SettingsEditor2Input);
++	deserialize(instantiationService: IInstantiationService): EditorInput | undefined {
++		void instantiationService.invokeFunction(accessor => accessor.get(IPreferencesService).openSettings({ jsonEditor: false })).catch(onUnexpectedError);
++		return undefined;
+ 	}
+ }
+ 
+diff --git a/src/vs/workbench/contrib/studioMode/browser/studioSteamWorkspace.ts b/src/vs/workbench/contrib/studioMode/browser/studioSteamWorkspace.ts
+index 99a12229..6125c7f9 100644
+--- a/src/vs/workbench/contrib/studioMode/browser/studioSteamWorkspace.ts
++++ b/src/vs/workbench/contrib/studioMode/browser/studioSteamWorkspace.ts
+@@ -471,7 +471,7 @@ export class StudioSteamWorkspace extends Disposable {
+ 		if (editor instanceof StudioToolViewInput) { id = editor.toolId; }
+ 		else if (editor instanceof WebviewInput) {
+ 			const type = editor.webview.providedViewType;
+-			id = type?.startsWith('studio.tool.') ? type.slice('studio.tool.'.length) : type === 'simpleBrowser.view' ? 'browser' : type === 'studio.projectTool' ? 'project' : editor instanceof CustomEditorInput ? 'editor' : undefined;
++			id = type === 'studio.settings' ? 'settings' : type?.startsWith('studio.tool.') ? type.slice('studio.tool.'.length) : type === 'simpleBrowser.view' ? 'browser' : type === 'studio.projectTool' ? 'project' : editor instanceof CustomEditorInput ? 'editor' : undefined;
+ 		} else if (editor instanceof EditorInput && editor.typeId === 'workbench.editors.terminal') { id = 'terminal'; }
+ 		else if (editor instanceof EditorInput && editor.typeId === 'workbench.editorinputs.browser') { id = 'browser'; }
+ 		else if (EditorResourceAccessor.getOriginalUri(editor, { supportSideBySide: SideBySideEditor.PRIMARY })) { id = 'editor'; }
+diff --git a/src/vs/workbench/services/host/browser/browserHostService.ts b/src/vs/workbench/services/host/browser/browserHostService.ts
+index de5f0a6e..cb5a941a 100644
+--- a/src/vs/workbench/services/host/browser/browserHostService.ts
++++ b/src/vs/workbench/services/host/browser/browserHostService.ts
+@@ -413,7 +413,7 @@ export class BrowserHostService extends Disposable implements IHostService {
+ 
+ 						// Wait for the resources to be closed in the text editor...
+ 						const filesToWaitFor: URI[] = [];
+-						if (options.mergeMode) {
++						if (options?.mergeMode) {
+ 							filesToWaitFor.push(fileOpenables[3].fileUri /* [3] is the resulting merge file */);
+ 						} else {
+ 							filesToWaitFor.push(...fileOpenables.map(fileOpenable => fileOpenable.fileUri));
+diff --git a/src/vs/workbench/services/preferences/browser/preferencesService.ts b/src/vs/workbench/services/preferences/browser/preferencesService.ts
+index b5cee743..21b5bb24 100644
+--- a/src/vs/workbench/services/preferences/browser/preferencesService.ts
++++ b/src/vs/workbench/services/preferences/browser/preferencesService.ts
+@@ -16,6 +16,7 @@ import { IModelService } from '../../../../editor/common/services/model.js';
+ import { ITextModelService } from '../../../../editor/common/services/resolverService.js';
+ import * as nls from '../../../../nls.js';
+ import { ConfigurationTarget, IConfigurationService } from '../../../../platform/configuration/common/configuration.js';
++import { ICommandService } from '../../../../platform/commands/common/commands.js';
+ import { Extensions, getDefaultValue, IConfigurationRegistry, OVERRIDE_PROPERTY_REGEX } from '../../../../platform/configuration/common/configurationRegistry.js';
+ import { FileOperationError, FileOperationResult } from '../../../../platform/files/common/files.js';
+ import { InstantiationType, registerSingleton } from '../../../../platform/instantiation/common/extensions.js';
+@@ -33,7 +34,6 @@ import { GroupDirection, IEditorGroupsService } from '../../editor/common/editor
+ import { ACTIVE_GROUP, IEditorService, MODAL_GROUP, PreferredGroup, SIDE_GROUP } from '../../editor/common/editorService.js';
+ import { KeybindingsEditorInput } from './keybindingsEditorInput.js';
+ import { DEFAULT_SETTINGS_EDITOR_SETTING, FOLDER_SETTINGS_PATH, IKeybindingsEditorPane, IOpenKeybindingsEditorOptions, IOpenSettingsOptions, IPreferencesEditorModel, IPreferencesService, ISetting, ISettingsEditorOptions, ISettingsGroup, SETTINGS_AUTHORITY, USE_SPLIT_JSON_SETTING, validateSettingsEditorOptions } from '../common/preferences.js';
+-import { PreferencesEditorInput, SettingsEditor2Input } from '../common/preferencesEditorInput.js';
+ import { defaultKeybindingsContents, DefaultKeybindingsEditorModel, DefaultRawSettingsEditorModel, DefaultSettings, DefaultSettingsEditorModel, Settings2EditorModel, SettingsEditorModel, WorkspaceConfigurationEditorModel } from '../common/preferencesModels.js';
+ import { IRemoteAgentService } from '../../remote/common/remoteAgentService.js';
+ import { ITextEditorService } from '../../textfile/common/textEditorService.js';
+@@ -70,7 +70,6 @@ export class PreferencesService extends Disposable implements IPreferencesServic
+ 	private readonly _requestedDefaultSettings = new ResourceSet();
+ 
+ 	private _settingsGroups: ISettingsGroup[] | undefined = undefined;
+-	private _cachedSettingsEditor2Input: SettingsEditor2Input | undefined = undefined;
+ 
+ 	constructor(
+ 		@IEditorService private readonly editorService: IEditorService,
+@@ -93,6 +92,7 @@ export class PreferencesService extends Disposable implements IPreferencesServic
+ 		@IExtensionService private readonly extensionService: IExtensionService,
+ 		@IProgressService private readonly progressService: IProgressService,
+ 		@IWorkbenchEnvironmentService private readonly environmentService: IWorkbenchEnvironmentService,
++		@ICommandService private readonly commandService: ICommandService,
+ 	) {
+ 		super();
+ 		// The default keybindings.json updates based on keyboard layouts, so here we make sure
+@@ -124,15 +124,6 @@ export class PreferencesService extends Disposable implements IPreferencesServic
+ 		return workspace.configuration || workspace.folders[0].toResource(FOLDER_SETTINGS_PATH);
+ 	}
+ 
+-	private createOrGetCachedSettingsEditor2Input(): SettingsEditor2Input {
+-		if (!this._cachedSettingsEditor2Input || this._cachedSettingsEditor2Input.isDisposed()) {
+-			// Recreate the input if the user never opened the Settings editor,
+-			// or if they closed it and want to reopen it.
+-			this._cachedSettingsEditor2Input = new SettingsEditor2Input(this);
+-		}
+-		return this._cachedSettingsEditor2Input;
+-	}
+-
+ 	getFolderSettingsResource(resource: URI): URI | null {
+ 		const folder = this.contextService.getWorkspaceFolder(resource);
+ 		return folder ? folder.toResource(FOLDER_SETTINGS_PATH) : null;
+@@ -211,12 +202,8 @@ export class PreferencesService extends Disposable implements IPreferencesServic
+ 		return this.editorService.openEditor({ resource: this.userSettingsResource });
+ 	}
+ 
+-	private shouldOpenJsonByDefault(): boolean {
+-		return this.configurationService.getValue('workbench.settings.editor') === 'json';
+-	}
+-
+ 	async openPreferences(): Promise<void> {
+-		await this.editorService.openEditor(this.instantiationService.createInstance(PreferencesEditorInput), undefined, MODAL_GROUP);
++		await this.openSettings2({});
+ 	}
+ 
+ 	openSettings(options: IOpenSettingsOptions = {}): Promise<IEditorPane | undefined> {
+@@ -224,7 +211,7 @@ export class PreferencesService extends Disposable implements IPreferencesServic
+ 			...options,
+ 			target: ConfigurationTarget.USER_LOCAL,
+ 		};
+-		if (options.query) {
++		if (options.query && options.jsonEditor !== true) {
+ 			options.jsonEditor = false;
+ 		}
+ 
+@@ -232,7 +219,7 @@ export class PreferencesService extends Disposable implements IPreferencesServic
+ 	}
+ 
+ 	openLanguageSpecificSettings(languageId: string, options: IOpenSettingsOptions = {}): Promise<IEditorPane | undefined> {
+-		if (this.shouldOpenJsonByDefault()) {
++		if (options.jsonEditor) {
+ 			options.query = undefined;
+ 			options.revealSetting = { key: `[${languageId}]`, edit: true };
+ 		} else {
+@@ -246,7 +233,7 @@ export class PreferencesService extends Disposable implements IPreferencesServic
+ 	private open(settingsResource: URI, options: IOpenSettingsOptions): Promise<IEditorPane | undefined> {
+ 		options = {
+ 			...options,
+-			jsonEditor: options.jsonEditor ?? this.shouldOpenJsonByDefault()
++			jsonEditor: options.jsonEditor === true
+ 		};
+ 
+ 		if (options.jsonEditor && options.query && !options.revealSetting) {
+@@ -270,13 +257,17 @@ export class PreferencesService extends Disposable implements IPreferencesServic
+ 	}
+ 
+ 	private async openSettings2(options: IOpenSettingsOptions): Promise<IEditorPane | undefined> {
+-		const input = this.createOrGetCachedSettingsEditor2Input();
+-		options = {
+-			...options,
+-			focusSearch: true
+-		};
+-		const group = this.getEditorGroupFromOptions(options);
+-		return this.editorService.openEditor(input, validateSettingsEditorOptions(options), group);
++		// Advanced folder/remote settings retain their existing JSON target.
++		if (options.target === ConfigurationTarget.WORKSPACE_FOLDER || options.target === ConfigurationTarget.USER_REMOTE) {
++			const resource = await this.getEditableSettingsURI(options.target, options.folderUri);
++			return resource ? this.openSettingsJson(resource, options) : undefined;
++		}
++		await this.commandService.executeCommand('studio.openSettings', {
++			section: options.target === ConfigurationTarget.WORKSPACE ? 'editor' : 'general',
++			query: options.query,
++			target: options.target === ConfigurationTarget.WORKSPACE ? 'workspace' : 'user',
++		});
++		return undefined;
+ 	}
+ 
+ 	openApplicationSettings(options: IOpenSettingsOptions = {}): Promise<IEditorPane | undefined> {
+@@ -303,7 +294,7 @@ export class PreferencesService extends Disposable implements IPreferencesServic
+ 				target: ConfigurationTarget.USER_REMOTE,
+ 			};
+ 
+-			this.open(environment.settingsPath, options);
++			return this.open(environment.settingsPath, options);
+ 		}
+ 		return undefined;
+ 	}
+@@ -721,9 +712,6 @@ export class PreferencesService extends Disposable implements IPreferencesServic
+ 	}
+ 
+ 	public override dispose(): void {
+-		if (this._cachedSettingsEditor2Input && !this._cachedSettingsEditor2Input.isDisposed()) {
+-			this._cachedSettingsEditor2Input.dispose();
+-		}
+ 		this._onDispose.fire();
+ 		super.dispose();
+ 	}

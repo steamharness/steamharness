@@ -1,10 +1,9 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { readFile } from 'node:fs/promises';
-import { createRequire } from 'node:module';
+import { JSDOM } from 'jsdom';
 import { build } from 'esbuild';
 
-const { JSDOM } = createRequire(new URL('../../shared/package.json', import.meta.url))('jsdom');
 const compiled = await build({ entryPoints: ['extensions/studio-workstation/webview/welcome.ts'], bundle: true, platform: 'browser', format: 'iife', write: false });
 
 for (const language of ['en', 'zh-cn']) {
