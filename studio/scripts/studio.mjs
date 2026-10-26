@@ -194,7 +194,7 @@ async function main() {
       const testing = command === 'test:desktop';
       const extensionsDirectory = path.join(ROOT, testing ? '.studio/test-desktop-extensions' : '.studio/desktop-extensions');
       const directoryArgs = [
-        '--user-data-dir', resolveDesktopUserDataDir(path.join(ROOT, testing ? `.studio/test-${process.pid}` : '.studio/desktop-user-data')),
+        ...(hasFlag('--user-data-dir') ? [] : ['--user-data-dir', resolveDesktopUserDataDir(path.join(ROOT, testing ? `.studio/test-${process.pid}` : '.studio/desktop-user-data'))]),
         '--extensions-dir', extensionsDirectory,
         '--builtin-extensions-dir', path.join(upstream.directory, 'extensions'),
       ];
