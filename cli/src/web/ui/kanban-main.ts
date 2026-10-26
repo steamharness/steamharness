@@ -35,15 +35,12 @@ const defaults = { phone: { width: 390, height: 844 }, tablet: { width: 768, hei
 let sizes = { ...defaults, ...saved?.sizes }, mode: KanbanPresentationMode = saved?.mode ?? 'fullscreen';
 if (!['fullscreen', 'phone', 'tablet', 'card'].includes(mode)) { mode = 'fullscreen'; }
 let menuOpen = false, state: KanbanState | undefined, project: Project | undefined;
-let uploadAvailable = false;
 let connected = false, working = false, methodWorking = false, transitioning = false, dirty = false, editing = 0, signature = '', previewKey = '', authRevision = -1;
 let values: ParamValues = {}, saveTimer: ReturnType<typeof setTimeout> | undefined, readyTimer: ReturnType<typeof setTimeout> | undefined, pendingBridge = 0;
 let methodSession: ReturnType<typeof createKanbanMethodSession> | undefined;
 const methodCalls = new Map<string, AbortController>();
 const serverGuidance = new ProjectServerGuidance(element('server-guidance'), {
-  account: () => { void host.postMessage({ type: 'open-account' }); },
   create: () => { void host.postMessage({ type: 'open-project-create' }); },
-  upload: () => { void host.postMessage({ type: 'open-project-upload' }); },
   retry: () => { void refreshPreview(); },
 });
 mountProjectConfigurations(host);
@@ -59,7 +56,7 @@ function request(message: Message): Promise<Message> {
 }
 function showError(error: unknown): void { element('error').textContent = (error as Error).message ?? String(error); element('error').hidden = false; }
 function controls(): void {
-  serverGuidance.update(state?.serverDataIssue, project?.id ?? '', { connected, working, uploadAvailable });
+  serverGuidance.update(state?.serverDataIssue, project?.id ?? '', { connected, working });
   for (const id of ['refresh']) { (element(id) as HTMLButtonElement).disabled = !connected || working; }
   element<HTMLButtonElement>('methods').disabled = !connected || !methodSession?.getState().ready;
   element<HTMLButtonElement>('invoke-method').disabled = !connected || methodWorking || !methodSession?.getState().methods.length;
@@ -171,7 +168,6 @@ window.addEventListener('message', event => {
   }
   if (message.type === 'kanban-method-cancel') { methodCalls.get(message.requestId)?.abort(); return; }
   if (message.requestId && pending.has(message.requestId)) { const waiting = pending.get(message.requestId)!; clearTimeout(waiting.timer); pending.delete(message.requestId); message.type === 'error' ? waiting.reject(new Error(message.message)) : waiting.resolve(message); }
-  if (message.type === 'project-setup-available') { uploadAvailable = message.upload === true; controls(); return; }
   if (message.type === 'connection') { connected = message.status === 'connected'; controls(); if (connected) { publishMethods();  } else { dialogs.closeUsage(); for (const waiting of pending.values()) { clearTimeout(waiting.timer); waiting.reject(new Error(t("Connection interrupted."))); } pending.clear(); for (const call of methodCalls.values()) { call.abort(); } } }
   if (message.type === 'state') { project = message.project; element('kanban-title').textContent = project!.name;
     updateProjectAvatar(element('project-info'), project!);

@@ -56,12 +56,10 @@ const traceButton = iconButton('history', t("Trace"), () => post({ type: 'trace'
 traceButton.id = 'open-trace'; document.querySelector('.run-heading-actions')!.prepend(traceButton);
 let state: State | undefined, entrypointId: string | undefined, entrySignature = '', renderedRun = '';
 let connected = false, resolving = false, submitting = false, draftsLoaded = false, requestId = 0, revision = -1;
-let errorScope = 0, uploadAvailable = false, checkingServer = false;
+let errorScope = 0, checkingServer = false;
 const serverBlocked = () => !!state?.serverData && state.serverData.blocking !== false && (state.serverData.checking || !!state.serverData.issue);
 const serverGuidance = new ProjectServerGuidance(element('server-guidance'), {
-  account: () => { host.postMessage({ type: 'open-account' }); },
   create: () => { host.postMessage({ type: 'open-project-create' }); },
-  upload: () => { host.postMessage({ type: 'open-project-upload' }); },
   retry: () => { checkingServer = true; controls(); post({ type: 'project-server-check' }); },
 });
 let paramStates: Record<string, ParamState> = {};
@@ -154,7 +152,7 @@ function renderEntrypoints(): void {
 }
 function controls(): void {
   if (state) { updateProjectAvatar(element('project-info'), state.project); }
-  serverGuidance.update(state?.serverData?.issue ?? (state?.serverData?.checking ? { kind: 'checking', serverUrl: state.account.serverUrl } : undefined), state?.project.id ?? '', { connected, working: checkingServer || !!state?.serverData?.checking, uploadAvailable });
+  serverGuidance.update(state?.serverData?.issue ?? (state?.serverData?.checking ? { kind: 'checking', serverUrl: state.account.serverUrl } : undefined), state?.project.id ?? '', { connected, working: checkingServer || !!state?.serverData?.checking });
   element<HTMLButtonElement>('run').disabled = disabled() || resolving || serverBlocked();
   element<HTMLButtonElement>('rerun').disabled = disabled() || serverBlocked();
   element<HTMLButtonElement>('delete-run').disabled = !connected || state?.run?.id === state?.occupiedId;
@@ -317,7 +315,6 @@ element('usage').onclick = () => dialogs.usage(requestId => post({ type: 'usage'
 element('project-info').onclick = () => { if (state) { fields.close(); dialogs.projectInfo(state.project); } };
 addEventListener('message', event => {
   const message = event.data;
-  if (message?.type === 'project-setup-available') { uploadAvailable = message.upload === true; controls(); return; }
   if (message?.type === 'project-server-checked') { checkingServer = false; controls(); return; }
   if (message?.type === 'state' && message.project?.projectType === 'workflow') { applyState(message); }
   else if (message?.type === 'connection') {

@@ -94,12 +94,10 @@ function initialize(): void {
   interface NavigationRequest { requestId: number; activeId: string; updates: ConversationDraftUpdate[]; refreshParameters: boolean }
 
   let state: State | undefined;
-  let uploadAvailable = false, checkingServer = false;
+  let checkingServer = false;
   const serverBlocked = () => !!state?.serverData && state.serverData.blocking !== false && (state.serverData.checking || !!state.serverData.issue);
   const serverGuidance = new ProjectServerGuidance(document.getElementById('server-guidance')!, {
-    account: () => { vscode.postMessage({ type: 'open-account' }); },
     create: () => { vscode.postMessage({ type: 'open-project-create' }); },
-    upload: () => { vscode.postMessage({ type: 'open-project-upload' }); },
     retry: () => { checkingServer = true; updateControls(); post({ type: 'project-server-check' }); },
   });
   let renderedProject = '';
@@ -515,7 +513,7 @@ function initialize(): void {
 
   function updateControls(): void {
     if (!state) { return; }
-    serverGuidance.update(state.serverData?.issue ?? (state.serverData?.checking ? { kind: 'checking', serverUrl: state.account?.serverUrl } : undefined), state.project.id, { connected: connectionAvailable, working: checkingServer || !!state.serverData?.checking, uploadAvailable });
+    serverGuidance.update(state.serverData?.issue ?? (state.serverData?.checking ? { kind: 'checking', serverUrl: state.account?.serverUrl } : undefined), state.project.id, { connected: connectionAvailable, working: checkingServer || !!state.serverData?.checking });
     const conversation = state.project.projectType === 'conversation';
     const durable = state.project.conversation?.durable?.enabled === true;
     const hidden = hideComposer();
@@ -1511,7 +1509,6 @@ function initialize(): void {
   let renderScheduled = false;
   window.addEventListener('message', (event) => {
     const message = event.data;
-    if (message?.type === 'project-setup-available') { uploadAvailable = message.upload === true; updateControls(); return; }
     if (message?.type === 'project-server-checked' || message?.type === 'error' && message.requestType === 'project-server-check') { checkingServer = false; updateControls(); return; }
     if (fileIcons.receive(message)) return;
     if (message.type === 'error' && message.requestType === 'resolve') {

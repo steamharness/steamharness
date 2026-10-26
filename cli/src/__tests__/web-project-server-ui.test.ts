@@ -64,13 +64,10 @@ it.each([['workflow', 'en'], ['workflow', 'zh-CN'], ['conversation', 'en'], ['co
     input.value = 'Keep my new edit'; input.dispatchEvent(new Event('input', { bubbles: true }));
     await vi.advanceTimersByTimeAsync(250);
     if (kind === 'workflow') expect(host.postMessage).toHaveBeenCalledWith(expect.objectContaining({ type: 'workflow-draft', params: { subject: 'Keep my new edit' } }));
-    document.getElementById('server-guidance-account')!.click();
-    expect(host.postMessage).toHaveBeenCalledWith({ type: 'open-account' });
+    expect([...guidance.querySelectorAll('button')].map(button => button.id)).toEqual(['server-guidance-create', 'server-guidance-retry']);
+    expect(guidance.textContent).not.toMatch(/Account \/ Server|账号 \/ 服务器|switch.*Server|切换.*服务器|[Uu]pload|上传/);
     document.getElementById('server-guidance-create')!.click();
     expect(host.postMessage).toHaveBeenCalledWith({ type: 'open-project-create' });
-    expect(guidance.textContent).toContain(language === 'en' ? 'Source upload is optional.' : '源码上传为可选操作。');
-    document.getElementById('server-guidance-upload')!.click();
-    expect(host.postMessage).toHaveBeenCalledWith({ type: 'open-project-upload' });
     document.getElementById('server-guidance-retry')!.click();
     expect(host.postMessage).toHaveBeenCalledWith(expect.objectContaining({ type: 'project-server-check' }));
     expect(document.querySelector<HTMLButtonElement>('#server-guidance-retry')!.disabled).toBe(true);
@@ -79,18 +76,22 @@ it.each([['workflow', 'en'], ['workflow', 'zh-CN'], ['conversation', 'en'], ['co
     await f.render({ checking: false }); f.emit({ type: 'project-server-checked' });
     expect(guidance.hidden).toBe(true); expect(input.value).toBe('Keep my new edit'); expect(run.disabled).toBe(false);
     expect(host.postMessage.mock.calls.some(([value]) => ['send', 'workflow-run', 'workflow-rerun', 'resume'].includes(value.type))).toBe(false);
+    for (const kind of ['sign-in-required', 'access-denied', 'connection-unavailable', 'setup-required', 'related-setup-required'] as const) {
+      await f.render({ checking: false, issue: { kind, serverUrl: 'https://server.test' } });
+      expect(guidance.textContent).not.toMatch(/Account \/ Server|账号 \/ 服务器|switch.*Server|切换.*服务器|[Uu]pload|上传/);
+      expect(document.getElementById('server-guidance-create')!.hidden).toBe(true);
+      expect(document.querySelector<HTMLButtonElement>('#server-guidance-retry')!.disabled).toBe(false);
+    }
   },
 );
 
-it.each(['workflow', 'conversation'] as const)('keeps Stop available in %s and hides upload for access or Server compatibility problems', async kind => {
+it.each(['workflow', 'conversation'] as const)('keeps Stop available in %s and only offers rechecking for access or Server compatibility problems', async kind => {
   const f = await fixture(kind, 'en');
   await f.render({ checking: false, issue: { kind: 'access-denied', serverUrl: 'https://server.test' } }, true);
-  expect(document.getElementById('server-guidance-upload')!.hidden).toBe(true);
   expect(document.getElementById('server-guidance-create')!.hidden).toBe(true);
   const stop = document.querySelector<HTMLButtonElement>(kind === 'workflow' ? '#stop-active' : '#send')!;
   expect(stop.disabled).toBe(false);
   await f.render({ checking: false, issue: { kind: 'setup-required', serverUrl: 'https://server.test' } });
-  expect(document.getElementById('server-guidance-upload')!.hidden).toBe(true);
   expect(document.getElementById('server-guidance-steps')!.textContent).toContain('Server version');
   if (kind === 'conversation') {
     expect(document.querySelector<HTMLButtonElement>('.queue-heading button')!.disabled).toBe(true);
@@ -105,7 +106,7 @@ it.each(['workflow', 'conversation'] as const)('shows the affected related proje
   expect(document.getElementById('server-guidance-project')!.textContent).toBe('related-database');
   expect(document.getElementById('server-guidance-alias')!.textContent).toBe('database');
   expect(document.getElementById('server-guidance-create')!.hidden).toBe(true);
-  expect(document.getElementById('server-guidance-upload')!.hidden).toBe(true);
+  expect(document.getElementById('server-guidance-steps')!.textContent).toContain('打开对应的本地关联项目');
   expect(document.querySelector<HTMLButtonElement>(kind === 'workflow' ? '#run' : '#send')!.disabled).toBe(false);
   await f.render({ checking: false, blocking: false, issue: { kind: 'related-setup-required', projectId: 'related-database', relatedProjectAlias: 'database' } });
   expect(document.getElementById('server-guidance-title')!.textContent).toBe('需要关联项目授权');

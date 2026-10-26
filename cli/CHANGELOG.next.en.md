@@ -1,5 +1,7 @@
 # Unreleased
 
+- Simplified Kanban, Workflow and Conversation Server guidance to New project on Server and Check again. Removed source upload and Account / Server actions, along with instructions to switch Servers.
+
 - Fixed AI source highlighting when adding or editing project configuration models. The selected source uses the theme accent color, and unselected sources keep a neutral background through hovering and switching.
 
 - Fixed Server setup guidance across Kanban, Workflow and Conversation: users can review and create a private project with the same local ID, without uploading source. Explicit Server storage failures in `both` mode identify the affected project and related grants; local actions remain available and recovery never replays runs or queued inputs.

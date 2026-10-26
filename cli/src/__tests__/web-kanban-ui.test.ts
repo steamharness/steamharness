@@ -98,7 +98,7 @@ it('offers retry when an iframe fails to become ready and recovers on a fresh pr
   expect(status.hidden).toBe(true);
 });
 
-it.each(['en', 'zh-CN'] as const)('shows actionable Server guidance, opens host dialogs and rechecks without uploading (%s)', async language => {
+it.each(['en', 'zh-CN'] as const)('offers only project creation and rechecking in Server guidance (%s)', async language => {
   const { sources, sendState, fetcher } = await fixture(language);
   const parent = { postMessage: vi.fn() };
   vi.spyOn(window, 'parent', 'get').mockReturnValue(parent as unknown as Window);
@@ -111,20 +111,14 @@ it.each(['en', 'zh-CN'] as const)('shows actionable Server guidance, opens host 
   expect(guidance.textContent).toContain('https://server.test');
   expect(document.getElementById('server-guidance-project')!.textContent).toBe('map');
   expect(guidance.querySelector('dt:nth-of-type(2)')!.textContent).toBe(language === 'en' ? 'Project ID' : '项目 ID');
-  expect(guidance.textContent).toContain(language === 'en' ? 'Source upload is optional.' : '源码上传为可选操作。');
+  expect([...guidance.querySelectorAll('button')].map(button => button.id)).toEqual(['server-guidance-create', 'server-guidance-retry']);
+  expect(guidance.textContent).not.toMatch(/Account \/ Server|账号 \/ 服务器|switch.*Server|切换.*服务器|[Uu]pload|上传/);
   expect(document.getElementById('server-guidance-create')!.hidden).toBe(false);
   expect(document.getElementById('server-guidance-create')!.textContent).toBe(language === 'en' ? 'New project on Server...' : '在服务器新建项目…');
   expect(document.getElementById('preview-stage')!.hidden).toBe(true);
   expect(document.getElementById('related-warning')!.hidden).toBe(true);
   const frame = document.querySelector<HTMLIFrameElement>('#kanban-preview')!;
   expect(frame.getAttribute('src')).toBeNull();
-  const requestCount = fetcher.mock.calls.length;
-  document.getElementById('server-guidance-account')!.click();
-  expect(parent.postMessage).toHaveBeenLastCalledWith({ type: 'workflow-account', version: 1 }, '*');
-  const upload = document.getElementById('server-guidance-upload')!;
-  expect(upload.hidden).toBe(false); upload.click();
-  expect(parent.postMessage).toHaveBeenLastCalledWith({ type: 'workflow-project-upload', version: 1 }, '*');
-  expect(fetcher).toHaveBeenCalledTimes(requestCount);
   fetcher.mockImplementation(async (_url?: unknown, options?: any) => {
     const message = JSON.parse(options.body);
     expect(message.type).toBe('kanban-refresh');
@@ -139,12 +133,13 @@ it.each(['en', 'zh-CN'] as const)('shows actionable Server guidance, opens host 
   expect(frame.src).toContain('/kanban/ready/index.html');
 });
 
-it('keeps upload hidden without host support or when project access is denied', async () => {
+it('offers project creation without host upload support and hides it when access is denied', async () => {
   const { sendState } = await fixture('en');
   sendState(1, 'missing', { kind: 'project-unavailable', serverUrl: 'https://server.test' });
-  expect(document.getElementById('server-guidance-upload')!.hidden).toBe(true);
+  expect(document.getElementById('server-guidance-create')!.hidden).toBe(false);
+  expect(document.getElementById('server-guidance-upload')).toBeNull();
+  expect(document.getElementById('server-guidance-account')).toBeNull();
   sendState(2, 'denied', { kind: 'access-denied', serverUrl: 'https://server.test' });
   expect(document.getElementById('server-guidance-title')!.textContent).toBe('Project access is required');
-  expect(document.getElementById('server-guidance-upload')!.hidden).toBe(true);
   expect(document.getElementById('server-guidance-create')!.hidden).toBe(true);
 });
