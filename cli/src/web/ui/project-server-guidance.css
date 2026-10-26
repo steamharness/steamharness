@@ -3,6 +3,18 @@
 .project-server-guidance-body { max-width: 640px; margin: 0 auto; font-size: 13px; line-height: 1.6; }
 .project-server-guidance h2 { font-size: 16px; font-weight: 600; margin: 0 0 12px; }
 .project-server-guidance p { color: var(--vscode-descriptionForeground); }
+.project-server-guidance-context { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; margin-bottom: 8px; font-size: 12px; }
+.project-server-guidance-context[hidden] { display: none; }
+#server-guidance-stage { margin-left: auto; color: var(--vscode-descriptionForeground); border: 1px solid var(--vscode-panel-border); border-radius: 3px; padding: 0 6px; }
+.project-server-guidance details summary { cursor: pointer; color: var(--vscode-descriptionForeground); }
+.project-server-guidance details summary:focus-visible { outline: 1px solid var(--vscode-focusBorder); outline-offset: 2px; }
+.project-server-guidance[data-scope="related"] { padding: 12px 24px; }
+.project-server-guidance[data-scope="related"] .project-server-guidance-body { max-width: 760px; border-left: 3px solid var(--vscode-textLink-foreground); padding-left: 16px; }
+.project-server-guidance[data-scope="related"] h2 { font-size: 14px; margin-bottom: 6px; }
+.project-server-guidance[data-scope="related"] p { margin: 6px 0; }
+.project-server-guidance[data-scope="related"] details { margin: 10px 0; }
+.project-server-guidance[data-scope="related"] .project-server-guidance-actions { margin-top: 12px; }
+.kanban-app .project-server-guidance[data-scope="related"] { flex: 0 1 auto; max-height: 100%; margin-block: 12px; }
 .project-server-guidance dl { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 6px 16px; padding: 12px 0; border-block: 1px solid var(--vscode-panel-border); }
 .project-server-guidance dt { color: var(--vscode-descriptionForeground); }
 .project-server-guidance dd { margin: 0; overflow-wrap: anywhere; user-select: text; }

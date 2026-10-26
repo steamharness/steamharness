@@ -35,6 +35,7 @@ import { importDroppedEntries, resolveDroppedPaths } from './dropped-paths';
 import { defaultServerUrl } from '../service-url';
 import { ProjectServerConnection, projectServerAccessFailure } from './project-server-state';
 import { ProjectServerCreation } from './project-server-create';
+import { RelatedProjectImports } from './related-projects';
 
 type Message = Record<string, any>;
 export interface WebOptions { projectDir: string; port?: number; dataDir?: string; theme?: 'auto' | 'light' | 'dark'; runtime?: Runtime; host?: WebHostConfiguration }
@@ -64,6 +65,9 @@ export async function startWebServer(options: WebOptions) {
   let nextProfileCheck = 0;
   const sensitiveTokens = new Set<string>();
   let relatedProjects = options.host?.relatedProjects ?? [];
+  let relatedProjectsManaged = options.host !== undefined;
+  const relatedImports = new RelatedProjectImports();
+  await relatedImports.update(relatedProjectsManaged ? relatedProjects : undefined);
   let resourceProjects = options.host?.resourceProjects ?? [];
   let projectServer: ProjectServerConnection | undefined;
   const waitingRuns = new Map<AbortController, string | undefined>();
@@ -145,7 +149,8 @@ export async function startWebServer(options: WebOptions) {
   // Preserve project-owned data keys; remove host credentials by their actual values.
   const publicState = (value: unknown) => publicValue(redactProjectData(value, [...sensitiveTokens], false));
   const sharedState = () => {
-    const result = publicState({ type: 'state', serverInstanceId, project, configurationError: configurations.error, serverData: projectServer?.state,
+    const result = publicState({ type: 'state', serverInstanceId, project, configurationError: configurations.error,
+    serverData: projectServer && { ...projectServer.state, issue: relatedImports.issue(projectServer.state.issue) },
     ...(isKanban ? { kanban: kanbanController!.state() } : isProject ? projectActions!.state() : { sessions: conversationState.sessions(controller.sessions) }),
     account: { ...account, user: account.user && { userId: account.user.userId, email: account.user.email, displayName: account.user.displayName, avatarUrl: account.user.avatarUrl } },
     authenticationRevision: authRevision, parameterRevision, resourceRevision: resources.revision });
@@ -287,7 +292,7 @@ export async function startWebServer(options: WebOptions) {
     },
   }) : undefined;
   const projectActions = projectController ? createProjectActions(projectController, runtime, project, () => authRevision, broadcast) : undefined;
-  kanbanController = isKanban ? new KanbanController(project, runtime, storageDir, { changed: broadcast, emit: message => { for (const client of clients) { client.write(`data: ${JSON.stringify(message)}\n\n`); } }, connection: () => connection, log: message => process.stderr.write(`${message}\n`) }) : undefined;
+  kanbanController = isKanban ? new KanbanController(project, runtime, storageDir, { changed: broadcast, emit: message => { for (const client of clients) { client.write(`data: ${JSON.stringify(message)}\n\n`); } }, connection: () => connection, log: message => process.stderr.write(`${message}\n`), serverIssue: issue => relatedImports.issue(issue) }) : undefined;
   if (kanbanController) kanbanController.configurationChanged(configurations.state);
   if (kanbanController) { try { await kanbanController.initialize(); } catch (error) { configurations.close(); resources.close(); await kanbanController.close(); runtime.dispose(); throw error; } }
   if (projectController) { await projectController.persist(); }
@@ -422,6 +427,7 @@ export async function startWebServer(options: WebOptions) {
     if (typeof message.type !== 'string') { throw new Error('Invalid message.'); }
     if (message.projectUri && message.projectUri !== project.uri) { throw new Error('Project changed.'); }
     if (message.type === 'project-server-check') {
+      await relatedImports.update(relatedProjectsManaged ? relatedProjects : undefined);
       await refreshAuth(true);
       await projectServer?.refresh();
       return [state(message.clientId), { type: 'project-server-checked' }];
@@ -441,7 +447,10 @@ export async function startWebServer(options: WebOptions) {
       || message.type === 'agent-command' && !['cancel', 'withdraw'].includes(message.command?.type);
     if (needsServer && projectServer?.blocking) projectServer.assertAvailable();
     if (message.type === 'ready') await configurations.refresh().catch(() => undefined);
-    if (message.type === 'kanban-refresh') await configurations.refresh();
+    if (message.type === 'kanban-refresh') {
+      await relatedImports.update(relatedProjectsManaged ? relatedProjects : undefined);
+      await configurations.refresh();
+    }
     if (message.type === 'project-configuration') {
       return [{ type: 'project-configuration-result', requestId: message.requestId, value: await configurations.dispatch(message.call) }];
     }
@@ -848,7 +857,10 @@ export async function startWebServer(options: WebOptions) {
   let closing: Promise<void> | undefined;
   return {
     origin, url: `${origin}/#session=${capability}`, project, configurations, controller, projectController, kanbanController,
-    setHostRelatedProjects: (value: NonNullable<WebHostConfiguration['relatedProjects']>) => { relatedProjects = value; resources.clear(); },
+    setHostRelatedProjects: async (value: NonNullable<WebHostConfiguration['relatedProjects']>) => {
+      relatedProjects = value; relatedProjectsManaged = true; resources.clear();
+      if (await relatedImports.update(value)) broadcast();
+    },
     setHostResourceProjects: (value: string[]) => { resourceProjects = value; resources.clear(); },
     setHostConnection: async (value: WebConnection | undefined) => {
       if (hostManaged && JSON.stringify(value) === JSON.stringify(hostConnection)) { return; }
@@ -859,7 +871,7 @@ export async function startWebServer(options: WebOptions) {
       await refreshAuth(true);
     },
     close: () => closing ??= (async () => {
-      projectCreation.close(); projectServer?.close();
+      relatedImports.close(); projectCreation.close(); projectServer?.close();
       authEpoch++; authCheck?.abort();
       clearInterval(historyPoll);
       configurations.close(); resources.close(); clearInterval(authPoll); if (broadcastTimer) { clearTimeout(broadcastTimer); } login?.kill(); conversationController?.dispose(); projectController?.dispose(); runtime.dispose();

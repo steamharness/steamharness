@@ -86,6 +86,14 @@ it.each([[404, 'project-unavailable'], [403, 'access-denied'], [200, 'related-se
   await vi.waitFor(() => expect(app.kanbanController!.serverDataIssue).toBeUndefined());
   expect((await bridge('relatedProject.kv.getValue', { alias: 'database', key: 'index' })).ok).toBe(false);
   expect((await state()).kanban.serverDataIssue).toMatchObject({ kind, projectId: targetId, relatedProjectAlias: 'database' });
+  expect((await state()).kanban.serverDataIssue).not.toHaveProperty('relatedProjectImported');
+  await app.setHostRelatedProjects([]);
+  expect((await state()).kanban.serverDataIssue.relatedProjectImported).toBe(false);
+  const targetDir = path.join(directory, 'database'); await mkdir(targetDir);
+  await writeFile(path.join(targetDir, 'package.json'), JSON.stringify({ id: targetId }));
+  await app.setHostRelatedProjects([{ alias: 'database', projectDir: targetDir }]);
+  expect((await state()).kanban.serverDataIssue).toMatchObject({ kind, relatedProjectImported: true });
+  expect(app.kanbanController!.state().serverDataIssue?.relatedProjectImported).toBe(true);
   expect(remote.mock.calls.filter(([, options]) => options?.method === 'POST')).toHaveLength(1);
 });
 

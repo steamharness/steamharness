@@ -8,18 +8,26 @@ export class ProjectServerGuidance {
   private readonly server: HTMLElement;
   private readonly project: HTMLElement;
   private readonly steps: HTMLElement;
+  private readonly context: HTMLElement;
+  private readonly stage: HTMLElement;
+  private readonly details: HTMLDetailsElement;
   private readonly create: HTMLButtonElement;
   private readonly retry: HTMLButtonElement;
   private signature = '';
   constructor(private readonly container: HTMLElement, actions: { create(): void; retry(): void }) {
     container.innerHTML = `<div class="project-server-guidance-body">
+      <div class="project-server-guidance-context" id="server-guidance-context" hidden><span class="codicon codicon-link" aria-hidden="true"></span><span id="server-guidance-related"></span><span id="server-guidance-stage"></span></div>
       <h2 id="server-guidance-title"></h2><p id="server-guidance-description"></p>
+      <details id="server-guidance-details" open><summary hidden>${t('Connection details')}</summary>
       <dl><dt>${t("Server")}</dt><dd id="server-guidance-server"></dd><dt>${t("Project ID")}</dt><dd id="server-guidance-project"></dd><dt id="server-guidance-alias-label" hidden>${t('Related project')}</dt><dd id="server-guidance-alias" hidden></dd></dl>
+      </details>
       <ol id="server-guidance-steps"></ol>
       <div class="project-server-guidance-actions"><button id="server-guidance-create" type="button" hidden>${t('New project on Server...')}</button><button id="server-guidance-retry" type="button">${t("Check again")}</button></div>
     </div>`;
     const find = <T extends HTMLElement>(id: string) => container.querySelector<T>(`#server-guidance-${id}`)!;
     this.title = find('title'); this.description = find('description'); this.server = find('server'); this.project = find('project'); this.steps = find('steps');
+    this.context = find('context'); this.stage = find('stage'); this.details = find('details');
+    container.setAttribute('role', 'region'); container.setAttribute('aria-labelledby', this.title.id);
     this.create = find('create'); this.retry = find('retry');
     this.create.onclick = actions.create; this.retry.onclick = actions.retry;
   }
@@ -28,8 +36,14 @@ export class ProjectServerGuidance {
     if (!issue) { this.signature = ''; return; }
     this.retry.disabled = !options.connected || options.working;
     const currentProject = !issue.projectId || issue.projectId.toLowerCase() === projectId.toLowerCase();
+    const related = !currentProject || !!issue.relatedProjectAlias;
+    const scope = related ? 'related' : 'project';
+    if (this.container.dataset.scope !== scope || this.project.textContent !== (issue.projectId || projectId)) this.details.open = !related;
+    this.container.dataset.scope = scope;
+    this.context.hidden = !related;
+    this.details.querySelector('summary')!.hidden = !related;
     this.create.disabled = !options.connected || options.working;
-    this.create.hidden = !currentProject || issue.kind !== 'project-unavailable';
+    this.create.hidden = related || issue.kind !== 'project-unavailable';
     const signature = JSON.stringify([issue, projectId]);
     if (signature === this.signature) return;
     this.signature = signature;
@@ -37,8 +51,17 @@ export class ProjectServerGuidance {
     const alias = this.container.querySelector<HTMLElement>('#server-guidance-alias')!;
     alias.textContent = issue.relatedProjectAlias ?? ''; alias.hidden = !issue.relatedProjectAlias;
     this.container.querySelector<HTMLElement>('#server-guidance-alias-label')!.hidden = !issue.relatedProjectAlias;
+    this.container.querySelector<HTMLElement>('#server-guidance-related')!.textContent = issue.relatedProjectAlias ? t('Related project: {0}', issue.relatedProjectAlias) : t('Related project');
+    const needsImport = related && issue.relatedProjectImported === false;
+    this.container.dataset.stage = needsImport ? 'import' : issue.kind === 'related-setup-required' ? 'authorization' : 'server';
+    this.stage.textContent = needsImport ? t('Not imported') : issue.relatedProjectImported ? t('Imported') : t('Check access');
     let steps: string[];
-    if (issue.kind === 'checking') {
+    if (needsImport) {
+      this.title.textContent = t('Import the related project first');
+      this.description.textContent = t('The related project has not been imported, or its local folder is unavailable. Import it before checking Server access or data grants.');
+      steps = [t('In Studio Related Projects, click "{0}", choose Import Project, and select the folder matching the project ID in Connection details.', issue.relatedProjectAlias || issue.projectId),
+        t('After importing, choose Check again to see the next step.')];
+    } else if (issue.kind === 'checking') {
       this.title.textContent = t('Checking project Server');
       this.description.textContent = t('Checking sign-in and project access. Your local history and drafts remain available.');
       steps = [];
@@ -47,21 +70,29 @@ export class ProjectServerGuidance {
       this.description.textContent = t('This project needs a signed-in account to access Server storage.');
       steps = [t('Sign in to the current application, then choose Check again.')];
     } else if (issue.kind === 'access-denied') {
-      this.title.textContent = t("Project access is required");
+      this.title.textContent = related ? t('Related project account access is required') : t("Project access is required");
       this.description.textContent = t('Your current account cannot perform this data operation. Check access to the project shown below.');
       steps = [t('Ask the project owner to grant your current account access.'), t("After completing setup, choose Check again.")];
     } else if (issue.kind === 'connection-unavailable') {
-      this.title.textContent = t("Cannot connect to the project Server");
+      this.title.textContent = related ? t('Cannot connect to the related project Server') : t("Cannot connect to the project Server");
       this.description.textContent = t("Project data is temporarily unavailable. Your local history and drafts are preserved.");
       steps = [t('Check your network or contact the Server administrator. The connection will retry automatically.'), t("After completing setup, choose Check again.")];
     } else if (issue.kind === 'related-setup-required') {
-      this.title.textContent = t('Related project authorization is required');
-      this.description.textContent = t('Both projects must declare the relationship, and the target project must grant access to the requested data.');
-      steps = [t('Open the related project shown below and check its Server Project Info and data grants with the owner.'), t('After completing setup, choose Check again.')];
+      this.title.textContent = t('Check related project authorization');
+      this.description.textContent = issue.relatedProjectImported
+        ? t('The related project is imported. Its import status does not grant this project access to its data.')
+        : t('Both projects must declare the relationship, and the target project must grant access to the requested data.');
+      steps = [issue.relatedProjectImported === undefined
+        ? t('Open the related local project and check both project manifests, relationship declarations, and the data grants required by this operation.')
+        : t('Open "{0}" from Related Projects. In Information, check both project IDs, relationship declarations, and the data grants required by this operation.', issue.relatedProjectAlias || issue.projectId),
+        t('Ask the project owner to check the corresponding Server Project Info and related project grants.'), t('After completing setup, choose Check again.')];
     } else {
-      this.title.textContent = issue.kind === 'project-unavailable' ? t("Project unavailable on this Server") : t("Complete the Server project setup");
+      this.title.textContent = issue.kind === 'project-unavailable'
+        ? related ? t('Related project unavailable on this Server') : t("Project unavailable on this Server")
+        : related ? t('Check the related project Server settings') : t("Complete the Server project setup");
       this.description.textContent = issue.kind === 'project-unavailable'
-        ? t("This project could not be found or accessed on the connected Server. Importing a local folder does not create a Server project.")
+        ? related ? t('The related project could not be found or accessed on this Server. Its owner needs to check the Server project record and your account access.')
+          : t("This project could not be found or accessed on the connected Server. Importing a local folder does not create a Server project.")
         : t('The Server rejected this project data connection. Check the Server version, project type, and storage settings.');
       steps = issue.kind === 'project-unavailable' ? [
         currentProject ? t('Choose New project on Server and confirm a project with the same ID.')

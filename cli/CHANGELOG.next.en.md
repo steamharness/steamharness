@@ -1,5 +1,7 @@
 # Unreleased
 
+- Improved related-project guidance across Kanban, Workflow and Conversation: verify local imports first, then guide Server access or data grants. Compact related-project notices and expandable connection details distinguish them from missing current projects. Import changes update open pages, rechecks verify folder UUIDs, and no project or grant is changed automatically.
+
 - Simplified Kanban, Workflow and Conversation Server guidance to New project on Server and Check again. Removed source upload and Account / Server actions, along with instructions to switch Servers.
 
 - Fixed AI source highlighting when adding or editing project configuration models. The selected source uses the theme accent color, and unselected sources keep a neutral background through hovering and switching.

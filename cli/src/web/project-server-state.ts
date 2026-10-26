@@ -9,6 +9,8 @@ export interface ProjectServerIssue {
   serverUrl?: string;
   projectId?: string;
   relatedProjectAlias?: string;
+  /** Verified local binding supplied by a host. Absent for standalone sessions. */
+  relatedProjectImported?: boolean;
 }
 export interface ProjectServerState { checking: boolean; issue?: ProjectServerIssue; blocking?: boolean }
 

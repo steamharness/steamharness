@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { afterEach, expect, it, vi } from 'vitest';
 import { KANBAN_PREVIEW_READY_MESSAGE } from '@steamharness/kanban-project';
+import type { ProjectServerIssue } from '../web/project-server-state';
 
 const cleanup: (() => void)[] = [];
 afterEach(() => {
@@ -49,7 +50,7 @@ async function fixture(language: 'en' | 'zh-CN') {
   await import('../web/ui/kanban-main');
   await vi.waitFor(() => expect(sources).toHaveLength(1));
   const receive = (state: object) => sources[0].onmessage!({ data: JSON.stringify(state) });
-  const sendState = (revision: number, nonce = 'first', serverDataIssue?: { kind: string; serverUrl?: string }) => receive({
+  const sendState = (revision: number, nonce = 'first', serverDataIssue?: ProjectServerIssue) => receive({
     type: 'state', project: { id: 'map', name: 'Map 2D', fields: [] },
     account: { status: 'authenticated', serverUrl: 'https://server.test', revision,
       user: { userId: 'user', email: 'user@example.com', displayName: 'User' } },
@@ -142,4 +143,23 @@ it('offers project creation without host upload support and hides it when access
   sendState(2, 'denied', { kind: 'access-denied', serverUrl: 'https://server.test' });
   expect(document.getElementById('server-guidance-title')!.textContent).toBe('Project access is required');
   expect(document.getElementById('server-guidance-create')!.hidden).toBe(true);
+});
+
+it.each(['en', 'zh-CN'] as const)('distinguishes related import and authorization from missing Kanban Server projects (%s)', async language => {
+  const { sendState } = await fixture(language);
+  const issue = { kind: 'related-setup-required' as const, relatedProjectAlias: 'database', projectId: 'database-id', serverUrl: 'https://server.test' };
+  sendState(1, 'blocked', { ...issue, relatedProjectImported: false });
+  const guidance = document.getElementById('server-guidance')!;
+  expect(guidance.dataset.scope).toBe('related'); expect(guidance.dataset.stage).toBe('import');
+  expect(document.getElementById('server-guidance-title')!.textContent).toBe(language === 'en' ? 'Import the related project first' : '请先导入关联项目');
+  expect(document.querySelector<HTMLDetailsElement>('#server-guidance-details')!.open).toBe(false);
+  expect(document.getElementById('server-guidance-create')!.hidden).toBe(true);
+  sendState(2, 'blocked', { ...issue, relatedProjectImported: true });
+  expect(guidance.dataset.stage).toBe('authorization');
+  expect(document.getElementById('server-guidance-title')!.textContent).toBe(language === 'en' ? 'Check related project authorization' : '请检查关联项目授权');
+  sendState(3, 'blocked', { ...issue, kind: 'project-unavailable', relatedProjectImported: true });
+  expect(document.getElementById('server-guidance-title')!.textContent).toBe(language === 'en' ? 'Related project unavailable on this Server' : '关联项目在当前服务器上不可用');
+  expect(document.getElementById('server-guidance-create')!.hidden).toBe(true);
+  sendState(4, 'ready');
+  expect(guidance.hidden).toBe(true); expect(document.getElementById('preview-stage')!.hidden).toBe(false);
 });

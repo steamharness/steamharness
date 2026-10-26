@@ -181,6 +181,47 @@ it('distinguishes a missing related declaration or grant from missing project re
   expect(f.runtime.run).toHaveBeenCalledOnce();
 });
 
+it.each(['workflow', 'conversation'] as const)('updates %s guidance live after import and revalidates local UUIDs on recheck', async kind => {
+  const f = await fixture(kind, 'both');
+  f.project.projectInfo!.relatedProjects = [{ alias: 'database', projectId: relatedId, grantToRelatedProject: grant }];
+  vi.mocked(f.runtime.run).mockResolvedValueOnce({ status: 'failed', error: { message: 'Related data unavailable', metadata: accessMetadata() } });
+  f.hold(async url => Response.json({ errCode: 0, data: { id: url.endsWith(id) ? id : relatedId,
+    projectInfo: url.endsWith(id) ? f.project.projectInfo : { dataStorage: { mode: 'both' }, relatedProjects: [] } } }));
+  await f.post(kind === 'workflow' ? { type: 'workflow-run', params: {} } : { type: 'send', text: 'read', params: {}, attachments: [] });
+  await (kind === 'workflow' ? f.app.projectController!.idle() : f.app.controller.idle());
+  await vi.waitFor(async () => expect((await f.state()).serverData?.issue).toMatchObject({ kind: 'related-setup-required', relatedProjectImported: false }));
+  const targetDir = await mkdtemp(path.join(os.tmpdir(), 'related-import-')); folders.push(targetDir);
+  await writeFile(path.join(targetDir, 'package.json'), JSON.stringify({ id: relatedId.toUpperCase() }));
+  const token = new URL(f.app.url).hash.slice('#session='.length);
+  const events = await fetch(`${f.app.origin}/api/events?session=${token}`, { signal: AbortSignal.timeout(5_000) });
+  const reader = events.body!.getReader(), decoder = new TextDecoder(); let buffer = '';
+  const untilImported = async (imported: boolean) => {
+    for (;;) {
+      const end = buffer.indexOf('\n\n');
+      if (end < 0) { const chunk = await reader.read(); if (chunk.done) throw new Error('Event stream ended'); buffer += decoder.decode(chunk.value, { stream: true }); continue; }
+      const frame = buffer.slice(0, end); buffer = buffer.slice(end + 2);
+      const data = frame.split('\n').find(line => line.startsWith('data: '));
+      if (data && JSON.parse(data.slice(6)).serverData?.issue?.relatedProjectImported === imported) return;
+    }
+  };
+  try {
+    await untilImported(false);
+    await f.app.setHostRelatedProjects([{ alias: 'database', projectDir: targetDir }]);
+    await untilImported(true);
+    expect((await f.state()).serverData.issue.kind).toBe('related-setup-required'); // Importing never grants data access.
+    await writeFile(path.join(targetDir, 'package.json'), JSON.stringify({ id }));
+    const changed = await f.post({ type: 'project-server-check' }).then(response => response.json());
+    expect(changed.messages[0].serverData.issue.relatedProjectImported).toBe(false);
+    await writeFile(path.join(targetDir, 'package.json'), JSON.stringify({ id: relatedId }));
+    const restored = await f.post({ type: 'project-server-check' }).then(response => response.json());
+    expect(restored.messages[0].serverData.issue.relatedProjectImported).toBe(true);
+    await f.app.setHostRelatedProjects([]); await untilImported(false);
+    expect(JSON.stringify((await f.state()).serverData)).not.toContain(targetDir);
+    expect(f.runtime.run).toHaveBeenCalledOnce();
+    expect(f.remote.mock.calls.every(([, options]) => !options?.method || options.method === 'GET')).toBe(true);
+  } finally { await reader.cancel(); }
+});
+
 it.each([[404, 'setup-required'], [403, 'access-denied'], [503, 'connection-unavailable']] as const)('keeps data endpoint HTTP %s visible after project records and grants pass', async (status, kind) => {
   const f = await fixture('workflow', 'both');
   f.project.projectInfo!.relatedProjects = [{ alias: 'database', projectId: relatedId, grantToRelatedProject: grant }];

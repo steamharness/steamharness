@@ -65,7 +65,7 @@ export async function main(argv: string[]): Promise<number> {
           if (message.type === 'auth') {
             void app.setHostConnection(parseHostConnection(message.connection, { allowAi: true })).catch(() => { console.error('Workflow web host connection failed.'); process.exitCode = 1; close(); });
           }
-          else if (message.type === 'related-projects') { app.setHostRelatedProjects(parseHostRelatedProjects(message.relatedProjects)); if (message.resourceProjects !== undefined) { app.setHostResourceProjects(parseHostResourceProjects(message.resourceProjects)); } }
+          else if (message.type === 'related-projects') { await app.setHostRelatedProjects(parseHostRelatedProjects(message.relatedProjects)); if (message.resourceProjects !== undefined) { app.setHostResourceProjects(parseHostResourceProjects(message.resourceProjects)); } }
           else if (message.type === 'close') { break; }
           else { throw new Error('Unknown web host message.'); }
         }

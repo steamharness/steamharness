@@ -109,6 +109,37 @@ it.each(['workflow', 'conversation'] as const)('shows the affected related proje
   expect(document.getElementById('server-guidance-steps')!.textContent).toContain('打开对应的本地关联项目');
   expect(document.querySelector<HTMLButtonElement>(kind === 'workflow' ? '#run' : '#send')!.disabled).toBe(false);
   await f.render({ checking: false, blocking: false, issue: { kind: 'related-setup-required', projectId: 'related-database', relatedProjectAlias: 'database' } });
-  expect(document.getElementById('server-guidance-title')!.textContent).toBe('需要关联项目授权');
+  expect(document.getElementById('server-guidance-title')!.textContent).toBe('请检查关联项目授权');
   expect(document.getElementById('server-guidance-create')!.hidden).toBe(true);
 });
+
+it.each([['workflow', 'en'], ['workflow', 'zh-CN'], ['conversation', 'en'], ['conversation', 'zh-CN']] as const)(
+  'guides %s from import to authorization with distinct presentation (%s)', async (kind, language) => {
+    const f = await fixture(kind, language);
+    const issue = { kind: 'related-setup-required' as const, projectId: 'related-database', relatedProjectAlias: 'database', serverUrl: 'https://server.test' };
+    const render = (imported: boolean) => f.render({ checking: false, blocking: false, issue: { ...issue, relatedProjectImported: imported } });
+    await render(false);
+    const guidance = document.getElementById('server-guidance')!;
+    const details = document.querySelector<HTMLDetailsElement>('#server-guidance-details')!;
+    const title = document.getElementById('server-guidance-title')!;
+    expect(guidance.dataset.scope).toBe('related'); expect(guidance.dataset.stage).toBe('import');
+    expect(title.textContent).toBe(language === 'en' ? 'Import the related project first' : '请先导入关联项目');
+    expect(document.getElementById('server-guidance-steps')!.textContent).toContain(language === 'en' ? 'choose Import Project' : '选择“导入项目”');
+    expect(guidance.textContent).toContain('database'); expect(details.open).toBe(false);
+    expect([...guidance.querySelectorAll('button')].filter(button => !button.hidden).map(button => button.id)).toEqual(['server-guidance-retry']);
+    expect(document.querySelector<HTMLButtonElement>(kind === 'workflow' ? '#run' : '#send')!.disabled).toBe(false);
+    details.open = true;
+    await render(true);
+    expect(guidance.dataset.stage).toBe('authorization'); expect(details.open).toBe(true);
+    expect(title.textContent).toBe(language === 'en' ? 'Check related project authorization' : '请检查关联项目授权');
+    expect(document.getElementById('server-guidance-stage')!.textContent).toBe(language === 'en' ? 'Imported' : '已导入');
+    expect(document.getElementById('server-guidance-steps')!.textContent).not.toContain(language === 'en' ? 'choose Import Project' : '选择“导入项目”');
+    await f.render({ checking: false, blocking: false, issue: { ...issue, kind: 'access-denied', relatedProjectImported: true } });
+    expect(title.textContent).toBe(language === 'en' ? 'Related project account access is required' : '需要关联项目的账号访问权限');
+    await f.render({ checking: false, issue: { kind: 'project-unavailable' } });
+    expect(guidance.dataset.scope).toBe('project'); expect(details.open).toBe(true);
+    expect(document.getElementById('server-guidance-context')!.hidden).toBe(true);
+    expect(document.getElementById('server-guidance-create')!.hidden).toBe(false);
+    await f.render(); expect(guidance.hidden).toBe(true);
+  },
+);

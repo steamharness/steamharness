@@ -21,7 +21,7 @@ import { requestStudioAnalysis } from './local-analysis';
 import { checkProjectServer, checkProjectStorageFailure, projectServerIssue, type ProjectServerIssue } from './project-server-state';
 
 type Message = Record<string, any>;
-interface Hooks { changed(): void; emit(message: Record<string, unknown>): void; connection(): WebConnection | undefined; log(message: string): void }
+interface Hooks { changed(): void; emit(message: Record<string, unknown>): void; connection(): WebConnection | undefined; log(message: string): void; serverIssue?(issue: ProjectServerIssue | undefined): ProjectServerIssue | undefined }
 
 export class KanbanController {
   workspace!: ProjectConfigurationState;
@@ -54,7 +54,7 @@ export class KanbanController {
     this.workspace = state;
     if (this.preview) { this.newPreview(); this.hooks.changed(); }
   }
-  state() { return { ...this.workspace, params: this.params, configuration: this.configuration(), preview: { url: this.preview.url, nonce: this.preview.nonce }, relatedProjectRevisions: this.relatedProjectRevisions, missingRelatedProjectAliases: this.missingRelatedProjectAliases, relatedProjectWarning: this.relatedProjectWarning, serverDataIssue: this.serverDataIssue }; }
+  state() { return { ...this.workspace, params: this.params, configuration: this.configuration(), preview: { url: this.preview.url, nonce: this.preview.nonce }, relatedProjectRevisions: this.relatedProjectRevisions, missingRelatedProjectAliases: this.missingRelatedProjectAliases, relatedProjectWarning: this.relatedProjectWarning, serverDataIssue: this.hooks.serverIssue ? this.hooks.serverIssue(this.serverDataIssue) : this.serverDataIssue }; }
   async initialize(): Promise<void> {
     this.workspace ??= await (await createLocalProjectConfigurationStore(this.project.folderPath)).read();
     await this.refresh();
