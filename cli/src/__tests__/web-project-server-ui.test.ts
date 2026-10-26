@@ -35,19 +35,56 @@ async function fixture(kind: 'workflow' | 'conversation', language: 'en' | 'zh-C
   const messages = [{ id: 'saved-answer', role: 'assistant', content: 'Previous result', status: 'success' }];
   let revision = 0;
   const render = async (serverData?: ProjectServerState, running = false) => {
-    emit({ type: 'state', project, serverData, stateRevision: ++revision, serverInstanceId: 'process', authenticationRevision: 1,
+    const next = { type: 'state', project, serverData, stateRevision: ++revision, serverInstanceId: 'process', authenticationRevision: 1,
       account: { status: 'authenticated', revision: 1, serverUrl: 'https://server.test' },
       ...(kind === 'workflow' ? { runs: [], drafts: { '': { scopeId: 'draft', values: { subject: 'Original' }, rawArgs: '[]', inputMode: 'form', policies: {} } }, history: { total: 0 }, running }
         : { sessions: [{ id: 'session', title: 'History', ...(running ? { activeRunId: 'active-run' } : {}), messages: messages.map(message => ({ ...message, status: running ? 'running' : message.status })), draft: { text: 'Original draft', attachments: [] },
           queuedInputs: [{ id: 'queued', text: 'Keep queued', params: {}, attachments: [], createdAt: 1 }] }], activeId: 'session', running }),
-    });
+    };
+    emit(next);
     await vi.advanceTimersByTimeAsync(1);
     const resolve = host.postMessage.mock.calls.map(([value]) => value).filter(value => value.type === 'resolve').at(-1);
     if (resolve) emit({ type: 'params', requestId: resolve.requestId, sessionId: 'session', entrypointId: resolve.entrypointId, params: {} });
+    return next;
   };
   emit({ type: 'connection', status: 'connected' }); emit({ type: 'project-setup-available', upload: true });
-  return { emit, render };
+  return { emit, render, project };
 }
+
+it.each(['workflow', 'conversation'] as const)('keeps %s startup guidance after replacement and ignores states from the retired service', async kind => {
+  const f = await fixture(kind, 'en');
+  const old = await f.render({ checking: false });
+  f.emit({ ...old, serverInstanceId: 'replacement', stateRevision: 1,
+    serverData: { checking: false, issue: { kind: 'project-unavailable' } } });
+  await vi.advanceTimersByTimeAsync(1);
+  const run = document.querySelector<HTMLButtonElement>(kind === 'workflow' ? '#run' : '#send')!;
+  expect(run.disabled).toBe(true);
+  f.emit({ ...old, stateRevision: 100 });
+  await vi.advanceTimersByTimeAsync(1);
+  expect(run.disabled).toBe(true);
+  expect(document.getElementById('server-guidance')!.hidden).toBe(false);
+});
+
+it.each(['workflow', 'conversation'] as const)('keeps %s guidance when a child frame posts an application state', async kind => {
+  const f = await fixture(kind, 'en');
+  const current = await f.render({ checking: false, issue: { kind: 'project-unavailable' } });
+  const child = document.createElement('iframe'); document.body.append(child);
+  window.dispatchEvent(new MessageEvent('message', { source: child.contentWindow, data: { ...current, stateRevision: 100, serverData: { checking: false } } }));
+  await vi.advanceTimersByTimeAsync(1);
+  expect(document.getElementById('server-guidance')!.hidden).toBe(false);
+  window.dispatchEvent(new MessageEvent('message', { source: window.parent, data: { ...current, stateRevision: 2, serverData: { checking: false } } }));
+  await vi.advanceTimersByTimeAsync(1);
+  expect(document.getElementById('server-guidance')!.hidden).toBe(true);
+});
+
+it.each(['en', 'zh-CN'] as const)('does not offer identity replacement for a managed assistant application (%s)', async language => {
+  const f = await fixture('conversation', language);
+  Object.assign(f.project, { assistant: { workdir: '/project', roots: [{ uri: 'file:///project', folderPath: '/project', name: 'Project' }] } });
+  await f.render({ checking: false, blocking: false, issue: { kind: 'project-unavailable' } });
+  expect(document.getElementById('server-guidance-create')!.hidden).toBe(true);
+  expect(document.getElementById('server-guidance-description')!.textContent).toContain(language === 'en' ? 'managed ID' : '统一管理');
+  expect(document.getElementById('server-guidance-steps')!.textContent).not.toContain(language === 'en' ? 'Choose Apply' : '选择“重新申请');
+});
 
 it.each([['workflow', 'en'], ['workflow', 'zh-CN'], ['conversation', 'en'], ['conversation', 'zh-CN']] as const)(
   'guides %s setup in %s without discarding edits or submitting a run on recheck', async (kind, language) => {

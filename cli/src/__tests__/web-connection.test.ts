@@ -78,6 +78,26 @@ it('binds commands and ready snapshots to the page event connection', async () =
   }
 });
 
+it('keeps the event connection alive while a full application recheck exceeds an ordinary request deadline', async () => {
+  const fixture = await connectionFixture(200);
+  fixture.listeners.get('online')!(); await vi.waitFor(() => expect(fixture.source()).toBeDefined()); fixture.open();
+  const ordinaryDeadline = new AbortController();
+  const timeout = vi.spyOn(AbortSignal, 'timeout').mockImplementation(ms => ms <= 60_000 ? ordinaryDeadline.signal : new AbortController().signal);
+  let finish!: (response: Response) => void, signal: AbortSignal | undefined;
+  fixture.fetcher.mockImplementationOnce((_url, options) => new Promise((resolve, reject) => {
+    signal = options.signal; finish = resolve;
+    signal!.addEventListener('abort', () => reject(new Error('Timed out')), { once: true });
+  }));
+  try {
+    const checking = fixture.connection.request({ type: 'project-server-check' });
+    ordinaryDeadline.abort();
+    expect(signal?.aborted).toBe(false); expect(fixture.updates.at(-1)).toBe('connected');
+    finish(Response.json({ messages: [{ type: 'project-server-checked' }] }));
+    await expect(checking).resolves.toEqual([{ type: 'project-server-checked' }]);
+    expect(fixture.fetcher.mock.calls.filter(([url]) => url === '/api/message')).toHaveLength(1);
+  } finally { timeout.mockRestore(); }
+});
+
 it('does not reconnect a departed page from a late session handshake and restores it from browser history', async () => {
   const fixture = await connectionFixture(200);
   let finish!: (response: Response) => void;

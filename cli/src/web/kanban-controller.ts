@@ -108,10 +108,16 @@ export class KanbanController {
     await this.updateLocalRevisions(); this.hooks.changed();
   }
   private newPreview(): void { this.generation++; this.methods.clear(); this.preview = new KanbanPreview(this.project.folderPath, this.project.kanban!, () => this.configuration()); }
+  private serverChecksBlocked(): boolean {
+    return this.project.projectInfo?.dataStorage?.mode === 'server' && (!!this.serverDataIssue || !!this.hooks.serverState?.().checking);
+  }
   async handle(message: Message): Promise<Message[]> {
-    if (message.type === 'kanban-method-state') { if (message.nonce !== this.preview.nonce) { throw new Error('Kanban preview changed.'); } this.methods.publish(message); return []; }
+    if (message.type === 'kanban-method-state') { if (message.nonce !== this.preview.nonce) { throw new Error('Kanban preview changed.'); } if (!this.serverChecksBlocked()) this.methods.publish(message); return []; }
     if (message.type === 'kanban-method-reply') { this.methods.reply(message); return []; }
-    if (message.type === 'kanban-methods') { return [{ type: 'kanban-methods-result', requestId: message.requestId, value: message.action === 'list' ? this.methods.list() : message.action === 'invoke' ? await this.methods.invoke(message.call) : (() => { throw new Error('Invalid Kanban methods action.'); })() }]; }
+    if (message.type === 'kanban-methods') {
+      if (message.action === 'invoke' && this.serverChecksBlocked()) throw new Error('Kanban Server setup is required.');
+      return [{ type: 'kanban-methods-result', requestId: message.requestId, value: message.action === 'list' ? this.methods.list() : message.action === 'invoke' ? await this.methods.invoke(message.call) : (() => { throw new Error('Invalid Kanban methods action.'); })() }];
+    }
     if (message.type === 'kanban-bridge') {
       try {
         if (message.nonce !== this.preview.nonce) { throw Object.assign(new Error('Kanban preview changed.'), { code: 'KANBAN_BRIDGE_SESSION_INVALID' }); }
@@ -135,7 +141,7 @@ export class KanbanController {
     } else if (this.project.projectInfo?.dataStorage?.mode === 'server' || call.operation.startsWith('files.')) {
       const connection = this.hooks.connection();
       if (!connection) { throw Object.assign(new Error('SteamHarness Server login is required.'), { code: call.operation.startsWith('files.') ? 'KANBAN_FILE_UNAVAILABLE' : 'KANBAN_BRIDGE_UNAVAILABLE' }); }
-      if (this.project.projectInfo?.dataStorage?.mode === 'server' && (this.serverDataIssue || this.hooks.serverState?.().checking)) { throw Object.assign(new Error('Kanban Server setup is required.'), { code: 'KANBAN_BRIDGE_UNAVAILABLE' }); }
+      if (this.serverChecksBlocked()) { throw Object.assign(new Error('Kanban Server setup is required.'), { code: 'KANBAN_BRIDGE_UNAVAILABLE' }); }
       const abort = new AbortController(); this.requests.add(abort);
       try {
         const file = call.operation === 'files.readFile' ? await readConfigurationFile(this.project.id, this.workspace, String(call.input.fileId), connection, { target: this.workspace.template?.projectVersion, signal: abort.signal }) : undefined;
@@ -184,7 +190,10 @@ export class KanbanController {
     if (this.operationIssue?.kind === 'related-import-required' && !this.hooks.relatedImport?.(this.operationIssue.relatedProjectAlias)) this.operationIssue = undefined;
     if (this.project.projectInfo?.dataStorage?.mode !== 'server') return;
     const state = this.hooks.serverState?.();
-    if (state?.checking || state?.issue) { this.feed?.abort(); clearTimeout(this.retry); return; }
+    if (state?.checking || state?.issue) {
+      this.methods.clear(); for (const request of this.requests) request.abort();
+      this.feed?.abort(); clearTimeout(this.retry); return;
+    }
     if (!this.loading && (!this.feed || this.feed.signal.aborted)) this.connectServerRevisions();
   }
   private connectServerRevisions(): void {

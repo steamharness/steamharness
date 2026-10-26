@@ -112,6 +112,23 @@ it('retries a temporary checklist failure even when an earlier item needs a user
   } finally { monitor.close(); }
 });
 
+it('retires an operation diagnostic when its related declaration is removed', async () => {
+  let related = true;
+  const checks = (): ProjectServerCheck[] => [{ id: 'project', projectId: id, stage: 'registration', status: 'passed' },
+    ...(related ? [{ id: 'related:database', projectId: relatedId, relatedProjectAlias: 'database', stage: 'relationship' as const, status: 'passed' as const }] : [])];
+  const fetcher = vi.spyOn(globalThis, 'fetch').mockImplementation(async url => String(url).endsWith(id) ? ok() : new Response('', { status: 403 }));
+  const monitor = new ProjectServerConnection(id, () => connection, vi.fn(), { inspect: async () => checks() });
+  try {
+    await monitor.reportFailure({ serverUrl: connection.serverUrl, projectId: relatedId, relatedProjectAlias: 'database', operation: 'get' });
+    expect(monitor.state.issue).toMatchObject({ kind: 'access-denied', relatedProjectAlias: 'database' });
+    const reads = fetcher.mock.calls.length;
+    related = false; await monitor.restart();
+    expect(monitor.state.issue).toBeUndefined(); expect(monitor.state.checks).toHaveLength(1);
+    expect(fetcher.mock.calls).toHaveLength(reads);
+    expect(monitor.ready).toBe(true);
+  } finally { monitor.close(); }
+});
+
 async function fixture(kind: 'workflow' | 'conversation', mode: 'local' | 'both' | 'server') {
   const folderPath = await realpath(await mkdtemp(path.join(os.tmpdir(), 'project-server-'))); folders.push(folderPath);
   const pkg = { id, name: 'Project', steamHarness: { projectType: kind, projectInfo: { dataStorage: { mode } } } };
@@ -134,7 +151,12 @@ async function fixture(kind: 'workflow' | 'conversation', mode: 'local' | 'both'
   const token = new URL(app.url).hash.slice('#session='.length);
   const post = (message: object) => fetch(`${app.origin}/api/message`, { method: 'POST', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }, body: JSON.stringify(message) });
   const state = async () => (await post({ type: 'ready' }).then(response => response.json())).messages[0];
-  return { app, runtime, project, post, state, remote, recover: () => { status = 200; }, hold: (read: (url: string, options?: RequestInit) => Promise<Response>) => { onRead = read; } };
+  const declareRelated = async (relatedProjects: NonNullable<Project['projectInfo']>['relatedProjects']) => {
+    project.projectInfo = { ...project.projectInfo!, relatedProjects };
+    app.project.projectInfo = project.projectInfo;
+    await writeFile(path.join(folderPath, 'package.json'), JSON.stringify({ ...pkg, steamHarness: { ...pkg.steamHarness, projectInfo: project.projectInfo } }));
+  };
+  return { app, runtime, project, post, state, remote, declareRelated, recover: () => { status = 200; }, hold: (read: (url: string, options?: RequestInit) => Promise<Response>) => { onRead = read; } };
 }
 
 it.each(['workflow', 'conversation'] as const)('guides %s setup, preserves drafts, and requires an explicit run after recovery', async kind => {
@@ -167,7 +189,7 @@ const accessMetadata = () => ({ code: 'PROJECT_SERVER_ACCESS_FAILED', serverUrl:
 
 it.each(['workflow', 'conversation'] as const)('guides real related Server failures in a both-storage %s without requiring a Server for local work', async kind => {
   const f = await fixture(kind, 'both');
-  f.project.projectInfo!.relatedProjects = [{ alias: 'database', projectId: relatedId, grantToRelatedProject: grant }];
+  await f.declareRelated([{ alias: 'database', projectId: relatedId, grantToRelatedProject: grant }]);
   const run = vi.spyOn(f.runtime, 'run').mockResolvedValueOnce({ status: 'failed', error: { message: 'Project or group does not exist.', metadata: accessMetadata() } });
   const action = kind === 'workflow' ? { type: 'workflow-run', params: {} } : { type: 'send', text: 'read database', params: {}, attachments: [] };
   await f.post(action); await (kind === 'workflow' ? f.app.projectController!.idle() : f.app.controller.idle());
@@ -188,7 +210,7 @@ it.each(['workflow', 'conversation'] as const)('guides real related Server failu
 
 it('distinguishes a missing related declaration or grant from missing project records', async () => {
   const f = await fixture('conversation', 'both');
-  f.project.projectInfo!.relatedProjects = [{ alias: 'database', projectId: relatedId, grantToRelatedProject: grant }];
+  await f.declareRelated([{ alias: 'database', projectId: relatedId, grantToRelatedProject: grant }]);
   vi.spyOn(f.runtime, 'run').mockResolvedValueOnce({ status: 'failed', result: { error: { message: 'unavailable', metadata: accessMetadata() } } });
   let confirmed = false;
   f.hold(async url => new Response(JSON.stringify({ errCode: 0, data: url.endsWith('/api/project-storage') ? { exists: false } : { id: url.endsWith(id) ? id : relatedId, projectInfo: url.endsWith(id) ? f.project.projectInfo : {
@@ -207,7 +229,7 @@ it('distinguishes a missing related declaration or grant from missing project re
 
 it.each(['workflow', 'conversation'] as const)('updates %s guidance live after import and revalidates local UUIDs on recheck', async kind => {
   const f = await fixture(kind, 'both');
-  f.project.projectInfo!.relatedProjects = [{ alias: 'database', projectId: relatedId, grantToRelatedProject: grant }];
+  await f.declareRelated([{ alias: 'database', projectId: relatedId, grantToRelatedProject: grant }]);
   vi.mocked(f.runtime.run).mockResolvedValueOnce({ status: 'failed', error: { message: 'Related data unavailable', metadata: accessMetadata() } });
   f.hold(async url => Response.json({ errCode: 0, data: { id: url.endsWith(id) ? id : relatedId,
     projectInfo: url.endsWith(id) ? f.project.projectInfo : { dataStorage: { mode: 'both' }, relatedProjects: [] } } }));
@@ -249,7 +271,7 @@ it.each(['workflow', 'conversation'] as const)('updates %s guidance live after i
 it.each(['workflow', 'conversation'] as const)('guides a missing local %s import without requiring Server diagnostics or replaying the failed run', async kind => {
   const f = await fixture(kind, 'local');
   f.recover(); await f.post({ type: 'project-server-check' });
-  f.project.projectInfo!.relatedProjects = [{ alias: 'database', projectId: relatedId, grantToRelatedProject: grant }];
+  await f.declareRelated([{ alias: 'database', projectId: relatedId, grantToRelatedProject: grant }]);
   vi.mocked(f.runtime.run).mockResolvedValueOnce({ status: 'failed', error: { message: 'Unavailable or awaiting confirmation', metadata: { code: 'RELATED_PROJECT_UNAVAILABLE', alias: 'database' } } });
   await f.post(kind === 'workflow' ? { type: 'workflow-run', params: {} } : { type: 'send', text: 'read', params: {}, attachments: [] });
   await (kind === 'workflow' ? f.app.projectController!.idle() : f.app.controller.idle());
@@ -271,7 +293,7 @@ it.each(['workflow', 'conversation'] as const)('guides a missing local %s import
 
 it.each([[404, 'setup-required'], [403, 'access-denied'], [503, 'connection-unavailable']] as const)('keeps data endpoint HTTP %s visible after project records and grants pass', async (status, kind) => {
   const f = await fixture('workflow', 'both');
-  f.project.projectInfo!.relatedProjects = [{ alias: 'database', projectId: relatedId, grantToRelatedProject: grant }];
+  await f.declareRelated([{ alias: 'database', projectId: relatedId, grantToRelatedProject: grant }]);
   f.hold(async (url, options) => {
     if (url.endsWith('/api/project-storage')) {
       expect(JSON.parse(String(options?.body))).toEqual({ consumerProjectId: id, alias: 'database', storageKind: 'kv', operation: 'get', entry: { scope: 'project', key: '@index/knowledge.v1' } });
@@ -309,7 +331,7 @@ it('does not turn ordinary model errors, foreign Servers, or undeclared IDs into
   const metadata = accessMetadata();
   expect(projectServerAccessFailure({ status: 404 }, f.project, connection)).toBeUndefined();
   expect(projectServerAccessFailure(metadata, f.project, connection)).toBeUndefined();
-  f.project.projectInfo!.relatedProjects = [{ alias: 'database', projectId: relatedId, grantToRelatedProject: grant }];
+  await f.declareRelated([{ alias: 'database', projectId: relatedId, grantToRelatedProject: grant }]);
   expect(projectServerAccessFailure(metadata, { ...f.project, id: id.toUpperCase() }, connection)).toMatchObject({ projectId: relatedId, relatedProjectAlias: 'database' });
   expect(projectServerAccessFailure({ ...metadata, serverUrl: 'https://other.test' }, f.project, connection)).toBeUndefined();
   expect(projectServerAccessFailure({ ...metadata, consumerProjectId: relatedId }, f.project, connection)).toBeUndefined();
@@ -319,8 +341,11 @@ it('does not turn ordinary model errors, foreign Servers, or undeclared IDs into
   expect(f.remote.mock.calls).toHaveLength(checkedRequests);
 });
 
-it.each(['workflow', 'conversation'] as const)('creates a %s new application only after confirmation and changes identity without uploading or executing', async kind => {
+it.each([['workflow', 'declared'], ['workflow', 'inferred'], ['conversation', 'declared'], ['conversation', 'inferred']] as const)('creates a %s new application with %s type only after confirmation and changes identity without uploading or executing', async (kind, declaration) => {
   const f = await fixture(kind, 'server');
+  if (declaration === 'inferred') {
+    await writeFile(path.join(f.project.folderPath, 'package.json'), JSON.stringify({ id, steamHarness: { projectInfo: f.project.projectInfo } }));
+  }
   await vi.waitFor(async () => expect((await f.state()).serverData?.issue?.kind).toBe('project-unavailable'));
   let created = false;
   f.hold(async (url, options) => {
@@ -331,7 +356,10 @@ it.each(['workflow', 'conversation'] as const)('creates a %s new application onl
     }
     return created && url.endsWith(relatedId) ? Response.json({ errCode: 0, data: { id: relatedId } }) : new Response('', { status: 404 });
   });
-  const prepare = () => f.post({ type: 'project-server-create-prepare' }).then(response => response.json()).then(body => body.messages[0].context);
+  const prepare = async () => {
+    const response = await f.post({ type: 'project-server-create-prepare' }); expect(response.ok).toBe(true);
+    return (await response.json()).messages[0].context;
+  };
   const cancelled = await prepare(); expect(created).toBe(false);
   await f.post({ type: 'project-server-create-cancel', token: cancelled.token });
   expect((await f.post({ type: 'project-server-create-confirm', token: cancelled.token, confirmed: true, name: 'Chosen name' })).status).toBe(400);

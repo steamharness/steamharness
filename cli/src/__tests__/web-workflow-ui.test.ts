@@ -76,12 +76,12 @@ afterEach(() => { vi.unstubAllGlobals(); });
 async function fixture() {
   const elements = new Map<string, Element>();
   const element = (id: string) => { if (!elements.has(id)) { elements.set(id, new Element()); } return elements.get(id)!; };
-  let receive!: (event: { data: unknown }) => void;
+  let receive!: (event: { data: unknown; source: null }) => void;
   vi.stubGlobal('document', { querySelector: element, getElementById: element, createElement: () => new Element() });
   vi.stubGlobal('matchMedia', () => ({ matches: false, addEventListener() {} }));
   vi.stubGlobal('addEventListener', (_type: string, callback: typeof receive) => { receive = callback; });
   await import('../web/ui/workflow-main');
-  const emit = (data: unknown) => receive({ data });
+  const emit = (data: unknown) => receive({ data, source: null });
   emit(state()); emit({ type: 'connection', status: 'connected' });
   const request = (type: string) => host.postMessage.mock.calls.map(([message]) => message).filter(message => message.type === type).at(-1)!;
   const resolved = () => { const message = request('resolve'); emit({ type: 'params', entrypointId: message.entrypointId, requestId: message.requestId, params: {} }); };

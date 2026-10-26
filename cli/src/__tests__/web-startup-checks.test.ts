@@ -6,6 +6,7 @@ import { readProjectInfo } from '@steamharness/project-info';
 import { startWebServer } from '../web/server';
 import type { Project, ProjectKind, Runtime } from '../web/workflow-types';
 import type { ProjectServerState } from '../web/project-server-state';
+import { ProjectServerCreation } from '../web/project-server-create';
 
 const id = 'aaa10f6d-c322-461a-aecd-56d644d227c5', targetId = '78648759-bcde-4fd5-b3bd-9a2dd46a7192';
 const grant = { read: { mode: 'all' }, write: { mode: 'none' } };
@@ -57,7 +58,7 @@ async function fixture(kind: ProjectKind, options: { mode?: 'local' | 'both' | '
     await vi.waitFor(async () => { result = await state(); expect(result.serverData.checking).toBe(false); });
     return result;
   };
-  return { app, project, targetDir, targetInfo, binding, runtime, remote, records, post, state, settled,
+  return { app, project, projectDir, pkg, targetDir, targetInfo, binding, runtime, remote, records, post, state, settled,
     intercept: (handler: NonNullable<typeof intercept>) => { intercept = handler; } };
 }
 
@@ -166,4 +167,70 @@ it('opens only one Kanban revision subscription after each successful check pass
   await f.post({ type: 'kanban-refresh' });
   await vi.waitFor(() => expect(subscriptions()).toHaveLength(2));
   expect(f.remote.mock.calls.filter(([url]) => url.endsWith(`/api/projects/${id}`))).toHaveLength(2);
+});
+
+it.each(['workflow', 'conversation'] as const)('rechecks the current %s declarations and storage mode after a local edit', async kind => {
+  const f = await fixture(kind, { related: true, imported: true }); await f.settled();
+  const info = { ...f.pkg.steamHarness.projectInfo, dataStorage: { mode: 'local' }, relatedProjects: [] };
+  await writeFile(path.join(f.projectDir, 'package.json'), JSON.stringify({ ...f.pkg, steamHarness: { ...f.pkg.steamHarness, projectInfo: info } }));
+  f.records.get(id)!.status = 404;
+  const relatedReads = f.remote.mock.calls.filter(([url]) => url.endsWith(targetId)).length;
+  await f.post({ type: 'project-server-check' });
+  const state = await f.settled();
+  expect(state.serverData).toMatchObject({ blocking: false, issue: { kind: 'project-unavailable' } });
+  expect(state.serverData.checks).toHaveLength(1);
+  expect(f.app.project.projectInfo?.relatedProjects).toEqual([]);
+  expect(f.remote.mock.calls.filter(([url]) => url.endsWith(targetId))).toHaveLength(relatedReads);
+  expect(f.runtime.run).not.toHaveBeenCalled();
+  await f.post(kind === 'workflow' ? { type: 'workflow-run', params: {} } : { type: 'send', text: 'Local work', params: {}, attachments: [] });
+  await (kind === 'workflow' ? f.app.projectController!.idle() : f.app.controller.idle());
+  expect(f.runtime.run).toHaveBeenCalledOnce();
+});
+
+it.each(['id', 'projectType'] as const)('requires reopening after a manifest %s change instead of checking a different identity', async field => {
+  const f = await fixture('workflow'); await f.settled();
+  const pkg = field === 'id' ? { ...f.pkg, id: targetId } : { ...f.pkg, steamHarness: { ...f.pkg.steamHarness, projectType: 'conversation' } };
+  await writeFile(path.join(f.projectDir, 'package.json'), JSON.stringify(pkg));
+  f.remote.mockClear();
+  const result = await f.post({ type: 'project-server-check' });
+  expect(result.message).toContain('Reopen');
+  expect(f.app.project).toMatchObject({ id, projectType: 'workflow' });
+  expect(f.remote).not.toHaveBeenCalled(); expect(f.runtime.run).not.toHaveBeenCalled();
+});
+
+it.each(['workflow', 'conversation', 'kanban'] as const)('allows a local-storage %s to request a new identity without changing storage or uploading', async kind => {
+  const f = await fixture(kind, { mode: 'local', status: 404 }); await f.settled();
+  const allocatedId = '6903bffe-9938-4a24-824e-7a2b729c9c46';
+  f.intercept((url, init) => {
+    if (url.includes('/api/groups?')) return Promise.resolve(Response.json({ errCode: 0, data: { items: [], total: 0 } }));
+    if (url.endsWith('/api/projects') && init?.method === 'POST') return Promise.resolve(Response.json({ errCode: 0, data: { projectId: allocatedId, projectType: kind } }));
+  });
+  const creation = new ProjectServerCreation(f.app.project, () => connection, () => 'user', () => f.app.kanbanController?.serverDataIssue ?? { kind: 'project-unavailable' });
+  const context = await creation.prepare();
+  expect(f.remote.mock.calls.every(([, init]) => (init?.method ?? 'GET') === 'GET')).toBe(true);
+  expect(await creation.confirm({ token: context.token, confirmed: true, name: 'Local app' })).toBe(allocatedId);
+  const request = f.remote.mock.calls.find(([, init]) => init?.method === 'POST')!;
+  const body = JSON.parse(String(request[1]?.body));
+  expect(body.projectInfo.dataStorage.mode).toBe('local');
+  expect(body).not.toHaveProperty('projectId'); expect(body).not.toHaveProperty('files');
+  expect(f.runtime.run).not.toHaveBeenCalled();
+  creation.close();
+});
+
+it('invalidates Server Kanban method instances during checks and rejects stale publication and invocation', async () => {
+  const f = await fixture('kanban'); await f.settled();
+  const controller = f.app.kanbanController!;
+  controller.methods.connect('client');
+  const instance = { type: 'kanban-method-state', nonce: controller.preview.nonce, clientId: 'client', instanceId: 'instance', ready: true,
+    configurationId: controller.configuration().id, presentation: { mode: 'fullscreen' }, methods: [{ name: 'tasks.list', description: 'List tasks', inputSchema: { type: 'object' }, readOnly: true }] };
+  await controller.handle(instance); expect(controller.methods.list()).toHaveLength(1);
+  let finish!: (response: Response) => void;
+  f.intercept(url => url.endsWith(`/api/projects/${id}`) ? new Promise(resolve => { finish = resolve; }) : undefined);
+  const checking = f.post({ type: 'project-server-check' });
+  await vi.waitFor(() => expect(finish).toBeTypeOf('function'));
+  expect(controller.methods.list()).toEqual([]);
+  await controller.handle(instance); expect(controller.methods.list()).toEqual([]);
+  await expect(controller.handle({ type: 'kanban-methods', action: 'invoke', call: { instanceId: 'instance', configurationId: instance.configurationId, method: 'tasks.list', args: {} } })).rejects.toThrow('setup');
+  finish(Response.json({ errCode: 0, data: { id } })); await checking;
+  expect(f.runtime.kanbanBridge).not.toHaveBeenCalled();
 });

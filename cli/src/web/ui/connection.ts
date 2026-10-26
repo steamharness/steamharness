@@ -214,6 +214,7 @@ export class BrowserConnection {
       const body = { ...message, ...(this.applicationId ? { applicationId: this.applicationId } : {}), clientId: this.clientId };
       // Navigation is independent of the event stream and must not wait on its handshake.
       const timeout = ['ready', 'navigate'].includes(message.type) ? 10_000
+        : message.type === 'project-server-check' ? 180_000
         : control || ['queue-promote', 'queue-remove'].includes(message.type) ? 35_000 : 60_000;
       for (let attempt = 0; ; attempt++) {
         let response: Response, reply: Message;

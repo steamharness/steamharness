@@ -175,6 +175,9 @@ export class ProjectServerConnection {
             this.state = { ...this.state, checks, issue: checks.find(check => check.issue)?.issue }; this.changed();
           }, this.unavailable);
           issue = checks.find(check => check.issue)?.issue;
+          const failure = this.failure;
+          if (!abort.signal.aborted && failure?.relatedProjectAlias && !checks.some(check => check.relatedProjectAlias === failure.relatedProjectAlias
+            && check.projectId.toLowerCase() === failure.projectId.toLowerCase())) this.failure = undefined;
         }
         if (connection && !issue) issue = this.failure ? await checkProjectStorageFailure(this.projectId, this.failure, connection, abort.signal)
           : this.options.inspect ? undefined : await checkProjectServer(this.projectId, connection, abort.signal);

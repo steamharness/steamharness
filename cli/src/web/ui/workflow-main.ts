@@ -18,6 +18,7 @@ import type { AccountState } from '../workflow-auth-client';
 import { layoutProjectGraph } from '../workflow-graph';
 import type { ProjectServerState } from '../project-server-state';
 import { ProjectServerGuidance } from './project-server-guidance';
+import { StateRevisions } from './state-revisions';
 
 interface State {
   project: Project;
@@ -57,6 +58,7 @@ traceButton.id = 'open-trace'; document.querySelector('.run-heading-actions')!.p
 let state: State | undefined, entrypointId: string | undefined, entrySignature = '', renderedRun = '';
 let connected = false, resolving = false, submitting = false, draftsLoaded = false, requestId = 0, revision = -1;
 let errorScope = 0, checkingServer = false;
+const stateRevisions = new StateRevisions();
 const serverBlocked = () => !!state?.serverData && state.serverData.blocking !== false && (state.serverData.checking || !!state.serverData.issue);
 const serverGuidance = new ProjectServerGuidance(element('server-guidance'), {
   create: () => { host.postMessage({ type: 'open-project-create' }); },
@@ -152,7 +154,7 @@ function renderEntrypoints(): void {
 }
 function controls(): void {
   if (state) { updateProjectAvatar(element('project-info'), state.project); }
-  serverGuidance.update(state?.serverData, state?.project.id ?? '', { connected, working: checkingServer || !!state?.serverData?.checking });
+  serverGuidance.update(state?.serverData, state?.project.id ?? '', { connected, working: checkingServer || !!state?.serverData?.checking, canCreate: !state?.project.assistant });
   element<HTMLButtonElement>('run').disabled = disabled() || resolving || serverBlocked();
   element<HTMLButtonElement>('rerun').disabled = disabled() || serverBlocked();
   element<HTMLButtonElement>('delete-run').disabled = !connected || state?.run?.id === state?.occupiedId;
@@ -314,9 +316,13 @@ element('tools').onclick = () => dialogs.permissions(parameters(), draft().polic
 element('usage').onclick = () => dialogs.usage(requestId => post({ type: 'usage', requestId }));
 element('project-info').onclick = () => { if (state) { fields.close(); dialogs.projectInfo(state.project); } };
 addEventListener('message', event => {
+  if (event.source !== null && event.source !== window.parent) return;
   const message = event.data;
   if (message?.type === 'project-server-checked') { checkingServer = false; controls(); return; }
-  if (message?.type === 'state' && message.project?.projectType === 'workflow') { applyState(message); }
+  if (message?.type === 'state' && message.project?.projectType === 'workflow') {
+    if (!stateRevisions.accept(message)) return;
+    applyState(message);
+  }
   else if (message?.type === 'connection') {
     const restored = !connected && message.status === 'connected'; connected = message.status === 'connected'; controls(); if (restored) { resolve(); }
     if (!connected) { checkingServer = false; dialogs.closeUsage(); }

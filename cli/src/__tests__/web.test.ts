@@ -956,7 +956,8 @@ describe('steamharness web', () => {
     const answer = app.controller.current.messages.at(-1)!;
     expect(answer.status).toBe('waiting_for_input');
     await post({ type: 'resume', messageId: answer.id, requestId: 'approval', values: { decision: 'approve' } }); await app.controller.idle();
-    expect(app.controller.current.messages).toHaveLength(2); expect(answer.content).toBe('Approved');
+    expect(app.controller.current.messages).toHaveLength(2);
+    expect(app.controller.current.messages.find(message => message.id === answer.id)).toMatchObject({ content: 'Approved', status: 'success' });
     expect(runtime.run).toHaveBeenLastCalledWith(expect.objectContaining({ resolvedInputs: [expect.objectContaining({ requestId: 'approval' })], resumeAfterRequestId: 'approval' }), expect.any(Function));
   });
 

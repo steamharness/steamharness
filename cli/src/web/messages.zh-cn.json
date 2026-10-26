@@ -1,4 +1,8 @@
 {
+  "This built-in application uses a managed ID. Ask the Server administrator to check its registration and your account access.": "此内置应用的 ID 由系统统一管理，请联系服务器管理员检查应用注册和当前账号的访问权限。",
+  "Ask the Server administrator to check the built-in application ID and project registration.": "请联系服务器管理员检查内置应用 ID 和项目注册状态。",
+  "The local project changed. Reopen it before checking again.": "本地项目身份或类型已变化，请重新打开应用后再检查。",
+  "Declare a data storage mode in Project Info before applying for an application ID.": "请先在项目信息中声明数据存储模式，再申请应用 ID。",
   "Application checks": "应用检查",
   "Sign in to check application registration": "登录后检查应用注册",
   "Local features remain available. Sign in to the current application to check Server registration.": "本地功能仍然可用。请登录当前应用后检查服务器注册状态。",

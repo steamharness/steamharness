@@ -16,6 +16,7 @@ import {
 import { projectParamValue, type Project, type ParamValues } from '../workflow-types';
 import type { ProjectServerIssue, ProjectServerState } from '../project-server-state';
 import { ProjectServerGuidance } from './project-server-guidance';
+import { StateRevisions } from './state-revisions';
 
 type Message = Record<string, any>;
 interface KanbanState { revision: number; configurations: {id:string;name:string}[]; activeConfigurationId?: string; configuration: KanbanInjectedConfiguration; params: Project['fields']; preview: { url: string; nonce: string }; relatedProjectRevisions: { alias: string; revision: string }[]; missingRelatedProjectAliases: string[]; relatedProjectWarning: string; serverDataIssue?: ProjectServerIssue }
@@ -37,7 +38,8 @@ if (!['fullscreen', 'phone', 'tablet', 'card'].includes(mode)) { mode = 'fullscr
 let menuOpen = false, state: KanbanState | undefined, project: Project | undefined;
 let connected = false, working = false, methodWorking = false, transitioning = false, dirty = false, editing = 0, signature = '', previewKey = '', authRevision = -1;
 let serverData: ProjectServerState | undefined, previewBlocked = false;
-let stateRevision = -1, serverInstanceId: string | undefined;
+const stateRevisions = new StateRevisions();
+let serverInstanceId: string | undefined;
 let values: ParamValues = {}, saveTimer: ReturnType<typeof setTimeout> | undefined, readyTimer: ReturnType<typeof setTimeout> | undefined, pendingBridge = 0;
 let methodSession: ReturnType<typeof createKanbanMethodSession> | undefined;
 const methodCalls = new Map<string, AbortController>();
@@ -52,16 +54,17 @@ function request(message: Message): Promise<Message> {
   if (!connected) { return Promise.reject(new Error(t("Connection interrupted."))); }
   const requestId = crypto.randomUUID();
   return new Promise((resolve, reject) => {
-    const timer = setTimeout(() => { pending.delete(requestId); reject(new Error(t("The request timed out. Check the current status."))); }, message.type === 'project-server-check' || message.call?.operation?.startsWith('files.') ? 120_000 : 20_000);
+    const timeout = message.type === 'project-server-check' ? 180_000 : message.call?.operation?.startsWith('files.') ? 120_000 : 20_000;
+    const timer = setTimeout(() => { pending.delete(requestId); reject(new Error(t("The request timed out. Check the current status."))); }, timeout);
     pending.set(requestId, { resolve, reject, timer }); host.postMessage({ projectUri: project?.uri, ...message, requestId });
   });
 }
 function showError(error: unknown): void { element('error').textContent = (error as Error).message ?? String(error); element('error').hidden = false; }
 function controls(): void {
-  serverGuidance.update(serverData ?? (state?.serverDataIssue ? { checking: false, issue: state.serverDataIssue } : undefined), project?.id ?? '', { connected, working: working || !!serverData?.checking });
+  serverGuidance.update(serverData ?? (state?.serverDataIssue ? { checking: false, issue: state.serverDataIssue } : undefined), project?.id ?? '', { connected, working: working || !!serverData?.checking, canCreate: !project?.assistant });
   for (const id of ['refresh']) { (element(id) as HTMLButtonElement).disabled = !connected || working; }
-  element<HTMLButtonElement>('methods').disabled = !connected || !methodSession?.getState().ready;
-  element<HTMLButtonElement>('invoke-method').disabled = !connected || methodWorking || !methodSession?.getState().methods.length;
+  element<HTMLButtonElement>('methods').disabled = !connected || previewBlocked || !methodSession?.getState().ready;
+  element<HTMLButtonElement>('invoke-method').disabled = !connected || previewBlocked || methodWorking || !methodSession?.getState().methods.length;
   element('preview-offline').hidden = connected;
   app.dataset.connection = connected ? 'connected' : 'disconnected'; app.dataset.saving = String(working || dirty);
 }
@@ -73,7 +76,15 @@ function update(next: KanbanState): void {
   element('preview-stage').hidden = previewBlocked;
   element('related-warning').textContent = next.relatedProjectWarning || (next.missingRelatedProjectAliases.length ? t("Related projects are unavailable: {0}", next.missingRelatedProjectAliases.join(', ')) : '');
   element('related-warning').hidden = previewBlocked || !element('related-warning').textContent;
-  if (previewBlocked) { clearTimeout(readyTimer); element('preview-status').hidden = true; }
+  if (previewBlocked) {
+    clearTimeout(readyTimer); element('preview-status').hidden = true;
+    if (!wasBlocked) {
+      methodSession?.close();
+      for (const call of methodCalls.values()) call.abort();
+      if (frame.hasAttribute('src')) frame.src = 'about:blank';
+      publishMethods();
+    }
+  }
   else {
     if (wasBlocked) { previewKey = ''; }
     if (previewKey !== next.preview.url) { mountPreview(); } else { inject(); }
@@ -92,7 +103,7 @@ function inject(): void {
 }
 function publishMethods(): void { if (connected && state && methodSession) { host.postMessage({ type: 'kanban-method-state', nonce: state.preview.nonce, instanceId: methodSession.instanceId, ...methodSession.getState() }); } }
 function mountPreview(): void {
-  if (!state) { return; }
+  if (!state || previewBlocked) { return; }
   clearTimeout(readyTimer); methodSession?.close(); pendingBridge = 0; previewKey = state.preview.url;
   methodSession = createKanbanMethodSession({ nonce: state.preview.nonce, getConfiguration: () => state?.configuration, getPresentation: () => ({ mode }), postMessage: message => frame.contentWindow?.postMessage(message, '*') });
   element('preview-status').hidden = false; element('preview-status').dataset.error = 'false'; element('preview-status').querySelector('span:nth-child(2)')!.textContent = t("Loading Kanban"); element('retry-preview').hidden = true;
@@ -150,7 +161,7 @@ element('project-info').onclick = () => { if (project) { dialogs.projectInfo(pro
 window.addEventListener('message', event => {
   const message: Message = event.data;
   if (event.source === frame.contentWindow) {
-    if (!state || message?.nonce !== state.preview.nonce) { return; }
+    if (!state || previewBlocked || message?.nonce !== state.preview.nonce) { return; }
     methodSession?.receive(message); controls();
     if (message.type === KANBAN_PREVIEW_READY_MESSAGE || message.type === 'steamharness:kanban-method-catalog') { publishMethods(); }
     if (message.type === KANBAN_PREVIEW_READY_MESSAGE) { clearTimeout(readyTimer); element('preview-status').hidden = true;
@@ -167,7 +178,7 @@ window.addEventListener('message', event => {
     pendingBridge++;
     void request({ type: 'kanban-bridge', nonce, call }).then(reply => respond({ ok: reply.ok, value: reply.value, error: reply.error })).catch(error => respond({ ok: false, error: createKanbanBridgeError(error) })).finally(() => { pendingBridge = Math.max(0, pendingBridge - 1); }); return;
   }
-  if (event.source !== null) { return; }
+  if (event.source !== null && event.source !== window.parent) { return; }
   if (!message || typeof message.type !== 'string') { return; }
   if (message.type === 'kanban-method-invoke' && message.instanceId === methodSession?.instanceId) {
     const abort = new AbortController(); methodCalls.set(message.requestId, abort);
@@ -180,11 +191,9 @@ window.addEventListener('message', event => {
   if (message.requestId && pending.has(message.requestId)) { const waiting = pending.get(message.requestId)!; clearTimeout(waiting.timer); pending.delete(message.requestId); message.type === 'error' ? waiting.reject(new Error(message.message)) : waiting.resolve(message); }
   if (message.type === 'connection') { connected = message.status === 'connected'; controls(); if (connected) { publishMethods();  } else { dialogs.closeUsage(); for (const waiting of pending.values()) { clearTimeout(waiting.timer); waiting.reject(new Error(t("Connection interrupted."))); } pending.clear(); for (const call of methodCalls.values()) { call.abort(); } } }
   if (message.type === 'state') {
-    if (typeof message.stateRevision === 'number') {
-      if (message.serverInstanceId === serverInstanceId && message.stateRevision < stateRevision) return;
-      if (message.serverInstanceId !== serverInstanceId) { state = undefined; previewKey = ''; authRevision = -1; }
-      stateRevision = message.stateRevision; serverInstanceId = message.serverInstanceId;
-    }
+    if (!stateRevisions.accept(message)) return;
+    if (message.serverInstanceId !== serverInstanceId) { state = undefined; previewKey = ''; authRevision = -1; }
+    serverInstanceId = message.serverInstanceId;
     project = message.project; element('kanban-title').textContent = project!.name;
     serverData = message.serverData;
     updateProjectAvatar(element('project-info'), project!);

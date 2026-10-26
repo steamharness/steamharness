@@ -2,6 +2,8 @@ import type { ProjectServerIssue, ProjectServerState, ProjectServerCheck } from 
 import { t } from '../localization';
 import './project-server-guidance.css';
 
+interface GuidanceOptions { connected: boolean; working: boolean; canCreate?: boolean }
+
 export class ProjectServerGuidance {
   private readonly title: HTMLElement;
   private readonly description: HTMLElement;
@@ -17,7 +19,7 @@ export class ProjectServerGuidance {
   private checksSignature = '';
   private phase = '';
   private selected?: string;
-  private current?: { state: ProjectServerState; projectId: string; options: { connected: boolean; working: boolean } };
+  private current?: { state: ProjectServerState; projectId: string; options: GuidanceOptions };
   constructor(private readonly container: HTMLElement, actions: { create(): void; retry(): void }) {
     container.innerHTML = `<div class="project-server-guidance-body">
       <details id="server-checks" open><summary id="server-checks-summary" hidden><span id="server-checks-icon" class="codicon" aria-hidden="true"></span><span id="server-checks-title">${t('Application checks')}</span><span id="server-checks-progress"></span></summary>
@@ -41,7 +43,7 @@ export class ProjectServerGuidance {
     this.create = find('create'); this.retry = find('retry');
     this.create.onclick = actions.create; this.retry.onclick = actions.retry;
   }
-  update(state: ProjectServerState | undefined, projectId: string, options: { connected: boolean; working: boolean }): void {
+  update(state: ProjectServerState | undefined, projectId: string, options: GuidanceOptions): void {
     this.current = state && { state, projectId, options };
     const checks = state?.checks;
     const lifecycle = !!checks?.length;
@@ -81,8 +83,8 @@ export class ProjectServerGuidance {
     this.context.hidden = !related;
     this.details.querySelector('summary')!.hidden = !related;
     this.create.disabled = !options.connected || options.working;
-    this.create.hidden = related || issue.kind !== 'project-unavailable';
-    const signature = JSON.stringify([issue, projectId, state?.blocking]);
+    this.create.hidden = related || issue.kind !== 'project-unavailable' || options.canCreate === false;
+    const signature = JSON.stringify([issue, projectId, state?.blocking, options.canCreate]);
     if (signature === this.signature) return;
     this.signature = signature;
     const localImport = issue.kind === 'related-import-required';
@@ -140,10 +142,12 @@ export class ProjectServerGuidance {
         : related ? t('Check the related project Server settings') : t("Complete the Server project setup");
       this.description.textContent = issue.kind === 'project-unavailable'
         ? related ? t('The related project could not be found or accessed on this Server. Its owner needs to check the Server project record and your account access.')
+          : options.canCreate === false ? t('This built-in application uses a managed ID. Ask the Server administrator to check its registration and your account access.')
           : t('This ID is not registered on the connected Server. It cannot be registered as a chosen ID. Apply for a new Server-assigned ID to use this project as a new application.')
         : t('The Server rejected this project data connection. Check the Server version, project type, and storage settings.');
       steps = issue.kind === 'project-unavailable' ? [
-        currentProject ? t('Choose Apply for a new application ID. Confirming replaces the local project ID and opens a new application without uploading source.')
+        currentProject ? options.canCreate === false ? t('Ask the Server administrator to check the built-in application ID and project registration.')
+          : t('Choose Apply for a new application ID. Confirming replaces the local project ID and opens a new application without uploading source.')
           : t('Ask the related project owner to check its registration. If a new application ID is needed, update both projects\' relationship declarations and import the matching project again.'),
         t("If the project already exists, ask its owner to check your access."), t("After completing setup, choose Check again.")]
         : [t('Check the Server version and the Server Project Info. Ask the project owner to update the project type, storage settings, or related project grants if needed.'), t("After completing setup, choose Check again.")];

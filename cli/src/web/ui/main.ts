@@ -513,7 +513,7 @@ function initialize(): void {
 
   function updateControls(): void {
     if (!state) { return; }
-    serverGuidance.update(state.serverData, state.project.id, { connected: connectionAvailable, working: checkingServer || !!state.serverData?.checking });
+    serverGuidance.update(state.serverData, state.project.id, { connected: connectionAvailable, working: checkingServer || !!state.serverData?.checking, canCreate: !state.project.assistant });
     const conversation = state.project.projectType === 'conversation';
     const durable = state.project.conversation?.durable?.enabled === true;
     const hidden = hideComposer();
@@ -1508,6 +1508,7 @@ function initialize(): void {
   const stateRevisions = new StateRevisions();
   let renderScheduled = false;
   window.addEventListener('message', (event) => {
+    if (event.source !== null && event.source !== window.parent) return;
     const message = event.data;
     if (message?.type === 'project-server-checked' || message?.type === 'error' && message.requestType === 'project-server-check') { checkingServer = false; updateControls(); return; }
     if (fileIcons.receive(message)) return;

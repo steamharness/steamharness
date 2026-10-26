@@ -13,6 +13,7 @@ import { spawn, type ChildProcess } from 'node:child_process';
 import { assertLocalCliCoreCompatible } from '../local';
 import { readCliAuthConfig, clearCliAuthConfig } from '../auth-config';
 import { createEmptyProjectAuthConfig } from '@steamharness/auth-config';
+import { readProjectInfo } from '@steamharness/project-info';
 import { ConversationController, sessionRunning } from './conversation-controller';
 import { Controller } from './workflow-controller';
 import { KanbanController } from './kanban-controller';
@@ -111,6 +112,7 @@ async function startProjectWebServer(options: WebOptions, credentials: { capabil
   await relatedImports.update(relatedProjectsManaged ? relatedProjects : undefined);
   let resourceProjects = options.host?.resourceProjects ?? [];
   let projectServer: ProjectServerConnection | undefined;
+  let projectCheckRevision = 0;
   let relatedImportIssue: ProjectServerIssue | undefined;
   const waitingRuns = new Map<AbortController, string | undefined>();
   const cancelWaitingRuns = (runId?: string) => { for (const [abort, id] of waitingRuns) if (!runId || id === runId) abort.abort(); };
@@ -489,8 +491,18 @@ async function startProjectWebServer(options: WebOptions, credentials: { capabil
     if (typeof message.type !== 'string') { throw new Error('Invalid message.'); }
     if (message.projectUri && message.projectUri !== project.uri) { throw new Error('Project changed.'); }
     if (message.type === 'project-server-check') {
+      const revision = ++projectCheckRevision;
+      // Information edits affect the next check without reloading workflows or
+      // changing this process's identity, history or execution descriptors.
+      const pkg = project.assistant ? undefined : JSON.parse(await readFile(path.join(project.folderPath, 'package.json'), 'utf8'));
+      if (!project.assistant && (typeof pkg?.id !== 'string' || pkg.id.toLowerCase() !== project.id.toLowerCase()
+        || pkg.steamHarness?.projectType !== undefined && pkg.steamHarness.projectType !== project.projectType)) throw new Error(t('The local project changed. Reopen it before checking again.'));
+      const projectInfo = pkg ? readProjectInfo(pkg) : project.projectInfo;
       await relatedImports.update(relatedProjectsManaged ? relatedProjects : undefined);
-      if (relatedImports.issue(relatedImportIssue)?.relatedProjectImported) relatedImportIssue = undefined;
+      if (revision !== projectCheckRevision) return [state(message.clientId), { type: 'project-server-checked', requestId: message.requestId }];
+      project.projectInfo = projectInfo;
+      projectServer!.state.blocking = projectInfo?.dataStorage?.mode === 'server';
+      relatedImportIssue = relatedImportIssue && relatedImports.missingIssue(relatedImportIssue.relatedProjectAlias, project);
       await refreshAuth(true);
       await projectServer?.settled();
       return [state(message.clientId), { type: 'project-server-checked', requestId: message.requestId }];

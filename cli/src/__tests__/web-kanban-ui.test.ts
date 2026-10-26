@@ -50,11 +50,11 @@ async function fixture(language: 'en' | 'zh-CN') {
   await import('../web/ui/kanban-main');
   await vi.waitFor(() => expect(sources).toHaveLength(1));
   const receive = (state: object) => sources[0].onmessage!({ data: JSON.stringify(state) });
-  const sendState = (revision: number, nonce = 'first', serverDataIssue?: ProjectServerIssue, serverData?: ProjectServerState) => receive({
+  const sendState = (revision: number, nonce = 'first', serverDataIssue?: ProjectServerIssue, serverData?: ProjectServerState, serverInstanceId = 'kanban-process') => receive({
     type: 'state', project: { id: 'map', name: 'Map 2D', fields: [] },
     account: { status: 'authenticated', serverUrl: 'https://server.test', revision,
       user: { userId: 'user', email: 'user@example.com', displayName: 'User' } },
-    authenticationRevision: 1, stateRevision: revision, serverInstanceId: 'kanban-process',
+    authenticationRevision: 1, stateRevision: revision, serverInstanceId,
     serverData,
     kanban: { revision, configuration: { id: 'profile', name: 'Default', params: {} },
       preview: { url: `/kanban/${nonce}/index.html`, nonce },
@@ -123,6 +123,35 @@ it.each(['en', 'zh-CN'] as const)('shows startup checks before mounting Server p
   expect(document.getElementById('server-guidance-create')!.hidden).toBe(false);
 });
 
+it('rejects late Kanban states from a retired service after accepting its replacement', async () => {
+  const { sendState } = await fixture('en');
+  sendState(10, 'old');
+  sendState(1, 'replacement', undefined, { checking: false }, 'replacement-process');
+  const frame = document.querySelector<HTMLIFrameElement>('#kanban-preview')!;
+  expect(frame.src).toContain('/kanban/replacement/index.html');
+  sendState(11, 'retired');
+  expect(frame.src).toContain('/kanban/replacement/index.html');
+  sendState(1, 'duplicate', undefined, { checking: true }, 'replacement-process');
+  expect(frame.src).toContain('/kanban/replacement/index.html');
+});
+
+it('does not restore a blocked Server preview from the page cache or keep its previous document running', async () => {
+  const { sendState } = await fixture('en');
+  const frame = document.querySelector<HTMLIFrameElement>('#kanban-preview')!;
+  sendState(1, 'blocked', undefined, { checking: true });
+  window.dispatchEvent(new PageTransitionEvent('pageshow', { persisted: true }));
+  expect(frame.getAttribute('src')).toBeNull();
+  sendState(2, 'ready', undefined, { checking: false });
+  expect(frame.src).toContain('/kanban/ready/index.html');
+  sendState(3, 'ready', undefined, { checking: true });
+  expect(frame.getAttribute('src')).toBe('about:blank');
+  expect(document.querySelector<HTMLButtonElement>('#methods')!.disabled).toBe(true);
+  window.dispatchEvent(new PageTransitionEvent('pageshow', { persisted: true }));
+  expect(frame.getAttribute('src')).toBe('about:blank');
+  sendState(4, 'ready', undefined, { checking: false });
+  expect(frame.src).toContain('/kanban/ready/index.html');
+});
+
 it.each(['en', 'zh-CN'] as const)('offers only project creation and rechecking in Server guidance (%s)', async language => {
   const { sources, sendState, fetcher } = await fixture(language);
   const parent = { postMessage: vi.fn() };
@@ -147,7 +176,7 @@ it.each(['en', 'zh-CN'] as const)('offers only project creation and rechecking i
   fetcher.mockImplementation(async (_url?: unknown, options?: any) => {
     const message = JSON.parse(options.body);
     expect(message.type).toBe('project-server-check');
-    return { ok: true, status: 200, json: async () => ({ messages: [{ type: 'state', project: { id: 'map', name: 'Map 2D', fields: [] }, account: { status: 'authenticated' }, authenticationRevision: 1, kanban: {
+    return { ok: true, status: 200, json: async () => ({ messages: [{ type: 'state', stateRevision: 2, serverInstanceId: 'kanban-process', project: { id: 'map', name: 'Map 2D', fields: [] }, account: { status: 'authenticated' }, authenticationRevision: 1, kanban: {
       revision: 2, configuration: { id: 'profile', name: 'Default', params: {} }, preview: { url: '/kanban/ready/index.html', nonce: 'ready' }, relatedProjectRevisions: [], missingRelatedProjectAliases: [],
     } }, { type: 'project-server-checked', requestId: message.requestId }] }) };
   });
