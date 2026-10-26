@@ -26,6 +26,7 @@ it.each([
       revisions(options);
       return Promise.resolve(responseStatus === 200 ? revisionStream() : new Response('private-token server details', { status: responseStatus }));
     }
+    if (String(url).endsWith(`/api/projects/${id}`)) return Promise.resolve(new Response('', { status: responseStatus }));
     operations(url, options);
     return Promise.resolve(new Response(JSON.stringify({ errCode: 0, data: 'server value' })));
   });
@@ -46,6 +47,22 @@ it.each([
   expect((await bridge('kv.getValue', { key: 'map' })).value).toBe('server value');
   expect(operations).toHaveBeenCalledOnce();
   expect(JSON.parse(operations.mock.calls[0]![1].body).call.operation).toBe('kv.getValue');
+});
+
+it('does not suggest another upload when the Kanban endpoint is missing but the project exists', async () => {
+  const { app } = await fixture({ server: true });
+  const original = fetch, reads = vi.fn();
+  vi.spyOn(globalThis, 'fetch').mockImplementation((url, options) => {
+    if (!String(url).startsWith('https://old-server.test')) return original(url, options);
+    reads(url, options);
+    if (String(url).endsWith('/api/auth/me')) return Promise.resolve(Response.json({ errCode: 0, data: { profile: { userId: 'user', email: 'u@example.com', displayName: 'User' } } }));
+    if (String(url).endsWith(`/api/projects/${id}`)) return Promise.resolve(Response.json({ errCode: 0, data: { id } }));
+    return Promise.resolve(new Response('', { status: 404 }));
+  });
+  await app.setHostConnection({ serverUrl: 'https://old-server.test', accessToken: 'token' });
+  await vi.waitFor(() => expect(app.kanbanController!.serverDataIssue?.kind).toBe('setup-required'));
+  expect(reads.mock.calls.every(([, options]) => !options?.method || options.method === 'GET')).toBe(true);
+  expect(app.kanbanController!.relatedProjectWarning).toBe('');
 });
 
 it.each([408, 429, 503])('continues automatic reconnection for transient Server HTTP %s', async status => {

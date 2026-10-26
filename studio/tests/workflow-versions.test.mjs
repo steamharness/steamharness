@@ -152,8 +152,8 @@ test('upload publishes the saved package version with release notes and refreshe
   assert.equal(f.uploads.length, 1); assert.match(f.uploadResult.error, /already exists/);
 });
 
-test('opening a Kanban upload dialog does not upload until the user submits it', async t => {
-  const f = fixture(t); f.local.projectType = 'kanban'; f.notes = undefined;
+for (const kind of ['kanban', 'workflow', 'conversation']) test(`opening a ${kind} upload dialog does not upload until the user submits it`, async t => {
+  const f = fixture(t); f.local.projectType = kind; f.notes = undefined;
   await f.command('studio.uploadProject', { uri: f.local.uri });
   assert.equal(f.uploadDialog.folderPath, f.local.folderPath);
   assert.equal(f.uploadDialog.serverUrl, f.connection.serverUrl);

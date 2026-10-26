@@ -8,6 +8,7 @@ interface QueueState {
   sessions: ConversationSession[];
   durable: boolean;
   ready: boolean;
+  canExecute?: boolean;
   pendingIds: Set<string>;
 }
 export interface QueueAction {
@@ -79,7 +80,7 @@ export class ConversationQueue {
 
   private act(id: string, type: QueueAction['type']): void {
     const state = this.state!;
-    if (!state.ready || !state.session.queuedInputs?.some(input => input.id === id)) return;
+    if (!state.ready || type === 'queue-promote' && state.canExecute === false || !state.session.queuedInputs?.some(input => input.id === id)) return;
     const previous = this.actions.get(this.key(id));
     if (previous && previous.phase !== 'failed' && !(previous.phase === 'accepted' && previous.type === 'queue-promote' && type === 'queue-remove')) return;
     this.actions.set(this.key(id), { projectUri: state.projectUri, sessionId: state.session.id, id, type,
@@ -132,7 +133,7 @@ export class ConversationQueue {
     this.root.hidden = !visible.length;
     this.title.textContent = t('Queued messages ({0})', visible.length);
     this.resume.hidden = state.durable || sessionRunning(state.session) || state.session.messages.some(message => message.pendingInput);
-    this.resume.disabled = !state.ready;
+    this.resume.disabled = !state.ready || state.canExecute === false;
     for (const [id, row] of this.rows) if (!visible.some(input => input.id === id)) { row.root.remove(); this.rows.delete(id); }
     for (const [index, input] of visible.entries()) {
       let row = this.rows.get(input.id);
@@ -154,9 +155,9 @@ export class ConversationQueue {
       row.edit.hidden = row.up.hidden = state.durable;
       row.edit.disabled = row.up.disabled = !state.ready || submitting || !!pending;
       row.up.disabled ||= index === 0;
-      row.send.disabled = !state.ready || submitting || !!pending || promoted;
+      row.send.disabled = !state.ready || state.canExecute === false || submitting || !!pending || promoted;
       row.remove.disabled = !state.ready || !!pending;
-      row.retry.disabled = !state.ready;
+      row.retry.disabled = !state.ready || action?.type === 'queue-promote' && state.canExecute === false;
       row.send.title = row.send.ariaLabel = submitting && !pending ? t('Sending message...') : pending && action.type === 'queue-promote' ? t('Sending now...') : t('Send now');
       row.remove.title = row.remove.ariaLabel = pending && action.type === 'queue-remove' ? t('Withdrawing...') : t('Withdraw input');
       row.root.draggable = !state.durable && state.ready && !submitting && !pending;
@@ -166,7 +167,7 @@ export class ConversationQueue {
       if (row.errorText.textContent !== (action?.error ?? '')) row.errorText.textContent = action?.error ?? '';
     }
     for (const action of this.actions.values()) {
-      if (action.projectUri !== state.projectUri || action.phase !== 'waiting' || !state.ready || state.pendingIds.has(action.id)
+      if (action.projectUri !== state.projectUri || action.phase !== 'waiting' || !state.ready || action.type === 'queue-promote' && state.canExecute === false || state.pendingIds.has(action.id)
         || !state.sessions.find(session => session.id === action.sessionId)?.queuedInputs?.some(input => input.id === action.id)) continue;
       action.phase = 'sending';
       const { phase: _, error: __, ...request } = action;

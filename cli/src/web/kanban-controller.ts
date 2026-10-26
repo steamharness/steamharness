@@ -18,7 +18,7 @@ import { localKanbanRelatedProjects, readProjectInfo, webProjectDataDirectory } 
 import type { WebConnection } from './runtime';
 import type { Project, Runtime } from './workflow-types';
 import { requestStudioAnalysis } from './local-analysis';
-import { kanbanServerIssue, type KanbanServerIssue } from './kanban-server-state';
+import { checkProjectServer, projectServerIssue, type ProjectServerIssue } from './project-server-state';
 
 type Message = Record<string, any>;
 interface Hooks { changed(): void; emit(message: Record<string, unknown>): void; connection(): WebConnection | undefined; log(message: string): void }
@@ -30,7 +30,7 @@ export class KanbanController {
   relatedProjectRevisions: KanbanRelatedProjectRevision[] = [];
   missingRelatedProjectAliases: string[] = [];
   relatedProjectWarning = '';
-  serverDataIssue?: KanbanServerIssue;
+  serverDataIssue?: ProjectServerIssue;
   private updates = Promise.resolve();
   private poll?: ReturnType<typeof setInterval>;
   private feed?: AbortController;
@@ -156,15 +156,21 @@ export class KanbanController {
     void (async () => {
       try {
         const response = await fetch(`${connection.serverUrl}/api/projects/${encodeURIComponent(this.project.id)}/kanban/related-project-revisions`, { headers: { Authorization: `Bearer ${connection.accessToken}` }, signal: abort.signal, redirect: 'error' });
-        if (abort.signal.aborted) { return; }
-        const issue = kanbanServerIssue(response.status, connection.serverUrl);
+        if (abort.signal.aborted) { await response.body?.cancel().catch(() => undefined); return; }
+        let issue = projectServerIssue(response.status, connection.serverUrl);
+        if (response.status === 404) {
+          await response.body?.cancel().catch(() => undefined);
+          issue = await checkProjectServer(this.project.id, connection, abort.signal) ?? { kind: 'setup-required', serverUrl: connection.serverUrl };
+          if (abort.signal.aborted) return;
+          if (issue.kind === 'connection-unavailable') throw new Error('Project availability could not be checked.');
+        }
         if (issue) {
           this.serverDataIssue = issue; this.relatedProjectWarning = ''; this.hooks.changed();
           await response.body?.cancel().catch(() => undefined);
           return;
         }
-        if (!response.ok || !response.body) { throw new Error('Kanban related project updates are unavailable.'); }
-        this.serverDataIssue = undefined; this.hooks.changed();
+        if (!response.ok || !response.body) { await response.body?.cancel().catch(() => undefined); throw new Error('Kanban related project updates are unavailable.'); }
+        this.serverDataIssue = undefined; this.relatedProjectWarning = ''; this.hooks.changed();
         const apply = (revisions: KanbanRelatedProjectRevision[]) => { if (!abort.signal.aborted) { this.relatedProjectRevisions = revisions; this.relatedProjectWarning = ''; this.hooks.changed(); } };
         await consumeKanbanRelatedProjectRevisionStream(response.body, { onSnapshot: value => apply(value.revisions), onRevision: value => apply([...this.relatedProjectRevisions.filter(item => item.alias !== value.alias), value]), onUnavailable: () => { throw new Error('Related projects are unavailable.'); } }, abort.signal);
       } catch { if (!abort.signal.aborted) { this.relatedProjectWarning = t("The related project connection was interrupted. Reconnecting."); this.hooks.changed(); } }

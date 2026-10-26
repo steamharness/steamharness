@@ -25,19 +25,6 @@
 .kanban-app #save-error > span { min-width: 0; flex: 1; overflow-wrap: anywhere; }
 .kanban-app .error { margin: 8px 12px; flex-shrink: 0; }
 .kanban-warning { padding: 8px 14px; border-bottom: 1px solid var(--vscode-panel-border); font-size: 12px; color: var(--vscode-editorWarning-foreground); flex-shrink: 0; }
-.kanban-server-guidance { flex: 1; min-height: 0; overflow: auto; padding: 24px; }
-.kanban-server-guidance-body { max-width: 640px; margin: 0 auto; font-size: 13px; line-height: 1.6; }
-.kanban-server-guidance h2 { font-size: 16px; font-weight: 600; margin: 0 0 12px; }
-.kanban-server-guidance p { color: var(--vscode-descriptionForeground); }
-.kanban-server-guidance dl { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 6px 16px; padding: 12px 0; border-block: 1px solid var(--vscode-panel-border); }
-.kanban-server-guidance dt { color: var(--vscode-descriptionForeground); }
-.kanban-server-guidance dd { margin: 0; overflow-wrap: anywhere; user-select: text; }
-.kanban-server-guidance ol { padding-left: 20px; }
-.kanban-server-guidance li { margin-bottom: 8px; }
-.kanban-server-guidance-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 20px; }
-.kanban-server-guidance-actions button { min-height: 32px; padding: 6px 12px; border-radius: 4px; border: 1px solid var(--vscode-panel-border); background: var(--vscode-button-secondaryBackground); color: var(--vscode-button-secondaryForeground); }
-.kanban-server-guidance-actions button:disabled { opacity: .5; cursor: default; }
-.kanban-server-guidance-actions button:focus-visible { outline: 1px solid var(--vscode-focusBorder); outline-offset: 2px; }
 #preview-stage { flex: 1; min-height: 0; min-width: 0; position: relative; display: flex; align-items: center; justify-content: center; overflow: hidden; }
 #preview-viewport { position: relative; width: 100%; height: 100%; min-width: 0; flex-shrink: 0; }
 #kanban-preview { display: block; border: 0; transform-origin: top left; background: var(--vscode-editor-background); }

@@ -41,7 +41,7 @@ function fixture(durable = true) {
   const action = vi.fn(), edit = vi.fn(), reorder = vi.fn(), resume = vi.fn();
   const view = new ConversationQueue(root as unknown as HTMLElement, { action, edit, reorder, resume });
   const current = session();
-  const state = { projectUri: 'project', session: current, sessions: [current], durable, ready: true, pendingIds: new Set<string>() };
+  const state = { projectUri: 'project', session: current, sessions: [current], durable, ready: true, canExecute: true, pendingIds: new Set<string>() };
   const update = (patch: Partial<typeof state> = {}) => { Object.assign(state, patch); view.update(state); };
   const row = (id = 'one') => {
     const rootRow = root.children[1].children.find(row => row.dataset.id === id)!;
@@ -153,4 +153,21 @@ it('retains editing, reordering, dragging and queue resume for ordinary conversa
   const resume = f.root.children[0].children[1]; resume.click(); expect(f.resume).toHaveBeenCalledOnce();
   f.state.session.activeRunId = 'active'; f.update(); expect(resume.hidden).toBe(true);
   f.update({ durable: true }); expect(first.edit.hidden).toBe(true); expect(first.up.hidden).toBe(true); expect(first.root.draggable).toBe(false);
+});
+
+it('blocks queue execution during Server setup while retaining edits and withdrawal', () => {
+  const f = fixture(false), first = f.row(), second = f.row('two');
+  first.send.click(); const request = f.action.mock.calls[0][0];
+  f.view.receive({ ...request, type: 'error', requestType: 'queue-promote', message: 'Complete Server setup' });
+  f.update({ canExecute: false });
+  const resume = f.root.children[0].children[1];
+  expect(first.send.disabled).toBe(true); expect(first.retry.disabled).toBe(true); expect(resume.disabled).toBe(true);
+  first.send.click(); first.retry.click(); resume.click();
+  expect(f.action).toHaveBeenCalledOnce(); expect(f.resume).not.toHaveBeenCalled();
+  first.edit.click(); second.up.click(); second.remove.click();
+  expect(f.edit).toHaveBeenCalledWith('one'); expect(f.reorder).toHaveBeenCalledWith(['two', 'one']);
+  expect(f.action).toHaveBeenCalledTimes(2); expect(f.action.mock.calls[1][0].type).toBe('queue-remove');
+  f.update({ canExecute: true });
+  expect(first.retry.disabled).toBe(false); expect(resume.disabled).toBe(false); expect(f.action).toHaveBeenCalledTimes(2);
+  first.retry.click(); expect(f.action).toHaveBeenCalledTimes(3); expect(f.action.mock.calls[2][0]).toEqual(request);
 });

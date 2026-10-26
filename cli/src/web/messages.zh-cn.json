@@ -635,5 +635,12 @@
   "If this is the correct Server, upload this project with the same project ID. In Studio, use Upload Project from the project's menu.": "如果服务器地址正确，请上传此项目并保持项目 ID 一致。在 Studio 中可从项目菜单选择“上传项目”。",
   "If the project already exists, ask its owner to check your access.": "如果项目已存在，请联系项目所有者检查访问权限。",
   "Project ID": "项目 ID",
-  "Not connected": "未连接"
+  "Not connected": "未连接",
+  "Project data is unavailable. Follow the Server setup guidance and choose Check again.": "项目数据不可用。请按照服务器设置指引完成操作，然后点击“重新检查”。",
+  "Cannot connect to the project Server": "无法连接项目服务器",
+  "Project data is temporarily unavailable. Your local history and drafts are preserved.": "项目数据暂时不可用，本地历史记录和草稿已保留。",
+  "Check your network and the Server address in Account / Server. The connection will retry automatically.": "请检查网络，以及“账号 / 服务器”中的服务器地址。连接会自动重试。",
+  "Check the Server version and the uploaded project type and storage settings. Ask the project owner to update them if needed.": "请检查服务器版本，以及已上传项目的类型和存储设置，必要时联系项目所有者更新。",
+  "Checking project Server": "正在检查项目服务器",
+  "Checking sign-in and project access. Your local history and drafts remain available.": "正在检查登录状态和项目访问权限，本地历史记录和草稿仍可查看。"
 }

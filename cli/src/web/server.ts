@@ -33,6 +33,7 @@ import { ConversationState } from './conversation-state';
 import { pathReferences } from './conversation-paths';
 import { importDroppedEntries, resolveDroppedPaths } from './dropped-paths';
 import { defaultServerUrl } from '../service-url';
+import { ProjectServerConnection } from './project-server-state';
 
 type Message = Record<string, any>;
 export interface WebOptions { projectDir: string; port?: number; dataDir?: string; theme?: 'auto' | 'light' | 'dark'; runtime?: Runtime; host?: WebHostConfiguration }
@@ -63,7 +64,27 @@ export async function startWebServer(options: WebOptions) {
   const sensitiveTokens = new Set<string>();
   let relatedProjects = options.host?.relatedProjects ?? [];
   let resourceProjects = options.host?.resourceProjects ?? [];
-  const runtime = options.runtime ?? createWebRuntime(projectDir, storageDir, () => connection, () => relatedProjects, { allowSystemAi: allowAiConnection });
+  let projectServer: ProjectServerConnection | undefined;
+  const waitingRuns = new Map<AbortController, string | undefined>();
+  const cancelWaitingRuns = (runId?: string) => { for (const [abort, id] of waitingRuns) if (!runId || id === runId) abort.abort(); };
+  const executor = options.runtime ?? createWebRuntime(projectDir, storageDir, () => connection, () => relatedProjects, { allowSystemAi: allowAiConnection });
+  const runtimeOverrides: Pick<Runtime, 'run' | 'resolveParams' | 'cancel' | 'dispose'> = {
+    run: async (request, emit) => {
+      if (!projectServer) return executor.run(request, emit);
+      const abort = new AbortController(); waitingRuns.set(abort, request.runId);
+      try {
+        await Promise.race([projectServer.assertReady(), new Promise<never>((_resolve, reject) => {
+          abort.signal.addEventListener('abort', () => reject(new Error(t('Stopped'))), { once: true });
+        })]);
+        if (abort.signal.aborted) throw new Error(t('Stopped'));
+        return executor.run(request, emit);
+      } finally { waitingRuns.delete(abort); }
+    },
+    resolveParams: async (...args) => { projectServer?.assertAvailable(); return executor.resolveParams(...args); },
+    cancel: runId => { cancelWaitingRuns(runId); executor.cancel(runId); },
+    dispose: () => { cancelWaitingRuns(); executor.dispose(); },
+  };
+  const runtime: Runtime = Object.assign(Object.create(executor), runtimeOverrides);
   let inspected;
   try { inspected = await inspectWebProject(runtime, projectDir, options.host); } catch (error) { runtime.dispose(); throw error; }
   const descriptor = inspected.projects[0] as Project & { runtime?: { harnessVersion: string; harnessPath: string } };
@@ -113,7 +134,7 @@ export async function startWebServer(options: WebOptions) {
   // Preserve project-owned data keys; remove host credentials by their actual values.
   const publicState = (value: unknown) => publicValue(redactProjectData(value, [...sensitiveTokens], false));
   const sharedState = () => {
-    const result = publicState({ type: 'state', serverInstanceId, project, configurationError: configurations.error,
+    const result = publicState({ type: 'state', serverInstanceId, project, configurationError: configurations.error, serverData: projectServer?.state,
     ...(isKanban ? { kanban: kanbanController!.state() } : isProject ? projectActions!.state() : { sessions: conversationState.sessions(controller.sessions) }),
     account: { ...account, user: account.user && { userId: account.user.userId, email: account.user.email, displayName: account.user.displayName, avatarUrl: account.user.avatarUrl } },
     authenticationRevision: authRevision, parameterRevision, resourceRevision: resources.revision });
@@ -162,6 +183,9 @@ export async function startWebServer(options: WebOptions) {
   };
   let conversationController: ConversationController | undefined;
   let kanbanController: KanbanController | undefined;
+  if (!isKanban && project.projectInfo?.dataStorage?.mode === 'server') {
+    projectServer = new ProjectServerConnection(project.id, () => connection, broadcast);
+  }
   let configurationSignature = '';
   const configurations = new ProjectConfigurations(project.assistant ? project.folderPath : projectDir, () => {
     const signature=JSON.stringify(configurations.state);
@@ -179,6 +203,7 @@ export async function startWebServer(options: WebOptions) {
   configurationSignature=JSON.stringify(configurations.state);
   conversationController = isProject || isKanban ? undefined : new ConversationController(project, runtime, saved, {
     canRun: session => ownership?.execute(session.id) ?? true,
+    canStart: () => !projectServer || projectServer.ready,
     configurationRevision: () => configurations.state.revision,
     changed: broadcast,
     log: message => process.stderr.write(`${message}\n`),
@@ -282,6 +307,7 @@ export async function startWebServer(options: WebOptions) {
     if (changed) {
       resources.clear();
       connection = undefined;
+      projectServer?.authenticationChanged({ ...account, status: 'checking', serverUrl: serverUrl || defaultServerUrl() });
       authRevision++;
       parameterStates.clear();
       projectActions?.invalidate();
@@ -294,6 +320,7 @@ export async function startWebServer(options: WebOptions) {
       account = { status: candidate ? 'checking' : 'signed-out', serverUrl: serverUrl || defaultServerUrl(),
         aiServerUrl: aiServerUrl || undefined, aiConfigured: Boolean(aiServerUrl && aiToken),
         user: candidate ? changed ? hostManaged ? undefined : config.user : account.user : undefined, revision: account.revision + 1 };
+      projectServer?.authenticationChanged(account);
     }
     if (candidate) {
       authCheckPending = true;
@@ -317,6 +344,7 @@ export async function startWebServer(options: WebOptions) {
         if (epoch !== authEpoch) { return; }
         if (background && !unauthorized) { return; }
         connection = undefined;
+        projectServer?.authenticationChanged({ ...account, status: unauthorized ? 'expired' : 'error' });
         resources.clear();
         kanbanController?.authenticationChanged();
         if (!changed) { authRevision++; parameterStates.clear(); projectActions?.invalidate(); await stopForAuthentication(); }
@@ -326,6 +354,7 @@ export async function startWebServer(options: WebOptions) {
         if (epoch === authEpoch) { authCheckPending = false; }
       }
     } else { connection = undefined; }
+    if (!background || !connection) projectServer?.authenticationChanged(account);
     broadcast();
   };
   await refreshAuth();
@@ -366,6 +395,17 @@ export async function startWebServer(options: WebOptions) {
   const handleMessage = async (message: Message): Promise<Message[]> => {
     if (typeof message.type !== 'string') { throw new Error('Invalid message.'); }
     if (message.projectUri && message.projectUri !== project.uri) { throw new Error('Project changed.'); }
+    if (message.type === 'project-server-check') {
+      await refreshAuth(true);
+      await projectServer?.refresh();
+      return [state(message.clientId), { type: 'project-server-checked' }];
+    }
+    // Check before controllers mutate drafts, histories, or queue state. Stop,
+    // navigation, export and local draft edits remain available during setup.
+    const needsServer = ['workflow-run', 'workflow-rerun', 'workflow-resume', 'send', 'retry', 'resume', 'queue-run', 'queue-promote'].includes(message.type)
+      || message.type === 'command' && project.conversation?.commands?.find(entry => entry.command === message.command)?.action.kind !== 'export'
+      || message.type === 'agent-command' && !['cancel', 'withdraw'].includes(message.command?.type);
+    if (needsServer) projectServer?.assertAvailable();
     if (message.type === 'ready') await configurations.refresh().catch(() => undefined);
     if (message.type === 'kanban-refresh') await configurations.refresh();
     if (message.type === 'project-configuration') {
@@ -748,7 +788,7 @@ export async function startWebServer(options: WebOptions) {
     })().catch(error => { if (!response.headersSent) { json(response, 400, { message: String(redactProjectData((error as Error).message, [...sensitiveTokens])) }); } else { response.end(); } });
   });
   try { await new Promise<void>((resolve, reject) => { server.once('error', reject); server.listen(options.port ?? 0, '127.0.0.1', () => { server.off('error', reject); resolve(); }); }); }
-  catch (error) { ownership?.close(); configurations.close(); resources.close(); clearInterval(authPoll); conversationController?.dispose(); projectController?.dispose(); await kanbanController?.close(); runtime.dispose(); throw error; }
+  catch (error) { projectServer?.close(); ownership?.close(); configurations.close(); resources.close(); clearInterval(authPoll); conversationController?.dispose(); projectController?.dispose(); await kanbanController?.close(); runtime.dispose(); throw error; }
   origin = `http://127.0.0.1:${(server.address() as { port: number }).port}`;
   activity = createLocalActivityWriter(path.dirname(historyPath), project, () => ({
     runs: summarizeLocalRuns(projectController?.runs, conversationController?.sessions),
@@ -785,6 +825,7 @@ export async function startWebServer(options: WebOptions) {
       await refreshAuth(true);
     },
     close: () => closing ??= (async () => {
+      projectServer?.close();
       authEpoch++; authCheck?.abort();
       clearInterval(historyPoll);
       configurations.close(); resources.close(); clearInterval(authPoll); if (broadcastTimer) { clearTimeout(broadcastTimer); } login?.kill(); conversationController?.dispose(); projectController?.dispose(); runtime.dispose();

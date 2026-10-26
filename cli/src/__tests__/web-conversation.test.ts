@@ -3,7 +3,7 @@ import { ConversationController } from '../web/conversation-controller';
 import { composerOutputItems } from '../web/ui/output-display';
 import { messageSettled, type ConversationMessage, type ConversationSession, type InputRequest, type Project, type Report, type Runtime } from '../web/workflow-types';
 
-function fixture() {
+function fixture(options: { canStart?(): boolean } = {}) {
   const project: Project = { id: 'test', uri: '', folderPath: '/test', name: 'Conversation', projectType: 'conversation', fields: [], entrypoints: [] };
   const runtime: Runtime = {
     available: true, inspect: vi.fn(), resolveParams: vi.fn(), run: vi.fn(), cancel: vi.fn(), dispose: vi.fn(),
@@ -11,10 +11,30 @@ function fixture() {
   };
   const save = vi.fn(async (_sessions: ConversationSession[], _activeId: string) => {});
   const controller = new ConversationController(project, runtime, {}, {
+    ...options,
     save: (sessions, activeId) => save(JSON.parse(JSON.stringify(sessions)), activeId), changed: vi.fn(), log: vi.fn(),
   });
   return { controller, runtime, save };
 }
+
+it('retains queued inputs while Server setup is required and waits for an explicit action to drain them', async () => {
+  let available = true;
+  const { controller, runtime } = fixture({ canStart: () => available });
+  controller.project.conversation = { inputQueue: { enabled: true } };
+  let complete!: (report: Report) => void;
+  vi.mocked(runtime.run).mockImplementationOnce(async () => new Promise(resolve => { complete = resolve; }));
+  await controller.send({ text: 'First', params: {}, attachments: [] });
+  await controller.send({ text: 'Keep queued', params: {}, attachments: [] });
+  available = false; complete({ status: 'success' }); await controller.idle();
+  expect(controller.current.queuedInputs?.map(input => input.text)).toEqual(['Keep queued']);
+  expect(runtime.run).toHaveBeenCalledOnce();
+  await expect(controller.send({ text: 'Blocked', params: {}, attachments: [] })).rejects.toThrow('Check again');
+  available = true;
+  expect(runtime.run).toHaveBeenCalledOnce();
+  vi.mocked(runtime.run).mockResolvedValue({ status: 'success' });
+  await controller.runQueued(); await controller.idle();
+  expect(runtime.run).toHaveBeenCalledTimes(2); expect(controller.current.queuedInputs).toEqual([]);
+});
 
 describe('Conversation answer action visibility', () => {
   it.each(['sending', 'running', 'waiting_for_input'])('keeps actions hidden while the answer is %s', status => {
@@ -140,6 +160,22 @@ describe('Conversation execution lifecycle', () => {
     expect(restored.current.messages).toHaveLength(1);
     expect(restored.current.messages[0]).toMatchObject({ content: 'Complete', status: 'success', recovering: false });
     expect(restored.current.messages[0].items).toHaveLength(1);
+  });
+
+  it('pauses recovery for Server setup and retries the original run only when explicitly requested', async () => {
+    const { controller, runtime } = fixture();
+    controller.project.conversation = { recovery: { enabled: true } };
+    const answer: ConversationMessage = { id: 'answer', runId: 'original-run', role: 'assistant', status: 'running', recovering: true, content: 'Partial', args: ['--message', 'Hello'] };
+    controller.current.messages.push(answer);
+    vi.mocked(runtime.run).mockRejectedValueOnce(Object.assign(new Error('Complete Server setup'), { code: 'PROJECT_SERVER_SETUP_REQUIRED' }));
+    controller.recover(); await controller.idle();
+    expect(answer).toMatchObject({ status: 'failed', recovering: true, runId: 'original-run', content: 'Partial' });
+    expect(controller.current.messages).toHaveLength(1); expect(runtime.run).toHaveBeenCalledOnce();
+    vi.mocked(runtime.run).mockResolvedValueOnce({ status: 'success' });
+    await controller.retry('answer'); await controller.idle();
+    expect(runtime.run).toHaveBeenLastCalledWith(expect.objectContaining({ runId: 'original-run', args: ['--message', 'Hello'] }), expect.any(Function));
+    expect(controller.current.messages).toHaveLength(1); expect(answer.recovering).toBe(false);
+    controller.dispose();
   });
 
   it('automatically retries an interrupted worker with the same input identity', async () => {

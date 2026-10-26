@@ -12,6 +12,7 @@ import {
 
 interface ControllerOptions {
   canRun?(session: ConversationSession): boolean;
+  canStart?(): boolean;
   configurationRevision?(): number;
   /** Capture mutable inputs synchronously, before returning the save promise. */
   save(sessions: ConversationSession[], activeId: string): Promise<void>;
@@ -205,6 +206,7 @@ export class ConversationController {
     entry.updatedAt = now; this.changed(); await this.persist();
   }
   async send(input: Omit<ConversationQueuedInput, 'id' | 'createdAt'>, entry = this.current, preserveDraft = false, requestId?: string, mode: 'steer' | 'followUp' | 'reject' = 'followUp', editingQueueId?: string): Promise<void> {
+    if (this.options.canStart?.() === false) throw new Error(t('Project data is unavailable. Follow the Server setup guidance and choose Check again.'));
     const parameters = projectParameters(this.project, input.entrypointId);
     validateProjectValues(parameters.fields, input.params, input.states);
     if (this.disposed || this.removing.has(entry.id) || !this.sessions.includes(entry)) { throw new Error(t("Conversation no longer exists.")); }
@@ -415,9 +417,14 @@ export class ConversationController {
       if (answer.submittingInput && pending && report.status === 'failed') { answer.status = 'waiting_for_input'; answer.pendingInput = pending; }
       if (!answer.content && !answer.items?.length && report.status === 'success') { answer.content = report.result?.data === undefined ? t("Completed") : JSON.stringify(report.result.data, null, 2); }
     } catch (error) {
+      const setupRequired = (error as { code?: string }).code === 'PROJECT_SERVER_SETUP_REQUIRED';
       const interrupted = this.project.conversation?.recovery?.enabled && !task.cancelled
         && (this.disposed || (error as { code?: string }).code === 'STEAMHARNESS_WORKER_INTERRUPTED');
-      if (interrupted) {
+      if (setupRequired && !task.cancelled) {
+        const message = error instanceof Error ? error.message : String(error);
+        if (historical) this.failAgentTurns(entry, message, true);
+        else { answer.status = 'failed'; answer.recovering = !!this.project.conversation?.recovery?.enabled; answer.error = message; }
+      } else if (interrupted) {
         answer.recoveryAttempts = (answer.recoveryAttempts ?? 0) + (this.disposed ? 0 : 1);
         restart = !this.disposed && answer.recoveryAttempts <= 3;
         if (!historical) {
@@ -715,7 +722,7 @@ export class ConversationController {
       ...Object.fromEntries(Object.keys(updates).map(name => [name, revision])) } };
   }
   private drain(entry: ConversationSession): void {
-    if (this.project.conversation?.durable?.enabled || entry.activeRunId || entry.messages.some((message) => message.pendingInput || message.cancelRequested || message.recovering) || entry.draft?.editingQueueId || this.disposed || this.removing.has(entry.id)) { return; }
+    if (this.options.canStart?.() === false || this.project.conversation?.durable?.enabled || entry.activeRunId || entry.messages.some((message) => message.pendingInput || message.cancelRequested || message.recovering) || entry.draft?.editingQueueId || this.disposed || this.removing.has(entry.id)) { return; }
     const input = entry.queuedInputs?.shift();
     if (input) {
       try { this.start(entry, input); }

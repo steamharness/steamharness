@@ -1,0 +1,14 @@
+.project-server-guidance { flex-shrink: 0; min-height: 0; max-height: 45%; overflow: auto; padding: 16px 24px; border-bottom: 1px solid var(--vscode-panel-border); user-select: text; }
+.kanban-app .project-server-guidance { flex: 1; max-height: none; }
+.project-server-guidance-body { max-width: 640px; margin: 0 auto; font-size: 13px; line-height: 1.6; }
+.project-server-guidance h2 { font-size: 16px; font-weight: 600; margin: 0 0 12px; }
+.project-server-guidance p { color: var(--vscode-descriptionForeground); }
+.project-server-guidance dl { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 6px 16px; padding: 12px 0; border-block: 1px solid var(--vscode-panel-border); }
+.project-server-guidance dt { color: var(--vscode-descriptionForeground); }
+.project-server-guidance dd { margin: 0; overflow-wrap: anywhere; user-select: text; }
+.project-server-guidance ol { padding-left: 20px; }
+.project-server-guidance li { margin-bottom: 8px; }
+.project-server-guidance-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 20px; }
+.project-server-guidance-actions button { min-height: 32px; padding: 6px 12px; border-radius: 4px; border: 1px solid var(--vscode-panel-border); background: var(--vscode-button-secondaryBackground); color: var(--vscode-button-secondaryForeground); }
+.project-server-guidance-actions button:disabled { opacity: .5; cursor: default; }
+.project-server-guidance-actions button:focus-visible { outline: 1px solid var(--vscode-focusBorder); outline-offset: 2px; }

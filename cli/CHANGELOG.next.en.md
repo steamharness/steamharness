@@ -1,6 +1,6 @@
 # Unreleased
 
-- Fixed local Kanban to guide users through missing Server projects, sign-in and access issues with the Server address, account settings, an upload dialog and a recheck action. Setup errors stop automatic reconnection; projects are never created or uploaded automatically.
+- Fixed Server storage setup guidance for local Kanban, Workflow and Conversation projects, including the Server address, project ID, account settings, upload dialog and read-only rechecks. History, drafts and Stop remain available; no projects are created or uploaded automatically. Missing Kanban endpoints no longer suggest another upload when the project already exists.
 
 - Fixed: Default Server addresses follow the dev, alpha and main channels. Dev uses localhost:7126, empty saved addresses fall back correctly, and explicit connections retain priority.
 

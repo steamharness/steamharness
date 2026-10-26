@@ -1,6 +1,8 @@
 import { mountProjectConfigurations, projectConfigurationsButton } from './project-configurations';
 import { t, locale } from '../localization';
 import type { AccountState } from '../workflow-auth-client';
+import type { ProjectServerState } from '../project-server-state';
+import { ProjectServerGuidance } from './project-server-guidance';
 import { ParameterActions } from './parameter-actions';
 import { ConversationComposer } from './conversation-composer';
 import { ConversationSubmissions, type ConversationSubmission } from './conversation-submissions';
@@ -59,7 +61,7 @@ function initialize(): void {
       <div class="menu-heading"><span id="menu-label">${t("Conversations")}</span><div class="menu-actions"><button id="history-toggle" class="icon-button" title="${t("Search conversations")}" aria-label="${t("Search conversations")}" aria-haspopup="dialog" aria-controls="history-popover" aria-expanded="false" popovertarget="history-popover">${icon('search')}</button><button id="hide-menu" class="icon-button" title="${t("Hide conversations")}" aria-label="${t("Hide conversations")}">${icon('chevron-left')}</button></div></div>
       <section id="chats"><nav id="session-list" aria-label="${t("Conversation history")}"></nav><button id="load-more-history" class="all-history" hidden>${icon('chevron-down')}<span>${t("Load more")}</span></button><button id="all-history" class="all-history" aria-haspopup="dialog" aria-controls="history-popover" aria-expanded="false" popovertarget="history-popover" hidden></button><div id="no-history" class="no-history" hidden>${t("No conversations")}</div></section>
     </aside>
-    <main><div class="transcript-area"><div id="transcript" class="transcript" role="log" aria-label="${t("Conversation messages")}" aria-live="polite" aria-relevant="additions"><div id="transcript-content" class="transcript-content"></div></div><button id="latest" class="icon-button latest-button" title="${t("Go to latest message")}" aria-label="${t("Go to latest message")}" hidden>${icon('arrow-down')}</button></div>
+    <main><section id="server-guidance" class="project-server-guidance" aria-labelledby="server-guidance-title" role="region" aria-live="polite" hidden></section><div class="transcript-area"><div id="transcript" class="transcript" role="log" aria-label="${t("Conversation messages")}" aria-live="polite" aria-relevant="additions"><div id="transcript-content" class="transcript-content"></div></div><button id="latest" class="icon-button latest-button" title="${t("Go to latest message")}" aria-label="${t("Go to latest message")}" hidden>${icon('arrow-down')}</button></div>
       <footer class="composer-area"><div id="error" class="error" role="alert" hidden></div><div id="input-queue" class="input-queue" hidden></div><div id="editing-queue" class="editing-queue" hidden><span>${t("Edit queued message")}</span><button id="cancel-queue-edit" class="icon-button" title="${t("Cancel editing")}" aria-label="${t("Cancel editing")}">${icon('close')}</button></div><section id="parameters" aria-label="${t("Run parameters")}"><div class="parameter-feedback"><div id="parameter-status" class="parameter-status" role="status" hidden>${icon('loading')}<span>${t("Loading parameters...")}</span></div><div id="parameter-error" class="parameter-error" role="alert" hidden></div><button id="parameter-login" class="parameter-login" hidden>${icon('sign-in')}<span>${t("Sign in to SteamHarness")}</span></button></div><div id="slash-menu" class="slash-menu" hidden></div><div class="composer"><div class="composer-body"><div id="main-fields" class="composer-main-fields" hidden></div><div id="draft-attachments" class="attachments" hidden></div><textarea id="message" rows="2" placeholder="${t("Send a message...")}" aria-label="${t("Message")}"></textarea></div><div class="composer-toolbar"><div class="run-options"><button id="attach" class="icon-button" title="${t("Add files or folders")}" aria-label="${t("Add files or folders")}" hidden>${icon('attach')}</button><select id="entrypoint" aria-label="${t("Entrypoints")}" hidden></select><div id="parameter-actions" class="parameter-actions" role="group" aria-label="${t("Run parameters")}"></div><button id="refresh-params" class="icon-button" title="${t("Refresh parameters")}" aria-label="${t("Refresh parameters")}" hidden>${icon('refresh')}</button></div><div class="composer-actions"><button id="send" class="send-button" title="${t("Send")}" aria-label="${t("Send")}">${icon('arrow-up')}</button></div></div></div><div id="composer-footer" class="composer-footer" role="status" hidden></div></section></footer>
     </main>
     <div id="history-popover" class="history-popover" popover="auto" role="dialog" aria-label="${t("All conversations")}"><div class="history-popover-toolbar"><label class="history-search">${icon('search')}<input id="search-all-history" type="search" placeholder="${t("Search conversations")}" aria-label="${t("Search all conversations")}"></label><button id="close-history" class="icon-button" title="${t("Close conversation history")}" aria-label="${t("Close conversation history")}">${icon('close')}</button></div><nav id="all-session-list" aria-label="${t("All chats")}"></nav><div id="history-empty" class="no-history" hidden>${t("No matching conversations")}</div></div>
@@ -73,7 +75,7 @@ function initialize(): void {
 
   const configurationPanel = mountProjectConfigurations(vscode);
 
-  interface State { project: Project; sessions: ConversationSession[]; activeId: string; running: boolean; conversationAccess?: { readOnly: boolean }; parameterValues?: Record<string, ParamValues>; account?: AccountState; authenticationRevision?: number; parameterRevision?: number; serverInstanceId?: string }
+  interface State { serverData?: ProjectServerState; project: Project; sessions: ConversationSession[]; activeId: string; running: boolean; conversationAccess?: { readOnly: boolean }; parameterValues?: Record<string, ParamValues>; account?: AccountState; authenticationRevision?: number; parameterRevision?: number; serverInstanceId?: string }
   interface FieldView {
     field: Field; root: HTMLDivElement;
     controls: (HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement)[];
@@ -92,6 +94,13 @@ function initialize(): void {
   interface NavigationRequest { requestId: number; activeId: string; updates: ConversationDraftUpdate[]; refreshParameters: boolean }
 
   let state: State | undefined;
+  let uploadAvailable = false, checkingServer = false;
+  const serverBlocked = () => !!state?.serverData && (state.serverData.checking || !!state.serverData.issue);
+  const serverGuidance = new ProjectServerGuidance(document.getElementById('server-guidance')!, {
+    account: () => { vscode.postMessage({ type: 'open-account' }); },
+    upload: () => { vscode.postMessage({ type: 'open-project-upload' }); },
+    retry: () => { checkingServer = true; updateControls(); post({ type: 'project-server-check' }); },
+  });
   let renderedProject = '';
   let renderedSession = '';
   let renderedParameterDefinition = '';
@@ -291,7 +300,7 @@ function initialize(): void {
   function requestParams(trigger: ParamRequest['trigger'], force = false): void {
     clearTimeout(inputTimer); inputTimer = undefined;
     if (!state || !fields.size || !currentParameters().paramResolver?.enabled) { paramsNeedInit = false; return; }
-    if (!connectionAvailable || busy() || state.running || composing || !navigationReady()) { paramsNeedInit = true; pendingParameterTrigger = trigger; return; }
+    if (!connectionAvailable || serverBlocked() || busy() || state.running || composing || !navigationReady()) { paramsNeedInit = true; pendingParameterTrigger = trigger; return; }
     const signature = parameterSignature();
     const cached = parameterCache.get(formKey);
     if (!force && cached?.signature === signature) {
@@ -505,6 +514,7 @@ function initialize(): void {
 
   function updateControls(): void {
     if (!state) { return; }
+    serverGuidance.update(state.serverData?.issue ?? (state.serverData?.checking ? { kind: 'checking', serverUrl: state.account?.serverUrl } : undefined), state.project.id, { connected: connectionAvailable, working: checkingServer || !!state.serverData?.checking, uploadAvailable });
     const conversation = state.project.projectType === 'conversation';
     const durable = state.project.conversation?.durable?.enabled === true;
     const hidden = hideComposer();
@@ -525,7 +535,7 @@ function initialize(): void {
     const dynamic = currentParameters().paramResolver?.enabled;
     const refresh = document.querySelector<HTMLButtonElement>('#refresh-params')!;
     refresh.hidden = !dynamic || !fields.size;
-    refresh.disabled = busy() || state.running || resolving;
+    refresh.disabled = busy() || state.running || resolving || serverBlocked();
     refresh.title = refresh.ariaLabel = paramError.hidden ? t('Refresh parameters') : t('Retry loading parameters');
     refresh.classList.toggle('refreshing', parametersLoading());
     document.querySelector<HTMLElement>('#parameter-status')!.hidden = !parametersLoading() || !dynamic;
@@ -536,12 +546,12 @@ function initialize(): void {
     const hasInput = !!textarea.value.trim() || draftFiles.length > 0 || draftReferences.length > 0;
     const stopping = stopRequests.get(`${state.project.uri}:${state.activeId}`);
     const pendingStop = stopping?.phase === 'pending';
-    const stop = state.running && (!connectionAvailable || !canQueue() || !hasInput);
+    const stop = state.running && (!connectionAvailable || serverBlocked() || !canQueue() || !hasInput);
     updateIcon(sendButton, pendingStop ? 'loading' : stop ? 'debug-stop' : submitting || pendingSend() || uploading ? 'loading' : conversation ? 'arrow-up' : 'play');
     sendButton.title = sendButton.ariaLabel = pendingStop ? t("Stopping...") : stop ? t("Stop") : editingQueueId ? t("Save queued message") : conversation ? t("Send") : t("Run");
     sendButton.setAttribute('aria-busy', String(pendingStop));
     sendButton.classList.toggle('stop', stop);
-    sendButton.disabled = readOnly() || pendingStop || !stop && (!connectionAvailable || !conversation && !navigationReady() || submitting || pendingSend() || !conversation && resolving || uploading > 0 || conversation && !hasInput);
+    sendButton.disabled = readOnly() || pendingStop || !stop && (!connectionAvailable || serverBlocked() || !conversation && !navigationReady() || submitting || pendingSend() || !conversation && resolving || uploading > 0 || conversation && !hasInput);
     stopFeedback.hidden = !stopping;
     stopFeedback.className = stopping?.phase === 'failed' ? 'error' : 'stop-feedback';
     stopFeedback.setAttribute('role', stopping?.phase === 'failed' ? 'alert' : 'status');
@@ -757,7 +767,7 @@ function initialize(): void {
   }
 
   function dispatchSubmissions(): void {
-    if (!state || !connectionAvailable) return;
+    if (!state || !connectionAvailable || serverBlocked()) return;
     let changed = false;
     for (const entry of submissions.list()) {
       if (entry.projectUri !== state.project.uri || entry.phase !== 'pending' || localSessions.has(entry.sessionId)
@@ -847,7 +857,7 @@ function initialize(): void {
       if (retry) {
         const submission = submissions.forMessage(view.message);
         retry.hidden = interrupted || !!submission && submission.phase !== 'failed';
-        retry.disabled = readOnly() || !!state?.running || pendingSend() || !!view.message.pendingInput || !!retryingMessage || !submission && !navigationReady();
+        retry.disabled = serverBlocked() || readOnly() || !!state?.running || pendingSend() || !!view.message.pendingInput || !!retryingMessage || !submission && !navigationReady();
       }
     }
   }
@@ -913,7 +923,7 @@ function initialize(): void {
     const session = currentSession();
     if (!state || !session) return;
     queueView.update({ projectUri: state.project.uri, session, sessions: state.sessions, durable: state.project.conversation?.durable?.enabled === true,
-      ready: !readOnly() && connectionAvailable && navigationReady(),
+      ready: !readOnly() && connectionAvailable && navigationReady(), canExecute: !serverBlocked(),
       pendingIds: new Set(submissions.list().filter(entry => entry.projectUri === state!.project.uri).map(entry => entry.input.id)) });
   }
 
@@ -1052,7 +1062,7 @@ function initialize(): void {
     if (view.configureModel) view.configureModel.hidden = !configureModel;
     view.root.querySelector<HTMLButtonElement>('.copy-message')!.disabled = !message.content && !message.references?.length;
     const fork = view.root.querySelector<HTMLButtonElement>('.fork-message');
-    if (fork) { fork.hidden = !state?.project.conversation?.durable?.enabled || !message.entryId; fork.disabled = !connectionAvailable; }
+    if (fork) { fork.hidden = !state?.project.conversation?.durable?.enabled || !message.entryId; fork.disabled = !connectionAvailable || serverBlocked(); }
     const signature = JSON.stringify([message.attachments, message.references]);
     if (signature !== view.extrasSignature) {
       view.extrasSignature = signature; attachmentList(view.attachments, message.attachments ?? [], false, message.references);
@@ -1063,9 +1073,9 @@ function initialize(): void {
         stop: () => post({ type: 'stop' }),
         files: (name) => post({ type: 'attach', messageId: message.id, requestId: message.pendingInput!.requestId, paramName: name }),
       }); view.promptRoot.append(view.prompt.root);
-      if (readOnly() || message.status === 'running') { view.prompt.setBusy(true); }
+      if (serverBlocked() || readOnly() || message.status === 'running') { view.prompt.setBusy(true); }
     } else if (!message.pendingInput) { view.prompt?.root.remove(); view.prompt = undefined; }
-    else { view.prompt?.setBusy(readOnly() || message.status === 'running' || !!message.submittingInput, message.error ?? ''); }
+    else { view.prompt?.setBusy(serverBlocked() || readOnly() || message.status === 'running' || !!message.submittingInput, message.error ?? ''); }
   }
 
   function updateLatest(): void { latest.hidden = transcript.scrollHeight - transcript.scrollTop - transcript.clientHeight < 100; }
@@ -1093,6 +1103,7 @@ function initialize(): void {
     if (fromServer) submissions.retain(next.project.uri, new Set(next.sessions.map(session => session.id)));
     next = { ...next, sessions: next.sessions.map(session => submissions.project(next.project.uri, session, fromServer)) };
     state = next;
+    if (serverBlocked()) { paramsNeedInit ||= resolving; cancelParameterRequest(); }
     for (const [key, request] of stopRequests) {
       const target = next.sessions.find(session => session.id === request.sessionId);
       const recoveringStop = request.phase === 'pending' && request.runId === target?.activeRunId && request.taskIds?.length
@@ -1260,8 +1271,8 @@ function initialize(): void {
     if (!state) { return; }
     if (stopRequests.get(`${state.project.uri}:${state.activeId}`)?.phase === 'pending') { return; }
     const hasInput = !!textarea.value.trim() || draftFiles.length > 0 || draftReferences.length > 0;
-    if (state.running && (!connectionAvailable || !canQueue() || !hasInput)) { void stopCurrent(); return; }
-    if (!connectionAvailable || state.project.projectType !== 'conversation' && !navigationReady()) { return; }
+    if (state.running && (!connectionAvailable || serverBlocked() || !canQueue() || !hasInput)) { void stopCurrent(); return; }
+    if (!connectionAvailable || serverBlocked() || state.project.projectType !== 'conversation' && !navigationReady()) { return; }
     if (!draftReferences.length && conversationComposer.submitCommand()) { return; }
     if (busy() || state.project.projectType !== 'conversation' && resolving || uploading || state.project.projectType === 'conversation' && !hasInput) { return; }
     const validateOnServer = state.project.projectType === 'conversation' && currentParameters().paramResolver?.enabled
@@ -1499,6 +1510,8 @@ function initialize(): void {
   let renderScheduled = false;
   window.addEventListener('message', (event) => {
     const message = event.data;
+    if (message?.type === 'project-setup-available') { uploadAvailable = message.upload === true; updateControls(); return; }
+    if (message?.type === 'project-server-checked' || message?.type === 'error' && message.requestType === 'project-server-check') { checkingServer = false; updateControls(); return; }
     if (fileIcons.receive(message)) return;
     if (message.type === 'error' && message.requestType === 'resolve') {
       if (state && message.requestId === parameterRequest?.id && (!message.sessionId || message.sessionId === state.activeId)) {
@@ -1517,7 +1530,7 @@ function initialize(): void {
       manualReconnect = !!message.manual;
       reconnectFailed = !!message.retryFailed;
       connectionAvailable = message.status === 'connected';
-      if (!connectionAvailable) { paramsNeedInit ||= resolving; cancelParameterRequest(); dialogs.closeUsage(); }
+      if (!connectionAvailable) { checkingServer = false; paramsNeedInit ||= resolving; cancelParameterRequest(); dialogs.closeUsage(); }
       updateControls();
       updateConnectionFeedback(); syncTranscriptLayout();
       if (restored && state) { parameterCache.clear(); syncNavigation(); dispatchSubmissions(); paramsNeedInit = true; requestParams({ kind: 'init' }); }
