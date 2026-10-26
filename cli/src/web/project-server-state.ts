@@ -12,7 +12,17 @@ export interface ProjectServerIssue {
   /** Verified local binding supplied by a host. Absent for standalone sessions. */
   relatedProjectImported?: boolean;
 }
-export interface ProjectServerState { checking: boolean; issue?: ProjectServerIssue; blocking?: boolean }
+export interface ProjectServerCheck {
+  id: string;
+  projectId: string;
+  relatedProjectAlias?: string;
+  stage: 'import' | 'registration' | 'relationship';
+  status: 'checking' | 'passed' | 'action-required' | 'waiting';
+  issue?: ProjectServerIssue;
+}
+export interface ProjectServerState { checking: boolean; issue?: ProjectServerIssue; blocking?: boolean; checks?: ProjectServerCheck[] }
+export type ProjectServerInspector = (connection: WebConnection | undefined, signal: AbortSignal,
+  publish: (checks: ProjectServerCheck[]) => void, unavailable: ProjectServerIssue) => Promise<ProjectServerCheck[]>;
 
 export interface ProjectServerAccessFailure {
   serverUrl: string; projectId: string; relatedProjectAlias?: string; status?: number;
@@ -46,7 +56,7 @@ export async function checkProjectServer(projectId: string, connection: WebConne
   return (await readServerProject(projectId, connection, signal)).issue;
 }
 
-async function readServerProject(projectId: string, connection: WebConnection, signal: AbortSignal): Promise<{ issue?: ProjectServerIssue; project?: ServerProject }> {
+export async function readServerProject(projectId: string, connection: WebConnection, signal: AbortSignal): Promise<{ issue?: ProjectServerIssue; project?: ServerProject }> {
   const serverUrl = connection.serverUrl;
   const response = await fetch(`${serverUrl}/api/projects/${encodeURIComponent(projectId)}`, {
     headers: { Authorization: `Bearer ${connection.accessToken}` }, redirect: 'error', signal: AbortSignal.any([signal, AbortSignal.timeout(10_000)]),
@@ -118,41 +128,62 @@ export class ProjectServerConnection {
   private disposed = false;
   private checkedAt = 0;
   private failure?: ProjectServerAccessFailure;
+  private unavailable: ProjectServerIssue = { kind: 'sign-in-required' };
   get blocking(): boolean { return this.state.blocking !== false; }
-  get ready(): boolean { return !this.disposed && this.checkedAt > 0 && !this.state.issue && !!this.connection(); }
-  constructor(private readonly projectId: string, private readonly connection: () => WebConnection | undefined, private readonly changed: () => void, options: { blocking?: boolean } = {}) {
+  get ready(): boolean { return !this.disposed && this.checkedAt > 0 && !this.state.checking && !this.state.issue && !!this.connection(); }
+  constructor(private readonly projectId: string, private readonly connection: () => WebConnection | undefined, private readonly changed: () => void,
+    private readonly options: { blocking?: boolean; inspect?: ProjectServerInspector } = {}) {
     if (options.blocking === false) this.state.blocking = false;
   }
   reportFailure(failure: ProjectServerAccessFailure): Promise<void> {
-    this.failure = failure; this.request?.abort(); this.pending = undefined; this.checkedAt = 0;
+    this.failure = failure;
+    return this.restart();
+  }
+  restart(): Promise<void> {
+    this.request?.abort(); this.pending = undefined; this.checkedAt = 0;
     return this.refresh();
   }
+  settled(): Promise<void> { return this.pending ?? Promise.resolve(); }
   authenticationChanged(account: AccountState): void {
     this.request?.abort(); this.pending = undefined; clearTimeout(this.retry); this.checkedAt = 0;
     if (this.disposed) return;
     if (account.status === 'checking') {
-      this.state = { ...this.state, checking: true, issue: this.state.issue?.serverUrl === account.serverUrl ? this.state.issue : undefined };
+      if (!this.connection()) this.failure = undefined;
+      this.state = { ...this.state, checking: true, issue: undefined, checks: this.state.checks?.map(check => ({ ...check, status: 'checking', issue: undefined })) };
       this.changed(); return;
     }
-    if (this.connection()) { void this.refresh(); return; }
-    this.state = { ...this.state, checking: false, issue: {
+    this.unavailable = {
       kind: account.status === 'error' ? 'connection-unavailable' : 'sign-in-required', serverUrl: account.serverUrl,
-    } };
+    };
+    if (this.connection() || this.options.inspect) { void this.refresh(); return; }
+    this.state = { ...this.state, checking: false, issue: this.unavailable };
     this.changed();
   }
   refresh(): Promise<void> {
-    if (this.disposed || !this.connection()) return Promise.resolve();
+    if (this.disposed || !this.connection() && !this.options.inspect) return Promise.resolve();
     if (this.pending) return this.pending;
     clearTimeout(this.retry);
-    const connection = this.connection()!, abort = this.request = new AbortController();
-    this.state = { ...this.state, checking: !this.ready }; this.changed();
+    const connection = this.connection(), abort = this.request = new AbortController();
+    this.state = { ...this.state, checking: this.options.inspect ? true : !this.ready, ...(this.options.inspect ? { issue: undefined } : {}) }; this.changed();
     const task = (async () => {
       let issue: ProjectServerIssue | undefined;
-      try { issue = this.failure ? await checkProjectStorageFailure(this.projectId, this.failure, connection, abort.signal) : await checkProjectServer(this.projectId, connection, abort.signal); }
-      catch { issue = { kind: 'connection-unavailable', serverUrl: connection.serverUrl }; }
+      let checks: ProjectServerCheck[] | undefined;
+      try {
+        if (this.options.inspect) {
+          checks = await this.options.inspect(connection, abort.signal, checks => {
+            if (abort.signal.aborted || this.disposed) return;
+            this.state = { ...this.state, checks, issue: checks.find(check => check.issue)?.issue }; this.changed();
+          }, this.unavailable);
+          issue = checks.find(check => check.issue)?.issue;
+        }
+        if (connection && !issue) issue = this.failure ? await checkProjectStorageFailure(this.projectId, this.failure, connection, abort.signal)
+          : this.options.inspect ? undefined : await checkProjectServer(this.projectId, connection, abort.signal);
+      }
+      catch { issue = { kind: 'connection-unavailable', serverUrl: connection?.serverUrl ?? this.unavailable.serverUrl }; }
       if (abort.signal.aborted || this.disposed) return;
-      this.checkedAt = Date.now(); this.state = { ...this.state, checking: false, issue }; this.changed();
-      if (!issue || issue.kind === 'connection-unavailable') {
+      this.checkedAt = Date.now(); this.state = projectServerStateWithIssue({ ...this.state, checking: false, ...(checks ? { checks } : {}) }, issue, this.projectId); this.changed();
+      const temporary = issue?.kind === 'connection-unavailable' || checks?.some(check => check.issue?.kind === 'connection-unavailable');
+      if ((!this.options.inspect && !issue) || temporary && connection) {
         this.retry = setTimeout(() => { void this.refresh(); }, issue ? 5_000 : 30_000); this.retry.unref();
       }
     })().finally(() => { if (this.pending === task) this.pending = undefined; });
@@ -162,7 +193,7 @@ export class ProjectServerConnection {
   async assertReady(): Promise<void> {
     const connection = this.connection();
     if (this.pending) await this.pending;
-    else if (!this.state.issue && Date.now() - this.checkedAt >= 5_000) await this.refresh();
+    else if (!this.state.issue && (!this.checkedAt || !this.options.inspect && Date.now() - this.checkedAt >= 5_000)) await this.refresh();
     const current = this.connection();
     if (this.disposed || !connection || current?.serverUrl !== connection.serverUrl || current.accessToken !== connection.accessToken || this.state.checking || this.state.issue) {
       throw Object.assign(new Error(t('Project data is unavailable. Follow the Server setup guidance and choose Check again.')), { code: 'PROJECT_SERVER_SETUP_REQUIRED' });
@@ -172,4 +203,18 @@ export class ProjectServerConnection {
     if (!this.ready) throw Object.assign(new Error(t('Project data is unavailable. Follow the Server setup guidance and choose Check again.')), { code: 'PROJECT_SERVER_SETUP_REQUIRED' });
   }
   close(): void { this.disposed = true; this.request?.abort(); clearTimeout(this.retry); }
+}
+
+/** Keep the lifecycle checklist consistent with a later, operation-specific failure. */
+export function projectServerStateWithIssue(state: ProjectServerState, issue: ProjectServerIssue | undefined, projectId: string): ProjectServerState {
+  if (!issue || !state.checks) return { ...state, issue };
+  const targetId = issue.projectId ?? projectId;
+  const matches = (check: ProjectServerCheck) => check.projectId.toLowerCase() === targetId.toLowerCase()
+    && (!issue.relatedProjectAlias || check.relatedProjectAlias === issue.relatedProjectAlias)
+    && (!!issue.relatedProjectAlias === !!check.relatedProjectAlias);
+  const stage = issue.kind === 'related-import-required' || issue.relatedProjectImported === false ? 'import' : issue.kind === 'related-setup-required' ? 'relationship' : 'registration';
+  const checks: ProjectServerCheck[] = state.checks.map(check => matches(check) ? { ...check, stage, status: 'action-required', issue } : check);
+  if (!checks.some(matches)) checks.push({ id: issue.relatedProjectAlias ? `related:${issue.relatedProjectAlias}` : 'project', projectId: targetId,
+    relatedProjectAlias: issue.relatedProjectAlias, stage, status: 'action-required', issue });
+  return { ...state, issue, checks };
 }

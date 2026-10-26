@@ -1,4 +1,4 @@
-import type { ProjectServerIssue } from '../project-server-state';
+import type { ProjectServerIssue, ProjectServerState, ProjectServerCheck } from '../project-server-state';
 import { t } from '../localization';
 import './project-server-guidance.css';
 
@@ -14,15 +14,25 @@ export class ProjectServerGuidance {
   private readonly create: HTMLButtonElement;
   private readonly retry: HTMLButtonElement;
   private signature = '';
+  private checksSignature = '';
+  private phase = '';
+  private selected?: string;
+  private current?: { state: ProjectServerState; projectId: string; options: { connected: boolean; working: boolean } };
   constructor(private readonly container: HTMLElement, actions: { create(): void; retry(): void }) {
     container.innerHTML = `<div class="project-server-guidance-body">
+      <details id="server-checks" open><summary id="server-checks-summary" hidden><span id="server-checks-icon" class="codicon" aria-hidden="true"></span><span id="server-checks-title">${t('Application checks')}</span><span id="server-checks-progress"></span></summary>
+      <ul id="server-checks-list" class="project-checks-list" hidden></ul>
+      <p id="server-checks-note" class="project-checks-note" hidden>${t('Registration, imports and relationship declarations are checked here. Permissions for specific data are checked when used.')}</p>
+      <div id="server-guidance-problem">
       <div class="project-server-guidance-context" id="server-guidance-context" hidden><span class="codicon codicon-link" aria-hidden="true"></span><span id="server-guidance-related"></span><span id="server-guidance-stage"></span></div>
       <h2 id="server-guidance-title"></h2><p id="server-guidance-description"></p>
       <details id="server-guidance-details" open><summary hidden>${t('Connection details')}</summary>
       <dl><dt id="server-guidance-server-label">${t("Server")}</dt><dd id="server-guidance-server"></dd><dt>${t("Project ID")}</dt><dd id="server-guidance-project"></dd><dt id="server-guidance-alias-label" hidden>${t('Related project')}</dt><dd id="server-guidance-alias" hidden></dd></dl>
       </details>
       <ol id="server-guidance-steps"></ol>
-      <div class="project-server-guidance-actions"><button id="server-guidance-create" type="button" hidden>${t('Apply for a new application ID...')}</button><button id="server-guidance-retry" type="button">${t("Check again")}</button></div>
+      <div class="project-server-guidance-actions project-server-create-action"><button id="server-guidance-create" type="button" hidden>${t('Apply for a new application ID...')}</button></div>
+      </div></details>
+      <div class="project-server-guidance-actions project-server-recheck"><button id="server-guidance-retry" type="button">${t("Check again")}</button></div>
     </div>`;
     const find = <T extends HTMLElement>(id: string) => container.querySelector<T>(`#server-guidance-${id}`)!;
     this.title = find('title'); this.description = find('description'); this.server = find('server'); this.project = find('project'); this.steps = find('steps');
@@ -31,10 +41,38 @@ export class ProjectServerGuidance {
     this.create = find('create'); this.retry = find('retry');
     this.create.onclick = actions.create; this.retry.onclick = actions.retry;
   }
-  update(issue: ProjectServerIssue | undefined, projectId: string, options: { connected: boolean; working: boolean }): void {
-    this.container.hidden = !issue;
-    if (!issue) { this.signature = ''; return; }
+  update(state: ProjectServerState | undefined, projectId: string, options: { connected: boolean; working: boolean }): void {
+    this.current = state && { state, projectId, options };
+    const checks = state?.checks;
+    const lifecycle = !!checks?.length;
+    const selected = checks?.find(check => check.id === this.selected && check.issue);
+    const issue = selected?.issue ?? state?.issue ?? (state?.checking && !lifecycle ? { kind: 'checking' as const } : undefined);
+    this.container.hidden = !issue && !lifecycle;
+    if (this.container.hidden) { this.signature = ''; this.phase = ''; return; }
+    this.container.toggleAttribute('data-lifecycle', lifecycle);
+    this.container.querySelector<HTMLElement>('#server-guidance-problem')!.hidden = !issue;
+    const overview = this.container.querySelector<HTMLDetailsElement>('#server-checks')!;
+    this.container.querySelector<HTMLElement>('#server-checks-summary')!.hidden = !lifecycle;
+    this.container.querySelector<HTMLElement>('#server-checks-list')!.hidden = !lifecycle;
+    this.container.querySelector<HTMLElement>('#server-checks-note')!.hidden = !lifecycle;
+    if (lifecycle) {
+      const attention = checks.filter(check => check.status === 'action-required').length;
+      const complete = checks.filter(check => check.status === 'passed').length;
+      const phase = state?.checking ? 'checking' : attention ? 'action-required' : 'passed';
+      if (phase !== this.phase) overview.open = phase !== 'passed';
+      this.phase = phase; this.container.dataset.result = phase;
+      this.container.querySelector<HTMLElement>('#server-checks-icon')!.className = `codicon codicon-${phase === 'checking' ? 'loading codicon-modifier-spin' : phase === 'passed' ? 'pass' : 'warning'}`;
+      this.container.querySelector<HTMLElement>('#server-checks-progress')!.textContent = state?.checking ? t('Checking {0}/{1}', complete, checks.length)
+        : attention ? t('{0} need attention', attention) : t('{0}/{1} passed', complete, checks.length);
+      this.renderChecks(checks, projectId);
+      this.container.setAttribute('aria-labelledby', 'server-checks-title');
+    } else {
+      overview.open = true; this.phase = ''; delete this.container.dataset.result;
+      this.container.setAttribute('aria-labelledby', this.title.id);
+    }
     this.retry.disabled = !options.connected || options.working;
+    this.create.hidden = true;
+    if (!issue) { this.signature = ''; return; }
     const currentProject = !issue.projectId || issue.projectId.toLowerCase() === projectId.toLowerCase();
     const related = !currentProject || !!issue.relatedProjectAlias;
     const scope = related ? 'related' : 'project';
@@ -44,7 +82,7 @@ export class ProjectServerGuidance {
     this.details.querySelector('summary')!.hidden = !related;
     this.create.disabled = !options.connected || options.working;
     this.create.hidden = related || issue.kind !== 'project-unavailable';
-    const signature = JSON.stringify([issue, projectId]);
+    const signature = JSON.stringify([issue, projectId, state?.blocking]);
     if (signature === this.signature) return;
     this.signature = signature;
     const localImport = issue.kind === 'related-import-required';
@@ -76,8 +114,8 @@ export class ProjectServerGuidance {
       this.description.textContent = t('Checking sign-in and project access. Your local history and drafts remain available.');
       steps = [];
     } else if (issue.kind === 'sign-in-required') {
-      this.title.textContent = t("Sign in to load project data");
-      this.description.textContent = t('This project needs a signed-in account to access Server storage.');
+      this.title.textContent = state?.blocking === false ? t('Sign in to check application registration') : t("Sign in to load project data");
+      this.description.textContent = state?.blocking === false ? t('Local features remain available. Sign in to the current application to check Server registration.') : t('This project needs a signed-in account to access Server storage.');
       steps = [t('Sign in to the current application, then choose Check again.')];
     } else if (issue.kind === 'access-denied') {
       this.title.textContent = related ? t('Related project account access is required') : t("Project access is required");
@@ -112,5 +150,38 @@ export class ProjectServerGuidance {
     }
     this.steps.hidden = !steps.length;
     this.steps.replaceChildren(...steps.map(text => { const step = document.createElement('li'); step.textContent = text; return step; }));
+  }
+
+  private renderChecks(checks: ProjectServerCheck[], projectId: string): void {
+    const signature = JSON.stringify([checks, projectId]);
+    const list = this.container.querySelector('#server-checks-list')!;
+    const selectedId = checks.find(check => check.id === this.selected && check.issue)?.id ?? checks.find(check => check.issue)?.id;
+    if (this.checksSignature === signature) {
+      for (const button of list.querySelectorAll<HTMLButtonElement>('button')) button.setAttribute('aria-pressed', String(button.dataset.checkId === selectedId));
+      return;
+    }
+    const focused = list.contains(document.activeElement) ? (document.activeElement as HTMLElement).dataset.checkId : undefined;
+    this.checksSignature = signature;
+    const rows = checks.map(check => {
+      const row = document.createElement('li'); row.dataset.status = check.status;
+      const content = document.createElement(check.issue ? 'button' : 'div'); content.className = 'project-check-row';
+      if (content instanceof HTMLButtonElement) {
+        content.type = 'button'; content.dataset.checkId = check.id; content.setAttribute('aria-pressed', String(check.id === selectedId));
+        content.onclick = () => { this.selected = check.id; if (this.current) this.update(this.current.state, this.current.projectId, this.current.options); };
+      }
+      const icon = document.createElement('span'); icon.setAttribute('aria-hidden', 'true');
+      icon.className = `codicon codicon-${check.status === 'checking' ? 'loading codicon-modifier-spin' : check.status === 'passed' ? 'check' : check.status === 'waiting' ? 'circle-outline' : 'warning'}`;
+      const name = document.createElement('span'); name.className = 'project-check-name';
+      name.textContent = check.relatedProjectAlias ? t('Related project: {0}', check.relatedProjectAlias) : t('Current application');
+      name.title = check.projectId;
+      const result = document.createElement('span'); result.className = 'project-check-result';
+      result.textContent = check.status === 'waiting' ? t('Waiting for registration check') : check.status === 'checking' ? t('Checking...')
+        : check.status === 'passed' ? check.relatedProjectAlias ? t('Registration and relationship checked') : t('Registered on Server')
+        : check.stage === 'import' ? t('Import required') : check.stage === 'relationship' ? t('Check relationship declarations')
+        : check.issue?.kind === 'project-unavailable' ? t('Registration required') : t('Check Server access');
+      content.append(icon, name, result); row.append(content); return row;
+    });
+    list.replaceChildren(...rows);
+    if (focused) [...list.querySelectorAll<HTMLButtonElement>('button')].find(button => button.dataset.checkId === focused)?.focus();
   }
 }

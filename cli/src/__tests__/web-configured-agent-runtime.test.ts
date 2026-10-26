@@ -21,6 +21,9 @@ it('runs saved system and third-party models through the real Web worker with re
   let generation = 0, subscribed = true;
   const catalogRequests: string[] = [], calls: { path: string; model: string; token: string; body: any }[] = [];
   const upstream = createServer(async (request, response) => {
+    if (request.url === `/api/projects/${applicationId}`) {
+      response.setHeader('content-type', 'application/json'); response.end(JSON.stringify({ errCode: 0, data: { id: applicationId } })); return;
+    }
     if (request.url === '/api/auth/me') {
       response.setHeader('content-type', 'application/json');
       response.end(JSON.stringify({ errCode: 0, errMessage: '', data: { profile: { userId: 'fixture-user', email: 'fixture@example.test', displayName: 'Fixture' } } })); return;
@@ -167,6 +170,9 @@ it('switches configured models in a durable conversation without hiding prior re
   let app: Awaited<ReturnType<typeof startWebServer>> | undefined;
   const upstream = createServer(async (request, response) => {
     response.setHeader('content-type', 'application/json');
+    if (request.url === `/api/projects/${applicationId}`) {
+      response.end(JSON.stringify({ errCode: 0, data: { id: applicationId } })); return;
+    }
     if (request.url === '/api/auth/me') {
       response.end(JSON.stringify({ errCode: 0, errMessage: '', data: { profile: { userId: 'fixture', email: 'fixture@example.test', displayName: 'Fixture' } } })); return;
     }

@@ -33,7 +33,8 @@ import { ConversationState } from './conversation-state';
 import { pathReferences } from './conversation-paths';
 import { importDroppedEntries, resolveDroppedPaths } from './dropped-paths';
 import { defaultServerUrl } from '../service-url';
-import { ProjectServerConnection, projectServerAccessFailure, type ProjectServerIssue } from './project-server-state';
+import { ProjectServerConnection, projectServerAccessFailure, projectServerStateWithIssue, type ProjectServerIssue } from './project-server-state';
+import { projectStartupInspector } from './project-startup-checks';
 import { ProjectServerCreation } from './project-server-create';
 import { RelatedProjectImports } from './related-projects';
 import { projectDataDirectory, retainProjectDataIdentity } from './project-data-directory';
@@ -192,8 +193,9 @@ async function startProjectWebServer(options: WebOptions, credentials: { capabil
   const publicState = (value: unknown) => publicValue(redactProjectData(value, [...sensitiveTokens], false));
   const sharedState = () => {
     const serverData = projectServer?.state ?? (relatedImportIssue ? { checking: false, blocking: false } : undefined);
+    const issue = relatedImports.issue(projectServer?.state.issue ?? relatedImportIssue ?? kanbanController?.serverDataIssue);
     const result = publicState({ type: 'state', serverInstanceId, project, configurationError: configurations.error,
-    serverData: serverData && { ...serverData, issue: relatedImports.issue(projectServer?.state.issue ?? relatedImportIssue) },
+    serverData: serverData && projectServerStateWithIssue(serverData, issue, project.id),
     ...(isKanban ? { kanban: kanbanController!.state() } : isProject ? projectActions!.state() : { sessions: conversationState.sessions(controller.sessions) }),
     account: { ...account, user: account.user && { userId: account.user.userId, email: account.user.email, displayName: account.user.displayName, avatarUrl: account.user.avatarUrl } },
     authenticationRevision: authRevision, parameterRevision, resourceRevision: resources.revision });
@@ -242,9 +244,9 @@ async function startProjectWebServer(options: WebOptions, credentials: { capabil
   };
   let conversationController: ConversationController | undefined;
   let kanbanController: KanbanController | undefined;
-  if (!isKanban && project.projectInfo?.dataStorage?.mode === 'server') {
-    projectServer = new ProjectServerConnection(project.id, () => connection, broadcast);
-  }
+  projectServer = new ProjectServerConnection(project.id, () => connection, () => {
+    kanbanController?.projectChecksChanged(); broadcast();
+  }, { blocking: project.projectInfo?.dataStorage?.mode === 'server', inspect: projectStartupInspector(project, relatedImports) });
   const observeStorageFailure = (metadata: Record<string, unknown> | undefined, previous: WebConnection | undefined) => {
     if (isKanban) return;
     if (metadata?.code === 'RELATED_PROJECT_UNAVAILABLE') {
@@ -255,12 +257,11 @@ async function startProjectWebServer(options: WebOptions, credentials: { capabil
     if (!previous || previous.serverUrl !== connection?.serverUrl || previous.accessToken !== connection.accessToken) return;
     const failure = projectServerAccessFailure(metadata, project, connection);
     if (!failure) return;
-    projectServer ??= new ProjectServerConnection(project.id, () => connection, broadcast, { blocking: false });
-    void projectServer.reportFailure(failure);
+    void projectServer!.reportFailure(failure);
   };
   const projectCreation = new ProjectServerCreation(project, () => connection,
     () => account.status === 'authenticated' && account.user ? `${authIdentity}\n${account.user.userId}` : '',
-    () => isKanban ? kanbanController?.serverDataIssue : projectServer?.state.issue, async () => {
+    () => projectServer?.state.issue ?? kanbanController?.serverDataIssue, async () => {
       await stopForAuthentication();
       await retainProjectDataIdentity(storageDir, projectDir, project.id);
     });
@@ -282,7 +283,7 @@ async function startProjectWebServer(options: WebOptions, credentials: { capabil
   conversationController = isProject || isKanban ? undefined : new ConversationController(project, runtime, saved, {
     canRun: session => ownership?.execute(session.id) ?? true,
     canStart: () => !projectServer?.blocking || projectServer.ready,
-    canDrain: () => (!projectServer || projectServer.ready) && !relatedImportIssue,
+    canDrain: () => (!projectServer?.blocking || projectServer.ready) && !relatedImportIssue,
     configurationRevision: () => configurations.state.revision,
     changed: broadcast,
     log: message => process.stderr.write(`${message}\n`),
@@ -348,6 +349,10 @@ async function startProjectWebServer(options: WebOptions, credentials: { capabil
     changed: broadcast, emit: message => { for (const client of clients) { client.write(`data: ${JSON.stringify(message)}\n\n`); } },
     connection: () => connection, log: message => process.stderr.write(`${message}\n`),
     serverIssue: issue => relatedImports.issue(issue), relatedImport: alias => relatedImports.missingIssue(alias, project), relatedProjects: () => relatedProjects,
+    serverState: () => projectServer!.state, projectChanged: () => {
+      projectServer!.state.blocking = project.projectInfo?.dataStorage?.mode === 'server';
+      return projectServer!.restart();
+    },
   }) : undefined;
   if (kanbanController) kanbanController.configurationChanged(configurations.state);
   if (kanbanController) { try { await kanbanController.initialize(); } catch (error) { configurations.close(); resources.close(); await kanbanController.close(); runtime.dispose(); throw error; } }
@@ -487,8 +492,8 @@ async function startProjectWebServer(options: WebOptions, credentials: { capabil
       await relatedImports.update(relatedProjectsManaged ? relatedProjects : undefined);
       if (relatedImports.issue(relatedImportIssue)?.relatedProjectImported) relatedImportIssue = undefined;
       await refreshAuth(true);
-      await projectServer?.refresh();
-      return [state(message.clientId), { type: 'project-server-checked' }];
+      await projectServer?.settled();
+      return [state(message.clientId), { type: 'project-server-checked', requestId: message.requestId }];
     }
     if (message.type === 'project-server-create-prepare') return [{ type: 'project-server-create-context', context: await projectCreation.prepare() }];
     if (message.type === 'project-server-create-cancel') { projectCreation.cancel(message.token); return []; }
@@ -506,6 +511,7 @@ async function startProjectWebServer(options: WebOptions, credentials: { capabil
     if (message.type === 'kanban-refresh') {
       await relatedImports.update(relatedProjectsManaged ? relatedProjects : undefined);
       await configurations.refresh();
+      if (kanbanController) { const replies = await kanbanController.handle(message); return [state(message.clientId), ...replies]; }
     }
     if (message.type === 'project-configuration') {
       return [{ type: 'project-configuration-result', requestId: message.requestId, value: await configurations.dispatch(message.call) }];
@@ -857,7 +863,7 @@ async function startProjectWebServer(options: WebOptions, credentials: { capabil
           const message = await readBody(request);
           let messages: Message[] = [];
           const operation = () => handleMessage(message).then(value => { messages = value; });
-          const concurrent = ['stop', 'workflow-stop', 'navigate', 'resolve', 'ready', 'usage', 'resource', 'resource-data', 'resource-refresh', 'resource-select', 'resource-bridge', 'kanban-bridge', 'kanban-method-state', 'kanban-method-reply', 'kanban-methods'].includes(message.type)
+          const concurrent = ['stop', 'workflow-stop', 'navigate', 'resolve', 'ready', 'project-server-check', 'usage', 'resource', 'resource-data', 'resource-refresh', 'resource-select', 'resource-bridge', 'kanban-bridge', 'kanban-method-state', 'kanban-method-reply', 'kanban-methods'].includes(message.type)
             || message.type === 'agent-command' && message.command?.type === 'cancel';
           const task = concurrent ? operation() : mutations.catch(() => undefined).then(operation);
           if (!concurrent) { mutations = task; }
@@ -917,7 +923,10 @@ async function startProjectWebServer(options: WebOptions, credentials: { capabil
     origin, url: `${origin}/#session=${capability}`, project, configurations, controller, projectController, kanbanController,
     setHostRelatedProjects: async (value: NonNullable<WebHostConfiguration['relatedProjects']>) => {
       relatedProjects = value; relatedProjectsManaged = true; resources.clear();
-      if (await relatedImports.update(value)) broadcast();
+      if (await relatedImports.update(value)) {
+        relatedImportIssue = undefined;
+        await projectServer?.restart(); broadcast();
+      }
     },
     setHostResourceProjects: (value: string[]) => { resourceProjects = value; resources.clear(); },
     setHostConnection: async (value: WebConnection | undefined) => {

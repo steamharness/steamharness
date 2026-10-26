@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { afterEach, expect, it, vi } from 'vitest';
 import { KANBAN_PREVIEW_READY_MESSAGE } from '@steamharness/kanban-project';
-import type { ProjectServerIssue } from '../web/project-server-state';
+import type { ProjectServerIssue, ProjectServerState } from '../web/project-server-state';
 
 const cleanup: (() => void)[] = [];
 afterEach(() => {
@@ -50,11 +50,12 @@ async function fixture(language: 'en' | 'zh-CN') {
   await import('../web/ui/kanban-main');
   await vi.waitFor(() => expect(sources).toHaveLength(1));
   const receive = (state: object) => sources[0].onmessage!({ data: JSON.stringify(state) });
-  const sendState = (revision: number, nonce = 'first', serverDataIssue?: ProjectServerIssue) => receive({
+  const sendState = (revision: number, nonce = 'first', serverDataIssue?: ProjectServerIssue, serverData?: ProjectServerState) => receive({
     type: 'state', project: { id: 'map', name: 'Map 2D', fields: [] },
     account: { status: 'authenticated', serverUrl: 'https://server.test', revision,
       user: { userId: 'user', email: 'user@example.com', displayName: 'User' } },
-    authenticationRevision: 1,
+    authenticationRevision: 1, stateRevision: revision, serverInstanceId: 'kanban-process',
+    serverData,
     kanban: { revision, configuration: { id: 'profile', name: 'Default', params: {} },
       preview: { url: `/kanban/${nonce}/index.html`, nonce },
       relatedProjectRevisions: [], missingRelatedProjectAliases: [], serverDataIssue },
@@ -99,6 +100,29 @@ it('offers retry when an iframe fails to become ready and recovers on a fresh pr
   expect(status.hidden).toBe(true);
 });
 
+it.each(['en', 'zh-CN'] as const)('shows startup checks before mounting Server previews and keeps local previews available (%s)', async language => {
+  const { sendState, sources } = await fixture(language);
+  const checks: NonNullable<ProjectServerState['checks']> = [{ id: 'project', projectId: 'map', stage: 'registration', status: 'checking' }];
+  sendState(1, 'first', undefined, { checking: true, checks });
+  const frame = document.querySelector<HTMLIFrameElement>('#kanban-preview')!;
+  expect(frame.getAttribute('src')).toBeNull(); expect(document.getElementById('preview-stage')!.hidden).toBe(true);
+  const overview = document.querySelector<HTMLDetailsElement>('#server-checks')!;
+  expect(overview.open).toBe(true);
+  sendState(2, 'ready', undefined, { checking: false, checks: [{ ...checks[0], status: 'passed' }] });
+  expect(overview.open).toBe(false); expect(frame.src).toContain('/kanban/ready/index.html');
+  expect(document.getElementById('server-guidance')!.dataset.result).toBe('passed');
+  expect(document.getElementById('preview-stage')!.hidden).toBe(false);
+  sendState(1, 'stale', undefined, { checking: false, checks: [{ ...checks[0], status: 'action-required', issue: { kind: 'project-unavailable' } }], issue: { kind: 'project-unavailable' } });
+  sources[0].onopen!();
+  expect(document.getElementById('server-guidance')!.dataset.result).toBe('passed');
+  expect(frame.src).toContain('/kanban/ready/index.html');
+  sendState(3, 'local', undefined, { checking: false, blocking: false, issue: { kind: 'project-unavailable' },
+    checks: [{ ...checks[0], status: 'action-required', issue: { kind: 'project-unavailable' } }] });
+  expect(overview.open).toBe(true); expect(document.getElementById('preview-stage')!.hidden).toBe(false);
+  expect(frame.src).toContain('/kanban/local/index.html');
+  expect(document.getElementById('server-guidance-create')!.hidden).toBe(false);
+});
+
 it.each(['en', 'zh-CN'] as const)('offers only project creation and rechecking in Server guidance (%s)', async language => {
   const { sources, sendState, fetcher } = await fixture(language);
   const parent = { postMessage: vi.fn() };
@@ -122,10 +146,10 @@ it.each(['en', 'zh-CN'] as const)('offers only project creation and rechecking i
   expect(frame.getAttribute('src')).toBeNull();
   fetcher.mockImplementation(async (_url?: unknown, options?: any) => {
     const message = JSON.parse(options.body);
-    expect(message.type).toBe('kanban-refresh');
-    return { ok: true, status: 200, json: async () => ({ messages: [{ type: 'kanban-updated', requestId: message.requestId, kanban: {
+    expect(message.type).toBe('project-server-check');
+    return { ok: true, status: 200, json: async () => ({ messages: [{ type: 'state', project: { id: 'map', name: 'Map 2D', fields: [] }, account: { status: 'authenticated' }, authenticationRevision: 1, kanban: {
       revision: 2, configuration: { id: 'profile', name: 'Default', params: {} }, preview: { url: '/kanban/ready/index.html', nonce: 'ready' }, relatedProjectRevisions: [], missingRelatedProjectAliases: [],
-    } }] }) };
+    } }, { type: 'project-server-checked', requestId: message.requestId }] }) };
   });
   document.getElementById('server-guidance-retry')!.click();
   expect((document.getElementById('server-guidance-retry') as HTMLButtonElement).disabled).toBe(true);

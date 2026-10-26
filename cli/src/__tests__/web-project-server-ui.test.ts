@@ -85,6 +85,43 @@ it.each([['workflow', 'en'], ['workflow', 'zh-CN'], ['conversation', 'en'], ['co
   },
 );
 
+it.each([['workflow', 'en'], ['workflow', 'zh-CN'], ['conversation', 'en'], ['conversation', 'zh-CN']] as const)(
+  'shows the opening checklist in %s, keeps issue selection focused and collapses successful checks (%s)', async (kind, language) => {
+    const f = await fixture(kind, language);
+    const checks: NonNullable<ProjectServerState['checks']> = [
+      { id: 'project', projectId: 'server-project', stage: 'registration', status: 'checking' },
+      { id: 'related:database', projectId: 'database-id', relatedProjectAlias: 'database', stage: 'registration', status: 'waiting' },
+    ];
+    await f.render({ checking: true, checks });
+    const overview = document.querySelector<HTMLDetailsElement>('#server-checks')!;
+    const guidance = document.getElementById('server-guidance')!;
+    expect(overview.open).toBe(true); expect(guidance.hidden).toBe(false);
+    expect(guidance.textContent).toContain(language === 'en' ? 'Application checks' : '应用检查');
+    expect(document.querySelector<HTMLButtonElement>('#server-guidance-retry')!.disabled).toBe(true);
+    expect(document.querySelector<HTMLButtonElement>(kind === 'workflow' ? '#run' : '#send')!.disabled).toBe(true);
+    checks[0] = { ...checks[0], status: 'action-required', issue: { kind: 'project-unavailable' } };
+    checks[1] = { ...checks[1], status: 'action-required', stage: 'import', issue: { kind: 'related-import-required', projectId: 'database-id', relatedProjectAlias: 'database', relatedProjectImported: false } };
+    await f.render({ checking: false, checks, issue: checks[0].issue });
+    const related = document.querySelector<HTMLButtonElement>('[data-check-id="related:database"]')!;
+    related.focus(); related.click();
+    expect(document.activeElement).toBe(related);
+    expect(document.getElementById('server-guidance-title')!.textContent).toBe(language === 'en' ? 'Import the related project first' : '请先导入关联项目');
+    expect(document.getElementById('server-guidance-create')!.hidden).toBe(true);
+    overview.open = false;
+    await f.render({ checking: false, checks, issue: checks[0].issue });
+    expect(overview.open).toBe(false);
+    const passed = checks.map(check => ({ ...check, status: 'passed' as const, issue: undefined }));
+    await f.render({ checking: false, checks: passed });
+    expect(overview.open).toBe(false); expect(guidance.hidden).toBe(false); expect(guidance.dataset.result).toBe('passed');
+    expect(document.getElementById('server-guidance-problem')!.hidden).toBe(true);
+    expect(document.getElementById('server-checks-progress')!.textContent).toBe(language === 'en' ? '2/2 passed' : '2/2 项已通过');
+    overview.open = true; await f.render({ checking: false, checks: passed }); expect(overview.open).toBe(true);
+    document.getElementById('server-guidance-retry')!.click();
+    expect(host.postMessage).toHaveBeenCalledWith(expect.objectContaining({ type: 'project-server-check' }));
+    expect(host.postMessage.mock.calls.some(([value]) => ['send', 'workflow-run', 'workflow-rerun'].includes(value.type))).toBe(false);
+  },
+);
+
 it.each(['workflow', 'conversation'] as const)('keeps Stop available in %s and only offers rechecking for access or Server compatibility problems', async kind => {
   const f = await fixture(kind, 'en');
   await f.render({ checking: false, issue: { kind: 'access-denied', serverUrl: 'https://server.test' } }, true);

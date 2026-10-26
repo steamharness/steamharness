@@ -35,3 +35,38 @@
 .project-server-create-error { color: var(--vscode-errorForeground); }
 .project-server-guidance::-webkit-scrollbar-thumb { background: transparent; }
 .project-server-guidance:hover::-webkit-scrollbar-thumb, .project-server-guidance:focus-within::-webkit-scrollbar-thumb { background: var(--vscode-scrollbarSlider-background); }
+.project-server-guidance[data-lifecycle] { padding: 10px 20px; max-height: 48%; }
+.project-server-guidance[data-lifecycle] .project-server-guidance-body { position: relative; max-width: 800px; padding: 0; border: 0; }
+.project-server-guidance[data-lifecycle] .project-server-recheck { position: absolute; top: 0; right: 0; margin: 0; }
+#server-checks-summary { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; min-height: 32px; padding-right: 110px; color: var(--vscode-foreground); list-style: none; }
+#server-checks-summary[hidden] { display: none; }
+#server-checks-summary::-webkit-details-marker { display: none; }
+#server-checks-summary::before { content: '\203a'; display: inline-block; width: 8px; font-size: 18px; transform: rotate(0); }
+#server-checks[open] > #server-checks-summary::before { transform: rotate(90deg); }
+#server-checks-title { font-weight: 600; }
+#server-checks-progress { color: var(--vscode-descriptionForeground); font-size: 12px; }
+.project-server-guidance[data-result="action-required"] #server-checks-icon { color: var(--vscode-editorWarning-foreground); }
+.project-server-guidance[data-result="passed"] #server-checks-icon { color: var(--vscode-testing-iconPassed); }
+.project-checks-list { list-style: none; padding: 0; margin: 8px 0 0; }
+.project-checks-list li { margin: 0; }
+.project-check-row { box-sizing: border-box; width: 100%; display: grid; grid-template-columns: 16px minmax(0, 1fr) minmax(0, 1fr); align-items: center; gap: 8px; padding: 7px 10px; font: inherit; font-size: 12px; text-align: left; border: 1px solid transparent; border-radius: 4px; color: var(--vscode-foreground); background: transparent; }
+.project-check-row .codicon { font-size: 14px; }
+button.project-check-row { cursor: pointer; }
+button.project-check-row:hover { background: var(--vscode-list-hoverBackground); }
+button.project-check-row[aria-pressed="true"] { border-color: var(--vscode-panel-border); background: var(--vscode-list-inactiveSelectionBackground); color: var(--vscode-list-inactiveSelectionForeground); }
+button.project-check-row:focus-visible { outline: 1px solid var(--vscode-focusBorder); outline-offset: -1px; }
+.project-check-name, .project-check-result { overflow-wrap: anywhere; }
+.project-check-result { text-align: right; color: var(--vscode-descriptionForeground); }
+.project-checks-list [data-status="action-required"] .project-check-row > .codicon { color: var(--vscode-editorWarning-foreground); }
+.project-checks-list [data-status="passed"] .project-check-row > .codicon { color: var(--vscode-testing-iconPassed); }
+.project-server-guidance .project-checks-note { font-size: 12px; margin: 10px 0; }
+.project-server-guidance[data-lifecycle] #server-guidance-problem { margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--vscode-panel-border); }
+.project-server-guidance[data-lifecycle][data-scope="related"] #server-guidance-problem { border-left: 3px solid var(--vscode-textLink-foreground); padding-left: 12px; }
+.project-server-guidance[data-lifecycle] .project-server-create-action { margin-top: 12px; }
+.project-server-create-action:has(button[hidden]) { display: none; }
+.kanban-app .project-server-guidance[data-lifecycle] { flex: 0 1 auto; max-height: 48%; margin-block: 0; }
+@media (max-width: 480px) {
+  .project-server-guidance[data-lifecycle] { padding: 8px 12px; }
+  .project-check-row { grid-template-columns: 16px minmax(0, 1fr); }
+  .project-check-result { grid-column: 2; text-align: left; }
+}

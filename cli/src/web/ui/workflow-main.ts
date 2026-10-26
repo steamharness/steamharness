@@ -152,7 +152,7 @@ function renderEntrypoints(): void {
 }
 function controls(): void {
   if (state) { updateProjectAvatar(element('project-info'), state.project); }
-  serverGuidance.update(state?.serverData?.issue ?? (state?.serverData?.checking ? { kind: 'checking', serverUrl: state.account.serverUrl } : undefined), state?.project.id ?? '', { connected, working: checkingServer || !!state?.serverData?.checking });
+  serverGuidance.update(state?.serverData, state?.project.id ?? '', { connected, working: checkingServer || !!state?.serverData?.checking });
   element<HTMLButtonElement>('run').disabled = disabled() || resolving || serverBlocked();
   element<HTMLButtonElement>('rerun').disabled = disabled() || serverBlocked();
   element<HTMLButtonElement>('delete-run').disabled = !connected || state?.run?.id === state?.occupiedId;

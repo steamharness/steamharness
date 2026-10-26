@@ -513,7 +513,7 @@ function initialize(): void {
 
   function updateControls(): void {
     if (!state) { return; }
-    serverGuidance.update(state.serverData?.issue ?? (state.serverData?.checking ? { kind: 'checking', serverUrl: state.account?.serverUrl } : undefined), state.project.id, { connected: connectionAvailable, working: checkingServer || !!state.serverData?.checking });
+    serverGuidance.update(state.serverData, state.project.id, { connected: connectionAvailable, working: checkingServer || !!state.serverData?.checking });
     const conversation = state.project.projectType === 'conversation';
     const durable = state.project.conversation?.durable?.enabled === true;
     const hidden = hideComposer();

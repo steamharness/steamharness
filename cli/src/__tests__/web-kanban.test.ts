@@ -26,7 +26,7 @@ it.each([
       revisions(options);
       return Promise.resolve(responseStatus === 200 ? revisionStream() : new Response('private-token server details', { status: responseStatus }));
     }
-    if (String(url).endsWith(`/api/projects/${id}`)) return Promise.resolve(new Response('', { status: responseStatus }));
+    if (String(url).endsWith(`/api/projects/${id}`)) return Promise.resolve(responseStatus === 200 ? Response.json({ errCode: 0, data: { id } }) : new Response('', { status: responseStatus }));
     operations(url, options);
     return Promise.resolve(new Response(JSON.stringify({ errCode: 0, data: 'server value' })));
   });
@@ -34,7 +34,7 @@ it.each([
   await app.setHostConnection({ serverUrl: 'https://setup.test', accessToken: 'private-token' });
   await vi.waitFor(() => expect(app.kanbanController!.serverDataIssue).toEqual({ kind, serverUrl: 'https://setup.test' }));
   await vi.advanceTimersByTimeAsync(15_000);
-  expect(revisions).toHaveBeenCalledOnce();
+  expect(revisions).not.toHaveBeenCalled();
   expect(app.kanbanController!.relatedProjectWarning).toBe('');
   expect(JSON.stringify(app.kanbanController!.state())).not.toContain('private-token');
   await expect(app.kanbanController!.bridge({ requestId: 'blocked-write', operation: 'kv.setValue', input: { key: 'map', value: [] } })).rejects.toMatchObject({ code: 'KANBAN_BRIDGE_UNAVAILABLE' });
@@ -83,7 +83,7 @@ it.each([[404, 'project-unavailable'], [403, 'access-denied'], [200, 'related-se
     return status === 200 ? Response.json({ errCode: 0, data: { id: targetId, projectInfo: { dataStorage: { mode: 'both' }, relatedProjects: [] } } }) : new Response('', { status });
   });
   await app.setHostConnection({ serverUrl: 'https://related-setup.test', accessToken: 'private-token' });
-  await vi.waitFor(() => expect(app.kanbanController!.serverDataIssue).toBeUndefined());
+  await vi.waitFor(() => expect(app.kanbanController!.serverDataIssue).toMatchObject({ kind, projectId: targetId }));
   expect((await bridge('relatedProject.kv.getValue', { alias: 'database', key: 'index' })).ok).toBe(false);
   expect((await state()).kanban.serverDataIssue).toMatchObject({ kind, projectId: targetId, relatedProjectAlias: 'database' });
   expect((await state()).kanban.serverDataIssue).not.toHaveProperty('relatedProjectImported');
@@ -94,7 +94,7 @@ it.each([[404, 'project-unavailable'], [403, 'access-denied'], [200, 'related-se
   await app.setHostRelatedProjects([{ alias: 'database', projectDir: targetDir }]);
   expect((await state()).kanban.serverDataIssue).toMatchObject({ kind, relatedProjectImported: true });
   expect(app.kanbanController!.state().serverDataIssue?.relatedProjectImported).toBe(true);
-  expect(remote.mock.calls.filter(([, options]) => options?.method === 'POST')).toHaveLength(1);
+  expect(remote.mock.calls.filter(([, options]) => options?.method === 'POST')).toHaveLength(0);
 });
 
 it('applies for a new Kanban identity only after review and resumes its data preview without source upload', async () => {
@@ -152,7 +152,7 @@ it.each([[404, 'project-unavailable'], [200, 'related-setup-required']] as const
   await app.setHostConnection({ serverUrl: 'https://revoked.test', accessToken: 'private-token' });
   await vi.waitFor(() => expect(app.kanbanController!.serverDataIssue).toMatchObject({ kind, projectId: targetId, relatedProjectAlias: 'database' }));
   await vi.advanceTimersByTimeAsync(15_000);
-  expect(revisions).toHaveBeenCalledOnce(); expect(writes).not.toHaveBeenCalled();
+  expect(revisions).toHaveBeenCalledTimes(status === 404 ? 0 : 1); expect(writes).not.toHaveBeenCalled();
   expect(app.kanbanController!.relatedProjectWarning).toBe('');
 });
 
@@ -162,6 +162,7 @@ it.each([408, 429, 503])('continues automatic reconnection for transient Server 
   vi.spyOn(globalThis, 'fetch').mockImplementation((url, options) => {
     if (!String(url).startsWith('https://transient.test')) return original(url, options);
     if (String(url).endsWith('/api/auth/me')) return Promise.resolve(new Response(JSON.stringify({ errCode: 0, data: { profile: { userId: 'user', email: 'user@example.com', displayName: 'User' } } })));
+    if (String(url).endsWith(`/api/projects/${id}`)) return Promise.resolve(Response.json({ errCode: 0, data: { id } }));
     revisions(); return Promise.resolve(new Response('', { status }));
   });
   vi.useFakeTimers();
@@ -181,6 +182,7 @@ it('ignores a stale project-unavailable response after changing Server accounts'
     if (!String(url).startsWith('https://old.test') && !String(url).startsWith('https://new.test')) return original(url, options);
     if (String(url).endsWith('/api/auth/me')) return Promise.resolve(new Response(JSON.stringify({ errCode: 0, data: { profile: { userId: 'user', email: 'user@example.com', displayName: 'User' } } })));
     if (String(url).startsWith('https://old.test')) return new Promise<Response>(resolve => { complete = resolve; });
+    if (String(url).endsWith(`/api/projects/${id}`)) return Promise.resolve(Response.json({ errCode: 0, data: { id } }));
     return Promise.resolve(revisionStream());
   });
   await app.setHostConnection({ serverUrl: 'https://old.test', accessToken: 'old-token' });
@@ -438,7 +440,7 @@ describe('Kanban CLI Web workspace', () => {
     const kv = core.createProjectKVContext({ projectId: targetId, store: core.createLocalProjectKVStore({ rootDir: path.join(webProjectDataDirectory(dataDir, imported), 'kv'), storageKind: 'kv' }) });
     await kv.setValue('visible:tasks', ['imported']);
     await app.setHostRelatedProjects([{ alias: 'database', projectDir: imported }]);
-    expect((await state()).kanban.serverDataIssue.relatedProjectImported).toBe(true);
+    expect((await state()).kanban.serverDataIssue).toBeUndefined();
     const checked = await post({ type: 'kanban-refresh' }).then(response => response.json());
     expect(checked.messages[0].kanban.serverDataIssue).toBeUndefined();
     expect(checked.messages[0].kanban.missingRelatedProjectAliases).toEqual([]);
@@ -475,6 +477,7 @@ describe('Kanban CLI Web workspace', () => {
       expect((options?.headers as Record<string, string>).Authorization).toBe('Bearer private-kanban-token');
       if (String(url).endsWith('/api/auth/me')) { return Promise.resolve(new Response(JSON.stringify({ errCode: 0, data: { profile: { userId: 'user', email: 'user@example.com', displayName: 'User' } } }))); }
       if (String(url).includes('/related-project-revisions')) { return Promise.resolve(revisionStream()); }
+      if (String(url).endsWith(`/api/projects/${id}`)) return Promise.resolve(Response.json({ errCode: 0, data: { id } }));
       return Promise.resolve(new Response(JSON.stringify({ errCode: 0, data: { result: 'server' } })));
     });
     await app.setHostConnection({ serverUrl: 'https://kanban.test', accessToken: 'private-kanban-token' });
@@ -499,6 +502,7 @@ describe('Kanban CLI Web workspace', () => {
       const route = new URL(String(url)).pathname;
       if (route.endsWith('/api/auth/me')) return Promise.resolve(new Response(JSON.stringify({ errCode: 0, data: { profile: { userId: 'user', email: 'user@example.com', displayName: 'User' } } })));
       if (route.endsWith('/related-project-revisions')) return Promise.resolve(revisionStream());
+      if (route.endsWith(`/api/projects/${id}`)) return Promise.resolve(Response.json({ errCode: 0, data: { id } }));
       routes.push(route);
       if (route.includes('/configurations/files/')) return Promise.resolve(new Response(JSON.stringify({ errCode: 404, errMessage: 'API route not found.' }), { status: 404 }));
       expect(JSON.parse(options!.body as string).call).toMatchObject({ operation: 'files.readFile', input: { fileId: file.id } });
@@ -524,6 +528,7 @@ describe('Kanban CLI Web workspace', () => {
       if (!String(url).startsWith('https://basemap.test')) return original(url, options);
       if (String(url).endsWith('/api/auth/me')) return Promise.resolve(new Response(JSON.stringify({ errCode: 0, data: { profile: { userId: 'user', email: 'user@example.com', displayName: 'User' } } })));
       if (String(url).includes('/related-project-revisions')) return Promise.resolve(revisionStream());
+      if (String(url).endsWith(`/api/projects/${id}`)) return Promise.resolve(Response.json({ errCode: 0, data: { id } }));
       requests(url);
       return Promise.resolve(new Response('private server detail', { status }));
     });
@@ -546,6 +551,7 @@ describe('Kanban CLI Web workspace', () => {
       if (!String(url).startsWith('https://basemap.test')) return original(url, options);
       if (String(url).endsWith('/api/auth/me')) return Promise.resolve(new Response(JSON.stringify({ errCode: 0, data: { profile: { userId: 'user', email: 'user@example.com', displayName: 'User' } } })));
       if (String(url).includes('/related-project-revisions')) return Promise.resolve(revisionStream());
+      if (String(url).endsWith(`/api/projects/${id}`)) return Promise.resolve(Response.json({ errCode: 0, data: { id } }));
       signal = options!.signal as AbortSignal;
       return new Promise<Response>(resolve => { complete = resolve; });
     });

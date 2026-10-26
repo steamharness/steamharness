@@ -5,10 +5,11 @@ import { createCliRelatedProjectRuntime, type CliRelatedProjectSpec } from '../r
 import { projectDataDirectorySync, webProjectDataDirectory } from './project-data-directory';
 import type { ProjectServerIssue } from './project-server-state';
 import type { Project } from './workflow-types';
+import { readProjectInfo, type ProjectInfoContract } from '@steamharness/project-info';
 
 /** Import status describes local availability, independently of data grants. */
 export class RelatedProjectImports {
-  private imported?: Map<string, string>;
+  private imported?: Map<string, { id: string; projectInfo?: ProjectInfoContract }>;
   private generation = 0;
   private disposed = false;
 
@@ -17,7 +18,11 @@ export class RelatedProjectImports {
     const entries = await Promise.all((bindings ?? []).map(async binding => {
       try {
         const pkg = JSON.parse(await readFile(path.join(binding.projectDir, 'package.json'), 'utf8'));
-        if (typeof pkg?.id === 'string') return [binding.alias, pkg.id.toLowerCase()] as const;
+        if (typeof pkg?.id === 'string') {
+          let projectInfo: ProjectInfoContract | undefined;
+          try { projectInfo = readProjectInfo(pkg); } catch { /* Import and configuration are separate checks. */ }
+          return [binding.alias, { id: pkg.id.toLowerCase(), projectInfo }] as const;
+        }
       } catch { /* Removed, moved and invalid imports need to be imported again. */ }
       return undefined;
     }));
@@ -30,7 +35,12 @@ export class RelatedProjectImports {
 
   issue(issue: ProjectServerIssue | undefined): ProjectServerIssue | undefined {
     if (!issue?.relatedProjectAlias || !issue.projectId || !this.imported) return issue;
-    return { ...issue, relatedProjectImported: this.imported.get(issue.relatedProjectAlias) === issue.projectId.toLowerCase() };
+    return { ...issue, relatedProjectImported: this.imported.get(issue.relatedProjectAlias)?.id === issue.projectId.toLowerCase() };
+  }
+
+  localProject(alias: string, projectId: string): { projectInfo?: ProjectInfoContract } | undefined {
+    const project = this.imported?.get(alias);
+    return project?.id === projectId.toLowerCase() ? project : undefined;
   }
 
   missingIssue(alias: unknown, project: Project): ProjectServerIssue | undefined {

@@ -7,6 +7,7 @@ import { ProjectServerCreation } from '../web/project-server-create';
 import { startWebServer } from '../web/server';
 import { readProjectInfo } from '../web/kanban-data';
 import type { Project, Runtime } from '../web/workflow-types';
+import type { ProjectServerCheck } from '../web/project-server-state';
 
 const id = 'aaa10f6d-c322-461a-aecd-56d644d227c5';
 const connection = { serverUrl: 'https://project.test', accessToken: 'private-token' };
@@ -91,6 +92,26 @@ it('accepts canonical UUID casing and an unchanged connection refreshed by the a
   } finally { monitor.close(); }
 });
 
+it('retries a temporary checklist failure even when an earlier item needs a user action', async () => {
+  vi.useFakeTimers();
+  const checks: ProjectServerCheck[] = [
+    { id: 'project', projectId: id, stage: 'registration', status: 'action-required', issue: { kind: 'access-denied' } },
+    { id: 'related:database', projectId: 'database', relatedProjectAlias: 'database', stage: 'registration', status: 'action-required', issue: { kind: 'connection-unavailable' } },
+  ];
+  const inspect = vi.fn(async () => checks);
+  const monitor = new ProjectServerConnection(id, () => connection, vi.fn(), { inspect });
+  try {
+    monitor.authenticationChanged(account); await monitor.settled();
+    expect(monitor.state.issue?.kind).toBe('access-denied');
+    checks[1] = { ...checks[1], status: 'passed', issue: undefined };
+    await vi.advanceTimersByTimeAsync(5_000);
+    expect(inspect).toHaveBeenCalledTimes(2);
+    expect(monitor.state.checks?.[1].status).toBe('passed');
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(inspect).toHaveBeenCalledTimes(2);
+  } finally { monitor.close(); }
+});
+
 async function fixture(kind: 'workflow' | 'conversation', mode: 'local' | 'both' | 'server') {
   const folderPath = await realpath(await mkdtemp(path.join(os.tmpdir(), 'project-server-'))); folders.push(folderPath);
   const pkg = { id, name: 'Project', steamHarness: { projectType: kind, projectInfo: { dataStorage: { mode } } } };
@@ -129,7 +150,7 @@ it.each(['workflow', 'conversation'] as const)('guides %s setup, preserves draft
   else { expect(saved.sessions[0].draft.text).toBe('Keep this draft'); expect(saved.sessions[0].messages).toEqual([]); }
   expect((await f.post({ type: kind === 'workflow' ? 'workflow-stop' : 'stop' })).ok).toBe(true);
   f.recover(); const check = await f.post({ type: 'project-server-check' }).then(response => response.json());
-  expect(check.messages[0].serverData).toEqual({ checking: false });
+  expect(check.messages[0].serverData).toMatchObject({ checking: false, checks: [{ status: 'passed' }] });
   expect(f.runtime.run).not.toHaveBeenCalled();
   if (kind === 'workflow') expect((await f.state()).drafts[''].values.subject).toBe('Keep this draft');
   else expect((await f.state()).sessions[0].draft.text).toBe('Keep this draft');
@@ -156,7 +177,7 @@ it.each(['workflow', 'conversation'] as const)('guides real related Server failu
   expect(f.remote.mock.calls.some(([url]) => String(url).endsWith(relatedId))).toBe(false);
   f.hold(async url => url.endsWith(id) ? new Response(JSON.stringify({ errCode: 0, data: { id, projectInfo: f.project.projectInfo } })) : new Response('', { status: 404 }));
   await f.post({ type: 'project-server-check' });
-  expect((await f.state()).serverData.issue).toMatchObject({ kind: 'project-unavailable', projectId: relatedId, relatedProjectAlias: 'database' });
+  expect((await f.state()).serverData.issue).toMatchObject({ kind: 'related-import-required', projectId: relatedId, relatedProjectAlias: 'database' });
   const create = await f.post({ type: 'project-server-create-prepare' }); expect(create.status).toBe(400);
   expect(f.remote.mock.calls.every(([, options]) => !options?.method || options.method === 'GET')).toBe(true);
   // An unrelated local entrypoint remains a deliberate user action, never a replay.
@@ -173,6 +194,9 @@ it('distinguishes a missing related declaration or grant from missing project re
   f.hold(async url => new Response(JSON.stringify({ errCode: 0, data: url.endsWith('/api/project-storage') ? { exists: false } : { id: url.endsWith(id) ? id : relatedId, projectInfo: url.endsWith(id) ? f.project.projectInfo : {
     ...f.project.projectInfo, relatedProjects: confirmed ? [{ alias: 'agent', projectId: id, grantToRelatedProject: grant }] : [],
   } } })));
+  const targetDir = await mkdtemp(path.join(os.tmpdir(), 'related-grant-')); folders.push(targetDir);
+  await writeFile(path.join(targetDir, 'package.json'), JSON.stringify({ id: relatedId, steamHarness: { projectInfo: { dataStorage: { mode: 'both' }, relatedProjects: [{ alias: 'agent', projectId: id, grantToRelatedProject: grant }] } } }));
+  await f.app.setHostRelatedProjects([{ alias: 'database', projectDir: targetDir }]);
   await f.post({ type: 'send', text: 'read', params: {}, attachments: [] }); await f.app.controller.idle();
   await vi.waitFor(async () => expect((await f.state()).serverData?.issue?.kind).toBe('related-setup-required'));
   expect((await f.state()).serverData.issue.projectId).toBe(relatedId);
@@ -189,7 +213,7 @@ it.each(['workflow', 'conversation'] as const)('updates %s guidance live after i
     projectInfo: url.endsWith(id) ? f.project.projectInfo : { dataStorage: { mode: 'both' }, relatedProjects: [] } } }));
   await f.post(kind === 'workflow' ? { type: 'workflow-run', params: {} } : { type: 'send', text: 'read', params: {}, attachments: [] });
   await (kind === 'workflow' ? f.app.projectController!.idle() : f.app.controller.idle());
-  await vi.waitFor(async () => expect((await f.state()).serverData?.issue).toMatchObject({ kind: 'related-setup-required', relatedProjectImported: false }));
+  await vi.waitFor(async () => expect((await f.state()).serverData?.issue).toMatchObject({ kind: 'related-import-required', relatedProjectImported: false }));
   const targetDir = await mkdtemp(path.join(os.tmpdir(), 'related-import-')); folders.push(targetDir);
   await writeFile(path.join(targetDir, 'package.json'), JSON.stringify({ id: relatedId.toUpperCase() }));
   const token = new URL(f.app.url).hash.slice('#session='.length);
@@ -224,6 +248,7 @@ it.each(['workflow', 'conversation'] as const)('updates %s guidance live after i
 
 it.each(['workflow', 'conversation'] as const)('guides a missing local %s import without requiring Server diagnostics or replaying the failed run', async kind => {
   const f = await fixture(kind, 'local');
+  f.recover(); await f.post({ type: 'project-server-check' });
   f.project.projectInfo!.relatedProjects = [{ alias: 'database', projectId: relatedId, grantToRelatedProject: grant }];
   vi.mocked(f.runtime.run).mockResolvedValueOnce({ status: 'failed', error: { message: 'Unavailable or awaiting confirmation', metadata: { code: 'RELATED_PROJECT_UNAVAILABLE', alias: 'database' } } });
   await f.post(kind === 'workflow' ? { type: 'workflow-run', params: {} } : { type: 'send', text: 'read', params: {}, attachments: [] });
@@ -234,13 +259,14 @@ it.each(['workflow', 'conversation'] as const)('guides a missing local %s import
   await f.post({ type: 'project-server-check' });
   expect((await f.state()).serverData.issue.relatedProjectImported).toBe(false);
   const targetDir = await mkdtemp(path.join(os.tmpdir(), 'local-related-import-')); folders.push(targetDir);
-  await writeFile(path.join(targetDir, 'package.json'), JSON.stringify({ id: relatedId }));
+  await writeFile(path.join(targetDir, 'package.json'), JSON.stringify({ id: relatedId, steamHarness: { projectInfo: { dataStorage: { mode: 'local' }, relatedProjects: [{ alias: 'agent', projectId: id, grantToRelatedProject: grant }] } } }));
+  f.hold(async url => Response.json({ errCode: 0, data: { id: url.endsWith(id) ? id : relatedId } }));
   await f.app.setHostRelatedProjects([{ alias: 'database', projectDir: targetDir }]);
-  expect((await f.state()).serverData.issue).toMatchObject({ kind: 'related-import-required', relatedProjectImported: true });
   await f.post({ type: 'project-server-check' });
-  expect((await f.state()).serverData).toBeUndefined();
+  expect((await f.state()).serverData.issue).toBeUndefined();
+  expect((await f.state()).serverData.checks.map((check: any) => check.status)).toEqual(['passed', 'passed']);
   expect(f.runtime.run).toHaveBeenCalledOnce();
-  expect(f.remote.mock.calls.some(([url]) => String(url).includes('/api/projects/'))).toBe(false);
+  expect(f.remote.mock.calls.every(([, options]) => (options?.method ?? 'GET') === 'GET')).toBe(true);
 });
 
 it.each([[404, 'setup-required'], [403, 'access-denied'], [503, 'connection-unavailable']] as const)('keeps data endpoint HTTP %s visible after project records and grants pass', async (status, kind) => {
@@ -278,6 +304,8 @@ it('checks current-project reads with a bound project ID and never probes a fail
 
 it('does not turn ordinary model errors, foreign Servers, or undeclared IDs into project creation guidance', async () => {
   const f = await fixture('workflow', 'both');
+  f.recover(); await f.post({ type: 'project-server-check' });
+  const checkedRequests = f.remote.mock.calls.length;
   const metadata = accessMetadata();
   expect(projectServerAccessFailure({ status: 404 }, f.project, connection)).toBeUndefined();
   expect(projectServerAccessFailure(metadata, f.project, connection)).toBeUndefined();
@@ -287,8 +315,8 @@ it('does not turn ordinary model errors, foreign Servers, or undeclared IDs into
   expect(projectServerAccessFailure({ ...metadata, consumerProjectId: relatedId }, f.project, connection)).toBeUndefined();
   vi.spyOn(f.runtime, 'run').mockResolvedValueOnce({ status: 'failed', result: { error: { message: 'Project or group does not exist.', metadata: { status: 404 } } } });
   await f.post({ type: 'workflow-run', params: {} }); await f.app.projectController!.idle();
-  expect((await f.state()).serverData).toBeUndefined();
-  expect(f.remote.mock.calls.every(([url]) => String(url).endsWith('/api/auth/me'))).toBe(true);
+  expect((await f.state()).serverData.issue).toBeUndefined();
+  expect(f.remote.mock.calls).toHaveLength(checkedRequests);
 });
 
 it.each(['workflow', 'conversation'] as const)('creates a %s new application only after confirmation and changes identity without uploading or executing', async kind => {
@@ -358,8 +386,8 @@ it('locks concurrent confirmations before reading the manifest and rejects cance
 it.each(['workflow', 'conversation'] as const)('keeps local and both storage usable for %s without a Server project', async kind => {
   for (const mode of ['local', 'both'] as const) {
     const f = await fixture(kind, mode);
-    expect((await f.state()).serverData).toBeUndefined();
-    expect(f.remote.mock.calls.every(([url]) => String(url).endsWith('/api/auth/me'))).toBe(true);
+    expect((await f.state()).serverData).toMatchObject({ blocking: false, checks: [{ status: 'action-required', issue: { kind: 'project-unavailable' } }] });
+    expect(f.remote.mock.calls.some(([url]) => String(url).endsWith(`/api/projects/${id}`))).toBe(true);
     const action = kind === 'workflow' ? { type: 'workflow-run', params: {} } : { type: 'send', text: 'local run', params: {}, attachments: [] };
     expect((await f.post(action)).ok).toBe(true);
     await (kind === 'workflow' ? f.app.projectController!.idle() : f.app.controller.idle());
@@ -373,13 +401,15 @@ it.each(['workflow', 'conversation'] as const)('does not start %s after Stop whi
   await f.post({ type: 'project-server-check' });
   let finish!: (response: Response) => void;
   f.hold(() => new Promise(resolve => { finish = resolve; }));
-  vi.spyOn(Date, 'now').mockReturnValue(Date.now() + 6_000);
-  if (kind === 'workflow') await f.app.projectController!.start({ params: {} });
-  else await f.app.controller.send({ text: 'Run', params: {}, attachments: [] });
+  const checking = f.app.setHostConnection({ ...connection, accessToken: 'changed-token' });
+  await checking;
   await vi.waitFor(() => expect(finish).toBeTypeOf('function'));
+  if (kind === 'workflow') await f.app.projectController!.start({ params: {} });
+  else await expect(f.app.controller.send({ text: 'Run', params: {}, attachments: [] })).rejects.toThrow('Check again');
   expect((await f.post({ type: kind === 'workflow' ? 'workflow-stop' : 'stop' })).ok).toBe(true);
   finish(ok()); await new Promise(resolve => setImmediate(resolve));
   expect(f.runtime.run).not.toHaveBeenCalled();
   const state = await f.state();
-  expect(kind === 'workflow' ? state.run.status : state.sessions[0].messages.at(-1).status).toBe('aborted');
+  if (kind === 'workflow') expect(state.run.status).toBe('aborted');
+  else expect(state.sessions[0].messages).toEqual([]);
 });

@@ -21,6 +21,11 @@ import { ConversationState } from '../web/conversation-state';
 
 const folders: string[] = [];
 const services: Awaited<ReturnType<typeof startWebServer>>[] = [];
+// Account polling and application registration are independent lifecycle reads.
+function registeredProject(input: unknown): Promise<Response> | undefined {
+  const match = String(input).match(/\/api\/projects\/([a-f\d-]{36})$/i);
+  return match ? Promise.resolve(Response.json({ errCode: 0, data: { id: match[1] } })) : undefined;
+}
 afterEach(async () => {
   for (const app of services.splice(0)) await app.close();
   for (const folder of folders.splice(0)) {
@@ -629,7 +634,7 @@ describe('steamharness web', () => {
     const verify = vi.fn(async () => new Response(JSON.stringify({ errCode: 0, data: {
       profile: { userId: 'host', email: 'host@example.com', displayName: 'Host user' },
     } })));
-    vi.spyOn(globalThis, 'fetch').mockImplementation((input, options) => String(input).startsWith('https://steamharness.test') ? verify() : realFetch(input, options));
+    vi.spyOn(globalThis, 'fetch').mockImplementation((input, options) => registeredProject(input) ?? (String(input).startsWith('https://steamharness.test') ? verify() : realFetch(input, options)));
     const saved = { serverUrl: 'https://steamharness.test', apiKey: 'cached-cli-token', user: { userId: 'cached', email: 'cached@example.com', displayName: 'Cached user' } };
     const { app, cookie, post } = await fixture({ surface: 'editor' }, async () => {
       await writeCliAuthConfig(saved);
@@ -672,7 +677,7 @@ describe('steamharness web', () => {
     const { app, cookie, post } = await fixture({ surface: 'editor' });
     const realFetch = globalThis.fetch;
     const verify = vi.fn(async () => new Response(JSON.stringify({ errCode: 0, data: { profile: { userId: 'host', email: 'host@example.com', displayName: 'Host user' } } })));
-    vi.spyOn(globalThis, 'fetch').mockImplementation((input, options) => String(input).startsWith('https://steamharness.test') ? verify() : realFetch(input, options));
+    vi.spyOn(globalThis, 'fetch').mockImplementation((input, options) => registeredProject(input) ?? (String(input).startsWith('https://steamharness.test') ? verify() : realFetch(input, options)));
     expect(await fetch(app.origin).then(response => response.text())).toContain('data-account-host="true"');
     for (const action of [
       { type: 'login', serverUrl: 'https://steamharness.test', email: 'other@example.com', password: 'password' },
@@ -704,6 +709,7 @@ describe('steamharness web', () => {
     let checks = 0;
     vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, options) => {
       if (!String(input).startsWith('https://steamharness.test')) { return realFetch(input, options); }
+      const registration = registeredProject(input); if (registration) return registration;
       checks++;
       expect(new Headers(options?.headers).get('Authorization')).toBe('Bearer current-token');
       return new Response(JSON.stringify({ errCode: 0, data: { profile: { userId: 'current', email: 'current@example.com', displayName: 'Current account' } } }));
@@ -735,7 +741,7 @@ describe('steamharness web', () => {
     const realFetch = globalThis.fetch;
     let profile = { userId: 'user', email: 'user@example.com', displayName: 'Original user', avatarUrl: 'data:image/png;base64,b2xk' as string | undefined };
     const verify = vi.fn(async () => Response.json({ errCode: 0, data: { profile } }));
-    vi.spyOn(globalThis, 'fetch').mockImplementation((input, options) => String(input).startsWith('https://steamharness.test') ? verify() : realFetch(input, options));
+    vi.spyOn(globalThis, 'fetch').mockImplementation((input, options) => registeredProject(input) ?? (String(input).startsWith('https://steamharness.test') ? verify() : realFetch(input, options)));
     const { app, cookie } = await fixture(source === 'host' ? { surface: 'editor', connection: { serverUrl: 'https://steamharness.test', accessToken: 'profile-token' } } : undefined, async () => {
       if (source === 'standalone') {
         vi.stubEnv('STEAMHARNESS_SERVER_URL', undefined); vi.stubEnv('STEAMHARNESS_SERVER_ADMIN_KEY', undefined);
@@ -807,6 +813,7 @@ describe('steamharness web', () => {
     let checks = 0;
     vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, options) => {
       if (!String(input).startsWith('https://steamharness.test')) { return realFetch(input, options); }
+      const registration = registeredProject(input); if (registration) return registration;
       if (++checks === 1) { throw new TypeError('Temporary network failure.'); }
       return new Response(JSON.stringify({ errCode: 0, data: { profile: { userId: 'host', email: 'host@example.com', displayName: 'Recovered account' } } }));
     });
@@ -923,6 +930,7 @@ describe('steamharness web', () => {
     vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, options) => {
       const url = String(input);
       if (!url.startsWith('https://steamharness.test')) { return realFetch(input, options); }
+      const registration = registeredProject(input); if (registration) return registration;
       if (url.endsWith('/api/auth/login')) { return new Response(JSON.stringify({ errCode: 0, data: { authenticated: true, accessToken: 'test-api-key', apiKey: { id: 'key-id' } } })); }
       checks++;
       return new Response(JSON.stringify({ errCode: 0, data: { profile, principal: { expiresAt: '2027-01-01T00:00:00Z' } } }));

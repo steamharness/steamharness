@@ -1,5 +1,7 @@
 # Unreleased
 
+- Kanban, Workflow and Conversation now check application and related-project registration, imports and relationship declarations when opened, before any run or message. A shared checklist shows progress and required actions, collapses after success, preserves local features and never replays operations on recheck.
+
 - Unregistered projects now require confirmation to apply for a Server-assigned application ID and safely replace the local manifest ID. New applications use separate history and data without uploading source or inheriting old access. All three types share this flow; standalone upload only allocates with explicit --create, and groups never change IDs implicitly.
 
 - Fixed generated project templates to match untouched source to the installed SDK API while preserving user edits. Project inspection now includes specific script validation diagnostics instead of only the validation summary.
