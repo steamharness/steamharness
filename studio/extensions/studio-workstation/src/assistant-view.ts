@@ -2,6 +2,7 @@ import { t } from './localization';
 import * as vscode from 'vscode';
 import { webviewContextMenu } from './webview-context-menu';
 import { createAssistantProject, DEVELOPER_ASSISTANT_PROJECT_ID } from './assistant-workspace';
+import { openProjectUserSettings } from './workflow-user-settings';
 import type { AssistantWorkspaceFolder, Project } from './workflow-types';
 import type { Launcher } from './workflow-cli-types';
 
@@ -44,6 +45,10 @@ export class AssistantViewProvider implements vscode.WebviewViewProvider, vscode
     this.view = view;
     view.webview.options = { enableScripts: true, localResourceRoots: [vscode.Uri.joinPath(this.context.extensionUri, 'dist')] };
     const listener = view.webview.onDidReceiveMessage((message) => {
+      if (this.disposed || this.view !== view) { return; }
+      if (message?.type === 'workflow-user-settings') {
+        return openProjectUserSettings(message).catch(error => this.output.appendLine(`User settings: ${String(error)}`));
+      }
       if (message?.type === 'assistant-retry') { return this.retry(view); }
       if (message?.type === 'assistant-open-folder') { void vscode.commands.executeCommand('studio.openFolder'); }
     });

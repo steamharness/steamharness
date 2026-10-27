@@ -20,12 +20,12 @@ function fixture(t, options = {}) {
   const receivers = new Set(), disposals = new Set();
   events.message = message => Promise.all([...receivers].map(receive => receive(message)));
   events.dispose = () => { for (const dispose of [...disposals]) { dispose(); } };
-  const inspections = [], projects = [], sessions = [], messages = [], executions = [];
+  const inspections = [], projects = [], sessions = [], messages = [], executions = [], output = [];
   const uri = folder('/extension').uri;
   const vscode = {
     env: { language: 'en' },
     Uri: { joinPath: (root, ...parts) => ({ toString: () => `${root.toString()}/${parts.join('/')}` }) },
-    commands: { registerCommand: (name, callback) => { commands.set(name, callback); return disposable; }, executeCommand: async (...args) => { executions.push(args); } },
+    commands: { registerCommand: (name, callback) => { commands.set(name, callback); return disposable; }, executeCommand: async (...args) => { executions.push(args); return options.executeCommand?.(...args); } },
     workspace: { workspaceFolders: options.folders ?? [folder('/workspace')], isTrusted: options.trusted ?? true,
       getWorkspaceFolder: uri => vscode.workspace.workspaceFolders.filter(folder => String(uri).startsWith(`${folder.uri}/`)).sort((a, b) => b.uri.fsPath.length - a.uri.fsPath.length)[0],
       onDidChangeWorkspaceFolders: callback => { events.folders = callback; return disposable; },
@@ -40,7 +40,7 @@ function fixture(t, options = {}) {
     inspect: async () => { throw new Error('The workspace executor must not be used as the assistant.'); },
     inspectAssistant: async (...args) => { inspections.push(args); return options.inspect ? options.inspect(...args) : { projects: [descriptor()], errors: [] }; },
   };
-  const provider = new module.exports.AssistantViewProvider({ subscriptions: [], extensionUri: uri }, runtime, { appendLine() {} }, async (project, view) => {
+  const provider = new module.exports.AssistantViewProvider({ subscriptions: [], extensionUri: uri }, runtime, { appendLine: line => output.push(line) }, async (project, view) => {
     projects.push(project);
     await options.open?.(project, view);
     let finish;
@@ -58,8 +58,36 @@ function fixture(t, options = {}) {
     t.mock.timers.tick(150);
     await new Promise(resolve => setImmediate(resolve));
   };
-  return { provider, view, vscode, events, commands, inspections, projects, sessions, messages, executions, flushEditor };
+  return { provider, view, vscode, events, commands, inspections, projects, sessions, messages, executions, output, flushEditor };
 }
+
+for (const register of [true, false]) {
+  test(`${register ? 'sidebar' : 'tool'} assistant opens user permissions independently of its conversation lifecycle`, async t => {
+    const f = fixture(t, { register });
+    await f.provider.resolveWebviewView(f.view);
+    const openPermissions = { type: 'workflow-user-settings', version: 1, key: 'agent.permissionPolicy' };
+    await f.events.message(openPermissions);
+    assert.deepEqual(JSON.parse(JSON.stringify(f.executions)), [['studio.openSettings', { section: 'permissions', target: 'user' }]]);
+    f.sessions[0].finish(); await f.sessions[0].closed;
+    await f.events.message(openPermissions);
+    assert.equal(f.executions.length, 2, 'An exited conversation must not disable the settings shortcut.');
+    for (const message of [undefined, {}, { ...openPermissions, type: 'other' }, { ...openPermissions, version: 2 }, { ...openPermissions, key: 'arbitrary.command' }]) {
+      await f.events.message(message);
+    }
+    assert.equal(f.executions.length, 2);
+    f.events.dispose();
+    await f.events.message(openPermissions);
+    assert.equal(f.executions.length, 2, 'Disposed assistant views must release their message handler.');
+  });
+}
+
+test('permission navigation failures are reported without breaking the assistant', async t => {
+  const f = fixture(t, { executeCommand: () => { throw new Error('Settings unavailable'); } });
+  await f.provider.resolveWebviewView(f.view);
+  await f.events.message({ type: 'workflow-user-settings', version: 1, key: 'agent.permissionPolicy' });
+  assert.deepEqual(f.output, ['User settings: Error: Settings unavailable']);
+  assert.equal(f.sessions[0].disposed, false);
+});
 
 test('the assistant loads its own executor, parameters and skills without inspecting the workspace', async t => {
   const { provider, view, inspections, projects, executions } = fixture(t);

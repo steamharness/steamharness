@@ -35,6 +35,7 @@
     "test:create-live": "node tests/project-create-live.mjs",
     "test:desktop": "node scripts/studio.mjs test:desktop",
     "test:assistant-ui": "node tests/assistant-workspace-desktop-ui.mjs",
+    "test:assistant-permissions-ui": "node tests/assistant-permissions-ui.mjs",
     "test:conversation-ui": "node tests/conversation-ui.mjs",
     "test:conversation-clipboard-ui": "node tests/conversation-clipboard-desktop-ui.mjs",
     "test:conversation-server-ui": "node tests/conversation-server-ui.mjs",

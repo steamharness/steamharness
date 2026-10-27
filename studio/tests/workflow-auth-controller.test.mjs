@@ -5,6 +5,7 @@ import { runInNewContext } from 'node:vm';
 import { build } from 'esbuild';
 
 const compiled = await build({ entryPoints: ['extensions/studio-workstation/src/workflow-auth.ts'], bundle: true, platform: 'node', format: 'cjs', external: ['vscode'], write: false });
+const compiledUserSettings = await build({ entryPoints: ['extensions/studio-workstation/src/workflow-user-settings.ts'], bundle: true, platform: 'node', format: 'cjs', external: ['vscode'], write: false });
 const require = createRequire(import.meta.url);
 class Emitter {
   listeners = new Set();
@@ -118,6 +119,30 @@ test('settings and account commands share one tab and navigate to their requeste
   assert.equal(f.messages.filter(message => message.type === 'settings-navigate').at(-1).state.section, 'general');
   assert.ok(!JSON.stringify(f.messages).includes('test-token'));
 });
+
+for (const signedIn of [true, false]) {
+  test(`embedded permission shortcuts open and reuse the user permissions page while ${signedIn ? 'signed in' : 'signed out'}`, async t => {
+    const f = await fixture(t, { signedIn });
+    f.vscode.commands.executeCommand = async (id, ...args) => f.commands.get(id)?.(...args);
+    const module = { exports: {} };
+    runInNewContext(compiledUserSettings.outputFiles[0].text, { module, exports: module.exports, require: () => f.vscode });
+    const open = () => module.exports.openProjectUserSettings({ type: 'workflow-user-settings', version: 1, key: 'agent.permissionPolicy' });
+    await open();
+    const panel = f.panel;
+    await panel.message({ type: 'ready' });
+    assert.equal(panel.type, 'studio.settings');
+    const navigation = () => JSON.parse(JSON.stringify(panel.webview.messages.filter(message => message.type === 'settings-navigate').at(-1).state));
+    const destination = { section: 'permissions', query: '', target: 'user', scroll: 0 };
+    assert.deepEqual(navigation(), destination);
+    await panel.message({ type: 'settings-view-state', state: { section: 'editor', query: 'editor.fontSize', target: 'workspace' } });
+    await open();
+    assert.equal(f.panel, panel);
+    assert.equal(f.panels.length, 1, 'The shortcut must reuse settings instead of creating another tab.');
+    assert.deepEqual(navigation(), destination);
+    await panel.message({ type: 'ready' });
+    assert.deepEqual(navigation(), destination, 'Rehydrating the settings webview must preserve the permission destination.');
+  });
+}
 
 test('signed-out account entrances reuse a separate login tab and settings cannot accept credentials', async t => {
   const f = await fixture(t, { signedIn: false });

@@ -1,5 +1,7 @@
 # Unreleased
 
+- Fixed the Assistant permission shortcut to open the Permissions category in user settings, reusing the existing settings tab. Sidebar and standalone tool shortcuts now work independently of the conversation lifecycle.
+
 - Parameter `userSetting` bindings support fixed user policies or user defaults with project overrides. Fixed controls show the actual policy and open user settings; editable controls retain the three original choices. Reset restores inheritance without persisting the displayed value as an override; active work keeps its snapshot.
 
 - Added a Permissions settings category with Read only, Workspace, and Auto approve cards, defaulting to Auto approve. The user-only preference supports search, reset, and English/Chinese labels. Capability-negotiated updates reach open projects and the assistant, including startup and reconnect changes, and take effect after active work finishes and the session is idle.

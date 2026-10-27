@@ -282,7 +282,7 @@ export async function activateProject(context: vscode.ExtensionContext, launcher
           void vscode.commands.executeCommand('studio.uploadProject', { uri: project.uri }).then(undefined, error => output.appendLine(`Project upload: ${String(error)}`));
           return;
         }
-        if (message?.type === 'workflow-user-settings' && message.version === 1 && message.key === 'agent.permissionPolicy') {
+        if (!sidebar && message?.type === 'workflow-user-settings' && message.version === 1 && message.key === 'agent.permissionPolicy') {
           void openProjectUserSettings(message).catch(error => output.appendLine(`User settings: ${String(error)}`));
           return;
         }
