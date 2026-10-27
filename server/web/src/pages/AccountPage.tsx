@@ -1,5 +1,5 @@
 import { AlertCircle, CheckCircle2, Copy, ImagePlus, KeyRound, Languages, MonitorCog, Moon, RefreshCw, ShieldCheck, Sun, Upload, UserRound } from "lucide-react";
-import { useEffect, useMemo, useRef, useState, type ChangeEvent, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { formatDateTime, i18n, useTranslation, type LocalePreference } from "@steamharness/i18n/react";
 import type { SettingsTab, ThemeMode } from "../state";
 import type { ApiKeyRecord, MeResult } from "../types";
@@ -18,6 +18,7 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { ConfirmActionDialog, type ConfirmAction } from "@/components/ConfirmActionDialog";
 import { cn } from "@/lib/utils";
 import { getAvatarFallbackText } from "@steamharness/avatar-fallback";
+import { AvatarCropDialog } from "@/components/AvatarCropDialog";
 
 interface AccountPageProps {
   tab: SettingsTab;
@@ -63,7 +64,7 @@ export function AccountPage({
   const { t } = useTranslation("serverWeb");
   const [displayName, setDisplayName] = useState(me?.profile?.displayName ?? "");
   const [avatarUrl, setAvatarUrl] = useState<string | null>(me?.profile?.avatarUrl ?? null);
-  const [avatarError, setAvatarError] = useState<string | null>(null);
+  const [avatarFile, setAvatarFile] = useState<File | null>(null);
   const [apiKeyName, setApiKeyName] = useState("");
   const [apiKeyExpiresAt, setApiKeyExpiresAt] = useState("");
   const [revealedToken, setRevealedToken] = useState<string | null>(null);
@@ -81,6 +82,10 @@ export function AccountPage({
       setRevealedToken(createdToken);
     }
   }, [createdToken]);
+
+  useEffect(() => {
+    if (tab !== "profile") setAvatarFile(null);
+  }, [tab]);
 
   const roleSummary=t((profile?.isSystemAdmin ?? me?.principal?.isSystemAdmin)?"accessSystemAdmin":"accessRegularUser");
   const permissionSummary=t("accessAccountHelp");
@@ -102,7 +107,7 @@ export function AccountPage({
               <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
                 <div className="flex items-center gap-4">
                   <Button type="button" variant="ghost" className="size-[72px] shrink-0 rounded-lg p-0"
-                    title={t("accountAvatarUpload")} aria-label={t("accountAvatarUpload")} onClick={() => fileInputRef.current?.click()}>
+                    title={t("accountAvatarUpload")} aria-label={t("accountAvatarUpload")} disabled={!!saveBusy} onClick={() => fileInputRef.current?.click()}>
                   <Avatar className="size-[72px] rounded-lg">
                     {avatarUrl ? <AvatarImage src={avatarUrl} alt={t("accountAvatarAlt")} /> : null}
                     <AvatarFallback className="rounded-lg">
@@ -121,7 +126,6 @@ export function AccountPage({
                     <div className="mt-1 text-sm leading-6 text-muted-foreground">
                       {t("accountAvatarDescription")}
                     </div>
-                    {avatarError ? <div className="mt-2 text-xs text-destructive">{avatarError}</div> : null}
                   </div>
                 </div>
                 <div className="flex items-center gap-2">
@@ -130,13 +134,17 @@ export function AccountPage({
                     type="file"
                     accept="image/png,image/jpeg,image/webp,image/gif"
                     className="hidden"
-                    onChange={(event) => void handleAvatarFileChange(event, { onChange: setAvatarUrl, onError: setAvatarError })}
+                    onChange={(event) => {
+                      const file = event.currentTarget.files?.[0];
+                      event.currentTarget.value = "";
+                      if (file) setAvatarFile(file);
+                    }}
                   />
-                  <Button type="button" variant="outline" onClick={() => fileInputRef.current?.click()}>
+                  <Button type="button" variant="outline" disabled={!!saveBusy} onClick={() => fileInputRef.current?.click()}>
                     <Upload data-icon="inline-start" />
                     {t("accountAvatarUpload")}
                   </Button>
-                  <Button type="button" variant="outline" disabled={!avatarUrl} onClick={() => setAvatarUrl(null)}>
+                  <Button type="button" variant="outline" disabled={!avatarUrl || !!saveBusy} onClick={() => setAvatarUrl(null)}>
                     <ImagePlus data-icon="inline-start" />
                     {t("accountAvatarClear")}
                   </Button>
@@ -171,7 +179,7 @@ export function AccountPage({
             <CardFooter className="justify-end">
               <Button
                 onClick={() => onSaveProfile({ displayName: displayName.trim(), avatarUrl })}
-                disabled={!!saveBusy || !profileDirty}
+                disabled={!!saveBusy || !!avatarFile || !profileDirty}
               >
                 {saveBusy ? <RefreshCw data-icon="inline-start" className="animate-spin" /> : null}
                 {t("accountProfileSave")}
@@ -343,6 +351,11 @@ export function AccountPage({
 
       </div>
 
+      {tab === "profile" && avatarFile ? (
+        <AvatarCropDialog file={avatarFile} onClose={() => setAvatarFile(null)}
+          onConfirm={(dataUrl) => { setAvatarUrl(dataUrl); setAvatarFile(null); }} />
+      ) : null}
+
       <Dialog open={revealedToken !== null} onOpenChange={(open) => { if (!open) setRevealedToken(null); }}>
         <DialogContent>
           <DialogHeader>
@@ -417,43 +430,4 @@ function getSummaryIconToneClass(tone: "default" | "success" | "warning" | "erro
 function formatApiKeyDate(value?: string): string {
   if (!value) return i18n.t("accountApiKeyLastUsedNotRecorded", { ns: "serverWeb" });
   return formatDateTime(value);
-}
-
-async function handleAvatarFileChange(
-  event: ChangeEvent<HTMLInputElement>,
-  options: {
-    onChange: (value: string | null) => void;
-    onError: (message: string | null) => void;
-  },
-) {
-  const file = event.target.files?.[0];
-  event.target.value = "";
-  if (!file) return;
-  if (file.size > 512 * 1024) {
-    options.onError(i18n.t("accountAvatarErrorTooLarge", { ns: "serverWeb" }));
-    return;
-  }
-  try {
-    const dataUrl = await readFileAsDataUrl(file);
-    options.onChange(dataUrl);
-    options.onError(null);
-  } catch (error) {
-    options.onError(error instanceof Error ? error.message : i18n.t("accountAvatarErrorReadFailed", { ns: "serverWeb" }));
-  }
-}
-
-function readFileAsDataUrl(file: File): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    const readFailedMessage = i18n.t("accountAvatarErrorReadFailed", { ns: "serverWeb" });
-    reader.onerror = () => reject(new Error(readFailedMessage));
-    reader.onload = () => {
-      if (typeof reader.result !== "string") {
-        reject(new Error(readFailedMessage));
-        return;
-      }
-      resolve(reader.result);
-    };
-    reader.readAsDataURL(file);
-  });
 }
