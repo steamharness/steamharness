@@ -1,6 +1,7 @@
 import { spawn, type ChildProcess } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
+import type { UserSettings } from 'steamharness';
 import { fileURLToPath } from 'node:url';
 import { STEAMHARNESS_RUNTIME_LOCALE_ENV, createLocalProjectConfigurationStore, type ProjectConfigurationSnapshot } from 'steamharness';
 import { locale } from './localization';
@@ -26,7 +27,7 @@ export function cliRoot(): string {
 }
 
 export function createWebRuntime(projectDir: string, storageDir: string, connection: () => WebConnection | undefined,
-  relatedProjects: () => readonly CliRelatedProjectSpec[] = () => [], options: { allowSystemAi?: boolean } = {}): Runtime {
+  relatedProjects: () => readonly CliRelatedProjectSpec[] = () => [], options: { allowSystemAi?: boolean; userSettings?: () => UserSettings | undefined } = {}): Runtime {
   const root = cliRoot();
   const builtWorker = path.join(root, 'dist/web/worker.mjs');
   const worker = existsSync(builtWorker) ? builtWorker : path.join(root, 'src/web/worker.mjs');
@@ -116,7 +117,7 @@ export function createWebRuntime(projectDir: string, storageDir: string, connect
         { code: 'STEAMHARNESS_WORKER_INTERRUPTED' })); }
     });
     child.stdin!.on('error', () => undefined);
-    child.stdin!.end(JSON.stringify({ ...request, storageDir, runtimeProjectDir: projectDir, relatedProjects: relatedProjects() }));
+    child.stdin!.end(JSON.stringify({ ...request, userSettings: request.userSettings ?? options.userSettings?.(), storageDir, runtimeProjectDir: projectDir, relatedProjects: relatedProjects() }));
   });
   return {
     available: true,

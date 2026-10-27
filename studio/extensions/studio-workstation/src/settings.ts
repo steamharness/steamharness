@@ -8,7 +8,7 @@ export const SYSTEM_THEME = '__system__';
 export function settingsViewState(value: unknown): SettingsViewState {
   const state = value && typeof value === 'object' ? value as Record<string, unknown> : {};
   return {
-    section: typeof state.section === 'string' && /^(general|editor|account|about|provider:[\w.-]+)$/.test(state.section) ? state.section : 'general',
+    section: typeof state.section === 'string' && /^(general|editor|permissions|account|about|provider:[\w.-]+)$/.test(state.section) ? state.section : 'general',
     query: typeof state.query === 'string' ? state.query.slice(0, 512) : '',
     target: state.target === 'workspace' ? 'workspace' : 'user',
     scroll: typeof state.scroll === 'number' && Number.isFinite(state.scroll) ? Math.min(500_000, Math.max(0, state.scroll)) : 0,
@@ -23,6 +23,12 @@ export function settingsCatalog(): SettingItem[] {
     { key: 'studio.recentProjects.limit', section: 'general', group: t('Workspace'), label: t('Recent project limit'), description: t('Maximum number of projects in the recent projects list.'), type: 'number', integer: true, minimum: 1, maximum: 50 },
     { key: 'studio.terminal.name', section: 'general', group: t('Runtime'), label: t('Terminal name'), description: t('Name used when opening a new Studio terminal.'), type: 'string' },
     { key: 'studio.project.nodePath', section: 'general', group: t('Runtime'), label: t('Node.js executable'), description: t('Leave empty to use the automatically resolved Node.js runtime. Changes apply to new processes.'), type: 'string' },
+    { key: 'studio.agent.permissionPolicy', section: 'permissions', group: t('Agent permissions'), label: t('Permission policy'),
+      description: t('Used by agents that inherit user settings. Changes apply to subsequent tasks after active work finishes.'), type: 'radio', options: [
+        { value: 'read-only', label: t('Read only'), description: t('Hide editing and command tools. File and search tools stay within the workspace and mounted directories.') },
+        { value: 'workspace', label: t('Workspace'), description: t('Automatically approve edits and commands. File and search tools stay within the workspace and mounted directories; shell commands are not restricted to these paths.') },
+        { value: 'auto', label: t('Auto approve'), description: t('Approve all permissions that are not explicitly denied, including access to paths outside the workspace.') },
+      ] },
     { key: 'editor.fontSize', section: 'editor', group: t('Text editor'), label: t('Font size'), description: t('Editor font size in pixels.'), type: 'number', minimum: 6, maximum: 100 },
     { key: 'editor.tabSize', section: 'editor', group: t('Text editor'), label: t('Indent size'), description: t('Number of spaces represented by a tab. File indentation detection can override this value.'), type: 'number', integer: true, minimum: 1 },
     { key: 'editor.insertSpaces', section: 'editor', group: t('Text editor'), label: t('Insert spaces'), description: t('Insert spaces when pressing Tab. File indentation detection can override this value.'), type: 'boolean' },
@@ -83,7 +89,7 @@ export async function updateSetting(key: string, value: unknown, target: Setting
     const options = key === 'workbench.colorTheme' ? themeOptions() : item.options;
     const valid = item.type === 'boolean' ? typeof value === 'boolean'
       : item.type === 'number' ? typeof value === 'number' && Number.isFinite(value) && (!item.integer || Number.isInteger(value)) && (item.minimum === undefined || value >= item.minimum) && (item.maximum === undefined || value <= item.maximum)
-      : item.type === 'select' ? typeof value === 'string' && options?.some(option => option.value === value)
+      : item.type === 'select' || item.type === 'radio' ? typeof value === 'string' && options?.some(option => option.value === value)
       : typeof value === 'string' && value.length <= 4096 && !value.includes('\0') && (key !== 'studio.terminal.name' || !!value.trim());
     if (!valid) { throw new Error(t('Enter a valid value for {0}.', item.label)); }
   }

@@ -72,7 +72,7 @@ test('the built-in analysis prepares a runnable Kanban and connects its own CLI 
     env: { language: 'zh-cn' }, window: { activeColorTheme: { kind: 2 } }, ColorThemeKind: { Light: 1, HighContrastLight: 4 },
     Uri: { file: filename => ({ fsPath: filename, toString: () => pathToFileURL(filename).href }),
       parse: value => ({ scheme: new URL(value).protocol.slice(0, -1), fsPath: fileURLToPath(value) }) },
-    workspace: { isTrusted: true, workspaceFolders: [], getConfiguration: () => ({ get: () => '' }) },
+    workspace: { onDidChangeConfiguration: () => ({ dispose() {} }), isTrusted: true, workspaceFolders: [], getConfiguration: () => ({ get: () => '', inspect: () => ({ defaultValue: 'auto' }) }) },
   };
   const module = { exports: {} };
   runInNewContext(compiled.outputFiles[0].text, { module, exports: module.exports, require: name => name === 'vscode' ? vscode : require(name),

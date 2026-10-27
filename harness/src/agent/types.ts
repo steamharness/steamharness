@@ -49,6 +49,9 @@ export const DEFAULT_AGENT_EFFORT: AgentEffort = "medium";
  */
 export type AgentPermissionPolicy = "read-only" | "workspace" | "auto";
 
+/** A concrete developer policy, or an explicit opt-in to the host's user settings. */
+export type AgentPermissionPolicySetting = AgentPermissionPolicy | "inherit";
+
 export const AGENT_PERMISSION_POLICIES: readonly AgentPermissionPolicy[] = [
   "read-only",
   "workspace",
@@ -200,7 +203,7 @@ export interface AgentInput extends RunPayload {
   effort?: AgentEffort;
   /** `build` does the work, `plan` only researches and proposes. */
   agent?: AgentMode;
-  permissionPolicy?: AgentPermissionPolicy;
+  permissionPolicy?: AgentPermissionPolicySetting;
   /** Context window shown next to the used-token count. */
   contextWindow?: number;
   /** Explicit `/compact` request; also inferred from a `/compact` prompt prefix. */
@@ -422,7 +425,7 @@ export interface AgentRuntimeOptions {
   /** Omit to enable search only when modelAttributes.webSearch is true. */
   webSearch?: boolean;
   effort?: AgentEffort;
-  permissionPolicy?: AgentPermissionPolicy;
+  permissionPolicy?: AgentPermissionPolicySetting;
   mode?: AgentMode;
   tools?: string[];
   toolDefinitions?: ToolPermissionDefinition[];

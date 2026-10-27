@@ -1,0 +1,65 @@
+---
+title: "用户设置与权限继承"
+description: "读取宿主的用户设置，并为 Agent 显式选择继承用户权限。"
+---
+
+# 用户设置与权限继承
+
+用户设置属于执行宿主，与项目配置和每轮参数分别保存。Studio 在 **设置 → 权限** 保存用户的 Agent 权限，默认 `auto`。工作区设置不能覆盖该值。普通 Agent 仍默认 `workspace`；只有显式选择 `inherit` 才读取用户设置。
+
+## 公开接口
+
+```ts
+interface UserSettings {
+  readonly agent: {
+    readonly permissionPolicy: AgentPermissionPolicy;
+  };
+}
+
+type AgentPermissionPolicy = "read-only" | "workspace" | "auto";
+type AgentPermissionPolicySetting = AgentPermissionPolicy | "inherit";
+
+getUserSettings(): UserSettings;
+parseUserSettings(value: unknown): UserSettings;
+withUserSettings<T>(settings: UserSettings, run: () => T): T;
+```
+
+项目通过注入的 `steamharness.getUserSettings()` 读取当前执行的设置。宿主可以从 `steamharness` 包导入上述接口；`parseUserSettings` 与 `withUserSettings` 用于宿主注入，不加入项目运行时命名空间。
+
+`getUserSettings()` 返回复制并深冻结的快照。没有宿主时返回 `{ agent: { permissionPolicy: "auto" } }`。`parseUserSettings` 和 `withUserSettings` 只接受三个具体权限值；缺少字段、`inherit` 或其它非法值抛出 `TypeError`。宿主传入对象后再修改它，不会改变已启动任务。
+
+```ts
+// 项目代码：读取快照，或让 Core 解析继承。
+const settings = steamharness.getUserSettings();
+const agent = await steamharness.createAgent({ permissionPolicy: "inherit" });
+try {
+  for await (const event of agent.run({ errCode: 0, errMessage: "", prompt: "检查项目", permissionPolicy: "inherit" })) {
+    // 处理事件。
+  }
+} finally {
+  await agent.close();
+}
+```
+
+```ts
+// 宿主代码：异步任务及其后代共享这一份快照，并发执行互不覆盖。
+import { withUserSettings } from "steamharness";
+
+await withUserSettings({ agent: { permissionPolicy: "read-only" } }, async () => {
+  await runProject(); // 宿主自己的运行入口。
+});
+```
+
+## 解析顺序
+
+Core 先选本轮 `AgentInput.permissionPolicy`，再选开发者的运行时／节点 `permissionPolicy`；两处都未填写时使用 `workspace`。选中的值为 `inherit` 时，解析为当前用户快照中的具体值；无宿主时解析为 `auto`。直接调用 Agent、Agent 节点和项目参数使用相同规则。
+
+项目参数 `--permission-policy inherit` 和会话参数保存原始 `inherit`，后续仍能继承。底层工具筛选、文件范围和运行时初始化只接收解析后的三个具体值。各模式的工具、路径及 shell 行为见 [createAgent 权限策略](/core-api/create-agent#权限策略)。
+
+## Studio 与 CLI 会话
+
+Studio 内置小助手默认选择 **继承用户设置**，也可在会话内选择具体权限；已保存的具体权限继续生效。编码工具、提示词和 Studio Control 使用同一设置快照。
+
+修改用户设置后，正在运行的任务、后台工作和子任务保留原快照。持久会话等所有工作结束且会话空闲后，重挂载原数据库并采用最新设置；新输入等待该边界，保留历史、队列和请求标识。中断恢复先使用记录的启动快照完成原任务。
+
+CLI Web 接受宿主初始设置及能力握手后的更新。旧 CLI 不接收更新消息；需要此能力时更新项目的 Core 和 CLI。独立 CLI 本期不保存此设置；未注入时 `inherit` 使用 `auto`。

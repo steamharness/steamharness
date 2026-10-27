@@ -26,7 +26,7 @@ const agent = await workflow.createAgent({
   webSearch?: boolean,
   modelAttributes?: AgentModelAttributes,
   effort?: AgentEffort,
-  permissionPolicy?: AgentPermissionPolicy,
+  permissionPolicy?: AgentPermissionPolicySetting,
   mode?: AgentMode,
   tools?: string[],
   toolDefinitions?: ToolPermissionDefinition[],
@@ -67,7 +67,7 @@ const agent = await workflow.createAgent({
 | `apiKind` | `string` | 自建端点的请求协议；OpenAI 原生搜索须用 `openai-responses`。 |
 | `webSearch` | `boolean` | 默认跟随模型的搜索能力；`false` 关闭，`true` 显式开启。见下方「联网搜索」。 |
 | `effort` | `AgentEffort` | 默认思考强度。 |
-| `permissionPolicy` | `AgentPermissionPolicy` | 默认权限策略。 |
+| `permissionPolicy` | `AgentPermissionPolicySetting` | 默认权限策略。 |
 | `mode` | `AgentMode` | 默认运行模式。 |
 | `tools` | `string[]` | 收紧可用工具；不能放宽策略已经禁用的工具。 |
 | `allowedDirectories` | `string[]` | 允许读写根目录，默认只有 `workdir`。 |
@@ -186,7 +186,7 @@ Windows 深层目录中的 Agent SQLite 会话自动使用长路径支持，创�
 | `provider` / `model` / `baseUrl` | `string` | 覆盖运行时的模型配置。 |
 | `effort` | `AgentEffort` | 见下方「思考强度」。 |
 | `agent` | `"build" \| "plan"` | `build` 直接执行，`plan` 只调研并给出计划。 |
-| `permissionPolicy` | `"read-only" \| "workspace" \| "auto"` | 见下方「权限策略」。 |
+| `permissionPolicy` | `"read-only" \| "workspace" \| "auto" \| "inherit"` | 见下方「权限策略」。 |
 | `contextWindow` | `number` | 上下文用量分母。缺省时取模型声明的窗口，没有声明时使用运行时兜底窗口。 |
 | `compact` | `boolean` | 为 `true` 时把本轮变成一次上下文压缩。 |
 | `hostInput` | `unknown` | 本轮由宿主输入驱动（OpenAI / Responses 网关）；带它的一轮不写 workflow conversation，也不读不写上下文记录。 |
@@ -274,6 +274,8 @@ try {
 空字符串表示「交给模型决定」：pi 用「不指定档位」表达它，也就是 `off`——OpenAI 类端点因此收不到 `reasoningEffort`，与内置 OpenCode 项目的 Model default 一致；对 Anthropic 这一类会把 `thinking` 显式关掉，想保留推理就挑一个具体档位。完全不传（`undefined`）才表示「没有选择」，沿用运行时/项目自己的档位。
 
 ## 权限策略
+
+本轮输入优先于开发者默认配置，两者都省略时仍为 `workspace`。显式 `inherit` 读取 `steamharness.getUserSettings().agent.permissionPolicy`，无宿主时回退 `auto`；它是配置选项，执行层仍只使用下表的三个具体权限。参数及会话保留原始 `inherit`。参见[用户设置与权限继承](/core-api/user-settings)。
 
 | 取值 | 行为 |
 | --- | --- |

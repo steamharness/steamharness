@@ -6,6 +6,14 @@ workflow 源码是自包含业务代码。本地宿主和 CLI 把 runtime API �
 
 不要在 workflow 源码中从 `"steamharness"` 导入 runtime API。Workflow、Conversation 和 Kanban 的 `package.json` 都必须在 `devDependencies` 中精确记录 `steamharness` 与 `@steamharness/cli` 版本；Core 用于宿主兼容判断，CLI 独立发版并提供外层 `steamharness` 命令。
 
+## 用户设置与权限继承
+
+项目用 `steamharness.getUserSettings(): UserSettings` 读取当前执行的只读快照，形状为 `{ readonly agent: { readonly permissionPolicy: AgentPermissionPolicy } }`。`AgentPermissionPolicy` 仍只有 `"read-only" | "workspace" | "auto"`。宿主从 SDK 导入 `withUserSettings<T>(settings: UserSettings, run: () => T): T` 注入执行上下文，或用 `parseUserSettings(value: unknown): UserSettings` 校验并复制冻结输入；这两个宿主 API 不注入项目命名空间。非法值（包括用户设置中的 `inherit`）直接抛 `TypeError`，并发上下文互不覆盖；无宿主时 `getUserSettings()` 返回 `auto`。
+
+Agent 输入、运行时／节点选项和项目权限参数使用 `AgentPermissionPolicySetting = AgentPermissionPolicy | "inherit"`。本轮输入优先于开发者默认；两处都不填仍默认 `workspace`。只有选中的值为 `inherit` 才读取用户设置，无宿主时回退 `auto`。参数与会话保存原始 `inherit`，在实际执行时解析；工具筛选、路径范围和运行时初始化必须使用同一个具体权限值。
+
+Studio 在用户级 `studio.agent.permissionPolicy` 保存设置，默认 `auto`，工作区配置不能覆盖。内置小助手默认 `inherit`，已有显式选择继续有效；编码工具、提示词与 Studio Control 使用同一快照。当前及后台、子任务不随设置变化；持久会话在任务全部结束、空闲后重挂载原数据库，再处理等待新设置的输入。恢复保留启动快照、历史、队列与请求身份。CLI Web 承接宿主注入与能力握手更新，独立 CLI 本期不保存此偏好。
+
 ## 版本兼容与宿主门禁
 
 精确依赖与运行兼容是两个不同约束：
@@ -1339,7 +1347,7 @@ const result = await steamharness.runStreamNode(agentNode, input, context);
 - `agent` 取 `"build"`（默认，直接执行）或 `"plan"`（只调研并给出计划）。plan 模式结束后运行会暂停，通过 `user_input_required` 请求批准；批准后按同一 `requestId` 恢复执行。
   plan 模式下这一轮的正文**就是计划**，因此它只渲染成一条 `Plan` 行，不会再出现在主回答正文里（两处都渲染会让同一段文字显示两遍）；plan 轮的 conversation 消息取这条 Plan 行的内容。
   plan 轮的批准请求与内置 OpenCode 项目一致：一个 `decision` 单选（按计划执行 / 先不执行，各自带说明）加一个 `instructions` 文本框（补充要求，可选）。批准后会暂停并在**同一会话**里以 build 模式带着计划原文继续执行——计划会随恢复提示一起重发，中途发生压缩也不会丢。**拒绝不会结束会话**：它保持 plan 模式，把补充要求与这份计划一起交回计划 agent 修订一版（因此不会改动任何文件，但会再产生一轮模型调用）。待批准的计划存在 conversation value `agent.pendingPlanApproval` 里，恢复时按它取回。
-- `permissionPolicy` 取 `"read-only"`、`"workspace"`（默认）或 `"auto"`，与内置 OpenCode 项目一致：`read-only` 隐藏写入与命令工具；`workspace` 在工作区内自动批准编辑和命令，读写与检索类工具（`read` / `write` / `edit` / `ls` / `grep` / `find`）只能落在工作区与 `allowedDirectories` 内；`auto` 批准一切未被显式拒绝的权限，包括工作区之外的路径。**三者都不会为内置工具弹出审批**——内置工具声明为 `autoApprove: true`，策略只决定「暴露哪些工具」和「工具能走多远」，宿主审批门只对宿主自己声明的工具生效。
+- `permissionPolicy` 取 `"inherit"`、`"read-only"`、`"workspace"`（省略时默认）或 `"auto"`；`inherit` 按上文优先级解析用户快照，底层仍只有三个具体权限：`read-only` 隐藏写入与命令工具；`workspace` 在工作区内自动批准编辑和命令，读写与检索类工具（`read` / `write` / `edit` / `ls` / `grep` / `find`）只能落在工作区与 `allowedDirectories` 内；`auto` 批准一切未被显式拒绝的权限，包括工作区之外的路径。**三者都不会为内置工具弹出审批**——内置工具声明为 `autoApprove: true`，策略只决定「暴露哪些工具」和「工具能走多远」，宿主审批门只对宿主自己声明的工具生效。
   > **`bash` 不受路径限制。** 命令以宿主进程的身份在 `workdir` 里执行，`cwd` 只是工作目录而不是沙箱，命令本身可以读写工作区之外的任何位置；`read-only` 之所以更严，是因为它根本不暴露 `bash`。要限制命令的影响范围，只能靠宿主侧的沙箱，不要指望 `permissionPolicy`。参数面板上那句「工作区之外的路径一律拒绝」指的是文件类工具，**不要**据此认为命令也被关在工作区里。
 - `hostInput` 用于「宿主自己保管这一轮的消息历史」的场景（OpenAI / Responses 网关就是这样）：带上它的一轮**不写 conversation 消息，也不读写下面这份 agent 记录**，与内置 Conversation 项目在 `input.openai !== undefined` 时的处理一致。项目从 `steamharness.readOpenAIConversationHostInput(context)` 拿到宿主输入时，把它一并放进 `AgentInput` 即可。
 - **Pi Durable Harness 是唯一执行历史来源。** 固定 Pi SDK / Durable 1.2.0，Node >=22.19.0。Conversation 节点按 `storage.agentStoreDir`、conversationId、workflow 和 sessionKey 选择 SQLite 文件，实时提交消息、工具意图与结果、审批等待及用量记录。普通模式每轮关闭运行时；session 模式由宿主 lease 保持工具与 AI bridge 存活，前台回答结束后仍能继续输入和执行后台任务。多个 Agent 节点用不同 sessionKey。没有旧 KV transcript 迁移或 fallback。编程式 `steamharness.createAgent({ databasePath })` 显式选择 SQLite，不传则使用 MemoryStorage，同一运行时内审批暂停仍保留原任务。`readTranscript()` 只读模型上下文投影，`restoreTranscript()` 只用于空存储的首轮 seed，不覆盖已有 SQLite 历史，不能恢复活动任务。流式回答强杀后把已提交正文和推理纳入持久续写上下文，丢弃未完成工具调用；续写沿用断流预算。运行结束必须 `await runtime.close()`。

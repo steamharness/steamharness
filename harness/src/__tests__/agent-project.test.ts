@@ -278,7 +278,7 @@ test("the generated params expose the agent capability in the UI", () => {
   );
   assert.deepEqual(
     params.get("permissionPolicy")?.options?.map((option) => option.value),
-    ["read-only", "workspace", "auto"],
+    ["inherit", "read-only", "workspace", "auto"],
   );
   assert.equal(params.get("effort")?.defaultValue, "medium");
   // The model choice, the effort and the permission live in the composer

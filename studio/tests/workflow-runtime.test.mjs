@@ -10,7 +10,7 @@ const { inspectProjectCli, resolveProjectCli, startProjectCli } = await import('
 const { RecoverableWebSession } = await import('../extensions/studio-workstation/src/workflow-session.ts');
 import { projectFrameHtml } from '../extensions/studio-workstation/src/workflow-webview.ts';
 
-async function fixture(t, version = '1.0.0', protocol = 1, fail = false, startupDelay = 0, assistantProtocol = 1, accountProtocol = 1, relatedProtocol = 1, systemAiProtocol = 1) {
+async function fixture(t, version = '1.0.0', protocol = 1, fail = false, startupDelay = 0, assistantProtocol = 1, accountProtocol = 1, relatedProtocol = 1, systemAiProtocol = 1, userSettingsProtocol = 1) {
   const directory = await fs.mkdtemp(path.join(tmpdir(), 'studio-project-cli-'));
   t.after(() => fs.rm(directory, { recursive: true, force: true }));
   await fs.writeFile(path.join(directory, 'package.json'), '{"name":"user-project"}');
@@ -26,7 +26,7 @@ async function fixture(t, version = '1.0.0', protocol = 1, fail = false, startup
       console.log(JSON.stringify({projects:[{name:version,folderPath:process.cwd(),projectType:'conversation',fields:[],entrypoints:[]}],errors:[]}));
     } else {
       const input=createInterface({input:process.stdin});
-      let configuration,effectiveConnection,server,authMessages=0;
+      let configuration,effectiveConnection,server,authMessages=0,userSettingsMessages=0;
       const authenticate=message=>{
         if(configuration.surface==='editor' && ${systemAiProtocol}!==1 && (message.connection?.aiServerUrl!==undefined || message.connection?.aiAccessToken!==undefined)) {
           console.error('AI connection requires the assistant surface.');process.exit(1);
@@ -50,11 +50,12 @@ async function fixture(t, version = '1.0.0', protocol = 1, fail = false, startup
               setTimeout(()=>{process.stderr.write(token.slice(5)+' '+(effectiveConnection?.aiAccessToken??'')+' '+(process.env.STEAMHARNESS_STUDIO_CONTROL_BRIDGE_TOKEN??'')+' diagnostic tail');response.end('{}');setTimeout(()=>process.exit(23),10);},10);
               return;
             }
-            response.end(JSON.stringify({configuration,effectiveConnection,args,pid:process.pid,authMessages,studioControl}));
+            response.end(JSON.stringify({configuration,effectiveConnection,args,pid:process.pid,authMessages,userSettingsMessages,studioControl}));
           });
-          setTimeout(()=>server.listen(Number(args[args.indexOf('--port')+1]??0),'127.0.0.1',()=>console.log(JSON.stringify({type:'ready',protocolVersion:1,hostProtocolVersion:${protocol},accountProtocolVersion:${accountProtocol},systemAiConnectionProtocolVersion:${systemAiProtocol},relatedProjectsProtocolVersion:${relatedProtocol},assistantProtocolVersion:${assistantProtocol},url:'http://127.0.0.1:'+server.address().port+'/#session='+'a'.repeat(64),project:{id:message.assistantProjectDir?assistantId:'user',name:message.assistantProjectDir?'Project Assistant':version,projectType:'conversation'},runtime:{harnessVersion:version,harnessPath:process.cwd()+'/node_modules/steamharness/dist/index.js'}}))),${startupDelay});
+          setTimeout(()=>server.listen(Number(args[args.indexOf('--port')+1]??0),'127.0.0.1',()=>console.log(JSON.stringify({type:'ready',protocolVersion:1,hostProtocolVersion:${protocol},accountProtocolVersion:${accountProtocol},systemAiConnectionProtocolVersion:${systemAiProtocol},relatedProjectsProtocolVersion:${relatedProtocol},userSettingsProtocolVersion:${userSettingsProtocol},assistantProtocolVersion:${assistantProtocol},url:'http://127.0.0.1:'+server.address().port+'/#session='+'a'.repeat(64),project:{id:message.assistantProjectDir?assistantId:'user',name:message.assistantProjectDir?'Project Assistant':version,projectType:'conversation'},runtime:{harnessVersion:version,harnessPath:process.cwd()+'/node_modules/steamharness/dist/index.js'}}))),${startupDelay});
         } else if(message.type==='auth') {authMessages++;authenticate(message);configuration.connection=message.connection;configuration.systemAiConnection=message.systemAiConnection;}
         else if(message.type==='related-projects') {configuration.relatedProjects=message.relatedProjects;}
+        else if(message.type==='user-settings') {if(${userSettingsProtocol}!==1) process.exit(31);userSettingsMessages++;configuration.userSettings=message.userSettings;}
         else if(message.type==='close') {input.close();process.stdin.pause();server?.close();}
       });
       input.on('close',()=>{process.stdin.pause();server?.close();});
@@ -62,6 +63,19 @@ async function fixture(t, version = '1.0.0', protocol = 1, fail = false, startup
   `);
   return { directory, cli, options: { projectDir: directory, dataDir: path.join(directory, 'data'), nodePath: process.execPath, theme: 'dark', surface: 'editor' } };
 }
+
+test('user settings use host stdin, deduplicate updates and respect older CLI capabilities', async t => {
+  for (const protocol of [0, 1]) {
+    const f = await fixture(t, '1.0.0', 1, false, 0, 1, 1, 1, 1, protocol);
+    const initial = { agent: { permissionPolicy: 'auto' } }, next = { agent: { permissionPolicy: 'read-only' } };
+    const session = await startProjectCli({ ...f.options, userSettings: initial }); t.after(() => session.close());
+    session.updateUserSettings(initial);
+    session.updateUserSettings(next); session.updateUserSettings(structuredClone(next));
+    const state = await (await fetch(session.ready.url)).json();
+    assert.deepEqual(state.configuration.userSettings, protocol === 1 ? next : initial);
+    assert.equal(state.userSettingsMessages, protocol === 1 ? 1 : 0);
+  }
+});
 
 test('each project resolves its own CLI and runs its own inspection', async t => {
   const first = await fixture(t, '1.2.3');
@@ -464,18 +478,22 @@ test('Retry restores an exited CLI on the same origin and never duplicates a liv
   assert.equal(exits, 1); assert.equal(closed, false);
   assert.ok(exitDetails); assert.ok('code' in exitDetails && 'signal' in exitDetails && 'stderr' in exitDetails);
   const connection = { serverUrl: 'https://current.test', accessToken: 'latest-account' };
+  const userSettings = { agent: { permissionPolicy: 'read-only' } };
   session.updateAuth(connection);
   session.updateRelatedProjects([{ alias: 'latest', projectDir: options.projectDir }]);
+  session.updateUserSettings(userSettings);
+  userSettings.agent.permissionPolicy = 'auto';
   assert.deepEqual(await Promise.all([session.reconnect(), session.reconnect()]), [true, true]);
   assert.equal(starts, 1); assert.equal(new URL(session.ready.url).origin, origin);
   let recovered;
   for (let i = 0; i < 100; i++) {
     recovered = await fetch(origin).then(response => response.json());
-    if (recovered.configuration.connection?.accessToken === connection.accessToken && recovered.configuration.relatedProjects[0]?.alias === 'latest') break;
+    if (recovered.configuration.connection?.accessToken === connection.accessToken && recovered.configuration.relatedProjects[0]?.alias === 'latest' && recovered.configuration.userSettings?.agent.permissionPolicy === 'read-only') break;
   }
   assert.notEqual(recovered.pid, initial.pid);
   assert.equal(recovered.configuration.connection.accessToken, connection.accessToken);
   assert.equal(recovered.configuration.relatedProjects[0].alias, 'latest');
+  assert.equal(recovered.configuration.userSettings.agent.permissionPolicy, 'read-only', 'Recovery uses the last copied user snapshot');
   await session.close(); assert.equal(closed, true);
   await assert.rejects(session.reconnect(), /closed/);
 });

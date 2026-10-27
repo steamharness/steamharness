@@ -6,6 +6,7 @@ import test from "node:test";
 import type { AgentMessage } from "@earendil-works/pi-agent-core";
 import { createAgentRuntime, type AgentRuntimeInternalOptions } from "../agent/runtime";
 import { parseAgentInput } from "../agent/runtime";
+import { withUserSettings } from "../user-settings";
 import { compactAgentMessages, estimateAgentContextTokens, estimateAgentTokens, findCompactionSplitIndex } from "../agent/compaction";
 import { HarnessError } from "../workflow/errors";
 import type { PiRuntime } from "../agent/pi";
@@ -468,6 +469,39 @@ test("usage hook errors are retained when the model emits later events", async (
   await assert.rejects(() => collectEvents({ pi }, { prompt: "hi" }, {
     reportUsage: () => { throw new Error("usage sink unavailable"); },
   }), /usage sink unavailable/);
+});
+
+test("inherited user policies enforce actual tools and external path access on each run", async () => {
+  await withTempDir(async root => {
+    const workdir = path.join(root, "workspace");
+    await mkdir(workdir);
+    const outside = path.join(root, "outside.txt");
+    await writeFile(outside, "external content");
+    const { pi, ai } = await createFauxRuntime([
+      () => ai.fauxAssistantMessage("read only"),
+      () => ai.fauxAssistantMessage([ai.fauxToolCall("read", { path: outside })], { stopReason: "toolUse" }),
+      () => ai.fauxAssistantMessage("workspace"),
+      () => ai.fauxAssistantMessage([ai.fauxToolCall("read", { path: outside })], { stopReason: "toolUse" }),
+      () => ai.fauxAssistantMessage("auto"),
+    ]);
+    const runtime = await createAgentRuntime({ pi, workdir, permissionPolicy: "inherit" });
+    try {
+      for (const policy of ["read-only", "workspace", "auto"] as const) {
+        const events = await withUserSettings({ agent: { permissionPolicy: policy } }, async () => {
+          const result: AgentStreamEvent[] = [];
+          for await (const event of runtime.run({ prompt: policy, errCode: 0, errMessage: "" })) result.push(event);
+          return result;
+        });
+        const agent = (runtime as unknown as { agent: { state: { tools: Array<{ name: string }> } } }).agent;
+        assert.equal(agent.state.tools.some(tool => tool.name === "write"), policy !== "read-only");
+        if (policy !== "read-only") {
+          const results = events.filter(event => event.type === "tool");
+          assert.ok(results.length > 0);
+          assert.equal(results.some(event => event.type === "tool" && event.isError), policy === "workspace");
+        }
+      }
+    } finally { await runtime.close(); }
+  });
 });
 
 test("a read-only policy offers the model no mutating tools", async () => {

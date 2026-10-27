@@ -1,5 +1,6 @@
 import { t } from './localization';
 import { isDeepStrictEqual } from 'node:util';
+import { getUserSettings, parseUserSettings, type UserSettings } from 'steamharness';
 import { conversationPrompt, type PathReference } from './conversation-paths';
 import type { AgentSessionCommand, AgentSessionReceipt, AgentSessionSnapshot } from 'steamharness/agent';
 import {
@@ -15,6 +16,7 @@ interface ControllerOptions {
   canStart?(): boolean;
   canDrain?(): boolean;
   configurationRevision?(): number;
+  userSettings?(): UserSettings;
   /** Capture mutable inputs synchronously, before returning the save promise. */
   save(sessions: ConversationSession[], activeId: string): Promise<void>;
   changed(): void;
@@ -117,6 +119,10 @@ export class ConversationController {
     }
   }
   private changed(): void { if (!this.disposed) { this.options.changed(); } }
+  private currentUserSettings(): UserSettings { return parseUserSettings(this.options.userSettings?.() ?? getUserSettings()); }
+  private settingsChanged(owner: ConversationSession): boolean {
+    return !!owner.agentParameters && !isDeepStrictEqual(owner.agentParameters.userSettings, this.currentUserSettings());
+  }
   async create(force = false): Promise<void> {
     const blank = force ? undefined : this.sessions.find((entry) => !entry.messages.length && !entry.activeRunId && !entry.queuedInputs?.length && !entry.draft?.text && !entry.draft?.attachments.length && !entry.draft?.references?.length);
     const next = blank ?? this.blank();
@@ -223,10 +229,10 @@ export class ConversationController {
       if (owner.messages.some(message => message.pendingInput)) throw new Error(t("Awaiting confirmation"));
       const args = projectParamArgs(parameters.fields, input.params, input.states);
       const previous = owner.agentParameters;
-      const configChanged = previous && (previous.configurationRevision !== this.options.configurationRevision?.()
+      const configChanged = previous && (this.settingsChanged(owner) || previous.configurationRevision !== this.options.configurationRevision?.()
         || input.configurationSelection && !isDeepStrictEqual(previous.configurationSelection, input.configurationSelection));
       if (configChanged) {
-        if (owner.agent?.tasks.length || owner.agent?.turns.some(turn => turn.status === 'queued' || turn.status === 'placed')) {
+        if (!owner.agent && owner.activeRunId || owner.agent?.tasks.length || owner.agent?.foreground || owner.agent?.turns.some(turn => turn.status === 'queued' || turn.status === 'placed')) {
           (entry.queuedInputs ??= []).push({...queued,configurationPending:true});
           if (!preserveDraft) entry.draft = { text: '', attachments: [] };
           this.changed(); await this.persist(); return;
@@ -244,7 +250,7 @@ export class ConversationController {
           if (!preserveDraft) entry.draft = { text: '', attachments: [] };
           this.start(entry, queued); await this.persist(); return;
         }
-        owner.agentParameters = { configurationRevision: this.options.configurationRevision?.(), args, entrypointId: input.entrypointId, policies: JSON.parse(JSON.stringify(owner.toolPermissionPolicies ?? {})) };
+        owner.agentParameters = { userSettings: this.currentUserSettings(), configurationRevision: this.options.configurationRevision?.(), args, entrypointId: input.entrypointId, policies: JSON.parse(JSON.stringify(owner.toolPermissionPolicies ?? {})) };
       }
       const planIndex = previous?.args.indexOf('--plan') ?? -1;
       if (owner.agentParameters) owner.agentParameters.configurationSelection = input.configurationSelection;
@@ -296,16 +302,17 @@ export class ConversationController {
       ] as const) { if (files.length) { args.push(flag, JSON.stringify(files.map(({ previewUrl: _, ...reference }) => reference))); } }
     } else if (input.text) { args.push(...this.rawArgs(input.text)); }
     if (!answer) {
-      if (this.project.conversation?.durable?.enabled) entry.agentParameters = { configurationRevision: this.options.configurationRevision?.(), configurationSelection: input.configurationSelection, args: projectParamArgs(parameters.fields, input.params, input.states), entrypointId: input.entrypointId, policies: JSON.parse(JSON.stringify(entry.toolPermissionPolicies ?? {})) };
+      if (this.project.conversation?.durable?.enabled) entry.agentParameters = { userSettings: this.currentUserSettings(), configurationRevision: this.options.configurationRevision?.(), configurationSelection: input.configurationSelection, args: projectParamArgs(parameters.fields, input.params, input.states), entrypointId: input.entrypointId, policies: JSON.parse(JSON.stringify(entry.toolPermissionPolicies ?? {})) };
       if (!entry.messages.length && !entry.titleLocked) { entry.title = (input.text || input.attachments[0]?.name || input.references?.[0]?.name || t("Workflow run")).slice(0, 80); }
       entry.messages.push({ id: globalThis.crypto.randomUUID(), role: 'user', content: input.text || '', attachments: input.attachments, references: input.references, args, input, entrypointId: input.entrypointId, createdAt: Date.now() });
-      answer = { id: input.id, role: 'assistant', content: '', items: [], status: 'running', createdAt: Date.now(), model: conversationModelName(input, parameters.fields), args, entrypointId: input.entrypointId, events: [] };
+      answer = { userSettings: this.currentUserSettings(), id: input.id, role: 'assistant', content: '', items: [], status: 'running', createdAt: Date.now(), model: conversationModelName(input, parameters.fields), args, entrypointId: input.entrypointId, events: [] };
       answer.runId = answer.id;
       answer.configurationSelection = input.configurationSelection;
       entry.messages.push(answer);
     }
     const configurationSelection = input.configurationSelection ?? (resumeAgent ? entry.agentParameters?.configurationSelection : answer.configurationSelection);
     const request: Run = {
+      userSettings: this.project.conversation?.durable?.enabled ? entry.agentParameters?.userSettings ?? answer.userSettings : answer.userSettings,
       resumeAgent,
       configurationSelection,
       resumeConfiguration,
@@ -641,7 +648,7 @@ export class ConversationController {
   configurationChanged(): void {
     if (this.disposed || !this.project.conversation?.durable?.enabled) return;
     for (const owner of this.sessions.filter(entry => !entry.agentOwnerId)) {
-      if (owner.agentParameters && owner.agentParameters.configurationRevision !== this.options.configurationRevision?.()) {
+      if (owner.agentParameters && (this.settingsChanged(owner) || owner.agentParameters.configurationRevision !== this.options.configurationRevision?.())) {
         void this.reloadConfiguration(owner).catch(error => this.options.log(String(error)));
       }
     }
@@ -649,14 +656,15 @@ export class ConversationController {
   private reloadConfiguration(owner: ConversationSession, force = false): Promise<void> {
     const existing = this.reloading.get(owner.id);
     if (existing) return existing;
-    if (this.disposed || !owner.agent || !owner.agentParameters || !force && owner.agentParameters.configurationRevision === this.options.configurationRevision?.()
-      || owner.agent.tasks.length || owner.agent.turns.some(turn => turn.status === 'queued' || turn.status === 'placed')
+    if (this.disposed || !owner.agent || !owner.agentParameters || !force && !this.settingsChanged(owner) && owner.agentParameters.configurationRevision === this.options.configurationRevision?.()
+      || owner.agent.tasks.length || owner.agent.foreground || owner.agent.turns.some(turn => turn.status === 'queued' || turn.status === 'placed')
       || this.sessions.some(entry => (entry.agentOwnerId ?? entry.id) === owner.id && entry.messages.some(message => message.pendingInput))) return Promise.resolve();
     // Defer cancellation until the snapshot's receipts have been acknowledged.
     const reload = Promise.resolve().then(async () => {
       await this.retireAgentOwner(owner);
       if (this.disposed || !this.sessions.includes(owner)) return;
       owner.agentParameters!.configurationRevision = this.options.configurationRevision?.();
+      owner.agentParameters!.userSettings = this.currentUserSettings();
       // Keep the owner stopped until the next input supplies resolved parameters.
       // The old model ID may have been removed from the new configuration.
       await this.persist();

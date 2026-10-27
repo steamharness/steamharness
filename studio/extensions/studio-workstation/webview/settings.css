@@ -27,6 +27,17 @@
 .settings-page-header h1 { font-size: 26px; font-weight: 600; line-height: 1.4; }
 #settings-save-status { font-size: 11px; overflow-wrap: anywhere; }
 .settings-panel { min-width: 0; }
+.setting-row.setting-radio-row { display: block; }
+.setting-radio-row .setting-controls { display: flex; flex-wrap: wrap; justify-content: flex-end; width: 100%; max-width: none; margin-top: 16px; }
+.settings-radio-group { display: flex; flex-direction: column; width: 100%; gap: 8px; }
+.setting-row .settings-radio-choice { display: flex; align-items: flex-start; gap: 14px; padding: 18px; border: 1px solid var(--vscode-widget-border, var(--vscode-panel-border)); border-radius: 8px; cursor: pointer; font-weight: 400; }
+.settings-radio-choice:hover { background: var(--vscode-list-hoverBackground); }
+.settings-radio-choice:has(input:checked) { border-color: var(--vscode-focusBorder); background: var(--vscode-list-inactiveSelectionBackground); }
+.settings-radio-choice:focus-within { outline: 1px solid var(--vscode-focusBorder); outline-offset: 2px; }
+.settings-radio-choice input[type=radio] { flex: 0 0 auto; width: 16px; height: 16px; margin: 3px 0 0; accent-color: var(--vscode-focusBorder); }
+.settings-radio-copy { display: flex; flex-direction: column; gap: 6px; min-width: 0; line-height: 1.6; }
+.settings-radio-copy strong { font-weight: 500; }
+.settings-radio-copy .muted { font-size: 12px; overflow-wrap: anywhere; }
 .settings-group { margin-bottom: 28px; }
 .settings-group > h2 { margin-bottom: 10px; font-size: 13px; font-weight: 600; }
 .settings-card { min-width: 0; border: 1px solid var(--vscode-widget-border, var(--vscode-panel-border)); border-radius: 12px; background: var(--vscode-sideBar-background, var(--vscode-editor-background)); overflow: hidden; }

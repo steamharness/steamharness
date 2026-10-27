@@ -362,6 +362,7 @@ export function createAgentProjectParams(options: AgentProjectOptions = {}): Con
           defaultValue: options.permissionPolicy ?? DEFAULT_AGENT_PERMISSION_POLICY,
           control: "select",
           options: [
+            { value: "inherit", label: "Use user settings", description: "Use the host's user permission setting; defaults to auto approve without a host." },
             { value: "read-only", label: "Read only", description: "隐藏写入与命令工具。" },
             // The old wording promised that every path outside the workspace is
             // refused, which a shell command is not bound by; the panel says what

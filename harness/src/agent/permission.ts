@@ -1,6 +1,7 @@
 import type { ToolPermissionDefinition, ToolPermissionPolicyMap } from "../tool-permissions/index";
 import type { AgentPermissionPolicy } from "./types";
 import { AGENT_PERMISSION_POLICIES, DEFAULT_AGENT_PERMISSION_POLICY } from "./types";
+import { getUserSettings } from "../user-settings";
 import {
   BUILTIN_AGENT_TOOL_CATALOG,
   MUTATING_AGENT_TOOL_NAMES,
@@ -8,6 +9,13 @@ import {
 } from "./tools";
 
 const MUTATING_TOOLS = new Set(MUTATING_AGENT_TOOL_NAMES);
+
+/** Resolve configuration before passing a concrete policy to tools and path guards. */
+export function resolveAgentPermissionPolicySetting(value: unknown): AgentPermissionPolicy {
+  return typeof value === "string" && value.trim().toLowerCase() === "inherit"
+    ? getUserSettings().agent.permissionPolicy
+    : parseAgentPermissionPolicy(value);
+}
 
 export function parseAgentPermissionPolicy(value: unknown): AgentPermissionPolicy {
   if (typeof value === "string") {

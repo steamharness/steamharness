@@ -724,5 +724,7 @@
   "Choose Apply for a new application ID. Confirming replaces the local project ID and opens a new application without uploading source.": "选择“重新申请应用 ID”。确认后将替换本地项目 ID，并以新应用打开，不上传源码。",
   "Ask the related project owner to check its registration. If a new application ID is needed, update both projects' relationship declarations and import the matching project again.": "请关联项目的所有者检查注册状态。若需要重新申请应用 ID，请更新双方项目的关联声明，并重新导入匹配的项目。",
   "Applying for a new application ID...": "正在申请新的应用 ID…",
-  "A new ID was already allocated. Retry with the original name and project group.": "新 ID 已分配，请使用原来的名称和项目组重试。"
+  "A new ID was already allocated. Retry with the original name and project group.": "新 ID 已分配，请使用原来的名称和项目组重试。",
+  "Use user settings": "继承用户设置",
+  "Use the host's user permission setting; defaults to auto approve without a host.": "继承宿主的用户权限设置；无宿主时默认自动批准。"
 }

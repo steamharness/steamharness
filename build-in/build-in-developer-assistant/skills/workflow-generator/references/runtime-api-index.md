@@ -38,6 +38,7 @@
 
 项目源码里能调用的运行时成员，除此之外的 `steamharness.*` 都不存在：
 
+- `steamharness.getUserSettings(...)`
 - `steamharness.createAgent(...)`
 - `steamharness.createAgentRegistry(...)`
 - `steamharness.defineAgentTask(...)`

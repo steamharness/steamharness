@@ -55,8 +55,9 @@ describe("developer assistant workflow", () => {
     });
     expect(structure.params?.find((param) => param.name === "permissionPolicy")).toMatchObject({
       label: "Permission",
-      defaultValue: "auto",
+      defaultValue: "inherit",
       options: [
+        expect.objectContaining({ value: "inherit", label: "Use user settings" }),
         expect.objectContaining({ value: "read-only", label: "Read only" }),
         expect.objectContaining({ value: "workspace", label: "Workspace" }),
         expect.objectContaining({ value: "auto", label: "Auto approve" }),

@@ -75,9 +75,11 @@ import {
 import { HarnessError, defineProject, runFor, runIf, runNode, runStreamNode, runWhile, runProject } from "./workflow/index";
 import { getConfig, getProjectConfiguration } from "./configuration";
 import { getRuntimeLocale } from "./runtime-locale";
+import { getUserSettings } from "./user-settings";
 import { getRuntimePlatform, isCli, isDesktop } from "./runtime-platform";
 
 export const projectRuntimeApi = {
+  getUserSettings,
   createAgent,
   createAgentRegistry,
   defineAgentTask,

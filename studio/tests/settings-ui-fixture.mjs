@@ -11,6 +11,7 @@ const chinese = JSON.parse(await readFile(new URL('extensions/studio-workstation
 
 export function settingsFixture(language = 'en', providers = [], target = 'user') {
   const values = { 'workbench.colorTheme': 'Dark', 'window.autoDetectColorScheme': true, 'studio.startPage.enabled': true, 'studio.recentProjects.limit': 12,
+    'studio.agent.permissionPolicy': 'auto',
     'studio.terminal.name': 'Studio', 'studio.project.nodePath': '', 'editor.fontSize': 14, 'editor.tabSize': 4, 'editor.insertSpaces': true, 'editor.wordWrap': 'off', 'files.autoSave': 'off' };
   const vscode = { env: { language }, version: '1.141.0',
     extensions: { all: [{ packageJSON: { contributes: { themes: [{ id: 'Dark', label: 'Dark' }, { id: 'Light', label: 'Light' }] } } }] },

@@ -1,4 +1,5 @@
 import {configurationCapability} from '@steamharness/project-configuration';
+import { getUserSettings, parseUserSettings, type UserSettings } from 'steamharness';
 import { ProjectConfigurations } from './project-configurations';
 import { uploadConfigurationFile } from './configuration-files';
 import { loadAgentModelCatalog } from './agent-model-catalog';
@@ -56,6 +57,7 @@ export async function startWebServer(options: WebOptions) {
         if (host && Object.hasOwn(host, 'connection')) await current.setHostConnection(host.connection);
         if (host?.relatedProjects) await current.setHostRelatedProjects(host.relatedProjects);
         if (host?.resourceProjects) current.setHostResourceProjects(host.resourceProjects);
+        if (host?.userSettings) current.setHostUserSettings(host.userSettings);
       }
     })().finally(() => { restarting = undefined; });
     void restarting.catch(error => process.stderr.write(`Application identity restart: ${String(error)}\n`));
@@ -66,6 +68,11 @@ export async function startWebServer(options: WebOptions) {
     get origin() { return current.origin; }, get url() { return current.url; }, get project() { return current.project; },
     get configurations() { return current.configurations; }, get controller() { return current.controller; },
     get projectController() { return current.projectController; }, get kanbanController() { return current.kanbanController; },
+    setHostUserSettings: async (value: UserSettings) => {
+      const settings = parseUserSettings(value);
+      host = { ...host, surface: host?.surface ?? 'editor', userSettings: settings };
+      await restarting; current.setHostUserSettings(settings);
+    },
     setHostRelatedProjects: async (value: NonNullable<WebHostConfiguration['relatedProjects']>) => {
       host = { ...host, surface: host?.surface ?? 'editor', relatedProjects: value };
       await restarting; await current.setHostRelatedProjects(value);
@@ -93,6 +100,7 @@ async function startProjectWebServer(options: WebOptions, credentials: { capabil
   let login: ChildProcess | undefined;
   let passwordLogin = false;
   let hostConnection = options.host?.connection;
+  let userSettings = options.host?.userSettings ? parseUserSettings(options.host.userSettings) : getUserSettings();
   let hostManaged = options.host !== undefined;
   // A normal editor host may authenticate its project Server, but it must not
   // hand the private system-AI credentials to arbitrary project workflows.
@@ -116,7 +124,7 @@ async function startProjectWebServer(options: WebOptions, credentials: { capabil
   let relatedImportIssue: ProjectServerIssue | undefined;
   const waitingRuns = new Map<AbortController, string | undefined>();
   const cancelWaitingRuns = (runId?: string) => { for (const [abort, id] of waitingRuns) if (!runId || id === runId) abort.abort(); };
-  const executor = options.runtime ?? createWebRuntime(projectDir, storageDir, () => connection, () => relatedProjects, { allowSystemAi: allowAiConnection });
+  const executor = options.runtime ?? createWebRuntime(projectDir, storageDir, () => connection, () => relatedProjects, { allowSystemAi: allowAiConnection, userSettings: () => userSettings });
   const runtimeOverrides: Pick<Runtime, 'run' | 'resolveParams' | 'cancel' | 'dispose'> = {
     run: async (request, emit) => {
       const runConnection = connection;
@@ -289,6 +297,7 @@ async function startProjectWebServer(options: WebOptions, credentials: { capabil
     canStart: () => !projectServer?.blocking || projectServer.ready,
     canDrain: () => (!projectServer?.blocking || projectServer.ready) && !relatedImportIssue,
     configurationRevision: () => configurations.state.revision,
+    userSettings: () => userSettings,
     changed: broadcast,
     log: message => process.stderr.write(`${message}\n`),
     save: (sessions, activeId) => {
@@ -935,6 +944,12 @@ async function startProjectWebServer(options: WebOptions, credentials: { capabil
   let closing: Promise<void> | undefined;
   return {
     origin, url: `${origin}/#session=${capability}`, project, configurations, controller, projectController, kanbanController,
+    setHostUserSettings: (value: UserSettings) => {
+      const settings = parseUserSettings(value);
+      if (JSON.stringify(settings) === JSON.stringify(userSettings)) return;
+      userSettings = settings;
+      conversationController?.configurationChanged();
+    },
     setHostRelatedProjects: async (value: NonNullable<WebHostConfiguration['relatedProjects']>) => {
       relatedProjects = value; relatedProjectsManaged = true; resources.clear();
       if (await relatedImports.update(value)) {

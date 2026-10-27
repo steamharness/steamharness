@@ -1,0 +1,65 @@
+---
+title: "User settings and permission inheritance"
+description: "Read host user settings and explicitly inherit the user's Agent permission policy."
+---
+
+# User settings and permission inheritance
+
+User settings belong to the execution host and are stored separately from project configuration and turn parameters. Studio saves the user's Agent permission in **Settings → Permissions**, defaulting to `auto`. Workspace settings cannot override it. Ordinary Agents still default to `workspace`; they read user settings only when explicitly configured with `inherit`.
+
+## Public API
+
+```ts
+interface UserSettings {
+  readonly agent: {
+    readonly permissionPolicy: AgentPermissionPolicy;
+  };
+}
+
+type AgentPermissionPolicy = "read-only" | "workspace" | "auto";
+type AgentPermissionPolicySetting = AgentPermissionPolicy | "inherit";
+
+getUserSettings(): UserSettings;
+parseUserSettings(value: unknown): UserSettings;
+withUserSettings<T>(settings: UserSettings, run: () => T): T;
+```
+
+Projects read settings through the injected `steamharness.getUserSettings()`. Hosts import these APIs from the `steamharness` package. `parseUserSettings` and `withUserSettings` serve host injection and are not members of the project runtime namespace.
+
+`getUserSettings()` returns a copied, deeply frozen snapshot. Without a host it returns `{ agent: { permissionPolicy: "auto" } }`. `parseUserSettings` and `withUserSettings` accept only the three concrete policies; missing fields, `inherit`, and other invalid values throw `TypeError`. Mutating the original host object does not change an already started task.
+
+```ts
+// Project code: read the snapshot or let Core resolve inheritance.
+const settings = steamharness.getUserSettings();
+const agent = await steamharness.createAgent({ permissionPolicy: "inherit" });
+try {
+  for await (const event of agent.run({ errCode: 0, errMessage: "", prompt: "Inspect the project", permissionPolicy: "inherit" })) {
+    // Handle events.
+  }
+} finally {
+  await agent.close();
+}
+```
+
+```ts
+// Host code: asynchronous descendants share this snapshot; concurrent runs stay isolated.
+import { withUserSettings } from "steamharness";
+
+await withUserSettings({ agent: { permissionPolicy: "read-only" } }, async () => {
+  await runProject(); // The host's own execution entry point.
+});
+```
+
+## Resolution order
+
+Core first selects `AgentInput.permissionPolicy` for the turn, then the developer's runtime or node `permissionPolicy`. If both are omitted it uses `workspace`. A selected `inherit` resolves to the concrete policy in the current user snapshot, or `auto` without a host. Direct Agent calls, Agent nodes, and project parameters follow the same rules.
+
+The `--permission-policy inherit` project parameter and saved session parameters retain the original `inherit`. Tool filtering, file scope, and runtime initialization receive only the resolved concrete value. See [createAgent permission policy](/en/core-api/create-agent#permission-policy) for tool, path, and shell behavior.
+
+## Studio and CLI sessions
+
+Studio's built-in assistant defaults to **Use user settings** and allows a concrete policy per session. Previously saved concrete policies remain effective. Coding tools, the system prompt, and Studio Control use the same settings snapshot.
+
+After a settings change, active tasks, background work, and child tasks keep their original snapshot. Once all work finishes and a durable session is idle, the host remounts the original database with the latest settings. New input waits for that boundary, preserving history, queues, and request identities. Interrupted work first resumes with its recorded startup snapshot.
+
+CLI Web accepts initial host settings and updates after a capability handshake. Older CLIs do not receive update messages; update the project's Core and CLI to use inheritance. Standalone CLI does not persist this preference in this release; without host injection `inherit` uses `auto`.

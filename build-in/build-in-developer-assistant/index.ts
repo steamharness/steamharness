@@ -16,7 +16,7 @@ import type {
 
 const ASSISTANT_WORKDIR_ENV = "STEAMHARNESS_DEVELOPER_ASSISTANT_WORKDIR";
 const ASSISTANT_WORKSPACE_MANIFEST_ENV = "STEAMHARNESS_DEVELOPER_ASSISTANT_WORKSPACE_MANIFEST";
-const DEFAULT_DEVELOPER_ASSISTANT_PERMISSION_POLICY: DeveloperAssistantPermissionPolicy = "auto";
+const DEFAULT_DEVELOPER_ASSISTANT_PERMISSION_POLICY = "inherit";
 const STEAMHARNESS_NAME = "developer-assistant";
 const OUTPUT_ITEM_ID = "developer-assistant-answer";
 const SKILLS_DIRECTORY = path.join(import.meta.dirname, "skills");
@@ -258,9 +258,10 @@ export const executor = steamharness.defineExecutor<AgentInput, AgentOutputPaylo
           required: false,
           label: "Permission",
           description: "工具权限策略：read-only 隐藏写入与命令工具，workspace 限定在工作区内，auto 批准一切未被显式拒绝的权限。",
-          defaultValue: "auto",
+          defaultValue: "inherit",
           control: "select",
           options: [
+            { value: "inherit", label: "Use user settings", description: "继承宿主的用户权限设置；无宿主时默认自动批准。" },
             { value: "read-only", label: "Read only", description: "隐藏写入与命令工具。" },
             { value: "workspace", label: "Workspace", description: "工作区内自动批准编辑和命令；读写与检索工具只能访问工作区与挂载目录，shell 命令不受此限制。" },
             { value: "auto", label: "Auto approve", description: "批准一切未被显式拒绝的权限，包括工作区之外的路径。" },
@@ -410,6 +411,7 @@ function readDeveloperAssistantPermissionPolicy(
   value: string | string[] | undefined,
 ): DeveloperAssistantPermissionPolicy {
   const policy = readParamString(value) ?? DEFAULT_DEVELOPER_ASSISTANT_PERMISSION_POLICY;
+  if (policy === "inherit") return steamharness.getUserSettings().agent.permissionPolicy;
   if (policy === "read-only" || policy === "workspace" || policy === "auto") return policy;
   throw new Error(`Invalid tool permission policy: ${policy}`);
 }

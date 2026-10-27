@@ -53,6 +53,7 @@ export type {
   AgentParsedInput,
   AgentPendingApproval,
   AgentPermissionPolicy,
+  AgentPermissionPolicySetting,
   AgentPlanApprovalResume,
   AgentPlanDecision,
   AgentPlanApprovalRequest,
@@ -106,6 +107,7 @@ export {
   parseAgentPermissionPolicy,
   readAgentToolDefinitions,
   resolveAgentPermissionPolicy,
+  resolveAgentPermissionPolicySetting,
 } from "./permission";
 
 export {

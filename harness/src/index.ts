@@ -30,5 +30,6 @@ export * from "@steamharness/workflow-schedules";
 export * from "./runtime-api";
 export * from "./runtime-locale";
 export * from "./runtime-platform";
+export * from "./user-settings";
 export * from "./types/index";
 export * from "./workflow/index";

@@ -9,6 +9,9 @@ description: "为宿主嵌入或测试一步构造完整的 Conversation Agent e
 
 这层封装让嵌入方无需实现流式循环、审批、压缩或输出项拼装。项目也可复用其中的工作流与输入实现，同时保留可被宿主读取的内联声明。
 
+
+权限参数新增 `inherit`，也可传 `permissionPolicy: "inherit"` 将项目默认值设为继承用户设置；未传选项仍默认 `workspace`。宿主没有提供设置时继承为 `auto`。`createAgentProjectInput` 与会话保存 `inherit` 原值，在实际执行时解析，见[用户设置与权限继承](/core-api/user-settings)。
+
 ## 签名
 
 ```ts

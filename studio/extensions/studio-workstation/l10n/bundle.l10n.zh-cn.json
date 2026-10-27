@@ -749,5 +749,15 @@
   "Sign in before creating a project so the Server can assign its ID.": "请先登录，再创建项目并由服务器分配 ID。",
   "Applying for a new project ID": "正在申请新项目 ID",
   "This project ID is not registered. Open the project and apply for a new application ID before uploading.": "此项目 ID 尚未注册。请打开项目，重新申请应用 ID 后再上传。",
-  "The Server returned an invalid project ID.": "服务器返回的项目 ID 无效。"
+  "The Server returned an invalid project ID.": "服务器返回的项目 ID 无效。",
+  "Permissions": "权限",
+  "Agent permissions": "Agent 权限",
+  "Permission policy": "权限模式",
+  "Used by agents that inherit user settings. Changes apply to subsequent tasks after active work finishes.": "供选择继承用户设置的 Agent 使用。正在执行的任务结束后，后续任务采用新设置。",
+  "Read only": "只读",
+  "Auto approve": "自动批准",
+  "Hide editing and command tools. File and search tools stay within the workspace and mounted directories.": "隐藏编辑与命令工具。文件与检索工具仅访问工作区和挂载目录。",
+  "Automatically approve edits and commands. File and search tools stay within the workspace and mounted directories; shell commands are not restricted to these paths.": "自动批准编辑与命令。文件与检索工具仅访问工作区和挂载目录；shell 命令不受这些路径限制。",
+  "Approve all permissions that are not explicitly denied, including access to paths outside the workspace.": "批准一切未被显式拒绝的权限，包括访问工作区之外的路径。",
+  "Choose a valid user permission policy in Studio settings.": "请在 Studio 设置中选择有效的用户权限模式。"
 }

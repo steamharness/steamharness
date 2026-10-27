@@ -92,5 +92,6 @@
   "command.toggleMode": "Toggle IDE / Steam Mode",
   "command.enterIdeMode": "Switch to IDE Mode",
   "command.enterSteamMode": "Switch to Steam Mode",
-  "command.openSteamTools": "Open Tools"
+  "command.openSteamTools": "Open Tools",
+  "config.agent.permissionPolicy": "Permission policy for agents that inherit user settings. Changes apply to subsequent tasks."
 }

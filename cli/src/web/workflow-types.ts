@@ -178,6 +178,7 @@ export interface Report {
 }
 
 export interface Run {
+  userSettings?: import('steamharness').UserSettings;
   /** Reattach the durable owner without resubmitting a historical input. */
   resumeAgent?: boolean;
   configurationRunId?: string;
@@ -212,6 +213,7 @@ export interface Runtime {
 }
 
 export interface ConversationMessage {
+  userSettings?: import('steamharness').UserSettings;
   configurationSelection?: Run['configurationSelection'];
   contextEpoch?: number;
   sessionRequestId?: string;
@@ -249,7 +251,7 @@ export interface ConversationMessage {
 export interface ConversationQueuedInput { configurationSelection?: Run['configurationSelection']; configurationPending?: boolean; id: string; requestId?: string; text: string; params: ParamValues; states?: Record<string, ParamState>; entrypointId?: string; attachments: Attachment[]; references?: PathReference[]; createdAt: number }
 
 export interface ConversationSession {
-  agentParameters?: { configurationRevision?: number; configurationSelection?: Run['configurationSelection']; args: string[]; entrypointId?: string; policies: unknown };
+  agentParameters?: { userSettings?: import('steamharness').UserSettings; configurationRevision?: number; configurationSelection?: Run['configurationSelection']; args: string[]; entrypointId?: string; policies: unknown };
   agent?: AgentSessionSnapshot;
   agentOwnerId?: string;
   agentConversationId?: number;

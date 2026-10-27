@@ -6,6 +6,7 @@ import { createInterface } from 'node:readline';
 import { createWebRuntime } from './web/runtime';
 import { parseHostConfiguration, parseHostAuthentication, parseHostRelatedProjects, parseHostResourceProjects } from './web/host-config';
 import { ASSISTANT_PROTOCOL_VERSION, inspectWebProject } from './web/assistant-project';
+import { parseUserSettings } from 'steamharness';
 
 export function parseWebArgs(argv: string[]) {
   const options = { projectDir: process.cwd(), port: 0, theme: 'auto' as 'auto' | 'light' | 'dark', dataDir: undefined as string | undefined, open: true, json: false, help: false, inspect: false, hostStdio: false };
@@ -38,7 +39,7 @@ export async function main(argv: string[]): Promise<number> {
   }
   const input = options.hostStdio ? createInterface({ input: process.stdin, crlfDelay: Infinity }) : undefined;
   const lines = input?.[Symbol.asyncIterator]();
-  let host;
+  let host: ReturnType<typeof parseHostConfiguration> | undefined;
   try {
     if (lines) {
       const initial = await lines.next();
@@ -47,7 +48,7 @@ export async function main(argv: string[]): Promise<number> {
     }
   } catch (error) { input?.close(); throw error; }
   if (options.inspect) {
-    const runtime = createWebRuntime(options.projectDir, options.dataDir ?? '', () => undefined);
+    const runtime = createWebRuntime(options.projectDir, options.dataDir ?? '', () => undefined, () => [], { userSettings: () => host?.userSettings });
     try { console.log(JSON.stringify(await inspectWebProject(runtime, options.projectDir, host))); }
     finally { runtime.dispose(); input?.close(); process.stdin.pause(); }
     return 0;
@@ -55,7 +56,7 @@ export async function main(argv: string[]): Promise<number> {
   const app = await startWebServer({ ...options, host }).catch(error => { input?.close(); throw error; });
   const close = () => { process.off('SIGINT', close); process.off('SIGTERM', close); input?.close(); process.stdin.pause(); void app.close().catch(error => { console.error(error); process.exitCode = 1; }); };
   process.once('SIGINT', close); process.once('SIGTERM', close);
-  console.log(options.json ? JSON.stringify({ type: 'ready', protocolVersion: 1, hostProtocolVersion: 1, accountProtocolVersion: 1, systemAiConnectionProtocolVersion: 1, relatedProjectsProtocolVersion: 1, traceProtocolVersion: 1, assistantProtocolVersion: host?.assistant ? ASSISTANT_PROTOCOL_VERSION : undefined, url: app.url, project: { id: app.project.id, name: app.project.name, projectType: app.project.projectType }, runtime: (app.project as unknown as { runtime: unknown }).runtime }) : `SteamHarness Web: ${app.url}`);
+  console.log(options.json ? JSON.stringify({ type: 'ready', protocolVersion: 1, hostProtocolVersion: 1, accountProtocolVersion: 1, systemAiConnectionProtocolVersion: 1, relatedProjectsProtocolVersion: 1, traceProtocolVersion: 1, userSettingsProtocolVersion: 1, assistantProtocolVersion: host?.assistant ? ASSISTANT_PROTOCOL_VERSION : undefined, url: app.url, project: { id: app.project.id, name: app.project.name, projectType: app.project.projectType }, runtime: (app.project as unknown as { runtime: unknown }).runtime }) : `SteamHarness Web: ${app.url}`);
   if (lines) {
     void (async () => {
       try {
@@ -66,6 +67,7 @@ export async function main(argv: string[]): Promise<number> {
             void app.setHostConnection(parseHostAuthentication(message)).catch(() => { console.error('Workflow web host connection failed.'); process.exitCode = 1; close(); });
           }
           else if (message.type === 'related-projects') { await app.setHostRelatedProjects(parseHostRelatedProjects(message.relatedProjects)); if (message.resourceProjects !== undefined) { app.setHostResourceProjects(parseHostResourceProjects(message.resourceProjects)); } }
+          else if (message.type === 'user-settings') { await app.setHostUserSettings(parseUserSettings(message.userSettings)); }
           else if (message.type === 'close') { break; }
           else { throw new Error('Unknown web host message.'); }
         }

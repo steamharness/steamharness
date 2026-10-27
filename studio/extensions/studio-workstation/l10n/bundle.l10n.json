@@ -749,5 +749,15 @@
   "Sign in before creating a project so the Server can assign its ID.": "Sign in before creating a project so the Server can assign its ID.",
   "Applying for a new project ID": "Applying for a new project ID",
   "This project ID is not registered. Open the project and apply for a new application ID before uploading.": "This project ID is not registered. Open the project and apply for a new application ID before uploading.",
-  "The Server returned an invalid project ID.": "The Server returned an invalid project ID."
+  "The Server returned an invalid project ID.": "The Server returned an invalid project ID.",
+  "Permissions": "Permissions",
+  "Agent permissions": "Agent permissions",
+  "Permission policy": "Permission policy",
+  "Used by agents that inherit user settings. Changes apply to subsequent tasks after active work finishes.": "Used by agents that inherit user settings. Changes apply to subsequent tasks after active work finishes.",
+  "Read only": "Read only",
+  "Auto approve": "Auto approve",
+  "Hide editing and command tools. File and search tools stay within the workspace and mounted directories.": "Hide editing and command tools. File and search tools stay within the workspace and mounted directories.",
+  "Automatically approve edits and commands. File and search tools stay within the workspace and mounted directories; shell commands are not restricted to these paths.": "Automatically approve edits and commands. File and search tools stay within the workspace and mounted directories; shell commands are not restricted to these paths.",
+  "Approve all permissions that are not explicitly denied, including access to paths outside the workspace.": "Approve all permissions that are not explicitly denied, including access to paths outside the workspace.",
+  "Choose a valid user permission policy in Studio settings.": "Choose a valid user permission policy in Studio settings."
 }

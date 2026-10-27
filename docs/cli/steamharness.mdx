@@ -7,6 +7,8 @@ description: "本地运行 workflow、输出执行报告和检查结构的命令
 
 `steamharness` 是 `@steamharness/cli` 暴露的统一命令。本地命令加载 workflow 项目、安装全局 runtime API 并在当前设备执行；连接服务器的命令位于 `workspace` 分组。
 
+CLI Web 可由 Studio 宿主注入用户权限快照及后续更新，通过能力握手兼容旧 CLI。项目显式选择 `permissionPolicy: "inherit"` 才继承；未配置仍默认 `workspace`。独立 CLI 本期不保存用户权限设置，没有宿主注入时 `inherit` 使用 `auto`。持久会话中的当前任务保留启动快照，后续输入在空闲安全边界后采用新值。见[用户设置与权限继承](/core-api/user-settings)。
+
 ## 调用方式
 
 Studio 使用的 CLI 项目模板会在 `package.json.steamHarness.projectCard` 中保存项目类型图标和随机配色。图标色与背景色对比度至少为 4.5:1；静态项目检查会把该头像元数据传给 Studio。

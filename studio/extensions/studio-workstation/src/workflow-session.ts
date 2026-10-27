@@ -1,6 +1,7 @@
 import type { Connection } from './workflow-auth-client';
 import type { RelatedProjectBinding, WebSession, WebSessionExit } from './workflow-cli-types';
 import { t } from './localization';
+import type { StudioUserSettings } from './user-settings';
 
 /** Keep the page lifetime separate from a CLI process which may have exited. */
 export class RecoverableWebSession implements WebSession {
@@ -15,6 +16,7 @@ export class RecoverableWebSession implements WebSession {
   readonly closed = new Promise<void>(resolve => { this.finish = resolve; });
   private auth?: { connection?: Connection };
   private related?: { projects: RelatedProjectBinding[]; resources: string[] };
+  private userSettings?: StudioUserSettings;
 
   constructor(private current: WebSession, private readonly start: (port: number, signal: AbortSignal) => Promise<WebSession>) {
     this.exitListener = this.watch(current);
@@ -45,6 +47,7 @@ export class RecoverableWebSession implements WebSession {
       try {
         if (this.auth) next.updateAuth(this.auth.connection);
         if (this.related) next.updateRelatedProjects(this.related.projects, this.related.resources);
+        if (this.userSettings) next.updateUserSettings(this.userSettings);
       } catch (error) { await next.close(); throw error; }
       this.exitListener.dispose();
       this.current = next; this.exited = false; this.exit = undefined; this.exitListener = this.watch(next);
@@ -53,6 +56,7 @@ export class RecoverableWebSession implements WebSession {
     return this.restarting;
   }
   updateAuth(connection?: Connection): void { this.auth = { connection }; if (!this.exited) this.current.updateAuth(connection); }
+  updateUserSettings(settings: StudioUserSettings): void { this.userSettings = structuredClone(settings); if (!this.exited) this.current.updateUserSettings(this.userSettings); }
   updateRelatedProjects(projects: RelatedProjectBinding[], resources: string[] = []): void {
     this.related = { projects, resources }; if (!this.exited) this.current.updateRelatedProjects(projects, resources);
   }

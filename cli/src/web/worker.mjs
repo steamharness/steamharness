@@ -82,6 +82,11 @@ try {
   listLocalProjectKVEntries, deleteLocalProjectKVEntry, getKnowledgeDocument, listKnowledgeDocuments,
 } = await import(coreUrl);
   const core = await import(coreUrl);
+  // IPC callbacks execute outside the async scope that registered the listener.
+  // Re-enter the same run snapshot for every command and its asynchronous work.
+  const withSettings = run => request.userSettings !== undefined && typeof core.withUserSettings === 'function'
+    ? core.withUserSettings(request.userSettings, run) : run();
+  const execute = async () => {
   const language = /^zh/i.test(process.env[core.STEAMHARNESS_RUNTIME_LOCALE_ENV] ?? process.env.STEAMHARNESS_LOCALE ?? 'en') ? 'zh-CN' : 'en';
   const { readProjectInfo, readProjectCardMetadataFromPackageJson, resolveProjectName, runKanbanDataCall } = await import(new URL(import.meta.url.includes('/src/web/') ? './kanban-data.ts' : './kanban-data.mjs', import.meta.url));
   if (request.method === 'inspect') {
@@ -211,7 +216,7 @@ try {
         process.on('message', async message => {
           if (message?.type !== 'agent-control') return;
           try {
-            const receipt = await agentControl(message);
+            const receipt = await withSettings(() => agentControl(message));
             process.send?.({ type: 'agent-receipt', id: message.id, receipt });
           } catch (error) { process.send?.({ type: 'agent-receipt', id: message.id, error: error.message, code: error.code }); }
         });
@@ -315,6 +320,9 @@ try {
       }
     } else { throw new Error('Unknown runtime method.'); }
   } else { throw new Error('Unknown runtime method.'); }
+  };
+  // Older project SDKs keep their original behavior; inheritance requires the new Core API.
+  await withSettings(execute);
 } catch (error) {
   write(`__STEAMHARNESS_WEB__${JSON.stringify({ kind: 'error', error: error.message, code: error.code, metadata: error.metadata, status: error.metadata?.status })}\n`);
   process.exitCode = 1;

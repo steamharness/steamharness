@@ -13,6 +13,9 @@ Without an explicit endpoint or injected model collection, the node uses the cur
 
 When the model field declares `allowThirdParty: false`, the node only selects system models and rejects explicit endpoints, API keys and injected model collections. The policy is stored in `ProjectConfigurationSnapshot.agentModelPolicy`; resumed runs retain their original snapshot.
 
+
+`permissionPolicy` accepts the three concrete policies and `inherit`. Turn input takes precedence over node defaults; omitting both still uses `workspace`. Inheritance reads current user settings, falling back to `auto` without a host. Tool filtering and path scope share the resolved value. See [User settings and permission inheritance](/en/core-api/user-settings).
+
 ## Signature
 
 ```ts
@@ -30,7 +33,7 @@ const node = workflow.createAgentNode({
   modelAttributes?: AgentModelAttributes,
   webSearch?: boolean,
   effort?: AgentEffort,
-  permissionPolicy?: AgentPermissionPolicy,
+  permissionPolicy?: AgentPermissionPolicySetting,
   mode?: AgentMode,
   tools?: string[],
   toolDefinitions?: ToolPermissionDefinition[],

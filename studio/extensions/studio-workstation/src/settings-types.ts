@@ -12,12 +12,12 @@ export interface SettingsViewState extends SettingsOpenOptions {
 
 export interface SettingItem {
   key: string;
-  section: 'general' | 'editor';
+  section: 'general' | 'editor' | 'permissions';
   group: string;
   label: string;
   description: string;
-  type: 'boolean' | 'number' | 'string' | 'select';
-  options?: { value: string; label: string }[];
+  type: 'boolean' | 'number' | 'string' | 'select' | 'radio';
+  options?: { value: string; label: string; description?: string }[];
   minimum?: number;
   maximum?: number;
   integer?: boolean;

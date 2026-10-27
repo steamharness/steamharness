@@ -45,7 +45,7 @@ for (const [language, expected] of [['en', 'English project'], ['zh-cn', 'Chines
         input.on('close', () => { process.stdin.pause(); server.close(); });
       }
     `);
-    const vscode = { env: { language }, workspace: { isTrusted: true, getConfiguration: () => ({ get: () => '' }) },
+    const vscode = { env: { language }, workspace: { onDidChangeConfiguration: () => ({ dispose() {} }), isTrusted: true, getConfiguration: () => ({ get: () => '', inspect: () => ({ defaultValue: 'auto' }) }) },
       window: { activeColorTheme: { kind: 1 } }, ColorThemeKind: { Light: 1, HighContrastLight: 4 } };
     const module = { exports: {} };
     runInNewContext(compiled.outputFiles[0].text, { module, exports: module.exports,

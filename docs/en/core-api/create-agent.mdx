@@ -26,7 +26,7 @@ const agent = await workflow.createAgent({
   webSearch?: boolean,
   modelAttributes?: AgentModelAttributes,
   effort?: AgentEffort,
-  permissionPolicy?: AgentPermissionPolicy,
+  permissionPolicy?: AgentPermissionPolicySetting,
   mode?: AgentMode,
   tools?: string[],
   toolDefinitions?: ToolPermissionDefinition[],
@@ -66,7 +66,7 @@ The returned runtime exposes:
 | `apiKind` | `string` | Custom endpoint protocol. OpenAI native search requires `openai-responses`. |
 | `webSearch` | `boolean` | Follows the model search capability by default. `false` disables it; `true` explicitly enables it. See "Web search" below. |
 | `effort` | `AgentEffort` | Default reasoning effort. |
-| `permissionPolicy` | `AgentPermissionPolicy` | Default permission policy. |
+| `permissionPolicy` | `AgentPermissionPolicySetting` | Default permission policy. |
 | `mode` | `AgentMode` | Default run mode. |
 | `tools` | `string[]` | Narrow the available tools. Never widens what the policy disabled. |
 | `allowedDirectories` | `string[]` | Roots the tools may touch. Defaults to `workdir` alone. |
@@ -183,7 +183,7 @@ Offline `cancelAgentConversation({ agentStoreDir, conversationId, registry? })` 
 | `provider` / `model` / `baseUrl` | `string` | Override the runtime's model configuration. |
 | `effort` | `AgentEffort` | See "Reasoning effort" below. |
 | `agent` | `"build" \| "plan"` | `build` does the work; `plan` only researches and proposes. |
-| `permissionPolicy` | `"read-only" \| "workspace" \| "auto"` | See "Permission policy" below. |
+| `permissionPolicy` | `"read-only" \| "workspace" \| "auto" \| "inherit"` | See "Permission policy" below. |
 | `contextWindow` | `number` | Denominator for context usage. Defaults to the model's declared window, then to the runtime fallback when no declaration exists. |
 | `compact` | `boolean` | When `true`, the turn becomes a context compaction. |
 | `hostInput` | `unknown` | This turn is driven by host input (the OpenAI/Responses gateway); a turn carrying it writes no workflow conversation and neither reads nor writes the transcript. |
@@ -271,6 +271,8 @@ The built-in tools are `read`, `write`, `edit`, `bash`, `grep`, `find` and `ls`,
 An empty string means "let the model decide": pi expresses that by naming no level at all, which is its `off` — an OpenAI-style endpoint receives no `reasoningEffort`, the same thing the built-in OpenCode project's Model default does. On Anthropic-style endpoints it disables `thinking` outright, so pick a concrete level to keep reasoning. Only an absent value (`undefined`) means "no choice was made", and keeps the runtime's or project's own level.
 
 ## Permission policy
+
+Turn input takes precedence over developer defaults; omitting both still selects `workspace`. Explicit `inherit` reads `steamharness.getUserSettings().agent.permissionPolicy`, falling back to `auto` without a host. It is a configuration choice; execution still uses the three concrete policies below. Parameters and sessions retain the original `inherit`. See [User settings and permission inheritance](/en/core-api/user-settings).
 
 | Value | Behaviour |
 | --- | --- |

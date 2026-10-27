@@ -45,6 +45,7 @@ export function createSettingsView(root: HTMLElement, vscode: WebviewApi): { acc
         <div id="settings-error" class="settings-error" role="alert" hidden></div>
         <section id="settings-general" class="settings-panel" aria-label="${t('General')}"></section>
         <section id="settings-editor" class="settings-panel" aria-label="${t('Editor')}" hidden></section>
+        <section id="settings-permissions" class="settings-panel" aria-label="${t('Permissions')}" hidden></section>
         <section id="settings-account" class="settings-panel" aria-label="${t('Account')}" hidden></section>
         <section id="settings-provider" class="settings-panel" hidden><div id="settings-sign-in" class="settings-card settings-empty" hidden><p>${t('Sign in to view this information.')}</p><button type="button" class="secondary" id="settings-provider-sign-in">${t('Sign In')}</button></div><div id="account-sections" hidden></div></section>
         <section id="settings-about" class="settings-panel" aria-label="${t('About')}" hidden><div class="settings-card settings-about"><span class="settings-product-icon codicon codicon-terminal" aria-hidden="true"></span><h2>SteamHarness Studio</h2><p class="muted">${t('Your workspace for building and running SteamHarness projects.')}</p><dl><dt>${t('Studio version')}</dt><dd id="settings-studio-version"></dd><dt>${t('VS Code version')}</dt><dd id="settings-vscode-version"></dd></dl><button type="button" class="secondary" data-settings-action="documentation">${t('Documentation')}</button></div></section>
@@ -97,6 +98,7 @@ export function createSettingsView(root: HTMLElement, vscode: WebviewApi): { acc
       { id: 'account', label: t('Account'), icon: 'account' },
       { id: 'general', label: t('General'), icon: 'settings-gear' },
       { id: 'editor', label: t('Editor'), icon: 'code' },
+      { id: 'permissions', label: t('Permissions'), icon: 'shield' },
       ...(snapshot?.providers ?? []).map(provider => ({ id: `provider:${provider.id}`, label: provider.title, icon: provider.icon ?? 'extensions' })),
       { id: 'about', label: t('About'), icon: 'info' },
     ];
@@ -183,6 +185,11 @@ export function createSettingsView(root: HTMLElement, vscode: WebviewApi): { acc
     }
     input.dataset.target = destination;
     input.disabled = saving;
+    for (const radio of row.querySelectorAll<HTMLInputElement>('input[type="radio"]')) {
+      radio.checked = radio.value === String(value);
+      radio.disabled = saving;
+      radio.setAttribute('aria-invalid', String(!!edit?.error));
+    }
     row.querySelector<HTMLButtonElement>('[data-reset]')!.disabled = !item.configured || saving;
     row.querySelector<HTMLElement>('.setting-source')!.textContent = item.overridden ? t('Overridden by workspace settings') : '';
     const error = row.querySelector<HTMLElement>('.setting-error')!;
@@ -209,7 +216,7 @@ export function createSettingsView(root: HTMLElement, vscode: WebviewApi): { acc
         const input = item.type === 'select' ? element('button') : element('input');
         input.id = label.htmlFor; input.dataset.settingInput = item.key; input.setAttribute('aria-label', item.label);
         if (input instanceof HTMLInputElement) {
-          input.type = item.type === 'boolean' ? 'checkbox' : item.type === 'number' ? 'number' : 'text';
+          input.type = item.type === 'radio' ? 'hidden' : item.type === 'boolean' ? 'checkbox' : item.type === 'number' ? 'number' : 'text';
           if (item.type === 'boolean') { input.setAttribute('role', 'switch'); }
           if (item.minimum !== undefined) { input.min = String(item.minimum); }
           if (item.maximum !== undefined) { input.max = String(item.maximum); }
@@ -223,9 +230,22 @@ export function createSettingsView(root: HTMLElement, vscode: WebviewApi): { acc
         reset.addEventListener('pointerdown', event => event.preventDefault());
         reset.addEventListener('click', () => save(item.key, true));
         const commit = () => save(item.key);
+        if (item.type === 'radio') {
+          row.classList.add('setting-radio-row');
+          const choices = element('div', 'settings-radio-group'); choices.setAttribute('role', 'radiogroup'); choices.setAttribute('aria-label', item.label);
+          for (const option of item.options ?? []) {
+            const choice = element('label', 'settings-radio-choice');
+            const radio = element('input'); radio.type = 'radio'; radio.name = item.key; radio.value = option.value;
+            const text = element('span', 'settings-radio-copy'); text.append(element('strong', '', option.label));
+            if (option.description) { text.append(element('span', 'muted', option.description)); }
+            radio.addEventListener('change', () => { if (radio.checked) { input.value = radio.value; commit(); } });
+            choice.append(radio, text); choices.append(choice);
+          }
+          controls.append(choices);
+        }
         if (input instanceof HTMLButtonElement) { dropdowns.set(item.key, new SettingsDropdown(input, commit)); }
         else if (item.type === 'boolean') { input.addEventListener('change', commit); }
-        else {
+        else if (item.type !== 'radio') {
           input.addEventListener('blur', commit);
           input.addEventListener('keydown', event => { if ((event as KeyboardEvent).key === 'Enter') { input.blur(); } });
         }
@@ -304,13 +324,13 @@ export function createSettingsView(root: HTMLElement, vscode: WebviewApi): { acc
     const selected = categories().find(category => category.id === view.section) ?? categories().find(category => category.id === 'general')!;
     const activeSection = selected.id;
     let matches = 0;
-    for (const section of ['general', 'editor', 'account', 'provider', 'about']) {
+    for (const section of ['general', 'editor', 'permissions', 'account', 'provider', 'about']) {
       const pane = find<HTMLElement>(`settings-${section}`);
       let visible = searching ? false : section === (activeSection.startsWith('provider:') ? 'provider' : activeSection);
-      if (section === 'general' || section === 'editor') {
+      if (section === 'general' || section === 'editor' || section === 'permissions') {
         for (const item of snapshot?.items.filter(item => item.section === section) ?? []) {
           const row = rows.get(item.key);
-          const matched = !query || `${item.key} ${item.label} ${item.description} ${item.group}`.toLocaleLowerCase().includes(query);
+          const matched = !query || `${item.key} ${item.label} ${item.description} ${item.group} ${(item.options ?? []).map(option => `${option.label} ${option.description ?? ''}`).join(' ')}`.toLocaleLowerCase().includes(query);
           if (row) { row.hidden = !matched; }
           if (searching && matched) { visible = true; ++matches; }
         }

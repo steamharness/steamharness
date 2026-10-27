@@ -4,11 +4,12 @@ import { createRequire } from 'node:module';
 import { runInNewContext } from 'node:vm';
 import { build } from 'esbuild';
 
-const compiled = await build({ entryPoints: ['extensions/studio-workstation/src/settings.ts'], bundle: true, platform: 'node', format: 'cjs', external: ['vscode'], write: false });
+const compiled = await build({ stdin: { contents: "export * from './extensions/studio-workstation/src/settings'; export * from './extensions/studio-workstation/src/user-settings';", resolveDir: process.cwd(), loader: 'ts' }, bundle: true, platform: 'node', format: 'cjs', external: ['vscode'], write: false });
 const require = createRequire(import.meta.url);
 
 function fixture(workspace = true) {
   const defaults = { 'editor.fontSize': 14, 'editor.tabSize': 4, 'editor.insertSpaces': true, 'editor.wordWrap': 'off', 'files.autoSave': 'off',
+    'studio.agent.permissionPolicy': 'auto',
     'studio.startPage.enabled': true, 'studio.recentProjects.limit': 12, 'studio.terminal.name': 'Studio', 'studio.project.nodePath': '', 'workbench.colorTheme': 'Dark', 'window.autoDetectColorScheme': true };
   const global = {}, local = {}, writes = [];
   const configuration = prefix => ({
@@ -38,6 +39,23 @@ test('settings read the selected scope and identify workspace overrides without 
   assert.equal(workspaceFont.overridden, false); assert.equal(workspaceFont.value, 18);
   assert.equal(fixture(false).settingsState('0.1.0', 'workspace', []).target, 'user');
   assert.equal(f.writes.length, 0);
+});
+
+test('permission settings persist only at user scope and reset to auto approve', async () => {
+  const f = fixture();
+  const key = 'studio.agent.permissionPolicy';
+  f.local[key] = 'read-only';
+  assert.equal(f.readUserSettings().agent.permissionPolicy, 'auto');
+  await f.updateSetting(key, 'workspace', 'user', false);
+  assert.equal(f.readUserSettings().agent.permissionPolicy, 'workspace');
+  assert.equal(f.settingsState('test', 'workspace', []).items.find(item => item.key === key).value, 'workspace');
+  await assert.rejects(f.updateSetting(key, 'auto', 'workspace', false));
+  await assert.rejects(f.updateSetting(key, 'inherit', 'user', false));
+  await f.updateSetting(key, undefined, 'user', true);
+  assert.equal(f.readUserSettings().agent.permissionPolicy, 'auto');
+  f.global[key] = 'invalid';
+  assert.throws(() => f.readUserSettings(), /valid user permission/);
+  assert.equal(f.settingsViewState({ section: 'permissions' }).section, 'permissions');
 });
 
 test('editor writes and resets affect only the selected configuration scope', async () => {

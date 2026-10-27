@@ -32,7 +32,7 @@ import {
 } from "./plan";
 import {
   listEnabledAgentToolNames,
-  parseAgentPermissionPolicy,
+  resolveAgentPermissionPolicySetting,
   readAgentToolDefinitions,
   resolveAgentToolScope,
 } from "./permission";
@@ -149,7 +149,7 @@ class ProjectAgentRuntime implements AgentRuntime {
   ) {
     this.options = options;
     this.connection = readConnection(options);
-    this.allTools = createAgentTools(pi, scopeFromOptions(options), options.permissionPolicy ?? DEFAULT_AGENT_PERMISSION_POLICY);
+    this.allTools = createAgentTools(pi, scopeFromOptions(options), resolveAgentPermissionPolicySetting(options.permissionPolicy));
     this.externalTools = [...(options.extraTools ?? []), ...(options.externalTools ?? [])];
   }
 
@@ -696,7 +696,7 @@ function readConnection(options: AgentRuntimeOptions): AgentConnection {
     webSearch: options.webSearch,
     // Mirrors the default `parseAgentInput` applies, so a run that names no
     // policy is not mistaken for a change.
-    permissionPolicy: options.permissionPolicy ?? DEFAULT_AGENT_PERMISSION_POLICY,
+    permissionPolicy: resolveAgentPermissionPolicySetting(options.permissionPolicy),
     modelAttributesKey: stableModelAttributesKey(options.modelAttributes),
   };
 }
@@ -837,7 +837,7 @@ export function parseAgentInput(
     systemPrompt: readOptionalString(input.systemPrompt) ?? options.systemPrompt,
     effort: resolveRunEffort(input.effort, options.effort),
     agent: parseAgentMode(input.agent ?? options.mode ?? DEFAULT_AGENT_MODE),
-    permissionPolicy: parseAgentPermissionPolicy(
+    permissionPolicy: resolveAgentPermissionPolicySetting(
       input.permissionPolicy ?? options.permissionPolicy ?? DEFAULT_AGENT_PERMISSION_POLICY,
     ),
     contextWindow: input.contextWindow,

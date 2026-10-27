@@ -92,5 +92,6 @@
   "command.toggleMode": "切换 IDE / Steam 模式",
   "command.enterIdeMode": "切换到 IDE 模式",
   "command.enterSteamMode": "切换到 Steam 模式",
-  "command.openSteamTools": "打开工具"
+  "command.openSteamTools": "打开工具",
+  "config.agent.permissionPolicy": "选择继承用户设置的 Agent 所使用的权限模式。更改应用于后续任务。"
 }

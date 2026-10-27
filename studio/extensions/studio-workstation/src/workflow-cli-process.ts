@@ -9,6 +9,7 @@ import type { Connection } from './workflow-auth-client';
 import { sanitizeProjectEnvironment } from './workflow-auth-client';
 import type { Project } from './workflow-types';
 import type { WebReady, WebSession, WebSessionExit, RelatedProjectBinding } from './workflow-cli-types';
+import type { StudioUserSettings } from './user-settings';
 
 export interface StudioControlConfiguration { mcpServer?: string; url: string; token: string }
 
@@ -113,6 +114,7 @@ export async function startProjectCli(options: {
   relatedProjects?: RelatedProjectBinding[];
   resourceProjects?: string[];
   studioControl?: StudioControlConfiguration;
+  userSettings?: StudioUserSettings;
 }): Promise<WebSession> {
   const { entry } = await resolveProjectCli(options.projectDir);
   options.signal?.throwIfAborted();
@@ -130,6 +132,7 @@ export async function startProjectCli(options: {
   let relatedProjectsKey = JSON.stringify([options.relatedProjects ?? [], options.resourceProjects ?? []]);
   let systemAiSupported = true;
   let connectionKey = JSON.stringify(authentication);
+  let userSettingsKey = JSON.stringify(options.userSettings);
   let force: ReturnType<typeof setTimeout> | undefined;
   const close = (): Promise<void> => {
     if (!closing && !finished) {
@@ -179,13 +182,20 @@ export async function startProjectCli(options: {
         }
       };
       child.once('error', failed); child.once('close', exited); child.stdout?.on('data', received);
-      child.stdin?.write(`${JSON.stringify({ type: 'configure', surface: options.surface, ...authentication, assistant: options.assistant, assistantProjectDir: options.assistantProjectDir, relatedProjects: options.relatedProjects ?? [], resourceProjects: options.resourceProjects ?? [] })}\n`);
+      child.stdin?.write(`${JSON.stringify({ type: 'configure', surface: options.surface, ...authentication, userSettings: options.userSettings, assistant: options.assistant, assistantProjectDir: options.assistantProjectDir, relatedProjects: options.relatedProjects ?? [], resourceProjects: options.resourceProjects ?? [] })}\n`);
     });
     systemAiSupported = ready.systemAiConnectionProtocolVersion === 1;
     connectionKey = JSON.stringify(hostAuthentication(options.connection, options.surface, systemAiSupported));
     child.stdout?.resume();
     child.on('error', () => void close());
     return { ready, closed, close,
+      updateUserSettings: settings => {
+        if (closing || finished || ready.userSettingsProtocolVersion !== 1) { return; }
+        const key = JSON.stringify(settings);
+        if (key === userSettingsKey) { return; }
+        userSettingsKey = key;
+        child.stdin?.write(`${JSON.stringify({ type: 'user-settings', userSettings: settings })}\n`);
+      },
       updateAuth: connection => {
         if (connection) { secrets.add(connection.accessToken); if (connection.aiAccessToken) { secrets.add(connection.aiAccessToken); } }
         const authentication = hostAuthentication(connection, options.surface, systemAiSupported);

@@ -1,4 +1,5 @@
 import type { AssistantWorkspaceFolder, Project } from './workflow-types';
+import type { StudioUserSettings } from './user-settings';
 import type { Connection } from './workflow-auth-client';
 import type { ResourceRequest } from './workflow-resources-types';
 import type { CreatedProject, ProjectCreationInput, StartEnvironment, StartSummary, StartTemplate } from './start-page-types';
@@ -14,6 +15,7 @@ export interface WebReady {
   systemAiConnectionProtocolVersion?: number;
   relatedProjectsProtocolVersion?: number;
   traceProtocolVersion?: number;
+  userSettingsProtocolVersion?: number;
   project: Pick<Project, 'id' | 'name' | 'projectType'>;
   runtime: { harnessVersion: string; harnessPath: string };
 }
@@ -23,6 +25,7 @@ export interface WebSession {
   closed: Promise<void>;
   close(): Promise<void>;
   updateAuth(connection?: Connection): void;
+  updateUserSettings(settings: StudioUserSettings): void;
   updateRelatedProjects(projects: RelatedProjectBinding[], resourceProjects?: string[]): void;
   onExit(callback: (exit?: WebSessionExit) => void): { dispose(): void };
 }

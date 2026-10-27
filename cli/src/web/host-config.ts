@@ -1,4 +1,5 @@
 import path from 'node:path';
+import { parseUserSettings, type UserSettings } from 'steamharness';
 import type { WebConnection } from './runtime';
 import type { Project } from './workflow-types';
 import type { CliRelatedProjectSpec } from '../related-projects';
@@ -10,6 +11,7 @@ export interface WebHostConfiguration {
   assistantProjectDir?: string;
   relatedProjects?: CliRelatedProjectSpec[];
   resourceProjects?: string[];
+  userSettings?: UserSettings;
 }
 
 export function parseHostResourceProjects(value: unknown): string[] {
@@ -78,6 +80,7 @@ export function parseHostConfiguration(value: unknown): WebHostConfiguration {
   }
   if (configuration.surface !== 'assistant' && (assistant || assistantProjectDir !== undefined)) { throw new Error('Assistant configuration requires the assistant surface.'); }
   return { surface: configuration.surface, assistant, assistantProjectDir,
+    ...(configuration.userSettings === undefined ? {} : { userSettings: parseUserSettings(configuration.userSettings) }),
     connection: parseHostAuthentication(configuration),
     relatedProjects: parseHostRelatedProjects(configuration.relatedProjects),
     ...(configuration.resourceProjects === undefined ? {} : { resourceProjects: parseHostResourceProjects(configuration.resourceProjects) }) };

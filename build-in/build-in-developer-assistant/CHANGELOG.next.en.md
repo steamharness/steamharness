@@ -1,5 +1,7 @@
 # Unreleased
 
+- Changed the default permission selection to Use user settings while retaining concrete session choices and saved selections. Coding tools, prompts, and Studio Control share one settings snapshot. Generator references now cover the user settings API, inheritance precedence, the hostless fallback, and safe session updates.
+
 - Assistant now explicitly uses local storage and its fixed built-in identity. CLI built-in application checks let users use it without creating personal Server projects. History and memory never write to a shared Server project, while Server AI still requires account authorization.
 
 - Updated generator guidance to preserve structured Server storage errors and distinguish project registration, optional source upload and related data grants.

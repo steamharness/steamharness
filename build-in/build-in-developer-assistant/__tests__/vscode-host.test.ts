@@ -4,7 +4,7 @@ import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { AgentInput, AgentProjectOptions, AgentToolSet, McpServerConnection, NodeContext, ExecutorContext } from "steamharness";
 import { installProjectRuntimeGlobal } from "steamharness/runtime-api";
-import { createAgentRuntime } from "steamharness";
+import { createAgentRuntime, withUserSettings } from "steamharness";
 import { createDeveloperAssistantSystemPrompt } from "../assistant-prompt";
 
 const temporary: string[] = [];
@@ -184,13 +184,14 @@ describe("VS Code assistant host", () => {
       messages: [{ type: "message", role: "user", content: [{ type: "input_text", text: "Read my project" }] }],
       settings: {},
     } : undefined;
-    for (const permissionPolicy of [undefined, "read-only", "workspace", "auto"]) {
+    for (const permissionPolicy of [undefined, "inherit", "read-only", "workspace", "auto"]) {
       const context = { args: ["--message", "Read my project"],
         paramValues: permissionPolicy === undefined ? {} : { permissionPolicy }, hostInput,
       } as unknown as ExecutorContext;
-      const input = await executor.createInput(context);
-      expect(input.permissionPolicy).toBe(permissionPolicy ?? "auto");
-      expect(executor.createContext(context).metadata?.studioControlPermissionPolicy).toBe(permissionPolicy ?? "auto");
+      const expected = permissionPolicy === undefined || permissionPolicy === "inherit" ? "read-only" : permissionPolicy;
+      const input = await withUserSettings({ agent: { permissionPolicy: "read-only" } }, () => executor.createInput(context));
+      expect(input.permissionPolicy).toBe(expected);
+      expect(withUserSettings({ agent: { permissionPolicy: "read-only" } }, () => executor.createContext(context)).metadata?.studioControlPermissionPolicy).toBe(expected);
       if (input.permissionPolicy === "auto") {
         expect(input.systemPrompt).toContain("including absolute paths outside the workspace");
         expect(input.systemPrompt).not.toContain("Never access files outside those roots");

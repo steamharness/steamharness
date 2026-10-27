@@ -6,7 +6,7 @@ import { messageSettled, type Project, type Report, type Runtime } from '../web/
 
 const controllers: ConversationController[] = [];
 afterEach(() => { for (const controller of controllers.splice(0)) controller.dispose(); vi.useRealTimers(); });
-function fixture(configurationRevision?: () => number) {
+function fixture(configurationRevision?: () => number, userSettings?: () => import('steamharness').UserSettings) {
   const project: Project = { id: 'durable', uri: '', folderPath: '/fixture', name: 'Agent', projectType: 'conversation', entrypoints: [],
     fields: [{ name: 'model', flag: '--model', type: 'string' }], conversation: { durable: { enabled: true }, recovery: { enabled: true }, inputQueue: { enabled: true } } };
   const runs: { emit(event: Record<string, unknown>): void; finish(report: Report): void; fail(error: Error): void }[] = [];
@@ -16,7 +16,7 @@ function fixture(configurationRevision?: () => number) {
     cancel: vi.fn(() => runs.at(-1)?.finish({ status: 'aborted' })),
   };
   const save = vi.fn(async () => {});
-  const controller = new ConversationController(project, runtime, {}, { save, changed: vi.fn(), log: vi.fn(), configurationRevision }); controllers.push(controller);
+  const controller = new ConversationController(project, runtime, {}, { save, changed: vi.fn(), log: vi.fn(), configurationRevision, userSettings }); controllers.push(controller);
   const snapshot = (): AgentSessionSnapshot => ({ version: 1, ownerId: 'owner', revision: 1, conversationId: 1, foreground: false, backgroundCount: 0, epoch: 0,
     configuration: { version: 0, provider: 'fixture', model: 'one', effort: 'off' }, prompt: { hash: 'digest', version: 1 }, plan: { version: 0, items: [] },
     tasks: [], history: [], receipts: [], records: [], usage: [], conversations: [{ id: 1, title: 'Main', background: false }], contexts: [],
@@ -550,6 +550,74 @@ it('retains interrupted commands and does not reject another target with the sam
   expect(await two).toEqual(receipt);
   expect(owner.agentCommands).toHaveLength(1);
   expect(f.controller.sessions.find(session => session.id === forkId)?.agentCommands).toEqual([]);
+  await f.finish();
+});
+
+it('queues a settings change during owner startup until the first safe snapshot', async () => {
+  let settings: import('steamharness').UserSettings = { agent: { permissionPolicy: 'auto' } };
+  const f = fixture(undefined, () => settings);
+  await f.controller.send({ text: 'First', params: { model: 'one' }, attachments: [] });
+  const owner = f.controller.current;
+  settings = { agent: { permissionPolicy: 'workspace' } };
+  f.controller.configurationChanged();
+  await f.controller.send({ text: 'After startup', params: { model: 'one' }, attachments: [] }, owner, true, 'startup-next');
+  expect(owner.queuedInputs).toMatchObject([{ id: 'startup-next', configurationPending: true }]);
+  expect(f.runtime.agentControl).not.toHaveBeenCalled();
+  expect(f.runtime.cancel).not.toHaveBeenCalled();
+  f.emit(f.snapshot());
+  await vi.waitFor(() => expect(f.runs).toHaveLength(2));
+  expect(vi.mocked(f.runtime.run).mock.calls[1][0].userSettings).toEqual(settings);
+  f.emit({ ...f.snapshot(), ownerId: 'started', receipts: [{ requestId: 'startup-next', conversationId: 1, status: 'accepted' }] });
+  await vi.waitFor(() => expect(owner.agentCommands).toEqual([]));
+  expect(owner.queuedInputs).toEqual([]);
+  await f.finish();
+});
+
+it('restores unfinished work with its saved user snapshot before adopting a newer setting', async () => {
+  const original: import('steamharness').UserSettings = { agent: { permissionPolicy: 'auto' } };
+  const latest: import('steamharness').UserSettings = { agent: { permissionPolicy: 'read-only' } };
+  const f = fixture(undefined, () => original); await f.start();
+  const busy: AgentSessionSnapshot = { ...f.snapshot(), revision: 2, tasks: [{ id: 42, conversationId: 1, kind: 'pi.generation', label: 'Child', status: 'running', background: true, stopping: false, blockedOn: [] }] };
+  f.emit(busy);
+  const saved = JSON.parse(JSON.stringify({ sessions: f.controller.sessions, activeId: f.controller.activeId, selectionVersion: 1 }));
+  await f.finish();
+  const restored = new ConversationController(f.controller.project, f.runtime, saved, { save: f.save, changed: vi.fn(), log: vi.fn(), userSettings: () => latest });
+  controllers.push(restored); restored.recover();
+  await vi.waitFor(() => expect(f.runs).toHaveLength(2));
+  expect(vi.mocked(f.runtime.run).mock.calls[1][0].userSettings).toEqual(original);
+  f.emit({ ...busy, ownerId: 'restored' });
+  restored.configurationChanged();
+  expect(f.runtime.cancel).not.toHaveBeenCalled();
+  await restored.send({ text: 'After recovered work', params: { model: 'one' }, attachments: [] }, restored.current, true, 'after-recovery');
+  expect(restored.current.queuedInputs).toMatchObject([{ id: 'after-recovery', configurationPending: true }]);
+  f.emit({ ...f.snapshot(), ownerId: 'restored', revision: 3 });
+  await vi.waitFor(() => expect(f.runs).toHaveLength(3));
+  expect(vi.mocked(f.runtime.run).mock.calls[2][0].userSettings).toEqual(latest);
+  f.emit({ ...f.snapshot(), ownerId: 'latest', receipts: [{ requestId: 'after-recovery', conversationId: 1, status: 'accepted' }] });
+  await vi.waitFor(() => expect(restored.current.queuedInputs).toEqual([]));
+  f.runs.at(-1)!.finish({ status: 'success' }); await restored.idle();
+});
+
+it('adopts user settings at an idle boundary while preserving active work, history and pending input IDs', async () => {
+  let settings: import('steamharness').UserSettings = { agent: { permissionPolicy: 'auto' } };
+  const f = fixture(undefined, () => settings); await f.start();
+  const owner = f.controller.current, originalRun = owner.activeRunId, initial = f.snapshot();
+  const active: AgentSessionSnapshot = { ...initial, revision: 2, tasks: [{ id: 42, conversationId: 1, kind: 'pi.generation', label: 'Model', status: 'running', background: true, stopping: false, blockedOn: [] }] };
+  f.emit(active);
+  settings = { agent: { permissionPolicy: 'read-only' } }; f.controller.configurationChanged();
+  expect(f.runtime.cancel).not.toHaveBeenCalled();
+  await f.controller.send({ text: 'Use new permissions', params: { model: 'one' }, attachments: [] }, owner, true, 'next-permissions');
+  expect(owner.queuedInputs).toMatchObject([{ id: 'next-permissions', configurationPending: true }]);
+  expect(f.runtime.agentControl).not.toHaveBeenCalled();
+  expect(vi.mocked(f.runtime.run).mock.calls[0][0].userSettings?.agent.permissionPolicy).toBe('auto');
+  f.emit({ ...initial, revision: 3 });
+  await vi.waitFor(() => expect(f.runs).toHaveLength(2));
+  expect(vi.mocked(f.runtime.run).mock.calls[1][0]).toMatchObject({ runId: originalRun, resumeAgent: true, userSettings: settings });
+  f.emit({ ...initial, ownerId: 'new-permissions', receipts: [{ requestId: 'next-permissions', conversationId: 1, status: 'accepted' }] });
+  await vi.waitFor(() => expect(owner.agentCommands).toEqual([]));
+  expect(owner.messages[1].content).toBe('First answer');
+  expect(owner.queuedInputs).toEqual([]);
+  expect(f.runtime.deleteConversation).not.toHaveBeenCalled();
   await f.finish();
 });
 

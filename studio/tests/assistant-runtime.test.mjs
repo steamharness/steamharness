@@ -30,7 +30,7 @@ test('new projects apply for an ID using the current account and cancel when it 
   const listeners = new Set();
   const account = { getConnection: () => connection, getState: () => ({ user: { userId } }), onDidChange: callback => { listeners.add(callback); return { dispose: () => listeners.delete(callback) }; } };
   const module = { exports: {} };
-  const vscode = { env: { language: 'en' }, workspace: { isTrusted: true, getConfiguration: () => ({ get: () => '' }) } };
+  const vscode = { env: { language: 'en' }, workspace: { onDidChangeConfiguration: () => ({ dispose() {} }), isTrusted: true, getConfiguration: () => ({ get: () => '', inspect: () => ({ defaultValue: 'auto' }) }) } };
   runInNewContext(allocationRuntime.outputFiles[0].text, { module, exports: module.exports, require: name => name === 'vscode' ? vscode : require(name),
     process, AbortController, AbortSignal, URL, Buffer, setTimeout, clearTimeout, queueMicrotask,
     fetch: async (_url, options) => {
@@ -76,7 +76,7 @@ test('an installed extension symlink uses monorepo dependencies with tools scope
   const vscode = {
     env: { language: 'en', appName: 'Studio' }, version: '1.140.0', extensions: { all: [] },
     Uri: { file: filename => ({ toString: () => pathToFileURL(filename).href }) },
-    workspace: { isTrusted: true, workspaceFolders: [{ uri: { scheme: 'file', fsPath: workdir, toString: () => target.uri }, name: target.name }], getConfiguration: () => ({ get: () => '' }) },
+    workspace: { onDidChangeConfiguration: () => disposable, isTrusted: true, workspaceFolders: [{ uri: { scheme: 'file', fsPath: workdir, toString: () => target.uri }, name: target.name }], getConfiguration: () => ({ get: () => '', inspect: () => ({ defaultValue: 'auto' }) }) },
     window: { activeColorTheme: { kind: 2 } }, ColorThemeKind: { Light: 1, HighContrastLight: 4 },
   };
   const module = { exports: {} };

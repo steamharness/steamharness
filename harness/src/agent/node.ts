@@ -16,7 +16,7 @@ import { HarnessError } from "../workflow/errors";
 import { getProjectConfiguration, assertCurrentProjectConfigurationAccess } from "../configuration";
 import { AGENT_MODELS_CONFIGURATION_KEY, parseAgentModels } from "@steamharness/project-configuration";
 import { createAgentAskRequest, readAgentAskAnswers, readAgentQuestions } from "./ask";
-import { parseAgentPermissionPolicy } from "./permission";
+import { resolveAgentPermissionPolicySetting } from "./permission";
 import {
   createAgentCompactionChunks,
   createAgentErrorChunks,
@@ -673,7 +673,7 @@ class AgentStreamNode extends BaseStreamNode<AgentInput, OutputItemStreamChunk, 
       // the right model rather than being rebuilt on the first `applyConnection`.
       modelAttributes: input.modelAttributes ?? this.options.modelAttributes,
       sessionId: key,
-      permissionPolicy: parseAgentPermissionPolicy(input.permissionPolicy ?? this.options.permissionPolicy),
+      permissionPolicy: resolveAgentPermissionPolicySetting(input.permissionPolicy ?? this.options.permissionPolicy),
     };
 
     return createAgentRuntime({
