@@ -2,7 +2,6 @@
   "projectName": "minimax-speech-t2a",
   "projectType": "workflow",
   "files": [
-    "__tests__/minimax-speech-t2a.test.ts",
     "index.ts",
     "interface.ts",
     "lib/audio.ts",

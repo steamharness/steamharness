@@ -46,7 +46,7 @@ Removing a declaration or visiting another source version retains saved values, 
 
 Writes check `revision` and commit atomically. Changes from another window or the assistant update committed state. Unsaved drafts keep their original version and content, with a conflict message. Refresh and discard the draft before editing again. Failed requests do not partially write data.
 
-Studio, standalone CLI and CLI Web share local user storage. A valid UUID in `package.json.id` binds profiles, custom fields, values and the active selection to the application across windows and installation directories, with automatic updates. Different application IDs remain separate; directories without a valid application ID keep canonical real-path isolation. When no application store exists, first use adopts the current directory's existing profiles. Existing application data takes precedence over legacy values in another directory. Sessions and run state remain independent, and waiting runs retain their original directory-scoped configuration snapshots. Server storage is isolated by project and signed-in account. Accounts with project read access manage their own profiles. Values stay outside source files, source downloads and immutable source versions. Transfer configurations between local and Server storage with import/export.
+Studio, standalone CLI and CLI Web share user-level configuration storage, strictly isolated by `projectId + entryId`. Installations of the same entry share profiles; different entries never overwrite each other. Server also separates accounts. Execution pins a snapshot; edits apply on the next execution and recovery retains the original snapshot. Register the configuration file relative to the entry code root.
 
 ## Import and export
 
@@ -213,3 +213,5 @@ Supplied `configuration` snapshots and resumed runs revalidate the current accou
 Server authorizes the actual authenticated actor and inherited roles, ignoring client roles and tags. Maintainers and above keep official template management. Studio Control uses the same service even with the panel closed; read-only mode additionally rejects writes. This policy does not prevent users from modifying their own source copies.
 
 Supplied and restored run snapshots also enforce official field and JSON-path locks and the current source system-only AI policy. Waiting runs record their verified template and retain its values across upgrades; the current role, fixed mode and model-source restrictions still apply. Omitting or relaxing `agentModelPolicy` cannot enable third-party models.
+
+Configuration APIs, attachments and resource targets carry `entryId`. An internal Workflow `entrypointId` does not change configuration ownership.

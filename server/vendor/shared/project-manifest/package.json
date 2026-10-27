@@ -1,0 +1,16 @@
+{
+  "name": "@steamharness/project-manifest",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "./index.ts",
+  "types": "./index.ts",
+  "exports": {
+    ".": "./index.ts",
+    "./node": "./node.ts"
+  },
+  "dependencies": {
+    "@steamharness/project-types": "workspace:*",
+    "@steamharness/database-spaces": "workspace:*"
+  }
+}

@@ -1,243 +1,36 @@
 ---
 title: "Knowledge Documents"
-description: "Use PersistentValue to manage knowledge base documents markdown your workflow project and maintain isolation between local or server-persisted backends."
+description: "Database knowledge API"
 ---
 
-# Knowledge Documents
+# Database knowledge API
 
-`workflow.listKnowledgeDocuments()`, `workflow.getKnowledgeDocument()`, `workflow.createKnowledgeDocument()`, `workflow.editKnowledgeDocument()`, `workflow.deleteKnowledgeDocument()`, and `workflow.searchKnowledgeDocuments()` manage project Markdown Knowledge documents. Their first argument must be `context.storage.local` or `context.storage.server`. Documents are written to the top-level, current-project `persistentValue` at that location and never fall back to the other location or ordinary KV.
-
-The project's `dataStorage.mode` strictly limits which location can be passed. `local` uses the local PersistentValue directory, `server` uses PostgreSQL data for the same-UUID project, and `both` lets source code choose per call. A forbidden location, missing login/UUID binding, or unsupported host location throws `HarnessError`. Local and server Knowledge data remain independent and are never uploaded, downloaded, merged, or synchronized automatically.
-
-## Signature
+Use `context.databases.get(alias).knowledge` to access an approved space's Markdown knowledge documents. Knowledge and KV share a space identity with separate permissions. Ordinary KV cannot read or modify document, index or attachment keys.
 
 ```ts
-workflow.listKnowledgeDocuments(storage: StorageLocationContext): Promise<KnowledgeDocumentSummaryRecord[]>
-
-workflow.getKnowledgeDocument(
-  storage: StorageLocationContext,
-  documentId: string,
-): Promise<KnowledgeDocument | undefined>
-
-workflow.createKnowledgeDocument(
-  storage: StorageLocationContext,
-  input: { id?: string; title: string; markdown: string },
-): Promise<KnowledgeDocument>
-
-workflow.editKnowledgeDocument(
-  storage: StorageLocationContext,
-  input: { id: string; title?: string; markdown?: string },
-): Promise<KnowledgeDocument>
-
-workflow.deleteKnowledgeDocument(
-  storage: StorageLocationContext,
-  documentId: string,
-): Promise<{ id: string; deleted: boolean }>
-
-workflow.searchKnowledgeDocuments(
-  storage: StorageLocationContext,
-  input: {
-    query: string;
-    documentId?: string;
-    beforeLines?: number;
-    afterLines?: number;
-    maxMatches?: number;
-    pageSize?: number;
-    cursor?: string;
-  },
-): Promise<KnowledgeSearchResultRecord>
-
-workflow.readKnowledgeDocumentLines(
-  storage: StorageLocationContext,
-  input: {
-    documentId: string;
-    startLine: number;
-    endLine: number;
-  },
-): Promise<KnowledgeDocumentLinesResult>
+const knowledge = context.databases.get("data").knowledge;
+await knowledge.createDocument({ id: "guide", title: "Guide", markdown: "# Guide" });
+await knowledge.editDocument({ id: "guide", markdown: "# Updated guide" });
+const page = await knowledge.listDocuments({ pageSize: 20 });
+const document = await knowledge.getDocument("guide");
+const matches = await knowledge.searchDocuments({ query: "guide", pageSize: 20 });
+const lines = await knowledge.readDocumentLines({ documentId: "guide", startLine: 1, endLine: 10 });
+await knowledge.deleteDocument("guide");
 ```
 
-## Data Structures
+Documents contain `id`, `title`, `markdown`, `createdAt` and `updatedAt`. Lists return summaries and pagination cursors; read bodies on demand. Search and line reads preserve line numbers. Document and search index mutations commit in the same space transaction; host locks and CAS keep concurrent updates consistent.
+
+## Attachments
 
 ```ts
-interface KnowledgeDocument {
-  id: string;
-  title: string;
-  markdown: string;
-  createdAt: string;
-  updatedAt: string;
-}
-
-interface KnowledgeDocumentSummaryRecord {
-  id: string;
-  title: string;
-  markdownPreview: string;
-  createdAt: string;
-  updatedAt: string;
-}
-
-interface KnowledgeDocumentPageRecord {
-  items: KnowledgeDocumentSummaryRecord[];
-  nextCursor?: string;
-  hasMore: boolean;
-  total: number;
-}
-
-interface KnowledgeSearchResultRecord {
-  query: string;
-  documentsSearched: number;
-  totalMatches: number;
-  matchesTruncated: boolean;
-  maxMatches: number;
-  pageSize: number;
-  cursor?: string;
-  nextCursor?: string;
-  hasMore: boolean;
-  matches: Array<{
-    documentId: string;
-    title: string;
-    lineNumber: number;
-    line: string;
-    before: Array<{ lineNumber: number; content: string }>;
-    after: Array<{ lineNumber: number; content: string }>;
-  }>;
-}
-
-interface KnowledgeDocumentLinesResult {
-  documentId: string;
-  title: string;
-  startLine: number;
-  endLine: number;
-  totalLines: number;
-  lines: Array<{ lineNumber: number; content: string }>;
-}
+const files = knowledge.files;
+const image = await files.createFile({ name: "image.png", mimeType: "image/png", buffer });
+const resolved = await files.readFile(image.id);
+await files.deleteFile(image.id);
 ```
 
-## Loading behavior
+References include `storage: "database"` and `spaceId`. Create, read, delete and subsequent reads through retained handles check knowledge permissions. Each attachment is limited to 50 MiB. Other approved projects can read the same attachment. Deleting a project preserves space content.
 
-`workflow.listKnowledgeDocuments()` returns only the title, summary, and time, not the full markdown; reads the specified document when you need to display, edit, or read a line range. The host integration can import `listKnowledgeDocumentPage()` from the `steamharness` package to read the summary page per cursor:
+## Failures and recovery
 
-```ts
-import { listKnowledgeDocumentPage } from "steamharness";
-
-const page = await listKnowledgeDocumentPage(
-  context.storage.local,
-  { pageSize: 20 },
-);
-```
-
-This method returns `{ items, total, hasMore, nextCursor? }`, with a default of 20 articles per page and a maximum of 100 articles. The `nextCursor` of the document list is an opaque token. The caller can only pass it back as the next `cursor` as it is, and cannot parse, construct, or replace it with a numeric offset. Both the Server Administration API and shared runtime UI workspaces use these 1 summary pagination modes to avoid blocking list loading with large numbers of documents or large bodies. `markdownPreview` only scans up to 16K characters at the beginning of the body and does not create a complete normalized copy of the multi-MB document; use the get interface when the body is needed. Search results are also returned using the `pageSize`, `cursor`, `hasMore`, and `nextCursor` pagination, but the search cursor still indicates the matching result position.
-
-## storage semantics
-
-All backends use the same PersistentValue key structure:
-
-| scope | key |Content|
-| --- | --- | --- |
-| project | `knowledge.documents` |v2 index metadata: total number of documents, increasing sequence, and first page ID.|
-| project | `knowledge.documents.page.<pageId>` |Up to 128 document summaries sorted by the most recent update, and the next page page ID.|
-| project | `knowledge.documents.locator.<id>` |The page and sequence in which the document is located; the tombstone is retained after deletion.|
-| project | `knowledge.document.<id>` |The body of a single document, which contains the `markdown` field; the tombstone is retained after deletion.|
-
-The Server backend stores these keys in the `storage_kind = persistent_value` domain of PostgreSQL `project_storage`; the local backend stores them in the dedicated directory pointed to by `STEAMHARNESS_PERSISTENT_VALUE_STORE_DIR`. Ordinary KV uses a separate domain and cannot overlap with Knowledge or PersistentValue even when the project, scope, and key match. On Windows, the local backend retries a brief `EPERM` or `EACCES` while creating an exclusive lock file within the lock wait limit, and returns a timeout if it still cannot acquire the lock. The first list reads only metadata and required page blocks, not Markdown bodies or old pages. Deleting a document removes it from the page-block index and writes tombstones for locator and body keys. KV/PersistentValue has no delete primitive, so tombstones remain in the selected backend. The index format is fixed to v2; old single-array indexes are not read or migrated.
-
-A local run using a server PersistentValue connection performs create, edit, and delete as one restricted server-side Knowledge mutation. The server serializes it within the project namespace and commits or rolls back the document index, body, and tombstones in one PostgreSQL transaction, so concurrent writes or one failure cannot leave inconsistent data. Business code should use these helpers instead of writing reserved keys in parallel. A custom PersistentValue backend must provide project-namespace `withLock` or `executeMutation` atomic capability for create, edit, or delete; otherwise the helper refuses the write to prevent concurrent multi-key index overwrites.
-
-## Search
-
-`searchKnowledgeDocuments()` Search by markdown line. When `documentId` is omitted, all documents are found; when passed in, only the specified documents are found. `beforeLines` and `afterLines` control how many rows of context are returned up and down for each match, ranging from 0 to 50. `pageSize` Control the maximum number of matches returned by this page, 200 by default and 1000 by maximum. `cursor` Use the `nextCursor` returned by the previous page. `totalMatches` still records the total number of actual hits, and `hasMore` / `nextCursor` indicates whether there is another page. Full database search reads the markdown body in batches to avoid loading the entire knowledge base into memory at once. `maxMatches` is an old parameter and is still compatible as the size of this page when it is not passed to `pageSize`.
-
-```ts
-const result = await workflow.searchKnowledgeDocuments(context.storage.local, {
-  query: "PersistentValue",
-  beforeLines: 1,
-  afterLines: 1,
-  pageSize: 200,
-});
-
-for (const match of result.matches) {
-  console.log(match.title, match.lineNumber, match.line);
-}
-```
-
-`readKnowledgeDocumentLines()` is used to specify the line range of the document to read, and `startLine` / `endLine` is a 1-based inclusive. A maximum of 1000 lines are read at a time; When the total number of lines in the document is exceeded, `endLine` will be cut to the actual end line, and when `startLine` exceeds the total number of lines, an empty `lines` will be returned.
-
-```ts
-const excerpt = await workflow.readKnowledgeDocumentLines(context.storage.local, {
-  documentId: "runbook",
-  startLine: 120,
-  endLine: 160,
-});
-```
-
-## Error
-
-|Situation|Result|
-| --- | --- |
-| The project has no `dataStorage.mode`, or the declaration forbids the selected location | `HarnessError` is thrown before the user module runs or when the location is accessed. There is no fallback. |
-| The selected local PersistentValue store is unavailable, or server storage lacks login/same-UUID binding | The call throws `HarnessError` and does not write to the other location. |
-|`id` Illegal|Throw `HarnessError`;id must start with a letter or number and can only contain letters, numbers, dots, underscores, and lines.|
-|`title` is empty|Throw `HarnessError`.|
-|`query` is empty|Throw `HarnessError`.|
-|Document list `pageSize` exceeds 1 to 100|Throw `HarnessError`.|
-|Search `pageSize` / `maxMatches` exceeds 1 to 1000|Throw `HarnessError`.|
-|`startLine` / `endLine` Illegal or more than 1000 rows at a time|Throw `HarnessError`.|
-|New Existing Document|Throws `HarnessError`;server management API mapping to 409.|
-|Edit or search for non-existent documents|Throws `HarnessError`;server management API mapping to 404.|
-
-## Example
-
-```ts
-export const projectWithKnowledge = workflow.defineProject<Input, OutputPayload>({
-  name: "knowledge-demo",
-  async run(input, context) {
-    const storage = context.storage.local;
-    const document = await workflow.createKnowledgeDocument(storage, {
-      title: input.title,
-      markdown: input.markdown,
-    });
-
-    const search = await workflow.searchKnowledgeDocuments(storage, {
-      documentId: document.id,
-      query: input.query,
-      beforeLines: 2,
-      afterLines: 2,
-    });
-
-    return workflow.createOutputPayload({
-      items: [
-        workflow.createOutputItem({
-          title: "Knowledge search",
-          contentType: "json",
-          content: search,
-        }),
-      ],
-    });
-  },
-});
-```
-
-## Conversation Example
-
-`workspace/workflow/conversation-knowledge` combines conversation and Knowledge: one conversation ID maps to one document. Each turn is written to `context.conversation`, then the complete transcript is written to an explicit location through `workflow.createKnowledgeDocument(context.storage.local, ...)` or `workflow.editKnowledgeDocument(context.storage.local, ...)`.
-
-On local write, specify the directory for normal KV and the repository separately:
-
-```bash
-STEAMHARNESS_KV_STORE_DIR="$PWD/.workflow-kv" \
-STEAMHARNESS_PERSISTENT_VALUE_STORE_DIR="$PWD/.workflow-persistent-values" \
-steamharness json workspace/workflow/conversation-knowledge \
-  --conversation-id demo-thread \
-  -- --message "Record today's conclusion" --title "Demo conversation"
-```
-
-Append `--dry-run` to preview Markdown without writing PersistentValue. To write server Knowledge, change the project's storage selection to `context.storage.server`, bind its top-level `package.json.id` to an authorized server project UUID, and configure an authenticated Server connection for a local run:
-
-```bash
-steamharness workspace login --server "$STEAMHARNESS_SERVER_URL"
-steamharness json workspace/workflow/conversation-knowledge \
-  --conversation-id demo-thread \
-  -- --message "Record today's conclusion" --title "Demo conversation"
-```
-
-The data from these two runs is not automatically synchronized; even with the same conversation id, the documents are updated locally and on the server, respectively.
+Unbound, pending, incorrectly hosted, revoked or insufficient grants fail without falling back to KV or another host. The UI exposes request, rebind and recovery actions. See [Independent database spaces](/en/concepts/data-storage).

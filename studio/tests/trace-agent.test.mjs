@@ -1,3 +1,4 @@
+const key = project => `${project.uri}#entry=${project.entryId}`;
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { register } from 'tsx/esm/api';
@@ -61,15 +62,15 @@ test('Trace commands retain owner/session identity, scoped errors, pending state
   const binding = store.bind(project, 1, message => sent.push(message));
   const receive = (kind, value) => binding.receive({ type: 'workflow-trace', version: 1, kind, ...value });
   receive('state', { snapshot: fixture.snapshot }); receive('status', { status: 'connected' });
-  store.select(project.uri, { sessionId: 'child' });
+  store.select(key(project), { sessionId: 'child' });
   const action = { type: 'agent', sessionId: 'child', ownerId: 'owner-instance', conversationId: 2, command: { type: 'compact' } };
   assert.equal(store.action({ ...action, sessionId: 'main' }), false); assert.equal(store.action({ ...action, ownerId: 'old' }), false);
   assert.equal(store.action(action), true); assert.equal(store.state().pending, true); assert.equal(store.action(action), false);
   const requestId = sent[0].traceCommand.requestId; assert.equal(sent[0].traceCommand.sessionId, 'child');
   receive('command', { requestId: 'stale', error: 'Ignored' }); assert.equal(store.state().pending, true);
   receive('command', { requestId, error: 'Plan conflict' }); assert.equal(store.state().pending, false); assert.equal(store.state().error, 'Plan conflict');
-  store.select(project.uri, { sessionId: 'main' }); assert.equal(store.state().error, undefined);
-  store.select(project.uri, { sessionId: 'child' }); assert.equal(store.action(action), true);
+  store.select(key(project), { sessionId: 'main' }); assert.equal(store.state().error, undefined);
+  store.select(key(project), { sessionId: 'child' }); assert.equal(store.action(action), true);
   receive('status', { status: 'offline' }); assert.equal(store.state().pending, false); assert.equal(store.action(action), false);
   binding.dispose(); assert.equal(store.state().snapshot.agents.main.history.length, 65);
   const next = store.bind(project, 1, () => {}); assert.equal(store.state().snapshot.agents.main.history.length, 65);
@@ -81,7 +82,7 @@ test('a durable built-in assistant exposes Trace with its project version while 
     manifest: { version: '1.2.3' }, assistant: { standalone: true } };
   const store = new TraceStore(); store.update([]); const binding = store.bind(project, 1, () => {});
   binding.receive({ type: 'workflow-trace', version: 1, kind: 'state', snapshot: fixture.snapshot });
-  assert.equal(store.availableProjects().length, 1); assert.equal(store.selection.projectUri, project.uri);
+  assert.equal(store.availableProjects().length, 1); assert.equal(store.selection.projectUri, key(project));
   assert.equal(store.state().projects[0].version, '1.2.3');
   binding.receive({ type: 'workflow-trace', version: 1, kind: 'open', target: { sessionId: 'main', messageId: 'reply' } });
   assert.equal(store.state().reveal, 1); assert.equal(store.selection.messageId, 'reply'); binding.dispose();

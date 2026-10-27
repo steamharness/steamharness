@@ -1,3 +1,4 @@
+import { createTestResources } from "./entry-test-resources";
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
@@ -6,7 +7,6 @@ import {
   createDisabledProjectTokenUsageContext,
   createOutputItemChunk,
   createOutputNode,
-  createProjectRelatedProjectsContext,
   createUserInputNode,
   HarnessError,
   type NodeContext,
@@ -417,10 +417,7 @@ function createTestProjectContext(
   return {
     config: {},
     providers: {},
-    storage: {
-      local: { kv: createMemoryKVContext(), persistentValue: createMemoryKVContext(), relatedProjects: createProjectRelatedProjectsContext() },
-      server: { kv: createMemoryKVContext(), persistentValue: createMemoryKVContext(), relatedProjects: createProjectRelatedProjectsContext() },
-    },
+    ...createTestResources(),
     conversation: createDisabledProjectConversationContext(),
     tokenUsage: createDisabledProjectTokenUsageContext(),
     userInput,

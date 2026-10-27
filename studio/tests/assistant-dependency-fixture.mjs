@@ -23,7 +23,7 @@ export async function createAssistantDependencyFixture() {
       const message=JSON.parse(line);
       if(message.type==='configure'){
         const manifest=JSON.parse(readFileSync(path.join(message.assistantProjectDir,'package.json'),'utf8'));
-        const project={id:manifest.id,name:'Project Assistant',folderPath:message.assistantProjectDir,projectType:'conversation',fields:[],entrypoints:[],tools:[{name:'skill'}]};
+        const project={id:manifest.id,name:'Project Assistant',folderPath:message.assistantProjectDir,projectType:'conversation',entryId:'main',entryName:'Main',defaultEntry:'main',entries:[{entryId:'main',name:'Main',type:'conversation',root:'.',entry:'index.ts',databases:[]}],databases:[],fields:[],entrypoints:[],tools:[{name:'skill'}]};
         if(process.argv.includes('--inspect')){
           if(manifest.testInspectionExit){console.error('Fixture inspection failed');process.exit(1);}
           const errors=manifest.testInspectionError?[manifest.testInspectionError]:[];
@@ -42,7 +42,7 @@ export async function createAssistantDependencyFixture() {
         server.listen(0,'127.0.0.1',()=>{
           writeFileSync(path.join(recordDir,'assistant.pid'),String(process.pid));
           writeFileSync(path.join(recordDir,'assistant.json'),JSON.stringify({assistant:message.assistant,assistantProjectDir:message.assistantProjectDir,surface:message.surface,harnessPath,args:process.argv.slice(2),studioControl}));
-          console.log(JSON.stringify({type:'ready',protocolVersion:1,hostProtocolVersion:1,accountProtocolVersion:1,assistantProtocolVersion:1,url:'http://127.0.0.1:'+server.address().port+'/#session='+'a'.repeat(64),project,runtime:{harnessVersion:'2.3.4',harnessPath}}));
+          console.log(JSON.stringify({type:'ready',protocolVersion:1,hostProtocolVersion:1,accountProtocolVersion:1,assistantProtocolVersion:1,entriesProtocolVersion:1,databaseSpacesProtocolVersion:1,url:'http://127.0.0.1:'+server.address().port+'/entries/main/#session='+'a'.repeat(64),project,runtime:{harnessVersion:'2.3.4',harnessPath}}));
         });
       }else if(message.type==='close'){input.close();process.stdin.pause();server?.close();}
     });

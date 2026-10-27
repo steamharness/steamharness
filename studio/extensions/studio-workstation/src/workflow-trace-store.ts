@@ -1,4 +1,4 @@
-import { projectVersion, type Project } from './workflow-types';
+import { projectVersion, projectWindowKey, projectDisplayName, type Project } from './workflow-types';
 import type { TracePanelState, TraceSnapshot, TraceSelection, TraceTarget, TraceRun } from './workflow-trace-types';
 import type { TraceAgentAction } from './workflow-agent-types';
 
@@ -28,14 +28,14 @@ export class TraceStore {
   update(projects: Project[], preferred?: Project): void {
     this.projects = projects.filter(project => !project.assistant && ['workflow', 'conversation'].includes(project.projectType));
     for (const [uri, source] of this.sources) {
-      if (!source.project.assistant && !this.projects.some(project => project.uri === uri && project.id === source.project.id)) { this.sources.delete(uri); }
+      if (!source.project.assistant && !this.projects.some(project => projectWindowKey(project) === uri && project.id === source.project.id)) { this.sources.delete(uri); }
     }
-    if (this.preferred !== preferred?.uri) {
-      this.preferred = preferred?.uri;
-      if (this.projects.some(project => project.uri === preferred?.uri)) { this.select(preferred!.uri); }
+    if (this.preferred !== (preferred && projectWindowKey(preferred))) {
+      this.preferred = (preferred && projectWindowKey(preferred));
+      if (this.projects.some(project => projectWindowKey(project) === (preferred && projectWindowKey(preferred)))) { this.select(projectWindowKey(preferred!)); }
     }
-    if (!this.availableProjects().some(project => project.uri === this.selection.projectUri)
-      && this.selection.projectUri !== this.projects[0]?.uri) { this.select(this.projects[0]?.uri); }
+    if (!this.availableProjects().some(project => projectWindowKey(project) === this.selection.projectUri)
+      && this.selection.projectUri !== (this.projects[0] && projectWindowKey(this.projects[0]))) { this.select((this.projects[0] && projectWindowKey(this.projects[0]))); }
   }
   availableProjects(): Project[] { return [...this.projects, ...[...this.assistants].flatMap(uri => this.sources.get(uri)?.project ?? [])]; }
   select(uri?: string, target: TraceTarget = {}): void {
@@ -44,28 +44,28 @@ export class TraceStore {
   }
   bind(project: Project, version: number | undefined, send: (message: unknown) => void) {
     const token = ++this.shared.token;
-    const previous = this.sources.get(project.uri);
+    const previous = this.sources.get(projectWindowKey(project));
     const source: Source = { project, token, send, snapshot: previous?.snapshot, runs: previous?.runs ?? new Map(), pending: new Map(), actionErrors: new Map(),
       requested: new Set(), failed: new Set(), status: version === 1 ? 'connecting' : 'unsupported' };
-    this.sources.set(project.uri, source);
+    this.sources.set(projectWindowKey(project), source);
     ++this.generation;
     return {
       receive: (message: Record<string, any>): boolean => {
-        if (this.sources.get(project.uri)?.token !== token || message.type !== 'workflow-trace' || message.version !== 1) { return false; }
+        if (this.sources.get(projectWindowKey(project))?.token !== token || message.type !== 'workflow-trace' || message.version !== 1) { return false; }
         if (message.kind === 'state') {
           const snapshot = message.snapshot as TraceSnapshot;
-          if (snapshot?.project?.id !== project.id || snapshot.project.projectType !== project.projectType) { return false; }
+          if (snapshot?.project?.id !== project.id || snapshot.project.entryId !== project.entryId || snapshot.project.projectType !== project.projectType) { return false; }
           source.snapshot = snapshot;
           if (project.assistant && snapshot.durable) {
-            this.assistants.add(project.uri);
-            if (!this.selection.projectUri) { this.select(project.uri); }
+            this.assistants.add(projectWindowKey(project));
+            if (!this.selection.projectUri) { this.select(projectWindowKey(project)); }
           }
           for (const run of [snapshot.run, snapshot.occupiedRun]) { if (run) { source.runs.set(run.id, run); } }
           const ids = new Set((snapshot.runs ?? []).map(run => run.id));
           if (snapshot.history && !snapshot.history.query && !snapshot.history.hasMore) {
             for (const id of source.runs.keys()) { if (!ids.has(id) && id !== snapshot.run?.id && id !== snapshot.occupiedRun?.id) { source.runs.delete(id); } }
           }
-          const selectedId = this.selection.projectUri === project.uri ? this.selection.runId : undefined;
+          const selectedId = this.selection.projectUri === projectWindowKey(project) ? this.selection.runId : undefined;
           if (selectedId && !source.runs.has(selectedId) && !source.requested.has(selectedId) && !source.failed.has(selectedId)) { this.request('run', selectedId); }
         } else if (message.kind === 'run') {
           source.requested.delete(String(message.runId));
@@ -83,13 +83,13 @@ export class TraceStore {
           if (source.status !== 'connected') { source.pending.clear(); }
         }
         else if (message.kind === 'open') {
-          if (project.assistant) { this.assistants.add(project.uri); }
-          ++this.reveal; this.select(project.uri, message.target ?? {}); return true;
+          if (project.assistant) { this.assistants.add(projectWindowKey(project)); }
+          ++this.reveal; this.select(projectWindowKey(project), message.target ?? {}); return true;
         }
         return false;
       },
       dispose: () => {
-        if (this.sources.get(project.uri)?.token !== token) { return; }
+        if (this.sources.get(projectWindowKey(project))?.token !== token) { return; }
         source.send = undefined; source.status = 'closed';
         source.pending.clear();
         source.requested.clear();
@@ -98,7 +98,7 @@ export class TraceStore {
           for (const session of source.snapshot.sessions ?? []) { for (const message of session.messages) { if (message.status === 'running') { message.status = 'interrupted'; } } }
           for (const run of source.runs.values()) { if (run.status === 'running') { run.status = 'interrupted'; } }
         }
-        if (project.assistant) { this.assistants.delete(project.uri); this.sources.delete(project.uri); }
+        if (project.assistant) { this.assistants.delete(projectWindowKey(project)); this.sources.delete(projectWindowKey(project)); }
       },
     };
   }
@@ -125,7 +125,7 @@ export class TraceStore {
     const source = this.sources.get(this.selection.projectUri ?? '');
     const sessionId = this.selection.sessionId ?? source?.snapshot?.activeId;
     return { type: 'trace-state', generation: this.generation, reveal: this.reveal,
-      projects: this.availableProjects().map(project => ({ uri: project.uri, name: project.name, projectType: project.projectType,
+      projects: this.availableProjects().map(project => ({ uri: projectWindowKey(project), name: projectDisplayName(project), projectType: project.projectType,
         ...(projectVersion(project) ? { version: projectVersion(project) } : {}) })),
       selection: this.selection, snapshot: source?.snapshot, run: source?.runs.get(this.selection.runId ?? ''),
       status: source?.status ?? 'idle', loading: !!source?.requested.has(this.selection.runId ?? ''),

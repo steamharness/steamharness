@@ -41,9 +41,9 @@ test('startup resends the latest user snapshot and live updates debounce, ignore
           if (!existsSync('release')) return;
           clearInterval(timer);
           server.listen(0, '127.0.0.1', () => console.log(JSON.stringify({ type: 'ready', protocolVersion: 1,
-            hostProtocolVersion: 1, accountProtocolVersion: 1, userSettingsProtocolVersion: 1,
-            url: 'http://127.0.0.1:' + server.address().port + '/#session=' + 'a'.repeat(64),
-            project: { id: 'settings-project', name: 'Settings', projectType: 'conversation' } })));
+            hostProtocolVersion: 1, accountProtocolVersion: 1, entriesProtocolVersion:1,databaseSpacesProtocolVersion:1, userSettingsProtocolVersion: 1,
+            url: 'http://127.0.0.1:' + server.address().port + '/entries/main/#session=' + 'a'.repeat(64),
+            project: { id: 'settings-project', name: 'Settings', projectType: 'conversation',entryId:'main',defaultEntry:'main',entries:[{entryId:'main',name:'Main',type:'conversation',root:'.',entry:'index.ts',databases:[]}],databases:[] } })));
         }, 10);
       }
     });
@@ -58,11 +58,11 @@ test('startup resends the latest user snapshot and live updates debounce, ignore
     }, window: { activeColorTheme: { kind: 1 }, showErrorMessage: message => errors.push(message) } };
   const module = { exports: {} };
   runInNewContext(compiled.outputFiles[0].text, { module, exports: module.exports, require: name => name === 'vscode' ? vscode : require(name),
-    process, AbortController, AbortSignal, URL, setTimeout, clearTimeout, queueMicrotask });
+    process, structuredClone, AbortController, AbortSignal, URL, setTimeout, clearTimeout, queueMicrotask });
   const runtime = module.exports.createProjectRuntime({ extensionUri: { fsPath: directory }, globalStorageUri: { fsPath: path.join(directory, 'storage') } },
     { getConnection: () => undefined, onDidChange: () => ({ dispose() {} }) });
   t.after(() => runtime.dispose());
-  const starting = runtime.start({ id: 'settings-project', folderPath: directory, uri: '', projectType: 'conversation' }, 'editor');
+  const starting = runtime.start({ id: 'settings-project', folderPath: directory, uri: '', projectType: 'conversation',entryId:'main',defaultEntry:'main',entries:[{entryId:'main',name:'Main',type:'conversation',root:'.',entry:'index.ts',databases:[]}],databases:[] }, 'editor');
   const initial = await until(() => readFile(path.join(directory, 'configured.json'), 'utf8').then(JSON.parse).catch(() => undefined), Boolean);
   assert.equal(initial.userSettings.agent.permissionPolicy, 'auto');
   const changed = () => listener({ affectsConfiguration: key => key === 'studio.agent.permissionPolicy' });
@@ -92,7 +92,7 @@ test('startup resends the latest user snapshot and live updates debounce, ignore
   const nextRuntime = module.exports.createProjectRuntime({ extensionUri: { fsPath: directory }, globalStorageUri: { fsPath: path.join(directory, 'storage') } },
     { getConnection: () => undefined, onDidChange: () => ({ dispose() {} }) });
   t.after(() => nextRuntime.dispose());
-  const invalidStartup = nextRuntime.start({ id: 'settings-project', folderPath: directory, uri: '', projectType: 'conversation' }, 'editor');
+  const invalidStartup = nextRuntime.start({ id: 'settings-project', folderPath: directory, uri: '', projectType: 'conversation',entryId:'main',defaultEntry:'main',entries:[{entryId:'main',name:'Main',type:'conversation',root:'.',entry:'index.ts',databases:[]}],databases:[] }, 'editor');
   const rejected = assert.rejects(invalidStartup, /Choose a valid user permission policy/);
   await until(() => readFile(path.join(directory, 'configured.json'), 'utf8').catch(() => undefined), Boolean);
   globalValue = 'invalid'; await writeFile(path.join(directory, 'release'), 'ready');

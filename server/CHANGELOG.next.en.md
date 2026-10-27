@@ -1,5 +1,7 @@
 # Unreleased
 
+- Breaking: project and version APIs return aggregate entries with separate configurations. KV, knowledge, attachments and revisions use independent database spaces with creation/sharing requests, approval, narrowed grants, revocation and credential rotation. Every access is authorized; old project databases and related-project APIs are removed. Server remains a static source host.
+
 - The Server assigns UUIDs when creating and cloning projects and rejects client-selected IDs, preventing registration of arbitrary local IDs. Creating a project does not upload source.
 
 - Fixed local Kanban data access and related revision streams to work from registered project declarations without source uploads or configuration templates. Published targets retain immutable bindings; static previews still require uploaded artifacts.

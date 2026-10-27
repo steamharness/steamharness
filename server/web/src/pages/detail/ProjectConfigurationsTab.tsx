@@ -17,7 +17,7 @@ function fieldValueText(field:ProjectConfigurationField, value:unknown):string {
   return value===undefined?"":field.type==="json"||field.type==="file"||field.multiple?JSON.stringify(value,null,2):String(value);
 }
 
-export function ProjectConfigurationsTab({project}: Pick<DetailPageProps,"project">) {
+export function ProjectConfigurationsTab({project,entryId}: Pick<DetailPageProps,"project"> & {entryId:string}) {
   const {t} = useTranslation("serverWeb");
   const [state,setState] = useState<ProjectConfigurationState>(), [latest,setLatest] = useState<ProjectConfigurationState>();
   const [values,setValues] = useState<Record<string,string>>({}), [setKeys,setSetKeys] = useState<string[]>([]);
@@ -57,7 +57,7 @@ export function ProjectConfigurationsTab({project}: Pick<DetailPageProps,"projec
     const load=async()=>{
       if(reading)return; reading=true;
       try {
-        const result=await apiClient.projectConfigurations(project.id,{action:"get"},target);
+        const result=await apiClient.projectConfigurations(project.id,{action:"get"},target,entryId);
         if(closed)return;
         if(result.errCode!==0||!result.data)throw new Error(result.errMessage);
         accept(result.data as ProjectConfigurationState);
@@ -66,7 +66,7 @@ export function ProjectConfigurationsTab({project}: Pick<DetailPageProps,"projec
     };
     void load(); const poll=setInterval(()=>void load(),2000);
     return()=>{closed=true;scopeRef.current=undefined;clearInterval(poll);};
-  },[project.id,target,retry]);
+  },[project.id,entryId,target,retry]);
   const edit=()=>{dirtyRef.current=true;setDirty(true);};
   const clean=()=>{if(dirtyRef.current||publicationDirtyRef.current){setError(t("configurationDraftFirst"));return false;}return true;};
   const showDetails=(id?:string)=>{
@@ -79,7 +79,7 @@ export function ProjectConfigurationsTab({project}: Pick<DetailPageProps,"projec
     const scope=scopeRef.current;
     busyRef.current=true;setBusy(true);setError("");setSelectingId(call.action==="select"?call.id:undefined);
     try {
-      const result=await apiClient.projectConfigurations(project.id,{...call,revision:state.revision},target);
+      const result=await apiClient.projectConfigurations(project.id,{...call,revision:state.revision},target,entryId);
       if(scope!==scopeRef.current)return;
       if(result.errCode!==0||!result.data)throw new Error(result.errMessage);
       if(call.action==="create"||call.action==="duplicate"){
@@ -109,7 +109,7 @@ export function ProjectConfigurationsTab({project}: Pick<DetailPageProps,"projec
       for(const file of files)validateConfigurationFileSelection(field,{name:file.name,mimeType:file.type||"application/octet-stream",size:file.size});
       const references:ProjectConfigurationFile[]=[];
       for(const file of files) {
-        const result=await apiClient.uploadProjectConfigurationFile(project.id,file,field.name,target);
+        const result=await apiClient.uploadProjectConfigurationFile(project.id,file,field.name,target,entryId);
         if(scope!==scopeRef.current)return;
         if(result.errCode!==0)throw new Error(result.errMessage);
         if(!Array.isArray(result.data)||result.data.length!==1)throw new Error(t("configurationFileInvalid"));
@@ -127,7 +127,7 @@ export function ProjectConfigurationsTab({project}: Pick<DetailPageProps,"projec
     const scope=scopeRef.current;
     busyRef.current=true;setBusy(true);setError("");
     try {
-      const result=await apiClient.projectConfigurations(project.id,{action:"export",id:all?undefined:id},target);
+      const result=await apiClient.projectConfigurations(project.id,{action:"export",id:all?undefined:id},target,entryId);
       if(scope!==scopeRef.current)return;
       if(result.errCode!==0)throw new Error(result.errMessage);
       const url=URL.createObjectURL(new Blob([JSON.stringify(result.data,null,2)],{type:"application/json"}));

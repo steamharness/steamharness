@@ -49,13 +49,13 @@ workflow.runProject<Input, Output>(
 
 ## 上下文复用
 
-子 workflow 默认使用同一个 `storage`、`conversation`、`tokenUsage`、`files`、`providers`、`abortSignal` 和 `nodeHooks`。它不会创建独立 run report；`runProject` 调用本身和子节点事件都会进入父 workflow trace。普通顶层执行入口 `safeRunProject` 直接调用 `workflow.run(input, context)`，不会额外生成 `run-workflow` 包裹节点，因此静态结构和运行时 report 不会在根部多出一个合成节点。
+子 workflow 默认使用同一个 `databases`、`entries`、`conversation`、`tokenUsage`、`files`、`providers`、`abortSignal` 和 `nodeHooks`。它不会创建独立 run report；`runProject` 调用本身和子节点事件都会进入父 workflow trace。普通顶层执行入口 `safeRunProject` 直接调用 `workflow.run(input, context)`，不会额外生成 `run-workflow` 包裹节点，因此静态结构和运行时 report 不会在根部多出一个合成节点。
 
 业务流程可以继续嵌套调用 `runProject()`，但默认总深度上限是 `16`。这个深度只存在于执行 trace，不会生成多级 entrypoint 路径，也不会改变 API、权限或历史记录的入口标识。
 
 `conversationMode: "shared-readonly"` 会让子 workflow 读取父会话快照，但 `appendMessage`、`setValue` 和 `setTitle` 不会写回父会话。推荐由父 workflow 统一追加 user/assistant transcript 和设置标题，避免父子 workflow 重复写入消息。
 
-`conversationMode` 只控制 `context.conversation`。如果子 workflow 会写本地或服务器的 project/conversation KV，推荐同时传入 `kvMode: "isolated"`，让两个位置的 KV key 都写到以子 workflow 名称为前缀的隔离命名空间。该选项只隔离普通 KV，不改变 PersistentValue 或关联项目 KV。
+`conversationMode` 只控制 `context.conversation`。`kvMode: "isolated"` 会在每个数据库 alias 的普通 KV 上加子 workflow 名称前缀，不改变知识库空间或授权。注册入口之间的调用使用 `context.entries.get(entryId)`，由宿主加载目标配置并重新鉴权。
 
 ## 执行记录与输出
 

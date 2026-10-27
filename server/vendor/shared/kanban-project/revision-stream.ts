@@ -1,15 +1,15 @@
-import type { KanbanRelatedProjectRevision } from "./index";
+import type { KanbanDatabaseRevision } from "./index";
 
 export interface KanbanRevisionStreamCallbacks {
   onSnapshot?(event: {
     resolvedTarget: string;
-    revisions: KanbanRelatedProjectRevision[];
+    revisions: KanbanDatabaseRevision[];
   }): void;
-  onRevision?(event: KanbanRelatedProjectRevision): void;
+  onRevision?(event: KanbanDatabaseRevision): void;
   onUnavailable?(): void;
 }
 
-export async function consumeKanbanRelatedProjectRevisionStream(
+export async function consumeKanbanDatabaseRevisionStream(
   stream: ReadableStream<Uint8Array>,
   callbacks: KanbanRevisionStreamCallbacks,
   signal?: AbortSignal,
@@ -78,7 +78,7 @@ function dispatchKanbanRevisionEvent(
   }
   if (event === "snapshot") {
     if (!isRecord(value) || typeof value["resolvedTarget"] !== "string" || !Array.isArray(value["revisions"])) {
-      throw new Error("Kanban related-project revision snapshot is invalid.");
+      throw new Error("Kanban database revision snapshot is invalid.");
     }
     const snapshot = {
       resolvedTarget: value["resolvedTarget"],
@@ -88,14 +88,14 @@ function dispatchKanbanRevisionEvent(
   }
 }
 
-function readKanbanRevision(value: unknown): KanbanRelatedProjectRevision {
+function readKanbanRevision(value: unknown): KanbanDatabaseRevision {
   if (
     !isRecord(value) ||
     typeof value["alias"] !== "string" ||
     typeof value["revision"] !== "string" ||
     value["alias"].trim() === "" ||
     value["revision"].trim() === ""
-  ) throw new Error("Kanban related-project revision event is invalid.");
+  ) throw new Error("Kanban database revision event is invalid.");
   return { alias: value["alias"], revision: value["revision"] };
 }
 

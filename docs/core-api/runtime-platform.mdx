@@ -18,4 +18,4 @@ const platform = workflow.getRuntimePlatform();
 const local = workflow.isCli();
 ```
 
-运行平台不决定数据位置。项目在 `projectInfo.dataStorage.mode` 声明存储位置，并通过 `context.storage.local` 或 `context.storage.server` 显式访问。本地执行可以读写获授权的服务器数据。
+运行平台不决定数据宿主。入口通过 `databases` 显式声明 local 或 server，并通过 `context.databases.get(alias)` 访问获批空间；本地执行也可使用服务器空间。

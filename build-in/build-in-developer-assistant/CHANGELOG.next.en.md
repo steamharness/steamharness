@@ -1,5 +1,7 @@
 # Unreleased
 
+- Breaking: the generator, templates and API references use aggregate entries and independently approved database bindings. Calls use context.entries and storage uses context.databases. Related-project declarations and combined publication locks are removed.
+
 - The permission control now displays the actual user policy and opens permission settings directly, without an extra inheritance choice. Coding tools, prompts, and Studio Control share one settings snapshot. Generator references now cover the user settings API, inheritance precedence, the hostless fallback, and safe session updates.
 
 - Assistant now explicitly uses local storage and its fixed built-in identity. CLI built-in application checks let users use it without creating personal Server projects. History and memory never write to a shared Server project, while Server AI still requires account authorization.
@@ -57,7 +59,6 @@
 
 ### Changes
 
-- Generation declares static project types and publishes source with related project locks without Server execution targets.
 - Remove server environment, execution form and related execution guidance; related entrypoints execute locally with explicit server data access. Upload and publish through the existing CLI commands.
 
 ### New Features
@@ -77,7 +78,6 @@
 - Added a generic Conversation `userInput` configuration covering composer behavior for question and plan-approval requests.
 - Added `/export` exporting every current session record and showing the result in the body.
 - Added `/compact` immediately summarizing actual context with running, completed, or failed states.
-- Added `get_related_projects` querying relation declarations, UUIDs, names, Studio import status, and verified directories.
 - Added reading VS Code workspace state and diagnostics, file navigation, themes, terminals, and views through Studio Control's standard MCP.
 - Added Studio Control credentials staying out of coding shells while tool permissions and Build/Plan approvals stay intact.
 - Added Kanban discovery and invocation of registered page queries, navigation, and viewpoint methods after resolving the configuration and preview instance.
@@ -105,8 +105,6 @@
 - Changed the Kanban generator skill to cover full-screen, phone, tablet, and Conversation previews, reflowing content by iframe size while preserving drafts and uploads.
 - Changed the generator card reference to spell out the `current` target, pin precedence, removal arguments, and preview parameter validation.
 - Changed Kanban project resource cards to default to previewable types and to separate the preview switch from Kanban parameter mode.
-- Changed `dependency-config` to verify `release.dependencies` delivery values and alias matches first.
-- Changed related-project publishing to use the CLI project-group flow to pin versions and source hashes.
 - Changed upload targeting to check the effective server through `workspace status` before uploading.
 - Changed generator guidance to stop treating "do not install dependencies" as absolute when the project root is writable, the package manager runs, and the task needs it.
 - Changed installs to run only `<manager> install`, without editing dependency versions or inventing build scripts, reporting any lockfile change.
@@ -114,7 +112,6 @@
 - Changed the two Desktop tools for login items and updates to stop raising confirmation cards in build mode while plan mode still confirms each call.
 - Changed Core tool approval to stop only plan-mode turns by setting `requiresUserApproval` from the mode of the turn.
 - Changed build mode to still require the matching tool permission for those two tools, refusing disabled tools as before.
-- Changed the capability-index generator to fail instead of listing less when it cannot read a spread member, an empty related-project interface, or a missing context interface.
 - Changed assistant parameters to explicit action declarations: separate Quick menus for system AI and permissions, and an independent Build/Plan Mode switch.
 - Changed the generator skill's `references/param-panels.md` to document action order, group fields, group-local reset, and argument propagation.
 

@@ -2,7 +2,7 @@ import { CONVERSATION_STATE_KEY } from "../../conversation/index";
 import { TOKEN_USAGE_ENTRY_KEY_PREFIX, TOKEN_USAGE_TOTAL_KEY } from "../../token-usage/index";
 import { HarnessError } from "../../workflow/errors";
 import type { NodeContext } from "../../types/context";
-import { selectProjectStorage } from "./storage";
+import { selectDatabase } from "./databases";
 import type { Capability } from "./types";
 
 export const KV_MCP_SERVER_ID = "workflow-kv";
@@ -13,6 +13,7 @@ type KvAction = "get" | "set";
 type KvScope = "project" | "conversation";
 
 interface KvToolArgs {
+  database: string;
   action: KvAction;
   scope: KvScope;
   key: string;
@@ -40,7 +41,7 @@ const RESERVED_KEY_PREFIXES_BY_SCOPE: Readonly<Record<KvScope, readonly string[]
 };
 
 export async function runKvAction(
-  context: Pick<NodeContext, "storage">,
+  context: Pick<NodeContext, "databases">,
   args: KvToolArgs,
 ): Promise<unknown> {
   // Nothing validates the arguments on the way in — an MCP client publishes
@@ -60,7 +61,7 @@ export async function runKvAction(
     });
   }
 
-  const storage = selectProjectStorage(context);
+  const storage = selectDatabase(context, args.database);
   const namespace = args.scope === "project" ? storage.kv : storage.kv.conversation;
   const key = readKey(args.key);
   assertKeyWritable(args.scope, key);
@@ -150,6 +151,7 @@ export const KV_CAPABILITY: Capability = {
   inputSchema: {
     type: "object",
     properties: {
+      database: { type: "string", minLength: 1, description: "The declared database alias." },
       action: { type: "string", enum: ["get", "set"], description: "Read one key, or write one." },
       scope: {
         type: "string",
@@ -159,7 +161,7 @@ export const KV_CAPABILITY: Capability = {
       key: { type: "string", minLength: 1, maxLength: 500 },
       value: { description: 'The JSON value to store; required when action is "set".' },
     },
-    required: ["action", "scope", "key"],
+    required: ["database", "action", "scope", "key"],
   },
   async run(context, args) {
     return runKvAction(context, args as unknown as KvToolArgs);

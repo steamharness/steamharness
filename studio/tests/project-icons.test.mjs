@@ -7,7 +7,8 @@ import { studioProjectIcon } from '../upstream/vscode/src/vs/workbench/common/st
 
 const compiled = await build({ entryPoints: ['extensions/studio-workstation/src/project-icons.ts'], bundle: true, platform: 'node', format: 'cjs', external: ['vscode'], write: false });
 const id = '294b1eec-23fa-42cf-9fd3-2417f71c0570';
-const manifest = (type, identity = id) => JSON.stringify({ id: identity, steamHarness: { projectType: type } });
+const declaration = (type = 'workflow', identity = id) => ({ id: identity, name: 'Example', steamHarness: { defaultEntry: 'main', entries: [{ entryId: 'main', type, name: 'Main', root: '.', entry: type === 'kanban' ? 'index.html' : 'index.ts', databases: [] }] } });
+const manifest = (type, identity = id) => JSON.stringify(declaration(type, identity));
 const executor = type => `throw new Error('Must never execute'); export const executor = steamharness.defineExecutor({ projectType: '${type}' });`;
 class Emitter {
   listeners = new Set();
@@ -52,7 +53,7 @@ function fixture(t) {
   const icons = new module.exports.ProjectIcons(launcher);
   t.after(() => icons.dispose());
   const types = async (...uris) => Object.fromEntries((await icons.resolveMany(uris)).map(result => [result.uri, result.projectType]));
-  return { files, failures, reads, icons, types, launcher, change: name => changed.fire(uri(name)), focus: () => focus.fire({ focused: true }) };
+  return { files, failures, reads, icons, types, launcher, vscode, change: name => changed.fire(uri(name)), focus: () => focus.fire({ focused: true }) };
 }
 
 test('native and extension project icons share the existing template glyphs', () => {
@@ -60,39 +61,43 @@ test('native and extension project icons share the existing template glyphs', ()
   assert.equal(studioProjectIcon('__proto__'), undefined);
 });
 
-test('icons pass nested source declarations to the analyzer without running project code or requiring its dependencies', async t => {
+test('icons read the default registered entry without analyzing or executing project code', async t => {
   const f = fixture(t);
+  f.launcher.analyzeProjectType = () => { throw new Error('Static manifests must not execute an analyzer'); };
   for (const type of ['workflow', 'conversation', 'kanban']) {
-    f.files.set(`file:///${type}/package.json`, manifest(type === 'kanban' ? type : undefined));
+    f.files.set(`file:///${type}/package.json`, manifest(type));
     f.files.set(`file:///${type}/src/main.ts`, executor(type));
   }
   assert.deepEqual(await f.types('file:///workflow', 'file:///conversation', 'file:///kanban'), {
     'file:///workflow': 'workflow', 'file:///conversation': 'conversation', 'file:///kanban': 'kanban',
   });
-  assert.equal(f.reads.some(name => name.startsWith('file:///kanban/') && name.endsWith('.ts')), false);
-  f.files.set('vscode-remote://host/project/package.json', manifest());
-  f.files.set('vscode-remote://host/project/index.ts', executor('conversation'));
+  const aggregate = declaration('workflow');
+  aggregate.steamHarness.entries.push({ entryId: 'chat', type: 'conversation', name: 'Chat', root: 'chat', entry: 'index.ts', databases: [] });
+  aggregate.steamHarness.defaultEntry = 'chat';
+  f.files.set('vscode-remote://host/project/package.json', JSON.stringify(aggregate));
   assert.deepEqual(await f.types('vscode-remote://host/project'), { 'vscode-remote://host/project': 'conversation' });
+  assert.equal(f.reads.some(name => name.endsWith('.ts')), false);
 });
 
 test('static manifest versions appear in recent-project metadata and refresh independently of type', async t => {
   const f = fixture(t);
-  f.files.set('file:///board/package.json', JSON.stringify({ id, version: '1.0.0', steamHarness: { projectType: 'kanban' } }));
+  f.files.set('file:///board/package.json', JSON.stringify({ ...declaration('kanban'), version: '1.0.0' }));
   assert.equal((await f.icons.resolveMany(['file:///board']))[0].version, '1.0.0');
   assert.equal(f.icons.getVersion('file:///board'), '1.0.0');
-  f.files.set('file:///board/package.json', JSON.stringify({ id, version: '1.1.0', steamHarness: { projectType: 'kanban' } }));
+  f.files.set('file:///board/package.json', JSON.stringify({ ...declaration('kanban'), version: '1.1.0' }));
   f.icons.refresh();
   assert.equal((await f.icons.resolveMany(['file:///board']))[0].version, '1.1.0');
 });
 
-test('ordinary folders, broken declarations, misleading strings and conflicting types keep their default icons', async t => {
+test('ordinary folders, broken and old declarations, invalid entries and unsupported schemes keep default icons', async t => {
   const f = fixture(t);
   f.files.set('file:///ordinary/package.json', manifest(undefined, 'not-a-project'));
   f.files.set('file:///ordinary/index.ts', executor('workflow'));
   f.files.set('file:///broken/package.json', '{');
-  f.files.set('file:///text/package.json', manifest());
+  f.files.set('file:///text/package.json', JSON.stringify({ id, name: 'Old declaration', steamHarness: { projectType: 'conversation' } }));
   f.files.set('file:///text/index.ts', '// steamharness.defineExecutor({ projectType: "conversation" })\nconst text = "projectType: workflow";');
-  f.files.set('file:///conflict/package.json', manifest());
+  const duplicate = declaration('workflow'); duplicate.steamHarness.entries.push({ ...duplicate.steamHarness.entries[0], type: 'conversation' });
+  f.files.set('file:///conflict/package.json', JSON.stringify(duplicate));
   f.files.set('file:///conflict/a.ts', executor('workflow'));
   f.files.set('file:///conflict/b.ts', executor('conversation'));
   const uris = ['file:///ordinary', 'file:///broken', 'file:///text', 'file:///conflict', 'file:///missing', 'file:///test.code-workspace', 'https://example.com', 'command:run'];
@@ -102,7 +107,7 @@ test('ordinary folders, broken declarations, misleading strings and conflicting 
 test('project avatars refresh when only projectCard colors change and ignore image URLs', async t => {
   const f = fixture(t), root = 'file:///board';
   const card = { icon: 'database', iconColor: '#112233', iconBackgroundColor: '#aabbcc', iconUrl: 'https://example.com/private.png' };
-  const pkg = { id, steamHarness: { projectType: 'kanban', projectCard: card } };
+  const pkg = declaration('kanban'); pkg.steamHarness.projectCard = card;
   f.files.set(`${root}/package.json`, JSON.stringify(pkg));
   const first = (await f.icons.resolveMany([root]))[0].avatarUrl;
   assert.match(decodeURIComponent(first), /stroke="#112233"/);
@@ -122,22 +127,25 @@ test('parallel requests share reads; refresh preserves the last icon on transien
   assert.equal(f.reads.length, 1);
   f.failures.set(pkg, new Error('Temporarily unavailable')); f.icons.refresh();
   assert.deepEqual(await f.types(root), { [root]: 'kanban' });
-  f.failures.clear(); f.files.set(pkg, manifest()); f.files.set(`${root}/index.ts`, executor('conversation')); f.focus();
+  f.failures.clear(); f.files.set(pkg, manifest('conversation')); f.files.set(`${root}/index.ts`, executor('conversation')); f.focus();
   assert.deepEqual(await f.types(root), { [root]: 'conversation' });
   f.files.delete(pkg); f.change(pkg);
   assert.deepEqual(await f.types(root), { [root]: undefined });
 });
 
-test('stale analysis cannot replace newer declarations and generated/dependency sources are ignored', async t => {
+test('stale manifest reads cannot replace newer entry declarations', async t => {
   const f = fixture(t), root = 'file:///project';
-  f.files.set(`${root}/package.json`, manifest()); f.files.set(`${root}/index.ts`, executor('workflow'));
-  for (const folder of ['node_modules', 'dist', '.git', 'vendor', 'upstream']) { f.files.set(`${root}/${folder}/conflict.ts`, executor('conversation')); }
+  f.files.set(`${root}/package.json`, manifest('workflow'));
   let release, started;
-  const ready = new Promise(resolve => { started = resolve; }), original = f.launcher.analyzeProjectType;
-  f.launcher.analyzeProjectType = async sources => { started(); return new Promise(resolve => { release = () => resolve(original(sources)); }); };
+  const ready = new Promise(resolve => { started = resolve; }), original = f.vscode.workspace.fs.readFile;
+  f.vscode.workspace.fs.readFile = async target => {
+    const previous = await original(target); started();
+    return new Promise(resolve => { release = () => resolve(previous); });
+  };
   const previous = f.types(root); await ready;
-  f.launcher.analyzeProjectType = original; f.files.set(`${root}/index.ts`, executor('conversation')); f.icons.refresh();
+  f.vscode.workspace.fs.readFile = original;
+  f.files.set(`${root}/package.json`, manifest('conversation')); f.icons.refresh();
   assert.deepEqual(await f.types(root), { [root]: 'conversation' }); release(); await previous;
   assert.equal(f.icons.get(root), 'conversation');
-  assert.deepEqual(f.reads.filter(name => name.endsWith('.ts')), [`${root}/index.ts`, `${root}/index.ts`]);
+  assert.deepEqual(f.reads, [`${root}/package.json`, `${root}/package.json`]);
 });

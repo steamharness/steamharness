@@ -1,9 +1,9 @@
+import { createApprovedTestContext } from "../../../test-databases";
 import { beforeAll, describe, expect, it } from "vitest";
 import { installProjectRuntimeGlobal } from "steamharness/runtime-api";
 import {
   createDisabledProjectConversationContext,
   createDisabledProjectTokenUsageContext,
-  createProjectRelatedProjectsContext,
   createProjectToolPermissionContext,
   type KVContext,
 } from "steamharness";
@@ -190,18 +190,7 @@ function createNodeContext(
 ): NodeContext {
   return {
     providers: {},
-    storage: {
-      local: {
-        kv: createMemoryKVContext(),
-        persistentValue: createMemoryKVContext(),
-        relatedProjects: createProjectRelatedProjectsContext(),
-      },
-      server: {
-        kv: createMemoryKVContext(),
-        persistentValue: createMemoryKVContext(),
-        relatedProjects: createProjectRelatedProjectsContext(),
-      },
-    },
+    ...createApprovedTestContext(),
     conversation: createDisabledProjectConversationContext(),
     tokenUsage: createDisabledProjectTokenUsageContext(),
     userInput: {

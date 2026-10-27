@@ -74,12 +74,12 @@ export async function upgradeServerProject(options: Parameters<typeof downloadSe
   }
   let staging: string | undefined, backup: string | undefined;
   let downloaded: Awaited<ReturnType<typeof downloadServerProject>> = [];
-  let originalMoved = false, replacementInstalled = false, committed = false, recoveryFailed = false;
+  let originalMoved = false, replacementInstalled = false, recoveryFailed = false;
   const moved: string[] = [];
   try {
-    // Download and validate the complete project group before touching the open project.
+    // Download and validate the aggregate project before touching the open project.
     downloaded = await downloadServerProject({ ...options, parentDirectory: contains(root, path.resolve(options.parentDirectory)) ? parent : options.parentDirectory });
-    const source = downloaded.find(project => project.role === 'root')!;
+    const source = downloaded[0]!;
     options.signal.throwIfAborted();
     staging = await mkdtemp(path.join(parent, '.studio-upgrade-'));
     const replacement = path.join(staging, 'source');
@@ -115,9 +115,8 @@ export async function upgradeServerProject(options: Parameters<typeof downloadSe
     options.signal.throwIfAborted();
     await rename(replacement, root); replacementInstalled = true;
     options.signal.throwIfAborted();
-    const projects = downloaded.map(project => project.role === 'root' ? { ...project, directory } : project);
+    const projects = downloaded.map(project => ({ ...project, directory }));
     await options.afterReplace(projects);
-    committed = true;
     return { projects, backupDirectory: backup };
   } catch (error) {
     // Rollback ignores cancellation so an interrupted transfer cannot leave the workspace half replaced.
@@ -135,7 +134,7 @@ export async function upgradeServerProject(options: Parameters<typeof downloadSe
     if (!recoveryFailed) {
       if (staging) { await rm(staging, { recursive: true, force: true }).catch(() => undefined); }
       for (const project of downloaded) {
-        if (!committed || project.role === 'root') { await rm(project.directory, { recursive: true, force: true }).catch(() => undefined); }
+        await rm(project.directory, { recursive: true, force: true }).catch(() => undefined);
       }
     }
     await lock.close().catch(() => undefined);

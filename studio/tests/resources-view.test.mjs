@@ -6,7 +6,7 @@ import { createRequire } from 'node:module';
 const require = createRequire(import.meta.url);
 
 const compiled = await build({ entryPoints: ['extensions/studio-workstation/src/workflow-resources-view.ts'], bundle: true, platform: 'node', format: 'cjs', external: ['vscode'], write: false });
-const project = (name, projectType = 'conversation') => ({ id: name, uri: `file:///${name}`, folderPath: `/${name}`, name, projectType });
+const project = (name, projectType = 'conversation') => ({ id: name, uri: `file:///${name}`, folderPath: `/${name}`, name, projectType,entryId:'main',databases:[{alias:'data',host:'local'}] });
 
 function fixture(t, operation = async () => ({ items: [], total: 0, hasMore: false }), connection, register = true) {
   const providers = new Map(), commands = new Map(), views = new Map(), messages = new Map(), receivers = new Map(), calls = [], contextValues = [], copied = [], invalidated = [];
@@ -43,158 +43,49 @@ function fixture(t, operation = async () => ({ items: [], total: 0, hasMore: fal
     accountChanged: (status = 'signed-out', nextConnection) => { connection = nextConnection; accountChanged({ status }); } };
 }
 
-test('resource tabs appear only for detected projects and exclude the standalone assistant', t => {
-  const { provider, state, contextValues } = fixture(t);
-  provider.update([project('conversation'), project('workflow', 'workflow'), project('kanban', 'kanban'), { ...project('assistant'), assistant: { standalone: true } }]);
-  assert.deepEqual(Array.from(state('kv').projects, item => item.name), ['conversation', 'workflow', 'kanban']);
-  assert.equal(contextValues.at(-1)[2], true);
-  provider.update([]); assert.equal(contextValues.at(-1)[2], false); assert.equal(state('knowledge').selected, undefined);
-});
+const key = (project, alias = 'data') => `${project.uri}#entry=${project.entryId}:database=${alias}`;
 
-test('both panels follow the active project and explicit project selection', t => {
-  const { provider, receivers, state } = fixture(t);
-  const projects = [project('first'), project('second')];
-  provider.update(projects, projects[0]);
-  receivers.get('kv')({ type: 'select', projectUri: projects[1].uri });
-  assert.equal(state('knowledge').selected, projects[1].uri);
-  provider.update(projects, projects[0]); assert.equal(state('kv').selected, projects[1].uri);
-  provider.update(projects, projects[1]);
-  provider.update(projects, projects[0]); assert.equal(state('knowledge').selected, projects[0].uri);
+test('resource choices identify each entry and declared alias and exclude the assistant',t=>{
+ const f=fixture(t),a=project('Aggregate'),b={...a,entryId:'other',databases:[{alias:'shared',host:'server'}]};
+ f.provider.update([a,b,{...project('assistant'),assistant:{standalone:true}}]);
+ assert.deepEqual(Array.from(f.state('kv').projects,item=>item.uri),[key(a),key(b,'shared')]);
+ assert.equal(f.contextValues.at(-1)[2],true);f.provider.update([]);assert.equal(f.contextValues.at(-1)[2],false);
 });
-
-test('panel instances keep resource selections and pending requests independent without registering singleton commands', async t => {
-  let finish;
-  const first = fixture(t, () => new Promise(resolve => { finish = resolve; }), undefined, false);
-  const second = fixture(t, undefined, undefined, false);
-  const projects = [project('first'), project('second')];
-  first.provider.update(projects, projects[0]); second.provider.update(projects, projects[0]);
-  await first.send('kv'); const signal = first.calls[0][2];
-  second.receivers.get('kv')({ type: 'select', projectUri: projects[1].uri });
-  first.provider.update(projects, projects[0]); second.provider.update(projects, projects[0]);
-  assert.equal(first.state('kv').selected, projects[0].uri); assert.equal(second.state('kv').selected, projects[1].uri);
-  second.provider.dispose(); assert.equal(signal.aborted, false);
-  finish({ items: [{ key: 'retained' }], total: 1 }); await new Promise(resolve => setImmediate(resolve));
-  assert.equal(first.messages.get('kv').at(-1).value.items[0].key, 'retained');
-  assert.equal(first.commands.has('studio.refreshResources'), false);
+test('active entries and explicit aliases select independently and stable scans preserve selection',t=>{
+ const f=fixture(t),a=project('first'),b=project('second');f.provider.update([a,b],a);
+ f.receivers.get('kv')({type:'select',projectUri:key(b)});assert.equal(f.state('knowledge').selected,key(b));
+ f.provider.update([a,b],a);assert.equal(f.state('kv').selected,key(b));
+ f.provider.update([a,b],b);f.provider.update([a,b],a);assert.equal(f.state('kv').selected,key(a));
 });
-
-test('a foreign server card locates the exact document with the owner runtime and read-only access', async t => {
-  const { provider, state, send, calls, messages } = fixture(t);
-  const owner = project('owner'), remote = { ...project('database'), uri: 'workflow-server:database', folderPath: '' };
-  provider.update([owner], owner);
-  await provider.open('knowledge', remote, { source: 'server', projectId: remote.id, documentId: 'document-b' }, owner);
-  assert.equal(state('knowledge').selected, remote.uri);
-  assert.equal(state('knowledge').focus.documentId, 'document-b'); assert.equal(state('knowledge').readOnly, true);
-  await send('knowledge', { action: 'get', documentId: 'document-b', source: 'local' });
-  assert.equal(calls[0][0], owner); assert.equal(calls[0][1].source, 'server'); assert.equal(calls[0][1].projectId, remote.id);
-  await send('knowledge', { action: 'delete', documentId: 'document-b' });
-  assert.equal(calls.length, 1); assert.match(messages.get('knowledge').at(-1).error, /read-only/);
+test('the host supplies entry, alias and source and rejects untrusted workspace mutations',async t=>{
+ const f=fixture(t),a=project('first');f.provider.update([a],a);
+ await f.send('kv',{action:'list',source:'server',database:'forged'});
+ assert.equal(f.calls[0][0].entryId,'main');assert.equal(f.calls[0][1].source,'local');assert.equal(f.calls[0][1].database,'data');
+ f.vscode.workspace.isTrusted=false;await f.send('kv',{action:'save',key:'x',value:1});
+ assert.equal(f.calls.length,1);assert.match(f.messages.get('kv').at(-1).error,/Trust/);
 });
-
-test('a card for an already opened foreign project remains read-only and own-project navigation restores editing', async t => {
-  const { provider, state, send, calls, messages } = fixture(t);
-  const owner = project('owner'), other = project('other');
-  provider.update([owner, other], owner);
-  await provider.open('knowledge', other, { source: 'local', projectId: other.id, documentId: 'doc' }, owner);
-  assert.equal(state('knowledge').readOnly, true);
-  await send('knowledge', { action: 'save', documentId: 'doc', markdown: 'Changed' });
-  assert.equal(calls.length, 0); assert.match(messages.get('knowledge').at(-1).error, /read-only/);
-  provider.update([{ ...owner }, { ...other }], { ...owner });
-  assert.equal(state('knowledge').readOnly, true);
-  await provider.open('knowledge', other, { source: 'local', projectId: other.id, documentId: 'doc' }, other);
-  assert.equal(state('knowledge').readOnly, false);
-  await send('knowledge', { action: 'save', documentId: 'doc', markdown: 'Changed' });
-  assert.equal(calls.length, 1);
+test('separate resource panel instances keep selections and pending operations independent',async t=>{
+ let finish;const f=fixture(t,()=>new Promise(resolve=>finish=resolve),undefined,false),g=fixture(t,undefined,undefined,false),a=project('first'),b=project('second');
+ f.provider.update([a,b],a);g.provider.update([a,b],a);await f.send('kv');
+ g.receivers.get('kv')({type:'select',projectUri:key(b)});g.provider.dispose();
+ assert.equal(f.calls[0][2].aborted,false);finish({items:[{key:'retained'}],total:1});await new Promise(resolve=>setImmediate(resolve));
+ assert.equal(f.messages.get('kv').at(-1).value.items[0].key,'retained');assert.equal(f.commands.has('studio.refreshResources'),false);
 });
-
-test('an own-project Server card keeps the workspace project and its editable knowledge view', async t => {
-  const { provider, state, send, calls } = fixture(t);
-  const owner = project('owner'), remote = { ...owner, uri: 'workflow-server:owner', folderPath: '' };
-  provider.update([owner], owner);
-  await provider.open('knowledge', remote, { source: 'server', projectId: owner.id, documentId: 'doc' }, owner);
-  assert.equal(state('knowledge').selected, owner.uri);
-  assert.equal(state('knowledge').readOnly, false);
-  await send('knowledge', { action: 'get', documentId: 'doc', source: 'server' });
-  assert.equal(calls[0][0], owner); assert.equal(calls[0][1].source, 'server');
+test('switching entry cancels old work and late replies cannot update the panel',async t=>{
+ let finish;const f=fixture(t,()=>new Promise(resolve=>finish=resolve)),a=project('first'),b=project('second');
+ f.provider.update([a,b],a);await f.send('knowledge');const generation=f.state('knowledge').generation;
+ f.provider.update([a,b],b);assert.equal(f.calls[0][2].aborted,true);finish({items:['stale']});await new Promise(resolve=>setImmediate(resolve));
+ assert.equal(f.messages.get('knowledge').some(message=>message.type==='resources-result'&&message.generation===generation),false);
 });
-
-test('switching to a foreign preview project as the active workspace restores its native resource controls', async t => {
-  const { provider, state } = fixture(t);
-  const owner = project('owner'), other = project('other');
-  provider.update([owner, other], owner);
-  await provider.open('kv', other, { source: 'local', projectId: other.id, key: 'key' }, owner);
-  const generation = state('kv').generation;
-  provider.update([owner, other], other);
-  assert.equal(state('kv').selected, other.uri); assert.equal(state('kv').readOnly, false);
-  assert.ok(state('kv').generation > generation); assert.equal(state('kv').focus, undefined);
+test('stable account checks preserve work while account rotation and logout cancel it',async t=>{
+ const connection={serverUrl:'https://server.test',accessToken:'token'};
+ const f=fixture(t,()=>new Promise(()=>{}),connection),a=project('first');f.provider.update([a],a);await f.send('kv');
+ const signal=f.calls[0][2];f.accountChanged('signed-in',{...connection});f.provider.update([a],a);assert.equal(signal.aborted,false);
+ f.accountChanged('signed-in',{...connection,accessToken:'other'});assert.equal(signal.aborted,true);
+ f.accountChanged();assert.equal(f.state('kv').authenticated,false);
 });
-
-test('late replies and requests for a previously selected project cannot update the current panel', async t => {
-  let finish;
-  const pending = new Promise(resolve => { finish = resolve; });
-  const { provider, state, send, calls, messages } = fixture(t, () => pending);
-  const projects = [project('first'), project('second')]; provider.update(projects, projects[0]);
-  const generation = state('kv').generation;
-  await send('kv'); const signal = calls[0][2];
-  provider.update(projects, projects[1]); assert.equal(signal.aborted, true);
-  finish({ items: [{ title: 'old project data' }] }); await new Promise(resolve => setImmediate(resolve));
-  assert.equal(messages.get('kv').filter(message => message.type === 'resources-result').length, 0);
-  await send('kv', { action: 'delete', key: 'old' }, { generation, projectUri: projects[0].uri });
-  assert.equal(calls.length, 1);
-});
-
-test('the host supplies the view kind and rejects untrusted workspace operations', async t => {
-  const { provider, send, calls, messages, vscode } = fixture(t); provider.update([project('project')]);
-  await send('kv', { action: 'list', kind: 'knowledge' }); assert.equal(calls[0][1].kind, 'kv');
-  vscode.workspace.isTrusted = false;
-  await send('knowledge'); assert.equal(calls.length, 1);
-  assert.match(messages.get('knowledge').at(-1).error, /unavailable/);
-});
-
-test('logout aborts resource work and clears the renderer generation', async t => {
-  const { provider, send, calls, state, accountChanged } = fixture(t, undefined, { serverUrl: 'https://steamharness.test', accessToken: 'test-token' }); provider.update([project('project')]);
-  await send('kv'); const generation = state('kv').generation; accountChanged();
-  assert.equal(calls[0][2].aborted, true); assert.ok(state('kv').generation > generation);
-});
-
-test('repeated account checks and unchanged project scans preserve in-flight resource requests', async t => {
-  let finish;
-  const pending = new Promise(resolve => { finish = resolve; });
-  const connection = { serverUrl: 'https://steamharness.test', accessToken: 'test-token' };
-  const { provider, send, calls, state, messages, accountChanged } = fixture(t, () => pending, connection);
-  const projects = [project('project')]; provider.update(projects, projects[0]);
-  const generation = state('kv').generation;
-  await send('kv');
-  for (const status of ['checking', 'authenticated', 'error', 'authenticated']) { accountChanged(status, { ...connection }); }
-  provider.update(projects.map(item => ({ ...item })), { ...projects[0] });
-  assert.equal(state('kv').generation, generation);
-  assert.equal(calls[0][2].aborted, false);
-  finish({ items: [{ title: 'retained' }] }); await new Promise(resolve => setImmediate(resolve));
-  assert.equal(messages.get('kv').filter(message => message.type === 'resources-result').length, 1);
-});
-
-test('a new account token invalidates both resource panels', t => {
-  const connection = { serverUrl: 'https://steamharness.test', accessToken: 'test-token' };
-  const { provider, state, accountChanged } = fixture(t, undefined, connection); provider.update([project('project')]);
-  const generation = state('kv').generation;
-  accountChanged('authenticated', { ...connection, accessToken: 'other-account' });
-  assert.ok(state('kv').generation > generation);
-  assert.equal(state('kv').generation, state('knowledge').generation);
-});
-
-test('copy uses the VS Code clipboard and ignores a previous project context', async t => {
-  const { provider, send, state, copied } = fixture(t); const projects = [project('first'), project('second')];
-  provider.update(projects, projects[0]); const generation = state('kv').generation;
-  await send('kv', undefined, { type: 'copy', text: '{"value":7}' });
-  provider.update(projects, projects[1]);
-  await send('kv', undefined, { type: 'copy', text: 'stale', generation, projectUri: projects[0].uri });
-  assert.deepEqual(copied, ['{"value":7}']);
-});
-
-test('an unauthorized resource request expires the captured account and refreshes the login state', async t => {
-  const connection = { serverUrl: 'https://steamharness.test', accessToken: 'test-token' };
-  const { provider, send, state, invalidated } = fixture(t, async () => { throw Object.assign(new Error('Expired'), { status: 401 }); }, connection);
-  provider.update([project('project')]); const generation = state('kv').generation;
-  await send('kv');
-  assert.deepEqual([invalidated, state('kv').authenticated, state('kv').generation > generation], [[connection], false, true]);
+test('copy validates the current entry and generation',async t=>{
+ const f=fixture(t),a=project('first');f.provider.update([a],a);
+ await f.receivers.get('kv')({type:'copy',text:'value',projectUri:key(a),generation:f.state('kv').generation});
+ await f.receivers.get('kv')({type:'copy',text:'stale',projectUri:key(a),generation:0});assert.deepEqual(f.copied,['value']);
 });

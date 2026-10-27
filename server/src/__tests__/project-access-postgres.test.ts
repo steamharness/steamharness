@@ -20,7 +20,7 @@ import type { AccessActor } from "@steamharness/project-access";
 import { createDefaultProjectInfo } from "@steamharness/project-info";
 
 const databaseUrl = process.env.STEAMHARNESS_TEST_DATABASE_URL;
-test("PostgreSQL startup initializes access columns on existing account and project tables", {
+test("PostgreSQL startup initializes access columns on 00000000-0000-4000-8000-000000000200 account and project tables", {
   skip: !databaseUrl, timeout: 30_000,
 }, async () => {
   const admin = new pg.Pool({ connectionString: databaseUrl });
@@ -38,8 +38,8 @@ test("PostgreSQL startup initializes access columns on existing account and proj
     await db.init();
     const session = await auth.signInBootstrapAdmin({ email: "admin@init.test", password: "init-test-password" });
     await accounts.upsertUserProfile({ userId: "ordinary", email: "ordinary@init.test" });
-    await pool.query("insert into projects(id,name,project_type,owner_user_id) values('existing','Existing','workflow',$1)", [session.user.userId]);
-    await pool.query("insert into project_members(project_id,user_id,role) values('existing',$1,'owner')", [session.user.userId]);
+    await pool.query("insert into projects(id,name,owner_user_id,entries,default_entry) values('00000000-0000-4000-8000-000000000200','Existing',$1,$2::jsonb,'main')", [session.user.userId,JSON.stringify([{entryId:"main",name:"Main",type:"workflow",root:".",entry:"index.ts",databases:[]}])]);
+    await pool.query("insert into project_members(project_id,user_id,role) values('00000000-0000-4000-8000-000000000200',$1,'owner')", [session.user.userId]);
     // Retired source-download requests are neither read nor migrated into membership requests.
     await pool.query(`create table project_access_requests (
       id text primary key,project_id text not null references projects(id),requester_user_id text not null,
@@ -47,38 +47,38 @@ test("PostgreSQL startup initializes access columns on existing account and proj
       resolved_by_user_id text,resolved_at timestamptz,created_at timestamptz not null,updated_at timestamptz not null);
       create unique index project_access_requests_pending_idx on project_access_requests(project_id,requester_user_id,capability) where status='pending';
       insert into project_access_requests(id,project_id,requester_user_id,capability,reason,status,created_at,updated_at)
-      values('retired','existing','ordinary','source.download','Retired request','pending',now(),now())`);
+      values('retired','00000000-0000-4000-8000-000000000200','ordinary','source.download','Retired request','pending',now(),now())`);
     await pool.query("alter table user_profiles drop column is_system_admin; alter table projects drop column group_id");
     await assert.rejects(auth.signInWithPassword({ email: "admin@init.test", password: "init-test-password" }), /is_system_admin/);
-    await assert.rejects(db.access.resolve("project", "existing", { userId: session.user.userId, isSystemAdmin: false }), /group_id/);
+    await assert.rejects(db.access.resolve("project", "00000000-0000-4000-8000-000000000200", { userId: session.user.userId, isSystemAdmin: false }), /group_id/);
 
     for (let attempt = 0; attempt < 2; attempt++) {
       await accounts.init();
       await db.init();
     }
     assert.equal((await accounts.getUserProfileOrThrow("ordinary")).isSystemAdmin, false);
-    assert.equal((await db.getProject("existing"))?.groupId, null);
-    assert.equal((await db.access.resolve("project", "existing", { userId: session.user.userId, isSystemAdmin: false })).effectiveRole, "owner");
+    assert.equal((await db.getProject("00000000-0000-4000-8000-000000000200"))?.groupId, null);
+    assert.equal((await db.access.resolve("project", "00000000-0000-4000-8000-000000000200", { userId: session.user.userId, isSystemAdmin: false })).effectiveRole, "owner");
     const login = await auth.signInBootstrapAdmin({ email: "admin@init.test", password: "init-test-password" });
     assert.equal((await accounts.getUserProfileOrThrow(login.user.userId)).isSystemAdmin, true);
     assert.equal((await auth.getUserByAccessToken(session.accessToken)).user.userId, login.user.userId);
     const actor = { userId: login.user.userId, isSystemAdmin: false };
     const group = await db.access.createGroup({ name: "Initialized group" }, actor);
-    await db.access.transferProject("existing", group.id, actor);
+    await db.access.transferProject("00000000-0000-4000-8000-000000000200", group.id, actor);
     await accounts.init();
     await db.init();
-    assert.equal((await db.getProject("existing"))?.groupId, group.id);
+    assert.equal((await db.getProject("00000000-0000-4000-8000-000000000200"))?.groupId, group.id);
     assert.equal((await db.listProjects())[0]?.groupId, group.id);
     assert.equal((await accounts.getUserProfileOrThrow(login.user.userId)).isSystemAdmin, true);
     assert.equal((await pool.query("select count(*)::int as count from user_profiles")).rows[0].count, 2);
-    await assert.rejects(pool.query("update projects set group_id='missing' where id='existing'"), /foreign key/);
-    assert.deepEqual(await db.listProjectAccessRequests("existing"), []);
-    assert.equal(await db.getProjectMember("existing", "ordinary"), undefined);
-    const submitted = await db.createProjectAccessRequest({ id: "membership", projectId: "existing", requesterUserId: "ordinary", reason: "Guest access" });
-    const duplicate = await db.createProjectAccessRequest({ id: "duplicate", projectId: "existing", requesterUserId: "ordinary", reason: "Again" });
+    await assert.rejects(pool.query("update projects set group_id='missing' where id='00000000-0000-4000-8000-000000000200'"), /foreign key/);
+    assert.deepEqual(await db.listProjectAccessRequests("00000000-0000-4000-8000-000000000200"), []);
+    assert.equal(await db.getProjectMember("00000000-0000-4000-8000-000000000200", "ordinary"), undefined);
+    const submitted = await db.createProjectAccessRequest({ id: "membership", projectId: "00000000-0000-4000-8000-000000000200", requesterUserId: "ordinary", reason: "Guest access" });
+    const duplicate = await db.createProjectAccessRequest({ id: "duplicate", projectId: "00000000-0000-4000-8000-000000000200", requesterUserId: "ordinary", reason: "Again" });
     assert.equal(duplicate.id, submitted.id);
-    assert.equal((await db.resolveProjectAccessRequest({ projectId: "existing", requestId: submitted.id, status: "approved", actor }))?.status, "approved");
-    assert.equal((await db.getProjectMember("existing", "ordinary"))?.role, "guest");
+    assert.equal((await db.resolveProjectAccessRequest({ projectId: "00000000-0000-4000-8000-000000000200", requestId: submitted.id, status: "approved", actor }))?.status, "approved");
+    assert.equal((await db.getProjectMember("00000000-0000-4000-8000-000000000200", "ordinary"))?.role, "guest");
     assert.equal((await pool.query("select capability,status from project_access_requests where id='retired'")).rows[0].status, "pending");
   } finally {
     await auth.close();
@@ -210,7 +210,7 @@ test(
       await storage.createProject({
         projectId,
         projectName: "Team project",
-        projectType: "workflow",
+        entries:[{entryId:"main",name:"Main",type:"workflow",root:".",entry:"index.ts",databases:[]}],defaultEntry:"main",
         projectInfo: info,
         ownerUserId: bob.userId,
         groupId: leaf.id,
@@ -249,7 +249,7 @@ test(
       await storage.createProject({
         projectId: personal,
         projectName: "Personal",
-        projectType: "workflow",
+        entries:[{entryId:"main",name:"Main",type:"workflow",root:".",entry:"index.ts",databases:[]}],defaultEntry:"main",
         projectInfo: info,
         ownerUserId: dave.userId,
       });
@@ -394,7 +394,7 @@ test(
         name: "Unauthorized rename",
         version: "1.0.0",
         devDependencies: { steamharness: coreVersion },
-        steamHarness: { projectType: "workflow", projectInfo: info },
+        steamHarness: { defaultEntry:"main",entries:[{entryId:"main",name:"Main",type:"workflow",root:".",entry:"index.ts",configuration:"configuration.json",databases:[]}], projectInfo: info },
       };
       await storage.saveDraftFiles({
         projectName: projectId,
@@ -506,45 +506,9 @@ test(
           .status,
         403,
       );
-      assert.equal(
-        (await request("eve", `/projects/${projectId}/kv`)).status,
-        200,
-      );
-      for (const [endpoint, method, body] of [
-        [`/projects/${projectId}/draft/files`, "PUT", { files: [] }],
-        [
-          `/projects/${projectId}/knowledge-documents`,
-          "POST",
-          { title: "Unauthorized", markdown: "write" },
-        ],
-        [
-          `/projects/${projectId}/kanban/bridge`,
-          "POST",
-          {
-            call: {
-              requestId: "bad",
-              operation: "kv.setValue",
-              input: { key: "x", value: 1 },
-            },
-          },
-        ],
-        [
-          "/project-storage",
-          "POST",
-          {
-            projectId,
-            storageKind: "kv",
-            operation: "set",
-            entry: { scope: "project", projectId, key: "x" },
-            value: 1,
-          },
-        ],
-      ] as const)
-        assert.equal(
-          (await request("eve", endpoint, method, body)).status,
-          403,
-          endpoint,
-        );
+      assert.equal((await request("eve", `/projects/${projectId}/kv`)).status,404);
+      assert.equal((await request("eve", `/projects/${projectId}/draft/files`,"PUT",{files:[]})).status,403);
+      assert.equal((await request("eve", `/projects/${projectId}/kanban/bridge`,"POST",{entryId:"main",call:{requestId:"bad",operation:"kv.setValue",input:{database:"data",key:"x",value:1}}})).status,403);
       assert.equal(
         (await request("eve", `/projects/${projectId}/files`, "POST", {}))
           .status,
@@ -642,144 +606,6 @@ test(
           ).status,
           403,
         );
-      // A project relationship never grants its caller a target-project role.
-      const boardId = randomUUID();
-      const boardInfo = {
-        ...info,
-        relatedProjects: [
-          {
-            alias: "records",
-            projectId,
-            grantToRelatedProject: {
-              read: { mode: "all" as const },
-              write: { mode: "all" as const },
-            },
-          },
-        ],
-      };
-      await storage.createProject({
-        projectId: boardId,
-        projectName: "Board",
-        projectType: "kanban",
-        projectInfo: boardInfo,
-        ownerUserId: alice.userId,
-      });
-      await storage.setRelatedProject({
-        projectId: boardId,
-        alias: "records",
-        targetProjectId: projectId,
-        grantToRelatedProject: {
-          read: { mode: "all" },
-          write: { mode: "all" },
-        },
-        updateTarget: true,
-        targetAlias: "board",
-        targetGrantToRelatedProject: {
-          read: { mode: "all" },
-          write: { mode: "all" },
-        },
-      });
-      // The registered project works with local HTML before source upload.
-      assert.equal((await db.getProject(boardId))?.hasDraft, false);
-      assert.equal((await storage.getKanbanRelatedProjectBindings({ projectName: boardId })).relatedProjects[0]?.projectId, projectId);
-      const registeredBridge = async (operation: string, input: Record<string, unknown>) => request('alice', `/projects/${boardId}/kanban/bridge`, 'POST', {
-        call: { requestId: randomUUID(), operation, input },
-      });
-      assert.equal((await registeredBridge('kv.setValue', { key: 'local-board', value: 'without-upload' })).status, 200);
-      const registeredRead = await registeredBridge('kv.getValue', { key: 'local-board' });
-      assert.equal(registeredRead.status, 200); assert.equal((await registeredRead.json()).data, 'without-upload');
-      await db.access.setMember('project', boardId, bob.userId!, 'guest', alice);
-      const guestRead = await request('bob', `/projects/${boardId}/kanban/bridge`, 'POST', { call: { requestId: randomUUID(), operation: 'kv.getValue', input: { key: 'local-board' } } });
-      assert.equal(guestRead.status, 200); assert.equal((await guestRead.json()).data, 'without-upload');
-      assert.equal((await request('bob', `/projects/${boardId}/kanban/bridge`, 'POST', { call: { requestId: randomUUID(), operation: 'kv.setValue', input: { key: 'local-board', value: 'forbidden' } } })).status, 403);
-      assert.equal((await registeredBridge('relatedProject.kv.getValue', { alias: 'records', key: 'record' })).status, 200);
-      assert.equal((await request('alice', `/projects/${boardId}/kanban?target=draft`)).status, 404);
-      const feedAbort = new AbortController();
-      const feed = await fetch(`${base}/api/projects/${boardId}/kanban/related-project-revisions`, { headers: { Authorization: `Bearer ${tokens.bob}` }, signal: AbortSignal.any([feedAbort.signal, AbortSignal.timeout(5_000)]) });
-      assert.equal(feed.status, 200);
-      const reader = feed.body!.getReader(); let snapshot = '';
-      try { while (!snapshot.includes('event: snapshot')) { const next = await reader.read(); if (next.done) break; snapshot += new TextDecoder().decode(next.value); } }
-      finally { feedAbort.abort(); await reader.cancel().catch(() => undefined); }
-      assert.ok(snapshot.includes('records')); assert.equal((await db.getProject(boardId))?.hasDraft, false);
-      const boardPackage = {
-        id: boardId,
-        name: "Board",
-        version: "1.0.0",
-        devDependencies: { steamharness: coreVersion },
-        steamHarness: {
-          projectType: "kanban",
-          projectInfo: boardInfo,
-          kanban: {},
-        },
-      };
-      await storage.saveDraftFiles({
-        projectName: boardId,
-        files: [
-          { path: "package.json", content: JSON.stringify(boardPackage) },
-          {
-            path: "index.html",
-            content: "<!doctype html><title>Board</title>",
-          },
-        ],
-      });
-      await storage.publish({
-        projectName: boardId,
-        createdByUserId: alice.userId,
-      });
-      await db.access.setMember(
-        "project",
-        boardId,
-        eve.userId!,
-        "developer",
-        alice,
-      );
-      const bridge = (operation: string) =>
-        request("eve", `/projects/${boardId}/kanban/bridge`, "POST", {
-          target: "1.0.0",
-          call: {
-            requestId: randomUUID(),
-            operation,
-            input: {
-              alias: "records",
-              key: "record",
-              ...(operation.endsWith("setValue") ? { value: 1 } : {}),
-            },
-          },
-        });
-      assert.equal((await bridge("relatedProject.kv.getValue")).status, 403);
-      const hiddenRelations = await request(
-        "eve",
-        `/projects/${boardId}/related-projects`,
-      );
-      assert.equal(
-        (await hiddenRelations.json()).data.relatedProjects.length,
-        0,
-      );
-      await db.access.setMember(
-        "project",
-        projectId,
-        eve.userId!,
-        "guest",
-        alice,
-      );
-      assert.equal((await bridge("relatedProject.kv.getValue")).status, 200);
-      assert.equal((await bridge("relatedProject.kv.setValue")).status, 403);
-      await db.access.setMember(
-        "project",
-        projectId,
-        eve.userId!,
-        "developer",
-        alice,
-      );
-      assert.equal((await bridge("relatedProject.kv.setValue")).status, 200);
-      await db.access.setMember(
-        "project",
-        projectId,
-        eve.userId!,
-        undefined,
-        alice,
-      );
-      assert.equal((await bridge("relatedProject.kv.getValue")).status, 403);
       await pool.query("update projects set has_draft=false where id=$1", [projectId]);
       await rm(path.join(root, "projects", projectId, "draft"), { recursive: true, force: true });
       for (const name of ["alice", "bob", "carol"]) {

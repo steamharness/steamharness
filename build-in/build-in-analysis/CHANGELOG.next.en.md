@@ -1,5 +1,7 @@
 # Unreleased
 
+- Static analysis runs per registered entry, validating Workflow and Conversation executors and Kanban artifacts independently. Single-type project declarations are removed.
+
 - [Changed] Declare analysis dashboard fields in `configuration.json` and manage actual values through project configurations.
 
 ### New Features

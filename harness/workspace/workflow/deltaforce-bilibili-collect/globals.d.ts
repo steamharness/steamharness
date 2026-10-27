@@ -41,17 +41,7 @@ interface ExecutorContextShape {
 }
 
 interface RuntimeContextShape {
-  storage: {
-    local: {
-      persistentValue: {
-        workflow: {
-          getValue(key: string): Promise<unknown | undefined>;
-          setValue(key: string, value: unknown): Promise<void>;
-          updateValue(key: string, updater: (current: unknown | undefined) => unknown): Promise<unknown>;
-        };
-      };
-    };
-  };
+  databases: import("steamharness").DatabasesContext;
   metadata?: Record<string, unknown>;
   conversation?: {
     conversationId?: string;
@@ -135,15 +125,15 @@ declare const steamharness: {
     output: Output | undefined;
   }>;
   getKnowledgeDocument(
-    storage: RuntimeContextShape["storage"]["local"],
+    storage: import("steamharness").DatabaseContext,
     documentId: string,
   ): Promise<{ id: string } | undefined>;
   createKnowledgeDocument(
-    storage: RuntimeContextShape["storage"]["local"],
+    storage: import("steamharness").DatabaseContext,
     input: { id?: string; title: string; markdown: string },
   ): Promise<unknown>;
   editKnowledgeDocument(
-    storage: RuntimeContextShape["storage"]["local"],
+    storage: import("steamharness").DatabaseContext,
     input: { id: string; title?: string; markdown?: string },
   ): Promise<unknown>;
 };

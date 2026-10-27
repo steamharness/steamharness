@@ -4,7 +4,6 @@ import path from 'node:path';
 import * as vscode from 'vscode';
 import { createStudioControlHandler } from '../extensions/studio-workstation/src/studio-control.ts';
 import { startStudioControlBridge } from '../extensions/studio-workstation/src/studio-control-bridge.ts';
-import { IMPORTED_PROJECTS_KEY } from '../extensions/studio-workstation/src/projects.ts';
 import { prepareStudioControlApplication } from '../extensions/studio-workstation/src/assistant-application.ts';
 import { createProjectRuntime } from '../extensions/studio-workstation/src/workflow-runtime-node.ts';
 
@@ -22,12 +21,11 @@ async function run(context) {
   const outside = path.join(path.dirname(workdir), 'outside');
   const ids = ['294b1eec-23fa-42cf-9fd3-2417f71c0570', '615e6cf6-b40a-456a-8d19-b71c63454c7a'];
   await mkdir(outside, { recursive: true });
-  const manifest = (id, relatedProjects = []) => ({ id, name: 'Control test', steamHarness: { projectInfo: { relatedProjects } } });
-  await writeFile(path.join(workdir, 'package.json'), JSON.stringify(manifest(ids[0], [{ alias: 'notes', projectId: ids[1] }])));
+  const manifest = id => ({ id, name: 'Control test', steamHarness: { defaultEntry:'main', entries:[{entryId:'main',name:'Main',type:'workflow',root:'.',entry:'index.ts',databases:[]}] } });
+  await writeFile(path.join(workdir, 'package.json'), JSON.stringify(manifest(ids[0])));
   await writeFile(path.join(outside, 'package.json'), JSON.stringify(manifest(ids[1])));
   await writeFile(path.join(workdir, 'control.txt'), 'first\nsecond line\n');
   await writeFile(path.join(outside, 'control.txt'), 'external\n');
-  await context.globalState.update(IMPORTED_PROJECTS_KEY, [{ id: ids[1], uri: vscode.Uri.file(outside).toString(), name: 'Notes' }]);
   const studio = vscode.extensions.getExtension('studio.studio-workstation');
   assert.ok(studio, 'The actual Studio extension must be installed.');
   await studio.activate();
@@ -67,7 +65,7 @@ async function run(context) {
   try {
     connection = await connect('auto');
     assert.deepEqual(connection.tools.map(tool => tool.name).sort(),
-      ['studio_state', 'get_related_projects', 'open_file', 'get_diagnostics', 'set_theme', 'open_terminal', 'show_view'].sort());
+      ['get_configurations', 'manage_configurations', 'open_configurations', 'studio_state', 'get_entries', 'open_file', 'get_diagnostics', 'set_theme', 'open_terminal', 'show_view'].sort());
     const opened = await call('open_file', { filePath: 'control.txt', line: 2, column: 4 });
     assert.equal(opened.line, 2); assert.equal(opened.column, 4);
     assert.equal(vscode.window.activeTextEditor.document.uri.fsPath, await realpath(path.join(workdir, 'control.txt')));
@@ -77,14 +75,11 @@ async function run(context) {
     assert.equal(state.vscodeVersion, vscode.version); assert.equal(state.pathAccess, 'all');
     assert.equal(state.activeEditor.filePath, opened.filePath);
     checks.push('studio_state: actual host, editor, themes and auto scope');
-    const related = await call('get_related_projects');
-    assert.equal(related.projectId, ids[0]); assert.equal(related.projectDir, await realpath(workdir));
-    assert.equal(related.relatedProjects[0].imported, true);
-    assert.equal(related.relatedProjects[0].projectDir, await realpath(outside));
-    assert.equal((await call('get_related_projects', { projectDir: outside })).projectId, ids[1]);
-    await writeFile(path.join(outside, 'package.json'), JSON.stringify(manifest(ids[0])));
-    assert.equal((await call('get_related_projects')).relatedProjects[0].imported, false);
-    checks.push('get_related_projects: actual imports and UUID revalidation');
+    const aggregate = await call('get_entries');
+    assert.equal(aggregate.projectId, ids[0]); assert.equal(aggregate.projectDir, await realpath(workdir));
+    assert.equal(aggregate.defaultEntry, 'main'); assert.equal(aggregate.entries[0].entryId, 'main');
+    assert.equal((await call('get_entries', { projectDir: outside })).projectId, ids[1]);
+    checks.push('get_entries: registered aggregate identities and entry metadata');
     const diagnostic = new vscode.Diagnostic(new vscode.Range(1, 2, 1, 5), 'Control diagnostic', vscode.DiagnosticSeverity.Error);
     collection.set(vscode.Uri.file(path.join(workdir, 'control.txt')), [diagnostic]);
     const diagnostics = await call('get_diagnostics', { filePath: 'control.txt' });
@@ -127,7 +122,7 @@ async function run(context) {
       const state = await call('studio_state');
       assert.equal(state.permissionPolicy, policy); assert.equal(state.pathAccess, 'workspace');
       assert.equal((await connection.callTool('open_file', { filePath: external })).isError, true);
-      assert.equal((await connection.callTool('get_related_projects', { projectDir: outside })).isError, true);
+      assert.equal((await connection.callTool('get_entries', { projectDir: outside })).isError, true);
       assert.equal((await connection.callTool('open_terminal', { cwd: outside })).isError, true);
     }
     checks.push('permissions: auto allows external paths, workspace and read-only reject them');

@@ -9,7 +9,6 @@ import type { Launcher } from './workflow-cli-types';
 import type { AccountController } from './workflow-auth';
 import { AuthError, normalizeProjectServerUrl, type Connection } from './workflow-auth-client';
 import { ProjectServerClient, compareProjectVersions, parseServerProjectShareLink, type DownloadedServerProject, type ProjectVersionStatus, type ServerProject, type ServerProjectVersion, type UpdatedServerProject, type VersionsState } from './steamharness-server-projects';
-import { IMPORTED_PROJECTS_KEY, readImportedProjects } from './projects';
 import { getProjectUploadProvider, type ProjectUploadCompletion, type ProjectUploadExtension } from './project-upload-extension';
 
 interface ProjectUploadSession {
@@ -97,7 +96,7 @@ export class VersionsView implements vscode.WebviewViewProvider, vscode.Disposab
   }
 
   update(projects: Project[], preferred?: Project): void {
-    this.localProjects = projects.filter(project => !project.assistant && !project.builtin);
+    this.localProjects = [...new Map(projects.filter(project => !project.assistant && !project.builtin).map(project => [project.uri, project])).values()];
     const signature = JSON.stringify(this.localProjects.map(project => [project.uri, project.id, projectVersion(project)]));
     const projectsChanged = signature !== this.projectSignature;
     this.projectSignature = signature;
@@ -225,18 +224,13 @@ export class VersionsView implements vscode.WebviewViewProvider, vscode.Disposab
         void vscode.window.showInformationMessage(t('No newer server version is available. Local: {0}. Server: {1}.', localVersion ?? t('Not declared'), version));
         return;
       }
-      const isGroupRoot = (): boolean => {
-        const imported = readImportedProjects(this.context.globalState.get(IMPORTED_PROJECTS_KEY)).find(entry => entry.uri === project.uri);
-        return !imported?.downloadRootUri || imported.downloadRootUri === project.uri;
-      };
-      const inPlace = !!this.launcher.upgradeProject && project.uri.startsWith('file:') && vscode.workspace.isTrusted
-        && isGroupRoot();
+      const inPlace = !!this.launcher.upgradeProject && project.uri.startsWith('file:') && vscode.workspace.isTrusted;
       const current = t('Upgrade Current Folder'), separate = t('Download to New Folder');
       const notes = remote.latest.releaseLog?.trim();
       const detail = [t('Local Version: {0}\nServer Version: {1}', localVersion!, version),
         notes ? t('Release Notes\n{0}', notes.length > 1500 ? `${notes.slice(0, 1500)}\u2026` : notes) : '',
         inPlace ? t('Current folder: {0}\nSource files and local edits will be replaced after saving. A source backup is kept beside this folder. Local data, environment files and Git metadata are preserved. Studio sessions that use this project will stop. Stop external processes before continuing.', project.folderPath)
-          : t('This folder cannot be upgraded in place. Download a new copy to preserve its workspace or locked project group.'),
+          : t('This folder cannot be upgraded in place. Download a new copy to preserve its workspace.'),
         t('A new copy is downloaded to a separate versioned folder. The open project is preserved.')].filter(Boolean).join('\n\n');
       const choice = await vscode.window.showWarningMessage(t('Upgrade {0}: {1} \u2192 {2}', project.name, localVersion!, version),
         { modal: true, detail }, ...(inPlace ? [current, separate] : [separate]));
@@ -251,7 +245,6 @@ export class VersionsView implements vscode.WebviewViewProvider, vscode.Disposab
           this.launcher.upgradeProject!(project, version, signal, report, async () => {
             assertAvailable(); signal.throwIfAborted();
             if (!vscode.workspace.isTrusted) { throw new Error(t('Trust the current workspace first.')); }
-            if (!isGroupRoot()) { throw new Error(t('This folder is a locked related project. Download to a new folder instead.')); }
             guard = await this.prepareUpgrade(project, signal);
             assertAvailable(); signal.throwIfAborted();
           }, projects => this.rememberDownload(projects, project.uri)));
@@ -399,7 +392,7 @@ export class VersionsView implements vscode.WebviewViewProvider, vscode.Disposab
     assertAccount();
     const picked = await vscode.window.showQuickPick(projects.map(project => ({
       label: project.name, description: project.latest ?? '',
-      iconPath: vscode.Uri.parse(projectAvatarDataUrl(project.projectCard, project.projectType)), project,
+      iconPath: vscode.Uri.parse(projectAvatarDataUrl(project.projectCard, project.entries[0]?.type ?? 'workflow')), project,
     })), { title: t('Download Project') });
     if (!picked) { return; }
     assertAccount();
@@ -459,7 +452,7 @@ export class VersionsView implements vscode.WebviewViewProvider, vscode.Disposab
     try {
       const downloaded = await this.progress(t('Download {0} version {1}', project.name, version), (signal, report) => this.launcher.downloadProject!(project.id, version, signal, report));
       if (this.disposed) { return; }
-      const root = downloaded.find(entry => entry.role === 'root');
+      const root = downloaded[0];
       if (!root) { throw new Error(t('The server returned an invalid response.')); }
       await this.rememberDownload(downloaded);
       void this.offerOpenFolder(t('Downloaded {0} version {1} to {2}.', root.name, root.version, root.directory), t('Open Project'), root.directory);

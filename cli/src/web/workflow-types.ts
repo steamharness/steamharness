@@ -80,6 +80,12 @@ export interface ParamRequest {
 }
 
 export interface Project extends Parameters {
+  entryId: string;
+  aggregateName: string;
+  entries: import("@steamharness/project-manifest").ProjectEntry[];
+  defaultEntry: string;
+  entryRoot: string;
+  databases: import("@steamharness/database-spaces").DatabaseRequirement[];
   projectCard?: import('@steamharness/project-card-metadata').ProjectCardMetadata;
   id: string;
   uri: string;

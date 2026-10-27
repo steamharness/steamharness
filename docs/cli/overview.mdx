@@ -38,39 +38,10 @@ pnpm exec steamharness workspace health --server http://localhost:7126
 pnpm exec steamharness workspace login --server http://localhost:7126
 pnpm exec steamharness workspace upload hello
 pnpm exec steamharness workspace publish hello --release-log "初始发布"
-pnpm exec steamharness workspace run hello --target latest --message "hello"
 ```
 
 开发环境可以使用本地 server 地址；部署环境建议显式使用正式域名或你的生产端口。
 
-## 配置来源
+## 数据库与入口
 
-| 配置 | 说明 |
-| --- | --- |
-| `STEAMHARNESS_SERVER_URL` | workspace CLI 默认 server 地址。 |
-| `STEAMHARNESS_SERVER_ADMIN_KEY` | workspace CLI 的显式管理员覆盖凭证；自动化或恢复场景可直接作为 Bearer 使用。 |
-| `STEAMHARNESS_REPO_ROOT` | workspace CLI 的项目根目录。未设置时从当前目录向上推导。 |
-| `STEAMHARNESS_CLI_AUTH_DIR` | workspace CLI 保存独立登录态 `workflow-auth.json` 的目录。 |
-| `STEAMHARNESS_KV_STORE_DIR` | `steamharness` 本地运行时 KV store 目录。 |
-| `STEAMHARNESS_PERSISTENT_VALUE_STORE_DIR` | `steamharness` 本地运行时 PersistentValue store 目录，也是本地知识库目录。 |
-| `STEAMHARNESS_FILE_STORE_DIR` | `steamharness` 本地运行时文件 store 目录。 |
-
-`steamharness run/json` 要求项目显式声明 `steamHarness.projectInfo.dataStorage.mode`。`STEAMHARNESS_KV_STORE_DIR` 只控制 `context.storage.local.kv`，`STEAMHARNESS_PERSISTENT_VALUE_STORE_DIR` 只控制 `context.storage.local.persistentValue` 和本地知识库；二者按项目 UUID 隔离且互不回退。`context.storage.server` 使用顶层项目 UUID，并从 `STEAMHARNESS_SERVER_URL` / `STEAMHARNESS_SERVER_ADMIN_KEY` 或 workspace CLI 保存的 `workflow-auth.json` 取得登录连接。`local` 可离线运行，`server` 必须登录并绑定同 UUID，`both` 由源码显式选择位置；两端数据不会自动同步。关联项目目录必须用可重复的 `--related-project alias=/绝对项目目录` 显式传入，CLI 不会扫描父目录或兄弟目录；本地运行时该关系还包含目标项目的知识库与入口调用（按目标项目的授权），服务器位置仅用于数据访问，关联入口仍在本地执行。`context.files.createFile(...)` 仍使用服务器连接写入 server 文件 API；输入附件解析仍由 `STEAMHARNESS_FILE_STORE_DIR` 控制。
-
-项目业务值来自[项目配置](/concepts/project-configuration)，不加载项目 env，也不回退读取进程变量。宿主部署和通信配置由宿主单独管理。
-
-## 输出约定
-
-| 命令族 | 输出 |
-| --- | --- |
-| `steamharness run` | 成功时输出 output node 的内容；失败时输出 JSON 报告到 stderr。 |
-| `steamharness json` | 始终输出完整 JSON 执行报告。 |
-| `steamharness structure` | 输出 workflow 结构 JSON。 |
-| `steamharness mcp` | stdout 专用于 stdio JSON-RPC；项目日志和诊断写入 stderr。 |
-| workspace CLI | 输出 server API response JSON，形如 `{ errCode, errMessage, data }`。 |
-
-## 后续阅读
-
-- 本地运行和结构检查见 [steamharness CLI](/cli/steamharness)。
-- 将本地 Workflow 连接到 AI 客户端见 [steamharness mcp](/cli/steamharness/mcp)。
-- server 上传、发布和下载见 [Server Workspace CLI](/cli/server-workspace)。
+所有本地命令从聚合根读取 entries。使用 `--entry` 选择入口；`check` 默认检查全部入口。数据库通过显式 alias 访问，必须先在 local 或 server 宿主申请、审批与绑定。CLI Web、Studio 共用用户级本地注册表。详见 [CLI](/cli/steamharness) 和 [数据库空间](/concepts/data-storage)。

@@ -22,7 +22,7 @@ describe("Studio Control workflow", () => {
     expect(() => inspectLocalProjectStructure({ projectDir: path.resolve(import.meta.dirname, "..") })).not.toThrow();
     const { executor } = await import("../index");
     expect(executor.entrypoints?.map(entry => entry.id)).toEqual([
-      "get_configurations", "manage_configurations", "open_configurations", "studio_state", "get_related_projects", "open_file", "get_diagnostics", "set_theme", "open_terminal", "show_view",
+      "get_configurations", "manage_configurations", "open_configurations", "studio_state", "get_entries", "open_file", "get_diagnostics", "set_theme", "open_terminal", "show_view",
     ]);
   });
 
@@ -31,9 +31,9 @@ describe("Studio Control workflow", () => {
     ["manage_configurations", {input:JSON.stringify({storage:"server",projectId:"project",target:"latest",call:{action:"create",revision:0}})}, "studio.configurations.manage", {storage:"server",projectId:"project",target:"latest",call:{action:"create",revision:0}}],
     ["open_configurations", {input:JSON.stringify({storage:"local",projectDir:"/workspace"})}, "studio.configurations.open", {storage:"local",projectDir:"/workspace"}],
     ["studio_state", {}, "studio.state.get", {}],
-    ["get_related_projects", {}, "studio.relatedProjects.get", {}],
-    ["get_related_projects", { projectDir: "" }, "studio.relatedProjects.get", {}],
-    ["get_related_projects", { projectDir: " projects/notes " }, "studio.relatedProjects.get", { projectDir: "projects/notes" }],
+    ["get_entries", {}, "studio.entries.get", {}],
+    ["get_entries", { projectDir: "" }, "studio.entries.get", {}],
+    ["get_entries", { projectDir: " projects/notes " }, "studio.entries.get", { projectDir: "projects/notes" }],
     ["open_file", { filePath: " index.ts ", line: "2", column: "3" }, "studio.file.open", { filePath: "index.ts", line: 2, column: 3 }],
     ["get_diagnostics", { filePath: "index.ts" }, "studio.diagnostics.get", { filePath: "index.ts" }],
     ["set_theme", { theme: "Default Dark Modern" }, "studio.theme.set", { theme: "Default Dark Modern" }],
@@ -58,7 +58,7 @@ describe("Studio Control workflow", () => {
 
   it.each([{ projectDir: " " }, { projectDir: [] }])("rejects an invalid explicit project directory %j", async params => {
     const { executor } = await import("../index");
-    const entry = executor.entrypoints?.find(entry => entry.id === "get_related_projects")!;
+    const entry = executor.entrypoints?.find(entry => entry.id === "get_entries")!;
     expect(() => entry.createInput!({ paramValues: params } as never)).toThrow();
   });
 

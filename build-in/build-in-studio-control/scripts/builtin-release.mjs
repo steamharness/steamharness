@@ -18,6 +18,7 @@ import os from "node:os";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 import semver from "semver";
+import { readProjectManifest, projectManifestForDistribution } from "steamharness";
 import { create as createTar, list as listTar } from "tar";
 import { parse as parseYaml, stringify as stringifyYaml } from "yaml";
 import { resolveReleaseMode, resolveVersionReference } from "./release-gate.mjs";
@@ -114,10 +115,7 @@ export async function readBuiltinDefinition(root = repoRoot, options = {}) {
     harness: await readRuntimeComponentVersion(packageJson, "steamharness", root, referenceMode),
     cli: await readRuntimeComponentVersion(packageJson, "@steamharness/cli", root, referenceMode),
   };
-  const dataStorageMode = packageJson?.steamHarness?.projectInfo?.dataStorage?.mode;
-  if (dataStorageMode !== "local" && dataStorageMode !== "server" && dataStorageMode !== "both") {
-    throw new Error("steamHarness.projectInfo.dataStorage.mode must be local, server, or both.");
-  }
+  const manifest = readProjectManifest(packageJson);
   const harnessVersion = semver.parse(components.harness);
   if (harnessVersion?.major === 0 && harnessVersion.minor === 2
       && semver.lt(minDesktopVersion, "0.1.22")) {
@@ -131,7 +129,8 @@ export async function readBuiltinDefinition(root = repoRoot, options = {}) {
     version,
     minDesktopVersion,
     components,
-    dataStorageMode,
+    entries: manifest.entries,
+    defaultEntry: manifest.defaultEntry,
     dependencies,
     channel,
     // A git tag name cannot be reused across channels, so the Alpha channel
@@ -363,6 +362,7 @@ async function buildResource({ definition, platform, arch, outputDir }, dependen
         return !INFRASTRUCTURE_NAMES.has(name) && name !== ".env" && name !== ".env.production";
       },
     });
+    await writeFile(path.join(stagedProject, "package.json"), JSON.stringify(projectManifestForDistribution(definition.packageJson), null, 2) + "\n", "utf8");
     if (definition.artifactKind === "native") {
       await writeFile(path.join(stagedProject, "pnpm-workspace.yaml"), stringifyYaml({
         packages: ["."],

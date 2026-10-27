@@ -15,7 +15,7 @@ export type DeveloperAssistantWorkspaceWarningCode =
   | "project_not_editable"
   | "manifest_invalid";
 
-export type DeveloperAssistantWorkspaceRelation = "related-project" | "assistant-folder";
+export type DeveloperAssistantWorkspaceRelation = "assistant-folder";
 
 export interface DeveloperAssistantWorkspaceRoot {
   target: DeveloperAssistantWorkspaceTargetRef;
@@ -119,7 +119,7 @@ function parseWorkspaceWarning(value: unknown, index: number): DeveloperAssistan
   if (!isWorkspaceWarningCode(value.code)) {
     throw new Error(`workspace manifest warnings[${index}].code is invalid`);
   }
-  if (value.relation !== "related-project" && value.relation !== "assistant-folder") {
+  if (value.relation !== "assistant-folder") {
     throw new Error(`workspace manifest warnings[${index}].relation is invalid`);
   }
   return {

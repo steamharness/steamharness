@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
-import { consumeKanbanRelatedProjectRevisionStream } from "../revision-stream";
+import { consumeKanbanDatabaseRevisionStream } from "../revision-stream";
 
-describe("Kanban related-project revision stream", () => {
+describe("Kanban database-space revision stream", () => {
   it("parses snapshots, revisions, CRLF chunks, and unavailable events", async () => {
     const encoder = new TextEncoder();
     const chunks = [
@@ -12,7 +12,7 @@ describe("Kanban related-project revision stream", () => {
     const onSnapshot = vi.fn();
     const onRevision = vi.fn();
     const onUnavailable = vi.fn();
-    await consumeKanbanRelatedProjectRevisionStream(new ReadableStream({
+    await consumeKanbanDatabaseRevisionStream(new ReadableStream({
       start(controller) {
         for (const chunk of chunks) controller.enqueue(encoder.encode(chunk));
         controller.close();
@@ -29,7 +29,7 @@ describe("Kanban related-project revision stream", () => {
 
   it("rejects malformed revision payloads", async () => {
     const encoder = new TextEncoder();
-    await expect(consumeKanbanRelatedProjectRevisionStream(new ReadableStream({
+    await expect(consumeKanbanDatabaseRevisionStream(new ReadableStream({
       start(controller) {
         controller.enqueue(encoder.encode("event: revision\ndata: {\"alias\":\"stocks\"}\n\n"));
         controller.close();
@@ -40,7 +40,7 @@ describe("Kanban related-project revision stream", () => {
   it("dispatches the final event when the stream closes without an empty line", async () => {
     const encoder = new TextEncoder();
     const onRevision = vi.fn();
-    await consumeKanbanRelatedProjectRevisionStream(new ReadableStream({
+    await consumeKanbanDatabaseRevisionStream(new ReadableStream({
       start(controller) {
         controller.enqueue(encoder.encode(
           "event: revision\ndata: {\"alias\":\"stocks\",\"revision\":\"final\"}",
@@ -58,7 +58,7 @@ describe("Kanban related-project revision stream", () => {
     const stream = new ReadableStream<Uint8Array>({
       cancel,
     });
-    const consuming = consumeKanbanRelatedProjectRevisionStream(stream, {}, controller.signal);
+    const consuming = consumeKanbanDatabaseRevisionStream(stream, {}, controller.signal);
 
     controller.abort(new Error("workspace changed"));
     await expect(consuming).resolves.toBeUndefined();

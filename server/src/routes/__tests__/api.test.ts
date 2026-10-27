@@ -12,55 +12,6 @@ import type { AuditEventPage, UserProfileRecord } from "../../account-db";
 import { PROJECT_CARD_IMAGE_MAX_BYTES, Storage } from "../../storage";
 import type { KVEntryDetail, KVEntryPage, KnowledgeDocumentLinesRecord, KnowledgeDocumentListItem, KnowledgeDocumentPageRecord, KnowledgeDocumentRecord, KnowledgeDocumentSearchResult, TokenUsageDetail, TokenUsagePage } from "../../storage";
 import { STEAMHARNESS_PROJECT_TYPES } from "@steamharness/project-types";
-import type { RelatedProject, RelatedProjectKVGrant } from "@steamharness/project-info";
-
-test("Kanban file upload accepts images above the ordinary JSON limit without requiring preview artifacts", async () => {
-  const bytes = Buffer.alloc(8 * 1024 * 1024, 0xff);
-  let uploaded = false;
-  const storage = createStorageStub({
-    getKanbanWorkspace: async () => { throw new Error("Preview source has not been uploaded."); },
-    saveManagedFiles: async (options) => {
-      assert.equal(options.projectName, "demo");
-      assert.deepEqual(options.files[0]!.buffer, bytes);
-      uploaded = true;
-      return [{ id: "wf_abc123", name: "map.png", mimeType: "image/png", size: bytes.length, kind: "image", storage: "server", projectId: "demo", createdAt: "2026-10-08T00:00:00Z" }];
-    },
-  });
-  const server = await listen(storage, createApiKeyPrincipal("desktop"));
-  try {
-    const response = await fetchJson(server.url("/api/projects/demo/kanban/bridge"), {
-      method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ call: { requestId: "map", operation: "files.createFile", input: { name: "map.png", mimeType: "image/png", base64: bytes.toString("base64") } } }),
-    });
-    assert.equal(response.errCode, 0);
-    assert.equal(uploaded, true);
-    assert.equal((response.data as { storage: string }).storage, "server");
-  } finally {
-    await server.close();
-  }
-});
-
-test('Kanban data access uses registered project declarations without reading source or configurations', async () => {
-  const writes: unknown[] = [];
-  const storage = createStorageStub({
-    getKanbanWorkspace: async () => { throw new Error('Source and configuration templates are not uploaded.'); },
-    getKanbanRelatedProjectBindings: async options => {
-      assert.deepEqual(options, { projectName: 'demo', target: 'draft' }); return { resolvedTarget: 'draft', relatedProjects: [] };
-    },
-    setProjectStorageValue: async input => { writes.push(input); return { ok: true }; },
-    getProjectStorageValue: async () => ({ exists: true, value: 'registered-only' }),
-  });
-  const server = await listen(storage, createApiKeyPrincipal('desktop'));
-  try {
-    for (const operation of ['kv.setValue', 'kv.getValue']) {
-      const response = await fetchJson(server.url('/api/projects/demo/kanban/bridge'), { method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ call: { requestId: operation, operation, input: { key: 'board', ...(operation === 'kv.setValue' ? { value: 'registered-only' } : {}) } } }) });
-      assert.equal(response.errCode, 0);
-      if (operation === 'kv.getValue') assert.equal(response.data, 'registered-only');
-    }
-    assert.deepEqual(writes, [{ storageKind: 'kv', scope: 'project', projectId: 'demo', key: 'board', value: 'registered-only', source: { projectId: 'demo' } }]);
-  } finally { await server.close(); }
-});
 
 test("configuration file uploads persist exact raw bytes in the authenticated project without a conversation", async () => {
   const bytes=Buffer.from([0,137,255,13,10]), writes:unknown[]=[];
@@ -83,7 +34,7 @@ test("Kanban workspace issues a short-lived preview capability for Bearer-authen
     getKanbanWorkspace: async (options) => {
       assert.deepEqual(options, {
         projectName: "demo",
-        target: "draft",
+        entryId:"board",target: "draft",
         actorId: "user-1",
       });
       return {
@@ -93,14 +44,14 @@ test("Kanban workspace issues a short-lived preview capability for Bearer-authen
         resolvedTarget: "draft",
         artifactDir: "dist",
         entry: "pages/board view.htm",
-        relatedProjects: [],
-        configurations: [],
+
+        entryId:"board",databases:[],configurations: [],
       };
     },
     issueKanbanPreviewCapability: async (options) => {
       assert.deepEqual(options, {
         projectName: "demo",
-        target: "draft",
+        entryId:"board",target: "draft",
         actorId: "user-1",
       });
       return {
@@ -113,7 +64,7 @@ test("Kanban workspace issues a short-lived preview capability for Bearer-authen
   const server = await listen(storage, createApiKeyPrincipal("desktop"));
 
   try {
-    const response = await fetchJson(server.url("/api/projects/demo/kanban?target=draft"));
+    const response = await fetchJson(server.url("/api/projects/demo/kanban?entryId=board&target=draft"));
 
     assert.equal(response.errCode, 0);
     const preview = (response.data as { preview?: { url?: string; expiresAt?: string } }).preview;
@@ -123,563 +74,6 @@ test("Kanban workspace issues a short-lived preview capability for Bearer-authen
       /^\/api\/projects\/demo\/kanban\/previews\/preview-capability\/[A-Za-z0-9_-]+\/draft\/pages\/board%20view\.htm$/,
     );
   } finally {
-    await server.close();
-  }
-});
-
-test("Kanban Studio bridge fixes KV access to the authenticated project scope", async () => {
-  const storage = createStorageStub({
-    getKanbanRelatedProjectBindings: async (options) => {
-      assert.deepEqual(options, {
-        projectName: "demo",
-        target: "draft",
-      });
-      return {
-        projectId: "demo",
-        projectName: "Demo",
-        target: "draft",
-        resolvedTarget: "draft",
-        artifactDir: ".",
-        entry: "index.html",
-        relatedProjects: [],
-        configurations: [],
-      };
-    },
-    getProjectStorageValue: async (options) => {
-      assert.deepEqual(options, {
-        storageKind: "kv",
-        scope: "project",
-        projectId: "demo",
-        key: "board",
-      });
-      return { exists: true, value: { version: 1 }, revision: "2" };
-    },
-  });
-  const server = await listen(storage, createApiKeyPrincipal("desktop"));
-
-  try {
-    const response = await fetchJson(server.url("/api/projects/demo/kanban/bridge"), {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        target: "draft",
-        call: { requestId: "request-1", operation: "kv.getValue", input: { key: "board" } },
-      }),
-    });
-
-    assert.equal(response.errCode, 0);
-    assert.deepEqual(response.data, { version: 1 });
-  } finally {
-    await server.close();
-  }
-});
-
-test("Kanban Studio bridge reads a confirmed related project's KV through its alias", async () => {
-  const sourceProjectId = "f4ee23d7-abbb-4ba3-8baf-75b7c6c0b964";
-  const accessChecks: string[] = [];
-  const storage = createStorageStub({
-    getKanbanRelatedProjectBindings: async () => ({
-      projectId: "demo",
-      projectName: "Demo",
-      target: "draft",
-      resolvedTarget: "draft",
-      artifactDir: ".",
-      entry: "index.html",
-      relatedProjects: [createRelatedProject(sourceProjectId)],
-      configurations: [],
-    }),
-    resolveKanbanRelatedProject: async (options) => {
-      assert.equal(options.target, "draft");
-      assert.equal(options.alias, "stocks");
-      return createRelatedProject(sourceProjectId);
-    },
-    resolveRelatedProjectKVAccess: async (options) => {
-      assert.deepEqual(options, {
-        consumerProjectId: "demo",
-        alias: "stocks",
-        key: "stock-database.v3:catalog",
-        operation: "read",
-      });
-      return { targetProjectId: sourceProjectId };
-    },
-    getProjectAccessSummary: async (projectId, userId) => {
-      accessChecks.push(projectId);
-      return {
-        projectId,
-        projectName: projectId,
-        visibility: "private",
-        ownerUserId: userId,
-        member: userId ? {
-          projectId,
-          userId,
-          role: "owner",
-          createdAt: "2026-08-03T00:00:00.000Z",
-        } : undefined,
-      };
-    },
-    getProjectStorageValue: async (options) => {
-      assert.deepEqual(options, {
-        storageKind: "kv",
-        scope: "project",
-        projectId: sourceProjectId,
-        key: "stock-database.v3:catalog",
-      });
-      return { exists: true, value: { schemaVersion: 3 } };
-    },
-  });
-  const server = await listen(storage, createApiKeyPrincipal("desktop"));
-
-  try {
-    const response = await fetchJson(server.url("/api/projects/demo/kanban/bridge"), {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        target: "draft",
-        call: {
-          requestId: "source-read",
-          operation: "relatedProject.kv.getValue",
-          input: { alias: "stocks", key: "stock-database.v3:catalog" },
-        },
-      }),
-    });
-    assert.equal(response.errCode, 0);
-    assert.deepEqual(response.data, { schemaVersion: 3 });
-    assert.ok(accessChecks.includes(sourceProjectId));
-  } finally {
-    await server.close();
-  }
-});
-
-test("Kanban Studio bridge applies related-project grant revocation immediately", async () => {
-  const sourceProjectId = "00000000-0000-4000-8000-000000000302";
-  let grantActive = true;
-  const storage = createStorageStub({
-    getKanbanRelatedProjectBindings: async () => ({
-      projectId: "demo",
-      projectName: "Demo",
-      target: "1.0.0",
-      resolvedTarget: "1.0.0",
-      artifactDir: ".",
-      entry: "index.html",
-      relatedProjects: [createRelatedProject(sourceProjectId)],
-      configurations: [],
-    }),
-    resolveKanbanRelatedProject: async () => createRelatedProject(sourceProjectId),
-    getProjectAccessSummary: async (projectId) => ({
-      projectId,
-      projectName: projectId,
-      visibility: projectId === "demo" ? "public" : "private",
-      ownerUserId: "owner-1",
-      member: projectId === "demo" ? undefined : {projectId,userId:"viewer-1",role:"guest",createdAt:"2026-10-22T00:00:00Z"},
-    }),
-    resolveRelatedProjectKVAccess: async (options) => {
-      assert.deepEqual(options, {
-        consumerProjectId: "demo",
-        alias: "stocks",
-        key: "stock-database.v3:catalog",
-        operation: "read",
-      });
-      if (!grantActive) throw new HttpError(403, 403, "Related project KV access is not granted for this key.");
-      return { targetProjectId: sourceProjectId };
-    },
-    getProjectStorageValue: async () => ({ exists: true, value: { schemaVersion: 3 } }),
-  });
-  const server = await listen(
-    storage,
-    createPrincipal(false, { userId: "viewer-1" }),
-  );
-  const request = () => fetch(server.url("/api/projects/demo/kanban/bridge"), {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      target: "1.0.0",
-      call: {
-        requestId: "source-read",
-        operation: "relatedProject.kv.getValue",
-        input: { alias: "stocks", key: "stock-database.v3:catalog" },
-      },
-    }),
-  });
-
-  try {
-    const allowed = await request();
-    assert.equal(allowed.status, 200);
-    assert.deepEqual(((await allowed.json()) as { data: unknown }).data, { schemaVersion: 3 });
-
-    grantActive = false;
-    const revoked = await request();
-    const payload = await revoked.json() as { errMessage: string };
-    assert.equal(revoked.status, 403);
-    assert.equal(payload.errMessage, "Related project KV access is not granted for this key.");
-  } finally {
-    await server.close();
-  }
-});
-
-test("Kanban Studio bridge rejects operations outside the public whitelist", async () => {
-  let storageRead = false;
-  const storage = createStorageStub({
-    getKanbanRelatedProjectBindings: async () => ({
-      projectId: "demo",
-      projectName: "Demo",
-      target: "draft",
-      resolvedTarget: "draft",
-      artifactDir: ".",
-      entry: "index.html",
-      relatedProjects: [],
-      configurations: [],
-    }),
-    getProjectStorageValue: async () => {
-      storageRead = true;
-      return { exists: false };
-    },
-  });
-  const server = await listen(storage, createApiKeyPrincipal("desktop"));
-
-  try {
-    const response = await fetch(server.url("/api/projects/demo/kanban/bridge"), {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        target: "draft",
-        call: { requestId: "request-1", operation: "kv.deleteValue", input: { key: "board" } },
-      }),
-    });
-    const payload = await response.json() as { errCode: number; errMessage: string };
-
-    assert.equal(response.status, 400);
-    assert.equal(payload.errCode, 400);
-    assert.match(payload.errMessage, /invalid/i);
-    assert.equal(storageRead, false);
-  } finally {
-    await server.close();
-  }
-});
-
-test("Kanban Studio bridge allows project readers to perform read-only operations", async () => {
-  let workspaceRead = false;
-  const storage = createStorageStub({
-    getProjectAccessSummary: async (projectId) => ({
-      projectId,
-      projectName: projectId,
-      visibility: "public",
-      ownerUserId: "owner-1",
-    }),
-    getKanbanRelatedProjectBindings: async () => {
-      workspaceRead = true;
-      return {
-        projectId: "demo",
-        projectName: "Demo",
-        target: "latest",
-        resolvedTarget: "1.0.0",
-        artifactDir: ".",
-        entry: "index.html",
-        relatedProjects: [],
-        configurations: [],
-      };
-    },
-  });
-  const server = await listen(storage, createPrincipal(false, { userId: "viewer-1" }));
-
-  try {
-    const response = await fetch(server.url("/api/projects/demo/kanban/bridge"), {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        target: "latest",
-        call: { requestId: "request-1", operation: "kv.getValue", input: { key: "board" } },
-      }),
-    });
-    const payload = await response.json() as { errCode: number };
-
-    assert.equal(response.status, 200);
-    assert.equal(payload.errCode, 0);
-    assert.equal(workspaceRead, true);
-  } finally {
-    await server.close();
-  }
-});
-
-test("Kanban file mutations are denied to a project reader before accessing file storage", async () => {
-  let touched = false;
-  const storage = createStorageStub({
-    getProjectAccessSummary: async (projectId) => ({ projectId, projectName: projectId, visibility: "public", ownerUserId: "owner-1" }),
-    saveManagedFiles: async () => { touched = true; return []; },
-    deleteManagedFile: async (id) => { touched = true; return { id }; },
-    getManagedFile: async () => { touched = true; throw new Error("Unexpected file access."); },
-  });
-  const server = await listen(storage, createPrincipal(false, { userId: "viewer-1" }));
-  try {
-    for (const [operation, input] of [
-      ["files.createFile", { name: "map.png", base64: "AP8=" }],
-      ["files.deleteFile", { fileId: "wf_abc123" }],
-    ]) {
-      const response = await fetch(server.url("/api/projects/demo/kanban/bridge"), {
-        method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ call: { requestId: "write", operation, input } }),
-      });
-      assert.equal(response.status, 403);
-    }
-    assert.equal(touched, false);
-  } finally {
-    await server.close();
-  }
-});
-
-test("Kanban revision stream releases a subscription when the client disconnects during setup", { timeout: 10_000 }, async () => {
-  const subscriptionStarted = createDeferred<void>();
-  const subscriptionReady = createDeferred<() => Promise<void>>();
-  const subscriptionReleased = createDeferred<void>();
-  const sourceProjectId = "00000000-0000-4000-8000-000000000301";
-  const storage = createStorageStub({
-    getKanbanRelatedProjectBindings: async () => ({
-      resolvedTarget: "1.0.0",
-      relatedProjects: [createRelatedProject(sourceProjectId)],
-    }),
-    resolveConfirmedRelatedProject: async () => createRelatedProjectAccess(sourceProjectId),
-    subscribeProjectStorageRevisions: async () => {
-      subscriptionStarted.resolve(undefined);
-      return subscriptionReady.promise;
-    },
-    getProjectStorageRevision: async () => "1",
-  });
-  const server = await listen(storage);
-  const controller = new AbortController();
-
-  try {
-    const response = await fetch(server.url("/api/projects/demo/kanban/related-project-revisions?target=1.0.0"), {
-      signal: controller.signal,
-    });
-    assert.equal(response.status, 200);
-    await subscriptionStarted.promise;
-    controller.abort();
-    await new Promise<void>((resolve) => setImmediate(resolve));
-    subscriptionReady.resolve(async () => {
-      subscriptionReleased.resolve(undefined);
-    });
-    await subscriptionReleased.promise;
-  } finally {
-    controller.abort();
-    await server.close();
-  }
-});
-
-test("Kanban revision stream reports a safe unavailable event when subscription setup fails", async () => {
-  const sourceProjectId = "00000000-0000-4000-8000-000000000301";
-  const storage = createStorageStub({
-    getKanbanRelatedProjectBindings: async () => ({
-      resolvedTarget: "1.0.0",
-      relatedProjects: [createRelatedProject(sourceProjectId)],
-    }),
-    resolveConfirmedRelatedProject: async () => createRelatedProjectAccess(sourceProjectId),
-    subscribeProjectStorageRevisions: async () => {
-      throw new Error("database connection details must stay private");
-    },
-  });
-  const server = await listen(storage);
-
-  try {
-    const response = await fetch(server.url(
-      "/api/projects/demo/kanban/related-project-revisions?target=1.0.0",
-    ));
-    const body = await response.text();
-    assert.equal(response.status, 200);
-    assert.match(body, /event: unavailable/);
-    assert.match(body, /Kanban related project is unavailable/);
-    assert.doesNotMatch(body, /database connection details/);
-  } finally {
-    await server.close();
-  }
-});
-
-test("Kanban revision stream does not repeat a revision already included in its snapshot", async () => {
-  const sourceProjectId = "00000000-0000-4000-8000-000000000301";
-  let bindingsAvailable = true;
-  const storage = createStorageStub({
-    getKanbanRelatedProjectBindings: async () => {
-      if (!bindingsAvailable) throw new Error("binding revoked");
-      return {
-        resolvedTarget: "1.0.0",
-        relatedProjects: [createRelatedProject(sourceProjectId)],
-      };
-    },
-    resolveConfirmedRelatedProject: async () => createRelatedProjectAccess(sourceProjectId),
-    subscribeProjectStorageRevisions: async (listener) => {
-      listener({ projectId: sourceProjectId, revision: "2" });
-      setImmediate(() => {
-        bindingsAvailable = false;
-        listener({ projectId: sourceProjectId, revision: "3" });
-      });
-      return async () => undefined;
-    },
-    getProjectStorageRevision: async () => "1",
-  });
-  const server = await listen(storage);
-
-  try {
-    const response = await fetch(server.url(
-      "/api/projects/demo/kanban/related-project-revisions?target=1.0.0",
-    ));
-    const body = await response.text();
-    assert.match(body, /event: snapshot/);
-    assert.match(body, /"alias":"stocks","revision":"2"/);
-    assert.doesNotMatch(body, /event: revision\ndata: \{"alias":"stocks","revision":"2"\}/);
-    assert.match(body, /event: unavailable/);
-  } finally {
-    await server.close();
-  }
-});
-
-test("Kanban revision stream closes before publishing after project access is revoked", { timeout: 10_000 }, async () => {
-  const sourceProjectId = "00000000-0000-4000-8000-000000000301";
-  const subscriptionReady = createDeferred<void>();
-  let revisionListener: ((event: { projectId: string; revision: string }) => void) | undefined;
-  let kanbanReadable = true;
-  const storage = createStorageStub({
-    getProjectAccessSummary: async (projectId, userId) => ({
-      projectId,
-      projectName: projectId,
-      visibility: "private",
-      ownerUserId: "owner-1",
-      member: projectId === "demo" && !kanbanReadable
-        ? undefined
-        : {
-            projectId,
-            userId: userId ?? "viewer-1",
-            role: "guest",
-            createdAt: "2026-06-18T00:00:00.000Z",
-          },
-    }),
-    getKanbanRelatedProjectBindings: async () => ({
-      resolvedTarget: "1.0.0",
-      relatedProjects: [createRelatedProject(sourceProjectId)],
-    }),
-    resolveConfirmedRelatedProject: async () => createRelatedProjectAccess(sourceProjectId),
-    subscribeProjectStorageRevisions: async (listener) => {
-      revisionListener = listener;
-      subscriptionReady.resolve(undefined);
-      return async () => undefined;
-    },
-    getProjectStorageRevision: async () => "1",
-  });
-  const server = await listen(
-    storage,
-    createPrincipal(false, { userId: "viewer-1" }),
-  );
-  const controller = new AbortController();
-
-  try {
-    const response = await fetch(server.url(
-      "/api/projects/demo/kanban/related-project-revisions?target=1.0.0",
-    ), { signal: controller.signal });
-    assert.equal(response.status, 200);
-    await subscriptionReady.promise;
-    kanbanReadable = false;
-    revisionListener?.({ projectId: sourceProjectId, revision: "2" });
-    const body = await response.text();
-    assert.match(body, /event: snapshot/);
-    assert.match(body, /event: unavailable/);
-    assert.doesNotMatch(body, /event: revision/);
-  } finally {
-    controller.abort();
-    await server.close();
-  }
-});
-
-test("Kanban revision stream closes before publishing after related-project access is revoked", { timeout: 2_000 }, async () => {
-  const sourceProjectId = "00000000-0000-4000-8000-000000000303";
-  const subscriptionReady = createDeferred<void>();
-  let revisionListener: ((event: { projectId: string; revision: string }) => void) | undefined;
-  let grantActive = true;
-  const storage = createStorageStub({
-    getProjectAccessSummary: async (projectId) => ({
-      projectId,
-      projectName: projectId,
-      visibility: "public",
-      ownerUserId: "owner-1",
-    }),
-    getKanbanRelatedProjectBindings: async () => ({
-      resolvedTarget: "1.0.0",
-      relatedProjects: [createRelatedProject(sourceProjectId)],
-    }),
-    resolveConfirmedRelatedProject: async () => {
-      if (!grantActive) throw new HttpError(404, 404, "Related project is unavailable or awaiting confirmation.");
-      return createRelatedProjectAccess(sourceProjectId);
-    },
-    subscribeProjectStorageRevisions: async (listener) => {
-      revisionListener = listener;
-      subscriptionReady.resolve(undefined);
-      return async () => undefined;
-    },
-    getProjectStorageRevision: async () => "1",
-  });
-  const server = await listen(
-    storage,
-    createPrincipal(false, { userId: "viewer-1" }),
-  );
-  const controller = new AbortController();
-
-  try {
-    const response = await fetch(server.url(
-      "/api/projects/demo/kanban/related-project-revisions?target=1.0.0",
-    ), { signal: controller.signal });
-    assert.equal(response.status, 200);
-    await subscriptionReady.promise;
-    grantActive = false;
-    revisionListener?.({ projectId: sourceProjectId, revision: "2" });
-    const body = await response.text();
-    assert.match(body, /event: snapshot/);
-    assert.match(body, /event: unavailable/);
-    assert.doesNotMatch(body, /event: revision/);
-  } finally {
-    controller.abort();
-    await server.close();
-  }
-});
-
-test("Kanban revision stream omits unconfirmed related projects from its snapshot", async () => {
-  const sourceProjectId = "00000000-0000-4000-8000-000000000301";
-  let subscribed = false;
-  const storage = createStorageStub({
-    getProjectAccessSummary: async (projectId) => ({
-      projectId,
-      projectName: projectId,
-      visibility: projectId === "demo" ? "public" : "private",
-      ownerUserId: "owner-1",
-    }),
-    getKanbanRelatedProjectBindings: async () => ({
-      resolvedTarget: "1.0.0",
-      relatedProjects: [createRelatedProject(sourceProjectId)],
-    }),
-    resolveConfirmedRelatedProject: async () => {
-      throw new HttpError(404, 404, "Related project is unavailable or awaiting confirmation.");
-    },
-    subscribeProjectStorageRevisions: async () => {
-      subscribed = true;
-      return async () => undefined;
-    },
-  });
-  const server = await listen(
-    storage,
-    createPrincipal(false, { userId: "viewer-1" }),
-  );
-  const controller = new AbortController();
-
-  try {
-    const response = await fetch(server.url(
-      "/api/projects/demo/kanban/related-project-revisions?target=1.0.0",
-    ), { signal: controller.signal });
-    assert.equal(response.status, 200);
-    const reader = response.body!.getReader();
-    const first = await reader.read();
-    const body = new TextDecoder().decode(first.value);
-    assert.match(body, /event: snapshot/);
-    assert.match(body, /"revisions":\[\]/);
-    assert.equal(subscribed, true);
-    controller.abort();
-    await reader.cancel().catch(() => undefined);
-  } finally {
-    controller.abort();
     await server.close();
   }
 });
@@ -867,8 +261,8 @@ test("project info endpoint preserves localized names and future declaration ids
     localizedNames: { "zh-CN": "中文名称", en: "English Name", ja: "日本語" },
     declarations: ["multilingual", "future-capability"],
     platformSupport: { mode: "specific" as const, platforms: ["macos", "future-os"] },
-    dataStorage: { mode: "both" as const },
-    relatedProjects: [],
+
+
   };
   const storage = createStorageStub({
     updateProjectInfoMetadata: async (options) => {
@@ -899,7 +293,7 @@ test("source download recipients cannot read or clone unpublished configuration 
     getProjectAccessSummary: async projectId => ({ projectId, projectName: projectId, visibility: "private", member:{projectId,userId:"recipient",role:"guest",createdAt:"2026-10-22T00:00:00Z"} }),
     getFiles: async options => {
       reads.push(options.target);
-      return { projectId: "demo", projectName: "demo", target: options.target, resolvedTarget: "1.0.0", files: [] };
+      return { projectId: "demo", projectName: "demo", target: options.target, resolvedTarget: "1.0.0", files: [],sourceHash:"hash",entries:entrySet(),defaultEntry:"main" };
     },
     cloneProject: async options => {
       assert.match(options.targetProjectName!, /^[a-f0-9-]{36}$/);
@@ -959,223 +353,21 @@ test("source files endpoint does not let a global source permission bypass proje
   }
 });
 
-test("project deployment details authorize every manifest project when a dependency item is missing", async () => {
-  const rootProjectId = "00000000-0000-4000-8000-000000000404";
-  const sourceProjectId = "00000000-0000-4000-8000-000000000405";
-  const deploymentId = "00000000-0000-4000-8000-000000000406";
-  const checkedProjects: string[] = [];
-  const storage = createStorageStub({
-    getProjectGroupDeployment: async () => ({
-      id: deploymentId,
-      rootProjectId,
-      status: "failed",
-      manifest: {
-        version: 1,
-        rootProjectId,
-        projects: [
-          { projectId: rootProjectId, role: "root", archivePath: "projects/board.tgz" },
-          {
-            projectId: sourceProjectId,
-            role: "dependency",
-            alias: "stocks",
-            archivePath: "projects/stocks.tgz",
-          },
-        ],
-        dependencies: [{
-          alias: "stocks",
-          projectId: sourceProjectId,
-          delivery: "included",
-        }],
-      },
-      releaseLog: "",
-      createdByUserId: "owner-1",
-      createdAt: "2026-08-05T00:00:00.000Z",
-      updatedAt: "2026-08-05T00:01:00.000Z",
-      failedStage: "dependency-publish",
-      errorMessage: "Dependency publication failed.",
-      items: [{
-        deploymentId,
-        projectId: rootProjectId,
-        role: "root",
-        delivery: "included",
-        status: "prepared",
-        plannedVersion: "0.3.0",
-        updatedAt: "2026-08-05T00:01:00.000Z",
-      }],
-    }),
-    getProjectAccessSummary: async (projectId, userId) => {
-      checkedProjects.push(projectId);
-      return {
-        projectId: projectId,
-        projectName: projectId,
-        visibility: projectId === rootProjectId ? "public" : "private",
-        ownerUserId: "owner-1",
-        member: userId === "viewer-1" && projectId === rootProjectId
-          ? {
-              projectId: projectId,
-              userId,
-              role: "maintainer",
-              createdAt: "2026-08-05T00:00:00.000Z",
-            }
-          : undefined,
-      };
-    },
-  });
-  const server = await listen(
-    storage,
-    createPrincipal(false, { userId: "viewer-1" }),
-  );
-
-  try {
-    const response = await fetch(server.url(`/api/deployments/${deploymentId}`));
-    assert.equal(response.status, 403);
-    assert.ok(checkedProjects.includes(rootProjectId));assert.ok(checkedProjects.includes(sourceProjectId));
-  } finally {
-    await server.close();
-  }
-});
-
-test("dependency status and project-group download APIs retain exact targets and skipped dependencies", async () => {
-  const dependency = {
-    alias: "stocks",
-    projectId: "00000000-0000-4000-8000-000000000412",
-    delivery: "included" as const,
-    version: "0.5.0",
-    sourceHash: "a".repeat(64),
-  };
-  const statusResult = {
-    rootProjectId: "demo",
-    rootVersion: "0.3.0",
-    dependencies: [{
-      dependency,
-      projectAvailable: true,
-      sourceAvailable: true,
-      sourceDownloadAllowed: false,
-      relationshipConfirmed: true,
-      dataInitialized: false,
-      requestUrl: "http://example.test/access-requests/token",
-    }],
-    publishable: false,
-  };
-  const downloadResult = {
-    rootProjectId: "demo",
-    rootVersion: "0.3.0",
-    dependencies: [dependency],
-    downloads: [{
-      projectId: "demo",
-      version: "0.3.0",
-      sourceHash: "b".repeat(64),
-      role: "root" as const,
-    }],
-    projects: [],
-    skippedDependencies: [{
-      dependency,
-      reason: "permission_required" as const,
-      requestUrl: "http://example.test/access-requests/token",
-    }],
-    complete: false,
-    copyAllowed: false,
-  };
-  const storage = createStorageStub({
-    getProjectDependencyStatus: async (options) => {
-      assert.equal(options.projectName, "demo");
-      assert.equal(options.target, "0.3.0");
-      return statusResult;
-    },
-    getProjectGroupDownload: async (options) => {
-      assert.equal(options.projectName, "demo");
-      assert.equal(options.target, "0.3.0");
-      return downloadResult;
-    },
-  });
-  const server = await listen(storage, createPrincipal(false));
-
-  try {
-    const status = await fetchJson(server.url("/api/projects/demo/dependencies?target=0.3.0"));
-    assert.deepEqual(status.data, statusResult);
-    const download = await fetchJson(server.url("/api/projects/demo/project-group-download?target=0.3.0"));
-    assert.deepEqual(download.data, downloadResult);
-  } finally {
-    await server.close();
-  }
-});
-
-test("related-project API lists, updates, and removes a confirmed relationship", async () => {
-  const rootProjectId = "00000000-0000-4000-8000-000000000421";
-  const targetProjectId = "00000000-0000-4000-8000-000000000422";
-  const relation = createRelatedProject(targetProjectId, "inventory");
-  const result = {
-    projectId: rootProjectId,
-    relatedProjects: [{
-      relation,
-      projectName: "Inventory",
-      reciprocalAlias: "board",
-      grantFromRelatedProject: relation.grantToRelatedProject,
-      confirmed: true,
-    }],
-  };
-  const storage = createStorageStub({
-    listRelatedProjects: async (projectId) => {
-      assert.equal(projectId, rootProjectId);
-      return result;
-    },
-    setRelatedProject: async (options) => {
-      assert.deepEqual(options, {
-        projectId: rootProjectId,
-        alias: "inventory",
-        targetProjectId,
-        grantToRelatedProject: relation.grantToRelatedProject,
-        updateTarget: true,
-        targetAlias: "board",
-        targetGrantToRelatedProject: relation.grantToRelatedProject,
-      });
-      return result;
-    },
-    removeRelatedProject: async (options) => {
-      assert.deepEqual(options, { projectId: rootProjectId, alias: "inventory", updateTarget: true });
-      return { removed: true, relatedProjects: [] };
-    },
-  });
-  const server = await listen(storage, createPrincipal(false));
-
-  try {
-    const list = await fetchJson(server.url(`/api/projects/${rootProjectId}/related-projects`));
-    assert.deepEqual(list.data, result);
-    const saved = await fetchJson(server.url(`/api/projects/${rootProjectId}/related-projects/inventory`), {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        targetProjectId,
-        targetAlias: "board",
-        grantToRelatedProject: relation.grantToRelatedProject,
-        targetGrantToRelatedProject: relation.grantToRelatedProject,
-      }),
-    });
-    assert.deepEqual(saved.data, result);
-    const removed = await fetchJson(server.url(`/api/projects/${rootProjectId}/related-projects/inventory`), {
-      method: "DELETE",
-    });
-    assert.deepEqual(removed.data, { removed: true, relatedProjects: [] });
-  } finally {
-    await server.close();
-  }
-});
-
 for (const projectType of STEAMHARNESS_PROJECT_TYPES) test(`create ${projectType} assigns a fresh Server ID and forwards project info`, async () => {
-  const projectInfo = { localizedNames: {}, declarations: [], relatedProjects: [], platformSupport: { mode: "agnostic" as const }, dataStorage: { mode: "both" as const } };
+  const projectInfo = { localizedNames: {}, declarations: [],  platformSupport: { mode: "agnostic" as const },  };
   const ids: string[] = [];
   const storage = createStorageStub({ createProject: async options => {
     assert.match(options.projectId!, /^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/);
-    assert.deepEqual(options, { projectId: options.projectId, projectName: "New Application", projectType, projectInfo,
+    assert.deepEqual(options, { projectId: options.projectId, projectName: "New Application", entries:entrySet(projectType),defaultEntry:"main", projectInfo,
       ownerUserId: "creator-1", groupId: undefined, isSystemAdmin: false, createdByUserId: "creator-1", visibility: "private" });
     ids.push(options.projectId!);
-    return { projectId: options.projectId!, projectName: options.projectName, projectType, projectInfo, visibility: "private" };
+    return { projectId: options.projectId!, projectName: options.projectName, entries:entrySet(projectType),defaultEntry:"main", projectInfo, visibility: "private" };
   } });
   const server = await listen(storage, createPrincipal(false, { userId: "creator-1" }));
   try {
     for (let attempt = 0; attempt < 2; attempt++) {
       const response = await fetchJson(server.url("/api/projects"), { method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: "New Application", projectType, projectInfo }) });
+        body: JSON.stringify({ name: "New Application", entries:entrySet(projectType),defaultEntry:"main", projectInfo }) });
       assert.equal(response.errCode, 0); assert.equal((response.data as { projectId: string }).projectId, ids[attempt]);
     }
     assert.notEqual(ids[0], ids[1]);
@@ -1188,104 +380,12 @@ test("creation refuses every client-selected ID without touching storage", async
   try {
     for (const projectId of ["111", 111, null, "", "8bd4fef2-e083-4201-a89f-6f7d0676df53"]) {
       const response = await fetch(server.url("/api/projects"), { method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ projectId, name: "Chosen", projectType: "workflow", projectInfo: { platformSupport: { mode: "agnostic" }, dataStorage: { mode: "local" } } }) });
+        body: JSON.stringify({ projectId, name: "Chosen", entries:entrySet("workflow"),defaultEntry:"main", projectInfo: { platformSupport: { mode: "agnostic" },  } }) });
       assert.equal(response.status, 400); assert.match((await response.json()).errMessage, /assigned by the Server/);
     }
     const localized = await fetch(server.url("/api/projects"), { method: "POST", headers: { "Content-Type": "application/json", "X-SteamHarness-Locale": "zh-CN" }, body: JSON.stringify({ projectId: "111" }) });
     assert.match((await localized.json()).errMessage, /服务器分配/); assert.equal(calls, 0);
   } finally { await server.close(); }
-});
-
-test("create workflow endpoint rejects missing and unknown project types", async () => {
-  let createCalls = 0;
-  const storage = createStorageStub({
-    createProject: async () => {
-      createCalls += 1;
-      throw new Error("must not be called");
-    },
-  });
-  const server = await listen(storage, createPrincipal(false));
-
-  try {
-    for (const body of [
-      {
-        name: "Missing Type",
-        projectInfo: { localizedNames: {}, declarations: [], platformSupport: { mode: "agnostic" }, dataStorage: { mode: "both" } },
-      },
-      {
-        name: "Unknown Type",
-        projectType: "agent",
-        projectInfo: { localizedNames: {}, declarations: [], platformSupport: { mode: "agnostic" }, dataStorage: { mode: "both" } },
-      },
-    ]) {
-      const response = await fetchJson(server.url("/api/projects"), {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
-      });
-
-      assert.equal(response.errCode, 400);
-      const errorMessage = (response as { errMessage?: string }).errMessage ?? "";
-      assert.match(errorMessage, /projectType is required/i);
-      assert.equal(
-        STEAMHARNESS_PROJECT_TYPES.every((projectType) => errorMessage.includes(JSON.stringify(projectType))),
-        true,
-      );
-    }
-    assert.equal(createCalls, 0);
-  } finally {
-    await server.close();
-  }
-});
-
-test("create workflow endpoint requires declared data storage mode", async () => {
-  let createCalls = 0;
-  const storage = createStorageStub({
-    createProject: async () => {
-      createCalls += 1;
-      throw new Error("must not be called");
-    },
-  });
-  const server = await listen(storage, createPrincipal(false));
-  const validProjectInfo = {
-    localizedNames: {},
-    declarations: [],
-    platformSupport: { mode: "agnostic" },
-    dataStorage: { mode: "both" },
-  };
-
-  try {
-    const cases = [
-      {
-        body: {
-            name: "Missing declaration",
-          projectType: "workflow",
-        },
-        message: /projectInfo must be an object/i,
-      },
-      {
-        body: {
-            name: "Invalid declaration",
-          projectType: "workflow",
-          projectInfo: { ...validProjectInfo, dataStorage: { mode: "archive" } },
-        },
-        message: /dataStorage\.mode must be "local", "server", or "both"/i,
-      },
-    ];
-
-    for (const entry of cases) {
-      const response = await fetchJson(server.url("/api/projects"), {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(entry.body),
-      });
-      assert.equal(response.errCode, 400);
-      assert.match((response as { errMessage: string }).errMessage, entry.message);
-    }
-    assert.equal(createCalls, 0);
-  } finally {
-    await server.close();
-  }
 });
 
 test("create workflow endpoint validates and forwards optional project card metadata", async () => {
@@ -1298,8 +398,8 @@ test("create workflow endpoint validates and forwards optional project card meta
     localizedNames: {},
     declarations: [],
     platformSupport: { mode: "agnostic" as const },
-    dataStorage: { mode: "server" as const },
-    relatedProjects: [],
+
+
   };
   let receivedOptions: unknown;
   const storage = createStorageStub({
@@ -1308,7 +408,7 @@ test("create workflow endpoint validates and forwards optional project card meta
       return {
         projectId: options.projectId,
         projectName: "Round Conversation",
-        projectType: "conversation",
+        entries:entrySet("conversation"),defaultEntry:"main",
         projectInfo,
         visibility: "private",
       };
@@ -1322,7 +422,7 @@ test("create workflow endpoint validates and forwards optional project card meta
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         name: "Round Conversation",
-        projectType: "conversation",
+        entries:entrySet("conversation"),defaultEntry:"main",
         projectInfo,
         projectCard,
       }),
@@ -1332,7 +432,7 @@ test("create workflow endpoint validates and forwards optional project card meta
     assert.deepEqual(receivedOptions, {
       projectId: (receivedOptions as { projectId: string }).projectId,
       projectName: "Round Conversation",
-      projectType: "conversation",
+      entries:entrySet("conversation"),defaultEntry:"main",
       projectInfo,
       ownerUserId: "creator-1",
       groupId: undefined,
@@ -1362,8 +462,8 @@ test("create workflow endpoint rejects invalid project card metadata", async () 
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         name: "Invalid Card",
-        projectType: "workflow",
-        projectInfo: { localizedNames: {}, declarations: [], platformSupport: { mode: "agnostic" }, dataStorage: { mode: "both" } },
+        entries:entrySet("workflow"),defaultEntry:"main",
+        projectInfo: { localizedNames: {}, declarations: [], platformSupport: { mode: "agnostic" },  },
         projectCard: { icon: "unknown", iconBackgroundColor: "teal" },
       }),
     });
@@ -1479,7 +579,7 @@ test("publish endpoint forwards exact version and source preconditions", async (
       body: JSON.stringify({ releaseLog: "Version notes", expectedVersion: "1.2.3", expectedSourceHash: sourceHash }),
     });
     assert.equal(response.errCode, 0);
-    assert.deepEqual(published, [{ projectName: "demo", releaseLog: "Version notes", expectedVersion: "1.2.3", expectedSourceHash: sourceHash, expectedConfigurationRevision: undefined, administrator: false, createdByUserId: "user-1" }]);
+    assert.deepEqual(published, [{ projectName: "demo", releaseLog: "Version notes", expectedVersion: "1.2.3", expectedSourceHash: sourceHash, expectedConfigurationRevisions:undefined, administrator: false, createdByUserId: "user-1" }]);
     const invalid = await fetchJson(server.url("/api/projects/demo/publish"), {
       method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ expectedSourceHash: 123 }),
     });
@@ -1511,649 +611,6 @@ test("publish endpoint rejects callers without project management permission", a
     const payload = await response.json() as { errCode: number };
     assert.equal(response.status, 403);
     assert.equal(payload.errCode, 403);
-  } finally {
-    await server.close();
-  }
-});
-
-test("workflow KV endpoint forwards project filters", async () => {
-  const storage = createStorageStub({
-    listProjectKVEntries: async (options) => {
-      assert.deepEqual(options, {
-        projectId: "demo",
-        pageSize: 25,
-        cursor: undefined,
-        scope: "conversation",
-        query: "memory",
-        valueType: "object",
-        conversationId: "Thread-1",
-        runId: "RUN-1",
-      });
-      return { items: [], hasMore: false, total: 0 };
-    },
-  });
-  const server = await listen(storage);
-
-  try {
-    const response = await fetchJson(server.url("/api/projects/demo/kv?pageSize=25&scope=conversation&q=memory&valueType=object&linkState=unlinked&conversationId=Thread-1&runId=RUN-1"));
-
-    assert.equal(response.errCode, 0);
-    assert.deepEqual(response.data, { items: [], hasMore: false, total: 0 });
-  } finally {
-    await server.close();
-  }
-});
-
-test("workflow KV detail endpoint forwards exact entry identity", async () => {
-  const detail = createKVDetail({ scope: "conversation", key: "conversation.state", conversationId: "Thread-1" });
-  const storage = createStorageStub({
-    getProjectKVEntry: async (options) => {
-      assert.deepEqual(options, {
-        projectId: "demo",
-        scope: "conversation",
-        key: "conversation.state",
-        conversationId: "Thread-1",
-      });
-      return detail;
-    },
-  });
-  const server = await listen(storage);
-
-  try {
-    const response = await fetchJson(server.url("/api/projects/demo/kv/entry?scope=conversation&key=conversation.state&conversationId=Thread-1"));
-
-    // loads full KV values only after a row is expanded.
-    assert.equal(response.errCode, 0);
-    assert.deepEqual(response.data, detail);
-  } finally {
-    await server.close();
-  }
-});
-
-test("project storage endpoint forwards PersistentValue get and set payloads", async () => {
-  const calls: string[] = [];
-  const storage = createStorageStub({
-    getProjectStorageValue: async (options) => {
-      calls.push(`get:${options.storageKind}:${options.scope}:${options.projectId}:${options.conversationId}:${options.key}`);
-      return { exists: true, value: "stored", revision: "42" };
-    },
-    setProjectStorageValue: async (options) => {
-      calls.push(`set:${options.storageKind}:${options.scope}:${options.projectId}:${options.conversationId}:${options.key}:${JSON.stringify(options.value)}:${options.source?.runId}`);
-      return { ok: true };
-    },
-  });
-  const server = await listen(storage);
-
-  try {
-    const get = await fetchJson(server.url("/api/project-storage"), {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        projectId: "demo",
-        storageKind: "persistent_value",
-        operation: "get",
-        entry: {
-          scope: "project",
-          projectId: "demo",
-          key: "settings",
-        },
-      }),
-    });
-    const set = await fetchJson(server.url("/api/project-storage"), {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        projectId: "demo",
-        storageKind: "persistent_value",
-        operation: "set",
-        entry: {
-          scope: "conversation",
-          projectId: "demo",
-          conversationId: "Thread-1",
-          key: "memory",
-        },
-        value: { saved: true },
-        source: {
-          projectId: "demo",
-          runId: "run-1",
-          conversationId: "Thread-1",
-        },
-      }),
-    });
-
-    // Server-backed PersistentValue requests retain their PostgreSQL write and
-    // source metadata behavior.
-    assert.equal(get.errCode, 0);
-    assert.deepEqual(get.data, { exists: true, value: "stored", revision: "42" });
-    assert.equal(set.errCode, 0);
-    assert.deepEqual(calls, [
-      "get:persistent_value:project:demo:undefined:settings",
-      "set:persistent_value:conversation:demo:Thread-1:memory:{\"saved\":true}:run-1",
-    ]);
-  } finally {
-    await server.close();
-  }
-});
-
-test("project storage endpoint requires a bound current-project address", async () => {
-  let storageCalls = 0;
-  const storage = createStorageStub({
-    getProjectStorageValue: async () => {
-      storageCalls += 1;
-      return { exists: false };
-    },
-    setProjectStorageValue: async () => {
-      storageCalls += 1;
-      return { ok: true };
-    },
-    mutateProjectStorageKnowledgeDocument: async () => {
-      storageCalls += 1;
-      return createKnowledgeDocument("unexpected");
-    },
-  });
-  const server = await listen(storage);
-
-  try {
-    const bodies = [
-      {
-        operation: "get",
-        storageKind: "persistent_value",
-        entry: { scope: "project", projectId: "project-a", key: "settings" },
-      },
-      {
-        projectId: "project-a",
-        storageKind: "persistent_value",
-        operation: "get",
-        entry: { scope: "project", projectId: "project-b", key: "settings" },
-      },
-      {
-        projectId: "project-a",
-        storageKind: "persistent_value",
-        operation: "set",
-        entry: { scope: "project", projectId: "project-a", key: "settings" },
-        value: true,
-        source: { projectId: "project-b" },
-      },
-      {
-        projectId: "project-a",
-        storageKind: "persistent_value",
-        operation: "knowledge-mutation",
-        namespace: { scope: "project", projectId: "project-b" },
-        mutation: {
-          type: "create",
-          input: { id: "guide", title: "Guide", markdown: "# Guide" },
-        },
-      },
-    ];
-
-    for (const body of bodies) {
-      const response = await fetchJson(server.url("/api/project-storage"), {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
-      });
-      assert.equal(response.errCode, 400);
-    }
-    assert.equal(storageCalls, 0);
-  } finally {
-    await server.close();
-  }
-});
-
-test("project storage endpoint forwards compare-and-set revisions", async () => {
-  const calls: Array<Record<string, unknown>> = [];
-  const storage = createStorageStub({
-    compareAndSetProjectStorageValue: async (options) => {
-      calls.push(options);
-      return { applied: true, revision: "43" };
-    },
-  });
-  const server = await listen(storage);
-
-  try {
-    const response = await fetchJson(server.url("/api/project-storage"), {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        projectId: "demo",
-        storageKind: "persistent_value",
-        operation: "compare-and-set",
-        entry: { scope: "project", projectId: "demo", key: "counter" },
-        expectedRevision: "42",
-        value: 2,
-        source: { projectId: "demo", runId: "run-2" },
-      }),
-    });
-    const create = await fetchJson(server.url("/api/project-storage"), {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        projectId: "demo",
-        storageKind: "persistent_value",
-        operation: "compare-and-set",
-        entry: { scope: "project", projectId: "demo", key: "new-counter" },
-        expectedRevision: null,
-        value: 1,
-      }),
-    });
-    const invalid = await fetchJson(server.url("/api/project-storage"), {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        projectId: "demo",
-        storageKind: "persistent_value",
-        operation: "compare-and-set",
-        entry: { scope: "project", projectId: "demo", key: "counter" },
-        expectedRevision: "not-a-row-version",
-        value: 3,
-      }),
-    });
-
-    assert.equal(response.errCode, 0);
-    assert.deepEqual(response.data, { applied: true, revision: "43" });
-    assert.equal(create.errCode, 0);
-    assert.equal(invalid.errCode, 400);
-    assert.deepEqual(calls, [{
-      storageKind: "persistent_value",
-      scope: "project",
-      projectId: "demo",
-      key: "counter",
-      expectedRevision: "42",
-      value: 2,
-      source: { projectId: "demo", runId: "run-2", conversationId: undefined },
-    }, {
-      storageKind: "persistent_value",
-      scope: "project",
-      projectId: "demo",
-      key: "new-counter",
-      expectedRevision: null,
-      value: 1,
-      source: { projectId: "demo" },
-    }]);
-  } finally {
-    await server.close();
-  }
-});
-
-test("project storage endpoint forwards atomic PersistentValue knowledge mutations", async () => {
-  const calls: string[] = [];
-  const document = createKnowledgeDocument("remote-guide");
-  const storage = createStorageStub({
-    mutateProjectStorageKnowledgeDocument: async (options) => {
-      calls.push(`${options.projectId}:${options.mutation.type}:${JSON.stringify(options.mutation.input)}`);
-      return options.mutation.type === "delete"
-        ? { id: options.mutation.input.documentId, deleted: true }
-        : document;
-    },
-  });
-  const server = await listen(storage);
-
-  try {
-    const create = await fetchJson(server.url("/api/project-storage"), {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        projectId: "remote-project",
-        storageKind: "persistent_value",
-        operation: "knowledge-mutation",
-        namespace: { scope: "project", projectId: "remote-project" },
-        mutation: {
-          type: "create",
-          input: { id: "remote-guide", title: "Remote guide", markdown: "# Remote" },
-        },
-      }),
-    });
-    const edit = await fetchJson(server.url("/api/project-storage"), {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        projectId: "remote-project",
-        storageKind: "persistent_value",
-        operation: "knowledge-mutation",
-        namespace: { scope: "project", projectId: "remote-project" },
-        mutation: {
-          type: "edit",
-          input: { documentId: "remote-guide", markdown: "# Edited" },
-        },
-      }),
-    });
-    const deleted = await fetchJson(server.url("/api/project-storage"), {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        projectId: "remote-project",
-        storageKind: "persistent_value",
-        operation: "knowledge-mutation",
-        namespace: { scope: "project", projectId: "remote-project" },
-        mutation: {
-          type: "delete",
-          input: { documentId: "remote-guide" },
-        },
-      }),
-    });
-
-    assert.equal(create.errCode, 0);
-    assert.equal(edit.errCode, 0);
-    assert.equal(deleted.errCode, 0);
-    assert.deepEqual(deleted.data, { id: "remote-guide", deleted: true });
-    assert.deepEqual(calls, [
-      "remote-project:create:{\"id\":\"remote-guide\",\"title\":\"Remote guide\",\"markdown\":\"# Remote\"}",
-      "remote-project:edit:{\"documentId\":\"remote-guide\",\"markdown\":\"# Edited\"}",
-      "remote-project:delete:{\"documentId\":\"remote-guide\"}",
-    ]);
-  } finally {
-    await server.close();
-  }
-});
-
-test("PersistentValue knowledge mutations require data write access to the current project", async () => {
-  let mutationCalled = false;
-  const storage = createStorageStub({
-    getProjectAccessSummary: async (projectId) => ({
-      projectId,
-      projectName: projectId,
-      visibility: "private",
-      ownerUserId: "owner-1",
-    }),
-    mutateProjectStorageKnowledgeDocument: async () => {
-      mutationCalled = true;
-      return createKnowledgeDocument("should-not-write");
-    },
-  });
-  const server = await listen(
-    storage,
-    createPrincipal(false, { userId: "other-user" }),
-  );
-
-  try {
-    const response = await fetchJson(server.url("/api/project-storage"), {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        projectId: "private-project",
-        storageKind: "persistent_value",
-        operation: "knowledge-mutation",
-        namespace: { scope: "project", projectId: "private-project" },
-        mutation: {
-          type: "create",
-          input: { id: "private-guide", title: "Private guide", markdown: "# Private" },
-        },
-      }),
-    });
-
-    assert.equal(response.errCode, 403);
-    assert.equal(mutationCalled, false);
-  } finally {
-    await server.close();
-  }
-});
-
-test("current project and conversation writes require project data write access", async () => {
-  let readCalled = false;
-  let writeCalled = false;
-  const storage = createStorageStub({
-    getProjectAccessSummary: async (projectId) => ({
-      projectId,
-      projectName: projectId,
-      visibility: "private",
-      ownerUserId: "owner-1",
-    }),
-    getProjectStorageValue: async () => {
-      readCalled = true;
-      return { exists: true, value: "should-not-read" };
-    },
-    setProjectStorageValue: async () => {
-      writeCalled = true;
-      return { ok: true };
-    },
-  });
-  const server = await listen(
-    storage,
-    createPrincipal(false, { userId: "other-user" }),
-  );
-
-  try {
-    const read = await fetchJson(server.url("/api/project-storage"), {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        projectId: "private-project",
-        storageKind: "persistent_value",
-        operation: "get",
-        entry: {
-          scope: "project",
-          projectId: "private-project",
-          key: "private-key",
-        },
-      }),
-    });
-    const write = await fetchJson(server.url("/api/project-storage"), {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        projectId: "private-project",
-        storageKind: "persistent_value",
-        operation: "set",
-        entry: {
-          scope: "conversation",
-          projectId: "private-project",
-          conversationId: "thread-1",
-          key: "private-key",
-        },
-        value: "should-not-write",
-      }),
-    });
-
-    assert.equal(read.errCode, 403);
-    assert.equal(write.errCode, 403);
-    assert.equal(readCalled, false);
-    assert.equal(writeCalled, false);
-  } finally {
-    await server.close();
-  }
-});
-
-test("project storage endpoint rejects the removed global scope", async () => {
-  let readCalled = false;
-  const storage = createStorageStub({
-    getProjectStorageValue: async () => {
-      readCalled = true;
-      return { exists: true, value: "global-value" };
-    },
-  });
-  const server = await listen(storage, createPrincipal(false, { userId: "other-user" }));
-
-  try {
-    const response = await fetchJson(server.url("/api/project-storage"), {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        projectId: "global-owner-project",
-        storageKind: "persistent_value",
-        operation: "get",
-        entry: { scope: "global", key: "global-key" },
-      }),
-    });
-
-    assert.equal(response.errCode, 400);
-    assert.equal(readCalled, false);
-  } finally {
-    await server.close();
-  }
-});
-
-test("knowledge document endpoints forward CRUD payloads", async () => {
-  const calls: string[] = [];
-  const document = createKnowledgeDocument("guide");
-  const storage = createStorageStub({
-    listKnowledgeDocuments: async (projectName, options) => {
-      calls.push(`list:${projectName}:${options?.pageSize}:${options?.cursor}`);
-      return { items: [createKnowledgeListItem("guide")], hasMore: false, total: 1 };
-    },
-    createKnowledgeDocument: async (options) => {
-      calls.push(`create:${options.projectName}:${options.id}:${options.title}:${options.markdown}`);
-      return document;
-    },
-    getKnowledgeDocument: async (options) => {
-      calls.push(`get:${options.projectName}:${options.documentId}`);
-      return document;
-    },
-    editKnowledgeDocument: async (options) => {
-      calls.push(`edit:${options.projectName}:${options.documentId}:${options.title}:${options.markdown}`);
-      return { ...document, title: options.title ?? document.title, markdown: options.markdown ?? document.markdown };
-    },
-    deleteKnowledgeDocument: async (options) => {
-      calls.push(`delete:${options.projectName}:${options.documentId}`);
-      return { id: options.documentId, deleted: true };
-    },
-  });
-  const server = await listen(storage);
-
-  try {
-    const list = await fetchJson(server.url("/api/projects/demo/knowledge-documents?pageSize=10&cursor=20"));
-    const create = await fetchJson(server.url("/api/projects/demo/knowledge-documents?response=summary"), {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ id: "guide", title: "Guide", markdown: "# Guide" }),
-    });
-    const get = await fetchJson(server.url("/api/projects/demo/knowledge-documents/guide"));
-    const edit = await fetchJson(server.url("/api/projects/demo/knowledge-documents/guide?response=summary"), {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ title: "Guide v2", markdown: "# Guide v2" }),
-    });
-    const deleted = await fetchJson(server.url("/api/projects/demo/knowledge-documents/guide"), {
-      method: "DELETE",
-    });
-
-    // Knowledge document REST APIs manage project PersistentValue markdown
-    // documents without exposing raw KV rows.
-    assert.equal(list.errCode, 0);
-    assert.equal(create.errCode, 0);
-    assert.equal(get.errCode, 0);
-    assert.equal(edit.errCode, 0);
-    assert.equal(deleted.errCode, 0);
-    assert.deepEqual((list.data as KnowledgeDocumentPageRecord).items.map((item) => item.id), ["guide"]);
-    assert.equal((create.data as KnowledgeDocumentListItem).markdownPreview, "Guide");
-    assert.equal("markdown" in (create.data as Record<string, unknown>), false);
-    assert.equal((edit.data as KnowledgeDocumentListItem).markdownPreview, "Guide v2");
-    assert.equal("markdown" in (edit.data as Record<string, unknown>), false);
-    assert.deepEqual(deleted.data, { id: "guide", deleted: true });
-    assert.deepEqual(calls, [
-      "list:demo:10:20",
-      "create:demo:guide:Guide:# Guide",
-      "get:demo:guide",
-      "edit:demo:guide:Guide v2:# Guide v2",
-      "delete:demo:guide",
-    ]);
-  } finally {
-    await server.close();
-  }
-});
-
-test("knowledge summary responses use the bounded shared markdown preview", async () => {
-  const document: KnowledgeDocumentRecord = {
-    ...createKnowledgeDocument("large-guide"),
-    markdown: `${"#".repeat(20_000)}late markdown`,
-  };
-  const storage = createStorageStub({
-    createKnowledgeDocument: async () => document,
-  });
-  const server = await listen(storage);
-
-  try {
-    const response = await fetchJson(server.url("/api/projects/demo/knowledge-documents?response=summary"), {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ id: "large-guide", title: "Large guide", markdown: document.markdown }),
-    });
-
-    assert.equal(response.errCode, 0);
-    assert.equal((response.data as KnowledgeDocumentListItem).markdownPreview, "");
-    assert.equal("markdown" in (response.data as Record<string, unknown>), false);
-  } finally {
-    await server.close();
-  }
-});
-
-test("knowledge search endpoint forwards line context query parameters", async () => {
-  const result: KnowledgeDocumentSearchResult = {
-    query: "markdown",
-    documentsSearched: 1,
-    totalMatches: 1,
-    matchesTruncated: false,
-    maxMatches: 50,
-    pageSize: 25,
-    cursor: "75",
-    nextCursor: "100",
-    hasMore: true,
-    matches: [{
-      documentId: "guide",
-      title: "Guide",
-      lineNumber: 2,
-      line: "markdown line",
-      before: [{ lineNumber: 1, content: "# Guide" }],
-      after: [{ lineNumber: 3, content: "next" }],
-    }],
-  };
-  const storage = createStorageStub({
-    searchKnowledgeDocuments: async (options) => {
-      assert.deepEqual(options, {
-        projectName: "demo",
-        query: "markdown",
-        documentId: "guide",
-        beforeLines: 1,
-        afterLines: 1,
-        maxMatches: 50,
-        pageSize: 25,
-        cursor: "75",
-      });
-      return result;
-    },
-  });
-  const server = await listen(storage);
-
-  try {
-    const response = await fetchJson(server.url("/api/projects/demo/knowledge-documents/search?q=markdown&documentId=guide&beforeLines=1&afterLines=1&maxMatches=50&pageSize=25&cursor=75"));
-
-    assert.equal(response.errCode, 0);
-    assert.deepEqual(response.data, result);
-  } finally {
-    await server.close();
-  }
-});
-
-test("knowledge document line endpoint forwards document id and range query parameters", async () => {
-  const result: KnowledgeDocumentLinesRecord = {
-    documentId: "guide",
-    title: "Guide",
-    startLine: 2,
-    endLine: 4,
-    totalLines: 6,
-    lines: [
-      { lineNumber: 2, content: "two" },
-      { lineNumber: 3, content: "three" },
-      { lineNumber: 4, content: "four" },
-    ],
-  };
-  const storage = createStorageStub({
-    readKnowledgeDocumentLines: async (options) => {
-      assert.deepEqual(options, {
-        projectName: "demo",
-        documentId: "guide",
-        startLine: 2,
-        endLine: 4,
-      });
-      return result;
-    },
-  });
-  const server = await listen(storage);
-
-  try {
-    const response = await fetchJson(server.url("/api/projects/demo/knowledge-documents/guide/lines?startLine=2&endLine=4"));
-
-    assert.equal(response.errCode, 0);
-    assert.deepEqual(response.data, result);
   } finally {
     await server.close();
   }
@@ -2219,46 +676,6 @@ test("project token usage endpoint forwards conversation detail filters", async 
   }
 });
 
-test("all fixed member roles can read data and only developers or higher can mutate it", async () => {
-  for (const role of ["owner", "maintainer", "developer", "guest"] as const) {
-    const storage = createStorageStub({
-      getProjectAccessSummary: async projectId => ({ projectId, projectName: projectId, visibility: "private",
-        member: { projectId, userId: "member", role, createdAt: "2026-10-16T00:00:00.000Z" } }),
-      getFiles: async () => ({ projectId: "demo", projectName: "demo", target: "draft", resolvedTarget: "draft", files: [] }),
-      getSourceArchive: async () => ({ version: "1.0.0", archive: Buffer.from("archive") }),
-      cloneProject: async () => ({ projectId: "copy", projectName: "copy", sourceTarget: "latest", resolvedSourceTarget: "1.0.0", nextVersion: "1.0.1" }),
-      getKanbanRelatedProjectBindings: async () => ({ projectId: "demo", projectName: "demo", target: "latest",
-        resolvedTarget: "1.0.0", artifactDir: ".", entry: "index.html", relatedProjects: [], configurations: [] }),
-    });
-    const server = await listen(storage, createPrincipal(false, { userId: "member" }));
-    try {
-      const request = (operation: string) => fetch(server.url("/api/project-storage"), {
-        method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ projectId: "demo", storageKind: "kv", operation,
-          entry: { scope: "project", projectId: "demo", key: "settings" }, value: true }),
-      });
-      assert.equal((await request("get")).status, 200, role);
-      assert.equal((await request("set")).status, role === "guest" ? 403 : 200, role);
-      assert.equal((await fetch(server.url("/api/projects/demo/knowledge-documents"))).status, 200, role);
-      assert.equal((await fetch(server.url("/api/projects/demo/knowledge-documents"), {
-        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ title: "Guide", markdown: "# Guide" }),
-      })).status, role === "guest" ? 403 : 201, role);
-      const bridge = await fetch(server.url("/api/projects/demo/kanban/bridge"), {
-        method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ call: { requestId: "write", operation: "kv.setValue", input: { key: "settings", value: true } } }),
-      });
-      assert.equal(bridge.status, role === "guest" ? 403 : 200, role);
-      const downloadStatus = role === "guest" ? 403 : 200;
-      assert.equal((await fetch(server.url("/api/projects/demo/files?target=draft"))).status, downloadStatus, role);
-      assert.equal((await fetch(server.url("/api/projects/demo/source-archive?target=1.0.0"))).status, 200, role);
-      assert.equal((await fetch(server.url("/api/projects/demo/clone"), {
-        method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({}),
-      })).status, 200, role);
-    } finally { await server.close(); }
-  }
-});
-
 test("removed execution APIs return JSON 404 before authentication", async () => {
   const app = express();
   app.use("/api", createApiRouter(createStorageStub({})));
@@ -2291,8 +708,8 @@ function createStorageStub(overrides: Partial<Storage>): Storage {
       localizedNames: {},
       declarations: [],
       platformSupport: { mode: "agnostic" },
-      dataStorage: { mode: "both" },
-      relatedProjects: [],
+
+
     }),
     getProjectAccessSummary: async (projectId, userId) => ({
       projectId,
@@ -2317,34 +734,6 @@ function createStorageStub(overrides: Partial<Storage>): Storage {
       return access;
     },
     getSourceDownloadAvailability: async () => ({available:true,target:"1.0.0"}),
-    listProjectKVEntries: async (): Promise<KVEntryPage> => ({ items: [], hasMore: false, total: 0 }),
-    getProjectKVEntry: async (): Promise<KVEntryDetail> => createKVDetail({ scope: "project", key: "settings" }),
-    getProjectStorageValue: async () => ({ exists: false }),
-    setProjectStorageValue: async () => ({ ok: true }),
-    compareAndSetProjectStorageValue: async () => ({ applied: true, revision: "1" }),
-    listKnowledgeDocuments: async (): Promise<KnowledgeDocumentPageRecord> => ({ items: [], hasMore: false, total: 0 }),
-    getKnowledgeDocument: async (): Promise<KnowledgeDocumentRecord> => createKnowledgeDocument("guide"),
-    createKnowledgeDocument: async (): Promise<KnowledgeDocumentRecord> => createKnowledgeDocument("guide"),
-    editKnowledgeDocument: async (): Promise<KnowledgeDocumentRecord> => createKnowledgeDocument("guide"),
-    deleteKnowledgeDocument: async (): Promise<{ id: string; deleted: boolean }> => ({ id: "guide", deleted: true }),
-    searchKnowledgeDocuments: async (): Promise<KnowledgeDocumentSearchResult> => ({
-      query: "",
-      documentsSearched: 0,
-      totalMatches: 0,
-      matchesTruncated: false,
-      maxMatches: 200,
-      pageSize: 200,
-      hasMore: false,
-      matches: [],
-    }),
-    readKnowledgeDocumentLines: async (): Promise<KnowledgeDocumentLinesRecord> => ({
-      documentId: "guide",
-      title: "Guide",
-      startLine: 1,
-      endLine: 1,
-      totalLines: 1,
-      lines: [{ lineNumber: 1, content: "# Guide" }],
-    }),
     getSystemTokenUsage: async (): Promise<TokenUsagePage> => ({
       systemTotal: createTokenUsageAggregate(0),
       projects: [],
@@ -2511,67 +900,6 @@ async function fetchJson(
   return await response.json() as unknown & { errCode?: number; data?: unknown };
 }
 
-function createKVDetail(overrides: Partial<KVEntryDetail>): KVEntryDetail {
-  const detail: KVEntryDetail = {
-    storageKind: "kv",
-    scope: "project",
-    key: "settings",
-    value: { ok: true },
-    valueType: "object",
-    valueSizeBytes: 11,
-    valuePreview: "{\"ok\":true}",
-    projectId: "demo",
-    conversationId: overrides.scope === "conversation" ? "Thread-1" : undefined,
-    updatedAt: "2026-05-21T00:00:00.000Z",
-    ...overrides,
-  };
-  if (detail.scope !== "conversation") {
-    delete detail.conversationId;
-  }
-  return detail;
-}
-
-function createRelatedProject(
-  projectId: string,
-  alias = "stocks",
-): RelatedProject {
-  return {
-    alias,
-    projectId,
-    grantToRelatedProject: {
-      read: { mode: "all" },
-      write: { mode: "none" },
-    },
-  };
-}
-
-function createRelatedProjectAccess(
-  targetProjectId: string,
-  grant: RelatedProjectKVGrant = createRelatedProject(targetProjectId).grantToRelatedProject,
-): { targetProjectId: string; grant: RelatedProjectKVGrant } {
-  return { targetProjectId, grant };
-}
-
-function createKnowledgeDocument(id: string): KnowledgeDocumentRecord {
-  return {
-    id,
-    title: "Guide",
-    markdown: "# Guide",
-    createdAt: "2026-06-02T00:00:00.000Z",
-    updatedAt: "2026-06-02T00:00:00.000Z",
-  };
-}
-
-function createKnowledgeListItem(id: string): KnowledgeDocumentListItem {
-  return {
-    id,
-    title: "Guide",
-    markdownPreview: "Guide",
-    createdAt: "2026-06-02T00:00:00.000Z",
-    updatedAt: "2026-06-02T00:00:00.000Z",
-  };
-}
-
 function createTokenUsageAggregate(totalTokens: number) {
   return {
     inputTokens: Math.floor(totalTokens / 2),
@@ -2599,7 +927,7 @@ test("project configurations use account-scoped generic routes and preserve vers
     const input = {target:'latest',call:{action:'save',revision:1,id:'profile',values:{enabled:false,data:{nested:[null,1]}}}};
     const write = await fetch(server.url('/api/projects/demo/configurations'),{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(input)});
     assert.equal(write.status,409); assert.deepEqual((await write.json()).data,{code:'CONFIGURATION_CONFLICT'});
-    assert.deepEqual(calls,[{options:{projectName:'demo',actorId:'user-1',administrator:false,actor:{userId:'user-1',isSystemAdmin:false},target:'latest'},call:{action:'get'}},{options:{projectName:'demo',actorId:'user-1',administrator:false,actor:{userId:'user-1',isSystemAdmin:false},target:'latest'},call:input.call}]);
+    assert.deepEqual(calls,[{options:{projectName:'demo',entryId:undefined,actorId:'user-1',administrator:false,actor:{userId:'user-1',isSystemAdmin:false},target:'latest'},call:{action:'get'}},{options:{projectName:'demo',entryId:undefined,actorId:'user-1',administrator:false,actor:{userId:'user-1',isSystemAdmin:false},target:'latest'},call:input.call}]);
     const old=await fetch(server.url('/api/projects/demo/kanban/configurations'),{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});
     assert.equal(old.status,404);
   } finally {await server.close();}
@@ -2613,4 +941,51 @@ test("configuration routes reject unreadable projects before reaching the store"
     const response=await fetch(server.url('/api/projects/demo/configurations'),{method,...(method==='POST'?{headers:{'Content-Type':'application/json'},body:JSON.stringify({call:{action:'get'}})}:{})});
     assert.notEqual(response.status,200);
   }assert.equal(called,false);}finally{await server.close();}
+});
+
+function entrySet(type: "workflow"|"conversation"|"kanban"="workflow") { return [{entryId:"main",name:"Main",type,root:".",entry:type==="kanban"?"index.html":"index.ts",databases:[]}]; }
+
+test('resource cards resolve the requested entry, database alias and conversation without executing source',async()=>{
+  const calls:unknown[]=[];
+  const database={kv:{getValue:async(key:string)=>{calls.push(['kv',key]);return 7;},conversation:{getValue:async(key:string)=>{calls.push(['conversation',key]);return 9;}}},knowledge:{getDocument:async(id:string)=>{calls.push(['document',id]);return {id,title:'Guide',markdown:'shared'};},listDocuments:async()=>({items:[],total:0,hasMore:false})}};
+  const storage=createStorageStub({entryDatabases:async(...args)=>{calls.push(args);return {get:(alias:string)=>{assert.equal(alias,'data');return database;}} as unknown as Awaited<ReturnType<Storage['entryDatabases']>>;}});
+  const server=await listen(storage,createPrincipal(false));
+  const post=(body:unknown)=>fetch(server.url('/api/projects/demo/entries/agent/resources/read'),{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+  try{
+    assert.equal((await (await post({kind:'kv',database:'data',key:'x',scope:'conversation',conversationId:'thread'})).json()).data,9);
+    assert.deepEqual(calls[0],['demo','agent',{userId:'user-1',isSystemAdmin:false},'draft','thread']);
+    assert.deepEqual(calls[1],['conversation','x']);
+    assert.equal((await (await post({kind:'knowledge',database:'data',documentId:'guide'})).json()).data.id,'guide');
+    for(const body of [{kind:'storage',database:'data'},{kind:'kv',database:'data',key:'x',scope:'global'}])assert.equal((await post(body)).status,400);
+    for(const route of ['/api/projects/demo/kv','/api/projects/demo/storage','/api/projects/demo/knowledge','/api/projects/demo/related-projects','/api/projects/demo/dependencies','/api/projects/demo/project-group'])assert.equal((await fetch(server.url(route))).status,404);
+  }finally{await server.close();}
+});
+
+test('Kanban bridges enforce project roles before using the entry database grant',async()=>{
+  let calls=0;
+  const storage=createStorageStub({
+    getProjectAccessSummary:async projectId=>({projectId,projectName:'Board',visibility:'private',member:{projectId,userId:'user-1',role:'guest',createdAt:'2026-10-27'}}),
+    entryDatabases:async(projectId,entryId,actor)=>{assert.equal(projectId,'demo');assert.equal(entryId,'board');assert.equal(actor.userId,'user-1');calls++;return {get:(alias:string)=>{assert.equal(alias,'data');return {kv:{getValue:async()=>1}};}} as unknown as Awaited<ReturnType<Storage['entryDatabases']>>;},
+  });
+  const server=await listen(storage,createPrincipal(false));
+  const post=(operation:string,input:unknown)=>fetch(server.url('/api/projects/demo/kanban/bridge'),{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({entryId:'board',call:{requestId:operation,operation,input}})});
+  try{
+    assert.equal((await post('kv.getValue',{database:'data',key:'map'})).status,200);
+    assert.equal((await post('kv.setValue',{database:'data',key:'map',value:2})).status,403);
+    assert.equal((await post('files.createFile',{database:'data',name:'map.png',mimeType:'image/png',base64:'aA=='})).status,403);
+    assert.equal((await post('relatedProject.kv.getValue',{alias:'other',key:'x'})).status,400);
+    assert.equal(calls,1);
+  }finally{await server.close();}
+});
+
+test('project creation rejects legacy declarations, duplicate entries and invalid defaults',async()=>{
+  let calls=0;
+  const server=await listen(createStorageStub({createProject:async()=>{calls++;throw new Error('must not create');}}),createPrincipal(false));
+  try{
+    for(const body of [{projectType:'workflow'}, {entries:[...entrySet(),...entrySet()],defaultEntry:'main'}, {entries:entrySet(),defaultEntry:'absent'}, {entries:[],defaultEntry:'main'}]){
+      const response=await fetch(server.url('/api/projects'),{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:'Invalid',projectInfo:{localizedNames:{},declarations:[],platformSupport:{mode:'agnostic'}},...body})});
+      assert.equal(response.status,400);
+    }
+    assert.equal(calls,0);
+  }finally{await server.close();}
 });

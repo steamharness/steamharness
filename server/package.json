@@ -65,7 +65,6 @@
     "@steamharness/kanban-project": "workspace:*",
     "@steamharness/project-card-metadata": "workspace:*",
     "@steamharness/project-configuration": "workspace:*",
-    "@steamharness/project-dependencies": "workspace:*",
     "@steamharness/project-info": "workspace:*",
     "@steamharness/project-types": "workspace:*",
     "@steamharness/project-upload": "workspace:*",
@@ -93,13 +92,15 @@
     "@types/node": "^25.6.0",
     "@types/pg": "^8.20.0",
     "@types/unzipper": "^0.10.11",
-    "@vitest/coverage-v8": "^4.1.7",
+    "@vitest/coverage-v8": "4.1.10",
     "cross-env": "^10.1.0",
     "jsdom": "^29.1.1",
     "semver": "^7.7.4",
     "tsup": "^8.5.1",
     "tsx": "^4.21.0",
     "typescript": "^6.0.3",
-    "vitest": "^4.1.7"
+    "vitest": "^4.1.7",
+    "@steamharness/database-spaces": "workspace:*",
+    "@steamharness/project-manifest": "workspace:*"
   }
 }

@@ -1,83 +1,16 @@
 ---
 title: "workspace pack"
-description: "Package the local workflow directory as an uploadable. tgz archive."
+description: "Package an aggregate"
 ---
 
-# workspace pack
+# Package an aggregate
 
-`workspace pack` Copy the local workflow source code to the packaging staging directory and use `tar` to generate the `.tgz` package. The command only processes local files and does not request SteamHarness Server.
-
-Workflow/Conversation verification`package.json`and`index.ts`;Kanban uses`package.json.steamHarness.projectType: "kanban"`to identify and verify the HTML `entry`_configured in`steamHarness.kanban.artifactDir`. Continue to use the project root directory`index.html`if not configured__. The README can serve as the project’s description, but it is not a required file for upload. Images, fonts, and other binary resources are included in the archive and source code repository as-is.
-
-The command does not install or check local project dependencies. Even if the project declares a third-party dependency and does not have a local `node_modules`, the source code can still be packaged; install dependencies locally before execution. Server stores source and prebuilt static assets without installing dependencies, building, or loading project code.
-
-## Command Format
-
-```bash
-pnpm exec steamharness workspace pack <workflow> [--path <workflow-dir>] [--output <file.tgz>] [--project-group] [--dependency <alias>=<path>]
+```sh
+pnpm exec steamharness workspace pack <project-id> --path . --output project.tgz
 ```
 
-## Parameter
+One operation covers every registered entry of one projectId, including code, dependency manifests, configuration definitions and Kanban artifacts. Install dependencies and build static entries locally, then run `steamharness check .`.
 
-|Parameter|Description|
-| --- | --- |
-| `<workflow>` | Workflow name. The default source directory is `workspace/workflow/<workflow>`. |
-| `--path <workflow-dir>` |Specify the local source directory.|
-| `--output <file.tgz>` |Specifies the output package path. Write `workspace/.packs` when not passed.|
-| `--project-group` |Generate the project-group v1 archive for the Kanban root project.|
-| `--dependency <alias>=<path>` |Map a mutually confirmed alias in `projectInfo.relatedProjects` to an included project's local directory; repeatable. Unmapped confirmed relations remain external.|
+Archives exclude credentials, host runtime data, Git and node_modules. Requirements remain and every `bindingRef` is stripped. Installers must request bindings from their local or server host; author grants do not transfer.
 
-## Default Path
-
-|item|Default value|
-| --- | --- |
-| repo root |`STEAMHARNESS_REPO_ROOT`, if not set, from the current directory or CLI file location up to find the root directory of the repository containing `pnpm-workspace.yaml`.|
-|Source Directory| `<repo-root>/workspace/workflow/<workflow>` |
-|Output Directory| `<repo-root>/workspace/.packs` |
-|Output file name| `<workflow>-<UTC timestamp>.tgz` |
-
-## `.steamharnessignore`
-
-`pack` reads only the project root `.steamharnessignore` and does not read `.gitignore` in the root or nested directories. The syntax supports comments, directory rules, wildcards, `**` and `!` reverse inclusions, and paths match by `/`.
-
-|Scene|Behavior|
-| --- | --- |
-|Missing, empty file, or only comments|Upload all common files under the project, and output the number of files and the total size warning.|
-|`.steamharnessignore` Self hit rule|will remain in the archive.|
-|`package.json`, entry, or existing `configuration.json` excluded|Packing failed and the effective rule was indicated.|
-|Symbolic links, special files, or case-conflict paths|Reject packaging, not by ignoring the rule release, to avoid the archive coverage differences between Windows, macOS and Linux.|
-
-Kanban does not automatically preserve `dist` or other product directories; they are not implicitly excluded by the host. You should keep the actual `artifactDir` in `.steamharnessignore`, while excluding `src/`, test, and source map as needed. `.gitignore` Whether to ignore the product is independent of the upload.
-
-## Project Team Archiving
-
-The project-group root must be a Kanban with `steamHarness.projectInfo.relatedProjects`. Every `--dependency` alias must match a mutually confirmed direct relation, and the local dependency UUID must match its declaration; pending relations cannot become included dependencies. Each related UUID is packaged only once. The archive contains `project-group.json`, the root project package, and the selected dependency packages; each project still selects source through its own `.steamharnessignore`.
-
-Packaging will reject symbolic links, special tar entries, as well as `.env*`, KV, PersistentValue, scheduled tasks, execution history, SQLite, `workflow-auth.json`, and other host‑specific user configurations; the root user Kanban is also prohibited from declaring their own UUID as a source project. The project team does not carry any locally executed data, nor does it modify any Server states; developers initialize data by running Workflow locally and explicitly choosing local or server storage.
-
-## Output
-
-|Situation|Output|
-| --- | --- |
-|Success| `{ "archivePath": "<absolute path>" }` |
-|Packaging failed|Output error message with exit code `1`.|
-
-## Example
-
-```bash
-pnpm exec steamharness workspace pack hello
-pnpm exec steamharness workspace pack hello --path ./workspace/workflow/hello
-pnpm exec steamharness workspace pack hello --output ./workspace/.packs/hello.tgz
-pnpm exec steamharness workspace pack stock-kanban --project-group \
-  --path ./stock-kanban \
-  --dependency stocks=./stock-workflow
-```
-
-## Subsequent commands
-
-|Goal|Command|
-| --- | --- |
-|Upload the package you just typed| [`upload --file`](/en/cli/workspace/upload) |
-|View the remote version| [`versions`](/en/cli/workspace/versions) |
-
-This command prepares author source for authenticated Server upload, including its configuration declarations. Recipient distribution uses the published Server source version, whose configuration template and attachments have been filtered. Full configuration backup export remains a separate operation. See [Project configurations](/en/concepts/project-configuration).
+The output is a `.tgz` archive. Packaging is local and creates no remote project or space. Ordinary npm dependencies remain managed by package manifests and lockfiles.

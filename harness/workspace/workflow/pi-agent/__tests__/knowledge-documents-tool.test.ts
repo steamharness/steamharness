@@ -1,10 +1,10 @@
+import { createApprovedTestContext } from "../../../test-databases";
 import { beforeAll, describe, expect, it } from "vitest";
 import {
   createDisabledProjectConversationContext,
   createDisabledProjectTokenUsageContext,
   createProjectKVContext,
   createProjectPersistentValueContext,
-  createProjectRelatedProjectsContext,
   createProjectToolPermissionContext,
   type KVStore,
 } from "steamharness";
@@ -232,24 +232,7 @@ function createToolContext(
   const store = createMemoryKVStore();
   return {
     providers: {},
-    storage: {
-      local: {
-        kv: createProjectKVContext({ store, projectId: "7afb5837-251e-4938-bae4-83f8569d9d6b" }),
-        persistentValue: createProjectPersistentValueContext({
-          store,
-          projectId: "7afb5837-251e-4938-bae4-83f8569d9d6b",
-        }),
-        relatedProjects: createProjectRelatedProjectsContext(),
-      },
-      server: {
-        kv: createProjectKVContext({ store, projectId: "7afb5837-251e-4938-bae4-83f8569d9d6b" }),
-        persistentValue: createProjectPersistentValueContext({
-          store,
-          projectId: "7afb5837-251e-4938-bae4-83f8569d9d6b",
-        }),
-        relatedProjects: createProjectRelatedProjectsContext(),
-      },
-    },
+    ...createApprovedTestContext(),
     conversation: createDisabledProjectConversationContext(),
     tokenUsage: createDisabledProjectTokenUsageContext(),
     userInput,

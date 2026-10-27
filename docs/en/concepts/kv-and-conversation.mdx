@@ -1,309 +1,53 @@
 ---
 title: "KV and session"
-description: "Behavior of context.storage, context.conversation, and conversation_id."
+description: "Database KV and conversations"
 ---
 
-# KV and session
+# Database KV and conversations
 
-The workflow runtime injects local/server KV, PersistentValue, and conversation capabilities for each execution. The project's [`dataStorage.mode`](/en/concepts/data-storage) strictly limits which locations may be accessed.
+Business data requires an approved database alias declared by the entry. Hosts manage run history, tool approvals, drafts and conversation state by `projectId + entryId`; data grants do not replace execution permissions.
 
-```ts
-await context.storage.local.kv.setValue("project-key", { count: 1 });
-await context.storage.local.kv.conversation.setValue("conversation-key", true);
-await context.storage.server.persistentValue.setValue("durable-key", { saved: true });
-```
-
-Delete a single entry with `deleteValue(key)`, which returns a boolean: `true` means an existing entry was removed, `false` means the key was not there. Deletion is permanent and has no recycle bin, and an absent key is not an error. Because a KV value can never be `undefined`, deletion is its own operation rather than a value write, so a stored `null` is never mistaken for a missing entry. A set followed by a delete inside one `withLock()` transaction commits as a delete; on the local store a delete clears the value file, its metadata file and the inspection-index row, and it can be recovered from the transaction journal like any other write.
-
-Use `updateValue()` for one read-modify-write value. Local storage updates it under the current namespace lock; a Server connection retries compare-and-set against the row revision, so concurrent increments are not silently lost. The updater may run more than once and must remain pure: do not send requests or cause side effects inside it. A local file backend's `withLock()` covers one namespace only. Access to another scope, project, or storage kind while holding it is rejected; split cross-namespace work into separate operations. On Windows, a brief `EPERM` or `EACCES` while creating an exclusive lock file is retried within the lock wait period; persistent failure still returns a timeout.
-
-## KV Scope
-
-| Scope | Isolation dimension |
-| --- | --- |
-| `context.storage.<location>.kv` | Current `projectId`. |
-| `context.storage.<location>.kv.conversation` | Current `projectId + conversationId`. |
-| `context.storage.<location>.persistentValue` | Current `projectId`, in a storage domain strictly separate from KV. |
-| `context.storage.<location>.persistentValue.conversation` | Current `projectId + conversationId`, still in the PersistentValue domain. |
-
-`location` is `local` or `server`. Multiple entrypoints in one project share that location's project namespace. The entrypoint ID is not added to keys automatically; add a stable business prefix when entrypoint isolation is required. Store scope is only `project | conversation`. There is no global/workflow scope and no `kv.workflow`, `persistentValue.workflow`, `context.kv`, or `context.persistentValue`.
-
-KV values must be JSON serializable and cannot be `undefined`. `context.storage.local` and `context.storage.server` always address separate datasets. A location forbidden by the declaration or unavailable from the host throws and never falls back.
-
-Kanban exposes only current-project `kv.getValue(key)` and `kv.setValue(key, value)`. It has no list/delete API and cannot access conversation scope. To isolate page state by named configuration, include `getConfiguration().id || "default"` in the key. Re-read after a configuration switch and use a request generation so a stale response cannot overwrite the new configuration.
-
-## Related-Project KV
-
-Generic relationships are declared in `package.json.steamHarness.projectInfo.relatedProjects` on both projects:
-
-```json
-{
-  "alias": "inventory",
-  "projectId": "f4ee23d7-abbb-4ba3-8baf-75b7c6c0b964",
-  "grantToRelatedProject": {
-    "read": { "mode": "all" },
-    "write": { "mode": "none" }
-  }
-}
-```
-
-`grantToRelatedProject` means "allow the other project to access this project." Project A resolves B using A's alias, but A's effective access to B comes from B's grant to A. The relationship is confirmed only when B also points back to A's UUID; aliases may differ. A one-sided declaration is pending. It can be saved, published, and included in the assistant's code workspace, but grants no KV access and does not enter an included dependency group.
-
-A rule `mode` is `none | all | prefixes`. `prefixes` requires 1 to 32 non-empty, unique prefixes, and a key is allowed when it starts with any one. A new relationship writes explicit `read: all` and `write: none` on both sides by default. Change each project's declaration separately for bidirectional writes or one-way access. `getValue` checks the target's read grant to the consumer; `setValue` and `deleteValue` check write; `updateValue` checks both. Every access re-reads current declarations, so removing a relationship or narrowing a rule takes effect immediately.
-
-An alias must match `[a-z][a-z0-9_-]{0,63}`. A project supports at most 32 relationships; aliases and `projectId` values must be unique within the project and cannot reference itself. KV access is direct only and never recurses from B to C, and `kv` offers neither list nor delete — the target's other persistent values and its conversation KV stay closed.
-
-### A related project's Knowledge and entrypoints
-
-The same `get(alias)` also opens the target's **Knowledge base** and its **entrypoints**, both granted by the target in the same declaration:
-
-```json
-{
-  "alias": "database",
-  "projectId": "f4ee23d7-abbb-4ba3-8baf-75b7c6c0b964",
-  "grantToRelatedProject": {
-    "read": { "mode": "all" },
-    "write": { "mode": "none" },
-    "knowledge": {
-      "read": { "mode": "all" },
-      "write": { "mode": "all" }
-    },
-    "entrypoints": { "mode": "prefixes", "prefixes": ["kb_"] }
-  }
-}
-```
-
-- `knowledge` offers `listDocuments` / `getDocument` / `createDocument` / `editDocument` / `deleteDocument` / `searchDocuments` / `readDocumentLines` — this package's Knowledge helpers, bound to the other project. **Writing no `knowledge` grants no Knowledge**: letting another project read your KV never implied handing that over. Access is decided per key, so a prefix grant can open named documents, while listing and searching touch the index every document shares and are refused with that key named.
-- `entrypoints` decides what the consumer may call: `listEntrypoints()` lists only the entrypoints the grant covers, and `runEntrypoint(id, args)` runs one, taking the argument list that entrypoint's own `createInput` parses and resolving with the payload it produced.
-- A relationship is one hop: the project that was called has **no** related access of its own, so nothing reaches a third project through it.
-
-Related entrypoints always execute locally from explicitly supplied target directories. KV uses `STEAMHARNESS_KV_STORE_DIR` and Knowledge uses `STEAMHARNESS_PERSISTENT_VALUE_STORE_DIR`, isolated by the target project UUID. A missing Knowledge directory fails directly. The server location provides remote data access only; Server never starts the target project. Related calls stay one hop, and the called project receives no access to a third project.
+## KV scopes
 
 ```ts
-const inventory = context.storage.local.relatedProjects.get("inventory");
-const current = await inventory.kv.getValue("stock:item-1");
-await inventory.kv.setValue("stock:item-1", { count: 8 });
-await inventory.kv.updateValue("stock:item-1", (value) => updateStock(value));
-```
-
-Resolution follows the selected location exactly: `storage.local` reads the target's local KV only, while `storage.server` reads Server KV only. A disallowed location or unavailable backend fails without fallback. CLI also requires repeatable `--related-project alias=/absolute/project/path` for every target and never scans parent or sibling directories.
-
-### Core workspace examples
-
-The Core repository's `workspace/workflow` directory contains two runnable data-access groups. `local-data-parent`, `local-data-child`, and `local-data-grandchild` always use `context.storage.local`; `server-data-parent`, `server-data-child`, and `server-data-grandchild` always use `context.storage.server`. Every project has two independently runnable entrypoints: the default `store` accepts `--content` directly, saves it under a random UUID, and returns the `id`; `get` accepts only that `--id` and returns the original content. Both entrypoints accept an optional `--alias` for a directly related project and target the current project when it is omitted. The local parent and child also carry a `note` entrypoint, which is what exercises Knowledge and related entrypoints: the child's `note` writes a document into **its own** Knowledge base and returns the id, and the parent's `note` calls it through the relation and then reads the document back through `relatedProjects.get("child").knowledge`.
-
-Each group declares adjacent relationships only. The parent connects to the child as `child`; the child connects to both sides as `parent` and `grandchild`; the grandchild connects to the child as `parent`. The examples explicitly grant bidirectional reads and writes on each direct relationship so they can verify current-project isolation for generated ids, bidirectional parent-child and child-grandchild access, and the absence of local/server fallback. The parent and grandchild have no direct relationship, so KV access through an undeclared alias fails instead of recursing through the child. Workspace structure snapshots and hierarchy-access tests continuously maintain these contracts.
-
-On Server, reads require guest access to both consumer A and target B. Writes require developer access on both, plus valid reciprocal declarations and B’s corresponding key grant. Requests provide only the consumer UUID and alias; callers cannot choose a target UUID.
-
-Kanban uses the same relationship and grant:
-
-```js
-const inventory = window.steamHarnessKanban.relatedProjects.get("inventory");
-const value = await inventory.kv.getValue("stock:item-1");
-await inventory.kv.setValue("stock:item-1", { count: 8 });
-const unsubscribe = inventory.kv.subscribe(({ alias, revision }) => {
-  scheduleRefresh(alias, revision);
+const database = context.databases.get("data");
+await database.transaction(async db => {
+  await db.kv.setValue("settings:theme", "dark");
+  await db.knowledge.createDocument({
+    id: "guide", title: "Guide", markdown: "# Guide\nShared content",
+  });
 });
+const theme = await database.kv.getValue("settings:theme");
+const document = await database.knowledge.getDocument("guide");
 ```
 
-Bridge requests carry only alias and key. The iframe cannot supply a target UUID, scope, target, or database path. `subscribe()` reports only alias and an opaque revision. Debounce events into a fresh `getValue()` and call the returned unsubscribe function on unload or configuration changes. An invalid relationship, read grant, or target immediately invalidates current subscriptions and later access. Local and Server KV remain independent, and project-group upload, publication, and download never copy KV.
-
-|Data|Local CLI directory|Description|
-| --- | --- | --- |
-| `context.storage.local.kv` | `STEAMHARNESS_KV_STORE_DIR` | Normal KV, conversation state, and other local data. |
-| `context.storage.local.persistentValue` | `STEAMHARNESS_PERSISTENT_VALUE_STORE_DIR` | Persistent values and the project Knowledge base. |
-
-Local CLI runs inject these directories into `context.storage.local`. `context.storage.server` uses the project UUID and an authenticated Server connection. A local run of a `server` project uses the server location as its host location; `both` defaults to the local host and lets source code access server storage explicitly. An unavailable location throws, and local and server data never synchronize automatically.
-
-## Last Write Source
-
-KV and PersistentValue record the last write source, such as project, run, and conversation, when the host provides it. The Server KV viewer displays these identifiers without linking to server execution logs. The local data viewer also displays source information for local records.
-
-## Project Knowledge Base
-
-The project Knowledge base stores Markdown documents in the top-level, current-project `persistentValue` at the selected location:
-
-| scope | key |Content|
-| --- | --- | --- |
-| project | `knowledge.documents` |v2 index metadata, total number of records, incrementing sequence, and first page ID.|
-| project | `knowledge.documents.page.<pageId>` |Bounded page blocks of up to 128 document abstracts.|
-| project | `knowledge.documents.locator.<id>` |Document to page block positioning record; tombstone after deletion.|
-| project | `knowledge.document.<id>` |Single markdown document body; tombstone after deletion.|
-
-Business workflow can manage documents through core helper:
+`database.kv` addresses shared space keys. `database.kv.conversation` additionally isolates the current project, entry and `conversationId`. Projects sharing a space can share top-level KV, but equal conversation IDs do not expose each other's conversation KV.
 
 ```ts
-const storage = context.storage.local;
-
-const document = await workflow.createKnowledgeDocument(storage, {
-  title: "Runbook",
-  markdown: "# Runbook
-
-Persistent notes.",
-});
-
-const result = await workflow.searchKnowledgeDocuments(storage, {
-  query: "Persistent",
-  documentId: document.id,
-  beforeLines: 1,
-  afterLines: 1,
-});
+await database.kv.conversation.setValue("lastQuery", "example");
+await database.kv.updateValue("counter", value => Number(value ?? 0) + 1);
 ```
 
-The available methods are `listKnowledgeDocuments`, `getKnowledgeDocument`, `createKnowledgeDocument`, `editKnowledgeDocument`, `deleteKnowledgeDocument`, `searchKnowledgeDocuments`, and `readKnowledgeDocumentLines`. The cursor of `listKnowledgeDocumentPage()` is an opaque token that can only be passed back as is. The first read only accesses the metadata and the required page block, and does not read the body or scan the old page. Indexes are fixed to v2 page block format, old single array indexes are not read or migrated. These methods do not write the knowledge base to a normal CLI local KV; the local knowledge base is written when the `STEAMHARNESS_PERSISTENT_VALUE_STORE_DIR` is set, and the server database is written through an explicit Server storage connection. Local and server knowledge bases use their respective backends; reading data does not copy it to the other store. Create, edit, and delete are performed serially in the same PersistentValue namespace; a local run using a server connection completes such changes as a server-side request and commits or rolls back the document index, body, and tombstone within the same PostgreSQL transaction, avoiding concurrent writes or inconsistent data left by a single failure. The markdownPreview used for list and write summary responses only scan up to 16K characters at the beginning of the body to avoid additional copying or blocking saving of multi-MB documents. Reading the complete body still uses the get interface.
+`updateValue` uses host CAS and rereads on conflicts; both read and write access are required. `database.transaction` commits within one space, not across spaces. Use `database.knowledge` for knowledge-reserved data.
 
-Kanban `knowledge.listDocuments/getDocument/createDocument/editDocument/deleteDocument/searchDocuments/readDocumentLines` reuses these document formats and storage semantics. Local resource panels show local data, while Server Web static previews show server data. Named configurations are isolated by user. Project KV and Knowledge are shared within the project: developers and higher roles can write, while guests have read-only access.
-
-### Agent Built-in Project MCP
-
-The built-in Codex and OpenCode projects create temporary Streamable HTTP MCP endpoint Knowledge and KV two `127.0.0.1`-only bindings during each agent turn and inject the agent via their respective SDK config. Small helper reuse OpenCode will also add a global memory endpoint. endpoint using a random path and a Bearer token, the turn closes when it completes, fails, cancels, or retries cleanup, eliminating the need to deploy MCP services separately.
-
-|Project|Tool Management Name|MCP Tools|Data mapping|
-| --- | --- | --- | --- |
-| Codex | `mcp__steamharness-knowledge__knowledge_documents` | `knowledge_documents` | Uses Knowledge helpers at the location selected by the declaration and runtime host. |
-| Codex | `mcp__steamharness-kv__kv_store` | `kv_store` | `project` and `conversation` use project/conversation KV scopes at that selected location. |
-| OpenCode | `workflow-knowledge_knowledge_documents` | `knowledge_documents` |Access project markdown documents through the same knowledge base helper.|
-| OpenCode | `workflow-kv_kv_store` | `kv_store` |Use the same project / conversation KV scope as Codex.|
-|Little assistant| `workflow-memory_global_memory` | `global_memory` |Execute `list/get/search/remember/forget` in the small helper stable Knowledge namespace.|
-
-The knowledge base tool supports `list/get/create/edit/delete/search/read_lines`; the KV tool only opens `get/set` that is already supported by the underlying KV, and the value must be JSON serializable. These tools are registered in `tools` corresponding to executor and are enabled by default and automatically approved. CLI Web tool management can disable or change to manual approval on a case-by-case basis; manual approval is still handled by `workflow.createToolApprovalGate()` and the existing waiting-input recovery protocol. Codex uses the SDK `approve` mode to skip internal second-level approvals;OpenCode makes the workflow MCP tool callable, but the actual operation still goes through the same workflow approval gate.
-
-The assistant's `global_memory` records only stable, reusable user preferences, changes, and project decisions. `remember` USES STABLE `memoryId` to upsert the `assistant-memory-*` document;`forget` to delete the corresponding document. The tool rejects common keys, tokens, passwords, and private key content, and should not save one-time progress or temporary errors. The namespace is shared across target projects within the scope of the native helper, but is not automatically synchronized to SteamHarness Server, other devices, or the general project Knowledge.
-
-## Conversation Document Mirroring
-
-The `conversation-knowledge` example shows the mode of converting a session into a knowledge base document: the same conversation id corresponds to 1 markdown document. each round of messages is written to `context.conversation`, and then the complete transcript is synchronized to the knowledge base.
+## Calls within the aggregate
 
 ```ts
-const state = await context.conversation.appendMessage({
-  role: "assistant",
-  content: `Saved to a knowledge-base document: ${input.message}`,
-});
-
-await workflow.editKnowledgeDocument(context.storage.local, {
-  id: documentId,
-  title,
-  markdown: renderTranscript(state.messages),
-});
+const operations = await context.entries.get("database").listEntrypoints();
+const result = await context.entries.get("database")
+  .runEntrypoint("search", ["--query", "example"]);
 ```
 
-The document id can be derived from `conversationId`, so subsequent runs of the same conversation will update the same document.
+Only registered Workflow entries expose operations. The host preserves the current actor, cancellation signal and tool permissions, loads the target configuration snapshot and database bindings, and authorizes again. Ask mode cannot acquire Build permissions through another entry.
 
-## Token usage statistics
+## Last writer
 
-Token usage is disabled by default. Once enabled on the executor, runtime writes cumulative totals only to the current project's KV and, when a conversation exists, that conversation's KV. Server derives the system total by aggregating project totals instead of maintaining a separate system KV. Runtime also writes this run's aggregate to the report and runtime events:
+Writes record `projectId`, `entryId` and available `runId` and `conversationId`. These identify the source without changing the space address or granting access.
 
-```ts
-export const executor = workflow.defineExecutor<Input, OutputPayload>({
-  projectType: "workflow",
-  defaultEntrypoint: "main",
-  entrypoints: [
-    workflow.defineEntrypoint<Input, OutputPayload>({
-      id: "main",
-      title: "Full workflow",
-      workflow: assistantProject,
-      tokenUsage: {
-        enabled: true,
-        display: true,
-      },
-      createInput({ args }) {
-        return { message: args.join(" ") };
-      },
-    }),
-  ],
-});
-```
+## Knowledge and attachments
 
-`enabled` controls statistics and KV writing;`display` controls whether the CLI Web front end displays token badge. When `display` is omitted, it follows `enabled` by default. The total amount is displayed in the badge body. When hover or keyboard is focused, Input, Output, Reasoning, Cache read, Cache write, and Calls are displayed respectively.
+`database.knowledge` provides listing, reading, creation, editing, deletion, search and line reads. `database.knowledge.files` manages attachments. Shared documents, files, indexes and revisions use the same authorization. See [Knowledge API](/en/core-api/knowledge-documents).
 
-The `usage` returned by the provider is automatically read from the provider parsed by `workflow.getLLMProvider()`. Custom nodes can also be manually reported:
+## Conversation state
 
-```ts
-await context.tokenUsage.report({
-  inputTokens: 120,
-  outputTokens: 80,
-  totalTokens: 200,
-  reasoningTokens: 12,
-  cachedInputTokens: 40,
-  cacheCreationTokens: 16,
-  nodeName: "answer",
-  providerName: "openai",
-  modelId: "gpt-5",
-});
-```
-
-When `tokenUsage.enabled` is not turned on,`context.tokenUsage.report()` is a safe no-op.
-
-## Open Session
-
-Session capability is enabled by the explicit item type of executor:
-
-```ts
-export const executor = workflow.defineExecutor<Input, OutputPayload>({
-  projectType: "conversation",
-  workflow: conversationProject,
-  createInput({ args, conversationId }) {
-    return { message: args.join(" "), conversationId };
-  },
-});
-```
-
-After declaration you can use:
-
-```ts
-const state = await context.conversation.getValue();
-await context.conversation.appendMessage({ role: "user", content: input.message });
-await context.conversation.setValue("topic", "weather");
-await context.conversation.setTitle("Weather assistant");
-```
-
-`setTitle(title)` writes the header to the session state and triggers the header update event in CLI Web. The header is cleared when the header is an empty string; when `projectType: "workflow"`,`setTitle` is a safe no-op.
-
-## Default input box
-
-Conversation always displays the standard message input, with no enable setting or custom main fields. Declare attachment capabilities through `conversation.attachments`; the input is serialized into these CLI arguments:
-
-The unsent text, attachments, and additional parameters are synchronized as the same draft; when you adjust the Advanced or shortcut parameters, the entered text and attachments remain unchanged.
-
-CLI Web Conversations use a general `/` command menu: `kind: "slash"` declares selectors or boolean parameters, and `conversation.commands` declares independent execution actions. A bare `/` shows all commands. `conversation.footer` displays plain text outside and below the input, with conditions based on parameter values. Project Assistant defaults to Build and uses one `/plan` toggle for Plan mode and its footer notice. `/export` exports all current session records and displays the result in the body. `/compact` shows running and completed or failed states, persists the summary as subsequent Agent context, and retains the original conversation records. See [Slash Menu And Footer Text](/en/core-api/define-executor#slash-menu-and-footer-text) for the complete declarations.
-
-- Text:`--message`
-- Image Attachment:`--images`
-- Common file attachments:`--files`
-- Video attachments: `--videos`, enabled by `attachments.videos: true`.
-
-The workflow still reads these parameters explicitly in `createInput({ args })`, preferably with [`workflow.parseConversationDefaultInputArgs(args)`](/en/core-api/parse-conversation-default-input-args). The helper takes the last `--message` and merges each of `--images`, `--videos`, and `--files`. Existing projects with only `files: true` continue to receive videos under `--files`. The project is responsible for adapting video references to its model's input protocol.
-
-Both the `codex` and `opencode` examples have picture attachments enabled. Codex is converted to `local_image` and OpenCode is converted to data URL file part during SDK turn; both only persist the picture reference with the user message so that the CLI Web playback attachments.
-
-## Input Queue
-
-With `conversation.durable: { enabled: true }` and Agent `session`, Harness owns queued inputs, consumption, withdrawal, and steer receipts. Hosts retain stable requestIds for unconfirmed commands and resend them after recovery; snapshot receipts repair lost acknowledgements. Background tasks, transactional plans, and parent/child usage commit with execution history; KV / Conversation documents are display projections. Reset retains visible history while starting a new context epoch. Forks share SQLite but own separate conversations, provider identities, and inboxes, inheriting plans through initial/current/asOf. Clients have independent selections and share snapshots without starting another database owner. See [Studio Trace](/en/cli/steamharness#durable-agent-in-studio-trace).
-
-For workflows without Durable session, declaring `conversation.inputQueue: { enabled: true }` lets CLI Web accept new inputs while the current session is running and put them into the host persistence queue. After the current run completes, queue items continue in order; both `codex` and `opencode` workflows enable this mode.
-
-## conversation_id
-
-Local sessions can pass in or generate a conversation id.
-
-CLI Web and Studio show a read-only notice when the same session is already open or running in another window. The duplicate window cannot send, stop, or modify that session, but can read its output or create a different session to run in parallel. Closing the original window releases its page ownership. A resident Agent or background task retains its executing process until it exits, after which another window can recover it. A durable database's main conversation and forks share one executing process. History saves merge only the sessions owned by each window, preserving other windows' messages and drafts.
-
-- local host generates and reuses a conversation id for each local chat session.
-- Local CLI uses `--conversation-id` to select a stable conversation id.
-- Local clients can return a stable `conversationId` from `createInput`.
-- CLI Web playback displays user input and attachments from local session records.
-
-## Session State Structure
-
-```ts
-interface ConversationState {
-  conversationId: string;
-  projectName: string;
-  title?: string;
-  values: Record<string, unknown>;
-  messages: ConversationMessageContract[];
-}
-```
-
-The session message should hold the displayable content and necessary references. For large files, it is recommended to save the file reference and not write raw binary or base64 long text into the session state.
+Hosts persist each entry's history, input queue, drafts, parameters, token usage and approvals independently. CLI Web preserves background runs while switching windows. Studio entry tabs share the host and keep separate conversations. Configuration changes apply to the next execution. Recovery must match both project and entry, including pending approvals.

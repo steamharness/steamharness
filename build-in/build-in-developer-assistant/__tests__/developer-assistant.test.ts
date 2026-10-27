@@ -15,7 +15,7 @@ const RUN_SCOPED_CORE_TOOL_NAMES = [
   "workflow-kv_kv_store",
 ];
 const CODING_TOOL_NAMES = ["read", "write", "edit", "bash", "grep", "find", "ls"];
-const CONTROL_TOOL_NAMES = ["workflow-studio_get_configurations", "workflow-studio_manage_configurations", "workflow-studio_open_configurations", "workflow-studio_studio_state", "workflow-studio_get_related_projects", "workflow-studio_get_diagnostics", "workflow-studio_open_file",
+const CONTROL_TOOL_NAMES = ["workflow-studio_get_configurations", "workflow-studio_manage_configurations", "workflow-studio_open_configurations", "workflow-studio_studio_state", "workflow-studio_get_entries", "workflow-studio_get_diagnostics", "workflow-studio_open_file",
   "workflow-studio_set_theme", "workflow-studio_open_terminal", "workflow-studio_show_view"];
 const SESSION_TOOL_NAMES = ["tool_search", "codemode", "update_plan", "subagent"];
 const EXPECTED_TOOL_NAMES = [...SESSION_TOOL_NAMES, ...CONTROL_TOOL_NAMES, ...CORE_TOOL_NAMES, ...CODING_TOOL_NAMES];
@@ -24,7 +24,7 @@ describe("developer assistant workflow", () => {
   it("keeps its distributed identity and stores assistant data locally", async () => {
     const manifest = JSON.parse(await readFile(path.join(projectDir, "package.json"), "utf8"));
     expect(manifest.id).toBe("a3aca697-b086-459b-84e4-d357ad2d9fb2");
-    expect(manifest.steamHarness.projectInfo).toMatchObject({ dataStorage: { mode: "local" }, relatedProjects: [] });
+    expect(manifest.steamHarness.entries[0]).toMatchObject({ entryId: "main", type: "conversation", databases: [expect.objectContaining({ alias: "memory", host: "local" })] });
   });
   it("does not offer a Code Mode configuration parameter", async () => {
     const manifest = JSON.parse(await readFile(path.join(projectDir, "configuration.json"), "utf8"));
@@ -95,7 +95,7 @@ describe("developer assistant workflow", () => {
     );
     expect(structure.tools?.filter(tool => CONTROL_TOOL_NAMES.includes(tool.name))).toEqual(
       CONTROL_TOOL_NAMES.map(name => expect.objectContaining({ name, enabled: true,
-        autoApprove: ["workflow-studio_get_configurations", "workflow-studio_studio_state", "workflow-studio_get_related_projects", "workflow-studio_get_diagnostics"].includes(name) })),
+        autoApprove: ["workflow-studio_get_configurations", "workflow-studio_studio_state", "workflow-studio_get_entries", "workflow-studio_get_diagnostics"].includes(name) })),
     );
     for (const name of RUN_SCOPED_CORE_TOOL_NAMES) {
       expect(structure.tools?.some((tool) => tool.name === name)).toBe(false);
@@ -225,12 +225,12 @@ describe("developer assistant workflow", () => {
 
     expect(generatorSkill).toContain("references/project-repair.md");
     expect(generatorSkill).toContain("旧 CLI 返回 `0` 也不能证明 Desktop 能重新识别项目");
-    expect(generatorSkill).toContain("整体关联尚未完成");
+    expect(generatorSkill).toContain("数据库绑定尚未完成");
     expect(repairReference).toContain("必需知识门禁");
     expect(repairReference).toContain("旧版 CLI 返回 `0` 也不能覆盖直接发现的合同错误");
-    expect(repairReference).toContain('旧 `access: { "read": "all", "write": "none" }` 不受支持');
+    expect(repairReference).toContain("context.databases.get(alias)");
     expect(repairReference).toContain("不要把字段机械改名");
-    expect(repairReference).toContain("信息 -> 管理关联资源");
+    expect(repairReference).toContain("绑定获批 bindingRef");
     expect(repairReference).toContain("代码工作区授权");
     expect(repairReference).toContain("KV 权限");
   });

@@ -18,12 +18,6 @@ export interface ImportedProject {
   uri: string;
   name: string;
   version?: string;
-  downloadRootUri?: string;
-}
-
-export interface RelatedProject {
-  alias: string;
-  projectId: string;
 }
 
 export function projectId(value: unknown): string | undefined {
@@ -38,8 +32,7 @@ export function readImportedProjects(value: unknown): ImportedProject[] {
     try {
       if (!['file:', 'vscode-remote:'].includes(new URL(item.uri).protocol)) { return []; }
     } catch { return []; }
-    return [{ id, uri: item.uri, name: item.name, ...(typeof item.version === 'string' ? { version: item.version } : {}),
-      ...(typeof item.downloadRootUri === 'string' ? { downloadRootUri: item.downloadRootUri } : {}) }];
+    return [{ id, uri: item.uri, name: item.name, ...(typeof item.version === 'string' ? { version: item.version } : {}) }];
   });
 }
 
@@ -51,16 +44,6 @@ export function rememberImportedProjects(previous: ImportedProject[], imported: 
     if (!projects.has(project.uri)) { projects.set(project.uri, { ...(existing?.id === project.id ? existing : {}), ...project }); }
   }
   return [...projects.values()];
-}
-
-export function readRelatedProjects(manifest: unknown): RelatedProject[] {
-  const pkg = manifest as { steamHarness?: { projectInfo?: { relatedProjects?: unknown } } } | null;
-  const relations = pkg?.steamHarness?.projectInfo?.relatedProjects;
-  if (!Array.isArray(relations)) { return []; }
-  return relations.flatMap(relation => {
-    const id = projectId(relation?.projectId);
-    return id && typeof relation?.alias === 'string' && relation.alias.trim() ? [{ alias: relation.alias, projectId: id }] : [];
-  });
 }
 
 export function readRecentProjects(value: unknown): RecentProject[] {

@@ -23,7 +23,7 @@ async function fixture(t, version = '1.0.0', protocol = 1, fail = false, startup
     const version=${JSON.stringify(version)},args=process.argv.slice(2);
     const assistantId='a3aca697-b086-459b-84e4-d357ad2d9fb2';
     if(args.includes('--inspect') && !args.includes('--host-stdio')) {
-      console.log(JSON.stringify({projects:[{name:version,folderPath:process.cwd(),projectType:'conversation',fields:[],entrypoints:[]}],errors:[]}));
+      console.log(JSON.stringify({projects:[{name:version,folderPath:process.cwd(),projectType:'conversation',entryId:'main',defaultEntry:'main',entries:[{entryId:'main',name:'Main',type:'conversation',root:'.',entry:'index.ts',databases:[]}],databases:[],fields:[],entrypoints:[]}],errors:[]}));
     } else {
       const input=createInterface({input:process.stdin});
       let configuration,effectiveConnection,server,authMessages=0,userSettingsMessages=0;
@@ -38,7 +38,7 @@ async function fixture(t, version = '1.0.0', protocol = 1, fail = false, startup
         const message=JSON.parse(line);
         if(message.type==='configure') {
           configuration=message;
-          if(args.includes('--inspect')) { console.log(JSON.stringify({assistantProtocolVersion:${assistantProtocol},projects:[{id:assistantId,name:'Project Assistant',folderPath:message.assistantProjectDir,projectType:'conversation',fields:[],entrypoints:[],tools:[{name:'skill'}]}],errors:[]}));input.close();process.stdin.pause();return; }
+          if(args.includes('--inspect')) { console.log(JSON.stringify({assistantProtocolVersion:${assistantProtocol},projects:[{id:assistantId,name:'Project Assistant',folderPath:message.assistantProjectDir,projectType:'conversation',entryId:'main',defaultEntry:'main',entries:[{entryId:'main',name:'Main',type:'conversation',root:'.',entry:'index.ts',databases:[]}],databases:[],fields:[],entrypoints:[],tools:[{name:'skill'}]}],errors:[]}));input.close();process.stdin.pause();return; }
           authenticate(message);
           if(${fail}) {console.error(message.connection?.accessToken);process.exit(1);}
           const studioControl={hasUrl:!!process.env.STEAMHARNESS_STUDIO_CONTROL_BRIDGE_URL,hasToken:!!process.env.STEAMHARNESS_STUDIO_CONTROL_BRIDGE_TOKEN,mcpServer:process.env.STEAMHARNESS_STUDIO_CONTROL_MCP_SERVER??null,permissionPolicy:process.env.STEAMHARNESS_STUDIO_CONTROL_PERMISSION_POLICY??null};
@@ -52,16 +52,16 @@ async function fixture(t, version = '1.0.0', protocol = 1, fail = false, startup
             }
             response.end(JSON.stringify({configuration,effectiveConnection,args,pid:process.pid,authMessages,userSettingsMessages,studioControl}));
           });
-          setTimeout(()=>server.listen(Number(args[args.indexOf('--port')+1]??0),'127.0.0.1',()=>console.log(JSON.stringify({type:'ready',protocolVersion:1,hostProtocolVersion:${protocol},accountProtocolVersion:${accountProtocol},systemAiConnectionProtocolVersion:${systemAiProtocol},relatedProjectsProtocolVersion:${relatedProtocol},userSettingsProtocolVersion:${userSettingsProtocol},assistantProtocolVersion:${assistantProtocol},url:'http://127.0.0.1:'+server.address().port+'/#session='+'a'.repeat(64),project:{id:message.assistantProjectDir?assistantId:'user',name:message.assistantProjectDir?'Project Assistant':version,projectType:'conversation'},runtime:{harnessVersion:version,harnessPath:process.cwd()+'/node_modules/steamharness/dist/index.js'}}))),${startupDelay});
+          setTimeout(()=>server.listen(Number(args[args.indexOf('--port')+1]??0),'127.0.0.1',()=>console.log(JSON.stringify({type:'ready',protocolVersion:1,hostProtocolVersion:${protocol},accountProtocolVersion:${accountProtocol},systemAiConnectionProtocolVersion:${systemAiProtocol},entriesProtocolVersion:${relatedProtocol},databaseSpacesProtocolVersion:1,userSettingsProtocolVersion:${userSettingsProtocol},assistantProtocolVersion:${assistantProtocol},url:'http://127.0.0.1:'+server.address().port+'/entries/main/#session='+'a'.repeat(64),project:{id:message.assistantProjectDir?assistantId:'user',name:message.assistantProjectDir?'Project Assistant':version,projectType:'conversation',entryId:'main',defaultEntry:'main',entries:[{entryId:'main',name:'Main',type:'conversation',root:'.',entry:'index.ts',databases:[]}],databases:[]},runtime:{harnessVersion:version,harnessPath:process.cwd()+'/node_modules/steamharness/dist/index.js'}}))),${startupDelay});
         } else if(message.type==='auth') {authMessages++;authenticate(message);configuration.connection=message.connection;configuration.systemAiConnection=message.systemAiConnection;}
-        else if(message.type==='related-projects') {configuration.relatedProjects=message.relatedProjects;}
+        else if(message.type==='resource-projects') {configuration.resourceProjects=message.resourceProjects;}
         else if(message.type==='user-settings') {if(${userSettingsProtocol}!==1) process.exit(31);userSettingsMessages++;configuration.userSettings=message.userSettings;}
         else if(message.type==='close') {input.close();process.stdin.pause();server?.close();}
       });
       input.on('close',()=>{process.stdin.pause();server?.close();});
     }
   `);
-  return { directory, cli, options: { projectDir: directory, dataDir: path.join(directory, 'data'), nodePath: process.execPath, theme: 'dark', surface: 'editor' } };
+  return { directory, cli, options: { projectDir: directory, entryId:'main', dataDir: path.join(directory, 'data'), nodePath: process.execPath, theme: 'dark', surface: 'editor' } };
 }
 
 test('user settings use host stdin, deduplicate updates and respect older CLI capabilities', async t => {
@@ -329,31 +329,9 @@ test('ordinary projects cannot inherit a control connection or permission from t
   assert.deepEqual(result.studioControl, { hasUrl: false, hasToken: false, mcpServer: null, permissionPolicy: null });
 });
 
-test('imported related bindings are configured and updated without restarting the project CLI', async t => {
-  const { options, directory } = await fixture(t);
-  const relatedProjects = [{ alias: 'database', projectDir: path.join(directory, 'imported-database') }];
-  const session = await startProjectCli({ ...options, relatedProjects });
-  t.after(() => session.close());
-  const origin = new URL(session.ready.url).origin;
-  const initial = await fetch(origin).then(response => response.json());
-  assert.deepEqual(initial.configuration.relatedProjects, relatedProjects);
-  session.updateRelatedProjects([]);
-  let next;
-  for (let attempt = 0; attempt < 100; attempt++) {
-    next = await fetch(origin).then(response => response.json());
-    if (!next.configuration.relatedProjects.length) { break; }
-  }
-  assert.deepEqual(next.configuration.relatedProjects, []);
-  assert.equal(next.pid, initial.pid);
-});
-
-test('an old project CLI cannot silently ignore imported related bindings', async t => {
-  const { options, directory } = await fixture(t, 'old-related', 1, false, 0, 1, 1, 0);
-  const relatedProjects = [{ alias: 'database', projectDir: path.join(directory, 'database') }];
-  await assert.rejects(startProjectCli({ ...options, relatedProjects }), /@steamharness\/cli/);
-  const session = await startProjectCli(options);
-  t.after(() => session.close());
-  assert.throws(() => session.updateRelatedProjects(relatedProjects), /@steamharness\/cli/);
+test('a CLI without aggregate entry support is rejected', async t => {
+  const { options } = await fixture(t, 'old', 1, false, 0, 1, 1, 0);
+  await assert.rejects(startProjectCli(options), /@steamharness\/cli/);
 });
 
 test('closing a workspace aborts an unfinished CLI startup', async t => {
@@ -480,7 +458,7 @@ test('Retry restores an exited CLI on the same origin and never duplicates a liv
   const connection = { serverUrl: 'https://current.test', accessToken: 'latest-account' };
   const userSettings = { agent: { permissionPolicy: 'read-only' } };
   session.updateAuth(connection);
-  session.updateRelatedProjects([{ alias: 'latest', projectDir: options.projectDir }]);
+  session.updateResourceProjects([{ id: 'latest', projectDir: options.projectDir }]);
   session.updateUserSettings(userSettings);
   userSettings.agent.permissionPolicy = 'auto';
   assert.deepEqual(await Promise.all([session.reconnect(), session.reconnect()]), [true, true]);
@@ -488,11 +466,11 @@ test('Retry restores an exited CLI on the same origin and never duplicates a liv
   let recovered;
   for (let i = 0; i < 100; i++) {
     recovered = await fetch(origin).then(response => response.json());
-    if (recovered.configuration.connection?.accessToken === connection.accessToken && recovered.configuration.relatedProjects[0]?.alias === 'latest' && recovered.configuration.userSettings?.agent.permissionPolicy === 'read-only') break;
+    if (recovered.configuration.connection?.accessToken === connection.accessToken && recovered.configuration.resourceProjects[0]?.id === 'latest' && recovered.configuration.userSettings?.agent.permissionPolicy === 'read-only') break;
   }
   assert.notEqual(recovered.pid, initial.pid);
   assert.equal(recovered.configuration.connection.accessToken, connection.accessToken);
-  assert.equal(recovered.configuration.relatedProjects[0].alias, 'latest');
+  assert.equal(recovered.configuration.resourceProjects[0].id, 'latest');
   assert.equal(recovered.configuration.userSettings.agent.permissionPolicy, 'read-only', 'Recovery uses the last copied user snapshot');
   await session.close(); assert.equal(closed, true);
   await assert.rejects(session.reconnect(), /closed/);

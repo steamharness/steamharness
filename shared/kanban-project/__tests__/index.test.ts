@@ -9,14 +9,12 @@ import {
   isSafeKanbanAssetPath,
   parseKanbanBridgeCall,
   parseKanbanManifest,
-  readKanbanArtifactConfig,
+  readKanbanEntryConfig,
   readKanbanAssetMimeType,
-  readPackageProjectType,
   createKanbanContentSecurityPolicy,
   getKanbanPreviewCapabilityRefreshDelay,
   KANBAN_PREVIEW_CAPABILITY_RETRY_MS,
   scheduleKanbanPreviewCapabilityRefresh,
-  resolveKanbanRelatedProject,
   KANBAN_FILE_MAX_BYTES,
   KANBAN_PRESENTATION_CHANGE_EVENT,
   KANBAN_PRESENTATION_MESSAGE,
@@ -70,7 +68,7 @@ describe("kanban project contract", () => {
     expect(pageWindow.steamHarnessKanban.getConfiguration()).toEqual({ id: "profile", name: "Map", params: {} });
   });
   it("restricts file calls to bytes and managed ids without caller-selected project or paths", () => {
-    expect(parseKanbanBridgeCall({ requestId: "upload", operation: "files.createFile", input: { name: "map.png", mimeType: "image/png", base64: "AP8=" } })).toMatchObject({ operation: "files.createFile" });
+    expect(parseKanbanBridgeCall({ requestId: "upload", operation: "files.createFile", input: { database:"data", name: "map.png", mimeType: "image/png", base64: "AP8=" } })).toMatchObject({ operation: "files.createFile" });
     for (const input of [
       { name: "../map.png", base64: "AA==" },
       { name: "map.png", base64: "not base64" },
@@ -80,9 +78,9 @@ describe("kanban project contract", () => {
       expect(() => parseKanbanBridgeCall({ requestId: "bad", operation: "files.createFile", input })).toThrow();
     }
     for (const fileId of ["../private", "https://example.com/file", "wf_abc/../secret"]) {
-      expect(() => parseKanbanBridgeCall({ requestId: "read", operation: "files.readFile", input: { fileId } })).toThrow();
+      expect(() => parseKanbanBridgeCall({ requestId: "read", operation: "files.readFile", input: { database:"data", fileId } })).toThrow();
     }
-    expect(() => parseKanbanBridgeCall({ requestId: "large", operation: "files.createFile", input: {
+    expect(() => parseKanbanBridgeCall({ requestId: "large", operation: "files.createFile", input: { database:"data",
       name: "map.png", base64: "A".repeat(Math.ceil(KANBAN_FILE_MAX_BYTES / 3) * 4),
     } })).toThrow(/50 MiB/);
   });
@@ -106,83 +104,32 @@ describe("kanban project contract", () => {
     };
     const bytes = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0, 255]);
     const reference = { id: "wf_abc123", name: "map.png", mimeType: "image/png", size: 6, kind: "image", storage: "server", createdAt: "2026-10-08T00:00:00Z" };
-    const uploaded = pageWindow.steamHarnessKanban.files.createFile({ name: "map.png", mimeType: "image/png", buffer: bytes });
+    const uploaded = pageWindow.steamHarnessKanban.databases.get("data").files.createFile({ name: "map.png", mimeType: "image/png", buffer: bytes });
     const base64 = Buffer.from(bytes).toString("base64");
-    expect(messages.at(-1)).toMatchObject({ operation: "files.createFile", input: { name: "map.png", mimeType: "image/png", base64 } });
+    expect(messages.at(-1)).toMatchObject({ operation: "files.createFile", input: { database:"data", name: "map.png", mimeType: "image/png", base64 } });
     reply(reference);
     await expect(uploaded).resolves.toEqual(reference);
-    const downloaded = pageWindow.steamHarnessKanban.files.readFile(reference.id);
+    const downloaded = pageWindow.steamHarnessKanban.databases.get("data").files.readFile(reference.id);
     reply({ file: reference, base64 });
     const result = await downloaded;
     expect(new Uint8Array(result.buffer)).toEqual(bytes);
-    const deleted = pageWindow.steamHarnessKanban.files.deleteFile(reference.id);
+    const deleted = pageWindow.steamHarnessKanban.databases.get("data").files.deleteFile(reference.id);
     reply(true);
     await expect(deleted).resolves.toBe(true);
   });
-  it("reads default and custom artifact entry settings", () => {
-    expect(readKanbanArtifactConfig({ steamHarness: { projectType: "kanban" } })).toEqual({
-      artifactDir: ".",
-      entry: "index.html",
-    });
-    const custom = readKanbanArtifactConfig({
-      steamHarness: {
-        projectType: "kanban",
-        kanban: { artifactDir: "dist\\client", entry: "pages\\board.htm" },
-      },
-    });
-    expect(custom).toEqual({ artifactDir: "dist/client", entry: "pages/board.htm" });
-    expect(createKanbanArtifactEntryPath(custom)).toBe("dist/client/pages/board.htm");
+  it("derives artifact paths from a registered entry", () => {
+    expect(readKanbanEntryConfig({type:"kanban",entry:"index.html"})).toEqual({artifactDir:".",entry:"index.html"});
+    const custom=readKanbanEntryConfig({type:"kanban",entry:"dist/pages/board.html"});
+    expect(custom).toEqual({artifactDir:"dist/pages",entry:"board.html"});
+    expect(createKanbanArtifactEntryPath(custom)).toBe("dist/pages/board.html");
+  });
+  it("rejects unsafe and non-HTML registered artifacts",()=>{
+    for(const entry of ["../dist/index.html","C:\\dist/index.html","/index.html","pages/../index.html","node_modules/site/index.html",".git/index.html","app.js"])
+      expect(()=>readKanbanEntryConfig({type:"kanban",entry})).toThrow();
+    expect(()=>readKanbanEntryConfig({type:"workflow",entry:"index.html"})).toThrow();
   });
 
-  it("rejects unsafe or non-HTML Kanban artifact settings", () => {
-    for (const kanban of [
-      { artifactDir: "../dist" },
-      { artifactDir: "C:\\dist" },
-      { artifactDir: ".git" },
-      { artifactDir: "node_modules/site" },
-      { entry: "/index.html" },
-      { entry: ".svn/index.html" },
-      { entry: "app.js" },
-    ]) {
-      expect(() => readKanbanArtifactConfig({ steamHarness: { projectType: "kanban", kanban } }))
-        .toThrow();
-    }
-    expect(readKanbanArtifactConfig({
-      steamHarness: {
-        projectType: "kanban",
-        kanban: { artifactDir: ".output/public", entry: "index.html" },
-      },
-    })).toEqual({ artifactDir: ".output/public", entry: "index.html" });
-  });
-
-  it("rejects the removed Kanban dataSources declaration", () => {
-    expect(() => readKanbanArtifactConfig({
-      steamHarness: { projectType: "kanban", kanban: { dataSources: [] } },
-    })).toThrow(/removed/);
-  });
-
-  it("resolves only declared related-project aliases and valid keys", () => {
-    const relatedProject = {
-      alias: "stocks",
-      projectId: "f4ee23d7-abbb-4ba3-8baf-75b7c6c0b964",
-      grantToRelatedProject: {
-        read: { mode: "all" as const },
-        write: { mode: "none" as const },
-      },
-    };
-    expect(resolveKanbanRelatedProject(
-      [relatedProject],
-      "stocks",
-      "stock-database.v3:catalog",
-    )).toEqual(relatedProject);
-    expect(() => resolveKanbanRelatedProject([relatedProject], "unknown", "stock-database.v3:catalog"))
-      .toThrow(/unavailable/);
-    expect(() => resolveKanbanRelatedProject([relatedProject], "stocks", ""))
-      .toThrow(/unavailable/);
-  });
-
-  it("reads the package type and validates manifest params", () => {
-    expect(readPackageProjectType({ steamHarness: { projectType: "kanban" } })).toBe("kanban");
+  it("validates manifest parameters", () => {
     expect(parseKanbanManifest({
       version: 1,
       params: [{ name: "columns", type: "number", defaultValue: "3" }],
@@ -229,12 +176,12 @@ describe("kanban project contract", () => {
     expect(html).not.toContain('nonce="stale"');
     expect(html).toContain("steamharness:kanban-ready");
     expect(html).toContain("steamHarnessKanban\",{configurable:false");
-    expect(html).toContain('getValue:(key)=>request("kv.getValue",{key})');
-    expect(html).toContain('getValue:(key)=>request("relatedProject.kv.getValue",{alias,key})');
-    expect(html).toContain('setValue:(key,value)=>isJsonValue(value)?request("relatedProject.kv.setValue",{alias,key,value})');
-    expect(html).toContain('createDocument:(input)=>request("knowledge.createDocument",input)');
-    expect(html).toContain('editDocument:(documentId,input)=>request("knowledge.editDocument",{...input,documentId})');
-    expect(html).toContain('readDocumentLines:(documentId,options)=>request("knowledge.readDocumentLines",{...options,documentId})');
+    expect(html).toContain('getValue:(key)=>call("kv.getValue",{key})');
+    expect(html).toContain('const call=(operation,input={})=>request(operation,{...input,database})');
+    expect(html).toContain('setValue:(key,value)=>isJsonValue(value)?call("kv.setValue",{key,value})');
+    expect(html).toContain('createDocument:(input)=>call("knowledge.createDocument",input)');
+    expect(html).toContain('editDocument:(documentId,input)=>call("knowledge.editDocument",{...input,documentId})');
+    expect(html).toContain('readDocumentLines:(documentId,options)=>call("knowledge.readDocumentLines",{...options,documentId})');
     expect(html).toContain("Kanban bridge request timed out.");
     expect(html).toContain("pending.size>=16");
     expect(html).toContain('window.addEventListener("DOMContentLoaded",ready,{once:true})');
@@ -261,76 +208,76 @@ describe("kanban project contract", () => {
     expect(parseKanbanBridgeCall({
       requestId: "request-1",
       operation: "kv.setValue",
-      input: { key: "board", value: { version: 1, tasks: ["one"] } },
+      input: { database:"data", key: "board", value: { version: 1, tasks: ["one"] } },
     })).toEqual({
       requestId: "request-1",
       operation: "kv.setValue",
-      input: { key: "board", value: { version: 1, tasks: ["one"] } },
+      input: { database:"data", key: "board", value: { version: 1, tasks: ["one"] } },
     });
     expect(parseKanbanBridgeCall({
-      requestId: "request-related-project",
-      operation: "relatedProject.kv.getValue",
-      input: { alias: "stocks", key: "stock-database.v3:catalog" },
+      requestId: "request-database",
+      operation: "kv.getValue",
+      input: { database:"stocks", key: "stock-database.v3:catalog" },
     })).toEqual({
-      requestId: "request-related-project",
-      operation: "relatedProject.kv.getValue",
-      input: { alias: "stocks", key: "stock-database.v3:catalog" },
+      requestId: "request-database",
+      operation: "kv.getValue",
+      input: { database:"stocks", key: "stock-database.v3:catalog" },
     });
     expect(() => parseKanbanBridgeCall({
-      requestId: "request-related-project-forged",
-      operation: "relatedProject.kv.getValue",
-      input: { alias: "stocks", key: "catalog", projectId: "forged" },
+      requestId: "request-database-forged",
+      operation: "kv.getValue",
+      input: { database:"stocks", key: "catalog", projectId: "forged" },
     })).toThrow(/unsupported fields/);
     expect(() => parseKanbanBridgeCall({
       requestId: "request-2",
       operation: "kv.deleteValue",
-      input: { key: "board" },
+      input: { database:"data", key: "board" },
     })).toThrow(/Unsupported/);
     expect(() => parseKanbanBridgeCall({
       requestId: "request-3",
       operation: "kv.setValue",
-      input: { key: "board", value: undefined },
+      input: { database:"data", key: "board", value: undefined },
     })).toThrow(/cannot be undefined/);
     expect(() => parseKanbanBridgeCall({
       requestId: "request-4",
       operation: "kv.getValue",
-      input: { key: "board", projectName: "another-project" },
+      input: { database:"data", key: "board", projectName: "another-project" },
     })).toThrow(/unsupported fields/);
     expect(() => parseKanbanBridgeCall({
       requestId: "request-5",
       operation: "knowledge.listDocuments",
-      input: { cursor: 12 },
+      input: { database:"data", cursor: 12 },
     })).toThrow(/cursor.*non-empty string/);
     expect(() => parseKanbanBridgeCall({
       requestId: "request-6",
       operation: "knowledge.createDocument",
-      input: { id: "", title: "Guide", markdown: "# Guide" },
+      input: { database:"data", id: "", title: "Guide", markdown: "# Guide" },
     })).toThrow(/id.*non-empty string/);
     expect(() => parseKanbanBridgeCall({
       requestId: "request-7",
       operation: "kv.getValue",
-      input: { key: "board" },
+      input: { database:"data", key: "board" },
       projectName: "another-project",
     })).toThrow(/request contains unsupported fields/);
     expect(() => parseKanbanBridgeCall({
       requestId: "request-8",
       operation: "knowledge.listDocuments",
-      input: { pageSize: 101 },
+      input: { database:"data", pageSize: 101 },
     })).toThrow(/pageSize.*1 to 100/);
     expect(() => parseKanbanBridgeCall({
       requestId: "request-9",
       operation: "knowledge.searchDocuments",
-      input: { query: "roadmap", beforeLines: 51 },
+      input: { database:"data", query: "roadmap", beforeLines: 51 },
     })).toThrow(/beforeLines.*0 to 50/);
     expect(() => parseKanbanBridgeCall({
       requestId: "request-10",
       operation: "knowledge.readDocumentLines",
-      input: { documentId: "guide", startLine: 10, endLine: 9 },
+      input: { database:"data", documentId: "guide", startLine: 10, endLine: 9 },
     })).toThrow(/line range/);
     expect(() => parseKanbanBridgeCall({
       requestId: "request-11",
       operation: "knowledge.readDocumentLines",
-      input: { documentId: "guide", startLine: 1, endLine: 1001 },
+      input: { database:"data", documentId: "guide", startLine: 1, endLine: 1001 },
     })).toThrow(/line range/);
     expect(isKanbanJsonValue({ nested: [null, true, 3, "value"] })).toBe(true);
     expect(isKanbanJsonValue(Number.NaN)).toBe(false);
@@ -381,27 +328,9 @@ describe("kanban project contract", () => {
       .replace(/<\/script>$/, "");
     new Function("window", "document", script)(pageWindow, { readyState: "complete" });
 
-    const api = (pageWindow as unknown as {
-      steamHarnessKanban: {
-        kv: {
-          getValue(key: string): Promise<unknown>;
-          setValue(key: string, value: unknown): Promise<void>;
-        };
-        knowledge: {
-          listDocuments(options?: Record<string, unknown>): Promise<unknown>;
-        };
-        relatedProjects: {
-          get(alias: string): {
-            kv: {
-              getValue(key: string): Promise<unknown>;
-              setValue(key: string, value: unknown): Promise<void>;
-              subscribe(listener: (event: { alias: string; revision: string }) => void): () => void;
-            };
-          };
-        };
-      };
-    }).steamHarnessKanban;
-    const getPromise = api.kv.getValue("board");
+    const api = (pageWindow as unknown as { steamHarnessKanban: KanbanBrowserApi }).steamHarnessKanban;
+    const data = api.databases.get("data");
+    const getPromise = data.kv.getValue("board");
     const getRequest = postedMessages.at(-1)!;
     const dispatchResponse = (source: unknown, nonce: string, response: Record<string, unknown>) => {
       for (const listener of messageListeners) {
@@ -418,12 +347,12 @@ describe("kanban project contract", () => {
     dispatchResponse(parent, "nonce", { ok: true, value: { version: 1 } });
     await expect(getPromise).resolves.toEqual({ version: 1 });
 
-    const relatedProject = api.relatedProjects.get("stocks");
-    const relatedGetPromise = relatedProject.kv.getValue("stock-database.v3:catalog");
+    const databaseContext = api.databases.get("stocks");
+    const relatedGetPromise = databaseContext.kv.getValue("stock-database.v3:catalog");
     const relatedGetRequest = postedMessages.at(-1)!;
     expect(relatedGetRequest).toMatchObject({
-      operation: "relatedProject.kv.getValue",
-      input: { alias: "stocks", key: "stock-database.v3:catalog" },
+      operation: "kv.getValue",
+      input: { database:"stocks", key: "stock-database.v3:catalog" },
     });
     for (const listener of messageListeners) {
       listener({ source: parent, data: {
@@ -436,12 +365,11 @@ describe("kanban project contract", () => {
     }
     await expect(relatedGetPromise).resolves.toEqual({ schemaVersion: 3 });
 
-    const relatedSetPromise = relatedProject.kv.setValue("stock-database.v3:catalog", { schemaVersion: 4 });
+    const relatedSetPromise = databaseContext.kv.setValue("stock-database.v3:catalog", { schemaVersion: 4 });
     const relatedSetRequest = postedMessages.at(-1)!;
     expect(relatedSetRequest).toMatchObject({
-      operation: "relatedProject.kv.setValue",
-      input: {
-        alias: "stocks",
+      operation: "kv.setValue",
+      input: { database:"stocks",
         key: "stock-database.v3:catalog",
         value: { schemaVersion: 4 },
       },
@@ -457,11 +385,11 @@ describe("kanban project contract", () => {
     await expect(relatedSetPromise).resolves.toBeUndefined();
 
     const revisions: Array<{ alias: string; revision: string }> = [];
-    const unsubscribe = relatedProject.kv.subscribe((event) => revisions.push(event));
+    const unsubscribe = databaseContext.subscribe((event) => revisions.push(event));
     const dispatchRevision = (source: unknown, nonce: string, alias: string, revision: string) => {
       for (const listener of messageListeners) {
         listener({ source, data: {
-          type: "steamharness:kanban-related-project-revision",
+          type: "steamharness:kanban-database-revision",
           nonce,
           alias,
           revision,
@@ -483,12 +411,12 @@ describe("kanban project contract", () => {
 
     dispatchRevision(parent, "nonce", "prices", "snapshot-1");
     const snapshotListener = vi.fn();
-    api.relatedProjects.get("prices").kv.subscribe(snapshotListener);
+    api.databases.get("prices").subscribe(snapshotListener);
     await Promise.resolve();
     expect(snapshotListener).toHaveBeenCalledWith({ alias: "prices", revision: "snapshot-1" });
-    expect(() => api.relatedProjects.get("Invalid Alias")).toThrow(/invalid/i);
+    expect(() => api.databases.get("Invalid Alias")).toThrow(/invalid/i);
 
-    const setPromise = api.kv.setValue("board", { version: 2 });
+    const setPromise = data.kv.setValue("board", { version: 2 });
     const setRequest = postedMessages.at(-1)!;
     for (const listener of messageListeners) {
       listener({ source: parent, data: {
@@ -504,7 +432,7 @@ describe("kanban project contract", () => {
       message: "Kanban project data operation failed.",
     });
 
-    const inheritedErrorPromise = api.kv.getValue("inherited-error");
+    const inheritedErrorPromise = data.kv.getValue("inherited-error");
     const inheritedErrorRequest = postedMessages.at(-1)!;
     for (const listener of messageListeners) {
       listener({ source: parent, data: {
@@ -520,20 +448,20 @@ describe("kanban project contract", () => {
       message: "Kanban bridge request failed.",
     });
 
-    await expect(api.kv.setValue("board", () => undefined)).rejects.toMatchObject({
+    await expect(data.kv.setValue("board", (() => undefined) as never)).rejects.toMatchObject({
       code: "KANBAN_BRIDGE_INVALID_REQUEST",
       message: "The Kanban bridge request is invalid.",
     });
     const circular: Record<string, unknown> = {};
     circular["self"] = circular;
-    await expect(api.kv.setValue("board", circular)).rejects.toMatchObject({
+    await expect(data.kv.setValue("board", circular as never)).rejects.toMatchObject({
       code: "KANBAN_BRIDGE_INVALID_REQUEST",
     });
 
     parent.postMessage.mockImplementationOnce(() => {
       throw new DOMException("private clone failure", "DataCloneError");
     });
-    await expect(api.knowledge.listDocuments({ invalid: () => undefined })).rejects.toMatchObject({
+    await expect(data.knowledge.listDocuments({ invalid: () => undefined })).rejects.toMatchObject({
       code: "KANBAN_BRIDGE_INVALID_REQUEST",
       message: "The Kanban bridge request is invalid.",
     });

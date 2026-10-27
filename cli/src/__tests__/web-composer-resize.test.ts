@@ -28,7 +28,7 @@ it('retains a multiline draft and its selection during resizing and sends it fro
   const frame = () => { for (const callback of frames.splice(0)) callback(0); };
   document.body.innerHTML = '<div id="app"></div>';
   await import('../web/ui/main');
-  const project: Project = { id: 'resize', uri: 'file:///resize', folderPath: '/resize', name: 'Resize', projectType: 'conversation', fields: [], entrypoints: [] };
+  const project: Project = {entryId:"main",aggregateName:"Test aggregate",defaultEntry:"main",entryRoot:'/resize',databases:[],entries:[{entryId:"main",name:"Main",type:'conversation',root:".",entry:"index.ts",databases:[]}], id: 'resize', uri: 'file:///resize', folderPath: '/resize', name: 'Resize', projectType: 'conversation', fields: [], entrypoints: [] };
   window.dispatchEvent(new MessageEvent('message', { data: { type: 'state', project, activeId: 'session', running: false,
     sessions: [{ id: 'session', title: 'Draft', messages: [], createdAt: 1, updatedAt: 1 }] } }));
   frame(); frame();

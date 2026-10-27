@@ -25,14 +25,14 @@ for (const language of ['en', 'zh-cn']) {
     runInNewContext(compiled.outputFiles[0].text, { exports: module.exports, module, require: name => name === 'vscode' ? vscode : require(name) });
     const { chooseProjectTab, inspectProjectTab, configureLocalization } = module.exports;
     configureLocalization(language === 'en' ? {} : chinese, language);
-    const project = { uri: 'file:///projects/other', folderPath: '/projects/other', name: 'Other', projectType: 'workflow' };
+    const project = { uri: 'file:///projects/other', folderPath: '/projects/other', name: 'Other', projectType: 'workflow', entryId: 'main', defaultEntry: 'main' };
     assert.equal(await chooseProjectTab([project]), undefined); assert.equal(dialogs.length, 0);
     assert.equal(picks[0].options.title, language === 'en' ? 'Open Other Project' : '打开其它项目');
-    selection = 0; assert.equal((await chooseProjectTab([project])).toString(), project.uri);
+    selection = 0; assert.equal((await chooseProjectTab([project])).uri.toString(), project.uri);
     selection = 1; assert.equal(await chooseProjectTab([project]), undefined);
-    folder = 'file:///external/project'; assert.equal((await chooseProjectTab([project])).toString(), folder);
+    folder = 'file:///external/project'; assert.equal((await chooseProjectTab([project])).uri.toString(), folder);
     assert.equal(dialogs.at(-1).canSelectFiles, false); assert.equal(dialogs.at(-1).canSelectFolders, true);
-    assert.equal((await chooseProjectTab([], '/external/project')).toString(), folder);
+    assert.equal((await chooseProjectTab([], '/external/project')).uri.toString(), folder);
     const inspected = await inspectProjectTab(uri(project.uri), { inspect: async paths => {
       assert.deepEqual(Array.from(paths), [project.folderPath]); return { projects: [project], errors: [] };
     } });

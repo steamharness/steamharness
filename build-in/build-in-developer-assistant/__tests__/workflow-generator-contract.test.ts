@@ -101,7 +101,7 @@ describe("workflow-generator contract", () => {
     const prompt = await readFile(path.join(root, "assistant-prompt.ts"), "utf8");
     expect(rules).toContain("context.files");
     expect(rules).toContain("不属于全局成员清单");
-    expect(rules).toContain("window.steamHarnessKanban.files.createFile");
+    expect(rules).toContain("database.knowledge.files");
     expect(rules).toContain("file-upload");
     expect(rules).toContain("file-download");
     expect(prompt).toContain("Binary uploads are distinct from project source publication");
@@ -129,7 +129,7 @@ describe("workflow-generator contract", () => {
       "EntrypointDefinition", "ExecutorDefinition", "ConversationExecutorDefinition",
       "ExecutorContext", "ParamDeclaration", "ParamResolverContext",
       "ParamResolveResult", "RunOutputPayload", "OutputItem",
-      "RunContext", "RelatedProjectStorageContext", "AgentInput",
+      "RunContext", "DatabaseContext", "AgentInput",
       "AgentOutputPayload", "AgentNodeOptions", "AgentProjectOptions", "RuntimeApi",
     ]) {
       expect(taskMap).toContain(name);
@@ -189,12 +189,7 @@ describe("workflow-generator contract", () => {
   it("documents local-run storage isolation and exact-version resolution", async () => {
     const corpus = await readSkillCorpus();
     for (const token of [
-      "STEAMHARNESS_KV_STORE_DIR",
-      "STEAMHARNESS_PERSISTENT_VALUE_STORE_DIR",
-      "STEAMHARNESS_FILE_STORE_DIR",
-      "Local workflow KV entry is invalid and cannot be read safely.",
-      "dist-tags",
-      "os.tmpdir()/steamharness-kv",
+      "LocalDatabaseRegistry", "createLocalDatabaseResolver", "bindingRef", "dist-tags", "--entry",
     ]) {
       expect(corpus, `skills/workflow-generator 未覆盖本地运行必需的事实：${token}`).toContain(token);
     }
@@ -203,7 +198,7 @@ describe("workflow-generator contract", () => {
 
   it("keeps the generator scaffold able to produce publishable package metadata", async () => {
     const script = await readFile(path.join(skillRoot, "scripts", "create_workflow.py"), "utf8");
-    for (const required of ["projectCard", "release", "projectType"]) {
+    for (const required of ["projectCard", "entries", "defaultEntry", "databases"]) {
       expect(script, `create_workflow.py 未生成 steamHarness.${required}`).toContain(required);
     }
   });

@@ -38,11 +38,7 @@
       ],
       "platformSupport": {
         "mode": "agnostic"
-      },
-      "dataStorage": {
-        "mode": "local"
-      },
-      "relatedProjects": []
+      }
     },
     "builtinRelease": {
       "projectId": "studio-control",
@@ -54,6 +50,17 @@
       "icon": "settings",
       "iconBackgroundColor": "#2563eb"
     },
-    "projectType": "workflow"
+    "entries": [
+      {
+        "entryId": "main",
+        "type": "workflow",
+        "name": "Studio Control",
+        "root": ".",
+        "entry": "index.ts",
+        "databases": [],
+        "configuration": "configuration.json"
+      }
+    ],
+    "defaultEntry": "main"
   }
 }

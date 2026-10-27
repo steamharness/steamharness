@@ -28,7 +28,7 @@ async function mount() {
 
 it('keeps internal recovery in the running presentation until success or a terminal failure', async () => {
   await mount();
-  const project: Project = { id: 'assistant', uri: 'studio-assistant:recovery', folderPath: '/assistant', name: 'Assistant', projectType: 'conversation', fields: [], entrypoints: [] };
+  const project: Project = {entryId:"main",aggregateName:"Test aggregate",defaultEntry:"main",entryRoot:'/assistant',databases:[],entries:[{entryId:"main",name:"Main",type:'conversation',root:".",entry:"index.ts",databases:[]}], id: 'assistant', uri: 'studio-assistant:recovery', folderPath: '/assistant', name: 'Assistant', projectType: 'conversation', fields: [], entrypoints: [] };
   const message = { id: 'answer', role: 'assistant' as const, content: 'Partial answer', status: 'running', recovering: true, error: 'Run interrupted',
     items: [{ id: 'internal', contentType: 'json', content: { type: 'retry', kind: 'recovery', attempt: 1, maxAttempts: 10 }, metadata: { kind: 'agent-part', partType: 'retry' } }] };
   const session: ConversationSession = { id: 'session', title: 'Recovery', activeRunId: 'run', messages: [message] };

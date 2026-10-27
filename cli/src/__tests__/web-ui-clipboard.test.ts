@@ -152,10 +152,10 @@ it('the UI host accepts clipboard replies only from its parent and exposes the c
   keydown({ target: outside, key: 'c' }); acknowledgeCopy('Selected response\n\u4e2d\u6587');
   keydown({ target: outside, key: 'c', metaKey: false, ctrlKey: true }); acknowledgeCopy('Selected response\n\u4e2d\u6587');
   listeners.get('copy')!({ preventDefault }); acknowledgeCopy('Selected response\n\u4e2d\u6587');
-  vi.mocked(selectedText).mockReturnValue('Related project error\nDiagnostic log');
+  vi.mocked(selectedText).mockReturnValue('Database binding error\nDiagnostic log');
   target.closest.mockReturnValue(null); contextMenu(); sent.length = 0;
   vi.mocked(selectedText).mockReturnValue('');
-  receive(parent, { editCommand: 'copy', restoreFocus: true }); acknowledgeCopy('Related project error\nDiagnostic log');
+  receive(parent, { editCommand: 'copy', restoreFocus: true }); acknowledgeCopy('Database binding error\nDiagnostic log');
   receive(parent, { editCommand: 'copy' }); expect(sent).toEqual([]);
   expect(execCommand.mock.calls.some(([command]) => command === 'copy')).toBe(false);
   target.closest.mockReturnValue(input); input.value = 'Before selection After'; contextMenu(); sent.length = 0;

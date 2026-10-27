@@ -1,3 +1,4 @@
+import { runApprovedProject as runLocalProjectWithReport } from "../test-databases";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -5,7 +6,6 @@ import { afterAll, describe, expect, it } from "vitest";
 import {
   MockLLMProvider,
   inspectLocalProjectStructure,
-  runLocalProjectWithReport,
   HarnessError,
   type LLMChatInput,
   type ProjectConfigurationSnapshot,
@@ -40,9 +40,6 @@ const projectNames = [
   "gitlab-webhook",
   "hello",
   "human-input",
-  "local-data-parent",
-  "local-data-child",
-  "local-data-grandchild",
   "loop",
   "minimax-speech-t2a",
   "openai-agents",
@@ -50,9 +47,6 @@ const projectNames = [
   "pi-agent",
   "runtime-timer",
   "runtime-platform",
-  "server-data-parent",
-  "server-data-child",
-  "server-data-grandchild",
   "smoke",
 ] as const;
 
@@ -191,7 +185,7 @@ describe("workspace workflow offline runtime smoke", () => {
       ? await withDeltaforeFixtureFetch(runFixture)
       : await runFixture();
 
-    expect(report.status).toBe(fixture.expected.status ?? "success");
+    expect(report.status, JSON.stringify(report.result)).toBe(fixture.expected.status ?? "success");
     expect(report.result.ok).toBe(true);
     if (!report.result.ok) {
       return;
@@ -321,7 +315,7 @@ describe("conversation knowledge persistence", () => {
         },
       },
       maxNodeExecutions: 20,
-    });
+    }, persistentValueStore);
 
     expect(report.status).toBe("success");
     expect(report.result.ok).toBe(true);
@@ -331,7 +325,9 @@ describe("conversation knowledge persistence", () => {
 
     const output = readOutputObject((report.result.data as { output: unknown }).output);
     const documentId = String(output.documentId);
-    const projectStoragePrefix = "persistent_value:project:2162c99c-4e8a-4ef6-9ba0-e368d36bf198:";
+    const documentKey = [...persistentValueStore.values.keys()].find(key => key.endsWith(`:knowledge.document.${documentId}`))!;
+    const projectStoragePrefix = documentKey.slice(0, documentKey.indexOf(":knowledge.document."));
+    expect(projectStoragePrefix).not.toContain("2162c99c-4e8a-4ef6-9ba0-e368d36bf198");
     const index = persistentValueStore.values.get(`${projectStoragePrefix}:knowledge.documents`);
     const headPageId = (index as { headPageId?: unknown })?.headPageId;
     const page = typeof headPageId === "string"
@@ -1062,16 +1058,6 @@ async function readSmokeFixture(projectName: ProjectName): Promise<SmokeFixture>
 async function createFixtureStorage(
   projectName: ProjectName,
 ): Promise<ExecutionStorageOptions> {
-  const packageJson = JSON.parse(await readProjectFile(projectName, "package.json")) as {
-    steamHarness?: { projectInfo?: { dataStorage?: { mode?: unknown } } };
-  };
-  const mode = packageJson.steamHarness?.projectInfo?.dataStorage?.mode;
-  if (mode === "server") {
-    return {
-      host: "server",
-      server: { kvStore: createMemoryKVStore() },
-    };
-  }
   return {
     host: "local",
     local: { kvStoreDir: await createTempDir(`${projectName}-kv-`) },

@@ -17,7 +17,7 @@ export function durableTraceState() {
       extensions: [{ name: 'Fixture extension', tools: ['read'], tasks: [{ name: 'timer', version: 2 }] }],
       catalogs: [{ id: 'studio-control', state: 'ready', tools: ['workspace_info', 'diagnostics'], loaded: ['workspace_info'] }] } };
   return { type: 'trace-state', generation: 1, reveal: 0, projects: [{ uri: 'file:///fixture', name: 'Fixture Assistant', projectType: 'conversation' }], selection: { projectUri: 'file:///fixture' },
-    snapshot: { project: { id: 'fixture', name: 'Fixture Assistant', projectType: 'conversation' }, durable: true, running: true, activeId: 'main', agents: { main: agent }, sessions: [
+    snapshot: { project: { id: 'fixture', entryId: 'main', aggregateName: 'Fixture', name: 'Fixture Assistant', projectType: 'conversation' }, durable: true, running: true, activeId: 'main', agents: { main: agent }, sessions: [
       { id: 'main', title: 'Main', messages: [{ role: 'user', content: 'Prepare a plan', createdAt: 1000 }, { id: 'reply', role: 'assistant', content: '', status: 'running', createdAt: 1100,
         items: [{ id: 'plan', content: '## Implementation plan\n\n1. Read the project.\n2. Verify the changes.', contentType: 'markdown' }],
         pendingInput: { requestId: 'approval', nodeName: 'agent', title: 'Plan ready', params: [], metadata: { type: 'agent-plan-approval' } } }] },

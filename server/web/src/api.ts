@@ -1,7 +1,8 @@
+import { isApiSuccess } from "./types";
 import type { AccessPage, ProjectGroup, ProjectRole } from "./types";
 import type { ProjectConfigurationAction, ProjectConfigurationState, ProjectConfigurationExport, ProjectConfigurationFile } from "@steamharness/project-configuration";
 
-import type { AuthSessionState, ApiResponse, AdminUserSummary, AccountInvitationLookupResult, ApiKeyCreateResult, ApiKeyRecord, AuditEventPage, AuditOutcome, DeviceCodeResult, KVEntryDetail, KVEntryPage, KVEntryScope, KVEntryValueType, KnowledgeDocument, KnowledgeDocumentPageRecord, KnowledgeDocumentLinesResult, KnowledgeDocumentSummaryRecord, KnowledgeSearchResultRecord, MeResult, ProjectInvitation, RelatedProjectListResult, ProjectAccessLinkInfo, ProjectAccessRequest, ProjectDependencyStatusResult, ProjectSourceAccessSummary, InvitationAcceptResult, InvitationLookupResult, InvitationRole, ProjectMember, UserInvitationResult, ServerHealthData, Summary, VersionSummary } from "./types";
+import type { AuthSessionState, ApiResponse, AdminUserSummary, AccountInvitationLookupResult, ApiKeyCreateResult, ApiKeyRecord, AuditEventPage, AuditOutcome, DeviceCodeResult, KVEntryDetail, KVEntryPage, KVEntryScope, KVEntryValueType, KnowledgeDocument, KnowledgeDocumentPageRecord, KnowledgeDocumentLinesResult, KnowledgeDocumentSummaryRecord, KnowledgeSearchResultRecord, MeResult, ProjectInvitation, ProjectAccessLinkInfo, ProjectAccessRequest, ProjectSourceAccessSummary, InvitationAcceptResult, InvitationLookupResult, InvitationRole, ProjectMember, UserInvitationResult, ServerHealthData, Summary, VersionSummary } from "./types";
 import { getCurrentLocale, translateDynamicKey, translateSteamHarnessError, type CommonResourceKey } from "@steamharness/i18n";
 
 import type { ProjectDataSummary, SourceShare } from "./types";
@@ -11,16 +12,27 @@ export class ServerApiClient {
     // Account subscription catalogues are supplied by the hosting service.
     return { errCode: 404, errMessage: "" };
   }
-  uploadProjectConfigurationFile(id: string, file: File, key: string, target = "draft"): Promise<ApiResponse<ProjectConfigurationFile[]>> {
+  uploadProjectConfigurationFile(id: string, file: File, key: string, target = "draft", entryId: string): Promise<ApiResponse<ProjectConfigurationFile[]>> {
     const mimeType = file.type || "application/octet-stream";
-    const query = new URLSearchParams({fileName:file.name,mimeType,key,target});
+    const query = new URLSearchParams({fileName:file.name,mimeType,key,target,entryId});
     return this.request(`/api/projects/${encodeURIComponent(id)}/configurations/files?${query}`, {method:"POST",body:file,headers:{"Content-Type":mimeType}});
   }
-  projectConfigurations(id: string, call: ProjectConfigurationAction, target = "draft"): Promise<ApiResponse<ProjectConfigurationState | ProjectConfigurationExport>> {
-    return call.action === "get" ? this.request(`/api/projects/${encodeURIComponent(id)}/configurations?target=${encodeURIComponent(target)}`)
-      : this.request(`/api/projects/${encodeURIComponent(id)}/configurations`, {method:"POST",body:JSON.stringify({target,call})});
+  projectConfigurations(id: string, call: ProjectConfigurationAction, target = "draft", entryId: string): Promise<ApiResponse<ProjectConfigurationState | ProjectConfigurationExport>> {
+    return call.action === "get" ? this.request(`/api/projects/${encodeURIComponent(id)}/configurations?target=${encodeURIComponent(target)}&entryId=${encodeURIComponent(entryId)}`)
+      : this.request(`/api/projects/${encodeURIComponent(id)}/configurations`, {method:"POST",body:JSON.stringify({target,entryId,call})});
   }
 
+  databasePage(section:string,page:number,search:string,projectId?:string): Promise<ApiResponse<{items:any[];total:number;page:number;pageSize:number}>> {return this.request(`/api/database-spaces?${resourceQuery({section,page,search,projectId})}`);}
+  entryDatabaseBindings(projectId:string,entryId:string): Promise<ApiResponse<any[]>> {return this.request(`/api/database-spaces/consumers/${encodeURIComponent(projectId)}/${encodeURIComponent(entryId)}`);}
+  databaseCatalog(): Promise<ApiResponse<import("@steamharness/database-spaces/catalog").DatabaseCatalogState>> { return this.request("/api/database-spaces"); }
+  databaseAction<T = unknown>(path: string, body: unknown): Promise<ApiResponse<T>> { return this.request(`/api/database-spaces${path}`, {method:"POST",body:JSON.stringify(body)}); }
+  databaseOperation<T = unknown>(spaceId: string, operation: string, input: unknown, signal?: AbortSignal): Promise<ApiResponse<T>> { return this.request(`/api/database-spaces/${encodeURIComponent(spaceId)}/manage`,{method:"POST",body:JSON.stringify({operation,input}),signal}); }
+  databaseValues(spaceId: string, page: number, search: string): Promise<ApiResponse<{items:Array<{key:string;namespace:string;value:unknown;revision:string}>;total:number;page:number;pageSize:number}>> {return this.request(`/api/database-spaces/${encodeURIComponent(spaceId)}/values?${resourceQuery({page,search})}`);}
+  async fetchDatabaseFile(spaceId: string, fileId: string, signal?: AbortSignal): Promise<Blob> {
+    const result=await this.databaseOperation<{file:{mimeType:string};base64:string}>(spaceId,"files.readFile",{fileId},signal);
+    if(!isApiSuccess(result)) throw new Error(result.errMessage);
+    const bytes=Uint8Array.from(atob(result.data.base64),char=>char.charCodeAt(0)); return new Blob([bytes],{type:result.data.file.mimeType});
+  }
   getSourceShare(id: string, version: string, signal?: AbortSignal): Promise<ApiResponse<SourceShare>> {
     return this.request(`/api/projects/${encodeURIComponent(id)}/source-share?target=${encodeURIComponent(version)}`, { signal });
   }
@@ -353,47 +365,6 @@ export class ServerApiClient {
     );
   }
 
-  getProjectDependencies(
-    projectName: string,
-    target = "latest",
-  ): Promise<ApiResponse<ProjectDependencyStatusResult>> {
-    return this.request<ProjectDependencyStatusResult>(
-      `/api/projects/${encodeURIComponent(projectName)}/dependencies?target=${encodeURIComponent(target)}`,
-    );
-  }
-
-  listRelatedProjects(projectId: string): Promise<ApiResponse<RelatedProjectListResult>> {
-    return this.request<RelatedProjectListResult>(
-      `/api/projects/${encodeURIComponent(projectId)}/related-projects`,
-    );
-  }
-
-  setRelatedProject(
-    projectId: string,
-    alias: string,
-    input: {
-      targetProjectId: string;
-      targetAlias: string;
-      grantToRelatedProject: import("@steamharness/project-info").RelatedProjectKVGrant;
-      targetGrantToRelatedProject: import("@steamharness/project-info").RelatedProjectKVGrant;
-    },
-  ): Promise<ApiResponse<RelatedProjectListResult>> {
-    return this.request<RelatedProjectListResult>(
-      `/api/projects/${encodeURIComponent(projectId)}/related-projects/${encodeURIComponent(alias)}`,
-      { method: "PUT", body: JSON.stringify(input) },
-    );
-  }
-
-  removeRelatedProject(
-    projectId: string,
-    alias: string,
-  ): Promise<ApiResponse<{ removed: boolean; relatedProjects: RelatedProjectListResult["relatedProjects"] }>> {
-    return this.request(
-      `/api/projects/${encodeURIComponent(projectId)}/related-projects/${encodeURIComponent(alias)}`,
-      { method: "DELETE" },
-    );
-  }
-
   listSourceAccessRequests(
     projectName: string,
   ): Promise<ApiResponse<ProjectSourceAccessSummary>> {
@@ -506,187 +477,6 @@ export class ServerApiClient {
         method: "PATCH",
         body: JSON.stringify(payload),
       },
-    );
-  }
-
-  getProjectDataSummary(projectId: string): Promise<ApiResponse<ProjectDataSummary>> {
-    return this.request(`/api/projects/${encodeURIComponent(projectId)}/data-summary`);
-  }
-
-  listProjectKVEntries(
-    projectId: string,
-    options: {
-      pageSize?: number;
-      cursor?: string;
-      scope?: "project" | "conversation" | "all";
-      query?: string;
-      valueType?: KVEntryValueType | "all";
-      conversationId?: string;
-      runId?: string;
-    } = {},
-  ): Promise<ApiResponse<KVEntryPage>> {
-    const query = new URLSearchParams();
-    query.set("pageSize", String(options.pageSize ?? 20));
-    if (options.cursor) query.set("cursor", options.cursor);
-    if (options.scope && options.scope !== "all") query.set("scope", options.scope);
-    if (options.query) query.set("q", options.query);
-    if (options.valueType && options.valueType !== "all") query.set("valueType", options.valueType);
-    if (options.conversationId) query.set("conversationId", options.conversationId);
-    if (options.runId) query.set("runId", options.runId);
-
-    return this.request<KVEntryPage>(
-      `/api/projects/${encodeURIComponent(projectId)}/kv?${query.toString()}`,
-    );
-  }
-
-  getProjectKVEntry(
-    projectId: string,
-    options: {
-      scope: KVEntryScope;
-      key: string;
-      conversationId?: string;
-    },
-  ): Promise<ApiResponse<KVEntryDetail>> {
-    const query = new URLSearchParams();
-    query.set("scope", options.scope);
-    query.set("key", options.key);
-    if (options.conversationId) query.set("conversationId", options.conversationId);
-
-    return this.request<KVEntryDetail>(
-      `/api/projects/${encodeURIComponent(projectId)}/kv/entry?${query.toString()}`,
-    );
-  }
-
-  deleteProjectKVEntry(
-    projectId: string,
-    options: {
-      scope: KVEntryScope;
-      key: string;
-      conversationId?: string;
-    },
-  ): Promise<ApiResponse<{ scope: KVEntryScope; key: string; conversationId?: string }>> {
-    const query = new URLSearchParams();
-    query.set("scope", options.scope);
-    query.set("key", options.key);
-    if (options.conversationId) query.set("conversationId", options.conversationId);
-
-    return this.request<{ scope: KVEntryScope; key: string; conversationId?: string }>(
-      `/api/projects/${encodeURIComponent(projectId)}/kv/entry?${query.toString()}`,
-      { method: "DELETE" },
-    );
-  }
-
-  listKnowledgeDocuments(
-    projectName: string,
-    options: { pageSize?: number; cursor?: string; signal?: AbortSignal } = {},
-  ): Promise<ApiResponse<KnowledgeDocumentPageRecord>> {
-    const query = new URLSearchParams();
-    if (options.pageSize !== undefined) query.set("pageSize", String(options.pageSize));
-    if (options.cursor) query.set("cursor", options.cursor);
-    const suffix = query.size > 0 ? `?${query.toString()}` : "";
-    return this.request<KnowledgeDocumentPageRecord>(
-      `/api/projects/${encodeURIComponent(projectName)}/knowledge-documents${suffix}`,
-      { signal: options.signal },
-    );
-  }
-
-  getKnowledgeDocument(
-    projectName: string,
-    documentId: string,
-    options: { signal?: AbortSignal } = {},
-  ): Promise<ApiResponse<KnowledgeDocument>> {
-    return this.request<KnowledgeDocument>(
-      `/api/projects/${encodeURIComponent(projectName)}/knowledge-documents/${encodeURIComponent(documentId)}`,
-      { signal: options.signal },
-    );
-  }
-
-  createKnowledgeDocument(
-    projectName: string,
-    payload: { id?: string; title: string; markdown: string },
-    options: { response?: "document" | "summary"; signal?: AbortSignal } = {},
-  ): Promise<ApiResponse<KnowledgeDocument | KnowledgeDocumentSummaryRecord>> {
-    const query = new URLSearchParams();
-    if (options.response) query.set("response", options.response);
-    const suffix = query.size > 0 ? `?${query.toString()}` : "";
-    return this.request<KnowledgeDocument | KnowledgeDocumentSummaryRecord>(
-      `/api/projects/${encodeURIComponent(projectName)}/knowledge-documents${suffix}`,
-      {
-        method: "POST",
-        body: JSON.stringify(payload),
-        signal: options.signal,
-      },
-    );
-  }
-
-  editKnowledgeDocument(
-    projectName: string,
-    documentId: string,
-    payload: { title?: string; markdown?: string },
-    options: { response?: "document" | "summary"; signal?: AbortSignal } = {},
-  ): Promise<ApiResponse<KnowledgeDocument | KnowledgeDocumentSummaryRecord>> {
-    const query = new URLSearchParams();
-    if (options.response) query.set("response", options.response);
-    const suffix = query.size > 0 ? `?${query.toString()}` : "";
-    return this.request<KnowledgeDocument | KnowledgeDocumentSummaryRecord>(
-      `/api/projects/${encodeURIComponent(projectName)}/knowledge-documents/${encodeURIComponent(documentId)}${suffix}`,
-      {
-        method: "PUT",
-        body: JSON.stringify(payload),
-        signal: options.signal,
-      },
-    );
-  }
-
-  deleteKnowledgeDocument(
-    projectName: string,
-    documentId: string,
-    options: { signal?: AbortSignal } = {},
-  ): Promise<ApiResponse<{ id: string; deleted: boolean }>> {
-    return this.request<{ id: string; deleted: boolean }>(
-      `/api/projects/${encodeURIComponent(projectName)}/knowledge-documents/${encodeURIComponent(documentId)}`,
-      { method: "DELETE", signal: options.signal },
-    );
-  }
-
-  searchKnowledgeDocuments(
-    projectName: string,
-    options: {
-      query: string;
-      documentId?: string;
-      beforeLines?: number;
-      afterLines?: number;
-      maxMatches?: number;
-      pageSize?: number;
-      cursor?: string;
-      signal?: AbortSignal;
-    },
-  ): Promise<ApiResponse<KnowledgeSearchResultRecord>> {
-    const query = new URLSearchParams();
-    query.set("q", options.query);
-    if (options.documentId) query.set("documentId", options.documentId);
-    if (options.beforeLines !== undefined) query.set("beforeLines", String(options.beforeLines));
-    if (options.afterLines !== undefined) query.set("afterLines", String(options.afterLines));
-    if (options.maxMatches !== undefined) query.set("maxMatches", String(options.maxMatches));
-    if (options.pageSize !== undefined) query.set("pageSize", String(options.pageSize));
-    if (options.cursor) query.set("cursor", options.cursor);
-    return this.request<KnowledgeSearchResultRecord>(
-      `/api/projects/${encodeURIComponent(projectName)}/knowledge-documents/search?${query.toString()}`,
-      { signal: options.signal },
-    );
-  }
-
-  readKnowledgeDocumentLines(
-    projectName: string,
-    documentId: string,
-    options: { startLine: number; endLine: number; signal?: AbortSignal },
-  ): Promise<ApiResponse<KnowledgeDocumentLinesResult>> {
-    const query = new URLSearchParams();
-    query.set("startLine", String(options.startLine));
-    query.set("endLine", String(options.endLine));
-    return this.request<KnowledgeDocumentLinesResult>(
-      `/api/projects/${encodeURIComponent(projectName)}/knowledge-documents/${encodeURIComponent(documentId)}/lines?${query.toString()}`,
-      { signal: options.signal },
     );
   }
 

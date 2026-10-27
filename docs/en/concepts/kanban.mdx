@@ -1,413 +1,46 @@
 ---
 title: "Kanban HTML Projects"
-description: "Build publishable Kanban interfaces from a static artifact directory, an HTML entry point, an optional configuration.json file, and named configurations."
+description: "Kanban entries"
 ---
 
-# Kanban HTML Projects
+# Kanban entries
 
-A Kanban project is a static project made of HTML, CSS, JavaScript, images, and fonts. It renders the HTML entry point in its configured artifact directory. Kanban projects do not create conversations, run history, Workflow Output, Diagrams, or Logs, and they do not need an executor. A restricted JavaScript bridge lets the page read and write the current project's KV data and knowledge base, and access related-project KV according to declarations on both projects. The page cannot choose a project or data scope for itself.
-
-## Minimal Project
-
-A project without parameters needs only two files:
-
-```text
-roadmap-kanban/
-|-- package.json
-`-- index.html
-```
-
-```json package.json
-{
-  "id": "8bd4fef2-e083-4201-a89f-6f7d0676df53",
-  "name": "@steamharness/roadmap-kanban",
-  "version": "0.1.0",
-  "private": true,
-  "type": "module",
-  "devDependencies": {
-    "@steamharness/cli": "0.2.0",
-    "steamharness": "0.2.0"
-  },
-  "steamHarness": {
-    "projectType": "kanban",
-    "projectInfo": {
-      "dataStorage": {
-        "mode": "both"
-      },
-      "relatedProjects": []
-    }
-  }
-}
-```
-
-Core and CLI `0.2.0` in the example are the current exact compatibility baseline. New templates write the current Core and CLI versions. Existing Kanban projects must add missing dependencies and the `dataStorage` declaration, then update their lockfile; do not use `^`, `~`, `workspace:*`, or another version range. A Kanban page does not import or execute the Core runtime, but Server validates `devDependencies.steamharness` as static package metadata without loading the runtime.
-
-When no entry point is configured, the artifact directory defaults to the project root (`.`) and the HTML entry point defaults to `index.html`. Existing projects therefore do not need to migrate their entry-point configuration. A Kanban project should not include an `index.ts`, `interface.ts`, or `steamharness.defineExecutor(...)` solely to make it runnable. The configuration toolbar remains available without declared fields.
-
-The header offers Full screen, Phone, Tablet, and Small card preview modes. Full screen fills the available preview area by default. The default sizes are `390×844` for Phone, `768×1024` for Tablet, and `360×200` CSS pixels for Small card. Every mode except Full screen groups the adjustment icon, reset icon, and drag handle below the preview on the right. All three controls stay outside the image, without covering map content or reducing the iframe's display dimensions. The adjustment icon opens width and height inputs; the handle supports dragging and arrow keys. The reset icon restores the current mode's default dimensions. Each mode retains its custom dimensions within the current workspace. Width ranges from `160–4096px` and height from `96–4096px`; larger previews scroll within the preview area. Switching or resizing changes the page's actual viewport while preserving configurations, drafts, uploads, and page state without reloading the iframe. Mode icons provide size tooltips and arrow-key selection.
-
-Kanban pages must adapt to all these sizes. Small card represents a Kanban preview inside a Conversation resource card, whose actual dimensions vary with its container rather than a fixed device. Declare viewport meta and respond to the page's own container width and height. At roughly `340–500px` wide and `180–200px` tall, prioritize main content and essential actions, reduce headers and secondary panels, and avoid overlapping text or overflowing controls. Images, maps, and canvases should remeasure their container; resizing must preserve business data and avoid duplicate saves or uploads. The generator skill follows these requirements as well.
-
-Read `{ mode: "fullscreen" | "phone" | "tablet" | "card" }` from `window.steamHarnessKanban.getPresentation()` and listen for `steamharness:kanban-presentation-change` through `CustomEvent.detail`. Actual Conversation previews use `card`, even when enlarged. Presentation is independent of business parameters and is not stored in named configurations or KV. Map and image previews, or cards explicitly requested to be read-only, should hide headers, toolbars, sidebars, details, and editing overlays, disable drawing, entity dragging, and modification shortcuts, and fill the preview with automatically framed content. Restore the existing editing state when returning to other modes. Use presentation mode to determine read-only behavior and the page's actual dimensions to calculate layout.
-
-## Build Artifacts and Entry Points
-
-Vue, React, Vite, and other frontend projects can put browser-ready files in a separate directory and configure Kanban to load its HTML entry point:
+Kanban is a static HTML entry in an aggregate project and does not export an executor:
 
 ```json
-{
-  "steamHarness": {
-    "projectType": "kanban",
-    "projectInfo": {
-      "dataStorage": { "mode": "both" },
-      "relatedProjects": [
-        {
-          "alias": "stocks",
-          "projectId": "f4ee23d7-abbb-4ba3-8baf-75b7c6c0b964",
-          "grantToRelatedProject": {
-            "read": { "mode": "all" },
-            "write": { "mode": "none" }
-          }
-        }
-      ]
-    },
-    "kanban": {
-      "artifactDir": "dist",
-      "entry": "index.html"
-    }
-  }
-}
+{ "entryId": "map", "type": "kanban", "name": "Map", "root": "map", "entry": "dist/index.html", "configuration": "configuration.json", "databases": [] }
 ```
 
-- `artifactDir` is relative to the project root and defaults to `"."`.
-- `entry` is relative to `artifactDir`, defaults to `"index.html"`, and supports `.html` and `.htm` files.
-- `projectInfo.relatedProjects` is the shared relationship declaration for every project type, not part of `kanban`. A relationship is confirmed only when the target also declares the current project; effective access comes from the target's `grantToRelatedProject`.
-- Neither path may contain an absolute path, drive letter, UNC path, `..`, directory escape, or symbolic-link escape. `.git`, `.hg`, `.svn`, and `node_modules` cannot be artifact or entry-point directories.
-- The iframe reads only files inside `artifactDir`; relative paths cannot reach source files, `package.json`, or files outside the project.
-- ES modules, dynamic imports, WASM, and `fetch()` can read resources inside the artifact directory. CSP `connect-src` permits only same-origin resources for the current short-lived preview capability plus `data:` and `blob:`; public network access is blocked.
+Build on the client before upload. Server validates, stores and serves static files without installing dependencies or executing builds. Relative assets and all registered entry artifacts are retained during packaging and installation.
 
-CLI Web and Server load built static artifacts. They do not install frontend dependencies, run build scripts, or connect to a dev server or HMR. Build with the project tooling and upload new artifacts through CLI to update the Server version.
+## Configuration and presentation
 
-Plain HTML, CSS, JavaScript, images, and fonts normally work across operating systems. Output that depends on native modules, an absolute local path, `node_modules`, or a specific development server is not a supported static browser artifact.
+The host injects `window.steamharness`. `getConfiguration()` reads the current entry configuration; `getPresentation()` reads the presentation mode. Listen for `steamharness:kanban-configuration-change` and `steamharness:kanban-presentation-change`. Named configurations, snapshots and configuration files are isolated by `projectId + entryId`.
 
-## Project configuration fields
-
-Kanban uses the same [project configurations](/en/concepts/project-configuration) as Workflow and Conversation. Declare native typed fields in `configuration.json`; the panel remains available without declared fields, allowing custom fields. Declare `type: "file"` for files selected and uploaded to the Server in the configuration panel. The page receives server file references and can also upload files through its own file API.
-
-```json
-{"version":1,"fields":[
-  {"name":"title","type":"string","defaultValue":"Roadmap"},
-  {"name":"enabled","type":"boolean","defaultValue":true},
-  {"name":"columns","type":"string","multiple":true,"options":[{"value":"todo"},{"value":"done"}]}
-]}
-```
-
-Use configurations for presentation and behavior such as titles, filters and layout modes. Create, edit and delete tasks in the page, then persist them through the KV bridge.
-
-## Read the Current Configuration
-
-The host injects a read-only interface before the page loads:
+## Data bridge
 
 ```js
-function render(configuration) {
-  const params = configuration?.params ?? {};
-  document.querySelector("h1").textContent = params.title || "Board";
-  document.documentElement.style.setProperty("--accent", params.accent || "#2563eb");
-}
-
-render(window.steamHarnessKanban.getConfiguration());
-
-window.addEventListener("steamharness:kanban-configuration-change", (event) => {
-  render(event.detail);
-});
+const database = window.steamharness.databases.get("data");
+const markers = await database.kv.getValue("map:markers");
+await database.kv.setValue("map:markers", markers ?? []);
+const unsubscribe = database.subscribe(({ revision }) => refreshMap(revision));
 ```
 
-Both `getConfiguration()` and the event's `detail` return:
+The alias must be declared in this entry's `databases` and approved before use. The host validates entry identity, actor and space grants. Pages cannot select arbitrary projects or spaces. Use `database.knowledge` for documents and `database.files.createFile/readFile/deleteFile` for attachments.
 
-```ts
-{
-  id: string;
-  name: string;
-  params: Record<string, unknown>;
-}
-```
-
-Changing a configuration or parameter does not reload the iframe. Listen for `steamharness:kanban-configuration-change` and update your DOM, canvas, or other in-page state. Persistent parameters can be changed only in the host configuration panel. Use the KV or knowledge-base APIs below for business data created inside the page.
-
-## Page Methods and Agent Communication
-
-Register existing page operations with `window.steamHarnessKanban.methods.register(definition, handler)`. A definition contains a unique `name`, `description`, object JSON `inputSchema`, and optional `readOnly` hint. Registration returns a disposer. The schema describes arguments for discovery; the handler validates business arguments.
+## Page methods
 
 ```js
-const unregister = window.steamHarnessKanban.methods.register({
-  name: "map.focusRegion",
-  description: "Focus a region by exact name; change only the view",
-  inputSchema: {
-    type: "object",
-    properties: { name: { type: "string" } },
-    required: ["name"],
-    additionalProperties: false,
-  },
-  readOnly: false,
-}, async (input, { signal, configuration, presentation }) => {
-  if (typeof input.name !== "string" || !input.name.trim()) {
-    throw new Error("A region name is required");
-  }
-  // Implement focusRegion using the page's existing view controller.
-  const region = await focusRegion(input.name, { signal });
-  return { regionId: region.id, configurationId: configuration.id };
-});
-// Call unregister() when the component unmounts or removes this method.
+window.steamharness.methods.register({
+  name: "focus", description: "Focus a map location", readOnly: true,
+  inputSchema: { type: "object", properties: { x: { type: "number" } } },
+}, async (input, { signal }) => ({ focused: input.x }));
 ```
 
-Handlers receive a JSON object and `{ signal, configuration, presentation }`, and return JSON synchronously or asynchronously. DOM objects, functions, binary data, non-finite numbers, and cycles are refused. Input, results, and the entire catalog are limited to 65,536 JSON characters and 32 nesting levels. Each page can register 32 methods. Names match `^[a-zA-Z][a-zA-Z0-9_.-]{0,79}$`; descriptions are limited to 2,000 characters and schemas to 8,192. Duplicate registrations fail. A configuration ID change clears registrations; register again after loading the new configuration.
+Targets include `projectId`, `entryId`, source, location and instance. Resource cards and previews also carry `entryId`. Validate business parameters and honor cancellation signals. Enumerate again after an instance refreshes or closes.
 
-Page registration alone does not create an Agent connection. `steamharness-kanban_kanban_methods` requires a host-provided invocation channel; CLI Web, Studio, and Server static previews do not gain this capability from page registration.
+## Hosts and security
 
-## KV and Knowledge-Base Bridge
+CLI Web uses `/entries/map/`; Studio opens entries as independent tabs. Server Web provides authenticated static previews. Previews use sandboxing, constrained relative asset paths and short-lived capabilities. `studio.getLocalAnalysis()` is available only in supported local Studio hosts.
 
-`window.steamHarnessKanban` also exposes an asynchronous data interface scoped to the current project:
-
-```ts
-window.steamHarnessKanban = {
-  getConfiguration(): { id: string; name: string; params: Record<string, unknown> },
-  getRuntimeLocale(): Promise<"zh-CN" | "en">,
-  files: {
-    createFile(input: { name: string; mimeType?: string; buffer: Blob | ArrayBuffer | Uint8Array }): Promise<FileReference>,
-    readFile(fileId: string): Promise<{ file: FileReference; buffer: ArrayBuffer }>,
-    deleteFile(fileId: string): Promise<boolean>,
-  },
-  kv: {
-    getValue(key: string): Promise<unknown | undefined>,
-    setValue(key: string, value: JsonValue): Promise<void>,
-  },
-  relatedProjects: {
-    get(alias: string): {
-      kv: {
-        getValue(key: string): Promise<unknown | undefined>,
-        setValue(key: string, value: JsonValue): Promise<void>,
-        subscribe(
-          listener: (event: { alias: string; revision: string }) => void,
-        ): () => void,
-      },
-    },
-  },
-  knowledge: {
-    listDocuments(options?: { pageSize?: number; cursor?: string }): Promise<KnowledgeDocumentPage>,
-    getDocument(id: string): Promise<KnowledgeDocument | null>,
-    createDocument(input: { id?: string; title: string; markdown: string }): Promise<KnowledgeDocument>,
-    editDocument(id: string, input: { title?: string; markdown?: string }): Promise<KnowledgeDocument>,
-    deleteDocument(id: string): Promise<{ id: string; deleted: boolean }>,
-    searchDocuments(options: {
-      query: string;
-      documentId?: string;
-      beforeLines?: number;
-      afterLines?: number;
-      maxMatches?: number;
-      pageSize?: number;
-      cursor?: string;
-    }): Promise<KnowledgeSearchResult>,
-    readDocumentLines(id: string, options: {
-      startLine: number;
-      endLine: number;
-    }): Promise<KnowledgeDocumentLinesResult>,
-  },
-};
-```
-
-`getRuntimeLocale()` asynchronously returns `"zh-CN"` or `"en"` selected by the current CLI Web or Server Web host. A Kanban that explicitly supports localization should switch page copy, errors, ARIA labels, date formatting, and number formatting together. It must fall back to the project's default Chinese when an older host lacks the Bridge or the call fails. `configuration.json` remains a static manifest and cannot be dynamically replaced by the runtime language.
-
-The page defines KV keys, while the host always confines the current-project bridge to project scope. A `setValue` value must be a finite number, string, Boolean, `null`, array, or plain object containing only those values. Do not pass `undefined`, a function, a circular reference, or another non-JSON-serializable value. The current version has no KV list or delete API; overwrite a state value by writing a replacement.
-
-`relatedProjects.get(alias).kv` resolves only a direct relationship declared in this Kanban's `projectInfo.relatedProjects` and confirmed by both projects. `getValue` and `setValue` check the target's read and write grants to the Kanban. When the target uses `prefixes`, each key is checked on every call. Iframe requests carry only alias, key, and a write value; they cannot provide the target-project UUID, scope, target, or database path, and expose no related-project list/delete or PersistentValue operation. See [KV and session](/en/concepts/kv-and-conversation#related-project-kv) for alias, UUID, count, and grant limits.
-
-Use `relatedProjects.get(alias).kv.subscribe(listener)` to observe target-project KV revisions. If the host already has a current revision, it calls the listener asynchronously with an initial snapshot. Later events contain only the fixed alias and an opaque revision, never a specific key. Server does not send the initial revision again as a change and coalesces consecutive writes from the same target into the newest revision. Debounce nearby events into a `getValue()` refresh and keep the last successful data on screen. If an automatic refresh fails, show a non-blocking warning instead of clearing current content. Call the returned unsubscribe function when the page unloads or configuration changes.
-
-```js
-const unsubscribe = window.steamHarnessKanban.relatedProjects.get("stocks").kv.subscribe(
-  ({ revision }) => {
-    scheduleRefresh(revision);
-  },
-);
-
-window.addEventListener("pagehide", unsubscribe, { once: true });
-```
-
-Server Web static previews require read access to the current Kanban; the user must also have guest access to the target, and both current declarations and the target’s grant must remain valid. Related writes require developer access on both the Kanban and the target. Authenticated SSE sends a complete revision snapshot on connection and reconnect. Missing targets, pending relationships, insufficient grants, invalid aliases, and out-of-range keys return a safe "related project unavailable" error. Revoking the relationship or read grant, or invalidating the binding, closes the revision stream. Server reads the relationship from the page's fixed `resolvedTarget`; target KV remains project-level data.
-
-Automatic propagation occurs within the same storage backend. Writes to Server KV from local clients or the management console notify connected static previews. Local and server KV never synchronize automatically.
-
-The following pattern stores board state per named configuration and falls back to in-memory data when the page is opened directly without a bridge:
-
-```js
-const configuration = window.steamHarnessKanban?.getConfiguration();
-const storageKey = `kanban.board-state.v1:${configuration?.id || "default"}`;
-const kv = window.steamHarnessKanban?.kv;
-
-let board = { version: 1, tasks: [] };
-if (kv) {
-  try {
-    board = (await kv.getValue(storageKey)) ?? board;
-  } catch {
-    showStorageError("Unable to load. Try again.");
-  }
-}
-
-async function saveBoard() {
-  if (!kv) return;
-  try {
-    await kv.setValue(storageKey, board);
-    showStorageStatus("Saved");
-  } catch {
-    showStorageError("Unable to save. Try again.");
-  }
-}
-```
-
-Every call returns a Promise. A page can have at most 16 pending requests at once; ordinary calls time out after 15 seconds and file calls after 120 seconds with `KANBAN_BRIDGE_TIMEOUT`. Non-JSON KV values and other unclonable inputs are rejected in the page with `KANBAN_BRIDGE_INVALID_REQUEST`, rather than exposing the browser's raw `DataCloneError`. Errors use fixed safe codes and copy, never a database path, stack trace, or host internals. Late responses from an old page are discarded after an iframe refresh.
-
-## Images And Files
-
-Pages can upload user-selected images or files to Server file storage. Files always use the currently connected Server, independently of the KV storage location. The caller must be signed in and the same project UUID must exist on that Server. Missing connections, permissions, or server support cause an error without saving files locally or splitting images into KV values.
-
-```js
-const api = window.steamHarnessKanban;
-const reference = await api.files.createFile({
-  name: selectedFile.name,
-  mimeType: selectedFile.type || undefined,
-  buffer: selectedFile,
-});
-const { file, buffer } = await api.files.readFile(reference.id);
-const imageUrl = URL.createObjectURL(new Blob([buffer], { type: file.mimeType }));
-imageElement.src = imageUrl;
-await api.kv.setValue(`map:${api.getConfiguration().id}`, { image: reference, annotations: [] });
-window.addEventListener("pagehide", () => URL.revokeObjectURL(imageUrl), { once: true });
-```
-
-`createFile` accepts Blob (including File), ArrayBuffer, or Uint8Array, with a 50 MiB limit per file. References contain `id/name/mimeType/size/kind/storage/projectId/createdAt/url`, with `storage: "server"`; credentials and disk paths never enter the page. `readFile` returns original bytes for managed file IDs belonging to the current project without a conversation scope. It cannot read arbitrary URLs or local paths. Render images using temporary Blob URLs, release old URLs when configurations change, and prevent stale reads from replacing the new configuration.
-
-Upload and verify a replacement first, save its new KV reference, and only then call `files.deleteFile(oldFileId)` to remove the old file. Existing local images can be migrated using the [business file commands](/en/cli/server-workspace#business-files), which do not publish project source. Managed files are not automatically included in project archives or version downloads.
-
-The knowledge-base list reads at most 100 documents at a time. Search caps `pageSize` and `maxMatches` at 1000 and `beforeLines` and `afterLines` at 50. A single `readDocumentLines` call reads at most 1000 lines, and `endLine` cannot be smaller than `startLine`. Out-of-range calls are rejected before reaching storage.
-
-## Named configurations
-
-The common panel supports explicit saves, profiles, custom fields and complete import/export. The last profile cannot be deleted. Local Studio and CLI share values by canonical project path; Server isolates values by project and account. Configuration changes immediately update main and resource-card previews. Dirty editors preserve their drafts on version conflicts. Values stay outside source files; old Kanban values are not migrated.
-
-## Relative Resources and Security Boundaries
-
-CSS, JavaScript, images, and fonts must use paths relative to the artifact directory:
-
-```html
-<link rel="stylesheet" href="./assets/board.css" />
-<img src="./assets/board.png" alt="Board preview" />
-<script src="./assets/board.js"></script>
-```
-
-The page runs in `sandbox="allow-scripts"` with an offline Content Security Policy:
-
-- Resources inside the current `artifactDir`, plus required `data:` and `blob:` content, are allowed.
-- Public-network requests, parent-page DOM access, Node, Electron preload, popups, downloads, and top-level navigation are blocked.
-- Static resource requests are pinned to the current draft or published version. `..`, absolute paths, symbolic-link escape, `.env`, project metadata, and cache paths are rejected.
-- KV, knowledge-base, and related-project requests are verified against the current iframe, a random nonce, a request ID, and an operation allowlist. The page cannot choose a target-project UUID, scope, database path, or publication target.
-- A single preview resource can be at most 20 MB.
-
-Do not depend on a CDN, remote fonts, remote APIs, or browser capabilities requiring `allow-same-origin`. The page can react to clicks, dragging, and DOM changes freely; write business data to the bridge explicitly when it must survive a refresh, restart, or configuration switch.
-
-## Upload Ignore Rules
-
-The root `.steamharnessignore` is the only ignore configuration used when CLI packages files for upload. It is independent of Git: `.gitignore` files, including nested ones, do not participate in upload matching. Server receives the selected archive, and Server Web never reads a local directory.
-
-Rules support comments, directories, globs, `**`, and `!` re-inclusion. Paths are always matched with `/`. When `.steamharnessignore` is missing, empty, or contains only comments, every regular file under the project root is uploaded; CLI shows the file count and total size first. `.steamharnessignore` itself is always included in the upload package.
-
-These files cannot be excluded: `package.json`, the Workflow or Conversation entry point, the configured Kanban HTML entry point, and an existing `configuration.json`. If a rule excludes a required file, upload identifies the matching rule. Symbolic links, special device files, directory escape, individual-file limits, and package-size limits are independent security checks and cannot be bypassed with ignore rules.
-
-Recommended rules for a Kanban project:
-
-```gitignore
-.git/
-node_modules/
-coverage/
-.cache/
-.turbo/
-*.log
-*.tmp
-*.tsbuildinfo
-.env
-.env.*
-!configuration.json
-
-src/
-tests/
-dist/**/*.map
-```
-
-Do not ignore the actual `artifactDir`. For example, when `artifactDir` is `dist`, `.gitignore` may exclude `dist/` to keep it out of Git, but `.steamharnessignore` must retain it so the build artifacts are uploaded.
-
-## CLI Web and Server Web
-
-A local Kanban that uses Server data can register the same project UUID with New project on Server without uploading source. Its live draft data bridge uses the registered Project Info and mutual related-project grants. Upload static source separately when a Server Web preview or published version is needed.
-
-CLI can select local Kanban text and binary static resources with `.steamharnessignore` and upload them to Server. Server does not run tsup, install dependencies, or create a Node runtime for Kanban. It validates the configured HTML entry point and retains the static artifacts; Server Web only inspects and manages uploaded server versions.
-
-Server Web static previews pin the current project and selected target. Reads require project read access; current-project KV and Knowledge writes require data-write permission, so guests are read-only. Related access also checks both declarations and the target's key grants. The site issues a short-lived signed capability tied to the project, user, and fixed version; resource URLs carry a CSP nonce and cannot read other projects or versions. Signing uses `STEAMHARNESS_AUTH_COOKIE_SECRET`, falling back to `STEAMHARNESS_SERVER_ADMIN_KEY`; all instances should share the same stable key. Previews refresh capabilities before expiry, reload the iframe, and preserve named configurations. Temporary failures retry; an expired capability that cannot be refreshed shows an error. Bridge and configuration operations always carry the initial `resolvedTarget`. Named configurations are isolated by user, while KV and Knowledge are shared within the project.
-
-## Studio Local Analysis API
-
-Studio's built-in `build-in-analysis` project can read a snapshot using `await window.steamHarnessKanban.studio.getLocalAnalysis()`. The response contains `version: 1`, `generatedAt`, `serverExcluded`, and `projects`. Each project includes its UUID, name, real directory, type, availability, live connection, queued input count, and `runs` summaries. Runs include ID, title, status, start time, duration, and entrypoint, excluding arguments, message bodies, logs, and credentials.
-
-Studio provides this read-only connection only to the local analysis project and closes it with the project session. It accepts no paths or filter arguments and grants no writes or editor control. CLI, Server, and standalone browsers without this connection return `KANBAN_BRIDGE_UNAVAILABLE`. The scope is the current workspace and imported local projects; Server storage projects are excluded and no server requests are made.
-
-History is selected by the current project type. Directory aliases retain the current workspace reference when merged. Live status requires a valid heartbeat and a running process. Expired heartbeats without a confirmed process exit are `unknown`; unfinished runs from a confirmed exited process are `interrupted`. Queued inputs are deduplicated by ID across windows, and stale activity does not restore deleted terminal runs. Scope changes during a query trigger a fresh read, and closing the preview cancels pending queries.
-
-## Project Relationships and Delivery
-
-`steamHarness.projectInfo.relatedProjects` is the shared relationship declaration for every project type. A Kanban project group generates dependency locks only from relationships confirmed by both projects. Pending relationships may be saved and published with the project, but grant no KV access and do not enter the included/external dependency group. For each confirmed relationship, the publisher chooses a delivery mode that is recorded in the Kanban's exact published version:
-
-| Delivery mode | Version dependency lock | Download behavior |
-| --- | --- | --- |
-| `included` | Pins the related project's exact version and source hash; that version must retain source. | Downloads with the root project when the user has source permission; otherwise it is skipped with an application entry. It never falls back to the related project's `latest`. |
-| `external` | Keeps only alias and related-project UUID; it does not lock a source version. | Does not download with the root project. The consumer prepares the related project independently. |
-
-A project group still consists of independent projects, each with its own UUID, version, members, and permissions. Server verifies every project and relationship and reserves versions, then stores and publishes included projects before updating the Kanban root project's `latest`. A failure never updates the root's `latest`. An interrupted publication can continue the same publication job and does not republish exact dependencies that already succeeded.
-
-Source delivery and runtime data are separate. Project-group archives, uploads, publications, and downloads reject `.env*`, KV, schedules, run history, SQLite data, and host-user configuration. Local KV and Server KV are separate databases. After upload, a developer initializes Server data by running a related Workflow entrypoint locally, writing through an authorized local client, or using a synchronization interface. The same applies after downloading locally. The platform provides invocation and bridge APIs; it never copies data automatically.
-
-Inter-project KV grants come from both projects’ `projectInfo`; Server keeps no separate data-grant record. The target can grant the Kanban `none/all/prefixes` read and write access. This does not permit source download, execution, or project management. Revocation immediately invalidates new bridge access and current revision subscriptions. Target project roles also apply to related data access. Included-source downloads require guest access; approval adds guest membership.
-
-## Publish, Download, and CLI
-
-Kanban publication stores an immutable static file snapshot. The file API transfers binary files such as images and fonts with `encoding: "base64"`; CLI restores their original bytes when downloading.
-
-```bash
-steamharness structure ./roadmap-kanban
-pnpm exec steamharness workspace pack roadmap-kanban --path ./roadmap-kanban
-pnpm exec steamharness workspace upload roadmap-kanban --path ./roadmap-kanban --create
-pnpm exec steamharness workspace publish roadmap-kanban
-pnpm exec steamharness workspace download roadmap-kanban --target latest --path ./roadmap-kanban-copy
-
-# Package and publish the stocks related project; both package.json files already declare the relationship.
-pnpm exec steamharness workspace upload roadmap-kanban \
-  --path ./roadmap-kanban \
-  --dependency stocks=./stock-workflow \
-  --publish-group \
-  --release-log "Publish the market board and its related Workflow"
-```
-
-`steamharness structure` reads `projectType: "kanban"`, `artifactDir`, `entry`, and the optional parameter manifest. Kanban is a static project: `steamharness run` and `steamharness json` return an explicit execution-not-supported error.
-
-## Use the Generator
-
-```bash
-python .agents/skills/workflow-generator/scripts/create_workflow.py roadmap \
-  --dir ./roadmap-kanban --project-type kanban
-
-python .agents/skills/workflow-generator/scripts/create_workflow.py roadmap \
-  --dir ./roadmap-kanban --project-type kanban --with-kanban-params
-```
-
-Both commands generate a complete editable Kanban project with `.steamharnessignore`, `package.json`, `index.html`, `board-state.js`, `board-storage.js`, a README, and pure-logic tests. Every scaffold includes `configuration.json`; `--with-kanban-params` populates it with only a title and accent color. Tasks are always created, edited, dragged, and deleted in the page, then persisted per configuration through the KV bridge.
-
-The generator creates a Simplified Chinese project by default and does not automatically add translation resources, a language switch, or locale detection. It adds those adaptations only after you explicitly request internationalization or multilingual support and identify the target languages.
-
-Permission groups are independent of these multi-project bundles. Every preview request rechecks account status, memberships and target access. Public projects still require sign-in.
+Publish the aggregate as one unit. Requirements travel with the package; bindings and credentials do not. See [Database spaces](/en/concepts/data-storage) and [Packaging](/en/cli/workspace/pack).

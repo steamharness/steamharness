@@ -96,7 +96,7 @@ manual approval.
   request and returns status, content type, and a short response preview.
 - A `knowledge_documents` function tool backed by the core Knowledge Documents
   helpers. It supports `list`, `get`, `create`, `edit`, `delete`, `search`, and
-  `read_lines` actions against `context.storage.local.persistentValue`.
+  `read_lines` actions against `context.databases.get("data").knowledge`.
 - Tool visibility: SDK raw stream text deltas are emitted as normal assistant
   text, while function tool execution is shown as separate `Tool: <name>`
   output items. Avoid forcing the main agent to emit a text preamble before tool
@@ -182,7 +182,7 @@ The sample defines these tools:
 - `read_context`: returns the current conversation id, recent messages, run
   count, and remembered facts.
 - `remember_fact`: writes a short `{ key, value }` fact into
-  `context.storage.local.kv.conversation`.
+  `context.databases.get("data").kv.conversation`.
 - `test_tool`: sends a small HTTP `GET` or `POST` request to a provided
   `http`/`https` URL and returns a compact response summary. The offline test
   starts a local HTTP server to verify that the tool really sends the request,
@@ -190,7 +190,7 @@ The sample defines these tools:
 - `knowledge_documents`: lists, reads, creates, edits, deletes, searches, and
   reads line ranges from project markdown knowledge documents. It reuses the
   core `workflow.*KnowledgeDocument*` helpers and therefore writes only through
-  `context.storage.local.persistentValue`. Local runs can use
+  `context.databases.get("data").knowledge`. Local runs can use
   `STEAMHARNESS_PERSISTENT_VALUE_STORE_DIR`; otherwise they use a configured server
   backend. Calls fail only when neither backend nor an injected store is
   available, and they never fall back to ordinary local KV.
@@ -210,3 +210,5 @@ activity is emitted before or between answer chunks as a collapsed `Tool:
 ## Project configuration
 
 Declare fields in `configuration.json` and enter values in Project configurations (Studio or `steamharness web .`). Read them with `workflow.getConfig(key)` or `context.config`. Local CLI and Studio share values; project env files are not loaded.
+
+Database access requires the entry’s `data` requirement to be explicitly approved and bound by the host. Session `--data-dir` options do not grant database access.

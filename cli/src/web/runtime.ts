@@ -6,7 +6,7 @@ import { fileURLToPath } from 'node:url';
 import { STEAMHARNESS_RUNTIME_LOCALE_ENV, createLocalProjectConfigurationStore, type ProjectConfigurationSnapshot } from 'steamharness';
 import { locale } from './localization';
 import { redactProjectData, type Runtime, type Report, type Project } from './workflow-types';
-import type { CliRelatedProjectSpec } from '../related-projects';
+
 import type { AgentSessionCommand, AgentSessionReceipt } from 'steamharness/agent';
 
 export interface WebConnection {
@@ -27,7 +27,7 @@ export function cliRoot(): string {
 }
 
 export function createWebRuntime(projectDir: string, storageDir: string, connection: () => WebConnection | undefined,
-  relatedProjects: () => readonly CliRelatedProjectSpec[] = () => [], options: { allowSystemAi?: boolean; userSettings?: () => UserSettings | undefined } = {}): Runtime {
+  options: { entryId?: string; allowSystemAi?: boolean; actor?: () => import('@steamharness/project-access').AccessActor; userSettings?: () => UserSettings | undefined } = {}): Runtime {
   const root = cliRoot();
   const builtWorker = path.join(root, 'dist/web/worker.mjs');
   const worker = existsSync(builtWorker) ? builtWorker : path.join(root, 'src/web/worker.mjs');
@@ -35,8 +35,13 @@ export function createWebRuntime(projectDir: string, storageDir: string, connect
   const active = new Map<string, ChildProcess>();
   const controls = new Map<string, (command: AgentSessionCommand, scopeId: string, attachments?: unknown[]) => Promise<AgentSessionReceipt>>();
   let disposed = false;
-  let configurationStore:ReturnType<typeof createLocalProjectConfigurationStore>|undefined;
-  const configurations=()=>configurationStore??=createLocalProjectConfigurationStore(projectDir,{connection:()=>connection()??null});
+  const configurationStores = new Map<string, ReturnType<typeof createLocalProjectConfigurationStore>>();
+  const configurations = (entryId = options.entryId) => {
+    const key = entryId ?? "default";
+    let store = configurationStores.get(key);
+    if (!store) { store = createLocalProjectConfigurationStore(projectDir, { entryId, connection: () => connection() ?? null }); configurationStores.set(key, store); }
+    return store;
+  };
   const invoke = <T>(request: Record<string, unknown>, onEvent?: (event: Record<string, unknown>) => void): Promise<T> => new Promise((resolve, reject) => {
     if (disposed) { reject(new Error('Web runtime has stopped.')); return; }
     const auth = connection();
@@ -68,7 +73,7 @@ export function createWebRuntime(projectDir: string, storageDir: string, connect
       });};
       const configuration=request.configuration as ProjectConfigurationSnapshot|undefined;
       if(command.type==='cancel'||!configuration?.profilePolicyVersion)send();
-      else void configurations().then(store=>store.snapshot({configuration,required:false})).then(send,reject);
+      else void configurations((request.project as Project)?.entryId).then(store=>store.snapshot({configuration,required:false})).then(send,reject);
     }));
     child.on('message', (message: any) => {
       if (message?.type !== 'agent-receipt' || typeof message.id !== 'string') return;
@@ -117,7 +122,7 @@ export function createWebRuntime(projectDir: string, storageDir: string, connect
         { code: 'STEAMHARNESS_WORKER_INTERRUPTED' })); }
     });
     child.stdin!.on('error', () => undefined);
-    child.stdin!.end(JSON.stringify({ ...request, userSettings: request.userSettings ?? options.userSettings?.(), storageDir, runtimeProjectDir: projectDir, relatedProjects: relatedProjects() }));
+    child.stdin!.end(JSON.stringify({ ...request, userSettings: request.userSettings ?? options.userSettings?.(), storageDir, runtimeProjectDir: projectDir, entryId: (request.project as Project)?.entryId ?? options.entryId, actor: options.actor?.() }));
   });
   return {
     available: true,
@@ -132,7 +137,7 @@ export function createWebRuntime(projectDir: string, storageDir: string, connect
     run: async (request, onEvent) => {
       if(!request.configurationSelection)return invoke({method:'run',...request},onEvent);
       const selection=request.configurationSelection;
-      const configuration=await (await configurations()).snapshot({id:selection.id,runId:request.configurationRunId??request.runId,requireExisting:request.resumeConfiguration});
+      const configuration=await (await configurations(request.project.entryId)).snapshot({id:selection.id,runId:request.configurationRunId??request.runId,requireExisting:request.resumeConfiguration});
       if(configuration.accessSubject!==selection.subject||configuration.profileKey!==selection.profileKey)throw new Error('This run configuration is not available to this account.');
       return invoke({method:'run',...request,configuration},onEvent);
     },

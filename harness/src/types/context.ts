@@ -6,7 +6,9 @@ import type {
 import type { ConversationContext } from "../conversation/index";
 import type { FileStore } from "../files/index";
 import type { KVContext, PersistentValueContext } from "../kv/index";
-import type { RelatedProjectsContext } from "../kv/related-projects";
+import type { DatabasesContext } from "../databases/index";
+import type { EntriesContext } from "../entries/index";
+import type { AccessActor } from "@steamharness/project-access";
 import type { TokenUsageContext } from "../token-usage/index";
 import type { TimerContext } from "../timer/index";
 import type { ToolPermissionContext } from "../tool-permissions/index";
@@ -95,21 +97,14 @@ export interface NodeExecutionHooks {
   ): Promise<void> | void;
 }
 
-export interface StorageLocationContext {
-  kv: KVContext;
-  persistentValue: PersistentValueContext;
-  relatedProjects: RelatedProjectsContext;
-}
-
-export interface StorageContext {
-  local: StorageLocationContext;
-  server: StorageLocationContext;
-}
-
 export interface NodeContext {
+  projectId: string;
+  entryId: string;
   config: import("../configuration").ConfigurationValues;
   providers: ProviderRegistry;
-  storage: StorageContext;
+  databases: DatabasesContext;
+  entries: EntriesContext;
+  actor?: AccessActor;
   conversation: ConversationContext;
   tokenUsage: TokenUsageContext;
   userInput?: UserInputContext;

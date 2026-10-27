@@ -22,8 +22,8 @@ function fixture(t, options = {}) {
   const local = { uri: 'file:///demo', folderPath: path.resolve('/demo'), id, name: 'Demo', projectType: 'workflow', fields: [], entrypoints: [], manifest: { version: '1.0.0' } };
   const f = { local, storage, requests, errors: [], infos: [], uploads: [], downloads: [], opens: [], notes: 'New version',
     connection: options.signedOut ? undefined : { serverUrl: 'https://steamharness.test', accessToken: 'host-token' },
-    projects: [{ id, name: 'Demo', latest: '0.9.0', access: { effectiveRole: 'developer', capabilities: ['read', 'downloadSource', 'readDraft', 'upload', 'publish', 'writeData'], sources: [] }, sourceDownload: { allowed: true, available: true } },
-      { id: otherId, name: 'Other', latest: '2.0.0', access: { effectiveRole: null, capabilities: [], sources: [] }, sourceDownload: { allowed: false, available: true } }],
+    projects: [{ id, name: 'Demo', latest: '0.9.0',entries:[{entryId:'main',type:'workflow',name:'Main'}],defaultEntry:'main', access: { effectiveRole: 'developer', capabilities: ['read', 'downloadSource', 'readDraft', 'upload', 'publish', 'writeData'], sources: [] }, sourceDownload: { allowed: true, available: true } },
+      { id: otherId, name: 'Other', latest: '2.0.0',entries:[{entryId:'main',type:'workflow',name:'Main'}],defaultEntry:'main', access: { effectiveRole: null, capabilities: [], sources: [] }, sourceDownload: { allowed: false, available: true } }],
     groups: [], versions: new Map([[id, [{ version: '0.9.0', latest: true, releaseLog: '<script>project notes</script>', dependencies: [] }]], [otherId, [{ version: '2.0.0', latest: true, dependencies: [] }]]]),
     manifest: { id, version: '1.0.0' }, documents: [], openDownload: false, windowChoice: 'new' };
   const context = { subscriptions: [], extensionUri: uri(path.resolve('/extension')), globalState: { get: key => storage.get(key), update: async (key, value) => storage.set(key, value) } };

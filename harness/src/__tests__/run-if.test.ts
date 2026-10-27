@@ -1,10 +1,10 @@
+import { createTestResources } from "./entry-test-resources";
 import assert from "node:assert/strict";
 import test from "node:test";
 import { analyzeProjectScriptSource } from "../executor/rules";
 import {
   createDisabledProjectConversationContext,
   createDisabledProjectTokenUsageContext,
-  createProjectRelatedProjectsContext,
   type KVContext,
 } from "../index";
 import { runIf } from "../workflow/index";
@@ -138,10 +138,7 @@ function createTestProjectContext(options: {
   return {
     config: {},
     providers: {},
-    storage: {
-      local: { kv, persistentValue: createMemoryKVContext(), relatedProjects: createProjectRelatedProjectsContext() },
-      server: { kv: createMemoryKVContext(), persistentValue: createMemoryKVContext(), relatedProjects: createProjectRelatedProjectsContext() },
-    },
+    ...createTestResources(),
     conversation: createDisabledProjectConversationContext(),
     tokenUsage: createDisabledProjectTokenUsageContext(),
     nodeHooks: {

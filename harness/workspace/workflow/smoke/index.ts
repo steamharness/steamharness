@@ -55,7 +55,7 @@ const outputNode = steamharness.createOutputNode<SmokeInput, SmokeOutputPayload>
         content: input.message,
         metadata: { previous },
       });
-      await context.storage.local.kv.conversation.setValue("smoke.lastMessage", input.message);
+      await context.databases.get("data").kv.conversation.setValue("smoke.lastMessage", input.message);
     }
   },
   async format(stream, input, context) {
@@ -63,7 +63,7 @@ const outputNode = steamharness.createOutputNode<SmokeInput, SmokeOutputPayload>
       ? await context.conversation.getValue()
       : undefined;
     const kvLastMessage = context.conversation.enabled
-      ? await context.storage.local.kv.conversation.getValue("smoke.lastMessage")
+      ? await context.databases.get("data").kv.conversation.getValue("smoke.lastMessage")
       : undefined;
 
     return {

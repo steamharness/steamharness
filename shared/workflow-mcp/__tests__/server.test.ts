@@ -26,15 +26,15 @@ describe("workflow MCP server", () => {
       runner: { run: vi.fn(), resume: vi.fn() },
       fileInputMode: "local" as const,
     };
-    expect(() => createProjectMcpServer({
+    expect(() => createProjectMcpServer({ entryId: "main",
       ...base,
       projectId: "../secrets",
-      structure: { projectType: "workflow", workflow: { name: "bad" }, entrypoints: [] },
+      structure: { projectId: "11111111-1111-4111-8111-111111111111", entryId: "main", projectType: "workflow", workflow: { name: "bad" }, entrypoints: [] },
     })).toThrow(/safe non-empty identifier/);
-    expect(() => createProjectMcpServer({
+    expect(() => createProjectMcpServer({ entryId: "main",
       ...base,
       projectId: "project-1",
-      structure: {
+      structure: { projectId: "11111111-1111-4111-8111-111111111111", entryId: "main",
         projectType: "workflow",
         workflow: { name: "bad" },
         entrypoints: [
@@ -43,10 +43,10 @@ describe("workflow MCP server", () => {
         ],
       },
     })).toThrow(/duplicate entrypoint id/);
-    expect(() => createProjectMcpServer({
+    expect(() => createProjectMcpServer({ entryId: "main",
       ...base,
       projectId: "project-1",
-      structure: {
+      structure: { projectId: "11111111-1111-4111-8111-111111111111", entryId: "main",
         projectType: "workflow",
         workflow: { name: "bad" },
         entrypoints: [{ id: "main", title: "Main", params: [
@@ -58,11 +58,11 @@ describe("workflow MCP server", () => {
   });
 
   it("rejects malformed parameter metadata instead of silently changing the contract", () => {
-    const base = {
+    const base = { entryId: "main",
       runner: { run: vi.fn(), resume: vi.fn() },
       fileInputMode: "local" as const,
       projectId: "11111111-1111-4111-8111-111111111111",
-      structure: {
+      structure: { projectId: "11111111-1111-4111-8111-111111111111", entryId: "main",
         projectType: "workflow" as const,
         workflow: { name: "bad" },
         entrypoints: [{ id: "main", title: "Main", params: [] }],
@@ -150,9 +150,9 @@ describe("workflow MCP server", () => {
 
   it("closes the audit event when a valid tool call fails before creating a run", async () => {
     const onAudit = vi.fn();
-    const server = createProjectMcpServer({
+    const server = createProjectMcpServer({ entryId: "main",
       projectId: "11111111-1111-4111-8111-111111111111",
-      structure: {
+      structure: { projectId: "11111111-1111-4111-8111-111111111111", entryId: "main",
         projectType: "workflow",
         workflow: { name: "failed-workflow" },
         entrypoints: [{ id: "main", title: "Main", params: [] }],
@@ -176,9 +176,9 @@ describe("workflow MCP server", () => {
   });
 
   it("keeps Workflow projects with no entrypoints available as an empty MCP server", async () => {
-    const server = createProjectMcpServer({
+    const server = createProjectMcpServer({ entryId: "main",
       projectId: "11111111-1111-4111-8111-111111111111",
-      structure: {
+      structure: { projectId: "11111111-1111-4111-8111-111111111111", entryId: "main",
         projectType: "workflow",
         workflow: { name: "empty-workflow" },
         entrypoints: [],
@@ -496,9 +496,9 @@ describe("workflow MCP server", () => {
       }),
       resume: vi.fn(),
     };
-    const server = createProjectMcpServer({
+    const server = createProjectMcpServer({ entryId: "main",
       projectId: "11111111-1111-4111-8111-111111111111",
-      structure: {
+      structure: { projectId: "11111111-1111-4111-8111-111111111111", entryId: "main",
         projectType: "workflow",
         workflow: { name: "request-signal-workflow" },
         entrypoints: [{
@@ -590,9 +590,9 @@ async function connect(
   elicitationResponses?: Array<ElicitResult | (() => Promise<ElicitResult>)>,
   beforeRun?: CreateProjectMcpServerOptions["beforeRun"],
 ): Promise<{ client: Client; serverTransport: InMemoryTransport }> {
-  const server = createProjectMcpServer({
+  const server = createProjectMcpServer({ entryId: "main",
     projectId: "11111111-1111-4111-8111-111111111111",
-    structure: {
+    structure: { projectId: "11111111-1111-4111-8111-111111111111", entryId: "main",
       projectType: "workflow",
       workflow: { name: "test-workflow" },
       defaultEntrypoint: "main",

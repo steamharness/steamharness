@@ -30,7 +30,7 @@ export const CONFIGURATION_FILE_MAX_BYTES = 50 * 1024 * 1024;
 /** Portable server metadata only; file bytes and host credentials never enter configuration values. */
 export type ProjectConfigurationFile = {
   id: string; name: string; mimeType: string; size: number; storage: "server";
-  kind?: "image" | "file"; projectId?: string; createdAt?: string;
+  kind?: "image" | "file"; projectId?: string; entryId?: string; createdAt?: string;
 };
 export interface ConfigurationProfileDefinition {
   key: string; name: string; minimumRole: ProjectRole;
@@ -296,8 +296,8 @@ export function validateConfigurationFileSelection(field: ProjectConfigurationFi
   if (field.accept?.length && !field.accept.some(type => type.startsWith(".") ? file.name.toLowerCase().endsWith(type.toLowerCase()) : type.endsWith("/*") ? file.mimeType.toLowerCase().startsWith(type.slice(0,-1).toLowerCase()) : file.mimeType.toLowerCase() === type.toLowerCase())) return invalid("This file type is not accepted by the configuration field.");
 }
 export function parseConfigurationFile(value: unknown): ProjectConfigurationFile {
-  if (!record(value) || typeof value.id !== "string" || !/^wf_[a-f0-9]+$/.test(value.id) || value.storage !== "server" || typeof value.name !== "string" || typeof value.mimeType !== "string" || typeof value.size !== "number" || Object.keys(value).some(key => !["id","name","mimeType","size","storage","kind","projectId","createdAt"].includes(key))) return invalid("Invalid server file reference.");
-  if (value.kind !== undefined && value.kind !== "image" && value.kind !== "file" || value.projectId !== undefined && typeof value.projectId !== "string" || value.createdAt !== undefined && typeof value.createdAt !== "string") return invalid("Invalid server file reference.");
+  if (!record(value) || typeof value.id !== "string" || !/^wf_[a-f0-9]+$/.test(value.id) || value.storage !== "server" || typeof value.name !== "string" || typeof value.mimeType !== "string" || typeof value.size !== "number" || Object.keys(value).some(key => !["id","name","mimeType","size","storage","kind","projectId","entryId","createdAt"].includes(key))) return invalid("Invalid server file reference.");
+  if (value.kind !== undefined && value.kind !== "image" && value.kind !== "file" || value.projectId !== undefined && typeof value.projectId !== "string" || value.entryId !== undefined && (typeof value.entryId !== "string" || !/^[a-z][a-z0-9_-]{0,63}$/.test(value.entryId)) || value.createdAt !== undefined && typeof value.createdAt !== "string") return invalid("Invalid server file reference.");
   validateConfigurationFileSelection({name:"file",type:"file"}, value as ProjectConfigurationFile);
   return structuredClone(value) as ProjectConfigurationFile;
 }
@@ -484,6 +484,7 @@ export interface ProjectConfigurationTemplate {
   version: 2 | 3;
   kind: 'steamharness-configuration-template';
   projectId: string;
+  entryId: string;
   projectVersion: string;
   /** Hash of the authored source before filtering (the final archive hash is in its manifest). */
   sourceHash: string;
@@ -498,6 +499,10 @@ export interface ProjectConfigurationTemplate {
   reservedFields?: string[];
 }
 export const CONFIGURATION_TEMPLATE_FILE = 'configuration.template.json';
+export function configurationTemplatePath(entryId: string): string {
+  if (!/^[a-z][a-z0-9_-]{0,63}$/.test(entryId)) throw new Error("Invalid configuration entry ID.");
+  return `configuration-templates/${entryId}/${CONFIGURATION_TEMPLATE_FILE}`;
+}
 const fail = (message: string, code = 'CONFIGURATION_INVALID'): never => { throw new ProjectConfigurationError(message, code); };
 const object = (value: unknown): value is Record<string, ConfigurationValue> => value !== null && typeof value === 'object' && !Array.isArray(value);
 const equal = (a: unknown, b: unknown): boolean => {
@@ -579,7 +584,7 @@ export function parsePublicationDraft(value: unknown): ConfigurationPublicationD
   if(profilePolicy && (configurations.find(profile=>profile.id===value.defaultConfigurationId)?.profileKey!==profilePolicy.defaultProfileKey || profilePolicy.profiles.some(definition=>!configurations.some(profile=>profile.profileKey===definition.key))))return fail('Publish every declared profile and use the guest default.');
   return {revision:Number(value.revision),configurationRevision:Number(value.configurationRevision),...(value.configurationAccountId?{configurationAccountId:value.configurationAccountId as string}:{}),fields,...(agentModelPolicy?{agentModelPolicy}:{}),...(profilePolicy?{profilePolicy}:{}),configurations,defaultConfigurationId:value.defaultConfigurationId};
 }
-export function freezeConfigurationTemplate(input: ConfigurationPublicationDraft, binding: {projectId:string;projectVersion:string;sourceHash:string}): ProjectConfigurationTemplate {
+export function freezeConfigurationTemplate(input: ConfigurationPublicationDraft, binding: {projectId:string;entryId:string;projectVersion:string;sourceHash:string}): ProjectConfigurationTemplate {
   const draft=parsePublicationDraft(input);
   if(draft.profilePolicy)for(const profile of draft.profilePolicy.profiles)for(const [key,value] of Object.entries(profile.fixedValues)){
     const field=draft.fields.find(field=>field.name===key)!;
@@ -614,7 +619,7 @@ export function freezeConfigurationTemplate(input: ConfigurationPublicationDraft
   return {version:draft.profilePolicy?3:2,kind:'steamharness-configuration-template',...binding,draftRevision:draft.revision,fields,...(draft.agentModelPolicy?{agentModelPolicy:draft.agentModelPolicy}:{}),...(draft.profilePolicy?{profilePolicy:draft.profilePolicy}:{}),configurations,defaultConfigurationId:draft.defaultConfigurationId,...(reservedFields.length?{reservedFields}:{})};
 }
 export function parseConfigurationTemplate(value: unknown): ProjectConfigurationTemplate {
-  if(!object(value) || ![2,3].includes(value.version as number) || value.kind!=='steamharness-configuration-template' || typeof value.projectId!=='string' || !value.projectId || typeof value.projectVersion!=='string' || typeof value.sourceHash!=='string' || !/^[a-f0-9]{64}$/.test(value.sourceHash)) return fail('Invalid configuration template.');
+  if(!object(value) || ![2,3].includes(value.version as number) || value.kind!=='steamharness-configuration-template' || typeof value.projectId!=='string' || !value.projectId || typeof value.entryId!=='string' || !/^[a-z][a-z0-9_-]{0,63}$/.test(value.entryId) || typeof value.projectVersion!=='string' || typeof value.sourceHash!=='string' || !/^[a-f0-9]{64}$/.test(value.sourceHash)) return fail('Invalid configuration template.');
   const draft=parsePublicationDraft({...value,revision:value.draftRevision,configurationRevision:0});
   if((value.version===3)!==!!draft.profilePolicy)return fail('Unsupported configuration profile policy version.');
   // A template is already filtered. Never re-enable omitted defaults on a client.
@@ -623,8 +628,7 @@ export function parseConfigurationTemplate(value: unknown): ProjectConfiguration
   const attachments = value.attachments;
   if(value.reservedFields!==undefined && (!Array.isArray(value.reservedFields)||!value.reservedFields.every(isRuleHash))) return fail('Invalid reserved configuration fields.');
   if(attachments!==undefined && (!Array.isArray(attachments) || attachments.some(a=>!object(a)||typeof a.id!=='string'||!/^wf_[a-f0-9]+$/.test(a.id)||a.path!==`configuration-assets/${a.id}`||typeof a.sha256!=='string'||!/^[a-f0-9]{64}$/.test(a.sha256)))) return fail('Invalid template attachments.');
-  // Preserve legacy template serialization: verified offline cache keys hash this exact metadata.
-  return {...(attachments?{attachments:structuredClone(attachments) as unknown as ProjectConfigurationTemplate['attachments']}:{}),...(value.reservedFields?{reservedFields:[...value.reservedFields] as string[]}:{}),version:value.version as 2|3,kind:'steamharness-configuration-template',projectId:value.projectId,projectVersion:value.projectVersion,sourceHash:value.sourceHash,draftRevision:draft.revision,fields:draft.fields,...(value.agentModelPolicy!==undefined&&draft.agentModelPolicy?{agentModelPolicy:draft.agentModelPolicy}:{}),...(draft.profilePolicy?{profilePolicy:draft.profilePolicy}:{}),configurations:draft.configurations,defaultConfigurationId:draft.defaultConfigurationId};
+  return {...(attachments?{attachments:structuredClone(attachments) as unknown as ProjectConfigurationTemplate['attachments']}:{}),...(value.reservedFields?{reservedFields:[...value.reservedFields] as string[]}:{}),version:value.version as 2|3,kind:'steamharness-configuration-template',projectId:value.projectId,entryId:value.entryId as string,projectVersion:value.projectVersion,sourceHash:value.sourceHash,draftRevision:draft.revision,fields:draft.fields,...(value.agentModelPolicy!==undefined&&draft.agentModelPolicy?{agentModelPolicy:draft.agentModelPolicy}:{}),...(draft.profilePolicy?{profilePolicy:draft.profilePolicy}:{}),configurations:draft.configurations,defaultConfigurationId:draft.defaultConfigurationId};
 }
 /** Merge full personal values with the version's authoritative values. Never apply old locked overrides. */
 function allowedValue(field:ProjectConfigurationField, base:ConfigurationValue|undefined, personal:ConfigurationValue|undefined, pointer='', deleted:readonly string[]=[]):ConfigurationValue|undefined {

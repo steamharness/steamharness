@@ -32,33 +32,22 @@ type ScheduleTrigger =
 
 ## 声明建议计划
 
-Workflow 可以在 `package.json.steamHarness.schedulePresets` 中提供建议配置：
+Workflow 可以在 `package.json.steamHarness.entries[].schedulePresets` 中提供建议配置：
 
 ```json
 {
-  "steamHarness": {
-    "schedulePresets": [
-      {
-        "id": "market-hours",
-        "title": "盘中行情同步",
-        "description": "工作日交易时段每 5 分钟同步一次。",
-        "entrypointId": "sync-minute",
-        "timezone": "Asia/Shanghai",
-        "trigger": {
-          "kind": "window-interval",
-          "weekdays": [1, 2, 3, 4, 5],
-          "windows": [
-            { "start": "09:30", "end": "11:30" },
-            { "start": "13:00", "end": "15:10" }
-          ],
-          "intervalMinutes": 5
-        },
-        "paramValues": {
-          "symbols": "000725.SZ,002594.SZ"
-        }
-      }
-    ]
-  }
+  "entryId": "database",
+  "type": "workflow",
+  "name": "Database",
+  "root": "database",
+  "entry": "index.ts",
+  "databases": [],
+  "schedulePresets": [{
+    "id": "hourly", "title": "Hourly sync", "entrypointId": "sync",
+    "timezone": "Asia/Shanghai",
+    "trigger": { "kind": "cron", "expression": "0 * * * *" },
+    "paramValues": {}
+  }]
 }
 ```
 
@@ -91,6 +80,4 @@ Server 保存项目与数据，不调度或执行项目。本地应用可以使�
 
 ## 与 Kanban 联动
 
-项目 KV 每次成功提交写事务后都会更新项目 revision。与该项目建立已确认直接关系且具备读权限的 Kanban 可以按 alias 订阅 revision，并在同一宿主后端中重新读取数据；回滚事务不会发出变化，撤销关系或读权限会关闭订阅。
-
-Server Web 预览通过鉴权 SSE 接收数据写入后的关联项目 revision。本地与服务器 KV 不会自动同步。
+空间每次成功提交事务后更新 revision。获批读取同一空间的 Kanban 通过 `window.steamharness.databases.get(alias).subscribe(...)` 订阅，回滚不会通知；后续访问重新检查授权。定时任务与 fire 历史按 `projectId + entryId` 隔离，目标内部操作仍使用 `entrypointId`。

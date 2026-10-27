@@ -16,7 +16,7 @@ export {
   type CapabilityContext,
 } from "./assemble";
 
-export { selectProjectStorage } from "./storage";
+export { selectDatabase } from "./databases";
 export {
   KANBAN_METHODS_MCP_SERVER_ID, KANBAN_METHODS_MCP_TOOL_NAME, KANBAN_METHODS_MCP_TOOL_ID,
   KANBAN_METHODS_CAPABILITY, readKanbanMethodsBridgeConfig, runKanbanMethodsAction,

@@ -1,3 +1,4 @@
+import { createTestResources } from "./entry-test-resources";
 import assert from "node:assert/strict";
 import test from "node:test";
 import { analyzeProjectScriptSource } from "../executor/rules";
@@ -11,7 +12,6 @@ import {
   createDetailsOutputNode,
   createDisabledProjectConversationContext,
   createDisabledProjectTokenUsageContext,
-  createProjectRelatedProjectsContext,
   isOutputContentType,
   isOutputItemStreamChunk,
   type KVContext,
@@ -455,10 +455,7 @@ function createTestProjectContext(): RunContext {
   return {
     config: {},
     providers: {},
-    storage: {
-      local: { kv, persistentValue: createMemoryKVContext(), relatedProjects: createProjectRelatedProjectsContext() },
-      server: { kv: createMemoryKVContext(), persistentValue: createMemoryKVContext(), relatedProjects: createProjectRelatedProjectsContext() },
-    },
+    ...createTestResources(),
     conversation: createDisabledProjectConversationContext(),
     tokenUsage: createDisabledProjectTokenUsageContext(),
   };

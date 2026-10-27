@@ -33,6 +33,6 @@ export function requestProjectResource(options: {
     // Resource workers always run on the editor surface. Send the scoped
     // connection calculated above instead of the caller object, which may also
     // contain the private AI service credentials used by the Assistant.
-    child.stdin.end(JSON.stringify({ project: { id: options.project.id, folderPath: options.project.folderPath }, input: options.input, storageDir: options.storageDir, connection }));
+    child.stdin.end(JSON.stringify({ project: { id: options.project.id, entryId: options.project.entryId, folderPath: options.project.folderPath }, input: options.input, storageDir: options.storageDir, connection }));
   });
 }

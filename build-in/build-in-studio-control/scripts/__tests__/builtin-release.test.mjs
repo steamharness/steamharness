@@ -56,14 +56,14 @@ describe("independent built-in project release", () => {
     }
     expect(definition.components).toEqual(resolved);
     expect(definition.minDesktopVersion).toBe("0.1.24");
-    expect(definition.dataStorageMode).toBe("local");
+    expect(definition.entries).toEqual(definition.packageJson.steamHarness.entries);
+    expect(definition.defaultEntry).toBe("main");
     expect(definition.packageJson.steamHarness.projectInfo).toMatchObject({
       localizedNames: {
         "zh-CN": expect.any(String),
         en: definition.packageJson.name,
       },
       declarations: expect.arrayContaining(["multilingual"]),
-      dataStorage: { mode: "local" },
     });
     await expect(Promise.all([
       readFile(path.join(root, "README.md"), "utf8"),
@@ -215,15 +215,16 @@ describe("independent built-in project release", () => {
     );
   });
 
-  it("requires an explicit storage declaration and the 0.2 Desktop floor", async () => {
+  it("requires explicit entry registration and the 0.2 Desktop floor", async () => {
     const definition = await readBuiltinDefinition(root, { mode: 'dev' });
     const fixture = await mkdtemp(path.join(os.tmpdir(), `builtin-${definition.projectId}-storage-contract-`));
     const manifest = releaseManifest(definition);
-    delete manifest.steamHarness.projectInfo.dataStorage;
+    const entries = manifest.steamHarness.entries;
+    delete manifest.steamHarness.entries;
     await writeFile(path.join(fixture, "package.json"), `${JSON.stringify(manifest, null, 2)}\n`, "utf8");
-    await expect(readBuiltinDefinition(fixture)).rejects.toThrow(/dataStorage\.mode/);
+    await expect(readBuiltinDefinition(fixture)).rejects.toThrow(/steamHarness\.entries/);
 
-    manifest.steamHarness.projectInfo.dataStorage = { mode: "both" };
+    manifest.steamHarness.entries = entries;
     manifest.steamHarness.builtinRelease.minDesktopVersion = "0.1.21";
     // Desktop 地板只对 0.2.x 的 harness 生效，所以显式声明一个 0.2 版本的依赖。
     manifest.devDependencies["steamharness"] = "0.2.0";

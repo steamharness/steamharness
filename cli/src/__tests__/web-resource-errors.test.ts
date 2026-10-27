@@ -26,7 +26,7 @@ it('keeps preview failures in their card through later messages and conversation
   vi.stubGlobal('cancelAnimationFrame', clearTimeout);
   document.body.innerHTML = '<div id="app"></div>';
   await import('../web/ui/main');
-  const project: Project = { id: 'assistant', uri: 'studio-assistant:map', folderPath: '/assistant', name: 'Assistant', projectType: 'conversation', fields: [], entrypoints: [] };
+  const project: Project = {entryId:"main",aggregateName:"Test aggregate",defaultEntry:"main",entryRoot:'/assistant',databases:[],entries:[{entryId:"main",name:"Main",type:'conversation',root:".",entry:"index.ts",databases:[]}], id: 'assistant', uri: 'studio-assistant:map', folderPath: '/assistant', name: 'Assistant', projectType: 'conversation', fields: [], entrypoints: [] };
   const answer: ConversationMessage = { id: 'answer', role: 'assistant', content: '', status: 'success', items: [{
     id: 'map-card', metadata: { kind: 'agent-part', partType: 'tool' }, content: { tool: 'workflow-ui_present_card', status: 'success',
       output: { action: 'upsert', cardId: 'map', kind: 'kanban', title: 'Map', preview: true, target: { source: 'current' } } },

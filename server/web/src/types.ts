@@ -2,29 +2,10 @@ import type { ResourceAccess, AccessPage, ProjectRole as FixedProjectRole } from
 export type { ResourceAccess, AccessPage };
 
 import type { ProjectKind as SharedProjectKind } from "@steamharness/project-types";
-import type { ProjectInfoContract, RelatedProject, RelatedProjectKVGrant } from "@steamharness/project-info";
-import type { ProjectAccessRequest, ProjectDependencyLock, ProjectDependencyStatusResult } from "@steamharness/project-dependencies";
-
-export type {
-  ProjectAccessRequest,
-
-  ProjectDependencyLock,
-  ProjectDependencyStatusResult,
-};
-
-export interface RelatedProjectStatus {
-  relation: RelatedProject;
-  projectName?: string;
-  reciprocalAlias?: string;
-  grantFromRelatedProject?: RelatedProjectKVGrant;
-  confirmed: boolean;
-}
-
-export interface RelatedProjectListResult {
-  projectId: string;
-  relatedProjects: RelatedProjectStatus[];
-}
-
+import type { ProjectInfoContract } from "@steamharness/project-info";
+import type { ProjectAccessRequest } from "@steamharness/project-access";
+export type { ProjectAccessRequest };
+import type { ProjectEntry } from "@steamharness/project-manifest";
 export interface ApiSuccess<T> {
   errCode: 0;
   errMessage: "";
@@ -227,7 +208,8 @@ export interface Summary {
   sourceDownload?: {allowed: boolean; available: boolean; target: string | null};
   id: string;
   name: string;
-  projectType: ProjectKind;
+  entries: ProjectEntry[];
+  defaultEntry: string;
   projectCard: ProjectCardMetadata;
   projectInfo: ProjectInfoContract;
   visibility?: "private" | "public";
@@ -253,7 +235,6 @@ export interface VersionEntry {
   createdByProfile?: UserProfileSummary;
   releaseLog?: string;
   sourceHash?: string;
-  dependencies: ProjectDependencyLock[];
   latest: boolean;
 }
 

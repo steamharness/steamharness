@@ -11,13 +11,15 @@ const { downloadServerProject, uploadServerProject, runWorkspaceTransfer, alloca
 const { configureLocalization } = await import('../extensions/studio-workstation/src/localization.ts');
 const id = '784af2d9-240a-45d1-a659-452a21867934';
 const dependencyId = '4c8bed84-e667-446e-860d-663caa5c3587';
+const entriesFor = (type='workflow') => [{entryId:'main',name:'Main',type,root:'.',entry:type==='kanban'?'index.html':'index.ts',databases:[]}];
 const signal = () => new AbortController().signal;
 
 async function fixture(t, configuration = {}) {
   const directory = await fs.mkdtemp(path.join(tmpdir(), 'studio-transfer-test-'));
   t.after(() => fs.rm(directory, { recursive: true, force: true }));
-  const config = { name: 'demo', version: '1.2.3', projects: [{ projectId: id, projectName: 'demo', role: 'root', version: '1.2.3' }], ...configuration };
+  const config = { name: 'demo', version: '1.2.3', entries:entriesFor(), ...configuration };
   await fs.writeFile(path.join(directory, 'config.json'), JSON.stringify(config));
+  await fs.writeFile(path.join(directory,'package.json'),JSON.stringify({id,name:config.name,version:config.version,steamHarness:{entries:config.entries,defaultEntry:'main'}}));
   const cliEntry = path.join(directory, 'cli.mjs');
   await fs.writeFile(cliEntry, `
     import * as fs from 'node:fs/promises'; import path from 'node:path';
@@ -26,17 +28,14 @@ async function fixture(t, configuration = {}) {
     if (config.failure) { console.error(process.env.STEAMHARNESS_SERVER_ADMIN_KEY + ' denied'); process.exit(1); }
     if (args.includes('upload')) { console.log(JSON.stringify({errCode: 0, data: { jobId: 'job-1' }})); }
     else {
-      const root = args[args.indexOf('--path') + 1], projects = [];
-      for (const project of config.projects) {
-        const destination = project.role === 'root' ? root : path.join(path.dirname(root), 'dependency');
-        await fs.mkdir(destination, {recursive: true});
-        await fs.writeFile(path.join(destination, 'package.json'), JSON.stringify({ id: config.wrongId || project.projectId, name: project.projectName, version: project.version }));
-        await fs.writeFile(path.join(destination, 'index.ts'), "throw new Error('Source must not execute');");
-        await fs.writeFile(path.join(destination, 'image.bin'), Buffer.from([0, 1, 255]));
-        projects.push({...project, path: destination, alreadyAvailable: false});
-      }
+      const root = args[args.indexOf('--path') + 1];
+      await fs.mkdir(root,{recursive:true});
+      await fs.writeFile(path.join(root,'package.json'),JSON.stringify({id:config.wrongId||'${id}',name:config.name,version:config.version,steamHarness:{entries:config.entries,defaultEntry:'main'}}));
+      await fs.writeFile(path.join(root,'index.ts'),"throw new Error('Source must not execute');");
+      await fs.writeFile(path.join(root,'image.bin'),Buffer.from([0,1,255]));
+      for(const entry of config.entries){const target=path.join(root,entry.root,entry.entry);await fs.mkdir(path.dirname(target),{recursive:true});await fs.writeFile(target,entry.type==='kanban'?'<html>Board</html>':"throw new Error('Source must not execute');");}
       if (config.delay) { await new Promise(resolve => setTimeout(resolve, 10000)); }
-      console.log(JSON.stringify({errCode: 0, data: {rootProjectId: '${id}', rootVersion: config.version, complete: config.complete !== false, projects}}));
+      console.log(JSON.stringify({errCode: 0, data: {projectId:'${id}',path:config.complete===false?undefined:root}}));
     }
   `);
   const progress = [];
@@ -75,20 +74,20 @@ test('project API reads use the host account, host language and cancellable requ
 
 for (const projectType of ['workflow', 'conversation', 'kanban']) test(`new ${projectType} projects receive a Server-assigned UUID privately without uploading or publishing source`, async t => {
   const directory = await fs.mkdtemp(path.join(tmpdir(), 'studio-register-')); t.after(() => fs.rm(directory, { recursive: true, force: true }));
-  const projectInfo = { localizedNames: { en: 'Created' }, declarations: [], relatedProjects: [], platformSupport: { mode: 'agnostic' }, dataStorage: { mode: 'local' } };
+  const projectInfo = { localizedNames: { en: 'Created' }, declarations: [], platformSupport: { mode: 'agnostic' } };
   const projectCard = { icon: projectType === 'workflow' ? 'workflow' : projectType === 'conversation' ? 'message-circle' : 'boxes', iconColor: '#ffffff', iconBackgroundColor: '#123456' };
-  await fs.writeFile(path.join(directory, 'package.json'), JSON.stringify({ id, steamHarness: { projectType, projectInfo, projectCard } }));
+  await fs.writeFile(path.join(directory, 'package.json'), JSON.stringify({ id, steamHarness:{entries:entriesFor(projectType),defaultEntry:'main',projectInfo,projectCard} }));
   await fs.writeFile(path.join(directory, 'index.ts'), "throw new Error('Registration must not read or execute source');");
-  const http = await server(t, () => ({ data: { projectId: id, projectType } }));
+  const http = await server(t, () => ({ data: { projectId:id,entries:entriesFor(projectType),defaultEntry:'main' } }));
   let checks = 0;
-  const options = { project: { name: 'Created', projectType, projectInfo, projectCard },
+  const options = { project: {name:'Created',entries:entriesFor(projectType),defaultEntry:'main',projectInfo,projectCard},
     connection: { serverUrl: http.url, accessToken: 'registration-test-token' }, signal: signal(), assertCurrent: () => { checks++; } };
   await allocateServerProjectId(options); await allocateServerProjectId(options);
   assert.equal(checks, 4); assert.equal(http.requests.length, 2);
   for (const request of http.requests) {
     assert.equal(request.url, '/api/projects'); assert.equal(request.method, 'POST');
     assert.equal(request.auth, 'Bearer registration-test-token');
-    assert.deepEqual(JSON.parse(request.body), { name: 'Created', projectType, visibility: 'private', projectInfo, projectCard });
+    assert.deepEqual(JSON.parse(request.body), {name:'Created',entries:entriesFor(projectType),defaultEntry:'main',visibility:'private',projectInfo,projectCard});
   }
   await assert.rejects(allocateServerProjectId({ ...options, assertCurrent: () => { throw new Error('account changed'); } }), /account changed/);
   await assert.rejects(allocateServerProjectId({ ...options, signal: AbortSignal.abort() }), { name: 'AbortError' });
@@ -97,10 +96,10 @@ for (const projectType of ['workflow', 'conversation', 'kanban']) test(`new ${pr
 
 test('registration rejects permission errors and an unexpected server identity', async t => {
   const directory = await fs.mkdtemp(path.join(tmpdir(), 'studio-register-failed-')); t.after(() => fs.rm(directory, { recursive: true, force: true }));
-  await fs.writeFile(path.join(directory, 'package.json'), JSON.stringify({ id, steamHarness: { projectType: 'workflow', projectInfo: { platformSupport: { mode: 'agnostic' }, dataStorage: { mode: 'local' } } } }));
+  await fs.writeFile(path.join(directory, 'package.json'), JSON.stringify({ id, steamHarness: { entries:entriesFor(),defaultEntry:'main',projectInfo:{platformSupport:{mode:'agnostic'}} } }));
   let forbidden = true;
-  const http = await server(t, () => forbidden ? { status: 403, payload: { errCode: 403, errMessage: 'denied' } } : { data: { projectId: '111', projectType: 'workflow' } });
-  const options = { project: { name: 'Created', projectType: 'workflow', projectInfo: { platformSupport: { mode: 'agnostic' }, dataStorage: { mode: 'local' } } }, connection: { serverUrl: http.url, accessToken: 'test-token' }, signal: signal(), assertCurrent() {} };
+  const http = await server(t, () => forbidden ? { status: 403, payload: { errCode: 403, errMessage: 'denied' } } : { data: { projectId:'111',entries:entriesFor(),defaultEntry:'main' } });
+  const options = { project: { name:'Created',entries:entriesFor(),defaultEntry:'main',projectInfo:{platformSupport:{mode:'agnostic'}} }, connection: { serverUrl: http.url, accessToken: 'test-token' }, signal: signal(), assertCurrent() {} };
   await assert.rejects(allocateServerProjectId(options), error => error.status === 403);
   forbidden = false; await assert.rejects(allocateServerProjectId(options), /unexpected project/);
 });
@@ -149,12 +148,11 @@ test('version downloads reserve directories atomically and do not reuse another 
   assert.deepEqual((await fs.readdir(f.options.parentDirectory)).sort(), ['demo-1.2.3', 'demo-1.2.3-2', 'demo-1.2.3-3']);
 });
 
-test('project groups keep each dependency version in its own portable directory', async t => {
-  const f = await fixture(t, { projects: [{ projectId: id, projectName: '@scope/demo', role: 'root', version: '1.2.3' },
-    { projectId: dependencyId, projectName: 'knowledge', role: 'dependency', version: '2.0.0' }] });
-  const result = await downloadServerProject(f.options);
-  assert.deepEqual(result.map(project => path.basename(project.directory)), ['scope-demo-1.2.3', 'knowledge-2.0.0']);
-  assert.equal(result[1].version, '2.0.0');
+test('a downloaded aggregate retains all registered entry files in one install directory', async t => {
+ const entries=[...entriesFor(),{entryId:'chat',type:'conversation',name:'Chat',root:'chat',entry:'index.ts',databases:[]},{entryId:'board',type:'kanban',name:'Board',root:'board',entry:'dist/index.html',databases:[]}];
+ const f=await fixture(t,{entries});const result=await downloadServerProject(f.options);
+ assert.equal(result.length,1);const pkg=JSON.parse(await fs.readFile(path.join(result[0].directory,'package.json'),'utf8'));
+ assert.deepEqual(pkg.steamHarness.entries,entries);await fs.access(path.join(result[0].directory,'board/dist/index.html'));
 });
 
 for (const configuration of [{ wrongId: dependencyId }, { complete: false }]) {
@@ -187,12 +185,12 @@ test('upload waits for static preparation and only then publishes release notes'
   const f = await fixture(t);
   let polls = 0;
   const remote = await server(t, request => request.url.endsWith('/versions') ? { data: { versions: [] } }
-    : request.url.endsWith('/configurations?target=draft') ? {data:{publication:{revision:4}}}
+    : request.url.endsWith('/configurations?target=draft') ? {data:{publicationRevision:4}}
     : request.method === 'POST' ? { data: { version: '1.2.3' } }
       : { data: { jobId: 'job-1', projectId: id, status: ++polls === 1 ? 'preparing' : 'success', stage: 'validating', result: { projectId: id, sourceHash: 'a'.repeat(64) } } });
   await uploadServerProject({ ...f.options, directory: f.directory, releaseLog: 'New version', connection: { ...f.options.connection, serverUrl: remote.url } });
   assert.equal(remote.requests.at(-1).url, `/api/projects/${id}/publish`);
-  assert.deepEqual(JSON.parse(remote.requests.at(-1).body), { releaseLog: 'New version', expectedVersion: '1.2.3', expectedSourceHash: 'a'.repeat(64),expectedConfigurationRevision:4 });
+  assert.deepEqual(JSON.parse(remote.requests.at(-1).body), { releaseLog: 'New version', expectedVersion: '1.2.3', expectedSourceHash: 'a'.repeat(64),expectedConfigurationRevisions:{main:4} });
   assert.ok(remote.requests.every(request => request.auth === 'Bearer host-secret-token'));
   assert.ok(f.progress.includes('Validating project files'));
   const request = JSON.parse(await fs.readFile(path.join(f.directory, 'request.json'), 'utf8'));
@@ -226,7 +224,7 @@ test('a concurrent draft replacement rejects publication without retrying anothe
       : { data: { status: 'success', result: { projectId: id, sourceHash: 'a'.repeat(64) } } });
   await assert.rejects(uploadServerProject({ ...f.options, directory: f.directory, releaseLog: '', connection: { ...f.options.connection, serverUrl: remote.url } }), /draft changed/);
   assert.equal(remote.requests.filter(request => request.method === 'POST').length, 1);
-  assert.deepEqual(JSON.parse(remote.requests.at(-1).body), { releaseLog: '', expectedVersion: '1.2.3', expectedSourceHash: 'a'.repeat(64) });
+  assert.deepEqual(JSON.parse(remote.requests.at(-1).body), { releaseLog: '', expectedVersion: '1.2.3', expectedSourceHash: 'a'.repeat(64),expectedConfigurationRevisions:{main:0} });
 });
 
 test('a preparation without matching upload identity cannot publish', async t => {

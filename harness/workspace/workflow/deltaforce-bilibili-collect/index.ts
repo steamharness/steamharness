@@ -142,15 +142,15 @@ const outputNode = steamharness.createOutputNode<DeltaforceBilibiliCollectParsed
         yield createProgressDeltaChunk("dry-run 模式：跳过知识库写入，只生成预览结果。");
       } else {
         yield createProgressDeltaChunk(`开始写入知识库文档：${document.documentId}。`);
-        const existing = await steamharness.getKnowledgeDocument(context.storage.local, document.documentId);
+        const existing = await context.databases.get("data").knowledge.getDocument(document.documentId);
         if (existing === undefined) {
-          await steamharness.createKnowledgeDocument(context.storage.local, {
+          await context.databases.get("data").knowledge.createDocument({
             id: document.documentId,
             title: document.documentTitle,
             markdown: document.markdown,
           });
         } else {
-          await steamharness.editKnowledgeDocument(context.storage.local, {
+          await context.databases.get("data").knowledge.editDocument({
             id: document.documentId,
             title: document.documentTitle,
             markdown: document.markdown,

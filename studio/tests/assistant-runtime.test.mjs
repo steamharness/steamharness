@@ -22,7 +22,7 @@ test('new projects apply for an ID using the current account and cancel when it 
         export const defaultProjectParentDirectory = () => '/projects';
         export const installProjectDependencies = async () => {};
         export const projectTemplatesRuntime = () => ({ create: async (input, signal, allocate) => {
-          const id = await allocate({ name: input.name, projectType: 'workflow', projectInfo: { platformSupport: { mode: 'agnostic' }, dataStorage: { mode: 'local' } } });
+          const id = await allocate({ name: input.name, entries:[{entryId:'main',type:'workflow',name:input.name,root:'.',entry:'index.ts',databases:[]}],defaultEntry:'main',projectInfo:{platformSupport:{mode:'agnostic'}} });
           signal.throwIfAborted(); return { ...input, id, projectType: 'workflow', directory: input.parentDirectory };
         } });` }));
     } }] });
@@ -37,7 +37,8 @@ test('new projects apply for an ID using the current account and cancel when it 
       requests++; assert.equal(options.headers.Authorization, 'Bearer owner-token');
       assert.equal(Object.hasOwn(JSON.parse(options.body), 'projectId'), false);
       if (changeDuringRequest) { userId = 'other'; connection = { ...connection, accessToken: 'other-token' }; for (const listener of listeners) listener({ status: 'authenticated' }); }
-      return Response.json({ errCode: 0, data: { projectId: allocatedId, projectType: 'workflow' } });
+      const project = JSON.parse(options.body);
+      return Response.json({ errCode: 0, data: { ...project, projectId: allocatedId } });
     },
   });
   const runtime = module.exports.createProjectRuntime({ extensionUri: { fsPath: directory }, globalStorageUri: { fsPath: directory } }, account); t.after(() => runtime.dispose());

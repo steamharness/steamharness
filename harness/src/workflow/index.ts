@@ -1,3 +1,4 @@
+import { registerDatabaseKnowledgeContext, databaseKnowledgeContext } from "../databases/knowledge-context";
 import type {
   NodeExecutionHookChunkEvent,
   NodeExecutionHookFinishEvent,
@@ -752,24 +753,15 @@ function createRunProjectContext<Input, Output>(
 
   const nextContext: RunContext = {
     ...context,
-    storage: options.kvMode === "isolated"
-      ? {
-          local: {
-            ...context.storage.local,
-            kv: createRunProjectIsolatedKVContext(
-              context.storage.local.kv,
-              options.workflow.name,
-            ),
-          },
-          server: {
-            ...context.storage.server,
-            kv: createRunProjectIsolatedKVContext(
-              context.storage.server.kv,
-              options.workflow.name,
-            ),
-          },
-        }
-      : context.storage,
+    databases: options.kvMode === "isolated" ? {
+      list: () => context.databases.list(),
+      get(alias) {
+        const database = context.databases.get(alias);
+        const isolated = { ...database, kv: createRunProjectIsolatedKVContext(database.kv, options.workflow.name) };
+        registerDatabaseKnowledgeContext(isolated, databaseKnowledgeContext(database));
+        return isolated;
+      },
+    } : context.databases,
     conversation: options.conversationMode === "shared-readonly"
       ? createReadonlyConversationContext(context.conversation)
       : context.conversation,

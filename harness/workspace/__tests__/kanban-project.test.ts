@@ -27,9 +27,7 @@ describe("workspace steamharness Kanban contract", () => {
     expect(structure.params).toBeUndefined();
     expect(structure.configuration?.fields).toEqual([{ name: "title", type: "string", defaultValue: "Roadmap" }]);
     expect(structure.workflow.files.map((file) => file.replaceAll("\\", "/"))).toEqual([
-      "configuration.json",
       "index.html",
-      "package.json",
     ]);
   });
 
@@ -84,10 +82,10 @@ async function createKanbanProject(): Promise<string> {
   tempDirectories.push(projectDir);
   await Promise.all([
     writeFile(path.join(projectDir, "package.json"), JSON.stringify({
-      id: "019fa4f0-5bc9-7d04-b552-112d2f4b66ea",
+      id: "019fa4f0-5bc9-4d04-b552-112d2f4b66ea",
       name: "Workspace Kanban",
       version: "0.1.0",
-      steamHarness: { projectType: "kanban" },
+      steamHarness: { defaultEntry:"main",entries:[{entryId:"main",name:"Board",type:"kanban",root:".",entry:"index.html",configuration:"configuration.json",databases:[]}] },
     }), "utf8"),
     writeFile(path.join(projectDir, "index.html"), "<!doctype html><title>Kanban</title>", "utf8"),
     writeFile(path.join(projectDir, "configuration.json"), JSON.stringify({

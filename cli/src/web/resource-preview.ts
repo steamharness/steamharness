@@ -9,8 +9,6 @@ import { pathToFileURL } from 'node:url';
 import {
   parseKanbanBridgeCall, type KanbanInjectedConfiguration,
 } from '@steamharness/kanban-project';
-import { readProjectInfo, isProjectDataStorageLocationAllowed } from '@steamharness/project-info';
-import type { CliRelatedProjectSpec } from '../related-projects';
 import type { ResourceCard } from './resource-cards';
 import type { Project, Runtime } from './workflow-types';
 import type { WebConnection } from './runtime';
@@ -48,7 +46,7 @@ export class ResourcePreviews {
   private polling = false;
   private readonly configurationReaders = new Map<string, { read(): Promise<ProjectConfigurationState>; revision: number }>();
   constructor(private readonly owner: Project, private readonly runtime: Runtime, private readonly storageDir: string,
-    private readonly connection: () => WebConnection | undefined, private readonly related: () => readonly CliRelatedProjectSpec[],
+    private readonly connection: () => WebConnection | undefined,
     private readonly resourceProjects: () => readonly string[] = () => [], private readonly changed: () => void = () => {}) {}
 
   clear(): void { this.generation++; this.entries.clear(); this.configurationReaders.clear(); }
@@ -85,31 +83,36 @@ export class ResourcePreviews {
   async resolve(card: ResourceCard): Promise<Project | undefined> {
     if (card.kind === 'browser') { return; }
     const id = card.target.projectId ?? this.owner.id;
+    const entryId = card.target.entryId ?? this.owner.entryId;
     if (card.target.source === 'server') {
       if (card.kind === 'kv' || card.kind === 'knowledge') {
-        if (id.toLowerCase() === this.owner.id.toLowerCase()) { return this.owner; }
-        return { id, uri: `workflow-server:${id}`, folderPath: '', name: id, projectType: 'workflow', fields: [], entrypoints: [] };
+        if (id.toLowerCase() === this.owner.id.toLowerCase() && entryId === this.owner.entryId) { return this.owner; }
+        return { ...this.owner, id, entryId, uri: `workflow-server:${id}/${entryId}`, folderPath: '', name: id, projectType: 'workflow', fields: [], entrypoints: [] };
       }
-      const snapshot = await this.server(id, '/structure'), structure = snapshot.structure;
-      return { ...structure, id, uri: `workflow-server:${id}`, folderPath: '', name: snapshot.projectName ?? card.title, projectType: structure.projectType,
-        fields: structure.params ?? [], entrypoints: structure.entrypoints ?? [] };
+      const summary = await this.server(id, '');
+      const registration = summary.entries.find((entry: any) => entry.entryId === entryId);
+      if (!registration) throw new Error(t('The resource project is unavailable.'));
+      return { ...this.owner, id, entryId, entries: summary.entries, defaultEntry: summary.defaultEntry,
+        uri: `workflow-server:${id}/${entryId}`, folderPath: '', entryRoot: '', aggregateName: summary.name,
+        name: registration.name, projectType: registration.type, databases: registration.databases,
+        fields: [], entrypoints: [] };
     }
     const workspace = card.kind === 'kanban' || card.kind === 'project' ? this.owner.assistant?.workdir : undefined;
     if (id === this.owner.id) {
-      if (!workspace) { return this.owner; }
+      if (!workspace && entryId === this.owner.entryId) { return this.owner; }
       // The dedicated assistant owns the conversation; its workspace owns project previews.
-      const root = await realpath(workspace), inspected = await this.runtime.inspect([root]);
-      const project = inspected.projects.find(project => path.resolve(project.folderPath) === root);
+      const root = await realpath(workspace ?? this.owner.folderPath), inspected = await this.runtime.inspect([root]);
+      const project = inspected.projects.find(project => path.resolve(project.folderPath) === root && project.entryId === entryId);
       if (!project) { throw new Error(t('The resource project is unavailable.')); }
       return { ...project, uri: pathToFileURL(root).href };
     }
-    for (const directory of new Set([...this.related().map(binding => binding.projectDir), ...this.resourceProjects(), ...(workspace ? [workspace] : [])])) {
+    for (const directory of new Set([...this.resourceProjects(), ...(workspace ? [workspace] : [])])) {
       let root: string, pkg;
       try { root = await realpath(directory); pkg = JSON.parse(await readFile(path.join(root, 'package.json'), 'utf8')); }
       catch { continue; }
       if (String(pkg.id).toLowerCase() !== id.toLowerCase()) { continue; }
       const inspected = await this.runtime.inspect([root]);
-      const project = inspected.projects.find(project => project.id.toLowerCase() === id.toLowerCase());
+      const project = inspected.projects.find(project => project.id.toLowerCase() === id.toLowerCase() && project.entryId === entryId);
       if (!project) { throw new Error(t('The resource project is unavailable.')); }
       return { ...project, uri: pathToFileURL(root).href };
     }
@@ -122,18 +125,9 @@ export class ResourcePreviews {
     const id = randomUUID(), data: ResourcePreviewData = { card, project }, entry: PreviewEntry = { data };
     const target = card.target, scopeId = target.conversationId ?? '';
     if (card.kind === 'kv' || card.kind === 'knowledge') {
-      if (target.source === 'server') {
-        const query = new URLSearchParams({ scope: target.scope ?? 'project' });
-        if (target.conversationId) { query.set('conversationId', target.conversationId); }
-        if (target.key) { query.set('key', target.key); }
-        data.content = await this.server(project!.id, card.kind === 'knowledge'
-          ? `/knowledge-documents${target.documentId ? `/${encodeURIComponent(target.documentId)}` : ''}`
-          : `/kv${target.key ? '/entry' : ''}?${query}`);
-      } else {
-        const info = readProjectInfo(JSON.parse(await readFile(path.join(project!.folderPath, 'package.json'), 'utf8')));
-        if (info.dataStorage && !isProjectDataStorageLocationAllowed(info, 'local')) { throw new Error(t('The project does not allow this storage location.')); }
-        data.content = await this.runtime.readResource(project!, scopeId, card.kind, target);
-      }
+      data.content = target.source==='server'
+        ? await this.server(project!.id,`/entries/${encodeURIComponent(project!.entryId)}/resources/read`,{method:'POST',body:JSON.stringify({kind:card.kind,database:target.database,scope:target.scope,conversationId:target.conversationId,key:target.key,documentId:target.documentId})})
+        : await this.runtime.readResource(project!, scopeId, card.kind, target);
       if (card.kind === 'knowledge' && (data.content === null || data.content === undefined)) { throw new Error(t('This resource no longer exists.')); }
       data.format = card.kind === 'knowledge' && typeof (data.content as { markdown?: unknown }).markdown === 'string' ? 'markdown' : 'json';
     } else if (card.kind === 'file') {
@@ -155,9 +149,9 @@ export class ResourcePreviews {
       if (project?.projectType !== 'kanban') { throw new Error(t('This project does not provide a Kanban preview.')); }
       let configurations: ProjectConfigurationState;
       if (target.source === 'server') {
-        const workspace = await this.server(project.id, '/kanban');
-        configurations = await this.server(project.id, '/configurations');
-        this.watchConfiguration(`server:${project.id}`, configurations.revision, () => this.server(project.id, '/configurations'));
+        const workspace = await this.server(project.id, `/kanban?entryId=${encodeURIComponent(project.entryId)}`);
+        configurations = await this.server(project.id, `/configurations?entryId=${encodeURIComponent(project.entryId)}`);
+        this.watchConfiguration(`server:${project.id}:${project.entryId}`, configurations.revision, () => this.server(project.id, `/configurations?entryId=${encodeURIComponent(project.entryId)}`));
         const connection = this.connection()!, url = new URL(workspace.preview.url, `${connection.serverUrl}/`);
         const expected = `/api/projects/${encodeURIComponent(project.id)}/kanban/previews/`;
         if (url.origin !== new URL(connection.serverUrl).origin || !url.pathname.startsWith(expected) || url.search || url.hash) { throw new Error(t('Invalid resource preview URL.')); }
@@ -167,9 +161,9 @@ export class ResourcePreviews {
         entry.remote = { url, prefix: assetPrefix, connection };
         data.kanban = { url: `/resource-assets/${id}/${url.pathname.slice(assetPrefix.length)}`, nonce: workspace.preview.nonce, configuration: { id: '', name: '', params: {} } };
       } else {
-        const store = await createLocalProjectConfigurationStore(project.folderPath);
+        const store = await createLocalProjectConfigurationStore(project.folderPath, { entryId: project.entryId });
         configurations = await store.read();
-        this.watchConfiguration(`local:${project.folderPath}`, configurations.revision, () => store.read());
+        this.watchConfiguration(`local:${project.folderPath}:${project.entryId}`, configurations.revision, () => store.read());
       }
       const configurationId=target.configurationId??configurations.activeConfigurationId;
       const previewState=card.kanban?.mode==='preview'?applyConfigurationAction(configurations,{action:'save',revision:configurations.revision,id:configurationId,values:card.kanban.values},randomUUID):configurations;
@@ -177,7 +171,7 @@ export class ResourcePreviews {
       const configuration = { id: snapshot.id, name: snapshot.name, params: snapshot.values };
       if (!entry.remote) {
         if (!project.kanban) { throw new Error(t('This project does not provide a Kanban preview.')); }
-        entry.local = new KanbanPreview(project.folderPath, project.kanban, () => configuration);
+        entry.local = new KanbanPreview(project.entryRoot, project.kanban, () => configuration);
         data.kanban = { url: entry.local.url, nonce: entry.local.nonce, configuration };
       } else { data.kanban!.configuration = configuration; }
       data.format = 'kanban';
@@ -240,21 +234,18 @@ export class ResourcePreviews {
     const data = this.get(id), project = data.project, call = parseKanbanBridgeCall(value);
     if (data.format !== 'kanban' || !project) { throw new Error(t('This project does not provide a Kanban preview.')); }
     // Card previews are temporary and cannot mutate the target's stored data.
-    if (!['runtime.getLocale', 'kv.getValue', 'relatedProject.kv.getValue', 'knowledge.listDocuments', 'knowledge.getDocument', 'knowledge.searchDocuments', 'knowledge.readDocumentLines', 'files.readFile'].includes(call.operation)) {
+    if (!['runtime.getLocale', 'kv.getValue', 'database.revision', 'knowledge.listDocuments', 'knowledge.getDocument', 'knowledge.searchDocuments', 'knowledge.readDocumentLines', 'files.readFile'].includes(call.operation)) {
       throw new Error(t('This resource preview is read-only.'));
     }
     if (call.operation === 'runtime.getLocale') { return locale(); }
     if(call.operation==='files.readFile'&&project.folderPath) {
-      const fileId=String(call.input.fileId),cached=await readCachedConfigurationFile(project.folderPath,fileId);if(cached)return cached;
-      const state=await(await createLocalProjectConfigurationStore(project.folderPath)).read();
-      const file=await readConfigurationFile(project.id,state,fileId,this.connection(),{target:state.template?.projectVersion});if(file)return file;
+      const fileId=String(call.input.fileId),cached=await readCachedConfigurationFile(project.folderPath,fileId,{entryId:project.entryId});if(cached)return cached;
+      const state=await(await createLocalProjectConfigurationStore(project.folderPath, { entryId: project.entryId })).read();
+      const file=await readConfigurationFile(project.id,state,fileId,this.connection(),{entryId:project.entryId,target:state.template?.projectVersion});if(file)return file;
     }
     let result: unknown;
-    if (data.card.target.source === 'server' || project.projectInfo?.dataStorage?.mode === 'server') {
-      result = await this.server(project.id, '/kanban/bridge', { method: 'POST', body: JSON.stringify({ call }) });
-    } else if (call.operation === 'files.readFile') {
-      const file = await this.runtime.readFile(project, String(call.input.fileId));
-      result = { file: file.reference, base64: (await readFile(file.path)).toString('base64') };
+    if (data.card.target.source === 'server') {
+      result = await this.server(project.id, '/kanban/bridge', { method: 'POST', body: JSON.stringify({ call, entryId: project.entryId }) });
     } else {
       if (!this.runtime.kanbanBridge) { throw new Error(t('The resource project is unavailable.')); }
       result = await this.runtime.kanbanBridge(project, call);

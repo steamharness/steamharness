@@ -1,11 +1,5 @@
 import ignore, { type Ignore } from "ignore";
-import {
-  createKanbanArtifactEntryPath,
-  readKanbanArtifactConfig,
-  readPackageProjectType,
-} from "../kanban-project/index";
-
-import { PROJECT_CONFIGURATION_FILE } from "../project-configuration/index";
+import { readProjectManifest } from "@steamharness/project-manifest";
 
 export const STEAMHARNESS_IGNORE_FILE = ".steamharnessignore";
 
@@ -34,15 +28,22 @@ export function resolveProjectUploadRequiredPaths(
   const normalizedAvailablePaths = new Set(
     Array.from(availablePaths, (filePath) => normalizeProjectUploadPath(filePath)),
   );
-  if (readPackageProjectType(packageJson) === "kanban") {
-    const artifact = readKanbanArtifactConfig(packageJson);
-    return [
-      "package.json",
-      createKanbanArtifactEntryPath(artifact),
-      ...(normalizedAvailablePaths.has(PROJECT_CONFIGURATION_FILE) ? [PROJECT_CONFIGURATION_FILE] : []),
-    ];
+  const manifest = readProjectManifest(packageJson);
+  const required = new Set<string>(["package.json"]);
+  for (const entry of manifest.entries) {
+    const prefix = entry.root === "." ? "" : `${entry.root}/`;
+    required.add(`${prefix}${entry.entry}`);
+    if (entry.configuration) required.add(`${prefix}${entry.configuration}`);
+    for (const filename of ["package.json", "pnpm-lock.yaml", "package-lock.json", "yarn.lock", "tsconfig.json"]) {
+      if (normalizedAvailablePaths.has(`${prefix}${filename}`)) required.add(`${prefix}${filename}`);
+    }
+    const artifactDir = entry.type === "kanban" ? `${prefix}${entry.entry.slice(0, entry.entry.lastIndexOf("/") + 1)}` : undefined;
+    for (const file of normalizedAvailablePaths) {
+      if (!file.startsWith(prefix)) continue;
+      if (artifactDir !== undefined && file.startsWith(artifactDir) && !file.endsWith(".map") || /\.[cm]?[jt]sx?$/.test(file) && !/\.(test|spec)\.[cm]?[jt]sx?$/.test(file)) required.add(file);
+    }
   }
-  return ["package.json", "index.ts", ...(normalizedAvailablePaths.has(PROJECT_CONFIGURATION_FILE) ? [PROJECT_CONFIGURATION_FILE] : [])];
+  return [...required].sort();
 }
 
 export function createProjectUploadMatcher(content?: string): UploadMatcher {

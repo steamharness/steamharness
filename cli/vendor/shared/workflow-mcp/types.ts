@@ -52,6 +52,8 @@ export interface McpEntrypointStructure {
 }
 
 export interface McpStructureReport {
+  projectId: string;
+  entryId: string;
   projectType: "workflow" | "conversation" | "kanban" | string;
   workflow: { name: string };
   defaultEntrypoint?: string;
@@ -75,6 +77,8 @@ export interface McpUserInputRequest {
 }
 
 export interface McpExecutionReport {
+  projectId?: string;
+  entryId?: string;
   runId: string;
   projectName?: string;
   entrypointId?: string;
@@ -103,12 +107,15 @@ export interface McpManagedFileReference {
   kind: "image" | "file";
   storage: "local" | "server";
   projectId?: string;
+  entryId?: string;
+  spaceId?: string;
   conversationId?: string;
   createdAt: string;
 }
 
 export interface McpFileResolveContext {
   projectId: string;
+  entryId: string;
   entrypointId: string;
   param: McpParamDefinition;
   signal: AbortSignal;
@@ -121,6 +128,7 @@ export type McpFileResolver = (
 
 export interface McpRunRequest {
   projectId: string;
+  entryId: string;
   entrypointId: string;
   entrypointTitle: string;
   /** Schema-validated MCP arguments before file values are imported into managed storage. */
@@ -131,6 +139,7 @@ export interface McpRunRequest {
 
 export interface McpResumeRequest {
   projectId: string;
+  entryId: string;
   entrypointId: string;
   entrypointTitle: string;
   runId: string;
@@ -142,6 +151,7 @@ export interface McpResumeRequest {
 
 export interface McpCancelRequest {
   projectId: string;
+  entryId: string;
   entrypointId: string;
   entrypointTitle: string;
   runId: string;
@@ -170,6 +180,7 @@ export interface McpResolvedUserInput {
  */
 export interface McpRunSnapshot {
   projectId: string;
+  entryId: string;
   entrypointId: string;
   entrypointTitle: string;
   input: Record<string, unknown>;
@@ -206,6 +217,8 @@ export interface McpErrorDetail {
 }
 
 export interface McpStructuredResult extends Record<string, unknown> {
+  projectId?: string;
+  entryId?: string;
   runId: string;
   status: McpRunStatus;
   entrypointId: string;
@@ -232,6 +245,7 @@ export interface McpAuditEvent {
     | "tool_call_resumed"
     | "tool_call_finished";
   projectId: string;
+  entryId: string;
   entrypointId: string;
   runId?: string;
   requestId?: string;

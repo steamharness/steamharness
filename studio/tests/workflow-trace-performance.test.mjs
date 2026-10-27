@@ -1,3 +1,4 @@
+const key = project => `${project.uri}#entry=${project.entryId}`;
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { build } from 'esbuild';

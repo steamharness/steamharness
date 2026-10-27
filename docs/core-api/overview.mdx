@@ -5,7 +5,7 @@ description: "workflow 全局运行时 API 的入口、边界和逐方法文档�
 
 # Core API 总览
 
-Core API 分组记录业务 workflow 可直接使用的 `workflow.*` 运行时 API。这里的边界以 Core 仓库 `src/runtime-api.ts` 为准：本地宿主和 CLI 会把这些方法注入到 `globalThis.workflow`，业务 workflow 不需要从 `"steamharness"` 导入它们。
+Core API 分组记录业务 workflow 可直接使用的 `workflow.*` 运行时 API。这里的边界以 Core 仓库 `src/runtime-api.ts` 为准：本地宿主和 CLI 会把这些方法注入到 `globalThis.steamharness`，业务 workflow 不需要从 `"steamharness"` 导入它们。
 
 ## 入口边界
 
@@ -40,7 +40,7 @@ Core API 分组记录业务 workflow 可直接使用的 `workflow.*` 运行时 A
 | [`runFor`](/core-api/run-for) | 执行可追踪的 for 循环，并让 Diagram 用循环容器展示循环体。 |
 | [`runWhile`](/core-api/run-while) | 执行可追踪的 while 循环，并让 Diagram 用循环容器展示循环体。 |
 | [`runProject`](/core-api/run-workflow) | 在当前上下文中调用另一个 workflow，复用 KV、会话、provider、token usage 和 trace。 |
-| [`Knowledge Documents`](/core-api/knowledge-documents) | 通过显式的本地或服务器存储上下文管理项目内 markdown 知识库文档。 |
+| [`Knowledge Documents`](/core-api/knowledge-documents) | 通过获批数据库空间管理 Markdown 知识库。 |
 | [`getConfig`](/core-api/get-config) | 读取当前运行快照中的原生类型配置值。 |
 | [`getRuntimePlatform` / `isCli` / `isDesktop`](/core-api/runtime-platform) | 判断当前 workflow 的执行宿主是 CLI 还是本地桌面宿主。 |
 | [`getRuntimeLocale`](/core-api/runtime-locale) | 读取当前运行宿主选择的简体中文或英文，用于已启用国际化的用户可见输出。 |
@@ -54,7 +54,7 @@ Core API 分组记录业务 workflow 可直接使用的 `workflow.*` 运行时 A
 | 对象 | 类型 | 说明 |
 | --- | --- | --- |
 | `input` | `Input` 或节点 `Output` | 当前 workflow 或节点的输入数据。 |
-| `context` | `RunContext` / `NodeContext` | 包含 provider、storage、conversation、files、metadata、hooks、abortSignal。 |
+| `context` | `RunContext` / `NodeContext` | 包含 provider、databases、entries、conversation、files、metadata、hooks、abortSignal。 |
 | `payload` | `RunPayload` 子类型 | 节点 payload 应继承 `RunPayload`，成功时 `errCode: 0`、`errMessage: ""`。 |
 | `provider` | `LLMProviderSource` / `LLMProvider` | LLM 节点通过 provider source 解析实际 provider。 |
 
@@ -64,7 +64,9 @@ Core API 分组记录业务 workflow 可直接使用的 `workflow.*` 运行时 A
 | --- | --- | --- |
 | `config` | `ConfigurationValues` | 当前运行冻结的项目配置值。 |
 | `providers` | `ProviderRegistry` | LLM provider 注册表和绑定表。 |
-| `storage` | `StorageContext` | `local` 与 `server` 两个显式位置，每个位置都包含三层 `kv` 和 `persistentValue`。项目 `dataStorage.mode` 严格限制可访问位置；Core 0.2 不再提供顶层 `context.kv` / `context.persistentValue`。 |
+| `databases` | `DatabasesContext` | 按 alias 访问获批的数据库空间，提供 KV、知识库与事务。 |
+| `entries` | `EntriesContext` | 列出注册入口、调用聚合内 Workflow，重新校验用户权限。 |
+| `projectId` / `entryId` | `string` | 聚合身份与当前窗口身份。 |
 | `conversation` | `ConversationContext` | 会话状态读写入口。`setTitle` 可安全建议 UI 标题；未启用会话时其它读写会抛错。 |
 | `tokenUsage` | `TokenUsageContext` | token 用量统计入口。未启用时 `report()` 是 no-op；启用后会写入 KV、运行报告和 runtime event。 |
 | `userInput` | `UserInputContext \| undefined` | 用户输入和工具审批的等待/恢复入口。本地宿主 会按宿主能力注入。 |

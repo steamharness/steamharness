@@ -38,6 +38,7 @@ export interface KanbanMethodInvocation {
 
 export interface KanbanMethodTarget {
   projectId: string;
+  entryId: string;
   source: "local" | "server";
   location: "workspace" | "dock" | "card";
   cardId?: string;
@@ -59,8 +60,8 @@ export interface KanbanMethodClient {
 
 export interface KanbanMethodRegistry {
   register(target: KanbanMethodTarget, client: KanbanMethodClient): () => void;
-  list(projectId: string, source: KanbanMethodTarget["source"]): Array<KanbanMethodTarget & KanbanMethodState & { instanceId: string }>;
-  invoke(projectId: string, source: KanbanMethodTarget["source"], input: unknown, signal?: AbortSignal): Promise<KanbanJsonValue>;
+  list(projectId: string, entryId: string, source: KanbanMethodTarget["source"]): Array<KanbanMethodTarget & KanbanMethodState & { instanceId: string }>;
+  invoke(projectId: string, entryId: string, source: KanbanMethodTarget["source"], input: unknown, signal?: AbortSignal): Promise<KanbanJsonValue>;
 }
 
 export function createKanbanMethodRegistry(): KanbanMethodRegistry {
@@ -71,14 +72,14 @@ export function createKanbanMethodRegistry(): KanbanMethodRegistry {
       clients.set(client.instanceId, entry);
       return () => { if (clients.get(client.instanceId) === entry) clients.delete(client.instanceId); };
     },
-    list(projectId, source) {
-      return [...clients.values()].filter((entry) => entry.target.projectId === projectId && entry.target.source === source)
+    list(projectId, entryId, source) {
+      return [...clients.values()].filter((entry) => entry.target.projectId === projectId && entry.target.entryId === entryId && entry.target.source === source)
         .map(({ target, client }) => ({ ...target, instanceId: client.instanceId, ...client.getState() }));
     },
-    async invoke(projectId, source, input, signal) {
+    async invoke(projectId, entryId, source, input, signal) {
       const call = parseKanbanMethodInvocation(input);
       const entry = clients.get(call.instanceId);
-      if (!entry || entry.target.projectId !== projectId || entry.target.source !== source) {
+      if (!entry || entry.target.projectId !== projectId || entry.target.entryId !== entryId || entry.target.source !== source) {
         throw methodError("KANBAN_METHOD_INSTANCE_UNAVAILABLE", "This Kanban preview instance is no longer available. List instances again.");
       }
       return entry.client.invoke(call, signal);

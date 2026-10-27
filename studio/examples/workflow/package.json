@@ -5,11 +5,10 @@
   "private": true,
   "type": "module",
   "devDependencies": {
-    "steamharness": "^0.1.0",
-    "@steamharness/cli": "^0.1.0"
+    "steamharness": "0.1.2",
+    "@steamharness/cli": "0.1.2"
   },
   "steamHarness": {
-    "projectType": "workflow",
     "projectInfo": {
       "localizedNames": {
         "zh-CN": "工作流示例",
@@ -17,10 +16,41 @@
       },
       "platformSupport": {
         "mode": "agnostic"
-      },
-      "dataStorage": {
-        "mode": "local"
       }
-    }
+    },
+    "entries": [
+      {
+        "entryId": "main",
+        "type": "workflow",
+        "name": "Studio Workflow",
+        "root": ".",
+        "entry": "index.ts",
+        "databases": [
+          {
+            "alias": "data",
+            "host": "local",
+            "permissions": {
+              "kv": {
+                "read": {
+                  "mode": "all"
+                },
+                "write": {
+                  "mode": "all"
+                }
+              },
+              "knowledge": {
+                "read": {
+                  "mode": "all"
+                },
+                "write": {
+                  "mode": "all"
+                }
+              }
+            }
+          }
+        ]
+      }
+    ],
+    "defaultEntry": "main"
   }
 }

@@ -2,14 +2,12 @@ import path from 'node:path';
 import { parseUserSettings, type UserSettings } from 'steamharness';
 import type { WebConnection } from './runtime';
 import type { Project } from './workflow-types';
-import type { CliRelatedProjectSpec } from '../related-projects';
 
 export interface WebHostConfiguration {
   connection?: WebConnection;
   surface: 'editor' | 'assistant';
   assistant?: NonNullable<Project['assistant']>;
   assistantProjectDir?: string;
-  relatedProjects?: CliRelatedProjectSpec[];
   resourceProjects?: string[];
   userSettings?: UserSettings;
 }
@@ -20,18 +18,6 @@ export function parseHostResourceProjects(value: unknown): string[] {
   return [...new Set(value)] as string[];
 }
 
-export function parseHostRelatedProjects(value: unknown): CliRelatedProjectSpec[] {
-  if (value === undefined) { return []; }
-  if (!Array.isArray(value) || value.length > 100) { throw new Error('Invalid host related projects.'); }
-  const aliases = new Set<string>(), directories = new Set<string>();
-  return value.map(project => {
-    if (!project || typeof project.alias !== 'string' || !/^[a-z][a-z0-9_-]{0,63}$/.test(project.alias)
-      || typeof project.projectDir !== 'string' || !path.isAbsolute(project.projectDir)
-      || aliases.has(project.alias) || directories.has(project.projectDir)) { throw new Error('Invalid host related projects.'); }
-    aliases.add(project.alias); directories.add(project.projectDir);
-    return { alias: project.alias, projectDir: project.projectDir };
-  });
-}
 
 export function parseHostConnection(value: unknown, options: { allowAi?: boolean } = {}): WebConnection | undefined {
   if (value === null || value === undefined) { return; }
@@ -82,6 +68,5 @@ export function parseHostConfiguration(value: unknown): WebHostConfiguration {
   return { surface: configuration.surface, assistant, assistantProjectDir,
     ...(configuration.userSettings === undefined ? {} : { userSettings: parseUserSettings(configuration.userSettings) }),
     connection: parseHostAuthentication(configuration),
-    relatedProjects: parseHostRelatedProjects(configuration.relatedProjects),
     ...(configuration.resourceProjects === undefined ? {} : { resourceProjects: parseHostResourceProjects(configuration.resourceProjects) }) };
 }

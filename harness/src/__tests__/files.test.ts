@@ -1,3 +1,4 @@
+import { createTestResources } from "./entry-test-resources";
 import assert from "node:assert/strict";
 import { readFile, rm, mkdtemp, writeFile } from "node:fs/promises";
 import os from "node:os";
@@ -10,7 +11,6 @@ import {
   createFileInputNode,
   createProjectKVContext,
   createLocalProjectKVStore,
-  createProjectRelatedProjectsContext,
   createDisabledProjectConversationContext,
   createDisabledProjectTokenUsageContext,
   parseProjectFileReferences,
@@ -22,9 +22,8 @@ test("video paths and managed references retain MIME type and bytes through file
   try {
     const store = createProjectFileStore({});
     const kv = createProjectKVContext({ store: createLocalProjectKVStore({ rootDir }), projectId: "media-test" });
-    const storage = { kv, persistentValue: kv, relatedProjects: createProjectRelatedProjectsContext() };
     const context = {
-      files: store, config: {}, providers: {}, storage: { local: storage, server: storage },
+      files: store, config: {}, providers: {}, ...createTestResources(),
       conversation: createDisabledProjectConversationContext(), tokenUsage: createDisabledProjectTokenUsageContext(),
     };
     const node = createFileInputNode({ accept: ["image/*", "video/*"] });

@@ -166,21 +166,12 @@ def package_json(name: str, project_type: str) -> str:
     core_version, cli_version = resolve_dependency_versions()
     package_suffix = "kanban" if project_type == "kanban" else "workflow"
     icon, icon_background = PROJECT_CARD_DEFAULTS[project_type]
-    project_type_metadata = f'\n    "projectType": "{project_type}",'
-    release_metadata = '{"dependencies": {}}'
+    entry_file = "index.html" if project_type == "kanban" else "index.ts"
     workflow_metadata = f''',
-  "steamHarness": {{{project_type_metadata}
-    "projectCard": {{
-      "icon": "{icon}",
-      "iconBackgroundColor": "{icon_background}"
-    }},
-    "projectInfo": {{
-      "dataStorage": {{
-        "mode": "both"
-      }},
-      "relatedProjects": []
-    }},
-    "release": {release_metadata}
+  "steamHarness": {{
+    "defaultEntry": "main",
+    "entries": [{{ "entryId": "main", "type": "{project_type}", "name": "{name}", "root": ".", "entry": "{entry_file}", "configuration": "configuration.json", "databases": [] }}],
+    "projectCard": {{ "icon": "{icon}", "iconBackgroundColor": "{icon_background}" }}
   }}'''
     return f'''{{
   "id": "{workflow_id}",

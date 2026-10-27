@@ -1,3 +1,4 @@
+import { createTestResources } from "./entry-test-resources";
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
@@ -5,7 +6,6 @@ import {
   createLLMNode,
   createLLMStreamNode,
   createProjectKVContext,
-  createProjectRelatedProjectsContext,
   createProjectTokenUsageContext,
   getLLMProvider,
   runNode,
@@ -436,10 +436,7 @@ function createNodeContext(
   return {
     config: {},
     providers: llm === undefined ? {} : { llm },
-    storage: {
-      local: { kv, persistentValue: kv, relatedProjects: createProjectRelatedProjectsContext() },
-      server: { kv, persistentValue: kv, relatedProjects: createProjectRelatedProjectsContext() },
-    },
+    ...createTestResources(),
     conversation: createDisabledProjectConversationContext(),
     tokenUsage,
   };

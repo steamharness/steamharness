@@ -37,16 +37,14 @@ test("quoted executor project type and conversation keys are extracted", () => {
   });
 });
 
-test("missing and unknown executor project types use compatibility inference", () => {
+test("missing and unknown executor project types are rejected", () => {
   const missing = analyzeProjectScriptSource(createExecutorSource(""));
   const unknown = analyzeProjectScriptSource(createExecutorSource('projectType: "agent",'));
 
-  assert.equal(missing.executorProjectType, "conversation");
-  assert.equal(unknown.executorProjectType, "conversation");
-  assert.equal(missing.executorConfigurationViolations.length, 0);
-  assert.equal(unknown.executorConfigurationViolations.length, 0);
-  assert.equal(missing.structureWarnings.some((warning) => /inferred/.test(warning.message)), true);
-  assert.equal(unknown.structureWarnings.some((warning) => /inferred/.test(warning.message)), true);
+  assert.equal(missing.executorProjectType, undefined);
+  assert.equal(unknown.executorProjectType, undefined);
+  assert.equal(missing.executorConfigurationViolations.length, 1);
+  assert.equal(unknown.executorConfigurationViolations.length, 1);
 });
 
 test("static validation only rejects a missing executor and defers dynamic configuration", () => {
@@ -163,7 +161,7 @@ test("structure inspection warns about conflicting executor project types across
   }
 });
 
-test("runtime infers a legacy conversation executor without projectType", async () => {
+test("runtime rejects a conversation executor without projectType", async () => {
   const projectDir = await mkdtemp(path.join(tmpdir(), "steamharness-project-type-legacy-runtime-"));
   try {
     await Promise.all([
@@ -172,7 +170,7 @@ test("runtime infers a legacy conversation executor without projectType", async 
         name: "legacy-conversation-runtime",
         version: "0.1.0",
         type: "module",
-        steamHarness: { projectInfo: { dataStorage: { mode: "local" } } },
+        steamHarness: {defaultEntry:"main",entries:[{entryId:"main",type:"workflow",name:"Main",root:".",entry:"index.ts",databases:[]}], projectInfo:{}},
       }), "utf8"),
       writeFile(path.join(projectDir, "index.ts"), `
         const legacyProject = steamharness.defineProject({
@@ -200,17 +198,14 @@ test("runtime infers a legacy conversation executor without projectType", async 
       conversationId: "legacy-thread",
     });
 
-    assert.equal(report.status, "success");
-    assert.equal(report.result.ok, true);
-    if (!report.result.ok) return;
-    assert.equal((report.result.data as { output?: { conversationEnabled?: boolean } })
-      .output?.conversationEnabled, true);
+    assert.equal(report.status, "failed");
+    assert.match(JSON.stringify(report.result), /script validation failed/);
   } finally {
     await rm(projectDir, { recursive: true, force: true });
   }
 });
 
-test("runtime infers a Workflow executor with entrypoints but no projectType", async () => {
+test("runtime rejects a Workflow executor without projectType", async () => {
   const projectDir = await mkdtemp(path.join(tmpdir(), "steamharness-project-type-entrypoint-runtime-"));
   try {
     await Promise.all([
@@ -219,7 +214,7 @@ test("runtime infers a Workflow executor with entrypoints but no projectType", a
         name: "inferred-workflow-runtime",
         version: "0.1.0",
         type: "module",
-        steamHarness: { projectInfo: { dataStorage: { mode: "local" } } },
+        steamHarness: {defaultEntry:"main",entries:[{entryId:"main",type:"workflow",name:"Main",root:".",entry:"index.ts",databases:[]}], projectInfo:{}},
       }), "utf8"),
       writeFile(path.join(projectDir, "index.ts"), `
         const inferredProject = steamharness.defineProject({
@@ -244,8 +239,8 @@ test("runtime infers a Workflow executor with entrypoints but no projectType", a
       projectName: "inferred-workflow-runtime",
     });
 
-    assert.equal(report.status, "success");
-    assert.equal(report.result.ok, true);
+    assert.equal(report.status, "failed");
+    assert.match(JSON.stringify(report.result), /script validation failed/);
   } finally {
     await rm(projectDir, { recursive: true, force: true });
   }
@@ -307,7 +302,7 @@ test("runtime reports static violations before server storage connection checks"
         name: "legacy-runtime",
         version: "0.1.0",
         type: "module",
-        steamHarness: { projectInfo: { dataStorage: { mode: "server" } } },
+        steamHarness: {defaultEntry:"main",entries:[{entryId:"main",type:"workflow",name:"Main",root:".",entry:"index.ts",databases:[]}], projectInfo:{}},
       }), "utf8"),
       writeFile(path.join(projectDir, "index.ts"), `
         export const projectType = "workflow";
@@ -378,7 +373,7 @@ async function writeRuntimeProject(
       name: `${projectType}-mode`,
       version: "0.1.0",
       type: "module",
-      steamHarness: { projectInfo: { dataStorage: { mode: "local" } } },
+      steamHarness: {defaultEntry:"main",entries:[{entryId:"main",type:projectType,name:"Main",root:".",entry:"index.ts",databases:[]}], projectInfo:{}},
     }), "utf8"),
     writeFile(path.join(projectDir, "index.ts"), `
       const runtimeProject = steamharness.defineProject({

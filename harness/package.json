@@ -105,17 +105,18 @@
     "@steamharness/auth-config": "workspace:*",
     "@steamharness/kanban-project": "workspace:*",
     "@steamharness/openai-responses": "workspace:*",
-    "@steamharness/project-dependencies": "workspace:*",
     "@steamharness/project-info": "workspace:*",
     "@steamharness/project-types": "workspace:*",
     "@steamharness/repository-boundary": "workspace:*",
     "@steamharness/workflow-schedules": "workspace:*",
-    "@vitest/coverage-v8": "^4.1.7",
+    "@vitest/coverage-v8": "4.1.10",
     "semver": "^7.7.4",
     "tsup": "^8.5.1",
     "tsx": "^4.21.0",
     "@steamharness/project-configuration": "workspace:*",
-    "@steamharness/project-access": "workspace:*"
+    "@steamharness/project-access": "workspace:*",
+    "@steamharness/database-spaces": "workspace:*",
+    "@steamharness/project-manifest": "workspace:*"
   },
   "engines": {
     "node": ">=22.19.0"

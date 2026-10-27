@@ -25,7 +25,7 @@ it('collects attachments once per refresh and shares the latest list across hist
   vi.stubGlobal('cancelAnimationFrame', () => {});
   document.body.innerHTML = '<div id="app"></div>';
   await import('../web/ui/main');
-  const project: Project = { id: 'performance', uri: 'file:///performance', folderPath: '/performance', name: 'Performance', projectType: 'conversation', fields: [], entrypoints: [] };
+  const project: Project = {entryId:"main",aggregateName:"Test aggregate",defaultEntry:"main",entryRoot:'/performance',databases:[],entries:[{entryId:"main",name:"Main",type:'conversation',root:".",entry:"index.ts",databases:[]}], id: 'performance', uri: 'file:///performance', folderPath: '/performance', name: 'Performance', projectType: 'conversation', fields: [], entrypoints: [] };
   let reads = 0;
   const files: Attachment[] = [{ id: 'file', name: 'image.png', path: '/image.png', size: 1, previewUrl: '/old.png', mimeType: 'image/png', kind: 'image', storage: 'local', createdAt: '2026-10-22T00:00:00Z' }];
   const messages: ConversationMessage[] = Array.from({ length: 100 }, (_, index) => ({ id: `answer-${index}`, role: 'assistant', content: 'Finished answer', status: 'success',
@@ -37,10 +37,10 @@ it('collects attachments once per refresh and shares the latest list across hist
   };
   receive();
   expect(reads).toBe(100); expect(update).toHaveBeenCalledTimes(100);
-  const shared = update.mock.calls[0][3];
+  const shared = update.mock.calls[0][4];
   expect(shared[0].previewUrl).toBe('/old.png');
-  expect(update.mock.calls.every(call => call[3] === shared)).toBe(true);
+  expect(update.mock.calls.every(call => call[4] === shared)).toBe(true);
   reads = 0; update.mockClear(); files[0] = { ...files[0], previewUrl: '/new.png' }; receive();
-  expect(reads).toBe(100); expect(update.mock.calls[0][3][0].previewUrl).toBe('/new.png');
-  expect(update.mock.calls[0][3]).not.toBe(shared);
+  expect(reads).toBe(100); expect(update.mock.calls[0][4][0].previewUrl).toBe('/new.png');
+  expect(update.mock.calls[0][4]).not.toBe(shared);
 });

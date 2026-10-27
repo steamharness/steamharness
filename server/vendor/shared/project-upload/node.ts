@@ -1,4 +1,5 @@
-import { copyFile, lstat, mkdir, readFile, readdir } from "node:fs/promises";
+import { projectManifestForDistribution } from "@steamharness/project-manifest";
+import { copyFile, lstat, mkdir, readFile, readdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import {
   STEAMHARNESS_IGNORE_FILE,
@@ -49,6 +50,7 @@ export async function createProjectUploadPlan(rootDir: string): Promise<UploadPl
   const walk = async (currentDir: string): Promise<void> => {
     const entries = await readdir(currentDir, { withFileTypes: true });
     for (const entry of entries) {
+      if ([".git", "node_modules", ".data", ".workflow", ".release", ".steamharness", ".env", ".envrc", ".workflow-kv", ".workflow-persistent-values", ".workflow-schedules", "workflow-auth.json"].includes(entry.name) || entry.name.startsWith(".env.") || /^steamharness\.sqlite(?:-(?:wal|shm))?$/.test(entry.name)) continue;
       const absolutePath = path.join(currentDir, entry.name);
       const relativePath = normalizeProjectUploadPath(path.relative(projectRoot, absolutePath));
       const portablePath = createProjectUploadPortablePathKey(relativePath);
@@ -120,7 +122,8 @@ export async function copyProjectUploadFiles(
   for (const file of plan.files) {
     const targetPath = path.join(targetDir, ...file.path.split("/"));
     await mkdir(path.dirname(targetPath), { recursive: true });
-    await copyFile(file.absolutePath, targetPath);
+    if (file.path === "package.json") await writeFile(targetPath, JSON.stringify(projectManifestForDistribution(JSON.parse(await readFile(file.absolutePath, "utf8"))), null, 2) + "\n");
+    else await copyFile(file.absolutePath, targetPath);
   }
   return plan;
 }

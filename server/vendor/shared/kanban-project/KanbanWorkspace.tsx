@@ -10,7 +10,7 @@ import {
   sanitizeKanbanValues,
   type KanbanBridgeCall,
   type KanbanConfiguration,
-  type KanbanRelatedProjectRevision,
+  type KanbanDatabaseRevision,
   type KanbanPresentationMode,
 } from "./index";
 import { KanbanPreviewFrame } from "./KanbanPreviewFrame";
@@ -55,8 +55,8 @@ export interface KanbanWorkspaceProps {
   onBridgeRequest?: (call: KanbanBridgeCall) => Promise<unknown> | unknown;
   methodRegistry?: KanbanMethodRegistry;
   methodTarget?: KanbanMethodTarget;
-  relatedProjectRevisions?: readonly KanbanRelatedProjectRevision[];
-  relatedProjectWarning?: string;
+  databaseRevisions?: readonly KanbanDatabaseRevision[];
+  databaseWarning?: string;
   configurationHeadingAction?: ReactNode;
   /** Hosts can supply their rail chrome while configuration state stays here. */
   renderLayout?: (layout: KanbanWorkspaceLayout) => ReactNode;
@@ -618,8 +618,8 @@ export function KanbanWorkspace(props: KanbanWorkspaceProps) {
       onBridgeRequest={props.onBridgeRequest}
       methodRegistry={props.methodRegistry}
       methodTarget={props.methodTarget}
-      relatedProjectRevisions={props.relatedProjectRevisions}
-      relatedProjectWarning={props.relatedProjectWarning}
+      databaseRevisions={props.databaseRevisions}
+      databaseWarning={props.databaseWarning}
     />
   );
   const drawerBackdrop = drawerOpen

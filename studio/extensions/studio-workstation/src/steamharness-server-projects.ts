@@ -1,10 +1,10 @@
 import { t, locale } from './localization';
 import { AuthError, normalizeProjectServerUrl, type Connection } from './workflow-auth-client';
 import type { ProjectCardMetadata } from '@steamharness/project-card-metadata';
-import type { ProjectKind } from './workflow-types';
+import type { ProjectEntry } from '@steamharness/project-manifest';
 
 export interface ServerProject {
-  id: string; name: string; projectType: ProjectKind; projectCard?: ProjectCardMetadata; latest: string | null;
+  id: string; name: string; entries: ProjectEntry[]; defaultEntry: string; projectCard?: ProjectCardMetadata; latest: string | null;
   access?: {effectiveRole:'guest'|'developer'|'maintainer'|'owner'|null;capabilities:string[];sources:Array<{type:string;id:string;role:string}>};
   groupId?:string|null;
   sourceDownload?: { allowed: boolean; available: boolean; target: string | null };
@@ -12,7 +12,8 @@ export interface ServerProject {
 export interface ServerProjectVersion {
   version: string; latest: boolean; createdAt?: string; releaseLog?: string; sourceHash?: string;
   createdByProfile?: { displayName: string; email: string };
-  dependencies: Array<{ alias: string; projectId: string; delivery: 'included' | 'external'; version?: string }>;
+  entries: ProjectEntry[];
+  defaultEntry: string;
 }
 export interface ServerProjectVersions {
   id: string; name: string; latest: string | null; versions: ServerProjectVersion[];
@@ -40,7 +41,7 @@ export interface UpdatedServerProject {
   projects: DownloadedServerProject[]; backupDirectory: string;
 }
 export interface DownloadedServerProject {
-  id: string; name: string; version: string; directory: string; role: 'root' | 'dependency';
+  id: string; name: string; version: string; directory: string;
 }
 export interface ServerProjectShare {
   id: string; name: string; version: string; createdAt: string; releaseLog?: string; sourceHash: string;

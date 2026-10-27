@@ -1,3 +1,4 @@
+import { configurationFixtureId, declareConfigurationFixture, writeConfigurationFixtureManifest, configurationFixtureStore } from "./configuration-fixture";
 import assert from "node:assert/strict";
 import test from "node:test";
 import { mkdtemp, writeFile, rm, mkdir } from "node:fs/promises";
@@ -7,7 +8,7 @@ import { createServer } from "node:http";
 import { createHash } from "node:crypto";
 import { createPiRuntime } from "../agent/pi";
 import { defineAgentConversationExecutor } from "../agent/project";
-import { AGENT_MODELS_CONFIGURATION_FIELD, AGENT_MODELS_CONFIGURATION_KEY as key, CONFIGURATION_TEMPLATE_FILE, cacheVerifiedConfigurationTemplate, createConfigurationState, createPublicationDraft, freezeConfigurationTemplate, createLocalProjectConfigurationStore, readProjectConfigurationDefinition, withProjectConfiguration } from "../configuration";
+import { AGENT_MODELS_CONFIGURATION_FIELD, AGENT_MODELS_CONFIGURATION_KEY as key, configurationTemplatePath, cacheVerifiedConfigurationTemplate, createConfigurationState, createPublicationDraft, freezeConfigurationTemplate, createLocalProjectConfigurationStore, readProjectConfigurationDefinition, withProjectConfiguration } from "../configuration";
 import { createAgentProjectParamResolver } from "../agent/system-llm";
 import { resolveAgentSystemAIInput } from "../agent/node";
 
@@ -40,8 +41,9 @@ test("system-only model options exclude old third-party entries and cannot use d
 test("the local project declaration freezes system-only policy and rejects third-party writes", async () => {
   const root=await mkdtemp(path.join(os.tmpdir(),"agent-system-only-"));
   try {
+    await declareConfigurationFixture(root);
     await writeFile(path.join(root,"configuration.json"),JSON.stringify({version:1,fields:[{...AGENT_MODELS_CONFIGURATION_FIELD,allowThirdParty:false}]}));
-    const store=await createLocalProjectConfigurationStore(root,{rootDir:path.join(root,".configurations")});
+    const store=await configurationFixtureStore(root,{rootDir:path.join(root,".configurations")});
     const state=await store.read();
     assert.equal(readProjectConfigurationDefinition(root).fields[0]!.allowThirdParty,false);
     await assert.rejects(store.dispatch({action:"save",revision:state.revision,id:state.activeConfigurationId,values:{[key]:[third] as any}}),/only allows system AI/);
@@ -56,12 +58,13 @@ test("the local project declaration freezes system-only policy and rejects third
 test("local templates cannot discard a code policy, including when the AI field is private", async () => {
   const root = await mkdtemp(path.join(os.tmpdir(), "agent-template-policy-"));
   try {
+    await declareConfigurationFixture(root);
     const configuration = path.join(root, "configuration.json");
     const field = { ...AGENT_MODELS_CONFIGURATION_FIELD, allowThirdParty: false };
     await writeFile(configuration, JSON.stringify({ version: 2, fields: [field] }));
-    const binding = { projectId: "project", projectVersion: "1.0.0", sourceHash: "0".repeat(64) };
+    const binding = { projectId: await configurationFixtureId(root),entryId:"main",projectVersion: "1.0.0", sourceHash: "0".repeat(64) };
     const previous = freezeConfigurationTemplate(createPublicationDraft(createConfigurationState([AGENT_MODELS_CONFIGURATION_FIELD], () => "official")), binding);
-    const oldStore = await createLocalProjectConfigurationStore(root, { rootDir: path.join(root, ".previous"), template: previous });
+    const oldStore = await configurationFixtureStore(root, { rootDir: path.join(root, ".previous"), template: previous });
     const state = await oldStore.read();
     assert.equal(state.fields[0]!.allowThirdParty, false);
     assert.deepEqual((await oldStore.snapshot()).agentModelPolicy, { allowThirdParty: false });
@@ -73,17 +76,17 @@ test("local templates cannot discard a code policy, including when the AI field 
     const legacyCache = path.join(root, ".legacy-cache");
     await mkdir(legacyCache);
     await writeFile(path.join(legacyCache, `${createHash("sha256").update(JSON.stringify(legacy)).digest("hex")}.json`), JSON.stringify(legacy));
-    await writeFile(path.join(root, CONFIGURATION_TEMPLATE_FILE), JSON.stringify(legacy));
-    const legacyStore = await createLocalProjectConfigurationStore(root, { rootDir: path.join(root, ".legacy"), templateCacheDir: legacyCache });
+    await writeFile(path.join(root, configurationTemplatePath("main")), JSON.stringify(legacy));
+    const legacyStore = await configurationFixtureStore(root, { rootDir: path.join(root, ".legacy"), templateCacheDir: legacyCache });
     assert.deepEqual((await legacyStore.snapshot()).agentModelPolicy, { allowThirdParty: false });
 
     const template = freezeConfigurationTemplate(createPublicationDraft(createConfigurationState([{ ...field, sharing: { publish: false } }], () => "official")), binding);
     await writeFile(configuration, JSON.stringify({ version: 2, fields: template.fields, agentModelPolicy: template.agentModelPolicy }));
     await writeFile(path.join(root, "index.ts"), "steamharness.createAgentNode();");
-    await writeFile(path.join(root, CONFIGURATION_TEMPLATE_FILE), JSON.stringify(template));
+    await writeFile(path.join(root, configurationTemplatePath("main")), JSON.stringify(template));
     const cacheDir = path.join(root, ".cache");
     await cacheVerifiedConfigurationTemplate(template, [], { cacheDir });
-    const store = await createLocalProjectConfigurationStore(root, { rootDir: path.join(root, ".private"), templateCacheDir: cacheDir });
+    const store = await configurationFixtureStore(root, { rootDir: path.join(root, ".private"), templateCacheDir: cacheDir });
     assert.deepEqual((await store.read()).fields, []);
     assert.equal(readProjectConfigurationDefinition(root).fields[0]!.allowThirdParty, false);
     const snapshot = await store.snapshot({ runId: "offline" });
@@ -128,11 +131,12 @@ test("a configured third-party model reaches its own endpoint without contacting
 test("static Agent discovery adds the first configuration field without executing a project", async () => {
   const root = await mkdtemp(path.join(os.tmpdir(), "agent-model-configuration-"));
   try {
+    await declareConfigurationFixture(root);
     await writeFile(path.join(root, "index.ts"), 'throw new Error("must never execute");\nexport const resolver = steamharness.createAgentProjectParamResolver();');
     await mkdir(path.join(root, "__tests__"));
     await writeFile(path.join(root, "configuration.json"), JSON.stringify({ version: 1, fields: [{ name: "title", type: "string" }] }));
     assert.deepEqual(readProjectConfigurationDefinition(root).fields.map(field => field.name), [key, "title"]);
-    const store = await createLocalProjectConfigurationStore(root, { rootDir: path.join(root, ".configurations") });
+    const store = await configurationFixtureStore(root, { rootDir: path.join(root, ".configurations") });
     assert.equal((await store.read()).fields[0]!.control, "ai-models");
     assert.deepEqual((await store.snapshot()).values[key], []);
     await writeFile(path.join(root, "index.ts"), '// createAgentProjectParamResolver() is only a comment.');
@@ -153,9 +157,10 @@ test("custom Agent parameter declarations do not receive patches for undeclared 
 test("a live configuration store discovers Agent source changes without reopening the panel", async () => {
   const project = await mkdtemp(path.join(os.tmpdir(), "agent-discovery-refresh-"));
   try {
+    await declareConfigurationFixture(project);
     const source = path.join(project, "index.ts");
     await writeFile(source, "export const title = 'Ordinary project';");
-    const store = await createLocalProjectConfigurationStore(project, { rootDir: path.join(project, ".configurations") });
+    const store = await configurationFixtureStore(project, { rootDir: path.join(project, ".configurations") });
     assert.equal((await store.read()).fields.some(field => field.name === key), false);
     await writeFile(source, "export const agent = steamharness.createAgentNode();");
     const enabled = await store.read();

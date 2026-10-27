@@ -64,20 +64,9 @@ Server 不安装项目依赖、不构建、也不加载上传的项目代码。K
 
 ## 项目数据与配置
 
-项目数据的位置由 `package.json` 的 `steamHarness.projectInfo.dataStorage` 声明，运行时按声明拒绝越界访问：
+入口通过 `databases` 声明 alias、宿主和权限，获批后用 `context.databases.get(alias)` 访问 KV、知识库及事务。一个空间可以供多个项目和入口共享，会话 KV 继续隔离。
 
-| 模式 | 允许位置 | 说明 |
-| --- | --- | --- |
-| `local` | 仅本地 | CLI 可离线运行 |
-| `server` | 仅服务器 | 需要登录并绑定同一个项目 UUID |
-| `both` | 本地与服务器 | 每次访问显式选择位置 |
-
-- **KV / PersistentValue**：通过 `context.storage.local` 或 `context.storage.server` 访问；两端数据独立。
-- **知识库与项目文件**：由 Server 保存，Server Web 管理。
-- **项目配置**：`configuration.json` 声明字段（字符串、数字、布尔、JSON、文件），实际值在 Studio、CLI Web 或 Server Web 的面板管理；敏感字段使用 `secret: true`。
-- **关联项目**：`projectInfo.relatedProjects` 声明 alias、目标项目 UUID 和读写授权；双方都声明后才生效。
-
-更改 `dataStorage` 只改变以后允许的位置，不会迁移已有数据。详见[项目数据存储](/concepts/data-storage)、[项目配置](/concepts/project-configuration)、[KV 与会话](/concepts/kv-and-conversation)和[文件输入](/concepts/files)。
+配置、快照、会话与草稿按 `projectId + entryId` 管理。配置修改从下一次运行生效。详见 [数据库空间](/concepts/data-storage)、[项目配置](/concepts/project-configuration) 和 [KV 与会话](/concepts/kv-and-conversation)。
 
 ## 账号、权限与协作
 
@@ -101,7 +90,7 @@ Server 使用账号和固定的项目角色管理权限：
 ## 开发流程
 
 1. **创建项目**：在 Studio 中点击「新建项目」，选择 Workflow、Conversation 或 Kanban 类型和模板；也可以手动创建目录。
-2. **声明项目**：在根 `package.json` 写入 `steamHarness.projectType`（`workflow`、`conversation` 或 `kanban`），以及可选的 `projectInfo`（名称、展示平台、数据存储、关联项目）。
+根 `package.json.id` 是聚合唯一身份，`steamHarness.entries` 注册入口类型、名称、代码路径、配置与数据库需求。使用全新声明和数据，不兼容旧模型。
 3. **编写入口**：Workflow / Conversation 使用 Core Runtime API 声明入口和执行器；Kanban 直接编写 `index.html` 及其静态资源。
 4. **本地运行**：在 Studio 中打开项目并点击运行，或在终端执行 `steamharness structure .`、`steamharness run .`、`steamharness web .`。
 5. **上传到 Server**：使用 Workspace CLI 登录、打包源码并发布版本，然后在 Server Web 管理端管理项目、成员和数据。
@@ -113,7 +102,7 @@ Server 使用账号和固定的项目角色管理权限：
 
 ```text
 my-project/
-├── package.json   # name、steamHarness.projectType、projectInfo、Core/CLI 版本
+根 `package.json.id` 是聚合唯一身份，`steamHarness.entries` 注册入口类型、名称、代码路径、配置与数据库需求。使用全新声明和数据，不兼容旧模型。
 ├── index.ts       # 入口与执行器
 └── ...
 ```
@@ -126,7 +115,7 @@ my-board/
 └── index.html
 ```
 
-`package.json` 是项目信息的唯一权威来源。`steamHarness.projectType` 决定项目类型；`steamHarness.projectInfo` 保存本地化名称、展示平台、数据存储位置和关联项目。Workflow / Conversation 需要在 `devDependencies` 中精确记录 Core 与 CLI 版本，Kanban 只把 Core 版本作为静态包元数据校验。
+根 `package.json.id` 是聚合唯一身份，`steamHarness.entries` 注册入口类型、名称、代码路径、配置与数据库需求。使用全新声明和数据，不兼容旧模型。
 
 ## 内置项目
 

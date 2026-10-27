@@ -3,10 +3,7 @@
   "projectType": "workflow",
   "files": [
     "index.ts",
-    "interface.ts",
-    "test/a.ts",
-    "test/b.ts",
-    "test2/c.ts"
+    "interface.ts"
   ],
   "nodes": [
     {

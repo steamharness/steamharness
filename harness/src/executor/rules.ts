@@ -1,4 +1,5 @@
-import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
+import { projectEntrySources } from "../project-sources";
+import { existsSync, readdirSync, readFileSync, statSync, realpathSync } from "node:fs";
 import path from "node:path";
 import ts from "typescript";
 import { projectRuntimeApi } from "../runtime-api";
@@ -412,6 +413,7 @@ export interface ScriptInspection {
 }
 
 export interface ValidateProjectScriptsOptions {
+  entryFile?: string;
   cwd: string;
   projectName: string;
   projectDir: string;
@@ -504,7 +506,7 @@ export function validateProjectScripts(
 export function inspectProjectScripts(
   options: ValidateProjectScriptsOptions,
 ): ScriptInspection {
-  const scriptPaths = findProjectScriptPaths(options.projectDir);
+  const scriptPaths = findProjectScriptPaths(options.projectDir, options.entryFile);
 
   if (scriptPaths.length === 0) {
     return {
@@ -526,7 +528,7 @@ export function inspectProjectScripts(
 export function inspectProjectStructure(
   options: ValidateProjectScriptsOptions,
 ): StructureInspection {
-  const scriptPaths = findProjectScriptPaths(options.projectDir);
+  const scriptPaths = findProjectScriptPaths(options.projectDir, options.entryFile);
 
   if (scriptPaths.length === 0) {
     return {
@@ -1822,22 +1824,15 @@ function analyzeSourceFile(
     const declaredProjectType = projectTypeProperty !== undefined && ts.isStringLiteralLike(projectTypeProperty.initializer)
       ? projectTypeProperty.initializer.text
       : undefined;
-    const projectType = isExecutorProjectKind(declaredProjectType)
-      ? declaredProjectType
-      : inferStaticExecutorProjectType(objectArg);
-    if (projectTypeProperty === undefined || !isExecutorProjectKind(declaredProjectType)) {
-      analysis.structureWarnings.push({
-        message: projectType === undefined
-          ? "Executor project type could not be inferred statically and will be resolved at runtime."
-          : `Executor project type was inferred as "${projectType}" for compatibility.`,
-        location: projectTypeProperty === undefined
-          ? location
-          : createLocation(cwd, filePath, sourceFile, projectTypeProperty),
-      });
-    }
-    if (projectType === undefined) {
+    if (!isExecutorProjectKind(declaredProjectType)) {
+      if (projectTypeProperty && !ts.isStringLiteralLike(projectTypeProperty.initializer)) {
+        analysis.structureWarnings.push({message:"Executor project type is dynamic and will be resolved at runtime.",location});
+      } else {
+        analysis.executorConfigurationViolations.push({type:"invalid_executor_project_type",name:"projectType",message:"Executor projectType must explicitly be workflow or conversation.",locations:[location]});
+      }
       return;
     }
+    const projectType = declaredProjectType;
 
     if (
       analysis.executorProjectType !== undefined &&
@@ -1902,21 +1897,6 @@ function analyzeSourceFile(
     if (projectType === "workflow") {
       collectProjectEntrypoints(objectArg, location);
     }
-  }
-
-  function inferStaticExecutorProjectType(
-    executorObject: ts.ObjectLiteralExpression,
-  ): ExecutorProjectType | undefined {
-    if (findStaticPropertyAssignment(executorObject, "entrypoints") !== undefined
-        || findStaticPropertyAssignment(executorObject, "defaultEntrypoint") !== undefined) {
-      return "workflow";
-    }
-    if (findStaticPropertyAssignment(executorObject, "conversation") !== undefined
-        || findStaticPropertyAssignment(executorObject, "workflow") !== undefined
-        || findStaticPropertyAssignment(executorObject, "createInput") !== undefined) {
-      return "conversation";
-    }
-    return undefined;
   }
 
   function collectProjectEntrypoints(
@@ -4007,7 +3987,9 @@ function analyzeSourceFile(
   }
 }
 
-function findProjectScriptPaths(projectDir: string): string[] {
+function findProjectScriptPaths(projectDir: string, entryFile?: string): string[] {
+  if (entryFile) return projectEntrySources(projectDir, entryFile);
+
   if (!existsSync(projectDir)) {
     return [];
   }

@@ -3,7 +3,7 @@ import { randomUUID } from 'node:crypto';
 import { mkdir, mkdtemp, realpath, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
-import { startWebServer } from '../web/server';
+import { startEntryWebServer as startWebServer } from '../web/server';
 import type { Project, Runtime } from '../web/workflow-types';
 import type { ProjectConfigurationState } from '@steamharness/project-configuration';
 
@@ -25,10 +25,11 @@ async function fixture() {
   return async (name: string, kind: Project['projectType'], applicationId = id, assistant = false, projectDir?: string) => {
     const directory = projectDir ?? path.join(root, name);
     await mkdir(directory, {recursive:true});
-    await writeFile(path.join(directory, 'package.json'), JSON.stringify({id:applicationId,name:'shared-app',steamHarness:{projectType:kind}}));
+    await writeFile(path.join(directory, 'package.json'), JSON.stringify({id:applicationId,name:'shared-app',steamHarness:{ defaultEntry: 'main', entries: [{entryId:'main',name:'Main',type:kind,root:'.',entry:kind==='kanban'?'index.html':'index.ts',configuration:'configuration.json',databases:[]}],  }}));
     await writeFile(path.join(directory, 'configuration.json'), JSON.stringify({version:1,fields:[{name:'label',type:'string'},{name:'enabled',type:'boolean'}]}));
+    await writeFile(path.join(directory, 'index.ts'), 'export {};');
     if (kind === 'kanban') await writeFile(path.join(directory, 'index.html'), '<!doctype html><h1>Board</h1>');
-    const project: Project = {id:applicationId,name:'App',uri:'',folderPath:directory,projectType:kind,fields:[],entrypoints:kind === 'workflow' ? [{id:'main',title:'Main',fields:[]}] : [],
+    const project: Project = {entryId:"main",aggregateName:"Test aggregate",defaultEntry:"main",entryRoot:directory,databases:[],entries:[{entryId:"main",name:"Main",type:kind,root:".",entry:"index.ts",databases:[]}],id:applicationId,name:'App',uri:'',folderPath:directory,projectType:kind,fields:[],entrypoints:kind === 'workflow' ? [{id:'main',title:'Main',fields:[]}] : [],
       ...(kind === 'workflow' ? {defaultEntrypoint:'main'} : {}), ...(assistant ? {assistant:{workdir:path.join(root,name,'workspace'),roots:[]}} : {})};
     const runtime: Runtime = {available:true,inspect:vi.fn(async () => ({projects:[project],errors:[]})),resolveParams:vi.fn(async () => ({})),run:vi.fn(async () => ({status:'success'})),uploadFiles:vi.fn(async () => []),readFile:vi.fn(),deleteFiles:vi.fn(),cancelConversation:vi.fn(),deleteConversation:vi.fn(),readResource:vi.fn(),cancel:vi.fn(),dispose:vi.fn()};
     const app = await startWebServer({projectDir:directory,dataDir:path.join(root,name,'history'),runtime}); apps.push(app);
@@ -54,7 +55,7 @@ async function fixture() {
       }
     };
     const until = async (revision: number) => {
-      for (;;) { const value = await next(); if (value.configurations.revision >= revision) return value; }
+      for (;;) { const value = await next(); if (value.configurations!.revision >= revision) return value; }
     };
     return {app,post,next,until,directory};
   };
@@ -80,21 +81,21 @@ for (const kind of ['conversation','workflow','kanban'] as const) it(`${kind} wi
   await change(a,{action:'select',id:first});
   const stale = await b.post({action:'save',revision:saved.revision,id:first,values:{label:'stale'}});
   expect(stale.ok).toBe(false);
-  expect(a.app.configurations.state).toEqual(state);
+  expect(a.app.configurations!.state).toEqual(state);
   await change(b,{action:'rename',id:first,name:'Renamed'});
-  await change(a,{action:'delete',id:state.configurations.find(item => item.id !== first)!.id});
+  await change(a,{action:'delete',id:state.configurations!.find(item => item.id !== first)!.id});
   const other = await open('different-app',kind,randomUUID());
-  expect((await other.next()).configurations.configurations[0]!.values).toEqual({});
+  expect((await other.next()).configurations!.configurations[0]!.values).toEqual({});
 }, 15_000);
 
 it('assistant windows keep workspace histories separate while synchronizing one application configuration', async () => {
   const open = await fixture(), a = await open('assistant-a','conversation',undefined,true);
   const b = await open('assistant-b','conversation',undefined,true,a.directory);
   const initial = (await a.next()).configurations; await b.next();
-  expect(a.app.controller.activeId).not.toBe(b.app.controller.activeId);
+  expect(a.app.controller!.activeId).not.toBe(b.app.controller!.activeId);
   const response = await a.post({action:'save',revision:initial.revision,id:initial.activeConfigurationId,values:{label:'assistant',enabled:false}});
   expect(response.ok).toBe(true);
   const saved = (await response.json()).messages[0].value;
   expect((await b.until(saved.revision)).configurations).toEqual(saved);
-  expect(a.app.controller.activeId).not.toBe(b.app.controller.activeId);
+  expect(a.app.controller!.activeId).not.toBe(b.app.controller!.activeId);
 }, 10_000);

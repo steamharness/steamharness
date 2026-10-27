@@ -8,7 +8,7 @@ import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { createHash, randomUUID } from 'node:crypto';
 import { parseWebArgs } from '../web';
-import { startWebServer } from '../web/server';
+import { startEntryWebServer as startWebServer } from '../web/server';
 import { createWebRuntime, sanitizeWebWorkerEnvironment } from '../web/runtime';
 import { readCliAuthConfig, writeCliAuthConfig } from '../auth-config';
 import { parseHostConfiguration, parseHostConnection, parseHostAuthentication } from '../web/host-config';
@@ -65,10 +65,10 @@ async function initialState(events: Response) {
 async function fixture(host?: WebHostConfiguration, beforeStart?: () => Promise<void>, projectType: Project['projectType'] = 'conversation') {
   const directory = await mkdtemp(path.join(os.tmpdir(), 'steamharness-web-')); folders.push(directory);
   vi.stubEnv('STEAMHARNESS_CLI_AUTH_DIR', path.join(directory, 'auth')); vi.stubEnv('STEAMHARNESS_SERVER_URL', ''); vi.stubEnv('STEAMHARNESS_SERVER_ADMIN_KEY', '');
-  const project: Project = { id: randomUUID(), uri: '', folderPath: directory, name: 'Test conversation', projectType, fields: [{ name: 'model', flag: '--model', type: 'string', panel: 'auxiliary' }], paramLayout: { actions: [{ kind: 'auxiliary', id: 'ai', label: 'AI', params: ['model'] }] }, paramResolver: { enabled: true }, entrypoints: [], tools: [{ name: 'read', enabled: true, autoApprove: false }] };
-  if (projectType === 'kanban') {
-    await writeFile(path.join(directory, 'package.json'), JSON.stringify({ id: project.id, steamHarness: { projectType } }));
-  }
+  const project: Project = {entryId:"main",aggregateName:"Test aggregate",defaultEntry:"main",entryRoot:directory,databases:[],entries:[{entryId:"main",name:"Main",type:"workflow",root:".",entry:"index.ts",databases:[]}], id: randomUUID(), uri: '', folderPath: directory, name: 'Test conversation', projectType, fields: [{ name: 'model', flag: '--model', type: 'string', panel: 'auxiliary' }], paramLayout: { actions: [{ kind: 'auxiliary', id: 'ai', label: 'AI', params: ['model'] }] }, paramResolver: { enabled: true }, entrypoints: [], tools: [{ name: 'read', enabled: true, autoApprove: false }] };
+  project.entries[0] = { entryId: 'main', name: project.name, type: projectType, root: '.', entry: projectType === 'kanban' ? 'index.html' : 'index.ts', databases: [] };
+  await writeFile(path.join(directory, 'package.json'), JSON.stringify({ id: project.id, name: 'test-web', steamHarness: { entries: project.entries, defaultEntry: 'main' } }));
+  await writeFile(path.join(directory, project.entries[0].entry), projectType === 'kanban' ? '<!doctype html><title>Board</title>' : 'export {};');
   let count = 0;
   const runtime: Runtime = {
     available: true, inspect: vi.fn(async () => ({ projects: [project], errors: [] })),
@@ -99,17 +99,17 @@ describe('steamharness web', () => {
     const references = resolved.messages.find((message: any) => message.type === 'path-references').references;
     expect(references).toEqual([{ path: folder, name: 'dropped folder', kind: 'directory' }]);
     await post({ type: 'draft', text: '', attachments: [], references });
-    expect(app.controller.current.draft).toMatchObject({ text: '', references });
-    await post({ type: 'send', text: '', params: {}, attachments: [], references }); await app.controller.idle();
+    expect(app.controller!.current.draft).toMatchObject({ text: '', references });
+    await post({ type: 'send', text: '', params: {}, attachments: [], references }); await app.controller!.idle();
     expect(vi.mocked(runtime.run).mock.calls[0][0].args.join('\n')).toContain(folder);
-    expect(app.controller.current.messages[0]).toMatchObject({ content: '', references });
+    expect(app.controller!.current.messages[0]).toMatchObject({ content: '', references });
     const imported = await (await post({ type: 'import-drop', entries: [{ name: 'browser/nested.txt', kind: 'file', data: Buffer.from('browser bytes').toString('base64') }, { name: 'browser/empty', kind: 'directory' }], requestId: 'import-drop' })).json();
     const reference = imported.messages.find((message: any) => message.type === 'path-references').references[0];
     expect(await readFile(path.join(reference.path, 'nested.txt'), 'utf8')).toBe('browser bytes');
-    await post({ type: 'send', text: 'Read the imported folder', params: {}, attachments: [], references: [reference] }); await app.controller.idle();
+    await post({ type: 'send', text: 'Read the imported folder', params: {}, attachments: [], references: [reference] }); await app.controller!.idle();
     expect(vi.mocked(runtime.run).mock.calls[1][0].args.join('\n')).toContain(reference.path);
     expect((await post({ type: 'import-drop', entries: [{ name: '../escape', kind: 'directory' }] })).status).toBeGreaterThanOrEqual(400);
-    await post({ type: 'session-action', id: app.controller.current.id, action: 'delete' });
+    await post({ type: 'session-action', id: app.controller!.current.id, action: 'delete' });
     await expect(readFile(path.join(reference.path, 'nested.txt'))).rejects.toThrow();
     expect(await readFile(path.join(folder, 'source.txt'), 'utf8')).toBe('original bytes');
   });
@@ -125,17 +125,17 @@ describe('steamharness web', () => {
         { type: 'node_chunk', timestamp: 20, chunk: { type: 'output_item_delta', itemId: 'item', delta: payload } },
         { type: 'node_chunk', timestamp: 30, chunk: { type: 'output_item_end', itemId: 'item', result: payload } },
       ], report: { status: 'success', result: { data: payload }, outputs: [payload], nodes: [{ executionId: 'node', output: 'Node detail' }] } };
-    app.controller.current.messages.push(answer);
-    await app.controller.persist();
+    app.controller!.current.messages.push(answer);
+    await app.controller!.persist();
     const state = await initialState(await fetch(`${app.origin}/api/events?clientId=${clientId}`, { headers: { Cookie: cookie } }));
     expect(JSON.stringify(state).length).toBeLessThan(20_000);
     expect(state.sessions[0].messages[0]).toMatchObject({ items: answer.items, report: { nodes: answer.report.nodes } });
-    const trace = await (await post({ type: 'trace', clientId, sessionId: app.controller.activeId, messageId: 'answer' })).json();
+    const trace = await (await post({ type: 'trace', clientId, sessionId: app.controller!.activeId, messageId: 'answer' })).json();
     expect(trace.messages[0].content.events).toEqual(answer.events);
     expect(trace.messages[0].content.report.result.data).toBe(payload);
-    const exported = await (await post({ type: 'session-action', clientId, id: app.controller.activeId, action: 'export' })).json();
+    const exported = await (await post({ type: 'session-action', clientId, id: app.controller!.activeId, action: 'export' })).json();
     expect(JSON.parse(exported.messages[0].content).messages[0]).toEqual(answer);
-    expect(app.controller.current.messages[0].events).toEqual(answer.events);
+    expect(app.controller!.current.messages[0].events).toEqual(answer.events);
   });
 
   it('skips serialization for blocked clients and sends their latest state after drain while other pages keep receiving updates', async () => {
@@ -170,7 +170,7 @@ describe('steamharness web', () => {
       }
       const snapshots = vi.spyOn(ConversationState.prototype, 'sessions');
       for (let index = 0; index < 3; ++index) {
-        app.controller.current.title = `Update ${index}`;
+        app.controller!.current.title = `Update ${index}`;
         emit({ type: 'node_chunk', chunk: { type: 'output_item_delta', itemId: 'answer', delta: String(index) } });
         expect((await next(readers[1])).sessions[0].title).toBe(`Update ${index}`);
         expect(snapshots).toHaveBeenCalledTimes(index + 1);
@@ -179,7 +179,7 @@ describe('steamharness web', () => {
       expect((await next(readers[0])).sessions[0].title).toBe('Update 2');
       expect(snapshots).toHaveBeenCalledTimes(4);
     } finally {
-      released = true; finish({ status: 'success' }); await app.controller.idle();
+      released = true; finish({ status: 'success' }); await app.controller!.idle();
       await Promise.all(readers.map(reader => reader.cancel()));
     }
   });
@@ -195,7 +195,7 @@ describe('steamharness web', () => {
       const value = await response.json(); expect(response.status, JSON.stringify(value)).toBe(200);
       return value.messages.find((message: any) => message.type === 'state');
     };
-    const original = one.controller.activeId;
+    const original = one.controller!.activeId;
     await replies(await post(one, left, { type: 'ready' }));
     await post(one, left, { type: 'draft', sessionId: original, text: 'Original draft', attachments: [] });
     const second: Runtime = { ...first, run: vi.fn(), dispose: vi.fn() };
@@ -222,10 +222,10 @@ describe('steamharness web', () => {
         post(two, right, { type: 'send', sessionId: other, text: 'Right runs', params: {}, attachments: [] }),
       ]);
       await vi.waitFor(() => { expect(first.run).toHaveBeenCalledOnce(); expect(second.run).toHaveBeenCalledOnce(); });
-      expect(one.controller.hasRuns).toBe(true); expect(two.controller.hasRuns).toBe(true);
+      expect(one.controller!.hasRuns).toBe(true); expect(two.controller!.hasRuns).toBe(true);
       finishLeft({ status: 'success' }); finishRight({ status: 'success' });
-      await Promise.all([one.controller.idle(), two.controller.idle()]);
-      const key = createHash('sha256').update(await realpath(directory)).digest('hex').slice(0, 24);
+      await Promise.all([one.controller!.idle(), two.controller!.idle()]);
+      const key = path.join('projects', one.project.id, 'entries', one.project.entryId);
       const history = JSON.parse(await readFile(path.join(directory, 'data', key, 'conversations.json'), 'utf8'));
       expect(history.sessions.find((session: any) => session.id === original).messages[0].content).toBe('Left runs');
       expect(history.sessions.find((session: any) => session.id === other).messages[0].content).toBe('Right runs');
@@ -273,13 +273,13 @@ describe('steamharness web', () => {
 
   it('routes Trace controls to an explicitly selected historical session and rejects a replaced owner', async () => {
     const { app, post } = await fixture();
-    const root = app.controller.current;
+    const root = app.controller!.current;
     const childId = crypto.randomUUID();
     root.agent = { version: 1, ownerId: 'owner', revision: 1, conversationId: 1, foreground: false, backgroundCount: 0, epoch: 0,
       configuration: { version: 0, provider: 'fixture', model: 'test', effort: 'off' }, prompt: { hash: 'digest', version: 1 }, plan: { version: 0, items: [] },
       conversations: [{ id: 1, title: 'Main', background: false }, { id: 2, title: 'Child', background: true }],
       tasks: [], history: [], turns: [], receipts: [], records: [], contexts: [], usage: [] };
-    app.controller.sessions.push({ ...root, id: childId, agentOwnerId: root.id, agentConversationId: 2 });
+    app.controller!.sessions.push({ ...root, id: childId, agentOwnerId: root.id, agentConversationId: 2 });
     const control = vi.spyOn(app.controller, 'agentCommand').mockResolvedValue({ requestId: 'trace-command', status: 'accepted', conversationId: 2 });
     const open = vi.spyOn(app.controller, 'openAgentConversation').mockResolvedValue(root.id);
     const request = { type: 'agent-command', sessionId: childId, agentOwner: 'owner', command: { type: 'compact', requestId: 'trace-command', targetId: 2 } };
@@ -291,11 +291,11 @@ describe('steamharness web', () => {
     expect((await post({ type: 'agent-open', sessionId: childId, agentOwner: 'owner', conversationId: 1 })).status).toBe(200);
     expect(open).toHaveBeenCalledWith(childId, 1);
     expect((await post({ type: 'agent-open', sessionId: childId, agentOwner: 'previous-owner', conversationId: 1 })).status).toBe(400);
-    expect(open).toHaveBeenCalledOnce(); expect(app.controller.current.id).toBe(root.id);
+    expect(open).toHaveBeenCalledOnce(); expect(app.controller!.current.id).toBe(root.id);
   });
   it('confirms an optimistic send by request identity without clearing a draft typed during slow parameter resolution', async () => {
     const { app, post, runtime } = await fixture();
-    const sessionId = app.controller.current.id, requestId = crypto.randomUUID();
+    const sessionId = app.controller!.current.id, requestId = crypto.randomUUID();
     let resolve!: (value: { params: {} }) => void;
     vi.mocked(runtime.resolveParams).mockImplementationOnce(() => new Promise(done => { resolve = done; }));
     const message = { type: 'send', sessionId, requestId, text: 'First message', params: {}, attachments: [], preserveDraft: true };
@@ -311,19 +311,19 @@ describe('steamharness web', () => {
     const snapshot = replies.find((reply: any) => reply.type === 'state');
     expect(snapshot.sessions[0].draft.text).toBe('Next draft');
     expect(snapshot.sessions[0].messages[1].id).toBe(requestId);
-    await app.controller.idle();
+    await app.controller!.idle();
     expect((await post(message)).status).toBe(200);
-    await app.controller.idle();
+    await app.controller!.idle();
     expect(runtime.run).toHaveBeenCalledOnce();
-    expect(app.controller.current.draft?.text).toBe('Next draft');
+    expect(app.controller!.current.draft?.text).toBe('Next draft');
   });
 
   it.each(['stop', 'cancel'])('handles %s for the requested session while another mutation is stalled', async type => {
     const { app, post } = await fixture();
-    const target = app.controller.current;
+    const target = app.controller!.current;
     target.messages.push({ id: 'answer', role: 'assistant', content: 'Working', status: 'running' });
-    await app.controller.create();
-    expect(app.controller.current.id).not.toBe(target.id);
+    await app.controller!.create();
+    expect(app.controller!.current.id).not.toBe(target.id);
     let release!: () => void;
     const draft = vi.spyOn(app.controller, 'updateDraft').mockImplementationOnce(() => new Promise(resolve => { release = resolve; }));
     const stalled = post({ type: 'draft', sessionId: target.id, text: 'Saved draft', attachments: [] });
@@ -351,7 +351,7 @@ describe('steamharness web', () => {
 
   it('rejects a delayed stop after the session starts a different run', async () => {
     const { app, post } = await fixture();
-    const target = app.controller.current;
+    const target = app.controller!.current;
     target.activeRunId = 'new-run';
     const stop = vi.spyOn(app.controller, 'stop').mockResolvedValue();
     expect((await post({ type: 'stop', sessionId: target.id, runId: 'old-run' })).status).toBe(400);
@@ -386,7 +386,7 @@ describe('steamharness web', () => {
 
   it('creates a new tool conversation while the original is running and preserves its selection and draft', async () => {
     const { app, post, runtime } = await fixture();
-    const firstClient = crypto.randomUUID(), secondClient = crypto.randomUUID(), original = app.controller.current;
+    const firstClient = crypto.randomUUID(), secondClient = crypto.randomUUID(), original = app.controller!.current;
     let finish!: (report: Report) => void;
     vi.mocked(runtime.run).mockImplementationOnce(() => new Promise(resolve => { finish = resolve; }));
     const ready = async (clientId: string) => (await (await post({ type: 'ready', clientId })).json()).messages.find((reply: any) => reply.type === 'state');
@@ -404,17 +404,17 @@ describe('steamharness web', () => {
       expect(second.sessions.find((session: any) => session.id === id)).toMatchObject({ messages: [], draft: { text: '', attachments: [] } });
       expect(first.activeId).toBe(original.id); expect(first.running).toBe(true);
       expect(first.sessions.find((session: any) => session.id === original.id).draft.text).toBe('Original next turn');
-      expect(app.controller.sessions.filter(session => session.id === id)).toHaveLength(1);
+      expect(app.controller!.sessions.filter(session => session.id === id)).toHaveLength(1);
       expect(runtime.cancel).not.toHaveBeenCalled(); expect(runtime.cancelConversation).not.toHaveBeenCalled();
-    } finally { finish?.({ status: 'success', runId: original.activeRunId } as Report); await app.controller.idle(); }
+    } finally { finish?.({ status: 'success', runId: original.activeRunId } as Report); await app.controller!.idle(); }
   });
 
   it.each(['queue-promote', 'queue-remove'] as const)('acknowledges %s only after completion and binds it to the original conversation', async type => {
     const { app, post } = await fixture();
-    const original = app.controller.current;
-    await app.controller.recordCommand('fixture', 'Original conversation');
-    await app.controller.create();
-    const selected = app.controller.current;
+    const original = app.controller!.current;
+    await app.controller!.recordCommand('fixture', 'Original conversation');
+    await app.controller!.create();
+    const selected = app.controller!.current;
     let finish!: () => void;
     const method = type === 'queue-promote' ? 'promoteQueued' : 'removeQueued';
     const operation = vi.spyOn(app.controller, method).mockImplementation(() => new Promise(resolve => { finish = resolve; }));
@@ -426,7 +426,7 @@ describe('steamharness web', () => {
     finish();
     const response = await pending; expect(response.status).toBe(200);
     const { messages } = await response.json();
-    expect(messages).toContainEqual({ type: 'queue-updated', projectUri: app.controller.project.uri, sessionId: original.id, requestId, id: 'queued' });
+    expect(messages).toContainEqual({ type: 'queue-updated', projectUri: app.controller!.project.uri, sessionId: original.id, requestId, id: 'queued' });
     expect(messages.find((reply: any) => reply.type === 'state').activeId).toBe(selected.id);
     expect((await post({ type, sessionId: original.id, id: 'queued', requestId: 'invalid' })).status).toBe(400);
     expect(operation).toHaveBeenCalledOnce();
@@ -437,37 +437,37 @@ describe('steamharness web', () => {
 
   it.each([false, true])('restores the last selected conversation after reopening (older conversation=%s)', async older => {
     const { directory, app, post, runtime } = await fixture();
-    const clientId = crypto.randomUUID(), first = app.controller.activeId, second = crypto.randomUUID();
+    const clientId = crypto.randomUUID(), first = app.controller!.activeId, second = crypto.randomUUID();
     expect((await post({ type: 'send', clientId, sessionId: first, text: 'First run', params: {}, attachments: [] })).status).toBe(200);
-    await app.controller.idle();
+    await app.controller!.idle();
     expect((await post({ type: 'navigate', clientId, requestId: 1, id: second,
       updates: [{ id: second, create: true, draft: { text: 'Second draft', attachments: [] } }] })).status).toBe(200);
     expect((await post({ type: 'send', clientId, sessionId: second, text: 'Last run', params: {}, attachments: [] })).status).toBe(200);
-    await app.controller.idle();
+    await app.controller!.idle();
     if (older) {
       expect((await post({ type: 'navigate', clientId, requestId: 2, id: first, updates: [] })).status).toBe(200);
       expect((await post({ type: 'navigate', clientId, requestId: 1, id: second, updates: [] })).status).toBe(200);
     }
     await app.close();
     const next = await startWebServer({ projectDir: directory, dataDir: path.join(directory, 'data'), runtime }); services.push(next);
-    expect(next.controller.activeId).toBe(older ? first : second);
-    expect(next.controller.current.messages[0].content).toBe(older ? 'First run' : 'Last run');
+    expect(next.controller!.activeId).toBe(older ? first : second);
+    expect(next.controller!.current.messages[0].content).toBe(older ? 'First run' : 'Last run');
     expect(runtime.run).toHaveBeenCalledTimes(2);
   });
 
   it.each(['stale', 'missing', 'deleted'] as const)('opens the most recently active conversation from legacy history with a %s selection', async selection => {
     const { directory, app, runtime } = await fixture();
-    const template = app.controller.current;
+    const template = app.controller!.current;
     await app.close();
     const sessions = [10, 20, 50, 30, 40].map((updatedAt, index) => ({
       ...template, id: crypto.randomUUID(), title: `Conversation ${index + 1}`, createdAt: index + 1, updatedAt,
       messages: [{ role: 'user', content: `Message ${index + 1}`, createdAt: updatedAt }],
     }));
-    const key = createHash('sha256').update(await realpath(directory)).digest('hex').slice(0, 24);
+    const key = path.join('projects', app.project.id, 'entries', app.project.entryId);
     const historyPath = path.join(directory, 'data', key, 'conversations.json');
     await writeFile(historyPath, JSON.stringify({ sessions, activeId: selection === 'stale' ? sessions[0].id : selection === 'deleted' ? crypto.randomUUID() : undefined }));
     const next = await startWebServer({ projectDir: directory, dataDir: path.join(directory, 'data'), runtime }); services.push(next);
-    expect(next.controller.activeId).toBe(sessions[2].id);
+    expect(next.controller!.activeId).toBe(sessions[2].id);
     const token = new URLSearchParams(new URL(next.url).hash.slice(1)).get('session');
     const auth = await fetch(`${next.origin}/api/session`, { method: 'POST', headers: { Authorization: `Bearer ${token}` } });
     const cookie = auth.headers.get('set-cookie')!.split(';')[0];
@@ -482,18 +482,18 @@ describe('steamharness web', () => {
 
   it.each(['new', 'select'])('updates a pinned page selection for legacy %s requests', async type => {
     const { app, post } = await fixture();
-    const clientId = crypto.randomUUID(), first = app.controller.activeId;
+    const clientId = crypto.randomUUID(), first = app.controller!.activeId;
     await post({ type: 'ready', clientId });
-    await app.controller.recordCommand('fixture', 'First conversation');
-    await app.controller.create();
-    const id = app.controller.activeId;
-    await app.controller.recordCommand('fixture', 'Second conversation');
-    await app.controller.select(first);
+    await app.controller!.recordCommand('fixture', 'First conversation');
+    await app.controller!.create();
+    const id = app.controller!.activeId;
+    await app.controller!.recordCommand('fixture', 'Second conversation');
+    await app.controller!.select(first);
     const changed = await post({ type, clientId, id });
     expect(changed.status, await changed.text()).toBe(200);
     const response = await (await post({ type: 'ready', clientId })).json();
     const selected = response.messages.find((reply: any) => reply.type === 'state').activeId;
-    expect(selected).toBe(app.controller.activeId);
+    expect(selected).toBe(app.controller!.activeId);
     expect(selected).not.toBe(first);
     if (type === 'select') expect(selected).toBe(id);
   });
@@ -530,7 +530,7 @@ describe('steamharness web', () => {
   });
 
   it('validates the private host configuration and assistant workspace', () => {
-    expect(parseHostConfiguration({ type: 'configure', surface: 'editor', connection: null })).toEqual({ surface: 'editor', connection: undefined, relatedProjects: [] });
+    expect(parseHostConfiguration({ type: 'configure', surface: 'editor', connection: null })).toEqual({ surface: 'editor', connection: undefined, assistant: undefined, assistantProjectDir: undefined });
     expect(parseHostConnection({ serverUrl: 'https://steamharness.test/', accessToken: 'host-token' })).toEqual({ serverUrl: 'https://steamharness.test', accessToken: 'host-token' });
     for (const connection of [{ serverUrl: 'file:///tmp', accessToken: 'token' }, { serverUrl: 'https://user:password@steamharness.test', accessToken: 'token' }, { serverUrl: 'https://steamharness.test', accessToken: '' }]) { expect(() => parseHostConnection(connection)).toThrow(); }
     const aiConnection = { serverUrl: 'https://steamharness.test', accessToken: 'host-token', aiServerUrl: 'https://ai.workflow.test', aiAccessToken: 'ai-token' };
@@ -911,14 +911,14 @@ describe('steamharness web', () => {
     const reader = events.body!.getReader();
     expect(new TextDecoder().decode((await reader.read()).value)).toContain('"type":"state"'); await reader.cancel();
     expect((await post({ type: 'send', text: 'Hello', params: { model: 'demo' }, attachments: [] })).status).toBe(200);
-    await app.controller.idle();
-    expect(app.controller.current.messages.at(-1)?.content).toBe('Turn 1');
+    await app.controller!.idle();
+    expect(app.controller!.current.messages.at(-1)?.content).toBe('Turn 1');
     expect(runtime.run).toHaveBeenCalledWith(expect.objectContaining({ args: ['--model', 'demo', '--message', 'Hello'], project: expect.objectContaining({ folderPath: directory }) }), expect.any(Function));
     expect(runtime.resolveParams).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ args: ['--model', 'demo'] }), undefined);
-    const id = app.controller.activeId;
+    const id = app.controller!.activeId;
     await app.close();
     const next = await startWebServer({ projectDir: directory, dataDir: path.join(directory, 'data'), runtime }); services.push(next);
-    expect(next.controller.activeId).toBe(id); expect(next.controller.current.messages.at(-1)?.content).toBe('Turn 1');
+    expect(next.controller!.activeId).toBe(id); expect(next.controller!.current.messages.at(-1)?.content).toBe('Turn 1');
   });
 
   it('preserves credential-named custom Conversation parameters in state, resolution and export', async () => {
@@ -929,8 +929,8 @@ describe('steamharness web', () => {
     expect(resolved.messages[0].params.apiKey).toEqual({ value: 'project-key' });
     const next = await post({ type: 'ready' }).then(response => response.json());
     expect(next.messages[0].parameterValues[''].apiKey).toBe('project-key');
-    await post({ type: 'send', text: 'Custom', params: { apiKey: 'project-key' }, attachments: [] }); await app.controller.idle();
-    const exported = await post({ type: 'session-action', action: 'export', id: app.controller.activeId }).then(response => response.json());
+    await post({ type: 'send', text: 'Custom', params: { apiKey: 'project-key' }, attachments: [] }); await app.controller!.idle();
+    const exported = await post({ type: 'session-action', action: 'export', id: app.controller!.activeId }).then(response => response.json());
     expect(JSON.parse(exported.messages[0].content).messages[0].input.params.apiKey).toBe('project-key');
   });
 
@@ -965,12 +965,12 @@ describe('steamharness web', () => {
   it('preserves tool approval and resumes the original answer', async () => {
     const { app, runtime, post } = await fixture();
     vi.mocked(runtime.run).mockResolvedValueOnce({ status: 'waiting_for_input', pendingUserInput: { requestId: 'approval', nodeName: 'tool', title: 'Read file?', params: [{ name: 'decision', type: 'string', defaultValue: 'approve' }] } }).mockResolvedValueOnce({ status: 'success', output: { items: [{ id: 'done', content: 'Approved', contentType: 'text' }] } });
-    await post({ type: 'send', text: 'Read', params: {}, attachments: [] }); await app.controller.idle();
-    const answer = app.controller.current.messages.at(-1)!;
+    await post({ type: 'send', text: 'Read', params: {}, attachments: [] }); await app.controller!.idle();
+    const answer = app.controller!.current.messages.at(-1)!;
     expect(answer.status).toBe('waiting_for_input');
-    await post({ type: 'resume', messageId: answer.id, requestId: 'approval', values: { decision: 'approve' } }); await app.controller.idle();
-    expect(app.controller.current.messages).toHaveLength(2);
-    expect(app.controller.current.messages.find(message => message.id === answer.id)).toMatchObject({ content: 'Approved', status: 'success' });
+    await post({ type: 'resume', messageId: answer.id, requestId: 'approval', values: { decision: 'approve' } }); await app.controller!.idle();
+    expect(app.controller!.current.messages).toHaveLength(2);
+    expect(app.controller!.current.messages.find(message => message.id === answer.id)).toMatchObject({ content: 'Approved', status: 'success' });
     expect(runtime.run).toHaveBeenLastCalledWith(expect.objectContaining({ resolvedInputs: [expect.objectContaining({ requestId: 'approval' })], resumeAfterRequestId: 'approval' }), expect.any(Function));
   });
 
@@ -981,16 +981,16 @@ describe('steamharness web', () => {
     project.conversation = { userInput: { effects: [{ when: { type: 'review', values: { accepted: true } }, params: { review: 'false' } }] } };
     const request = { requestId: 'review-request', nodeName: 'review', title: 'Accept?', metadata: { type: 'review' }, params: [{ name: 'accepted', type: 'boolean' }] };
     vi.mocked(runtime.run).mockResolvedValueOnce({ status: 'waiting_for_input', pendingUserInput: request }).mockResolvedValueOnce({ status: 'success' });
-    await post({ type: 'send', text: 'Review', params: { model: 'chosen', review: 'true' }, attachments: [] }); await app.controller.idle();
+    await post({ type: 'send', text: 'Review', params: { model: 'chosen', review: 'true' }, attachments: [] }); await app.controller!.idle();
     let finish!: (value: { params: {} }) => void;
     vi.mocked(runtime.resolveParams).mockImplementationOnce(() => new Promise(resolve => { finish = resolve; }));
     const oldRequest = post({ type: 'resolve', requestId: 1, params: { model: 'chosen', review: 'true' } });
     await vi.waitFor(() => expect(finish).toBeTypeOf('function'));
-    await post({ type: 'resume', messageId: app.controller.current.messages.at(-1)!.id, requestId: request.requestId, values: { accepted: true } }); await app.controller.idle();
+    await post({ type: 'resume', messageId: app.controller!.current.messages.at(-1)!.id, requestId: request.requestId, values: { accepted: true } }); await app.controller!.idle();
     finish({ params: {} });
     const outdated = await oldRequest.then(response => response.json());
     expect(outdated.messages).toEqual(expect.arrayContaining([expect.objectContaining({ type: 'params', requestId: 1, stale: true })]));
-    expect(app.controller.current.parameterValues?.['']).toEqual({ model: 'chosen', review: 'false' });
+    expect(app.controller!.current.parameterValues?.['']).toEqual({ model: 'chosen', review: 'false' });
   });
 
   it('invalidates cached parameter options on configuration edits and acknowledges obsolete resolutions', async () => {
@@ -1000,14 +1000,14 @@ describe('steamharness web', () => {
     vi.mocked(runtime.resolveParams).mockImplementationOnce(() => new Promise(resolve => { finish = resolve; }));
     const resolving = post({ type: 'resolve', requestId: 42, params: { model: 'old' } });
     await vi.waitFor(() => expect(finish).toBeTypeOf('function'));
-    await app.configurations.dispatch({ action: 'field.save', revision: app.configurations.state.revision, field: { name: 'label', type: 'string' } });
+    await app.configurations!.dispatch({ action: 'field.save', revision: app.configurations!.state.revision, field: { name: 'label', type: 'string' } });
     finish({ params: {} });
     const result = await resolving.then(response => response.json());
     expect(result.messages).toEqual(expect.arrayContaining([expect.objectContaining({ type: 'params', requestId: 42, stale: true })]));
     expect(result.messages.find((message: any) => message.type === 'state').parameterRevision).toBeGreaterThan(before.parameterRevision);
-    expect(app.controller.current.parameterValues ?? {}).toEqual({});
+    expect(app.controller!.current.parameterValues ?? {}).toEqual({});
     await post({ type: 'resolve', requestId: 43, params: { model: 'new' } });
-    expect(app.controller.current.parameterValues).toEqual({ '': { model: 'new' } });
+    expect(app.controller!.current.parameterValues).toEqual({ '': { model: 'new' } });
   });
 
   it('validates every send against fresh options and rejects configuration changes during validation', async () => {
@@ -1022,11 +1022,11 @@ describe('steamharness web', () => {
     vi.mocked(runtime.resolveParams).mockImplementationOnce(() => new Promise(resolve => { finish = resolve; }));
     const sending = post({ type: 'send', text: 'Validate current configuration', params: { model: 'current' }, attachments: [] });
     await vi.waitFor(() => expect(finish).toBeTypeOf('function'));
-    await app.configurations.dispatch({ action: 'field.save', revision: app.configurations.state.revision, field: { name: 'label', type: 'string' } });
+    await app.configurations!.dispatch({ action: 'field.save', revision: app.configurations!.state.revision, field: { name: 'label', type: 'string' } });
     finish({ params: {} });
     const response = await sending;
     expect(response.status).toBe(400); expect(await response.text()).toMatch(/configuration changed|项目配置已变更/u);
-    expect(runtime.run).not.toHaveBeenCalled(); expect(app.controller.current.messages).toEqual([]);
+    expect(runtime.run).not.toHaveBeenCalled(); expect(app.controller!.current.messages).toEqual([]);
   });
 
   it('rejects a cached selection when fresh resolution returns no available options', async () => {
@@ -1037,8 +1037,8 @@ describe('steamharness web', () => {
     vi.mocked(runtime.resolveParams).mockResolvedValueOnce({ params: { model: { resolvedOptions: [] } } });
     const response = await post({ type: 'send', text: 'All models were removed', params: { model: 'cached' }, attachments: [] });
     expect(response.status).toBe(400);
-    expect(runtime.run).not.toHaveBeenCalled(); expect(app.controller.current.messages).toEqual([]);
-    expect(app.controller.current.parameterValues?.['']?.model).toBe('cached');
+    expect(runtime.run).not.toHaveBeenCalled(); expect(app.controller!.current.messages).toEqual([]);
+    expect(app.controller!.current.parameterValues?.['']?.model).toBe('cached');
   });
 
   it('resolves a required dynamic default on send after initial background resolution fails', async () => {
@@ -1049,7 +1049,7 @@ describe('steamharness web', () => {
     expect(background.messages[0].error).toBe('Catalogue unavailable');
     vi.mocked(runtime.resolveParams).mockResolvedValueOnce({ params: { model: { value: 'current', resolvedOptions: [{ value: 'current' }] } } });
     expect((await post({ type: 'send', text: 'Use fresh default', params: { model: '' }, attachments: [] })).status).toBe(200);
-    await app.controller.idle();
+    await app.controller!.idle();
     expect(runtime.run).toHaveBeenCalledWith(expect.objectContaining({ args: ['--model', 'current', '--message', 'Use fresh default'] }), expect.any(Function));
   });
 
@@ -1058,7 +1058,7 @@ describe('steamharness web', () => {
     const response = await post({ type: 'resolve', requestId: 3, params: { model: 'chosen-model' }, draftText: 'draft', trigger: { kind: 'param', paramName: 'model' } }).then(response => response.json());
     expect(response.messages[0]).toMatchObject({ type: 'params', requestId: 3 });
     expect(runtime.resolveParams).toHaveBeenCalledWith(expect.anything(), { draftText: 'draft', args: ['--model', 'chosen-model'], inputMode: 'form', trigger: { kind: 'param', paramName: 'model' } }, undefined);
-    expect(app.controller.current.parameterValues).toEqual({ '': { model: 'chosen-model' } });
+    expect(app.controller!.current.parameterValues).toEqual({ '': { model: 'chosen-model' } });
   });
 
   it('keeps the newest parameters when resolver replies arrive in reverse order', async () => {
@@ -1071,7 +1071,7 @@ describe('steamharness web', () => {
     await post({ type: 'resolve', requestId: 2, params: { model: 'new' } });
     finishOld({ params: {} });
     expect(await oldRequest.then(response => response.json())).toMatchObject({ messages: [{ type: 'params', requestId: 1, params: {} }] });
-    expect(app.controller.current.parameterValues).toEqual({ '': { model: 'new' } });
+    expect(app.controller!.current.parameterValues).toEqual({ '': { model: 'new' } });
   });
 
   it('replies to each page loading project options without replacing the latest saved values', async () => {
@@ -1087,7 +1087,7 @@ describe('steamharness web', () => {
     for (const reply of [firstReply, secondPage]) {
       expect(reply.messages).toEqual([expect.objectContaining({ type: 'params', requestId: 3, params: options.params })]);
     }
-    expect(app.controller.current.parameterValues).toEqual({ '': { model: 'beta' } });
+    expect(app.controller!.current.parameterValues).toEqual({ '': { model: 'beta' } });
   });
 
   it('does not overwrite sent parameters with a resolver that started before the send', async () => {
@@ -1097,8 +1097,8 @@ describe('steamharness web', () => {
     const oldRequest = post({ type: 'resolve', requestId: 1, params: { model: 'old' } });
     await vi.waitFor(() => expect(runtime.resolveParams).toHaveBeenCalledTimes(1));
     await post({ type: 'send', text: 'Hello', params: { model: 'sent-model' }, attachments: [] });
-    finishOld({ params: {} }); await oldRequest; await app.controller.idle();
-    expect(app.controller.current.parameterValues).toEqual({ '': { model: 'sent-model' } });
+    finishOld({ params: {} }); await oldRequest; await app.controller!.idle();
+    expect(app.controller!.current.parameterValues).toEqual({ '': { model: 'sent-model' } });
     expect(runtime.run).toHaveBeenCalledWith(expect.objectContaining({ args: ['--model', 'sent-model', '--message', 'Hello'] }), expect.any(Function));
   });
 
@@ -1120,30 +1120,30 @@ describe('steamharness web', () => {
     for (const requestId of [2, 3]) {
       const reply = await post({ type: 'resolve', requestId, params: values }).then(response => response.json());
       expect(reply.messages[0]).toMatchObject({ type: 'params', requestId, error: expect.stringContaining(requestId === 2 ? 'shared' : 'export') });
-      expect(app.controller.current.parameterValues?.['']).toEqual(values);
+      expect(app.controller!.current.parameterValues?.['']).toEqual(values);
     }
     const invalidSend = await post({ type: 'send', text: 'Reject conflicting options', params: values });
     expect(invalidSend.status).toBe(400);
-    expect(app.controller.current.parameterValues?.['']).toEqual(values);
+    expect(app.controller!.current.parameterValues?.['']).toEqual(values);
     expect(runtime.run).not.toHaveBeenCalled();
     expect((await post({ type: 'send', text: 'Retain valid options', params: values })).status).toBe(200);
-    await app.controller.idle();
+    await app.controller!.idle();
     expect(runtime.run).toHaveBeenLastCalledWith(expect.objectContaining({ args: ['--first', 'shared', '--second', 'second', '--message', 'Retain valid options'] }), expect.any(Function));
     const restored = await post({ type: 'resolve', requestId: 4, params: values }).then(response => response.json());
     expect(restored.messages[0].error).toBeUndefined();
-    expect(app.controller.current.parameterValues?.['']).toEqual({ first: 'first', second: 'shared' });
+    expect(app.controller!.current.parameterValues?.['']).toEqual({ first: 'first', second: 'shared' });
   });
 
   it('rejects stale conversation mutations and retains public tool policy and export actions', async () => {
     const { app, post } = await fixture();
     expect((await post({ type: 'send', sessionId: 'stale', text: 'ignored', params: {} })).status).toBe(400);
     await post({ type: 'tool-policy', policies: { read: { enabled: true, autoApprove: true }, injected: { enabled: true } } });
-    expect(app.controller.current.toolPermissionPolicies).toEqual({ read: { enabled: true, autoApprove: true } });
-    const id = app.controller.activeId;
-    await post({ type: 'session-action', action: 'rename', id, title: 'Named chat' }); expect(app.controller.current.title).toBe('Named chat');
+    expect(app.controller!.current.toolPermissionPolicies).toEqual({ read: { enabled: true, autoApprove: true } });
+    const id = app.controller!.activeId;
+    await post({ type: 'session-action', action: 'rename', id, title: 'Named chat' }); expect(app.controller!.current.title).toBe('Named chat');
     const exported = await post({ type: 'session-action', action: 'export', id }).then(response => response.json());
     expect(exported.messages[0]).toMatchObject({ type: 'download', name: `conversation-${id}.json` });
-    await post({ type: 'session-action', action: 'delete', id }); expect(app.controller.activeId).not.toBe(id);
+    await post({ type: 'session-action', action: 'delete', id }); expect(app.controller!.activeId).not.toBe(id);
   });
 
   it('exports all current messages with a persistent command result and dispatches only declared prompts', async () => {
@@ -1153,28 +1153,28 @@ describe('steamharness web', () => {
       { command: 'compact', label: 'Summarize', action: { kind: 'prompt', text: '/compact' } },
       { command: 'review', label: 'Review', action: { kind: 'prompt', text: 'Review the current project.' } },
     ] };
-    await post({ type: 'send', text: 'First turn', params: {}, attachments: [] }); await app.controller.idle();
-    await post({ type: 'send', text: 'Second turn', params: {}, attachments: [] }); await app.controller.idle();
+    await post({ type: 'send', text: 'First turn', params: {}, attachments: [] }); await app.controller!.idle();
+    await post({ type: 'send', text: 'Second turn', params: {}, attachments: [] }); await app.controller!.idle();
     await post({ type: 'draft', text: 'Unsent draft', attachments: [] });
-    const id = app.controller.activeId;
+    const id = app.controller!.activeId;
     const exported = await post({ type: 'command', command: 'export', sessionId: id }).then(response => response.json());
     expect(exported.messages[0]).toMatchObject({ type: 'download', name: `conversation-${id}.json` });
     const snapshot = JSON.parse(exported.messages[0].content);
     expect(snapshot.messages.map((message: { content: string }) => message.content)).toEqual([
       'First turn', 'Turn 1', 'Second turn', 'Turn 2', '/export', expect.stringContaining(`conversation-${id}.json`),
     ]);
-    expect(app.controller.current.messages.at(-1)).toMatchObject({ role: 'assistant', status: 'success', content: t("Conversation export ready: {0} ({1} messages).", `conversation-${id}.json`, snapshot.messages.length) });
+    expect(app.controller!.current.messages.at(-1)).toMatchObject({ role: 'assistant', status: 'success', content: t("Conversation export ready: {0} ({1} messages).", `conversation-${id}.json`, snapshot.messages.length) });
     expect(runtime.run).toHaveBeenCalledTimes(2);
     const ready = await post({ type: 'ready' }).then(response => response.json());
-    expect(app.controller.current.messages).toEqual(snapshot.messages);
+    expect(app.controller!.current.messages).toEqual(snapshot.messages);
     expect(ready.messages[0].sessions.find((session: { id: string }) => session.id === id).messages)
       .toMatchObject(snapshot.messages.map(({ id, role, content }: { id: string; role: string; content: string }) => ({ id, role, content })));
     expect((await post({ type: 'command', command: 'unknown', params: {} })).status).toBe(400);
     expect((await post({ type: 'command', command: 'export', sessionId: 'stale' })).status).toBe(400);
-    await post({ type: 'command', command: 'compact', text: 'Ignore this injected prompt', params: {} }); await app.controller.idle();
+    await post({ type: 'command', command: 'compact', text: 'Ignore this injected prompt', params: {} }); await app.controller!.idle();
     expect(runtime.run).toHaveBeenLastCalledWith(expect.objectContaining({ args: ['--message', '/compact'] }), expect.any(Function));
-    expect(app.controller.current.draft).toEqual({ text: 'Unsent draft', attachments: [] });
-    await post({ type: 'command', command: 'review', params: {} }); await app.controller.idle();
+    expect(app.controller!.current.draft).toEqual({ text: 'Unsent draft', attachments: [] });
+    await post({ type: 'command', command: 'review', params: {} }); await app.controller!.idle();
     expect(runtime.run).toHaveBeenLastCalledWith(expect.objectContaining({ args: ['--message', 'Review the current project.'] }), expect.any(Function));
   });
 
@@ -1186,9 +1186,9 @@ describe('steamharness web', () => {
     await post({ type: 'send', text: 'Working', params: {} });
     await vi.waitFor(() => expect(runtime.run).toHaveBeenCalledOnce());
     expect((await post({ type: 'command', command: 'compact', params: {} })).status).toBe(400);
-    expect(app.controller.current.queuedInputs).toEqual([]);
+    expect(app.controller!.current.queuedInputs).toEqual([]);
     finish({ status: 'waiting_for_input', pendingUserInput: { requestId: 'approval', nodeName: 'approve', title: 'Approve', params: [] } });
-    await app.controller.idle();
+    await app.controller!.idle();
     expect((await post({ type: 'command', command: 'compact', params: {} })).status).toBe(400);
     expect(runtime.run).toHaveBeenCalledOnce();
   });
@@ -1211,17 +1211,17 @@ describe('steamharness web', () => {
     runtime.agentControl = vi.fn(async (_runId, command) => ({ requestId: command.requestId, conversationId: 1, status: 'accepted' as const }));
     try {
       await post({ type: 'send', text: 'First', params: {}, attachments: [] });
-      await vi.waitFor(() => expect(app.controller.current.agent).toBeDefined());
-      expect(app.controller.running).toBe(false); expect(app.controller.hasRuns).toBe(true);
+      await vi.waitFor(() => expect(app.controller!.current.agent).toBeDefined());
+      expect(app.controller!.running).toBe(false); expect(app.controller!.hasRuns).toBe(true);
       await post({ type: 'draft', text: 'Unsent', attachments: [] });
       const exported = await post({ type: 'command', command: 'export', params: {} });
       expect(exported.status).toBe(200);
       expect((await exported.json()).messages[0].type).toBe('download');
       expect((await post({ type: 'command', command: 'compact', params: {} })).status).toBe(200);
-      expect(runtime.agentControl).toHaveBeenCalledWith(expect.any(String), expect.objectContaining({ type: 'compact' }), app.controller.current.id, undefined);
-      expect(app.controller.current.draft?.text).toBe('Unsent');
+      expect(runtime.agentControl).toHaveBeenCalledWith(expect.any(String), expect.objectContaining({ type: 'compact' }), app.controller!.current.id, undefined);
+      expect(app.controller!.current.draft?.text).toBe('Unsent');
       expect(runtime.run).toHaveBeenCalledOnce();
-    } finally { finish?.({ status: 'success' }); await app.controller.idle(); }
+    } finally { finish?.({ status: 'success' }); await app.controller!.idle(); }
   });
 
   it('uses the Core resolved from the project and isolates development aliases', async () => {
@@ -1230,7 +1230,7 @@ describe('steamharness web', () => {
     const harnessRoot = await resolveHarnessRoot();
     await symlink(harnessRoot, path.join(directory, 'node_modules/steamharness'), process.platform === 'win32' ? 'junction' : 'dir');
     const harnessVersion = JSON.parse(await readFile(path.join(harnessRoot, 'package.json'), 'utf8')).version;
-    await writeFile(path.join(directory, 'package.json'), JSON.stringify({ id: randomUUID(), name: 'project-runtime', type: 'module', devDependencies: { 'steamharness': harnessVersion }, steamHarness: { projectInfo: { dataStorage: { mode: 'local' } } } }));
+    await writeFile(path.join(directory, 'package.json'), JSON.stringify({ id: randomUUID(), name: 'project-runtime', type: 'module', devDependencies: { 'steamharness': harnessVersion }, steamHarness: { defaultEntry: 'main', entries: [{entryId:'main',name:'Main',type:'conversation',root:'.',entry:'index.ts',databases:[]}],  } }));
     await writeFile(path.join(directory, 'index.ts'), `
       const flow = steamharness.defineProject({ name: 'test', run() { return {
         errCode: 0, errMessage: '', text: 'project runtime',
@@ -1299,7 +1299,7 @@ describe('steamharness web', () => {
       activeConnection = { serverUrl: 'https://current-account.test', accessToken: 'current-account-token', aiServerUrl: 'https://current-ai.test', aiAccessToken: 'current-ai-token' };
       const signedIn = await runtime.run({ project, conversationId: 'offline-test', runId: 'signed-in-run', args: [] }, () => {});
       expect(signedIn.output?.items?.[0].content).toMatchObject({ llmServer: activeConnection.aiServerUrl, llmLoginIsCurrent: false });
-      const restrictedRuntime = createWebRuntime(directory, path.join(directory, 'restricted-data'), () => activeConnection, () => [], { allowSystemAi: false });
+      const restrictedRuntime = createWebRuntime(directory, path.join(directory, 'restricted-data'), () => activeConnection, { allowSystemAi: false });
       try {
         const restricted = await restrictedRuntime.run({ project, conversationId: 'offline-test', runId: 'restricted-run', args: [] }, () => {});
         expect(restricted.output?.items?.[0].content).toMatchObject({ llmServer: '', llmToken: '', llmLoginIsCurrent: false });
@@ -1321,7 +1321,7 @@ describe('steamharness web', () => {
     await writeFile(path.join(directory, 'package.json'), JSON.stringify({ type: 'module' }));
     const filename = '\u6587\u4ef6.txt';
     const content = Buffer.alloc(256 * 1024, 'x');
-    const request = Buffer.from(JSON.stringify({ method: 'upload', project: { folderPath: directory, id: 'pipe-project' },
+    const request = Buffer.from(JSON.stringify({ method: 'upload', project: { folderPath: directory, id: randomUUID(), entryId: 'main' },
       storageDir: path.join(directory, 'data'), conversationId: 'pipe-conversation',
       files: [{ name: filename, mimeType: 'text/plain', data: content.toString('base64') }],
     }));
@@ -1344,7 +1344,7 @@ describe('steamharness web', () => {
 
 it('binds a stop across process replacement to the original run and exact task identities', async () => {
   const { app, post } = await fixture();
-  const current = app.controller.current;
+  const current = app.controller!.current;
   current.activeRunId = 'restored-run';
   current.agent = { version: 1, ownerId: 'replacement', revision: 1, conversationId: 1, foreground: true, backgroundCount: 0, epoch: 0,
     configuration: { version: 0, provider: 'fixture', model: 'test', effort: 'off' }, prompt: { hash: 'digest', version: 1 }, plan: { version: 0, items: [] },

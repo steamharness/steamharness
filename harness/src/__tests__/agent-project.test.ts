@@ -1,3 +1,4 @@
+import { createTestResources } from "./entry-test-resources";
 import assert from "node:assert/strict";
 import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { mkdtempSync } from "node:fs";
@@ -19,7 +20,6 @@ import { createProjectConversationContext } from "../conversation/index";
 import type { UserInputRequest } from "../types/index";
 import { createLocalProjectFileStore, type FileReference, type FileStore } from "../files/index";
 import { HarnessError } from "../workflow/errors";
-import { createProjectRelatedProjectsContext } from "../kv/related-projects";
 import { createProjectToolPermissionContext } from "../tool-permissions/index";
 import { readAgentToolDefinitions } from "../agent/permission";
 import { createDisabledProjectTokenUsageContext } from "../token-usage/index";
@@ -166,10 +166,7 @@ function createContext(conversationId: string, files?: FileStore): RunContext {
     metadata: { agentStoreDir },
     providers: {},
     ...(files === undefined ? {} : { files }),
-    storage: {
-      local: { kv, persistentValue: createMemoryKV(), relatedProjects: createProjectRelatedProjectsContext() },
-      server: { kv: createMemoryKV(), persistentValue: createMemoryKV(), relatedProjects: createProjectRelatedProjectsContext() },
-    },
+    ...createTestResources(),
     conversation: createProjectConversationContext({
       enabled: true,
       conversationId,

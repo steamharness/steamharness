@@ -19,11 +19,18 @@
     "steamharness": "link:../../.."
   },
   "steamHarness": {
-    "projectInfo": {
-      "dataStorage": {
-        "mode": "local"
+    "projectInfo": {},
+    "entries": [
+      {
+        "entryId": "main",
+        "type": "conversation",
+        "name": "@steamharness/gpt-image-workflow",
+        "root": ".",
+        "entry": "index.ts",
+        "databases": [],
+        "configuration": "configuration.json"
       }
-    },
-    "projectType": "conversation"
+    ],
+    "defaultEntry": "main"
   }
 }

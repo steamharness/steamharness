@@ -270,7 +270,7 @@ for (const language of ['en', 'zh-cn']) {
     if (!actualProject) {
       const response = await selectText(frame, '.assistant .message-content');
       await clipboard({ text: 'Response copy marker' }); await press(page.keyboard, copy); await copied(response);
-      await frame.evaluate(() => window.dispatchEvent(new MessageEvent('message', { data: { type: 'error', message: 'Related project error\nDiagnostic log: failed request' } })));
+      await frame.evaluate(() => window.dispatchEvent(new MessageEvent('message', { data: { type: 'error', message: 'Database binding error\nDiagnostic log: failed request' } })));
       const errorText = await selectText(frame, '#error');
       await clipboard({ text: 'Error copy marker' }); await press(page.keyboard, copy); await copied(errorText);
       await clipboard({ text: 'Context copy marker' });

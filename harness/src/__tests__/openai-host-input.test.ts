@@ -54,7 +54,7 @@ test("local and workspace execution plus param resolution receive hostInput", as
       name: projectName,
       version: "0.1.0",
       type: "module",
-      steamHarness: { projectInfo: { dataStorage: { mode: "local" } } },
+      steamHarness: {defaultEntry:"main",entries:[{entryId:"main",type:"conversation",name:"Main",root:".",entry:"index.ts",databases:[]}], projectInfo:{}},
     }), "utf8");
     await writeFile(path.join(projectDir, "index.ts"), `
       const openaiProject = steamharness.defineProject({

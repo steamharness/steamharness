@@ -10,7 +10,7 @@ const environment: NodeJS.ProcessEnv = Object.fromEntries(environmentKeys.map(ke
 // Capability credentials belong only to the control child, never to coding-tool shells.
 for (const key of ["STEAMHARNESS_STUDIO_CONTROL_MCP_SERVER", ...environmentKeys]) delete process.env[key];
 
-const toolNames = new Set(["get_configurations", "manage_configurations", "open_configurations","studio_state", "get_related_projects", "open_file", "get_diagnostics", "set_theme", "open_terminal", "show_view"]);
+const toolNames = new Set(["get_configurations", "manage_configurations", "open_configurations","studio_state", "get_entries", "open_file", "get_diagnostics", "set_theme", "open_terminal", "show_view"]);
 
 export async function createStudioControlTools(approve: (toolId: string, args: unknown) => Promise<void>, permissionPolicy: DeveloperAssistantPermissionPolicy,
   enabled: (toolId: string) => boolean): Promise<AgentToolSet> {

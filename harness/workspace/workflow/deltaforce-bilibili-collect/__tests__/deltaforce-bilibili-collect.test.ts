@@ -1,3 +1,4 @@
+import { runApprovedProject as runLocalProjectWithReport } from "../../../test-databases";
 /**
  * Tests for the M3-driven deltaforce-bilibili-collect steamharness.
  *
@@ -11,7 +12,7 @@ import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { runLocalProjectWithReport, type KVStore, type RuntimeEvent } from "steamharness";
+import { type KVStore, type RuntimeEvent } from "steamharness";
 import {
   createBilibiliPlayUrl,
   fetchBilibiliDownloadUrl,
@@ -367,9 +368,7 @@ describe("deltaforce-bilibili-collect workflow runtime", () => {
     expect(output.items[1]?.collapsed).toBeUndefined();
     expect(String(output.items[1]?.content)).toContain("这是一段离线 fixture 描述。");
     const documentId = String(output.documentId);
-    const stored = persistentValueStore.records.get(
-      `persistent_value:project:e48aae56-7e59-45f5-adc3-f30e9c65d23c::knowledge.document.${documentId}`,
-    );
+    const stored = [...persistentValueStore.records.entries()].find(([key]) => key.endsWith(`:knowledge.document.${documentId}`))?.[1];
     expect(stored).toBeDefined();
     expect(stored).toMatchObject({
       id: documentId,
@@ -437,9 +436,7 @@ describe("deltaforce-bilibili-collect workflow runtime", () => {
     expect(output.knowledgeWritten).toBe(true);
     expect(output.fileId).toBe("remote-file-1");
     expect(output.transcriptLength).toBeGreaterThan(0);
-    const stored = persistentValueStore.records.get(
-      `persistent_value:project:e48aae56-7e59-45f5-adc3-f30e9c65d23c::knowledge.document.${output.documentId}`,
-    );
+    const stored = [...persistentValueStore.records.entries()].find(([key]) => key.endsWith(`:knowledge.document.${output.documentId}`))?.[1];
     expect(stored?.markdown).toContain("远端 MiniMax M3 输出 fixture。");
   });
 
@@ -595,7 +592,7 @@ async function runWithMockConfiguration(options: {
       fileStore: createMemoryFileStore(),
       maxNodeExecutions: 20,
       onRuntimeEvent: options.onRuntimeEvent,
-    });
+    }, options.persistentValueStore);
   } finally {
     await rm(kvStoreDir, { recursive: true, force: true });
   }

@@ -3,6 +3,7 @@ import { validateProjectValues, type Project } from '../web/workflow-types';
 import type { RunRecord } from '../web/workflow-workspace';
 
 const host = vi.hoisted(() => ({ postMessage: vi.fn(), getState: vi.fn(), setState: vi.fn() }));
+vi.mock('../web/ui/aggregate', () => ({ mountAggregateToolbar: () => ({ update() {} }) }));
 vi.mock('../web/ui/host', () => ({ acquireProjectHost: () => host }));
 vi.mock('../web/ui/workflow-fields', () => ({ Fields: class { close() {} render() {} update() {} } }));
 vi.mock('../web/ui/conversation-output', () => ({ ConversationOutput: class { update() {} } }));
@@ -53,7 +54,7 @@ class Element {
   click() { this.onclick?.(); this.events.get('click')?.({ preventDefault() {} }); }
 }
 
-const project: Project = {
+const project: Project = {entryId:"main",aggregateName:"Test aggregate",defaultEntry:"main",entryRoot:'/workflow-ui',databases:[],entries:[{entryId:"main",name:"Main",type:'workflow',root:".",entry:"index.ts",databases:[]}],
   id: 'workflow-ui', uri: 'file:///workflow-ui', folderPath: '/workflow-ui', name: 'Studio Control', projectType: 'workflow', fields: [],
   defaultEntrypoint: 'theme', entrypoints: [
     { id: 'theme', title: 'Set Studio theme', fields: [{ name: 'theme', label: 'Theme', type: 'string', required: true }] },

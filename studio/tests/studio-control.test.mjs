@@ -59,67 +59,14 @@ async function fixture(t, services) {
 }
 
 const ids = ['294b1eec-23fa-42cf-9fd3-2417f71c0570', '615e6cf6-b40a-456a-8d19-b71c63454c7a', '4d8d3580-6356-42b1-a8f0-2a14b0a7b955'];
-const manifest = (id, relatedProjects = []) => ({ id, name: 'Notes', steamHarness: { projectInfo: { relatedProjects, localizedNames: { en: 'English notes', 'zh-cn': 'Chinese notes' } } } });
+const manifest = id => ({ id, name: 'Notes', steamHarness: { defaultEntry:'main',entries:[{entryId:'main',type:'workflow',name:'Main',root:'.',entry:'index.ts',databases:[]}],projectInfo:{ localizedNames:{en:'English notes','zh-cn':'Chinese notes'} } } });
 const saveManifest = (directory, value) => writeFile(path.join(directory, 'package.json'), JSON.stringify(value));
 
-for (const [language, name] of [['en', 'English notes'], ['zh-cn', 'Chinese notes'], ['fr', 'English notes']]) {
-test(`related project queries verify imports, retain missing declarations and resolve ${language} names`, async t => {
-  const f = await fixture(t); f.vscode.env.language = language;
-  await saveManifest(f.workdir, manifest(ids[0], [{ alias: 'notes', projectId: ids[1] }, { alias: 'missing', projectId: ids[2] }]));
-  await saveManifest(f.outside, manifest(ids[1]));
-  await saveManifest(f.linked, manifest(ids[0]));
-  f.state.set(IMPORTED_PROJECTS_KEY, [
-    { id: ids[1], uri: f.uri(f.linked).toString(), name: 'Stale UUID' },
-    { id: ids[1], uri: f.uri(f.outside).toString(), name: 'Old name' },
-  ]);
-  const result = await f.execute('studio.relatedProjects.get', {});
-  assert.equal(result.projectId, ids[0]); assert.equal(result.projectDir, await realpath(f.workdir));
-  assert.deepEqual(JSON.parse(JSON.stringify(result.relatedProjects)), [
-    { alias: 'notes', projectId: ids[1], imported: true, name, uri: f.uri(f.outside).toString(), projectDir: await realpath(f.outside) },
-    { alias: 'missing', projectId: ids[2], imported: false, name: null, uri: null, projectDir: null },
-  ]);
-  await assert.rejects(f.execute('studio.file.open', { filePath: path.join(f.outside, 'index.ts') }));
-  assert.equal(f.events.length, 0);
-});
-}
-
-test('related project queries use the requested project and recheck imports and manifests on every call', async t => {
-  const f = await fixture(t);
-  await saveManifest(f.linked, manifest(ids[0], [{ alias: 'notes', projectId: ids[1] }]));
-  await saveManifest(f.outside, manifest(ids[1]));
-  const input = { projectDir: f.linked };
-  assert.equal((await f.execute('studio.relatedProjects.get', input)).relatedProjects[0].imported, false);
-  f.state.set(IMPORTED_PROJECTS_KEY, [{ id: ids[1], uri: f.uri(f.outside).toString(), name: 'Notes' }]);
-  assert.equal((await f.execute('studio.relatedProjects.get', input)).relatedProjects[0].imported, true);
-  await saveManifest(f.outside, manifest(ids[2]));
-  const changed = (await f.execute('studio.relatedProjects.get', input)).relatedProjects[0];
-  assert.equal(changed.imported, false); assert.equal(changed.projectDir, null);
-  await saveManifest(f.linked, manifest(ids[0]));
-  assert.equal((await f.execute('studio.relatedProjects.get', input)).relatedProjects.length, 0);
-});
-
-test('related project queries reject out-of-scope paths, escaping manifest symlinks and invalid project UUIDs', async t => {
-  const f = await fixture(t);
-  await saveManifest(f.outside, manifest(ids[1]));
-  await symlink(path.join(f.outside, 'package.json'), path.join(f.workdir, 'package.json'));
-  for (const input of [{}, { projectDir: f.outside }, { projectDir: 'index.ts' }, { projectDir: [] }, { projectDir: '' }, { command: 'arbitrary' }]) {
-    await assert.rejects(f.execute('studio.relatedProjects.get', input));
-  }
-  await saveManifest(f.linked, { name: 'Ordinary package' });
-  await assert.rejects(f.execute('studio.relatedProjects.get', { projectDir: f.linked }), /Workflow project directory/);
-  assert.equal(f.events.length, 0);
-});
-
-test('remote related imports expose their URI without claiming a local directory', async t => {
-  const f = await fixture(t);
-  const remote = 'vscode-remote://ssh-remote+host/workspace/notes';
-  await saveManifest(f.workdir, manifest(ids[0], [{ alias: 'notes', projectId: ids[1] }]));
-  f.state.set(IMPORTED_PROJECTS_KEY, [{ id: ids[1], uri: remote, name: 'Notes' }]);
-  const read = f.vscode.workspace.fs.readFile;
-  f.vscode.workspace.fs.readFile = target => target.toString() === `${remote}/package.json`
-    ? Promise.resolve(Buffer.from(JSON.stringify(manifest(ids[1])))) : read(target);
-  const related = (await f.execute('studio.relatedProjects.get', {})).relatedProjects[0];
-  assert.equal(related.imported, true); assert.equal(related.uri, remote); assert.equal(related.projectDir, null);
+test('entry queries return the aggregate registrations and reject removed operations', async t => {
+  const f=await fixture(t);await saveManifest(f.workdir,manifest(ids[0]));
+  const result=await f.execute('studio.entries.get',{});
+  assert.equal(result.projectId,ids[0]);assert.equal(result.defaultEntry,'main');assert.equal(result.entries[0].entryId,'main');
+  await assert.rejects(f.execute('studio.relatedProjects.get',{}),/Unsupported/);
 });
 
 test('state exposes registered scope and themes while hiding an editor outside the scope', async t => {
@@ -143,7 +90,7 @@ test('a nested control project uses its own directory while retaining the opened
   const execute = load(hostCode, f.vscode).createStudioControlHandler({ workdir: project, roots: f.roots }, f.controller.signal,
     { globalState: { get: key => f.state.get(key) } });
   assert.equal((await execute('studio.state.get', {})).workdir, project);
-  assert.equal((await execute('studio.relatedProjects.get', {})).projectDir, await realpath(project));
+  assert.equal((await execute('studio.entries.get', {})).projectDir, await realpath(project));
   assert.equal((await execute('studio.file.open', { filePath: 'control.txt' })).filePath, await realpath(path.join(project, 'control.txt')));
   await execute('studio.terminal.open', {});
   assert.deepEqual(f.events.at(-1), ['terminal', await realpath(project)]);
@@ -165,7 +112,7 @@ test('auto permits external files, diagnostics, terminals and project queries wh
   await saveManifest(f.outside, manifest(ids[1]));
   for (const policy of ['workspace', 'read-only']) {
     await assert.rejects(f.execute('studio.file.open', { filePath: outsideFile }, policy), /only access/);
-    await assert.rejects(f.execute('studio.relatedProjects.get', { projectDir: f.outside }, policy), /only access/);
+    await assert.rejects(f.execute('studio.entries.get', { projectDir: f.outside }, policy), /only access/);
   }
   f.vscode.window.activeTextEditor.document.uri = f.uri(outsideFile);
   const state = await f.execute('studio.state.get', {}, 'auto');
@@ -174,7 +121,7 @@ test('auto permits external files, diagnostics, terminals and project queries wh
   await f.execute('studio.file.open', { filePath: outsideFile }, 'auto');
   await f.execute('studio.file.open', { filePath: 'leak.ts' }, 'auto');
   await f.execute('studio.terminal.open', { cwd: f.outside }, 'auto');
-  const project = await f.execute('studio.relatedProjects.get', { projectDir: f.outside }, 'auto');
+  const project = await f.execute('studio.entries.get', { projectDir: f.outside }, 'auto');
   assert.equal(project.projectId, ids[1]); assert.equal(project.projectDir, await realpath(f.outside));
   const diagnostic = { message: 'External error', severity: 0, range: { start: { line: 0, character: 0 }, end: { line: 0, character: 1 } } };
   f.vscode.languages.getDiagnostics = () => [[f.uri(outsideFile), [diagnostic]]];
@@ -270,15 +217,15 @@ test('trust revocation, removed roots and cancellation block subsequent actions'
   const f = await fixture(t);
   f.vscode.workspace.isTrusted = false;
   await assert.rejects(f.execute('studio.view.show', { view: 'explorer' }), /Trust/);
-  await assert.rejects(f.execute('studio.relatedProjects.get', {}), /Trust/);
+  await assert.rejects(f.execute('studio.entries.get', {}), /Trust/);
   await assert.rejects(f.execute('studio.file.open', { filePath: path.join(f.outside, 'index.ts') }, 'auto'), /Trust/);
   f.vscode.workspace.isTrusted = true; f.vscode.workspace.workspaceFolders.pop();
   await assert.rejects(f.execute('studio.view.show', { view: 'explorer' }), /no longer available/);
-  await assert.rejects(f.execute('studio.relatedProjects.get', {}), /no longer available/);
+  await assert.rejects(f.execute('studio.entries.get', {}), /no longer available/);
   await assert.rejects(f.execute('studio.file.open', { filePath: path.join(f.outside, 'index.ts') }, 'auto'), /no longer available/);
   f.controller.abort();
   await assert.rejects(f.execute('studio.state.get', {}));
-  await assert.rejects(f.execute('studio.relatedProjects.get', {}));
+  await assert.rejects(f.execute('studio.entries.get', {}));
   assert.equal(f.events.length, 0);
 });
 
@@ -318,43 +265,43 @@ test('configuration operations work with the panel closed and keep explicit targ
   const calls=[];
   const f=await fixture(t,{configuration:async(input,signal)=>{calls.push(input);assert.equal(signal,f.controller.signal);return {revision:3};}});
   await saveManifest(f.workdir,manifest(ids[0]));
-  assert.equal((await f.execute('studio.configurations.get',{storage:'local',projectDir:f.workdir})).revision,3);
-  await f.execute('studio.configurations.manage',{storage:'local',projectDir:f.workdir,call:{action:'field.save',revision:3,field:{name:'custom',type:'json'}}});
-  await f.execute('studio.configurations.get',{storage:'local',projectDir:f.workdir,id:'profile',export:true},'read-only');
+  assert.equal((await f.execute('studio.configurations.get',{entryId:'main',storage:'local',projectDir:f.workdir})).revision,3);
+  await f.execute('studio.configurations.manage',{entryId:'main',storage:'local',projectDir:f.workdir,call:{action:'field.save',revision:3,field:{name:'custom',type:'json'}}});
+  await f.execute('studio.configurations.get',{entryId:'main',storage:'local',projectDir:f.workdir,id:'profile',export:true},'read-only');
   assert.equal(calls[0].projectDir,await realpath(f.workdir));
   assert.equal(calls[1].call.revision,3);assert.equal(calls[2].call.action,'export');
   assert.equal(f.events.length,0);
-  await assert.rejects(f.execute('studio.configurations.manage',{storage:'local',projectDir:f.workdir,call:{action:'delete',revision:3,id:'profile'}},'read-only'),/Read-only/);
-  await assert.rejects(f.execute('studio.configurations.manage',{storage:'local',projectDir:f.workdir,call:{action:'save'}},'auto'),/Invalid configuration/);
+  await assert.rejects(f.execute('studio.configurations.manage',{entryId:'main',storage:'local',projectDir:f.workdir,call:{action:'delete',revision:3,id:'profile'}},'read-only'),/Read-only/);
+  await assert.rejects(f.execute('studio.configurations.manage',{entryId:'main',storage:'local',projectDir:f.workdir,call:{action:'save'}},'auto'),/Invalid configuration/);
   await saveManifest(f.outside,manifest(ids[1]));
   await saveManifest(f.linked,manifest(ids[2]));
-  await assert.rejects(f.execute('studio.configurations.get',{storage:'local',projectDir:f.outside}),/registered workspace/);
-  await f.execute('studio.configurations.get',{storage:'local',projectDir:f.outside},'auto');
-  await assert.rejects(f.execute('studio.configurations.get',{storage:'server',projectId:ids[1],target:'latest'}),/registered workspace/);
-  await f.execute('studio.configurations.get',{storage:'server',projectId:ids[0],target:'latest'});
-  await f.execute('studio.configurations.open',{storage:'local',projectDir:f.workdir});
+  await assert.rejects(f.execute('studio.configurations.get',{entryId:'main',storage:'local',projectDir:f.outside}),/registered workspace/);
+  await f.execute('studio.configurations.get',{entryId:'main',storage:'local',projectDir:f.outside},'auto');
+  await assert.rejects(f.execute('studio.configurations.get',{entryId:'main',storage:'server',projectId:ids[1],target:'latest'}),/registered workspace/);
+  await f.execute('studio.configurations.get',{entryId:'main',storage:'server',projectId:ids[0],target:'latest'});
+  await f.execute('studio.configurations.open',{entryId:'main',storage:'local',projectDir:f.workdir});
   assert.equal(calls.at(-1).open,true);
 });
 test('configuration errors preserve the underlying conflict code',async t=>{
   const f=await fixture(t,{configuration:async()=>{throw Object.assign(new Error('Configuration changed'),{code:'CONFIGURATION_CONFLICT'});}});
   await saveManifest(f.workdir,manifest(ids[0]));
-  await assert.rejects(f.execute('studio.configurations.manage',{storage:'local',projectDir:f.workdir,call:{action:'rename',revision:0,id:'profile',name:'new'}}),{code:'CONFIGURATION_CONFLICT'});
+  await assert.rejects(f.execute('studio.configurations.manage',{entryId:'main',storage:'local',projectDir:f.workdir,call:{action:'rename',revision:0,id:'profile',name:'new'}}),{code:'CONFIGURATION_CONFLICT'});
 });
 test('configuration declarations respect the registered workspace boundary',async t=>{
   const f=await fixture(t,{configuration:async()=>({revision:0})});
   await saveManifest(f.workdir,manifest(ids[0]));
   await writeFile(path.join(f.outside,'configuration.json'),JSON.stringify({version:1,fields:[]}));
   await symlink(path.join(f.outside,'configuration.json'),path.join(f.workdir,'configuration.json'));
-  await assert.rejects(f.execute('studio.configurations.get',{storage:'local',projectDir:f.workdir}),/registered workspace/);
-  assert.equal((await f.execute('studio.configurations.get',{storage:'local',projectDir:f.workdir},'auto')).revision,0);
+  await assert.rejects(f.execute('studio.configurations.get',{entryId:'main',storage:'local',projectDir:f.workdir}),/registered workspace/);
+  assert.equal((await f.execute('studio.configurations.get',{entryId:'main',storage:'local',projectDir:f.workdir},'auto')).revision,0);
 });
 
 test('publication preview is available read-only while draft mutations require write permission',async t=>{
  const calls=[];const f=await fixture(t,{configuration:async input=>{calls.push(input);return {canManagePublication:false,fieldCapabilities:{fixed:{editable:false,reason:'Locked'}}};}});
  await saveManifest(f.workdir,manifest(ids[0]));
- const state=await f.execute('studio.configurations.get',{storage:'local',projectDir:f.workdir,preview:true},'read-only');
+ const state=await f.execute('studio.configurations.get',{entryId:'main',storage:'local',projectDir:f.workdir,preview:true},'read-only');
  assert.equal(calls[0].call.action,'publication.preview');assert.equal(state.fieldCapabilities.fixed.editable,false);
- await assert.rejects(f.execute('studio.configurations.get',{storage:'local',projectDir:f.workdir,preview:true,export:true},'read-only'),/preview|export|Invalid/i);
- await assert.rejects(f.execute('studio.configurations.manage',{storage:'local',projectDir:f.workdir,call:{action:'publication.save',revision:0}},'read-only'),/Read-only/);
+ await assert.rejects(f.execute('studio.configurations.get',{entryId:'main',storage:'local',projectDir:f.workdir,preview:true,export:true},'read-only'),/preview|export|Invalid/i);
+ await assert.rejects(f.execute('studio.configurations.manage',{entryId:'main',storage:'local',projectDir:f.workdir,call:{action:'publication.save',revision:0}},'read-only'),/Read-only/);
  assert.equal(calls.length,1);
 });

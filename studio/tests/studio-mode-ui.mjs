@@ -68,7 +68,7 @@ for (const language of process.env.STEAMHARNESS_UI_LANGUAGES?.split(',') ?? ['en
       const template = path.join(workstation, 'dist/developer-assistant');
       await rm(template, { recursive: true, force: true }); await mkdir(template);
       await writeFile(path.join(template, 'package.json'), JSON.stringify({ id: 'a3aca697-b086-459b-84e4-d357ad2d9fb2', name: 'Offline Assistant', type: 'module',
-        steamHarness: { projectInfo: { dataStorage: { mode: 'local' } } } }));
+        steamHarness: {defaultEntry:'main',entries:[{entryId:'main',type:'conversation',name:'Assistant',root:'.',entry:'index.ts',databases:[]}]} }));
       await copyFile(path.join(ROOT, 'tests/fixtures/assistant-new-tab/index.ts'), path.join(template, 'index.ts'));
     }
     await useCachedLanguagePack(directory, language);

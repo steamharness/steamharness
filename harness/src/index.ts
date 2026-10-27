@@ -15,8 +15,6 @@ export * from "./files/remote";
 export * from "./conversation/index";
 export * from "./executor/types";
 export * from "./kv/index";
-export * from "./kv/remote";
-export * from "./kv/related-projects";
 export * from "./knowledge/index";
 export * from "./token-usage/index";
 export * from "./timer/index";
@@ -25,7 +23,6 @@ export * from "./node/index";
 export * from "./provider/llm/index";
 export * from "./project-types";
 export * from "@steamharness/kanban-project";
-export * from "@steamharness/project-dependencies";
 export * from "@steamharness/workflow-schedules";
 export * from "./runtime-api";
 export * from "./runtime-locale";
@@ -33,3 +30,8 @@ export * from "./runtime-platform";
 export * from "./user-settings";
 export * from "./types/index";
 export * from "./workflow/index";
+
+export * from "./databases/index";
+export * from "./entries/index";
+
+export { readProjectManifest, selectProjectEntry, projectManifestForDistribution } from "@steamharness/project-manifest";

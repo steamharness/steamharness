@@ -2,7 +2,7 @@ openapi: 3.1.0
 info:
   title: steamharness API
   version: 0.1.0
-  description: SteamHarness Server 提供项目、不可变源码版本和项目数据存储。本地客户端负责执行项目。
+  description: SteamHarness Server 管理聚合项目静态元数据、不可变源码和独立数据库空间。入口运行由 CLI 或 Studio 负责。
 servers:
   - url: http://localhost:7126
     description: Local SteamHarness Server (dev default)
@@ -21,6 +21,8 @@ tags:
     description: 项目文件上传、读取、下载与删除。
   - name: Projects & Groups
     description: 固定角色、多级组继承、成员、邀请和归属管理。 / Fixed roles, hierarchy and membership.
+  - name: Database Spaces
+    description: 独立空间、显式申请审批、消费方绑定与共享授权。
 paths:
   /health:
     get:
@@ -113,28 +115,18 @@ paths:
                               docsUrl:
                                 type: string
                                 format: uri
-                                description: 当前版本或部署的同语言完整更新记录地址。部署可提供当前环境内的相对日志路径。 / Localized version or deployment notes in the current environment.
+                                description: 当前版本或部署的同语言完整更新记录地址。部署可提供当前环境内的相对日志路径。 / Localized version or deployment notes in the current
+                                  environment.
                                 example: https://docs.steamharness.yuhe.space/en/guides/releases/server/v0.1.3
                             required:
                               - summary
                               - body
                               - docsUrl
-                      deployment:
-                        type: object
-                        properties:
-                          server:
-                            $ref: "#/components/schemas/HealthDeploymentUnit"
-                          serverWeb:
-                            $ref: "#/components/schemas/HealthDeploymentUnit"
-                        required:
-                          - server
-                          - serverWeb
                     required:
                       - status
                       - runtime
                       - versions
                       - currentRelease
-                      - deployment
                 required:
                   - errCode
                   - errMessage
@@ -431,7 +423,8 @@ paths:
         - BearerAuth: []
       responses:
         "200":
-          description: 返回当前 principal 以及用户资料；管理员密钥登录时 `profile` 为 `null`。Desktop API Key 成功鉴权时，`principal.expiresAt` 返回滑动续期后的到期时间。
+          description: 返回当前 principal 以及用户资料；管理员密钥登录时 `profile` 为 `null`。Desktop API Key 成功鉴权时，`principal.expiresAt`
+            返回滑动续期后的到期时间。
           content:
             application/json:
               schema:
@@ -694,12 +687,12 @@ paths:
         - name: q
           in: query
           required: false
-          schema: &a4
+          schema: &a1
             type: string
         - name: groupId
           in: query
           required: false
-          schema: *a4
+          schema: *a1
         - name: status
           in: query
           required: false
@@ -720,8 +713,10 @@ paths:
       tags:
         - Admin Projects
       summary: 新建应用并由 Server 分配 UUID
-      description: 登录账号可创建个人项目，创建者成为所有者。groupId 指定归属组时需要该组开发者权限，创建者只保留原有继承角色。已有项目的开发者上传不会修改管理信息或归属。 / Signed-in users may
-        create personal projects as owners. Group projects require developer access and do not promote the creator. Server assigns a fresh UUID; client-selected projectId is rejected. No source upload is required.
+      description: 登录账号可创建个人项目，创建者成为所有者。groupId 指定归属组时需要该组开发者权限，创建者只保留原有继承角色。已有项目的开发者上传不会修改管理信息或归属。 / Signed-in
+        users may create personal projects as owners. Group projects require developer access and do not
+        promote the creator. Server assigns a fresh UUID; client-selected projectId is rejected. No source
+        upload is required.
       operationId: createProject
       requestBody:
         required: true
@@ -731,19 +726,24 @@ paths:
               $ref: "#/components/schemas/CreateProjectRequest"
             example:
               name: "@steamharness/hello-workflow"
-              projectType: workflow
               projectInfo:
                 localizedNames: {}
                 declarations: []
                 platformSupport:
                   mode: agnostic
-                dataStorage:
-                  mode: both
               visibility: private
               projectCard:
                 icon: workflow
                 iconColor: "#ffffff"
                 iconBackgroundColor: "#2563eb"
+              entries:
+                - entryId: main
+                  type: workflow
+                  name: Main
+                  root: .
+                  entry: index.ts
+                  databases: []
+              defaultEntry: main
       responses:
         "201":
           description: 创建新应用成功，返回 Server 分配的新 UUID、项目类型、完整声明和可见性。
@@ -759,109 +759,6 @@ paths:
           $ref: "#/components/responses/HarnessError"
         "409":
           $ref: "#/components/responses/HarnessError"
-  /api/project-storage:
-    post:
-      tags:
-        - Admin Projects
-      summary: 访问当前项目或关联项目存储
-      description: |
-        `context.storage.server.kv` 与 `context.storage.server.persistentValue` 共用此 HTTP 入口，
-        但通过 `storageKind` 写入强制隔离的存储域。scope 只允许 `project` 和 `conversation`。
-        当前项目请求携带 `projectId`，且 `entry.projectId` 必须相同。关联项目请求只携带
-        `consumerProjectId` 与 alias，`storageKind` 固定为 `kv`，不得在 entry 中指定目标 UUID；
-        Server 从双方当前 `projectInfo` 解析目标并逐次检查授权。
-
-        `get` 要求调用方可读取消费项目；`set`、`compare-and-set`、`delete` 要求消费项目的数据写权限。
-        关联访问无需成为目标项目成员。`compare-and-set` 使用 get 返回的 revision；不匹配时
-        返回 `{ applied: false }`。`delete` 删除一条已存在的条目并返回 `{ removed: boolean }`；
-        条目不存在时返回 `{ removed: false }`，不是错误。`knowledge-mutation` 只允许当前项目的
-        `persistent_value`，要求项目数据写权限，并在一个 PostgreSQL 事务中更新知识库索引与正文。
-      operationId: accessProjectStorage
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/ProjectStorageRequest"
-            examples:
-              getCurrentProjectKV:
-                summary: 读取当前项目 KV
-                value:
-                  projectId: 8bd4fef2-e083-4201-a89f-6f7d0676df53
-                  storageKind: kv
-                  operation: get
-                  entry:
-                    scope: project
-                    projectId: 8bd4fef2-e083-4201-a89f-6f7d0676df53
-                    key: state
-              setConversationPersistentValue:
-                summary: 写入当前会话 PersistentValue
-                value:
-                  projectId: 8bd4fef2-e083-4201-a89f-6f7d0676df53
-                  storageKind: persistent_value
-                  operation: set
-                  entry:
-                    scope: conversation
-                    projectId: 8bd4fef2-e083-4201-a89f-6f7d0676df53
-                    conversationId: thread-1
-                    key: memory
-                  value:
-                    saved: true
-                  source:
-                    projectId: 8bd4fef2-e083-4201-a89f-6f7d0676df53
-                    runId: run-1
-                    conversationId: thread-1
-              compareAndSetRelatedKV:
-                summary: 通过 alias 原子更新关联项目 KV
-                value:
-                  consumerProjectId: 8bd4fef2-e083-4201-a89f-6f7d0676df53
-                  alias: inventory
-                  storageKind: kv
-                  operation: compare-and-set
-                  entry:
-                    scope: project
-                    key: counter
-                  expectedRevision: "42"
-                  value: 2
-              createKnowledgeDocument:
-                summary: 事务性新建知识库文档
-                value:
-                  projectId: 8bd4fef2-e083-4201-a89f-6f7d0676df53
-                  storageKind: persistent_value
-                  operation: knowledge-mutation
-                  namespace:
-                    scope: project
-                    projectId: 8bd4fef2-e083-4201-a89f-6f7d0676df53
-                  mutation:
-                    type: create
-                    input:
-                      id: runbook
-                      title: Runbook
-                      markdown: "# Runbook"
-      responses:
-        "200":
-          description: "get 返回 `{ exists, value?, revision? }`；set 返回 `{ ok: true }`；compare-and-set 返回 `{ applied, revision?
-            }`；knowledge-mutation 返回文档或删除结果。"
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ProjectStorageResponse"
-        "400":
-          description: 地址、storageKind、scope、projectId 绑定、conversationId、key、value、expectedRevision 或 knowledge-mutation 输入无效。
-        "401":
-          $ref: "#/components/responses/HarnessError"
-        "403":
-          description: 调用者无权读取消费项目或写入其数据、关联授权不足，或项目声明不允许服务器存储。
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ApiFailure"
-        "404":
-          description: 关联项目不可用、待确认，或 knowledge-mutation 指定的编辑文档不存在。
-        "409":
-          description: knowledge-mutation 新建的文档 id 已存在。
-        "501":
-          description: server 未启用 PostgreSQL storage。
   /api/token-usage:
     get:
       tags:
@@ -1173,12 +1070,8 @@ paths:
       tags:
         - Admin Projects
       summary: 更新项目卡片元数据
-      description: |
-        保存完整的纯视觉 `projectCard`，仅接受图标、图片 URL、图标颜色和背景颜色。
-        `iconUrl` 为旧客户端保留；Server Web 与 Studio 使用图标、图标颜色和背景颜色展示项目头像。
-        Server Web and Studio render project avatars from the icon and colors; `iconUrl` is retained for legacy clients.
-        项目类型由静态 `package.json.steamHarness.projectType` 声明，
-        不能通过本接口修改。
+      description: Update display metadata only. Entry types come from steamHarness.entries and cannot be changed
+        through this API.
       operationId: updateProjectCard
       parameters:
         - $ref: "#/components/parameters/ProjectName"
@@ -1236,225 +1129,6 @@ paths:
           description: 当前身份没有项目源码下载权限。
         "409":
           description: 版本源码不可用。
-  /api/deployments:
-    post:
-      tags:
-        - Admin Projects
-      summary: 创建项目组部署计划
-      description: |
-        为一个 Kanban 根项目及选中的 Workflow 数据源预留精确版本。项目组只包含源码包，
-        不包含 KV、定时计划、运行历史、环境变量或宿主用户配置。
-      operationId: createProjectGroupDeployment
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              properties:
-                manifest:
-                  $ref: "#/components/schemas/ProjectGroupManifestV1"
-                releaseLog:
-                  type: string
-              required:
-                - manifest
-      responses:
-        "201":
-          description: 已校验项目权限并预留每个 included 项目的版本。
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/DeploymentResponse"
-        "409":
-          $ref: "#/components/responses/HarnessError"
-  /api/deployments/{deploymentId}:
-    get:
-      tags:
-        - Admin Projects
-      summary: 查询项目组部署进度
-      operationId: getProjectGroupDeployment
-      parameters:
-        - $ref: "#/components/parameters/DeploymentId"
-      responses:
-        "200":
-          description: 部署计划、项目级阶段和已发布版本。
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/DeploymentResponse"
-        "404":
-          $ref: "#/components/responses/HarnessError"
-  /api/deployments/{deploymentId}/package:
-    post:
-      tags:
-        - Admin Projects
-      summary: 上传项目组源码包
-      description: |
-        上传 `project-group` v1 tar.gz。Server 校验清单、普通文件成员、展开大小、每个项目类型
-        和源码哈希；中断后的 `preparing` 部署可使用完整压缩包重新提交。
-      operationId: uploadProjectGroupPackage
-      parameters:
-        - $ref: "#/components/parameters/DeploymentId"
-        - name: fileName
-          in: query
-          schema:
-            type: string
-          example: project-group.tgz
-      requestBody:
-        required: true
-        content:
-          application/octet-stream:
-            schema:
-              type: string
-              format: binary
-      responses:
-        "202":
-          description: 项目组源码已接收并创建异步准备任务；请轮询部署资源获取完成状态。
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/DeploymentResponse"
-        "400":
-          $ref: "#/components/responses/HarnessError"
-        "409":
-          $ref: "#/components/responses/HarnessError"
-  /api/deployments/{deploymentId}/publish:
-    post:
-      tags:
-        - Admin Projects
-      summary: 发布项目组
-      description: |
-        先发布 included 关联项目，最后发布并激活 Kanban 根版本。发布中断后可以幂等续跑；
-        所有依赖成功、双方关系仍确认且 dependency lock 固化后，才发布根项目快照。
-      operationId: publishProjectGroup
-      parameters:
-        - $ref: "#/components/parameters/DeploymentId"
-      responses:
-        "200":
-          description: 项目组发布状态。
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/DeploymentResponse"
-        "409":
-          $ref: "#/components/responses/HarnessError"
-  /api/projects/{projectId}/dependencies:
-    get:
-      tags:
-        - Admin Projects
-      summary: 查询精确版本的项目依赖状态
-      operationId: getProjectDependencies
-      parameters:
-        - $ref: "#/components/parameters/ProjectName"
-        - name: target
-          in: query
-          description: 精确版本、`latest` 或 `draft`；省略时读取 `latest`。
-          schema:
-            type: string
-            default: latest
-      responses:
-        "200":
-          description: 依赖锁、双方关系确认、源码可用性和 Server KV 初始化状态。
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ProjectDependencyStatusResponse"
-  /api/projects/{projectId}/project-group-download:
-    get:
-      tags:
-        - Admin Projects
-      summary: 下载精确项目组源码
-      description: |
-        根项目和有权限的 included 依赖按 dependency lock 中的精确版本返回。无权限依赖会被列入
-        `skippedDependencies`，不会回退到 latest；响应不包含任何 KV、PersistentValue、CLI 登录凭据
-        或其它宿主数据。included 依赖按精确锁、源码权限和源码保留状态处理。
-        客户端应按文件路径与原始字节重算 `sourceHash` 后再写盘。
-        成功发送 GET 响应后，实际返回的每个项目精确版本各累加一次下载量；
-        同一响应内去重，跳过的依赖不计数。HEAD、失败和中断响应不计数。
-      operationId: downloadProjectGroup
-      parameters:
-        - $ref: "#/components/parameters/ProjectName"
-        - name: target
-          in: query
-          description: 已发布精确版本或 `latest`；不接受 `draft`。
-          schema:
-            type: string
-            default: latest
-      responses:
-        "200":
-          description: 可下载项目、跳过依赖与源码文件。
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ProjectGroupDownloadResponse"
-        "403":
-          $ref: "#/components/responses/HarnessError"
-        "409":
-          $ref: "#/components/responses/HarnessError"
-  /api/projects/{projectId}/related-projects:
-    get:
-      tags:
-        - Admin Projects
-      summary: 列出项目的通用关联项目
-      description: 返回当前声明、目标项目名称、对方 alias、对方授予当前项目的规则和双方确认状态。待确认关系不授予 KV 权限。
-      operationId: listRelatedProjects
-      parameters:
-        - $ref: "#/components/parameters/ProjectId"
-      responses:
-        "200":
-          description: 当前项目的关联项目状态。
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/RelatedProjectListResponse"
-  /api/projects/{projectId}/related-projects/{alias}:
-    put:
-      tags:
-        - Admin Projects
-      summary: 创建或更新通用项目关系
-      description: |
-        当前项目必须可管理。若调用方也能管理目标项目，`targetAlias` 必填，Server 在一个事务中更新双方；
-        否则只保存当前项目声明并返回待确认。两个授权都表示“允许对方访问当前项目”，省略时使用
-        `read: all`、`write: none`。
-      operationId: setRelatedProject
-      parameters:
-        - $ref: "#/components/parameters/ProjectId"
-        - $ref: "#/components/parameters/RelatedProjectAlias"
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/RelatedProjectUpdateRequest"
-      responses:
-        "200":
-          description: 更新后的关联项目状态；包含双方确认结果。
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/RelatedProjectListResponse"
-        "400":
-          $ref: "#/components/responses/HarnessError"
-        "403":
-          $ref: "#/components/responses/HarnessError"
-        "409":
-          $ref: "#/components/responses/HarnessError"
-    delete:
-      tags:
-        - Admin Projects
-      summary: 删除通用项目关系
-      description: 能管理目标项目时事务式删除双方声明；否则只删除当前项目一侧。关系权限随当前声明立即失效。
-      operationId: deleteRelatedProject
-      parameters:
-        - $ref: "#/components/parameters/ProjectId"
-        - $ref: "#/components/parameters/RelatedProjectAlias"
-      responses:
-        "200":
-          description: 删除结果和当前项目剩余关系。
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/RelatedProjectRemoveResponse"
   /project-card-images/{projectId}/{fileName}:
     get:
       tags:
@@ -1499,7 +1173,8 @@ paths:
       tags:
         - Admin Account
       summary: 读取本地对象存储中的公开头像
-      description: 仅在 Server 以 STEAMHARNESS_STORAGE_DRIVER=local 运行时挂载。按内容哈希读取不可变头像； 该路由只服务头像，`storage/workflows/**` 始终不可达。
+      description: 仅在 Server 以 STEAMHARNESS_STORAGE_DRIVER=local 运行时挂载。按内容哈希读取不可变头像； 该路由只服务头像，`storage/workflows/**`
+        始终不可达。
       security: []
       operationId: getLocalStorageAvatar
       parameters:
@@ -1597,6 +1272,12 @@ paths:
       parameters:
         - $ref: "#/components/parameters/ProjectName"
         - $ref: "#/components/parameters/TargetQuery"
+        - name: entryId
+          in: query
+          required: true
+          schema: &a2
+            type: string
+            pattern: ^[a-z][a-z0-9_-]{0,63}$
       responses:
         "200":
           description: Kanban 工作区和短期预览地址。
@@ -1611,15 +1292,9 @@ paths:
       tags:
         - Admin Projects
       summary: 调用 Kanban 项目数据 Bridge
-      description: |
-        当前项目可读用户可以执行读取操作，写入需要项目数据写权限。服务端先校验 target 对应 Kanban
-        项目，再把当前项目操作固定到路径中的 projectName 和 project scope。关联项目操作
-        只接受 alias 和 key，服务端按固定版本解析目标 UUID，并读取双方当前声明校验目标对
-        Kanban 的授权。请求不能指定项目 UUID、scope、数据库路径或发布版本。
-        files 操作使用路径固定项目的服务器文件存储，不要求已经上传预览产物，也不受版本 target 影响。
-        files.createFile 输入为 name、可选 mimeType、base64，单文件不超过 50 MiB；readFile/deleteFile
-        只接受 fileId，拒绝其它项目或带 conversation 作用域的文件。readFile 返回 file 与 base64。
-        target=draft 的数据访问只需登记项目及项目信息，无需上传源码或配置模板；指定发布版本仍使用对应不可变声明。
+      description: Use entryId for the registered Kanban entry. Data and attachment calls require input.database and
+        current project and space authorization. target selects a static declaration version; draft data
+        access can use a registered entry before source upload. No project execution occurs.
       operationId: invokeKanbanBridge
       parameters:
         - $ref: "#/components/parameters/ProjectName"
@@ -1646,43 +1321,6 @@ paths:
           $ref: "#/components/responses/HarnessError"
         "500":
           $ref: "#/components/responses/HarnessError"
-  /api/projects/{projectId}/kanban/related-project-revisions:
-    get:
-      tags:
-        - Admin Projects
-      summary: 订阅 Server Web Kanban 关联项目 revision
-      description: |
-        以 Server-Sent Events 返回当前直接关联项目的完整 revision 快照和后续变化。Server 按
-        请求 target 解析精确看板版本，并读取双方当前声明校验关系和 read 授权。授权撤销或
-        关系失效时发送 `unavailable` 后关闭；revision 是不透明字符串，不包含目标项目 ID、
-        KV key、scope 或数据库路径。
-        draft 订阅使用登记项目的当前关联声明，无需上传源码；指定发布版本保留版本绑定。
-      operationId: streamKanbanRelatedProjectRevisions
-      parameters:
-        - $ref: "#/components/parameters/ProjectName"
-        - $ref: "#/components/parameters/TargetQuery"
-      responses:
-        "200":
-          description: SSE 流；连接和重连先发送 snapshot，之后发送 revision 和 heartbeat。
-          content:
-            text/event-stream:
-              schema:
-                type: string
-              example: |
-                event: snapshot
-                data: {"resolvedTarget":"0.3.0","revisions":[{"alias":"stocks","revision":"42"}]}
-
-                event: revision
-                data: {"alias":"stocks","revision":"43"}
-
-                event: heartbeat
-                data: {"timestamp":"2026-08-04T02:00:00.000Z"}
-        "403":
-          $ref: "#/components/responses/HarnessError"
-        "404":
-          $ref: "#/components/responses/HarnessError"
-        "409":
-          $ref: "#/components/responses/HarnessError"
   /api/projects/{projectId}/kanban/previews/{capability}/{nonce}/{target}/{assetPath}:
     get:
       tags:
@@ -1700,8 +1338,8 @@ paths:
         和项目内数据文件时不需要登录 Cookie 或 API Key；其它项目 API 仍要求登录鉴权。
 
 
-        预览凭据不替代账号权限；每次请求重新校验账号状态、当前成员关系及目标版本权限。 / Preview credentials never replace authorization; each request checks
-        current account and membership state.
+        预览凭据不替代账号权限；每次请求重新校验账号状态、当前成员关系及目标版本权限。 / Preview credentials never replace authorization; each
+        request checks current account and membership state.
       security: []
       operationId: getKanbanPreviewAsset
       parameters:
@@ -1750,16 +1388,21 @@ paths:
           $ref: "#/components/responses/HarnessError"
   /api/projects/{projectId}/configurations/template:
     get:
-      tags: [ Admin Projects ]
+      tags:
+        - Admin Projects
       summary: Read an immutable published configuration template
       operationId: getProjectConfigurationTemplate
       parameters:
         - $ref: "#/components/parameters/ProjectName"
         - $ref: "#/components/parameters/TargetQuery"
+        - name: entryId
+          in: query
+          required: true
+          schema: *a2
       responses:
         "200":
-          description: Version template with filtered fields, values, rules and attachment hashes. Requires project read or
-            source-download permission. Missing templates return null data.
+          description: Version template with filtered fields, values, rules and attachment hashes. Requires project read
+            or source-download permission. Missing templates return null data.
           content:
             application/json:
               schema:
@@ -1773,47 +1416,56 @@ paths:
           $ref: "#/components/responses/HarnessError"
   /api/projects/{projectId}/configurations/files:
     post:
-      tags: [ Admin Projects ]
+      tags:
+        - Admin Projects
       summary: Upload a personal configuration attachment after checking field permissions
       operationId: uploadProjectConfigurationFile
-      description: Set target to the installed published version to check its field permissions. Omitting target uses the
-        author's draft or the recipient's latest published template.
+      description: Set target to the installed published version to check its field permissions. Omitting target
+        uses the author's draft or the recipient's latest published template.
       parameters:
         - $ref: "#/components/parameters/ProjectName"
         - $ref: "#/components/parameters/TargetQuery"
         - in: query
           name: key
           required: true
-          schema: { type: string }
+          schema:
+            type: string
         - in: query
           name: fileName
           required: true
-          schema: { type: string }
+          schema:
+            type: string
         - in: query
           name: mimeType
           required: true
-          schema: { type: string }
+          schema:
+            type: string
         - in: query
           name: field
-          description: Optional JSON descriptor for a local custom file field; never overrides an author field. At most 8192
-            characters.
-          schema: { type: string, maxLength: 8192 }
+          description: Optional JSON descriptor for a local custom file field; never overrides an author field. At most
+            8192 characters.
+          schema:
+            type: string
+            maxLength: 8192
       requestBody:
         required: true
         content:
           application/octet-stream:
-            schema: { type: string, format: binary }
+            schema:
+              type: string
+              format: binary
       responses:
         "200":
-          description: One server file reference. Uploads are account isolated and limited to 50 MiB; save the returned reference
-            in a separate configuration mutation.
+          description: One server file reference. Uploads are account isolated and limited to 50 MiB; save the returned
+            reference in a separate configuration mutation.
         "400":
           $ref: "#/components/responses/HarnessError"
         "403":
           $ref: "#/components/responses/HarnessError"
   /api/projects/{projectId}/configurations/files/{fileId}:
     get:
-      tags: [ Admin Projects ]
+      tags:
+        - Admin Projects
       summary: Read an allowed personal or immutable version attachment
       operationId: readProjectConfigurationFile
       parameters:
@@ -1822,29 +1474,42 @@ paths:
         - in: path
           name: fileId
           required: true
-          schema: { type: string }
+          schema:
+            type: string
+        - name: entryId
+          in: query
+          required: true
+          schema: *a2
       responses:
         "200":
-          description: File bytes. Source-download access grants only the template attachments; personal uploads are restricted to
-            their uploading account.
+          description: File bytes. Source-download access grants only the template attachments; personal uploads are
+            restricted to their uploading account.
           content:
             application/octet-stream:
-              schema: { type: string, format: binary }
+              schema:
+                type: string
+                format: binary
         "404":
           $ref: "#/components/responses/HarnessError"
   /api/projects/{projectId}/configurations:
     get:
-      tags: [ Admin Projects ]
+      tags:
+        - Admin Projects
       summary: Read account-scoped configurations for any project type
-      description: Requires project read or source-download access and an account identity. Values are isolated by project and
-        account. Download access only exposes the version template and permitted personal values. Official drafts
-        require an actual maintainer, owner or system administrator. For v2 projects, non-managers use the latest published template
-        for default or draft targets even with source-draft read access. Unpublished role-controlled configurations return
-        a publication-required error. The Server never executes project code.
+      description: Requires project read or source-download access and an account identity. Values are isolated by
+        project and account. Download access only exposes the version template and permitted personal values.
+        Official drafts require an actual maintainer, owner or system administrator. For v2 projects,
+        non-managers use the latest published template for default or draft targets even with source-draft
+        read access. Unpublished role-controlled configurations return a publication-required error. The
+        Server never executes project code.
       operationId: getProjectConfigurations
       parameters:
         - $ref: "#/components/parameters/ProjectName"
         - $ref: "#/components/parameters/TargetQuery"
+        - name: entryId
+          in: query
+          required: true
+          schema: *a2
       responses:
         "200":
           description: Current fields, profiles, selection and revision. Cache-Control is no-store.
@@ -1857,12 +1522,14 @@ paths:
         "403":
           $ref: "#/components/responses/HarnessError"
     post:
-      tags: [ Admin Projects ]
+      tags:
+        - Admin Projects
       summary: Manage or export account-scoped project configurations
-      description: 个人配置可由任何访客使用，写入遵循已发布模板字段限制及 revision 校验；官方配置管理 publication.* 需要维护者或所有者。 / Guests may manage their own
-        configurations subject to published field rules and revision checks. Official publication.* actions require
-        maintainer or owner access. For v2 personal configurations, default or draft targets resolve to the latest
-        published template for non-managers; role-controlled projects must be published first.
+      description: 个人配置可由任何访客使用，写入遵循已发布模板字段限制及 revision 校验；官方配置管理 publication.* 需要维护者或所有者。 / Guests may manage their
+        own configurations subject to published field rules and revision checks. Official publication.*
+        actions require maintainer or owner access. For v2 personal configurations, default or draft targets
+        resolve to the latest published template for non-managers; role-controlled projects must be published
+        first.
       operationId: manageProjectConfigurations
       parameters:
         - $ref: "#/components/parameters/ProjectName"
@@ -1878,7 +1545,10 @@ paths:
                   default: draft
                 call:
                   $ref: "#/components/schemas/ProjectConfigurationAction"
-              required: [ call ]
+                entryId: *a2
+              required:
+                - call
+                - entryId
       responses:
         "200":
           description: Committed state, or portable export for the export action. Cache-Control is no-store.
@@ -1935,7 +1605,8 @@ paths:
       tags:
         - Admin Projects
       summary: 克隆项目
-      description: 仅有源码下载授权的账号只能克隆已发布版本；克隆 draft 还需要原项目的管理权限。新副本的所有权不授予原项目的配置发布权限。目标 ID 由 Server 分配，禁止指定 targetProjectName 或 projectId。 / Server assigns the target UUID; client-selected IDs are rejected.
+      description: 仅有源码下载授权的账号只能克隆已发布版本；克隆 draft 还需要原项目的管理权限。新副本的所有权不授予原项目的配置发布权限。目标 ID 由 Server 分配，禁止指定
+        targetProjectName 或 projectId。 / Server assigns the target UUID; client-selected IDs are rejected.
       operationId: cloneProject
       parameters:
         - $ref: "#/components/parameters/ProjectName"
@@ -1958,8 +1629,10 @@ paths:
                     - "null"
               not:
                 anyOf:
-                  - required: [targetProjectName]
-                  - required: [projectId]
+                  - required:
+                      - targetProjectName
+                  - required:
+                      - projectId
       responses:
         "200":
           description: 克隆结果。
@@ -2106,11 +1779,11 @@ paths:
                 expectedVersion:
                   type: string
                   description: 可选的预期草稿版本；不匹配时返回 409，防止发布其他操作替换的草稿。
-                  pattern: '^\d+\.\d+\.\d+$'
+                  pattern: ^\d+\.\d+\.\d+$
                 expectedSourceHash:
                   type: string
                   description: 上传处理结果 sourceHash；使用发布配置草稿时必填。源码变化时返回 409，不创建版本。
-                  pattern: '^[a-f0-9]{64}$'
+                  pattern: ^[a-f0-9]{64}$
                 expectedConfigurationRevision:
                   type: integer
                   minimum: 0
@@ -2130,9 +1803,9 @@ paths:
         - Projects & Groups
       summary: 列出直接与继承成员 / List direct and inherited members
       operationId: listprojectMembers
-      description: 有效角色取项目直接角色、所属组及全部祖先组角色的最高值。维护者只能管理有效角色低于维护者的用户，且只能授予访客或开发者；所有者可管理全部角色。删除直接成员不影响继承权限，最后一名活跃所有者不可删除或降级。 /
-        Effective access is the maximum direct and inherited role. Maintainers manage only lower roles. Owners manage
-        all roles; the last active owner is protected.
+      description: 有效角色取项目直接角色、所属组及全部祖先组角色的最高值。维护者只能管理有效角色低于维护者的用户，且只能授予访客或开发者；所有者可管理全部角色。删除直接成员不影响继承权限，最后一名活跃所有者不可删除或降级。
+        / Effective access is the maximum direct and inherited role. Maintainers manage only lower roles.
+        Owners manage all roles; the last active owner is protected.
       parameters:
         - name: projectId
           in: path
@@ -2187,11 +1860,11 @@ paths:
         - Projects & Groups
       summary: 设置直接成员角色 / Set direct member role
       operationId: setprojectMember
-      description: 有效角色取项目直接角色、所属组及全部祖先组角色的最高值。维护者只能管理有效角色低于维护者的用户，且只能授予访客或开发者；所有者可管理全部角色。删除直接成员不影响继承权限，最后一名活跃所有者不可删除或降级。 /
-        Effective access is the maximum direct and inherited role. Maintainers manage only lower roles. Owners manage
-        all roles; the last active owner is protected.
+      description: 有效角色取项目直接角色、所属组及全部祖先组角色的最高值。维护者只能管理有效角色低于维护者的用户，且只能授予访客或开发者；所有者可管理全部角色。删除直接成员不影响继承权限，最后一名活跃所有者不可删除或降级。
+        / Effective access is the maximum direct and inherited role. Maintainers manage only lower roles.
+        Owners manage all roles; the last active owner is protected.
       parameters:
-        - &a8
+        - &a3
           name: projectId
           in: path
           required: true
@@ -2248,11 +1921,11 @@ paths:
         - Projects & Groups
       summary: 移除直接成员 / Remove direct membership
       operationId: removeprojectMember
-      description: 有效角色取项目直接角色、所属组及全部祖先组角色的最高值。维护者只能管理有效角色低于维护者的用户，且只能授予访客或开发者；所有者可管理全部角色。删除直接成员不影响继承权限，最后一名活跃所有者不可删除或降级。 /
-        Effective access is the maximum direct and inherited role. Maintainers manage only lower roles. Owners manage
-        all roles; the last active owner is protected.
+      description: 有效角色取项目直接角色、所属组及全部祖先组角色的最高值。维护者只能管理有效角色低于维护者的用户，且只能授予访客或开发者；所有者可管理全部角色。删除直接成员不影响继承权限，最后一名活跃所有者不可删除或降级。
+        / Effective access is the maximum direct and inherited role. Maintainers manage only lower roles.
+        Owners manage all roles; the last active owner is protected.
       parameters:
-        - *a8
+        - *a3
         - name: userId
           in: path
           required: true
@@ -2291,8 +1964,9 @@ paths:
         - Projects & Groups
       summary: 列出邀请 / List invitations
       operationId: listprojectInvitations
-      description: 维护者仅可列出访客和开发者邀请；所有者与系统管理员可列出全部角色邀请。 / Maintainers can list guest and developer invitations only; owners and system administrators can list every role.
-      parameters: &a9
+      description: 维护者仅可列出访客和开发者邀请；所有者与系统管理员可列出全部角色邀请。 / Maintainers can list guest and developer invitations only;
+        owners and system administrators can list every role.
+      parameters: &a4
         - name: projectId
           in: path
           required: true
@@ -2327,10 +2001,10 @@ paths:
         - Projects & Groups
       summary: 创建角色邀请 / Create role invitation
       operationId: createprojectInvitation
-      description: 有效角色取项目直接角色、所属组及全部祖先组角色的最高值。维护者只能管理有效角色低于维护者的用户，且只能授予访客或开发者；所有者可管理全部角色。删除直接成员不影响继承权限，最后一名活跃所有者不可删除或降级。 /
-        Effective access is the maximum direct and inherited role. Maintainers manage only lower roles. Owners manage
-        all roles; the last active owner is protected.
-      parameters: *a9
+      description: 有效角色取项目直接角色、所属组及全部祖先组角色的最高值。维护者只能管理有效角色低于维护者的用户，且只能授予访客或开发者；所有者可管理全部角色。删除直接成员不影响继承权限，最后一名活跃所有者不可删除或降级。
+        / Effective access is the maximum direct and inherited role. Maintainers manage only lower roles.
+        Owners manage all roles; the last active owner is protected.
+      parameters: *a4
       requestBody:
         required: true
         content:
@@ -2378,9 +2052,9 @@ paths:
         - Projects & Groups
       summary: 撤销邀请 / Revoke invitation
       operationId: revokeprojectInvitation
-      description: 有效角色取项目直接角色、所属组及全部祖先组角色的最高值。维护者只能管理有效角色低于维护者的用户，且只能授予访客或开发者；所有者可管理全部角色。删除直接成员不影响继承权限，最后一名活跃所有者不可删除或降级。 /
-        Effective access is the maximum direct and inherited role. Maintainers manage only lower roles. Owners manage
-        all roles; the last active owner is protected.
+      description: 有效角色取项目直接角色、所属组及全部祖先组角色的最高值。维护者只能管理有效角色低于维护者的用户，且只能授予访客或开发者；所有者可管理全部角色。删除直接成员不影响继承权限，最后一名活跃所有者不可删除或降级。
+        / Effective access is the maximum direct and inherited role. Maintainers manage only lower roles.
+        Owners manage all roles; the last active owner is protected.
       parameters:
         - name: projectId
           in: path
@@ -2424,7 +2098,8 @@ paths:
       tags:
         - Admin Projects
       summary: 查看邀请详情
-      description: 需要登录才能查看邀请；资源可为项目或组，project 字段显示对应资源的 ID 和名称。 / Sign-in required; resourceType identifies project or group.
+      description: 需要登录才能查看邀请；资源可为项目或组，project 字段显示对应资源的 ID 和名称。 / Sign-in required; resourceType identifies project
+        or group.
       operationId: lookupProjectInvitation
       parameters:
         - name: token
@@ -2446,8 +2121,8 @@ paths:
       tags:
         - Admin Projects
       summary: 接受项目邀请
-      description: 接受时重新校验邀请者当前权限、接收者活跃状态及邀请有效性；不会降低已有直接或继承角色。 / Acceptance rechecks current roles, active account status and
-        invitation validity; higher roles are preserved.
+      description: 接受时重新校验邀请者当前权限、接收者活跃状态及邀请有效性；不会降低已有直接或继承角色。 / Acceptance rechecks current roles, active account
+        status and invitation validity; higher roles are preserved.
       operationId: acceptProjectInvitation
       parameters:
         - name: token
@@ -2537,410 +2212,6 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ProjectDataSummaryResponse"
-  /api/projects/{projectId}/kv:
-    get:
-      tags:
-        - Admin Projects
-      summary: 列出项目 KV
-      operationId: listProjectKVEntries
-      parameters:
-        - $ref: "#/components/parameters/ProjectName"
-        - name: pageSize
-          in: query
-          schema:
-            type: integer
-            minimum: 1
-            maximum: 100
-          example: 20
-        - name: cursor
-          in: query
-          schema:
-            type: string
-        - name: scope
-          in: query
-          description: 项目详情页只支持 project / conversation，并且只查询 KV 存储域。
-          schema:
-            type: string
-            enum:
-              - all
-              - project
-              - conversation
-            default: all
-        - name: q
-          in: query
-          description: 按 key、conversation 或 last run 搜索。
-          schema:
-            type: string
-        - name: valueType
-          in: query
-          schema:
-            $ref: "#/components/schemas/KVEntryValueType"
-        - name: conversationId
-          in: query
-          schema:
-            type: string
-        - name: runId
-          in: query
-          schema:
-            type: string
-      responses:
-        "200":
-          description: 当前项目 project / conversation KV 分页。列表只返回 `valuePreview`、类型和大小等摘要，不返回完整 `value`。
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/KVEntryPageResponse"
-  /api/projects/{projectId}/kv/entry:
-    get:
-      tags:
-        - Admin Projects
-      summary: 读取单条项目 KV
-      operationId: getProjectKVEntry
-      parameters:
-        - $ref: "#/components/parameters/ProjectName"
-        - name: scope
-          in: query
-          required: true
-          schema:
-            type: string
-            enum:
-              - project
-              - conversation
-        - name: key
-          in: query
-          required: true
-          schema:
-            type: string
-        - name: conversationId
-          in: query
-          description: conversation scope 必填。
-          schema:
-            type: string
-      responses:
-        "200":
-          description: 单条项目 KV 详情，包含完整 `value`。
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/KVEntryDetailResponse"
-        "404":
-          description: KV 不存在。
-    delete:
-      tags:
-        - Admin Projects
-      summary: 删除单条项目 KV
-      description: |
-        删除一条已存在的 KV 条目，按 `scope` + `key`（conversation scope 还需要 `conversationId`）
-        精确定位。删除是永久的，不能恢复；数据本身不可恢复，这一步不提供回收站。
-        删除会触发项目存储修订号，桌面端等订阅方据此丢弃已镜像的条目。
-        需要项目可管理权限与 `kv.manage`；条目不存在时返回 404。
-      operationId: deleteProjectKVEntry
-      parameters:
-        - $ref: "#/components/parameters/ProjectName"
-        - name: scope
-          in: query
-          required: true
-          schema:
-            type: string
-            enum:
-              - project
-              - conversation
-        - name: key
-          in: query
-          required: true
-          schema:
-            type: string
-        - name: conversationId
-          in: query
-          description: conversation scope 必填。
-          schema:
-            type: string
-      responses:
-        "200":
-          description: 已删除的条目身份。
-          content:
-            application/json:
-              schema:
-                allOf:
-                  - $ref: "#/components/schemas/ApiSuccessBase"
-                  - type: object
-                    properties:
-                      data:
-                        type: object
-                        required:
-                          - scope
-                          - key
-                        properties:
-                          scope:
-                            type: string
-                            enum:
-                              - project
-                              - conversation
-                          key:
-                            type: string
-                          conversationId:
-                            type: string
-        "404":
-          description: KV 不存在。
-  /api/projects/{projectId}/knowledge-documents:
-    get:
-      tags:
-        - Admin Projects
-      summary: 列出项目知识库文档
-      operationId: listKnowledgeDocuments
-      parameters:
-        - $ref: "#/components/parameters/ProjectName"
-        - name: pageSize
-          in: query
-          description: 每页文档摘要数量，默认 20，最大 100。
-          schema:
-            type: integer
-            minimum: 1
-            maximum: 100
-          example: 20
-        - name: cursor
-          in: query
-          description: 上一页返回的 nextCursor；这是不透明 token，只能原样回传。
-          schema:
-            type: string
-      responses:
-        "200":
-          description: 当前项目内 markdown 知识库文档分页摘要列表，不包含正文 markdown。
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/KnowledgeDocumentPageResponse"
-        "501":
-          description: 当前 storage 未启用 PostgreSQL，项目知识库不可用。
-    post:
-      tags:
-        - Admin Projects
-      summary: 新建项目知识库文档
-      operationId: createKnowledgeDocument
-      parameters:
-        - $ref: "#/components/parameters/ProjectName"
-        - name: response
-          in: query
-          description: 返回完整文档或轻量摘要；管理端大文档写入建议使用 summary，避免保存后回传完整 markdown。
-          schema:
-            type: string
-            enum:
-              - document
-              - summary
-            default: document
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/CreateKnowledgeDocumentInput"
-      responses:
-        "201":
-          description: 已新建 markdown 文档。
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/KnowledgeDocumentWriteResponse"
-        "400":
-          description: 文档 id、title 或 markdown 输入无效。
-        "409":
-          description: 文档 id 已存在。
-        "501":
-          description: 当前 storage 未启用 PostgreSQL，项目知识库不可用。
-  /api/projects/{projectId}/knowledge-documents/search:
-    get:
-      tags:
-        - Admin Projects
-      summary: 查找项目知识库文档
-      operationId: searchKnowledgeDocuments
-      parameters:
-        - $ref: "#/components/parameters/ProjectName"
-        - name: q
-          in: query
-          required: true
-          description: 非空搜索关键词，按 markdown 行大小写不敏感匹配。
-          schema:
-            type: string
-        - name: documentId
-          in: query
-          description: 传入后只查找单篇文档；省略时查找全部文档。
-          schema:
-            type: string
-        - name: beforeLines
-          in: query
-          description: 每条匹配向上返回多少行上下文，范围 0 到 50。
-          schema:
-            type: integer
-            minimum: 0
-            maximum: 50
-            default: 0
-        - name: afterLines
-          in: query
-          description: 每条匹配向下返回多少行上下文，范围 0 到 50。
-          schema:
-            type: integer
-            minimum: 0
-            maximum: 50
-            default: 0
-        - name: maxMatches
-          in: query
-          description: 兼容旧客户端的本页大小参数；未传 pageSize 时生效，默认 200，最大 1000。
-          schema:
-            type: integer
-            minimum: 1
-            maximum: 1000
-            default: 200
-        - name: pageSize
-          in: query
-          description: 本页最多返回多少条匹配；默认 200，最大 1000。
-          schema:
-            type: integer
-            minimum: 1
-            maximum: 1000
-            default: 200
-        - name: cursor
-          in: query
-          description: 上一页返回的 nextCursor；省略时读取第一页。
-          schema:
-            type: string
-      responses:
-        "200":
-          description: 按行匹配结果，包含行号和上下文。
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/KnowledgeSearchResultResponse"
-        "400":
-          description: 搜索关键词或上下文行数无效。
-        "404":
-          description: 指定 documentId 不存在。
-        "501":
-          description: 当前 storage 未启用 PostgreSQL，项目知识库不可用。
-  /api/projects/{projectId}/knowledge-documents/{documentId}/lines:
-    get:
-      tags:
-        - Admin Projects
-      summary: 读取项目知识库文档的指定行范围
-      operationId: readKnowledgeDocumentLines
-      parameters:
-        - $ref: "#/components/parameters/ProjectName"
-        - name: documentId
-          in: path
-          required: true
-          schema:
-            type: string
-        - name: startLine
-          in: query
-          required: true
-          description: 起始行号，1-based inclusive。
-          schema:
-            type: integer
-            minimum: 1
-        - name: endLine
-          in: query
-          required: true
-          description: 结束行号，1-based inclusive。单次最多读取 1000 行。
-          schema:
-            type: integer
-            minimum: 1
-      responses:
-        "200":
-          description: 指定文档的行范围。
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/KnowledgeDocumentLinesResponse"
-        "400":
-          description: 行号参数无效或超过单次范围限制。
-        "404":
-          description: 指定 documentId 不存在。
-        "501":
-          description: 当前 storage 未启用 PostgreSQL，项目知识库不可用。
-  /api/projects/{projectId}/knowledge-documents/{documentId}:
-    get:
-      tags:
-        - Admin Projects
-      summary: 读取项目知识库文档
-      operationId: getKnowledgeDocument
-      parameters:
-        - $ref: "#/components/parameters/ProjectName"
-        - name: documentId
-          in: path
-          required: true
-          schema:
-            type: string
-      responses:
-        "200":
-          description: 单篇 markdown 文档。
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/KnowledgeDocumentResponse"
-        "404":
-          description: 文档不存在。
-        "501":
-          description: 当前 storage 未启用 PostgreSQL，项目知识库不可用。
-    put:
-      tags:
-        - Admin Projects
-      summary: 编辑项目知识库文档
-      operationId: editKnowledgeDocument
-      parameters:
-        - $ref: "#/components/parameters/ProjectName"
-        - name: documentId
-          in: path
-          required: true
-          schema:
-            type: string
-        - name: response
-          in: query
-          description: 返回完整文档或轻量摘要；管理端大文档保存建议使用 summary，避免保存后回传完整 markdown。
-          schema:
-            type: string
-            enum:
-              - document
-              - summary
-            default: document
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/EditKnowledgeDocumentInput"
-      responses:
-        "200":
-          description: 已保存文档。
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/KnowledgeDocumentWriteResponse"
-        "400":
-          description: title 或 markdown 输入无效，或没有传入可编辑字段。
-        "404":
-          description: 文档不存在。
-        "501":
-          description: 当前 storage 未启用 PostgreSQL，项目知识库不可用。
-    delete:
-      tags:
-        - Admin Projects
-      summary: 删除项目知识库文档
-      operationId: deleteKnowledgeDocument
-      parameters:
-        - $ref: "#/components/parameters/ProjectName"
-        - name: documentId
-          in: path
-          required: true
-          schema:
-            type: string
-      responses:
-        "200":
-          description: 已从知识库索引移除，并写入 tombstone 标记。
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/DeleteKnowledgeDocumentResultResponse"
-        "501":
-          description: 当前 storage 未启用 PostgreSQL，项目知识库不可用。
   /api/projects/{projectId}/token-usage:
     get:
       tags:
@@ -2973,7 +2244,8 @@ paths:
       tags:
         - Admin Projects
       summary: 读取分享版本的静态元数据
-      description: 需要登录和独立源码下载权限，包含项目级源码授权。只读取精确已发布版本，不加载项目代码、不计下载量。Web 分享地址为 /share/projects/{projectId}/{version}，不携带凭据或授予权限。
+      description: 需要登录和独立源码下载权限，包含项目级源码授权。只读取精确已发布版本，不加载项目代码、不计下载量。Web 分享地址为
+        /share/projects/{projectId}/{version}，不携带凭据或授予权限。
       operationId: getProjectSourceShare
       parameters:
         - $ref: "#/components/parameters/ProjectName"
@@ -2983,7 +2255,7 @@ paths:
           description: 精确已发布版本，不接受 latest 或 draft。
           schema:
             type: string
-            pattern: '^\d+\.\d+\.\d+$'
+            pattern: ^\d+\.\d+\.\d+$
       responses:
         "200":
           description: 已授权的版本元数据，Cache-Control 为 no-store。
@@ -2996,8 +2268,8 @@ paths:
         "401":
           $ref: "#/components/responses/HarnessError"
         "403":
-          description: 需要项目访问权限。data.requestUrl 返回短期同源申请链接，批准后成为访客。 / Access required; data.requestUrl provides a short-lived
-            request link for guest membership.
+          description: 需要项目访问权限。data.requestUrl 返回短期同源申请链接，批准后成为访客。 / Access required; data.requestUrl provides a
+            short-lived request link for guest membership.
           content:
             application/json:
               schema:
@@ -3125,7 +2397,8 @@ paths:
         - Admin Projects
       summary: 审批项目访问申请
       operationId: resolveSourceAccessRequest
-      description: 维护者、所有者或系统管理员可审批；系统管理员密钥使用相同的全局管理权限。 / Maintainers, owners and system administrators may review requests, including system administrators using an admin key.
+      description: 维护者、所有者或系统管理员可审批；系统管理员密钥使用相同的全局管理权限。 / Maintainers, owners and system administrators may review
+        requests, including system administrators using an admin key.
       parameters:
         - $ref: "#/components/parameters/ProjectName"
         - name: requestId
@@ -3150,8 +2423,8 @@ paths:
                 - status
       responses:
         "200":
-          description: 批准时添加访客成员，不降低已有高角色。事务内重新校验审批者与申请者状态。 / Approval adds a guest without lowering existing roles; permissions
-            and account status are checked in the transaction.
+          description: 批准时添加访客成员，不降低已有高角色。事务内重新校验审批者与申请者状态。 / Approval adds a guest without lowering existing roles;
+            permissions and account status are checked in the transaction.
           content:
             application/json:
               schema:
@@ -3219,8 +2492,8 @@ paths:
         - Projects & Groups
       summary: 转移项目归属 / Transfer project ownership
       operationId: transferProject
-      description: 需同时拥有项目、来源组（如有）和目标组的所有者权限；转为个人项目时确保至少一名活跃直接所有者。 / Requires owner access to the resource, source and
-        destination; personal resources retain an active direct owner.
+      description: 需同时拥有项目、来源组（如有）和目标组的所有者权限；转为个人项目时确保至少一名活跃直接所有者。 / Requires owner access to the resource, source
+        and destination; personal resources retain an active direct owner.
       parameters:
         - name: projectId
           in: path
@@ -3329,8 +2602,8 @@ paths:
         - Projects & Groups
       summary: 创建顶级组或子组 / Create group
       operationId: createGroup
-      description: 登录用户可创建顶级组并成为所有者；在组内创建子组需要维护者权限，创建者不自动升级。 / Any signed-in user can own a top-level group; subgroups require
-        maintainer access without promotion.
+      description: 登录用户可创建顶级组并成为所有者；在组内创建子组需要维护者权限，创建者不自动升级。 / Any signed-in user can own a top-level group;
+        subgroups require maintainer access without promotion.
       parameters: []
       requestBody:
         required: true
@@ -3408,8 +2681,8 @@ paths:
         - Projects & Groups
       summary: 修改或转移组 / Update or transfer group
       operationId: updateGroup
-      description: 修改信息需要维护者权限；移动需要来源和目标所有者权限，禁止循环嵌套。 / Settings require maintainer access. Moving requires source and
-        destination owners; cycles are rejected.
+      description: 修改信息需要维护者权限；移动需要来源和目标所有者权限，禁止循环嵌套。 / Settings require maintainer access. Moving requires source
+        and destination owners; cycles are rejected.
       parameters:
         - name: groupId
           in: path
@@ -3498,9 +2771,9 @@ paths:
         - Projects & Groups
       summary: 列出直接与继承成员 / List direct and inherited members
       operationId: listgroupMembers
-      description: 有效角色取项目直接角色、所属组及全部祖先组角色的最高值。维护者只能管理有效角色低于维护者的用户，且只能授予访客或开发者；所有者可管理全部角色。删除直接成员不影响继承权限，最后一名活跃所有者不可删除或降级。 /
-        Effective access is the maximum direct and inherited role. Maintainers manage only lower roles. Owners manage
-        all roles; the last active owner is protected.
+      description: 有效角色取项目直接角色、所属组及全部祖先组角色的最高值。维护者只能管理有效角色低于维护者的用户，且只能授予访客或开发者；所有者可管理全部角色。删除直接成员不影响继承权限，最后一名活跃所有者不可删除或降级。
+        / Effective access is the maximum direct and inherited role. Maintainers manage only lower roles.
+        Owners manage all roles; the last active owner is protected.
       parameters:
         - name: groupId
           in: path
@@ -3555,11 +2828,11 @@ paths:
         - Projects & Groups
       summary: 设置直接成员角色 / Set direct member role
       operationId: setgroupMember
-      description: 有效角色取项目直接角色、所属组及全部祖先组角色的最高值。维护者只能管理有效角色低于维护者的用户，且只能授予访客或开发者；所有者可管理全部角色。删除直接成员不影响继承权限，最后一名活跃所有者不可删除或降级。 /
-        Effective access is the maximum direct and inherited role. Maintainers manage only lower roles. Owners manage
-        all roles; the last active owner is protected.
+      description: 有效角色取项目直接角色、所属组及全部祖先组角色的最高值。维护者只能管理有效角色低于维护者的用户，且只能授予访客或开发者；所有者可管理全部角色。删除直接成员不影响继承权限，最后一名活跃所有者不可删除或降级。
+        / Effective access is the maximum direct and inherited role. Maintainers manage only lower roles.
+        Owners manage all roles; the last active owner is protected.
       parameters:
-        - &a10
+        - &a8
           name: groupId
           in: path
           required: true
@@ -3616,11 +2889,11 @@ paths:
         - Projects & Groups
       summary: 移除直接成员 / Remove direct membership
       operationId: removegroupMember
-      description: 有效角色取项目直接角色、所属组及全部祖先组角色的最高值。维护者只能管理有效角色低于维护者的用户，且只能授予访客或开发者；所有者可管理全部角色。删除直接成员不影响继承权限，最后一名活跃所有者不可删除或降级。 /
-        Effective access is the maximum direct and inherited role. Maintainers manage only lower roles. Owners manage
-        all roles; the last active owner is protected.
+      description: 有效角色取项目直接角色、所属组及全部祖先组角色的最高值。维护者只能管理有效角色低于维护者的用户，且只能授予访客或开发者；所有者可管理全部角色。删除直接成员不影响继承权限，最后一名活跃所有者不可删除或降级。
+        / Effective access is the maximum direct and inherited role. Maintainers manage only lower roles.
+        Owners manage all roles; the last active owner is protected.
       parameters:
-        - *a10
+        - *a8
         - name: userId
           in: path
           required: true
@@ -3659,8 +2932,9 @@ paths:
         - Projects & Groups
       summary: 列出邀请 / List invitations
       operationId: listgroupInvitations
-      description: 维护者仅可列出访客和开发者邀请；所有者与系统管理员可列出全部角色邀请。 / Maintainers can list guest and developer invitations only; owners and system administrators can list every role.
-      parameters: &a11
+      description: 维护者仅可列出访客和开发者邀请；所有者与系统管理员可列出全部角色邀请。 / Maintainers can list guest and developer invitations only;
+        owners and system administrators can list every role.
+      parameters: &a9
         - name: groupId
           in: path
           required: true
@@ -3695,10 +2969,10 @@ paths:
         - Projects & Groups
       summary: 创建角色邀请 / Create role invitation
       operationId: creategroupInvitation
-      description: 有效角色取项目直接角色、所属组及全部祖先组角色的最高值。维护者只能管理有效角色低于维护者的用户，且只能授予访客或开发者；所有者可管理全部角色。删除直接成员不影响继承权限，最后一名活跃所有者不可删除或降级。 /
-        Effective access is the maximum direct and inherited role. Maintainers manage only lower roles. Owners manage
-        all roles; the last active owner is protected.
-      parameters: *a11
+      description: 有效角色取项目直接角色、所属组及全部祖先组角色的最高值。维护者只能管理有效角色低于维护者的用户，且只能授予访客或开发者；所有者可管理全部角色。删除直接成员不影响继承权限，最后一名活跃所有者不可删除或降级。
+        / Effective access is the maximum direct and inherited role. Maintainers manage only lower roles.
+        Owners manage all roles; the last active owner is protected.
+      parameters: *a9
       requestBody:
         required: true
         content:
@@ -3746,9 +3020,9 @@ paths:
         - Projects & Groups
       summary: 撤销邀请 / Revoke invitation
       operationId: revokegroupInvitation
-      description: 有效角色取项目直接角色、所属组及全部祖先组角色的最高值。维护者只能管理有效角色低于维护者的用户，且只能授予访客或开发者；所有者可管理全部角色。删除直接成员不影响继承权限，最后一名活跃所有者不可删除或降级。 /
-        Effective access is the maximum direct and inherited role. Maintainers manage only lower roles. Owners manage
-        all roles; the last active owner is protected.
+      description: 有效角色取项目直接角色、所属组及全部祖先组角色的最高值。维护者只能管理有效角色低于维护者的用户，且只能授予访客或开发者；所有者可管理全部角色。删除直接成员不影响继承权限，最后一名活跃所有者不可删除或降级。
+        / Effective access is the maximum direct and inherited role. Maintainers manage only lower roles.
+        Owners manage all roles; the last active owner is protected.
       parameters:
         - name: groupId
           in: path
@@ -3787,6 +3061,632 @@ paths:
           $ref: "#/components/responses/HarnessError"
         "409":
           $ref: "#/components/responses/HarnessError"
+  /api/database-spaces:
+    get:
+      tags:
+        - Database Spaces
+      summary: List visible spaces, requests, grants and bindings
+      description: Authenticated. Every operation checks the current actor and effective grant. Approval never
+        widens requested permissions.
+      parameters:
+        - name: section
+          in: query
+          required: false
+          schema:
+            enum:
+              - spaces
+              - requests
+              - grants
+        - name: page
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+        - name: pageSize
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+        - name: search
+          in: query
+          required: false
+          schema: &a11
+            type: string
+        - name: projectId
+          in: query
+          required: false
+          schema: &a10
+            type: string
+            format: uuid
+        - name: entryId
+          in: query
+          required: false
+          schema: *a2
+      responses:
+        "200":
+          description: Success.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  errCode:
+                    const: 0
+                  errMessage:
+                    const: ""
+                  data:
+                    oneOf:
+                      - $ref: "#/components/schemas/DatabaseCatalog"
+                      - type: object
+                        properties:
+                          items:
+                            type: array
+                            items:
+                              oneOf:
+                                - $ref: "#/components/schemas/DatabaseSpace"
+                                - $ref: "#/components/schemas/DatabaseRequest"
+                                - $ref: "#/components/schemas/DatabaseGrant"
+                          total:
+                            type: integer
+                          page:
+                            type: integer
+                          pageSize:
+                            type: integer
+                        required:
+                          - items
+                          - total
+                          - page
+                          - pageSize
+                required:
+                  - errCode
+                  - errMessage
+                  - data
+        "400":
+          description: Invalid request, rejected transition or approval authority.
+        "401":
+          description: Authentication required.
+        "403":
+          description: Project role, entry declaration or active database grant denies access.
+        "404":
+          description: Resource or registered entry unavailable.
+  /api/database-spaces/requests:
+    post:
+      tags:
+        - Database Spaces
+      summary: Request a new space or access to an existing space
+      description: Authenticated. Every operation checks the current actor and effective grant. Approval never
+        widens requested permissions.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DatabaseRequestInput"
+      responses:
+        "200":
+          description: Success.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  errCode:
+                    const: 0
+                  errMessage:
+                    const: ""
+                  data:
+                    $ref: "#/components/schemas/DatabaseRequest"
+                required:
+                  - errCode
+                  - errMessage
+                  - data
+        "400":
+          description: Invalid request, rejected transition or approval authority.
+        "401":
+          description: Authentication required.
+        "403":
+          description: Project role, entry declaration or active database grant denies access.
+        "404":
+          description: Resource or registered entry unavailable.
+  /api/database-spaces/requests/{requestId}/review:
+    post:
+      tags:
+        - Database Spaces
+      summary: Approve or reject a pending request
+      description: Authenticated. Every operation checks the current actor and effective grant. Approval never
+        widens requested permissions.
+      parameters:
+        - name: requestId
+          in: path
+          required: true
+          schema: *a10
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                approve:
+                  type: boolean
+                permissions:
+                  $ref: "#/components/schemas/DatabasePermissions"
+                reason:
+                  type: string
+                  maxLength: 4096
+              required:
+                - approve
+      responses:
+        "200":
+          description: Success.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  errCode:
+                    const: 0
+                  errMessage:
+                    const: ""
+                  data:
+                    $ref: "#/components/schemas/DatabaseRequest"
+                required:
+                  - errCode
+                  - errMessage
+                  - data
+        "400":
+          description: Invalid request, rejected transition or approval authority.
+        "401":
+          description: Authentication required.
+        "403":
+          description: Project role, entry declaration or active database grant denies access.
+        "404":
+          description: Resource or registered entry unavailable.
+  /api/database-spaces/grants/{grantId}/{action}:
+    post:
+      tags:
+        - Database Spaces
+      summary: Revoke, rotate or narrow a grant
+      description: Authenticated. Every operation checks the current actor and effective grant. Approval never
+        widens requested permissions.
+      parameters:
+        - name: grantId
+          in: path
+          required: true
+          schema: *a10
+        - name: action
+          in: path
+          required: true
+          schema:
+            enum:
+              - revoke
+              - rotate
+              - narrow
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                permissions:
+                  $ref: "#/components/schemas/DatabasePermissions"
+              required: []
+      responses:
+        "200":
+          description: Success.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  errCode:
+                    const: 0
+                  errMessage:
+                    const: ""
+                  data:
+                    $ref: "#/components/schemas/DatabaseGrant"
+                required:
+                  - errCode
+                  - errMessage
+                  - data
+        "400":
+          description: Invalid request, rejected transition or approval authority.
+        "401":
+          description: Authentication required.
+        "403":
+          description: Project role, entry declaration or active database grant denies access.
+        "404":
+          description: Resource or registered entry unavailable.
+  /api/database-spaces/bindings/{bindingRef}:
+    get:
+      tags:
+        - Database Spaces
+      summary: Resolve a binding for its consumer
+      description: Authenticated. Every operation checks the current actor and effective grant. Approval never
+        widens requested permissions.
+      parameters:
+        - name: bindingRef
+          in: path
+          required: true
+          schema: *a10
+        - name: projectId
+          in: query
+          required: true
+          schema: *a10
+        - name: entryId
+          in: query
+          required: true
+          schema: *a2
+      responses:
+        "200":
+          description: Success.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  errCode:
+                    const: 0
+                  errMessage:
+                    const: ""
+                  data:
+                    $ref: "#/components/schemas/DatabaseAuthorization"
+                required:
+                  - errCode
+                  - errMessage
+                  - data
+        "400":
+          description: Invalid request, rejected transition or approval authority.
+        "401":
+          description: Authentication required.
+        "403":
+          description: Project role, entry declaration or active database grant denies access.
+        "404":
+          description: Resource or registered entry unavailable.
+  /api/database-spaces/bindings/{bindingRef}/bind:
+    post:
+      tags:
+        - Database Spaces
+      summary: Bind an approved database to an entry alias
+      description: Authenticated. Every operation checks the current actor and effective grant. Approval never
+        widens requested permissions.
+      parameters:
+        - name: bindingRef
+          in: path
+          required: true
+          schema: *a10
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                projectId: *a10
+                entryId: *a2
+                alias: *a2
+              required:
+                - projectId
+                - entryId
+                - alias
+      responses:
+        "200":
+          description: Success.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  errCode:
+                    const: 0
+                  errMessage:
+                    const: ""
+                  data:
+                    $ref: "#/components/schemas/DatabaseBinding"
+                required:
+                  - errCode
+                  - errMessage
+                  - data
+        "400":
+          description: Invalid request, rejected transition or approval authority.
+        "401":
+          description: Authentication required.
+        "403":
+          description: Project role, entry declaration or active database grant denies access.
+        "404":
+          description: Resource or registered entry unavailable.
+  /api/database-spaces/{spaceId}/data:
+    post:
+      tags:
+        - Database Spaces
+      summary: Read or mutate approved space data
+      description: Authenticated. Every operation checks the current actor and effective grant. Approval never
+        widens requested permissions.
+      parameters:
+        - name: spaceId
+          in: path
+          required: true
+          schema: *a10
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DatabaseDataRequest"
+      responses:
+        "200":
+          description: Success.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  errCode:
+                    const: 0
+                  errMessage:
+                    const: ""
+                  data: {}
+                required:
+                  - errCode
+                  - errMessage
+                  - data
+        "400":
+          description: Invalid request, rejected transition or approval authority.
+        "401":
+          description: Authentication required.
+        "403":
+          description: Project role, entry declaration or active database grant denies access.
+        "404":
+          description: Resource or registered entry unavailable.
+  /api/database-spaces/{spaceId}/values:
+    get:
+      tags:
+        - Database Spaces
+      summary: "Space owner or administrator: browse KV values"
+      description: Authenticated. Every operation checks the current actor and effective grant. Approval never
+        widens requested permissions.
+      parameters:
+        - name: spaceId
+          in: path
+          required: true
+          schema: *a10
+        - name: page
+          in: query
+          required: false
+          schema:
+            type: integer
+        - name: pageSize
+          in: query
+          required: false
+          schema:
+            type: integer
+        - name: search
+          in: query
+          required: false
+          schema: *a11
+      responses:
+        "200":
+          description: Success.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  errCode:
+                    const: 0
+                  errMessage:
+                    const: ""
+                  data: {}
+                required:
+                  - errCode
+                  - errMessage
+                  - data
+        "400":
+          description: Invalid request, rejected transition or approval authority.
+        "401":
+          description: Authentication required.
+        "403":
+          description: Project role, entry declaration or active database grant denies access.
+        "404":
+          description: Resource or registered entry unavailable.
+  /api/database-spaces/{spaceId}/manage:
+    post:
+      tags:
+        - Database Spaces
+      summary: "Space owner or administrator: manage KV, knowledge and attachments"
+      description: Authenticated. Every operation checks the current actor and effective grant. Approval never
+        widens requested permissions.
+      parameters:
+        - name: spaceId
+          in: path
+          required: true
+          schema: *a10
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                operation:
+                  enum:
+                    - kv.listValues
+                    - kv.getValue
+                    - kv.setValue
+                    - kv.deleteValue
+                    - database.revision
+                    - knowledge.listDocuments
+                    - knowledge.getDocument
+                    - knowledge.createDocument
+                    - knowledge.editDocument
+                    - knowledge.deleteDocument
+                    - knowledge.searchDocuments
+                    - knowledge.readDocumentLines
+                    - files.createFile
+                    - files.readFile
+                    - files.deleteFile
+                input:
+                  type: object
+                  additionalProperties: true
+              required:
+                - operation
+      responses:
+        "200":
+          description: Success.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  errCode:
+                    const: 0
+                  errMessage:
+                    const: ""
+                  data: {}
+                required:
+                  - errCode
+                  - errMessage
+                  - data
+        "400":
+          description: Invalid request, rejected transition or approval authority.
+        "401":
+          description: Authentication required.
+        "403":
+          description: Project role, entry declaration or active database grant denies access.
+        "404":
+          description: Resource or registered entry unavailable.
+  /api/database-spaces/consumers/{projectId}/{entryId}:
+    get:
+      tags:
+        - Database Spaces
+      summary: Read database requirements and binding status
+      description: Authenticated. Every operation checks the current actor and effective grant. Approval never
+        widens requested permissions.
+      parameters:
+        - name: projectId
+          in: path
+          required: true
+          schema: *a10
+        - name: entryId
+          in: path
+          required: true
+          schema: *a2
+      responses:
+        "200":
+          description: Success.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  errCode:
+                    const: 0
+                  errMessage:
+                    const: ""
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        alias: *a2
+                        host:
+                          enum:
+                            - local
+                            - server
+                        bindingRef: *a10
+                        status:
+                          enum:
+                            - local
+                            - unbound
+                            - bound
+                            - invalid
+                        error: *a11
+                        space:
+                          $ref: "#/components/schemas/DatabaseSpace"
+                      required:
+                        - alias
+                        - host
+                        - status
+                required:
+                  - errCode
+                  - errMessage
+                  - data
+        "400":
+          description: Invalid request, rejected transition or approval authority.
+        "401":
+          description: Authentication required.
+        "403":
+          description: Project role, entry declaration or active database grant denies access.
+        "404":
+          description: Resource or registered entry unavailable.
+  /api/projects/{projectId}/entries/{entryId}/resources/read:
+    post:
+      tags:
+        - Admin Projects
+      summary: Read a KV or knowledge resource through an entry alias
+      description: Authenticated. Every operation checks the current actor and effective grant. Approval never
+        widens requested permissions.
+      parameters:
+        - name: projectId
+          in: path
+          required: true
+          schema: *a10
+        - name: entryId
+          in: path
+          required: true
+          schema: *a2
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                kind:
+                  enum:
+                    - kv
+                    - knowledge
+                database: *a2
+                key: *a11
+                scope:
+                  enum:
+                    - project
+                    - conversation
+                conversationId: *a11
+                documentId: *a11
+              required:
+                - kind
+                - database
+              additionalProperties: false
+      responses:
+        "200":
+          description: Success.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  errCode:
+                    const: 0
+                  errMessage:
+                    const: ""
+                  data: {}
+                required:
+                  - errCode
+                  - errMessage
+                  - data
+        "400":
+          description: Invalid request, rejected transition or approval authority.
+        "401":
+          description: Authentication required.
+        "403":
+          description: Project role, entry declaration or active database grant denies access.
+        "404":
+          description: Resource or registered entry unavailable.
 components:
   securitySchemes:
     BearerAuth:
@@ -3816,13 +3716,6 @@ components:
       example: latest
     KanbanConfigurationId:
       name: configurationId
-      in: path
-      required: true
-      schema:
-        type: string
-        format: uuid
-    DeploymentId:
-      name: deploymentId
       in: path
       required: true
       schema:
@@ -4584,9 +4477,8 @@ components:
         - workflow
         - conversation
         - kanban
-      description: |
-        所有项目类型均由静态
-        package.json.steamHarness.projectType 声明。Server 只读取静态元数据，不加载项目代码。
+      description: Registered entry type. One aggregate can contain multiple types and repeated types. Server reads
+        static entry metadata without executing code.
     ProjectCardMetadata:
       type: object
       properties:
@@ -4671,8 +4563,6 @@ components:
           description: 项目 UUID，同时也是 server 权限与上传校验边界。
         name:
           type: string
-        projectType:
-          $ref: "#/components/schemas/ProjectKind"
         projectCard:
           $ref: "#/components/schemas/ProjectCardMetadata"
         projectInfo:
@@ -4713,10 +4603,14 @@ components:
             - "null"
         access:
           $ref: "#/components/schemas/ResourceAccess"
+        entries:
+          type: array
+          items:
+            $ref: "#/components/schemas/ProjectEntry"
+        defaultEntry: *a2
       required:
         - id
         - name
-        - projectType
         - projectCard
         - projectInfo
         - visibility
@@ -4725,6 +4619,8 @@ components:
         - versions
         - nextVersion
         - access
+        - entries
+        - defaultEntry
     SummaryResponse:
       allOf:
         - $ref: "#/components/schemas/ApiSuccessBase"
@@ -4782,11 +4678,6 @@ components:
           type: string
         sourceObjectPath:
           type: string
-        dependencies:
-          type: array
-          description: 该精确版本固化的 Kanban 数据源依赖锁；旧版本可能省略。
-          items:
-            $ref: "#/components/schemas/ProjectDependencyLock"
         latest:
           type: boolean
       required:
@@ -4940,242 +4831,9 @@ components:
               $ref: "#/components/schemas/DownloadableSourceFilesResult"
           required:
             - data
-    ProjectDependencyLock:
-      type: object
-      description: 由已确认关联项目生成的 Kanban 精确版本交付锁。
-      properties:
-        alias:
-          type: string
-          pattern: ^[a-z][a-z0-9_-]{0,63}$
-        projectId:
-          type: string
-          format: uuid
-        delivery:
-          type: string
-          enum:
-            - included
-            - external
-        version:
-          type: string
-          pattern: ^\d+\.\d+\.\d+$
-          description: included 依赖发布后固化的精确版本；external 不携带。
-        sourceHash:
-          type: string
-          pattern: ^[a-f0-9]{64}$
-          description: included 依赖发布后固化的源码哈希；external 不携带。
-      required:
-        - alias
-        - projectId
-        - delivery
-    ProjectGroupProject:
-      type: object
-      properties:
-        projectId:
-          type: string
-          format: uuid
-        role:
-          type: string
-          enum:
-            - root
-            - dependency
-        archivePath:
-          type: string
-          description: project-group 归档内的安全相对 `.tgz` 或 `.tar.gz` 路径。
-        alias:
-          type: string
-          pattern: ^[a-z][a-z0-9_-]{0,63}$
-      required:
-        - projectId
-        - role
-        - archivePath
-    ProjectGroupManifestV1:
-      type: object
-      properties:
-        version:
-          type: integer
-          const: 1
-        rootProjectId:
-          type: string
-          format: uuid
-        projects:
-          type: array
-          minItems: 1
-          items:
-            $ref: "#/components/schemas/ProjectGroupProject"
-        dependencies:
-          type: array
-          items:
-            $ref: "#/components/schemas/ProjectDependencyLock"
-      required:
-        - version
-        - rootProjectId
-        - projects
-        - dependencies
-    DeploymentStatus:
-      type: string
-      enum:
-        - planned
-        - preparing
-        - prepared
-        - publishing
-        - published
-        - failed
-    DeploymentItem:
-      type: object
-      properties:
-        deploymentId:
-          type: string
-          format: uuid
-        projectId:
-          type: string
-          format: uuid
-        alias:
-          type: string
-        role:
-          type: string
-          enum:
-            - root
-            - dependency
-        delivery:
-          type: string
-          const: included
-        status:
-          $ref: "#/components/schemas/DeploymentStatus"
-        stage:
-          type: string
-        plannedVersion:
-          type: string
-        preparedSourceHash:
-          type: string
-          pattern: ^[a-f0-9]{64}$
-        publishedVersion:
-          type: string
-        publishedSourceHash:
-          type: string
-          pattern: ^[a-f0-9]{64}$
-        error:
-          type: string
-        updatedAt:
-          type: string
-          format: date-time
-      required:
-        - deploymentId
-        - projectId
-        - role
-        - delivery
-        - status
-        - updatedAt
-    Deployment:
-      type: object
-      properties:
-        id:
-          type: string
-          format: uuid
-        rootProjectId:
-          type: string
-          format: uuid
-        status:
-          $ref: "#/components/schemas/DeploymentStatus"
-        manifest:
-          $ref: "#/components/schemas/ProjectGroupManifestV1"
-        releaseLog:
-          type: string
-        createdByUserId:
-          type: string
-        error:
-          type: string
-        createdAt:
-          type: string
-          format: date-time
-        updatedAt:
-          type: string
-          format: date-time
-        publishedAt:
-          type: string
-          format: date-time
-        items:
-          type: array
-          items:
-            $ref: "#/components/schemas/DeploymentItem"
-      required:
-        - id
-        - rootProjectId
-        - status
-        - manifest
-        - releaseLog
-        - createdByUserId
-        - createdAt
-        - updatedAt
-        - items
-    DeploymentResponse:
-      allOf:
-        - $ref: "#/components/schemas/ApiSuccessBase"
-        - type: object
-          properties:
-            data:
-              $ref: "#/components/schemas/Deployment"
-          required:
-            - data
-    ProjectDependencyStatus:
-      type: object
-      properties:
-        dependency:
-          $ref: "#/components/schemas/ProjectDependencyLock"
-        projectName:
-          type: string
-        projectAvailable:
-          type: boolean
-        sourceAvailable:
-          type: boolean
-        sourceDownloadAllowed:
-          type: boolean
-        relationshipConfirmed:
-          type: boolean
-        dataInitialized:
-          type: boolean
-        requestUrl:
-          type: string
-          format: uri
-      required:
-        - dependency
-        - projectAvailable
-        - sourceAvailable
-        - sourceDownloadAllowed
-        - relationshipConfirmed
-        - dataInitialized
-    ProjectDependencyStatusResult:
-      type: object
-      properties:
-        rootProjectId:
-          type: string
-          format: uuid
-        rootVersion:
-          type: string
-        dependencies:
-          type: array
-          items:
-            $ref: "#/components/schemas/ProjectDependencyStatus"
-        publishable:
-          type: boolean
-      required:
-        - rootProjectId
-        - rootVersion
-        - dependencies
-        - publishable
-    ProjectDependencyStatusResponse:
-      allOf:
-        - $ref: "#/components/schemas/ApiSuccessBase"
-        - type: object
-          properties:
-            data:
-              $ref: "#/components/schemas/ProjectDependencyStatusResult"
-          required:
-            - data
     ProjectDownloadItem:
       type: object
       properties:
-        alias:
-          type: string
         projectId:
           type: string
           format: uuid
@@ -5186,112 +4844,12 @@ components:
           pattern: ^[a-f0-9]{64}$
         projectName:
           type: string
-        role:
-          type: string
-          enum:
-            - root
-            - dependency
         alreadyAvailable:
           type: boolean
       required:
         - projectId
         - version
         - sourceHash
-        - role
-    ProjectSkippedDependency:
-      type: object
-      properties:
-        dependency:
-          $ref: "#/components/schemas/ProjectDependencyLock"
-        reason:
-          type: string
-          enum:
-            - external
-            - source_unavailable
-            - permission_required
-        requestUrl:
-          type: string
-          format: uri
-      required:
-        - dependency
-        - reason
-    ProjectGroupDownloadProject:
-      type: object
-      properties:
-        alias:
-          type: string
-        projectId:
-          type: string
-          format: uuid
-        projectName:
-          type: string
-        version:
-          type: string
-        sourceHash:
-          type: string
-          pattern: ^[a-f0-9]{64}$
-        role:
-          type: string
-          enum:
-            - root
-            - dependency
-        files:
-          type: array
-          items:
-            $ref: "#/components/schemas/File"
-      required:
-        - projectId
-        - projectName
-        - version
-        - sourceHash
-        - role
-        - files
-    ProjectGroupDownloadResult:
-      type: object
-      properties:
-        rootProjectId:
-          type: string
-          format: uuid
-        rootVersion:
-          type: string
-        dependencies:
-          type: array
-          items:
-            $ref: "#/components/schemas/ProjectDependencyLock"
-        downloads:
-          type: array
-          items:
-            $ref: "#/components/schemas/ProjectDownloadItem"
-        skippedDependencies:
-          type: array
-          items:
-            $ref: "#/components/schemas/ProjectSkippedDependency"
-        complete:
-          type: boolean
-        copyAllowed:
-          type: boolean
-        projects:
-          type: array
-          items:
-            $ref: "#/components/schemas/ProjectGroupDownloadProject"
-      required:
-        - rootProjectId
-        - rootVersion
-        - dependencies
-        - downloads
-        - skippedDependencies
-        - complete
-        - copyAllowed
-        - projects
-    ProjectGroupDownloadResponse:
-      allOf:
-        - $ref: "#/components/schemas/ApiSuccessBase"
-        - type: object
-          properties:
-            data:
-              $ref: "#/components/schemas/ProjectGroupDownloadResult"
-          required:
-            - data
     ProjectAccessRequestStatus:
       type: string
       enum:
@@ -5466,14 +5024,14 @@ components:
             - data
     CreateProjectRequest:
       type: object
-      description: Server 分配新应用 ID，拒绝客户端传入 projectId。 / The Server assigns a new application ID; client-selected projectId is rejected.
+      description: Server 分配新应用 ID，拒绝客户端传入 projectId。 / The Server assigns a new application ID; client-selected
+        projectId is rejected.
       not:
-        required: [projectId]
+        required:
+          - projectId
       properties:
         name:
           type: string
-        projectType:
-          $ref: "#/components/schemas/ProjectKind"
         projectInfo:
           $ref: "#/components/schemas/DeclaredProjectInfo"
         visibility:
@@ -5484,10 +5042,16 @@ components:
           type:
             - string
             - "null"
+        entries:
+          type: array
+          items:
+            $ref: "#/components/schemas/ProjectEntry"
+        defaultEntry: *a2
       required:
         - name
-        - projectType
         - projectInfo
+        - entries
+        - defaultEntry
     ProjectPlatformSupport:
       oneOf:
         - type: object
@@ -5550,120 +5114,10 @@ components:
             - mode
             - prefixes
           additionalProperties: false
-    RelatedProjectKVGrant:
-      type: object
-      description: 允许关联项目访问当前项目 KV 的规则；不是当前项目访问对方的权限。
-      properties:
-        read:
-          $ref: "#/components/schemas/ProjectKVAccessRule"
-        write:
-          $ref: "#/components/schemas/ProjectKVAccessRule"
-      required:
-        - read
-        - write
-      additionalProperties: false
-    RelatedProject:
-      type: object
-      properties:
-        alias:
-          type: string
-          pattern: ^[a-z][a-z0-9_-]{0,63}$
-        projectId:
-          type: string
-          format: uuid
-        grantToRelatedProject:
-          $ref: "#/components/schemas/RelatedProjectKVGrant"
-      required:
-        - alias
-        - projectId
-        - grantToRelatedProject
-      additionalProperties: false
-    RelatedProjectStatus:
-      type: object
-      properties:
-        relation:
-          $ref: "#/components/schemas/RelatedProject"
-        projectName:
-          type: string
-        reciprocalAlias:
-          type: string
-          pattern: ^[a-z][a-z0-9_-]{0,63}$
-        grantFromRelatedProject:
-          $ref: "#/components/schemas/RelatedProjectKVGrant"
-        confirmed:
-          type: boolean
-      required:
-        - relation
-        - confirmed
-    RelatedProjectListResult:
-      type: object
-      properties:
-        projectId:
-          type: string
-          format: uuid
-        relatedProjects:
-          type: array
-          maxItems: 32
-          items:
-            $ref: "#/components/schemas/RelatedProjectStatus"
-      required:
-        - projectId
-        - relatedProjects
-    RelatedProjectListResponse:
-      allOf:
-        - $ref: "#/components/schemas/ApiSuccessBase"
-        - type: object
-          properties:
-            data:
-              $ref: "#/components/schemas/RelatedProjectListResult"
-          required:
-            - data
-    RelatedProjectUpdateRequest:
-      type: object
-      properties:
-        targetProjectId:
-          type: string
-          format: uuid
-        targetAlias:
-          type: string
-          pattern: ^[a-z][a-z0-9_-]{0,63}$
-        grantToRelatedProject:
-          $ref: "#/components/schemas/RelatedProjectKVGrant"
-        targetGrantToRelatedProject:
-          $ref: "#/components/schemas/RelatedProjectKVGrant"
-      required:
-        - targetProjectId
-      additionalProperties: false
-    RelatedProjectRemoveResult:
-      type: object
-      properties:
-        removed:
-          type: boolean
-        relatedProjects:
-          type: array
-          items:
-            $ref: "#/components/schemas/RelatedProjectStatus"
-      required:
-        - removed
-        - relatedProjects
-    RelatedProjectRemoveResponse:
-      allOf:
-        - $ref: "#/components/schemas/ApiSuccessBase"
-        - type: object
-          properties:
-            data:
-              $ref: "#/components/schemas/RelatedProjectRemoveResult"
-          required:
-            - data
     ProjectInfoContract:
       type: object
-      description: |
-        项目元数据权威模型。读取旧项目时 `dataStorage` 可能为 null，其它创建或保存请求必须使用
-        `DeclaredProjectInfo` 并提供有效 mode。当前界面识别 `zh-CN`、`en`、
-        `multilingual`、`multiplatform`、`macos`、`windows` 和 `web`；符合格式的未来 locale 或 ID 原样保留。
-
-        Authoritative project metadata model. Legacy read responses may carry null `dataStorage`;
-        create and save requests use `DeclaredProjectInfo` with an explicit valid mode.
+      description: "Display metadata only: localized names, declarations and platform support. Database requirements
+        belong to registered entries."
       properties:
         localizedNames:
           type: object
@@ -5677,47 +5131,16 @@ components:
             pattern: ^[a-z][a-z0-9-]*$
         platformSupport:
           $ref: "#/components/schemas/ProjectPlatformSupport"
-        dataStorage:
-          description: 严格限定项目可访问的数据位置；null 只表示尚未迁移的旧项目。 / Strictly limits accessible data locations; null represents an undeclared
-            legacy project only.
-          oneOf:
-            - $ref: "#/components/schemas/ProjectDataStorage"
-            - type: "null"
-        relatedProjects:
-          type: array
-          maxItems: 32
-          uniqueItems: true
-          items:
-            $ref: "#/components/schemas/RelatedProject"
       required:
         - localizedNames
         - declarations
         - platformSupport
-        - dataStorage
-        - relatedProjects
-    ProjectDataStorage:
-      type: object
-      properties:
-        mode:
-          type: string
-          enum:
-            - local
-            - server
-            - both
-          description: local 仅本地，server 仅服务器，both 允许显式选择两端。 / local permits local storage only, server permits server storage
-            only, and both permits an explicit choice.
-      required:
-        - mode
-      additionalProperties: false
     DeclaredProjectInfo:
       allOf:
         - $ref: "#/components/schemas/ProjectInfoContract"
         - type: object
-          properties:
-            dataStorage:
-              $ref: "#/components/schemas/ProjectDataStorage"
-          required:
-            - dataStorage
+          properties: {}
+          required: []
     ProjectInfoUpdateResult:
       type: object
       properties:
@@ -5749,8 +5172,8 @@ components:
         - developer
         - maintainer
         - owner
-      description: 权限逐级累加：访客只读；开发者编辑草稿、上传、发布、写服务器数据；维护者管理设置和低级成员；所有者管理全部成员、删除与转移。 / Cumulative guest, developer, maintainer
-        and owner roles.
+      description: 权限逐级累加：访客只读；开发者编辑草稿、上传、发布、写服务器数据；维护者管理设置和低级成员；所有者管理全部成员、删除与转移。 / Cumulative guest, developer,
+        maintainer and owner roles.
     InvitationRole:
       $ref: "#/components/schemas/ProjectRole"
     ProjectInvitation:
@@ -5790,9 +5213,9 @@ components:
           enum:
             - project
             - group
-        resourceId: &a3
+        resourceId: &a12
           type: string
-        resourceName: *a3
+        resourceName: *a12
       required:
         - id
         - projectId
@@ -5991,18 +5414,22 @@ components:
           type: string
         projectName:
           type: string
-        projectType:
-          $ref: "#/components/schemas/ProjectKind"
         projectInfo:
           $ref: "#/components/schemas/DeclaredProjectInfo"
         visibility:
           $ref: "#/components/schemas/Visibility"
+        entries:
+          type: array
+          items:
+            $ref: "#/components/schemas/ProjectEntry"
+        defaultEntry: *a2
       required:
         - projectId
         - projectName
-        - projectType
         - projectInfo
         - visibility
+        - entries
+        - defaultEntry
     ProjectCreateResultResponse:
       allOf:
         - $ref: "#/components/schemas/ApiSuccessBase"
@@ -6218,8 +5645,8 @@ components:
             - mode
         resolveOnInput:
           type: boolean
-          description: Whether main composer input changes trigger the selected entrypoint resolver (or the Conversation executor
-            resolver). Defaults to false.
+          description: Whether main composer input changes trigger the selected entrypoint resolver (or the Conversation
+            executor resolver). Defaults to false.
         options:
           type: array
           items:
@@ -6285,130 +5712,217 @@ components:
       type: object
       additionalProperties: false
       properties:
-        publish: { type: boolean, default: true }
-        includeValue: { type: boolean, default: false }
-        editable: { type: boolean, default: true }
+        publish:
+          type: boolean
+          default: true
+        includeValue:
+          type: boolean
+          default: false
+        editable:
+          type: boolean
+          default: true
     ConfigurationPublicationProfile:
       type: object
       properties:
-        id: { type: string }
-        name: { type: string, minLength: 1, maxLength: 200 }
-        profileKey: { type: string, description: Stable source-declared role profile. }
-        values: { type: object, additionalProperties: true }
-      required: [ id, name, values ]
+        id:
+          type: string
+        name:
+          type: string
+          minLength: 1
+          maxLength: 200
+        profileKey:
+          type: string
+          description: Stable source-declared role profile.
+        values:
+          type: object
+          additionalProperties: true
+      required:
+        - id
+        - name
+        - values
     AgentModelPolicy:
       type: object
       additionalProperties: false
-      description: Source-declared restriction retained independently of published field visibility. Draft and template metadata cannot relax the current source restriction.
+      description: Source-declared restriction retained independently of published field visibility. Draft and
+        template metadata cannot relax the current source restriction.
       properties:
-        allowThirdParty: { type: boolean }
+        allowThirdParty:
+          type: boolean
     ConfigurationProfilePolicy:
       type: object
-      description: Source-owned role policy. Client labels, role claims and personal metadata never grant authority. Projects without this policy keep their existing behavior.
+      description: Source-owned role policy. Client labels, role claims and personal metadata never grant authority.
+        Projects without this policy keep their existing behavior.
       properties:
-        version: { type: integer, enum: [ 1 ] }
-        defaultProfileKey: { type: string, description: Must identify a guest profile. }
-        manageMinimumRole: { $ref: "#/components/schemas/ProjectRole" }
+        version:
+          type: integer
+          enum:
+            - 1
+        defaultProfileKey:
+          type: string
+          description: Must identify a guest profile.
+        manageMinimumRole:
+          $ref: "#/components/schemas/ProjectRole"
         profiles:
           type: array
           minItems: 1
           items:
             type: object
             properties:
-              key: { type: string }
-              name: { type: string }
-              minimumRole: { $ref: "#/components/schemas/ProjectRole" }
-              fixedValues: { type: object, additionalProperties: true }
-              description: { type: string }
-              tags: { type: array, items: { type: string } }
-            required: [ key, name, minimumRole, fixedValues ]
-      required: [ version, defaultProfileKey, manageMinimumRole, profiles ]
+              key:
+                type: string
+              name:
+                type: string
+              minimumRole:
+                $ref: "#/components/schemas/ProjectRole"
+              fixedValues:
+                type: object
+                additionalProperties: true
+              description:
+                type: string
+              tags:
+                type: array
+                items:
+                  type: string
+            required:
+              - key
+              - name
+              - minimumRole
+              - fixedValues
+      required:
+        - version
+        - defaultProfileKey
+        - manageMinimumRole
+        - profiles
     ConfigurationPublicationDraft:
       type: object
       properties:
-        revision: { type: integer, minimum: 0 }
-        configurationRevision: { type: integer, minimum: 0 }
-        profilePolicy: { $ref: "#/components/schemas/ConfigurationProfilePolicy" }
+        revision:
+          type: integer
+          minimum: 0
+        configurationRevision:
+          type: integer
+          minimum: 0
+        profilePolicy:
+          $ref: "#/components/schemas/ConfigurationProfilePolicy"
         agentModelPolicy:
           $ref: "#/components/schemas/AgentModelPolicy"
         configurationAccountId:
-          {
-            type: string,
-            readOnly: true,
-            description: Server-assigned source account for personal revision checks; client values do not grant authority.
-          }
+          type: string
+          readOnly: true
+          description: Server-assigned source account for personal revision checks; client values do not grant authority.
         fields:
           type: array
-          items: { $ref: "#/components/schemas/ProjectConfigurationField" }
+          items:
+            $ref: "#/components/schemas/ProjectConfigurationField"
         configurations:
           type: array
           minItems: 1
-          items: { $ref: "#/components/schemas/ConfigurationPublicationProfile" }
-        defaultConfigurationId: { type: string }
-      required: [ revision, configurationRevision, fields, configurations, defaultConfigurationId ]
+          items:
+            $ref: "#/components/schemas/ConfigurationPublicationProfile"
+        defaultConfigurationId:
+          type: string
+      required:
+        - revision
+        - configurationRevision
+        - fields
+        - configurations
+        - defaultConfigurationId
     ProjectConfigurationTemplate:
       type: object
-      description: Version 3 freezes role policies and is rejected by unsupported hosts. Immutable, filtered version data; defaultValue is omitted. Arrays are indivisible. Excluded names are
-        represented only by opaque deny hashes. The authenticated download validates source and attachment hashes before
-        caching outside project source.
+      description: Version 3 freezes role policies and is rejected by unsupported hosts. Immutable, filtered version
+        data; defaultValue is omitted. Arrays are indivisible. Excluded names are represented only by opaque
+        deny hashes. The authenticated download validates source and attachment hashes before caching outside
+        project source.
       properties:
-        version: { type: integer, enum: [ 2, 3 ] }
-        kind: { type: string, enum: [ steamharness-configuration-template ] }
-        projectId: { type: string }
-        projectVersion: { type: string }
-        sourceHash: { type: string, pattern: '^[a-f0-9]{64}$' }
-        draftRevision: { type: integer, minimum: 0 }
-        profilePolicy: { $ref: "#/components/schemas/ConfigurationProfilePolicy" }
+        version:
+          type: integer
+          enum:
+            - 2
+            - 3
+        kind:
+          type: string
+          enum:
+            - steamharness-configuration-template
+        projectId:
+          type: string
+        projectVersion:
+          type: string
+        sourceHash:
+          type: string
+          pattern: ^[a-f0-9]{64}$
+        draftRevision:
+          type: integer
+          minimum: 0
+        profilePolicy:
+          $ref: "#/components/schemas/ConfigurationProfilePolicy"
         agentModelPolicy:
           $ref: "#/components/schemas/AgentModelPolicy"
         fields:
           type: array
-          items: { $ref: "#/components/schemas/ProjectConfigurationField" }
+          items:
+            $ref: "#/components/schemas/ProjectConfigurationField"
         configurations:
           type: array
           minItems: 1
-          items: { $ref: "#/components/schemas/ConfigurationPublicationProfile" }
-        defaultConfigurationId: { type: string }
+          items:
+            $ref: "#/components/schemas/ConfigurationPublicationProfile"
+        defaultConfigurationId:
+          type: string
         reservedFields:
           type: array
-          items: { type: string, pattern: '^[a-f0-9]{64}$' }
+          items:
+            type: string
+            pattern: ^[a-f0-9]{64}$
         attachments:
           type: array
           items:
             type: object
             properties:
-              id: { type: string }
-              path: { type: string }
-              sha256: { type: string, pattern: '^[a-f0-9]{64}$' }
-            required: [ id, path, sha256 ]
+              id:
+                type: string
+              path:
+                type: string
+              sha256:
+                type: string
+                pattern: ^[a-f0-9]{64}$
+            required:
+              - id
+              - path
+              - sha256
       required:
-        [
-          version,
-          kind,
-          projectId,
-          projectVersion,
-          sourceHash,
-          draftRevision,
-          fields,
-          configurations,
-          defaultConfigurationId
-        ]
+        - version
+        - kind
+        - projectId
+        - projectVersion
+        - sourceHash
+        - draftRevision
+        - fields
+        - configurations
+        - defaultConfigurationId
     ProjectConfigurationCapability:
       type: object
       properties:
-        editable: { type: boolean }
-        reason: { type: string }
-      required: [ editable ]
+        editable:
+          type: boolean
+        reason:
+          type: string
+      required:
+        - editable
     ProjectConfigurationField:
       type: object
       additionalProperties: false
       properties:
         name:
           type: string
-          pattern: '^[A-Za-z_][A-Za-z0-9_.-]{0,199}$'
+          pattern: ^[A-Za-z_][A-Za-z0-9_.-]{0,199}$
         type:
           type: string
-          enum: [ string, number, boolean, json, file ]
+          enum:
+            - string
+            - number
+            - boolean
+            - json
+            - file
         label:
           type: string
         description:
@@ -6424,15 +5938,26 @@ components:
           description: String arrays for string fields; up to 32 server file references for file fields.
         control:
           type: string
-          enum: [ text, textarea, select, radio, checkboxes, ai-models ]
-          description: ai-models is reserved for the STEAMHARNESS_AGENT_MODELS JSON field. Entries contain id, name, model and source. System entries use credentialId; third-party entries use apiKind, baseUrl and apiKey. Values are private unless explicitly included in publication.
+          enum:
+            - text
+            - textarea
+            - select
+            - radio
+            - checkboxes
+            - ai-models
+          description: ai-models is reserved for the STEAMHARNESS_AGENT_MODELS JSON field. Entries contain id, name,
+            model and source. System entries use credentialId; third-party entries use apiKind, baseUrl and
+            apiKey. Values are private unless explicitly included in publication.
         allowThirdParty:
           type: boolean
-          description: Only valid for ai-models. Set false in configuration.json to allow only system AI. Saves and imports cannot add third-party entries or relax the project's declared policy. Omitted or true allows both sources.
+          description: Only valid for ai-models. Set false in configuration.json to allow only system AI. Saves and
+            imports cannot add third-party entries or relax the project's declared policy. Omitted or true
+            allows both sources.
         accept:
           type: array
           description: File fields only. Accepted MIME types or extensions. Files upload through POST
-            /api/projects/{projectId}/configurations/files and values contain server metadata, never file bytes.
+            /api/projects/{projectId}/configurations/files and values contain server metadata, never file
+            bytes.
           items:
             type: string
         options:
@@ -6444,30 +5969,41 @@ components:
                 type: string
               label:
                 type: string
-            required: [ value ]
+            required:
+              - value
         sharing:
           $ref: "#/components/schemas/ConfigurationSharingRule"
         paths:
           type: object
-          description: JSON Pointer rules, inherited from the parent with more specific rules taking precedence. Excluding the
-            whole field excludes every descendant.
-          additionalProperties: { $ref: "#/components/schemas/ConfigurationSharingRule" }
+          description: JSON Pointer rules, inherited from the parent with more specific rules taking precedence.
+            Excluding the whole field excludes every descendant.
+          additionalProperties:
+            $ref: "#/components/schemas/ConfigurationSharingRule"
         omittedPaths:
           description: Generated opaque deny hashes for omitted JSON paths, without private path names.
           type: array
-          items: { type: string, pattern: '^[a-f0-9]{64}$' }
-      required: [ name, type ]
+          items:
+            type: string
+            pattern: ^[a-f0-9]{64}$
+      required:
+        - name
+        - type
     ProjectConfigurationProfile:
       type: object
       properties:
         deletedPaths:
-          description: Personal JSON deletion overlays; managed by the service and rechecked against each version's permissions.
+          description: Personal JSON deletion overlays; managed by the service and rechecked against each version's
+            permissions.
           type: object
           additionalProperties:
             type: array
-            items: { type: string }
-        profileKey: { type: string }
-        baseProfile: { type: boolean, readOnly: true }
+            items:
+              type: string
+        profileKey:
+          type: string
+        baseProfile:
+          type: boolean
+          readOnly: true
         templateId:
           type: string
         id:
@@ -6483,17 +6019,24 @@ components:
         updatedAt:
           type: string
           format: date-time
-      required: [ id, name, values, createdAt, updatedAt ]
+      required:
+        - id
+        - name
+        - values
+        - createdAt
+        - updatedAt
     ProjectConfigurationState:
       type: object
       description: Role-filtered personal state. Guests receive only accessible base profiles and attachments.
       properties:
-        profilePolicy: { $ref: "#/components/schemas/ConfigurationProfilePolicy" }
+        profilePolicy:
+          $ref: "#/components/schemas/ConfigurationProfilePolicy"
         agentModelPolicy:
           $ref: "#/components/schemas/AgentModelPolicy"
         version:
           type: integer
-          enum: [ 1 ]
+          enum:
+            - 1
         revision:
           type: integer
           minimum: 0
@@ -6506,7 +6049,8 @@ components:
           items:
             $ref: "#/components/schemas/ProjectConfigurationField"
         shadowedCustomFields:
-          description: Custom definitions temporarily hidden by same-name project declarations, retained for later restoration.
+          description: Custom definitions temporarily hidden by same-name project declarations, retained for later
+            restoration.
           type: array
           items:
             $ref: "#/components/schemas/ProjectConfigurationField"
@@ -6514,25 +6058,41 @@ components:
           type: object
           readOnly: true
           properties:
-            manageConfigurations: { type: boolean }
-            role: { $ref: "#/components/schemas/ProjectRole" }
-            online: { type: boolean }
-            subject: { type: string, description: Host-verified application account scope; not an authorization input. }
-            reason: { type: string }
+            manageConfigurations:
+              type: boolean
+            role:
+              $ref: "#/components/schemas/ProjectRole"
+            online:
+              type: boolean
+            subject:
+              type: string
+              description: Host-verified application account scope; not an authorization input.
+            reason:
+              type: string
         configurationCapabilities:
           type: object
           readOnly: true
           additionalProperties:
             type: object
             properties:
-              use: { type: boolean }
-              edit: { type: boolean }
-              rename: { type: boolean }
-              delete: { type: boolean }
-              minimumRole: { $ref: "#/components/schemas/ProjectRole" }
-              description: { type: string }
-              tags: { type: array, items: { type: string } }
-              reason: { type: string }
+              use:
+                type: boolean
+              edit:
+                type: boolean
+              rename:
+                type: boolean
+              delete:
+                type: boolean
+              minimumRole:
+                $ref: "#/components/schemas/ProjectRole"
+              description:
+                type: string
+              tags:
+                type: array
+                items:
+                  type: string
+              reason:
+                type: string
         configurations:
           type: array
           minItems: 1
@@ -6546,13 +6106,16 @@ components:
           $ref: "#/components/schemas/ConfigurationPublicationDraft"
         publicationPreview:
           $ref: "#/components/schemas/ProjectConfigurationTemplate"
-        canManagePublication: { type: boolean }
+        canManagePublication:
+          type: boolean
         sourceHash:
           type: string
-          description: 当前所选源码的摘要；读取已发布版本不会要求草稿存在。 / Hash of the selected source; reading a published version does not require a draft.
+          description: 当前所选源码的摘要；读取已发布版本不会要求草稿存在。 / Hash of the selected source; reading a published version does not
+            require a draft.
         publicationRevision:
           type: integer
-          description: 仅开发者及以上读取草稿时提供，用于发布并发校验。 / Provided to developers and above when reading the draft for publication concurrency checks.
+          description: 仅开发者及以上读取草稿时提供，用于发布并发校验。 / Provided to developers and above when reading the draft for
+            publication concurrency checks.
         fieldCapabilities:
           type: object
           additionalProperties:
@@ -6562,27 +6125,40 @@ components:
                 properties:
                   paths:
                     type: object
-                    additionalProperties: { $ref: "#/components/schemas/ProjectConfigurationCapability" }
+                    additionalProperties:
+                      $ref: "#/components/schemas/ProjectConfigurationCapability"
         conflicts:
           type: array
           description: Preserved personal drafts whose field types changed on upgrade.
           items:
             type: object
             properties:
-              configurationId: { type: string }
-              key: { type: string }
+              configurationId:
+                type: string
+              key:
+                type: string
               value: {}
-              reason: { type: string }
-      required: [ version, revision, fields, customFields, configurations, activeConfigurationId ]
+              reason:
+                type: string
+        entryId: *a2
+      required:
+        - version
+        - revision
+        - fields
+        - customFields
+        - configurations
+        - activeConfigurationId
     ProjectConfigurationExport:
       type: object
       properties:
         version:
           type: integer
-          enum: [ 1 ]
+          enum:
+            - 1
         kind:
           type: string
-          enum: [ steamharness-project-configurations ]
+          enum:
+            - steamharness-project-configurations
         fields:
           type: array
           items:
@@ -6593,7 +6169,8 @@ components:
           items:
             type: object
             properties:
-              profileKey: { type: string }
+              profileKey:
+                type: string
               templateId:
                 type: string
               name:
@@ -6601,32 +6178,38 @@ components:
               values:
                 type: object
                 additionalProperties: true
-            required: [ name, values ]
-      required: [ version, kind, fields, configurations ]
+            required:
+              - name
+              - values
+      required:
+        - version
+        - kind
+        - fields
+        - configurations
     ProjectConfigurationAction:
       type: object
-      description: At most 1 MiB. Revision is mandatory for every mutation. Profile mutations require id; create takes
-        optional name. Save merges typed values and removes overrides named in unset. Field edits use field and optional
-        old key. Import takes a complete document. Export optionally filters by id and always applies the current role. Fixed values and base names cannot be changed. Unauthorized batches are rejected atomically.
+      description: At most 1 MiB. Revision is mandatory for every mutation. Profile mutations require id; create
+        takes optional name. Save merges typed values and removes overrides named in unset. Field edits use
+        field and optional old key. Import takes a complete document. Export optionally filters by id and
+        always applies the current role. Fixed values and base names cannot be changed. Unauthorized batches
+        are rejected atomically.
       properties:
         action:
           type: string
           enum:
-            [
-              get,
-              export,
-              create,
-              duplicate,
-              rename,
-              save,
-              select,
-              delete,
-              field.save,
-              field.delete,
-              import,
-              publication.save,
-              publication.preview
-            ]
+            - get
+            - export
+            - create
+            - duplicate
+            - rename
+            - save
+            - select
+            - delete
+            - field.save
+            - field.delete
+            - import
+            - publication.save
+            - publication.preview
         revision:
           type: integer
           minimum: 0
@@ -6636,7 +6219,9 @@ components:
           type: string
           minLength: 1
           maxLength: 200
-        profileKey: { type: string, description: Base policy inherited by a newly created personal configuration. }
+        profileKey:
+          type: string
+          description: Base policy inherited by a newly created personal configuration.
         values:
           type: object
           additionalProperties: true
@@ -6652,7 +6237,8 @@ components:
           $ref: "#/components/schemas/ProjectConfigurationExport"
         publication:
           $ref: "#/components/schemas/ConfigurationPublicationDraft"
-      required: [ action ]
+      required:
+        - action
     ProjectConfigurationResponse:
       allOf:
         - $ref: "#/components/schemas/ApiSuccessBase"
@@ -6662,7 +6248,8 @@ components:
               oneOf:
                 - $ref: "#/components/schemas/ProjectConfigurationState"
                 - $ref: "#/components/schemas/ProjectConfigurationExport"
-          required: [ data ]
+          required:
+            - data
     KanbanConfiguration:
       $ref: "#/components/schemas/ProjectConfigurationProfile"
     KanbanPreview:
@@ -6681,9 +6268,9 @@ components:
         - url
     KanbanBridgeCall:
       type: object
-      description: |
-        iframe 生成 requestId，并从固定白名单选择 operation。input 的字段由 operation
-        决定；服务端拒绝额外的项目、scope、projectName、数据库路径或 target 控制字段。
+      description: Each database operation requires input.database, a declared alias. The host selects the
+        registered entry, validates the actor and checks current space grants. Runtime-only operations do not
+        access data.
       properties:
         requestId:
           type: string
@@ -6697,8 +6284,6 @@ components:
             - files.deleteFile
             - kv.getValue
             - kv.setValue
-            - relatedProject.kv.getValue
-            - relatedProject.kv.setValue
             - knowledge.listDocuments
             - knowledge.getDocument
             - knowledge.createDocument
@@ -6706,6 +6291,7 @@ components:
             - knowledge.deleteDocument
             - knowledge.searchDocuments
             - knowledge.readDocumentLines
+            - database.revision
         input:
           type: object
           additionalProperties: true
@@ -6721,8 +6307,12 @@ components:
           default: draft
         call:
           $ref: "#/components/schemas/KanbanBridgeCall"
+        entryId:
+          type: string
+          pattern: ^[a-z][a-z0-9_-]{0,63}$
       required:
         - call
+        - entryId
     KanbanBridgeResultResponse:
       allOf:
         - $ref: "#/components/schemas/ApiSuccessBase"
@@ -6745,10 +6335,6 @@ components:
           type: string
         entry:
           type: string
-        relatedProjects:
-          type: array
-          items:
-            $ref: "#/components/schemas/RelatedProject"
         manifest:
           $ref: "#/components/schemas/KanbanManifest"
         configurations:
@@ -6758,6 +6344,11 @@ components:
         activeConfigurationId:
           type: string
           format: uuid
+        entryId: *a2
+        databases:
+          type: array
+          items:
+            $ref: "#/components/schemas/DatabaseRequirement"
       required:
         - projectId
         - projectName
@@ -6765,7 +6356,6 @@ components:
         - resolvedTarget
         - artifactDir
         - entry
-        - relatedProjects
         - configurations
     KanbanWorkspaceResult:
       allOf:
@@ -6974,200 +6564,6 @@ components:
           properties:
             data:
               $ref: "#/components/schemas/KVEntryDetail"
-          required:
-            - data
-    ProjectStorageScope:
-      type: string
-      enum:
-        - project
-        - conversation
-    ProjectStorageEntry:
-      type: object
-      properties:
-        scope:
-          $ref: "#/components/schemas/ProjectStorageScope"
-        key:
-          type: string
-        projectId:
-          type: string
-          format: uuid
-          description: 当前项目请求必填且必须等于顶层 projectId；关联项目请求不得提供。
-        conversationId:
-          type: string
-      required:
-        - scope
-        - key
-    ProjectStorageSource:
-      type: object
-      properties:
-        projectId:
-          type: string
-          format: uuid
-          description: 当前项目请求必须等于 projectId；关联项目请求必须等于 consumerProjectId。
-        runId:
-          type: string
-        conversationId:
-          type: string
-    ProjectStorageRequest:
-      type: object
-      properties:
-        projectId:
-          type: string
-          format: uuid
-          description: 当前项目访问使用的项目 UUID；与 consumerProjectId/alias 互斥。
-        consumerProjectId:
-          type: string
-          format: uuid
-          description: 关联项目访问的消费项目 UUID；必须与 alias 一起提供。
-        alias:
-          type: string
-          pattern: ^[a-z][a-z0-9_-]{0,63}$
-          description: 消费项目声明中的关联项目 alias；Server 据此解析目标 UUID。
-        storageKind:
-          type: string
-          enum:
-            - kv
-            - persistent_value
-        operation:
-          type: string
-          enum:
-            - get
-            - set
-            - compare-and-set
-            - delete
-            - knowledge-mutation
-        entry:
-          $ref: "#/components/schemas/ProjectStorageEntry"
-        value:
-          description: set 和 compare-and-set 操作必填；必须是 JSON value 且不能省略。
-        expectedRevision:
-          type:
-            - string
-            - "null"
-          description: compare-and-set 操作必填。传入 get 返回的 revision；首次创建没有值时传 null。
-        source:
-          $ref: "#/components/schemas/ProjectStorageSource"
-        namespace:
-          $ref: "#/components/schemas/ProjectStorageKnowledgeNamespace"
-        mutation:
-          $ref: "#/components/schemas/ProjectStorageKnowledgeMutation"
-      required:
-        - storageKind
-        - operation
-      oneOf:
-        - required:
-            - projectId
-          not:
-            anyOf:
-              - required:
-                  - consumerProjectId
-              - required:
-                  - alias
-        - required:
-            - consumerProjectId
-            - alias
-          not:
-            required:
-              - projectId
-    ProjectStorageKnowledgeNamespace:
-      type: object
-      properties:
-        scope:
-          type: string
-          const: project
-        projectId:
-          type: string
-          format: uuid
-          description: 必须等于请求 projectId。
-      required:
-        - scope
-        - projectId
-    ProjectStorageKnowledgeMutation:
-      type: object
-      properties:
-        type:
-          type: string
-          enum:
-            - create
-            - edit
-            - delete
-        input:
-          oneOf:
-            - $ref: "#/components/schemas/CreateKnowledgeDocumentInput"
-            - $ref: "#/components/schemas/ProjectStorageKnowledgeEditInput"
-            - $ref: "#/components/schemas/ProjectStorageKnowledgeDeleteInput"
-      required:
-        - type
-        - input
-    ProjectStorageKnowledgeEditInput:
-      type: object
-      properties:
-        documentId:
-          type: string
-        title:
-          type: string
-        markdown:
-          type: string
-      required:
-        - documentId
-      anyOf:
-        - required:
-            - title
-        - required:
-            - markdown
-    ProjectStorageKnowledgeDeleteInput:
-      type: object
-      properties:
-        documentId:
-          type: string
-      required:
-        - documentId
-    ProjectStorageGetResult:
-      type: object
-      properties:
-        exists:
-          type: boolean
-        value:
-          description: exists 为 true 时返回的 JSON value。
-        revision:
-          type: string
-          description: exists 为 true 时返回的、不透明的当前行版本令牌；compare-and-set 必须原样回传。
-      required:
-        - exists
-    ProjectStorageSetResult:
-      type: object
-      properties:
-        ok:
-          type: boolean
-          const: true
-      required:
-        - ok
-    ProjectStorageCompareAndSetResult:
-      type: object
-      properties:
-        applied:
-          type: boolean
-          description: 当前 revision 是否仍匹配并已成功写入。
-        revision:
-          type: string
-          description: applied 为 true 时写入后的新行版本令牌。
-      required:
-        - applied
-    ProjectStorageKnowledgeMutationResult:
-      oneOf:
-        - $ref: "#/components/schemas/KnowledgeDocument"
-        - $ref: "#/components/schemas/DeleteKnowledgeDocumentResult"
-    ProjectStorageResponse:
-      allOf:
-        - $ref: "#/components/schemas/ApiSuccessBase"
-        - type: object
-          properties:
-            data:
-              oneOf:
-                - $ref: "#/components/schemas/ProjectStorageGetResult"
-                - $ref: "#/components/schemas/ProjectStorageSetResult"
-                - $ref: "#/components/schemas/ProjectStorageCompareAndSetResult"
-                - $ref: "#/components/schemas/ProjectStorageKnowledgeMutationResult"
           required:
             - data
     KnowledgeDocumentSummaryRecord:
@@ -7672,9 +7068,9 @@ components:
             - group
             - public
             - system
-        id: &a1
+        id: &a13
           type: string
-        name: *a1
+        name: *a13
         role:
           $ref: "#/components/schemas/ProjectRole"
       required:
@@ -7703,10 +7099,10 @@ components:
     Group:
       type: object
       properties:
-        id: &a2
+        id: &a14
           type: string
-        name: *a2
-        description: *a2
+        name: *a14
+        description: *a14
         parentId:
           type:
             - string
@@ -7789,3 +7185,369 @@ components:
         - total
         - page
         - pageSize
+    DatabaseAccessRule:
+      oneOf:
+        - type: object
+          properties:
+            mode:
+              const: none
+          required:
+            - mode
+        - type: object
+          properties:
+            mode:
+              const: all
+          required:
+            - mode
+        - type: object
+          properties:
+            mode:
+              const: prefixes
+            prefixes:
+              type: array
+              items: *a11
+              minItems: 1
+              uniqueItems: true
+          required:
+            - mode
+            - prefixes
+    DatabasePermissions:
+      type: object
+      properties:
+        kv:
+          type: object
+          properties:
+            read:
+              $ref: "#/components/schemas/DatabaseAccessRule"
+            write:
+              $ref: "#/components/schemas/DatabaseAccessRule"
+          required:
+            - read
+            - write
+        knowledge:
+          type: object
+          properties:
+            read:
+              $ref: "#/components/schemas/DatabaseAccessRule"
+            write:
+              $ref: "#/components/schemas/DatabaseAccessRule"
+          required:
+            - read
+            - write
+      required:
+        - kv
+        - knowledge
+    DatabaseRequirement:
+      type: object
+      properties:
+        alias: *a2
+        host:
+          enum:
+            - local
+            - server
+        description: *a11
+        permissions:
+          $ref: "#/components/schemas/DatabasePermissions"
+        bindingRef: *a10
+      required:
+        - alias
+        - host
+        - permissions
+      additionalProperties: false
+    ProjectEntry:
+      type: object
+      properties:
+        entryId: *a2
+        type:
+          enum:
+            - workflow
+            - conversation
+            - kanban
+        name: *a11
+        root:
+          type: string
+          description: Safe code directory relative to the aggregate root. No traversal or absolute paths.
+        entry:
+          type: string
+          description: Module or built HTML path relative to root.
+        configuration: *a11
+        databases:
+          type: array
+          items:
+            $ref: "#/components/schemas/DatabaseRequirement"
+        schedulePresets:
+          type: array
+          items:
+            type: object
+      required:
+        - entryId
+        - type
+        - name
+        - root
+        - entry
+        - databases
+      additionalProperties: false
+    DatabaseSpace:
+      type: object
+      properties:
+        spaceId: *a10
+        name: *a11
+        host:
+          enum:
+            - local
+            - server
+        ownerId: *a11
+        createdAt:
+          type: string
+          format: date-time
+      required:
+        - spaceId
+        - name
+        - host
+        - ownerId
+        - createdAt
+    DatabaseTarget:
+      oneOf:
+        - type: object
+          properties:
+            kind:
+              const: create
+            name: *a11
+          required:
+            - kind
+            - name
+        - type: object
+          properties:
+            kind:
+              const: access
+            spaceId: *a10
+          required:
+            - kind
+            - spaceId
+    DatabaseRequest:
+      type: object
+      properties:
+        projectId: *a10
+        entryId: *a2
+        requestId: *a10
+        host:
+          enum:
+            - local
+            - server
+        alias: *a2
+        applicantId: *a11
+        target:
+          $ref: "#/components/schemas/DatabaseTarget"
+        permissions:
+          $ref: "#/components/schemas/DatabasePermissions"
+        status:
+          enum:
+            - pending
+            - approved
+            - rejected
+        createdAt:
+          type: string
+          format: date-time
+        reviewedAt:
+          type: string
+          format: date-time
+        reviewerId: *a11
+        reason: *a11
+        bindingRef: *a10
+      required:
+        - projectId
+        - entryId
+        - requestId
+        - host
+        - alias
+        - applicantId
+        - target
+        - permissions
+        - status
+        - createdAt
+    DatabaseGrant:
+      type: object
+      properties:
+        projectId: *a10
+        entryId: *a2
+        grantId: *a10
+        spaceId: *a10
+        permissions:
+          $ref: "#/components/schemas/DatabasePermissions"
+        credentialVersion:
+          type: integer
+          minimum: 1
+        createdAt:
+          type: string
+          format: date-time
+        revokedAt:
+          type: string
+          format: date-time
+      required:
+        - projectId
+        - entryId
+        - grantId
+        - spaceId
+        - permissions
+        - credentialVersion
+        - createdAt
+    DatabaseBinding:
+      type: object
+      properties:
+        projectId: *a10
+        entryId: *a2
+        bindingRef: *a10
+        alias: *a2
+        host:
+          enum:
+            - local
+            - server
+        spaceId: *a10
+        grantId: *a10
+      required:
+        - projectId
+        - entryId
+        - bindingRef
+        - alias
+        - host
+        - spaceId
+        - grantId
+    DatabaseAuthorization:
+      type: object
+      properties:
+        space:
+          $ref: "#/components/schemas/DatabaseSpace"
+        grant:
+          $ref: "#/components/schemas/DatabaseGrant"
+        binding:
+          $ref: "#/components/schemas/DatabaseBinding"
+      required:
+        - space
+        - grant
+        - binding
+    DatabaseCatalog:
+      type: object
+      properties:
+        spaces:
+          type: array
+          items:
+            $ref: "#/components/schemas/DatabaseSpace"
+        requests:
+          type: array
+          items:
+            $ref: "#/components/schemas/DatabaseRequest"
+        grants:
+          type: array
+          items:
+            $ref: "#/components/schemas/DatabaseGrant"
+        bindings:
+          type: array
+          items:
+            $ref: "#/components/schemas/DatabaseBinding"
+      required:
+        - spaces
+        - requests
+        - grants
+        - bindings
+    DatabaseRequestInput:
+      type: object
+      properties:
+        projectId: *a10
+        entryId: *a2
+        alias: *a2
+        target:
+          $ref: "#/components/schemas/DatabaseTarget"
+        permissions:
+          $ref: "#/components/schemas/DatabasePermissions"
+      required:
+        - projectId
+        - entryId
+        - alias
+        - target
+        - permissions
+      additionalProperties: false
+    DatabaseAddress:
+      type: object
+      properties:
+        spaceId: *a10
+        storageKind:
+          enum:
+            - kv
+            - persistent_value
+        scope:
+          enum:
+            - project
+            - conversation
+        key: *a11
+        conversationId: *a11
+      required:
+        - spaceId
+        - storageKind
+        - scope
+        - key
+    DatabaseDataRequest:
+      type: object
+      properties:
+        projectId: *a10
+        entryId: *a2
+        alias: *a2
+        bindingRef: *a10
+        credentialVersion:
+          type: integer
+          minimum: 1
+        operation:
+          enum:
+            - get
+            - set
+            - delete
+            - compare-and-set
+            - transaction
+            - list
+            - revision
+        entry:
+          $ref: "#/components/schemas/DatabaseAddress"
+        value: {}
+        expectedRevision:
+          type:
+            - string
+            - "null"
+        entries:
+          type: array
+          items:
+            type: object
+            properties:
+              entry:
+                $ref: "#/components/schemas/DatabaseAddress"
+              expectedRevision:
+                type:
+                  - string
+                  - "null"
+              mutation:
+                type: object
+                properties:
+                  operation:
+                    enum:
+                      - set
+                      - delete
+                  value: {}
+                required:
+                  - operation
+            required:
+              - entry
+              - expectedRevision
+        query: *a11
+        cursor: *a11
+        pageSize:
+          type: integer
+          minimum: 1
+          maximum: 100
+      required:
+        - projectId
+        - entryId
+        - alias
+        - bindingRef
+        - credentialVersion
+        - operation
+      description: Consumer data access checks current project role, entry requirement and live grant. Knowledge
+        keys require persistent_value and knowledge permissions. Transactions compare every observed revision
+        and atomically apply mutations; conflicts return applied=false.

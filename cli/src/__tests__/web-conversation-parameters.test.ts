@@ -43,7 +43,7 @@ async function fixture({ dynamic = true, resolveOnInput = false, running = false
   const frame = () => { const callbacks = [...frames.values()]; frames.clear(); for (const callback of callbacks) callback(0); };
   document.body.innerHTML = '<div id="app"></div>';
   await import('../web/ui/main');
-  const project: Project = { id: 'parameters', uri: 'file:///parameters', folderPath: '/parameters', name: 'Parameters', projectType: 'conversation',
+  const project: Project = {entryId:"main",aggregateName:"Test aggregate",defaultEntry:"main",entryRoot:'/parameters',databases:[],entries:[{entryId:"main",name:"Main",type:'conversation',root:".",entry:"index.ts",databases:[]}], id: 'parameters', uri: 'file:///parameters', folderPath: '/parameters', name: 'Parameters', projectType: 'conversation',
     fields: [
       { name: 'model', type: 'string', control: 'select', panel: 'auxiliary', resolveOnInput, required: requiredModel,
         options: requiredModel ? [] : [{ value: 'alpha', label: 'Alpha' }, { value: 'beta', label: 'Beta' }], defaultValue: requiredModel ? undefined : 'alpha' },

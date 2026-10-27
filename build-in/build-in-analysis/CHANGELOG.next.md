@@ -1,5 +1,7 @@
 # Unreleased
 
+- 【变更】静态分析按聚合入口执行，分别验证 Workflow、Conversation executor 和 Kanban 静态产物；移除单类型项目声明。
+
 - 【变更】分析看板改用通用 `configuration.json` 字段声明，通过项目配置面板管理实际值。
 
 ### 新特性

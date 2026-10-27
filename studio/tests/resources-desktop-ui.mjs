@@ -1,3 +1,4 @@
+import { approveLocalFixtureDatabase } from './approved-database-fixture.mjs';
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
 import { createServer } from 'node:http';
@@ -31,12 +32,12 @@ for (const type of ['conversation', 'workflow', 'kanban']) {
   await symlink(await realpath(path.join(original, 'node_modules/steamharness')), path.join(folder, 'node_modules/steamharness'), 'dir');
   await symlink(await realpath(path.join(original, 'node_modules/@steamharness/cli')), path.join(folder, 'node_modules/@steamharness/cli'), 'dir');
   const manifest = JSON.parse(await readFile(path.join(folder, 'package.json'), 'utf8'));
-  const data = path.join(storageDir, createHash('sha256').update(folder).digest('hex').slice(0, 24));
-  const kv = core.createProjectKVContext({ projectId: manifest.id, store: core.createLocalProjectKVStore({ rootDir: path.join(data, 'kv') }) });
-  await kv.setValue(`${type}.state`, { type, active: true, count: 7 });
-  for (let index = 0; index < 31; index++) { await kv.setValue(`item.${String(index).padStart(2, '0')}`, index); }
-  const values = core.createProjectPersistentValueContext({ projectId: manifest.id, store: core.createLocalProjectKVStore({ rootDir: path.join(data, 'values'), storageKind: 'persistent_value' }) });
-  await core.createKnowledgeDocument({ persistentValue: values }, { title: `${type} notes`, markdown: `# ${type}\n\nPanel resource evidence.\n\n- First item\n- Second item` });
+  const database = await approveLocalFixtureDatabase(core,folder,manifest,path.join(directory,'databases'));
+  const kv = database.kv;
+  await kv.setValue(`${type}.state`, { type, active:true, count:7 });
+  for (let index=0;index<31;index++) await kv.setValue(`item.${String(index).padStart(2,'0')}`,index);
+  await database.knowledge.createDocument({title:`${type} notes`,markdown:`# ${type}\n\nPanel resource evidence.\n\n- First item\n- Second item`});
+  const values = database;
   projects.push({ type, folder, manifest, kv, values });
 }
 const debug = createServer(); await new Promise(resolve => debug.listen(0, '127.0.0.1', resolve)); const port = debug.address().port; await new Promise(resolve => debug.close(resolve));
@@ -44,7 +45,7 @@ const log = await open(path.join(proofDir, 'desktop.log'), 'w');
 const desktop = await desktopLocaleLaunch('zh-cn', directory);
 const child = spawn(desktop.executable, [...desktop.args, '--user-data-dir', dataDir,
   '--extensions-dir', path.join(root, '.studio/desktop-extensions'), '--locale=zh-cn', '--disable-workspace-trust', '--disable-telemetry', '--skip-welcome', '--skip-release-notes', `--remote-debugging-port=${port}`, workspace],
-  { cwd: path.join(root, 'upstream/vscode'), env: { ...process.env, ...desktop.env, STEAMHARNESS_SERVER_URL: '', STEAMHARNESS_SERVER_ADMIN_KEY: '' }, stdio: ['ignore', log.fd, log.fd] });
+  { cwd: path.join(root, 'upstream/vscode'), env: { ...process.env, ...desktop.env, STEAMHARNESS_DATABASES_DIR:path.join(directory,'databases'), STEAMHARNESS_SERVER_URL: '', STEAMHARNESS_SERVER_ADMIN_KEY: '' }, stdio: ['ignore', log.fd, log.fd] });
 const exited = new Promise(resolve => { child.once('exit', resolve); child.once('error', resolve); });
 const pause = ms => new Promise(resolve => setTimeout(resolve, ms));
 const proof = { checks: [], screenshots: [], errors: [] };
@@ -116,7 +117,7 @@ try {
   await knowledge.locator('#resource-search').fill('evidence'); await knowledge.locator('.row-meta').filter({ hasText: 'L3' }).waitFor();
   await knowledge.locator('#resource-new').click(); await knowledge.locator('#detail-title-input').fill('Created from panel'); await knowledge.locator('#detail-body').fill('# Created\n\nNew evidence'); await knowledge.locator('#detail-save').click();
   await knowledge.locator('.markdown-body h1').filter({ hasText: 'Created' }).waitFor();
-  assert.ok((await core.listKnowledgeDocuments({ persistentValue: projects[0].values })).some(document => document.title === 'Created from panel'));
+  assert.ok((await projects[0].values.knowledge.listDocuments()).items.some(document => document.title === 'Created from panel'));
   proof.checks.push('knowledge Markdown preview, full-text search and document creation work in the bottom panel');
   await writeFile(settingsPath, JSON.stringify({ 'workbench.colorTheme': 'Dark Modern', 'git.openRepositoryInParentFolders': 'never' }));
   await knowledge.locator('body.vscode-dark').waitFor(); await snapshot('knowledge-dark.png');

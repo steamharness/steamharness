@@ -33,7 +33,7 @@ for (const language of ['en', 'zh-cn']) {
   const template = path.join(directory, 'extensions/studio-workstation/dist/developer-assistant');
   await rm(template, { recursive: true, force: true }); await mkdir(template);
   await writeFile(path.join(template, 'package.json'), JSON.stringify({ id: 'a3aca697-b086-459b-84e4-d357ad2d9fb2', name: 'Assistant test', type: 'module',
-    steamHarness: { projectInfo: { dataStorage: { mode: 'local' } } } }));
+    steamHarness: {defaultEntry:'main',entries:[{entryId:'main',type:'conversation',name:'Assistant',root:'.',entry:'index.ts',databases:[]}]} }));
   await cp(path.join(root, 'tests/fixtures/assistant-workspace/index.ts'), path.join(template, 'index.ts'));
   const helper = path.join(directory, 'test-extension'); await mkdir(helper);
   await cp(path.join(root, 'tests/assistant-workspace-desktop-extension.cjs'), path.join(helper, 'extension.cjs'));

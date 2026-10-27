@@ -58,12 +58,12 @@ export const executor = steamharness.defineExecutor<StudioControlInput, StudioCo
       createInput: () => createInput("studio.state.get"),
     }),
     steamharness.defineEntrypoint({
-      id: "get_related_projects",
-      title: "Read related projects",
-      description: "Read a Workflow project's declared related projects and their current Studio import status, UUIDs, localized names and verified directories. projectDir follows the selected permission policy and defaults to the assistant working directory; auto allows projects outside the workspace. Import status does not grant project data access.",
+      id: "get_entries",
+      title: "Read aggregate entries",
+      description: "List the aggregate project's registered entries, their types and code roots. projectDir follows the selected permission policy and defaults to the assistant working directory. The result does not grant database access.",
       workflow: studioControlProject,
       params: [{ name: "projectDir", flag: "--project-dir", type: "string", required: false, label: "Project directory" }],
-      createInput: ({ paramValues }) => createInput("studio.relatedProjects.get", optionalString(paramValues, "projectDir")),
+      createInput: ({ paramValues }) => createInput("studio.entries.get", optionalString(paramValues, "projectDir")),
     }),
     steamharness.defineEntrypoint({
       id: "open_file",

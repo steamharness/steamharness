@@ -2,8 +2,9 @@ import * as vscode from 'vscode';
 import path from 'node:path';
 import { realpath, stat } from 'node:fs/promises';
 import type { AssistantWorkspaceFolder, Project } from './workflow-types';
-import { projectId, readRelatedProjects } from './projects';
-import { readProjectManifest, resolveImportedRelatedProject } from './workflow-related-projects-view';
+import { projectId } from './projects';
+import { readPackageManifest } from './project-catalog';
+import { readProjectManifest as parseProjectManifest, selectProjectEntry } from '@steamharness/project-manifest';
 import type { StudioControlPermissionPolicy } from './studio-control-bridge';
 import { t } from './localization';
 
@@ -12,7 +13,7 @@ const views: Record<string, string> = {
   'source-control': 'workbench.view.scm', terminal: 'workbench.action.terminal.focus',
   assistant: 'studio.openAssistant',
 };
-const operations = ['studio.configurations.get', 'studio.configurations.manage', 'studio.configurations.open', 'studio.state.get', 'studio.relatedProjects.get', 'studio.file.open', 'studio.diagnostics.get', 'studio.theme.set', 'studio.terminal.open', 'studio.view.show'];
+const operations = ['studio.configurations.get', 'studio.configurations.manage', 'studio.configurations.open', 'studio.state.get', 'studio.entries.get', 'studio.file.open', 'studio.diagnostics.get', 'studio.theme.set', 'studio.terminal.open', 'studio.view.show'];
 
 export const STUDIO_CONTROL_PROJECT_ID = '09145339-e3dd-4bb2-ac9b-6c180ef51933';
 
@@ -26,7 +27,7 @@ export function studioControlWorkspaceAvailable(scope: NonNullable<Project['assi
     && scope.roots.every(root => folders.some(folder => folder.uri === root.uri && folder.folderPath === root.folderPath));
 }
 
-export function createStudioControlHandler(assistant: NonNullable<Project['assistant']>, signal: AbortSignal, context: Pick<vscode.ExtensionContext, 'globalState'>, services?: {
+export function createStudioControlHandler(assistant: NonNullable<Project['assistant']>, signal: AbortSignal, _context: Pick<vscode.ExtensionContext, 'globalState'>, services?: {
   configuration(input: Record<string, unknown>, signal: AbortSignal): Promise<unknown>;
 }) {
   const installedThemes = (): string[] => [...new Set(vscode.extensions.all.flatMap(extension =>
@@ -52,10 +53,10 @@ export function createStudioControlHandler(assistant: NonNullable<Project['assis
       return candidate;
     };
     const keys: Record<string, string[]> = {
-      'studio.configurations.get': ['storage', 'projectDir', 'projectId', 'target', 'id', 'export', 'preview'],
-      'studio.configurations.manage': ['storage', 'projectDir', 'projectId', 'target', 'call'],
-      'studio.configurations.open': ['storage', 'projectDir', 'projectId', 'target'],
-      'studio.state.get': [], 'studio.relatedProjects.get': ['projectDir'], 'studio.file.open': ['filePath', 'line', 'column'],
+      'studio.configurations.get': ['storage', 'projectDir', 'projectId', 'entryId', 'target', 'id', 'export', 'preview'],
+      'studio.configurations.manage': ['storage', 'projectDir', 'projectId', 'entryId', 'target', 'call'],
+      'studio.configurations.open': ['storage', 'projectDir', 'projectId', 'entryId', 'target'],
+      'studio.state.get': [], 'studio.entries.get': ['projectDir'], 'studio.file.open': ['filePath', 'line', 'column'],
       'studio.diagnostics.get': ['filePath'], 'studio.theme.set': ['theme'],
       'studio.terminal.open': ['cwd'], 'studio.view.show': ['view'],
     };
@@ -81,7 +82,9 @@ export function createStudioControlHandler(assistant: NonNullable<Project['assis
         if(input.storage==='local'&&requestedTarget!==undefined)throw new Error(t('Use target only for Server configurations.'));
         if(input.preview!==undefined&&typeof input.preview!=='boolean'||input.preview===true&&input.export===true)throw new Error(t('Invalid configuration action.'));
         if(input.export!==undefined&&typeof input.export!=='boolean')throw new Error(t('Invalid configuration action.'));
-        const target: Record<string,unknown> = {storage:input.storage,...(requestedTarget?{target:requestedTarget}:{})};
+        const entryId = requiredString('entryId');
+        if (!/^[a-z][a-z0-9_-]{0,63}$/.test(entryId)) throw new Error(t('Invalid project entry identifier.'));
+        const target: Record<string,unknown> = {storage:input.storage,entryId,...(requestedTarget?{target:requestedTarget}:{})};
         if(input.storage==='local') {
           if(input.projectId!==undefined) throw new Error(t('Use projectDir for local configurations.'));
           const directory=await allowedPath(requiredString('projectDir'));
@@ -89,8 +92,9 @@ export function createStudioControlHandler(assistant: NonNullable<Project['assis
           await allowedPath(path.join(directory,'package.json'));
           try { await allowedPath(path.join(directory,'configuration.json')); }
           catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error; }
-          const manifest=await readProjectManifest(vscode.Uri.file(directory));
+          const manifest=await readPackageManifest(vscode.Uri.file(directory));
           if(!projectId((manifest as {id?:unknown}|null)?.id))throw new Error(t('Studio Control requires a Workflow project directory.'));
+          selectProjectEntry(parseProjectManifest(manifest), entryId);
           target.projectDir=directory;
         } else {
           if(input.projectDir!==undefined)throw new Error(t('Use projectId for Server configurations.'));
@@ -100,9 +104,8 @@ export function createStudioControlHandler(assistant: NonNullable<Project['assis
           if(permissionPolicy!=='auto') {
             const allowed=new Set<string>();
             for(const root of assistant.roots) {
-              const manifest=await readProjectManifest(vscode.Uri.file(root.folderPath));
+              const manifest=await readPackageManifest(vscode.Uri.file(root.folderPath));
               const own=projectId((manifest as {id?:unknown}|null)?.id);if(own)allowed.add(own.toLowerCase());
-              for(const related of readRelatedProjects(manifest))allowed.add(related.projectId.toLowerCase());
             }
             if(!allowed.has(id))throw new Error(t('Server project must belong to the registered workspace.'));
           }
@@ -137,23 +140,16 @@ export function createStudioControlHandler(assistant: NonNullable<Project['assis
           theme: vscode.workspace.getConfiguration('workbench').get<string>('colorTheme'),
           themes: installedThemes(), views: Object.keys(views), operations };
       }
-      case 'studio.relatedProjects.get': {
+      case 'studio.entries.get': {
         const directory = await allowedPath(optionalString('projectDir') ?? assistant.workdir);
         if (!(await stat(directory)).isDirectory()) { throw new Error(t('Studio Control requires a directory.')); }
         await allowedPath(path.join(directory, 'package.json'));
-        const manifest = await readProjectManifest(vscode.Uri.file(directory));
+        const manifest = await readPackageManifest(vscode.Uri.file(directory));
         const id = projectId((manifest as { id?: unknown } | null)?.id);
         if (!id) { throw new Error(t('Studio Control requires a Workflow project directory.')); }
-        const relatedProjects = await Promise.all(readRelatedProjects(manifest).map(async relation => {
-          const imported = await resolveImportedRelatedProject(context, relation, vscode.Uri.file(directory).toString());
-          const uri = imported ? vscode.Uri.parse(imported.uri) : undefined;
-          const projectDir = uri?.scheme === 'file' ? await realpath(uri.fsPath).catch(() => null) : null;
-          const available = !!imported && (uri?.scheme !== 'file' || projectDir !== null);
-          return { ...relation, imported: available, name: available ? imported!.name : null,
-            uri: available ? imported!.uri : null, projectDir: available ? projectDir : null };
-        }));
+        const aggregate = parseProjectManifest(manifest);
         assertAvailable();
-        return { projectId: id, projectDir: directory, relatedProjects };
+        return { projectId: id, projectDir: directory, entries: aggregate.entries, defaultEntry: aggregate.defaultEntry };
       }
       case 'studio.file.open': {
         const line = position('line'), column = position('column');

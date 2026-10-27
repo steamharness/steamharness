@@ -4,7 +4,7 @@ import { composerOutputItems } from '../web/ui/output-display';
 import { messageSettled, type ConversationMessage, type ConversationSession, type InputRequest, type Project, type Report, type Runtime } from '../web/workflow-types';
 
 function fixture(options: { canStart?(): boolean; canDrain?(): boolean } = {}) {
-  const project: Project = { id: 'test', uri: '', folderPath: '/test', name: 'Conversation', projectType: 'conversation', fields: [], entrypoints: [] };
+  const project: Project = {entryId:"main",aggregateName:"Test aggregate",defaultEntry:"main",entryRoot:'/test',databases:[],entries:[{entryId:"main",name:"Main",type:'conversation',root:".",entry:"index.ts",databases:[]}], id: 'test', uri: '', folderPath: '/test', name: 'Conversation', projectType: 'conversation', fields: [], entrypoints: [] };
   const runtime: Runtime = {
     available: true, inspect: vi.fn(), resolveParams: vi.fn(), run: vi.fn(), cancel: vi.fn(), dispose: vi.fn(),
     uploadFiles: vi.fn(), readFile: vi.fn(), deleteFiles: vi.fn(), cancelConversation: vi.fn(async () => {}), deleteConversation: vi.fn(), readResource: vi.fn(),
@@ -131,7 +131,7 @@ describe('Conversation execution lifecycle', () => {
   it.each(['message-time', 'array-order'] as const)('restores legacy conversation selection using %s when session timestamps are missing', kind => {
     const { controller, runtime, save } = fixture();
     const sessions = ['first', 'latest', 'last'].map((id, index) => ({
-      ...controller.current, id, createdAt: undefined, updatedAt: undefined,
+      ...controller!.current, id, createdAt: undefined, updatedAt: undefined,
       messages: kind === 'message-time' ? [{ role: 'user' as const, content: id, createdAt: [10, 30, 20][index] }] : [],
     }));
     const restored = new ConversationController(controller.project, runtime, { sessions, activeId: 'first' }, { save, changed: vi.fn(), log: vi.fn() });
@@ -141,7 +141,7 @@ describe('Conversation execution lifecycle', () => {
 
   it('restores a versioned selection even when another conversation has newer activity', () => {
     const { controller, runtime, save } = fixture();
-    const sessions = ['selected', 'newer'].map((id, index) => ({ ...controller.current, id, updatedAt: index + 1 }));
+    const sessions = ['selected', 'newer'].map((id, index) => ({ ...controller!.current, id, updatedAt: index + 1 }));
     const restored = new ConversationController(controller.project, runtime, { sessions, activeId: 'selected', selectionVersion: 1 }, { save, changed: vi.fn(), log: vi.fn() });
     expect(restored.activeId).toBe('selected');
     expect(runtime.run).not.toHaveBeenCalled();

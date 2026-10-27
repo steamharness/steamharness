@@ -7,7 +7,7 @@ afterEach(()=>{for(const controller of controllers.splice(0))controller.dispose(
 const ask={id:'profile-ask',profileKey:'ask',subject:'server:alice'};
 const build={id:'profile-build',profileKey:'build',subject:'server:alice'};
 function fixture(){
-  const project:Project={id:'restricted',uri:'',folderPath:'/fixture',name:'Restricted',projectType:'conversation',fields:[],entrypoints:[],conversation:{inputQueue:{enabled:true},recovery:{enabled:true}}};
+  const project:Project={entryId:"main",aggregateName:"Test aggregate",defaultEntry:"main",entryRoot:'/fixture',databases:[],entries:[{entryId:"main",name:"Main",type:'conversation',root:".",entry:"index.ts",databases:[]}],id:'restricted',uri:'',folderPath:'/fixture',name:'Restricted',projectType:'conversation',fields:[],entrypoints:[],conversation:{inputQueue:{enabled:true},recovery:{enabled:true}}};
   const runtime={available:true,run:vi.fn(async(_request:Run)=>({status:'success'})),cancel:vi.fn()} as unknown as Runtime;
   const options={save:vi.fn(async()=>{}),changed:vi.fn(),log:vi.fn()};
   const controller=new ConversationController(project,runtime,{},options);controllers.push(controller);

@@ -1,9 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
-import ReactMarkdown, { defaultUrlTransform } from "react-markdown";
+import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { ImageIcon } from "lucide-react";
 import { useTranslation } from "@steamharness/i18n/react";
-import { countMarkdownImages, getKnowledgeMarkdownByteLength, INLINE_IMAGE_MANUAL_LOAD_LIMIT, LARGE_MARKDOWN_PREVIEW_LIMIT, type KnowledgeImageSrcResolver } from "@steamharness/knowledge-base";
+import { transformKnowledgeMarkdownUrl, countMarkdownImages, getKnowledgeMarkdownByteLength, INLINE_IMAGE_MANUAL_LOAD_LIMIT, LARGE_MARKDOWN_PREVIEW_LIMIT, type KnowledgeImageSrcResolver } from "@steamharness/knowledge-base";
 import { Alert, AlertDescription, Button, Separator, Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui";
 
 export function KnowledgeDocumentPreview({ markdown, resolveImageSrc }: { markdown: string; resolveImageSrc?: KnowledgeImageSrcResolver }) {
@@ -13,7 +13,7 @@ export function KnowledgeDocumentPreview({ markdown, resolveImageSrc }: { markdo
     <div className="min-w-0 break-words text-sm leading-7">
       {metrics.large ? <pre className="whitespace-pre-wrap break-words font-mono text-xs">{markdown}</pre> : <>
         {metrics.manualImages && <Alert className="mb-4"><AlertDescription>{t("manyImagesNotice")}</AlertDescription></Alert>}
-        <ReactMarkdown remarkPlugins={[remarkGfm]} urlTransform={(url, key) => key === "src" && /^data:image\/(?:png|jpeg|jpg|webp|gif);base64,[a-z0-9+/=\s]+$/i.test(url) ? url : defaultUrlTransform(url)} components={{
+        <ReactMarkdown remarkPlugins={[remarkGfm]} urlTransform={transformKnowledgeMarkdownUrl} components={{
           h1: ({ children }) => <h1 className="mb-4 text-2xl font-semibold">{children}</h1>,
           h2: ({ children }) => <h2 className="mb-3 mt-6 text-xl font-semibold">{children}</h2>,
           h3: ({ children }) => <h3 className="mb-2 mt-5 text-lg font-semibold">{children}</h3>,

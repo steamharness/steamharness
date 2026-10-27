@@ -17,6 +17,7 @@
   },
   "dependencies": {
     "@steamharness/kanban-project": "workspace:*",
-    "ignore": "^7.0.5"
+    "ignore": "^7.0.5",
+    "@steamharness/project-manifest": "workspace:*"
   }
 }

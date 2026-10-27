@@ -3,12 +3,13 @@ import { translateDynamicKey } from "@steamharness/i18n";
 import type { AsyncState, DetailState, DetailTab } from "../../state";
 import type { KnowledgeRepository, KnowledgeWorkspaceProps } from "@steamharness/knowledge-base";
 import type { InvitationRole, KVEntryDetail, KVEntrySummary, ProjectInvitation, Summary, ApiResponse } from "../../types";
-import type { KVFilters } from "../ProjectKVPage";
 
 export interface DetailPageProps {
   project: Summary;
   detail: DetailState;
   activeTab: DetailTab;
+  entryId?: string;
+  onSelectEntry?: (entryId: string) => void;
   busy: AsyncState;
   onUpdateVisibility: (visibility: "private" | "public") => void;
   onSetProjectMember: (userId: string, role: "owner" | "maintainer" | "developer" | "guest") => void;
@@ -19,19 +20,8 @@ export interface DetailPageProps {
     shareUrl: string;
   } | null>;
   onRevokeProjectInvitation: (invitationId: string) => void;
-  kvPageIndex: number;
-  kvPageSize: number;
-  kvFilters: KVFilters;
-  onKVFiltersChange: (filters: KVFilters) => void;
-  onKVPageChange: (direction: "next" | "previous") => void;
-  onLoadKVEntry: (entry: KVEntrySummary) => Promise<ApiResponse<KVEntryDetail>>;
-  onDeleteKVEntry: (entry: KVEntrySummary) => Promise<ApiResponse<unknown>>;
-  knowledgeRepository?: KnowledgeRepository;
-  knowledgeRefreshToken: number;
   refreshToken?: number;
   onContentBusyChange?: (busy: boolean) => void;
-  onResolveKnowledgeImageSrc?: KnowledgeWorkspaceProps["resolveImageSrc"];
-  onKnowledgeDirtyChange?: (dirty: boolean) => void;
   onNavigateTab: (tab: DetailTab) => void;
   onNavigateProjectTab: (projectId: string, tab: DetailTab) => void;
   sidebarCollapsed: boolean;
@@ -45,10 +35,9 @@ export function getTabLabel(tab: DetailTab): string {
     settings: "detailNavSettings",
     members: "detailNavMembers",
     invitations: "storageInvitations",
-    dependencies: "detailNavRelatedProjects",
-    knowledge: "detailNavKnowledge",
+    entries: "aggregateEntries",
+    databases: "databaseSpaces",
     versions: "detailNavVersions",
-    kv: "detailNavKv",
   };
   return translateDynamicKey(map[tab], "serverWeb");
 }

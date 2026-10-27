@@ -100,16 +100,18 @@ describe("Kanban registered methods", () => {
     const first = connectPage("default");
     const second = connectPage("profile-1");
     for (const link of [first, second]) link.page.steamHarnessKanban.methods.register(definition, (_input, context) => context.configuration.id);
-    const unregisterFirst = registry.register({ projectId: "map", source: "local", location: "workspace" }, first.session);
-    const unregisterSecond = registry.register({ projectId: "map", source: "local", location: "card", cardId: "card-1" }, second.session);
-    expect(registry.list("map", "local").map((item) => item.configurationId)).toEqual(["default", "profile-1"]);
+    const unregisterFirst = registry.register({ projectId: "map", entryId: "main", source: "local", location: "workspace" }, first.session);
+    const unregisterSecond = registry.register({ projectId: "map", entryId: "main", source: "local", location: "card", cardId: "card-1" }, second.session);
+    expect(registry.list("map", "main", "local").map((item) => item.configurationId)).toEqual(["default", "profile-1"]);
     const input = { instanceId: second.session.instanceId, configurationId: "profile-1", method: "map.focus", args: {} };
-    await expect(registry.invoke("map", "local", input)).resolves.toBe("profile-1");
-    await expect(registry.invoke("other", "local", input)).rejects.toMatchObject({ code: "KANBAN_METHOD_INSTANCE_UNAVAILABLE" });
-    await expect(registry.invoke("map", "server", input)).rejects.toMatchObject({ code: "KANBAN_METHOD_INSTANCE_UNAVAILABLE" });
-    await expect(registry.invoke("map", "local", { ...input, configurationId: "default" })).rejects.toMatchObject({ code: "KANBAN_METHOD_STALE" });
+    await expect(registry.invoke("map", "main", "local", input)).resolves.toBe("profile-1");
+    await expect(registry.invoke("other", "main", "local", input)).rejects.toMatchObject({ code: "KANBAN_METHOD_INSTANCE_UNAVAILABLE" });
+    await expect(registry.invoke("map", "main", "server", input)).rejects.toMatchObject({ code: "KANBAN_METHOD_INSTANCE_UNAVAILABLE" });
+    await expect(registry.invoke("map", "main", "local", { ...input, configurationId: "default" })).rejects.toMatchObject({ code: "KANBAN_METHOD_STALE" });
+    expect(registry.list("map", "other", "local")).toEqual([]);
+    await expect(registry.invoke("map", "other", "local", input)).rejects.toMatchObject({ code: "KANBAN_METHOD_INSTANCE_UNAVAILABLE" });
     unregisterSecond();
-    await expect(registry.invoke("map", "local", input)).rejects.toMatchObject({ code: "KANBAN_METHOD_INSTANCE_UNAVAILABLE" });
+    await expect(registry.invoke("map", "main", "local", input)).rejects.toMatchObject({ code: "KANBAN_METHOD_INSTANCE_UNAVAILABLE" });
     unregisterFirst(); first.session.close(); second.session.close();
   });
 
@@ -147,7 +149,7 @@ describe("Kanban registered methods", () => {
     const registry = createKanbanMethodRegistry();
     const props = { projectName: "Map", previewUrl: "about:blank", previewNonce: "nonce",
       configuration: { id: "one", name: "One", params: {} }, methodRegistry: registry,
-      methodTarget: { projectId: "map", source: "local" as const, location: "workspace" as const } };
+      methodTarget: { projectId: "map", entryId: "main", source: "local" as const, location: "workspace" as const } };
     const view = render(<KanbanPreviewFrame {...props} />);
     const frame = view.container.querySelector("iframe")!;
     const post = vi.spyOn(frame.contentWindow!, "postMessage").mockImplementation(() => {});
@@ -155,18 +157,18 @@ describe("Kanban registered methods", () => {
       window.dispatchEvent(new MessageEvent("message", { source, data: { nonce: "nonce", ...data } }));
     });
     send({ type: KANBAN_METHOD_CATALOG_MESSAGE, configurationId: "one", revision: 1, methods: [definition] }, window);
-    expect(registry.list("map", "local")[0]!.methods).toEqual([]);
+    expect(registry.list("map", "main", "local")[0]!.methods).toEqual([]);
     send({ type: "steamharness:kanban-ready" });
     send({ type: KANBAN_METHOD_CATALOG_MESSAGE, configurationId: "one", revision: 1, methods: [definition] });
-    const instanceId = registry.list("map", "local")[0]!.instanceId;
-    const pending = registry.invoke("map", "local", { instanceId, configurationId: "one", method: "map.focus", args: {} });
+    const instanceId = registry.list("map", "main", "local")[0]!.instanceId;
+    const pending = registry.invoke("map", "main", "local", { instanceId, configurationId: "one", method: "map.focus", args: {} });
     const request = post.mock.calls.at(-1)![0];
     const rejected = expect(pending).rejects.toMatchObject({ code: "KANBAN_METHOD_INSTANCE_UNAVAILABLE" });
     view.rerender(<KanbanPreviewFrame {...props} configuration={{ id: "two", name: "Two", params: {} }} />);
     await rejected;
     send({ type: KANBAN_METHOD_RESULT_MESSAGE, requestId: request.requestId, ok: true, value: "late" });
-    expect(registry.list("map", "local")[0]!.instanceId).not.toBe(instanceId);
+    expect(registry.list("map", "main", "local")[0]!.instanceId).not.toBe(instanceId);
     view.unmount();
-    expect(registry.list("map", "local")).toEqual([]);
+    expect(registry.list("map", "main", "local")).toEqual([]);
   });
 });

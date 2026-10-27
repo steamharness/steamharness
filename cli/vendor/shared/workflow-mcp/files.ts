@@ -80,6 +80,7 @@ export function createLocalProjectMcpFileResolver(options: {
           kind: mimeType.startsWith("image/") ? "image" : "file",
           storage: "local",
           projectId: context.projectId,
+          entryId: context.entryId,
           createdAt,
         };
         throwIfAborted(context.signal);
@@ -145,7 +146,7 @@ function isSafeManagedFileId(value: string): boolean {
 }
 
 export function createServerProjectMcpFileResolver(options: {
-  readFile(projectId: string, fileId: string): Promise<McpManagedFileReference | undefined>;
+  readFile(projectId: string, fileId: string, entryId: string): Promise<McpManagedFileReference | undefined>;
 }): McpFileResolver {
   return async (values, context) => {
     const refs: McpManagedFileReference[] = [];
@@ -156,12 +157,13 @@ export function createServerProjectMcpFileResolver(options: {
           `File parameter "${context.param.name}" only accepts an object containing id.`,
         );
       }
-      const metadata = await options.readFile(context.projectId, value.id);
+      const metadata = await options.readFile(context.projectId, value.id, context.entryId);
       if (
         !metadata ||
         metadata.id !== value.id ||
         metadata.storage !== "server" ||
-        metadata.projectId !== context.projectId
+        metadata.projectId !== context.projectId ||
+        metadata.entryId !== context.entryId
       ) {
         throw new McpInvalidParamsError(
           `File "${value.id}" does not belong to project "${context.projectId}".`,
@@ -191,6 +193,7 @@ function normalizeAuthoritativeServerFile(
     kind: metadata.kind,
     storage: "server",
     projectId: projectId,
+    entryId: metadata.entryId,
     conversationId: metadata.conversationId,
     createdAt: metadata.createdAt,
   };

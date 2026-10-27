@@ -5,7 +5,7 @@ import path from 'node:path';
 import { crc32, deflateSync } from 'node:zlib';
 import { initI18n } from '@steamharness/i18n';
 import { ResourcePreviews } from '../web/resource-preview';
-import { startWebServer } from '../web/server';
+import { startEntryWebServer as startWebServer } from '../web/server';
 import { cacheVerifiedConfigurationTemplate,createLocalProjectConfigurationStore } from 'steamharness';
 import { createConfigurationState,createPublicationDraft,freezeConfigurationTemplate } from '@steamharness/project-configuration';
 import { readProjectInfo } from '@steamharness/project-info';
@@ -19,20 +19,22 @@ afterEach(async () => { for(const previews of openedPreviews.splice(0))previews.
 async function fixture() {
   const root = await realpath(await mkdtemp(path.join(os.tmpdir(), 'workflow-resource-'))); folders.push(root);
   const storageDir = path.join(root, 'data');
-  const owner: Project = { id: 'owner', uri: '', name: 'Owner', folderPath: root, projectType: 'conversation', fields: [], entrypoints: [] };
-  await writeFile(path.join(root, 'package.json'), JSON.stringify({ id: owner.id, steamHarness: { projectInfo: { dataStorage: { mode: 'local' } } } }));
-  const related = { ...owner, id: 'related', name: 'Related', folderPath: path.join(root, 'related'), projectType: 'kanban' as const,
-    kanban: { artifactDir: 'dist', entry: 'index.html' }, fields: [{ name: 'title', type: 'string', defaultValue: 'Default' }] };
-  await mkdir(path.join(related.folderPath, 'dist'), { recursive: true });
-  await writeFile(path.join(related.folderPath, 'package.json'), JSON.stringify({ id: related.id, steamHarness: { projectInfo: { dataStorage: { mode: 'local' } } } }));
-  await writeFile(path.join(related.folderPath, 'dist/index.html'), '<html><head></head><body>Map preview</body></html>');
-  const runtime = { inspect: vi.fn(async () => ({ projects: [related], errors: [] })), readResource: vi.fn(async () => ({ id: 'doc', markdown: '# Document' })),
+  const owner: Project = {entryId:"main",aggregateName:"Test aggregate",defaultEntry:"main",entryRoot:root,databases:[],entries:[{entryId:"main",name:"Main",type:'conversation',root:".",entry:"index.ts",databases:[]}], id: 'ed18b4ed-5d84-4143-babe-407142cb33e9', uri: '', name: 'Owner', folderPath: root, projectType: 'conversation', fields: [], entrypoints: [] };
+  await writeFile(path.join(root, 'package.json'), JSON.stringify({ id:owner.id,name:'Owner',steamHarness:{entries:owner.entries,defaultEntry:'main'} }));
+  const board = { ...owner, id: '26649e36-f751-43bc-9eb1-a4a041623f3c', name: 'Board', folderPath: path.join(root, 'board'), projectType: 'kanban' as const,
+    entryRoot:path.join(root,'board'),entries:[{entryId:'main',name:'Main',type:'kanban' as const,root:'.',entry:'dist/index.html',configuration:'configuration.json',databases:[]}],kanban: { artifactDir: '.', entry: 'dist/index.html' }, fields: [{ name: 'title', type: 'string', defaultValue: 'Default' }] };
+  await mkdir(path.join(board.folderPath, 'dist'), { recursive: true });
+  await writeFile(path.join(board.folderPath, 'package.json'), JSON.stringify({id:board.id,name:'Board',steamHarness:{entries:board.entries,defaultEntry:'main'}}));
+  await writeFile(path.join(board.folderPath, 'dist/index.html'), '<html><head></head><body>Map preview</body></html>');
+  await writeFile(path.join(root,'index.ts'),'export {};');
+  await writeFile(path.join(board.folderPath,'configuration.json'),JSON.stringify({version:1,fields:board.fields}));
+  const runtime = { inspect: vi.fn(async () => ({ projects: [board], errors: [] })), readResource: vi.fn(async () => ({ id: 'doc', markdown: '# Document' })),
     kanbanBridge: vi.fn(async () => ({ key: 'map' })) } as unknown as Runtime;
   let connection: { serverUrl: string; accessToken: string } | undefined = { serverUrl: 'https://steamharness.test', accessToken: 'test-only-token' };
-  const previews = new ResourcePreviews(owner, runtime, storageDir, () => connection, () => [{ alias: 'map', projectDir: related.folderPath }]);
+  const previews = new ResourcePreviews(owner, runtime, storageDir, () => connection, () => [board.folderPath]);
   openedPreviews.push(previews);
-  const card = (kind: ResourceCard['kind'], target: Record<string, string>, extra: Partial<ResourceCard> = {}): ResourceCard => ({ id: 'card', kind, title: 'Resource', target, ...extra });
-  return { root, owner, related, runtime, storageDir, previews, card, logout: () => { connection = undefined; previews.clear(); } };
+  const card = (kind: ResourceCard['kind'], target: Record<string, string>, extra: Partial<ResourceCard> = {}): ResourceCard => ({ id: 'card', kind, title: 'Resource', target:{entryId:'main',...(['kv','knowledge'].includes(kind)?{database:'data'}:{}),...target}, ...extra });
+  return { root, owner, board, runtime, storageDir, previews, card, logout: () => { connection = undefined; previews.clear(); } };
 }
 
 function largePng(): Buffer {
@@ -47,45 +49,45 @@ function largePng(): Buffer {
 }
 
 describe('resource previews', () => {
-  it('uses the related resource owner and exact conversation scope rather than the caller storage', async () => {
-    const { previews, card, related, runtime } = await fixture();
-    const result = await previews.open(card('knowledge', { source: 'local', projectId: related.id, documentId: 'doc', conversationId: 'target-session' }));
-    expect(result.data).toMatchObject({ format: 'markdown', content: { markdown: '# Document' }, project: { id: related.id, folderPath: related.folderPath } });
-    expect(runtime.readResource).toHaveBeenCalledWith(expect.objectContaining({ id: related.id }), 'target-session', 'knowledge', expect.objectContaining({ documentId: 'doc' }));
+  it('uses the board resource owner and exact conversation scope rather than the caller storage', async () => {
+    const { previews, card, board, runtime } = await fixture();
+    const result = await previews.open(card('knowledge', { source: 'local', projectId: board.id, documentId: 'doc', conversationId: 'target-session' }));
+    expect(result.data).toMatchObject({ format: 'markdown', content: { markdown: '# Document' }, project: { id: board.id, folderPath: board.folderPath } });
+    expect(runtime.readResource).toHaveBeenCalledWith(expect.objectContaining({ id: board.id }), 'target-session', 'knowledge', expect.objectContaining({ documentId: 'doc' }));
   });
 
   it('previews imported projects even when they are not execution relations', async () => {
-    const { owner, related, runtime, storageDir, card } = await fixture();
-    const previews = new ResourcePreviews(owner, runtime, storageDir, () => undefined, () => [], () => [related.folderPath]);
-    expect((await previews.open(card('project', { source: 'local', projectId: related.id }, { preview: false }))).data.project?.id).toBe(related.id);
+    const { owner, board, runtime, storageDir, card } = await fixture();
+    const previews = new ResourcePreviews(owner, runtime, storageDir, () => undefined, () => [board.folderPath]);
+    expect((await previews.open(card('project', { source: 'local', projectId: board.id }, { preview: false }))).data.project?.id).toBe(board.id);
   });
 
   it.each(['kanban', 'project'] as const)('resolves current assistant %s cards to its workspace project', async kind => {
-    const { owner, related, runtime, storageDir, card } = await fixture();
-    owner.assistant = { workdir: related.folderPath, roots: [{ uri: 'file:///map', folderPath: related.folderPath, name: 'Map' }] };
+    const { owner, board, runtime, storageDir, card } = await fixture();
+    owner.assistant = { workdir: board.folderPath, roots: [{ uri: 'file:///map', folderPath: board.folderPath, name: 'Map' }] };
     const previews = new ResourcePreviews(owner, runtime, storageDir, () => undefined, () => []);
     openedPreviews.push(previews);
     const result = await previews.open(card(kind, { source: 'local', projectId: owner.id }));
-    expect(result.data).toMatchObject({ format: 'kanban', project: { id: related.id, folderPath: related.folderPath, projectType: 'kanban' } });
-    expect(runtime.inspect).toHaveBeenCalledWith([related.folderPath]);
+    expect(result.data).toMatchObject({ format: 'kanban', project: {entryId:"main",aggregateName:"Test aggregate",defaultEntry:"main", id: board.id, folderPath: board.folderPath, projectType: 'kanban' } });
+    expect(runtime.inspect).toHaveBeenCalledWith([board.folderPath]);
     expect(String((await previews.asset(new URL(result.data.kanban!.url, 'http://localhost')))?.content)).toContain('Map preview');
   });
 
   it('resolves explicit assistant workspace cards without requiring an imported project', async () => {
-    const { owner, related, runtime, storageDir, card } = await fixture();
-    owner.assistant = { workdir: related.folderPath, roots: [{ uri: 'file:///map', folderPath: related.folderPath, name: 'Map' }] };
+    const { owner, board, runtime, storageDir, card } = await fixture();
+    owner.assistant = { workdir: board.folderPath, roots: [{ uri: 'file:///map', folderPath: board.folderPath, name: 'Map' }] };
     const previews = new ResourcePreviews(owner, runtime, storageDir, () => undefined, () => []);
     openedPreviews.push(previews);
-    expect((await previews.open(card('project', { source: 'local', projectId: related.id }, { preview: false }))).data.project?.id).toBe(related.id);
+    expect((await previews.open(card('project', { source: 'local', projectId: board.id }, { preview: false }))).data.project?.id).toBe(board.id);
   });
 
   it('does not substitute another imported project when the assistant workspace has no project', async () => {
-    const { owner, related, runtime, storageDir, card } = await fixture();
+    const { owner, board, runtime, storageDir, card } = await fixture();
     const workdir = path.join(owner.folderPath, 'folder');
     await mkdir(workdir);
     owner.assistant = { workdir, roots: [{ uri: 'file:///folder', folderPath: workdir, name: 'Folder' }] };
     vi.mocked(runtime.inspect).mockResolvedValue({ projects: [], errors: ['No project found.'] });
-    const previews = new ResourcePreviews(owner, runtime, storageDir, () => undefined, () => [], () => [related.folderPath]);
+    const previews = new ResourcePreviews(owner, runtime, storageDir, () => undefined, () => [board.folderPath]);
     openedPreviews.push(previews);
     await expect(previews.open(card('kanban', { source: 'local', projectId: owner.id }))).rejects.toThrow('The resource project is unavailable.');
     expect(runtime.inspect).toHaveBeenCalledWith([workdir]);
@@ -96,7 +98,7 @@ describe('resource previews', () => {
     const { previews, card } = await fixture();
     const fetcher = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(JSON.stringify({ errCode: 0, data: { id: 'doc', markdown: '# Foreign document' } })));
     const result = await previews.open(card('knowledge', { source: 'server', projectId: 'database', documentId: 'doc' }));
-    expect(fetcher).toHaveBeenCalledWith('https://steamharness.test/api/projects/database/knowledge-documents/doc', expect.objectContaining({ headers: expect.objectContaining({ Authorization: 'Bearer test-only-token' }), redirect: 'error' }));
+    expect(fetcher).toHaveBeenCalledWith('https://steamharness.test/api/projects/database/entries/main/resources/read', expect.objectContaining({ headers: expect.objectContaining({ Authorization: 'Bearer test-only-token' }), redirect: 'error' }));
     expect(result.data.format).toBe('markdown'); expect(JSON.stringify(result)).not.toContain('test-only-token');
     fetcher.mockResolvedValue(new Response(JSON.stringify({ errCode: 403, errMessage: 'Access denied' }), { status: 403 }));
     await expect(previews.open(card('knowledge', { source: 'server', projectId: 'private', documentId: 'doc' }))).rejects.toThrow('Access denied');
@@ -114,7 +116,7 @@ describe('resource previews', () => {
     const fetcher = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(JSON.stringify({ errCode: 0, data: { key: 'state', value: 7 } })));
     await previews.open(card('kv', { source: 'server', projectId: 'database', key: 'state', scope: 'conversation', conversationId: 'session-b' }));
     const url = new URL(String(fetcher.mock.calls[0][0]));
-    expect(url.pathname).toBe('/api/projects/database/kv/entry'); expect(Object.fromEntries(url.searchParams)).toEqual({ scope: 'conversation', conversationId: 'session-b', key: 'state' });
+    expect(url.pathname).toBe('/api/projects/database/entries/main/resources/read');expect(JSON.parse(String(fetcher.mock.calls[0][1]!.body))).toMatchObject({database:'data',scope:'conversation',conversationId:'session-b',key:'state'});
   });
 
   it('does not guess a local directory from a card project UUID', async () => {
@@ -124,9 +126,9 @@ describe('resource previews', () => {
   });
 
   it('isolates named and temporary map configurations without persisting or selecting them', async () => {
-    const { previews, related, storageDir, card } = await fixture();
-    await writeFile(path.join(related.folderPath,'configuration.json'),JSON.stringify({version:1,fields:[{name:'title',type:'string',defaultValue:'Default'}]}));
-    const store=await createLocalProjectConfigurationStore(related.folderPath);
+    const { previews, board, storageDir, card } = await fixture();
+    await writeFile(path.join(board.folderPath,'configuration.json'),JSON.stringify({version:1,fields:[{name:'title',type:'string',defaultValue:'Default'}]}));
+    const store=await createLocalProjectConfigurationStore(board.folderPath);
     let state=await store.read(); const active=state.activeConfigurationId;
     state=await store.dispatch({action:'save',revision:state.revision,id:active,values:{title:'Active'}}) as typeof state;
     state=await store.dispatch({action:'create',revision:state.revision,name:'Other'}) as typeof state;
@@ -134,24 +136,24 @@ describe('resource previews', () => {
     state=await store.dispatch({action:'save',revision:state.revision,id:other,values:{title:'Other'}}) as typeof state;
     state=await store.dispatch({action:'select',revision:state.revision,id:active}) as typeof state;
     const saved=await store.read();
-    const first = await previews.open(card('kanban', { source: 'local', projectId: related.id, configurationId: other }, { preview: true, kanban: { mode: 'preview', values: { title: 'Temporary' } } }));
-    const second = await previews.open(card('project', { source: 'local', projectId: related.id }, { preview: true }));
+    const first = await previews.open(card('kanban', { source: 'local', projectId: board.id, configurationId: other }, { preview: true, kanban: { mode: 'preview', values: { title: 'Temporary' } } }));
+    const second = await previews.open(card('project', { source: 'local', projectId: board.id }, { preview: true }));
     expect(first.data.kanban?.configuration).toMatchObject({ id: other, params: { title: 'Temporary' } });
     expect(second.data.kanban?.configuration).toMatchObject({ id: active, params: { title: 'Active' } });
     expect(await store.read()).toEqual(saved);
     expect(String((await previews.asset(new URL(first.data.kanban!.url, 'http://localhost')))?.content)).toContain('Temporary');
-    await expect(previews.open(card('kanban', { source: 'local', projectId: related.id, configurationId: 'deleted' }))).rejects.toThrow();
+    await expect(previews.open(card('kanban', { source: 'local', projectId: board.id, configurationId: 'deleted' }))).rejects.toThrow();
   });
 
   it('enforces published locks on temporary card values without persisting permitted previews',async()=>{
-    const {root,related,previews,card}=await fixture();
+    const {root,board,previews,card}=await fixture();
     vi.spyOn(os,'homedir').mockReturnValue(path.join(root,'host'));
     const author=createConfigurationState([{name:'settings',type:'json',defaultValue:{locked:0,open:false},sharing:{includeValue:true},paths:{'/locked':{editable:false}}}],()=> 'official');
-    const template=freezeConfigurationTemplate(createPublicationDraft(author),{projectId:related.id,projectVersion:'1.0.0',sourceHash:'a'.repeat(64)});
+    const template=freezeConfigurationTemplate(createPublicationDraft(author),{entryId:"main",projectId:board.id,projectVersion:'1.0.0',sourceHash:'a'.repeat(64)});
     await cacheVerifiedConfigurationTemplate(template);
-    await writeFile(path.join(related.folderPath,'configuration.template.json'),JSON.stringify(template));
-    const store=await createLocalProjectConfigurationStore(related.folderPath),saved=await store.read();
-    const preview=(settings:Record<string,number|boolean>)=>previews.open(card('kanban',{source:'local',projectId:related.id},{kanban:{mode:'preview',values:{settings}}}));
+    await mkdir(path.join(board.folderPath,'configuration-templates/main'),{recursive:true});await writeFile(path.join(board.folderPath,'configuration-templates/main/configuration.template.json'),JSON.stringify(template));
+    const store=await createLocalProjectConfigurationStore(board.folderPath),saved=await store.read();
+    const preview=(settings:Record<string,number|boolean>)=>previews.open(card('kanban',{source:'local',projectId:board.id},{kanban:{mode:'preview',values:{settings}}}));
     await expect(preview({locked:1,open:true})).rejects.toMatchObject({code:'CONFIGURATION_FORBIDDEN'});
     await expect(preview({open:true})).rejects.toMatchObject({code:'CONFIGURATION_FORBIDDEN'});
     const opened=await preview({locked:0,open:true});
@@ -160,19 +162,19 @@ describe('resource previews', () => {
   });
 
   it.each(['notes.txt', 'notes.md'])('preserves %s content beyond 2 MiB', async filename => {
-    const { previews, card, related } = await fixture();
+    const { previews, card, board } = await fixture();
     const content = `# Map annotations\n${'Coordinate: 100, 200\n'.repeat(150_000)}Last annotation`;
-    await writeFile(path.join(related.folderPath, filename), content);
-    const result = await previews.open(card('file', { source: 'local', projectId: related.id, filePath: filename }));
+    await writeFile(path.join(board.folderPath, filename), content);
+    const result = await previews.open(card('file', { source: 'local', projectId: board.id, filePath: filename }));
     expect(result.data.format).toBe(filename.endsWith('.md') ? 'markdown' : 'text');
     expect(result.data.content).toBe(content);
   });
 
   it('serves a large assistant workspace image as original bytes through a scoped asset URL', async () => {
-    const { previews, card, owner, related } = await fixture();
-    owner.assistant = { workdir: related.folderPath, roots: [{ uri: 'file:///map', folderPath: related.folderPath, name: 'Map' }] };
+    const { previews, card, owner, board } = await fixture();
+    owner.assistant = { workdir: board.folderPath, roots: [{ uri: 'file:///map', folderPath: board.folderPath, name: 'Map' }] };
     const bytes = largePng(), filename = '厂区 · 圈选边界.PNG';
-    await writeFile(path.join(related.folderPath, filename), bytes);
+    await writeFile(path.join(board.folderPath, filename), bytes);
     const result = await previews.open(card('file', { source: 'local', projectId: owner.id, filePath: filename }));
     expect(result.data).toMatchObject({ format: 'image', content: `/resource-assets/${result.id}/image` });
     const url = new URL(String(result.data.content), 'http://localhost');
@@ -187,10 +189,10 @@ describe('resource previews', () => {
   });
 
   it('rechecks image paths and revokes their asset URLs after resource access changes', async () => {
-    const { previews, card, owner, related, logout } = await fixture();
-    const filename = path.join(related.folderPath, 'map.svg');
+    const { previews, card, owner, board, logout } = await fixture();
+    const filename = path.join(board.folderPath, 'map.svg');
     await writeFile(filename, '<svg xmlns="http://www.w3.org/2000/svg"/>');
-    const result = await previews.open(card('file', { source: 'local', projectId: related.id, filePath: 'map.svg' }));
+    const result = await previews.open(card('file', { source: 'local', projectId: board.id, filePath: 'map.svg' }));
     const url = new URL(String(result.data.content), 'http://localhost');
     expect((await previews.asset(url))?.headers['Content-Type']).toBe('image/svg+xml');
     await writeFile(path.join(owner.folderPath, 'private.svg'), 'Private');
@@ -204,27 +206,27 @@ describe('resource previews', () => {
   });
 
   it('does not report a file size error for directory targets', async () => {
-    const { previews, card, related } = await fixture();
-    await expect(previews.open(card('file', { source: 'local', projectId: related.id, filePath: 'dist' }))).rejects.toThrow('The preview target is not a file.');
+    const { previews, card, board } = await fixture();
+    await expect(previews.open(card('file', { source: 'local', projectId: board.id, filePath: 'dist' }))).rejects.toThrow('The preview target is not a file.');
   });
 
   it('rejects file symlinks escaping an authorized project', async () => {
-    const { previews, card, owner, related } = await fixture();
+    const { previews, card, owner, board } = await fixture();
     await writeFile(path.join(owner.folderPath, 'private.txt'), 'Private');
-    await symlink(path.join(owner.folderPath, 'private.txt'), path.join(related.folderPath, 'outside.txt'));
-    await expect(previews.open(card('file', { source: 'local', projectId: related.id, filePath: 'outside.txt' }))).rejects.toThrow('File is outside');
+    await symlink(path.join(owner.folderPath, 'private.txt'), path.join(board.folderPath, 'outside.txt'));
+    await expect(previews.open(card('file', { source: 'local', projectId: board.id, filePath: 'outside.txt' }))).rejects.toThrow('File is outside');
   });
 
   it('loads large file card images over HTTP without placing binary data in resource messages', async () => {
-    const { owner, related, runtime, storageDir } = await fixture();
-    owner.assistant = { workdir: related.folderPath, roots: [{ uri: 'file:///map', folderPath: related.folderPath, name: 'Map' }] };
+    const { owner, board, runtime, storageDir } = await fixture();
+    owner.assistant = { workdir: board.folderPath, roots: [{ uri: 'file:///map', folderPath: board.folderPath, name: 'Map' }] };
     vi.mocked(runtime.inspect).mockResolvedValue({ projects: [owner], errors: [] }); runtime.dispose = vi.fn();
-    const bytes = largePng(); await writeFile(path.join(related.folderPath, 'map.png'), bytes);
+    const bytes = largePng(); await writeFile(path.join(board.folderPath, 'map.png'), bytes);
     const app = await startWebServer({ projectDir: owner.folderPath, dataDir: storageDir, runtime, host: { surface: 'editor' } });
     const request = (message: object) => fetch(new URL('/api/message', app.url), { method: 'POST',
       headers: { Authorization: `Bearer ${new URL(app.url).hash.slice('#session='.length)}`, 'Content-Type': 'application/json' }, body: JSON.stringify(message) });
     try {
-      app.controller.current.messages.push({ id: 'answer', role: 'assistant', content: '', items: [{ metadata: { kind: 'agent-part', partType: 'tool' },
+      app.controller!.current.messages.push({ id: 'answer', role: 'assistant', content: '', items: [{ metadata: { kind: 'agent-part', partType: 'tool' },
         content: { tool: 'workflow-ui_present_card', status: 'success', output: { action: 'upsert', cardId: 'image', kind: 'file',
           target: { source: 'current', filePath: 'map.png' } } } }] });
       const opened = (await (await request({ type: 'resource', messageId: 'answer', cardId: 'image' })).json()).messages[0];
@@ -242,20 +244,20 @@ describe('resource previews', () => {
   });
 
   it('allows preview reads but blocks data mutations and invalidates open previews on logout', async () => {
-    const { previews, card, related, runtime, logout } = await fixture();
-    const result = await previews.open(card('project', { source: 'local', projectId: related.id }, { preview: true }));
-    await previews.bridge(result.id, { requestId: 'read', operation: 'kv.getValue', input: { key: 'map' } });
-    expect(runtime.kanbanBridge).toHaveBeenCalledWith(expect.objectContaining({ id: related.id }), expect.objectContaining({ operation: 'kv.getValue' }));
-    await expect(previews.bridge(result.id, { requestId: 'write', operation: 'kv.setValue', input: { key: 'map', value: 'changed' } })).rejects.toThrow('read-only');
+    const { previews, card, board, runtime, logout } = await fixture();
+    const result = await previews.open(card('project', { source: 'local', projectId: board.id }, { preview: true }));
+    await previews.bridge(result.id, { requestId: 'read', operation: 'kv.getValue', input: {database:'data', key: 'map' } });
+    expect(runtime.kanbanBridge).toHaveBeenCalledWith(expect.objectContaining({ id: board.id }), expect.objectContaining({ operation: 'kv.getValue' }));
+    await expect(previews.bridge(result.id, { requestId: 'write', operation: 'kv.setValue', input: {database:'data', key: 'map', value: 'changed' } })).rejects.toThrow('read-only');
     logout(); expect(() => previews.get(result.id)).toThrow(); expect(await previews.asset(new URL(result.data.kanban!.url, 'http://localhost'))).toBeUndefined();
   });
 
   it('discards a pending preview read after resource access changes', async () => {
-    const { previews, card, related, runtime } = await fixture();
-    const result = await previews.open(card('kanban', { source: 'local', projectId: related.id }));
+    const { previews, card, board, runtime } = await fixture();
+    const result = await previews.open(card('kanban', { source: 'local', projectId: board.id }));
     let finish!: (value: unknown) => void;
     vi.mocked(runtime.kanbanBridge!).mockImplementation(() => new Promise(resolve => { finish = resolve; }));
-    const reading = previews.bridge(result.id, { requestId: 'read', operation: 'kv.getValue', input: { key: 'map' } });
+    const reading = previews.bridge(result.id, { requestId: 'read', operation: 'kv.getValue', input: {database:'data', key: 'map' } });
     const rejected = expect(reading).rejects.toThrow('Resource access changed');
     previews.clear(); finish({ private: 'previous account data' });
     await rejected;
@@ -265,7 +267,7 @@ describe('resource previews', () => {
     const { previews, card } = await fixture();
     const prefix = 'https://steamharness.test/api/projects/board/kanban/previews/nonce/browser/local/';
     const fetcher = vi.spyOn(globalThis, 'fetch').mockImplementation(async url => new Response(JSON.stringify({ errCode: 0, data:
-      String(url).endsWith('/structure') ? { structure: { projectType: 'kanban' } } : String(url).endsWith('/configurations') ? createConfigurationState([],()=> 'default') : {
+      new URL(String(url)).pathname.endsWith('/board')?{id:'board',name:'Board',defaultEntry:'main',entries:[{entryId:'main',name:'Board',type:'kanban',root:'.',entry:'index.html',databases:[]}]}: String(url).includes('/configurations?') ? createConfigurationState([],()=> 'default') : {
         manifest: { params: [] }, configurations: [], preview: { url: `${prefix}index.html`, nonce: 'nonce' },
       } })));
     const result = await previews.open(card('kanban', { source: 'server', projectId: 'board' }));
@@ -288,8 +290,8 @@ describe('resource previews', () => {
     const request = (message: object) => originalFetch(new URL('/api/message', app.url), { method: 'POST',
       headers: { Authorization: `Bearer ${new URLSearchParams(new URL(app.url).hash.slice(1)).get('session')}`, 'Content-Type': 'application/json' }, body: JSON.stringify(message) });
     try {
-      app.controller.current.messages.push({ id: 'answer', role: 'assistant', content: '', items: [{ metadata: { kind: 'agent-part', partType: 'tool' },
-        content: { tool: 'workflow-ui_present_card', status: 'success', output: { action: 'upsert', cardId: 'doc', kind: 'knowledge', target: { source: 'current', documentId: 'doc' } } } }] });
+      app.controller!.current.messages.push({ id: 'answer', role: 'assistant', content: '', items: [{ metadata: { kind: 'agent-part', partType: 'tool' },
+        content: { tool: 'workflow-ui_present_card', status: 'success', output: { action: 'upsert', cardId: 'doc', kind: 'knowledge', target: { entryId:'main',database:'data',source: 'current', documentId: 'doc' } } } }] });
       const result = await (await request({ type: 'resource', messageId: 'answer', cardId: 'doc' })).json();
       const id = result.messages[0].id;
       await app.setHostConnection({ ...connection });
@@ -316,9 +318,9 @@ describe('resource previews', () => {
       const address = String(url);
       if (!address.startsWith(connection.serverUrl)) { return originalFetch(url, init); }
       const data = address.endsWith('/api/auth/me') ? { profile: { userId: 'user', email: 'test@example.com', displayName: 'User' } }
-        : address.endsWith('/structure') ? { structure: { projectType: 'kanban' } }
-        : address.endsWith('/configurations') ? createConfigurationState([],()=> 'default')
-        : address.endsWith('/kanban') ? { manifest: { params: [] }, configurations: [],
+        : new URL(address).pathname.endsWith('/board') ? {id:'board',name:'Board',defaultEntry:'main',entries:[{entryId:'main',name:'Board',type:'kanban',root:'.',entry:'index.html',databases:[]}]}
+        : address.includes('/configurations?') ? createConfigurationState([],()=> 'default')
+        : address.includes('/kanban?') ? { manifest: { params: [] }, configurations: [],
           preview: { url: `${connection.serverUrl}/api/projects/board/kanban/previews/nonce/browser/local/index.html`, nonce: 'nonce' } }
         : undefined;
       return Promise.resolve(data ? new Response(JSON.stringify({ errCode: 0, data })) : new Response('Remote board artifact'));
@@ -327,8 +329,8 @@ describe('resource previews', () => {
     const request = (message: object) => originalFetch(new URL('/api/message', app.url), { method: 'POST',
       headers: { Authorization: `Bearer ${new URL(app.url).hash.slice('#session='.length)}`, 'Content-Type': 'application/json' }, body: JSON.stringify(message) });
     try {
-      app.controller.current.messages.push({ id: 'answer', role: 'assistant', content: '', items: [{ metadata: { kind: 'agent-part', partType: 'tool' },
-        content: { tool: 'workflow-ui_present_card', status: 'success', output: { action: 'upsert', cardId: 'board', kind: 'kanban', target: { source: 'server', projectId: 'board' } } } }] });
+      app.controller!.current.messages.push({ id: 'answer', role: 'assistant', content: '', items: [{ metadata: { kind: 'agent-part', partType: 'tool' },
+        content: { tool: 'workflow-ui_present_card', status: 'success', output: { action: 'upsert', cardId: 'board', kind: 'kanban', target: {entryId:'main', source: 'server', projectId: 'board' } } } }] });
       const opened = (await (await request({ type: 'resource', messageId: 'answer', cardId: 'board' })).json()).messages[0];
       const preview = (await (await request({ type: 'resource-data', id: opened.id })).json()).messages[0].data;
       const asset = () => originalFetch(new URL(preview.kanban.url, app.url));
@@ -339,17 +341,18 @@ describe('resource previews', () => {
   });
 
   it('opens and restores a current assistant map card with its named configuration and server data', async () => {
-    const { owner, related, runtime, storageDir } = await fixture();
-    await writeFile(path.join(related.folderPath, 'configuration.json'), JSON.stringify({ version: 1, fields: [{ name: 'title', type: 'string' }] }));
-    const store = await createLocalProjectConfigurationStore(related.folderPath);
+    const { owner, board, runtime, storageDir } = await fixture();
+    await writeFile(path.join(board.folderPath, 'configuration.json'), JSON.stringify({ version: 1, fields: [{ name: 'title', type: 'string' }] }));
+    const store = await createLocalProjectConfigurationStore(board.folderPath);
     await store.read();
     let configuration = await store.read();
     const configurationId = configuration.activeConfigurationId;
     configuration = await store.dispatch({ action: 'save', revision: configuration.revision, id: configurationId, values: { title: 'Named map' } }) as typeof configuration;
     configuration = await store.dispatch({ action: 'create', revision: configuration.revision, name: 'Another map' }) as typeof configuration;
-    const map: Project = { ...related, projectInfo: readProjectInfo({ steamHarness: { projectInfo: { dataStorage: { mode: 'server' } } } }) };
+    const map: Project = { ...board };
     vi.mocked(runtime.inspect).mockImplementation(async directories => ({ projects: [directories[0] === owner.folderPath ? owner : map], errors: [] }));
     runtime.dispose = vi.fn();
+    vi.mocked(runtime.kanbanBridge!).mockResolvedValue({key:'map',value:{points:['Spawn']}});
     const originalFetch = globalThis.fetch, connection = { serverUrl: 'https://steamharness.test', accessToken: 'test-only-token' };
     const fetcher = vi.spyOn(globalThis, 'fetch').mockImplementation((url, init) => {
       if (String(url).endsWith('/api/auth/me')) {
@@ -372,8 +375,8 @@ describe('resource previews', () => {
       return body.messages[0];
     };
     const presentation = { action: 'upsert', cardId: 'spawn-point', kind: 'kanban', title: 'Map · Spawn', pinned: true, preview: true,
-      target: { source: 'current', configurationId } };
-    app.controller.current.messages.push({ id: 'answer', role: 'assistant', content: '', items: [{ metadata: { kind: 'agent-part', partType: 'tool' },
+      target: { entryId:'main',source: 'current', configurationId } };
+    app.controller!.current.messages.push({ id: 'answer', role: 'assistant', content: '', items: [{ metadata: { kind: 'agent-part', partType: 'tool' },
       content: { tool: 'workflow-ui_present_card', input: presentation, status: 'success', output: { content: [{ type: 'text', text: JSON.stringify(presentation) }], details: {} } } }] });
     try {
       const opened = await request({ type: 'resource', messageId: 'answer', cardId: 'spawn-point', action: 'inline' });
@@ -384,40 +387,39 @@ describe('resource previews', () => {
         expect(preview.data).toMatchObject({ format: 'kanban', project: { id: map.id },
           kanban: { configuration: { id: configurationId, params: { title: 'Named map' } } } });
         expect(await (await originalFetch(new URL(preview.data.kanban.url, app.url))).text()).toContain('Map preview');
-        const call = { requestId: 'read', operation: 'kv.getValue', input: { key: 'map' } };
+        const call = { requestId: 'read', operation: 'kv.getValue', input: {database:'data', key: 'map' } };
         expect(await request({ type: 'resource-bridge', id: preview.id ?? opened.id, call })).toMatchObject({ value: { value: { points: ['Spawn'] } } });
-        expect(fetcher).toHaveBeenCalledWith(`${connection.serverUrl}/api/projects/${map.id}/kanban/bridge`,
-          expect.objectContaining({ body: JSON.stringify({ call }), headers: expect.objectContaining({ Authorization: 'Bearer test-only-token' }) }));
+        expect(runtime.kanbanBridge).toHaveBeenCalledWith(expect.objectContaining({id:map.id,entryId:'main'}),call);
       }
       expect(await store.read()).toEqual(configuration);
-      expect(runtime.kanbanBridge).not.toHaveBeenCalled();
+      expect(runtime.kanbanBridge).toHaveBeenCalled();
       expect(app.project.id).toBe(owner.id);
     } finally { await app.close(); }
   });
 
   it('refreshes an expired map card from its original conversation and rechecks imported projects', async () => {
-    const { owner, related, runtime, storageDir } = await fixture();
-    vi.mocked(runtime.inspect).mockImplementation(async directories => ({ projects: [directories[0] === owner.folderPath ? owner : related], errors: [] }));
+    const { owner, board, runtime, storageDir } = await fixture();
+    vi.mocked(runtime.inspect).mockImplementation(async directories => ({ projects: [directories[0] === owner.folderPath ? owner : board], errors: [] }));
     runtime.dispose = vi.fn();
     const app = await startWebServer({ projectDir: owner.folderPath, dataDir: storageDir, runtime,
-      host: { surface: 'editor', resourceProjects: [related.folderPath] } });
+      host: { surface: 'editor', resourceProjects: [board.folderPath] } });
     const request = (message: object) => fetch(new URL('/api/message', app.url), { method: 'POST',
       headers: { Authorization: `Bearer ${new URL(app.url).hash.slice('#session='.length)}`, 'Content-Type': 'application/json' }, body: JSON.stringify(message) });
-    const original = app.controller.current;
+    const original = app.controller!.current;
     original.messages.push({ id: 'answer', role: 'assistant', content: '', items: [{ metadata: { kind: 'agent-part', partType: 'tool' },
       content: { tool: 'map_open_kanban', status: 'success', output: { details: { resourceCard: {
-        action: 'upsert', cardId: 'map', kind: 'project', title: 'Map', target: { source: 'local', projectId: related.id }, preview: true,
+        action: 'upsert', cardId: 'map', kind: 'project', title: 'Map', target: {entryId:'main', source: 'local', projectId: board.id }, preview: true,
       } } } } }] });
     try {
       const opened = (await (await request({ type: 'resource', messageId: 'answer', cardId: 'map' })).json()).messages[0];
       const reference = JSON.parse(new URL(opened.url, app.url).searchParams.get('resourceRef')!);
       expect(reference).toEqual({ sessionId: original.id, messageId: 'answer', cardId: 'map' });
       const first = (await (await request({ type: 'resource-data', id: opened.id })).json()).messages[0].data;
-      await app.controller.create();
-      expect(app.controller.current.id).not.toBe(original.id);
-      await writeFile(path.join(related.folderPath, 'dist/index.html'), '<html><head></head><body>Updated map</body></html>');
+      await app.controller!.create();
+      expect(app.controller!.current.id).not.toBe(original.id);
+      await writeFile(path.join(board.folderPath, 'dist/index.html'), '<html><head></head><body>Updated map</body></html>');
       for (const type of ['resource-refresh', 'resource-data']) {
-        app.setHostResourceProjects([related.folderPath]);
+        app.setHostResourceProjects([board.folderPath]);
         expect((await request({ type, id: opened.id })).ok).toBe(false);
         const response = await request({ type, id: opened.id, reference });
         expect(response.ok).toBe(true);
@@ -430,7 +432,7 @@ describe('resource previews', () => {
       app.setHostResourceProjects([]);
       expect(await (await request({ type: 'resource-refresh', id: opened.id, reference,
         target: { projectId: owner.id }, selection: { projectId: owner.id } })).json()).toMatchObject({ message: expect.stringContaining('Import or open') });
-      app.setHostResourceProjects([related.folderPath]);
+      app.setHostResourceProjects([board.folderPath]);
       expect((await request({ type: 'resource-refresh', id: opened.id, reference: { ...reference, cardId: 'forged' } })).ok).toBe(false);
       original.messages.length = 0;
       expect(await (await request({ type: 'resource-refresh', id: opened.id, reference })).json()).toMatchObject({ message: 'This resource no longer exists.' });
@@ -448,9 +450,9 @@ describe('resource previews', () => {
     const app = await startWebServer({ projectDir: owner.folderPath, dataDir: storageDir, runtime, host: { surface: 'editor', connection } });
     const request = (message: object) => originalFetch(new URL('/api/message', app.url), { method: 'POST',
       headers: { Authorization: `Bearer ${new URL(app.url).hash.slice('#session='.length)}`, 'Content-Type': 'application/json' }, body: JSON.stringify(message) });
-    app.controller.current.messages.push({ id: 'answer', role: 'assistant', content: '', items: [{ metadata: { kind: 'agent-part', partType: 'tool' },
+    app.controller!.current.messages.push({ id: 'answer', role: 'assistant', content: '', items: [{ metadata: { kind: 'agent-part', partType: 'tool' },
       content: { tool: 'workflow-ui_present_card', status: 'success', output: { action: 'upsert', cardId: 'doc', kind: 'knowledge',
-        target: { source: 'server', projectId: owner.id, documentId: 'doc' } } } }] });
+        target: {entryId:'main',database:'data', source: 'server', projectId: owner.id, documentId: 'doc' } } } }] });
     try {
       const opened = (await (await request({ type: 'resource', messageId: 'answer', cardId: 'doc' })).json()).messages[0];
       const reference = JSON.parse(new URL(opened.url, app.url).searchParams.get('resourceRef')!);
@@ -465,14 +467,14 @@ describe('resource previews', () => {
   });
 });
 
-it('refreshes a related map card after its configuration changes through another surface',async()=>{
-  const {previews,related,card}=await fixture();
-  const store=await createLocalProjectConfigurationStore(related.folderPath);
+it('refreshes a board map card after its configuration changes through another surface',async()=>{
+  const {previews,board,card}=await fixture();
+  const store=await createLocalProjectConfigurationStore(board.folderPath);
   let state=await store.read();
   state=await store.dispatch({action:'field.save',revision:state.revision,field:{name:'label',type:'string'}}) as typeof state;
-  const opened=await previews.open(card('kanban',{source:'local',projectId:related.id}));
+  const opened=await previews.open(card('kanban',{source:'local',projectId:board.id}));
   await store.dispatch({action:'save',revision:state.revision,id:state.activeConfigurationId,values:{label:'updated'}});
   await vi.waitFor(()=>expect(()=>previews.get(opened.id)).toThrow(),{timeout:2500});
-  const refreshed=await previews.open(card('kanban',{source:'local',projectId:related.id}));
+  const refreshed=await previews.open(card('kanban',{source:'local',projectId:board.id}));
   expect(refreshed.data.kanban?.configuration.params.label).toBe('updated');
 });

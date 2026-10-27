@@ -1,4 +1,5 @@
 import { t } from './localization';
+import { AggregateWebHostPool } from './workflow-host-pool';
 import { upgradeServerProject } from './workflow-project-update-node';
 import * as vscode from 'vscode';
 import * as path from 'node:path';
@@ -25,6 +26,7 @@ import { uploadServerProject, downloadServerProject, allocateServerProjectId } f
 export function createProjectRuntime(context: vscode.ExtensionContext, account: AccountController): Launcher {
   const sessions = new Set<WebSession>();
   const controller = new AbortController();
+  const hosts = new AggregateWebHostPool(session => { sessions.add(session); void session.closed.then(() => sessions.delete(session)); });
   let settingsTimer: ReturnType<typeof setTimeout> | undefined;
   const userSettingsChanged = vscode.workspace.onDidChangeConfiguration(event => {
     if (!event.affectsConfiguration(USER_PERMISSION_SETTING)) { return; }
@@ -39,13 +41,13 @@ export function createProjectRuntime(context: vscode.ExtensionContext, account: 
     configuration: async (input: Record<string,unknown>, signal: AbortSignal): Promise<unknown> => {
       assertAvailable();
       if(input.storage==='local') {
-        if(input.open) { await vscode.commands.executeCommand('studio.openProjectConfigurations',input.projectDir); return {opened:true,storage:'local',projectDir:input.projectDir}; }
-        return requestProjectCliConfiguration(String(input.projectDir),executable(),input.call as Record<string,unknown>,signal,account.getConnection());
+        if(input.open) { await vscode.commands.executeCommand('studio.openProjectConfigurations',input.projectDir,input.entryId); return {opened:true,storage:'local',projectDir:input.projectDir}; }
+        return requestProjectCliConfiguration(String(input.projectDir),executable(),input.call as Record<string,unknown>,signal,account.getConnection(),String(input.entryId));
       }
       const connection=account.getConnection();if(!connection)throw new Error(t('Sign in to SteamHarness Server first.'));
-      if(input.open) { await vscode.env.openExternal(vscode.Uri.parse(`${connection.serverUrl}/detail/${encodeURIComponent(String(input.projectId))}/configurations`)); return {opened:true,storage:'server',projectId:input.projectId}; }
+      if(input.open) { await vscode.env.openExternal(vscode.Uri.parse(`${connection.serverUrl}/detail/${encodeURIComponent(String(input.projectId))}/entries/${encodeURIComponent(String(input.entryId))}/configurations`)); return {opened:true,storage:'server',projectId:input.projectId}; }
       const call=input.call as Record<string,unknown>;
-      const address=`${connection.serverUrl}/api/projects/${encodeURIComponent(String(input.projectId))}/configurations`;
+      const address=`${connection.serverUrl}/api/projects/${encodeURIComponent(String(input.projectId))}/entries/${encodeURIComponent(String(input.entryId))}/configurations`;
       const response=await fetch(call.action==='get'?`${address}?target=${encodeURIComponent(String(input.target??'draft'))}`:address,{
         method:call.action==='get'?'GET':'POST',headers:{Authorization:`Bearer ${connection.accessToken}`,'Content-Type':'application/json'},
         ...(call.action==='get'?{}:{body:JSON.stringify({call,target:input.target??'draft'})}),signal:AbortSignal.any([signal,AbortSignal.timeout(30_000)]),redirect:'error'});
@@ -239,7 +241,9 @@ export function createProjectRuntime(context: vscode.ExtensionContext, account: 
         throw error;
       }
     },
-    start: async (project, surface, signal, relatedProjects, resourceProjects, port) => {
+    start: async (project, surface, signal, resourceProjects) => hosts.acquire(
+      JSON.stringify([project.folderPath, project.id, surface, project.assistant ?? null]), project,
+      async (port, hostSignal) => {
       assertAvailable();
       if (project.assistant) { assertAssistantWorkspace(project.assistant); }
       if (project.assistant?.standalone) {
@@ -248,7 +252,7 @@ export function createProjectRuntime(context: vscode.ExtensionContext, account: 
       }
       const theme = vscode.window.activeColorTheme.kind;
       const connection = account.getConnection();
-      const runSignal = signal ? AbortSignal.any([signal, controller.signal]) : controller.signal;
+      const runSignal = AbortSignal.any([hostSignal, controller.signal]);
       let bridge: StudioControlBridge | undefined;
       try {
         let studioControl: StudioControlConfiguration | undefined;
@@ -275,7 +279,7 @@ export function createProjectRuntime(context: vscode.ExtensionContext, account: 
         const session = await startProjectCli({ projectDir: project.folderPath, nodePath: executable(),
           assistantProjectDir: project.assistant ? project.folderPath : undefined,
           expectedProjectId: project.id,
-          relatedProjects,
+          entryId: project.entryId,
           resourceProjects,
           dataDir: path.join(context.globalStorageUri.fsPath, 'workflow', 'web'),
           theme: theme === vscode.ColorThemeKind.Light || theme === vscode.ColorThemeKind.HighContrastLight ? 'light' : 'dark',
@@ -283,14 +287,12 @@ export function createProjectRuntime(context: vscode.ExtensionContext, account: 
         const sessionBridge = bridge;
         void session.closed.then(() => sessionBridge?.close());
         if (controller.signal.aborted) { await session.close(); throw new Error('Workflow host has stopped.'); }
-        sessions.add(session);
-        void session.closed.then(() => sessions.delete(session));
         if (JSON.stringify(account.getConnection()) !== JSON.stringify(connection)) { session.updateAuth(account.getConnection()); }
         try { session.updateUserSettings(readUserSettings()); }
         catch (error) { await session.close(); throw error; }
         return session;
       } catch (error) { await bridge?.close(); throw error; }
-    },
+    }, signal),
     cliEntry: async folder => { assertAvailable(); return (await resolveProjectCli(folder)).entry; },
     resource: (project, input, signal) => {
       assertAvailable();
@@ -298,6 +300,6 @@ export function createProjectRuntime(context: vscode.ExtensionContext, account: 
         storageDir: path.join(context.globalStorageUri.fsPath, 'workflow', 'web'), nodePath: executable(), connection: account.getConnection(),
         signal: AbortSignal.any([signal, controller.signal]) });
     },
-    dispose: () => { controller.abort(); authentication.dispose(); userSettingsChanged.dispose(); clearTimeout(settingsTimer); for (const session of sessions) { void session.close(); } },
+    dispose: () => { controller.abort(); authentication.dispose(); userSettingsChanged.dispose(); clearTimeout(settingsTimer); void hosts.close(); },
   };
 }

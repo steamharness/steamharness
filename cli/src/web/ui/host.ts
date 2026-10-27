@@ -35,7 +35,7 @@ export function acquireProjectHost(options: { live?: boolean; connectionBanner?:
     applyTheme(); dark.addEventListener('change', applyTheme);
   }
   const conversationView = new URLSearchParams(location.search).get('projectView');
-  const storageKey = `steamharness-web:${document.querySelector<HTMLMetaElement>('meta[name=steamharness-project]')?.content ?? location.pathname}${conversationView ? `:${conversationView}` : ''}`;
+  const storageKey = `steamharness-web:${document.querySelector<HTMLMetaElement>('meta[name=steamharness-project]')?.content ?? location.pathname}${conversationView ? `:${conversationView}` : ''}:${location.pathname}`;
   let navigationSignature: string | undefined;
   const emit = (message: Message) => window.dispatchEvent(new MessageEvent('message', { data: message }));
   const trace = new TraceBridge(message => { if (window.parent !== window) { window.parent.postMessage(message, '*'); } });

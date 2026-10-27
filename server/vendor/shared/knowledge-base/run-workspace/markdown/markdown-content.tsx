@@ -25,7 +25,8 @@ import typescript from "highlight.js/lib/languages/typescript";
 import xml from "highlight.js/lib/languages/xml";
 import yaml from "highlight.js/lib/languages/yaml";
 import { useCallback, useEffect, useRef, useState } from "react";
-import ReactMarkdown, { defaultUrlTransform, type Components, type UrlTransform } from "react-markdown";
+import ReactMarkdown, { type Components } from "react-markdown";
+import { transformKnowledgeMarkdownUrl as transformMarkdownUrl } from "../../markdown-urls";
 import remarkBreaks from "remark-breaks";
 import remarkGfm from "remark-gfm";
 import { ImagePreviewDialog } from "../ui/attachment";
@@ -68,7 +69,6 @@ const detailsSummaryIcons: Record<string, LucideIcon | undefined> = {
   "[list]": ClipboardList,
   "[quote]": TextQuote,
 };
-const safeImageDataUrlPattern = /^data:image\/(?:png|jpeg|jpg|webp|gif);base64,[a-z0-9+/=\s]+$/i;
 const markdownCodeLanguageAliases: Record<string, string | undefined> = {
   cmd: "bash",
   console: "bash",
@@ -395,21 +395,6 @@ function highlightMarkdownCode(code: string, language: typeof markdownCodeLangua
   } catch {
     return undefined;
   }
-}
-
-const transformMarkdownUrl: UrlTransform = (url, key, node) => {
-  // gpt-image output returns a Markdown data URL preview. Keep the
-  // default link safety policy, only allow base64 image data URLs for img src,
-  // and let the rendered image open the shared in-workspace preview layer.
-  if (key === "src" && node.tagName === "img" && isSafeImageDataUrl(url)) {
-    return url.replace(/\s+/g, "");
-  }
-
-  return defaultUrlTransform(url);
-};
-
-function isSafeImageDataUrl(url: string): boolean {
-  return safeImageDataUrlPattern.test(url.trim());
 }
 
 function MarkdownImage({

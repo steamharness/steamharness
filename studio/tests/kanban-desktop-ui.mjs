@@ -1,3 +1,5 @@
+import { approveLocalFixtureDatabase } from './approved-database-fixture.mjs';
+import { resolve } from 'import-meta-resolve';
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
 import { createServer } from 'node:http';
@@ -13,13 +15,13 @@ const root = fileURLToPath(new URL('../', import.meta.url)), example = path.join
 const proofDir = path.join(root, '.studio/kanban-migration'); await mkdir(proofDir, { recursive: true });
 const dataDir = await realpath(await mkdtemp(path.join(os.tmpdir(), 'studio-kanban-desktop-'))); await mkdir(path.join(dataDir, 'User'));
 await writeFile(path.join(dataDir, 'User/settings.json'), JSON.stringify({ 'workbench.colorTheme': 'Light Modern', 'git.openRepositoryInParentFolders': 'never' }));
-let projectDir = example;
-if (process.env.STEAMHARNESS_UI_CLI_ENTRY) {
-  projectDir = path.join(dataDir, 'kanban'); await mkdir(projectDir); for (const filename of ['package.json', 'board.css', 'board.js', 'index.html', 'kanban.json']) await cp(path.join(example, filename), path.join(projectDir, filename));
-  await mkdir(path.join(projectDir, 'node_modules/@steamharness'), { recursive: true });
-  await symlink(await realpath(path.join(example, 'node_modules/steamharness')), path.join(projectDir, 'node_modules/steamharness'), process.platform === 'win32' ? 'junction' : 'dir');
-  await symlink(path.resolve(path.dirname(process.env.STEAMHARNESS_UI_CLI_ENTRY), '..'), path.join(projectDir, 'node_modules/@steamharness/cli'), process.platform === 'win32' ? 'junction' : 'dir');
-}
+const projectDir=path.join(dataDir,'kanban');
+await cp(example,projectDir,{recursive:true,filter:file=>!file.split(path.sep).includes('node_modules')});
+await mkdir(path.join(projectDir,'node_modules/@steamharness'),{recursive:true});
+await symlink(await realpath(path.join(example,'node_modules/steamharness')),path.join(projectDir,'node_modules/steamharness'),process.platform==='win32'?'junction':'dir');
+await symlink(process.env.STEAMHARNESS_UI_CLI_ENTRY?path.resolve(path.dirname(process.env.STEAMHARNESS_UI_CLI_ENTRY),'..'):await realpath(path.join(example,'node_modules/@steamharness/cli')),path.join(projectDir,'node_modules/@steamharness/cli'),process.platform==='win32'?'junction':'dir');
+const core=await import(resolve('steamharness',new URL('../examples/kanban/package.json',import.meta.url).href));
+await approveLocalFixtureDatabase(core,projectDir,JSON.parse(await readFile(path.join(projectDir,'package.json'),'utf8')),path.join(dataDir,'databases'));
 const cliVersion = JSON.parse(await readFile(path.join(projectDir, 'node_modules/@steamharness/cli/package.json'), 'utf8')).version;
 if (!process.env.STEAMHARNESS_UI_CLI_ENTRY) { assert.equal(cliVersion, JSON.parse(await readFile(path.join(example, 'package.json'), 'utf8')).devDependencies['@steamharness/cli']); }
 const server = await createKanbanTestServer(), proof = { cliVersion, checks: [], screenshots: [], errors: [] };
@@ -28,7 +30,7 @@ const log = await open(path.join(proofDir, 'desktop.log'), 'w');
 const desktop = await desktopLocaleLaunch('zh-cn', dataDir);
 const child = spawn(desktop.executable, [...desktop.args,
   '--user-data-dir', dataDir, '--extensions-dir', path.join(root, '.studio/desktop-extensions'), '--locale=zh-cn', '--disable-workspace-trust', '--disable-telemetry', '--skip-welcome', '--skip-release-notes', `--remote-debugging-port=${port}`, projectDir,
-], { cwd: path.join(root, 'upstream/vscode'), env: { ...process.env, ...desktop.env, STEAMHARNESS_SERVER_URL: '', STEAMHARNESS_SERVER_ADMIN_KEY: '' }, stdio: ['ignore', log.fd, log.fd] });
+], { cwd: path.join(root, 'upstream/vscode'), env: { ...process.env, ...desktop.env, STEAMHARNESS_DATABASES_DIR:path.join(dataDir,'databases'), STEAMHARNESS_SERVER_URL: '', STEAMHARNESS_SERVER_ADMIN_KEY: '' }, stdio: ['ignore', log.fd, log.fd] });
 const exited = new Promise(resolve => { child.once('exit', resolve); child.once('error', resolve); }); const pause = ms => new Promise(resolve => setTimeout(resolve, ms));
 let browser, page;
 async function frameFor(selector) { for (let attempt = 0; attempt < 200; attempt++) { for (const frame of page.frames()) { if (frame.isDetached() || !await frame.locator(selector).first().isVisible().catch(() => false)) continue;

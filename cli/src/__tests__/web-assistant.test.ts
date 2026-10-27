@@ -9,12 +9,14 @@ import { createServer } from 'node:http';
 import { inspectWebProject } from '../web/assistant-project';
 import { parseHostConfiguration } from '../web/host-config';
 import { createWebRuntime } from '../web/runtime';
-import { startWebServer } from '../web/server';
+import { startEntryWebServer as startWebServer } from '../web/server';
 import type { Project, Runtime } from '../web/workflow-types';
+import { LocalDatabaseRegistry } from 'steamharness';
 import { resolveHarnessRoot } from './harness-source';
 
 const temporary: string[] = [];
 afterEach(async () => {
+  vi.restoreAllMocks();
   await Promise.all(temporary.splice(0).map(directory => rm(directory, { recursive: true, force: true })));
   vi.unstubAllEnvs();
 });
@@ -25,11 +27,13 @@ it('loads the dedicated assistant declaration instead of the workspace executor'
   const assistantProjectDir = path.join(directory, 'assistant');
   await mkdir(workdir);
   await mkdir(assistantProjectDir);
+  await writeFile(path.join(assistantProjectDir,'package.json'),JSON.stringify({id:'364764e9-ef0e-4e86-9e56-77d0410e1723',name:'Assistant',steamHarness:{defaultEntry:'main',entries:[{entryId:'main',name:'Main',type:'conversation',root:'.',entry:'index.ts',databases:[]}]}}));
+  await writeFile(path.join(assistantProjectDir,'index.ts'),'export {};');
   await writeFile(path.join(workdir, 'result.txt'), 'Independent workspace result');
   await writeFile(path.join(assistantProjectDir, 'result.txt'), 'Assistant installation file');
   const assistant = { standalone: true, workdir, roots: [{ uri: 'file:///workspace', folderPath: workdir, name: 'Assistant' }] };
   const host = parseHostConfiguration({ type: 'configure', surface: 'assistant', assistant, assistantProjectDir });
-  const descriptor: Project = { id: 'dedicated-assistant', uri: '', folderPath: assistantProjectDir, name: 'Project Assistant', projectType: 'conversation',
+  const descriptor: Project = {entryId:"main",aggregateName:"Test aggregate",defaultEntry:"main",entryRoot:assistantProjectDir,databases:[],entries:[{entryId:"main",name:"Main",type:'conversation',root:".",entry:"index.ts",databases:[]}], id: '364764e9-ef0e-4e86-9e56-77d0410e1723', uri: '', folderPath: assistantProjectDir, name: 'Project Assistant', projectType: 'conversation',
     fields: [{ name: 'permissionPolicy', type: 'string', defaultValue: 'auto' }], entrypoints: [],
     tools: [{ name: 'skill' }, { name: 'read' }, { name: 'workflow-memory_global_memory' }, { name: 'workflow-desktop_open_project' },
       { name: 'workflow-studio_studio_state' }, { name: 'workflow-studio_get_diagnostics' }, { name: 'workflow-studio_open_file' },
@@ -39,7 +43,7 @@ it('loads the dedicated assistant declaration instead of the workspace executor'
   const result = await inspectWebProject(runtime, workdir, host);
   expect(runtime.inspect).toHaveBeenCalledWith([assistantProjectDir]);
   expect(result.assistantProtocolVersion).toBe(1);
-  expect(result.projects[0]).toMatchObject({ id: 'dedicated-assistant', folderPath: assistantProjectDir, assistant, requiresLogin: false,
+  expect(result.projects[0]).toMatchObject({ id: '364764e9-ef0e-4e86-9e56-77d0410e1723', folderPath: assistantProjectDir, assistant, requiresLogin: false,
     fields: [{ name: 'permissionPolicy', defaultValue: 'auto' }], tools: [{ name: 'skill' }, { name: 'read' }, { name: 'workflow-memory_global_memory' },
       { name: 'workflow-studio_studio_state' }, { name: 'workflow-studio_get_diagnostics' }, { name: 'workflow-studio_open_file' },
       { name: 'workflow-studio_set_theme' }, { name: 'workflow-studio_open_terminal' }, { name: 'workflow-studio_show_view' }],
@@ -57,10 +61,10 @@ it('loads the dedicated assistant declaration instead of the workspace executor'
   await writeFile(path.join(dataDir, previousKey, 'conversations.json'), JSON.stringify({ activeId: 'old-pi-session', sessions: [{ id: 'old-pi-session', title: 'Old project executor', messages: [], parameterValues: { apiKey: 'old-project-field' } }] }));
   const app = await startWebServer({ projectDir: assistantProjectDir, dataDir, runtime, host });
   try {
-    expect(app.project.id).toBe('dedicated-assistant');
-    expect(app.controller.activeId).not.toBe('old-pi-session');
-    expect(app.controller.current.parameterValues ?? {}).not.toHaveProperty('apiKey');
-    app.controller.current.messages.push({ id: 'assistant-file-message', role: 'assistant', content: '', items: [{
+    expect(app.project.id).toBe('364764e9-ef0e-4e86-9e56-77d0410e1723');
+    expect(app.controller!.activeId).not.toBe('old-pi-session');
+    expect(app.controller!.current.parameterValues ?? {}).not.toHaveProperty('apiKey');
+    app.controller!.current.messages.push({ id: 'assistant-file-message', role: 'assistant', content: '', items: [{
       metadata: { kind: 'agent-part', partType: 'tool' },
       content: { status: 'success', tool: 'workflow-ui_present_card', output: { action: 'upsert', cardId: 'assistant-file', kind: 'file', target: { source: 'current', filePath: 'result.txt' } } },
     }] });
@@ -90,7 +94,13 @@ it('runs assistant skills and memory locally, isolates workspaces and preserves 
   const harnessRoot = await resolveHarnessRoot();
   const harnessVersion = JSON.parse(await readFile(path.join(harnessRoot, 'package.json'), 'utf8')).version;
   await symlink(harnessRoot, path.join(runtimeProjectDir, 'node_modules/steamharness'), process.platform === 'win32' ? 'junction' : 'dir');
-  const manifest = { id: '364764e9-ef0e-4e86-9e56-77d0410e1723', type: 'module', devDependencies: { 'steamharness': harnessVersion }, steamHarness: { projectInfo: { dataStorage: { mode: 'local' } } } };
+  vi.stubEnv('STEAMHARNESS_DATABASES_DIR',path.join(directory,'.steamharness','databases'));
+  const registry=new LocalDatabaseRegistry(path.join(directory,'.steamharness','databases'));
+  const permissions={kv:{read:{mode:'none' as const},write:{mode:'none' as const}},knowledge:{read:{mode:'all' as const},write:{mode:'all' as const}}};
+  const request=registry.request({projectId:'364764e9-ef0e-4e86-9e56-77d0410e1723',entryId:'main',alias:'memory',permissions,target:{kind:'create',name:'Assistant memory'}});
+  const approved=registry.review(request.requestId,{approve:true});
+  vi.spyOn(os,'homedir').mockReturnValue(directory);
+  const manifest = { name:'runtime-fixture', id: '364764e9-ef0e-4e86-9e56-77d0410e1723', type: 'module', devDependencies: { 'steamharness': harnessVersion }, steamHarness: { defaultEntry: 'main', entries: [{entryId:'main',name:'Main',type:'conversation',root:'.',entry:'index.ts',databases:[{alias:'memory',host:'local',permissions,bindingRef:approved.bindingRef}]}],  } };
   await writeFile(path.join(runtimeProjectDir, 'package.json'), JSON.stringify({ ...manifest, name: 'Assistant runtime' }));
   await writeFile(path.join(assistantProjectDir, 'package.json'), JSON.stringify({ ...manifest, name: 'Dedicated assistant' }));
   await writeFile(path.join(workdir, 'index.ts'), 'throw new Error("The workspace executor must not run.");');
@@ -108,10 +118,10 @@ it('runs assistant skills and memory locally, isolates workspaces and preserves 
       const workspace = JSON.parse(await readFile(process.env.STEAMHARNESS_DEVELOPER_ASSISTANT_WORKSPACE_MANIFEST, 'utf8'));
       const text = await readFile(path.join(workdir, 'user.txt'), 'utf8');
       const memory = (await steamharness.createProjectCapabilityTools({ context, globalMemory: true })).find(tool => tool.name === 'workflow-memory_global_memory');
-      const previousMemories = JSON.parse((await memory.execute('list', { action: 'list' })).content[0].text);
-      await memory.execute('remember', { action: 'remember', memoryId: 'workspace', title: 'Workspace preference', markdown: text });
+      const previousMemories = JSON.parse((await memory.execute('list', { database:'memory',action: 'list' })).content[0].text);
+      await memory.execute('remember', { database:'memory',action: 'remember', memoryId: 'workspace', title: 'Workspace preference', markdown: text });
       let serverStorageAllowed = false;
-      try { await context.storage.server.kv.getValue('should-stay-local'); serverStorageAllowed = true; } catch {}
+      try { await context.databases.get("data").kv.getValue('should-stay-local'); serverStorageAllowed = true; } catch {}
       return { errCode: 0, errMessage: '', host: process.env.STEAMHARNESS_DEVELOPER_ASSISTANT_HOST,
         listed: JSON.parse(listed.content[0].text), read: JSON.parse(read.content[0].text),
         text, workspace, previousMemories, serverStorageAllowed,
@@ -133,7 +143,7 @@ it('runs assistant skills and memory locally, isolates workspaces and preserves 
     expect((inspection.projects[0] as unknown as { runtime: { harnessPath: string } }).runtime.harnessPath).toBe(path.join(harnessRoot, 'dist', 'index.js'));
     const project: Project = { ...inspection.projects[0], uri: '', assistant: { standalone: true, workdir, roots: [{ uri: 'file:///workspace', folderPath: workdir, name: 'Assistant' }] } };
     const report = await runtime.run({ project, conversationId: 'assistant-test', runId: 'assistant-test', args: [] }, () => {});
-    expect(report.status).toBe('success');
+    expect(report.status, JSON.stringify(report)).toBe('success');
     expect(report.output?.items?.[0].content).toMatchObject({ host: 'vscode', text: 'Independent workspace contents',
       previousMemories: { memories: [] }, serverStorageAllowed: false, projectAccount: true, aiAccount: true,
       listed: { skills: [expect.objectContaining({ name: 'fixture-skill' })] },
@@ -145,7 +155,7 @@ it('runs assistant skills and memory locally, isolates workspaces and preserves 
     const second: Project = { ...project, assistant: { workdir: secondWorkdir, roots: [{ uri: 'file:///second-workspace', folderPath: secondWorkdir, name: 'Second workspace' }] } };
     const secondReport = await runtime.run({ project: second, conversationId: 'assistant-test', runId: 'second-workspace', args: [] }, () => {});
     expect(secondReport.status).toBe('success');
-    expect(secondReport.output?.items?.[0].content).toMatchObject({ text: 'Second workspace preference', previousMemories: { memories: [] }, serverStorageAllowed: false });
+    expect(secondReport.output?.items?.[0].content).toMatchObject({ text: 'Second workspace preference', previousMemories: { memories: [{memoryId:'workspace',title:'Workspace preference'}] }, serverStorageAllowed: false });
     const resumed = await runtime.run({ project, conversationId: 'assistant-test', runId: 'first-workspace-again', args: [] }, () => {});
     expect(resumed.status).toBe('success');
     expect(resumed.output?.items?.[0].content).toMatchObject({ previousMemories: { memories: [{ memoryId: 'workspace', title: 'Workspace preference' }] }, serverStorageAllowed: false });

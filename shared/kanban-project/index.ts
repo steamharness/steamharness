@@ -1,10 +1,6 @@
 import type { ParamDefinition } from "./run-workspace/types";
 import { createKanbanMethodsBridgeScript, type KanbanBrowserMethodsApi } from "./methods";
-import {
-  STEAMHARNESS_RELATED_PROJECT_ALIAS_PATTERN,
-  STEAMHARNESS_RELATED_PROJECT_KEY_LIMIT,
-  type RelatedProject,
-} from "../project-info/index";
+const DATABASE_ALIAS_PATTERN = /^[a-z][a-z0-9_-]{0,63}$/;
 
 export * from "./revision-stream";
 export * from "./methods";
@@ -20,7 +16,7 @@ export const KANBAN_PRESENTATION_MESSAGE = "steamharness:kanban-presentation";
 export const KANBAN_PREVIEW_READY_MESSAGE = "steamharness:kanban-ready";
 export const KANBAN_BRIDGE_REQUEST_MESSAGE = "steamharness:kanban-bridge-request";
 export const KANBAN_BRIDGE_RESPONSE_MESSAGE = "steamharness:kanban-bridge-response";
-export const KANBAN_RELATED_PROJECT_REVISION_MESSAGE = "steamharness:kanban-related-project-revision";
+export const KANBAN_DATABASE_REVISION_MESSAGE = "steamharness:kanban-database-revision";
 export const KANBAN_BRIDGE_REQUEST_TIMEOUT_MS = 15_000;
 export const KANBAN_FILE_BRIDGE_REQUEST_TIMEOUT_MS = 120_000;
 export const KANBAN_FILE_MAX_BYTES = 50 * 1024 * 1024;
@@ -61,15 +57,13 @@ export interface KanbanPresentation {
   mode: KanbanPresentationMode;
 }
 
-export interface KanbanBrowserRelatedProjectKvApi {
+export interface KanbanBrowserDatabaseKvApi {
   getValue(key: string): Promise<unknown>;
   setValue(key: string, value: KanbanJsonValue): Promise<void>;
-  subscribe(
-    listener: (event: KanbanRelatedProjectRevision) => void,
-  ): () => void;
+
 }
 
-export interface KanbanRelatedProjectRevision {
+export interface KanbanDatabaseRevision {
   alias: string;
   revision: string;
 }
@@ -80,7 +74,8 @@ export interface KanbanFileReference {
   mimeType: string;
   size: number;
   kind: "image" | "file";
-  storage: "server";
+  storage: "database";
+  spaceId: string;
   projectId?: string;
   createdAt: string;
   url?: string;
@@ -92,10 +87,10 @@ export interface KanbanBrowserApi {
   getRuntimeLocale(): Promise<KanbanRuntimeLocale>;
   studio: { getLocalAnalysis(): Promise<unknown> };
   methods: KanbanBrowserMethodsApi;
-  kv: {
-    getValue(key: string): Promise<unknown>;
-    setValue(key: string, value: KanbanJsonValue): Promise<void>;
-  };
+  databases: {
+    get(alias: string): {
+      kv: KanbanBrowserDatabaseKvApi;
+      knowledge: Record<string, (...args: any[]) => Promise<unknown>>;
   files: {
     createFile(input: {
       name: string;
@@ -105,9 +100,7 @@ export interface KanbanBrowserApi {
     readFile(fileId: string): Promise<{ file: KanbanFileReference; buffer: ArrayBuffer }>;
     deleteFile(fileId: string): Promise<boolean>;
   };
-  relatedProjects: {
-    get(alias: string): {
-      kv: KanbanBrowserRelatedProjectKvApi;
+      subscribe(listener: (event: KanbanDatabaseRevision) => void): () => void;
     };
   };
 }
@@ -130,8 +123,7 @@ export type KanbanBridgeOperation =
   | "files.deleteFile"
   | "kv.getValue"
   | "kv.setValue"
-  | "relatedProject.kv.getValue"
-  | "relatedProject.kv.setValue"
+  | "database.revision"
   | "knowledge.listDocuments"
   | "knowledge.getDocument"
   | "knowledge.createDocument"
@@ -159,7 +151,9 @@ const KANBAN_BRIDGE_SAFE_ERRORS = {
   KANBAN_BRIDGE_SESSION_INVALID: "The Kanban preview session is invalid or expired.",
   KANBAN_BRIDGE_SERVER_ERROR: "Kanban project data operation failed.",
   KANBAN_DATA_OPERATION_FAILED: "Kanban project data operation failed.",
-  KANBAN_RELATED_PROJECT_UNAVAILABLE: "Kanban related project is unavailable.",
+  DATABASE_UNBOUND: "Apply for and bind an approved database space.",
+  DATABASE_ACCESS_DENIED: "Database access is not granted.",
+  DATABASE_ACCESS_FAILED: "Database authorization is unavailable. Check the binding.",
   KANBAN_FILE_UNAVAILABLE: "Kanban file is unavailable in this project.",
   KANBAN_FILE_TOO_LARGE: "Kanban files cannot exceed 50 MiB.",
 } as const;
@@ -178,8 +172,7 @@ const KANBAN_BRIDGE_INPUT_FIELDS: Record<KanbanBridgeOperation, readonly string[
   "files.deleteFile": ["fileId"],
   "kv.getValue": ["key"],
   "kv.setValue": ["key", "value"],
-  "relatedProject.kv.getValue": ["alias", "key"],
-  "relatedProject.kv.setValue": ["alias", "key", "value"],
+  "database.revision": ["database"],
   "knowledge.listDocuments": ["pageSize", "cursor"],
   "knowledge.getDocument": ["documentId"],
   "knowledge.createDocument": ["id", "title", "markdown"],
@@ -196,6 +189,8 @@ const KANBAN_BRIDGE_INPUT_FIELDS: Record<KanbanBridgeOperation, readonly string[
   ],
   "knowledge.readDocumentLines": ["documentId", "startLine", "endLine"],
 };
+
+for (const [operation, fields] of Object.entries(KANBAN_BRIDGE_INPUT_FIELDS)) { if (!operation.startsWith("runtime.") && !operation.startsWith("studio.")) (KANBAN_BRIDGE_INPUT_FIELDS as Record<string, readonly string[]>)[operation] = [...fields, "database"]; }
 
 export interface KanbanProjectStructure {
   projectType: "kanban";
@@ -264,48 +259,12 @@ export function scheduleKanbanPreviewCapabilityRefresh(
   };
 }
 
-export function readPackageProjectType(value: unknown): "kanban" | undefined {
-  if (!isRecord(value)) return undefined;
-  const steamHarness = value["steamHarness"];
-  if (!isRecord(steamHarness)) return undefined;
-  return steamHarness["projectType"] === "kanban" ? "kanban" : undefined;
-}
-
-export function isKanbanPackage(value: unknown): boolean {
-  return readPackageProjectType(value) === "kanban";
-}
-
-export function readKanbanArtifactConfig(value: unknown): KanbanArtifactConfig {
-  if (!isRecord(value)) {
-    throw new Error("package.json root must be an object.");
-  }
-  const steamHarness = value["steamHarness"];
-  if (!isRecord(steamHarness)) {
-    throw new Error("package.json steamHarness must be an object for a Kanban project.");
-  }
-  const rawConfig = steamHarness["kanban"];
-  if (rawConfig !== undefined && !isRecord(rawConfig)) {
-    throw new Error("package.json steamHarness.kanban must be an object.");
-  }
-  if (rawConfig?.["dataSources"] !== undefined) {
-    throw new Error(
-      "package.json steamHarness.kanban.dataSources was removed; declare steamHarness.projectInfo.relatedProjects instead.",
-    );
-  }
-  return {
-    artifactDir: readKanbanRelativePath(
-      rawConfig?.["artifactDir"],
-      "steamHarness.kanban.artifactDir",
-      KANBAN_ARTIFACT_DIR,
-      true,
-    ),
-    entry: readKanbanRelativePath(
-      rawConfig?.["entry"],
-      "steamHarness.kanban.entry",
-      KANBAN_ENTRY_FILE,
-      false,
-    ),
-  };
+/** Derive static artifact paths from a registered Kanban entry. */
+export function readKanbanEntryConfig(entry: { type: string; entry: string }): KanbanArtifactConfig {
+  if (entry.type !== "kanban" || !/\.html$/i.test(entry.entry) || entry.entry.includes("\\") || entry.entry.startsWith("/") || entry.entry.split("/").some(segment => !segment || segment === "." || segment === ".." || [".git","node_modules"].includes(segment.toLowerCase()))) throw new Error("A safe registered Kanban HTML entry is required.");
+  const segments = entry.entry.split("/");
+  const filename = segments.pop()!;
+  return { artifactDir: segments.join("/") || ".", entry: filename };
 }
 
 export function createKanbanArtifactEntryPath(config: KanbanArtifactConfig): string {
@@ -439,7 +398,7 @@ export function createKanbanBridgeScript(
   const readyMessage = JSON.stringify(KANBAN_PREVIEW_READY_MESSAGE);
   const requestMessage = JSON.stringify(KANBAN_BRIDGE_REQUEST_MESSAGE);
   const responseMessage = JSON.stringify(KANBAN_BRIDGE_RESPONSE_MESSAGE);
-  const revisionMessage = JSON.stringify(KANBAN_RELATED_PROJECT_REVISION_MESSAGE);
+  const revisionMessage = JSON.stringify(KANBAN_DATABASE_REVISION_MESSAGE);
   const presentationMessage = JSON.stringify(KANBAN_PRESENTATION_MESSAGE);
   const presentationEvent = JSON.stringify(KANBAN_PRESENTATION_CHANGE_EVENT);
   const safeErrorMessages = JSON.stringify(KANBAN_BRIDGE_SAFE_ERRORS);
@@ -449,8 +408,8 @@ let presentation={mode:"fullscreen"};
 let sequence=0;
 const safeErrorMessages=${safeErrorMessages};
 const pending=new Map();
-const relatedProjectRevisions=new Map();
-const relatedProjectRevisionListeners=new Map();
+const databaseRevisions=new Map();
+const databaseRevisionListeners=new Map();
 const clone=()=>JSON.parse(JSON.stringify(current));
 const createError=(message,code)=>{const error=new Error(message);if(code)Object.defineProperty(error,"code",{value:code,enumerable:true});return error;};
 const invalidRequest=()=>createError("The Kanban bridge request is invalid.","KANBAN_BRIDGE_INVALID_REQUEST");
@@ -477,11 +436,7 @@ const request=(operation,input)=>{
     catch{window.clearTimeout(timeout);pending.delete(requestId);reject(invalidRequest());}
   });
 };
-const kv=Object.freeze({
-  getValue:(key)=>request("kv.getValue",{key}),
-  setValue:(key,value)=>isJsonValue(value)?request("kv.setValue",{key,value}).then(()=>undefined):Promise.reject(invalidRequest())
-});
-const files=Object.freeze({
+const createFiles=(database)=>Object.freeze({
   createFile:async(input)=>{
     if(!input||typeof input.name!=="string")throw invalidRequest();
     const source=input.buffer;
@@ -490,44 +445,25 @@ const files=Object.freeze({
     const bytes=source instanceof Blob?new Uint8Array(await source.arrayBuffer()):source instanceof ArrayBuffer?new Uint8Array(source):source;
     let binary="";
     for(let offset=0;offset<bytes.length;offset+=32768)binary+=String.fromCharCode(...bytes.subarray(offset,offset+32768));
-    return request("files.createFile",{name:input.name,mimeType:input.mimeType||(source instanceof Blob?source.type:undefined)||undefined,base64:btoa(binary)});
+    return request("files.createFile",{database,name:input.name,mimeType:input.mimeType||(source instanceof Blob?source.type:undefined)||undefined,base64:btoa(binary)});
   },
-  readFile:(fileId)=>request("files.readFile",{fileId}).then(({file,base64})=>({file,buffer:Uint8Array.from(atob(base64),(char)=>char.charCodeAt(0)).buffer})),
-  deleteFile:(fileId)=>request("files.deleteFile",{fileId})
+  readFile:(fileId)=>request("files.readFile",{database,fileId}).then(({file,base64})=>({file,buffer:Uint8Array.from(atob(base64),(char)=>char.charCodeAt(0)).buffer})),
+  deleteFile:(fileId)=>request("files.deleteFile",{database,fileId})
 });
-const subscribeToRelatedProject=(alias,listener)=>{
-  if(typeof listener!=="function")throw invalidRequest();
-  let listeners=relatedProjectRevisionListeners.get(alias);
-  if(!listeners){listeners=new Set();relatedProjectRevisionListeners.set(alias,listeners);}
-  listeners.add(listener);
-  if(relatedProjectRevisions.has(alias)){const revision=relatedProjectRevisions.get(alias);Promise.resolve().then(()=>{if(listeners.has(listener))listener({alias,revision});}).catch(()=>{});}
-  return ()=>{listeners.delete(listener);if(listeners.size===0)relatedProjectRevisionListeners.delete(alias);};
-};
-const relatedProjectContexts=new Map();
-const relatedProjects=Object.freeze({
-  get:(alias)=>{
-    if(typeof alias!=="string"||!${STEAMHARNESS_RELATED_PROJECT_ALIAS_PATTERN.toString()}.test(alias))throw invalidRequest();
-    if(relatedProjectContexts.has(alias))return relatedProjectContexts.get(alias);
-    const context=Object.freeze({kv:Object.freeze({
-      getValue:(key)=>request("relatedProject.kv.getValue",{alias,key}),
-      setValue:(key,value)=>isJsonValue(value)?request("relatedProject.kv.setValue",{alias,key,value}).then(()=>undefined):Promise.reject(invalidRequest()),
-      subscribe:(listener)=>subscribeToRelatedProject(alias,listener)
-    })});
-    relatedProjectContexts.set(alias,context);
-    return context;
-  }
-});
-const knowledge=Object.freeze({
-  listDocuments:(options={})=>request("knowledge.listDocuments",options),
-  getDocument:(documentId)=>request("knowledge.getDocument",{documentId}),
-  createDocument:(input)=>request("knowledge.createDocument",input),
-  editDocument:(documentId,input)=>request("knowledge.editDocument",{...input,documentId}),
-  deleteDocument:(documentId)=>request("knowledge.deleteDocument",{documentId}),
-  searchDocuments:(options)=>request("knowledge.searchDocuments",options),
-  readDocumentLines:(documentId,options)=>request("knowledge.readDocumentLines",{...options,documentId})
-});
+const databaseContexts=new Map();
+const databases=Object.freeze({get:(database)=>{
+  if(typeof database!=="string"||!${DATABASE_ALIAS_PATTERN.toString()}.test(database))throw invalidRequest();
+  if(databaseContexts.has(database))return databaseContexts.get(database);
+  const call=(operation,input={})=>request(operation,{...input,database});
+  const context=Object.freeze({
+    files:createFiles(database),
+    kv:Object.freeze({getValue:(key)=>call("kv.getValue",{key}),setValue:(key,value)=>isJsonValue(value)?call("kv.setValue",{key,value}).then(()=>undefined):Promise.reject(invalidRequest())}),
+    knowledge:Object.freeze({listDocuments:(options={})=>call("knowledge.listDocuments",options),getDocument:(documentId)=>call("knowledge.getDocument",{documentId}),createDocument:(input)=>call("knowledge.createDocument",input),editDocument:(documentId,input)=>call("knowledge.editDocument",{...input,documentId}),deleteDocument:(documentId)=>call("knowledge.deleteDocument",{documentId}),searchDocuments:(options)=>call("knowledge.searchDocuments",options),readDocumentLines:(documentId,options)=>call("knowledge.readDocumentLines",{...options,documentId})}),
+    subscribe:(listener)=>{if(typeof listener!=="function")throw invalidRequest();let listeners=databaseRevisionListeners.get(database);if(!listeners){listeners=new Set();databaseRevisionListeners.set(database,listeners);}listeners.add(listener);const revision=databaseRevisions.get(database);if(revision)Promise.resolve().then(()=>{if(listeners.has(listener))listener({alias:database,revision});}).catch(()=>{});return ()=>{listeners.delete(listener);if(!listeners.size)databaseRevisionListeners.delete(database);};}
+  });databaseContexts.set(database,context);return context;
+}});
 ${createKanbanMethodsBridgeScript(nonce)}
-Object.defineProperty(window,"steamHarnessKanban",{configurable:false,enumerable:true,value:Object.freeze({getConfiguration:clone,getPresentation:()=>({...presentation}),getRuntimeLocale:()=>request("runtime.getLocale",{}),studio:Object.freeze({getLocalAnalysis:()=>request("studio.getLocalAnalysis",{})}),kv,files,relatedProjects,knowledge,methods})});
+Object.defineProperty(window,"steamHarnessKanban",{configurable:false,enumerable:true,value:Object.freeze({getConfiguration:clone,getPresentation:()=>({...presentation}),getRuntimeLocale:()=>request("runtime.getLocale",{}),studio:Object.freeze({getLocalAnalysis:()=>request("studio.getLocalAnalysis",{})}),databases,methods})});
 window.addEventListener("message",function(event){
   if(event.source!==window.parent||!event.data||event.data.nonce!==${safeNonce})return;
   if(handleKanbanMethodMessage(event.data))return;
@@ -548,10 +484,10 @@ window.addEventListener("message",function(event){
   if(event.data.type===${revisionMessage}){
     const alias=event.data.alias;
     const revision=event.data.revision;
-    if(typeof alias!=="string"||!${STEAMHARNESS_RELATED_PROJECT_ALIAS_PATTERN.toString()}.test(alias)||typeof revision!=="string"||revision.length===0||revision.length>512)return;
-    if(relatedProjectRevisions.get(alias)===revision)return;
-    relatedProjectRevisions.set(alias,revision);
-    const listeners=relatedProjectRevisionListeners.get(alias);
+    if(typeof alias!=="string"||!${DATABASE_ALIAS_PATTERN.toString()}.test(alias)||typeof revision!=="string"||revision.length===0||revision.length>512)return;
+    if(databaseRevisions.get(alias)===revision)return;
+    databaseRevisions.set(alias,revision);
+    const listeners=databaseRevisionListeners.get(alias);
     if(listeners)for(const listener of [...listeners])Promise.resolve().then(()=>listener({alias,revision})).catch(()=>{});
     return;
   }
@@ -600,24 +536,6 @@ export function createKanbanBridgeError(reason: unknown): KanbanBridgeError {
     code: "KANBAN_BRIDGE_ERROR",
     message: "Kanban bridge request failed.",
   };
-}
-
-export function resolveKanbanRelatedProject(
-  relatedProjects: readonly RelatedProject[],
-  alias: string,
-  key: string,
-): RelatedProject {
-  const relatedProject = relatedProjects.find((item) => item.alias === alias);
-  if (
-    relatedProject === undefined ||
-    key.trim() === "" ||
-    key.length > STEAMHARNESS_RELATED_PROJECT_KEY_LIMIT
-  ) {
-    throw Object.assign(new Error("Kanban related project is unavailable."), {
-      code: "KANBAN_RELATED_PROJECT_UNAVAILABLE",
-    });
-  }
-  return relatedProject;
 }
 
 export function isKanbanJsonValue(value: unknown, seen = new Set<object>()): value is KanbanJsonValue {
@@ -678,6 +596,9 @@ export function isSafeKanbanAssetPath(filePath: string): boolean {
     part === "node_modules" ||
     part === "package.json" ||
     part === "kanban.json" ||
+    part === "configuration.json" ||
+    part === "configuration.template.json" ||
+    part === "configuration-templates" ||
     part === "package-lock.json" ||
     part === "pnpm-lock.yaml" ||
     part === "yarn.lock" ||
@@ -692,43 +613,6 @@ export function isSafeKanbanPublicAssetPath(
 ): boolean {
   const normalized = filePath.replaceAll("\\", "/");
   return normalized === entry || isSafeKanbanAssetPath(normalized);
-}
-
-function readKanbanRelativePath(
-  value: unknown,
-  field: string,
-  fallback: string,
-  allowDot: boolean,
-): string {
-  const raw = value === undefined ? fallback : value;
-  if (typeof raw !== "string" || raw.trim() === "") {
-    throw new Error(`package.json ${field} must be a non-empty string.`);
-  }
-  const normalized = raw.trim().replaceAll("\\", "/").replace(/\/+$/, "");
-  if (allowDot && normalized === ".") return normalized;
-  if (
-    normalized === "" ||
-    normalized === "." ||
-    normalized.startsWith("/") ||
-    normalized.startsWith("//") ||
-    /^[a-zA-Z]:/.test(normalized) ||
-    normalized.includes("\0") ||
-    normalized.split("/").some((part) => part === "" || part === "." || part === "..")
-  ) {
-    throw new Error(`package.json ${field} must be a safe project-relative path.`);
-  }
-  const reservedDirectory = normalized.split("/").find((part) => (
-    [".git", ".hg", ".svn", "node_modules"].includes(part.toLowerCase())
-  ));
-  if (reservedDirectory !== undefined) {
-    throw new Error(
-      `package.json ${field} must not use reserved directory ${JSON.stringify(reservedDirectory)}.`,
-    );
-  }
-  if (!allowDot && !/\.html?$/i.test(normalized)) {
-    throw new Error(`package.json ${field} must point to an HTML file.`);
-  }
-  return normalized;
 }
 
 function parseParam(
@@ -782,6 +666,7 @@ function validateKanbanBridgeInput(
   input: Record<string, unknown>,
 ): void {
   const allowedFields = new Set(KANBAN_BRIDGE_INPUT_FIELDS[operation]);
+  if (!operation.startsWith("runtime.") && !operation.startsWith("studio.") && (typeof input.database !== "string" || !DATABASE_ALIAS_PATTERN.test(input.database))) throw new Error("A declared database alias is required.");
   if (Object.keys(input).some((key) => !allowedFields.has(key))) {
     throw new Error(`Kanban bridge ${operation} input contains unsupported fields.`);
   }
@@ -813,7 +698,7 @@ function validateKanbanBridgeInput(
     }
     case "files.readFile":
     case "files.deleteFile":
-      if (!/^wf_[a-f0-9]+$/.test(readNonEmptyString(input["fileId"], "bridge.input.fileId"))) {
+      if (!/^(?:wf_[a-f0-9]+|[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/.test(readNonEmptyString(input["fileId"], "bridge.input.fileId"))) {
         throw new Error("Kanban file id is invalid.");
       }
       return;
@@ -826,26 +711,7 @@ function validateKanbanBridgeInput(
         throw new Error("Kanban bridge KV value must be JSON-serializable and cannot be undefined.");
       }
       return;
-    case "relatedProject.kv.getValue":
-    case "relatedProject.kv.setValue": {
-      const alias = readNonEmptyString(input["alias"], "bridge.input.alias");
-      if (!STEAMHARNESS_RELATED_PROJECT_ALIAS_PATTERN.test(alias)) {
-        throw new Error("Kanban bridge related-project alias is invalid.");
-      }
-      const key = readNonEmptyString(input["key"], "bridge.input.key");
-      if (key.length > STEAMHARNESS_RELATED_PROJECT_KEY_LIMIT) {
-        throw new Error("Kanban bridge related-project key is too long.");
-      }
-      if (
-        operation === "relatedProject.kv.setValue" &&
-        (input["value"] === undefined || !isKanbanJsonValue(input["value"]))
-      ) {
-        throw new Error(
-          "Kanban bridge related-project KV value must be JSON-serializable and cannot be undefined.",
-        );
-      }
-      return;
-    }
+    case "database.revision": return;
     case "knowledge.listDocuments":
       readOptionalIntegerInRange(
         input["pageSize"],
@@ -919,8 +785,7 @@ function isKanbanBridgeOperation(value: unknown): value is KanbanBridgeOperation
     value === "files.deleteFile" ||
     value === "kv.getValue" ||
     value === "kv.setValue" ||
-    value === "relatedProject.kv.getValue" ||
-    value === "relatedProject.kv.setValue" ||
+    value === "database.revision" ||
     value === "knowledge.listDocuments" ||
     value === "knowledge.getDocument" ||
     value === "knowledge.createDocument" ||

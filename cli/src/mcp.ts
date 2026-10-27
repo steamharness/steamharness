@@ -20,7 +20,6 @@ import {
 } from "@steamharness/auth-config";
 import { i18n } from "@steamharness/i18n";
 import { readCliAuthConfigSync } from "./auth-config";
-import { parseCliRelatedProjectSpec, type CliRelatedProjectSpec } from "./related-projects";
 import { assertProjectUuid } from "@steamharness/workflow-ids";
 
 export const STEAMHARNESS_MCP_CLI_ENTRYPOINT_ENV = "STEAMHARNESS_MCP_CLI_ENTRYPOINT";
@@ -35,7 +34,7 @@ export interface McpCliOptions {
   fileCreateStoreDir: string;
   desktopConfigDir?: string;
   cliAuthDir?: string;
-  relatedProjects: CliRelatedProjectSpec[];
+  entryId?: string;
   /** Absolute entrypoint used when this process spawns a JSON/structure worker. */
   workerEntrypoint?: string;
 }
@@ -67,6 +66,7 @@ export async function main(argv = process.argv.slice(2)): Promise<number> {
   const structure = await runner.inspectStructure();
   const server = createProjectMcpServer({
     projectId,
+    entryId: structure.entryId!,
     structure,
     runner,
     fileInputMode: "local",
@@ -104,7 +104,7 @@ export function parseProjectMcpCliOptions(argv: string[]): McpCliOptions {
   let fileCreateStoreDir: string | undefined;
   let desktopConfigDir: string | undefined;
   let cliAuthDir: string | undefined;
-  const relatedProjects: CliRelatedProjectSpec[] = [];
+  let entryId: string | undefined;
 
   for (let index = 1; index < argv.length; index += 1) {
     const option = argv[index];
@@ -123,7 +123,7 @@ export function parseProjectMcpCliOptions(argv: string[]): McpCliOptions {
       case "--file-create-store-dir": fileCreateStoreDir = resolveAbsoluteOption(value, option); break;
       case "--desktop-config-dir": desktopConfigDir = resolveAbsoluteOption(value, option); break;
       case "--auth-dir": cliAuthDir = resolveAbsoluteOption(value, option); break;
-      case "--related-project": relatedProjects.push(parseCliRelatedProjectSpec(value)); break;
+      case "--entry": entryId = value; break;
       default: throw new Error(`Unknown steamharness mcp option: ${option}`);
     }
   }
@@ -138,7 +138,7 @@ export function parseProjectMcpCliOptions(argv: string[]): McpCliOptions {
     fileCreateStoreDir: fileCreateStoreDir ?? path.join(dataDir, "workflow-created-files"),
     desktopConfigDir,
     cliAuthDir,
-    relatedProjects,
+    entryId,
   };
 }
 
@@ -154,7 +154,7 @@ export class McpCliRunner implements McpRunner {
   ) {}
 
   async inspectStructure(): Promise<McpStructureReport> {
-    const result = await this.runWorker(["structure", this.options.projectDir]);
+    const result = await this.runWorker(["structure", this.options.projectDir, ...(this.options.entryId ? ["--entry", this.options.entryId] : [])]);
     const extracted = extractTrailingJson(result.stdout, isProjectMcpStructureCandidate);
     if (!extracted || result.exitCode !== 0) {
       const diagnostics = extracted ?? extractTrailingJson(result.stdout, isRecord);
@@ -172,6 +172,7 @@ export class McpCliRunner implements McpRunner {
   async run(request: Parameters<McpRunner["run"]>[0]): Promise<McpExecutionReport> {
     const execution = await this.runJsonWorker({
       projectId: request.projectId,
+      entryId: request.entryId,
       entrypointId: request.entrypointId,
       entrypointTitle: request.entrypointTitle,
       input: request.input,
@@ -194,7 +195,7 @@ export class McpCliRunner implements McpRunner {
 
   async resume(request: Parameters<McpRunner["resume"]>[0]): Promise<McpExecutionReport> {
     const state = this.resumeStates.get(request.runId);
-    if (!state || state.entrypointId !== request.entrypointId) {
+    if (!state || state.snapshot.projectId !== request.projectId || state.snapshot.entryId !== request.entryId || state.entrypointId !== request.entrypointId) {
       throw new Error(`Workflow MCP run "${request.runId}" is no longer available for resume.`);
     }
     const resolvedInputs = [...state.snapshot.resolvedUserInputs, {
@@ -207,6 +208,7 @@ export class McpCliRunner implements McpRunner {
     try {
       execution = await this.runJsonWorker({
         projectId: request.projectId,
+      entryId: request.entryId,
         entrypointId: state.entrypointId,
         entrypointTitle: state.entrypointTitle,
         input: state.input,
@@ -229,8 +231,9 @@ export class McpCliRunner implements McpRunner {
 
   async cancel(request: Parameters<NonNullable<McpRunner["cancel"]>>[0]): Promise<void> {
     const state = this.resumeStates.get(request.runId);
-    this.resumeStates.delete(request.runId);
     if (state === undefined) return;
+    if (state.snapshot.projectId !== request.projectId || state.snapshot.entryId !== request.entryId || state.entrypointId !== request.entrypointId) throw new Error("MCP run belongs to another entry.");
+    this.resumeStates.delete(request.runId);
     const reason = request.reason === "elicitation_declined"
       ? "The user declined the requested workflow input."
       : request.reason === "elicitation_cancelled"
@@ -288,6 +291,7 @@ export class McpCliRunner implements McpRunner {
 
   private async runJsonWorker(options: {
     projectId: string;
+    entryId: string;
     entrypointId: string;
     entrypointTitle: string;
     input: Record<string, unknown>;
@@ -304,6 +308,7 @@ export class McpCliRunner implements McpRunner {
     const previousStderr = options.previousSnapshot?.stderr ?? "";
     await this.recordRunSnapshot({
       projectId: options.projectId,
+      entryId: options.entryId,
       entrypointId: options.entrypointId,
       entrypointTitle: options.entrypointTitle,
       input: { ...options.input },
@@ -341,10 +346,7 @@ export class McpCliRunner implements McpRunner {
         : []),
       "--file-store-dir",
       this.options.fileStoreDir,
-      ...this.options.relatedProjects.flatMap((project) => [
-        "--related-project",
-        `${project.alias}=${project.projectDir}`,
-      ]),
+      "--entry", options.entryId,
       "--",
       ...options.args,
     ];
@@ -366,6 +368,7 @@ export class McpCliRunner implements McpRunner {
       const stderr = appendCapturedOutput(previousStderr, result.stderr);
       const snapshot: McpRunSnapshot = {
         projectId: options.projectId,
+      entryId: options.entryId,
         entrypointId: options.entrypointId,
         entrypointTitle: options.entrypointTitle,
         input: { ...options.input },
@@ -410,6 +413,7 @@ export class McpCliRunner implements McpRunner {
       });
       await this.recordRunSnapshot({
         projectId: options.projectId,
+      entryId: options.entryId,
         entrypointId: options.entrypointId,
         entrypointTitle: options.entrypointTitle,
         input: { ...options.input },

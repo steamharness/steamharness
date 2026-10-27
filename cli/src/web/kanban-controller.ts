@@ -1,260 +1,102 @@
-import { readConfigurationFile } from './configuration-files';
-import { readCachedConfigurationFile, createLocalProjectConfigurationStore } from 'steamharness';
+import { createLocalProjectConfigurationStore, resolveProjectEntrySync, readCachedConfigurationFile } from 'steamharness';
 import { configurationSnapshot, type ProjectConfigurationState } from '@steamharness/project-configuration';
-import { t } from './localization';
-import { createHash } from 'node:crypto';
-import { readFile, readdir, stat } from 'node:fs/promises';
-import path from 'node:path';
 import { watch, type FSWatcher } from 'node:fs';
-import {
-  createKanbanBridgeError, parseKanbanBridgeCall,
-  readKanbanArtifactConfig, consumeKanbanRelatedProjectRevisionStream,
-  type KanbanInjectedConfiguration, type KanbanParamDefinition, type KanbanRelatedProjectRevision,
-} from '@steamharness/kanban-project';
+import { createKanbanBridgeError, parseKanbanBridgeCall, type KanbanInjectedConfiguration, type KanbanParamDefinition, type KanbanDatabaseRevision } from '@steamharness/kanban-project';
 import { KanbanPreview } from './kanban-preview';
 import { KanbanMethodHub } from './kanban-methods';
 import { getCurrentLocale } from '@steamharness/i18n';
-import { localKanbanRelatedProjects, readProjectInfo, webProjectDataDirectory } from './kanban-data';
 import type { WebConnection } from './runtime';
 import type { Project, Runtime } from './workflow-types';
+import { readConfigurationFile } from './configuration-files';
 import { requestStudioAnalysis } from './local-analysis';
-import { checkProjectServer, checkProjectStorageFailure, projectServerIssue, type ProjectServerIssue, type ProjectServerState } from './project-server-state';
-import type { CliRelatedProjectSpec } from '../related-projects';
+import type { ProjectServerIssue, ProjectServerState } from './project-server-state';
 
 type Message = Record<string, any>;
-interface Hooks { changed(): void; emit(message: Record<string, unknown>): void; connection(): WebConnection | undefined; log(message: string): void; serverIssue?(issue: ProjectServerIssue | undefined): ProjectServerIssue | undefined; relatedImport?(alias: unknown): ProjectServerIssue | undefined; relatedProjects?(): readonly CliRelatedProjectSpec[]; serverState?(): ProjectServerState; projectChanged?(): Promise<void> }
-
+interface Hooks { changed(): void; emit(message: Record<string, unknown>): void; connection(): WebConnection | undefined; log(message: string): void; serverIssue?(issue: ProjectServerIssue | undefined): ProjectServerIssue | undefined; serverState?(): ProjectServerState; projectChanged?(): Promise<void> }
 export class KanbanController {
   workspace!: ProjectConfigurationState;
   params: KanbanParamDefinition[] = [];
   preview!: KanbanPreview;
-  relatedProjectRevisions: KanbanRelatedProjectRevision[] = [];
-  missingRelatedProjectAliases: string[] = [];
-  relatedProjectWarning = '';
-  private operationIssue?: ProjectServerIssue;
-  get serverDataIssue(): ProjectServerIssue | undefined {
-    const state = this.hooks.serverState?.();
-    return (state?.blocking !== false ? state?.issue : undefined) ?? this.operationIssue;
-  }
-  set serverDataIssue(issue: ProjectServerIssue | undefined) { this.operationIssue = issue; }
-  private updates = Promise.resolve();
+  databaseRevisions: KanbanDatabaseRevision[] = [];
+  databaseWarning = '';
+  serverDataIssue?: ProjectServerIssue;
+  private watcher?: FSWatcher;
+  private timer?: ReturnType<typeof setTimeout>;
   private poll?: ReturnType<typeof setInterval>;
-  private feed?: AbortController;
-  private retry?: ReturnType<typeof setTimeout>;
+  private polling = false;
   private disposed = false;
   private generation = 0;
-  private polling = false;
-  private watcher?: FSWatcher;
-  private refreshTimer?: ReturnType<typeof setTimeout>;
-  private refreshing?: Promise<void>;
-  private loading = false;
   private readonly requests = new Set<AbortController>();
   readonly methods: KanbanMethodHub;
   constructor(readonly project: Project, private readonly runtime: Runtime, private readonly storageDir: string, private readonly hooks: Hooks) {
     this.methods = new KanbanMethodHub(() => this.configuration(), message => hooks.emit(message));
   }
-  configuration(): KanbanInjectedConfiguration {
-    const snapshot = configurationSnapshot(this.workspace, undefined, false);
-    return { id: snapshot.id, name: snapshot.name, params: snapshot.values };
-  }
-  configurationChanged(state: ProjectConfigurationState): void {
-    this.workspace = state;
-    if (this.preview) { this.newPreview(); this.hooks.changed(); }
-  }
-  state() { return { ...this.workspace, params: this.params, configuration: this.configuration(), preview: { url: this.preview.url, nonce: this.preview.nonce }, relatedProjectRevisions: this.relatedProjectRevisions, missingRelatedProjectAliases: this.missingRelatedProjectAliases, relatedProjectWarning: this.relatedProjectWarning, serverDataIssue: this.hooks.serverIssue ? this.hooks.serverIssue(this.serverDataIssue) : this.serverDataIssue }; }
+  configuration(): KanbanInjectedConfiguration { const snapshot = configurationSnapshot(this.workspace, undefined, false); return { id: snapshot.id, name: snapshot.name, params: snapshot.values }; }
+  configurationChanged(state: ProjectConfigurationState): void { this.workspace = state; if (this.preview) { this.newPreview(); this.hooks.changed(); } }
+  state() { return { ...this.workspace, params: this.params, configuration: this.configuration(), preview: { url: this.preview.url, nonce: this.preview.nonce }, databaseRevisions: this.databaseRevisions, databaseWarning: this.databaseWarning, serverDataIssue: this.serverDataIssue }; }
   async initialize(): Promise<void> {
-    this.workspace ??= await (await createLocalProjectConfigurationStore(this.project.folderPath)).read();
+    this.workspace ??= await (await createLocalProjectConfigurationStore(this.project.folderPath, { entryId: this.project.entryId })).read();
     await this.refresh();
     try {
-      this.watcher = watch(this.project.folderPath, { recursive: true }, (_event, filename) => {
+      this.watcher = watch(this.project.entryRoot, { recursive: true }, (_event, filename) => {
         const file = String(filename).replaceAll('\\', '/');
-        const data = path.relative(this.project.folderPath, webProjectDataDirectory(this.storageDir, this.project.folderPath)).replaceAll('\\', '/');
-        if (!file || file.split('/').some(part => part.startsWith('.') || part === 'node_modules') || file.startsWith(`${data}/`)) { return; }
-        const artifact = this.project.kanban!.artifactDir;
-        if (file !== 'package.json' && file !== 'configuration.json' && artifact !== '.' && file !== artifact && !file.startsWith(`${artifact}/`)) { return; }
-        clearTimeout(this.refreshTimer); this.refreshTimer = setTimeout(() => void this.refresh().catch(error => this.hooks.log(String(error))), 400);
+        if (!file || file.split('/').some(part => part.startsWith('.') || part === 'node_modules')) return;
+        clearTimeout(this.timer); this.timer = setTimeout(() => void this.refresh().catch(error => this.hooks.log(String(error))), 400);
       });
       this.watcher.on('error', error => this.hooks.log(String(error)));
     } catch (error) { this.hooks.log(String(error)); }
-    this.poll = setInterval(() => { if (!this.polling && this.project.projectInfo?.dataStorage?.mode !== 'server') { this.polling = true; void this.updateLocalRevisions().catch(error => this.hooks.log(String(error))).finally(() => { this.polling = false; }); } }, 2_000);
-    this.poll.unref();
+    this.poll = setInterval(() => { if (!this.polling) { this.polling = true; void this.updateRevisions().finally(() => { this.polling = false; }); } }, 2_000); this.poll.unref();
   }
-  refresh(checkConnections = false): Promise<void> {
-    clearTimeout(this.refreshTimer);
-    return this.refreshing ??= this.update(() => this.load(checkConnections)).finally(() => { this.refreshing = undefined; });
+  async refresh(checkConnections = false): Promise<void> {
+    const declaration = resolveProjectEntrySync(this.project.folderPath, this.project.entryId);
+    this.project.entryRoot = declaration.rootDir;
+    this.project.databases = declaration.registration.databases;
+    this.project.kanban = { artifactDir: '.', entry: declaration.registration.entry };
+    this.newPreview();
+    if (checkConnections) await this.hooks.projectChanged?.();
+    this.hooks.changed();
   }
-  private update<T>(operation: () => Promise<T>): Promise<T> {
-    const task = this.updates.then(() => {
-      if (this.disposed) { throw new Error('Kanban has closed.'); }
-      return operation();
-    });
-    this.updates = task.then(() => undefined, () => undefined);
-    return task;
-  }
-  private async load(checkConnections: boolean): Promise<void> {
-    const pkg = JSON.parse(await readFile(path.join(this.project.folderPath, 'package.json'), 'utf8'));
-    const artifact = readKanbanArtifactConfig(pkg);
-    const projectInfo = readProjectInfo(pkg);
-    const changed = JSON.stringify(this.project.projectInfo) !== JSON.stringify(projectInfo);
-    this.params = [];
-    this.project.kanban = artifact; this.project.projectInfo = projectInfo;
-    this.loading = true;
-    this.authenticationChanged();
-    try {
-      if (changed || checkConnections) await this.hooks.projectChanged?.();
-      this.newPreview();
-    } finally { this.loading = false; }
-    this.connectServerRevisions();
-    await this.updateLocalRevisions(); this.hooks.changed();
-  }
-  private newPreview(): void { this.generation++; this.methods.clear(); this.preview = new KanbanPreview(this.project.folderPath, this.project.kanban!, () => this.configuration()); }
-  private serverChecksBlocked(): boolean {
-    return this.project.projectInfo?.dataStorage?.mode === 'server' && (!!this.serverDataIssue || !!this.hooks.serverState?.().checking);
-  }
+  private newPreview() { this.generation++; this.methods.clear(); this.preview = new KanbanPreview(this.project.entryRoot, this.project.kanban!, () => this.configuration()); }
   async handle(message: Message): Promise<Message[]> {
-    if (message.type === 'kanban-method-state') { if (message.nonce !== this.preview.nonce) { throw new Error('Kanban preview changed.'); } if (!this.serverChecksBlocked()) this.methods.publish(message); return []; }
+    if (message.type === 'kanban-method-state') { if (message.nonce !== this.preview.nonce) throw new Error('Kanban preview changed.'); this.methods.publish(message); return []; }
     if (message.type === 'kanban-method-reply') { this.methods.reply(message); return []; }
-    if (message.type === 'kanban-methods') {
-      if (message.action === 'invoke' && this.serverChecksBlocked()) throw new Error('Kanban Server setup is required.');
-      return [{ type: 'kanban-methods-result', requestId: message.requestId, value: message.action === 'list' ? this.methods.list() : message.action === 'invoke' ? await this.methods.invoke(message.call) : (() => { throw new Error('Invalid Kanban methods action.'); })() }];
-    }
+    if (message.type === 'kanban-methods') return [{ type: 'kanban-methods-result', requestId: message.requestId, value: message.action === 'list' ? this.methods.list() : message.action === 'invoke' ? await this.methods.invoke(message.call) : (() => { throw new Error('Invalid Kanban methods action.'); })() }];
     if (message.type === 'kanban-bridge') {
-      try {
-        if (message.nonce !== this.preview.nonce) { throw Object.assign(new Error('Kanban preview changed.'), { code: 'KANBAN_BRIDGE_SESSION_INVALID' }); }
-        const value = await this.bridge(parseKanbanBridgeCall(message.call));
-        return [{ type: 'kanban-bridge-result', requestId: message.requestId, ok: true, value }];
-      } catch (error) { return [{ type: 'kanban-bridge-result', requestId: message.requestId, ok: false, error: createKanbanBridgeError(error) }]; }
+      try { if (message.nonce !== this.preview.nonce) throw Object.assign(new Error('Kanban preview changed.'), { code: 'KANBAN_BRIDGE_SESSION_INVALID' }); return [{ type: 'kanban-bridge-result', requestId: message.requestId, ok: true, value: await this.bridge(parseKanbanBridgeCall(message.call)) }]; }
+      catch (error) { return [{ type: 'kanban-bridge-result', requestId: message.requestId, ok: false, error: createKanbanBridgeError(error) }]; }
     }
     if (message.type === 'kanban-refresh') { await this.refresh(true); return [{ type: 'kanban-updated', requestId: message.requestId, kanban: this.state() }]; }
     throw new Error(`Unsupported Kanban action: ${message.type}`);
   }
   async bridge(call: Parameters<NonNullable<Runtime['kanbanBridge']>>[1]): Promise<unknown> {
-    if (this.disposed) { throw new Error('Kanban has closed.'); }
-    if (call.operation === 'runtime.getLocale') { return getCurrentLocale(); }
-    if(call.operation==='files.readFile') {const cached=await readCachedConfigurationFile(this.project.folderPath,String(call.input.fileId));if(cached)return cached;}
+    if (this.disposed) throw new Error('Kanban has closed.');
+    if (call.operation === 'runtime.getLocale') return getCurrentLocale();
     const generation = this.generation;
-    let result: unknown;
-    if (call.operation === 'studio.getLocalAnalysis') {
-      const abort = new AbortController(); this.requests.add(abort);
-      try { result = await requestStudioAnalysis(process.env, abort.signal); }
-      finally { this.requests.delete(abort); }
-    } else if (this.project.projectInfo?.dataStorage?.mode === 'server' || call.operation.startsWith('files.')) {
-      const connection = this.hooks.connection();
-      if (!connection) { throw Object.assign(new Error('SteamHarness Server login is required.'), { code: call.operation.startsWith('files.') ? 'KANBAN_FILE_UNAVAILABLE' : 'KANBAN_BRIDGE_UNAVAILABLE' }); }
-      if (this.serverChecksBlocked()) { throw Object.assign(new Error('Kanban Server setup is required.'), { code: 'KANBAN_BRIDGE_UNAVAILABLE' }); }
-      const abort = new AbortController(); this.requests.add(abort);
-      try {
-        const file = call.operation === 'files.readFile' ? await readConfigurationFile(this.project.id, this.workspace, String(call.input.fileId), connection, { target: this.workspace.template?.projectVersion, signal: abort.signal }) : undefined;
-        if (file) { result = file; }
-        else {
-          const response = await fetch(`${connection.serverUrl}/api/projects/${encodeURIComponent(this.project.id)}/kanban/bridge`, { method: 'POST', headers: { Authorization: `Bearer ${connection.accessToken}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ call }), redirect: 'error', signal: AbortSignal.any([abort.signal, AbortSignal.timeout(call.operation.startsWith('files.') ? 120_000 : 15_000)]) });
-          const value = await response.json();
-          if (!response.ok || value.errCode !== 0) {
-            if (!call.operation.startsWith('files.') && [401, 403, 404, 409].includes(response.status)) {
-              const relation = call.operation.startsWith('relatedProject.') ? this.project.projectInfo?.relatedProjects.find(item => item.alias === call.input.alias) : undefined;
-              const issue = await checkProjectStorageFailure(this.project.id, {
-                serverUrl: connection.serverUrl, projectId: relation?.projectId ?? this.project.id, relatedProjectAlias: relation?.alias,
-                status: response.status, operation: ['kv.getValue', 'relatedProject.kv.getValue', 'knowledge.listDocuments', 'knowledge.getDocument', 'knowledge.searchDocuments', 'knowledge.readDocumentLines'].includes(call.operation) ? 'get' : 'set',
-                key: typeof call.input.key === 'string' ? call.input.key : undefined,
-              }, connection, abort.signal);
-              if (!abort.signal.aborted && generation === this.generation && !this.disposed) {
-                this.serverDataIssue = issue ?? { kind: 'setup-required', serverUrl: connection.serverUrl }; this.hooks.changed();
-              }
-            }
-            throw Object.assign(new Error('Kanban Server operation failed.'), { code: call.operation.startsWith('files.') ? 'KANBAN_FILE_UNAVAILABLE' : 'KANBAN_DATA_OPERATION_FAILED' });
-          }
-          result = value.data ?? null;
-        }
-      } finally { this.requests.delete(abort); }
-    } else {
-      if (!this.runtime.kanbanBridge) { throw new Error('Project Core does not support Kanban data.'); }
-      try { result = await this.runtime.kanbanBridge(this.project, call); }
-      catch (error) {
-        if ((error as { code?: string }).code === 'KANBAN_RELATED_PROJECT_UNAVAILABLE' && call.operation.startsWith('relatedProject.') && generation === this.generation && !this.disposed) {
-          const issue = this.hooks.relatedImport?.(call.input.alias);
-          if (issue) { this.serverDataIssue = issue; this.hooks.changed(); }
-        }
-        throw error;
+    const abort = new AbortController(); this.requests.add(abort);
+    try {
+      let result:unknown;
+      if (call.operation === 'files.readFile') {
+        result = await readCachedConfigurationFile(this.project.folderPath, String(call.input.fileId), {entryId:this.project.entryId})
+          ?? await readConfigurationFile(this.project.id, this.workspace, String(call.input.fileId), this.hooks.connection(), {entryId:this.project.entryId,target:this.workspace.template?.projectVersion,signal:abort.signal});
       }
+      if(result===undefined)result = call.operation === 'studio.getLocalAnalysis' ? await requestStudioAnalysis(process.env, abort.signal) : await this.runtime.kanbanBridge!(this.project, call);
+      if (generation !== this.generation || this.disposed) throw Object.assign(new Error('Kanban preview changed.'), { code: 'KANBAN_BRIDGE_SESSION_INVALID' });
+      return result;
+    } finally { this.requests.delete(abort); }
+  }
+  authenticationChanged() { this.generation++; this.methods.clear(); for (const request of this.requests) request.abort(); this.databaseRevisions = []; this.databaseWarning = ''; this.serverDataIssue = undefined; }
+  projectChecksChanged() { this.hooks.changed(); }
+  private async updateRevisions() {
+    if (this.disposed || !this.runtime.kanbanBridge) return;
+    const generation = this.generation;
+    const revisions: KanbanDatabaseRevision[] = []; const errors: string[] = [];
+    for (const requirement of this.project.databases) {
+      try { revisions.push({ alias: requirement.alias, revision: String(await this.runtime.kanbanBridge(this.project, { requestId: `revision:${requirement.alias}`, operation: 'database.revision', input: { database: requirement.alias } })) }); }
+      catch { errors.push(requirement.alias); }
     }
-    if (generation !== this.generation || this.disposed) { throw Object.assign(new Error('Kanban preview changed.'), { code: 'KANBAN_BRIDGE_SESSION_INVALID' }); }
-    return result;
+    if (generation !== this.generation || this.disposed) return;
+    const warning = errors.length ? `Database access requires attention: ${errors.join(', ')}` : '';
+    if (JSON.stringify(revisions) !== JSON.stringify(this.databaseRevisions) || warning !== this.databaseWarning) { this.databaseRevisions = revisions; this.databaseWarning = warning; this.hooks.changed(); }
   }
-  authenticationChanged(): void {
-    this.generation++; this.methods.clear(); for (const request of this.requests) { request.abort(); } this.feed?.abort(); clearTimeout(this.retry);
-    this.relatedProjectRevisions = []; this.relatedProjectWarning = '';
-    this.operationIssue = undefined;
-    this.connectServerRevisions();
-  }
-  projectChecksChanged(): void {
-    if (this.operationIssue?.kind === 'related-import-required' && !this.hooks.relatedImport?.(this.operationIssue.relatedProjectAlias)) this.operationIssue = undefined;
-    if (this.project.projectInfo?.dataStorage?.mode !== 'server') return;
-    const state = this.hooks.serverState?.();
-    if (state?.checking || state?.issue) {
-      this.methods.clear(); for (const request of this.requests) request.abort();
-      this.feed?.abort(); clearTimeout(this.retry); return;
-    }
-    if (!this.loading && (!this.feed || this.feed.signal.aborted)) this.connectServerRevisions();
-  }
-  private connectServerRevisions(): void {
-    if (this.project.projectInfo?.dataStorage?.mode !== 'server' || this.disposed || this.loading) { return; }
-    const state = this.hooks.serverState?.();
-    if (state?.checking || state?.issue) return;
-    this.missingRelatedProjectAliases = [];
-    const connection = this.hooks.connection();
-    if (!connection) { this.serverDataIssue = { kind: 'sign-in-required' }; return; }
-    const abort = this.feed = new AbortController();
-    void (async () => {
-      let unavailable = false;
-      try {
-        const response = await fetch(`${connection.serverUrl}/api/projects/${encodeURIComponent(this.project.id)}/kanban/related-project-revisions`, { headers: { Authorization: `Bearer ${connection.accessToken}` }, signal: abort.signal, redirect: 'error' });
-        if (abort.signal.aborted) { await response.body?.cancel().catch(() => undefined); return; }
-        let issue = projectServerIssue(response.status, connection.serverUrl);
-        if (response.status === 404) {
-          await response.body?.cancel().catch(() => undefined);
-          issue = await checkProjectServer(this.project.id, connection, abort.signal) ?? { kind: 'setup-required', serverUrl: connection.serverUrl };
-          if (abort.signal.aborted) return;
-          if (issue.kind === 'connection-unavailable') throw new Error('Project availability could not be checked.');
-        }
-        if (issue) {
-          this.serverDataIssue = issue; this.relatedProjectWarning = ''; this.hooks.changed();
-          await response.body?.cancel().catch(() => undefined);
-          return;
-        }
-        if (!response.ok || !response.body) { await response.body?.cancel().catch(() => undefined); throw new Error('Kanban related project updates are unavailable.'); }
-        this.serverDataIssue = undefined; this.relatedProjectWarning = ''; this.hooks.changed();
-        const apply = (revisions: KanbanRelatedProjectRevision[]) => { if (!abort.signal.aborted) { this.relatedProjectRevisions = revisions; this.relatedProjectWarning = ''; this.hooks.changed(); } };
-        await consumeKanbanRelatedProjectRevisionStream(response.body, { onSnapshot: value => apply(value.revisions), onRevision: value => apply([...this.relatedProjectRevisions.filter(item => item.alias !== value.alias), value]), onUnavailable: () => { unavailable = true; throw new Error('Related projects are unavailable.'); } }, abort.signal);
-      } catch {
-        if (unavailable && !abort.signal.aborted) {
-          try {
-            let issue = await checkProjectServer(this.project.id, connection, abort.signal);
-            for (const relation of this.project.projectInfo?.relatedProjects ?? []) {
-              if (issue || abort.signal.aborted) break;
-              issue = await checkProjectStorageFailure(this.project.id, { serverUrl: connection.serverUrl,
-                projectId: relation.projectId, relatedProjectAlias: relation.alias, operation: 'get' }, connection, abort.signal);
-            }
-            if (!abort.signal.aborted && issue && issue.kind !== 'connection-unavailable') {
-              this.serverDataIssue = issue; this.relatedProjectWarning = ''; this.hooks.changed(); return;
-            }
-          } catch { /* A temporary diagnostic failure follows the connection retry path. */ }
-        }
-        if (!abort.signal.aborted) { this.relatedProjectWarning = t("The related project connection was interrupted. Reconnecting."); this.hooks.changed(); }
-      }
-      if (!abort.signal.aborted && !this.disposed) { this.retry = setTimeout(() => this.connectServerRevisions(), 5_000); this.retry.unref(); }
-    })();
-  }
-  private async updateLocalRevisions(): Promise<void> {
-    if (this.project.projectInfo?.dataStorage?.mode === 'server' || this.disposed) { return; }
-    const generation = this.generation, { info, projects } = await localKanbanRelatedProjects(this.project, this.hooks.relatedProjects?.());
-    const missing = info.relatedProjects.filter(item => !projects.has(item.alias)).map(item => item.alias);
-    const revisions = await Promise.all([...projects].sort(([left], [right]) => left.localeCompare(right)).map(async ([alias, target]) => {
-      const hash = createHash('sha256'), root = path.join(webProjectDataDirectory(this.storageDir, target.folderPath), 'kv');
-      const visit = async (directory: string) => { for (const item of (await readdir(directory, { withFileTypes: true }).catch(() => [])).sort((a, b) => a.name.localeCompare(b.name))) { if (item.name.startsWith('.') || item.name.endsWith('.lock') || item.name.endsWith('.tmp')) { continue; } const file = path.join(directory, item.name); if (item.isDirectory()) { await visit(file); } else if (item.isFile()) { const info = await stat(file).catch(() => undefined); hash.update(`${file}:${info?.size}:${info?.mtimeMs}`); } } };
-      await visit(root); return { alias, revision: hash.digest('hex') };
-    }));
-    if (generation !== this.generation || this.disposed) { return; }
-    if (JSON.stringify([missing, revisions]) !== JSON.stringify([this.missingRelatedProjectAliases, this.relatedProjectRevisions])) { this.missingRelatedProjectAliases = missing; this.relatedProjectRevisions = revisions; this.hooks.changed(); }
-  }
-  async close(): Promise<void> { this.disposed = true; this.watcher?.close(); clearTimeout(this.refreshTimer); this.methods.clear(); clearInterval(this.poll); clearTimeout(this.retry); this.feed?.abort(); for (const request of this.requests) { request.abort(); } await this.updates; }
+  async close() { this.disposed = true; this.watcher?.close(); clearTimeout(this.timer); clearInterval(this.poll); this.methods.clear(); for (const request of this.requests) request.abort(); }
 }

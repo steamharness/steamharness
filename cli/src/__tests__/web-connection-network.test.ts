@@ -62,6 +62,7 @@ it('recovers automatic and manual connections over real HTTP/SSE without replayi
         await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
         const origin = 'http://127.0.0.1:' + server.address().port;
         globalThis.fetch = (input, init) => nativeFetch(new URL(input, origin), init);
+        globalThis.document = {querySelector(){return null;}};
         globalThis.location = new URL(origin + '/#session=test-capability');
         globalThis.sessionStorage = { getItem() { return null; }, setItem() {} };
         globalThis.history = { replaceState() {} };

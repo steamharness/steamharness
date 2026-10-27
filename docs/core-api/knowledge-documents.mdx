@@ -1,243 +1,36 @@
 ---
 title: "Knowledge Documents"
-description: "使用 PersistentValue 管理 workflow 项目内 markdown 知识库文档，并在本地或服务器持久化后端之间保持隔离。"
+description: "数据库知识库 API"
 ---
 
-# Knowledge Documents
+# 数据库知识库 API
 
-`workflow.listKnowledgeDocuments()`、`workflow.getKnowledgeDocument()`、`workflow.createKnowledgeDocument()`、`workflow.editKnowledgeDocument()`、`workflow.deleteKnowledgeDocument()` 和 `workflow.searchKnowledgeDocuments()` 用于管理项目内 markdown 知识库。第一个参数必须是 `context.storage.local` 或 `context.storage.server`，文档会写入该位置顶层、当前项目的 `persistentValue`，不会回退到另一位置或普通 KV。
-
-项目 `dataStorage.mode` 严格限定可以传入的位置。`local` 使用本地 PersistentValue 目录，`server` 使用同 UUID 项目的 PostgreSQL 数据，`both` 由源码逐次选择。声明禁止、缺少登录/UUID 绑定或宿主不提供的位置会抛出 `HarnessError`。本地知识库与服务器项目知识库相互独立，不会自动上传、下载、合并或同步。
-
-## 签名
+通过 `context.databases.get(alias).knowledge` 访问获批空间的 Markdown 知识库。知识库与 KV 共享空间身份，分别授权。普通 KV 不能读取、改写知识库的文档、索引或附件键。
 
 ```ts
-workflow.listKnowledgeDocuments(storage: StorageLocationContext): Promise<KnowledgeDocumentSummaryRecord[]>
-
-workflow.getKnowledgeDocument(
-  storage: StorageLocationContext,
-  documentId: string,
-): Promise<KnowledgeDocument | undefined>
-
-workflow.createKnowledgeDocument(
-  storage: StorageLocationContext,
-  input: { id?: string; title: string; markdown: string },
-): Promise<KnowledgeDocument>
-
-workflow.editKnowledgeDocument(
-  storage: StorageLocationContext,
-  input: { id: string; title?: string; markdown?: string },
-): Promise<KnowledgeDocument>
-
-workflow.deleteKnowledgeDocument(
-  storage: StorageLocationContext,
-  documentId: string,
-): Promise<{ id: string; deleted: boolean }>
-
-workflow.searchKnowledgeDocuments(
-  storage: StorageLocationContext,
-  input: {
-    query: string;
-    documentId?: string;
-    beforeLines?: number;
-    afterLines?: number;
-    maxMatches?: number;
-    pageSize?: number;
-    cursor?: string;
-  },
-): Promise<KnowledgeSearchResultRecord>
-
-workflow.readKnowledgeDocumentLines(
-  storage: StorageLocationContext,
-  input: {
-    documentId: string;
-    startLine: number;
-    endLine: number;
-  },
-): Promise<KnowledgeDocumentLinesResult>
+const knowledge = context.databases.get("data").knowledge;
+await knowledge.createDocument({ id: "guide", title: "Guide", markdown: "# Guide" });
+await knowledge.editDocument({ id: "guide", markdown: "# Updated guide" });
+const page = await knowledge.listDocuments({ pageSize: 20 });
+const document = await knowledge.getDocument("guide");
+const matches = await knowledge.searchDocuments({ query: "guide", pageSize: 20 });
+const lines = await knowledge.readDocumentLines({ documentId: "guide", startLine: 1, endLine: 10 });
+await knowledge.deleteDocument("guide");
 ```
 
-## 数据结构
+文档包含 `id`、`title`、`markdown`、`createdAt`、`updatedAt`；列表返回摘要和分页游标，正文按需读取。搜索和行读取保留文档行号。修改文档与搜索索引在空间事务中提交；并发修改通过宿主锁与 CAS 保持一致。
+
+## 附件
 
 ```ts
-interface KnowledgeDocument {
-  id: string;
-  title: string;
-  markdown: string;
-  createdAt: string;
-  updatedAt: string;
-}
-
-interface KnowledgeDocumentSummaryRecord {
-  id: string;
-  title: string;
-  markdownPreview: string;
-  createdAt: string;
-  updatedAt: string;
-}
-
-interface KnowledgeDocumentPageRecord {
-  items: KnowledgeDocumentSummaryRecord[];
-  nextCursor?: string;
-  hasMore: boolean;
-  total: number;
-}
-
-interface KnowledgeSearchResultRecord {
-  query: string;
-  documentsSearched: number;
-  totalMatches: number;
-  matchesTruncated: boolean;
-  maxMatches: number;
-  pageSize: number;
-  cursor?: string;
-  nextCursor?: string;
-  hasMore: boolean;
-  matches: Array<{
-    documentId: string;
-    title: string;
-    lineNumber: number;
-    line: string;
-    before: Array<{ lineNumber: number; content: string }>;
-    after: Array<{ lineNumber: number; content: string }>;
-  }>;
-}
-
-interface KnowledgeDocumentLinesResult {
-  documentId: string;
-  title: string;
-  startLine: number;
-  endLine: number;
-  totalLines: number;
-  lines: Array<{ lineNumber: number; content: string }>;
-}
+const files = knowledge.files;
+const image = await files.createFile({ name: "image.png", mimeType: "image/png", buffer });
+const resolved = await files.readFile(image.id);
+await files.deleteFile(image.id);
 ```
 
-## 加载行为
+附件引用包含 `storage: "database"` 和 `spaceId`。读取、创建、删除及保留句柄的后续读取都会检查知识库授权。单个附件最多 50 MiB。获得同一空间授权的其他项目可读取附件；删除项目不删除空间内容。
 
-`workflow.listKnowledgeDocuments()` 只返回标题、摘要和时间，不包含完整 markdown；在需要显示、编辑或读取行范围时再读取指定文档。宿主集成可以从 `steamharness` 包导入 `listKnowledgeDocumentPage()`，按游标读取摘要页：
+## 失败与恢复
 
-```ts
-import { listKnowledgeDocumentPage } from "steamharness";
-
-const page = await listKnowledgeDocumentPage(
-  context.storage.local,
-  { pageSize: 20 },
-);
-```
-
-该方法返回 `{ items, total, hasMore, nextCursor? }`，每页默认 20 篇、最多 100 篇。文档列表的 `nextCursor` 是不透明 token，调用方只能把它原样作为下一次 `cursor` 传回，不能解析、构造或替换为数字偏移。Server 管理 API 和共享运行界面工作区都使用这一摘要分页模式，以避免大量文档或大正文阻塞列表加载。`markdownPreview` 只扫描正文开头最多 16K 字符，不会为多 MB 文档创建完整的归一化副本；需要正文时使用 get 接口。搜索结果也使用 `pageSize`、`cursor`、`hasMore` 和 `nextCursor` 分页返回，但搜索游标仍表示匹配结果位置。
-
-## 存储语义
-
-所有后端使用相同的 PersistentValue key 结构：
-
-| scope | key | 内容 |
-| --- | --- | --- |
-| project | `knowledge.documents` | v2 索引元数据：文档总数、递增序列和首页 page ID。 |
-| project | `knowledge.documents.page.<pageId>` | 最多 128 条按最近更新排序的文档摘要，以及下一页 page ID。 |
-| project | `knowledge.documents.locator.<id>` | 文档所在 page 和序列；删除后保留 tombstone。 |
-| project | `knowledge.document.<id>` | 单篇文档正文，固定包含 `markdown` 字段；删除后保留 tombstone。 |
-
-Server 后端把这些 key 存入 PostgreSQL `project_storage` 的 `storage_kind = persistent_value` 域；本地后端把它们存入 `STEAMHARNESS_PERSISTENT_VALUE_STORE_DIR` 指向的专用目录。普通 KV 使用独立域，即使项目、scope 和 key 相同也不会与知识库或 PersistentValue 重叠。Windows 本地后端会在锁等待时限内重试创建独占锁文件时短暂出现的 `EPERM` 或 `EACCES`，持续无法获取锁时仍会返回超时错误。列表首次只读取元数据和所需页块，不读取 markdown 正文或扫描旧页。删除文档会从页块索引中移除，并把 locator 与正文 key 写成 tombstone 标记。当前 KV/PersistentValue 还没有 delete primitive，因此 tombstone 会保留在所选后端中。索引格式固定为 v2；旧的单数组索引不会被读取或迁移。
-
-使用 server PersistentValue 连接的本地运行，会将创建、编辑和删除作为一次受限的服务端知识库变更执行。服务端会在项目 namespace 内串行化该变更，并在同一 PostgreSQL 事务内提交或回滚文档索引、正文和 tombstone，因此并发写入或单次失败不会留下不一致状态。业务代码应使用上述 helper，而不是自行并行写入保留 key。自定义 PersistentValue 后端若要支持创建、编辑或删除，还必须提供项目 namespace 的 `withLock` 或 `executeMutation` 原子能力；缺少这两项能力时 helper 会拒绝写入，避免多 key 索引被并发覆盖。
-
-## 搜索
-
-`searchKnowledgeDocuments()` 按 markdown 行搜索。`documentId` 省略时查找全部文档；传入时只查找指定文档。`beforeLines` 和 `afterLines` 控制每条匹配向上、向下返回多少行上下文，取值范围是 0 到 50。`pageSize` 控制本页最多返回多少条匹配，默认 200，最大 1000；`cursor` 使用上一页返回的 `nextCursor`。`totalMatches` 仍记录实际命中总数，`hasMore` / `nextCursor` 表示是否还有下一页。全库搜索会分批读取 markdown 正文，避免一次性把整个知识库加载到内存。`maxMatches` 是旧参数，未传 `pageSize` 时仍作为本页大小兼容。
-
-```ts
-const result = await workflow.searchKnowledgeDocuments(context.storage.local, {
-  query: "PersistentValue",
-  beforeLines: 1,
-  afterLines: 1,
-  pageSize: 200,
-});
-
-for (const match of result.matches) {
-  console.log(match.title, match.lineNumber, match.line);
-}
-```
-
-`readKnowledgeDocumentLines()` 用于指定文档的行范围读取，`startLine` / `endLine` 是 1-based inclusive。单次最多读取 1000 行；超出文档总行数时会把 `endLine` 截到实际末行，`startLine` 超出总行数时返回空 `lines`。
-
-```ts
-const excerpt = await workflow.readKnowledgeDocumentLines(context.storage.local, {
-  documentId: "runbook",
-  startLine: 120,
-  endLine: 160,
-});
-```
-
-## 错误
-
-| 情况 | 结果 |
-| --- | --- |
-| 项目缺少 `dataStorage.mode` 或所选位置被声明禁止 | 在执行用户模块前或调用时抛出 `HarnessError`，不会回退。 |
-| 所选本地 PersistentValue store 未配置，或服务器位置缺少登录/同 UUID 绑定 | 调用时抛出 `HarnessError`，不会写入另一位置。 |
-| `id` 非法 | 抛出 `HarnessError`；id 必须以字母或数字开头，只能包含字母、数字、点、下划线和横线。 |
-| `title` 为空 | 抛出 `HarnessError`。 |
-| `query` 为空 | 抛出 `HarnessError`。 |
-| 文档列表 `pageSize` 超出 1 到 100 | 抛出 `HarnessError`。 |
-| 搜索 `pageSize` / `maxMatches` 超出 1 到 1000 | 抛出 `HarnessError`。 |
-| `startLine` / `endLine` 非法或单次超过 1000 行 | 抛出 `HarnessError`。 |
-| 新建已存在文档 | 抛出 `HarnessError`；server 管理 API 映射为 409。 |
-| 编辑或搜索不存在的文档 | 抛出 `HarnessError`；server 管理 API 映射为 404。 |
-
-## 示例
-
-```ts
-export const projectWithKnowledge = workflow.defineProject<Input, OutputPayload>({
-  name: "knowledge-demo",
-  async run(input, context) {
-    const storage = context.storage.local;
-    const document = await workflow.createKnowledgeDocument(storage, {
-      title: input.title,
-      markdown: input.markdown,
-    });
-
-    const search = await workflow.searchKnowledgeDocuments(storage, {
-      documentId: document.id,
-      query: input.query,
-      beforeLines: 2,
-      afterLines: 2,
-    });
-
-    return workflow.createOutputPayload({
-      items: [
-        workflow.createOutputItem({
-          title: "Knowledge search",
-          contentType: "json",
-          content: search,
-        }),
-      ],
-    });
-  },
-});
-```
-
-## Conversation 示例
-
-`workspace/workflow/conversation-knowledge` 展示了 conversation 与知识库结合的模式：一个 conversation id 对应一篇知识库文档，每轮消息都先写入 `context.conversation`，再把完整 transcript 通过 `workflow.createKnowledgeDocument(context.storage.local, ...)` / `workflow.editKnowledgeDocument(context.storage.local, ...)` 写入明确选择的位置。
-
-本地写入时，为普通 KV 和知识库分别指定目录：
-
-```bash
-STEAMHARNESS_KV_STORE_DIR="$PWD/.workflow-kv" \
-STEAMHARNESS_PERSISTENT_VALUE_STORE_DIR="$PWD/.workflow-persistent-values" \
-steamharness json workspace/workflow/conversation-knowledge \
-  --conversation-id demo-thread \
-  -- --message "记录今天的结论" --title "Demo conversation"
-```
-
-如需只预览该示例生成的 markdown，可以追加 `--dry-run`；它不会写入任何 PersistentValue 后端。要写入服务器项目知识库，应先把项目代码的存储位置改为 `context.storage.server`，并将顶层 `package.json.id` 绑定到已授权的服务器项目 UUID，再配置服务器连接在本地运行：
-
-```bash
-steamharness workspace login --server "$STEAMHARNESS_SERVER_URL"
-steamharness json workspace/workflow/conversation-knowledge \
-  --conversation-id demo-thread \
-  -- --message "记录今天的结论" --title "Demo conversation"
-```
-
-上述两种运行得到的数据不会自动同步；即使使用相同的 conversation id，也会分别更新本地和服务器中的文档。
+未绑定、待审批、宿主不匹配、授权撤销或权限范围不足会失败，不能回退到普通 KV 或其他宿主。界面提供申请、重新绑定或恢复入口。参见 [独立数据库空间](/concepts/data-storage)。

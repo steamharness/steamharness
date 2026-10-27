@@ -43,14 +43,10 @@ describe("packaged workflow generator", () => {
       expect(outputTypes).toContain('placement?: "inline" | "composer-right";');
       expect(outputTypes).toContain('export interface RingContent');
 
-      expect(generated.steamHarness.projectInfo).toEqual({
-        dataStorage: { mode: "both" },
-        relatedProjects: [],
-      });
-      // Desktop 发布校验要求 steamHarness.release 存在且与 projectInfo 的 alias 集合一致。
-      expect(generated.steamHarness.release).toEqual({
-        dependencies: {},
-      });
+      expect(generated.steamHarness.defaultEntry).toBe("main");
+      expect(generated.steamHarness.entries).toEqual([{ entryId: "main", type: "workflow", name: "storage-contract", root: ".", entry: "index.ts", configuration: "configuration.json", databases: [] }]);
+      expect(generated.steamHarness).not.toHaveProperty("projectType");
+      expect(generated.steamHarness).not.toHaveProperty("release");
       expect(generated.steamHarness.projectCard).toEqual({
         icon: "workflow",
         iconBackgroundColor: "#2563eb",

@@ -49,13 +49,13 @@ workflow.runProject<Input, Output>(
 
 ## Context reuse
 
-By default, the child workflow uses the same `storage`, `conversation`, `tokenUsage`, `files`, `providers`, `abortSignal`, and `nodeHooks`. It does not create a standalone run report: the `runProject` call and child-node events are both included in the parent workflow trace. The ordinary top-level execution entry, `safeRunProject`, calls `workflow.run(input, context)` directly and does not add a synthetic `run-workflow` wrapper node at the root.
+By default, the child workflow uses the same `databases`, `entries`, `conversation`, `tokenUsage`, `files`, `providers`, `abortSignal`, and `nodeHooks`. It does not create a standalone run report: the `runProject` call and child-node events are both included in the parent workflow trace. The ordinary top-level execution entry, `safeRunProject`, calls `workflow.run(input, context)` directly and does not add a synthetic `run-workflow` wrapper node at the root.
 
 Workflows may nest `runProject()` calls, but the default total depth is limited to `16`. This depth exists only in the execution trace. It does not create a nested entrypoint path or change the entrypoint identity used by APIs, permissions, or history.
 
 `conversationMode: "shared-readonly"` gives a child workflow a read-only snapshot of the parent conversation. `appendMessage`, `setValue`, and `setTitle` do not write back to the parent session. Let the parent workflow append user and assistant transcripts and set the title when you need to avoid duplicate writes.
 
-`conversationMode` controls only `context.conversation`. When a child workflow writes local or server project/conversation KV, also use `kvMode: "isolated"` to prefix keys at both locations with the child workflow name. This option isolates ordinary KV only; it does not change PersistentValue or related-project KV.
+`conversationMode` controls only `context.conversation`. `kvMode: "isolated"` prefixes ordinary KV under each database alias with the child workflow name; it does not change knowledge spaces or authorization. Use `context.entries.get(entryId)` for registered entry calls, which load target configuration and authorize again.
 
 ## Execution records and output
 

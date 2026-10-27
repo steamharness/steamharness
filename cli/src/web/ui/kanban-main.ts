@@ -1,3 +1,4 @@
+import { mountAggregateToolbar } from './aggregate';
 import { t } from '../localization';
 import './style.css';
 import './kanban-style.css';
@@ -19,12 +20,12 @@ import { ProjectServerGuidance } from './project-server-guidance';
 import { StateRevisions } from './state-revisions';
 
 type Message = Record<string, any>;
-interface KanbanState { revision: number; configurations: {id:string;name:string}[]; activeConfigurationId?: string; configuration: KanbanInjectedConfiguration; params: Project['fields']; preview: { url: string; nonce: string }; relatedProjectRevisions: { alias: string; revision: string }[]; missingRelatedProjectAliases: string[]; relatedProjectWarning: string; serverDataIssue?: ProjectServerIssue }
+interface KanbanState { revision: number; configurations: {id:string;name:string}[]; activeConfigurationId?: string; configuration: KanbanInjectedConfiguration; params: Project['fields']; preview: { url: string; nonce: string }; databaseRevisions: { alias: string; revision: string }[]; databaseWarning: string; serverDataIssue?: ProjectServerIssue }
 const app = document.querySelector<HTMLElement>('#app')!, host = acquireProjectHost();
 app.classList.add('kanban-app');
 app.innerHTML = `
 <header class="toolbar"><div class="project-title"><h1 id="kanban-title">Kanban</h1></div><div class="toolbar-actions"><div id="preview-modes" class="kanban-modes" role="group" aria-label="${t("Preview size")}"></div><button id="dimensions" class="icon-button" title="${t("Resize preview")}" aria-label="${t("Resize preview")}" hidden>${iconHtml('settings')}</button><button id="refresh" class="icon-button" title="${t("Refresh Kanban")}" aria-label="${t("Refresh Kanban")}">${iconHtml('refresh')}</button>${projectConfigurationsButton()}${aiUsageButton()}<button id="methods" class="icon-button" title="${t("Page methods")}" aria-label="${t("Page methods")}">${iconHtml('wrench')}</button>${projectInfoButton()}</div></header>
-<main><div id="error" class="error" hidden role="alert"></div><div id="related-warning" class="kanban-warning" hidden role="status"></div><section id="server-guidance" class="project-server-guidance" aria-labelledby="server-guidance-title" role="region" aria-live="polite" hidden></section><div id="preview-stage"><div id="preview-viewport"><iframe id="kanban-preview" title="Kanban" sandbox="allow-scripts"></iframe><button id="resize-preview" class="kanban-resize" title="${t("Resize preview")}" aria-label="${t("Resize preview")}" hidden>${iconHtml('arrow-both')}</button></div><div id="preview-status" class="kanban-status" role="status" data-error="false">${iconHtml('loading')}<span>${t("Loading Kanban")}</span><button id="retry-preview" class="icon-button" title="${t("Retry")}" aria-label="${t("Retry")}" hidden>${iconHtml('refresh')}</button></div><div id="preview-offline" hidden></div></div></main>
+<main><div id="error" class="error" hidden role="alert"></div><div id="database-warning" class="kanban-warning" hidden role="status"></div><section id="server-guidance" class="project-server-guidance" aria-labelledby="server-guidance-title" role="region" aria-live="polite" hidden></section><div id="preview-stage"><div id="preview-viewport"><iframe id="kanban-preview" title="Kanban" sandbox="allow-scripts"></iframe><button id="resize-preview" class="kanban-resize" title="${t("Resize preview")}" aria-label="${t("Resize preview")}" hidden>${iconHtml('arrow-both')}</button></div><div id="preview-status" class="kanban-status" role="status" data-error="false">${iconHtml('loading')}<span>${t("Loading Kanban")}</span><button id="retry-preview" class="icon-button" title="${t("Retry")}" aria-label="${t("Retry")}" hidden>${iconHtml('refresh')}</button></div><div id="preview-offline" hidden></div></div></main>
 <dialog id="dimensions-dialog" class="conversation-dialog"><header><h2>${t("Preview size")}</h2><button id="close-dimensions" class="icon-button" title="${t("Close")}" aria-label="${t("Close")}">${iconHtml('close')}</button></header><form class="dialog-body"><label>${t("Width")}<input id="preview-width" type="number" min="160" max="4096" required></label><label>${t("Height")}<input id="preview-height" type="number" min="96" max="4096" required></label><div class="dimension-actions"><button id="reset-dimensions" type="button">${iconHtml('discard')}${t("Reset")}</button><button type="submit">${iconHtml('check')}${t("Apply")}</button></div></form></dialog>
 <dialog id="methods-dialog" class="conversation-dialog"><header><h2>${t("Page methods")}</h2><button id="close-methods" class="icon-button" title="${t("Close")}" aria-label="${t("Close")}">${iconHtml('close')}</button></header><div class="dialog-body"><select id="method-name" aria-label="${t("Page methods")}"></select><p id="method-description"></p><pre id="method-schema"></pre><label class="method-input">${t("Parameters JSON")}<textarea id="method-args" rows="5">{}</textarea></label><button id="invoke-method" type="button">${iconHtml('play')}${t("Execute")}</button><pre id="method-result" role="status"></pre></div></dialog>`;
 const element = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id)! as T;
@@ -48,6 +49,7 @@ const serverGuidance = new ProjectServerGuidance(element('server-guidance'), {
   retry: () => { void checkApplication(); },
 });
 mountProjectConfigurations(host);
+mountAggregateToolbar(host);
 function persist(): void { host.setState({ mode, sizes }); }
 function menu(_open: boolean): void { app.classList.remove('menu-open'); layoutPreview(); }
 function request(message: Message): Promise<Message> {
@@ -74,8 +76,8 @@ function update(next: KanbanState): void {
   state = next;
   previewBlocked = serverData ? serverData.blocking !== false && (serverData.checking || !!serverData.issue || !!next.serverDataIssue) : !!next.serverDataIssue;
   element('preview-stage').hidden = previewBlocked;
-  element('related-warning').textContent = next.relatedProjectWarning || (next.missingRelatedProjectAliases.length ? t("Related projects are unavailable: {0}", next.missingRelatedProjectAliases.join(', ')) : '');
-  element('related-warning').hidden = previewBlocked || !element('related-warning').textContent;
+  element('database-warning').textContent = next.databaseWarning;
+  element('database-warning').hidden = previewBlocked || !element('database-warning').textContent;
   if (previewBlocked) {
     clearTimeout(readyTimer); element('preview-status').hidden = true;
     if (!wasBlocked) {
@@ -98,7 +100,7 @@ function inject(): void {
     { type: 'steamharness:kanban-configuration', configuration: state.configuration },
     { type: 'steamharness:kanban-theme', theme: document.documentElement.dataset.theme },
     { type: 'steamharness:kanban-presentation', presentation: { mode } },
-    ...state.relatedProjectRevisions.map(item => ({ type: 'steamharness:kanban-related-project-revision', ...item })),
+    ...state.databaseRevisions.map(item => ({ type: 'steamharness:kanban-database-revision', ...item })),
   ]) { frame.contentWindow?.postMessage({ ...message, nonce: state.preview.nonce }, '*'); }
 }
 function publishMethods(): void { if (connected && state && methodSession) { host.postMessage({ type: 'kanban-method-state', nonce: state.preview.nonce, instanceId: methodSession.instanceId, ...methodSession.getState() }); } }

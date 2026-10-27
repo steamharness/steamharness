@@ -1,7 +1,8 @@
 import * as vscode from 'vscode';
 import { readProjectCardMetadataFromPackageJson } from '@steamharness/project-card-metadata';
 import { projectAvatarDataUrl } from '@steamharness/project-card-metadata/avatar';
-import { projectId, type ProjectType } from './projects';
+import { readProjectManifest, selectProjectEntry } from '@steamharness/project-manifest';
+import type { ProjectType } from './projects';
 import type { Launcher } from './workflow-cli-types';
 
 interface Detection { type?: ProjectType; version?: string; avatarUrl?: string; checked: number; pending?: Promise<ProjectType | undefined> }
@@ -18,7 +19,7 @@ export class ProjectIcons implements vscode.Disposable {
   private generation = 0;
   private disposed = false;
 
-  constructor(private readonly launcher: Launcher, private readonly log: (message: string) => void = () => undefined) {
+  constructor(_launcher: Launcher, private readonly log: (message: string) => void = () => undefined) {
     const watcher = vscode.workspace.createFileSystemWatcher('**/{package.json,*.ts}');
     this.subscriptions.push(watcher, watcher.onDidChange(uri => this.invalidate(uri)), watcher.onDidCreate(uri => this.invalidate(uri)),
       watcher.onDidDelete(uri => this.invalidate(uri)), vscode.window.onDidChangeWindowState(state => { if (state.focused) { this.refresh(); } }));
@@ -98,31 +99,11 @@ export class ProjectIcons implements vscode.Disposable {
       if (error instanceof SyntaxError || (error as vscode.FileSystemError).code === 'FileNotFound') { return undefined; }
       throw error;
     }
-    if (!projectId(pkg?.id)) { return undefined; }
-    setManifest(pkg);
-    if (pkg.steamHarness?.projectType === 'kanban') { return 'kanban'; }
-    if (!this.launcher.analyzeProjectType) { return undefined; }
-    const sources: Array<{ name: string; text: string }> = [];
-    let bytes = 0, entries = 0;
-    const visit = async (directory: vscode.Uri, depth: number): Promise<void> => {
-      if (depth > 8) { throw new Error('Project source depth limit exceeded.'); }
-      const children = (await vscode.workspace.fs.readDirectory(directory)).sort(([a], [b]) => a.localeCompare(b));
-      for (const [name, type] of children) {
-        if (this.disposed) { return; }
-        if (++entries > 2_000) { throw new Error('Project source scan limit exceeded.'); }
-        if (name.startsWith('.') || ignored.has(name)) { continue; }
-        const uri = vscode.Uri.joinPath(directory, name);
-        if (type === vscode.FileType.Directory) { await visit(uri, depth + 1); }
-        else if (type === vscode.FileType.File && name.endsWith('.ts') && !name.endsWith('.d.ts')) {
-          const text = await read(uri); bytes += text.length;
-          if (sources.length >= 200 || bytes > 8_388_608) { throw new Error('Project source size limit exceeded.'); }
-          sources.push({ name: uri.path.slice(root.path.length + 1), text });
-        }
-      }
-    };
-    await visit(root, 0);
-    if (this.disposed) { return undefined; }
-    return this.launcher.analyzeProjectType(sources);
+    try {
+      const manifest = readProjectManifest(pkg);
+      setManifest(pkg);
+      return selectProjectEntry(manifest).type;
+    } catch { return undefined; }
   }
 
   dispose(): void {

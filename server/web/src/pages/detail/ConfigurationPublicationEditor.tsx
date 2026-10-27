@@ -20,7 +20,7 @@ export function ConfigurationPublicationEditor({ state, busy, onSave, onDirtyCha
   function showPreview() {
     try {
       setError("");
-      setPreview(JSON.stringify(freezeConfigurationTemplate(draft, { projectId: "preview", projectVersion: "preview", sourceHash: "0".repeat(64) }), null, 2));
+      setPreview(JSON.stringify(freezeConfigurationTemplate(draft, { projectId: "preview", entryId: "preview", projectVersion: "preview", sourceHash: "0".repeat(64) }), null, 2));
     } catch (error) { setError((error as Error).message); }
   }
 
@@ -89,7 +89,7 @@ export function ConfigurationPublicationEditor({ state, busy, onSave, onDirtyCha
       <Button variant="outline" size="icon" disabled={busy} aria-label={t("configurationRecipientPreview")} title={t("configurationRecipientPreview")} onClick={showPreview}><EyeIcon /></Button>
       <Button disabled={busy} onClick={() => {
         try {
-          freezeConfigurationTemplate(draft, { projectId: "preview", projectVersion: "preview", sourceHash: "0".repeat(64) });
+          freezeConfigurationTemplate(draft, { projectId: "preview", entryId: "preview", projectVersion: "preview", sourceHash: "0".repeat(64) });
           setError("");
           void onSave(draft).then(saved => { if (saved) { const next = { ...draft, revision: draft.revision + 1 }; initial.current = next; setDraft(next); onDirtyChange?.(false); } });
         } catch (error) { setError((error as Error).message); }

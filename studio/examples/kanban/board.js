@@ -34,10 +34,10 @@ function render() {
 }
 async function mutate(operation) {
   if (busy) throw new Error('Kanban is busy.'); const previous = structuredClone(tasks); busy = true;
-  try { operation(); render(); await api.kv.setValue(key, tasks); document.querySelector('#board-error').hidden = true; }
+  try { operation(); render(); await api.databases.get('data').kv.setValue(key, tasks); document.querySelector('#board-error').hidden = true; }
   catch (reason) { tasks = previous; throw reason; } finally { busy = false; render(); }
 }
-async function load() { render(); const saved = await api.kv.getValue(key); tasks = Array.isArray(saved) ? saved : seed(); if (!saved) await api.kv.setValue(key, tasks); busy = false; render(); }
+async function load() { render(); const saved = await api.databases.get('data').kv.getValue(key); tasks = Array.isArray(saved) ? saved : seed(); if (!saved) await api.databases.get('data').kv.setValue(key, tasks); busy = false; render(); }
 document.querySelector('#new-task').onclick = () => document.querySelector('#task-dialog').showModal();
 document.querySelector('#cancel-task').onclick = () => document.querySelector('#task-dialog').close();
 document.querySelector('#task-form').onsubmit = async event => { event.preventDefault(); const title = document.querySelector('#task-title').value.trim(); if (!title) return;

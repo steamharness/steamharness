@@ -1,83 +1,16 @@
 ---
 title: "workspace pack"
-description: "将本地 workflow 目录打包为可上传的 .tgz 归档。"
+description: "打包聚合项目"
 ---
 
-# workspace pack
+# 打包聚合项目
 
-`workspace pack` 将本地 workflow 源码复制到打包暂存目录，再使用 `tar` 生成 `.tgz` 包。该命令只处理本地文件，不请求 SteamHarness Server。
-
-Workflow/Conversation 校验 `package.json` 和 `index.ts`；Kanban 使用 `package.json.steamHarness.projectType: "kanban"` 识别，并校验 `steamHarness.kanban.artifactDir` 中配置的 HTML `entry`。未配置时继续使用项目根目录 `index.html`。README 可以保留为项目说明，但不是上传必需文件。图片、字体等二进制资源会原样进入归档和源码版本。
-
-该命令不会安装或检查本地项目依赖。即使项目声明了第三方依赖且本地没有 `node_modules`，仍可打包源码；依赖由用户在本地运行前手动安装。Server 只保存源码和预先生成的静态资源，不安装依赖、不构建或加载项目代码。
-
-## 命令格式
-
-```bash
-pnpm exec steamharness workspace pack <workflow> [--path <workflow-dir>] [--output <file.tgz>] [--project-group] [--dependency <alias>=<path>]
+```sh
+pnpm exec steamharness workspace pack <project-id> --path . --output project.tgz
 ```
 
-## 参数
+一次操作覆盖一个 projectId 的所有注册入口，包含入口代码、依赖清单、业务配置定义和 Kanban 产物。先在本地安装依赖并构建静态入口，再运行 `steamharness check .`。
 
-| 参数 | 说明 |
-| --- | --- |
-| `<workflow>` | workflow 名称。默认源目录为 `workspace/workflow/<workflow>`。 |
-| `--path <workflow-dir>` | 指定本地源目录。 |
-| `--output <file.tgz>` | 指定输出包路径。未传时写入 `workspace/.packs`。 |
-| `--project-group` | 为 Kanban 根项目生成 project-group v1 归档。 |
-| `--dependency <alias>=<path>` | 将 `projectInfo.relatedProjects` 中已确认的 alias 映射到 included 项目本地目录；可重复。未映射的已确认关系保持 external。 |
+归档过滤凭据、宿主运行数据、Git 和 node_modules；保留数据库需求，剥离所有 `bindingRef`。安装者必须在自己的 local 或 server 宿主重新申请绑定，不继承作者授权。
 
-## 默认路径
-
-| 项 | 默认值 |
-| --- | --- |
-| repo root | `STEAMHARNESS_REPO_ROOT`，未设置时从当前目录或 CLI 文件位置向上查找包含 `pnpm-workspace.yaml` 的仓库根目录。 |
-| 源目录 | `<repo-root>/workspace/workflow/<workflow>` |
-| 输出目录 | `<repo-root>/workspace/.packs` |
-| 输出文件名 | `<workflow>-<UTC timestamp>.tgz` |
-
-## `.steamharnessignore`
-
-`pack` 只读取项目根目录 `.steamharnessignore`，不读取根目录或嵌套目录中的 `.gitignore`。语法支持注释、目录规则、通配符、`**` 和 `!` 反向包含，路径按 `/` 匹配。
-
-| 场景 | 行为 |
-| --- | --- |
-| 缺失、空文件或仅有注释 | 上传项目下全部普通文件，并输出文件数量和总大小警告。 |
-| `.steamharnessignore` 自身命中规则 | 仍会保留在归档中。 |
-| `package.json`、项目入口或已有 `configuration.json` 被排除 | 打包失败，并指出生效规则。 |
-| 符号链接、特殊文件或大小写冲突路径 | 拒绝打包，不由忽略规则放行，避免归档在 Windows、macOS 和 Linux 间出现覆盖差异。 |
-
-Kanban 不会自动保留 `dist` 或其它产物目录；它们也不会被宿主暗中排除。应在 `.steamharnessignore` 中保留实际 `artifactDir`，同时按需排除 `src/`、测试和 source map。`.gitignore` 是否忽略产物与上传无关。
-
-## 项目组归档
-
-项目组根必须是带 `steamHarness.projectInfo.relatedProjects` 的 Kanban。每个 `--dependency` alias 必须命中双方已确认的直接关系，且本地依赖的 UUID 必须与声明一致；待确认关系不能作为 included 依赖。同一个关联 UUID 只打包一次。归档包含 `project-group.json`、根项目包和选中的依赖项目包；每个项目仍按自己的 `.steamharnessignore` 选择源码。
-
-打包会拒绝符号链接、特殊 tar 成员，以及 `.env*`、KV、PersistentValue、定时计划、运行历史、SQLite、`workflow-auth.json` 和其它宿主用户配置；根 Kanban 也不能把自己的 UUID 声明为来源项目。项目组不携带本地运行数据，也不会修改任何 Server 状态；数据初始化由开发者在本地运行 Workflow，并显式选择本地或服务器存储完成。
-
-## 输出
-
-| 情况 | 输出 |
-| --- | --- |
-| 成功 | `{ "archivePath": "<absolute path>" }` |
-| 打包失败 | 输出错误信息，退出码为 `1`。 |
-
-## 示例
-
-```bash
-pnpm exec steamharness workspace pack hello
-pnpm exec steamharness workspace pack hello --path ./workspace/workflow/hello
-pnpm exec steamharness workspace pack hello --output ./workspace/.packs/hello.tgz
-pnpm exec steamharness workspace pack stock-kanban --project-group \
-  --path ./stock-kanban \
-  --dependency stocks=./stock-workflow
-```
-
-## 后续命令
-
-| 目标 | 命令 |
-| --- | --- |
-| 上传刚打好的包 | [`upload --file`](/cli/workspace/upload) |
-| 查看远程版本 | [`versions`](/cli/workspace/versions) |
-
-此命令准备供认证 Server 上传的作者源码，包含原始配置声明。向接收者分发请使用 Server 已发布的源码版本，其中配置模板与附件经过分享过滤。完整配置备份导出是另一项独立操作。详见[项目配置](/concepts/project-configuration)。
+默认输出 `.tgz`；打包是本地操作，不创建远程项目或空间。普通 npm 依赖继续由各包的 package.json 与锁文件管理。

@@ -2,9 +2,6 @@
   "projectName": "openai-agents",
   "projectType": "conversation",
   "files": [
-    "__tests__/local-shell.test.ts",
-    "__tests__/reuse.test.ts",
-    "__tests__/test-tool.test.ts",
     "index.ts",
     "interface.ts",
     "knowledge-documents-tool.ts",

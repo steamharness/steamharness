@@ -53,7 +53,9 @@ import {
 export type ExecutorNodeExecutionStatus = "running" | "success" | "failed";
 export type RunStatus = "running" | "waiting_for_input" | "success" | "failed" | "aborted" | "timed_out";
 
-export type RuntimeEvent =
+export type RuntimeEvent = RuntimeEventPayload & { projectId?: string; entryId?: string };
+
+type RuntimeEventPayload =
   | {
       type: "project_started";
       runId: string;
@@ -215,6 +217,8 @@ export interface ExecutorResult<
 }
 
 export interface ExecutionReport<Output = unknown> {
+  projectId?: string;
+  entryId?: string;
   runId: string;
   projectName: string;
   entrypointId?: string;
@@ -257,6 +261,11 @@ export interface DefinitionEvent {
 }
 
 export interface StructureReport {
+  projectId?: string;
+  entryId?: string;
+  entryName?: string;
+  entries?: import("@steamharness/project-manifest").ProjectEntry[];
+  defaultEntry?: string;
   projectType: ProjectKind;
   configuration?: ProjectConfigurationDefinition;
   workflow: StructureProject;

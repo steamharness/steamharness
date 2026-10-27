@@ -5,7 +5,6 @@ import path from "node:path";
 import test from "node:test";
 import {
   createLocalProjectPersistentValueContext,
-  createProjectRelatedProjectsContext,
   createDisabledProjectTokenUsageContext,
   createKnowledgeDocument,
   createKnowledgeMarkdownPreview,
@@ -21,7 +20,7 @@ import {
   searchKnowledgeDocuments,
   MAX_KNOWLEDGE_MARKDOWN_PREVIEW_SCAN_CODE_UNITS,
   type KVStore,
-  type StorageLocationContext,
+  type KnowledgeContext,
 } from "../index";
 
 test("knowledge markdown previews preserve compact output without scanning an entire large body", () => {
@@ -679,10 +678,10 @@ test("knowledge document line range validates range size", async () => {
   );
 });
 
-function createTestContext(store: KVStore): StorageLocationContext {
+function createTestContext(store: KVStore): KnowledgeContext {
   const kv = createProjectKVContext({ store: createMemoryKVStore(), projectId: "demo" });
   const persistentValue = createProjectPersistentValueContext({ store, projectId: "demo" });
-  return { kv, persistentValue, relatedProjects: createProjectRelatedProjectsContext() };
+  return { persistentValue };
 }
 
 function createMemoryKVStore(options: {

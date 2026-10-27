@@ -56,7 +56,7 @@ it.each([['en', 'workflow'], ['zh-CN', 'workflow'], ['en', 'conversation'], ['zh
     await mkdir(path.join(directory, 'node_modules'));
     await symlink(await realpath(new URL('../../node_modules/steamharness', import.meta.url)), path.join(directory, 'node_modules/steamharness'), process.platform === 'win32' ? 'junction' : 'dir');
     await writeFile(path.join(directory, 'package.json'), JSON.stringify({ id: '294b1eec-23fa-42cf-9fd3-2417f71c0570', name: 'Default name', version: '1.2.3', description: 'Original description', privateToken: 'not-public', type: 'module',
-      steamHarness: { projectInfo: { localizedNames: { EN: 'English name', 'zh-cn': '\u4e2d\u6587\u540d\u79f0' }, dataStorage: { mode: 'server' } } } }));
+      steamHarness: { defaultEntry: 'main', entries: [{entryId:'main',name:'Main',type:projectType,root:'.',entry:'index.ts',databases:[]}], projectInfo:{localizedNames: { EN: 'English name', 'zh-cn': '\u4e2d\u6587\u540d\u79f0' }} } }));
     await writeFile(path.join(directory, 'index.ts'), `
       const graph = steamharness.defineProject({ name: 'locale-fixture', async run() { return steamharness.createOutputPayload({ items: [] }); } });
       export const executor = steamharness.defineExecutor(${projectType === 'workflow' ? `
@@ -64,8 +64,8 @@ it.each([['en', 'workflow'], ['zh-CN', 'workflow'], ['en', 'conversation'], ['zh
         : `{ projectType: 'conversation', workflow: graph, createInput: context => context.paramValues }`});`);
     const result = await runtime.inspect([directory]);
     expect(result.errors).toEqual([]);
-    expect(result.projects[0].name).toBe(language === 'en' ? 'English name' : '\u4e2d\u6587\u540d\u79f0');
-    expect(result.projects[0].projectInfo?.dataStorage?.mode).toBe('server');
+    expect(result.projects[0].aggregateName).toBe(language === 'en' ? 'English name' : '\u4e2d\u6587\u540d\u79f0');
+    expect(result.projects[0].entryId).toBe('main');
     expect(result.projects[0].manifest).toEqual({ name: 'Default name', version: '1.2.3', description: 'Original description' });
   } finally { runtime.dispose(); await rm(directory, { recursive: true, force: true }); }
 }, 15_000);

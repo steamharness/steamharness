@@ -1,57 +1,46 @@
 ---
 title: "Project data storage"
-description: "Declare whether a project may use local storage, server storage, or both, and select locations explicitly in Core 0.2."
+description: "Independent database spaces"
 ---
 
-# Project data storage
+# Independent database spaces
 
-Every project must declare where its Knowledge, KV, and PersistentValue data may be stored:
+A database is an independent resource of a local or server host. One `spaceId` contains KV, knowledge documents, indexes, attachments and revisions. Multiple projects and entries may receive access. Deleting a project does not delete its spaces.
 
-```json
-{
-  "steamHarness": {
-    "projectInfo": {
-      "dataStorage": {
-        "mode": "local"
-      }
-    }
-  }
-}
-```
+## Declare requirements
 
-`mode` accepts only these values:
+Each entry declares `databases` with `alias`, `host`, `permissions` and an optional non-sensitive `bindingRef`. Code uses `context.databases.get(alias)`; the host stores the space, grants and actual credentials. Select `local` or `server` explicitly. Failed authorization never falls back to another host.
 
-| Mode | Allowed locations | Runtime requirement |
-| --- | --- | --- |
-| `local` | Local only | CLI can run offline. Server storage access is rejected. |
-| `server` | Server only | Login and a cloud binding with the same `package.json.id` UUID are required. Local runs also use server data. |
-| `both` | Local and server | Source code selects the location explicitly. Login is required only when server storage is actually accessed. |
+Permissions independently control `kv.read/write` and `knowledge.read/write`. Each rule is `{"mode":"none"}`, `{"mode":"all"}` or `{"mode":"prefixes","prefixes":["public:"]}`. Effective access is the intersection of the entry declaration and current grant.
 
-This declaration is a runtime permission boundary, not display metadata. A forbidden location fails directly and never falls back to, copies, deletes, or merges data from the other location. CLI and Core reject a missing declaration before evaluating user code; Server rejects it through static metadata validation. New projects explicitly default to `both`.
+## Request and approval
 
-## Core 0.2 Context
+1. Select an entry and alias in CLI Web or Studio database management. Server Web also has an independent database page.
+2. Request a new space or access to an existing `spaceId`. The request is `pending`; no space is created and data access remains unavailable.
+3. The local host user explicitly reviews local requests. A Server system administrator approves new spaces, with the applicant becoming owner. The owner or a system administrator reviews shared access.
+4. A reviewer may reject with a reason or narrow permissions before approval. Approval creates a grant and binding for the consumer.
+5. Only `bindingRef` belongs in the entry declaration. Rejected requests can be retried. Revocation requires a new request. The host refreshes rotated credentials; old credentials are rejected.
 
-Core 0.2 exposes two independent locations through `context.storage`:
+CLI Web and Studio share a user-level SQLite registry, with data directories separated by `spaceId`. Server persists catalog and data independently in PostgreSQL. Project membership still limits the caller; database grants cannot elevate their role.
+
+## Use and share
 
 ```ts
-await context.storage.local.kv.setValue("draft", { saved: true });
-await context.storage.server.persistentValue.setValue("release", "ready");
+const database = context.databases.get("data");
+await database.transaction(async db => {
+  await db.kv.setValue("settings:theme", "dark");
+  await db.knowledge.createDocument({
+    id: "guide", title: "Guide", markdown: "# Guide\nShared content",
+  });
+});
+const theme = await database.kv.getValue("settings:theme");
+const document = await database.knowledge.getDocument("guide");
 ```
 
-Each location provides the same `kv` and `persistentValue` APIs. Top-level methods access the current project directly, while `.conversation` accesses the current conversation in that project. KV and PersistentValue use separate storage domains, so an identical key never overlaps across the two kinds. `context.kv`, `context.persistentValue`, `.workflow`, and a global scope do not exist.
+Project and entry IDs authorize access and record its source; the space addresses data. Ordinary KV cannot read knowledge-reserved keys. Attachments require knowledge permissions. Every operation, transaction, CAS, lock and revision subscription rechecks authorization.
 
-A `local` project can use only `context.storage.local`, and a `server` project can use only `context.storage.server`. A `both` project may explicitly access either location during one run, but the two locations remain separate datasets. `runProject(..., { kvMode: "isolated" })` isolates project and conversation KV for both local and server storage.
+Two projects with approved bindings to the same space share keys, knowledge documents and attachments. Conversation KV remains isolated by project, entry and conversation identity. Knowledge indexes commit together with document mutations.
 
-## Server identity
+## Invalid bindings
 
-Server project registration and source upload are separate operations. Create the Server project with the local UUID and actual Project Info to use Server data; uploading source is optional. CLI Web shows structured storage failures with the affected project ID and related alias, including explicit Server accesses from a `both` project. Storage errors retain `metadata.code: "PROJECT_SERVER_ACCESS_FAILED"`, `serverUrl`, `projectId`, storage kind and operation; related access also retains `consumerProjectId` and `relatedProjectAlias`. Final reports preserve this information in `report.error.metadata` so hosts can guide users without interpreting ordinary model errors as missing projects.
-
-Server data is isolated by project UUID. To access `context.storage.server`, the top-level `package.json.id` must be the UUID of the bound cloud project and the caller must have access to that project. CLI can obtain the server connection from `STEAMHARNESS_SERVER_URL`, `STEAMHARNESS_SERVER_ADMIN_KEY`, or workspace login configuration. The server location is unavailable without a valid login and binding.
-
-Server Web exposes server data only. A `server` or `both` declaration permits data access. A `local` or missing declaration blocks server data access; source uploads require developer access and published downloads require guest access.
-
-:::info
-
-Changing the declaration controls future access only. It does not migrate existing KV, PersistentValue, or Knowledge data.
-
-:::
+Unbound, pending, rejected, revoked and incorrectly hosted requirements expose their state and request, bind or retry actions. Other entries remain manageable and runnable. Uploads, archives and Store distributions carry requirements and strip `bindingRef`; installers must request their own access.

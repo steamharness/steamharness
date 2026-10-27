@@ -3,7 +3,7 @@ import { localizationHtml } from './localization-host';
 import { webviewContextMenu } from './webview-context-menu';
 import * as vscode from 'vscode';
 import { projectAvatarDataUrl } from '@steamharness/project-card-metadata/avatar';
-import { projectDisplayName, type Project } from './workflow-types';
+import { projectDisplayName, projectWindowKey, type Project } from './workflow-types';
 import { projectInfoItems, type InfoItem, type InfoState } from './workflow-info';
 import type { ProjectVersionStatus } from './steamharness-server-projects';
 
@@ -34,9 +34,9 @@ export class InfoView implements vscode.WebviewViewProvider, vscode.Disposable {
 
   update(projects: Project[], preferred?: Project): Promise<void> {
     this.projects = projects.filter(project => !project.assistant && ['workflow', 'conversation', 'kanban'].includes(project.projectType));
-    const changedPreferred = preferred?.uri !== this.preferredUri;
-    this.preferredUri = preferred?.uri;
-    const selected = this.projects.find(project => project.uri === (changedPreferred ? preferred?.uri : this.selected?.uri)) ?? this.projects[0];
+    const changedPreferred = (preferred && projectWindowKey(preferred)) !== this.preferredUri;
+    this.preferredUri = (preferred && projectWindowKey(preferred));
+    const selected = this.projects.find(project => projectWindowKey(project) === (changedPreferred ? (preferred && projectWindowKey(preferred)) : (this.selected && projectWindowKey(this.selected)))) ?? this.projects[0];
     void vscode.commands.executeCommand('setContext', 'studio.projectInfoAvailable', this.projects.length > 0);
     void vscode.commands.executeCommand('setContext', 'studio.projectInfoMultipleProjects', this.projects.length > 1);
     if (selected !== this.selected) { this.selected = selected; return this.reload(); }
@@ -45,7 +45,7 @@ export class InfoView implements vscode.WebviewViewProvider, vscode.Disposable {
 
   private reload(): Promise<void> {
     const generation = ++this.generation, project = this.selected;
-    if (!project || project.uri !== this.loadedUri) {
+    if (!project || projectWindowKey(project) !== this.loadedUri) {
       this.items = project ? [{ id: 'loading', label: t("Loading"), icon: 'loading~spin' }] : [];
     }
     this.loading = project ? this.load(project, generation) : Promise.resolve();
@@ -62,7 +62,7 @@ export class InfoView implements vscode.WebviewViewProvider, vscode.Disposable {
       items = [{ id: 'error', label: t("Unable to read project information"), value: error instanceof Error ? error.message : String(error), icon: 'warning' }];
     }
     if (generation !== this.generation) { return; }
-    this.loadedUri = project.uri;
+    this.loadedUri = projectWindowKey(project);
     this.items = items;
     this.publish();
   }
@@ -71,7 +71,7 @@ export class InfoView implements vscode.WebviewViewProvider, vscode.Disposable {
     const picked = await vscode.window.showQuickPick(this.projects.map(project => ({
       label: projectDisplayName(project), iconPath: vscode.Uri.parse(projectAvatarDataUrl(project.projectCard, project.projectType)), description: project.projectType, detail: project.folderPath, project,
     })), { title: t("Select Project"), placeHolder: t("Project") });
-    const selected = this.projects.find(project => project.uri === picked?.project.uri);
+    const selected = this.projects.find(project => projectWindowKey(project) === (picked && projectWindowKey(picked.project)));
     if (selected && selected !== this.selected) { this.selected = selected; await this.reload(); }
   }
 
@@ -79,7 +79,7 @@ export class InfoView implements vscode.WebviewViewProvider, vscode.Disposable {
     if (!this.view) { return; }
     this.view.description = this.selected && projectDisplayName(this.selected);
     const state: InfoState = { type: 'info-state', generation: this.generation,
-      project: this.selected && { uri: this.selected.uri, name: this.selected.name, avatarUrl: projectAvatarDataUrl(this.selected.projectCard, this.selected.projectType) }, items: this.items,
+      project: this.selected && { uri: projectWindowKey(this.selected), name: this.selected.name, avatarUrl: projectAvatarDataUrl(this.selected.projectCard, this.selected.projectType) }, items: this.items,
       update: this.selected && !this.selected.builtin ? this.versions.getVersionStatus(this.selected) : undefined };
     void this.view.webview.postMessage(state);
   }
@@ -103,13 +103,13 @@ export class InfoView implements vscode.WebviewViewProvider, vscode.Disposable {
 
   private async receive(message: { type?: string; generation?: number; projectUri?: string; itemId?: string }): Promise<void> {
     if (message.type === 'ready') { this.publish(); return; }
-    if (message.generation !== this.generation || message.projectUri !== this.selected?.uri) { return; }
+    if (message.generation !== this.generation || message.projectUri !== (this.selected && projectWindowKey(this.selected))) { return; }
     if (message.type === 'source' && this.selected) { await vscode.commands.executeCommand('studio.openProjectSource', this.selected); return; }
     if (message.type === 'refresh') { await this.reload(); return; }
-    if (message.type === 'upgrade' && message.generation === this.generation && message.projectUri === this.selected?.uri) {
+    if (message.type === 'upgrade' && message.generation === this.generation && message.projectUri === (this.selected && projectWindowKey(this.selected))) {
       await vscode.commands.executeCommand('studio.upgradeProject', this.selected); return;
     }
-    if (message.type === 'copy' && message.generation === this.generation && message.projectUri === this.selected?.uri) {
+    if (message.type === 'copy' && message.generation === this.generation && message.projectUri === (this.selected && projectWindowKey(this.selected))) {
       if (await this.copy(message.itemId) && message.generation === this.generation) {
         void this.view?.webview.postMessage({ type: 'info-copied', generation: this.generation, itemId: message.itemId });
       }

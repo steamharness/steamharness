@@ -35,7 +35,7 @@ it.each(["workspace", "read-only", "auto"])("exposes the Workflow through real s
       STEAMHARNESS_STUDIO_CONTROL_BRIDGE_URL: `http://127.0.0.1:${address.port}/studio-control`, STEAMHARNESS_STUDIO_CONTROL_BRIDGE_TOKEN: token,
     } });
     expect(connection.tools.map(tool => tool.name)).toEqual(expect.arrayContaining([
-      "get_configurations", "manage_configurations", "open_configurations", "studio_state", "get_related_projects", "open_file", "get_diagnostics", "set_theme", "open_terminal", "show_view",
+      "get_configurations", "manage_configurations", "open_configurations", "studio_state", "get_entries", "open_file", "get_diagnostics", "set_theme", "open_terminal", "show_view",
     ]));
     const configurationInput = {storage:"local",projectDir:"/workspace",export:true};
     await connection.callTool("get_configurations", {input:JSON.stringify(configurationInput)});
@@ -46,12 +46,12 @@ it.each(["workspace", "read-only", "auto"])("exposes the Workflow through real s
     expect(calls).toContainEqual({ operation: "studio.state.get", input: {}, permissionPolicy });
     await connection.callTool("open_file", { filePath: "index.ts", line: 2, column: 3 });
     expect(calls).toContainEqual({ operation: "studio.file.open", input: { filePath: "index.ts", line: 2, column: 3 }, permissionPolicy });
-    const related = await connection.callTool("get_related_projects", { projectDir: "projects/notes" });
+    const related = await connection.callTool("get_entries", { projectDir: "projects/notes" });
     expect(related.isError).toBe(false);
     expect(JSON.stringify(related.content)).toContain("studio-mcp-result");
-    expect(calls).toContainEqual({ operation: "studio.relatedProjects.get", input: { projectDir: "projects/notes" }, permissionPolicy });
+    expect(calls).toContainEqual({ operation: "studio.entries.get", input: { projectDir: "projects/notes" }, permissionPolicy });
     for (const [tool, input, operation] of [
-      ["get_related_projects", {}, "studio.relatedProjects.get"],
+      ["get_entries", {}, "studio.entries.get"],
       ["get_diagnostics", {}, "studio.diagnostics.get"],
       ["get_diagnostics", { filePath: "index.ts" }, "studio.diagnostics.get"],
       ["set_theme", { theme: "Dark" }, "studio.theme.set"],

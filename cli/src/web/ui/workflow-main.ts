@@ -1,3 +1,4 @@
+import { mountAggregateToolbar } from './aggregate';
 import { mountProjectConfigurations, projectConfigurationsButton } from './project-configurations';
 import { t, locale } from '../localization';
 import './style.css';
@@ -52,6 +53,7 @@ app.innerHTML = `
   </main><dialog id="history-dialog" class="conversation-dialog"><header><label class="history-search">${iconHtml('search')}<input id="search-history" type="search" placeholder="${t("Search runs")}" aria-label="${t("Search runs")}"></label><button id="close-history" class="icon-button" title="${t("Close")}" aria-label="${t("Close")}">${iconHtml('close')}</button></header><div id="search-results" class="dialog-body"></div><button id="search-more" class="all-history" hidden>${t("Load more")}</button></dialog>
   <dialog id="node-dialog" class="conversation-dialog"><header><h2 id="node-title"></h2><button id="close-node" class="icon-button" title="${t("Close")}" aria-label="${t("Close")}">${iconHtml('close')}</button></header><pre id="node-detail" class="dialog-body web-preview"></pre></dialog>`;
 const configurationPanel = mountProjectConfigurations(host);
+mountAggregateToolbar(host);
 const element = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
 const traceButton = iconButton('history', t("Trace"), () => post({ type: 'trace', runId: state?.run?.id }));
 traceButton.id = 'open-trace'; document.querySelector('.run-heading-actions')!.prepend(traceButton);
@@ -246,7 +248,7 @@ function renderRun(): void {
   const files = run.files;
   output.update({ id: run.id, role: 'assistant', content: run.items.length || run.report?.result?.data === undefined ? '' : JSON.stringify(run.report.result.data, null, 2),
     items: run.items, status: run.status, pendingInput: run.pendingInput, resolvedInputs: run.resolvedInputs, submittingInput: run.submittingInput,
-    events: run.events, timers: run.timers }, state!.project.id, run.scopeId, files, state!.project.projectInfo?.dataStorage?.mode === 'server' ? 'server' : 'local');
+    events: run.events, timers: run.timers }, state!.project.id, state!.project.entryId, run.scopeId, files, state!.project.databases.some(database => database.host === 'server') ? 'server' : 'local');
   const pendingLabel = element('run-output').querySelector('.pending > span:last-child'); if (pendingLabel) { pendingLabel.textContent = t("Running..."); }
   element('run-files').replaceChildren(...files.map(file => {
     const button = iconButton('file', file.name, () => host.postMessage({ type: 'open-file', id: file.id })); button.className = 'workflow-file';

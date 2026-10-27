@@ -15,7 +15,7 @@ for (const mode of ['stale-draft', 'client-override', 'private-field'] as const)
       const storage = new Storage({ serverRoot: process.cwd(), repoRoot: process.cwd(), dataRoot: root });
       const definition = (restricted: boolean) => JSON.stringify({ version: 2, fields: [{ ...AGENT_MODELS_CONFIGURATION_FIELD, ...(restricted ? { allowThirdParty: false } : {}) }] });
       await storage.createProjectFromFiles({ projectName: projectId, files: [
-        { path: 'package.json', content: JSON.stringify({ id: projectId, name: 'Source policy', version: '1.0.0', devDependencies: { steamharness: corePackage.version }, steamHarness: { projectType: 'conversation', projectInfo: { localizedNames: {}, declarations: [], platformSupport: { mode: 'agnostic' }, dataStorage: { mode: 'server' }, relatedProjects: [] } } }) },
+        { path: 'package.json', content: JSON.stringify({ id: projectId, name: 'Source policy', version: '1.0.0', devDependencies: { steamharness: corePackage.version }, steamHarness: { defaultEntry:"main",entries:[{entryId:"main",name:"Main",type:'conversation',root:".",entry:"index.ts",configuration:"configuration.json",databases:[]}], projectInfo: { localizedNames: {}, declarations: [], platformSupport: { mode: 'agnostic' },   } } }) },
         { path: 'index.ts', content: 'throw new Error("must not execute"); steamharness.createAgentProjectParamResolver();' },
         { path: 'configuration.json', content: definition(mode !== 'stale-draft') },
       ] });
@@ -33,7 +33,7 @@ for (const mode of ['stale-draft', 'client-override', 'private-field'] as const)
       if (mode === 'private-field') publication.fields[0]!.sharing = { publish: false };
       state = await storage.projectConfigurations(options, { action: 'publication.save', revision: state.revision, publication }) as ProjectConfigurationState;
       assert.equal(state.publication!.fields[0]!.allowThirdParty, false);
-      await storage.publish({ projectName: projectId, createdByUserId: 'author', expectedConfigurationRevision: state.publication!.revision, expectedSourceHash: state.sourceHash });
+      await storage.publish({ projectName: projectId, createdByUserId: 'author', expectedConfigurationRevisions:{main:state.publication!.revision}, expectedSourceHash: state.sourceHash });
       const recipient = await storage.projectConfigurations({ ...options, actorId: 'other', target: '1.0.0' }, { action: 'get' }) as ProjectConfigurationState;
       assert.deepEqual(configurationSnapshot(recipient).agentModelPolicy, { allowThirdParty: false });
       if (mode === 'private-field') assert.ok(!recipient.fields.some(field => field.name === key));
@@ -50,7 +50,7 @@ test('Server saves, imports and published configurations retain a source-declare
   try {
     const storage=new Storage({serverRoot:process.cwd(),repoRoot:process.cwd(),dataRoot:root});
     await storage.createProjectFromFiles({projectName:projectId,files:[
-      {path:'package.json',content:JSON.stringify({id:projectId,name:'System Agent',version:'1.0.0',devDependencies:{steamharness:corePackage.version},steamHarness:{projectType:'conversation',projectInfo:{localizedNames:{},declarations:[],platformSupport:{mode:'agnostic'},dataStorage:{mode:'server'},relatedProjects:[]}}})},
+      {path:'package.json',content:JSON.stringify({id:projectId,name:'System Agent',version:'1.0.0',devDependencies:{steamharness:corePackage.version},steamHarness:{defaultEntry:"main",entries:[{entryId:"main",name:"Main",type:'conversation',root:".",entry:"index.ts",configuration:"configuration.json",databases:[]}],projectInfo:{localizedNames:{},declarations:[],platformSupport:{mode:'agnostic'},}}})},
       {path:'index.ts',content:'throw new Error("must not execute"); steamharness.createAgentProjectParamResolver();'},
       {path:'configuration.json',content:JSON.stringify({version:2,fields:[{...AGENT_MODELS_CONFIGURATION_FIELD,allowThirdParty:false},{name:'title',type:'string'}]})},
     ]});
@@ -66,7 +66,7 @@ test('Server saves, imports and published configurations retain a source-declare
     const unchanged=await storage.projectConfigurations(options,{action:'get'}) as ProjectConfigurationState;
     assert.equal(unchanged.revision,state.revision);assert.equal(unchanged.configurations.length,1);assert.equal(configurationSnapshot(unchanged).values.title,undefined);
     const published=await storage.projectConfigurations(options,{action:'publication.save',revision:state.revision,publication:unchanged.publication}) as ProjectConfigurationState;
-    await storage.publish({projectName:projectId,createdByUserId:'author',expectedConfigurationRevision:published.publication!.revision,expectedSourceHash:published.sourceHash});
+    await storage.publish({projectName:projectId,createdByUserId:'author',expectedConfigurationRevisions:{main:published.publication!.revision},expectedSourceHash:published.sourceHash});
     const recipient=await storage.projectConfigurations({...options,actorId:'other',target:'1.0.0'},{action:'get'}) as ProjectConfigurationState;
     assert.equal(recipient.fields[0]!.allowThirdParty,false);assert.deepEqual(configurationSnapshot(recipient).agentModelPolicy,{allowThirdParty:false});
   } finally {await rm(root,{recursive:true,force:true});}
@@ -76,7 +76,7 @@ test('Server discovers Agent model fields without executing source, isolates acc
   try {
     const storage = new Storage({ serverRoot: process.cwd(), repoRoot: process.cwd(), dataRoot: root });
     await storage.createProjectFromFiles({ projectName: projectId, files: [
-      { path: 'package.json', content: JSON.stringify({ id: projectId, name: 'Agent config', version: '1.0.0', devDependencies: { steamharness: corePackage.version }, steamHarness: { projectType: 'workflow', projectInfo: { localizedNames: {}, declarations: [], platformSupport: { mode: 'agnostic' }, dataStorage: { mode: 'server' }, relatedProjects: [] } } }) },
+      { path: 'package.json', content: JSON.stringify({ id: projectId, name: 'Agent config', version: '1.0.0', devDependencies: { steamharness: corePackage.version }, steamHarness: { defaultEntry:"main",entries:[{entryId:"main",name:"Main",type:'workflow',root:".",entry:"index.ts",configuration:"configuration.json",databases:[]}], projectInfo: { localizedNames: {}, declarations: [], platformSupport: { mode: 'agnostic' },   } } }) },
       { path: 'index.ts', content: 'throw new Error("must not execute"); const node = steamharness.createAgentNode();' },
       { path: 'configuration.json', content: JSON.stringify({ version: 2, fields: [{ name: 'title', type: 'string' }] }) },
     ] });
@@ -92,7 +92,7 @@ test('Server discovers Agent model fields without executing source, isolates acc
     const other = await storage.projectConfigurations({ ...options, actorId: 'other' }, { action: 'get' }) as ProjectConfigurationState;
     assert.ok(!JSON.stringify(other).includes(model.apiKey));
     state = await storage.projectConfigurations(options, { action: 'publication.save', revision: state.revision, publication: { ...unchanged.publication!, configurations: unchanged.publication!.configurations.map(profile => ({ ...profile, values: unchanged.configurations.find(item => item.id === profile.id)!.values })) } }) as ProjectConfigurationState;
-    await storage.publish({ projectName: projectId, createdByUserId: 'author', expectedConfigurationRevision: state.publication!.revision, expectedSourceHash: state.sourceHash });
+    await storage.publish({ projectName: projectId, createdByUserId: 'author', expectedConfigurationRevisions:{main:state.publication!.revision}, expectedSourceHash: state.sourceHash });
     const recipient = await storage.projectConfigurations({ ...options, actorId: 'other', target: '1.0.0' }, { action: 'get' }) as ProjectConfigurationState;
     assert.equal(recipient.fields[0]?.control, 'ai-models'); assert.ok(!JSON.stringify(recipient).includes(model.apiKey));
   } finally { await rm(root, { recursive: true, force: true }); }

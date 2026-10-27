@@ -5,7 +5,7 @@ import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promis
 import path from 'node:path';
 import os from 'node:os';
 import { writeProjectIdentity } from '../project-identity';
-import { projectDataDirectory, projectDataDirectorySync, retainProjectDataIdentity, webProjectDataDirectory } from '../web/project-data-directory';
+import { projectDataDirectory, projectDataDirectorySync, webProjectDataDirectory } from '../web/project-data-directory';
 import { ProjectServerCreation } from '../web/project-server-create';
 import { readProjectInfo } from '@steamharness/project-info';
 import type { Project } from '../web/workflow-types';
@@ -15,7 +15,7 @@ const temporary: string[] = [];
 afterEach(async () => { vi.restoreAllMocks(); await Promise.all(temporary.splice(0).map(root => rm(root, { recursive: true, force: true }))); });
 async function fixture() {
   const directory = await mkdtemp(path.join(os.tmpdir(), 'project-identity-')); temporary.push(directory);
-  const pkg = { id: oldId, name: 'Keep name', scripts: { dev: 'keep this' }, steamHarness: { projectType: 'workflow', projectInfo: { dataStorage: { mode: 'server' } } } };
+  const pkg = { id: oldId, name: 'Keep name', scripts: { dev: 'keep this' }, steamHarness: { defaultEntry: 'main', entries: [{entryId:'main',name:'Main',type:'workflow',root:'.',entry:'index.ts',databases:[]}],  } };
   const source = JSON.stringify(pkg, null, '\t').replaceAll('\n', '\r\n') + '\r\n';
   const filename = path.join(directory, 'package.json'); await writeFile(filename, source);
   return { directory, filename, source, pkg };
@@ -34,17 +34,14 @@ it('replaces only project identity, preserves formatting, and refuses concurrent
   expect(await readdir(f.directory)).toEqual(['package.json']);
 });
 
-it('keeps old data and history in place while new applications use separate roots, including legacy metadata', async () => {
-  const f = await fixture(), storage = path.join(f.directory, 'storage'), root = webProjectDataDirectory(storage, f.directory);
-  expect(await projectDataDirectory(storage, f.directory, oldId)).toBe(root);
-  await mkdir(root, { recursive: true }); await writeFile(path.join(root, 'project.json'), JSON.stringify({ version: 1, projectId: oldId }));
-  await writeFile(path.join(root, 'conversations.json'), 'old history');
-  expect(await projectDataDirectory(storage, f.directory, newId)).toBe(path.join(root, 'applications', newId));
-  await retainProjectDataIdentity(storage, f.directory, newId);
-  expect(projectDataDirectorySync(storage, f.directory, oldId)).toBe(root);
-  expect(projectDataDirectorySync(storage, f.directory, newId)).toBe(await projectDataDirectory(storage, f.directory, newId));
-  expect(await readFile(path.join(root, 'conversations.json'), 'utf8')).toBe('old history');
-  await expect(projectDataDirectory(storage, f.directory, '../../escape')).rejects.toThrow();
+it('isolates history by project and entry without adopting directory metadata', async () => {
+ const f=await fixture(),storage=path.join(f.directory,'storage');
+ const root=webProjectDataDirectory(storage,oldId,'one');
+ expect(await projectDataDirectory(storage,f.directory,oldId,'one')).toBe(root);
+ expect(projectDataDirectorySync(storage,f.directory,oldId,'two')).not.toBe(root);
+ expect(await projectDataDirectory(storage,f.directory,newId,'one')).not.toBe(root);
+ expect(await projectDataDirectory(storage,f.directory,oldId,'one')).toBe(root);
+ await expect(projectDataDirectory(storage,f.directory,oldId,'../../escape')).rejects.toThrow();
 });
 
 it('prevents competing windows from overwriting each other with different allocated IDs', async () => {
@@ -86,7 +83,7 @@ it('releases the identity lock when its owner crashes so the user can retry', as
 it('locks separate confirmations and reuses an allocated ID when a concurrent manifest edit prevents applying it', async () => {
   const f = await fixture();
   const connection = { serverUrl: 'https://allocation.test', accessToken: 'test-token' };
-  const project: Project = { id: oldId, name: 'Keep name', uri: f.directory, folderPath: f.directory, projectType: 'workflow', fields: [], entrypoints: [], projectInfo: readProjectInfo(f.pkg) };
+  const project: Project = {entryId:"main",aggregateName:"Test aggregate",defaultEntry:"main",entryRoot:f.directory,databases:[],entries:[{entryId:"main",name:"Main",type:'workflow',root:".",entry:"index.ts",databases:[]}], id: oldId, name: 'Keep name', uri: f.directory, folderPath: f.directory, projectType: 'workflow', fields: [], entrypoints: [], projectInfo: readProjectInfo(f.pkg) };
   const posts: unknown[] = [];
   vi.spyOn(globalThis, 'fetch').mockImplementation(async (url, options) => {
     if (options?.method === 'POST') { posts.push(JSON.parse(String(options.body))); return Response.json({ errCode: 0, data: { projectId: newId, projectType: 'workflow' } }); }

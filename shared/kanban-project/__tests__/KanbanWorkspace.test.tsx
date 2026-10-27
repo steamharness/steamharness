@@ -90,17 +90,17 @@ describe("KanbanWorkspace", () => {
     }, "*");
   });
 
-  it("posts opaque related-project revision snapshots with the preview nonce", () => {
+  it("posts opaque database revision snapshots with the preview nonce", () => {
     const { rerender } = render(<KanbanWorkspace {...createProps()} />);
     const iframe = screen.getByTitle("Demo Kanban") as HTMLIFrameElement;
     const postMessage = vi.spyOn(iframe.contentWindow!, "postMessage");
 
     rerender(<KanbanWorkspace {...createProps({
-      relatedProjectRevisions: [{ alias: "stocks", revision: "opaque-2" }],
+      databaseRevisions: [{ alias: "stocks", revision: "opaque-2" }],
     })} />);
 
     expect(postMessage).toHaveBeenCalledWith({
-      type: "steamharness:kanban-related-project-revision",
+      type: "steamharness:kanban-database-revision",
       nonce: "preview-nonce",
       alias: "stocks",
       revision: "opaque-2",
@@ -109,7 +109,7 @@ describe("KanbanWorkspace", () => {
     postMessage.mockClear();
     fireEvent.load(iframe);
     expect(postMessage).toHaveBeenCalledWith({
-      type: "steamharness:kanban-related-project-revision",
+      type: "steamharness:kanban-database-revision",
       nonce: "preview-nonce",
       alias: "stocks",
       revision: "opaque-2",
@@ -136,13 +136,13 @@ describe("KanbanWorkspace", () => {
     dispatchBridgeRequest(iframe, {
       requestId: "request-1",
       operation: "kv.getValue",
-      input: { key: "board" },
+      input: { database:"data", key: "board" },
     });
 
     await waitFor(() => expect(onBridgeRequest).toHaveBeenCalledWith({
       requestId: "request-1",
       operation: "kv.getValue",
-      input: { key: "board" },
+      input: { database:"data", key: "board" },
     }));
     await waitFor(() => expect(postMessage).toHaveBeenCalledWith({
       type: "steamharness:kanban-bridge-response",
@@ -162,7 +162,7 @@ describe("KanbanWorkspace", () => {
     dispatchBridgeRequest(iframe, {
       requestId: "request-forged-project",
       operation: "kv.getValue",
-      input: { key: "board" },
+      input: { database:"data", key: "board" },
       projectName: "another-project",
     });
 
@@ -184,7 +184,7 @@ describe("KanbanWorkspace", () => {
     dispatchBridgeRequest(iframe, {
       requestId: "request-stable",
       operation: "kv.getValue",
-      input: { key: "board" },
+      input: { database:"data", key: "board" },
     });
     await waitFor(() => expect(firstHandler).toHaveBeenCalledOnce());
 
@@ -211,7 +211,7 @@ describe("KanbanWorkspace", () => {
     dispatchBridgeRequest(iframe, {
       requestId: "request-sync-error",
       operation: "kv.getValue",
-      input: { key: "board" },
+      input: { database:"data", key: "board" },
     });
 
     await waitFor(() => expect(postMessage).toHaveBeenCalledWith(expect.objectContaining({
@@ -233,17 +233,17 @@ describe("KanbanWorkspace", () => {
     dispatchBridgeRequest(iframe, {
       requestId: "wrong-nonce",
       operation: "kv.getValue",
-      input: { key: "board" },
+      input: { database:"data", key: "board" },
     }, { nonce: "wrong" });
     dispatchBridgeRequest(iframe, {
       requestId: "wrong-source",
       operation: "kv.getValue",
-      input: { key: "board" },
+      input: { database:"data", key: "board" },
     }, { source: window });
     dispatchBridgeRequest(iframe, {
       requestId: "invalid-operation",
       operation: "kv.deleteValue",
-      input: { key: "board" },
+      input: { database:"data", key: "board" },
     });
 
     expect(onBridgeRequest).not.toHaveBeenCalled();
@@ -269,7 +269,7 @@ describe("KanbanWorkspace", () => {
     dispatchBridgeRequest(iframe, {
       requestId: "request-old",
       operation: "knowledge.listDocuments",
-      input: {},
+      input: { database:"data",},
     });
     await waitFor(() => expect(onBridgeRequest).toHaveBeenCalledOnce());
     rerender(<KanbanWorkspace {...createProps({
@@ -293,7 +293,7 @@ describe("KanbanWorkspace", () => {
       dispatchBridgeRequest(iframe, {
         requestId: `request-${index}`,
         operation: "kv.getValue",
-        input: { key: `key-${index}` },
+        input: { database:"data", key: `key-${index}` },
       });
     }
 
@@ -316,7 +316,7 @@ describe("KanbanWorkspace", () => {
       dispatchBridgeRequest(iframe, {
         requestId: `timeout-${index}`,
         operation: "kv.getValue",
-        input: { key: `key-${index}` },
+        input: { database:"data", key: `key-${index}` },
       });
     }
     await act(async () => { await Promise.resolve(); });
@@ -329,7 +329,7 @@ describe("KanbanWorkspace", () => {
     dispatchBridgeRequest(iframe, {
       requestId: "after-timeout",
       operation: "kv.getValue",
-      input: { key: "after-timeout" },
+      input: { database:"data", key: "after-timeout" },
     });
     await act(async () => { await Promise.resolve(); });
 

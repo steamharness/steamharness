@@ -38,39 +38,10 @@ pnpm exec steamharness workspace health --server http://localhost:7126
 pnpm exec steamharness workspace login --server http://localhost:7126
 pnpm exec steamharness workspace upload hello
 pnpm exec steamharness workspace publish hello --release-log "Initial release"
-pnpm exec steamharness workspace run hello --target latest --message "hello"
 ```
 
 In the development environment, you can use the local server address; in the production environment, it is recommended to explicitly use the official domain name or your production port.
 
-## Configuration Source
+## Databases and entries
 
-|Configuration|Description|
-| --- | --- |
-| `STEAMHARNESS_SERVER_URL` |Default server address for workspace CLI.|
-| `STEAMHARNESS_SERVER_ADMIN_KEY` |Explicit administrator override credentials workspace CLI; automation or recovery scenarios can be used directly as a Bearer.|
-| `STEAMHARNESS_REPO_ROOT` |The project root directory of workspace CLI. When not set, it is derived by traversing upward from the current directory.|
-| `STEAMHARNESS_CLI_AUTH_DIR` |The workspace CLI is the directory that stores the independent login state `workflow-auth.json`.|
-| `STEAMHARNESS_KV_STORE_DIR` |`steamharness` Local runtime KV store directory.|
-| `STEAMHARNESS_PERSISTENT_VALUE_STORE_DIR` |The `steamharness` local runtime PersistentValue store directory, which is also the local repository directory.|
-| `STEAMHARNESS_FILE_STORE_DIR` |`steamharness` The store directory for local runtime files.|
-
-`steamharness run/json` requires an explicit `steamHarness.projectInfo.dataStorage.mode`. `STEAMHARNESS_KV_STORE_DIR` controls only `context.storage.local.kv`, while `STEAMHARNESS_PERSISTENT_VALUE_STORE_DIR` controls only `context.storage.local.persistentValue` and local Knowledge. They are isolated by project UUID and never fall back to each other. `context.storage.server` uses the top-level project UUID and an authenticated connection from `STEAMHARNESS_SERVER_URL` / `STEAMHARNESS_SERVER_ADMIN_KEY` or workspace CLI `workflow-auth.json`. `local` runs offline, `server` requires login and same-UUID binding, and `both` lets source code select explicitly. The two locations never synchronize automatically. Pass each related-project directory explicitly with repeatable `--related-project alias=/absolute/project/path`; CLI never scans parent or sibling directories, and on a local run the relation also covers the target's Knowledge base and entrypoints to the extent the target grants them, while a server location selects remote data storage and related entrypoints still execute locally. `context.files.createFile(...)` still uses the server connection; input attachment resolution remains controlled by `STEAMHARNESS_FILE_STORE_DIR`.
-
-Project business values come from [Project configurations](/en/concepts/project-configuration), without project env loading or process-variable fallback. Host deployment and transport settings remain separate.
-
-## Output Convention
-
-|Command family|Output|
-| --- | --- |
-| `steamharness run` |On success, output the contents of the output node; on failure, output JSON is reported to stderr.|
-| `steamharness json` |Always generate a complete JSON execution report.|
-| `steamharness structure` |Output workflow structure JSON.|
-| `steamharness mcp` |Reserves stdout for stdio JSON-RPC and writes project logs and diagnostics to stderr.|
-| workspace CLI |Output server API response JSON, like `{ errCode, errMessage, data }`.|
-
-## Follow-up Reading
-
-- See [steamharness CLI](/en/cli/steamharness) for local running and structure checking.
-- See [steamharness mcp](/en/cli/steamharness/mcp) to connect a local Workflow to an AI client.
-- See [Server Workspace CLI](/en/cli/server-workspace) for Server uploads, publication and downloads.
+Local commands read entries from the aggregate root. Select with `--entry`; `check` validates all entries by default. Explicit database aliases require host request, approval and binding. CLI Web and Studio share the user-level local registry. See [CLI](/en/cli/steamharness) and [Database spaces](/en/concepts/data-storage).

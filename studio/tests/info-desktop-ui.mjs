@@ -30,19 +30,10 @@ for (const type of ['workflow', 'conversation', 'kanban']) {
     + (type === 'conversation' ? ' <img src=x onerror="window.injected=true">' : '');
   manifest.steamHarness.projectInfo = {
     declarations: ['multilingual', 'multiplatform', 'custom-declaration'], localizedNames: { 'zh-CN': `Info ${type}`, en: manifest.name },
-    platformSupport: { mode: 'specific', platforms: ['macos', 'windows', 'web'] }, dataStorage: { mode: 'local' },
+    platformSupport: { mode: 'specific', platforms: ['macos', 'windows', 'web'] },
   };
   await fs.writeFile(path.join(directory, 'package.json'), JSON.stringify(manifest, null, 2));
   projects.push({ type, directory, manifest });
-}
-const grantToRelatedProject = { read: { mode: 'none' }, write: { mode: 'none' } };
-projects[0].manifest.steamHarness.projectInfo.relatedProjects = [
-  { alias: 'linked-conversation', projectId: projects[1].manifest.id, grantToRelatedProject },
-  { alias: 'linked-missing', projectId: crypto.randomUUID(), grantToRelatedProject },
-];
-projects[1].manifest.steamHarness.projectInfo.relatedProjects = [{ alias: 'linked-workflow', projectId: projects[0].manifest.id, grantToRelatedProject }];
-for (const project of projects.slice(0, 2)) {
-  await fs.writeFile(path.join(project.directory, 'package.json'), JSON.stringify(project.manifest, null, 2));
 }
 const ordinary = path.join(dataDir, 'ordinary'); await fs.mkdir(ordinary);
 const workspace = path.join(dataDir, 'info.code-workspace');
@@ -219,36 +210,9 @@ try {
   await fs.writeFile(workspace, JSON.stringify({ folders: [{ path: projects[0].directory }, { path: ordinary }] }));
   await page.locator('.part.sidebar').getByRole('button', { name: nls['command.selectInfoProject'], exact: true }).waitFor({ state: 'hidden', timeout: 45_000 });
   await command('View: Show Explorer');
-  const relatedHeader = page.locator('.part.sidebar .pane-header').filter({ hasText: t('Related Projects') });
-  await relatedHeader.waitFor();
-  if (await relatedHeader.getAttribute('aria-expanded') === 'false') { await relatedHeader.click(); }
   const headers = await page.locator('.part.sidebar .pane-header').allTextContents();
   assert.ok(headers.every(title => !/Outline|Timeline|NPM Scripts|\u5927\u7eb2|\u65f6\u95f4\u7ebf/i.test(title)), JSON.stringify(headers));
-  await field('linked-conversation').locator('.label-description').filter({ hasText: projects[1].manifest.steamHarness.projectInfo.localizedNames[language === 'en' ? 'en' : 'zh-CN'] }).waitFor();
-  assert.equal(await field('linked-missing').locator('.label-description').innerText(), t('Not imported'));
-  await layout(); await screenshot('related-projects.png');
-  proof.checks.push('Explorer replaces Outline, Timeline and NPM Scripts with related projects and retains imported projects after removing their workspace roots');
-  await field('linked-missing').locator('.label-name').click();
-  await page.getByText(t('Related project "{0}" has not been imported. Import it first.', 'linked-missing'), { exact: true }).waitFor();
-  await page.getByRole('button', { name: t('Import Project'), exact: true }).waitFor();
-  proof.checks.push('an unimported related project displays the import prompt');
-  await command('Notifications: Clear All Notifications');
-  const previousPages = new Set(browser.contexts()[0].pages());
-  await field('linked-conversation').locator('.label-name').click();
-  let opened;
-  for (let attempt = 0; attempt < 100; attempt++) {
-    opened = browser.contexts()[0].pages().find(candidate => !previousPages.has(candidate) && candidate.url().includes('workbench'));
-    if (opened) { break; } await pause(100);
-  }
-  assert.ok(opened, 'A related project must open a new native Studio window');
-  opened.setDefaultTimeout(45_000); opened.on('pageerror', error => proof.errors.push(error.message));
-  await opened.bringToFront(); await assistantReady(opened); await command('View: Show Explorer', opened);
-  const packageFile = opened.locator('.part.sidebar .monaco-list-row').filter({ has: opened.locator('.label-name', { hasText: /^package\.json$/ }) });
-  await packageFile.first().dblclick();
-  await opened.locator('.part.editor .view-lines').filter({ hasText: projects[1].manifest.id }).waitFor();
-  assert.equal(page.isClosed(), false, 'Opening a related project must preserve the original window');
-  proof.checks.push('clicking an imported related project opens the matching UUID in a new native window and preserves the source window');
-  await opened.close(); await page.bringToFront();
+  proof.checks.push('Explorer retains the aggregate project tree without extra workspace outlines');
   await fs.writeFile(workspace, JSON.stringify({ folders: [{ path: ordinary }] }));
   await info.waitFor({ state: 'hidden', timeout: 45_000 });
   assert.equal(await activity.getByRole('tab', { name: /Run and Debug|\u8fd0\u884c\u548c\u8c03\u8bd5/ }).count(), 0);

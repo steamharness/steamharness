@@ -61,9 +61,9 @@ function render(next: VersionsState): void {
           ${iconButton('download', 'cloud-download', t('Download Version {0}', version.version), !next.canDownload || next.busy || next.loading, version.version)}</header>
         <div class="metadata">${text([date(version.createdAt), version.createdByProfile?.displayName || version.createdByProfile?.email].filter(Boolean).join(' \u00b7 '))}</div>
         ${version.releaseLog ? `<p class="release-log">${text(version.releaseLog)}</p>` : ''}
-        ${version.sourceHash || version.dependencies?.length ? `<details><summary>${text(t('Version Details'))}</summary><dl>
+        ${version.sourceHash || version.entries?.length ? `<details><summary>${text(t('Version Details'))}</summary><dl>
           ${version.sourceHash ? `<dt>${text(t('Source Hash'))}</dt><dd class="hash">${text(version.sourceHash)}</dd>` : ''}
-          ${version.dependencies?.length ? `<dt>${text(t('Related Projects'))}</dt><dd>${version.dependencies.map(dependency => `<div>${text(dependency.alias)} \u00b7 ${text(dependency.version ?? t('External'))}</div>`).join('')}</dd>` : ''}
+          ${version.entries?.length ? `<dt>${text(t('Project windows'))}</dt><dd>${version.entries.map(entry => `<div>${text(entry.name)} · ${text(entry.type)}</div>`).join('')}</dd>` : ''}
         </dl></details>` : ''}</article>`).join('')}</div>`;
   }
   for (const button of app.querySelectorAll<HTMLButtonElement>('button[data-action]')) {

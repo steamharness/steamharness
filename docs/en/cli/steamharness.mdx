@@ -1,248 +1,36 @@
 ---
 title: "steamharness CLI"
-description: "Local execution of workflow, along with references to commands for generating execution reports and inspecting the structure."
+description: "CLI and aggregate entries"
 ---
 
-# steamharness CLI
+# CLI and aggregate entries
 
-`steamharness` is a unified command exposed by `@steamharness/cli`. The local command loads the workflow project, installs the global runtime API and executes on the current device; the command to connect to the server is located in the `workspace` group.
+Invoke the installed CLI from the aggregate root. Use Node.js 24 and install dependencies with the declared package manager. The root manifest and registered entries must be valid. Child directories do not own independent SteamHarness project identities.
 
-Studio can inject user permission snapshots and updates into CLI Web, using a capability handshake for older CLIs. Projects inherit only with explicit `permissionPolicy: "inherit"`; an omitted policy still defaults to `workspace`. Standalone CLI does not persist this preference in this release, and `inherit` uses `auto` without host injection. Active durable work keeps its startup snapshot; subsequent input adopts updates at a safe idle boundary. See [User settings and permission inheritance](/en/core-api/user-settings).
-
-## Call Method
-
-CLI project templates used by Studio save a project type icon and random colors in `package.json.steamHarness.projectCard`. Foreground and background contrast is at least 4.5:1. Static project inspection passes this avatar metadata to Studio.
-
-CLI Web shows the project avatar before response duration; clicking it opens project information. The current account avatar appears to the right of user messages and opens the account panel, using Studio's account entry when embedded. The project toolbar also displays a clickable project avatar.
-
-While viewing the latest messages, the transcript follows new content to the bottom, including resource cards arriving together, loading previews, and composer height changes. Scrolling up preserves your reading position. Click Go to latest message or scroll back to the bottom to resume following.
-
-The project should have both the Core SDK and CLI installed. The two packages are independently versioned, and it is recommended to pin to the exact verified version:
-
-```bash
-pnpm add -D steamharness @steamharness/cli
+```sh
+pnpm exec steamharness check .
+pnpm exec steamharness check . --entry database
+pnpm exec steamharness structure . --entry database
+pnpm exec steamharness run . --entry database --entrypoint search -- --query example
+pnpm exec steamharness json . --entry database --entrypoint search -- --query example
+pnpm exec steamharness web . --entry agent
+pnpm exec steamharness mcp . --entry database
 ```
 
-A released project must use an exact SemVer in `devDependencies.steamharness`; `^`, `~`, `0.2.x`, `workspace:*`, and local paths are rejected. The exact pin records the development baseline. The installed Core must satisfy the CLI's declared compatibility range, and runtime checks also verify the Core `major.minor` line. Keep `@steamharness/cli` exact as well, but version it independently from Core.
+## Entry selection
 
-Built-in source projects may reference the harness directly during source development. Projects under `build-in/` use `link:../../harness`. CLI resolves the harness manifest relative to the open-source source root and rejects references escaping that root. Release mode on `main`, `alpha` and tags still requires exact published versions.
+`--entry` selects the window entry. `run`, `json`, `structure`, `mcp` and `web` default to `defaultEntry`. `check` inspects all entries unless `--entry` selects one. `--entrypoint` selects an operation inside a Workflow. Keep the two identifiers distinct.
 
-CLI development builds use a fixed Core baseline, while project execution loads the project's own installed Core. `peerDependencies.steamharness` declares the accepted range; for example, the current `0.2.4` series uses `>=0.2.4-20260929001 <0.2.5-0`, so the project Core does not have to match the CLI build baseline exactly. Before loading a project module, `run`, `json`, `structure`, `resolve-params`, and `mcp` validate the installed Core, the CLI build baseline, and the project's Core declaration; `structure` also validates the complete `steamHarness.projectInfo` contract. `help` does not load a project and skips these checks.
+Arguments after `--` pass unchanged to the Workflow. `--locale zh-CN|en` selects host text without altering business parameters.
 
-|Scene|Command|
-| --- | --- |
-|Project Scripts| `pnpm run dev` |
-|bin installed| `pnpm exec steamharness <command>` |
-|CLI source repository development| `pnpm build && node dist/index.js <command>` |
+## CLI Web
 
-## Command Format
+One root directory starts one aggregate host. The window selector beside the project name displays entry names, types and states. Each entry has an `/entries/<entryId>/` URL and independent controller. Switching preserves drafts, history and background runs.
 
-```bash
-steamharness <command> [workflow-dir] [options] [--] [...args]
-```
+Database management supports requests, approval, shared access, binding, narrowing, revocation, rotation and data management. Pending requests do not create spaces. See [Database spaces](/en/concepts/data-storage).
 
-|Part|Description|
-| --- | --- |
-| `<command>` |`run`, `json`, `structure`, `resolve-params`, `mcp`, `web`, or `help`. Displays help when the command is not passed.|
-| `[workflow-dir]` |workflow project directory. Use the current directory when not passing.|
-| `[--] [...args]` |executor `createInput` Readable CLI style parameters. `--` is used to stop parsing CLI's own options, and subsequent arguments will be passed to workflow as-is.|
+## Validation and output
 
-## Global Options
+`check` and `structure` statically inspect registered entries without executing user modules. Unsafe paths, duplicate IDs, invalid defaults, mismatched types and legacy declarations fail. `json` returns a run report with project and entry identity. Failed runs return a nonzero exit code. Cancellation propagates to the current execution and calls to other entries.
 
-|Options|Description|
-| --- | --- |
-| `--help` / `-h` |Display help. It must be used as the first argument.|
-| `--json` |In the `run` command, switch to JSON report output; the `json` command is enabled by default.|
-| `--run-id <id>` |Specify the execution ID for this operation. Primarily used to restore `waiting_for_input` run.|
-| `--entrypoint <id>` |Select an entry point for Workflow; use the default entry point if omitted. Applicable to `run`, `json`, and `resolve-params`; Conversation does not accept non-null values.|
-| `--conversation-id <id>` |Specify the session ID. Both `run` and `json` are usable.|
-| `--file-store-dir <dir>` |Specify the local file storage directory. Both `run` and `json` are usable.|
-| `--related-project <alias>=<absolute-project-dir>` | Bind one relationship confirmed by both project packages for `run` or `json`; repeatable. The path must be absolute, and the alias, UUID, and declarations on both sides must match. On a local run the target is started from its own directory and its own storage, so the relation also reaches its Knowledge base and entrypoints, as far as the target's `grantToRelatedProject` allows. |
-| `--resolved-user-inputs-json <json>` |Injects an array of submitted user input or tool approval answers.|
-| `--tool-permissions-json <json>` |Host-passed tool permission override policy; for regular manual CLI debugging, it is usually not required.|
-
-## Command List
-
-|Command|Description|
-| --- | --- |
-| [`steamharness run`](/en/cli/steamharness/run) |Execute locally workflow, and in normal mode, output the content of the output node.|
-| [`steamharness json`](/en/cli/steamharness/json) |Execute workflow locally and generate a complete JSON execution report.|
-| [`steamharness structure`](/en/cli/steamharness/structure) |Analyze the workflow structure and output JSON.|
-| [`steamharness resolve-params`](/en/cli/steamharness/resolve-params) |Read the Composer state from stdin and execute the executor parameter linkage callback.|
-| [`steamharness mcp`](/en/cli/steamharness/mcp) |Expose Workflow entrypoints to AI clients as standard stdio MCP tools.|
-| [`steamharness help`](/en/cli/steamharness/help) |Output help information.|
-
-## Local Web Interface
-
-Conversation accepts file and folder drops and offers Choose files and Choose folders from the lower-left button. Both entrances share the same import logic without requiring attachment type declarations. Studio selection preserves original paths; dragging from the VS Code Explorer, editor tabs, desktop, or other directories displays compact tags with an icon and name. Tags run horizontally and wrap when space is limited. Long names are truncated, the full path appears on hover, and tags can be removed before sending. Paths are added to the message context for the Core Agent under the current tool permissions. References do not change workspace or permission settings; drafts, queue edits, retries, and message history retain the tags. Sent tags appear above the text inside the user message bubble.
-
-In Studio, file tags reuse the active Explorer file icon theme, including its icon fonts, filename and extension mappings for code, Office documents, media, archives, and named folders. Icons refresh when the icon or color theme changes and stay consistent across dropped files, file selection, drafts, and history. Standalone browsers use generic file and folder icons. In Studio, click a file tag to open its editor or document preview, or a folder tag to open the system file manager (Finder on macOS). Drafts and message history use the same behavior. Names remain selectable for copying, and the remove button only removes the reference. Moved or deleted paths display an error. Opening a path in a standalone browser prompts you to use Studio.
-
-Ordinary browsers cannot expose original absolute paths for selected or dropped files, so files and folders are copied into the local CLI session storage and the copied paths are sent instead. Folder imports preserve hierarchy. Browsers with full directory reading also preserve empty directories; the folder picker compatibility mode retains only directories containing files. Each import supports up to 1,000 files and folders totaling 50 MiB, and each message supports up to 32 path references. In ordinary browsers, importing only images uses thumbnail uploads when the project supports image attachments. Studio selection and drops preserve image paths.
-
-Run `pnpm exec steamharness web . --no-open` to start the local Web interface for the current project. Workflow shows entrypoints and independent run history; Conversation shows conversation history. The Trace action below an assistant reply contains execution events, tool calls and logs. When embedded in Studio, it opens the bottom trace panel at that reply; in a regular browser, it opens execution details. Workflow run headings also include a Trace action.
-
-Reopening a Conversation project restores the last selected conversation, while each open window retains its own selection. Legacy history initially opens the conversation with the most recent activity, then remembers new selections. Switching conversations does not rerun models or tools.
-
-On wide screens, conversations with at least three user messages and scrollable content show a subtle message index and total count on the left. Hover or keyboard focus previews a user message; click to jump to it. At page widths of 680px or less, the index and preview are hidden without reserving left-side space, then return when widened. Embedded Studio pages use their own width. Scaling and split panes that produce fractional viewport widths follow the same breakpoint for visibility and spacing.
-
-Conversation and workflow history use status icons, with a spinning circle for running entries and details on hover. The right side of the page header shows the current project's running conversation or workflow count while any are running, including when the sidebar is collapsed or hidden on narrow screens, independently of search, pagination or the shortened narrow-screen list. Idle durable workers do not count as running.
-
-Tool permissions in the upper-right header group common tool types such as files, shell commands, Agent, knowledge, data storage and Studio. Other tools are grouped by their service or custom name prefix; tools without a prefix appear under Other tools. Sections show tool counts, start collapsed and retain their expanded state on the current page. Searching tool names, display names and descriptions automatically expands matching sections; clearing the search restores the previous state. Enable and auto-approve settings remain independent for each tool.
-
-Expanded sections show each tool's registered description below its name, preserving multiple lines. **List and read skill guides** (`skill`) in **Skills** discovers and reads task guides. See [createSkillTools](/en/core-api/create-skill-tools) for arguments and examples.
-
-Agent connection retry records stay at the affected response's interruption point, with expandable details and resumed content following them. Host recovery, output-limit continuations and missing-call recovery run silently, without Retry rows or temporary interruption errors, while the answer stays running. Their records remain in Trace and exports. Final failures still show their cause. Completing a run or reopening history retains the connection retry's position without appending another Retry below the complete answer.
-
-Workflow request errors, including required parameter validation, apply to the current operation. Creating a new run, switching entrypoints or run records, or starting another run clears the previous alert. Late failures from earlier requests cannot restore it; saved run failures remain available in history.
-
-Project execution has no fixed overall time limit. Conversation, Workflow and the Studio Assistant can continue until they complete, fail or are manually stopped. Closing a Studio project run page cancels ordinary Workflows. Conversations with `conversation.recovery: { enabled: true }`, including Project Assistant, preserve checkpoints when the host closes and stay running when reopened to continue the original run.
-
-Recovery retains the original arguments, messages and approval decisions. Unexpected worker exit triggers up to three automatic recoveries; the existing Retry action then continues the same run. Explicit Stop durably cancels unfinished tasks, preventing automatic recovery on reopening. Only tools explicitly marked safe can repeat an interrupted call with an unknown result; write, edit and shell calls are not automatically replayed. Restart scheduling is available in CLI Web / Studio and requires both storage and working directories to survive.
-
-A runtime or output projection exception retains its failure reason and cancels unfinished tasks, independent forks and queued inputs under the same execution owner. Studio Trace reflects the final durable state. Reopening does not automatically execute a reported failure, and a completed primary answer cannot turn a failed run report into success. Reopening after a normal host shutdown still continues an unfinished run.
-
-Run resources are released even if saving the final state fails. If saving the stop intent fails, the host still stops and joins the worker and cancels parked approvals, while reporting the save error. Failed cancellation cleanup retains its cancellation marker and is retried first when reopening.
-
-When the connection between a Conversation page and its project service is interrupted, its status and Retry action appear within the affected reply. Temporary failures keep retrying with backoff capped at 30 seconds. A handshake or initial full snapshot taking more than 10 seconds, or an event stream receiving neither state nor heartbeats for 45 seconds, cancels the old connection and starts recovery. The connection is marked restored only after a full snapshot arrives. Retry immediately reconnects and reads the latest state without rerunning tasks that are still executing in the background. You can continue browsing loaded conversations, create conversations, and edit drafts while disconnected; recovery synchronizes drafts and retains your selection. If the project connection has expired, reopen the current project's run URL. Use the retry action below a failed or stopped reply to run it again.
-
-Sending immediately displays your message, attachments and delivery status, clears the composer, and lets you keep editing. Messages sent while busy immediately appear in the queue. Saving a new conversation, resolving parameters and starting execution continue in the background; acknowledgements never clear your next draft. Failed sends retain their original content and error, with a retry action that confirms or resubmits the original request without executing it twice. Reopening uses backend records for confirmed messages; unconfirmed sends remain available for explicit retry and are not automatically submitted again.
-
-Trace, copy, retry, export and fork actions beneath an answer appear only after that answer has finished. They stay hidden while sending, running, awaiting confirmation or stopping. Finished historical answers retain their action bars while a later answer is running.
-
-Queued messages keep their Send now and withdrawal controls in place while saving, with continuously spinning loading icons. Sending now or withdrawing immediately shows that message's status and disables duplicate actions; other messages remain independently operable. Once Send now is confirmed, loading ends and the message shows Send requested; you can still withdraw it before consumption. You can request withdrawal before a new message is confirmed, and it is cancelled after saving; changing conversations preserves the withdrawal target. Failed actions show an error and a retry icon beside the original message, using the same request identity after the connection is restored.
-
-The local Web interface supports English and Simplified Chinese and follows the current VS Code display language when embedded in Studio. Projects with localized names use the current language, with case-insensitive locale keys; user input, execution results, and logs retain their original text.
-
-Studio passes project authentication and optional system AI authentication separately so older CLIs do not exit when opening an ordinary project. Older CLIs can still start local features and use the project account. Using Studio system AI in an ordinary project requires a CLI that supports it; update the project's `@steamharness/cli` and reopen the application. Studio continues to synchronize account changes and logout, and Assistant retains its independent AI authentication.
-
-Each time a Kanban, Workflow or Conversation application opens, CLI Web performs a read-only **Application checks** pass for current registration and declared related projects' imports, registration and mutual relationship declarations. In Studio, missing imports are shown first; related registration and configuration are checked after import. The checklist shows each project's progress and required actions. Select an issue to view its steps; the entire checks area hides after all checks pass. It reappears during another check or when attention is needed, with **Check again** available. No run or message is needed. Reconnecting the page does not repeat the pass; account, import or Kanban configuration changes trigger a new check, and temporary network failures retry. Projects declaring `server` pause execution and previews during checks or required setup; `local` and `both` retain local features. Startup checks do not execute project code, modify Server records or probe unknown data keys. Permissions for specific data are still checked when used.
-
-Local Kanban, Workflow and Conversation projects using Server storage show the Server address, project ID and setup steps for sign-in, missing projects, permissions or settings. Importing a folder does not create a Server project. When the current ID is unregistered, choose **Apply for a new application ID...**, review the Server, current ID, name and personal or group ownership, then confirm. The Server creates a private application and assigns a fresh ID, which replaces local `package.json.id`. Clients cannot choose or reuse an unregistered ID. This does not upload source or transfer previous Server data and access. The new application has separate local history and data directories; old history remains preserved. Update bilateral relationships and reimport related projects when IDs change. Guidance offers only **Apply for a new application ID...** and **Check again**, using the configured connection. Opening or cancelling the form makes no Server changes; duplicate confirmation does not allocate twice. Temporary network failures still retry automatically. Projects declaring `server` check availability before execution. Projects declaring `local` or `both` keep local execution available; actual Server failures also show guidance. Related access checks the consumer, target and mutual grants; missing grants do not suggest another application. Rechecks and successful allocation never rerun workflows, resend messages or resume the old input queue.
-
-**Check again** reads the application's latest relationship declarations and storage mode and removes diagnostics for relationships that were removed. Reopen the application after changing its ID or type. The page connection remains available during a slow complete check. Kanban using Server storage pauses previews and page methods during checks, including when restoring a cached page. Local-storage applications can also confirm a new ID while retaining their storage mode. Workflow and Conversation can use the type inspected from their executor without repeating it in the manifest.
-
-**Studio's built-in assistant** uses a fixed distributed identity. Users do not need to create a personal Server project or apply for a new ID. The checks area hides after success. History and memory stay in the host user's data directory on this device, separated by working directory, without writing to a shared Server project. Personal configurations also stay local without connecting to official Server configuration publications. Server AI still requires current-account authorization. Registration is waived only for the host-provided assistant context, fixed identity and local use. Ordinary projects still require registration even if they copy the ID or built-in release metadata; explicit Server storage and related data retain normal checks and authorization.
-
-Related-project issues use a compact relationship notice, distinct from a missing current Server project. Expand Connection details to see the Server and project ID. In Studio, missing imports, unavailable folders or UUID mismatches first prompt you to select the project in Related Projects and import its matching local folder. Once imported, the notice guides account access, Server project settings or mutual data grants according to the actual issue. Import changes update open pages, and Check again also verifies local folders. Importing does not grant access; the notice never imports or creates projects or changes Server grants automatically.
-
-In Studio, local related-project calls also show import guidance when the import is missing, without requiring a Server connection. After import, choose Check again and manually retry the original operation. Kanban data reads and update checks use the same verified imported folder, including folders outside the project group. An unavailable explicit binding or changed UUID never falls back to another copy of the same UUID.
-
-Set `conversation.collapseIntermediate` explicitly to `true` or `false` to control whether completed turns collapse intermediate steps. Successful turns keep their final reply, plan and resource cards visible; failed turns hide all output except the red error message. Each turn has a show/hide button after its model name and turn usage, without a separate disclosure row. Automatic folding follows the configuration in project code. Running, stopped, pending-input turns and turns without a final result or error remain expanded. Standard Core Agent output defaults to enabled; ordinary Conversations default to disabled. This only changes presentation; complete history, copying and exports are preserved.
-
-Core Agent declares context occupancy through a standard output item's `display: { type: "ring", placement: "composer-right" }`. A compact ring on the right of the composer shows the current conversation's latest occupancy; hover or keyboard focus opens a light gray tooltip with the percentage and exact token counts. Output stays associated with that conversation when awaiting confirmation, switching conversations or reopening history. Custom Conversations can use the same presentation protocol to pin numeric output; see the [output item protocol](/en/core-api/create-output-node).
-
-The answer header's Turn usage totals model calls for that turn; its tooltip shows calls, input, output and cache counts. The composer ring instead measures current context occupancy. A turn with multiple tool rounds can consume 60,000 tokens while its final request holds only 10,000 tokens of context. Durable sessions attribute usage to each answer and fork separately, so later fork activity cannot change the original answer's total. The ring follows the open conversation's latest snapshot after follow-ups, compaction and resets. Nonzero occupancy below one percent displays Less than 1% full.
-
-Answer headers also show the selected model's name for that turn. Configuration entry IDs continue to identify model selections. Sending previews, durable follow-ups and reopened history retain each turn's name; later renaming or configuration changes do not rewrite saved names. Older records recover display names when their original parameter options are available.
-
-Partial streamed ring updates retain the existing limit and unit. Inline ring updates preserve keyboard focus and an open tooltip. When multiple rings coexist, only the currently inspected tooltip is shown.
-
-Quick parameter triggers display an icon and the current selection. Limited toolbar space hides text from right to left and restores it when space returns, keeping full selections in tooltips. Project Assistant uses sparkle and shield icons for AI and permissions without repeating the Permission label or showing an up arrow. Its Context parameter menu is removed and the context window comes from the model configuration.
-
-Quick groups with one visible parameter open its options directly and close after a single selection. Groups with multiple visible parameters still show a parameter list first. Project Assistant's permission trigger opens Read only, Workspace, and Auto approve without a submenu.
-
-Conversation always uses the standard message input and accepts pasted text; disabling it or declaring custom main fields is unsupported. Projects that declare `conversation.attachments.images: true` also accept pasted images, or image-only drops and selections in an ordinary browser, with thumbnails before sending. Click a thumbnail to enlarge it in the page; images remain viewable after sending and reopening conversation history. Text and images are both retained when the clipboard contains both. Embedded Studio pages support the system paste shortcut and the Edit menu's Paste command.
-
-While awaiting a question or plan confirmation, the bottom composer is temporarily hidden by default. The current answer's Trace, copy, fork, retry and export footer actions are also hidden, including during submission. They return when the runtime accepts the answer or the request is stopped, preserving drafts, attachments, and parameters. Failed submissions keep the question visible; switching sessions follows each session's pending state. Projects can retain the composer with `conversation.userInput.hideComposer: false` and declare answer-driven parameter updates with `conversation.userInput.effects`. Project Assistant uses this generic interface to turn off `/plan` and remove the footer notice after "Run the plan"; "Revise plan" retains Plan mode.
-
-The original plan, each revision, approval answers and execution results remain inline in chronological order. Executing a plan does not replace earlier plans. Reopening durable history restores the complete body from existing snapshots without calling models or running tools again.
-
-Conversation declares parameter commands with `kind: "slash"` and execution commands with `conversation.commands`. A bare `/` lists every command; further typing filters them. The rounded menu uses compact rows without a left checkmark and supports arrows, Enter/Tab, Escape, and pointer selection. Selection removes the command and preserves other text and attachments: selectors and booleans update parameters, while execution commands run the declared operation. `conversation.footer` displays plain text outside and below the input. Project Assistant defaults to Build and uses a single `/plan` toggle to control the "Plan mode" notice. `/export` exports all records in the current session and displays the result in the body. `/compact` immediately summarizes the actual context, displays running and completed or failed states, and saves the summary. See [Slash Menu And Footer Text](/en/core-api/define-executor#slash-menu-and-footer-text).
-
-Duplicate dynamic commands fail parameter refresh or send while retaining valid state. Omitted option patches preserve dynamic options; replacing or restoring a list clears old option states. Export counts include the command and result and match the actual file. Failed, truncated, or cancelled summaries retain the original context.
-
-Successful KV, Knowledge, and project tool calls appear directly as full-width resource cards. Expand card details to inspect the arguments and original result. Select the name to open the resource, or use the card actions to preview it in the conversation, open a separate window, or open the target project. In Studio, KV and Knowledge names locate the resource in the bottom panel, and project actions open the corresponding project.
-
-Resources may belong to other projects. Open or import the target project to preview local resources; Server resources use the current account's access permissions. Missing resources and denied access display the corresponding error. Card previews and resource panels for other projects are read-only, even when the target is already open in the workspace. Switching to that project's editor or opening its own cards restores normal resource operations. Kanban previews retain the referenced configuration ID and apply temporary card parameters without overwriting saved configurations.
-
-Signing out, changing accounts, or changing imported project directories clears open card previews, then checks access again using the saved card in its original conversation or run and attempts to restore the preview. Pending reads cannot restore old content. Use the refresh button in the preview's upper-right corner to load the latest content or retry after a preview ID expires. The button shows a loading icon and prevents duplicate clicks while refreshing. Removed projects, deleted cards, and denied access display the corresponding error. Verifying the same account keeps remote Kanban assets available. Conversation, Workflow, and Kanban resource cards all follow the project's declared storage location.
-
-Projects and the Assistant opened in Studio use the Studio account. When Studio is signed out, projects do not restore cached CLI login or use server credentials from environment variables. Project account controls open the Studio account page, and sign-in, sign-out, and account changes synchronize with open projects. Standalone `steamharness web` continues to use CLI login configuration.
-
-Studio requires the project CLI startup JSON to declare `accountProtocolVersion: 1`. If Studio reports an incompatible protocol, update the project's `@steamharness/cli` and reopen it.
-
-Studio passes imported related project directories to the CLI and updates open projects after import so the next run can use them. Related projects must still have matching UUIDs and mutual `package.json` declarations, and access follows the target's grants and declared storage location. Server data uses Studio's current account; local data uses the target project's own Web storage directories. A CLI with imported relations must also declare `relatedProjectsProtocolVersion: 1`. Update older CLIs before running with these bindings.
-
-The bottom panel selects records by project, conversation or run, provides duration, round and call views, and supports searching and expanding arguments, output, errors and logs. It updates during execution and uses history saved by the CLI. Reading a historical trace does not change the Workflow run selected in the editor.
-
-The startup JSON from `web --json` includes `traceProtocolVersion: 1` so embedding hosts can identify trace support. Older CLIs without that capability retain their browser execution details.
-
-### Durable Agent in Studio Trace
-
-When a conversation is already open or running in another window, the duplicate window shows a read-only notice. You can view its output or create a different conversation to run in parallel. Closing the original window releases its page ownership. A resident Agent or background work retains its executing process until it exits. Reconnecting restores tasks and controls without resending historical input. Workflow startup failures show their original cause.
-
-Live synchronization keeps answers, tool results, usage, and Trace timelines while omitting raw streaming deltas already merged into output and duplicate report payloads. Full original events remain in local history and can be read through Trace details or exports. Slow connections and busy history writers retain only the newest waiting snapshot. Studio output logs record project-service exit codes, termination signals, and redacted diagnostics to distinguish connection interruptions from service exits.
-
-Long conversations reuse unchanged history. Each window saves its writable conversations while merging updates to other conversations. Durable Agent web progress checkpoints coalesce once per second; inputs, confirmations, and stops still save immediately, and the runtime continues maintaining the Agent's own durable records. Trace coalesces continuous updates. Hidden panels pause publication and show the latest content when revealed; other tabs skip refreshing the hidden timeline.
-
-Extension task details also show definition versions, checkpoints and wake times; Code Mode shows its script and nested task tree. Select an active or completed tool to inspect its submitted arguments at each nesting level. Records lists extensions, catalog connection/loaded status, Code Mode, storage, and the local/remote execution target, without a database configuration form. Developer Assistant connects Studio Control on the first tool search and excludes disabled tools from its catalog. The assistant no longer exposes a Code Mode project configuration parameter. Code Mode remains off by default; project hosts opt in through the SDK session.codeMode option, retaining existing permissions for every nested call.
-
-Projects declaring `conversation.durable: { enabled: true }` with Agent `session` expose their complete task capabilities in Studio's bottom Trace panel. CLI Web has no task sidebar or task icon; conversations, input, queues and forks remain available. Studio Trace provides Trace, Tasks, Plan, Records and Usage tabs. Duration, Turns, Calls, search, follow and Workflow history remain in the Trace tab. Resize the panel with Studio's native separator. Colors, Codicons, focus and borders follow VS Code.
-
-The project and conversation selectors default to following the open conversation. Selecting history only changes Trace data; conversation rows, conversation icons in task details and fork source links open the associated conversation in the editor while retaining drafts. The eye button restores following. Actions bind to Trace's selected conversation and execution owner, with errors displayed in Trace. Disconnection retains content and disables actions. Accounts, drafts and unsubmitted parameters do not cross into Trace.
-
-- **Tasks**: active task tree, blocking reasons, completed history, tool replay policies, current attempts, and details. Open child conversations or stop a task, the foreground, or all owned work.
-- **Plan**: shows the open conversation's latest plan document and its awaiting approval, submitting, changes requested or approved state. Revisions update the displayed document; execution and reopening retain the corresponding plan. Execution steps saved through `update_plan` appear separately, with checkboxes submitting versioned updates. Concurrent changes return a conflict; refresh before editing again. The document remains visible without step records. Approval does not mean every step has completed; approval controls remain in the conversation body.
-- **Records**: context epoch, configuration version, model/effort, prompt digest, and command history. Reset accepts an optional handoff, retaining visible history with epoch separators.
-- **Usage**: tokens and cost per parent/child conversation and model/tool. Returned usage survives recovery without replay adding it again; unknown upstream consumption still needs provider reconciliation.
-
-Tasks divides its available height equally between conversations/active tasks and completed tasks, with independent scrolling, expanded records and focus retained across updates and tab changes. The background identifies Trace's selected conversation; a left marker and eye icon identify the conversation actually open in the editor. Completed tasks are execution history for model requests, tools and background tasks, including successful, failed, stopped and unavailable outcomes; the list shows all loaded records. Select a task to expand its status, submitted arguments, result or error details directly beneath the row, and select it again to collapse. Details provide icons to open the associated conversation and copy the task record.
-
-Trace's actions menu lists context compaction, reset and stop commands by name. Reset accepts a multiline handoff. Stop current response appears only while the selected conversation's response is running. Stop all tasks appears only for active work or queued input in that conversation and its owned children, excluding independent forks. A task row's stop icon stops that task. Plan step updates use version checks; pending acknowledgements disable duplicate actions.
-
-The composer has no turn selector. Messages sent while busy enter the durable next-turn queue; while idle they start the current turn directly. Unconsumed inputs have Send now and withdrawal icons. Send now preserves the original input and attachments and adds them to the current turn at the next tool boundary; consumed inputs are never resent or withdrawn. The message fork icon opens a confirmation dialog. Confirming creates and opens an independent conversation at the committed answer; cancelling keeps the current conversation. Forks retain a source link and share SQLite storage, with separate provider identities, inboxes and plan inheritance; active tasks and approvals are not copied.
-
-Foreground completion, background task count, and connectivity are separate states. Stopping applies only to active tasks with pending cancellation. History shows the actual completed, stopped, failed or unavailable outcome without a stopping animation. Pages retain their own conversation selection and reconnect using full snapshots; slow connections retain only the newest pending snapshot. Model, effort, working directory, and permissions use existing controls: switching is refused during active work; the next idle submission rebuilds tools and the AI bridge. Change child-view workflow parameters in the main conversation. Durable input is disabled during Plan approval.
-
-Use `/export` and `/compact` after the foreground becomes idle while its worker stays alive. Reopening the host resumes saved queued inputs. Recovery commands wait for tool initialization and session control; temporary interruptions retain their original request identities. If a fork creation receipt is lost, open the fork from Studio Trace's Tasks tab to recover its history through the fork point and its source link. Confirmations are scoped by owner, target conversation, and requestId. Trace retains runtime events, while session state stores only the latest full snapshot.
-
-If the host control connection drops, a durable Agent preserves unfinished inputs and checkpoints and reconnects to the same work. Reconnecting does not replay completed tools. Model connection failures retry automatically with recorded reasons and attempt counts. Exhausted retries, authentication errors, and configuration errors show a failure with its cause. Explicit Stop remains stopped and does not automatically recover.
-
-Stopping the foreground preserves background subtrees. Stop all includes owned child conversations but excludes independent forks. Closing the host preserves recoverable work; explicit stop persists cancellation. Deleting a child cancels and hides it, retaining underlying history until the root is deleted. Deleting the root removes related views and Agent data. Subagents are project opt-in; Developer Assistant permits at most 4, with read/grep/find/ls and no recursive delegation. Local CLI / Studio hosts schedule persistent execution; this declaration does not provide distributed leases.
-
-## Local runtime environment
-
-|Environment variable|Description|
-| --- | --- |
-| `STEAMHARNESS_KV_STORE_DIR` |Local KV store directory.|
-| `STEAMHARNESS_PERSISTENT_VALUE_STORE_DIR` |The local PersistentValue store directory, where the project knowledge base is also stored.|
-| `STEAMHARNESS_FILE_STORE_DIR` |Local file store directory.|
-| `STEAMHARNESS_DESKTOP_RUNTIME_EVENTS=1` |In `json` mode, additionally output host-consumable runtime event prefix lines.|
-
-`STEAMHARNESS_KV_STORE_DIR` and `STEAMHARNESS_PERSISTENT_VALUE_STORE_DIR` are independent: the former controls `context.storage.local.kv`, while the latter controls `context.storage.local.persistentValue` and local Knowledge. Both isolate the current project by its top-level `package.json.id` UUID. `context.storage.server` always uses that project UUID and an authenticated Server connection, independent of both local directories. The project must declare `dataStorage.mode`; forbidden or unavailable locations fail directly, and local data never synchronizes to Server automatically. `--related-project` resolves only explicitly supplied directories, never scans parents or siblings, and never makes related access recurse through a second relationship — the project that was called carries no related resolver of its own. A server location selects remote data storage. Related entrypoints still execute locally.
-
-These two directories are shared resources for local runs. Do not point different projects, or different Core / CLI versions, at the same directory. The entry layout evolves across versions: earlier versions write `global` / `workflow` / `conversation` scopes and a `projectName` field, while the current version keeps only project / conversation and writes `projectId`, plus a `.workflow-storage-format.json` marker. An older version that meets an entry it does not recognize in the same directory fails with `Local workflow KV entry is invalid and cannot be read safely.`, and the current version rebuilds an unmarked directory in the current format, removing the previous data directories. When debugging such an error, confirm which `STEAMHARNESS_*_STORE_DIR` the process actually received instead of deleting a directory that is in use.
-
-## Exit Code
-
-|Situation|Exit Code|
-| --- | --- |
-|Execution successful, and the payload `errCode` is `0`.| `0` |
-|Run failed| `1` |
-|payload `errCode` not `0`| `1` |
-|Structure analysis failed| `1` |
-
-## Output
-
-|Command| stdout/stderr |
-| --- | --- |
-| `run` |On success, the output node content is written to stdout; on failure, the JSON report is written to stderr.|
-| `json` |The complete execution report is written to stdout.|
-| `structure` |The workflow structure JSON is written to stdout.|
-| `resolve-params` |Parameter status patch JSON is written to stdout.|
-| `mcp` |stdout carries stdio JSON-RPC only; project logs and worker diagnostics go to stderr.|
-
-## Parameter separation
-
-If the workflow parameter itself starts with `--`, it is recommended to write the delimiter explicitly:
-
-```bash
-steamharness run . -- --message "hello"
-```
-
-Parameters following the delimiter will be placed into the `args` array of the selected entrypoint (where Conversation corresponds to executor), and even if the parameter name matches one of CLI’s own options, it will no longer be consumed by `steamharness`. For example, `steamharness run . --entrypoint validate -- --entrypoint workflow-owned` selects `validate` and gives the second `--entrypoint workflow-owned` to the service workflow as it is.
-
-Core Agent projects manage system and third-party models in the first configuration field. The composer selects saved entries and defaults to the first; editing, connection details and subscription loading live in the configuration panel. See [Agent model list](/en/concepts/project-configuration#agent-model-list).
-
-When the AI models field declares `allowThirdParty: false`, configuration only offers system AI. Saves, imports and execution reject third-party models and direct endpoint overrides. Omitting it allows both sources.
+Use [workspace commands](/en/cli/server-workspace) for remote static project management. Server never executes project code.

@@ -3,14 +3,43 @@
   "name": "Conversation migration fixture",
   "type": "module",
   "devDependencies": {
-    "steamharness": "^0.1.0",
-    "@steamharness/cli": "^0.1.0"
+    "steamharness": "0.1.2",
+    "@steamharness/cli": "0.1.2"
   },
   "steamHarness": {
-    "projectInfo": {
-      "dataStorage": {
-        "mode": "both"
+    "entries": [
+      {
+        "entryId": "main",
+        "type": "conversation",
+        "name": "Conversation migration fixture",
+        "root": ".",
+        "entry": "index.ts",
+        "databases": [
+          {
+            "alias": "data",
+            "host": "local",
+            "permissions": {
+              "kv": {
+                "read": {
+                  "mode": "all"
+                },
+                "write": {
+                  "mode": "all"
+                }
+              },
+              "knowledge": {
+                "read": {
+                  "mode": "all"
+                },
+                "write": {
+                  "mode": "all"
+                }
+              }
+            }
+          }
+        ]
       }
-    }
+    ],
+    "defaultEntry": "main"
   }
 }
