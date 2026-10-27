@@ -5,17 +5,12 @@ import path from 'node:path';
 import { resolveProjectCli } from './workflow-cli-process';
 
 const assistantId = 'a3aca697-b086-459b-84e4-d357ad2d9fb2';
-const studioControlId = '09145339-e3dd-4bb2-ac9b-6c180ef51933';
 export const ANALYSIS_PROJECT_ID = '6cbe3c24-2707-4f31-a553-94edbe866eb1';
 
 interface BuiltinApplicationOptions { templateDir: string; storageDir: string; dependencySources: string[] }
 
 export function prepareAssistantApplication(options: BuiltinApplicationOptions): Promise<string> {
   return prepareBuiltinApplication(options, assistantId);
-}
-
-export function prepareStudioControlApplication(options: BuiltinApplicationOptions): Promise<string> {
-  return prepareBuiltinApplication(options, studioControlId);
 }
 
 export function prepareAnalysisApplication(options: BuiltinApplicationOptions): Promise<string> {

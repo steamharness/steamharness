@@ -14,8 +14,7 @@
 | `shared/` | 跨组件源码、发布工具与 i18n 资源（18 个子包） | `@steamharness/shared-workspace`、`@steamharness/*` |
 | `studio/` | 基于 VS Code OSS 的工作站 | `studio-workstation` |
 | `docs/` | 中英文公开文档（Markdown/MDX、导航与 OpenAPI 源；站点由独立工作区构建） | — |
-| `build-in/build-in-developer-assistant/` | 内置小助手项目（skill 真相源） | 随 Studio 分发 |
-| `build-in/build-in-studio-control/` | 内置 Studio 控制扩展宿主 | 随 Studio 分发 |
+| `build-in/build-in-developer-assistant/` | 内置小助手聚合项目（对话与 Studio Control 入口、skill 真相源） | 随 Studio 分发 |
 | `build-in/build-in-analysis/` | 内置本地与运行数据分析 | 随 Studio 分发 |
 
 ## 快速开始

@@ -40,7 +40,7 @@ async function loadHost(environment: Record<string, string> = {}, connection?: M
 
 describe("VS Code assistant host", () => {
   const definition = {
-    id: "workflow-studio", command: [process.execPath, "/apps/cli/index.js", "mcp", "/apps/studio-control"],
+    id: "workflow-studio", command: [process.execPath, "/apps/cli/index.js", "mcp", "/apps/developer-assistant", "--entry", "studio-control"],
     inheritEnvironment: ["STEAMHARNESS_STUDIO_CONTROL_BRIDGE_URL", "STEAMHARNESS_STUDIO_CONTROL_BRIDGE_TOKEN"],
   };
 

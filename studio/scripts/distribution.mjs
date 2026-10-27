@@ -24,7 +24,6 @@ export async function exists(file) {
 /** 内置项目在 monorepo 中的位置；Studio 不再把它们作为子模块检出。 */
 export const BUILTIN_PROJECTS = Object.freeze({
   'developer-assistant': 'build-in/build-in-developer-assistant',
-  'studio-control': 'build-in/build-in-studio-control',
   analysis: 'build-in/build-in-analysis',
 });
 

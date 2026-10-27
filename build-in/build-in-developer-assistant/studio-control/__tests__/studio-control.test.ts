@@ -19,7 +19,7 @@ afterEach(() => { vi.unstubAllEnvs(); vi.unstubAllGlobals(); });
 describe("Studio Control workflow", () => {
   it("passes the runtime's static validation and exposes only supported entrypoints", async () => {
     const { inspectLocalProjectStructure } = await import("steamharness");
-    expect(() => inspectLocalProjectStructure({ projectDir: path.resolve(import.meta.dirname, "..") })).not.toThrow();
+    expect(() => inspectLocalProjectStructure({ projectDir: path.resolve(import.meta.dirname, "../.."), entryId: "studio-control" })).not.toThrow();
     const { executor } = await import("../index");
     expect(executor.entrypoints?.map(entry => entry.id)).toEqual([
       "get_configurations", "manage_configurations", "open_configurations", "studio_state", "get_entries", "open_file", "get_diagnostics", "set_theme", "open_terminal", "show_view",

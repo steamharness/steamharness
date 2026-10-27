@@ -15,7 +15,7 @@ const views: Record<string, string> = {
 };
 const operations = ['studio.configurations.get', 'studio.configurations.manage', 'studio.configurations.open', 'studio.state.get', 'studio.entries.get', 'studio.file.open', 'studio.diagnostics.get', 'studio.theme.set', 'studio.terminal.open', 'studio.view.show'];
 
-export const STUDIO_CONTROL_PROJECT_ID = '09145339-e3dd-4bb2-ac9b-6c180ef51933';
+export const STUDIO_CONTROL_ENTRY_ID = 'studio-control';
 
 function contains(directory: string, filename: string): boolean {
   const relative = path.relative(directory, filename);

@@ -340,7 +340,7 @@ describe("independent built-in project release", () => {
       .rejects.toThrow(/must be stable or alpha/);
   });
 
-  it("keeps the runtime skill payload while dropping repository infrastructure", async () => {
+  it("packages both assistant entries and skills while dropping repository infrastructure", async () => {
     const definition = await readBuiltinDefinition(root, { mode: 'dev' });
     const skillRoot = "skills/workflow-generator";
 
@@ -371,6 +371,12 @@ describe("independent built-in project release", () => {
         });
       }
       for (const required of [
+        "index.ts",
+        "studio-control/index.ts",
+        "studio-control/host-bridge.ts",
+        "studio-control/interface.ts",
+        "studio-control/workflow-runtime.ts",
+        "studio-control/configuration.json",
         `${skillRoot}/SKILL.md`,
         `${skillRoot}/references/steamharness-api.md`,
         `${skillRoot}/references/project-repair.md`,
@@ -379,6 +385,8 @@ describe("independent built-in project release", () => {
       ]) {
         expect(archiveNames.has(required)).toBe(true);
       }
+      expect(archiveNames.has("studio-control/package.json")).toBe(false);
+      expect([...archiveNames].some(name => name.startsWith("studio-control/__tests__/"))).toBe(false);
       expect([...archiveNames].some((name) => name.startsWith("scripts/"))).toBe(false);
       expect([...archiveNames].some((name) => name.startsWith("__tests__/"))).toBe(false);
     } finally {

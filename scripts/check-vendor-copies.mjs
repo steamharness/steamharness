@@ -10,8 +10,8 @@ import { pathToFileURL } from "node:url";
  * review 里几乎看不出来：
  *
  *   shared/release-tools/*        -> harness|cli|server 的 vendor/shared/release-tools/*
- *                                 -> build-in 三个内置项目的 scripts/
- *   build-in-developer-assistant/scripts/*  -> 另外两个内置项目的 scripts/
+ *                                 -> build-in 两个内置项目的 scripts/
+ *   build-in-developer-assistant/scripts/*  -> 另一个内置项目的 scripts/
  *
  * 内置项目之间还有一处有意的不一致：`builtin-release.mjs` 在 developer-assistant 里
  * 多一段打包过滤（它要把 skill 的 `scripts/create_workflow.py` 一起打进制品），因此它
@@ -26,7 +26,6 @@ export const VENDOR_CONSUMERS = Object.freeze(["harness", "cli", "server"]);
 
 export const BUILTIN_PROJECTS = Object.freeze([
   "build-in/build-in-developer-assistant",
-  "build-in/build-in-studio-control",
   "build-in/build-in-analysis",
 ]);
 

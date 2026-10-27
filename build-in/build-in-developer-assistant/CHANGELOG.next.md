@@ -1,5 +1,7 @@
 # Unreleased
 
+- 【变更】Studio Control 合入小助手聚合项目，作为 `studio-control` Workflow 入口与默认对话入口 `main` 共用 projectId、依赖和分发；小助手按需调用该入口，保留工具审批、逐轮权限与认证连接撤销。移除独立控制项目及安装流程。
+
 - 【修复】Kanban 模板说明使用已声明数据库 alias 下的 KV 与知识库 API，并说明申请、审批和绑定要求。
 
 - 【破坏性变更】生成器、模板和 API 参考统一使用聚合入口及独立数据库申请绑定，跨入口调用使用 context.entries，数据库使用 context.databases；不再生成关联声明或组合发布锁。

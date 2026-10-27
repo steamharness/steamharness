@@ -9,11 +9,11 @@ import { inspectProjectCli, resolveProjectCli, startProjectCli, requestProjectCl
 import type { Launcher, WebSession } from './workflow-cli-types';
 import { readUserSettings, USER_PERMISSION_SETTING } from './user-settings';
 import type { AccountController } from './workflow-auth';
-import { prepareAssistantApplication, prepareStudioControlApplication, prepareAnalysisApplication, ANALYSIS_PROJECT_ID } from './assistant-application';
+import { prepareAssistantApplication, prepareAnalysisApplication, ANALYSIS_PROJECT_ID } from './assistant-application';
 import { assistantWorkspaceAvailable, createAssistantProject, DEVELOPER_ASSISTANT_PROJECT_ID } from './assistant-workspace';
 import type { Project } from './workflow-types';
 import { requestProjectResource } from './workflow-resources-node';
-import { createStudioControlHandler, STUDIO_CONTROL_PROJECT_ID, studioControlWorkspaceAvailable } from './studio-control';
+import { createStudioControlHandler, STUDIO_CONTROL_ENTRY_ID, studioControlWorkspaceAvailable } from './studio-control';
 import { startStudioControlBridge, type StudioControlBridge } from './studio-control-bridge';
 import { createStudioAnalysisHandler, studioAnalysisProjects } from './studio-analysis';
 import { projectTemplatesRuntime, installProjectDependencies, defaultProjectParentDirectory } from './project-create-node';
@@ -65,13 +65,6 @@ export function createProjectRuntime(context: vscode.ExtensionContext, account: 
       });
     }).catch(error => { assistantApplication = undefined; throw error; });
   };
-  let studioControlApplication: Promise<string> | undefined;
-  const studioControlDirectory = (): Promise<string> => studioControlApplication ??= realpath(context.extensionUri.fsPath)
-    .then(async extensionDirectory => prepareStudioControlApplication({
-      templateDir: path.join(extensionDirectory, 'dist', 'studio-control'),
-      storageDir: path.join(context.globalStorageUri.fsPath, 'workflow', 'studio-control'),
-      dependencySources: [await assistantDirectory()],
-    })).catch(error => { studioControlApplication = undefined; throw error; });
   let analysisApplication: Promise<string> | undefined;
   const analysisDirectory = (): Promise<string> => analysisApplication ??= realpath(context.extensionUri.fsPath)
     .then(async extensionDirectory => prepareAnalysisApplication({
@@ -250,24 +243,23 @@ export function createProjectRuntime(context: vscode.ExtensionContext, account: 
       let bridge: StudioControlBridge | undefined;
       try {
         let studioControl: StudioControlConfiguration | undefined;
-        if (project.assistant) {
-          const directory = await studioControlDirectory();
-          bridge = await startStudioControlBridge(createStudioControlHandler(project.assistant, runSignal, context, configurationService), runSignal);
+        const assistantAggregate = project.id === DEVELOPER_ASSISTANT_PROJECT_ID
+          && project.entries.some(entry => entry.entryId === STUDIO_CONTROL_ENTRY_ID && entry.type === 'workflow');
+        if (project.assistant || assistantAggregate) {
+          const directory = project.assistant ? await assistantDirectory() : project.folderPath;
+          const roots = (vscode.workspace.workspaceFolders ?? []).filter(folder => folder.uri.scheme === 'file')
+            .map(folder => ({ uri: folder.uri.toString(), folderPath: folder.uri.fsPath, name: folder.name }));
+          const scope = project.assistant ?? { workdir: directory, roots };
+          if (!studioControlWorkspaceAvailable(scope, roots)) { throw new Error(t('Studio Control workspace is no longer available.')); }
+          bridge = await startStudioControlBridge(createStudioControlHandler(scope, runSignal, context, configurationService), runSignal);
           studioControl = { url: bridge.url, token: bridge.token, mcpServer: JSON.stringify({
-            id: 'workflow-studio', command: [executable(), (await resolveProjectCli(directory)).entry, 'mcp', directory,
-              '--data-dir', path.join(context.globalStorageUri.fsPath, 'workflow', 'studio-control', 'data')],
+            id: 'workflow-studio', command: [executable(), (await resolveProjectCli(directory)).entry, 'mcp', directory, '--entry', STUDIO_CONTROL_ENTRY_ID,
+              '--data-dir', path.join(context.globalStorageUri.fsPath, 'workflow', 'assistant', 'control-data')],
             environment: { ELECTRON_RUN_AS_NODE: '1' },
             inheritEnvironment: ['STEAMHARNESS_STUDIO_CONTROL_BRIDGE_URL', 'STEAMHARNESS_STUDIO_CONTROL_BRIDGE_TOKEN'], timeout: 30_000,
           }) };
         } else if (project.id === ANALYSIS_PROJECT_ID && project.projectType === 'kanban') {
           bridge = await startStudioControlBridge(createStudioAnalysisHandler(readAnalysis, runSignal), runSignal);
-          studioControl = { url: bridge.url, token: bridge.token };
-        } else if (project.id === STUDIO_CONTROL_PROJECT_ID && project.projectType === 'workflow') {
-          const roots = (vscode.workspace.workspaceFolders ?? []).filter(folder => folder.uri.scheme === 'file')
-            .map(folder => ({ uri: folder.uri.toString(), folderPath: folder.uri.fsPath, name: folder.name }));
-          const scope = { workdir: project.folderPath, roots };
-          if (!studioControlWorkspaceAvailable(scope, roots)) { throw new Error(t('Studio Control workspace is no longer available.')); }
-          bridge = await startStudioControlBridge(createStudioControlHandler(scope, runSignal, context, configurationService), runSignal);
           studioControl = { url: bridge.url, token: bridge.token };
         }
         const session = await startProjectCli({ projectDir: project.folderPath, nodePath: executable(),

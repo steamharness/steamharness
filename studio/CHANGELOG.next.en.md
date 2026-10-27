@@ -1,5 +1,7 @@
 # Unreleased
 
+- Studio Control is embedded as the Assistant’s `studio-control` Workflow entry alongside the default `main` conversation, sharing one projectId, dependencies and distribution. Assistant calls the entry on demand while preserving tool approval, per-run permissions and authenticated connection revocation. Removed the independent control project and installation.
+
 - Fixed remote entry configuration and upload revision queries using an unavailable Server API path. Requests preserve entry selection, cancellation and configuration conflict codes.
 
 - Breaking: the project tree exposes aggregate entries in separate native tabs sharing one host. The host is released after its last tab closes. Entry resources use independently approved database spaces; host pages manage requests, approval and sharing. Transfers include the complete aggregate.

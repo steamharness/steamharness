@@ -1,8 +1,8 @@
 # Studio Control
 
-Studio Control is a built-in Workflow project connected to Studio's VS Code extension host. The assistant calls its standard MCP tools.
+Studio Control is the `studio-control` Workflow entry inside the Assistant aggregate. Both entries share the Assistant projectId, dependencies, installation and version; `main` remains the default Conversation entry. The assistant discovers and calls its control operations on demand through `steamharness mcp <assistant-project-dir> --entry studio-control`.
 
-You can also open this project folder in Studio and use Run Project to select an entrypoint, fill in its parameters and run it as an ordinary Workflow project, without an assistant or model configuration. Studio recognizes the project UUID and injects a control connection for its run page, using the opened project's files and CLI. Projects nested inside a workspace are supported. Ordinary runs default to the project directory and restrict file access to the registered workspace folders. Closing the run page revokes the connection. Install project dependencies first; inside the aggregate, use `pnpm install --ignore-workspace`.
+Open the Assistant project root in Studio to run the `studio-control` entry and select an internal operation without starting a model conversation. Studio recognizes the Assistant projectId and entry ID and provides a control connection for the run. Direct runs default to the aggregate root and registered workspace scope; closing the last run tab revokes the connection. This directory is not an independent project or installation.
 
 | Entrypoint | Capability |
 | --- | --- |
@@ -17,7 +17,7 @@ You can also open this project folder in Studio and use Run Project to select an
 | `open_terminal` | Open a terminal in a permitted directory without sending or executing commands |
 | `show_view` | Show Explorer, Search, Source Control, Terminal or Assistant |
 
-Configuration operations work with the panel closed. Pass a JSON `input` with `storage: "local"` plus `projectDir`, or `storage: "server"` plus `projectId` and `target`. Query first, then pass the returned `revision` and explicit profile `id` for value/profile changes. Import generates new IDs and preserves selection. Exports include all sensitive values. See [Project configurations](../../docs/en/concepts/project-configuration.mdx).
+Configuration operations work with the panel closed. Pass a JSON `input` with `storage: "local"` plus `projectDir` and `entryId`, or `storage: "server"` plus `projectId`, `entryId` and `target`. Query first, then pass the returned `revision` and explicit profile `id` for value/profile changes. Import generates new IDs and preserves selection. Exports include all sensitive values. See [Project configurations](../../../docs/en/concepts/project-configuration.mdx).
 
 The optional `projectDir` parameter of `get_entries` selects an aggregate project allowed by the current permission policy, defaulting to the running project or assistant working directory. It returns `projectId`, `projectDir`, `defaultEntry` and `entries`. Each entry includes its ID, type, name, code root, entry file, configuration definition and database requirements. Entries belong to one aggregate project. Database spaces require a separate request, approval and binding on their declared local or server host. The current Permission policy still controls file access.
 
@@ -29,6 +29,4 @@ Studio creates an authenticated loopback endpoint for each assistant session and
 
 Legacy Desktop Dock, launch-at-login, updates, cloud-app publication and Desktop database controls are not offered. Calling from a regular CLI or an MCP server without a host connection fails explicitly. A Studio Node extension host is required; the browser-only extension has no local control service.
 
-Development dependencies use `link:../../harness` and `link:../../cli` inside the aggregate. After installation, run `pnpm typecheck`, `pnpm test`, `pnpm coverage` and `pnpm build`. Existing built-in packaging tooling is retained for future releases; this migration delivers source and host integration only.
-
-Run `npm run test:studio-control-live` from the aggregate's `studio` directory to call the seven packaged editor tools through real stdio MCP and an isolated VS Code Node extension host, including permission changes and session revocation. It also verifies the seven imported editor entrypoints through ordinary project launch and run APIs, including the default project directory and connection isolation. It uses a headless browser and a temporary workspace, leaving visible desktop windows and the system clipboard untouched. It closes its server and terminals and restores the test instance's theme. Results are saved to `studio/.studio/studio-control-live/results.json`. A built Studio, installed assistant dependencies and Chrome are required; `STUDIO_CONTROL_TEST_BROWSER` can select another Playwright browser channel.
+Run `pnpm typecheck`, `pnpm test`, `pnpm coverage` and `pnpm build` from the parent Assistant project. Tests use isolated host mocks and real stdio MCP to verify the embedded entry, authentication, cancellation and all three permission policies. Studio daily checks run in the background.

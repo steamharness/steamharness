@@ -1,7 +1,7 @@
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
-import { inspectLocalProjectStructure } from "steamharness";
+import { inspectAggregateProjectStructure, inspectLocalProjectStructure } from "steamharness";
 
 const projectDir = path.resolve(process.cwd());
 // Run-scoped Knowledge and KV must not expose the assistant's store as project data.
@@ -25,6 +25,18 @@ describe("developer assistant workflow", () => {
     const manifest = JSON.parse(await readFile(path.join(projectDir, "package.json"), "utf8"));
     expect(manifest.id).toBe("a3aca697-b086-459b-84e4-d357ad2d9fb2");
     expect(manifest.steamHarness.entries[0]).toMatchObject({ entryId: "main", type: "conversation", databases: [expect.objectContaining({ alias: "memory", host: "local" })] });
+  });
+  it("registers Studio Control within the same project and analyzes each executor independently", () => {
+    const aggregate = inspectAggregateProjectStructure(projectDir);
+    expect(aggregate.projectId).toBe("a3aca697-b086-459b-84e4-d357ad2d9fb2");
+    expect(aggregate.defaultEntry).toBe("main");
+    expect(aggregate.entries.map(entry => [entry.entryId, entry.projectType])).toEqual([
+      ["main", "conversation"], ["studio-control", "workflow"],
+    ]);
+    const control = aggregate.entries[1];
+    expect(control.diagnostics).toEqual({ warnings: [], violations: [] });
+    expect(control.defaultEntrypoint).toBe("studio_state");
+    expect(control.entrypoints?.map(entrypoint => entrypoint.id).sort()).toEqual(CONTROL_TOOL_NAMES.map(name => name.slice("workflow-studio_".length)).sort());
   });
   it("does not offer a Code Mode configuration parameter", async () => {
     const manifest = JSON.parse(await readFile(path.join(projectDir, "configuration.json"), "utf8"));

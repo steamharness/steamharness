@@ -125,7 +125,7 @@ async function main() {
       if (!await exists(path.join(ROOT, lock.path, '.git'))) {
         await run('git', ['submodule', 'update', '--init', '--depth', '1', lock.path], ROOT);
       }
-      for (const builtin of ['developer-assistant', 'studio-control', 'analysis']) {
+      for (const builtin of ['developer-assistant', 'analysis']) {
         await builtinProjectDirectory(builtin);
       }
       const { upstream } = await prepare();

@@ -22,17 +22,22 @@ export async function createAssistantDependencyFixture() {
     input.on('line',line=>{
       const message=JSON.parse(line);
       if(message.type==='configure'){
-        const manifest=JSON.parse(readFileSync(path.join(message.assistantProjectDir,'package.json'),'utf8'));
-        const project={id:manifest.id,name:'Project Assistant',folderPath:message.assistantProjectDir,projectType:'conversation',entryId:'main',entryName:'Main',defaultEntry:'main',entries:[{entryId:'main',name:'Main',type:'conversation',root:'.',entry:'index.ts',databases:[]}],databases:[],fields:[],entrypoints:[],tools:[{name:'skill'}]};
+        const projectDirectory=message.assistantProjectDir??process.argv[process.argv.indexOf('web')+1];
+        const manifest=JSON.parse(readFileSync(path.join(projectDirectory,'package.json'),'utf8'));
+        const baseProject={id:manifest.id,name:'Project Assistant',folderPath:message.assistantProjectDir,projectType:'conversation',entryId:'main',entryName:'Main',defaultEntry:'main',entries:[{entryId:'main',name:'Main',type:'conversation',root:'.',entry:'index.ts',databases:[]}],databases:[],fields:[],entrypoints:[],tools:[{name:'skill'}]};
+        const entries=manifest.steamHarness?.entries??baseProject.entries;
+        const projects=entries.map(entry=>({...baseProject,folderPath:projectDirectory,entries,entryId:entry.entryId,entryName:entry.name,projectType:entry.type,entrypoints:entry.type==='workflow'?[{id:'studio_state',title:'Studio state',fields:[]}]:[]}));
+        const selected=process.argv.includes('--entry')?process.argv[process.argv.indexOf('--entry')+1]:manifest.steamHarness?.defaultEntry??'main';
+        const project=projects.find(entry=>entry.entryId===selected);
         if(process.argv.includes('--inspect')){
           if(manifest.testInspectionExit){console.error('Fixture inspection failed');process.exit(1);}
           const errors=manifest.testInspectionError?[manifest.testInspectionError]:[];
-          console.log(JSON.stringify({assistantProtocolVersion:1,projects:errors.length?[]:[project],errors}));input.close();process.stdin.pause();return;
+          console.log(JSON.stringify({assistantProtocolVersion:1,projects:errors.length?[]:projects,errors}));input.close();process.stdin.pause();return;
         }
         const controlUrl=process.env.STEAMHARNESS_STUDIO_CONTROL_BRIDGE_URL;
         const controlToken=process.env.STEAMHARNESS_STUDIO_CONTROL_BRIDGE_TOKEN;
         const controlDefinition=process.env.STEAMHARNESS_STUDIO_CONTROL_MCP_SERVER;
-        const studioControl=controlDefinition?{mcpServer:JSON.parse(controlDefinition),bridgeUrl:controlUrl,hasToken:!!controlToken}:undefined;
+        const studioControl=controlUrl?{...(controlDefinition?{mcpServer:JSON.parse(controlDefinition)}:{}),bridgeUrl:controlUrl,hasToken:!!controlToken}:undefined;
         server=createServer(async (request,response)=>{
           if(request.url==='/studio-control-state'&&controlUrl&&controlToken){
             const state=await fetch(controlUrl,{method:'POST',headers:{Authorization:'Bearer '+controlToken,'Content-Type':'application/json'},body:JSON.stringify({operation:'studio.state.get',input:{}})});
@@ -42,7 +47,7 @@ export async function createAssistantDependencyFixture() {
         server.listen(0,'127.0.0.1',()=>{
           writeFileSync(path.join(recordDir,'assistant.pid'),String(process.pid));
           writeFileSync(path.join(recordDir,'assistant.json'),JSON.stringify({assistant:message.assistant,assistantProjectDir:message.assistantProjectDir,surface:message.surface,harnessPath,args:process.argv.slice(2),studioControl}));
-          console.log(JSON.stringify({type:'ready',protocolVersion:1,hostProtocolVersion:1,accountProtocolVersion:1,assistantProtocolVersion:1,entriesProtocolVersion:1,databaseSpacesProtocolVersion:1,url:'http://127.0.0.1:'+server.address().port+'/entries/main/#session='+'a'.repeat(64),project,runtime:{harnessVersion:'2.3.4',harnessPath}}));
+          console.log(JSON.stringify({type:'ready',protocolVersion:1,hostProtocolVersion:1,accountProtocolVersion:1,assistantProtocolVersion:1,entriesProtocolVersion:1,databaseSpacesProtocolVersion:1,url:'http://127.0.0.1:'+server.address().port+'/entries/'+selected+'/#session='+'a'.repeat(64),project,runtime:{harnessVersion:'2.3.4',harnessPath}}));
         });
       }else if(message.type==='close'){input.close();process.stdin.pause();server?.close();}
     });

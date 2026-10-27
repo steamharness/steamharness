@@ -1,5 +1,7 @@
 # Unreleased
 
+- Studio Control is embedded as the Assistant’s `studio-control` Workflow entry alongside the default `main` conversation, sharing one projectId, dependencies and distribution. Assistant calls the entry on demand while preserving tool approval, per-run permissions and authenticated connection revocation. Removed the independent control project and installation.
+
 - Fixed Kanban template instructions to use KV and knowledge APIs under a declared database alias with explicit request, approval and binding.
 
 - Breaking: the generator, templates and API references use aggregate entries and independently approved database bindings. Calls use context.entries and storage uses context.databases. Related-project declarations and combined publication locks are removed.

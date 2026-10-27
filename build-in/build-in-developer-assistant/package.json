@@ -85,6 +85,15 @@
           }
         ],
         "configuration": "configuration.json"
+      },
+      {
+        "entryId": "studio-control",
+        "type": "workflow",
+        "name": "Studio Control",
+        "root": "studio-control",
+        "entry": "index.ts",
+        "configuration": "configuration.json",
+        "databases": []
       }
     ],
     "defaultEntry": "main"

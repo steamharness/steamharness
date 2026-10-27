@@ -16,7 +16,7 @@ const upstream = await assertUpstream();
 assert.ok(await exists(path.join(upstream.directory, 'out/server-main.js')), 'Run npm run build first.');
 const assistant = path.resolve(process.env.STUDIO_CONTROL_TEST_ASSISTANT_DIR ||
   await builtinProjectDirectory('developer-assistant'));
-const controlProject = await builtinProjectDirectory('studio-control');
+
 const require = createRequire(path.join(assistant, 'package.json'));
 const cliManifestPath = require.resolve('@steamharness/cli/package.json');
 const cliManifest = JSON.parse(await readFile(cliManifestPath, 'utf8'));
@@ -42,8 +42,8 @@ try {
     env: { ...process.env, NODE_ENV: 'development', VSCODE_DEV: '1', STEAMHARNESS_CLI_AUTH_DIR: path.join(directory, 'auth'),
       STEAMHARNESS_SERVER_URL: '', STEAMHARNESS_SERVER_ADMIN_KEY: '', VSCODE_SKIP_BUILTIN_EXTENSIONS: 'vscode.vscode-api-tests,GitHub.copilot,GitHub.copilot-chat',
       STUDIO_CONTROL_TEST_REPORT: reportFile, STUDIO_CONTROL_TEST_ASSISTANT: assistant, STUDIO_CONTROL_TEST_NODE: process.execPath,
-      STUDIO_CONTROL_TEST_PROJECT: controlProject,
-      STUDIO_CONTROL_TEST_TEMPLATE: path.join(ROOT, 'extensions/studio-workstation/dist/studio-control'),
+      STUDIO_CONTROL_TEST_PROJECT: assistant,
+      STUDIO_CONTROL_TEST_TEMPLATE: path.join(ROOT, 'extensions/studio-workstation/dist/developer-assistant'),
       STUDIO_CONTROL_TEST_CLI: path.resolve(path.dirname(cliManifestPath), cliManifest.bin['steamharness']), STUDIO_CONTROL_TEST_RUNTIME_API: runtimeApi } });
   child.stdout.on('data', chunk => { log = (log + chunk.toString()).replaceAll(token, '[redacted]'); });
   child.stderr.on('data', chunk => { log = (log + chunk.toString()).replaceAll(token, '[redacted]'); });

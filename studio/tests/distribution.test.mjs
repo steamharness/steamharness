@@ -47,6 +47,7 @@ test('Built-in projects resolve inside the monorepo and fail loudly when absent'
   await fs.mkdir(assistant, { recursive: true });
   await fs.writeFile(path.join(assistant, 'package.json'), '{}');
   assert.equal(await builtinProjectDirectory('developer-assistant', root), assistant);
+  await assert.rejects(() => builtinProjectDirectory('studio-control', root), /Unknown built-in project/);
 });
 
 async function fixture(t) {

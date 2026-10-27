@@ -28,7 +28,7 @@ it.each(["workspace", "read-only", "auto"])("exposes the Workflow through real s
   let connection;
   try {
     connection = await runtime.connectMcpServer({
-      id: "workflow-studio", command: [process.execPath, path.resolve(path.dirname(cliManifest), cli.bin["steamharness"]), "mcp", path.resolve(import.meta.dirname, ".."), "--data-dir", dataDir],
+      id: "workflow-studio", command: [process.execPath, path.resolve(path.dirname(cliManifest), cli.bin["steamharness"]), "mcp", path.resolve(import.meta.dirname, "../.."), "--entry", "studio-control", "--data-dir", dataDir],
       inheritEnvironment: keys,
       environment: { STEAMHARNESS_STUDIO_CONTROL_PERMISSION_POLICY: permissionPolicy },
     }, { allowedInheritedEnvKeys: keys, env: {

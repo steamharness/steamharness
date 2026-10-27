@@ -4,7 +4,7 @@ import { pathToFileURL } from "node:url";
 
 export const SPLIT_REPOSITORIES = Object.freeze([
   "desktop", "harness", "cli", "server", "shared", "docs",
-  "build-in/build-in-developer-assistant", "build-in/build-in-studio-control",
+  "build-in/build-in-developer-assistant",
 ]);
 
 const IGNORED_DIRECTORIES = new Set([
