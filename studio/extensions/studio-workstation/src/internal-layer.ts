@@ -1,12 +1,14 @@
 import * as vscode from 'vscode';
 import type { AccountSectionProvider } from './account-section-types';
 import { registerProjectUploadProvider } from './project-upload-extension';
+import type { UserModelCatalogProvider } from './user-model-types';
 
 interface LayerAccount {
   setAiConnection?: (connection: { serverUrl: string; accessToken: string } | undefined) => void;
   getConnection?: () => { serverUrl: string; accessToken: string } | undefined;
   onDidChange?: (listener: () => unknown) => vscode.Disposable;
   registerSectionProvider?: (provider: AccountSectionProvider) => vscode.Disposable;
+  registerModelCatalogProvider?: (provider: UserModelCatalogProvider) => vscode.Disposable;
 }
 
 /**

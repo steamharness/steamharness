@@ -1,3 +1,4 @@
+import { userSettingsJsonReplacer } from './user-settings';
 import { createHash } from 'node:crypto';
 import { mkdir, open, rename, stat } from 'node:fs/promises';
 import path from 'node:path';
@@ -6,7 +7,7 @@ import type { ConversationSession } from './workflow-types';
 import type { ConversationOwnership } from './conversation-ownership';
 
 interface History { sessions?: ConversationSession[]; activeId?: string; selectionVersion?: number }
-const digest = (value: unknown) => createHash('sha256').update(JSON.stringify(value)).digest('hex');
+const digest = (value: unknown) => createHash('sha256').update(JSON.stringify(value, userSettingsJsonReplacer)).digest('hex');
 const stamp = (info: { mtimeMs: number; size: number; ino: number }) => `${info.mtimeMs}:${info.size}:${info.ino}`;
 interface StoredSession { content: string }
 interface StoredHistory { stamp: string; sessions: Map<string, StoredSession>; activeId?: string; selectionVersion?: number }
@@ -40,7 +41,7 @@ export class ConversationHistory {
         const history: History = JSON.parse(await file.readFile('utf8'));
         return this.cached = { stamp: stamp(await file.stat()), activeId: history.activeId, selectionVersion: history.selectionVersion,
           sessions: new Map((history.sessions ?? []).map(session => [session.id, {
-            content: JSON.stringify(session),
+            content: JSON.stringify(session, userSettingsJsonReplacer),
           }])) };
       } finally { await file.close(); }
     } catch (error) {
@@ -76,7 +77,7 @@ export class ConversationHistory {
       const scope = session.agentOwnerId ?? session.id;
       this.ownership.rememberScope(session.id, scope);
       if (this.ownership.owns(session.id) || !this.versions.has(session.id)) {
-        const content = JSON.stringify(session);
+        const content = JSON.stringify(session, userSettingsJsonReplacer);
         changes.set(session.id, { content, version: createHash('sha256').update(content).digest('hex') });
       }
     }

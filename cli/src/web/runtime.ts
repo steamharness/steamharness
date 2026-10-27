@@ -8,6 +8,7 @@ import { locale } from './localization';
 import { redactProjectData, type Runtime, type Report, type Project } from './workflow-types';
 import type { CliRelatedProjectSpec } from '../related-projects';
 import type { AgentSessionCommand, AgentSessionReceipt } from 'steamharness/agent';
+import { createSecretStreamRedactor } from './runtime-log';
 
 export interface WebConnection {
   serverUrl: string;
@@ -44,6 +45,8 @@ export function createWebRuntime(projectDir: string, storageDir: string, connect
       ? { serverUrl: auth.serverUrl, accessToken: auth.accessToken }
       : auth;
     if ((request.method === 'run' || request.method === 'resolve') && (request.project as Project)?.requiresLogin && !auth) { reject(new Error('SteamHarness Server login is not configured.')); return; }
+    const userSettings = request.userSettings as UserSettings | undefined ?? options.userSettings?.();
+    const secrets = [runtimeAuth?.accessToken ?? '', runtimeAuth?.aiAccessToken ?? '', ...(userSettings?.agent.models ?? []).flatMap(model => model.source === 'third-party' ? [model.apiKey] : [])];
     // Workers use the verified page identity, including after logout.
     const env: NodeJS.ProcessEnv = sanitizeWebWorkerEnvironment(process.env);
     Object.assign(env, { STEAMHARNESS_RUNTIME_PLATFORM: 'cli',
@@ -84,10 +87,14 @@ export function createWebRuntime(projectDir: string, storageDir: string, connect
     const timeout = request.method === 'run' ? undefined : setTimeout(() => { failure = 'Workflow runtime request timed out.'; child.kill('SIGTERM'); }, 30_000);
     const forcedExit = request.method === 'run' ? undefined : setTimeout(() => child.kill('SIGKILL'), 35_000);
     child.stdout!.setEncoding('utf8'); child.stderr!.setEncoding('utf8');
-    child.stderr!.on('data', (chunk: string) => {
-      stderr = (stderr + chunk).slice(-100_000);
-      onEvent?.({ type: 'runtime_log', text: redactProjectData(chunk, [runtimeAuth?.accessToken ?? '', runtimeAuth?.aiAccessToken ?? '']), runId: request.runId });
-    });
+    const redactStderr = createSecretStreamRedactor(secrets);
+    const emitStderr = (chunk: string, final = false) => {
+      const text = String(redactProjectData(redactStderr(chunk, final), secrets));
+      if (!text) return;
+      stderr = (stderr + text).slice(-100_000);
+      onEvent?.({ type: 'runtime_log', text, runId: request.runId });
+    };
+    child.stderr!.on('data', (chunk: string) => emitStderr(chunk));
     child.stdout!.on('data', (chunk: string) => {
       buffer += chunk;
       let newline: number;
@@ -95,7 +102,7 @@ export function createWebRuntime(projectDir: string, storageDir: string, connect
         const line = buffer.slice(0, newline); buffer = buffer.slice(newline + 1);
         if (!line.startsWith('__STEAMHARNESS_WEB__')) { continue; }
         try {
-          const message = redactProjectData(JSON.parse(line.slice('__STEAMHARNESS_WEB__'.length)), [runtimeAuth?.accessToken ?? '', runtimeAuth?.aiAccessToken ?? ''], false) as { kind: string; value: T & Record<string, unknown>; error?: string; code?: string; metadata?: Record<string, unknown> };
+          const message = redactProjectData(JSON.parse(line.slice('__STEAMHARNESS_WEB__'.length)), secrets, false) as { kind: string; value: T & Record<string, unknown>; error?: string; code?: string; metadata?: Record<string, unknown> };
           if (message.kind === 'event') { onEvent?.(message.value); }
           if (message.kind === 'result') { result = message.value; }
           if (message.kind === 'error') { failure = message.error; failureMetadata = message.metadata; failureCode = typeof message.code === 'string' ? message.code : undefined; }
@@ -110,14 +117,15 @@ export function createWebRuntime(projectDir: string, storageDir: string, connect
     };
     child.once('error', (error) => { cleanup(); reject(error); });
     child.once('close', (code, signal) => {
+      emitStderr('', true);
       cleanup();
       if (failure) { reject(Object.assign(new Error(failure), { code: failureCode, metadata: failureMetadata })); }
-      else if (result !== undefined) { if (request.method === 'run') { (result as Report).logs = String(redactProjectData(stderr, [runtimeAuth?.accessToken ?? '', runtimeAuth?.aiAccessToken ?? ''])); } resolve(result); }
-      else { reject(Object.assign(new Error(String(redactProjectData(stderr.trim(), [runtimeAuth?.accessToken ?? '', runtimeAuth?.aiAccessToken ?? ''])) || `Workflow runtime exited (${signal ?? code}).`),
+      else if (result !== undefined) { if (request.method === 'run') { (result as Report).logs = String(redactProjectData(stderr, secrets)); } resolve(result); }
+      else { reject(Object.assign(new Error(String(redactProjectData(stderr.trim(), secrets)) || `Workflow runtime exited (${signal ?? code}).`),
         { code: 'STEAMHARNESS_WORKER_INTERRUPTED' })); }
     });
     child.stdin!.on('error', () => undefined);
-    child.stdin!.end(JSON.stringify({ ...request, userSettings: request.userSettings ?? options.userSettings?.(), storageDir, runtimeProjectDir: projectDir, relatedProjects: relatedProjects() }));
+    child.stdin!.end(JSON.stringify({ ...request, userSettings: userSettings, storageDir, runtimeProjectDir: projectDir, relatedProjects: relatedProjects() }));
   });
   return {
     available: true,

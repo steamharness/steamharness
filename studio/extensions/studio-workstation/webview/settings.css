@@ -125,3 +125,23 @@
   .settings-about dl { grid-template-columns: minmax(0, 1fr); gap: 2px; }
   .settings-about dd { margin-bottom: 10px; }
 }
+
+.settings-model-header { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 20px; }
+.settings-model-header h2 { margin: 0 0 6px; }
+.settings-model-header p { margin: 0; line-height: 1.6; }
+.settings-model-list { display: grid; gap: 12px; }
+.settings-model-row { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 20px; min-width: 0; }
+.settings-model-copy { display: grid; gap: 6px; min-width: 0; overflow-wrap: anywhere; }
+.settings-model-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.settings-model-row .settings-model-actions { flex-shrink: 0; }
+.settings-model-form { display: grid; gap: 18px; padding: 24px; margin-top: 20px; min-width: 0; }
+.settings-model-field { display: grid; gap: 8px; min-width: 0; }
+.settings-model-field > input, .settings-model-field > button { width: 100%; min-width: 0; }
+.settings-model-field p { margin: 0; line-height: 1.6; }
+.settings-model-catalog { display: flex; flex-wrap: wrap; gap: 8px; }
+.settings-model-catalog p { flex-basis: 100%; margin: 0; }
+@media (max-width: 700px) {
+  .settings-model-header, .settings-model-row { align-items: flex-start; flex-direction: column; }
+  .settings-model-row .settings-model-actions { flex-shrink: 1; }
+  .settings-model-row, .settings-model-form { padding: 16px; }
+}

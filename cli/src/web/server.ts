@@ -1,3 +1,4 @@
+import { hydrateUserSettings, userSettingsJsonReplacer } from './user-settings';
 import {configurationCapability} from '@steamharness/project-configuration';
 import { getUserSettings, parseUserSettings, type UserSettings } from 'steamharness';
 import { ProjectConfigurations } from './project-configurations';
@@ -102,9 +103,6 @@ async function startProjectWebServer(options: WebOptions, credentials: { capabil
   let hostConnection = options.host?.connection;
   let userSettings = options.host?.userSettings ? parseUserSettings(options.host.userSettings) : getUserSettings();
   let hostManaged = options.host !== undefined;
-  // A normal editor host may authenticate its project Server, but it must not
-  // hand the private system-AI credentials to arbitrary project workflows.
-  // Standalone CLI sessions keep their explicit local AI configuration.
   // Host-managed surfaces (editor and assistant) may carry the private system-AI
   // connection; the open-source host simply never provides those fields.
   const allowAiConnection = true;
@@ -114,6 +112,8 @@ async function startProjectWebServer(options: WebOptions, credentials: { capabil
   let authCheckPending = false;
   let nextProfileCheck = 0;
   const sensitiveTokens = new Set<string>();
+  const rememberModelKeys = (settings: UserSettings) => { for (const model of settings.agent.models ?? []) if (model.source === "third-party") sensitiveTokens.add(model.apiKey); };
+  rememberModelKeys(userSettings);
   let relatedProjects = options.host?.relatedProjects ?? [];
   let relatedProjectsManaged = options.host !== undefined;
   const relatedImports = new RelatedProjectImports();
@@ -134,7 +134,7 @@ async function startProjectWebServer(options: WebOptions, credentials: { capabil
           abort.signal.addEventListener('abort', () => reject(new Error(t('Stopped'))), { once: true });
         })]);
         if (abort.signal.aborted) throw new Error(t('Stopped'));
-        const report = await executor.run(request, emit);
+        const report = await executor.run({ ...request, userSettings: hydrateUserSettings(request.userSettings, userSettings) }, emit);
         if (!abort.signal.aborted && report.status === 'failed') observeStorageFailure((report.error ?? report.result?.error)?.metadata, runConnection);
         return report;
       } catch (error) {
@@ -200,7 +200,7 @@ async function startProjectWebServer(options: WebOptions, credentials: { capabil
     return value;
   };
   // Preserve project-owned data keys; remove host credentials by their actual values.
-  const publicState = (value: unknown) => publicValue(redactProjectData(value, [...sensitiveTokens], false));
+  const publicState = (value: unknown) => publicValue(redactProjectData(JSON.parse(JSON.stringify(value, userSettingsJsonReplacer)), [...sensitiveTokens], false));
   const sharedState = () => {
     const serverData = projectServer?.state ?? (relatedImportIssue ? { checking: false, blocking: false } : undefined);
     const issue = relatedImports.issue(projectServer?.state.issue ?? relatedImportIssue ?? kanbanController?.serverDataIssue);
@@ -279,9 +279,11 @@ async function startProjectWebServer(options: WebOptions, credentials: { capabil
   // The built-in assistant has local profiles, not a Server project publication.
   // Its AI connection continues to use the authenticated runtime account.
   const configurations = new ProjectConfigurations(project.assistant ? project.folderPath : projectDir, () => {
-    const signature=JSON.stringify(configurations.state);
+    const signature=configurations.signature;
     if(signature!==configurationSignature) {
       configurationSignature=signature;
+      project.agentModelPolicy = configurations.state.agentModelPolicy;
+      Object.assign(project, projectWithUserSettings(project, userSettings));
       parameterRevision++;
       parameterStates.clear();
       kanbanController?.configurationChanged(configurations.state);
@@ -291,7 +293,9 @@ async function startProjectWebServer(options: WebOptions, credentials: { capabil
     broadcast();
   }, () => isLocalBuiltinAssistant(project) ? undefined : connection);
   await configurations.initialize();
-  configurationSignature=JSON.stringify(configurations.state);
+  configurationSignature=configurations.signature;
+  project.agentModelPolicy = configurations.state.agentModelPolicy;
+  Object.assign(project, projectWithUserSettings(project, userSettings));
   conversationController = isProject || isKanban ? undefined : new ConversationController(project, runtime, saved, {
     canRun: session => ownership?.execute(session.id) ?? true,
     canStart: () => !projectServer?.blocking || projectServer.ready,
@@ -305,7 +309,7 @@ async function startProjectWebServer(options: WebOptions, credentials: { capabil
         pendingSave = conversationHistory.save(sessions, activeId);
         return pendingSave;
       }
-      const content = JSON.stringify({ sessions, activeId, selectionVersion: 1 });
+      const content = JSON.stringify({ sessions, activeId, selectionVersion: 1 }, userSettingsJsonReplacer);
       pendingSave = pendingSave.catch(() => undefined).then(async () => {
         await mkdir(path.dirname(historyPath), { recursive: true });
         const temp = `${historyPath}.${process.pid}.tmp`;
@@ -348,7 +352,7 @@ async function startProjectWebServer(options: WebOptions, credentials: { capabil
     changed: broadcast, legacy: saved.sessions,
     log: message => process.stderr.write(`${message}\n`),
     save: workspace => {
-      const content = JSON.stringify(workspace);
+      const content = JSON.stringify(workspace, userSettingsJsonReplacer);
       pendingSave = pendingSave.catch(() => undefined).then(async () => {
         await mkdir(path.dirname(runsPath), { recursive: true });
         const temp = `${runsPath}.${process.pid}.tmp`;
@@ -696,7 +700,7 @@ async function startProjectWebServer(options: WebOptions, credentials: { capabil
             const name = `conversation-${current.id}.json`;
             const count = current.messages.length + 2;
             await controller.recordCommand(command.command, t("Conversation export ready: {0} ({1} messages).", name, count), current);
-            replies.push({ type: 'download', name, content: JSON.stringify(redactProjectData(current, [...sensitiveTokens], false), null, 2) },
+            replies.push({ type: 'download', name, content: JSON.stringify(redactProjectData(current, [...sensitiveTokens], false), userSettingsJsonReplacer, 2) },
               { type: 'command-executed', command: command.command, sessionId: current.id });
             break;
           }
@@ -778,7 +782,7 @@ async function startProjectWebServer(options: WebOptions, credentials: { capabil
           await controller.remove(session.id);
           await Promise.all(previous.filter(id => !controller.sessions.some(session => session.id === id)).map(id => rm(path.join(storageDir, key, 'conversation-imports', path.basename(id)), { recursive: true, force: true })));
         }
-        else if (message.action === 'export') { replies.push({ type: 'download', name: `conversation-${session.id}.json`, content: JSON.stringify(redactProjectData(session, [...sensitiveTokens], false), null, 2) }); }
+        else if (message.action === 'export') { replies.push({ type: 'download', name: `conversation-${session.id}.json`, content: JSON.stringify(redactProjectData(session, [...sensitiveTokens], false), userSettingsJsonReplacer, 2) }); }
         break;
       }
       case 'resolve-paths':
@@ -796,7 +800,7 @@ async function startProjectWebServer(options: WebOptions, credentials: { capabil
       case 'trace': case 'logs': case 'export-message': {
         const answer = current.messages.find(entry => entry.id === message.messageId);
         if (!answer) { throw new Error('Message no longer exists.'); }
-        if (message.type === 'export-message') { replies.push({ type: 'download', name: `run-${answer.id}.json`, content: JSON.stringify(redactProjectData(answer, [...sensitiveTokens], false), null, 2) }, { type: 'exported', sessionId: current.id, messageId: answer.id }); }
+        if (message.type === 'export-message') { replies.push({ type: 'download', name: `run-${answer.id}.json`, content: JSON.stringify(redactProjectData(answer, [...sensitiveTokens], false), userSettingsJsonReplacer, 2) }, { type: 'exported', sessionId: current.id, messageId: answer.id }); }
         else { replies.push({ type: 'preview', title: message.type === 'logs' ? t("Run logs") : t("Trace"), content: message.type === 'logs' ? answer.report?.logs ?? '' : { report: answer.report, events: answer.events, items: answer.items } }); }
         break;
       }
@@ -948,6 +952,7 @@ async function startProjectWebServer(options: WebOptions, credentials: { capabil
       const settings = parseUserSettings(value);
       if (JSON.stringify(settings) === JSON.stringify(userSettings)) return;
       userSettings = settings;
+      rememberModelKeys(settings);
       Object.assign(project, projectWithUserSettings(project, settings));
       ++parameterRevision;
       conversationController?.configurationChanged();

@@ -155,3 +155,7 @@ All three project types expose fields, named profiles and complete import/export
 Ownership is selected when creating or reapplying for an application ID. Uploads never create projects or change ownership; unregistered projects must first apply for a new ID in their runtime. Group creation requires developer access without promoting the creator. Permission errors explain that the action is unavailable; retry after access is restored. Private share links offer guest access requests in Server Web.
 
 The default project Server follows the Studio build channel: dev uses `http://localhost:7126`, while alpha and main use their corresponding deployment sites. A Server explicitly selected in settings or at sign-in retains priority.
+
+## Model settings
+
+Manage models across workspaces in **Settings → Models**. Open-source Studio supports custom third-party models with keys stored securely on the host; hosts supporting system AI may also add authorized catalogue models. The assistant defaults to the first available model. Its model control opens available choices before **Manage models** opens settings. Changes apply after active and background work finish. See [user settings](/en/core-api/user-settings) for developer integration and source restrictions.

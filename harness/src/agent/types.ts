@@ -407,6 +407,8 @@ export type AgentToolFactory = (
 ) => AgentTool[] | AgentToolSet | Promise<AgentTool[] | AgentToolSet>;
 
 export interface AgentRuntimeOptions {
+  /** Omit to use configured user models when present, then project models. */
+  modelSource?: "user-settings" | "project";
   /** Enable durable session control, task projections, and background work. */
   session?: AgentSessionOptions;
   /** SQLite file for this isolated agent session. Omit only for an ephemeral programmatic agent. */

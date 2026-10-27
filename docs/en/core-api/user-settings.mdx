@@ -13,6 +13,7 @@ User settings belong to the execution host and are stored separately from projec
 interface UserSettings {
   readonly agent: {
     readonly permissionPolicy: AgentPermissionPolicy;
+    readonly models?: readonly Readonly<UserAgentModel>[];
   };
 }
 
@@ -58,7 +59,7 @@ Direct callers may still pass `--permission-policy inherit`. Parameter forms pre
 
 ## Parameter presentation
 
-Use `ParamDefinition.userSetting` to choose how a project uses a user setting. This release supports `key: "agent.permissionPolicy"` on single string fields.
+Use `ParamDefinition.userSetting` to choose how a project uses a user setting. Single string fields support `key: "agent.permissionPolicy"` or `key: "agent.model"`.
 
 - `mode: "fixed"`: show only the effective policy and open Studio user settings when clicked. Project overrides, including previously saved values, are ignored.
 - `mode: "default"` (also the omitted mode): retain the original three choices and select the current user policy by default. A selection becomes a project override; reset restores the current user default.
@@ -86,6 +87,39 @@ createInput({ paramValues }) {
 ```
 
 Change the example to `mode: "default"` to allow project overrides. `createAgentProjectParams({ permissionPolicy: "inherit" })` generates that editable binding. Standalone CLI can resolve injected settings, but opening the settings page requires Studio.
+
+## User models and Agents without connection configuration
+
+Use **Settings → Models** to add, edit, delete, and set a default model across workspaces. The host supplies each model's name, protocol, Base URL, model ID, and API key to execution. Third-party keys live in Studio SecretStorage and are excluded from project configuration, page state, ordinary conversation history, and exports. An empty key when editing keeps the saved key.
+
+Open-source Studio offers third-party models only: OpenAI Chat Completions, OpenAI Responses, and Anthropic Messages. Hosts providing system AI may also expose their authorized catalogue. System entries save credential and model IDs; execution rechecks account authorization and model availability without persisting proxy tokens.
+
+`UserAgentModel` is a union of two records, each with a stable `id`, display `name`, and actual `model` ID:
+
+- System: `{ source: "system", credentialId: string }`.
+- Third-party: `{ source: "third-party", apiKind: "openai-completions" | "openai-responses" | "anthropic-messages", baseUrl: string, apiKey: string }`.
+
+Lists are copied and frozen. Base URLs require HTTP(S) without authentication, query, or fragment; entry IDs must be unique, with at most 100 entries. Invalid model configurations are rejected.
+
+With a nonempty user list, Agent nodes and direct `createAgent()` automatically select the first permitted model; turn `model` can select a list ID. Explicit developer endpoints, `models`, and `resolvedModel` keep their existing behavior. `modelSource: "user-settings"` requires user models and reports an empty list; `modelSource: "project"` explicitly retains the original project configuration source. A project's `allowThirdParty: false` applies to user models and explicit endpoints alike.
+
+```ts
+// Generate overridable model parameters from the user's list and default.
+const project = steamharness.createAgentConversationProject({
+  modelSource: "user-settings",
+  permissionPolicy: "inherit",
+});
+
+// Custom parameter declarations may bind inline:
+// userSetting: { key: "agent.model", mode: "default" }
+// resolveParams: steamharness.createAgentProjectParamResolver({ modelSource: "user-settings" })
+```
+
+The built-in assistant uses user models. Clicking its model control opens available choices first; **Manage models** opens settings. Selecting a model overrides the default for the project or conversation; resetting follows the user default again. The original project model configuration APIs remain available and are not used by the assistant.
+
+A custom model field with `mode: "fixed"` also opens the list first, with read-only choices and a **Manage models** action to change the user default. `mode: "default"` allows a project override.
+
+Updates apply after a safe task boundary. Active and background work retain their connection snapshot. Interrupted recovery obtains a key from the host only for the same model and endpoint; a removed or changed endpoint fails explicitly instead of receiving a new key at an old address.
 
 ## Studio and CLI sessions
 

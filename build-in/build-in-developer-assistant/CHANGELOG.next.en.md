@@ -1,5 +1,7 @@
 # Unreleased
 
+- The assistant now defaults to user models from host settings, supports conversation overrides and reset, and opens available models before Manage models. Active and background tasks retain their settings snapshot.
+
 - The permission control now displays the actual user policy and opens permission settings directly, without an extra inheritance choice. Coding tools, prompts, and Studio Control share one settings snapshot. Generator references now cover the user settings API, inheritance precedence, the hostless fallback, and safe session updates.
 
 - Assistant now explicitly uses local storage and its fixed built-in identity. CLI built-in application checks let users use it without creating personal Server projects. History and memory never write to a shared Server project, while Server AI still requires account authorization.

@@ -1,3 +1,6 @@
+import { getProjectConfiguration, withProjectConfiguration } from "../configuration";
+import { getUserSettings, withUserSettings } from "../user-settings";
+import { resolveAgentSystemAIInput } from "./model-resolution";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
 import type { AssistantMessage, Usage } from "@earendil-works/pi-ai";
@@ -77,6 +80,8 @@ export interface AgentRuntimeInternalOptions extends AgentRuntimeOptions {
   sessionSuspend?: Promise<void>;
   resumeSession?: boolean;
   compaction?: AgentCompactionSettings;
+  /** Node has already resolved and checked this connection. */
+  modelResolved?: boolean;
   /** Pre-resolved SDK runtime. Tests inject a faux provider through this. */
   pi?: PiRuntime;
   /**
@@ -103,19 +108,38 @@ export interface AgentRuntimeInternalOptions extends AgentRuntimeOptions {
 export async function createAgentRuntime(
   options: AgentRuntimeInternalOptions = {},
 ): Promise<AgentRuntime> {
-  const pi = options.pi ?? await createPiRuntime({
-    provider: options.provider,
-    model: options.model,
-    baseUrl: options.baseUrl,
-    apiKey: options.apiKey,
-    apiKind: options.apiKind,
-    webSearch: options.webSearch,
-    modelAttributes: options.modelAttributes,
-    models: options.models,
-    resolvedModel: options.resolvedModel,
-  });
-
-  return new ProjectAgentRuntime(pi, options);
+  const settings = getUserSettings();
+  const configuration = getProjectConfiguration();
+  const resolveHostModels = !options.pi && !options.modelResolved && (configuration?.agentModelPolicy?.allowThirdParty === false ||
+    options.modelSource !== "project" && (options.modelSource === "user-settings" || !!settings.agent.models?.length));
+  const original = options;
+  const resolveModel = (input: AgentInput, signal?: AbortSignal) => withUserSettings(settings, () => configuration
+    ? withProjectConfiguration(configuration, () => resolveAgentSystemAIInput(input, original, signal))
+    : resolveAgentSystemAIInput(input, original, signal));
+  const closers: (() => Promise<void>)[] = [];
+  let resolveInput: ((input: AgentInput, signal?: AbortSignal) => Promise<AgentInput>) | undefined;
+  if (resolveHostModels) {
+    // Keep bridges and the host snapshot alive for durable and background tasks.
+    // A later host update belongs to the next runtime, never to this one.
+    const resolved = await resolveModel({} as AgentInput);
+    closers.push(resolved.close);
+    options = { ...options, ...resolved.input };
+    resolveInput = async (input, signal) => {
+      if (input.model === undefined && input.provider === undefined && input.baseUrl === undefined && input.apiKey === undefined) {
+        return { ...input, ...resolved.input, modelAttributes: { ...resolved.input.modelAttributes, ...input.modelAttributes } };
+      }
+      const next = await resolveModel(input, signal);
+      closers.push(next.close);
+      return next.input;
+    };
+  }
+  try {
+    const pi = options.pi ?? await createPiRuntime(options);
+    return new ProjectAgentRuntime(pi, options, resolveInput, closers);
+  } catch (error) {
+    await Promise.allSettled(closers.map(close => close()));
+    throw error;
+  }
 }
 
 class ProjectAgentRuntime implements AgentRuntime {
@@ -146,6 +170,8 @@ class ProjectAgentRuntime implements AgentRuntime {
   constructor(
     private pi: PiRuntime,
     options: AgentRuntimeInternalOptions,
+    private readonly resolveInput?: (input: AgentInput, signal?: AbortSignal) => Promise<AgentInput>,
+    private readonly modelClosers: (() => Promise<void>)[] = [],
   ) {
     this.options = options;
     this.connection = readConnection(options);
@@ -208,8 +234,11 @@ class ProjectAgentRuntime implements AgentRuntime {
   }
 
   async close(): Promise<void> {
-    await this.agent?.close();
-    this.agent = undefined;
+    try { await this.agent?.close(); }
+    finally {
+      this.agent = undefined;
+      await Promise.allSettled(this.modelClosers.splice(0).map(close => close()));
+    }
   }
 
   private readContextTokens(): number {
@@ -220,7 +249,7 @@ class ProjectAgentRuntime implements AgentRuntime {
 
   async *run(input: AgentInput, host?: AgentHost): AsyncIterable<AgentStreamEvent> {
     throwIfRunAborted(host?.abortSignal);
-    const parsed = parseAgentInput(input, this.options);
+    const parsed = parseAgentInput(this.resolveInput ? await this.resolveInput(input, host?.abortSignal) : input, this.options);
     await this.applyConnection(parsed);
     const agent = this.ensureAgent();
     agent.state.contextWindow = parsed.contextWindow;

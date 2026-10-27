@@ -3,6 +3,13 @@ import {configurationPublication} from '../configuration-publication';
 import type {WebConnection} from './runtime';
 import {configurationAccessView,ProjectConfigurationError,type ProjectConfigurationAction, type ProjectConfigurationState} from '@steamharness/project-configuration';
 
+// Defaults and persisted profiles may enumerate object keys in a different order.
+// Only content changes may invalidate an in-flight request or durable owner.
+function signature(value: unknown): string {
+  return JSON.stringify(value, (_key, entry) => entry && typeof entry === 'object' && !Array.isArray(entry)
+    ? Object.fromEntries(Object.keys(entry).sort().map(key => [key, entry[key]])) : entry);
+}
+
 /** One service for every local surface. Its directory is independent of Web/Studio history. */
 export class ProjectConfigurations {
   private store!: Awaited<ReturnType<typeof createLocalProjectConfigurationStore>>;
@@ -14,6 +21,7 @@ export class ProjectConfigurations {
     const value=this.connectionIdentity()===this.accessIdentity?this.value:configurationAccessView(this.value);
     return this.connectionIdentity()===this.publicationIdentity?value:{...value,publication:undefined,publicationPreview:undefined,canManagePublication:false};
   }
+  get signature(): string { return signature(this.state); }
   private poll?: ReturnType<typeof setInterval>;
   private reading = false;
   error?: string;
@@ -37,7 +45,7 @@ export class ProjectConfigurations {
       const local = await this.store.read();
       const keepPublication=!local.profilePolicy||local.capabilities?.online&&['maintainer','owner'].includes(local.capabilities.role);
       const next = {...local,...(keepPublication?{publication:this.state?.publication,canManagePublication:this.state?.canManagePublication}:{canManagePublication:false})};
-      const changed = !!this.error || JSON.stringify(next) !== JSON.stringify(this.state);
+      const changed = !!this.error || signature(next) !== this.signature;
       this.error = undefined; this.value = next;this.accessIdentity=this.connectionIdentity(); if (changed) this.changed();
       return next;
     } catch (error) {
@@ -56,7 +64,7 @@ export class ProjectConfigurations {
       const local=result as ProjectConfigurationState;
       const keepPublication=!local.profilePolicy||local.capabilities?.online&&['maintainer','owner'].includes(local.capabilities.role);
       const next = remote?local:{...local,...(keepPublication?{publication:previous.publication,canManagePublication:previous.canManagePublication}:{canManagePublication:false})};
-      const changed = !!this.error || JSON.stringify(next) !== JSON.stringify(this.state);
+      const changed = !!this.error || signature(next) !== this.signature;
       this.error = undefined; this.value = next;this.accessIdentity=identity;this.publicationIdentity=identity; if (changed) this.changed();
       return next;
     }

@@ -33,6 +33,7 @@ const toolApproval = steamharness.createToolApprovalGate();
  * at, the persona that workspace implies, and the capabilities Studio offers.
  */
 const assistantProject = steamharness.createAgentConversationProject({
+  modelSource: "user-settings",
   executorName: STEAMHARNESS_NAME,
   outputItemId: OUTPUT_ITEM_ID,
   session: { subagents: { tools: ["read", "grep", "find", "ls"], maxAgents: 4 }, planFork: "asOf", toolSearch: {} },
@@ -207,7 +208,8 @@ export const executor = steamharness.defineExecutor<AgentInput, AgentOutputPaylo
           type: "string",
           required: true,
           label: "Model",
-          description: "Model exposed by the selected system AI configuration.",
+          description: "Choose a model from user settings.",
+          userSetting: { key: "agent.model", mode: "default" },
           control: "select",
           options: [],
         },
@@ -269,7 +271,7 @@ export const executor = steamharness.defineExecutor<AgentInput, AgentOutputPaylo
       ],
     },
   ],
-  resolveParams: steamharness.createAgentProjectParamResolver(),
+  resolveParams: steamharness.createAgentProjectParamResolver({ modelSource: "user-settings" }),
   createContext({ paramValues }) {
     return { metadata: { studioControlPermissionPolicy: readDeveloperAssistantPermissionPolicy(paramValues.permissionPolicy) } };
   },

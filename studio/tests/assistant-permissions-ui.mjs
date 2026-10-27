@@ -19,6 +19,8 @@ const [extension, frame, client] = await Promise.all([
     const host = acquireProjectHost();
     const parameters = ${JSON.stringify({ fields: report.params, paramLayout: report.paramLayout })};
     parameters.fields.find(field => field.name === 'permissionPolicy').userSettingValue = 'auto';
+    parameters.fields.find(field => field.name === 'model').options = [{ value: 'user-model', label: 'User configured model' }];
+    parameters.fields.find(field => field.name === 'model').userSettingValue = 'user-model';
     const actions = new ParameterActions(document.querySelector('#parameter-actions'), {
       current: () => ({ values: {}, states: {}, disabled: false, loading: false }),
       fieldRoot() { throw new Error('Permission shortcuts must not open a local field editor.'); },
@@ -89,10 +91,18 @@ try {
       await assertEventually(() => commands.length === 1);
       assert.deepEqual(commands[0], ['studio.openSettings', { section: 'permissions', target: 'user' }]);
       assert.equal(await page.frameLocator('#workflow-frame').locator('.parameter-popover:not([hidden])').count(), 0);
+      const model = page.frameLocator('#workflow-frame').locator('[data-action-id=ai]');
+      await model.click();
+      assert.equal(commands.length, 1, 'Model click must first open available choices');
+      const popup = page.frameLocator('#workflow-frame').locator('.parameter-popover:not([hidden])');
+      assert.equal(await popup.locator('[role=option]').first().textContent(), 'User configured model');
+      await popup.locator('[data-focus-key=manage-models]').click();
+      await assertEventually(() => commands.length === 2);
+      assert.deepEqual(commands[1], ['studio.openSettings', { section: 'models', target: 'user' }]);
       finish(); await closed;
       await permission.focus(); await permission.press('Enter');
-      await assertEventually(() => commands.length === 2);
-      assert.deepEqual(commands[1], commands[0]);
+      await assertEventually(() => commands.length === 3);
+      assert.deepEqual(commands[2], commands[0]);
       checks.push(`${register ? 'Sidebar' : 'Standalone tool'}: pointer and keyboard open user permissions before and after the conversation exits.`);
     } finally { provider.dispose(); await page.close(); }
   }

@@ -598,13 +598,14 @@ it('restores unfinished work with its saved user snapshot before adopting a newe
   f.runs.at(-1)!.finish({ status: 'success' }); await restored.idle();
 });
 
-it('adopts user settings at an idle boundary while preserving active work, history and pending input IDs', async () => {
-  let settings: import('steamharness').UserSettings = { agent: { permissionPolicy: 'auto' } };
+it.each(['permission', 'models'])('adopts user %s at an idle boundary while preserving active work, history and pending input IDs', async kind => {
+  const model = { id: 'one', name: 'User model', model: 'actual', source: 'third-party' as const, apiKind: 'openai-responses' as const, baseUrl: 'https://example.test/v1', apiKey: 'test-original-key' };
+  let settings: import('steamharness').UserSettings = { agent: { permissionPolicy: 'auto', ...(kind === 'models' ? { models: [model] } : {}) } };
   const f = fixture(undefined, () => settings); await f.start();
   const owner = f.controller.current, originalRun = owner.activeRunId, initial = f.snapshot();
   const active: AgentSessionSnapshot = { ...initial, revision: 2, tasks: [{ id: 42, conversationId: 1, kind: 'pi.generation', label: 'Model', status: 'running', background: true, stopping: false, blockedOn: [] }] };
   f.emit(active);
-  settings = { agent: { permissionPolicy: 'read-only' } }; f.controller.configurationChanged();
+  settings = kind === 'models' ? { agent: { permissionPolicy: 'auto', models: [{ ...model, apiKey: 'test-new-key' }] } } : { agent: { permissionPolicy: 'read-only' } }; f.controller.configurationChanged();
   expect(f.runtime.cancel).not.toHaveBeenCalled();
   await f.controller.send({ text: 'Use new permissions', params: { model: 'one' }, attachments: [] }, owner, true, 'next-permissions');
   expect(owner.queuedInputs).toMatchObject([{ id: 'next-permissions', configurationPending: true }]);

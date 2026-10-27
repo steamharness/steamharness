@@ -80,6 +80,7 @@ export interface ParamRequest {
 }
 
 export interface Project extends Parameters {
+  agentModelPolicy?: { allowThirdParty?: boolean };
   projectCard?: import('@steamharness/project-card-metadata').ProjectCardMetadata;
   id: string;
   uri: string;
@@ -280,7 +281,8 @@ export interface ConversationDraftUpdate { id: string; create?: boolean; draft: 
 
 export function conversationModelName(input: Pick<ConversationQueuedInput, 'params' | 'states'>, fields: Field[] = []): string | undefined {
   const field = fields.find(field => field.name === 'model');
-  const model = input.params.model ?? input.states?.model?.value ?? field?.defaultValue;
+  const raw = input.params.model ?? input.states?.model?.value ?? field?.defaultValue;
+  const model = field ? projectParamEffectiveValue(field, raw === null ? undefined : raw) : raw;
   if (typeof model !== 'string' || !model) return;
   const options = input.states?.model?.resolvedOptions ?? field?.options;
   return options?.find(option => option.value === model)?.label?.trim() || model;
@@ -311,13 +313,15 @@ export function projectParameters(project: Project, entrypointId?: string): Para
 
 export function projectWithUserSettings(project: Project, settings: import('steamharness').UserSettings): Project {
   const fields = (parameters: Parameters) => parameters.fields.map(field => field.userSetting
-    ? { ...field, userSettingValue: settings.agent.permissionPolicy } : field);
+    ? { ...field, userSettingValue: field.userSetting.key === "agent.model"
+      ? settings.agent.models?.find(model => project.agentModelPolicy?.allowThirdParty !== false || model.source === "system")?.id ?? ""
+      : settings.agent.permissionPolicy } : field);
   return { ...project, fields: fields(project), entrypoints: project.entrypoints.map(entry => ({ ...entry, fields: fields(entry) })) };
 }
 
 export function projectParamEffectiveValue(field: Field, value?: ParamValue): ParamValue {
   const raw = projectParamValue(field, value);
-  return field.userSetting && (field.userSetting.mode === 'fixed' || raw === '') ? field.userSettingValue ?? 'auto' : raw;
+  return field.userSetting && (field.userSetting.mode === 'fixed' || raw === '') ? field.userSettingValue ?? (field.userSetting.key === 'agent.model' ? '' : 'auto') : raw;
 }
 
 export function projectParamValue(field: Field, value: ParamValue = field.defaultValue ?? ''): ParamValue {

@@ -1,13 +1,78 @@
 import { expect, it } from 'vitest';
 import { once } from 'node:events';
 import { createHash } from 'node:crypto';
-import { mkdtemp, mkdir, realpath, rm, symlink, writeFile } from 'node:fs/promises';
+import { mkdtemp, mkdir, readFile, realpath, rm, symlink, writeFile } from 'node:fs/promises';
 import { createServer } from 'node:http';
 import os from 'node:os';
 import path from 'node:path';
 import { AGENT_MODELS_CONFIGURATION_KEY, type ProjectConfigurationState } from '@steamharness/project-configuration';
 import { startWebServer } from '../web/server';
+import { projectDataDirectory } from '../web/project-data-directory';
 import { resolveHarnessRoot, resolveHarnessVersion } from './harness-source';
+
+it('loads user models through the host and worker without project configuration, while keeping keys out of state, history and exports', async () => {
+  const directory = await mkdtemp(path.join(os.tmpdir(), 'user-model-runtime-'));
+  const applicationId = crypto.randomUUID(), calls: { model: string; token?: string }[] = [];
+  let app: Awaited<ReturnType<typeof startWebServer>> | undefined;
+  const upstream = createServer(async (request, response) => {
+    const chunks: Buffer[] = []; for await (const chunk of request) chunks.push(chunk);
+    const body = JSON.parse(Buffer.concat(chunks).toString()); calls.push({ model: body.model, token: request.headers.authorization });
+    response.writeHead(200, { 'content-type': 'text/event-stream' });
+    response.end(`data: ${JSON.stringify({ id: 'user-answer', choices: [{ index: 0, delta: { role: 'assistant', content: `Answer ${body.model}` }, finish_reason: null }] })}\n\ndata: ${JSON.stringify({ id: 'user-answer', choices: [{ index: 0, delta: {}, finish_reason: 'stop' }] })}\n\ndata: [DONE]\n\n`);
+  });
+  try {
+    upstream.listen(0, '127.0.0.1'); await once(upstream, 'listening');
+    const origin = `http://127.0.0.1:${(upstream.address() as { port: number }).port}`;
+    await mkdir(path.join(directory, 'node_modules'));
+    await symlink(await resolveHarnessRoot(), path.join(directory, 'node_modules/steamharness'), process.platform === 'win32' ? 'junction' : 'dir');
+    await writeFile(path.join(directory, 'package.json'), JSON.stringify({ type: 'module', id: applicationId, name: 'user-model-agent', version: '1.0.0', devDependencies: { steamharness: await resolveHarnessVersion() }, steamHarness: { projectInfo: { dataStorage: { mode: 'local' } } } }));
+    await writeFile(path.join(directory, 'index.ts'), `
+      const agent = steamharness.createAgentConversationProject({ modelSource: 'user-settings', tools: [] });
+      export const executor = steamharness.defineExecutor({ projectType: 'conversation', workflow: agent,
+        params: [{ kind: 'quick', id: 'ai', label: 'Model', summary: ['model'], fields: [
+          { name: 'provider', flag: '--provider', type: 'string', control: 'select', options: [] },
+          { name: 'model', flag: '--model', type: 'string', required: true, control: 'select', options: [], userSetting: { key: 'agent.model', mode: 'default' } }
+        ] }], resolveParams: steamharness.createAgentProjectParamResolver({ modelSource: 'user-settings' }),
+        createInput({ args, paramValues }) { return { errCode: 0, errMessage: '', prompt: steamharness.parseConversationDefaultInputArgs(args).message, model: paramValues.model }; }
+      }); export default agent;
+    `);
+    const settings: import('steamharness').UserSettings = { agent: { permissionPolicy: 'auto', models: [{
+      id: 'first', name: 'User first', source: 'third-party', apiKind: 'openai-completions', baseUrl: `${origin}/v1`, model: 'actual-one', apiKey: 'test-only-first-key',
+    }] } };
+    app = await startWebServer({ projectDir: directory, dataDir: path.join(directory, 'data'), host: { surface: 'editor', userSettings: settings } });
+    const token = new URL(app.url).hash.slice('#session='.length);
+    const post = async (message: object) => {
+      const response = await fetch(`${app!.origin}/api/message`, { method: 'POST', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }, body: JSON.stringify(message) });
+      const result = await response.json();
+      expect(response.status, JSON.stringify(result)).toBe(200); return result.messages;
+    };
+    const resolution = (await post({ type: 'resolve', params: {}, requestId: 'user-models' }))[0];
+    expect(resolution.error).toBeUndefined(); expect(resolution.params.model.value).toBeUndefined();
+    expect(resolution.params.model.resolvedOptions).toEqual([{ value: 'first', label: 'User first', description: 'actual-one' }]);
+    await post({ type: 'send', text: 'First', params: {}, attachments: [] }); await app.controller.idle();
+    expect(app.controller.current.messages.at(-1)).toMatchObject({ status: 'success', content: 'Answer actual-one', model: 'User first' });
+    const updated: import('steamharness').UserSettings = { agent: { permissionPolicy: 'auto', models: [{ ...settings.agent.models![0], model: 'actual-two', apiKey: 'test-only-next-key' }] } };
+    await app.setHostUserSettings(updated);
+    await post({ type: 'send', text: 'Second', params: {}, attachments: [] }); await app.controller.idle();
+    expect(app.controller.current.messages.at(-1)).toMatchObject({ status: 'success', content: 'Answer actual-two' });
+    expect(calls).toEqual([{ model: 'actual-one', token: 'Bearer test-only-first-key' }, { model: 'actual-two', token: 'Bearer test-only-next-key' }]);
+    expect(app.controller.current.parameterValues?.['']?.model).toBeUndefined();
+    const view = JSON.stringify(await post({ type: 'ready' }));
+    const exported = JSON.stringify(await post({ type: 'session-action', action: 'export', id: app.controller.current.id }));
+    await app.controller.persist();
+    const history = await readFile(path.join(await projectDataDirectory(path.join(directory, 'data'), await realpath(directory), applicationId), 'conversations.json'), 'utf8');
+    for (const secret of ['test-only-first-key', 'test-only-next-key']) {
+      expect(view).not.toContain(secret); expect(exported).not.toContain(secret); expect(history).not.toContain(secret);
+    }
+  } finally {
+    await app?.close(); await new Promise<void>(resolve => { upstream.close(() => resolve()); upstream.closeAllConnections(); });
+    const runKey = createHash('sha256').update(await realpath(directory)).digest('hex');
+    await rm(path.join(os.homedir(), '.steamharness', 'configurations', 'snapshots', runKey), { recursive: true, force: true });
+    await rm(directory, { recursive: true, force: true });
+    const key = createHash('sha256').update(`application:${applicationId}`).digest('hex');
+    for (const suffix of ['.json', '.json.lock.sqlite']) await rm(path.join(os.homedir(), '.steamharness', 'configurations', `${key}${suffix}`), { force: true });
+  }
+}, 30_000);
 
 // Exercise the real page protocol, configuration service, child worker, SDK
 // Agent and loopback credential bridge. Only the upstream HTTP service is fake.
@@ -160,7 +225,7 @@ it('runs saved system and third-party models through the real Web worker with re
   }
 }, 40_000);
 
-it('switches configured models in a durable conversation without hiding prior replies or replaying inputs', async () => {
+it.each(['project', 'user-settings'] as const)('switches %s models in a durable conversation without hiding prior replies or replaying inputs', async modelSource => {
   const directory = await mkdtemp(path.join(os.tmpdir(), 'configured-durable-models-'));
   const applicationId = crypto.randomUUID();
   const configurationKey = createHash('sha256').update(`application:${applicationId}`).digest('hex');
@@ -205,16 +270,16 @@ it('switches configured models in a durable conversation without hiding prior re
     await writeFile(path.join(directory, 'package.json'), JSON.stringify({ id: applicationId, name: 'durable-model-switch', version: '1.0.0', type: 'module', steamHarness: { projectType: 'conversation', projectInfo: { dataStorage: { mode: 'local' } } }, devDependencies: { steamharness: await resolveHarnessVersion() } }));
     await writeFile(path.join(directory, 'index.ts'), `
       export const executor = steamharness.defineExecutor({ projectType: 'conversation',
-        workflow: steamharness.createAgentConversationProject({ projectName: 'Switch models', outputItemId: 'answer', tools: [], session: { compaction: { enabled: false } } }),
+        workflow: steamharness.createAgentConversationProject({ modelSource: '${modelSource}', projectName: 'Switch models', outputItemId: 'answer', tools: [], session: { compaction: { enabled: false } } }),
         conversation: { durable: { enabled: true }, recovery: { enabled: true } },
         params: [{ kind: 'quick', id: 'ai', label: 'AI', summary: ['model'], fields: [
           { name: 'provider', flag: '--provider', type: 'string', required: true, control: 'select', options: [] },
-          { name: 'model', flag: '--model', type: 'string', required: true, control: 'select', options: [] },
-        ] }], resolveParams: steamharness.createAgentProjectParamResolver(),
+          { name: 'model', flag: '--model', type: 'string', required: true, control: 'select', options: [], ${modelSource === 'user-settings' ? "userSetting: { key: 'agent.model', mode: 'default' }" : ''} },
+        ] }], resolveParams: steamharness.createAgentProjectParamResolver({ modelSource: '${modelSource}' }),
         createInput({ args }) { return steamharness.createAgentProjectInput(args); },
       });
     `);
-    const options = { projectDir: directory, dataDir: path.join(directory, 'data'), host: { surface: 'editor' as const, connection: {
+    const options = { projectDir: directory, dataDir: path.join(directory, 'data'), host: { surface: 'editor' as const, userSettings: { agent: { permissionPolicy: 'auto' as const, models: [] as import('steamharness').UserAgentModel[] } }, connection: {
       serverUrl: origin, accessToken: 'identity', aiServerUrl: origin, aiAccessToken: 'ai-identity',
     } } };
     app = await startWebServer(options);
@@ -223,7 +288,7 @@ it('switches configured models in a durable conversation without hiding prior re
       const response = await fetch(`${app!.origin}/api/message`, { method: 'POST', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }, body: JSON.stringify(message) });
       const result = await response.json(); expect(response.status, JSON.stringify(result)).toBe(200); return result.messages;
     };
-    const models = [
+    const models: import('steamharness').UserAgentModel[] = [
       { id: 'old', name: 'Original model', source: 'system', credentialId: 'subscription', model: 'system-old' },
       { id: 'custom', name: 'Custom model', source: 'third-party', apiKind: 'openai-responses', model: 'third-party', baseUrl: `${origin}/v1`, apiKey: 'third-identity' },
       { id: 'new', name: 'Replacement model', source: 'system', credentialId: 'subscription', model: 'system-new' },
@@ -231,8 +296,13 @@ it('switches configured models in a durable conversation without hiding prior re
     const expected: { status: string; content: string; model: string }[] = [];
     let sessionId: string | undefined;
     for (const [index, model] of models.entries()) {
-      const state = app.configurations.state;
-      await post({ type: 'project-configuration', call: { action: 'save', revision: state.revision, id: state.activeConfigurationId, values: { [AGENT_MODELS_CONFIGURATION_KEY]: [model] } } });
+      if (modelSource === 'user-settings') {
+        options.host.userSettings.agent.models = [model];
+        await app.setHostUserSettings(options.host.userSettings);
+      } else {
+        const state = app.configurations.state;
+        await post({ type: 'project-configuration', call: { action: 'save', revision: state.revision, id: state.activeConfigurationId, values: { [AGENT_MODELS_CONFIGURATION_KEY]: [model] } } });
+      }
       if (index) await expect.poll(() => app!.controller.hasRuns).toBe(false);
       expect(calls).toHaveLength(index);
       expect(app.controller.current.messages.filter(message => message.role === 'assistant')).toMatchObject(expected);

@@ -8,7 +8,7 @@ workflow 源码是自包含业务代码。本地宿主和 CLI 把 runtime API �
 
 ## 用户设置与权限继承
 
-项目用 `steamharness.getUserSettings(): UserSettings` 读取当前执行的只读快照，形状为 `{ readonly agent: { readonly permissionPolicy: AgentPermissionPolicy } }`。`AgentPermissionPolicy` 仍只有 `"read-only" | "workspace" | "auto"`。宿主从 SDK 导入 `withUserSettings<T>(settings: UserSettings, run: () => T): T` 注入执行上下文，或用 `parseUserSettings(value: unknown): UserSettings` 校验并复制冻结输入；这两个宿主 API 不注入项目命名空间。非法值（包括用户设置中的 `inherit`）直接抛 `TypeError`，并发上下文互不覆盖；无宿主时 `getUserSettings()` 返回 `auto`。
+项目用 `steamharness.getUserSettings(): UserSettings` 读取当前执行的只读快照，形状为 `{ readonly agent: { readonly permissionPolicy: AgentPermissionPolicy; readonly models?: readonly Readonly<UserAgentModel>[] } }`。`AgentPermissionPolicy` 仍只有 `"read-only" | "workspace" | "auto"`。宿主从 SDK 导入 `withUserSettings<T>(settings: UserSettings, run: () => T): T` 注入执行上下文，或用 `parseUserSettings(value: unknown): UserSettings` 校验并复制冻结输入；这两个宿主 API 不注入项目命名空间。非法值（包括用户设置中的 `inherit`）直接抛 `TypeError`，并发上下文互不覆盖；无宿主时 `getUserSettings()` 返回 `auto`。
 
 Agent 输入、运行时／节点选项和项目权限参数使用 `AgentPermissionPolicySetting = AgentPermissionPolicy | "inherit"`。本轮输入优先于开发者默认；两处都不填仍默认 `workspace`。只有选中的值为 `inherit` 才读取用户设置，无宿主时回退 `auto`。参数与会话保存原始 `inherit`，在实际执行时解析；工具筛选、路径范围和运行时初始化必须使用同一个具体权限值。
 
@@ -926,7 +926,7 @@ params: [
 - 需要互斥或联动时，在对应 entrypoint（Conversation 则为 executor）中定义无写入副作用、幂等的 `resolveParams({ draftText, paramValues, trigger, abortSignal })`，返回参数的 `value`、`visible`、`disabled`、`resolvedOptions` 和 option 状态补丁。初始化以及 main、Advanced、Quick 的 Form 参数变化都会触发。互斥字段隐藏时同时返回 `{ visible: false, value: null }`；单独返回 `visible: false` 会保留旧值并继续生成 args。Raw 模式初始化补丁只更新对应已声明参数，其它 Raw 参数保持不变。`resolvedOptions` 数组替换静态选项，`null` 恢复静态选项；替换时旧 option 状态会清除。只有联动依赖主输入文本时，才为相关参数设置 `resolveOnInput: true`。可以调用支持 `AbortSignal` 的只读目录 API，不得写 KV、文件或其它外部状态。
 - File params 可以声明 `multiple`、`accept` 和 `format: "json"`，让 本地宿主和 CLI Web 在 run 前保存附件，并把 opaque references 传给 workflow。
 - `defaultValue` 是字符串，必要时在 `createInput` 中转换。
-- `ParamDefinition.userSetting` / `UserSettingParamBinding` 将单个 string 参数绑定用户设置，当前支持 `{ key: "agent.permissionPolicy", mode?: "default" | "fixed" }`。`default`（省略时采用）保留三个实际权限选项，以用户设置为默认，允许项目覆盖；`fixed` 只显示当前系统值，点击打开 Studio 用户权限设置，忽略项目覆盖。不要同时声明 `defaultValue`，不支持 multiple、checkboxes、Mode 或 Slash。静态分析保留绑定，Core 在执行上下文内解析；宿主保存空覆盖标记而非显示值，显式选项才写入具体覆盖，重置恢复跟随。`createAgentProjectParams({ permissionPolicy: "inherit" })` 返回 default 绑定而非第四个选项。
+- `ParamDefinition.userSetting` / `UserSettingParamBinding` 将单个 string 参数绑定用户设置，当前支持 `{ key: "agent.permissionPolicy" | "agent.model", mode?: "default" | "fixed" }`。`default`（省略时采用）保留三个实际权限选项，以用户设置为默认，允许项目覆盖；`fixed` 只显示当前系统值，点击打开 Studio 用户权限设置，忽略项目覆盖。不要同时声明 `defaultValue`，不支持 multiple、checkboxes、Mode 或 Slash。静态分析保留绑定，Core 在执行上下文内解析；宿主保存空覆盖标记而非显示值，显式选项才写入具体覆盖，重置恢复跟随。`createAgentProjectParams({ permissionPolicy: "inherit" })` 返回 default 绑定而非第四个选项。
 - 参数变化时，同步更新 params、`createInput`、input type 和 README。
 
 日期与日期范围互斥示例：
@@ -1639,3 +1639,12 @@ configuration.json v2 字段支持 sharing: {publish?, includeValue?, editable?}
 `steamharness.getProjectConfiguration()` 返回本轮冻结的 `ProjectConfigurationSnapshot | undefined`，受限快照包含 `profileKey`、`profilePolicyVersion:1` 和宿主认证的 `accessSubject`。代码仍用 getConfig/context.config 读值；业务项目应检查宿主支持策略并拒绝输入中的模式覆盖。快照及持久恢复在发送、队列启动、恢复和工具执行前重新验证账号与在线角色。断网或退出登录仅有 Ask，不能继续历史 Build 任务，不清除历史对话与个人值。本地受限配置按应用、Server、账号隔离，同账号多窗口共享；只读参数发现复用缓存，不能把历史快照当作授权。
 
 显式传入和恢复的运行快照继续校验官方模板的字段及 JSON 子路径锁定；等待任务保留原已验证模板和值，恢复与工具执行仍须满足当前角色、固定模式和源码系统 AI 限制。源码系统 AI 限制与快照取更严格的规则，不能通过删除或放宽 `agentModelPolicy` 绕过。非模板管理者的 v2 Server 配置默认使用最新已发布模板，不因可读源码草稿而开放未发布字段；角色配置需要先发布模板。
+
+
+### 用户模型设置
+
+`UserSettings.agent.models` 是有序的 `UserAgentModel` 列表，公共字段为 `id/name/model`；系统项保存 `{source:"system",credentialId}`，三方项保存 `{source:"third-party",apiKind,baseUrl,apiKey}`。宿主注入时校验、复制并冻结，不把密钥写入参数选项、普通历史或导出。Agent 节点和直接 `createAgent()` 默认优先使用非空用户列表；显式 endpoint/models/resolvedModel 继续沿用开发者配置，项目的 system-only 限制仍强制执行。`modelSource: "user-settings"` 只用用户列表，空列表明确失败；`modelSource: "project"` 使用旧项目配置。
+
+`createAgentProjectParams({modelSource:"user-settings"})` 生成 `userSetting:{key:"agent.model",mode:"default"}`，自定义参数应内联声明此绑定并使用 `createAgentProjectParamResolver({modelSource:"user-settings"})`。宿主保存空覆盖标记，不能把显示的默认模型保存为项目覆盖。小助手使用该绑定，点击先展示可用模型，再提供“管理模型”跳转。开源 Studio 只提供三方添加来源；系统项执行前必须重查当前账号的 credentialId 和 model 授权。用户列表不覆盖 `allowThirdParty:false`。
+
+模型字段使用 `mode:"fixed"` 时先展示只读模型列表，再通过“管理模型”修改用户默认值；`mode:"default"` 允许选择项目覆盖。权限字段的 fixed 入口仍直接打开权限设置。

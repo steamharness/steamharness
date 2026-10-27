@@ -31,6 +31,18 @@ async function fixture() {
   return { filename, create, read: async () => JSON.parse(await fs.readFile(filename, 'utf8')) };
 }
 
+it('keeps model secrets in the active snapshot while saving only references to disk', async () => {
+  const f = await fixture(), left = await f.create('left');
+  const session = left.local.sessions[0] as ConversationSession;
+  session.agentParameters = { args: [], policies: {}, userSettings: { agent: { permissionPolicy: 'auto', models: [
+    { id: 'user', name: 'User', model: 'actual', source: 'third-party', baseUrl: 'https://example.test/v1', apiKind: 'openai-responses', apiKey: 'test-only-model-key' },
+  ] } } };
+  await left.history.save(left.local.sessions, 'left');
+  expect(await fs.readFile(f.filename, 'utf8')).not.toContain('test-only-model-key');
+  expect(session.agentParameters.userSettings!.agent.models![0]).toHaveProperty('apiKey', 'test-only-model-key');
+  expect((await f.read()).sessions[0].agentParameters.userSettings.agent.models[0].apiKey).toBeUndefined();
+});
+
 it('captures writable data before awaiting disk and leaves foreign histories unvisited', async () => {
   const f = await fixture(), left = await f.create('left');
   const foreign = left.local.sessions[1];

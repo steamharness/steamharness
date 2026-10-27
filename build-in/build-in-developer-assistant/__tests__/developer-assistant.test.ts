@@ -53,6 +53,8 @@ describe("developer assistant workflow", () => {
         expect.objectContaining({ value: "max" }),
       ]),
     });
+    expect(structure.params?.find(param => param.name === "model")?.userSetting).toEqual({ key: "agent.model", mode: "default" });
+    expect(source).toContain('modelSource: "user-settings"');
     expect(structure.params?.find((param) => param.name === "permissionPolicy")).toMatchObject({
       label: "Permission",
       userSetting: { key: "agent.permissionPolicy", mode: "fixed" },
@@ -119,7 +121,7 @@ describe("developer assistant workflow", () => {
     expect(source).not.toContain("desktop-control-mcp");
     expect(source).not.toContain("connectMcpServer");
     expect(source).toContain("context.toolPermissions?.getTool(tool.name)?.enabled !== false");
-    expect(source).toContain("steamharness.createAgentProjectParamResolver()");
+    expect(source).toContain('steamharness.createAgentProjectParamResolver({ modelSource: "user-settings" })');
     expect(source).not.toContain("openCodeDependency");
     expect(source).not.toContain("STEAMHARNESS_BUILTIN_OPENCODE_ENTRY");
   });

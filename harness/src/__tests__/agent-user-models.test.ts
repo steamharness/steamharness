@@ -1,0 +1,113 @@
+import assert from "node:assert/strict";
+import test from "node:test";
+import { createServer } from "node:http";
+import { getUserSettings, parseUserSettings, withUserSettings } from "../user-settings";
+import { withProjectConfiguration } from "../configuration";
+import { createAgentRuntime } from "../agent/runtime";
+import { resolveAgentSystemAIInput } from "../agent/model-resolution";
+import { createAgentProjectParamResolver } from "../agent/system-llm";
+import { createAgentProjectParams } from "../agent/project";
+import { parseProjectParamValues } from "../executor/params";
+import { normalizeProjectParamDeclarations } from "../executor/param-definition";
+import type { ConfiguredAgentModel } from "@steamharness/project-configuration";
+
+const third: ConfiguredAgentModel = { id: "custom", name: "Custom", model: "actual-model", source: "third-party", apiKind: "openai-completions", baseUrl: "https://example.test/v1", apiKey: "test-only-user-key" };
+const system: ConfiguredAgentModel = { id: "system", name: "Plan", model: "system-model", source: "system", credentialId: "plan-one" };
+const input = { errCode: 0, errMessage: "", prompt: "Hello" };
+const settings = (models: ConfiguredAgentModel[]) => ({ agent: { permissionPolicy: "auto" as const, models } });
+
+test("user model snapshots validate, copy and freeze nested records and isolate concurrent defaults", async () => {
+  const source = settings([{ ...third }]); const parsed = parseUserSettings(source);
+  source.agent.models[0]!.name = "Changed";
+  assert.equal(parsed.agent.models![0]!.name, "Custom");
+  assert.ok(Object.isFrozen(parsed.agent.models)); assert.ok(Object.isFrozen(parsed.agent.models![0]));
+  for (const models of [null, {}, [{ ...third, apiKey: "" }], [third, third], [{ ...system, credentialToken: "forbidden" }]]) {
+    assert.throws(() => parseUserSettings({ agent: { permissionPolicy: "auto", models } }));
+  }
+  const defaults = await Promise.all([third, system].map(model => withUserSettings(settings([model]), async () => {
+    await new Promise(resolve => setImmediate(resolve)); return getUserSettings().agent.models![0]!.id;
+  })));
+  assert.deepEqual(defaults, ["custom", "system"]); assert.equal(getUserSettings().agent.models, undefined);
+});
+
+test("user-bound model fields preserve inheritance, explicit selections and project source restrictions", async () => {
+  const declarations = createAgentProjectParams({ modelSource: "user-settings" });
+  const fields = normalizeProjectParamDeclarations(declarations).params;
+  const model = fields.find(field => field.name === "model")!;
+  assert.deepEqual(model.userSetting, { key: "agent.model", mode: "default" });
+  await withUserSettings(settings([third, system]), async () => {
+    assert.equal(parseProjectParamValues(declarations, []).model, "custom");
+    assert.equal(parseProjectParamValues(declarations, ["--model", "system"]).model, "system");
+    const resolver = createAgentProjectParamResolver({ modelSource: "user-settings" });
+    const choices = await resolver({ paramValues: { model: "custom" } });
+    assert.equal(choices.params?.model?.value, undefined, "Do not persist the displayed default as a project override");
+    assert.ok(!JSON.stringify(choices).includes("test-only-user-key"));
+    await withProjectConfiguration({ id: "restricted", name: "Restricted", revision: 1, values: {}, agentModelPolicy: { allowThirdParty: false } }, async () => {
+      assert.equal(parseProjectParamValues(declarations, []).model, "system");
+      assert.deepEqual((await resolver({})).params?.model?.resolvedOptions?.map(choice => choice.value), ["system"]);
+      await assert.rejects(resolveAgentSystemAIInput({ ...input, model: "custom" }, {}, undefined), /only allows system AI/);
+      await assert.rejects(createAgentRuntime({ baseUrl: third.source === "third-party" ? third.baseUrl : "", model: "other" }), /only allows system AI/);
+    });
+    const selected = await resolveAgentSystemAIInput(input, {}, undefined); assert.equal(selected.input.model, "actual-model");
+    const developer = await resolveAgentSystemAIInput(input, { baseUrl: "https://developer.test", apiKey: "developer-key" }, undefined);
+    assert.deepEqual(developer.input, input, "Explicit developer endpoints keep their existing resolution path");
+    await withProjectConfiguration({ id: "old", name: "Old", revision: 1, values: { STEAMHARNESS_AGENT_MODELS: [{ ...third, model: "legacy-model" }] } }, async () => {
+      const legacy = await resolveAgentSystemAIInput(input, { modelSource: "project" }, undefined);
+      assert.equal(legacy.input.model, "legacy-model");
+      const user = await resolveAgentSystemAIInput(input, { modelSource: "user-settings" }, undefined);
+      assert.equal(user.input.model, third.model);
+    });
+  });
+  await assert.rejects(resolveAgentSystemAIInput(input, { modelSource: "user-settings" }, undefined), /user settings/);
+  await withProjectConfiguration({ id: "restricted", name: "Restricted", revision: 1, values: {}, agentModelPolicy: { allowThirdParty: false } }, async () => {
+    for (const modelSource of [undefined, "project", "user-settings"] as const) {
+      await assert.rejects(createAgentRuntime({ modelSource, baseUrl: "https://custom.test", apiKey: "test-only-key", model: "custom" }), /only allows system AI/);
+    }
+  });
+});
+
+test("user system models recheck subscription identity and model availability without falling back", async () => {
+  const originalFetch = globalThis.fetch;
+  const names = ['STEAMHARNESS_AI_SERVER_URL', 'STEAMHARNESS_AI_API_KEY'] as const;
+  const previous = names.map(name => process.env[name]);
+  process.env.STEAMHARNESS_AI_SERVER_URL = 'https://user-catalog.example.test'; process.env.STEAMHARNESS_AI_API_KEY = 'test-account-token';
+  let available = true;
+  globalThis.fetch = async () => Response.json({ errCode: 0, errMessage: "", data: { fetchedAt: new Date().toISOString(), credentials: available ? [{
+    id: system.source === 'system' ? system.credentialId : '', name: 'Plan', platform: 'fixture', providerType: 'openai-responses', models: [system.model],
+    proxyPath: '/api/ai/proxy', credentialToken: 'temporary-test-token', expiresAt: new Date(Date.now() + 60_000).toISOString(),
+  }] : [] } });
+  try {
+    await withUserSettings(settings([system]), async () => {
+      const resolved = await resolveAgentSystemAIInput(input, {}, undefined);
+      try { assert.equal(resolved.input.model, system.model); assert.ok(resolved.input.baseUrl?.startsWith('http://127.0.0.1:')); }
+      finally { await resolved.close(); }
+      available = false;
+      await assert.rejects(resolveAgentSystemAIInput(input, {}, undefined), /unavailable|no available server AI credentials/);
+    });
+  } finally {
+    globalThis.fetch = originalFetch;
+    names.forEach((name, index) => { if (previous[index] === undefined) delete process.env[name]; else process.env[name] = previous[index]; });
+  }
+});
+
+test("direct Agent runtime runs without connection parameters and keeps its original host snapshot", async t => {
+  const requests: { model: string; key?: string }[] = [];
+  const server = createServer(async (request, response) => {
+    const chunks: Buffer[] = []; for await (const chunk of request) chunks.push(chunk);
+    const body = JSON.parse(Buffer.concat(chunks).toString()); requests.push({ model: body.model, key: request.headers.authorization });
+    response.writeHead(200, { "content-type": "text/event-stream" });
+    response.end('data: ' + JSON.stringify({ id: "answer", object: "chat.completion.chunk", created: 1, model: body.model, choices: [{ index: 0, delta: { role: "assistant", content: "User configured answer" }, finish_reason: null }] }) + '\n\ndata: ' + JSON.stringify({ id: "answer", object: "chat.completion.chunk", created: 1, model: body.model, choices: [{ index: 0, delta: {}, finish_reason: "stop" }] }) + '\n\ndata: [DONE]\n\n');
+  });
+  await new Promise<void>(resolve => server.listen(0, "127.0.0.1", resolve));
+  t.after(() => { server.closeAllConnections(); return new Promise<void>(resolve => server.close(() => resolve())); });
+  const address = server.address(); assert.ok(address && typeof address === "object");
+  const configured = { ...third, baseUrl: `http://127.0.0.1:${address.port}/v1` };
+  const runtime = await withUserSettings(settings([configured]), () => createAgentRuntime({ permissionPolicy: "read-only", tools: [] }));
+  t.after(() => runtime.close());
+  const events: unknown[] = [];
+  await withUserSettings(settings([{ ...configured, apiKey: "new-key" }]), async () => {
+    for await (const event of runtime.run(input)) events.push(event);
+  });
+  assert.ok(JSON.stringify(events).includes("User configured answer"));
+  assert.deepEqual(requests, [{ model: third.model, key: "Bearer test-only-user-key" }]);
+});

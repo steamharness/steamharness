@@ -79,7 +79,7 @@ export interface AudioParamOptions {
 
 /** Bind a parameter to a host user setting without adding a selector option. */
 export interface UserSettingParamBinding {
-  key: "agent.permissionPolicy";
+  key: "agent.permissionPolicy" | "agent.model";
   /** default permits project overrides; fixed always follows the user setting. */
   mode?: "default" | "fixed";
 }

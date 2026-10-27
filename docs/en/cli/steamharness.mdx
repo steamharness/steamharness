@@ -246,3 +246,8 @@ Parameters following the delimiter will be placed into the `args` array of the s
 Core Agent projects manage system and third-party models in the first configuration field. The composer selects saved entries and defaults to the first; editing, connection details and subscription loading live in the configuration panel. See [Agent model list](/en/concepts/project-configuration#agent-model-list).
 
 When the AI models field declares `allowThirdParty: false`, configuration only offers system AI. Saves, imports and execution reject third-party models and direct endpoint overrides. Omitting it allows both sources.
+
+
+## User model settings
+
+CLI Web accepts host user model snapshots and updates. Bind a model parameter with `userSetting: { key: "agent.model", mode: "default" }` to open available choices before **Manage models** opens Studio settings. Explicit choices become conversation overrides; resetting follows the user default. Project model configuration APIs remain available; standalone CLI does not persist Studio user models. Third-party keys are excluded from page state, ordinary history and exports, and durable sessions adopt changes after active work finishes. See [user settings](/en/core-api/user-settings#user-models-and-agents-without-connection-configuration).

@@ -8,7 +8,7 @@ export const SYSTEM_THEME = '__system__';
 export function settingsViewState(value: unknown): SettingsViewState {
   const state = value && typeof value === 'object' ? value as Record<string, unknown> : {};
   return {
-    section: typeof state.section === 'string' && /^(general|editor|permissions|account|about|provider:[\w.-]+)$/.test(state.section) ? state.section : 'general',
+    section: typeof state.section === 'string' && /^(general|editor|permissions|models|account|about|provider:[\w.-]+)$/.test(state.section) ? state.section : 'general',
     query: typeof state.query === 'string' ? state.query.slice(0, 512) : '',
     target: state.target === 'workspace' ? 'workspace' : 'user',
     scroll: typeof state.scroll === 'number' && Number.isFinite(state.scroll) ? Math.min(500_000, Math.max(0, state.scroll)) : 0,

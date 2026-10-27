@@ -74,7 +74,7 @@ async function fixture(t, { signedIn = true } = {}) {
   };
   const module = { exports: {} };
   runInNewContext(compiled.outputFiles[0].text, {
-    module, exports: module.exports, require: id => id === 'vscode' ? vscode : require(id), URL, Error, AbortSignal, AbortController, crypto: globalThis.crypto, setTimeout, clearTimeout,
+    module, exports: module.exports, require: id => id === 'vscode' ? vscode : require(id), URL, Error, AbortSignal, AbortController, structuredClone, crypto: globalThis.crypto, setTimeout, clearTimeout,
     fetch: async (url, options) => {
       f.requests++;
       const response = await f.fetch?.(url, options);
@@ -86,7 +86,7 @@ async function fixture(t, { signedIn = true } = {}) {
     setInterval: (callback, ms) => { const timer = { callback, ms, unref() {} }; intervals.add(timer); return timer; },
     clearInterval: timer => intervals.delete(timer),
   });
-  const context = { extension: { packageJSON: { version: '0.1.0' } }, subscriptions: [], secrets: { get: async () => stored, store: async value => { stored = value; }, delete: async () => { stored = undefined; }, onDidChange: secretsChanged.event } };
+  const context = { extension: { packageJSON: { version: '0.1.0' } }, subscriptions: [], secrets: { get: async key => key === 'studio.agent.models' ? undefined : stored, store: async (_key, value) => { stored = value; }, delete: async () => { stored = undefined; }, onDidChange: secretsChanged.event } };
   const controller = new module.exports.AccountController(context);
   t.after(() => controller.dispose());
   await controller.initialize();

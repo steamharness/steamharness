@@ -195,7 +195,7 @@ export function defineAgentConversationExecutor(
     ] : [])],
     params: options.params ?? createAgentProjectParams(options),
     async resolveParams(context) {
-      const result = await createAgentProjectParamResolver()(context);
+      const result = await createAgentProjectParamResolver({ modelSource: options.modelSource })(context);
       const names = new Set(normalizeProjectParamDeclarations(definition.params).params.map(param => param.name));
       return { params: Object.fromEntries(Object.entries(result.params ?? {}).filter(([name]) => names.has(name))) };
     },
@@ -270,7 +270,8 @@ export function createAgentProjectParams(options: AgentProjectOptions = {}): Con
           required: true,
           control: "select",
           label: "模型",
-          description: "先在项目配置中添加模型。默认使用列表中的第一项。",
+          description: options.modelSource === "user-settings" ? "从用户设置中选择模型，默认使用第一个可用模型。" : "先在项目配置中添加模型。默认使用列表中的第一项。",
+          ...(options.modelSource === "user-settings" ? { userSetting: { key: "agent.model" as const, mode: "default" as const } } : {}),
           options: [],
         },
         {

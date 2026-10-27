@@ -8,6 +8,8 @@ import type { AccountSectionProvider } from './account-section-types';
 import { accountMenuState } from './account-menu-state';
 import { settingsState, settingsViewState, updateSetting } from './settings';
 import type { SettingsOpenOptions, SettingsState, SettingsTarget, SettingsViewState } from './settings-types';
+import { UserModels, USER_MODELS_SECRET } from './user-models';
+import type { UserModelCatalogProvider } from './user-model-types';
 import { publicServiceUrls, serviceChannelFromServerUrl } from '../../../../shared/service-urls/index';
 import {
   DEFAULT_STEAMHARNESS_SERVER_URL, Account,
@@ -18,6 +20,9 @@ const SECRET_KEY = 'studio.project.account';
 const PROVIDER_ID = 'studio-steamharness';
 
 export class AccountController implements vscode.Disposable {
+  private readonly modelChanges = new vscode.EventEmitter<void>();
+  readonly onDidChangeUserModels = this.modelChanges.event;
+  private readonly userModels: UserModels;
   private readonly change = new vscode.EventEmitter<AccountState>();
   readonly onDidChange = this.change.event;
   private readonly sessionChange = new vscode.EventEmitter<vscode.AuthenticationProviderAuthenticationSessionsChangeEvent>();
@@ -37,6 +42,7 @@ export class AccountController implements vscode.Disposable {
   });
 
   constructor(private readonly context: vscode.ExtensionContext) {
+    this.userModels = new UserModels(context.secrets, () => { this.modelChanges.fire(); this.publishSettings(); });
     this.account = new Account(this.configuredServer(), {
       get: () => context.secrets.get(SECRET_KEY),
       store: (value) => context.secrets.store(SECRET_KEY, value),
@@ -60,7 +66,7 @@ export class AccountController implements vscode.Disposable {
       }
     });
     this.disposables.push(
-      this.change, this.sessionChange,
+      this.change, this.sessionChange, this.modelChanges, this.userModels,
       registerProjectConnectionStatus(this),
       vscode.authentication.registerAuthenticationProvider(PROVIDER_ID, 'SteamHarness', {
         onDidChangeSessions: this.sessionChange.event,
@@ -111,6 +117,7 @@ export class AccountController implements vscode.Disposable {
       vscode.commands.registerCommand('studio.logout', () => this.account.logout()),
       context.secrets.onDidChange((event) => {
         if (event.key === SECRET_KEY) { void this.account.restore().catch(() => undefined); }
+        if (event.key === USER_MODELS_SECRET) { void this.userModels.reload(); }
       }),
       vscode.workspace.onDidChangeConfiguration((event) => {
         this.scheduleSettings();
@@ -141,6 +148,7 @@ export class AccountController implements vscode.Disposable {
   async initialize(): Promise<void> {
     await vscode.commands.executeCommand('setContext', 'studio.accountAvailable', true);
     await this.readLanguagePreference();
+    await this.userModels.reload();
     await this.account.restore();
     const refresh = (): void => {
       if (vscode.window.state.focused) {
@@ -156,6 +164,8 @@ export class AccountController implements vscode.Disposable {
     );
   }
   getState(): AccountState { return this.account.getState(); }
+  getUserAgentModels() { return this.userModels.models(); }
+  registerModelCatalogProvider(provider: UserModelCatalogProvider): vscode.Disposable { return this.userModels.registerCatalogProvider(provider); }
   getConnection(): Connection | undefined { return this.account.getConnection(); }
   registerSectionProvider(provider: AccountSectionProvider): vscode.Disposable {
     const disposable = this.sections.register(provider);
@@ -244,6 +254,7 @@ export class AccountController implements vscode.Disposable {
   private publishSettings(): void {
     if (!this.panel) { return; }
     void this.panel.webview.postMessage({ type: 'settings', state: this.settingsSnapshot() });
+    void this.panel.webview.postMessage({ type: 'settings-models', state: this.userModels.state() });
   }
 
   private settingsSnapshot(): SettingsState {
@@ -270,8 +281,10 @@ export class AccountController implements vscode.Disposable {
     panel.webview.html = this.html(panel);
     let busy = false;
     let pageGeneration = 0;
+    let modelsAbort = new AbortController();
     const listeners: vscode.Disposable[] = [];
     listeners.push(panel.onDidDispose(() => {
+      modelsAbort.abort();
       if (this.panel === panel) { this.panel = undefined; }
       for (const listener of listeners) { listener.dispose(); }
     }), panel.onDidChangeViewState(({ webviewPanel }) => {
@@ -279,6 +292,7 @@ export class AccountController implements vscode.Disposable {
     }), panel.webview.onDidReceiveMessage(async (message) => {
       if (this.panel !== panel || !message || typeof message !== 'object') { return; }
       if (message.type === 'ready') {
+        modelsAbort.abort(); modelsAbort = new AbortController();
         const generation = ++pageGeneration;
         await this.readLanguagePreference();
         if (this.panel !== panel || pageGeneration !== generation) { return; }
@@ -291,6 +305,27 @@ export class AccountController implements vscode.Disposable {
       }
       if (message.type === 'settings-view-state') {
         this.viewState = settingsViewState(message.state);
+        return;
+      }
+      if (message.type === 'settings-models-account') {
+        this.open({ section: 'provider:system-ai', target: 'user' });
+        if (!this.getState().user) this.openLogin();
+        return;
+      }
+      if (message.type === 'settings-models' && typeof message.requestId === 'string' && message.requestId.length <= 100) {
+        const generation = pageGeneration, signal = modelsAbort.signal;
+        try {
+          if (message.action === 'catalog') {
+            const catalog = await this.userModels.catalog(signal);
+            if (this.panel === panel && generation === pageGeneration && !signal.aborted) await panel.webview.postMessage({ type: 'settings-model-catalog', requestId: message.requestId, catalog });
+          } else {
+            await this.userModels.update(message, signal);
+            if (this.panel === panel && generation === pageGeneration && !signal.aborted) await panel.webview.postMessage({ type: 'settings-models-result', requestId: message.requestId, state: this.userModels.state() });
+          }
+        } catch (error) {
+          if (this.panel === panel && generation === pageGeneration && !signal.aborted) await panel.webview.postMessage({ type: message.action === 'catalog' ? 'settings-model-catalog' : 'settings-models-result', requestId: message.requestId,
+            message: error instanceof Error ? error.message : t('Unable to save model.'), state: this.userModels.state() });
+        }
         return;
       }
       if (message.type === 'settings-target' && ['user', 'workspace'].includes(message.target)) {

@@ -6,8 +6,8 @@ import {
 } from "../provider/llm/server";
 import { HarnessError } from "../workflow/errors";
 import type { AgentInputModality, AgentModelAttributes } from "./types";
-import { currentConfigurationValues, getProjectConfiguration } from "../configuration";
-import { AGENT_MODELS_CONFIGURATION_KEY, parseAgentModels, type ConfigurationValues } from "@steamharness/project-configuration";
+import { type ConfigurationValues } from "@steamharness/project-configuration";
+import { agentConfiguredModels } from "./model-settings";
 
 /**
  * How the agent reaches the host's system AI.
@@ -256,22 +256,21 @@ export function resolveAgentBridgeBaseUrl(protocol: AgentSystemLLMProtocol, base
 /**
  * The `resolveParams` implementation for an agent project.
  *
- * Model choices come from the current project's configuration snapshot. Loading
+ * Model choices come from user settings or the project's configuration snapshot. Loading
  * the composer never fetches credentials or the account's subscription catalogue.
  */
-export function createAgentProjectParamResolver(): (
+export function createAgentProjectParamResolver(options: { modelSource?: "user-settings" | "project" } = {}): (
   context: { paramValues?: Record<string, unknown>; config?: ConfigurationValues; abortSignal?: AbortSignal },
 ) => Promise<ParamResolveResult> {
   return async (context) => {
-    const values = context.config ?? currentConfigurationValues();
-    const policy = getProjectConfiguration()?.agentModelPolicy;
-    const models = parseAgentModels(values[AGENT_MODELS_CONFIGURATION_KEY] ?? []).filter(model => policy?.allowThirdParty !== false || model.source === "system");
+    const configured = agentConfiguredModels(context.config, options.modelSource);
+    const models = configured.models.filter(model => !configured.systemOnly || model.source === "system");
     const selected = models.find(model => model.id === context.paramValues?.model) ?? models[0];
     return { params: {
       // Kept as a hidden wire parameter for existing inline Agent declarations.
       provider: { value: null, visible: false, disabled: true, resolvedOptions: [] },
       model: {
-        value: selected?.id ?? null,
+        value: options.modelSource === "user-settings" && (!context.paramValues?.model || context.paramValues.model === selected?.id) ? undefined : selected?.id ?? null,
         disabled: false,
         resolvedOptions: models.map(model => ({ value: model.id, label: model.name, description: model.model })),
       },

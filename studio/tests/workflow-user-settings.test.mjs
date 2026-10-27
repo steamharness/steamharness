@@ -16,4 +16,6 @@ test('opens the user permissions section and rejects unsupported keys and protoc
   assert.equal(commands.length, 0);
   assert.equal(await open({ type: 'workflow-user-settings', version: 1, key: 'agent.permissionPolicy' }), true);
   assert.deepEqual(commands, [['studio.openSettings', { section: 'permissions', target: 'user' }]]);
+  assert.equal(await open({ type: 'workflow-user-settings', version: 1, key: 'agent.model' }), true);
+  assert.deepEqual(commands[1], ['studio.openSettings', { section: 'models', target: 'user' }]);
 });

@@ -123,6 +123,8 @@ export async function startProjectCli(options: {
     { cwd: options.projectDir, env: environment(options.studioControl), shell: false, stdio: ['pipe', 'pipe', 'pipe'], signal: options.signal });
   const events = new EventEmitter();
   const secrets = new Set([options.connection?.accessToken, options.connection?.aiAccessToken, options.studioControl?.token].filter((token): token is string => !!token));
+  const rememberModels = (settings?: StudioUserSettings) => { for (const model of settings?.agent.models ?? []) if (model.source === 'third-party') secrets.add(model.apiKey); };
+  rememberModels(options.userSettings);
   const cleanError = (message: string): string => { for (const token of secrets) { message = message.replaceAll(token, '[redacted]'); } return message; };
   let finishClose!: () => void;
   const closed = new Promise<void>(resolve => { finishClose = resolve; });
@@ -194,6 +196,7 @@ export async function startProjectCli(options: {
         const key = JSON.stringify(settings);
         if (key === userSettingsKey) { return; }
         userSettingsKey = key;
+        rememberModels(settings);
         child.stdin?.write(`${JSON.stringify({ type: 'user-settings', userSettings: settings })}\n`);
       },
       updateAuth: connection => {

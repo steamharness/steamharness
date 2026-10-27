@@ -232,7 +232,7 @@ function initialize(): void {
     current: () => ({ values: values(), states: paramStates, disabled: busy(), loading: parametersLoading(), modelConfigurationRequired: configurationPanel.needsAgentModels() }),
     fieldRoot: (name) => fields.get(name)!.root,
     onChange: (name, value) => setFieldValue(name, value),
-    onConfigureModel: () => configurationPanel.openAgentModels(),
+    onConfigureModel: () => currentParameters().fields.some(field => field.userSetting?.key === 'agent.model') ? vscode.postMessage({ type: 'open-user-setting', key: 'agent.model' }) : configurationPanel.openAgentModels(),
     onOpenUserSetting: key => vscode.postMessage({ type: 'open-user-setting', key }),
     onReset: (names) => {
       for (const name of names) {
@@ -992,7 +992,7 @@ function initialize(): void {
     };
     root.querySelector<HTMLButtonElement>('.copy-message')!.addEventListener('click', (event) => copy(conversationPrompt(view.message.content, view.message.references), event.currentTarget as HTMLButtonElement));
     if (message.role === 'assistant') {
-      view.configureModel = iconButton('settings-gear', t('Configure model'), () => configurationPanel.openAgentModels());
+      view.configureModel = iconButton('settings-gear', t('Configure model'), () => currentParameters().fields.some(field => field.userSetting?.key === 'agent.model') ? vscode.postMessage({ type: 'open-user-setting', key: 'agent.model' }) : configurationPanel.openAgentModels());
       view.configureModel.append(document.createTextNode(t('Configure model')));
       view.configureModel.className = 'configure-model-message'; view.configureModel.hidden = true;
       view.configureModel.setAttribute('aria-haspopup', 'dialog'); view.configureModel.setAttribute('aria-controls', 'project-configurations-dialog');

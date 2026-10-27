@@ -1,3 +1,4 @@
+import { userSettingsJsonReplacer } from './user-settings';
 import { t } from './localization';
 import {
   applyOutputChunk, resolvedProjectValues, validateProjectValues, projectFormValue, projectParameters, projectParamArgs,
@@ -43,7 +44,7 @@ export class Controller {
     return this.workspace.drafts[entrypointId ?? ''] ??= { scopeId: globalThis.crypto.randomUUID(), values: {}, rawArgs: '[]', inputMode: 'form', policies: {} };
   }
   async persist(): Promise<void> {
-    await this.options.save(JSON.parse(JSON.stringify({ ...this.workspace, runs: this.runs.map(({ submittingInput: _, ...record }) => record) })));
+    await this.options.save(JSON.parse(JSON.stringify({ ...this.workspace, runs: this.runs.map(({ submittingInput: _, ...record }) => record) }, userSettingsJsonReplacer)));
   }
   private changed(): void { if (!this.disposed) { this.options.changed(); } }
   private scheduleSave(): void {

@@ -13,6 +13,7 @@ description: "读取宿主的用户设置，并为 Agent 显式选择继承用�
 interface UserSettings {
   readonly agent: {
     readonly permissionPolicy: AgentPermissionPolicy;
+    readonly models?: readonly Readonly<UserAgentModel>[];
   };
 }
 
@@ -58,7 +59,7 @@ Core 先选本轮 `AgentInput.permissionPolicy`，再选开发者的运行时／
 
 ## 参数展示方式
 
-开发者通过 `ParamDefinition.userSetting` 选择项目如何使用用户配置。当前支持单个 string 字段绑定 `key: "agent.permissionPolicy"`。
+开发者通过 `ParamDefinition.userSetting` 选择项目如何使用用户配置。支持单个 string 字段绑定 `key: "agent.permissionPolicy"` 或 `key: "agent.model"`。
 
 - `mode: "fixed"`：只显示系统当前权限，点击打开 Studio 用户设置；忽略项目覆盖及旧会话保存的具体值。
 - `mode: "default"`（省略 mode 时采用）：保留三个原始选项，以用户配置为默认选中值；手动选择后成为项目覆盖，重置恢复跟随当前用户配置。
@@ -86,6 +87,39 @@ createInput({ paramValues }) {
 ```
 
 将示例改为 `mode: "default"` 即可允许项目单独覆盖。`createAgentProjectParams({ permissionPolicy: "inherit" })` 自动生成该可覆盖绑定。独立 CLI 可以解析宿主注入值，打开用户设置页需要 Studio 宿主。
+
+## 用户模型与免配置 Agent
+
+在 **设置 → 模型** 添加、编辑、删除模型，并将任意模型设为默认。模型属于用户，跨工作区生效；名称、协议、Base URL、模型 ID 和 API 密钥通过宿主传入运行时。三方密钥保存在 Studio SecretStorage，不进入项目配置、页面状态、普通会话历史或导出。编辑已有三方模型时，密钥留空会保留原密钥。
+
+开源 Studio 仅提供三方自定义来源，支持 OpenAI Chat Completions、OpenAI Responses 和 Anthropic Messages。提供系统 AI 的宿主还可展示已授权的系统模型目录；保存的是凭据 ID 与模型 ID，执行时重新检查当前账号的授权与模型可用性，不保存系统代理令牌。
+
+`UserAgentModel` 是以下两类记录的联合，每条记录都有稳定的 `id`、显示名称 `name` 和实际模型 ID `model`：
+
+- 系统模型：`{ source: "system", credentialId: string }`。
+- 三方模型：`{ source: "third-party", apiKind: "openai-completions" | "openai-responses" | "anthropic-messages", baseUrl: string, apiKey: string }`。
+
+模型列表会复制并冻结。Base URL 必须是 HTTP(S) 地址，不含认证、查询或片段；模型 ID 必须唯一，最多保存 100 条。非法模型配置会被拒绝。
+
+当用户列表非空时，Core Agent 节点与直接 `createAgent()` 可自动使用第一个允许的模型；本轮 `model` 可以指定列表中的 ID。显式开发者 endpoint、`models` 或 `resolvedModel` 保持原方式。`modelSource: "user-settings"` 明确只使用用户模型，列表为空时提示添加模型；`modelSource: "project"` 明确保留旧项目配置来源。项目的 `allowThirdParty: false` 对用户模型和显式端点同样生效，不会被用户设置绕过。
+
+```ts
+// 自动生成可覆盖的模型参数，列表和默认值来自用户设置。
+const project = steamharness.createAgentConversationProject({
+  modelSource: "user-settings",
+  permissionPolicy: "inherit",
+});
+
+// 自定义参数入口仍可内联声明：
+// userSetting: { key: "agent.model", mode: "default" }
+// resolveParams: steamharness.createAgentProjectParamResolver({ modelSource: "user-settings" })
+```
+
+小助手使用用户模型列表。点击模型入口先展示可用模型，**管理模型** 再打开设置；手动选择模型作为当前项目／会话覆盖，重置后恢复用户默认值。原项目模型配置 API 继续保留，小助手不使用其中的模型。
+
+自定义模型字段使用 `mode: "fixed"` 时也先展示列表，列表只读，通过 **管理模型** 修改用户默认值；`mode: "default"` 允许在项目中选择覆盖。
+
+模型设置变化只影响安全边界后的任务。正在执行的任务及后台工作保留原连接快照。中断恢复从宿主补充同一模型与同一端点的密钥；已移除或改变端点的模型会明确失败，不会把新密钥发到旧地址。
 
 ## Studio 与 CLI 会话
 

@@ -1,5 +1,7 @@
 # Unreleased
 
+- Added a user model settings page with add, edit, delete and default actions across workspaces and SecretStorage for third-party keys. Open-source Studio offers third-party models; host extensions may supply a system AI catalogue. The assistant opens available choices before model settings.
+
 - Fixed the Assistant permission shortcut to open the Permissions category in user settings, reusing the existing settings tab. Sidebar and standalone tool shortcuts now work independently of the conversation lifecycle.
 
 - Parameter `userSetting` bindings support fixed user policies or user defaults with project overrides. Fixed controls show the actual policy and open user settings; editable controls retain the three original choices. Reset restores inheritance without persisting the displayed value as an override; active work keeps its snapshot.

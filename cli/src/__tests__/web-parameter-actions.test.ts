@@ -89,6 +89,26 @@ function fixture() {
 }
 
 describe('Quick parameter triggers', () => {
+  it.each(['default', 'fixed'] as const)('user models (%s) open available choices before the model-settings management action', mode => {
+    const f = fixture();
+    f.parameters.fields[0].userSetting = { key: 'agent.model', mode };
+    f.parameters.fields[0].userSettingValue = 'long';
+    f.state.values.model = ''; f.state.modelConfigurationRequired = true;
+    f.actions.render(f.parameters); f.flush();
+    f.container.children[0].dispatchEvent(new Event('click'));
+    expect(f.popup.hidden).toBe(false); expect(f.onConfigureModel).not.toHaveBeenCalled();
+    expect(f.popup.querySelectorAll('[role=option]')).toHaveLength(2);
+    expect(f.popup.querySelectorAll('[role=option]').every(option => option.disabled)).toBe(mode === 'fixed');
+    expect(f.popup.querySelectorAll('[role=option][aria-selected=true]')).toHaveLength(1);
+    expect(f.onOpenUserSetting).not.toHaveBeenCalled();
+    f.popup.querySelector('[data-focus-key=manage-models]')!.dispatchEvent(new Event('click'));
+    expect(f.onOpenUserSetting).toHaveBeenCalledWith('agent.model');
+    f.state.states.model = { resolvedOptions: [] }; f.actions.update();
+    expect(f.container.children[0].disabled).toBe(false);
+    f.container.children[0].dispatchEvent(new Event('click'));
+    expect(f.popup.hidden).toBe(false);
+    expect(f.popup.querySelector('[data-focus-key=manage-models]')).toBeTruthy();
+  });
   it('turns an empty configured-model selector into a setup shortcut and restores choices after saving', () => {
     const f = fixture(), button = f.container.children[0];
     f.state.states.model = { resolvedOptions: [] };f.state.values.model='';

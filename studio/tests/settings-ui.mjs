@@ -47,7 +47,7 @@ try {
         await send('account', { state: { status: 'signed-out', serverUrl: account.serverUrl, revision: 0 } });
         await send('settings-navigate', { state: { section: 'general' } });
         assert.equal(await category('general').getAttribute('aria-current'), 'page');
-        assert.equal(await page.locator('#settings-navigation button').count(), 5, 'Public settings includes permissions without injected categories');
+        assert.equal(await page.locator('#settings-navigation button').count(), 6, 'Public settings includes models and permissions without injected categories');
         await fits();
         assert.equal(await page.locator('select').count(), 0, 'Settings must use page menus, including language and scope');
         await selectSettingsOption(page, setting('workbench.colorTheme'), 'Light');

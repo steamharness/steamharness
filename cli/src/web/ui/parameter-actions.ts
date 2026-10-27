@@ -21,6 +21,8 @@ const icon = (name: string): HTMLSpanElement => {
   return element;
 };
 
+const settingsShortcut = (field: Field): boolean => field.userSetting?.mode === 'fixed' && field.userSetting.key !== 'agent.model';
+
 export function parameterSelectionLabel(field: Field, value: ParamValue | undefined, state?: ParamState): string {
   value = projectParamEffectiveValue(field, value);
   const options = state?.resolvedOptions ?? field.options ?? [];
@@ -106,11 +108,11 @@ export class ParameterActions {
         button.setAttribute('aria-expanded', 'false');
       }
       button.addEventListener('click', () => {
-        const fixed = action.kind === 'quick' ? this.groupFields(action).filter(field => field.userSetting?.mode === 'fixed') : [];
+        const fixed = action.kind === 'quick' ? this.groupFields(action).filter(settingsShortcut) : [];
         if (fixed.length === 1 && this.groupFields(action as GroupAction).length === 1) {
           this.close(); this.options.onOpenUserSetting?.(fixed[0].userSetting!.key); return;
         }
-        if (action.kind === 'quick' && this.groupFields(action).some(field => field.name === 'model') && this.options.current().modelConfigurationRequired && this.options.onConfigureModel) {
+        if (action.kind === 'quick' && this.groupFields(action).some(field => field.name === 'model' && field.userSetting?.key !== 'agent.model') && this.options.current().modelConfigurationRequired && this.options.onConfigureModel) {
           this.close(); this.options.onConfigureModel(); return;
         }
         if (action.kind === 'mode') {
@@ -150,10 +152,11 @@ export class ParameterActions {
         view.label.textContent = field ? `${field.label || field.name}: ${parameterSelectionLabel(field, values[field.name], states[field.name])}` : '';
       } else if (action.kind !== 'slash') {
         const fields = this.groupFields(action);
-        const configureModel = action.kind === 'quick' && fields.some(field => field.name === 'model') && modelConfigurationRequired && !!this.options.onConfigureModel;
-        const settingsShortcut = fields.length === 1 && fields[0].userSetting?.mode === 'fixed';
+        const configureModel = action.kind === 'quick' && fields.some(field => field.name === 'model' && field.userSetting?.key !== 'agent.model') && modelConfigurationRequired && !!this.options.onConfigureModel;
+        const userModels = fields.some(field => field.userSetting?.key === 'agent.model');
+        const shortcut = fields.length === 1 && settingsShortcut(fields[0]);
         view.button.hidden = fields.length === 0;
-        view.button.disabled = !settingsShortcut && (disabled || !configureModel && (action.kind === 'auxiliary' ? loading : fields.every((field) =>
+        view.button.disabled = !shortcut && !userModels && (disabled || !configureModel && (action.kind === 'auxiliary' ? loading : fields.every((field) =>
           states[field.name]?.disabled === true || this.visibleOptions(field).length === 0)));
         const summaries = action.summary?.map((name) => fields.find((field) => field.name === name))
           .filter((field): field is Field => !!field && !!projectParamEffectiveValue(field, values[field.name])?.length)
@@ -165,9 +168,9 @@ export class ParameterActions {
         view.button.dataset.configureModel = String(!!configureModel);
         view.button.setAttribute('aria-haspopup', configureModel ? 'dialog' : action.kind === 'quick' ? 'menu' : 'dialog');
         view.button.setAttribute('aria-controls', configureModel ? 'project-configurations-dialog' : this.popup.id);
-        view.button.setAttribute('aria-busy', String(loading && !configureModel && !settingsShortcut));
+        view.button.setAttribute('aria-busy', String(loading && !configureModel && !shortcut));
       }
-      const fixed = action.kind === 'quick' && this.groupFields(action).length === 1 && this.groupFields(action)[0].userSetting?.mode === 'fixed';
+      const fixed = action.kind === 'quick' && this.groupFields(action).length === 1 && settingsShortcut(this.groupFields(action)[0]);
       if (fixed) { view.button.removeAttribute('aria-haspopup'); view.button.removeAttribute('aria-controls'); view.button.removeAttribute('aria-expanded'); }
       view.button.title = view.button.ariaLabel = [view.label.textContent, view.summary?.textContent, fixed ? t('Change in user settings') : undefined].filter(Boolean).join(': ');
     }
@@ -215,8 +218,8 @@ export class ParameterActions {
   openForField(name: string): boolean {
     const view = this.views.find((view) => (view.action.kind === 'quick' || view.action.kind === 'auxiliary') && view.action.params.includes(name));
     if (!view || view.action.kind === 'mode' || view.action.kind === 'slash') { return false; }
-    if (this.field(name)?.userSetting?.mode === 'fixed') { this.options.onOpenUserSetting?.(this.field(name)!.userSetting!.key); return true; }
-    if (name === 'model' && this.options.current().modelConfigurationRequired && this.options.onConfigureModel) { view.button.focus(); return true; }
+    if (this.field(name) && settingsShortcut(this.field(name)!)) { this.options.onOpenUserSetting?.(this.field(name)!.userSetting!.key); return true; }
+    if (name === 'model' && this.field(name)?.userSetting?.key !== 'agent.model' && this.options.current().modelConfigurationRequired && this.options.onConfigureModel) { view.button.focus(); return true; }
     this.open(view as ActionView & { action: GroupAction }, name);
     return true;
   }
@@ -224,7 +227,7 @@ export class ParameterActions {
   private open(view: ActionView & { action: GroupAction }, name?: string): void {
     this.close();
     this.active = view;
-    this.activeParam = view.action.kind === 'quick' ? name : undefined;
+    this.activeParam = view.action.kind === 'quick' ? name ?? this.groupFields(view.action).find(field => field.userSetting?.key === 'agent.model')?.name : undefined;
     view.button.setAttribute('aria-expanded', 'true');
     this.popup.hidden = false;
     this.popup.dataset.kind = view.action.kind;
@@ -284,13 +287,13 @@ export class ParameterActions {
       row.dataset.param = field.name; row.dataset.focusKey = `field:${field.name}`;
       row.disabled = disabled || loading || states[field.name]?.disabled === true || this.visibleOptions(field).length === 0;
       row.setAttribute('aria-expanded', String(this.activeParam === field.name));
-      if (field.userSetting?.mode === 'fixed') { row.removeAttribute('aria-haspopup'); row.removeAttribute('aria-expanded'); row.title = t('Change in user settings'); }
+      if (settingsShortcut(field)) { row.removeAttribute('aria-haspopup'); row.removeAttribute('aria-expanded'); row.title = t('Change in user settings'); }
       const label = document.createElement('span'); label.textContent = field.label || field.name;
       const value = document.createElement('span'); value.className = 'quick-param-value';
       value.textContent = parameterSelectionLabel(field, values[field.name], states[field.name]);
-      row.append(label, value, icon(field.userSetting?.mode === 'fixed' ? 'settings-gear' : 'chevron-right'));
+      row.append(label, value, icon(settingsShortcut(field) ? 'settings-gear' : 'chevron-right'));
       row.addEventListener('click', () => {
-        if (field.userSetting?.mode === 'fixed') { this.close(); this.options.onOpenUserSetting?.(field.userSetting.key); return; }
+        if (settingsShortcut(field)) { this.close(); this.options.onOpenUserSetting?.(field.userSetting!.key); return; }
         this.activeParam = field.name; this.renderQuick(); this.position();
         (this.popup.querySelector<HTMLButtonElement>('[role=option][aria-selected=true]:not(:disabled)')
           ?? this.popup.querySelector<HTMLButtonElement>('[role=option]:not(:disabled)'))?.focus();
@@ -299,7 +302,7 @@ export class ParameterActions {
     }
     const reset = document.createElement('button');
     reset.type = 'button'; reset.className = 'quick-reset'; reset.setAttribute('role', 'menuitem');
-    reset.dataset.focusKey = 'reset'; reset.disabled = disabled || loading;
+    reset.dataset.focusKey = 'reset'; reset.disabled = disabled || loading || fields.every(field => field.userSetting?.mode === 'fixed');
     reset.textContent = single && fields[0].userSetting ? t('Reset to user settings') : t("Reset options"); reset.append(icon('discard'));
     reset.addEventListener('click', () => { this.activeParam = undefined; this.options.onReset(fields.filter(field => field.userSetting?.mode !== 'fixed').map((field) => field.name)); });
     const field = single ? fields[0] : fields.find((field) => field.name === this.activeParam && states[field.name]?.disabled !== true);
@@ -327,7 +330,7 @@ export class ParameterActions {
         const button = document.createElement('button'); button.type = 'button'; button.className = 'quick-option-row';
         button.setAttribute('role', 'option'); button.setAttribute('aria-selected', String(selected));
         button.dataset.focusKey = `option:${option.value}`;
-        button.disabled = disabled || loading || states[field.name]?.disabled === true || states[field.name]?.options?.[option.value]?.disabled === true;
+        button.disabled = disabled || loading || field.userSetting?.mode === 'fixed' || states[field.name]?.disabled === true || states[field.name]?.options?.[option.value]?.disabled === true;
         const check = document.createElement('span'); check.className = 'quick-option-check';
         if (selected) { check.append(icon('check')); }
         const copy = document.createElement('span'); copy.className = 'quick-option-copy';
@@ -350,6 +353,13 @@ export class ParameterActions {
       if (!single) { panels.push(detail); }
     }
     menu.append(reset);
+    if (fields.some(field => field.userSetting?.key === 'agent.model')) {
+      const manage = document.createElement('button'); manage.type = 'button'; manage.className = 'quick-reset';
+      manage.setAttribute('role', 'menuitem'); manage.dataset.focusKey = 'manage-models';
+      manage.textContent = t('Manage models'); manage.append(icon('settings-gear'));
+      manage.addEventListener('click', () => { this.close(true); this.options.onOpenUserSetting?.('agent.model'); });
+      menu.append(manage);
+    }
     this.popup.replaceChildren(...panels);
     const list = this.popup.querySelector<HTMLElement>('.quick-options-list');
     if (list) { list.scrollTop = previousScroll; }

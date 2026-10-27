@@ -1,10 +1,17 @@
+import { getProjectConfiguration } from "./configuration";
 import { AsyncLocalStorage } from "node:async_hooks";
 import { AGENT_PERMISSION_POLICIES, type AgentPermissionPolicy } from "./agent/types";
+import { parseAgentModels, type ConfiguredAgentModel } from "@steamharness/project-configuration";
+
+/** A user model reference or third-party connection accepted by the execution host. */
+export type UserAgentModel = ConfiguredAgentModel;
 
 /** User preferences supplied by the execution host, separate from project configuration. */
 export interface UserSettings {
   readonly agent: {
     readonly permissionPolicy: AgentPermissionPolicy;
+    /** Ordered user models; the first permitted entry is the default. */
+    readonly models?: readonly Readonly<UserAgentModel>[];
   };
 }
 
@@ -24,7 +31,16 @@ export function parseUserSettings(value: unknown): UserSettings {
     !AGENT_PERMISSION_POLICIES.some(policy => policy === settings.agent?.permissionPolicy)) {
     throw new TypeError("Invalid user settings: agent.permissionPolicy must be read-only, workspace, or auto.");
   }
-  return Object.freeze({ agent: Object.freeze({ permissionPolicy: settings.agent.permissionPolicy }) });
+  const models = settings.agent.models === undefined ? undefined
+    : Object.freeze(parseAgentModels(settings.agent.models).map(model => Object.freeze(model)));
+  return Object.freeze({ agent: Object.freeze({ permissionPolicy: settings.agent.permissionPolicy,
+    ...(models === undefined ? {} : { models }) }) });
+}
+
+/** Scalar defaults for user-bound project parameters; credentials never enter parameter metadata. */
+export function userSettingParamDefault(key: "agent.permissionPolicy" | "agent.model"): string {
+  const { agent } = getUserSettings();
+  return key === "agent.permissionPolicy" ? agent.permissionPolicy : agent.models?.find(model => getProjectConfiguration()?.agentModelPolicy?.allowThirdParty !== false || model.source === "system")?.id ?? "";
 }
 
 /** Run host work in an isolated settings snapshot, including asynchronous descendants. */

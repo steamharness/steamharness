@@ -81,7 +81,7 @@ const disabled = () => !connected || !!state?.running || submitting || !!state?.
 const fields = new Fields(element('main-fields'), element('parameter-actions'), {
   openUserSetting: key => host.postMessage({ type: 'open-user-setting', key }),
   values: () => draft().values, states: () => paramStates, disabled, loading: () => resolving,
-  modelConfigurationRequired: () => configurationPanel.needsAgentModels(), configureModel: () => configurationPanel.openAgentModels(),
+  modelConfigurationRequired: () => configurationPanel.needsAgentModels(), configureModel: () => parameters().fields.some(field => field.userSetting?.key === 'agent.model') ? host.postMessage({ type: 'open-user-setting', key: 'agent.model' }) : configurationPanel.openAgentModels(),
   change: (name, value) => { draft().values[name] = value; fields.update(); scheduleResolve({ kind: 'param', paramName: name }); },
   file: name => post({ type: 'attach', entrypointId, paramName: name, accept: parameters().fields.find(field => field.name === name)?.accept }),
 });

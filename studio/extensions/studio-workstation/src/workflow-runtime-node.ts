@@ -26,14 +26,19 @@ export function createProjectRuntime(context: vscode.ExtensionContext, account: 
   const sessions = new Set<WebSession>();
   const controller = new AbortController();
   let settingsTimer: ReturnType<typeof setTimeout> | undefined;
-  const userSettingsChanged = vscode.workspace.onDidChangeConfiguration(event => {
-    if (!event.affectsConfiguration(USER_PERMISSION_SETTING)) { return; }
+  const settingsSnapshot = () => readUserSettings(account.getUserAgentModels?.());
+  const syncUserSettings = () => {
     clearTimeout(settingsTimer);
     settingsTimer = setTimeout(() => {
-      try { const settings = readUserSettings(); for (const session of sessions) { session.updateUserSettings(settings); } }
+      try { const settings = settingsSnapshot(); for (const session of sessions) { session.updateUserSettings(settings); } }
       catch (error) { void vscode.window.showErrorMessage(String(error instanceof Error ? error.message : error)); }
     }, 50);
+  };
+  const userSettingsChanged = vscode.workspace.onDidChangeConfiguration(event => {
+    if (!event.affectsConfiguration(USER_PERMISSION_SETTING)) { return; }
+    syncUserSettings();
   });
+  const userModelsChanged = account.onDidChangeUserModels?.(syncUserSettings);
   const executable = (): string => vscode.workspace.getConfiguration('studio').get<string>('project.nodePath') || process.execPath;
   const configurationService = {
     configuration: async (input: Record<string,unknown>, signal: AbortSignal): Promise<unknown> => {
@@ -279,14 +284,14 @@ export function createProjectRuntime(context: vscode.ExtensionContext, account: 
           resourceProjects,
           dataDir: path.join(context.globalStorageUri.fsPath, 'workflow', 'web'),
           theme: theme === vscode.ColorThemeKind.Light || theme === vscode.ColorThemeKind.HighContrastLight ? 'light' : 'dark',
-          surface, connection, locale: vscode.env.language, assistant: project.assistant, studioControl, userSettings: readUserSettings(), signal: runSignal, port });
+          surface, connection, locale: vscode.env.language, assistant: project.assistant, studioControl, userSettings: settingsSnapshot(), signal: runSignal, port });
         const sessionBridge = bridge;
         void session.closed.then(() => sessionBridge?.close());
         if (controller.signal.aborted) { await session.close(); throw new Error('Workflow host has stopped.'); }
         sessions.add(session);
         void session.closed.then(() => sessions.delete(session));
         if (JSON.stringify(account.getConnection()) !== JSON.stringify(connection)) { session.updateAuth(account.getConnection()); }
-        try { session.updateUserSettings(readUserSettings()); }
+        try { session.updateUserSettings(settingsSnapshot()); }
         catch (error) { await session.close(); throw error; }
         return session;
       } catch (error) { await bridge?.close(); throw error; }
@@ -298,6 +303,6 @@ export function createProjectRuntime(context: vscode.ExtensionContext, account: 
         storageDir: path.join(context.globalStorageUri.fsPath, 'workflow', 'web'), nodePath: executable(), connection: account.getConnection(),
         signal: AbortSignal.any([signal, controller.signal]) });
     },
-    dispose: () => { controller.abort(); authentication.dispose(); userSettingsChanged.dispose(); clearTimeout(settingsTimer); for (const session of sessions) { void session.close(); } },
+    dispose: () => { controller.abort(); authentication.dispose(); userSettingsChanged.dispose(); userModelsChanged?.dispose(); clearTimeout(settingsTimer); for (const session of sessions) { void session.close(); } },
   };
 }

@@ -1,3 +1,4 @@
+import { SettingsModels } from './settings-models';
 import { t } from './localization';
 import { renderAccountSections } from './account-sections';
 import { SettingsDropdown } from './settings-dropdown';
@@ -46,6 +47,7 @@ export function createSettingsView(root: HTMLElement, vscode: WebviewApi): { acc
         <section id="settings-general" class="settings-panel" aria-label="${t('General')}"></section>
         <section id="settings-editor" class="settings-panel" aria-label="${t('Editor')}" hidden></section>
         <section id="settings-permissions" class="settings-panel" aria-label="${t('Permissions')}" hidden></section>
+        <section id="settings-models" class="settings-panel" aria-label="${t('Models')}" hidden></section>
         <section id="settings-account" class="settings-panel" aria-label="${t('Account')}" hidden></section>
         <section id="settings-provider" class="settings-panel" hidden><div id="settings-sign-in" class="settings-card settings-empty" hidden><p>${t('Sign in to view this information.')}</p><button type="button" class="secondary" id="settings-provider-sign-in">${t('Sign In')}</button></div><div id="account-sections" hidden></div></section>
         <section id="settings-about" class="settings-panel" aria-label="${t('About')}" hidden><div class="settings-card settings-about"><span class="settings-product-icon codicon codicon-terminal" aria-hidden="true"></span><h2>SteamHarness Studio</h2><p class="muted">${t('Your workspace for building and running SteamHarness projects.')}</p><dl><dt>${t('Studio version')}</dt><dd id="settings-studio-version"></dd><dt>${t('VS Code version')}</dt><dd id="settings-vscode-version"></dd></dl><button type="button" class="secondary" data-settings-action="documentation">${t('Documentation')}</button></div></section>
@@ -59,6 +61,7 @@ export function createSettingsView(root: HTMLElement, vscode: WebviewApi): { acc
   const main = find<HTMLElement>('settings-main');
   const sections = find<HTMLElement>('account-sections');
   const saveStatus = find<HTMLElement>('settings-save-status');
+  const models = new SettingsModels(find('settings-models'), message => vscode.postMessage(message), () => filter());
   const updateAvatar = bindAvatar(find<HTMLImageElement>('settings-avatar-image'), root.querySelector<HTMLElement>('.settings-avatar > .codicon')!);
   const edits = new Map<string, { value: string | number | boolean; saving: boolean; error?: string }>();
   const rows = new Map<string, HTMLElement>();
@@ -84,7 +87,7 @@ export function createSettingsView(root: HTMLElement, vscode: WebviewApi): { acc
 
   function closeDropdowns(): void {
     for (const dropdown of dropdowns.values()) { dropdown.close(); }
-    targetDropdown.close(); languageDropdown?.close();
+    targetDropdown.close(); languageDropdown?.close(); models.closeDropdowns();
   }
 
   function persist(): void {
@@ -98,6 +101,7 @@ export function createSettingsView(root: HTMLElement, vscode: WebviewApi): { acc
       { id: 'account', label: t('Account'), icon: 'account' },
       { id: 'general', label: t('General'), icon: 'settings-gear' },
       { id: 'editor', label: t('Editor'), icon: 'code' },
+      { id: 'models', label: t('Models'), icon: 'sparkle' },
       { id: 'permissions', label: t('Permissions'), icon: 'shield' },
       ...(snapshot?.providers ?? []).map(provider => ({ id: `provider:${provider.id}`, label: provider.title, icon: provider.icon ?? 'extensions' })),
       { id: 'about', label: t('About'), icon: 'info' },
@@ -324,7 +328,7 @@ export function createSettingsView(root: HTMLElement, vscode: WebviewApi): { acc
     const selected = categories().find(category => category.id === view.section) ?? categories().find(category => category.id === 'general')!;
     const activeSection = selected.id;
     let matches = 0;
-    for (const section of ['general', 'editor', 'permissions', 'account', 'provider', 'about']) {
+    for (const section of ['general', 'editor', 'permissions', 'models', 'account', 'provider', 'about']) {
       const pane = find<HTMLElement>(`settings-${section}`);
       let visible = searching ? false : section === (activeSection.startsWith('provider:') ? 'provider' : activeSection);
       if (section === 'general' || section === 'editor' || section === 'permissions') {
@@ -348,6 +352,9 @@ export function createSettingsView(root: HTMLElement, vscode: WebviewApi): { acc
           actions.hidden = searching && !actions.textContent?.toLocaleLowerCase().includes(query);
           if (searching && !actions.hidden) { visible = true; ++matches; }
         }
+      } else if (section === 'models' && searching) {
+        visible = `${t('Models')} ${pane.textContent} model api`.toLocaleLowerCase().includes(query);
+        if (visible) ++matches;
       } else if (searching) {
         const matching = categories().filter(category => (section === 'provider' ? category.id.startsWith('provider:') : category.id === section) && category.label.toLocaleLowerCase().includes(query));
         visible = matching.length > 0;
@@ -405,6 +412,7 @@ export function createSettingsView(root: HTMLElement, vscode: WebviewApi): { acc
   find('settings-provider-sign-in').addEventListener('click', openAccount);
   window.addEventListener('message', event => {
     const message = event.data;
+    if (models.handle(message)) { return; }
     if (message.type === 'settings') {
       snapshot = message.state;
       view.target = snapshot?.target;

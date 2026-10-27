@@ -26,7 +26,7 @@ export function readProjectParamDefinitionError(
 ): string | undefined {
   if (param.userSetting !== undefined) {
     const binding = param.userSetting;
-    if (!binding || typeof binding !== "object" || binding.key !== "agent.permissionPolicy" ||
+    if (!binding || typeof binding !== "object" || !["agent.permissionPolicy", "agent.model"].includes(binding.key) ||
       binding.mode !== undefined && binding.mode !== "default" && binding.mode !== "fixed") {
       return `Parameter "${param.name}" must bind a supported user setting with mode default or fixed.`;
     }
