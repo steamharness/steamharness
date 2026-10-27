@@ -325,7 +325,7 @@ export function projectParamEffectiveValue(field: Field, value?: ParamValue): Pa
 }
 
 export function projectParamValue(field: Field, value: ParamValue = field.defaultValue ?? ''): ParamValue {
-  if (field.userSetting && (field.userSetting.mode === 'fixed' || value === 'inherit')) { return ''; }
+  if (field.userSetting && (field.userSetting.mode === 'fixed' || field.userSetting.key === 'agent.permissionPolicy' && value === 'inherit')) { return ''; }
   if (field.type === 'file' || field.control === 'audio' || !(field.multiple || field.control === 'checkboxes') || Array.isArray(value)) { return value; }
   if (!value.trim()) { return []; }
   try {

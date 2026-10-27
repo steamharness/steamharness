@@ -1,10 +1,22 @@
 import type * as vscode from 'vscode';
 import { parseAgentModels } from '../../../../shared/project-configuration/agent-models';
 import { t } from './localization';
-import type { ConfiguredAgentModel, UserModelsState, UserModelCatalogProvider, UserModelCatalog } from './user-model-types';
+import type { ConfiguredAgentModel, UserModelsState, UserModelCatalogProvider, UserModelCatalog, UserModelWriteLock } from './user-model-types';
 
 export const USER_MODELS_SECRET = 'studio.agent.models';
 interface StoredModels { revision: number; models: ConfiguredAgentModel[] }
+
+/** Browser extension hosts share an origin; Node hosts inject a filesystem lock. */
+async function webWriteLock<T>(run: () => Promise<T>): Promise<T> {
+  const locks = (globalThis as { navigator?: { locks?: {
+    request<T>(name: string, options: { ifAvailable: boolean }, run: (lock: unknown) => Promise<T>): Promise<T>;
+  } } }).navigator?.locks;
+  if (!locks) return run();
+  return locks.request(USER_MODELS_SECRET, { ifAvailable: true }, lock => {
+    if (!lock) throw new Error(t('Models changed in another window. Reopen the editor and try again.'));
+    return run();
+  });
+}
 
 /** User-wide storage; keys never enter settings JSON, project profiles or page state. */
 export class UserModels implements vscode.Disposable {
@@ -14,7 +26,8 @@ export class UserModels implements vscode.Disposable {
   private pending = Promise.resolve();
   private generation = 0;
   private disposed = false;
-  constructor(private readonly secrets: vscode.SecretStorage, private readonly changed: () => void) {}
+  constructor(private readonly secrets: vscode.SecretStorage, private readonly changed: () => void,
+    private readonly writeLock: UserModelWriteLock = webWriteLock) {}
   private parse(encoded?: string): StoredModels {
     if (!encoded) return { revision: 0, models: [] };
     try {
@@ -57,7 +70,7 @@ export class UserModels implements vscode.Disposable {
     return result;
   }
   update(message: Record<string, unknown>, signal: AbortSignal): Promise<void> {
-    const operation = this.pending.then(async () => {
+    const operation = this.pending.then(() => this.writeLock(async () => {
       const current = this.parse(await this.secrets.get(USER_MODELS_SECRET));
       if (message.revision !== current.revision) { await this.reload(); throw new Error(t('Models changed in another window. Reopen the editor and try again.')); }
       let models = current.models;
@@ -65,6 +78,7 @@ export class UserModels implements vscode.Disposable {
         if (!message.model || typeof message.model !== 'object' || Array.isArray(message.model)) throw new Error(t('Enter a valid model.'));
         const candidate = { ...message.model } as Record<string, unknown>;
         const previous = models.find(model => model.id === candidate.id);
+        if (previous?.source === 'system' && !this.provider) throw new Error(t('The selected model is no longer available.'));
         if (candidate.source === 'system') {
           const catalog = await this.catalog(signal);
           if (!catalog.entries.some(entry => entry.id === candidate.credentialId && entry.models.some(model => model.id === candidate.model))) {
@@ -90,7 +104,7 @@ export class UserModels implements vscode.Disposable {
       const next = { revision: current.revision + 1, models };
       await this.secrets.store(USER_MODELS_SECRET, JSON.stringify({ version: 1, ...next }));
       if (!this.disposed) { ++this.generation; this.stored = next; this.error = undefined; this.changed(); }
-    });
+    }));
     this.pending = operation.catch(() => undefined);
     return operation;
   }

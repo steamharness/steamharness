@@ -170,7 +170,9 @@ export class KanbanController {
       if (!this.runtime.kanbanBridge) { throw new Error('Project Core does not support Kanban data.'); }
       try { result = await this.runtime.kanbanBridge(this.project, call); }
       catch (error) {
-        if ((error as { code?: string }).code === 'KANBAN_RELATED_PROJECT_UNAVAILABLE' && call.operation.startsWith('relatedProject.') && generation === this.generation && !this.disposed) {
+        if ((error as { code?: string }).code === 'KANBAN_RELATED_PROJECT_UNAVAILABLE' && call.operation.startsWith('relatedProject.') && !this.disposed) {
+          // A preview refresh can overtake the worker. Recheck current imports
+          // before showing guidance, even if the requesting preview was replaced.
           const issue = this.hooks.relatedImport?.(call.input.alias);
           if (issue) { this.serverDataIssue = issue; this.hooks.changed(); }
         }
@@ -183,7 +185,10 @@ export class KanbanController {
   authenticationChanged(): void {
     this.generation++; this.methods.clear(); for (const request of this.requests) { request.abort(); } this.feed?.abort(); clearTimeout(this.retry);
     this.relatedProjectRevisions = []; this.relatedProjectWarning = '';
-    this.operationIssue = undefined;
+    // Refreshes also use this path. Local import guidance remains valid until
+    // the current binding is repaired, removed or switched to server storage.
+    this.operationIssue = this.operationIssue?.kind === 'related-import-required' && this.project.projectInfo?.dataStorage?.mode !== 'server'
+      ? this.hooks.relatedImport?.(this.operationIssue.relatedProjectAlias) : undefined;
     this.connectServerRevisions();
   }
   projectChecksChanged(): void {

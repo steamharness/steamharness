@@ -9,7 +9,7 @@ import { accountMenuState } from './account-menu-state';
 import { settingsState, settingsViewState, updateSetting } from './settings';
 import type { SettingsOpenOptions, SettingsState, SettingsTarget, SettingsViewState } from './settings-types';
 import { UserModels, USER_MODELS_SECRET } from './user-models';
-import type { UserModelCatalogProvider } from './user-model-types';
+import type { UserModelCatalogProvider, UserModelWriteLock } from './user-model-types';
 import { publicServiceUrls, serviceChannelFromServerUrl } from '../../../../shared/service-urls/index';
 import {
   DEFAULT_STEAMHARNESS_SERVER_URL, Account,
@@ -41,8 +41,9 @@ export class AccountController implements vscode.Disposable {
     void this.panel?.webview.postMessage({ type: 'account-sections', states });
   });
 
-  constructor(private readonly context: vscode.ExtensionContext) {
-    this.userModels = new UserModels(context.secrets, () => { this.modelChanges.fire(); this.publishSettings(); });
+  constructor(private readonly context: vscode.ExtensionContext, modelWriteLock?: UserModelWriteLock) {
+    this.userModels = new UserModels(context.secrets, () => { this.modelChanges.fire(); this.publishSettings(); },
+      modelWriteLock);
     this.account = new Account(this.configuredServer(), {
       get: () => context.secrets.get(SECRET_KEY),
       store: (value) => context.secrets.store(SECRET_KEY, value),
@@ -438,8 +439,8 @@ export class AccountController implements vscode.Disposable {
   }
 }
 
-export async function activateProjectAccount(context: vscode.ExtensionContext): Promise<AccountController> {
-  const account = new AccountController(context);
+export async function activateProjectAccount(context: vscode.ExtensionContext, modelWriteLock?: UserModelWriteLock): Promise<AccountController> {
+  const account = new AccountController(context, modelWriteLock);
   context.subscriptions.push(account);
   await account.initialize();
   return account;

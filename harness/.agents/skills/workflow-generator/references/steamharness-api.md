@@ -1645,6 +1645,8 @@ configuration.json v2 字段支持 sharing: {publish?, includeValue?, editable?}
 
 `UserSettings.agent.models` 是有序的 `UserAgentModel` 列表，公共字段为 `id/name/model`；系统项保存 `{source:"system",credentialId}`，三方项保存 `{source:"third-party",apiKind,baseUrl,apiKey}`。宿主注入时校验、复制并冻结，不把密钥写入参数选项、普通历史或导出。Agent 节点和直接 `createAgent()` 默认优先使用非空用户列表；显式 endpoint/models/resolvedModel 继续沿用开发者配置，项目的 system-only 限制仍强制执行。`modelSource: "user-settings"` 只用用户列表，空列表明确失败；`modelSource: "project"` 使用旧项目配置。
 
-`createAgentProjectParams({modelSource:"user-settings"})` 生成 `userSetting:{key:"agent.model",mode:"default"}`，自定义参数应内联声明此绑定并使用 `createAgentProjectParamResolver({modelSource:"user-settings"})`。宿主保存空覆盖标记，不能把显示的默认模型保存为项目覆盖。小助手使用该绑定，点击先展示可用模型，再提供“管理模型”跳转。开源 Studio 只提供三方添加来源；系统项执行前必须重查当前账号的 credentialId 和 model 授权。用户列表不覆盖 `allowThirdParty:false`。
+`createAgentProjectParams()` 与 `{modelSource:"user-settings"}` 均生成 `userSetting:{key:"agent.model",mode:"default"}`；显式 `{modelSource:"project"}` 才生成旧项目模型控件。自定义参数应内联声明此绑定并使用 `createAgentProjectParamResolver({modelSource:"user-settings"})`。自动使用用户模型时，解析器与宿主保留空覆盖标记，不能把显示的默认模型保存为项目覆盖。模型 ID `inherit` 是普通 ID，不能按权限继承标记转换。直接创建并由宿主解析模型的 Agent，其连接与继承权限固定为同一创建快照，本轮显式权限仍优先；任务结束后重建以采用新设置。小助手使用该绑定，点击先展示可用模型，再提供“管理模型”跳转；加载与任务运行期间仍可进入管理。开源 Studio 只提供三方添加来源；系统项执行前必须重查当前账号的 credentialId 和 model 授权。用户列表不覆盖 `allowThirdParty:false`。
 
 模型字段使用 `mode:"fixed"` 时先展示只读模型列表，再通过“管理模型”修改用户默认值；`mode:"default"` 允许选择项目覆盖。权限字段的 fixed 入口仍直接打开权限设置。
+
+缓存连接时，三方模型仍保留开发者 `modelAttributes` 默认值；系统模型的 `webSearch` 能力以目录为准，不能通过本轮属性覆盖放开。

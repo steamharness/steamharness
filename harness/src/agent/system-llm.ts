@@ -270,7 +270,7 @@ export function createAgentProjectParamResolver(options: { modelSource?: "user-s
       // Kept as a hidden wire parameter for existing inline Agent declarations.
       provider: { value: null, visible: false, disabled: true, resolvedOptions: [] },
       model: {
-        value: options.modelSource === "user-settings" && (!context.paramValues?.model || context.paramValues.model === selected?.id) ? undefined : selected?.id ?? null,
+        value: configured.fromUser && (!context.paramValues?.model || context.paramValues.model === selected?.id) ? undefined : selected?.id ?? null,
         disabled: false,
         resolvedOptions: models.map(model => ({ value: model.id, label: model.name, description: model.model })),
       },

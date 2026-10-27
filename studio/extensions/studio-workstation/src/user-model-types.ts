@@ -6,3 +6,4 @@ export type UserModelEntry = Exclude<ConfiguredAgentModel, { source: 'third-part
 export interface UserModelsState { revision: number; entries: UserModelEntry[]; systemAvailable: boolean; error?: string }
 export interface UserModelCatalog { entries: AgentModelCatalogEntry[]; unavailable?: boolean; subscriptionUrl?: string }
 export interface UserModelCatalogProvider { load(signal: AbortSignal): Promise<UserModelCatalog> }
+export type UserModelWriteLock = <T>(run: () => Promise<T>) => Promise<T>;

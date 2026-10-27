@@ -156,7 +156,7 @@ function validatePatchValue(param: ParamDefinition, value: ParamValue): void {
 }
 
 function normalizeValue(param: ParamDefinition, value: string): ParamValue {
-  if (param.userSetting && (value === "" || value === "inherit")) return userSettingParamDefault(param.userSetting.key);
+  if (param.userSetting && (value === "" || param.userSetting.key === "agent.permissionPolicy" && value === "inherit")) return userSettingParamDefault(param.userSetting.key);
   return isMultiParam(param) ? readMultiValue(value) : value;
 }
 

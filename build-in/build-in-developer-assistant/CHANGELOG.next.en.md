@@ -1,5 +1,7 @@
 # Unreleased
 
+- Clarified generated Agent parameters: automatic user models retain default inheritance, explicit project models keep the original configuration, and direct calls share a model and inherited-permission snapshot.
+
 - The assistant now defaults to user models from host settings, supports conversation overrides and reset, and opens available models before Manage models. Active and background tasks retain their settings snapshot.
 
 - The permission control now displays the actual user policy and opens permission settings directly, without an extra inheritance choice. Coding tools, prompts, and Studio Control share one settings snapshot. Generator references now cover the user settings API, inheritance precedence, the hostless fallback, and safe session updates.

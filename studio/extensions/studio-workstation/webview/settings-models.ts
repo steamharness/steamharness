@@ -84,7 +84,7 @@ export class SettingsModels {
   }
   private edit(entry?: UserModelEntry): void {
     if (this.pending) return;
-    this.catalogRequest = undefined;
+    this.catalogRequest = undefined; this.catalogue = { entries: [] };
     this.editing = { id: entry?.id ?? crypto.randomUUID(), revision: this.state.revision };
     this.error.hidden = true; this.form.hidden = false; this.confirmation = undefined;
     this.title.textContent = entry ? t('Edit model') : t('Add model');
@@ -109,6 +109,7 @@ export class SettingsModels {
       const input = this.inputs.get(key)!; input.parentElement!.hidden = system; input.disabled = system;
     }
     if (system) this.loadCatalog();
+    else this.catalogRequest = undefined;
   }
   private loadCatalog(): void {
     if (this.catalogRequest) return;
@@ -177,7 +178,7 @@ export class SettingsModels {
       else { this.status.textContent = t('Saved'); if (action === 'save' || action === 'delete') this.dismiss(); }
       this.render(); this.changed(); return true;
     }
-    if (message.type === 'settings-model-catalog' && message.requestId === this.catalogRequest) {
+    if (message.type === 'settings-model-catalog' && this.editing && this.value('source') === 'system' && message.requestId === this.catalogRequest) {
       this.catalogRequest = undefined; this.refresh.disabled = false;
       this.catalogue = message.catalog ?? { entries: [] };
       const options = this.catalogue.entries.flatMap(credential => credential.models.map(model => ({ value: JSON.stringify([credential.id, model.id]), label: `${model.name} · ${credential.name}` })));

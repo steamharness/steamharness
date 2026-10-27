@@ -1,5 +1,7 @@
 # Unreleased
 
+- Fixed concurrent user model writes with a cross-window lock and prevented open-source windows from replacing hidden system models. Stale catalogue results no longer change a form after switching sources or reopening the editor.
+
 - Added a user model settings page with add, edit, delete and default actions across workspaces and SecretStorage for third-party keys. Open-source Studio offers third-party models; host extensions may supply a system AI catalogue. The assistant opens available choices before model settings.
 
 - Fixed the Assistant permission shortcut to open the Permissions category in user settings, reusing the existing settings tab. Sidebar and standalone tool shortcuts now work independently of the conversation lifecycle.

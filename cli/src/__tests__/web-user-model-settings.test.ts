@@ -14,6 +14,7 @@ it('user model defaults honor system-only policy and remain empty in saved proje
   expect(configured.fields[0].userSettingValue).toBe('system');
   expect(projectParamArgs(configured.fields, { model: '' })).toEqual([]);
   expect(projectParamArgs(configured.fields, { model: 'system' })).toEqual(['--model', 'system']);
+  expect(projectParamArgs(configured.fields, { model: 'inherit' })).toEqual(['--model', 'inherit']);
   expect(JSON.stringify(configured)).not.toContain('test-only-secret');
 });
 it('histories, public state and exports omit keys; recovery rehydrates only the same endpoint reference', () => {
@@ -26,4 +27,13 @@ it('histories, public state and exports omit keys; recovery rehydrates only the 
   const changed = { agent: { ...settings.agent, models: settings.agent.models!.map(model => ({ ...model, baseUrl: 'https://different.test' })) } };
   expect(() => hydrateUserSettings(restored, changed)).toThrow(/unavailable/);
   expect(settings.agent.models![0]).toHaveProperty('apiKey', 'test-only-secret');
+});
+it('preserves unrelated project output named userSettings without breaking state or history serialization', () => {
+  for (const userSettings of [null, 'custom', {}, { agent: null }, { agent: 'custom' }, { agent: { models: [] } },
+    { agent: { permissionPolicy: 'custom', models: [] } }, { agent: { permissionPolicy: 'auto', models: 'custom' } }]) {
+    const output = { result: { data: { userSettings } } };
+    expect(JSON.parse(JSON.stringify(output, userSettingsJsonReplacer))).toEqual(output);
+  }
+  const extended = { userSettings: { ...settings, metadata: { owner: 'project' } } };
+  expect(JSON.parse(JSON.stringify(extended, userSettingsJsonReplacer)).userSettings.metadata).toEqual({ owner: 'project' });
 });

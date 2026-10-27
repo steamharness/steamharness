@@ -48,7 +48,14 @@ try {
     await pane.getByRole('button', { name: zh ? '添加模型' : 'Add model', exact: true }).click();
     const request = await last(); assert.equal(request.action, 'catalog');
     await send({ type: 'settings-model-catalog', requestId: 'obsolete', catalog: { entries: [] } });
-    await send({ type: 'settings-model-catalog', requestId: request.requestId, catalog: { entries: [{ id: 'plan-one', name: 'Plan', models: [{ id: 'system-model', name: 'System model' }] }] } });
+    await page.locator('#user-model-source').click();
+    await page.locator('.settings-dropdown-menu:popover-open').getByRole('option', { name: zh ? '三方自定义' : 'Third-party', exact: true }).click();
+    await send({ type: 'settings-model-catalog', requestId: request.requestId, catalog: { entries: [{ id: 'old-plan', name: 'Old', models: [{ id: 'old', name: 'Stale model' }] }] } });
+    assert.equal(await page.locator('#user-model-name').inputValue(), '', 'A late catalogue must not change the third-party form');
+    await page.locator('#user-model-source').click();
+    await page.locator('.settings-dropdown-menu:popover-open').getByRole('option', { name: zh ? '系统 AI' : 'System AI', exact: true }).click();
+    const refreshed = await last(); assert.notEqual(refreshed.requestId, request.requestId);
+    await send({ type: 'settings-model-catalog', requestId: refreshed.requestId, catalog: { entries: [{ id: 'plan-one', name: 'Plan', models: [{ id: 'system-model', name: 'System model' }] }] } });
     await page.locator('#user-model-name').fill('My subscription');
     await page.locator('#user-model-system').click();
     await page.locator('.settings-dropdown-menu:popover-open').getByRole('option', { name: 'System model · Plan', exact: true }).click();

@@ -35,13 +35,19 @@ test("user-bound model fields preserve inheritance, explicit selections and proj
   const fields = normalizeProjectParamDeclarations(declarations).params;
   const model = fields.find(field => field.name === "model")!;
   assert.deepEqual(model.userSetting, { key: "agent.model", mode: "default" });
+  assert.deepEqual(normalizeProjectParamDeclarations(createAgentProjectParams()).params.find(field => field.name === "model")!.userSetting,
+    { key: "agent.model", mode: "default" }, "Automatic user models must also expose the user model controls");
+  assert.equal(normalizeProjectParamDeclarations(createAgentProjectParams({ modelSource: "project" })).params.find(field => field.name === "model")!.userSetting, undefined);
   await withUserSettings(settings([third, system]), async () => {
     assert.equal(parseProjectParamValues(declarations, []).model, "custom");
     assert.equal(parseProjectParamValues(declarations, ["--model", "system"]).model, "system");
+    assert.equal(parseProjectParamValues(declarations, ["--model", "inherit"]).model, "inherit", "A model ID is not a permission inheritance marker");
     const resolver = createAgentProjectParamResolver({ modelSource: "user-settings" });
     const choices = await resolver({ paramValues: { model: "custom" } });
     assert.equal(choices.params?.model?.value, undefined, "Do not persist the displayed default as a project override");
     assert.ok(!JSON.stringify(choices).includes("test-only-user-key"));
+    assert.equal((await createAgentProjectParamResolver()({ paramValues: { model: "custom" } })).params?.model?.value, undefined,
+      "Automatic user defaults must not become saved concrete overrides");
     await withProjectConfiguration({ id: "restricted", name: "Restricted", revision: 1, values: {}, agentModelPolicy: { allowThirdParty: false } }, async () => {
       assert.equal(parseProjectParamValues(declarations, []).model, "system");
       assert.deepEqual((await resolver({})).params?.model?.resolvedOptions?.map(choice => choice.value), ["system"]);
@@ -81,6 +87,12 @@ test("user system models recheck subscription identity and model availability wi
       const resolved = await resolveAgentSystemAIInput(input, {}, undefined);
       try { assert.equal(resolved.input.model, system.model); assert.ok(resolved.input.baseUrl?.startsWith('http://127.0.0.1:')); }
       finally { await resolved.close(); }
+      const runtime = await createAgentRuntime({ modelSource: "user-settings", tools: [] });
+      try {
+        await assert.rejects(async () => {
+          for await (const _event of runtime.run({ ...input, compact: true, webSearch: true, modelAttributes: { webSearch: true } })) { /* drain */ }
+        }, /does not support/, "Cached connections must retain the system catalogue's search restriction");
+      } finally { await runtime.close(); }
       available = false;
       await assert.rejects(resolveAgentSystemAIInput(input, {}, undefined), /unavailable|no available server AI credentials/);
     });
@@ -91,10 +103,11 @@ test("user system models recheck subscription identity and model availability wi
 });
 
 test("direct Agent runtime runs without connection parameters and keeps its original host snapshot", async t => {
-  const requests: { model: string; key?: string }[] = [];
+  const requests: { model: string; key?: string; tools: string[] }[] = [];
   const server = createServer(async (request, response) => {
     const chunks: Buffer[] = []; for await (const chunk of request) chunks.push(chunk);
-    const body = JSON.parse(Buffer.concat(chunks).toString()); requests.push({ model: body.model, key: request.headers.authorization });
+    const body = JSON.parse(Buffer.concat(chunks).toString()); requests.push({ model: body.model, key: request.headers.authorization,
+      tools: (body.tools ?? []).map((tool: { function: { name: string } }) => tool.function.name) });
     response.writeHead(200, { "content-type": "text/event-stream" });
     response.end('data: ' + JSON.stringify({ id: "answer", object: "chat.completion.chunk", created: 1, model: body.model, choices: [{ index: 0, delta: { role: "assistant", content: "User configured answer" }, finish_reason: null }] }) + '\n\ndata: ' + JSON.stringify({ id: "answer", object: "chat.completion.chunk", created: 1, model: body.model, choices: [{ index: 0, delta: {}, finish_reason: "stop" }] }) + '\n\ndata: [DONE]\n\n');
   });
@@ -102,12 +115,29 @@ test("direct Agent runtime runs without connection parameters and keeps its orig
   t.after(() => { server.closeAllConnections(); return new Promise<void>(resolve => server.close(() => resolve())); });
   const address = server.address(); assert.ok(address && typeof address === "object");
   const configured = { ...third, baseUrl: `http://127.0.0.1:${address.port}/v1` };
-  const runtime = await withUserSettings(settings([configured]), () => createAgentRuntime({ permissionPolicy: "read-only", tools: [] }));
+  const runtime = await withUserSettings({ agent: { permissionPolicy: "read-only", models: [configured] } },
+    () => createAgentRuntime({ permissionPolicy: "inherit", modelAttributes: { contextWindow: 16_000 } }));
   t.after(() => runtime.close());
   const events: unknown[] = [];
   await withUserSettings(settings([{ ...configured, apiKey: "new-key" }]), async () => {
     for await (const event of runtime.run(input)) events.push(event);
+    assert.equal(runtime.getContextUsage()?.total, 16_000, "Cached third-party models retain developer model attributes");
+    for await (const event of runtime.run({ ...input, permissionPolicy: "auto" })) events.push(event);
   });
   assert.ok(JSON.stringify(events).includes("User configured answer"));
-  assert.deepEqual(requests, [{ model: third.model, key: "Bearer test-only-user-key" }]);
+  assert.equal(requests.length, 2);
+  for (const request of requests) {
+    assert.equal(request.model, third.model);
+    assert.equal(request.key, "Bearer test-only-user-key");
+  }
+  assert.ok(!requests[0]!.tools.includes("write"), "Inherited permissions use the same snapshot as the model");
+  assert.ok(requests[1]!.tools.includes("write"), "An explicit per-run permission still wins");
+  const legacy = await withUserSettings(settings([{ ...configured, model: "not-the-project-model" }]), () => withProjectConfiguration({
+    id: "legacy", name: "Legacy", revision: 1,
+    values: { STEAMHARNESS_AGENT_MODELS: [{ ...configured, model: "project-model", apiKey: "test-project-key" }] },
+  }, () => createAgentRuntime({ modelSource: "project", tools: [] })));
+  t.after(() => legacy.close());
+  for await (const _event of legacy.run(input)) { /* Exercise the actual project connection. */ }
+  assert.equal(requests[2]?.model, "project-model");
+  assert.equal(requests[2]?.key, "Bearer test-project-key");
 });

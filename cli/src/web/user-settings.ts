@@ -4,8 +4,14 @@ import type { UserSettings } from 'steamharness';
 export function userSettingsJsonReplacer(key: string, value: unknown): unknown {
   if (key === 'userSettings' && value && typeof value === 'object' && 'agent' in value) {
     const settings = value as UserSettings;
-    return { agent: { ...settings.agent, ...(settings.agent.models === undefined ? {} : {
-      models: settings.agent.models.map(model => model.source === 'system' ? model : { ...model, apiKey: undefined }),
+    const agent = settings.agent;
+    // Project output can contain its own userSettings property. Only recognize
+    // host snapshots; unrelated values must remain serializable and intact.
+    if (!agent || typeof agent !== 'object' || Array.isArray(agent)
+      || !['read-only', 'workspace', 'auto'].includes(agent.permissionPolicy)
+      || agent.models !== undefined && !Array.isArray(agent.models)) return value;
+    return { ...settings, agent: { ...agent, ...(agent.models === undefined ? {} : {
+      models: agent.models.map(model => model?.source === 'third-party' ? { ...model, apiKey: undefined } : model),
     }) } };
   }
   return value;

@@ -89,6 +89,24 @@ function fixture() {
 }
 
 describe('Quick parameter triggers', () => {
+  it('keeps model management reachable in grouped selectors during loading and active tasks', () => {
+    const f = fixture();
+    f.parameters.fields[0].userSetting = { key: 'agent.model', mode: 'default' };
+    f.parameters.paramLayout!.actions = [{ kind: 'quick', id: 'ai', label: 'AI', params: ['model', 'permission'] }];
+    f.state.disabled = true; f.state.loading = true; f.state.states.model = { resolvedOptions: [] };
+    f.actions.render(f.parameters); f.flush();
+    expect(f.container.children[0].disabled).toBe(false);
+    f.container.children[0].dispatchEvent(new Event('click'));
+    const row = f.popup.querySelector('[data-param=model]')!;
+    expect(row.disabled).toBe(false);
+    row.dispatchEvent(new Event('click'));
+    f.actions.update();
+    expect(f.popup.hidden).toBe(false);
+    expect(f.popup.querySelectorAll('[role=option]').every(option => option.disabled)).toBe(true);
+    f.popup.querySelector('[data-focus-key=manage-models]')!.dispatchEvent(new Event('click'));
+    expect(f.onOpenUserSetting).toHaveBeenCalledWith('agent.model');
+    expect(f.onChange).not.toHaveBeenCalled();
+  });
   it.each(['default', 'fixed'] as const)('user models (%s) open available choices before the model-settings management action', mode => {
     const f = fixture();
     f.parameters.fields[0].userSetting = { key: 'agent.model', mode };

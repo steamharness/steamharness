@@ -264,6 +264,32 @@ async function fixture(options: { server?: boolean; artifact?: boolean; noParams
 }
 
 describe('Kanban CLI Web workspace', () => {
+  it('keeps current missing-import guidance when a preview refresh overtakes the worker, and ignores resolved imports', async () => {
+    const { app, directory, root, pkg, runtime, post, state } = await fixture();
+    const targetId = '44dfc728-27f4-4d80-a19e-a3f39f70950a';
+    await writeFile(path.join(directory, 'package.json'), JSON.stringify({ ...pkg, steamHarness: { ...pkg.steamHarness,
+      projectInfo: { dataStorage: { mode: 'local' }, relatedProjects: [{ alias: 'database', projectId: targetId,
+        grantToRelatedProject: { read: { mode: 'all' }, write: { mode: 'none' } } }] } } }));
+    await app.setHostRelatedProjects([]); await post({ type: 'kanban-refresh' });
+    let fail!: (error: Error) => void;
+    vi.mocked(runtime.kanbanBridge!).mockImplementation(() => new Promise((_resolve, reject) => { fail = reject; }));
+    const call = { requestId: 'worker-race', operation: 'relatedProject.kv.getValue' as const, input: { alias: 'database', key: 'visible:tasks' } };
+    const pending = app.kanbanController!.bridge(call);
+    app.kanbanController!.configurationChanged(app.configurations.state);
+    fail(Object.assign(new Error('Missing import'), { code: 'KANBAN_RELATED_PROJECT_UNAVAILABLE' }));
+    await expect(pending).rejects.toMatchObject({ code: 'KANBAN_RELATED_PROJECT_UNAVAILABLE' });
+    expect((await state()).kanban.serverDataIssue).toMatchObject({ kind: 'related-import-required', relatedProjectImported: false });
+    await post({ type: 'kanban-refresh' });
+    expect((await state()).kanban.serverDataIssue).toMatchObject({ kind: 'related-import-required', relatedProjectImported: false });
+    const obsolete = app.kanbanController!.bridge(call);
+    const imported = path.join(root, 'imported'); await mkdir(imported);
+    await writeFile(path.join(imported, 'package.json'), JSON.stringify({ id: targetId, name: 'Database' }));
+    await app.setHostRelatedProjects([{ alias: 'database', projectDir: imported }]);
+    app.kanbanController!.configurationChanged(app.configurations.state);
+    fail(Object.assign(new Error('Old missing import'), { code: 'KANBAN_RELATED_PROJECT_UNAVAILABLE' }));
+    await expect(obsolete).rejects.toMatchObject({ code: 'KANBAN_RELATED_PROJECT_UNAVAILABLE' });
+    expect((await state()).kanban.serverDataIssue).toBeUndefined();
+  });
   it('routes local Studio analysis through its read-only host capability without Server login', async () => {
     const { bridge, runtime } = await fixture();
     vi.stubEnv('STEAMHARNESS_STUDIO_CONTROL_BRIDGE_URL', ''); vi.stubEnv('STEAMHARNESS_STUDIO_CONTROL_BRIDGE_TOKEN', '');
@@ -430,7 +456,7 @@ describe('Kanban CLI Web workspace', () => {
     await writeFile(path.join(directory, 'package.json'), JSON.stringify({ ...pkg, steamHarness: { ...pkg.steamHarness, projectInfo: { dataStorage: { mode: 'local' }, relatedProjects: [relation('database', targetId)] } } }));
     await app.setHostRelatedProjects([]); await post({ type: 'kanban-refresh' });
     const failed = await bridge('relatedProject.kv.getValue', { alias: 'database', key: 'visible:tasks' });
-    expect(failed.ok).toBe(false);
+    expect(failed).toMatchObject({ ok: false, error: { code: 'KANBAN_RELATED_PROJECT_UNAVAILABLE' } });
     expect((await state()).kanban.serverDataIssue).toMatchObject({ kind: 'related-import-required', relatedProjectImported: false });
     const imported = await realpath(await mkdtemp(path.join(os.tmpdir(), 'kanban-imported-'))); folders.push(imported);
     const targetPkg = { id: targetId, name: 'Database', steamHarness: { projectInfo: { dataStorage: { mode: 'local' }, relatedProjects: [relation('board', id)] } } };

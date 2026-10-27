@@ -153,7 +153,7 @@ export class ParameterActions {
       } else if (action.kind !== 'slash') {
         const fields = this.groupFields(action);
         const configureModel = action.kind === 'quick' && fields.some(field => field.name === 'model' && field.userSetting?.key !== 'agent.model') && modelConfigurationRequired && !!this.options.onConfigureModel;
-        const userModels = fields.some(field => field.userSetting?.key === 'agent.model');
+        const userModels = action.kind === 'quick' && fields.some(field => field.userSetting?.key === 'agent.model');
         const shortcut = fields.length === 1 && settingsShortcut(fields[0]);
         view.button.hidden = fields.length === 0;
         view.button.disabled = !shortcut && !userModels && (disabled || !configureModel && (action.kind === 'auxiliary' ? loading : fields.every((field) =>
@@ -176,7 +176,8 @@ export class ParameterActions {
     }
     this.scheduleLayout();
     if (this.active) {
-      if (disabled || this.active.button.hidden || this.active.button.dataset.configureModel === 'true') { this.close(); }
+      const managesModels = this.active.action.kind === 'quick' && this.groupFields(this.active.action).some(field => field.userSetting?.key === 'agent.model');
+      if (disabled && !managesModels || this.active.button.hidden || this.active.button.dataset.configureModel === 'true') { this.close(); }
       else if (this.active.action.kind === 'quick') { this.renderQuick(); }
       else {
         const body = this.popup.querySelector('.parameter-popover-fields')!;
@@ -285,7 +286,8 @@ export class ParameterActions {
       row.type = 'button'; row.className = 'quick-param-row';
       row.setAttribute('role', 'menuitem'); row.setAttribute('aria-haspopup', 'listbox');
       row.dataset.param = field.name; row.dataset.focusKey = `field:${field.name}`;
-      row.disabled = disabled || loading || states[field.name]?.disabled === true || this.visibleOptions(field).length === 0;
+      row.disabled = field.userSetting?.key !== 'agent.model' && !settingsShortcut(field)
+        && (disabled || loading || states[field.name]?.disabled === true || this.visibleOptions(field).length === 0);
       row.setAttribute('aria-expanded', String(this.activeParam === field.name));
       if (settingsShortcut(field)) { row.removeAttribute('aria-haspopup'); row.removeAttribute('aria-expanded'); row.title = t('Change in user settings'); }
       const label = document.createElement('span'); label.textContent = field.label || field.name;

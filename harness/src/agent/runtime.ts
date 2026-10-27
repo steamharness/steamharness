@@ -1,5 +1,5 @@
 import { getProjectConfiguration, withProjectConfiguration } from "../configuration";
-import { getUserSettings, withUserSettings } from "../user-settings";
+import { getUserSettings, withUserSettings, type UserSettings } from "../user-settings";
 import { resolveAgentSystemAIInput } from "./model-resolution";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
@@ -110,7 +110,7 @@ export async function createAgentRuntime(
 ): Promise<AgentRuntime> {
   const settings = getUserSettings();
   const configuration = getProjectConfiguration();
-  const resolveHostModels = !options.pi && !options.modelResolved && (configuration?.agentModelPolicy?.allowThirdParty === false ||
+  const resolveHostModels = !options.pi && !options.modelResolved && (configuration !== undefined ||
     options.modelSource !== "project" && (options.modelSource === "user-settings" || !!settings.agent.models?.length));
   const original = options;
   const resolveModel = (input: AgentInput, signal?: AbortSignal) => withUserSettings(settings, () => configuration
@@ -126,7 +126,9 @@ export async function createAgentRuntime(
     options = { ...options, ...resolved.input };
     resolveInput = async (input, signal) => {
       if (input.model === undefined && input.provider === undefined && input.baseUrl === undefined && input.apiKey === undefined) {
-        return { ...input, ...resolved.input, modelAttributes: { ...resolved.input.modelAttributes, ...input.modelAttributes } };
+        return { ...input, ...resolved.input, modelAttributes: resolved.input.modelAttributes === undefined ? input.modelAttributes
+          : { ...resolved.input.modelAttributes, ...input.modelAttributes,
+            ...(resolved.input.modelAttributes.webSearch === undefined ? {} : { webSearch: resolved.input.modelAttributes.webSearch }) } };
       }
       const next = await resolveModel(input, signal);
       closers.push(next.close);
@@ -135,7 +137,7 @@ export async function createAgentRuntime(
   }
   try {
     const pi = options.pi ?? await createPiRuntime(options);
-    return new ProjectAgentRuntime(pi, options, resolveInput, closers);
+    return new ProjectAgentRuntime(pi, options, resolveInput, closers, resolveHostModels ? settings : undefined);
   } catch (error) {
     await Promise.allSettled(closers.map(close => close()));
     throw error;
@@ -172,6 +174,7 @@ class ProjectAgentRuntime implements AgentRuntime {
     options: AgentRuntimeInternalOptions,
     private readonly resolveInput?: (input: AgentInput, signal?: AbortSignal) => Promise<AgentInput>,
     private readonly modelClosers: (() => Promise<void>)[] = [],
+    private readonly userSettings?: UserSettings,
   ) {
     this.options = options;
     this.connection = readConnection(options);
@@ -249,7 +252,12 @@ class ProjectAgentRuntime implements AgentRuntime {
 
   async *run(input: AgentInput, host?: AgentHost): AsyncIterable<AgentStreamEvent> {
     throwIfRunAborted(host?.abortSignal);
-    const parsed = parseAgentInput(this.resolveInput ? await this.resolveInput(input, host?.abortSignal) : input, this.options);
+    const resolved = this.resolveInput ? await this.resolveInput(input, host?.abortSignal) : input;
+    // A host-resolved connection and inherited permissions belong to one snapshot.
+    // Explicit permissions on this input still take precedence.
+    const parsed = this.userSettings
+      ? withUserSettings(this.userSettings, () => parseAgentInput(resolved, this.options))
+      : parseAgentInput(resolved, this.options);
     await this.applyConnection(parsed);
     const agent = this.ensureAgent();
     agent.state.contextWindow = parsed.contextWindow;

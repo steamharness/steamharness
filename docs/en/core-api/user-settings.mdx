@@ -115,11 +115,15 @@ const project = steamharness.createAgentConversationProject({
 // resolveParams: steamharness.createAgentProjectParamResolver({ modelSource: "user-settings" })
 ```
 
+`createAgentProjectParams()` also generates the user model binding by default. When automatically using user models, the resolver preserves an empty override so later user default changes still apply. Pass `modelSource: "project"` explicitly to generate the original project model controls. A model ID named `inherit` is an ordinary ID; permission inheritance still uses `permissionPolicy: "inherit"`.
+
+Reused third-party connections retain developer `modelAttributes` defaults. System catalogue search restrictions remain authoritative and cannot be enabled through turn attribute overrides.
+
 The built-in assistant uses user models. Clicking its model control opens available choices first; **Manage models** opens settings. Selecting a model overrides the default for the project or conversation; resetting follows the user default again. The original project model configuration APIs remain available and are not used by the assistant.
 
 A custom model field with `mode: "fixed"` also opens the list first, with read-only choices and a **Manage models** action to change the user default. `mode: "default"` allows a project override.
 
-Updates apply after a safe task boundary. Active and background work retain their connection snapshot. Interrupted recovery obtains a key from the host only for the same model and endpoint; a removed or changed endpoint fails explicitly instead of receiving a new key at an old address.
+Updates apply after a safe task boundary. Active and background work retain their connection snapshot. A directly created Agent with a host-resolved model also resolves inherited permissions from that creation snapshot; explicit turn permissions still take precedence. Recreate the Agent after its work finishes to adopt new host model settings. Interrupted recovery obtains a key from the host only for the same model and endpoint; a removed or changed endpoint fails explicitly instead of receiving a new key at an old address.
 
 ## Studio and CLI sessions
 

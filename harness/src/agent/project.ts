@@ -270,8 +270,8 @@ export function createAgentProjectParams(options: AgentProjectOptions = {}): Con
           required: true,
           control: "select",
           label: "模型",
-          description: options.modelSource === "user-settings" ? "从用户设置中选择模型，默认使用第一个可用模型。" : "先在项目配置中添加模型。默认使用列表中的第一项。",
-          ...(options.modelSource === "user-settings" ? { userSetting: { key: "agent.model" as const, mode: "default" as const } } : {}),
+          description: options.modelSource !== "project" ? "从用户设置中选择模型，默认使用第一个可用模型。" : "先在项目配置中添加模型。默认使用列表中的第一项。",
+          ...(options.modelSource !== "project" ? { userSetting: { key: "agent.model" as const, mode: "default" as const } } : {}),
           options: [],
         },
         {
