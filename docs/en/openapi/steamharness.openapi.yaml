@@ -7515,6 +7515,7 @@ components:
         - bindings
     DatabaseRequestInput:
       type: object
+      description: Approval metadata and binding references are generated exclusively by the host.
       properties:
         projectId: *a10
         entryId: *a2
@@ -7599,6 +7600,15 @@ components:
             required:
               - entry
               - expectedRevision
+        keyPrefixes:
+          type: array
+          maxItems: 1024
+          items:
+            type: string
+            minLength: 1
+            maxLength: 1024
+          description: Optional KV list filter. Prefixes cannot contain NUL and only narrow the current
+            host declaration and grant. The intersection applies before counting and pagination.
         query: *a11
         cursor: *a11
         pageSize:

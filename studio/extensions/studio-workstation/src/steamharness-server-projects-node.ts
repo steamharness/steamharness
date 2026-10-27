@@ -83,7 +83,7 @@ export async function uploadServerProject(options: TransferOptions & { projectId
     catch (error) { if (error instanceof AuthError && error.status === 404) { throw new Error(t('This project ID is not registered. Open the project and apply for a new application ID before uploading.')); } else { throw error; } }
     const manifest = readProjectManifest(JSON.parse(await readFile(path.join(options.directory,'package.json'),'utf8')));
     const expectedConfigurationRevisions = Object.fromEntries(await Promise.all(manifest.entries.map(async entry => {
-      const state = await client.request<{publicationRevision?:number}>(`/api/projects/${encodeURIComponent(options.projectId)}/entries/${entry.entryId}/configurations?target=draft`,options.signal);
+      const state = await client.configurations<{publicationRevision?:number}>(options.projectId, entry.entryId, 'draft', options.signal);
       return [entry.entryId,state.publicationRevision??0];
     })));
     options.progress({ message: t('Packing and uploading project') });

@@ -15,12 +15,12 @@ Build on the client before upload. Server validates, stores and serves static fi
 
 ## Configuration and presentation
 
-The host injects `window.steamharness`. `getConfiguration()` reads the current entry configuration; `getPresentation()` reads the presentation mode. Listen for `steamharness:kanban-configuration-change` and `steamharness:kanban-presentation-change`. Named configurations, snapshots and configuration files are isolated by `projectId + entryId`.
+The host injects `window.steamHarnessKanban`. `getConfiguration()` reads the current entry configuration; `getPresentation()` reads the presentation mode. Listen for `steamharness:kanban-configuration-change` and `steamharness:kanban-presentation-change`. Named configurations, snapshots and configuration files are isolated by `projectId + entryId`.
 
 ## Data bridge
 
 ```js
-const database = window.steamharness.databases.get("data");
+const database = window.steamHarnessKanban.databases.get("data");
 const markers = await database.kv.getValue("map:markers");
 await database.kv.setValue("map:markers", markers ?? []);
 const unsubscribe = database.subscribe(({ revision }) => refreshMap(revision));
@@ -31,7 +31,7 @@ The alias must be declared in this entry's `databases` and approved before use. 
 ## Page methods
 
 ```js
-window.steamharness.methods.register({
+window.steamHarnessKanban.methods.register({
   name: "focus", description: "Focus a map location", readOnly: true,
   inputSchema: { type: "object", properties: { x: { type: "number" } } },
 }, async (input, { signal }) => ({ focused: input.x }));

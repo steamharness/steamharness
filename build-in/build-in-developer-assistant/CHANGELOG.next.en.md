@@ -1,5 +1,7 @@
 # Unreleased
 
+- Fixed Kanban template instructions to use KV and knowledge APIs under a declared database alias with explicit request, approval and binding.
+
 - Breaking: the generator, templates and API references use aggregate entries and independently approved database bindings. Calls use context.entries and storage uses context.databases. Related-project declarations and combined publication locks are removed.
 
 - The permission control now displays the actual user policy and opens permission settings directly, without an extra inheritance choice. Coding tools, prompts, and Studio Control share one settings snapshot. Generator references now cover the user settings API, inheritance precedence, the hostless fallback, and safe session updates.

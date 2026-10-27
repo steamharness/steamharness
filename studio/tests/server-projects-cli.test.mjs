@@ -43,7 +43,7 @@ for (const projectType of ['workflow', 'conversation', 'kanban']) {
       const url = new URL(request.url, 'http://localhost');
       let data, status = 200;
       if (url.pathname.endsWith('/versions')) { data = { versions: [] }; }
-      else if (url.pathname.endsWith('/entries/main/configurations')) { data = {publicationRevision:0}; }
+      else if (url.pathname === `/api/projects/${projectId}/configurations` && url.searchParams.get('entryId') === 'main' && url.searchParams.get('target') === 'draft') { data = {publicationRevision:0}; }
       else if (url.pathname.endsWith('/package')) { data = { jobId: 'job-1' }; }
       else if (url.pathname.endsWith('/preparations/job-1')) { data = { status: 'success', stage: 'committing', result: { projectId: projectId, sourceHash: hash } }; }
       else if (url.pathname.endsWith('/publish')) { data = { version: manifest.version }; }

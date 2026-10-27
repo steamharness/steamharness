@@ -95,7 +95,10 @@ export class ProjectServerClient {
     if (!response.ok || payload.errCode !== 0 || payload.data === undefined) {
       const message = response.status===403 ? t('Your project or group role does not allow this operation.') : response.status === 401 ? t('Sign-in expired. Sign in again.')
         : payload.errMessage || t('SteamHarness Server request failed ({0}).', response.status);
-      throw new AuthError(message.replaceAll(this.connection.accessToken, '[redacted]'), response.status);
+      const error = new AuthError(message.replaceAll(this.connection.accessToken, '[redacted]'), response.status);
+      const details = payload.data as { code?: unknown } | undefined;
+      if (typeof details?.code === 'string') Object.assign(error, { code: details.code });
+      throw error;
     }
     return payload.data;
   }
@@ -110,6 +113,13 @@ export class ProjectServerClient {
   }
   versions(id: string, signal: AbortSignal): Promise<ServerProjectVersions> {
     return this.request(`/api/projects/${encodeURIComponent(id)}/versions`, signal);
+  }
+  configurations<T>(id: string, entryId: string, target: string, signal: AbortSignal, call: Record<string, unknown> = { action: 'get' }): Promise<T> {
+    const address = `/api/projects/${encodeURIComponent(id)}/configurations`;
+    if (call.action === 'get') {
+      return this.request(`${address}?entryId=${encodeURIComponent(entryId)}&target=${encodeURIComponent(target)}`, signal);
+    }
+    return this.request(address, signal, { entryId, target, call });
   }
   sourceShare(id: string, version: string, signal: AbortSignal): Promise<ServerProjectShare> {
     return this.request(`/api/projects/${encodeURIComponent(id)}/source-share?target=${encodeURIComponent(version)}`, signal);

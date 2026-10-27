@@ -72,6 +72,27 @@ test('project API reads use the host account, host language and cancellable requ
   assert.equal(reads.length, 1);
 });
 
+test('configuration reads, exports and writes select the intended entry using the Server API contract', async t => {
+  const remote = await server(t, request => {
+    const url = new URL(request.url, 'http://localhost');
+    if (url.pathname !== `/api/projects/${id}/configurations`) return { status: 404, payload: { errCode: 404 } };
+    return { data: { entryId: url.searchParams.get('entryId') } };
+  });
+  const client = new ProjectServerClient({ serverUrl: remote.url, accessToken: 'configuration-token' });
+  assert.equal((await client.configurations(id, 'agent', 'latest', signal())).entryId, 'agent');
+  assert.equal((await client.configurations(id, 'database', '1.2.3', signal())).entryId, 'database');
+  const exportCall = { action: 'export', id: 'personal' };
+  const saveCall = { action: 'save', id: 'personal', revision: 3, values: { label: 'Database only' } };
+  await client.configurations(id, 'agent', 'latest', signal(), exportCall);
+  await client.configurations(id, 'database', 'draft', signal(), saveCall);
+  assert.equal(new URL(remote.requests[1].url, remote.url).searchParams.get('target'), '1.2.3');
+  assert.deepEqual(JSON.parse(remote.requests[2].body), { entryId: 'agent', target: 'latest', call: exportCall });
+  assert.deepEqual(JSON.parse(remote.requests[3].body), { entryId: 'database', target: 'draft', call: saveCall });
+  assert.ok(remote.requests.every(request => request.auth === 'Bearer configuration-token'));
+  await assert.rejects(client.configurations(id, 'agent', 'draft', AbortSignal.abort()), { name: 'AbortError' });
+  assert.equal(remote.requests.length, 4);
+});
+
 for (const projectType of ['workflow', 'conversation', 'kanban']) test(`new ${projectType} projects receive a Server-assigned UUID privately without uploading or publishing source`, async t => {
   const directory = await fs.mkdtemp(path.join(tmpdir(), 'studio-register-')); t.after(() => fs.rm(directory, { recursive: true, force: true }));
   const projectInfo = { localizedNames: { en: 'Created' }, declarations: [], platformSupport: { mode: 'agnostic' } };
@@ -107,6 +128,13 @@ test('registration rejects permission errors and an unexpected server identity',
 test('API errors redact credentials and retain permission status', async () => {
   const client = new ProjectServerClient({ serverUrl: 'https://steamharness.test', accessToken: 'private-token' }, async () => Response.json({ errCode: 403, errMessage: 'private-token forbidden' }, { status: 403 }));
   await assert.rejects(client.projects(signal()), error => error.status === 403 && error.message === 'Your project or group role does not allow this operation.' && !error.message.includes('private-token'));
+});
+
+test('configuration error codes survive the Server client boundary', async () => {
+  const client = new ProjectServerClient({ serverUrl: 'https://steamharness.test', accessToken: 'configuration-token' }, async () => Response.json({
+    errCode: 409, errMessage: 'Configuration changed.', data: { code: 'CONFIGURATION_CONFLICT' },
+  }, { status: 409 }));
+  await assert.rejects(client.configurations(id, 'agent', 'draft', signal()), error => error.status === 409 && error.code === 'CONFIGURATION_CONFLICT');
 });
 
 test('malformed API envelopes produce a readable error', async () => {
@@ -185,7 +213,7 @@ test('upload waits for static preparation and only then publishes release notes'
   const f = await fixture(t);
   let polls = 0;
   const remote = await server(t, request => request.url.endsWith('/versions') ? { data: { versions: [] } }
-    : request.url.endsWith('/configurations?target=draft') ? {data:{publicationRevision:4}}
+    : request.url === `/api/projects/${id}/configurations?entryId=main&target=draft` ? {data:{publicationRevision:4}}
     : request.method === 'POST' ? { data: { version: '1.2.3' } }
       : { data: { jobId: 'job-1', projectId: id, status: ++polls === 1 ? 'preparing' : 'success', stage: 'validating', result: { projectId: id, sourceHash: 'a'.repeat(64) } } });
   await uploadServerProject({ ...f.options, directory: f.directory, releaseLog: 'New version', connection: { ...f.options.connection, serverUrl: remote.url } });

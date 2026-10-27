@@ -15,12 +15,12 @@ Kanban 是聚合项目中的静态 HTML 入口，不导出 executor。注册示�
 
 ## 配置与展示
 
-宿主注入 `window.steamharness`。`getConfiguration()` 读取当前入口配置，`getPresentation()` 读取展示模式；监听 `steamharness:kanban-configuration-change` 和 `steamharness:kanban-presentation-change` 更新页面。命名配置、快照和配置附件按 `projectId + entryId` 隔离。
+宿主注入 `window.steamHarnessKanban`。`getConfiguration()` 读取当前入口配置，`getPresentation()` 读取展示模式；监听 `steamharness:kanban-configuration-change` 和 `steamharness:kanban-presentation-change` 更新页面。命名配置、快照和配置附件按 `projectId + entryId` 隔离。
 
 ## 数据 Bridge
 
 ```js
-const database = window.steamharness.databases.get("data");
+const database = window.steamHarnessKanban.databases.get("data");
 const markers = await database.kv.getValue("map:markers");
 await database.kv.setValue("map:markers", markers ?? []);
 const unsubscribe = database.subscribe(({ revision }) => refreshMap(revision));
@@ -31,7 +31,7 @@ const unsubscribe = database.subscribe(({ revision }) => refreshMap(revision));
 ## 页面方法
 
 ```js
-window.steamharness.methods.register({
+window.steamHarnessKanban.methods.register({
   name: "focus", description: "Focus a map location", readOnly: true,
   inputSchema: { type: "object", properties: { x: { type: "number" } } },
 }, async (input, { signal }) => ({ focused: input.x }));

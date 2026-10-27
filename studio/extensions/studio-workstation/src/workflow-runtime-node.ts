@@ -22,6 +22,7 @@ import { promisify } from 'node:util';
 import { readFile } from 'node:fs/promises';
 import type { ProjectType } from './projects';
 import { uploadServerProject, downloadServerProject, allocateServerProjectId } from './steamharness-server-projects-node';
+import { ProjectServerClient } from './steamharness-server-projects';
 
 export function createProjectRuntime(context: vscode.ExtensionContext, account: AccountController): Launcher {
   const sessions = new Set<WebSession>();
@@ -46,14 +47,7 @@ export function createProjectRuntime(context: vscode.ExtensionContext, account: 
       }
       const connection=account.getConnection();if(!connection)throw new Error(t('Sign in to SteamHarness Server first.'));
       if(input.open) { await vscode.env.openExternal(vscode.Uri.parse(`${connection.serverUrl}/detail/${encodeURIComponent(String(input.projectId))}/entries/${encodeURIComponent(String(input.entryId))}/configurations`)); return {opened:true,storage:'server',projectId:input.projectId}; }
-      const call=input.call as Record<string,unknown>;
-      const address=`${connection.serverUrl}/api/projects/${encodeURIComponent(String(input.projectId))}/entries/${encodeURIComponent(String(input.entryId))}/configurations`;
-      const response=await fetch(call.action==='get'?`${address}?target=${encodeURIComponent(String(input.target??'draft'))}`:address,{
-        method:call.action==='get'?'GET':'POST',headers:{Authorization:`Bearer ${connection.accessToken}`,'Content-Type':'application/json'},
-        ...(call.action==='get'?{}:{body:JSON.stringify({call,target:input.target??'draft'})}),signal:AbortSignal.any([signal,AbortSignal.timeout(30_000)]),redirect:'error'});
-      const result=await response.json() as {errCode:number;errMessage:string;data:unknown};
-      if(!response.ok||result.errCode!==0)throw Object.assign(new Error(result.errMessage||t('Configuration request failed.')),{code:(result.data as {code?:string}|undefined)?.code});
-      return result.data;
+      return new ProjectServerClient(connection).configurations(String(input.projectId), String(input.entryId), String(input.target ?? 'draft'), signal, input.call as Record<string, unknown>);
     },
   };
   const templates = projectTemplatesRuntime(context.extensionUri.fsPath, vscode.env.language);

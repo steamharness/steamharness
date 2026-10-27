@@ -82,6 +82,22 @@ test('database HTTP authorization binds registered entries before upload and rec
     const open = (user: string, projectId: string, entryId: string, bindingRef: string) => createDatabasesContext({ projectId, entryId, conversationId: 'thread', requirements: [{ alias: 'data', host: 'server', bindingRef, permissions }], resolver: createRemoteDatabaseResolver({ serverUrl: base, token: tokens[user]! }) }).get('data');
     const x = open('owner', a, 'database', approved.bindingRef);
     await x.kv.setValue('shared', 1);
+    await x.kv.setValue('public:a', 1);
+    await x.kv.setValue('public:b', 2);
+    const narrowedClient = createDatabasesContext({ projectId: a, entryId: 'database', requirements: [{
+      alias: 'data', host: 'server', bindingRef: approved.bindingRef,
+      permissions: { ...permissions, kv: { read: { mode: 'prefixes', prefixes: ['public:'] }, write: none } },
+    }], resolver: createRemoteDatabaseResolver({ serverUrl: base, token: tokens.owner! }) }).get('data');
+    const firstPage = await narrowedClient.listValues({ pageSize: 1 });
+    assert.equal(firstPage.total, 2);
+    assert.deepEqual(firstPage.items.map(item => item.key), ['public:a']);
+    assert.deepEqual((await narrowedClient.listValues({ cursor: firstPage.nextCursor })).items.map(item => item.key), ['public:b']);
+    assert.equal((await narrowedClient.listValues({ query: 'shared' })).total, 0);
+    const list = { projectId: a, entryId: 'database', alias: 'data', bindingRef: approved.bindingRef, credentialVersion: 1, operation: 'list', entry: { spaceId, storageKind: 'kv', scope: 'project', key: '*' } };
+    for (const keyPrefixes of [null, 'public:', [1], [''], ['bad\0prefix'], ['x'.repeat(1025)], Array(1025).fill('public:')]) {
+      await send('owner', `/database-spaces/${spaceId}/data`, { ...list, keyPrefixes }, 400);
+    }
+    await send('owner', `/database-spaces/${spaceId}/data`, { ...list, keyPrefixes: [] }, 403);
     const guest = open('guest', a, 'database', approved.bindingRef);
     assert.equal(await guest.kv.getValue('shared'), 1);
     await assert.rejects(guest.kv.setValue('shared', 2), /Permission denied/);
@@ -106,7 +122,10 @@ test('database HTTP authorization binds registered entries before upload and rec
     await assert.rejects(y.kv.getValue('shared'), /does not allow/);
     const raw = { projectId: b, entryId: 'agent', alias: 'data', bindingRef: shared.bindingRef, credentialVersion: 1, operation: 'set', entry: { spaceId, storageKind: 'kv', scope: 'project', key: 'shared' }, value: 2 };
     await send('consumer', `/database-spaces/${spaceId}/data`, raw, 403);
-    assert.equal((await y.listValues()).total, 0);
+    assert.equal((await y.listValues()).total, 2);
+    const restrictedList = await send('consumer', `/database-spaces/${spaceId}/data`, { ...raw, operation: 'list', keyPrefixes: ['shared', 'public:'] });
+    assert.equal(restrictedList.total, 2);
+    assert.deepEqual(restrictedList.items.map((item: { key: string }) => item.key), ['public:a', 'public:b']);
     await pool.query('UPDATE projects SET entries=$2::jsonb WHERE id=$1', [b, JSON.stringify([entry('agent')])]);
     await send('owner', `/database-spaces/grants/${(await y.getBinding()).grant.grantId}/narrow`, { permissions: { ...permissions, kv: { read: all, write: none } } });
     await assert.rejects(y.kv.setValue('shared', 3), /does not allow/);

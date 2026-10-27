@@ -27,7 +27,10 @@ export class DatabaseCatalog {
     } else throw new Error("Invalid database request target.");
     if (this.state.requests.some((request) => request.status === "pending" && request.projectId === input.projectId && request.entryId === input.entryId && request.alias === input.alias)) throw new Error("This database alias already has a pending request.");
     if (this.state.bindings.some((binding) => binding.projectId === input.projectId && binding.entryId === input.entryId && binding.alias === input.alias && !this.state.grants.find((grant) => grant.grantId === binding.grantId)?.revokedAt)) throw new Error("Revoke the current binding before requesting a replacement.");
-    const request: DatabaseRequest = { ...input, target: structuredClone(input.target), permissions, requestId: this.id(), host: this.host, applicantId: actor.userId, status: "pending", createdAt: this.now() };
+    // Request payloads are untrusted. Approval metadata and binding references
+    // can only be written by review(), and must never affect catalog visibility.
+    const target = input.target.kind === "create" ? { kind: "create" as const, name: input.target.name } : { kind: "access" as const, spaceId: input.target.spaceId };
+    const request: DatabaseRequest = { projectId: input.projectId, entryId: input.entryId, alias: input.alias, target, permissions, requestId: this.id(), host: this.host, applicantId: actor.userId, status: "pending", createdAt: this.now() };
     this.state.requests.push(request);
     return structuredClone(request);
   }

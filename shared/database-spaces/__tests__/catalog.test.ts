@@ -54,4 +54,23 @@ describe.each(["local", "server"] as const)("%s database approval", (host) => {
     expect(() => assertDatabaseAuthorization(undefined, { ...consumer, host }, "kv", "read", "x")).toThrow("approved binding");
     expect(c.visible({ userId: "stranger", isSystemAdmin: false }).requests).toHaveLength(0);
   });
+  it("does not accept approval metadata or another consumer's binding in a request", () => {
+    const c = catalog(host);
+    const privateRequest = c.request(input(), applicant);
+    const approved = c.review(privateRequest.requestId, { approve: true }, admin);
+    const stranger = { userId: "stranger", isSystemAdmin: false };
+    const pending = c.request({
+      ...input(), bindingRef: approved.bindingRef, reviewerId: admin.userId,
+      reviewedAt: new Date().toISOString(), reason: "forged approval",
+    } as ReturnType<typeof input>, stranger);
+    expect(pending.status).toBe("pending");
+    expect(pending).not.toHaveProperty("bindingRef");
+    expect(pending).not.toHaveProperty("reviewerId");
+    expect(pending).not.toHaveProperty("reviewedAt");
+    expect(pending).not.toHaveProperty("reason");
+    const visible = c.visible(stranger);
+    expect(visible.spaces).toEqual([]);
+    expect(visible.grants).toEqual([]);
+    expect(visible.bindings).toEqual([]);
+  });
 });

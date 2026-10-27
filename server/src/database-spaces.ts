@@ -134,7 +134,12 @@ export class DatabaseSpaceRepository {
         if (entry.storageKind !== 'kv') throw new HttpError(403,403,'Use the knowledge API.');
         const identity = {...authorization, grant:{...authorization.grant,permissions:fullPermissions()}};
         assertDatabaseAuthorization(identity,{...consumer,host:'server'},'kv','read','');
-        const prefixes = databaseReadPrefixes(authorization.grant.permissions.kv.read, requirement?.permissions.kv.read ?? {mode:'all'});
+        if (raw.keyPrefixes !== undefined && (!Array.isArray(raw.keyPrefixes) || raw.keyPrefixes.length > 1024 || raw.keyPrefixes.some((prefix: unknown) => typeof prefix !== 'string' || !prefix.length || prefix.length > 1024 || prefix.includes('\0')))) throw new HttpError(400,400,'Invalid database key prefixes.');
+        const prefixes = databaseReadPrefixes(
+          authorization.grant.permissions.kv.read,
+          requirement?.permissions.kv.read ?? {mode:'all'},
+          raw.keyPrefixes === undefined ? {mode:'all'} : {mode:'prefixes',prefixes:raw.keyPrefixes},
+        );
         if (prefixes?.length === 0) throw new HttpError(403,403,'KV read access is required.');
         const size = Math.min(100, Math.max(1, Math.floor(raw.pageSize ?? 30))), offset = Number(raw.cursor ?? 0);
         if (!Number.isSafeInteger(offset) || offset < 0) throw new HttpError(400,400,'Invalid database cursor.');

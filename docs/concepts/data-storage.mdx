@@ -11,7 +11,7 @@ description: "独立数据库空间"
 
 入口的 `databases` 声明 `alias`、`host`、`permissions` 和可选的非敏感 `bindingRef`。代码使用 `context.databases.get(alias)`；空间 ID、实际凭据和授权由宿主管理。`local` 与 `server` 必须显式选择，授权失败不会切换宿主。
 
-权限分别覆盖 `kv.read/write` 与 `knowledge.read/write`，每条规则为 `{"mode":"none"}`、`{"mode":"all"}` 或 `{"mode":"prefixes","prefixes":["public:"]}`。有效权限是入口声明与当前授权的交集。
+权限分别覆盖 `kv.read/write` 与 `knowledge.read/write`，每条规则为 `{"mode":"none"}`、`{"mode":"all"}` 或 `{"mode":"prefixes","prefixes":["public:"]}`。有效权限是入口声明与当前授权的交集。KV 列表在查询时应用有效键范围，分页和总数仅包含范围内的数据；客户端传入的键前缀只能进一步收窄范围。
 
 ## 申请与审批
 

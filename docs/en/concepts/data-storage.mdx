@@ -11,7 +11,7 @@ A database is an independent resource of a local or server host. One `spaceId` c
 
 Each entry declares `databases` with `alias`, `host`, `permissions` and an optional non-sensitive `bindingRef`. Code uses `context.databases.get(alias)`; the host stores the space, grants and actual credentials. Select `local` or `server` explicitly. Failed authorization never falls back to another host.
 
-Permissions independently control `kv.read/write` and `knowledge.read/write`. Each rule is `{"mode":"none"}`, `{"mode":"all"}` or `{"mode":"prefixes","prefixes":["public:"]}`. Effective access is the intersection of the entry declaration and current grant.
+Permissions independently control `kv.read/write` and `knowledge.read/write`. Each rule is `{"mode":"none"}`, `{"mode":"all"}` or `{"mode":"prefixes","prefixes":["public:"]}`. Effective access is the intersection of the entry declaration and current grant. KV listing applies the effective key range before pagination and counting. Client-supplied key prefixes may only narrow that range.
 
 ## Request and approval
 

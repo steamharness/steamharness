@@ -1,5 +1,7 @@
 # Unreleased
 
+- Fixed remote entry configuration and upload revision queries using an unavailable Server API path. Requests preserve entry selection, cancellation and configuration conflict codes.
+
 - Breaking: the project tree exposes aggregate entries in separate native tabs sharing one host. The host is released after its last tab closes. Entry resources use independently approved database spaces; host pages manage requests, approval and sharing. Transfers include the complete aggregate.
 
 - Fixed the Assistant permission shortcut to open the Permissions category in user settings, reusing the existing settings tab. Sidebar and standalone tool shortcuts now work independently of the conversation lifecycle.

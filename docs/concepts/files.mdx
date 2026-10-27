@@ -96,7 +96,7 @@ const file = await context.files?.createFile?.({
 
 上传后可用 `await context.files.resolveFile(reference)` 读取同一服务器的文件，再调用 `readBuffer()`、`readBase64()` 或 `readDataUrl()`。Remote file store 使用当前连接鉴权访问固定 managed endpoint，不信任引用中的 URL 或本地路径。
 
-Kanban 页面通过 `window.steamHarnessKanban.files.createFile/readFile/deleteFile` 使用同一服务器文件存储，详见 [Kanban 图片与文件](/concepts/kanban#图片与文件)。现有本地图片迁移可用 [CLI 业务文件命令](/cli/server-workspace#业务文件)，无需编写临时 executor。
+Kanban 页面通过 `window.steamHarnessKanban.databases.get(alias).files` 的 `createFile/readFile/deleteFile` 访问获批数据库空间的附件，使用知识库权限。详见 [Kanban 数据 Bridge](/concepts/kanban#数据-bridge)。
 
 不要把 base64 文件内容保存进 KV 或会话历史。需要跨轮复用时，保存 `file.toJSON()` 返回的引用元数据。
 
