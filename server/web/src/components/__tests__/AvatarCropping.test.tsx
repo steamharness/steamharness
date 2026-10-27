@@ -25,10 +25,10 @@ afterEach(() => {
   vi.clearAllMocks();
 });
 
-function loadImage() {
+function loadImage(naturalWidth = 1600, naturalHeight = 800, width = 800, height = 400) {
   const image = screen.getByAltText(label("accountAvatarCropImageAlt")) as HTMLImageElement;
-  Object.defineProperties(image, { naturalWidth: { value: 1600 }, naturalHeight: { value: 800 } });
-  vi.spyOn(image.parentElement!, "getBoundingClientRect").mockReturnValue({ x: 0, y: 0, left: 0, top: 0, right: 800, bottom: 400, width: 800, height: 400, toJSON() {} });
+  Object.defineProperties(image, { naturalWidth: { value: naturalWidth }, naturalHeight: { value: naturalHeight } });
+  vi.spyOn(image.parentElement!, "getBoundingClientRect").mockReturnValue({ x: 0, y: 0, left: 0, top: 0, right: width, bottom: height, width, height, toJSON() {} });
   fireEvent.load(image);
   return image;
 }
@@ -55,7 +55,9 @@ describe("avatar crop workflow", () => {
     expect(confirm).toBeDisabled();
     expect(save).not.toHaveBeenCalled();
     expect(cropAndCompressAvatar).not.toHaveBeenCalled();
+    expect(screen.getByRole("status", { name: i18n.t("imagePreviewLoading", { ns: "common" }) })).toBeVisible();
     const image = loadImage();
+    expect(screen.queryByRole("status")).toBeNull();
     // Changing just the right edge must not force a matching height change.
     fireEvent.keyDown(within(dialog).getByRole("button", { name: label("accountAvatarCropHandleE") }), { key: "ArrowLeft", shiftKey: true });
     fireEvent.click(confirm);
@@ -97,15 +99,45 @@ describe("avatar crop workflow", () => {
     expect(save).toHaveBeenCalledWith({ displayName: "", avatarUrl: compressed });
   });
 
-  it("restores the full original proportions with Use full image", async () => {
+  it("restores the full original proportions after the selection is collapsed", async () => {
     const confirm = vi.fn();
     render(<AvatarCropDialog file={new File(["image"], "avatar.png")} onConfirm={confirm} onClose={vi.fn()} />);
-    loadImage();
-    fireEvent.keyDown(screen.getByRole("button", { name: label("accountAvatarCropHandleE") }), { key: "ArrowLeft" });
+    loadImage(1600, 800, 100, 50);
+    fireEvent.keyDown(screen.getByRole("button", { name: label("accountAvatarCropHandleE") }), { key: "ArrowLeft", ctrlKey: true, metaKey: true });
+    expect(screen.getByRole("button", { name: label("accountAvatarCropConfirm") })).toBeDisabled();
+    expect(cropAndCompressAvatar).not.toHaveBeenCalled();
     fireEvent.click(screen.getByRole("button", { name: label("accountAvatarCropReset") }));
     fireEvent.click(screen.getByRole("button", { name: label("accountAvatarCropConfirm") }));
     await waitFor(() => expect(confirm).toHaveBeenCalledWith(compressed));
     expect(vi.mocked(cropAndCompressAvatar).mock.calls[0][1]).toEqual({ unit: "%", x: 0, y: 0, width: 100, height: 100 });
+  });
+
+  it.each([
+    { kind: "tiny", naturalWidth: 10, naturalHeight: 15, width: 264, height: 396 },
+    { kind: "portrait", naturalWidth: 900, naturalHeight: 1600, width: 222.75, height: 396 },
+    { kind: "landscape", naturalWidth: 1600, naturalHeight: 900, width: 704, height: 396 },
+  ])("keeps $kind images usable after preview scaling without locking the crop ratio", async ({ naturalWidth, naturalHeight, width, height }) => {
+    const confirm = vi.fn();
+    render(<AvatarCropDialog file={new File(["image"], "avatar.png")} onConfirm={confirm} onClose={vi.fn()} />);
+    const image = loadImage(naturalWidth, naturalHeight, width, height);
+    fireEvent.keyDown(screen.getByRole("button", { name: label("accountAvatarCropHandleE") }), { key: "ArrowLeft", shiftKey: true });
+    fireEvent.click(screen.getByRole("button", { name: label("accountAvatarCropConfirm") }));
+    await waitFor(() => expect(confirm).toHaveBeenCalledWith(compressed));
+    const crop = vi.mocked(cropAndCompressAvatar).mock.calls[0][1];
+    expect(crop.width).toBeGreaterThan(0);
+    expect(crop.width).toBeLessThan(100);
+    expect(crop.height).toBe(100);
+    expect(cropAndCompressAvatar).toHaveBeenCalledWith(image, crop);
+  });
+
+  it("reports decoded images without usable dimensions rather than enabling processing", () => {
+    renderProfile();
+    chooseFile();
+    loadImage(0, 0);
+    expect(screen.queryByRole("status")).toBeNull();
+    expect(screen.getByRole("alert")).toHaveTextContent(label("accountAvatarErrorReadFailed"));
+    expect(screen.getByRole("button", { name: label("accountAvatarCropConfirm") })).toBeDisabled();
+    expect(cropAndCompressAvatar).not.toHaveBeenCalled();
   });
 
   it("shows processing failures and allows retrying without losing the selection", async () => {

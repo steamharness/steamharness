@@ -1,5 +1,7 @@
 # Unreleased
 
+- Fixed avatar crop previews to fit the dialog proportionally, keeping small images usable and portrait images within the preview height. Show a loading placeholder while reading images.
+
 - Added free avatar cropping and automatic compression before upload in profile settings, removing the 512 KB source limit without requiring image dimensions or an aspect ratio.
 
 - New projects use the ID assigned by the Server; the browser no longer generates or submits a client-selected ID.

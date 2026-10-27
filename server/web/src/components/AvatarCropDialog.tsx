@@ -6,6 +6,7 @@ import { useTranslation } from "@steamharness/i18n/react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Skeleton } from "@/components/ui/skeleton";
 import { cropAndCompressAvatar } from "@/lib/avatar-image";
 
 const FULL_IMAGE: PercentCrop = { unit: "%", x: 0, y: 0, width: 100, height: 100 };
@@ -16,9 +17,11 @@ export function AvatarCropDialog({ file, onConfirm, onClose }: {
   onClose: () => void;
 }) {
   const { t } = useTranslation("serverWeb");
+  const { t: commonT } = useTranslation("common");
   const [source, setSource] = useState("");
   const [crop, setCrop] = useState<PercentCrop>(FULL_IMAGE);
-  const [ready, setReady] = useState(false);
+  const [imageAspect, setImageAspect] = useState<number | null>(null);
+  const ready = imageAspect !== null;
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const imageRef = useRef<HTMLImageElement>(null);
@@ -30,7 +33,7 @@ export function AvatarCropDialog({ file, onConfirm, onClose }: {
     const url = URL.createObjectURL(file);
     setSource(url);
     setCrop(FULL_IMAGE);
-    setReady(false);
+    setImageAspect(null);
     setError(null);
     return () => {
       if (generation.current === current) generation.current++;
@@ -62,10 +65,18 @@ export function AvatarCropDialog({ file, onConfirm, onClose }: {
           <DialogTitle>{t("accountAvatarCropTitle")}</DialogTitle>
           <DialogDescription>{t("accountAvatarCropDescription")}</DialogDescription>
         </DialogHeader>
-        <div className="flex min-h-24 min-w-0 items-center justify-center" aria-busy={!ready && !error}>
+        <div className="relative flex min-h-24 min-w-0 items-center justify-center" aria-busy={!ready && !error}>
+          {!ready && !error ? <Skeleton className="absolute inset-0" role="status" aria-label={commonT("imagePreviewLoading")} /> : null}
           {source ? (
             <ReactCrop crop={crop} onChange={(_, percentCrop) => setCrop(percentCrop)}
               disabled={busy || !ready} ruleOfThirds keepSelection
+              // Size the crop surface itself so library styles cannot override the image height.
+              // Small sources also get a usable preview; export still uses their original pixels.
+              style={{
+                width: imageAspect ? `min(100%, ${55 * imageAspect}dvh)` : "100%",
+                maxHeight: "55dvh",
+                visibility: ready ? "visible" : "hidden",
+              }}
               ariaLabels={{
                 cropArea: t("accountAvatarCropArea"),
                 nwDragHandle: t("accountAvatarCropHandleNW"), nDragHandle: t("accountAvatarCropHandleN"),
@@ -74,9 +85,18 @@ export function AvatarCropDialog({ file, onConfirm, onClose }: {
                 swDragHandle: t("accountAvatarCropHandleSW"), wDragHandle: t("accountAvatarCropHandleW"),
               }}>
               <img ref={imageRef} src={source} alt={t("accountAvatarCropImageAlt")}
-                className="block max-h-[55dvh] max-w-full"
-                onLoad={() => setReady(true)}
-                onError={() => { setReady(false); setError(t("accountAvatarErrorReadFailed")); }} />
+                className="block h-auto w-full"
+                onLoad={event => {
+                  const image = event.currentTarget;
+                  if (image.naturalWidth > 0 && image.naturalHeight > 0) {
+                    setImageAspect(image.naturalWidth / image.naturalHeight);
+                    setError(null);
+                  } else {
+                    setImageAspect(null);
+                    setError(t("accountAvatarErrorReadFailed"));
+                  }
+                }}
+                onError={() => { setImageAspect(null); setError(t("accountAvatarErrorReadFailed")); }} />
             </ReactCrop>
           ) : null}
         </div>
