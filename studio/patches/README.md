@@ -86,4 +86,6 @@
 
 `0060-studio-start-settings-entry.patch` 将开始页徽标移到左侧标题旁并移除顶部刷新按钮；齿轮入口统一通过鼠标、键盘及触控直接打开 Studio 设置页，使用双语标签与按钮语义。
 
+`0064-studio-windows-background-updater-paths.patch` 统一安装目标与后台更新辅助程序的扩展长度路径转换，避免传统目录替换在较深依赖路径上重试失败。
+
 新内核修改应通过 `git diff` 导出统一格式补丁，并排除脚本生成的 `product.json` 及 Studio 扩展链接。品牌配置由 `config/product.json` 维护。

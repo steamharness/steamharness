@@ -1,5 +1,7 @@
 # Unreleased
 
+- Fixed non-versioned Windows background updates by passing extended-length paths to the helper and providing a pinned, checksum-verified compatible updater cache.
+
 - Fixed Windows per-user installation and background updates for deeply nested dependency paths, avoiding installation rollback when Copilot runtime files exceed the legacy path limit.
 
 - New Workflow, Conversation and Kanban projects apply for a Server ID using the current account before generating local files, without uploading source. Failed allocation or account changes create no project files; installation and validation retries do not allocate again. Uploading an unregistered project guides users to reapply first.
