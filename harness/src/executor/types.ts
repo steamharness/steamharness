@@ -77,6 +77,13 @@ export interface AudioParamOptions {
   maxBytes?: number;
 }
 
+/** Bind a parameter to a host user setting without adding a selector option. */
+export interface UserSettingParamBinding {
+  key: "agent.permissionPolicy";
+  /** default permits project overrides; fixed always follows the user setting. */
+  mode?: "default" | "fixed";
+}
+
 interface ParamDefinitionBase {
   name: string;
   flag?: string;
@@ -87,6 +94,7 @@ interface ParamDefinitionBase {
   /** Command for a boolean Slash parameter. Defaults to the parameter name. */
   command?: string;
   defaultValue?: string;
+  userSetting?: UserSettingParamBinding;
   /** Re-run resolveParams when the main composer input changes. Defaults to false. */
   resolveOnInput?: boolean;
   accept?: string[];

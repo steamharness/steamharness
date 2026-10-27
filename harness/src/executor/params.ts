@@ -1,4 +1,5 @@
 import { HarnessError } from "../workflow/index";
+import { getUserSettings } from "../user-settings";
 import type {
   ParamDefinition,
   ParamDeclaration,
@@ -16,7 +17,8 @@ export function parseProjectParamValues(
   const definitions = normalizeProjectParamDeclarations(params).params;
   const values: ParamValues = Object.fromEntries(definitions.map((param) => [
     param.name,
-    isMultiParam(param) ? readMultiValue(param.defaultValue ?? "") : param.defaultValue ?? "",
+    param.userSetting ? getUserSettings().agent.permissionPolicy
+      : isMultiParam(param) ? readMultiValue(param.defaultValue ?? "") : param.defaultValue ?? "",
   ]));
   const flags = new Map<string, ParamDefinition>();
   const positional = definitions.filter((param) => param.type === "positional");
@@ -33,6 +35,7 @@ export function parseProjectParamValues(
     if (arg === undefined) break;
     const param = flags.get(arg);
     if (param) {
+      if (param.userSetting?.mode === "fixed") { index += 2; continue; }
       if (isMultiParam(param)) {
         values[param.name] = normalizeValue(param, args[index + 1] ?? "");
         index += 2;
@@ -153,6 +156,7 @@ function validatePatchValue(param: ParamDefinition, value: ParamValue): void {
 }
 
 function normalizeValue(param: ParamDefinition, value: string): ParamValue {
+  if (param.userSetting && (value === "" || value === "inherit")) return getUserSettings().agent.permissionPolicy;
   return isMultiParam(param) ? readMultiValue(value) : value;
 }
 

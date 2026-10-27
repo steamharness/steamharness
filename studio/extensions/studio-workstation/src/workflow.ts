@@ -17,6 +17,7 @@ import { assistantWorkspaceAvailable } from './assistant-workspace';
 import { bindProjectClipboard } from './workflow-clipboard';
 import { bindProjectPathPicker } from './workflow-path-picker';
 import { bindProjectPathOpen } from './workflow-path-open';
+import { openProjectUserSettings } from './workflow-user-settings';
 import { ProjectFileIcons } from './workflow-file-icons';
 import { bindProjectResourceCards, type ResourceCardResult } from './workflow-resource-cards';
 import type { ProjectIcons } from './project-icons';
@@ -279,6 +280,10 @@ export async function activateProject(context: vscode.ExtensionContext, launcher
         }
         if (message?.type === 'workflow-project-upload' && message.version === 1 && launcher.uploadProject && !project.assistant && !closed && projectAvailable(project)) {
           void vscode.commands.executeCommand('studio.uploadProject', { uri: project.uri }).then(undefined, error => output.appendLine(`Project upload: ${String(error)}`));
+          return;
+        }
+        if (message?.type === 'workflow-user-settings' && message.version === 1 && message.key === 'agent.permissionPolicy') {
+          void openProjectUserSettings(message).catch(error => output.appendLine(`User settings: ${String(error)}`));
           return;
         }
         if (message?.type === 'workflow-account' && message.version === 1) { account.open(); }

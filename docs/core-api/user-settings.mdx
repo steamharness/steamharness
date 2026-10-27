@@ -54,11 +54,42 @@ await withUserSettings({ agent: { permissionPolicy: "read-only" } }, async () =>
 
 Core 先选本轮 `AgentInput.permissionPolicy`，再选开发者的运行时／节点 `permissionPolicy`；两处都未填写时使用 `workspace`。选中的值为 `inherit` 时，解析为当前用户快照中的具体值；无宿主时解析为 `auto`。直接调用 Agent、Agent 节点和项目参数使用相同规则。
 
-项目参数 `--permission-policy inherit` 和会话参数保存原始 `inherit`，后续仍能继承。底层工具筛选、文件范围和运行时初始化只接收解析后的三个具体值。各模式的工具、路径及 shell 行为见 [createAgent 权限策略](/core-api/create-agent#权限策略)。
+直接调用仍可传入 `--permission-policy inherit`。参数表单通过空覆盖值保存继承关系，只有显式项目选择才保存具体值；不会将显示的系统权限写成覆盖。底层工具筛选、文件范围和运行时初始化只接收解析后的三个具体值。各模式的工具、路径及 shell 行为见 [createAgent 权限策略](/core-api/create-agent#权限策略)。
+
+## 参数展示方式
+
+开发者通过 `ParamDefinition.userSetting` 选择项目如何使用用户配置。当前支持单个 string 字段绑定 `key: "agent.permissionPolicy"`。
+
+- `mode: "fixed"`：只显示系统当前权限，点击打开 Studio 用户设置；忽略项目覆盖及旧会话保存的具体值。
+- `mode: "default"`（省略 mode 时采用）：保留三个原始选项，以用户配置为默认选中值；手动选择后成为项目覆盖，重置恢复跟随当前用户配置。
+
+绑定必须内联声明，不要同时填写 `defaultValue`；不支持多值、checkboxes、Mode 或 Slash 字段。`paramValues` 接收执行快照中解析出的有效值。
+
+```ts
+params: [{
+  kind: "quick", id: "permission", label: "Permission", icon: "shield",
+  summary: ["permissionPolicy"],
+  fields: [{
+    name: "permissionPolicy", flag: "--permission-policy", type: "string",
+    control: "select",
+    userSetting: { key: "agent.permissionPolicy", mode: "fixed" },
+    options: [
+      { value: "read-only", label: "Read only" },
+      { value: "workspace", label: "Workspace" },
+      { value: "auto", label: "Auto approve" },
+    ],
+  }],
+}],
+createInput({ paramValues }) {
+  return { errCode: 0, errMessage: "", permissionPolicy: paramValues.permissionPolicy };
+}
+```
+
+将示例改为 `mode: "default"` 即可允许项目单独覆盖。`createAgentProjectParams({ permissionPolicy: "inherit" })` 自动生成该可覆盖绑定。独立 CLI 可以解析宿主注入值，打开用户设置页需要 Studio 宿主。
 
 ## Studio 与 CLI 会话
 
-Studio 内置小助手默认选择 **继承用户设置**，也可在会话内选择具体权限；已保存的具体权限继续生效。编码工具、提示词和 Studio Control 使用同一设置快照。
+Studio 内置小助手使用固定用户设置绑定。权限入口直接显示实际策略（例如 **自动批准**），点击打开 **设置 → 权限**，不增加“继承用户设置”选项；固定绑定不受已保存的会话覆盖值影响。编码工具、提示词和 Studio Control 使用同一设置快照。
 
 修改用户设置后，正在运行的任务、后台工作和子任务保留原快照。持久会话等所有工作结束且会话空闲后，重挂载原数据库并采用最新设置；新输入等待该边界，保留历史、队列和请求标识。中断恢复先使用记录的启动快照完成原任务。
 

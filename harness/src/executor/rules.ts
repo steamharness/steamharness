@@ -2529,6 +2529,9 @@ function analyzeSourceFile(
       description: readStringProperty(obj, "description"),
       command: readStringProperty(obj, "command"),
       defaultValue: readStringProperty(obj, "defaultValue"),
+      ...(findStaticPropertyAssignment(obj, "userSetting") === undefined ? {} : {
+        userSetting: readParamUserSetting(obj),
+      }),
       multiple: readBooleanProperty(obj, "multiple"),
       // keeps option metadata visible to local host parameter forms.
       control: readParamControlProperty(obj, "control"),
@@ -2540,6 +2543,15 @@ function analyzeSourceFile(
       audio: readParamAudioProperty(obj),
       format: readStringProperty(obj, "format") === "json" ? "json" : undefined,
     } as ParamDefinition;
+  }
+
+  function readParamUserSetting(obj: ts.ObjectLiteralExpression): ParamDefinition["userSetting"] {
+    const property = findStaticPropertyAssignment(obj, "userSetting");
+    const value = property && ts.isObjectLiteralExpression(property.initializer) ? property.initializer : undefined;
+    return {
+      key: value ? readStringProperty(value, "key") ?? "" : "",
+      ...(value && findStaticPropertyAssignment(value, "mode") === undefined ? {} : { mode: value ? readStringProperty(value, "mode") ?? "" : "" }),
+    } as ParamDefinition["userSetting"];
   }
 
   function readToolPermissionObject(

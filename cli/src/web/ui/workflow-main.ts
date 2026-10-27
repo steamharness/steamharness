@@ -79,6 +79,7 @@ const parameters = () => state ? projectParameters(state.project, entrypointId) 
 const draft = (): Draft => drafts[entrypointId ?? ''] ??= { scopeId: '', values: {}, rawArgs: '[]', inputMode: 'form', policies: {} };
 const disabled = () => !connected || !!state?.running || submitting || !!state?.project.requiresLogin && state.account.status !== 'authenticated';
 const fields = new Fields(element('main-fields'), element('parameter-actions'), {
+  openUserSetting: key => host.postMessage({ type: 'open-user-setting', key }),
   values: () => draft().values, states: () => paramStates, disabled, loading: () => resolving,
   modelConfigurationRequired: () => configurationPanel.needsAgentModels(), configureModel: () => configurationPanel.openAgentModels(),
   change: (name, value) => { draft().values[name] = value; fields.update(); scheduleResolve({ kind: 'param', paramName: name }); },

@@ -49,16 +49,21 @@ it('carries host settings into real workers and IPC tools until a durable sessio
             async execute() { return { content: [{ type: 'text', text: steamharness.getUserSettings().agent.permissionPolicy }] }; },
           }]; },
         }), conversation: { durable: { enabled: true }, recovery: { enabled: true } },
-        tools: [{ name: 'fixture_settings', enabled: true, autoApprove: true }], params: [],
-        createInput({ args }) {
+        tools: [{ name: 'fixture_settings', enabled: true, autoApprove: true }],
+        params: [{ kind: 'quick', id: 'access', label: 'Access', summary: ['access'], fields: [
+          { name: 'access', flag: '--access', type: 'string', control: 'select',
+            userSetting: { key: 'agent.permissionPolicy', mode: 'fixed' },
+            options: [{ value: 'read-only' }, { value: 'workspace' }, { value: 'auto' }] },
+        ] }],
+        createInput({ args, paramValues }) {
           writeFileSync(new URL('./settings-seen', import.meta.url), steamharness.getUserSettings().agent.permissionPolicy);
-          return steamharness.createAgentProjectInput(args);
+          return { ...steamharness.createAgentProjectInput(args), permissionPolicy: paramValues.access };
         },
       });
     `);
     const inspected = await runtime.inspect([directory]); expect(inspected.errors).toEqual([]);
     const project = { ...inspected.projects[0], uri: '' };
-    const request = { project, conversationId: 'settings-session', runId: 'settings-run', args: ['--message', 'First'] };
+    const request = { project, conversationId: 'settings-session', runId: 'settings-run', args: ['--message', 'First', '--access', 'workspace'] };
     const events = (event: Record<string, any>) => {
       if (event.type === 'node_chunk' && event.chunk?.item?.metadata?.kind === 'agent-session') snapshot = event.chunk.item.content;
     };

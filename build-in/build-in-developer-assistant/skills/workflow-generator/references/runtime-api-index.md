@@ -112,3 +112,5 @@
 每个成员的契约（参数、返回值、错误码）在 `references/steamharness-api.md` 里按小节说明。
 
 <!-- runtime-api-index:end -->
+
+`UserSettingParamBinding` is the public parameter binding type (`key: "agent.permissionPolicy"`, `mode?: "default" | "fixed"`); it is metadata, not a runtime function.

@@ -104,6 +104,7 @@ params: [
 | `required` | `boolean` | 是否必填。 |
 | `description` | `string` | 参数说明。 |
 | `defaultValue` | `string` | 默认值。 |
+| `userSetting` | `UserSettingParamBinding` | 单个 string 字段绑定 `agent.permissionPolicy`；`mode: "default"` 允许项目覆盖，`"fixed"` 跟随用户设置并提供设置跳转。不能同时填写 `defaultValue`。见[用户设置](/core-api/user-settings)。 |
 | `multiple` | `boolean` | 是否允许多个值。 |
 | `control` | `"text" \| "textarea" \| "radio" \| "select" \| "checkboxes" \| "audio" \| "date" \| "time" \| "datetime" \| "date-range"` | CLI Web 的表单控件提示；`audio` 必须与 `type: "file"` 一起使用，日期相关控件仍使用 `type: "string"`。 |
 | `step` | `number` | 这个字段属于第几步，从 `1` 开始。同一步的字段一起问；声明了 `step` 的请求在用户输入节点里一次只展示一步（问题上方有「‹ 第 N / M 问 ›」前后翻页，未答的必答题会在那里标出）。一次问多个独立问题时用它，同一个问题的多个字段不要拆步。 |

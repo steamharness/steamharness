@@ -14,6 +14,7 @@ function fixture() {
     append(...elements: Element[]) { this.children.push(...elements); }
     replaceChildren(...elements: Element[]) { this.children = elements; }
     setAttribute(name: string, value: string) { this.attributes.set(name, value); }
+    removeAttribute(name: string) { this.attributes.delete(name); }
     getAttribute(name: string) {
       return name.startsWith('data-') ? this.dataset[name.slice(5).replace(/-([a-z])/g, (_, letter: string) => letter.toUpperCase())]
         : this.attributes.get(name);
@@ -74,9 +75,9 @@ function fixture() {
     }
     actions.update();
   });
-  const onConfigureModel = vi.fn();
+  const onConfigureModel = vi.fn(), onOpenUserSetting = vi.fn();
   const actions = new ParameterActions(container as unknown as HTMLElement, { current: () => state,
-    fieldRoot: () => new Element() as unknown as HTMLElement, onChange, onReset, onConfigureModel });
+    fieldRoot: () => new Element() as unknown as HTMLElement, onChange, onReset, onConfigureModel, onOpenUserSetting });
   const flush = () => { for (const callback of frames.splice(0)) { callback(0); } };
   const resize = (width: number) => {
     container.clientWidth = width;
@@ -84,7 +85,7 @@ function fixture() {
     flush();
   };
   actions.render(parameters); flush();
-  return { actions, parameters, container, state, resize, flush, frames, popup: documentState.body.children[0], documentState, onChange, onReset, onConfigureModel };
+  return { actions, parameters, container, state, resize, flush, frames, popup: documentState.body.children[0], documentState, onChange, onReset, onConfigureModel, onOpenUserSetting };
 }
 
 describe('Quick parameter triggers', () => {
@@ -228,5 +229,38 @@ describe('Quick parameter menus', () => {
     expect(f.documentState.activeElement?.dataset.focusKey).toBe('option:short');
     f.state.states.model = { visible: false }; f.actions.update();
     expect(f.popup.hidden).toBe(true);
+  });
+});
+
+describe('user setting parameter bindings', () => {
+  it('shows the actual user value and opens settings directly for fixed bindings, even during a task', () => {
+    const f = fixture(), field = f.parameters.fields[1];
+    delete field.defaultValue;
+    field.userSetting = { key: 'agent.permissionPolicy', mode: 'fixed' }; field.userSettingValue = 'read';
+    f.state.values.permission = 'workspace'; f.state.loading = true; f.state.disabled = true;
+    f.actions.update();
+    const button = f.container.children[1];
+    expect(button.title).toContain('Read only'); expect(button.title).toContain('Change in user settings');
+    expect(button.getAttribute('aria-haspopup')).toBeUndefined(); expect(button.disabled).toBe(false);
+    button.dispatchEvent(new Event('click'));
+    expect(f.onOpenUserSetting).toHaveBeenCalledWith('agent.permissionPolicy');
+    expect(f.popup.hidden).toBe(true); expect(f.onChange).not.toHaveBeenCalled();
+    field.userSettingValue = 'auto'; f.actions.update(); expect(button.title).toContain('Auto approve');
+    expect(f.actions.openForField('permission')).toBe(true); expect(f.onOpenUserSetting).toHaveBeenCalledTimes(2);
+  });
+
+  it('selects the system value among the original choices and keeps explicit overrides across settings changes', () => {
+    const f = fixture(), field = f.parameters.fields[1];
+    delete field.defaultValue;
+    field.userSetting = { key: 'agent.permissionPolicy', mode: 'default' }; field.userSettingValue = 'workspace';
+    f.state.values.permission = ''; f.actions.update();
+    const button = f.container.children[1]; button.dispatchEvent(new Event('click'));
+    expect(f.popup.querySelectorAll('[role=option]')).toHaveLength(3);
+    expect(f.popup.querySelector('[role=option][aria-selected=true]')?.dataset.focusKey).toBe('option:workspace');
+    f.popup.querySelectorAll('[role=option]')[0].dispatchEvent(new Event('click'));
+    field.userSettingValue = 'auto'; f.actions.update(); expect(button.title).toBe('Permission: Read only');
+    button.dispatchEvent(new Event('click')); f.popup.querySelector('.quick-reset')!.dispatchEvent(new Event('click'));
+    expect(f.state.values.permission).toBe(''); expect(button.title).toBe('Permission: Auto approve');
+    expect(f.onOpenUserSetting).not.toHaveBeenCalled();
   });
 });

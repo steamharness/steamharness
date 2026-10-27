@@ -39,7 +39,7 @@ export function acquireProjectHost(options: { live?: boolean; connectionBanner?:
   let navigationSignature: string | undefined;
   const emit = (message: Message) => window.dispatchEvent(new MessageEvent('message', { data: message }));
   const trace = new TraceBridge(message => { if (window.parent !== window) { window.parent.postMessage(message, '*'); } });
-  let projectSetupHost = false;
+  let projectSetupHost = false, userSettingsHost = false;
   let resourceHost = false, editHost = false, nativePasteHost = false, pathPickerHost = false, pathOpenHost = false, fileIconsHost = false;
   let dropTarget: string | undefined;
   const pathPickers = new Map<string, Message>();
@@ -171,6 +171,7 @@ export function acquireProjectHost(options: { live?: boolean; connectionBanner?:
       editHost = event.data.clipboardVersion === 1;
       if (editHost) { window.parent.postMessage({ type: 'workflow-edit', version: 1 }, '*'); }
     }
+    if (event.data.userSettingsVersion !== undefined) userSettingsHost = event.data.userSettingsVersion === 1;
     if (event.data.openConfigurations === true) emit({type:'project-configurations-open'});
     if (event.data.dropVersion === 1) advertiseDropTarget();
     if (event.data.pathPickerVersion !== undefined) pathPickerHost = event.data.pathPickerVersion === 1;
@@ -345,6 +346,11 @@ export function acquireProjectHost(options: { live?: boolean; connectionBanner?:
       if (message.type === 'session-action' && message.action === 'delete'
         && await requestAction({ title: t("Delete this conversation?"), confirm: t("Delete"), danger: true }) === undefined) { return; }
       if (message.type === 'open-file') { window.open(connection.fileUrl(`/api/file/${encodeURIComponent(message.id)}`), '_blank', 'noopener'); return; }
+      if (message.type === 'open-user-setting') {
+        if (userSettingsHost) window.parent.postMessage({ type: 'workflow-user-settings', version: 1, key: message.key }, '*');
+        else emit({ type: 'error', message: t('Open this project in Studio to change user settings.') });
+        return;
+      }
       if (message.type === 'open-path') {
         if (!pathOpenHost) { emit({ type: 'error', requestType: 'open-path', projectUri: message.projectUri, sessionId: message.sessionId, message: t('Open this conversation in Studio to open referenced files and folders.') }); return; }
         const requestId = crypto.randomUUID(); pathOpens.set(requestId, message);

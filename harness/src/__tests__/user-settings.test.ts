@@ -50,3 +50,47 @@ test("permission inheritance preserves input precedence and the existing omitted
   }
   assert.equal(parseAgentInput({ ...input, permissionPolicy: "inherit" }, {}).permissionPolicy, "auto");
 });
+
+test("parameter bindings resolve user defaults, optional overrides and fixed values in the execution scope", async () => {
+  const { parseProjectParamValues, createAgentProjectInput, createAgentProjectParams, normalizeProjectParamDeclarations } = await import("../index");
+  const params = (mode: "fixed" | "default") => [{ name: "access", flag: "--access", type: "string" as const,
+    userSetting: { key: "agent.permissionPolicy" as const, mode } }];
+  for (const policy of ["read-only", "workspace", "auto"] as const) {
+    withUserSettings({ agent: { permissionPolicy: policy } }, () => {
+      assert.equal(parseProjectParamValues(params("default"), []).access, policy);
+      assert.equal(parseProjectParamValues(params("default"), ["--access", "workspace"]).access, "workspace");
+      assert.equal(parseProjectParamValues(params("default"), ["--access", ""]).access, policy);
+      assert.equal(parseProjectParamValues(params("default"), ["--access", "inherit"]).access, policy);
+      assert.equal(parseProjectParamValues(params("fixed"), ["--access", "workspace"]).access, policy);
+      assert.equal(createAgentProjectInput(["--message", "hello"], { permissionPolicy: "inherit" }).permissionPolicy, policy);
+      assert.equal(createAgentProjectInput(["--permission-policy", "workspace"], { permissionPolicy: "inherit" }).permissionPolicy, "workspace");
+      const fixed = params("fixed").map(field => ({ ...field, name: "permissionPolicy", flag: "--permission-policy" }));
+      assert.equal(createAgentProjectInput(["--permission-policy", "workspace"], { params: [{ kind: "auxiliary", id: "access", label: "Access", fields: fixed }] }).permissionPolicy, policy);
+    });
+  }
+  assert.equal(parseProjectParamValues(params("default"), []).access, "auto");
+  const field = normalizeProjectParamDeclarations(createAgentProjectParams({ permissionPolicy: "inherit" })).params.find(field => field.name === "permissionPolicy")!;
+  assert.deepEqual(field.userSetting, { key: "agent.permissionPolicy", mode: "default" });
+  assert.deepEqual(field.options?.map(option => option.value), ["read-only", "workspace", "auto"]);
+});
+
+test("user setting parameter declarations reject invalid bindings and ambiguous defaults", async () => {
+  const { readProjectParamDefinitionError, validateProjectScriptSource } = await import("../index");
+  for (const patch of [
+    { userSetting: null }, { userSetting: { key: "invalid" } }, { userSetting: { key: "agent.permissionPolicy", mode: "other" } },
+    { defaultValue: "auto" }, { type: "number" }, { multiple: true }, { panel: "mode" },
+  ]) {
+    assert.match(readProjectParamDefinitionError({ name: "access", flag: "--access", type: "string",
+      userSetting: { key: "agent.permissionPolicy" }, ...patch } as never) ?? "", /[Uu]ser setting/);
+  }
+  for (const binding of ['{ key: "invalid" }', '{ key: "agent.permissionPolicy", mode: unknownMode }', 'bindingVariable']) {
+    const violations = validateProjectScriptSource(`
+      const flow = steamharness.defineProject({ name: 'binding', run(input) { return input; } });
+      export const executor = steamharness.defineExecutor({ projectType: 'conversation', workflow: flow,
+        params: [{ kind: 'quick', id: 'access', label: 'Access', summary: ['access'], fields: [
+          { name: 'access', flag: '--access', type: 'string', control: 'select', userSetting: ${binding} }
+        ] }], createInput({ paramValues }) { return paramValues; }
+      });`);
+    assert.ok(violations.some(violation => /user setting/.test(violation.message)));
+  }
+});

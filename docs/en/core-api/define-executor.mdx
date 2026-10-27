@@ -104,6 +104,7 @@ Main and grouped fields use the properties below. Source declarations no longer 
 | `required` | `boolean` |Whether it is required.|
 | `description` | `string` |The parameter description.|
 | `defaultValue` | `string` |Default value.|
+| `userSetting` | `UserSettingParamBinding` | Bind a single string field to `agent.permissionPolicy`: `mode: "default"` permits project overrides; `"fixed"` follows user settings and opens them from the control. Do not combine with `defaultValue`. See [User settings](/en/core-api/user-settings). |
 | `multiple` | `boolean` |Whether multiple values are allowed.|
 | `control` | `"text" \| "textarea" \| "radio" \| "select" \| "checkboxes" \| "audio" \| "date" \| "time" \| "datetime" \| "date-range"` | CLI Web form control hints; `audio` must use `type: "file"`, while date-related controls still use `type: "string"`. |
 | `step` | `number` |Which step this field is asked in, starting at `1`. Fields sharing a step are asked together, and a user-input node that declares steps shows one step at a time — a "‹ question N of M ›" control above the field pages between them and flags a required question that is still unanswered. Use it when one request asks several separate questions; do not split the fields of a single question across steps.|

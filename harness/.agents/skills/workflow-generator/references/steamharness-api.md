@@ -12,7 +12,7 @@ workflow 源码是自包含业务代码。本地宿主和 CLI 把 runtime API �
 
 Agent 输入、运行时／节点选项和项目权限参数使用 `AgentPermissionPolicySetting = AgentPermissionPolicy | "inherit"`。本轮输入优先于开发者默认；两处都不填仍默认 `workspace`。只有选中的值为 `inherit` 才读取用户设置，无宿主时回退 `auto`。参数与会话保存原始 `inherit`，在实际执行时解析；工具筛选、路径范围和运行时初始化必须使用同一个具体权限值。
 
-Studio 在用户级 `studio.agent.permissionPolicy` 保存设置，默认 `auto`，工作区配置不能覆盖。内置小助手默认 `inherit`，已有显式选择继续有效；编码工具、提示词与 Studio Control 使用同一快照。当前及后台、子任务不随设置变化；持久会话在任务全部结束、空闲后重挂载原数据库，再处理等待新设置的输入。恢复保留启动快照、历史、队列与请求身份。CLI Web 承接宿主注入与能力握手更新，独立 CLI 本期不保存此偏好。
+Studio 在用户级 `studio.agent.permissionPolicy` 保存设置，默认 `auto`，工作区配置不能覆盖。内置小助手使用 `userSetting: { key: "agent.permissionPolicy", mode: "fixed" }`，直接显示具体权限并跳转设置，不显示额外继承选项；固定绑定忽略已保存覆盖值；编码工具、提示词与 Studio Control 使用同一快照。当前及后台、子任务不随设置变化；持久会话在任务全部结束、空闲后重挂载原数据库，再处理等待新设置的输入。恢复保留启动快照、历史、队列与请求身份。CLI Web 承接宿主注入与能力握手更新，独立 CLI 本期不保存此偏好。
 
 ## 版本兼容与宿主门禁
 
@@ -926,6 +926,7 @@ params: [
 - 需要互斥或联动时，在对应 entrypoint（Conversation 则为 executor）中定义无写入副作用、幂等的 `resolveParams({ draftText, paramValues, trigger, abortSignal })`，返回参数的 `value`、`visible`、`disabled`、`resolvedOptions` 和 option 状态补丁。初始化以及 main、Advanced、Quick 的 Form 参数变化都会触发。互斥字段隐藏时同时返回 `{ visible: false, value: null }`；单独返回 `visible: false` 会保留旧值并继续生成 args。Raw 模式初始化补丁只更新对应已声明参数，其它 Raw 参数保持不变。`resolvedOptions` 数组替换静态选项，`null` 恢复静态选项；替换时旧 option 状态会清除。只有联动依赖主输入文本时，才为相关参数设置 `resolveOnInput: true`。可以调用支持 `AbortSignal` 的只读目录 API，不得写 KV、文件或其它外部状态。
 - File params 可以声明 `multiple`、`accept` 和 `format: "json"`，让 本地宿主和 CLI Web 在 run 前保存附件，并把 opaque references 传给 workflow。
 - `defaultValue` 是字符串，必要时在 `createInput` 中转换。
+- `ParamDefinition.userSetting` / `UserSettingParamBinding` 将单个 string 参数绑定用户设置，当前支持 `{ key: "agent.permissionPolicy", mode?: "default" | "fixed" }`。`default`（省略时采用）保留三个实际权限选项，以用户设置为默认，允许项目覆盖；`fixed` 只显示当前系统值，点击打开 Studio 用户权限设置，忽略项目覆盖。不要同时声明 `defaultValue`，不支持 multiple、checkboxes、Mode 或 Slash。静态分析保留绑定，Core 在执行上下文内解析；宿主保存空覆盖标记而非显示值，显式选项才写入具体覆盖，重置恢复跟随。`createAgentProjectParams({ permissionPolicy: "inherit" })` 返回 default 绑定而非第四个选项。
 - 参数变化时，同步更新 params、`createInput`、input type 和 README。
 
 日期与日期范围互斥示例：

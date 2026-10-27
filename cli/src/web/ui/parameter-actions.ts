@@ -1,4 +1,5 @@
 import { t } from '../localization';
+import { projectParamEffectiveValue } from '../workflow-types';
 import type { Field, ParamLayout, Parameters, ParamState, ParamValues, ParamValue } from '../workflow-types';
 
 type Action = ParamLayout['actions'][number];
@@ -10,6 +11,7 @@ interface ParameterActionOptions {
   onChange(name: string, value: ParamValue): void;
   onReset(names: string[]): void;
   onConfigureModel?(): void;
+  onOpenUserSetting?(key: string): void;
 }
 
 const icon = (name: string): HTMLSpanElement => {
@@ -20,8 +22,9 @@ const icon = (name: string): HTMLSpanElement => {
 };
 
 export function parameterSelectionLabel(field: Field, value: ParamValue | undefined, state?: ParamState): string {
+  value = projectParamEffectiveValue(field, value);
   const options = state?.resolvedOptions ?? field.options ?? [];
-  if (!options.length) { return t("No options"); }
+  if (!options.length) { return field.userSetting ? String(value) : t("No options"); }
   if (Array.isArray(value)) {
     if (value.length > 1) { return t("{0} selected", value.length); }
     value = value[0];
@@ -103,6 +106,10 @@ export class ParameterActions {
         button.setAttribute('aria-expanded', 'false');
       }
       button.addEventListener('click', () => {
+        const fixed = action.kind === 'quick' ? this.groupFields(action).filter(field => field.userSetting?.mode === 'fixed') : [];
+        if (fixed.length === 1 && this.groupFields(action as GroupAction).length === 1) {
+          this.close(); this.options.onOpenUserSetting?.(fixed[0].userSetting!.key); return;
+        }
         if (action.kind === 'quick' && this.groupFields(action).some(field => field.name === 'model') && this.options.current().modelConfigurationRequired && this.options.onConfigureModel) {
           this.close(); this.options.onConfigureModel(); return;
         }
@@ -144,11 +151,12 @@ export class ParameterActions {
       } else if (action.kind !== 'slash') {
         const fields = this.groupFields(action);
         const configureModel = action.kind === 'quick' && fields.some(field => field.name === 'model') && modelConfigurationRequired && !!this.options.onConfigureModel;
+        const settingsShortcut = fields.length === 1 && fields[0].userSetting?.mode === 'fixed';
         view.button.hidden = fields.length === 0;
-        view.button.disabled = disabled || !configureModel && (action.kind === 'auxiliary' ? loading : fields.every((field) =>
-          states[field.name]?.disabled === true || this.visibleOptions(field).length === 0));
+        view.button.disabled = !settingsShortcut && (disabled || !configureModel && (action.kind === 'auxiliary' ? loading : fields.every((field) =>
+          states[field.name]?.disabled === true || this.visibleOptions(field).length === 0)));
         const summaries = action.summary?.map((name) => fields.find((field) => field.name === name))
-          .filter((field): field is Field => !!field && !!values[field.name]?.length)
+          .filter((field): field is Field => !!field && !!projectParamEffectiveValue(field, values[field.name])?.length)
           .map((field) => parameterSelectionLabel(field, values[field.name], states[field.name])) ?? [];
         view.label.textContent = action.label;
         view.label.hidden = action.kind === 'quick';
@@ -157,9 +165,11 @@ export class ParameterActions {
         view.button.dataset.configureModel = String(!!configureModel);
         view.button.setAttribute('aria-haspopup', configureModel ? 'dialog' : action.kind === 'quick' ? 'menu' : 'dialog');
         view.button.setAttribute('aria-controls', configureModel ? 'project-configurations-dialog' : this.popup.id);
-        view.button.setAttribute('aria-busy', String(loading && !configureModel));
+        view.button.setAttribute('aria-busy', String(loading && !configureModel && !settingsShortcut));
       }
-      view.button.title = view.button.ariaLabel = [view.label.textContent, view.summary?.textContent].filter(Boolean).join(': ');
+      const fixed = action.kind === 'quick' && this.groupFields(action).length === 1 && this.groupFields(action)[0].userSetting?.mode === 'fixed';
+      if (fixed) { view.button.removeAttribute('aria-haspopup'); view.button.removeAttribute('aria-controls'); view.button.removeAttribute('aria-expanded'); }
+      view.button.title = view.button.ariaLabel = [view.label.textContent, view.summary?.textContent, fixed ? t('Change in user settings') : undefined].filter(Boolean).join(': ');
     }
     this.scheduleLayout();
     if (this.active) {
@@ -205,6 +215,7 @@ export class ParameterActions {
   openForField(name: string): boolean {
     const view = this.views.find((view) => (view.action.kind === 'quick' || view.action.kind === 'auxiliary') && view.action.params.includes(name));
     if (!view || view.action.kind === 'mode' || view.action.kind === 'slash') { return false; }
+    if (this.field(name)?.userSetting?.mode === 'fixed') { this.options.onOpenUserSetting?.(this.field(name)!.userSetting!.key); return true; }
     if (name === 'model' && this.options.current().modelConfigurationRequired && this.options.onConfigureModel) { view.button.focus(); return true; }
     this.open(view as ActionView & { action: GroupAction }, name);
     return true;
@@ -273,11 +284,13 @@ export class ParameterActions {
       row.dataset.param = field.name; row.dataset.focusKey = `field:${field.name}`;
       row.disabled = disabled || loading || states[field.name]?.disabled === true || this.visibleOptions(field).length === 0;
       row.setAttribute('aria-expanded', String(this.activeParam === field.name));
+      if (field.userSetting?.mode === 'fixed') { row.removeAttribute('aria-haspopup'); row.removeAttribute('aria-expanded'); row.title = t('Change in user settings'); }
       const label = document.createElement('span'); label.textContent = field.label || field.name;
       const value = document.createElement('span'); value.className = 'quick-param-value';
       value.textContent = parameterSelectionLabel(field, values[field.name], states[field.name]);
-      row.append(label, value, icon('chevron-right'));
+      row.append(label, value, icon(field.userSetting?.mode === 'fixed' ? 'settings-gear' : 'chevron-right'));
       row.addEventListener('click', () => {
+        if (field.userSetting?.mode === 'fixed') { this.close(); this.options.onOpenUserSetting?.(field.userSetting.key); return; }
         this.activeParam = field.name; this.renderQuick(); this.position();
         (this.popup.querySelector<HTMLButtonElement>('[role=option][aria-selected=true]:not(:disabled)')
           ?? this.popup.querySelector<HTMLButtonElement>('[role=option]:not(:disabled)'))?.focus();
@@ -287,8 +300,8 @@ export class ParameterActions {
     const reset = document.createElement('button');
     reset.type = 'button'; reset.className = 'quick-reset'; reset.setAttribute('role', 'menuitem');
     reset.dataset.focusKey = 'reset'; reset.disabled = disabled || loading;
-    reset.textContent = t("Reset options"); reset.append(icon('discard'));
-    reset.addEventListener('click', () => { this.activeParam = undefined; this.options.onReset(fields.map((field) => field.name)); });
+    reset.textContent = single && fields[0].userSetting ? t('Reset to user settings') : t("Reset options"); reset.append(icon('discard'));
+    reset.addEventListener('click', () => { this.activeParam = undefined; this.options.onReset(fields.filter(field => field.userSetting?.mode !== 'fixed').map((field) => field.name)); });
     const field = single ? fields[0] : fields.find((field) => field.name === this.activeParam && states[field.name]?.disabled !== true);
     this.activeParam = single ? undefined : field?.name;
     const panels: HTMLElement[] = [menu];
@@ -310,7 +323,7 @@ export class ParameterActions {
       const multiple = field.multiple || field.control === 'checkboxes';
       if (multiple) { list.setAttribute('aria-multiselectable', 'true'); }
       for (const option of this.visibleOptions(field)) {
-        const selected = multiple ? Array.isArray(values[field.name]) && values[field.name].includes(option.value) : values[field.name] === option.value;
+        const selected = multiple ? Array.isArray(values[field.name]) && values[field.name].includes(option.value) : projectParamEffectiveValue(field, values[field.name]) === option.value;
         const button = document.createElement('button'); button.type = 'button'; button.className = 'quick-option-row';
         button.setAttribute('role', 'option'); button.setAttribute('aria-selected', String(selected));
         button.dataset.focusKey = `option:${option.value}`;

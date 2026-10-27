@@ -17,6 +17,9 @@ export interface Field {
   command?: string;
   required?: boolean;
   defaultValue?: string;
+  userSetting?: import("steamharness").UserSettingParamBinding;
+  /** Current host value for display only; inherited values are never serialized as overrides. */
+  userSettingValue?: string;
   multiple?: boolean;
   resolveOnInput?: boolean;
   options?: { value: string; label?: string; description?: string; command?: string }[];
@@ -306,7 +309,19 @@ export function projectParameters(project: Project, entrypointId?: string): Para
   return project.entrypoints.find((entry) => entry.id === entrypointId) ?? project;
 }
 
+export function projectWithUserSettings(project: Project, settings: import('steamharness').UserSettings): Project {
+  const fields = (parameters: Parameters) => parameters.fields.map(field => field.userSetting
+    ? { ...field, userSettingValue: settings.agent.permissionPolicy } : field);
+  return { ...project, fields: fields(project), entrypoints: project.entrypoints.map(entry => ({ ...entry, fields: fields(entry) })) };
+}
+
+export function projectParamEffectiveValue(field: Field, value?: ParamValue): ParamValue {
+  const raw = projectParamValue(field, value);
+  return field.userSetting && (field.userSetting.mode === 'fixed' || raw === '') ? field.userSettingValue ?? 'auto' : raw;
+}
+
 export function projectParamValue(field: Field, value: ParamValue = field.defaultValue ?? ''): ParamValue {
+  if (field.userSetting && (field.userSetting.mode === 'fixed' || value === 'inherit')) { return ''; }
   if (field.type === 'file' || field.control === 'audio' || !(field.multiple || field.control === 'checkboxes') || Array.isArray(value)) { return value; }
   if (!value.trim()) { return []; }
   try {
@@ -327,6 +342,7 @@ export function projectParamArgs(fields: Field[], values: ParamValues, states: R
   const args: string[] = [];
   for (const field of fields) {
     if (states[field.name]?.visible === false) { continue; }
+    if (field.userSetting?.mode === 'fixed') { continue; }
     const value = projectParamValue(field, values[field.name]);
     const entries = Array.isArray(value) ? value.length ? [JSON.stringify(value)] : [] : [value];
     for (const entry of entries) {
@@ -371,7 +387,7 @@ export function outputText(items: OutputItem[]): string {
 export function validateProjectValues(fields: Field[], values: ParamValues, states: Record<string, ParamState> = {}): void {
   for (const field of fields) {
     if (states[field.name]?.visible === false || states[field.name]?.disabled) { continue; }
-    const value = projectParamValue(field, values[field.name]);
+    const value = projectParamEffectiveValue(field, values[field.name]);
     const label = field.label || field.name;
     if (field.required && (typeof value === 'string' && !value.trim() || Array.isArray(value) && !value.length)) { throw new Error(t("Please enter {0}.", label)); }
     if (value === '' || Array.isArray(value) && !value.length) { continue; }

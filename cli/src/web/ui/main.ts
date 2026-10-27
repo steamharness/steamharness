@@ -31,6 +31,7 @@ import './style.css';
 import {
   projectParameters,
   projectParamValue,
+  projectParamEffectiveValue,
   mergeProjectParamStates,
   messageSettled,
   sessionRunning,
@@ -232,6 +233,7 @@ function initialize(): void {
     fieldRoot: (name) => fields.get(name)!.root,
     onChange: (name, value) => setFieldValue(name, value),
     onConfigureModel: () => configurationPanel.openAgentModels(),
+    onOpenUserSetting: key => vscode.postMessage({ type: 'open-user-setting', key }),
     onReset: (names) => {
       for (const name of names) {
         const field = fields.get(name)!.field;
@@ -342,7 +344,13 @@ function initialize(): void {
     if (field.description) { label.title = field.description; }
     root.append(label);
     const controls: FieldView['controls'] = [];
-    if (field.control === 'radio' || field.control === 'checkboxes') {
+    if (field.userSetting?.mode === 'fixed') {
+      const button = document.createElement('button'); button.type = 'button'; button.className = 'user-setting-field';
+      button.id = `param-${field.name}`;
+      button.textContent = field.options?.find(option => option.value === projectParamEffectiveValue(field))?.label ?? String(projectParamEffectiveValue(field));
+      button.title = t('Change in user settings');
+      button.addEventListener('click', () => vscode.postMessage({ type: 'open-user-setting', key: field.userSetting!.key })); root.append(button);
+    } else if (field.control === 'radio' || field.control === 'checkboxes') {
       const choices = document.createElement('div');
       choices.className = 'field-choices';
       root.append(choices);
@@ -449,9 +457,10 @@ function initialize(): void {
   function updateFields(): void {
     for (const [name, view] of fields) {
       const patch = paramStates[name];
+      view.root.hidden = patch?.visible === false;
+      if (view.field.userSetting?.mode === 'fixed') { continue; }
       const options = patch?.resolvedOptions ?? view.field.options ?? [];
       const visibleOptions = options.filter((option) => patch?.options?.[option.value]?.visible !== false);
-      view.root.hidden = patch?.visible === false;
       const signature = JSON.stringify([visibleOptions, patch?.options]);
       const control = view.controls[0];
       if (signature !== view.optionsSignature) {
@@ -496,6 +505,7 @@ function initialize(): void {
           value = values()[name] = Array.isArray(value) ? value.filter((entry) => allowed.has(entry)) : value && !allowed.has(value) ? '' : value;
         }
       }
+      value = projectParamEffectiveValue(view.field, value);
       for (const entry of view.controls) {
         if (entry instanceof HTMLInputElement && entry.type === 'checkbox') { entry.checked = view.field.control === 'checkboxes' ? Array.isArray(value) && value.includes(entry.value) : value === 'true'; }
         else if (entry instanceof HTMLInputElement && entry.type === 'radio') { entry.checked = entry.value === value; }
@@ -1279,7 +1289,7 @@ function initialize(): void {
     for (const [name, view] of fields) {
       if (validateOnServer) { break; }
       if (view.root.hidden || paramStates[name]?.disabled) { continue; }
-      const value = values()[name];
+      const value = projectParamEffectiveValue(view.field, values()[name]);
       const missing = view.field.required && (!value || Array.isArray(value) && value.length === 0);
       const invalid = view.controls.some((control) => !control.checkValidity());
       if (missing || invalid) {

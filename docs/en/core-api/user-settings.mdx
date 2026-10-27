@@ -54,11 +54,42 @@ await withUserSettings({ agent: { permissionPolicy: "read-only" } }, async () =>
 
 Core first selects `AgentInput.permissionPolicy` for the turn, then the developer's runtime or node `permissionPolicy`. If both are omitted it uses `workspace`. A selected `inherit` resolves to the concrete policy in the current user snapshot, or `auto` without a host. Direct Agent calls, Agent nodes, and project parameters follow the same rules.
 
-The `--permission-policy inherit` project parameter and saved session parameters retain the original `inherit`. Tool filtering, file scope, and runtime initialization receive only the resolved concrete value. See [createAgent permission policy](/en/core-api/create-agent#permission-policy) for tool, path, and shell behavior.
+Direct callers may still pass `--permission-policy inherit`. Parameter forms preserve an empty override marker for inherited fields and save concrete values only after an explicit project selection. Tool filtering, file scope, and runtime initialization receive only the resolved concrete value. See [createAgent permission policy](/en/core-api/create-agent#permission-policy) for tool, path, and shell behavior.
+
+## Parameter presentation
+
+Use `ParamDefinition.userSetting` to choose how a project uses a user setting. This release supports `key: "agent.permissionPolicy"` on single string fields.
+
+- `mode: "fixed"`: show only the effective policy and open Studio user settings when clicked. Project overrides, including previously saved values, are ignored.
+- `mode: "default"` (also the omitted mode): retain the original three choices and select the current user policy by default. A selection becomes a project override; reset restores the current user default.
+
+Declare the binding inline and omit `defaultValue`. Multiple values, checkboxes, Mode, and Slash fields cannot bind a user setting. `paramValues` receives the effective value in the execution snapshot.
+
+```ts
+params: [{
+  kind: "quick", id: "permission", label: "Permission", icon: "shield",
+  summary: ["permissionPolicy"],
+  fields: [{
+    name: "permissionPolicy", flag: "--permission-policy", type: "string",
+    control: "select",
+    userSetting: { key: "agent.permissionPolicy", mode: "fixed" },
+    options: [
+      { value: "read-only", label: "Read only" },
+      { value: "workspace", label: "Workspace" },
+      { value: "auto", label: "Auto approve" },
+    ],
+  }],
+}],
+createInput({ paramValues }) {
+  return { errCode: 0, errMessage: "", permissionPolicy: paramValues.permissionPolicy };
+}
+```
+
+Change the example to `mode: "default"` to allow project overrides. `createAgentProjectParams({ permissionPolicy: "inherit" })` generates that editable binding. Standalone CLI can resolve injected settings, but opening the settings page requires Studio.
 
 ## Studio and CLI sessions
 
-Studio's built-in assistant defaults to **Use user settings** and allows a concrete policy per session. Previously saved concrete policies remain effective. Coding tools, the system prompt, and Studio Control use the same settings snapshot.
+Studio's built-in assistant uses a fixed user-setting binding. Its permission control shows the actual policy (for example, **Auto approve**) and opens **Settings → Permissions** when clicked. There is no additional inheritance choice. Saved session overrides cannot change a fixed binding. Coding tools, the system prompt, and Studio Control use the same settings snapshot.
 
 After a settings change, active tasks, background work, and child tasks keep their original snapshot. Once all work finishes and a durable session is idle, the host remounts the original database with the latest settings. New input waits for that boundary, preserving history, queues, and request identities. Interrupted work first resumes with its recorded startup snapshot.
 

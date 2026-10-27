@@ -503,3 +503,6 @@ textarea::placeholder { color: var(--vscode-input-placeholderForeground); }
 .conversation-process { margin: 0 0 12px; min-width: 0; }
 .conversation-process:not([open]) { display: none; }
 .conversation-process-content { min-width: 0; }
+
+.user-setting-field { color: var(--vscode-editor-foreground); background: transparent; border: none; text-align: left; cursor: pointer; font: inherit; padding: 6px 0; }
+.user-setting-field:hover { color: var(--vscode-textLink-foreground); text-decoration: underline; }

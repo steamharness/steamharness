@@ -1,6 +1,6 @@
 import { t } from '../localization';
 import {
-  projectParamValue, type Field, type Parameters, type ParamState, type ParamValues, type ParamValue,
+  projectParamValue, projectParamEffectiveValue, type Field, type Parameters, type ParamState, type ParamValues, type ParamValue,
 } from '../workflow-types';
 import { ParameterActions } from './parameter-actions';
 import { iconButton } from './ui';
@@ -15,6 +15,7 @@ interface Options {
   downloadFile?(id: string): void;
   modelConfigurationRequired?(): boolean;
   configureModel?(): void;
+  openUserSetting?(key: string): void;
 }
 interface FieldView { field: Field; root: HTMLElement; controls: (HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement)[]; signature?: string }
 
@@ -28,6 +29,7 @@ export class Fields {
       fieldRoot: name => this.fields.get(name)!.root,
       onChange: (name, value) => options.change(name, value),
       onConfigureModel: options.configureModel,
+      onOpenUserSetting: options.openUserSetting,
       onReset: names => { for (const name of names) { options.change(name, projectParamValue(this.fields.get(name)!.field)); } },
     });
   }
@@ -46,7 +48,13 @@ export class Fields {
     const label = document.createElement('label'); label.className = 'field-label';
     label.textContent = `${field.label || field.name}${field.required ? ' *' : ''}`; label.title = field.description ?? ''; root.append(label);
     const view: FieldView = { field, root, controls: [] };
-    if (field.control === 'radio' || field.control === 'checkboxes') {
+    if (field.userSetting?.mode === 'fixed') {
+      const button = document.createElement('button'); button.type = 'button'; button.className = 'user-setting-field';
+      button.id = `workflow-param-${field.name}`; label.htmlFor = button.id;
+      button.textContent = field.options?.find(option => option.value === projectParamEffectiveValue(field))?.label ?? String(projectParamEffectiveValue(field));
+      button.title = t('Change in user settings');
+      button.addEventListener('click', () => this.options.openUserSetting?.(field.userSetting!.key)); root.append(button);
+    } else if (field.control === 'radio' || field.control === 'checkboxes') {
       const choices = document.createElement('div'); choices.className = 'field-choices'; root.append(choices);
     } else if (field.type === 'file' || field.control === 'audio') {
       const summary = document.createElement('span'); summary.className = 'param-file-summary';
@@ -79,6 +87,7 @@ export class Fields {
     for (const [name, view] of this.fields) {
       const state = states[name], field = view.field;
       view.root.hidden = state?.visible === false;
+      if (field.userSetting?.mode === 'fixed') { continue; }
       const options = (state?.resolvedOptions ?? field.options ?? []).filter(option => state?.options?.[option.value]?.visible !== false);
       const signature = JSON.stringify([options, state?.options]);
       if (signature !== view.signature) {
@@ -100,7 +109,7 @@ export class Fields {
           });
         }
       }
-      const value = values[name];
+      const value = projectParamEffectiveValue(field, values[name]);
       for (const control of view.controls) {
         if (control instanceof HTMLInputElement && control.type === 'checkbox') { control.checked = field.control === 'checkboxes' ? Array.isArray(value) && value.includes(control.value) : value === 'true'; }
         else if (control instanceof HTMLInputElement && control.type === 'radio') { control.checked = control.value === value; }

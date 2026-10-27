@@ -10,7 +10,7 @@ description: "Create a complete Conversation Agent executor for embedding hosts 
 The helper saves an embedding host from implementing streaming, approvals, compaction, or output-item assembly. Projects can reuse the underlying workflow and input implementation while keeping their declarations visible to the host.
 
 
-The permission parameter also offers `inherit`. Set `permissionPolicy: "inherit"` to make it the project default; omitting the option still defaults to `workspace`. Without host settings, inheritance uses `auto`. `createAgentProjectInput` and sessions retain the original `inherit` and resolve it for execution. See [User settings and permission inheritance](/en/core-api/user-settings).
+The permission menu contains only `read-only`, `workspace`, and `auto`. Setting `permissionPolicy: "inherit"` makes `createAgentProjectParams` bind its default to the user setting, with project overrides. Omitted options still default to `workspace`; a hostless binding uses `auto`. Use a custom inline `userSetting` binding with `mode: "fixed"` for a settings shortcut. See [User settings and permission inheritance](/en/core-api/user-settings).
 
 ## Signature
 

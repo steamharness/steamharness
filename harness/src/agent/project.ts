@@ -10,6 +10,7 @@ import type { Definition } from "../types/index";
 import { HarnessError } from "../workflow/errors";
 import { createAgentProjectParamResolver } from "./system-llm";
 import { normalizeProjectParamDeclarations } from "../executor/param-definition";
+import { parseProjectParamValues } from "../executor/params";
 import {
   createAgentNode,
   readAgentRunContextUsage,
@@ -359,10 +360,11 @@ export function createAgentProjectParams(options: AgentProjectOptions = {}): Con
           required: false,
           label: "Permission",
           description: "工具权限策略，与内置 OpenCode 项目一致。",
-          defaultValue: options.permissionPolicy ?? DEFAULT_AGENT_PERMISSION_POLICY,
+          ...(options.permissionPolicy === "inherit"
+            ? { userSetting: { key: "agent.permissionPolicy" as const, mode: "default" as const } }
+            : { defaultValue: options.permissionPolicy ?? DEFAULT_AGENT_PERMISSION_POLICY }),
           control: "select",
           options: [
-            { value: "inherit", label: "Use user settings", description: "Use the host's user permission setting; defaults to auto approve without a host." },
             { value: "read-only", label: "Read only", description: "隐藏写入与命令工具。" },
             // The old wording promised that every path outside the workspace is
             // refused, which a shell command is not bound by; the panel says what
@@ -552,6 +554,10 @@ function createAgentInputFromArgs(
     }
   }
 
+  const declarations = options.params ?? createAgentProjectParams(options);
+  if (normalizeProjectParamDeclarations(declarations).params.some(param => param.name === "permissionPolicy" && param.userSetting)) {
+    input.permissionPolicy = parseProjectParamValues(declarations, args).permissionPolicy as AgentInput["permissionPolicy"];
+  }
   return input;
 }
 

@@ -11,7 +11,7 @@ const workspace = path.dirname(studio);
 const cli = path.join(workspace, 'cli');
 const web = path.join(cli, 'dist/web');
 const proofDir = path.join(studio, '.studio/quick-parameters');
-const { inspectLocalProjectStructure } = await import(pathToFileURL(path.join(workspace, 'core/dist/index.js')).href);
+const { inspectLocalProjectStructure } = await import(pathToFileURL(path.join(workspace, 'harness/dist/index.js')).href);
 const report = inspectLocalProjectStructure({ projectDir: path.join(workspace, 'build-in/build-in-developer-assistant') });
 assert.deepEqual(report.diagnostics.violations, []);
 assert.equal(report.params.some(field => field.name === 'contextWindow'), false);
@@ -19,17 +19,20 @@ const bundled = await build({ entryPoints: [path.join(cli, 'src/web/ui/parameter
   platform: 'browser', format: 'esm', write: false });
 const script = bundled.outputFiles[0].text + `
   const parameters = ${JSON.stringify({ fields: report.params, paramLayout: report.paramLayout })};
-  const state = { values: { model: 'long', provider: 'fixture', effort: 'high', permissionPolicy: 'auto' }, states: {
+  const state = { values: { model: 'long', provider: 'fixture', effort: 'high', permissionPolicy: '' }, states: {
     model: { resolvedOptions: [{ value: 'long', label: 'MiniMax-M3.1-Flash-Preview' }, { value: 'short', label: 'Short' }] },
     provider: { resolvedOptions: [{ value: 'fixture', label: 'Fixture' }] }
   }, disabled: false, loading: false };
+  parameters.fields.find(field => field.name === 'permissionPolicy').userSettingValue = 'auto';
+  const openedSettings = [];
   const controls = new ParameterActions(document.querySelector('#parameter-actions'), { current: () => state,
+    onOpenUserSetting(key) { openedSettings.push(key); },
     fieldRoot() { throw new Error('Only Quick parameters are expected.'); },
     onChange(name, value) { state.values[name] = value; controls.update(); },
     onReset(names) { for (const name of names) { state.values[name] = parameters.fields.find(field => field.name === name).defaultValue ?? ''; } controls.update(); }
   });
   controls.render(parameters);
-  window.quick = { controls, state, parameters };
+  window.quick = { controls, state, parameters, openedSettings };
 `;
 const html = `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
   <link rel="stylesheet" href="/codicons/codicon.css"><link rel="stylesheet" href="/workflow-ui.css">
@@ -88,6 +91,18 @@ try {
     return glyph.content !== 'none' && glyph.content !== 'normal' && glyph.fontFamily === 'codicon';
   })), true);
   await page.screenshot({ path: path.join(proofDir, 'desktop.png') });
+  await page.locator('[data-action-id=permission]').click();
+  assert.equal(await page.locator('#parameter-popover').isHidden(), true);
+  assert.deepEqual(await page.evaluate(() => window.quick.openedSettings), ['agent.permissionPolicy']);
+  await page.evaluate(() => {
+    const { controls, state, parameters } = window.quick;
+    const field = parameters.fields.find(field => field.name === 'permissionPolicy');
+    field.userSettingValue = 'read-only'; controls.render(parameters);
+    if (!document.querySelector('[data-action-id=permission]').title.includes('Read only')) throw new Error('Fixed setting did not refresh');
+    field.userSetting = { key: 'agent.permissionPolicy', mode: 'default' }; field.userSettingValue = 'auto';
+    state.values.permissionPolicy = ''; controls.render(parameters);
+  });
+  proof.push('Assistant follows the user setting, shows one concrete value, opens user settings directly and refreshes after a settings change.');
   await page.locator('[data-action-id=permission]').click();
   await assertPermissionMenu();
   assert.equal(await page.locator('[role=option][aria-selected=true]').count(), 1);
@@ -160,6 +175,52 @@ try {
   assert.equal(await page.locator('[data-action-id=permission]').innerText(), 'Workspace');
   proof.push('Collapsed icons still select values, preserve tooltips, and restore text at desktop width.');
   proof.push('Narrow Permission opens direct choices and supports keyboard selection; multi-parameter AI retains its layered menu.');
+  for (const language of ['en', 'zh-CN']) {
+    for (const theme of ['light', 'dark']) {
+      for (const width of [1280, 640, 360, 280]) {
+        await page.setViewportSize({ width, height: 700 });
+        await page.goto(`http://127.0.0.1:${server.address().port}/?projectLocale=${language}`);
+        await page.waitForFunction(() => !!window.quick);
+        await page.evaluate(theme => {
+          const root = document.documentElement;
+          root.style.setProperty('--vscode-editor-background', theme === 'dark' ? '#202124' : '#fff');
+          root.style.setProperty('--vscode-editor-foreground', theme === 'dark' ? '#eee' : '#202124');
+          root.style.setProperty('--vscode-toolbar-hoverBackground', theme === 'dark' ? '#383a3e' : '#eee');
+          const { state, controls } = window.quick;
+          state.values.permissionPolicy = 'workspace'; state.disabled = true; state.loading = true; controls.update();
+        }, theme);
+        const trigger = page.locator('[data-action-id=permission]');
+        assert.match(await trigger.getAttribute('title'), /Auto approve/);
+        assert.ok((await trigger.getAttribute('title')).includes(language === 'en' ? 'Change in user settings' : '在用户设置中修改'));
+        assert.equal(await trigger.isEnabled(), true);
+        await trigger.press('Enter');
+        assert.deepEqual(await page.evaluate(() => window.quick.openedSettings), ['agent.permissionPolicy']);
+        assert.equal(await page.locator('#parameter-popover').isHidden(), true);
+        await page.evaluate(() => {
+          const { state, controls, parameters } = window.quick;
+          state.disabled = false; state.loading = false; state.values.permissionPolicy = '';
+          const field = parameters.fields.find(field => field.name === 'permissionPolicy');
+          field.userSetting.mode = 'default'; field.userSettingValue = 'read-only'; controls.render(parameters);
+        });
+        await trigger.click(); await assertPermissionMenu();
+        assert.equal(await page.locator('[role=option][aria-selected=true] .quick-option-copy > span').innerText(), 'Read only');
+        await page.getByRole('option', { name: 'Workspace', exact: false }).click();
+        await page.evaluate(() => {
+          const { controls, parameters } = window.quick;
+          parameters.fields.find(field => field.name === 'permissionPolicy').userSettingValue = 'auto'; controls.update();
+        });
+        assert.match(await trigger.getAttribute('title'), /Workspace/);
+        await trigger.click();
+        assert.equal(await page.locator('.quick-reset').innerText(), language === 'en' ? 'Reset to user settings' : '恢复用户设置');
+        await page.locator('.quick-reset').click();
+        assert.equal(await page.evaluate(() => window.quick.state.values.permissionPolicy), '');
+        assert.equal(await page.locator('[role=option][aria-selected=true] .quick-option-copy > span').innerText(), 'Auto approve');
+        await page.screenshot({ path: path.join(proofDir, `binding-${language}-${theme}-${width}.png`) });
+        await page.keyboard.press('Escape');
+        proof.push(`${language}/${theme}/${width}px: fixed policies open settings by keyboard; editable defaults retain three choices, preserve overrides, and reset to the latest user policy.`);
+      }
+    }
+  }
   assert.deepEqual(errors, []);
   await fs.writeFile(path.join(proofDir, 'proof.json'), JSON.stringify({ proof, errors }, null, 2));
   console.log(JSON.stringify({ proof, errors, proofDir }));

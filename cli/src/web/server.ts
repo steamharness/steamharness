@@ -21,7 +21,7 @@ import { KanbanController } from './kanban-controller';
 import { createProjectActions } from './workflow-actions';
 import { migrateProjectHistory, type WorkspaceContract } from './workflow-workspace';
 import { createWebRuntime, cliRoot, type WebConnection } from './runtime';
-import { redactProjectData, validateProjectValues, validateConversationCommandStates, mergeProjectParamStates, projectParameters, projectParamArgs, type Runtime, type Project, type ConversationSession, type ConversationDraftUpdate, type Attachment, type ParamValues, type ParamState } from './workflow-types';
+import { redactProjectData, projectWithUserSettings, validateProjectValues, validateConversationCommandStates, mergeProjectParamStates, projectParameters, projectParamArgs, type Runtime, type Project, type ConversationSession, type ConversationDraftUpdate, type Attachment, type ParamValues, type ParamState } from './workflow-types';
 import { conversationResourceCards, type ResourceCardReference } from './resource-cards';
 import type { AccountState } from './workflow-auth-client';
 import { loginWebAccount } from './account-auth';
@@ -158,7 +158,7 @@ async function startProjectWebServer(options: WebOptions, credentials: { capabil
   if (!descriptor) { runtime.dispose(); throw new Error(inspected.errors.join('\n') || 'No Workflow project found.'); }
   if (!options.runtime) { assertLocalCliCoreCompatible(projectDir, descriptor.runtime!.harnessVersion); }
   if (!['conversation', 'workflow', 'kanban'].includes(descriptor.projectType)) { runtime.dispose(); throw new Error('Unsupported Workflow project type.'); }
-  const project: Project = descriptor;
+  const project: Project = projectWithUserSettings(descriptor, userSettings);
   const resources = new ResourcePreviews(project, runtime, storageDir, () => connection, () => relatedProjects, () => resourceProjects, () => broadcast());
   const key = project.assistant ? createHash('sha256').update(`assistant:${project.id}:${project.assistant.workdir}`).digest('hex').slice(0, 24)
     : path.relative(storageDir, await projectDataDirectory(storageDir, projectDir, project.id));
@@ -948,7 +948,10 @@ async function startProjectWebServer(options: WebOptions, credentials: { capabil
       const settings = parseUserSettings(value);
       if (JSON.stringify(settings) === JSON.stringify(userSettings)) return;
       userSettings = settings;
+      Object.assign(project, projectWithUserSettings(project, settings));
+      ++parameterRevision;
       conversationController?.configurationChanged();
+      broadcast();
     },
     setHostRelatedProjects: async (value: NonNullable<WebHostConfiguration['relatedProjects']>) => {
       relatedProjects = value; relatedProjectsManaged = true; resources.clear();

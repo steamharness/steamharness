@@ -398,3 +398,49 @@ it('resumes a debounced parameter edit after a user-input prompt hides and resto
   f.sessions[0] = { ...f.sessions[0], messages: [] }; f.receive({ sessions: [...f.sessions] });
   expect(f.requests()).toHaveLength(2); expect(f.requests().at(-1)!.params.note).toBe('pending edit');
 });
+
+it('persists user-default bindings as empty overrides while showing the current concrete option', async () => {
+  const f = await fixture({ dynamic: false });
+  const field = { name: 'permissionPolicy', flag: '--permission-policy', type: 'string', control: 'select', panel: 'quick',
+    userSetting: { key: 'agent.permissionPolicy' as const, mode: 'default' as const }, userSettingValue: 'workspace',
+    options: [{ value: 'read-only', label: 'Read only' }, { value: 'workspace', label: 'Workspace' }, { value: 'auto', label: 'Auto approve' }] };
+  f.project.fields.push(field);
+  f.project.paramLayout!.actions.push({ kind: 'quick', id: 'permission', label: 'Permission', params: ['permissionPolicy'], summary: ['permissionPolicy'] });
+  f.receive(); expect(f.action('permission').textContent).toContain('Workspace');
+  const savedValue = () => host.setState.mock.calls.at(-1)![0].params['file:///parameters:first:'].permissionPolicy;
+  expect(savedValue()).toBe('');
+  field.userSettingValue = 'auto'; f.receive({ parameterRevision: 2 });
+  expect(f.action('permission').textContent).toContain('Auto approve'); expect(savedValue()).toBe('');
+  f.action('permission').click();
+  expect(document.querySelectorAll('#parameter-popover [role=option]')).toHaveLength(3);
+  document.querySelector<HTMLButtonElement>('#parameter-popover [role=option]')!.click();
+  expect(savedValue()).toBe('read-only');
+  field.userSettingValue = 'workspace'; f.receive({ parameterRevision: 3 });
+  expect(f.action('permission').textContent).toContain('Read only');
+  f.action('permission').click(); document.querySelector<HTMLButtonElement>('.quick-reset')!.click();
+  expect(savedValue()).toBe(''); expect(f.action('permission').textContent).toContain('Workspace');
+  f.type('Use my default'); document.querySelector<HTMLButtonElement>('#send')!.click();
+  const sent = host.postMessage.mock.calls.map(([message]) => message).find(message => message.type === 'send');
+  expect(sent.params.permissionPolicy).toBe('');
+});
+
+it('keeps fixed setting fields accessible and respects resolver visibility', async () => {
+  const f = await fixture();
+  f.project.fields.push({ name: 'access', type: 'string', panel: 'auxiliary', label: 'Permission',
+    userSetting: { key: 'agent.permissionPolicy', mode: 'fixed' }, userSettingValue: 'auto' });
+  const advanced = f.project.paramLayout!.actions.find(action => action.kind === 'auxiliary')!;
+  if (advanced.kind !== 'auxiliary') throw new Error('Expected auxiliary group');
+  advanced.params.push('access'); f.receive();
+  f.reply({ access: { visible: true } }); f.action('advanced').click();
+  const root = document.querySelector<HTMLElement>('[data-param=access]')!;
+  const note = document.querySelector<HTMLInputElement>('[data-param=note] input')!;
+  note.value = 'hide'; note.dispatchEvent(new Event('change'));
+  f.reply({ access: { visible: false } });
+  expect(root.hidden).toBe(true);
+  note.value = 'show'; note.dispatchEvent(new Event('change'));
+  f.reply({ access: { visible: true } });
+  expect(root.hidden).toBe(false);
+  const button = root.querySelector<HTMLButtonElement>('button')!;
+  expect(root.querySelector('label')!.control).toBe(button);
+  button.click(); expect(host.postMessage).toHaveBeenCalledWith({ type: 'open-user-setting', key: 'agent.permissionPolicy' });
+});

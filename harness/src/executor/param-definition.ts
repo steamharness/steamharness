@@ -24,6 +24,17 @@ export function readProjectParamDefinitionError(
   param: ParamDefinition,
   declaredProperties?: { options?: boolean },
 ): string | undefined {
+  if (param.userSetting !== undefined) {
+    const binding = param.userSetting;
+    if (!binding || typeof binding !== "object" || binding.key !== "agent.permissionPolicy" ||
+      binding.mode !== undefined && binding.mode !== "default" && binding.mode !== "fixed") {
+      return `Parameter "${param.name}" must bind a supported user setting with mode default or fixed.`;
+    }
+    if (param.type !== "string" || param.multiple || param.control === "checkboxes" || param.panel === "slash" || param.panel === "mode" ||
+      param.defaultValue !== undefined) {
+      return `User setting parameter "${param.name}" must be a single string field without defaultValue, mode, or Slash placement.`;
+    }
+  }
   if (param.step !== undefined && (!Number.isInteger(param.step) || param.step < 1)) {
     return `Parameter "${param.name}" step must be a positive integer.`;
   }
