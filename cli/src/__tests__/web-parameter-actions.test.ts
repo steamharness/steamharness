@@ -102,6 +102,7 @@ describe('Quick parameter triggers', () => {
     row.dispatchEvent(new Event('click'));
     f.actions.update();
     expect(f.popup.hidden).toBe(false);
+    expect(f.popup.querySelector('[role=status]')?.textContent).toBe('Loading...');
     expect(f.popup.querySelectorAll('[role=option]').every(option => option.disabled)).toBe(true);
     f.popup.querySelector('[data-focus-key=manage-models]')!.dispatchEvent(new Event('click'));
     expect(f.onOpenUserSetting).toHaveBeenCalledWith('agent.model');
@@ -123,9 +124,38 @@ describe('Quick parameter triggers', () => {
     expect(f.onOpenUserSetting).toHaveBeenCalledWith('agent.model');
     f.state.states.model = { resolvedOptions: [] }; f.actions.update();
     expect(f.container.children[0].disabled).toBe(false);
+    expect(f.container.children[0].children.find(child => child.className === 'param-action-summary')?.textContent).toBe('Configure model');
+    expect(f.container.children[0].title).toContain('No available models. Open Settings to add a model.');
+    expect(f.container.children[0].getAttribute('aria-controls')).toBeUndefined();
+    f.container.children[0].dispatchEvent(new Event('click'));
+    expect(f.popup.hidden).toBe(true);
+    expect(f.onOpenUserSetting).toHaveBeenCalledTimes(2);
+    expect(f.onOpenUserSetting).toHaveBeenLastCalledWith('agent.model');
+    expect(f.onChange).not.toHaveBeenCalled();
+    expect(f.actions.openForField('model')).toBe(true);
+    expect(f.onOpenUserSetting).toHaveBeenCalledTimes(3);
+    f.state.states.model = { resolvedOptions: [{ value: 'new', label: 'New model' }] }; f.actions.update();
     f.container.children[0].dispatchEvent(new Event('click'));
     expect(f.popup.hidden).toBe(false);
-    expect(f.popup.querySelector('[data-focus-key=manage-models]')).toBeTruthy();
+    expect(f.popup.querySelectorAll('[role=option]')).toHaveLength(1);
+    expect(f.container.children[0].title).not.toContain('No available models');
+  });
+  it('guides an empty grouped user model to settings during active tasks and before its first resolver result', () => {
+    const f = fixture();
+    f.parameters.fields[0].userSetting = { key: 'agent.model', mode: 'default' };
+    f.parameters.fields[0].userSettingValue = '';
+    f.parameters.fields[0].options = [];
+    f.parameters.paramLayout!.actions = [{ kind: 'quick', id: 'ai', label: 'AI', summary: ['permission'], params: ['model', 'permission'] }];
+    f.state.disabled = true; f.state.loading = true;
+    f.actions.render(f.parameters);
+    const button = f.container.children[0];
+    expect(button.disabled).toBe(false);
+    expect(button.ariaLabel).toContain('Configure model');
+    expect(button.ariaLabel).not.toContain('Auto approve');
+    button.dispatchEvent(new Event('click'));
+    expect(f.popup.hidden).toBe(true);
+    expect(f.onOpenUserSetting).toHaveBeenCalledWith('agent.model');
+    expect(f.onChange).not.toHaveBeenCalled();
   });
   it('turns an empty configured-model selector into a setup shortcut and restores choices after saving', () => {
     const f = fixture(), button = f.container.children[0];

@@ -172,6 +172,27 @@ it('guides an empty Agent model list to the active configuration and preserves t
   expect(feedback.hidden).toBe(true);expect(errorAction.hidden).toBe(true);
 });
 
+it('opens user model settings directly for an empty list and keeps the draft when configured choices arrive', async () => {
+  const f = await fixture({ requiredModel: true });
+  const project = { ...f.project, fields: f.project.fields.map(field => field.name === 'model'
+    ? { ...field, userSetting: { key: 'agent.model' as const, mode: 'default' as const }, userSettingValue: '' } : field) };
+  f.receive({ project, parameterRevision: 2 });
+  f.reply({ model: { resolvedOptions: [], disabled: true } });
+  f.type('Keep my model setup draft');
+  expect(f.action('ai').textContent).toContain('Configure model');
+  expect(f.action('ai').title).toContain('No available models. Open Settings to add a model.');
+  f.action('ai').click();
+  expect(host.postMessage).toHaveBeenCalledWith({ type: 'open-user-setting', key: 'agent.model' });
+  expect(document.querySelector<HTMLElement>('#parameter-popover')!.hidden).toBe(true);
+  expect(f.input.value).toBe('Keep my model setup draft');
+  f.receive({ project: { ...project, fields: project.fields.map(field => field.name === 'model' ? { ...field, userSettingValue: 'saved' } : field) }, parameterRevision: 3 });
+  f.reply({ model: { resolvedOptions: [{ value: 'saved', label: 'Saved user model' }], disabled: false } });
+  f.action('ai').click();
+  expect(document.querySelector('[role=option]')?.textContent).toContain('Saved user model');
+  expect(host.postMessage.mock.calls.filter(([message]) => message.type === 'open-user-setting')).toHaveLength(1);
+  expect(f.input.value).toBe('Keep my model setup draft');
+});
+
 it('loads dynamic parameters once and reuses the per-conversation cache on navigation', async () => {
   const f = await fixture();
   expect(f.requests()).toHaveLength(1); expect(f.loading()).toBe(true);

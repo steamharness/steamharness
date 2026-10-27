@@ -158,6 +158,8 @@ The default project Server follows the Studio build channel: dev uses `http://lo
 
 ## Model settings
 
+With no available models, the assistant shows **Configure model** with guidance to add a model in settings. Clicking it opens **Settings → Models** directly; adding a model restores the selection list.
+
 Manage models across workspaces in **Settings → Models**. Open-source Studio supports custom third-party models with keys stored securely on the host; hosts supporting system AI may also add authorized catalogue models. The assistant defaults to the first available model. Its model control opens available choices before **Manage models** opens settings. Changes apply after active and background work finish. See [user settings](/en/core-api/user-settings) for developer integration and source restrictions.
 
 Concurrent or outdated edits from another window report a conflict; reopen the editor and try again. After switching model sources, earlier catalogue requests cannot change the current form. Model menus keep **Manage models** available while tasks are running or choices are loading; current work retains its original snapshot.

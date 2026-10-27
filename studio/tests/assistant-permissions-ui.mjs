@@ -28,6 +28,12 @@ const [extension, frame, client] = await Promise.all([
       onOpenUserSetting: key => host.postMessage({ type: 'open-user-setting', key })
     });
     actions.render(parameters);
+    window.setAssistantModels = available => {
+      const field = parameters.fields.find(field => field.name === 'model');
+      field.options = available ? [{ value: 'user-model', label: 'User configured model' }] : [];
+      field.userSettingValue = available ? 'user-model' : '';
+      actions.render(parameters);
+    };
   `, resolveDir: process.cwd() }, bundle: true, platform: 'browser', format: 'iife', write: false, loader: { '.css': 'empty' },
     plugins: [{ name: 'offline-project-service', setup(build) {
       build.onLoad({ filter: /[\\/]ui[\\/]connection\.ts$/ }, () => ({ contents: 'export class BrowserConnection {} export class ConnectionError extends Error {}', loader: 'ts' }));
@@ -99,11 +105,27 @@ try {
       await popup.locator('[data-focus-key=manage-models]').click();
       await assertEventually(() => commands.length === 2);
       assert.deepEqual(commands[1], ['studio.openSettings', { section: 'models', target: 'user' }]);
+      await page.frameLocator('#workflow-frame').locator('body').evaluate(() => window.setAssistantModels(false));
+      assert.equal(await model.innerText(), 'Configure model');
+      assert.ok((await model.getAttribute('title')).includes('No available models. Open Settings to add a model.'));
+      await model.click();
+      await assertEventually(() => commands.length === 3);
+      assert.deepEqual(commands[2], commands[1]);
+      assert.equal(await popup.count(), 0, 'Empty models open settings without an empty popup');
+      await model.press('Enter');
+      await assertEventually(() => commands.length === 4);
+      assert.deepEqual(commands[3], commands[1]);
+      await page.frameLocator('#workflow-frame').locator('body').evaluate(() => window.setAssistantModels(true));
+      await model.click();
+      assert.equal(commands.length, 4, 'Adding a model restores choices before settings');
+      assert.equal(await popup.locator('[role=option]').first().textContent(), 'User configured model');
+      await page.keyboard.press('Escape');
       finish(); await closed;
       await permission.focus(); await permission.press('Enter');
-      await assertEventually(() => commands.length === 3);
-      assert.deepEqual(commands[2], commands[0]);
+      await assertEventually(() => commands.length === 5);
+      assert.deepEqual(commands[4], commands[0]);
       checks.push(`${register ? 'Sidebar' : 'Standalone tool'}: pointer and keyboard open user permissions before and after the conversation exits.`);
+      checks.push(`${register ? 'Sidebar' : 'Standalone tool'}: empty models show setup guidance and open model settings directly; saved models restore choices.`);
     } finally { provider.dispose(); await page.close(); }
   }
   assert.deepEqual(errors, []);

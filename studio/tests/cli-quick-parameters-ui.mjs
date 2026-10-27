@@ -164,8 +164,7 @@ try {
   assert.equal(await page.locator('[data-action-id=permission]').getAttribute('title'), 'Permission: Workspace');
   await page.locator('[data-action-id=ai]').click();
   assert.ok(await page.locator('.quick-param-row').count() > 1);
-  assert.equal(await page.locator('[role=option]').count(), 0);
-  await page.locator('.quick-param-row[data-param=model]').click();
+  assert.equal(await page.locator('[role=option]').count(), 2);
   await page.getByRole('option', { name: 'Short', exact: true }).click();
   assert.match(await page.locator('[data-action-id=ai]').getAttribute('aria-label'), /Short/);
   await page.keyboard.press('Escape');
@@ -218,6 +217,32 @@ try {
         await page.screenshot({ path: path.join(proofDir, `binding-${language}-${theme}-${width}.png`) });
         await page.keyboard.press('Escape');
         proof.push(`${language}/${theme}/${width}px: fixed policies open settings by keyboard; editable defaults retain three choices, preserve overrides, and reset to the latest user policy.`);
+        await page.evaluate(() => {
+          const { state, controls, parameters } = window.quick;
+          parameters.fields.find(field => field.name === 'model').userSettingValue = '';
+          state.states.model = { resolvedOptions: [] }; state.disabled = true; controls.update();
+        });
+        const model = page.locator('[data-action-id=ai]');
+        const setup = language === 'en' ? 'Configure model' : '配置模型';
+        assert.ok((await model.getAttribute('aria-label')).includes(setup));
+        assert.ok((await model.getAttribute('title')).includes(language === 'en'
+          ? 'No available models. Open Settings to add a model.' : '暂无可用模型，请前往设置添加模型。'));
+        assert.equal(await model.isEnabled(), true);
+        if (await model.getAttribute('data-icon-only') === 'false') assert.equal(await model.innerText(), setup);
+        await page.screenshot({ path: path.join(proofDir, `empty-models-${language}-${theme}-${width}.png`) });
+        await model.press('Enter');
+        assert.equal(await page.locator('#parameter-popover').isHidden(), true);
+        assert.deepEqual(await page.evaluate(() => window.quick.openedSettings), ['agent.permissionPolicy', 'agent.model']);
+        await page.evaluate(() => {
+          const { state, controls, parameters } = window.quick;
+          parameters.fields.find(field => field.name === 'model').userSettingValue = 'saved';
+          state.states.model = { resolvedOptions: [{ value: 'saved', label: 'Saved user model' }] }; state.disabled = false; controls.update();
+        });
+        await model.click();
+        assert.equal(await page.getByRole('option', { name: 'Saved user model' }).count(), 1);
+        assert.deepEqual(await page.evaluate(() => window.quick.openedSettings), ['agent.permissionPolicy', 'agent.model']);
+        await page.keyboard.press('Escape');
+        proof.push(`${language}/${theme}/${width}px: empty models show localized setup guidance and open settings directly; adding a model restores the list.`);
       }
     }
   }

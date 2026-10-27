@@ -121,6 +121,8 @@ Reused third-party connections retain developer `modelAttributes` defaults. Syst
 
 The built-in assistant uses user models. Clicking its model control opens available choices first; **Manage models** opens settings. Selecting a model overrides the default for the project or conversation; resetting follows the user default again. The original project model configuration APIs remain available and are not used by the assistant.
 
+With no available models, the control shows **Configure model** and guidance to add a model in settings. Clicking it opens **Settings → Models** directly; adding a model restores the choices.
+
 A custom model field with `mode: "fixed"` also opens the list first, with read-only choices and a **Manage models** action to change the user default. `mode: "default"` allows a project override.
 
 Updates apply after a safe task boundary. Active and background work retain their connection snapshot. A directly created Agent with a host-resolved model also resolves inherited permissions from that creation snapshot; explicit turn permissions still take precedence. Recreate the Agent after its work finishes to adopt new host model settings. Interrupted recovery obtains a key from the host only for the same model and endpoint; a removed or changed endpoint fails explicitly instead of receiving a new key at an old address.

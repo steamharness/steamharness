@@ -1,5 +1,7 @@
 # Unreleased
 
+- Fixed empty user model controls to show Configure model with setup guidance and open model settings directly. Adding a model restores the selection list.
+
 - Fixed grouped model menus to keep user model management available during loading and active work, preserved `inherit` as a model ID, and kept unrelated project output named `userSettings` intact during credential redaction. Kanban refreshes recheck current related imports so valid setup guidance survives a preview refresh and resolved errors stay hidden.
 
 - Added host user models, available-model choices and a Manage models action while retaining project configuration APIs. Updates apply at idle boundaries; keys stay out of page state, ordinary history and exports and are rehydrated only for matching model endpoints.

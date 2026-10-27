@@ -730,6 +730,7 @@
   "Open this project in Studio to change user settings.": "在 Studio 中打开此项目以修改用户设置。",
   "Reset to user settings": "恢复用户设置",
   "Manage models": "管理模型",
+  "No available models. Open Settings to add a model.": "暂无可用模型，请前往设置添加模型。",
   "Add a model in user settings before running the Agent.": "请先在用户设置中添加模型，再运行 Agent。",
   "This project only allows system AI. Select a system AI model in user settings.": "此项目仅允许系统 AI，请在用户设置中选择系统 AI 模型。",
   "This system AI model is unavailable. Check your account and model settings.": "此系统 AI 模型不可用，请检查账号和模型设置。",

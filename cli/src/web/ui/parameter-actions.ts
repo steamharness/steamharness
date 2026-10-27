@@ -112,6 +112,9 @@ export class ParameterActions {
         if (fixed.length === 1 && this.groupFields(action as GroupAction).length === 1) {
           this.close(); this.options.onOpenUserSetting?.(fixed[0].userSetting!.key); return;
         }
+        if (action.kind === 'quick' && this.needsUserModelSetup(this.groupFields(action))) {
+          this.close(); this.options.onOpenUserSetting?.('agent.model'); return;
+        }
         if (action.kind === 'quick' && this.groupFields(action).some(field => field.name === 'model' && field.userSetting?.key !== 'agent.model') && this.options.current().modelConfigurationRequired && this.options.onConfigureModel) {
           this.close(); this.options.onConfigureModel(); return;
         }
@@ -139,6 +142,10 @@ export class ParameterActions {
     return action.params.map((name) => this.field(name)).filter((field): field is Field =>
       !!field && this.options.current().states[field.name]?.visible !== false);
   }
+  private needsUserModelSetup(fields: readonly Field[]): boolean {
+    return !!this.options.onOpenUserSetting && fields.some(field => field.userSetting?.key === 'agent.model'
+      && (!this.options.current().loading || field.userSettingValue === '') && this.visibleOptions(field).length === 0);
+  }
 
   update(): void {
     const { values, states, disabled, loading, modelConfigurationRequired } = this.options.current();
@@ -152,7 +159,8 @@ export class ParameterActions {
         view.label.textContent = field ? `${field.label || field.name}: ${parameterSelectionLabel(field, values[field.name], states[field.name])}` : '';
       } else if (action.kind !== 'slash') {
         const fields = this.groupFields(action);
-        const configureModel = action.kind === 'quick' && fields.some(field => field.name === 'model' && field.userSetting?.key !== 'agent.model') && modelConfigurationRequired && !!this.options.onConfigureModel;
+        const configureUserModel = action.kind === 'quick' && this.needsUserModelSetup(fields);
+        const configureModel = configureUserModel || action.kind === 'quick' && fields.some(field => field.name === 'model' && field.userSetting?.key !== 'agent.model') && modelConfigurationRequired && !!this.options.onConfigureModel;
         const userModels = action.kind === 'quick' && fields.some(field => field.userSetting?.key === 'agent.model');
         const shortcut = fields.length === 1 && settingsShortcut(fields[0]);
         view.button.hidden = fields.length === 0;
@@ -171,8 +179,10 @@ export class ParameterActions {
         view.button.setAttribute('aria-busy', String(loading && !configureModel && !shortcut));
       }
       const fixed = action.kind === 'quick' && this.groupFields(action).length === 1 && settingsShortcut(this.groupFields(action)[0]);
-      if (fixed) { view.button.removeAttribute('aria-haspopup'); view.button.removeAttribute('aria-controls'); view.button.removeAttribute('aria-expanded'); }
-      view.button.title = view.button.ariaLabel = [view.label.textContent, view.summary?.textContent, fixed ? t('Change in user settings') : undefined].filter(Boolean).join(': ');
+      const configureUserModel = action.kind === 'quick' && this.needsUserModelSetup(this.groupFields(action));
+      if (fixed || configureUserModel) { view.button.removeAttribute('aria-haspopup'); view.button.removeAttribute('aria-controls'); view.button.removeAttribute('aria-expanded'); }
+      view.button.title = view.button.ariaLabel = [view.label.textContent, view.summary?.textContent,
+        configureUserModel ? t('No available models. Open Settings to add a model.') : fixed ? t('Change in user settings') : undefined].filter(Boolean).join(': ');
     }
     this.scheduleLayout();
     if (this.active) {
@@ -220,6 +230,7 @@ export class ParameterActions {
     const view = this.views.find((view) => (view.action.kind === 'quick' || view.action.kind === 'auxiliary') && view.action.params.includes(name));
     if (!view || view.action.kind === 'mode' || view.action.kind === 'slash') { return false; }
     if (this.field(name) && settingsShortcut(this.field(name)!)) { this.options.onOpenUserSetting?.(this.field(name)!.userSetting!.key); return true; }
+    if (this.field(name) && this.needsUserModelSetup([this.field(name)!])) { this.close(); this.options.onOpenUserSetting?.('agent.model'); return true; }
     if (name === 'model' && this.field(name)?.userSetting?.key !== 'agent.model' && this.options.current().modelConfigurationRequired && this.options.onConfigureModel) { view.button.focus(); return true; }
     this.open(view as ActionView & { action: GroupAction }, name);
     return true;
@@ -296,6 +307,7 @@ export class ParameterActions {
       row.append(label, value, icon(settingsShortcut(field) ? 'settings-gear' : 'chevron-right'));
       row.addEventListener('click', () => {
         if (settingsShortcut(field)) { this.close(); this.options.onOpenUserSetting?.(field.userSetting!.key); return; }
+        if (this.needsUserModelSetup([field])) { this.close(); this.options.onOpenUserSetting?.('agent.model'); return; }
         this.activeParam = field.name; this.renderQuick(); this.position();
         (this.popup.querySelector<HTMLButtonElement>('[role=option][aria-selected=true]:not(:disabled)')
           ?? this.popup.querySelector<HTMLButtonElement>('[role=option]:not(:disabled)'))?.focus();
@@ -327,6 +339,10 @@ export class ParameterActions {
       list.setAttribute('role', 'listbox'); list.ariaLabel = field.label || field.name;
       const multiple = field.multiple || field.control === 'checkboxes';
       if (multiple) { list.setAttribute('aria-multiselectable', 'true'); }
+      if (field.userSetting?.key === 'agent.model' && this.visibleOptions(field).length === 0) {
+        const hint = document.createElement('div'); hint.className = 'quick-option-row'; hint.setAttribute('role', 'status');
+        hint.textContent = loading ? t('Loading...') : t('No available models. Open Settings to add a model.'); list.append(hint);
+      }
       for (const option of this.visibleOptions(field)) {
         const selected = multiple ? Array.isArray(values[field.name]) && values[field.name].includes(option.value) : projectParamEffectiveValue(field, values[field.name]) === option.value;
         const button = document.createElement('button'); button.type = 'button'; button.className = 'quick-option-row';

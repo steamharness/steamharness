@@ -9,7 +9,7 @@ description: "Local execution of workflow, along with references to commands for
 
 Studio can inject user permission snapshots and updates into CLI Web, using a capability handshake for older CLIs. Projects inherit only with explicit `permissionPolicy: "inherit"`; an omitted policy still defaults to `workspace`. Standalone CLI does not persist this preference in this release, and `inherit` uses `auto` without host injection. Active durable work keeps its startup snapshot; subsequent input adopts updates at a safe idle boundary. See [User settings and permission inheritance](/en/core-api/user-settings).
 
-Quick menus bound to user models show model choices first and keep **Manage models** available while loading or running work. Choices that cannot currently change remain disabled. A model parameter named `inherit` is an ordinary model ID, not a permission inheritance marker; reset the model parameter to follow the user default.
+Quick menus bound to user models show model choices first and keep **Manage models** available while loading or running work. Choices that cannot currently change remain disabled. With no available models, the control shows **Configure model** with setup guidance and opens model settings directly; adding a model restores the selection list. A model parameter named `inherit` is an ordinary model ID, not a permission inheritance marker; reset the model parameter to follow the user default.
 
 ## Call Method
 
