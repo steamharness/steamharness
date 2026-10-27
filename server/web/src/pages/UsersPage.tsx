@@ -21,6 +21,8 @@ import { ConfirmActionDialog, type ConfirmAction } from "@/components/ConfirmAct
 import { UserIdentity } from "@/components/UserIdentity";
 import { cn } from "@/lib/utils";
 import { getAvatarFallbackText } from "@steamharness/avatar-fallback";
+import { AvatarCropDialog } from "@/components/AvatarCropDialog";
+import { avatarFileFromDataUrl } from "@/lib/avatar-image";
 
 interface UsersPageProps {
   users: AdminUserSummary[] | null;
@@ -82,8 +84,8 @@ export function UsersPage({
   const [editEmail, setEditEmail] = useState("");
   const [editDisplayName, setEditDisplayName] = useState("");
   const [selectedAvatarFile, setSelectedAvatarFile] = useState<File | null>(null);
+  const [avatarFileToCrop, setAvatarFileToCrop] = useState<File | null>(null);
   const [avatarPreview, setAvatarPreview] = useState("");
-  const avatarObjectUrlRef = useRef("");
   const [inviteLoadingUserId, setInviteLoadingUserId] = useState<string | null>(null);
   const [copiedLinkUserId, setCopiedLinkUserId] = useState<string | null>(null);
   const [confirmAction, setConfirmAction] = useState<ConfirmAction | null>(null);
@@ -140,20 +142,18 @@ export function UsersPage({
     setEditEmail(user.email);
     setEditDisplayName(user.displayName);
     setSelectedAvatarFile(null);
+    setAvatarFileToCrop(null);
     setAvatarPreview(user.avatarUrl ?? "");
   }, []);
 
   const closeManagementDialog = useCallback(() => {
-    if (avatarObjectUrlRef.current) {
-      URL.revokeObjectURL(avatarObjectUrlRef.current);
-      avatarObjectUrlRef.current = "";
-    }
     setSelectedUserId(null);
     setManagementTab("profile");
     setSelectedAdmin(false);
     setEditEmail("");
     setEditDisplayName("");
     setSelectedAvatarFile(null);
+    setAvatarFileToCrop(null);
     setAvatarPreview("");
   }, []);
 
@@ -363,20 +363,13 @@ export function UsersPage({
                         fallback: getAvatarFallbackText({ displayName: editDisplayName || activeUser.displayName, email: activeUser.email, userId: activeUser.userId }),
                       }}
                       description={t("usersEditAvatarDescription")}
-                      onFileChange={(file) => {
-                        if (avatarObjectUrlRef.current) URL.revokeObjectURL(avatarObjectUrlRef.current);
-                        setSelectedAvatarFile(file);
-                        if (file) {
-                          avatarObjectUrlRef.current = URL.createObjectURL(file);
-                          setAvatarPreview(avatarObjectUrlRef.current);
-                        } else {
-                          avatarObjectUrlRef.current = "";
-                          setAvatarPreview(activeUser.avatarUrl ?? "");
-                        }
+                      onFileChange={(file, event) => {
+                        event.currentTarget.value = "";
+                        if (file) setAvatarFileToCrop(file);
                       }}
                       actions={selectedAvatarFile ? (
                         <Button variant="outline" size="sm" disabled={editingBusy} className="shrink-0"
-                          onClick={() => { if (avatarObjectUrlRef.current) { URL.revokeObjectURL(avatarObjectUrlRef.current); avatarObjectUrlRef.current = ""; } setSelectedAvatarFile(null); setAvatarPreview(activeUser.avatarUrl ?? ""); }}>
+                          onClick={() => { setSelectedAvatarFile(null); setAvatarPreview(activeUser.avatarUrl ?? ""); }}>
                           {t("usersEditAvatarRevert")}
                         </Button>
                       ) : activeUser.avatarUrl ? (
@@ -457,6 +450,12 @@ export function UsersPage({
           ) : null}
         </DialogContent>
       </Dialog>
+      {avatarFileToCrop ? <AvatarCropDialog file={avatarFileToCrop} onClose={() => setAvatarFileToCrop(null)}
+        onConfirm={dataUrl => {
+          setSelectedAvatarFile(avatarFileFromDataUrl(dataUrl));
+          setAvatarPreview(dataUrl);
+          setAvatarFileToCrop(null);
+        }} /> : null}
       <ConfirmActionDialog action={confirmAction} onOpenChange={(open) => { if (!open) setConfirmAction(null); }} />
     </div>
   );

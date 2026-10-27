@@ -16,14 +16,14 @@ export function ProjectAvatar({ card, projectType = "workflow", projectId, size 
     data-testid={projectId ? `project-card-icon-${projectId}` : undefined}
     className={cn("shrink-0 overflow-hidden rounded-md p-0", size === "lg" ? "size-16" : size === "md" ? "size-12" : "size-9")}
     onClick={event => { event.stopPropagation(); onClick?.(); }}>
-    <img src={source} alt="" className="size-full" />
+    <img src={source} alt="" className="aspect-square size-full object-cover object-center" />
   </Button>;
   if (onClick) return trigger;
   return <Dialog>
     <DialogTrigger asChild>{trigger}</DialogTrigger>
     <DialogContent aria-describedby={undefined} onClick={event => event.stopPropagation()}>
       <DialogHeader><DialogTitle>{title}</DialogTitle></DialogHeader>
-      <img src={source} alt={title} className="mx-auto aspect-square w-64 max-w-full rounded-md" />
+      <img src={source} alt={title} className="mx-auto aspect-square w-64 max-w-full rounded-md object-cover object-center" />
     </DialogContent>
   </Dialog>;
 }

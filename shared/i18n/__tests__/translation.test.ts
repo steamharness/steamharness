@@ -7,15 +7,17 @@ import {
 } from "../index";
 
 describe("translation resolution", () => {
-  it("translates free avatar cropping and processing failures with Chinese fallback", () => {
+  it("translates fixed square avatar cropping and processing failures with Chinese fallback", () => {
     initI18n({ preference: "en" });
     expect(i18n.t("accountAvatarCropTitle", { ns: "serverWeb" })).toBe("Crop avatar");
-    expect(i18n.t("accountAvatarCropDescription", { ns: "serverWeb" })).toContain("no source file size or aspect ratio restriction");
+    expect(i18n.t("accountAvatarCropDescription", { ns: "serverWeb" })).toContain("fixed 1:1 ratio");
+    expect(i18n.t("accountAvatarCropReset", { ns: "serverWeb" })).toBe("Reset selection");
     expect(i18n.t("accountAvatarErrorProcessFailed", { ns: "serverWeb" })).toContain("Try again");
     initI18n({ preference: "zh-CN" });
     expect(i18n.t("accountAvatarCropTitle", { ns: "serverWeb" })).toBe("裁剪头像");
     i18n.changeLanguage("fr");
-    expect(i18n.t("accountAvatarCropDescription", { ns: "serverWeb" })).toContain("不限制原图大小和裁剪比例");
+    expect(i18n.t("accountAvatarCropDescription", { ns: "serverWeb" })).toContain("固定 1:1 比例");
+    expect(i18n.t("usersEditAvatarDescription", { ns: "serverWeb" })).toContain("1:1");
     expect(i18n.t("accountAvatarErrorProcessFailed", { ns: "serverWeb" })).toContain("请重试");
   });
 

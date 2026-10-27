@@ -7,9 +7,9 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Skeleton } from "@/components/ui/skeleton";
-import { cropAndCompressAvatar } from "@/lib/avatar-image";
+import { AVATAR_ASPECT_RATIO, createAvatarCrop, cropAndCompressAvatar } from "@/lib/avatar-image";
 
-const FULL_IMAGE: PercentCrop = { unit: "%", x: 0, y: 0, width: 100, height: 100 };
+const EMPTY_CROP: PercentCrop = { unit: "%", x: 0, y: 0, width: 0, height: 0 };
 
 export function AvatarCropDialog({ file, onConfirm, onClose }: {
   file: File;
@@ -19,7 +19,7 @@ export function AvatarCropDialog({ file, onConfirm, onClose }: {
   const { t } = useTranslation("serverWeb");
   const { t: commonT } = useTranslation("common");
   const [source, setSource] = useState("");
-  const [crop, setCrop] = useState<PercentCrop>(FULL_IMAGE);
+  const [crop, setCrop] = useState<PercentCrop>(EMPTY_CROP);
   const [imageAspect, setImageAspect] = useState<number | null>(null);
   const ready = imageAspect !== null;
   const [busy, setBusy] = useState(false);
@@ -32,7 +32,7 @@ export function AvatarCropDialog({ file, onConfirm, onClose }: {
     const current = ++generation.current;
     const url = URL.createObjectURL(file);
     setSource(url);
-    setCrop(FULL_IMAGE);
+    setCrop(EMPTY_CROP);
     setImageAspect(null);
     setError(null);
     return () => {
@@ -68,7 +68,7 @@ export function AvatarCropDialog({ file, onConfirm, onClose }: {
         <div className="relative flex min-h-24 min-w-0 items-center justify-center" aria-busy={!ready && !error}>
           {!ready && !error ? <Skeleton className="absolute inset-0" role="status" aria-label={commonT("imagePreviewLoading")} /> : null}
           {source ? (
-            <ReactCrop crop={crop} onChange={(_, percentCrop) => setCrop(percentCrop)}
+            <ReactCrop crop={crop} aspect={AVATAR_ASPECT_RATIO} onChange={(_, percentCrop) => setCrop(percentCrop)}
               disabled={busy || !ready} ruleOfThirds keepSelection
               // Size the crop surface itself so library styles cannot override the image height.
               // Small sources also get a usable preview; export still uses their original pixels.
@@ -90,6 +90,7 @@ export function AvatarCropDialog({ file, onConfirm, onClose }: {
                   const image = event.currentTarget;
                   if (image.naturalWidth > 0 && image.naturalHeight > 0) {
                     setImageAspect(image.naturalWidth / image.naturalHeight);
+                    setCrop(createAvatarCrop(image.naturalWidth, image.naturalHeight));
                     setError(null);
                   } else {
                     setImageAspect(null);
@@ -103,7 +104,9 @@ export function AvatarCropDialog({ file, onConfirm, onClose }: {
         {error ? <Alert variant="destructive"><AlertCircle /><AlertDescription>{error}</AlertDescription></Alert> : null}
         <DialogFooter>
           <Button type="button" variant="outline" disabled={busy || !ready}
-            onClick={() => setCrop(FULL_IMAGE)}>{t("accountAvatarCropReset")}</Button>
+            onClick={() => {
+              if (imageRef.current) setCrop(createAvatarCrop(imageRef.current.naturalWidth, imageRef.current.naturalHeight));
+            }}>{t("accountAvatarCropReset")}</Button>
           <Button type="button" variant="outline" disabled={busy} onClick={onClose}>{t("commonCancel")}</Button>
           <Button type="button" disabled={busy || !ready || crop.width <= 0 || crop.height <= 0} onClick={() => void confirmCrop()}>
             {busy ? <RefreshCw data-icon="inline-start" className="animate-spin" /> : null}

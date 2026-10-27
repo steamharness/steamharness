@@ -14,7 +14,6 @@ export interface UserIdentityValue {
 }
 
 type UserIdentitySize = "xs" | "sm" | "md";
-type UserIdentityAvatarShape = "circle" | "rounded";
 
 interface UserIdentityProps {
   user?: UserIdentityValue | null;
@@ -22,7 +21,6 @@ interface UserIdentityProps {
   secondary?: ReactNode;
   badge?: ReactNode;
   size?: UserIdentitySize;
-  avatarShape?: UserIdentityAvatarShape;
   showEmail?: boolean;
   showUserId?: boolean;
   className?: string;
@@ -85,7 +83,6 @@ export function UserIdentity({
   secondary,
   badge,
   size = "sm",
-  avatarShape = "circle",
   showEmail = true,
   showUserId = true,
   className,
@@ -101,10 +98,9 @@ export function UserIdentity({
   const primary = getUserIdentityPrimary(user, fallbackLabel ?? t("usersUnrecordedUser"));
   const emailLine = showEmail && email && email !== primary ? email : undefined;
   const userIdLine = showUserId && userId && userId !== primary && userId !== emailLine ? userId : undefined;
-  const avatarRadius = avatarShape === "rounded" ? "rounded-md" : "rounded-full";
-  const avatar = (large = false) => <Avatar className={cn(large ? "size-32" : styles.avatar, avatarRadius, "shrink-0")}>
+  const avatar = (large = false) => <Avatar className={cn(large ? "size-32" : styles.avatar, "shrink-0")}>
     {avatarUrl ? <AvatarImage src={avatarUrl} alt="" /> : null}
-    <AvatarFallback className={avatarRadius}>
+    <AvatarFallback>
       <span className={cn("font-semibold", large ? "text-3xl" : styles.fallbackText)}>{getAvatarFallbackText({ displayName, email, userId }, "?")}</span>
     </AvatarFallback>
   </Avatar>;
@@ -113,7 +109,7 @@ export function UserIdentity({
   return (
     <div className={cn("flex min-w-0 items-center gap-2.5", className)}>
       {interactive ? <Dialog>
-        <DialogTrigger asChild><Button type="button" variant="ghost" className={cn(styles.avatar, avatarRadius, "shrink-0 p-0")}
+        <DialogTrigger asChild><Button type="button" variant="ghost" className={cn(styles.avatar, "shrink-0 rounded-md p-0")}
           title={profileLabel} aria-label={profileLabel} onClick={event => event.stopPropagation()}>{avatar()}</Button></DialogTrigger>
         <DialogContent aria-describedby={undefined} onClick={event => event.stopPropagation()}>
           <DialogHeader><DialogTitle>{primary}</DialogTitle></DialogHeader>
