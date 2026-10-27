@@ -12,15 +12,17 @@ import type { WebReady, WebSession, WebSessionExit, RelatedProjectBinding } from
 
 export interface StudioControlConfiguration { mcpServer?: string; url: string; token: string }
 
-/**
- * Project surfaces need the host's system-AI connection to run projects that
- * ask the host for LLM credentials (conversation and agent projects do this by
- * default). The open-source Studio never injects `aiServerUrl`/`aiAccessToken`,
- * so this only widens what an internal host can provide; it does not expose a
- * separate AI service to public builds.
- */
-export function sanitizeConnectionForSurface(connection: Connection | undefined, _surface: 'editor' | 'assistant'): Connection | undefined {
-  return connection ? { ...connection } : undefined;
+/** Older project CLIs reject assistant-only fields in the editor connection. */
+export function sanitizeConnectionForSurface(connection: Connection | undefined, surface: 'editor' | 'assistant'): Connection | undefined {
+  return connection ? surface === 'assistant' ? { ...connection }
+    : { serverUrl: connection.serverUrl, accessToken: connection.accessToken } : undefined;
+}
+
+function hostAuthentication(connection: Connection | undefined, surface: 'editor' | 'assistant', systemAi = true) {
+  return { connection: sanitizeConnectionForSurface(connection, surface) ?? null,
+    // Older CLIs ignore this additive field; newer ones apply it before ready.
+    ...(surface === 'editor' && systemAi && connection && (connection.aiServerUrl !== undefined || connection.aiAccessToken !== undefined)
+      ? { systemAiConnection: { serverUrl: connection.aiServerUrl, accessToken: connection.aiAccessToken } } : {}) };
 }
 
 export async function resolveProjectCli(projectDir: string): Promise<{ entry: string; version: string }> {
@@ -114,7 +116,7 @@ export async function startProjectCli(options: {
 }): Promise<WebSession> {
   const { entry } = await resolveProjectCli(options.projectDir);
   options.signal?.throwIfAborted();
-  const connection = sanitizeConnectionForSurface(options.connection, options.surface);
+  const authentication = hostAuthentication(options.connection, options.surface);
   const child: ChildProcess = spawn(options.nodePath, [entry, '--locale', options.locale?.toLowerCase().startsWith('zh') ? 'zh-CN' : 'en', 'web', options.projectDir, '--port', String(options.port ?? 0), '--no-open', '--json', '--theme', options.theme, '--host-stdio', '--data-dir', options.dataDir],
     { cwd: options.projectDir, env: environment(options.studioControl), shell: false, stdio: ['pipe', 'pipe', 'pipe'], signal: options.signal });
   const events = new EventEmitter();
@@ -126,7 +128,8 @@ export async function startProjectCli(options: {
   let exit: WebSessionExit | undefined;
   const diagnostics = () => cleanError(stderr).slice(-8_000).trim();
   let relatedProjectsKey = JSON.stringify([options.relatedProjects ?? [], options.resourceProjects ?? []]);
-  let connectionKey = JSON.stringify(connection ?? null);
+  let systemAiSupported = true;
+  let connectionKey = JSON.stringify(authentication);
   let force: ReturnType<typeof setTimeout> | undefined;
   const close = (): Promise<void> => {
     if (!closing && !finished) {
@@ -176,18 +179,20 @@ export async function startProjectCli(options: {
         }
       };
       child.once('error', failed); child.once('close', exited); child.stdout?.on('data', received);
-      child.stdin?.write(`${JSON.stringify({ type: 'configure', surface: options.surface, connection: connection ?? null, assistant: options.assistant, assistantProjectDir: options.assistantProjectDir, relatedProjects: options.relatedProjects ?? [], resourceProjects: options.resourceProjects ?? [] })}\n`);
+      child.stdin?.write(`${JSON.stringify({ type: 'configure', surface: options.surface, ...authentication, assistant: options.assistant, assistantProjectDir: options.assistantProjectDir, relatedProjects: options.relatedProjects ?? [], resourceProjects: options.resourceProjects ?? [] })}\n`);
     });
+    systemAiSupported = ready.systemAiConnectionProtocolVersion === 1;
+    connectionKey = JSON.stringify(hostAuthentication(options.connection, options.surface, systemAiSupported));
     child.stdout?.resume();
     child.on('error', () => void close());
     return { ready, closed, close,
       updateAuth: connection => {
         if (connection) { secrets.add(connection.accessToken); if (connection.aiAccessToken) { secrets.add(connection.aiAccessToken); } }
-        const sanitized = sanitizeConnectionForSurface(connection, options.surface);
-        const key = JSON.stringify(sanitized ?? null);
+        const authentication = hostAuthentication(connection, options.surface, systemAiSupported);
+        const key = JSON.stringify(authentication);
         if (key === connectionKey) { return; }
         connectionKey = key;
-        if (!closing && !finished) { child.stdin?.write(`${JSON.stringify({ type: 'auth', connection: sanitized ?? null })}\n`); }
+        if (!closing && !finished) { child.stdin?.write(`${JSON.stringify({ type: 'auth', ...authentication })}\n`); }
       },
       updateRelatedProjects: (relatedProjects, resourceProjects = []) => {
         if (closing || finished) { return; }

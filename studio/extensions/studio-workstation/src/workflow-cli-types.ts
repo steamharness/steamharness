@@ -11,6 +11,7 @@ export interface WebReady {
   type: 'ready'; protocolVersion: number; hostProtocolVersion: number; url: string;
   assistantProtocolVersion?: number;
   accountProtocolVersion?: number;
+  systemAiConnectionProtocolVersion?: number;
   relatedProjectsProtocolVersion?: number;
   traceProtocolVersion?: number;
   project: Pick<Project, 'id' | 'name' | 'projectType'>;

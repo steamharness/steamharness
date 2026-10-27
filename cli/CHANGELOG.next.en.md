@@ -1,5 +1,7 @@
 # Unreleased
 
+- Hosts can pass system AI authentication separately for ordinary projects and Assistant, with consistent validation on startup, account refresh and logout. Existing host connections remain supported, and Studio can start older project CLIs without sending assistant-only fields in their project login.
+
 - Studio's built-in assistant now uses its fixed local application identity without requesting a personal Server project or a new ID. The application checks area hides after success. History, memory and configurations remain local without reading or publishing ordinary project configuration drafts. Server AI retains account authorization, and ordinary projects and related data retain their registration and access checks.
 
 - Rechecks now read current relationship declarations and storage mode and discard diagnostics for removed relationships. Retired services and child frames cannot overwrite application checks. Kanban pauses previews and page methods during checks, including page restoration, and slow complete checks no longer falsely interrupt the connection. Local-storage applications can confirm a new ID, Workflow and Conversation accept their executor's inspected type, and built-in assistants keep their managed identity.

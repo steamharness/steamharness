@@ -11,7 +11,7 @@ import { parseWebArgs } from '../web';
 import { startWebServer } from '../web/server';
 import { createWebRuntime, sanitizeWebWorkerEnvironment } from '../web/runtime';
 import { readCliAuthConfig, writeCliAuthConfig } from '../auth-config';
-import { parseHostConfiguration, parseHostConnection } from '../web/host-config';
+import { parseHostConfiguration, parseHostConnection, parseHostAuthentication } from '../web/host-config';
 import type { WebHostConfiguration } from '../web/host-config';
 import type { Project, Runtime, Run, Report } from '../web/workflow-types';
 import { initI18n } from '@steamharness/i18n';
@@ -537,6 +537,19 @@ describe('steamharness web', () => {
     // Editor surfaces also receive the host's system-AI connection: a project
     // that asks for host LLM credentials must be able to run in the editor.
     expect(parseHostConfiguration({ type: 'configure', surface: 'editor', connection: aiConnection }).connection).toEqual(aiConnection);
+    const connection = { serverUrl: aiConnection.serverUrl, accessToken: aiConnection.accessToken };
+    const systemAiConnection = { serverUrl: aiConnection.aiServerUrl, accessToken: aiConnection.aiAccessToken };
+    expect(parseHostConfiguration({ type: 'configure', surface: 'editor', connection, systemAiConnection }).connection).toEqual(aiConnection);
+    expect(parseHostAuthentication({ connection, systemAiConnection })).toEqual(aiConnection);
+    expect(parseHostAuthentication({ connection, systemAiConnection: null })).toEqual(connection);
+    expect(parseHostAuthentication({ connection: null, systemAiConnection: null })).toBeUndefined();
+    expect(() => parseHostAuthentication({ connection: null, systemAiConnection })).toThrow('host project account');
+    expect(() => parseHostAuthentication({ connection: aiConnection, systemAiConnection })).toThrow('Duplicate');
+    for (const ai of [{ serverUrl: 'file:///tmp', accessToken: 'token' }, { serverUrl: 'https://user:password@ai.test', accessToken: 'token' },
+      { serverUrl: 'https://ai.test?secret', accessToken: 'token' }, { serverUrl: systemAiConnection.serverUrl }, { accessToken: 'token' },
+      { ...systemAiConnection, accessToken: '' }, { ...systemAiConnection, accessToken: 'x'.repeat(16_385) }]) {
+      expect(() => parseHostAuthentication({ connection, systemAiConnection: ai })).toThrow();
+    }
     expect(parseHostConfiguration({ type: 'configure', surface: 'assistant', connection: aiConnection,
       assistant: { workdir: '/tmp/workflow-assistant', roots: [{ uri: 'file:///tmp/workflow-assistant', folderPath: '/tmp/workflow-assistant', name: 'Assistant' }] },
       assistantProjectDir: '/tmp/workflow-assistant' }).connection).toEqual(aiConnection);

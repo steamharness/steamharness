@@ -4,7 +4,7 @@ import { startWebServer } from './web/server';
 import { i18n } from '@steamharness/i18n';
 import { createInterface } from 'node:readline';
 import { createWebRuntime } from './web/runtime';
-import { parseHostConfiguration, parseHostConnection, parseHostRelatedProjects, parseHostResourceProjects } from './web/host-config';
+import { parseHostConfiguration, parseHostAuthentication, parseHostRelatedProjects, parseHostResourceProjects } from './web/host-config';
 import { ASSISTANT_PROTOCOL_VERSION, inspectWebProject } from './web/assistant-project';
 
 export function parseWebArgs(argv: string[]) {
@@ -55,7 +55,7 @@ export async function main(argv: string[]): Promise<number> {
   const app = await startWebServer({ ...options, host }).catch(error => { input?.close(); throw error; });
   const close = () => { process.off('SIGINT', close); process.off('SIGTERM', close); input?.close(); process.stdin.pause(); void app.close().catch(error => { console.error(error); process.exitCode = 1; }); };
   process.once('SIGINT', close); process.once('SIGTERM', close);
-  console.log(options.json ? JSON.stringify({ type: 'ready', protocolVersion: 1, hostProtocolVersion: 1, accountProtocolVersion: 1, relatedProjectsProtocolVersion: 1, traceProtocolVersion: 1, assistantProtocolVersion: host?.assistant ? ASSISTANT_PROTOCOL_VERSION : undefined, url: app.url, project: { id: app.project.id, name: app.project.name, projectType: app.project.projectType }, runtime: (app.project as unknown as { runtime: unknown }).runtime }) : `SteamHarness Web: ${app.url}`);
+  console.log(options.json ? JSON.stringify({ type: 'ready', protocolVersion: 1, hostProtocolVersion: 1, accountProtocolVersion: 1, systemAiConnectionProtocolVersion: 1, relatedProjectsProtocolVersion: 1, traceProtocolVersion: 1, assistantProtocolVersion: host?.assistant ? ASSISTANT_PROTOCOL_VERSION : undefined, url: app.url, project: { id: app.project.id, name: app.project.name, projectType: app.project.projectType }, runtime: (app.project as unknown as { runtime: unknown }).runtime }) : `SteamHarness Web: ${app.url}`);
   if (lines) {
     void (async () => {
       try {
@@ -63,7 +63,7 @@ export async function main(argv: string[]): Promise<number> {
           if (line.length > 256_000) { throw new Error('Web host message is too large.'); }
           const message = JSON.parse(line);
           if (message.type === 'auth') {
-            void app.setHostConnection(parseHostConnection(message.connection, { allowAi: true })).catch(() => { console.error('Workflow web host connection failed.'); process.exitCode = 1; close(); });
+            void app.setHostConnection(parseHostAuthentication(message)).catch(() => { console.error('Workflow web host connection failed.'); process.exitCode = 1; close(); });
           }
           else if (message.type === 'related-projects') { await app.setHostRelatedProjects(parseHostRelatedProjects(message.relatedProjects)); if (message.resourceProjects !== undefined) { app.setHostResourceProjects(parseHostResourceProjects(message.resourceProjects)); } }
           else if (message.type === 'close') { break; }

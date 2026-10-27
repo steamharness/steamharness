@@ -15,14 +15,16 @@ it('processes logout and close while an earlier host authentication is pending',
   const close = vi.fn(async () => {});
   const setHostRelatedProjects = vi.fn();
   const relatedProjects = [{ alias: 'database', projectDir: path.join(os.tmpdir(), 'database') }];
+  const connection = { serverUrl: 'https://steamharness.test', accessToken: 'host-test-token' };
+  const systemAiConnection = { serverUrl: 'https://ai.test', accessToken: 'ai-test-token' };
   vi.mocked(startWebServer).mockResolvedValue({
     url: `http://127.0.0.1:3000/#session=${'a'.repeat(64)}`,
     project: { id: 'host-test', name: 'Host test', projectType: 'conversation', runtime: { harnessVersion: 'test', harnessPath: 'test' } },
     setHostConnection, setHostRelatedProjects, close,
   } as unknown as Awaited<ReturnType<typeof startWebServer>>);
   const input = Readable.from([
-    JSON.stringify({ type: 'configure', surface: 'editor', connection: null }),
-    JSON.stringify({ type: 'auth', connection: { serverUrl: 'https://steamharness.test', accessToken: 'host-test-token' } }),
+    JSON.stringify({ type: 'configure', surface: 'editor', connection, systemAiConnection }),
+    JSON.stringify({ type: 'auth', connection, systemAiConnection: { ...systemAiConnection, accessToken: 'rotated-ai-token' } }),
     JSON.stringify({ type: 'auth', connection: null }),
     JSON.stringify({ type: 'related-projects', relatedProjects }),
     JSON.stringify({ type: 'related-projects', relatedProjects: [] }),
@@ -32,9 +34,10 @@ it('processes logout and close while an earlier host authentication is pending',
   const output = vi.spyOn(console, 'log').mockImplementation(() => {});
   try {
     expect(await main(['--host-stdio', '--json', '--no-open'])).toBe(0);
-    expect(JSON.parse(output.mock.calls[0][0])).toMatchObject({ accountProtocolVersion: 1, relatedProjectsProtocolVersion: 1 });
+    expect(JSON.parse(output.mock.calls[0][0])).toMatchObject({ accountProtocolVersion: 1, relatedProjectsProtocolVersion: 1, systemAiConnectionProtocolVersion: 1 });
+    expect(vi.mocked(startWebServer).mock.calls[0][0].host?.connection).toEqual({ ...connection, aiServerUrl: systemAiConnection.serverUrl, aiAccessToken: systemAiConnection.accessToken });
     await vi.waitFor(() => expect(close).toHaveBeenCalledOnce());
-    expect(setHostConnection).toHaveBeenNthCalledWith(1, { serverUrl: 'https://steamharness.test', accessToken: 'host-test-token' });
+    expect(setHostConnection).toHaveBeenNthCalledWith(1, { ...connection, aiServerUrl: systemAiConnection.serverUrl, aiAccessToken: 'rotated-ai-token' });
     expect(setHostConnection).toHaveBeenNthCalledWith(2, undefined);
     expect(setHostRelatedProjects).toHaveBeenNthCalledWith(1, relatedProjects);
     expect(setHostRelatedProjects).toHaveBeenNthCalledWith(2, []);

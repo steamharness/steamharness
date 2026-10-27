@@ -45,6 +45,17 @@ export function parseHostConnection(value: unknown, options: { allowAi?: boolean
     ...(aiServerUrl === undefined ? {} : { aiServerUrl, aiAccessToken: connection.aiAccessToken }) };
 }
 
+/** Optional AI authentication is separate so older project CLIs can ignore it. */
+export function parseHostAuthentication(message: { connection?: unknown; systemAiConnection?: unknown }): WebConnection | undefined {
+  const connection = parseHostConnection(message.connection, { allowAi: true });
+  if (message.systemAiConnection === undefined) { return connection; }
+  if (connection?.aiServerUrl !== undefined || connection?.aiAccessToken !== undefined) { throw new Error('Duplicate host AI connection.'); }
+  const ai = parseHostConnection(message.systemAiConnection);
+  if (!ai) { return connection; }
+  if (!connection) { throw new Error('System AI requires a host project account.'); }
+  return { ...connection, aiServerUrl: ai.serverUrl, aiAccessToken: ai.accessToken };
+}
+
 function normalizeHostUrl(value: unknown, label: string): string {
   if (typeof value !== 'string' || !value.trim()) { throw new Error(`Invalid host ${label} URL.`); }
   const url = new URL(value);
@@ -67,7 +78,7 @@ export function parseHostConfiguration(value: unknown): WebHostConfiguration {
   }
   if (configuration.surface !== 'assistant' && (assistant || assistantProjectDir !== undefined)) { throw new Error('Assistant configuration requires the assistant surface.'); }
   return { surface: configuration.surface, assistant, assistantProjectDir,
-    connection: parseHostConnection(configuration.connection, { allowAi: true }),
+    connection: parseHostAuthentication(configuration),
     relatedProjects: parseHostRelatedProjects(configuration.relatedProjects),
     ...(configuration.resourceProjects === undefined ? {} : { resourceProjects: parseHostResourceProjects(configuration.resourceProjects) }) };
 }

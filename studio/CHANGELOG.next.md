@@ -1,5 +1,7 @@
 # Unreleased
 
+- 【修复】普通项目启动兼容已安装的旧版 CLI，不再因独立 AI 连接报“AI connection requires the assistant surface”。新版 CLI 通过可选宿主协议接收系统 AI，账号刷新与退出保持一致；旧版 CLI 保留项目账号和本地功能，小助手继续使用独立 AI 认证。
+
 - 【修复】非版本目录的 Windows 后台更新向辅助程序传入扩展长度路径，并提供兼容辅助程序的固定来源与校验缓存。
 
 - 【修复】Windows 每用户安装和后台更新支持较深的依赖路径，避免 Copilot 运行文件超过传统路径长度时安装失败并回滚。

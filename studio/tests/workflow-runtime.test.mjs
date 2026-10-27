@@ -10,7 +10,7 @@ const { inspectProjectCli, resolveProjectCli, startProjectCli } = await import('
 const { RecoverableWebSession } = await import('../extensions/studio-workstation/src/workflow-session.ts');
 import { projectFrameHtml } from '../extensions/studio-workstation/src/workflow-webview.ts';
 
-async function fixture(t, version = '1.0.0', protocol = 1, fail = false, startupDelay = 0, assistantProtocol = 1, accountProtocol = 1, relatedProtocol = 1) {
+async function fixture(t, version = '1.0.0', protocol = 1, fail = false, startupDelay = 0, assistantProtocol = 1, accountProtocol = 1, relatedProtocol = 1, systemAiProtocol = 1) {
   const directory = await fs.mkdtemp(path.join(tmpdir(), 'studio-project-cli-'));
   t.after(() => fs.rm(directory, { recursive: true, force: true }));
   await fs.writeFile(path.join(directory, 'package.json'), '{"name":"user-project"}');
@@ -26,12 +26,20 @@ async function fixture(t, version = '1.0.0', protocol = 1, fail = false, startup
       console.log(JSON.stringify({projects:[{name:version,folderPath:process.cwd(),projectType:'conversation',fields:[],entrypoints:[]}],errors:[]}));
     } else {
       const input=createInterface({input:process.stdin});
-      let configuration,server,authMessages=0;
+      let configuration,effectiveConnection,server,authMessages=0;
+      const authenticate=message=>{
+        if(configuration.surface==='editor' && ${systemAiProtocol}!==1 && (message.connection?.aiServerUrl!==undefined || message.connection?.aiAccessToken!==undefined)) {
+          console.error('AI connection requires the assistant surface.');process.exit(1);
+        }
+        effectiveConnection=message.connection && ${systemAiProtocol}===1 && message.systemAiConnection
+          ? {...message.connection,aiServerUrl:message.systemAiConnection.serverUrl,aiAccessToken:message.systemAiConnection.accessToken}:message.connection;
+      };
       input.on('line',line=>{
         const message=JSON.parse(line);
         if(message.type==='configure') {
           configuration=message;
           if(args.includes('--inspect')) { console.log(JSON.stringify({assistantProtocolVersion:${assistantProtocol},projects:[{id:assistantId,name:'Project Assistant',folderPath:message.assistantProjectDir,projectType:'conversation',fields:[],entrypoints:[],tools:[{name:'skill'}]}],errors:[]}));input.close();process.stdin.pause();return; }
+          authenticate(message);
           if(${fail}) {console.error(message.connection?.accessToken);process.exit(1);}
           const studioControl={hasUrl:!!process.env.STEAMHARNESS_STUDIO_CONTROL_BRIDGE_URL,hasToken:!!process.env.STEAMHARNESS_STUDIO_CONTROL_BRIDGE_TOKEN,mcpServer:process.env.STEAMHARNESS_STUDIO_CONTROL_MCP_SERVER??null,permissionPolicy:process.env.STEAMHARNESS_STUDIO_CONTROL_PERMISSION_POLICY??null};
           server=createServer((request,response)=>{
@@ -39,13 +47,13 @@ async function fixture(t, version = '1.0.0', protocol = 1, fail = false, startup
             if(request.url==='/crash') {
               const token=configuration.connection?.accessToken??'';
               process.stderr.write('x'.repeat(7995)+token.slice(0,5));
-              setTimeout(()=>{process.stderr.write(token.slice(5)+' '+(configuration.connection?.aiAccessToken??'')+' '+(process.env.STEAMHARNESS_STUDIO_CONTROL_BRIDGE_TOKEN??'')+' diagnostic tail');response.end('{}');setTimeout(()=>process.exit(23),10);},10);
+              setTimeout(()=>{process.stderr.write(token.slice(5)+' '+(effectiveConnection?.aiAccessToken??'')+' '+(process.env.STEAMHARNESS_STUDIO_CONTROL_BRIDGE_TOKEN??'')+' diagnostic tail');response.end('{}');setTimeout(()=>process.exit(23),10);},10);
               return;
             }
-            response.end(JSON.stringify({configuration,args,pid:process.pid,authMessages,studioControl}));
+            response.end(JSON.stringify({configuration,effectiveConnection,args,pid:process.pid,authMessages,studioControl}));
           });
-          setTimeout(()=>server.listen(Number(args[args.indexOf('--port')+1]??0),'127.0.0.1',()=>console.log(JSON.stringify({type:'ready',protocolVersion:1,hostProtocolVersion:${protocol},accountProtocolVersion:${accountProtocol},relatedProjectsProtocolVersion:${relatedProtocol},assistantProtocolVersion:${assistantProtocol},url:'http://127.0.0.1:'+server.address().port+'/#session='+'a'.repeat(64),project:{id:message.assistantProjectDir?assistantId:'user',name:message.assistantProjectDir?'Project Assistant':version,projectType:'conversation'},runtime:{harnessVersion:version,harnessPath:process.cwd()+'/node_modules/steamharness/dist/index.js'}}))),${startupDelay});
-        } else if(message.type==='auth') {authMessages++;configuration.connection=message.connection;}
+          setTimeout(()=>server.listen(Number(args[args.indexOf('--port')+1]??0),'127.0.0.1',()=>console.log(JSON.stringify({type:'ready',protocolVersion:1,hostProtocolVersion:${protocol},accountProtocolVersion:${accountProtocol},systemAiConnectionProtocolVersion:${systemAiProtocol},relatedProjectsProtocolVersion:${relatedProtocol},assistantProtocolVersion:${assistantProtocol},url:'http://127.0.0.1:'+server.address().port+'/#session='+'a'.repeat(64),project:{id:message.assistantProjectDir?assistantId:'user',name:message.assistantProjectDir?'Project Assistant':version,projectType:'conversation'},runtime:{harnessVersion:version,harnessPath:process.cwd()+'/node_modules/steamharness/dist/index.js'}}))),${startupDelay});
+        } else if(message.type==='auth') {authMessages++;authenticate(message);configuration.connection=message.connection;configuration.systemAiConnection=message.systemAiConnection;}
         else if(message.type==='related-projects') {configuration.relatedProjects=message.relatedProjects;}
         else if(message.type==='close') {input.close();process.stdin.pause();server?.close();}
       });
@@ -173,6 +181,88 @@ test('host credentials use stdin and can change without restarting the CLI', asy
   assert.equal(next.configuration.connection, null);
 });
 
+test('legacy editor CLIs start and rotate project accounts without assistant-only AI fields', async t => {
+  const { options } = await fixture(t, '0.1.1', 1, false, 0, 1, 1, 1, 0);
+  const project = { serverUrl: 'https://project.test', accessToken: 'project-fixture' };
+  const connection = { ...project, aiServerUrl: 'https://ai.test', aiAccessToken: 'ai-fixture' };
+  const session = await startProjectCli({ ...options, connection });
+  t.after(() => session.close());
+  const read = () => fetch(new URL(session.ready.url).origin).then(response => response.json());
+  const initial = await read();
+  assert.deepEqual(initial.configuration.connection, project);
+  assert.deepEqual(initial.effectiveConnection, project);
+  assert.equal(initial.configuration.surface, 'editor');
+  assert.equal(initial.configuration.assistant, undefined);
+  assert.ok(!initial.args.join(' ').includes('fixture'));
+  session.updateAuth({ ...connection, aiAccessToken: 'rotated-ai-fixture' });
+  assert.equal((await read()).authMessages, 0);
+  session.updateAuth({ ...connection, accessToken: 'rotated-project-fixture' });
+  let next;
+  for (let attempt = 0; attempt < 100; attempt++) {
+    next = await read();
+    if (next.effectiveConnection.accessToken === 'rotated-project-fixture') break;
+  }
+  assert.deepEqual(next.effectiveConnection, { ...project, accessToken: 'rotated-project-fixture' });
+  assert.equal(next.configuration.systemAiConnection, undefined);
+  assert.equal(next.pid, initial.pid);
+  session.updateAuth();
+  for (let attempt = 0; attempt < 100; attempt++) {
+    next = await read(); if (next.effectiveConnection === null) break;
+  }
+  assert.equal(next.effectiveConnection, null);
+});
+
+test('capable editor CLIs receive separate system AI on startup, rotation and revocation', async t => {
+  // The same package version can exist before and after protocol support.
+  const { options } = await fixture(t, '0.1.1');
+  const project = { serverUrl: 'https://project.test', accessToken: 'project-fixture' };
+  const connection = { ...project, aiServerUrl: 'https://ai.test', aiAccessToken: 'ai-fixture' };
+  const session = await startProjectCli({ ...options, connection });
+  t.after(() => session.close());
+  const read = () => fetch(new URL(session.ready.url).origin).then(response => response.json());
+  const initial = await read();
+  assert.equal(session.ready.systemAiConnectionProtocolVersion, 1);
+  assert.deepEqual(initial.configuration.connection, project);
+  assert.deepEqual(initial.configuration.systemAiConnection, { serverUrl: connection.aiServerUrl, accessToken: connection.aiAccessToken });
+  assert.deepEqual(initial.effectiveConnection, connection);
+  session.updateAuth({ ...connection });
+  assert.equal((await read()).authMessages, 0);
+  const rotated = { ...connection, aiAccessToken: 'rotated-ai-fixture' };
+  session.updateAuth(rotated);
+  let next;
+  for (let attempt = 0; attempt < 100; attempt++) {
+    next = await read(); if (next.effectiveConnection.aiAccessToken === rotated.aiAccessToken) break;
+  }
+  assert.deepEqual(next.effectiveConnection, rotated);
+  assert.equal(next.pid, initial.pid);
+  session.updateAuth(project);
+  for (let attempt = 0; attempt < 100; attempt++) {
+    next = await read(); if (!next.effectiveConnection.aiAccessToken) break;
+  }
+  assert.deepEqual(next.effectiveConnection, project);
+  session.updateAuth();
+  for (let attempt = 0; attempt < 100; attempt++) {
+    next = await read(); if (next.effectiveConnection === null) break;
+  }
+  assert.equal(next.effectiveConnection, null);
+});
+
+test('legacy assistant CLIs retain their existing independent AI authentication', async t => {
+  const { options, directory } = await fixture(t, '0.1.1', 1, false, 0, 1, 1, 1, 0);
+  const connection = { serverUrl: 'https://project.test', accessToken: 'project-fixture', aiServerUrl: 'https://ai.test', aiAccessToken: 'ai-fixture' };
+  const session = await startProjectCli({ ...options, surface: 'assistant', assistantProjectDir: directory,
+    assistant: { workdir: directory, roots: [{ uri: `file://${directory}`, folderPath: directory, name: 'Workspace' }] }, connection });
+  t.after(() => session.close());
+  const read = () => fetch(new URL(session.ready.url).origin).then(response => response.json());
+  assert.deepEqual((await read()).effectiveConnection, connection);
+  session.updateAuth({ ...connection, aiAccessToken: 'rotated-ai-fixture' });
+  let next;
+  for (let attempt = 0; attempt < 100; attempt++) {
+    next = await read(); if (next.effectiveConnection.aiAccessToken === 'rotated-ai-fixture') break;
+  }
+  assert.deepEqual(next.effectiveConnection, { ...connection, aiAccessToken: 'rotated-ai-fixture' });
+});
+
 test('closing a tab closes its service and is repeatable', async t => {
   const { options } = await fixture(t);
   const session = await startProjectCli(options);
@@ -280,7 +370,7 @@ test('runtime exits retain code and bounded diagnostics with rotated credentials
   const session = await startProjectCli({ ...options, connection: { serverUrl: 'https://fixture.test', accessToken: 'old-secret-fixture-token' },
     studioControl: { url: 'http://127.0.0.1:12345', token: 'control-secret-fixture-token' } });
   t.after(() => session.close());
-  session.updateAuth({ serverUrl: 'https://fixture.test', accessToken: 'rotated-secret-fixture-token', aiAccessToken: 'ai-secret-fixture-token' });
+  session.updateAuth({ serverUrl: 'https://fixture.test', accessToken: 'rotated-secret-fixture-token', aiServerUrl: 'https://ai.test', aiAccessToken: 'ai-secret-fixture-token' });
   const exited = new Promise(resolve => session.onExit(resolve));
   await fetch(new URL('/crash', session.ready.url));
   const exit = await exited; await session.closed;

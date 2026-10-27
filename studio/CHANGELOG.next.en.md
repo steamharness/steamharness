@@ -1,5 +1,7 @@
 # Unreleased
 
+- Ordinary projects now start with older installed CLIs without the “AI connection requires the assistant surface” error. An optional host protocol preserves system AI for capable CLIs, including account refresh and logout. Older CLIs retain project authentication and local features, while Assistant keeps its independent AI connection.
+
 - Fixed non-versioned Windows background updates by passing extended-length paths to the helper and providing a pinned, checksum-verified compatible updater cache.
 
 - Fixed Windows per-user installation and background updates for deeply nested dependency paths, avoiding installation rollback when Copilot runtime files exceed the legacy path limit.
