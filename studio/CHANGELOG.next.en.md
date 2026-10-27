@@ -1,5 +1,7 @@
 # Unreleased
 
+- Fixed non-versioned Windows background updates by passing extended-length paths to the helper and providing a pinned, checksum-verified compatible updater cache.
+
 - Fixed Windows per-user installation and background updates for deeply nested dependency paths, avoiding installation rollback when Copilot runtime files exceed the legacy path limit.
 
 - Fixed Server storage setup guidance for local Kanban, Workflow and Conversation projects, including the Server address, project ID, account settings, upload dialog and read-only rechecks. History, drafts and Stop remain available; no projects are created or uploaded automatically. Missing Kanban endpoints no longer suggest another upload when the project already exists.

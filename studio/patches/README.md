@@ -84,4 +84,6 @@
 
 `0057-studio-language-command-service-lifetime.patch` 在语言切换命令的首次异步调用前获取所需服务，避免点击语言或重启应用时使用已失效的服务访问器。
 
+`0064-studio-windows-background-updater-paths.patch` 统一安装目标与后台更新辅助程序的扩展长度路径转换，避免传统目录替换在较深依赖路径上重试失败。
+
 新内核修改应通过 `git diff` 导出统一格式补丁，并排除脚本生成的 `product.json` 及 Studio 扩展链接。品牌配置由 `config/product.json` 维护。
