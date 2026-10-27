@@ -20,6 +20,8 @@ export interface Field {
   userSetting?: import("steamharness").UserSettingParamBinding;
   /** Current host value for display only; inherited values are never serialized as overrides. */
   userSettingValue?: string;
+  /** Public display metadata only. Model credentials never enter parameter fields. */
+  userModelSources?: Record<string, 'system' | 'third-party'>;
   multiple?: boolean;
   resolveOnInput?: boolean;
   options?: { value: string; label?: string; description?: string; command?: string }[];
@@ -312,10 +314,14 @@ export function projectParameters(project: Project, entrypointId?: string): Para
 }
 
 export function projectWithUserSettings(project: Project, settings: import('steamharness').UserSettings): Project {
-  const fields = (parameters: Parameters) => parameters.fields.map(field => field.userSetting
-    ? { ...field, userSettingValue: field.userSetting.key === "agent.model"
-      ? settings.agent.models?.find(model => project.agentModelPolicy?.allowThirdParty !== false || model.source === "system")?.id ?? ""
-      : settings.agent.permissionPolicy } : field);
+  const models = (settings.agent.models ?? []).filter(model => project.agentModelPolicy?.allowThirdParty !== false || model.source === 'system');
+  const sources = Object.fromEntries(models.map(model => [model.id, model.source]));
+  const fields = (parameters: Parameters) => parameters.fields.map(field => {
+    if (!field.userSetting) return field;
+    return field.userSetting.key === 'agent.model'
+      ? { ...field, userModelSources: sources, userSettingValue: models[0]?.id ?? '' }
+      : { ...field, userSettingValue: settings.agent.permissionPolicy };
+  });
   return { ...project, fields: fields(project), entrypoints: project.entrypoints.map(entry => ({ ...entry, fields: fields(entry) })) };
 }
 

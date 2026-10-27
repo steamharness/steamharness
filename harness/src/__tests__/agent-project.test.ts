@@ -281,15 +281,14 @@ test("the generated params expose the agent capability in the UI", () => {
     ["read-only", "workspace", "auto"],
   );
   assert.equal(params.get("effort")?.defaultValue, "medium");
-  // The model choice, the effort and the permission live in the composer
-  // panel, matching the built-in OpenCode project.
+  // Model, effort and permission each have their own composer control.
   assert.deepEqual(
     ["provider", "model", "effort", "permissionPolicy"].map((name) => params.get(name)?.panel),
     ["quick", "quick", "quick", "quick"],
   );
   assert.equal(params.get("contextWindow")?.type, "number");
   assert.deepEqual(normalized.layout?.actions.map((action) => action.kind), [
-    "auxiliary", "quick", "mode", "auxiliary", "quick",
+    "auxiliary", "quick", "quick", "mode", "auxiliary", "quick",
   ]);
 });
 

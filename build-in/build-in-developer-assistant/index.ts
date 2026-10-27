@@ -187,10 +187,10 @@ export const executor = steamharness.defineExecutor<AgentInput, AgentOutputPaylo
   params: [
     {
       kind: "quick",
-      id: "ai",
-      label: "AI",
+      id: "model",
+      label: "Model",
       icon: "sparkle",
-      summary: ["model", "effort"],
+      summary: ["model"],
       fields: [
         {
           name: "provider",
@@ -213,6 +213,15 @@ export const executor = steamharness.defineExecutor<AgentInput, AgentOutputPaylo
           control: "select",
           options: [],
         },
+      ],
+    },
+    {
+      kind: "quick",
+      id: "effort",
+      label: "Effort",
+      icon: "lightbulb",
+      summary: ["effort"],
+      fields: [
         {
           name: "effort",
           flag: "--effort",

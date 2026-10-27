@@ -343,7 +343,17 @@ export class ParameterActions {
         const hint = document.createElement('div'); hint.className = 'quick-option-row'; hint.setAttribute('role', 'status');
         hint.textContent = loading ? t('Loading...') : t('No available models. Open Settings to add a model.'); list.append(hint);
       }
-      for (const option of this.visibleOptions(field)) {
+      const visible = this.visibleOptions(field);
+      const groupedModels = field.userSetting?.key === 'agent.model' && !!field.userModelSources;
+      const choices = groupedModels ? [...visible.filter(option => field.userModelSources![option.value] === 'system'), ...visible.filter(option => field.userModelSources![option.value] !== 'system')] : visible;
+      let previousGroup: 'system' | 'third-party' | undefined;
+      for (const option of choices) {
+        const source = field.userModelSources?.[option.value] ?? 'third-party';
+        if (groupedModels && source !== previousGroup) {
+          const heading = document.createElement('div'); heading.className = 'quick-model-group';
+          heading.textContent = source === 'system' ? t('Built-in models') : t('Custom models'); heading.setAttribute('role', 'presentation'); list.append(heading);
+          previousGroup = source;
+        }
         const selected = multiple ? Array.isArray(values[field.name]) && values[field.name].includes(option.value) : projectParamEffectiveValue(field, values[field.name]) === option.value;
         const button = document.createElement('button'); button.type = 'button'; button.className = 'quick-option-row';
         button.setAttribute('role', 'option'); button.setAttribute('aria-selected', String(selected));
@@ -354,7 +364,8 @@ export class ParameterActions {
         const copy = document.createElement('span'); copy.className = 'quick-option-copy';
         const label = document.createElement('span'); label.textContent = option.label || option.value; copy.append(label);
         if (option.description) { const description = document.createElement('small'); description.textContent = option.description; copy.append(description); }
-        button.append(check, copy);
+        if (groupedModels) button.append(icon(source === 'system' ? 'sparkle' : 'plug'), copy, check);
+        else button.append(check, copy);
         button.addEventListener('click', () => {
           const current = this.options.current().values[field.name];
           const next = multiple ? selected ? (Array.isArray(current) ? current : []).filter((value) => value !== option.value)
@@ -374,7 +385,7 @@ export class ParameterActions {
     if (fields.some(field => field.userSetting?.key === 'agent.model')) {
       const manage = document.createElement('button'); manage.type = 'button'; manage.className = 'quick-reset';
       manage.setAttribute('role', 'menuitem'); manage.dataset.focusKey = 'manage-models';
-      manage.textContent = t('Manage models'); manage.append(icon('settings-gear'));
+      manage.textContent = t('Add model'); manage.append(icon('add'));
       manage.addEventListener('click', () => { this.close(true); this.options.onOpenUserSetting?.('agent.model'); });
       menu.append(manage);
     }
@@ -396,12 +407,14 @@ export class ParameterActions {
     const rightEdge = Math.min(window.innerWidth - 12, boundary.right - 8);
     const available = Math.max(0, rightEdge - leftEdge);
     const quick = this.active.action.kind === 'quick';
-    const width = Math.min(quick ? 292 : 336, available);
+    const modelMenu = quick && this.groupFields(this.active.action).length === 1
+      && this.groupFields(this.active.action)[0].userSetting?.key === 'agent.model';
+    const width = Math.min(modelMenu ? 320 : quick ? 292 : 336, available);
     let left = Math.min(Math.max(leftEdge, quick ? anchor.right - width : anchor.left), rightEdge - width);
     let total = width;
     let compact = false;
     this.popup.dataset.detailSide = '';
-    if (quick && this.activeParam) {
+    if (quick && this.activeParam && this.groupFields(this.active.action).length > 1) {
       const detailWidth = Math.min(320, available);
       const placeLeft = left - leftEdge >= detailWidth + 8;
       const placeRight = rightEdge - (left + width) >= detailWidth + 8;
@@ -413,6 +426,6 @@ export class ParameterActions {
     this.popup.style.left = `${left}px`;
     this.popup.style.bottom = `${window.innerHeight - anchor.top + 8}px`;
     this.popup.style.width = `${total}px`;
-    this.popup.style.maxHeight = `${Math.max(40, Math.min(380, anchor.top - 20))}px`;
+    this.popup.style.maxHeight = `${Math.max(40, Math.min(modelMenu ? 520 : 380, anchor.top - 20))}px`;
   }
 }

@@ -129,19 +129,78 @@
 .settings-model-header { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 20px; }
 .settings-model-header h2 { margin: 0 0 6px; }
 .settings-model-header p { margin: 0; line-height: 1.6; }
-.settings-model-list { display: grid; gap: 12px; }
-.settings-model-row { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 20px; min-width: 0; }
-.settings-model-copy { display: grid; gap: 6px; min-width: 0; overflow-wrap: anywhere; }
+.settings-model-add.primary { flex-shrink: 0; margin: 0; min-height: 34px; }
+.settings-model-status { margin-bottom: 12px; font-size: 12px; }
+.settings-model-status:empty { display: none; }
+.settings-model-list { min-width: 0; }
+.settings-model-empty { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; min-height: 220px; padding: 32px 24px; text-align: center; }
+.settings-model-empty > .codicon { display: grid; place-items: center; width: 48px; height: 48px; border-radius: 12px; font-size: 24px; color: var(--vscode-descriptionForeground); background: var(--vscode-button-secondaryBackground); }
+.settings-model-empty p { max-width: 380px; }
+.settings-model-table-viewport { overflow: auto; }
+.settings-model-table-viewport:focus-visible { outline: 1px solid var(--vscode-focusBorder); outline-offset: 2px; }
+.settings-model-table { min-width: 600px; border-spacing: 0; border-collapse: separate; }
+.settings-model-table th, .settings-model-table td { padding: 12px 16px; vertical-align: middle; border-bottom: 1px solid var(--vscode-panel-border); overflow-wrap: anywhere; }
+.settings-model-table thead th { padding-top: 12px; padding-bottom: 12px; background: var(--vscode-editor-background); font-size: 11px; }
+.settings-model-table th:first-child { width: 48%; }
+.settings-model-table th:nth-child(2) { width: auto; }
+.settings-model-table th:last-child { width: 136px; }
+.settings-model-table tbody th { position: static; color: var(--vscode-foreground); background: transparent; }
+.settings-model-table tbody tr:last-child > * { border-bottom: 0; }
+.settings-model-table small { display: block; margin-top: 5px; font-size: 11px; line-height: 1.5; }
+.settings-model-table code { font: 12px/1.5 var(--vscode-editor-font-family, monospace); }
+.settings-model-table tr > :last-child { position: sticky; right: 0; background: var(--vscode-sideBar-background, var(--vscode-editor-background)); text-align: right; }
+.settings-model-table thead tr > :last-child { z-index: 1; background: var(--vscode-editor-background); }
+.settings-model-table tbody tr:hover > :last-child { background: var(--vscode-list-hoverBackground); }
+.settings-model-table .settings-model-group th { position: static; padding: 4px 8px; background: var(--vscode-editor-background); text-align: left; }
+.settings-model-group button { justify-content: flex-start; gap: 10px; width: 100%; padding: 8px; color: var(--vscode-foreground); background: transparent; font-weight: 500; }
+.settings-model-group button:hover { background: var(--vscode-list-hoverBackground); }
+.settings-model-group small { margin: 0; font-weight: 400; }
+.settings-model-table td[colspan] { text-align: left; }
+.settings-model-identity { display: flex; align-items: flex-start; gap: 10px; }
+.settings-model-identity > .codicon { flex-shrink: 0; margin-top: 2px; color: var(--vscode-descriptionForeground); }
+.settings-model-name { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.settings-model-copy { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; min-width: 0; }
+.settings-model-copy strong { font-weight: 500; font-size: 13px; }
+.settings-model-default, .settings-model-source-badge { display: inline-flex; align-items: center; gap: 5px; font-size: 11px; }
+.settings-model-default { padding: 1px 7px; border-radius: 4px; background: var(--vscode-badge-background, var(--vscode-button-secondaryBackground)); color: var(--vscode-badge-foreground, var(--vscode-foreground)); }
+.settings-model-default > .codicon { font-size: 12px; }
+.settings-model-source-badge > .codicon { color: var(--vscode-descriptionForeground); }
 .settings-model-actions { display: flex; flex-wrap: wrap; gap: 8px; }
-.settings-model-row .settings-model-actions { flex-shrink: 0; }
-.settings-model-form { display: grid; gap: 18px; padding: 24px; margin-top: 20px; min-width: 0; }
+.settings-model-row .settings-model-actions { justify-content: flex-end; gap: 4px; }
+.settings-model-delete:hover:not(:disabled) { color: var(--vscode-errorForeground); }
+.settings-model-confirm.icon-button { width: auto; height: auto; flex: 0 1 auto; padding: 4px 6px; color: var(--vscode-errorForeground); font-size: 11px; }
+.settings-model-dialog { width: min(640px, calc(100vw - 32px)); max-width: none; max-height: min(760px, calc(100dvh - 48px)); margin: auto; padding: 0; overflow: hidden; border: 1px solid var(--vscode-widget-border, var(--vscode-panel-border)); border-radius: 12px; background: var(--vscode-editorWidget-background, var(--vscode-editor-background)); color: var(--vscode-foreground); box-shadow: 0 16px 64px var(--vscode-widget-shadow, #0005); font: inherit; }
+.settings-model-dialog::backdrop { background: #0007; }
+.settings-model-form { display: flex; flex-direction: column; gap: 0; max-width: none; max-height: inherit; min-width: 0; margin: 0; }
+.settings-model-dialog-header { display: flex; align-items: flex-start; justify-content: space-between; flex: 0 0 auto; gap: 16px; padding: 24px 24px 20px; border-bottom: 1px solid var(--vscode-panel-border); }
+.settings-model-dialog-header h2 { font-size: 18px; }
+.settings-model-dialog-header p { margin-top: 6px; font-size: 12px; line-height: 1.6; }
+.settings-model-dialog-header > .icon-button { margin: -4px -6px 0 0; }
+.settings-model-fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); align-content: start; gap: 20px 16px; min-height: 0; padding: 24px; overflow: auto; overscroll-behavior: contain; }
 .settings-model-field { display: grid; gap: 8px; min-width: 0; }
-.settings-model-field > input, .settings-model-field > button { width: 100%; min-width: 0; }
-.settings-model-field p { margin: 0; line-height: 1.6; }
-.settings-model-catalog { display: flex; flex-wrap: wrap; gap: 8px; }
-.settings-model-catalog p { flex-basis: 100%; margin: 0; }
+.settings-model-field > label { margin: 0; font-size: 12px; font-weight: 500; }
+.settings-model-field > input, .settings-model-field > button { width: 100%; min-width: 0; min-height: 36px; }
+.settings-model-field-system, .settings-model-field-baseUrl, .settings-model-field-model, .settings-model-field-apiKey { grid-column: 1 / -1; }
+.settings-model-field p { margin: 0; font-size: 11px; line-height: 1.6; }
+.settings-model-catalog { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; }
+.settings-model-catalog:has(p:empty):has(button[hidden]) { display: none; }
+.settings-model-catalog p { flex-basis: 100%; margin: 0; font-size: 12px; }
+.settings-model-catalog p:empty { display: none; }
+.settings-model-dialog-footer { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; flex: 0 0 auto; gap: 10px; padding: 16px 24px; border-top: 1px solid var(--vscode-panel-border); }
+.settings-model-dialog-footer > .muted { font-size: 11px; }
+.settings-model-dialog-footer > .settings-model-actions { grid-column: 2; flex-wrap: nowrap; }
+.settings-model-dialog-footer button { min-height: 34px; padding: 6px 16px; }
+.settings-model-dialog-footer .primary { margin: 0; }
+.settings-model-form-error { grid-column: 1 / -1; font-size: 12px; line-height: 1.6; color: var(--vscode-errorForeground); overflow-wrap: anywhere; }
 @media (max-width: 700px) {
-  .settings-model-header, .settings-model-row { align-items: flex-start; flex-direction: column; }
-  .settings-model-row .settings-model-actions { flex-shrink: 1; }
-  .settings-model-row, .settings-model-form { padding: 16px; }
+  .settings-model-header { align-items: flex-start; flex-wrap: wrap; }
+  .settings-model-table-viewport { border-radius: 8px; }
+  .settings-model-dialog { max-height: calc(100dvh - 24px); }
+  .settings-model-dialog-header, .settings-model-fields { padding: 20px; }
+  .settings-model-dialog-footer { padding: 14px 20px; }
+}
+@media (max-width: 460px) {
+  .settings-model-fields { grid-template-columns: minmax(0, 1fr); gap: 18px; }
+  .settings-model-dialog-header, .settings-model-fields { padding: 16px; }
+  .settings-model-dialog-footer { padding: 12px 16px; }
 }

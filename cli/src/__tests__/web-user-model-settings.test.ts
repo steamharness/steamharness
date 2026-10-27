@@ -12,10 +12,18 @@ it('user model defaults honor system-only policy and remain empty in saved proje
     agentModelPolicy: { allowThirdParty: false }, fields: [{ name: 'model', type: 'string', flag: '--model', userSetting: { key: 'agent.model', mode: 'default' } }] };
   const configured = projectWithUserSettings(project, settings);
   expect(configured.fields[0].userSettingValue).toBe('system');
+  expect(configured.fields[0].userModelSources).toEqual({ system: 'system' });
   expect(projectParamArgs(configured.fields, { model: '' })).toEqual([]);
   expect(projectParamArgs(configured.fields, { model: 'system' })).toEqual(['--model', 'system']);
   expect(projectParamArgs(configured.fields, { model: 'inherit' })).toEqual(['--model', 'inherit']);
   expect(JSON.stringify(configured)).not.toContain('test-only-secret');
+  const unrestricted = projectWithUserSettings({ ...project, agentModelPolicy: undefined,
+    entrypoints: [{ id: 'secondary', fields: project.fields }] }, settings);
+  expect(unrestricted.fields[0].userModelSources).toEqual({ third: 'third-party', system: 'system' });
+  expect(unrestricted.entrypoints[0].fields[0].userModelSources).toEqual(unrestricted.fields[0].userModelSources);
+  expect(unrestricted.fields[0].userSettingValue).toBe('third');
+  expect(project.fields[0].userModelSources).toBeUndefined();
+  expect(JSON.stringify(unrestricted)).not.toContain('apiKey');
 });
 it('histories, public state and exports omit keys; recovery rehydrates only the same endpoint reference', () => {
   const serialized = JSON.stringify({ agentParameters: { userSettings: settings }, messages: [{ userSettings: settings }] }, userSettingsJsonReplacer);

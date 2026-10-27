@@ -92,14 +92,16 @@ Change the example to `mode: "default"` to allow project overrides. `createAgent
 
 Use **Settings → Models** to add, edit, delete, and set a default model across workspaces. The host supplies each model's name, protocol, Base URL, model ID, and API key to execution. Third-party keys live in Studio SecretStorage and are excluded from project configuration, page state, ordinary conversation history, and exports. An empty key when editing keeps the saved key.
 
-Open-source Studio offers third-party models only: OpenAI Chat Completions, OpenAI Responses, and Anthropic Messages. Hosts providing system AI may also expose their authorized catalogue. System entries save credential and model IDs; execution rechecks account authorization and model availability without persisting proxy tokens.
+Open-source Studio offers third-party models only: OpenAI Chat Completions, OpenAI Responses, and Anthropic Messages. Hosts providing system AI automatically load every available built-in model from the account; no individual additions are needed. Execution rechecks account authorization and model availability without persisting proxy tokens.
+
+Studio groups built-in models above custom models in one table. Built-in names come from the catalogue; **Refresh built-in models** updates them. Built-in models cannot be manually added, edited or deleted. Custom models use a centered add/edit dialog. Any available model can be the default, whose reference is saved across windows. Account changes clear the previous catalogue; ordinary refresh failures preserve the current list with a retry message.
 
 `UserAgentModel` is a union of two records, each with a stable `id`, display `name`, and actual `model` ID:
 
 - System: `{ source: "system", credentialId: string }`.
 - Third-party: `{ source: "third-party", apiKind: "openai-completions" | "openai-responses" | "anthropic-messages", baseUrl: string, apiKey: string }`.
 
-Lists are copied and frozen. Base URLs require HTTP(S) without authentication, query, or fragment; entry IDs must be unique, with at most 100 entries. Invalid model configurations are rejected.
+Lists are copied and frozen. Base URLs require HTTP(S) without authentication, query, or fragment; entry IDs must be unique, with at most 100 saved custom models. Host built-in catalogues are not subject to that count limit. Invalid model configurations are rejected.
 
 With a nonempty user list, Agent nodes and direct `createAgent()` automatically select the first permitted model; turn `model` can select a list ID. Explicit developer endpoints, `models`, and `resolvedModel` keep their existing behavior. `modelSource: "user-settings"` requires user models and reports an empty list; `modelSource: "project"` explicitly retains the original project configuration source. A project's `allowThirdParty: false` applies to user models and explicit endpoints alike.
 
@@ -119,11 +121,11 @@ const project = steamharness.createAgentConversationProject({
 
 Reused third-party connections retain developer `modelAttributes` defaults. System catalogue search restrictions remain authoritative and cannot be enabled through turn attribute overrides.
 
-The built-in assistant uses user models. Clicking its model control opens available choices first; **Manage models** opens settings. Selecting a model overrides the default for the project or conversation; resetting follows the user default again. The original project model configuration APIs remain available and are not used by the assistant.
+The built-in assistant uses user models. Model and effort are separate Quick parameters. The model control groups available built-in and custom models, with **Add model** opening settings at the bottom. Changing effort keeps the model selection. Selecting a model overrides the default for the project or conversation; resetting follows the user default again. The original project model configuration APIs remain available and are not used by the assistant.
 
 With no available models, the control shows **Configure model** and guidance to add a model in settings. Clicking it opens **Settings → Models** directly; adding a model restores the choices.
 
-A custom model field with `mode: "fixed"` also opens the list first, with read-only choices and a **Manage models** action to change the user default. `mode: "default"` allows a project override.
+A custom model field with `mode: "fixed"` also opens the list first, with read-only choices and an **Add model** action leading to settings to change the user default. `mode: "default"` allows a project override. `createAgentProjectParams()` generates separate `model` and `effort` groups by default; custom projects may still group Quick parameters freely.
 
 Updates apply after a safe task boundary. Active and background work retain their connection snapshot. A directly created Agent with a host-resolved model also resolves inherited permissions from that creation snapshot; explicit turn permissions still take precedence. Recreate the Agent after its work finishes to adopt new host model settings. Interrupted recovery obtains a key from the host only for the same model and endpoint; a removed or changed endpoint fails explicitly instead of receiving a new key at an old address.
 

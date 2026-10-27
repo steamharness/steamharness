@@ -14,7 +14,7 @@ export class SettingsDropdown {
   private typedAt = 0;
   private restoreFocus = false;
 
-  constructor(readonly button: HTMLButtonElement, private readonly changed: () => void, private readonly acceptCurrent = false) {
+  constructor(readonly button: HTMLButtonElement, private readonly changed: () => void, private readonly acceptCurrent = false, menuHost: HTMLElement = document.body) {
     button.type = 'button';
     button.classList.add('settings-dropdown');
     button.setAttribute('role', 'combobox');
@@ -31,7 +31,7 @@ export class SettingsDropdown {
     this.menu.setAttribute('role', 'listbox');
     this.menu.setAttribute('aria-label', button.getAttribute('aria-label') ?? '');
     button.setAttribute('aria-controls', this.menu.id);
-    document.body.append(this.menu);
+    menuHost.append(this.menu);
     button.addEventListener('click', () => this.opened ? this.close() : this.open());
     button.addEventListener('keydown', event => this.keydown(event));
     button.addEventListener('blur', () => this.close());

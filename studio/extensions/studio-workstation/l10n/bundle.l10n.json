@@ -793,5 +793,18 @@
   "Unsupported model action.": "Unsupported model action.",
   "You can save up to 100 models.": "You can save up to 100 models.",
   "Model changes cancelled.": "Model changes cancelled.",
-  "Models": "Models"
+  "Models": "Models",
+  "Connect your provider to use this model across your projects.": "Connect your provider to use this model across your projects.",
+  "e.g. My coding model": "e.g. My coding model",
+  "Model identifier from your provider": "Model identifier from your provider",
+  "No models yet": "No models yet",
+  "Actions": "Actions",
+  "Refresh built-in models": "Refresh built-in models",
+  "Built-in models": "Built-in models",
+  "Custom models": "Custom models",
+  "No custom models configured.": "No custom models configured.",
+  "Unable to refresh built-in models.": "Unable to refresh built-in models.",
+  "Built-in models are managed by your AI account.": "Built-in models are managed by your AI account.",
+  "Provider": "Provider",
+  "You can save up to 100 custom models.": "You can save up to 100 custom models."
 }

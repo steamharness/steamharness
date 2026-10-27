@@ -9,7 +9,7 @@ description: "Local execution of workflow, along with references to commands for
 
 Studio can inject user permission snapshots and updates into CLI Web, using a capability handshake for older CLIs. Projects inherit only with explicit `permissionPolicy: "inherit"`; an omitted policy still defaults to `workspace`. Standalone CLI does not persist this preference in this release, and `inherit` uses `auto` without host injection. Active durable work keeps its startup snapshot; subsequent input adopts updates at a safe idle boundary. See [User settings and permission inheritance](/en/core-api/user-settings).
 
-Quick menus bound to user models show model choices first and keep **Manage models** available while loading or running work. Choices that cannot currently change remain disabled. With no available models, the control shows **Configure model** with setup guidance and opens model settings directly; adding a model restores the selection list. A model parameter named `inherit` is an ordinary model ID, not a permission inheritance marker; reset the model parameter to follow the user default.
+Quick menus bound to user models show model choices first and keep **Add model** available while loading or running work. Choices that cannot currently change remain disabled. With no available models, the control shows **Configure model** with setup guidance and opens model settings directly; adding a model restores the selection list. A model parameter named `inherit` is an ordinary model ID, not a permission inheritance marker; reset the model parameter to follow the user default.
 
 ## Call Method
 
@@ -252,4 +252,6 @@ When the AI models field declares `allowThirdParty: false`, configuration only o
 
 ## User model settings
 
-CLI Web accepts host user model snapshots and updates. Bind a model parameter with `userSetting: { key: "agent.model", mode: "default" }` to open available choices before **Manage models** opens Studio settings. Explicit choices become conversation overrides; resetting follows the user default. Project model configuration APIs remain available; standalone CLI does not persist Studio user models. Third-party keys are excluded from page state, ordinary history and exports, and durable sessions adopt changes after active work finishes. See [user settings](/en/core-api/user-settings#user-models-and-agents-without-connection-configuration).
+Model and effort use separate Quick controls in the default Agent and assistant. Model choices group built-ins above custom models, with Add model fixed at the bottom. Custom project parameter groups remain supported.
+
+CLI Web accepts host user model snapshots and updates. Bind a model parameter with `userSetting: { key: "agent.model", mode: "default" }` to open available choices before **Add model** opens Studio settings. Explicit choices become conversation overrides; resetting follows the user default. Project model configuration APIs remain available; standalone CLI does not persist Studio user models. Third-party keys are excluded from page state, ordinary history and exports, and durable sessions adopt changes after active work finishes. See [user settings](/en/core-api/user-settings#user-models-and-agents-without-connection-configuration).

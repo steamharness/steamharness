@@ -1317,7 +1317,7 @@ Core 内置一层基于 pi agent SDK 的 agent 能力，覆盖输入、输出、
 
   `steamharness.createAgentConversationProject(...)` 返回整个 workflow（输入节点、agent 节点、输出节点与 conversation 落库），`steamharness.createAgentProjectInput(args)` 从 executor 的 `createInput({ args })` 调用。`steamharness.createAgentProjectParams(...)` 返回 Core 的完整默认参数表；项目按需选择字段并保持内联字面量，沿用默认表的字段时可在测试中比对，防止漂移。
 
-  `resolveParams: steamharness.createAgentProjectParamResolver()` 从项目配置的 `STEAMHARNESS_AGENT_MODELS` JSON 列表生成模型选项，并隐藏兼容的 provider 参数。保留 provider/model 的 `control: "select"`、`options: []` 声明；model 的值是列表条目 ID，缺省使用第一项。项目配置第一项提供系统 AI／第三方 AI 切换及统一模型列表的增删改查：系统条目含 `id/name/model/source: "system"/credentialId`，第三方条目含 `id/name/model/source: "third-party"/apiKind/baseUrl/apiKey`。Core 静态识别 Agent 工厂调用并补入 `control: "ai-models"` 字段；间接封装可显式声明。系统运行严格校验当前账号的订阅和模型，每轮建立并关闭回环代理；第三方直接使用配置连接，不请求系统 AI。不要把 Key 写入源码、参数或日志。模型值按运行快照冻结，分享默认只发布结构，完整备份包含值。调用方显式提供端点或注入 `models`/`resolvedModel` 时保留独立调用语义。
+  `resolveParams: steamharness.createAgentProjectParamResolver()` 优先从非空用户模型列表生成选项，保留用户默认继承，并隐藏兼容的 provider 参数；`modelSource: "project"` 明确沿用项目配置的 `STEAMHARNESS_AGENT_MODELS` JSON 列表。保留 provider/model 的 `control: "select"`、`options: []` 声明；model 的值是列表条目 ID，缺省使用第一项。项目配置第一项提供系统 AI／第三方 AI 切换及统一模型列表的增删改查：系统条目含 `id/name/model/source: "system"/credentialId`，第三方条目含 `id/name/model/source: "third-party"/apiKind/baseUrl/apiKey`。Core 静态识别 Agent 工厂调用并补入 `control: "ai-models"` 字段；间接封装可显式声明。系统运行严格校验当前账号的订阅和模型，每轮建立并关闭回环代理；第三方直接使用配置连接，不请求系统 AI。不要把 Key 写入源码、参数或日志。模型值按运行快照冻结，分享默认只发布结构，完整备份包含值。调用方显式提供端点或注入 `models`/`resolvedModel` 时保留独立调用语义。
   仅允许系统 AI 时，显式声明模型字段 `allowThirdParty: false`（只允许用于 `control: "ai-models"`）。配置面板隐藏第三方入口，保存和导入拒绝第三方条目；运行快照 `agentModelPolicy` 冻结限制，参数选项跳过旧第三方条目，Core 拒绝直接 URL/API Key、`models` 与 `resolvedModel` 覆盖。完整备份保留旧值供清理；不要为此项目生成自建直连分支。分发模板与 `configuration.json` 通过顶层 `agentModelPolicy` 保留源码限制，即使模型字段不发布也不丢失；旧草稿及模板不能放宽限制。要允许接收者添加系统模型，保留字段的 `sharing.publish: true`。
 
 - **完成后的过程展示。** `conversation.collapseIntermediate: true | false` 是静态可读取的显示默认值；`defineAgentConversationExecutor({ collapseIntermediate })` 默认 `true`。Core Agent 标准输出在未声明默认值时也默认开启；普通 Conversation 默认关闭。成功回合收起中间文字、思考和工具过程，保留最终回复、计划和资源卡片；失败回合收起全部输出，只保留红色失败原因。CLI Web / Studio 读取代码中的显示默认值，并在每轮模型名称与当轮用量后提供展开／收起按钮，不另占一行；运行中、停止、待输入或缺少最终结果／失败原因时不自动隐藏。不要通过删减输出或历史实现折叠。
@@ -1643,10 +1643,14 @@ configuration.json v2 字段支持 sharing: {publish?, includeValue?, editable?}
 
 ### 用户模型设置
 
+Studio 将内置／自定义模型分组显示：宿主自动完整加载内置目录，无需添加；内置名称由目录提供，可手动刷新，账号变化清除旧目录，普通刷新失败保留列表。开源 Studio 只有自定义模型，通过居中弹窗添加／编辑。自定义模型最多 100 条，内置目录不受该数量限制，所有条目 ID 必须唯一。
+
+默认 `createAgentProjectParams()` 和小助手分别声明 `id:"model", summary:["model"]` 与 `id:"effort", summary:["effort"]` 两个 Quick 分组。模型菜单按来源分组，底部“添加模型”打开用户设置；effort 独立选择，不改变模型。自定义项目可继续组合任意合法 Quick 字段。
+
 `UserSettings.agent.models` 是有序的 `UserAgentModel` 列表，公共字段为 `id/name/model`；系统项保存 `{source:"system",credentialId}`，三方项保存 `{source:"third-party",apiKind,baseUrl,apiKey}`。宿主注入时校验、复制并冻结，不把密钥写入参数选项、普通历史或导出。Agent 节点和直接 `createAgent()` 默认优先使用非空用户列表；显式 endpoint/models/resolvedModel 继续沿用开发者配置，项目的 system-only 限制仍强制执行。`modelSource: "user-settings"` 只用用户列表，空列表明确失败；`modelSource: "project"` 使用旧项目配置。
 
-`createAgentProjectParams()` 与 `{modelSource:"user-settings"}` 均生成 `userSetting:{key:"agent.model",mode:"default"}`；显式 `{modelSource:"project"}` 才生成旧项目模型控件。自定义参数应内联声明此绑定并使用 `createAgentProjectParamResolver({modelSource:"user-settings"})`。自动使用用户模型时，解析器与宿主保留空覆盖标记，不能把显示的默认模型保存为项目覆盖。模型 ID `inherit` 是普通 ID，不能按权限继承标记转换。直接创建并由宿主解析模型的 Agent，其连接与继承权限固定为同一创建快照，本轮显式权限仍优先；任务结束后重建以采用新设置。小助手使用该绑定，点击先展示可用模型，再提供“管理模型”跳转；加载与任务运行期间仍可进入管理。开源 Studio 只提供三方添加来源；系统项执行前必须重查当前账号的 credentialId 和 model 授权。用户列表不覆盖 `allowThirdParty:false`。
+`createAgentProjectParams()` 与 `{modelSource:"user-settings"}` 均生成 `userSetting:{key:"agent.model",mode:"default"}`；显式 `{modelSource:"project"}` 才生成旧项目模型控件。自定义参数应内联声明此绑定并使用 `createAgentProjectParamResolver({modelSource:"user-settings"})`。自动使用用户模型时，解析器与宿主保留空覆盖标记，不能把显示的默认模型保存为项目覆盖。模型 ID `inherit` 是普通 ID，不能按权限继承标记转换。直接创建并由宿主解析模型的 Agent，其连接与继承权限固定为同一创建快照，本轮显式权限仍优先；任务结束后重建以采用新设置。小助手使用该绑定，点击先展示可用模型，再提供“添加模型”跳转；加载与任务运行期间仍可进入管理。开源 Studio 只提供三方添加来源；系统项执行前必须重查当前账号的 credentialId 和 model 授权。用户列表不覆盖 `allowThirdParty:false`。
 
-模型字段使用 `mode:"fixed"` 时先展示只读模型列表，再通过“管理模型”修改用户默认值；`mode:"default"` 允许选择项目覆盖。权限字段的 fixed 入口仍直接打开权限设置。
+模型字段使用 `mode:"fixed"` 时先展示只读模型列表，再通过“添加模型”修改用户默认值；`mode:"default"` 允许选择项目覆盖。权限字段的 fixed 入口仍直接打开权限设置。
 
 缓存连接时，三方模型仍保留开发者 `modelAttributes` 默认值；系统模型的 `webSearch` 能力以目录为准，不能通过本轮属性覆盖放开。

@@ -246,10 +246,10 @@ export function createAgentProjectParams(options: AgentProjectOptions = {}): Con
     },
     {
       kind: "quick",
-      id: "ai",
-      label: "AI",
+      id: "model",
+      label: "Model",
       icon: "sparkle",
-      summary: ["model", "effort"],
+      summary: ["model"],
       fields: [
         {
           // Hidden by the resolver; retained for existing project declarations.
@@ -274,9 +274,16 @@ export function createAgentProjectParams(options: AgentProjectOptions = {}): Con
           ...(options.modelSource !== "project" ? { userSetting: { key: "agent.model" as const, mode: "default" as const } } : {}),
           options: [],
         },
+      ],
+    },
+    {
+      kind: "quick",
+      id: "effort",
+      label: "Effort",
+      icon: "lightbulb",
+      summary: ["effort"],
+      fields: [
         {
-          // Sits beside the AI configuration, like the built-in OpenCode project's
-          // Effort: it belongs to the model choice, not to the advanced options.
           name: "effort",
           flag: "--effort",
           type: "string",

@@ -21,9 +21,11 @@ const script = bundled.outputFiles[0].text + `
   const parameters = ${JSON.stringify({ fields: report.params, paramLayout: report.paramLayout })};
   const state = { values: { model: 'long', provider: 'fixture', effort: 'high', permissionPolicy: '' }, states: {
     model: { resolvedOptions: [{ value: 'long', label: 'MiniMax-M3.1-Flash-Preview' }, { value: 'short', label: 'Short' }] },
-    provider: { resolvedOptions: [{ value: 'fixture', label: 'Fixture' }] }
+    provider: { visible: false, resolvedOptions: [{ value: 'fixture', label: 'Fixture' }] }
   }, disabled: false, loading: false };
   parameters.fields.find(field => field.name === 'permissionPolicy').userSettingValue = 'auto';
+  parameters.fields.find(field => field.name === 'model').userSettingValue = 'long';
+  parameters.fields.find(field => field.name === 'model').userModelSources = { long: 'system', short: 'third-party' };
   const openedSettings = [];
   const controls = new ParameterActions(document.querySelector('#parameter-actions'), { current: () => state,
     onOpenUserSetting(key) { openedSettings.push(key); },
@@ -80,8 +82,9 @@ try {
   await page.goto(`http://127.0.0.1:${server.address().port}`);
   await page.waitForFunction(() => window.quick && [...document.querySelectorAll('.param-action')].every(button => button.dataset.iconOnly === 'false'));
   await page.evaluate(() => document.fonts.ready);
-  assert.equal(await page.locator('.param-action').count(), 2);
-  assert.equal(await page.locator('[data-action-id=ai] .codicon-sparkle').count(), 1);
+  assert.equal(await page.locator('.param-action').count(), 3);
+  assert.equal(await page.locator('[data-action-id=effort] .codicon-lightbulb').count(), 1);
+  assert.equal(await page.locator('[data-action-id=model] .codicon-sparkle').count(), 1);
   assert.equal(await page.locator('[data-action-id=permission] .codicon-shield').count(), 1);
   assert.equal(await page.locator('.param-action .codicon-chevron-up').count(), 0);
   assert.equal(await page.locator('[data-action-id=permission]').innerText(), 'Auto approve');
@@ -121,13 +124,13 @@ try {
   await page.keyboard.press('Escape');
   proof.push('Desktop Permission opens all three choices directly, highlights the current choice, closes after selection, restores focus, and resets without a submenu.');
   const expanded = await page.locator('#parameter-actions').evaluate(container => {
-    const [ai, permission] = container.children;
+    const [ai, effort, permission] = container.children;
     return { chrome: document.querySelector('main').getBoundingClientRect().width - container.clientWidth,
-      ai: ai.getBoundingClientRect().width, permission: permission.getBoundingClientRect().width };
+      ai: ai.getBoundingClientRect().width, effort: effort.getBoundingClientRect().width, permission: permission.getBoundingClientRect().width };
   });
-  const middleWidth = expanded.chrome + expanded.ai + 4 + (32 + expanded.permission) / 2;
+  const middleWidth = expanded.chrome + expanded.ai + expanded.effort + 8 + (32 + expanded.permission) / 2;
   await page.evaluate(width => { document.querySelector('main').style.width = width + 'px'; }, middleWidth);
-  await page.waitForFunction(() => document.querySelector('[data-action-id=ai]').dataset.iconOnly === 'false'
+  await page.waitForFunction(() => document.querySelector('[data-action-id=model]').dataset.iconOnly === 'false'
     && document.querySelector('[data-action-id=permission]').dataset.iconOnly === 'true');
   await page.screenshot({ path: path.join(proofDir, 'right-icon.png') });
   proof.push('Rightmost Quick text collapses first while AI keeps its selected values.');
@@ -150,7 +153,7 @@ try {
     await page.screenshot({ path: path.join(proofDir, `narrow-${width}.png`) });
     proof.push(`${width}px: controls fit and remain separated from the send button.`);
   }
-  assert.equal(await page.locator('[data-action-id=ai]').getAttribute('data-icon-only'), 'true');
+  assert.equal(await page.locator('[data-action-id=model]').getAttribute('data-icon-only'), 'true');
   await page.locator('[data-action-id=permission]').click();
   await assertPermissionMenu();
   const popup = await page.locator('#parameter-popover').boundingBox();
@@ -162,18 +165,25 @@ try {
   await page.keyboard.press('Enter');
   assert.equal(await page.locator('#parameter-popover').isHidden(), true);
   assert.equal(await page.locator('[data-action-id=permission]').getAttribute('title'), 'Permission: Workspace');
-  await page.locator('[data-action-id=ai]').click();
-  assert.ok(await page.locator('.quick-param-row').count() > 1);
+  await page.locator('[data-action-id=model]').click();
+  assert.equal(await page.locator('.quick-param-row').count(), 0);
+  assert.equal(await page.locator('.quick-panel').count(), 1);
   assert.equal(await page.locator('[role=option]').count(), 2);
   await page.getByRole('option', { name: 'Short', exact: true }).click();
-  assert.match(await page.locator('[data-action-id=ai]').getAttribute('aria-label'), /Short/);
+  assert.match(await page.locator('[data-action-id=model]').getAttribute('aria-label'), /Short/);
   await page.keyboard.press('Escape');
   await page.setViewportSize({ width: 1280, height: 700 });
   await page.waitForFunction(() => [...document.querySelectorAll('.param-action')].every(button => button.dataset.iconOnly === 'false'));
-  assert.match(await page.locator('[data-action-id=ai]').innerText(), /Short/);
+  assert.match(await page.locator('[data-action-id=model]').innerText(), /Short/);
   assert.equal(await page.locator('[data-action-id=permission]').innerText(), 'Workspace');
   proof.push('Collapsed icons still select values, preserve tooltips, and restore text at desktop width.');
-  proof.push('Narrow Permission opens direct choices and supports keyboard selection; multi-parameter AI retains its layered menu.');
+  await page.locator('[data-action-id=effort]').click();
+  assert.equal(await page.locator('.quick-model-group').count(), 0);
+  await page.getByRole('option', { name: 'Low', exact: true }).click();
+  assert.equal(await page.evaluate(() => window.quick.state.values.model), 'short');
+  assert.equal(await page.evaluate(() => window.quick.state.values.effort), 'low');
+  assert.match(await page.locator('[data-action-id=model]').innerText(), /Short/);
+  proof.push('Model and effort open independent direct menus; changing effort preserves the selected model.');
   for (const language of ['en', 'zh-CN']) {
     for (const theme of ['light', 'dark']) {
       for (const width of [1280, 640, 360, 280]) {
@@ -220,9 +230,9 @@ try {
         await page.evaluate(() => {
           const { state, controls, parameters } = window.quick;
           parameters.fields.find(field => field.name === 'model').userSettingValue = '';
-          state.states.model = { resolvedOptions: [] }; state.disabled = true; controls.update();
+          state.values.model = ''; state.states.model = { resolvedOptions: [] }; state.disabled = true; controls.update();
         });
-        const model = page.locator('[data-action-id=ai]');
+        const model = page.locator('[data-action-id=model]');
         const setup = language === 'en' ? 'Configure model' : '配置模型';
         assert.ok((await model.getAttribute('aria-label')).includes(setup));
         assert.ok((await model.getAttribute('title')).includes(language === 'en'
@@ -243,6 +253,29 @@ try {
         assert.deepEqual(await page.evaluate(() => window.quick.openedSettings), ['agent.permissionPolicy', 'agent.model']);
         await page.keyboard.press('Escape');
         proof.push(`${language}/${theme}/${width}px: empty models show localized setup guidance and open settings directly; adding a model restores the list.`);
+        await page.evaluate(() => {
+          const { state, controls, parameters } = window.quick;
+          const field = parameters.fields.find(field => field.name === 'model');
+          const builtins = Array.from({ length: 16 }, (_, index) => ({ value: `system-${index}`, label: `Built-in Model ${index}` }));
+          field.userModelSources = { saved: 'third-party', ...Object.fromEntries(builtins.map(model => [model.value, 'system'])) };
+          state.states.model = { resolvedOptions: [{ value: 'saved', label: 'Saved user model' }, ...builtins] };
+          state.loading = false; controls.update();
+        });
+        await model.click();
+        assert.deepEqual(await page.locator('.quick-model-group').allTextContents(), language === 'en' ? ['Built-in models', 'Custom models'] : ['内置模型', '自定义模型']);
+        assert.equal(await page.locator('.quick-param-row, .quick-detail').count(), 0);
+        assert.equal(await page.locator('[role=option]').count(), 17);
+        assert.ok((await page.locator('#parameter-popover').boundingBox()).width <= 320);
+        assert.equal(await page.locator('.quick-options-list').evaluate(list => list.scrollHeight > list.clientHeight), true);
+        assert.equal(await page.locator('[role=option][aria-selected=true] .quick-option-copy > span').innerText(), 'Saved user model');
+        await page.screenshot({ path: path.join(proofDir, `model-groups-${language}-${theme}-${width}.png`) });
+        const addModel = page.getByRole('menuitem', { name: language === 'en' ? 'Add model' : '添加模型', exact: true });
+        assert.equal(await addModel.isVisible(), true);
+        await addModel.click();
+        assert.equal(await page.evaluate(() => window.quick.openedSettings.at(-1)), 'agent.model');
+        assert.equal(await page.locator('#parameter-popover').isHidden(), true);
+        proof.push(`${language}/${theme}/${width}px: grouped model list scrolls with a fixed add-model action; effort remains separate.`);
+
       }
     }
   }

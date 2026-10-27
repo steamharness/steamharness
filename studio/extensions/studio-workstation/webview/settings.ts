@@ -110,6 +110,7 @@ export function createSettingsView(root: HTMLElement, vscode: WebviewApi): { acc
 
   function navigate(section: string, query = '', scroll = 0): void {
     closeDropdowns();
+    models.closeEditor();
     restoredScroll = scroll > 0 ? scroll : undefined;
     view.section = section;
     view.query = query;
@@ -353,7 +354,7 @@ export function createSettingsView(root: HTMLElement, vscode: WebviewApi): { acc
           if (searching && !actions.hidden) { visible = true; ++matches; }
         }
       } else if (section === 'models' && searching) {
-        visible = `${t('Models')} ${pane.textContent} model api`.toLocaleLowerCase().includes(query);
+        visible = models.matches(query) || `${t('Models')} ${pane.textContent} model api`.toLocaleLowerCase().includes(query);
         if (visible) ++matches;
       } else if (searching) {
         const matching = categories().filter(category => (section === 'provider' ? category.id.startsWith('provider:') : category.id === section) && category.label.toLocaleLowerCase().includes(query));

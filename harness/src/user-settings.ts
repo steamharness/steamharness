@@ -32,9 +32,25 @@ export function parseUserSettings(value: unknown): UserSettings {
     throw new TypeError("Invalid user settings: agent.permissionPolicy must be read-only, workspace, or auto.");
   }
   const models = settings.agent.models === undefined ? undefined
-    : Object.freeze(parseAgentModels(settings.agent.models).map(model => Object.freeze(model)));
+    : Object.freeze(parseUserModels(settings.agent.models).map(model => Object.freeze(model)));
   return Object.freeze({ agent: Object.freeze({ permissionPolicy: settings.agent.permissionPolicy,
     ...(models === undefined ? {} : { models }) }) });
+}
+
+/** The account catalogue is not subject to the saved custom-model limit. */
+function parseUserModels(value: unknown): UserAgentModel[] {
+  if (!Array.isArray(value)) return parseAgentModels(value);
+  const ids = new Set<string>();
+  let customCount = 0;
+  return value.map(entry => {
+    const model = parseAgentModels([entry])[0]!;
+    if (ids.has(model.id)) throw new TypeError("User model IDs must be unique.");
+    ids.add(model.id);
+    if (model.source === "third-party" && ++customCount > 100) {
+      throw new TypeError("User settings accept at most 100 custom models.");
+    }
+    return model;
+  });
 }
 
 /** Scalar defaults for user-bound project parameters; credentials never enter parameter metadata. */

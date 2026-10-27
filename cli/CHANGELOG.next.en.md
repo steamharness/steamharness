@@ -1,5 +1,7 @@
 # Unreleased
 
+- User model menus group built-in and custom models with direct choices and an Add model action at the bottom of standalone model controls. Model and effort can be selected independently while preserving custom project grouping, reset and source restrictions.
+
 - Fixed empty user model controls to show Configure model with setup guidance and open model settings directly. Adding a model restores the selection list.
 
 - Fixed grouped model menus to keep user model management available during loading and active work, preserved `inherit` as a model ID, and kept unrelated project output named `userSettings` intact during credential redaction. Kanban refreshes recheck current related imports so valid setup guidance survives a preview refresh and resolved errors stay hidden.

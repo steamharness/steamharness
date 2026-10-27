@@ -445,6 +445,13 @@ textarea::placeholder { color: var(--vscode-input-placeholderForeground); }
 .quick-detail-heading { border-bottom: 1px solid var(--border); font-weight: 500; }
 .quick-detail, .quick-direct { display: flex; flex-direction: column; }
 .quick-options-list { overflow: auto; min-height: 0; }
+.quick-model-group { padding: 12px 12px 6px; color: var(--muted); font-size: 11px; }
+.quick-model-group:not(:first-child) { margin-top: 6px; border-top: 1px solid var(--border); }
+.quick-options-list:has(.quick-model-group) .quick-option-row { gap: 10px; }
+.quick-options-list:has(.quick-model-group) .quick-option-row > .codicon { color: var(--muted); }
+.quick-options-list:has(.quick-model-group) .quick-option-check { margin-left: auto; color: var(--vscode-textLink-foreground); }
+.quick-options-list:has(.quick-model-group) .quick-option-copy { flex: 1; }
+.quick-direct > .quick-reset { flex-shrink: 0; }
 .quick-option-check { display: inline-flex; flex-shrink: 0; width: 16px; }
 .quick-option-copy { min-width: 0; display: flex; flex-direction: column; gap: 4px; overflow-wrap: anywhere; }
 .quick-option-copy small { font-size: 12px; color: var(--muted); line-height: 1.5; }

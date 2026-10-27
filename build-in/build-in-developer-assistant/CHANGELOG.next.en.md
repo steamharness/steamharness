@@ -1,5 +1,7 @@
 # Unreleased
 
+- The assistant now separates model and effort controls and uses the available model catalogue automatically loaded by the host. Its model menu groups sources and provides Add model at the bottom.
+
 - Clarified generated Agent parameters: automatic user models retain default inheritance, explicit project models keep the original configuration, and direct calls share a model and inherited-permission snapshot.
 
 - The assistant now defaults to user models from host settings, supports conversation overrides and reset, and opens available models before Manage models. Active and background tasks retain their settings snapshot.

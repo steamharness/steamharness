@@ -215,6 +215,35 @@ describe('Quick parameter triggers', () => {
 });
 
 describe('Quick parameter menus', () => {
+  it('groups account and custom models in one menu while effort remains an independent selection', () => {
+    const f = fixture();
+    const model = f.parameters.fields[0];
+    model.userSetting = { key: 'agent.model', mode: 'default' }; model.userSettingValue = 'short';
+    model.userModelSources = { long: 'third-party', short: 'system' };
+    f.parameters.fields.push({ name: 'effort', type: 'string', label: 'Effort', control: 'select', defaultValue: 'medium', options: [
+      { value: 'low', label: 'Low' }, { value: 'medium', label: 'Medium' },
+    ] });
+    f.parameters.paramLayout!.actions.push({ kind: 'quick', id: 'effort', label: 'Effort', params: ['effort'], summary: ['effort'] });
+    f.state.values.model = ''; f.actions.render(f.parameters); f.flush();
+    f.container.children[0].dispatchEvent(new Event('click'));
+    expect(f.popup.querySelectorAll('.quick-model-group').map(group => group.textContent)).toEqual(['Built-in models', 'Custom models']);
+    expect(f.popup.querySelectorAll('[role=option]').map(option => option.dataset.focusKey)).toEqual(['option:short', 'option:long']);
+    expect(f.popup.querySelector('[role=option][aria-selected=true]')?.dataset.focusKey).toBe('option:short');
+    expect(f.popup.children).toHaveLength(1); expect(f.popup.style.width).toBe('320px');
+    expect(f.popup.querySelectorAll('.quick-param-row, .quick-detail-heading')).toHaveLength(0);
+    expect(f.popup.querySelector('[data-focus-key=manage-models]')?.textContent).toBe('Add model');
+    f.popup.querySelector('[data-focus-key=option:long]')!.dispatchEvent(new Event('click'));
+    expect(f.onChange).toHaveBeenLastCalledWith('model', 'long');
+    f.container.children[2].dispatchEvent(new Event('click'));
+    expect(f.popup.querySelectorAll('.quick-model-group')).toHaveLength(0);
+    expect(f.popup.querySelectorAll('[role=option]').map(option => option.dataset.focusKey)).toEqual(['option:low', 'option:medium']);
+    f.popup.querySelector('[data-focus-key=option:low]')!.dispatchEvent(new Event('click'));
+    expect(f.state.values.model).toBe('long'); expect(f.state.values.effort).toBe('low');
+    f.container.children[0].dispatchEvent(new Event('click'));
+    f.popup.querySelector('[data-focus-key=manage-models]')!.dispatchEvent(new Event('click'));
+    expect(f.onOpenUserSetting).toHaveBeenCalledWith('agent.model');
+  });
+
   it('opens a single field directly and closes after selection, restoring trigger focus', () => {
     const f = fixture();
     const trigger = f.container.children[1];

@@ -32,6 +32,11 @@ test("user model snapshots validate, copy and freeze nested records and isolate 
 
 test("user-bound model fields preserve inheritance, explicit selections and project source restrictions", async () => {
   const declarations = createAgentProjectParams({ modelSource: "user-settings" });
+  const quick = declarations.filter(group => group.kind === "quick");
+  assert.deepEqual(quick.slice(0, 2).map(group => ({ id: group.id, summary: group.summary })), [
+    { id: "model", summary: ["model"] }, { id: "effort", summary: ["effort"] },
+  ]);
+  assert.ok(!quick[0]!.fields.some(field => field.name === "effort"));
   const fields = normalizeProjectParamDeclarations(declarations).params;
   const model = fields.find(field => field.name === "model")!;
   assert.deepEqual(model.userSetting, { key: "agent.model", mode: "default" });
@@ -70,6 +75,19 @@ test("user-bound model fields preserve inheritance, explicit selections and proj
       await assert.rejects(createAgentRuntime({ modelSource, baseUrl: "https://custom.test", apiKey: "test-only-key", model: "custom" }), /only allows system AI/);
     }
   });
+});
+
+test("host model catalogues may exceed 100 built-ins while custom models and global IDs remain validated", async () => {
+  const builtins = Array.from({ length: 150 }, (_, index) => ({ ...system, id: `system-${index}`, model: `model-${index}` }));
+  const snapshot = parseUserSettings(settings([...builtins, third]));
+  assert.equal(snapshot.agent.models!.length, 151);
+  await withUserSettings(snapshot, async () => {
+    const resolved = await createAgentProjectParamResolver({ modelSource: "user-settings" })({});
+    assert.equal(resolved.params?.model?.resolvedOptions?.length, 151);
+  });
+  const customs = Array.from({ length: 101 }, (_, index) => ({ ...third, id: `custom-${index}` }));
+  assert.throws(() => parseUserSettings(settings([...builtins, ...customs])), /100 custom/);
+  assert.throws(() => parseUserSettings(settings([...builtins, { ...third, id: builtins[120]!.id }])), /unique/);
 });
 
 test("user system models recheck subscription identity and model availability without falling back", async () => {

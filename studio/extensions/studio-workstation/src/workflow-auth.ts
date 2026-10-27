@@ -49,6 +49,7 @@ export class AccountController implements vscode.Disposable {
       store: (value) => context.secrets.store(SECRET_KEY, value),
       delete: () => context.secrets.delete(SECRET_KEY),
     }, (state) => {
+      this.userModels.setConnection(this.account.getConnection());
       this.sections.setConnection(this.account.getConnection());
       if (this.panel?.visible) { void this.sections.refresh(); }
       this.change.fire(state);
@@ -317,7 +318,7 @@ export class AccountController implements vscode.Disposable {
         const generation = pageGeneration, signal = modelsAbort.signal;
         try {
           if (message.action === 'catalog') {
-            const catalog = await this.userModels.catalog(signal);
+            const catalog = await this.userModels.refreshCatalog();
             if (this.panel === panel && generation === pageGeneration && !signal.aborted) await panel.webview.postMessage({ type: 'settings-model-catalog', requestId: message.requestId, catalog });
           } else {
             await this.userModels.update(message, signal);

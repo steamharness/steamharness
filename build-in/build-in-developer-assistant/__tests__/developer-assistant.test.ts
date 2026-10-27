@@ -40,7 +40,8 @@ describe("developer assistant workflow", () => {
     expect(structure.params?.filter((param) => param.panel === "quick").map((param) => param.name))
       .toEqual(["provider", "model", "effort", "permissionPolicy"]);
     expect(structure.paramLayout?.actions).toEqual([
-      { kind: "quick", id: "ai", label: "AI", icon: "sparkle", summary: ["model", "effort"], params: ["provider", "model", "effort"] },
+      { kind: "quick", id: "model", label: "Model", icon: "sparkle", summary: ["model"], params: ["provider", "model"] },
+      { kind: "quick", id: "effort", label: "Effort", icon: "lightbulb", summary: ["effort"], params: ["effort"] },
       { kind: "slash", name: "plan" },
       { kind: "quick", id: "permission", label: "Permission", icon: "shield", summary: ["permissionPolicy"], params: ["permissionPolicy"] },
     ]);

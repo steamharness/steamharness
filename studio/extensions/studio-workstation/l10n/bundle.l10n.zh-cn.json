@@ -793,5 +793,18 @@
   "You can save up to 100 models.": "最多可以保存 100 个模型。",
   "Model changes cancelled.": "模型更改已取消。",
   "Name": "名称",
-  "Models": "模型"
+  "Models": "模型",
+  "Connect your provider to use this model across your projects.": "接入模型服务商后，即可在所有项目中使用此模型。",
+  "e.g. My coding model": "例如：我的编程模型",
+  "Model identifier from your provider": "填写服务商提供的模型标识",
+  "No models yet": "添加你的第一个模型",
+  "Actions": "操作",
+  "Refresh built-in models": "刷新内置可用模型",
+  "Built-in models": "内置模型",
+  "Custom models": "自定义模型",
+  "No custom models configured.": "尚未配置自定义模型。",
+  "Unable to refresh built-in models.": "无法刷新内置模型。",
+  "Built-in models are managed by your AI account.": "内置模型由 AI 账户管理。",
+  "Provider": "服务商",
+  "You can save up to 100 custom models.": "最多可以保存 100 个自定义模型。"
 }
