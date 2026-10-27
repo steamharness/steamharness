@@ -1,8 +1,10 @@
 # Unreleased
 
+- Studio's built-in assistant now uses its fixed local application identity without requesting a personal Server project or a new ID. The application checks area hides after success. History, memory and configurations remain local without reading or publishing ordinary project configuration drafts. Server AI retains account authorization, and ordinary projects and related data retain their registration and access checks.
+
 - Rechecks now read current relationship declarations and storage mode and discard diagnostics for removed relationships. Retired services and child frames cannot overwrite application checks. Kanban pauses previews and page methods during checks, including page restoration, and slow complete checks no longer falsely interrupt the connection. Local-storage applications can confirm a new ID, Workflow and Conversation accept their executor's inspected type, and built-in assistants keep their managed identity.
 
-- Kanban, Workflow and Conversation now check application and related-project registration, imports and relationship declarations when opened, before any run or message. A shared checklist shows progress and required actions, collapses after success, preserves local features and never replays operations on recheck.
+- Kanban, Workflow and Conversation now check application and related-project registration, imports and relationship declarations when opened, before any run or message. A shared checklist shows progress and required actions, hides the entire checks area after success and reappears when attention is needed, preserves local features and never replays operations on recheck.
 
 - Unregistered projects now require confirmation to apply for a Server-assigned application ID and safely replace the local manifest ID. New applications use separate history and data without uploading source or inheriting old access. All three types share this flow; standalone upload only allocates with explicit --create, and groups never change IDs implicitly.
 

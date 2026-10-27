@@ -7,6 +7,7 @@ import { startWebServer } from '../web/server';
 import type { Project, ProjectKind, Runtime } from '../web/workflow-types';
 import type { ProjectServerState } from '../web/project-server-state';
 import { ProjectServerCreation } from '../web/project-server-create';
+import { DEVELOPER_ASSISTANT_PROJECT_ID } from '../web/assistant-project';
 
 const id = 'aaa10f6d-c322-461a-aecd-56d644d227c5', targetId = '78648759-bcde-4fd5-b3bd-9a2dd46a7192';
 const grant = { read: { mode: 'all' }, write: { mode: 'none' } };
@@ -19,23 +20,26 @@ afterEach(async () => {
   vi.restoreAllMocks();
 });
 
-async function fixture(kind: ProjectKind, options: { mode?: 'local' | 'both' | 'server'; related?: boolean; imported?: boolean; status?: number; signedOut?: boolean } = {}) {
+async function fixture(kind: ProjectKind, options: { mode?: 'local' | 'both' | 'server'; related?: boolean; imported?: boolean; status?: number; signedOut?: boolean; projectId?: string; assistant?: boolean } = {}) {
+  const applicationId = options.projectId ?? id;
   const folder = await realpath(await mkdtemp(path.join(os.tmpdir(), 'startup-checks-'))); folders.push(folder);
+  vi.spyOn(os, 'homedir').mockReturnValue(path.join(folder, 'host'));
   const projectDir = path.join(folder, 'application'), targetDir = path.join(folder, 'database');
   await mkdir(projectDir); await mkdir(targetDir); await mkdir(path.join(projectDir, 'dist'));
   const projectInfo = readProjectInfo({ steamHarness: { projectInfo: { dataStorage: { mode: options.mode ?? 'server' },
     relatedProjects: options.related ? [{ alias: 'database', projectId: targetId, grantToRelatedProject: grant }] : [] } } });
-  const targetInfo = readProjectInfo({ steamHarness: { projectInfo: { dataStorage: { mode: 'both' }, relatedProjects: [{ alias: 'application', projectId: id, grantToRelatedProject: grant }] } } });
-  const pkg = { id, steamHarness: { projectType: kind, projectInfo, kanban: { artifactDir: 'dist', entry: 'index.html' } } };
+  const targetInfo = readProjectInfo({ steamHarness: { projectInfo: { dataStorage: { mode: 'both' }, relatedProjects: [{ alias: 'application', projectId: applicationId, grantToRelatedProject: grant }] } } });
+  const pkg = { id: applicationId, steamHarness: { projectType: kind, projectInfo, kanban: { artifactDir: 'dist', entry: 'index.html' },
+    ...(applicationId === DEVELOPER_ASSISTANT_PROJECT_ID ? { builtinRelease: { projectId: 'developer-assistant' } } : {}) } };
   await writeFile(path.join(projectDir, 'package.json'), JSON.stringify(pkg));
   await writeFile(path.join(projectDir, 'dist/index.html'), '<html><body>Preview</body></html>');
   await writeFile(path.join(targetDir, 'package.json'), JSON.stringify({ id: targetId, steamHarness: { projectInfo: targetInfo } }));
-  const project: Project = { id, uri: `file://${projectDir}`, folderPath: projectDir, name: 'Application', projectType: kind,
+  const project: Project = { id: applicationId, uri: `file://${projectDir}`, folderPath: projectDir, name: 'Application', projectType: kind,
     projectInfo, fields: [], entrypoints: [], ...(kind === 'kanban' ? { kanban: { artifactDir: 'dist', entry: 'index.html' } } : {}) };
   const runtime: Runtime = { available: true, inspect: vi.fn(async () => ({ projects: [project], errors: [] })),
     resolveParams: vi.fn(async () => ({ params: {} })), run: vi.fn(async () => ({ status: 'success' })), kanbanBridge: vi.fn(async () => null),
     uploadFiles: vi.fn(async () => []), readFile: vi.fn(), readResource: vi.fn(), deleteFiles: vi.fn(), deleteConversation: vi.fn(), cancelConversation: vi.fn(), cancel: vi.fn(), dispose: vi.fn() };
-  const records = new Map<string, { status: number; info: unknown }>([[id, { status: options.status ?? 200, info: projectInfo }], [targetId, { status: 200, info: targetInfo }]]);
+  const records = new Map<string, { status: number; info: unknown }>([[applicationId, { status: options.status ?? 200, info: projectInfo }], [targetId, { status: 200, info: targetInfo }]]);
   let intercept: ((url: string, init?: RequestInit) => Promise<Response> | undefined) | undefined;
   const remote = vi.fn(async (url: string, init?: RequestInit) => {
     const intercepted = intercept?.(url, init); if (intercepted) return intercepted;
@@ -48,7 +52,9 @@ async function fixture(kind: ProjectKind, options: { mode?: 'local' | 'both' | '
   vi.spyOn(globalThis, 'fetch').mockImplementation((url, init) => String(url).startsWith(connection.serverUrl) ? remote(String(url), init) : nativeFetch(url, init));
   const binding = { alias: 'database', projectDir: targetDir };
   const app = await startWebServer({ projectDir, dataDir: path.join(folder, 'data'), runtime,
-    host: { surface: 'editor', connection: options.signedOut ? undefined : connection, relatedProjects: options.imported ? [binding] : [] } }); apps.push(app);
+    host: { surface: options.assistant ? 'assistant' : 'editor', connection: options.signedOut ? undefined : connection, relatedProjects: options.imported ? [binding] : [],
+      ...(options.assistant ? { assistantProjectDir: projectDir, assistant: { workdir: targetDir,
+        roots: [{ uri: `file://${targetDir}`, folderPath: targetDir, name: 'Workspace' }] } } : {}) } }); apps.push(app);
   const token = new URL(app.url).hash.slice('#session='.length);
   const post = async (message: object) => nativeFetch(`${app.origin}/api/message`, { method: 'POST',
     headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }, body: JSON.stringify(message) }).then(response => response.json());
@@ -61,6 +67,44 @@ async function fixture(kind: ProjectKind, options: { mode?: 'local' | 'both' | '
   return { app, project, projectDir, pkg, targetDir, targetInfo, binding, runtime, remote, records, post, state, settled,
     intercept: (handler: NonNullable<typeof intercept>) => { intercept = handler; } };
 }
+
+it.each(['local', 'both'] as const)('opens the built-in assistant with %s storage without creating a personal Server project, including after logout', async mode => {
+  const f = await fixture('conversation', { projectId: DEVELOPER_ASSISTANT_PROJECT_ID, assistant: true, mode, status: 404 });
+  const expected = { checking: false, blocking: false, checks: [{ id: 'project', projectId: DEVELOPER_ASSISTANT_PROJECT_ID, stage: 'builtin', status: 'passed' }] };
+  expect((await f.settled()).serverData).toEqual(expected);
+  await f.post({ type: 'project-server-check' });
+  expect((await f.settled()).serverData).toEqual(expected);
+  const configuration = await f.post({ type: 'project-configuration', call: { action: 'get' } });
+  expect(configuration.messages[0].value.canManagePublication).not.toBe(true);
+  expect(configuration.messages[0].value.publication).toBeUndefined();
+  await expect(f.app.configurations.dispatch({ action: 'publication.save', revision: configuration.messages[0].value.revision })).rejects.toThrow('online');
+  expect(f.remote.mock.calls.every(([url]) => url.endsWith('/api/auth/me'))).toBe(true);
+  await f.app.setHostConnection(undefined);
+  expect((await f.settled()).serverData).toEqual(expected);
+  await f.post({ type: 'send', text: 'Local assistant', params: {}, attachments: [] });
+  await f.app.controller.idle();
+  expect(f.runtime.run).toHaveBeenCalledOnce();
+});
+
+it('opens the built-in assistant without a Server account', async () => {
+  const f = await fixture('conversation', { projectId: DEVELOPER_ASSISTANT_PROJECT_ID, assistant: true, mode: 'local', signedOut: true });
+  expect((await f.settled()).serverData).toMatchObject({ checking: false, checks: [{ stage: 'builtin', status: 'passed' }] });
+  expect((await f.state()).serverData.issue).toBeUndefined();
+  expect(f.remote).not.toHaveBeenCalled();
+});
+
+it.each([
+  { projectId: DEVELOPER_ASSISTANT_PROJECT_ID, mode: 'local' as const },
+  { assistant: true, mode: 'local' as const },
+  { projectId: DEVELOPER_ASSISTANT_PROJECT_ID, assistant: true, mode: 'server' as const },
+  { projectId: DEVELOPER_ASSISTANT_PROJECT_ID, assistant: true, mode: 'local' as const, related: true },
+])('keeps ordinary registration checks for non-builtin contexts or declared Server dependencies: %j', async options => {
+  const f = await fixture('conversation', { ...options, status: 404 });
+  const state = (await f.settled()).serverData;
+  expect(state.issue).toMatchObject({ kind: 'project-unavailable' });
+  expect(state.checks?.[0]).toMatchObject({ stage: 'registration', status: 'action-required' });
+  expect(f.remote.mock.calls.some(([url]) => url.endsWith(`/api/projects/${f.project.id}`))).toBe(true);
+});
 
 it.each(['workflow', 'conversation', 'kanban'] as const)('checks %s registration on opening without a message or data request', async kind => {
   const f = await fixture(kind, { status: 404 });

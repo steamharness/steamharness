@@ -4,6 +4,8 @@ import { createHash } from 'node:crypto';
 import path from 'node:path';
 import os from 'node:os';
 import { fileURLToPath } from 'node:url';
+import { once } from 'node:events';
+import { createServer } from 'node:http';
 import { inspectWebProject } from '../web/assistant-project';
 import { parseHostConfiguration } from '../web/host-config';
 import { createWebRuntime } from '../web/runtime';
@@ -77,7 +79,7 @@ it('loads the dedicated assistant declaration instead of the workspace executor'
   } finally { await app.close(); }
 });
 
-it('executes dedicated assistant skills using its own runtime and independent workspace', async () => {
+it('runs assistant skills and memory locally, isolates workspaces and preserves independent AI authentication', async () => {
   const directory = await mkdtemp(path.join(os.tmpdir(), 'web-assistant-runtime-')); temporary.push(directory);
   const workdir = path.join(directory, 'workspace');
   const runtimeProjectDir = path.join(directory, 'assistant-runtime');
@@ -97,21 +99,34 @@ it('executes dedicated assistant skills using its own runtime and independent wo
   await writeFile(path.join(assistantProjectDir, 'index.ts'), `
     import path from 'node:path';
     import { readFile } from 'node:fs/promises';
-    const flow = steamharness.defineProject({ name: 'assistant-tools', async run() {
+    const flow = steamharness.defineProject({ name: 'assistant-tools', async run(_input, context) {
       const tools = await steamharness.createSkillTools({ directories: [path.join(import.meta.dirname, 'skills')] });
       const skill = tools.find(tool => tool.name === 'skill');
       const listed = await skill.execute('list', { action: 'list' });
       const read = await skill.execute('read', { action: 'read', skill: 'fixture-skill' });
       const workdir = process.env.STEAMHARNESS_DEVELOPER_ASSISTANT_WORKDIR;
       const workspace = JSON.parse(await readFile(process.env.STEAMHARNESS_DEVELOPER_ASSISTANT_WORKSPACE_MANIFEST, 'utf8'));
+      const text = await readFile(path.join(workdir, 'user.txt'), 'utf8');
+      const memory = (await steamharness.createProjectCapabilityTools({ context, globalMemory: true })).find(tool => tool.name === 'workflow-memory_global_memory');
+      const previousMemories = JSON.parse((await memory.execute('list', { action: 'list' })).content[0].text);
+      await memory.execute('remember', { action: 'remember', memoryId: 'workspace', title: 'Workspace preference', markdown: text });
+      let serverStorageAllowed = false;
+      try { await context.storage.server.kv.getValue('should-stay-local'); serverStorageAllowed = true; } catch {}
       return { errCode: 0, errMessage: '', host: process.env.STEAMHARNESS_DEVELOPER_ASSISTANT_HOST,
         listed: JSON.parse(listed.content[0].text), read: JSON.parse(read.content[0].text),
-        text: await readFile(path.join(workdir, 'user.txt'), 'utf8'), workspace };
+        text, workspace, previousMemories, serverStorageAllowed,
+        projectAccount: process.env.STEAMHARNESS_SERVER_ADMIN_KEY === 'assistant-project-fixture',
+        aiAccount: process.env.STEAMHARNESS_AI_API_KEY === 'assistant-ai-fixture' };
     } });
     export const executor = steamharness.defineExecutor({ projectType: 'conversation', workflow: flow,
       tools: [{ name: 'skill', enabled: true, autoApprove: true }], createInput() { return {}; } });
   `);
-  const runtime = createWebRuntime(runtimeProjectDir, path.join(directory, 'data'), () => undefined);
+  const remoteRequests: string[] = [];
+  const server = createServer((request, response) => { remoteRequests.push(request.url!); response.writeHead(404); response.end(); });
+  server.listen(0, '127.0.0.1'); await once(server, 'listening');
+  const connection = { serverUrl: `http://127.0.0.1:${(server.address() as { port: number }).port}`, accessToken: 'assistant-project-fixture',
+    aiServerUrl: `http://127.0.0.1:${(server.address() as { port: number }).port}`, aiAccessToken: 'assistant-ai-fixture' };
+  const runtime = createWebRuntime(runtimeProjectDir, path.join(directory, 'data'), () => connection);
   try {
     const inspection = await runtime.inspect([assistantProjectDir]);
     expect(inspection.errors).toEqual([]);
@@ -120,9 +135,23 @@ it('executes dedicated assistant skills using its own runtime and independent wo
     const report = await runtime.run({ project, conversationId: 'assistant-test', runId: 'assistant-test', args: [] }, () => {});
     expect(report.status).toBe('success');
     expect(report.output?.items?.[0].content).toMatchObject({ host: 'vscode', text: 'Independent workspace contents',
+      previousMemories: { memories: [] }, serverStorageAllowed: false, projectAccount: true, aiAccount: true,
       listed: { skills: [expect.objectContaining({ name: 'fixture-skill' })] },
       read: { skill: 'fixture-skill', content: expect.stringContaining('Read the independent workspace.') },
       workspace: { primaryTarget: { kind: 'folder', folderId: 'file:///workspace' }, roots: [expect.objectContaining({ rootPath: workdir, role: 'primary' })] },
     });
-  } finally { runtime.dispose(); }
-}, 30_000);
+    const secondWorkdir = path.join(directory, 'second-workspace'); await mkdir(secondWorkdir);
+    await writeFile(path.join(secondWorkdir, 'user.txt'), 'Second workspace preference');
+    const second: Project = { ...project, assistant: { workdir: secondWorkdir, roots: [{ uri: 'file:///second-workspace', folderPath: secondWorkdir, name: 'Second workspace' }] } };
+    const secondReport = await runtime.run({ project: second, conversationId: 'assistant-test', runId: 'second-workspace', args: [] }, () => {});
+    expect(secondReport.status).toBe('success');
+    expect(secondReport.output?.items?.[0].content).toMatchObject({ text: 'Second workspace preference', previousMemories: { memories: [] }, serverStorageAllowed: false });
+    const resumed = await runtime.run({ project, conversationId: 'assistant-test', runId: 'first-workspace-again', args: [] }, () => {});
+    expect(resumed.status).toBe('success');
+    expect(resumed.output?.items?.[0].content).toMatchObject({ previousMemories: { memories: [{ memoryId: 'workspace', title: 'Workspace preference' }] }, serverStorageAllowed: false });
+    expect(remoteRequests).toEqual([]);
+  } finally {
+    runtime.dispose();
+    await new Promise<void>(resolve => { server.close(() => resolve()); server.closeAllConnections(); });
+  }
+}, 45_000);

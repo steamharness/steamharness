@@ -16,7 +16,7 @@ export interface ProjectServerCheck {
   id: string;
   projectId: string;
   relatedProjectAlias?: string;
-  stage: 'import' | 'registration' | 'relationship';
+  stage: 'builtin' | 'import' | 'registration' | 'relationship';
   status: 'checking' | 'passed' | 'action-required' | 'waiting';
   issue?: ProjectServerIssue;
 }

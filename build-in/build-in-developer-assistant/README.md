@@ -10,6 +10,8 @@ Studio 内置的独立小助手，基于 Core Agent 能力运行，使用宿主�
 
 工具权限中的 **Skills** 是技能分区，里面的 **List and read skill guides**（`skill`）是统一读取入口。分区中的“1 个工具”只表示这个入口，不代表只能使用一份技能。可以让小助手“列出可用技能”，它会调用 `{"action":"list"}` 返回名称、用途和文件清单；随后用 `{"action":"read","skill":"workflow-generator"}` 读取技能正文，再用 `{"action":"read","skill":"workflow-generator","path":"references/task-map.md"}` 读取引用。`path` 相对于所选技能目录。读取脚本会返回脚本文本，执行步骤由小助手使用相应工具完成。完整参数、返回值和读取限制见 [createSkillTools](../../docs/core-api/create-skill-tools.mdx)。
 
-小助手自身的 Knowledge、KV 和记忆与被协助项目的数据分离。工具不提供本运行作用域的 Knowledge 与 KV，避免把小助手存储误当成用户项目的数据。`global_memory` 只保存稳定偏好与长期决策，不保存凭据或临时进度。项目声明 `dataStorage.mode: "both"`，由运行平台选择存储；本地 CLI 使用本地存储，不自动同步到 Server。
+Studio 内置小助手使用固定的系统分发身份，所有用户均无需创建个人服务器项目或重新申请 ID。应用检查成功后自动隐藏提示。普通项目不能通过填写相同 ID 或声明内置项目来跳过注册；服务器 AI 仍按当前账号授权。
+
+小助手自身的 Knowledge、KV 和记忆与被协助项目的数据分离。工具不提供本运行作用域的 Knowledge 与 KV，避免把小助手存储误当成用户项目的数据。`global_memory` 只保存稳定偏好与长期决策，不保存凭据或临时进度。项目声明 `dataStorage.mode: "local"`，会话和记忆保存在本机的宿主用户数据目录，并按工作目录分开；不写入共享服务器项目，也不自动同步到 Server。
 
 本项目位于 monorepo 的 `build-in/build-in-developer-assistant`，harness 与 CLI 通过 `link:../../harness`、`link:../../cli` 使用。Studio 构建时从 `build-in/build-in-developer-assistant` 读取内置小助手源码，开发依赖可从本仓解析。修改后执行 `pnpm typecheck`、`pnpm test`、`pnpm coverage`、`pnpm build` 和 `git diff --check`。Studio 的集成说明见其 `docs/workflow-workstation.md`。

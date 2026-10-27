@@ -25,7 +25,7 @@ import { conversationResourceCards, type ResourceCardReference } from './resourc
 import type { AccountState } from './workflow-auth-client';
 import { loginWebAccount } from './account-auth';
 import type { WebHostConfiguration } from './host-config';
-import { inspectWebProject } from './assistant-project';
+import { inspectWebProject, isLocalBuiltinAssistant } from './assistant-project';
 import { ResourcePreviews } from './resource-preview';
 import { createLocalActivityWriter, summarizeLocalRuns } from './local-analysis';
 import { ConversationOwnership } from './conversation-ownership';
@@ -268,6 +268,8 @@ async function startProjectWebServer(options: WebOptions, credentials: { capabil
       await retainProjectDataIdentity(storageDir, projectDir, project.id);
     });
   let configurationSignature = '';
+  // The built-in assistant has local profiles, not a Server project publication.
+  // Its AI connection continues to use the authenticated runtime account.
   const configurations = new ProjectConfigurations(project.assistant ? project.folderPath : projectDir, () => {
     const signature=JSON.stringify(configurations.state);
     if(signature!==configurationSignature) {
@@ -279,7 +281,7 @@ async function startProjectWebServer(options: WebOptions, credentials: { capabil
       resources.clear();
     }
     broadcast();
-  }, () => connection);
+  }, () => isLocalBuiltinAssistant(project) ? undefined : connection);
   await configurations.initialize();
   configurationSignature=JSON.stringify(configurations.state);
   conversationController = isProject || isKanban ? undefined : new ConversationController(project, runtime, saved, {

@@ -2,10 +2,18 @@ import { isProjectDataStorageLocationAllowed, readProjectInfo, resolveProjectRel
 import { readServerProject, type ProjectServerCheck, type ProjectServerInspector, type ProjectServerIssue } from './project-server-state';
 import type { RelatedProjectImports } from './related-projects';
 import type { Project } from './workflow-types';
+import { isLocalBuiltinAssistant } from './assistant-project';
 
 /** One read-only lifecycle pass. A missing import always precedes Server diagnostics. */
 export function projectStartupInspector(project: Project, imports: RelatedProjectImports): ProjectServerInspector {
   return async (connection, signal, publish, unavailable) => {
+    // The distributed assistant runs against this device's store. Its fixed
+    // identity is not a personal Server project or a grant to Server data.
+    if (isLocalBuiltinAssistant(project)) {
+      const checks: ProjectServerCheck[] = [{ id: 'project', projectId: project.id, stage: 'builtin', status: 'passed' }];
+      publish(checks);
+      return checks;
+    }
     const relations = [...(project.projectInfo?.relatedProjects ?? [])];
     let checks: ProjectServerCheck[] = [
       { id: 'project', projectId: project.id, stage: 'registration', status: 'checking' },

@@ -86,6 +86,21 @@ it.each(['en', 'zh-CN'] as const)('does not offer identity replacement for a man
   expect(document.getElementById('server-guidance-steps')!.textContent).not.toContain(language === 'en' ? 'Choose Apply' : '选择“重新申请');
 });
 
+it.each(['en', 'zh-CN'] as const)('hides successful built-in checks and shows checks again when attention is needed (%s)', async language => {
+  const f = await fixture('conversation', language);
+  await f.render({ checking: true, blocking: false, checks: [{ id: 'project', projectId: f.project.id, stage: 'builtin', status: 'checking' }] });
+  expect(document.getElementById('server-guidance')!.hidden).toBe(false);
+  expect(document.getElementById('server-checks-list')!.textContent).toContain(language === 'en' ? 'Built-in assistant' : '内置小助手');
+  expect(document.getElementById('server-checks-note')!.textContent).toContain(language === 'en' ? 'Server AI still requires account authorization' : '使用服务器 AI 仍需账号授权');
+  await f.render({ checking: false, blocking: false, checks: [{ id: 'project', projectId: f.project.id, stage: 'builtin', status: 'passed' }] });
+  expect(document.getElementById('server-guidance')!.hidden).toBe(true);
+  expect(document.querySelector<HTMLButtonElement>('#send')!.disabled).toBe(false);
+  await f.render({ checking: false, blocking: false, issue: { kind: 'connection-unavailable' }, checks: [{ id: 'project', projectId: f.project.id, stage: 'registration', status: 'action-required', issue: { kind: 'connection-unavailable' } }] });
+  expect(document.getElementById('server-guidance')!.hidden).toBe(false);
+  expect(document.getElementById('server-checks-note')!.textContent).toContain(language === 'en' ? 'Registration, imports' : '此处检查注册、导入');
+  expect(host.postMessage.mock.calls.some(([value]) => ['send', 'workflow-run', 'project-server-create-confirm'].includes(value.type))).toBe(false);
+});
+
 it.each([['workflow', 'en'], ['workflow', 'zh-CN'], ['conversation', 'en'], ['conversation', 'zh-CN']] as const)(
   'guides %s setup in %s without discarding edits or submitting a run on recheck', async (kind, language) => {
     const f = await fixture(kind, language);
@@ -123,7 +138,7 @@ it.each([['workflow', 'en'], ['workflow', 'zh-CN'], ['conversation', 'en'], ['co
 );
 
 it.each([['workflow', 'en'], ['workflow', 'zh-CN'], ['conversation', 'en'], ['conversation', 'zh-CN']] as const)(
-  'shows the opening checklist in %s, keeps issue selection focused and collapses successful checks (%s)', async (kind, language) => {
+  'shows the opening checklist in %s, keeps issue selection focused and hides successful checks (%s)', async (kind, language) => {
     const f = await fixture(kind, language);
     const checks: NonNullable<ProjectServerState['checks']> = [
       { id: 'project', projectId: 'server-project', stage: 'registration', status: 'checking' },
@@ -149,10 +164,11 @@ it.each([['workflow', 'en'], ['workflow', 'zh-CN'], ['conversation', 'en'], ['co
     expect(overview.open).toBe(false);
     const passed = checks.map(check => ({ ...check, status: 'passed' as const, issue: undefined }));
     await f.render({ checking: false, checks: passed });
-    expect(overview.open).toBe(false); expect(guidance.hidden).toBe(false); expect(guidance.dataset.result).toBe('passed');
-    expect(document.getElementById('server-guidance-problem')!.hidden).toBe(true);
-    expect(document.getElementById('server-checks-progress')!.textContent).toBe(language === 'en' ? '2/2 passed' : '2/2 项已通过');
-    overview.open = true; await f.render({ checking: false, checks: passed }); expect(overview.open).toBe(true);
+    expect(guidance.hidden).toBe(true);
+    await f.render({ checking: true, checks: passed });
+    expect(guidance.hidden).toBe(false); expect(overview.open).toBe(true);
+    await f.render({ checking: false, checks, issue: checks[0].issue });
+    expect(guidance.hidden).toBe(false); expect(overview.open).toBe(true);
     document.getElementById('server-guidance-retry')!.click();
     expect(host.postMessage).toHaveBeenCalledWith(expect.objectContaining({ type: 'project-server-check' }));
     expect(host.postMessage.mock.calls.some(([value]) => ['send', 'workflow-run', 'workflow-rerun'].includes(value.type))).toBe(false);

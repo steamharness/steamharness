@@ -1,5 +1,7 @@
 # Unreleased
 
+- Assistant now explicitly uses local storage and its fixed built-in identity. CLI built-in application checks let users use it without creating personal Server projects. History and memory never write to a shared Server project, while Server AI still requires account authorization.
+
 - Updated generator guidance to preserve structured Server storage errors and distinguish project registration, optional source upload and related data grants.
 
 - Fixed project-generation guidance to require official field locks and source system-only AI restrictions on supplied and restored snapshots.

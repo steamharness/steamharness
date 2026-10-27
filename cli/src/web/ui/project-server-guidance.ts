@@ -49,7 +49,8 @@ export class ProjectServerGuidance {
     const lifecycle = !!checks?.length;
     const selected = checks?.find(check => check.id === this.selected && check.issue);
     const issue = selected?.issue ?? state?.issue ?? (state?.checking && !lifecycle ? { kind: 'checking' as const } : undefined);
-    this.container.hidden = !issue && !lifecycle;
+    const passed = !state?.checking && checks?.every(check => check.status === 'passed');
+    this.container.hidden = !issue && (!lifecycle || !!passed);
     if (this.container.hidden) { this.signature = ''; this.phase = ''; return; }
     this.container.toggleAttribute('data-lifecycle', lifecycle);
     this.container.querySelector<HTMLElement>('#server-guidance-problem')!.hidden = !issue;
@@ -58,6 +59,9 @@ export class ProjectServerGuidance {
     this.container.querySelector<HTMLElement>('#server-checks-list')!.hidden = !lifecycle;
     this.container.querySelector<HTMLElement>('#server-checks-note')!.hidden = !lifecycle;
     if (lifecycle) {
+      this.container.querySelector<HTMLElement>('#server-checks-note')!.textContent = checks.every(check => check.stage === 'builtin')
+        ? t('Assistant history and memory stay on this device. Server AI still requires account authorization.')
+        : t('Registration, imports and relationship declarations are checked here. Permissions for specific data are checked when used.');
       const attention = checks.filter(check => check.status === 'action-required').length;
       const complete = checks.filter(check => check.status === 'passed').length;
       const phase = state?.checking ? 'checking' : attention ? 'action-required' : 'passed';
@@ -176,11 +180,13 @@ export class ProjectServerGuidance {
       const icon = document.createElement('span'); icon.setAttribute('aria-hidden', 'true');
       icon.className = `codicon codicon-${check.status === 'checking' ? 'loading codicon-modifier-spin' : check.status === 'passed' ? 'check' : check.status === 'waiting' ? 'circle-outline' : 'warning'}`;
       const name = document.createElement('span'); name.className = 'project-check-name';
-      name.textContent = check.relatedProjectAlias ? t('Related project: {0}', check.relatedProjectAlias) : t('Current application');
+      name.textContent = check.stage === 'builtin' ? t('Built-in assistant')
+        : check.relatedProjectAlias ? t('Related project: {0}', check.relatedProjectAlias) : t('Current application');
       name.title = check.projectId;
       const result = document.createElement('span'); result.className = 'project-check-result';
       result.textContent = check.status === 'waiting' ? t('Waiting for registration check') : check.status === 'checking' ? t('Checking...')
-        : check.status === 'passed' ? check.relatedProjectAlias ? t('Registration and relationship checked') : t('Registered on Server')
+        : check.status === 'passed' ? check.stage === 'builtin' ? t('Available locally. No project registration needed.')
+          : check.relatedProjectAlias ? t('Registration and relationship checked') : t('Registered on Server')
         : check.stage === 'import' ? t('Import required') : check.stage === 'relationship' ? t('Check relationship declarations')
         : check.issue?.kind === 'project-unavailable' ? t('Registration required') : t('Check Server access');
       content.append(icon, name, result); row.append(content); return row;

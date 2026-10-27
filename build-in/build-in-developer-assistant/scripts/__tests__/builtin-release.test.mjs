@@ -59,14 +59,14 @@ describe("independent built-in project release", () => {
     }
     expect(definition.components).toEqual(resolved);
     expect(definition.minDesktopVersion).toBe("0.1.24");
-    expect(definition.dataStorageMode).toBe("both");
+    expect(definition.dataStorageMode).toBe("local");
     expect(definition.packageJson.steamHarness.projectInfo).toMatchObject({
       localizedNames: {
         "zh-CN": expect.any(String),
         en: definition.packageJson.name,
       },
       declarations: expect.arrayContaining(["multilingual"]),
-      dataStorage: { mode: "both" },
+      dataStorage: { mode: "local" },
     });
     await expect(Promise.all([
       readFile(path.join(root, "README.md"), "utf8"),

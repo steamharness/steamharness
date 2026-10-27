@@ -1,4 +1,7 @@
 {
+  "Built-in assistant": "内置小助手",
+  "Available locally. No project registration needed.": "本机可用，无需注册项目",
+  "Assistant history and memory stay on this device. Server AI still requires account authorization.": "小助手的会话和记忆保存在本机，使用服务器 AI 仍需账号授权。",
   "This built-in application uses a managed ID. Ask the Server administrator to check its registration and your account access.": "此内置应用的 ID 由系统统一管理，请联系服务器管理员检查应用注册和当前账号的访问权限。",
   "Ask the Server administrator to check the built-in application ID and project registration.": "请联系服务器管理员检查内置应用 ID 和项目注册状态。",
   "The local project changed. Reopen it before checking again.": "本地项目身份或类型已变化，请重新打开应用后再检查。",

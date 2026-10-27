@@ -107,18 +107,19 @@ it.each(['en', 'zh-CN'] as const)('shows startup checks before mounting Server p
   const frame = document.querySelector<HTMLIFrameElement>('#kanban-preview')!;
   expect(frame.getAttribute('src')).toBeNull(); expect(document.getElementById('preview-stage')!.hidden).toBe(true);
   const overview = document.querySelector<HTMLDetailsElement>('#server-checks')!;
+  const guidance = document.getElementById('server-guidance')!;
   expect(overview.open).toBe(true);
+  expect(guidance.hidden).toBe(false);
   sendState(2, 'ready', undefined, { checking: false, checks: [{ ...checks[0], status: 'passed' }] });
-  expect(overview.open).toBe(false); expect(frame.src).toContain('/kanban/ready/index.html');
-  expect(document.getElementById('server-guidance')!.dataset.result).toBe('passed');
+  expect(guidance.hidden).toBe(true); expect(frame.src).toContain('/kanban/ready/index.html');
   expect(document.getElementById('preview-stage')!.hidden).toBe(false);
   sendState(1, 'stale', undefined, { checking: false, checks: [{ ...checks[0], status: 'action-required', issue: { kind: 'project-unavailable' } }], issue: { kind: 'project-unavailable' } });
   sources[0].onopen!();
-  expect(document.getElementById('server-guidance')!.dataset.result).toBe('passed');
+  expect(guidance.hidden).toBe(true);
   expect(frame.src).toContain('/kanban/ready/index.html');
   sendState(3, 'local', undefined, { checking: false, blocking: false, issue: { kind: 'project-unavailable' },
     checks: [{ ...checks[0], status: 'action-required', issue: { kind: 'project-unavailable' } }] });
-  expect(overview.open).toBe(true); expect(document.getElementById('preview-stage')!.hidden).toBe(false);
+  expect(guidance.hidden).toBe(false); expect(overview.open).toBe(true); expect(document.getElementById('preview-stage')!.hidden).toBe(false);
   expect(frame.src).toContain('/kanban/local/index.html');
   expect(document.getElementById('server-guidance-create')!.hidden).toBe(false);
 });

@@ -21,6 +21,11 @@ const SESSION_TOOL_NAMES = ["tool_search", "codemode", "update_plan", "subagent"
 const EXPECTED_TOOL_NAMES = [...SESSION_TOOL_NAMES, ...CONTROL_TOOL_NAMES, ...CORE_TOOL_NAMES, ...CODING_TOOL_NAMES];
 
 describe("developer assistant workflow", () => {
+  it("keeps its distributed identity and stores assistant data locally", async () => {
+    const manifest = JSON.parse(await readFile(path.join(projectDir, "package.json"), "utf8"));
+    expect(manifest.id).toBe("a3aca697-b086-459b-84e4-d357ad2d9fb2");
+    expect(manifest.steamHarness.projectInfo).toMatchObject({ dataStorage: { mode: "local" }, relatedProjects: [] });
+  });
   it("does not offer a Code Mode configuration parameter", async () => {
     const manifest = JSON.parse(await readFile(path.join(projectDir, "configuration.json"), "utf8"));
     expect(manifest.fields).toEqual([]);
