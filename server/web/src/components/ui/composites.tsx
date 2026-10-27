@@ -2,6 +2,7 @@ import { useRef, type ChangeEvent, type ComponentProps, type ReactNode } from "r
 import { Inbox } from "lucide-react";
 import { useTranslation } from "@steamharness/i18n/react";
 
+import { AvatarPreviewDialog } from "@/components/AvatarPreviewDialog";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -162,19 +163,25 @@ function FilePickerField({
   className,
   ...props
 }: FilePickerFieldProps) {
-  const { t } = useTranslation("serverWeb");
+  const { t } = useTranslation(["serverWeb", "common"]);
   const inputRef = useRef<HTMLInputElement>(null);
   const resolvedChooseLabel = chooseLabel ?? t("filePickerChoose");
+  const previewLabel = t("common:attachmentPreview", { name: preview?.alt || t("accountAvatarLabel") });
 
   return (
     <Field className={className} data-ui="file-picker-field" {...props}>
       <FieldLabel htmlFor={id}>{label}</FieldLabel>
       <div className="flex flex-wrap items-center gap-3">
         {preview ? (
-          <Avatar>
-            {preview.src ? <AvatarImage src={preview.src} alt={preview.alt ?? ""} /> : null}
-            <AvatarFallback>{preview.fallback}</AvatarFallback>
-          </Avatar>
+          <AvatarPreviewDialog src={preview.src} alt={preview.alt} fallback={preview.fallback} label={previewLabel}>
+            <Button type="button" variant="ghost" className="size-8 shrink-0 rounded-md p-0"
+              title={previewLabel} aria-label={previewLabel} onClick={event => event.stopPropagation()}>
+              <Avatar>
+                {preview.src ? <AvatarImage src={preview.src} alt={preview.alt ?? ""} /> : null}
+                <AvatarFallback>{preview.fallback}</AvatarFallback>
+              </Avatar>
+            </Button>
+          </AvatarPreviewDialog>
         ) : null}
         <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
           <input

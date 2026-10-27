@@ -5,6 +5,7 @@ import { cn } from "@/lib/utils";
 import { getAvatarFallbackText } from "@steamharness/avatar-fallback";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { AvatarPreviewDialog } from "@/components/AvatarPreviewDialog";
 
 export interface UserIdentityValue {
   userId?: string | null;
@@ -89,7 +90,7 @@ export function UserIdentity({
   contentClassName,
   interactive = true,
 }: UserIdentityProps) {
-  const { t } = useTranslation("serverWeb");
+  const { t } = useTranslation(["serverWeb", "common"]);
   const styles = SIZE_STYLES[size];
   const displayName = normalizeIdentityText(user?.displayName);
   const email = normalizeIdentityText(user?.email);
@@ -105,6 +106,7 @@ export function UserIdentity({
     </AvatarFallback>
   </Avatar>;
   const profileLabel = t("userIdentityDetails", { name: primary });
+  const previewLabel = t("common:attachmentPreview", { name: primary });
 
   return (
     <div className={cn("flex min-w-0 items-center gap-2.5", className)}>
@@ -114,7 +116,11 @@ export function UserIdentity({
         <DialogContent aria-describedby={undefined} onClick={event => event.stopPropagation()}>
           <DialogHeader><DialogTitle>{primary}</DialogTitle></DialogHeader>
           <div className="flex min-w-0 flex-col items-center gap-3">
-            {avatar(true)}
+            <AvatarPreviewDialog src={avatarUrl} alt={primary} label={previewLabel}
+              fallback={getAvatarFallbackText({ displayName, email, userId }, "?")}>
+              <Button type="button" variant="ghost" className="size-32 shrink-0 rounded-md p-0"
+                title={previewLabel} aria-label={previewLabel} onClick={event => event.stopPropagation()}>{avatar(true)}</Button>
+            </AvatarPreviewDialog>
             {emailLine ? <p className="max-w-full break-all text-sm">{emailLine}</p> : null}
             {userIdLine ? <p className="max-w-full break-all font-mono text-xs text-muted-foreground">{userIdLine}</p> : null}
           </div>

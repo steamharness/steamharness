@@ -1,5 +1,7 @@
 # Unreleased
 
+- Improved avatar previews in user management and profile dialogs: click to view a larger image that fits the viewport, then return keyboard focus to the avatar on close. Existing upload, profile, menu and project navigation actions are preserved.
+
 - Fixed avatar crop previews to fit the dialog proportionally, keeping small images usable and portrait images within the preview height. Show a loading placeholder while reading images.
 
 - Added fixed 1:1 avatar cropping in profile settings and user management, with movable, resizable, resettable selections and automatic compression before upload, without restricting source file size. Account menus, user lists, memberships, audit entries and profile details use consistent rounded square avatars, centering existing images without stretching.
