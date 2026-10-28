@@ -1,4 +1,5 @@
-import { readProjectManifestFromDirectory } from '@steamharness/project-manifest/node';
+import type { ProjectDeclaration, ProjectEntryDeclaration } from '@steamharness/project-manifest';
+import { readProjectDeclarationFromDirectory } from '@steamharness/project-manifest/node';
 import { randomUUID } from 'node:crypto';
 import { mkdir, readdir, readFile, realpath, rename, rm, stat, writeFile } from 'node:fs/promises';
 import path from 'node:path';
@@ -12,6 +13,9 @@ export interface LocalRunSummary {
 }
 interface Activity { version: 1; projectId: string; entryId: string; projectType: string; pid: number; updatedAt: number; runs: Array<LocalRunSummary & { changedAt?: number }>; queued: number; queuedInputIds?: string[] }
 export interface LocalAnalysisProject { id: string; name: string; folderPath: string; uri: string; inWorkspace?: boolean; projectType?: string; entryId?: string }
+type AnalysisReference = { reference: LocalAnalysisProject } & (
+  { manifest: ProjectDeclaration; entry: ProjectEntryDeclaration } | { error: unknown }
+);
 
 const activeStatus = (status: string): boolean => ['running', 'waiting_for_input'].includes(status);
 const runStatuses = new Set(['running', 'waiting_for_input', 'success', 'failed', 'aborted', 'timed_out', 'interrupted', 'unknown']);
@@ -93,24 +97,36 @@ export async function readLocalStudioAnalysis(options: { storageDir: string; pro
   const now = options.now ?? Date.now(), seen = new Set<string>();
   let serverExcluded = 0;
   const projects = [];
-  const references: LocalAnalysisProject[] = [];
-  for (const project of options.projects) {
-    try { const manifest = await readProjectManifestFromDirectory(project.folderPath); for (const entry of manifest.entries) references.push({ ...project, entryId: entry.entryId, projectType: entry.type, name: `${project.name} / ${entry.name}` }); }
-    catch { references.push(project); }
+  const references: AnalysisReference[] = [];
+  for (const reference of options.projects) {
+    try {
+      const directory = await realpath(reference.folderPath);
+      const document = await readJson(path.join(directory, 'steamharness.json'));
+      // Imported folders can lose their standalone manifest or become aggregate entry roots.
+      const child = record(document) && projectType(document.type)
+        && !['id', 'version', 'defaultEntry', 'entries'].some(key => Object.hasOwn(document, key));
+      if (!reference.inWorkspace && (document === undefined || child)) { continue; }
+      // Local history needs declarations only, independent of deployment database bindings.
+      const manifest = await readProjectDeclarationFromDirectory(directory);
+      if (!sameProjectId(manifest.projectId, reference.id)) { throw new Error('Project identity changed.'); }
+      for (const entry of manifest.entries) {
+        references.push({ reference: { ...reference, folderPath: directory, entryId: entry.entryId, projectType: entry.type }, manifest, entry });
+      }
+    } catch (error) { references.push({ reference, error }); }
   }
-  for (const reference of [...references].sort((a, b) => Number(!!b.inWorkspace) - Number(!!a.inWorkspace))) {
+  for (const item of references.sort((a, b) => Number(!!b.reference.inWorkspace) - Number(!!a.reference.inWorkspace))) {
+    const { reference } = item;
     const project = { ...reference, projectType: reference.projectType ?? 'unknown', availability: 'available', live: false, queued: 0, runs: [] as LocalRunSummary[] };
     try {
       const directory = await realpath(reference.folderPath);
       if (seen.has(`${directory}:${reference.entryId}`)) { continue; } seen.add(`${directory}:${reference.entryId}`);
       project.folderPath = directory;
-      const manifest = await readJson(path.join(directory, 'steamharness.json'));
-      if (!sameProjectId(manifest?.id, reference.id)) { throw new Error('Project identity changed.'); }
+      if ('error' in item) { throw item.error; }
+      const { manifest, entry: registration } = item;
       const names = manifest.projectInfo?.localizedNames;
       const language = options.locale?.toLowerCase().startsWith('zh') ? 'zh-cn' : 'en';
       const name = record(names) ? Object.entries(names).find(([key]) => key.toLowerCase() === language)?.[1] : undefined;
       project.name = typeof name === 'string' && name.trim() ? name : typeof manifest.name === 'string' && manifest.name.trim() ? manifest.name : reference.name;
-      const registration = (await readProjectManifestFromDirectory(directory)).entries.find(entry => entry.entryId === reference.entryId)!;
       project.name = `${project.name} / ${registration.name}`;
       const root = await projectDataDirectory(options.storageDir, directory, reference.id, registration.entryId);
       const type = registration.type;

@@ -1,5 +1,7 @@
 # Unreleased
 
+- Fix: Studio local analysis ignores stale imports whose standalone manifests were removed or converted to aggregate child entries. Local history uses project declarations without deployment database configuration; actual read failures remain unavailable.
+
 - Improvement: CLI Web separates tools and skills into tabs. Tools retain permission controls; skills appear as read-only guide cards without Enable or Auto-approve switches, shared by Conversation and Workflow.
 
 - Fix: CLI Web passes validated `STEAMHARNESS_PROJECT_CONFIG` database mappings to project workers so inspection and Workflow execution use the same IDs for root and child configurations.

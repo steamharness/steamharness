@@ -135,6 +135,39 @@ describe('local Studio analysis', () => {
     await writeFile(path.join(f.folderPath, 'config.json'), JSON.stringify({version:1,databases:{data:'00000000-0000-4000-8000-000000000001'}}));
     expect((await f.snapshot()).projects).toHaveLength(1);
   });
+  it('ignores old standalone registrations after their folders become aggregate entries', async () => {
+    const f = await fixture(); await f.history([{ id: 'aggregate-run', status: 'success' }]);
+    await writeProjectFixture(path.join(f.folderPath, 'package.json'), JSON.stringify({ ...f.manifest,
+      entries: [{ ...f.manifest.entries[0], root: 'child' }] }));
+    const child = { ...f.reference, id: '00000000-0000-4000-8000-000000000001', folderPath: path.join(f.folderPath, 'child'), entryId: undefined };
+    const value = await readLocalStudioAnalysis({ storageDir: f.storageDir, projects: [child, { ...f.reference, inWorkspace: true }] });
+    expect(value.projects).toHaveLength(1);
+    expect(value.projects[0]).toMatchObject({ id: f.reference.id, entryId: 'main', availability: 'available', runs: [{ id: 'aggregate-run' }] });
+    const current = await readLocalStudioAnalysis({ storageDir: f.storageDir, projects: [{ ...child, inWorkspace: true }] });
+    expect(current.projects[0].availability).toBe('unreadable');
+  });
+  it('ignores imports without a project manifest but still reports a missing manifest in the current workspace', async () => {
+    const f = await fixture(); await rm(path.join(f.folderPath, 'steamharness.json'));
+    await writeFile(path.join(f.folderPath, 'package.json'), JSON.stringify({ id: f.reference.id, steamHarness: { projectType: 'workflow' } }));
+    expect((await f.snapshot()).projects).toEqual([]);
+    const current = await readLocalStudioAnalysis({ storageDir: f.storageDir, projects: [{ ...f.reference, inWorkspace: true }] });
+    expect(current.projects[0].availability).toBe('missing');
+  });
+  it('reads local history from declarations without resolving deployment database bindings', async () => {
+    const f = await fixture(); await f.history([{ id: 'local-run', status: 'success' }]);
+    await writeProjectFixture(path.join(f.folderPath, 'package.json'), JSON.stringify({ ...f.manifest,
+      entries: [{ ...f.manifest.entries[0], databases: ['data'] }] }));
+    expect((await f.snapshot()).projects[0]).toMatchObject({ availability: 'available', runs: [{ id: 'local-run' }] });
+    await writeFile(path.join(f.folderPath, 'config.json'), 'invalid deployment configuration');
+    expect((await f.snapshot()).projects[0]).toMatchObject({ availability: 'available', runs: [{ id: 'local-run' }] });
+  });
+  it('keeps malformed root declarations unavailable instead of treating them as retired imports', async () => {
+    const f = await fixture();
+    for (const document of [null, {}, { ...f.manifest, type: 'workflow', id: undefined }, { ...f.manifest, id: '00000000-0000-4000-8000-000000000001' }]) {
+      await writeFile(path.join(f.folderPath, 'steamharness.json'), JSON.stringify(document));
+      expect((await f.snapshot()).projects[0].availability).toBe('unreadable');
+    }
+  });
   it('reports corrupt histories and changed UUIDs as unavailable instead of empty successes', async () => {
     const f = await fixture(); await writeFile(path.join(f.directory, 'runs.json'), 'broken');
     expect((await f.snapshot()).projects[0].availability).toBe('unreadable');

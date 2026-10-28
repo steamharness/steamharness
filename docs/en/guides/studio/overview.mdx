@@ -98,11 +98,13 @@ Downloads preserve every entry path and database alias-to-ID references while ex
 
 Run **Workflow: Open Studio Analysis**, or select the chart button in the project list toolbar, to open the built-in `build-in-analysis` Kanban. This repository can also run as a normal Kanban project in Studio.
 
-The dashboard includes local Workflow, Conversation, and Kanban projects in the current workspace and Studio's imported project registry, deduplicated by real folder path. Unimported disk folders and projects declaring Server storage are excluded. No server data is read.
+The dashboard includes local Workflow, Conversation, and Kanban projects in the current workspace and Studio's imported project registry, deduplicated by real folder path and entry. Unimported disk folders are excluded. Projects using Server databases still contribute only their local history; no server data is read.
 
 The overview shows project counts and types, run status distributions, a 14-day trend, running and waiting tasks, queued inputs, success rate, and average duration. Project and run tables provide time, type, project, and status filters, search, pagination, and CSV export. Optional automatic refresh runs every five seconds. Success rate uses completed records in the selected period, excluding unknown, running, and waiting records.
 
 Histories come from Studio's local CLI storage. CLIs with activity recording also provide live states across Studio windows. Unverified runs from older CLIs display an unknown status. Unreadable projects are marked unavailable, and no sample data is substituted. Standalone browsers and CLIs without a Studio connection do not provide this data interface.
+
+Stale imports are no longer counted separately when their existing folders lack a standalone `steamharness.json` or have become aggregate child entries. Inaccessible folders, missing manifests in the current workspace, malformed declarations, identity changes, and history read failures remain unavailable. Local analysis reads declarations and local history without resolving deployment database bindings or migrating legacy `package.json` declarations.
 
 ## Accounts and servers
 

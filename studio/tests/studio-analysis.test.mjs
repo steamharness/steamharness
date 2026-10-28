@@ -10,7 +10,7 @@ const require = createRequire(import.meta.url);
 function fixture(imported = []) {
   const vscode = { workspace: { isTrusted: true }, Uri: { parse: value => { const url = new URL(value); return { scheme: url.protocol.slice(0, -1), fsPath: decodeURIComponent(url.pathname) }; } } };
   const module = { exports: {} };
-  runInNewContext(compiled.outputFiles[0].text, { module, exports: module.exports, require: name => name === 'vscode' ? vscode : require(name) });
+  runInNewContext(compiled.outputFiles[0].text, { module, exports: module.exports, URL, require: name => name === 'vscode' ? vscode : require(name) });
   return { vscode, api: module.exports, context: { globalState: { get: key => key === IMPORTED_PROJECTS_KEY ? imported : undefined } } };
 }
 test('analysis combines the current workspace with local imports without exposing assistants or remote directories', () => {
@@ -27,4 +27,15 @@ test('the analysis capability accepts only the read-only query and stops on trus
   await assert.rejects(read('studio.theme.set', {})); await assert.rejects(read('studio.analysis.get', { projectDir: '/other' })); assert.equal(calls, 1);
   f.vscode.workspace.isTrusted = false; await assert.rejects(read('studio.analysis.get', {}));
   f.vscode.workspace.isTrusted = true; controller.abort(); await assert.rejects(read('studio.analysis.get', {}));
+});
+
+test('analysis retains workspace membership when a project cannot be discovered from its manifest', () => {
+  const id = '8f6a6240-4860-4efc-bd07-932868be2b98';
+  const f = fixture([{ id, name: 'Current', uri: 'file:///project' }, { id, name: 'Old', uri: 'file:///old-project' }]);
+  f.vscode.workspace.workspaceFolders = [{ uri: { toString: () => 'file:///project' } }];
+  const projects = f.api.studioAnalysisProjects(f.context, []);
+  assert.equal(projects[0].inWorkspace, true);
+  assert.equal(projects[1].inWorkspace, false);
+  f.vscode.workspace.workspaceFolders = [];
+  assert.equal(f.api.studioAnalysisProjects(f.context, [])[0].inWorkspace, false);
 });
