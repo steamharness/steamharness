@@ -52,7 +52,6 @@ for (const dependency of ['steamharness', '@steamharness/cli']) {
 }
 const manifestPath = path.join(project, 'package.json');
 const manifest = JSON.parse(await readFile(manifestPath, 'utf8'));
-for(const entry of manifest.steamHarness.entries) for(const database of entry.databases) database.host='server';
 const manifestText = JSON.stringify(manifest);
 await writeFile(manifestPath, manifestText);
 const userData = path.join(directory, 'user');

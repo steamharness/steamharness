@@ -6,4 +6,4 @@
 
 `--action write --value Hello` 使用事务写入 KV 和知识文档；`--action read` 读取；writer 的 `--action call` 通过 `context.entries.get("reader").runEntrypoint("main", ...)` 调用 reader。未批准、未绑定或撤销后，数据访问失败，不会隐式创建空间。
 
-空间独立于项目生命周期。另一个 projectId 可以申请访问同一空间；会话命名空间继续按 projectId 和 entryId 隔离。发布或上传时剥离 bindingRef，安装者重新申请。
+空间独立于项目生命周期。另一个 projectId 可以申请访问同一空间；会话命名空间继续按 projectId 和 entryId 隔离。发布或上传保留 alias/databaseId 引用；权限由宿主维护，引用本身不授予访问权。

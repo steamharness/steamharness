@@ -589,7 +589,7 @@ describe("server workspace CLI helpers", () => {
   it('packages every registered entry and removes installed database bindings',async()=>{
     const root=await mkdtemp(path.join(os.tmpdir(),'aggregate-pack-'));
     try {
-      const entries=[{entryId:'one',name:'One',type:'workflow',root:'one',entry:'index.ts',databases:[]},{entryId:'two',name:'Two',type:'workflow',root:'two',entry:'index.ts',databases:[]},{entryId:'map',name:'Map',type:'kanban',root:'map',entry:'index.html',databases:[{alias:'data',host:'server',bindingRef:'c6033af9-e762-4a4e-a319-523cdb55103e',permissions:{kv:{read:{mode:'all'},write:{mode:'all'}},knowledge:{read:{mode:'none'},write:{mode:'none'}}}}]}];
+      const entries=[{entryId:'one',name:'One',type:'workflow',root:'one',entry:'index.ts',databases:[]},{entryId:'two',name:'Two',type:'workflow',root:'two',entry:'index.ts',databases:[]},{entryId:'map',name:'Map',type:'kanban',root:'map',entry:'index.html',databases:[{alias:'data',databaseId:'c6033af9-e762-4a4e-a319-523cdb55103e'}]}];
       await writeFile(path.join(root,'package.json'),JSON.stringify({id:'a7e15f8a-e179-4986-8b0d-1e69a0e65b51',name:'Aggregate',steamHarness:{defaultEntry:'one',entries}}));
       for(const entry of entries){await mkdir(path.join(root,entry.root));await writeFile(path.join(root,entry.root,entry.entry),'export {};');}
       const staging=path.join(root,'staging');await stageProjectSource({projectDir:root,projectName:'aggregate',stagingRoot:staging});

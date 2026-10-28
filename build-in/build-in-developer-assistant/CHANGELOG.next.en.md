@@ -1,5 +1,7 @@
 # Unreleased
 
+- Changed: generators, templates and examples use alias/databaseId references and document multiple databases, shared entries and host-managed permissions. Project code continues to access databases by entry-local alias.
+
 - The assistant now separates model and effort controls and uses the available model catalogue automatically loaded by the host. Its model menu groups sources and provides Add model at the bottom.
 
 - Clarified generated Agent parameters: automatic user models retain default inheritance, explicit project models keep the original configuration, and direct calls share a model and inherited-permission snapshot.

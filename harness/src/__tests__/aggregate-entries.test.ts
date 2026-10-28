@@ -70,7 +70,7 @@ test("entry operations use target grants while rechecking the caller and inherit
     const approval = registry.review(request.requestId, { approve: true });
     const { readFile } = await import("node:fs/promises");
     const pkg = JSON.parse(await readFile(path.join(directory, "package.json"), "utf8"));
-    pkg.steamHarness.entries[1].databases = [{ alias: "cache", host: "local", bindingRef: approval.bindingRef, permissions }];
+    pkg.steamHarness.entries[1].databases = [{ alias: "cache", databaseId: approval.databaseId }];
     await writeFile(path.join(directory, "package.json"), JSON.stringify(pkg));
     await writeFile(path.join(directory, "two.ts"), `const flow = steamharness.defineProject({ name: "Cache", async run(_input, context) {
       await context.databases.get("cache").kv.setValue("cached", context.actor.userId);
@@ -94,6 +94,6 @@ test("entry operations use target grants while rechecking the caller and inherit
     registry.revoke(registry.authorization(approval.bindingRef!)!.grant.grantId);
     const revoked = await runLocalProjectWithReport(options);
     assert.equal(revoked.status, "failed");
-    assert.match(JSON.stringify(revoked.result), /no longer valid/);
+    assert.match(JSON.stringify(revoked.result), /host authorization/);
   } finally { await rm(directory, { recursive: true, force: true }); }
 });

@@ -7,19 +7,30 @@ description: "Independent database spaces"
 
 A database is an independent resource of a local or server host. One `spaceId` contains KV, knowledge documents, indexes, attachments and revisions. Multiple projects and entries may receive access. Deleting a project does not delete its spaces.
 
-## Declare requirements
+## Record database references
 
-Each entry declares `databases` with `alias`, `host`, `permissions` and an optional non-sensitive `bindingRef`. Code uses `context.databases.get(alias)`; the host stores the space, grants and actual credentials. Select `local` or `server` explicitly. Failed authorization never falls back to another host.
+Each entry records only an `alias` and its approved `databaseId`. The host manages permissions and credentials. Old `host`, `permissions` and `bindingRef` declaration fields are rejected.
 
-Permissions independently control `kv.read/write` and `knowledge.read/write`. Each rule is `{"mode":"none"}`, `{"mode":"all"}` or `{"mode":"prefixes","prefixes":["public:"]}`. Effective access is the intersection of the entry declaration and current grant. KV listing applies the effective key range before pagination and counting. Client-supplied key prefixes may only narrow that range.
+```json
+{
+"databases": [
+  { "alias": "data", "databaseId": "00000000-0000-4000-8000-000000000001" },
+  { "alias": "archive", "databaseId": "00000000-0000-4000-8000-000000000002" }
+]
+}
+```
+
+Replace these example UUIDs with IDs approved by your host. Entries may reference multiple databases; the same database can be granted to multiple projects and entries. Aliases are unique within an entry. Use `context.databases.get("data")` in code; replacing a database changes only the manifest mapping.
+
+Host grants independently control `kv.read/write` and `knowledge.read/write`, using `{"mode":"none"}`, `{"mode":"all"}` or `{"mode":"prefixes","prefixes":["public:"]}`. KV listing applies the granted key range before pagination and counting. Client-supplied key prefixes may only narrow that range.
 
 ## Request and approval
 
 1. Open the target entry in CLI Web or Studio and select **Databases** in the toolbar. If **Database binding requires attention** is shown, select **Open database management** in that prompt to manage its alias. This also works in the Studio assistant. Server Web has an independent database page.
 2. Request a new space or access to an existing `spaceId`. The request is `pending`; no space is created and data access remains unavailable.
 3. The local host user explicitly reviews local requests. A Server system administrator approves new spaces, with the applicant becoming owner. The owner or a system administrator reviews shared access.
-4. A reviewer may reject with a reason or narrow permissions before approval. Approval creates a grant and binding; select **Bind approved space** under the target alias to bind the entry.
-5. Binding rechecks the entry, which can run once the checks pass. Only `bindingRef` belongs in the entry declaration. Rejected requests can be retried. Revocation requires a new request. The host refreshes rotated credentials; old credentials are rejected.
+4. A reviewer may reject with a reason or narrow permissions before approval. Approval returns a `databaseId` and creates a host grant for the project and entry. The application does not need a manifest reference before requesting access.
+5. Enter the approved ID under the desired alias and select **Save database reference**. The entry rechecks access and can run once checks pass. Saving records the mapping; it does not create or authorize a database. Rejected or revoked access requires a new host request; rotated credentials are refreshed by the host.
 
 CLI Web and Studio share a user-level SQLite registry, with data directories separated by `spaceId`. Server persists catalog and data independently in PostgreSQL. Project membership still limits the caller; database grants cannot elevate their role.
 
@@ -41,6 +52,6 @@ Project and entry IDs authorize access and record its source; the space addresse
 
 Two projects with approved bindings to the same space share keys, knowledge documents and attachments. Conversation KV remains isolated by project, entry and conversation identity. Knowledge indexes commit together with document mutations.
 
-## Invalid bindings
+## Unavailable references
 
-Unbound, pending, rejected, revoked and incorrectly hosted requirements expose their state and request, bind or retry actions. Other entries remain manageable and runnable. Uploads, archives and Store distributions carry requirements and strip `bindingRef`; installers must request their own access.
+Unknown IDs and unavailable or revoked grants expose errors and host management actions. Other entries remain manageable and runnable. Uploads, archives and Store distributions preserve alias-to-ID references. A reference carries no credentials or permissions; the host always validates the caller, project and entry.

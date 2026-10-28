@@ -6,6 +6,7 @@ import path from 'node:path';
 import { afterAll } from 'vitest';
 import { LocalDatabaseRegistry, createDatabasesContext, createEntriesContext, createLocalDatabaseResolver, runLocalProjectWithReport, type KVStore, type ProjectManifest } from 'steamharness';
 
+const permissions = {kv:{read:{mode:'all' as const},write:{mode:'all' as const}},knowledge:{read:{mode:'all' as const},write:{mode:'all' as const}}};
 const directories: string[] = [];
 afterAll(() => { for (const directory of directories.splice(0)) rmSync(directory, {recursive:true,force:true}); });
 
@@ -15,10 +16,9 @@ export function createApprovedTestContext() {
   directories.push(directory);
   const registry = new LocalDatabaseRegistry(directory);
   const projectId = randomUUID(), entryId = 'main';
-  const permissions = {kv:{read:{mode:'all' as const},write:{mode:'all' as const}},knowledge:{read:{mode:'all' as const},write:{mode:'all' as const}}};
   const request = registry.request({projectId,entryId,alias:'data',permissions,target:{kind:'create',name:'Example test'}});
-  const {bindingRef} = registry.review(request.requestId,{approve:true});
-  const requirements = [{alias:'data',host:'local' as const,permissions,bindingRef}];
+  const {databaseId} = registry.review(request.requestId,{approve:true});
+  const requirements = [{alias:'data',databaseId:databaseId!}];
   const manifest: ProjectManifest = {projectId,name:'Example',defaultEntry:entryId,entries:[{entryId,type:'workflow',name:'Example',root:'.',entry:'index.ts',databases:requirements}]};
   return {projectId,entryId,
     databases:createDatabasesContext({projectId,entryId,conversationId:'fixture-thread',requirements,resolver:createLocalDatabaseResolver(registry)}),
@@ -38,9 +38,8 @@ export async function runApprovedProject(options: Parameters<typeof runLocalProj
     const pkg = JSON.parse(await readFile(path.join(projectDir,'package.json'),'utf8'));
     const registry = new LocalDatabaseRegistry(path.join(directory,'databases'));
     for (const entry of pkg.steamHarness.entries) for (const requirement of entry.databases) {
-      if (requirement.host !== 'local') throw new Error('Offline sample tests require an explicit local declaration.');
-      const request=registry.request({projectId:pkg.id,entryId:entry.entryId,alias:requirement.alias,permissions:requirement.permissions,target:{kind:'create',name:`Test / ${entry.entryId}`}});
-      requirement.bindingRef=registry.review(request.requestId,{approve:true}).bindingRef;
+      const request=registry.request({projectId:pkg.id,entryId:entry.entryId,alias:requirement.alias,permissions,target:{kind:'create',name:`Test / ${entry.entryId}`}});
+      requirement.databaseId=registry.review(request.requestId,{approve:true}).databaseId;
     }
     await writeFile(path.join(projectDir,'package.json'),JSON.stringify(pkg));
     const resolver=createLocalDatabaseResolver(registry);

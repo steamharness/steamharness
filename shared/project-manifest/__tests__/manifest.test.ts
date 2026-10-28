@@ -51,11 +51,26 @@ describe("aggregate project manifest", () => {
     }
     expect(() => readProjectManifest({ id, name: "old" })).toThrow();
   });
-  it("strips publisher bindings without modifying source", () => {
-    const p = pkg(); Object.assign(p.steamHarness.entries[0]!, { databases: [{ alias: "data", host: "server", permissions: emptyDatabasePermissions(), bindingRef: id }] });
+  it("preserves database IDs for distribution without mutating the source", () => {
+    const p = pkg(); Object.assign(p.steamHarness.entries[0]!, { databases: [{ alias: "data", databaseId: id }] });
     const distribution = projectManifestForDistribution(p);
-    expect(readProjectManifest(distribution).entries[0]!.databases[0]!.bindingRef).toBeUndefined();
-    expect(readProjectManifest(p).entries[0]!.databases[0]!.bindingRef).toBe(id);
+    expect(readProjectManifest(distribution).entries[0]!.databases).toEqual([{ alias: "data", databaseId: id }]);
+    expect(readProjectManifest(p).entries[0]!.databases).toEqual([{ alias: "data", databaseId: id }]);
+  });
+  it("accepts multiple database references per entry and shared IDs across entries", () => {
+    const p = pkg();
+    Object.assign(p.steamHarness.entries[0]!, { databases: [{ alias: "data", databaseId: id }, { alias: "archive", databaseId: "00000000-0000-4000-8000-000000000001" }] });
+    Object.assign(p.steamHarness.entries[1]!, { databases: [{ alias: "shared", databaseId: id }] });
+    expect(readProjectManifest(p).entries[0]!.databases).toHaveLength(2);
+    expect(readProjectManifest(p).entries[1]!.databases[0]!.databaseId).toBe(id);
+  });
+  it("rejects permission declarations, binding references, invalid IDs and duplicate aliases", () => {
+    for (const database of [{ alias: "data", host: "server", permissions: emptyDatabasePermissions() }, { alias: "data", databaseId: id, permissions: emptyDatabasePermissions() }, { alias: "data", databaseId: id, bindingRef: id }, { alias: "data", databaseId: "invalid" }]) {
+      const p = pkg(); Object.assign(p.steamHarness.entries[0]!, { databases: [database] });
+      expect(() => readProjectManifest(p)).toThrow();
+    }
+    const p = pkg(); Object.assign(p.steamHarness.entries[0]!, { databases: [{ alias: "data", databaseId: id }, { alias: "data", databaseId: id }] });
+    expect(() => readProjectManifest(p)).toThrow("duplicate aliases");
   });
   it("rejects entry roots and files escaping through symlinks", async () => {
     const temp = await mkdtemp(path.join(os.tmpdir(), "aggregate-manifest-"));

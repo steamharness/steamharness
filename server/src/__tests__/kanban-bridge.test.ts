@@ -20,7 +20,7 @@ test('Kanban dispatches KV, knowledge, attachments and revisions through the sel
     const permissions={kv:{read:all,write:all},knowledge:{read:all,write:all}};
     const request=registry.request({projectId,entryId:'board',alias:'data',permissions,target:{kind:'create',name:'Board'}});
     const approved=registry.review(request.requestId,{approve:true});
-    const databases=createDatabasesContext({projectId,entryId:'board',requirements:[{alias:'data',host:'local',permissions,bindingRef:approved.bindingRef}],resolver:createLocalDatabaseResolver(registry)});
+    const databases=createDatabasesContext({projectId,entryId:'board',requirements:[{alias:'data',databaseId:approved.databaseId!}],resolver:createLocalDatabaseResolver(registry)});
     const storage={entryDatabases:async(...args:unknown[])=>{assert.deepEqual(args,[projectId,'board',actor,'1.0.0']);return databases;}} as unknown as Storage;
     const call=(operation:KanbanBridgeCall['operation'],input:Record<string,unknown>={})=>invokeServerKanbanBridge(storage,projectId,{requestId:randomUUID(),operation,input:{database:'data',...input}},options);
     await call('kv.setValue',{key:'board',value:{version:1}});
@@ -40,7 +40,7 @@ test('Kanban dispatches KV, knowledge, attachments and revisions through the sel
     await call('knowledge.deleteDocument',{documentId:'guide'});
     assert.equal(await call('knowledge.getDocument',{documentId:'guide'}),null);
     registry.revoke(registry.authorization(approved.bindingRef!)!.grant.grantId);
-    await assert.rejects(call('kv.getValue',{key:'board'}),/no longer valid/);
+    await assert.rejects(call('kv.getValue',{key:'board'}),/host authorization/);
   }finally{await rm(root,{recursive:true,force:true});}
 });
 

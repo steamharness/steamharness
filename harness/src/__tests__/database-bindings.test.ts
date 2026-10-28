@@ -16,7 +16,7 @@ test("concurrent entry bindings preserve every approved binding and unrelated ma
     const permissions = { kv: { read: all, write: all }, knowledge: { read: all, write: all } };
     const entries = Array.from({ length: 8 }, (_, index) => ({
       entryId: `entry-${index}`, type: "workflow", name: `Entry ${index}`, root: ".", entry: "index.ts",
-      databases: [{ alias: "data", host: "local", permissions }],
+      databases: [],
     }));
     const packagePath = path.join(directory, "package.json");
     await writeFile(packagePath, JSON.stringify({ id: projectId, name: "bindings", custom: { preserved: true }, steamHarness: { entries, defaultEntry: entries[0]!.entryId } }));
@@ -27,13 +27,16 @@ test("concurrent entry bindings preserve every approved binding and unrelated ma
       const request = registry.request({ projectId, entryId: entry.entryId, alias: "data", permissions, target: { kind: "create", name: entry.name } });
       return registry.review(request.requestId, { approve: true });
     });
-    await Promise.all(entries.map((entry, index) => bindProjectDatabase(directory, entry.entryId, "data", approvals[index]!.bindingRef!, resolver)));
+    await Promise.all(entries.map((entry, index) => bindProjectDatabase(directory, entry.entryId, "data", approvals[index]!.databaseId!)));
     const saved = JSON.parse(await readFile(packagePath, "utf8"));
     assert.deepEqual(saved.custom, { preserved: true });
-    assert.deepEqual(saved.steamHarness.entries.map((entry: { databases: Array<{ bindingRef: string }> }) => entry.databases[0]!.bindingRef), approvals.map(item => item.bindingRef));
-    registry.revoke(registry.authorization(approvals[0]!.bindingRef!)!.grant.grantId);
-    await assert.rejects(bindProjectDatabase(directory, entries[0]!.entryId, "data", approvals[0]!.bindingRef!, resolver), /no longer valid/);
-    assert.equal(await readFile(packagePath, "utf8"), JSON.stringify(saved, null, 2) + "\n");
+    assert.deepEqual(saved.steamHarness.entries.map((entry: { databases: Array<{ databaseId: string }> }) => entry.databases[0]!.databaseId), approvals.map(item => item.databaseId));
+    const replacement = randomUUID();
+    await bindProjectDatabase(directory, entries[0]!.entryId, "data", replacement);
+    const updated = JSON.parse(await readFile(packagePath, "utf8"));
+    assert.equal(updated.steamHarness.entries[0].databases[0].databaseId, replacement);
+    await assert.rejects(bindProjectDatabase(directory, entries[0]!.entryId, "data", "invalid"), /UUID/);
+    assert.equal(await readFile(packagePath, "utf8"), JSON.stringify(updated, null, 2) + "\n");
   } finally {
     if (previous === undefined) delete process.env.STEAMHARNESS_DATABASES_DIR;
     else process.env.STEAMHARNESS_DATABASES_DIR = previous;

@@ -17,8 +17,8 @@ export function createTestResources(store?: KVStore) {
   const bound = requirements.map((requirement) => {
     const request = catalog.request({ ...requirement, projectId, entryId, target: { kind: "create", name: requirement.alias } }, actor);
     const approved = catalog.review(request.requestId, { approve: true }, actor);
-    return { ...requirement, bindingRef: approved.bindingRef };
+    return { alias: requirement.alias, databaseId: approved.databaseId! };
   });
-  const databases: DatabasesContext = createDatabasesContext({ projectId, entryId, requirements: bound, conversationId: "conversation", resolver: { resolve(requirement) { const authorization = catalog.authorization(requirement.bindingRef!); return authorization ? { authorization, store: store! } : undefined; } } });
+  const databases: DatabasesContext = createDatabasesContext({ projectId, entryId, requirements: bound, conversationId: "conversation", resolver: { resolve(requirement, consumer) { const authorization = catalog.resolve(requirement.databaseId, consumer); return authorization ? { authorization, store: store! } : undefined; } } });
   return { projectId, entryId, databases, entries: createEntriesContext({ projectId, name: "test", defaultEntry: entryId, entries: [{ entryId, name: "test", type: "workflow", root: ".", entry: "index.ts", databases: bound }] }, { actor, projectId, sourceEntryId: entryId }, { async list() { return []; }, async run() { throw new Error("No nested test entry."); } }) };
 }

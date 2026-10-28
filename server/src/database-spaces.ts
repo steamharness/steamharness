@@ -20,7 +20,6 @@ export class DatabaseSpaceRepository {
     if (!this.pool) return;
     await this.pool.query(`CREATE TABLE IF NOT EXISTS database_space_catalog (id INTEGER PRIMARY KEY CHECK(id=1), content JSONB NOT NULL);
       INSERT INTO database_space_catalog VALUES(1,'{"spaces":[],"requests":[],"grants":[],"bindings":[]}') ON CONFLICT DO NOTHING;
-      CREATE TABLE IF NOT EXISTS database_entry_bindings (project_id UUID NOT NULL, entry_id TEXT NOT NULL, alias TEXT NOT NULL, binding_ref UUID NOT NULL, PRIMARY KEY(project_id,entry_id,alias));
       CREATE SEQUENCE IF NOT EXISTS database_space_revision;
       CREATE TABLE IF NOT EXISTS database_space_values (space_id UUID NOT NULL, kind TEXT NOT NULL CHECK(kind IN ('kv','persistent_value')), namespace TEXT NOT NULL, key TEXT NOT NULL, value JSONB NOT NULL, revision BIGINT NOT NULL DEFAULT nextval('database_space_revision'), source JSONB, updated_at TIMESTAMPTZ NOT NULL DEFAULT now(), PRIMARY KEY(space_id,kind,namespace,key));
       CREATE TABLE IF NOT EXISTS database_space_revisions (space_id UUID PRIMARY KEY, revision BIGINT NOT NULL);`);
@@ -50,26 +49,12 @@ export class DatabaseSpaceRepository {
   request(input: CreateDatabaseRequest, actor: DatabaseActor) { return this.transaction(true, catalog => catalog.request(input, actor)); }
   review(requestId: string, decision: { approve: boolean; permissions?: DatabasePermissions; reason?: string }, actor: DatabaseActor) { return this.transaction(true, catalog => catalog.review(requestId, decision, actor)); }
   manage(grantId: string, action: 'revoke' | 'rotate' | 'narrow', actor: DatabaseActor, permissions?: DatabasePermissions) { return this.transaction(true, catalog => action === 'revoke' ? catalog.revoke(grantId, actor) : action === 'rotate' ? catalog.rotate(grantId, actor) : catalog.narrow(grantId, permissions!, actor)); }
-  authorization(bindingRef: string, consumer: { projectId: string; entryId: string }) {
+  authorization(databaseId: string, consumer: { projectId: string; entryId: string }) {
     return this.transaction(false, catalog => {
-      const authorization = catalog.authorization(bindingRef);
-      if (!authorization || authorization.binding.projectId !== consumer.projectId || authorization.binding.entryId !== consumer.entryId || authorization.grant.revokedAt) throw new HttpError(403, 403, 'Database binding is unavailable or revoked.');
+      const authorization = catalog.resolve(databaseId, consumer);
+      if (!authorization) throw new HttpError(403, 403, 'Database access is unavailable or revoked.');
       return authorization;
     });
-  }
-  async bind(consumer: { projectId: string; entryId: string; alias: string }, bindingRef: string) {
-    return this.transaction(false, async (catalog, client) => {
-      const authorization = catalog.authorization(bindingRef);
-      const requirement = { ...consumer, bindingRef, host: "server" as const };
-      if (!authorization) throw new HttpError(403,403,"Database binding is unavailable.");
-      assertDatabaseAuthorization({ ...authorization, grant: { ...authorization.grant, permissions: fullPermissions() } }, requirement, "kv", "read", "");
-      await client.query("INSERT INTO database_entry_bindings VALUES($1,$2,$3,$4) ON CONFLICT(project_id,entry_id,alias) DO UPDATE SET binding_ref=excluded.binding_ref", [consumer.projectId,consumer.entryId,consumer.alias,bindingRef]);
-      return authorization.binding;
-    });
-  }
-  async bindingFor(consumer: { projectId: string; entryId: string; alias: string }): Promise<string | undefined> {
-    const result = await this.requirePool().query("SELECT binding_ref FROM database_entry_bindings WHERE project_id=$1 AND entry_id=$2 AND alias=$3", [consumer.projectId,consumer.entryId,consumer.alias]);
-    return result.rows[0]?.binding_ref;
   }
   async listValues(spaceId: string, actor: DatabaseActor, page = 1, pageSize = 30, search = "") {
     page = Math.max(1,Math.floor(page)); pageSize = Math.max(1,Math.min(100,Math.floor(pageSize)));
@@ -83,7 +68,7 @@ export class DatabaseSpaceRepository {
   }
   async managementDatabase(spaceId: string, actor: DatabaseActor, namespace?: string) {
     const {createDatabasesContext,RemoteDatabaseSpaceStore} = await import("steamharness");
-    const requirement: DatabaseRequirement = { alias:"space",host:"server",bindingRef:spaceId,permissions:fullPermissions() };
+    const requirement: DatabaseRequirement = { alias:"space",databaseId:spaceId };
     if (namespace && namespace !== "space" && (!namespace.startsWith("conversation:") || namespace.length > 525)) throw new HttpError(400,400,"Invalid database namespace.");
     return createDatabasesContext({projectId:spaceId,entryId:"management",conversationNamespace: namespace?.startsWith("conversation:") ? namespace.slice(13) : undefined,requirements:[requirement],resolver:{resolve:async()=>{
       const authorization=await this.transaction(false,catalog=>managerAuthorization(catalog,spaceId,actor));
@@ -91,7 +76,7 @@ export class DatabaseSpaceRepository {
       return {authorization,store};
     }}}).get("space");
   }
-  async data(spaceId: string, raw: Record<string, any>, actor: DatabaseActor, management = false, requirement?: DatabaseRequirement): Promise<unknown> {
+  async data(spaceId: string, raw: Record<string, any>, actor: DatabaseActor, management = false): Promise<unknown> {
     if (!DATABASE_UUID_PATTERN.test(spaceId)) throw new HttpError(400, 400, 'Invalid database space.');
     const consumer: Consumer = { projectId: raw.projectId, entryId: raw.entryId, alias: raw.alias, bindingRef: raw.bindingRef, credentialVersion: raw.credentialVersion };
     if (!DATABASE_UUID_PATTERN.test(consumer.projectId ?? '') || !DATABASE_IDENTIFIER_PATTERN.test(consumer.entryId ?? '') || !DATABASE_IDENTIFIER_PATTERN.test(consumer.alias ?? '') || !DATABASE_UUID_PATTERN.test(consumer.bindingRef ?? '')) throw new HttpError(400, 400, 'A database binding and consumer identity are required.');
@@ -108,8 +93,7 @@ export class DatabaseSpaceRepository {
         const knowledge = isKnowledgeDocumentStorageKey(entry.key) || entry.key.startsWith('__knowledge_file:');
         if (entry.storageKind === 'kv' && knowledge || entry.storageKind === 'persistent_value' && !knowledge) throw new HttpError(403, 403, 'Knowledge storage must use the knowledge API.');
         try {
-          assertDatabaseAuthorization(authorization,{...consumer,host:'server'},entry.storageKind==='kv'?'kv':'knowledge',operation,entry.key);
-          if(requirement) assertDatabaseAuthorization({...authorization,grant:{...authorization.grant,permissions:requirement.permissions}},{...consumer,host:'server'},entry.storageKind==='kv'?'kv':'knowledge',operation,entry.key);
+          assertDatabaseAuthorization(authorization,{...consumer,databaseId:spaceId},entry.storageKind==='kv'?'kv':'knowledge',operation,entry.key);
         }
         catch (error) { throw new HttpError(403, 403, error instanceof Error ? error.message : 'Database access denied.'); }
       };
@@ -126,18 +110,17 @@ export class DatabaseSpaceRepository {
       const remove = async (entry: Address) => { check(entry, 'write'); const result = await client.query('DELETE FROM database_space_values WHERE space_id=$1 AND kind=$2 AND namespace=$3 AND key=$4', args(entry)); if (result.rowCount) await revision(); return { removed: !!result.rowCount }; };
       if (raw.operation === 'revision') {
         const grant = authorization.grant;
-        if (authorization.binding.projectId !== consumer.projectId || authorization.binding.entryId !== consumer.entryId || authorization.binding.alias !== consumer.alias || !(['kv', 'knowledge'] as const).some(resource => databaseReadPrefixes(grant.permissions[resource].read, requirement?.permissions[resource].read ?? { mode: 'all' })?.length !== 0)) throw new HttpError(403, 403, 'Database revisions require read access.');
+        if (authorization.binding.projectId !== consumer.projectId || authorization.binding.entryId !== consumer.entryId || !(['kv', 'knowledge'] as const).some(resource => databaseReadPrefixes(grant.permissions[resource].read)?.length !== 0)) throw new HttpError(403, 403, 'Database revisions require read access.');
         const result = await client.query('SELECT revision::text FROM database_space_revisions WHERE space_id=$1', [spaceId]); return { revision: result.rows[0]?.revision ?? '0' };
       }
       if (raw.operation === 'list') {
         const entry = address(raw.entry);
         if (entry.storageKind !== 'kv') throw new HttpError(403,403,'Use the knowledge API.');
         const identity = {...authorization, grant:{...authorization.grant,permissions:fullPermissions()}};
-        assertDatabaseAuthorization(identity,{...consumer,host:'server'},'kv','read','');
+        assertDatabaseAuthorization(identity,{...consumer,databaseId:spaceId},'kv','read','');
         if (raw.keyPrefixes !== undefined && (!Array.isArray(raw.keyPrefixes) || raw.keyPrefixes.length > 1024 || raw.keyPrefixes.some((prefix: unknown) => typeof prefix !== 'string' || !prefix.length || prefix.length > 1024 || prefix.includes('\0')))) throw new HttpError(400,400,'Invalid database key prefixes.');
         const prefixes = databaseReadPrefixes(
           authorization.grant.permissions.kv.read,
-          requirement?.permissions.kv.read ?? {mode:'all'},
           raw.keyPrefixes === undefined ? {mode:'all'} : {mode:'prefixes',prefixes:raw.keyPrefixes},
         );
         if (prefixes?.length === 0) throw new HttpError(403,403,'KV read access is required.');

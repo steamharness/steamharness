@@ -6,6 +6,6 @@ export const RUNTIME_CAPABILITIES = `Runtime surface (generated from Core):
 - DatabaseContext: listValues(input), kv, knowledge, getBinding(), getRevision(), subscribe(listener, options), transaction(operation).
 - DatabaseKnowledgeContext: listDocuments(input), getDocument(documentId), createDocument(input), editDocument(input), deleteDocument(documentId), searchDocuments(input), files, readDocumentLines(input).
 - context.entries.get(entryId) calls Workflow operations inside this aggregate with the original actor and tool restrictions.
-- context.databases.get(alias) uses an explicitly approved local or server space; no default database or host fallback.
+- context.databases.get(alias) resolves an entry-local alias to its approved databaseId; manifests record references and hosts maintain all permissions.
 - Database grants are rechecked on every access; knowledge and attachments require knowledge permissions.
 `;

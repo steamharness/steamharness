@@ -96,10 +96,9 @@ export class RemoteDatabaseSpaceStore implements KVStore {
 export function createRemoteDatabaseResolver(connection: DatabaseConnection): DatabaseResolver {
   const stores = new Map<string, RemoteDatabaseSpaceStore>();
   return { async resolve(requirement, consumer) {
-    if (requirement.host !== "server" || !requirement.bindingRef) return undefined;
-    const authorization = await databaseHostRequest<DatabaseAuthorization>(connection, `/bindings/${encodeURIComponent(requirement.bindingRef)}?projectId=${encodeURIComponent(consumer.projectId)}&entryId=${encodeURIComponent(consumer.entryId)}`).catch(cause => consumerFailure(cause, consumer, requirement.alias));
-    const { bindingRef } = requirement;
-    const key = `${consumer.projectId}:${consumer.entryId}:${bindingRef}`;
+    const authorization = await databaseHostRequest<DatabaseAuthorization>(connection, `/${encodeURIComponent(requirement.databaseId)}/authorization?projectId=${encodeURIComponent(consumer.projectId)}&entryId=${encodeURIComponent(consumer.entryId)}`).catch(cause => consumerFailure(cause, consumer, requirement.alias));
+    const { bindingRef } = authorization.binding;
+    const key = `${consumer.projectId}:${consumer.entryId}:${requirement.alias}:${bindingRef}`;
     let store = stores.get(key);
     if (!store || (store as unknown as { credentialVersion: number }).credentialVersion !== authorization.grant.credentialVersion) { store = new RemoteDatabaseSpaceStore(connection, { ...consumer, alias: requirement.alias, bindingRef }, authorization.space.spaceId, authorization.grant.credentialVersion); stores.set(key, store); }
     return { authorization, store };

@@ -6,6 +6,7 @@ import path from 'node:path';
 import { startWebServer } from '../web/server';
 import type { Project, Report, Runtime } from '../web/workflow-types';
 
+const all = { mode: 'all' as const }, permissions = { kv: { read: all, write: all }, knowledge: { read: all, write: all } };
 const apps: Awaited<ReturnType<typeof startWebServer>>[] = [], folders: string[] = [];
 afterEach(async () => {
   for (const app of apps.splice(0)) await app.close();
@@ -18,10 +19,9 @@ async function fixture(database = false) {
   vi.spyOn(os, 'homedir').mockReturnValue(path.join(directory, 'host'));
   vi.stubEnv('STEAMHARNESS_CLI_AUTH_DIR', path.join(directory, 'auth'));
   vi.stubEnv('STEAMHARNESS_SERVER_URL', ''); vi.stubEnv('STEAMHARNESS_SERVER_ADMIN_KEY', '');
-  const all = { mode: 'all' as const }, permissions = { kv: { read: all, write: all }, knowledge: { read: all, write: all } };
   const entries = ([['agent', 'conversation'], ['assistant', 'conversation'], ['workflow', 'workflow'], ['board', 'kanban']] as const).map(([entryId, type]) => ({
     entryId, type, name: entryId, root: entryId, entry: type === 'kanban' ? 'index.html' : 'index.ts', configuration: 'configuration.json',
-    databases: database && entryId === 'agent' ? [{ alias: 'data', host: 'local' as const, permissions }] : [],
+    databases: database && entryId === 'agent' ? [{ alias: 'data', databaseId: randomUUID() }] : [],
   }));
   const id = randomUUID(), pkg = { id, name: 'Aggregate test', steamHarness: { entries, defaultEntry: 'agent' } };
   await writeFile(path.join(directory, 'package.json'), JSON.stringify(pkg));
@@ -84,7 +84,7 @@ it('requires database approval and binding, then applies narrowed and revoked gr
   const denied = (operation: string, input: object = {}) => f.post('agent', { type: 'databases', action: 'data', alias: 'data', operation, input });
   expect((await denied('kv.getValue', { key: 'shared' })).ok).toBe(false);
   expect((await f.state('assistant')).project.entryId).toBe('assistant');
-  let result = await database({ action: 'request', host: 'local', alias: 'data', target: { kind: 'create', name: 'Approved space' } });
+  let result = await database({ action: 'request', host: 'local', alias: 'data', permissions, target: { kind: 'create', name: 'Approved space' } });
   expect(result.value.local.spaces).toEqual([]);
   const request = result.value.local.requests[0]; expect(request.status).toBe('pending');
   const reviewMessageId = randomUUID();
@@ -93,8 +93,8 @@ it('requires database approval and binding, then applies narrowed and revoked gr
   expect(result.value.local.requests[0]).toMatchObject({ requestId: request.requestId, status: 'approved' });
   const grant = result.value.local.grants[0], binding = result.value.local.bindings[0];
   expect((await f.post('agent', { type: 'databases', action: 'review', host: 'local', requestId: randomUUID(), databaseRequestId: request.requestId, approve: true })).ok).toBe(false);
-  await database({ action: 'bind', host: 'local', alias: 'data', bindingRef: binding.bindingRef });
-  expect(JSON.parse(await readFile(path.join(f.directory, 'package.json'), 'utf8')).steamHarness.entries[0].databases[0].bindingRef).toBe(binding.bindingRef);
+  await database({ action: 'bind', host: 'local', alias: 'data', databaseId: binding.spaceId });
+  expect(JSON.parse(await readFile(path.join(f.directory, 'package.json'), 'utf8')).steamHarness.entries[0].databases[0].databaseId).toBe(binding.spaceId);
   await data('kv.setValue', { key: 'shared', value: { count: 1 } });
   expect((await data('kv.getValue', { key: 'shared' })).value.data).toEqual({ count: 1 });
   await data('knowledge.createDocument', { id: 'guide', title: 'Guide', markdown: 'Shared knowledge' });

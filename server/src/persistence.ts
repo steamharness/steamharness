@@ -173,10 +173,14 @@ export class DatabaseRepository implements KVStore {
 
       alter table projects add column if not exists entries jsonb;
       alter table projects add column if not exists default_entry text;
-      delete from projects where entries is null;
-      alter table projects alter column entries set not null;
-      alter table projects alter column default_entry set not null;
-      alter table projects drop column if exists project_type;
+      -- Keep unsupported legacy rows and their dependent data. Starting a newer
+      -- Server must never erase projects to satisfy its current manifest schema.
+      do $$ begin
+        if exists (select 1 from information_schema.columns where table_schema=current_schema()
+          and table_name='projects' and column_name='project_type') then
+          alter table projects alter column project_type drop not null;
+        end if;
+      end $$;
 
       alter table projects
         add column if not exists group_id text references project_groups(id);
@@ -207,9 +211,7 @@ export class DatabaseRepository implements KVStore {
 
       alter table project_versions add column if not exists entries jsonb;
       alter table project_versions add column if not exists default_entry text;
-      delete from project_versions where entries is null;
-      alter table project_versions alter column entries set not null;
-      alter table project_versions alter column default_entry set not null;
+      -- Legacy version snapshots remain stored until explicitly migrated.
 
       create table if not exists project_version_downloads (
         project_id text not null,
@@ -385,6 +387,7 @@ export class DatabaseRepository implements KVStore {
         owner_user_id, group_id, visibility, created_by_user_id,
         created_at, updated_at
       from projects
+      where entries is not null and default_entry is not null
       order by name asc, id asc
     `);
 
@@ -397,7 +400,7 @@ export class DatabaseRepository implements KVStore {
         owner_user_id, group_id, visibility, created_by_user_id,
         created_at, updated_at
        from projects
-       where id = $1`,
+       where id = $1 and entries is not null and default_entry is not null`,
       [projectId],
     );
 
@@ -912,7 +915,7 @@ export class DatabaseRepository implements KVStore {
       `select project_id, project_name, version, created_at, source_hash,
         source_object_path, release_log, created_by_user_id, entries, default_entry
        from project_versions
-       where project_id = $1 and version = $2`,
+       where project_id = $1 and version = $2 and entries is not null and default_entry is not null`,
       [projectId, version],
     );
 
@@ -921,7 +924,7 @@ export class DatabaseRepository implements KVStore {
   }
 
   async listVersions(projectId: string): Promise<DbVersionRecord[]> {
-    const result = await this.pool.query<VersionRow>(`SELECT project_id,project_name,version,created_at,source_hash,source_object_path,release_log,created_by_user_id,entries,default_entry FROM project_versions WHERE project_id=$1 ORDER BY created_at`, [projectId]);
+    const result = await this.pool.query<VersionRow>(`SELECT project_id,project_name,version,created_at,source_hash,source_object_path,release_log,created_by_user_id,entries,default_entry FROM project_versions WHERE project_id=$1 AND entries IS NOT NULL AND default_entry IS NOT NULL ORDER BY created_at`, [projectId]);
     return result.rows.map(toVersionRecord);
   }
 
@@ -960,7 +963,7 @@ export class DatabaseRepository implements KVStore {
     const result = await this.pool.query<VersionSummaryRow>(
       `select project_id, project_name, version
        from project_versions
-       where project_id = any($1::text[])
+       where project_id = any($1::text[]) and entries is not null and default_entry is not null
        order by project_id asc, version asc`,
       [projectIds],
     );

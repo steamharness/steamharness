@@ -249,7 +249,7 @@ function renderRun(): void {
   const files = run.files;
   output.update({ id: run.id, role: 'assistant', content: run.items.length || run.report?.result?.data === undefined ? '' : JSON.stringify(run.report.result.data, null, 2),
     items: run.items, status: run.status, pendingInput: run.pendingInput, resolvedInputs: run.resolvedInputs, submittingInput: run.submittingInput,
-    events: run.events, timers: run.timers }, state!.project.id, state!.project.entryId, run.scopeId, files, state!.project.databases.some(database => database.host === 'server') ? 'server' : 'local');
+    events: run.events, timers: run.timers }, state!.project.id, state!.project.entryId, run.scopeId, files, 'local');
   const pendingLabel = element('run-output').querySelector('.pending > span:last-child'); if (pendingLabel) { pendingLabel.textContent = t("Running..."); }
   element('run-files').replaceChildren(...files.map(file => {
     const button = iconButton('file', file.name, () => host.postMessage({ type: 'open-file', id: file.id })); button.className = 'workflow-file';

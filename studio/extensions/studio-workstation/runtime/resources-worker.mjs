@@ -13,14 +13,14 @@ export async function runResourceRequest(request, core) {
   const entry = core.selectProjectEntry(manifest, request.project.entryId);
   const requirement = entry.databases.find(item => item.alias === input.database);
   if (!requirement) throw new Error('Select a declared database alias.');
-  if (input.source && input.source !== requirement.host) throw new Error('Database host mismatch.');
-  const source = requirement.host, sources = [source];
+  let source, sources = [];
   const local = core.createLocalDatabaseResolver();
   const remote = request.connection && core.createRemoteDatabaseResolver({serverUrl:request.connection.serverUrl,token:request.connection.accessToken});
-  const resolver = {resolve:(requirement, consumer)=>(requirement.host==='local'?local:remote)?.resolve(requirement,consumer)};
+  const resolver = {resolve:async(requirement, consumer)=>await local.resolve(requirement,consumer)??remote?.resolve(requirement,consumer)};
   const database = core.createDatabasesContext({projectId:manifest.projectId,entryId:entry.entryId,requirements:entry.databases,resolver,conversationId:input.conversationId}).get(requirement.alias);
   try {
-    await database.getBinding();
+    source = (await database.getBinding()).space.host; sources = [source];
+    if (input.source && input.source !== source) throw new Error('Database host mismatch.');
     if (input.kind==='kv') {
       if (input.action==='list') {
         const page = await database.listValues({...input,pageSize:30,scope:input.scope??'project'});

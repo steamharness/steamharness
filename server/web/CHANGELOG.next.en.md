@@ -2,6 +2,8 @@
 
 - Improvement: Aggregate entry lists display each entry’s declared icon and foreground/background colors. Entries do not own independent versions.
 
+- Changed: database pages show entry aliases and database IDs, accept requests independently of manifests, and display approved IDs. Hosts continue to review and maintain permissions.
+
 - Breaking: project management displays registered entries, the default entry and separate configurations. Database pages manage requests, approval, sharing, bindings, grant recovery and space data. Related-project and project-owned database pages are removed.
 
 - Improved avatar previews in user management and profile dialogs: click to view a larger image that fits the viewport, then return keyboard focus to the avatar on close. Existing upload, profile, menu and project navigation actions are preserved.

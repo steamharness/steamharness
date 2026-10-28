@@ -2,6 +2,8 @@
 
 - Improvement: Start shows one card per aggregate and opens the default entry. The window panel opens native tabs or side-by-side entry views on the shared host. Entries configure independent icons and colors; entry labels no longer repeat the root version.
 
+- Changed: entry information shows database aliases and IDs. Resource panels resolve host authorization from references, preserve entry isolation for multiple databases, and no longer read manifest permissions or host fields.
+
 - Improved model tables with compact rows, consistent hover backgrounds, inline custom-provider details, and locally bundled brand icons for common models.
 
 - Improved model settings with a three-column table grouping all automatically loaded built-ins above custom models, a built-in refresh action, catalogue names and centered custom-model dialogs. Model and effort now use separate controls; the grouped model menu keeps Add model at the bottom across locales, themes, narrow windows and keyboard navigation.

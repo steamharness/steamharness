@@ -1,5 +1,7 @@
 # Unreleased
 
+- Changed: database authorization resolves databaseId, projectId and entryId for many-to-many references. Hosts maintain all data permissions. Startup preserves unsupported project rows, snapshots and storage instead of deleting them.
+
 - Fixed forged database request approval metadata exposing other spaces and grants. KV listing intersects host declarations, grants and client key prefixes before counting and pagination.
 
 - Breaking: project and version APIs return aggregate entries with separate configurations. KV, knowledge, attachments and revisions use independent database spaces with creation/sharing requests, approval, narrowed grants, revocation and credential rotation. Every access is authorized; old project databases and related-project APIs are removed. Server remains a static source host.

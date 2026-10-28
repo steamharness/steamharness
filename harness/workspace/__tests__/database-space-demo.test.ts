@@ -25,15 +25,15 @@ it("runs same-type aggregate entries only after explicit independent approvals a
     const unavailable = await runLocalProjectWithReport({ projectDir, entryId: "writer", args: ["--action", "write"], databaseResolver });
     expect(unavailable.status).toBe("failed");
     expect(registry.read().spaces).toHaveLength(0);
-    const request = registry.request({ projectId, entryId: "writer", alias: "data", target: { kind: "create", name: "Demo shared space" }, permissions: requirement.permissions });
+    const request = registry.request({ projectId, entryId: "writer", alias: "data", target: { kind: "create", name: "Demo shared space" }, permissions: { kv: { read: {mode:'all'}, write: {mode:'all'} }, knowledge: { read: {mode:'all'}, write: {mode:'all'} } } });
     expect(registry.read().spaces).toHaveLength(0);
     const approved = registry.review(request.requestId, { approve: true });
-    await bindProjectDatabase(projectDir, "writer", "data", approved.bindingRef!, databaseResolver);
+    await bindProjectDatabase(projectDir, "writer", "data", approved.databaseId!);
     const spaceId = registry.authorization(approved.bindingRef!)!.space.spaceId;
     const grant = async (target: string, consumerProjectId: string, entryId: string) => {
-      const request = registry.request({ projectId: consumerProjectId, entryId, alias: "data", target: { kind: "access", spaceId }, permissions: requirement.permissions });
+      const request = registry.request({ projectId: consumerProjectId, entryId, alias: "data", target: { kind: "access", spaceId }, permissions: { kv: { read: {mode:'all'}, write: {mode:'all'} }, knowledge: { read: {mode:'all'}, write: {mode:'all'} } } });
       const approved = registry.review(request.requestId, { approve: true });
-      await bindProjectDatabase(target, entryId, "data", approved.bindingRef!, databaseResolver);
+      await bindProjectDatabase(target, entryId, "data", approved.databaseId!);
       return registry.authorization(approved.bindingRef!)!;
     };
     await grant(projectDir, projectId, "reader");

@@ -36,30 +36,31 @@ export function mountAggregateToolbar(host: Host) {
     content.replaceChildren();
     if (state.serverError) error.textContent = state.serverError;
     for (const requirement of state.requirements) {
-      const section = row(`${requirement.alias} · ${requirement.host} · ${t(requirement.status)}`);
+      const section = row(`${requirement.alias} · ${t(requirement.status)}`);
+      const databaseId = input(t('Database ID'), requirement.databaseId);
+      section.append(databaseId, button(t('Save database reference'), () => send({ action: 'bind', alias: requirement.alias, databaseId: databaseId.value })));
       if (requirement.error) { const detail = document.createElement('p'); detail.textContent = requirement.error; section.append(detail); }
-      const catalog = state[requirement.host];
-      const request = catalog?.requests.find((item: any) => item.projectId === state.projectId && item.entryId === state.entryId && item.alias === requirement.alias && item.status === 'pending');
-      if (request) { section.append(document.createTextNode(t('Pending approval'))); continue; }
-      if (requirement.status !== 'bound') {
-        const approved = catalog?.bindings.filter((item: any) => item.projectId === state.projectId && item.entryId === state.entryId && item.alias === requirement.alias && !catalog.grants.find((grant: any) => grant.grantId === item.grantId)?.revokedAt) ?? [];
-        for (const binding of approved) section.append(button(t('Bind approved space'), () => send({ action: 'bind', host: requirement.host, alias: requirement.alias, bindingRef: binding.bindingRef })));
-        const name = input(t('New space name'), `${project.aggregateName} / ${project.name}`);
-        section.append(name, button(t('Request new space'), () => send({ action: 'request', host: requirement.host, alias: requirement.alias, target: { kind: 'create', name: name.value } })));
-        const space = input(t('Existing space ID'));
-        section.append(space, button(t('Request shared access'), () => send({ action: 'request', host: requirement.host, alias: requirement.alias, target: { kind: 'access', spaceId: space.value } })));
-      } else {
-        section.append(document.createTextNode(requirement.space.name));
+      if (requirement.status === 'bound') {
+        section.append(document.createTextNode(`${requirement.space.host} · ${requirement.space.name}`));
         const tools = document.createElement('details'), summary = document.createElement('summary'); summary.textContent = t('Manage data'); tools.append(summary);
         const data = document.createElement('div'); data.className = 'database-data'; tools.append(data); section.append(tools);
         mountDatabaseData(data, (operation, input, receive) => { if (pending) return; receiveData = receive; send({ action: 'data', alias: requirement.alias, operation, input }); });
       }
     }
+    const reference = row(t('Add database reference'));
+    const alias = input(t('Database alias')), databaseId = input(t('Database ID'));
+    reference.append(alias, databaseId, button(t('Save database reference'), () => send({ action: 'bind', alias: alias.value, databaseId: databaseId.value })));
     for (const host of ['local', 'server']) {
       const catalog = state[host]; if (!catalog) continue;
+      const application = row(`${host} · ${t('Request database access')}`);
+      const requestAlias = input(t('Database alias'), 'data'), name = input(t('New space name'), `${project.aggregateName} / ${project.name}`), space = input(t('Existing space ID'));
+      const requestedPermissions = document.createElement('textarea'); requestedPermissions.setAttribute('aria-label', t('Requested permissions'));
+      const all = { mode: 'all' }; requestedPermissions.value = JSON.stringify({ kv: { read: all, write: all }, knowledge: { read: all, write: all } }, null, 2);
+      const request = (target: Record<string, string>) => { try { send({ action: 'request', host, alias: requestAlias.value, permissions: JSON.parse(requestedPermissions.value), target }); } catch (failure) { error.textContent = String(failure); } };
+      application.append(requestAlias, requestedPermissions, name, button(t('Request new space'), () => request({ kind: 'create', name: name.value })), space, button(t('Request shared access'), () => request({ kind: 'access', spaceId: space.value })));
       for (const request of catalog.requests) {
-        const section = row(`${host} · ${request.entryId}/${request.alias} · ${t(request.status)}`);
-        const detail = document.createElement('p'); detail.textContent = `${request.projectId} · ${request.target.name ?? request.target.spaceId}${request.reason ? ' · ' + request.reason : ''}`; section.append(detail);
+        const section = row(`${host} · ${request.entryId}/${request.alias} · ${t(request.status === 'pending' ? 'Pending approval' : request.status)}`);
+        const detail = document.createElement('p'); detail.textContent = `${request.projectId} · ${request.databaseId ?? request.target.name ?? request.target.spaceId}${request.reason ? ' · ' + request.reason : ''}`; section.append(detail);
         if (request.status !== 'pending') continue;
         const permissions = document.createElement('textarea'); permissions.setAttribute('aria-label', t('Approved permissions')); permissions.value = JSON.stringify(request.permissions, null, 2); section.append(permissions);
         const reason = input(t('Review reason'));

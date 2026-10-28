@@ -133,3 +133,36 @@ test("PostgreSQL preserves source AI policy through stale drafts and hidden publ
     await admin.query(`drop schema ${schema} cascade`);await admin.end();
   }
 });
+
+test('Server startup preserves unsupported project rows, snapshots and storage', {
+  skip: databaseUrl ? false : 'STEAMHARNESS_TEST_DATABASE_URL is not configured',
+}, async () => {
+  const schema = `startup_preservation_${randomUUID().replaceAll('-', '')}`;
+  const admin = new pg.Pool({ connectionString: databaseUrl });
+  await admin.query(`create schema ${schema}`);
+  const url = new URL(databaseUrl!); url.searchParams.set('options', `-c search_path=${schema}`);
+  const db = new DatabaseRepository(url.toString()), raw = new pg.Pool({ connectionString: url.toString() });
+  const id = randomUUID();
+  try {
+    await db.init();
+    await raw.query(`alter table projects alter column entries drop not null;
+      alter table projects alter column default_entry drop not null;
+      alter table projects add column project_type text not null default 'workflow';
+      alter table project_versions alter column entries drop not null;
+      alter table project_versions alter column default_entry drop not null;`);
+    await raw.query('insert into projects(id,name) values($1,$2)', [id, 'Retained project']);
+    await raw.query(`insert into project_versions(project_id,version,project_name,created_at,source_hash,source_object_path)
+      values($1,'1.0.0','Retained project',now(),'hash','source.tgz')`, [id]);
+    await raw.query(`insert into project_storage(storage_kind,scope,project_id,key,value) values('kv','project',$1,'retained','true')`, [id]);
+    await db.init();
+    assert.equal((await raw.query('select project_type from projects where id=$1', [id])).rows[0].project_type, 'workflow');
+    assert.equal((await raw.query('select count(*)::int as total from project_versions where project_id=$1', [id])).rows[0].total, 1);
+    assert.equal((await raw.query('select value from project_storage where project_id=$1', [id])).rows[0].value, true);
+    assert.deepEqual(await db.listProjects(), []);
+    assert.equal(await db.getProject(id), undefined);
+    await raw.query(`insert into projects(id,name,entries,default_entry) values($1,'New project',$2,'main')`, [randomUUID(), JSON.stringify([{entryId:'main',name:'Main',type:'workflow',root:'.',entry:'index.ts',databases:[]}])]);
+    assert.equal((await db.listProjects()).length, 1);
+  } finally {
+    await db.close(); await raw.end(); await admin.query(`drop schema ${schema} cascade`); await admin.end();
+  }
+});

@@ -73,7 +73,7 @@ Studio 在用户级 `studio.agent.permissionPolicy` 保存设置，默认 `auto`
 
 `context.entries.list()` 列出注册；`context.entries.get("jobs").listEntrypoints()` 列举 Workflow 操作；`runEntrypoint("refresh", ["--limit", "10"])` 调用操作。保留原用户、取消信号和工具权限，重新校验目标配置快照及授权。目标操作使用目标入口的数据库授权；调用方不会因此获得直接数据库句柄。嵌套调用上限 16。
 
-一个聚合是一个上传、版本和 Store 安装单元。打包包含所有注册代码、配置、依赖清单和 Kanban 静态产物，剥离全部 bindingRef；安装者重新申请数据库。普通 npm dependencies 保持包管理行为。Server 只处理静态元数据、文件和数据访问，不加载执行项目代码。
+一个聚合是一个上传、版本和 Store 安装单元。打包包含所有注册代码、配置、依赖清单和 Kanban 静态产物，保留数据库 alias/databaseId 引用；引用本身不授予权限。普通 npm dependencies 保持包管理行为。Server 只处理静态元数据、文件和数据访问，不加载执行项目代码。
 
 ## 项目卡片（steamHarness.projectCard）
 
@@ -404,10 +404,10 @@ try {
 `context.databases.get(alias)` 返回入口声明的数据库上下文。声明示例：
 
 ```json
-{"alias":"data","host":"local","permissions":{"kv":{"read":{"mode":"all"},"write":{"mode":"all"}},"knowledge":{"read":{"mode":"all"},"write":{"mode":"all"}}}}
+{"alias":"data","databaseId":"00000000-0000-4000-8000-000000000001"}
 ```
 
-把需求放入具体入口的 `databases`，无需求使用 `[]`。`host` 只接受 `local` 或 `server`，没有默认数据库、隐式回退或数据同步。获批后宿主登记授权，声明可保存非敏感 `bindingRef`。申请新空间或已有空间访问都必须经显式审批；local 由本机使用者审批，Server 新空间由管理员审批、共享由空间负责人或管理员审批。未绑定或失效时展示申请、绑定与重试入口，其他入口仍可运行。
+把引用放入具体入口的 `databases`，不使用数据库时填 `[]`。示例 UUID 必须替换为宿主批准的真实 ID。只允许 `alias`、`databaseId`，拒绝旧的 `host`、`permissions`、`bindingRef` 字段。每个入口可引用多个数据库，同一库可授权多个项目和入口；别名在入口内唯一。业务代码始终按别名访问，更换数据库只修改 ID 映射。申请独立于清单，由宿主审批和维护 KV/知识库权限。保存引用不创建空间或授予权限。未授权或撤销时展示宿主管理入口，其他入口仍可运行。
 
 一个空间可被多个 projectId 和 entryId 授权访问。数据按 spaceId 保存，项目删除不删除空间。授权绑定消费方项目和入口，分别限制 KV、知识库的读写和键前缀，审批可缩小权限，撤销和轮换后每次访问立即重新校验。不要把凭据、运行时注册表或数据库数据放进项目源码和发行包。
 
@@ -1279,7 +1279,7 @@ const response = await fetch("https://api.example.com/run", {
 
 ## Package
 
-package.json 注册聚合入口，Core/CLI 依赖使用仓库指定精确版本。入口类型与 executor 一致；configuration 和代码路径相对 root。发行前静态检查每个入口，构建所有 Kanban 产物。数据库仅发行需求；bindingRef、凭据、数据库数据、历史及个人配置不进入发行包。
+package.json 注册聚合入口，Core/CLI 依赖使用仓库指定精确版本。入口类型与 executor 一致；configuration 和代码路径相对 root。发行前静态检查每个入口，构建所有 Kanban 产物。数据库只发行 alias/databaseId 引用；权限、凭据、数据库数据、历史及个人配置不进入发行包。
 
 ## Server 数据服务
 

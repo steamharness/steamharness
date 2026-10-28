@@ -76,10 +76,10 @@ export function projectEntryKey(projectId: string, entryId: string): string {
 export function projectManifestTypes(manifest: Pick<ProjectManifest, "entries">): ProjectKind[] {
   return [...new Set(manifest.entries.map((entry) => entry.type))];
 }
-/** Remove machine-specific bindings from every distributable declaration. */
+/** Database IDs are portable references; all authorization stays on the host. */
 export function projectManifestForDistribution<T extends Record<string, unknown>>(pkg: T): T {
   const manifest = readProjectManifest(pkg);
-  return { ...pkg, steamHarness: { ...record(pkg.steamHarness, "steamHarness"), entries: manifest.entries.map((entry) => ({ ...entry, databases: entry.databases.map(({ bindingRef: _binding, ...requirement }) => requirement) })) } };
+  return { ...pkg, steamHarness: { ...record(pkg.steamHarness, "steamHarness"), entries: manifest.entries } };
 }
 export function normalizeEntryPath(value: unknown, field: string, allowRoot = false): string {
   if (allowRoot && value === ".") return ".";

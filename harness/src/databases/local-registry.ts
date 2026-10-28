@@ -4,7 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { DatabaseCatalog, type CreateDatabaseRequest, type DatabaseCatalogState } from "@steamharness/database-spaces/catalog";
-import type { DatabaseActor, DatabasePermissions } from "@steamharness/database-spaces";
+import type { DatabaseActor, DatabaseConsumer, DatabasePermissions } from "@steamharness/database-spaces";
 
 export function localDatabaseRegistryDirectory(): string {
   const override = process.env.STEAMHARNESS_DATABASES_DIR?.trim();
@@ -30,6 +30,7 @@ export class LocalDatabaseRegistry {
   narrow(grantId: string, permissions: DatabasePermissions) { return this.mutate((catalog) => catalog.narrow(grantId, permissions, localDatabaseHostActor())); }
   read() { return this.mutate((catalog) => catalog.visible(localDatabaseHostActor()), false); }
   authorization(bindingRef: string) { return this.mutate((catalog) => catalog.authorization(bindingRef), false); }
+  resolve(databaseId: string, consumer: DatabaseConsumer) { return this.mutate((catalog) => catalog.resolve(databaseId, consumer), false); }
 
   private mutate<T>(run: (catalog: DatabaseCatalog) => T, write = true): T {
     const db = new DatabaseSync(path.join(this.directory, "registry.sqlite"));

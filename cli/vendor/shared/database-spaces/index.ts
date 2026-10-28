@@ -14,10 +14,7 @@ export interface DatabaseConsumer { projectId: string; entryId: string }
 
 export interface DatabaseRequirement {
   alias: string;
-  host: DatabaseHost;
-  description?: string;
-  permissions: DatabasePermissions;
-  bindingRef?: string;
+  databaseId: string;
 }
 
 export interface DatabaseSpace {
@@ -40,6 +37,7 @@ export interface DatabaseRequest extends DatabaseConsumer {
   reviewedAt?: string;
   reviewerId?: string;
   reason?: string;
+  databaseId?: string;
   bindingRef?: string;
 }
 
@@ -110,12 +108,10 @@ export function normalizeDatabaseAccessRule(value: unknown, field = "access"): D
 
 export function normalizeDatabaseRequirement(value: unknown, field = "database"): DatabaseRequirement {
   const input = object(value, field);
-  exact(input, ["alias", "host", "description", "permissions", "bindingRef"], field);
+  exact(input, ["alias", "databaseId"], field);
   if (typeof input.alias !== "string" || !DATABASE_IDENTIFIER_PATTERN.test(input.alias)) throw new Error(`${field}.alias must be an identifier.`);
-  if (input.host !== "local" && input.host !== "server") throw new Error(`${field}.host must explicitly be local or server.`);
-  if (input.bindingRef !== undefined && (typeof input.bindingRef !== "string" || !DATABASE_UUID_PATTERN.test(input.bindingRef))) throw new Error(`${field}.bindingRef must be a UUID.`);
-  if (input.description !== undefined && (typeof input.description !== "string" || !input.description.trim() || input.description.length > 4096)) throw new Error(`${field}.description is invalid.`);
-  return { alias: input.alias, host: input.host, permissions: normalizeDatabasePermissions(input.permissions, `${field}.permissions`), ...(input.description === undefined ? {} : { description: input.description as string }), ...(input.bindingRef === undefined ? {} : { bindingRef: input.bindingRef as string }) };
+  if (typeof input.databaseId !== "string" || !DATABASE_UUID_PATTERN.test(input.databaseId)) throw new Error(`${field}.databaseId must be a UUID.`);
+  return { alias: input.alias, databaseId: input.databaseId.toLowerCase() };
 }
 
 export function databaseRuleAllows(rule: DatabaseAccessRule, key: string): boolean {
@@ -128,10 +124,10 @@ export function isDatabasePermissionSubset(approved: DatabasePermissions, reques
   return (["kv", "knowledge"] as const).every((resource) => (["read", "write"] as const).every((operation) => subset(approved[resource][operation], requested[resource][operation])));
 }
 
-export function assertDatabaseAuthorization(authorization: DatabaseAuthorization | undefined, consumer: DatabaseConsumer & { host: DatabaseHost; alias: string; bindingRef?: string }, resource: "kv" | "knowledge", operation: "read" | "write", key: string, credentialVersion?: number): asserts authorization is DatabaseAuthorization {
-  if (!consumer.bindingRef || !authorization) throw new DatabaseAccessError("DATABASE_UNBOUND", `Database "${consumer.alias}" requires an approved binding.`);
+export function assertDatabaseAuthorization(authorization: DatabaseAuthorization | undefined, consumer: DatabaseConsumer & DatabaseRequirement, resource: "kv" | "knowledge", operation: "read" | "write", key: string, credentialVersion?: number): asserts authorization is DatabaseAuthorization {
+  if (!authorization) throw new DatabaseAccessError("DATABASE_UNBOUND", `Database "${consumer.alias}" requires host authorization.`);
   const { binding, grant, space } = authorization;
-  if (binding.bindingRef !== consumer.bindingRef || binding.projectId !== consumer.projectId || binding.entryId !== consumer.entryId || binding.alias !== consumer.alias || binding.host !== consumer.host || space.host !== consumer.host || binding.grantId !== grant.grantId || binding.spaceId !== space.spaceId || grant.spaceId !== space.spaceId || grant.projectId !== consumer.projectId || grant.entryId !== consumer.entryId) throw new DatabaseAccessError("DATABASE_BINDING_MISMATCH", `Database "${consumer.alias}" is bound to a different consumer or host.`);
+  if (space.spaceId !== consumer.databaseId || binding.projectId !== consumer.projectId || binding.entryId !== consumer.entryId || binding.host !== space.host || binding.grantId !== grant.grantId || binding.spaceId !== space.spaceId || grant.spaceId !== space.spaceId || grant.projectId !== consumer.projectId || grant.entryId !== consumer.entryId) throw new DatabaseAccessError("DATABASE_BINDING_MISMATCH", `Database "${consumer.alias}" is authorized for a different consumer or database.`);
   if (grant.revokedAt || (credentialVersion !== undefined && credentialVersion !== grant.credentialVersion)) throw new DatabaseAccessError("DATABASE_GRANT_REVOKED", `Database "${consumer.alias}" authorization is no longer valid.`);
   if (!databaseRuleAllows(grant.permissions[resource][operation], key)) throw new DatabaseAccessError("DATABASE_ACCESS_DENIED", `Database "${consumer.alias}" does not allow ${resource} ${operation} for "${key}".`);
 }

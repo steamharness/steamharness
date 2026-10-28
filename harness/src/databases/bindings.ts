@@ -5,7 +5,7 @@ import { setTimeout as delay } from "node:timers/promises";
 import path from "node:path";
 import { resolveProjectEntry } from "@steamharness/project-manifest/node";
 import { readProjectManifest } from "@steamharness/project-manifest";
-import { createDatabasesContext, type DatabaseResolver } from "./index";
+import { normalizeDatabaseRequirement } from "@steamharness/database-spaces";
 import { localDatabaseRegistryDirectory } from "./local-registry";
 
 /** Serialize manifest updates across CLI processes and Studio tabs. */
@@ -28,22 +28,19 @@ async function withManifestLock<T>(packagePath: string, operation: () => Promise
   } finally { lock.close(); }
 }
 
-/** Persist only a non-secret binding reference after host approval. */
-export async function bindProjectDatabase(projectDir: string, entryId: string, alias: string, bindingRef: string, resolver: DatabaseResolver): Promise<void> {
+/** Record an alias and database ID. Authorization is maintained exclusively by the host. */
+export async function bindProjectDatabase(projectDir: string, entryId: string, alias: string, databaseId: string): Promise<void> {
   const resolved = await resolveProjectEntry(projectDir, entryId);
-  const requirement = resolved.registration.databases.find((item) => item.alias === alias);
-  if (!requirement) throw new Error("The entry does not declare this database alias.");
+  const reference = normalizeDatabaseRequirement({ alias, databaseId });
   const packagePath = path.join(resolved.projectDir, "package.json");
   await withManifestLock(packagePath, async () => {
-    await createDatabasesContext({ projectId: resolved.manifest.projectId, entryId, requirements: [{ ...requirement, bindingRef }], resolver }).get(alias).getBinding();
     const before = await readFile(packagePath, "utf8");
     const pkg = JSON.parse(before); const manifest = readProjectManifest(pkg);
     if (manifest.projectId !== resolved.manifest.projectId) throw new Error("Project identity changed while binding a database.");
     const entry = pkg.steamHarness.entries.find((item: { entryId: string }) => item.entryId === entryId);
-    const declared = entry?.databases.find((item: { alias: string }) => item.alias === alias);
-    const normalized = manifest.entries.find(item => item.entryId === entryId)?.databases.find(item => item.alias === alias);
-    if (!declared || !normalized || JSON.stringify({ ...normalized, bindingRef: undefined }) !== JSON.stringify({ ...requirement, bindingRef: undefined })) throw new Error("Database declaration changed. Retry binding.");
-    declared.bindingRef = bindingRef;
+    if (!entry) throw new Error("Project entry changed. Retry binding.");
+    const index = entry.databases.findIndex((item: { alias: string }) => item.alias === alias);
+    if (index < 0) entry.databases.push(reference); else entry.databases[index] = reference;
     readProjectManifest(pkg);
     const temporary = `${packagePath}.${randomUUID()}.tmp`;
     try {

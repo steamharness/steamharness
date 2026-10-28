@@ -20,7 +20,7 @@ const databaseUrl = process.env.STEAMHARNESS_TEST_DATABASE_URL;
 const all = { mode: 'all' as const }, none = { mode: 'none' as const };
 const permissions = { kv: { read: all, write: all }, knowledge: { read: all, write: all } };
 
-test('database HTTP authorization binds registered entries before upload and rechecks roles, declarations and grants', {
+test('database HTTP authorization authorizes database IDs independently of manifests and rechecks entry roles and host grants', {
   skip: !databaseUrl, timeout: 30_000,
 }, async () => {
   const admin = new pg.Pool({ connectionString: databaseUrl });
@@ -48,7 +48,7 @@ test('database HTTP authorization binds registered entries before upload and rec
     }
     const actor = (name: string) => ({ userId: users[name]!, isSystemAdmin: name === 'admin' });
     const a = randomUUID(), b = randomUUID();
-    const entry = (entryId: string, alias = 'data') => ({ entryId, type: 'workflow' as const, name: entryId, root: '.', entry: 'index.ts', databases: [{ alias, host: 'server' as const, permissions }] });
+    const entry = (entryId: string, alias = 'data') => ({ entryId, type: 'workflow' as const, name: entryId, root: '.', entry: 'index.ts', databases: [{ alias, databaseId: randomUUID() }] });
     await storage.createProject({ projectId: a, projectName: 'Owner project', entries: [entry('database'), entry('limited')], defaultEntry: 'database', projectInfo: createDefaultProjectInfo(), ownerUserId: users.owner });
     await storage.createProject({ projectId: b, projectName: 'Consumer project', entries: [entry('agent')], defaultEntry: 'agent', projectInfo: createDefaultProjectInfo(), ownerUserId: users.consumer });
     await db.access.setMember('project', a, users.guest!, 'guest', actor('owner'));
@@ -70,45 +70,34 @@ test('database HTTP authorization binds registered entries before upload and rec
     const pending = await send('owner', '/database-spaces/requests', { projectId: a, entryId: 'database', alias: 'data', permissions, target: { kind: 'create', name: 'Shared data' } });
     assert.equal(pending.status, 'pending');
     assert.equal((await send('admin', '/database-spaces')).spaces.length, 0);
-    assert.equal((await send('owner', `/database-spaces/consumers/${a}/database`))[0].status, 'unbound');
-    assert.equal((await request('owner', '/database-spaces/requests', { projectId: a, entryId: 'database', alias: 'data', permissions, target: { kind: 'create', name: 'Duplicate' } })).status, 400);
+    assert.equal((await send('owner', `/database-spaces/consumers/${a}/database`))[0].status, 'invalid');
+    assert.equal((await request('owner', '/database-spaces/requests', { projectId: a, entryId: 'database', alias: 'data', permissions, target: { kind: 'create', name: 'Shared data' } })).status, 400);
     await send('owner', `/database-spaces/requests/${pending.requestId}/review`, { approve: true }, 400);
     const approved = await send('admin', `/database-spaces/requests/${pending.requestId}/review`, { approve: true });
     await send('admin', `/database-spaces/requests/${pending.requestId}/review`, { approve: true }, 400);
-    await send('owner', `/database-spaces/bindings/${approved.bindingRef}/bind`, { projectId: a, entryId: 'database', alias: 'data' });
-    const binding = await send('owner', `/database-spaces/bindings/${approved.bindingRef}?projectId=${a}&entryId=database`);
+    const binding = await send('owner', `/database-spaces/${approved.databaseId}/authorization?projectId=${a}&entryId=database`);
     assert.equal(binding.space.ownerId, users.owner);
     const spaceId = binding.space.spaceId;
-    const open = (user: string, projectId: string, entryId: string, bindingRef: string) => createDatabasesContext({ projectId, entryId, conversationId: 'thread', requirements: [{ alias: 'data', host: 'server', bindingRef, permissions }], resolver: createRemoteDatabaseResolver({ serverUrl: base, token: tokens[user]! }) }).get('data');
-    const x = open('owner', a, 'database', approved.bindingRef);
+    const open = (user: string, projectId: string, entryId: string, databaseId: string) => createDatabasesContext({ projectId, entryId, conversationId: 'thread', requirements: [{ alias: 'data', databaseId }], resolver: createRemoteDatabaseResolver({ serverUrl: base, token: tokens[user]! }) }).get('data');
+    const x = open('owner', a, 'database', spaceId);
     await x.kv.setValue('shared', 1);
     await x.kv.setValue('public:a', 1);
     await x.kv.setValue('public:b', 2);
-    const narrowedClient = createDatabasesContext({ projectId: a, entryId: 'database', requirements: [{
-      alias: 'data', host: 'server', bindingRef: approved.bindingRef,
-      permissions: { ...permissions, kv: { read: { mode: 'prefixes', prefixes: ['public:'] }, write: none } },
-    }], resolver: createRemoteDatabaseResolver({ serverUrl: base, token: tokens.owner! }) }).get('data');
-    const firstPage = await narrowedClient.listValues({ pageSize: 1 });
-    assert.equal(firstPage.total, 2);
-    assert.deepEqual(firstPage.items.map(item => item.key), ['public:a']);
-    assert.deepEqual((await narrowedClient.listValues({ cursor: firstPage.nextCursor })).items.map(item => item.key), ['public:b']);
-    assert.equal((await narrowedClient.listValues({ query: 'shared' })).total, 0);
     const list = { projectId: a, entryId: 'database', alias: 'data', bindingRef: approved.bindingRef, credentialVersion: 1, operation: 'list', entry: { spaceId, storageKind: 'kv', scope: 'project', key: '*' } };
     for (const keyPrefixes of [null, 'public:', [1], [''], ['bad\0prefix'], ['x'.repeat(1025)], Array(1025).fill('public:')]) {
       await send('owner', `/database-spaces/${spaceId}/data`, { ...list, keyPrefixes }, 400);
     }
     await send('owner', `/database-spaces/${spaceId}/data`, { ...list, keyPrefixes: [] }, 403);
-    const guest = open('guest', a, 'database', approved.bindingRef);
+    const guest = open('guest', a, 'database', spaceId);
     assert.equal(await guest.kv.getValue('shared'), 1);
     await assert.rejects(guest.kv.setValue('shared', 2), /Permission denied/);
     await assert.rejects(guest.knowledge.createDocument({ id: 'denied', title: 'Denied', markdown: 'Denied' }), /Permission denied/);
-    await assert.rejects(open('consumer', a, 'database', approved.bindingRef).kv.getValue('shared'), /Permission denied/);
-    await send('owner', `/database-spaces/bindings/${approved.bindingRef}/bind`, { projectId: a, entryId: 'limited', alias: 'data' }, 400);
+    await assert.rejects(open('consumer', a, 'database', spaceId).kv.getValue('shared'), /Permission denied/);
+    await assert.rejects(open('owner', a, 'limited', spaceId).kv.getValue('shared'), /unavailable/);
     const sharing = await send('consumer', '/database-spaces/requests', { projectId: b, entryId: 'agent', alias: 'data', permissions, target: { kind: 'access', spaceId } });
     await send('consumer', `/database-spaces/requests/${sharing.requestId}/review`, { approve: true }, 400);
     const shared = await send('owner', `/database-spaces/requests/${sharing.requestId}/review`, { approve: true });
-    await send('consumer', `/database-spaces/bindings/${shared.bindingRef}/bind`, { projectId: b, entryId: 'agent', alias: 'data' });
-    const y = open('consumer', b, 'agent', shared.bindingRef);
+    const y = open('consumer', b, 'agent', spaceId);
     assert.equal(await y.kv.getValue('shared'), 1);
     await y.knowledge.createDocument({ id: 'shared-document', title: 'Shared', markdown: 'Shared text' });
     assert.equal((await x.knowledge.getDocument('shared-document'))?.markdown, 'Shared text');
@@ -117,17 +106,15 @@ test('database HTTP authorization binds registered entries before upload and rec
     assert.notEqual(await x.getRevision(), revision);
     const retained = await x.knowledge.files.readFile(file.id);
     assert.equal((await retained.readBuffer()).toString(), 'shared bytes');
-    // A previously approved grant cannot exceed a later declaration, even through raw HTTP.
-    await pool.query('UPDATE projects SET entries=$2::jsonb WHERE id=$1', [b, JSON.stringify([{ ...entry('agent'), databases: [{ alias: 'data', host: 'server', permissions: { ...permissions, kv: { read: { mode: 'prefixes', prefixes: ['public:'] }, write: none } } }] }])]);
+    // Permissions are maintained by the host, independently of recorded aliases and IDs.
+    await send('owner', `/database-spaces/grants/${(await y.getBinding()).grant.grantId}/narrow`, { permissions: { ...permissions, kv: { read: {mode:'prefixes',prefixes:['public:']}, write: none } } });
     await assert.rejects(y.kv.getValue('shared'), /does not allow/);
-    const raw = { projectId: b, entryId: 'agent', alias: 'data', bindingRef: shared.bindingRef, credentialVersion: 1, operation: 'set', entry: { spaceId, storageKind: 'kv', scope: 'project', key: 'shared' }, value: 2 };
+    const raw = { projectId: b, entryId: 'agent', alias: 'data', bindingRef: shared.bindingRef, credentialVersion: 2, operation: 'set', entry: { spaceId, storageKind: 'kv', scope: 'project', key: 'shared' }, value: 2 };
     await send('consumer', `/database-spaces/${spaceId}/data`, raw, 403);
     assert.equal((await y.listValues()).total, 2);
     const restrictedList = await send('consumer', `/database-spaces/${spaceId}/data`, { ...raw, operation: 'list', keyPrefixes: ['shared', 'public:'] });
     assert.equal(restrictedList.total, 2);
     assert.deepEqual(restrictedList.items.map((item: { key: string }) => item.key), ['public:a', 'public:b']);
-    await pool.query('UPDATE projects SET entries=$2::jsonb WHERE id=$1', [b, JSON.stringify([entry('agent')])]);
-    await send('owner', `/database-spaces/grants/${(await y.getBinding()).grant.grantId}/narrow`, { permissions: { ...permissions, kv: { read: all, write: none } } });
     await assert.rejects(y.kv.setValue('shared', 3), /does not allow/);
     await send('owner', `/database-spaces/grants/${(await y.getBinding()).grant.grantId}/rotate`, {});
     await send('consumer', `/database-spaces/${spaceId}/data`, { ...raw, operation: 'get' }, 403);

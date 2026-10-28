@@ -292,7 +292,7 @@ try {
       const local = core.createLocalDatabaseResolver();
       const connection = core.databaseConnectionFromEnv();
       const remote = connection && core.createRemoteDatabaseResolver(connection);
-      const databases = core.createDatabasesContext({ projectId: request.project.id, entryId: request.project.entryId, requirements: registration.databases, conversationId: request.conversationId, resolver: { resolve(requirement, consumer) { return (requirement.host === 'local' ? local : remote)?.resolve(requirement, consumer); } } });
+      const databases = core.createDatabasesContext({ projectId: request.project.id, entryId: request.project.entryId, requirements: registration.databases, conversationId: request.conversationId, resolver: { async resolve(requirement, consumer) { return await local.resolve(requirement, consumer) ?? remote?.resolve(requirement, consumer); } } });
       const database = databases.get(target.database);
       if (request.kind === 'knowledge') send('result', target.documentId ? await database.knowledge.getDocument(target.documentId) ?? null : await database.knowledge.listDocuments({ pageSize: 100 }));
       else if (target.key) send('result', await (target.scope === 'conversation' ? database.kv.conversation : database.kv).getValue(target.key) ?? null);

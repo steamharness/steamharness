@@ -3,7 +3,7 @@ import type { KVStoreValuePage } from '../kv/index';
 import { AsyncLocalStorage } from "node:async_hooks";
 import { randomUUID } from "node:crypto";
 import { createResolvedProjectFile, type FileReference, type CreateFileInput, type ResolvedFile } from "../files/index";
-import { assertDatabaseAuthorization, DatabaseAccessError, type DatabaseAuthorization, type DatabaseConsumer, type DatabaseRequirement } from "@steamharness/database-spaces";
+import { assertDatabaseAuthorization, normalizeDatabaseRequirement, DatabaseAccessError, type DatabaseAuthorization, type DatabaseConsumer, type DatabaseRequirement } from "@steamharness/database-spaces";
 import { createProjectKVContext, createProjectPersistentValueContext, normalizeProjectKVKey, type KVContext, type KVNamespace, type KVStore } from "../kv/index";
 import { createKnowledgeDocument, deleteKnowledgeDocument, describeKnowledgeMutationKeys, editKnowledgeDocument, getKnowledgeDocument, isKnowledgeDocumentStorageKey, listKnowledgeDocumentPage, readKnowledgeDocumentLines, searchKnowledgeDocuments, type CreateKnowledgeDocumentInput, type EditKnowledgeDocumentInput, type ListKnowledgeDocumentsInput, type ReadKnowledgeDocumentLinesInput, type SearchKnowledgeDocumentsInput } from "../knowledge/index";
 import { LocalDatabaseRegistry } from "./local-registry";
@@ -42,15 +42,14 @@ export interface ResolvedDatabase {
   authorization: DatabaseAuthorization;
   store: KVStore;
 }
-/** Supplied by the trusted host; declarations contain no credentials. */
+/** Supplied by the trusted host; the manifest records only aliases and database IDs. */
 export interface DatabaseResolver {
   resolve(requirement: DatabaseRequirement, consumer: DatabaseConsumer): Promise<ResolvedDatabase | undefined> | ResolvedDatabase | undefined;
 }
 export function createLocalDatabaseResolver(registry = new LocalDatabaseRegistry()): DatabaseResolver {
   const stores = new Map<string, KVStore>();
-  return { resolve(requirement) {
-    if (requirement.host !== "local" || !requirement.bindingRef) return undefined;
-    const authorization = registry.authorization(requirement.bindingRef);
+  return { resolve(requirement, consumer) {
+    const authorization = registry.resolve(requirement.databaseId, consumer);
     if (!authorization) return undefined;
     let store = stores.get(authorization.space.spaceId);
     if (!store) { store = createLocalDatabaseSpaceStore(registry.directory, authorization.space.spaceId); stores.set(authorization.space.spaceId, store); }
@@ -59,11 +58,13 @@ export function createLocalDatabaseResolver(registry = new LocalDatabaseRegistry
 }
 
 export function createDatabasesContext(options: DatabaseConsumer & { requirements: readonly DatabaseRequirement[]; resolver?: DatabaseResolver; conversationId?: string; runId?: string; conversationNamespace?: string }): DatabasesContext {
+  const requirements = options.requirements.map((item) => normalizeDatabaseRequirement(item));
+  if (new Set(requirements.map(item => item.alias)).size !== requirements.length) throw new Error("Database aliases must be unique within an entry.");
   const contexts = new Map<string, DatabaseContext>();
   return {
-    list: () => structuredClone(options.requirements),
+    list: () => structuredClone(requirements),
     get(alias) {
-      const requirement = options.requirements.find((item) => item.alias === alias);
+      const requirement = requirements.find((item) => item.alias === alias);
       if (!requirement) throw new DatabaseAccessError("DATABASE_UNBOUND", `Database alias "${alias}" is not declared by entry "${options.entryId}".`);
       const existing = contexts.get(alias); if (existing) return existing;
       let cachedStore: ResolvedDatabase | undefined;
@@ -71,7 +72,7 @@ export function createDatabasesContext(options: DatabaseConsumer & { requirement
       const identity = (value: ResolvedDatabase) => JSON.stringify([value.authorization.binding.bindingRef,value.authorization.space.spaceId,value.authorization.grant.credentialVersion]);
       const resolve = async () => {
         const resolved = await options.resolver?.resolve(requirement, options);
-        if (!resolved || !requirement.bindingRef) throw new DatabaseAccessError("DATABASE_UNBOUND", `Database "${alias}" requires an approved ${requirement.host} binding.`);
+        if (!resolved) throw new DatabaseAccessError("DATABASE_UNBOUND", `Database "${alias}" requires host authorization for database "${requirement.databaseId}".`);
         const transaction = pinned.getStore();
         if (transaction && identity(transaction) !== identity(resolved)) throw new DatabaseAccessError("DATABASE_ACCESS_DENIED", "Database authorization changed during the transaction.");
         // Keep the store transaction scope stable while revalidating its grant on every access.
@@ -81,8 +82,6 @@ export function createDatabasesContext(options: DatabaseConsumer & { requirement
       const consumer = { ...options, ...requirement };
       const assert = (resolved: ResolvedDatabase, resource: "kv" | "knowledge", operation: "read" | "write", key: string) => {
         assertDatabaseAuthorization(resolved.authorization, consumer, resource, operation, key);
-        // A declaration may narrow a previous grant, never expand one.
-        assertDatabaseAuthorization({ ...resolved.authorization, grant: { ...resolved.authorization.grant, permissions: requirement.permissions } }, consumer, resource, operation, key);
         if (resource === "kv" && (isKnowledgeDocumentStorageKey(key) || key.startsWith("__knowledge_file:"))) throw new DatabaseAccessError("DATABASE_ACCESS_DENIED", "Knowledge data must be accessed through the knowledge API.");
       };
       const namespace = (resource: "kv" | "knowledge", conversation = false): KVNamespace => {
@@ -135,7 +134,7 @@ export function createDatabasesContext(options: DatabaseConsumer & { requirement
       const context: DatabaseContext = {
         async listValues(input = {}) {
           const resolved = await resolve(); await context.getBinding();
-          const keyPrefixes = databaseReadPrefixes(requirement.permissions.kv.read, resolved.authorization.grant.permissions.kv.read);
+          const keyPrefixes = databaseReadPrefixes(resolved.authorization.grant.permissions.kv.read);
           if (keyPrefixes?.length === 0) throw new DatabaseAccessError('DATABASE_ACCESS_DENIED', 'A KV read grant is required.');
           if (!resolved.store.listValues) throw new Error('This host cannot list database values.');
           const page = await resolved.store.listValues({ ...input, keyPrefixes, projectId: resolved.authorization.space.spaceId, storageKind: 'kv', scope: input.scope ?? 'project', conversationId: options.conversationNamespace ?? (options.conversationId ? `${options.projectId}:${options.entryId}:${options.conversationId}` : undefined) });
@@ -145,7 +144,7 @@ export function createDatabasesContext(options: DatabaseConsumer & { requirement
         kv,
         async getRevision() {
           const resolved = await resolve(); await context.getBinding();
-          if (!["kv", "knowledge"].some(resource => databaseReadPrefixes(requirement.permissions[resource as "kv" | "knowledge"].read, resolved.authorization.grant.permissions[resource as "kv" | "knowledge"].read)?.length !== 0)) throw new DatabaseAccessError("DATABASE_ACCESS_DENIED", "A read grant is required for database revisions.");
+          if (!(["kv", "knowledge"] as const).some(resource => databaseReadPrefixes(resolved.authorization.grant.permissions[resource].read)?.length !== 0)) throw new DatabaseAccessError("DATABASE_ACCESS_DENIED", "A read grant is required for database revisions.");
           if (!resolved.store.readRevision) throw new Error("Database revision notifications are unavailable on this host.");
           return resolved.store.readRevision();
         },

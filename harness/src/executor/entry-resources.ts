@@ -26,7 +26,7 @@ export function createExecutorResources(declaration: EntryDeclaration, options: 
   const localResolver = createLocalDatabaseResolver();
   const connection = databaseConnectionFromEnv(options.env);
   const remoteResolver = connection ? createRemoteDatabaseResolver(connection) : undefined;
-  const resolver: DatabaseResolver = options.databaseResolver ?? { resolve(requirement, consumer) { return (requirement.host === "local" ? localResolver : remoteResolver)?.resolve(requirement, consumer); } };
+  const resolver: DatabaseResolver = options.databaseResolver ?? { async resolve(requirement, consumer) { return await localResolver.resolve(requirement, consumer) ?? remoteResolver?.resolve(requirement, consumer); } };
   return {
     projectId: declaration.projectId,
     entryId: declaration.entryId,

@@ -131,7 +131,7 @@ describe('local Studio analysis', () => {
     const f = await fixture(), link = path.join(f.root, 'link'); await symlink(f.folderPath, link, process.platform === 'win32' ? 'junction' : 'dir');
     const projects = [f.reference, { ...f.reference, folderPath: link }, { ...f.reference, folderPath: path.join(f.root, 'missing'), uri: 'file:///missing' }];
     const value = await readLocalStudioAnalysis({ storageDir: f.storageDir, projects }); expect(value.projects).toHaveLength(2); expect(value.projects[1].availability).toBe('missing');
-    f.manifest.steamHarness.entries[0]!.databases=[{alias:'data',host:'server',permissions:{kv:{read:{mode:'all'}}}}]; await writeFile(path.join(f.folderPath, 'package.json'), JSON.stringify(f.manifest));
+    f.manifest.steamHarness.entries[0]!.databases=[{alias:'data',databaseId:'00000000-0000-4000-8000-000000000001'}]; await writeFile(path.join(f.folderPath, 'package.json'), JSON.stringify(f.manifest));
     expect((await f.snapshot()).projects).toHaveLength(1);
   });
   it('reports corrupt histories and changed UUIDs as unavailable instead of empty successes', async () => {

@@ -800,7 +800,7 @@ async function createEntrypointProject(): Promise<string> {
   const request=registry.request({projectId:"11111111-1111-4111-8111-111111111111",entryId:"main",alias:"data",target:{kind:"create",name:"Test data"},permissions});
   const approved=registry.review(request.requestId,{approve:true});
   const pkg=JSON.parse(await readFile(path.join(projectDir,"package.json"),"utf8"));
-  pkg.steamHarness.entries[0].databases=[{alias:"data",host:"local",permissions,bindingRef:approved.bindingRef}];
+  pkg.steamHarness.entries[0].databases=[{alias:"data",databaseId:approved.databaseId}];
   await writeFile(path.join(projectDir,"package.json"),JSON.stringify(pkg));
   fixtureDatabases.set(projectDir,createLocalDatabaseResolver(registry));
   return projectDir;

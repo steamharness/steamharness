@@ -11,6 +11,6 @@ pnpm exec steamharness workspace download <project-id> --target latest --path ./
 
 一次操作覆盖一个 projectId 的所有注册入口，包含入口代码、依赖清单、业务配置定义和 Kanban 产物。先在本地安装依赖并构建静态入口，再运行 `steamharness check .`。
 
-归档过滤凭据、宿主运行数据、Git 和 node_modules；保留数据库需求，剥离所有 `bindingRef`。安装者必须在自己的 local 或 server 宿主重新申请绑定，不继承作者授权。
+归档过滤凭据、宿主运行数据、Git 和 node_modules，保留 `alias → databaseId` 引用。引用不授予访问权；使用其他宿主或项目身份时，申请相应访问或替换数据库 ID。
 
 `--target` 支持 `draft`、`latest` 和精确版本。下载到一个聚合目录，保持注册的子目录路径，不创建其他独立项目。源码访问仍需要成员或获批权限。

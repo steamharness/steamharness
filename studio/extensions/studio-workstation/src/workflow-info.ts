@@ -36,14 +36,6 @@ function group(id: string, label: string, icon: string, children: InfoItem[], ex
   return { id, label, icon, expanded, children: children.length ? children : [row(`${id}:empty`, t("Not declared"))] };
 }
 
-function access(value: unknown): string {
-  const rule = record(value);
-  if (rule.mode === 'all') { return t("All"); }
-  if (rule.mode === 'none') { return t("Not allowed"); }
-  if (rule.mode === 'prefixes') { return `${t("Prefixes")}: ${strings(rule.prefixes).join(', ') || t("None")}`; }
-  return text(rule.mode) ?? t("Not declared");
-}
-
 export function projectInfoItems(project: Project, manifest: unknown): InfoItem[] {
   const pkg = record(manifest);
   const info = record(record(pkg.steamHarness).projectInfo);
@@ -65,12 +57,7 @@ export function projectInfoItems(project: Project, manifest: unknown): InfoItem[
     row(`window:${entry.entryId}:path`, t('Local path'), `${entry.root}/${entry.entry}`),
   ], false), avatarUrl: projectAvatarDataUrl(entry.projectCard, entry.type) }));
   const databases = project.databases.map(database => group(`database:${database.alias}`, database.alias, 'database', [
-    row(`database:${database.alias}:host`, t('Storage location'), database.host === 'local' ? t('Local') : t('Server')),
-    row(`database:${database.alias}:binding`, t('Database binding'), database.bindingRef ?? t('Not bound')),
-    row(`database:${database.alias}:kv-read`, t('KV read'), access(database.permissions.kv.read)),
-    row(`database:${database.alias}:kv-write`, t('KV write'), access(database.permissions.kv.write)),
-    row(`database:${database.alias}:knowledge-read`, t('Knowledge read'), access(database.permissions.knowledge.read)),
-    row(`database:${database.alias}:knowledge-write`, t('Knowledge write'), access(database.permissions.knowledge.write)),
+    row(`database:${database.alias}:id`, t('Database ID'), database.databaseId),
   ], false));
 
   const platforms = [row('platform-mode', t("Platform mode"), platform.mode === 'specific' ? t("Specific platforms")

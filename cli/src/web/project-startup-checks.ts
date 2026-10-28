@@ -5,16 +5,17 @@ export function projectStartupInspector(project: Project, verify: (alias:string)
   return async (connection, signal, publish, unavailable) => {
     await refresh();
     const checks: ProjectServerCheck[] = [];
-    if (project.databases.some(database => database.host === 'server')) {
-      const issue = connection ? (await readServerProject(project.id, connection, signal)).issue : unavailable;
-      checks.push({ id: 'project', projectId: project.id, entryId: project.entryId, stage: 'registration', status: issue ? 'action-required' : 'passed', issue });
-    }
+    let server = false;
     for (const database of project.databases) {
       let issue: ProjectServerCheck['issue'];
-      try { await verify(database.alias); }
-      catch { issue = {kind:'setup-required',projectId:project.id,entryId:project.entryId,database:database.alias}; }
+      try { const authorization = await verify(database.alias) as { space?: { host?: string } } | undefined; server ||= authorization?.space?.host === 'server'; }
+      catch (error) { server ||= (error as { metadata?: { host?: string } }).metadata?.host === 'server'; issue = {kind:'setup-required',projectId:project.id,entryId:project.entryId,database:database.alias}; }
       if (signal.aborted) return checks;
       checks.push({id:`database:${database.alias}`,projectId:project.id,entryId:project.entryId,database:database.alias,stage:'database',status:issue?'action-required':'passed',issue});
+    }
+    if (server) {
+      const issue = connection ? (await readServerProject(project.id, connection, signal)).issue : unavailable;
+      checks.unshift({ id: 'project', projectId: project.id, entryId: project.entryId, stage: 'registration', status: issue ? 'action-required' : 'passed', issue });
     }
     publish(checks); return checks;
   };

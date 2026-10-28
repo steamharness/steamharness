@@ -2,11 +2,12 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { build } from 'esbuild';
 import { runInNewContext } from 'node:vm';
-import { register } from 'tsx/esm/api';
 import { createRequire } from 'node:module';
-register();
 const require = createRequire(import.meta.url);
-const { projectInfoItems } = await import('../extensions/studio-workstation/src/workflow-info.ts');
+const infoModule = await build({ entryPoints: ['extensions/studio-workstation/src/workflow-info.ts'], bundle: true, platform: 'node', format: 'cjs', write: false });
+const infoExports = { exports: {} };
+runInNewContext(infoModule.outputFiles[0].text, { module: infoExports, exports: infoExports.exports, require });
+const { projectInfoItems } = infoExports.exports;
 
 const project = (name = 'Example', projectType = 'workflow') => ({
   id: '294b1eec-23fa-42cf-9fd3-2417f71c0570',name,aggregateName:'Aggregate',projectType,entryId:'main',defaultEntry:'main',entries:[{entryId:'main',name:'Main',type:projectType,root:'.',entry:projectType==='kanban'?'index.html':'index.ts',databases:[]}],databases:[], uri: `file:///${name}`, folderPath: `/${name}`, fields: [], entrypoints: [],
@@ -44,12 +45,11 @@ test('entry windows and empty database requirements are displayed for all types'
   }
 });
 
-test('database requirements show host, binding and scoped permissions for the selected entry', () => {
-  const current = project(); current.databases = [{ alias:'notes',host:'server',permissions:{kv:{read:{mode:'all'},write:{mode:'none'}},knowledge:{read:{mode:'prefixes',prefixes:['public/']},write:{mode:'none'}}} }];
+test('database references show only the selected entry alias and database ID', () => {
+  const current = project(); current.databases = [{ alias:'notes',databaseId:'00000000-0000-4000-8000-000000000001' }];
   const items = projectInfoItems(current, {}), data = values(items);
-  assert.equal(data['database:notes:host'],'Server');assert.equal(data['database:notes:binding'],'Not bound');
-  assert.equal(data['database:notes:kv-read'],'All');assert.equal(data['database:notes:kv-write'],'Not allowed');
-  assert.equal(data['database:notes:knowledge-read'],'Prefixes: public/');
+  assert.equal(data['database:notes:id'],'00000000-0000-4000-8000-000000000001');
+  assert.equal(Object.keys(data).filter(key=>key.startsWith('database:notes:')).length,1);
 });
 
 const compiled = await build({ entryPoints: ['extensions/studio-workstation/src/workflow-info-view.ts'], bundle: true, platform: 'node', format: 'cjs', external: ['vscode'], write: false });

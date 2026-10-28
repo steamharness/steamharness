@@ -3149,7 +3149,7 @@ paths:
         "401":
           description: Authentication required.
         "403":
-          description: Project role, entry declaration or active database grant denies access.
+          description: Project role or active host database grant denies access.
         "404":
           description: Resource or registered entry unavailable.
   /api/database-spaces/requests:
@@ -3188,7 +3188,7 @@ paths:
         "401":
           description: Authentication required.
         "403":
-          description: Project role, entry declaration or active database grant denies access.
+          description: Project role or active host database grant denies access.
         "404":
           description: Resource or registered entry unavailable.
   /api/database-spaces/requests/{requestId}/review:
@@ -3242,7 +3242,7 @@ paths:
         "401":
           description: Authentication required.
         "403":
-          description: Project role, entry declaration or active database grant denies access.
+          description: Project role or active host database grant denies access.
         "404":
           description: Resource or registered entry unavailable.
   /api/database-spaces/grants/{grantId}/{action}:
@@ -3298,18 +3298,18 @@ paths:
         "401":
           description: Authentication required.
         "403":
-          description: Project role, entry declaration or active database grant denies access.
+          description: Project role or active host database grant denies access.
         "404":
           description: Resource or registered entry unavailable.
-  /api/database-spaces/bindings/{bindingRef}:
+  /api/database-spaces/{spaceId}/authorization:
     get:
       tags:
         - Database Spaces
-      summary: Resolve a binding for its consumer
+      summary: Resolve a database ID for its project and entry
       description: Authenticated. Every operation checks the current actor and effective grant. Approval never
         widens requested permissions.
       parameters:
-        - name: bindingRef
+        - name: spaceId
           in: path
           required: true
           schema: *a10
@@ -3344,59 +3344,7 @@ paths:
         "401":
           description: Authentication required.
         "403":
-          description: Project role, entry declaration or active database grant denies access.
-        "404":
-          description: Resource or registered entry unavailable.
-  /api/database-spaces/bindings/{bindingRef}/bind:
-    post:
-      tags:
-        - Database Spaces
-      summary: Bind an approved database to an entry alias
-      description: Authenticated. Every operation checks the current actor and effective grant. Approval never
-        widens requested permissions.
-      parameters:
-        - name: bindingRef
-          in: path
-          required: true
-          schema: *a10
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              properties:
-                projectId: *a10
-                entryId: *a2
-                alias: *a2
-              required:
-                - projectId
-                - entryId
-                - alias
-      responses:
-        "200":
-          description: Success.
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  errCode:
-                    const: 0
-                  errMessage:
-                    const: ""
-                  data:
-                    $ref: "#/components/schemas/DatabaseBinding"
-                required:
-                  - errCode
-                  - errMessage
-                  - data
-        "400":
-          description: Invalid request, rejected transition or approval authority.
-        "401":
-          description: Authentication required.
-        "403":
-          description: Project role, entry declaration or active database grant denies access.
+          description: Project role or active host database grant denies access.
         "404":
           description: Resource or registered entry unavailable.
   /api/database-spaces/{spaceId}/data:
@@ -3439,7 +3387,7 @@ paths:
         "401":
           description: Authentication required.
         "403":
-          description: Project role, entry declaration or active database grant denies access.
+          description: Project role or active host database grant denies access.
         "404":
           description: Resource or registered entry unavailable.
   /api/database-spaces/{spaceId}/values:
@@ -3490,7 +3438,7 @@ paths:
         "401":
           description: Authentication required.
         "403":
-          description: Project role, entry declaration or active database grant denies access.
+          description: Project role or active host database grant denies access.
         "404":
           description: Resource or registered entry unavailable.
   /api/database-spaces/{spaceId}/manage:
@@ -3556,7 +3504,7 @@ paths:
         "401":
           description: Authentication required.
         "403":
-          description: Project role, entry declaration or active database grant denies access.
+          description: Project role or active host database grant denies access.
         "404":
           description: Resource or registered entry unavailable.
   /api/database-spaces/consumers/{projectId}/{entryId}:
@@ -3593,15 +3541,9 @@ paths:
                       type: object
                       properties:
                         alias: *a2
-                        host:
-                          enum:
-                            - local
-                            - server
-                        bindingRef: *a10
+                        databaseId: *a10
                         status:
                           enum:
-                            - local
-                            - unbound
                             - bound
                             - invalid
                         error: *a11
@@ -3609,7 +3551,7 @@ paths:
                           $ref: "#/components/schemas/DatabaseSpace"
                       required:
                         - alias
-                        - host
+                        - databaseId
                         - status
                 required:
                   - errCode
@@ -3620,7 +3562,7 @@ paths:
         "401":
           description: Authentication required.
         "403":
-          description: Project role, entry declaration or active database grant denies access.
+          description: Project role or active host database grant denies access.
         "404":
           description: Resource or registered entry unavailable.
   /api/projects/{projectId}/entries/{entryId}/resources/read:
@@ -3684,7 +3626,7 @@ paths:
         "401":
           description: Authentication required.
         "403":
-          description: Project role, entry declaration or active database grant denies access.
+          description: Project role or active host database grant denies access.
         "404":
           description: Resource or registered entry unavailable.
 components:
@@ -7239,20 +7181,13 @@ components:
         - knowledge
     DatabaseRequirement:
       type: object
+      description: Entry-local alias for a host-approved database ID. Permissions and credentials belong to the host.
       properties:
         alias: *a2
-        host:
-          enum:
-            - local
-            - server
-        description: *a11
-        permissions:
-          $ref: "#/components/schemas/DatabasePermissions"
-        bindingRef: *a10
+        databaseId: *a10
       required:
         - alias
-        - host
-        - permissions
+        - databaseId
       additionalProperties: false
     ProjectEntry:
       type: object
@@ -7355,6 +7290,7 @@ components:
           format: date-time
         reviewerId: *a11
         reason: *a11
+        databaseId: *a10
         bindingRef: *a10
       required:
         - projectId

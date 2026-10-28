@@ -32,25 +32,7 @@
         "databases": [
           {
             "alias": "data",
-            "host": "local",
-            "permissions": {
-              "kv": {
-                "read": {
-                  "mode": "all"
-                },
-                "write": {
-                  "mode": "all"
-                }
-              },
-              "knowledge": {
-                "read": {
-                  "mode": "all"
-                },
-                "write": {
-                  "mode": "all"
-                }
-              }
-            }
+            "databaseId": "00000000-0000-4000-8000-000000000001"
           }
         ],
         "configuration": "configuration.json"

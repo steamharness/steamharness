@@ -82,7 +82,7 @@ The Start page shows one card per aggregate; **Run Project** opens `defaultEntry
 
 Use **Project windows** in the running page toolbar. **Open in new tab** opens a native Studio tab; **Open side by side** opens an entry on the right, with a draggable and keyboard accessible separator. Switching split entries retains their pages and drafts. Closing a split view leaves background runs active. Tabs and split views share the aggregate host; closing the last native tab releases it.
 
-Information displays aggregate identity, version, entry type and database requirements. KV and knowledge panels select an entry and alias first. Database management supports new-space and shared-access requests, explicit approval, binding, narrowing, revocation and rotation, including pending, rejected and invalid states. CLI Web and Studio share a user-level SQLite registry.
+Information displays aggregate identity, version, entry type, database aliases and IDs. KV and knowledge panels select an entry and alias first; an entry can reference multiple databases. Database management supports requests, approval, saving alias/databaseId references, narrowing, revocation and rotation, including pending, rejected and invalid states. Hosts maintain permissions. CLI Web and Studio share a user-level SQLite registry.
 
 Checks statically validate registered entries. Missing database bindings affect the corresponding data operations while other entries remain accessible. The current protocol requires aggregate projects and a compatible CLI.
 
@@ -90,7 +90,7 @@ Checks statically validate registered entries. Missing database bindings affect 
 
 One aggregate has one version, upload archive and installation directory. The version panel displays the root version and all entries. Build Kanban and validate locally before uploading; Server does not install dependencies or execute code.
 
-Downloads preserve every entry path and database requirements while stripping bindingRef and credentials. Request new bindings after installation. Source access still checks membership. Transfers require the Node extension host; install dependencies with the project package manager.
+Downloads preserve every entry path and database alias-to-ID references while excluding host credentials. References do not grant access; the host still validates the project and entry grant after installation. Source access still checks membership. Transfers require the Node extension host; install dependencies with the project package manager.
 
 ## Local analysis
 

@@ -19,7 +19,7 @@ afterEach(async () => {
 async function fixture(kind: ProjectKind, database = true) {
   const directory = await realpath(await mkdtemp(path.join(os.tmpdir(), 'database-startup-'))); folders.push(directory);
   vi.spyOn(os, 'homedir').mockReturnValue(directory);
-  const requirement = { alias: 'data', host: 'local' as const, permissions };
+  const requirement = { alias: 'data', databaseId: crypto.randomUUID() };
   const registration = { entryId: 'main', name: 'Main', type: kind, root: '.', entry: kind === 'kanban' ? 'index.html' : 'index.ts', databases: database ? [requirement] : [] };
   const pkg = { id, name: 'Application', steamHarness: { defaultEntry: 'main', entries: [registration] } };
   await writeFile(path.join(directory, 'package.json'), JSON.stringify(pkg));
@@ -49,13 +49,13 @@ it.each(['workflow', 'conversation'] as const)('preserves %s drafts through requ
   const f = await fixture(kind); await f.settled();
   const draft = kind === 'workflow' ? { type: 'workflow-draft', params: { subject: 'Keep' } } : { type: 'draft', text: 'Keep', attachments: [] };
   await f.post(draft);
-  expect((await f.post({ type: 'databases', action: 'request', host: 'local', alias: 'data', target: { kind: 'create', name: 'Data' } })).ok).toBe(true);
+  expect((await f.post({ type: 'databases', action: 'request', host: 'local', alias: 'data', permissions, target: { kind: 'create', name: 'Data' } })).ok).toBe(true);
   const pending = f.registry.read().requests[0]!;
   expect(pending.status).toBe('pending'); expect(f.registry.read().spaces).toEqual([]);
   expect((await f.post({ type: 'databases', action: 'review', host: 'local', databaseRequestId: pending.requestId, approve: true })).ok).toBe(true);
   expect((await f.settled()).serverData.issue).toBeDefined();
   const approved = f.registry.read().requests[0]!;
-  expect((await f.post({ type: 'databases', action: 'bind', host: 'local', alias: 'data', bindingRef: approved.bindingRef })).ok).toBe(true);
+  expect((await f.post({ type: 'databases', action: 'bind', host: 'local', alias: 'data', databaseId: approved.databaseId })).ok).toBe(true);
   expect((await f.settled()).serverData.issue).toBeUndefined(); expect(f.runtime.run).not.toHaveBeenCalled();
   const state = await f.state();
   if (kind === 'workflow') expect(state.drafts[''].values.subject).toBe('Keep'); else expect(state.sessions[0].draft.text).toBe('Keep');
@@ -76,7 +76,7 @@ it('recovers from a previous data error by checking the live grant rather than r
   const f = await fixture('workflow'); await f.settled();
   const request = f.registry.request({ projectId: id, entryId: 'main', alias: 'data', permissions, target: { kind: 'create', name: 'Data' } });
   const approved = f.registry.review(request.requestId, { approve: true });
-  f.project.databases[0]!.bindingRef = approved.bindingRef;
+  f.project.databases[0]!.databaseId = approved.databaseId!;
   const db = createDatabasesContext({ projectId: id, entryId: 'main', requirements: f.project.databases, resolver: createLocalDatabaseResolver(f.registry) });
   const connection = { serverUrl: 'https://unused.test', accessToken: 'token' };
   const monitor = new ProjectServerConnection(id, () => connection, vi.fn(), { inspect: projectStartupInspector(f.project, alias => db.get(alias).getBinding()) });

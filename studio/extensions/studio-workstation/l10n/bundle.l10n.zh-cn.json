@@ -815,5 +815,6 @@
   "Database spaces": "数据库空间",
   "Invalid resource operation.": "资源操作无效。",
   "This folder cannot be upgraded in place. Download a new copy to preserve its workspace.": "无法在此文件夹中直接升级。请下载新副本以保留当前工作区。",
+  "Database ID": "数据库 ID",
   "Aggregate Project": "聚合项目"
 }

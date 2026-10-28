@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { randomUUID } from 'node:crypto';
 import { test } from 'node:test';
 import { mkdtemp, mkdir, rm, writeFile, realpath, symlink } from 'node:fs/promises';
 import { spawn } from 'node:child_process';
@@ -17,11 +18,11 @@ async function fixture(t, host = 'local', approved = true) {
   t.after(async () => { if(previous===undefined)delete process.env.STEAMHARNESS_DATABASES_DIR;else process.env.STEAMHARNESS_DATABASES_DIR=previous;await rm(root,{recursive:true,force:true}); });
   const folderPath=path.join(root,'project');await mkdir(folderPath);
   const project={id:'294b1eec-23fa-42cf-9fd3-2417f71c0570',entryId:'main',folderPath};
-  const requirement={alias:'data',host,permissions};
+  const requirement={alias:'data',databaseId:randomUUID()};
   const registry=new core.LocalDatabaseRegistry();
   if(host==='local'&&approved){
     const request=registry.request({projectId:project.id,entryId:project.entryId,alias:'data',permissions,target:{kind:'create',name:'Test data'}});
-    requirement.bindingRef=registry.review(request.requestId,{approve:true}).bindingRef;
+    requirement.databaseId=registry.review(request.requestId,{approve:true}).databaseId;
   }
   const manifest={id:project.id,name:'Test',steamHarness:{defaultEntry:'main',entries:[{entryId:'main',type:'workflow',name:'Main',root:'.',entry:'index.ts',databases:[requirement]}]}};
   await writeFile(path.join(folderPath,'package.json'),JSON.stringify(manifest));
@@ -83,8 +84,9 @@ test('a bundled worker launched through the managed extension symlink uses the s
 
 test('unapproved, revoked, undeclared, mismatched host and changed identity cannot access data',async t=>{
   const f=await fixture(t,'local',false);
-  await assert.rejects(f.request({kind:'kv',action:'list'}),/approved/);assert.equal(f.registry.read().spaces.length,0);
-  await assert.rejects(f.request({kind:'kv',action:'list',source:'server'}),/host mismatch/);
+  await assert.rejects(f.request({kind:'kv',action:'list'}),/host authorization/);assert.equal(f.registry.read().spaces.length,0);
+  const approved=await fixture(t);
+  await assert.rejects(approved.request({kind:'kv',action:'list',source:'server'}),/host mismatch/);
   await assert.rejects(f.request({kind:'kv',action:'list',database:'other'}),/alias/);
   await writeFile(path.join(f.project.folderPath,'package.json'),JSON.stringify({...f.manifest,id:'615e6cf6-b40a-456a-8d19-b71c63454c7a'}));
   await assert.rejects(f.request({kind:'kv',action:'delete',key:'secret'}),/identity changed/);
@@ -93,11 +95,11 @@ test('unapproved, revoked, undeclared, mismatched host and changed identity cann
 test('revoking an approved alias removes resource access immediately',async t=>{
   const f=await fixture(t);await f.database.kv.setValue('retained',true);
   f.registry.revoke((await f.database.getBinding()).grant.grantId);
-  await assert.rejects(f.request({kind:'kv',action:'get',key:'retained'}),/no longer valid/);
+  await assert.rejects(f.request({kind:'kv',action:'get',key:'retained'}),/host authorization/);
 });
 
 test('declared server requirements never fall back to a local registry',async t=>{
   const f=await fixture(t,'server');
-  await assert.rejects(f.request({kind:'kv',action:'list'}),/approved server binding/);
+  await assert.rejects(f.request({kind:'kv',action:'list'}),/host authorization/);
   assert.equal(f.registry.read().spaces.length,0);
 });

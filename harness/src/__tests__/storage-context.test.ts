@@ -10,7 +10,8 @@ import { LocalDatabaseRegistry, createLocalDatabaseResolver, type DatabaseRequir
 async function fixture(host: "local" | "server") {
   const directory=await mkdtemp(path.join(os.tmpdir(),"entry-storage-"));
   const projectId=randomUUID();const all={mode:"all" as const};
-  const requirement:DatabaseRequirement={alias:"data",host,permissions:{kv:{read:all,write:all},knowledge:{read:all,write:all}}};
+  const permissions={kv:{read:all,write:all},knowledge:{read:all,write:all}};
+  const requirement:DatabaseRequirement={alias:"data",databaseId:randomUUID()};
   const pkg={id:projectId,name:"storage-test",type:"module",steamHarness:{defaultEntry:"main",entries:[{entryId:"main",name:"Main",type:"workflow",root:".",entry:"index.ts",databases:[requirement]}]}};
   await writeFile(path.join(directory,"package.json"),JSON.stringify(pkg));
   await writeFile(path.join(directory,"index.ts"),`
@@ -22,19 +23,19 @@ async function fixture(host: "local" | "server") {
     export const executor=steamharness.defineExecutor({projectType:"workflow",defaultEntrypoint:"write",entrypoints:[steamharness.defineEntrypoint({id:"write",title:"Write",workflow:flow,createInput(){return {};}})]});
   `);
   const registry=new LocalDatabaseRegistry(path.join(directory,"registry"));
-  return {directory,projectId,requirement,pkg,registry};
+  return {directory,projectId,requirement,permissions,pkg,registry};
 }
 
 test("executors require explicitly approved bindings and expose databases instead of project storage",async t=>{
   const f=await fixture("local");t.after(()=>rm(f.directory,{recursive:true,force:true}));
   const resolver=createLocalDatabaseResolver(f.registry);
   const run=()=>runLocalProjectWithReport({projectDir:f.directory,databaseResolver:resolver});
-  const unbound=await run();assert.equal(unbound.status,"failed");assert.match(JSON.stringify(unbound.result),/approved local binding/);
+  const unbound=await run();assert.equal(unbound.status,"failed");assert.match(JSON.stringify(unbound.result),/host authorization/);
   assert.equal(f.registry.read().spaces.length,0);
-  const request=f.registry.request({projectId:f.projectId,entryId:"main",alias:"data",target:{kind:"create",name:"Data"},permissions:f.requirement.permissions});
+  const request=f.registry.request({projectId:f.projectId,entryId:"main",alias:"data",target:{kind:"create",name:"Data"},permissions:f.permissions});
   assert.equal((await run()).status,"failed");assert.equal(f.registry.read().spaces.length,0);
   const approved=f.registry.review(request.requestId,{approve:true});
-  f.requirement.bindingRef=approved.bindingRef;
+  f.requirement.databaseId=approved.databaseId!;
   await writeFile(path.join(f.directory,"package.json"),JSON.stringify(f.pkg));
   const report=await run();assert.equal(report.status,"success",JSON.stringify(report.result));
   assert.equal(report.result.ok&&(report.result.data as any).output.value,"main");
@@ -42,10 +43,10 @@ test("executors require explicitly approved bindings and expose databases instea
   assert.equal((await run()).status,"failed");assert.equal(f.registry.read().spaces.length,1);
 });
 
-test("server requirements never fall back to an available local resolver",async t=>{
+test("unknown database IDs never use an available local database",async t=>{
   const f=await fixture("server");t.after(()=>rm(f.directory,{recursive:true,force:true}));
   const report=await runLocalProjectWithReport({projectDir:f.directory,databaseResolver:createLocalDatabaseResolver(f.registry),env:{}});
-  assert.equal(report.status,"failed");assert.match(JSON.stringify(report.result),/approved server binding/);
+  assert.equal(report.status,"failed");assert.match(JSON.stringify(report.result),/host authorization/);
   assert.equal(f.registry.read().spaces.length,0);
 });
 

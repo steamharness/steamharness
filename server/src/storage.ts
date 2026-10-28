@@ -2865,24 +2865,17 @@ export class Storage {
     const metadata = target === "draft" ? await this.readProjectMetadataForEditing(projectId) : await this.readPackageMetadataForTarget(projectId,target);
     return selectProjectEntry({entries:metadata.entries,defaultEntry:metadata.defaultEntry},entryId).databases;
   }
-  async bindEntryDatabase(projectId: string, entryId: string, alias: string, bindingRef: string, actor: AccessActor) {
-    await this.requireProjectCapability(projectId,actor,"manageSettings");
-    const requirements = await this.entryDatabaseRequirements(projectId,entryId);
-    if(!requirements.some(item=>item.host==="server"&&item.alias===alias)) throw new HttpError(400,400,"The entry does not declare this server database alias.");
-    return this.databases.bind({projectId,entryId,alias},bindingRef);
-  }
   async entryDatabases(projectId: string, entryId: string, actor: AccessActor, target = "draft", conversationId?: string) {
     await this.requireProjectCapability(projectId, actor, "read");
     const metadata = target === "draft" ? await this.readProjectMetadataForEditing(projectId) : await this.readPackageMetadataForTarget(projectId, target);
     const entry = selectProjectEntry({entries: metadata.entries, defaultEntry: metadata.defaultEntry }, entryId);
     const { createDatabasesContext, RemoteDatabaseSpaceStore } = await import("steamharness");
-    return createDatabasesContext({ projectId, entryId: entry.entryId, conversationId, requirements: await Promise.all(entry.databases.map(async requirement => requirement.host === "server" ? { ...requirement, bindingRef: await this.databases.bindingFor({projectId,entryId,alias:requirement.alias}) ?? requirement.bindingRef } : requirement)), resolver: { resolve: async requirement => {
-      if (requirement.host !== "server" || !requirement.bindingRef) return undefined;
-      const authorization = await this.databases.authorization(requirement.bindingRef, { projectId, entryId: entry.entryId });
-      const store = new RemoteDatabaseSpaceStore({ serverUrl: "", token: "" }, { projectId, entryId: entry.entryId, alias: requirement.alias, bindingRef: requirement.bindingRef }, authorization.space.spaceId, authorization.grant.credentialVersion, async <T>(body: Record<string, unknown>): Promise<T> => {
+    return createDatabasesContext({ projectId, entryId: entry.entryId, conversationId, requirements: entry.databases, resolver: { resolve: async requirement => {
+      const authorization = await this.databases.authorization(requirement.databaseId, { projectId, entryId: entry.entryId });
+      const store = new RemoteDatabaseSpaceStore({ serverUrl: "", token: "" }, { projectId, entryId: entry.entryId, alias: requirement.alias, bindingRef: authorization.binding.bindingRef }, authorization.space.spaceId, authorization.grant.credentialVersion, async <T>(body: Record<string, unknown>): Promise<T> => {
         const write = !["get", "revision", "list"].includes(String(body.operation)) && !(body.operation === "transaction" && (body.entries as any[]).every(item => !item.mutation));
         await this.requireProjectCapability(projectId, actor, write ? "writeData" : "read");
-        return await this.databases.data(authorization.space.spaceId, body, { ...actor, userId: actor.userId ?? "system-admin" }, false, requirement) as T;
+        return await this.databases.data(authorization.space.spaceId, body, { ...actor, userId: actor.userId ?? "system-admin" }) as T;
       });
       return { authorization, store };
     } } });

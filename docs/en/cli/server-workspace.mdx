@@ -17,7 +17,7 @@ pnpm exec steamharness workspace versions <project-id>
 pnpm exec steamharness workspace download <project-id> --target latest --path ./downloaded
 ```
 
-The aggregate is one upload, version and download unit. Archives contain every registered entry's code, dependency manifests and Kanban artifacts, excluding Git, node_modules, runtime data and credentials. Database requirements remain; `bindingRef` is removed.
+The aggregate is one upload, version and download unit. Archives contain every registered entry's code, dependency manifests and Kanban artifacts, excluding Git, node_modules, runtime data and credentials. Database alias-to-ID references remain; hosts maintain grants and credentials.
 
 ## Identity and ownership
 

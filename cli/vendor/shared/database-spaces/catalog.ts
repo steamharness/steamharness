@@ -25,11 +25,11 @@ export class DatabaseCatalog {
       const spaceId = input.target.spaceId;
       if (!this.state.spaces.some((space) => space.spaceId === spaceId && space.host === this.host)) throw new Error("Database space does not exist on this host.");
     } else throw new Error("Invalid database request target.");
-    if (this.state.requests.some((request) => request.status === "pending" && request.projectId === input.projectId && request.entryId === input.entryId && request.alias === input.alias)) throw new Error("This database alias already has a pending request.");
-    if (this.state.bindings.some((binding) => binding.projectId === input.projectId && binding.entryId === input.entryId && binding.alias === input.alias && !this.state.grants.find((grant) => grant.grantId === binding.grantId)?.revokedAt)) throw new Error("Revoke the current binding before requesting a replacement.");
+    const target = input.target.kind === "create" ? { kind: "create" as const, name: input.target.name } : { kind: "access" as const, spaceId: input.target.spaceId };
+    if (this.state.requests.some((request) => request.status === "pending" && request.projectId === input.projectId && request.entryId === input.entryId && JSON.stringify(request.target) === JSON.stringify(target))) throw new Error("This database already has a pending request.");
+    if (input.target.kind === "access" && this.resolve(input.target.spaceId, input)) throw new Error("This consumer already has access to this database.");
     // Request payloads are untrusted. Approval metadata and binding references
     // can only be written by review(), and must never affect catalog visibility.
-    const target = input.target.kind === "create" ? { kind: "create" as const, name: input.target.name } : { kind: "access" as const, spaceId: input.target.spaceId };
     const request: DatabaseRequest = { projectId: input.projectId, entryId: input.entryId, alias: input.alias, target, permissions, requestId: this.id(), host: this.host, applicantId: actor.userId, status: "pending", createdAt: this.now() };
     this.state.requests.push(request);
     return structuredClone(request);
@@ -45,14 +45,14 @@ export class DatabaseCatalog {
     if (!isDatabasePermissionSubset(permissions, request.permissions)) throw new Error("Approval cannot widen requested database permissions.");
     if (decision.reason !== undefined && (typeof decision.reason !== "string" || decision.reason.length > 4096)) throw new Error("Invalid review reason.");
     if (decision.approve) {
-      // A second pending alias cannot replace an active grant during review.
-      if (this.state.bindings.some((binding) => binding.projectId === request.projectId && binding.entryId === request.entryId && binding.alias === request.alias && !this.state.grants.find((grant) => grant.grantId === binding.grantId)?.revokedAt)) throw new Error("This consumer already has an active binding.");
+      if (existingSpace && this.resolve(existingSpace.spaceId, request)) throw new Error("This consumer already has access to this database.");
       const space = existingSpace ?? { spaceId: this.id(), name: request.target.kind === "create" ? request.target.name.trim() : "", host: this.host, ownerId: request.applicantId, createdAt: this.now() };
       if (!existingSpace) this.state.spaces.push(space);
       const grant: DatabaseGrant = { grantId: this.id(), spaceId: space.spaceId, projectId: request.projectId, entryId: request.entryId, permissions, credentialVersion: 1, createdAt: this.now() };
       const binding: DatabaseBinding = { bindingRef: this.id(), alias: request.alias, host: this.host, spaceId: space.spaceId, grantId: grant.grantId, projectId: request.projectId, entryId: request.entryId };
       this.state.grants.push(grant);
       this.state.bindings.push(binding);
+      request.databaseId = space.spaceId;
       request.bindingRef = binding.bindingRef;
     }
     request.status = decision.approve ? "approved" : "rejected";
@@ -87,6 +87,10 @@ export class DatabaseCatalog {
     const grant = this.state.grants.find((item) => item.grantId === binding.grantId);
     const space = this.state.spaces.find((item) => item.spaceId === binding.spaceId);
     return grant && space ? structuredClone({ binding, grant, space }) : undefined;
+  }
+  resolve(databaseId: string, consumer: DatabaseConsumer): DatabaseAuthorization | undefined {
+    const binding = this.state.bindings.find((item) => item.spaceId === databaseId && item.projectId === consumer.projectId && item.entryId === consumer.entryId && this.state.grants.some((grant) => grant.grantId === item.grantId && !grant.revokedAt));
+    return binding ? this.authorization(binding.bindingRef) : undefined;
   }
   visible(actor: DatabaseActor): DatabaseCatalogState {
     if (actor.isSystemAdmin) return structuredClone(this.state);

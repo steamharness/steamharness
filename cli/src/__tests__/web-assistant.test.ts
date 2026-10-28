@@ -100,7 +100,7 @@ it('runs assistant skills and memory locally, isolates workspaces and preserves 
   const request=registry.request({projectId:'364764e9-ef0e-4e86-9e56-77d0410e1723',entryId:'main',alias:'memory',permissions,target:{kind:'create',name:'Assistant memory'}});
   const approved=registry.review(request.requestId,{approve:true});
   vi.spyOn(os,'homedir').mockReturnValue(directory);
-  const manifest = { name:'runtime-fixture', id: '364764e9-ef0e-4e86-9e56-77d0410e1723', type: 'module', devDependencies: { 'steamharness': harnessVersion }, steamHarness: { defaultEntry: 'main', entries: [{entryId:'main',name:'Main',type:'conversation',root:'.',entry:'index.ts',databases:[{alias:'memory',host:'local',permissions,bindingRef:approved.bindingRef}]}],  } };
+  const manifest = { name:'runtime-fixture', id: '364764e9-ef0e-4e86-9e56-77d0410e1723', type: 'module', devDependencies: { 'steamharness': harnessVersion }, steamHarness: { defaultEntry: 'main', entries: [{entryId:'main',name:'Main',type:'conversation',root:'.',entry:'index.ts',databases:[{alias:'memory',databaseId:approved.databaseId}]}],  } };
   await writeFile(path.join(runtimeProjectDir, 'package.json'), JSON.stringify({ ...manifest, name: 'Assistant runtime' }));
   await writeFile(path.join(assistantProjectDir, 'package.json'), JSON.stringify({ ...manifest, name: 'Dedicated assistant' }));
   await writeFile(path.join(workdir, 'index.ts'), 'throw new Error("The workspace executor must not run.");');

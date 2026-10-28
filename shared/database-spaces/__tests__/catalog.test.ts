@@ -20,16 +20,17 @@ describe.each(["local", "server"] as const)("%s database approval", (host) => {
   it("supports rejection, retry, duplicate protection, and reduced approval", () => {
     const c = catalog(host); const consumer = input(); const first = c.request(consumer, applicant);
     expect(() => c.request(consumer, applicant)).toThrow("pending");
+    expect(() => c.request({ ...consumer, target: { name: consumer.target.name, kind: "create", ignored: true } } as typeof consumer, applicant)).toThrow("pending");
     c.review(first.requestId, { approve: false, reason: "too broad" }, admin);
     const retry = c.request(consumer, applicant);
     const reduced = emptyDatabasePermissions(); reduced.kv.read = { mode: "prefixes", prefixes: ["public:"] };
     const approved = c.review(retry.requestId, { approve: true, permissions: reduced }, admin);
     const auth = c.authorization(approved.bindingRef!)!;
-    const consumerWithBinding = { ...consumer, host, bindingRef: approved.bindingRef };
+    const consumerWithBinding = { ...consumer, databaseId: approved.databaseId! };
     expect(() => assertDatabaseAuthorization(auth, consumerWithBinding, "kv", "read", "public:a")).not.toThrow();
     expect(() => assertDatabaseAuthorization(auth, consumerWithBinding, "kv", "write", "public:a")).toThrow("does not allow");
     expect(() => assertDatabaseAuthorization(auth, { ...consumerWithBinding, entryId: "other" }, "kv", "read", "public:a")).toThrow("different consumer");
-    expect(() => assertDatabaseAuthorization(auth, { ...consumerWithBinding, host: host === "local" ? "server" : "local" }, "kv", "read", "public:a")).toThrow("different consumer");
+    expect(() => assertDatabaseAuthorization(auth, { ...consumerWithBinding, databaseId: randomUUID() }, "kv", "read", "public:a")).toThrow("different consumer");
   });
   it("requires space-owner approval for another project, and supports rotation and revocation", () => {
     const c = catalog(host); const first = c.request(input(), applicant); const approved = c.review(first.requestId, { approve: true }, admin);
@@ -40,7 +41,7 @@ describe.each(["local", "server"] as const)("%s database approval", (host) => {
     const granted = c.review(second.requestId, { approve: true }, applicant);
     const auth = c.authorization(granted.bindingRef!)!;
     expect(auth.space.spaceId).toBe(spaceId); expect(c.state.spaces).toHaveLength(1);
-    const bound = { ...consumer, host, bindingRef: granted.bindingRef };
+    const bound = { ...consumer, databaseId: granted.databaseId! };
     c.rotate(auth.grant.grantId, applicant);
     expect(() => assertDatabaseAuthorization(c.authorization(granted.bindingRef!)!, bound, "kv", "read", "a", 1)).toThrow("no longer valid");
     c.revoke(auth.grant.grantId, applicant);
@@ -51,7 +52,7 @@ describe.each(["local", "server"] as const)("%s database approval", (host) => {
     const c = catalog(host); const consumer = { ...input(), permissions: emptyDatabasePermissions() };
     const request = c.request(consumer, applicant);
     expect(() => c.review(request.requestId, { approve: true, permissions: all }, admin)).toThrow("widen");
-    expect(() => assertDatabaseAuthorization(undefined, { ...consumer, host }, "kv", "read", "x")).toThrow("approved binding");
+    expect(() => assertDatabaseAuthorization(undefined, { ...consumer, databaseId: randomUUID() }, "kv", "read", "x")).toThrow("host authorization");
     expect(c.visible({ userId: "stranger", isSystemAdmin: false }).requests).toHaveLength(0);
   });
   it("does not accept approval metadata or another consumer's binding in a request", () => {

@@ -2,6 +2,8 @@
 
 - Improvement: Aggregates open their default entry and expose a window panel for new browser/Studio tabs and side-by-side entry views, preserving drafts and background runs. Entries have independent icons and colors; only the root project owns a version.
 
+- Changed: database management saves aliases and approved database IDs, while hosts manage requests and permissions. Entries support multiple references, approved requests display IDs, and archives preserve references.
+
 - Fixed database binding guidance to open database management directly for requests, approval and recovery. The assistant and Conversation now include the database toolbar, and startup checks use readable status labels. Review IDs no longer overwrite response IDs and leave management requests waiting indefinitely.
 
 - User model menus group built-in and custom models with direct choices and an Add model action at the bottom of standalone model controls. Model and effort can be selected independently while preserving custom project grouping, reset and source restrictions.

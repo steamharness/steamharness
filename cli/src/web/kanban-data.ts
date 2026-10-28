@@ -9,7 +9,7 @@ export async function runKanbanDataCall(core: typeof import('steamharness'), pro
   const declaration = core.resolveProjectEntrySync(project.folderPath, project.entryId);
   const local = core.createLocalDatabaseResolver(), connection = core.databaseConnectionFromEnv();
   const remote = connection && core.createRemoteDatabaseResolver(connection);
-  const databases = core.createDatabasesContext({ projectId: project.id, entryId: project.entryId, requirements: declaration.registration.databases, resolver: { resolve: (requirement, consumer) => (requirement.host === 'local' ? local : remote)?.resolve(requirement, consumer) } });
+  const databases = core.createDatabasesContext({ projectId: project.id, entryId: project.entryId, requirements: declaration.registration.databases, resolver: { resolve: async (requirement, consumer) => await local.resolve(requirement, consumer) ?? remote?.resolve(requirement, consumer) } });
   const database = databases.get(String(input.database));
   switch (operation) {
     case 'files.createFile': return database.knowledge.files.createFile({ name: String(input.name), mimeType: input.mimeType as string | undefined, buffer: Buffer.from(String(input.base64), 'base64') });

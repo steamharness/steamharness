@@ -52,7 +52,7 @@ describe("the runtime API index", () => {
     const index = await renderRuntimeApiIndex();
 
     expect(index).toContain("这里没有列出的能力就是没有");
-    expect(index).toContain("申请并经宿主审批");
+    expect(index).toContain("databaseId");
     expect(index).toContain("会话 KV");
   });
 

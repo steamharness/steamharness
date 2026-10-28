@@ -104,7 +104,8 @@ it.each([
   expect(dialog.open).toBe(true); expect(requests()).toHaveLength(1);
   expect(requests()[0].action).toBe('get');
   const permissions = { kv: { read: { mode: 'all' }, write: { mode: 'all' } }, knowledge: { read: { mode: 'all' }, write: { mode: 'all' } } };
-  const requirement = { alias: 'memory', host: 'local', status: 'unbound', permissions };
+  const databaseId = '00000000-0000-4000-8000-000000000001';
+  const requirement = { alias: 'memory', databaseId, status: 'invalid' };
   const catalog = { spaces: [] as any[], requests: [] as any[], bindings: [] as any[], grants: [] as any[] };
   const respond = (requirements: object[] = [requirement]) => f.emit({ type: 'databases-result', requestId: requests().at(-1)!.requestId, value: { projectId: f.project.id, entryId: f.project.entryId, requirements, local: catalog } });
   const click = (en: string, zh: string) => {
@@ -113,7 +114,8 @@ it.each([
     return requests().at(-1)!;
   };
   respond();
-  const name = dialog.querySelector<HTMLInputElement>('input')!;
+  const name = dialog.querySelector<HTMLInputElement>(`input[aria-label="${language === 'en' ? 'New space name' : '新空间名称'}"]`)!;
+  const requestAlias = [...dialog.querySelectorAll<HTMLInputElement>('input')].find(input => input.value === 'data')!; requestAlias.value = 'memory';
   expect(name.value).toBe('Test aggregate / Server project');
   name.value = 'Assistant memory';
   expect(click('Request new space', '申请新空间')).toMatchObject({ action: 'request', host: 'local', alias: 'memory', target: { kind: 'create', name: 'Assistant memory' } });
@@ -124,18 +126,19 @@ it.each([
   const review = click('Approve', '批准');
   expect(review).toMatchObject({ action: 'review', host: 'local', databaseRequestId: 'request', approve: true, permissions });
   expect(review.requestId).not.toBe(review.databaseRequestId);
-  catalog.requests[0].status = 'approved';
+  catalog.requests[0].status = 'approved'; catalog.requests[0].databaseId = databaseId;
   catalog.bindings.push({ projectId: f.project.id, entryId: f.project.entryId, alias: 'memory', bindingRef: 'approved-binding', grantId: 'grant' });
   respond();
-  expect(click('Bind approved space', '绑定获批空间')).toMatchObject({ action: 'bind', host: 'local', alias: 'memory', bindingRef: 'approved-binding' });
-  respond([{ ...requirement, status: 'bound', space: { name: name.value } }]);
+  expect(dialog.textContent).toContain(databaseId);
+  expect(click('Save database reference', '保存数据库引用')).toMatchObject({ action: 'bind', alias: 'memory', databaseId });
+  respond([{ ...requirement, status: 'bound', space: { name: name.value, host: 'local' } }]);
   await f.render({checking:false,blocking:false,checks:[]});
   expect(document.getElementById('server-guidance')!.hidden).toBe(true);
   expect(execute.disabled).toBe(false);
   expect(requests().map(message => message.action)).toEqual(['get', 'request', 'review', 'bind']);
   dialog.querySelector<HTMLButtonElement>('header button')!.click();
   expect(dialog.open).toBe(false);
-  document.querySelector<HTMLButtonElement>('.aggregate-navigation button')!.click();
+  [...document.querySelectorAll<HTMLButtonElement>('.aggregate-navigation button')].find(button => button.textContent === (language === 'en' ? 'Databases' : '数据库'))!.click();
   expect(dialog.open).toBe(true); expect(document.querySelectorAll('.database-dialog')).toHaveLength(1);
   expect(requests().at(-1)!.action).toBe('get');
 });
@@ -165,7 +168,7 @@ it.each(['local', 'server'] as const)('shows invalid %s bindings and finishes an
   document.querySelector<HTMLButtonElement>('#server-guidance-databases')!.click();
   const requests = () => host.postMessage.mock.calls.map(([message]) => message).filter(message => message.type === 'databases');
   const catalog = { requests: [{ requestId: 'pending-request', projectId: f.project.id, entryId: f.project.entryId, alias: 'memory', status: 'pending', permissions: {}, target: { kind: 'access', spaceId: 'shared-space' } }], grants: [], bindings: [], spaces: [] };
-  const respond = () => f.emit({ type: 'databases-result', requestId: requests().at(-1)!.requestId, value: { projectId: f.project.id, entryId: f.project.entryId, requirements: [{ alias: 'memory', host: databaseHost, status: 'invalid', error: 'Grant revoked' }], [databaseHost]: catalog } });
+  const respond = () => f.emit({ type: 'databases-result', requestId: requests().at(-1)!.requestId, value: { projectId: f.project.id, entryId: f.project.entryId, requirements: [{ alias: 'memory', databaseId: '00000000-0000-4000-8000-000000000001', status: 'invalid', error: 'Grant revoked' }], [databaseHost]: catalog } });
   respond();
   const dialog = document.querySelector<HTMLDialogElement>('.database-dialog')!;
   expect(dialog.textContent).toContain('Grant revoked');

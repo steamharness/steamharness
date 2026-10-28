@@ -6,7 +6,7 @@ import { createRequire } from 'node:module';
 const require = createRequire(import.meta.url);
 
 const compiled = await build({ entryPoints: ['extensions/studio-workstation/src/workflow-resources-view.ts'], bundle: true, platform: 'node', format: 'cjs', external: ['vscode'], write: false });
-const project = (name, projectType = 'conversation') => ({ id: name, uri: `file:///${name}`, folderPath: `/${name}`, name, projectType,entryId:'main',databases:[{alias:'data',host:'local'}] });
+const project = (name, projectType = 'conversation') => ({ id: name, uri: `file:///${name}`, folderPath: `/${name}`, name, projectType,entryId:'main',databases:[{alias:'data',databaseId:'00000000-0000-4000-8000-000000000001'}] });
 
 function fixture(t, operation = async () => ({ items: [], total: 0, hasMore: false }), connection, register = true) {
   const providers = new Map(), commands = new Map(), views = new Map(), messages = new Map(), receivers = new Map(), calls = [], contextValues = [], copied = [], invalidated = [];
@@ -46,7 +46,7 @@ function fixture(t, operation = async () => ({ items: [], total: 0, hasMore: fal
 const key = (project, alias = 'data') => `${project.uri}#entry=${project.entryId}:database=${alias}`;
 
 test('resource choices identify each entry and declared alias and exclude the assistant',t=>{
- const f=fixture(t),a=project('Aggregate'),b={...a,entryId:'other',databases:[{alias:'shared',host:'server'}]};
+ const f=fixture(t),a=project('Aggregate'),b={...a,entryId:'other',databases:[{alias:'shared',databaseId:'00000000-0000-4000-8000-000000000002'}]};
  f.provider.update([a,b,{...project('assistant'),assistant:{standalone:true}}]);
  assert.deepEqual(Array.from(f.state('kv').projects,item=>item.uri),[key(a),key(b,'shared')]);
  assert.equal(f.contextValues.at(-1)[2],true);f.provider.update([]);assert.equal(f.contextValues.at(-1)[2],false);
@@ -60,7 +60,7 @@ test('active entries and explicit aliases select independently and stable scans 
 test('the host supplies entry, alias and source and rejects untrusted workspace mutations',async t=>{
  const f=fixture(t),a=project('first');f.provider.update([a],a);
  await f.send('kv',{action:'list',source:'server',database:'forged'});
- assert.equal(f.calls[0][0].entryId,'main');assert.equal(f.calls[0][1].source,'local');assert.equal(f.calls[0][1].database,'data');
+ assert.equal(f.calls[0][0].entryId,'main');assert.equal(f.calls[0][1].source,undefined);assert.equal(f.calls[0][1].database,'data');
  f.vscode.workspace.isTrusted=false;await f.send('kv',{action:'save',key:'x',value:1});
  assert.equal(f.calls.length,1);assert.match(f.messages.get('kv').at(-1).error,/Trust/);
 });

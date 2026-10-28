@@ -17,7 +17,7 @@ pnpm exec steamharness workspace versions <project-id>
 pnpm exec steamharness workspace download <project-id> --target latest --path ./downloaded
 ```
 
-整个聚合是一个上传、版本与下载单元。打包包含全部注册入口代码、各包依赖声明和 Kanban 构建产物；排除 Git、node_modules、运行数据和凭据。数据库需求保留，`bindingRef` 移除。
+整个聚合是一个上传、版本与下载单元。打包包含全部注册入口代码、各包依赖声明和 Kanban 构建产物；排除 Git、node_modules、运行数据和凭据。保留数据库 `alias → databaseId` 映射，授权与凭据由宿主维护。
 
 ## 注册与归属
 

@@ -189,7 +189,7 @@ describe("workflow-generator contract", () => {
   it("documents local-run storage isolation and exact-version resolution", async () => {
     const corpus = await readSkillCorpus();
     for (const token of [
-      "LocalDatabaseRegistry", "createLocalDatabaseResolver", "bindingRef", "dist-tags", "--entry",
+      "LocalDatabaseRegistry", "createLocalDatabaseResolver", "databaseId", "dist-tags", "--entry",
     ]) {
       expect(corpus, `skills/workflow-generator 未覆盖本地运行必需的事实：${token}`).toContain(token);
     }

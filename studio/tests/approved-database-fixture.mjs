@@ -9,8 +9,8 @@ export async function approveLocalFixtureDatabase(core, folder, manifest, direct
   const entry = manifest.steamHarness.entries.find(item => item.entryId === manifest.steamHarness.defaultEntry);
   const registry = new core.LocalDatabaseRegistry(directory);
   const request = registry.request({projectId:manifest.id,entryId:entry.entryId,alias:'data',permissions,target:{kind:'create',name:'UI fixture'}});
-  const {bindingRef} = registry.review(request.requestId,{approve:true});
-  entry.databases = [{alias:'data',host:'local',permissions,bindingRef}];
+  const {databaseId} = registry.review(request.requestId,{approve:true});
+  entry.databases = [{alias:'data',databaseId}];
   await writeFile(path.join(folder,'package.json'),JSON.stringify(manifest));
   return core.createDatabasesContext({projectId:manifest.id,entryId:entry.entryId,requirements:entry.databases,resolver:core.createLocalDatabaseResolver(registry)}).get('data');
 }
@@ -36,8 +36,8 @@ export function fixtureDatabaseHost(core) {
     create(projectId,entryId,alias='shared'){
       const request=catalog.request({projectId,entryId,alias,permissions,target:{kind:'create',name:'Shared UI fixture'}},actor);
       const approved=catalog.review(request.requestId,{approve:true},actor);
-      const requirement={alias,host:'server',permissions,bindingRef:approved.bindingRef};
-      const authorization=catalog.authorization(requirement.bindingRef);
+      const requirement={alias,databaseId:approved.databaseId};
+      const authorization=catalog.resolve(requirement.databaseId,{projectId,entryId});
       const database=core.createDatabasesContext({projectId,entryId,requirements:[requirement],resolver:{resolve:()=>({authorization,store})}}).get(alias);
       return {requirement,database,authorization};
     },
@@ -47,8 +47,8 @@ export function fixtureDatabaseHost(core) {
       if(!url.pathname.startsWith('/api/database-spaces/'))return false;
       try {
         const parts=url.pathname.split('/').filter(Boolean);
-        if(parts[2]==='bindings'){
-          const authorization=catalog.authorization(parts[3]);
+        if(parts[3]==='authorization'){
+          const authorization=catalog.resolve(parts[2],{projectId:url.searchParams.get('projectId'),entryId:url.searchParams.get('entryId')});
           if(!authorization||authorization.grant.revokedAt)throw new Error('Database authorization is no longer valid.');
           response.end(JSON.stringify({errCode:0,data:authorization}));return true;
         }

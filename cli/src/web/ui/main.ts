@@ -1064,7 +1064,7 @@ function initialize(): void {
     for (const action of view.root.querySelectorAll<HTMLButtonElement>('.trace-message, .export-message')) action.hidden = submissions.local(message);
     updateMessageMetadata(view);
     if (message.role === 'user') { view.content.textContent = message.content; }
-    else { view.output!.update(message, state!.project.id, state!.project.entryId, state!.activeId, files, state!.project.databases.some(database => database.host === 'server') ? 'server' : 'local', filesSignature, collapseEnabled); }
+    else { view.output!.update(message, state!.project.id, state!.project.entryId, state!.activeId, files, 'local', filesSignature, collapseEnabled); }
     const error = message.status === 'running' || message.status === 'sending' ? undefined : message.error;
     view.error.textContent = error ?? '';
     view.error.hidden = !error;

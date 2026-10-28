@@ -6,7 +6,7 @@
 
 新增、编辑、拖拽和删除会立即更新界面，并经过 300ms 防抖后按顺序写入 KV。页面顶部显示加载、保存和失败状态；写入失败不会回滚当前任务，可通过“重试”再次保存。
 
-入口声明的 `data` 数据库需要先申请、获批并绑定。知识库通过 `window.steamHarnessKanban.databases.get("data").knowledge` 访问，权限由入口声明和当前授权共同限制；页面不能选择未声明的数据库或任意数据库路径。
+先在宿主申请数据库并获批，在入口 databases 中记录 `data` 别名与获批的 `databaseId`；模板中的 UUID 必须替换。知识库通过 `window.steamHarnessKanban.databases.get("data").knowledge` 访问，权限由宿主授权维护；页面不能选择未声明的数据库或任意数据库路径。
 
 运行纯逻辑测试：
 
