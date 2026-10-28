@@ -12,7 +12,6 @@ import { ConversationMessageIndex, type IndexedUserMessage } from './conversatio
 import { InputPrompt } from './input-prompt';
 import { ConversationTools } from './conversation-tools';
 import { requestAction } from './action-dialog';
-import { renderRequestError } from './request-error';
 import { ContentSearch } from './content-search';
 import { ConversationOutput } from './conversation-output';
 import { collapseIntermediateDefault } from './conversation-presentation';
@@ -86,7 +85,7 @@ function initialize(): void {
     description: HTMLDivElement; optionsSignature?: string;
   }
   interface MessageView {
-    root: HTMLElement; content: HTMLDivElement; metadata: HTMLSpanElement; error: HTMLDivElement; feedback: HTMLDivElement;
+    root: HTMLElement; content: HTMLDivElement; metadata: HTMLSpanElement; error: HTMLParagraphElement; feedback: HTMLDivElement;
     avatar: HTMLButtonElement;
     message: ConversationMessage; output?: ConversationOutput;
     attachments: HTMLDivElement; promptRoot: HTMLDivElement; prompt?: InputPrompt;
@@ -960,7 +959,7 @@ function initialize(): void {
     } catch (error) { if (scope === dropScope() && (!importRequestId || pendingDrops.delete(importRequestId))) { uploading = Math.max(0, uploading - 1); showError(String(error)); updateControls(); } }
   }
 
-  function showError(message: string): void { renderRequestError(document.querySelector<HTMLElement>('#error')!, message); }
+  function showError(message: string): void { const error = document.querySelector<HTMLElement>('#error')!; error.textContent = message; error.hidden = false; }
 
   async function copy(text: string, button: HTMLButtonElement): Promise<void> {
     if (await vscode.postMessage({ type: 'copy', text }) === false) { return; }
@@ -974,7 +973,7 @@ function initialize(): void {
     root.className = `message ${message.role}`;
     root.dataset.messageId = message.id;
     const timestamp = message.createdAt ? new Date(message.createdAt).toLocaleString(locale(), { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : '';
-    root.innerHTML = `<div class="message-body"><header class="message-header"><span class="message-heading"><span class="message-metadata"></span></span><time class="message-date"${!timestamp ? ' hidden' : ''}>${escape(timestamp)}</time></header><div class="attachments" hidden></div><div class="message-content"></div><div class="message-prompt"></div><div class="message-feedback" hidden><div class="message-error" hidden></div></div><div class="message-actions"><button class="icon-button copy-message" title="${t("Copy message")}" aria-label="${t("Copy message")}">${icon('copy')}</button></div></div>`;
+    root.innerHTML = `<div class="message-body"><header class="message-header"><span class="message-heading"><span class="message-metadata"></span></span><time class="message-date"${!timestamp ? ' hidden' : ''}>${escape(timestamp)}</time></header><div class="attachments" hidden></div><div class="message-content"></div><div class="message-prompt"></div><div class="message-feedback" hidden><p class="message-error" hidden></p></div><div class="message-actions"><button class="icon-button copy-message" title="${t("Copy message")}" aria-label="${t("Copy message")}">${icon('copy')}</button></div></div>`;
     if (timestamp) { root.querySelector<HTMLTimeElement>('.message-date')!.dateTime = new Date(message.createdAt!).toISOString(); }
     if (message.role === 'user') {
       const bubble = document.createElement('div'); bubble.className = 'message-bubble';
@@ -1067,7 +1066,8 @@ function initialize(): void {
     if (message.role === 'user') { view.content.textContent = message.content; }
     else { view.output!.update(message, state!.project.id, state!.project.entryId, state!.activeId, files, 'local', filesSignature, collapseEnabled); }
     const error = message.status === 'running' || message.status === 'sending' ? undefined : message.error;
-    renderRequestError(view.error, error);
+    view.error.textContent = error ?? '';
+    view.error.hidden = !error;
     const configureModel = !!view.configureModel && !!error && configurationPanel.needsAgentModels() && currentParameters().fields.some(field => field.name === 'model');
     view.feedback.hidden = !error;
     view.feedback.classList.toggle('model-configuration-required', configureModel);
@@ -1298,7 +1298,7 @@ function initialize(): void {
       if (missing || invalid) {
         focusParameter(name);
         if (invalid) { view.controls.find((control) => !control.checkValidity())?.reportValidity(); }
-        else { showError(t("Please enter {0}.", view.field.label || name)); }
+        else { const error = document.querySelector<HTMLElement>('#error')!; error.textContent = t("Please enter {0}.", view.field.label || name); error.hidden = false; }
         return;
       }
     }
@@ -1695,7 +1695,7 @@ function initialize(): void {
       updateConnectionFeedback();
       if (!message.silent) {
         const view = message.messageId && messages.get(message.messageId);
-        if (view && message.requestType === 'retry') { renderRequestError(view.error, message.message); }
+        if (view && message.requestType === 'retry') { view.error.textContent = message.message; view.error.hidden = false; }
         else { showError(message.message); }
       }
     }
