@@ -6,7 +6,7 @@ import { ConversationTools } from '../web/ui/conversation-tools';
 import { mountProjectConfigurations, type ProjectConfigurationsPanel } from '../web/ui/project-configurations';
 import { ProjectDatabases } from '../web/ui/project-databases';
 import { projectInfoButton } from '../web/ui/toolbar';
-import type { Project } from '../web/workflow-types';
+import type { Project, Tool, ToolPolicies } from '../web/workflow-types';
 
 const project: Project = {
   id: 'project', entryId: 'agent', aggregateName: 'Example project', name: 'Agent', defaultEntry: 'agent',
@@ -17,6 +17,7 @@ const state = createConfigurationState([AGENT_MODELS_CONFIGURATION_FIELD, { name
 const host = { postMessage: vi.fn() };
 let dialogs: ConversationTools, databases: ProjectDatabases, readOnly: boolean, available: boolean;
 let configurations: ProjectConfigurationsPanel;
+let tools: Tool[], policies: ToolPolicies;
 let listener: EventListener | undefined;
 const policiesChanged = vi.fn();
 const emit = (data: unknown) => window.dispatchEvent(new MessageEvent('message', { source: null, data }));
@@ -29,6 +30,7 @@ const click = (label: string, root: ParentNode = document) => {
 };
 beforeEach(() => {
   vi.useFakeTimers(); initI18n({ preference: 'en' }); host.postMessage.mockReset(); policiesChanged.mockReset(); readOnly = false; available = true;
+  tools = [{ name: 'read' }, { name: 'skill', description: 'Read SKILL.md' }]; policies = {};
   Object.defineProperty(HTMLDialogElement.prototype, 'showModal', { configurable: true, value(this: HTMLDialogElement) { this.open = true; } });
   Object.defineProperty(HTMLDialogElement.prototype, 'close', { configurable: true, value(this: HTMLDialogElement) { this.open = false; this.dispatchEvent(new Event('close')); } });
   const addEventListener = window.addEventListener.bind(window);
@@ -43,14 +45,14 @@ beforeEach(() => {
   databases = new ProjectDatabases(host);
   dialogs = new ConversationTools(databases, {
     configurations,
-    tools: () => ({ parameters: { fields: [], tools: [{ name: 'read' }, { name: 'skill', description: 'Read SKILL.md' }] }, policies: {}, changed: policiesChanged, readOnly }),
+    tools: () => ({ parameters: { fields: [], tools }, policies, changed: policiesChanged, readOnly }),
     usage: { available: () => available, load: requestId => host.postMessage({ type: 'usage', requestId }) },
   });
   document.getElementById('project-info')!.onclick = () => dialogs.projectInfo(project);
 });
 afterEach(() => {
   dialogs.close(); databases.dispose(); if (listener) window.removeEventListener('message', listener); listener = undefined;
-  vi.clearAllTimers(); vi.useRealTimers(); vi.restoreAllMocks();
+  vi.clearAllTimers(); vi.useRealTimers(); vi.restoreAllMocks(); vi.unstubAllGlobals();
   Reflect.deleteProperty(HTMLDialogElement.prototype, 'showModal'); Reflect.deleteProperty(HTMLDialogElement.prototype, 'close'); document.body.replaceChildren();
 });
 
@@ -133,4 +135,83 @@ it('updates read-only tool controls while keeping skills free of permission cont
   tab('skills').click(); expect(panel('skills').querySelector('input, select, button')).toBeNull();
   readOnly = false; dialogs.updatePermissions(); tab('tools').click(); expect(input.disabled).toBe(false); input.click();
   expect(policiesChanged).toHaveBeenCalledWith({ read: { enabled: false, autoApprove: false } });
+});
+
+it('synchronizes external policies without losing search, focus, scroll or read-only skill policies', () => {
+  dialogs.projectInfo(project, 'tools');
+  const search = panel('tools').querySelector<HTMLInputElement>('[type=search]')!;
+  search.value = 'read'; search.dispatchEvent(new Event('input')); search.focus(); panel('tools').scrollTop = 45;
+  policies = { read: { enabled: false, autoApprove: true }, skill: { enabled: false, autoApprove: false } };
+  dialogs.updatePermissions();
+  const [enabled, approve] = panel('tools').querySelectorAll<HTMLInputElement>('[type=checkbox]');
+  expect(enabled.checked).toBe(false); expect(approve.checked).toBe(true);
+  expect(search.value).toBe('read'); expect(document.activeElement).toBe(search); expect(panel('tools').scrollTop).toBe(45);
+  enabled.click(); dialogs.updatePermissions();
+  expect(enabled.checked).toBe(true); // Unchanged server state must not undo an optimistic edit.
+  expect(policiesChanged).toHaveBeenLastCalledWith({ read: { enabled: true, autoApprove: true }, skill: { enabled: false, autoApprove: false } });
+});
+
+it('refreshes the live registry while retaining tool filters and the skills read-only presentation', () => {
+  dialogs.projectInfo(project, 'tools');
+  const search = panel('tools').querySelector<HTMLInputElement>('[type=search]')!;
+  search.value = 'read'; search.dispatchEvent(new Event('input')); search.focus();
+  tools = [{ name: 'read', label: 'Read current files' }, { name: 'write' }, { name: 'skill', description: 'Updated guide' }];
+  readOnly = true; dialogs.updatePermissions();
+  const nextSearch = panel('tools').querySelector<HTMLInputElement>('[type=search]')!;
+  expect(nextSearch.value).toBe('read'); expect(document.activeElement).toBe(nextSearch);
+  expect(panel('tools').textContent).toContain('Read current files');
+  expect([...panel('tools').querySelectorAll<HTMLInputElement>('[type=checkbox]')].every(input => input.disabled)).toBe(true);
+  expect(panel('skills').textContent).toContain('Updated guide'); expect(panel('skills').querySelector('input, button')).toBeNull();
+});
+
+it('keeps a failed initial configuration request actionable after leaving and returning to its section', async () => {
+  dialogs.projectInfo(project, 'configurations');
+  const requestId = host.postMessage.mock.calls.at(-1)![0].requestId;
+  tab('tools').click(); emit({ type: 'error', requestId, message: 'Cannot load configurations' }); await settle();
+  tab('configurations').click();
+  expect(panel('configurations').querySelector('[role=status]')?.textContent).toBe('Cannot load configurations');
+  click('Refresh and discard draft'); expect(host.postMessage.mock.calls.at(-1)![0].requestId).not.toBe(requestId);
+});
+
+it('closes configuration model editors with the main panel and restores the toolbar focus', async () => {
+  const trigger = document.getElementById('project-info')!; trigger.focus(); trigger.click(); tab('configurations').click();
+  emit({ type: 'project-configuration-result', requestId: host.postMessage.mock.calls.at(-1)![0].requestId, value: state }); await settle();
+  document.querySelector<HTMLButtonElement>('.configuration-profile-link')!.click(); click('Add model');
+  const editor = document.querySelector<HTMLDialogElement>('.configuration-ai-editor')!; expect(editor.open).toBe(true);
+  dialogs.close(); expect(editor.open).toBe(false); expect(document.activeElement).toBe(trigger);
+});
+
+it('closes a custom field editor when navigation leaves configurations', async () => {
+  dialogs.projectInfo(project, 'configurations');
+  emit({ type: 'project-configuration-result', requestId: host.postMessage.mock.calls.at(-1)![0].requestId, value: state }); await settle();
+  document.querySelector<HTMLButtonElement>('.configuration-profile-link')!.click(); click('Add field');
+  const editor = document.querySelector<HTMLDialogElement>('.configuration-field-editor')!; expect(editor.open).toBe(true);
+  dialogs.projectInfo(project, 'overview'); expect(editor.open).toBe(false); expect(editor.isConnected).toBe(false);
+  expect(dialogs.activeSection).toBe('overview');
+});
+
+it('cancels a configuration creation prompt with the main panel without sending a mutation', async () => {
+  dialogs.projectInfo(project, 'configurations');
+  emit({ type: 'project-configuration-result', requestId: host.postMessage.mock.calls.at(-1)![0].requestId, value: state }); await settle();
+  click('New configuration');
+  const prompt = document.querySelector<HTMLDialogElement>('.action-dialog')!; expect(prompt.open).toBe(true);
+  prompt.querySelector<HTMLInputElement>('input')!.value = 'Do not create';
+  dialogs.close(); await settle(); expect(prompt.open).toBe(false); expect(prompt.isConnected).toBe(false);
+  expect(host.postMessage).toHaveBeenCalledTimes(1);
+});
+
+it('matches keyboard navigation to the responsive tab orientation and releases its resize listener on close', () => {
+  const media = new EventTarget() as MediaQueryList;
+  Object.defineProperty(media, 'matches', { configurable: true, value: true });
+  const remove = vi.spyOn(media, 'removeEventListener'); vi.stubGlobal('matchMedia', vi.fn(() => media));
+  dialogs.projectInfo(project);
+  const navigation = document.querySelector<HTMLElement>('.project-information-tabs')!;
+  expect(navigation.getAttribute('aria-orientation')).toBe('horizontal');
+  tab('overview').dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }));
+  expect(dialogs.activeSection).toBe('overview');
+  tab('overview').dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true }));
+  expect(dialogs.activeSection).toBe('configurations');
+  Object.defineProperty(media, 'matches', { value: false }); media.dispatchEvent(new Event('change'));
+  expect(navigation.getAttribute('aria-orientation')).toBe('vertical');
+  dialogs.close(); expect(remove).toHaveBeenCalledWith('change', expect.any(Function));
 });

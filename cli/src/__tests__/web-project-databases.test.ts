@@ -54,8 +54,9 @@ it.each(['en', 'zh-CN'] as const)('keeps database management inside Project info
   expect(document.querySelector('.aggregate-databases')).toBeNull(); expect(document.querySelector('.database-dialog')).toBeNull();
   dialogs.projectInfo(project);
   const tabs = [...document.querySelectorAll<HTMLButtonElement>('.project-information-tabs > button')];
+  expect(tabs[0]!.parentElement!.getAttribute('aria-orientation')).toBe('vertical');
   expect(tabs[0]!.getAttribute('aria-selected')).toBe('true'); expect(requests()).toEqual([]);
-  tabs[0]!.focus(); tabs[0]!.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true }));
+  tabs[0]!.focus(); tabs[0]!.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }));
   expect(tabs[1]!.getAttribute('aria-selected')).toBe('true'); expect(document.activeElement).toBe(tabs[1]); expect(requests()).toHaveLength(1);
   await respond();
   const card = page().querySelector('[data-alias="data"]')!;

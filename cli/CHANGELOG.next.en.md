@@ -1,5 +1,7 @@
 # Unreleased
 
+- Fix: CLI Web Project information synchronizes tool registrations and permissions while preserving search and focus. Configuration failures no longer remain stuck loading, and closing the panel dismisses its editors. Refined cards, selection states and light/dark styling, with horizontal tabs on narrow screens and stable panel dimensions.
+
 - Improvement: Conversation, message and workflow exports in Studio use the native save dialog and show the saved path in a notification after writing succeeds. Cancellation stays quiet and write failures show an error.
 
 - Improvement: CLI Web consolidates AI usage, project configurations, tools, skills and databases under Project information. The redesigned panel uses fixed dimensions, sidebar navigation and independently scrolling sections while preserving configuration drafts, tool searches and model setup shortcuts. Skills remain read-only without permission switches.

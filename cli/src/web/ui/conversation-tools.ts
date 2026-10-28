@@ -28,6 +28,8 @@ export class ConversationTools {
   private refresh?: HTMLButtonElement;
   private disposeImage?: () => void;
   private disposeProject?: () => void;
+  private disposeNavigation?: () => void;
+  private refreshTools?: (tools: ReturnType<NonNullable<ProjectSettingsOptions['tools']>>) => void;
   private settingsProject?: string;
   private selectSection?: (section: ProjectSettingsSection) => void;
   private section?: ProjectSettingsSection;
@@ -47,6 +49,7 @@ export class ConversationTools {
   get activeSection(): ProjectSettingsSection | undefined { return this.open ? this.section : undefined; }
   private cleanup(): void {
     this.disposeImage?.(); this.disposeImage = undefined; this.disposeProject?.(); this.disposeProject = undefined;
+    this.disposeNavigation?.(); this.disposeNavigation = undefined; this.refreshTools = undefined;
     this.settings.configurations?.deactivate(); this.usageOpen = false; this.usageRequestId = undefined; this.usageBody = undefined;
     clearTimeout(this.usageTimer); this.usageTimer = undefined;
     this.refresh = undefined; this.selectSection = undefined; this.section = undefined; this.settingsProject = undefined;
@@ -56,8 +59,7 @@ export class ConversationTools {
   closeUsage(): void { if (this.usageBody) this.close(); }
   updatePermissions(): void {
     if (!this.open || !this.settings.tools) return;
-    const readOnly = !!this.settings.tools().readOnly;
-    for (const input of this.body.querySelectorAll<HTMLInputElement>('.tool-permissions input[type=checkbox]')) input.disabled = readOnly;
+    this.refreshTools?.(this.settings.tools());
   }
   private show(title: string): void {
     const opener = this.open ? this.opener : document.activeElement instanceof HTMLElement ? document.activeElement : undefined;
@@ -113,8 +115,13 @@ export class ConversationTools {
 
   private showSettings(project: Project | undefined, initialTab: ProjectSettingsSection, tools?: ReturnType<NonNullable<ProjectSettingsOptions['tools']>>): void {
     this.show(t('Project information')); this.dialog.classList.add('project-information-dialog');
+    this.title.prepend(document.createRange().createContextualFragment(iconHtml('package')));
     const navigation = document.createElement('nav'); navigation.className = 'project-information-tabs';
-    navigation.setAttribute('role', 'tablist'); navigation.setAttribute('aria-orientation', 'vertical'); navigation.ariaLabel = t('Project information');
+    navigation.setAttribute('role', 'tablist'); navigation.ariaLabel = t('Project information');
+    const narrow = window.matchMedia?.('(max-width: 680px)');
+    const orientation = () => navigation.setAttribute('aria-orientation', narrow?.matches ? 'horizontal' : 'vertical');
+    orientation(); narrow?.addEventListener?.('change', orientation);
+    this.disposeNavigation = () => narrow?.removeEventListener?.('change', orientation);
     const content = document.createElement('div'); content.className = 'project-settings-content';
     const tabs: { id: ProjectSettingsSection; tab: HTMLButtonElement; panel: HTMLElement; activate?: () => void; mounted: boolean }[] = [];
     const add = (id: ProjectSettingsSection, label: string, icon: string, description: string, child?: HTMLElement, activate?: () => void) => {
@@ -136,12 +143,34 @@ export class ConversationTools {
       add('configurations', t('Project configurations'), 'settings-gear', t('Manage configuration profiles, values and publication permissions.'), configurations.element, () => configurations.activate());
     }
     if (tools) {
-      const panels = toolsAndSkills(tools.parameters.tools ?? [], tools.policies, policies => {
-        if (!(this.settings.tools ? this.settings.tools().readOnly : tools.readOnly)) tools.changed(policies);
-      }, this.toolSections);
-      for (const input of panels.tools.querySelectorAll<HTMLInputElement>('input[type=checkbox]')) input.disabled = !!tools.readOnly;
+      const changed = (policies: ToolPolicies) => {
+        const current = this.settings.tools?.() ?? tools;
+        if (!current.readOnly) current.changed(policies);
+      };
+      let catalog = JSON.stringify(tools.parameters.tools ?? []);
+      let panels = toolsAndSkills(tools.parameters.tools ?? [], tools.policies, changed, this.toolSections);
+      panels.update(tools.policies, !!tools.readOnly);
       add('tools', t('Tools'), 'wrench', t('Control which tools can run and which actions need approval.'), panels.tools);
       add('skills', t('Skills'), 'book', t('Read the guides available to this entry. Skills have no permission switches.'), panels.skills);
+      this.refreshTools = current => {
+        const nextCatalog = JSON.stringify(current.parameters.tools ?? []);
+        if (catalog !== nextCatalog) {
+          const search = panels.tools.querySelector<HTMLInputElement>('[type=search]');
+          const focused = panels.tools.contains(document.activeElement), label = document.activeElement?.getAttribute('aria-label');
+          const scroll = panels.tools.parentElement!.scrollTop;
+          if (!search?.value.trim()) for (const section of panels.tools.querySelectorAll<HTMLDetailsElement>('details[data-group]')) this.toolSections.set(section.dataset.group!, section.open);
+          const next = toolsAndSkills(current.parameters.tools ?? [], current.policies, changed, this.toolSections);
+          next.update(current.policies, !!current.readOnly);
+          if (search) {
+            const input = next.tools.querySelector<HTMLInputElement>('[type=search]');
+            if (input) { input.value = search.value; input.dispatchEvent(new Event('input')); }
+          }
+          panels.tools.replaceWith(next.tools); panels.skills.replaceWith(next.skills); panels = next; catalog = nextCatalog;
+          if (focused) ([...panels.tools.querySelectorAll<HTMLElement>('[aria-label]:not(:disabled)')].find(control => control.getAttribute('aria-label') === label) ?? panels.tools.closest<HTMLElement>('[role=tabpanel]'))?.focus({ preventScroll: true });
+          panels.tools.parentElement!.scrollTop = scroll;
+        }
+        panels.update(current.policies, !!current.readOnly);
+      };
     }
     const usage = this.settings.usage;
     if (project && usage?.available()) {
@@ -163,12 +192,14 @@ export class ConversationTools {
         const active = item === selected; item.tab.setAttribute('aria-selected', String(active)); item.tab.tabIndex = active ? 0 : -1; item.panel.hidden = !active;
       }
       if (!selected.mounted) { selected.mounted = true; selected.activate?.(); }
+      if (narrow?.matches) selected.tab.scrollIntoView?.({ block: 'nearest', inline: 'nearest' });
     };
     navigation.onkeydown = event => {
       const current = tabs.findIndex(item => item.tab === document.activeElement);
+      const forward = narrow?.matches ? 'ArrowRight' : 'ArrowDown', backward = narrow?.matches ? 'ArrowLeft' : 'ArrowUp';
       const index = event.key === 'Home' ? 0 : event.key === 'End' ? tabs.length - 1
-        : ['ArrowDown', 'ArrowRight'].includes(event.key) ? (current + 1) % tabs.length
-        : ['ArrowUp', 'ArrowLeft'].includes(event.key) ? (current - 1 + tabs.length) % tabs.length : undefined;
+        : event.key === forward ? (current + 1) % tabs.length
+        : event.key === backward ? (current - 1 + tabs.length) % tabs.length : undefined;
       if (index !== undefined) { event.preventDefault(); tabs[index]?.tab.click(); tabs[index]?.tab.focus(); }
     };
     this.body.append(navigation, content); this.selectSection(initialTab);

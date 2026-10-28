@@ -170,10 +170,10 @@ it('supports keyboard tabs and retains tool search and collapse state across tab
   f.section('File tools').querySelector('summary')!.click();
   f.search('kb_get');
   tools.focus();
-  tools.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true }));
+  tools.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }));
   expect(document.activeElement).toBe(skills); expect(skills.tabIndex).toBe(0); expect(tools.tabIndex).toBe(-1);
   expect(skills.getAttribute('aria-selected')).toBe('true'); expect((f.root.closest('[role=tabpanel]') as HTMLElement).hidden).toBe(true);
-  skills.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true }));
+  skills.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }));
   expect(document.activeElement).toBe(tools); expect((f.root.closest('[role=tabpanel]') as HTMLElement).hidden).toBe(false);
   expect(f.root.querySelector<HTMLInputElement>('[type=search]')?.value).toBe('kb_get');
   expect(f.section('Knowledge').open).toBe(true); expect(f.section('File tools').hidden).toBe(true);
@@ -181,7 +181,7 @@ it('supports keyboard tabs and retains tool search and collapse state across tab
   expect(document.activeElement).toBe(skills);
   skills.dispatchEvent(new KeyboardEvent('keydown', { key: 'Home', bubbles: true }));
   expect(document.activeElement).toBe(tools);
-  tools.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowLeft', bubbles: true }));
+  tools.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowUp', bubbles: true }));
   expect(document.activeElement).toBe(skills);
   tools.click(); f.search('');
   expect(f.section('File tools').open).toBe(true); expect(f.section('Knowledge').open).toBe(false);

@@ -26,6 +26,8 @@ export function mountProjectConfigurations(host: Host, embedded?: { open(): void
   let detailId:string|undefined, selectingId:string|undefined, publicationView=false, publicationDirty=false, missingAgentModels=false;
   let opening = 0;
   let opener: HTMLElement | undefined;
+  let fieldEditor: HTMLDialogElement | undefined;
+  let profileEditor: AbortController | undefined;
   const fieldRows = new Map<string, HTMLElement>();
   const modeStatus=document.createElement('span');modeStatus.className='configuration-current-profile';modeStatus.hidden=true;
   document.querySelector('.composer-toolbar .run-options')?.append(modeStatus);
@@ -176,11 +178,12 @@ export function mountProjectConfigurations(host: Host, embedded?: { open(): void
   async function profileOperation(action: ProjectConfigurationAction['action'],id=detailId) {
     if (!draft || working || !clean()) return;
     editingField = true;
+    const editor = profileEditor = new AbortController();
     try {
-    const name = action === 'create' || action === 'rename' ? await requestAction({title:t(action === 'create' ? 'New configuration' : 'Rename configuration'),label:t('Configuration name'),value:action === 'rename' ? draft.configurations.find(c => c.id === id)?.name : '',confirm:t('Save')})
-      : action === 'delete' ? await requestAction({title:t('Delete this configuration?'),confirm:t('Delete'),danger:true}) : '';
+    const name = action === 'create' || action === 'rename' ? await requestAction({title:t(action === 'create' ? 'New configuration' : 'Rename configuration'),label:t('Configuration name'),value:action === 'rename' ? draft.configurations.find(c => c.id === id)?.name : '',confirm:t('Save'),signal:editor.signal})
+      : action === 'delete' ? await requestAction({title:t('Delete this configuration?'),confirm:t('Delete'),danger:true,signal:editor.signal}) : '';
     if (name !== undefined) await dispatch({action,id,...(name ? {name} : {})});
-    } finally { editingField = false; if (latest && !dirty) { draft = undefined; render(latest); } }
+    } finally { if(profileEditor===editor)profileEditor=undefined;editingField = false; if (latest && !dirty) { draft = undefined; render(latest); } }
   }
   const create = iconButton('add', t('New configuration'), () => void profileOperation('create'));
   const profilesMenu = menu('ellipsis', t('Configuration actions'), [
@@ -266,7 +269,7 @@ export function mountProjectConfigurations(host: Host, embedded?: { open(): void
   }
   async function editField(field?: ProjectConfigurationField) {
     editingField = true;
-    const editor = document.createElement('dialog'); editor.className = 'conversation-dialog project-configurations configuration-field-editor';
+    const editor = fieldEditor = document.createElement('dialog'); editor.className = 'conversation-dialog project-configurations configuration-field-editor';
     editor.setAttribute('aria-label', t(field ? 'Edit field' : 'Add field'));
     const editorHeader = document.createElement('header'), editorTitle = document.createElement('h2'); editorTitle.textContent = t(field ? 'Edit field' : 'Add field');
     editorHeader.append(editorTitle,iconButton('close',t('Close'),()=>editor.close()));
@@ -297,7 +300,7 @@ export function mountProjectConfigurations(host: Host, embedded?: { open(): void
         else message.textContent = status.textContent;
       } finally { unlock(); }
     } catch (e) { message.textContent=(e as Error).message; } finally { apply.disabled = false; } })(); };
-    editor.append(editorHeader,form); document.body.append(editor); editor.addEventListener('close',()=>{ editingField = false; editor.remove(); addField.focus(); if(latest && !dirty) { draft = undefined; render(latest); } },{once:true}); editor.showModal(); key.focus();
+    editor.append(editorHeader,form); document.body.append(editor); editor.addEventListener('close',()=>{ if(fieldEditor===editor)fieldEditor=undefined;editingField = false; editor.remove(); addField.focus(); if(latest && !dirty) { draft = undefined; render(latest); } },{once:true}); editor.showModal(); key.focus();
   }
   function fileControl(field: ProjectConfigurationField, value: unknown, defaultValue: unknown): HTMLElement {
     const control=document.createElement('div'); control.className='configuration-file';
@@ -543,7 +546,7 @@ export function mountProjectConfigurations(host: Host, embedded?: { open(): void
       // A slow refresh must not navigate again after the user closes or browses the panel.
       if (!field || hadState || attempt !== opening || !isOpen() || working || editingField || !clean()) return;
       showActiveField(field);
-    } catch (e) { if (attempt === opening && isOpen()) error(e); }
+    } catch (e) { if ((attempt === opening && isOpen()) || !latest) error(e); }
   }
   let revealing = false;
   function reveal(field?: string) { revealing = true; try { embedded?.open(); } finally { revealing = false; } void open(field); }
@@ -560,5 +563,5 @@ export function mountProjectConfigurations(host: Host, embedded?: { open(): void
     }
     if(message?.type==='project-configurations-open') reveal();
   });
-  return { element: dialog, activate: () => { if(!revealing)void open(); }, deactivate: () => { ++opening; hideMenus(); }, needsAgentModels: () => missingAgentModels, openAgentModels: () => reveal(AGENT_MODELS_CONFIGURATION_KEY) };
+  return { element: dialog, activate: () => { if(!revealing)void open(); }, deactivate: () => { ++opening; hideMenus(); profileEditor?.abort(); modelControls.forEach(control => control.dispose()); if(fieldEditor?.open)fieldEditor.close(); }, needsAgentModels: () => missingAgentModels, openAgentModels: () => reveal(AGENT_MODELS_CONFIGURATION_KEY) };
 }

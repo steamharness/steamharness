@@ -21,16 +21,23 @@ function groupFor(name: string): { id: string; title: string } {
   return namespace ? { id: `namespace:${namespace}`, title: namespace } : { id: 'other', title: t("Other tools") };
 }
 
+export interface ToolPermissionsPanel {
+  element: HTMLElement;
+  update(policies: ToolPolicies, readOnly: boolean): void;
+}
+
 export function toolPermissions(tools: Tool[], policies: ToolPolicies, changed: (policies: ToolPolicies) => void,
-  expanded: Map<string, boolean>): HTMLElement {
+  expanded: Map<string, boolean>): ToolPermissionsPanel {
   const root = document.createElement('div'); root.className = 'tool-permissions';
   const count = document.createElement('p'); count.className = 'tool-count'; count.setAttribute('role', 'status');
   const empty = document.createElement('p'); empty.textContent = t("No tools declared by this project");
-  if (!tools.length) { count.textContent = t("{0} tools", 0); root.append(count, empty); return root; }
+  if (!tools.length) { count.textContent = t("{0} tools", 0); root.append(count, empty); return { element: root, update() {} }; }
   const search = document.createElement('input'); search.type = 'search'; search.className = 'tool-search';
   search.ariaLabel = t("Search tools"); search.placeholder = t("Search tools...");
   root.append(search, count);
   const draft: ToolPolicies = {};
+  const controls: { tool: Tool; property: 'enabled' | 'autoApprove'; checkbox: HTMLInputElement }[] = [];
+  let policySnapshot = JSON.stringify(policies);
   const groups = new Map<string, { details: HTMLDetailsElement; count: HTMLElement; rows: { element: HTMLTableRowElement; text: string }[] }>();
   for (const tool of tools) {
     draft[tool.name] = { enabled: policies[tool.name]?.enabled ?? tool.enabled ?? true, autoApprove: policies[tool.name]?.autoApprove ?? tool.autoApprove ?? false };
@@ -57,6 +64,7 @@ export function toolPermissions(tools: Tool[], policies: ToolPolicies, changed: 
       const cell = document.createElement('td'), checkbox = document.createElement('input'); checkbox.type = 'checkbox'; checkbox.checked = draft[tool.name][property]!;
       checkbox.ariaLabel = `${title === tool.name ? title : `${title} (${tool.name})`} ${property === 'enabled' ? t("Enable") : t("Auto-approve")}`;
       checkbox.addEventListener('change', () => { draft[tool.name][property] = checkbox.checked; changed(structuredClone(draft)); });
+      controls.push({ tool, property, checkbox });
       cell.append(checkbox); row.append(cell);
     }
     view.details.querySelector('tbody')!.append(row);
@@ -79,5 +87,16 @@ export function toolPermissions(tools: Tool[], policies: ToolPolicies, changed: 
     empty.hidden = total > 0;
   };
   search.addEventListener('input', filter); filter();
-  return root;
+  return {
+    element: root,
+    update(next, readOnly) {
+      const snapshot = JSON.stringify(next), updated = snapshot !== policySnapshot;
+      policySnapshot = snapshot;
+      for (const { tool, property, checkbox } of controls) {
+        checkbox.disabled = readOnly;
+        // Keep optimistic edits until a different authoritative state arrives.
+        if (updated) checkbox.checked = draft[tool.name][property] = next[tool.name]?.[property] ?? tool[property] ?? (property === 'enabled');
+      }
+    },
+  };
 }

@@ -1,7 +1,8 @@
 import { t } from '../localization';
 import { iconButton } from './ui';
 
-export function requestAction(options: { title: string; confirm: string; description?: string; label?: string; value?: string; danger?: boolean; multiline?: boolean; required?: boolean }): Promise<string | undefined> {
+export function requestAction(options: { title: string; confirm: string; description?: string; label?: string; value?: string; danger?: boolean; multiline?: boolean; required?: boolean; signal?: AbortSignal }): Promise<string | undefined> {
+  if (options.signal?.aborted) return Promise.resolve(undefined);
   return new Promise(resolve => {
     const dialog = document.createElement('dialog'); dialog.className = 'conversation-dialog action-dialog';
     const title = document.createElement('h2'); title.id = `action-${crypto.randomUUID()}`; title.textContent = options.title;
@@ -30,7 +31,9 @@ export function requestAction(options: { title: string; confirm: string; descrip
       if (input?.required && !input.value.trim()) { input.focus(); return; }
       result = input?.value.trim() ?? ''; dialog.close();
     };
-    dialog.addEventListener('close', () => { dialog.remove(); resolve(result); }, { once: true });
+    const abort = () => { result = undefined; dialog.close(); };
+    options.signal?.addEventListener('abort', abort, { once: true });
+    dialog.addEventListener('close', () => { options.signal?.removeEventListener('abort', abort); dialog.remove(); resolve(result); }, { once: true });
     document.body.append(dialog); dialog.showModal();
   });
 }
