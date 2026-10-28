@@ -33,7 +33,8 @@ export async function resolveProjectConfigurationAccess(projectDir:string,connec
   const fallback:ConfigurationAccess={subject:previous?.access.subject??origin+':guest',role:'guest',online:false};
   try{
     const get=async(route:string)=>{
-      const response=await fetch(origin+route,{headers:{Authorization:'Bearer '+connection!.accessToken},redirect:'error',signal:AbortSignal.timeout(5000)});
+      // Project access includes inherited roles and may require several remote database round trips.
+      const response=await fetch(origin+route,{headers:{Authorization:'Bearer '+connection!.accessToken},redirect:'error',signal:AbortSignal.timeout(30_000)});
       const result=await response.json() as {errCode:number;data:any};
       if(!response.ok||result.errCode!==0)throw new Error('Project role unavailable.');
       return result.data;

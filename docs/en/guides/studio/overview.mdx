@@ -82,6 +82,8 @@ The Start page shows one card per aggregate; **Run Project** opens `defaultEntry
 
 Use the **Project windows** icon in the running page toolbar. Compact cards show entry names, types, default/current markers and runtime states. The open icon on the right creates a new native Studio tab every time, including for the current entry. Existing tabs stay open with independent page state and drafts. Multiple tabs for the same entry restore as separate tabs after a restart. Tabs share the aggregate host; closing one leaves the others open, and closing the last native tab releases the host.
 
+Entries opened from the Assistant sidebar also create and activate new native tabs using the current workspace's assistant configuration. In IDE mode they appear in the editor area; in Steam mode they appear under the project category in the right tool workspace. Closing all new tabs leaves the sidebar session running while the Assistant sidebar remains open. Open failures show an error notification, with details available in the Output panel.
+
 Information displays aggregate identity, version, entry type, database aliases and IDs. KV and knowledge panels select an entry and alias first; an entry can reference multiple databases. Database management supports requests, approval, saving alias/databaseId references, narrowing, revocation and rotation, including pending, rejected and invalid states. Hosts maintain permissions. CLI Web and Studio share a user-level SQLite registry.
 
 Checks statically validate registered entries. Missing database bindings affect the corresponding data operations while other entries remain accessible. The current protocol requires aggregate projects and a compatible CLI.

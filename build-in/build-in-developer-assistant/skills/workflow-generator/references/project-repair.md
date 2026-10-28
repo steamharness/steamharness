@@ -5,7 +5,7 @@
 先完整读取本文件与当前运行时 API 参考。旧版 CLI 返回 `0` 也不能覆盖直接发现的合同错误。不要把字段机械改名；重新声明入口及数据库需求，并逐入口执行当前版本检查。代码工作区授权与数据库空间的 KV 权限分别校验。
 
 
-先读取根 package.json，验证顶层 UUID、steamharness.json.entries 和 defaultEntry。每个入口都有独立 entryId、type、name、root、entry，可选 configuration 和 schedulePresets。类型属于入口，Workflow 内部操作使用 entrypointId。逐入口静态分析；非法路径、重复 ID、类型不匹配直接修复声明。
+先读取根 steamharness.json，验证顶层 id（UUID）、name、version、entries 和 defaultEntry。根目录入口使用 root: "." 并完整内联声明；子目录登记项只包含 entryId 和 root，由对应目录的 steamharness.json 提供 type、name、entry 以及可选 configuration、projectCard、projectInfo、databases 和 schedulePresets。只检查父配置登记的子入口，不扫描其他子配置。类型属于入口，Workflow 内部操作使用 entrypointId。逐入口静态分析；非法路径、重复 ID、类型不匹配直接修复声明。
 
 不兼容旧项目声明，不自动导入旧数据。删除旧关系、双向授权、组合发行锁和默认项目数据库声明。保留普通 npm 依赖。多模块代码保持目录结构，只在根声明聚合身份。
 

@@ -5,6 +5,10 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import pg from "pg";
+import { register } from "tsx/esm/api";
+
+register();
+const { readProjectDeclarationFromDirectory } = await import("@steamharness/project-manifest/node");
 
 const UUID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -45,31 +49,20 @@ export async function listWorkspaceProjects(workspaceRoot) {
       continue;
     }
     const projectDir = path.join(workspaceRoot, entry.name);
-    const packageJsonPath = path.join(projectDir, "package.json");
-    if (!existsSync(packageJsonPath)) {
+    const manifestPath = path.join(projectDir, "steamharness.json");
+    if (!existsSync(manifestPath) && !existsSync(path.join(projectDir, "package.json"))) {
       continue;
     }
-
-    const packageJson = JSON.parse(await readFile(packageJsonPath, "utf8"));
-    if (!packageJson || typeof packageJson !== "object" || Array.isArray(packageJson)) {
-      throw new Error(`Project "${entry.name}" package.json must contain a JSON object.`);
+    if (!existsSync(manifestPath)) {
+      throw new Error(`Project "${entry.name}" requires steamharness.json.`);
     }
-
-    const projectId = typeof packageJson.id === "string" ? packageJson.id.trim() : "";
-    if (!isProjectUuid(projectId)) {
-      throw new Error(`Project "${entry.name}" package.json must include a UUID id.`);
-    }
-
-    const projectName = typeof packageJson.name === "string" ? packageJson.name.trim() : "";
-    if (projectName === "") {
-      throw new Error(`Project "${entry.name}" package.json must include string "name".`);
-    }
+    const manifest = await readProjectDeclarationFromDirectory(projectDir);
 
     projects.push({
       dirName: entry.name,
       projectDir,
-      projectId,
-      projectName,
+      projectId: manifest.projectId,
+      projectName: manifest.name,
     });
   }
 

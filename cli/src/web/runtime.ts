@@ -9,6 +9,7 @@ import { redactProjectData, type Runtime, type Report, type Project } from './wo
 
 import type { AgentSessionCommand, AgentSessionReceipt } from 'steamharness/agent';
 import { createSecretStreamRedactor } from './runtime-log';
+import { PROJECT_CONFIG_ENV, readProjectConfig } from '@steamharness/project-manifest';
 
 export interface WebConnection {
   serverUrl: string;
@@ -169,7 +170,12 @@ export function createWebRuntime(projectDir: string, storageDir: string, connect
  * assistant connections are added explicitly above.
  */
 export function sanitizeWebWorkerEnvironment(base: NodeJS.ProcessEnv = process.env): NodeJS.ProcessEnv {
-  return Object.fromEntries(Object.entries(base).filter(([key, value]) => value !== undefined && !isPrivateEnvironmentKey(key)));
+  const environment = Object.fromEntries(Object.entries(base).filter(([key, value]) => value !== undefined && !isPrivateEnvironmentKey(key)));
+  // Project resource IDs are configuration, validated separately from host credentials.
+  if (base[PROJECT_CONFIG_ENV] !== undefined) {
+    environment[PROJECT_CONFIG_ENV] = JSON.stringify(readProjectConfig(undefined, { [PROJECT_CONFIG_ENV]: base[PROJECT_CONFIG_ENV] }));
+  }
+  return environment;
 }
 
 /**

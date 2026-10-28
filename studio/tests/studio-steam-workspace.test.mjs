@@ -404,6 +404,30 @@ test('browser add uses a fresh page and category routing retains files and secon
   assert.equal(f.parts.get('project').groups[0].contains(other), true); assert.equal(f.parts.get('browser').groups[0].contains(browser), true);
 });
 
+test('entries opened from Assistant activate distinct project tabs while retaining the running project and Assistant', async t => {
+  const f = fixture(t), runtime = new WebviewInput('Runtime', 'file:///project');
+  await f.left.openEditor(runtime); await f.workspace.activate();
+  await f.workspace.openTool('assistant');
+  const assistant = f.parts.get('assistant').activeGroup.activeEditor;
+  const entries = [];
+  for (const name of ['Project Assistant', 'Studio Control', 'Project Assistant']) {
+    const entry = new WebviewInput(name, 'studio-assistant:%2Fworkspace');
+    entry.webview.providedViewType = 'studio.projectTool';
+    entries.push(entry);
+    await f.open(entry);
+    assert.equal(f.active, 'project');
+    assert.equal(f.activeGroup.activeEditor, entry);
+    assert.equal(f.parts.get('project').visible, true);
+    assert.equal(f.parts.get('assistant').visible, false);
+    assert.equal(f.left.activeEditor, runtime);
+    assert.equal(f.parts.get('assistant').groups[0].contains(assistant), true);
+  }
+  assert.equal(f.instances.length, 3);
+  assert.deepEqual(f.parts.get('project').groups[0].editors, entries);
+  await f.workspace.openTool('assistant');
+  assert.equal(f.parts.get('assistant').activeGroup.activeEditor, assistant);
+});
+
 test('terminal native tabs close actual sessions with veto, while hiding the category preserves sessions', async t => {
   const f = fixture(t); await f.workspace.activate(); await f.workspace.newInstance('terminal'); await f.workspace.newInstance('terminal');
   const first = f.instances[0].id; f.terminals.instances[0].veto = true;

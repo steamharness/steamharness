@@ -22,8 +22,7 @@ it.each(['en', 'zh-CN'] as const)('shows authored metadata in %s and preserves d
   expect(sections[1].rows[1].value).toContain('custom');
   expect(sections[2].rows).toEqual([{ label: 'en', value: 'Display name' }, { label: 'zh-CN', value: '\u9879\u76ee\u540d\u79f0' }]);
   expect(sections[3].rows[0].value).toContain('main');
-  expect(sections[4].rows).toEqual([]);
-  expect(sections[5].rows[0].label).toBe('Original entrypoint');
+  expect(sections[4].rows[0].label).toBe('Original entrypoint');
 });
 
 it('shows the assistant working directory and supplies useful fallbacks for optional display metadata', () => {

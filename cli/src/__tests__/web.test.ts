@@ -272,6 +272,15 @@ describe('steamharness web', () => {
       STEAMHARNESS_STUDIO_CONTROL_BRIDGE_TOKEN: 'capability-token' });
   });
 
+  it('validates project database overrides before passing them to workers', () => {
+    const databaseId = randomUUID();
+    expect(sanitizeWebWorkerEnvironment({ STEAMHARNESS_PROJECT_CONFIG: JSON.stringify({ databases: { data: databaseId } }) }))
+      .toEqual({ STEAMHARNESS_PROJECT_CONFIG: JSON.stringify({ version: 1, databases: { data: databaseId } }) });
+    for (const value of ['invalid JSON', JSON.stringify({ databases: { data: 'not-a-uuid' } }), JSON.stringify({ apiKey: 'not-project-configuration' })]) {
+      expect(() => sanitizeWebWorkerEnvironment({ STEAMHARNESS_PROJECT_CONFIG: value })).toThrow();
+    }
+  });
+
   it('routes Trace controls to an explicitly selected historical session and rejects a replaced owner', async () => {
     const { app, post } = await fixture();
     const root = app.controller!.current;

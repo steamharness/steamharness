@@ -1,0 +1,7 @@
+.message-error { margin: 12px 0; }
+.request-error { min-width: 0; white-space: normal; }
+.request-error-summary { margin: 0; font-weight: 500; }
+.request-error-hint { margin: 4px 0 0; color: var(--muted); }
+.request-error-details { margin-top: 8px; color: var(--muted); }
+.request-error-details > summary { width: fit-content; cursor: pointer; font-size: 11px; }
+.request-error-details > pre { max-height: 200px; overflow: auto; margin: 8px 0 0; padding: 8px 10px; border: 1px solid var(--border); border-radius: 4px; background: var(--vscode-textCodeBlock-background); font: 11px/1.6 var(--vscode-editor-font-family, monospace); white-space: pre-wrap; overflow-wrap: anywhere; }

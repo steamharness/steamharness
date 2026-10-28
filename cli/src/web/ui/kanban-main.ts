@@ -29,7 +29,8 @@ app.innerHTML = `
 <dialog id="dimensions-dialog" class="conversation-dialog"><header><h2>${t("Preview size")}</h2><button id="close-dimensions" class="icon-button" title="${t("Close")}" aria-label="${t("Close")}">${iconHtml('close')}</button></header><form class="dialog-body"><label>${t("Width")}<input id="preview-width" type="number" min="160" max="4096" required></label><label>${t("Height")}<input id="preview-height" type="number" min="96" max="4096" required></label><div class="dimension-actions"><button id="reset-dimensions" type="button">${iconHtml('discard')}${t("Reset")}</button><button type="submit">${iconHtml('check')}${t("Apply")}</button></div></form></dialog>
 <dialog id="methods-dialog" class="conversation-dialog"><header><h2>${t("Page methods")}</h2><button id="close-methods" class="icon-button" title="${t("Close")}" aria-label="${t("Close")}">${iconHtml('close')}</button></header><div class="dialog-body"><select id="method-name" aria-label="${t("Page methods")}"></select><p id="method-description"></p><pre id="method-schema"></pre><label class="method-input">${t("Parameters JSON")}<textarea id="method-args" rows="5">{}</textarea></label><button id="invoke-method" type="button">${iconHtml('play')}${t("Execute")}</button><pre id="method-result" role="status"></pre></div></dialog>`;
 const element = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id)! as T;
-const frame = element<HTMLIFrameElement>('kanban-preview'), dialogs = new ConversationTools();
+const aggregateToolbar = mountAggregateToolbar(host);
+const frame = element<HTMLIFrameElement>('kanban-preview'), dialogs = new ConversationTools(aggregateToolbar.databases);
 const pending = new Map<string, { resolve(value: Message): void; reject(error: Error): void; timer: ReturnType<typeof setTimeout> }>();
 const narrow = matchMedia('(max-width: 820px)');
 const saved = host.getState() as { menuOpen?: boolean; mode?: KanbanPresentationMode; sizes?: Record<string, { width: number; height: number }> } | undefined;
@@ -44,10 +45,9 @@ let serverInstanceId: string | undefined;
 let values: ParamValues = {}, saveTimer: ReturnType<typeof setTimeout> | undefined, readyTimer: ReturnType<typeof setTimeout> | undefined, pendingBridge = 0;
 let methodSession: ReturnType<typeof createKanbanMethodSession> | undefined;
 const methodCalls = new Map<string, AbortController>();
-const aggregateToolbar = mountAggregateToolbar(host);
 const serverGuidance = new ProjectServerGuidance(element('server-guidance'), {
   create: () => { void host.postMessage({ type: 'open-project-create' }); },
-  databases: aggregateToolbar.openDatabases,
+  databases: () => { if (project) dialogs.projectInfo(project, 'databases'); },
   retry: () => { void checkApplication(); },
 });
 mountProjectConfigurations(host);

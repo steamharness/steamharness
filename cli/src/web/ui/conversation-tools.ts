@@ -6,6 +6,8 @@ import { projectInformation } from './project-information';
 import { usageAmount, usagePeriods } from './ai-usage';
 import { imagePreview } from './image-preview';
 import { toolPermissions } from './tool-permissions';
+import type { ProjectDatabases } from './project-databases';
+import './project-databases.css';
 
 export class ConversationTools {
   private readonly dialog = document.createElement('dialog');
@@ -15,8 +17,9 @@ export class ConversationTools {
   private usageRequestId?: string;
   private refresh?: HTMLButtonElement;
   private disposeImage?: () => void;
+  private disposeProject?: () => void;
   private readonly toolSections = new Map<string, boolean>();
-  constructor() {
+  constructor(private readonly databases?: ProjectDatabases) {
     this.dialog.className = 'conversation-dialog';
     this.title.id = 'conversation-dialog-title'; this.dialog.setAttribute('aria-labelledby', this.title.id);
     const header = document.createElement('header'); header.append(this.title, iconButton('close', t("Close"), () => this.close()));
@@ -25,9 +28,9 @@ export class ConversationTools {
     this.dialog.addEventListener('cancel', () => this.close());
   }
   get open(): boolean { return this.dialog.open; }
-  close(): void { this.dialog.close(); this.disposeImage?.(); this.disposeImage = undefined; this.usageOpen = false; this.usageRequestId = undefined; this.refresh?.remove(); this.refresh = undefined; }
+  close(): void { this.dialog.close(); this.disposeImage?.(); this.disposeImage = undefined; this.disposeProject?.(); this.disposeProject = undefined; this.usageOpen = false; this.usageRequestId = undefined; this.refresh?.remove(); this.refresh = undefined; }
   closeUsage(): void { if (this.usageOpen) { this.close(); } }
-  private show(title: string): void { this.close(); this.dialog.classList.remove('image-dialog'); this.title.textContent = title; this.body.replaceChildren(); this.body.setAttribute('aria-busy', 'false'); this.dialog.showModal(); }
+  private show(title: string): void { this.close(); this.dialog.classList.remove('image-dialog', 'project-information-dialog'); this.title.textContent = title; this.body.replaceChildren(); this.body.setAttribute('aria-busy', 'false'); this.dialog.showModal(); }
 
   plan(content: string): void {
     this.show(t("Plan")); const article = document.createElement('article'); article.className = 'message-content'; article.innerHTML = markdownHtml(content); this.body.append(article);
@@ -39,13 +42,36 @@ export class ConversationTools {
     this.body.querySelector<HTMLElement>('.image-preview-viewport')!.focus({ preventScroll: true });
   }
 
-  projectInfo(project: Project): void {
+  projectInfo(project: Project, initialTab: 'overview' | 'databases' = 'overview'): void {
     this.show(t("Project information"));
+    this.dialog.classList.add('project-information-dialog');
     const heading = document.createElement('h3'); heading.className = 'project-information-name'; heading.textContent = project.aggregateName;
     this.body.append(heading);
     if (project.manifest?.description) {
       const description = document.createElement('p'); description.className = 'project-information-description'; description.textContent = project.manifest.description; this.body.append(description);
     }
+    const navigation = document.createElement('div'); navigation.className = 'project-information-tabs'; navigation.setAttribute('role', 'tablist'); navigation.setAttribute('aria-label', t('Project information'));
+    const overview = document.createElement('div'), databases = document.createElement('div');
+    const tabs: HTMLButtonElement[] = [];
+    let mounted = false;
+    for (const [id, label, panel] of [['overview', t('Overview'), overview], ['databases', t('Databases'), databases]] as const) {
+      if (id === 'databases' && !this.databases) continue;
+      const tab = document.createElement('button'); tab.type = 'button'; tab.textContent = label; tab.dataset.tab = id; tab.setAttribute('role', 'tab');
+      tab.id = `project-information-${id}-${crypto.randomUUID()}`; panel.id = `${tab.id}-panel`;
+      tab.setAttribute('aria-controls', panel.id); panel.setAttribute('aria-labelledby', tab.id); panel.setAttribute('role', 'tabpanel');
+      tab.onclick = () => {
+        overview.hidden = id !== 'overview'; databases.hidden = id !== 'databases';
+        for (const item of tabs) { item.setAttribute('aria-selected', String(item === tab)); item.tabIndex = item === tab ? 0 : -1; }
+        if (id === 'databases' && !mounted) { mounted = true; this.disposeProject = this.databases!.mount(databases, project); }
+      };
+      tabs.push(tab); navigation.append(tab);
+    }
+    navigation.onkeydown = event => {
+      const current = tabs.indexOf(document.activeElement as HTMLButtonElement);
+      const index = event.key === 'Home' ? 0 : event.key === 'End' ? tabs.length - 1 : event.key === 'ArrowRight' ? (current + 1) % tabs.length : event.key === 'ArrowLeft' ? (current - 1 + tabs.length) % tabs.length : undefined;
+      if (index !== undefined) { event.preventDefault(); tabs[index]!.click(); tabs[index]!.focus(); }
+    };
+    this.body.append(navigation, overview, databases);
     for (const section of projectInformation(project)) {
       const details = document.createElement('details'); details.className = 'project-information-section'; details.open = !!section.expanded;
       const summary = document.createElement('summary'); summary.innerHTML = `${iconHtml('chevron-right')}<span>${escapeHtml(section.title)}</span>`;
@@ -55,8 +81,9 @@ export class ConversationTools {
         if (row.avatarUrl) { const icon = document.createElement('img'); icon.src = row.avatarUrl; icon.alt = ''; icon.className = 'entry-information-icon'; label.prepend(icon); }
         list.append(label, value);
       }
-      details.append(summary, list); this.body.append(details);
+      details.append(summary, list); overview.append(details);
     }
+    (tabs.find(tab => tab.dataset.tab === initialTab) ?? tabs[0])!.click();
   }
 
   permissions(parameters: Parameters, policies: ToolPolicies, changed: (policies: ToolPolicies) => void): void {

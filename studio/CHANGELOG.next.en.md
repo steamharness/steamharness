@@ -2,6 +2,10 @@
 
 - Breaking: project identity, name, version and declarations now use independent `steamharness.json` files. Removed reads and writes of `package.json.id` and `steamHarness`. Aggregates explicitly register child entries whose configuration defines icons, declarations, database aliases and schedules. Unregistered configurations stay inactive, and transfers preserve the parent and child structure.
 
+- Fixed opening project entries from the Assistant sidebar by preserving their assistant startup configuration. New tabs activate automatically and the current entry can still open repeatedly. Open failures now show an error notification as well as a log entry.
+
+- Fixed Assistant extension and standalone runtime bundles omitting `config.json`, configuration definitions or the registered Studio Control entry, which could prevent startup after an upgrade.
+
 - Improvement: Start shows one card per aggregate and opens its default entry. Project windows and entry actions use icons with redesigned entry details. Removed split views; all entries, including the current one, can open and restore multiple independent native tabs on the shared host. Closing one tab leaves the others open. Entry icons and colors are independent; entry labels no longer repeat the root version.
 
 - Changed: entry information shows database aliases and IDs. Resource panels resolve host authorization from references, preserve entry isolation for multiple databases, and no longer read manifest permissions or host fields.

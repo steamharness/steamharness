@@ -7,6 +7,7 @@ import { createRequire } from 'node:module';
 import { buildDocumentPreviews } from './document-preview.mjs';
 import { checkoutServiceChannel } from '../../shared/service-urls/node.mjs';
 import { publicServiceUrls } from '../../shared/service-urls/index.ts';
+import { copyAssistantTemplate } from './assistant-template.mjs';
 
 export async function buildExtension({ watch = false } = {}) {
   const directory = path.join(ROOT, 'extensions/studio-workstation');
@@ -59,23 +60,7 @@ export async function buildExtension({ watch = false } = {}) {
   await fs.cp(path.join(codicons, 'dist'), path.join(directory, 'dist/codicons'), { recursive: true });
   const assistantSource = await builtinProjectDirectory('developer-assistant');
   const assistantOutput = path.join(directory, 'dist/developer-assistant');
-  await fs.rm(assistantOutput, { recursive: true, force: true });
-  await fs.mkdir(assistantOutput, { recursive: true });
-  for (const entry of await fs.readdir(assistantSource, { withFileTypes: true })) {
-    if (entry.isFile() && (entry.name === 'package.json' || entry.name === 'steamharness.json' || entry.name === 'configuration.json' || entry.name.endsWith('.ts') && !entry.name.endsWith('.config.ts'))) {
-      await fs.copyFile(path.join(assistantSource, entry.name), path.join(assistantOutput, entry.name));
-    }
-  }
-  await fs.cp(path.join(assistantSource, 'skills'), path.join(assistantOutput, 'skills'), { recursive: true });
-  // Studio Control is a registered entry of the assistant, with no separate install.
-  const controlSource = path.join(assistantSource, 'studio-control');
-  const controlOutput = path.join(assistantOutput, 'studio-control');
-  await fs.mkdir(controlOutput, { recursive: true });
-  for (const entry of await fs.readdir(controlSource, { withFileTypes: true })) {
-    if (entry.isFile() && (entry.name === 'steamharness.json' || entry.name === 'configuration.json' || entry.name.endsWith('.ts'))) {
-      await fs.copyFile(path.join(controlSource, entry.name), path.join(controlOutput, entry.name));
-    }
-  }
+  await copyAssistantTemplate(assistantSource, assistantOutput);
   await fs.rm(path.join(directory, 'dist/studio-control'), { recursive: true, force: true });
   const analysisSource = await builtinProjectDirectory('analysis');
   const analysisOutput = path.join(directory, 'dist/analysis');

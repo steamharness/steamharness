@@ -7,6 +7,27 @@ import {
 } from "../index";
 
 describe("translation resolution", () => {
+  it("directs project identity, publishing and information edits to steamharness.json in both languages and fallback", () => {
+    const messages = () => [
+      i18n.t("projectIdRequired", { ns: "cli" }),
+      i18n.t("versionOptionUnsupported", { ns: "cli" }),
+      i18n.t("saveNote", { ns: "desktop" }),
+      i18n.t("importInvalidPackageId", { ns: "desktop", id: "invalid-id" }),
+      i18n.t("projectInfoLocalDescription", { ns: "desktop" }),
+    ];
+    for (const preference of ["en", "zh-CN"] as const) {
+      initI18n({ preference });
+      for (const message of messages()) {
+        expect(message).toContain("steamharness.json");
+        expect(message).not.toContain("package.json");
+      }
+      expect(messages()[3]).toContain("invalid-id");
+    }
+    const chinese = messages();
+    i18n.changeLanguage("fr");
+    expect(messages()).toEqual(chinese);
+  });
+
   it("translates fixed square avatar cropping and processing failures with Chinese fallback", () => {
     initI18n({ preference: "en" });
     expect(i18n.t("accountAvatarCropTitle", { ns: "serverWeb" })).toBe("Crop avatar");
