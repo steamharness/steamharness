@@ -19,3 +19,7 @@ const local = workflow.isCli();
 ```
 
 运行平台不决定数据宿主。入口从根 `config.json` 解析别名与数据库 ID，由宿主决定数据位置，并通过 `context.databases.get(alias)` 访问获批空间；本地执行也可使用服务器空间。
+
+## 宿主数据库管理
+
+受信任的本机宿主可从 `steamharness` 导入 `createLocalDatabaseManagementContext(spaceId, { registry?, conversationNamespace? })`，对已存在的本地空间返回 `DatabaseContext`。该接口使用本机管理身份，与项目 grant 独立；项目授权撤销后，宿主仍可管理留存数据。每次操作检查空间存在，不会创建空间或恢复项目授权。不得通过项目 RPC 或不受信任项目代码向外暴露此管理入口。

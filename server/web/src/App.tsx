@@ -1032,7 +1032,7 @@ function AppContent() {
         onBrandClick={() => navigateTo({ page: "projects" })}
         onLogout={logout}
       >
-        {page==="databases" ? <DatabaseSpacesPage key={route.page==="databases"?route.id:"spaces"} spaceId={route.page==="databases"?route.id:undefined} onOpenSpace={id=>navigateTo({page:"databases",id})} onBack={()=>navigateTo({page:"databases"})} onDirtyChange={value=>{knowledgeDraftDirtyRef.current=value;}} /> : page==="groups" ? <GroupsPage key={route.page==="groups"?route.id??"root":"root"} id={route.page==="groups"?route.id:undefined} onOpenGroup={id=>navigateTo({page:"groups",id})} onOpenProject={id=>navigateTo({page:"detail",id,tab:"project"})}/> : <ProjectListPage
+        {page==="databases" ? <DatabaseSpacesPage key="database-workspace" spaceId={route.page==="databases"?route.id:undefined} onOpenSpace={id=>navigateTo({page:"databases",id})} onBack={()=>navigateTo({page:"databases"})} onDirtyChange={value=>{knowledgeDraftDirtyRef.current=value;}} /> : page==="groups" ? <GroupsPage key={route.page==="groups"?route.id??"root":"root"} id={route.page==="groups"?route.id:undefined} onOpenGroup={id=>navigateTo({page:"groups",id})} onOpenProject={id=>navigateTo({page:"detail",id,tab:"project"})}/> : <ProjectListPage
           total={projectTotal} serverPage={projectPage} onServerPageChange={setProjectPage}
           onServerSearch={(q,status)=>{setProjectQuery(q);setProjectStatus(status);setProjectPage(1);}}
           projects={projects}

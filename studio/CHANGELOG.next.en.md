@@ -1,5 +1,7 @@
 # Unreleased
 
+- Added: Database sidebar defaults to project usage with local, server, all and search filters. Independent data tabs reuse KV and knowledge panels; host requests, reviews and grants are also available through Steam database tools.
+
 - Fixed opening project entries from the Assistant sidebar by preserving their assistant startup configuration. New tabs activate automatically and the current entry can still open repeatedly. Open failures now show an error notification as well as a log entry.
 
 - Fixed Assistant extension and standalone runtime bundles omitting `config.json`, configuration definitions or the registered Studio Control entry, which could prevent startup after an upgrade.

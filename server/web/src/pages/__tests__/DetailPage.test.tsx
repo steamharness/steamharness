@@ -40,7 +40,9 @@ it('opens entry database bindings without requesting project-owned data',async()
  const bindings=vi.spyOn(apiClient,'entryDatabaseBindings').mockResolvedValue({errCode:0,errMessage:'',data:[]});
  const catalog=vi.spyOn(apiClient,'databasePage').mockResolvedValue({errCode:0,errMessage:'',data:{items:[],total:0,page:1,pageSize:20}});
  render(<DetailPage {...props({activeTab:'databases'})}/>);
+ await waitFor(()=>expect(catalog).toHaveBeenCalledWith('spaces',1,'','demo'));
+ expect(bindings).not.toHaveBeenCalled();
+ fireEvent.click(screen.getByRole('button',{name:'Requests and permissions'}));
  await waitFor(()=>expect(bindings).toHaveBeenCalledWith('demo','entry-0'));
- expect(catalog).toHaveBeenCalledWith('spaces',1,'','demo');
- expect(await screen.findByText('No matching resources.')).toBeTruthy();
+ expect((await screen.findAllByText('No matching resources.')).length).toBeGreaterThan(0);
 });

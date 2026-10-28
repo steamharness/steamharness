@@ -57,6 +57,24 @@ export function createLocalDatabaseResolver(registry = new LocalDatabaseRegistry
   } };
 }
 
+/** Native host management, independent of project grants. Never expose this resolver to project RPC. */
+export function createLocalDatabaseManagementContext(spaceId: string, options: { registry?: LocalDatabaseRegistry; conversationNamespace?: string } = {}): DatabaseContext {
+  const registry = options.registry ?? new LocalDatabaseRegistry();
+  const namespace = options.conversationNamespace;
+  if (namespace !== undefined && (!namespace.trim() || namespace.length > 512 || /\0/.test(namespace))) throw new Error('Invalid database conversation namespace.');
+  const requirement = { alias: 'space', databaseId: spaceId };
+  return createDatabasesContext({ projectId: spaceId, entryId: 'management', requirements: [requirement], conversationNamespace: namespace,
+    resolver: { resolve() {
+      const space = registry.read().spaces.find(space => space.spaceId === spaceId && space.host === 'local');
+      if (!space) throw new Error('This database does not exist on the local host.');
+      const all = { mode: 'all' as const };
+      return { store: createLocalDatabaseSpaceStore(registry.directory, spaceId), authorization: { space,
+        grant: { grantId: spaceId, spaceId, projectId: spaceId, entryId: 'management', credentialVersion: 1, createdAt: space.createdAt, permissions: { kv: { read: all, write: all }, knowledge: { read: all, write: all } } },
+        binding: { bindingRef: spaceId, alias: 'space', host: 'local', spaceId, grantId: spaceId, projectId: spaceId, entryId: 'management' } } };
+    } },
+  }).get('space');
+}
+
 export function createDatabasesContext(options: DatabaseConsumer & { requirements: readonly DatabaseRequirement[]; resolver?: DatabaseResolver; conversationId?: string; runId?: string; conversationNamespace?: string }): DatabasesContext {
   const requirements = options.requirements.map((item) => normalizeDatabaseRequirement(item));
   if (new Set(requirements.map(item => item.alias)).size !== requirements.length) throw new Error("Database aliases must be unique within an entry.");

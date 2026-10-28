@@ -90,5 +90,8 @@
   "command.enterIdeMode": "Switch to IDE Mode",
   "command.enterSteamMode": "Switch to Steam Mode",
   "command.openSteamTools": "Open Tools",
-  "config.agent.permissionPolicy": "Permission policy for agents that inherit user settings. Changes apply to subsequent tasks."
+  "config.agent.permissionPolicy": "Permission policy for agents that inherit user settings. Changes apply to subsequent tasks.",
+  "container.studio-databases": "Databases",
+  "command.openDatabases": "Open Databases",
+  "command.refreshDatabases": "Refresh Databases"
 }

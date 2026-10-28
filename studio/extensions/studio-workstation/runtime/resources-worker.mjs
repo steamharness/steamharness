@@ -2,6 +2,7 @@ import { readFile, realpath } from 'node:fs/promises';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { resolve } from 'import-meta-resolve';
+import { runDatabaseHostRequest } from './database-host.mjs';
 
 /** Inspect an explicit approved alias using exactly the runtime's data API. */
 export async function runResourceRequest(request, core) {
@@ -56,7 +57,7 @@ async function main() {
   console.log = console.error;
   try {
     const core = await import(resolve('steamharness', pathToFileURL(path.join(request.project.folderPath, 'package.json')).href));
-    const value = await runResourceRequest(request, core);
+    const value = await (request.input.kind === 'host' ? runDatabaseHostRequest(request, core) : runResourceRequest(request, core));
     write(`${JSON.stringify({ value })}\n`);
   } catch (error) {
     const message = String(error.message).replaceAll(request.connection?.accessToken || '\0', '[redacted]');

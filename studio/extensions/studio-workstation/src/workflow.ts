@@ -7,6 +7,7 @@ import type { Launcher, WebSession } from './workflow-cli-types';
 import { projectFrameHtml, type ProjectWindowChrome } from './workflow-webview';
 import { AssistantViewProvider, type AssistantConversation } from './assistant-view';
 import { ResourceViews } from './workflow-resources-view';
+import { DatabaseViews } from './workflow-databases-view';
 import { ToolInstances } from './tool-instances';
 import { TraceView } from './workflow-trace-view';
 import { InfoView } from './workflow-info-view';
@@ -159,6 +160,7 @@ export async function activateProject(context: vscode.ExtensionContext, launcher
     if (disposed) { return; }
     const target = currentProject();
     resources.update(provider.projects, target);
+    databases.update(provider.projects, target);
     trace.update(provider.projects, target);
     versions.update(provider.projects, target);
     void info.update(provider.projects, target);
@@ -278,6 +280,14 @@ export async function activateProject(context: vscode.ExtensionContext, launcher
       };
       listeners.push({ dispose: () => traceBinding.dispose() }, clipboardBinding, pickerBinding, pathOpenBinding, fileIconsBinding, resourceBinding, panel.webview.onDidReceiveMessage(message => {
         if (reconnect(message ?? {}, panel.webview)) return;
+        if (message?.type === 'workflow-database' && message.version === 1 && message.projectUri === project.uri && typeof message.alias === 'string' && typeof message.requestId === 'string' && message.requestId.length <= 128) {
+          void databases.openProjectDatabase(project, message.alias).then(() => {
+            if (!closed) void panel.webview.postMessage({ type: 'workflow-host', databaseOpened: { version: 1, requestId: message.requestId } });
+          }).catch(error => {
+            if (!closed) void panel.webview.postMessage({ type: 'workflow-host', databaseOpened: { version: 1, requestId: message.requestId, error: error instanceof Error ? error.message : String(error) } });
+          });
+          return;
+        }
         if (message?.type === 'workflow-open-entry' && message.version === 1 && message.projectId === project.id && typeof message.entryId === 'string') {
           void openHostedEntry(message.entryId).catch(error => {
             output.appendLine(`Project window: ${String(error)}`);
@@ -419,6 +429,7 @@ export async function activateProject(context: vscode.ExtensionContext, launcher
     (project, view) => createWorkspace(project, undefined, view, undefined, undefined, false, 'restore'));
   const mode = new StudioModeController(context, output);
   const resources = new ResourceViews(context, launcher, account, output);
+  const databases = new DatabaseViews(context, launcher, account, output);
   const trace = new TraceView(context, openProject, output);
   const prepareUpgrade = async (project: Project, signal: AbortSignal): Promise<vscode.Disposable> => {
     signal.throwIfAborted();
@@ -465,6 +476,10 @@ export async function activateProject(context: vscode.ExtensionContext, launcher
     (projects, replacedRoot) => rememberDownloadedProjects(context, projects, replacedRoot));
   const info = new InfoView(context, versions);
   const toolInstances = new ToolInstances(context, (kind, subscriptions, restored) => {
+    if (kind === 'databases') {
+      const instance = new DatabaseViews(context, launcher, account, output, false, subscriptions);
+      return { update: (projects, preferred) => instance.update(projects, preferred), resolve: view => instance.resolveWebviewView(view) };
+    }
     if (kind === 'kv' || kind === 'knowledge') {
       const resources = new ResourceViews(context, launcher, account, output, false, subscriptions);
       return { update: (projects, preferred) => resources.update(projects, preferred), resolve: view => resources.resolve(kind, view) };

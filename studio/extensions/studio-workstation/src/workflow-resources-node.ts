@@ -1,11 +1,12 @@
 import { spawn } from 'node:child_process';
 import type { Project } from './workflow-types';
 import type { ResourceRequest } from './workflow-resources-types';
+import type { HostDatabaseRequest } from './workflow-databases-types';
 import { sanitizeProjectEnvironment, AuthError, type Connection } from './workflow-auth-client';
 import { sanitizeConnectionForSurface } from './workflow-cli-process';
 
 export function requestProjectResource(options: {
-  project: Project; input: ResourceRequest; worker: string; storageDir: string;
+  project: Project; input: ResourceRequest | HostDatabaseRequest; worker: string; storageDir: string;
   nodePath: string; connection?: Connection; signal: AbortSignal;
 }): Promise<unknown> {
   return new Promise((resolve, reject) => {

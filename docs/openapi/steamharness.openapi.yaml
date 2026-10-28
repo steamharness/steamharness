@@ -3464,6 +3464,7 @@ paths:
                   enum:
                     - kv.listValues
                     - kv.getValue
+                    - kv.getEntry
                     - kv.setValue
                     - kv.deleteValue
                     - database.revision

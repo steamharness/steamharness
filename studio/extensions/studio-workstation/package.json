@@ -18,6 +18,7 @@
     "onStartupFinished",
     "onWebviewPanel:studio.settings",
     "onWebviewPanel:studio.login",
+    "onWebviewPanel:studio.tool.databases",
     "onWebviewPanel:studio.tool.kv",
     "onWebviewPanel:studio.tool.knowledge",
     "onWebviewPanel:studio.tool.info",
@@ -494,10 +495,27 @@
         "title": "%command.logoutProject%",
         "category": "Project",
         "icon": "$(sign-out)"
+      },
+      {
+        "command": "studio.openDatabases",
+        "title": "%command.openDatabases%",
+        "category": "Project",
+        "icon": "$(database)"
+      },
+      {
+        "command": "studio.refreshDatabases",
+        "title": "%command.refreshDatabases%",
+        "category": "Project",
+        "icon": "$(refresh)"
       }
     ],
     "viewsContainers": {
       "activitybar": [
+        {
+          "id": "studio-databases",
+          "title": "%container.studio-databases%",
+          "icon": "$(database)"
+        },
         {
           "id": "studio-info",
           "title": "%container.studio-info%",
@@ -579,6 +597,13 @@
           "name": "%container.studio-trace%",
           "type": "webview",
           "when": "studio.projectTraceAvailable"
+        }
+      ],
+      "studio-databases": [
+        {
+          "id": "studio.databases",
+          "name": "%container.studio-databases%",
+          "type": "webview"
         }
       ]
     },

@@ -50,7 +50,7 @@ function fixture(t, options = {}) {
 test('each tool creates independent retained panels and closes only its own controller', async t => {
   const f = fixture(t), projects = [{ uri: 'file:///first' }, { uri: 'file:///second' }];
   f.manager.update(projects, projects[0]);
-  for (const kind of ['kv', 'knowledge', 'info', 'assistant', 'versions', 'trace']) {
+  for (const kind of ['databases', 'kv', 'knowledge', 'info', 'assistant', 'versions', 'trace']) {
     f.manager.update(projects, projects[0]);
     await f.commands.get('studio.createToolInstance')(kind); await f.manager.open(kind);
     const [first, second] = f.instances.slice(-2), [a, b] = f.panels.slice(-2);
@@ -64,7 +64,7 @@ test('each tool creates independent retained panels and closes only its own cont
     await f.manager.open(kind); assert.equal(f.panels.at(-1).title.endsWith(' 4'), true);
     assert.equal(b.disposed, undefined);
   }
-  await f.manager.open('unrecognized'); assert.equal(f.panels.length, 18); assert.equal(f.serializers.size, 6);
+  await f.manager.open('unrecognized'); assert.equal(f.panels.length, 21); assert.equal(f.serializers.size, 7);
 });
 
 test('restored panels keep their project URI through delayed discovery and reserve their instance number', async t => {

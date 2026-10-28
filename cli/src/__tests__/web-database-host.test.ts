@@ -1,0 +1,21 @@
+import { afterEach, expect, it, vi } from 'vitest';
+import { acquireProjectHost } from '../web/ui/host';
+vi.mock('../web/ui/account', () => ({ AccountPanel: class {} }));
+vi.mock('../web/ui/connection', () => ({ BrowserConnection: class {}, ConnectionError: class extends Error {} }));
+afterEach(() => vi.unstubAllGlobals());
+it('reports the Web preview limitation and only forwards database navigation after a trusted host handshake', async () => {
+  const listeners = new Map<string, (event: any) => void>(), emitted: any[] = [], sent: any[] = [];
+  const parent = { postMessage: (message: any) => sent.push(message) };
+  vi.stubGlobal('window', { parent, dispatchEvent: (event: MessageEvent) => emitted.push(event.data) });
+  vi.stubGlobal('document', { documentElement: { dataset: { theme: 'dark' } }, body: { dataset: {} }, querySelector: () => ({ content: 'project' }) });
+  vi.stubGlobal('location', { pathname: '/' }); vi.stubGlobal('acquireVsCodeApi', undefined);
+  vi.stubGlobal('addEventListener', (type: string, fn: (event: any) => void) => listeners.set(type, fn));
+  const host = acquireProjectHost(), message = { type: 'database-open', requestId: 'one', alias: 'data', projectUri: 'file:///project' };
+  await host.postMessage(message); expect(emitted.at(-1)).toMatchObject({ type: 'database-open-result', requestId: 'one' }); expect(emitted.at(-1).error).toContain('not available');
+  listeners.get('message')!({ source: {}, data: { type: 'workflow-host', databaseVersion: 1 } });
+  await host.postMessage(message); expect(sent).toEqual([]);
+  listeners.get('message')!({ source: parent, data: { type: 'workflow-host', databaseVersion: 1 } });
+  await host.postMessage(message); expect(sent.at(-1)).toEqual({ type: 'workflow-database', version: 1, requestId: 'one', alias: 'data', projectUri: 'file:///project' });
+  listeners.get('message')!({ source: parent, data: { type: 'workflow-host', databaseOpened: { version: 1, requestId: 'one' } } });
+  expect(emitted.at(-1)).toMatchObject({ type: 'database-open-result', requestId: 'one' }); expect(emitted.at(-1).error).toBeUndefined();
+});

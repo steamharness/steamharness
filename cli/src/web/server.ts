@@ -499,7 +499,7 @@ async function startProjectWebServer(options: WebOptions, credentials: { capabil
     if (message.projectUri && message.projectUri !== project.uri) { throw new Error('Project changed.'); }
     if (message.type === 'databases') {
       const value = await databases.dispatch(message);
-      if (message.action === 'bind' || ['review', 'revoke', 'rotate', 'narrow'].includes(message.action)) await projectServer!.restart();
+      if (message.action === 'bind') await projectServer!.restart();
       broadcast();
       return [{ type: 'databases-result', requestId: message.requestId, value }];
     }

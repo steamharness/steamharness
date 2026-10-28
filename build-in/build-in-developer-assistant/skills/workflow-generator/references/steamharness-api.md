@@ -1359,3 +1359,7 @@ Studio 将内置／自定义模型分组显示：宿主自动完整加载内置�
 模型字段使用 `mode:"fixed"` 时先展示只读模型列表，再通过“添加模型”修改用户默认值；`mode:"default"` 允许选择项目覆盖。权限字段的 fixed 入口仍直接打开权限设置。
 
 缓存连接时，三方模型仍保留开发者 `modelAttributes` 默认值；系统模型的 `webSearch` 能力以目录为准，不能通过本轮属性覆盖放开。
+
+### 受信任宿主的数据库目录与数据管理
+
+`createLocalDatabaseManagementContext(spaceId, { registry?, conversationNamespace? })` 是本机宿主 API，返回已存在本地空间的 `DatabaseContext`。它不依赖项目 grant，不创建空间或恢复消费授权，每次操作仍检查空间存在。只用于受信任宿主管理；项目生成代码继续使用 `context.databases.get(alias)`，不得把管理身份或宿主目录通过项目 RPC、Kanban Bridge 暴露给项目。数据浏览协议可用 `executeDatabaseOperation(database, "kv.getEntry", {key, scope?})` 区分 `{exists:true,value:null}` 和缺失记录；`kv.setValue` 的 `{create:true}` 会在事务中拒绝覆盖已有 Key。

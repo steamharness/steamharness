@@ -1,5 +1,7 @@
 # Unreleased
 
+- Improvement: Database workspace adds a paginated directory, project/server filtering and independent data tabs, with KV list/detail panes and a dedicated requests and permissions page.
+
 - Improvement: Aggregate entry lists display each entry’s declared icon and foreground/background colors. Entries do not own independent versions.
 
 - Changed: database pages show entry aliases and database IDs, accept requests independently of manifests, and display approved IDs. Hosts continue to review and maintain permissions.

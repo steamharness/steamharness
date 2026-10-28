@@ -4,6 +4,7 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { startWebServer } from '../web/server';
+import { LocalDatabaseRegistry } from 'steamharness';
 import type { Project, Report, Runtime } from '../web/workflow-types';
 
 const all = { mode: 'all' as const }, permissions = { kv: { read: all, write: all }, knowledge: { read: all, write: all } };
@@ -78,36 +79,16 @@ it('keeps parallel entries running while navigating and cancels only the request
   f.active.get('assistant')!.finish({ status: 'success', output: { items: [] } });
 });
 
-it('requires database approval and binding, then applies narrowed and revoked grants to data tools', async () => {
+it('keeps host catalogs, approvals and data out of CLI Web while retaining explicit alias binding', async () => {
   const f = await fixture(true);
-  const database = (message: object) => f.call('agent', { type: 'databases', ...message });
-  const data = (operation: string, input: object = {}) => database({ action: 'data', alias: 'data', operation, input });
-  const denied = (operation: string, input: object = {}) => f.post('agent', { type: 'databases', action: 'data', alias: 'data', operation, input });
-  expect((await denied('kv.getValue', { key: 'shared' })).ok).toBe(false);
-  expect((await f.state('assistant')).project.entryId).toBe('assistant');
-  let result = await database({ action: 'request', host: 'local', alias: 'data', permissions, target: { kind: 'create', name: 'Approved space' } });
-  expect(result.value.local.spaces).toEqual([]);
-  const request = result.value.local.requests[0]; expect(request.status).toBe('pending');
-  const reviewMessageId = randomUUID();
-  result = await database({ action: 'review', host: 'local', requestId: reviewMessageId, databaseRequestId: request.requestId, approve: true });
-  expect(result.requestId).toBe(reviewMessageId);
-  expect(result.value.local.requests[0]).toMatchObject({ requestId: request.requestId, status: 'approved' });
-  const grant = result.value.local.grants[0], binding = result.value.local.bindings[0];
-  expect((await f.post('agent', { type: 'databases', action: 'review', host: 'local', requestId: randomUUID(), databaseRequestId: request.requestId, approve: true })).ok).toBe(false);
-  result = await database({ action: 'bind', host: 'local', alias: 'data', databaseId: binding.spaceId });
-  expect(result.value.entries.find((entry: any) => entry.entryId === 'agent').databases).toEqual([{ alias: 'data', databaseId: binding.spaceId }]);
-  expect(result.value.requirements[0]).toMatchObject({ status: 'bound', permissions });
-  expect(JSON.parse(await readFile(path.join(f.directory, 'config.json'), 'utf8')).databases.data).toBe(binding.spaceId);
-  await data('kv.setValue', { key: 'shared', value: { count: 1 } });
-  expect((await data('kv.getValue', { key: 'shared' })).value.data).toEqual({ count: 1 });
-  await data('knowledge.createDocument', { id: 'guide', title: 'Guide', markdown: 'Shared knowledge' });
-  expect((await data('knowledge.getDocument', { documentId: 'guide' })).value.data.markdown).toBe('Shared knowledge');
-  const file = (await data('files.createFile', { name: 'guide.txt', base64: Buffer.from('attachment').toString('base64') })).value.data;
-  expect((await data('files.readFile', { fileId: file.id })).value.data.base64).toBe(Buffer.from('attachment').toString('base64'));
-  await database({ action: 'narrow', host: 'local', grantId: grant.grantId, permissions: { kv: { read: { mode: 'all' }, write: { mode: 'none' } }, knowledge: { read: { mode: 'none' }, write: { mode: 'none' } } } });
-  for (const [operation, input] of [['kv.setValue', { key: 'shared', value: 2 }], ['knowledge.getDocument', { documentId: 'guide' }], ['files.readFile', { fileId: file.id }], ['kv.getValue', { key: 'knowledge.document.guide' }]] as const) expect((await denied(operation, input)).ok).toBe(false);
-  expect((await data('kv.listValues')).value.data.items.map((item: any) => item.key)).toEqual(['shared']);
-  await database({ action: 'revoke', host: 'local', grantId: grant.grantId });
-  expect((await denied('kv.getValue', { key: 'shared' })).ok).toBe(false);
-  expect((await f.state('assistant')).project.entryId).toBe('assistant');
+  for (const action of ['request', 'review', 'revoke', 'rotate', 'narrow', 'data']) {
+    expect((await f.post('agent', { type: 'databases', action, alias: 'data', host: 'local' })).ok).toBe(false);
+  }
+  const registry = new LocalDatabaseRegistry();
+  const request = registry.request({ projectId: (await f.state('agent')).project.id, entryId: 'agent', alias: 'data', permissions, target: { kind: 'create', name: 'Approved by host' } });
+  const approval = registry.review(request.requestId, { approve: true });
+  const result = await f.call('agent', { type: 'databases', action: 'bind', alias: 'data', databaseId: approval.databaseId });
+  expect(result.value.requirements[0]).toMatchObject({ status: 'bound', space: { name: 'Approved by host' } });
+  expect(result.value).not.toHaveProperty('local'); expect(result.value).not.toHaveProperty('server');
+  expect(JSON.parse(await readFile(path.join(f.directory, 'config.json'), 'utf8')).databases.data).toBe(approval.databaseId);
 });

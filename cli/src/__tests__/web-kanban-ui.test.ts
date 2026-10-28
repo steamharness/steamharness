@@ -191,7 +191,7 @@ it.each(['en', 'zh-CN'] as const)('opens database management directly from block
   sendState(1, 'blocked', { kind: 'setup-required', database: 'annotations' });
   const action = document.querySelector<HTMLButtonElement>('#server-guidance-databases')!;
   expect(action.hidden).toBe(false); expect(action.disabled).toBe(false);
-  expect(action.textContent).toBe(language === 'en' ? 'Open database management' : '打开数据库管理');
+  expect(action.textContent).toBe(language === 'en' ? 'View linked databases' : '查看关联数据库');
   fetcher.mockImplementation(async (_url?: unknown, options?: any) => {
     const message = JSON.parse(options.body);
     expect(message).toMatchObject({ type: 'databases', action: 'get' });

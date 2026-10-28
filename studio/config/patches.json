@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "commit": "addfa2d8548bf305cbaca5c959c4ce82aaf833bb",
+  "commit": "cdc305493d3eee7e02881b9daa201ed201f20ae2",
   "patches": {
     "0001-use-upstream-builtin-artifacts.patch": "3985e1ced03ed5abb341fd4535cb14bf46cdc5ddcf377c6b07ee1c0764e65114",
     "0002-studio-hide-accounts.patch": "b7a9e68aebc06f53ede2b74f45345e410cd1e11320a5a9c7055354f33157f220",
@@ -67,6 +67,7 @@
     "0062-studio-copilot-production-dependencies.patch": "29e887b5d25f5510dfdb7a363e8368c8de4074557d215e4f88dabe691ac1e846",
     "0063-studio-windows-installer-long-paths.patch": "2e45ca0a1f1f083641be5b3330358663b5ee6e328bb87b543704dffcdcfa5b2d",
     "0064-studio-windows-background-updater-paths.patch": "8ab81e85eece2f057a29e018c345fdb5b6b0a2600eda8ad539af58028ff9f3b1",
-    "0065-studio-start-entry-targets.patch": "72716fbed7d504ef64c90acd4ede76444ca1bf2ed2ec3add5c7616180b67ce56"
+    "0065-studio-start-entry-targets.patch": "72716fbed7d504ef64c90acd4ede76444ca1bf2ed2ec3add5c7616180b67ce56",
+    "0066-studio-database-workspace.patch": "b88f9f67ffb317bd6644413b46d63902cb2d6428241b344a019a6a82a6adc8da"
   }
 }

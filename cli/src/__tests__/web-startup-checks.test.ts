@@ -50,10 +50,11 @@ it.each(['workflow', 'conversation'] as const)('preserves %s drafts through requ
   const f = await fixture(kind); await f.settled();
   const draft = kind === 'workflow' ? { type: 'workflow-draft', params: { subject: 'Keep' } } : { type: 'draft', text: 'Keep', attachments: [] };
   await f.post(draft);
-  expect((await f.post({ type: 'databases', action: 'request', host: 'local', alias: 'data', permissions, target: { kind: 'create', name: 'Data' } })).ok).toBe(true);
+  expect((await f.post({ type: 'databases', action: 'request', host: 'local', alias: 'data', permissions, target: { kind: 'create', name: 'Data' } })).status).toBe(400);
+  f.registry.request({ projectId: id, entryId: 'main', alias: 'data', permissions, target: { kind: 'create', name: 'Data' } });
   const pending = f.registry.read().requests[0]!;
   expect(pending.status).toBe('pending'); expect(f.registry.read().spaces).toEqual([]);
-  expect((await f.post({ type: 'databases', action: 'review', host: 'local', databaseRequestId: pending.requestId, approve: true })).ok).toBe(true);
+  f.registry.review(pending.requestId, { approve: true });
   expect((await f.settled()).serverData.issue).toBeDefined();
   const approved = f.registry.read().requests[0]!;
   expect((await f.post({ type: 'databases', action: 'bind', host: 'local', alias: 'data', databaseId: approved.databaseId })).ok).toBe(true);
@@ -65,7 +66,8 @@ it.each(['workflow', 'conversation'] as const)('preserves %s drafts through requ
   await (kind === 'workflow' ? f.app.projectController!.idle() : f.app.controller!.idle());
   expect(f.runtime.run).toHaveBeenCalledOnce();
   const grant = f.registry.read().grants[0]!;
-  await f.post({ type: 'databases', action: 'revoke', host: 'local', grantId: grant.grantId });
+  f.registry.revoke(grant.grantId);
+  await f.post({ type: 'project-server-check' });
   expect((await f.settled()).serverData.issue).toBeDefined();
   expect((await f.post(action)).status).toBe(400); expect(f.registry.read().spaces).toHaveLength(1);
 });

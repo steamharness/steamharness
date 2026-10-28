@@ -36,7 +36,7 @@ it('confirms discarding a draft before choosing a different key or leaving the s
  fireEvent.click(screen.getByRole('button',{name:'two'}));
  expect(await screen.findByRole('alertdialog')).toHaveTextContent('Discard unsaved changes?');
  fireEvent.click(screen.getByRole('button',{name:'Cancel'}));expect(screen.getByLabelText('Key')).toHaveValue('one');
- fireEvent.click(screen.getByRole('button',{name:'Back to spaces'}));
+ fireEvent.mouseDown(screen.getByRole('tab',{name:'Database spaces'}),{button:0,ctrlKey:false});
  expect(onBack).not.toHaveBeenCalled();fireEvent.click(screen.getByRole('button',{name:'Confirm'}));
  await waitFor(()=>expect(onBack).toHaveBeenCalledOnce());
 });
@@ -64,4 +64,26 @@ it('routes knowledge operations through the shared space identity and preserves 
  const repository=createServerKnowledgeRepository(apiClient,spaceId),signal=new AbortController().signal;
  await repository.getDocument('guide',{signal});expect(call).toHaveBeenCalledWith(spaceId,'knowledge.getDocument',{documentId:'guide'},signal);
  await repository.updateDocument('guide',{title:'Changed',markdown:'Shared'});expect(call).toHaveBeenLastCalledWith(spaceId,'knowledge.editDocument',{documentId:'guide',title:'Changed',markdown:'Shared'},undefined);
+});
+
+it('defaults to project databases, requests filtered pages, and keeps independent data tabs',async()=>{
+ const other='52c24be2-6bbf-462f-862c-b4ea76cf3c0b';
+ const list=vi.mocked(apiClient.databasePage).mockResolvedValue(ok({items:[{spaceId,name:'Memory',canManage:true},{spaceId:other,name:'Archive',canManage:true}],total:2,pageSize:20}));
+ render(<DatabaseSpacesPage project={{id:'project',name:'Project',defaultEntry:'agent',entries:[]} as any}/>);
+ expect(screen.getByRole('combobox',{name:'Database filter'})).toHaveTextContent('Used by this project');
+ await waitFor(()=>expect(list).toHaveBeenCalledWith('spaces',1,'','project'));
+ fireEvent.click(await screen.findByRole('button',{name:/Memory/}));
+ fireEvent.click(screen.getByRole('button',{name:/Archive/}));
+ expect(screen.getByRole('tab',{name:'Memory'})).toBeTruthy();expect(screen.getByRole('tab',{name:'Archive'})).toHaveAttribute('aria-selected','true');
+ fireEvent.click(screen.getByRole('button',{name:'Close Archive'}));
+ expect(screen.getByRole('tab',{name:'Memory'})).toHaveAttribute('aria-selected','true');expect(screen.queryByRole('tab',{name:'Archive'})).toBeNull();
+ const directory=screen.getByRole('navigation',{name:'Database directory'}).parentElement!;
+ fireEvent.change(directory.querySelector('input')!,{target:{value:'memory'}});
+ await waitFor(()=>expect(list).toHaveBeenCalledWith('spaces',1,'memory','project'));
+});
+it('recovers a failed directory request without discarding opened data tabs',async()=>{
+ const list=vi.mocked(apiClient.databasePage).mockRejectedValueOnce(new Error('Host offline')).mockResolvedValue(ok({items:[],total:0,pageSize:20}));
+ render(<DatabaseSpacesPage spaceId={spaceId}/>);expect(await screen.findByText('Host offline')).toBeTruthy();
+ fireEvent.click(screen.getAllByRole('button',{name:'Refresh'})[0]);await waitFor(()=>expect(list).toHaveBeenCalledTimes(2));
+ await waitFor(()=>expect(screen.queryByText('Host offline')).toBeNull());expect(screen.getByRole('tab',{name:spaceId})).toHaveAttribute('aria-selected','true');
 });

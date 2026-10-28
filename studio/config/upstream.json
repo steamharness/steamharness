@@ -1,6 +1,6 @@
 {
   "repository": "git@github.com:GRCmade/vscode.git",
   "ref": "1.141.0",
-  "commit": "addfa2d8548bf305cbaca5c959c4ce82aaf833bb",
+  "commit": "cdc305493d3eee7e02881b9daa201ed201f20ae2",
   "path": "upstream/vscode"
 }

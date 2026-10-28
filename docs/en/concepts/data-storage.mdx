@@ -43,13 +43,21 @@ Host grants independently control `kv.read/write` and `knowledge.read/write`, us
 
 ## Request and approval
 
-1. Open the target entry in CLI Web or Studio and select **Project information** in the toolbar, then open its **Databases** tab. If **Database binding requires attention** is shown, select **Open database management** in that prompt to manage its alias. This also works in the Studio assistant. Server Web has an independent database page.
-2. Open **Requests and permissions**, select a database host, then select **Request database access**. Choose to create a database or access an existing ID, and set the requested read/write scopes. The request is `pending`; no space is created and data access remains unavailable.
-3. The local host user explicitly reviews local requests. A Server system administrator approves new spaces, with the applicant becoming owner. The owner or a system administrator reviews shared access.
-4. A reviewer may reject with a reason or narrow permissions before approval. Approval returns a `databaseId` and creates a host grant for the project and entry. The application does not need a manifest reference before requesting access.
-5. Select **Use this database** on an approved request, or **Link database** in **Project databases**, confirm the alias and approved ID, then select **Save database reference**. Saving updates the shared mapping in root config.json and adds the alias to the current package entry; actual access rechecks the current entry grant; it does not create or authorize a database. Rejected or revoked access requires a new host request; rotated credentials are refreshed by the host.
+1. Open **Databases** in the Studio sidebar or Steam tools and use the plus icon to request access. Server Web provides a request action in its database directory and a **Requests and permissions** page. CLI `databases` commands continue to support requests and reviews.
+2. Select the local or server host, consuming project and entry, alias, new or existing database, and read/write scopes. A submitted request is `pending`; no space is created and data access remains unavailable.
+3. The local host user reviews local requests. A Server system administrator approves new spaces, with the applicant becoming owner. The owner or a system administrator reviews shared access.
+4. A reviewer may reject with a reason or narrow permissions before approval. Approval returns a `databaseId` and creates a host grant for the project and entry. No manifest reference is required before requesting access.
+5. In CLI Web, open **Project information → Databases**, select the link icon and enter the alias and approved ID. Saving updates root `config.json` and adds the alias to the package entry; it does not create a database or grant access. CLI Web displays the name, ID, connection status, host and sharing entries. Requests, reviews and grant maintenance belong to host interfaces or CLI commands.
 
-CLI Web and Studio share a user-level SQLite registry, with data directories separated by `spaceId`. Server persists catalog and data independently in PostgreSQL. Project membership still limits the caller; database grants cannot elevate their role.
+CLI Web and Studio share a user-level SQLite registry, with data directories separated by `spaceId`. Server persists its catalog and data in PostgreSQL. Project membership still limits the caller; database grants cannot elevate their role.
+
+## Browse data
+
+The Studio directory defaults to **Used by this project**, with local, server and all filters and name, ID or alias search. A database shared by multiple entries appears once with its consuming entries. Open a database, KV or knowledge child in an independent editor tab using the same paginated list and detail editor as the bottom resources panel. Opening the same target again reveals its tab. Host management can inspect retained local data; navigation from a project entry still enforces that entry grant.
+
+Server Web uses a directory and database tabs, with server pagination, project filtering, search, KV list and detail editing, knowledge, attachments and a separate requests and permissions page. It manages server databases and does not read local SQLite.
+
+CLI Web's browse icon opens the corresponding Studio data tab. A standalone Web session reports that data preview is unavailable; use Studio or Server Web to browse.
 
 ## Use and share
 

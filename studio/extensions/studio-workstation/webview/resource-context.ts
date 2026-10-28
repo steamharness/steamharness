@@ -14,10 +14,10 @@ export function resourceMenuActions(state: {
   const knowledge = state.kind === 'knowledge';
   const writable = !state.readOnly && !state.saving && (state.source === 'local' || state.source === 'server' && state.authenticated);
   if (state.target === 'list') {
-    return [...(writable && (knowledge || state.source === 'local') ? [knowledge ? 'newDocument' as const : 'newKey' as const] : []), ...(!state.saving ? ['refresh' as const] : [])];
+    return [...(writable ? [knowledge ? 'newDocument' as const : 'newKey' as const] : []), ...(!state.saving ? ['refresh' as const] : [])];
   }
   if (state.editing && state.target === 'detail') { return []; }
   return [...(state.target === 'row' && !state.saving ? ['open' as const] : []),
-    ...(writable && (knowledge || state.source === 'local') ? ['edit' as const] : []),
+    ...(writable ? ['edit' as const] : []),
     knowledge ? 'copyId' : 'copyKey', 'copyContent', ...(writable ? ['delete' as const] : [])];
 }

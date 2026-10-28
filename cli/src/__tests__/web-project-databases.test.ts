@@ -24,12 +24,12 @@ const emit = (data: unknown, source: MessageEventSource | null = null) => dispat
 const requests = () => host.postMessage.mock.calls.map(([message]) => message);
 const page = () => document.querySelector<HTMLElement>('.project-databases')!;
 const click = (label: string, root: ParentNode = document) => {
-  const control = [...root.querySelectorAll<HTMLButtonElement>('button')].find(button => button.textContent === label)!;
+  const control = [...root.querySelectorAll<HTMLButtonElement>('button')].find(button => (button.getAttribute('aria-label') ?? button.textContent) === label)!;
   expect(control, label).toBeTruthy(); expect(control.disabled, label).toBe(false); control.click(); return control;
 };
 const state = (): DatabaseManagementState => ({ projectId: project.id, entryId: project.entryId, entries: project.entries,
   requirements: [{ alias: 'data', databaseId, status: 'bound', space: { spaceId: databaseId, name: 'Shared memory', host: 'local', ownerId: 'owner', createdAt: '' }, permissions }],
-  environmentOverrides: [], local: { spaces: [], requests: [], grants: [], bindings: [] }, server: { spaces: [], requests: [], grants: [], bindings: [] },
+  environmentOverrides: [],
 });
 const respond = async (value = state(), requestId = requests().at(-1)!.requestId) => {
   emit({ type: 'databases-result', requestId, value }); await vi.advanceTimersByTimeAsync(0);
@@ -82,43 +82,20 @@ it('saves one alias mapping for shared entries and preserves a failed edit for c
   expect(page().textContent).toContain('set by the environment'); expect([...page().querySelectorAll('button')].some(control => control.textContent === 'Change database')).toBe(false);
 });
 
-it('uses readable permission scopes in explicit requests and scopes host management to the current entry', async () => {
-  const value = state();
-  value.local.requests.push({ requestId: 'foreign', host: 'local', projectId: 'another-project', entryId: 'other', alias: 'foreign', applicantId: 'user', target: { kind: 'create', name: 'Other project database' }, permissions, status: 'pending', createdAt: '' });
-  await open(value); click('Requests and permissions');
-  expect(page().textContent).not.toContain('Other project database');
-  const scope = page().querySelector<HTMLSelectElement>('[aria-label="Authorization scope"]')!; scope.value = 'all'; scope.dispatchEvent(new Event('change'));
-  expect(page().textContent).toContain('Other project database');
-  click('Request database access');
-  const select = page().querySelector<HTMLSelectElement>('[aria-label="Key-value data · Read"]')!; select.value = 'prefixes'; select.dispatchEvent(new Event('change'));
-  const prefixes = page().querySelector<HTMLTextAreaElement>('[aria-label="Key-value data · Read · Prefixes"]')!; prefixes.value = 'public:\nshared:';
-  click('Submit request');
-  expect(requests().at(-1)).toMatchObject({ action: 'request', host: 'local', alias: 'data', target: { kind: 'create' }, permissions: { kv: { read: { mode: 'prefixes', prefixes: ['public:', 'shared:'] } } } });
-  expect(requests().map(message => message.action)).toEqual(['get', 'request']);
-});
-
-it.each(['revoke', 'rotate'] as const)('requires explicit confirmation for %s and keeps credentials out of the view', async action => {
-  const value = state(); value.local.grants.push({ grantId: 'grant', projectId: project.id, entryId: project.entryId, spaceId: databaseId, permissions, credentialVersion: 1, createdAt: '' });
-  await open(value); click('Requests and permissions');
-  page().querySelector<HTMLDetailsElement>('.database-grant-controls')!.open = true;
-  click(action === 'revoke' ? 'Revoke access' : 'Rotate credentials');
-  expect(requests()).toHaveLength(1);
-  const confirmation = document.querySelector<HTMLDialogElement>('.action-dialog')!;
-  expect(confirmation.textContent).toContain(action === 'revoke' ? 'Stored data will be kept.' : 'Existing credentials');
-  click('Confirm', confirmation); await vi.advanceTimersByTimeAsync(0);
-  expect(requests().at(-1)).toMatchObject({ action, grantId: 'grant', host: 'local' });
-});
-
-it('retains permission prefixes while editing grants and prevents selecting broader modes', async () => {
-  const value = state(); const restricted: DatabasePermissions = { kv: { read: { mode: 'prefixes', prefixes: ['public:'] }, write: none }, knowledge: { read: none, write: none } };
-  value.local.grants.push({ grantId: 'grant', projectId: project.id, entryId: project.entryId, spaceId: databaseId, permissions: restricted, credentialVersion: 1, createdAt: '' });
-  await open(value); click('Requests and permissions'); page().querySelector<HTMLDetailsElement>('.database-grant-controls')!.open = true; click('Narrow permissions');
-  const read = page().querySelector<HTMLSelectElement>('[aria-label="Key-value data · Read"]')!;
-  expect(read.querySelector<HTMLOptionElement>('[value=all]')!.disabled).toBe(true);
-  const write = page().querySelector<HTMLSelectElement>('[aria-label="Key-value data · Write"]')!;
-  expect(write.querySelector<HTMLOptionElement>('[value=prefixes]')!.disabled).toBe(true);
-  const prefixes = page().querySelector<HTMLTextAreaElement>('[aria-label="Key-value data · Read · Prefixes"]')!; expect(prefixes.value).toBe('public:'); prefixes.value = 'public:docs:';
-  click('Save permissions'); expect(requests().at(-1)).toMatchObject({ action: 'narrow', permissions: { kv: { read: { mode: 'prefixes', prefixes: ['public:docs:'] }, write: none } } });
+it('shows only project references and icon actions, and forwards browsing to the host', async () => {
+  await open();
+  expect(page().querySelector('.database-permissions')).toBeNull();
+  expect(page().querySelector('.database-navigation')).toBeNull();
+  const actions = [...page().querySelectorAll<HTMLButtonElement>('.database-icon-button')];
+  expect(actions.every(action => !!action.getAttribute('aria-label') && !action.textContent?.trim())).toBe(true);
+  click('Browse data in host');
+  expect(requests().at(-1)).toMatchObject({ type: 'database-open', alias: 'data', projectUri: project.uri });
+  expect(requests().at(-1)).not.toHaveProperty('databaseId');
+  emit({ type: 'database-open-result', requestId: requests().at(-1).requestId, error: 'No Web preview' });
+  await vi.advanceTimersByTimeAsync(0);
+  expect(page().textContent).toContain('No Web preview');
+  expect(page().querySelector('.database-data')).toBeNull();
+  expect(requests().map(message => message.action).filter(Boolean)).toEqual(['get']);
 });
 
 it('recovers from timeout and ignores foreign frames and replies to a closed database view', async () => {
@@ -141,16 +118,4 @@ it('shows an actionable error when posting fails and allows retrying', async () 
   expect(page().textContent).toContain('Host is unavailable'); expect(page().getAttribute('aria-busy')).toBe('false');
   expect(page().textContent).not.toContain('Loading databases...'); expect(page().textContent).toContain('Choose Refresh to retry.');
   click('Refresh'); await respond(); expect(page().querySelector('.database-error')!.textContent).toBe('');
-});
-
-it('browses through the current entry alias and keeps the data view when refreshing database status', async () => {
-  await open(); click('Browse data');
-  expect(requests().at(-1)).toMatchObject({ action: 'data', alias: 'data', operation: 'kv.listValues', input: { pageSize: 20 } });
-  expect(requests().at(-1)).not.toHaveProperty('databaseId');
-  emit({ type: 'databases-result', requestId: requests().at(-1)!.requestId, value: { data: { items: [{ key: 'shared', value: 1 }], total: 1 } } });
-  await vi.advanceTimersByTimeAsync(0);
-  expect(page().querySelector('.database-record')!.textContent).toContain('shared');
-  click('Refresh'); await respond();
-  expect(requests().at(-1)).toMatchObject({ action: 'data', alias: 'data', operation: 'kv.listValues' });
-  expect(page().querySelector('.database-data')).not.toBeNull();
 });
