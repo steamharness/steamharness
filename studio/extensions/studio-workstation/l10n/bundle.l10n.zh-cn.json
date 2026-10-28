@@ -863,5 +863,7 @@
   "Used by this project": "本项目使用的",
   "{0} databases": "{0} 个数据库",
   "Browse local and server databases": "浏览本地和服务器数据库",
-  "The database reference changed. Close this tab and reopen the database.": "数据库引用已更改，请关闭此标签页并重新打开数据库。"
+  "The database reference changed. Close this tab and reopen the database.": "数据库引用已更改，请关闭此标签页并重新打开数据库。",
+  "Open Project Window": "打开项目窗口",
+  "This project entry is no longer available. Refresh the project windows and try again.": "此项目入口已不可用。请刷新项目窗口后重试。"
 }

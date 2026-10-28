@@ -365,6 +365,12 @@
         "icon": "$(folder-opened)"
       },
       {
+        "command": "studio.openProjectWindow",
+        "title": "%command.openProjectWindow%",
+        "category": "Project",
+        "icon": "$(link-external)"
+      },
+      {
         "command": "studio.uploadProject",
         "title": "%command.uploadProject%",
         "category": "Project",
@@ -553,6 +559,13 @@
       ]
     },
     "views": {
+      "explorer": [
+        {
+          "id": "studio.projects",
+          "name": "%view.studio.projects%",
+          "when": "workspaceFolderCount != 0"
+        }
+      ],
       "studio-info": [
         {
           "id": "studio.projectInfo",
@@ -607,6 +620,18 @@
         }
       ]
     },
+    "viewsWelcome": [
+      {
+        "view": "studio.projects",
+        "contents": "%welcome.studio.projects%",
+        "when": "isWorkspaceTrusted"
+      },
+      {
+        "view": "studio.projects",
+        "contents": "%welcome.studio.projectsUntrusted%",
+        "when": "!isWorkspaceTrusted"
+      }
+    ],
     "menus": {
       "webview/context": [
         {
@@ -738,6 +763,10 @@
         }
       ],
       "commandPalette": [
+        {
+          "command": "studio.openProjectWindow",
+          "when": "false"
+        },
         {
           "command": "studio.toggleMode",
           "when": "studio.projectAvailable || studio.steamMode"
@@ -874,11 +903,17 @@
         },
         {
           "command": "studio.refreshProjectView",
-          "when": "view == studio.projectInfo",
+          "when": "view == studio.projectInfo || view == studio.projects",
           "group": "navigation@3"
         }
       ],
-      "view/item/context": [],
+      "view/item/context": [
+        {
+          "command": "studio.openProjectWindow",
+          "when": "view == studio.projects && viewItem == studio.projectWindowEntry && isWorkspaceTrusted",
+          "group": "inline@1"
+        }
+      ],
       "editor/title": [
         {
           "command": "studio.refreshDocumentPreview",

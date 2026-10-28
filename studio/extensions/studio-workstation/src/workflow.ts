@@ -1,7 +1,7 @@
 import { t } from './localization';
 import * as vscode from 'vscode';
 import { projectAvatarDataUrl } from '@steamharness/project-card-metadata/avatar';
-import { projectTypeLabels, projectVersion, projectDisplayName, projectWindowKey, type Project } from './workflow-types';
+import { projectDisplayName, projectWindowKey, type Project } from './workflow-types';
 import type { AccountController } from './workflow-auth';
 import type { Launcher, WebSession } from './workflow-cli-types';
 import { projectFrameHtml, type ProjectWindowChrome } from './workflow-webview';
@@ -25,6 +25,7 @@ import type { ProjectIcons } from './project-icons';
 import { openProjectFolder } from './project-window';
 import { StudioModeController } from './studio-mode';
 import { chooseProjectTab } from './project-tabs';
+import { ProjectWindowsProvider } from './project-windows-view';
 
 const ignored = new Set(['node_modules', 'vendor', 'dist', 'out', 'build', 'upstream']);
 const containers = new Set(['workspace', 'workflow', 'projects', 'examples']);
@@ -44,11 +45,9 @@ export async function findProjectCandidates(root: vscode.Uri, depth = 0): Promis
   return nested.flat();
 }
 
-type ProjectTreeNode = Project & { aggregateNode?: true };
-
-class ProjectsProvider implements vscode.TreeDataProvider<ProjectTreeNode> {
+class ProjectCatalog {
   private readonly change = new vscode.EventEmitter<void>();
-  readonly onDidChangeTreeData = this.change.event;
+  readonly onDidChange = this.change.event;
   private published = '';
   projects: Project[] = [];
   refresh(): void {
@@ -58,30 +57,14 @@ class ProjectsProvider implements vscode.TreeDataProvider<ProjectTreeNode> {
     this.change.fire();
   }
   dispose(): void { this.change.dispose(); }
-  getChildren(node?: ProjectTreeNode): ProjectTreeNode[] {
-    if (node) return node.aggregateNode ? this.projects.filter(project => project.uri === node.uri && project.id === node.id) : [];
-    return [...new Map(this.projects.map(project => [project.uri, project])).values()].map(project => ({ ...project, aggregateNode: true }));
-  }
-  getTreeItem(project: ProjectTreeNode): vscode.TreeItem {
-    const item = new vscode.TreeItem(project.aggregateNode ? project.aggregateName : project.name,
-      project.aggregateNode ? vscode.TreeItemCollapsibleState.Expanded : vscode.TreeItemCollapsibleState.None);
-    item.id = project.aggregateNode ? `${project.uri}#aggregate` : projectWindowKey(project);
-    item.resourceUri = vscode.Uri.parse(project.uri);
-    item.description = project.aggregateNode ? projectVersion(project) : projectTypeLabels[project.projectType];
-    item.tooltip = `${projectDisplayName(project)}\n${project.folderPath}`;
-    item.contextValue = 'studio.project';
-    item.iconPath = vscode.Uri.parse(projectAvatarDataUrl(project.aggregateNode ? project.aggregateProjectCard : project.projectCard,
-      project.aggregateNode ? project.entries.find(entry => entry.entryId === project.defaultEntry)?.type ?? project.projectType : project.projectType));
-    if (!project.aggregateNode) item.command = { command: 'studio.openProject', title: t("Run Project"), arguments: [project] };
-    return item;
-  }
 }
 
 export async function activateProject(context: vscode.ExtensionContext, launcher: Launcher, output: vscode.OutputChannel, account: AccountController, _projectIcons?: ProjectIcons): Promise<{
   getProjects(): Project[]; onDidChangeProjects: vscode.Event<void>;
   getVersionStatus(project: Project): ProjectVersionStatus; onDidChangeVersions: vscode.Event<void>;
 }> {
-  const provider = new ProjectsProvider();
+  const provider = new ProjectCatalog();
+  const projectWindows = new ProjectWindowsProvider();
   const fileIcons = new ProjectFileIcons();
   context.subscriptions.push(fileIcons);
   const status = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 110);
@@ -121,11 +104,12 @@ export async function activateProject(context: vscode.ExtensionContext, launcher
       void entry.panel.webview.postMessage({ type: 'workflow-host', windowChrome: chromeFor(entry.project.uri, entry.panel.viewType === 'studio.project') });
     }
   };
-  const currentProject = (): Project | undefined => {
+  const activeProject = (): Project | undefined => {
     const uri = vscode.window.activeTextEditor?.document.uri;
     return (uri ? [...provider.projects].sort((a, b) => b.uri.length - a.uri.length).find(entry => uri.toString().startsWith(`${entry.uri}/`)) : undefined)
-      ?? [...workspaces.values()].find(workspace => workspace.panel.active)?.project ?? provider.projects[0];
+      ?? [...workspaces.values()].find(workspace => workspace.panel.active)?.project;
   };
+  const currentProject = (): Project | undefined => activeProject() ?? provider.projects[0];
   const theme = (): 'light' | 'dark' => [vscode.ColorThemeKind.Light, vscode.ColorThemeKind.HighContrastLight].includes(vscode.window.activeColorTheme.kind) ? 'light' : 'dark';
   const usesProject = (sources: string[], uri: string): boolean => sources.some(directory => {
     const source = vscode.Uri.file(directory).toString();
@@ -158,6 +142,7 @@ export async function activateProject(context: vscode.ExtensionContext, launcher
   const updateEntry = (): void => {
     clearTimeout(entryTimer); entryTimer = undefined;
     if (disposed) { return; }
+    projectWindows.update(provider.projects, activeProject());
     const target = currentProject();
     resources.update(provider.projects, target);
     databases.update(provider.projects, target);
@@ -389,6 +374,12 @@ export async function activateProject(context: vscode.ExtensionContext, launcher
       if (panel && (signal || existing && viewColumn !== undefined)) { await revealProject(panel, viewColumn, signal, !!existing); }
     } finally { opening.delete(projectWindowKey(selected)); }
   };
+  const openProjectWindow = async (target?: Project): Promise<void> => {
+    if (!vscode.workspace.isTrusted) { throw new Error(t('Trust the current workspace first.')); }
+    const project = provider.projects.find(project => project.uri === target?.uri && project.id === target.id && project.entryId === target.entryId);
+    if (!project) { throw new Error(t('This project entry is no longer available. Refresh the project windows and try again.')); }
+    await createWorkspace(project, undefined, undefined, undefined, undefined, true, project.projectType === 'conversation' ? 'new' : undefined);
+  };
   const openCard = async (result: ResourceCardResult, owner: Project, session: WebSession, origin: URL): Promise<void> => {
     const { card, project } = result;
     if (result.action === 'open' || result.action === 'project') {
@@ -566,7 +557,8 @@ export async function activateProject(context: vscode.ExtensionContext, launcher
     if (!project) { panel.dispose(); return; }
     await createWorkspace(project, panel, undefined, undefined, undefined, false, project.projectType === 'conversation' ? 'restore' : undefined);
   } };
-  context.subscriptions.push(launcher, provider, status, versionStatus, versions.onDidChangeVersions(updateVersionEntry),
+  context.subscriptions.push(launcher, provider, projectWindows, status, versionStatus, versions.onDidChangeVersions(updateVersionEntry),
+    vscode.window.registerTreeDataProvider('studio.projects', projectWindows),
     vscode.window.registerWebviewPanelSerializer('studio.project', projectSerializer),
     vscode.window.registerWebviewPanelSerializer('studio.projectTool', projectSerializer),
     register('studio.openProjectConfigurations', async (projectDir: string, entryId?: string) => {
@@ -591,6 +583,7 @@ export async function activateProject(context: vscode.ExtensionContext, launcher
       return {opened:true};
     }),
     register('studio.openProject', (target?: Project, viewColumn?: vscode.ViewColumn) => openProject(target, viewColumn)), register('studio.refreshProjectView', refresh),
+    register('studio.openProjectWindow', (target?: Project) => openProjectWindow(target)),
     register('studio.openProjectInTab', async (target?: string) => {
       if (!vscode.workspace.isTrusted) { throw new Error(t('Trust the current workspace first.')); }
       const tab = await chooseProjectTab([...provider.projects, ...externalProjects.values()], target);
@@ -663,6 +656,6 @@ export async function activateProject(context: vscode.ExtensionContext, launcher
   projectScanReady = true;
   updateEntry();
   void assistant.showInitially().catch(error => output.appendLine(`Project Assistant: ${String(error)}`));
-  return { getProjects: () => [...provider.projects], onDidChangeProjects: provider.onDidChangeTreeData,
+  return { getProjects: () => [...provider.projects], onDidChangeProjects: provider.onDidChange,
     getVersionStatus: project => versions.getVersionStatus(project), onDidChangeVersions: versions.onDidChangeVersions };
 }

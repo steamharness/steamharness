@@ -863,5 +863,7 @@
   "Used by this project": "Used by this project",
   "{0} databases": "{0} databases",
   "Browse local and server databases": "Browse local and server databases",
-  "The database reference changed. Close this tab and reopen the database.": "The database reference changed. Close this tab and reopen the database."
+  "The database reference changed. Close this tab and reopen the database.": "The database reference changed. Close this tab and reopen the database.",
+  "Open Project Window": "Open Project Window",
+  "This project entry is no longer available. Refresh the project windows and try again.": "This project entry is no longer available. Refresh the project windows and try again."
 }

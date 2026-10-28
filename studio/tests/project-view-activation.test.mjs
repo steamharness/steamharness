@@ -14,7 +14,7 @@ const chinese = JSON.parse(await readFile(new URL('../extensions/studio-workstat
 const source = ts.createSourceFile('workflow.ts', await readFile(new URL('../extensions/studio-workstation/src/workflow.ts', import.meta.url), 'utf8'), ts.ScriptTarget.Latest, true);
 const initializers = new Map();
 function visit(node) {
-  if (ts.isVariableDeclaration(node) && ['findProject', 'findWorkspace', 'projectSerializer', 'revealProject', 'createWorkspace', 'openProject'].includes(node.name.getText(source))) {
+  if (ts.isVariableDeclaration(node) && ['findProject', 'findWorkspace', 'projectSerializer', 'revealProject', 'createWorkspace', 'openProject', 'openProjectWindow'].includes(node.name.getText(source))) {
     initializers.set(node.name.getText(source), node.initializer.getText(source));
   }
   ts.forEachChild(node, visit);
@@ -184,6 +184,43 @@ function workspaceFixture({ assistant = false, language = 'en' } = {}) {
   };
   createWorkspace = load('createWorkspace', bindings);
   return { projects, workspaces, leases, panels, frames, deliveries, launches, errors, logs, makePanel, bindings, createWorkspace };
+}
+
+for (const entryId of ['agent', 'workflow', 'board']) {
+  test(`Explorer opens the ${entryId} entry repeatedly in new active native tabs`, async () => {
+    const f = workspaceFixture(), project = f.projects.find(project => project.entryId === entryId);
+    await f.createWorkspace(project);
+    const open = load('openProjectWindow', { ...f.bindings, createWorkspace: f.createWorkspace });
+    await Promise.all([open(project), open(project)]);
+    assert.equal(f.workspaces.size, 3);
+    assert.equal(f.panels.length, 3);
+    for (const panel of f.panels.slice(1)) {
+      assert.equal(panel.viewType, 'studio.projectTool');
+      assert.equal(panel.showOptions.viewColumn, -1);
+      assert.equal(panel.showOptions.preserveFocus, false);
+      assert.equal(f.workspaces.get(panel).project.entryId, entryId);
+    }
+    if (entryId === 'agent') assert.equal(f.frames[1][7], 'new');
+    f.panels[1].dispose();
+    await new Promise(resolve => setImmediate(resolve));
+    assert.deepEqual(f.leases.map(lease => lease.closes), [0, 1, 0]);
+    for (const panel of f.panels) panel.dispose();
+  });
+}
+
+for (const language of ['en', 'zh-cn']) {
+  test(`${language}: Explorer rejects removed entries, changed identities and untrusted workspaces before startup`, async () => {
+    const f = workspaceFixture({ language }), project = f.projects[0];
+    const open = load('openProjectWindow', { ...f.bindings, createWorkspace: f.createWorkspace });
+    for (const target of [undefined, { ...project, entryId: 'removed' }, { ...project, id: 'new-identity' }, { ...project, uri: 'file:///other' }]) {
+      await assert.rejects(open(target), error => error.message === (language === 'en'
+        ? 'This project entry is no longer available. Refresh the project windows and try again.' : '此项目入口已不可用。请刷新项目窗口后重试。'));
+    }
+    f.bindings.vscode.workspace.isTrusted = false;
+    await assert.rejects(open(project), error => error.message === (language === 'en' ? 'Trust the current workspace first.' : '请先信任当前工作区。'));
+    assert.equal(f.panels.length, 0);
+    assert.equal(f.launches.length, 0);
+  });
 }
 
 for (const entryId of ['agent', 'workflow']) {
