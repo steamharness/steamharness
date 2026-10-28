@@ -872,5 +872,18 @@
   "Browse local and server databases": "Browse local and server databases",
   "The database reference changed. Close this tab and reopen the database.": "The database reference changed. Close this tab and reopen the database.",
   "Open Project Window": "Open Project Window",
-  "This project entry is no longer available. Refresh the project windows and try again.": "This project entry is no longer available. Refresh the project windows and try again."
+  "This project entry is no longer available. Refresh the project windows and try again.": "This project entry is no longer available. Refresh the project windows and try again.",
+  "Node.js runtime": "Node.js runtime",
+  "Choose the runtime for projects, dependencies, terminals and default Node.js debugging. Restart existing sessions after changing it.": "Choose the runtime for projects, dependencies, terminals and default Node.js debugging. Restart existing sessions after changing it.",
+  "Bundled Node.js": "Bundled Node.js",
+  "Studio runtime": "Studio runtime",
+  "Local Node.js": "Local Node.js",
+  "Local mode: choose an absolute executable path, or leave empty to search the original system PATH.": "Local mode: choose an absolute executable path, or leave empty to search the original system PATH.",
+  "No local Node.js was found. Choose an executable in Settings or use the bundled runtime.": "No local Node.js was found. Choose an executable in Settings or use the bundled runtime.",
+  "The bundled Node.js runtime is missing or damaged. Repair the installation or choose a local Node.js in Settings.": "The bundled Node.js runtime is missing or damaged. Repair the installation or choose a local Node.js in Settings.",
+  "Choose an absolute path to a Node.js executable.": "Choose an absolute path to a Node.js executable.",
+  "Cannot run Node.js at {0}. Choose another executable in Settings.": "Cannot run Node.js at {0}. Choose another executable in Settings.",
+  "Node.js 22.19.0 or newer is required; found {0}.": "Node.js 22.19.0 or newer is required; found {0}.",
+  "Node.js changes apply to new sessions. Restart existing project services and terminals to use the selected runtime.": "Node.js changes apply to new sessions. Restart existing project services and terminals to use the selected runtime.",
+  "The selected Node.js has no package manager. Repair the bundled runtime or choose a local Node.js installation with npm.": "The selected Node.js has no package manager. Repair the bundled runtime or choose a local Node.js installation with npm."
 }

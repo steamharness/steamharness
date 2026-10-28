@@ -8,6 +8,7 @@ import { AuthError, type Connection } from './workflow-auth-client';
 import { ProjectServerClient, type DownloadedServerProject, type ProjectPreparation, type ProjectTransferProgress } from './steamharness-server-projects';
 import { isProjectUuid } from '../../../../shared/workflow-ids/index';
 import type { TemplateProjectRegistration } from '../../../vendor/project-templates/project-templates';
+import { nodeRuntimeEnvironment, type NodeRuntime } from './node-runtime';
 
 export async function allocateServerProjectId(options: {
   project: TemplateProjectRegistration; connection: Connection; signal: AbortSignal; assertCurrent: () => void;
@@ -25,14 +26,14 @@ export async function allocateServerProjectId(options: {
 }
 
 interface TransferOptions {
-  cliEntry: string; runtimeDirectory: string; nodePath: string; connection: Connection;
+  cliEntry: string; runtimeDirectory: string; nodePath: string; connection: Connection; runtime?: NodeRuntime;
   signal: AbortSignal; progress: (value: ProjectTransferProgress) => void;
 }
 
 export function runWorkspaceTransfer(options: TransferOptions, args: string[], packsDirectory: string): Promise<unknown> {
   options.signal.throwIfAborted();
   return new Promise((resolve, reject) => {
-    const env: NodeJS.ProcessEnv = { ...process.env, ELECTRON_RUN_AS_NODE: '1',
+    const env: NodeJS.ProcessEnv = { ...(options.runtime ? nodeRuntimeEnvironment(options.runtime) : { ...process.env, ELECTRON_RUN_AS_NODE: '1' }),
       STEAMHARNESS_SERVER_URL: options.connection.serverUrl, STEAMHARNESS_SERVER_ADMIN_KEY: options.connection.accessToken,
       STEAMHARNESS_WORKSPACE_PACKS_DIR: packsDirectory };
     for (const key of ['NODE_OPTIONS', 'TSX_TSCONFIG_PATH', 'STEAMHARNESS_LOCAL_HARNESS_ROOT', 'STEAMHARNESS_LOCAL_SHARED_ROOT', 'STEAMHARNESS_LOCAL_SOURCE_MODE']) { delete env[key]; }

@@ -44,4 +44,5 @@ export interface SettingsState {
   studioVersion: string;
   vscodeVersion: string;
   providers: SettingsProvider[];
+  nodeRuntime?: { source?: 'bundled' | 'local' | 'host'; version?: string; path?: string; error?: string };
 }

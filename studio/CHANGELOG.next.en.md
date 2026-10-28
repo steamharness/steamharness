@@ -1,5 +1,7 @@
 # Unreleased
 
+- Unify project Node runtime selection, validation and environment propagation, with optional host toolchains and local executables. Changes apply to new sessions; service recovery retains its original environment. Public Studio does not download or bundle Node.
+
 - Improved CLI Web exports: conversations, messages and workflow records use the native save dialog, with a notification showing the saved path after writing succeeds. Cancellation stays quiet and save failures show an error notification.
 
 - Improved Start: recent projects show a Current Project badge for folders and workspaces open in this window. Removing a recent entry now requires confirmation and explains that project files and the current workspace are preserved.

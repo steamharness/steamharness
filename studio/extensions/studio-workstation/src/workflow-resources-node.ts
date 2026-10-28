@@ -5,16 +5,17 @@ import type { HostDatabaseRequest } from './workflow-databases-types';
 import { sanitizeProjectEnvironment, AuthError, type Connection } from './workflow-auth-client';
 import { sanitizeConnectionForSurface } from './workflow-cli-process';
 import { t } from './localization';
+import { nodeRuntimeEnvironment, type NodeRuntime } from './node-runtime';
 
 export function requestProjectResource(options: {
   project: Project; input: ResourceRequest | HostDatabaseRequest; worker: string; storageDir: string;
-  nodePath: string; connection?: Connection; signal: AbortSignal;
+  nodePath: string; connection?: Connection; signal: AbortSignal; runtime?: NodeRuntime;
 }): Promise<unknown> {
   return new Promise((resolve, reject) => {
     options.signal.throwIfAborted();
     const connection = sanitizeConnectionForSurface(options.connection, 'editor');
-    const env: NodeJS.ProcessEnv = sanitizeProjectEnvironment(process.env);
-    env.ELECTRON_RUN_AS_NODE = '1';
+    const env: NodeJS.ProcessEnv = sanitizeProjectEnvironment(options.runtime ? nodeRuntimeEnvironment(options.runtime) : process.env);
+    if (!options.runtime) env.ELECTRON_RUN_AS_NODE = '1';
     const child = spawn(options.nodePath, [options.worker], { cwd: options.project.folderPath, env, shell: false, stdio: ['pipe', 'pipe', 'pipe'], signal: options.signal });
     let stdout = '', stderr = '';
     const timeout = setTimeout(() => child.kill('SIGKILL'), 30_000);

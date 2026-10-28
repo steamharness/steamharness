@@ -134,7 +134,7 @@ export class StudioStartController implements vscode.Disposable {
       vscode.workspace.onDidGrantWorkspaceTrust(() => this.resumeProjectSetup()),
       vscode.window.onDidChangeWindowState(state => { if (state.focused) { this.resumeProjectSetup(); } }),
       vscode.workspace.onDidChangeConfiguration(event => {
-        if (event.affectsConfiguration('studio.project.nodePath') || event.affectsConfiguration('studio.project.serverUrl')) {
+        if (event.affectsConfiguration('studio.project.nodePath') || event.affectsConfiguration('studio.project.nodeSource') || event.affectsConfiguration('studio.project.serverUrl')) {
           this.environmentNeeded = true; schedule();
         }
       }));

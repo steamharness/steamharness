@@ -253,15 +253,24 @@ export class AccountController implements vscode.Disposable {
     }));
   }
 
+  private runtimeStatus?: SettingsState['nodeRuntime'];
+  private runtimeStatusEpoch = 0;
   private publishSettings(): void {
     if (!this.panel) { return; }
     void this.panel.webview.postMessage({ type: 'settings', state: this.settingsSnapshot() });
     void this.panel.webview.postMessage({ type: 'settings-models', state: this.userModels.state() });
+    const panel = this.panel, epoch = ++this.runtimeStatusEpoch;
+    void vscode.commands.executeCommand<SettingsState['nodeRuntime']>('studio.internalGetNodeRuntime').then(status => {
+      if (!status || this.panel !== panel || epoch !== this.runtimeStatusEpoch) return;
+      this.runtimeStatus = status;
+      void panel.webview.postMessage({ type: 'settings', state: this.settingsSnapshot() });
+    }, () => undefined);
   }
 
   private settingsSnapshot(): SettingsState {
     const state = settingsState(this.context.extension.packageJSON.version, this.viewState.target ?? 'user', this.sections.getProviders(), this.languagePreference);
     this.viewState.target = state.target;
+    state.nodeRuntime = this.runtimeStatus;
     return state;
   }
 

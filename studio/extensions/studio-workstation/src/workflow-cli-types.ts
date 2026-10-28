@@ -45,6 +45,7 @@ export interface Launcher {
   upgradeProject?(project: Project, version: string, signal: AbortSignal, progress: (value: ProjectTransferProgress) => void,
     beforeReplace: () => Promise<void>, afterReplace: (projects: DownloadedServerProject[]) => Promise<void>): Promise<UpdatedServerProject>;
   environmentStatus?(): Promise<StartEnvironment>;
+  nodeRuntime?(): Promise<{ nodePath: string; env: Record<string, string | undefined>; electron: boolean }>;
   analysisSummary?(): Promise<StartSummary>;
   analyzeProjectType?(sources: Array<{ name: string; text: string }>): Promise<ProjectType | undefined>;
   inspect(paths: string[], options?: { validationDetails?: boolean }): Promise<{ projects: Omit<Project, 'uri'>[]; errors: string[] }>;

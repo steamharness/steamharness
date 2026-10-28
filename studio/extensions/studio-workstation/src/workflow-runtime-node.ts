@@ -17,8 +17,8 @@ import { createStudioControlHandler, STUDIO_CONTROL_ENTRY_ID, studioControlWorks
 import { startStudioControlBridge, type StudioControlBridge } from './studio-control-bridge';
 import { createStudioAnalysisHandler, studioAnalysisProjects } from './studio-analysis';
 import { projectTemplatesRuntime, installProjectDependencies, defaultProjectParentDirectory } from './project-create-node';
-import { execFile } from 'node:child_process';
-import { promisify } from 'node:util';
+import { configuredNodeRuntime } from './node-runtime-configuration';
+import { nodeRuntimeEnvironment, type NodeRuntime } from './node-runtime';
 import { readFile } from 'node:fs/promises';
 import type { ProjectType } from './projects';
 import { uploadServerProject, downloadServerProject, allocateServerProjectId } from './steamharness-server-projects-node';
@@ -42,13 +42,14 @@ export function createProjectRuntime(context: vscode.ExtensionContext, account: 
     syncUserSettings();
   });
   const userModelsChanged = account.onDidChangeUserModels?.(syncUserSettings);
-  const executable = (): string => vscode.workspace.getConfiguration('studio').get<string>('project.nodePath') || process.execPath;
+  const selectedRuntime = () => configuredNodeRuntime(context.globalStorageUri.fsPath);
   const configurationService = {
     configuration: async (input: Record<string,unknown>, signal: AbortSignal): Promise<unknown> => {
       assertAvailable();
       if(input.storage==='local') {
         if(input.open) { await vscode.commands.executeCommand('studio.openProjectConfigurations',input.projectDir,input.entryId); return {opened:true,storage:'local',projectDir:input.projectDir}; }
-        return requestProjectCliConfiguration(String(input.projectDir),executable(),input.call as Record<string,unknown>,signal,account.getConnection(),String(input.entryId));
+        const runtime = await selectedRuntime();
+        return requestProjectCliConfiguration(String(input.projectDir),runtime.nodePath,input.call as Record<string,unknown>,signal,account.getConnection(),String(input.entryId),runtime);
       }
       const connection=account.getConnection();if(!connection)throw new Error(t('Sign in to SteamHarness Server first.'));
       if(input.open) { await vscode.env.openExternal(vscode.Uri.parse(`${connection.serverUrl}/detail/${encodeURIComponent(String(input.projectId))}/entries/${encodeURIComponent(String(input.entryId))}/configurations`)); return {opened:true,storage:'server',projectId:input.projectId}; }
@@ -110,7 +111,7 @@ export function createProjectRuntime(context: vscode.ExtensionContext, account: 
     for (const session of sessions) { session.updateAuth(connection); }
   });
   const transfer = async <T>(signal: AbortSignal, action: (options: {
-    cliEntry: string; runtimeDirectory: string; nodePath: string; connection: NonNullable<ReturnType<AccountController['getConnection']>>; signal: AbortSignal;
+    cliEntry: string; runtimeDirectory: string; nodePath: string; runtime: NodeRuntime; connection: NonNullable<ReturnType<AccountController['getConnection']>>; signal: AbortSignal;
   }) => Promise<T>): Promise<T> => {
     assertAvailable(false);
     const connection = account.getConnection();
@@ -123,11 +124,13 @@ export function createProjectRuntime(context: vscode.ExtensionContext, account: 
       const runtimeDirectory = await assistantDirectory();
       const combined = AbortSignal.any([signal, controller.signal, changed.signal]);
       combined.throwIfAborted();
-      return await action({ cliEntry: (await resolveProjectCli(runtimeDirectory)).entry, runtimeDirectory, nodePath: executable(), connection, signal: combined });
+      const runtime = await selectedRuntime();
+      return await action({ cliEntry: (await resolveProjectCli(runtimeDirectory)).entry, runtimeDirectory, nodePath: runtime.nodePath, runtime, connection, signal: combined });
     } finally { subscription.dispose(); }
   };
   return {
     available: true,
+    nodeRuntime: async () => { const runtime = await selectedRuntime(); return { nodePath: runtime.nodePath, env: nodeRuntimeEnvironment(runtime), electron: runtime.electron }; },
     analyzeProjectType: async sources => {
       const directory = await assistantDirectory();
       const { resolve } = await import('import-meta-resolve');
@@ -158,7 +161,7 @@ export function createProjectRuntime(context: vscode.ExtensionContext, account: 
         return await templates.create(input, combined, project => allocateServerProjectId({ project, connection, assertCurrent, signal: combined }));
       } finally { changed.dispose(); }
     },
-    installDependencies: (directory, signal, log) => installProjectDependencies({ directory, signal: AbortSignal.any([signal, controller.signal]), log }),
+    installDependencies: async (directory, signal, log) => installProjectDependencies({ directory, signal: AbortSignal.any([signal, controller.signal]), log, runtime: await selectedRuntime() }),
     hasProjectDependencies: async directory => {
       try {
         await resolveProjectCli(directory);
@@ -166,7 +169,7 @@ export function createProjectRuntime(context: vscode.ExtensionContext, account: 
         return true;
       } catch { return false; }
     },
-    prepareProjectTemplate: (directory, signal) => templates.prepare(directory, executable(), AbortSignal.any([signal, controller.signal])),
+    prepareProjectTemplate: async (directory, signal) => { const runtime = await selectedRuntime(); return templates.prepare(directory, runtime.nodePath, AbortSignal.any([signal, controller.signal]), runtime); },
     uploadProject: (project, releaseLog, signal, progress) => {
       assertAvailable();
       return transfer(signal, options => uploadServerProject({ ...options, projectId: project.id, version: project.manifest?.version ?? '', directory: project.folderPath, releaseLog, progress }));
@@ -180,7 +183,7 @@ export function createProjectRuntime(context: vscode.ExtensionContext, account: 
     },
     environmentStatus: async () => {
       const result: { node?: string; harness?: string; cli?: string; error?: string } = {};
-      try { result.node = (await promisify(execFile)(executable(), ['--version'], { env: { ...process.env, ELECTRON_RUN_AS_NODE: '1' }, timeout: 10_000, windowsHide: true })).stdout.trim(); }
+      try { result.node = (await selectedRuntime()).version; }
       catch (error) { result.error = String(error); }
       try {
         const directory = await assistantDirectory();
@@ -199,14 +202,16 @@ export function createProjectRuntime(context: vscode.ExtensionContext, account: 
     inspectAnalysis: async () => {
       assertAvailable();
       const directory = await analysisDirectory();
-      const result = await inspectProjectCli(directory, executable(), controller.signal, undefined, undefined, vscode.env.language);
+      const runtime = await selectedRuntime();
+      const result = await inspectProjectCli(directory, runtime.nodePath, controller.signal, undefined, undefined, vscode.env.language, false, runtime);
       const project = result.projects.find(project => project.id === ANALYSIS_PROJECT_ID && project.projectType === 'kanban');
       if (!project) { throw new Error(result.errors.join('\n') || 'Studio Analysis project is unavailable.'); }
       return { ...project, uri: vscode.Uri.file(directory).toString(), builtin: 'analysis' };
     },
     inspect: async (paths, options) => {
       assertAvailable();
-      const results = await Promise.allSettled(paths.map(folder => inspectProjectCli(folder, executable(), controller.signal, undefined, undefined, vscode.env.language, options?.validationDetails)));
+      const runtime = await selectedRuntime();
+      const results = await Promise.allSettled(paths.map(folder => inspectProjectCli(folder, runtime.nodePath, controller.signal, undefined, undefined, vscode.env.language, options?.validationDetails, runtime)));
       const projects = [], errors: string[] = [];
       for (let index = 0; index < results.length; index++) {
         const result = results[index];
@@ -223,7 +228,8 @@ export function createProjectRuntime(context: vscode.ExtensionContext, account: 
       const directory = await preparation;
       assertAvailable(); assertAssistantWorkspace(assistant);
       try {
-        const result = await inspectProjectCli(directory, executable(), controller.signal, directory, assistant, vscode.env.language);
+        const runtime = await selectedRuntime();
+        const result = await inspectProjectCli(directory, runtime.nodePath, controller.signal, directory, assistant, vscode.env.language, false, runtime);
         if (result.errors.length || !result.projects.some(project => project.id === DEVELOPER_ASSISTANT_PROJECT_ID && project.projectType === 'conversation')) {
           if (assistantApplication === preparation) { assistantApplication = undefined; }
         }
@@ -233,8 +239,10 @@ export function createProjectRuntime(context: vscode.ExtensionContext, account: 
         throw error;
       }
     },
-    start: async (project, surface, signal, resourceProjects) => hosts.acquire(
-      JSON.stringify([project.folderPath, project.id, surface, project.assistant ?? null]), project,
+    start: async (project, surface, signal, resourceProjects) => {
+      const runtime = await selectedRuntime();
+      return hosts.acquire(
+      JSON.stringify([project.folderPath, project.id, surface, project.assistant ?? null, runtime.identity]), project,
       async (port, hostSignal) => {
       assertAvailable();
       if (project.assistant) { assertAssistantWorkspace(project.assistant); }
@@ -258,16 +266,16 @@ export function createProjectRuntime(context: vscode.ExtensionContext, account: 
           if (!studioControlWorkspaceAvailable(scope, roots)) { throw new Error(t('Studio Control workspace is no longer available.')); }
           bridge = await startStudioControlBridge(createStudioControlHandler(scope, runSignal, context, configurationService), runSignal);
           studioControl = { url: bridge.url, token: bridge.token, mcpServer: JSON.stringify({
-            id: 'workflow-studio', command: [executable(), (await resolveProjectCli(directory)).entry, 'mcp', directory, '--entry', STUDIO_CONTROL_ENTRY_ID,
+            id: 'workflow-studio', command: [runtime.nodePath, (await resolveProjectCli(directory)).entry, 'mcp', directory, '--entry', STUDIO_CONTROL_ENTRY_ID,
               '--data-dir', path.join(context.globalStorageUri.fsPath, 'workflow', 'assistant', 'control-data')],
-            environment: { ELECTRON_RUN_AS_NODE: '1' },
+            environment: { PATH: nodeRuntimeEnvironment(runtime).PATH!, ...(runtime.electron ? { ELECTRON_RUN_AS_NODE: '1' } : {}) },
             inheritEnvironment: ['STEAMHARNESS_STUDIO_CONTROL_BRIDGE_URL', 'STEAMHARNESS_STUDIO_CONTROL_BRIDGE_TOKEN'], timeout: 30_000,
           }) };
         } else if (project.id === ANALYSIS_PROJECT_ID && project.projectType === 'kanban') {
           bridge = await startStudioControlBridge(createStudioAnalysisHandler(readAnalysis, runSignal), runSignal);
           studioControl = { url: bridge.url, token: bridge.token };
         }
-        const session = await startProjectCli({ projectDir: project.folderPath, nodePath: executable(),
+        const session = await startProjectCli({ projectDir: project.folderPath, nodePath: runtime.nodePath, runtime,
           assistantProjectDir: project.assistant ? project.folderPath : undefined,
           expectedProjectId: project.id,
           entryId: project.entryId,
@@ -283,21 +291,23 @@ export function createProjectRuntime(context: vscode.ExtensionContext, account: 
         catch (error) { await session.close(); throw error; }
         return session;
       } catch (error) { await bridge?.close(); throw error; }
-    }, signal),
+    }, signal); },
     cliEntry: async folder => { assertAvailable(); return (await resolveProjectCli(folder)).entry; },
     database: async (input, signal) => {
       assertAvailable();
       const folderPath = await assistantDirectory();
+      const runtime = await selectedRuntime();
       signal.throwIfAborted();
       return requestProjectResource({ project: { id: DEVELOPER_ASSISTANT_PROJECT_ID, entryId: 'main', folderPath } as Project, input,
         worker: vscode.Uri.joinPath(context.extensionUri, 'dist', 'resources-worker.mjs').fsPath,
-        storageDir: path.join(context.globalStorageUri.fsPath, 'workflow', 'web'), nodePath: executable(), connection: account.getConnection(),
+        storageDir: path.join(context.globalStorageUri.fsPath, 'workflow', 'web'), nodePath: runtime.nodePath, runtime, connection: account.getConnection(),
         signal: AbortSignal.any([signal, controller.signal]) });
     },
-    resource: (project, input, signal) => {
+    resource: async (project, input, signal) => {
       assertAvailable();
+      const runtime = await selectedRuntime();
       return requestProjectResource({ project, input, worker: vscode.Uri.joinPath(context.extensionUri, 'dist', 'resources-worker.mjs').fsPath,
-        storageDir: path.join(context.globalStorageUri.fsPath, 'workflow', 'web'), nodePath: executable(), connection: account.getConnection(),
+        storageDir: path.join(context.globalStorageUri.fsPath, 'workflow', 'web'), nodePath: runtime.nodePath, runtime, connection: account.getConnection(),
         signal: AbortSignal.any([signal, controller.signal]) });
     },
     dispose: () => { controller.abort(); authentication.dispose(); userSettingsChanged.dispose(); userModelsChanged?.dispose(); clearTimeout(settingsTimer); void hosts.close(); },

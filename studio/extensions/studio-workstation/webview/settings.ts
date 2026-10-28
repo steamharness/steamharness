@@ -261,6 +261,15 @@ export function createSettingsView(root: HTMLElement, vscode: WebviewApi): { acc
       }
       updateRow(item);
     }
+    const runtimeRow = rows.get('studio.project.nodeSource');
+    if (runtimeRow && snapshot.nodeRuntime) {
+      let status = runtimeRow.querySelector<HTMLElement>('.runtime-status');
+      if (!status) { status = element('p', 'runtime-status muted'); runtimeRow.querySelector('.setting-copy')!.append(status); }
+      const runtime = snapshot.nodeRuntime;
+      const sources = { bundled: t('Bundled Node.js'), local: t('Local Node.js'), host: t('Studio runtime') };
+      status.textContent = runtime.error || [runtime.source ? sources[runtime.source] : '', runtime.version, runtime.path].filter(Boolean).join(' · ');
+      status.style.overflowWrap = 'anywhere';
+    }
     const appearance = [...groups.values()][0]?.lastElementChild;
     if (appearance && !root.querySelector('#settings-language')) {
       const row = element('div', 'setting-row'); row.id = 'settings-language';

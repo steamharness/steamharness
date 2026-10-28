@@ -872,5 +872,18 @@
   "Browse local and server databases": "浏览本地和服务器数据库",
   "The database reference changed. Close this tab and reopen the database.": "数据库引用已更改，请关闭此标签页并重新打开数据库。",
   "Open Project Window": "打开项目窗口",
-  "This project entry is no longer available. Refresh the project windows and try again.": "此项目入口已不可用。请刷新项目窗口后重试。"
+  "This project entry is no longer available. Refresh the project windows and try again.": "此项目入口已不可用。请刷新项目窗口后重试。",
+  "Node.js runtime": "Node.js 运行时",
+  "Choose the runtime for projects, dependencies, terminals and default Node.js debugging. Restart existing sessions after changing it.": "选择项目、依赖安装、终端及默认 Node.js 调试使用的运行时。修改后请重启已有会话。",
+  "Bundled Node.js": "内置 Node.js",
+  "Studio runtime": "Studio 运行时",
+  "Local Node.js": "本地 Node.js",
+  "Local mode: choose an absolute executable path, or leave empty to search the original system PATH.": "本地模式：指定 Node.js 可执行文件的绝对路径，留空则从原始系统 PATH 查找。",
+  "No local Node.js was found. Choose an executable in Settings or use the bundled runtime.": "未找到本地 Node.js。请在设置中指定可执行文件，或使用内置运行时。",
+  "The bundled Node.js runtime is missing or damaged. Repair the installation or choose a local Node.js in Settings.": "内置 Node.js 运行时缺失或损坏。请修复安装，或在设置中选择本地 Node.js。",
+  "Choose an absolute path to a Node.js executable.": "请选择 Node.js 可执行文件的绝对路径。",
+  "Cannot run Node.js at {0}. Choose another executable in Settings.": "无法运行 {0} 中的 Node.js。请在设置中选择其他可执行文件。",
+  "Node.js 22.19.0 or newer is required; found {0}.": "需要 Node.js 22.19.0 或更高版本；当前为 {0}。",
+  "Node.js changes apply to new sessions. Restart existing project services and terminals to use the selected runtime.": "Node.js 修改将应用于新会话。请重启已有项目服务和终端以使用所选运行时。",
+  "The selected Node.js has no package manager. Repair the bundled runtime or choose a local Node.js installation with npm.": "所选 Node.js 没有包管理器。请修复内置运行时，或选择包含 npm 的本地 Node.js 安装。"
 }

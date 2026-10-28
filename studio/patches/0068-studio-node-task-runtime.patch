@@ -1,0 +1,78 @@
+diff --git a/src/vs/workbench/contrib/tasks/browser/nodeTaskRuntime.ts b/src/vs/workbench/contrib/tasks/browser/nodeTaskRuntime.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..7be76dbb7718a6b1be04d5e0f4fce2f6a70f3b49
+--- /dev/null
++++ b/src/vs/workbench/contrib/tasks/browser/nodeTaskRuntime.ts
+@@ -0,0 +1,18 @@
++/*---------------------------------------------------------------------------------------------
++ *  Copyright (c) Microsoft Corporation. All rights reserved.
++ *  Licensed under the MIT License. See License.txt in the project root for license information.
++ *--------------------------------------------------------------------------------------------*/
++
++export interface INodeTaskRuntime {
++	nodePath: string;
++	args?: string[];
++	env: { PATH: string };
++}
++
++/** Resolve implicit local Node/tool process tasks; explicit executables and PATH win. */
++export async function resolveNodeTaskRuntime(command: string, env: Record<string, unknown> | undefined, remoteAuthority: string | undefined, resolve: (command: string) => Promise<INodeTaskRuntime | undefined>): Promise<INodeTaskRuntime | undefined> {
++	if (remoteAuthority || !/^(?:node(?:\.exe)?|(?:npm|npx|pnpm)(?:\.cmd)?)$/i.test(command) || Object.keys(env ?? {}).some(key => key.toLowerCase() === 'path')) {
++		return undefined;
++	}
++	return resolve(command);
++}
+diff --git a/src/vs/workbench/contrib/tasks/browser/terminalTaskSystem.ts b/src/vs/workbench/contrib/tasks/browser/terminalTaskSystem.ts
+index 935bd5236ad5de0a2b33a6f38d06eec3ab5985ed..45c87f814a39df54e106f7fee108638d884972e9 100644
+--- a/src/vs/workbench/contrib/tasks/browser/terminalTaskSystem.ts
++++ b/src/vs/workbench/contrib/tasks/browser/terminalTaskSystem.ts
+@@ -54,6 +54,9 @@ import { IContextKey, IContextKeyService } from '../../../../platform/contextkey
+ import { TaskProblemMonitor } from './taskProblemMonitor.js';
+ import { generateUuid } from '../../../../base/common/uuid.js';
+ import { serializeVSCodeOscMessage } from '../../../../platform/terminal/common/xterm/shellIntegrationAddon.js';
++import { CommandsRegistry, ICommandService } from '../../../../platform/commands/common/commands.js';
++import { INodeTaskRuntime, resolveNodeTaskRuntime } from './nodeTaskRuntime.js';
++import { IExtensionService } from '../../../services/extensions/common/extensions.js';
+ 
+ interface ITerminalData {
+ 	terminal: ITerminalInstance;
+@@ -164,6 +167,7 @@ export class TerminalTaskSystem extends Disposable implements ITaskSystem {
+ 	private _sameTaskTerminals: IStringDictionary<string>;
+ 	private _taskSystemInfoResolver: ITaskSystemInfoResolver;
+ 	private _lastTask: VerifiedTask | undefined;
++	private readonly _resolveNodeRuntime: (command: string) => Promise<INodeTaskRuntime | undefined>;
+ 	// Should always be set in run
+ 	private _currentTask!: VerifiedTask;
+ 	private _isRerun: boolean = false;
+@@ -225,6 +229,14 @@ export class TerminalTaskSystem extends Disposable implements ITaskSystem {
+ 		private _taskLookup: (taskKey: string) => Promise<Task | undefined>,
+ 	) {
+ 		super();
++		this._resolveNodeRuntime = command => instantiationService.invokeFunction(async accessor => {
++			const extensionService = accessor.get(IExtensionService);
++			const commandService = accessor.get(ICommandService);
++			await extensionService.activateByEvent('onCommand:studio.internalResolveNodeTask');
++			return CommandsRegistry.getCommand('studio.internalResolveNodeTask')
++				? commandService.executeCommand<INodeTaskRuntime | undefined>('studio.internalResolveNodeTask', command)
++				: undefined;
++		});
+ 
+ 		this._activeTasks = Object.create(null);
+ 		this._busyTasks = Object.create(null);
+@@ -1404,6 +1416,16 @@ export class TerminalTaskSystem extends Disposable implements ITaskSystem {
+ 				shellLaunchConfig.env = options.env;
+ 			}
+ 		}
++		if (task.command.runtime === RuntimeType.Process) {
++			const runtime = await resolveNodeTaskRuntime(CommandString.value(command), options.env, this._environmentService.remoteAuthority, this._resolveNodeRuntime);
++			if (runtime) {
++				shellLaunchConfig.executable = runtime.nodePath;
++				if (runtime.args?.length) {
++					shellLaunchConfig.args = [...runtime.args, ...args.map(argument => CommandString.value(argument))];
++				}
++				shellLaunchConfig.env = { ...shellLaunchConfig.env, ...runtime.env };
++			}
++		}
+ 		shellLaunchConfig.isFeatureTerminal = true;
+ 		shellLaunchConfig.useShellEnvironment = true;
+ 		shellLaunchConfig.tabActions = this._terminalTabActions;

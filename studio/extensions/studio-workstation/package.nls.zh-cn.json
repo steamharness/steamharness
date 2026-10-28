@@ -83,7 +83,7 @@
   "welcome.studio.projects": "当前项目中没有可用入口。",
   "welcome.studio.projectsUntrusted": "信任工作区后加载项目入口。",
   "config.studio.project.serverUrl": "SteamHarness Server 地址；留空时连接当前 Studio 渠道的 Server，dev 使用本机服务。更改地址后需要重新登录。",
-  "config.studio.project.nodePath": "启动项目 CLI 的 Node.js 路径；留空使用扩展宿主的 Node.js。",
+  "config.studio.project.nodePath": "本地模式使用的 Node.js 绝对路径；留空时从原始系统 PATH 查找。",
   "command.openDocumentPreview": "打开预览",
   "command.refreshDocumentPreview": "刷新预览",
   "editor.documentPreview": "文档预览",
@@ -95,5 +95,6 @@
   "config.agent.permissionPolicy": "选择继承用户设置的 Agent 所使用的权限模式。更改应用于后续任务。",
   "container.studio-databases": "数据库",
   "command.openDatabases": "打开数据库",
-  "command.refreshDatabases": "刷新数据库"
+  "command.refreshDatabases": "刷新数据库",
+  "config.studio.project.nodeSource": "项目使用 Studio 提供的运行时或本地 Node.js；切换后重启已有项目服务和终端。"
 }

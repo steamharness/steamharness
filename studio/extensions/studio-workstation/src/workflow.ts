@@ -639,10 +639,13 @@ export async function activateProject(context: vscode.ExtensionContext, launcher
       if (!project || !vscode.workspace.isTrusted || !launcher.available) { return; }
       const entry = await launcher.cliEntry(project.folderPath);
       assertNotUpgrading([project.folderPath]);
-      const terminal = vscode.window.createTerminal({ name: 'SteamHarness CLI', cwd: project.folderPath, env: { ELECTRON_RUN_AS_NODE: '1' } });
+      const runtime = await launcher.nodeRuntime?.();
+      const terminal = vscode.window.createTerminal({ name: 'SteamHarness CLI', cwd: project.folderPath,
+        env: runtime ? { ...runtime.env, ELECTRON_RUN_AS_NODE: runtime.electron ? '1' : null } : { ELECTRON_RUN_AS_NODE: '1' } });
       terminals.set(terminal, project.uri);
       const quote = (value: string): string => process.platform === 'win32' ? `"${value.replace(/"/g, '""')}"` : `'${value.replace(/'/g, "'\\''")}'`;
-      terminal.sendText(`${quote(vscode.workspace.getConfiguration('studio').get<string>('project.nodePath') || process.execPath)} ${quote(entry)} --help`); terminal.show();
+      const executable = runtime && !runtime.electron ? 'node' : quote(runtime?.nodePath || vscode.workspace.getConfiguration('studio').get<string>('project.nodePath') || process.execPath);
+      terminal.sendText(`${executable} ${quote(entry)} --help`); terminal.show();
     }),
     vscode.workspace.onDidChangeWorkspaceFolders(() => {
       for (const [controller, project] of starting) { if (!projectAvailable(project)) { controller.abort(); } }

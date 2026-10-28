@@ -16,6 +16,9 @@
   "l10n": "./l10n",
   "activationEvents": [
     "onStartupFinished",
+    "onDebugResolve:node",
+    "onDebugResolve:pwa-node",
+    "onCommand:studio.internalResolveNodeTask",
     "onWebviewPanel:studio.settings",
     "onWebviewPanel:studio.login",
     "onWebviewPanel:studio.tool.databases",
@@ -977,6 +980,17 @@
           "default": "Studio",
           "minLength": 1,
           "description": "%config.terminal.name%"
+        },
+        "studio.project.nodeSource": {
+          "type": "string",
+          "enum": [
+            "auto",
+            "local"
+          ],
+          "default": "auto",
+          "scope": "machine",
+          "restricted": true,
+          "description": "%config.studio.project.nodeSource%"
         }
       }
     },

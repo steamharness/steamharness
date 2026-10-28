@@ -5,6 +5,8 @@ import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { promisify } from 'node:util';
 import { createProjectCliEnvironment } from './workflow-cli-process';
+import { nodeRuntimeEnvironment, type NodeRuntime } from './node-runtime';
+import { t } from './localization';
 import type { CreatedProject, ProjectCreationInput, StartTemplate } from './start-page-types';
 import type { TemplateProjectRegistration } from '../../../vendor/project-templates/project-templates';
 
@@ -51,12 +53,12 @@ export function projectTemplatesRuntime(extensionDirectory: string, locale: stri
       if (input.parentDirectory === defaultProjectParentDirectory()) { await mkdir(input.parentDirectory, { recursive: true }); }
       return (await module()).createProjectFromTemplate({ ...input, versions, signal, allocateProjectId });
     },
-    prepare: async (projectDirectory: string, nodePath: string, signal: AbortSignal): Promise<boolean> => {
+    prepare: async (projectDirectory: string, nodePath: string, signal: AbortSignal, runtime?: NodeRuntime): Promise<boolean> => {
       // Use a fresh process so a long-lived extension host cannot retain an SDK from before a reinstall.
       const script = 'const templates = await import(process.argv[1]); const changed = await templates.prepareProjectTemplateRuntime(process.argv[2]); process.stdout.write(JSON.stringify(changed));';
       const result = await promisify(execFile)(nodePath, ['--input-type=module', '--eval', script,
         pathToFileURL(path.join(directory, 'project-templates.mjs')).href, projectDirectory], {
-        cwd: projectDirectory, env: createProjectCliEnvironment(), signal, timeout: 30_000, windowsHide: true,
+        cwd: projectDirectory, env: createProjectCliEnvironment(process.env, undefined, runtime), signal, timeout: 30_000, windowsHide: true,
       });
       signal.throwIfAborted();
       return JSON.parse(result.stdout.trim()) === true;
@@ -64,13 +66,19 @@ export function projectTemplatesRuntime(extensionDirectory: string, locale: stri
   };
 }
 
-export async function installProjectDependencies(options: { directory: string; signal: AbortSignal; log: (message: string) => void; env?: NodeJS.ProcessEnv }): Promise<void> {
-  const env = options.env ?? process.env;
+export async function installProjectDependencies(options: { directory: string; signal: AbortSignal; log: (message: string) => void; env?: NodeJS.ProcessEnv; runtime?: NodeRuntime }): Promise<void> {
+  const runtime = options.runtime;
+  const env = runtime ? nodeRuntimeEnvironment(runtime, options.env) : options.env ?? process.env;
   const run = (manager: 'pnpm' | 'npm', args: string[], probe = false): Promise<void> => new Promise((resolve, reject) => {
     options.signal.throwIfAborted();
     const windows = process.platform === 'win32';
     // Only fixed commands enter cmd.exe; project paths are passed through cwd.
-    const child = spawn(windows ? 'cmd.exe' : manager, windows ? ['/d', '/s', '/c', `${manager} ${args.join(' ')}`] : args,
+    const cli = manager === 'pnpm' ? runtime?.pnpmCli : runtime?.npmCli;
+    if (runtime && runtime.source !== 'host' && !cli) {
+      reject(Object.assign(new Error(t('The selected Node.js has no package manager. Repair the bundled runtime or choose a local Node.js installation with npm.')), { code: 'package-manager-missing' }));
+      return;
+    }
+    const child = spawn(cli ? runtime!.nodePath : windows ? 'cmd.exe' : manager, cli ? [cli, ...args] : windows ? ['/d', '/s', '/c', `${manager} ${args.join(' ')}`] : args,
       { cwd: options.directory, env, shell: false, windowsHide: true, detached: !windows, stdio: ['ignore', 'pipe', 'pipe'] });
     let errorText = '', timedOut = false, stopping: Promise<void> | undefined;
     const stop = (forcefully = false): void => {
@@ -107,7 +115,8 @@ export async function installProjectDependencies(options: { directory: string; s
     if (options.signal.aborted) { abort(); }
   });
   let manager: 'pnpm' | 'npm' = 'pnpm';
-  try { await run('pnpm', ['--version'], true); }
+  if (runtime?.npmCli && !runtime.pnpmCli) manager = 'npm';
+  try { await run(manager, ['--version'], true); }
   catch (error) {
     options.signal.throwIfAborted();
     if ((error as NodeJS.ErrnoException).code !== 'ENOENT' && process.platform !== 'win32') { throw error; }

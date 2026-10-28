@@ -22,7 +22,12 @@ export function settingsCatalog(): SettingItem[] {
     { key: 'studio.startPage.enabled', section: 'general', group: t('Workspace'), label: t('Show start page'), description: t('Show the Studio start page when no editor is open.'), type: 'boolean' },
     { key: 'studio.recentProjects.limit', section: 'general', group: t('Workspace'), label: t('Recent project limit'), description: t('Maximum number of projects in the recent projects list.'), type: 'number', integer: true, minimum: 1, maximum: 50 },
     { key: 'studio.terminal.name', section: 'general', group: t('Runtime'), label: t('Terminal name'), description: t('Name used when opening a new Studio terminal.'), type: 'string' },
-    { key: 'studio.project.nodePath', section: 'general', group: t('Runtime'), label: t('Node.js executable'), description: t('Leave empty to use the automatically resolved Node.js runtime. Changes apply to new processes.'), type: 'string' },
+    { key: 'studio.project.nodeSource', section: 'general', group: t('Runtime'), label: t('Node.js runtime'),
+      description: t('Choose the runtime for projects, dependencies, terminals and default Node.js debugging. Restart existing sessions after changing it.'), type: 'select', options: [
+        { value: 'auto', label: Reflect.get(globalThis, 'process')?.env?.STEAMHARNESS_STUDIO_NODE_RUNTIME ? t('Bundled Node.js') : t('Studio runtime') },
+        { value: 'local', label: t('Local Node.js') },
+      ] },
+    { key: 'studio.project.nodePath', section: 'general', group: t('Runtime'), label: t('Node.js executable'), description: t('Local mode: choose an absolute executable path, or leave empty to search the original system PATH.'), type: 'string' },
     { key: 'studio.agent.permissionPolicy', section: 'permissions', group: t('Agent permissions'), label: t('Permission policy'),
       description: t('Used by agents that inherit user settings. Changes apply to subsequent tasks after active work finishes.'), type: 'radio', options: [
         { value: 'read-only', label: t('Read only'), description: t('Hide editing and command tools. File and search tools stay within the workspace and mounted directories.') },
@@ -66,6 +71,9 @@ export function settingsState(studioVersion: string, target: SettingsTarget, pro
     const inherited = inspected?.globalValue ?? inspected?.defaultValue ?? configuration.get<string | number | boolean>(item.key) ?? '';
     let value = workspace ? inspected?.workspaceValue ?? inherited : inherited;
     let configured = (workspace ? inspected?.workspaceValue : inspected?.globalValue) !== undefined;
+    if (item.key === 'studio.project.nodeSource') {
+      value = inspected?.globalValue ?? (configuration.get<string>('studio.project.nodePath') ? 'local' : 'auto');
+    }
     if (item.key === 'workbench.colorTheme') {
       const systemTheme = configuration.inspect<boolean>('window.autoDetectColorScheme');
       if (systemTheme?.globalValue ?? systemTheme?.defaultValue ?? configuration.get<boolean>('window.autoDetectColorScheme')) { value = SYSTEM_THEME; }

@@ -10,6 +10,7 @@ import { sanitizeProjectEnvironment } from './workflow-auth-client';
 import type { Project } from './workflow-types';
 import type { WebReady, WebSession, WebSessionExit } from './workflow-cli-types';
 import type { StudioUserSettings } from './user-settings';
+import { nodeRuntimeEnvironment, type NodeRuntime } from './node-runtime';
 
 export interface StudioControlConfiguration { mcpServer?: string; url: string; token: string }
 
@@ -41,9 +42,9 @@ export async function resolveProjectCli(projectDir: string): Promise<{ entry: st
   return { entry, version: manifest.version };
 }
 
-export function createProjectCliEnvironment(base: NodeJS.ProcessEnv = process.env, studioControl?: StudioControlConfiguration): NodeJS.ProcessEnv {
-  const env: NodeJS.ProcessEnv = sanitizeProjectEnvironment(base);
-  env.ELECTRON_RUN_AS_NODE = '1';
+export function createProjectCliEnvironment(base: NodeJS.ProcessEnv = process.env, studioControl?: StudioControlConfiguration, runtime?: NodeRuntime): NodeJS.ProcessEnv {
+  const env: NodeJS.ProcessEnv = sanitizeProjectEnvironment(runtime ? nodeRuntimeEnvironment(runtime, base) : base);
+  if (!runtime) env.ELECTRON_RUN_AS_NODE = '1';
   for (const key of ['TSX_TSCONFIG_PATH', 'STEAMHARNESS_LOCAL_HARNESS_ROOT', 'STEAMHARNESS_LOCAL_SHARED_ROOT', 'STEAMHARNESS_LOCAL_SOURCE_MODE',
     'STEAMHARNESS_DEVELOPER_ASSISTANT_HOST', 'STEAMHARNESS_DEVELOPER_ASSISTANT_WORKDIR', 'STEAMHARNESS_DEVELOPER_ASSISTANT_WORKSPACE_MANIFEST',
     'STEAMHARNESS_AI_SERVER_URL', 'STEAMHARNESS_AI_API_KEY', 'STEAMHARNESS_LLM_SERVER_URL', 'STEAMHARNESS_LLM_SERVER_TOKEN',
@@ -60,14 +61,14 @@ export function createProjectCliEnvironment(base: NodeJS.ProcessEnv = process.en
   return env;
 }
 
-function environment(studioControl?: StudioControlConfiguration): NodeJS.ProcessEnv {
-  return createProjectCliEnvironment(process.env, studioControl);
+function environment(studioControl?: StudioControlConfiguration, runtime?: NodeRuntime): NodeJS.ProcessEnv {
+  return createProjectCliEnvironment(process.env, studioControl, runtime);
 }
 
-export async function inspectProjectCli(projectDir: string, nodePath: string, signal?: AbortSignal, assistantProjectDir?: string, assistant?: Project['assistant'], locale = 'en', validationDetails = false): Promise<{ projects: Omit<Project, 'uri'>[]; errors: string[] }> {
+export async function inspectProjectCli(projectDir: string, nodePath: string, signal?: AbortSignal, assistantProjectDir?: string, assistant?: Project['assistant'], locale = 'en', validationDetails = false, runtime?: NodeRuntime): Promise<{ projects: Omit<Project, 'uri'>[]; errors: string[] }> {
   const { entry } = await resolveProjectCli(projectDir);
   return new Promise((resolve, reject) => {
-    const child = spawn(nodePath, [entry, '--locale', locale.toLowerCase().startsWith('zh') ? 'zh-CN' : 'en', 'web', projectDir, '--inspect', '--json', '--no-open', ...(assistantProjectDir ? ['--host-stdio'] : [])], { cwd: projectDir, env: environment(), shell: false, stdio: ['pipe', 'pipe', 'pipe'], signal });
+    const child = spawn(nodePath, [entry, '--locale', locale.toLowerCase().startsWith('zh') ? 'zh-CN' : 'en', 'web', projectDir, '--inspect', '--json', '--no-open', ...(assistantProjectDir ? ['--host-stdio'] : [])], { cwd: projectDir, env: environment(undefined, runtime), shell: false, stdio: ['pipe', 'pipe', 'pipe'], signal });
     child.stdin.on('error', () => undefined);
     child.stdin.end(assistantProjectDir ? `${JSON.stringify({ type: 'configure', surface: 'assistant', assistantProjectDir,
       assistant: assistant ?? { workdir: projectDir, roots: [{ uri: `file://${projectDir}`, folderPath: projectDir, name: path.basename(projectDir) }] } })}\n` : undefined);
@@ -89,7 +90,7 @@ export async function inspectProjectCli(projectDir: string, nodePath: string, si
         if (validationDetails && result.errors.some((error: unknown) => typeof error === 'string' && /script validation failed/.test(error))) {
           // Older published CLIs omit Core's structured violations from web inspection.
           const args = [entry, '--locale', locale.toLowerCase().startsWith('zh') ? 'zh-CN' : 'en', 'structure', projectDir];
-          const diagnostic = await promisify(execFile)(nodePath, args, { cwd: projectDir, env: environment(), signal,
+          const diagnostic = await promisify(execFile)(nodePath, args, { cwd: projectDir, env: environment(undefined, runtime), signal,
             timeout: 30_000, maxBuffer: 2_000_000, windowsHide: true }).catch((error: Error & { stdout?: string }) => ({ stdout: error.stdout ?? '' }));
           signal?.throwIfAborted();
           try {
@@ -114,12 +115,13 @@ export async function startProjectCli(options: {
   resourceProjects?: string[];
   studioControl?: StudioControlConfiguration;
   userSettings?: StudioUserSettings;
+  runtime?: NodeRuntime;
 }): Promise<WebSession> {
   const { entry } = await resolveProjectCli(options.projectDir);
   options.signal?.throwIfAborted();
   const authentication = hostAuthentication(options.connection, options.surface);
   const child: ChildProcess = spawn(options.nodePath, [entry, '--locale', options.locale?.toLowerCase().startsWith('zh') ? 'zh-CN' : 'en', 'web', options.projectDir, '--entry', options.entryId, '--port', String(options.port ?? 0), '--no-open', '--json', '--theme', options.theme, '--host-stdio', '--data-dir', options.dataDir],
-    { cwd: options.projectDir, env: environment(options.studioControl), shell: false, stdio: ['pipe', 'pipe', 'pipe'], signal: options.signal });
+    { cwd: options.projectDir, env: environment(options.studioControl, options.runtime), shell: false, stdio: ['pipe', 'pipe', 'pipe'], signal: options.signal });
   const events = new EventEmitter();
   const secrets = new Set([options.connection?.accessToken, options.connection?.aiAccessToken, options.studioControl?.token].filter((token): token is string => !!token));
   const rememberModels = (settings?: StudioUserSettings) => { for (const model of settings?.agent.models ?? []) if (model.source === 'third-party') secrets.add(model.apiKey); };
@@ -219,10 +221,10 @@ export async function startProjectCli(options: {
 }
 
 /** Configuration RPC uses the project's installed CLI, without a running Web session. */
-export async function requestProjectCliConfiguration(projectDir: string, nodePath: string, call: Record<string, unknown>, signal: AbortSignal, connection?: Connection, entryId?: string): Promise<unknown> {
+export async function requestProjectCliConfiguration(projectDir: string, nodePath: string, call: Record<string, unknown>, signal: AbortSignal, connection?: Connection, entryId?: string, runtime?: NodeRuntime): Promise<unknown> {
   const {entry}=await resolveProjectCli(projectDir);
   return new Promise((resolve,reject)=>{
-    const child=spawn(nodePath,[entry,'configuration',projectDir,...(entryId?['--entry',entryId]:[])],{cwd:projectDir,env:environment(),shell:false,stdio:['pipe','pipe','pipe'],signal});
+    const child=spawn(nodePath,[entry,'configuration',projectDir,...(entryId?['--entry',entryId]:[])],{cwd:projectDir,env:environment(undefined,runtime),shell:false,stdio:['pipe','pipe','pipe'],signal});
     let stdout='',stderr='';
     const timeout=setTimeout(()=>child.kill('SIGKILL'),30_000);
     child.stdin.on('error',()=>undefined); child.stdin.end(JSON.stringify({call,connection:connection?{serverUrl:connection.serverUrl,accessToken:connection.accessToken}:null}));
