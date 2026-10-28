@@ -3,6 +3,13 @@ import { readFile } from 'node:fs/promises';
 import { test } from 'node:test';
 import { runInNewContext } from 'node:vm';
 import ts from 'typescript';
+import { register } from 'tsx/esm/api';
+
+register();
+const [{ parseHostConfiguration }, { configureLocalization, t: localize }] = await Promise.all([
+  import('../../cli/src/web/host-config.ts'), import('../extensions/studio-workstation/src/localization.ts'),
+]);
+const chinese = JSON.parse(await readFile(new URL('../extensions/studio-workstation/l10n/bundle.l10n.zh-cn.json', import.meta.url), 'utf8'));
 
 const source = ts.createSourceFile('workflow.ts', await readFile(new URL('../extensions/studio-workstation/src/workflow.ts', import.meta.url), 'utf8'), ts.ScriptTarget.Latest, true);
 const initializers = new Map();
@@ -16,7 +23,7 @@ visit(source);
 function load(name, bindings = {}) {
   assert.ok(initializers.has(name));
   const compiled = ts.transpileModule(`(${initializers.get(name)})`, { compilerOptions: { target: ts.ScriptTarget.ES2022 } }).outputText;
-  return runInNewContext(compiled, { setTimeout, clearTimeout, t: text => text, Error, Promise, AbortController, URL, URLSearchParams, crypto: globalThis.crypto, projectWindowKey: p => `${p.uri}#entry=${p.entryId}`, provider:{projects:[]},resourceProjectDirectories:async()=>[],context:{}, ...bindings });
+  return runInNewContext(compiled, { setTimeout, clearTimeout, t: (text, ...args) => text.replace(/\{(\d+)\}/g, (_match, index) => String(args[index])), Error, Promise, AbortController, URL, URLSearchParams, crypto: globalThis.crypto, projectWindowKey: p => `${p.uri}#entry=${p.entryId}`, provider:{projects:[]},resourceProjectDirectories:async()=>[],context:{}, ...bindings });
 }
 const revealProject = load('revealProject');
 
@@ -123,28 +130,35 @@ test('Start targets open distinct aggregate entries and reuse only the matching 
   assert.deepEqual({ starts, panels: workspaces.size, pending: opening.size }, { starts: ['minimax', 'database', 'agent'], panels: 3, pending: 0 });
 });
 
-function workspaceFixture() {
-  const uri = 'file:///aggregate', entries = ['agent', 'workflow', 'board'];
+function workspaceFixture({ assistant = false, language = 'en' } = {}) {
+  configureLocalization(language === 'en' ? {} : chinese, language);
+  const uri = assistant ? 'studio-assistant:%2Fworkspace' : 'file:///aggregate', entries = ['agent', 'workflow', 'board'];
+  const scope = assistant ? { standalone: true, workdir: '/workspace', roots: [{ uri: 'file:///workspace', folderPath: '/workspace', name: 'Workspace' }] } : undefined;
   const projects = entries.map((entryId, index) => ({ uri, entryId, folderPath: '/aggregate', entryRoot: `/aggregate/${entryId}`,
     id: 'aggregate', defaultEntry: 'agent', name: entryId, entries: entries.map(entryId => ({ entryId })),
-    projectType: ['conversation', 'workflow', 'kanban'][index] }));
+    projectType: ['conversation', 'workflow', 'kanban'][index], ...(scope ? { assistant: scope } : {}) }));
   const workspaces = new Map(), sessions = new Set(), leases = [], panels = [], frames = [], deliveries = [];
+  const launches = [], errors = [], logs = [], externalProjects = new Map();
+  const provider = { projects: assistant ? [] : projects };
   const disposable = { dispose() {} }, settling = new Map();
-  const makePanel = (viewType = 'studio.projectTool') => {
+  const makePanel = (viewType = 'studio.projectTool', _title, showOptions) => {
     const f = panelFixture();
-    const panel = Object.assign(f.panel, { viewType, webview: {
+    const panel = Object.assign(f.panel, { viewType, showOptions, webview: {
       options: {}, postMessage: async () => true, onDidReceiveMessage: callback => { panel.receive = callback; return disposable; },
     }, dispose: f.close });
     panels.push(panel); return panel;
   };
   const asUri = value => ({ fsPath: value, toString: () => value });
   const vscode = { ViewColumn: { Active: -1 }, ProgressLocation: { Window: 10 }, Uri: { parse: asUri, file: asUri },
-    env: { language: 'en', asExternalUri: async uri => uri }, commands: { executeCommand: async () => undefined },
+    env: { language, asExternalUri: async uri => uri }, commands: { executeCommand: async () => undefined },
     workspace: { isTrusted: true }, window: { withProgress: (_options, task) => task(), createWebviewPanel: makePanel,
-      onDidChangeActiveColorTheme: () => disposable } };
+      onDidChangeActiveColorTheme: () => disposable, showErrorMessage: async message => { errors.push(message); } } };
   const adapter = () => ({ receive: () => false, dispose() {} });
   let createWorkspace;
-  const launcher = { available: true, start: async project => {
+  const launcher = { available: true, inspect: async () => ({ projects, errors: [] }), start: async (project, surface) => {
+    // Validate the real CLI contract rather than accepting any presentation surface.
+    launches.push(parseHostConfiguration({ type: 'configure', surface,
+      ...(project.assistant ? { assistant: project.assistant, assistantProjectDir: project.folderPath } : {}) }));
     let finish;
     const lease = { ready: { url: `http://127.0.0.1:4567/entries/${project.entryId}/#session=token`, traceProtocolVersion: 1 },
       closed: new Promise(resolve => { finish = resolve; }), closes: 0,
@@ -153,8 +167,8 @@ function workspaceFixture() {
     leases.push(lease); return lease;
   } };
   const bindings = {
-    vscode, launcher, workspaces, sessions, settling, starting: new Map(), startingDone: new Map(), startingSources: new Map(),
-    sessionSources: new Map(), sessionStops: new Map(), provider: { projects }, projectAvailable: () => true,
+    vscode, launcher, workspaces, sessions, settling, t: localize, starting: new Map(), startingDone: new Map(), startingSources: new Map(),
+    sessionSources: new Map(), sessionStops: new Map(), provider, externalProjects, projectAvailable: () => true,
     assertNotUpgrading() {}, projectDisplayName: project => project.name, theme: () => 'dark',
     trace: { bind: adapter }, fileIcons: { bind: adapter }, bindProjectClipboard: adapter,
     bindProjectPathPicker: webview => ({ ...adapter(), receive: message => {
@@ -162,14 +176,62 @@ function workspaceFixture() {
       deliveries.push({ panel: panels.find(panel => panel.webview === webview), request: message.requestId }); return true;
     } }), bindProjectPathOpen: adapter, bindProjectResourceCards: adapter,
     projectAvatarDataUrl: () => 'data:image/svg+xml,icon', chromeFor: () => ({ active: false }),
-    projectFrameHtml: (...args) => { frames.push(args); return args[0]; }, output: { appendLine() {} },
+    projectFrameHtml: (...args) => { frames.push(args); return args[0]; }, output: { appendLine: line => logs.push(line) },
     createWorkspace: (...args) => createWorkspace(...args),
     resolveProjectTab: async (_uri, entryId) => projects.find(project => project.entryId === entryId),
-    findProject: (_uri, entryId) => projects.find(project => project.entryId === entryId),
+    findProject: load('findProject', { provider, externalProjects }),
     updateEntry() {}, scheduleEntry() {}, windowChrome: { revision: 0 },
   };
   createWorkspace = load('createWorkspace', bindings);
-  return { projects, workspaces, leases, panels, frames, deliveries, makePanel, bindings, createWorkspace };
+  return { projects, workspaces, leases, panels, frames, deliveries, launches, errors, logs, makePanel, bindings, createWorkspace };
+}
+
+for (const entryId of ['agent', 'workflow']) {
+  test(`Assistant sidebar opens the ${entryId} entry repeatedly using the assistant CLI contract`, async () => {
+    const f = workspaceFixture({ assistant: true }), project = f.projects[0];
+    const sidebar = f.makePanel('studio.developerAssistant');
+    delete sidebar.reveal;
+    await f.createWorkspace(project, undefined, sidebar);
+    for (let index = 0; index < 2; index++) {
+      sidebar.receive({ type: 'workflow-open-entry', version: 1, projectId: project.id, entryId });
+    }
+    await new Promise(resolve => setImmediate(resolve));
+    assert.deepEqual(f.errors, []);
+    assert.equal(f.panels.length, 3);
+    assert.equal(f.workspaces.size, 2);
+    assert.deepEqual(f.launches.map(configuration => configuration.surface), ['assistant', 'assistant', 'assistant']);
+    for (const panel of f.panels.slice(1)) {
+      assert.equal(panel.viewType, 'studio.projectTool');
+      assert.equal(panel.showOptions.preserveFocus, false);
+      assert.equal(f.workspaces.get(panel).project.entryId, entryId);
+      assert.equal(f.workspaces.get(panel).project.assistant, project.assistant);
+    }
+    f.panels[1].receive({ type: 'workflow-open-entry', version: 1, projectId: project.id, entryId });
+    await new Promise(resolve => setImmediate(resolve));
+    assert.equal(f.workspaces.size, 3);
+    assert.equal(f.launches.at(-1).surface, 'assistant');
+    assert.equal(f.frames[1][7], entryId === 'agent' ? 'new' : undefined);
+    for (const panel of f.panels) panel.dispose();
+    await new Promise(resolve => setImmediate(resolve));
+    assert.deepEqual(f.leases.map(lease => lease.closes), [1, 1, 1, 1]);
+  });
+}
+
+for (const language of ['en', 'zh-cn']) {
+  test(`${language} entry startup failures are visible and leave the Assistant sidebar session running`, async () => {
+    const f = workspaceFixture({ assistant: true, language }), project = f.projects[0];
+    const sidebar = f.makePanel('studio.developerAssistant');
+    delete sidebar.reveal;
+    await f.createWorkspace(project, undefined, sidebar);
+    f.bindings.launcher.start = async () => { throw new Error('CLI unavailable'); };
+    sidebar.receive({ type: 'workflow-open-entry', version: 1, projectId: project.id, entryId: 'agent' });
+    await new Promise(resolve => setImmediate(resolve));
+    assert.deepEqual(f.errors, [language === 'en' ? 'Unable to open the project window: CLI unavailable' : '无法打开项目窗口：CLI unavailable']);
+    assert.ok(f.logs.some(line => line.includes('CLI unavailable')));
+    assert.equal(f.panels.length, 1);
+    assert.equal(f.leases[0].closes, 0);
+    sidebar.dispose();
+  });
 }
 
 for (const entryId of ['agent', 'workflow', 'board']) {

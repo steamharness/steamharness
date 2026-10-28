@@ -204,8 +204,9 @@ export async function activateProject(context: vscode.ExtensionContext, launcher
       sources = [project.folderPath, ...resourceProjects];
       assertNotUpgrading(sources);
       startingSources.set(controller, sources);
+      // Assistant protocol and host sharing follow the project scope, including editor tabs.
       session = await vscode.window.withProgress({ location: vscode.ProgressLocation.Window, title: t("Starting SteamHarness Web") }, async () =>
-        launcher.start(project, sidebar ? 'assistant' : 'editor', controller.signal, resourceProjects));
+        launcher.start(project, project.assistant ? 'assistant' : 'editor', controller.signal, resourceProjects));
       if (controller.signal.aborted || !projectAvailable(project)) {
         await session.close(); controller.signal.throwIfAborted(); throw new Error('Workflow workspace has closed.');
       }
@@ -214,7 +215,7 @@ export async function activateProject(context: vscode.ExtensionContext, launcher
     } finally { signal?.removeEventListener('abort', abort); starting.delete(controller); startingSources.delete(controller); startingDone.delete(controller); finishStarting(); disposedPanel?.dispose(); }
     sessions.add(session);
     sessionSources.set(session, sources);
-    const panel = sidebar ?? restored ?? vscode.window.createWebviewPanel(toolTab ? 'studio.projectTool' : 'studio.project', projectDisplayName(project), viewColumn, { enableScripts: true, retainContextWhenHidden: true });
+    const panel = sidebar ?? restored ?? vscode.window.createWebviewPanel(toolTab ? 'studio.projectTool' : 'studio.project', projectDisplayName(project), { viewColumn, preserveFocus: false }, { enableScripts: true, retainContextWhenHidden: true });
     const listeners: vscode.Disposable[] = [];
     let frameReady!: () => void;
     const ready = new Promise<void>(resolve => { frameReady = resolve; });
@@ -278,7 +279,10 @@ export async function activateProject(context: vscode.ExtensionContext, launcher
       listeners.push({ dispose: () => traceBinding.dispose() }, clipboardBinding, pickerBinding, pathOpenBinding, fileIconsBinding, resourceBinding, panel.webview.onDidReceiveMessage(message => {
         if (reconnect(message ?? {}, panel.webview)) return;
         if (message?.type === 'workflow-open-entry' && message.version === 1 && message.projectId === project.id && typeof message.entryId === 'string') {
-          void openHostedEntry(message.entryId).catch(error => output.appendLine(String(error)));
+          void openHostedEntry(message.entryId).catch(error => {
+            output.appendLine(`Project window: ${String(error)}`);
+            if (!closed) void vscode.window.showErrorMessage(t('Unable to open the project window: {0}', error instanceof Error ? error.message : String(error)));
+          });
           return;
         }
         if (message?.type === 'workflow-frame-ready') {

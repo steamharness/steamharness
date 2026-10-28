@@ -1,5 +1,7 @@
 # Unreleased
 
+- Fixed opening project entries from the Assistant sidebar by preserving their assistant startup configuration. New tabs activate automatically and the current entry can still open repeatedly. Open failures now show an error notification as well as a log entry.
+
 - Fixed Assistant extension and standalone runtime bundles omitting `config.json`, configuration definitions or the registered Studio Control entry, which could prevent startup after an upgrade.
 
 - Improvement: Start shows one card per aggregate and opens its default entry. Project windows and entry actions use icons with redesigned entry details. Removed split views; all entries, including the current one, can open and restore multiple independent native tabs on the shared host. Closing one tab leaves the others open. Entry icons and colors are independent; entry labels no longer repeat the root version.

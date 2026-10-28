@@ -657,6 +657,7 @@
   "Unable to open the folder in the file manager.": "无法在文件管理器中打开文件夹。",
   "Only files and folders can be opened.": "仅支持打开文件和文件夹。",
   "Unable to open the file or folder: {0}": "无法打开文件或文件夹：{0}",
+  "Unable to open the project window: {0}": "无法打开项目窗口：{0}",
   "About": "关于",
   "Advanced configuration": "高级配置",
   "After delay": "延迟后",
