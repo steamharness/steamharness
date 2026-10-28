@@ -36,11 +36,14 @@ describe('project templates', () => {
     for (const template of await listProjectTemplates()) {
       const created = await createProjectFromTemplate({ templateId: template.id, name: template.id, parentDirectory, versions });
       ids.add(created.id);
-      const manifest = JSON.parse(await readFile(path.join(created.directory, 'package.json'), 'utf8'));
-      expect(manifest).toMatchObject({ id: created.id, private: true, devDependencies: { 'steamharness': versions.harness, '@steamharness/cli': versions.cli },
-        steamHarness: {defaultEntry:'main',entries:[{entryId:'main',type:template.projectType,databases:[]}]} });
+      const manifest = JSON.parse(await readFile(path.join(created.directory, 'steamharness.json'), 'utf8'));
+      const npm = JSON.parse(await readFile(path.join(created.directory, 'package.json'), 'utf8'));
+      expect(npm).toMatchObject({private:true, devDependencies:{steamharness:versions.harness,'@steamharness/cli':versions.cli}});
+      expect(npm).not.toHaveProperty('id'); expect(npm).not.toHaveProperty('steamHarness');
+      expect(manifest).toMatchObject({ id: created.id,
+        version: "0.1.0", defaultEntry:'main',entries:[{entryId:'main',type:template.projectType,databases:[]}] });
       expect(JSON.stringify(manifest)).not.toMatch(/link:|file:|workspace:|\/Users\//);
-      const card = manifest.steamHarness.projectCard;
+      const card = manifest.projectCard;
       expect(card.icon).toBe(defaultProjectCardIcon(template.projectType));
       expect(getProjectCardColorContrastRatio(card.iconColor, card.iconBackgroundColor)).toBeGreaterThanOrEqual(4.5);
       for (const filename of template.files) { expect((await readFile(path.join(created.directory, filename))).length).toBeGreaterThan(0); }
@@ -50,7 +53,7 @@ describe('project templates', () => {
       try {
         const inspected = await runtime.inspect([created.directory]); expect(inspected.errors).toEqual([]);
         const project = { ...inspected.projects[0], uri: pathToFileURL(created.directory).href }; expect(project.projectType).toBe(template.projectType);
-        expect(project.projectCard).toMatchObject(card);
+        expect(project.aggregateProjectCard).toMatchObject(card);
         if (template.projectType === 'kanban') { continue; }
         const execute = (round: number) => runtime.run({ project, conversationId: 'persistent-chat', runId: `round-${round}`,
           entrypointId: project.defaultEntrypoint, args: template.projectType === 'conversation' ? ['--message', 'Local reply'] : [] }, () => {});
@@ -99,7 +102,7 @@ describe('project templates', () => {
     expect(created.directory).toBe(path.join(parentDirectory, name));
     const html = await readFile(path.join(created.directory, 'index.html'), 'utf8');
     expect(html).toContain('&#39;'); expect(html).toContain('&amp;');
-    expect(JSON.parse(await readFile(path.join(created.directory, 'package.json'), 'utf8')).steamHarness.projectInfo.localizedNames.en).toBe(name);
+    expect(JSON.parse(await readFile(path.join(created.directory, 'steamharness.json'), 'utf8')).projectInfo.localizedNames.en).toBe(name);
   });
 
   it('reserves the destination once and never overwrites an existing directory', async () => {
@@ -133,7 +136,7 @@ it.each(['workflow', 'conversation', 'kanban'] as const)('waits for a Server ID 
     return allocatedId;
   } });
   expect(created.id).toBe(allocatedId);
-  expect(JSON.parse(await readFile(path.join(created.directory, 'package.json'), 'utf8')).id).toBe(allocatedId);
+  expect(JSON.parse(await readFile(path.join(created.directory, 'steamharness.json'), 'utf8')).id).toBe(allocatedId);
   await expect(createProjectFromTemplate({ ...input, name: 'failed', allocateProjectId: async () => { throw new Error('allocation denied'); } })).rejects.toThrow('allocation denied');
   await expect(readFile(path.join(parentDirectory, 'failed', 'package.json'))).rejects.toHaveProperty('code', 'ENOENT');
   await expect(createProjectFromTemplate({ ...input, name: 'invalid', allocateProjectId: async () => '111' })).rejects.toThrow('invalid project ID');

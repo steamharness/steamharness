@@ -1,0 +1,18 @@
+{
+  "id": "0fe11efe-0087-4a50-bde2-da3995a65f5e",
+  "name": "Studio Parameter Fixture",
+  "entries": [
+    {
+      "entryId": "main",
+      "type": "conversation",
+      "name": "Studio Parameter Fixture",
+      "root": ".",
+      "entry": "index.ts",
+      "databases": [
+        "data"
+      ]
+    }
+  ],
+  "defaultEntry": "main",
+  "version": "0.1.0"
+}

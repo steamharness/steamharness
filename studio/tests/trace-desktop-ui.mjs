@@ -119,7 +119,7 @@ try {
   await trace.locator('.trace-row[data-lane=tool][data-status=success]').first().waitFor();
   assert.equal(await trace.locator('.trace-row[data-lane=tool][data-status=stopped]').count(), 0);
   proof.checks.push('tool details preserve arguments and results; modes, search, cancellation and historical reply targeting use the saved execution records');
-  await trace.locator('#trace-project').selectOption({ label: projects[1].manifest.steamHarness.projectInfo.localizedNames['zh-CN'] });
+  await trace.locator('#trace-project').selectOption({ label: projects[1].manifest.projectInfo.localizedNames['zh-CN'] });
   let projectFrame = await frameFor('#workflow-title'); await projectFrame.locator('#workflow-form[aria-busy=false]').waitFor();
   await projectFrame.locator('#input-mode [data-mode=raw]').click(); await projectFrame.locator('#raw-args').fill('["--subject","Trace first","--rounds","3","--delay","10","--review","false"]');
   await projectFrame.locator('#workflow-form[aria-busy=false]').waitFor(); await projectFrame.locator('#run:not([disabled])').click();
@@ -146,7 +146,7 @@ try {
   proof.checks.push('VS Code light, dark and high contrast colors, rounded controls and narrow panel layout render without overflow or overlap');
   await page.setViewportSize({ width: 1440, height: 1000 });
   await command('View: Close Editor');
-  await trace.locator('#trace-project').selectOption({ label: projects[1].manifest.steamHarness.projectInfo.localizedNames['zh-CN'] });
+  await trace.locator('#trace-project').selectOption({ label: projects[1].manifest.projectInfo.localizedNames['zh-CN'] });
   workflow = await frameFor('#workflow-title'); await projectFrame.locator('#run-meta').filter({ hasText: '\u5df2\u5b8c\u6210' }).waitFor();
   await trace.locator('#trace-run').selectOption(first); await trace.locator('.trace-row-title').filter({ hasText: /^iteration/ }).nth(2).waitFor();
   proof.checks.push('closing and reopening a project restores persisted traces through a fresh CLI connection');

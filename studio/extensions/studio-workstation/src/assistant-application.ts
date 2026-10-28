@@ -19,11 +19,12 @@ export function prepareAnalysisApplication(options: BuiltinApplicationOptions): 
 
 async function prepareBuiltinApplication(options: BuiltinApplicationOptions, projectId: string): Promise<string> {
   const manifest = JSON.parse(await readFile(path.join(options.templateDir, 'package.json'), 'utf8'));
-  if (manifest.id !== projectId) { throw new Error('Invalid built-in project.'); }
+  const project = JSON.parse(await readFile(path.join(options.templateDir, 'steamharness.json'), 'utf8'));
+  if (project.id !== projectId) { throw new Error('Invalid built-in project.'); }
   let dependencies: { directory: string; harnessVersion: string; cliVersion: string } | undefined;
   for (const source of options.dependencySources) {
     try {
-      const pkg = JSON.parse(await readFile(path.join(source, 'package.json'), 'utf8'));
+      const pkg = JSON.parse(await readFile(path.join(source, 'steamharness.json'), 'utf8'));
       if (pkg.id !== assistantId) { continue; }
       const cli = await resolveProjectCli(source);
       const directory = await realpath(path.join(source, 'node_modules'));

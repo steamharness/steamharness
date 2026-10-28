@@ -1,5 +1,7 @@
 # Unreleased
 
+- 【破坏性变更】项目身份、名称、版本和声明统一使用独立的 `steamharness.json`，移除 `package.json.id` 和 `steamHarness` 的读取与写回。聚合项目显式登记子入口，由子目录配置提供图标、声明、数据库别名与计划；未登记配置不生效，上传下载保留父子结构。
+
 - 【变更】按 databaseId、projectId、entryId 解析数据库授权，支持多对多引用；清单不声明权限，读写由宿主授权控制。启动保留旧项目、版本和数据，避免初始化删除。
 
 - 【修复】数据库申请忽略客户端夹带的审批记录与绑定引用，保护其他空间的授权信息；KV 列表在计数和分页前应用宿主声明、授权和客户端键前缀的交集。
@@ -76,4 +78,4 @@
 
 - 修复直接访问或刷新 Server Web `/projects` 页面时，被已移除 API 的路由拦截并返回 JSON 404 的问题。
 
-- 项目部署配置统一放在根 config.json，集中维护数据库别名和 ID，各入口在 package.json 中仅声明使用的数据库别名；STEAMHARNESS_PROJECT_CONFIG 可覆盖部署值。迁移只改一处 ID，权限继续由宿主维护，发行不写入环境覆盖值。
+- 项目部署配置统一放在根 config.json，集中维护数据库别名和 ID，各入口在 steamharness.json 中仅声明使用的数据库别名；STEAMHARNESS_PROJECT_CONFIG 可覆盖部署值。迁移只改一处 ID，权限继续由宿主维护，发行不写入环境覆盖值。

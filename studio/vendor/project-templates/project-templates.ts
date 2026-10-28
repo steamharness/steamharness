@@ -93,15 +93,16 @@ export async function createProjectFromTemplate(request: CreateProjectFromTempla
   const projectInfo: DeclaredProjectInfo = { localizedNames: { en: name, 'zh-CN': name }, declarations: [], platformSupport: { mode: 'agnostic' } };
   const packageName = name.toLowerCase().replace(/[^a-z0-9-]+/g, '-').replace(/^-+|-+$/g, '') || 'project';
   const manifest = {
-    id: '', name: packageName, version: '0.1.0', private: true, type: 'module',
+    name: packageName, version: '0.1.0', private: true, type: 'module',
     scripts: { dev: 'steamharness web .', inspect: 'steamharness structure .', 'run:json': 'steamharness json .' },
     devDependencies: { 'steamharness': request.versions.harness, '@steamharness/cli': request.versions.cli },
-    steamHarness: {
+  };
+  const projectManifest = {
+    id: "", name, version: "0.1.0",
       entries: [{ entryId: 'main', type: template.projectType, name, root: '.', entry: template.entryFile, configuration: 'configuration.json', databases: [] }],
       defaultEntry: 'main',
       projectCard,
       projectInfo,
-    },
   };
   // Read and render everything before reserving the destination folder.
   const files = await Promise.all(template.files.map(async filename => {
@@ -115,10 +116,11 @@ export async function createProjectFromTemplate(request: CreateProjectFromTempla
     throw error;
   }
   try {
-    manifest.id = request.allocateProjectId ? await request.allocateProjectId({ name, entries: manifest.steamHarness.entries, defaultEntry: manifest.steamHarness.defaultEntry, projectInfo, projectCard }) : randomUUID();
-    if (!isProjectUuid(manifest.id)) { throw new ProjectTemplateError('invalid-id', 'The Server returned an invalid project ID.'); }
+    projectManifest.id = request.allocateProjectId ? await request.allocateProjectId({ name, entries: projectManifest.entries, defaultEntry: projectManifest.defaultEntry, projectInfo, projectCard }) : randomUUID();
+    if (!isProjectUuid(projectManifest.id)) { throw new ProjectTemplateError('invalid-id', 'The Server returned an invalid project ID.'); }
     request.signal?.throwIfAborted();
     await writeFile(path.join(directory, 'package.json'), `${JSON.stringify(manifest, null, 2)}\n`, { flag: 'wx' });
+    await writeFile(path.join(directory, 'steamharness.json'), `${JSON.stringify(projectManifest, null, 2)}\n`, { flag: 'wx' });
     await writeFile(path.join(directory, '.gitignore'), 'node_modules/\ndist/\n.env\n.env.*\n*.log\n', { flag: 'wx' });
     await writeFile(path.join(directory, '.steamharnessignore'), '.git/\nnode_modules/\ndist/\n.env\n.env.*\n*.log\n', { flag: 'wx' });
     if (!files.some(file => file.filename === 'configuration.json')) await writeFile(path.join(directory,'configuration.json'), JSON.stringify({version:1,fields:[]},null,2)+'\n',{flag:'wx'});
@@ -128,7 +130,7 @@ export async function createProjectFromTemplate(request: CreateProjectFromTempla
       await writeFile(path.join(directory, file.filename), file.content, { flag: 'wx' });
     }
   } catch (error) { await rm(directory, { recursive: true, force: true }); throw error; }
-  return { id: manifest.id, name, directory, projectType: template.projectType, entryFile: template.entryFile };
+  return { id: projectManifest.id, name, directory, projectType: template.projectType, entryFile: template.entryFile };
 }
 
 function escapeHtml(value: string): string {

@@ -1,3 +1,4 @@
+import { writeProjectFixture } from '../../scripts/test-project-fixture.mjs';
 import assert from "node:assert/strict";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -165,12 +166,12 @@ test("runtime rejects a conversation executor without projectType", async () => 
   const projectDir = await mkdtemp(path.join(tmpdir(), "steamharness-project-type-legacy-runtime-"));
   try {
     await Promise.all([
-      writeFile(path.join(projectDir, "package.json"), JSON.stringify({
+      writeProjectFixture(path.join(projectDir, "package.json"), JSON.stringify({
         id: "11111111-1111-4111-8111-111111111111",
         name: "legacy-conversation-runtime",
         version: "0.1.0",
         type: "module",
-        steamHarness: {defaultEntry:"main",entries:[{entryId:"main",type:"workflow",name:"Main",root:".",entry:"index.ts",databases:[]}], projectInfo:{}},
+        defaultEntry:"main",entries:[{entryId:"main",type:"workflow",name:"Main",root:".",entry:"index.ts",databases:[]}], projectInfo:{},
       }), "utf8"),
       writeFile(path.join(projectDir, "index.ts"), `
         const legacyProject = steamharness.defineProject({
@@ -209,12 +210,12 @@ test("runtime rejects a Workflow executor without projectType", async () => {
   const projectDir = await mkdtemp(path.join(tmpdir(), "steamharness-project-type-entrypoint-runtime-"));
   try {
     await Promise.all([
-      writeFile(path.join(projectDir, "package.json"), JSON.stringify({
+      writeProjectFixture(path.join(projectDir, "package.json"), JSON.stringify({
         id: "22222222-2222-4222-8222-222222222222",
         name: "inferred-workflow-runtime",
         version: "0.1.0",
         type: "module",
-        steamHarness: {defaultEntry:"main",entries:[{entryId:"main",type:"workflow",name:"Main",root:".",entry:"index.ts",databases:[]}], projectInfo:{}},
+        defaultEntry:"main",entries:[{entryId:"main",type:"workflow",name:"Main",root:".",entry:"index.ts",databases:[]}], projectInfo:{},
       }), "utf8"),
       writeFile(path.join(projectDir, "index.ts"), `
         const inferredProject = steamharness.defineProject({
@@ -297,12 +298,12 @@ test("runtime reports static violations before server storage connection checks"
   const projectDir = await mkdtemp(path.join(tmpdir(), "steamharness-project-type-legacy-"));
   try {
     await Promise.all([
-      writeFile(path.join(projectDir, "package.json"), JSON.stringify({
+      writeProjectFixture(path.join(projectDir, "package.json"), JSON.stringify({
         id: "33333333-3333-4333-8333-333333333333",
         name: "legacy-runtime",
         version: "0.1.0",
         type: "module",
-        steamHarness: {defaultEntry:"main",entries:[{entryId:"main",type:"workflow",name:"Main",root:".",entry:"index.ts",databases:[]}], projectInfo:{}},
+        defaultEntry:"main",entries:[{entryId:"main",type:"workflow",name:"Main",root:".",entry:"index.ts",databases:[]}], projectInfo:{},
       }), "utf8"),
       writeFile(path.join(projectDir, "index.ts"), `
         export const projectType = "workflow";
@@ -366,14 +367,14 @@ async function writeRuntimeProject(
 ): Promise<void> {
   await mkdir(projectDir, { recursive: true });
   await Promise.all([
-    writeFile(path.join(projectDir, "package.json"), JSON.stringify({
+    writeProjectFixture(path.join(projectDir, "package.json"), JSON.stringify({
       id: projectType === "workflow"
         ? "44444444-4444-4444-8444-444444444444"
         : "55555555-5555-4555-8555-555555555555",
       name: `${projectType}-mode`,
       version: "0.1.0",
       type: "module",
-      steamHarness: {defaultEntry:"main",entries:[{entryId:"main",type:projectType,name:"Main",root:".",entry:"index.ts",databases:[]}], projectInfo:{}},
+      defaultEntry:"main",entries:[{entryId:"main",type:projectType,name:"Main",root:".",entry:"index.ts",databases:[]}], projectInfo:{},
     }), "utf8"),
     writeFile(path.join(projectDir, "index.ts"), `
       const runtimeProject = steamharness.defineProject({

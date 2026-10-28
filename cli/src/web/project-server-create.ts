@@ -3,7 +3,7 @@ import { randomBytes } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { readProjectInfo } from '@steamharness/project-info';
-import { readProjectCardMetadataFromPackageJson } from '@steamharness/project-card-metadata';
+import { readProjectCardMetadata } from '@steamharness/project-card-metadata';
 import { isProjectUuid } from '@steamharness/workflow-ids';
 import { writeProjectIdentity } from '../project-identity';
 import type { Project } from './workflow-types';
@@ -36,7 +36,7 @@ export class ProjectServerCreation {
     if (this.project.assistant || issue?.kind !== 'project-unavailable' || issue.projectId && issue.projectId.toLowerCase() !== this.project.id.toLowerCase()) {
       throw new Error(t('Open the affected local project to create its Server project.'));
     }
-    const pkg = JSON.parse(await readFile(path.join(this.project.folderPath, 'package.json'), 'utf8'));
+    const pkg = JSON.parse(await readFile(path.join(this.project.folderPath, 'steamharness.json'), 'utf8'));
     if (typeof pkg?.id !== 'string' || pkg.id.toLowerCase() !== this.project.id.toLowerCase()
 ) throw new Error(t('The local project changed. Reopen it before creating a Server project.'));
     const projectInfo = readProjectInfo(pkg);
@@ -74,7 +74,7 @@ export class ProjectServerCreation {
     this.applying = confirmation.busy = true;
     try {
       // Lock before reading: two confirmed requests must not both pass validation.
-      const source = await readFile(path.join(this.project.folderPath, 'package.json'), 'utf8'), pkg = JSON.parse(source);
+      const source = await readFile(path.join(this.project.folderPath, 'steamharness.json'), 'utf8'), pkg = JSON.parse(source);
       if (typeof pkg?.id !== 'string' || pkg.id.toLowerCase() !== this.project.id.toLowerCase()
 
         || JSON.stringify(readProjectInfo(pkg)) !== JSON.stringify(confirmation.projectInfo)) throw new Error(t('The local project changed. Reopen it before creating a Server project.'));
@@ -91,7 +91,7 @@ export class ProjectServerCreation {
         this.assertCurrent(confirmation.connection, confirmation.identity);
         const result = await this.request(confirmation.connection, '/api/projects', confirmation.abort.signal, false, {
           name: input.name.trim(), entries: manifest.entries, defaultEntry: manifest.defaultEntry, projectInfo: confirmation.projectInfo,
-          projectCard: readProjectCardMetadataFromPackageJson(pkg, this.project.projectType),
+          projectCard: readProjectCardMetadata(pkg, this.project.projectType),
           visibility: 'private', ...(input.groupId ? { groupId: input.groupId } : {}),
         });
         const id = result.data?.projectId;

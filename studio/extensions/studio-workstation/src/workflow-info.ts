@@ -38,7 +38,7 @@ function group(id: string, label: string, icon: string, children: InfoItem[], ex
 
 export function projectInfoItems(project: Project, manifest: unknown): InfoItem[] {
   const pkg = record(manifest);
-  const info = record(record(pkg.steamHarness).projectInfo);
+  const info = record(pkg.projectInfo);
   const declarations = strings(info.declarations);
   const localizedNames = record(info.localizedNames);
   const platform = record(info.platformSupport);

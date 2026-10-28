@@ -1070,7 +1070,7 @@ paths:
       tags:
         - Admin Projects
       summary: 更新项目卡片元数据
-      description: Update display metadata only. Entry types come from steamHarness.entries and cannot be changed
+      description: Update display metadata only. Entry types come from steamharness.json entries and cannot be changed
         through this API.
       operationId: updateProjectCard
       parameters:
@@ -1646,7 +1646,7 @@ paths:
         - Admin Projects
       summary: 同步项目默认名称和展示声明
       description: |
-        把本地 `package.json` 根 `name` 与 `steamHarness.projectInfo` 同步到已绑定项目。
+        把本地 `steamharness.json` 的 `name` 与 `projectInfo` 同步到已绑定项目。
         展示声明和平台只用于展示，不限制源码上传或下载。
       operationId: updateProjectInfo
       parameters:

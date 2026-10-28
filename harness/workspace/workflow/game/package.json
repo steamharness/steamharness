@@ -1,5 +1,4 @@
 {
-  "id": "cb9c696d-5895-4060-acd6-f66e5426e92c",
   "name": "@steamharness/game-workflow",
   "version": "0.1.0",
   "private": true,
@@ -14,20 +13,5 @@
   "devDependencies": {
     "@steamharness/cli": "link:../../../cli",
     "steamharness": "link:../../.."
-  },
-  "steamHarness": {
-    "projectInfo": {},
-    "entries": [
-      {
-        "entryId": "main",
-        "type": "workflow",
-        "name": "@steamharness/game-workflow",
-        "root": ".",
-        "entry": "index.ts",
-        "databases": [],
-        "configuration": "configuration.json"
-      }
-    ],
-    "defaultEntry": "main"
   }
 }

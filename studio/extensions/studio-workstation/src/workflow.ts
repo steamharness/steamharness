@@ -32,7 +32,7 @@ const utf8 = new TextDecoder();
 export async function findProjectCandidates(root: vscode.Uri, depth = 0): Promise<vscode.Uri[]> {
   if (depth > 4) { return []; }
   try {
-    const pkg = JSON.parse(utf8.decode(await vscode.workspace.fs.readFile(vscode.Uri.joinPath(root, 'package.json'))));
+    const pkg = JSON.parse(utf8.decode(await vscode.workspace.fs.readFile(vscode.Uri.joinPath(root, 'steamharness.json'))));
     if (typeof pkg.id === 'string' && /^[0-9a-f-]{36}$/i.test(pkg.id)) { return [root]; }
   } catch { /* A workspace folder need not be a Workflow package. */ }
   let children: [string, vscode.FileType][];
@@ -532,7 +532,7 @@ export async function activateProject(context: vscode.ExtensionContext, launcher
     try { return await callback(...args); }
     catch (error) { output.appendLine(String(error)); await vscode.window.showErrorMessage(error instanceof Error ? error.message : String(error)); }
   });
-  const watcher = vscode.workspace.createFileSystemWatcher('**/{package.json,index.ts,configuration.json}');
+  const watcher = vscode.workspace.createFileSystemWatcher('**/{steamharness.json,index.ts,configuration.json}');
   const projectSerializer: vscode.WebviewPanelSerializer = { deserializeWebviewPanel: async (panel, state: { projectUri?: string; entryId?: string } | undefined) => {
     await initialScan;
     let project = state?.projectUri ? findProject(state.projectUri, state.entryId) : undefined;
@@ -617,7 +617,7 @@ export async function activateProject(context: vscode.ExtensionContext, launcher
     }),
     register('studio.openProjectSource', async (target?: Project) => {
       const selected = target?.uri ? findProject(target.uri,target.entryId) : currentProject();
-      if (selected) { await vscode.window.showTextDocument(vscode.Uri.joinPath(vscode.Uri.parse(selected.uri), 'package.json')); }
+      if (selected) { await vscode.window.showTextDocument(vscode.Uri.joinPath(vscode.Uri.parse(selected.uri), 'steamharness.json')); }
     }),
     register('studio.openProjectDemo', () => openProject(provider.projects.find(entry => entry.id === 'b20a7d1d-b6f5-4b0c-8589-265d56fc879a') ?? currentProject())),
     register('studio.openProjectCli', async () => {

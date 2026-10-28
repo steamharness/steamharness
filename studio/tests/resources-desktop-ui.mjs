@@ -102,7 +102,7 @@ try {
   const kvTab = panel.locator('.composite-bar .action-label').filter({ hasText: /^KV$/ }); await kvTab.waitFor({ timeout: 45_000 }); await kvTab.click();
   let kv = await frameFor('kv'); await kv.locator('.resource-row').first().waitFor(); await stable(kv);
   assert.equal(await kv.locator('#resource-project option').count(), 3);
-  await kv.locator('#resource-project').selectOption({ label: projects[0].manifest.steamHarness.projectInfo.localizedNames['zh-CN'] });
+  await kv.locator('#resource-project').selectOption({ label: projects[0].manifest.projectInfo.localizedNames['zh-CN'] });
   await stable(kv); await kv.locator('#resource-search').fill('conversation.state'); await kv.locator('.resource-row').filter({ hasText: 'conversation.state' }).click();
   await kv.locator('.detail-content').filter({ hasText: '"count": 7' }).waitFor();
   await snapshot('kv-light.png'); await layout(kv);
@@ -126,7 +126,7 @@ try {
   await writeFile(settingsPath, JSON.stringify({ 'workbench.colorTheme': 'Dark Modern', 'git.openRepositoryInParentFolders': 'never' }));
   await knowledge.locator('body.vscode-dark').waitFor();
   await page.setViewportSize({ width: 650, height: 850 }); await layout(knowledge); await snapshot('knowledge-narrow.png');
-  await knowledge.locator('#detail-back').click(); await knowledge.locator('#resource-project').selectOption({ label: projects[2].manifest.steamHarness.projectInfo.localizedNames['zh-CN'] });
+  await knowledge.locator('#detail-back').click(); await knowledge.locator('#resource-project').selectOption({ label: projects[2].manifest.projectInfo.localizedNames['zh-CN'] });
   await knowledge.locator('.resource-row').filter({ hasText: 'kanban notes' }).waitFor(); await stable(knowledge);
   assert.equal(await knowledge.locator('.resource-row').filter({ hasText: 'conversation notes' }).count(), 0);
   await kvTab.click(); kv = await frameFor('kv'); await kv.locator('#resource-search').fill('kanban.state'); await kv.locator('.resource-row').filter({ hasText: 'kanban.state' }).waitFor();

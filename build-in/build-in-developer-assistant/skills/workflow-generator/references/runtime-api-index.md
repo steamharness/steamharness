@@ -45,7 +45,7 @@
 - `files`
 - `readDocumentLines(input)`
 
-数据库按 alias 访问，根 config.json 集中记录 alias 与已获批的 databaseId，各入口在 package.json 中仅声明使用的数据库别名；STEAMHARNESS_PROJECT_CONFIG 可覆盖部署值，package.json 的各入口仅声明别名。支持多库和跨入口共享，权限由宿主维护。每次访问重新校验授权。
+数据库按 alias 访问，根 config.json 集中记录 alias 与已获批的 databaseId，各入口在 steamharness.json 中仅声明使用的数据库别名；父项目显式登记子目录后才加载其配置，STEAMHARNESS_PROJECT_CONFIG 可覆盖部署值。支持多库和跨入口共享，权限由宿主维护。每次访问重新校验授权。
 会话 KV 按 projectId + entryId + conversationId 隔离。跨入口调用保留用户身份、取消信号与工具权限，加载目标配置快照。
 
 ## 运行时成员（`steamharness.*`）

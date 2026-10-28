@@ -88,13 +88,13 @@ try {
     ? core.withUserSettings(request.userSettings, run) : run();
   const execute = async () => {
   const language = /^zh/i.test(process.env[core.STEAMHARNESS_RUNTIME_LOCALE_ENV] ?? process.env.STEAMHARNESS_LOCALE ?? 'en') ? 'zh-CN' : 'en';
-  const { readProjectInfo, readProjectCardMetadataFromPackageJson, resolveProjectName, runKanbanDataCall } = await import(new URL(import.meta.url.includes('/src/web/') ? './kanban-data.ts' : './kanban-data.mjs', import.meta.url));
+  const { readProjectInfo, readProjectCardMetadata, resolveProjectName, runKanbanDataCall } = await import(new URL(import.meta.url.includes('/src/web/') ? './kanban-data.ts' : './kanban-data.mjs', import.meta.url));
   if (request.method === 'inspect') {
     const projects = [];
     const errors = [];
     for (const folderPath of request.paths) {
       try {
-        const pkg = JSON.parse(readFileSync(path.join(folderPath, 'package.json'), 'utf8'));
+        const pkg = JSON.parse(readFileSync(path.join(folderPath, 'steamharness.json'), 'utf8'));
         const manifest = await core.readProjectManifestFromDirectory(folderPath);
         for (const registration of manifest.entries.filter(entry => !request.entryId || entry.entryId === request.entryId)) {
         const structure = inspectLocalProjectStructure({ projectDir: folderPath, entryId: registration.entryId });
@@ -107,11 +107,11 @@ try {
           entries: manifest.entries, defaultEntry: manifest.defaultEntry, databases: registration.databases,
           runtime: { harnessVersion: coreManifest.version, harnessPath },
           folderPath,
-          name: registration.name,
+          name: resolveProjectName(registration.name, readProjectInfo(registration), language),
           manifest: Object.fromEntries(['name', 'version', 'description'].filter(key => typeof pkg[key] === 'string').map(key => [key, pkg[key]])),
           projectType: structure.projectType,
           projectCard: registration.projectCard,
-          aggregateProjectCard: readProjectCardMetadataFromPackageJson(pkg, manifest.entries.find(entry => entry.entryId === manifest.defaultEntry).type),
+          aggregateProjectCard: readProjectCardMetadata(pkg, manifest.entries.find(entry => entry.entryId === manifest.defaultEntry).type),
           ...parameters(structure),
           entrypoints: (structure.entrypoints ?? []).map((entry) => ({ id: entry.id, title: entry.title, group: entry.group, description: entry.description, execution: entry.execution, ...parameters(entry) })),
           definitions: structure.definitions,
@@ -120,7 +120,7 @@ try {
           defaultEntrypoint: structure.defaultEntrypoint,
           artifactEntry: structure.kanban ? `${registration.root === "." ? "" : registration.root + "/"}${createKanbanArtifactEntryPath(structure.kanban)}` : undefined,
           kanban: structure.kanban ? { artifactDir: structure.kanban.artifactDir, entry: structure.kanban.entry } : undefined,
-          projectInfo,
+          projectInfo: readProjectInfo(registration),
           conversation: structure.conversation,
           requiresLogin: await requiresSystemAi(path.resolve(folderPath, registration.root)),
         });

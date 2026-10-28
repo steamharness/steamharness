@@ -1,3 +1,4 @@
+import { writeProjectFixture } from '../../scripts/test-project-fixture.mjs';
 import assert from "node:assert/strict";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
@@ -49,12 +50,12 @@ test("local and workspace execution plus param resolution receive hostInput", as
   const projectDir = path.join(cwd, "workspace", "workflow", projectName);
   try {
     await mkdir(projectDir, { recursive: true });
-    await writeFile(path.join(projectDir, "package.json"), JSON.stringify({
+    await writeProjectFixture(path.join(projectDir, "package.json"), JSON.stringify({
       id: hostInput.projectId,
       name: projectName,
       version: "0.1.0",
       type: "module",
-      steamHarness: {defaultEntry:"main",entries:[{entryId:"main",type:"conversation",name:"Main",root:".",entry:"index.ts",databases:[]}], projectInfo:{}},
+      defaultEntry:"main",entries:[{entryId:"main",type:"conversation",name:"Main",root:".",entry:"index.ts",databases:[]}], projectInfo:{},
     }), "utf8");
     await writeFile(path.join(projectDir, "index.ts"), `
       const openaiProject = steamharness.defineProject({

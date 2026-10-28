@@ -1,0 +1,28 @@
+{
+  "id": "2bf9074d-ef0b-43b2-84c4-f379f920db92",
+  "name": "Studio Kanban",
+  "version": "0.0.1",
+  "projectInfo": {
+    "localizedNames": {
+      "zh-CN": "看板示例",
+      "en": "Local Kanban Demo"
+    },
+    "platformSupport": {
+      "mode": "agnostic"
+    }
+  },
+  "entries": [
+    {
+      "entryId": "main",
+      "type": "kanban",
+      "name": "Studio Kanban",
+      "root": ".",
+      "entry": "index.html",
+      "configuration": "configuration.json",
+      "databases": [
+        "data"
+      ]
+    }
+  ],
+  "defaultEntry": "main"
+}

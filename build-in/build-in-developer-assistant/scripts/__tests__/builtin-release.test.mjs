@@ -1,3 +1,4 @@
+import { writeProjectFixture } from '../../../../scripts/test-project-fixture.mjs';
 import { createHash } from "node:crypto";
 import { mkdtemp, mkdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import os from "node:os";
@@ -39,7 +40,7 @@ const ossConfig = {
 ;
 
 describe("independent built-in project release", () => {
-  it("derives the release identity and required resources from package.json", async () => {
+  it("derives the release identity and required resources from steamharness.json", async () => {
     // The checkout's branch decides the release mode, and this repository is
     // developed from main as well as dev, so the mode under test is explicit.
     const definition = await verifyBuiltinProject({ root, mode: 'dev' });
@@ -59,14 +60,16 @@ describe("independent built-in project release", () => {
     }
     expect(definition.components).toEqual(resolved);
     expect(definition.minDesktopVersion).toBe("0.1.24");
-    expect(definition.entries.map(({databases, ...entry}) => ({...entry,...(databases.length?{databases:databases.map(database=>database.alias)}:{})}))).toEqual(definition.packageJson.steamHarness.entries);
+    expect(definition.entries.map(({ entryId, root }) => ({ entryId, root }))).toEqual(
+      definition.projectDocument.entries.map(({ entryId, root }) => ({ entryId, root })),
+    );
     expect(definition.entries[0].databases.some(database => database.alias === "memory")).toBe(true);
     expect(definition.entries[1].databases).toEqual([]);
     expect(definition.defaultEntry).toBe("main");
-    expect(definition.packageJson.steamHarness.projectInfo).toMatchObject({
+    expect(definition.projectDocument.projectInfo).toMatchObject({
       localizedNames: {
         "zh-CN": expect.any(String),
-        en: definition.packageJson.name,
+        en: definition.projectDocument.name,
       },
       declarations: expect.arrayContaining(["multilingual"]),
     });
@@ -161,8 +164,8 @@ describe("independent built-in project release", () => {
     const definition = await readBuiltinDefinition(root, { mode: 'dev' });
     const fixture = await mkdtemp(path.join(os.tmpdir(), `builtin-${definition.projectId}-legacy-desktop-field-`));
     const manifest = releaseManifest(definition);
-    manifest.steamHarness.builtinRelease.minAppVersion = definition.minDesktopVersion;
-    await writeFile(path.join(fixture, "package.json"), `${JSON.stringify(manifest, null, 2)}\n`, "utf8");
+    manifest.builtinRelease.minAppVersion = definition.minDesktopVersion;
+    await writeProjectFixture(path.join(fixture, "package.json"), `${JSON.stringify(manifest, null, 2)}\n`, "utf8");
 
     await expect(readBuiltinDefinition(fixture)).rejects.toThrow(/minAppVersion is not supported/);
   });
@@ -172,14 +175,14 @@ describe("independent built-in project release", () => {
     const fixture = await mkdtemp(path.join(os.tmpdir(), `builtin-${definition.projectId}-runtime-components-`));
     const manifest = releaseManifest(definition);
     manifest.devDependencies["steamharness"] = "^0.1.0";
-    await writeFile(path.join(fixture, "package.json"), `${JSON.stringify(manifest, null, 2)}\n`, "utf8");
+    await writeProjectFixture(path.join(fixture, "package.json"), `${JSON.stringify(manifest, null, 2)}\n`, "utf8");
     await expect(readBuiltinDefinition(fixture)).rejects.toThrow(
       /devDependencies\.steamharness "\^0\.1\.0" must be an exact SemVer version/,
     );
 
     manifest.devDependencies["steamharness"] = definition.components.harness;
     manifest.devDependencies["@steamharness/cli"] = "workspace:*";
-    await writeFile(path.join(fixture, "package.json"), `${JSON.stringify(manifest, null, 2)}\n`, "utf8");
+    await writeProjectFixture(path.join(fixture, "package.json"), `${JSON.stringify(manifest, null, 2)}\n`, "utf8");
     await expect(readBuiltinDefinition(fixture)).rejects.toThrow(
       /devDependencies\.@steamharness\/cli "workspace:\*" must be an exact SemVer version/,
     );
@@ -194,14 +197,14 @@ describe("independent built-in project release", () => {
       await writeFile(path.join(fixture, "config.json"), await readFile(path.join(root, "config.json")));
       for (const [name, version] of Object.entries(definition.components)) {
         await mkdir(path.join(workspace, name));
-        await writeFile(path.join(workspace, name, "package.json"), JSON.stringify({
+        await writeProjectFixture(path.join(workspace, name, "package.json"), JSON.stringify({
           name: name === "harness" ? "steamharness" : "@steamharness/cli", version,
         }));
       }
-      const manifest = structuredClone(definition.packageJson);
+      const manifest = releaseManifest(definition);
       manifest.devDependencies["steamharness"] = "link:../../harness";
       manifest.devDependencies["@steamharness/cli"] = "link:../../cli";
-      await writeFile(path.join(fixture, "package.json"), JSON.stringify(manifest));
+      await writeProjectFixture(path.join(fixture, "package.json"), JSON.stringify(manifest));
       expect((await readBuiltinDefinition(fixture, { mode: "dev" })).components).toEqual(definition.components);
       await expect(readBuiltinDefinition(fixture, { mode: "main" })).rejects.toThrow(/must declare an exact published version/);
     } finally {
@@ -212,9 +215,9 @@ describe("independent built-in project release", () => {
   it("refuses a sibling reference once the repository is on a release channel", async () => {
     const definition = await readBuiltinDefinition(root, { mode: 'dev' });
     const fixture = await mkdtemp(path.join(os.tmpdir(), `builtin-${definition.projectId}-release-reference-`));
-    const manifest = structuredClone(definition.packageJson);
+    const manifest = releaseManifest(definition);
     manifest.devDependencies["steamharness"] = "link:../../harness";
-    await writeFile(path.join(fixture, "package.json"), `${JSON.stringify(manifest, null, 2)}\n`, "utf8");
+    await writeProjectFixture(path.join(fixture, "package.json"), `${JSON.stringify(manifest, null, 2)}\n`, "utf8");
 
     await expect(readBuiltinDefinition(fixture, { mode: "main" })).rejects.toThrow(
       /must declare an exact published version on main and alpha/,
@@ -226,21 +229,23 @@ describe("independent built-in project release", () => {
     const fixture = await mkdtemp(path.join(os.tmpdir(), `builtin-${definition.projectId}-storage-contract-`));
     await writeFile(path.join(fixture, "config.json"), await readFile(path.join(root, "config.json")));
     const manifest = releaseManifest(definition);
-    const entries = manifest.steamHarness.entries;
-    delete manifest.steamHarness.entries;
-    await writeFile(path.join(fixture, "package.json"), `${JSON.stringify(manifest, null, 2)}\n`, "utf8");
-    await expect(readBuiltinDefinition(fixture)).rejects.toThrow(/steamHarness\.entries/);
+    const entries = manifest.entries;
+    delete manifest.entries;
+    await writeProjectFixture(path.join(fixture, "package.json"), `${JSON.stringify(manifest, null, 2)}\n`, "utf8");
+    const { entries: _registeredEntries, ...withoutEntries } = definition.projectDocument;
+    await writeFile(path.join(fixture, "steamharness.json"), JSON.stringify(withoutEntries));
+    await expect(readBuiltinDefinition(fixture)).rejects.toThrow(/entries/);
 
-    manifest.steamHarness.entries = entries;
-    manifest.steamHarness.builtinRelease.minDesktopVersion = "0.1.21";
+    manifest.entries = entries;
+    manifest.builtinRelease.minDesktopVersion = "0.1.21";
     // Desktop 地板只对 0.2.x 的 harness 生效，所以显式声明一个 0.2 版本的依赖。
     manifest.devDependencies["steamharness"] = "0.2.0";
-    await writeFile(path.join(fixture, "package.json"), `${JSON.stringify(manifest, null, 2)}\n`, "utf8");
+    await writeProjectFixture(path.join(fixture, "package.json"), `${JSON.stringify(manifest, null, 2)}\n`, "utf8");
     await expect(readBuiltinDefinition(fixture)).rejects.toThrow(/require minDesktopVersion 0\.1\.22/);
 
     // 0.1.x 的 harness 不受该地板约束，同样的 minDesktopVersion 会被放行。
     manifest.devDependencies["steamharness"] = "0.1.0";
-    await writeFile(path.join(fixture, "package.json"), `${JSON.stringify(manifest, null, 2)}\n`, "utf8");
+    await writeProjectFixture(path.join(fixture, "package.json"), `${JSON.stringify(manifest, null, 2)}\n`, "utf8");
     await expect(readBuiltinDefinition(fixture)).resolves.toMatchObject({ minDesktopVersion: "0.1.21" });
   });
 
@@ -298,7 +303,7 @@ describe("independent built-in project release", () => {
     const fixture = await mkdtemp(path.join(os.tmpdir(), `builtin-${definition.projectId}-prepare-`));
     const manifest = releaseManifest(definition);
     await Promise.all([
-      writeFile(path.join(fixture, "package.json"), `${JSON.stringify(manifest, null, 2)}\n`, "utf8"),
+      writeProjectFixture(path.join(fixture, "package.json"), `${JSON.stringify(manifest, null, 2)}\n`, "utf8"),
       writeFile(path.join(fixture, "CHANGELOG.md"), `# Changelog\n\n## ${definition.version} - 2026-08-01\n\n### 修复\n\n- 修复 现有版本。\n`, "utf8"),
       writeFile(path.join(fixture, "CHANGELOG.en.md"), `# Changelog\n\n## ${definition.version} - 2026-08-01\n\n### Fixed\n\n- Fixed Existing release.\n`, "utf8"),
       writeFile(path.join(fixture, "CHANGELOG.next.md"), "# Unreleased\n\n### 新增\n\n- 新增 独立发布。\n", "utf8"),
@@ -312,7 +317,8 @@ describe("independent built-in project release", () => {
         channel: "stable",
         tag: `builtin-${definition.projectId}/v${nextVersion}`,
       });
-    expect(JSON.parse(await readFile(path.join(fixture, "package.json"), "utf8")).version).toBe(nextVersion);
+    expect(JSON.parse(await readFile(path.join(fixture, "steamharness.json"), "utf8")).version).toBe(nextVersion);
+    expect(JSON.parse(await readFile(path.join(fixture, "package.json"), "utf8")).version).toBe(definition.packageJson.version);
     expect(await readFile(path.join(fixture, "CHANGELOG.next.md"), "utf8")).toBe("# Unreleased\n");
   });
   it("names the Alpha channel's tag when asked for it", async () => {
@@ -320,7 +326,7 @@ describe("independent built-in project release", () => {
     const fixture = await mkdtemp(path.join(os.tmpdir(), `builtin-${definition.projectId}-prepare-alpha-`));
     const manifest = releaseManifest(definition);
     await Promise.all([
-      writeFile(path.join(fixture, "package.json"), `${JSON.stringify(manifest, null, 2)}\n`, "utf8"),
+      writeProjectFixture(path.join(fixture, "package.json"), `${JSON.stringify(manifest, null, 2)}\n`, "utf8"),
       writeFile(path.join(fixture, "CHANGELOG.md"), `# Changelog\n\n## ${definition.version} - 2026-08-01\n\n### 修复\n\n- 修复 现有版本。\n`, "utf8"),
       writeFile(path.join(fixture, "CHANGELOG.en.md"), `# Changelog\n\n## ${definition.version} - 2026-08-01\n\n### Fixed\n\n- Fixed Existing release.\n`, "utf8"),
       writeFile(path.join(fixture, "CHANGELOG.next.md"), "# Unreleased\n\n### 新增\n\n- 新增 Alpha 通道发布。\n", "utf8"),
@@ -375,6 +381,8 @@ describe("independent built-in project release", () => {
         });
       }
       for (const required of [
+        "steamharness.json",
+        "studio-control/steamharness.json",
         "index.ts",
         "studio-control/index.ts",
         "studio-control/host-bridge.ts",
@@ -409,7 +417,14 @@ async function exists(filePath) {
  * carries a relative reference, so pin the resolved component versions.
  */
 function releaseManifest(definition) {
-  const manifest = structuredClone(definition.packageJson);
+  const manifest = structuredClone({
+    ...definition.packageJson,
+    ...definition.projectDocument,
+    entries: definition.entries.map(({ databases, ...entry }) => ({
+      ...entry,
+      databases: databases.map(database => database.alias),
+    })),
+  });
   const versions = {
     "steamharness": definition.components.harness,
     "@steamharness/cli": definition.components.cli,

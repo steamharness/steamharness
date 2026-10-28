@@ -1,3 +1,4 @@
+import { writeProjectFixture } from '../../scripts/test-project-fixture.mjs';
 import { afterEach, expect, it, vi } from 'vitest';
 import { mkdtemp, realpath, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
@@ -21,8 +22,8 @@ async function fixture(kind: ProjectKind, database = true) {
   vi.spyOn(os, 'homedir').mockReturnValue(directory);
   const requirement = { alias: 'data', databaseId: crypto.randomUUID() };
   const registration = { entryId: 'main', name: 'Main', type: kind, root: '.', entry: kind === 'kanban' ? 'index.html' : 'index.ts', databases: database ? [requirement] : [] };
-  const pkg = { id, name: 'Application', steamHarness: { defaultEntry: 'main', entries: [{...registration,databases:registration.databases.map(database=>database.alias)}] } };
-  await writeFile(path.join(directory, 'package.json'), JSON.stringify(pkg));
+  const pkg = { id, name: 'Application', version: "0.1.0",  defaultEntry: 'main', entries: [{...registration,databases:registration.databases.map(database=>database.alias)}]  };
+  await writeProjectFixture(path.join(directory, 'package.json'), JSON.stringify(pkg));
   if (database) await writeFile(path.join(directory, 'config.json'), JSON.stringify({version:1,databases:{data:requirement.databaseId}}));
   await writeFile(path.join(directory, registration.entry), kind === 'kanban' ? '<html></html>' : 'export {};');
   const project: Project = { id, entryId: 'main', uri: directory, folderPath: directory, entryRoot: directory, name: 'Main', aggregateName: pkg.name,

@@ -1,0 +1,17 @@
+{
+  "id": "1f7efa67-2fe6-4183-a99c-bc8b964addb3",
+  "name": "@steamharness/details-output-workflow",
+  "version": "0.1.0",
+  "projectInfo": {},
+  "entries": [
+    {
+      "entryId": "main",
+      "type": "workflow",
+      "name": "@steamharness/details-output-workflow",
+      "root": ".",
+      "entry": "index.ts",
+      "databases": []
+    }
+  ],
+  "defaultEntry": "main"
+}

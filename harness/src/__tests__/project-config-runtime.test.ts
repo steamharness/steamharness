@@ -1,3 +1,4 @@
+import { writeProjectFixture } from '../../scripts/test-project-fixture.mjs';
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
@@ -25,8 +26,9 @@ test("execution and nested entries share centralized IDs and respect environment
   });
   const restrictedRequest = registry.request({ projectId, entryId: "two", alias: "restricted", permissions, target: { kind: "create", name: "Only entry two" } });
   const restrictedId = registry.review(restrictedRequest.requestId, { approve: true }).databaseId!;
-  const pkg = { id: projectId, name: "Config runtime", type: "module", steamHarness: { defaultEntry: "one", entries: ["one", "two"].map(entryId => ({ entryId, name: entryId, type: "workflow", root: ".", entry: "index.ts", databases: entryId === "one" ? ["data"] : ["data", "restricted"] })) } };
-  await writeFile(path.join(directory, "package.json"), JSON.stringify(pkg));
+  const pkg = { id: projectId, name: "Config runtime", type: "module", version: "0.1.0",  defaultEntry: "one", entries: ["one", "two"].map(entryId => ({ entryId, name: entryId, type: "workflow", root: ".", entry: "index.ts", databases: entryId === "one" ? ["data"] : ["data", "restricted"] }))  };
+  await writeProjectFixture(path.join(directory, "package.json"), JSON.stringify(pkg));
+  const npmBefore = await readFile(path.join(directory, "package.json"), "utf8");
   await writeFile(path.join(directory, "index.ts"), `
     const flow = steamharness.defineProject({ name: "Configured database", async run(input, context) {
       if (input.nested) return context.entries.get("two").runEntrypoint("read");
@@ -66,5 +68,5 @@ test("execution and nested entries share centralized IDs and respect environment
   await run(spaces[0]!, env, true);
   const workspaceReport = await runWorkspaceProjectWithReport({ cwd: workspace, projectName: "configured", env, databaseResolver: createLocalDatabaseResolver(registry) });
   assert.equal(workspaceReport.status, "success", JSON.stringify(workspaceReport.result));
-  assert.equal(await readFile(path.join(directory, "package.json"), "utf8"), JSON.stringify(pkg));
+  assert.equal(await readFile(path.join(directory, "package.json"), "utf8"), npmBefore);
 });

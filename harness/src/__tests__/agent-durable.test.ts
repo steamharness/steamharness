@@ -1,3 +1,4 @@
+import { writeProjectFixture } from '../../scripts/test-project-fixture.mjs';
 import { declareConfigurationFixture } from "./configuration-fixture";
 import assert from "node:assert/strict";
 import { spawn, type ChildProcess } from "node:child_process";
@@ -46,7 +47,7 @@ test('durable model steps retain the verified configuration scope and stop after
     if(originalKey===undefined)delete process.env.STEAMHARNESS_SERVER_ADMIN_KEY;else process.env.STEAMHARNESS_SERVER_ADMIN_KEY=originalKey;
     await rm(directory,{recursive:true,force:true});
   });
-  await writeFile(path.join(directory,'package.json'),JSON.stringify({name:"aggregate-fixture",steamHarness:{defaultEntry:"main",entries:[{entryId:"main",name:"Main",type:"workflow",root:".",entry:"index.ts",databases:[],configuration:"configuration.json"}]},id:crypto.randomUUID()}));
+  await writeProjectFixture(path.join(directory,'package.json'),JSON.stringify({name:"aggregate-fixture",version: "0.1.0", defaultEntry:"main",entries:[{entryId:"main",name:"Main",type:"workflow",root:".",entry:"index.ts",databases:[],configuration:"configuration.json"}],id:crypto.randomUUID()}));
   await writeFile(path.join(directory,'configuration.json'),JSON.stringify({version:2,fields:[{name:'mode',type:'string'}],profilePolicy:{version:1,defaultProfileKey:'ask',manageMinimumRole:'developer',profiles:[{key:'ask',name:'Ask',minimumRole:'guest',fixedValues:{mode:'ask'}},{key:'build',name:'Build',minimumRole:'developer',fixedValues:{mode:'build'}}]}}));
   process.env.STEAMHARNESS_SERVER_URL='https://durable-access.test';process.env.STEAMHARNESS_SERVER_ADMIN_KEY=directory;
   globalThis.fetch=async input=>new Response(JSON.stringify({errCode:0,data:String(input).endsWith('/api/auth/me')?{profile:{userId:'alice'}}:{access:{effectiveRole:role}}}));

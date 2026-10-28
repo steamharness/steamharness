@@ -1,5 +1,5 @@
 import { projectManifestForDistribution } from "@steamharness/project-manifest";
-import { readProjectManifestFromDirectory } from "@steamharness/project-manifest/node";
+import { readProjectManifestFromDirectory, readProjectDeclarationFromDirectory } from "@steamharness/project-manifest/node";
 import { copyFile, lstat, mkdir, readFile, readdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import {
@@ -89,13 +89,14 @@ export async function createProjectUploadPlan(rootDir: string): Promise<UploadPl
   if (!availableRegularPaths.has("package.json")) {
     throw new Error("Workflow package must contain package.json.");
   }
-  const packageJson = parsePackageJson(await readProjectUploadUtf8File(
-    path.join(projectRoot, "package.json"),
-    "package.json",
+  const packageJson = parseProjectDocument(await readProjectUploadUtf8File(
+    path.join(projectRoot, "steamharness.json"),
+    "steamharness.json",
   ));
   const requiredPaths = resolveProjectUploadRequiredPaths(
     packageJson,
     availableRegularPaths,
+    await readProjectDeclarationFromDirectory(projectRoot),
   );
   // Validate authored configuration; never export the machine's environment overrides.
   await readProjectManifestFromDirectory(projectRoot, {});
@@ -125,17 +126,17 @@ export async function copyProjectUploadFiles(
   for (const file of plan.files) {
     const targetPath = path.join(targetDir, ...file.path.split("/"));
     await mkdir(path.dirname(targetPath), { recursive: true });
-    if (file.path === "package.json") await writeFile(targetPath, JSON.stringify(projectManifestForDistribution(JSON.parse(await readFile(file.absolutePath, "utf8"))), null, 2) + "\n");
+    if (file.path === "steamharness.json") await writeFile(targetPath, JSON.stringify(projectManifestForDistribution(JSON.parse(await readFile(file.absolutePath, "utf8"))), null, 2) + "\n");
     else await copyFile(file.absolutePath, targetPath);
   }
   return plan;
 }
 
-function parsePackageJson(content: string): unknown {
+function parseProjectDocument(content: string): unknown {
   try {
     return JSON.parse(content) as unknown;
   } catch {
-    throw new Error("Workflow package.json is invalid JSON.");
+    throw new Error("Workflow steamharness.json is invalid JSON.");
   }
 }
 

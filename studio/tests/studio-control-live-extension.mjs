@@ -1,3 +1,4 @@
+import { writeProjectFixture } from '../../scripts/test-project-fixture.mjs';
 import assert from 'node:assert/strict';
 import { cp, mkdir, readFile, realpath, symlink, writeFile } from 'node:fs/promises';
 import path from 'node:path';
@@ -21,9 +22,9 @@ async function run(context) {
   const outside = path.join(path.dirname(workdir), 'outside');
   const ids = ['294b1eec-23fa-42cf-9fd3-2417f71c0570', '615e6cf6-b40a-456a-8d19-b71c63454c7a'];
   await mkdir(outside, { recursive: true });
-  const manifest = id => ({ id, name: 'Control test', steamHarness: { defaultEntry:'main', entries:[{entryId:'main',name:'Main',type:'workflow',root:'.',entry:'index.ts',databases:[]}] } });
-  await writeFile(path.join(workdir, 'package.json'), JSON.stringify(manifest(ids[0])));
-  await writeFile(path.join(outside, 'package.json'), JSON.stringify(manifest(ids[1])));
+  const manifest = id => ({ id, name: 'Control test', version: "0.1.0",  defaultEntry:'main', entries:[{entryId:'main',name:'Main',type:'workflow',root:'.',entry:'index.ts',databases:[]}]  });
+  await writeProjectFixture(path.join(workdir, 'package.json'), JSON.stringify(manifest(ids[0])));
+  await writeProjectFixture(path.join(outside, 'package.json'), JSON.stringify(manifest(ids[1])));
   await writeFile(path.join(workdir, 'control.txt'), 'first\nsecond line\n');
   await writeFile(path.join(outside, 'control.txt'), 'external\n');
   const studio = vscode.extensions.getExtension('studio.studio-workstation');
@@ -175,7 +176,7 @@ async function run(context) {
 
     const otherManifest = JSON.parse(await readFile(path.join(projectDirectory, 'package.json'), 'utf8'));
     otherManifest.id = ids[0];
-    await writeFile(path.join(projectDirectory, 'package.json'), JSON.stringify(otherManifest));
+    await writeProjectFixture(path.join(projectDirectory, 'package.json'), JSON.stringify(otherManifest));
     const other = (await launcher.inspect([projectDirectory])).projects[0];
     projectSession = await launcher.start({ ...other, uri: project.uri }, 'editor');
     const unconnected = await runProject(projectSession, 'studio_state');

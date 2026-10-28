@@ -25,7 +25,19 @@ async function createFixture() {
   await writeFile(path.join(shared, "resources", "labels.ts"), "export const labels = 1;\n");
   await mkdir(path.join(shared, "__tests__"), { recursive: true });
   await writeFile(path.join(shared, "__tests__", "gate.test.mjs"), "// not vendored\n");
+  await mkdir(path.join(root, "scripts"));
+  const testFixtures = {
+    "test-project-fixture.mjs": "export const fixture = true;\n",
+    "test-project-fixture.d.mts": "export const fixture: boolean;\n",
+  };
+  for (const [file, content] of Object.entries(testFixtures)) {
+    await writeFile(path.join(root, "scripts", file), content);
+  }
   for (const consumer of VENDOR_CONSUMERS) {
+    await mkdir(path.join(root, consumer, "scripts"), { recursive: true });
+    for (const [file, content] of Object.entries(testFixtures)) {
+      await writeFile(path.join(root, consumer, "scripts", file), content);
+    }
     const directory = path.join(root, consumer, "vendor/shared/release-tools");
     await mkdir(directory, { recursive: true });
     for (const file of ["release-gate.mjs", "release-notes.mjs", "npm-alpha-publish.mjs"]) {

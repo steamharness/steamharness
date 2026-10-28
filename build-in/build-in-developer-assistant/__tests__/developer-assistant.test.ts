@@ -22,10 +22,10 @@ const EXPECTED_TOOL_NAMES = [...SESSION_TOOL_NAMES, ...CONTROL_TOOL_NAMES, ...CO
 
 describe("developer assistant workflow", () => {
   it("keeps its distributed identity and records an approved database ID for assistant data", async () => {
-    const manifest = JSON.parse(await readFile(path.join(projectDir, "package.json"), "utf8"));
+    const manifest = JSON.parse(await readFile(path.join(projectDir, "steamharness.json"), "utf8"));
     expect(manifest.id).toBe("a3aca697-b086-459b-84e4-d357ad2d9fb2");
-    expect(manifest.steamHarness.entries[0]).toMatchObject({ entryId: "main", type: "conversation" });
-    expect(manifest.steamHarness.entries[0].databases).toEqual(["memory"]);
+    expect(manifest.entries[0]).toMatchObject({ entryId: "main", type: "conversation" });
+    expect(manifest.entries[0].databases).toEqual(["memory"]);
     const config = JSON.parse(await readFile(path.join(projectDir, "config.json"), "utf8"));
     expect(config).not.toHaveProperty("entries");
     expect(config.databases.memory).toEqual(expect.any(String));
@@ -148,7 +148,7 @@ describe("developer assistant workflow", () => {
     const [, prompt, packageJson] = await Promise.all([
       readFile(path.join(projectDir, "index.ts"), "utf8"),
       readFile(path.join(projectDir, "assistant-prompt.ts"), "utf8"),
-      readFile(path.join(projectDir, "package.json"), "utf8"),
+      readFile(path.join(projectDir, "steamharness.json"), "utf8"),
     ]);
 
     // The workspace decides what the tools may touch, so it travels on the
@@ -172,15 +172,15 @@ describe("developer assistant workflow", () => {
     // An OpenAI request carries its bytes inline and still needs no store.
     expect(source).toContain("return toDataUrlImages(");
 
-    const manifest = JSON.parse(packageJson) as {
-      steamHarness: { builtinRelease: { dependencies: Array<{ id: string }> } };
+    const manifest = JSON.parse(await readFile(path.join(projectDir, "steamharness.json"), "utf8")) as {
+      builtinRelease: { dependencies: Array<{ id: string }> };
       devDependencies: Record<string, string>;
     };
     // The assistant no longer delegates to another built-in project, so it
     // must not claim to depend on one.
-    expect(manifest.steamHarness.builtinRelease.dependencies.map((entry) => entry.id))
+    expect(manifest.builtinRelease.dependencies.map((entry) => entry.id))
       .toEqual([]);
-    expect(manifest.steamHarness.builtinRelease.dependencies.map((entry) => entry.id))
+    expect(manifest.builtinRelease.dependencies.map((entry) => entry.id))
       .not.toContain("opencode");
 
     expect(prompt).toContain("Workspace roots define default working directories, not file-access boundaries");

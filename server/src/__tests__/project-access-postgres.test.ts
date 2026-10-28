@@ -1,3 +1,4 @@
+import { projectFixtureFiles } from '../../scripts/test-project-fixture.mjs';
 import assert from "node:assert/strict";
 import test from "node:test";
 import { randomUUID } from "node:crypto";
@@ -394,15 +395,15 @@ test(
         name: "Unauthorized rename",
         version: "1.0.0",
         devDependencies: { steamharness: coreVersion },
-        steamHarness: { defaultEntry:"main",entries:[{entryId:"main",name:"Main",type:"workflow",root:".",entry:"index.ts",configuration:"configuration.json",databases:[]}], projectInfo: info },
+         defaultEntry:"main",entries:[{entryId:"main",name:"Main",type:"workflow",root:".",entry:"index.ts",configuration:"configuration.json",databases:[]}], projectInfo: info ,
       };
       await storage.saveDraftFiles({
         projectName: projectId,
-        files: [
+        files: projectFixtureFiles([
           { path: "package.json", content: JSON.stringify(source) },
           { path: "index.ts", content: 'throw new Error("must not execute")' },
           { path: "configuration.json", content: JSON.stringify({ version: 1, fields: [{ name: "endpoint", type: "string" }] }) },
-        ],
+        ]),
       });
       assert.equal((await db.getProject(projectId))!.name, "Team project");
       await storage.publish({

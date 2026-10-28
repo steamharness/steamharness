@@ -1,3 +1,4 @@
+import { writeProjectFixture } from '../../scripts/test-project-fixture.mjs';
 import { afterEach, expect, it } from 'vitest';
 import { initI18n } from '@steamharness/i18n';
 import { t } from '../web/localization';
@@ -55,8 +56,8 @@ it.each([['en', 'workflow'], ['zh-CN', 'workflow'], ['en', 'conversation'], ['zh
   try {
     await mkdir(path.join(directory, 'node_modules'));
     await symlink(await realpath(new URL('../../node_modules/steamharness', import.meta.url)), path.join(directory, 'node_modules/steamharness'), process.platform === 'win32' ? 'junction' : 'dir');
-    await writeFile(path.join(directory, 'package.json'), JSON.stringify({ id: '294b1eec-23fa-42cf-9fd3-2417f71c0570', name: 'Default name', version: '1.2.3', description: 'Original description', privateToken: 'not-public', type: 'module',
-      steamHarness: { defaultEntry: 'main', entries: [{entryId:'main',name:'Main',type:projectType,root:'.',entry:'index.ts',databases:[]}], projectInfo:{localizedNames: { EN: 'English name', 'zh-cn': '\u4e2d\u6587\u540d\u79f0' }} } }));
+    await writeProjectFixture(path.join(directory, 'package.json'), JSON.stringify({ id: '294b1eec-23fa-42cf-9fd3-2417f71c0570', name: 'Default name', version: '1.2.3', description: 'Original description', privateToken: 'not-public', type: 'module',
+       defaultEntry: 'main', entries: [{entryId:'main',name:'Main',type:projectType,root:'.',entry:'index.ts',databases:[]}], projectInfo:{localizedNames: { EN: 'English name', 'zh-cn': '\u4e2d\u6587\u540d\u79f0' }}  }));
     await writeFile(path.join(directory, 'index.ts'), `
       const graph = steamharness.defineProject({ name: 'locale-fixture', async run() { return steamharness.createOutputPayload({ items: [] }); } });
       export const executor = steamharness.defineExecutor(${projectType === 'workflow' ? `

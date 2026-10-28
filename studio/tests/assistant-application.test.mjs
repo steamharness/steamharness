@@ -15,7 +15,8 @@ test('the assistant owns its app and dependencies and never borrows the opened p
   const directory = await mkdtemp(path.join(tmpdir(), 'studio-assistant-app-')); t.after(() => rm(directory, { recursive: true, force: true }));
   const templateDir = path.join(directory, 'template');
   await mkdir(path.join(templateDir, 'skills/workflow-generator'), { recursive: true });
-  await writeFile(path.join(templateDir, 'package.json'), JSON.stringify({ id: 'a3aca697-b086-459b-84e4-d357ad2d9fb2', name: 'Project Assistant', type: 'module', devDependencies: { 'steamharness': 'link:../harness' } }));
+  await writeFile(path.join(templateDir, 'package.json'), JSON.stringify({name:'assistant',type:'module',devDependencies:{steamharness:'link:../harness'}}));
+  await writeFile(path.join(templateDir, 'steamharness.json'), JSON.stringify({id:'a3aca697-b086-459b-84e4-d357ad2d9fb2',name:'Project Assistant',version:'1.0.0'}));
   await writeFile(path.join(templateDir, 'index.ts'), 'export const executor = steamharness.defineExecutor({});');
   await writeFile(path.join(templateDir, 'skills/workflow-generator/SKILL.md'), 'Assistant skill');
   await mkdir(path.join(templateDir, 'studio-control'));

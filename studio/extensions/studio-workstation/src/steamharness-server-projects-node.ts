@@ -75,7 +75,7 @@ export function runWorkspaceTransfer(options: TransferOptions, args: string[], p
 }
 
 export async function uploadServerProject(options: TransferOptions & { projectId: string; version: string; directory: string; releaseLog: string }): Promise<void> {
-  if (!/^\d+\.\d+\.\d+$/.test(options.version)) { throw new Error(t('Declare a valid project UUID and version in package.json first.')); }
+  if (!/^\d+\.\d+\.\d+$/.test(options.version)) { throw new Error(t('Declare a valid project UUID and version in steamharness.json first.')); }
   const temporary = await mkdtemp(path.join(tmpdir(), 'studio-upload-'));
   try {
     const client = new ProjectServerClient(options.connection);
@@ -129,7 +129,7 @@ export async function downloadServerProject(options: TransferOptions & { project
     options.progress({ message: t('Downloading project version') });
     const result = await runWorkspaceTransfer(options, ['download', options.projectId, '--target', options.version, '--path', path.join(staging, 'root')], path.join(staging, '.packs')) as { projectId: string; path: string };
     if (result.projectId !== options.projectId || path.resolve(result.path) !== path.join(staging,'root')) throw new Error(t('The server returned an invalid response.'));
-    const pkg = JSON.parse(await readFile(path.join(result.path,'package.json'),'utf8'));
+    const pkg = JSON.parse(await readFile(path.join(result.path,'steamharness.json'),'utf8'));
     const aggregate = await readProjectManifestFromDirectory(result.path, {});
     if (aggregate.projectId !== options.projectId || pkg.version !== options.version) throw new Error(t('The server returned an invalid response.'));
     const projects = [{projectId:result.projectId,projectName:aggregate.name,path:result.path,alreadyAvailable:false}];
@@ -138,7 +138,7 @@ export async function downloadServerProject(options: TransferOptions & { project
       options.signal.throwIfAborted();
       const relative = path.relative(staging, project.path);
       if (!relative || relative.startsWith('..') || path.isAbsolute(relative) || project.alreadyAvailable) { throw new Error(t('The server returned an invalid response.')); }
-      const manifest = JSON.parse(await readFile(path.join(project.path, 'package.json'), 'utf8'));
+      const manifest = JSON.parse(await readFile(path.join(project.path, 'steamharness.json'), 'utf8'));
       if (manifest.id !== project.projectId || typeof manifest.version !== 'string' || !/^\d+\.\d+\.\d+$/.test(manifest.version)
         || manifest.version !== options.version) { throw new Error(t('The server returned an invalid response.')); }
       const base = `${portableDirectoryPart(project.projectName)}-${manifest.version}`;

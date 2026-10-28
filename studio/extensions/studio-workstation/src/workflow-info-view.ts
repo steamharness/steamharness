@@ -56,7 +56,7 @@ export class InfoView implements vscode.WebviewViewProvider, vscode.Disposable {
   private async load(project: Project, generation: number): Promise<void> {
     let items: InfoItem[];
     try {
-      const bytes = await vscode.workspace.fs.readFile(vscode.Uri.joinPath(vscode.Uri.parse(project.uri), 'package.json'));
+      const bytes = await vscode.workspace.fs.readFile(vscode.Uri.joinPath(vscode.Uri.parse(project.uri), 'steamharness.json'));
       items = projectInfoItems(project, JSON.parse(new TextDecoder().decode(bytes)));
     } catch (error) {
       items = [{ id: 'error', label: t("Unable to read project information"), value: error instanceof Error ? error.message : String(error), icon: 'warning' }];

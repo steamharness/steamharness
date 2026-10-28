@@ -11,7 +11,7 @@ const cache=new Map<string,{time:number;access:ConfigurationAccess}>();
 
 /** Only Server responses grant an elevated project role. Failures never reuse an elevated role. */
 export async function resolveProjectConfigurationAccess(projectDir:string,connection?:ConfigurationConnection|null,fresh=false,options:{cacheDir?:string}={}):Promise<ConfigurationAccess> {
-  const manifest=JSON.parse(await readFile(path.join(projectDir,'package.json'),'utf8')) as {id?:string};
+  const manifest=JSON.parse(await readFile(path.join(projectDir,'steamharness.json'),'utf8')) as {id?:string};
   if(connection===undefined){
     const saved=readProjectCliAuthConfigSync();
     const serverUrl=process.env.STEAMHARNESS_SERVER_URL??saved.serverUrl;

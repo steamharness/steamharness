@@ -1,3 +1,4 @@
+import { writeProjectFixture } from '../../scripts/test-project-fixture.mjs';
 import { approveLocalFixtureDatabase, fixtureDatabaseHost } from './approved-database-fixture.mjs';
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
@@ -44,7 +45,7 @@ for (const language of languages) {
     await symlink(await realpath(path.join(original, 'node_modules/steamharness')), path.join(folder, 'node_modules/steamharness'), 'dir');
     await symlink(cli, path.join(folder, 'node_modules/@steamharness/cli'), 'dir');
     const manifest = JSON.parse(await readFile(path.join(folder, 'package.json'), 'utf8'));
-    const data = path.join(storageDir,'projects',manifest.id,'entries',manifest.steamHarness.defaultEntry);
+    const data = path.join(storageDir,'projects',manifest.id,'entries',manifest.defaultEntry);
     const database = await approveLocalFixtureDatabase(core,folder,manifest,path.join(directory,'databases'));
     const kv = database.kv;
     const document = await database.knowledge.createDocument({title:`${type} guide`,markdown:`# ${type} guide\n\nExact resource content.\n\n- Accessible preview`});
@@ -54,13 +55,13 @@ for (const language of languages) {
   const serverProjectId = conversation.manifest.id;
   const serverDocumentId = 'shared-guide';
   const remote = fixtureDatabaseHost(core);
-  const remoteEntry = conversation.manifest.steamHarness.defaultEntry;
+  const remoteEntry = conversation.manifest.defaultEntry;
   const shared = remote.create(serverProjectId,remoteEntry);
   const denied = remote.create(serverProjectId,remoteEntry,'denied');
   await shared.database.knowledge.createDocument({id:serverDocumentId,title:'Shared server guide',markdown:'# Shared server guide\n\nShared space permission verified.'});
   remote.revoke(denied.authorization.grant.grantId);
-  conversation.manifest.steamHarness.entries[0].databases.push(shared.requirement,denied.requirement);
-  await writeFile(path.join(conversation.folder,'package.json'),JSON.stringify(conversation.manifest));
+  conversation.manifest.entries[0].databases.push(shared.requirement,denied.requirement);
+  await writeProjectFixture(path.join(conversation.folder,'package.json'),JSON.stringify(conversation.manifest));
   await conversation.kv.setValue('card.value', { enabled: true, count: 7 });
   await board.kv.setValue('studio-kanban:tasks', [{ id: 'preview-task', title: 'Saved map marker', description: 'Card preview evidence',
     status: 'todo', priority: 'high', label: 'design' }]);
@@ -69,7 +70,7 @@ for (const language of languages) {
   await writeFile(path.join(conversation.folder, 'result.txt'), 'Card source file');
   const tool = (id, kind, target, title, extra = {}) => ({ id, contentType: 'json', collapsed: true,
     metadata: { kind: 'agent-part', partType: 'tool' }, content: { tool: kind === 'knowledge' ? 'kb_get_document' : 'resource_tool', status: 'success',
-      input: { documentId: target.documentId, key: target.key }, output: { details: { resourceCard: { ...(id.startsWith('server-') ? {} : { cardId: id }), kind, title, target:{entryId:target.projectId===board.manifest.id?board.manifest.steamHarness.defaultEntry:conversation.manifest.steamHarness.defaultEntry,database:target.source==='server'?'shared':'data',...target}, ...extra } } } } });
+      input: { documentId: target.documentId, key: target.key }, output: { details: { resourceCard: { ...(id.startsWith('server-') ? {} : { cardId: id }), kind, title, target:{entryId:target.projectId===board.manifest.id?board.manifest.defaultEntry:conversation.manifest.defaultEntry,database:target.source==='server'?'shared':'data',...target}, ...extra } } } } });
   const longTitle = 'Shared knowledge guide: ' + 'resource title with complete readable content '.repeat(5);
   const items = [
     tool('local-doc', 'knowledge', { source: 'local', projectId: conversation.manifest.id, documentId: conversation.document.id }, 'Local guide'),
@@ -191,7 +192,7 @@ for (const language of languages) {
     const account = await frameFor('#login-app'); await account.locator('#server-url').fill(serverUrl);
     await account.locator('#login-email').fill('cards@example.com'); await account.locator('#login-password').fill('offline-password'); await account.locator('#login-submit').click();
     await (await frameFor('#account-app')).locator('#display-name').filter({ hasText: 'Card Test' }).waitFor();
-    await page.getByRole('tab', { name: conversation.manifest.steamHarness.projectInfo.localizedNames[language === 'en' ? 'en' : 'zh-CN'], exact: true }).click();
+    await page.getByRole('tab', { name: conversation.manifest.projectInfo.localizedNames[language === 'en' ? 'en' : 'zh-CN'], exact: true }).click();
     conversationFrame = await frameFor('body[data-surface=editor] #message');
     await card('server-doc').locator('[data-action=inline]').click();
     await card('server-doc').frameLocator('iframe').locator('.markdown h1').filter({ hasText: 'Shared server guide' }).waitFor();
@@ -242,7 +243,7 @@ for (const language of languages) {
     await boardFrame.frameLocator('#kanban-preview').locator('.task h3').filter({ hasText: 'Saved map marker' }).waitFor();
     assert.equal(await boardFrame.locator('#workflow-param-title').inputValue(), 'Saved map');
     proof.checks.push('wide and narrow themes preserve card layout; separate preview uses a real VS Code window; Open Project navigates to the target board with its saved configuration');
-    await page.getByRole('tab', { name: conversation.manifest.steamHarness.projectInfo.localizedNames[language === 'en' ? 'en' : 'zh-CN'], exact: true }).click();
+    await page.getByRole('tab', { name: conversation.manifest.projectInfo.localizedNames[language === 'en' ? 'en' : 'zh-CN'], exact: true }).click();
     conversationFrame = await frameFor('body[data-surface=editor] #message');
     const serverPreview = card('server-doc').frameLocator('.resource-inline > iframe');
     await serverPreview.locator('.markdown h1').filter({ hasText: 'Shared server guide' }).waitFor();

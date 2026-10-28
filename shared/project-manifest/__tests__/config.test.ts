@@ -8,13 +8,13 @@ import { readProjectManifestFromDirectory, readProjectManifestFromDirectorySync,
 
 const first = "00000000-0000-4000-8000-000000000001";
 const second = "00000000-0000-4000-8000-000000000002";
-const pkg = { id: first, name: "configured", steamHarness: { defaultEntry: "one", entries: ["one", "two"].map(entryId => ({ entryId, type: "workflow", name: entryId, root: ".", entry: "index.ts", databases: ["data"] })) } };
+const pkg = { id: first, name: "configured", version: "0.1.0",  defaultEntry: "one", entries: ["one", "two"].map(entryId => ({ entryId, type: "workflow", name: entryId, root: ".", entry: "index.ts", databases: ["data"] }))  };
 const config = () => ({ version: 1, databases: { data: first } });
 
 it("changes every consumer by overriding a single alias without changing authored files", async () => {
   const root = await mkdtemp(path.join(os.tmpdir(), "project-config-"));
   try {
-    await writeFile(path.join(root, "package.json"), JSON.stringify(pkg));
+    await writeFile(path.join(root, "steamharness.json"), JSON.stringify(pkg));
     const authored = JSON.stringify(config());
     await writeFile(path.join(root, "config.json"), authored);
     const env = { STEAMHARNESS_PROJECT_CONFIG: JSON.stringify({ databases: { data: second } }) };
@@ -52,7 +52,7 @@ it("does not hide malformed files or follow configuration outside the project", 
   const root = await mkdtemp(path.join(os.tmpdir(), "project-config-symlink-"));
   const external = await mkdtemp(path.join(os.tmpdir(), "project-config-external-"));
   try {
-    await writeFile(path.join(root, "package.json"), JSON.stringify(pkg));
+    await writeFile(path.join(root, "steamharness.json"), JSON.stringify(pkg));
     await writeFile(path.join(root, "index.ts"), "export {};");
     await expect(readProjectManifestFromDirectory(root, {})).rejects.toThrow('unconfigured database alias "data"');
     expect(resolveProjectDeclarationEntrySync(root).registration.databases).toEqual(["data"]);

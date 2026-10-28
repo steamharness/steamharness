@@ -59,7 +59,7 @@ export const server = {
   invitationLoginRequired: "Account login is required to accept invitations.",
   projectConfigurationLoginRequired: "Account login is required to use project configurations.",
   kanbanLoginRequired: "Account login is required to use Kanban configurations.",
-  projectInfoObjectRequired: "steamHarness.projectInfo must be an object.",
+  projectInfoObjectRequired: "steamharness.json.projectInfo must be an object.",
   userNotFound: "User not found.",
   invitationNotFound: "Invitation not found.",
   deviceCodeNotFound: "Device code not found.",

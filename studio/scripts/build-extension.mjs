@@ -62,7 +62,7 @@ export async function buildExtension({ watch = false } = {}) {
   await fs.rm(assistantOutput, { recursive: true, force: true });
   await fs.mkdir(assistantOutput, { recursive: true });
   for (const entry of await fs.readdir(assistantSource, { withFileTypes: true })) {
-    if (entry.isFile() && (entry.name === 'package.json' || entry.name === 'configuration.json' || entry.name.endsWith('.ts') && !entry.name.endsWith('.config.ts'))) {
+    if (entry.isFile() && (entry.name === 'package.json' || entry.name === 'steamharness.json' || entry.name === 'configuration.json' || entry.name.endsWith('.ts') && !entry.name.endsWith('.config.ts'))) {
       await fs.copyFile(path.join(assistantSource, entry.name), path.join(assistantOutput, entry.name));
     }
   }
@@ -72,7 +72,7 @@ export async function buildExtension({ watch = false } = {}) {
   const controlOutput = path.join(assistantOutput, 'studio-control');
   await fs.mkdir(controlOutput, { recursive: true });
   for (const entry of await fs.readdir(controlSource, { withFileTypes: true })) {
-    if (entry.isFile() && (entry.name === 'configuration.json' || entry.name.endsWith('.ts'))) {
+    if (entry.isFile() && (entry.name === 'steamharness.json' || entry.name === 'configuration.json' || entry.name.endsWith('.ts'))) {
       await fs.copyFile(path.join(controlSource, entry.name), path.join(controlOutput, entry.name));
     }
   }
@@ -81,7 +81,7 @@ export async function buildExtension({ watch = false } = {}) {
   const analysisOutput = path.join(directory, 'dist/analysis');
   await fs.rm(analysisOutput, { recursive: true, force: true });
   await fs.mkdir(analysisOutput, { recursive: true });
-  for (const name of ['package.json', 'configuration.json', 'index.html', 'assets']) {
+  for (const name of ['package.json', 'steamharness.json', 'configuration.json', 'index.html', 'assets']) {
     await fs.cp(path.join(analysisSource, name), path.join(analysisOutput, name), { recursive: true });
   }
   for (const name of ['runtime', 'workflow-ui.js', 'workflow-ui.css']) {

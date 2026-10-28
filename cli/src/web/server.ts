@@ -1,3 +1,4 @@
+import {readProjectDeclarationFromDirectory} from '@steamharness/project-manifest/node';
 import { hydrateUserSettings, userSettingsJsonReplacer } from './user-settings';
 import {configurationCapability} from '@steamharness/project-configuration';
 import { getUserSettings, parseUserSettings, type UserSettings } from 'steamharness';
@@ -507,10 +508,11 @@ async function startProjectWebServer(options: WebOptions, credentials: { capabil
       const revision = ++projectCheckRevision;
       // Information edits affect the next check without reloading workflows or
       // changing this process's identity, history or execution descriptors.
-      const pkg = project.assistant ? undefined : JSON.parse(await readFile(path.join(project.folderPath, 'package.json'), 'utf8'));
+      const pkg = project.assistant ? undefined : JSON.parse(await readFile(path.join(project.folderPath, 'steamharness.json'), 'utf8'));
       if (!project.assistant && (typeof pkg?.id !== 'string' || pkg.id.toLowerCase() !== project.id.toLowerCase()
 )) throw new Error(t('The local project changed. Reopen it before checking again.'));
-      const projectInfo = pkg ? readProjectInfo(pkg) : project.projectInfo;
+      const declaration = pkg ? await readProjectDeclarationFromDirectory(project.folderPath) : undefined;
+      const projectInfo = declaration ? readProjectInfo(declaration.entries.find(entry => entry.entryId === project.entryId)) : project.projectInfo;
       if (revision !== projectCheckRevision) return [state(message.clientId), { type: 'project-server-checked', requestId: message.requestId }];
       project.projectInfo = projectInfo;
       projectServer!.state.blocking = project.databases.length > 0;

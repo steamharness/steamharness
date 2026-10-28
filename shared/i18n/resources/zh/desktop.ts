@@ -483,7 +483,7 @@ export const desktop: typeof EnDesktop = {
     dependencyDeliveryExternal: "external",
     dependencyReady: "可用",
     dependencyStateUnavailable: "状态不可用",
-    publishConfigurationMissing: "未找到完整的 steamHarness.release 配置，请先补充 package.json。",
+    publishConfigurationMissing: "未找到完整的 steamharness.json.builtinRelease 配置，请先补充 steamharness.json。",
     publishConfigurationJsonInvalid: "package.json 不是有效的 JSON，无法读取发行配置。",
     publishConfigurationFieldInvalid: "发行配置字段 {{field}} 无效。",
     publishConfigurationProjectConflict: "发行配置与项目声明冲突。",

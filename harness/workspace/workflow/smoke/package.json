@@ -1,5 +1,4 @@
 {
-  "id": "ea5fdf12-bbe5-4bf9-b033-3e496f17b7f5",
   "name": "@steamharness/smoke-workflow",
   "version": "0.1.0",
   "private": true,
@@ -14,21 +13,5 @@
   "devDependencies": {
     "@steamharness/cli": "link:../../../cli",
     "steamharness": "link:../../.."
-  },
-  "steamHarness": {
-    "projectInfo": {},
-    "entries": [
-      {
-        "entryId": "main",
-        "type": "conversation",
-        "name": "@steamharness/smoke-workflow",
-        "root": ".",
-        "entry": "index.ts",
-        "databases": [
-          "data"
-        ]
-      }
-    ],
-    "defaultEntry": "main"
   }
 }

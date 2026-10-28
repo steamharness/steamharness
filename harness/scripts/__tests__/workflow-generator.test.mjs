@@ -1,3 +1,4 @@
+import { writeProjectFixture } from '../test-project-fixture.mjs';
 import assert from "node:assert/strict";
 import { copyFile, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
@@ -28,10 +29,10 @@ test("workflow generator reads standalone Core and CLI versions", async () => {
     await mkdir(path.dirname(fixtureGenerator), { recursive: true });
     await mkdir(path.join(fixtureRoot, "workspace"));
     await copyFile(generator, fixtureGenerator);
-    await writeFile(path.join(fixtureRoot, "package.json"), JSON.stringify({ name: core.name, version: core.version }));
+    await writeProjectFixture(path.join(fixtureRoot, "package.json"), JSON.stringify({ name: core.name, version: core.version }));
     // Standalone consumers declare a CLI version independently of the SDK.
     const cliVersion = "7.8.9";
-    await writeFile(path.join(fixtureRoot, "workspace/package.json"), JSON.stringify({ devDependencies: { "@steamharness/cli": cliVersion } }));
+    await writeProjectFixture(path.join(fixtureRoot, "workspace/package.json"), JSON.stringify({ devDependencies: { "@steamharness/cli": cliVersion } }));
     await execFileAsync("python3", [fixtureGenerator, "standalone-check", "--dir", target]);
     const generated = JSON.parse(await readFile(path.join(target, "package.json"), "utf8"));
     const outputTypes = await readFile(path.join(target, "interface.ts"), "utf8");
@@ -43,11 +44,12 @@ test("workflow generator reads standalone Core and CLI versions", async () => {
       generated.devDependencies["@steamharness/cli"],
       cliVersion,
     );
-    assert.equal(generated.steamHarness.defaultEntry, "main");
-    assert.equal(generated.steamHarness.entries.length, 1);
-    assert.deepEqual(generated.steamHarness.entries[0], {
+    const project=JSON.parse(await readFile(path.join(target,"steamharness.json"),"utf8"));
+    assert.equal(project.defaultEntry, "main");
+    assert.equal(project.entries.length, 1);
+    assert.deepEqual(project.entries[0], {
       entryId: "main", type: "workflow", name: "standalone-check", root: ".",
-      entry: "index.ts", configuration: "configuration.json",
+      entry: "index.ts", configuration: "configuration.json", databases: [],
     });
   } finally {
     await rm(temporaryRoot, { recursive: true, force: true });

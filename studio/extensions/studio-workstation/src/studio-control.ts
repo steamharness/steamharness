@@ -3,8 +3,9 @@ import path from 'node:path';
 import { realpath, stat } from 'node:fs/promises';
 import type { AssistantWorkspaceFolder, Project } from './workflow-types';
 import { projectId } from './projects';
-import { readPackageManifest } from './project-catalog';
-import { readProjectManifest as parseProjectManifest, selectProjectEntry } from '@steamharness/project-manifest';
+import { readProjectDocument } from './project-catalog';
+import { selectProjectEntry } from '@steamharness/project-manifest';
+import { readProjectDeclarationFromDirectory } from '@steamharness/project-manifest/node';
 import type { StudioControlPermissionPolicy } from './studio-control-bridge';
 import { t } from './localization';
 
@@ -89,12 +90,12 @@ export function createStudioControlHandler(assistant: NonNullable<Project['assis
           if(input.projectId!==undefined) throw new Error(t('Use projectDir for local configurations.'));
           const directory=await allowedPath(requiredString('projectDir'));
           if(!(await stat(directory)).isDirectory())throw new Error(t('Studio Control requires a directory.'));
-          await allowedPath(path.join(directory,'package.json'));
+          await allowedPath(path.join(directory,'steamharness.json'));
           try { await allowedPath(path.join(directory,'configuration.json')); }
           catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error; }
-          const manifest=await readPackageManifest(vscode.Uri.file(directory));
+          const manifest=await readProjectDocument(vscode.Uri.file(directory));
           if(!projectId((manifest as {id?:unknown}|null)?.id))throw new Error(t('Studio Control requires a Workflow project directory.'));
-          selectProjectEntry(parseProjectManifest(manifest), entryId);
+          selectProjectEntry(await readProjectDeclarationFromDirectory(directory), entryId);
           target.projectDir=directory;
         } else {
           if(input.projectDir!==undefined)throw new Error(t('Use projectId for Server configurations.'));
@@ -104,7 +105,7 @@ export function createStudioControlHandler(assistant: NonNullable<Project['assis
           if(permissionPolicy!=='auto') {
             const allowed=new Set<string>();
             for(const root of assistant.roots) {
-              const manifest=await readPackageManifest(vscode.Uri.file(root.folderPath));
+              const manifest=await readProjectDocument(vscode.Uri.file(root.folderPath));
               const own=projectId((manifest as {id?:unknown}|null)?.id);if(own)allowed.add(own.toLowerCase());
             }
             if(!allowed.has(id))throw new Error(t('Server project must belong to the registered workspace.'));
@@ -143,11 +144,11 @@ export function createStudioControlHandler(assistant: NonNullable<Project['assis
       case 'studio.entries.get': {
         const directory = await allowedPath(optionalString('projectDir') ?? assistant.workdir);
         if (!(await stat(directory)).isDirectory()) { throw new Error(t('Studio Control requires a directory.')); }
-        await allowedPath(path.join(directory, 'package.json'));
-        const manifest = await readPackageManifest(vscode.Uri.file(directory));
+        await allowedPath(path.join(directory, 'steamharness.json'));
+        const manifest = await readProjectDocument(vscode.Uri.file(directory));
         const id = projectId((manifest as { id?: unknown } | null)?.id);
         if (!id) { throw new Error(t('Studio Control requires a Workflow project directory.')); }
-        const aggregate = parseProjectManifest(manifest);
+        const aggregate = await readProjectDeclarationFromDirectory(directory);
         assertAvailable();
         return { projectId: id, projectDir: directory, entries: aggregate.entries, defaultEntry: aggregate.defaultEntry };
       }

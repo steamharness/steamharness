@@ -1,3 +1,4 @@
+import { writeProjectFixture } from '../../scripts/test-project-fixture.mjs';
 import { createServer } from 'node:http';
 import { readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
@@ -24,8 +25,8 @@ export async function createKanbanTestServer() {
   return {connection:{serverUrl:`http://127.0.0.1:${server.address().port}`,accessToken:'offline-kanban-identity'},profile,
     async registerProject(folder){
       const pkg=JSON.parse(await readFile(path.join(folder,'package.json'),'utf8'));
-      const entry=pkg.steamHarness.entries[0];const approved=databases.create(pkg.id,entry.entryId,'data');
-      entry.databases=[approved.requirement];await writeFile(path.join(folder,'package.json'),JSON.stringify(pkg));return approved.database;
+      const entry=pkg.entries[0];const approved=databases.create(pkg.id,entry.entryId,'data');
+      entry.databases=[approved.requirement];await writeProjectFixture(path.join(folder,'package.json'),JSON.stringify(pkg));return approved.database;
     },
     get authenticatedRequests(){return authenticatedRequests;},
     close:async()=>{server.closeAllConnections();await new Promise(resolve=>server.close(resolve));},

@@ -101,6 +101,10 @@ export async function expectedCopies(root, options = {}) {
     .map((entry) => entry.name)
     .sort();
   for (const consumer of consumers) {
+    // Keep test fixtures local to each package so boundary checks remain strict.
+    for (const file of ["test-project-fixture.mjs", "test-project-fixture.d.mts"]) {
+      copies.push({ copy: `${consumer}/scripts/${file}`, source: `scripts/${file}` });
+    }
     for (const packageName of packages) {
       const sourceDirectory = path.join(sharedRoot, packageName);
       for (const file of await collectFiles(sourceDirectory)) {

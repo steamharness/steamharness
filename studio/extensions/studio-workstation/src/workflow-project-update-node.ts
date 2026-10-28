@@ -49,7 +49,7 @@ export async function upgradeServerProject(options: Parameters<typeof downloadSe
   afterReplace: (projects: DownloadedServerProject[]) => Promise<void>;
 }): Promise<UpdatedServerProject> {
   if (!/^\d+\.\d+\.\d+$/.test(options.expectedVersion) || !/^\d+\.\d+\.\d+$/.test(options.version)) {
-    throw new Error(t('Declare a valid project UUID and version in package.json first.'));
+    throw new Error(t('Declare a valid project UUID and version in steamharness.json first.'));
   }
   if (compareProjectVersions(options.expectedVersion, options.version) !== -1) { throw new Error(t('The target version must be newer than the local version.')); }
   const directory = path.resolve(options.directory);
@@ -59,7 +59,7 @@ export async function upgradeServerProject(options: Parameters<typeof downloadSe
   }
   const root = await realpath(directory), parent = path.dirname(root);
   const assertManifest = async (): Promise<void> => {
-    const manifest = JSON.parse(await readFile(path.join(root, 'package.json'), 'utf8'));
+    const manifest = JSON.parse(await readFile(path.join(root, 'steamharness.json'), 'utf8'));
     if (manifest.id !== options.projectId || manifest.version !== options.expectedVersion) {
       throw new Error(t('The local project changed. Check versions and try again.'));
     }
@@ -86,7 +86,7 @@ export async function upgradeServerProject(options: Parameters<typeof downloadSe
     await cp(source.directory, replacement, { recursive: true, errorOnExist: true, force: false,
       filter: () => { options.signal.throwIfAborted(); return true; } });
     await validateSource(replacement, options.signal);
-    const targetManifest = JSON.parse(await readFile(path.join(replacement, 'package.json'), 'utf8'));
+    const targetManifest = JSON.parse(await readFile(path.join(replacement, 'steamharness.json'), 'utf8'));
     if (targetManifest.id !== options.projectId || targetManifest.version !== options.version) { throw new Error(t('The server returned an invalid response.')); }
     await chmod(replacement, stat.mode & 0o7777);
     options.signal.throwIfAborted();

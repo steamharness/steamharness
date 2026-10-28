@@ -281,7 +281,7 @@ export class StudioStartController implements vscode.Disposable {
   }
 
   private async validateCreated(project: CreatedProject): Promise<void> {
-    const manifest = JSON.parse(new TextDecoder().decode(await vscode.workspace.fs.readFile(vscode.Uri.joinPath(vscode.Uri.file(project.directory), 'package.json'))));
+    const manifest = JSON.parse(new TextDecoder().decode(await vscode.workspace.fs.readFile(vscode.Uri.joinPath(vscode.Uri.file(project.directory), 'steamharness.json'))));
     if (manifest.id !== project.id) { throw new Error(t('Project identity changed. Open the project folder to review it.')); }
   }
 

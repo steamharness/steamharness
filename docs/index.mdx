@@ -90,7 +90,7 @@ Server 使用账号和固定的项目角色管理权限：
 ## 开发流程
 
 1. **创建项目**：在 Studio 中点击「新建项目」，选择 Workflow、Conversation 或 Kanban 类型和模板；也可以手动创建目录。
-根 `package.json.id` 是聚合唯一身份，`steamHarness.entries` 注册入口类型、名称、代码路径、配置与数据库需求。使用全新声明和数据，不兼容旧模型。
+根 `steamharness.json.id` 是聚合唯一身份，`steamharness.json.entries` 注册入口类型、名称、代码路径、配置与数据库需求。使用全新声明和数据，不兼容旧模型。
 3. **编写入口**：Workflow / Conversation 使用 Core Runtime API 声明入口和执行器；Kanban 直接编写 `index.html` 及其静态资源。
 4. **本地运行**：在 Studio 中打开项目并点击运行，或在终端执行 `steamharness structure .`、`steamharness run .`、`steamharness web .`。
 5. **上传到 Server**：使用 Workspace CLI 登录、打包源码并发布版本，然后在 Server Web 管理端管理项目、成员和数据。
@@ -102,7 +102,8 @@ Server 使用账号和固定的项目角色管理权限：
 
 ```text
 my-project/
-根 `package.json.id` 是聚合唯一身份，`steamHarness.entries` 注册入口类型、名称、代码路径、配置与数据库需求。使用全新声明和数据，不兼容旧模型。
+├── steamharness.json  # 项目身份与入口声明
+├── package.json       # npm 依赖与脚本
 ├── index.ts       # 入口与执行器
 └── ...
 ```
@@ -111,11 +112,12 @@ Kanban 项目只需要：
 
 ```text
 my-board/
+├── steamharness.json
 ├── package.json
 └── index.html
 ```
 
-根 `package.json.id` 是聚合唯一身份，`steamHarness.entries` 注册入口类型、名称、代码路径、配置与数据库需求。使用全新声明和数据，不兼容旧模型。
+根 `steamharness.json.id` 是聚合唯一身份，`steamharness.json.entries` 注册入口类型、名称、代码路径、配置与数据库需求。使用全新声明和数据，不兼容旧模型。
 
 ## 内置项目
 

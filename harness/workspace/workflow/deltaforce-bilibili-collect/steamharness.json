@@ -1,0 +1,20 @@
+{
+  "id": "e48aae56-7e59-45f5-adc3-f30e9c65d23c",
+  "name": "@steamharness/deltaforce-bilibili-collect-workflow",
+  "version": "0.1.0",
+  "projectInfo": {},
+  "entries": [
+    {
+      "entryId": "main",
+      "type": "workflow",
+      "name": "@steamharness/deltaforce-bilibili-collect-workflow",
+      "root": ".",
+      "entry": "index.ts",
+      "configuration": "configuration.json",
+      "databases": [
+        "data"
+      ]
+    }
+  ],
+  "defaultEntry": "main"
+}

@@ -1,0 +1,28 @@
+{
+  "id": "4483bda8-f96d-442c-b6c7-ef54631f6273",
+  "name": "database-space-demo",
+  "version": "0.1.0",
+  "defaultEntry": "writer",
+  "entries": [
+    {
+      "entryId": "writer",
+      "name": "Writer",
+      "type": "workflow",
+      "root": ".",
+      "entry": "index.ts",
+      "databases": [
+        "data"
+      ]
+    },
+    {
+      "entryId": "reader",
+      "name": "Reader",
+      "type": "workflow",
+      "root": ".",
+      "entry": "index.ts",
+      "databases": [
+        "data"
+      ]
+    }
+  ]
+}

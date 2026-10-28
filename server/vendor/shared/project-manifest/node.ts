@@ -1,28 +1,49 @@
 import { readFile, realpath, stat } from "node:fs/promises";
 import { readFileSync, realpathSync, statSync } from "node:fs";
 import path from "node:path";
-import { PROJECT_CONFIG_FILE, readProjectDeclaration, readProjectManifest, selectProjectEntry, type ProjectDeclaration, type ProjectEntryDeclaration, type ProjectEntry, type ProjectManifest } from "./index";
+import { PROJECT_MANIFEST_FILE, PROJECT_CONFIG_FILE, projectEntryConfigRoots, readProjectDeclaration, resolveProjectDatabases, selectProjectEntry, type ProjectDeclaration, type ProjectEntryDeclaration, type ProjectEntry, type ProjectManifest } from "./index";
 
+export function readProjectDocumentSync(projectDir: string): Record<string, unknown> {
+  const root = realpathSync(projectDir), file = realpathSync(path.join(root, PROJECT_MANIFEST_FILE));
+  assertWithin(root, file);
+  return JSON.parse(readFileSync(file, "utf8"));
+}
+export async function readProjectDocument(projectDir: string): Promise<Record<string, unknown>> {
+  const root = await realpath(projectDir), file = await realpath(path.join(root, PROJECT_MANIFEST_FILE));
+  assertWithin(root, file);
+  return JSON.parse(await readFile(file, "utf8"));
+}
+export function readProjectDeclarationFromDirectorySync(projectDir: string): ProjectDeclaration {
+  const root = realpathSync(projectDir), document = readProjectDocumentSync(root);
+  const children = Object.fromEntries(projectEntryConfigRoots(document).map(relative => {
+    const childRoot = realpathSync(path.join(root, relative)); assertWithin(root, childRoot);
+    const file = realpathSync(path.join(childRoot, PROJECT_MANIFEST_FILE)); assertWithin(childRoot, file);
+    return [relative, JSON.parse(readFileSync(file, "utf8"))];
+  }));
+  return readProjectDeclaration(document, children);
+}
+export async function readProjectDeclarationFromDirectory(projectDir: string): Promise<ProjectDeclaration> {
+  const root = await realpath(projectDir), document = await readProjectDocument(root);
+  const children = Object.fromEntries(await Promise.all(projectEntryConfigRoots(document).map(async relative => {
+    const childRoot = await realpath(path.join(root, relative)); assertWithin(root, childRoot);
+    const file = await realpath(path.join(childRoot, PROJECT_MANIFEST_FILE)); assertWithin(childRoot, file);
+    return [relative, JSON.parse(await readFile(file, "utf8"))];
+  })));
+  return readProjectDeclaration(document, children);
+}
 export function readProjectManifestFromDirectorySync(projectDir: string, env: NodeJS.ProcessEnv = process.env): ProjectManifest {
   const root = realpathSync(projectDir);
   let config: unknown;
-  try {
-    const file = realpathSync(path.join(root, PROJECT_CONFIG_FILE));
-    assertWithin(root, file);
-    config = JSON.parse(readFileSync(file, "utf8"));
-  } catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error; }
-  return readProjectManifest(JSON.parse(readFileSync(path.join(root, "package.json"), "utf8")), config, env);
+  try { const file = realpathSync(path.join(root, PROJECT_CONFIG_FILE)); assertWithin(root, file); config = JSON.parse(readFileSync(file, "utf8")); }
+  catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error; }
+  return resolveProjectDatabases(readProjectDeclarationFromDirectorySync(root), config, env);
 }
-
 export async function readProjectManifestFromDirectory(projectDir: string, env: NodeJS.ProcessEnv = process.env): Promise<ProjectManifest> {
   const root = await realpath(projectDir);
   let config: unknown;
-  try {
-    const file = await realpath(path.join(root, PROJECT_CONFIG_FILE));
-    assertWithin(root, file);
-    config = JSON.parse(await readFile(file, "utf8"));
-  } catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error; }
-  return readProjectManifest(JSON.parse(await readFile(path.join(root, "package.json"), "utf8")), config, env);
+  try { const file = await realpath(path.join(root, PROJECT_CONFIG_FILE)); assertWithin(root, file); config = JSON.parse(await readFile(file, "utf8")); }
+  catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error; }
+  return resolveProjectDatabases(await readProjectDeclarationFromDirectory(root), config, env);
 }
 
 export interface ResolvedProjectEntry {
@@ -40,7 +61,7 @@ export interface ResolvedProjectDeclarationEntry extends Omit<ResolvedProjectEnt
 /** Resolve paths for metadata/configuration reads without depending on deployment IDs. */
 export function resolveProjectDeclarationEntrySync(projectDir: string, entryId?: string): ResolvedProjectDeclarationEntry {
   const projectRoot = realpathSync(projectDir);
-  const manifest = readProjectDeclaration(JSON.parse(readFileSync(path.join(projectRoot, "package.json"), "utf8")));
+  const manifest = readProjectDeclarationFromDirectorySync(projectRoot);
   const registration = selectProjectEntry(manifest, entryId);
   return { projectDir: projectRoot, manifest, registration, ...resolveEntryFilesSync(projectRoot, registration) };
 }

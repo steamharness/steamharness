@@ -6,11 +6,9 @@ import {
   getProjectCardColorContrastRatio,
   getProjectCardColorRelativeLuminance,
   normalizeProjectAppCardMetadata,
-  readProjectAppCardMetadataFromPackageJson,
-  readProjectCardMetadataFromPackageJson,
+  readProjectCardMetadata,
   validateProjectAppCardMetadata,
-  writeProjectAppCardMetadataToPackageJson,
-  writeProjectCardMetadataToPackageJson,
+  writeProjectCardMetadata,
 } from "@steamharness/project-card-metadata";
 
 describe("project-card-metadata package", () => {
@@ -26,16 +24,15 @@ describe("project-card-metadata package", () => {
     }
   });
   it("reads namespaced projectCard metadata from package.json", () => {
-    const metadata = readProjectCardMetadataFromPackageJson(
+    const metadata = readProjectCardMetadata(
       {
-        steamHarness: {
+
           projectCard: {
             icon: "bot",
             iconUrl: "https://example.com/icon.png",
             iconColor: "#f8fafc",
             iconBackgroundColor: "#7c3aed",
           },
-        },
       },
       "workflow",
     );
@@ -48,32 +45,10 @@ describe("project-card-metadata package", () => {
     });
   });
 
-  it("keeps reading legacy appCard metadata from package.json", () => {
-    const metadata = readProjectAppCardMetadataFromPackageJson(
-      {
-        steamHarness: {
-          appCard: {
-            icon: "bot",
-            iconUrl: "https://example.com/icon.png",
-            iconBackgroundColor: "#7c3aed",
-          },
-        },
-      },
-      "workflow",
-    );
-
-    expect(metadata).toEqual({
-      icon: "bot",
-      iconUrl: "https://example.com/icon.png",
-      iconColor: "#ffffff",
-      iconBackgroundColor: "#7c3aed",
-    });
-  });
-
   it("prefers projectCard over legacy appCard metadata", () => {
-    const metadata = readProjectCardMetadataFromPackageJson(
+    const metadata = readProjectCardMetadata(
       {
-        steamHarness: {
+
           appCard: {
             icon: "workflow",
             iconBackgroundColor: "#2563eb",
@@ -82,7 +57,6 @@ describe("project-card-metadata package", () => {
             icon: "message-circle",
             iconBackgroundColor: "#0f766e",
           },
-        },
       },
       "workflow",
     );
@@ -162,14 +136,13 @@ describe("project-card-metadata package", () => {
   });
 
   it("rejects the removed projectCard kind field", () => {
-    expect(() => readProjectCardMetadataFromPackageJson({
-      steamHarness: {
+    expect(() => readProjectCardMetadata({
+
         projectCard: {
           kind: "conversation",
           icon: "message-circle",
           iconBackgroundColor: "#0f766e",
         },
-      },
     }, "conversation")).toThrow(/projectCard\.kind was removed/);
 
     expect(() => validateProjectAppCardMetadata({
@@ -179,14 +152,12 @@ describe("project-card-metadata package", () => {
     })).toThrow(/projectCard\.kind was removed/);
   });
 
-  it("writes steamHarness.projectCard without removing existing steamHarness fields", () => {
+  it("writes steamharness.json.projectCard without removing existing document fields", () => {
     expect(
-      writeProjectCardMetadataToPackageJson(
+      writeProjectCardMetadata(
         {
           id: "demo",
-          steamHarness: {
             existing: true,
-          },
         },
         {
           icon: "database",
@@ -196,19 +167,17 @@ describe("project-card-metadata package", () => {
       ),
     ).toEqual({
       id: "demo",
-      steamHarness: {
         existing: true,
         projectCard: {
           icon: "database",
           iconColor: "#f8fafc",
           iconBackgroundColor: "#475569",
         },
-      },
     });
   });
 
   it("legacy App writer aliases the projectCard package field", () => {
-    const nextPackageJson = writeProjectAppCardMetadataToPackageJson(
+    const nextPackageJson = writeProjectCardMetadata(
       { id: "demo" },
       {
         icon: "database",
@@ -219,13 +188,11 @@ describe("project-card-metadata package", () => {
 
     expect(nextPackageJson).toEqual({
       id: "demo",
-      steamHarness: {
         projectCard: {
           icon: "database",
           iconColor: "#111827",
           iconBackgroundColor: "#475569",
         },
-      },
     });
   });
 

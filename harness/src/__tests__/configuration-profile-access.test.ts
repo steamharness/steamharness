@@ -1,3 +1,4 @@
+import { writeProjectFixture } from '../../scripts/test-project-fixture.mjs';
 import { configurationTemplatePath } from "../configuration";
 import { configurationFixtureId, declareConfigurationFixture, writeConfigurationFixtureManifest, configurationFixtureStore } from "./configuration-fixture";
 import assert from 'node:assert/strict';
@@ -13,7 +14,7 @@ test('restricted local stores isolate accounts, preserve overrides, and reject a
   const project=await mkdtemp(path.join(tmpdir(),'configuration-profile-'));
   try{
     await declareConfigurationFixture(project);
-    await writeFile(path.join(project,'package.json'),JSON.stringify({name:"aggregate-fixture",steamHarness:{defaultEntry:"main",entries:[{entryId:"main",name:"Main",type:"workflow",root:".",entry:"index.ts",databases:[],configuration:"configuration.json"}]},id:'00000000-0000-4000-8000-000000000061'}));
+    await writeProjectFixture(path.join(project,'package.json'),JSON.stringify({name:"aggregate-fixture",version: "0.1.0", defaultEntry:"main",entries:[{entryId:"main",name:"Main",type:"workflow",root:".",entry:"index.ts",databases:[],configuration:"configuration.json"}],id:'00000000-0000-4000-8000-000000000061'}));
     await writeFile(path.join(project,'configuration.json'),JSON.stringify({version:2,fields:[{name:'mode',type:'string'},{name:'model',type:'string'}],profilePolicy:{version:1,defaultProfileKey:'ask',manageMinimumRole:'developer',profiles:[{key:'ask',name:'Ask',minimumRole:'guest',fixedValues:{mode:'ask'}},{key:'build',name:'Build',minimumRole:'developer',fixedValues:{mode:'build'}}]}}));
     const access:ConfigurationAccess={subject:'server:alice',role:'developer',online:true};
     const options={rootDir:path.join(project,'store'),access};
@@ -47,7 +48,7 @@ test('project role comes from authenticated Server access and a failed refresh n
   const original=globalThis.fetch;
   try{
     await declareConfigurationFixture(project);
-    await writeFile(path.join(project,'package.json'),JSON.stringify({name:"aggregate-fixture",steamHarness:{defaultEntry:"main",entries:[{entryId:"main",name:"Main",type:"workflow",root:".",entry:"index.ts",databases:[],configuration:"configuration.json"}]},id:'00000000-0000-4000-8000-000000000062'}));
+    await writeProjectFixture(path.join(project,'package.json'),JSON.stringify({name:"aggregate-fixture",version: "0.1.0", defaultEntry:"main",entries:[{entryId:"main",name:"Main",type:"workflow",root:".",entry:"index.ts",databases:[],configuration:"configuration.json"}],id:'00000000-0000-4000-8000-000000000062'}));
     globalThis.fetch=async(input)=>new Response(JSON.stringify({errCode:0,data:String(input).endsWith('/api/auth/me')?{profile:{userId:'alice'}}:{access:{effectiveRole:'developer'}}}));
     const connection={serverUrl:'https://configuration.test',accessToken:project};
     const options={cacheDir:path.join(project,'identity-cache')};

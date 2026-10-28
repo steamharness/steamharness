@@ -17,11 +17,11 @@ const values = items => Object.fromEntries(Object.values(fields(items)).filter(i
 
 test('project declarations use the Desktop manifest fields and preserve extended identifiers', () => {
   const items = projectInfoItems(project(), { name: '@example/project', version: '1.2.3', description: 'Description',
-    steamHarness: { projectInfo: {
+     projectInfo: {
       declarations: ['multilingual', 'multiplatform', 'custom-declaration', 'constructor'],
       localizedNames: { 'zh-CN': '\u793a\u4f8b', en: 'Example', ja: '\u4f8b' },
       platformSupport: { mode: 'specific', platforms: ['macos', 'web', 'linux', 'constructor'] },
-    } },
+    } ,
   });
   assert.deepEqual(values(items), {
     name: '@example/project', type: 'Workflow', version: '1.2.3', uuid: project().id, path: '/Example', description: 'Description',

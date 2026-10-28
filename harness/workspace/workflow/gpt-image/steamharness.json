@@ -1,0 +1,18 @@
+{
+  "id": "4251d6de-df9b-4e5b-ac7d-f240dc391948",
+  "name": "@steamharness/gpt-image-workflow",
+  "version": "0.1.0",
+  "projectInfo": {},
+  "entries": [
+    {
+      "entryId": "main",
+      "type": "conversation",
+      "name": "@steamharness/gpt-image-workflow",
+      "root": ".",
+      "entry": "index.ts",
+      "databases": [],
+      "configuration": "configuration.json"
+    }
+  ],
+  "defaultEntry": "main"
+}

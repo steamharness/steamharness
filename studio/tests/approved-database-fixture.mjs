@@ -1,3 +1,4 @@
+import { writeProjectFixture } from '../../scripts/test-project-fixture.mjs';
 import { randomUUID } from 'node:crypto';
 import { writeFile } from 'node:fs/promises';
 import path from 'node:path';
@@ -6,14 +7,14 @@ const permissions = {kv:{read:{mode:'all'},write:{mode:'all'}},knowledge:{read:{
 
 /** Test host explicitly approves a fresh space; example manifests remain unbound. */
 export async function approveLocalFixtureDatabase(core, folder, manifest, directory) {
-  const entry = manifest.steamHarness.entries.find(item => item.entryId === manifest.steamHarness.defaultEntry);
+  const entry = manifest.entries.find(item => item.entryId === manifest.defaultEntry);
   const registry = new core.LocalDatabaseRegistry(directory);
   const request = registry.request({projectId:manifest.id,entryId:entry.entryId,alias:'data',permissions,target:{kind:'create',name:'UI fixture'}});
   const {databaseId} = registry.review(request.requestId,{approve:true});
   const requirements = [{alias:'data',databaseId}];
   entry.databases = ['data'];
   await writeFile(path.join(folder,'config.json'),JSON.stringify({version:1,databases:{data:databaseId}}));
-  await writeFile(path.join(folder,'package.json'),JSON.stringify(manifest));
+  await writeProjectFixture(path.join(folder,'package.json'),JSON.stringify(manifest));
   return core.createDatabasesContext({projectId:manifest.id,entryId:entry.entryId,requirements,resolver:core.createLocalDatabaseResolver(registry)}).get('data');
 }
 

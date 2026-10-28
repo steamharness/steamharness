@@ -9,8 +9,8 @@ import { i18n } from '@steamharness/i18n';
 /** Replace only the reviewed manifest's ID; never overwrite edits made while requesting an ID. */
 export async function writeProjectIdentity(directory: string, source: string, projectId: string, signal?: AbortSignal): Promise<void> {
   if (!isProjectUuid(projectId)) { throw new Error(i18n.t('projectCreationIdMismatch', { ns: 'cli' })); }
-  const manifest = JSON.parse(source), filename = path.join(directory, 'package.json');
-  const temporary = path.join(directory, `.package-identity-${randomUUID()}.tmp`);
+  const manifest = JSON.parse(source), filename = path.join(directory, 'steamharness.json');
+  const temporary = path.join(directory, `.steamharness-identity-${randomUUID()}.tmp`);
   signal?.throwIfAborted();
   // SQLite releases its OS lock on process exit, including a crashed window.
   // Keep lock files outside the project so they cannot enter a source upload.

@@ -43,11 +43,12 @@ describe("packaged workflow generator", () => {
       expect(outputTypes).toContain('placement?: "inline" | "composer-right";');
       expect(outputTypes).toContain('export interface RingContent');
 
-      expect(generated.steamHarness.defaultEntry).toBe("main");
-      expect(generated.steamHarness.entries).toEqual([{ entryId: "main", type: "workflow", name: "storage-contract", root: ".", entry: "index.ts", configuration: "configuration.json" }]);
-      expect(generated.steamHarness).not.toHaveProperty("projectType");
-      expect(generated.steamHarness).not.toHaveProperty("release");
-      expect(generated.steamHarness.projectCard).toEqual({
+      const project=JSON.parse(await readFile(path.join(target,"steamharness.json"),"utf8"));
+      expect(project.defaultEntry).toBe("main");
+      expect(project.entries).toEqual([{ entryId: "main", type: "workflow", name: "storage-contract", root: ".", entry: "index.ts", configuration: "configuration.json", databases: [] }]);
+      expect(generated).not.toHaveProperty("projectType");
+      expect(generated).not.toHaveProperty("release");
+      expect(project.projectCard).toEqual({
         icon: "workflow",
         iconBackgroundColor: "#2563eb",
       });

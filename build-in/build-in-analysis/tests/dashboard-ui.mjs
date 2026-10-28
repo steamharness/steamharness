@@ -38,7 +38,7 @@ export const executor = steamharness.defineExecutor({ projectType: 'workflow', d
 async function project(name) {
   const directory = path.join(data, name); await mkdir(directory);
   const manifest = { id: randomUUID(), name, type: 'module', devDependencies: { 'steamharness': '0.1.2', '@steamharness/cli': '0.1.2' },
-    steamHarness: { defaultEntry:'main',entries:[{entryId:'main',type:'workflow',name,root:'.',entry:'index.ts',databases:[]}] } };
+    version: "0.1.0",  defaultEntry:'main',entries:[{entryId:'main',type:'workflow',name,root:'.',entry:'index.ts',databases:[]}]  };
   await writeFile(path.join(directory, 'package.json'), JSON.stringify(manifest)); await writeFile(path.join(directory, 'index.ts'), source);
   await symlink(dependencies, path.join(directory, 'node_modules'), process.platform === 'win32' ? 'junction' : 'dir');
   return { id: manifest.id, name, uri: pathToFileURL(directory).href, folderPath: directory, projectType: 'workflow', inWorkspace: true };

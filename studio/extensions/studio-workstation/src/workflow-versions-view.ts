@@ -280,7 +280,7 @@ export class VersionsView implements vscode.WebviewViewProvider, vscode.Disposab
     if (!vscode.workspace.isTrusted) { throw new Error(t('Trust the current workspace first.')); }
     const project = this.localProjects.find(project => project.uri === target?.uri) ?? (!target?.uri ? this.preferred : undefined);
     if (!project) { return; }
-    const manifestUri = vscode.Uri.joinPath(vscode.Uri.parse(project.uri), 'package.json');
+    const manifestUri = vscode.Uri.joinPath(vscode.Uri.parse(project.uri), 'steamharness.json');
     const document = vscode.workspace.textDocuments.find(entry => entry.uri.toString() === manifestUri.toString());
     let version = '';
     try {
@@ -347,17 +347,17 @@ export class VersionsView implements vscode.WebviewViewProvider, vscode.Disposab
     assertAvailable();
     const readManifest = async (): Promise<void> => {
       let manifest: { id?: string; version?: string } | undefined;
-      try { manifest = JSON.parse(new TextDecoder().decode(await vscode.workspace.fs.readFile(vscode.Uri.joinPath(vscode.Uri.parse(project.uri), 'package.json')))); }
-      catch { throw new Error(t('Declare a valid project UUID and version in package.json first.')); }
+      try { manifest = JSON.parse(new TextDecoder().decode(await vscode.workspace.fs.readFile(vscode.Uri.joinPath(vscode.Uri.parse(project.uri), 'steamharness.json')))); }
+      catch { throw new Error(t('Declare a valid project UUID and version in steamharness.json first.')); }
       if (manifest?.id !== project.id || typeof manifest.version !== 'string' || !/^\d+\.\d+\.\d+$/.test(manifest.version)) {
-        throw new Error(t('Declare a valid project UUID and version in package.json first.'));
+        throw new Error(t('Declare a valid project UUID and version in steamharness.json first.'));
       }
       if (manifest.version !== session.version) { throw new Error(t('Project version changed. Try uploading again.')); }
     };
     await readManifest();
     try {
       if ((await new ProjectServerClient(session.connection).versions(project.id, signal)).versions.some(entry => entry.version === session.version)) {
-        throw new Error(t('Version {0} already exists. Change package.json version before uploading.', session.version));
+        throw new Error(t('Version {0} already exists. Change steamharness.json version before uploading.', session.version));
       }
     } catch (error) { if (error instanceof AuthError && error.status === 404) { throw new Error(t('This project ID is not registered. Open the project and apply for a new application ID before uploading.')); } throw error; }
     assertAvailable();

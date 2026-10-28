@@ -61,7 +61,7 @@ export const server: typeof Enserver = {
   invitationLoginRequired: "接受邀请前需要登录账号。",
   projectConfigurationLoginRequired: "使用项目配置前需要登录账号。",
   kanbanLoginRequired: "使用看板配置前需要登录账号。",
-  projectInfoObjectRequired: "steamHarness.projectInfo 必须是对象。",
+  projectInfoObjectRequired: "steamharness.json.projectInfo 必须是对象。",
   userNotFound: "用户不存在。",
   invitationNotFound: "邀请不存在。",
   deviceCodeNotFound: "设备代码不存在。",

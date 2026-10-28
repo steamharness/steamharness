@@ -12,7 +12,7 @@ it("runs same-type aggregate entries only after explicit independent approvals a
     await cp(path.resolve(import.meta.dirname, "../workflow/database-space-demo"), projectDir, { recursive: true });
     const registry = new LocalDatabaseRegistry(path.join(directory, "host"));
     const databaseResolver = createLocalDatabaseResolver(registry);
-    const manifest = JSON.parse(await readFile(path.join(projectDir, "package.json"), "utf8"));
+    const manifest = JSON.parse(await readFile(path.join(projectDir, "steamharness.json"), "utf8"));
     const projectId = manifest.id;
     const run = async (entryId: string, action: string, target = projectDir) => {
       const report = await runLocalProjectWithReport({ projectDir: target, entryId, args: ["--action", action, "--value", "shared"], databaseResolver });
@@ -42,7 +42,7 @@ it("runs same-type aggregate entries only after explicit independent approvals a
     const otherDir = path.join(directory, "other");
     await cp(projectDir, otherDir, { recursive: true });
     manifest.id = randomUUID();
-    await writeFile(path.join(otherDir, "package.json"), JSON.stringify(manifest));
+    await writeFile(path.join(otherDir, "steamharness.json"), JSON.stringify(manifest));
     const other = await grant(otherDir, manifest.id, "reader");
     expect((await run("reader", "read", otherDir))?.value).toMatchObject({ kv: "shared", document: { markdown: "shared" } });
     registry.revoke(other.grant.grantId);

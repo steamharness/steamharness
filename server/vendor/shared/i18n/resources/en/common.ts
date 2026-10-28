@@ -848,10 +848,10 @@ export const common = {
         dependenciesMissing: "Workflow project dependencies are not installed. Project: {{projectPath}}. Missing: {{missing}}. Install dependencies manually in this project directory before running it.",
       },
       validation: {
-        onlyProjectPresets: "Only Workflow projects can declare steamHarness.schedulePresets.",
-        presetsArrayMax: "steamHarness.schedulePresets must be an array with at most {{max}} items.",
+        onlyProjectPresets: "Only Workflow projects can declare schedulePresets.",
+        presetsArrayMax: "schedulePresets must be an array with at most {{max}} items.",
         invalidPresetId: "{{field}} is invalid.",
-        duplicatePresetId: "steamHarness.schedulePresets contains duplicate id \"{{id}}\".",
+        duplicatePresetId: "schedulePresets contains duplicate id \"{{id}}\".",
         invalidTriggerKind: "{{field}} must be \"window-interval\" or \"cron\".",
         weekdaysNonEmpty: "{{field}} must be a non-empty array.",
         weekdayRange: "{{field}} must be an integer from 1 to 7.",

@@ -1104,7 +1104,7 @@ paths:
       tags:
         - Admin Projects
       summary: Update project card metadata
-      description: Update display metadata only. Entry types come from steamHarness.entries and cannot be changed
+      description: Update display metadata only. Entry types come from steamharness.json entries and cannot be changed
         through this API.
       operationId: updateProjectCard
       parameters:
@@ -1691,7 +1691,7 @@ paths:
         - Admin Projects
       summary: Synchronize the default project name and presentation declarations
       description: >
-        Synchronizes the local root `package.json` `name` and `steamHarness.projectInfo` to an already bound
+        Synchronizes `name` and `projectInfo` from the local root `steamharness.json` to an already bound
 
         project. Presentation declarations and platforms are display metadata and do not restrict source
         upload or download.

@@ -87,7 +87,7 @@ const STABLE_ERROR_MESSAGE_KEYS: Readonly<Record<string, string>> = Object.freez
   "Login is required to use project configurations.": "server:projectConfigurationLoginRequired",
   "Account login is required to use Kanban configurations.": "server:kanbanLoginRequired",
   "Login is required to use Kanban configurations.": "server:kanbanLoginRequired",
-  "steamHarness.projectInfo must be an object.": "server:projectInfoObjectRequired",
+  "steamharness.json.projectInfo must be an object.": "server:projectInfoObjectRequired",
   "User not found.": "server:userNotFound",
   "Invitation not found.": "server:invitationNotFound",
   "Device code not found.": "server:deviceCodeNotFound",

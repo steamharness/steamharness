@@ -49,5 +49,5 @@ const outputNode = workflow.createOutputNode<Input, OutputPayload>({
 | The host language is the only source | Do not infer a language from the browser, operating system, or a project-defined environment variable. |
 | Simplified Chinese is the default | CLI, local processes, and older hosts without an injected locale consistently return `"zh-CN"`. |
 | Treat visible content consistently | A localized project should maintain output, errors, dates, numbers, and accessibility copy together, with a Chinese fallback for unknown or failed cases. |
-| Static manifests do not switch at runtime | `package.json`, entrypoint titles, and parameter definitions are parsed before execution and retain the project default language. |
+| Static manifests do not switch at runtime | `steamharness.json`, entrypoint titles, and parameter definitions are parsed before execution and retain the project default language. |
 | Kanban uses its Bridge | A static Kanban page has no `workflow` global. Call `window.steamHarnessKanban.getRuntimeLocale()` instead. |

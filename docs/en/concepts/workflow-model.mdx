@@ -5,7 +5,11 @@ description: "How steamharness models workflows, nodes, providers, executors, an
 
 # Workflow model
 
-One aggregate project uses its root `package.json.id`. Every registered entry has an independent `entryId`, type, code root, entry file, configuration and database requirements. Types may repeat; `defaultEntry` selects the default window. Workflow operations use the separate `entrypointId`.
+One aggregate project uses its root `steamharness.json.id`. Every registered entry has an independent `entryId`, type, code root, entry file, configuration and database requirements. Types may repeat; `defaultEntry` selects the default window. Workflow operations use the separate `entrypointId`.
+
+The root `steamharness.json` is the only project configuration source. `package.json.id` and `package.json.steamHarness` are not read or supported. npm names and versions may differ from project names and versions. Root fields are `id`, `name`, `version`, `defaultEntry`, `entries`, and optional `description`, `projectCard`, `projectInfo`, `builtinRelease`.
+
+The parent registers a child with only `{ "entryId": "agent", "root": "agent" }`. The child’s `steamharness.json` provides `type`, `name`, `entry`, `configuration`, `projectCard`, `projectInfo`, `databases`, and `schedulePresets`. Children cannot declare identity, version, or nested entries; paths are relative to the child directory. Unregistered children are never scanned or loaded. Root entries use `root: "."` and inline settings. Child references cannot override fields or inherit root settings. All referenced configuration files are required during upload, download, and built-in distribution.
 
 ## Runtime API
 
@@ -251,9 +255,9 @@ Selecting or requesting an entrypoint creates a run only for that entrypoint; it
 
 When any explicit group exists, the local Run workspace renders entrypoints in collapsible groups. Explicit orders sort ascending with first-seen order as the tie breaker; groups without an order follow in first-seen order, and entries without a group use a localized **Ungrouped** group. The default group is open on first entry, and starting a run or receiving a new active/result entry reopens its group. Only group expansion is persisted by stable `projectId + resolved target`. Projects without groups retain the existing flat layout. CLI and local schedules continue to use entrypoint IDs.
 
-Projects can use `package.json.steamHarness.schedulePresets` to propose schedules for an entrypoint. Structure validation checks the preset ID, entrypoint, time zone, trigger rule, and JSON parameters, then exposes the presets to the local host. Presets are not enabled automatically. See [Workflow scheduled runs](/en/concepts/workflow-schedules).
+Projects can use `steamharness.json.entries[].schedulePresets` to propose schedules for an entrypoint. Structure validation checks the preset ID, entrypoint, time zone, trigger rule, and JSON parameters, then exposes the presets to the local host. Presets are not enabled automatically. See [Workflow scheduled runs](/en/concepts/workflow-schedules).
 
-Conversation executor keeps a single entry, places fields such as `workflow`, `params`, and `createInput` directly on executor, and does not declare or accept entrypoint. `projectType` of Executor only allows `"workflow"` or `"conversation"`. Kanban registers static HTML in root `steamHarness.entries` and does not export an executor.
+Conversation executor keeps a single entry, places fields such as `workflow`, `params`, and `createInput` directly on executor, and does not declare or accept entrypoint. `projectType` of Executor only allows `"workflow"` or `"conversation"`. Kanban registers static HTML in root `steamharness.json.entries` and does not export an executor.
 
 `createInput` receives `projectName`, `projectDir`, `args`, `paramValues`, `config`, `abortSignal`, and optional `conversationId`. Workflow also receives the selected `entrypointId` and `entrypointTitle`; the same fields are written to `RunContext.metadata`, reports, and local run records. The local host converts parameters to workflow input through the selected execution configuration. Cancellation propagates `abortSignal` to the workflow context so long-running provider and SDK calls can stop promptly.
 
@@ -296,48 +300,84 @@ Local CLI `debug-node` uses the selected entrypoint registry to debug one node. 
 
 ## Package structure
 
+`package.json`
+
+```json
+{
+  "name": "workspace-example",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module"
+}
+```
+
+`steamharness.json`
+
 ```json
 {
   "id": "00000000-0000-4000-8000-000000000001",
   "name": "workspace-example",
   "version": "1.0.0",
-  "private": true,
-  "type": "module",
-  "steamHarness": {
-    "defaultEntry": "agent",
-    "entries": [
-      {
-        "entryId": "agent",
-        "type": "conversation",
-        "name": "Assistant",
-        "projectCard": {
-          "icon": "bot",
-          "iconColor": "#ffffff",
-          "iconBackgroundColor": "#0f766e"
-        },
-        "root": "agent",
-        "databases": ["data"],
-        "entry": "index.ts"
-      },
-      {
-        "entryId": "database",
-        "type": "workflow",
-        "name": "Database operations",
-        "root": "database",
-        "databases": ["data"],
-        "entry": "index.ts",
-        "configuration": "configuration.json"
-      },
-      {
-        "entryId": "map",
-        "type": "kanban",
-        "name": "Map",
-        "root": "map",
-        "databases": ["data"],
-        "entry": "dist/index.html"
-      }
-    ]
-  }
+  "defaultEntry": "agent",
+  "entries": [
+    {
+      "entryId": "agent",
+      "root": "agent"
+    },
+    {
+      "entryId": "database",
+      "root": "database"
+    },
+    {
+      "entryId": "map",
+      "root": "map"
+    }
+  ]
+}
+```
+
+`agent/steamharness.json`
+
+```json
+{
+  "type": "conversation",
+  "name": "Assistant",
+  "projectCard": {
+    "icon": "bot",
+    "iconColor": "#ffffff",
+    "iconBackgroundColor": "#0f766e"
+  },
+  "databases": [
+    "data"
+  ],
+  "entry": "index.ts"
+}
+```
+
+`database/steamharness.json`
+
+```json
+{
+  "type": "workflow",
+  "name": "Database operations",
+  "databases": [
+    "data"
+  ],
+  "entry": "index.ts",
+  "configuration": "configuration.json"
+}
+```
+
+`map/steamharness.json`
+
+```json
+{
+  "type": "kanban",
+  "name": "Map",
+  "databases": [
+    "data"
+  ],
+  "entry": "dist/index.html"
 }
 ```
 
@@ -352,7 +392,7 @@ Root `config.json`:
 }
 ```
 
-Each entry can configure `projectCard.icon`, `iconColor` and `iconBackgroundColor`, using `#RRGGBB` colors. Omitted properties use entry type defaults and do not inherit the root avatar. Entry lists carry these icons to window panels, tabs, Server and Store. The root `steamHarness.projectCard` identifies the aggregate. Only root `package.json.version` owns a version; entry declarations reject `version`.
+Each entry can configure `projectCard.icon`, `iconColor` and `iconBackgroundColor`, using `#RRGGBB` colors. Omitted properties use entry type defaults and do not inherit the root avatar. Entry lists carry these icons to window panels, tabs, Server and Store. The root `steamharness.json.projectCard` identifies the aggregate. Only root `steamharness.json.version` owns a version; entry declarations reject `version`.
 
 Paths must stay inside the aggregate directory and cannot contain `..`, absolute paths or host data directories. Static analysis scans each registered entry independently, allowing different executors in one aggregate. Each Workflow or Conversation executor must match its registered type; Kanban points to built HTML. Only the root owns the SteamHarness identity. Child directories retain ordinary npm packages and dependencies.
 

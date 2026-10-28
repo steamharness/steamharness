@@ -26,22 +26,29 @@ Studio 在用户级 `studio.agent.permissionPolicy` 保存设置，默认 `auto`
 
 ## 项目名称与展示声明
 
-项目源码只在 `package.json` 声明展示信息。根 `name` 是必填默认名称，也是旧宿主的回退；中英文名称、手工声明和展示平台放在 `steamHarness.projectInfo`：
+项目展示信息在 `steamharness.json` 声明。根 `name` 是必填默认名称；中英文名称、手工声明和展示平台放在 `steamharness.json.projectInfo`：
+
+`steamharness.json`
 
 ```json
 {
   "name": "Default Name",
-  "steamHarness": {
-    "projectInfo": {
-      "localizedNames": {
-        "zh-CN": "中文名称",
-        "en": "English Name"
-      },
-      "declarations": ["multilingual", "multiplatform"],
-      "platformSupport": {
-        "mode": "specific",
-        "platforms": ["macos", "windows", "web"]
-      }
+  "projectInfo": {
+    "localizedNames": {
+      "zh-CN": "中文名称",
+      "en": "English Name"
+    },
+    "declarations": [
+      "multilingual",
+      "multiplatform"
+    ],
+    "platformSupport": {
+      "mode": "specific",
+      "platforms": [
+        "macos",
+        "windows",
+        "web"
+      ]
     }
   }
 }
@@ -52,20 +59,63 @@ Studio 在用户级 `studio.agent.permissionPolicy` 保存设置，默认 `auto`
 
 ## 聚合项目声明与交付
 
-根 package.json.id 是整个聚合项目唯一 UUID。类型属于入口，可注册多个同类型入口；entryId 唯一且与 Workflow 内部 entrypointId 分别传递。注册路径必须位于聚合目录内，禁止绝对路径、上级路径、符号链接越界、node_modules 和 .git。Workflow/Conversation 各模块导出自己的 executor，类型必须与注册匹配；静态分析仅遍历该模块的相对导入图。
+根 steamharness.json.id 是整个聚合项目唯一 UUID。类型属于入口，可注册多个同类型入口；entryId 唯一且与 Workflow 内部 entrypointId 分别传递。注册路径必须位于聚合目录内，禁止绝对路径、上级路径、符号链接越界、node_modules 和 .git。Workflow/Conversation 各模块导出自己的 executor，类型必须与注册匹配；静态分析仅遍历该模块的相对导入图。
+
+`steamharness.json`
 
 ```json
 {
   "id": "d9232d44-28ca-48e9-a89a-157ee143bcdc",
   "name": "Example",
-  "steamHarness": {
-    "defaultEntry": "chat",
-    "entries": [
-      {"entryId":"chat","type":"conversation","name":"Chat","root":"agent","entry":"index.ts"},
-      {"entryId":"jobs","type":"workflow","name":"Jobs","root":"jobs","entry":"index.ts"},
-      {"entryId":"board","type":"kanban","name":"Board","root":"board","entry":"dist/index.html"}
-    ]
-  }
+  "defaultEntry": "chat",
+  "entries": [
+    {
+      "entryId": "chat",
+      "root": "agent"
+    },
+    {
+      "entryId": "jobs",
+      "root": "jobs"
+    },
+    {
+      "entryId": "board",
+      "root": "board"
+    }
+  ],
+  "version": "1.0.0"
+}
+```
+
+`agent/steamharness.json`
+
+```json
+{
+  "type": "conversation",
+  "name": "Chat",
+  "entry": "index.ts",
+  "databases": []
+}
+```
+
+`jobs/steamharness.json`
+
+```json
+{
+  "type": "workflow",
+  "name": "Jobs",
+  "entry": "index.ts",
+  "databases": []
+}
+```
+
+`board/steamharness.json`
+
+```json
+{
+  "type": "kanban",
+  "name": "Board",
+  "entry": "dist/index.html",
+  "databases": []
 }
 ```
 
@@ -75,18 +125,18 @@ Studio 在用户级 `studio.agent.permissionPolicy` 保存设置，默认 `auto`
 
 一个聚合是一个上传、版本和 Store 安装单元。打包包含所有注册代码、配置、依赖清单和 Kanban 静态产物，保留根 config.json 中的数据库映射；引用本身不授予权限。普通 npm dependencies 保持包管理行为。Server 只处理静态元数据、文件和数据访问，不加载执行项目代码。
 
-## 项目卡片（steamHarness.projectCard）
+## 项目卡片（steamharness.json.projectCard）
 
 可选的项目卡片展示元数据，Desktop 首页、发布对话框和分享卡片读取：
 
+`steamharness.json`
+
 ```json
 {
-  "steamHarness": {
-    "projectCard": {
-      "icon": "bot",
-      "iconColor": "#0f766e",
-      "iconBackgroundColor": "#0f766e"
-    }
+  "projectCard": {
+    "icon": "bot",
+    "iconColor": "#0f766e",
+    "iconBackgroundColor": "#0f766e"
   }
 }
 ```
@@ -100,25 +150,38 @@ Studio 在用户级 `studio.agent.permissionPolicy` 保存设置，默认 `auto`
 
 Workflow 可以在 package 中声明建议计划；Conversation 和 Kanban 声明该字段会被 Structure 拒绝：
 
+`steamharness.json`
+
 ```json
 {
-  "steamHarness": {
-    "schedulePresets": [
-      {
-        "id": "business-hours",
-        "title": "工作时段同步",
-        "entrypointId": "sync",
-        "timezone": "Asia/Shanghai",
-        "trigger": {
-          "kind": "window-interval",
-          "weekdays": [1, 2, 3, 4, 5],
-          "windows": [{ "start": "09:30", "end": "17:30" }],
-          "intervalMinutes": 5
-        },
-        "paramValues": { "scope": "active" }
+  "schedulePresets": [
+    {
+      "id": "business-hours",
+      "title": "工作时段同步",
+      "entrypointId": "sync",
+      "timezone": "Asia/Shanghai",
+      "trigger": {
+        "kind": "window-interval",
+        "weekdays": [
+          1,
+          2,
+          3,
+          4,
+          5
+        ],
+        "windows": [
+          {
+            "start": "09:30",
+            "end": "17:30"
+          }
+        ],
+        "intervalMinutes": 5
+      },
+      "paramValues": {
+        "scope": "active"
       }
-    ]
-  }
+    }
+  ]
 }
 ```
 
@@ -412,7 +475,7 @@ try {
 }
 ```
 
-`package.json` 的各入口用 `"databases": ["data"]` 声明使用的别名，不写 ID。一个数据库只配置一个别名，可被多个入口引用；每个入口可引用多个库。业务代码按别名访问，更换库只修改 config.json 中一处 ID。`STEAMHARNESS_PROJECT_CONFIG` 接受 JSON，按别名覆盖 ID；不自动读取 .env。无效或缺失映射明确失败。分发保留文件配置，不写入环境覆盖值。申请和权限由宿主独立维护；保存映射不创建数据库或授予权限。每次访问重新校验授权。
+`steamharness.json` 的各入口用 `"databases": ["data"]` 声明使用的别名，不写 ID。一个数据库只配置一个别名，可被多个入口引用；每个入口可引用多个库。业务代码按别名访问，更换库只修改 config.json 中一处 ID。`STEAMHARNESS_PROJECT_CONFIG` 接受 JSON，按别名覆盖 ID；不自动读取 .env。无效或缺失映射明确失败。分发保留文件配置，不写入环境覆盖值。申请和权限由宿主独立维护；保存映射不创建数据库或授予权限。每次访问重新校验授权。
 
 一个空间可被多个 projectId 和 entryId 授权访问。数据按 spaceId 保存，项目删除不删除空间。授权绑定消费方项目和入口，分别限制 KV、知识库的读写和键前缀，审批可缩小权限，撤销和轮换后每次访问立即重新校验。不要把凭据、运行时注册表或数据库数据放进项目源码和发行包。
 
@@ -1284,7 +1347,7 @@ const response = await fetch("https://api.example.com/run", {
 
 ## Package
 
-package.json 注册聚合入口，Core/CLI 依赖使用仓库指定精确版本。入口类型与 executor 一致；configuration 和代码路径相对 root。发行前静态检查每个入口，构建所有 Kanban 产物。数据库通过 config.json 发行集中映射，各入口在 package.json 中仅声明使用的数据库别名；权限、凭据、数据库数据、历史及个人配置不进入发行包。
+steamharness.json 注册聚合入口，Core/CLI 依赖使用仓库指定精确版本。入口类型与 executor 一致；configuration 和代码路径相对 root。发行前静态检查每个入口，构建所有 Kanban 产物。数据库通过 config.json 发行集中映射，各入口在 steamharness.json 中仅声明使用的数据库别名；权限、凭据、数据库数据、历史及个人配置不进入发行包。
 
 ## Server 数据服务
 

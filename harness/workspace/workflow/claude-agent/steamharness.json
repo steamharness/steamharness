@@ -1,0 +1,20 @@
+{
+  "id": "7f2aa1d8-c40e-4441-9829-07c450988c34",
+  "name": "@steamharness/claude-agent-workflow",
+  "version": "0.1.0",
+  "projectInfo": {},
+  "entries": [
+    {
+      "entryId": "main",
+      "type": "conversation",
+      "name": "@steamharness/claude-agent-workflow",
+      "root": ".",
+      "entry": "index.ts",
+      "configuration": "configuration.json",
+      "databases": [
+        "data"
+      ]
+    }
+  ],
+  "defaultEntry": "main"
+}

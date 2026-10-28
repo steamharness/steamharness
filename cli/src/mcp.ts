@@ -772,10 +772,10 @@ function compactWorkerErrorMessage(value: string): string {
 }
 
 function readProjectId(projectDir: string): string {
-  const packagePath = path.join(projectDir, "package.json");
+  const packagePath = path.join(projectDir, "steamharness.json");
   const packageJson = JSON.parse(readFileSync(packagePath, "utf8")) as unknown;
   if (!isRecord(packageJson) || typeof packageJson["id"] !== "string" || packageJson["id"].trim() === "") {
-    throw new Error("Workflow MCP requires package.json to contain an immutable project id.");
+    throw new Error("Workflow MCP requires steamharness.json to contain an immutable project id.");
   }
   return assertProjectUuid(packageJson["id"], "Workflow MCP project id");
 }

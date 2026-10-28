@@ -1,3 +1,4 @@
+import { writeProjectFixture } from '../../scripts/test-project-fixture.mjs';
 import assert from "node:assert/strict";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
@@ -83,7 +84,7 @@ test("conversation structure reports every declared parameter action", async () 
   const projectDir = await mkdtemp(path.join(os.tmpdir(), "steamharness-param-actions-"));
   try {
     await Promise.all([
-      writeFile(path.join(projectDir, "package.json"), JSON.stringify({id:crypto.randomUUID(),steamHarness:{defaultEntry:"main",entries:[{entryId:"main",name:"Main",type:"conversation",root:".",entry:"index.ts",databases:[]}]},
+      writeProjectFixture(path.join(projectDir, "package.json"), JSON.stringify({id:crypto.randomUUID(),defaultEntry:"main",entries:[{entryId:"main",name:"Main",type:"conversation",root:".",entry:"index.ts",databases:[]}],
         name: "param-actions-structure-test", version: "0.1.0", type: "module",
       })),
       writeFile(path.join(projectDir, "index.ts"), `
@@ -364,11 +365,11 @@ test("parameter resolution without database access works offline and ignores pro
   delete (globalThis as Record<string, unknown>)[importMarker];
   process.env.STEAMHARNESS_CLI_AUTH_DIR = path.join(projectDir, "empty-auth");
   for (const name of envNames.slice(1)) delete process.env[name];
-  await writeFile(path.join(projectDir, "package.json"), JSON.stringify({
+  await writeProjectFixture(path.join(projectDir, "package.json"), JSON.stringify({
     id: projectId,
     name: "server-param-resolver",
     type: "module",
-    steamHarness: {defaultEntry:"main",entries:[{entryId:"main",type:"workflow",name:"Main",root:".",entry:"index.ts",databases:[]}], projectInfo:{}},
+    version: "0.1.0", defaultEntry:"main",entries:[{entryId:"main",type:"workflow",name:"Main",root:".",entry:"index.ts",databases:[]}], projectInfo:{},
   }));
   await writeFile(path.join(projectDir, "index.ts"), [
     `(globalThis as Record<string, unknown>)[${JSON.stringify(importMarker)}] = true;`,
@@ -462,11 +463,11 @@ test("date-related params pass their exact strings to args and createInput param
 
 async function createResolverProject(): Promise<string> {
   const projectDir = await mkdtemp(path.join(os.tmpdir(), "steamharness-param-resolver-"));
-  await writeFile(path.join(projectDir, "package.json"), JSON.stringify({
+  await writeProjectFixture(path.join(projectDir, "package.json"), JSON.stringify({
     id: "11111111-1111-4111-8111-111111111111",
     name: "@steamharness/param-resolver-test",
     type: "module",
-    steamHarness: {defaultEntry:"main",entries:[{entryId:"main",type:"workflow",name:"Main",root:".",entry:"index.ts",databases:[]}], projectInfo:{}},
+    version: "0.1.0", defaultEntry:"main",entries:[{entryId:"main",type:"workflow",name:"Main",root:".",entry:"index.ts",databases:[]}], projectInfo:{},
   }));
   await writeFile(path.join(projectDir, "index.ts"), [
     "const testProject = steamharness.defineProject({ name: 'param-resolver-test', run: async () => ({ errCode: 0, errMessage: '' }) });",
@@ -499,11 +500,11 @@ async function createResolverProject(): Promise<string> {
 
 async function createDateParamProject(): Promise<string> {
   const projectDir = await mkdtemp(path.join(os.tmpdir(), "steamharness-date-param-"));
-  await writeFile(path.join(projectDir, "package.json"), JSON.stringify({
+  await writeProjectFixture(path.join(projectDir, "package.json"), JSON.stringify({
     id: "22222222-2222-4222-8222-222222222222",
     name: "@steamharness/date-param-test",
     type: "module",
-    steamHarness: {defaultEntry:"main",entries:[{entryId:"main",type:"workflow",name:"Main",root:".",entry:"index.ts",databases:[]}], projectInfo:{}},
+    version: "0.1.0", defaultEntry:"main",entries:[{entryId:"main",type:"workflow",name:"Main",root:".",entry:"index.ts",databases:[]}], projectInfo:{},
   }));
   await writeFile(path.join(projectDir, "index.ts"), [
     "const outputNode = steamharness.createOutputNode({ name: 'output', format(input) { return input; } });",

@@ -1,3 +1,4 @@
+import { writeProjectFixture } from '../../scripts/test-project-fixture.mjs';
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { mkdtemp, mkdir, readFile, writeFile, rm, symlink, realpath } from 'node:fs/promises';
@@ -59,8 +60,8 @@ async function fixture(t, services) {
 }
 
 const ids = ['294b1eec-23fa-42cf-9fd3-2417f71c0570', '615e6cf6-b40a-456a-8d19-b71c63454c7a', '4d8d3580-6356-42b1-a8f0-2a14b0a7b955'];
-const manifest = id => ({ id, name: 'Notes', steamHarness: { defaultEntry:'main',entries:[{entryId:'main',type:'workflow',name:'Main',root:'.',entry:'index.ts',databases:[]}],projectInfo:{ localizedNames:{en:'English notes','zh-cn':'Chinese notes'} } } });
-const saveManifest = (directory, value) => writeFile(path.join(directory, 'package.json'), JSON.stringify(value));
+const manifest = id => ({ id, name: 'Notes', version: "0.1.0",  defaultEntry:'main',entries:[{entryId:'main',type:'workflow',name:'Main',root:'.',entry:'index.ts',databases:[]}],projectInfo:{ localizedNames:{en:'English notes','zh-cn':'Chinese notes'} }  });
+const saveManifest = (directory, value) => writeProjectFixture(path.join(directory, 'package.json'), JSON.stringify(value));
 
 test('entry queries return the aggregate registrations and reject removed operations', async t => {
   const f=await fixture(t);await saveManifest(f.workdir,manifest(ids[0]));

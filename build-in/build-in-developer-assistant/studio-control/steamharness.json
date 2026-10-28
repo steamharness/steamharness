@@ -1,0 +1,6 @@
+{
+  "type": "workflow",
+  "name": "Studio Control",
+  "entry": "index.ts",
+  "configuration": "configuration.json"
+}

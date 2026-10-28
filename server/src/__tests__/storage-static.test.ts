@@ -1,3 +1,5 @@
+import { projectFixtureFiles } from '../../scripts/test-project-fixture.mjs';
+import { writeProjectFixture } from '../../scripts/test-project-fixture.mjs';
 import assert from "node:assert/strict";
 import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -15,12 +17,11 @@ function packageJson(version: string) {
     id: projectId, name: "Static upload", version,
     devDependencies: { "steamharness": serverPackage.dependencies["steamharness"] },
     scripts: { preinstall: "node side-effect.cjs", postinstall: "node side-effect.cjs", build: "node side-effect.cjs" },
-    steamHarness: {
+
       defaultEntry:"main",entries:[{entryId:"main",name:"Main",type:"workflow",root:".",entry:"index.ts",databases:[]}],
       projectInfo: {
         localizedNames: {}, declarations: [], platformSupport: { mode: "agnostic" },
       },
-    },
   };
 }
 
@@ -34,14 +35,14 @@ test("source configuration resolves aliases while version snapshots retain autho
   delete process.env.STEAMHARNESS_PROJECT_CONFIG;
   try {
     const pkg = packageJson("1.0.0");
-    Object.assign(pkg.steamHarness.entries[0]!, {databases: ["data"]});
-    pkg.steamHarness.entries.push({ ...pkg.steamHarness.entries[0]!, entryId: "archive-reader", name: "Archive reader", databases: [] });
-    Object.assign(pkg.steamHarness.entries[1]!, { databases: ["archive"] });
-    await storage.createProjectFromFiles({ projectName: projectId, files: [
+    Object.assign(pkg.entries[0]!, {databases: ["data"]});
+    pkg.entries.push({ ...pkg.entries[0]!, entryId: "archive-reader", name: "Archive reader", databases: [] });
+    Object.assign(pkg.entries[1]!, { databases: ["archive"] });
+    await storage.createProjectFromFiles({ projectName: projectId, files: projectFixtureFiles([
       { path: "package.json", content: JSON.stringify(pkg) },
       { path: "config.json", content: JSON.stringify(config(first)) },
       { path: "index.ts", content: "throw new Error('configuration must stay static');" },
-    ] });
+    ]) });
     assert.deepEqual(await storage.entryDatabaseRequirements(projectId, "main"), [{ alias: "data", databaseId: first }]);
     process.env.STEAMHARNESS_PROJECT_CONFIG = JSON.stringify({ databases: { data: second, unused: "00000000-0000-4000-8000-000000000004" } });
     assert.deepEqual(await storage.entryDatabaseRequirements(projectId, "main"), [{ alias: "data", databaseId: second }]);
@@ -69,13 +70,13 @@ test("creation, upload, publication and historical downloads never load or build
   const storage = new Storage({ serverRoot: process.cwd(), repoRoot: process.cwd(), dataRoot });
   const stages: PreparationStage[] = [];
   try {
-    await storage.createProjectFromFiles({ projectName: projectId, files: [
+    await storage.createProjectFromFiles({ projectName: projectId, files: projectFixtureFiles([
       { path: "package.json", content: JSON.stringify(packageJson("1.0.0")) },
       { path: "index.ts", content: `import 'node:fs'; throw new Error('must never execute');` },
-    ] });
+    ]) });
     const source = path.join(root, "package");
     await mkdir(source);
-    await writeFile(path.join(source, "package.json"), JSON.stringify(packageJson("1.0.0")));
+    await writeProjectFixture(path.join(source, "package.json"), JSON.stringify(packageJson("1.0.0")));
     await writeFile(path.join(source, "index.ts"), `${sideEffect}\nthrow new Error('must never import');`);
     await writeFile(path.join(source, "side-effect.cjs"), sideEffect);
     await writeFile(path.join(source, "image.bin"), Buffer.from([0, 1, 255]));
@@ -106,8 +107,8 @@ test("creation, upload, publication and historical downloads never load or build
     assert.equal((await storage.listVersions(projectId)).latest, "1.0.0");
 
     const next = await storage.getFiles({ projectName: projectId, target: "draft", includeBinary: true });
-    await storage.saveDraftFiles({ projectName: projectId, files: next.files.map(file => file.path === "package.json"
-      ? { ...file, content: JSON.stringify(packageJson("1.0.1")) } : file) });
+    await storage.saveDraftFiles({ projectName: projectId, files: projectFixtureFiles(next.files.map(file => file.path === "steamharness.json"
+      ? { ...file, content: JSON.stringify({...JSON.parse(file.content!),version:"1.0.1"}) } : file)) });
     const publications = await Promise.allSettled([
       storage.publish({ projectName: projectId }), storage.publish({ projectName: projectId }),
     ]);
@@ -141,17 +142,17 @@ test("draft replacement waits for a publication and preserves the snapshot's ver
   const storage = new Storage({ serverRoot: process.cwd(), repoRoot: process.cwd(), dataRoot,
     artifacts: { async uploadFile() { enteredUpload(); await uploadGate; } } as unknown as ArtifactStorage });
   try {
-    await storage.createProjectFromFiles({ projectName: projectId, files: [
+    await storage.createProjectFromFiles({ projectName: projectId, files: projectFixtureFiles([
       { path: "package.json", content: JSON.stringify(packageJson("2.0.0")) },
       { path: "index.ts", content: "original snapshot" },
-    ] });
+    ]) });
     const publish = storage.publish({ projectName: projectId });
     await uploadEntered;
     let replacementFinished = false;
-    const replacement = storage.saveDraftFiles({ projectName: projectId, files: [
+    const replacement = storage.saveDraftFiles({ projectName: projectId, files: projectFixtureFiles([
       { path: "package.json", content: JSON.stringify(packageJson("2.0.1")) },
       { path: "index.ts", content: "replacement draft" },
-    ] }).then(() => { replacementFinished = true; });
+    ]) }).then(() => { replacementFinished = true; });
     await new Promise(resolve => setTimeout(resolve, 20));
     assert.equal(replacementFinished, false);
     releaseUpload();

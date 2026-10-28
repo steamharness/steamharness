@@ -1,3 +1,4 @@
+import { writeProjectFixture } from '../../scripts/test-project-fixture.mjs';
 import { declareConfigurationFixture, writeConfigurationFixtureManifest, configurationFixtureStore } from "./configuration-fixture";
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -110,7 +111,7 @@ for (const explicit of [false,true]) test(`an automatically assigned run ID keep
   const runKey = key;
   const root = path.join(os.homedir(), ".steamharness", "configurations");
   try {
-    await writeFile(path.join(project, "package.json"), JSON.stringify({id:applicationId, name:"config-resume", type:"module", steamHarness:{defaultEntry:"main",entries:[{entryId:"main",type:"workflow",name:"Main",root:".",entry:"index.ts",databases:[], configuration:"configuration.json"}], projectInfo:{}}}));
+    await writeProjectFixture(path.join(project, "package.json"), JSON.stringify({id:applicationId, name:"config-resume", type:"module", version: "0.1.0", defaultEntry:"main",entries:[{entryId:"main",type:"workflow",name:"Main",root:".",entry:"index.ts",databases:[], configuration:"configuration.json"}], projectInfo:{}}));
     await writeFile(path.join(project, "configuration.json"), JSON.stringify({version:1, fields:[{name:"label", type:"string", defaultValue:"before"}]}));
     await writeFile(path.join(project, "index.ts"), `
       const approvalNode = steamharness.createUserInputNode({name:"confirm", params:[{name:"approved", type:"boolean", flag:"--approved"}]});
@@ -146,7 +147,7 @@ test("executor, parameter resolver, nodes and provider factory share one immutab
   const runKey=key;
   const root=path.join(os.homedir(),".steamharness","configurations");
   try {
-    await writeFile(path.join(project,"package.json"),JSON.stringify({id:applicationId,name:"Configuration",type:"module",steamHarness:{defaultEntry:"main",entries:[{entryId:"main",type:"workflow",name:"Main",root:".",entry:"index.ts",databases:[], configuration:"configuration.json"}], projectInfo:{}}}));
+    await writeProjectFixture(path.join(project,"package.json"),JSON.stringify({id:applicationId,name:"Configuration",type:"module",version: "0.1.0", defaultEntry:"main",entries:[{entryId:"main",type:"workflow",name:"Main",root:".",entry:"index.ts",databases:[], configuration:"configuration.json"}], projectInfo:{}}));
     await writeFile(path.join(project,"index.ts"), `
 const task=steamharness.defineProject({name:"configuration",async run(_input,context){return {errCode:0,errMessage:"",value:steamharness.getConfig("label"),nested:context.config.nested};}});
 export const executor=steamharness.defineExecutor({projectType:"workflow",defaultEntrypoint:"main",entrypoints:[steamharness.defineEntrypoint({id:"main",title:"Main",workflow:task,params:[{name:"label",type:"string",flag:"--label"}],createInput({paramValues}){return paramValues;},resolveParams(context){return {params:{label:{value:context.config.label}}};}})]});
@@ -197,14 +198,14 @@ test("unverified source upgrades reject reads and writes without falling back to
   try {
     const project=path.join(root,'project'),cacheDir=path.join(root,'cache'),rootDir=path.join(root,'personal');await mkdir(project);await declareConfigurationFixture(project);
     const author=createConfigurationState([{name:'settings',type:'json',defaultValue:{locked:0,open:1},sharing:{includeValue:true},paths:{'/locked':{editable:false}}}],()=> 'official');
-    const first=freezeConfigurationTemplate(createPublicationDraft(author),{projectId:JSON.parse(await readFile(path.join(project,'package.json'),'utf8')).id,entryId:"main",projectVersion:'1.0.0',sourceHash:'a'.repeat(64)});
+    const first=freezeConfigurationTemplate(createPublicationDraft(author),{projectId:JSON.parse(await readFile(path.join(project,'steamharness.json'),'utf8')).id,entryId:"main",projectVersion:'1.0.0',sourceHash:'a'.repeat(64)});
     const sourceFile=path.join(project,configurationTemplatePath("main"));
     await cacheVerifiedConfigurationTemplate(first,[],{cacheDir});await writeFile(sourceFile,JSON.stringify(first));
     const store=await configurationFixtureStore(project,{rootDir,templateCacheDir:cacheDir});
     let state=await store.read();
     state=await store.dispatch({action:'save',revision:state.revision,id:state.activeConfigurationId,values:{settings:{locked:0,open:9}}}) as ProjectConfigurationState;
     const waiting=await store.snapshot({runId:'waiting'});
-    const key=createHash('sha256').update(JSON.parse(await readFile(path.join(project,'package.json'),'utf8')).id+':main').digest('hex'),savedFile=path.join(rootDir,`${key}.json`),saved=await readFile(savedFile,'utf8');
+    const key=createHash('sha256').update(JSON.parse(await readFile(path.join(project,'steamharness.json'),'utf8')).id+':main').digest('hex'),savedFile=path.join(rootDir,`${key}.json`),saved=await readFile(savedFile,'utf8');
     const next=structuredClone(first);next.projectVersion='2.0.0';next.configurations[0]!.values.settings={locked:2,open:2};
     await writeFile(sourceFile,JSON.stringify(next));
     await assert.rejects(store.read(),/online/);
@@ -232,7 +233,7 @@ test("verified templates enforce offline edits, preserve waiting runs, and cache
     const project=path.join(root,'project'),cacheDir=path.join(root,'cache'),rootDir=path.join(root,'personal');await mkdir(project);await declareConfigurationFixture(project);
     const bytes=Buffer.from('versioned-image'),reference={id:'wf_abcdef',name:'background.png',mimeType:'image/png',size:bytes.length,storage:'server' as const};
     const author=createConfigurationState([{name:'settings',type:'json',defaultValue:{locked:0,open:1},sharing:{includeValue:true},paths:{'/locked':{editable:false}}},{name:'background',type:'file',defaultValue:reference,sharing:{includeValue:true,editable:false}}],()=> 'profile');
-    const template=freezeConfigurationTemplate(createPublicationDraft(author),{projectId:JSON.parse(await readFile(path.join(project,'package.json'),'utf8')).id,entryId:"main",projectVersion:'1.0.0',sourceHash:'a'.repeat(64)});
+    const template=freezeConfigurationTemplate(createPublicationDraft(author),{projectId:JSON.parse(await readFile(path.join(project,'steamharness.json'),'utf8')).id,entryId:"main",projectVersion:'1.0.0',sourceHash:'a'.repeat(64)});
     template.attachments=[{id:reference.id,path:`configuration-assets/${reference.id}`,sha256:createHash('sha256').update(bytes).digest('hex')}];
     await writeFile(path.join(project,configurationTemplatePath("main")),JSON.stringify(template));
     const options={rootDir,templateCacheDir:cacheDir};

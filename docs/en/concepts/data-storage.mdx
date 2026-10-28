@@ -9,7 +9,7 @@ A database is an independent resource of a local or server host. One `spaceId` c
 
 ## Record database references
 
-The aggregate root `config.json` stores deployment configuration. `databases` maps each unique alias to an approved database ID and contains no `entries`. Each `package.json` entry lists the aliases it uses in a `databases` string array. The host manages permissions and credentials. Package entries accept alias strings only; old `{alias, databaseId}` objects and `host`, `permissions`, and `bindingRef` declarations are rejected.
+The aggregate root `config.json` stores deployment configuration. `databases` maps each unique alias to an approved database ID and contains no `entries`. Each `steamharness.json` entry lists the aliases it uses in a `databases` string array. The host manages permissions and credentials. Package entries accept alias strings only; old `{alias, databaseId}` objects and `host`, `permissions`, and `bindingRef` declarations are rejected.
 
 ```json
 {
@@ -21,17 +21,53 @@ The aggregate root `config.json` stores deployment configuration. `databases` ma
 }
 ```
 
-Each entry references its required aliases in `package.json`:
+Each entry references its required aliases in `steamharness.json`:
+
+`steamharness.json`
 
 ```json
 {
-  "steamHarness": {
-    "defaultEntry": "agent",
-    "entries": [
-      { "entryId": "agent", "type": "conversation", "name": "Agent", "root": "agent", "entry": "index.ts", "databases": ["data", "archive"] },
-      { "entryId": "database", "type": "workflow", "name": "Database", "root": "database", "entry": "index.ts", "databases": ["data"] }
-    ]
-  }
+  "defaultEntry": "agent",
+  "entries": [
+    {
+      "entryId": "agent",
+      "root": "agent"
+    },
+    {
+      "entryId": "database",
+      "root": "database"
+    }
+  ],
+  "id": "00000000-0000-4000-8000-000000000001",
+  "name": "Example",
+  "version": "1.0.0"
+}
+```
+
+`agent/steamharness.json`
+
+```json
+{
+  "type": "conversation",
+  "name": "Agent",
+  "entry": "index.ts",
+  "databases": [
+    "data",
+    "archive"
+  ]
+}
+```
+
+`database/steamharness.json`
+
+```json
+{
+  "type": "workflow",
+  "name": "Database",
+  "entry": "index.ts",
+  "databases": [
+    "data"
+  ]
 }
 ```
 

@@ -1,5 +1,7 @@
 # Unreleased
 
+- 【破坏性变更】项目身份、名称、版本和声明统一使用独立的 `steamharness.json`，移除 `package.json.id` 和 `steamHarness` 的读取与写回。聚合项目显式登记子入口，由子目录配置提供图标、声明、数据库别名与计划；未登记配置不生效，上传下载保留父子结构。
+
 - 【变更】生成规范、模板与示例改用 alias/databaseId 引用，说明多库、多入口共享和宿主权限管理；业务代码继续按入口别名访问数据库。
 
 - 【改进】小助手将模型与 effort 拆为独立参数入口，默认使用宿主自动加载的可用模型目录；模型菜单按来源分组，并提供底部添加模型入口。
@@ -141,4 +143,4 @@
 - 移除 Desktop Control 接入、内置项目依赖与未适配的 Kanban 宿主控制工具。
 - 移除 Conversation 的输入开关与自定义主字段声明。
 
-- 项目部署配置统一放在根 config.json，集中维护数据库别名和 ID，各入口在 package.json 中仅声明使用的数据库别名；STEAMHARNESS_PROJECT_CONFIG 可覆盖部署值。迁移只改一处 ID，权限继续由宿主维护，发行不写入环境覆盖值。
+- 项目部署配置统一放在根 config.json，集中维护数据库别名和 ID，各入口在 steamharness.json 中仅声明使用的数据库别名；STEAMHARNESS_PROJECT_CONFIG 可覆盖部署值。迁移只改一处 ID，权限继续由宿主维护，发行不写入环境覆盖值。

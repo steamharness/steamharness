@@ -7,48 +7,78 @@ description: "Fresh aggregate declarations"
 
 The current model requires fresh declarations and data. It does not provide legacy reads, automatic migration or data import.
 
+`package.json`
+
+```json
+{
+  "name": "workspace-example",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module"
+}
+```
+
+`steamharness.json`
+
 ```json
 {
   "id": "00000000-0000-4000-8000-000000000001",
   "name": "workspace-example",
   "version": "1.0.0",
-  "private": true,
-  "type": "module",
-  "steamHarness": {
-    "defaultEntry": "agent",
-    "entries": [
-      {
-        "entryId": "agent",
-        "type": "conversation",
-        "name": "Assistant",
-        "root": "agent",
-        "entry": "index.ts",
-        "databases": []
-      },
-      {
-        "entryId": "database",
-        "type": "workflow",
-        "name": "Database operations",
-        "root": "database",
-        "entry": "index.ts",
-        "configuration": "configuration.json",
-        "databases": [
-          {
-            "alias": "data",
-            "databaseId": "00000000-0000-4000-8000-000000000001"
-          }
-        ]
-      },
-      {
-        "entryId": "map",
-        "type": "kanban",
-        "name": "Map",
-        "root": "map",
-        "entry": "dist/index.html",
-        "databases": []
-      }
-    ]
-  }
+  "defaultEntry": "agent",
+  "entries": [
+    {
+      "entryId": "agent",
+      "root": "agent"
+    },
+    {
+      "entryId": "database",
+      "root": "database"
+    },
+    {
+      "entryId": "map",
+      "root": "map"
+    }
+  ]
+}
+```
+
+`agent/steamharness.json`
+
+```json
+{
+  "type": "conversation",
+  "name": "Assistant",
+  "entry": "index.ts",
+  "databases": []
+}
+```
+
+`database/steamharness.json`
+
+```json
+{
+  "type": "workflow",
+  "name": "Database operations",
+  "entry": "index.ts",
+  "configuration": "configuration.json",
+  "databases": [
+    {
+      "alias": "data",
+      "databaseId": "00000000-0000-4000-8000-000000000001"
+    }
+  ]
+}
+```
+
+`map/steamharness.json`
+
+```json
+{
+  "type": "kanban",
+  "name": "Map",
+  "entry": "dist/index.html",
+  "databases": []
 }
 ```
 

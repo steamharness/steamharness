@@ -1,3 +1,4 @@
+import { writeProjectFixture } from '../../scripts/test-project-fixture.mjs';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { mkdtemp, mkdir, readFile, realpath, rm, writeFile, symlink } from 'node:fs/promises';
 import path from 'node:path';
@@ -67,7 +68,7 @@ async function fixture(host?: WebHostConfiguration, beforeStart?: () => Promise<
   vi.stubEnv('STEAMHARNESS_CLI_AUTH_DIR', path.join(directory, 'auth')); vi.stubEnv('STEAMHARNESS_SERVER_URL', ''); vi.stubEnv('STEAMHARNESS_SERVER_ADMIN_KEY', '');
   const project: Project = {entryId:"main",aggregateName:"Test aggregate",defaultEntry:"main",entryRoot:directory,databases:[],entries:[{entryId:"main",name:"Main",type:"workflow",root:".",entry:"index.ts",databases:[]}], id: randomUUID(), uri: '', folderPath: directory, name: 'Test conversation', projectType, fields: [{ name: 'model', flag: '--model', type: 'string', panel: 'auxiliary' }], paramLayout: { actions: [{ kind: 'auxiliary', id: 'ai', label: 'AI', params: ['model'] }] }, paramResolver: { enabled: true }, entrypoints: [], tools: [{ name: 'read', enabled: true, autoApprove: false }] };
   project.entries[0] = { entryId: 'main', name: project.name, type: projectType, root: '.', entry: projectType === 'kanban' ? 'index.html' : 'index.ts', databases: [] };
-  await writeFile(path.join(directory, 'package.json'), JSON.stringify({ id: project.id, name: 'test-web', steamHarness: { entries: project.entries, defaultEntry: 'main' } }));
+  await writeProjectFixture(path.join(directory, 'package.json'), JSON.stringify({ id: project.id, name: 'test-web', version: "0.1.0",  entries: project.entries, defaultEntry: 'main'  }));
   await writeFile(path.join(directory, project.entries[0].entry), projectType === 'kanban' ? '<!doctype html><title>Board</title>' : 'export {};');
   let count = 0;
   const runtime: Runtime = {
@@ -1230,7 +1231,7 @@ describe('steamharness web', () => {
     const harnessRoot = await resolveHarnessRoot();
     await symlink(harnessRoot, path.join(directory, 'node_modules/steamharness'), process.platform === 'win32' ? 'junction' : 'dir');
     const harnessVersion = JSON.parse(await readFile(path.join(harnessRoot, 'package.json'), 'utf8')).version;
-    await writeFile(path.join(directory, 'package.json'), JSON.stringify({ id: randomUUID(), name: 'project-runtime', type: 'module', devDependencies: { 'steamharness': harnessVersion }, steamHarness: { defaultEntry: 'main', entries: [{entryId:'main',name:'Main',type:'conversation',root:'.',entry:'index.ts',databases:[]}],  } }));
+    await writeProjectFixture(path.join(directory, 'package.json'), JSON.stringify({ id: randomUUID(), name: 'project-runtime', type: 'module', devDependencies: { 'steamharness': harnessVersion }, version: "0.1.0",  defaultEntry: 'main', entries: [{entryId:'main',name:'Main',type:'conversation',root:'.',entry:'index.ts',databases:[]}] }));
     await writeFile(path.join(directory, 'index.ts'), `
       const flow = steamharness.defineProject({ name: 'test', run() { return {
         errCode: 0, errMessage: '', text: 'project runtime',
@@ -1318,7 +1319,7 @@ describe('steamharness web', () => {
     await mkdir(path.join(directory, 'node_modules'));
     const harnessRoot = await resolveHarnessRoot();
     await symlink(harnessRoot, path.join(directory, 'node_modules/steamharness'), process.platform === 'win32' ? 'junction' : 'dir');
-    await writeFile(path.join(directory, 'package.json'), JSON.stringify({ type: 'module' }));
+    await writeProjectFixture(path.join(directory, 'package.json'), JSON.stringify({ type: 'module' }));
     const filename = '\u6587\u4ef6.txt';
     const content = Buffer.alloc(256 * 1024, 'x');
     const request = Buffer.from(JSON.stringify({ method: 'upload', project: { folderPath: directory, id: randomUUID(), entryId: 'main' },

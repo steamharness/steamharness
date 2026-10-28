@@ -1,3 +1,4 @@
+import {writeProjectFixture} from '../../scripts/test-project-fixture.mjs';
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import * as fs from 'node:fs/promises';
@@ -19,7 +20,7 @@ async function fixture(t, configuration = {}) {
   t.after(() => fs.rm(directory, { recursive: true, force: true }));
   const config = { name: 'demo', version: '1.2.3', entries:entriesFor(), ...configuration };
   await fs.writeFile(path.join(directory, 'transfer-fixture.json'), JSON.stringify(config));
-  await fs.writeFile(path.join(directory,'package.json'),JSON.stringify({id,name:config.name,version:config.version,steamHarness:{entries:config.entries,defaultEntry:'main'}}));
+  await writeProjectFixture(path.join(directory,'package.json'),JSON.stringify({id,name:config.name,version:config.version,entries:config.entries,defaultEntry:'main'}));
   const cliEntry = path.join(directory, 'cli.mjs');
   await fs.writeFile(cliEntry, `
     import * as fs from 'node:fs/promises'; import path from 'node:path';
@@ -30,7 +31,10 @@ async function fixture(t, configuration = {}) {
     else {
       const root = args[args.indexOf('--path') + 1];
       await fs.mkdir(root,{recursive:true});
-      await fs.writeFile(path.join(root,'package.json'),JSON.stringify({id:config.wrongId||'${id}',name:config.name,version:config.version,steamHarness:{entries:config.entries,defaultEntry:'main'}}));
+      await fs.writeFile(path.join(root,'package.json'),JSON.stringify({name:config.name,version:'9.8.7',type:'module'}));
+      const entries=config.entries.map(entry=>{if(entry.root==='.')return entry;const {entryId,root:childRoot,...child}=entry;return {entryId,root:childRoot};});
+      await fs.writeFile(path.join(root,'steamharness.json'),JSON.stringify({id:config.wrongId||'${id}',name:config.name,version:config.version,entries,defaultEntry:'main'}));
+      for(const {entryId,root:childRoot,...child} of config.entries){if(childRoot==='.')continue;await fs.mkdir(path.join(root,childRoot),{recursive:true});await fs.writeFile(path.join(root,childRoot,'steamharness.json'),JSON.stringify(child));}
       await fs.writeFile(path.join(root,'index.ts'),"throw new Error('Source must not execute');");
       await fs.writeFile(path.join(root,'image.bin'),Buffer.from([0,1,255]));
       for(const entry of config.entries){const target=path.join(root,entry.root,entry.entry);await fs.mkdir(path.dirname(target),{recursive:true});await fs.writeFile(target,entry.type==='kanban'?'<html>Board</html>':"throw new Error('Source must not execute');");}
@@ -97,7 +101,7 @@ for (const projectType of ['workflow', 'conversation', 'kanban']) test(`new ${pr
   const directory = await fs.mkdtemp(path.join(tmpdir(), 'studio-register-')); t.after(() => fs.rm(directory, { recursive: true, force: true }));
   const projectInfo = { localizedNames: { en: 'Created' }, declarations: [], platformSupport: { mode: 'agnostic' } };
   const projectCard = { icon: projectType === 'workflow' ? 'workflow' : projectType === 'conversation' ? 'message-circle' : 'boxes', iconColor: '#ffffff', iconBackgroundColor: '#123456' };
-  await fs.writeFile(path.join(directory, 'package.json'), JSON.stringify({ id, steamHarness:{entries:entriesFor(projectType),defaultEntry:'main',projectInfo,projectCard} }));
+  await fs.writeFile(path.join(directory, 'package.json'), JSON.stringify({ id, version: "0.1.0", entries:entriesFor(projectType),defaultEntry:'main',projectInfo,projectCard }));
   await fs.writeFile(path.join(directory, 'index.ts'), "throw new Error('Registration must not read or execute source');");
   const http = await server(t, () => ({ data: { projectId:id,entries:entriesFor(projectType),defaultEntry:'main' } }));
   let checks = 0;
@@ -117,7 +121,7 @@ for (const projectType of ['workflow', 'conversation', 'kanban']) test(`new ${pr
 
 test('registration rejects permission errors and an unexpected server identity', async t => {
   const directory = await fs.mkdtemp(path.join(tmpdir(), 'studio-register-failed-')); t.after(() => fs.rm(directory, { recursive: true, force: true }));
-  await fs.writeFile(path.join(directory, 'package.json'), JSON.stringify({ id, steamHarness: { entries:entriesFor(),defaultEntry:'main',projectInfo:{platformSupport:{mode:'agnostic'}} } }));
+  await fs.writeFile(path.join(directory, 'package.json'), JSON.stringify({ id, version: "0.1.0",  entries:entriesFor(),defaultEntry:'main',projectInfo:{platformSupport:{mode:'agnostic'}}  }));
   let forbidden = true;
   const http = await server(t, () => forbidden ? { status: 403, payload: { errCode: 403, errMessage: 'denied' } } : { data: { projectId:'111',entries:entriesFor(),defaultEntry:'main' } });
   const options = { project: { name:'Created',entries:entriesFor(),defaultEntry:'main',projectInfo:{platformSupport:{mode:'agnostic'}} }, connection: { serverUrl: http.url, accessToken: 'test-token' }, signal: signal(), assertCurrent() {} };
@@ -179,8 +183,9 @@ test('version downloads reserve directories atomically and do not reuse another 
 test('a downloaded aggregate retains all registered entry files in one install directory', async t => {
  const entries=[...entriesFor(),{entryId:'chat',type:'conversation',name:'Chat',root:'chat',entry:'index.ts',databases:[]},{entryId:'board',type:'kanban',name:'Board',root:'board',entry:'dist/index.html',databases:[]}];
  const f=await fixture(t,{entries});const result=await downloadServerProject(f.options);
- assert.equal(result.length,1);const pkg=JSON.parse(await fs.readFile(path.join(result[0].directory,'package.json'),'utf8'));
- assert.deepEqual(pkg.steamHarness.entries,entries);await fs.access(path.join(result[0].directory,'board/dist/index.html'));
+ assert.equal(result.length,1);const pkg=JSON.parse(await fs.readFile(path.join(result[0].directory,'steamharness.json'),'utf8'));
+ assert.deepEqual(pkg.entries,entries.map(entry=>entry.root==='.'?entry:{entryId:entry.entryId,root:entry.root}));
+ for (const entry of entries.filter(entry=>entry.root!=='.')){const {entryId,root,...child}=entry;assert.deepEqual(JSON.parse(await fs.readFile(path.join(result[0].directory,root,'steamharness.json'),'utf8')),child);}await fs.access(path.join(result[0].directory,'board/dist/index.html'));
 });
 
 for (const configuration of [{ wrongId: dependencyId }, { complete: false }]) {

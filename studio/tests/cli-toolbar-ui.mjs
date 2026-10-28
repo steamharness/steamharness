@@ -15,10 +15,10 @@ const proofDir = path.join(root, '.studio/cli-toolbar'); await fs.mkdir(proofDir
 const exampleManifest = JSON.parse(await fs.readFile(path.join(root, 'examples/conversation/package.json'), 'utf8'));
 const manifest = { id: '94b414b7-cdb4-491d-bc73-7282ebd74692', name: 'Default project name', version: '1.2.3', type: 'module',
   devDependencies: exampleManifest.devDependencies,
-  description: 'Project description <img id="unsafe" src="invalid">', steamHarness: { projectInfo: {
+  description: 'Project description <img id="unsafe" src="invalid">',  projectInfo: {
     localizedNames: { en: 'Project information with a long display name', 'zh-CN': '\u9879\u76ee\u4fe1\u606f\u4e0e\u8f83\u957f\u7684\u5c55\u793a\u540d\u79f0' },
     declarations: ['multilingual'], platformSupport: { mode: 'specific', platforms: ['macos', 'web'] },
-  } } };
+  }  };
 await fs.writeFile(path.join(projectDir, 'package.json'), JSON.stringify(manifest));
 await fs.symlink(await fs.realpath(path.join(root, 'examples/conversation/node_modules')), path.join(projectDir, 'node_modules'), process.platform === 'win32' ? 'junction' : 'dir');
 await fs.writeFile(path.join(projectDir, 'index.ts'), `
@@ -204,7 +204,7 @@ try {
     assert.match(await page.locator('.param-action-summary').innerText(), /Alternate model/);
     assert.equal(await page.locator('[data-action-id=ai] > .codicon-sparkle').count(), 1);
     await page.locator('#project-info').click();
-    assert.equal(await page.locator('.project-information-name').innerText(), manifest.steamHarness.projectInfo.localizedNames[language]);
+    assert.equal(await page.locator('.project-information-name').innerText(), manifest.projectInfo.localizedNames[language]);
     assert.equal(await page.locator('.project-information-description').innerText(), manifest.description);
     assert.equal(await page.locator('#unsafe').count(), 0);
     const values = await page.locator('.project-information-section[open] dd').allTextContents();

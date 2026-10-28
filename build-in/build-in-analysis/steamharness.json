@@ -1,0 +1,33 @@
+{
+  "id": "6cbe3c24-2707-4f31-a553-94edbe866eb1",
+  "name": "Studio Analysis",
+  "version": "0.1.0",
+  "projectInfo": {
+    "localizedNames": {
+      "zh-CN": "Studio 分析",
+      "en": "Studio Analysis"
+    },
+    "declarations": [
+      "multilingual"
+    ],
+    "platformSupport": {
+      "mode": "agnostic"
+    }
+  },
+  "projectCard": {
+    "icon": "boxes",
+    "iconBackgroundColor": "#0f766e"
+  },
+  "entries": [
+    {
+      "entryId": "main",
+      "type": "kanban",
+      "name": "Studio Analysis",
+      "root": ".",
+      "entry": "index.html",
+      "databases": [],
+      "configuration": "configuration.json"
+    }
+  ],
+  "defaultEntry": "main"
+}

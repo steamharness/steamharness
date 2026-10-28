@@ -1,3 +1,4 @@
+import { readProjectDeclarationFromDirectorySync } from "@steamharness/project-manifest/node";
 import { randomUUID } from "node:crypto";
 import { existsSync, lstatSync, readFileSync, readdirSync } from "node:fs";
 import os from "node:os";
@@ -1103,7 +1104,7 @@ export function inspectLocalProjectStructure(options: {
   const identity = { projectId: manifest.projectId, entryId: registration.entryId, entryName: registration.name, entries: manifest.entries, defaultEntry: manifest.defaultEntry };
   const configuration = readProjectConfigurationDefinition(declaration.projectDir, registration.entryId);
   if (registration.type === "kanban") {
-    readSchedulePresetValue({steamHarness:{schedulePresets:registration.schedulePresets}},"kanban",[]);
+    readSchedulePresetValue({schedulePresets:registration.schedulePresets},"kanban",[]);
     const entry = path.basename(registration.entry);
     const artifactDir = path.posix.dirname(registration.entry);
     return { ...identity, projectType: "kanban", workflow: { name: projectName, dir: rootDir, files: [registration.entry] }, definitions: { nodes: {}, apiCalls: [], variables: {}, registry: {} }, execution: { kind: "sequence", children: [] }, diagnostics: { warnings: [], violations: [] }, configuration, kanban: { artifactDir, entry } };
@@ -1112,7 +1113,7 @@ export function inspectLocalProjectStructure(options: {
   if (inspection.diagnostics.violations.length) throw new HarnessError({ type: "input_validation", message: `Entry "${registration.entryId}" script validation failed.`, metadata: { projectId: manifest.projectId, entryId: registration.entryId, violations: inspection.diagnostics.violations } });
   const projectType = resolveInspectedProjectType(inspection);
   if (projectType !== registration.type) throw new HarnessError({ type: "input_validation", message: `Entry "${registration.entryId}" is registered as ${registration.type}, but its executor declares ${projectType}.` });
-  const schedulePresets = readSchedulePresetValue({ steamHarness: { schedulePresets: registration.schedulePresets } }, projectType, inspection.entrypoints ?? []);
+  const schedulePresets = readSchedulePresetValue({ schedulePresets: registration.schedulePresets }, projectType, inspection.entrypoints ?? []);
   return { ...identity, projectType, workflow: inspection.workflow, definitions: inspection.definitions, configuration, diagnostics: inspection.diagnostics,
     ...(projectType === "workflow" ? { defaultEntrypoint: inspection.defaultEntrypoint, entrypoints: inspection.entrypoints, schedulePresets } : { execution: inspection.execution, params: inspection.params, paramLayout: inspection.paramLayout, paramResolver: inspection.paramResolver, conversation: conversationPresentationDefaults(inspection.conversation, rootDir, modulePath), tokenUsage: inspection.tokenUsage, tools: inspection.tools, registry: inspection.registry }) };
 }
@@ -2021,44 +2022,7 @@ function resolveLocalProjectModulePath(projectDir: string, _projectName: string,
 }
 
 function readLocalProjectName(projectDir: string): string {
-  const packageJsonPath = path.join(projectDir, "package.json");
-
-  if (existsSync(packageJsonPath)) {
-    try {
-      const packageJson = JSON.parse(readFileSync(packageJsonPath, "utf8")) as {
-        name?: unknown;
-      };
-
-      if (typeof packageJson.name === "string" && packageJson.name.trim() !== "") {
-        return packageJson.name.split("/").pop()?.replace(/-project$/, "") ?? packageJson.name;
-      }
-    } catch {
-      return path.basename(projectDir);
-    }
-  }
-
-  return path.basename(projectDir);
-}
-
-function readLocalPackageJson(projectDir: string): unknown {
-  const packageJsonPath = path.join(projectDir, "package.json");
-  try {
-    return JSON.parse(readFileSync(packageJsonPath, "utf8")) as unknown;
-  } catch {
-    throw new HarnessError({
-      type: "input_validation",
-      message: `Project package.json is invalid JSON.`,
-      metadata: { projectDir },
-    });
-  }
-}
-
-function readProjectSchedulePresets(
-  projectDir: string,
-  projectType: ExecutorProjectType,
-  entrypoints: StructureReport["entrypoints"],
-): SchedulePreset[] {
-  return readSchedulePresetValue(readLocalPackageJson(projectDir), projectType, entrypoints ?? []);
+  return readProjectDeclarationFromDirectorySync(projectDir).name;
 }
 
 function readSchedulePresetValue(
@@ -2066,8 +2030,7 @@ function readSchedulePresetValue(
   projectType: ProjectKind,
   entrypoints: NonNullable<StructureReport["entrypoints"]>,
 ): SchedulePreset[] {
-  const steamHarness = readOptionalRecordField(packageJson, "steamHarness");
-  const value = steamHarness?.["schedulePresets"];
+  const value = (packageJson as {schedulePresets?:unknown})?.schedulePresets;
   if (value === undefined) return [];
   try {
     const presets = parseProjectSchedulePresets(value, projectType);
@@ -2076,13 +2039,13 @@ function readSchedulePresetValue(
       const entrypoint = entrypointsById.get(preset.entrypointId);
       if (entrypoint === undefined) {
         throw new Error(
-          `steamHarness.schedulePresets entry "${preset.id}" references unknown entrypoint "${preset.entrypointId}".`,
+          `steamharness.json.schedulePresets entry "${preset.id}" references unknown entrypoint "${preset.entrypointId}".`,
         );
       }
       validateProjectScheduleParamValues(
         preset.paramValues,
         entrypoint.params ?? [],
-        `steamHarness.schedulePresets entry "${preset.id}".paramValues`,
+        `steamharness.json.schedulePresets entry "${preset.id}".paramValues`,
       );
     }
     return presets;
@@ -2093,19 +2056,6 @@ function readSchedulePresetValue(
       metadata: { projectType },
     });
   }
-}
-
-function readOptionalRecordField(value: unknown, field: string): Record<string, unknown> | undefined {
-  if (value === null || typeof value !== "object" || Array.isArray(value)) return undefined;
-  const fieldValue = (value as Record<string, unknown>)[field];
-  if (fieldValue === undefined) return undefined;
-  if (fieldValue === null || typeof fieldValue !== "object" || Array.isArray(fieldValue)) {
-    throw new HarnessError({
-      type: "input_validation",
-      message: `Project package.json ${field} must be an object.`,
-    });
-  }
-  return fieldValue as Record<string, unknown>;
 }
 
 function readErrorMessage(error: unknown): string {

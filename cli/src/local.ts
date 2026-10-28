@@ -16,7 +16,6 @@ import {
   type ToolPermissionPolicyMap,
   type UserInputResolved,
 } from "steamharness";
-import { readProjectInfo } from "@steamharness/project-info";
 import { i18n, translateSteamHarnessError } from "@steamharness/i18n";
 import {
   assertCoreCompatibility,
@@ -392,11 +391,6 @@ function runStructureCommand(argv: string[]): number {
 
   try {
     assertLocalCliCoreCompatible(parsed.projectDir);
-    const projectManifest = readJsonFile(
-      path.join(parsed.projectDir, "package.json"),
-      "Workflow package.json",
-    );
-    readProjectInfo(projectManifest);
     const report = inspectLocalProjectStructure({
       projectDir: parsed.projectDir,
       entryId: parsed.entryId,

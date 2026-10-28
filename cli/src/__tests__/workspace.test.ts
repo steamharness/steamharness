@@ -1,3 +1,4 @@
+import { writeProjectFixture } from '../../scripts/test-project-fixture.mjs';
 import { spawn } from "node:child_process";
 import { createHash } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
@@ -84,10 +85,10 @@ describe("server workspace CLI helpers", () => {
     await mkdir(path.join(sourceDir, ".workflow-kv"), { recursive: true });
     await mkdir(path.join(sourceDir, ".workflow-persistent-values"), { recursive: true });
     await mkdir(path.join(sourceDir, ".workflow-schedules"), { recursive: true });
-    await writeFile(path.join(sourceDir, "package.json"), JSON.stringify({
+    await writeProjectFixture(path.join(sourceDir, "package.json"), JSON.stringify({
       id: "8bd4fef2-e083-4201-a89f-6f7d0676df53",
       name: "Workflow",
-      version: "1.0.0",steamHarness:declaration(),
+      version: "1.0.0",...(declaration()),
     }));
     await writeFile(path.join(sourceDir, "index.ts"), VALID_STEAMHARNESS_SOURCE);
     await writeFile(path.join(sourceDir, ".env"), "SECRET=value\n");
@@ -199,10 +200,10 @@ describe("server workspace CLI helpers", () => {
     const sourceProjectDir = path.join(root, "source");
     const archivePath = path.join(root, "steamharness.tgz");
     await mkdir(sourceProjectDir, { recursive: true });
-    await writeFile(path.join(sourceProjectDir, "package.json"), JSON.stringify({
+    await writeProjectFixture(path.join(sourceProjectDir, "package.json"), JSON.stringify({
       id: "a7e15f8a-e179-4986-8b0d-1e69a0e65b51",
       name: "@steamharness/optional-readme",
-      version: "0.1.0",steamHarness:declaration(),
+      version: "0.1.0",...(declaration()),
     }));
     await writeFile(path.join(sourceProjectDir, "index.ts"), "export default {};\n");
     await expect(packProject("optional-readme", archivePath, sourceProjectDir))
@@ -215,13 +216,12 @@ describe("server workspace CLI helpers", () => {
     const sourceDir = path.join(root, "kanban");
     const archivePath = path.join(root, "kanban.tgz");
     await mkdir(sourceDir, { recursive: true });
-    await writeFile(path.join(sourceDir, "package.json"), JSON.stringify({
+    await writeProjectFixture(path.join(sourceDir, "package.json"), JSON.stringify({
       id: "a7e15f8a-e179-4986-8b0d-1e69a0e65b51",
       name: "Kanban",
       version: "0.1.0",
-      steamHarness: {
+
         defaultEntry:"main",entries:[{entryId:"main",name:"Main",type:"kanban",root:"dist",entry:"pages/board.html",databases:[]}],
-      },
     }));
     await mkdir(path.join(sourceDir, "dist", "pages"), { recursive: true });
     await mkdir(path.join(sourceDir, "src"), { recursive: true });
@@ -430,8 +430,8 @@ describe("server workspace CLI helpers", () => {
       await mkdir(projectDir, { recursive: true });
       await Promise.all([
         writeFile(path.join(root, "pnpm-workspace.yaml"), 'packages:\n  - "."\n', "utf8"),
-        writeFile(path.join(root, "package.json"), '{"name":"steamharness"}\n', "utf8"),
-        writeFile(path.join(root, "workspace", "package.json"), '{"name":"@steamharness/workspace"}\n', "utf8"),
+        writeProjectFixture(path.join(root, "package.json"), '{"name":"steamharness"}\n', "utf8"),
+        writeProjectFixture(path.join(root, "workspace", "package.json"), '{"name":"@steamharness/workspace"}\n', "utf8"),
       ]);
 
       // keeps default pack paths rooted in the Core repository.
@@ -538,11 +538,11 @@ describe("server workspace CLI helpers", () => {
     const root = await mkdtemp(path.join(os.tmpdir(), "workflow-cli-package-"));
     const projectDir = path.join(root, "workspace", "workflow", "hello");
     await mkdir(projectDir, { recursive: true });
-    await writeFile(path.join(projectDir, "package.json"), JSON.stringify({
+    await writeProjectFixture(path.join(projectDir, "package.json"), JSON.stringify({
       id: "8bd4fef2-e083-4201-a89f-6f7d0676df53",
       name: "Hello Workflow",
       version: "0.0.1",
-      steamHarness: declaration(),
+      ...(declaration()),
     }, null, 2));
     await writeFile(path.join(projectDir, "index.ts"), VALID_STEAMHARNESS_SOURCE);
 
@@ -564,14 +564,17 @@ describe("server workspace CLI helpers", () => {
 
   it('rejects invalid aggregate identity before any remote allocation',async()=>{
     const root=await mkdtemp(path.join(os.tmpdir(),'invalid-aggregate-'));
-    try{await writeFile(path.join(root,'package.json'),JSON.stringify({id:'invalid',name:'Invalid',steamHarness:declaration()}));await expect(readProjectPackageContext('invalid',root)).rejects.toThrow();}finally{await rm(root,{recursive:true,force:true});}
+    try{await writeProjectFixture(path.join(root,'package.json'),JSON.stringify({id:'invalid',name:'Invalid',version: "0.1.0", ...(declaration())}));await expect(readProjectPackageContext('invalid',root)).rejects.toThrow();}finally{await rm(root,{recursive:true,force:true});}
   });
 
   it.each([undefined, "team-group"])("applies for a new ID with selected ownership group %s", async groupId => {
     const root = await mkdtemp(path.join(os.tmpdir(), "workflow-cli-allocate-"));
     const projectDir = path.join(root, "hello"); await mkdir(projectDir);
     const oldId = "8bd4fef2-e083-4201-a89f-6f7d0676df53", newId = "78648759-bcde-4fd5-b3bd-9a2dd46a7192";
-    await writeFile(path.join(projectDir, "package.json"), JSON.stringify({ id: oldId, name: "Hello Workflow", version: "0.0.1", steamHarness: {...declaration(), projectInfo: createProjectInfo() } }, null, 2));
+    const projectCard = { icon: "database", iconColor: "#ffffff", iconBackgroundColor: "#123456" };
+    await writeProjectFixture(path.join(projectDir, "package.json"), JSON.stringify({ id: oldId, name: "Hello Workflow", version: "0.0.1", ...declaration(), projectInfo: createProjectInfo(), projectCard }, null, 2));
+    const npmSource = JSON.stringify({ name: "npm-only", version: "9.8.7", type: "module" });
+    await writeFile(path.join(projectDir, "package.json"), npmSource);
     await writeFile(path.join(projectDir, "index.ts"), VALID_STEAMHARNESS_SOURCE);
     const fetchMock = vi.fn().mockResolvedValueOnce(createJsonResponse({ errCode: 404, errMessage: "missing" })).mockResolvedValue(createJsonResponse({ errCode: 0, data: { projectId: newId, entries:declaration().entries,defaultEntry:"main", projectName: "Hello Workflow", visibility: "private" } }));
     vi.stubGlobal("fetch", fetchMock);
@@ -579,8 +582,9 @@ describe("server workspace CLI helpers", () => {
     const created = await ensureProjectCreated({ packageContext, groupId, allowNewApplication: true, server: "http://127.0.0.1:7125", token: "api-key" });
     expect(created.projectId).toBe(newId);
     const body = JSON.parse(fetchMock.mock.calls[1][1].body);
-    expect(body).toEqual({ name: "Hello Workflow", entries:declaration().entries,defaultEntry:"main", projectInfo: { localizedNames: {}, declarations: [], platformSupport: { mode: "agnostic" }, ...createProjectInfo() }, ...(groupId ? { groupId } : {}) });
-    expect(JSON.parse(readFileSync(path.join(projectDir, "package.json"), "utf8"))).toMatchObject({ id: newId, name: "Hello Workflow" });
+    expect(body).toEqual({ name: "Hello Workflow", entries:declaration().entries,defaultEntry:"main", projectInfo: { localizedNames: {}, declarations: [], platformSupport: { mode: "agnostic" }, ...createProjectInfo() }, projectCard, ...(groupId ? { groupId } : {}) });
+    expect(JSON.parse(readFileSync(path.join(projectDir, "steamharness.json"), "utf8"))).toMatchObject({ id: newId, name: "Hello Workflow" });
+    expect(readFileSync(path.join(projectDir, "package.json"), "utf8")).toBe(npmSource);
     fetchMock.mockReset().mockResolvedValue(createJsonResponse({ errCode: 0, data: { id: newId, name: "Hello Workflow", entries:declaration().entries,defaultEntry:"main", visibility: "private" } }));
     await ensureProjectCreated({ packageContext: await readProjectPackageContext("hello", projectDir), server: "http://127.0.0.1:7125", token: "api-key" });
     expect(fetchMock).toHaveBeenCalledOnce(); expect(fetchMock.mock.calls[0][1].method).toBe("GET");
@@ -590,13 +594,14 @@ describe("server workspace CLI helpers", () => {
     const root=await mkdtemp(path.join(os.tmpdir(),'aggregate-pack-'));
     try {
       const entries=[{entryId:'one',name:'One',type:'workflow',root:'one',entry:'index.ts',databases:[]},{entryId:'two',name:'Two',type:'workflow',root:'two',entry:'index.ts',databases:[]},{entryId:'map',name:'Map',type:'kanban',root:'map',entry:'index.html',databases:['data']}];
-      await writeFile(path.join(root,'package.json'),JSON.stringify({id:'a7e15f8a-e179-4986-8b0d-1e69a0e65b51',name:'Aggregate',steamHarness:{defaultEntry:'one',entries}}));
+      await writeProjectFixture(path.join(root,'package.json'),JSON.stringify({id:'a7e15f8a-e179-4986-8b0d-1e69a0e65b51',name:'Aggregate',version: "0.1.0", defaultEntry:'one',entries}));
       const config={version:1,databases:{data:'c6033af9-e762-4a4e-a319-523cdb55103e'}};
       await writeFile(path.join(root,'config.json'),JSON.stringify(config));
-      for(const entry of entries){await mkdir(path.join(root,entry.root));await writeFile(path.join(root,entry.root,entry.entry),'export {};');}
+      for(const entry of entries){await mkdir(path.join(root,entry.root),{recursive:true});await writeFile(path.join(root,entry.root,entry.entry),'export {};');}
       const staging=path.join(root,'staging');await stageProjectSource({projectDir:root,projectName:'aggregate',stagingRoot:staging});
-      const manifest=JSON.parse(readFileSync(path.join(staging,'aggregate','package.json'),'utf8'));
-      expect(manifest.steamHarness.entries).toHaveLength(3);expect(manifest.steamHarness.entries[2].databases).toEqual(['data']);
+      const manifest=JSON.parse(readFileSync(path.join(staging,'aggregate','steamharness.json'),'utf8'));
+      expect(manifest.entries).toHaveLength(3);expect(manifest.entries[2]).toEqual({entryId:'map',root:'map'});
+      expect(JSON.parse(readFileSync(path.join(staging,'aggregate','map','steamharness.json'),'utf8')).databases).toEqual(['data']);
       expect(JSON.parse(readFileSync(path.join(staging,'aggregate','config.json'),'utf8'))).toEqual(config);
       for(const entry of entries)expect(existsSync(path.join(staging,'aggregate',entry.root,entry.entry))).toBe(true);
     }finally{await rm(root,{recursive:true,force:true});}
@@ -607,12 +612,12 @@ describe("server workspace CLI helpers", () => {
     const sourceProjectDir = path.join(root, "manual-dependencies");
     const archivePath = path.join(root, "manual-dependencies.tgz");
     await mkdir(sourceProjectDir, { recursive: true });
-    await writeFile(
+    await writeProjectFixture(
       path.join(sourceProjectDir, "package.json"),
       JSON.stringify({
         id: "a7e15f8a-e179-4986-8b0d-1e69a0e65b51",
         name: "@steamharness/manual-dependencies",
-        version: "0.1.0",steamHarness:declaration(),
+        version: "0.1.0",...(declaration()),
         dependencies: { "not-installed": "1.0.0" },
       }),
       "utf8",
@@ -653,12 +658,12 @@ describe("server workspace CLI helpers", () => {
     await mkdir(appRuntimeRoot, { recursive: true });
     await mkdir(sourceProjectDir, { recursive: true });
     await mkdir(siblingProjectDir, { recursive: true });
-    await writeFile(
+    await writeProjectFixture(
       path.join(sourceProjectDir, "package.json"),
       JSON.stringify({
         id: "2dc44605-66d9-4a07-8090-72eb83d708a7",
         name: "@steamharness/conversation-workflow",
-        version: "0.1.0",steamHarness:declaration(),
+        version: "0.1.0",...(declaration()),
       }),
       "utf8",
     );
@@ -668,7 +673,7 @@ describe("server workspace CLI helpers", () => {
       "utf8",
     );
     await writeFile(path.join(sourceProjectDir, "README.md"), "# Conversation\n", "utf8");
-    await writeFile(path.join(siblingProjectDir, "package.json"), '{"name":"openai-agents"}\n', "utf8");
+    await writeProjectFixture(path.join(siblingProjectDir, "package.json"), '{"name":"openai-agents"}\n', "utf8");
     await writeFile(path.join(siblingProjectDir, "index.ts"), "export const openaiAgentsProject = {};\n", "utf8");
     await writeFile(path.join(siblingProjectDir, "README.md"), "# OpenAI agents\n", "utf8");
 

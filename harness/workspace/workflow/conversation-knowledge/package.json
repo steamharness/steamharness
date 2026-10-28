@@ -1,5 +1,4 @@
 {
-  "id": "2162c99c-4e8a-4ef6-9ba0-e368d36bf198",
   "name": "@steamharness/conversation-knowledge-workflow",
   "version": "0.1.0",
   "private": true,
@@ -14,22 +13,5 @@
   "devDependencies": {
     "@steamharness/cli": "link:../../../cli",
     "steamharness": "link:../../.."
-  },
-  "steamHarness": {
-    "projectInfo": {},
-    "entries": [
-      {
-        "entryId": "main",
-        "type": "conversation",
-        "name": "@steamharness/conversation-knowledge-workflow",
-        "root": ".",
-        "entry": "index.ts",
-        "configuration": "configuration.json",
-        "databases": [
-          "data"
-        ]
-      }
-    ],
-    "defaultEntry": "main"
   }
 }

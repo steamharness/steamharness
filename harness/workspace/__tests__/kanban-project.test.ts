@@ -1,3 +1,4 @@
+import { writeProjectFixture } from '../../scripts/test-project-fixture.mjs';
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -81,11 +82,11 @@ async function createKanbanProject(): Promise<string> {
   const projectDir = await mkdtemp(path.join(os.tmpdir(), "steamharness-workspace-kanban-"));
   tempDirectories.push(projectDir);
   await Promise.all([
-    writeFile(path.join(projectDir, "package.json"), JSON.stringify({
+    writeProjectFixture(path.join(projectDir, "package.json"), JSON.stringify({
       id: "019fa4f0-5bc9-4d04-b552-112d2f4b66ea",
       name: "Workspace Kanban",
       version: "0.1.0",
-      steamHarness: { defaultEntry:"main",entries:[{entryId:"main",name:"Board",type:"kanban",root:".",entry:"index.html",configuration:"configuration.json",databases:[]}] },
+       defaultEntry:"main",entries:[{entryId:"main",name:"Board",type:"kanban",root:".",entry:"index.html",configuration:"configuration.json",databases:[]}] ,
     }), "utf8"),
     writeFile(path.join(projectDir, "index.html"), "<!doctype html><title>Kanban</title>", "utf8"),
     writeFile(path.join(projectDir, "configuration.json"), JSON.stringify({

@@ -26,7 +26,7 @@ async function verify(language) {
   await fs.symlink(path.join(source, 'node_modules'), path.join(folder, 'node_modules'), process.platform === 'win32' ? 'junction' : 'dir');
   const manifest = JSON.parse(await fs.readFile(path.join(folder, 'package.json'), 'utf8'));
   manifest.id = crypto.randomUUID(); manifest.name = 'deltaforce-agent';
-  manifest.steamHarness.projectInfo = { localizedNames: names };
+  manifest.projectInfo = { localizedNames: names };
   await fs.writeFile(path.join(folder, 'package.json'), JSON.stringify(manifest, null, 2));
   const profile = path.join(directory, 'u'); await fs.mkdir(path.join(profile, 'User'), { recursive: true });
   await fs.writeFile(path.join(profile, 'User/settings.json'), JSON.stringify({ 'workbench.colorTheme': 'Light Modern',

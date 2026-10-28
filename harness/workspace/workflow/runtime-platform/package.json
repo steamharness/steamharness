@@ -1,5 +1,4 @@
 {
-  "id": "19e7f764-3ed8-4de3-8523-ef20136794b8",
   "name": "@steamharness/runtime-platform-workflow",
   "version": "0.1.0",
   "private": true,
@@ -14,20 +13,5 @@
   "devDependencies": {
     "@steamharness/cli": "link:../../../cli",
     "steamharness": "link:../../.."
-  },
-  "steamHarness": {
-    "projectInfo": {},
-    "entries": [
-      {
-        "entryId": "main",
-        "type": "workflow",
-        "name": "@steamharness/runtime-platform-workflow",
-        "root": ".",
-        "entry": "index.ts",
-        "databases": [],
-        "configuration": "configuration.json"
-      }
-    ],
-    "defaultEntry": "main"
   }
 }

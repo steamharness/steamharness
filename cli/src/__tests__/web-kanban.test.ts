@@ -1,3 +1,4 @@
+import { writeProjectFixture } from '../../scripts/test-project-fixture.mjs';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { mkdtemp, mkdir, readFile, writeFile, symlink, rm, realpath } from 'node:fs/promises';
 import path from 'node:path';
@@ -64,14 +65,14 @@ async function fixture(options: { server?: boolean; artifact?: boolean; noParams
   const descriptor: Project = {entryId:"main",aggregateName:"Test aggregate",defaultEntry:"main",entryRoot:directory,databases:[],entries:[{entryId:"main",name:"Main",type:'kanban',root:".",entry:"index.html",databases:[]}], id, name: 'Board', uri: '', folderPath: directory, projectType: 'kanban', fields: [], entrypoints: [] };
   const registration={entryId:'main',name:'Board',type:'kanban' as const,root:options.artifact?'dist':'.',entry:options.artifact?'pages/index.html':'index.html',configuration:'configuration.json',databases:[] as core.DatabaseRequirement[]};
   if(options.real){const registry=new core.LocalDatabaseRegistry();const permissions={kv:{read:{mode:'all' as const},write:{mode:'all' as const}},knowledge:{read:{mode:'all' as const},write:{mode:'all' as const}}};const request=registry.request({projectId:id,entryId:'main',alias:'data',permissions,target:{kind:'create',name:'Board'}});const approval=registry.review(request.requestId,{approve:true});registration.databases=[{alias:'data',databaseId:approval.databaseId!}];}
-  const pkg = { id, name: 'Board', type: 'module', devDependencies: { 'steamharness': await resolveHarnessVersion() }, steamHarness: { defaultEntry:'main',entries:[{...registration,databases:registration.databases.map(database => database.alias)}] } };
+  const pkg = { id, name: 'Board', type: 'module', devDependencies: { 'steamharness': await resolveHarnessVersion() }, version: "0.1.0",  defaultEntry:'main',entries:[{...registration,databases:registration.databases.map(database => database.alias)}]  };
   Object.assign(descriptor,{entryRoot:path.resolve(directory,registration.root),entries:[registration],databases:registration.databases});
-  await writeFile(path.join(directory, 'package.json'), JSON.stringify(pkg));
+  await writeProjectFixture(path.join(directory, 'package.json'), JSON.stringify(pkg));
   if(options.real)await writeFile(path.join(directory,'config.json'),JSON.stringify({version:1,databases:{data:registration.databases[0]!.databaseId}}));
   const artifactRoot = options.artifact ? path.join(directory, 'dist/pages') : directory;
   await mkdir(artifactRoot, { recursive: true }); await writeFile(path.join(artifactRoot, 'index.html'), '<!doctype html><script>window.boardLoaded = true;</script><h1>Board</h1>'); await writeFile(path.join(artifactRoot, 'board.js'), 'window.assetLoaded = true;');
   { await writeFile(path.join(directory, registration.root, 'configuration.json'), JSON.stringify({ version: 1, fields:options.noParams?[]: [{ name: 'title', type: 'string', defaultValue: 'Roadmap' }, { name: 'limit', type: 'number', defaultValue: 5 }, { name: 'visible', type: 'boolean', defaultValue: true }, { name: 'tags', type: 'string', multiple: true, defaultValue: ['a'] }] })); }
-  const runtime: Runtime = { available: true, inspect: vi.fn(async () => ({ projects: [{ ...descriptor, id: JSON.parse(await readFile(path.join(directory, 'package.json'), 'utf8')).id }], errors: [] })), resolveParams: vi.fn(async () => ({})), run: vi.fn(async () => ({ status: 'success' })), uploadFiles: vi.fn(async () => []), readFile: vi.fn(), deleteFiles: vi.fn(), cancelConversation: vi.fn(async () => {}), deleteConversation: vi.fn(), readResource: vi.fn(), cancel: vi.fn(), dispose: vi.fn(), kanbanBridge: vi.fn(async (_project, call) => ({ operation: call.operation })) };
+  const runtime: Runtime = { available: true, inspect: vi.fn(async () => ({ projects: [{ ...descriptor, id: JSON.parse(await readFile(path.join(directory, 'steamharness.json'), 'utf8')).id }], errors: [] })), resolveParams: vi.fn(async () => ({})), run: vi.fn(async () => ({ status: 'success' })), uploadFiles: vi.fn(async () => []), readFile: vi.fn(), deleteFiles: vi.fn(), cancelConversation: vi.fn(async () => {}), deleteConversation: vi.fn(), readResource: vi.fn(), cancel: vi.fn(), dispose: vi.fn(), kanbanBridge: vi.fn(async (_project, call) => ({ operation: call.operation })) };
   const dataDir = path.join(root, 'data');
   vi.stubEnv('STEAMHARNESS_CLI_AUTH_DIR', path.join(root, 'auth')); vi.stubEnv('STEAMHARNESS_SERVER_URL', ''); vi.stubEnv('STEAMHARNESS_SERVER_ADMIN_KEY', '');
   if (options.real) {
@@ -198,7 +199,7 @@ describe('Kanban CLI Web workspace', () => {
   it('retains the previous preview and project declaration after an invalid manifest refresh', async () => {
     const { app, state, post, directory, pkg } = await fixture();
     const before = (await state()).kanban, artifact = { ...app.project.kanban! };
-    await writeFile(path.join(directory, 'package.json'), JSON.stringify({ ...pkg, steamHarness: { ...pkg.steamHarness, entries:[{...pkg.steamHarness.entries[0],root:'other'}] } }));
+    await writeProjectFixture(path.join(directory, 'package.json'), JSON.stringify({ ...pkg,  ...pkg, entries:[{...pkg.entries[0],root:'other'}]  }));
     await writeFile(path.join(directory, 'configuration.json'), '{');
     expect((await post({ type: 'kanban-refresh' })).status).toBe(400);
     expect(app.project.kanban).toEqual(artifact);

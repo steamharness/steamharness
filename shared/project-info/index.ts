@@ -25,18 +25,18 @@ const PROJECT_INFO_ID_PATTERN = /^[a-z][a-z0-9-]*$/;
 export function createDefaultProjectInfo(): ProjectInfoContract { return { localizedNames: {}, declarations: [], platformSupport: { mode: "agnostic" } }; }
 export function createUndeclaredProjectInfo(): ProjectInfoContract { return createDefaultProjectInfo(); }
 export function normalizeProjectInfo(value: unknown): ProjectInfoContract {
-  if (!isRecord(value)) throw new Error("steamHarness.projectInfo must be an object.");
+  if (!isRecord(value)) throw new Error("steamharness.json.projectInfo must be an object.");
   if ("relatedProjects" in value || "dataStorage" in value) throw new Error("Project database and related-project declarations were removed. Register entry database requirements instead.");
-  if (Object.keys(value).some(key => !["localizedNames", "declarations", "platformSupport"].includes(key))) throw new Error("steamHarness.projectInfo contains unsupported fields.");
-  return { localizedNames: normalizeLocalizedNames(value.localizedNames), declarations: normalizeIds(value.declarations, "steamHarness.projectInfo.declarations"), platformSupport: normalizePlatformSupport(value.platformSupport) };
+  if (Object.keys(value).some(key => !["localizedNames", "declarations", "platformSupport"].includes(key))) throw new Error("steamharness.json.projectInfo contains unsupported fields.");
+  return { localizedNames: normalizeLocalizedNames(value.localizedNames), declarations: normalizeIds(value.declarations, "steamharness.json.projectInfo.declarations"), platformSupport: normalizePlatformSupport(value.platformSupport) };
 }
 export function normalizeDeclaredProjectInfoInput(value: unknown): DeclaredProjectInfo { return normalizeProjectInfo(value); }
-export function readProjectInfo(packageJson: unknown): ProjectInfoContract {
-  if (!isRecord(packageJson) || !isRecord(packageJson.steamHarness) || packageJson.steamHarness.projectInfo === undefined) return createDefaultProjectInfo();
-  return normalizeProjectInfo(packageJson.steamHarness.projectInfo);
+export function readProjectInfo(document: unknown): ProjectInfoContract {
+  if (!isRecord(document) || document.projectInfo === undefined) return createDefaultProjectInfo();
+  return normalizeProjectInfo(document.projectInfo);
 }
-export function writeProjectInfo(packageJson: Record<string, unknown>, projectInfo: DeclaredProjectInfo): Record<string, unknown> {
-  return { ...packageJson, steamHarness: { ...(isRecord(packageJson.steamHarness) ? packageJson.steamHarness : {}), projectInfo: serializeProjectInfo(projectInfo) } };
+export function writeProjectInfo(document: Record<string, unknown>, projectInfo: DeclaredProjectInfo): Record<string, unknown> {
+  return { ...document, projectInfo: serializeProjectInfo(projectInfo) };
 }
 export function serializeProjectInfo(projectInfo: ProjectInfoContract): Record<string, unknown> { return structuredClone(normalizeProjectInfo(projectInfo)) as unknown as Record<string, unknown>; }
 
@@ -85,16 +85,16 @@ export function matchesProjectSearch(
 function normalizeLocalizedNames(value: unknown): Record<string, string> {
   if (value === undefined) return {};
   if (!isRecord(value)) {
-    throw new Error("steamHarness.projectInfo.localizedNames must be an object.");
+    throw new Error("steamharness.json.projectInfo.localizedNames must be an object.");
   }
   const entries: Array<[string, string]> = [];
   for (const [rawLocale, rawName] of Object.entries(value)) {
     const locale = rawLocale.trim();
     if (locale === "") {
-      throw new Error("steamHarness.projectInfo.localizedNames contains an empty locale.");
+      throw new Error("steamharness.json.projectInfo.localizedNames contains an empty locale.");
     }
     if (typeof rawName !== "string") {
-      throw new Error(`steamHarness.projectInfo.localizedNames.${locale} must be a string.`);
+      throw new Error(`steamharness.json.projectInfo.localizedNames.${locale} must be a string.`);
     }
     const name = rawName.trim();
     if (name !== "") entries.push([locale, name]);
@@ -105,23 +105,23 @@ function normalizeLocalizedNames(value: unknown): Record<string, string> {
 function normalizePlatformSupport(value: unknown): ProjectPlatformSupport {
   if (value === undefined) return { mode: "agnostic" };
   if (!isRecord(value)) {
-    throw new Error("steamHarness.projectInfo.platformSupport must be an object.");
+    throw new Error("steamharness.json.projectInfo.platformSupport must be an object.");
   }
   if (value["mode"] === "agnostic") {
     if (value["platforms"] !== undefined) {
-      throw new Error("steamHarness.projectInfo.platformSupport.platforms is not allowed in agnostic mode.");
+      throw new Error("steamharness.json.projectInfo.platformSupport.platforms is not allowed in agnostic mode.");
     }
     return { mode: "agnostic" };
   }
   if (value["mode"] !== "specific") {
-    throw new Error('steamHarness.projectInfo.platformSupport.mode must be "agnostic" or "specific".');
+    throw new Error('steamharness.json.projectInfo.platformSupport.mode must be "agnostic" or "specific".');
   }
   const platforms = normalizeIds(
     value["platforms"],
-    "steamHarness.projectInfo.platformSupport.platforms",
+    "steamharness.json.projectInfo.platformSupport.platforms",
   );
   if (platforms.length === 0) {
-    throw new Error("steamHarness.projectInfo.platformSupport.platforms must contain at least one platform.");
+    throw new Error("steamharness.json.projectInfo.platformSupport.platforms must contain at least one platform.");
   }
   return { mode: "specific", platforms };
 }

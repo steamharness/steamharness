@@ -1,5 +1,7 @@
 # Unreleased
 
+- Breaking: project identity, name, version and declarations now use independent `steamharness.json` files. Removed reads and writes of `package.json.id` and `steamHarness`. Aggregates explicitly register child entries whose configuration defines icons, declarations, database aliases and schedules. Unregistered configurations stay inactive, and transfers preserve the parent and child structure.
+
 - Improvement: Start shows one card per aggregate and opens its default entry. Project windows and entry actions use icons with redesigned entry details. Removed split views; all entries, including the current one, can open and restore multiple independent native tabs on the shared host. Closing one tab leaves the others open. Entry icons and colors are independent; entry labels no longer repeat the root version.
 
 - Changed: entry information shows database aliases and IDs. Resource panels resolve host authorization from references, preserve entry isolation for multiple databases, and no longer read manifest permissions or host fields.

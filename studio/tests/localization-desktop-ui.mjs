@@ -40,7 +40,7 @@ async function verify(language) {
     await fs.symlink(cli, path.join(folder, 'node_modules/@steamharness/cli'), 'dir');
     const manifest = JSON.parse(await fs.readFile(path.join(folder, 'package.json'), 'utf8'));
     manifest.description = '\u539f\u59cb\u9879\u76ee\u63cf\u8ff0';
-    manifest.steamHarness.projectInfo = { ...manifest.steamHarness.projectInfo, declarations: ['multilingual', 'multiplatform'] };
+    manifest.projectInfo = { ...manifest.projectInfo, declarations: ['multilingual', 'multiplatform'] };
     await fs.writeFile(path.join(folder, 'package.json'), JSON.stringify(manifest, null, 2)); projects.push({ type, folder, manifest });
   }
   const workspace = path.join(directory, 'localized.code-workspace');
@@ -137,7 +137,7 @@ async function verify(language) {
     await page.locator('.part.activitybar').getByRole('tab', { name: exact('Studio') }).click();
     for (const label of ['New File', 'New Terminal', 'Run Task', 'Source Control', 'Extensions', 'Settings']) { await field(t(label)).waitFor(); }
     proof.checks.push('Studio tools use the host language even without a source-mode language pack');
-    const projectName = project => project.manifest.steamHarness.projectInfo.localizedNames?.[language === 'en' ? 'en' : 'zh-CN'] ?? project.manifest.name;
+    const projectName = project => project.manifest.projectInfo.localizedNames?.[language === 'en' ? 'en' : 'zh-CN'] ?? project.manifest.name;
     await field(projectName(projects[1])).locator('.label-name').click();
     const conversation = await frameFor('body[data-surface=editor] #message');
     await conversation.locator('#message:not([disabled])').waitFor();

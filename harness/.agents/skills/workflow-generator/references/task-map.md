@@ -12,7 +12,7 @@
 | 定义 Workflow 主字段、Conversation Quick/Mode/Auxiliary 或联动 | `ParamDeclaration`、`ConversationParamDeclaration`、`ParamResolverContext`、`ParamResolveResult` | `references/param-panels.md`；`steamharness-api.md`「参数」 | `structure` 检查 `params` 与 `paramLayout.actions` |
 | 输出正文、详情或文件 | `steamharness.createOutputNode`、`runStreamNode`、`createOutputItemChunk`；`RunOutputPayload`、`OutputItem` | `steamharness-api.md`「必需本地类型」与「节点」 | run/json 检查正文 item 与详情 item |
 | 读取或修改项目数据 | `RunContext`、`DatabaseContext` | `steamharness-api.md`「独立数据库空间」「项目知识文档」 | 用隔离注册表申请审批，按声明与有效授权检查 |
-| 处理 Kanban 页面与命名参数 | `steamHarness.kanban`、`configuration.json` | `steamharness-api.md`「Kanban 静态项目」；`assets/kanban/` | 构建产物入口及 `structure` |
+| 处理 Kanban 页面与命名参数 | `steamharness.json.entries`、`configuration.json` | `steamharness-api.md`「Kanban 静态项目」；`assets/kanban/` | 构建产物入口及 `structure` |
 | 上传图片、文件或迁移本地底图 | `context.files`、Kanban `files`、CLI `workspace file-upload/file-download` | `steamharness-api.md`「Kanban 静态项目」与 File param 契约 | 服务器引用及原始字节读回，KV 只存引用 |
 
 项目源码的类型提示可以使用 `import type { AgentInput, ParamDeclaration } from "steamharness"`，或 `import type { RuntimeApi } from "steamharness/runtime-api"`。`steamharness` 本身必须来自宿主注入；不要从包中做运行时 import。声明要进入 Desktop 的结构报告时，`defineExecutor` 接收内联对象；`params`、`tools`、`conversation` 和 `tokenUsage` 保持内联字面量。详细字段与限制以对应章节为准。

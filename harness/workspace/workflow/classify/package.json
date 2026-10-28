@@ -1,5 +1,4 @@
 {
-  "id": "b7a68f4e-da48-4825-b93b-53e061cf3e71",
   "name": "@steamharness/classify-workflow",
   "version": "0.1.0",
   "private": true,
@@ -14,20 +13,5 @@
   "devDependencies": {
     "@steamharness/cli": "link:../../../cli",
     "steamharness": "link:../../.."
-  },
-  "steamHarness": {
-    "projectInfo": {},
-    "entries": [
-      {
-        "entryId": "main",
-        "type": "workflow",
-        "name": "@steamharness/classify-workflow",
-        "root": ".",
-        "entry": "index.ts",
-        "databases": [],
-        "configuration": "configuration.json"
-      }
-    ],
-    "defaultEntry": "main"
   }
 }

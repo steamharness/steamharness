@@ -1,3 +1,4 @@
+import { writeProjectFixture } from '../../scripts/test-project-fixture.mjs';
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { test } from 'node:test';
@@ -24,8 +25,8 @@ async function fixture(t, host = 'local', approved = true) {
     const request=registry.request({projectId:project.id,entryId:project.entryId,alias:'data',permissions,target:{kind:'create',name:'Test data'}});
     requirement.databaseId=registry.review(request.requestId,{approve:true}).databaseId;
   }
-  const manifest={id:project.id,name:'Test',steamHarness:{defaultEntry:'main',entries:[{entryId:'main',type:'workflow',name:'Main',root:'.',entry:'index.ts',databases:["data"]}]}};
-  await writeFile(path.join(folderPath,'package.json'),JSON.stringify(manifest));
+  const manifest={id:project.id,name:'Test',version: "0.1.0", defaultEntry:'main',entries:[{entryId:'main',type:'workflow',name:'Main',root:'.',entry:'index.ts',databases:["data"]}]};
+  await writeProjectFixture(path.join(folderPath,'package.json'),JSON.stringify(manifest));
   await writeFile(path.join(folderPath,'config.json'),JSON.stringify({version:1,databases:{data:requirement.databaseId}}));
   const database=core.createDatabasesContext({projectId:project.id,entryId:'main',requirements:[requirement],resolver:core.createLocalDatabaseResolver(registry)}).get('data');
   const request=(input,connection)=>runResourceRequest({project,input:{database:'data',...input},connection},core);
@@ -89,7 +90,7 @@ test('unapproved, revoked, undeclared, mismatched host and changed identity cann
   const approved=await fixture(t);
   await assert.rejects(approved.request({kind:'kv',action:'list',source:'server'}),/host mismatch/);
   await assert.rejects(f.request({kind:'kv',action:'list',database:'other'}),/alias/);
-  await writeFile(path.join(f.project.folderPath,'package.json'),JSON.stringify({...f.manifest,id:'615e6cf6-b40a-456a-8d19-b71c63454c7a'}));
+  await writeProjectFixture(path.join(f.project.folderPath,'package.json'),JSON.stringify({...f.manifest,id:'615e6cf6-b40a-456a-8d19-b71c63454c7a'}));
   await assert.rejects(f.request({kind:'kv',action:'delete',key:'secret'}),/identity changed/);
 });
 

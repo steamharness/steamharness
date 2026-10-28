@@ -1,3 +1,4 @@
+import { projectFixtureFiles } from '../../scripts/test-project-fixture.mjs';
 import { AccountRepository } from "../account-db";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
@@ -39,11 +40,11 @@ test('PostgreSQL configuration profiles use inherited project roles, preserve pe
     await storage.createProject({projectId:id,projectName:'Role profiles',entries:[{entryId:"main",name:"Main",type:'conversation',root:".",entry:"index.ts",databases:[]}],defaultEntry:"main",ownerUserId:'author',groupId:child.id,visibility:'public',projectInfo});
     const core=JSON.parse(await readFile(new URL('../../node_modules/steamharness/package.json',import.meta.url),'utf8'));
     const policy={version:1,defaultProfileKey:'ask',manageMinimumRole:'developer',profiles:[{key:'ask',name:'Ask',minimumRole:'guest',fixedValues:{mode:'ask'}},{key:'build',name:'Build',minimumRole:'developer',fixedValues:{mode:'build'}}]};
-    await storage.saveDraftFiles({projectName:id,files:[
-      {path:'package.json',content:JSON.stringify({id,name:'Role profiles',version:'1.0.0',devDependencies:{steamharness:core.version},steamHarness:{defaultEntry:"main",entries:[{entryId:"main",name:"Main",type:'conversation',root:".",entry:"index.ts",configuration:"configuration.json",databases:[]}],projectInfo}})},
+    await storage.saveDraftFiles({projectName:id,files:projectFixtureFiles([
+      {path:'package.json',content:JSON.stringify({id,name:'Role profiles',version:'1.0.0',devDependencies:{steamharness:core.version},defaultEntry:"main",entries:[{entryId:"main",name:"Main",type:'conversation',root:".",entry:"index.ts",configuration:"configuration.json",databases:[]}],projectInfo})},
       {path:'index.ts',content:'throw new Error("Static configuration operations must not execute source");'},
       {path:'configuration.json',content:JSON.stringify({version:2,fields:[{name:'mode',type:'string',sharing:{publish:true,includeValue:true,editable:false}},{name:'model',type:'string'}],profilePolicy:policy})},
-    ]});
+    ])});
     const owner={projectName:id,actorId:'author',actor:author};
     let state=await storage.projectConfigurations(owner,{action:'get'}) as ProjectConfigurationState;
     state=await storage.projectConfigurations(owner,{action:'publication.save',revision:state.revision,publication:state.publication}) as ProjectConfigurationState;
@@ -102,11 +103,11 @@ test("PostgreSQL preserves source AI policy through stale drafts and hidden publ
     await db.access.setMember('project',id,'recipient','guest',{userId:'author',isSystemAdmin:false});
     const core = JSON.parse(await readFile(new URL("../../node_modules/steamharness/package.json",import.meta.url),"utf8"));
     const definition = (restricted:boolean)=>JSON.stringify({version:2,fields:[{...AGENT_MODELS_CONFIGURATION_FIELD,...(restricted?{allowThirdParty:false}:{})}]});
-    await storage.saveDraftFiles({projectName:id,files:[
-      {path:"package.json",content:JSON.stringify({id,name:"AI policy",version:"1.0.0",devDependencies:{steamharness:core.version},steamHarness:{defaultEntry:"main",entries:[{entryId:"main",name:"Main",type:"conversation",root:".",entry:"index.ts",configuration:"configuration.json",databases:[]}],projectInfo}})},
+    await storage.saveDraftFiles({projectName:id,files:projectFixtureFiles([
+      {path:"package.json",content:JSON.stringify({id,name:"AI policy",version:"1.0.0",devDependencies:{steamharness:core.version},defaultEntry:"main",entries:[{entryId:"main",name:"Main",type:"conversation",root:".",entry:"index.ts",configuration:"configuration.json",databases:[]}],projectInfo})},
       {path:"index.ts",content:'throw new Error("must not execute"); steamharness.createAgentNode();'},
       {path:"configuration.json",content:definition(false)},
-    ]});
+    ])});
     const options={projectName:id,actorId:"author"};
     let state=await storage.projectConfigurations(options,{action:"get"}) as ProjectConfigurationState;
     const third={id:"third",name:"Custom",source:"third-party",model:"model",apiKind:"openai-responses",baseUrl:"https://example.test/v1",apiKey:"test-only-key"};

@@ -1,5 +1,7 @@
 # Unreleased
 
+- Breaking: project identity, name, version and declarations now use independent `steamharness.json` files. Removed reads and writes of `package.json.id` and `steamHarness`. Aggregates explicitly register child entries whose configuration defines icons, declarations, database aliases and schedules. Unregistered configurations stay inactive, and transfers preserve the parent and child structure.
+
 - Changed: database authorization resolves databaseId, projectId and entryId for many-to-many references. Hosts maintain all data permissions. Startup preserves unsupported project rows, snapshots and storage instead of deleting them.
 
 - Fixed forged database request approval metadata exposing other spaces and grants. KV listing intersects host declarations, grants and client key prefixes before counting and pagination.

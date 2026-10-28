@@ -1,5 +1,4 @@
 {
-  "id": "6cbe3c24-2707-4f31-a553-94edbe866eb1",
   "name": "Studio Analysis",
   "version": "0.1.0",
   "private": true,
@@ -19,35 +18,5 @@
     "lucide": "0.468.0",
     "playwright": "1.61.1",
     "vitest": "4.1.10"
-  },
-  "steamHarness": {
-    "projectInfo": {
-      "localizedNames": {
-        "zh-CN": "Studio 分析",
-        "en": "Studio Analysis"
-      },
-      "declarations": [
-        "multilingual"
-      ],
-      "platformSupport": {
-        "mode": "agnostic"
-      }
-    },
-    "projectCard": {
-      "icon": "chart-column",
-      "iconBackgroundColor": "#0f766e"
-    },
-    "entries": [
-      {
-        "entryId": "main",
-        "type": "kanban",
-        "name": "Studio Analysis",
-        "root": ".",
-        "entry": "index.html",
-        "databases": [],
-        "configuration": "configuration.json"
-      }
-    ],
-    "defaultEntry": "main"
   }
 }

@@ -49,5 +49,5 @@ const outputNode = workflow.createOutputNode<Input, OutputPayload>({
 | 宿主语言是唯一来源 | 不要读取浏览器、操作系统或自行定义的环境变量来猜测语言。 |
 | 默认简体中文 | 未注入语言的 CLI、本地进程和旧宿主稳定返回 `"zh-CN"`。 |
 | 统一处理用户可见内容 | 已国际化项目应同时维护输出、错误、日期、数字和无障碍文案，并为未知或失败情况保留中文回退。 |
-| 静态清单不随运行时切换 | `package.json`、entrypoint 标题和参数定义在运行前静态解析，继续使用项目默认语言。 |
+| 静态清单不随运行时切换 | `steamharness.json`、entrypoint 标题和参数定义在运行前静态解析，继续使用项目默认语言。 |
 | Kanban 使用 Bridge | 静态 Kanban 页面没有 `workflow` 全局对象，应调用 `window.steamHarnessKanban.getRuntimeLocale()`。 |

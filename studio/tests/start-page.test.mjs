@@ -43,7 +43,7 @@ function fixture(t, options = {}) {
       onDidGrantWorkspaceTrust: trustChanged.event, onDidChangeConfiguration: new Emitter().event,
       openTextDocument: async value => ({ uri: value, getText: () => new TextDecoder().decode(files.get(value.fsPath)) }),
       fs: { readFile: async value => {
-        if (path.basename(value.fsPath) === 'package.json') { return Buffer.from(JSON.stringify({ id: f.manifestId })); }
+        if (path.basename(value.fsPath) === 'steamharness.json') { return Buffer.from(JSON.stringify({ id: f.manifestId })); }
         if (!files.has(value.fsPath)) { throw Object.assign(new Error('File missing'), { code: 'FileNotFound' }); }
         return files.get(value.fsPath);
       }, writeFile: async (value, content) => { files.set(value.fsPath, content); }, createDirectory: async () => {} } },

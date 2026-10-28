@@ -161,20 +161,20 @@ export function parseProjectSchedulePresets(
   if (projectType !== "workflow") {
     throw scheduleError(
       "onlyProjectPresets",
-      "Only Workflow projects can declare steamHarness.schedulePresets.",
+      "Only Workflow projects can declare schedulePresets.",
     );
   }
   if (!Array.isArray(value) || value.length > STEAMHARNESS_SCHEDULE_MAX_PRESETS) {
     throw scheduleError(
       "presetsArrayMax",
-      `steamHarness.schedulePresets must be an array with at most ${STEAMHARNESS_SCHEDULE_MAX_PRESETS} items.`,
+      `schedulePresets must be an array with at most ${STEAMHARNESS_SCHEDULE_MAX_PRESETS} items.`,
       { max: STEAMHARNESS_SCHEDULE_MAX_PRESETS },
     );
   }
 
   const ids = new Set<string>();
   return value.map((item, index) => {
-    const field = `steamHarness.schedulePresets[${index}]`;
+    const field = `schedulePresets[${index}]`;
     const record = readRecord(item, field);
     assertOnlyFields(record, field, [
       "id",
@@ -192,7 +192,7 @@ export function parseProjectSchedulePresets(
     if (ids.has(id)) {
       throw scheduleError(
         "duplicatePresetId",
-        `steamHarness.schedulePresets contains duplicate id "${id}".`,
+        `schedulePresets contains duplicate id "${id}".`,
         { id },
       );
     }

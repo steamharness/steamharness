@@ -28,7 +28,7 @@ for (const projectType of ['workflow', 'conversation', 'kanban']) {
     t.after(() => fs.rm(directory, { recursive: true, force: true }));
     const source = path.join(directory, 'source'); await fs.mkdir(source);
     const entries = [{entryId:'main',type:projectType,name:'Main',root:'.',entry:projectType==='kanban'?'index.html':'index.ts',databases:[]}];
-    const manifest = { id:projectId,name:`${projectType}-sample`,version:'1.2.3',scripts:{postinstall:'node -e "throw new Error()"'},steamHarness:{entries,defaultEntry:'main'} };
+    const manifest = { id:projectId,name:`${projectType}-sample`,version:'1.2.3',scripts:{postinstall:'node -e "throw new Error()"'},entries,defaultEntry:'main' };
     const files = [{ path: 'package.json', content: JSON.stringify(manifest) },
       { path: 'index.ts', content: "throw new Error('Source must not execute');\n" },
       { path: 'image.bin', content: 'AAH/', encoding: 'base64' }];

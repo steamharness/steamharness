@@ -35,7 +35,7 @@ export async function prepareRelease(options) {
   if (!semver.valid(version) || semver.prerelease(version)) {
     throw new Error("Release version must be a stable X.Y.Z SemVer.");
   }
-  const manifestPath = path.join(root, "package.json");
+  const manifestPath = path.join(root, "steamharness.json");
   const zhHistoryPath = path.join(root, "CHANGELOG.md");
   const enHistoryPath = path.join(root, "CHANGELOG.en.md");
   const zhNextPath = path.join(root, "CHANGELOG.next.md");
@@ -46,9 +46,9 @@ export async function prepareRelease(options) {
     await readFile(filePath, "utf8"),
   ])));
   const manifest = JSON.parse(originals.get(manifestPath));
-  const projectId = String(manifest?.steamHarness?.builtinRelease?.projectId ?? "").trim();
+  const projectId = String(manifest?.builtinRelease?.projectId ?? "").trim();
   if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(projectId)) {
-    throw new Error("steamHarness.builtinRelease.projectId is invalid.");
+    throw new Error("steamharness.json.builtinRelease.projectId is invalid.");
   }
   if (!semver.valid(manifest.version) || !semver.gt(version, manifest.version)) {
     throw new Error(`${version} must be greater than ${manifest.version}.`);

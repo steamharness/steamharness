@@ -87,7 +87,7 @@ def main() -> None:
         raise SystemExit("--with-kanban-params 只能与 --project-type kanban 一起使用。")
 
     if workflow_dir.exists() and any(workflow_dir.iterdir()):
-        existing_files = [workflow_dir / "package.json"]
+        existing_files = [workflow_dir / "package.json", workflow_dir / "steamharness.json"]
         existing_files += (
             [workflow_dir / path for path in kanban_template_files(args.with_kanban_params)]
             if args.project_type == "kanban"
@@ -106,6 +106,7 @@ def main() -> None:
 
     workflow_dir.mkdir(parents=True, exist_ok=True)
     write_file(workflow_dir / "package.json", package_json(workflow_name, args.project_type))
+    write_file(workflow_dir / "steamharness.json", project_json(workflow_name, args.project_type, args.description))
     if args.project_type == "kanban":
         for relative_path in kanban_template_files(args.with_kanban_params):
             write_file(
@@ -162,29 +163,26 @@ def render_kanban_template(relative_path: str, name: str, with_params: bool) -> 
 
 
 def package_json(name: str, project_type: str) -> str:
-    workflow_id = str(uuid4())
     core_version, cli_version = resolve_dependency_versions()
     package_suffix = "kanban" if project_type == "kanban" else "workflow"
+    return json.dumps({
+        "name": f"@steamharness/{name}-{package_suffix}",
+        "version": "0.1.0", "private": True, "type": "module",
+        "devDependencies": {"@steamharness/cli": cli_version, "steamharness": core_version},
+    }, ensure_ascii=False, indent=2) + "\n"
+
+
+def project_json(name: str, project_type: str, description: str) -> str:
     icon, icon_background = PROJECT_CARD_DEFAULTS[project_type]
-    entry_file = "index.html" if project_type == "kanban" else "index.ts"
-    workflow_metadata = f''',
-  "steamHarness": {{
-    "defaultEntry": "main",
-    "entries": [{{ "entryId": "main", "type": "{project_type}", "name": "{name}", "root": ".", "entry": "{entry_file}", "configuration": "configuration.json" }}],
-    "projectCard": {{ "icon": "{icon}", "iconBackgroundColor": "{icon_background}" }}
-  }}'''
-    return f'''{{
-  "id": "{workflow_id}",
-  "name": "@steamharness/{name}-{package_suffix}",
-  "version": "0.1.0",
-  "private": true,
-  "type": "module",
-  "devDependencies": {{
-    "@steamharness/cli": "{cli_version}",
-    "steamharness": "{core_version}"
-  }}{workflow_metadata}
-}}
-'''
+    return json.dumps({
+        "id": str(uuid4()), "name": name, "version": "0.1.0", "description": description,
+        "defaultEntry": "main", "entries": [{
+            "entryId": "main", "type": project_type, "name": name, "root": ".",
+            "entry": "index.html" if project_type == "kanban" else "index.ts",
+            "configuration": "configuration.json", "databases": [],
+        }],
+        "projectCard": {"icon": icon, "iconBackgroundColor": icon_background},
+    }, ensure_ascii=False, indent=2) + "\n"
 
 
 def read_package_json(package_path: Path) -> dict:

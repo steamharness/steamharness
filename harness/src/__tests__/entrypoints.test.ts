@@ -1,3 +1,4 @@
+import { writeProjectFixture } from '../../scripts/test-project-fixture.mjs';
 import { LocalDatabaseRegistry, createLocalDatabaseResolver, type DatabaseResolver } from "../databases/index";
 import assert from "node:assert/strict";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
@@ -203,7 +204,7 @@ test("workflow entrypoints expose group metadata in a flat structure and run ind
 test("workflow entrypoint structure resolves imported workflows and keeps registries scoped", async () => {
   const projectDir = await mkdtemp(path.join(os.tmpdir(), "steamharness-imported-entrypoints-"));
   try {
-    await writeFile(path.join(projectDir, "package.json"), JSON.stringify({id:crypto.randomUUID(),steamHarness:{defaultEntry:"main",entries:[{entryId:"main",name:"Main",type:"workflow",root:".",entry:"index.ts",databases:[]}]},
+    await writeProjectFixture(path.join(projectDir, "package.json"), JSON.stringify({id:crypto.randomUUID(),defaultEntry:"main",entries:[{entryId:"main",name:"Main",type:"workflow",root:".",entry:"index.ts",databases:[]}],
       name: "imported-entrypoint-test",
       version: "0.1.0",
       type: "module",
@@ -287,7 +288,7 @@ test("workflow entrypoint structure resolves imported workflows and keeps regist
 test("workflow entrypoint structure resolves wrapped definitions and inline default exports", async () => {
   const projectDir = await mkdtemp(path.join(os.tmpdir(), "steamharness-wrapped-entrypoints-"));
   try {
-    await writeFile(path.join(projectDir, "package.json"), JSON.stringify({id:crypto.randomUUID(),steamHarness:{defaultEntry:"main",entries:[{entryId:"main",name:"Main",type:"workflow",root:".",entry:"index.ts",databases:[]}]},
+    await writeProjectFixture(path.join(projectDir, "package.json"), JSON.stringify({id:crypto.randomUUID(),defaultEntry:"main",entries:[{entryId:"main",name:"Main",type:"workflow",root:".",entry:"index.ts",databases:[]}],
       name: "wrapped-entrypoint-test",
       version: "0.1.0",
       type: "module",
@@ -355,7 +356,7 @@ test("workflow entrypoint structure resolves wrapped definitions and inline defa
 test("workflow entrypoint structure does not accept an unrelated same-name workflow", async () => {
   const projectDir = await mkdtemp(path.join(os.tmpdir(), "steamharness-colliding-entrypoint-"));
   try {
-    await writeFile(path.join(projectDir, "package.json"), JSON.stringify({id:crypto.randomUUID(),steamHarness:{defaultEntry:"main",entries:[{entryId:"main",name:"Main",type:"workflow",root:".",entry:"index.ts",databases:[]}]},
+    await writeProjectFixture(path.join(projectDir, "package.json"), JSON.stringify({id:crypto.randomUUID(),defaultEntry:"main",entries:[{entryId:"main",name:"Main",type:"workflow",root:".",entry:"index.ts",databases:[]}],
       name: "colliding-entrypoint-test",
       version: "0.1.0",
       type: "module",
@@ -472,12 +473,12 @@ test("workspace runtime layers prepare before inspection and started events incl
 
   try {
     await mkdir(projectDir, { recursive: true });
-    await writeFile(path.join(projectDir, "package.json"), JSON.stringify({
+    await writeProjectFixture(path.join(projectDir, "package.json"), JSON.stringify({
       id: "11111111-1111-4111-8111-111111111111",
       name: projectName,
       version: "0.1.0",
       type: "module",
-      steamHarness: {defaultEntry:"main",entries:[{entryId:"main",type:"workflow",name:"Main",root:".",entry:"index.ts",databases:[]}], projectInfo:{}},
+      defaultEntry:"main",entries:[{entryId:"main",type:"workflow",name:"Main",root:".",entry:"index.ts",databases:[]}], projectInfo:{},
     }));
     await writeFile(path.join(projectDir, "index.ts"), `
       const mainProject = steamharness.defineProject({
@@ -715,12 +716,12 @@ test("workflow entrypoint structure rules reject legacy and dynamic declarations
 
 async function createEntrypointProject(): Promise<string> {
   const projectDir = await mkdtemp(path.join(os.tmpdir(), "steamharness-entrypoints-"));
-  await writeFile(path.join(projectDir, "package.json"), JSON.stringify({
+  await writeProjectFixture(path.join(projectDir, "package.json"), JSON.stringify({
     id: "11111111-1111-4111-8111-111111111111",
     name: "entrypoint-test",
     version: "0.1.0",
     type: "module",
-    steamHarness: {defaultEntry:"main",entries:[{entryId:"main",type:"workflow",name:"Main",root:".",entry:"index.ts",databases:["data"]}], projectInfo:{}},
+    defaultEntry:"main",entries:[{entryId:"main",type:"workflow",name:"Main",root:".",entry:"index.ts",databases:["data"]}], projectInfo:{},
   }));
   await writeFile(path.join(projectDir, "index.ts"), `
     const mainProject = steamharness.defineProject({
@@ -815,12 +816,12 @@ function pickEntrypointOutput(
 
 async function createConversationProject(): Promise<string> {
   const projectDir = await mkdtemp(path.join(os.tmpdir(), "steamharness-entrypoint-conversation-"));
-  await writeFile(path.join(projectDir, "package.json"), JSON.stringify({
+  await writeProjectFixture(path.join(projectDir, "package.json"), JSON.stringify({
     id: "22222222-2222-4222-8222-222222222222",
     name: "entrypoint-conversation-test",
     version: "0.1.0",
     type: "module",
-    steamHarness: {defaultEntry:"main",entries:[{entryId:"main",type:"conversation",name:"Main",root:".",entry:"index.ts",databases:[]}], projectInfo:{}},
+    defaultEntry:"main",entries:[{entryId:"main",type:"conversation",name:"Main",root:".",entry:"index.ts",databases:[]}], projectInfo:{},
   }));
   await writeFile(path.join(projectDir, "index.ts"), `
     const conversationProject = steamharness.defineProject({

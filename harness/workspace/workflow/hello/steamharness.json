@@ -1,0 +1,18 @@
+{
+  "id": "1f221460-4fc7-48e2-bd23-651dee826692",
+  "name": "@steamharness/hello-workflow",
+  "version": "0.1.0",
+  "projectInfo": {},
+  "entries": [
+    {
+      "entryId": "main",
+      "type": "workflow",
+      "name": "@steamharness/hello-workflow",
+      "root": ".",
+      "entry": "index.ts",
+      "databases": [],
+      "configuration": "configuration.json"
+    }
+  ],
+  "defaultEntry": "main"
+}

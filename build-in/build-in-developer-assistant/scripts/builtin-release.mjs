@@ -92,22 +92,23 @@ export function channelProjectPath(definition) {
 export async function readBuiltinDefinition(root = repoRoot, options = {}) {
   const channel = normalizeChannel(options.channel);
   const packageJson = JSON.parse(await readFile(path.join(root, "package.json"), "utf8"));
-  const release = packageJson?.steamHarness?.builtinRelease;
+  const projectDocument = JSON.parse(await readFile(path.join(root, "steamharness.json"), "utf8"));
+  const release = projectDocument.builtinRelease;
   const projectId = String(release?.projectId ?? "").trim();
   const artifactKind = release?.artifactKind;
   if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(projectId)) {
-    throw new Error("steamHarness.builtinRelease.projectId is invalid.");
+    throw new Error("steamharness.json.builtinRelease.projectId is invalid.");
   }
   if (artifactKind !== "universal" && artifactKind !== "native") {
-    throw new Error("steamHarness.builtinRelease.artifactKind must be universal or native.");
+    throw new Error("steamharness.json.builtinRelease.artifactKind must be universal or native.");
   }
-  const version = normalizeVersion(packageJson.version);
+  const version = normalizeVersion(projectDocument.version);
   if (Object.hasOwn(release, "minAppVersion")) {
-    throw new Error("steamHarness.builtinRelease.minAppVersion is not supported; use minDesktopVersion.");
+    throw new Error("steamharness.json.builtinRelease.minAppVersion is not supported; use minDesktopVersion.");
   }
   const minDesktopVersion = normalizeVersion(release.minDesktopVersion);
   if (!Array.isArray(release.dependencies)) {
-    throw new Error("steamHarness.builtinRelease.dependencies must be an array.");
+    throw new Error("steamharness.json.builtinRelease.dependencies must be an array.");
   }
   const dependencyIds = new Set();
   const dependencies = release.dependencies.map((dependency) => {
@@ -140,6 +141,7 @@ export async function readBuiltinDefinition(root = repoRoot, options = {}) {
   return {
     root: path.resolve(root),
     packageJson,
+    projectDocument,
     projectId,
     artifactKind,
     version,
@@ -175,7 +177,7 @@ export async function verifyBuiltinProject(options = {}) {
   } else {
     await assertLockfileCurrent(definition.root, definition.packageJson, ["dependencies", "optionalDependencies"]);
   }
-  await assertLocalizedProjectPresentation(definition.root, definition.packageJson);
+  await assertLocalizedProjectPresentation(definition.root, definition.projectDocument);
   await assertChangelogParity(definition.root, definition.version);
   return definition;
 }
@@ -377,7 +379,7 @@ async function buildResource({ definition, platform, arch, outputDir }, dependen
         return shouldPackEntry(definition.root, candidate);
       },
     });
-    await writeFile(path.join(stagedProject, "package.json"), JSON.stringify(projectManifestForDistribution(definition.packageJson), null, 2) + "\n", "utf8");
+    await writeFile(path.join(stagedProject, "steamharness.json"), JSON.stringify(projectManifestForDistribution(definition.projectDocument), null, 2) + "\n", "utf8");
     if (definition.artifactKind === "native") {
       await writeFile(path.join(stagedProject, "pnpm-workspace.yaml"), stringifyYaml({
         packages: ["."],
@@ -561,9 +563,9 @@ async function assertChangelogParity(root, currentVersion) {
   }
 }
 
-async function assertLocalizedProjectPresentation(root, packageJson) {
-  const defaultName = typeof packageJson.name === "string" ? packageJson.name.trim() : "";
-  const projectInfo = packageJson?.steamHarness?.projectInfo;
+async function assertLocalizedProjectPresentation(root, projectDocument) {
+  const defaultName = typeof projectDocument.name === "string" ? projectDocument.name.trim() : "";
+  const projectInfo = projectDocument?.projectInfo;
   const localizedNames = projectInfo?.localizedNames;
   const chineseName = typeof localizedNames?.["zh-CN"] === "string"
     ? localizedNames["zh-CN"].trim()

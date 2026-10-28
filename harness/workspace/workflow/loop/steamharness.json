@@ -1,0 +1,17 @@
+{
+  "id": "dd152627-1b35-431a-9e24-95a4e0799583",
+  "name": "@steamharness/loop-workflow",
+  "version": "0.1.0",
+  "projectInfo": {},
+  "entries": [
+    {
+      "entryId": "main",
+      "type": "workflow",
+      "name": "@steamharness/loop-workflow",
+      "root": ".",
+      "entry": "index.ts",
+      "databases": []
+    }
+  ],
+  "defaultEntry": "main"
+}

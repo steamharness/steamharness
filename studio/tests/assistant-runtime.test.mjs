@@ -1,3 +1,4 @@
+import { writeProjectFixture } from '../../scripts/test-project-fixture.mjs';
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { build } from 'esbuild';
@@ -60,14 +61,14 @@ test('an installed extension symlink uses monorepo dependencies with tools scope
   const extension = path.join(studio, 'extensions/studio-workstation');
   const template = path.join(extension, 'dist/developer-assistant');
   await mkdir(template, { recursive: true });
-  const manifest = { id: 'a3aca697-b086-459b-84e4-d357ad2d9fb2', type: 'module', steamHarness: { defaultEntry: 'main', entries: [
+  const manifest = { id: 'a3aca697-b086-459b-84e4-d357ad2d9fb2', type: 'module', version: "0.1.0",  defaultEntry: 'main', entries: [
     { entryId: 'main', name: 'Assistant', type: 'conversation', root: '.', entry: 'index.ts', databases: [] },
     { entryId: 'studio-control', name: 'Studio Control', type: 'workflow', root: 'studio-control', entry: 'index.ts', databases: [] },
-  ] } };
-  await writeFile(path.join(template, 'package.json'), JSON.stringify({ ...manifest, testInspectionError: 'Workflow "Project Assistant" script validation failed.' }));
+  ]  };
+  await writeProjectFixture(path.join(template, 'package.json'), JSON.stringify({ ...manifest, testInspectionError: 'Workflow "Project Assistant" script validation failed.' }));
   await writeFile(path.join(template, 'index.ts'), 'export const executor = steamharness.defineExecutor({});');
   const controlTemplate = path.join(template, 'studio-control');
-  await mkdir(controlTemplate);
+  await mkdir(controlTemplate,{recursive:true});
   await writeFile(path.join(controlTemplate, 'index.ts'), 'export const executor = steamharness.defineExecutor({});');
   const linked = path.join(directory, 'vscode/extensions/studio-workstation');
   await mkdir(path.dirname(linked), { recursive: true });
@@ -95,9 +96,9 @@ test('an installed extension symlink uses monorepo dependencies with tools scope
   assert.equal(failed.projects.length, 0); assert.match(failed.errors[0], /script validation failed/);
   const apps = path.join(storage, 'workflow/assistant/apps');
   const [failedApp] = await readdir(apps);
-  await writeFile(path.join(template, 'package.json'), JSON.stringify({ ...manifest, testInspectionExit: true }));
+  await writeProjectFixture(path.join(template, 'package.json'), JSON.stringify({ ...manifest, testInspectionExit: true }));
   await assert.rejects(runtime.inspectAssistant(target, [target]), /Fixture inspection failed/);
-  await writeFile(path.join(template, 'package.json'), JSON.stringify(manifest));
+  await writeProjectFixture(path.join(template, 'package.json'), JSON.stringify(manifest));
   const inspection = await runtime.inspectAssistant(target, [target]);
   assert.equal(inspection.projects.length, 2);
   const assistant = inspection.projects[0];
@@ -122,7 +123,7 @@ test('an installed extension symlink uses monorepo dependencies with tools scope
   assert.equal(command[2], 'mcp');
   assert.equal(command[3], assistant.folderPath);
   assert.deepEqual(command.slice(4, 6), ['--entry', 'studio-control']);
-  assert.equal(JSON.parse(await readFile(path.join(command[3], 'package.json'), 'utf8')).id, assistant.id);
+  assert.equal(JSON.parse(await readFile(path.join(command[3], 'steamharness.json'), 'utf8')).id, assistant.id);
   assert.equal(await readFile(path.join(command[3], 'studio-control/index.ts'), 'utf8'), await readFile(path.join(controlTemplate, 'index.ts'), 'utf8'));
   assert.equal((await readdir(path.join(storage, 'workflow'))).includes('studio-control'), false);
   const control = inspection.projects.find(project => project.entryId === 'studio-control');

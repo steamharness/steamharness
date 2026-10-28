@@ -27,9 +27,9 @@ pnpm exec steamharness mcp . --entry database
 
 一个根目录启动一个聚合宿主，默认只展示 `defaultEntry`。点击顶部操作区的 **项目窗口** 图标，面板以紧凑卡片显示各入口的图标、名称、类型、默认／当前标记和运行状态。点击入口右侧的打开图标，在独立 CLI Web 中打开新浏览器页面，在 Studio 中打开新的原生标签。每次点击都会新开一个标签，包括当前入口；各标签独立保留页面状态和草稿，共享聚合运行宿主。关闭一个标签不影响其他标签；关闭最后一个 Studio 标签后释放宿主。
 
-每个入口使用 `/entries/<entryId>/` URL 和独立控制器。入口的可选 `projectCard` 配置 `icon`、`iconColor` 与 `iconBackgroundColor`，颜色使用 `#RRGGBB`；未配置的字段采用入口类型的默认值。根 `steamHarness.projectCard` 用于聚合项目卡片，入口图标相互独立。版本只在根 `package.json.version` 声明，入口不接受独立版本。
+每个入口使用 `/entries/<entryId>/` URL 和独立控制器。入口的可选 `projectCard` 配置 `icon`、`iconColor` 与 `iconBackgroundColor`，颜色使用 `#RRGGBB`；未配置的字段采用入口类型的默认值。根 `steamharness.json.projectCard` 用于聚合项目卡片，入口图标相互独立。版本只在根 `steamharness.json.version` 声明，入口不接受独立版本。
 
-点击顶部“数据库”打开数据库管理；出现“请处理数据库绑定”提示时，也可直接点击提示中的“打开数据库管理”。Studio 小助手、Conversation、Workflow 和 Kanban 使用同一入口，支持申请、审批、共享、收窄、撤销、轮换与数据管理。根 config.json 集中记录别名和获批的 databaseId，各入口在 package.json 中仅声明使用的数据库别名，支持环境变量 STEAMHARNESS_PROJECT_CONFIG 覆盖；一个入口可关联多个数据库；保存映射不授予权限，权限由宿主管理。未获批不会自动创建空间。详见 [数据库空间](/concepts/data-storage)。
+点击顶部“数据库”打开数据库管理；出现“请处理数据库绑定”提示时，也可直接点击提示中的“打开数据库管理”。Studio 小助手、Conversation、Workflow 和 Kanban 使用同一入口，支持申请、审批、共享、收窄、撤销、轮换与数据管理。根 config.json 集中记录别名和获批的 databaseId，各入口在 steamharness.json 中仅声明使用的数据库别名，支持环境变量 STEAMHARNESS_PROJECT_CONFIG 覆盖；一个入口可关联多个数据库；保存映射不授予权限，权限由宿主管理。未获批不会自动创建空间。详见 [数据库空间](/concepts/data-storage)。
 
 ## 检查与输出
 

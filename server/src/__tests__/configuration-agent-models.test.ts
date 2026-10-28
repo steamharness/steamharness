@@ -1,3 +1,4 @@
+import { projectFixtureFiles } from '../../scripts/test-project-fixture.mjs';
 import assert from 'node:assert/strict';
 import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -14,11 +15,11 @@ for (const mode of ['stale-draft', 'client-override', 'private-field'] as const)
     try {
       const storage = new Storage({ serverRoot: process.cwd(), repoRoot: process.cwd(), dataRoot: root });
       const definition = (restricted: boolean) => JSON.stringify({ version: 2, fields: [{ ...AGENT_MODELS_CONFIGURATION_FIELD, ...(restricted ? { allowThirdParty: false } : {}) }] });
-      await storage.createProjectFromFiles({ projectName: projectId, files: [
-        { path: 'package.json', content: JSON.stringify({ id: projectId, name: 'Source policy', version: '1.0.0', devDependencies: { steamharness: corePackage.version }, steamHarness: { defaultEntry:"main",entries:[{entryId:"main",name:"Main",type:'conversation',root:".",entry:"index.ts",configuration:"configuration.json",databases:[]}], projectInfo: { localizedNames: {}, declarations: [], platformSupport: { mode: 'agnostic' },   } } }) },
+      await storage.createProjectFromFiles({ projectName: projectId, files: projectFixtureFiles([
+        { path: 'package.json', content: JSON.stringify({ id: projectId, name: 'Source policy', version: '1.0.0', devDependencies: { steamharness: corePackage.version },  defaultEntry:"main",entries:[{entryId:"main",name:"Main",type:'conversation',root:".",entry:"index.ts",configuration:"configuration.json",databases:[]}], projectInfo: { localizedNames: {}, declarations: [], platformSupport: { mode: 'agnostic' },   }  }) },
         { path: 'index.ts', content: 'throw new Error("must not execute"); steamharness.createAgentProjectParamResolver();' },
         { path: 'configuration.json', content: definition(mode !== 'stale-draft') },
-      ] });
+      ]) });
       storage.getProjectAccessSummary = async (_id, actorId) => ({ projectId, projectName: 'Source policy', visibility: 'private', access: resolveResourceAccess([{ type: 'project', id: projectId, role: actorId === 'author' ? 'owner' : 'developer' }]) });
       const options = { projectName: projectId, actorId: 'author' };
       let state = await storage.projectConfigurations(options, { action: 'get' }) as ProjectConfigurationState;
@@ -49,11 +50,11 @@ test('Server saves, imports and published configurations retain a source-declare
   const root=await mkdtemp(path.join(tmpdir(),'server-system-only-'));
   try {
     const storage=new Storage({serverRoot:process.cwd(),repoRoot:process.cwd(),dataRoot:root});
-    await storage.createProjectFromFiles({projectName:projectId,files:[
-      {path:'package.json',content:JSON.stringify({id:projectId,name:'System Agent',version:'1.0.0',devDependencies:{steamharness:corePackage.version},steamHarness:{defaultEntry:"main",entries:[{entryId:"main",name:"Main",type:'conversation',root:".",entry:"index.ts",configuration:"configuration.json",databases:[]}],projectInfo:{localizedNames:{},declarations:[],platformSupport:{mode:'agnostic'},}}})},
+    await storage.createProjectFromFiles({projectName:projectId,files:projectFixtureFiles([
+      {path:'package.json',content:JSON.stringify({id:projectId,name:'System Agent',version:'1.0.0',devDependencies:{steamharness:corePackage.version},defaultEntry:"main",entries:[{entryId:"main",name:"Main",type:'conversation',root:".",entry:"index.ts",configuration:"configuration.json",databases:[]}],projectInfo:{localizedNames:{},declarations:[],platformSupport:{mode:'agnostic'},}})},
       {path:'index.ts',content:'throw new Error("must not execute"); steamharness.createAgentProjectParamResolver();'},
       {path:'configuration.json',content:JSON.stringify({version:2,fields:[{...AGENT_MODELS_CONFIGURATION_FIELD,allowThirdParty:false},{name:'title',type:'string'}]})},
-    ]});
+    ])});
     storage.getProjectAccessSummary=async (_id,actorId)=>({projectId,projectName:'System Agent',visibility:'private',access:resolveResourceAccess([{type:'project',id:projectId,role:actorId==='author'?'owner':'developer'}])});
     const options={projectName:projectId,actorId:'author'};
     const state=await storage.projectConfigurations(options,{action:'get'}) as ProjectConfigurationState;
@@ -75,11 +76,11 @@ test('Server discovers Agent model fields without executing source, isolates acc
   const root = await mkdtemp(path.join(tmpdir(), 'server-configured-agent-'));
   try {
     const storage = new Storage({ serverRoot: process.cwd(), repoRoot: process.cwd(), dataRoot: root });
-    await storage.createProjectFromFiles({ projectName: projectId, files: [
-      { path: 'package.json', content: JSON.stringify({ id: projectId, name: 'Agent config', version: '1.0.0', devDependencies: { steamharness: corePackage.version }, steamHarness: { defaultEntry:"main",entries:[{entryId:"main",name:"Main",type:'workflow',root:".",entry:"index.ts",configuration:"configuration.json",databases:[]}], projectInfo: { localizedNames: {}, declarations: [], platformSupport: { mode: 'agnostic' },   } } }) },
+    await storage.createProjectFromFiles({ projectName: projectId, files: projectFixtureFiles([
+      { path: 'package.json', content: JSON.stringify({ id: projectId, name: 'Agent config', version: '1.0.0', devDependencies: { steamharness: corePackage.version },  defaultEntry:"main",entries:[{entryId:"main",name:"Main",type:'workflow',root:".",entry:"index.ts",configuration:"configuration.json",databases:[]}], projectInfo: { localizedNames: {}, declarations: [], platformSupport: { mode: 'agnostic' },   }  }) },
       { path: 'index.ts', content: 'throw new Error("must not execute"); const node = steamharness.createAgentNode();' },
       { path: 'configuration.json', content: JSON.stringify({ version: 2, fields: [{ name: 'title', type: 'string' }] }) },
-    ] });
+    ]) });
     storage.getProjectAccessSummary = async (_id, actorId) => ({ projectId, projectName: 'Agent config', visibility: 'private', access: resolveResourceAccess([{ type: 'project', id: projectId, role: actorId === 'author' ? 'owner' : 'developer' }]) });
     const options = { projectName: projectId, actorId: 'author' };
     let state = await storage.projectConfigurations(options, { action: 'get' }) as ProjectConfigurationState;

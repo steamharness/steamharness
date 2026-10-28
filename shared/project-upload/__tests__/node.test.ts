@@ -27,8 +27,8 @@ describe("createProjectUploadPlan", () => {
     try { await copyProjectUploadFiles(root, target); }
     finally { if (before === undefined) delete process.env.STEAMHARNESS_PROJECT_CONFIG; else process.env.STEAMHARNESS_PROJECT_CONFIG = before; }
     expect(JSON.parse(await readFile(path.join(target, "config.json"), "utf8"))).toEqual(config);
-    const pkg = JSON.parse(await readFile(path.join(target, "package.json"), "utf8"));
-    expect(pkg.steamHarness.entries[0].databases).toEqual(["data"]);
+    const pkg = JSON.parse(await readFile(path.join(target, "steamharness.json"), "utf8"));
+    expect(pkg.entries[0].databases).toEqual(["data"]);
   });
   it("includes a git-ignored Kanban artifact and applies only .steamharnessignore", async () => {
     const root = await createProject({
@@ -51,6 +51,7 @@ describe("createProjectUploadPlan", () => {
       "dist/app.js",
       "dist/board.html",
       "package.json",
+      "steamharness.json",
     ]);
     expect(plan.ignoredPaths).toContain("dist/app.js.map");
   });
@@ -100,11 +101,12 @@ describe("createProjectUploadPlan", () => {
 async function createProject(steamHarness?: Record<string, unknown>): Promise<string> {
   const root = await mkdtemp(path.join(os.tmpdir(), "workflow-upload-"));
   tempDirectories.push(root);
-  await writeFile(path.join(root, "package.json"), JSON.stringify({
+  await writeFile(path.join(root, "steamharness.json"), JSON.stringify({
     id: "00000000-0000-4000-8000-000000000001",
     name: "upload-test",
     version: "0.1.0",
-    steamHarness: steamHarness ?? {defaultEntry:"main",entries:[{entryId:"main",type:"workflow",name:"Main",root:".",entry:"index.ts",databases:[]}]},
+    ...(steamHarness ?? {defaultEntry:"main",entries:[{entryId:"main",type:"workflow",name:"Main",root:".",entry:"index.ts",databases:[]}]}),
   }));
+  await writeFile(path.join(root, "package.json"), JSON.stringify({name:"npm-only",version:"9.9.9"}));
   return root;
 }

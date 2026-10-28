@@ -1,5 +1,4 @@
 {
-  "id": "7afb5837-251e-4938-bae4-83f8569d9d6b",
   "name": "@steamharness/pi-agent-workflow",
   "version": "0.1.0",
   "private": true,
@@ -18,22 +17,5 @@
   "devDependencies": {
     "@steamharness/cli": "link:../../../cli",
     "steamharness": "link:../../.."
-  },
-  "steamHarness": {
-    "projectInfo": {},
-    "entries": [
-      {
-        "entryId": "main",
-        "type": "conversation",
-        "name": "@steamharness/pi-agent-workflow",
-        "root": ".",
-        "entry": "index.ts",
-        "configuration": "configuration.json",
-        "databases": [
-          "data"
-        ]
-      }
-    ],
-    "defaultEntry": "main"
   }
 }

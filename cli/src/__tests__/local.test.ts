@@ -1,3 +1,4 @@
+import { writeProjectFixture } from '../../scripts/test-project-fixture.mjs';
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import { existsSync } from "node:fs";
@@ -24,9 +25,9 @@ import { resolveHarnessVersion } from "./harness-source";
 
 it("check validates all registered entries and supports selecting one entry", async () => {
   const projectDir = await createArgsEchoProject();
-  const packagePath = path.join(projectDir, "package.json");
+  const packagePath = path.join(projectDir, "steamharness.json");
   const pkg = JSON.parse(await readFile(packagePath, "utf8"));
-  pkg.steamHarness.entries.push({ ...pkg.steamHarness.entries[0], entryId: "second", name: "Second" });
+  pkg.entries.push({ ...pkg.entries[0], entryId: "second", name: "Second" });
   await writeFile(packagePath, JSON.stringify(pkg));
   const output: string[] = [];
   const log = console.log;
@@ -34,7 +35,7 @@ it("check validates all registered entries and supports selecting one entry", as
   try {
     assert.equal(await main(["check", projectDir]), 0);
     assert.deepEqual(JSON.parse(output.at(-1)!).entries.map((entry: { entryId: string }) => entry.entryId), ["main", "second"]);
-    pkg.steamHarness.entries[1].type = "conversation";
+    pkg.entries[1].type = "conversation";
     await writeFile(packagePath, JSON.stringify(pkg));
     await assert.rejects(main(["check", projectDir]), /second.*conversation/);
     assert.equal(await main(["check", projectDir, "--entry", "main"]), 0);
@@ -124,6 +125,31 @@ it("structure preserves workflow entrypoint group metadata", async () => {
   }
 });
 
+it("structure and check use only steamharness.json for project metadata", async () => {
+  const projectDir = await createArgsEchoProject();
+  const packagePath = path.join(projectDir, "package.json");
+  const npm = JSON.parse(await readFile(packagePath, "utf8"));
+  await writeFile(packagePath, JSON.stringify({ ...npm, name: "unrelated-npm-package", version: "9.9.9",
+    id: "not-a-project-id", steamHarness: { entries: [] }, projectInfo: { relatedProjects: [] } }));
+  const document = JSON.parse(await readFile(path.join(projectDir, "steamharness.json"), "utf8"));
+  const output: string[] = [];
+  const originalLog = console.log;
+  console.log = value => { output.push(String(value)); };
+  try {
+    assert.equal(await main(["structure", projectDir]), 0);
+    const structure = JSON.parse(output.at(-1)!);
+    assert.equal(structure.projectId, document.id);
+    assert.equal(structure.entryName, "Main");
+    assert.equal(await main(["check", projectDir]), 0);
+    const aggregate = JSON.parse(output.at(-1)!);
+    assert.equal(aggregate.name, document.name);
+    assert.equal(aggregate.version, document.version);
+  } finally {
+    console.log = originalLog;
+    await rm(projectDir, { recursive: true, force: true });
+  }
+});
+
 it("runs image, video, and audio paths through the published Core file input", async () => {
   const projectDir = await createArgsEchoProject();
   const originalStdoutWrite = process.stdout.write;
@@ -181,7 +207,7 @@ it("local commands reject projects without explicit entry registrations", async 
   try {
     await assert.rejects(
       () => main(["json", projectDir]),
-      /steamHarness must be an object/,
+      /steamharness\.json/,
     );
   } finally {
     await rm(projectDir, { recursive: true, force: true });
@@ -235,7 +261,7 @@ it.each(["build-in", "ci-namespace"])("nested built-ins resolve Core from the ag
   const packagePath = path.join(directory, "package.json");
   const manifest = { devDependencies: { "steamharness": "link:../../harness" } };
   const version = await resolveHarnessVersion();
-  await writeFile(path.join(root, "harness/package.json"), JSON.stringify({ name: "steamharness", version }));
+  await writeProjectFixture(path.join(root, "harness/package.json"), JSON.stringify({ name: "steamharness", version }));
   await writeFile(packagePath, JSON.stringify(manifest));
   try {
     assert.equal(assertLocalCliCoreCompatible(directory, version, { mode: "dev" }).projectRequiredCoreVersion, version);
@@ -248,11 +274,11 @@ it.each(["build-in", "ci-namespace"])("nested built-ins resolve Core from the ag
 
 it("structure rejects obsolete related-project fields before reporting success", async () => {
   const projectDir = await createArgsEchoProject();
-  const packagePath = path.join(projectDir, "package.json");
+  const packagePath = path.join(projectDir, "steamharness.json");
   const manifest = JSON.parse(await readFile(packagePath, "utf8")) as {
-    steamHarness: { projectInfo: Record<string, unknown> };
+    projectInfo: Record<string, unknown>;
   };
-  manifest.steamHarness.projectInfo.relatedProjects = [{
+  manifest.projectInfo.relatedProjects = [{
     alias: "stocks",
     projectId: "22222222-2222-4222-8222-222222222222",
     access: { read: "all", write: "none" },
@@ -499,7 +525,7 @@ it("core package manifest publishes built dist entrypoints", async () => {
 async function createArgsEchoProject(declareStorage = true): Promise<string> {
   const projectDir = await mkdtemp(path.join(os.tmpdir(), "steamharness-cli-"));
 
-  await writeFile(
+  await writeProjectFixture(
     path.join(projectDir, "package.json"),
     JSON.stringify({
       id: "11111111-1111-4111-8111-111111111111",
@@ -507,7 +533,7 @@ async function createArgsEchoProject(declareStorage = true): Promise<string> {
       type: "module",
       devDependencies: { "steamharness": await resolveHarnessVersion() },
       ...(declareStorage
-        ? { steamHarness: { defaultEntry: 'main', entries: [{entryId:'main',name:'Main',type:'workflow',root:'.',entry:'index.ts',databases:[]}], projectInfo:{} } }
+        ? {  defaultEntry: 'main', entries: [{entryId:'main',name:'Main',type:'workflow',root:'.',entry:'index.ts',databases:[]}], projectInfo:{}  }
         : {}),
     }),
   );

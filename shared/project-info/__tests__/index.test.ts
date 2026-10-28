@@ -10,7 +10,7 @@ describe('aggregate project information',()=>{
   it('rejects removed database and related-project declarations',()=>{
     for(const field of ['dataStorage','relatedProjects']){
       expect(()=>normalizeProjectInfo({[field]:[]})).toThrow(/removed/);
-      expect(()=>readProjectInfo({steamHarness:{projectInfo:{[field]:[]}}})).toThrow(/removed/);
+      expect(()=>readProjectInfo({projectInfo:{[field]:[]}})).toThrow(/removed/);
     }
   });
   it('normalizes names and preserves future declaration and platform IDs',()=>{
@@ -31,6 +31,6 @@ describe('aggregate project information',()=>{
   it('writes information while preserving aggregate registration and package fields',()=>{
     const config={entries:[{entryId:'main'}],defaultEntry:'main',future:true};
     const info={localizedNames:{en:'English'},declarations:['multilingual'],platformSupport:{mode:'specific' as const,platforms:['web']}};
-    expect(writeProjectInfo({name:'Default',steamHarness:config},info)).toEqual({name:'Default',steamHarness:{...config,projectInfo:info}});
+    expect(writeProjectInfo({name:'Default',...(config)},info)).toEqual({name:'Default',...config,projectInfo:info});
   });
 });

@@ -1,3 +1,4 @@
+import { writeProjectFixture } from '../../scripts/test-project-fixture.mjs';
 import assert from "node:assert/strict";
 import { mkdtemp, writeFile } from "node:fs/promises";
 import os from "node:os";
@@ -158,13 +159,13 @@ test("local workflow reports preserve aborted status and terminal events", async
 async function createToolApprovalProject(): Promise<string> {
   const projectDir = await mkdtemp(path.join(os.tmpdir(), "steamharness-tool-approval-"));
 
-  await writeFile(
+  await writeProjectFixture(
     path.join(projectDir, "package.json"),
     JSON.stringify({
       id: "11111111-1111-4111-8111-111111111111",
       name: "@steamharness/tool-approval-test",
       type: "module",
-      steamHarness: {defaultEntry:"main",entries:[{entryId:"main",type:"workflow",name:"Main",root:".",entry:"index.ts",databases:[]}], projectInfo:{}},
+      version: "0.1.0", defaultEntry:"main",entries:[{entryId:"main",type:"workflow",name:"Main",root:".",entry:"index.ts",databases:[]}], projectInfo:{},
     }),
   );
   await writeFile(

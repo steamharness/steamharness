@@ -1,0 +1,27 @@
+{
+  "id": "14ab25f6-5a51-4b9b-9a09-df612356fd01",
+  "name": "Studio Workflow",
+  "version": "0.0.1",
+  "projectInfo": {
+    "localizedNames": {
+      "zh-CN": "工作流示例",
+      "en": "Local Workflow Demo"
+    },
+    "platformSupport": {
+      "mode": "agnostic"
+    }
+  },
+  "entries": [
+    {
+      "entryId": "main",
+      "type": "workflow",
+      "name": "Studio Workflow",
+      "root": ".",
+      "entry": "index.ts",
+      "databases": [
+        "data"
+      ]
+    }
+  ],
+  "defaultEntry": "main"
+}

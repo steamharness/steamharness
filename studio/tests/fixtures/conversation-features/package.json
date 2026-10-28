@@ -1,24 +1,8 @@
 {
-  "id": "d3067925-9b4a-4802-a12f-9a50ba3f3238",
   "name": "Conversation migration fixture",
   "type": "module",
   "devDependencies": {
     "steamharness": "0.1.2",
     "@steamharness/cli": "0.1.2"
-  },
-  "steamHarness": {
-    "entries": [
-      {
-        "entryId": "main",
-        "type": "conversation",
-        "name": "Conversation migration fixture",
-        "root": ".",
-        "entry": "index.ts",
-        "databases": [
-          "data"
-        ]
-      }
-    ],
-    "defaultEntry": "main"
   }
 }

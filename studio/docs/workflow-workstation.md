@@ -17,7 +17,7 @@ Studio 的 `examples/conversation` 提供不调用模型的本地演示。聚合
 
 ## 显示语言
 
-项目树、标签页、窗口标题、状态栏和资源面板中的项目名称按 VS Code 实际显示语言选择 `steamHarness.projectInfo.localizedNames.en` 或 `zh-CN`；缺少对应名称时使用 `package.json` 的 `name`。Information 仍完整列出项目声明的各语言名称。用户输入、会话标题、回答和日志保留原文。
+项目树、标签页、窗口标题、状态栏和资源面板中的项目名称按 VS Code 实际显示语言选择 入口 `steamharness.json` 的 `projectInfo.localizedNames.en` 或 `zh-CN`；缺少对应名称时使用入口的 `name`。聚合名称与版本从根 `steamharness.json` 读取。Information 仍完整列出项目声明的各语言名称。用户输入、会话标题、回答和日志保留原文。
 
 Studio 将同一显示语言传入项目检查、CLI 启动和嵌入页面。开发源码模式可能在中文系统上回退到英文工作台，此时项目也使用英文。项目依赖需要包含 CLI Web 国际化支持，示例使用 `@steamharness/cli` 的当前稳定版。升级依赖后，已经运行的 CLI 进程需要关闭标签页后重开，或执行 **Developer: Reload Window**；切换 VS Code 显示语言也需要重载窗口。
 

@@ -90,10 +90,10 @@ test('the shipped template runtime uses the host locale and exact bundled versio
   const created = await runtime.create(input);
   await assert.rejects(runtime.validate(input), { code: 'directory-exists' });
   await assert.rejects(runtime.create(input), { code: 'directory-exists' });
-  const manifest = JSON.parse(await readFile(path.join(created.directory, 'package.json'), 'utf8'));
+  const manifest = JSON.parse(await readFile(path.join(created.directory, 'steamharness.json'), 'utf8'));
   const versions = JSON.parse(await readFile(path.join(extension, 'dist/project-template-versions.json'), 'utf8'));
-  assert.deepEqual(manifest.devDependencies, { 'steamharness': versions.harness, '@steamharness/cli': versions.cli });
-  const card = manifest.steamHarness.projectCard;
+  assert.deepEqual(JSON.parse(await readFile(path.join(created.directory, 'package.json'), 'utf8')).devDependencies, { 'steamharness': versions.harness, '@steamharness/cli': versions.cli });
+  const card = manifest.projectCard;
   assert.equal(card.icon, 'workflow');
   assert.ok(getProjectCardColorContrastRatio(card.iconColor, card.iconBackgroundColor) >= 4.5);
 });

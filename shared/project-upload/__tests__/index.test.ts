@@ -54,8 +54,8 @@ describe("workflow upload ignore", () => {
   });
 
   it("requires only package metadata and the project entry for executable projects", () => {
-    expect(resolveProjectUploadRequiredPaths({id:"00000000-0000-4000-8000-000000000001",name:"upload",steamHarness:{defaultEntry:"main",entries:[{entryId:"main",type:"workflow",name:"Main",root:".",entry:"index.ts",databases:[]}]}}, ["package.json", "index.ts", "README.md"]))
-      .toEqual(["index.ts", "package.json"]);
+    expect(resolveProjectUploadRequiredPaths({id:"00000000-0000-4000-8000-000000000001",name:"upload",version: "0.1.0", defaultEntry:"main",entries:[{entryId:"main",type:"workflow",name:"Main",root:".",entry:"index.ts",databases:[]}]}, ["package.json", "steamharness.json", "index.ts", "README.md"]))
+      .toEqual(["index.ts", "package.json", "steamharness.json"]);
   });
 
   it("rejects absolute and traversal paths before matching", () => {

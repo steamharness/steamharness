@@ -40,11 +40,17 @@ export async function buildProjectRuntime(directory) {
   await fs.rm(assistant, { recursive: true, force: true });
   await fs.mkdir(assistant, { recursive: true });
   for (const entry of await fs.readdir(assistantSource, { withFileTypes: true })) {
-    if (entry.isFile() && (entry.name === 'package.json' || entry.name.endsWith('.ts') && entry.name !== 'vitest.config.ts')) {
+    if (entry.isFile() && (entry.name === 'package.json' || entry.name === 'steamharness.json' || entry.name === 'configuration.json' || entry.name.endsWith('.ts') && entry.name !== 'vitest.config.ts')) {
       await fs.copyFile(path.join(assistantSource, entry.name), path.join(assistant, entry.name));
     }
   }
   await fs.cp(path.join(assistantSource, 'skills'), path.join(assistant, 'skills'), { recursive: true });
+  await fs.mkdir(path.join(assistant, 'studio-control'), { recursive: true });
+  for (const entry of await fs.readdir(path.join(assistantSource, 'studio-control'), { withFileTypes: true })) {
+    if (entry.isFile() && (['steamharness.json', 'configuration.json'].includes(entry.name) || entry.name.endsWith('.ts'))) {
+      await fs.copyFile(path.join(assistantSource, 'studio-control', entry.name), path.join(assistant, 'studio-control', entry.name));
+    }
+  }
   await fs.writeFile(path.join(runtime, 'cli/package.json'), JSON.stringify(cliManifest, null, 2) + '\n');
   await fs.writeFile(path.join(runtime, 'tsconfig.json'), JSON.stringify({
     compilerOptions: { baseUrl: '.', paths: { 'steamharness': ['./harness.mjs'] } },

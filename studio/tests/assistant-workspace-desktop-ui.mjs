@@ -1,3 +1,4 @@
+import { writeProjectFixture } from '../../scripts/test-project-fixture.mjs';
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
 import { createServer } from 'node:net';
@@ -32,12 +33,12 @@ for (const language of ['en', 'zh-cn']) {
   const desktop = await desktopLocaleLaunch(language, directory);
   const template = path.join(directory, 'extensions/studio-workstation/dist/developer-assistant');
   await rm(template, { recursive: true, force: true }); await mkdir(template);
-  await writeFile(path.join(template, 'package.json'), JSON.stringify({ id: 'a3aca697-b086-459b-84e4-d357ad2d9fb2', name: 'Assistant test', type: 'module',
-    steamHarness: {defaultEntry:'main',entries:[{entryId:'main',type:'conversation',name:'Assistant',root:'.',entry:'index.ts',databases:[]}]} }));
+  await writeProjectFixture(path.join(template, 'package.json'), JSON.stringify({ id: 'a3aca697-b086-459b-84e4-d357ad2d9fb2', name: 'Assistant test', type: 'module',
+    version: "0.1.0", defaultEntry:'main',entries:[{entryId:'main',type:'conversation',name:'Assistant',root:'.',entry:'index.ts',databases:[]}] }));
   await cp(path.join(root, 'tests/fixtures/assistant-workspace/index.ts'), path.join(template, 'index.ts'));
   const helper = path.join(directory, 'test-extension'); await mkdir(helper);
   await cp(path.join(root, 'tests/assistant-workspace-desktop-extension.cjs'), path.join(helper, 'extension.cjs'));
-  await writeFile(path.join(helper, 'package.json'), JSON.stringify({ name: 'assistant-workspace-test', publisher: 'studio-test', version: '0.0.1', engines: { vscode: '^1.140.0' },
+  await writeProjectFixture(path.join(helper, 'package.json'), JSON.stringify({ name: 'assistant-workspace-test', publisher: 'studio-test', version: '0.0.1', engines: { vscode: '^1.140.0' },
     main: './extension.cjs', activationEvents: ['onStartupFinished'], contributes: { commands: [
       ...['A', 'B'].map(folder => ({ command: `studio.testFocus${folder}`, title: `Focus folder ${folder}`, category: 'Test' })),
       { command: 'studio.testOpenAccount', title: 'Open account', category: 'Test' },

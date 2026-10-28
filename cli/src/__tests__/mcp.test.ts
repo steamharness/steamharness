@@ -1,3 +1,4 @@
+import { writeProjectFixture } from '../../scripts/test-project-fixture.mjs';
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
@@ -572,17 +573,17 @@ async function connectProjectMcp(
 
 async function createMcpProject(aggregate = false): Promise<string> {
   const projectDir = await createTemporaryDirectory("steamharness-mcp-project-");
-  await writeFile(path.join(projectDir, "package.json"), JSON.stringify({
+  await writeProjectFixture(path.join(projectDir, "package.json"), JSON.stringify({
     id: "11111111-1111-4111-8111-111111111111",
     name: "@steamharness/mcp-test-workflow",
     type: "module",
     devDependencies: { "steamharness": await resolveHarnessVersion() },
-    steamHarness: { defaultEntry: 'main', entries: [{entryId:'main',name:'Main',type:'workflow',root:'.',entry:'index.ts',databases:[]}], projectInfo:{} },
+    version: "0.1.0",  defaultEntry: 'main', entries: [{entryId:'main',name:'Main',type:'workflow',root:'.',entry:'index.ts',databases:[]}], projectInfo:{} ,
   }), "utf8");
   if (aggregate) {
-    const manifest = JSON.parse(await readFile(path.join(projectDir, "package.json"), "utf8"));
-    manifest.steamHarness.entries.push({ entryId: "target", name: "Target", type: "workflow", root: ".", entry: "target.ts", databases: [] });
-    await writeFile(path.join(projectDir, "package.json"), JSON.stringify(manifest));
+    const manifest = JSON.parse(await readFile(path.join(projectDir, "steamharness.json"), "utf8"));
+    manifest.entries.push({ entryId: "target", name: "Target", type: "workflow", root: ".", entry: "target.ts", databases: [] });
+    await writeFile(path.join(projectDir, "steamharness.json"), JSON.stringify(manifest));
     await writeFile(path.join(projectDir, "target.ts"), `const flow = steamharness.defineProject({ name: "target", async run() { return { errCode: 0, errMessage: "", value: "target-entry" }; } });
       export const executor = steamharness.defineExecutor({ projectType: "workflow", defaultEntrypoint: "read", entrypoints: [steamharness.defineEntrypoint({ id: "read", title: "Read target", workflow: flow, createInput() { return {}; } })] });`);
   }
@@ -665,12 +666,12 @@ async function createMcpProject(aggregate = false): Promise<string> {
 
 async function createConversationProject(): Promise<string> {
   const projectDir = await createTemporaryDirectory("steamharness-mcp-conversation-");
-  await writeFile(path.join(projectDir, "package.json"), JSON.stringify({
+  await writeProjectFixture(path.join(projectDir, "package.json"), JSON.stringify({
     id: "22222222-2222-4222-8222-222222222222",
     name: "@steamharness/mcp-test-conversation",
     type: "module",
     devDependencies: { "steamharness": await resolveHarnessVersion() },
-    steamHarness: { defaultEntry: 'main', entries: [{entryId:'main',name:'Main',type:'conversation',root:'.',entry:'index.ts',databases:[]}], projectInfo:{} },
+    version: "0.1.0",  defaultEntry: 'main', entries: [{entryId:'main',name:'Main',type:'conversation',root:'.',entry:'index.ts',databases:[]}], projectInfo:{} ,
   }), "utf8");
   await writeFile(path.join(projectDir, "index.ts"), [
     'const conversationProject = steamharness.defineProject({ name: "conversation", run(input) { return input; } });',

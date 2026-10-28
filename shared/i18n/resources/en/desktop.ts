@@ -481,7 +481,7 @@ export const desktop = {
     dependencyDeliveryExternal: "external",
     dependencyReady: "Ready",
     dependencyStateUnavailable: "State unavailable",
-    publishConfigurationMissing: "The complete steamHarness.release configuration is missing. Add it to package.json before publishing.",
+    publishConfigurationMissing: "The complete steamharness.json.builtinRelease configuration is missing. Add it to steamharness.json before publishing.",
     publishConfigurationJsonInvalid: "package.json is not valid JSON, so the release configuration cannot be read.",
     publishConfigurationFieldInvalid: "The release configuration field {{field}} is invalid.",
     publishConfigurationProjectConflict: "The release configuration conflicts with the project declaration.",

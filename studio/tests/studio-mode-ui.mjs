@@ -1,3 +1,4 @@
+import { writeProjectFixture } from '../../scripts/test-project-fixture.mjs';
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
 import { createHash, randomBytes } from 'node:crypto';
@@ -49,7 +50,7 @@ for (const language of process.env.STEAMHARNESS_UI_LANGUAGES?.split(',') ?? ['en
     await mkdir(folder); await mkdir(extension, { recursive: true }); await mkdir(path.join(folder, '.vscode'));
     await writeFile(path.join(folder, '.vscode/settings.json'), JSON.stringify({ 'editor.editContext': false,
       'window.autoDetectColorScheme': false, 'workbench.startupEditor': 'none', 'files.autoSave': 'off', 'git.enabled': false }));
-    await writeFile(path.join(extension, 'package.json'), JSON.stringify({ name: 'mode-test', publisher: 'studio-test', version: '0.0.1',
+    await writeProjectFixture(path.join(extension, 'package.json'), JSON.stringify({ name: 'mode-test', publisher: 'studio-test', version: '0.0.1',
       engines: { vscode: '^1.140.0' }, main: './extension.cjs', extensionKind: ['workspace'], activationEvents: ['onStartupFinished'] }));
     await build({ entryPoints: [path.join(ROOT, 'tests/start-page-ui-extension.mjs')], bundle: true, platform: 'node', format: 'cjs', external: ['vscode'], outfile: path.join(extension, 'extension.cjs') });
     let workstation;
@@ -64,11 +65,11 @@ for (const language of process.env.STEAMHARNESS_UI_LANGUAGES?.split(',') ?? ['en
       // VS Code gives a built-in copy precedence when versions are equal.
       const metadata = JSON.parse(await readFile(path.join(workstation, 'package.json'), 'utf8'));
       const version = metadata.version.split('.'); version[2] = String(Number(version[2]) + 1); metadata.version = version.join('.');
-      await writeFile(path.join(workstation, 'package.json'), JSON.stringify(metadata));
+      await writeProjectFixture(path.join(workstation, 'package.json'), JSON.stringify(metadata));
       const template = path.join(workstation, 'dist/developer-assistant');
       await rm(template, { recursive: true, force: true }); await mkdir(template);
-      await writeFile(path.join(template, 'package.json'), JSON.stringify({ id: 'a3aca697-b086-459b-84e4-d357ad2d9fb2', name: 'Offline Assistant', type: 'module',
-        steamHarness: {defaultEntry:'main',entries:[{entryId:'main',type:'conversation',name:'Assistant',root:'.',entry:'index.ts',databases:[]}]} }));
+      await writeProjectFixture(path.join(template, 'package.json'), JSON.stringify({ id: 'a3aca697-b086-459b-84e4-d357ad2d9fb2', name: 'Offline Assistant', type: 'module',
+        version: "0.1.0", defaultEntry:'main',entries:[{entryId:'main',type:'conversation',name:'Assistant',root:'.',entry:'index.ts',databases:[]}] }));
       await copyFile(path.join(ROOT, 'tests/fixtures/assistant-new-tab/index.ts'), path.join(template, 'index.ts'));
     }
     await useCachedLanguagePack(directory, language);
@@ -170,7 +171,7 @@ for (const language of process.env.STEAMHARNESS_UI_LANGUAGES?.split(',') ?? ['en
       steamharness: JSON.parse(await readFile(path.join(sourceRoot, 'harness/package.json'), 'utf8')).version,
       '@steamharness/cli': JSON.parse(await readFile(path.join(sourceRoot, 'cli/package.json'), 'utf8')).version,
     };
-    await writeFile(path.join(project, 'package.json'), JSON.stringify(manifest));
+    await writeProjectFixture(path.join(project, 'package.json'), JSON.stringify(manifest));
     await writeFile(path.join(project, 'configuration.json'), JSON.stringify({ version: 1,
       fields: Array.from({ length: 17 }, (_, index) => ({ name: `field_${index}`, type: 'string',
         description: 'A project configuration field used to verify scrolling in a short window.', defaultValue: `Value ${index}` })),
@@ -226,7 +227,7 @@ for (const language of process.env.STEAMHARNESS_UI_LANGUAGES?.split(',') ?? ['en
     let releaseFrame, frameHeld = false;
     const frameGate = new Promise(resolve => { releaseFrame = resolve; });
     const frameRoute = url => url.searchParams.has('projectLocale');
-    const projectNames = new Set([manifest.name, ...Object.values(manifest.steamHarness.projectInfo.localizedNames)]);
+    const projectNames = new Set([manifest.name, ...Object.values(manifest.projectInfo.localizedNames)]);
     await context.route(frameRoute, async route => {
       const title = await route.request().frame().parentFrame()?.locator('#workflow-frame').getAttribute('title').catch(() => undefined);
       if (!frameHeld && projectNames.has(title)) { frameHeld = true; await frameGate; }
@@ -1388,8 +1389,8 @@ for (const language of process.env.STEAMHARNESS_UI_LANGUAGES?.split(',') ?? ['en
     await symlink(path.join(sourceRoot, 'cli'), path.join(otherProject, 'node_modules/@steamharness/cli'), 'dir');
     await copyFile(path.join(project, 'index.ts'), path.join(otherProject, 'index.ts'));
     const otherManifest = structuredClone(manifest); otherManifest.id = '71d1bc8c-7701-4a75-9ab0-1e301c353239'; otherManifest.name = 'external-tool-project';
-    otherManifest.steamHarness.projectInfo.localizedNames = { en: 'External Tool Project', 'zh-cn': '工具区外部项目' };
-    await writeFile(path.join(otherProject, 'package.json'), JSON.stringify(otherManifest));
+    otherManifest.projectInfo.localizedNames = { en: 'External Tool Project', 'zh-cn': '工具区外部项目' };
+    await writeProjectFixture(path.join(otherProject, 'package.json'), JSON.stringify(otherManifest));
     const foldersBeforeOther = (await call({ action: 'state' })).folders;
     await command('studio.openProjectInTab', otherProject);
     const findProjectFrame = uri => until(async () => {

@@ -10,6 +10,7 @@ import {
   createLocalProjectFileStore, createServerProjectFileStore, createProjectFileStore,
   createLocalProjectKVStore, createProjectKVContext, createProjectPersistentValueContext,
   listLocalProjectKVEntries, deleteLocalProjectKVEntry, getKnowledgeDocument, listKnowledgeDocuments,
+  readProjectManifestFromDirectorySync,
 } from './harness.mjs';
 
 const write = process.stdout.write.bind(process.stdout);
@@ -53,13 +54,25 @@ try {
     const errors = [];
     for (const folderPath of request.paths) {
       try {
-        const pkg = JSON.parse(readFileSync(path.join(folderPath, 'package.json'), 'utf8'));
-        const structure = inspectLocalProjectStructure({ projectDir: folderPath });
+        const manifest = readProjectManifestFromDirectorySync(folderPath);
+        const language = String(request.language ?? process.env.STEAMHARNESS_LOCALE ?? 'en').toLowerCase().startsWith('zh') ? 'zh-CN' : 'en';
+        for (const registration of manifest.entries.filter(entry => !request.entryId || entry.entryId === request.entryId)) {
+        const structure = inspectLocalProjectStructure({ projectDir: folderPath, entryId: registration.entryId });
         const parameters = (entry) => ({ fields: entry.params ?? [], paramLayout: entry.paramLayout, paramResolver: entry.paramResolver, tools: entry.tools });
         projects.push({
-          id: pkg.id,
+          id: manifest.projectId,
+          entryId: registration.entryId,
+          entryRoot: path.resolve(folderPath, registration.root),
+          entries: manifest.entries,
+          defaultEntry: manifest.defaultEntry,
+          databases: registration.databases,
+          aggregateName: manifest.projectInfo?.localizedNames?.[language] ?? manifest.name,
+          aggregateProjectCard: manifest.projectCard,
+          projectCard: registration.projectCard,
+          projectInfo: registration.projectInfo,
+          manifest: { name: manifest.name, version: manifest.version, description: manifest.description },
           folderPath,
-          name: pkg.steamHarness?.projectInfo?.localizedNames?.['zh-CN'] ?? pkg.name ?? path.basename(folderPath),
+          name: registration.projectInfo?.localizedNames?.[language] ?? registration.name,
           projectType: structure.projectType,
           ...parameters(structure),
           entrypoints: (structure.entrypoints ?? []).map((entry) => ({ id: entry.id, title: entry.title, ...parameters(entry) })),
@@ -68,6 +81,7 @@ try {
           conversation: structure.conversation,
           requiresLogin: await requiresSystemAi(folderPath),
         });
+        }
       } catch (error) { errors.push(`${folderPath}: ${error.message}`); }
     }
     send('result', { projects, errors });
@@ -108,6 +122,7 @@ try {
     if (request.method === 'resolve') {
       send('result', await resolveLocalProjectParams({
         projectDir: request.project.folderPath,
+        entryId: request.project.entryId,
         entrypointId: request.entrypointId,
         request: request.request,
         storage,
@@ -116,6 +131,7 @@ try {
     } else if (request.method === 'run') {
       const report = await runLocalProjectWithReport({
         projectDir: request.project.folderPath,
+        entryId: request.project.entryId,
         args: request.args,
         entrypointId: request.entrypointId,
         conversationId: request.conversationId,

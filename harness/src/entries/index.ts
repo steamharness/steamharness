@@ -2,7 +2,7 @@ import { selectProjectEntry, type ProjectEntry, type ProjectManifest } from "@st
 import type { AccessActor } from "@steamharness/project-access";
 import type { ToolPermissionContext } from "../tool-permissions/index";
 export * from "@steamharness/project-manifest";
-export { resolveProjectEntry, resolveProjectEntrySync, readProjectManifestFromDirectory, readProjectManifestFromDirectorySync, type ResolvedProjectEntry } from "@steamharness/project-manifest/node";
+export { readProjectDeclarationFromDirectory, readProjectDeclarationFromDirectorySync, readProjectDocument, readProjectDocumentSync, resolveProjectEntry, resolveProjectEntrySync, readProjectManifestFromDirectory, readProjectManifestFromDirectorySync, type ResolvedProjectEntry } from "@steamharness/project-manifest/node";
 
 export interface EntryOperation { id: string; title?: string; description?: string }
 export interface EntryCallIdentity {

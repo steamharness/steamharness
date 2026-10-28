@@ -1,3 +1,4 @@
+import { writeProjectFixture } from '../../scripts/test-project-fixture.mjs';
 import { randomUUID } from 'node:crypto';
 import { access, mkdir, writeFile, readFile } from 'node:fs/promises';
 import path from 'node:path';
@@ -12,11 +13,11 @@ export async function declareConfigurationFixture(directory:string):Promise<stri
   return directory;
 }
 export async function writeConfigurationFixtureManifest(directory:string,id:string=randomUUID()){
-  await writeFile(path.join(directory,'package.json'),JSON.stringify({id,name:'configuration-test',type:'module',steamHarness:{defaultEntry:'main',entries:[{entryId:'main',type:'workflow',name:'Main',root:'.',entry:'index.ts',configuration:'configuration.json',databases:[]}]}}));
+  await writeProjectFixture(path.join(directory,'package.json'),JSON.stringify({id,name:'configuration-test',type:'module',version: "0.1.0", defaultEntry:'main',entries:[{entryId:'main',type:'workflow',name:'Main',root:'.',entry:'index.ts',configuration:'configuration.json',databases:[]}]}));
 }
 export async function configurationFixtureStore(directory:string,options:LocalProjectConfigurationOptions={}){
   await declareConfigurationFixture(directory);
   return createLocalProjectConfigurationStore(directory,options);
 }
 
-export async function configurationFixtureId(directory:string):Promise<string>{ return JSON.parse(await readFile(path.join(directory,"package.json"),"utf8")).id; }
+export async function configurationFixtureId(directory:string):Promise<string>{ return JSON.parse(await readFile(path.join(directory,"steamharness.json"),"utf8")).id; }

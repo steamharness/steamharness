@@ -28,7 +28,7 @@ for (const type of ['workflow', 'conversation', 'kanban']) {
   manifest.name = `Info ${type} fixture`;
   manifest.description = 'A lightweight, extensible agent with a project description that remains readable in a narrow sidebar.'
     + (type === 'conversation' ? ' <img src=x onerror="window.injected=true">' : '');
-  manifest.steamHarness.projectInfo = {
+  manifest.projectInfo = {
     declarations: ['multilingual', 'multiplatform', 'custom-declaration'], localizedNames: { 'zh-CN': `Info ${type}`, en: manifest.name },
     platformSupport: { mode: 'specific', platforms: ['macos', 'windows', 'web'] },
   };

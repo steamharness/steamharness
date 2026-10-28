@@ -1,0 +1,18 @@
+{
+  "id": "21f7557c-9abf-418a-af9f-02f3e579bd46",
+  "name": "@steamharness/human-input-workflow",
+  "version": "0.1.0",
+  "projectInfo": {},
+  "entries": [
+    {
+      "entryId": "main",
+      "type": "workflow",
+      "name": "@steamharness/human-input-workflow",
+      "root": ".",
+      "entry": "index.ts",
+      "databases": [],
+      "configuration": "configuration.json"
+    }
+  ],
+  "defaultEntry": "main"
+}

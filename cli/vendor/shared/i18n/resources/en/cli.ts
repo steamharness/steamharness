@@ -87,7 +87,7 @@ export const cli = {
     missingOptionValue: "Missing value for {{name}}.",
     unknownLocalCommand: "Unknown steamharness command: {{command}}",
     unknownWorkspaceCommand: "Unknown workspace command: {{command}}",
-    packageProjectTypeRequired: "package.json.steamHarness.projectType must be workflow, conversation or kanban.",
+    packageProjectTypeRequired: "steamharness.json entry type must be workflow, conversation or kanban.",
     invalidParamResolveRequest: "resolve-params stdin must contain a valid ParamResolveRequest JSON object.",
     waitingForUserInput: "Project is waiting for user input. Re-run with --run-id and --resolved-user-inputs-json to resume.",
     resolvedInputsMustBeArray: "--resolved-user-inputs-json must be an array.",

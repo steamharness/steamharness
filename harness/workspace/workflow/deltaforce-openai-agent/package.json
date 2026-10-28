@@ -1,5 +1,4 @@
 {
-  "id": "3c0292f9-9731-4862-9019-19544eeca705",
   "name": "@steamharness/deltaforce-openai-agent-workflow",
   "version": "0.1.0",
   "private": true,
@@ -21,22 +20,5 @@
   "devDependencies": {
     "@steamharness/cli": "link:../../../cli",
     "steamharness": "link:../../.."
-  },
-  "steamHarness": {
-    "projectInfo": {},
-    "entries": [
-      {
-        "entryId": "main",
-        "type": "conversation",
-        "name": "@steamharness/deltaforce-openai-agent-workflow",
-        "root": ".",
-        "entry": "index.ts",
-        "configuration": "configuration.json",
-        "databases": [
-          "data"
-        ]
-      }
-    ],
-    "defaultEntry": "main"
   }
 }

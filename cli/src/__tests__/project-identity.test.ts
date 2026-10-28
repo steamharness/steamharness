@@ -15,9 +15,9 @@ const temporary: string[] = [];
 afterEach(async () => { vi.restoreAllMocks(); await Promise.all(temporary.splice(0).map(root => rm(root, { recursive: true, force: true }))); });
 async function fixture() {
   const directory = await mkdtemp(path.join(os.tmpdir(), 'project-identity-')); temporary.push(directory);
-  const pkg = { id: oldId, name: 'Keep name', scripts: { dev: 'keep this' }, steamHarness: { defaultEntry: 'main', entries: [{entryId:'main',name:'Main',type:'workflow',root:'.',entry:'index.ts',databases:[]}],  } };
+  const pkg = { id: oldId, name: 'Keep name', version: "0.1.0",  defaultEntry: 'main', entries: [{entryId:'main',name:'Main',type:'workflow',root:'.',entry:'index.ts',databases:[]}] };
   const source = JSON.stringify(pkg, null, '\t').replaceAll('\n', '\r\n') + '\r\n';
-  const filename = path.join(directory, 'package.json'); await writeFile(filename, source);
+  const filename = path.join(directory, 'steamharness.json'); await writeFile(filename, source);
   return { directory, filename, source, pkg };
 }
 
@@ -31,7 +31,7 @@ it('replaces only project identity, preserves formatting, and refuses concurrent
   await writeFile(f.filename, f.source); await writeProjectIdentity(f.directory, f.source, newId);
   const saved = await readFile(f.filename, 'utf8');
   expect(JSON.parse(saved)).toEqual({ ...f.pkg, id: newId }); expect(saved).toContain('\r\n\t');
-  expect(await readdir(f.directory)).toEqual(['package.json']);
+  expect(await readdir(f.directory)).toEqual(['steamharness.json']);
 });
 
 it('isolates history by project and entry without adopting directory metadata', async () => {
@@ -50,7 +50,7 @@ it('prevents competing windows from overwriting each other with different alloca
   expect(results.filter(result => result.status === 'fulfilled')).toHaveLength(1);
   const expectedId = results[0].status === 'fulfilled' ? newId : otherId;
   expect(JSON.parse(await readFile(f.filename, 'utf8')).id).toBe(expectedId);
-  expect(await readdir(f.directory)).toEqual(['package.json']);
+  expect(await readdir(f.directory)).toEqual(['steamharness.json']);
 });
 
 it('releases the identity lock when its owner crashes so the user can retry', async () => {

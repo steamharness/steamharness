@@ -201,7 +201,7 @@ test('upload saves only dirty project files and stops when saving fails', async 
 test('an unsaved package version is saved before duplicate-version checks', async t => {
   const f = fixture(t); await f.command('studio.refreshVersions');
   f.versions.set(id, [{ version: '1.0.0', latest: true }]);
-  const document = { uri: uri('file:///demo/package.json'), isDirty: true, getText: () => JSON.stringify({ ...f.manifest, version: '1.0.1' }),
+  const document = { uri: uri('file:///demo/steamharness.json'), isDirty: true, getText: () => JSON.stringify({ ...f.manifest, version: '1.0.1' }),
     save: async () => { f.manifest.version = '1.0.1'; document.isDirty = false; return true; } };
   f.documents = [document];
   await f.command('studio.uploadProject');

@@ -1,3 +1,4 @@
+import { writeProjectFixture } from '../../scripts/test-project-fixture.mjs';
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
@@ -12,8 +13,8 @@ async function fixture(host: "local" | "server") {
   const projectId=randomUUID();const all={mode:"all" as const};
   const permissions={kv:{read:all,write:all},knowledge:{read:all,write:all}};
   const requirement:DatabaseRequirement={alias:"data",databaseId:randomUUID()};
-  const pkg={id:projectId,name:"storage-test",type:"module",steamHarness:{defaultEntry:"main",entries:[{entryId:"main",name:"Main",type:"workflow",root:".",entry:"index.ts",databases:["data"]}]}};
-  await writeFile(path.join(directory,"package.json"),JSON.stringify(pkg));
+  const pkg={id:projectId,name:"storage-test",type:"module",version: "0.1.0", defaultEntry:"main",entries:[{entryId:"main",name:"Main",type:"workflow",root:".",entry:"index.ts",databases:["data"]}]};
+  await writeProjectFixture(path.join(directory,"package.json"),JSON.stringify(pkg));
   await writeFile(path.join(directory,"config.json"),JSON.stringify({version:1,databases:{data:requirement.databaseId}}));
   await writeFile(path.join(directory,"index.ts"),`
     const flow=steamharness.defineProject({name:"storage",async run(_input,context){
@@ -53,8 +54,8 @@ test("unknown database IDs never use an available local database",async t=>{
 
 test("removed project database declarations are rejected without importing data",async t=>{
   const f=await fixture("local");t.after(()=>rm(f.directory,{recursive:true,force:true}));
-  const pkg=JSON.parse(await readFile(path.join(f.directory,"package.json"),"utf8"));pkg.steamHarness.projectInfo={dataStorage:{mode:"both"}};
-  await writeFile(path.join(f.directory,"package.json"),JSON.stringify(pkg));
-  await assert.rejects(runLocalProjectWithReport({projectDir:f.directory}),/dataStorage was removed/);
+  const pkg=JSON.parse(await readFile(path.join(f.directory,"steamharness.json"),"utf8"));pkg.projectInfo={dataStorage:{mode:"both"}};
+  await writeFile(path.join(f.directory,"steamharness.json"),JSON.stringify(pkg));
+  await assert.rejects(runLocalProjectWithReport({projectDir:f.directory}),/were removed/);
   assert.equal(f.registry.read().spaces.length,0);
 });

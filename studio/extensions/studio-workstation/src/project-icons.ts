@@ -1,7 +1,7 @@
 import * as vscode from 'vscode';
-import { readProjectCardMetadataFromPackageJson } from '@steamharness/project-card-metadata';
+import { readProjectCardMetadata } from '@steamharness/project-card-metadata';
 import { projectAvatarDataUrl } from '@steamharness/project-card-metadata/avatar';
-import { readProjectDeclaration, selectProjectEntry } from '@steamharness/project-manifest';
+import { readProjectDeclarationWithReader, selectProjectEntry } from '@steamharness/project-manifest';
 import type { ProjectType } from './projects';
 import type { Launcher } from './workflow-cli-types';
 
@@ -20,7 +20,7 @@ export class ProjectIcons implements vscode.Disposable {
   private disposed = false;
 
   constructor(_launcher: Launcher, private readonly log: (message: string) => void = () => undefined) {
-    const watcher = vscode.workspace.createFileSystemWatcher('**/{package.json,*.ts}');
+    const watcher = vscode.workspace.createFileSystemWatcher('**/{steamharness.json,*.ts}');
     this.subscriptions.push(watcher, watcher.onDidChange(uri => this.invalidate(uri)), watcher.onDidCreate(uri => this.invalidate(uri)),
       watcher.onDidDelete(uri => this.invalidate(uri)), vscode.window.onDidChangeWindowState(state => { if (state.focused) { this.refresh(); } }));
   }
@@ -68,7 +68,7 @@ export class ProjectIcons implements vscode.Disposable {
       if (this.disposed) { return undefined; }
       if (generation !== this.generation) { return this.resolve(uri); }
       const version = typeof manifest?.version === 'string' ? manifest.version : undefined;
-      const avatarUrl = type && manifest ? projectAvatarDataUrl(readProjectCardMetadataFromPackageJson(manifest, type), type) : undefined;
+      const avatarUrl = type && manifest ? projectAvatarDataUrl(readProjectCardMetadata(manifest, type), type) : undefined;
       const changed = entry.type !== type || entry.version !== version || entry.avatarUrl !== avatarUrl;
       entry.type = type;
       entry.version = version;
@@ -94,13 +94,13 @@ export class ProjectIcons implements vscode.Disposable {
       return new TextDecoder().decode(await vscode.workspace.fs.readFile(uri));
     };
     let pkg;
-    try { pkg = JSON.parse(await read(vscode.Uri.joinPath(root, 'package.json'))); }
+    try { pkg = JSON.parse(await read(vscode.Uri.joinPath(root, 'steamharness.json'))); }
     catch (error) {
       if (error instanceof SyntaxError || (error as vscode.FileSystemError).code === 'FileNotFound') { return undefined; }
       throw error;
     }
     try {
-      const manifest = readProjectDeclaration(pkg);
+      const manifest = await readProjectDeclarationWithReader(pkg, async relative => JSON.parse(await read(vscode.Uri.joinPath(root, relative, "steamharness.json"))));
       setManifest(pkg);
       return selectProjectEntry(manifest).type;
     } catch { return undefined; }

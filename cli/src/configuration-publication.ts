@@ -1,7 +1,8 @@
+import { readProjectDeclarationFromDirectory } from '@steamharness/project-manifest/node';
 import {readFile} from 'node:fs/promises';
 import path from 'node:path';
 import {createPublicationDraft,ProjectConfigurationError,type ProjectConfigurationAction,type ProjectConfigurationState} from '@steamharness/project-configuration';
-import { readProjectDeclaration, selectProjectEntry } from '@steamharness/project-manifest';
+import { selectProjectEntry } from '@steamharness/project-manifest';
 
 /** Personal local values stay local. Only an explicit author draft is sent to Server. */
 export async function configurationPublication(projectDir:string,state:ProjectConfigurationState,call:ProjectConfigurationAction,connection:{serverUrl:string;accessToken:string}|undefined,entryId?:string):Promise<ProjectConfigurationState> {
@@ -10,8 +11,8 @@ export async function configurationPublication(projectDir:string,state:ProjectCo
     if(call.action.startsWith('publication.'))throw new Error('Official configuration publication requires an online connection.');
     return state;
   }
-  const manifest=JSON.parse(await readFile(path.join(projectDir,'package.json'),'utf8'));
-  const entry=selectProjectEntry(readProjectDeclaration(manifest),entryId);
+  const manifest=JSON.parse(await readFile(path.join(projectDir,'steamharness.json'),'utf8'));
+  const entry=selectProjectEntry(await readProjectDeclarationFromDirectory(projectDir),entryId);
   const address=`${connection.serverUrl}/api/projects/${encodeURIComponent(manifest.id)}/configurations?entryId=${encodeURIComponent(entry.entryId)}`;
   const request=async(body?:unknown)=>{
     const response=await fetch(body?address:`${address}&target=draft`,{method:body?'POST':'GET',headers:{Authorization:`Bearer ${connection.accessToken}`,'Content-Type':'application/json'},...(body?{body:JSON.stringify(body)}:{}),redirect:'error',signal:AbortSignal.timeout(body?20_000:5_000)});

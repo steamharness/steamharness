@@ -1,0 +1,18 @@
+{
+  "id": "8f0a5d6f-3e3f-416f-ab55-0044055fd7a0",
+  "name": "@steamharness/output-showcase-workflow",
+  "version": "0.1.0",
+  "projectInfo": {},
+  "entries": [
+    {
+      "entryId": "main",
+      "type": "workflow",
+      "name": "@steamharness/output-showcase-workflow",
+      "root": ".",
+      "entry": "index.ts",
+      "databases": [],
+      "configuration": "configuration.json"
+    }
+  ],
+  "defaultEntry": "main"
+}

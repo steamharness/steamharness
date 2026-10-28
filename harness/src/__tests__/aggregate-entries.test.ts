@@ -1,3 +1,4 @@
+import { writeProjectFixture } from '../../scripts/test-project-fixture.mjs';
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
@@ -13,7 +14,7 @@ async function fixture() {
   const directory = await mkdtemp(path.join(os.tmpdir(), "aggregate-entries-"));
   const projectId = randomUUID();
   const entries = ["one", "two", "chat", "board"].map((entryId) => ({ entryId, name: entryId, type: entryId === "chat" ? "conversation" : entryId === "board" ? "kanban" : "workflow", root: ".", entry: `${entryId}.${entryId === "board" ? "html" : "ts"}`, databases: [], configuration: `${entryId}.json` }));
-  await writeFile(path.join(directory, "package.json"), JSON.stringify({ id: projectId, name: "aggregate-test", type: "module", steamHarness: { entries, defaultEntry: "one" } }));
+  await writeProjectFixture(path.join(directory, "package.json"), JSON.stringify({ id: projectId, name: "aggregate-test", type: "module", version: "0.1.0",  entries, defaultEntry: "one"  }));
   for (const entry of entries) {
     await writeFile(path.join(directory, entry.configuration), JSON.stringify({ version: 1, fields: [{ name: "label", label: "Label", type: "string", defaultValue: entry.entryId }] }));
     if (entry.type === "kanban") { await writeFile(path.join(directory, entry.entry), "<!doctype html><title>Board</title>"); continue; }
@@ -69,9 +70,9 @@ test("entry operations use target grants while rechecking the caller and inherit
     const request = registry.request({ projectId, entryId: "two", alias: "cache", target: { kind: "create", name: "Target cache" }, permissions });
     const approval = registry.review(request.requestId, { approve: true });
     await writeFile(path.join(directory, "config.json"), JSON.stringify({ version: 1, databases: { cache: approval.databaseId } }));
-    const pkg = JSON.parse(await readFile(path.join(directory, "package.json"), "utf8"));
-    pkg.steamHarness.entries.find((entry: {entryId: string}) => entry.entryId === "two").databases = ["cache"];
-    await writeFile(path.join(directory, "package.json"), JSON.stringify(pkg));
+    const pkg = JSON.parse(await readFile(path.join(directory, "steamharness.json"), "utf8"));
+    pkg.entries.find((entry: {entryId: string}) => entry.entryId === "two").databases = ["cache"];
+    await writeFile(path.join(directory, "steamharness.json"), JSON.stringify(pkg));
     await writeFile(path.join(directory, "two.ts"), `const flow = steamharness.defineProject({ name: "Cache", async run(_input, context) {
       await context.databases.get("cache").kv.setValue("cached", context.actor.userId);
       return { errCode: 0, errMessage: "", actor: context.actor, value: await context.databases.get("cache").kv.getValue("cached") };

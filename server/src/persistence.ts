@@ -461,14 +461,14 @@ export class DatabaseRepository implements KVStore {
           const packageResult = await client.query<Pick<FileRow, "content">>(
             `select content
              from project_draft_files
-             where project_id = $1 and path = 'package.json'
+             where project_id = $1 and path = 'steamharness.json'
              for update`,
             [update.projectId],
           );
           const packageContent = packageResult.rows[0]?.content;
           if (packageContent !== undefined) {
             const parsed = JSON.parse(packageContent) as unknown;
-            if (!isRecord(parsed)) throw new Error("Workflow draft package.json root must be an object.");
+            if (!isRecord(parsed)) throw new Error("Workflow draft steamharness.json root must be an object.");
             const content = `${JSON.stringify(writeProjectInfo(
               {
                 ...parsed,
@@ -480,7 +480,7 @@ export class DatabaseRepository implements KVStore {
               `update project_draft_files
                set content = $3, size = $4, updated_at = now()
                where project_id = $1 and path = $2`,
-              [update.projectId, "package.json", content, Buffer.byteLength(content)],
+              [update.projectId, "steamharness.json", content, Buffer.byteLength(content)],
             );
           }
         }

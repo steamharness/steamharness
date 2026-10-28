@@ -1,3 +1,4 @@
+import { writeProjectFixture } from '../../scripts/test-project-fixture.mjs';
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
@@ -13,7 +14,7 @@ async function fixture() {
   const rootDir = path.join(directory, "values"), applicationId = randomUUID();
   const application = async (name: string, id: string | undefined = applicationId) => {
     const project = path.join(directory, name); await mkdir(project);
-    await writeFile(path.join(project, "package.json"), JSON.stringify({name:"same-package-name", id,type:"module",steamHarness:{defaultEntry:"main",entries:["main","second"].map(entryId=>({entryId,type:"workflow",name:entryId,root:".",entry:"index.ts",configuration:"configuration.json",databases:[]}))}}));
+    await writeProjectFixture(path.join(project, "package.json"), JSON.stringify({name:"same-package-name", id,type:"module",version: "0.1.0", defaultEntry:"main",entries:["main","second"].map(entryId=>({entryId,type:"workflow",name:entryId,root:".",entry:"index.ts",configuration:"configuration.json",databases:[]}))}));
     await writeFile(path.join(project, "index.ts"),"export {};");
     await writeFile(path.join(project, "configuration.json"), JSON.stringify({version:1,fields:[{name:"label",type:"string"},{name:"enabled",type:"boolean"}]}));
     return project;
@@ -80,11 +81,11 @@ test("configuration rejects unregistered projects and invalid project identities
   const f=await fixture();t.after(()=>rm(f.directory,{recursive:true,force:true}));
   for(const id of ["invalid",undefined]) {
     const project=await f.application(`invalid-${id}`,id);
-    if(id===undefined)await writeFile(path.join(project,"package.json"),JSON.stringify({name:"same-package-name"}));
+    if(id===undefined)await writeFile(path.join(project,"steamharness.json"),JSON.stringify({name:"same-package-name"}));
     await assert.rejects(createLocalProjectConfigurationStore(project,{rootDir:f.rootDir}),/aggregate project's UUID/);
   }
-  const project=await f.application("legacy");await writeFile(path.join(project,"package.json"),JSON.stringify({id:f.applicationId,name:"legacy",steamHarness:{projectType:"workflow"}}));
-  await assert.rejects(createLocalProjectConfigurationStore(project,{rootDir:f.rootDir}),/was removed/);
-  await writeFile(path.join(project,"package.json"),"{");
+  const project=await f.application("legacy");await writeFile(path.join(project,"steamharness.json"),JSON.stringify({id:f.applicationId,name:"legacy",version: "0.1.0", projectType:"workflow"}));
+  await assert.rejects(createLocalProjectConfigurationStore(project,{rootDir:f.rootDir}),/unsupported fields/);
+  await writeFile(path.join(project,"steamharness.json"),"{");
   await assert.rejects(createLocalProjectConfigurationStore(project,{rootDir:f.rootDir}),SyntaxError);
 });

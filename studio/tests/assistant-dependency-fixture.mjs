@@ -1,3 +1,4 @@
+import { writeProjectFixture } from '../../scripts/test-project-fixture.mjs';
 import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { tmpdir } from 'node:os';
@@ -9,9 +10,9 @@ export async function createAssistantDependencyFixture() {
   const core = path.join(projectDir, 'node_modules/steamharness');
   await mkdir(path.join(cli, 'dist'), { recursive: true });
   await mkdir(path.join(core, 'dist'), { recursive: true });
-  await writeFile(path.join(projectDir, 'package.json'), JSON.stringify({ id: 'a3aca697-b086-459b-84e4-d357ad2d9fb2', name: 'Independent assistant' }));
-  await writeFile(path.join(cli, 'package.json'), JSON.stringify({ name: '@steamharness/cli', version: '1.2.3', type: 'module', bin: { 'steamharness': 'dist/index.js' } }));
-  await writeFile(path.join(core, 'package.json'), JSON.stringify({ name: 'steamharness', version: '2.3.4' }));
+  await writeFile(path.join(projectDir, 'steamharness.json'), JSON.stringify({ id: 'a3aca697-b086-459b-84e4-d357ad2d9fb2', name: 'Independent assistant' }));
+  await writeProjectFixture(path.join(cli, 'package.json'), JSON.stringify({ name: '@steamharness/cli', version: '1.2.3', type: 'module', bin: { 'steamharness': 'dist/index.js' } }));
+  await writeProjectFixture(path.join(core, 'package.json'), JSON.stringify({ name: 'steamharness', version: '2.3.4' }));
   await writeFile(path.join(cli, 'dist/index.js'), `
     import { createServer } from 'node:http';
     import { createInterface } from 'node:readline';
@@ -23,15 +24,16 @@ export async function createAssistantDependencyFixture() {
       const message=JSON.parse(line);
       if(message.type==='configure'){
         const projectDirectory=message.assistantProjectDir??process.argv[process.argv.indexOf('web')+1];
-        const manifest=JSON.parse(readFileSync(path.join(projectDirectory,'package.json'),'utf8'));
+        const manifest=JSON.parse(readFileSync(path.join(projectDirectory,'steamharness.json'),'utf8'));
         const baseProject={id:manifest.id,name:'Project Assistant',folderPath:message.assistantProjectDir,projectType:'conversation',entryId:'main',entryName:'Main',defaultEntry:'main',entries:[{entryId:'main',name:'Main',type:'conversation',root:'.',entry:'index.ts',databases:[]}],databases:[],fields:[],entrypoints:[],tools:[{name:'skill'}]};
-        const entries=manifest.steamHarness?.entries??baseProject.entries;
+        const entries=(manifest?.entries??baseProject.entries).map(entry=>entry.root==='.'?entry:{...JSON.parse(readFileSync(path.join(projectDirectory,entry.root,'steamharness.json'),'utf8')),...entry});
         const projects=entries.map(entry=>({...baseProject,folderPath:projectDirectory,entries,entryId:entry.entryId,entryName:entry.name,projectType:entry.type,entrypoints:entry.type==='workflow'?[{id:'studio_state',title:'Studio state',fields:[]}]:[]}));
-        const selected=process.argv.includes('--entry')?process.argv[process.argv.indexOf('--entry')+1]:manifest.steamHarness?.defaultEntry??'main';
+        const selected=process.argv.includes('--entry')?process.argv[process.argv.indexOf('--entry')+1]:manifest?.defaultEntry??'main';
         const project=projects.find(entry=>entry.entryId===selected);
         if(process.argv.includes('--inspect')){
-          if(manifest.testInspectionExit){console.error('Fixture inspection failed');process.exit(1);}
-          const errors=manifest.testInspectionError?[manifest.testInspectionError]:[];
+          if(JSON.parse(readFileSync(path.join(projectDirectory,'package.json'),'utf8')).testInspectionExit){console.error('Fixture inspection failed');process.exit(1);}
+          const diagnostic=JSON.parse(readFileSync(path.join(projectDirectory,'package.json'),'utf8')).testInspectionError;
+          const errors=diagnostic?[diagnostic]:[];
           console.log(JSON.stringify({assistantProtocolVersion:1,projects:errors.length?[]:projects,errors}));input.close();process.stdin.pause();return;
         }
         const controlUrl=process.env.STEAMHARNESS_STUDIO_CONTROL_BRIDGE_URL;

@@ -1,5 +1,4 @@
 {
-  "id": "2e729f50-17b9-4866-af50-78495a05ed95",
   "name": "@steamharness/gitlab-webhook-workflow",
   "version": "0.1.0",
   "private": true,
@@ -14,19 +13,5 @@
   "devDependencies": {
     "@steamharness/cli": "link:../../../cli",
     "steamharness": "link:../../.."
-  },
-  "steamHarness": {
-    "projectInfo": {},
-    "entries": [
-      {
-        "entryId": "main",
-        "type": "conversation",
-        "name": "@steamharness/gitlab-webhook-workflow",
-        "root": ".",
-        "entry": "index.ts",
-        "databases": []
-      }
-    ],
-    "defaultEntry": "main"
   }
 }

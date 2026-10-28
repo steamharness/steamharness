@@ -1,3 +1,4 @@
+import { writeProjectFixture } from '../../scripts/test-project-fixture.mjs';
 import assert from "node:assert/strict";
 import { mkdtemp, writeFile } from "node:fs/promises";
 import os from "node:os";
@@ -116,13 +117,13 @@ async function createUpstreamErrorProject(
     ?? "{\"code\":\"API_KEY_REQUIRED\",\"message\":\"API key is required in Authorization header\"}";
   const projectDir = await mkdtemp(path.join(os.tmpdir(), "steamharness-upstream-error-"));
 
-  await writeFile(
+  await writeProjectFixture(
     path.join(projectDir, "package.json"),
     JSON.stringify({
       id: "22222222-2222-4222-8222-222222222222",
       name: "@steamharness/upstream-error-test",
       type: "module",
-      steamHarness: {defaultEntry:"main",entries:[{entryId:"main",type:"workflow",name:"Main",root:".",entry:"index.ts",databases:[]}], projectInfo:{}},
+      version: "0.1.0", defaultEntry:"main",entries:[{entryId:"main",type:"workflow",name:"Main",root:".",entry:"index.ts",databases:[]}], projectInfo:{},
     }),
   );
   await writeFile(

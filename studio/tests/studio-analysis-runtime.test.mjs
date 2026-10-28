@@ -18,9 +18,10 @@ test('the built-in analysis prepares a runnable Kanban and connects its own CLI 
   const directory = await mkdtemp(path.join(tmpdir(), 'studio-analysis-runtime-')); t.after(() => rm(directory, { recursive: true, force: true }));
   const extension = path.join(directory, 'studio/extensions/studio-workstation'), storage = path.join(directory, 'storage');
   const assistant = path.join(extension, 'dist/developer-assistant'); await mkdir(assistant, { recursive: true });
-  await writeFile(path.join(assistant, 'package.json'), JSON.stringify({ id: 'a3aca697-b086-459b-84e4-d357ad2d9fb2', type: 'module' }));
+  await writeFile(path.join(assistant, 'package.json'), JSON.stringify({name:'assistant',type:'module'}));
+  await writeFile(path.join(assistant, 'steamharness.json'), JSON.stringify({ id: 'a3aca697-b086-459b-84e4-d357ad2d9fb2', type: 'module' }));
   const template = path.join(extension, 'dist/analysis');
-  for (const name of ['package.json', 'configuration.json', 'index.html', 'assets']) {
+  for (const name of ['package.json', 'steamharness.json', 'configuration.json', 'index.html', 'assets']) {
     await cp(new URL(`../../build-in/build-in-analysis/${name}`, import.meta.url), path.join(template, name), { recursive: true });
   }
   const cli = path.join(source.projectDir, 'node_modules/@steamharness/cli/dist'); await mkdir(path.join(cli, 'web'));
@@ -44,7 +45,7 @@ test('the built-in analysis prepares a runnable Kanban and connects its own CLI 
     import { createInterface } from 'node:readline';
     import path from 'node:path';
     const args = process.argv.slice(2), folderPath = args[args.indexOf('web') + 1];
-    const manifest = JSON.parse(readFileSync(path.join(folderPath, 'package.json'), 'utf8'));
+    const manifest = JSON.parse(readFileSync(path.join(folderPath, 'steamharness.json'), 'utf8'));
     const project = { id: manifest.id, name: manifest.name, folderPath, projectType: 'kanban',entryId:'main',defaultEntry:'main',entries:[{entryId:'main',name:'Main',type:'conversation',root:'.',entry:'index.ts',databases:[]}],databases:[], fields: [], entrypoints: [] };
     if (args.includes('--inspect')) console.log(JSON.stringify({ projects: [project], errors: [] }));
     else {

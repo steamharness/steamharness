@@ -1,3 +1,4 @@
+import { writeProjectFixture } from '../../scripts/test-project-fixture.mjs';
 import { afterEach, expect, it, vi } from 'vitest';
 import { randomUUID } from 'node:crypto';
 import { mkdir, mkdtemp, realpath, rm, writeFile } from 'node:fs/promises';
@@ -25,7 +26,7 @@ async function fixture() {
   return async (name: string, kind: Project['projectType'], applicationId = id, assistant = false, projectDir?: string) => {
     const directory = projectDir ?? path.join(root, name);
     await mkdir(directory, {recursive:true});
-    await writeFile(path.join(directory, 'package.json'), JSON.stringify({id:applicationId,name:'shared-app',steamHarness:{ defaultEntry: 'main', entries: [{entryId:'main',name:'Main',type:kind,root:'.',entry:kind==='kanban'?'index.html':'index.ts',configuration:'configuration.json',databases:[]}],  }}));
+    await writeProjectFixture(path.join(directory, 'package.json'), JSON.stringify({id:applicationId,name:'shared-app',version: "0.1.0",  defaultEntry: 'main', entries: [{entryId:'main',name:'Main',type:kind,root:'.',entry:kind==='kanban'?'index.html':'index.ts',configuration:'configuration.json',databases:[]}]}));
     await writeFile(path.join(directory, 'configuration.json'), JSON.stringify({version:1,fields:[{name:'label',type:'string'},{name:'enabled',type:'boolean'}]}));
     await writeFile(path.join(directory, 'index.ts'), 'export {};');
     if (kind === 'kanban') await writeFile(path.join(directory, 'index.html'), '<!doctype html><h1>Board</h1>');

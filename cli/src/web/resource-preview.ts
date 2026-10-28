@@ -108,7 +108,7 @@ export class ResourcePreviews {
     }
     for (const directory of new Set([...this.resourceProjects(), ...(workspace ? [workspace] : [])])) {
       let root: string, pkg;
-      try { root = await realpath(directory); pkg = JSON.parse(await readFile(path.join(root, 'package.json'), 'utf8')); }
+      try { root = await realpath(directory); pkg = JSON.parse(await readFile(path.join(root, 'steamharness.json'), 'utf8')); }
       catch { continue; }
       if (String(pkg.id).toLowerCase() !== id.toLowerCase()) { continue; }
       const inspected = await this.runtime.inspect([root]);

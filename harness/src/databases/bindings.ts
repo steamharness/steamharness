@@ -3,8 +3,8 @@ import { mkdir, readFile, realpath, rename, writeFile, rm } from "node:fs/promis
 import { DatabaseSync } from "node:sqlite";
 import { setTimeout as delay } from "node:timers/promises";
 import path from "node:path";
-import { resolveRegisteredProjectEntry } from "@steamharness/project-manifest/node";
-import { PROJECT_CONFIG_FILE, readProjectConfig, readProjectDeclaration, selectProjectEntry } from "@steamharness/project-manifest";
+import { resolveRegisteredProjectEntry, readProjectDeclarationFromDirectory } from "@steamharness/project-manifest/node";
+import { PROJECT_CONFIG_FILE, readProjectConfig, projectEntryDeclarationPath, selectProjectEntry } from "@steamharness/project-manifest";
 import { normalizeDatabaseRequirement } from "@steamharness/database-spaces";
 import { localDatabaseRegistryDirectory } from "./local-registry";
 
@@ -32,7 +32,7 @@ async function withManifestLock<T>(packagePath: string, operation: () => Promise
 export async function bindProjectDatabase(projectDir: string, entryId: string, alias: string, databaseId: string): Promise<void> {
   const root = await realpath(projectDir);
   const reference = normalizeDatabaseRequirement({ alias, databaseId });
-  const packagePath = path.join(root, "package.json");
+  const packagePath = path.join(root, "steamharness.json");
   const configPath = path.join(root, PROJECT_CONFIG_FILE);
   const readConfig = async () => {
     try {
@@ -45,7 +45,10 @@ export async function bindProjectDatabase(projectDir: string, entryId: string, a
   await withManifestLock(configPath, async () => {
     const packageBefore = await readFile(packagePath, "utf8");
     const pkg = JSON.parse(packageBefore);
-    const declaration = readProjectDeclaration(pkg);
+    const declaration = await readProjectDeclarationFromDirectory(root);
+    const declarationPath = path.join(root, projectEntryDeclarationPath(pkg, entryId));
+    const declarationBefore = await readFile(declarationPath, "utf8");
+    const entryDocument = JSON.parse(declarationBefore);
     const entry = selectProjectEntry(declaration, entryId);
     // Validate entry paths before the first mapping exists.
     const paths = { ...declaration, entries: declaration.entries.map(item => ({ ...item, databases: [] })) };
@@ -55,21 +58,21 @@ export async function bindProjectDatabase(projectDir: string, entryId: string, a
     config.databases[reference.alias] = reference.databaseId;
     const addAlias = !entry.databases.includes(reference.alias);
     if (addAlias) {
-      const target = pkg.steamHarness.entries.find((item: { entryId: string }) => item.entryId === entryId);
+      const target = declarationPath === packagePath ? entryDocument.entries.find((item: { entryId: string }) => item.entryId === entryId) : entryDocument;
       target.databases = [...entry.databases, reference.alias];
     }
     readProjectConfig(config);
     const temporary = `${configPath}.${randomUUID()}.tmp`;
-    const packageTemporary = `${packagePath}.${randomUUID()}.tmp`;
+    const packageTemporary = `${declarationPath}.${randomUUID()}.tmp`;
     try {
       await writeFile(temporary, JSON.stringify(config, null, 2) + "\n", { mode: 0o600 });
-      if (addAlias) await writeFile(packageTemporary, JSON.stringify(pkg, null, 2) + "\n");
-      if (await readFile(packagePath, "utf8") !== packageBefore || await readConfig() !== before) throw new Error("Project configuration changed. Retry binding.");
+      if (addAlias) await writeFile(packageTemporary, JSON.stringify(entryDocument, null, 2) + "\n");
+      if (await readFile(packagePath, "utf8") !== packageBefore || await readFile(declarationPath, "utf8") !== declarationBefore || await readConfig() !== before) throw new Error("Project configuration changed. Retry binding.");
       // An unused mapping is harmless if a concurrent package edit interrupts the second write.
       await rename(temporary, configPath);
       if (addAlias) {
-        if (await readFile(packagePath, "utf8") !== packageBefore) throw new Error("Project declaration changed. Retry binding.");
-        await rename(packageTemporary, packagePath);
+        if (await readFile(packagePath, "utf8") !== packageBefore || await readFile(declarationPath, "utf8") !== declarationBefore) throw new Error("Project declaration changed. Retry binding.");
+        await rename(packageTemporary, declarationPath);
       }
     } finally {
       await rm(temporary, { force: true });

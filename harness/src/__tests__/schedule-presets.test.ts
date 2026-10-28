@@ -1,3 +1,4 @@
+import { writeProjectFixture } from '../../scripts/test-project-fixture.mjs';
 import assert from "node:assert/strict";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
@@ -98,13 +99,12 @@ test("Conversation and Kanban projects reject schedule presets", async () => {
   });
   const kanbanDir = await mkdtemp(path.join(os.tmpdir(), "workflow-schedule-kanban-"));
   await Promise.all([
-    writeFile(path.join(kanbanDir, "package.json"), JSON.stringify({
+    writeProjectFixture(path.join(kanbanDir, "package.json"), JSON.stringify({
       id: "00000000-0000-4000-8000-000000000014",
       name: "Schedule Kanban",
       version: "0.1.0",
-      steamHarness: {
+
         defaultEntry:"main",entries:[{entryId:"main",name:"Main",type:"kanban",root:".",entry:"dist/index.html",databases:[],schedulePresets:[]}],
-      },
     })),
     mkdir(path.join(kanbanDir, "dist"), { recursive: true }).then(() =>
       writeFile(path.join(kanbanDir, "dist", "index.html"), "<!doctype html>")),
@@ -122,16 +122,16 @@ test("Conversation and Kanban projects reject schedule presets", async () => {
 
 async function createScriptProject(
   projectType: "workflow" | "conversation",
-  steamHarness: Record<string, unknown>,
+  options: Record<string, unknown>,
 ): Promise<string> {
   const projectDir = await mkdtemp(path.join(os.tmpdir(), "workflow-schedule-project-"));
   await Promise.all([
-    writeFile(path.join(projectDir, "package.json"), JSON.stringify({
+    writeProjectFixture(path.join(projectDir, "package.json"), JSON.stringify({
       id:crypto.randomUUID(),
       name: "schedule-project",
       version: "0.1.0",
       type: "module",
-      steamHarness:{defaultEntry:"main",entries:[{entryId:"main",name:"Main",type:projectType,root:".",entry:"index.ts",databases:[],...steamHarness}]},
+      defaultEntry:"main",entries:[{entryId:"main",name:"Main",type:projectType,root:".",entry:"index.ts",databases:[],...options}],
     })),
     writeFile(path.join(projectDir, "index.ts"), projectType === "workflow" ? `
       const main = steamharness.defineProject({

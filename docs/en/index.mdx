@@ -90,7 +90,7 @@ Enhanced adds System AI on top: the platform maintains the model catalogue, cred
 ## Development workflow
 
 1. **Create a project**: in Studio, choose New Project, then a Workflow, Conversation, or Kanban type and template; or create the directory manually.
-The root `package.json.id` is the aggregate identity. `steamHarness.entries` registers types, names, code paths, configuration and database requirements. Use fresh declarations and data; legacy models are rejected.
+The root `steamharness.json.id` is the aggregate identity. `steamharness.json.entries` registers types, names, code paths, configuration and database requirements. Use fresh declarations and data; legacy models are rejected.
 3. **Write the entry point**: Workflow / Conversation use the Core Runtime API for the entry and executor; Kanban starts from `index.html` and static assets.
 4. **Run locally**: open the project in Studio and run it, or use `steamharness structure .`, `steamharness run .`, and `steamharness web .`.
 5. **Upload to a Server**: use the Workspace CLI to sign in, package the source, and publish a version; manage the project, members, and data in the Server Web console.
@@ -102,7 +102,8 @@ A minimal Workflow / Conversation project usually contains:
 
 ```text
 my-project/
-The root `package.json.id` is the aggregate identity. `steamHarness.entries` registers types, names, code paths, configuration and database requirements. Use fresh declarations and data; legacy models are rejected.
+├── steamharness.json  # project identity and entry declarations
+├── package.json       # npm dependencies and scripts
 ├── index.ts       # entry point and executor
 └── ...
 ```
@@ -111,11 +112,12 @@ A Kanban project only needs:
 
 ```text
 my-board/
+├── steamharness.json
 ├── package.json
 └── index.html
 ```
 
-The root `package.json.id` is the aggregate identity. `steamHarness.entries` registers types, names, code paths, configuration and database requirements. Use fresh declarations and data; legacy models are rejected.
+The root `steamharness.json.id` is the aggregate identity. `steamharness.json.entries` registers types, names, code paths, configuration and database requirements. Use fresh declarations and data; legacy models are rejected.
 
 ## Built-in projects
 

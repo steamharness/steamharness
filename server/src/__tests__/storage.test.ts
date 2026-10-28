@@ -1,3 +1,4 @@
+import { writeProjectFixture } from '../../scripts/test-project-fixture.mjs';
 import {resolveResourceAccess} from "@steamharness/project-access";
 import assert from "node:assert/strict";
 import { EventEmitter } from "node:events";
@@ -696,7 +697,7 @@ test("Storage.listProjects returns uploaded package project card metadata", asyn
   try {
     await storage.init();
     await writeFileVersion(dataRoot, DEMO_CONV_WF_ID, "1.0.0", "2026-05-21T00:00:00.000Z", {
-      steamHarness: { defaultEntry:"main",entries:[{entryId:"main",name:"Main",type:"conversation",root:".",entry:"index.ts",configuration:"configuration.json",databases:[]}],
+       defaultEntry:"main",entries:[{entryId:"main",name:"Main",type:"conversation",root:".",entry:"index.ts",configuration:"configuration.json",databases:[]}],
         projectInfo: DECLARED_SERVER_PROJECT_INFO,
         projectCard: {
           icon: "bot",
@@ -704,7 +705,6 @@ test("Storage.listProjects returns uploaded package project card metadata", asyn
           iconColor: "#f8fafc",
           iconBackgroundColor: "#7c3aed",
         },
-      },
     }, "conversation");
     await writeFile(
       path.join(dataRoot, "projects", DEMO_CONV_WF_ID, "latest.json"),
@@ -772,7 +772,7 @@ test("Storage atomically checks project configuration versions and isolates acco
   storage.getProjectAccessSummary=async()=>({projectId:DEMO_WF_ID,projectName:"Config",visibility:"private",access:resolveResourceAccess([{type:"project",id:DEMO_WF_ID,role:"developer"}])});
   try {
     await mkdir(sourceRoot,{recursive:true});
-    await writeFile(path.join(sourceRoot,"package.json"),JSON.stringify({id:DEMO_WF_ID,name:"Configurations",version:"0.1.0",devDependencies:testToolchainDependencies,steamHarness:{defaultEntry:"main",entries:[{entryId:"main",name:"Main",type:"kanban",root:".",entry:"index.html",configuration:"configuration.json",databases:[]}],projectInfo:DECLARED_SERVER_PROJECT_INFO}}));
+    await writeProjectFixture(path.join(sourceRoot,"package.json"),JSON.stringify({id:DEMO_WF_ID,name:"Configurations",version:"0.1.0",devDependencies:testToolchainDependencies,defaultEntry:"main",entries:[{entryId:"main",name:"Main",type:"kanban",root:".",entry:"index.html",configuration:"configuration.json",databases:[]}],projectInfo:DECLARED_SERVER_PROJECT_INFO}));
     await writeFile(path.join(sourceRoot,"index.html"),"<!doctype html>");
     await writeFile(path.join(sourceRoot,"configuration.json"),JSON.stringify({version:1,fields:[{name:"title",type:"string",defaultValue:"Roadmap"}]}));
     const options={projectName:DEMO_WF_ID,actorId:"user-a",target:"draft"};
@@ -801,10 +801,11 @@ test("Storage keeps draft configuration values when an older version is read and
   storage.getProjectAccessSummary=async()=>({projectId:DEMO_WF_ID,projectName:"Config",visibility:"private",access:resolveResourceAccess([{type:"project",id:DEMO_WF_ID,role:"developer"}])});
   try {
     await mkdir(draft,{recursive:true});await mkdir(version,{recursive:true});
-    await writeFile(path.join(draft,"package.json"),JSON.stringify({id:DEMO_WF_ID,name:"Configuration targets",version:"0.1.1",devDependencies:testToolchainDependencies,steamHarness:{defaultEntry:"main",entries:[{entryId:"main",name:"Main",type:"workflow",root:".",entry:"index.ts",configuration:"configuration.json",databases:[]}],projectInfo:DECLARED_SERVER_PROJECT_INFO}}));
+    await writeProjectFixture(path.join(draft,"package.json"),JSON.stringify({id:DEMO_WF_ID,name:"Configuration targets",version:"0.1.1",devDependencies:testToolchainDependencies,defaultEntry:"main",entries:[{entryId:"main",name:"Main",type:"workflow",root:".",entry:"index.ts",configuration:"configuration.json",databases:[]}],projectInfo:DECLARED_SERVER_PROJECT_INFO}));
     await writeFile(path.join(draft,"index.ts"),'throw new Error("static source only");');
     await writeFile(path.join(draft,"configuration.json"),JSON.stringify({version:1,fields:[{name:"newField",type:"string"}]}));
-    await writeFile(path.join(version,"package.json"),await readFile(path.join(draft,"package.json")));
+    await writeProjectFixture(path.join(version,"package.json"),await readFile(path.join(draft,"package.json")));
+    await writeFile(path.join(version,"steamharness.json"),await readFile(path.join(draft,"steamharness.json")));
     await writeFile(path.join(version,"index.ts"),'throw new Error("must not execute");');
     await writeFile(path.join(version,"configuration.json"),JSON.stringify({version:1,fields:[]}));
     const options={projectName:DEMO_WF_ID,actorId:"user-a",target:"draft"};
@@ -973,7 +974,7 @@ test("Storage shares concurrent database version source materialization", async 
     markDownloadStarted();
     await downloadReleased;
     await mkdir(targetDir, { recursive: true });
-    await writeFile(path.join(targetDir, "package.json"), "{}", "utf8");
+    await writeProjectFixture(path.join(targetDir, "package.json"), "{}", "utf8");
   });
   const materializeVersion = Reflect.get(storage, "materializeDbVersionSource") as (
     projectName: string,
@@ -1185,14 +1186,14 @@ async function writePublishableDraft(dataRoot: string, projectName: string): Pro
   const sourceRoot = path.join(draftRoot, "source");
 
   await mkdir(sourceRoot, { recursive: true });
-  await writeFile(
+  await writeProjectFixture(
     path.join(sourceRoot, "package.json"),
     JSON.stringify({
       id: projectName,
       name: projectName,
       version: "0.1.0",
       devDependencies: testToolchainDependencies,
-      steamHarness: { defaultEntry:"main",entries:[{entryId:"main",name:"Main",type:"workflow",root:".",entry:"index.ts",configuration:"configuration.json",databases:[]}], projectInfo: DECLARED_SERVER_PROJECT_INFO },
+       defaultEntry:"main",entries:[{entryId:"main",name:"Main",type:"workflow",root:".",entry:"index.ts",configuration:"configuration.json",databases:[]}], projectInfo: DECLARED_SERVER_PROJECT_INFO ,
     }),
     "utf8",
   );
@@ -1214,14 +1215,14 @@ async function writeFileVersion(
 ): Promise<void> {
   const versionRoot = path.join(dataRoot, "projects", projectName, "versions", version);
   await mkdir(path.join(versionRoot, "source"), { recursive: true });
-  await writeFile(
+  await writeProjectFixture(
     path.join(versionRoot, "source", "package.json"),
     JSON.stringify({
       id: projectName,
       name: projectName,
       version: "0.1.0",
       devDependencies: testToolchainDependencies,
-      steamHarness: { defaultEntry:"main",entries:[{entryId:"main",name:"Main",type:"workflow",root:".",entry:"index.ts",configuration:"configuration.json",databases:[]}], projectInfo: DECLARED_SERVER_PROJECT_INFO },
+       defaultEntry:"main",entries:[{entryId:"main",name:"Main",type:"workflow",root:".",entry:"index.ts",configuration:"configuration.json",databases:[]}], projectInfo: DECLARED_SERVER_PROJECT_INFO ,
       ...packageJsonOverrides,
     }),
     "utf8",

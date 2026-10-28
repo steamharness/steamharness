@@ -1,5 +1,4 @@
 {
-  "id": "ccb3f735-7f7c-4c75-8df8-aa856f8a6204",
   "name": "@steamharness/deltafore-agent-workflow",
   "version": "0.1.0",
   "private": true,
@@ -18,20 +17,5 @@
   "devDependencies": {
     "@steamharness/cli": "link:../../../cli",
     "steamharness": "link:../../.."
-  },
-  "steamHarness": {
-    "projectInfo": {},
-    "entries": [
-      {
-        "entryId": "main",
-        "type": "conversation",
-        "name": "@steamharness/deltafore-agent-workflow",
-        "root": ".",
-        "entry": "index.ts",
-        "databases": [],
-        "configuration": "configuration.json"
-      }
-    ],
-    "defaultEntry": "main"
   }
 }

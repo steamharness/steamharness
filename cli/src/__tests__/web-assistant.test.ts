@@ -1,3 +1,4 @@
+import { writeProjectFixture } from '../../scripts/test-project-fixture.mjs';
 import { afterEach, expect, it, vi } from 'vitest';
 import { mkdtemp, mkdir, readFile, rm, symlink, writeFile } from 'node:fs/promises';
 import { createHash } from 'node:crypto';
@@ -27,7 +28,7 @@ it('loads the dedicated assistant declaration instead of the workspace executor'
   const assistantProjectDir = path.join(directory, 'assistant');
   await mkdir(workdir);
   await mkdir(assistantProjectDir);
-  await writeFile(path.join(assistantProjectDir,'package.json'),JSON.stringify({id:'364764e9-ef0e-4e86-9e56-77d0410e1723',name:'Assistant',steamHarness:{defaultEntry:'main',entries:[{entryId:'main',name:'Main',type:'conversation',root:'.',entry:'index.ts',databases:[]}]}}));
+  await writeProjectFixture(path.join(assistantProjectDir,'package.json'),JSON.stringify({id:'364764e9-ef0e-4e86-9e56-77d0410e1723',name:'Assistant',version: "0.1.0", defaultEntry:'main',entries:[{entryId:'main',name:'Main',type:'conversation',root:'.',entry:'index.ts',databases:[]}]}));
   await writeFile(path.join(assistantProjectDir,'index.ts'),'export {};');
   await writeFile(path.join(workdir, 'result.txt'), 'Independent workspace result');
   await writeFile(path.join(assistantProjectDir, 'result.txt'), 'Assistant installation file');
@@ -100,9 +101,9 @@ it('runs assistant skills and memory locally, isolates workspaces and preserves 
   const request=registry.request({projectId:'364764e9-ef0e-4e86-9e56-77d0410e1723',entryId:'main',alias:'memory',permissions,target:{kind:'create',name:'Assistant memory'}});
   const approved=registry.review(request.requestId,{approve:true});
   vi.spyOn(os,'homedir').mockReturnValue(directory);
-  const manifest = { name:'runtime-fixture', id: '364764e9-ef0e-4e86-9e56-77d0410e1723', type: 'module', devDependencies: { 'steamharness': harnessVersion }, steamHarness: { defaultEntry: 'main', entries: [{entryId:'main',name:'Main',type:'conversation',root:'.',entry:'index.ts',databases:['memory']}],  } };
-  await writeFile(path.join(runtimeProjectDir, 'package.json'), JSON.stringify({ ...manifest, name: 'Assistant runtime' }));
-  await writeFile(path.join(assistantProjectDir, 'package.json'), JSON.stringify({ ...manifest, name: 'Dedicated assistant' }));
+  const manifest = { name:'runtime-fixture', id: '364764e9-ef0e-4e86-9e56-77d0410e1723', type: 'module', devDependencies: { 'steamharness': harnessVersion }, version: "0.1.0",  defaultEntry: 'main', entries: [{entryId:'main',name:'Main',type:'conversation',root:'.',entry:'index.ts',databases:['memory']}] };
+  await writeProjectFixture(path.join(runtimeProjectDir, 'package.json'), JSON.stringify({ ...manifest, name: 'Assistant runtime' }));
+  await writeProjectFixture(path.join(assistantProjectDir, 'package.json'), JSON.stringify({ ...manifest, name: 'Dedicated assistant' }));
   for (const folder of [runtimeProjectDir, assistantProjectDir]) await writeFile(path.join(folder, 'config.json'), JSON.stringify({version:1,databases:{memory:approved.databaseId}}));
   await writeFile(path.join(workdir, 'index.ts'), 'throw new Error("The workspace executor must not run.");');
   await writeFile(path.join(workdir, 'user.txt'), 'Independent workspace contents');

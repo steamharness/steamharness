@@ -1,3 +1,4 @@
+import { projectFixtureFiles } from '../../scripts/test-project-fixture.mjs';
 import {resolveResourceAccess} from "@steamharness/project-access";
 import assert from 'node:assert/strict';
 import {mkdtemp,readFile,rm} from 'node:fs/promises';
@@ -50,11 +51,11 @@ test('role profiles filter guest responses and exports and enforce writes in the
 async function fixture(fields:ProjectConfigurationField[],profilePolicy?:ConfigurationProfilePolicy) {
   const root=await mkdtemp(path.join(tmpdir(),'configuration-publication-'));
   const storage=new Storage({serverRoot:process.cwd(),repoRoot:process.cwd(),dataRoot:root});
-  const prepared=await storage.createProjectFromFiles({projectName:projectId,files:[
-    {path:'package.json',content:JSON.stringify({id:projectId,name:'Config test',version:'1.0.0',devDependencies:{steamharness:pkg.dependencies.steamharness},steamHarness:{defaultEntry:"main",entries:[{entryId:"main",name:"Main",type:'workflow',root:".",entry:"index.ts",configuration:"configuration.json",databases:[]}],projectInfo:{localizedNames:{},declarations:[],platformSupport:{mode:'agnostic'},}}})},
+  const prepared=await storage.createProjectFromFiles({projectName:projectId,files:projectFixtureFiles([
+    {path:'package.json',content:JSON.stringify({id:projectId,name:'Config test',version:'1.0.0',devDependencies:{steamharness:pkg.dependencies.steamharness},defaultEntry:"main",entries:[{entryId:"main",name:"Main",type:'workflow',root:".",entry:"index.ts",configuration:"configuration.json",databases:[]}],projectInfo:{localizedNames:{},declarations:[],platformSupport:{mode:'agnostic'},}})},
     {path:'index.ts',content:'throw new Error("Server must never execute source");'},
     {path:'configuration.json',content:JSON.stringify({version:2,fields,...(profilePolicy?{profilePolicy}:{})})},
-  ]});
+  ])});
   storage.getProjectAccessSummary=async(_id,userId)=>({projectId,projectName:"Config test",visibility:"private",access:resolveResourceAccess([{type:"project",id:projectId,role:userId==="author"?"owner":userId==="downloader"?"guest":"developer"}])});
   const options={projectName:projectId,actorId:'author'};
   return {root,storage,options,prepared};
@@ -139,7 +140,7 @@ test('configuration file upload permissions follow the selected published versio
   await storage.projectConfigurations(options,{action:'publication.save',revision:author.revision,publication:author.publication});
   await storage.publish({projectName:projectId,createdByUserId:'author',expectedConfigurationRevisions:{main:1},expectedSourceHash:author.sourceHash});
   const source=await storage.getFiles({projectName:projectId,target:'draft'});
-  await storage.saveDraftFiles({projectName:projectId,files:source.files.filter(file=>file.path==='package.json').map(file=>({...file,content:JSON.stringify({...JSON.parse(file.content!),version:'2.0.0'})}))});
+  await storage.saveDraftFiles({projectName:projectId,files:projectFixtureFiles(source.files.filter(file=>file.path==='steamharness.json').map(file=>({...file,content:JSON.stringify({...JSON.parse(file.content!),version:'2.0.0'})})))});
   author=await storage.projectConfigurations(options,{action:'get'}) as ProjectConfigurationState;
   const publication=structuredClone(author.publication!);publication.fields[0]!.sharing={editable:false};
   await storage.projectConfigurations(options,{action:'publication.save',revision:author.revision,publication});

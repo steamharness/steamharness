@@ -1,5 +1,4 @@
 {
-  "id": "a3aca697-b086-459b-84e4-d357ad2d9fb2",
   "name": "Project Assistant",
   "version": "0.1.9",
   "private": true,
@@ -29,51 +28,5 @@
     "vitest": "^4.1.7",
     "steamharness": "link:../../harness",
     "yaml": "^2.9.0"
-  },
-  "steamHarness": {
-    "projectInfo": {
-      "localizedNames": {
-        "zh-CN": "小助手",
-        "en": "Project Assistant"
-      },
-      "declarations": [
-        "multilingual"
-      ],
-      "platformSupport": {
-        "mode": "agnostic"
-      }
-    },
-    "builtinRelease": {
-      "projectId": "developer-assistant",
-      "artifactKind": "universal",
-      "minDesktopVersion": "0.1.24",
-      "dependencies": []
-    },
-    "projectCard": {
-      "icon": "bot",
-      "iconBackgroundColor": "#0f766e"
-    },
-    "entries": [
-      {
-        "entryId": "main",
-        "type": "conversation",
-        "name": "Project Assistant",
-        "root": ".",
-        "entry": "index.ts",
-        "configuration": "configuration.json",
-        "databases": [
-          "memory"
-        ]
-      },
-      {
-        "entryId": "studio-control",
-        "type": "workflow",
-        "name": "Studio Control",
-        "root": "studio-control",
-        "entry": "index.ts",
-        "configuration": "configuration.json"
-      }
-    ],
-    "defaultEntry": "main"
   }
 }

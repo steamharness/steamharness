@@ -1,3 +1,4 @@
+import { writeProjectFixture } from '../../scripts/test-project-fixture.mjs';
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { build } from 'esbuild';
@@ -15,11 +16,11 @@ for (const [language, expected] of [['en', 'English project'], ['zh-cn', 'Chines
   test(`${language} host inspection and startup agree despite a Chinese system locale`, async t => {
     const directory = await mkdtemp(path.join(tmpdir(), 'studio-host-language-'));
     t.after(() => rm(directory, { recursive: true, force: true }));
-    await writeFile(path.join(directory, 'package.json'), JSON.stringify({ id: 'locale-project', name: 'Default project',
-      steamHarness: { projectInfo: { localizedNames: { en: 'English project', 'zh-CN': 'Chinese project' } } } }));
+    await writeProjectFixture(path.join(directory, 'package.json'), JSON.stringify({ id: 'locale-project', name: 'Default project',
+      version: "0.1.0",  projectInfo: { localizedNames: { en: 'English project', 'zh-CN': 'Chinese project' } }  }));
     const cli = path.join(directory, 'node_modules/@steamharness/cli');
     await mkdir(path.join(cli, 'dist'), { recursive: true });
-    await writeFile(path.join(cli, 'package.json'), JSON.stringify({ name: '@steamharness/cli', version: '1.0.0',
+    await writeProjectFixture(path.join(cli, 'package.json'), JSON.stringify({ name: '@steamharness/cli', version: '1.0.0',
       type: 'module', bin: { 'steamharness': 'dist/index.js' } }));
     await writeFile(path.join(cli, 'dist/index.js'), `
       import { readFileSync } from 'node:fs';
@@ -28,7 +29,7 @@ for (const [language, expected] of [['en', 'English project'], ['zh-cn', 'Chines
       const args = process.argv.slice(2), index = args.indexOf('--locale');
       const locale = index < 0 ? process.env.STEAMHARNESS_LOCALE : args[index + 1];
       const manifest = JSON.parse(readFileSync('package.json', 'utf8'));
-      const project = { id: manifest.id, name: manifest.steamHarness.projectInfo.localizedNames[locale] ?? manifest.name,
+      const project = { id: manifest.id, name: manifest.projectInfo.localizedNames[locale] ?? manifest.name,
         folderPath: process.cwd(), projectType: 'conversation',entryId:'main',defaultEntry:'main',entries:[{entryId:'main',name:'Main',type:'conversation',root:'.',entry:'index.ts',databases:[]}],databases:[], fields: [], entrypoints: [] };
       if (args.includes('--inspect')) { console.log(JSON.stringify({ projects: [project], errors: [] })); }
       else {

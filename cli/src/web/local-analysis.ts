@@ -104,9 +104,9 @@ export async function readLocalStudioAnalysis(options: { storageDir: string; pro
       const directory = await realpath(reference.folderPath);
       if (seen.has(`${directory}:${reference.entryId}`)) { continue; } seen.add(`${directory}:${reference.entryId}`);
       project.folderPath = directory;
-      const manifest = await readJson(path.join(directory, 'package.json'));
+      const manifest = await readJson(path.join(directory, 'steamharness.json'));
       if (!sameProjectId(manifest?.id, reference.id)) { throw new Error('Project identity changed.'); }
-      const names = manifest.steamHarness?.projectInfo?.localizedNames;
+      const names = manifest.projectInfo?.localizedNames;
       const language = options.locale?.toLowerCase().startsWith('zh') ? 'zh-cn' : 'en';
       const name = record(names) ? Object.entries(names).find(([key]) => key.toLowerCase() === language)?.[1] : undefined;
       project.name = typeof name === 'string' && name.trim() ? name : typeof manifest.name === 'string' && manifest.name.trim() ? manifest.name : reference.name;

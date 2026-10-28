@@ -1,5 +1,5 @@
-import { readProjectManifestFromDirectory } from '@steamharness/project-manifest/node';
-import { readProjectDeclaration, projectManifestForDistribution, type ProjectEntry } from "@steamharness/project-manifest";
+import { readProjectManifestFromDirectory, readProjectDeclarationFromDirectory } from '@steamharness/project-manifest/node';
+import { readProjectDeclaration, projectManifestForDistribution, type ProjectEntry, type ProjectManifest } from "@steamharness/project-manifest";
 import { configurationTemplatePath } from "@steamharness/project-configuration";
 import { defaultServerUrl } from "./service-url";
 
@@ -467,7 +467,7 @@ export async function materializeAggregateDownload(download: AggregateDownload, 
       const attachments = (template.attachments ?? []).map(asset => { const file = download.files.find(file => file.path === asset.path); if (!file) throw new Error("Downloaded configuration attachment is missing."); return { id: asset.id, bytes: Buffer.from(decodeProjectFileContent(file)) }; });
       await cacheVerifiedConfigurationTemplate(template, attachments);
     }
-    await writeFile(path.join(stage, "package.json"), JSON.stringify(projectManifestForDistribution(pkg), null, 2) + "\n");
+    await writeFile(path.join(stage, "steamharness.json"), JSON.stringify(projectManifestForDistribution(pkg), null, 2) + "\n");
     await rename(stage, targetDir);
   } finally { await rm(stage, { recursive: true, force: true }); }
 }
@@ -494,14 +494,14 @@ async function assertDownloadedProjectMetadata(
   projectId: string,
   packageJson?: Record<string, unknown>,
 ): Promise<Record<string, unknown>> {
-  const metadata = packageJson ?? await readPackageJsonFile(path.join(projectDir, "package.json"));
+  const metadata = packageJson ?? await readPackageJsonFile(path.join(projectDir, "steamharness.json"));
   if (metadata["id"] !== projectId) {
     throw new Error(i18n.t("downloadedPackageIdMismatch", {
       ns: "cli",
       projectId: JSON.stringify(projectId),
     }));
   }
-  readProjectDeclaration(metadata);
+  await readProjectDeclarationFromDirectory(projectDir);
   return metadata;
 }
 
@@ -530,7 +530,7 @@ async function packProject(
   const projectDir = sourcePath === undefined
     ? path.join(repoRoot, "workspace", "workflow", projectName)
     : path.resolve(sourcePath);
-  await readPackageJsonFile(path.join(projectDir, "package.json"));
+  await readPackageJsonFile(path.join(projectDir, "steamharness.json"));
   // Packaged Studio uploads need a writable temporary archive directory.
   const packsDir = process.env.STEAMHARNESS_WORKSPACE_PACKS_DIR
     ? path.resolve(process.env.STEAMHARNESS_WORKSPACE_PACKS_DIR)
@@ -590,7 +590,7 @@ async function readProjectPackageContext(
   const projectDir = sourcePath === undefined
     ? path.join(repoRoot, "workspace", "workflow", projectArg)
     : path.resolve(sourcePath);
-  const packageJsonPath = path.join(projectDir, "package.json");
+  const packageJsonPath = path.join(projectDir, "steamharness.json");
   const packageJson = await readPackageJsonFile(packageJsonPath);
   const projectId = typeof packageJson.id === "string" && isProjectUuid(packageJson.id)
     ? packageJson.id.trim()
@@ -605,6 +605,7 @@ async function readProjectPackageContext(
     projectId,
     projectName,
     entries: manifest.entries, defaultEntry: manifest.defaultEntry,
+    projectCard: manifest.projectCard,
     packageJson,
   };
 }
@@ -640,6 +641,7 @@ async function ensureProjectCreated(options: {
       name: options.packageContext.projectName,
       entries: options.packageContext.entries, defaultEntry: options.packageContext.defaultEntry,
       projectInfo,
+      projectCard: options.packageContext.projectCard,
       ...(options.groupId?{groupId:options.groupId}:{}),
     },
   });
@@ -986,6 +988,7 @@ interface PackageContext {
   projectName: string;
   entries: ProjectEntry[];
   defaultEntry: string;
+  projectCard?: ProjectManifest["projectCard"];
   packageJson: Record<string, unknown>;
 }
 

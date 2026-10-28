@@ -1,7 +1,7 @@
 import { parseKanbanBridgeCall, type KanbanBridgeCall } from '@steamharness/kanban-project';
 import type { Project } from './workflow-types';
 export { readProjectInfo, resolveProjectName } from '@steamharness/project-info';
-export { readProjectCardMetadataFromPackageJson } from '@steamharness/project-card-metadata';
+export { readProjectCardMetadata } from '@steamharness/project-card-metadata';
 export { webProjectDataDirectory } from './project-data-directory';
 /** Local and server spaces use the same approved database context. */
 export async function runKanbanDataCall(core: typeof import('steamharness'), project: Project, _storageDir: string, value: KanbanBridgeCall): Promise<unknown> {

@@ -1,0 +1,20 @@
+{
+  "id": "1e43f54c-f4eb-431f-8033-dc2bf0c19903",
+  "name": "@steamharness/openai-agents-workflow",
+  "version": "0.1.0",
+  "projectInfo": {},
+  "entries": [
+    {
+      "entryId": "main",
+      "type": "conversation",
+      "name": "@steamharness/openai-agents-workflow",
+      "root": ".",
+      "entry": "index.ts",
+      "configuration": "configuration.json",
+      "databases": [
+        "data"
+      ]
+    }
+  ],
+  "defaultEntry": "main"
+}

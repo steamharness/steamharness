@@ -1,3 +1,4 @@
+import { writeProjectFixture } from '../../scripts/test-project-fixture.mjs';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createHash } from 'node:crypto';
 import { mkdtemp, mkdir, readFile, rm, writeFile, symlink, realpath } from 'node:fs/promises';
@@ -39,7 +40,7 @@ async function service(legacy?: ConversationSession[]) {
   vi.stubEnv('STEAMHARNESS_CLI_AUTH_DIR', path.join(directory, 'auth')); vi.stubEnv('STEAMHARNESS_SERVER_URL', ''); vi.stubEnv('STEAMHARNESS_SERVER_ADMIN_KEY', '');
   const executor = runtime(), descriptor = { ...project, folderPath: directory, entryRoot: directory };
   vi.mocked(executor.inspect).mockResolvedValue({ projects: [descriptor], errors: [] });
-  await writeFile(path.join(directory, 'package.json'), JSON.stringify({ id: project.id, name: 'test-workflow', steamHarness: { entries: project.entries, defaultEntry: 'main' } }));
+  await writeProjectFixture(path.join(directory, 'package.json'), JSON.stringify({ id: project.id, name: 'test-workflow', version: "0.1.0",  entries: project.entries, defaultEntry: 'main'  }));
   await writeFile(path.join(directory, 'index.ts'), 'export {};');
   const dataDir = path.join(directory, 'data');
   const historyDir = path.join(dataDir, 'projects', project.id, 'entries', project.entryId);
@@ -400,7 +401,7 @@ it('inspects and executes a real offline workflow with its own Core, streaming, 
   await mkdir(path.join(directory, 'node_modules'));
   const harnessRoot = await resolveHarnessRoot();
   await symlink(harnessRoot, path.join(directory, 'node_modules/steamharness'), process.platform === 'win32' ? 'junction' : 'dir');
-  await writeFile(path.join(directory, 'package.json'), JSON.stringify({ id: project.id, name: 'Workflow fixture', type: 'module', steamHarness: { defaultEntry: 'main', entries: [{entryId:'main',name:'Main',type:'workflow',root:'.',entry:'index.ts',databases:[]}],  } }));
+  await writeProjectFixture(path.join(directory, 'package.json'), JSON.stringify({ id: project.id, name: 'Workflow fixture', type: 'module', version: "0.1.0",  defaultEntry: 'main', entries: [{entryId:'main',name:'Main',type:'workflow',root:'.',entry:'index.ts',databases:[]}] }));
   await writeFile(path.join(directory, 'index.ts'), `
     const preview = steamharness.createOutputNode({ name: 'preview-node', async *stream() {
       yield steamharness.createOutputItemChunk({ type:'output_item_start', item:{id:'preview',title:'Preview',content:'Before input',contentType:'text'} });

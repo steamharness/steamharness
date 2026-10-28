@@ -1,3 +1,4 @@
+import { readProjectDocument, readProjectDeclarationFromDirectory } from "@steamharness/project-manifest/node";
 import { readProjectManifestFromDirectory } from '@steamharness/project-manifest/node';
 import type { ProjectAccessRequest, ProjectAccessRequestStatus } from "@steamharness/project-access";
 import { readProjectDeclaration, selectProjectEntry, projectManifestForDistribution, PROJECT_CONFIG_ENV, readProjectConfig, type ProjectEntry } from '@steamharness/project-manifest';
@@ -24,7 +25,7 @@ import { isProjectStorageNotFoundError, type ObjectStorage } from "./object-stor
 import { resolveProjectStorageDriver } from "./storage-driver";
 import { resolveServerDataRootFromEnv } from "./release-paths";
 import { createInvalidProjectUuidMessage, createUnsafeProjectIdMessage, isSafeProjectId, isProjectUuid, resolveProjectRoot } from "./workflow-ids";
-import { generateProjectCardMetadata, readProjectCardMetadataFromPackageJson, type ProjectCardMetadata } from "@steamharness/project-card-metadata";
+import { generateProjectCardMetadata, readProjectCardMetadata, type ProjectCardMetadata } from "@steamharness/project-card-metadata";
 import { normalizeDeclaredProjectInfoInput, normalizeProjectInfo, readProjectInfo, writeProjectInfo, type DeclaredProjectInfo, type ProjectInfoContract } from "@steamharness/project-info";
 import { createKanbanContentSecurityPolicy, createKanbanArtifactEntryPath, injectKanbanBridge, isSafeKanbanPublicAssetPath,  readKanbanAssetMimeType,  type KanbanArtifactConfig } from "@steamharness/kanban-project";
 import { readRequiredCoreVersion } from "@steamharness/runtime-compatibility";
@@ -1942,8 +1943,8 @@ export class Storage {
           if (entry.configuration) await writeJson(path.join(sourceDir,entry.root,entry.configuration), { version: 2, fields: template.fields, ...(template.agentModelPolicy ? { agentModelPolicy: template.agentModelPolicy } : {}), ...(template.profilePolicy ? { profilePolicy: template.profilePolicy } : {}) });
         }
       }
-      const distribution = projectManifestForDistribution(await readPackageJson(sourceDir));
-      await writeJson(path.join(sourceDir, "package.json"), distribution);
+      const distribution = projectManifestForDistribution(await readProjectDocument(sourceDir));
+      await writeJson(path.join(sourceDir, "steamharness.json"), distribution);
       const published = await readProjectManifestFromDirectory(sourceDir, {});
       const sourceHash = await hashDirectory(sourceDir);
       const artifacts = await this.uploadVersionArtifacts({ projectName: options.projectName, version, sourceHash, sourceDir });
@@ -2065,10 +2066,10 @@ export class Storage {
     projectId: string,
     displayName: string,
   ): Promise<void> {
-    const packageJsonPath = path.join(sourceDir, "package.json");
+    const packageJsonPath = path.join(sourceDir, "steamharness.json");
     const current = JSON.parse(await readFile(packageJsonPath, "utf8")) as unknown;
     if (!isRecord(current)) {
-      throw new HttpError(500, 500, `Workflow "${projectId}" package.json root must be an object.`);
+      throw new HttpError(500, 500, `Workflow "${projectId}" steamharness.json root must be an object.`);
     }
 
     const nextPackageJson = {
@@ -2117,9 +2118,9 @@ export class Storage {
   ): Promise<void> {
     const sourceDir = this.draftSourceDir(projectName);
     if (!(await exists(sourceDir))) return;
-    const packageJson = await readPackageJson(sourceDir);
+    const packageJson = await readProjectDocument(sourceDir);
     await writeJson(
-      path.join(sourceDir, "package.json"),
+      path.join(sourceDir, "steamharness.json"),
       writeProjectInfo({
         ...packageJson,
         name,
@@ -2633,8 +2634,8 @@ export class Storage {
     const metadata = await validateProjectPackage(sourceDir, projectName);
     const record=await this.db.getProject(projectName);
     if(record) {
-      const packageJson=await readPackageJson(sourceDir);
-      await writeJson(path.join(sourceDir,"package.json"),writeProjectInfo({...packageJson,name:record.name,steamHarness:{...(isRecord(packageJson.steamHarness)?packageJson.steamHarness:{}),projectCard:record.projectCard}},this.normalizeDeclaredProjectInfo(record.projectInfo)));
+      const packageJson=await readProjectDocument(sourceDir);
+      await writeJson(path.join(sourceDir,"steamharness.json"),writeProjectInfo({...packageJson,name:record.name,projectCard:record.projectCard},this.normalizeDeclaredProjectInfo(record.projectInfo)));
     }
     await this.db.saveDraft({ projectId: metadata.id, projectName: metadata.name, entries: metadata.entries, defaultEntry: metadata.defaultEntry,
       packageVersion: metadata.version, projectCard: metadata.projectCard, projectInfo: this.normalizeDeclaredProjectInfo(metadata.projectInfo),
@@ -3120,13 +3121,13 @@ async function readProjectPackageMetadata(
     throw new HttpError(400, 400, "Workflow package must contain package.json.");
   }
 
-  const packageJson = await readPackageJson(sourceDir);
+  const packageJson = await readProjectDocument(sourceDir);
   const id = readRequiredPackageString(packageJson, "id");
   const name = readRequiredPackageString(packageJson, "name");
   const version = readRequiredPackageString(packageJson, "version");
   let requiredCoreVersion: string;
   try {
-    requiredCoreVersion = readRequiredCoreVersion(packageJson);
+    requiredCoreVersion = readRequiredCoreVersion(await readPackageJson(sourceDir));
   } catch (error) {
     throw new HttpError(400, 400, readErrorMessage(error));
   }
@@ -3156,7 +3157,7 @@ async function readProjectPackageMetadata(
     version,
     entries: manifest.entries,
     defaultEntry: manifest.defaultEntry,
-    projectCard: readProjectCardMetadataFromPackageJson(packageJson, selectProjectEntry(manifest).type),
+    projectCard: readProjectCardMetadata(packageJson, selectProjectEntry(manifest).type),
     projectInfo: readProjectInfo(packageJson),
     requiredCoreVersion,
   };
@@ -3183,7 +3184,7 @@ function readRequiredPackageString(
   const value = packageJson[key];
 
   if (typeof value !== "string" || value.trim() === "") {
-    throw new HttpError(400, 400, `Workflow package.json must include string "${key}".`);
+    throw new HttpError(400, 400, `Workflow steamharness.json must include string "${key}".`);
   }
 
   return value.trim();
@@ -3233,13 +3234,13 @@ async function resolvePackageRoot(extractDir: string, expectedId?: string): Prom
     400,
     400,
     expectedId === undefined
-      ? "Package root must contain package.json and the entry required by its project configuration."
-      : `Package root must contain package.json and the configured entry for project "${expectedId}".`,
+      ? "Package root must contain steamharness.json and its registered entry configurations."
+      : `Package root must contain steamharness.json and the configured entry for project "${expectedId}".`,
   );
 }
 
 async function isProjectPackageRoot(directory: string): Promise<boolean> {
-  try { readProjectDeclaration(await readPackageJson(directory)); return true; } catch { return false; }
+  try { await readProjectDeclarationFromDirectory(directory); return true; } catch { return false; }
 }
 
 async function packageRootMatchesExpectedId(
@@ -3247,7 +3248,7 @@ async function packageRootMatchesExpectedId(
   expectedId: string,
 ): Promise<boolean> {
   try {
-    return (await readPackageJson(packageRoot))["id"] === expectedId;
+    return (await readProjectDocument(packageRoot))["id"] === expectedId;
   } catch {
     return false;
   }

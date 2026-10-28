@@ -1,21 +1,5 @@
 {
-  "id": "0fe11efe-0087-4a50-bde2-da3995a65f5e",
   "name": "Studio Parameter Fixture",
-  "steamHarness": {
-    "entries": [
-      {
-        "entryId": "main",
-        "type": "conversation",
-        "name": "Studio Parameter Fixture",
-        "root": ".",
-        "entry": "index.ts",
-        "databases": [
-          "data"
-        ]
-      }
-    ],
-    "defaultEntry": "main"
-  },
   "devDependencies": {
     "steamharness": "0.1.2",
     "@steamharness/cli": "0.1.2"

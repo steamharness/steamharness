@@ -1,3 +1,4 @@
+import { writeProjectFixture } from '../../scripts/test-project-fixture.mjs';
 import { afterEach, expect, it, vi } from 'vitest';
 import { randomUUID } from 'node:crypto';
 import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
@@ -23,11 +24,11 @@ async function fixture(database = false) {
     entryId, type, name: entryId, root: entryId, entry: type === 'kanban' ? 'index.html' : 'index.ts', configuration: 'configuration.json',
     databases: database && entryId === 'agent' ? [{ alias: 'data', databaseId: randomUUID() }] : [],
   }));
-  const id = randomUUID(), pkg = { id, name: 'Aggregate test', steamHarness: { entries: entries.map(({databases, ...entry})=>({...entry,databases:databases.map(database=>database.alias)})), defaultEntry: 'agent' } };
-  await writeFile(path.join(directory, 'package.json'), JSON.stringify(pkg));
+  const id = randomUUID(), pkg = { id, name: 'Aggregate test', version: "0.1.0",  entries: entries.map(({databases, ...entry})=>({...entry,databases:databases.map(database=>database.alias)})), defaultEntry: 'agent'  };
+  await writeProjectFixture(path.join(directory, 'package.json'), JSON.stringify(pkg));
   if(database) await writeFile(path.join(directory,'config.json'),JSON.stringify({version:1,databases:{data:entries[0]!.databases[0]!.databaseId}}));
   for (const entry of entries) {
-    await mkdir(path.join(directory, entry.root));
+    await mkdir(path.join(directory, entry.root), {recursive:true});
     await writeFile(path.join(directory, entry.root, entry.entry), entry.type === 'kanban' ? '<!doctype html><title>Board</title>' : 'export {};');
     await writeFile(path.join(directory, entry.root, 'configuration.json'), JSON.stringify({ version: 1, fields: [{ name: 'label', type: 'string' }] }));
   }

@@ -47,14 +47,11 @@ export const PROJECT_CARD_COLOR_PRESETS = [
 const DEFAULT_PROJECT_CARD_ICON_COLOR = "#ffffff";
 const MIN_PROJECT_CARD_ICON_CONTRAST = 4.5;
 
-const PROJECT_CARD_PACKAGE_ROOT = "steamHarness";
-const PROJECT_CARD_PACKAGE_KEY = "projectCard";
-const LEGACY_PROJECT_CARD_PACKAGE_KEY = "appCard";
 
 export class ProjectCardMetadataMigrationError extends Error {
   constructor() {
     super(
-      'steamHarness.projectCard.kind was removed. Declare executor.projectType for executable projects or steamHarness.projectType: "kanban" for Kanban projects instead.',
+      'steamharness.json.projectCard.kind was removed. Declare the project type on its registered entry.',
     );
     this.name = "ProjectCardMetadataMigrationError";
   }
@@ -222,45 +219,13 @@ export function validateProjectCardMetadata(value: unknown): ProjectCardMetadata
   };
 }
 
-export function readProjectCardMetadataFromPackageJson(
-  packageJson: Record<string, unknown>,
-  projectType: ProjectKind,
-): ProjectCardMetadata {
-  const steamHarness = isRecord(packageJson[PROJECT_CARD_PACKAGE_ROOT])
-    ? packageJson[PROJECT_CARD_PACKAGE_ROOT]
-    : undefined;
-  const metadata = steamHarness?.[PROJECT_CARD_PACKAGE_KEY] ?? steamHarness?.[LEGACY_PROJECT_CARD_PACKAGE_KEY];
-  if (isRecord(metadata) && Object.hasOwn(metadata, "kind")) {
-    throw new ProjectCardMetadataMigrationError();
-  }
-  return normalizeProjectCardMetadata(metadata, projectType);
+export function readProjectCardMetadata(document: Record<string, unknown>, projectType: ProjectKind): ProjectCardMetadata {
+  if (isRecord(document.projectCard) && Object.hasOwn(document.projectCard, "kind")) throw new ProjectCardMetadataMigrationError();
+  return normalizeProjectCardMetadata(document.projectCard, projectType);
 }
-
-export function writeProjectCardMetadataToPackageJson(
-  packageJson: Record<string, unknown>,
-  metadataInput: ProjectCardMetadata,
-): Record<string, unknown> {
-  const metadata = validateProjectCardMetadata(metadataInput);
-  const steamHarness = isRecord(packageJson[PROJECT_CARD_PACKAGE_ROOT])
-    ? { ...packageJson[PROJECT_CARD_PACKAGE_ROOT] }
-    : {};
-  const projectCard: Record<string, unknown> = {
-    icon: metadata.icon,
-    iconColor: metadata.iconColor,
-    iconBackgroundColor: metadata.iconBackgroundColor,
-  };
-
-  if (metadata.iconUrl !== undefined) {
-    projectCard.iconUrl = metadata.iconUrl;
-  }
-
-  return {
-    ...packageJson,
-    [PROJECT_CARD_PACKAGE_ROOT]: {
-      ...steamHarness,
-      [PROJECT_CARD_PACKAGE_KEY]: projectCard,
-    },
-  };
+export function writeProjectCardMetadata(document: Record<string, unknown>, metadataInput: ProjectCardMetadata): Record<string, unknown> {
+  const { iconUrl, ...metadata } = validateProjectCardMetadata(metadataInput);
+  return { ...document, projectCard: { ...metadata, ...(iconUrl === undefined ? {} : {iconUrl}) } };
 }
 
 export const PROJECT_APP_CARD_ICON_NAMES = PROJECT_CARD_ICON_NAMES;
@@ -276,8 +241,6 @@ export const normalizeProjectAppCardBackgroundColor = normalizeProjectCardBackgr
 export const normalizeProjectAppCardIconColor = normalizeProjectCardIconColor;
 export const normalizeProjectAppCardMetadata = normalizeProjectCardMetadata;
 export const validateProjectAppCardMetadata = validateProjectCardMetadata;
-export const readProjectAppCardMetadataFromPackageJson = readProjectCardMetadataFromPackageJson;
-export const writeProjectAppCardMetadataToPackageJson = writeProjectCardMetadataToPackageJson;
 
 function isProjectCardIconName(value: string): value is ProjectCardIconName {
   return PROJECT_CARD_ICON_NAMES.includes(value as ProjectCardIconName);
