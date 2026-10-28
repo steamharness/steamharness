@@ -94,7 +94,9 @@ it('requires database approval and binding, then applies narrowed and revoked gr
   expect(result.value.local.requests[0]).toMatchObject({ requestId: request.requestId, status: 'approved' });
   const grant = result.value.local.grants[0], binding = result.value.local.bindings[0];
   expect((await f.post('agent', { type: 'databases', action: 'review', host: 'local', requestId: randomUUID(), databaseRequestId: request.requestId, approve: true })).ok).toBe(false);
-  await database({ action: 'bind', host: 'local', alias: 'data', databaseId: binding.spaceId });
+  result = await database({ action: 'bind', host: 'local', alias: 'data', databaseId: binding.spaceId });
+  expect(result.value.entries.find((entry: any) => entry.entryId === 'agent').databases).toEqual([{ alias: 'data', databaseId: binding.spaceId }]);
+  expect(result.value.requirements[0]).toMatchObject({ status: 'bound', permissions });
   expect(JSON.parse(await readFile(path.join(f.directory, 'config.json'), 'utf8')).databases.data).toBe(binding.spaceId);
   await data('kv.setValue', { key: 'shared', value: { count: 1 } });
   expect((await data('kv.getValue', { key: 'shared' })).value.data).toEqual({ count: 1 });

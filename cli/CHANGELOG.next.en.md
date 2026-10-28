@@ -1,12 +1,16 @@
 # Unreleased
 
+- Improvement: Web run failures summarize upstream HTML error pages with an HTTP status and actionable guidance. Original diagnostics are collapsed under Technical details in Conversation and Workflow.
+
+- Improvement: Moved database management into Project information and removed its toolbar button. Database cards show shared entries and connection status; requests and host grants have a separate view with readable permission controls. Key-value and knowledge data use searchable, paginated lists and detail editors.
+
 - Improvement: Use a clear plus icon for the New conversation toolbar button to make the create action easier to recognize.
 
 - Improvement: Aggregates open their default entry and use an icon-only Project windows button. Compact entry cards show types, default/current markers and runtime states, with an icon to open a new browser page or Studio tab. Removed split views; every entry, including the current one, can open repeatedly with independent view state on the shared host. Entry icons and colors are independent; only the root owns a version.
 
 - Changed: database management saves aliases and approved database IDs, while hosts manage requests and permissions. Entries support multiple references, approved requests display IDs, and archives preserve references.
 
-- Fixed database binding guidance to open database management directly for requests, approval and recovery. The assistant and Conversation now include the database toolbar, and startup checks use readable status labels. Review IDs no longer overwrite response IDs and leave management requests waiting indefinitely.
+- Fixed database binding guidance to open database management directly for requests, approval and recovery. The assistant and Conversation share the management interface, and startup checks use readable status labels. Review IDs no longer overwrite response IDs and leave management requests waiting indefinitely.
 
 - User model menus group built-in and custom models with direct choices and an Add model action at the bottom of standalone model controls. Model and effort can be selected independently while preserving custom project grouping, reset and source restrictions.
 

@@ -4,7 +4,6 @@ import type { ProjectServerState } from '../web/project-server-state';
 
 const host = vi.hoisted(() => ({ postMessage: vi.fn(), getState: vi.fn(), setState: vi.fn() }));
 vi.mock('../web/ui/host', () => ({ acquireProjectHost: () => host }));
-vi.mock('../web/ui/conversation-tools', () => ({ ConversationTools: class { open = false; close() {} closeUsage() {} } }));
 const cleanup: (() => void)[] = [];
 afterEach(() => {
   window.dispatchEvent(new Event('pagehide'));
@@ -85,107 +84,112 @@ it.each(['workflow', 'conversation'] as const)('keeps %s guidance when a child f
 
 it.each([
   ['conversation', 'en'], ['conversation', 'zh-CN'], ['workflow', 'en'], ['workflow', 'zh-CN'],
-] as const)('opens database management from %s guidance and completes an explicit request, approval and binding (%s)',async (kind, language)=>{
-  const f=await fixture(kind,language);
-  if (kind === 'conversation') Object.assign(f.project,{assistant:{workdir:'/project',roots:[]}});
-  await f.render({checking:false,blocking:true,issue:{kind:'setup-required',database:'memory'},checks:[{id:'database:memory',projectId:f.project.id,entryId:'main',database:'memory',stage:'database',status:'action-required'}]});
-  expect(document.getElementById('server-guidance')!.hidden).toBe(false);
-  expect(document.getElementById('server-guidance-create')!.hidden).toBe(true);
+] as const)('opens Project information databases from %s guidance and completes explicit host approval and binding (%s)', async (kind, language) => {
+  const f = await fixture(kind, language);
+  if (kind === 'conversation') Object.assign(f.project, { assistant: { workdir: '/project', roots: [] } });
+  await f.render({ checking: false, blocking: true, issue: { kind: 'setup-required', database: 'memory' }, checks: [{ id: 'database:memory', projectId: f.project.id, entryId: 'main', database: 'memory', stage: 'database', status: 'action-required' }] });
+  expect(document.querySelector('.aggregate-databases')).toBeNull();
   expect(document.getElementById('server-checks-list')!.textContent).toBe(`memory · ${language === 'en' ? 'Action required' : '需要处理'}`);
   const execute = document.querySelector<HTMLButtonElement>(kind === 'conversation' ? '#send' : '#run')!;
   expect(execute.disabled).toBe(true);
-  const action = document.querySelector<HTMLButtonElement>('#server-guidance-databases')!;
-  expect(action.hidden).toBe(false); expect(action.disabled).toBe(false);
-  expect(action.textContent).toBe(language === 'en' ? 'Open database management' : '打开数据库管理');
   const requests = () => host.postMessage.mock.calls.map(([message]) => message).filter(message => message.type === 'databases');
   expect(requests()).toEqual([]);
-  action.click();
-  const dialog = document.querySelector<HTMLDialogElement>('.database-dialog')!;
+  document.querySelector<HTMLButtonElement>('#server-guidance-databases')!.click();
+  const dialog = document.querySelector<HTMLDialogElement>('.project-information-dialog')!;
   expect(dialog.open).toBe(true); expect(requests()).toHaveLength(1);
-  expect(requests()[0].action).toBe('get');
+  expect(dialog.querySelector('[role="tab"][aria-selected="true"]')!.textContent).toBe(language === 'en' ? 'Databases' : '数据库');
   const permissions = { kv: { read: { mode: 'all' }, write: { mode: 'all' } }, knowledge: { read: { mode: 'all' }, write: { mode: 'all' } } };
   const databaseId = '00000000-0000-4000-8000-000000000001';
   const requirement = { alias: 'memory', databaseId, status: 'invalid' };
   const catalog = { spaces: [] as any[], requests: [] as any[], bindings: [] as any[], grants: [] as any[] };
-  const respond = (requirements: object[] = [requirement], environmentOverrides: string[] = []) => f.emit({ type: 'databases-result', requestId: requests().at(-1)!.requestId, value: { projectId: f.project.id, entryId: f.project.entryId, requirements, environmentOverrides, local: catalog } });
+  const respond = async (requirements: object[] = [requirement], environmentOverrides: string[] = []) => {
+    f.emit({ type: 'databases-result', requestId: requests().at(-1)!.requestId, value: { projectId: f.project.id, entryId: f.project.entryId, requirements, environmentOverrides, local: catalog } });
+    await vi.advanceTimersByTimeAsync(0);
+  };
   const click = (en: string, zh: string) => {
     const control = [...dialog.querySelectorAll('button')].find(button => button.textContent === (language === 'en' ? en : zh))!;
-    expect(control.disabled).toBe(false); control.click();
+    expect(control, en).toBeTruthy(); expect(control.disabled).toBe(false); control.click();
     return requests().at(-1)!;
   };
-  respond();
-  const name = dialog.querySelector<HTMLInputElement>(`input[aria-label="${language === 'en' ? 'New space name' : '新空间名称'}"]`)!;
-  const requestAlias = [...dialog.querySelectorAll<HTMLInputElement>('input')].find(input => input.value === 'data')!; requestAlias.value = 'memory';
-  expect(name.value).toBe('Test aggregate / Server project');
+  await respond();
+  expect(dialog.querySelector('textarea')).toBeNull();
+  click('Requests and permissions', '申请与授权'); click('Request database access', '申请数据库访问');
+  const name = dialog.querySelector<HTMLInputElement>(`input[aria-label="${language === 'en' ? 'Database name' : '数据库名称'}"]`)!;
+  const alias = dialog.querySelector<HTMLInputElement>(`input[aria-label="${language === 'en' ? 'Database alias' : '数据库别名'}"]`)!;
+  expect(alias.value).toBe('memory'); expect(name.value).toBe('Test aggregate / Server project');
   name.value = 'Assistant memory';
-  expect(click('Request new space', '申请新空间')).toMatchObject({ action: 'request', host: 'local', alias: 'memory', target: { kind: 'create', name: 'Assistant memory' } });
+  expect(click('Submit request', '提交申请')).toMatchObject({ action: 'request', host: 'local', alias: 'memory', target: { kind: 'create', name: 'Assistant memory' }, permissions });
   catalog.requests.push({ requestId: 'request', projectId: f.project.id, entryId: f.project.entryId, alias: 'memory', target: { kind: 'create', name: name.value }, status: 'pending', permissions });
-  respond();
+  await respond();
   expect(dialog.textContent).toContain(language === 'en' ? 'Pending approval' : '待审批');
-  expect(requests().map(message => message.action)).toEqual(['get', 'request']);
+  expect(dialog.querySelector('.database-form')).toBeNull();
+  click('Review request', '审批申请');
   const review = click('Approve', '批准');
   expect(review).toMatchObject({ action: 'review', host: 'local', databaseRequestId: 'request', approve: true, permissions });
   expect(review.requestId).not.toBe(review.databaseRequestId);
   catalog.requests[0].status = 'approved'; catalog.requests[0].databaseId = databaseId;
-  catalog.bindings.push({ projectId: f.project.id, entryId: f.project.entryId, alias: 'memory', bindingRef: 'approved-binding', grantId: 'grant' });
-  respond();
+  await respond();
   expect(dialog.textContent).toContain(databaseId);
+  click('Use this database', '使用此数据库');
+  expect(dialog.textContent).toContain(language === 'en' ? 'Changing an alias updates every entry that uses it.' : '修改别名映射会影响所有引用它的入口。');
   expect(click('Save database reference', '保存数据库引用')).toMatchObject({ action: 'bind', alias: 'memory', databaseId });
-  respond([{ ...requirement, status: 'bound', space: { name: name.value, host: 'local' } }]);
-  await f.render({checking:false,blocking:false,checks:[]});
-  expect(document.getElementById('server-guidance')!.hidden).toBe(true);
-  expect(execute.disabled).toBe(false);
+  await respond([{ ...requirement, status: 'bound', space: { name: name.value, host: 'local' } }]);
+  await f.render({ checking: false, blocking: false, checks: [] });
+  expect(document.getElementById('server-guidance')!.hidden).toBe(true); expect(execute.disabled).toBe(false);
   expect(requests().map(message => message.action)).toEqual(['get', 'request', 'review', 'bind']);
   dialog.querySelector<HTMLButtonElement>('header button')!.click();
   expect(dialog.open).toBe(false);
-  [...document.querySelectorAll<HTMLButtonElement>('.aggregate-navigation button')].find(button => button.textContent === (language === 'en' ? 'Databases' : '数据库'))!.click();
-  expect(dialog.open).toBe(true); expect(document.querySelectorAll('.database-dialog')).toHaveLength(1);
-  expect(requests().at(-1)!.action).toBe('get');
-  respond([requirement], ['memory']);
-  expect(dialog.textContent).toContain(language === 'en' ? 'Changing an alias updates every entry that uses it.' : '修改别名映射会影响所有引用它的入口。');
+  document.querySelector<HTMLButtonElement>('#project-info')!.click();
+  expect(dialog.open).toBe(true); expect(requests()).toHaveLength(4);
+  click('Databases', '数据库'); expect(requests().at(-1)!.action).toBe('get');
+  expect(document.querySelectorAll('.project-information-dialog')).toHaveLength(1); expect(document.querySelector('.database-dialog')).toBeNull();
+  await respond([requirement], ['memory']);
   expect(dialog.textContent).toContain(language === 'en' ? 'This database ID is set by the environment.' : '此数据库 ID 由环境变量指定');
-  expect(dialog.querySelector<HTMLInputElement>('input[aria-label="' + (language === 'en' ? 'Database ID' : '数据库 ID') + '"]')!.disabled).toBe(true);
-  expect([...dialog.querySelectorAll('button')].find(button => button.textContent === (language === 'en' ? 'Save database reference' : '保存数据库引用'))!.disabled).toBe(true);
+  expect([...dialog.querySelectorAll('button')].some(button => button.textContent === (language === 'en' ? 'Change database' : '更改数据库'))).toBe(false);
 });
 
-it('keeps the database recovery action disabled while disconnected and allows retrying a failed management request', async () => {
+it('keeps the database recovery action disabled while disconnected and retries failed management requests in Project information', async () => {
   const f = await fixture('conversation', 'en');
   await f.render({ checking: false, blocking: true, issue: { kind: 'setup-required', database: 'memory' } });
   const action = document.querySelector<HTMLButtonElement>('#server-guidance-databases')!;
-  f.emit({ type: 'connection', status: 'disconnected' });
-  expect(action.disabled).toBe(true); action.click();
+  f.emit({ type: 'connection', status: 'disconnected' }); expect(action.disabled).toBe(true); action.click();
   expect(host.postMessage.mock.calls.some(([message]) => message.type === 'databases')).toBe(false);
-  f.emit({ type: 'connection', status: 'connected' });
-  action.click();
+  f.emit({ type: 'connection', status: 'connected' }); action.click();
   const request = host.postMessage.mock.calls.map(([message]) => message).find(message => message.type === 'databases')!;
   f.emit({ type: 'error', requestId: request.requestId, message: 'Database host unavailable' });
+  await vi.advanceTimersByTimeAsync(0);
   expect(document.querySelector('.database-error')!.textContent).toBe('Database host unavailable');
-  expect(document.querySelector('.database-dialog')!.hasAttribute('aria-busy')).toBe(false);
+  expect(document.querySelector('.project-databases')!.getAttribute('aria-busy')).toBe('false');
   document.querySelector<HTMLButtonElement>('.database-refresh')!.click();
   const requests = host.postMessage.mock.calls.map(([message]) => message).filter(message => message.type === 'databases');
-  expect(requests).toHaveLength(2); expect(requests[1].action).toBe('get');
-  expect(requests[1].requestId).not.toBe(request.requestId);
+  expect(requests).toHaveLength(2); expect(requests[1].action).toBe('get'); expect(requests[1].requestId).not.toBe(request.requestId);
 });
 
-it.each(['local', 'server'] as const)('shows invalid %s bindings and finishes an explicit rejection without losing the response', async databaseHost => {
+it.each(['local', 'server'] as const)('shows invalid %s bindings and completes an explicit rejection without exposing unrelated projects', async databaseHost => {
   const f = await fixture('conversation', 'en');
   await f.render({ checking: false, blocking: true, issue: { kind: 'setup-required', database: 'memory' } });
   document.querySelector<HTMLButtonElement>('#server-guidance-databases')!.click();
   const requests = () => host.postMessage.mock.calls.map(([message]) => message).filter(message => message.type === 'databases');
-  const catalog = { requests: [{ requestId: 'pending-request', projectId: f.project.id, entryId: f.project.entryId, alias: 'memory', status: 'pending', permissions: {}, target: { kind: 'access', spaceId: 'shared-space' } }], grants: [], bindings: [], spaces: [] };
-  const respond = () => f.emit({ type: 'databases-result', requestId: requests().at(-1)!.requestId, value: { projectId: f.project.id, entryId: f.project.entryId, requirements: [{ alias: 'memory', databaseId: '00000000-0000-4000-8000-000000000001', status: 'invalid', error: 'Grant revoked' }], [databaseHost]: catalog } });
-  respond();
-  const dialog = document.querySelector<HTMLDialogElement>('.database-dialog')!;
+  const all = { mode: 'all' }, permissions = { kv: { read: all, write: all }, knowledge: { read: all, write: all } };
+  const catalog = { requests: [{ requestId: 'pending-request', projectId: f.project.id, entryId: f.project.entryId, alias: 'memory', status: 'pending', permissions, target: { kind: 'access', spaceId: 'shared-space' } }], grants: [], bindings: [], spaces: [] };
+  const respond = async () => {
+    f.emit({ type: 'databases-result', requestId: requests().at(-1)!.requestId, value: { projectId: f.project.id, entryId: f.project.entryId, requirements: [{ alias: 'memory', databaseId: '00000000-0000-4000-8000-000000000001', status: 'invalid', error: 'Grant revoked' }], local: { requests: [], grants: [], bindings: [], spaces: [] }, [databaseHost]: catalog } });
+    await vi.advanceTimersByTimeAsync(0);
+  };
+  await respond();
+  const dialog = document.querySelector<HTMLDialogElement>('.project-information-dialog')!;
   expect(dialog.textContent).toContain('Grant revoked');
-  const reject = [...dialog.querySelectorAll('button')].find(button => button.textContent === 'Reject')!;
-  reject.click();
+  const click = (title: string) => [...dialog.querySelectorAll('button')].find(button => button.textContent === title)!.click();
+  click('Requests and permissions');
+  if (databaseHost === 'server') {
+    const select = dialog.querySelector<HTMLSelectElement>('[aria-label="Database host"]')!; select.value = 'server'; select.dispatchEvent(new Event('change'));
+  }
+  click('Review request'); click('Reject');
   expect(requests().at(-1)).toMatchObject({ action: 'review', host: databaseHost, databaseRequestId: 'pending-request', approve: false });
   expect(requests().at(-1)!.requestId).not.toBe('pending-request');
-  catalog.requests[0].status = 'rejected';
-  respond();
-  expect(dialog.hasAttribute('aria-busy')).toBe(false);
-  expect([...dialog.querySelectorAll('button')].some(button => button.textContent === 'Request shared access')).toBe(true);
-  expect(requests().map(message => message.action)).toEqual(['get', 'review']);
+  catalog.requests[0].status = 'rejected'; await respond();
+  expect(dialog.querySelector('.project-databases')!.getAttribute('aria-busy')).not.toBe('true');
+  expect(dialog.textContent).toContain('Rejected'); expect(requests().map(message => message.action)).toEqual(['get', 'review']);
 });
 
 it.each(['workflow', 'conversation'] as const)('keeps Stop available in %s and only offers rechecking for access or Server compatibility problems', async kind => {

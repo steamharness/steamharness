@@ -2,9 +2,21 @@ import { LocalDatabaseRegistry, createLocalDatabaseResolver, createRemoteDatabas
 import path from 'node:path';
 import { PROJECT_CONFIG_ENV, selectProjectEntry } from '@steamharness/project-manifest';
 import { readProjectManifestFromDirectory } from '@steamharness/project-manifest/node';
-import type { DatabasePermissions } from '@steamharness/database-spaces';
+import type { DatabasePermissions, DatabaseRequirement, DatabaseSpace } from '@steamharness/database-spaces';
+import type { DatabaseCatalogState } from '@steamharness/database-spaces/catalog';
 import type { WebConnection } from './runtime';
 import type { Project } from './workflow-types';
+
+export interface DatabaseManagementState {
+  projectId: string;
+  entryId: string;
+  entries: Project['entries'];
+  requirements: (DatabaseRequirement & { status: 'bound' | 'invalid'; space?: DatabaseSpace; permissions?: DatabasePermissions; error?: string })[];
+  environmentOverrides: string[];
+  local: DatabaseCatalogState;
+  server?: DatabaseCatalogState;
+  serverError?: string;
+}
 
 /** Trusted host operations. Project workers can use grants, but cannot approve requests. */
 export class DatabaseManagement {
@@ -21,24 +33,25 @@ export class DatabaseManagement {
     const entry = selectProjectEntry(manifest, this.project.entryId);
     if (entry.type !== this.project.projectType || path.resolve(this.project.folderPath, entry.root) !== this.project.entryRoot) throw new Error('Project entry changed. Reopen the project.');
     this.project.databases = entry.databases;
+    this.project.entries = manifest.entries;
   }
   async assertBound(alias: string) {
     await this.refreshDeclaration();
     return createDatabasesContext({projectId:this.project.id,entryId:this.project.entryId,requirements:this.project.databases,resolver:this.resolver()}).get(alias).getBinding();
   }
-  async state() {
+  async state(): Promise<DatabaseManagementState> {
     await this.refreshDeclaration();
     const connection = this.connection();
-    let server, serverError: string | undefined;
-    try { if (connection) server = await databaseHostRequest({ serverUrl: connection.serverUrl, token: connection.accessToken }, ''); }
+    let server: DatabaseCatalogState | undefined, serverError: string | undefined;
+    try { if (connection) server = await databaseHostRequest<DatabaseCatalogState>({ serverUrl: connection.serverUrl, token: connection.accessToken }, ''); }
     catch (error) { serverError = error instanceof Error ? error.message : String(error); }
     const databases = createDatabasesContext({ projectId: this.project.id, entryId: this.project.entryId, requirements: this.project.databases, resolver: this.resolver() });
     const requirements = await Promise.all(this.project.databases.map(async requirement => {
-      try { const authorization = await databases.get(requirement.alias).getBinding(); return { ...requirement, status: 'bound', space: authorization.space }; }
-      catch (error) { return { ...requirement, status: 'invalid', error: error instanceof Error ? error.message : String(error) }; }
+      try { const authorization = await databases.get(requirement.alias).getBinding(); return { ...requirement, status: 'bound' as const, space: authorization.space, permissions: authorization.grant.permissions }; }
+      catch (error) { return { ...requirement, status: 'invalid' as const, error: error instanceof Error ? error.message : String(error) }; }
     }));
     const environmentOverrides = Object.keys(JSON.parse(process.env[PROJECT_CONFIG_ENV] ?? '{}').databases ?? {});
-    return { projectId: this.project.id, entryId: this.project.entryId, requirements, environmentOverrides, local: this.registry.read(), server, serverError };
+    return { projectId: this.project.id, entryId: this.project.entryId, entries: this.project.entries, requirements, environmentOverrides, local: this.registry.read(), server, serverError };
   }
   async dispatch(message: Record<string, any>) {
     await this.refreshDeclaration();

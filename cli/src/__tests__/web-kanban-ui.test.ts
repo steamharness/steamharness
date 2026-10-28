@@ -51,7 +51,7 @@ async function fixture(language: 'en' | 'zh-CN') {
   await vi.waitFor(() => expect(sources).toHaveLength(1));
   const receive = (state: object) => sources[0].onmessage!({ data: JSON.stringify(state) });
   const sendState = (revision: number, nonce = 'first', serverDataIssue?: ProjectServerIssue, serverData?: ProjectServerState, serverInstanceId = 'kanban-process') => receive({
-    type: 'state', project: { id: 'map', name: 'Map 2D', fields: [] },
+    type: 'state', project: { id: 'map', entryId: 'board', aggregateName: 'Map aggregate', name: 'Map 2D', projectType: 'kanban', folderPath: '/map', uri: 'file:///map', fields: [], entrypoints: [], databases: [], entries: [{ entryId: 'board', type: 'kanban', name: 'Map 2D', databases: [] }] },
     account: { status: 'authenticated', serverUrl: 'https://server.test', revision,
       user: { userId: 'user', email: 'user@example.com', displayName: 'User' } },
     authenticationRevision: 1, stateRevision: revision, serverInstanceId,
@@ -174,7 +174,7 @@ it.each(['en', 'zh-CN'] as const)('offers only project creation and rechecking i
   fetcher.mockImplementation(async (_url?: unknown, options?: any) => {
     const message = JSON.parse(options.body);
     expect(message.type).toBe('project-server-check');
-    return { ok: true, status: 200, json: async () => ({ messages: [{ type: 'state', stateRevision: 2, serverInstanceId: 'kanban-process', project: { id: 'map', name: 'Map 2D', fields: [] }, account: { status: 'authenticated' }, authenticationRevision: 1, kanban: {
+    return { ok: true, status: 200, json: async () => ({ messages: [{ type: 'state', stateRevision: 2, serverInstanceId: 'kanban-process', project: { id: 'map', entryId: 'board', aggregateName: 'Map aggregate', name: 'Map 2D', projectType: 'kanban', folderPath: '/map', uri: 'file:///map', fields: [], entrypoints: [], databases: [], entries: [{ entryId: 'board', type: 'kanban', name: 'Map 2D', databases: [] }] }, account: { status: 'authenticated' }, authenticationRevision: 1, kanban: {
       revision: 2, configuration: { id: 'profile', name: 'Default', params: {} }, preview: { url: '/kanban/ready/index.html', nonce: 'ready' }, databaseRevisions: [],
     } }, { type: 'project-server-checked', requestId: message.requestId }] }) };
   });
@@ -198,9 +198,9 @@ it.each(['en', 'zh-CN'] as const)('opens database management directly from block
     return { ok: true, status: 200, json: async () => ({ messages: [{ type: 'databases-result', requestId: message.requestId, value: { requirements: [] } }] }) };
   });
   action.click();
-  const dialog = document.querySelector<HTMLDialogElement>('.database-dialog')!;
+  const dialog = document.querySelector<HTMLDialogElement>('.project-information-dialog')!;
   expect(dialog.open).toBe(true);
-  await vi.waitFor(() => expect(dialog.hasAttribute('aria-busy')).toBe(false));
+  await vi.waitFor(() => expect(dialog.querySelector('.project-databases')!.getAttribute('aria-busy')).not.toBe('true'));
   expect(document.querySelector<HTMLIFrameElement>('#kanban-preview')!.getAttribute('src')).toBeNull();
   expect(document.getElementById('server-guidance')!.hidden).toBe(false);
 });

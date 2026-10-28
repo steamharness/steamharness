@@ -5,6 +5,7 @@ import './style.css';
 import './workflow-style.css';
 import { acquireProjectHost } from './host';
 import { requestAction } from './action-dialog';
+import { renderRequestError } from './request-error';
 import { Fields } from './workflow-fields';
 import { ConversationOutput } from './conversation-output';
 import { InputPrompt } from './input-prompt';
@@ -64,7 +65,7 @@ const stateRevisions = new StateRevisions();
 const serverBlocked = () => !!state?.serverData && state.serverData.blocking !== false && (state.serverData.checking || !!state.serverData.issue);
 const serverGuidance = new ProjectServerGuidance(element('server-guidance'), {
   create: () => { host.postMessage({ type: 'open-project-create' }); },
-  databases: aggregateToolbar.openDatabases,
+  databases: () => { if (state) dialogs.projectInfo(state.project, 'databases'); },
   retry: () => { checkingServer = true; controls(); post({ type: 'project-server-check' }); },
 });
 let paramStates: Record<string, ParamState> = {};
@@ -73,7 +74,7 @@ const saved = (host.getState() ?? {}) as { menuOpen?: boolean; entrypointId?: st
 let menuOpen = saved.menuOpen ?? true, tab = 'result', scale = 1, graphWidth = 400, graphHeight = 160, graphSignature = '';
 let editTimer: ReturnType<typeof setTimeout> | undefined, searchTimer: ReturnType<typeof setTimeout> | undefined;
 let prompt: InputPrompt | undefined, promptKey = '';
-const narrow = matchMedia('(max-width: 680px)'), dialogs = new ConversationTools();
+const narrow = matchMedia('(max-width: 680px)'), dialogs = new ConversationTools(aggregateToolbar.databases);
 const output = new ConversationOutput(element('run-output'), {
   copy: text => host.postMessage({ type: 'copy', text }), plan: text => dialogs.plan(text), file: id => host.postMessage({ type: 'open-file', id }),
   image: (src, title) => dialogs.image(src, title), resource: (card, action, requestId) => post({ type: 'resource', cardId: card.id, runId: state?.run?.id, action, requestId }),
@@ -90,7 +91,7 @@ const fields = new Fields(element('main-fields'), element('parameter-actions'), 
 });
 function clearError(invalidate = true): void {
   if (invalidate) { ++errorScope; }
-  element('error').textContent = ''; element('error').hidden = true;
+  renderRequestError(element('error'));
 }
 function post(message: Record<string, unknown>): void {
   if (['workflow-select', 'workflow-run', 'workflow-rerun', 'workflow-resume'].includes(String(message.type))) { clearError(); }
@@ -245,7 +246,7 @@ function renderRun(): void {
   const tokens = usage && (usage.totalTokens ?? (Number(usage.inputTokens ?? 0) + Number(usage.outputTokens ?? 0)));
   element('run-meta').textContent = [statusLabels[run.status] ?? run.status, new Date(run.createdAt).toLocaleString(locale()),
     run.durationMs === undefined ? '' : `${(run.durationMs / 1000).toFixed(1)}s`, tokens === undefined ? '' : `${tokens} tokens`].filter(Boolean).join(' \u00b7 ');
-  element('run-error').textContent = run.error ?? ''; element('run-error').hidden = !run.error;
+  renderRequestError(element('run-error'), run.error);
   const files = run.files;
   output.update({ id: run.id, role: 'assistant', content: run.items.length || run.report?.result?.data === undefined ? '' : JSON.stringify(run.report.result.data, null, 2),
     items: run.items, status: run.status, pendingInput: run.pendingInput, resolvedInputs: run.resolvedInputs, submittingInput: run.submittingInput,
@@ -348,7 +349,7 @@ addEventListener('message', event => {
     if (message.requestType === 'usage') { dialogs.usageResult(message.requestId, undefined, message.message); return; }
     if (message.errorScope !== undefined && message.errorScope !== errorScope) { return; }
     submitting = false; resolving = false; controls();
-    if (!message.silent) { element('error').textContent = message.message; element('error').hidden = false; }
+    if (!message.silent) { renderRequestError(element('error'), message.message); }
     if (message.requestType === 'workflow-resume') { prompt?.setBusy(false, message.message); }
   }
 });

@@ -43,11 +43,11 @@ Host grants independently control `kv.read/write` and `knowledge.read/write`, us
 
 ## Request and approval
 
-1. Open the target entry in CLI Web or Studio and select **Databases** in the toolbar. If **Database binding requires attention** is shown, select **Open database management** in that prompt to manage its alias. This also works in the Studio assistant. Server Web has an independent database page.
-2. Request a new space or access to an existing `spaceId`. The request is `pending`; no space is created and data access remains unavailable.
+1. Open the target entry in CLI Web or Studio and select **Project information** in the toolbar, then open its **Databases** tab. If **Database binding requires attention** is shown, select **Open database management** in that prompt to manage its alias. This also works in the Studio assistant. Server Web has an independent database page.
+2. Open **Requests and permissions**, select a database host, then select **Request database access**. Choose to create a database or access an existing ID, and set the requested read/write scopes. The request is `pending`; no space is created and data access remains unavailable.
 3. The local host user explicitly reviews local requests. A Server system administrator approves new spaces, with the applicant becoming owner. The owner or a system administrator reviews shared access.
 4. A reviewer may reject with a reason or narrow permissions before approval. Approval returns a `databaseId` and creates a host grant for the project and entry. The application does not need a manifest reference before requesting access.
-5. Enter the approved ID under the desired alias and select **Save database reference**. Saving updates the shared mapping in root config.json and adds the alias to the current package entry; actual access rechecks the current entry grant; it does not create or authorize a database. Rejected or revoked access requires a new host request; rotated credentials are refreshed by the host.
+5. Select **Use this database** on an approved request, or **Link database** in **Project databases**, confirm the alias and approved ID, then select **Save database reference**. Saving updates the shared mapping in root config.json and adds the alias to the current package entry; actual access rechecks the current entry grant; it does not create or authorize a database. Rejected or revoked access requires a new host request; rotated credentials are refreshed by the host.
 
 CLI Web and Studio share a user-level SQLite registry, with data directories separated by `spaceId`. Server persists catalog and data independently in PostgreSQL. Project membership still limits the caller; database grants cannot elevate their role.
 
