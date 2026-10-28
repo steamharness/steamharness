@@ -36,7 +36,7 @@ importers:
         version: link:../../harness
       vitest:
         specifier: 4.1.10
-        version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@25.9.9)(@vitest/coverage-v8@4.1.12)(jsdom@29.1.1)(vite@6.4.4(@types/node@25.9.9)(jiti@2.7.0)(lightningcss@1.32.0)(tsx@4.23.15)(yaml@2.9.1))
+        version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@25.9.9)(@vitest/coverage-v8@4.1.10)(jsdom@29.1.1)(vite@6.4.4(@types/node@25.9.9)(jiti@2.7.0)(lightningcss@1.32.0)(tsx@4.23.15)(yaml@2.9.1))
 
   build-in/build-in-developer-assistant:
     devDependencies:
@@ -46,36 +46,6 @@ importers:
       '@earendil-works/pi-ai':
         specifier: 1.2.0
         version: 1.2.0(@aws-sdk/credential-provider-node@3.972.86)(@modelcontextprotocol/sdk@1.29.0(zod@4.4.3))(@smithy/signature-v4@5.7.4)(undici@7.30.1)(ws@8.22.0)(zod@4.4.3)
-      '@steamharness/cli':
-        specifier: link:../../cli
-        version: link:../../cli
-      '@types/node':
-        specifier: ^25.6.0
-        version: 25.9.9
-      '@vitest/coverage-v8':
-        specifier: ^4.1.7
-        version: 4.1.12(vitest@4.1.10)
-      semver:
-        specifier: ^7.7.4
-        version: 7.8.5
-      steamharness:
-        specifier: link:../../harness
-        version: link:../../harness
-      tar:
-        specifier: ^7.5.14
-        version: 7.5.22
-      typescript:
-        specifier: ^6.0.3
-        version: 6.0.3
-      vitest:
-        specifier: ^4.1.7
-        version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@25.9.9)(@vitest/coverage-v8@4.1.12)(jsdom@29.1.1)(vite@6.4.4(@types/node@25.9.9)(jiti@2.7.0)(lightningcss@1.32.0)(tsx@4.23.15)(yaml@2.9.1))
-      yaml:
-        specifier: ^2.9.0
-        version: 2.9.1
-
-  build-in/build-in-studio-control:
-    devDependencies:
       '@steamharness/cli':
         specifier: link:../../cli
         version: link:../../cli
@@ -128,6 +98,9 @@ importers:
       '@steamharness/auth-config':
         specifier: workspace:*
         version: link:../shared/auth-config
+      '@steamharness/database-spaces':
+        specifier: workspace:*
+        version: link:../shared/database-spaces
       '@steamharness/i18n':
         specifier: workspace:*
         version: link:../shared/i18n
@@ -146,12 +119,12 @@ importers:
       '@steamharness/project-configuration':
         specifier: workspace:*
         version: link:../shared/project-configuration
-      '@steamharness/project-dependencies':
-        specifier: workspace:*
-        version: link:../shared/project-dependencies
       '@steamharness/project-info':
         specifier: workspace:*
         version: link:../shared/project-info
+      '@steamharness/project-manifest':
+        specifier: workspace:*
+        version: link:../shared/project-manifest
       '@steamharness/project-upload':
         specifier: workspace:*
         version: link:../shared/project-upload
@@ -174,8 +147,8 @@ importers:
         specifier: ^25.6.0
         version: 25.9.9
       '@vitest/coverage-v8':
-        specifier: ^4.1.7
-        version: 4.1.12(vitest@4.1.10)
+        specifier: 4.1.10
+        version: 4.1.10(vitest@4.1.10)
       '@vscode/codicons':
         specifier: 0.0.45
         version: 0.0.45
@@ -199,7 +172,7 @@ importers:
         version: 6.0.3
       vitest:
         specifier: ^4.1.7
-        version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@25.9.9)(@vitest/coverage-v8@4.1.12)(jsdom@29.1.1)(vite@6.4.4(@types/node@25.9.9)(jiti@2.7.0)(lightningcss@1.32.0)(tsx@4.23.15)(yaml@2.9.1))
+        version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@25.9.9)(@vitest/coverage-v8@4.1.10)(jsdom@29.1.1)(vite@6.4.4(@types/node@25.9.9)(jiti@2.7.0)(lightningcss@1.32.0)(tsx@4.23.15)(yaml@2.9.1))
 
   harness:
     dependencies:
@@ -249,6 +222,9 @@ importers:
       '@steamharness/auth-config':
         specifier: workspace:*
         version: link:../shared/auth-config
+      '@steamharness/database-spaces':
+        specifier: workspace:*
+        version: link:../shared/database-spaces
       '@steamharness/kanban-project':
         specifier: workspace:*
         version: link:../shared/kanban-project
@@ -261,12 +237,12 @@ importers:
       '@steamharness/project-configuration':
         specifier: workspace:*
         version: link:../shared/project-configuration
-      '@steamharness/project-dependencies':
-        specifier: workspace:*
-        version: link:../shared/project-dependencies
       '@steamharness/project-info':
         specifier: workspace:*
         version: link:../shared/project-info
+      '@steamharness/project-manifest':
+        specifier: workspace:*
+        version: link:../shared/project-manifest
       '@steamharness/project-types':
         specifier: workspace:*
         version: link:../shared/project-types
@@ -277,8 +253,8 @@ importers:
         specifier: workspace:*
         version: link:../shared/workflow-schedules
       '@vitest/coverage-v8':
-        specifier: ^4.1.7
-        version: 4.1.12(vitest@4.1.10)
+        specifier: 4.1.10
+        version: 4.1.10(vitest@4.1.10)
       semver:
         specifier: ^7.7.4
         version: 7.8.5
@@ -306,9 +282,6 @@ importers:
       '@steamharness/project-configuration':
         specifier: workspace:*
         version: link:../shared/project-configuration
-      '@steamharness/project-dependencies':
-        specifier: workspace:*
-        version: link:../shared/project-dependencies
       '@steamharness/project-info':
         specifier: workspace:*
         version: link:../shared/project-info
@@ -358,6 +331,12 @@ importers:
       '@steamharness/cli':
         specifier: link:../cli
         version: link:../cli
+      '@steamharness/database-spaces':
+        specifier: workspace:*
+        version: link:../shared/database-spaces
+      '@steamharness/project-manifest':
+        specifier: workspace:*
+        version: link:../shared/project-manifest
       '@steamharness/repository-boundary':
         specifier: workspace:*
         version: link:../shared/repository-boundary
@@ -383,8 +362,8 @@ importers:
         specifier: ^0.10.11
         version: 0.10.11
       '@vitest/coverage-v8':
-        specifier: ^4.1.7
-        version: 4.1.12(vitest@4.1.10)
+        specifier: 4.1.10
+        version: 4.1.10(vitest@4.1.10)
       cross-env:
         specifier: ^10.1.0
         version: 10.1.0
@@ -405,7 +384,7 @@ importers:
         version: 6.0.3
       vitest:
         specifier: ^4.1.7
-        version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@25.9.9)(@vitest/coverage-v8@4.1.12)(jsdom@29.1.1)(vite@6.4.4(@types/node@25.9.9)(jiti@2.7.0)(lightningcss@1.32.0)(tsx@4.23.15)(yaml@2.9.1))
+        version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@25.9.9)(@vitest/coverage-v8@4.1.10)(jsdom@29.1.1)(vite@6.4.4(@types/node@25.9.9)(jiti@2.7.0)(lightningcss@1.32.0)(tsx@4.23.15)(yaml@2.9.1))
 
   server/web:
     dependencies:
@@ -430,9 +409,6 @@ importers:
       '@steamharness/project-configuration':
         specifier: workspace:*
         version: link:../../shared/project-configuration
-      '@steamharness/project-dependencies':
-        specifier: workspace:*
-        version: link:../../shared/project-dependencies
       '@steamharness/project-info':
         specifier: workspace:*
         version: link:../../shared/project-info
@@ -517,16 +493,22 @@ importers:
         version: 29.1.1
       vitest:
         specifier: ^4.1.7
-        version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@25.9.9)(@vitest/coverage-v8@4.1.12)(jsdom@29.1.1)(vite@6.4.4(@types/node@25.9.9)(jiti@2.7.0)(lightningcss@1.32.0)(tsx@4.23.15)(yaml@2.9.1))
+        version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@25.9.9)(@vitest/coverage-v8@4.1.10)(jsdom@29.1.1)(vite@6.4.4(@types/node@25.9.9)(jiti@2.7.0)(lightningcss@1.32.0)(tsx@4.23.15)(yaml@2.9.1))
 
   shared:
     devDependencies:
+      '@steamharness/database-spaces':
+        specifier: workspace:*
+        version: link:database-spaces
       '@steamharness/i18n':
         specifier: workspace:*
         version: link:i18n
       '@steamharness/project-access':
         specifier: workspace:*
         version: link:project-access
+      '@steamharness/project-manifest':
+        specifier: workspace:*
+        version: link:project-manifest
       '@testing-library/jest-dom':
         specifier: 6.9.1
         version: 6.9.1
@@ -546,8 +528,8 @@ importers:
         specifier: ^7.7.1
         version: 7.8.0
       '@vitest/coverage-v8':
-        specifier: ^4.1.7
-        version: 4.1.12(vitest@4.1.10)
+        specifier: 4.1.10
+        version: 4.1.10(vitest@4.1.10)
       jsdom:
         specifier: ^29.1.1
         version: 29.1.1
@@ -559,11 +541,13 @@ importers:
         version: 6.0.3
       vitest:
         specifier: ^4.1.7
-        version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@25.9.9)(@vitest/coverage-v8@4.1.12)(jsdom@29.1.1)(vite@6.4.4(@types/node@25.9.9)(jiti@2.7.0)(lightningcss@1.32.0)(tsx@4.23.15)(yaml@2.9.1))
+        version: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@25.9.9)(@vitest/coverage-v8@4.1.10)(jsdom@29.1.1)(vite@6.4.4(@types/node@25.9.9)(jiti@2.7.0)(lightningcss@1.32.0)(tsx@4.23.15)(yaml@2.9.1))
 
   shared/auth-config: {}
 
   shared/avatar-fallback: {}
+
+  shared/database-spaces: {}
 
   shared/i18n:
     dependencies:
@@ -668,16 +652,16 @@ importers:
         specifier: workspace:*
         version: link:../project-access
 
-  shared/project-dependencies:
-    dependencies:
-      '@steamharness/kanban-project':
-        specifier: workspace:*
-        version: link:../kanban-project
-      '@steamharness/workflow-ids':
-        specifier: workspace:*
-        version: link:../workflow-ids
-
   shared/project-info: {}
+
+  shared/project-manifest:
+    dependencies:
+      '@steamharness/database-spaces':
+        specifier: workspace:*
+        version: link:../database-spaces
+      '@steamharness/project-types':
+        specifier: workspace:*
+        version: link:../project-types
 
   shared/project-types: {}
 
@@ -686,6 +670,9 @@ importers:
       '@steamharness/kanban-project':
         specifier: workspace:*
         version: link:../kanban-project
+      '@steamharness/project-manifest':
+        specifier: workspace:*
+        version: link:../project-manifest
       ignore:
         specifier: ^7.0.5
         version: 7.0.12
@@ -2748,6 +2735,15 @@ packages:
     engines: {node: ^14.18.0 || >=16.0.0}
     peerDependencies:
       vite: ^4.2.0 || ^5.0.0 || ^6.0.0 || ^7.0.0
+
+  '@vitest/coverage-v8@4.1.10':
+    resolution: {integrity: sha512-IM49HmthevbgAO4anp1hwtoT9wYe59w0LR00gr+eagHE+ZJ5lK4sLPeO0ubgoJcwLk6dehU3R24N+FbEEKDc8g==}
+    peerDependencies:
+      '@vitest/browser': 4.1.10
+      vitest: 4.1.10
+    peerDependenciesMeta:
+      '@vitest/browser':
+        optional: true
 
   '@vitest/coverage-v8@4.1.12':
     resolution: {integrity: sha512-6S7/iVknKglLAxMFxQGNppBI0iqJS2NgM6FBxavitj7KaDq/vywOWGf6dGu7F2L1Qy0G6S3uTp7aGshHrzK8JA==}
@@ -6847,6 +6843,20 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
+  '@vitest/coverage-v8@4.1.10(vitest@4.1.10)':
+    dependencies:
+      '@bcoe/v8-coverage': 1.0.2
+      '@vitest/utils': 4.1.10
+      ast-v8-to-istanbul: 1.0.7
+      istanbul-lib-coverage: 3.2.2
+      istanbul-lib-report: 3.0.1
+      istanbul-reports: 3.2.0
+      magicast: 0.5.5
+      obug: 2.2.1
+      std-env: 4.3.0
+      tinyrainbow: 3.2.0
+      vitest: 4.1.10(@opentelemetry/api@1.9.1)(@types/node@25.9.9)(@vitest/coverage-v8@4.1.10)(jsdom@29.1.1)(vite@6.4.4(@types/node@25.9.9)(jiti@2.7.0)(lightningcss@1.32.0)(tsx@4.23.15)(yaml@2.9.1))
+
   '@vitest/coverage-v8@4.1.12(vitest@4.1.10)':
     dependencies:
       '@bcoe/v8-coverage': 1.0.2
@@ -9216,6 +9226,36 @@ snapshots:
       lightningcss: 1.32.0
       tsx: 4.23.15
       yaml: 2.9.1
+
+  vitest@4.1.10(@opentelemetry/api@1.9.1)(@types/node@25.9.9)(@vitest/coverage-v8@4.1.10)(jsdom@29.1.1)(vite@6.4.4(@types/node@25.9.9)(jiti@2.7.0)(lightningcss@1.32.0)(tsx@4.23.15)(yaml@2.9.1)):
+    dependencies:
+      '@vitest/expect': 4.1.10
+      '@vitest/mocker': 4.1.10(vite@6.4.4(@types/node@25.9.9)(jiti@2.7.0)(lightningcss@1.32.0)(tsx@4.23.15)(yaml@2.9.1))
+      '@vitest/pretty-format': 4.1.10
+      '@vitest/runner': 4.1.10
+      '@vitest/snapshot': 4.1.10
+      '@vitest/spy': 4.1.10
+      '@vitest/utils': 4.1.10
+      es-module-lexer: 2.3.2
+      expect-type: 1.4.0
+      magic-string: 0.30.21
+      obug: 2.2.1
+      pathe: 2.0.3
+      picomatch: 4.0.7
+      std-env: 4.3.0
+      tinybench: 2.9.0
+      tinyexec: 1.3.1
+      tinyglobby: 0.2.17
+      tinyrainbow: 3.2.0
+      vite: 6.4.4(@types/node@25.9.9)(jiti@2.7.0)(lightningcss@1.32.0)(tsx@4.23.15)(yaml@2.9.1)
+      why-is-node-running: 2.3.0
+    optionalDependencies:
+      '@opentelemetry/api': 1.9.1
+      '@types/node': 25.9.9
+      '@vitest/coverage-v8': 4.1.10(vitest@4.1.10)
+      jsdom: 29.1.1
+    transitivePeerDependencies:
+      - msw
 
   vitest@4.1.10(@opentelemetry/api@1.9.1)(@types/node@25.9.9)(@vitest/coverage-v8@4.1.12)(jsdom@29.1.1)(vite@6.4.4(@types/node@25.9.9)(jiti@2.7.0)(lightningcss@1.32.0)(tsx@4.23.15)(yaml@2.9.1)):
     dependencies:

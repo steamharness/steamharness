@@ -98,15 +98,15 @@ export const conversationKnowledgeProject = steamharness.defineProject<Conversat
     // Each conversation maps to one PersistentValue-backed knowledge document.
     // dry-run keeps preview-only runs from writing to either configured backend.
     if (!parsed.dryRun) {
-      const existing = await steamharness.getKnowledgeDocument(context.storage.local, draft.documentId);
+      const existing = await context.databases.get("data").knowledge.getDocument(draft.documentId);
       if (existing === undefined) {
-        await steamharness.createKnowledgeDocument(context.storage.local, {
+        await context.databases.get("data").knowledge.createDocument({
           id: draft.documentId,
           title: draft.title,
           markdown: draft.markdown,
         });
       } else {
-        await steamharness.editKnowledgeDocument(context.storage.local, {
+        await context.databases.get("data").knowledge.editDocument({
           id: draft.documentId,
           title: draft.title,
           markdown: draft.markdown,

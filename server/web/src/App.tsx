@@ -1,3 +1,4 @@
+import { DatabaseSpacesPage } from "./pages/DatabaseSpacesPage";
 
 import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { Database, Loader2, RefreshCw, Settings2 } from "lucide-react";
@@ -20,17 +21,16 @@ import { InviteAcceptPage } from "./pages/InviteAcceptPage";
 import { ProjectSourceAccessRequestPage } from "./pages/ProjectSourceAccessRequestPage";
 import { ProjectSourceSharePage } from "./pages/ProjectSourceSharePage";
 import { DeviceApprovalPage } from "./pages/DeviceApprovalPage";
-import type { KVFilters } from "./pages/ProjectKVPage";
 import { ProjectListPage } from "./pages/ProjectListPage";
 import { ProjectAvatar } from "./components/ProjectAvatar";
 import { GroupsPage } from "./pages/GroupsPage";
 import { UsersPage } from "./pages/UsersPage";
 import { type AccountViewState, type AuditFilters, type AuditViewState, type AdminUsersState, DEFAULT_AUDIT_FILTERS, DEFAULT_DETAIL, LOCALE_STORAGE_KEY, THEME_STORAGE_KEY, type AppRoute, type AsyncState, type DetailTab, type DetailState, type SettingsTab, type SessionState, type ThemeMode } from "./state";
-import { isApiSuccess, type AdminUserSummary, type KVEntrySummary, type Summary, type UserInvitationResult } from "./types";
+import { isApiSuccess, type AdminUserSummary, type Summary, type UserInvitationResult } from "./types";
 import { parseRoute, readRouteProjectId, replaceCurrentRouteIfNeeded, routeToPath } from "./utils/routes";
 import { normalizeDateTimeFilter } from "./utils/date-filters";
 import { consumeUnseenServerRelease } from "./lib/server-release-notes";
-import { getProjectDisplayName, getProjectServerStorageAccess } from "./utils/project-presentation";
+import { getProjectDisplayName } from "./utils/project-presentation";
 
 // keeps all server/web server-backed table pagination at 20 rows.
 const RUN_PAGE_SIZE = 20;
@@ -44,18 +44,9 @@ type PendingKnowledgeNavigation = {
 };
 
 function leavesKnowledgeWorkspace(current: AppRoute, next: AppRoute): boolean {
-  return current.page === "detail" &&
-    current.tab === "knowledge" &&
-    (next.page !== "detail" || next.id !== current.id || next.tab !== "knowledge");
+  return current.page === "databases" &&
+    (next.page !== "databases" || next.id !== current.id);
 }
-
-const DEFAULT_KV_FILTERS: KVFilters = {
-  query: "",
-  scope: "all",
-  valueType: "all",
-  conversationId: "",
-  runId: "",
-};
 
 function pushToast(tone: "success" | "error", message: string) {
   toast[tone](message);
@@ -105,8 +96,6 @@ function AppContent() {
   const [createdApiKeyToken, setCreatedApiKeyToken] = useState<string | null>(null);
   const [latestInvitation, setLatestInvitation] = useState<UserInvitationResult | null>(null);
   const [selectedId, setSelectedId] = useState(() => readRouteProjectId(parseRoute(window.location.pathname)));
-  const [kvFilters, setKVFilters] = useState<KVFilters>(DEFAULT_KV_FILTERS);
-  const [knowledgeRefreshToken, setKnowledgeRefreshToken] = useState(0);
   const [detailRefreshToken, setDetailRefreshToken] = useState(0);
   const [detailContentBusy, setDetailContentBusy] = useState(false);
   const [pendingKnowledgeNavigation, setPendingKnowledgeNavigation] = useState<PendingKnowledgeNavigation | null>(null);
@@ -115,13 +104,10 @@ function AppContent() {
   const [localePreference, setLocalePreference] = useState<LocalePreference>(() => readStoredLocale(LOCALE_STORAGE_KEY));
   const [busy, setBusy] = useState<AsyncState>({});
   const projectDetailRequestRef = useRef(0);
-  const projectKVRequestRef = useRef(0);
   const detailProjectIdRef = useRef<string | null>(null);
-  const projectKVCursorHistoryRef = useRef<Array<string | undefined>>([undefined]);
   const auditCursorHistoryRef = useRef<Array<string | undefined>>([undefined]);
   const auditRequestRef = useRef(0);
   const validateSessionRequestRef = useRef(0);
-  const [projectKVPageIndex, setProjectKVPageIndex] = useState(0);
   const [auditPageIndex, setAuditPageIndex] = useState(0);
   const page = route.page;
   const requestedDetailTab = route.page === "detail" ? route.tab : undefined;
@@ -141,9 +127,6 @@ function AppContent() {
   const selectedProjectDisplayName = selectedProject
     ? getProjectDisplayName(selectedProject, i18n.language)
     : undefined;
-  const selectedProjectServerStorageAllowed = selectedProject
-    ? getProjectServerStorageAccess(selectedProject).allowed
-    : false;
   const isSystemAdmin = session.status === "ready" && session.principal.isSystemAdmin === true;
   const canViewProjects=session.status === "ready";
   const canViewAudit=isSystemAdmin;
@@ -263,13 +246,8 @@ function AppContent() {
     void loadProjectDetail(selectedProject.id);
     return () => { projectDetailRequestRef.current += 1; };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [session.status, page, selectedProject?.id, selectedProject?.access?.capabilities.includes("manageMembers"), activeDetailTab, selectedProjectServerStorageAllowed]);
+  }, [session.status, page, selectedProject?.id, selectedProject?.access?.capabilities.includes("manageMembers"), activeDetailTab]);
 
-  useEffect(() => {
-    if (session.status !== "ready" || !selectedProject || !selectedProjectServerStorageAllowed || page !== "detail" || route.page !== "detail" || route.tab !== "kv") return;
-    void loadProjectKV(selectedProject.id, { reset: true });
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [session.status, selectedProject?.id, selectedProjectServerStorageAllowed, page, route, kvFilters]);
 
   useEffect(() => {
     if (session.status !== "ready" || page !== "admin" || route.page !== "admin" || route.tab !== "audit") return;
@@ -429,25 +407,22 @@ function AppContent() {
     const requestId = ++projectDetailRequestRef.current;
     const switching = detailProjectIdRef.current !== projectName;
     detailProjectIdRef.current = projectName;
-    if (switching) { projectKVRequestRef.current += 1; setDetail(DEFAULT_DETAIL); projectKVCursorHistoryRef.current = [undefined]; setProjectKVPageIndex(0); }
+    if (switching) { setDetail(DEFAULT_DETAIL); }
     setBusy(state => ({...state, project: t("busyLoadProjectDetail")}));
-    const [versions, members, invitations, dataSummary] = await Promise.all([
+    const [versions, members, invitations] = await Promise.all([
       apiClient.listVersions(projectName), apiClient.listProjectMembers(projectName),
       activeDetailTab === "invitations" && selectedProject?.access?.capabilities.includes("manageMembers") ? apiClient.listProjectInvitations(projectName) : undefined,
-      activeDetailTab === "project" && selectedProjectServerStorageAllowed ? apiClient.getProjectDataSummary(projectName) : undefined,
     ]);
     if (requestId !== projectDetailRequestRef.current || selectedIdRef.current !== projectName) return;
     setBusy(state => ({...state, project: undefined}));
-    for (const result of [versions, members, invitations, dataSummary]) if (result && !isApiSuccess(result)) pushToast("error", result.errMessage);
+    for (const result of [versions, members, invitations]) if (result && !isApiSuccess(result)) pushToast("error", result.errMessage);
     setDetail(state => ({...state, versions: isApiSuccess(versions) ? versions.data : null,
       members: isApiSuccess(members) ? members.data.items : null,
       invitations: invitations ? isApiSuccess(invitations) ? invitations.data : null : state.invitations,
-      dataSummary: dataSummary ? isApiSuccess(dataSummary) ? dataSummary.data : null : state.dataSummary,
       loadErrors: {
         versions: !isApiSuccess(versions) ? versions.errMessage : undefined,
         members: !isApiSuccess(members) ? members.errMessage : undefined,
         invitations: invitations && !isApiSuccess(invitations) ? invitations.errMessage : undefined,
-        dataSummary: dataSummary && !isApiSuccess(dataSummary) ? dataSummary.errMessage : undefined,
       }}));
   }
 
@@ -524,23 +499,6 @@ function AppContent() {
     void loadProjectDetail(selectedProject.id);
   }
 
-  async function loadProjectKV(projectName: string, options: { reset?: boolean; cursor?: string; pageIndex?: number } = {}) {
-    const project = projects.find((item) => item.id === projectName);
-    if (project && !getProjectServerStorageAccess(project).allowed) return;
-    const cursor = options.reset ? undefined : options.cursor;
-    const pageIndex = options.reset ? 0 : options.pageIndex ?? 0;
-    if (!options.reset && busy.kv) return;
-    const requestId = ++projectKVRequestRef.current;
-    setBusy((s) => ({ ...s, kv: options.reset ? t("busyKvLoad") : t("busyKvPage") }));
-    if (options.reset) { projectKVCursorHistoryRef.current = [undefined]; setProjectKVPageIndex(0); setDetail((s) => ({ ...s, kv: null })); }
-    const res = await apiClient.listProjectKVEntries(projectName, { pageSize: KV_PAGE_SIZE, cursor, scope: kvFilters.scope, query: kvFilters.query, valueType: kvFilters.valueType, conversationId: kvFilters.conversationId, runId: kvFilters.runId });
-    if (requestId !== projectKVRequestRef.current || selectedIdRef.current !== projectName) return;
-    setBusy((s) => ({ ...s, kv: undefined }));
-    if (!isApiSuccess(res)) { pushToast("error", res.errMessage); return; }
-    setDetail((s) => ({ ...s, kv: res.data }));
-    setProjectKVPageIndex(pageIndex);
-  }
-
   async function loadAuditEvents(options: { reset?: boolean; cursor?: string; pageIndex?: number } = {}) {
     const cursor = options.reset ? undefined : options.cursor;
     const pageIndex = options.reset ? 0 : options.pageIndex ?? 0;
@@ -581,21 +539,6 @@ function AppContent() {
     setAuditPageIndex(pageIndex);
   }
 
-  async function changeProjectKVPage(projectName: string, direction: "next" | "previous") {
-    if (busy.kv) return;
-    if (direction === "previous") {
-      const nextIndex = Math.max(0, projectKVPageIndex - 1);
-      if (nextIndex === projectKVPageIndex) return;
-      await loadProjectKV(projectName, { cursor: projectKVCursorHistoryRef.current[nextIndex], pageIndex: nextIndex });
-      return;
-    }
-    const nextCursor = detail.kv?.nextCursor;
-    if (!detail.kv?.hasMore || !nextCursor) return;
-    const nextIndex = projectKVPageIndex + 1;
-    projectKVCursorHistoryRef.current[nextIndex] = nextCursor;
-    await loadProjectKV(projectName, { cursor: nextCursor, pageIndex: nextIndex });
-  }
-
   async function changeAuditPage(direction: "next" | "previous") {
     if (busy.audit) return;
     if (direction === "previous") {
@@ -609,36 +552,6 @@ function AppContent() {
     const nextIndex = auditPageIndex + 1;
     auditCursorHistoryRef.current[nextIndex] = nextCursor;
     await loadAuditEvents({ cursor: nextCursor, pageIndex: nextIndex });
-  }
-
-  async function loadProjectKVEntry(projectName: string, entry: KVEntrySummary) {
-    if (entry.scope !== "project" && entry.scope !== "conversation") {
-      return {
-        errCode: 400,
-        errMessage: t("projectKvDetailScopeError"),
-      };
-    }
-    return apiClient.getProjectKVEntry(projectName, {
-      scope: entry.scope,
-      key: entry.key,
-      conversationId: entry.scope === "conversation" ? entry.conversationId ?? entry.lastConversationId : undefined,
-    });
-  }
-
-  async function deleteProjectKVEntry(projectName: string, entry: KVEntrySummary) {
-    if (entry.scope !== "project" && entry.scope !== "conversation") {
-      return {
-        errCode: 400,
-        errMessage: t("projectKvDetailScopeError"),
-      };
-    }
-    // The conversation scope is part of the entry's identity, and the row can
-    // carry it on lastConversationId, so resolve it exactly like the detail load.
-    return apiClient.deleteProjectKVEntry(projectName, {
-      scope: entry.scope,
-      key: entry.key,
-      conversationId: entry.scope === "conversation" ? entry.conversationId ?? entry.lastConversationId : undefined,
-    });
   }
 
   async function handlePasswordLogin(event: FormEvent<HTMLFormElement>) {
@@ -1008,6 +921,7 @@ function AppContent() {
     } : null,
   ].filter((item): item is NonNullable<typeof item> => item !== null);
   const consoleNavItems = [
+    {id:"databases",label:t("databaseSpaces"),icon:Database,active:page==="databases",onClick:()=>navigateTo({page:"databases"})},
     {id:"groups",label:t("accessGroups"),icon:CONSOLE_NAV_ICONS.projects,active:page==="groups",onClick:()=>navigateTo({page:"groups"})},
     canViewProjects ? {
       id: "projects",
@@ -1066,9 +980,9 @@ function AppContent() {
     audit: busy.audit,
   };
   const refreshBusy = Boolean(busy.global || (
-    page === "detail" ? renderedBusy.project || (activeDetailTab === "kv" && busy.kv)
+    page === "detail" ? renderedBusy.project
       || (activeDetailTab === "invitations" && (busy.invitation || busy.revokeInvitationId))
-      || ((activeDetailTab === "knowledge" || activeDetailTab === "dependencies") && detailContentBusy)
+      || (activeDetailTab === "databases" && detailContentBusy)
       : page === "settings" ? settingsBusy[settingsTab]
       : page === "admin" ? adminBusy[adminTab]
       : false
@@ -1088,13 +1002,10 @@ function AppContent() {
     }
     if (page === "detail") {
       if (!selectedProject) return loadProjects({ keepSelection: true });
-      if (activeDetailTab === "knowledge") setKnowledgeRefreshToken(current => current + 1);
-      if (activeDetailTab === "dependencies") setDetailRefreshToken(current => current + 1);
+      if (activeDetailTab === "databases") setDetailRefreshToken(current => current + 1);
       await Promise.all([
         loadProjects({ keepSelection: true }),
         loadProjectDetail(selectedProject.id),
-        activeDetailTab === "kv" && selectedProjectServerStorageAllowed
-          ? loadProjectKV(selectedProject.id, { reset: true }) : undefined,
       ]);
     }
   }
@@ -1108,7 +1019,7 @@ function AppContent() {
     loading: refreshBusy,
   }];
 
-  if (page === "projects" || page === "groups") {
+  if (page === "projects" || page === "groups" || page === "databases") {
     return (
       <AppLayout
         principalLabel={principalLabel}
@@ -1121,7 +1032,7 @@ function AppContent() {
         onBrandClick={() => navigateTo({ page: "projects" })}
         onLogout={logout}
       >
-        {page==="groups" ? <GroupsPage key={route.page==="groups"?route.id??"root":"root"} id={route.page==="groups"?route.id:undefined} onOpenGroup={id=>navigateTo({page:"groups",id})} onOpenProject={id=>navigateTo({page:"detail",id,tab:"project"})}/> : <ProjectListPage
+        {page==="databases" ? <DatabaseSpacesPage key={route.page==="databases"?route.id:"spaces"} spaceId={route.page==="databases"?route.id:undefined} onOpenSpace={id=>navigateTo({page:"databases",id})} onBack={()=>navigateTo({page:"databases"})} onDirtyChange={value=>{knowledgeDraftDirtyRef.current=value;}} /> : page==="groups" ? <GroupsPage key={route.page==="groups"?route.id??"root":"root"} id={route.page==="groups"?route.id:undefined} onOpenGroup={id=>navigateTo({page:"groups",id})} onOpenProject={id=>navigateTo({page:"detail",id,tab:"project"})}/> : <ProjectListPage
           total={projectTotal} serverPage={projectPage} onServerPageChange={setProjectPage}
           onServerSearch={(q,status)=>{setProjectQuery(q);setProjectStatus(status);setProjectPage(1);}}
           projects={projects}
@@ -1166,7 +1077,7 @@ function AppContent() {
       headerExtras={
         page === "detail" && selectedProject ? (
           <div className="flex min-w-0 items-center gap-2">
-          <ProjectAvatar card={selectedProject.projectCard} projectType={selectedProject.projectType} />
+          <ProjectAvatar card={selectedProject.projectCard} projectType={selectedProject.entries[0]?.type} />
           <Badge variant="outline" className="max-w-40 truncate">
             {selectedProject.latest ? t("appHeaderVersionBadge", { version: selectedProject.latest }) : t("appHeaderNoVersion")}
           </Badge>
@@ -1243,23 +1154,16 @@ function AppContent() {
           project={selectedProject}
           detail={renderedDetail}
           activeTab={activeDetailTab ?? "project"}
+          entryId={route.page === "detail" ? route.entryId : undefined}
+          onSelectEntry={entryId => navigateTo({ page: "detail", id: selectedProject.id, tab: "configurations", entryId })}
           busy={renderedBusy}
           onUpdateVisibility={(visibility) => void updateProjectVisibility(visibility)}
           onSetProjectMember={(userId, role) => void setProjectMember(userId, role)}
           onRemoveProjectMember={(userId) => void removeProjectMember(userId)}
           onCreateProjectInvitation={async (role) => await createProjectInvitation(role)}
           onRevokeProjectInvitation={(invitationId) => void revokeProjectInvitation(invitationId)}
-          kvPageIndex={projectKVPageIndex}
-          kvPageSize={KV_PAGE_SIZE}
-          kvFilters={kvFilters}
-          onKVFiltersChange={setKVFilters}
-          onKVPageChange={(direction) => void changeProjectKVPage(selectedProject.id, direction)}
-          onLoadKVEntry={(entry) => loadProjectKVEntry(selectedProject.id, entry)}
-          onDeleteKVEntry={(entry) => deleteProjectKVEntry(selectedProject.id, entry)}
-          knowledgeRefreshToken={knowledgeRefreshToken}
           refreshToken={detailRefreshToken}
           onContentBusyChange={setDetailContentBusy}
-          onKnowledgeDirtyChange={(dirty) => { knowledgeDraftDirtyRef.current = dirty; }}
           onNavigateTab={navigateDetail}
           onNavigateProjectTab={(projectId, tab) => navigateTo({ page: "detail", id: projectId, tab })}
           sidebarCollapsed={false}

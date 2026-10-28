@@ -1,75 +1,30 @@
 ---
 title: "Server Workspace CLI"
-description: "Manage Server project uploads, immutable source versions and data files."
+description: "Workspace static project management"
 ---
 
-# Server Workspace CLI
+# Workspace static project management
 
-`steamharness workspace`, provided by `@steamharness/cli`, manages Server storage for Workflow, Conversation and Kanban projects. Use top-level `steamharness run/json` for local execution. Server never loads or executes uploaded project code.
+`steamharness workspace` manages aggregate source and immutable versions on Server. Server does not install project dependencies, build or execute projects.
 
-## Commands
-
-| Command | Purpose |
-| --- | --- |
-| [login](/en/cli/workspace/login), [logout](/en/cli/workspace/logout), [status](/en/cli/workspace/status) | Sign in, sign out and inspect connection status. |
-| [health](/en/cli/workspace/health) | Check Server health. |
-| [pack](/en/cli/workspace/pack) | Package files using `.steamharnessignore`. |
-| [upload](/en/cli/workspace/upload) | Upload source or a project group; optionally publish. |
-| `preparation` | Read file processing progress and failures. |
-| [publish](/en/cli/workspace/publish) | Save an immutable source version and update latest. |
-| [versions](/en/cli/workspace/versions) | Read history, release notes and source hashes. |
-| [download](/en/cli/workspace/download) | Download a published project or group. |
-| `file-upload`, `file-download`, `file-delete` | Manage independent business files. |
-| [help](/en/cli/workspace/help) | Show help. |
-
-## Options
-
-| Option | Purpose |
-| --- | --- |
-| `--server <url>` | Overrides `STEAMHARNESS_SERVER_URL`, saved connection and channel default (dev: `http://localhost:7126`). |
-| `--token <token>` | Overrides `STEAMHARNESS_SERVER_ADMIN_KEY` and saved credentials. |
-| `--target <version>` | Exact download version or `latest`; draft is rejected. |
-| `--release-log <text>` | Release notes; upload publishes automatically when supplied. |
-| `--path <directory>` | Local project or download directory. |
-| `--file <path>` | Existing archive or business file. |
-| `--mime-type <type>` | Explicit business file MIME. |
-| `--output <path>` | Archive or file download path. |
-| `--no-wait` | Return the stored archive's processing job without polling. |
-| `--create` | Create or reuse the project using local `package.json.id`. |
-| `--project-group`, `--dependency <alias=path>` | Package, upload or download a group. |
-| `--deployment <id>`, `--publish-group` | Query or publish a group processing job. |
-
-Unknown options fail. Declare static type in `package.json.steamHarness.projectType`; the uploaded `package.json.version` determines the version. Published versions cannot be overwritten. Server only extracts, validates and stores files, without installing dependencies or building. Prepare Kanban static assets locally.
-
-## Upload and Download
-
-New application IDs must be assigned by the Server. For an unregistered ID, `upload --create` allocates and writes a new ID rather than creating a record with a client-selected ID. Group roots and dependencies must already be registered so relationship identities are never changed implicitly.
-
-```bash
-steamharness workspace login --server http://localhost:7126
-steamharness workspace upload hello --create --release-log "Initial release"
-steamharness workspace versions hello
-steamharness workspace download hello --target latest --path ./downloaded-hello
+```sh
+pnpm exec steamharness workspace login --server <server-url>
+pnpm exec steamharness workspace status
+pnpm exec steamharness workspace pack <project-id> --path . --output project.tgz
+pnpm exec steamharness workspace upload <project-id> --path .
+pnpm exec steamharness workspace publish <project-id> --release-log "Update entries"
+pnpm exec steamharness workspace versions <project-id>
+pnpm exec steamharness workspace download <project-id> --target latest --path ./downloaded
 ```
 
-The project argument accepts a UUID, name or local directory. CLI prefers the directory's stable `package.json.id`. Packaging uses each root's `.steamharnessignore`, ignoring `.gitignore`; required entries and the rules file cannot be excluded. Included dependencies lock exact versions and source hashes. Downloads check each project's source permission and report skip reasons and request links. Downloads have no operating system restriction.
+The aggregate is one upload, version and download unit. Archives contain every registered entry's code, dependency manifests and Kanban artifacts, excluding Git, node_modules, runtime data and credentials. Database requirements remain; `bindingRef` is removed.
 
-## Business Files
+## Identity and ownership
 
-```bash
-steamharness workspace file-upload <project UUID> --file ./map.png
-steamharness workspace file-download <file ID> --output ./verified-map.png
-steamharness workspace file-delete <file ID>
-```
+Use the client creation flow to request a Server identity. `upload --create` explicitly creates and replaces the local aggregate identity; `--group-id` selects its permission group. Membership, inherited roles and source-access requests remain separate from database requests.
 
-Upload accepts ordinary files up to 50 MiB and returns a FileReference with `storage: "server"`. Writes require project data write access; reads require project access. Downloads require a new path and never overwrite files; HTTP failures create no local file. Store references in KV rather than image base64.
+## Transfer and configuration
 
-## Credentials and Output
+`upload --file` accepts an archive. `--no-wait` returns a preparation job; `preparation` reads its static preparation result. `file-upload/file-download/file-delete` manage business files. `--server` and `--token` override saved authentication. Never put credentials in the manifest.
 
-CLI reads `.env` from the current directory and source repository root; existing process variables take priority. Credentials use `workflow-auth.json` in the operating system application configuration directory, overridable with `STEAMHARNESS_CLI_AUTH_DIR`.
-
-Success returns `{ errCode: 0, errMessage: "", data }`; server and local argument errors produce a nonzero exit code. Processing jobs retain progress and failure details. Failed uploads preserve published snapshots.
-
-Use `--group-id <id>` when creating or first uploading into a group with developer access. Omit it to own a personal project. Upload, publication and Server writes require developer access; published downloads and data reads require guest access. Cookies and API keys both use current project and group memberships.
-
-Without an explicit Server, the client uses its build channel: `http://localhost:7126` for dev and the corresponding site for alpha or main. Set `STEAMHARNESS_SERVICE_CHANNEL=dev|alpha|main` to select the default channel explicitly; `--server`, `STEAMHARNESS_SERVER_URL` and saved connections retain higher priority.
+Configuration templates, profiles, snapshots and attachments are entry-scoped. Use CLI Web, Studio or Server Web to request independent database spaces and bind them. Downloads require fresh approval.

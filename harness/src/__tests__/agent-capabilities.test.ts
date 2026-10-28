@@ -1,3 +1,4 @@
+import { createTestResources } from "./entry-test-resources";
 import assert from "node:assert/strict";
 import test from "node:test";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
@@ -18,27 +19,24 @@ import {
   listProjectCapabilityToolIds,
   readHostConfigurationBridgeConfig,
   runProjectCapabilityAction,
-  selectProjectStorage,
+  selectDatabase,
 } from "../agent/capabilities/index";
 import {
   createProjectKVContext,
   createProjectPersistentValueContext,
-  createProjectRelatedProjectsContext,
   type KVStore,
-  type StorageLocationContext,
+  type KnowledgeContext,
 } from "../index";
 import type { NodeContext } from "../types/context";
 
 const BRIDGE_URL_ENV = "STEAMHARNESS_DEVELOPER_ASSISTANT_HOST_BRIDGE_URL";
 const BRIDGE_TOKEN_ENV = "STEAMHARNESS_DEVELOPER_ASSISTANT_HOST_BRIDGE_TOKEN";
 
-test("capabilities use local storage by default and permit explicit server storage", () => {
-  const base = createContext();
-  const context = { storage: { local: base.storage.local, server: { ...base.storage.server } } };
-
-  assert.equal(selectProjectStorage(context), context.storage.local);
-
-  assert.equal(selectProjectStorage(context, "server"), context.storage.server);
+test("database capabilities require an explicit declared alias", () => {
+  const context = createTestResources();
+  assert.ok(selectDatabase(context, "data").kv);
+  assert.throws(() => selectDatabase(context, ""), /alias/);
+  assert.throws(() => selectDatabase(context, "missing"), /not declared/);
 });
 
 test("kv stores and reads back through the scope the caller named", async () => {
@@ -413,7 +411,7 @@ test("the agent rendering gates, approves and reports like a tool should", async
   // The schema is the published one, handed over unchanged.
   assert.deepEqual(kv.parameters.properties.action.enum, ["get", "set"]);
 
-  const result = await kv.execute("call-1", { action: "get", scope: "project", key: "missing" });
+  const result = await kv.execute("call-1", { database:"data", action: "get", scope: "project", key: "missing" });
   assert.deepEqual(approvals, [KV_MCP_TOOL_ID]);
   assert.deepEqual(JSON.parse(result.content[0]!.text), {
     action: "get",
@@ -445,12 +443,12 @@ test("the MCP rendering publishes the same tool and answers the same way", async
     assert.equal(listed.tools[0]?.title, "Workflow KV store");
     assert.deepEqual(
       (listed.tools[0]?.inputSchema as { required?: string[] }).required,
-      ["action", "scope", "key"],
+      ["database", "action", "scope", "key"],
     );
 
     const written = await client.callTool({
       name: "kv_store",
-      arguments: { action: "set", scope: "project", key: "k", value: [1, 2, 3] },
+      arguments: { database:"data", action: "set", scope: "project", key: "k", value: [1, 2, 3] },
     });
     assert.deepEqual(JSON.parse(textOf(written.content)), { action: "set", scope: "project", key: "k", stored: true });
 
@@ -458,7 +456,7 @@ test("the MCP rendering publishes the same tool and answers the same way", async
     // protocol error — the model is the one that has to act on it.
     const rejected = await client.callTool({
       name: "kv_store",
-      arguments: { action: "set", scope: "project", key: "k" },
+      arguments: { database:"data", action: "set", scope: "project", key: "k" },
     });
     assert.equal(rejected.isError, true);
     assert.deepEqual(JSON.parse(textOf(rejected.content)), {
@@ -487,17 +485,12 @@ function runCapability(
   context: NodeContext,
   args: Record<string, unknown>,
 ): Promise<unknown> {
-  return runProjectCapabilityAction(toolId, context, args);
+  return runProjectCapabilityAction(toolId, context, {database:"data",...args});
 }
 
 function createContext(): NodeContext {
   const store = createMemoryKVStore();
-  const location: StorageLocationContext = {
-    kv: createProjectKVContext({ store, projectId: "demo", conversationId: "turn-1" }),
-    persistentValue: createProjectPersistentValueContext({ store, projectId: "demo" }),
-    relatedProjects: createProjectRelatedProjectsContext(),
-  };
-  return { storage: { local: location, server: location } } as unknown as NodeContext;
+  return createTestResources(store) as unknown as NodeContext;
 }
 
 function createMemoryKVStore(): KVStore {

@@ -1,2 +1,0 @@
-docker/supabase/volumes/api/*.sh text eol=lf
-docker/supabase/volumes/pooler/*.exs text eol=lf

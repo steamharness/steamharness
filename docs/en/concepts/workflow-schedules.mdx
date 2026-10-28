@@ -32,33 +32,22 @@ When a schedule is saved, its host validates the time zone, windows, Cron expres
 
 ## Recommended schedules
 
-A Workflow can provide recommendations through `package.json.steamHarness.schedulePresets`:
+A Workflow can provide recommendations through `package.json.steamHarness.entries[].schedulePresets`:
 
 ```json
 {
-  "steamHarness": {
-    "schedulePresets": [
-      {
-        "id": "market-hours",
-        "title": "Market data sync",
-        "description": "Synchronizes market data every five minutes during trading hours on weekdays.",
-        "entrypointId": "sync-minute",
-        "timezone": "Asia/Shanghai",
-        "trigger": {
-          "kind": "window-interval",
-          "weekdays": [1, 2, 3, 4, 5],
-          "windows": [
-            { "start": "09:30", "end": "11:30" },
-            { "start": "13:00", "end": "15:10" }
-          ],
-          "intervalMinutes": 5
-        },
-        "paramValues": {
-          "symbols": "000725.SZ,002594.SZ"
-        }
-      }
-    ]
-  }
+  "entryId": "database",
+  "type": "workflow",
+  "name": "Database",
+  "root": "database",
+  "entry": "index.ts",
+  "databases": [],
+  "schedulePresets": [{
+    "id": "hourly", "title": "Hourly sync", "entrypointId": "sync",
+    "timezone": "Asia/Shanghai",
+    "trigger": { "kind": "cron", "expression": "0 * * * *" },
+    "paramValues": {}
+  }]
 }
 ```
 
@@ -91,6 +80,4 @@ You cannot edit or delete a schedule while it has a `pending`, `running`, or `wa
 
 ## Kanban integration
 
-Project KV updates the project revision after a write transaction commits successfully. A Kanban project with a confirmed direct relationship and read access can subscribe by alias and reread data through the same host backend. Rolled-back transactions produce no revision change, and revoking the relationship or read grant closes the subscription.
-
-Server Web previews receive authorized related-project revisions through SSE after data writes. Local and Server KV never synchronize automatically.
+A committed space transaction advances its revision; rollbacks do not notify. Approved Kanban consumers subscribe with `window.steamHarnessKanban.databases.get(alias).subscribe(...)`. Subsequent access rechecks grants. Schedules and fire history are isolated by `projectId + entryId`; internal operations retain `entrypointId`.

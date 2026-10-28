@@ -7,7 +7,7 @@ import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { initI18n } from "@steamharness/i18n";
 import {createConfigurationState,createPublicationDraft,freezeConfigurationTemplate,createLocalProjectConfigurationStore,readCachedConfigurationFile} from "steamharness";
-import { ensureProjectCreated, decodeProjectFileContent, findLocalProjectDependencies, formatForbiddenMessage, materializeProjectGroupDownload, normalizeProjectFilePath, packProject, packProjectGroup, readProjectGroupContexts, getPreparation, main, parseArgs, readProjectPackageContext, resolveRepoRoot, stageProjectWithLocalDependencies, waitForDeviceToken, waitForProjectGroupPreparation, waitForPreparation } from "../workspace";
+import { ensureProjectCreated, decodeProjectFileContent, formatForbiddenMessage, normalizeProjectFilePath, packProject, getPreparation, main, parseArgs, readProjectPackageContext, resolveRepoRoot, stageProjectSource, waitForDeviceToken, waitForPreparation } from "../workspace";
 
 const VALID_STEAMHARNESS_SOURCE = [
   "export const mainProject = steamharness.defineProject({",
@@ -72,201 +72,13 @@ describe("server workspace CLI helpers", () => {
     }
   });
 
-  it("writes exact package versions into project-group manifests", async () => {
-    const root = await mkdtemp(path.join(os.tmpdir(), "workflow-cli-group-version-"));
-    const rootDir = path.join(root, "root");
-    const dependencyDir = path.join(root, "dependency");
-    const rootId = "8bd4fef2-e083-4201-a89f-6f7d0676df71";
-    const dependencyId = "9bd4fef2-e083-4201-a89f-6f7d0676df72";
-    await mkdir(path.join(rootDir, "dist", "pages"), { recursive: true });
-    await mkdir(dependencyDir, { recursive: true });
-    await writeFile(path.join(rootDir, "package.json"), JSON.stringify({
-      id: rootId,
-      name: "Board",
-      version: "0.1.2",
-      steamHarness: {
-        projectType: "kanban",
-        projectInfo: {
-          relatedProjects: [{ alias: "worker", projectId: dependencyId }],
-        },
-        kanban: { artifactDir: "dist", entry: "pages/index.htm" },
-      },
-    }));
-    await writeFile(path.join(rootDir, "index.ts"), "export default {};");
-    await writeFile(path.join(rootDir, "dist", "pages", "index.htm"), "<!doctype html><title>Board</title>");
-    await writeFile(path.join(dependencyDir, "package.json"), JSON.stringify({
-      id: dependencyId,
-      name: "Worker",
-      version: "0.3.0",
-      steamHarness: { projectType: "workflow" },
-    }));
-    await writeFile(path.join(dependencyDir, "index.ts"), VALID_STEAMHARNESS_SOURCE);
-
-    const packed = await packProjectGroup({
-      projectArg: "root",
-      sourcePath: rootDir,
-      dependencyOptions: [`worker=${dependencyDir}`],
-      contexts: {
-        root: await readProjectPackageContext("root", rootDir),
-        dependencies: [{
-          alias: "worker",
-          packageContext: await readProjectPackageContext("worker", dependencyDir),
-        }],
-        locks: [{ alias: "worker", projectId: dependencyId, delivery: "included" }],
-      },
-    });
-    expect(packed.manifest.projects.map((project) => project.version)).toEqual(["0.1.2", "0.3.0"]);
-    await rm(root, { recursive: true, force: true });
+  it('rejects removed relationship and combined-release flags',()=>{
+    for(const flag of ['--project-group','--publish-group','--dependency','--related-project','--grant-data-access'])expect(()=>parseArgs(['upload','hello',flag])).toThrow('Unknown workspace option');
+    expect(()=>parseArgs(['publish','hello','--no-wait'])).toThrow('--no-wait is only supported by upload');
   });
 
-  it("rejects project-group and asynchronous flags when their command cannot honor them", () => {
-    expect(() => parseArgs(["download", "hello", "--project-group"]))
-      .toThrow("--project-group is only supported by pack, upload, and publish");
-    expect(() => parseArgs(["publish", "hello", "--no-wait"]))
-      .toThrow("--no-wait is only supported by upload");
-    expect(() => parseArgs(["upload", "hello", "--project-group", "--no-wait"]))
-      .toThrow("--no-wait is not supported by project-group upload");
-    expect(() => parseArgs(["upload", "hello", "--grant-data-access", "stocks"]))
-      .toThrow("Unknown workspace option: --grant-data-access");
-  });
-
-  it("localizes project-group option errors in both supported languages", () => {
-    initI18n({ preference: "zh-CN" });
-    expect(() => parseArgs(["download", "hello", "--project-group"]))
-      .toThrow("--project-group 仅支持 pack、upload 和 publish 命令");
-    expect(() => parseArgs(["upload", "hello", "--project-group", "--no-wait"]))
-      .toThrow("项目组上传不支持 --no-wait");
-
-    initI18n({ preference: "en" });
-    expect(() => parseArgs(["download", "hello", "--project-group"]))
-      .toThrow("--project-group is only supported by pack, upload, and publish");
-  });
-
-  it("accepts project-group source paths on publish and rejects deployment option mixing", () => {
-    expect(parseArgs([
-      "publish",
-      "board",
-      "--project-group",
-      "--path",
-      "./board",
-      "--dependency",
-      "stocks=./stocks",
-      "--release-log",
-      "publish exact group",
-    ])).toMatchObject({
-      command: "publish",
-      positional: ["board"],
-      options: {
-        projectGroup: true,
-        path: "./board",
-        dependencies: ["stocks=./stocks"],
-        releaseLog: "publish exact group",
-      },
-    });
-
-    expect(() => parseArgs([
-      "publish",
-      "--deployment",
-      "00000000-0000-4000-8000-000000000010",
-      "--dependency",
-      "stocks=./stocks",
-    ])).toThrow("--deployment cannot be combined");
-    expect(() => parseArgs([
-      "publish",
-      "--deployment",
-      "00000000-0000-4000-8000-000000000010",
-      "--release-log",
-      "ignored",
-    ])).toThrow("--deployment cannot be combined");
-  });
-
-  it("builds an included dependency lock from one confirmed related project", async () => {
-    const root = await mkdtemp(path.join(os.tmpdir(), "workflow-cli-project-group-aliases-"));
-    const kanbanDir = path.join(root, "board");
-    const projectDir = path.join(root, "stocks");
-    const dependencyProjectId = "8bd4fef2-e083-4201-a89f-6f7d0676df53";
-    await mkdir(kanbanDir, { recursive: true });
-    await mkdir(projectDir, { recursive: true });
-    await writeFile(path.join(kanbanDir, "package.json"), JSON.stringify({
-      id: "7bd4fef2-e083-4201-a89f-6f7d0676df53",
-      name: "Stock Board",
-      version: "1.0.0",
-      steamHarness: {
-        projectType: "kanban",
-        projectInfo: createProjectInfo("stocks", dependencyProjectId),
-        kanban: {},
-      },
-    }));
-    await writeFile(path.join(kanbanDir, "index.html"), "<!doctype html><title>Board</title>\n");
-    await writeFile(path.join(projectDir, "package.json"), JSON.stringify({
-      id: dependencyProjectId,
-      name: "Stock Database",
-      version: "1.0.0",
-      steamHarness: {
-        projectType: "workflow",
-        projectInfo: createProjectInfo("board", "7bd4fef2-e083-4201-a89f-6f7d0676df53"),
-      },
-    }));
-    await writeFile(path.join(projectDir, "index.ts"), VALID_STEAMHARNESS_SOURCE);
-    await writeFile(path.join(projectDir, "README.md"), "# Stock Database\n");
-
-    try {
-      const contexts = await readProjectGroupContexts({
-        projectArg: "board",
-        sourcePath: kanbanDir,
-        dependencyOptions: [`stocks=${projectDir}`],
-      });
-      expect(contexts.dependencies).toHaveLength(1);
-      expect(contexts.locks.map((lock) => [lock.alias, lock.delivery])).toEqual([
-        ["stocks", "included"],
-      ]);
-      await writeFile(path.join(projectDir, "package.json"), JSON.stringify({
-        id: dependencyProjectId,
-        name: "Stock Database",
-        version: "1.0.0",
-        steamHarness: {
-          projectType: "workflow",
-          projectInfo: createProjectInfo(),
-        },
-      }));
-      await expect(readProjectGroupContexts({
-        projectArg: "board",
-        sourcePath: kanbanDir,
-        dependencyOptions: [`stocks=${projectDir}`],
-      })).rejects.toThrow("not confirmed by both project manifests");
-    } finally {
-      await rm(root, { recursive: true, force: true });
-    }
-  });
-
-  it("rejects a Kanban project group that references its own project UUID", async () => {
-    const root = await mkdtemp(path.join(os.tmpdir(), "workflow-cli-project-group-self-reference-"));
-    const projectId = "7bd4fef2-e083-4201-a89f-6f7d0676df53";
-    await writeFile(path.join(root, "package.json"), JSON.stringify({
-      id: projectId,
-      name: "Invalid Board",
-      version: "1.0.0",
-      steamHarness: {
-        projectType: "kanban",
-        projectInfo: createProjectInfo("self", projectId),
-        kanban: {},
-      },
-    }));
-    await writeFile(path.join(root, "index.html"), "<!doctype html><title>Invalid Board</title>\n");
-
-    try {
-      await expect(readProjectGroupContexts({
-        projectArg: "board",
-        sourcePath: root,
-        dependencyOptions: [],
-      })).rejects.toThrow("cannot reference the current project");
-    } finally {
-      await rm(root, { recursive: true, force: true });
-    }
-  });
-
-  it("excludes host data while staging a project-group source package", async () => {
-    const root = await mkdtemp(path.join(os.tmpdir(), "workflow-cli-project-group-host-data-"));
+  it("excludes host data while staging an aggregate source package", async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "workflow-cli-aggregate-host-data-"));
     const sourceDir = path.join(root, "source", "workflow");
     const stagingRoot = path.join(root, "stage");
     await mkdir(path.join(sourceDir, ".workflow-kv"), { recursive: true });
@@ -275,7 +87,7 @@ describe("server workspace CLI helpers", () => {
     await writeFile(path.join(sourceDir, "package.json"), JSON.stringify({
       id: "8bd4fef2-e083-4201-a89f-6f7d0676df53",
       name: "Workflow",
-      version: "1.0.0",
+      version: "1.0.0",steamHarness:declaration(),
     }));
     await writeFile(path.join(sourceDir, "index.ts"), VALID_STEAMHARNESS_SOURCE);
     await writeFile(path.join(sourceDir, ".env"), "SECRET=value\n");
@@ -288,12 +100,10 @@ describe("server workspace CLI helpers", () => {
     await writeFile(path.join(sourceDir, "workflow-auth.json"), "{\"apiKey\":\"secret\"}\n");
 
     try {
-      await stageProjectWithLocalDependencies({
-        workspaceRoot: path.dirname(sourceDir),
+      await stageProjectSource({
         projectDir: sourceDir,
         projectName: "workflow",
         stagingRoot,
-        projectGroupSafe: true,
       });
       const staged = path.join(stagingRoot, "workflow");
       expect(existsSync(path.join(staged, "package.json"))).toBe(true);
@@ -305,498 +115,6 @@ describe("server workspace CLI helpers", () => {
       expect(existsSync(path.join(staged, ".workflow-persistent-values"))).toBe(false);
       expect(existsSync(path.join(staged, ".workflow-schedules"))).toBe(false);
       expect(existsSync(path.join(staged, "workflow-auth.json"))).toBe(false);
-    } finally {
-      await rm(root, { recursive: true, force: true });
-    }
-  });
-
-  it.each(["workflow", "conversation", "kanban"])("downloads published %s projects without executing their source", async (projectType) => {
-    const root = await mkdtemp(path.join(os.tmpdir(), "workflow-cli-download-type-"));
-    const projectId = "7bd4fef2-e083-4201-a89f-6f7d0676df53";
-    const targetDir = path.join(root, "project");
-    const source = "throw new Error('Downloaded source must not execute');\n";
-    try {
-      const materialized = await materializeProjectGroupDownload(finalizeProjectGroupDownloadFixture({
-        rootProjectId: projectId,
-        rootVersion: "1.2.3",
-        dependencies: [],
-        complete: true,
-        copyAllowed: true,
-        skippedDependencies: [],
-        projects: [{
-          projectId,
-          projectName: "Project",
-          version: "1.2.3",
-          sourceHash: "",
-          role: "root",
-          files: [{
-            path: "package.json",
-            content: JSON.stringify({ id: projectId, name: "Project", version: "1.2.3", steamHarness: { projectType } }),
-          }, { path: "index.ts", content: source }],
-        }],
-      }), targetDir);
-      expect(materialized).toEqual([expect.objectContaining({ projectId, role: "root", path: targetDir, alreadyAvailable: false })]);
-      expect(readFileSync(path.join(targetDir, "index.ts"), "utf8")).toBe(source);
-    } finally {
-      await rm(root, { recursive: true, force: true });
-    }
-  });
-
-  it("verifies downloaded configuration bindings and assets before caching them for offline use", async () => {
-    const root=await mkdtemp(path.join(os.tmpdir(),"configuration-download-"));
-    const projectId="7bd4fef2-e083-4201-a89f-6f7d0676df53",targetDir=path.join(root,"project");
-    vi.spyOn(os,"homedir").mockReturnValue(path.join(root,"host"));
-    const bytes=Buffer.from("immutable-background"),reference={id:"wf_abcdef",name:"background.png",mimeType:"image/png",size:bytes.length,storage:"server" as const};
-    const author=createConfigurationState([{name:"background",type:"file",defaultValue:reference,sharing:{includeValue:true,editable:false}}],()=>"default");
-    const template=freezeConfigurationTemplate(createPublicationDraft(author),{projectId,projectVersion:"1.2.3",sourceHash:"a".repeat(64)});
-    template.attachments=[{id:reference.id,path:`configuration-assets/${reference.id}`,sha256:createHash("sha256").update(bytes).digest("hex")}];
-    const download=finalizeProjectGroupDownloadFixture({
-      rootProjectId:projectId,rootVersion:"1.2.3",dependencies:[],complete:true,copyAllowed:true,skippedDependencies:[],
-      projects:[{projectId,projectName:"Project",version:"1.2.3",sourceHash:"",role:"root" as const,files:[
-        {path:"package.json",content:JSON.stringify({id:projectId,name:"Project",version:"1.2.3",steamHarness:{projectType:"kanban"}})},
-        {path:"configuration.json",content:JSON.stringify({version:2,fields:template.fields})},
-        {path:"configuration.template.json",content:JSON.stringify(template)},
-        {path:template.attachments[0]!.path,content:bytes.toString("base64"),encoding:"base64" as const},
-      ]}],
-    });
-    try {
-      const badBinding=structuredClone(download);
-      badBinding.projects[0]!.files[2]!.content=JSON.stringify({...template,projectId:"another-project"});
-      await expect(materializeProjectGroupDownload(finalizeProjectGroupDownloadFixture(badBinding),targetDir)).rejects.toThrow("binding mismatch");
-      expect(existsSync(targetDir)).toBe(false);
-      const badAsset=structuredClone(download);badAsset.projects[0]!.files[3]!.content=Buffer.from("tampered").toString("base64");
-      await expect(materializeProjectGroupDownload(finalizeProjectGroupDownloadFixture(badAsset),targetDir)).rejects.toThrow("attachment hash mismatch");
-      expect(existsSync(targetDir)).toBe(false);
-      await materializeProjectGroupDownload(download,targetDir);
-      const store=await createLocalProjectConfigurationStore(targetDir),state=await store.read();
-      expect((await store.snapshot()).values.background).toEqual(reference);
-      await expect(store.dispatch({action:"save",id:state.activeConfigurationId,revision:state.revision,values:{background:{...reference,id:"wf_123abc"}}})).rejects.toThrow(/locked/);
-      await rm(path.join(targetDir,"configuration-assets"),{recursive:true});
-      expect(Buffer.from((await readCachedConfigurationFile(targetDir,reference.id))!.base64,"base64")).toEqual(bytes);
-      expect(existsSync(path.join(targetDir,".steamharness"))).toBe(false);
-      expect((await readdir(path.join(root,"host",".steamharness","configuration-templates"))).some(name=>name.endsWith(".json"))).toBe(true);
-    } finally {vi.restoreAllMocks();await rm(root,{recursive:true,force:true});}
-  });
-
-  it.each(["workflow", "conversation", "kanban"])("downloads %s source with unconfirmed related-project declarations", async (projectType) => {
-    const root = await mkdtemp(path.join(os.tmpdir(), "workflow-cli-download-pending-"));
-    const projectId = "7bd4fef2-e083-4201-a89f-6f7d0676df53";
-    const pendingProjectId = "8bd4fef2-e083-4201-a89f-6f7d0676df53";
-    const targetDir = path.join(root, "project");
-    const packageJson = { ...createKanbanPackage(projectId, "Project"), version: "1.0.0",
-      steamHarness: { projectType, projectInfo: createProjectInfo("pending", pendingProjectId) } };
-    const download = finalizeProjectGroupDownloadFixture({
-      rootProjectId: projectId, rootVersion: "1.0.0", dependencies: [], complete: true, copyAllowed: true,
-      skippedDependencies: [], projects: [{ projectId, projectName: "Project", version: "1.0.0", sourceHash: "", role: "root",
-        files: [{ path: "package.json", content: JSON.stringify(packageJson) }] }],
-    });
-    try {
-      const materialized = await materializeProjectGroupDownload(download, targetDir);
-      expect(materialized).toHaveLength(1);
-      expect(JSON.parse(readFileSync(path.join(targetDir, "package.json"), "utf8"))).toEqual(packageJson);
-    } finally { await rm(root, { recursive: true, force: true }); }
-  });
-
-  it("rejects dependency locks that are not declared by the root project", async () => {
-    const root = await mkdtemp(path.join(os.tmpdir(), "workflow-cli-download-undeclared-"));
-    const projectId = "7bd4fef2-e083-4201-a89f-6f7d0676df53";
-    const dependencyId = "8bd4fef2-e083-4201-a89f-6f7d0676df53";
-    const targetDir = path.join(root, "project");
-    const download = finalizeProjectGroupDownloadFixture({
-      rootProjectId: projectId, rootVersion: "1.0.0",
-      dependencies: [{ alias: "undeclared", projectId: dependencyId, delivery: "external" }], complete: true, copyAllowed: true,
-      skippedDependencies: [], projects: [{ projectId, projectName: "Project", version: "1.0.0", sourceHash: "", role: "root",
-        files: [{ path: "package.json", content: JSON.stringify(createKanbanPackage(projectId, "Project")) }] }],
-    });
-    try {
-      await expect(materializeProjectGroupDownload(download, targetDir)).rejects.toThrow("dependency lock does not match");
-      expect(existsSync(targetDir)).toBe(false);
-    } finally { await rm(root, { recursive: true, force: true }); }
-  });
-
-  it("keeps an existing sibling project unchanged when completing a group download", async () => {
-    const root = await mkdtemp(path.join(os.tmpdir(), "workflow-cli-project-group-download-"));
-    const rootTargetDir = path.join(root, "Stock Board");
-    const projectId = "7bd4fef2-e083-4201-a89f-6f7d0676df53";
-    const download = finalizeProjectGroupDownloadFixture({
-      rootProjectId: projectId,
-      rootVersion: "1.0.0",
-      dependencies: [],
-      complete: true,
-      copyAllowed: true,
-      skippedDependencies: [],
-      projects: [{
-        projectId,
-        projectName: "Stock Board",
-        version: "1.0.0",
-        sourceHash: "a".repeat(64),
-        role: "root" as const,
-        files: [
-          { path: "package.json", content: JSON.stringify(createKanbanPackage(projectId, "Stock Board")) },
-          { path: "index.html", content: "first" },
-        ],
-      }],
-    });
-
-    try {
-      const first = await materializeProjectGroupDownload(download, rootTargetDir);
-      expect(first[0]?.alreadyAvailable).toBe(false);
-      await writeFile(path.join(rootTargetDir, "index.html"), "local edit");
-      const second = await materializeProjectGroupDownload(finalizeProjectGroupDownloadFixture({
-        ...download,
-        projects: download.projects.map((project) => ({
-          ...project,
-          files: project.files.map((file) => file.path === "index.html" ? { ...file, content: "server edit" } : file),
-        })),
-      }), rootTargetDir);
-      expect(second[0]?.alreadyAvailable).toBe(true);
-      expect(readFileSync(path.join(rootTargetDir, "index.html"), "utf8")).toBe("local edit");
-    } finally {
-      await rm(root, { recursive: true, force: true });
-    }
-  });
-
-  it("does not reuse a sibling root with the same UUID and a different version", async () => {
-    const root = await mkdtemp(path.join(os.tmpdir(), "workflow-cli-download-version-"));
-    const projectId = "7bd4fef2-e083-4201-a89f-6f7d0676df53";
-    const existingDir = path.join(root, "Project-1.0.0"), targetDir = path.join(root, "Project-2.0.0");
-    await mkdir(existingDir);
-    await writeFile(path.join(existingDir, "package.json"), JSON.stringify(createKanbanPackage(projectId, "Project")));
-    await writeFile(path.join(existingDir, "local.txt"), "keep");
-    const download = finalizeProjectGroupDownloadFixture({
-      rootProjectId: projectId, rootVersion: "2.0.0", dependencies: [], complete: true, copyAllowed: true,
-      skippedDependencies: [], projects: [{ projectId, projectName: "Project", version: "2.0.0", sourceHash: "", role: "root",
-        files: [{ path: "package.json", content: JSON.stringify({ ...createKanbanPackage(projectId, "Project"), version: "2.0.0" }) }] }],
-    });
-    try {
-      const materialized = await materializeProjectGroupDownload(download, targetDir);
-      expect(materialized).toEqual([expect.objectContaining({ path: targetDir, alreadyAvailable: false })]);
-      expect(readFileSync(path.join(existingDir, "local.txt"), "utf8")).toBe("keep");
-      const matching = await materializeProjectGroupDownload(download, path.join(root, "another-target"));
-      expect(matching).toEqual([expect.objectContaining({ path: targetDir, alreadyAvailable: true })]);
-      await expect(materializeProjectGroupDownload(finalizeProjectGroupDownloadFixture({
-        ...download, rootVersion: "3.0.0", projects: [{ ...download.projects[0]!, version: "3.0.0",
-          files: [{ path: "package.json", content: JSON.stringify({ ...createKanbanPackage(projectId, "Project"), version: "3.0.0" }) }] }],
-      }), existingDir)).rejects.toThrow("multiple projects resolve to directory");
-      expect(readFileSync(path.join(existingDir, "local.txt"), "utf8")).toBe("keep");
-    } finally { await rm(root, { recursive: true, force: true }); }
-  });
-
-  it("does not treat an unavailable pinned dependency as complete using a different local version", async () => {
-    const root = await mkdtemp(path.join(os.tmpdir(), "workflow-cli-download-dependency-version-"));
-    const projectId = "7bd4fef2-e083-4201-a89f-6f7d0676df53";
-    const dependencyId = "8bd4fef2-e083-4201-a89f-6f7d0676df53";
-    const existingDir = path.join(root, "Database"), targetDir = path.join(root, "Board");
-    await mkdir(existingDir);
-    await writeFile(path.join(existingDir, "package.json"), JSON.stringify({
-      ...createKanbanPackage(dependencyId, "Database", projectId, "board"), version: "0.4.0",
-    }));
-    const dependency = createPublishedDependencyLock(dependencyId);
-    const download = finalizeProjectGroupDownloadFixture({
-      rootProjectId: projectId, rootVersion: "1.0.0", dependencies: [dependency], complete: false, copyAllowed: false,
-      skippedDependencies: [{ dependency, reason: "permission_required" as const }],
-      projects: [{ projectId, projectName: "Board", version: "1.0.0", sourceHash: "", role: "root",
-        files: [{ path: "package.json", content: JSON.stringify(createKanbanPackage(projectId, "Board", dependencyId)) }] }],
-    });
-    try {
-      const materialized = await materializeProjectGroupDownload(download, targetDir);
-      expect(materialized.map(project => project.projectId)).toEqual([projectId]);
-      expect(JSON.parse(readFileSync(path.join(existingDir, "package.json"), "utf8")).version).toBe("0.4.0");
-    } finally { await rm(root, { recursive: true, force: true }); }
-  });
-
-  it("rejects project-group files that do not match the server source hash", async () => {
-    const root = await mkdtemp(path.join(os.tmpdir(), "workflow-cli-project-group-hash-"));
-    const rootTargetDir = path.join(root, "Stock Board");
-    const projectId = "7bd4fef2-e083-4201-a89f-6f7d0676df53";
-    const download = finalizeProjectGroupDownloadFixture({
-      rootProjectId: projectId,
-      rootVersion: "1.0.0",
-      dependencies: [],
-      complete: true,
-      copyAllowed: true,
-      skippedDependencies: [],
-      projects: [{
-        projectId,
-        projectName: "Stock Board",
-        version: "1.0.0",
-        sourceHash: "a".repeat(64),
-        role: "root" as const,
-        files: [
-          { path: "package.json", content: JSON.stringify(createKanbanPackage(projectId, "Stock Board")) },
-          { path: "index.html", content: "original" },
-        ],
-      }],
-    });
-
-    try {
-      await expect(materializeProjectGroupDownload({
-        ...download,
-        rootVersion: "1.0.1",
-      }, rootTargetDir)).rejects.toThrow("root version does not match its download plan");
-      download.projects[0]!.files[1]!.content = "tampered";
-      await expect(materializeProjectGroupDownload(download, rootTargetDir))
-        .rejects.toThrow("source hash does not match its files");
-      expect(existsSync(rootTargetDir)).toBe(false);
-    } finally {
-      await rm(root, { recursive: true, force: true });
-    }
-  });
-
-  it("treats an omitted included dependency with the same local UUID as satisfied", async () => {
-    const root = await mkdtemp(path.join(os.tmpdir(), "workflow-cli-existing-group-dependency-"));
-    const rootTargetDir = path.join(root, "Stock Board");
-    const dependencyDir = path.join(root, "Stock Database");
-    const rootProjectId = "7bd4fef2-e083-4201-a89f-6f7d0676df58";
-    const dependencyProjectId = "8bd4fef2-e083-4201-a89f-6f7d0676df58";
-    await mkdir(dependencyDir, { recursive: true });
-    await writeFile(path.join(dependencyDir, "package.json"), JSON.stringify({
-      id: dependencyProjectId,
-      name: "Stock Database",
-      version: "0.5.0",
-      steamHarness: {
-        projectType: "workflow",
-        projectInfo: createProjectInfo("board", rootProjectId),
-      },
-    }));
-    await writeFile(path.join(dependencyDir, "index.ts"), VALID_STEAMHARNESS_SOURCE);
-
-    try {
-      const materialized = await materializeProjectGroupDownload(finalizeProjectGroupDownloadFixture({
-        rootProjectId,
-        rootVersion: "1.0.0",
-        dependencies: [createPublishedDependencyLock(dependencyProjectId)],
-        complete: false,
-        copyAllowed: false,
-        skippedDependencies: [{
-          dependency: createPublishedDependencyLock(dependencyProjectId),
-          reason: "permission_required",
-          requestUrl: "https://steamharness.example/access-requests/token",
-        }],
-        projects: [{
-          projectId: rootProjectId,
-          projectName: "Stock Board",
-          version: "1.0.0",
-          sourceHash: "a".repeat(64),
-          role: "root",
-          files: [{
-            path: "package.json",
-            content: JSON.stringify(createKanbanPackage(rootProjectId, "Stock Board", dependencyProjectId)),
-          }, {
-            path: "index.html",
-            content: "<!doctype html><title>Stock Board</title>",
-          }],
-        }],
-      }), rootTargetDir);
-
-      expect(materialized).toEqual(expect.arrayContaining([
-        expect.objectContaining({ projectId: rootProjectId, alreadyAvailable: false }),
-        expect.objectContaining({
-          projectId: dependencyProjectId,
-          path: dependencyDir,
-          role: "dependency",
-          alreadyAvailable: true,
-        }),
-      ]));
-      expect(readFileSync(path.join(dependencyDir, "index.ts"), "utf8")).toBe(VALID_STEAMHARNESS_SOURCE);
-    } finally {
-      await rm(root, { recursive: true, force: true });
-    }
-  });
-
-  it("accepts general related project types and rejects portable path collisions before moving files", async () => {
-    const root = await mkdtemp(path.join(os.tmpdir(), "workflow-cli-invalid-group-role-"));
-    const rootTargetDir = path.join(root, "Stock Board");
-    const rootProjectId = "7bd4fef2-e083-4201-a89f-6f7d0676df59";
-    const dependencyProjectId = "8bd4fef2-e083-4201-a89f-6f7d0676df59";
-    const dependencyLock = createPublishedDependencyLock(dependencyProjectId);
-    const baseDownload = finalizeProjectGroupDownloadFixture({
-      rootProjectId,
-      rootVersion: "1.0.0",
-      dependencies: [dependencyLock],
-      complete: true,
-      copyAllowed: true,
-      skippedDependencies: [],
-      projects: [{
-        projectId: rootProjectId,
-        projectName: "Stock Board",
-        version: "1.0.0",
-        sourceHash: "a".repeat(64),
-        role: "root" as const,
-        files: [{
-          path: "package.json",
-          content: JSON.stringify(createKanbanPackage(rootProjectId, "Stock Board", dependencyProjectId)),
-        }, {
-          path: "index.html",
-          content: "<!doctype html><title>Stock Board</title>",
-        }],
-      }, {
-        alias: "stocks",
-        projectId: dependencyProjectId,
-        projectName: "Dependency Kanban",
-        version: "0.5.0",
-        sourceHash: "b".repeat(64),
-        role: "dependency" as const,
-        files: [{
-          path: "package.json",
-          content: JSON.stringify({
-            ...createKanbanPackage(dependencyProjectId, "Dependency Kanban", rootProjectId, "board"),
-            version: "0.5.0",
-          }),
-        }, {
-          path: "index.html",
-          content: "<!doctype html><title>Dependency Kanban</title>",
-        }],
-      }],
-    });
-
-    try {
-      const duplicatePathDownload = structuredClone(baseDownload);
-      duplicatePathDownload.projects[0]!.files.push({
-        path: "INDEX.HTML",
-        content: "portable collision",
-      });
-      await expect(materializeProjectGroupDownload(duplicatePathDownload, rootTargetDir))
-        .rejects.toThrow("duplicate file");
-      expect(existsSync(rootTargetDir)).toBe(false);
-    } finally {
-      await rm(root, { recursive: true, force: true });
-    }
-  });
-
-  it("rejects a conflicting target directory without overwriting local files", async () => {
-    const root = await mkdtemp(path.join(os.tmpdir(), "workflow-cli-project-group-conflict-"));
-    const rootTargetDir = path.join(root, "Stock Board");
-    const projectId = "7bd4fef2-e083-4201-a89f-6f7d0676df54";
-    await mkdir(rootTargetDir, { recursive: true });
-    await writeFile(path.join(rootTargetDir, "package.json"), JSON.stringify({
-      id: "7bd4fef2-e083-4201-a89f-6f7d0676df55",
-      name: "Different Project",
-      version: "1.0.0",
-    }));
-    await writeFile(path.join(rootTargetDir, "local.txt"), "keep me");
-
-    try {
-      await expect(materializeProjectGroupDownload(finalizeProjectGroupDownloadFixture({
-        rootProjectId: projectId,
-        rootVersion: "1.0.0",
-        dependencies: [],
-        complete: true,
-        copyAllowed: true,
-        skippedDependencies: [],
-        projects: [{
-          projectId,
-          projectName: "Stock Board",
-          version: "1.0.0",
-          sourceHash: "a".repeat(64),
-          role: "root",
-          files: [{
-            path: "package.json",
-              content: JSON.stringify(createKanbanPackage(projectId, "Stock Board")),
-          }],
-        }],
-      }), rootTargetDir)).rejects.toThrow(/already exists with a different project id/);
-      expect(readFileSync(path.join(rootTargetDir, "local.txt"), "utf8")).toBe("keep me");
-    } finally {
-      await rm(root, { recursive: true, force: true });
-    }
-  });
-
-  it("does not materialize any project when one staged package fails identity validation", async () => {
-    const root = await mkdtemp(path.join(os.tmpdir(), "workflow-cli-project-group-atomic-"));
-    const rootTargetDir = path.join(root, "Stock Board");
-    const dependencyTargetDir = path.join(root, "Stock Database");
-    const rootProjectId = "7bd4fef2-e083-4201-a89f-6f7d0676df56";
-    const dependencyProjectId = "8bd4fef2-e083-4201-a89f-6f7d0676df56";
-
-    try {
-      await expect(materializeProjectGroupDownload(finalizeProjectGroupDownloadFixture({
-        rootProjectId,
-        rootVersion: "1.0.0",
-        dependencies: [createPublishedDependencyLock(dependencyProjectId)],
-        complete: true,
-        copyAllowed: true,
-        skippedDependencies: [],
-        projects: [
-          {
-            projectId: rootProjectId,
-            projectName: "Stock Board",
-            version: "1.0.0",
-            sourceHash: "a".repeat(64),
-            role: "root",
-            files: [{
-              path: "package.json",
-              content: JSON.stringify(createKanbanPackage(
-                rootProjectId,
-                "Stock Board",
-                dependencyProjectId,
-              )),
-            }, {
-              path: "index.html",
-              content: "<!doctype html><title>Stock Board</title>",
-            }],
-          },
-          {
-            alias: "stocks",
-            projectId: dependencyProjectId,
-            projectName: "Stock Database",
-            version: "0.5.0",
-            sourceHash: "b".repeat(64),
-            role: "dependency",
-            files: [{
-              path: "package.json",
-              content: JSON.stringify({ id: rootProjectId, name: "Wrong Project", version: "0.5.0" }),
-            }],
-          },
-        ],
-      }), rootTargetDir)).rejects.toThrow(/package id does not match/);
-      expect(existsSync(rootTargetDir)).toBe(false);
-      expect(existsSync(dependencyTargetDir)).toBe(false);
-      expect((await readdir(root)).some((name) => name.startsWith(".workflow-download-group-"))).toBe(false);
-    } finally {
-      await rm(root, { recursive: true, force: true });
-    }
-  });
-
-  it("rejects host data returned by a project-group download before writing files", async () => {
-    const root = await mkdtemp(path.join(os.tmpdir(), "workflow-cli-project-group-host-download-"));
-    const rootTargetDir = path.join(root, "Stock Board");
-    const projectId = "7bd4fef2-e083-4201-a89f-6f7d0676df57";
-
-    try {
-      for (const forbiddenPath of [
-        ".env",
-        ".workflow-kv/value.json",
-        ".workflow-persistent-values/value.json",
-        ".workflow-schedules/schedules.json",
-        ".workflow-runs/history.json",
-        "steamharness.sqlite",
-        "workflow-auth.json",
-      ]) {
-        await expect(materializeProjectGroupDownload(finalizeProjectGroupDownloadFixture({
-          rootProjectId: projectId,
-          rootVersion: "1.0.0",
-          dependencies: [],
-          complete: true,
-          copyAllowed: true,
-          skippedDependencies: [],
-          projects: [{
-            projectId,
-            projectName: "Stock Board",
-            version: "1.0.0",
-            sourceHash: "a".repeat(64),
-            role: "root",
-            files: [
-              {
-                path: "package.json",
-                content: JSON.stringify(createKanbanPackage(projectId, "Stock Board")),
-              },
-              { path: forbiddenPath, content: "host data" },
-            ],
-          }],
-        }), rootTargetDir)).rejects.toThrow(/forbidden host data/);
-        expect(existsSync(rootTargetDir)).toBe(false);
-      }
     } finally {
       await rm(root, { recursive: true, force: true });
     }
@@ -851,46 +169,6 @@ describe("server workspace CLI helpers", () => {
     expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 
-  it("polls project-group deployments until preparation completes", async () => {
-    const deploymentId = "a0000000-0000-4000-8000-000000000032";
-    const fetchMock = vi.fn()
-      .mockResolvedValueOnce(createJsonResponse({
-        errCode: 0,
-        errMessage: "",
-        data: {
-          id: deploymentId,
-          rootProjectId: "demo",
-          status: "preparing",
-          manifest: { version: 1, rootProjectId: "demo", projects: [], dependencies: [] },
-          items: [{ projectId: "demo", status: "preparing", stage: "bundling" }],
-        },
-      }))
-      .mockResolvedValueOnce(createJsonResponse({
-        errCode: 0,
-        errMessage: "",
-        data: {
-          id: deploymentId,
-          rootProjectId: "demo",
-          status: "prepared",
-          manifest: { version: 1, rootProjectId: "demo", projects: [], dependencies: [] },
-          items: [{ projectId: "demo", status: "prepared", stage: "prepared" }],
-        },
-      }));
-    vi.stubGlobal("fetch", fetchMock);
-    vi.spyOn(process.stderr, "write").mockImplementation(() => true);
-
-    const result = await waitForProjectGroupPreparation({
-      deploymentId,
-      server: "http://localhost:7125",
-      token: "token",
-      pollIntervalMs: 0,
-    });
-
-    expect(result.errCode).toBe(0);
-    expect(result.data?.status).toBe("prepared");
-    expect(fetchMock).toHaveBeenCalledTimes(2);
-  });
-
   it("queries a persisted preparation job after upload --no-wait", async () => {
     const fetchMock = vi.fn().mockResolvedValue(createJsonResponse({
       errCode: 0,
@@ -924,7 +202,7 @@ describe("server workspace CLI helpers", () => {
     await writeFile(path.join(sourceProjectDir, "package.json"), JSON.stringify({
       id: "a7e15f8a-e179-4986-8b0d-1e69a0e65b51",
       name: "@steamharness/optional-readme",
-      version: "0.1.0",
+      version: "0.1.0",steamHarness:declaration(),
     }));
     await writeFile(path.join(sourceProjectDir, "index.ts"), "export default {};\n");
     await expect(packProject("optional-readme", archivePath, sourceProjectDir))
@@ -942,15 +220,14 @@ describe("server workspace CLI helpers", () => {
       name: "Kanban",
       version: "0.1.0",
       steamHarness: {
-        projectType: "kanban",
-        kanban: { artifactDir: "dist", entry: "pages/board.htm" },
+        defaultEntry:"main",entries:[{entryId:"main",name:"Main",type:"kanban",root:"dist",entry:"pages/board.html",databases:[]}],
       },
     }));
     await mkdir(path.join(sourceDir, "dist", "pages"), { recursive: true });
     await mkdir(path.join(sourceDir, "src"), { recursive: true });
     await writeFile(path.join(sourceDir, ".gitignore"), "dist/\n");
     await writeFile(path.join(sourceDir, ".steamharnessignore"), "src/\ndist/**/*.map\n");
-    await writeFile(path.join(sourceDir, "dist", "pages", "board.htm"), "<!doctype html><title>Kanban</title>\n");
+    await writeFile(path.join(sourceDir, "dist", "pages", "board.html"), "<!doctype html><title>Kanban</title>\n");
     await writeFile(path.join(sourceDir, "dist", "board.png"), Buffer.from([0, 1, 2, 255]));
     await writeFile(path.join(sourceDir, "dist", "app.js.map"), "{}");
     await writeFile(path.join(sourceDir, "src", "main.ts"), "source");
@@ -959,7 +236,7 @@ describe("server workspace CLI helpers", () => {
     const contents = await runTarList(archivePath);
     expect(contents).toContain("workspace/workflow/kanban/.gitignore");
     expect(contents).toContain("workspace/workflow/kanban/.steamharnessignore");
-    expect(contents).toContain("workspace/workflow/kanban/dist/pages/board.htm");
+    expect(contents).toContain("workspace/workflow/kanban/dist/pages/board.html");
     expect(contents).toContain("workspace/workflow/kanban/dist/board.png");
     expect(contents).not.toContain("workspace/workflow/kanban/dist/app.js.map");
     expect(contents).not.toContain("workspace/workflow/kanban/src/main.ts");
@@ -1265,7 +542,7 @@ describe("server workspace CLI helpers", () => {
       id: "8bd4fef2-e083-4201-a89f-6f7d0676df53",
       name: "Hello Workflow",
       version: "0.0.1",
-      steamHarness: { projectType: "workflow" },
+      steamHarness: declaration(),
     }, null, 2));
     await writeFile(path.join(projectDir, "index.ts"), VALID_STEAMHARNESS_SOURCE);
 
@@ -1285,231 +562,41 @@ describe("server workspace CLI helpers", () => {
     }
   });
 
-  it("requires explicit application allocation when the local ID is invalid", async () => {
-    const root = await mkdtemp(path.join(os.tmpdir(), "workflow-cli-create-"));
-    const projectDir = path.join(root, "workspace", "workflow", "hello");
-    await mkdir(projectDir, { recursive: true });
-    await writeFile(path.join(projectDir, "package.json"), JSON.stringify({
-      id: "hello",
-      name: "Hello Workflow",
-      version: "0.0.1",
-      steamHarness: { projectType: "workflow", projectInfo: createProjectInfo() },
-    }, null, 2));
-    await writeFile(path.join(projectDir, "index.ts"), VALID_STEAMHARNESS_SOURCE);
-
-    const previousRepoRoot = process.env.STEAMHARNESS_REPO_ROOT;
-    process.env.STEAMHARNESS_REPO_ROOT = root;
-    const fetchMock = vi.fn();
-    vi.stubGlobal("fetch", fetchMock);
-
-    try {
-      const packageContext = await readProjectPackageContext("hello", undefined);
-      await expect(ensureProjectCreated({
-        packageContext,
-        server: "http://127.0.0.1:7125",
-        token: "api-key",
-      })).rejects.toThrow(/not registered/);
-      expect(fetchMock).not.toHaveBeenCalled();
-    } finally {
-      if (previousRepoRoot === undefined) {
-        delete process.env.STEAMHARNESS_REPO_ROOT;
-      } else {
-        process.env.STEAMHARNESS_REPO_ROOT = previousRepoRoot;
-      }
-    }
+  it('rejects invalid aggregate identity before any remote allocation',async()=>{
+    const root=await mkdtemp(path.join(os.tmpdir(),'invalid-aggregate-'));
+    try{await writeFile(path.join(root,'package.json'),JSON.stringify({id:'invalid',name:'Invalid',steamHarness:declaration()}));await expect(readProjectPackageContext('invalid',root)).rejects.toThrow();}finally{await rm(root,{recursive:true,force:true});}
   });
 
   it.each([undefined, "team-group"])("applies for a new ID with selected ownership group %s", async groupId => {
     const root = await mkdtemp(path.join(os.tmpdir(), "workflow-cli-allocate-"));
     const projectDir = path.join(root, "hello"); await mkdir(projectDir);
     const oldId = "8bd4fef2-e083-4201-a89f-6f7d0676df53", newId = "78648759-bcde-4fd5-b3bd-9a2dd46a7192";
-    await writeFile(path.join(projectDir, "package.json"), JSON.stringify({ id: oldId, name: "Hello Workflow", version: "0.0.1", steamHarness: { projectType: "workflow", projectInfo: createProjectInfo() } }, null, 2));
+    await writeFile(path.join(projectDir, "package.json"), JSON.stringify({ id: oldId, name: "Hello Workflow", version: "0.0.1", steamHarness: {...declaration(), projectInfo: createProjectInfo() } }, null, 2));
     await writeFile(path.join(projectDir, "index.ts"), VALID_STEAMHARNESS_SOURCE);
-    const fetchMock = vi.fn().mockResolvedValueOnce(createJsonResponse({ errCode: 404, errMessage: "missing" })).mockResolvedValue(createJsonResponse({ errCode: 0, data: { projectId: newId, projectType: "workflow", projectName: "Hello Workflow", visibility: "private" } }));
+    const fetchMock = vi.fn().mockResolvedValueOnce(createJsonResponse({ errCode: 404, errMessage: "missing" })).mockResolvedValue(createJsonResponse({ errCode: 0, data: { projectId: newId, entries:declaration().entries,defaultEntry:"main", projectName: "Hello Workflow", visibility: "private" } }));
     vi.stubGlobal("fetch", fetchMock);
     const packageContext = await readProjectPackageContext("hello", projectDir);
     const created = await ensureProjectCreated({ packageContext, groupId, allowNewApplication: true, server: "http://127.0.0.1:7125", token: "api-key" });
     expect(created.projectId).toBe(newId);
     const body = JSON.parse(fetchMock.mock.calls[1][1].body);
-    expect(body).toEqual({ name: "Hello Workflow", projectType: "workflow", projectInfo: { localizedNames: {}, declarations: [], platformSupport: { mode: "agnostic" }, ...createProjectInfo() }, ...(groupId ? { groupId } : {}) });
+    expect(body).toEqual({ name: "Hello Workflow", entries:declaration().entries,defaultEntry:"main", projectInfo: { localizedNames: {}, declarations: [], platformSupport: { mode: "agnostic" }, ...createProjectInfo() }, ...(groupId ? { groupId } : {}) });
     expect(JSON.parse(readFileSync(path.join(projectDir, "package.json"), "utf8"))).toMatchObject({ id: newId, name: "Hello Workflow" });
-    fetchMock.mockReset().mockResolvedValue(createJsonResponse({ errCode: 0, data: { id: newId, name: "Hello Workflow", projectType: "workflow", visibility: "private" } }));
+    fetchMock.mockReset().mockResolvedValue(createJsonResponse({ errCode: 0, data: { id: newId, name: "Hello Workflow", entries:declaration().entries,defaultEntry:"main", visibility: "private" } }));
     await ensureProjectCreated({ packageContext: await readProjectPackageContext("hello", projectDir), server: "http://127.0.0.1:7125", token: "api-key" });
     expect(fetchMock).toHaveBeenCalledOnce(); expect(fetchMock.mock.calls[0][1].method).toBe("GET");
   });
 
-  it("rejects project creation when data storage is undeclared", async () => {
-    const root = await mkdtemp(path.join(os.tmpdir(), "workflow-cli-create-storage-"));
-    const projectDir = path.join(root, "workspace", "workflow", "hello");
-    await mkdir(projectDir, { recursive: true });
-    await writeFile(path.join(projectDir, "package.json"), JSON.stringify({
-      id: "8bd4fef2-e083-4201-a89f-6f7d0676df53",
-      name: "Hello Workflow",
-      version: "0.0.1",
-      steamHarness: { projectType: "workflow" },
-    }, null, 2));
-    await writeFile(path.join(projectDir, "index.ts"), VALID_STEAMHARNESS_SOURCE);
-
-    const previousRepoRoot = process.env.STEAMHARNESS_REPO_ROOT;
-    process.env.STEAMHARNESS_REPO_ROOT = root;
-    const fetchMock = vi.fn();
-    vi.stubGlobal("fetch", fetchMock);
-
+  it('packages every registered entry and removes installed database bindings',async()=>{
+    const root=await mkdtemp(path.join(os.tmpdir(),'aggregate-pack-'));
     try {
-      const packageContext = await readProjectPackageContext("hello", undefined);
-      await expect(ensureProjectCreated({
-        packageContext,
-        server: "http://127.0.0.1:7125",
-        token: "api-key",
-      })).rejects.toThrow(/dataStorage\.mode/);
-      expect(fetchMock).not.toHaveBeenCalled();
-    } finally {
-      if (previousRepoRoot === undefined) {
-        delete process.env.STEAMHARNESS_REPO_ROOT;
-      } else {
-        process.env.STEAMHARNESS_REPO_ROOT = previousRepoRoot;
-      }
-    }
-  });
-
-  it("finds sibling workflow source dependencies from relative imports", async () => {
-    const root = await mkdtemp(path.join(os.tmpdir(), "workflow-cli-local-deps-"));
-    const projectDir = path.join(root, "workspace", "workflow", "deltaforce-openai-agent");
-    await mkdir(projectDir, { recursive: true });
-    await writeFile(
-      path.join(projectDir, "index.ts"),
-      [
-        'import { openaiAgentsProject } from "../openai-agents/index";',
-        'import type { ParsedAgentInput } from "../deltafore-agent/interface";',
-        '/// <reference path="../deltafore-agent/globals.d.ts" />',
-        "",
-      ].join("\n"),
-      "utf8",
-    );
-
-    expect(await findLocalProjectDependencies(projectDir)).toEqual([
-      "deltafore-agent",
-      "openai-agents",
-    ]);
-  });
-
-  it("stages a workflow with sibling workflow source dependencies", async () => {
-    const root = await mkdtemp(path.join(os.tmpdir(), "workflow-cli-stage-"));
-    const workspaceRoot = path.join(root, "workspace", "workflow");
-    const sourceProjectDir = path.join(workspaceRoot, "deltaforce-openai-agent");
-    const siblingOpenaiDir = path.join(workspaceRoot, "openai-agents");
-    const siblingDeltaforeDir = path.join(workspaceRoot, "deltafore-agent");
-    const stagingRoot = path.join(root, "stage", "workspace", "workflow");
-
-    await mkdir(sourceProjectDir, { recursive: true });
-    await mkdir(siblingOpenaiDir, { recursive: true });
-    await mkdir(siblingDeltaforeDir, { recursive: true });
-    await writeFile(
-      path.join(sourceProjectDir, "package.json"),
-      JSON.stringify({
-        id: "3c0292f9-9731-4862-9019-19544eeca705",
-        name: "@steamharness/deltaforce-openai-agent-workflow",
-        version: "0.1.0",
-      }),
-      "utf8",
-    );
-    await writeFile(
-      path.join(sourceProjectDir, "index.ts"),
-      [
-        'import { openaiAgentsProject } from "../openai-agents/index";',
-        'import { createFinalAnswerInput } from "../deltafore-agent/agent/decision";',
-        "",
-      ].join("\n"),
-      "utf8",
-    );
-    await writeFile(path.join(sourceProjectDir, "interface.ts"), "export type Foo = string;\n", "utf8");
-    await writeFile(path.join(sourceProjectDir, "README.md"), "# Deltaforce\n", "utf8");
-    await writeFile(path.join(siblingOpenaiDir, "package.json"), '{"name":"openai-agents"}\n', "utf8");
-    await writeFile(path.join(siblingOpenaiDir, "index.ts"), "export const openaiAgentsProject = {};\n", "utf8");
-    await writeFile(path.join(siblingOpenaiDir, "README.md"), "# OpenAI agents\n", "utf8");
-    await writeFile(path.join(siblingDeltaforeDir, "package.json"), '{"name":"deltafore-agent"}\n', "utf8");
-    await writeFile(path.join(siblingDeltaforeDir, "index.ts"), "export default {};\n", "utf8");
-    await writeFile(path.join(siblingDeltaforeDir, "README.md"), "# Deltafore agent\n", "utf8");
-    await mkdir(path.join(siblingDeltaforeDir, "agent"), { recursive: true });
-    await writeFile(
-      path.join(siblingDeltaforeDir, "agent", "decision.ts"),
-      "export const createFinalAnswerInput = () => ({});\n",
-      "utf8",
-    );
-
-    await stageProjectWithLocalDependencies({
-      workspaceRoot,
-      projectDir: sourceProjectDir,
-      projectName: "deltaforce-openai-agent",
-      stagingRoot,
-    });
-
-    expect(existsSync(path.join(stagingRoot, "deltaforce-openai-agent", "index.ts"))).toBe(true);
-    expect(existsSync(path.join(stagingRoot, "openai-agents", "index.ts"))).toBe(true);
-    expect(existsSync(path.join(stagingRoot, "deltafore-agent", "agent", "decision.ts"))).toBe(true);
-  });
-
-  it("packs a workflow archive with sibling workflow source dependencies", async () => {
-    const root = await mkdtemp(path.join(os.tmpdir(), "workflow-cli-pack-"));
-    const workspaceRoot = path.join(root, "workspace", "workflow");
-    const sourceProjectDir = path.join(workspaceRoot, "deltaforce-openai-agent");
-    const siblingOpenaiDir = path.join(workspaceRoot, "openai-agents");
-    const siblingDeltaforeDir = path.join(workspaceRoot, "deltafore-agent");
-    const archivePath = path.join(root, "deltaforce-openai-agent.tgz");
-
-    await mkdir(sourceProjectDir, { recursive: true });
-    await mkdir(siblingOpenaiDir, { recursive: true });
-    await mkdir(siblingDeltaforeDir, { recursive: true });
-    await writeFile(
-      path.join(sourceProjectDir, "package.json"),
-      JSON.stringify({
-        id: "3c0292f9-9731-4862-9019-19544eeca705",
-        name: "@steamharness/deltaforce-openai-agent-workflow",
-        version: "0.1.0",
-      }),
-      "utf8",
-    );
-    await writeFile(
-      path.join(sourceProjectDir, "index.ts"),
-      [
-        'import { openaiAgentsProject } from "../openai-agents/index";',
-        'import { createFinalAnswerInput } from "../deltafore-agent/agent/decision";',
-        "",
-      ].join("\n"),
-      "utf8",
-    );
-    await writeFile(path.join(sourceProjectDir, "interface.ts"), "export type Foo = string;\n", "utf8");
-    await writeFile(path.join(sourceProjectDir, "README.md"), "# Deltaforce\n", "utf8");
-    await writeFile(path.join(siblingOpenaiDir, "package.json"), '{"name":"openai-agents"}\n', "utf8");
-    await writeFile(path.join(siblingOpenaiDir, "index.ts"), "export const openaiAgentsProject = {};\n", "utf8");
-    await writeFile(path.join(siblingOpenaiDir, "README.md"), "# OpenAI agents\n", "utf8");
-    await writeFile(path.join(siblingDeltaforeDir, "package.json"), '{"name":"deltafore-agent"}\n', "utf8");
-    await writeFile(path.join(siblingDeltaforeDir, "index.ts"), "export default {};\n", "utf8");
-    await writeFile(path.join(siblingDeltaforeDir, "README.md"), "# Deltafore agent\n", "utf8");
-    await mkdir(path.join(siblingDeltaforeDir, "agent"), { recursive: true });
-    await writeFile(
-      path.join(siblingDeltaforeDir, "agent", "decision.ts"),
-      "export const createFinalAnswerInput = () => ({});\n",
-      "utf8",
-    );
-
-    const previousRepoRoot = process.env.STEAMHARNESS_REPO_ROOT;
-    process.env.STEAMHARNESS_REPO_ROOT = root;
-    try {
-      const packedPath = await packProject("deltaforce-openai-agent", archivePath, sourceProjectDir);
-      expect(packedPath).toBe(archivePath);
-
-      const result = await runTarList(archivePath);
-      expect(result).toContain("workspace/workflow/deltaforce-openai-agent/index.ts");
-      expect(result).toContain("workspace/workflow/openai-agents/index.ts");
-      expect(result).toContain("workspace/workflow/deltafore-agent/agent/decision.ts");
-    } finally {
-      if (previousRepoRoot === undefined) {
-        delete process.env.STEAMHARNESS_REPO_ROOT;
-      } else {
-        process.env.STEAMHARNESS_REPO_ROOT = previousRepoRoot;
-      }
-    }
+      const entries=[{entryId:'one',name:'One',type:'workflow',root:'one',entry:'index.ts',databases:[]},{entryId:'two',name:'Two',type:'workflow',root:'two',entry:'index.ts',databases:[]},{entryId:'map',name:'Map',type:'kanban',root:'map',entry:'index.html',databases:[{alias:'data',host:'server',bindingRef:'c6033af9-e762-4a4e-a319-523cdb55103e',permissions:{kv:{read:{mode:'all'},write:{mode:'all'}},knowledge:{read:{mode:'none'},write:{mode:'none'}}}}]}];
+      await writeFile(path.join(root,'package.json'),JSON.stringify({id:'a7e15f8a-e179-4986-8b0d-1e69a0e65b51',name:'Aggregate',steamHarness:{defaultEntry:'one',entries}}));
+      for(const entry of entries){await mkdir(path.join(root,entry.root));await writeFile(path.join(root,entry.root,entry.entry),'export {};');}
+      const staging=path.join(root,'staging');await stageProjectSource({projectDir:root,projectName:'aggregate',stagingRoot:staging});
+      const manifest=JSON.parse(readFileSync(path.join(staging,'aggregate','package.json'),'utf8'));
+      expect(manifest.steamHarness.entries).toHaveLength(3);expect(manifest.steamHarness.entries[2].databases[0]).not.toHaveProperty('bindingRef');
+      for(const entry of entries)expect(existsSync(path.join(staging,'aggregate',entry.root,entry.entry))).toBe(true);
+    }finally{await rm(root,{recursive:true,force:true});}
   });
 
   it("packs dependency-bearing source without installing packages or requiring a lockfile", async () => {
@@ -1522,7 +609,7 @@ describe("server workspace CLI helpers", () => {
       JSON.stringify({
         id: "a7e15f8a-e179-4986-8b0d-1e69a0e65b51",
         name: "@steamharness/manual-dependencies",
-        version: "0.1.0",
+        version: "0.1.0",steamHarness:declaration(),
         dependencies: { "not-installed": "1.0.0" },
       }),
       "utf8",
@@ -1534,8 +621,7 @@ describe("server workspace CLI helpers", () => {
     await writeFile(path.join(sourceProjectDir, ".DS_Store"), "temporary", "utf8");
     await writeFile(path.join(sourceProjectDir, ".steamharnessignore"), ".env\n.DS_Store\n", "utf8");
 
-    // CLI packaging only transports source; dependency installation
-    // remains a server concern after upload.
+    // CLI packaging only transports source; dependency installation remains a host concern after download.
     await expect(packProject(
       "manual-dependencies",
       archivePath,
@@ -1569,7 +655,7 @@ describe("server workspace CLI helpers", () => {
       JSON.stringify({
         id: "2dc44605-66d9-4a07-8090-72eb83d708a7",
         name: "@steamharness/conversation-workflow",
-        version: "0.1.0",
+        version: "0.1.0",steamHarness:declaration(),
       }),
       "utf8",
     );
@@ -1588,15 +674,13 @@ describe("server workspace CLI helpers", () => {
     process.env.STEAMHARNESS_REPO_ROOT = appRuntimeRoot;
     process.env.STEAMHARNESS_WORKSPACE_PACKS_DIR = packsDir;
     try {
-      // App-packaged uploads pass --path for the local project and
-      // need temporary archives outside app.asar while still copying sibling
-      // workflow imports from the source folder's parent.
+      // Packaged uploads use a writable directory outside app.asar.
       const packedPath = await packProject("conversation", undefined, sourceProjectDir);
       expect(packedPath.startsWith(packsDir)).toBe(true);
 
       const result = await runTarList(packedPath);
       expect(result).toContain("workspace/workflow/conversation/index.ts");
-      expect(result).toContain("workspace/workflow/openai-agents/index.ts");
+      expect(result).not.toContain("workspace/workflow/openai-agents/index.ts");
     } finally {
       if (previousRepoRoot === undefined) {
         delete process.env.STEAMHARNESS_REPO_ROOT;
@@ -1643,95 +727,8 @@ describe("server workspace CLI helpers", () => {
 
 });
 
-function createKanbanPackage(
-  projectId: string,
-  name: string,
-  relatedProjectId?: string,
-  relatedAlias = "stocks",
-): Record<string, unknown> {
-  return {
-    id: projectId,
-    name,
-    version: "1.0.0",
-    steamHarness: {
-      projectType: "kanban",
-      projectInfo: relatedProjectId === undefined
-        ? createProjectInfo()
-        : createProjectInfo(relatedAlias, relatedProjectId),
-      kanban: {},
-    },
-  };
-}
-
-function createProjectInfo(alias?: string, projectId?: string): Record<string, unknown> {
-  return {
-    dataStorage: { mode: "both" },
-    relatedProjects: alias === undefined || projectId === undefined ? [] : [{
-      alias,
-      projectId,
-      grantToRelatedProject: {
-        read: { mode: "all" },
-        write: { mode: "none" },
-      },
-    }],
-  };
-}
-
-function createPublishedDependencyLock(projectId: string) {
-  return {
-    alias: "stocks",
-    projectId,
-    delivery: "included" as const,
-    version: "0.5.0",
-    sourceHash: "b".repeat(64),
-  };
-}
-
-function finalizeProjectGroupDownloadFixture<T extends {
-  dependencies: Array<{
-    projectId: string;
-    delivery: "included" | "external";
-    version?: string;
-    sourceHash?: string;
-  }>;
-  projects: Array<{
-    projectId: string;
-    version: string;
-    sourceHash: string;
-    role: "root" | "dependency";
-    files: Array<{ path: string; content: string; encoding?: "base64" }>;
-  }>;
-}>(download: T): T {
-  for (const project of download.projects) {
-    project.sourceHash = hashProjectGroupSourceFiles(project.files);
-    if (project.role !== "dependency") continue;
-    for (const dependency of download.dependencies) {
-      if (
-        dependency.delivery === "included" &&
-        dependency.projectId === project.projectId &&
-        dependency.version === project.version
-      ) {
-        dependency.sourceHash = project.sourceHash;
-      }
-    }
-  }
-  return download;
-}
-
-function hashProjectGroupSourceFiles(
-  files: ReadonlyArray<{ path: string; content: string; encoding?: "base64" }>,
-): string {
-  const hash = createHash("sha256");
-  for (const file of [...files].sort((left, right) => (
-    left.path < right.path ? -1 : left.path > right.path ? 1 : 0
-  ))) {
-    hash.update(file.path.replaceAll("\\", "/"));
-    hash.update("\0");
-    hash.update(file.encoding === "base64" ? Buffer.from(file.content, "base64") : file.content);
-    hash.update("\0");
-  }
-  return hash.digest("hex");
-}
+function declaration(){return {defaultEntry:'main',entries:[{entryId:'main',name:'Main',type:'workflow',root:'.',entry:'index.ts',databases:[]}]};}
+function createProjectInfo():Record<string,unknown>{return {localizedNames:{},declarations:[],platformSupport:{mode:'agnostic'}};}
 
 function runNode(
   scriptPath: string,

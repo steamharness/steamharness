@@ -1,5 +1,5 @@
 import type { Connection } from './workflow-auth-client';
-import type { RelatedProjectBinding, WebSession, WebSessionExit } from './workflow-cli-types';
+import type { WebSession, WebSessionExit } from './workflow-cli-types';
 import { t } from './localization';
 import type { StudioUserSettings } from './user-settings';
 
@@ -10,12 +10,13 @@ export class RecoverableWebSession implements WebSession {
   private restarting?: Promise<boolean>;
   private readonly controller = new AbortController();
   private readonly listeners = new Set<(exit?: WebSessionExit) => void>();
+  private readonly recovered = new Set<() => void>();
   private exit?: WebSessionExit;
   private exitListener: { dispose(): void };
   private finish!: () => void;
   readonly closed = new Promise<void>(resolve => { this.finish = resolve; });
   private auth?: { connection?: Connection };
-  private related?: { projects: RelatedProjectBinding[]; resources: string[] };
+  private resources?: string[];
   private userSettings?: StudioUserSettings;
 
   constructor(private current: WebSession, private readonly start: (port: number, signal: AbortSignal) => Promise<WebSession>) {
@@ -46,20 +47,22 @@ export class RecoverableWebSession implements WebSession {
       }
       try {
         if (this.auth) next.updateAuth(this.auth.connection);
-        if (this.related) next.updateRelatedProjects(this.related.projects, this.related.resources);
+        if (this.resources) next.updateResourceProjects(this.resources);
         if (this.userSettings) next.updateUserSettings(this.userSettings);
       } catch (error) { await next.close(); throw error; }
       this.exitListener.dispose();
       this.current = next; this.exited = false; this.exit = undefined; this.exitListener = this.watch(next);
+      for (const listener of this.recovered) listener();
       return true;
     })().finally(() => { this.restarting = undefined; });
     return this.restarting;
   }
   updateAuth(connection?: Connection): void { this.auth = { connection }; if (!this.exited) this.current.updateAuth(connection); }
   updateUserSettings(settings: StudioUserSettings): void { this.userSettings = structuredClone(settings); if (!this.exited) this.current.updateUserSettings(this.userSettings); }
-  updateRelatedProjects(projects: RelatedProjectBinding[], resources: string[] = []): void {
-    this.related = { projects, resources }; if (!this.exited) this.current.updateRelatedProjects(projects, resources);
+  updateResourceProjects(projects: string[]): void {
+    this.resources = [...projects]; if (!this.exited) this.current.updateResourceProjects(projects);
   }
+  onReconnect(callback: () => void) { this.recovered.add(callback); return { dispose: () => { this.recovered.delete(callback); } }; }
   onExit(callback: (exit?: WebSessionExit) => void) {
     this.listeners.add(callback);
     if (this.exited) queueMicrotask(() => { if (!this.closing && this.exited && this.listeners.has(callback)) callback(this.exit); });
@@ -67,7 +70,7 @@ export class RecoverableWebSession implements WebSession {
   }
   async close(): Promise<void> {
     if (this.closing) return this.closed;
-    this.closing = true; this.controller.abort(); this.exitListener.dispose(); this.listeners.clear();
+    this.closing = true; this.controller.abort(); this.exitListener.dispose(); this.listeners.clear(); this.recovered.clear();
     try { await this.restarting?.catch(() => undefined); await this.current.close(); }
     finally { this.finish(); }
   }

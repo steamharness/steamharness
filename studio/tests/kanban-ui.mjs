@@ -1,3 +1,5 @@
+import { approveLocalFixtureDatabase } from './approved-database-fixture.mjs';
+import { resolve } from 'import-meta-resolve';
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
 import { mkdtemp, mkdir, readFile, writeFile, cp, symlink, realpath } from 'node:fs/promises';
@@ -7,15 +9,21 @@ import { fileURLToPath } from 'node:url';
 import { chromium } from '../upstream/vscode/node_modules/playwright/index.mjs';
 import { createKanbanTestServer } from './kanban-server-fixture.mjs';
 
-const root = fileURLToPath(new URL('../', import.meta.url)), projectDir = path.join(root, 'examples/kanban');
+const root = fileURLToPath(new URL('../', import.meta.url)), example = path.join(root,'examples/kanban');
+const projectDir = path.join(await mkdtemp(path.join(os.tmpdir(),'studio-kanban-project-')),'board');
+await cp(example,projectDir,{recursive:true,filter:file=>!file.split(path.sep).includes('node_modules')});
+await symlink(await realpath(path.join(example,'node_modules')),path.join(projectDir,'node_modules'),process.platform==='win32'?'junction':'dir');
 const cliEntry = process.env.STEAMHARNESS_UI_CLI_ENTRY ?? path.join(projectDir, 'node_modules/@steamharness/cli/dist/index.js');
 const data = await mkdtemp(path.join(os.tmpdir(), 'studio-kanban-ui-')), proofDir = path.join(root, '.studio/kanban-migration'); await mkdir(proofDir, { recursive: true });
 const cliVersion = JSON.parse(await readFile(path.join(path.dirname(cliEntry), '../package.json'), 'utf8')).version;
 if (!process.env.STEAMHARNESS_UI_CLI_ENTRY) { assert.equal(cliVersion, JSON.parse(await readFile(path.join(projectDir, 'package.json'), 'utf8')).devDependencies['@steamharness/cli']); }
+const core=await import(resolve('steamharness',new URL('../examples/kanban/package.json',import.meta.url).href));
+const localManifest=JSON.parse(await readFile(path.join(projectDir,'package.json'),'utf8'));
+await approveLocalFixtureDatabase(core,projectDir,localManifest,path.join(data,'databases'));
 const server = await createKanbanTestServer(), proof = { cliVersion, checks: [], screenshots: [], errors: [] };
 let child, browser, context, page, launch;
 async function start(directory = projectDir, embedded = true) {
-  child = spawn(process.execPath, [cliEntry, '--locale', 'zh-CN', 'web', directory, '--no-open', '--json', '--data-dir', data, ...(embedded ? ['--host-stdio'] : [])], { stdio: ['pipe', 'pipe', 'pipe'], env: { ...process.env, STEAMHARNESS_CLI_AUTH_DIR: path.join(data, 'auth'), STEAMHARNESS_SERVER_URL: '', STEAMHARNESS_SERVER_ADMIN_KEY: '' } });
+  child = spawn(process.execPath, [cliEntry, '--locale', 'zh-CN', 'web', directory, '--no-open', '--json', '--data-dir', data, ...(embedded ? ['--host-stdio'] : [])], { stdio: ['pipe', 'pipe', 'pipe'], env: { ...process.env, STEAMHARNESS_DATABASES_DIR:path.join(data,'databases'), STEAMHARNESS_CLI_AUTH_DIR: path.join(data, 'auth'), STEAMHARNESS_SERVER_URL: '', STEAMHARNESS_SERVER_ADMIN_KEY: '' } });
   if (embedded) { child.stdin.write(`${JSON.stringify({ type: 'configure', surface: 'editor', connection: server.connection })}\n`); }
   let output = '', errors = '';
   child.stderr.on('data', chunk => { errors += chunk; });
@@ -69,7 +77,7 @@ try {
   await page.locator('[data-param=showCompleted] input').check(); await preview.locator('.column[data-status=done]').waitFor();
   const chooser = page.waitForEvent('filechooser'); await page.locator('[data-param=files] .param-file-button').click(); await (await chooser).setFiles({ name: 'brief.txt', mimeType: 'text/plain', buffer: Buffer.from('Kanban brief') });
   await page.locator('.param-file-summary').filter({ hasText: 'brief.txt' }).waitFor(); await saved();
-  const fileResult = await preview.locator('body').evaluate(async () => { const api = window.steamHarnessKanban, file = api.getConfiguration().params.files[0]; const result = await api.files.readFile(file.id); return new TextDecoder().decode(result.buffer); }); assert.equal(fileResult, 'Kanban brief');
+  const fileResult = await preview.locator('body').evaluate(async () => { const api = window.steamHarnessKanban, file = api.getConfiguration().params.files[0]; const result = await api.databases.get('data').files.readFile(file.id); return new TextDecoder().decode(result.buffer); }); assert.equal(fileResult, 'Kanban brief');
   const downloadEvent = page.waitForEvent('download'); await page.locator('.param-file-download').click(); const download = await downloadEvent; assert.equal(download.suggestedFilename(), 'brief.txt'); assert.equal(await readFile(await download.path(), 'utf8'), 'Kanban brief');
   await page.locator('.param-file-remove').click(); await page.locator('.param-file-row').waitFor({ state: 'hidden' }); await saved(); assert.deepEqual(await preview.locator('body').evaluate(() => window.steamHarnessKanban.getConfiguration().params.files), []);
   proof.checks.push('live parameter injection, filters, radio and boolean controls, file upload and server-managed readback');
@@ -114,8 +122,11 @@ try {
   proof.checks.push('disconnection content retention, automatic dark theme in parent and artifact, responsive sidebar and preview dimensions');
   await stop(); launch = await start(projectDir, false); await page.goto(launch.url); await ready(); await preview.locator('.task h3').filter({ hasText: 'RPC task' }).waitFor(); assert.equal(await page.locator('#workflow-param-title').inputValue(), 'Browser roadmap');
   proof.checks.push('standalone browser and CLI restart retain configurations and project data');
-  await stop(); const serverProject = path.join(data, 'server-board'); await mkdir(serverProject); for (const filename of ['board.js', 'board.css', 'index.html', 'kanban.json']) await cp(path.join(projectDir, filename), path.join(serverProject, filename)); const pkg = JSON.parse(await readFile(path.join(projectDir, 'package.json'))); pkg.steamHarness.projectInfo.dataStorage.mode = 'server'; await writeFile(path.join(serverProject, 'package.json'), JSON.stringify(pkg)); await symlink(await realpath(path.join(projectDir, 'node_modules')), path.join(serverProject, 'node_modules'), process.platform === 'win32' ? 'junction' : 'dir');
-  launch = await start(serverProject); await page.goto(launch.url); await ready(); await preview.locator('.task').first().waitFor(); await preview.locator('#new-task').click(); await preview.locator('#task-title').fill('Server task'); await preview.locator('#save-task').click(); await preview.locator('#task-dialog[open]').waitFor({ state: 'hidden' }); await preview.locator('.task h3').filter({ hasText: 'Server task' }).waitFor(); assert.ok(server.values.get('studio-kanban:tasks').some(task => task.title === 'Server task')); proof.checks.push('server-declared storage uses verified CLI login and Server data');
+  await stop(); const serverProject=path.join(data,'server-board');
+  await cp(projectDir,serverProject,{recursive:true,filter:file=>!file.split(path.sep).includes('node_modules')});
+  await symlink(await realpath(path.join(projectDir,'node_modules')),path.join(serverProject,'node_modules'),process.platform==='win32'?'junction':'dir');
+  const serverDatabase=await server.registerProject(serverProject);
+  launch = await start(serverProject); await page.goto(launch.url); await ready(); await preview.locator('.task').first().waitFor(); await preview.locator('#new-task').click(); await preview.locator('#task-title').fill('Server task'); await preview.locator('#save-task').click(); await preview.locator('#task-dialog[open]').waitFor({ state: 'hidden' }); await preview.locator('.task h3').filter({ hasText: 'Server task' }).waitFor(); assert.ok((await serverDatabase.kv.getValue('studio-kanban:tasks')).some(task => task.title === 'Server task')); proof.checks.push('server-declared storage uses verified CLI login and Server data');
   assert.deepEqual(proof.errors, []); await writeFile(path.join(proofDir, 'browser-proof.json'), `${JSON.stringify(proof, null, 2)}\n`); console.log(JSON.stringify(proof));
 } catch (error) { if (page) { await screenshot('kanban-failed.png'); console.error(JSON.stringify({ stage: proof.checks.at(-1), artifact: await page.frameLocator('#kanban-preview').locator('body').innerText().catch(() => ''), error: await page.locator('#error').innerText().catch(() => '') })); } throw error;
 } finally { await context?.close(); await browser?.close(); await stop(); await server.close(); }

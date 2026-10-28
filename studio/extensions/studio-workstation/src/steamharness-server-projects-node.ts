@@ -1,3 +1,4 @@
+import { readProjectManifest } from '@steamharness/project-manifest';
 import { spawn } from 'node:child_process';
 import { mkdir, mkdtemp, readFile, readdir, rename, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -13,11 +14,11 @@ export async function allocateServerProjectId(options: {
 }): Promise<string> {
   options.signal.throwIfAborted();
   options.assertCurrent();
-  const result = await new ProjectServerClient(options.connection).request<{ projectId: string; projectType: string }>('/api/projects', options.signal, {
+  const result = await new ProjectServerClient(options.connection).request<{ projectId: string; entries: import("@steamharness/project-manifest").ProjectEntry[]; defaultEntry: string }>('/api/projects', options.signal, {
     ...options.project, visibility: 'private',
   });
   options.assertCurrent();
-  if (typeof result?.projectId !== 'string' || !isProjectUuid(result.projectId) || result.projectType !== options.project.projectType) {
+  if (typeof result?.projectId !== 'string' || !isProjectUuid(result.projectId) || JSON.stringify(result.entries) !== JSON.stringify(options.project.entries) || result.defaultEntry !== options.project.defaultEntry) {
     throw new Error(t('The server returned an unexpected project. Retry project setup.'));
   }
   return result.projectId;
@@ -80,8 +81,11 @@ export async function uploadServerProject(options: TransferOptions & { projectId
     const client = new ProjectServerClient(options.connection);
     try { await client.versions(options.projectId, options.signal); }
     catch (error) { if (error instanceof AuthError && error.status === 404) { throw new Error(t('This project ID is not registered. Open the project and apply for a new application ID before uploading.')); } else { throw error; } }
-    const configurations=await client.request<{publication?:{revision:number};publicationRevision?:number}>(`/api/projects/${encodeURIComponent(options.projectId)}/configurations?target=draft`,options.signal);
-    const expectedConfigurationRevision=configurations?.publicationRevision??configurations?.publication?.revision;
+    const manifest = readProjectManifest(JSON.parse(await readFile(path.join(options.directory,'package.json'),'utf8')));
+    const expectedConfigurationRevisions = Object.fromEntries(await Promise.all(manifest.entries.map(async entry => {
+      const state = await client.configurations<{publicationRevision?:number}>(options.projectId, entry.entryId, 'draft', options.signal);
+      return [entry.entryId,state.publicationRevision??0];
+    })));
     options.progress({ message: t('Packing and uploading project') });
     const job = await runWorkspaceTransfer(options, ['upload', options.projectId, '--path', options.directory, '--no-wait'], temporary) as { jobId: string };
     if (typeof job?.jobId !== 'string') { throw new Error(t('The server returned an invalid response.')); }
@@ -107,7 +111,7 @@ export async function uploadServerProject(options: TransferOptions & { projectId
     }
     options.progress({ message: t('Publishing project version') });
     const published = await client.request<{ version: string }>(`/api/projects/${encodeURIComponent(options.projectId)}/publish`, signal,
-      { releaseLog: options.releaseLog, expectedVersion: options.version, expectedSourceHash: sourceHash,expectedConfigurationRevision });
+      { releaseLog: options.releaseLog, expectedVersion: options.version, expectedSourceHash: sourceHash,expectedConfigurationRevisions });
     if (published?.version !== options.version) { throw new Error(t('The server returned an invalid response.')); }
   } finally { await rm(temporary, { recursive: true, force: true }); }
 }
@@ -123,23 +127,20 @@ export async function downloadServerProject(options: TransferOptions & { project
   const reserved: string[] = [];
   try {
     options.progress({ message: t('Downloading project version') });
-    const result = await runWorkspaceTransfer(options, ['download', options.projectId, '--target', options.version, '--path', path.join(staging, 'root')], path.join(staging, '.packs')) as {
-      rootProjectId: string; rootVersion: string; complete: boolean;
-      projects: Array<{ projectId: string; projectName: string; role: 'root' | 'dependency'; path: string; alreadyAvailable: boolean }>;
-    };
-    if (result.rootProjectId !== options.projectId || result.rootVersion !== options.version || !Array.isArray(result.projects)
-      || result.projects.filter(project => project.role === 'root' && project.projectId === options.projectId).length !== 1) {
-      throw new Error(t('The server returned an invalid response.'));
-    }
-    if (!result.complete) { throw new Error(t('Some related project sources are unavailable or require download permission.')); }
+    const result = await runWorkspaceTransfer(options, ['download', options.projectId, '--target', options.version, '--path', path.join(staging, 'root')], path.join(staging, '.packs')) as { projectId: string; path: string };
+    if (result.projectId !== options.projectId || path.resolve(result.path) !== path.join(staging,'root')) throw new Error(t('The server returned an invalid response.'));
+    const pkg = JSON.parse(await readFile(path.join(result.path,'package.json'),'utf8'));
+    const aggregate = readProjectManifest(pkg);
+    if (aggregate.projectId !== options.projectId || pkg.version !== options.version) throw new Error(t('The server returned an invalid response.'));
+    const projects = [{projectId:result.projectId,projectName:aggregate.name,path:result.path,alreadyAvailable:false}];
     const downloaded: DownloadedServerProject[] = [];
-    for (const project of result.projects) {
+    for (const project of projects) {
       options.signal.throwIfAborted();
       const relative = path.relative(staging, project.path);
       if (!relative || relative.startsWith('..') || path.isAbsolute(relative) || project.alreadyAvailable) { throw new Error(t('The server returned an invalid response.')); }
       const manifest = JSON.parse(await readFile(path.join(project.path, 'package.json'), 'utf8'));
       if (manifest.id !== project.projectId || typeof manifest.version !== 'string' || !/^\d+\.\d+\.\d+$/.test(manifest.version)
-        || project.role === 'root' && manifest.version !== options.version) { throw new Error(t('The server returned an invalid response.')); }
+        || manifest.version !== options.version) { throw new Error(t('The server returned an invalid response.')); }
       const base = `${portableDirectoryPart(project.projectName)}-${manifest.version}`;
       let directory: string;
       for (let index = 0;; index++) {
@@ -152,7 +153,7 @@ export async function downloadServerProject(options: TransferOptions & { project
         options.signal.throwIfAborted();
         await rename(path.join(project.path, entry), path.join(directory, entry));
       }
-      downloaded.push({ id: project.projectId, name: project.projectName, version: manifest.version, directory, role: project.role });
+      downloaded.push({ id: project.projectId, name: project.projectName, version: manifest.version, directory });
     }
     options.signal.throwIfAborted();
     return downloaded;

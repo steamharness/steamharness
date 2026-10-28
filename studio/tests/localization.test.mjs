@@ -49,16 +49,16 @@ test('every translated contribution resolves in English and Chinese', async () =
 for (const language of ['en', 'zh-cn']) {
   test(`${language} localizes information and traces while preserving project values and execution content`, () => {
     configureLocalization(language === 'en' ? {} : chinese, language);
-    const project = { id: 'project-id', name: '\u6211\u7684\u9879\u76ee', projectType: 'workflow', folderPath: '/project', entrypoints: [] };
+    const project = { id: 'project-id', name: '\u6211\u7684\u9879\u76ee', projectType: 'workflow', folderPath: '/project', entries:[{entryId:'main',name:'Main',type:'workflow',root:'.',entry:'index.ts',databases:[]}],databases:[],entrypoints: [] };
     const items = projectInfoItems(project, { description: '\u539f\u59cb\u63cf\u8ff0', steamHarness: { projectInfo: {
-      declarations: ['multilingual'], localizedNames: { en: 'My project', 'zh-CN': '\u6211\u7684\u9879\u76ee' }, dataStorage: { mode: 'both' },
+      declarations: ['multilingual'], localizedNames: { en: 'My project', 'zh-CN': '\u6211\u7684\u9879\u76ee' },
     } } });
     assert.equal(items[0].label, language === 'en' ? 'Basic Information' : '\u57fa\u672c\u4fe1\u606f');
     assert.equal(items[0].children[0].value, project.name);
     assert.equal(items[0].children.find(item => item.id === 'type').value, language === 'en' ? 'Workflow' : '\u5de5\u4f5c\u6d41');
     assert.equal(items[0].children.find(item => item.id === 'description').value, '\u539f\u59cb\u63cf\u8ff0');
     assert.equal(items[1].children[0].label, language === 'en' ? 'Multiple languages' : '\u652f\u6301\u591a\u8bed\u8a00');
-    assert.equal(items[4].children[0].value, language === 'en' ? 'Local and server' : '\u672c\u5730\u548c\u670d\u52a1\u5668');
+    assert.equal(items[4].children[0].label, 'Main');
     const rows = traceRows({ project, run: { id: 'run-id', title: '\u5b9e\u9645\u8fd0\u884c', status: 'success', logs: '\u539f\u59cb\u65e5\u5fd7',
       items: [{ id: 'output', content: '\u539f\u59cb\u7ed3\u679c' }] } }, {});
     assert.equal(rows.find(row => row.lane === 'log').title, language === 'en' ? 'Run logs' : '\u8fd0\u884c\u65e5\u5fd7');

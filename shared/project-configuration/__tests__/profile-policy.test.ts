@@ -68,7 +68,7 @@ describe('role controlled configuration profiles',()=>{
     for(const restricted of [false,true]) {
       const plain=createConfigurationState([...fields,settings],()=> 'ordinary');
       const author=restricted?bindConfigurationProfiles(plain,policy):plain;
-      const template=freezeConfigurationTemplate(createPublicationDraft(author),{projectId:'project',projectVersion:'1',sourceHash:'0'.repeat(64)});
+      const template=freezeConfigurationTemplate(createPublicationDraft(author),{projectId:'project',entryId:"main",projectVersion:'1',sourceHash:'0'.repeat(64)});
       const downloaded=bindConfigurationTemplate(createConfigurationState([],()=> 'new'),template);
       const profile=downloaded.configurations.find(profile=>!restricted||profile.profileKey==='ask')!;
       const snapshot=configurationSnapshot(downloaded,profile.id);
@@ -82,7 +82,7 @@ describe('role controlled configuration profiles',()=>{
   });
   it('freezes policy into a version 3 template and filters hidden template values from responses',()=>{
     const draft=createPublicationDraft(state());
-    const template=freezeConfigurationTemplate(draft,{projectId:'project',projectVersion:'1',sourceHash:'0'.repeat(64)});
+    const template=freezeConfigurationTemplate(draft,{projectId:'project',entryId:"main",projectVersion:'1',sourceHash:'0'.repeat(64)});
     expect(template.version).toBe(3);expect(parseConfigurationTemplate(template)).toEqual(template);
     const downloaded=bindConfigurationTemplate(createConfigurationState([],()=> 'new'),template);
     const view=configurationAccessView(downloaded,guest);
@@ -99,7 +99,7 @@ describe('role controlled configuration profiles',()=>{
     s.fields.push({name:'image',type:'file',sharing:{publish:true,includeValue:true}});
     const ref={id:'wf_ab12',name:'build.png',mimeType:'image/png',size:3,storage:'server' as const};
     s.configurations.find(profile=>profile.profileKey==='build')!.values.image=ref;
-    const template=freezeConfigurationTemplate(createPublicationDraft(s),{projectId:'project',projectVersion:'1',sourceHash:'0'.repeat(64)});
+    const template=freezeConfigurationTemplate(createPublicationDraft(s),{projectId:'project',entryId:"main",projectVersion:'1',sourceHash:'0'.repeat(64)});
     template.attachments=[{id:ref.id,path:`configuration-assets/${ref.id}`,sha256:'1'.repeat(64)}];
     const downloaded=bindConfigurationTemplate(createConfigurationState([],()=> 'new'),template);
     downloaded.publication=createPublicationDraft(s);downloaded.canManagePublication=true;

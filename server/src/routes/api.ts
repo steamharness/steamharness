@@ -1,3 +1,5 @@
+import { readProjectManifest } from "@steamharness/project-manifest";
+import { createDatabaseSpaceRouter } from './database-spaces';
 import { createGroupRouter, requestActor, pageQuery } from "./groups";
 import { resolveResourceAccess, type AccessCapability } from "@steamharness/project-access";
 import type { ProjectConfigurationAction, ProjectConfigurationState } from "@steamharness/project-configuration";
@@ -6,14 +8,13 @@ import {readFile} from "node:fs/promises";
 import { randomBytes, randomUUID } from "node:crypto";
 import { Router, type NextFunction, type Request, type Response } from "express";
 import express from "express";
-import { createKnowledgeMarkdownPreview } from "steamharness";
 import { getRequestPrincipal, hasPermission, requireAuthenticatedPrincipal, type AuthenticatedPrincipal } from "../auth";
 import { getProjectAuthContext } from "../auth";
 import { createAuditActor, listAuditEvents, recordPermissionDeniedForRequest, recordAuditEventForRequest } from "../audit";
 import { HttpError, fail, ok, toHttpError, toHttpErrorWithStatus } from "../protocol";
 import { getRequestT, localizeHttpErrorMessage, localizeServerMessage, resolveRequestLocale } from "../i18n";
 import { PROJECT_CARD_IMAGE_MAX_BYTES } from "../storage";
-import type { KnowledgeDocumentListItem, KnowledgeDocumentRecord, ManagedFileReference, ProjectInvitation, ProjectCardImage, ProjectMember, ProjectRole, UserProfileSummary, VersionSummary, Visibility, PersistentValueKnowledgeMutation, Storage } from "../storage";
+import type { ManagedFileReference, ProjectInvitation, ProjectCardImage, ProjectMember, ProjectRole, UserProfileSummary, VersionSummary, Visibility, Storage } from "../storage";
 import type { AuditEventPage, AuditEventRecord, UserProfileRecord } from "../account-db";
 import type { PermissionKey } from "../permissions";
 import { isProjectUuid } from "../workflow-ids";
@@ -22,12 +23,9 @@ import { isProjectKind, STEAMHARNESS_PROJECT_TYPES, type ProjectKind } from "@st
 import { encodeKanbanAssetUrlPath } from "@steamharness/kanban-project";
 import { invokeServerKanbanBridge, readKanbanBridgeCall } from "../kanban-bridge";
 import { createKanbanRevisionBatcher } from "../kanban-revision-batcher";
-import { parseProjectGroupManifest, type ProjectGroupManifestV1 } from "@steamharness/project-dependencies";
-import { normalizeDeclaredProjectInfoInput, type DeclaredProjectInfo, type RelatedProject } from "@steamharness/project-info";
+import { normalizeDeclaredProjectInfoInput, type DeclaredProjectInfo } from "@steamharness/project-info";
 
 const DEFAULT_UPLOAD_LIMIT_BYTES = 50 * 1024 * 1024;
-const PERSISTENT_VALUE_REVISION_PATTERN = /^\d+$/;
-const MAX_PERSISTENT_VALUE_REVISION = 4_294_967_295;
 
 function asyncHandler(
   fn: (req: Request, res: Response, next: NextFunction) => Promise<void>,
@@ -102,30 +100,7 @@ function readDeclaredProjectInfo(value: unknown): DeclaredProjectInfo {
     throw new HttpError(
       400,
       400,
-      error instanceof Error ? error.message : "projectInfo.dataStorage.mode is invalid.",
-    );
-  }
-}
-
-function readRelatedProjectGrant(
-  value: unknown,
-  alias: string,
-  projectId: string,
-): DeclaredProjectInfo["relatedProjects"][number]["grantToRelatedProject"] {
-  try {
-    const projectInfo = normalizeDeclaredProjectInfoInput({
-      localizedNames: {},
-      declarations: [],
-      platformSupport: { mode: "agnostic" },
-      dataStorage: { mode: "server" },
-      relatedProjects: [{ alias, projectId, grantToRelatedProject: value }],
-    });
-    return projectInfo.relatedProjects[0]!.grantToRelatedProject;
-  } catch (error) {
-    throw new HttpError(
-      400,
-      400,
-      error instanceof Error ? error.message : "Related project grant is invalid.",
+      error instanceof Error ? error.message : "Project information is invalid.",
     );
   }
 }
@@ -256,7 +231,6 @@ async function readableTarget(req:Request,storage:Storage,value:unknown):Promise
   return target;
 }
 function requirePrincipalUserId(principal:AuthenticatedPrincipal,action:string):string {if(!('userId' in principal))throw new HttpError(401,401,`Account login is required to ${action}.`);return principal.userId;}
-function readProjectGroupManifest(value:unknown):ProjectGroupManifestV1 {try{return parseProjectGroupManifest(value);}catch(error){throw toHttpErrorWithStatus(error,400,400,'Project group manifest is invalid.');}}
 async function requireProjectManageAccess(req:Request,storage:Storage){return requireProjectAction(req,storage,'manageSettings');}
 async function requireManageAccess(req:Request,storage:Storage,id:string){return requireProjectAction(req,storage,'upload',id);}
 async function requireProjectMemberManageAccess(req:Request,storage:Storage){return requireProjectAction(req,storage,'manageMembers');}
@@ -443,293 +417,6 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-function readKnowledgeCreateBody(value: unknown): { id?: string; title: string; markdown: string } {
-  if (!isRecord(value)) {
-    throw new HttpError(400, 400, "Request body must be an object.");
-  }
-  return {
-    id: readOptionalString(value["id"], "id"),
-    title: requireString(value["title"], "title"),
-    markdown: requireString(value["markdown"], "markdown"),
-  };
-}
-
-function readKnowledgeEditBody(value: unknown): { title?: string; markdown?: string } {
-  if (!isRecord(value)) {
-    throw new HttpError(400, 400, "Request body must be an object.");
-  }
-  const title = value["title"] === undefined ? undefined : requireString(value["title"], "title");
-  const markdown = value["markdown"] === undefined ? undefined : requireString(value["markdown"], "markdown");
-  if (title === undefined && markdown === undefined) {
-    throw new HttpError(400, 400, "At least one of title or markdown must be provided.");
-  }
-  return { title, markdown };
-}
-
-function readKnowledgeWriteResponseMode(value: unknown): "document" | "summary" {
-  const response = readOptionalString(value, "response");
-  if (response === undefined || response === "document") return "document";
-  if (response === "summary") return "summary";
-  throw new HttpError(400, 400, "response must be document or summary.");
-}
-
-function summarizeKnowledgeDocument(
-  document: KnowledgeDocumentRecord,
-): KnowledgeDocumentListItem {
-  return {
-    id: document.id,
-    title: document.title,
-    markdownPreview: createKnowledgeMarkdownPreview(document.markdown),
-    createdAt: document.createdAt,
-    updatedAt: document.updatedAt,
-  };
-}
-
-type ProjectStorageEntry =
-  | { scope: "project"; key: string; projectId?: string }
-  | { scope: "conversation"; key: string; projectId?: string; conversationId: string };
-
-type ProjectStorageAddress =
-  | { kind: "current"; projectId: string }
-  | { kind: "related"; consumerProjectId: string; alias: string };
-
-function readProjectStorageBody(value: unknown):
-  | {
-      address: ProjectStorageAddress;
-      storageKind: "kv" | "persistent_value";
-      operation: "get" | "set" | "compare-and-set" | "delete";
-      entry: ProjectStorageEntry;
-      value?: unknown;
-      expectedRevision?: string | null;
-      source?: {
-        projectId?: string;
-        runId?: string;
-        conversationId?: string;
-      };
-    }
-  | {
-      address: Extract<ProjectStorageAddress, { kind: "current" }>;
-      storageKind: "persistent_value";
-      operation: "knowledge-mutation";
-      namespace: { scope: "project"; projectId: string };
-      mutation: PersistentValueKnowledgeMutation;
-    } {
-  if (!isRecord(value)) {
-    throw new HttpError(400, 400, "Request body must be an object.");
-  }
-
-  const address = readProjectStorageAddress(value);
-  const storageKind = readProjectStorageKind(value["storageKind"]);
-  const operation = requireString(value["operation"], "operation");
-  if (operation === "knowledge-mutation") {
-    if (address.kind !== "current" || storageKind !== "persistent_value") {
-      throw new HttpError(400, 400, "Knowledge mutations require current-project persistent_value storage.");
-    }
-    const namespace = readProjectStorageKnowledgeNamespace(value["namespace"]);
-    assertProjectStorageBinding(address.projectId, namespace.projectId, "namespace.projectId");
-    return {
-      address,
-      storageKind,
-      operation,
-      namespace,
-      mutation: readPersistentValueKnowledgeMutation(value["mutation"]),
-    };
-  }
-  if (operation !== "get" && operation !== "set" && operation !== "compare-and-set" &&
-    operation !== "delete") {
-    throw new HttpError(400, 400, "operation must be get, set, compare-and-set, delete, or knowledge-mutation.");
-  }
-
-  if (address.kind === "related" && storageKind !== "kv") {
-    throw new HttpError(400, 400, "Related-project storage only supports KV.");
-  }
-  const entry = readProjectStorageEntry(value["entry"]);
-  if (address.kind === "current") {
-    assertProjectStorageBinding(address.projectId, entry.projectId, "entry.projectId");
-  } else if (entry.projectId !== undefined) {
-    throw new HttpError(400, 400, "Related-project requests must not specify a target projectId.");
-  }
-  if ((operation === "set" || operation === "compare-and-set") && value["value"] === undefined) {
-    throw new HttpError(400, 400, `value is required for project storage ${operation}.`);
-  }
-  const expectedRevision = operation === "compare-and-set"
-    ? readProjectStorageExpectedRevision(value)
-    : undefined;
-
-  const source = readProjectStorageSource(value["source"]);
-  if (source?.projectId !== undefined && address.kind === "current") {
-    assertProjectStorageBinding(address.projectId, source.projectId, "source.projectId");
-  }
-  return {
-    address,
-    storageKind,
-    operation,
-    entry,
-    value: value["value"],
-    expectedRevision,
-    source,
-  };
-}
-
-function readProjectStorageAddress(value: Record<string, unknown>): ProjectStorageAddress {
-  const projectId = readOptionalString(value["projectId"], "projectId");
-  const consumerProjectId = readOptionalString(value["consumerProjectId"], "consumerProjectId");
-  const alias = readOptionalString(value["alias"], "alias");
-  if (projectId !== undefined && consumerProjectId === undefined && alias === undefined) {
-    return { kind: "current", projectId };
-  }
-  if (projectId === undefined && consumerProjectId !== undefined && alias !== undefined) {
-    return { kind: "related", consumerProjectId, alias };
-  }
-  throw new HttpError(
-    400,
-    400,
-    "Project storage requires either projectId or consumerProjectId with alias.",
-  );
-}
-
-function readProjectStorageKind(value: unknown): "kv" | "persistent_value" {
-  if (value === "kv" || value === "persistent_value") return value;
-  throw new HttpError(400, 400, "storageKind must be kv or persistent_value.");
-}
-
-function assertProjectStorageBinding(
-  projectId: string,
-  boundProjectId: string | undefined,
-  field: string,
-): void {
-  if (boundProjectId !== projectId) {
-    throw new HttpError(
-      400,
-      400,
-      `${field} must match the request projectId.`,
-      { projectId, boundProjectId, field },
-    );
-  }
-}
-
-function readProjectStorageExpectedRevision(value: Record<string, unknown>): string | null {
-  if (!Object.hasOwn(value, "expectedRevision")) {
-    throw new HttpError(400, 400, "expectedRevision is required for project storage compare-and-set.");
-  }
-  const revision = value["expectedRevision"];
-  if (revision === null) {
-    return null;
-  }
-  if (
-    typeof revision !== "string" ||
-    !PERSISTENT_VALUE_REVISION_PATTERN.test(revision) ||
-    revision.length > 10 ||
-    Number(revision) > MAX_PERSISTENT_VALUE_REVISION
-  ) {
-    throw new HttpError(400, 400, "expectedRevision must be a project storage revision or null.");
-  }
-  return revision;
-}
-
-function readProjectStorageKnowledgeNamespace(value: unknown): {
-  scope: "project";
-  projectId: string;
-} {
-  if (!isRecord(value)) {
-    throw new HttpError(400, 400, "namespace must be an object.");
-  }
-  if (requireString(value["scope"], "namespace.scope") !== "project") {
-    throw new HttpError(400, 400, "knowledge-mutation namespace scope must be project.");
-  }
-  return {
-    scope: "project",
-    projectId: requireString(value["projectId"], "namespace.projectId"),
-  };
-}
-
-function readPersistentValueKnowledgeMutation(
-  value: unknown,
-): PersistentValueKnowledgeMutation {
-  if (!isRecord(value)) {
-    throw new HttpError(400, 400, "mutation must be an object.");
-  }
-
-  const type = requireString(value["type"], "mutation.type");
-  if (type === "create") {
-    return { type, input: readKnowledgeCreateBody(value["input"]) };
-  }
-  if (type === "edit") {
-    if (!isRecord(value["input"])) {
-      throw new HttpError(400, 400, "mutation.input must be an object.");
-    }
-    const input = readKnowledgeEditBody(value["input"]);
-    return {
-      type,
-      input: {
-        documentId: requireString(value["input"]["documentId"], "mutation.input.documentId"),
-        title: input.title,
-        markdown: input.markdown,
-      },
-    };
-  }
-  if (type === "delete") {
-    if (!isRecord(value["input"])) {
-      throw new HttpError(400, 400, "mutation.input must be an object.");
-    }
-    return {
-      type,
-      input: {
-        documentId: requireString(value["input"]["documentId"], "mutation.input.documentId"),
-      },
-    };
-  }
-
-  throw new HttpError(400, 400, "mutation.type must be create, edit, or delete.");
-}
-
-function readProjectStorageEntry(value: unknown): ProjectStorageEntry {
-  if (!isRecord(value)) {
-    throw new HttpError(400, 400, "entry must be an object.");
-  }
-
-  const scope = requireString(value["scope"], "scope");
-  if (scope !== "project" && scope !== "conversation") {
-    throw new HttpError(400, 400, "scope must be project or conversation.");
-  }
-
-  const key = requireString(value["key"], "key");
-  const projectId = readOptionalString(value["projectId"], "entry.projectId");
-  if (scope === "project") {
-    return { scope, key, projectId };
-  }
-  const conversationId = readOptionalString(value["conversationId"], "conversationId");
-  if (conversationId === undefined) {
-    throw new HttpError(400, 400, "conversationId is required for conversation storage.");
-  }
-  return {
-    scope,
-    key,
-    projectId,
-    conversationId,
-  };
-}
-
-function readProjectStorageSource(value: unknown): {
-  projectId?: string;
-  runId?: string;
-  conversationId?: string;
-} | undefined {
-  if (value === undefined || value === null) {
-    return undefined;
-  }
-
-  if (!isRecord(value)) {
-    throw new HttpError(400, 400, "source must be an object.");
-  }
-
-  return {
-    projectId: readOptionalString(value["projectId"], "source.projectId"),
-    runId: readOptionalString(value["runId"], "source.runId"),
-    conversationId: readOptionalString(value["conversationId"], "source.conversationId"),
-  };
-}
-
 function getRequestOrigin(req: Request): string {
   const forwardedProto = firstHeaderValue(req.headers["x-forwarded-proto"]);
   const forwardedHost = firstHeaderValue(req.headers["x-forwarded-host"]);
@@ -822,6 +509,7 @@ export function createApiRouter(
 ): Router {
   const router = Router();
   router.use(createGroupRouter(storage));
+  router.use(createDatabaseSpaceRouter(storage));
   const authenticateRequest = requireAuthenticatedPrincipal();
   const authenticate = (req: Request, res: Response, next: NextFunction): void => {
     if (getRequestPrincipal(req)) next();
@@ -955,80 +643,6 @@ export function createApiRouter(
     }),
   );
 
-  router.get(
-    "/projects/:name/related-projects",
-    authenticate,
-    asyncHandler(async (req, res) => {
-      await requireProjectReadAccess(req, storage);
-      const result = await storage.listRelatedProjects(req.params.name);
-      const visible = await Promise.all(result.relatedProjects.map(async related => {
-        try {
-          await storage.requireProjectCapability(related.relation.projectId, requestActor(req), "read");
-          return related;
-        } catch (error) {
-          if (error instanceof HttpError && [403, 404].includes(error.statusCode)) return undefined;
-          throw error;
-        }
-      }));
-      res.json(ok({ ...result, relatedProjects: visible.filter(item => item !== undefined) }));
-    }),
-  );
-
-  router.put(
-    "/projects/:name/related-projects/:alias",
-    authenticate,
-    json,
-    asyncHandler(async (req, res) => {
-      const { principal } = await requireProjectManageAccess(req, storage);
-      const body = isRecord(req.body) ? req.body : {};
-      const targetProjectId = requireString(body["targetProjectId"], "targetProjectId");
-      const alias = req.params.alias;
-      const updateTarget = await canManageProjectForPrincipal(storage, principal, targetProjectId);
-      const targetAlias = readOptionalString(body["targetAlias"], "targetAlias");
-      const grantToRelatedProject = body["grantToRelatedProject"] === undefined
-        ? undefined
-        : readRelatedProjectGrant(body["grantToRelatedProject"], alias, targetProjectId);
-      const targetGrantToRelatedProject = body["targetGrantToRelatedProject"] === undefined
-        ? undefined
-        : readRelatedProjectGrant(
-            body["targetGrantToRelatedProject"],
-            targetAlias ?? "related",
-            req.params.name,
-          );
-      res.json(ok(await storage.setRelatedProject({
-        projectId: req.params.name,
-        alias,
-        targetProjectId,
-        grantToRelatedProject,
-        updateTarget,
-        targetAlias,
-        targetGrantToRelatedProject,
-      })));
-    }),
-  );
-
-  router.delete(
-    "/projects/:name/related-projects/:alias",
-    authenticate,
-    asyncHandler(async (req, res) => {
-      const { principal } = await requireProjectManageAccess(req, storage);
-      const current = await storage.listRelatedProjects(req.params.name);
-      const relation = current.relatedProjects.find(
-        (item) => item.relation.alias === req.params.alias,
-      );
-      const updateTarget = relation !== undefined && await canManageProjectForPrincipal(
-        storage,
-        principal,
-        relation.relation.projectId,
-      );
-      res.json(ok(await storage.removeRelatedProject({
-        projectId: req.params.name,
-        alias: req.params.alias,
-        updateTarget,
-      })));
-    }),
-  );
-
   // GET /api/projects/files/:fileId
   router.get(
     "/projects/files/:fileId",
@@ -1081,6 +695,24 @@ export function createApiRouter(
     }),
   );
 
+  router.post('/projects/:name/entries/:entryId/resources/read', authenticate, json, asyncHandler(async(req,res)=>{
+    await requireProjectReadAccess(req,storage);
+    const body=readRequiredRecord(req.body,'body');
+    if(Object.keys(body).some(key=>!['kind','database','key','scope','conversationId','documentId'].includes(key)))throw new HttpError(400,400,'Unsupported database resource fields.');
+    const kind=requireString(body['kind'],'kind');
+    if(!['kv','knowledge'].includes(kind))throw new HttpError(400,400,'Unsupported database resource kind.');
+    const conversationId=readOptionalString(body['conversationId'],'conversationId');
+    const databases=await storage.entryDatabases(req.params.name,req.params.entryId,requestActor(req),'draft',conversationId);
+    const database=databases.get(requireString(body['database'],'database'));
+    let data:unknown;
+    if(kind==='knowledge')data=body['documentId']?await database.knowledge.getDocument(requireString(body['documentId'],'documentId')):await database.knowledge.listDocuments({pageSize:100});
+    else {
+      if(body['scope']!==undefined&&!['project','conversation'].includes(String(body['scope'])))throw new HttpError(400,400,'Invalid database resource scope.');
+      data=await(body['scope']==='conversation'?database.kv.conversation:database.kv).getValue(requireString(body['key'],'key'));
+    }
+    res.json(ok(data??null));
+  }));
+
   router.post(
     "/projects/:name/kanban/bridge",
     authenticate,
@@ -1088,181 +720,11 @@ export function createApiRouter(
     asyncHandler(async (req, res) => {
       const body = isRecord(req.body) ? req.body : {};
       const call = readKanbanBridgeCall(body["call"]);
-      const readOperation = [
-        "runtime.getLocale",
-        "files.readFile",
-        "kv.getValue",
-        "relatedProject.kv.getValue",
-        "knowledge.listDocuments",
-        "knowledge.getDocument",
-        "knowledge.searchDocuments",
-        "knowledge.readDocumentLines",
-      ].includes(call.operation);
-      if(call.operation==='files.readFile') {
-        const principal=await requireConfigurationAccess(req,storage);
-        try {
-          const file=await storage.configurationAttachment({projectName:req.params.name,actorId:requireProjectConfigurationActorId(principal),target:readOptionalString(body['target'],'target')},String(call.input['fileId']));
-          res.json(ok({file:file.metadata,base64:(await readFile(file.filePath)).toString('base64')}));return;
-        } catch(error) {if(!(error instanceof HttpError && error.statusCode===404))throw error;}
-      }
-      const { principal } = await requireProjectReadAccess(req, storage);
+      const readOperation = ["runtime.getLocale", "files.readFile", "kv.getValue", "database.revision", "knowledge.listDocuments", "knowledge.getDocument", "knowledge.searchDocuments", "knowledge.readDocumentLines"].includes(call.operation);
+      await requireProjectReadAccess(req, storage);
       if (!readOperation) await requireProjectStorageWriteAccess(req, storage);
-      // Managed files belong to the project, independently of its preview version.
-      if (call.operation.startsWith("files.")) {
-        if(call.input['fileId']) await storage.assertManagedFileAccountAccess(String(call.input['fileId']),"userId" in principal?principal.userId:undefined);
-        res.json(ok(await invokeServerKanbanBridge(storage, req.params.name, call)));
-        return;
-      }
-      // An omitted target accesses current registered data, including for
-      // readers without unpublished-source access. Explicit targets retain
-      // their version and source-access checks.
-      const target = body["target"] === undefined ? "draft" : await readableTarget(req,storage,body["target"]);
-      const bindings = await storage.getKanbanRelatedProjectBindings({
-        projectName: req.params.name,
-        target,
-      });
-      res.json(ok(await invokeServerKanbanBridge(
-        storage,
-        req.params.name,
-        call,
-        {
-          target: bindings.resolvedTarget,
-          runtimeLocale: resolveRequestLocale(req),
-          authorizeRelatedProject:(id,write)=>assertProjectStorageAccessForPrincipal(storage,principal,id,write),
-        },
-      )));
-    }),
-  );
-
-  router.get(
-    "/projects/:name/kanban/related-project-revisions",
-    authenticate,
-    asyncHandler(async (req, res) => {
-      const { principal } = await requireProjectReadAccess(req, storage);
-      const target = req.query["target"] === undefined ? "draft" : await readableTarget(req,storage,req.query["target"]);
-      const bindings = await storage.getKanbanRelatedProjectBindings({
-        projectName: req.params.name,
-        target,
-      });
-      const authorizedRelations: RelatedProject[] = [];
-      for (const relation of bindings.relatedProjects) {
-        try {
-          const access = await storage.resolveConfirmedRelatedProject(req.params.name, relation.alias);
-          if (access.targetProjectId === relation.projectId && access.grant.read.mode !== "none") {
-            await assertProjectReadableForPrincipal(storage,principal,relation.projectId);
-            authorizedRelations.push(relation);
-          }
-        } catch {}
-      }
-
-      const aliasesByProject = new Map<string, string[]>();
-      for (const relation of authorizedRelations) {
-        aliasesByProject.set(relation.projectId, [
-          ...(aliasesByProject.get(relation.projectId) ?? []),
-          relation.alias,
-        ]);
-      }
-
-      res.status(200);
-      res.setHeader("Content-Type", "text/event-stream; charset=utf-8");
-      res.setHeader("Cache-Control", "no-cache, no-transform");
-      res.setHeader("Connection", "keep-alive");
-      res.setHeader("X-Accel-Buffering", "no");
-      res.flushHeaders?.();
-
-      let closed = false;
-      let snapshotSent = false;
-      const buffered = new Map<string, string>();
-      let unsubscribe: (() => Promise<void>) | undefined;
-      let heartbeat: ReturnType<typeof setInterval> | undefined;
-      const send = (event: string, value: unknown) => {
-        if (closed || res.writableEnded) return;
-        res.write(`event: ${event}\ndata: ${JSON.stringify(value)}\n\n`);
-      };
-      const close = () => {
-        if (closed) return;
-        closed = true;
-        if (heartbeat !== undefined) clearInterval(heartbeat);
-        const release = unsubscribe;
-        unsubscribe = undefined;
-        void release?.().catch(() => undefined);
-      };
-      res.once("close", close);
-      const closeUnavailable = async () => {
-        if (closed) return;
-        send("unavailable", { message: "Kanban related project is unavailable." });
-        closed = true;
-        if (heartbeat !== undefined) clearInterval(heartbeat);
-        const release = unsubscribe;
-        unsubscribe = undefined;
-        await release?.().catch(() => undefined);
-        res.end();
-      };
-      const validateBindings = async () => {
-        await assertProjectReadableForPrincipal(storage, principal, req.params.name);
-        const current = await storage.getKanbanRelatedProjectBindings({
-          projectName: req.params.name,
-          target: bindings.resolvedTarget,
-        });
-        if (
-          current.resolvedTarget !== bindings.resolvedTarget ||
-          JSON.stringify(current.relatedProjects) !== JSON.stringify(bindings.relatedProjects)
-        ) throw new Error("Kanban related-project binding changed.");
-        for (const relation of authorizedRelations) {
-          await assertProjectReadableForPrincipal(storage,principal,relation.projectId);
-          const access = await storage.resolveConfirmedRelatedProject(req.params.name, relation.alias);
-          if (access.targetProjectId !== relation.projectId || access.grant.read.mode === "none") {
-            throw new Error("Kanban related-project access changed.");
-          }
-        }
-      };
-      heartbeat = setInterval(() => {
-        void validateBindings()
-          .then(() => send("heartbeat", { timestamp: new Date().toISOString() }))
-          .catch(() => closeUnavailable());
-      }, 20_000);
-      heartbeat.unref?.();
-
-      const revisionBatcher = createKanbanRevisionBatcher({
-        isClosed: () => closed,
-        validate: validateBindings,
-        publish: (projectId, revision) => {
-          for (const alias of aliasesByProject.get(projectId) ?? []) {
-            send("revision", { alias, revision });
-          }
-        },
-        onUnavailable: closeUnavailable,
-      });
-      try {
-        const releaseSubscription = await storage.subscribeProjectStorageRevisions((event) => {
-          if (!aliasesByProject.has(event.projectId)) return;
-          if (!snapshotSent) {
-            buffered.set(event.projectId, event.revision);
-            return;
-          }
-          revisionBatcher.enqueue(event.projectId, event.revision);
-        });
-        if (closed) {
-          await releaseSubscription();
-          return;
-        }
-        unsubscribe = releaseSubscription;
-
-        const revisions = await Promise.all(authorizedRelations.map(async (relation) => {
-          const revision = buffered.get(relation.projectId) ??
-            await storage.getProjectStorageRevision(relation.projectId);
-          revisionBatcher.remember(relation.projectId, revision);
-          return { alias: relation.alias, revision };
-        }));
-        send("snapshot", { resolvedTarget: bindings.resolvedTarget, revisions });
-        snapshotSent = true;
-        for (const [projectId, revision] of buffered) {
-          revisionBatcher.enqueue(projectId, revision);
-        }
-        buffered.clear();
-      } catch {
-        await closeUnavailable();
-      }
+      const target = body["target"] === undefined ? "draft" : await readableTarget(req, storage, body["target"]);
+      res.json(ok(await invokeServerKanbanBridge(storage, req.params.name, call, { target, entryId: requireString(body["entryId"], "entryId"), actor: requestActor(req), runtimeLocale: resolveRequestLocale(req) })));
     }),
   );
 
@@ -1287,14 +749,18 @@ export function createApiRouter(
         throw new HttpError(400, 400, "Project IDs are assigned by the Server. Create a new application to obtain a new ID.");
       }
       const projectName = requireString(body["name"], "name");
-      const projectType = requireProjectKind(body["projectType"]);
+      if ("projectType" in body) throw new HttpError(400,400,"Register project entries instead of projectType.");
+      const projectId = randomUUID();
+      let manifest;
+      try { manifest = readProjectManifest({ id: projectId, name: projectName, steamHarness: { entries: body["entries"], defaultEntry: body["defaultEntry"] } }); }
+      catch(error) { throw toHttpErrorWithStatus(error,400,400,"Invalid aggregate project declaration."); }
       const projectInfo = readDeclaredProjectInfo(body["projectInfo"]);
       const visibility = readOptionalString(body["visibility"], "visibility");
       const projectCard = readOptionalProjectCardMetadata(body["projectCard"]);
       const created = await storage.createProject({
-        projectId: randomUUID(),
+        projectId,
         projectName,
-        projectType,
+        entries: manifest.entries, defaultEntry: manifest.defaultEntry,
         projectInfo,
         ownerUserId: "userId" in principal ? principal.userId : undefined,
         groupId: readOptionalString(body["groupId"],"groupId"),
@@ -1316,83 +782,6 @@ export function createApiRouter(
         },
       });
       res.status(201).json(ok(created));
-    }),
-  );
-
-  // POST /api/project-storage
-  router.post(
-    "/project-storage",
-    authenticate,
-    json,
-    asyncHandler(async (req, res) => {
-      const principal = requireRequestPrincipal(req);
-      const body = readProjectStorageBody(req.body);
-      const consumerProjectId = body.address.kind === "current"
-        ? body.address.projectId
-        : body.address.consumerProjectId;
-      const write = body.operation !== "get";
-      await assertProjectStorageAccessForPrincipal(
-        storage,
-        principal,
-        consumerProjectId,
-        write,
-      );
-      if (body.operation === "knowledge-mutation") {
-        res.json(ok(await storage.mutateProjectStorageKnowledgeDocument({
-          projectId: body.namespace.projectId,
-          mutation: body.mutation,
-        })));
-        return;
-      }
-      let targetProjectId: string;
-      if (body.address.kind === "current") {
-        targetProjectId = body.address.projectId;
-      } else {
-        const access = await storage.resolveRelatedProjectKVAccess({
-          consumerProjectId: body.address.consumerProjectId,
-          alias: body.address.alias,
-          key: body.entry.key,
-          operation: body.operation === "get"
-            ? "read"
-            : body.operation === "set" || body.operation === "delete"
-              ? "write"
-              : "update",
-        });
-        targetProjectId = access.targetProjectId;
-        await assertProjectStorageAccessForPrincipal(storage,principal,targetProjectId,write);
-        if (body.source?.projectId !== undefined && body.source.projectId !== consumerProjectId) {
-          throw new HttpError(400, 400, "source.projectId must match consumerProjectId.");
-        }
-      }
-      const entry = {
-        ...body.entry,
-        storageKind: body.storageKind,
-        projectId: targetProjectId,
-      };
-      const source = body.source ?? { projectId: consumerProjectId };
-      if (body.operation === "get") {
-        res.json(ok(await storage.getProjectStorageValue(entry)));
-        return;
-      }
-      if (body.operation === "compare-and-set") {
-        res.json(ok(await storage.compareAndSetProjectStorageValue({
-          ...entry,
-          value: body.value,
-          expectedRevision: body.expectedRevision!,
-          source,
-        })));
-        return;
-      }
-      if (body.operation === "delete") {
-        res.json(ok(await storage.deleteProjectStorageValue(entry)));
-        return;
-      }
-
-      res.json(ok(await storage.setProjectStorageValue({
-        ...entry,
-        value: body.value,
-        source,
-      })));
     }),
   );
 
@@ -1446,101 +835,6 @@ export function createApiRouter(
         },
       });
       res.json(ok(await enrichAuditPage(page)));
-    }),
-  );
-
-  router.post(
-    "/deployments",
-    authenticate,
-    json,
-    asyncHandler(async (req, res) => {
-      const principal = requireRequestPrincipal(req);
-      const createdByUserId = requirePrincipalUserId(principal, "create a project deployment");
-      const body = isRecord(req.body) ? req.body : {};
-      const manifest = readProjectGroupManifest(body["manifest"]);
-      for (const project of manifest.projects) {
-        await requireManageAccess(req, storage, project.projectId);
-      }
-      const deployment = await storage.createProjectGroupDeployment({
-        manifest,
-        releaseLog: readOptionalString(body["releaseLog"], "releaseLog"),
-        createdByUserId,
-      });
-      await recordRouteAudit(req, {
-        principal,
-        eventType: "project.deployment.create",
-        outcome: "success",
-        resourceType: "project_deployment",
-        resourceId: deployment.id,
-        context: { rootProjectId: deployment.rootProjectId },
-      });
-      res.status(201).json(ok(deployment));
-    }),
-  );
-
-  router.get(
-    "/deployments/:deploymentId",
-    authenticate,
-    asyncHandler(async (req, res) => {
-      const deployment = await storage.getProjectGroupDeployment(req.params.deploymentId);
-      for (const project of deployment.manifest.projects) {
-        await requireManageAccess(req, storage, project.projectId);
-      }
-      res.json(ok(deployment));
-    }),
-  );
-
-  router.post(
-    "/deployments/:deploymentId/package",
-    authenticate,
-    raw,
-    asyncHandler(async (req, res) => {
-      const deployment = await storage.getProjectGroupDeployment(req.params.deploymentId);
-      let principal: AuthenticatedPrincipal | undefined;
-      for (const project of deployment.manifest.projects) {
-        ({ principal } = await requireManageAccess(req, storage, project.projectId));
-      }
-      const archiveName =
-        (req.query["fileName"] as string | undefined) ??
-        (req.headers["x-steamharness-package-name"] as string | undefined) ??
-        `project-group-${deployment.id}.tgz`;
-      const archiveBuffer = Buffer.isBuffer(req.body) ? req.body : Buffer.from(req.body as string);
-      const result = await storage.enqueueProjectGroupPreparation({
-        deploymentId: deployment.id,
-        archiveName,
-        archiveBuffer,
-      });
-      await recordRouteAudit(req, {
-        principal: principal!,
-        eventType: "project.deployment.upload",
-        outcome: "success",
-        resourceType: "project_deployment",
-        resourceId: deployment.id,
-        context: { archiveName, status: result.status },
-      });
-      res.status(202).json(ok(result));
-    }),
-  );
-
-  router.post(
-    "/deployments/:deploymentId/publish",
-    authenticate,
-    asyncHandler(async (req, res) => {
-      const deployment = await storage.getProjectGroupDeployment(req.params.deploymentId);
-      let principal: AuthenticatedPrincipal | undefined;
-      for (const project of deployment.manifest.projects) {
-        ({ principal } = await requireProjectAction(req, storage, "publish", project.projectId));
-      }
-      const result = await storage.publishProjectGroupDeployment(deployment.id,{actorId:principal&&'userId' in principal?principal.userId:undefined,administrator:!!principal&&principal.isSystemAdmin});
-      await recordRouteAudit(req, {
-        principal: principal!,
-        eventType: "project.deployment.publish",
-        outcome: "success",
-        resourceType: "project_deployment",
-        resourceId: deployment.id,
-        context: { rootProjectId: deployment.rootProjectId, status: result.status },
-      });
-      res.json(ok(result));
     }),
   );
 
@@ -1692,102 +986,6 @@ export function createApiRouter(
   );
 
   router.get(
-    "/projects/:name/dependencies",
-    authenticate,
-    asyncHandler(async (req, res) => {
-      const { principal } = await requireProjectReadAccess(req, storage);
-      const origin = getRequestOrigin(req);
-      res.json(ok(await storage.getProjectDependencyStatus({
-        projectName: req.params.name,
-        target: (readOptionalString(req.query["target"],"target")==="draft"?await readableTarget(req,storage,"draft"):readOptionalString(req.query["target"],"target")??"latest"),
-        canDownloadProject: (projectId) => canDownloadProjectSourceForPrincipal(storage, principal, projectId),
-        requestUrlForProject: (projectId) => storage.createProjectAccessRequestUrl(origin, projectId),
-      })));
-    }),
-  );
-
-  router.get(
-    "/projects/:name/project-group-download",
-    authenticate,
-    asyncHandler(async (req, res) => {
-      const principal = requireRequestPrincipal(req);
-      if (!await canDownloadProjectSourceForPrincipal(storage, principal, req.params.name)) {
-        throw new HttpError(403, 403, "Permission denied.");
-      }
-      const origin = getRequestOrigin(req);
-      const result = await storage.getProjectGroupDownload({
-        projectName: req.params.name,
-        target: (readOptionalString(req.query["target"],"target")==="draft"?await readableTarget(req,storage,"draft"):readOptionalString(req.query["target"],"target")??"latest"),
-        canDownloadProject: (projectId) => canDownloadProjectSourceForPrincipal(storage, principal, projectId),
-        requestUrlForProject: (projectId) => storage.createProjectAccessRequestUrl(origin, projectId),
-      });
-      recordSourceDownloadsOnFinish(req, res, storage, result.projects.map(project => ({ projectId: project.projectId, version: project.version })));
-      res.json(ok(result));
-    }),
-  );
-
-  router.get(
-    "/projects/:name/access-requests",
-    authenticate,
-    asyncHandler(async (req, res) => {
-      await requireProjectManageAccess(req, storage);
-      res.json(ok({
-        requests: await storage.listProjectAccessRequests(req.params.name),
-      }));
-    }),
-  );
-
-  router.patch(
-    "/projects/:name/access-requests/:requestId",
-    authenticate,
-    json,
-    asyncHandler(async (req, res) => {
-      await requireProjectManageAccess(req, storage);
-      const body = isRecord(req.body) ? req.body : {};
-      const status = body["status"];
-      if (status !== "approved" && status !== "rejected") {
-        throw new HttpError(400, 400, 'status must be "approved" or "rejected".');
-      }
-      res.json(ok(await storage.resolveProjectAccessRequest({
-        projectId: req.params.name,
-        requestId: req.params.requestId,
-        status,
-        actor: requestActor(req),
-      })));
-    }),
-  );
-
-
-  router.get(
-    "/project-access/:token",
-    authenticate,
-    asyncHandler(async (req, res) => {
-      const principal = requireRequestPrincipal(req);
-      requirePrincipalUserId(principal, "view a project source access request");
-      const { projectId } = storage.readProjectAccessRequestToken(req.params.token);
-      const access = await storage.getProjectAccessSummary(projectId);
-      res.json(ok({ projectId, projectName: access.projectName }));
-    }),
-  );
-
-  router.post(
-    "/project-access/:token/requests",
-    authenticate,
-    json,
-    asyncHandler(async (req, res) => {
-      const principal = requireRequestPrincipal(req);
-      const requesterUserId = requirePrincipalUserId(principal, "request project source access");
-      const { projectId } = storage.readProjectAccessRequestToken(req.params.token);
-      const body = isRecord(req.body) ? req.body : {};
-      res.status(201).json(ok(await storage.createProjectAccessRequest({
-        projectId,
-        requesterUserId,
-        reason: requireString(body["reason"], "reason"),
-      })));
-    }),
-  );
-
-  router.get(
     "/projects/:name/kanban",
     authenticate,
     asyncHandler(async (req, res) => {
@@ -1795,11 +993,13 @@ export function createApiRouter(
       const workspace = await storage.getKanbanWorkspace({
         projectName: req.params.name,
         target: await readableTarget(req,storage,req.query["target"]),
+        entryId: readOptionalString(req.query["entryId"],"entryId"),
         actorId: requireProjectConfigurationActorId(principal),
       });
       const previewCapability = await storage.issueKanbanPreviewCapability({
         projectName: req.params.name,
         target: workspace.resolvedTarget,
+        entryId: workspace.entryId,
         actorId: requireProjectConfigurationActorId(principal),
       });
       const nonce = randomBytes(18).toString("base64url");
@@ -1819,33 +1019,33 @@ export function createApiRouter(
     const target=readOptionalString(req.query['target'],'target')??'latest';
     if(target==='draft') throw new HttpError(400,400,'Select a published configuration version.');
     res.setHeader('Cache-Control','private, no-store');
-    const state=await storage.projectConfigurations({projectName:req.params.name,actorId:requireProjectConfigurationActorId(principal),administrator:principal.isSystemAdmin,actor:requestActor(req),target},{action:'get'}) as ProjectConfigurationState;
-    res.json(ok(state.template??(state.canManagePublication?await storage.configurationTemplate(req.params.name,target):undefined)??null));
+    const state=await storage.projectConfigurations({projectName:req.params.name,entryId:readOptionalString(req.query["entryId"],"entryId"),actorId:requireProjectConfigurationActorId(principal),administrator:principal.isSystemAdmin,actor:requestActor(req),target},{action:'get'}) as ProjectConfigurationState;
+    res.json(ok(state.template??(state.canManagePublication?await storage.configurationTemplate(req.params.name,target,readOptionalString(req.query["entryId"],"entryId")):undefined)??null));
   }));
   router.post('/projects/:name/configurations/files',authenticate,raw,asyncHandler(async(req,res)=>{
     const principal=await requireConfigurationAccess(req,storage);
-    res.json(ok(await storage.uploadConfigurationFile({projectName:req.params.name,actorId:requireProjectConfigurationActorId(principal),
+    res.json(ok(await storage.uploadConfigurationFile({projectName:req.params.name,entryId:readOptionalString(req.query["entryId"],"entryId"),actorId:requireProjectConfigurationActorId(principal),
       administrator:principal.isSystemAdmin,actor:requestActor(req),key:requireString(req.query['key'],'key'),
       target:readOptionalString(req.query['target'],'target'),field:req.query['field']===undefined?undefined:parseJsonBodyField(req.query['field']),name:requireString(req.query['fileName'],'fileName'),
       mimeType:requireString(req.query['mimeType'],'mimeType'),buffer:Buffer.isBuffer(req.body)?req.body:Buffer.from(req.body as Uint8Array)})));
   }));
   router.get('/projects/:name/configurations/files/:fileId',authenticate,asyncHandler(async(req,res)=>{
     const principal=await requireConfigurationAccess(req,storage);
-    const file=await storage.configurationAttachment({projectName:req.params.name,actorId:requireProjectConfigurationActorId(principal),administrator:principal.isSystemAdmin,actor:requestActor(req),target:readOptionalString(req.query['target'],'target')},req.params.fileId);
+    const file=await storage.configurationAttachment({projectName:req.params.name,entryId:readOptionalString(req.query["entryId"],"entryId"),actorId:requireProjectConfigurationActorId(principal),administrator:principal.isSystemAdmin,actor:requestActor(req),target:readOptionalString(req.query['target'],'target')},req.params.fileId);
     res.setHeader('Cache-Control','private, no-store');sendManagedFile(res,file.metadata,file.filePath,req.query['download']==='1');
   }));
 
   router.get("/projects/:name/configurations", authenticate, asyncHandler(async (req,res) => {
     const principal = await requireConfigurationAccess(req,storage);
     res.setHeader("Cache-Control", "no-store");
-    res.json(ok(await storage.projectConfigurations({projectName:req.params.name,actorId:requireProjectConfigurationActorId(principal),administrator:principal.isSystemAdmin,actor:requestActor(req),target:readOptionalString(req.query["target"],"target")},{action:"get"})));
+    res.json(ok(await storage.projectConfigurations({projectName:req.params.name,entryId:readOptionalString(req.query["entryId"],"entryId"),actorId:requireProjectConfigurationActorId(principal),administrator:principal.isSystemAdmin,actor:requestActor(req),target:readOptionalString(req.query["target"],"target")},{action:"get"})));
   }));
   router.post("/projects/:name/configurations", authenticate, json, asyncHandler(async (req,res) => {
     const principal = await requireConfigurationAccess(req,storage);
     const body = readRequiredRecord(req.body,"body");
     const call = readRequiredRecord(body["call"],"call") as unknown as ProjectConfigurationAction;
     res.setHeader("Cache-Control", "no-store");
-    res.json(ok(await storage.projectConfigurations({projectName:req.params.name,actorId:requireProjectConfigurationActorId(principal),administrator:principal.isSystemAdmin,actor:requestActor(req),target:readOptionalString(body["target"],"target")},call)));
+    res.json(ok(await storage.projectConfigurations({projectName:req.params.name,entryId:readOptionalString(body["entryId"],"entryId"),actorId:requireProjectConfigurationActorId(principal),administrator:principal.isSystemAdmin,actor:requestActor(req),target:readOptionalString(body["target"],"target")},call)));
   }));
 
   router.get('/invitations/:token',authenticate,asyncHandler(async(req,res)=>{
@@ -2057,12 +1257,13 @@ export function createApiRouter(
       const { principal } = await requireProjectAction(req, storage, "publish");
       const { name } = req.params;
       const body = isRecord(req.body) ? req.body : {};
+      if ("expectedConfigurationRevision" in body) throw new HttpError(400, 400, "Use expectedConfigurationRevisions keyed by entryId.");
       const result = await storage.publish({
         projectName: name,
         releaseLog: typeof body["releaseLog"] === "string" ? body["releaseLog"] : undefined,
         expectedVersion: readOptionalString(body["expectedVersion"], "expectedVersion"),
         expectedSourceHash: readOptionalString(body["expectedSourceHash"], "expectedSourceHash"),
-        expectedConfigurationRevision: readOptionalNonNegativeInteger(body["expectedConfigurationRevision"], "expectedConfigurationRevision"),
+        expectedConfigurationRevisions: readConfigurationRevisions(body["expectedConfigurationRevisions"]),
         administrator: principal.isSystemAdmin,
         createdByUserId: "userId" in principal ? principal.userId : undefined,
       });
@@ -2093,183 +1294,68 @@ export function createApiRouter(
     }),
   );
 
+
+
   router.get(
-    "/projects/:name/data-summary",
+    "/projects/:name/access-requests",
     authenticate,
     asyncHandler(async (req, res) => {
-      await requireProjectReadAccess(req, storage);
-      res.json(ok(await storage.getProjectDataSummary(req.params.name)));
+      await requireProjectManageAccess(req, storage);
+      res.json(ok({
+        requests: await storage.listProjectAccessRequests(req.params.name),
+      }));
     }),
   );
 
-  // GET /api/projects/:name/kv
-  router.get(
-    "/projects/:name/kv",
+  router.patch(
+    "/projects/:name/access-requests/:requestId",
     authenticate,
+    json,
     asyncHandler(async (req, res) => {
-      await requireProjectReadAccess(req, storage);
-      const { name } = req.params;
-      res.json(ok(await storage.listProjectKVEntries({
-        projectId: name,
-        pageSize: readOptionalPositiveInteger(req.query["pageSize"], "pageSize"),
-        cursor: readOptionalString(req.query["cursor"], "cursor"),
-        scope: readOptionalKVScope(req.query["scope"]),
-        query: readOptionalString(req.query["q"], "q"),
-        valueType: readOptionalKVValueType(req.query["valueType"]),
-        conversationId: readOptionalString(req.query["conversationId"] ?? req.query["conversation_id"], "conversationId"),
-        runId: readOptionalString(req.query["runId"], "runId"),
+      await requireProjectManageAccess(req, storage);
+      const body = isRecord(req.body) ? req.body : {};
+      const status = body["status"];
+      if (status !== "approved" && status !== "rejected") {
+        throw new HttpError(400, 400, 'status must be "approved" or "rejected".');
+      }
+      res.json(ok(await storage.resolveProjectAccessRequest({
+        projectId: req.params.name,
+        requestId: req.params.requestId,
+        status,
+        actor: requestActor(req),
       })));
     }),
   );
 
-  // GET /api/projects/:name/kv/entry
+
   router.get(
-    "/projects/:name/kv/entry",
+    "/project-access/:token",
     authenticate,
     asyncHandler(async (req, res) => {
-      await requireProjectReadAccess(req, storage);
-      const { name } = req.params;
-      // Project KV list rows are summary-only; row expansion uses
-      // this detail endpoint for the single selected value.
-      res.json(ok(await storage.getProjectKVEntry({
-        projectId: name,
-        scope: readRequiredProjectKVScope(req.query["scope"]),
-        key: requireString(req.query["key"], "key"),
-        conversationId: readOptionalString(req.query["conversationId"] ?? req.query["conversation_id"], "conversationId"),
-      })));
+      const principal = requireRequestPrincipal(req);
+      requirePrincipalUserId(principal, "view a project source access request");
+      const { projectId } = storage.readProjectAccessRequestToken(req.params.token);
+      const access = await storage.getProjectAccessSummary(projectId);
+      res.json(ok({ projectId, projectName: access.projectName }));
     }),
   );
 
-  // DELETE /api/projects/:name/kv/entry
-  router.delete(
-    "/projects/:name/kv/entry",
-    authenticate,
-    asyncHandler(async (req, res) => {
-      await requireProjectStorageWriteAccess(req, storage);
-      const { name } = req.params;
-      res.json(ok(await storage.deleteProjectKVEntry({
-        projectId: name,
-        scope: readRequiredProjectKVScope(req.query["scope"]),
-        key: requireString(req.query["key"], "key"),
-        conversationId: readOptionalString(req.query["conversationId"] ?? req.query["conversation_id"], "conversationId"),
-      })));
-    }),
-  );
-
-  // GET /api/projects/:name/knowledge-documents
-  router.get(
-    "/projects/:name/knowledge-documents",
-    authenticate,
-    asyncHandler(async (req, res) => {
-      await requireProjectReadAccess(req, storage);
-      const { name } = req.params;
-      res.json(ok(await storage.listKnowledgeDocuments(name, {
-        pageSize: readOptionalPositiveInteger(req.query["pageSize"], "pageSize"),
-        cursor: readOptionalString(req.query["cursor"], "cursor"),
-      })));
-    }),
-  );
-
-  // POST /api/projects/:name/knowledge-documents
   router.post(
-    "/projects/:name/knowledge-documents",
+    "/project-access/:token/requests",
     authenticate,
     json,
     asyncHandler(async (req, res) => {
-      await requireProjectStorageWriteAccess(req, storage);
-      const { name } = req.params;
-      const body = readKnowledgeCreateBody(req.body);
-      const responseMode = readKnowledgeWriteResponseMode(req.query["response"]);
-      // Project knowledge documents are backed by the workflow PersistentValue
-      // namespace on the server.
-      const document = await storage.createKnowledgeDocument({
-        projectName: name,
-        id: body.id,
-        title: body.title,
-        markdown: body.markdown,
-      });
-      res.status(201).json(ok(responseMode === "summary" ? summarizeKnowledgeDocument(document) : document));
-    }),
-  );
-
-  // GET /api/projects/:name/knowledge-documents/search
-  router.get(
-    "/projects/:name/knowledge-documents/search",
-    authenticate,
-    asyncHandler(async (req, res) => {
-      await requireProjectReadAccess(req, storage);
-      const { name } = req.params;
-      res.json(ok(await storage.searchKnowledgeDocuments({
-        projectName: name,
-        query: requireString(req.query["q"], "q"),
-        documentId: readOptionalString(req.query["documentId"], "documentId"),
-        beforeLines: readOptionalNonNegativeInteger(req.query["beforeLines"], "beforeLines"),
-        afterLines: readOptionalNonNegativeInteger(req.query["afterLines"], "afterLines"),
-        maxMatches: readOptionalIntegerInRange(req.query["maxMatches"], "maxMatches", { min: 1, max: 1000 }),
-        pageSize: readOptionalIntegerInRange(req.query["pageSize"], "pageSize", { min: 1, max: 1000 }),
-        cursor: readOptionalString(req.query["cursor"], "cursor"),
+      const principal = requireRequestPrincipal(req);
+      const requesterUserId = requirePrincipalUserId(principal, "request project source access");
+      const { projectId } = storage.readProjectAccessRequestToken(req.params.token);
+      const body = isRecord(req.body) ? req.body : {};
+      res.status(201).json(ok(await storage.createProjectAccessRequest({
+        projectId,
+        requesterUserId,
+        reason: requireString(body["reason"], "reason"),
       })));
     }),
   );
-
-  // GET /api/projects/:name/knowledge-documents/:documentId/lines
-  router.get(
-    "/projects/:name/knowledge-documents/:documentId/lines",
-    authenticate,
-    asyncHandler(async (req, res) => {
-      await requireProjectReadAccess(req, storage);
-      const { name, documentId } = req.params;
-      res.json(ok(await storage.readKnowledgeDocumentLines({
-        projectName: name,
-        documentId,
-        startLine: requirePositiveInteger(req.query["startLine"], "startLine"),
-        endLine: requirePositiveInteger(req.query["endLine"], "endLine"),
-      })));
-    }),
-  );
-
-  // GET /api/projects/:name/knowledge-documents/:documentId
-  router.get(
-    "/projects/:name/knowledge-documents/:documentId",
-    authenticate,
-    asyncHandler(async (req, res) => {
-      await requireProjectReadAccess(req, storage);
-      const { name, documentId } = req.params;
-      res.json(ok(await storage.getKnowledgeDocument({ projectName: name, documentId })));
-    }),
-  );
-
-  // PUT /api/projects/:name/knowledge-documents/:documentId
-  router.put(
-    "/projects/:name/knowledge-documents/:documentId",
-    authenticate,
-    json,
-    asyncHandler(async (req, res) => {
-      await requireProjectStorageWriteAccess(req, storage);
-      const { name, documentId } = req.params;
-      const body = readKnowledgeEditBody(req.body);
-      const responseMode = readKnowledgeWriteResponseMode(req.query["response"]);
-      const document = await storage.editKnowledgeDocument({
-        projectName: name,
-        documentId,
-        title: body.title,
-        markdown: body.markdown,
-      });
-      res.json(ok(responseMode === "summary" ? summarizeKnowledgeDocument(document) : document));
-    }),
-  );
-
-  // DELETE /api/projects/:name/knowledge-documents/:documentId
-  router.delete(
-    "/projects/:name/knowledge-documents/:documentId",
-    authenticate,
-    asyncHandler(async (req, res) => {
-      await requireProjectStorageWriteAccess(req, storage);
-      const { name, documentId } = req.params;
-      res.json(ok(await storage.deleteKnowledgeDocument({ projectName: name, documentId })));
-    }),
-  );
-
   // GET /api/projects/:name/token-usage
   router.get(
     "/projects/:name/token-usage",
@@ -2299,4 +1385,15 @@ export function createApiRouter(
   });
 
   return router;
+}
+
+function readConfigurationRevisions(input: unknown): Record<string, number> | undefined {
+  if (input === undefined) return undefined;
+  const value = readRequiredRecord(input, "expectedConfigurationRevisions");
+  return Object.fromEntries(Object.entries(value).map(([entryId, revision]) => {
+    if (!/^[a-z][a-z0-9_-]{0,63}$/.test(entryId)) throw new HttpError(400, 400, "Invalid entryId.");
+    const parsed = readOptionalNonNegativeInteger(revision, `expectedConfigurationRevisions.${entryId}`);
+    if (parsed === undefined) throw new HttpError(400, 400, "Configuration revisions must be non-negative integers.");
+    return [entryId, parsed];
+  }));
 }

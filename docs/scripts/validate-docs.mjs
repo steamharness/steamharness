@@ -10,6 +10,7 @@ import { pathToFileURL } from "node:url";
 const REMOVED_DESKTOP_WEB_TERMS = /\bWeb Studio\b|Web工作室|studio-web|localhost:7133|127\.0\.0\.1:7133|运行到 Web|Web 入口|Web entry/iu;
 const REMOVED_DESKTOP_IDENTITY_TERMS = /guides\/(?:releases\/)?app(?:\/|\b)|STEAMHARNESS_APP_|workflow-app\.json|@steamharness\/app\b|\bminAppVersion\b|\bappVersion\b|\bisApp\b|\/app\/(?:stable|v)|\bapp\/v\d|source\s*=\s*["'`]?app\b|source=app\b|STEAMHARNESS_RUNTIME_PLATFORM=app\b/iu;
 const LEGACY_MONOREPO_REFERENCES = /packages\/(?:steamharness|cli)|app\/builtin-projects|pnpm\s+-C\s+(?:app|server\/web|workspace)\b|pnpm\s+(?:run\s+)?app:[\w:-]+/u;
+const REMOVED_PROJECT_MODEL = /steamHarness\.projectType|\bdataStorage\b|\brelatedProjects\b|related[ -]projects?|关联项目|context\.storage\.(?:local|server)|--(?:related-project|project-group|publish-group)\b/iu;
 const RELEASE_PAGE_PATH = /^(?:en\/)?guides\/releases\/[^/]+\.mdx$/u;
 const ISO_DISPLAY_TIMESTAMP = /\b\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z\b/u;
 const GENERATED_MDX_DIRECTORIES = new Set(["reference", "en/reference"]);
@@ -26,6 +27,9 @@ export function validateStandaloneDocsSource(relativeFile, source, options = {})
   }
   if (LEGACY_MONOREPO_REFERENCES.test(source)) {
     throw new Error(`${relativeFile} still contains a legacy monorepo path or command.`);
+  }
+  if (!/^(?:en\/)?guides\/releases\//u.test(relativeFile) && REMOVED_PROJECT_MODEL.test(source)) {
+    throw new Error(`${relativeFile} still documents the removed single-entry project or relationship model.`);
   }
   if (RELEASE_PAGE_PATH.test(relativeFile) && ISO_DISPLAY_TIMESTAMP.test(source)) {
     throw new Error(`${relativeFile} displays an ISO timestamp instead of YYYY-MM-DD HH:mm:ss.`);

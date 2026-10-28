@@ -6,16 +6,35 @@
 **判断「运行时有没有某个能力」时先读这里**，不要去安装包的 `dist/*.d.ts` 或打包产物里翻：
 那是某个历史版本的构建产物，不是契约，而且答案就在下面。这里没有列出的能力就是没有。
 
-## 关联项目（`context.storage.<local|server>.relatedProjects.get(alias)`）
+## 聚合入口与数据库（`context.entries` / `context.databases`）
 
-### 关联项目上下文（`RelatedProjectStorageContext`）
+### 聚合入口目录（`EntriesContext`）
 
-- `kv`
-- `knowledge`
+- `list()`
+- `get(entryId)`
+
+### Workflow 入口（`EntryContext`）
+
+- `registration`
 - `listEntrypoints()`
 - `runEntrypoint(entrypointId, args)`
 
-### 关联项目知识库（`RelatedProjectKnowledgeContext`）
+### 数据库目录（`DatabasesContext`）
+
+- `list()`
+- `get(alias)`
+
+### 独立数据库空间（`DatabaseContext`）
+
+- `listValues(input)`
+- `kv`
+- `knowledge`
+- `getBinding()`
+- `getRevision()`
+- `subscribe(listener, options)`
+- `transaction(operation)`
+
+### 知识库与附件（`DatabaseKnowledgeContext`）
 
 - `listDocuments(input)`
 - `getDocument(documentId)`
@@ -23,16 +42,11 @@
 - `editDocument(input)`
 - `deleteDocument(documentId)`
 - `searchDocuments(input)`
+- `files`
 - `readDocumentLines(input)`
 
-### 关联项目入口运行器（`RelatedProjectRunner`）
-
-- `listEntrypoints()`
-- `run(entrypointId, args)`
-
-关联项目只到这里为止：**会话 KV、目标项目的其它持久值、目标项目的其它入口都不在列表里**，
-就是没有开放；关系只走一跳（被调起来的项目自己不能再访问关联项目）。
-授权由目标项目在 `grantToRelatedProject` 的 `read` / `write` / `knowledge` / `entrypoints` 里声明。
+数据库按 alias 显式选择 local 或 server；申请并经宿主审批后绑定。每次访问重新校验授权。
+会话 KV 按 projectId + entryId + conversationId 隔离。跨入口调用保留用户身份、取消信号与工具权限，加载目标配置快照。
 
 ## 运行时成员（`steamharness.*`）
 

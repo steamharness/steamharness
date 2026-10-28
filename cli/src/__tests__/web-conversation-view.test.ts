@@ -7,7 +7,7 @@ vi.mock('../web/ui/host', () => ({ acquireProjectHost: () => host }));
 vi.mock('../web/ui/conversation-tools', () => ({ ConversationTools: class { open = false; close() {} closeUsage() {} } }));
 const listeners: { target: EventTarget; type: string; listener: EventListenerOrEventListenerObject; options?: boolean | AddEventListenerOptions }[] = [];
 const viewId = 'aaaaaaaa-1111-2222-3333-444444444444';
-const project: Project = { id: 'view', uri: 'file:///view', folderPath: '/view', name: 'View', projectType: 'conversation', fields: [], entrypoints: [] };
+const project: Project = {entryId:"main",aggregateName:"Test aggregate",defaultEntry:"main",entryRoot:'/view',databases:[],entries:[{entryId:"main",name:"Main",type:'conversation',root:".",entry:"index.ts",databases:[]}], id: 'view', uri: 'file:///view', folderPath: '/view', name: 'View', projectType: 'conversation', fields: [], entrypoints: [] };
 const session = (id: string): ConversationSession => ({ id, title: id, createdAt: 1, updatedAt: 1, messages: [], draft: { text: '', attachments: [] } });
 
 afterEach(() => {

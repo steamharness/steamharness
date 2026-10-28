@@ -2,7 +2,7 @@ import * as vscode from 'vscode';
 import { localizationHtml } from './localization-host';
 import { webviewContextMenu } from './webview-context-menu';
 import { TraceStore } from './workflow-trace-store';
-import type { Project } from './workflow-types';
+import { projectWindowKey, type Project } from './workflow-types';
 import type { TraceTarget } from './workflow-trace-types';
 import type { TraceAgentAction } from './workflow-agent-types';
 
@@ -74,18 +74,18 @@ export class TraceView {
     if (message.generation !== this.store.generation) { return; }
     try {
       if (message.type === 'select') {
-        const project = this.store.availableProjects().find(project => project.uri === message.projectUri);
+        const project = this.store.availableProjects().find(project => projectWindowKey(project) === message.projectUri);
         if (!project) { return; }
-        this.store.select(project.uri, message.target); this.publish();
+        this.store.select(projectWindowKey(project), message.target); this.publish();
         const selection = this.store.selection;
-        if (!this.store.hasConnection(project.uri)) { await this.openProject(project); }
+        if (!this.store.hasConnection(projectWindowKey(project))) { await this.openProject(project); }
         if (this.store.selection === selection && message.target?.runId) { this.store.request('run', message.target.runId); this.publish(); }
       } else if (message.projectUri === this.store.selection.projectUri) {
         if (message.type === 'agent-action' && message.action) {
           if (this.store.action(message.action)) {
             this.publish();
             if (message.action.type !== 'agent') {
-              const project = this.store.availableProjects().find(project => project.uri === message.projectUri);
+              const project = this.store.availableProjects().find(project => projectWindowKey(project) === message.projectUri);
               if (project?.assistant) { await vscode.commands.executeCommand('studio.developerAssistant.focus'); }
               else if (project) { await this.openProject(project); }
             }
@@ -94,7 +94,7 @@ export class TraceView {
         if (message.type === 'more') { this.store.request('more'); }
         if (message.type === 'copy' && typeof message.text === 'string') { await vscode.env.clipboard.writeText(message.text); }
         if (message.type === 'connect') {
-          const project = this.store.availableProjects().find(project => project.uri === message.projectUri);
+          const project = this.store.availableProjects().find(project => projectWindowKey(project) === message.projectUri);
           if (project) { await this.openProject(project); }
         }
       }

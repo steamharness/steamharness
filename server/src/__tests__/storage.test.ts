@@ -13,10 +13,8 @@ import { AccountRepository } from "../account-db";
 import {
   ArtifactStorage,
   DatabaseRepository,
-  type DeploymentRecord,
 } from "../persistence";
-import type { RelatedProjectKVGrant } from "@steamharness/project-info";
-import { isKnowledgeMutationGranted, validateArchiveEntries, validateTarArchiveEntries, Storage, type PreparationJob, type KVEntryDetail, type KnowledgeDocumentListItem, type TokenUsagePage } from "../storage";
+import { validateArchiveEntries, validateTarArchiveEntries, Storage, type PreparationJob, type KVEntryDetail, type KnowledgeDocumentListItem, type TokenUsagePage } from "../storage";
 
 // assertProjectId now requires UUID format; use fixed UUID fixtures
 const DEMO_WF_ID = "00000000-0000-4000-8000-000000000001";
@@ -25,8 +23,8 @@ const DECLARED_SERVER_PROJECT_INFO = {
   localizedNames: {},
   declarations: [],
   platformSupport: { mode: "agnostic" as const },
-  dataStorage: { mode: "server" as const },
-  relatedProjects: [],
+
+
 };
 const serverPackage = JSON.parse(
   await readFile(path.resolve(import.meta.dirname, "../../package.json"), "utf8"),
@@ -339,328 +337,6 @@ test("Storage.saveManagedFiles rolls back earlier files after a filesystem failu
   }
 });
 
-test("DatabaseRepository scopes Kanban configuration reads by workflow and user", async () => {
-  const repository = new DatabaseRepository("postgresql://example.invalid/postgres");
-  const queries: Array<{ sql: string; params?: unknown[] }> = [];
-  const pool = Reflect.get(repository, "pool") as {
-    query: (sql: string, params?: unknown[]) => Promise<{ rows: unknown[] }>;
-    end: () => Promise<void>;
-  };
-  const originalQuery = pool.query;
-  const originalEnd = pool.end;
-
-  pool.query = async (sql: string, params?: unknown[]) => {
-    queries.push({ sql, params });
-    if (/from project_kanban_configurations/.test(sql)) {
-      return {
-        rows: [{
-          configuration_id: "configuration-a",
-          name: "User A",
-          values: { title: "A" },
-          created_at: new Date("2026-07-27T00:00:00.000Z"),
-          updated_at: new Date("2026-07-27T00:00:00.000Z"),
-        }],
-      };
-    }
-    return { rows: [{ configuration_id: "configuration-a" }] };
-  };
-  pool.end = async () => {};
-
-  try {
-    const state = await repository.readKanbanConfigurationState(DEMO_WF_ID, "user-a");
-
-    assert.equal(state.activeConfigurationId, "configuration-a");
-    assert.deepEqual(state.configurations[0]?.values, { title: "A" });
-    assert.equal(queries.length, 2);
-    assert.ok(queries.every((query) => query.sql.includes("project_id = $1 and user_id = $2")));
-    assert.ok(queries.every((query) => query.params?.[0] === DEMO_WF_ID && query.params?.[1] === "user-a"));
-  } finally {
-    pool.query = originalQuery;
-    pool.end = originalEnd;
-    await pool.end();
-  }
-});
-
-test("DatabaseRepository initializes Kanban configurations with PostgreSQL-safe lock keys", async () => {
-  const repository = new DatabaseRepository("postgresql://example.invalid/postgres");
-  const queries: Array<{ sql: string; params: unknown[] }> = [];
-  let released = false;
-  const pool = Reflect.get(repository, "pool") as {
-    connect: () => Promise<{
-      query: (sql: string, params?: unknown[]) => Promise<{ rows: unknown[] }>;
-      release: () => void;
-    }>;
-    end: () => Promise<void>;
-  };
-  const originalConnect = pool.connect;
-  const originalEnd = pool.end;
-
-  pool.connect = async () => ({
-    query: async (sql: string, params: unknown[] = []) => {
-      queries.push({ sql, params });
-      return { rows: [] };
-    },
-    release: () => {
-      released = true;
-    },
-  });
-  pool.end = async () => {};
-
-  try {
-    await repository.ensureKanbanConfiguration(DEMO_WF_ID, "user-a", {
-      id: "configuration-a",
-      name: "默认配置",
-      values: { title: "Roadmap" },
-      createdAt: "2026-07-31T00:00:00.000Z",
-      updatedAt: "2026-07-31T00:00:00.000Z",
-    });
-
-    assert.match(queries[0]?.sql ?? "", /^begin$/);
-    assert.match(queries[1]?.sql ?? "", /pg_advisory_xact_lock\(hashtext\(\$1\), hashtext\(\$2\)\)/);
-    assert.deepEqual(queries[1]?.params, [DEMO_WF_ID, "user-a"]);
-    assert.equal(
-      queries.some((query) => query.params.some(
-        (value) => typeof value === "string" && value.includes("\0"),
-      )),
-      false,
-    );
-    assert.match(queries.at(-1)?.sql ?? "", /^commit$/);
-    assert.equal(released, true);
-  } finally {
-    pool.connect = originalConnect;
-    pool.end = originalEnd;
-    await pool.end();
-  }
-});
-
-test("DatabaseRepository.init creates project deployment locks and access-control indexes", async () => {
-  const repository = new DatabaseRepository("postgresql://example.invalid/postgres");
-  const queries: string[] = [];
-  const pool = Reflect.get(repository, "pool") as {
-    query: (sql: string, params?: unknown[]) => Promise<{ rows: unknown[] }>;
-    end: () => Promise<void>;
-  };
-  const originalQuery = pool.query;
-  const originalEnd = pool.end;
-
-  pool.query = async (sql: string) => {
-    queries.push(sql);
-    return { rows: [] };
-  };
-  pool.end = async () => {};
-
-  try {
-    await repository.init();
-
-    const schema = queries.join("\n");
-    assert.match(schema, /create table if not exists project_deployments/);
-    assert.match(schema, /create table if not exists project_deployment_items/);
-    assert.match(schema, /create table if not exists related_project_dependencies/);
-    assert.doesNotMatch(schema, /create table if not exists data_source_grants/);
-    assert.match(schema, /create table if not exists project_membership_requests/);
-    assert.match(schema, /create table if not exists group_members/);
-    assert.match(
-      schema,
-      /create unique index if not exists project_deployment_items_active_version_idx[\s\S]*project_id, planned_version[\s\S]*published_version is null[\s\S]*status in \('planned', 'preparing', 'prepared', 'publishing'\)/,
-    );
-    assert.match(
-      schema,
-      /create unique index if not exists project_membership_requests_pending_idx[\s\S]*where status = 'pending'/,
-    );
-  } finally {
-    pool.query = originalQuery;
-    pool.end = originalEnd;
-    await pool.end();
-  }
-});
-
-test("DatabaseRepository reserves active deployment versions and claims deployment state atomically", async () => {
-  const repository = new DatabaseRepository("postgresql://example.invalid/postgres");
-  const queries: Array<{ sql: string; params: unknown[] }> = [];
-  let claimed = false;
-  const pool = Reflect.get(repository, "pool") as {
-    query: (sql: string, params?: unknown[]) => Promise<{ rows: unknown[]; rowCount?: number }>;
-    end: () => Promise<void>;
-  };
-  const originalQuery = pool.query;
-  const originalEnd = pool.end;
-
-  pool.query = async (sql: string, params: unknown[] = []) => {
-    queries.push({ sql, params });
-    if (/select planned_version/.test(sql)) {
-      return { rows: [{ planned_version: "0.0.2" }, { planned_version: "0.0.3" }] };
-    }
-    if (/update project_deployments/.test(sql)) {
-      const rowCount = claimed ? 0 : 1;
-      claimed = true;
-      return { rows: [], rowCount };
-    }
-    return { rows: [] };
-  };
-  pool.end = async () => {};
-
-  try {
-    assert.deepEqual(
-      await repository.listProjectVersionReservations(DEMO_WF_ID, "deployment-a"),
-      ["0.0.2", "0.0.3"],
-    );
-    assert.equal(await repository.transitionProjectDeploymentStatus({
-      id: "deployment-a",
-      from: ["planned", "failed"],
-      status: "preparing",
-    }), true);
-    assert.equal(await repository.transitionProjectDeploymentStatus({
-      id: "deployment-a",
-      from: ["planned", "failed"],
-      status: "preparing",
-    }), false);
-
-    const reservationQuery = queries.find((query) => /select planned_version/.test(query.sql));
-    assert.ok(reservationQuery);
-    assert.match(reservationQuery.sql, /deployment_id <> \$2/);
-    assert.match(reservationQuery.sql, /published_version is null/);
-    assert.match(reservationQuery.sql, /status in \('planned', 'preparing', 'prepared', 'publishing'\)/);
-    assert.deepEqual(reservationQuery.params, [DEMO_WF_ID, "deployment-a"]);
-    const transitionQueries = queries.filter((query) => /update project_deployments/.test(query.sql));
-    assert.equal(transitionQueries.length, 2);
-    assert.ok(transitionQueries.every((query) => /status = any\(\$2::text\[\]\)/.test(query.sql)));
-  } finally {
-    pool.query = originalQuery;
-    pool.end = originalEnd;
-    await pool.end();
-  }
-});
-
-
-test("DatabaseRepository.listProjectKVEntries uses a stable full-key cursor", async () => {
-  const repository = new DatabaseRepository("postgresql://example.invalid/postgres");
-  const queries: Array<{ sql: string; params: unknown[] }> = [];
-  const pool = Reflect.get(repository, "pool") as {
-    query: (sql: string, params?: unknown[]) => Promise<{ rows: unknown[] }>;
-    end: () => Promise<void>;
-  };
-  const originalQuery = pool.query;
-  const originalEnd = pool.end;
-  const cursor = createKVCursor({
-    updatedAt: "2026-05-20T00:00:00.000Z",
-    scope: "conversation",
-    projectId: DEMO_WF_ID,
-    conversationId: "thread-a",
-    key: "shared",
-  });
-
-  pool.query = async (sql: string, params: unknown[] = []) => {
-    queries.push({ sql, params });
-    return /count\(\*\)/.test(sql) ? { rows: [{ total: "0" }] } : { rows: [] };
-  };
-  pool.end = async () => {};
-
-  try {
-    await repository.listProjectKVEntries({
-      projectId: DEMO_WF_ID,
-      pageSize: 5,
-      cursor,
-    });
-
-    const query = queries.find((item) => /select\s+storage_kind, scope/.test(item.sql));
-    assert.ok(query);
-    assert.match(query.sql, /\(\s*updated_at,\s*scope,\s*project_id,\s*conversation_id,\s*key\s*\) < \(/);
-    assert.match(query.sql, /order by updated_at desc, scope desc, project_id desc, conversation_id desc, key desc/);
-    assert.deepEqual(query.params, [
-      DEMO_WF_ID,
-      "2026-05-20T00:00:00.000Z",
-      "conversation",
-      DEMO_WF_ID,
-      "thread-a",
-      "shared",
-      6,
-    ]);
-  } finally {
-    pool.query = originalQuery;
-    pool.end = originalEnd;
-    await pool.end();
-  }
-});
-
-test("DatabaseRepository.listProjectKVEntries preserves microsecond timestamps in next cursor", async () => {
-  const repository = new DatabaseRepository("postgresql://example.invalid/postgres");
-  const pool = Reflect.get(repository, "pool") as {
-    query: (sql: string, params?: unknown[]) => Promise<{ rows: unknown[] }>;
-    end: () => Promise<void>;
-  };
-  const originalQuery = pool.query;
-  const originalEnd = pool.end;
-
-  pool.query = async (sql: string) => /count\(\*\)/.test(sql)
-    ? { rows: [{ total: "2" }] }
-    : {
-        rows: [
-          createKVRow("first", "2026-05-20T00:00:00.123456Z"),
-          createKVRow("second", "2026-05-20T00:00:00.123455Z"),
-        ],
-      };
-  pool.end = async () => {};
-
-  try {
-    const page = await repository.listProjectKVEntries({
-      projectId: DEMO_WF_ID,
-      pageSize: 1,
-    });
-
-    assert.equal(page.hasMore, true);
-    assert.equal(page.total, 2);
-    assert.equal(page.items[0]?.value, undefined);
-    assert.equal(page.items[0]?.valuePreview, "{\"key\":\"first\"}");
-    assert.ok(page.nextCursor);
-    const cursor = JSON.parse(Buffer.from(page.nextCursor, "base64url").toString("utf8")) as Record<string, unknown>;
-    assert.equal(cursor["updatedAt"], "2026-05-20T00:00:00.123456Z");
-    assert.equal(cursor["key"], "first");
-  } finally {
-    pool.query = originalQuery;
-    pool.end = originalEnd;
-    await pool.end();
-  }
-});
-
-test("DatabaseRepository.getProjectKVEntry returns the selected full value", async () => {
-  const repository = new DatabaseRepository("postgresql://example.invalid/postgres");
-  const queries: Array<{ sql: string; params: unknown[] }> = [];
-  const pool = Reflect.get(repository, "pool") as {
-    query: (sql: string, params?: unknown[]) => Promise<{ rows: unknown[] }>;
-    end: () => Promise<void>;
-  };
-  const originalQuery = pool.query;
-  const originalEnd = pool.end;
-
-  pool.query = async (sql: string, params: unknown[] = []) => {
-    queries.push({ sql, params });
-    return {
-      rows: [createKVRow("conversation.state", "2026-05-20T00:00:00.123456Z", { value: { messages: [{ role: "assistant" }] } })],
-    };
-  };
-  pool.end = async () => {};
-
-  try {
-    const detail = await repository.getProjectKVEntry({
-      projectId: DEMO_WF_ID,
-      scope: "conversation",
-      key: "conversation.state",
-      conversationId: "thread-a",
-    });
-
-    // expands one KV row through a detail query instead of bloating
-    // the list response with every row's full JSON value.
-    assert.deepEqual(queries[0]?.params, ["conversation", DEMO_WF_ID, "thread-a", "conversation.state"]);
-    assert.match(queries[0]?.sql ?? "", /select\s+[\s\S]*key, value,/);
-    assert.deepEqual(detail?.value, { messages: [{ role: "assistant" }] });
-    assert.equal(detail?.valuePreview, "{\"messages\":[{\"role\":\"assistant\"}]}");
-  } finally {
-    pool.query = originalQuery;
-    pool.end = originalEnd;
-    await pool.end();
-  }
-});
-
 test("DatabaseRepository.getSystemTokenUsage aggregates project totals", async () => {
   const repository = new DatabaseRepository("postgresql://example.invalid/postgres");
   const queries: Array<{ sql: string; params: unknown[] }> = [];
@@ -771,444 +447,6 @@ test("DatabaseRepository.getProjectTokenUsage reads project and conversation agg
   }
 });
 
-test("DatabaseRepository writes isolated project storage with source metadata", async () => {
-  const repository = new DatabaseRepository("postgresql://example.invalid/postgres");
-  const queries: Array<{ sql: string; params: unknown[] }> = [];
-  const pool = Reflect.get(repository, "pool") as {
-    query: (sql: string, params?: unknown[]) => Promise<{ rows: unknown[] }>;
-    end: () => Promise<void>;
-  };
-  const originalQuery = pool.query;
-  const originalEnd = pool.end;
-
-  pool.query = async (sql: string, params: unknown[] = []) => {
-    queries.push({ sql, params });
-    return { rows: [] };
-  };
-  pool.end = async () => {};
-
-  try {
-    await repository.setValue({
-      storageKind: "persistent_value",
-      scope: "project",
-      projectId: DEMO_WF_ID,
-      key: "knowledge.documents",
-      value: { documents: [] },
-      source: { projectId: DEMO_WF_ID, runId: "RUN-1", conversationId: "Thread-A" },
-    });
-
-    const query = queries[0];
-    assert.ok(query);
-    // Management knowledge writes use the same PostgreSQL KV upsert path as
-    // PersistentValue client writes, including source metadata.
-    assert.match(query.sql, /insert into project_storage/);
-    assert.deepEqual(query.params, [
-      "persistent_value",
-      "project",
-      DEMO_WF_ID,
-      "",
-      "knowledge.documents",
-      "{\"documents\":[]}",
-      DEMO_WF_ID,
-      "RUN-1",
-      "Thread-A",
-    ]);
-  } finally {
-    pool.query = originalQuery;
-    pool.end = originalEnd;
-    await pool.end();
-  }
-});
-
-test("DatabaseRepository compare-and-set uses xmin row revisions", async () => {
-  const repository = new DatabaseRepository("postgresql://example.invalid/postgres");
-  const queries: Array<{ sql: string; params: unknown[] }> = [];
-  const pool = Reflect.get(repository, "pool") as {
-    query: (sql: string, params?: unknown[]) => Promise<{ rows: unknown[] }>;
-    end: () => Promise<void>;
-  };
-  const originalQuery = pool.query;
-  const originalEnd = pool.end;
-  const results = [
-    { rows: [{ value: 1, revision: "42" }] },
-    { rows: [{ revision: "43" }] },
-    { rows: [] },
-  ];
-
-  pool.query = async (sql: string, params: unknown[] = []) => {
-    queries.push({ sql, params });
-    return results.shift() ?? { rows: [] };
-  };
-  pool.end = async () => {};
-
-  try {
-    const input = {
-      storageKind: "kv" as const,
-      scope: "project" as const,
-      projectId: DEMO_WF_ID,
-      key: "counter",
-    };
-    assert.deepEqual(await repository.getValueWithRevision(input), { value: 1, revision: "42" });
-    assert.deepEqual(await repository.compareAndSetValue({
-      ...input,
-      value: 2,
-      source: { projectId: DEMO_WF_ID, runId: "RUN-2" },
-    }, "42"), { applied: true, revision: "43" });
-    assert.deepEqual(await repository.compareAndSetValue({ ...input, value: 3 }, "42"), { applied: false });
-
-    assert.match(queries[0]?.sql ?? "", /select value, xmin::text as revision/);
-    assert.match(queries[1]?.sql ?? "", /and xmin = \$10::xid/);
-    assert.match(queries[1]?.sql ?? "", /returning xmin::text as revision/);
-    assert.deepEqual(queries[1]?.params, [
-      "kv",
-      "project",
-      DEMO_WF_ID,
-      "",
-      "counter",
-      "2",
-      DEMO_WF_ID,
-      "RUN-2",
-      null,
-      "42",
-    ]);
-    assert.match(queries[2]?.sql ?? "", /and xmin = \$10::xid/);
-  } finally {
-    pool.query = originalQuery;
-    pool.end = originalEnd;
-    await pool.end();
-  }
-});
-
-test("DatabaseRepository reconnects the KV revision listener and replays a revision snapshot", async () => {
-  type MockRevisionClient = EventEmitter & {
-    queries: string[];
-    releases: unknown[];
-    query: (sql: string) => Promise<{ rows: Array<{ project_id: string; revision: string }> }>;
-    release: (reason?: unknown) => void;
-  };
-  const createClient = (snapshot: Array<{ project_id: string; revision: string }>): MockRevisionClient => {
-    const client = new EventEmitter() as MockRevisionClient;
-    client.queries = [];
-    client.releases = [];
-    client.query = async (sql) => {
-      client.queries.push(sql);
-      return { rows: /from project_storage_revisions/.test(sql) ? snapshot : [] };
-    };
-    client.release = (reason) => {
-      client.releases.push(reason);
-    };
-    return client;
-  };
-
-  const repository = new DatabaseRepository("postgresql://example.invalid/postgres");
-  const first = createClient([]);
-  const second = createClient([{ project_id: DEMO_WF_ID, revision: "9" }]);
-  const clients = [first, second];
-  let connectionCount = 0;
-  const pool = Reflect.get(repository, "pool") as {
-    connect: () => Promise<MockRevisionClient>;
-    end: () => Promise<void>;
-  };
-  const originalConnect = pool.connect;
-  const originalEnd = pool.end;
-  pool.connect = async () => clients[connectionCount++]!;
-  pool.end = async () => {};
-  Reflect.set(repository, "projectKVRevisionReconnectDelayMs", 1);
-  const events: Array<{ projectId: string; revision: string }> = [];
-  let unsubscribe: (() => Promise<void>) | undefined;
-
-  try {
-    unsubscribe = await repository.listenProjectStorageRevisions((event) => events.push(event));
-    first.emit("notification", {
-      channel: "project_storage_revision",
-      payload: JSON.stringify({ projectId: DEMO_WF_ID, revision: "8" }),
-    });
-    first.emit("error", new Error("connection lost"));
-
-    await waitFor(() => connectionCount === 2 && events.some((event) => event.revision === "9"));
-    second.emit("notification", {
-      channel: "project_storage_revision",
-      payload: JSON.stringify({ projectId: DEMO_WF_ID, revision: "10" }),
-    });
-
-    assert.deepEqual(events, [
-      { projectId: DEMO_WF_ID, revision: "8" },
-      { projectId: DEMO_WF_ID, revision: "9" },
-      { projectId: DEMO_WF_ID, revision: "10" },
-    ]);
-    assert.deepEqual(first.releases, [true]);
-    await unsubscribe?.();
-    unsubscribe = undefined;
-    assert.deepEqual(second.releases, [false]);
-    second.emit("end");
-    await new Promise((resolve) => setTimeout(resolve, 5));
-    assert.equal(connectionCount, 2);
-  } finally {
-    await unsubscribe?.();
-    pool.connect = originalConnect;
-    pool.end = originalEnd;
-    await pool.end();
-  }
-});
-
-test("DatabaseRepository orders reconnect snapshots before buffered revision notifications", async () => {
-  type MockRevisionClient = EventEmitter & {
-    query: (sql: string) => Promise<{ rows: Array<{ project_id: string; revision: string }> }>;
-    release: (reason?: unknown) => void;
-  };
-  const first = new EventEmitter() as MockRevisionClient;
-  first.query = async () => ({ rows: [] });
-  first.release = () => undefined;
-  const second = new EventEmitter() as MockRevisionClient;
-  second.query = async (sql) => {
-    if (/from project_storage_revisions/.test(sql)) {
-      second.emit("notification", {
-        channel: "project_storage_revision",
-        payload: JSON.stringify({ projectId: DEMO_WF_ID, revision: "10" }),
-      });
-      return { rows: [{ project_id: DEMO_WF_ID, revision: "9" }] };
-    }
-    return { rows: [] };
-  };
-  second.release = () => undefined;
-
-  const repository = new DatabaseRepository("postgresql://example.invalid/postgres");
-  const clients = [first, second];
-  let connectionCount = 0;
-  const pool = Reflect.get(repository, "pool") as {
-    connect: () => Promise<MockRevisionClient>;
-    end: () => Promise<void>;
-  };
-  const originalConnect = pool.connect;
-  const originalEnd = pool.end;
-  pool.connect = async () => clients[connectionCount++]!;
-  pool.end = async () => {};
-  Reflect.set(repository, "projectKVRevisionReconnectDelayMs", 1);
-  const events: Array<{ projectId: string; revision: string }> = [];
-  let unsubscribe: (() => Promise<void>) | undefined;
-
-  try {
-    unsubscribe = await repository.listenProjectStorageRevisions((event) => events.push(event));
-    first.emit("notification", {
-      channel: "project_storage_revision",
-      payload: JSON.stringify({ projectId: DEMO_WF_ID, revision: "8" }),
-    });
-    first.emit("error", new Error("connection lost"));
-
-    await waitFor(() => events.some((event) => event.revision === "10"));
-    assert.deepEqual(events, [
-      { projectId: DEMO_WF_ID, revision: "8" },
-      { projectId: DEMO_WF_ID, revision: "9" },
-      { projectId: DEMO_WF_ID, revision: "10" },
-    ]);
-  } finally {
-    await unsubscribe?.();
-    pool.connect = originalConnect;
-    pool.end = originalEnd;
-    await pool.end();
-  }
-});
-
-test("Storage.listProjectKVEntries preserves exact ID filter case", async () => {
-  const dataRoot = await mkdtemp(path.join(tmpdir(), "workflow-storage-kv-"));
-  const calls: unknown[] = [];
-  const storage = new Storage({
-    serverRoot: process.cwd(),
-    repoRoot: process.cwd(),
-    dataRoot,
-    db: {
-      getProject: async () => createDbProjectRecord(DEMO_WF_ID, null),
-      listProjectKVEntries: async (options: unknown) => {
-        calls.push(options);
-        return { items: [], hasMore: false, total: 0 };
-      },
-    } as unknown as DatabaseRepository,
-  });
-
-  try {
-    await storage.listProjectKVEntries({
-      projectId: DEMO_WF_ID,
-      pageSize: 20,
-      query: "  Memory  ",
-      conversationId: "  Thread-A  ",
-      runId: "  RUN-A  ",
-    });
-
-    assert.deepEqual(calls[0], {
-      projectId: DEMO_WF_ID,
-      pageSize: 20,
-      cursor: undefined,
-      scope: undefined,
-      query: "memory",
-      valueType: undefined,
-      conversationId: "Thread-A",
-      runId: "RUN-A",
-    });
-  } finally {
-    await rm(dataRoot, { recursive: true, force: true });
-  }
-});
-
-test("Storage.deleteProjectKVEntry deletes one exact scoped entry", async () => {
-  const dataRoot = await mkdtemp(path.join(tmpdir(), "workflow-storage-kv-delete-"));
-  const calls: unknown[] = [];
-  const storage = new Storage({
-    serverRoot: process.cwd(),
-    repoRoot: process.cwd(),
-    dataRoot,
-    db: {
-      getProject: async () => createDbProjectRecord(DEMO_WF_ID, null),
-      deleteValue: async (options: unknown) => {
-        calls.push(options);
-        return true;
-      },
-    } as unknown as DatabaseRepository,
-  });
-
-  try {
-    assert.deepEqual(
-      await storage.deleteProjectKVEntry({
-        projectId: DEMO_WF_ID,
-        scope: "conversation",
-        key: "  Thread.State  ",
-        conversationId: "  Thread-A  ",
-      }),
-      { scope: "conversation", key: "Thread.State", conversationId: "Thread-A" },
-    );
-    assert.deepEqual(calls[0], {
-      storageKind: "kv",
-      scope: "conversation",
-      projectId: DEMO_WF_ID,
-      key: "Thread.State",
-      conversationId: "Thread-A",
-    });
-  } finally {
-    await rm(dataRoot, { recursive: true, force: true });
-  }
-});
-
-test("Storage.deleteProjectKVEntry omits the conversation for project scope", async () => {
-  const dataRoot = await mkdtemp(path.join(tmpdir(), "workflow-storage-kv-delete-scope-"));
-  const calls: unknown[] = [];
-  const storage = new Storage({
-    serverRoot: process.cwd(),
-    repoRoot: process.cwd(),
-    dataRoot,
-    db: {
-      getProject: async () => createDbProjectRecord(DEMO_WF_ID, null),
-      deleteValue: async (options: unknown) => {
-        calls.push(options);
-        return true;
-      },
-    } as unknown as DatabaseRepository,
-  });
-
-  try {
-    await storage.deleteProjectKVEntry({
-      projectId: DEMO_WF_ID,
-      scope: "project",
-      key: "settings",
-      // A stray conversation id must not widen a project-scope delete.
-      conversationId: "Thread-A",
-    });
-    assert.deepEqual(calls[0], {
-      storageKind: "kv",
-      scope: "project",
-      projectId: DEMO_WF_ID,
-      key: "settings",
-    });
-  } finally {
-    await rm(dataRoot, { recursive: true, force: true });
-  }
-});
-
-test("Storage.deleteProjectKVEntry reports an already-removed entry as missing", async () => {
-  const dataRoot = await mkdtemp(path.join(tmpdir(), "workflow-storage-kv-delete-missing-"));
-  const storage = new Storage({
-    serverRoot: process.cwd(),
-    repoRoot: process.cwd(),
-    dataRoot,
-    db: {
-      getProject: async () => createDbProjectRecord(DEMO_WF_ID, null),
-      deleteValue: async () => false,
-    } as unknown as DatabaseRepository,
-  });
-
-  try {
-    await assert.rejects(
-      () => storage.deleteProjectKVEntry({
-        projectId: DEMO_WF_ID,
-        scope: "project",
-        key: "already-gone",
-      }),
-      /"already-gone" does not exist/,
-    );
-  } finally {
-    await rm(dataRoot, { recursive: true, force: true });
-  }
-});
-
-test("Storage.deleteProjectKVEntry requires a conversation id for conversation scope", async () => {
-  const dataRoot = await mkdtemp(path.join(tmpdir(), "workflow-storage-kv-delete-conv-"));
-  const storage = new Storage({
-    serverRoot: process.cwd(),
-    repoRoot: process.cwd(),
-    dataRoot,
-    db: {
-      getProject: async () => createDbProjectRecord(DEMO_WF_ID, null),
-      deleteValue: async () => true,
-    } as unknown as DatabaseRepository,
-  });
-
-  try {
-    await assert.rejects(
-      () => storage.deleteProjectKVEntry({
-        projectId: DEMO_WF_ID,
-        scope: "conversation",
-        key: "settings",
-      }),
-      /conversationId is required/,
-    );
-  } finally {
-    await rm(dataRoot, { recursive: true, force: true });
-  }
-});
-
-test("Storage.getProjectKVEntry preserves exact key and conversation case", async () => {
-  const dataRoot = await mkdtemp(path.join(tmpdir(), "workflow-storage-kv-detail-"));
-  const calls: unknown[] = [];
-  const storage = new Storage({
-    serverRoot: process.cwd(),
-    repoRoot: process.cwd(),
-    dataRoot,
-    db: {
-      getProject: async () => createDbProjectRecord(DEMO_WF_ID, null),
-      getProjectKVEntry: async (options: unknown) => {
-        calls.push(options);
-        return createKVSummary("Thread.State", { value: { ok: true } });
-      },
-    } as unknown as DatabaseRepository,
-  });
-
-  try {
-    await storage.getProjectKVEntry({
-      projectId: DEMO_WF_ID,
-      scope: "conversation",
-      key: "  Thread.State  ",
-      conversationId: "  Thread-A  ",
-    });
-
-    assert.deepEqual(calls[0], {
-      projectId: DEMO_WF_ID,
-      scope: "conversation",
-      key: "Thread.State",
-      conversationId: "Thread-A",
-    });
-  } finally {
-    await rm(dataRoot, { recursive: true, force: true });
-  }
-});
-
 test("Storage token usage inspection requires PostgreSQL storage", async () => {
   const dataRoot = await mkdtemp(path.join(tmpdir(), "workflow-storage-token-"));
   const storage = new Storage({
@@ -1227,203 +465,6 @@ test("Storage token usage inspection requires PostgreSQL storage", async () => {
     await assert.rejects(
       () => storage.getProjectTokenUsage({ projectId: DEMO_WF_ID }),
       { statusCode: 501, errCode: 501 },
-    );
-  } finally {
-    await rm(dataRoot, { recursive: true, force: true });
-  }
-});
-
-test("Storage knowledge base requires PostgreSQL storage", async () => {
-  const dataRoot = await mkdtemp(path.join(tmpdir(), "workflow-storage-knowledge-"));
-  const storage = new Storage({
-    serverRoot: process.cwd(),
-    repoRoot: process.cwd(),
-    dataRoot,
-    buildInfo: testBuildInfo,
-  });
-
-  try {
-    await writeFileBackedProject(dataRoot, DEMO_WF_ID);
-    await assert.rejects(
-      () => storage.listKnowledgeDocuments(DEMO_WF_ID),
-      { statusCode: 501, errCode: 501 },
-    );
-  } finally {
-    await rm(dataRoot, { recursive: true, force: true });
-  }
-});
-
-test("Storage knowledge documents use the PersistentValue project domain", async () => {
-  const dataRoot = await mkdtemp(path.join(tmpdir(), "workflow-storage-knowledge-"));
-  const db = createMemoryKVStore();
-  const storage = new Storage({
-    serverRoot: process.cwd(),
-    repoRoot: process.cwd(),
-    dataRoot,
-    db: db as unknown as DatabaseRepository,
-  });
-
-  try {
-    const created = await storage.createKnowledgeDocument({
-      projectName: DEMO_WF_ID,
-      id: "readme",
-      title: "Readme",
-      markdown: "# Readme\n\nPersistentValue knowledge.",
-    });
-    const edited = await storage.editKnowledgeDocument({
-      projectName: DEMO_WF_ID,
-      documentId: "readme",
-      markdown: "# Readme\n\nSearchable markdown.",
-    });
-    const list = await storage.listKnowledgeDocuments(DEMO_WF_ID);
-    const search = await storage.searchKnowledgeDocuments({
-      projectName: DEMO_WF_ID,
-      query: "searchable",
-      beforeLines: 1,
-      afterLines: 0,
-    });
-    const lines = await storage.readKnowledgeDocumentLines({
-      projectName: DEMO_WF_ID,
-      documentId: "readme",
-      startLine: 2,
-      endLine: 3,
-    });
-
-    assert.equal(created.markdown, "# Readme\n\nPersistentValue knowledge.");
-    assert.equal(edited.markdown, "# Readme\n\nSearchable markdown.");
-    assert.deepEqual(list.items.map((item: KnowledgeDocumentListItem) => item.id), ["readme"]);
-    assert.deepEqual(search.matches.map((match) => [match.documentId, match.lineNumber, match.line]), [
-      ["readme", 3, "Searchable markdown."],
-    ]);
-    assert.deepEqual(lines.lines.map((line) => [line.lineNumber, line.content]), [
-      [2, ""],
-      [3, "Searchable markdown."],
-    ]);
-    assert.deepEqual(
-      db.sources.get(`persistent_value:project:${DEMO_WF_ID}::knowledge.document.readme`),
-      { projectId: DEMO_WF_ID },
-    );
-  } finally {
-    await rm(dataRoot, { recursive: true, force: true });
-  }
-});
-
-test("Storage knowledge documents delegate opaque page cursors to core index pages", async () => {
-  const dataRoot = await mkdtemp(path.join(tmpdir(), "workflow-storage-knowledge-page-"));
-  const db = createMemoryKVStore();
-  const storage = new Storage({
-    serverRoot: process.cwd(),
-    repoRoot: process.cwd(),
-    dataRoot,
-    db: db as unknown as DatabaseRepository,
-  });
-
-  try {
-    for (const id of ["one", "two", "three"]) {
-      await storage.createKnowledgeDocument({
-        projectName: DEMO_WF_ID,
-        id,
-        title: id,
-        markdown: id,
-      });
-    }
-
-    const first = await storage.listKnowledgeDocuments(DEMO_WF_ID, { pageSize: 2 });
-    const second = await storage.listKnowledgeDocuments(DEMO_WF_ID, { pageSize: 2, cursor: first.nextCursor });
-
-    // Storage delegates the bounded PersistentValue index pages to core, so
-    // management clients never reconstruct pagination from a full list.
-    assert.equal(first.items.length, 2);
-    assert.equal(first.hasMore, true);
-    assert.equal(first.total, 3);
-    assert.match(first.nextCursor ?? "", /^[A-Za-z0-9_-]+$/);
-    assert.notEqual(first.nextCursor, "2");
-    assert.equal(second.items.length, 1);
-    assert.equal(second.hasMore, false);
-    assert.equal(second.total, 3);
-    await assert.rejects(
-      () => storage.listKnowledgeDocuments(DEMO_WF_ID, { cursor: "2" }),
-      /valid knowledge document page cursor/,
-    );
-  } finally {
-    await rm(dataRoot, { recursive: true, force: true });
-  }
-});
-
-test("Storage persistent value compare-and-set rejects stale revisions", async () => {
-  const dataRoot = await mkdtemp(path.join(tmpdir(), "workflow-storage-persistent-cas-"));
-  const db = createMemoryKVStore();
-  const storage = new Storage({
-    serverRoot: process.cwd(),
-    repoRoot: process.cwd(),
-    dataRoot,
-    db: db as unknown as DatabaseRepository,
-  });
-  const input = {
-    storageKind: "persistent_value" as const,
-    scope: "project" as const,
-    projectId: DEMO_WF_ID,
-    key: "counter",
-  };
-
-  try {
-    const created = await storage.compareAndSetProjectStorageValue({
-      ...input,
-      value: 1,
-      expectedRevision: null,
-    });
-    assert.equal(created.applied, true);
-    assert.ok(created.revision);
-    const createdRevision = created.revision;
-
-    const updated = await storage.compareAndSetProjectStorageValue({
-      ...input,
-      value: 2,
-      expectedRevision: createdRevision,
-    });
-    assert.equal(updated.applied, true);
-    assert.notEqual(updated.revision, created.revision);
-
-    const stale = await storage.compareAndSetProjectStorageValue({
-      ...input,
-      value: 3,
-      expectedRevision: createdRevision,
-    });
-    assert.deepEqual(stale, { applied: false });
-    assert.deepEqual(await storage.getProjectStorageValue(input), {
-      exists: true,
-      value: 2,
-      revision: updated.revision,
-    });
-  } finally {
-    await rm(dataRoot, { recursive: true, force: true });
-  }
-});
-
-test("Storage knowledge create conflict maps to HTTP conflict", async () => {
-  const dataRoot = await mkdtemp(path.join(tmpdir(), "workflow-storage-knowledge-conflict-"));
-  const storage = new Storage({
-    serverRoot: process.cwd(),
-    repoRoot: process.cwd(),
-    dataRoot,
-    db: createMemoryKVStore() as unknown as DatabaseRepository,
-  });
-
-  try {
-    await storage.createKnowledgeDocument({
-      projectName: DEMO_WF_ID,
-      id: "readme",
-      title: "Readme",
-      markdown: "",
-    });
-    await assert.rejects(
-      () => storage.createKnowledgeDocument({
-        projectName: DEMO_WF_ID,
-        id: "readme",
-        title: "Readme",
-        markdown: "",
-      }),
-      { statusCode: 409, errCode: 409 },
     );
   } finally {
     await rm(dataRoot, { recursive: true, force: true });
@@ -1513,7 +554,7 @@ test("Storage creates a readable random avatar when no projectCard is supplied",
     } } as unknown as DatabaseRepository });
   try {
     for (const projectType of ["workflow", "conversation", "kanban"] as const) {
-      await storage.createProject({ projectId: DEMO_WF_ID, projectName: "Demo", projectType, projectInfo: DECLARED_SERVER_PROJECT_INFO,ownerUserId:"owner" });
+      await storage.createProject({ projectId: DEMO_WF_ID, projectName: "Demo", entries:[{entryId:"main",name:"Main",type:projectType,root:".",entry:projectType==="kanban"?"index.html":"index.ts",databases:[]}],defaultEntry:"main", projectInfo: DECLARED_SERVER_PROJECT_INFO,ownerUserId:"owner" });
       assert.equal(saved!.icon, defaultProjectCardIcon(projectType));
       assert.ok(getProjectCardColorContrastRatio(saved!.iconColor!, saved!.iconBackgroundColor) >= 4.5);
     }
@@ -1527,15 +568,15 @@ test("Storage reuses an existing project without overwriting management fields",
     ownerUserId: "owner-1",
     projectInfo: {
       ...DECLARED_SERVER_PROJECT_INFO,
-      dataStorage: { mode: "local" as const },
+
     },
   };
   const projectInfo = {
     localizedNames: { "zh-CN": "恢复项目", en: "Restored project" },
     declarations: ["restored"],
     platformSupport: { mode: "specific" as const, platforms: ["macos"] },
-    dataStorage: { mode: "both" as const },
-    relatedProjects: [],
+
+
   };
   const projectCard = {
     icon: "workflow" as const,
@@ -1566,7 +607,7 @@ test("Storage reuses an existing project without overwriting management fields",
     const restored = await storage.createProject({
       projectId: DEMO_WF_ID,
       projectName: DEMO_WF_ID,
-      projectType: "workflow",
+      entries:[{entryId:"main",name:"Main",type:"workflow",root:".",entry:"index.ts",databases:[]}],defaultEntry:"main",
       projectInfo,
       projectCard,
       ownerUserId: "owner-1",
@@ -1655,7 +696,7 @@ test("Storage.listProjects returns uploaded package project card metadata", asyn
   try {
     await storage.init();
     await writeFileVersion(dataRoot, DEMO_CONV_WF_ID, "1.0.0", "2026-05-21T00:00:00.000Z", {
-      steamHarness: { projectType: "conversation",
+      steamHarness: { defaultEntry:"main",entries:[{entryId:"main",name:"Main",type:"conversation",root:".",entry:"index.ts",configuration:"configuration.json",databases:[]}],
         projectInfo: DECLARED_SERVER_PROJECT_INFO,
         projectCard: {
           icon: "bot",
@@ -1674,7 +715,7 @@ test("Storage.listProjects returns uploaded package project card metadata", asyn
     const workflows = await storage.listProjects();
 
     assert.equal(workflows[0]?.id, DEMO_CONV_WF_ID);
-    assert.equal(workflows[0]?.projectType, "conversation");
+    assert.equal(workflows[0]?.entries[0]?.type, "conversation");
     assert.deepEqual(workflows[0]?.projectCard, {
       icon: "bot",
       iconUrl: "https://example.test/bot.png",
@@ -1724,33 +765,6 @@ test("Storage stores cropped project card images by content hash", async () => {
   }
 });
 
-test("Storage rejects the first upload when executor type differs from the empty project", async () => {
-  const dataRoot = await mkdtemp(path.join(tmpdir(), "workflow-storage-project-type-conflict-"));
-  const storage = new Storage({
-    serverRoot: process.cwd(),
-    repoRoot: process.cwd(),
-    dataRoot,
-    db: {
-      getProject: async () => createDbProjectRecord(DEMO_WF_ID, null),
-      listVersions: async () => [],
-    } as unknown as DatabaseRepository,
-  });
-
-  try {
-    const assertUploadedProjectType = Reflect.get(storage, "assertUploadedProjectType") as (
-      projectId: string,
-      projectType: "workflow" | "conversation",
-    ) => Promise<void>;
-
-    await assert.rejects(
-      assertUploadedProjectType.call(storage, DEMO_WF_ID, "conversation"),
-      /created as projectType "workflow", but package.json declares "conversation"/,
-    );
-  } finally {
-    await rm(dataRoot, { recursive: true, force: true });
-  }
-});
-
 test("Storage atomically checks project configuration versions and isolates accounts", async () => {
   const dataRoot = await mkdtemp(path.join(tmpdir(), "project-configuration-storage-"));
   const sourceRoot = path.join(dataRoot, "projects", DEMO_WF_ID, "draft", "source");
@@ -1758,7 +772,7 @@ test("Storage atomically checks project configuration versions and isolates acco
   storage.getProjectAccessSummary=async()=>({projectId:DEMO_WF_ID,projectName:"Config",visibility:"private",access:resolveResourceAccess([{type:"project",id:DEMO_WF_ID,role:"developer"}])});
   try {
     await mkdir(sourceRoot,{recursive:true});
-    await writeFile(path.join(sourceRoot,"package.json"),JSON.stringify({id:DEMO_WF_ID,name:"Configurations",version:"0.1.0",devDependencies:testToolchainDependencies,steamHarness:{projectType:"kanban",projectInfo:DECLARED_SERVER_PROJECT_INFO}}));
+    await writeFile(path.join(sourceRoot,"package.json"),JSON.stringify({id:DEMO_WF_ID,name:"Configurations",version:"0.1.0",devDependencies:testToolchainDependencies,steamHarness:{defaultEntry:"main",entries:[{entryId:"main",name:"Main",type:"kanban",root:".",entry:"index.html",configuration:"configuration.json",databases:[]}],projectInfo:DECLARED_SERVER_PROJECT_INFO}}));
     await writeFile(path.join(sourceRoot,"index.html"),"<!doctype html>");
     await writeFile(path.join(sourceRoot,"configuration.json"),JSON.stringify({version:1,fields:[{name:"title",type:"string",defaultValue:"Roadmap"}]}));
     const options={projectName:DEMO_WF_ID,actorId:"user-a",target:"draft"};
@@ -1787,9 +801,11 @@ test("Storage keeps draft configuration values when an older version is read and
   storage.getProjectAccessSummary=async()=>({projectId:DEMO_WF_ID,projectName:"Config",visibility:"private",access:resolveResourceAccess([{type:"project",id:DEMO_WF_ID,role:"developer"}])});
   try {
     await mkdir(draft,{recursive:true});await mkdir(version,{recursive:true});
-    await writeFile(path.join(draft,"package.json"),JSON.stringify({id:DEMO_WF_ID,name:"Configuration targets",version:"0.1.1",devDependencies:testToolchainDependencies,steamHarness:{projectType:"workflow",projectInfo:DECLARED_SERVER_PROJECT_INFO}}));
+    await writeFile(path.join(draft,"package.json"),JSON.stringify({id:DEMO_WF_ID,name:"Configuration targets",version:"0.1.1",devDependencies:testToolchainDependencies,steamHarness:{defaultEntry:"main",entries:[{entryId:"main",name:"Main",type:"workflow",root:".",entry:"index.ts",configuration:"configuration.json",databases:[]}],projectInfo:DECLARED_SERVER_PROJECT_INFO}}));
     await writeFile(path.join(draft,"index.ts"),'throw new Error("static source only");');
     await writeFile(path.join(draft,"configuration.json"),JSON.stringify({version:1,fields:[{name:"newField",type:"string"}]}));
+    await writeFile(path.join(version,"package.json"),await readFile(path.join(draft,"package.json")));
+    await writeFile(path.join(version,"index.ts"),'throw new Error("must not execute");');
     await writeFile(path.join(version,"configuration.json"),JSON.stringify({version:1,fields:[]}));
     const options={projectName:DEMO_WF_ID,actorId:"user-a",target:"draft"};
     const initial=await storage.projectConfigurations(options,{action:"get"}) as import("@steamharness/project-configuration").ProjectConfigurationState;
@@ -2058,68 +1074,6 @@ test("DatabaseRepository reads persisted Kanban binary file encoding", async () 
   }
 });
 
-test("DatabaseRepository publish and deployment operations use separate postgres advisory locks", async () => {
-  const repository = new DatabaseRepository("postgresql://example.invalid/postgres");
-  const queries: Array<{ sql: string; params: unknown[] }> = [];
-  let released = false;
-  const pool = Reflect.get(repository, "pool") as {
-    connect: () => Promise<{
-      query: (sql: string, params?: unknown[]) => Promise<{ rows: unknown[] }>;
-      release: () => void;
-    }>;
-    end: () => Promise<void>;
-  };
-  const publishLockPool = Reflect.get(repository, "publishLockPool") as {
-    connect: () => Promise<{
-      query: (sql: string, params?: unknown[]) => Promise<{ rows: unknown[] }>;
-      release: () => void;
-    }>;
-    end: () => Promise<void>;
-  };
-  const originalConnect = publishLockPool.connect;
-  const originalEnd = pool.end;
-  const originalPublishLockEnd = publishLockPool.end;
-
-  publishLockPool.connect = async () => ({
-    query: async (sql: string, params: unknown[] = []) => {
-      queries.push({ sql, params });
-      return { rows: [] };
-    },
-    release: () => {
-      released = true;
-    },
-  });
-  pool.end = async () => {};
-  publishLockPool.end = async () => {};
-
-  try {
-    const result = await repository.withProjectPublishLock(DEMO_WF_ID, async () => "published");
-    const deploymentId = "00000000-0000-4000-8000-000000000099";
-    const deploymentResult = await repository.withProjectDeploymentLock(
-      deploymentId,
-      async () => "deployed",
-    );
-
-    assert.equal(result, "published");
-    assert.equal(deploymentResult, "deployed");
-    assert.match(queries[0]?.sql ?? "", /pg_advisory_lock/);
-    assert.deepEqual(queries[0]?.params, ["project_publish", DEMO_WF_ID]);
-    assert.match(queries[1]?.sql ?? "", /pg_advisory_unlock/);
-    assert.deepEqual(queries[1]?.params, ["project_publish", DEMO_WF_ID]);
-    assert.match(queries[2]?.sql ?? "", /pg_advisory_lock/);
-    assert.deepEqual(queries[2]?.params, ["project_deployment", deploymentId]);
-    assert.match(queries[3]?.sql ?? "", /pg_advisory_unlock/);
-    assert.deepEqual(queries[3]?.params, ["project_deployment", deploymentId]);
-    assert.equal(released, true);
-  } finally {
-    publishLockPool.connect = originalConnect;
-    pool.end = originalEnd;
-    publishLockPool.end = originalPublishLockEnd;
-    await pool.end();
-    await publishLockPool.end();
-  }
-});
-
 test("DatabaseRepository.withProjectPublishLock does not occupy storage pool clients", async () => {
   const repository = new DatabaseRepository("postgresql://example.invalid/postgres");
   const lockQueries: Array<{ sql: string; params: unknown[] }> = [];
@@ -2187,108 +1141,14 @@ test("DatabaseRepository.withProjectPublishLock does not occupy storage pool cli
   }
 });
 
-test("DatabaseRepository namespace transactions commit all knowledge KV writes or roll them back together", async () => {
-  const repository = new DatabaseRepository("postgresql://example.invalid/postgres");
-  const queries: Array<{ sql: string; params: unknown[] }> = [];
-  let released = 0;
-  let failDocumentWrite = false;
-  const pool = Reflect.get(repository, "pool") as {
-    connect: () => Promise<{
-      query: (sql: string, params?: unknown[]) => Promise<{ rows: unknown[] }>;
-      release: () => void;
-    }>;
-    end: () => Promise<void>;
-  };
-  const lockPool = Reflect.get(repository, "publishLockPool") as { end: () => Promise<void> };
-  const originalConnect = pool.connect;
-  const originalEnd = pool.end;
-  const originalLockEnd = lockPool.end;
-
-  pool.connect = async () => ({
-    query: async (sql: string, params: unknown[] = []) => {
-      queries.push({ sql, params });
-      if (failDocumentWrite && sql.includes("insert into project_storage") && params[4] === "knowledge.document.guide") {
-        throw new Error("document write failed");
-      }
-      return { rows: [] };
-    },
-    release: () => {
-      released += 1;
-    },
-  });
-  pool.end = async () => {};
-  lockPool.end = async () => {};
-
-  const writeKnowledgeValues = async (store: KVStore) => {
-    assert.ok(store.withNamespaceLock);
-    await store.withNamespaceLock(
-      { storageKind: "persistent_value", scope: "project", projectId: DEMO_WF_ID },
-      async () => {
-        await store.setValue({
-          storageKind: "persistent_value",
-          scope: "project",
-          projectId: DEMO_WF_ID,
-          key: "knowledge.documents",
-          value: { documents: [{ id: "guide" }] },
-          source: { projectId: DEMO_WF_ID },
-        });
-        await store.setValue({
-          storageKind: "persistent_value",
-          scope: "project",
-          projectId: DEMO_WF_ID,
-          key: "knowledge.document.guide",
-          value: { id: "guide", title: "Guide", markdown: "# Guide" },
-          source: { projectId: DEMO_WF_ID },
-        });
-      },
-    );
-  };
-
-  try {
-    await repository.withNamespaceTransaction(
-      { storageKind: "persistent_value", scope: "project", projectId: DEMO_WF_ID },
-      writeKnowledgeValues,
-    );
-
-    assert.match(queries[0]?.sql ?? "", /^begin$/);
-    assert.match(queries[1]?.sql ?? "", /pg_advisory_xact_lock/);
-    assert.deepEqual(queries[1]?.params, [
-      "project_storage_namespace",
-      `{"storageKind":"persistent_value","scope":"project","projectId":"${DEMO_WF_ID}"}`,
-    ]);
-    assert.equal(queries.filter((query) => query.sql.includes("insert into project_storage")).length, 2);
-    assert.match(queries.at(-1)?.sql ?? "", /^commit$/);
-
-    queries.length = 0;
-    failDocumentWrite = true;
-    await assert.rejects(
-      repository.withNamespaceTransaction(
-        { storageKind: "persistent_value", scope: "project", projectId: DEMO_WF_ID },
-        writeKnowledgeValues,
-      ),
-      /document write failed/,
-    );
-    assert.match(queries[0]?.sql ?? "", /^begin$/);
-    assert.match(queries[1]?.sql ?? "", /pg_advisory_xact_lock/);
-    assert.match(queries.at(-1)?.sql ?? "", /^rollback$/);
-    assert.equal(queries.some((query) => /^commit$/i.test(query.sql)), false);
-    assert.equal(released, 2);
-  } finally {
-    pool.connect = originalConnect;
-    pool.end = originalEnd;
-    lockPool.end = originalLockEnd;
-    await Promise.all([pool.end(), lockPool.end()]);
-  }
-});
-
 test("Storage preserves preparation failure stage and reason", async () => {
   const dataRoot = await mkdtemp(path.join(tmpdir(), "workflow-storage-preparation-failure-"));
   const storage = new Storage({ serverRoot: process.cwd(), repoRoot: process.cwd(), dataRoot });
   Reflect.set(storage, "uploadPackage", async (options: {
-    onStage?: (stage: "bundling") => Promise<void>;
+    onStage?: (stage: "validating") => Promise<void>;
   }) => {
-    await options.onStage?.("bundling");
-    throw new Error("bundle command failed");
+    await options.onStage?.("validating");
+    throw new Error("package validation failed");
   });
 
   try {
@@ -2300,405 +1160,8 @@ test("Storage preserves preparation failure stage and reason", async () => {
     });
     const failed = await waitForPreparationTerminal(storage, DEMO_WF_ID, accepted.jobId);
     assert.equal(failed.status, "failed");
-    assert.equal(failed.stage, "bundling");
-    assert.equal(failed.failureReason, "bundle command failed");
-  } finally {
-    await rm(dataRoot, { recursive: true, force: true });
-  }
-});
-
-test("Storage gives concurrent project deployments distinct reserved versions", async () => {
-  const dataRoot = await mkdtemp(path.join(tmpdir(), "workflow-storage-deployment-reservations-"));
-  const createDeployment = (id: string): DeploymentRecord => ({
-    id,
-    rootProjectId: DEMO_WF_ID,
-    status: "planned",
-    manifest: {
-      version: 1,
-      rootProjectId: DEMO_WF_ID,
-      projects: [{ projectId: DEMO_WF_ID, role: "root", archivePath: `projects/${DEMO_WF_ID}.tgz` }],
-      dependencies: [],
-    },
-    releaseLog: "",
-    createdByUserId: "user-1",
-    createdAt: "2026-08-05T00:00:00.000Z",
-    updatedAt: "2026-08-05T00:00:00.000Z",
-    items: [{
-      deploymentId: id,
-      projectId: DEMO_WF_ID,
-      role: "root",
-      delivery: "included",
-      status: "planned",
-      updatedAt: "2026-08-05T00:00:00.000Z",
-    }],
-  });
-  const deployments = new Map([
-    ["00000000-0000-4000-8000-000000000011", createDeployment("00000000-0000-4000-8000-000000000011")],
-    ["00000000-0000-4000-8000-000000000012", createDeployment("00000000-0000-4000-8000-000000000012")],
-  ]);
-  const db = {
-    getProjectDeployment: async (id: string) => deployments.get(id),
-    updateProjectDeploymentItem: async (input: {
-      deploymentId: string;
-      projectId: string;
-      status: "planned";
-      stage: string;
-      plannedVersion: string;
-    }) => {
-      const item = deployments.get(input.deploymentId)?.items.find(
-        (candidate) => candidate.projectId === input.projectId,
-      );
-      assert.ok(item);
-      Object.assign(item, input, { updatedAt: "2026-08-05T00:00:01.000Z" });
-    },
-    listProjectVersionReservations: async (projectId: string) => [...deployments.values()]
-      .flatMap((deployment) => deployment.items)
-      .filter((item) => item.projectId === projectId && item.plannedVersion !== undefined)
-      .map((item) => item.plannedVersion!),
-    listVersions: async () => [],
-    getProject: async () => undefined,
-    withProjectPublishLock: async (_projectId: string, operation: () => Promise<unknown>) => operation(),
-  } as unknown as DatabaseRepository;
-  const storage = new Storage({ serverRoot: process.cwd(), repoRoot: process.cwd(), dataRoot, db });
-  const reserve = Reflect.get(storage, "reserveProjectGroupDeploymentVersions") as (
-    deployment: DeploymentRecord,
-    reset: boolean,
-  ) => Promise<DeploymentRecord>;
-
-  try {
-    const [first, second] = await Promise.all(
-      [...deployments.values()].map((deployment) => reserve.call(storage, deployment, false)),
-    );
-    assert.deepEqual(
-      [first.items[0]?.plannedVersion, second.items[0]?.plannedVersion].sort(),
-      ["0.0.1", "0.0.2"],
-    );
-  } finally {
-    await rm(dataRoot, { recursive: true, force: true });
-  }
-});
-
-test("Storage skips active deployment reservations for ordinary publish versions", async () => {
-  const dataRoot = await mkdtemp(path.join(tmpdir(), "workflow-storage-publish-reservations-"));
-  const db = {
-    listVersions: async () => [{ version: "0.0.2" }],
-    getProject: async () => ({ latest: "0.0.2" }),
-    listProjectVersionReservations: async () => ["0.0.3", "0.0.4"],
-  } as unknown as DatabaseRepository;
-  const storage = new Storage({ serverRoot: process.cwd(), repoRoot: process.cwd(), dataRoot, db });
-  const resolveNextVersion = Reflect.get(storage, "resolveNextVersion") as (
-    projectName: string,
-  ) => Promise<string>;
-
-  try {
-    assert.equal(await resolveNextVersion.call(storage, DEMO_WF_ID), "0.0.5");
-  } finally {
-    await rm(dataRoot, { recursive: true, force: true });
-  }
-});
-
-test("Storage resets and re-reserves every item before re-preparing a failed deployment", async () => {
-  const dataRoot = await mkdtemp(path.join(tmpdir(), "workflow-storage-deployment-reprepare-"));
-  const deployment: DeploymentRecord = {
-    id: "00000000-0000-4000-8000-000000000013",
-    rootProjectId: DEMO_WF_ID,
-    status: "failed",
-    manifest: {
-      version: 1,
-      rootProjectId: DEMO_WF_ID,
-      projects: [{ projectId: DEMO_WF_ID, role: "root", archivePath: `projects/${DEMO_WF_ID}.tgz` }],
-      dependencies: [],
-    },
-    releaseLog: "retry",
-    createdByUserId: "user-1",
-    createdAt: "2026-08-05T00:00:00.000Z",
-    updatedAt: "2026-08-05T00:00:00.000Z",
-    items: [{
-      deploymentId: "00000000-0000-4000-8000-000000000013",
-      projectId: DEMO_WF_ID,
-      role: "root",
-      delivery: "included",
-      status: "failed",
-      plannedVersion: "0.0.8",
-      preparedSourceHash: "a".repeat(64),
-      updatedAt: "2026-08-05T00:00:00.000Z",
-    }],
-  };
-  let resetCalls = 0;
-  const db = {
-    resetProjectDeploymentItemsForPreparation: async () => {
-      resetCalls += 1;
-      Object.assign(deployment.items[0]!, {
-        status: "planned",
-        stage: "version_reserved",
-        plannedVersion: undefined,
-        preparedSourceHash: undefined,
-      });
-    },
-    getProjectDeployment: async () => deployment,
-    updateProjectDeploymentItem: async (input: { plannedVersion: string }) => {
-      Object.assign(deployment.items[0]!, input);
-    },
-    listVersions: async () => [{ version: "0.0.8" }],
-    getProject: async () => ({ latest: "0.0.8" }),
-    listProjectVersionReservations: async () => [],
-    withProjectPublishLock: async (_projectId: string, operation: () => Promise<unknown>) => operation(),
-  } as unknown as DatabaseRepository;
-  const storage = new Storage({ serverRoot: process.cwd(), repoRoot: process.cwd(), dataRoot, db });
-  const reserve = Reflect.get(storage, "reserveProjectGroupDeploymentVersions") as (
-    value: DeploymentRecord,
-    reset: boolean,
-  ) => Promise<DeploymentRecord>;
-
-  try {
-    const result = await reserve.call(storage, deployment, true);
-    assert.equal(resetCalls, 1);
-    assert.equal(result.items[0]?.plannedVersion, "0.0.9");
-    assert.equal(result.items[0]?.preparedSourceHash, undefined);
-  } finally {
-    await rm(dataRoot, { recursive: true, force: true });
-  }
-});
-
-test("Storage rejects project-group publishing while a relationship is pending", async () => {
-  const dataRoot = await mkdtemp(path.join(tmpdir(), "workflow-storage-project-group-grant-error-"));
-  const dependency = {
-    alias: "stocks",
-    projectId: DEMO_CONV_WF_ID,
-    delivery: "external" as const,
-  };
-  const now = "2026-08-05T00:00:00.000Z";
-  const deployment: DeploymentRecord = {
-    id: "00000000-0000-4000-8000-000000000016",
-    rootProjectId: DEMO_WF_ID,
-    status: "prepared",
-    manifest: {
-      version: 1,
-      rootProjectId: DEMO_WF_ID,
-      projects: [{
-        projectId: DEMO_WF_ID,
-        role: "root",
-        archivePath: `projects/${DEMO_WF_ID}.tgz`,
-      }],
-      dependencies: [dependency],
-    },
-    releaseLog: "",
-    createdByUserId: "user-1",
-    createdAt: now,
-    updatedAt: now,
-    items: [{
-      deploymentId: "00000000-0000-4000-8000-000000000016",
-      projectId: DEMO_WF_ID,
-      role: "root",
-      delivery: "included",
-      status: "prepared",
-      updatedAt: now,
-    }],
-  };
-  const db = {
-    getProject: async () => createDbProjectRecord(DEMO_CONV_WF_ID, null),
-  } as unknown as DatabaseRepository;
-  const storage = new Storage({ serverRoot: process.cwd(), repoRoot: process.cwd(), dataRoot, db });
-  const sourceRoot = path.join(dataRoot, "projects", DEMO_WF_ID, "draft", "source");
-  await mkdir(sourceRoot, { recursive: true });
-  await writeFile(path.join(sourceRoot, "package.json"), JSON.stringify({
-    id: DEMO_WF_ID,
-    name: "Stock Board",
-    version: "1.0.0",
-    steamHarness: {
-      projectInfo: {
-        ...DECLARED_SERVER_PROJECT_INFO,
-        relatedProjects: [{
-          alias: dependency.alias,
-          projectId: dependency.projectId,
-          grantToRelatedProject: {
-            read: { mode: "all" },
-            write: { mode: "none" },
-          },
-        }],
-      },
-      projectType: "kanban",
-    },
-  }), "utf8");
-  const assertReady = Reflect.get(storage, "assertProjectGroupPublishReady") as (
-    value: DeploymentRecord,
-  ) => Promise<void>;
-
-  try {
-    await assert.rejects(
-      assertReady.call(storage, deployment),
-      /relationships must be confirmed before publishing/,
-    );
-  } finally {
-    await rm(dataRoot, { recursive: true, force: true });
-  }
-});
-
-test("Storage offers a source request link only when the pinned dependency source exists", async () => {
-  const dataRoot = await mkdtemp(path.join(tmpdir(), "workflow-storage-dependency-request-link-"));
-  const storage = new Storage({ serverRoot: process.cwd(), repoRoot: process.cwd(), dataRoot });
-  const dependency = {
-    alias: "stocks",
-    projectId: DEMO_CONV_WF_ID,
-    delivery: "included" as const,
-    version: "1.0.0",
-    sourceHash: "a".repeat(64),
-  };
-  const internals = storage as unknown as Record<string, unknown>;
-  internals["resolveSourceTarget"] = async () => ({ resolvedTarget: "1.0.0" });
-  internals["readVersionDependencyLocks"] = async () => [dependency];
-  internals["requireProjectDependencyDatabase"] = () => ({
-    getProject: async (projectId: string) => projectId === DEMO_WF_ID
-      ? {
-          ...createDbProjectRecord(DEMO_WF_ID, null),
-          projectInfo: {
-            ...DECLARED_SERVER_PROJECT_INFO,
-            relatedProjects: [{
-              alias: "stocks",
-              projectId: DEMO_CONV_WF_ID,
-              grantToRelatedProject: {
-                read: { mode: "all" },
-                write: { mode: "none" },
-              },
-            }],
-          },
-        }
-      : {
-          ...createDbProjectRecord(DEMO_CONV_WF_ID, null),
-          name: "Stock data",
-          projectInfo: {
-            ...DECLARED_SERVER_PROJECT_INFO,
-            relatedProjects: [{
-              alias: "board",
-              projectId: DEMO_WF_ID,
-              grantToRelatedProject: {
-                read: { mode: "all" },
-                write: { mode: "none" },
-              },
-            }],
-          },
-        },
-    hasProjectKV: async () => false,
-  });
-  let sourceAvailable = false;
-  internals["isPinnedProjectSourceAvailable"] = async () => sourceAvailable;
-
-  try {
-    const readStatus = () => storage.getProjectDependencyStatus({
-      projectName: DEMO_WF_ID,
-      target: "1.0.0",
-      canDownloadProject: async () => false,
-      requestUrlForProject: () => "https://example.test/access-requests/signed",
-    });
-    const missing = await readStatus();
-    assert.equal(missing.dependencies[0]?.sourceAvailable, false);
-    assert.equal(missing.dependencies[0]?.requestUrl, undefined);
-
-    sourceAvailable = true;
-    const permissionRequired = await readStatus();
-    assert.equal(permissionRequired.dependencies[0]?.sourceAvailable, true);
-    assert.equal(
-      permissionRequired.dependencies[0]?.requestUrl,
-      "https://example.test/access-requests/signed",
-    );
-  } finally {
-    await rm(dataRoot, { recursive: true, force: true });
-  }
-});
-
-test("Storage accepts a replacement package after deployment preparation was interrupted", async () => {
-  const dataRoot = await mkdtemp(path.join(tmpdir(), "workflow-storage-project-group-prepare-resume-"));
-  const storage = new Storage({ serverRoot: process.cwd(), repoRoot: process.cwd(), dataRoot });
-  const deployment: DeploymentRecord = {
-    id: "00000000-0000-4000-8000-000000000014",
-    rootProjectId: DEMO_WF_ID,
-    status: "preparing",
-    manifest: {
-      version: 1,
-      rootProjectId: DEMO_WF_ID,
-      projects: [{
-        projectId: DEMO_WF_ID,
-        role: "root",
-        archivePath: `projects/${DEMO_WF_ID}.tgz`,
-      }],
-      dependencies: [],
-    },
-    releaseLog: "resume",
-    createdByUserId: "user-1",
-    createdAt: "2026-08-05T00:00:00.000Z",
-    updatedAt: "2026-08-05T00:00:00.000Z",
-    items: [{
-      deploymentId: "00000000-0000-4000-8000-000000000014",
-      projectId: DEMO_WF_ID,
-      role: "root",
-      delivery: "included",
-      status: "preparing",
-      plannedVersion: "1.0.0",
-      updatedAt: "2026-08-05T00:00:00.000Z",
-    }],
-  };
-  let transitionFrom: string[] = [];
-  const internals = storage as unknown as Record<string, unknown>;
-  internals["getProjectGroupDeployment"] = async () => deployment;
-  internals["requireProjectDependencyDatabase"] = () => ({
-    transitionProjectDeploymentStatus: async ({ from }: { from: string[] }) => {
-      transitionFrom = from;
-      return true;
-    },
-    updateProjectDeployment: async ({ status }: { status: DeploymentRecord["status"] }) => {
-      deployment.status = status;
-    },
-  });
-  internals["reserveProjectGroupDeploymentVersions"] = async () => deployment;
-  internals["extractArchive"] = async () => {
-    throw new Error("replacement package inspected");
-  };
-
-  try {
-    await assert.rejects(
-      storage.prepareProjectGroupDeployment({
-        deploymentId: deployment.id,
-        archiveName: "project-group.tgz",
-        archiveBuffer: Buffer.from("replacement"),
-      }),
-      /replacement package inspected/,
-    );
-    assert.deepEqual(transitionFrom, ["planned", "failed", "preparing"]);
-    assert.equal(deployment.status, "failed");
-  } finally {
-    await rm(dataRoot, { recursive: true, force: true });
-  }
-});
-
-test("Storage resumes a persisted project-group preparation after restart", async () => {
-  const dataRoot = await mkdtemp(path.join(tmpdir(), "workflow-storage-project-group-restart-"));
-  const deploymentId = "00000000-0000-4000-8000-000000000016";
-  const preparationDir = path.join(dataRoot, "deployment-preparations", deploymentId);
-  await mkdir(preparationDir, { recursive: true });
-  await writeFile(path.join(preparationDir, "project-group.tgz"), "group-package");
-  await writeFile(path.join(preparationDir, "preparation.json"), JSON.stringify({
-    deploymentId,
-    archiveName: "project-group.tgz",
-    createdAt: "2026-08-05T00:00:00.000Z",
-  }));
-  const deployment = {
-    id: deploymentId,
-    status: "preparing",
-  } as DeploymentRecord;
-  const db = {
-    getProjectDeployment: async () => deployment,
-    updateProjectDeployment: async () => deployment,
-  } as unknown as DatabaseRepository;
-  const storage = new Storage({ serverRoot: process.cwd(), repoRoot: process.cwd(), dataRoot, db });
-  let scheduledDeploymentId: string | undefined;
-  Reflect.set(storage, "scheduleProjectGroupPreparation", (preparation: { deploymentId: string }) => {
-    scheduledDeploymentId = preparation.deploymentId;
-  });
-  const resume = Reflect.get(storage, "resumePendingProjectGroupPreparations") as () => Promise<void>;
-
-  try {
-    await resume.call(storage);
-    assert.equal(scheduledDeploymentId, deploymentId);
+    assert.equal(failed.stage, "validating");
+    assert.equal(failed.failureReason, "package validation failed");
   } finally {
     await rm(dataRoot, { recursive: true, force: true });
   }
@@ -2729,7 +1192,7 @@ async function writePublishableDraft(dataRoot: string, projectName: string): Pro
       name: projectName,
       version: "0.1.0",
       devDependencies: testToolchainDependencies,
-      steamHarness: { projectType: "workflow", projectInfo: DECLARED_SERVER_PROJECT_INFO },
+      steamHarness: { defaultEntry:"main",entries:[{entryId:"main",name:"Main",type:"workflow",root:".",entry:"index.ts",configuration:"configuration.json",databases:[]}], projectInfo: DECLARED_SERVER_PROJECT_INFO },
     }),
     "utf8",
   );
@@ -2758,7 +1221,7 @@ async function writeFileVersion(
       name: projectName,
       version: "0.1.0",
       devDependencies: testToolchainDependencies,
-      steamHarness: { projectType: "workflow", projectInfo: DECLARED_SERVER_PROJECT_INFO },
+      steamHarness: { defaultEntry:"main",entries:[{entryId:"main",name:"Main",type:"workflow",root:".",entry:"index.ts",configuration:"configuration.json",databases:[]}], projectInfo: DECLARED_SERVER_PROJECT_INFO },
       ...packageJsonOverrides,
     }),
     "utf8",
@@ -2770,6 +1233,7 @@ async function writeFileVersion(
       : `const defined = steamharness.defineProject({ name: "test", run: async () => ({ errCode: 0, errMessage: "" }) });\nexport default steamharness.defineExecutor({ projectType: "conversation", workflow: defined, createInput: () => ({ errCode: 0, errMessage: "" }) });\n`,
     "utf8",
   );
+  await writeFile(path.join(versionRoot, "source", "configuration.json"), JSON.stringify({version:2,fields:[]}));
   await writeFile(
     path.join(versionRoot, "source", "README.md"),
     `# ${projectName}\n`,
@@ -2811,7 +1275,7 @@ function createDbProjectRecord(projectId: string, latest: string | null) {
   return {
     id: projectId,
     name: projectId,
-    projectType: "workflow" as const,
+    entries:[{entryId:"main",name:"Main",type:"workflow" as const,root:".",entry:"index.ts",databases:[]}],defaultEntry:"main",
     projectCard: {
       icon: "workflow",
       iconBackgroundColor: "#2563eb",
@@ -2820,8 +1284,8 @@ function createDbProjectRecord(projectId: string, latest: string | null) {
       localizedNames: {},
       declarations: [],
       platformSupport: { mode: "agnostic" as const },
-      dataStorage: { mode: "server" as const },
-      relatedProjects: [],
+
+
     },
     packageVersion: "0.1.0",
     hasDraft: false,
@@ -2907,107 +1371,6 @@ function createKVSummary(key: string, overrides: Partial<KVEntryDetail> = {}): K
   };
 }
 
-function createMemoryKVStore(): KVStore & {
-  getProject(projectId: string): Promise<ReturnType<typeof createDbProjectRecord>>;
-  values: Map<string, unknown>;
-  sources: Map<string, unknown>;
-  getValueWithRevision(input: KVStoreGetInput): Promise<{ value: unknown; revision: string } | undefined>;
-  compareAndSetValue(
-    input: KVStoreSetInput,
-    expectedRevision: string | null,
-  ): Promise<{ applied: boolean; revision?: string }>;
-  withNamespaceTransaction<T>(
-    input: KVNamespaceLockInput,
-    operation: (store: KVStore) => Promise<T> | T,
-  ): Promise<T>;
-} {
-  const values = new Map<string, unknown>();
-  const sources = new Map<string, unknown>();
-  const revisions = new Map<string, string>();
-  let nextRevision = 0;
-  const createKey = (input: {
-    storageKind: string;
-    scope: string;
-    projectId: string;
-    conversationId?: string;
-    key: string;
-  }) => [input.storageKind, input.scope, input.projectId, input.conversationId ?? "", input.key].join(":");
-
-  return {
-    async getProject(projectId) {
-      return createDbProjectRecord(projectId, null);
-    },
-    values,
-    sources,
-    async getValue(input) {
-      return values.get(createKey(input));
-    },
-    async setValue(input) {
-      const key = createKey(input);
-      values.set(key, input.value);
-      sources.set(key, input.source);
-      revisions.set(key, String(nextRevision += 1));
-    },
-    async getValueWithRevision(input) {
-      const key = createKey(input);
-      const value = values.get(key);
-      const revision = revisions.get(key);
-      return value === undefined || revision === undefined ? undefined : { value, revision };
-    },
-    async compareAndSetValue(input, expectedRevision) {
-      const key = createKey(input);
-      const currentRevision = revisions.get(key);
-      if (
-        (expectedRevision === null && currentRevision !== undefined) ||
-        (expectedRevision !== null && currentRevision !== expectedRevision)
-      ) {
-        return { applied: false };
-      }
-      values.set(key, input.value);
-      sources.set(key, input.source);
-      const revision = String(nextRevision += 1);
-      revisions.set(key, revision);
-      return { applied: true, revision };
-    },
-    async updateValue(input, updater) {
-      const key = createKey(input);
-      const next = updater(values.get(key));
-      values.set(key, next);
-      sources.set(key, input.source);
-      revisions.set(key, String(nextRevision += 1));
-      return next;
-    },
-    async deleteValue(input) {
-      const key = createKey(input);
-      const existed = values.delete(key);
-      sources.delete(key);
-      revisions.delete(key);
-      return existed;
-    },
-    async withNamespaceLock(_input, operation) {
-      return operation();
-    },
-    async withNamespaceTransaction(_input, operation) {
-      const valueSnapshot = new Map(values);
-      const sourceSnapshot = new Map(sources);
-      const revisionSnapshot = new Map(revisions);
-      const revisionCounter = nextRevision;
-      try {
-        return await operation(this);
-      } catch (error) {
-        values.clear();
-        sources.clear();
-        revisions.clear();
-        for (const [key, value] of valueSnapshot) values.set(key, value);
-        for (const [key, value] of sourceSnapshot) sources.set(key, value);
-        for (const [key, revision] of revisionSnapshot) revisions.set(key, revision);
-        nextRevision = revisionCounter;
-        throw error;
-      }
-    },
-  };
-}
-
 function createTokenUsageAggregate(totalTokens: number) {
   return {
     inputTokens: Math.floor(totalTokens / 2),
@@ -3036,47 +1399,3 @@ async function waitFor(predicate: () => boolean): Promise<void> {
   }
   assert.equal(predicate(), true);
 }
-
-test("a related knowledge mutation is checked on the document, not only the index", () => {
-  const grant = (
-    knowledge: { read: RelatedProjectKVGrant["read"]; write: RelatedProjectKVGrant["write"] },
-  ): RelatedProjectKVGrant => ({ read: { mode: "none" }, write: { mode: "none" }, knowledge });
-
-  const indexOnly = grant({
-    read: { mode: "prefixes", prefixes: ["knowledge.documents"] },
-    write: { mode: "prefixes", prefixes: ["knowledge.documents"] },
-  });
-  const wholeBase = grant({ read: { mode: "all" }, write: { mode: "all" } });
-
-  // `knowledge.documents` covers the index the mutation rewrites and not the
-  // document it rewrites — a store that applies the mutation itself never runs
-  // the per-key checks, so the index alone must not let the document through.
-  assert.equal(
-    isKnowledgeMutationGranted(indexOnly, { type: "delete", input: { documentId: "payroll" } }),
-    false,
-  );
-  assert.equal(
-    isKnowledgeMutationGranted(wholeBase, { type: "delete", input: { documentId: "payroll" } }),
-    true,
-  );
-  // The read side is checked too: deleting reads the document before removing it.
-  assert.equal(
-    isKnowledgeMutationGranted(
-      grant({ read: { mode: "none" }, write: { mode: "all" } }),
-      { type: "delete", input: { documentId: "payroll" } },
-    ),
-    false,
-  );
-  // A create that lets the store pick the id cannot be checked, so it is refused.
-  assert.equal(
-    isKnowledgeMutationGranted(wholeBase, { type: "create", input: { title: "Payroll", markdown: "x" } }),
-    false,
-  );
-  assert.equal(
-    isKnowledgeMutationGranted(wholeBase, {
-      type: "create",
-      input: { id: "payroll", title: "Payroll", markdown: "x" },
-    }),
-    true,
-  );
-});

@@ -22,7 +22,7 @@ const record = (value: unknown): Record<string, unknown> | undefined => value &&
 const string = (value: unknown): string | undefined => typeof value === 'string' && value.trim() ? value.trim() : undefined;
 
 // Core tool results carry the same resourceCard / present_card contract used by Desktop.
-export function conversationResourceCards(items: OutputItem[], projectId: string, conversationId: string, storageSource: 'local' | 'server' = 'local'): ResourceCard[] {
+export function conversationResourceCards(items: OutputItem[], projectId: string, entryId: string, conversationId: string, storageSource: 'local' | 'server' = 'local'): ResourceCard[] {
   const cards = new Map<string, ResourceCard>();
   for (const [index, item] of items.entries()) {
     if (!['agent-part', 'opencode-part'].includes(String(item.metadata?.kind)) || item.metadata?.partType !== 'tool') { continue; }
@@ -43,7 +43,7 @@ export function conversationResourceCards(items: OutputItem[], projectId: string
       descriptor = presentation;
     }
     if (!descriptor) {
-      const target: Record<string, unknown> = { source: 'local', projectId, conversationId };
+      const target: Record<string, unknown> = { source: 'local', projectId, entryId, conversationId, database: input.database };
       let kind: ResourceCard['kind'] | undefined;
       if (tool === 'workflow-kv_kv_store' || /workflow-desktop_(?:read|list|write)_project_kv/.test(tool)) {
         kind = 'kv'; Object.assign(target, { projectId: input.projectId ?? projectId, key: input.key, scope: input.scope ?? 'project', conversationId: input.conversationId ?? conversationId });
@@ -65,12 +65,14 @@ export function conversationResourceCards(items: OutputItem[], projectId: string
     const kind = descriptor.kind as ResourceCard['kind'];
     if (!['kv', 'knowledge', 'project', 'browser', 'file', 'kanban'].includes(kind)) { continue; }
     const target = Object.fromEntries(Object.entries(record(descriptor.target) ?? {}).filter((entry): entry is [string, string] => typeof entry[1] === 'string' && entry[1].length < 8192));
-    if (target.source === 'current') { target.source = kind === 'kv' || kind === 'knowledge' ? storageSource : 'local'; target.projectId = projectId; }
+    if (target.source === 'current') { target.source = kind === 'kv' || kind === 'knowledge' ? storageSource : 'local'; target.projectId = projectId; target.entryId = entryId; }
     if (target.source && !['local', 'server'].includes(target.source)) { continue; }
     if (kind === 'browser') {
       try { const url = new URL(target.url); if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password) { continue; } } catch { continue; }
     } else {
       target.source ??= 'local'; target.projectId ??= projectId;
+      if (target.projectId === projectId) target.entryId ??= entryId;
+      if (!target.entryId || (kind === 'kv' || kind === 'knowledge') && !target.database) continue;
       if (target.scope === 'conversation') { target.conversationId ??= conversationId; }
       if (kind === 'file' && (!target.filePath || /^(?:[\\/]|[a-z]:)|(?:^|[\\/])\.\.(?:[\\/]|$)/i.test(target.filePath))) { continue; }
     }

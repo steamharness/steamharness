@@ -24,7 +24,7 @@ it('enforces verified profiles through the real child worker, including downgrad
   try{
     await mkdir(path.join(directory,'node_modules'));
     await symlink(await resolveHarnessRoot(),path.join(directory,'node_modules/steamharness'),process.platform==='win32'?'junction':'dir');
-    await writeFile(path.join(directory,'package.json'),JSON.stringify({id,name:'restricted-profile',type:'module',version:'1.0.0',steamHarness:{projectType:'conversation',projectInfo:{dataStorage:{mode:'local'}}}}));
+    await writeFile(path.join(directory,'package.json'),JSON.stringify({id,name:'restricted-profile',type:'module',version:'1.0.0',steamHarness:{ defaultEntry: 'main', entries: [{entryId:'main',name:'Main',type:'conversation',root:'.',entry:'index.ts',configuration:'configuration.json',databases:[]}],  }}));
     await writeFile(path.join(directory,'configuration.json'),JSON.stringify({version:2,fields:[{name:'mode',type:'string'}],profilePolicy:{version:1,defaultProfileKey:'ask',manageMinimumRole:'developer',profiles:[{key:'ask',name:'Ask',minimumRole:'guest',fixedValues:{mode:'ask'}},{key:'build',name:'Build',minimumRole:'developer',fixedValues:{mode:'build'}}]}}));
     await writeFile(path.join(directory,'index.ts'),`
       const answer=steamharness.createOutputNode({name:'answer-node',async format(){return steamharness.createOutputPayload({items:[{id:'answer',title:'Mode',content:String(steamharness.getConfig('mode')),contentType:'text'}]});}});
@@ -34,7 +34,7 @@ it('enforces verified profiles through the real child worker, including downgrad
     const inspected=await runtime.inspect([directory]);expect(inspected.errors).toEqual([]);
     const project={...inspected.projects[0],uri:''};
     const store=await createLocalProjectConfigurationStore(directory,{connection:()=>connection??null});
-    const state=await store.read(true),profile=state.configurations.find(profile=>profile.profileKey==='build')!;
+    const state=await store.read(true),profile=state.configurations!.find(profile=>profile.profileKey==='build')!;
     const selection={id:profile.id,profileKey:'build',subject:JSON.stringify([origin,'alice'])};
     const request={project,conversationId:'session',runId:'build',args:[],configurationSelection:selection};
     const report=await runtime.run(request,()=>{});

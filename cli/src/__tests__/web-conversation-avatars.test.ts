@@ -13,7 +13,7 @@ vi.mock('../web/ui/host', () => ({ acquireProjectHost: () => host }));
 vi.mock('../web/ui/conversation-output', () => ({ ConversationOutput: class { update() {} dispose() {} } }));
 vi.mock('../web/ui/conversation-tools', () => ({ ConversationTools: class { open = false; close() {} closeUsage() {} projectInfo = projectInfo; } }));
 
-const project: Project = { id: 'avatar-test', uri: 'file:///avatar-test', folderPath: '/avatar-test', name: 'Avatar Test', projectType: 'conversation', fields: [], entrypoints: [],
+const project: Project = {entryId:"main",aggregateName:"Test aggregate",defaultEntry:"main",entryRoot:'/avatar-test',databases:[],entries:[{entryId:"main",name:"Main",type:'conversation',root:".",entry:"index.ts",databases:[]}], id: 'avatar-test', uri: 'file:///avatar-test', folderPath: '/avatar-test', name: 'Avatar Test', projectType: 'conversation', fields: [], entrypoints: [],
   projectCard: { icon: 'database', iconColor: '#123456', iconBackgroundColor: '#eeeeee' } };
 const account: AccountState = { status: 'authenticated', serverUrl: 'http://localhost:7126', revision: 1,
   user: { userId: 'user', email: 'user@example.test', displayName: 'User', avatarUrl: '/storage/avatar.png' } };

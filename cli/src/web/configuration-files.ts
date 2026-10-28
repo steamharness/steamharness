@@ -2,7 +2,7 @@ import { CONFIGURATION_FILE_MAX_BYTES, parseConfigurationFile, validateConfigura
 import type { WebConnection } from './runtime';
 
 /** Configuration files always use project-scoped Server storage, independent of run history. */
-export async function uploadConfigurationFile(projectId: string, field: ProjectConfigurationField, input: unknown, connection: WebConnection | undefined, options: { target?: string } = {}) {
+export async function uploadConfigurationFile(projectId: string, field: ProjectConfigurationField, input: unknown, connection: WebConnection | undefined, options: { entryId?: string; target?: string } = {}) {
   if (!connection) throw new Error('SteamHarness Server login is required.');
   if (!input || typeof input !== 'object') throw new Error('Invalid configuration file upload.');
   const file = input as Record<string, unknown>;
@@ -12,6 +12,7 @@ export async function uploadConfigurationFile(projectId: string, field: ProjectC
   validateConfigurationFileSelection(field, {name:file.name,mimeType:file.mimeType,size:bytes.length});
   const query = new URLSearchParams({fileName:file.name,mimeType:file.mimeType,key:field.name,field:JSON.stringify(field)});
   if (options.target !== undefined) query.set('target', options.target);
+  if (options.entryId !== undefined) query.set('entryId', options.entryId);
   const response = await fetch(`${connection.serverUrl}/api/projects/${encodeURIComponent(projectId)}/configurations/files?${query}`, {
     method:'POST', headers:{Authorization:`Bearer ${connection.accessToken}`,'Content-Type':file.mimeType}, body:bytes,
     redirect:'error', signal:AbortSignal.timeout(120_000),
@@ -26,7 +27,7 @@ export async function uploadConfigurationFile(projectId: string, field: ProjectC
 }
 
 /** Read configuration attachments through their narrow account/version permission, not project data access. */
-export async function readConfigurationFile(projectId: string, state: ProjectConfigurationState, fileId: string, connection: WebConnection | undefined, options: { target?: string; signal?: AbortSignal } = {}) {
+export async function readConfigurationFile(projectId: string, state: ProjectConfigurationState, fileId: string, connection: WebConnection | undefined, options: { entryId?: string; target?: string; signal?: AbortSignal } = {}) {
   let reference;
   for (const profile of state.configurations) for (const field of state.fields.filter(field => field.type === 'file')) {
     const value = configurationSnapshot(state, profile.id, false).values[field.name];
@@ -38,7 +39,7 @@ export async function readConfigurationFile(projectId: string, state: ProjectCon
   if (!connection) throw unavailable();
   const target = options.target ?? 'draft';
   try {
-    const response = await fetch(`${connection.serverUrl}/api/projects/${encodeURIComponent(projectId)}/configurations/files/${encodeURIComponent(fileId)}?target=${encodeURIComponent(target)}`, {
+    const response = await fetch(`${connection.serverUrl}/api/projects/${encodeURIComponent(projectId)}/configurations/files/${encodeURIComponent(fileId)}?target=${encodeURIComponent(target)}${options.entryId?`&entryId=${encodeURIComponent(options.entryId)}`:''}`, {
       headers: { Authorization: `Bearer ${connection.accessToken}` }, redirect: 'error',
       signal: options.signal ? AbortSignal.any([options.signal, AbortSignal.timeout(120_000)]) : AbortSignal.timeout(120_000),
     });

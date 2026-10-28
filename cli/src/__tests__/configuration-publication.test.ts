@@ -10,7 +10,7 @@ let root:string;
 const connection={serverUrl:'https://configuration.test',accessToken:'account-token'};
 const local=()=>createConfigurationState([{name:'token',type:'string',defaultValue:'local-personal-value'}],()=> 'local-profile');
 const remote=()=>({...createConfigurationState([],()=> 'server-profile'),revision:8,canManagePublication:true});
-beforeEach(async()=>{root=await mkdtemp(path.join(tmpdir(),'publication-cli-'));await writeFile(path.join(root,'package.json'),JSON.stringify({id:'project'}));});
+beforeEach(async()=>{root=await mkdtemp(path.join(tmpdir(),'publication-cli-'));await writeFile(path.join(root,'package.json'),JSON.stringify({id:'cb2b9f53-8397-41e9-99b1-9dc9ed7327cd',name:'Publication',steamHarness:{defaultEntry:'main',entries:[{entryId:'main',name:'Main',type:'workflow',root:'.',entry:'index.ts',configuration:'configuration.json',databases:[]}]}}));await writeFile(path.join(root,'index.ts'),'export {};');await writeFile(path.join(root,'configuration.json'),JSON.stringify({version:1,fields:[]}));});
 afterEach(async()=>{vi.restoreAllMocks();await rm(root,{recursive:true,force:true});});
 const response=(data:unknown)=>new Response(JSON.stringify({errCode:0,data}));
 it('reads author capabilities without uploading local personal values or replacing local profile IDs',async()=>{

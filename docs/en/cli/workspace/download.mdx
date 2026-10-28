@@ -1,42 +1,16 @@
 ---
 title: "workspace download"
-description: "Download exact project and dependency source versions."
+description: "Download an aggregate"
 ---
 
-# workspace download
+# Download an aggregate
 
-```bash
-steamharness workspace download <project> [--target draft|latest|version] [--path <dir>]
+```sh
+pnpm exec steamharness workspace download <project-id> --target latest --path ./downloaded
 ```
 
-The default is `latest`. Every operating system uses the same source contract without a platform parameter. Historical downloads read immutable snapshots. Download does not reapply ignore rules, install dependencies or execute code.
+One operation covers every registered entry of one projectId, including code, dependency manifests, configuration definitions and Kanban artifacts. Install dependencies and build static entries locally, then run `steamharness check .`.
 
-Workflow, Conversation and Kanban projects all support published version downloads, with no root-project type restriction.
+Archives exclude credentials, host runtime data, Git and node_modules. Requirements remain and every `bindingRef` is stripped. Installers must request bindings from their local or server host; author grants do not transfer.
 
-Pending related-project declarations do not prevent root source downloads. Downloads process only the confirmed relationship locks in the published version and do not automatically include unconfirmed projects.
-
-| Target | Behavior |
-| --- | --- |
-| `draft` | Replace the root destination with draft files, without dependency locks. |
-| `latest` | Resolve the current exact latest version, then download its locks. |
-| Exact version | Read that snapshot and its pinned included dependencies and source hashes. |
-
-## Permissions and Files
-
-Published source requires guest access. Public projects grant signed-in users implicit guest access. Private project requests require maintainer or owner approval, which adds guest membership. Each dependency checks target-project access separately; source never includes Server data.
-
-New projects are staged before moving. Validation or move failures remove directories added by this operation. Existing projects are reused only when both UUID and version match, preserving local edits. A different version is not reported as already downloaded. Occupied destinations are rejected; use `--path` to select another directory. Text and base64 binary files restore original bytes and verify SHA-256.
-
-Groups exclude KV, PersistentValue, file stores, environment variables, run history and account settings. Install dependencies locally after download and explicitly select server storage when remote data is needed.
-
-## API
-
-- Draft: `GET /api/projects/{projectId}/files?target=draft&includeBinary=true`.
-- Group: `GET /api/projects/{projectId}/project-group-download?target=<target>`.
-- Version tar.gz: `GET /api/projects/{projectId}/source-archive?target=<version>`.
-
-```bash
-steamharness workspace download hello --target 1.2.0 --path ./hello-copy
-```
-
-Published v2 configuration templates include only the author-selected fields, values and immutable attachment copies. Download verifies the version source and attachment hashes and caches trusted configuration data outside source for offline use. Upgrades retain allowed personal values and custom fields; newly locked values stop overriding the template. Server data requires signed-in access through data APIs and is excluded from source archives. Reading personal configurations for a published version does not require a project draft. See [Project configurations](/en/concepts/project-configuration).
+`--target` accepts `draft`, `latest` or an exact version. Download into one aggregate directory while preserving registered subdirectories. Source access still requires membership or approved access.

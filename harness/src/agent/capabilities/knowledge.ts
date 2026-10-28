@@ -9,7 +9,7 @@ import {
 } from "../../knowledge/index";
 import { HarnessError } from "../../workflow/errors";
 import type { NodeContext } from "../../types/context";
-import { selectProjectStorage } from "./storage";
+import { selectDatabase } from "./databases";
 import type { Capability } from "./types";
 
 export const KNOWLEDGE_MCP_SERVER_ID = "workflow-knowledge";
@@ -29,6 +29,7 @@ const KNOWLEDGE_ACTIONS: readonly KnowledgeAction[] = [
 ];
 
 interface KnowledgeToolArgs {
+  database: string;
   action: KnowledgeAction;
   documentId?: string;
   title?: string;
@@ -45,7 +46,7 @@ interface KnowledgeToolArgs {
 }
 
 export async function runKnowledgeAction(
-  context: Pick<NodeContext, "storage">,
+  context: Pick<NodeContext, "databases">,
   args: KnowledgeToolArgs,
 ): Promise<unknown> {
   if (!KNOWLEDGE_ACTIONS.includes(args.action)) {
@@ -56,7 +57,7 @@ export async function runKnowledgeAction(
     });
   }
 
-  const storage = selectProjectStorage(context);
+  const storage = selectDatabase(context, args.database);
   switch (args.action) {
     case "list": {
       const documents = await listKnowledgeDocuments(storage);
@@ -250,6 +251,7 @@ export const KNOWLEDGE_CAPABILITY: Capability = {
   inputSchema: {
     type: "object",
     properties: {
+      database: { type: "string", minLength: 1, description: "The declared database alias." },
       action: {
         type: "string",
         enum: [...KNOWLEDGE_ACTIONS],
@@ -268,7 +270,7 @@ export const KNOWLEDGE_CAPABILITY: Capability = {
       includeMarkdown: { type: "boolean", description: "Include the body, truncated." },
       maxMarkdownLength: { type: "integer", minimum: 100, maximum: 20_000 },
     },
-    required: ["action"],
+    required: ["database", "action"],
   },
   async run(context, args) {
     return runKnowledgeAction(context, args as unknown as KnowledgeToolArgs);

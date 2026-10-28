@@ -1,3 +1,6 @@
+import { projectEntrySources } from "./project-sources";
+import { resolveProjectEntrySync } from "@steamharness/project-manifest/node";
+import { projectEntryKey } from "@steamharness/project-manifest";
 import {isDeepStrictEqual} from "node:util";
 import { AsyncLocalStorage } from "node:async_hooks";
 import { createHash, randomUUID } from "node:crypto";
@@ -12,7 +15,7 @@ import {resolveProjectConfigurationAccess,type ConfigurationConnection} from './
 export {resolveProjectConfigurationAccess} from './configuration-access';
 import {
   applyConfigurationAction, configurationSnapshot, configurationAgentModelPolicy, exportConfigurations, parseAgentModelPolicy, parseConfigurationDefinition, readConfigurationState,
-  bindConfigurationTemplate, configurationCapability, parseConfigurationTemplate, CONFIGURATION_TEMPLATE_FILE, type ProjectConfigurationTemplate,
+  bindConfigurationTemplate, configurationCapability, parseConfigurationTemplate, configurationTemplatePath, CONFIGURATION_TEMPLATE_FILE, type ProjectConfigurationTemplate,
   PROJECT_CONFIGURATION_FILE, ProjectConfigurationError, validateConfigurationAction, isConfigurationValue, AGENT_MODELS_CONFIGURATION_FIELD, AGENT_MODELS_CONFIGURATION_KEY,
   bindConfigurationProfiles,configurationAccessView,validateConfigurationSnapshotAccess,type ConfigurationAccess,type ConfigurationProfilePolicy,
   type AgentModelPolicy, type ProjectConfigurationDefinition, type ProjectConfigurationField, type ConfigurationValue, type ConfigurationValues, type ProjectConfigurationAction, type ProjectConfigurationSnapshot, type ProjectConfigurationState,
@@ -20,30 +23,30 @@ import {
 export * from "@steamharness/project-configuration";
 
 const scope = new AsyncLocalStorage<ProjectConfigurationSnapshot>();
-const directoryScope = new AsyncLocalStorage<string>();
+const directoryScope = new AsyncLocalStorage<{ directory: string; entryId?: string }>();
 export function getConfig<T extends ConfigurationValue = ConfigurationValue>(key: string): T | undefined {
   const values = scope.getStore()?.values;
   return values && Object.hasOwn(values, key) ? values[key] as T : undefined;
 }
 export function getProjectConfiguration(): ProjectConfigurationSnapshot | undefined { return scope.getStore(); }
-export function withProjectConfiguration<T>(snapshot: ProjectConfigurationSnapshot, run: () => T, projectDir?:string): T {
+export function withProjectConfiguration<T>(snapshot: ProjectConfigurationSnapshot, run: () => T, projectDir?:string, entryId?:string): T {
   const value = structuredClone(snapshot);
   const freeze = (item: unknown): void => { if (item && typeof item === "object") { Object.values(item).forEach(freeze); Object.freeze(item); } };
-  freeze(value); return scope.run(value,()=>projectDir?directoryScope.run(projectDir,run):run());
+  freeze(value); return scope.run(value,()=>projectDir?directoryScope.run({ directory: projectDir, entryId },run):run());
 }
 export function currentConfigurationValues(): ConfigurationValues { return scope.getStore()?.values ?? {}; }
 
 /** Static discovery only: opening configuration never imports or executes project code. */
-export function projectUsesConfiguredAgentModels(projectDir: string): boolean {
-  return discoverProjectAgentModels(projectDir);
+export function projectUsesConfiguredAgentModels(projectDir: string, entryFile?: string): boolean {
+  return discoverProjectAgentModels(projectDir, undefined, entryFile);
 }
 
 type AgentModelSourceCache = Map<string, { stamp: string; found: boolean }>;
-function discoverProjectAgentModels(projectDir: string, cache?: AgentModelSourceCache): boolean {
+function discoverProjectAgentModels(projectDir: string, cache?: AgentModelSourceCache, entryFile?: string): boolean {
   const skipped = new Set(["node_modules", "vendor", "dist", "out", "build", "test", "tests", "__tests__", "fixtures"]);
   const scan = (directory: string): boolean => {
     if (!existsSync(directory)) return false;
-    for (const entry of readdirSync(directory, { withFileTypes: true })) {
+    for (const entry of entryFile ? projectEntrySources(projectDir, entryFile).map(file => ({ name: path.relative(directory, file), isDirectory: () => false, isFile: () => true })) : readdirSync(directory, { withFileTypes: true })) {
       if (entry.name.startsWith(".") || skipped.has(entry.name.toLowerCase())) continue;
       const file = path.join(directory, entry.name);
       if (entry.isDirectory()) { if (scan(file)) return true; continue; }
@@ -82,25 +85,18 @@ function discoverProjectAgentModels(projectDir: string, cache?: AgentModelSource
   return scan(projectDir);
 }
 
-export function readProjectConfigurationDefinition(projectDir: string) {
-  const file = path.join(projectDir, PROJECT_CONFIGURATION_FILE);
-  const definition: ProjectConfigurationDefinition = existsSync(file) ? parseConfigurationDefinition(JSON.parse(readFileSync(file, "utf8"))) : { version: 1, fields: [] };
-  if (!definition.fields.some(field => field.name === AGENT_MODELS_CONFIGURATION_KEY) && projectUsesConfiguredAgentModels(projectDir)) definition.fields.unshift({...structuredClone(AGENT_MODELS_CONFIGURATION_FIELD),...definition.agentModelPolicy});
+export function readProjectConfigurationDefinition(projectDir: string, entryId?: string) {
+  const resolved = resolveProjectEntrySync(projectDir, entryId);
+  const file = resolved.configurationPath;
+  projectDir = resolved.rootDir;
+  const definition: ProjectConfigurationDefinition = file && existsSync(file) ? parseConfigurationDefinition(JSON.parse(readFileSync(file, "utf8"))) : { version: 1, fields: [] };
+  if (!definition.fields.some(field => field.name === AGENT_MODELS_CONFIGURATION_KEY) && projectUsesConfiguredAgentModels(projectDir, resolved.modulePath)) definition.fields.unshift({...structuredClone(AGENT_MODELS_CONFIGURATION_FIELD),...definition.agentModelPolicy});
   return definition;
-}
-
-async function localConfigurationIdentity(directory: string): Promise<string> {
-  let manifest: unknown;
-  try { manifest = JSON.parse(await readFile(path.join(directory, "package.json"), "utf8")); }
-  catch (error) { if ((error as NodeJS.ErrnoException).code === "ENOENT") return directory; throw error; }
-  const id = manifest && typeof manifest === "object" && !Array.isArray(manifest) ? (manifest as {id?: unknown}).id : undefined;
-  // Package names, working directories and immutable installation versions are not application identities.
-  return typeof id === "string" && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(id.trim())
-    ? `application:${id.trim().toLowerCase()}` : directory;
 }
 
 /** Shared by application ID across Studio, CLI Web, CLI and local SDK execution. Values never enter project source. */
 export interface LocalProjectConfigurationOptions {
+  entryId?: string; entryFile?: string; templateFile?: string; identity?: string; configurationFile?: string; accessProjectDir?: string;
   rootDir?: string; storageKey?: string; template?: ProjectConfigurationTemplate | null;
   fields?: ProjectConfigurationField[]; agentModelPolicy?: AgentModelPolicy; templateCacheDir?: string;
   profilePolicy?: ConfigurationProfilePolicy;
@@ -109,20 +105,24 @@ export interface LocalProjectConfigurationOptions {
   connection?:()=>ConfigurationConnection|null;
 }
 export async function createLocalProjectConfigurationStore(projectDir: string, options: LocalProjectConfigurationOptions = {}) {
+  const resolved = resolveProjectEntrySync(projectDir, options.entryId);
+  return createLocalEntryConfigurationStore(resolved.rootDir, { ...options, entryId: resolved.registration.entryId, entryFile: resolved.modulePath, templateFile: path.join(resolved.projectDir, configurationTemplatePath(resolved.registration.entryId)), identity: projectEntryKey(resolved.manifest.projectId, resolved.registration.entryId), configurationFile: resolved.configurationPath, accessProjectDir: resolved.projectDir });
+}
+async function createLocalEntryConfigurationStore(projectDir: string, options: LocalProjectConfigurationOptions = {}) {
   const directory=await realpath(projectDir);
-  await localConfigurationIdentity(directory);
+  if (!options.identity || !options.entryId) throw new Error("A registered project entry is required.");
   const agentModelSources: AgentModelSourceCache = new Map();
   const target=async(fresh:boolean)=>{
     let definition: Pick<ProjectConfigurationDefinition,'profilePolicy'> = options;
     if(options.fields===undefined){
-      try { definition=parseConfigurationDefinition(JSON.parse(await readFile(path.join(directory,PROJECT_CONFIGURATION_FILE),'utf8'))); }
+      try { definition=parseConfigurationDefinition(JSON.parse(await readFile(options.configurationFile ?? path.join(directory,".no-entry-configuration"),'utf8'))); }
       catch(error){if((error as NodeJS.ErrnoException).code!=='ENOENT')throw error;definition={};}
     }
     let template=options.template;
-    if(template===undefined){try{template=parseConfigurationTemplate(JSON.parse(await readFile(path.join(directory,CONFIGURATION_TEMPLATE_FILE),'utf8')));}catch(error){if((error as NodeJS.ErrnoException).code!=='ENOENT')throw error;}}
+    if(template===undefined){try{template=parseConfigurationTemplate(JSON.parse(await readFile(options.templateFile ?? path.join(directory, configurationTemplatePath(options.entryId!)),'utf8')));}catch(error){if((error as NodeJS.ErrnoException).code!=='ENOENT')throw error;}}
     const profilePolicy=template?.profilePolicy??definition.profilePolicy;
-    const access=profilePolicy?(options.access??await resolveProjectConfigurationAccess(directory,options.connection?.(),fresh)):undefined;
-    const storageKey=profilePolicy&&options.storageKey===undefined?JSON.stringify([await localConfigurationIdentity(directory),access!.subject]):options.storageKey;
+    const access=profilePolicy?(options.access??await resolveProjectConfigurationAccess(options.accessProjectDir ?? directory,options.connection?.(),fresh)):undefined;
+    const storageKey=profilePolicy&&options.storageKey===undefined?JSON.stringify([options.identity!,access!.subject]):options.storageKey;
     return createProjectConfigurationStoreForIdentity(directory,{...options,storageKey,profilePolicy,access},agentModelSources,options.storageKey===undefined);
   };
   return {
@@ -133,9 +133,9 @@ export async function createLocalProjectConfigurationStore(projectDir: string, o
 }
 
 /** Rechecked before a restricted tool executes; a saved run is not an authorization grant. */
-export async function assertProjectConfigurationAccess(projectDir:string,configuration=getProjectConfiguration()):Promise<void>{
+export async function assertProjectConfigurationAccess(projectDir:string,configuration=getProjectConfiguration(),entryId=directoryScope.getStore()?.entryId):Promise<void>{
   if(configuration?.profilePolicyVersion!==undefined) {
-    const state=await (await createLocalProjectConfigurationStore(projectDir)).read(true);
+    const state=await (await createLocalProjectConfigurationStore(projectDir, { entryId })).read(true);
     const capability=state.capabilities;
     // The run boundary has verified frozen template values. Tool boundaries
     // recheck current authority without replacing those values after an upgrade.
@@ -147,23 +147,22 @@ export async function assertCurrentProjectConfigurationAccess():Promise<void>{
   if(snapshot?.profilePolicyVersion===undefined)return;
   const directory=directoryScope.getStore();
   if(!directory)throw new ProjectConfigurationError('A restricted run requires a verified project directory.','CONFIGURATION_FORBIDDEN');
-  await assertProjectConfigurationAccess(directory,snapshot);
+  await assertProjectConfigurationAccess(directory.directory,snapshot,directory.entryId);
 }
 
 async function createProjectConfigurationStoreForIdentity(projectDir: string, options: LocalProjectConfigurationOptions = {}, agentModelSources:AgentModelSourceCache=new Map(), local=options.storageKey===undefined) {
   const directory = await realpath(projectDir);
   const root = options.rootDir ?? path.join(os.homedir(), ".steamharness", "configurations");
-  const directoryKey = createHash("sha256").update(directory).digest("hex");
-  const key = createHash("sha256").update(options.storageKey ?? await localConfigurationIdentity(directory)).digest("hex");
+  const key = createHash("sha256").update(options.storageKey ?? options.identity!).digest("hex");
   const filename = path.join(root, `${key}.json`), lock = `${filename}.lock.sqlite`;
-  const legacyFilename = options.storageKey === undefined && key !== directoryKey ? path.join(root, `${directoryKey}.json`) : undefined;
-  // Runs remain bound to their original directory, including snapshots created before application binding.
-  const runKey = options.storageKey === undefined ? directoryKey : key;
+
+  // Run snapshots use the same project and entry identity as configuration profiles.
+  const runKey = key;
   const declared = async () => {
     let definition: ProjectConfigurationDefinition = {version:1,fields:[]};
-    try { definition = parseConfigurationDefinition(JSON.parse(await readFile(path.join(directory, PROJECT_CONFIGURATION_FILE), "utf8"))); }
+    try { definition = parseConfigurationDefinition(JSON.parse(await readFile(options.configurationFile ?? path.join(directory, ".no-entry-configuration"), "utf8"))); }
     catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error; }
-    if (!definition.fields.some(field => field.name === AGENT_MODELS_CONFIGURATION_KEY) && discoverProjectAgentModels(directory, agentModelSources)) definition.fields.unshift({...structuredClone(AGENT_MODELS_CONFIGURATION_FIELD),...definition.agentModelPolicy});
+    if (!definition.fields.some(field => field.name === AGENT_MODELS_CONFIGURATION_KEY) && discoverProjectAgentModels(directory, agentModelSources, options.entryFile)) definition.fields.unshift({...structuredClone(AGENT_MODELS_CONFIGURATION_FIELD),...definition.agentModelPolicy});
     return definition;
   };
   const verifiedTemplate = async (value: ProjectConfigurationTemplate): Promise<boolean> => {
@@ -174,21 +173,17 @@ async function createProjectConfigurationStoreForIdentity(projectDir: string, op
     let stored: unknown;
     try { stored = JSON.parse(await readFile(filename, "utf8")); }
     catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error; }
-    const adopting = stored === undefined && legacyFilename !== undefined;
-    if (adopting) {
-      try { stored = JSON.parse(await readFile(legacyFilename, "utf8")); }
-      catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error; }
-    }
     let template = options.template;
     if (template === undefined && local) {
       let source: string | undefined;
-      try { source = await readFile(path.join(directory, CONFIGURATION_TEMPLATE_FILE), "utf8"); }
+      try { source = await readFile(options.templateFile ?? path.join(directory, configurationTemplatePath(options.entryId!)), "utf8"); }
       catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error; }
       if (source === undefined) {
         // Once bound, removing source metadata cannot turn an installed project into an author.
         template = (stored as ProjectConfigurationState | undefined)?.template;
       } else {
         const candidate = parseConfigurationTemplate(JSON.parse(source));
+        if (candidate.entryId !== options.entryId || candidate.projectId !== options.identity?.split(':')[0]) throw new ProjectConfigurationError("Configuration template belongs to another project or entry.");
         if(await verifiedTemplate(candidate))template=candidate;
         else {
           // Waiting runs may keep the last verified version while a new source
@@ -207,7 +202,7 @@ async function createProjectConfigurationStoreForIdentity(projectDir: string, op
     if(options.profilePolicy)state=bindConfigurationProfiles(state,options.profilePolicy);
     if(state.profilePolicy)state.activeConfigurationId=configurationAccessView(state,options.access).activeConfigurationId;
     const changed = !isDeepStrictEqual(stored,state);
-    if (adopting || !stored || changed) {
+    if (!stored || changed) {
       if (stored && changed && state.revision === (stored as ProjectConfigurationState).revision) state.revision++;
       await atomic(filename, state);
     }
@@ -265,7 +260,7 @@ async function createProjectConfigurationStoreForIdentity(projectDir: string, op
             // model restrictions still come from the current project state.
             const template=parseConfigurationTemplate(persisted.template);
             const trusted=isDeepStrictEqual(template,state.template)||await verifiedTemplate(template);
-            if(!trusted || template.projectId!==state.template?.projectId || !template.configurations.some(profile=>profile.id===persisted.templateId))throw new ProjectConfigurationError('Invalid run configuration snapshot.');
+            if(!trusted || template.projectId!==state.template?.projectId || template.entryId!==options.entryId || !template.configurations.some(profile=>profile.id===persisted.templateId))throw new ProjectConfigurationError('Invalid run configuration snapshot.');
             state={...state,template,fields:template.fields,configurations:state.configurations.map(profile=>profile.id===saved.id?{...profile,templateId:persisted.templateId}:profile)};
           }
           return validateConfigurationSnapshotAccess(state,saved,options.access);
@@ -312,7 +307,7 @@ export async function cacheVerifiedConfigurationTemplate(input: unknown, attachm
 }
 
 /** Offline previews read verified cache bytes, never a path supplied by project code. */
-export async function readCachedConfigurationFile(projectDir:string,fileId:string,options:{rootDir?:string;templateCacheDir?:string}={}):Promise<{file:unknown;base64:string}|undefined> {
+export async function readCachedConfigurationFile(projectDir:string,fileId:string,options:{rootDir?:string;templateCacheDir?:string;entryId?:string}={}):Promise<{file:unknown;base64:string}|undefined> {
   const state=await (await createLocalProjectConfigurationStore(projectDir,options)).read();
   const asset=state.template?.attachments?.find(item=>item.id===fileId);if(!asset)return;
   let reference:ConfigurationValue|undefined;

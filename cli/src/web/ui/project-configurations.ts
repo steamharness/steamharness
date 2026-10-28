@@ -60,12 +60,12 @@ export function mountProjectConfigurations(host: Host): ProjectConfigurationsPan
   const publicationButtons=document.createElement('div');publicationButtons.className='configuration-footer-actions';
   const previewPublication=iconButton('eye',t('Recipient preview'),()=>{
     if(!publicationDraft)return;
-    try{publicationPreview.textContent=JSON.stringify(freezeConfigurationTemplate(publicationDraft,{projectId:'preview',projectVersion:'preview',sourceHash:'0'.repeat(64)}),null,2);publicationPreview.hidden=false;publicationStatus.textContent='';publicationStatus.classList.remove('error');}
+    try{publicationPreview.textContent=JSON.stringify(freezeConfigurationTemplate(publicationDraft,{projectId:'preview',entryId:'preview',projectVersion:'preview',sourceHash:'0'.repeat(64)}),null,2);publicationPreview.hidden=false;publicationStatus.textContent='';publicationStatus.classList.remove('error');}
     catch(e){error(e);}
   });
   const savePublication=button(t('Save publication draft'),()=>void(async()=>{
     if(!publicationDraft)return;
-    try{freezeConfigurationTemplate(publicationDraft,{projectId:'preview',projectVersion:'preview',sourceHash:'0'.repeat(64)});if(await dispatch({action:'publication.save',publication:publicationDraft})){publicationDraft=undefined;publicationDirty=false;renderPublication();publicationStatus.textContent='';publicationStatus.classList.remove('error');}}
+    try{freezeConfigurationTemplate(publicationDraft,{projectId:'preview',entryId:'preview',projectVersion:'preview',sourceHash:'0'.repeat(64)});if(await dispatch({action:'publication.save',publication:publicationDraft})){publicationDraft=undefined;publicationDirty=false;renderPublication();publicationStatus.textContent='';publicationStatus.classList.remove('error');}}
     catch(e){error(e);}
   })());
   savePublication.className='configuration-primary';savePublication.prepend(document.createRange().createContextualFragment(iconHtml('check')));

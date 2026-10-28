@@ -66,15 +66,16 @@ export async function buildExtension({ watch = false } = {}) {
     }
   }
   await fs.cp(path.join(assistantSource, 'skills'), path.join(assistantOutput, 'skills'), { recursive: true });
-  const controlSource = await builtinProjectDirectory('studio-control');
-  const controlOutput = path.join(directory, 'dist/studio-control');
-  await fs.rm(controlOutput, { recursive: true, force: true });
+  // Studio Control is a registered entry of the assistant, with no separate install.
+  const controlSource = path.join(assistantSource, 'studio-control');
+  const controlOutput = path.join(assistantOutput, 'studio-control');
   await fs.mkdir(controlOutput, { recursive: true });
   for (const entry of await fs.readdir(controlSource, { withFileTypes: true })) {
-    if (entry.isFile() && (entry.name === 'package.json' || entry.name === 'configuration.json' || entry.name.endsWith('.ts') && !entry.name.endsWith('.config.ts'))) {
+    if (entry.isFile() && (entry.name === 'configuration.json' || entry.name.endsWith('.ts'))) {
       await fs.copyFile(path.join(controlSource, entry.name), path.join(controlOutput, entry.name));
     }
   }
+  await fs.rm(path.join(directory, 'dist/studio-control'), { recursive: true, force: true });
   const analysisSource = await builtinProjectDirectory('analysis');
   const analysisOutput = path.join(directory, 'dist/analysis');
   await fs.rm(analysisOutput, { recursive: true, force: true });

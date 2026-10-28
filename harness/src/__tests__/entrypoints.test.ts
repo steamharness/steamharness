@@ -1,5 +1,6 @@
+import { LocalDatabaseRegistry, createLocalDatabaseResolver, type DatabaseResolver } from "../databases/index";
 import assert from "node:assert/strict";
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
@@ -9,11 +10,16 @@ import {
   inspectLocalProjectStructure,
   inspectWorkspaceProjectStructureFromCli,
   resolveLocalProjectParams,
-  runLocalProjectWithReport,
+  runLocalProjectWithReport as runProject,
   runWorkspaceProjectWithReport,
   validateProjectScriptSource,
   HarnessError,
 } from "../index";
+
+const fixtureDatabases=new Map<string,DatabaseResolver>();
+function runLocalProjectWithReport(options:Parameters<typeof runProject>[0]) {
+  return runProject({...options,databaseResolver:options?.projectDir?fixtureDatabases.get(options.projectDir):undefined});
+}
 
 test("workspace structure CLI errors use the standalone CLI command", () => {
   assert.throws(
@@ -142,7 +148,7 @@ test("workflow entrypoints expose group metadata in a flat structure and run ind
       args: ["--rule", "strict"],
       storage: { host: "local", local: { kvStoreDir } },
     });
-    assert.equal(validation.status, "success");
+    assert.equal(validation.status, "success",JSON.stringify(validation.result));
     assert.equal(validation.entrypointId, "validate");
     assert.equal(validation.entrypointTitle, "Validate data");
     const validationOutput = validation.result.ok
@@ -197,7 +203,7 @@ test("workflow entrypoints expose group metadata in a flat structure and run ind
 test("workflow entrypoint structure resolves imported workflows and keeps registries scoped", async () => {
   const projectDir = await mkdtemp(path.join(os.tmpdir(), "steamharness-imported-entrypoints-"));
   try {
-    await writeFile(path.join(projectDir, "package.json"), JSON.stringify({
+    await writeFile(path.join(projectDir, "package.json"), JSON.stringify({id:crypto.randomUUID(),steamHarness:{defaultEntry:"main",entries:[{entryId:"main",name:"Main",type:"workflow",root:".",entry:"index.ts",databases:[]}]},
       name: "imported-entrypoint-test",
       version: "0.1.0",
       type: "module",
@@ -281,7 +287,7 @@ test("workflow entrypoint structure resolves imported workflows and keeps regist
 test("workflow entrypoint structure resolves wrapped definitions and inline default exports", async () => {
   const projectDir = await mkdtemp(path.join(os.tmpdir(), "steamharness-wrapped-entrypoints-"));
   try {
-    await writeFile(path.join(projectDir, "package.json"), JSON.stringify({
+    await writeFile(path.join(projectDir, "package.json"), JSON.stringify({id:crypto.randomUUID(),steamHarness:{defaultEntry:"main",entries:[{entryId:"main",name:"Main",type:"workflow",root:".",entry:"index.ts",databases:[]}]},
       name: "wrapped-entrypoint-test",
       version: "0.1.0",
       type: "module",
@@ -349,7 +355,7 @@ test("workflow entrypoint structure resolves wrapped definitions and inline defa
 test("workflow entrypoint structure does not accept an unrelated same-name workflow", async () => {
   const projectDir = await mkdtemp(path.join(os.tmpdir(), "steamharness-colliding-entrypoint-"));
   try {
-    await writeFile(path.join(projectDir, "package.json"), JSON.stringify({
+    await writeFile(path.join(projectDir, "package.json"), JSON.stringify({id:crypto.randomUUID(),steamHarness:{defaultEntry:"main",entries:[{entryId:"main",name:"Main",type:"workflow",root:".",entry:"index.ts",databases:[]}]},
       name: "colliding-entrypoint-test",
       version: "0.1.0",
       type: "module",
@@ -471,7 +477,7 @@ test("workspace runtime layers prepare before inspection and started events incl
       name: projectName,
       version: "0.1.0",
       type: "module",
-      steamHarness: { projectInfo: { dataStorage: { mode: "local" } } },
+      steamHarness: {defaultEntry:"main",entries:[{entryId:"main",type:"workflow",name:"Main",root:".",entry:"index.ts",databases:[]}], projectInfo:{}},
     }));
     await writeFile(path.join(projectDir, "index.ts"), `
       const mainProject = steamharness.defineProject({
@@ -507,10 +513,12 @@ test("workspace runtime layers prepare before inspection and started events incl
       },
     });
 
-    assert.equal(report.status, "success");
+    assert.equal(report.status, "success",JSON.stringify(report.result));
     assert.equal(report.entrypointId, "main");
     assert.deepEqual(events.filter((event) => event.type === "project_started"), [{
       type: "project_started",
+      projectId:"11111111-1111-4111-8111-111111111111",
+      entryId:"main",
       runId: report.runId,
       projectName,
       entrypointId: "main",
@@ -712,7 +720,7 @@ async function createEntrypointProject(): Promise<string> {
     name: "entrypoint-test",
     version: "0.1.0",
     type: "module",
-    steamHarness: { projectInfo: { dataStorage: { mode: "local" } } },
+    steamHarness: {defaultEntry:"main",entries:[{entryId:"main",type:"workflow",name:"Main",root:".",entry:"index.ts",databases:[]}], projectInfo:{}},
   }));
   await writeFile(path.join(projectDir, "index.ts"), `
     const mainProject = steamharness.defineProject({
@@ -720,14 +728,14 @@ async function createEntrypointProject(): Promise<string> {
       async run(input, context) {
         return {
           ...input,
-          shared: await context.storage.local.kv.getValue("shared-rule"),
+          shared: await context.databases.get("data").kv.getValue("shared-rule"),
         };
       },
     });
     const validateProject = steamharness.defineProject({
       name: "validate-flow",
       async run(input, context) {
-        await context.storage.local.kv.setValue("shared-rule", input.rule);
+        await context.databases.get("data").kv.setValue("shared-rule", input.rule);
         return {
           ...input,
           metadataEntrypointId: context.metadata?.entrypointId,
@@ -787,6 +795,14 @@ async function createEntrypointProject(): Promise<string> {
       ],
     });
   `);
+  const registry=new LocalDatabaseRegistry(path.join(projectDir,".registry"));
+  const all={mode:"all" as const};const permissions={kv:{read:all,write:all},knowledge:{read:all,write:all}};
+  const request=registry.request({projectId:"11111111-1111-4111-8111-111111111111",entryId:"main",alias:"data",target:{kind:"create",name:"Test data"},permissions});
+  const approved=registry.review(request.requestId,{approve:true});
+  const pkg=JSON.parse(await readFile(path.join(projectDir,"package.json"),"utf8"));
+  pkg.steamHarness.entries[0].databases=[{alias:"data",host:"local",permissions,bindingRef:approved.bindingRef}];
+  await writeFile(path.join(projectDir,"package.json"),JSON.stringify(pkg));
+  fixtureDatabases.set(projectDir,createLocalDatabaseResolver(registry));
   return projectDir;
 }
 
@@ -806,7 +822,7 @@ async function createConversationProject(): Promise<string> {
     name: "entrypoint-conversation-test",
     version: "0.1.0",
     type: "module",
-    steamHarness: { projectInfo: { dataStorage: { mode: "local" } } },
+    steamHarness: {defaultEntry:"main",entries:[{entryId:"main",type:"conversation",name:"Main",root:".",entry:"index.ts",databases:[]}], projectInfo:{}},
   }));
   await writeFile(path.join(projectDir, "index.ts"), `
     const conversationProject = steamharness.defineProject({

@@ -7,7 +7,7 @@ const controllers: ConversationController[] = [];
 afterEach(() => { for (const controller of controllers.splice(0)) controller.dispose(); });
 
 function fixture() {
-  const project: Project = { id: 'model-names', uri: '', folderPath: '/fixture', name: 'Agent', projectType: 'conversation', entrypoints: [],
+  const project: Project = {entryId:"main",aggregateName:"Test aggregate",defaultEntry:"main",entryRoot:'/fixture',databases:[],entries:[{entryId:"main",name:"Main",type:'conversation',root:".",entry:"index.ts",databases:[]}], id: 'model-names', uri: '', folderPath: '/fixture', name: 'Agent', projectType: 'conversation', entrypoints: [],
     fields: [{ name: 'model', flag: '--model', type: 'string', options: [{ value: 'configuration-id', label: 'Original model' }] }] };
   const runtime = { run: vi.fn(async () => ({ status: 'success' })), cancel: vi.fn() } as unknown as Runtime;
   const options = { save: vi.fn(async () => {}), changed: vi.fn(), log: vi.fn() };

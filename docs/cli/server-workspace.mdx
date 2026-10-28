@@ -1,75 +1,30 @@
 ---
 title: "Server Workspace CLI"
-description: "管理 Server 项目上传、不可变源码版本和数据文件。"
+description: "Workspace 静态项目管理"
 ---
 
-# Server Workspace CLI
+# Workspace 静态项目管理
 
-`steamharness workspace` 由 `@steamharness/cli` 提供，管理 Workflow、Conversation 和 Kanban 项目的服务器存储。本地执行使用顶层 `steamharness run/json`。Server 不加载或执行上传的项目代码。
+`steamharness workspace` 管理 Server 上的聚合项目源码与不可变版本。Server 不安装项目依赖、不构建、不执行项目。
 
-## 命令列表
-
-| 命令 | 说明 |
-| --- | --- |
-| [login](/cli/workspace/login)、[logout](/cli/workspace/logout)、[status](/cli/workspace/status) | 登录、退出和查看连接状态。 |
-| [health](/cli/workspace/health) | 检查 Server 健康状态。 |
-| [pack](/cli/workspace/pack) | 按 `.steamharnessignore` 打包本地文件。 |
-| [upload](/cli/workspace/upload) | 上传源码或项目组，可同时发布。 |
-| `preparation` | 查询文件处理进度和失败原因。 |
-| [publish](/cli/workspace/publish) | 保存不可变源码版本并更新 latest。 |
-| [versions](/cli/workspace/versions) | 查询历史版本、发布说明和源码哈希。 |
-| [download](/cli/workspace/download) | 下载已发布项目或项目组。 |
-| `file-upload`、`file-download`、`file-delete` | 管理独立业务文件。 |
-| [help](/cli/workspace/help) | 查看帮助。 |
-
-## 全局选项
-
-| 选项 | 说明 |
-| --- | --- |
-| `--server <url>` | 优先于 `STEAMHARNESS_SERVER_URL`、登录态和渠道默认地址（dev：`http://localhost:7126`）。 |
-| `--token <token>` | 优先于 `STEAMHARNESS_SERVER_ADMIN_KEY` 和保存的凭据。 |
-| `--target <version>` | 下载的精确版本或 `latest`，不接受 draft。 |
-| `--release-log <text>` | 发布说明；upload 指定后会自动发布。 |
-| `--path <directory>` | 本地项目或下载目录。 |
-| `--file <path>` | 已有归档或待上传业务文件。 |
-| `--mime-type <type>` | 指定业务文件 MIME。 |
-| `--output <path>` | 归档或业务文件下载路径。 |
-| `--no-wait` | 保存归档后立即返回文件处理任务，不轮询。 |
-| `--create` | 按本地 `package.json.id` 创建或复用项目。 |
-| `--project-group`、`--dependency <alias=path>` | 打包、上传或下载项目组。 |
-| `--deployment <id>`、`--publish-group` | 查询或发布项目组文件处理任务。 |
-
-未知选项会报错。静态类型由 `package.json.steamHarness.projectType` 声明，版本由上传的 `package.json.version` 决定；同版本不可覆盖。Server 只解包、校验和保存，不安装依赖或构建。Kanban 静态产物需要先在本地准备完成。
-
-## 上传与下载
-
-```bash
-steamharness workspace login --server http://localhost:7126
-steamharness workspace upload hello --create --release-log "初始发布"
-steamharness workspace versions hello
-steamharness workspace download hello --target latest --path ./downloaded-hello
+```sh
+pnpm exec steamharness workspace login --server <server-url>
+pnpm exec steamharness workspace status
+pnpm exec steamharness workspace pack <project-id> --path . --output project.tgz
+pnpm exec steamharness workspace upload <project-id> --path .
+pnpm exec steamharness workspace publish <project-id> --release-log "Update entries"
+pnpm exec steamharness workspace versions <project-id>
+pnpm exec steamharness workspace download <project-id> --target latest --path ./downloaded
 ```
 
-新应用 ID 必须由服务器签发。`upload --create` 在 ID 未注册时申请并写回新 ID，不会用本地自选 ID 新建记录；项目组中的根项目和依赖必须先分别完成注册，避免隐式变更关联身份。
+整个聚合是一个上传、版本与下载单元。打包包含全部注册入口代码、各包依赖声明和 Kanban 构建产物；排除 Git、node_modules、运行数据和凭据。数据库需求保留，`bindingRef` 移除。
 
-项目参数支持 UUID、名称和本地目录，CLI 优先读取目录中的稳定 `package.json.id`。打包只按每个项目根目录的 `.steamharnessignore` 选择文件，不读取 `.gitignore`；规则文件自身和必需入口不能被排除。项目组 included 依赖锁定精确版本与源码哈希，下载逐项目检查源码权限，并报告跳过原因和申请入口。下载不受操作系统限制。
+## 注册与归属
 
-## 业务文件
+使用客户端的创建项目流程申请 Server 身份。`upload --create` 显式创建并替换本地聚合身份；`--group-id` 选择权限组归属。项目成员、组继承与源码访问申请仍使用固定角色，与数据库申请分别管理。
 
-```bash
-steamharness workspace file-upload <项目 UUID> --file ./map.png
-steamharness workspace file-download <文件 ID> --output ./verified-map.png
-steamharness workspace file-delete <文件 ID>
-```
+## 传输与配置
 
-上传接受不超过 50 MiB 的普通文件，返回 `storage: "server"` 的 FileReference。写入要求项目数据写权限，读取要求项目访问权限。下载要求新路径，不覆盖已有文件；HTTP 失败不会生成本地文件。KV 保存文件引用，不保存图片 base64。
+`upload --file` 接受已打包归档，`--no-wait` 返回准备任务，`preparation` 查询静态准备结果。`file-upload/file-download/file-delete` 管理业务文件。`--server`、`--token` 可覆盖保存的登录信息；不要把凭据加入 manifest。
 
-## 登录态与输出
-
-CLI 读取当前目录及源码仓库根目录的 `.env`，已有进程环境优先。登录态使用 `workflow-auth.json`，默认保存到操作系统应用配置目录，可用 `STEAMHARNESS_CLI_AUTH_DIR` 指定位置。
-
-成功输出 `{ errCode: 0, errMessage: "", data }`；服务端错误和本地参数错误返回非零退出码。准备任务保留进度和失败反馈；失败上传不会替换已有发布快照。
-
-创建或首次上传可用 `--group-id <id>` 选择归属组（至少开发者）；未指定则创建个人项目并成为所有者。上传、发布和服务器数据写入需要开发者，已发布源码下载和数据读取需要访客。Cookie 与 API Key 均按最新项目、组成员关系鉴权。
-
-未指定 Server 时，地址随客户端构建渠道选择：dev 使用 `http://localhost:7126`，alpha 与 main 使用对应站点。`STEAMHARNESS_SERVICE_CHANNEL=dev|alpha|main` 可显式选择默认渠道；`--server`、`STEAMHARNESS_SERVER_URL` 和已有登录连接的优先级更高。
+配置模板、方案、快照与附件按入口保存。数据库通过 CLI Web、Studio 或 Server Web 的独立空间管理申请与绑定，下载后需重新获批。

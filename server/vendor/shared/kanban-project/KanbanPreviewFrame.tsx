@@ -8,12 +8,12 @@ import {
   KANBAN_BRIDGE_REQUEST_MESSAGE,
   KANBAN_BRIDGE_REQUEST_TIMEOUT_MS,
   KANBAN_BRIDGE_RESPONSE_MESSAGE,
-  KANBAN_RELATED_PROJECT_REVISION_MESSAGE,
+  KANBAN_DATABASE_REVISION_MESSAGE,
   KANBAN_PREVIEW_READY_MESSAGE,
   KANBAN_PRESENTATION_MESSAGE,
   parseKanbanBridgeCall,
   type KanbanBridgeCall,
-  type KanbanRelatedProjectRevision,
+  type KanbanDatabaseRevision,
   type KanbanPresentationMode,
 } from "./index";
 import "./styles.css";
@@ -28,8 +28,8 @@ export interface KanbanPreviewFrameProps {
   configuration?: { id: string; name: string; params: Record<string, unknown> };
   onRetry?: () => void;
   onBridgeRequest?: (call: KanbanBridgeCall) => Promise<unknown> | unknown;
-  relatedProjectRevisions?: readonly KanbanRelatedProjectRevision[];
-  relatedProjectWarning?: string;
+  databaseRevisions?: readonly KanbanDatabaseRevision[];
+  databaseWarning?: string;
   compact?: boolean;
   presentationMode?: KanbanPresentationMode;
   methodRegistry?: KanbanMethodRegistry;
@@ -70,9 +70,9 @@ export function KanbanPreviewFrame(props: KanbanPreviewFrameProps) {
   const postRevisions = () => {
     const target = iframeRef.current?.contentWindow;
     if (!target) return;
-    for (const revision of props.relatedProjectRevisions ?? []) {
+    for (const revision of props.databaseRevisions ?? []) {
       target.postMessage({
-        type: KANBAN_RELATED_PROJECT_REVISION_MESSAGE,
+        type: KANBAN_DATABASE_REVISION_MESSAGE,
         nonce: props.previewNonce,
         alias: revision.alias,
         revision: revision.revision,
@@ -82,7 +82,7 @@ export function KanbanPreviewFrame(props: KanbanPreviewFrameProps) {
 
   useEffect(postConfiguration, [props.configuration, props.previewNonce]);
   useEffect(postPresentation, [presentationMode, props.previewNonce]);
-  useEffect(postRevisions, [props.previewNonce, props.previewUrl, props.relatedProjectRevisions, version]);
+  useEffect(postRevisions, [props.previewNonce, props.previewUrl, props.databaseRevisions, version]);
 
   useEffect(() => {
     const generation = ++generationRef.current;
@@ -183,9 +183,9 @@ export function KanbanPreviewFrame(props: KanbanPreviewFrameProps) {
 
   return (
     <div className="kanban-preview" data-loading={loading ? "true" : "false"} data-compact={props.compact ? "true" : undefined}>
-      {props.relatedProjectWarning ? (
-        <div className="kanban-related-project-warning" role="status">
-          <AlertCircle aria-hidden="true" /><span>{props.relatedProjectWarning}</span>
+      {props.databaseWarning ? (
+        <div className="kanban-database-warning" role="status">
+          <AlertCircle aria-hidden="true" /><span>{props.databaseWarning}</span>
         </div>
       ) : null}
       {loading ? <div className="kanban-preview-loading"><Loader2 className="kanban-spin" />{t("loadingHtml")}</div> : null}

@@ -84,12 +84,12 @@ export function ProjectListPage({
     if(onServerSearch)return projects;
     const needle = query.trim().toLowerCase();
     return projects.filter((p) => {
-      const kindLabel = getProjectKindLabel(p.projectType);
+      const kindLabel = [...new Set(p.entries.map(entry=>entry.type))].map(getProjectKindLabel).join(" / ");
       const uploaderText = createUserIdentitySearchText(getProjectUploaderIdentity(p));
       const matchesQuery = !needle || matchesProjectSearch(p.name, p.projectInfo, needle) || [
         p.id,
         p.latest ?? "",
-        p.projectType,
+        ...p.entries.map(entry=>entry.type),
         kindLabel,
         uploaderText,
       ].some((v) => v.toLowerCase().includes(needle));
@@ -240,7 +240,7 @@ function ProjectRow({
   onOpenDetail: (p: Summary) => void;
 }) {
   const { t } = useTranslation("serverWeb");
-  const ProjectTypeIcon = getProjectTypeIconComponent(project.projectType);
+  const ProjectTypeIcon = getProjectTypeIconComponent(project.entries[0]!.type);
   const displayName = getProjectDisplayName(project, i18n.language);
   return (
     <TableRow
@@ -250,7 +250,7 @@ function ProjectRow({
     >
       <TableCell className="px-3 py-3">
         <div className="flex min-w-0 items-center gap-3">
-          <ProjectAvatar projectId={project.id} card={project.projectCard} projectType={project.projectType} label={displayName} onClick={() => onOpenDetail(project)} />
+          <ProjectAvatar projectId={project.id} card={project.projectCard} projectType={project.entries[0]!.type} label={displayName} onClick={() => onOpenDetail(project)} />
           <div className="flex min-w-0 flex-col gap-1">
             <Button variant="link" className="h-auto min-w-0 max-w-full justify-start p-0" title={displayName}
               onClick={event => { event.stopPropagation(); onOpenDetail(project); }}><span className="truncate">{displayName}</span></Button>
@@ -259,7 +259,7 @@ function ProjectRow({
         </div>
       </TableCell>
       <TableCell className="px-3">
-        <Badge variant="outline"><ProjectTypeIcon data-icon="inline-start" />{getProjectKindLabel(project.projectType)}</Badge>
+        {[...new Set(project.entries.map(entry=>entry.type))].map(type=><Badge key={type} variant="outline">{getProjectKindLabel(type)}</Badge>)}
       </TableCell>
       <TableCell className="px-3">
         <ProjectUploaderSummary project={project} />

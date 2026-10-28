@@ -1,5 +1,5 @@
 
-import type { AdminUserSummary, AuditEventPage, ApiKeyRecord, KVEntryPage, MeResult, ProjectDataSummary, ProjectMember, ProjectInvitation, VersionSummary } from "./types";
+import type { AdminUserSummary, AuditEventPage, ApiKeyRecord, MeResult, ProjectMember, ProjectInvitation, VersionSummary } from "./types";
 
 export type SessionState =
   | { status: "checking" }
@@ -20,11 +20,11 @@ export type SessionState =
       };
     };
 
-export type DetailTab = "configurations" | "project" | "settings" | "members" | "invitations" | "dependencies" | "knowledge" | "versions" | "kv";
+export type DetailTab = "configurations" | "project" | "settings" | "members" | "invitations" | "entries" | "databases" | "versions";
 
 export type AdminTab = "users" | "audit";
 export type SettingsTab = "profile" | "appearance" | "api-keys";
-export type Page = "login" | "device" | "projects" | "groups" | "settings" | "admin" | "detail" | "invite" | "account-invite" | "access-request" | "source-share";
+export type Page = "login" | "device" | "projects" | "groups" | "databases" | "settings" | "admin" | "detail" | "invite" | "account-invite" | "access-request" | "source-share";
 export type ThemeMode = "light" | "dark" | "system";
 
 export type AppRoute =
@@ -32,9 +32,10 @@ export type AppRoute =
   | { page: "device"; userCode?: string }
   | { page: "projects" }
   | { page: "groups"; id?: string }
+  | { page: "databases"; id?: string }
   | { page: "settings"; tab: SettingsTab }
   | { page: "admin"; tab: AdminTab }
-  | { page: "detail"; id: string; tab: DetailTab; }
+  | { page: "detail"; id: string; tab: DetailTab; entryId?: string; }
   | { page: "invite"; token: string }
   | { page: "account-invite"; token: string }
   | { page: "access-request"; token: string }
@@ -66,9 +67,7 @@ export type DetailState = {
   versions: VersionSummary | null;
   members: ProjectMember[] | null;
   invitations: ProjectInvitation[] | null;
-  kv: KVEntryPage | null;
-  dataSummary?: ProjectDataSummary | null;
-  loadErrors?: Partial<Record<"versions" | "members" | "invitations" | "dataSummary", string>>;
+  loadErrors?: Partial<Record<"versions" | "members" | "invitations", string>>;
 };
 
 export const THEME_STORAGE_KEY = "steamharness-server-admin:theme";
@@ -79,8 +78,6 @@ export const DEFAULT_DETAIL: DetailState = {
   versions: null,
   members: null,
   invitations: null,
-  kv: null,
-  dataSummary: null,
   loadErrors: {},
 };
 

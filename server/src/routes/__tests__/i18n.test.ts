@@ -15,7 +15,6 @@ import {
   localizeServerMessage,
 } from "../../i18n";
 import { HttpError, toHttpError, toHttpErrorWithStatus } from "../../protocol";
-import { createProjectDependencyLocks } from "@steamharness/project-dependencies";
 import { createApiRouter } from "../api";
 import type { Storage } from "../../storage";
 
@@ -58,14 +57,14 @@ test("localizeHttpErrorMessage prefers a structured descriptor over messageKey",
     "fallback",
     {
       steamHarnessI18n: {
-        namespace: "common",
-        key: "projectDependencies.validation.lockArray",
+        namespace: "server",
+        key: "requestBodyTooLarge",
       },
     },
     { messageKey: "server:requestBodyTooLarge" },
   );
 
-  assert.equal(localizeHttpErrorMessage(error, t), "项目依赖锁必须是数组。");
+  assert.equal(localizeHttpErrorMessage(error, t), "请求体过大。");
 });
 
 test("localizeHttpErrorMessage keeps the literal message when no messageKey", () => {
@@ -99,17 +98,6 @@ test("unpublished role configuration guidance is localized", () => {
 test("localizeServerMessage maps dynamic server errors with captured parameters", () => {
   const zh = getRequestT({ headers: { "x-steamharness-locale": "zh-CN" } });
   assert.equal(
-    localizeServerMessage('Included project "prices" does not exist on this Server.', zh),
-    "included 项目“prices”不存在于当前 Server。",
-  );
-  assert.equal(
-    localizeServerMessage(
-      'Deployment "deploy-1" cannot be prepared from status "failed".',
-      zh,
-    ),
-    "部署“deploy-1”处于“failed”状态，不能开始准备。",
-  );
-  assert.equal(
     localizeServerMessage(
       'Archive entry "package.json" has an invalid size.',
       zh,
@@ -126,47 +114,11 @@ test("localizeServerMessage maps dynamic server errors with captured parameters"
   );
 });
 
-test("storage declaration and PersistentValue binding errors are localized", () => {
+test("database binding and explicit approval errors are localized", () => {
   const zh = getRequestT({ headers: { "x-steamharness-locale": "zh-CN" } });
-  assert.equal(
-    localizeHttpErrorMessage(
-      new HttpError(
-        409,
-        409,
-        "fallback",
-        undefined,
-        {
-          messageKey: "server:projectDataStorageDeclarationRequired",
-          params: { projectId: "project-1" },
-        },
-      ),
-      zh,
-    ),
-    "项目“project-1”未声明 steamHarness.projectInfo.dataStorage.mode，不能访问服务器数据。请先在 package.json 中声明存储模式。",
-  );
-  assert.equal(
-    localizeHttpErrorMessage(
-      new HttpError(
-        400,
-        400,
-        "fallback",
-        undefined,
-        {
-          messageKey: "server:persistentValueProjectBindingMismatch",
-          params: { projectId: "project-1", projectName: "other", field: "entry.projectName" },
-        },
-      ),
-      zh,
-    ),
-    "访问非全局 PersistentValue 时，entry.projectName 必须与 projectId 一致。",
-  );
-  assert.equal(
-    localizeServerMessage(
-      'steamHarness.projectInfo.dataStorage.mode must be "local", "server", or "both".',
-      zh,
-    ),
-    'steamHarness.projectInfo.dataStorage.mode 必须是 "local"、"server" 或 "both"。',
-  );
+  assert.equal(localizeServerMessage("Database binding is unavailable or revoked.", zh), "数据库绑定不可用或已撤销。");
+  assert.equal(localizeServerMessage("Explicit approval or rejection is required.", zh), "请明确批准或拒绝申请。");
+  assert.equal(localizeServerMessage("Approval cannot widen requested database permissions.", zh), "审批不能扩大申请的数据库权限。");
 });
 
 test("toHttpError maps 413 body-too-large to a translatable messageKey", () => {
@@ -183,20 +135,10 @@ test("toHttpError maps 413 body-too-large to a translatable messageKey", () => {
 });
 
 test("toHttpErrorWithStatus preserves shared validation descriptors", () => {
-  let failure: unknown;
-  try {
-    createProjectDependencyLocks([], [{ alias: "prices", delivery: "included" }]);
-  } catch (error) {
-    failure = error;
-  }
-  const httpError = toHttpErrorWithStatus(failure, 400, 400, "Invalid project dependencies.");
-
+  const failure = Object.assign(new Error("fallback"), { steamHarnessI18n: { namespace: "server", key: "requestBodyTooLarge" } });
+  const httpError = toHttpErrorWithStatus(failure, 400, 400, "Invalid request.");
   assert.equal(httpError.statusCode, 400);
-  assert.equal(httpError.messageKey, "common:projectDependencies.validation.unknownSelection");
-  assert.equal(
-    localizeHttpErrorMessage(httpError, getRequestT({ headers: { "x-steamharness-locale": "zh-CN" } })),
-    "未知的依赖选择“prices”。",
-  );
+  assert.equal(localizeHttpErrorMessage(httpError, getRequestT({ headers: { "x-steamharness-locale": "zh-CN" } })), "请求体过大。");
 });
 
 test("real auth middleware localizes unauthenticated and forbidden responses", async () => {

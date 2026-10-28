@@ -1,10 +1,10 @@
+import { createTestResources } from "./entry-test-resources";
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
   createDisabledProjectTokenUsageContext,
   MockLLMProvider,
   createProjectConversationContext,
-  createProjectRelatedProjectsContext,
   createProjectTokenUsageContext,
   type KVContext,
 } from "../index";
@@ -42,14 +42,14 @@ test("readEntrypointOutput unwraps a payload and refuses to unwrap a failure", (
 
 test("runProject calls a child workflow inside the parent context", async () => {
   const context = createTestProjectContext();
-  await context.storage.local.kv.setValue("shared-key", "from-parent");
+  await context.databases.get("data").kv.setValue("shared-key", "from-parent");
 
   const child: Definition<{ value: number }, { value: number; shared: unknown }> = {
     name: "child-workflow",
     async run(input, childContext) {
       return {
         value: input.value + 1,
-        shared: await childContext.storage.local.kv.getValue("shared-key"),
+        shared: await childContext.databases.get("data").kv.getValue("shared-key"),
       };
     },
   };
@@ -64,13 +64,13 @@ test("runProject calls a child workflow inside the parent context", async () => 
 
 test("runProject shares persistentValue with child workflows", async () => {
   const context = createTestProjectContext();
-  await context.storage.local.persistentValue.setValue("shared-key", "from-persistent-parent");
+  await context.databases.get("data").knowledge.createDocument({ id: "shared-key", title: "Shared", markdown: "from-persistent-parent" });
 
   const child: Definition<Record<string, never>, { value: unknown }> = {
     name: "child-workflow",
     async run(input, childContext) {
       return {
-        value: await childContext.storage.local.persistentValue.getValue("shared-key"),
+        value: (await childContext.databases.get("data").knowledge.getDocument("shared-key"))?.markdown,
       };
     },
   };
@@ -296,9 +296,9 @@ test("runProject passes abortSignal, providers, files, and tokenUsage through to
 
 test("runProject isolates local and server child KV namespaces", async () => {
   const context = createTestProjectContext();
-  await context.storage.local.kv.setValue("state", "parent-workflow");
-  await context.storage.local.kv.conversation.setValue("state", "parent-conversation");
-  await context.storage.server.kv.setValue("state", "parent-server-workflow");
+  await context.databases.get("data").kv.setValue("state", "parent-workflow");
+  await context.databases.get("data").kv.conversation.setValue("state", "parent-conversation");
+  await context.databases.get("other").kv.setValue("state", "parent-server-workflow");
 
   const child: Definition<Record<string, never>, {
     beforeProject: unknown;
@@ -310,19 +310,19 @@ test("runProject isolates local and server child KV namespaces", async () => {
   }> = {
     name: "child-workflow",
     async run(input, childContext) {
-      const beforeProject = await childContext.storage.local.kv.getValue("state");
-      const beforeConversation = await childContext.storage.local.kv.conversation.getValue("state");
-      const beforeServerProject = await childContext.storage.server.kv.getValue("state");
-      await childContext.storage.local.kv.setValue("state", "child-workflow");
-      await childContext.storage.local.kv.conversation.setValue("state", "child-conversation");
-      await childContext.storage.server.kv.setValue("state", "child-server-workflow");
+      const beforeProject = await childContext.databases.get("data").kv.getValue("state");
+      const beforeConversation = await childContext.databases.get("data").kv.conversation.getValue("state");
+      const beforeServerProject = await childContext.databases.get("other").kv.getValue("state");
+      await childContext.databases.get("data").kv.setValue("state", "child-workflow");
+      await childContext.databases.get("data").kv.conversation.setValue("state", "child-conversation");
+      await childContext.databases.get("other").kv.setValue("state", "child-server-workflow");
       return {
         beforeProject,
         beforeConversation,
-        afterProject: await childContext.storage.local.kv.getValue("state"),
-        afterConversation: await childContext.storage.local.kv.conversation.getValue("state"),
+        afterProject: await childContext.databases.get("data").kv.getValue("state"),
+        afterConversation: await childContext.databases.get("data").kv.conversation.getValue("state"),
         beforeServerProject,
-        afterServerProject: await childContext.storage.server.kv.getValue("state"),
+        afterServerProject: await childContext.databases.get("other").kv.getValue("state"),
       };
     },
   };
@@ -340,10 +340,10 @@ test("runProject isolates local and server child KV namespaces", async () => {
     beforeServerProject: undefined,
     afterServerProject: "child-server-workflow",
   });
-  assert.equal(await context.storage.local.kv.getValue("state"), "parent-workflow");
-  assert.equal(await context.storage.local.kv.conversation.getValue("state"), "parent-conversation");
+  assert.equal(await context.databases.get("data").kv.getValue("state"), "parent-workflow");
+  assert.equal(await context.databases.get("data").kv.conversation.getValue("state"), "parent-conversation");
   assert.equal(
-    await context.storage.server.kv.getValue("state"),
+    await context.databases.get("other").kv.getValue("state"),
     "parent-server-workflow",
   );
 });
@@ -574,10 +574,7 @@ function createTestProjectContext(options: {
   return {
     config: {},
     providers: options.providers ?? {},
-    storage: {
-      local: { kv, persistentValue: createMemoryKVContext(), relatedProjects: createProjectRelatedProjectsContext() },
-      server: { kv: createMemoryKVContext(), persistentValue: createMemoryKVContext(), relatedProjects: createProjectRelatedProjectsContext() },
-    },
+    ...createTestResources(),
     conversation: createProjectConversationContext({
       enabled: options.conversationId !== undefined,
       conversationId: options.conversationId,

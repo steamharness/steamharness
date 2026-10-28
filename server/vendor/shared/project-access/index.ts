@@ -111,3 +111,11 @@ export function canManageMember(
     (desiredRole === undefined || !roleAtLeast(desiredRole, "maintainer"))
   );
 }
+
+/** Ordinary project membership requests are independent of database grants. */
+export type ProjectAccessRequestStatus = "pending" | "approved" | "rejected";
+export interface ProjectAccessRequest {
+  id: string; projectId: string; requesterUserId: string; reason: string;
+  status: ProjectAccessRequestStatus; createdAt: string; updatedAt: string;
+  resolvedByUserId?: string; resolvedAt?: string;
+}

@@ -20,7 +20,7 @@ import { resolveSiblingWorkspaceRoot } from "./prepare-local-siblings.mjs";
  * go looking.
  *
  * Everything here is derived from Core's own source: the members of the
- * `workflow` namespace, and the members of the related-project context it
+ * `workflow` namespace, and the members of the entry and database contexts it
  * hands a run. Nothing is editorial, so nothing here can quietly disagree with
  * the runtime — a renamed member fails `pnpm test` and `pnpm runtime-api-index`
  * writes the new text.
@@ -42,19 +42,19 @@ const HARNESS_SOURCE = path.join(resolveSiblingWorkspaceRoot(root, manifest), "h
 const BEGIN_MARKER = "<!-- runtime-api-index:begin -->";
 const END_MARKER = "<!-- runtime-api-index:end -->";
 
-/** Interfaces whose members are the related-project surface, in reading order. */
-const RELATED_PROJECT_INTERFACES = [
-  { name: "RelatedProjectStorageContext", title: "关联项目上下文" },
-  { name: "RelatedProjectKnowledgeContext", title: "关联项目知识库" },
-  { name: "RelatedProjectRunner", title: "关联项目入口运行器" },
+const RESOURCE_INTERFACES = [
+  { file: "entries/index.ts", name: "EntriesContext", title: "聚合入口目录" },
+  { file: "entries/index.ts", name: "EntryContext", title: "Workflow 入口" },
+  { file: "databases/index.ts", name: "DatabasesContext", title: "数据库目录" },
+  { file: "databases/index.ts", name: "DatabaseContext", title: "独立数据库空间" },
+  { file: "databases/index.ts", name: "DatabaseKnowledgeContext", title: "知识库与附件" },
 ];
 
 export async function readRuntimeApiIndex() {
-  const [runtimeMembers, relatedContext] = await Promise.all([
-    readRuntimeNamespaceMembers(),
-    readRelatedProjectMembers(),
+  const [runtimeMembers, resourceContexts] = await Promise.all([
+    readRuntimeNamespaceMembers(), readResourceContextMembers(),
   ]);
-  return { runtimeMembers, relatedContext };
+  return { runtimeMembers, resourceContexts };
 }
 
 /** The `steamharness.*` members a project may call. */
@@ -86,27 +86,18 @@ export async function readRuntimeNamespaceMembers(coreSource = HARNESS_SOURCE) {
   throw new Error("runtime-api.ts no longer declares projectRuntimeApi as an object literal.");
 }
 
-/** The members a related project exposes, taken from the interfaces that define them. */
-export async function readRelatedProjectMembers(coreSource = HARNESS_SOURCE) {
-  const file = path.join(coreSource, "kv", "related-projects.ts");
-  const source = ts.createSourceFile(file, await readFile(file, "utf8"), ts.ScriptTarget.Latest, true);
-
-  const interfaces = new Map();
-  for (const statement of source.statements) {
-    if (!ts.isInterfaceDeclaration(statement)) continue;
-    interfaces.set(statement.name.text, statement);
-  }
-
-  return RELATED_PROJECT_INTERFACES.map(({ name: interfaceName, title }) => {
-    const declaration = interfaces.get(interfaceName);
-    if (declaration === undefined) {
-      throw new Error(`related-projects.ts no longer declares ${interfaceName}.`);
-    }
+/** Parse the public entry and database interfaces without dropping unknown members. */
+export async function readResourceContextMembers(coreSource = HARNESS_SOURCE) {
+  return Promise.all(RESOURCE_INTERFACES.map(async ({ file: relative, name: interfaceName, title }) => {
+    const file = path.join(coreSource, relative);
+    const source = ts.createSourceFile(file, await readFile(file, "utf8"), ts.ScriptTarget.Latest, true);
+    const declaration = source.statements.find(statement => ts.isInterfaceDeclaration(statement) && statement.name.text === interfaceName);
+    if (!declaration) throw new Error(`${relative} no longer declares ${interfaceName}.`);
     // An empty interface renders as an empty list here and as an empty
     // sentence in the prompt, which reads as "this is not available" — the
     // opposite of what the assistant should conclude.
     if (declaration.members.length === 0) {
-      throw new Error(`related-projects.ts declares ${interfaceName} with no members to publish.`);
+      throw new Error(`${relative} declares ${interfaceName} with no members to publish.`);
     }
     return {
       name: interfaceName,
@@ -114,7 +105,7 @@ export async function readRelatedProjectMembers(coreSource = HARNESS_SOURCE) {
       members: declaration.members.map((member) => {
         if (member.name === undefined) {
           throw new Error(
-            `related-projects.ts declares ${interfaceName} with a member this script cannot read: ${member.getText(source)}`,
+            `${relative} declares ${interfaceName} with a member this script cannot read: ${member.getText(source)}`,
           );
         }
         const name = member.name.getText(source);
@@ -127,12 +118,12 @@ export async function readRelatedProjectMembers(coreSource = HARNESS_SOURCE) {
         };
       }),
     };
-  });
+  }));
 }
 
 /** The skill's reference page. */
 export async function renderRuntimeApiIndex() {
-  const { runtimeMembers, relatedContext } = await readRuntimeApiIndex();
+  const { runtimeMembers, resourceContexts } = await readRuntimeApiIndex();
   const lines = [
     BEGIN_MARKER,
     "",
@@ -142,11 +133,11 @@ export async function renderRuntimeApiIndex() {
     "**判断「运行时有没有某个能力」时先读这里**，不要去安装包的 `dist/*.d.ts` 或打包产物里翻：",
     "那是某个历史版本的构建产物，不是契约，而且答案就在下面。这里没有列出的能力就是没有。",
     "",
-    "## 关联项目（`context.storage.<local|server>.relatedProjects.get(alias)`）",
+    "## 聚合入口与数据库（`context.entries` / `context.databases`）",
     "",
   ];
 
-  for (const context of relatedContext) {
+  for (const context of resourceContexts) {
     lines.push(`### ${context.title}（\`${context.name}\`）`, "");
     for (const member of context.members) {
       lines.push(`- \`${member.signature}\``);
@@ -155,9 +146,8 @@ export async function renderRuntimeApiIndex() {
   }
 
   lines.push(
-    "关联项目只到这里为止：**会话 KV、目标项目的其它持久值、目标项目的其它入口都不在列表里**，",
-    "就是没有开放；关系只走一跳（被调起来的项目自己不能再访问关联项目）。",
-    "授权由目标项目在 `grantToRelatedProject` 的 `read` / `write` / `knowledge` / `entrypoints` 里声明。",
+    "数据库按 alias 显式选择 local 或 server；申请并经宿主审批后绑定。每次访问重新校验授权。",
+    "会话 KV 按 projectId + entryId + conversationId 隔离。跨入口调用保留用户身份、取消信号与工具权限，加载目标配置快照。",
     "",
     "## 运行时成员（`steamharness.*`）",
     "",
@@ -175,36 +165,16 @@ export async function renderRuntimeApiIndex() {
 
 /** The block the assistant's system prompt carries: short, and only what it acts on. */
 export async function renderRuntimeCapabilities() {
-  const { relatedContext } = await readRuntimeApiIndex();
-  const storage = relatedContext.find((context) => context.name.endsWith("StorageContext"));
-  const knowledge = relatedContext.find((context) => context.name.endsWith("KnowledgeContext"));
-  if (storage === undefined || knowledge === undefined) {
-    // The prompt sentence is built from these two by name; rendering it without
-    // one of them would state the surface as smaller than it is, which is the
-    // exact mistake this generator exists to prevent.
-    throw new Error(
-      `RELATED_PROJECT_INTERFACES no longer names a ${storage === undefined ? "storage" : "knowledge"} context.`,
-    );
-  }
-
-  const lines = [
+  const { resourceContexts } = await readRuntimeApiIndex();
+  return [
     "// Generated by scripts/runtime-api-index.mjs from Core's source. Do not edit.",
-    "// `pnpm test` fails when this drifts from the runtime; `pnpm runtime-api-index` rewrites it.",
-    "",
-    "/**",
-    " * What a project's `context` reaches today, in the words the assistant needs",
-    " * before it starts looking for an API that may not exist.",
-    " */",
-    "export const RUNTIME_CAPABILITIES = `Runtime surface (generated from Core; the skill's references/runtime-api-index.md lists everything):",
-    `- Related projects: context.storage.<local|server>.relatedProjects.get(alias) exposes ${storage?.members.map((member) => member.signature).join(", ") ?? ""}.`,
-    `- A related project's knowledge base exposes ${knowledge?.members.map((member) => member.signature.split("(")[0]).join(", ") ?? ""}.`,
-    "- Related access is direct only: the project that was called has no related access of its own.",
-    "- The knowledge base is the only persistent value shared; conversation KV and the rest stay closed.",
-    "- A server-located relation hands over the same three, as far as the target grants them and the user asking may run it.",
-    "`;",
-    "",
-  ];
-  return lines.join("\n");
+    "export const RUNTIME_CAPABILITIES = `Runtime surface (generated from Core):",
+    ...resourceContexts.map(context => `- ${context.name}: ${context.members.map(member => member.signature).join(", ")}.`),
+    "- context.entries.get(entryId) calls Workflow operations inside this aggregate with the original actor and tool restrictions.",
+    "- context.databases.get(alias) uses an explicitly approved local or server space; no default database or host fallback.",
+    "- Database grants are rechecked on every access; knowledge and attachments require knowledge permissions.",
+    "`;", "",
+  ].join("\n");
 }
 
 export async function checkRuntimeApiIndex(options = {}) {

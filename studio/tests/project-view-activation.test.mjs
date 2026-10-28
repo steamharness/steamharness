@@ -16,7 +16,7 @@ visit(source);
 function load(name, bindings = {}) {
   assert.ok(initializers.has(name));
   const compiled = ts.transpileModule(`(${initializers.get(name)})`, { compilerOptions: { target: ts.ScriptTarget.ES2022 } }).outputText;
-  return runInNewContext(compiled, { setTimeout, clearTimeout, t: text => text, Error, Promise, AbortController, ...bindings });
+  return runInNewContext(compiled, { setTimeout, clearTimeout, t: text => text, Error, Promise, AbortController, projectWindowKey: p => `${p.uri}#entry=${p.entryId}`, provider:{projects:[]},resourceProjectDirectories:async()=>[],context:{}, ...bindings });
 }
 const revealProject = load('revealProject');
 
@@ -77,7 +77,7 @@ for (const canceled of [true, false]) {
     const createWorkspace = load('createWorkspace', {
       settling: new Map(), starting, startingDone, startingSources,
       projectAvailable: () => true, assertNotUpgrading() {},
-      related: { bindings: async () => [], resourceProjects: async () => [] },
+      provider: {projects:[]},
       vscode: { ViewColumn: { Active: -1 }, ProgressLocation: { Window: 10 }, window: { withProgress: (_options, task) => task() } },
       launcher: { start: async () => { if (canceled) { controller.abort(); } throw failure; } },
     });
@@ -88,15 +88,15 @@ for (const canceled of [true, false]) {
 }
 
 test('an immediate Steam retry waits for canceled startup cleanup and then opens the project', async () => {
-  const project = { uri: 'file:///project' }, opening = new Map(), workspaces = new Map();
+  const project = { uri: 'file:///project',entryId:'main' }, opening = new Map(), workspaces = new Map();
   const controller = new AbortController(); controller.abort();
-  opening.set(project.uri, Promise.reject(controller.signal.reason));
+  opening.set(`${project.uri}#entry=${project.entryId}`, Promise.reject(controller.signal.reason));
   const { panel } = panelFixture(); panel.active = true; panel.viewColumn = 1;
   let starts = 0;
   const openProject = load('openProject', {
     provider: { projects: [project] }, configurationProjects: new Map(), settling: new Map(), opening, workspaces,
-    assertNotUpgrading() {}, revealProject,
-    createWorkspace: async () => { starts++; workspaces.set(project.uri, { panel, running: true }); },
+    findProject:()=>project,assertNotUpgrading() {}, revealProject,
+    createWorkspace: async () => { starts++; workspaces.set(`${project.uri}#entry=${project.entryId}`, { panel, running: true }); },
   });
   await openProject(project, 1, new AbortController().signal);
   assert.deepEqual({ starts, pending: opening.size, reveals: panel.reveals }, { starts: 1, pending: 0, reveals: [] });

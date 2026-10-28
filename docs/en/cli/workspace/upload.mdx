@@ -1,42 +1,16 @@
 ---
 title: "workspace upload"
-description: "Upload project sources and optionally publish an immutable version."
+description: "Upload an aggregate"
 ---
 
-# workspace upload
+# Upload an aggregate
 
-Server safely extracts archives, validates static metadata and files, hashes sources and saves them. It never installs dependencies, builds projects or loads uploaded code. Without `--file`, CLI packages according to the project-root `.steamharnessignore`; `.gitignore` is unrelated.
-
-```bash
-steamharness workspace upload <project> [--path <dir>] [--file <archive>] [--create] [--group-id <id>] [--release-log <text>] [--no-wait]
+```sh
+pnpm exec steamharness workspace upload <project-id> --path .
 ```
 
-| Option | Purpose |
-| --- | --- |
-| `--path` | Local project directory. |
-| `--file` | Existing tar.gz, tgz or zip archive. |
-| `--create` | Verify an existing registered ID; otherwise allocate a Server ID, replace local package.json.id and upload as a new application. Client-selected IDs are rejected. Incompatible with --file; all group projects must already be registered. |
-| `--group-id` | Select a group for initial creation; requires group developer access without promoting the creator. |
-| `--release-log` | Publish after successful upload and save release notes. |
-| `--no-wait` | Return the file-processing job ID; incompatible with auto-publish or project groups. |
+One operation covers every registered entry of one projectId, including code, dependency manifests, configuration definitions and Kanban artifacts. Install dependencies and build static entries locally, then run `steamharness check .`.
 
-Every package declares `package.json.steamHarness.projectType`. Workflow/Conversation require `index.ts`; Kanban requires a built HTML artifact. Install dependencies and build frontend assets locally before upload.
+Archives exclude credentials, host runtime data, Git and node_modules. Requirements remain and every `bindingRef` is stripped. Installers must request bindings from their local or server host; author grants do not transfer.
 
-## File Processing
-
-`POST /api/projects/{projectId}/package` returns a job. CLI polls `GET /api/projects/{projectId}/preparations/{jobId}`. Stages are `queued`, `extracting`, `validating`, `committing`; statuses are `queued`, `preparing`, `success`, `failed`. Resume inspection with `workspace preparation <project> <jobId>`.
-
-Extraction rejects traversal, links, special members and conflicting paths. Failed uploads preserve existing drafts and immutable versions. Explicitly exclude local credentials, dependencies and user data with `.steamharnessignore`.
-
-## Project Groups
-
-`--project-group`, `--dependency <alias>=<path>` or `--publish-group` enables groups. The root must be Kanban. Included projects require confirmed reciprocal relationships; remaining dependencies stay external. Server validates all permissions, reserves versions and publishes exact dependency locks.
-
-Groups do not transfer local KV, PersistentValue, file stores, run history, environment variables or account settings. Authorized local clients write remote data through the data APIs.
-
-```bash
-steamharness workspace upload hello --path ./hello --create --release-log "First release"
-steamharness workspace upload dashboard --path ./dashboard --dependency data=./data-project --publish-group
-```
-
-Existing project uploads and publication require developer access. Uploads cannot change management metadata, icons, visibility or ownership. `--group-id` selects ownership independently of the `--project-group` source bundle option.
+Use `--file` for an archive and `--no-wait` for asynchronous preparation. Query `preparation <project-id> <job-id>`. Only a statically valid upload replaces the draft. Upload never installs dependencies or executes code.

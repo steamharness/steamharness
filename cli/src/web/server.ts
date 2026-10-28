@@ -39,24 +39,26 @@ import { defaultServerUrl } from '../service-url';
 import { ProjectServerConnection, projectServerAccessFailure, projectServerStateWithIssue, type ProjectServerIssue } from './project-server-state';
 import { projectStartupInspector } from './project-startup-checks';
 import { ProjectServerCreation } from './project-server-create';
-import { RelatedProjectImports } from './related-projects';
-import { projectDataDirectory, retainProjectDataIdentity } from './project-data-directory';
+import { DatabaseManagement } from './database-management';
+import { projectDataDirectory } from './project-data-directory';
 
 type Message = Record<string, any>;
-export interface WebOptions { projectDir: string; port?: number; dataDir?: string; theme?: 'auto' | 'light' | 'dark'; runtime?: Runtime; host?: WebHostConfiguration }
+export interface WebOptions { entryId?: string; mount?: { origin: string; basePath: string; catalog(): unknown; identityChanged?(): void }; projectDir: string; port?: number; dataDir?: string; theme?: 'auto' | 'light' | 'dark'; runtime?: Runtime; host?: WebHostConfiguration }
 
-export async function startWebServer(options: WebOptions) {
-  const credentials = { capability: randomBytes(32).toString('hex'), cookie: `project_web_${randomBytes(8).toString('hex')}` };
+export { startAggregateWebServer as startWebServer } from "./aggregate-server";
+
+export async function startEntryWebServer(options: WebOptions, sharedCredentials?: { capability: string; cookie: string }) {
+  const credentials = sharedCredentials ?? { capability: randomBytes(32).toString('hex'), cookie: `project_web_${randomBytes(8).toString('hex')}` };
   let host = options.host, port = options.port, closing = false;
   let restarting: Promise<void> | undefined;
   const open = () => startProjectWebServer({ ...options, host, port }, credentials, () => {
+    if (options.mount?.identityChanged) { options.mount.identityChanged(); return; }
     if (closing || restarting) { return; }
     restarting = (async () => {
       await current.close();
       if (!closing) {
         current = await open();
         if (host && Object.hasOwn(host, 'connection')) await current.setHostConnection(host.connection);
-        if (host?.relatedProjects) await current.setHostRelatedProjects(host.relatedProjects);
         if (host?.resourceProjects) current.setHostResourceProjects(host.resourceProjects);
         if (host?.userSettings) current.setHostUserSettings(host.userSettings);
       }
@@ -66,6 +68,8 @@ export async function startWebServer(options: WebOptions) {
   let current = await open();
   port = Number(new URL(current.origin).port);
   return {
+    handle: (request: IncomingMessage, response: ServerResponse) => current.handle(request, response),
+    get running() { return current.running; },
     get origin() { return current.origin; }, get url() { return current.url; }, get project() { return current.project; },
     get configurations() { return current.configurations; }, get controller() { return current.controller; },
     get projectController() { return current.projectController; }, get kanbanController() { return current.kanbanController; },
@@ -73,10 +77,6 @@ export async function startWebServer(options: WebOptions) {
       const settings = parseUserSettings(value);
       host = { ...host, surface: host?.surface ?? 'editor', userSettings: settings };
       await restarting; current.setHostUserSettings(settings);
-    },
-    setHostRelatedProjects: async (value: NonNullable<WebHostConfiguration['relatedProjects']>) => {
-      host = { ...host, surface: host?.surface ?? 'editor', relatedProjects: value };
-      await restarting; await current.setHostRelatedProjects(value);
     },
     setHostResourceProjects: (value: string[]) => {
       host = { ...host, surface: host?.surface ?? 'editor', resourceProjects: value };
@@ -114,17 +114,12 @@ async function startProjectWebServer(options: WebOptions, credentials: { capabil
   const sensitiveTokens = new Set<string>();
   const rememberModelKeys = (settings: UserSettings) => { for (const model of settings.agent.models ?? []) if (model.source === "third-party") sensitiveTokens.add(model.apiKey); };
   rememberModelKeys(userSettings);
-  let relatedProjects = options.host?.relatedProjects ?? [];
-  let relatedProjectsManaged = options.host !== undefined;
-  const relatedImports = new RelatedProjectImports();
-  await relatedImports.update(relatedProjectsManaged ? relatedProjects : undefined);
   let resourceProjects = options.host?.resourceProjects ?? [];
   let projectServer: ProjectServerConnection | undefined;
   let projectCheckRevision = 0;
-  let relatedImportIssue: ProjectServerIssue | undefined;
   const waitingRuns = new Map<AbortController, string | undefined>();
   const cancelWaitingRuns = (runId?: string) => { for (const [abort, id] of waitingRuns) if (!runId || id === runId) abort.abort(); };
-  const executor = options.runtime ?? createWebRuntime(projectDir, storageDir, () => connection, () => relatedProjects, { allowSystemAi: allowAiConnection, userSettings: () => userSettings });
+  const executor = options.runtime ?? createWebRuntime(projectDir, storageDir, () => connection, { entryId: options.entryId, actor: () => ({ userId: account.user?.userId, isSystemAdmin: false }), allowSystemAi: allowAiConnection, userSettings: () => userSettings });
   const runtimeOverrides: Pick<Runtime, 'run' | 'resolveParams' | 'cancel' | 'dispose'> = {
     run: async (request, emit) => {
       const runConnection = connection;
@@ -154,14 +149,15 @@ async function startProjectWebServer(options: WebOptions, credentials: { capabil
   const runtime: Runtime = Object.assign(Object.create(executor), runtimeOverrides);
   let inspected;
   try { inspected = await inspectWebProject(runtime, projectDir, options.host); } catch (error) { runtime.dispose(); throw error; }
-  const descriptor = inspected.projects[0] as Project & { runtime?: { harnessVersion: string; harnessPath: string } };
+  const descriptor = (inspected.projects.find(entry => entry.entryId === options.entryId) ?? inspected.projects[0]) as Project & { runtime?: { harnessVersion: string; harnessPath: string } };
   if (!descriptor) { runtime.dispose(); throw new Error(inspected.errors.join('\n') || 'No Workflow project found.'); }
   if (!options.runtime) { assertLocalCliCoreCompatible(projectDir, descriptor.runtime!.harnessVersion); }
   if (!['conversation', 'workflow', 'kanban'].includes(descriptor.projectType)) { runtime.dispose(); throw new Error('Unsupported Workflow project type.'); }
   const project: Project = projectWithUserSettings(descriptor, userSettings);
-  const resources = new ResourcePreviews(project, runtime, storageDir, () => connection, () => relatedProjects, () => resourceProjects, () => broadcast());
+  const databases = new DatabaseManagement(project, () => connection);
+  const resources = new ResourcePreviews(project, runtime, storageDir, () => connection, () => resourceProjects, () => broadcast());
   const key = project.assistant ? createHash('sha256').update(`assistant:${project.id}:${project.assistant.workdir}`).digest('hex').slice(0, 24)
-    : path.relative(storageDir, await projectDataDirectory(storageDir, projectDir, project.id));
+    : path.relative(storageDir, await projectDataDirectory(storageDir, projectDir, project.id, project.entryId));
   const historyPath = path.join(storageDir, key, 'conversations.json');
   let saved: { sessions?: ConversationSession[]; activeId?: string; selectionVersion?: number } = {};
   if (project.projectType !== 'kanban') { try { saved = JSON.parse(await readFile(historyPath, 'utf8')); } catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') { runtime.dispose(); throw new Error(`Cannot read conversation history: ${String(error)}`); } } }
@@ -189,11 +185,12 @@ async function startProjectWebServer(options: WebOptions, credentials: { capabil
     selections.set(clientId, id);
     if (selections.size > 256) selections.delete(selections.keys().next().value!);
   };
-  const publicFile = (file: Attachment) => ({ ...file, previewUrl: `/api/file/${encodeURIComponent(file.id)}` });
+  const publicFile = (file: Attachment) => ({ ...file, previewUrl: `${options.mount?.basePath ?? ""}/api/file/${encodeURIComponent(file.id)}` });
   const publicValue = (value: unknown): any => {
     if (Array.isArray(value)) { return value.map(publicValue); }
     if (value && typeof value === 'object') {
       const record = value as Record<string, unknown>;
+      if (typeof record.url === 'string' && /^\/(?:kanban|resource)(?:s|[-/])/.test(record.url) && options.mount) record.url = options.mount.basePath + record.url;
       if (typeof record.id === 'string' && /^wf_[a-f0-9]{32}$/.test(record.id) && typeof record.mimeType === 'string') { return publicFile(record as unknown as Attachment); }
       return Object.fromEntries(Object.entries(record).map(([name, entry]) => [name, publicValue(entry)]));
     }
@@ -202,9 +199,9 @@ async function startProjectWebServer(options: WebOptions, credentials: { capabil
   // Preserve project-owned data keys; remove host credentials by their actual values.
   const publicState = (value: unknown) => publicValue(redactProjectData(JSON.parse(JSON.stringify(value, userSettingsJsonReplacer)), [...sensitiveTokens], false));
   const sharedState = () => {
-    const serverData = projectServer?.state ?? (relatedImportIssue ? { checking: false, blocking: false } : undefined);
-    const issue = relatedImports.issue(projectServer?.state.issue ?? relatedImportIssue ?? kanbanController?.serverDataIssue);
-    const result = publicState({ type: 'state', serverInstanceId, project, configurationError: configurations.error,
+    const serverData = projectServer?.state;
+    const issue = projectServer?.state.issue ?? kanbanController?.serverDataIssue;
+    const result = publicState({ type: 'state', serverInstanceId, aggregate: options.mount?.catalog(), project, configurationError: configurations.error,
     serverData: serverData && projectServerStateWithIssue(serverData, issue, project.id),
     ...(isKanban ? { kanban: kanbanController!.state() } : isProject ? projectActions!.state() : { sessions: conversationState.sessions(controller.sessions) }),
     account: { ...account, user: account.user && { userId: account.user.userId, email: account.user.email, displayName: account.user.displayName, avatarUrl: account.user.avatarUrl } },
@@ -255,15 +252,11 @@ async function startProjectWebServer(options: WebOptions, credentials: { capabil
   let conversationController: ConversationController | undefined;
   let kanbanController: KanbanController | undefined;
   projectServer = new ProjectServerConnection(project.id, () => connection, () => {
+    if (projectServer) projectServer.state.blocking = project.databases.length > 0;
     kanbanController?.projectChecksChanged(); broadcast();
-  }, { blocking: project.projectInfo?.dataStorage?.mode === 'server', inspect: projectStartupInspector(project, relatedImports) });
+  }, { blocking: project.databases.length > 0, inspect: projectStartupInspector(project, alias => databases.assertBound(alias), () => databases.refreshDeclaration()) });
   const observeStorageFailure = (metadata: Record<string, unknown> | undefined, previous: WebConnection | undefined) => {
     if (isKanban) return;
-    if (metadata?.code === 'RELATED_PROJECT_UNAVAILABLE') {
-      const issue = relatedImports.missingIssue(metadata.alias, project);
-      if (issue) { relatedImportIssue = issue; broadcast(); }
-      return;
-    }
     if (!previous || previous.serverUrl !== connection?.serverUrl || previous.accessToken !== connection.accessToken) return;
     const failure = projectServerAccessFailure(metadata, project, connection);
     if (!failure) return;
@@ -273,7 +266,6 @@ async function startProjectWebServer(options: WebOptions, credentials: { capabil
     () => account.status === 'authenticated' && account.user ? `${authIdentity}\n${account.user.userId}` : '',
     () => projectServer?.state.issue ?? kanbanController?.serverDataIssue, async () => {
       await stopForAuthentication();
-      await retainProjectDataIdentity(storageDir, projectDir, project.id);
     });
   let configurationSignature = '';
   // The built-in assistant has local profiles, not a Server project publication.
@@ -291,7 +283,7 @@ async function startProjectWebServer(options: WebOptions, credentials: { capabil
       resources.clear();
     }
     broadcast();
-  }, () => isLocalBuiltinAssistant(project) ? undefined : connection);
+  }, () => isLocalBuiltinAssistant(project) ? undefined : connection, project.entryId);
   await configurations.initialize();
   configurationSignature=configurations.signature;
   project.agentModelPolicy = configurations.state.agentModelPolicy;
@@ -299,7 +291,7 @@ async function startProjectWebServer(options: WebOptions, credentials: { capabil
   conversationController = isProject || isKanban ? undefined : new ConversationController(project, runtime, saved, {
     canRun: session => ownership?.execute(session.id) ?? true,
     canStart: () => !projectServer?.blocking || projectServer.ready,
-    canDrain: () => (!projectServer?.blocking || projectServer.ready) && !relatedImportIssue,
+    canDrain: () => (!projectServer?.blocking || projectServer.ready),
     configurationRevision: () => configurations.state.revision,
     userSettings: () => userSettings,
     changed: broadcast,
@@ -365,9 +357,9 @@ async function startProjectWebServer(options: WebOptions, credentials: { capabil
   kanbanController = isKanban ? new KanbanController(project, runtime, storageDir, {
     changed: broadcast, emit: message => { for (const client of clients) { client.write(`data: ${JSON.stringify(message)}\n\n`); } },
     connection: () => connection, log: message => process.stderr.write(`${message}\n`),
-    serverIssue: issue => relatedImports.issue(issue), relatedImport: alias => relatedImports.missingIssue(alias, project), relatedProjects: () => relatedProjects,
+    serverIssue: issue => issue,
     serverState: () => projectServer!.state, projectChanged: () => {
-      projectServer!.state.blocking = project.projectInfo?.dataStorage?.mode === 'server';
+      projectServer!.state.blocking = false;
       return projectServer!.restart();
     },
   }) : undefined;
@@ -497,27 +489,31 @@ async function startProjectWebServer(options: WebOptions, credentials: { capabil
       items = current.messages.find(answer => answer.id === reference.messageId)?.items ?? []; scopeId = current.id;
       source = { sessionId: current.id, messageId: reference.messageId, cardId: reference.cardId };
     }
-    const card = conversationResourceCards(items, project.id, scopeId, project.projectInfo?.dataStorage?.mode === 'server' ? 'server' : 'local').find(card => card.id === reference.cardId);
+    const card = conversationResourceCards(items, project.id, project.entryId, scopeId, false ? 'server' : 'local').find(card => card.id === reference.cardId);
     if (!card) { throw new Error(t('This resource no longer exists.')); }
     return { card, reference: source };
   };
   const handleMessage = async (message: Message): Promise<Message[]> => {
-    if (replacementId || message.applicationId && message.applicationId !== project.id) { throw new Error(t('The application ID changed. The new application is opening.')); }
+    if (replacementId || message.applicationId && message.applicationId !== `${project.id}:${project.entryId}`) { throw new Error(t('The application ID changed. The new application is opening.')); }
     if (typeof message.type !== 'string') { throw new Error('Invalid message.'); }
     if (message.projectUri && message.projectUri !== project.uri) { throw new Error('Project changed.'); }
+    if (message.type === 'databases') {
+      const value = await databases.dispatch(message);
+      if (message.action === 'bind' || ['review', 'revoke', 'rotate', 'narrow'].includes(message.action)) await projectServer!.restart();
+      broadcast();
+      return [{ type: 'databases-result', requestId: message.requestId, value }];
+    }
     if (message.type === 'project-server-check') {
       const revision = ++projectCheckRevision;
       // Information edits affect the next check without reloading workflows or
       // changing this process's identity, history or execution descriptors.
       const pkg = project.assistant ? undefined : JSON.parse(await readFile(path.join(project.folderPath, 'package.json'), 'utf8'));
       if (!project.assistant && (typeof pkg?.id !== 'string' || pkg.id.toLowerCase() !== project.id.toLowerCase()
-        || pkg.steamHarness?.projectType !== undefined && pkg.steamHarness.projectType !== project.projectType)) throw new Error(t('The local project changed. Reopen it before checking again.'));
+)) throw new Error(t('The local project changed. Reopen it before checking again.'));
       const projectInfo = pkg ? readProjectInfo(pkg) : project.projectInfo;
-      await relatedImports.update(relatedProjectsManaged ? relatedProjects : undefined);
       if (revision !== projectCheckRevision) return [state(message.clientId), { type: 'project-server-checked', requestId: message.requestId }];
       project.projectInfo = projectInfo;
-      projectServer!.state.blocking = projectInfo?.dataStorage?.mode === 'server';
-      relatedImportIssue = relatedImportIssue && relatedImports.missingIssue(relatedImportIssue.relatedProjectAlias, project);
+      projectServer!.state.blocking = project.databases.length > 0;
       await refreshAuth(true);
       await projectServer?.settled();
       return [state(message.clientId), { type: 'project-server-checked', requestId: message.requestId }];
@@ -536,7 +532,6 @@ async function startProjectWebServer(options: WebOptions, credentials: { capabil
     if (needsServer && projectServer?.blocking) projectServer.assertAvailable();
     if (message.type === 'ready') await configurations.refresh().catch(() => undefined);
     if (message.type === 'kanban-refresh') {
-      await relatedImports.update(relatedProjectsManaged ? relatedProjects : undefined);
       await configurations.refresh();
       if (kanbanController) { const replies = await kanbanController.handle(message); return [state(message.clientId), ...replies]; }
     }
@@ -556,7 +551,7 @@ async function startProjectWebServer(options: WebOptions, credentials: { capabil
       const field = current.fields.find(item => item.name === message.key);
       if (field?.type !== 'file') throw new Error('Invalid configuration file field.');
       if(!configurationCapability(current,field).editable)throw new Error('Configuration is locked by the author.');
-      const reference = await uploadConfigurationFile(project.id, field, message.file, connection, { target: current.template?.projectVersion });
+      const reference = await uploadConfigurationFile(project.id, field, message.file, connection, { entryId: project.entryId, target: current.template?.projectVersion });
       if (epoch !== authEpoch) throw new Error('Account changed. Select the file again.');
       return [{type:'project-configuration-upload-result',requestId:message.requestId,value:reference}];
     }
@@ -873,7 +868,7 @@ async function startProjectWebServer(options: WebOptions, credentials: { capabil
         const readSession = request.method === 'GET' && (url.pathname === '/api/events' || url.pathname.startsWith('/api/file/')) ? url.searchParams.get('session') ?? '' : '';
         if (!authMatches(value) && !authMatches(bearer) && !authMatches(readSession)) { json(response, 401, { message: 'Open the URL printed by steamharness web.' }); return; }
         if (url.pathname === '/api/session' && request.method === 'GET') { json(response, 200, { connected: true }); return; }
-        if (url.pathname === '/api/resource-state' && request.method === 'GET') { json(response, 200, { type: 'state', project: { id: project.id }, authenticationRevision: authRevision, resourceRevision: resources.revision }); return; }
+        if (url.pathname === '/api/resource-state' && request.method === 'GET') { json(response, 200, { type: 'state', project: { id: project.id, entryId: project.entryId }, authenticationRevision: authRevision, resourceRevision: resources.revision }); return; }
         if (url.pathname === '/api/events' && request.method === 'GET') {
           await refreshHistory();
           const disconnectKanban = kanbanController?.methods.connect(url.searchParams.get('clientId') ?? '');
@@ -911,7 +906,7 @@ async function startProjectWebServer(options: WebOptions, credentials: { capabil
         const ancestors = options.host ? "'self' vscode-webview: vscode-file: https://*.vscode-cdn.net https://*.vscode-webview.net http://127.0.0.1:* http://localhost:*" : "'self' vscode-webview:";
         response.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store', 'Content-Security-Policy': `default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https: http:; font-src 'self' data:; connect-src 'self'; media-src 'self' blob:; frame-src 'self' https: http:; object-src 'none'; base-uri 'none'; frame-ancestors ${ancestors}; form-action 'self'` });
         const ui = url.pathname !== '/' ? 'resource-preview' : isKanban ? 'kanban-workspace' : isProject ? 'workflow-workspace' : 'workflow-ui';
-        response.end(`<!doctype html><html lang="${locale()}" data-theme="${options.theme ?? 'auto'}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="steamharness-project" content="${key}"><title>Workflow</title><link rel="stylesheet" href="/assets/codicons/codicon.css"><link rel="stylesheet" href="/assets/${ui}.css"><link rel="stylesheet" href="/assets/theme.css"></head><body data-surface="${options.host?.surface ?? 'editor'}" data-account-host="${hostManaged}"><div id="app"></div><script src="/assets/${ui}.js" defer></script></body></html>`); return;
+        response.end(`<!doctype html><html lang="${locale()}" data-theme="${options.theme ?? 'auto'}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="steamharness-project" content="${key}"><meta name="steamharness-base" content="${options.mount?.basePath ?? ""}"><title>Workflow</title><link rel="stylesheet" href="${options.mount?.basePath ?? ""}/assets/codicons/codicon.css"><link rel="stylesheet" href="${options.mount?.basePath ?? ""}/assets/${ui}.css"><link rel="stylesheet" href="${options.mount?.basePath ?? ""}/assets/theme.css"></head><body data-surface="${options.host?.surface ?? 'editor'}" data-account-host="${hostManaged}"><div id="app"></div><script src="${options.mount?.basePath ?? ""}/assets/${ui}.js" defer></script></body></html>`); return;
       }
       const assets: Record<string, string> = { '/assets/workflow-ui.js': 'application/javascript', '/assets/workflow-ui.css': 'text/css', '/assets/theme.css': 'text/css', '/assets/codicons/codicon.css': 'text/css', '/assets/codicons/codicon.ttf': 'font/ttf' };
       assets['/assets/workflow-workspace.js'] = 'application/javascript'; assets['/assets/workflow-workspace.css'] = 'text/css';
@@ -921,9 +916,9 @@ async function startProjectWebServer(options: WebOptions, credentials: { capabil
       const content = await readFile(path.join(cliRoot(), 'dist/web', url.pathname.slice('/assets/'.length))); response.writeHead(200, { 'Content-Type': assets[url.pathname], 'Cache-Control': 'no-cache' }); response.end(content);
     })().catch(error => { if (!response.headersSent) { json(response, 400, { message: String(redactProjectData((error as Error).message, [...sensitiveTokens])) }); } else { response.end(); } });
   });
-  try { await new Promise<void>((resolve, reject) => { server.once('error', reject); server.listen(options.port ?? 0, '127.0.0.1', () => { server.off('error', reject); resolve(); }); }); }
+  try { if (!options.mount) await new Promise<void>((resolve, reject) => { server.once('error', reject); server.listen(options.port ?? 0, '127.0.0.1', () => { server.off('error', reject); resolve(); }); }); }
   catch (error) { projectCreation.close(); projectServer?.close(); ownership?.close(); configurations.close(); resources.close(); clearInterval(authPoll); conversationController?.dispose(); projectController?.dispose(); await kanbanController?.close(); runtime.dispose(); throw error; }
-  origin = `http://127.0.0.1:${(server.address() as { port: number }).port}`;
+  origin = options.mount?.origin ?? `http://127.0.0.1:${(server.address() as { port: number }).port}`;
   activity = createLocalActivityWriter(path.dirname(historyPath), project, () => ({
     runs: summarizeLocalRuns(projectController?.runs, conversationController?.sessions),
     queued: (conversationController?.sessions ?? []).reduce((total, session) => total + (session.queuedInputs?.length ?? 0), 0),
@@ -947,7 +942,9 @@ async function startProjectWebServer(options: WebOptions, credentials: { capabil
   historyPoll?.unref();
   let closing: Promise<void> | undefined;
   return {
-    origin, url: `${origin}/#session=${capability}`, project, configurations, controller, projectController, kanbanController,
+    handle: (request: IncomingMessage, response: ServerResponse) => { server.emit("request", request, response); },
+    get running() { return projectController?.runs.some(run => run.status === "running") || conversationController?.sessions.some(sessionRunning) || false; },
+    origin, url: `${origin}${options.mount?.basePath ?? ""}/#session=${capability}`, project, configurations, controller, projectController, kanbanController,
     setHostUserSettings: (value: UserSettings) => {
       const settings = parseUserSettings(value);
       if (JSON.stringify(settings) === JSON.stringify(userSettings)) return;
@@ -957,13 +954,6 @@ async function startProjectWebServer(options: WebOptions, credentials: { capabil
       ++parameterRevision;
       conversationController?.configurationChanged();
       broadcast();
-    },
-    setHostRelatedProjects: async (value: NonNullable<WebHostConfiguration['relatedProjects']>) => {
-      relatedProjects = value; relatedProjectsManaged = true; resources.clear();
-      if (await relatedImports.update(value)) {
-        relatedImportIssue = undefined;
-        await projectServer?.restart(); broadcast();
-      }
     },
     setHostResourceProjects: (value: string[]) => { resourceProjects = value; resources.clear(); },
     setHostConnection: async (value: WebConnection | undefined) => {
@@ -975,13 +965,13 @@ async function startProjectWebServer(options: WebOptions, credentials: { capabil
       await refreshAuth(true);
     },
     close: () => closing ??= (async () => {
-      relatedImports.close(); projectCreation.close(); projectServer?.close();
+      projectCreation.close(); projectServer?.close();
       authEpoch++; authCheck?.abort();
       clearInterval(historyPoll);
       configurations.close(); resources.close(); clearInterval(authPoll); if (broadcastTimer) { clearTimeout(broadcastTimer); } login?.kill(); conversationController?.dispose(); projectController?.dispose(); runtime.dispose();
       await kanbanController?.close();
       for (const client of clients) { client.end(); }
-      await new Promise<void>(resolve => server.close(() => resolve()));
+      if (server.listening) await new Promise<void>(resolve => server.close(() => resolve()));
       try {
         await conversationController?.idle(); await conversationController?.persist();
         await projectController?.idle(); await projectController?.persist(); await pendingSave;

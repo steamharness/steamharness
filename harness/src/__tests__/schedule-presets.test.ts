@@ -99,13 +99,11 @@ test("Conversation and Kanban projects reject schedule presets", async () => {
   const kanbanDir = await mkdtemp(path.join(os.tmpdir(), "workflow-schedule-kanban-"));
   await Promise.all([
     writeFile(path.join(kanbanDir, "package.json"), JSON.stringify({
-      id: "schedule-kanban",
+      id: "00000000-0000-4000-8000-000000000014",
       name: "Schedule Kanban",
       version: "0.1.0",
       steamHarness: {
-        projectType: "kanban",
-        schedulePresets: [],
-        kanban: { artifactDir: "dist", entry: "index.html" },
+        defaultEntry:"main",entries:[{entryId:"main",name:"Main",type:"kanban",root:".",entry:"dist/index.html",databases:[],schedulePresets:[]}],
       },
     })),
     mkdir(path.join(kanbanDir, "dist"), { recursive: true }).then(() =>
@@ -129,10 +127,11 @@ async function createScriptProject(
   const projectDir = await mkdtemp(path.join(os.tmpdir(), "workflow-schedule-project-"));
   await Promise.all([
     writeFile(path.join(projectDir, "package.json"), JSON.stringify({
+      id:crypto.randomUUID(),
       name: "schedule-project",
       version: "0.1.0",
       type: "module",
-      steamHarness,
+      steamHarness:{defaultEntry:"main",entries:[{entryId:"main",name:"Main",type:projectType,root:".",entry:"index.ts",databases:[],...steamHarness}]},
     })),
     writeFile(path.join(projectDir, "index.ts"), projectType === "workflow" ? `
       const main = steamharness.defineProject({

@@ -1,3 +1,4 @@
+import { readProjectManifest } from "@steamharness/project-manifest";
 import { randomBytes } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
@@ -32,14 +33,13 @@ export class ProjectServerCreation {
   async prepare(): Promise<ProjectServerCreateContext> {
     const connection = this.connection(), identity = this.identity(), issue = this.issue(), generation = this.generation;
     if (!connection || !identity) throw new Error(t('Sign in with an account before creating a Server project.'));
-    if (this.project.assistant || issue?.kind !== 'project-unavailable' || issue.relatedProjectAlias || issue.projectId && issue.projectId.toLowerCase() !== this.project.id.toLowerCase()) {
+    if (this.project.assistant || issue?.kind !== 'project-unavailable' || issue.projectId && issue.projectId.toLowerCase() !== this.project.id.toLowerCase()) {
       throw new Error(t('Open the affected local project to create its Server project.'));
     }
     const pkg = JSON.parse(await readFile(path.join(this.project.folderPath, 'package.json'), 'utf8'));
     if (typeof pkg?.id !== 'string' || pkg.id.toLowerCase() !== this.project.id.toLowerCase()
-      || pkg.steamHarness?.projectType !== undefined && pkg.steamHarness.projectType !== this.project.projectType) throw new Error(t('The local project changed. Reopen it before creating a Server project.'));
+) throw new Error(t('The local project changed. Reopen it before creating a Server project.'));
     const projectInfo = readProjectInfo(pkg);
-    if (!projectInfo.dataStorage) throw new Error(t('Declare a data storage mode in Project Info before applying for an application ID.'));
     const abort = new AbortController();
     const existing = await this.request(connection, `/api/projects/${encodeURIComponent(this.project.id)}`, abort.signal, true);
     if (existing.status !== 404) throw new Error(t('The project is already available or needs access. Choose Check again before continuing.'));
@@ -76,7 +76,7 @@ export class ProjectServerCreation {
       // Lock before reading: two confirmed requests must not both pass validation.
       const source = await readFile(path.join(this.project.folderPath, 'package.json'), 'utf8'), pkg = JSON.parse(source);
       if (typeof pkg?.id !== 'string' || pkg.id.toLowerCase() !== this.project.id.toLowerCase()
-        || pkg.steamHarness?.projectType !== undefined && pkg.steamHarness.projectType !== this.project.projectType
+
         || JSON.stringify(readProjectInfo(pkg)) !== JSON.stringify(confirmation.projectInfo)) throw new Error(t('The local project changed. Reopen it before creating a Server project.'));
       this.assertCurrent(confirmation.connection, confirmation.identity);
       if (this.confirmations.get(confirmation.context.token) !== confirmation || confirmation.expiresAt <= Date.now() || confirmation.abort.signal.aborted) {
@@ -89,13 +89,13 @@ export class ProjectServerCreation {
         if (existing.status !== 404) throw new Error(t('The project is already available or needs access. Choose Check again before continuing.'));
         this.assertCurrent(confirmation.connection, confirmation.identity);
         const result = await this.request(confirmation.connection, '/api/projects', confirmation.abort.signal, false, {
-          name: input.name.trim(), projectType: this.project.projectType, projectInfo: confirmation.projectInfo,
+          name: input.name.trim(), entries: readProjectManifest(pkg).entries, defaultEntry: readProjectManifest(pkg).defaultEntry, projectInfo: confirmation.projectInfo,
           projectCard: readProjectCardMetadataFromPackageJson(pkg, this.project.projectType),
           visibility: 'private', ...(input.groupId ? { groupId: input.groupId } : {}),
         });
         const id = result.data?.projectId;
         if (typeof id !== 'string' || !isProjectUuid(id) || id.toLowerCase() === this.project.id.toLowerCase()
-          || result.data.projectType !== this.project.projectType) throw new Error(t('The Server returned an invalid new application ID.'));
+) throw new Error(t('The Server returned an invalid new application ID.'));
         confirmation.allocatedId = id; confirmation.selection = selection;
       }
       this.assertCurrent(confirmation.connection, confirmation.identity);

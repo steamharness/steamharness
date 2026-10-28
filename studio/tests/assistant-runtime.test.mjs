@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { build } from 'esbuild';
-import { mkdir, mkdtemp, readFile, readdir, rm, symlink, writeFile } from 'node:fs/promises';
+import { cp, mkdir, mkdtemp, readFile, readdir, rm, symlink, writeFile } from 'node:fs/promises';
 import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
@@ -22,7 +22,7 @@ test('new projects apply for an ID using the current account and cancel when it 
         export const defaultProjectParentDirectory = () => '/projects';
         export const installProjectDependencies = async () => {};
         export const projectTemplatesRuntime = () => ({ create: async (input, signal, allocate) => {
-          const id = await allocate({ name: input.name, projectType: 'workflow', projectInfo: { platformSupport: { mode: 'agnostic' }, dataStorage: { mode: 'local' } } });
+          const id = await allocate({ name: input.name, entries:[{entryId:'main',type:'workflow',name:input.name,root:'.',entry:'index.ts',databases:[]}],defaultEntry:'main',projectInfo:{platformSupport:{mode:'agnostic'}} });
           signal.throwIfAborted(); return { ...input, id, projectType: 'workflow', directory: input.parentDirectory };
         } });` }));
     } }] });
@@ -37,7 +37,8 @@ test('new projects apply for an ID using the current account and cancel when it 
       requests++; assert.equal(options.headers.Authorization, 'Bearer owner-token');
       assert.equal(Object.hasOwn(JSON.parse(options.body), 'projectId'), false);
       if (changeDuringRequest) { userId = 'other'; connection = { ...connection, accessToken: 'other-token' }; for (const listener of listeners) listener({ status: 'authenticated' }); }
-      return Response.json({ errCode: 0, data: { projectId: allocatedId, projectType: 'workflow' } });
+      const project = JSON.parse(options.body);
+      return Response.json({ errCode: 0, data: { ...project, projectId: allocatedId } });
     },
   });
   const runtime = module.exports.createProjectRuntime({ extensionUri: { fsPath: directory }, globalStorageUri: { fsPath: directory } }, account); t.after(() => runtime.dispose());
@@ -59,12 +60,14 @@ test('an installed extension symlink uses monorepo dependencies with tools scope
   const extension = path.join(studio, 'extensions/studio-workstation');
   const template = path.join(extension, 'dist/developer-assistant');
   await mkdir(template, { recursive: true });
-  const manifest = { id: 'a3aca697-b086-459b-84e4-d357ad2d9fb2', type: 'module' };
+  const manifest = { id: 'a3aca697-b086-459b-84e4-d357ad2d9fb2', type: 'module', steamHarness: { defaultEntry: 'main', entries: [
+    { entryId: 'main', name: 'Assistant', type: 'conversation', root: '.', entry: 'index.ts', databases: [] },
+    { entryId: 'studio-control', name: 'Studio Control', type: 'workflow', root: 'studio-control', entry: 'index.ts', databases: [] },
+  ] } };
   await writeFile(path.join(template, 'package.json'), JSON.stringify({ ...manifest, testInspectionError: 'Workflow "Project Assistant" script validation failed.' }));
   await writeFile(path.join(template, 'index.ts'), 'export const executor = steamharness.defineExecutor({});');
-  const controlTemplate = path.join(extension, 'dist/studio-control');
+  const controlTemplate = path.join(template, 'studio-control');
   await mkdir(controlTemplate);
-  await writeFile(path.join(controlTemplate, 'package.json'), JSON.stringify({ id: '09145339-e3dd-4bb2-ac9b-6c180ef51933', type: 'module' }));
   await writeFile(path.join(controlTemplate, 'index.ts'), 'export const executor = steamharness.defineExecutor({});');
   const linked = path.join(directory, 'vscode/extensions/studio-workstation');
   await mkdir(path.dirname(linked), { recursive: true });
@@ -96,7 +99,7 @@ test('an installed extension symlink uses monorepo dependencies with tools scope
   await assert.rejects(runtime.inspectAssistant(target, [target]), /Fixture inspection failed/);
   await writeFile(path.join(template, 'package.json'), JSON.stringify(manifest));
   const inspection = await runtime.inspectAssistant(target, [target]);
-  assert.equal(inspection.projects.length, 1);
+  assert.equal(inspection.projects.length, 2);
   const assistant = inspection.projects[0];
   assert.notEqual(assistant.folderPath, path.join(apps, failedApp), 'Retry must prepare the updated template after a failed inspection.');
   assert.equal(JSON.parse(await readFile(path.join(apps, failedApp, 'package.json'), 'utf8')).testInspectionError,
@@ -117,14 +120,39 @@ test('an installed extension symlink uses monorepo dependencies with tools scope
     ['STEAMHARNESS_STUDIO_CONTROL_BRIDGE_URL', 'STEAMHARNESS_STUDIO_CONTROL_BRIDGE_TOKEN']);
   const command = configuration.studioControl.mcpServer.command;
   assert.equal(command[2], 'mcp');
-  assert.ok(command[3].startsWith(path.join(storage, 'workflow', 'studio-control', 'apps')));
-  assert.equal(JSON.parse(await readFile(path.join(command[3], 'package.json'), 'utf8')).id,
-    '09145339-e3dd-4bb2-ac9b-6c180ef51933');
+  assert.equal(command[3], assistant.folderPath);
+  assert.deepEqual(command.slice(4, 6), ['--entry', 'studio-control']);
+  assert.equal(JSON.parse(await readFile(path.join(command[3], 'package.json'), 'utf8')).id, assistant.id);
+  assert.equal(await readFile(path.join(command[3], 'studio-control/index.ts'), 'utf8'), await readFile(path.join(controlTemplate, 'index.ts'), 'utf8'));
+  assert.equal((await readdir(path.join(storage, 'workflow'))).includes('studio-control'), false);
+  const control = inspection.projects.find(project => project.entryId === 'studio-control');
+  const controlSession = await runtime.start(control, 'assistant');
+  assert.equal(new URL(controlSession.ready.url).origin, new URL(session.ready.url).origin);
+  assert.equal(new URL(controlSession.ready.url).pathname, '/entries/studio-control/');
+  await controlSession.close();
   const controlState = await fetch(new URL('/studio-control-state', session.ready.url));
   assert.equal(controlState.status, 200);
   assert.equal((await controlState.json()).value.workdir, workdir);
   await session.close();
   await assert.rejects(fetch(configuration.studioControl.bridgeUrl, { signal: AbortSignal.timeout(2_000) }));
+  // Opening the default conversation first must still initialize control for the shared host.
+  const imported = path.join(workdir, 'assistant');
+  await cp(template, imported, { recursive: true });
+  await symlink(path.join(source.projectDir, 'node_modules'), path.join(imported, 'node_modules'), process.platform === 'win32' ? 'junction' : 'dir');
+  const ordinary = await runtime.start({ ...assistant, folderPath: imported, assistant: undefined }, 'editor');
+  t.after(() => ordinary.close());
+  const direct = await runtime.start({ ...control, folderPath: imported, assistant: undefined }, 'editor');
+  assert.equal(new URL(direct.ready.url).origin, new URL(ordinary.ready.url).origin);
+  await ordinary.close();
+  t.after(() => direct.close());
+  const directState = await fetch(new URL('/studio-control-state', direct.ready.url));
+  assert.equal((await directState.json()).value.workdir, imported);
+  const directConfiguration = JSON.parse(await readFile(path.join(source.projectDir, 'assistant.json'), 'utf8'));
+  assert.equal(directConfiguration.studioControl.hasToken, true);
+  assert.equal(directConfiguration.studioControl.mcpServer.command[3], imported);
+  assert.deepEqual(directConfiguration.studioControl.mcpServer.command.slice(4, 6), ['--entry', 'studio-control']);
+  await direct.close();
+  await assert.rejects(fetch(directConfiguration.studioControl.bridgeUrl, { signal: AbortSignal.timeout(2_000) }));
   vscode.workspace.workspaceFolders = [];
   await assert.rejects(runtime.inspectAssistant(target, [target]), /workspace is no longer available/);
   await assert.rejects(runtime.start(assistant, 'assistant'), /workspace is no longer available/);

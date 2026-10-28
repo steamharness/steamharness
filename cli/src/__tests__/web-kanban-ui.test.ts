@@ -58,7 +58,7 @@ async function fixture(language: 'en' | 'zh-CN') {
     serverData,
     kanban: { revision, configuration: { id: 'profile', name: 'Default', params: {} },
       preview: { url: `/kanban/${nonce}/index.html`, nonce },
-      relatedProjectRevisions: [], missingRelatedProjectAliases: [], serverDataIssue },
+      databaseRevisions: [], serverDataIssue },
   });
   return { sources, sendState, receive, fetcher };
 }
@@ -106,9 +106,9 @@ it.each(['en', 'zh-CN'] as const)('shows startup checks before mounting Server p
   sendState(1, 'first', undefined, { checking: true, checks });
   const frame = document.querySelector<HTMLIFrameElement>('#kanban-preview')!;
   expect(frame.getAttribute('src')).toBeNull(); expect(document.getElementById('preview-stage')!.hidden).toBe(true);
-  const overview = document.querySelector<HTMLDetailsElement>('#server-checks')!;
+  const overview = document.getElementById('server-checks-list')!;
   const guidance = document.getElementById('server-guidance')!;
-  expect(overview.open).toBe(true);
+  expect(overview.textContent).not.toBe('');
   expect(guidance.hidden).toBe(false);
   sendState(2, 'ready', undefined, { checking: false, checks: [{ ...checks[0], status: 'passed' }] });
   expect(guidance.hidden).toBe(true); expect(frame.src).toContain('/kanban/ready/index.html');
@@ -119,7 +119,7 @@ it.each(['en', 'zh-CN'] as const)('shows startup checks before mounting Server p
   expect(frame.src).toContain('/kanban/ready/index.html');
   sendState(3, 'local', undefined, { checking: false, blocking: false, issue: { kind: 'project-unavailable' },
     checks: [{ ...checks[0], status: 'action-required', issue: { kind: 'project-unavailable' } }] });
-  expect(guidance.hidden).toBe(false); expect(overview.open).toBe(true); expect(document.getElementById('preview-stage')!.hidden).toBe(false);
+  expect(guidance.hidden).toBe(false); expect(overview.textContent).not.toBe(''); expect(document.getElementById('preview-stage')!.hidden).toBe(false);
   expect(frame.src).toContain('/kanban/local/index.html');
   expect(document.getElementById('server-guidance-create')!.hidden).toBe(false);
 });
@@ -162,23 +162,20 @@ it.each(['en', 'zh-CN'] as const)('offers only project creation and rechecking i
   sendState(1, 'missing', { kind: 'project-unavailable', serverUrl: 'https://server.test' });
   const guidance = document.getElementById('server-guidance')!;
   expect(guidance.hidden).toBe(false);
-  expect(guidance.textContent).toContain(language === 'en' ? 'Project unavailable on this Server' : '当前服务器上的项目不可用');
-  expect(guidance.textContent).toContain('https://server.test');
-  expect(document.getElementById('server-guidance-project')!.textContent).toBe('map');
-  expect(guidance.querySelector('dt:nth-of-type(2)')!.textContent).toBe(language === 'en' ? 'Project ID' : '项目 ID');
+  expect(guidance.textContent).toContain(language === 'en' ? 'Register this aggregate project' : '在所选 Server 注册此聚合项目');
   expect([...guidance.querySelectorAll('button')].map(button => button.id)).toEqual(['server-guidance-create', 'server-guidance-retry']);
   expect(guidance.textContent).not.toMatch(/Account \/ Server|账号 \/ 服务器|switch.*Server|切换.*服务器/);
   expect(document.getElementById('server-guidance-create')!.hidden).toBe(false);
-  expect(document.getElementById('server-guidance-create')!.textContent).toBe(language === 'en' ? 'Apply for a new application ID...' : '重新申请应用 ID…');
+  expect(document.getElementById('server-guidance-create')!.textContent).toBe(language === 'en' ? 'Create project' : '创建项目');
   expect(document.getElementById('preview-stage')!.hidden).toBe(true);
-  expect(document.getElementById('related-warning')!.hidden).toBe(true);
+  expect(document.getElementById('database-warning')!.hidden).toBe(true);
   const frame = document.querySelector<HTMLIFrameElement>('#kanban-preview')!;
   expect(frame.getAttribute('src')).toBeNull();
   fetcher.mockImplementation(async (_url?: unknown, options?: any) => {
     const message = JSON.parse(options.body);
     expect(message.type).toBe('project-server-check');
     return { ok: true, status: 200, json: async () => ({ messages: [{ type: 'state', stateRevision: 2, serverInstanceId: 'kanban-process', project: { id: 'map', name: 'Map 2D', fields: [] }, account: { status: 'authenticated' }, authenticationRevision: 1, kanban: {
-      revision: 2, configuration: { id: 'profile', name: 'Default', params: {} }, preview: { url: '/kanban/ready/index.html', nonce: 'ready' }, relatedProjectRevisions: [], missingRelatedProjectAliases: [],
+      revision: 2, configuration: { id: 'profile', name: 'Default', params: {} }, preview: { url: '/kanban/ready/index.html', nonce: 'ready' }, databaseRevisions: [],
     } }, { type: 'project-server-checked', requestId: message.requestId }] }) };
   });
   document.getElementById('server-guidance-retry')!.click();
@@ -197,27 +194,4 @@ it('offers project creation without host upload support and hides it when access
   sendState(2, 'denied', { kind: 'access-denied', serverUrl: 'https://server.test' });
   expect(document.getElementById('server-guidance-title')!.textContent).toBe('Project access is required');
   expect(document.getElementById('server-guidance-create')!.hidden).toBe(true);
-});
-
-it.each(['en', 'zh-CN'] as const)('distinguishes related import and authorization from missing Kanban Server projects (%s)', async language => {
-  const { sendState } = await fixture(language);
-  const issue = { kind: 'related-setup-required' as const, relatedProjectAlias: 'database', projectId: 'database-id', serverUrl: 'https://server.test' };
-  sendState(1, 'blocked', { ...issue, relatedProjectImported: false });
-  const guidance = document.getElementById('server-guidance')!;
-  expect(guidance.dataset.scope).toBe('related'); expect(guidance.dataset.stage).toBe('import');
-  expect(document.getElementById('server-guidance-title')!.textContent).toBe(language === 'en' ? 'Import the related project first' : '请先导入关联项目');
-  expect(document.querySelector<HTMLDetailsElement>('#server-guidance-details')!.open).toBe(false);
-  expect(document.getElementById('server-guidance-create')!.hidden).toBe(true);
-  sendState(2, 'blocked', { ...issue, relatedProjectImported: true });
-  expect(guidance.dataset.stage).toBe('authorization');
-  expect(document.getElementById('server-guidance-title')!.textContent).toBe(language === 'en' ? 'Check related project authorization' : '请检查关联项目授权');
-  sendState(3, 'blocked', { ...issue, kind: 'project-unavailable', relatedProjectImported: true });
-  expect(document.getElementById('server-guidance-title')!.textContent).toBe(language === 'en' ? 'Related project unavailable on this Server' : '关联项目在当前服务器上不可用');
-  expect(document.getElementById('server-guidance-create')!.hidden).toBe(true);
-  sendState(4, 'blocked', { ...issue, kind: 'related-import-required', relatedProjectImported: false });
-  expect(document.getElementById('server-guidance-server-label')!.hidden).toBe(true);
-  sendState(5, 'blocked', { ...issue, kind: 'related-import-required', relatedProjectImported: true });
-  expect(document.getElementById('server-guidance-title')!.textContent).toBe(language === 'en' ? 'Related project imported' : '关联项目已导入');
-  sendState(6, 'ready');
-  expect(guidance.hidden).toBe(true); expect(document.getElementById('preview-stage')!.hidden).toBe(false);
 });

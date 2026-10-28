@@ -162,7 +162,7 @@ it('derives missing models from the current effective configuration without vali
  state.configurations[0]!.values.limit='Old string';
  state.conflicts=[{configurationId:'profile',key:'limit',value:'Old string',reason:'Field type changed'}];
  message({type:'state',configurations:state});expect(panel.needsAgentModels()).toBe(false);
- state={...state,revision:2,configurations:state.configurations.map(profile=>({...profile,values:{...profile.values,[AGENT_MODELS_CONFIGURATION_KEY]:[]}}))};
+ state={...state,revision:2,configurations:state.configurations!.map(profile=>({...profile,values:{...profile.values,[AGENT_MODELS_CONFIGURATION_KEY]:[]}}))};
  message({type:'state',configurations:state});expect(panel.needsAgentModels()).toBe(true);
  panel.openAgentModels();await settle();
  expect(document.querySelector<HTMLElement>('.configuration-body')!.hidden).toBe(false);
@@ -288,7 +288,7 @@ it('uses accessible icons for custom fields and sensitive visibility, and edits 
 
 it('applies published lock rules to direct fields, nested JSON and file controls',async()=>{
  const author=createConfigurationState([{name:'fixed',type:'string',defaultValue:'Official',sharing:{includeValue:true,editable:false}},{name:'settings',type:'json',defaultValue:{locked:0,open:false},sharing:{includeValue:true},paths:{'/locked':{editable:false}}},{name:'image',type:'file',sharing:{editable:false}}],()=> 'author');
- state=bindConfigurationTemplate(createConfigurationState([],()=> 'personal'),freezeConfigurationTemplate(createPublicationDraft(author),{projectId:'project',projectVersion:'1.0.0',sourceHash:'a'.repeat(64)}));
+ state=bindConfigurationTemplate(createConfigurationState([],()=> 'personal'),freezeConfigurationTemplate(createPublicationDraft(author),{entryId:"main",projectId:'project',projectVersion:'1.0.0',sourceHash:'a'.repeat(64)}));
  await openPanel();
  expect(document.querySelector<HTMLInputElement>('[aria-label="fixed"]')!.disabled).toBe(true);
  expect(fileInput().disabled).toBe(true);

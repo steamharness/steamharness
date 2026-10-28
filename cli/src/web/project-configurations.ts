@@ -25,9 +25,9 @@ export class ProjectConfigurations {
   private poll?: ReturnType<typeof setInterval>;
   private reading = false;
   error?: string;
-  constructor(private readonly projectDir: string, private readonly changed: () => void, private readonly connection: () => WebConnection | undefined = () => undefined) {}
+  constructor(private readonly projectDir: string, private readonly changed: () => void, private readonly connection: () => WebConnection | undefined = () => undefined, private readonly entryId?: string) {}
   async initialize() {
-    this.store = await createLocalProjectConfigurationStore(this.projectDir,{connection:()=>this.connection()??null});
+    this.store = await createLocalProjectConfigurationStore(this.projectDir,{entryId: this.entryId, connection:()=>this.connection()??null});
     this.value = {...await this.store.read(true),canManagePublication:false};
     this.accessIdentity=this.connectionIdentity();
     this.poll = setInterval(() => {
@@ -57,7 +57,7 @@ export class ProjectConfigurations {
   async dispatch(call: ProjectConfigurationAction) {
     const identity=this.connectionIdentity(),connection=this.connection(),previous=this.state,remote=call.action.startsWith('publication.') || call.action === 'get';
     const result = remote
-      ? await configurationPublication(this.projectDir,await this.store.read(),call,connection)
+      ? await configurationPublication(this.projectDir,await this.store.read(),call,connection,this.entryId)
       : await this.store.dispatch(call);
     if(identity!==this.connectionIdentity())throw new ProjectConfigurationError('Account changed. Refresh configurations.','CONFIGURATION_ACCOUNT_CHANGED');
     if (call.action !== 'export') {

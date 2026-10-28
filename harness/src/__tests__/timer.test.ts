@@ -1,9 +1,9 @@
+import { createTestResources } from "./entry-test-resources";
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
   createDisabledProjectConversationContext,
   createDisabledProjectTokenUsageContext,
-  createProjectRelatedProjectsContext,
   createTimerNode,
   endTimer,
   type RuntimeEvent,
@@ -129,10 +129,7 @@ function createTestProjectContext(timers: RunContext["timers"]): RunContext {
   return {
     config: {},
     providers: {},
-    storage: {
-      local: { kv, persistentValue: kv, relatedProjects: createProjectRelatedProjectsContext() },
-      server: { kv: createMemoryKVContext(), persistentValue: createMemoryKVContext(), relatedProjects: createProjectRelatedProjectsContext() },
-    },
+    ...createTestResources(),
     conversation: createDisabledProjectConversationContext(),
     tokenUsage: createDisabledProjectTokenUsageContext(),
     timers,

@@ -108,7 +108,7 @@ Entrypoints isolate execution configuration and UI drafts, not project data scop
 | Parameter, attachment, and tool-policy drafts | Hosts isolate them by project, resolution target, and entrypoint. |
 | Entrypoint group expansion | shared runtime UI and CLI Web enable grouped UI only when at least one group is declared. They persist expansion by `projectId + resolved target` under a versioned localStorage key; ungrouped entries use a localized **Ungrouped** group. |
 | Registry and debug node | Only the selected entrypoint's registry is available. |
-| `context.storage.local/server` | Entrypoints in the same project continue to share the workflow namespace at each location. Design your own keys when business isolation is required. |
+| `context.databases` | Current aggregate entry bindings. Internal Workflow operations share them; use separate keys or spaces for business isolation. |
 | Conversation | Does not use `defineEntrypoint` and does not accept entrypoint selection. |
 
 ## Errors
@@ -120,3 +120,5 @@ Entrypoints isolate execution configuration and UI drafts, not project data scop
 | Default entrypoint does not exist | `input_validation` | The executor cannot load. |
 | Unknown entrypoint requested | `input_validation` | Error metadata includes the default entrypoint and allowed entrypoints. |
 | Conversation receives an entrypoint argument | `input_validation` | Conversation remains single-entry; the argument is neither ignored nor silently redirected. |
+
+`entrypointId` identifies an operation inside a Workflow entry. It is distinct from the window `entryId` registered in the root manifest: `steamharness run . --entry database --entrypoint search`.

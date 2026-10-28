@@ -5,12 +5,10 @@
   "private": true,
   "type": "module",
   "devDependencies": {
-    "steamharness": "^0.1.0",
-    "@steamharness/cli": "^0.1.0"
+    "steamharness": "0.1.2",
+    "@steamharness/cli": "0.1.2"
   },
   "steamHarness": {
-    "projectType": "kanban",
-    "kanban": {},
     "projectInfo": {
       "localizedNames": {
         "zh-CN": "看板示例",
@@ -18,10 +16,42 @@
       },
       "platformSupport": {
         "mode": "agnostic"
-      },
-      "dataStorage": {
-        "mode": "local"
       }
-    }
+    },
+    "entries": [
+      {
+        "entryId": "main",
+        "type": "kanban",
+        "name": "Studio Kanban",
+        "root": ".",
+        "entry": "index.html",
+        "databases": [
+          {
+            "alias": "data",
+            "host": "local",
+            "permissions": {
+              "kv": {
+                "read": {
+                  "mode": "all"
+                },
+                "write": {
+                  "mode": "all"
+                }
+              },
+              "knowledge": {
+                "read": {
+                  "mode": "all"
+                },
+                "write": {
+                  "mode": "all"
+                }
+              }
+            }
+          }
+        ],
+        "configuration": "configuration.json"
+      }
+    ],
+    "defaultEntry": "main"
   }
 }

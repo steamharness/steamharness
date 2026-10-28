@@ -1,413 +1,46 @@
 ---
 title: "Kanban HTML 项目"
-description: "使用静态产物目录、HTML 入口、可选 configuration.json 和命名配置构建可发布的 Kanban 界面。"
+description: "Kanban 入口"
 ---
 
-# Kanban HTML 项目
+# Kanban 入口
 
-Kanban 是由 HTML、CSS、JavaScript、图片和字体组成的静态项目。它直接显示配置产物目录中的 HTML 入口，不创建 conversation、run history、Workflow Output、Diagram 或 Logs，也不需要 executor。页面可以通过受限 JS Bridge 读写当前项目的 KV 和知识库，也可以按双方项目声明的权限读写关联项目 KV；页面本身不能选择项目或数据作用域。
-
-## 最小目录
-
-无参数项目只需要两个文件：
-
-```text
-roadmap-kanban/
-├── package.json
-└── index.html
-```
-
-```json package.json
-{
-  "id": "8bd4fef2-e083-4201-a89f-6f7d0676df53",
-  "name": "@steamharness/roadmap-kanban",
-  "version": "0.1.0",
-  "private": true,
-  "type": "module",
-  "devDependencies": {
-    "@steamharness/cli": "0.2.0",
-    "steamharness": "0.2.0"
-  },
-  "steamHarness": {
-    "projectType": "kanban",
-    "projectInfo": {
-      "dataStorage": {
-        "mode": "both"
-      },
-      "relatedProjects": []
-    }
-  }
-}
-```
-
-示例中的 Core 与 CLI `0.2.0` 是当前精确兼容基线。新模板会写入当前 Core 与 CLI 版本；已有 Kanban 项目缺少这些依赖或 `dataStorage` 声明时，必须补齐并同步 lockfile，不能使用 `^`、`~`、`workspace:*` 或其它 range。Kanban 页面不导入或执行 Core runtime，Server 将 `devDependencies.steamharness` 作为静态包元数据校验，不加载运行时。
-
-未配置入口时，产物目录默认为项目根目录 `.`，HTML 入口默认为 `index.html`，因此已有项目不需要迁移入口配置。Kanban 不应包含为运行而创建的 `index.ts`、`interface.ts` 或 `steamharness.defineExecutor(...)`。没有声明字段时仍保留项目配置入口，可以添加自定义字段。
-
-标题栏右侧提供全屏、手机、平板和小卡片四种预览模式，默认全屏填满可用预览区。手机默认为 `390×844`、平板为 `768×1024`、小卡片为 `360×200`（CSS 像素）。除全屏外，预览图外下方右侧集中显示调整尺寸、恢复默认和拖动手柄：调整图标可输入宽高，拖动手柄可改变大小，也支持方向键。三个控件都在图外，不覆盖地图内容，也不占用 iframe 内的显示尺寸。重置图标恢复当前模式默认值，各模式在本次工作区内分别保留自定义尺寸。宽度范围为 `160–4096px`，高度为 `96–4096px`；固定尺寸超出可用区域时可在预览区滚动。切换与调整会改变页面的真实视口，保留配置、草稿、上传和页面状态，不重新加载 iframe。模式图标支持尺寸提示和方向键选择。
-
-Kanban 页面需要同时适配这些尺寸。“小卡片”表示 Conversation 对话资源卡片中的 Kanban 预览，实际宽高随卡片容器变化，并非固定设备。页面应声明 viewport meta，并根据自身容器的宽高重排布局；在约 `340–500px` 宽、`180–200px` 高的小预览中优先显示主要内容和必要操作，收敛页头与次要面板，避免重叠或控件越界。图像、地图和 canvas 随容器重新测量，尺寸变化不应清空业务数据或重复保存、上传。生成器 skill 也遵循这些适配要求。
-
-页面通过 `window.steamHarnessKanban.getPresentation()` 读取 `{ mode: "fullscreen" | "phone" | "tablet" | "card" }`，并监听 `steamharness:kanban-presentation-change` 的 `CustomEvent.detail` 响应模式切换。实际 Conversation 卡片使用 `card`，调大卡片后仍保持该模式；该信息独立于业务参数，不会保存到命名配置或 KV。地图、图片展示或明确要求只读的小卡片应隐藏页头、工具栏、侧栏、详情和编辑浮层，关闭绘制、实体拖动及修改快捷键，让内容占满预览区并自动适应取景；切回其它模式恢复原编辑状态。依据展示模式决定是否只读，依据页面自身实际宽高计算布局。
-
-## 构建产物与入口
-
-Vue、React、Vite 或其它前端工程可以把浏览器静态产物放在独立目录，再由 Kanban 加载其中的 HTML 入口：
+Kanban 是聚合项目中的静态 HTML 入口，不导出 executor。注册示例：
 
 ```json
-{
-  "steamHarness": {
-    "projectType": "kanban",
-    "projectInfo": {
-      "dataStorage": { "mode": "both" },
-      "relatedProjects": [
-        {
-          "alias": "stocks",
-          "projectId": "f4ee23d7-abbb-4ba3-8baf-75b7c6c0b964",
-          "grantToRelatedProject": {
-            "read": { "mode": "all" },
-            "write": { "mode": "none" }
-          }
-        }
-      ]
-    },
-    "kanban": {
-      "artifactDir": "dist",
-      "entry": "index.html"
-    }
-  }
-}
+{ "entryId": "map", "type": "kanban", "name": "Map", "root": "map", "entry": "dist/index.html", "configuration": "configuration.json", "databases": [] }
 ```
 
-- `artifactDir` 相对项目根目录，默认 `"."`。
-- `entry` 相对 `artifactDir`，默认 `"index.html"`，支持 `.html` 和 `.htm`。
-- `projectInfo.relatedProjects` 是所有项目类型共用的关联声明，不属于 `kanban` 配置。只有目标项目也声明当前项目时关系才确认，实际读写权限由目标项目的 `grantToRelatedProject` 决定。
-- 两个字段都禁止绝对路径、盘符、UNC、`..`、目录逃逸和符号链接；`.git`、`.hg`、`.svn` 与 `node_modules` 不能作为产物或入口目录。
-- iframe 只读取 `artifactDir` 内文件，不能通过相对路径访问源码、`package.json` 或项目外文件。
-- ES module、动态 import、WASM 和 `fetch()` 可以读取产物目录内资源；CSP 的 `connect-src` 只允许当前短期预览 capability 对应的同源资源以及 `data:` / `blob:`，不能访问公网接口。
+构建必须先在客户端完成。Server 只验证、保存及提供静态文件，不安装依赖或运行构建。资源引用使用入口相对路径，上传与安装保留全部注册入口的产物。
 
-CLI Web 和 Server 加载已构建的静态产物，不自动安装前端依赖、不运行构建脚本，也不连接 dev server 或 HMR。开发者先使用项目自己的工具构建；更新服务器版本时，通过 CLI 重新上传产物。
+## 配置与展示
 
-纯 HTML、CSS、JavaScript、图片和字体通常可以跨操作系统使用。依赖原生模块、本机绝对路径、`node_modules` 或特定开发服务器的输出不属于受支持的静态浏览器产物。
+宿主注入 `window.steamHarnessKanban`。`getConfiguration()` 读取当前入口配置，`getPresentation()` 读取展示模式；监听 `steamharness:kanban-configuration-change` 和 `steamharness:kanban-presentation-change` 更新页面。命名配置、快照和配置附件按 `projectId + entryId` 隔离。
 
-## 项目配置字段
-
-Kanban 和 Workflow、Conversation 共用[项目配置](/concepts/project-configuration)。在 `configuration.json` 中声明原生类型字段；没有声明字段时仍可打开配置面板并添加自定义字段。文件配置声明 `type: "file"`，在面板选择并上传到服务器后保存引用；页面内也可通过文件 API 独立上传。
-
-```json
-{"version":1,"fields":[
-  {"name":"title","type":"string","defaultValue":"Roadmap"},
-  {"name":"enabled","type":"boolean","defaultValue":true},
-  {"name":"columns","type":"string","multiple":true,"options":[{"value":"todo"},{"value":"done"}]}
-]}
-```
-
-配置适合标题、过滤条件和布局等页面展示与行为。任务、卡片和记录由页面提供增删改，再通过 KV Bridge 持久化。
-
-## 读取当前配置
-
-宿主在页面加载前注入只读接口：
+## 数据 Bridge
 
 ```js
-function render(configuration) {
-  const params = configuration?.params ?? {};
-  document.querySelector("h1").textContent = params.title || "看板";
-  document.documentElement.style.setProperty("--accent", params.accent || "#2563eb");
-}
-
-render(window.steamHarnessKanban.getConfiguration());
-
-window.addEventListener("steamharness:kanban-configuration-change", (event) => {
-  render(event.detail);
-});
+const database = window.steamHarnessKanban.databases.get("data");
+const markers = await database.kv.getValue("map:markers");
+await database.kv.setValue("map:markers", markers ?? []);
+const unsubscribe = database.subscribe(({ revision }) => refreshMap(revision));
 ```
 
-`getConfiguration()` 和事件的 `detail` 都返回：
+必须在该入口的 `databases` 中声明 alias，获批后才能访问。数据 Bridge 在宿主端校验入口、用户及空间授权；页面不能选择任意项目或数据库。知识库通过 `database.knowledge` 访问，附件通过 `database.files.createFile/readFile/deleteFile` 访问。
 
-```ts
-{
-  id: string;
-  name: string;
-  params: Record<string, unknown>;
-}
-```
-
-配置切换或参数变化不会重新加载 iframe。页面必须监听 `steamharness:kanban-configuration-change` 并自行更新 DOM、canvas 或其它内部状态。持久参数只能在宿主配置区修改；页面内部业务数据应使用下述 KV 或知识库接口保存。
-
-## 页面方法与 Agent 通信
-
-页面用 `window.steamHarnessKanban.methods.register(definition, handler)` 将已有业务方法提供给 Core Agent。定义包含唯一 `name`、`description`、对象类型的 JSON `inputSchema` 和可选 `readOnly` 标记，返回注销函数。schema 用于发现与参数说明，处理函数仍须校验业务参数。
+## 页面方法
 
 ```js
-const unregister = window.steamHarnessKanban.methods.register({
-  name: "map.focusRegion",
-  description: "按精确名称定位地图区域，只改变视角",
-  inputSchema: {
-    type: "object",
-    properties: { name: { type: "string" } },
-    required: ["name"],
-    additionalProperties: false,
-  },
-  readOnly: false,
-}, async (input, { signal, configuration, presentation }) => {
-  if (typeof input.name !== "string" || !input.name.trim()) {
-    throw new Error("区域名称不能为空");
-  }
-  // focusRegion 由页面已有的视角控制器实现。
-  const region = await focusRegion(input.name, { signal });
-  return { regionId: region.id, configurationId: configuration.id };
-});
-// 组件卸载或不再提供此方法时调用 unregister()。
+window.steamHarnessKanban.methods.register({
+  name: "focus", description: "Focus a map location", readOnly: true,
+  inputSchema: { type: "object", properties: { x: { type: "number" } } },
+}, async (input, { signal }) => ({ focused: input.x }));
 ```
 
-处理函数接受 JSON 对象和 `{ signal, configuration, presentation }`，可同步或异步返回 JSON。不得返回 DOM、函数、二进制、非有限数字或循环引用。输入、结果及整个方法目录最多 `65,536` 个 JSON 字符、深度最多 32 层；每页最多 32 个方法。名称匹配 `^[a-zA-Z][a-zA-Z0-9_.-]{0,79}$`，描述最多 2,000 字符，单个 schema 最多 8,192 字符。同名注册被拒绝；配置 ID 变化会清空注册，页面应在新配置加载后重新注册。
+方法目标包括 `projectId`、`entryId`、来源、位置与实例。资源卡片及预览同样携带 `entryId`。方法必须验证业务参数并响应取消信号；刷新或关闭实例后重新枚举。
 
-页面注册 API 本身不会建立 Agent 连接。`steamharness-kanban_kanban_methods` 只有在宿主显式提供调用通道时可用；CLI Web、Studio 和 Server 运行不因页面注册而自动获得此能力。
+## 安全与宿主
 
-## KV 与知识库 Bridge
+CLI Web 使用 `/entries/map/`；Studio 可以将入口打开为独立标签；Server Web 提供经过鉴权的静态预览。预览使用沙箱、受约束的相对资源路径和短期能力凭据；`studio.getLocalAnalysis()` 仅由支持的本地 Studio 宿主提供。
 
-`window.steamHarnessKanban` 同时提供当前项目固定作用域的异步数据接口：
-
-```ts
-window.steamHarnessKanban = {
-  getConfiguration(): { id: string; name: string; params: Record<string, unknown> },
-  getRuntimeLocale(): Promise<"zh-CN" | "en">,
-  files: {
-    createFile(input: { name: string; mimeType?: string; buffer: Blob | ArrayBuffer | Uint8Array }): Promise<FileReference>,
-    readFile(fileId: string): Promise<{ file: FileReference; buffer: ArrayBuffer }>,
-    deleteFile(fileId: string): Promise<boolean>,
-  },
-  kv: {
-    getValue(key: string): Promise<unknown | undefined>,
-    setValue(key: string, value: JsonValue): Promise<void>,
-  },
-  relatedProjects: {
-    get(alias: string): {
-      kv: {
-        getValue(key: string): Promise<unknown | undefined>,
-        setValue(key: string, value: JsonValue): Promise<void>,
-        subscribe(
-          listener: (event: { alias: string; revision: string }) => void,
-        ): () => void,
-      },
-    },
-  },
-  knowledge: {
-    listDocuments(options?: { pageSize?: number; cursor?: string }): Promise<KnowledgeDocumentPage>,
-    getDocument(id: string): Promise<KnowledgeDocument | null>,
-    createDocument(input: { id?: string; title: string; markdown: string }): Promise<KnowledgeDocument>,
-    editDocument(id: string, input: { title?: string; markdown?: string }): Promise<KnowledgeDocument>,
-    deleteDocument(id: string): Promise<{ id: string; deleted: boolean }>,
-    searchDocuments(options: {
-      query: string;
-      documentId?: string;
-      beforeLines?: number;
-      afterLines?: number;
-      maxMatches?: number;
-      pageSize?: number;
-      cursor?: string;
-    }): Promise<KnowledgeSearchResult>,
-    readDocumentLines(id: string, options: {
-      startLine: number;
-      endLine: number;
-    }): Promise<KnowledgeDocumentLinesResult>,
-  },
-};
-```
-
-`getRuntimeLocale()` 异步返回当前 CLI Web 或 Server Web 宿主选择的 `"zh-CN"` 或 `"en"`。明确支持国际化的 Kanban 应将页面文案、错误、ARIA 标签、日期和数字格式一并切换；旧宿主、Bridge 缺失或调用失败时必须回退到项目默认中文。`configuration.json` 仍是静态清单，不能按运行时语言动态替换。
-
-KV key 由页面定义，宿主始终把当前项目 Bridge 限制在项目 scope。`setValue` 的 value 必须是有限数字、字符串、布尔值、`null`、数组或仅包含这些值的普通对象，不能传入 `undefined`、函数、循环引用或其它不可 JSON 序列化值。当前版本不提供 KV list 或 delete；需要覆盖状态时写入新值。
-
-`relatedProjects.get(alias).kv` 只解析当前 Kanban 在 `projectInfo.relatedProjects` 中声明、且双方已确认的直接关系。`getValue`、`setValue` 分别检查目标项目对 Kanban 的 read/write 规则；目标通过 `prefixes` 限定 key 时，Bridge 逐次校验。iframe 请求只携带 alias、key 和写入 value，不能传入目标项目 UUID、scope、target 或数据库路径，也没有关联项目 list/delete 或 PersistentValue 接口。alias、UUID、数量和授权规则的完整限制见 [KV 与会话](/concepts/kv-and-conversation#关联项目-kv)。
-
-`relatedProjects.get(alias).kv.subscribe(listener)` 用于感知目标项目 KV 的提交变化。订阅建立后，如果宿主已经取得当前 revision，会异步回调一次当前快照；后续每次回调只包含静态 alias 和不透明 revision，不说明具体 key。Server 不会把初始快照内同一 revision 再作为变化重复发送，并会把同一目标的连续写入合并到最新 revision。页面仍应把临近回调防抖合并为一次 `getValue()` 重读，并保留最后一次成功内容；自动刷新失败时显示非阻塞警告，不要清空正在展示的数据。返回函数用于取消订阅，页面卸载或配置切换时必须调用。
-
-```js
-const unsubscribe = window.steamHarnessKanban.relatedProjects.get("stocks").kv.subscribe(
-  ({ revision }) => {
-    scheduleRefresh(revision);
-  },
-);
-
-window.addEventListener("pagehide", unsubscribe, { once: true });
-```
-
-Server Web 静态预览要求访问者能够读取当前 Kanban，还要求对目标项目具有访客权限；双方当前声明和目标对 Kanban 的授权必须有效。关联写入要求当前 Kanban 和目标项目均具备开发者权限。鉴权 SSE 在连接和重连时先发送完整 revision 快照。目标不存在、关系待确认、授权不足、alias 无效或 key 越界都只返回安全的“关联项目不可用”错误；关系或读权限撤销、绑定失效时会关闭 revision 流。服务器按看板页面固定的 `resolvedTarget` 读取关系声明，但目标 KV 是项目级数据库，不随目标项目版本切换。
-
-自动联动只发生在同一存储后端。本地客户端或管理端更新 Server KV 后，连接该 Server 的静态预览会收到通知；本地与服务器 KV 不会自动同步。
-
-下面的写法按命名配置隔离看板状态，并在没有 Bridge 的直接离线打开场景下降级为内存数据：
-
-```js
-const configuration = window.steamHarnessKanban?.getConfiguration();
-const storageKey = `kanban.board-state.v1:${configuration?.id || "default"}`;
-const kv = window.steamHarnessKanban?.kv;
-
-let board = { version: 1, tasks: [] };
-if (kv) {
-  try {
-    board = (await kv.getValue(storageKey)) ?? board;
-  } catch {
-    showStorageError("加载失败，可重试");
-  }
-}
-
-async function saveBoard() {
-  if (!kv) return;
-  try {
-    await kv.setValue(storageKey, board);
-    showStorageStatus("已保存");
-  } catch {
-    showStorageError("保存失败，可重试");
-  }
-}
-```
-
-每次调用返回 Promise。页面同一时间最多保留 16 个待处理请求；普通调用超过 15 秒、文件调用超过 120 秒会以 `KANBAN_BRIDGE_TIMEOUT` 拒绝。非 JSON KV 值或其它不可克隆输入会在页面侧以 `KANBAN_BRIDGE_INVALID_REQUEST` 拒绝，不会抛出浏览器原始 `DataCloneError`。失败 Error 只使用固定安全错误码和文案，不会包含数据库路径、堆栈或宿主内部信息。iframe 刷新后旧页面的迟到响应会被丢弃。
-
-## 图片与文件
-
-页面可以把用户选择的图片或文件直接写入服务器文件存储。文件始终保存在当前连接的 Server，独立于 KV 的 local/server 位置选择；调用方必须已登录，并在当前服务器创建同 UUID 的云端应用。缺少连接、项目权限或服务器接口时调用失败，不回退本地，也不把图片分块存入 KV。
-
-```js
-const api = window.steamHarnessKanban;
-const reference = await api.files.createFile({
-  name: selectedFile.name,
-  mimeType: selectedFile.type || undefined,
-  buffer: selectedFile,
-});
-const { file, buffer } = await api.files.readFile(reference.id);
-const imageUrl = URL.createObjectURL(new Blob([buffer], { type: file.mimeType }));
-imageElement.src = imageUrl;
-await api.kv.setValue(`map:${api.getConfiguration().id}`, { image: reference, annotations: [] });
-window.addEventListener("pagehide", () => URL.revokeObjectURL(imageUrl), { once: true });
-```
-
-`createFile` 接受 Blob（包括 File）、ArrayBuffer 或 Uint8Array，单文件上限为 50 MiB。文件引用包含 `id/name/mimeType/size/kind/storage/projectId/createdAt/url`，`storage` 固定为 `server`；页面不拿到鉴权信息或磁盘路径。`readFile` 返回原始字节，只允许当前项目且无 conversation 作用域的 managed file ID，不能传任意 URL 或本地路径。图片使用临时 Blob URL 显示；配置切换时释放旧 URL，并防止旧读取覆盖新配置。
-
-替换图片时，先上传并读回核验新文件，再保存新的 KV 引用；保存成功后才能调用 `files.deleteFile(oldFileId)` 清理旧文件。已有本地图片的批量迁移可以使用 [业务文件命令](/cli/server-workspace#业务文件)，上传与读回核验不会发布项目源码。服务器文件不随项目归档或版本下载自动迁移。
-
-知识库列表每次最多读取 100 个文档；搜索的 `pageSize` / `maxMatches` 上限为 1000，`beforeLines` / `afterLines` 上限为 50；单次 `readDocumentLines` 最多读取 1000 行，且 `endLine` 不能小于 `startLine`。超出范围的调用会在进入存储层前被拒绝。
-
-## 命名配置
-
-统一面板支持显式保存、多套配置、自定义字段及完整导入导出，最后一套配置不能删除。本地 Studio 与 CLI 按项目真实路径共用配置，Server 按项目和账号隔离。保存后主页面和资源卡片预览立即更新。并发冲突保留编辑草稿。值保存在源码之外，不迁移旧 Kanban 配置。
-
-## 相对资源与安全边界
-
-HTML 中的 CSS、JavaScript、图片和字体必须使用产物目录内相对路径：
-
-```html
-<link rel="stylesheet" href="./assets/board.css" />
-<img src="./assets/board.png" alt="看板预览" />
-<script src="./assets/board.js"></script>
-```
-
-页面运行在 `sandbox="allow-scripts"` 中，并使用离线 Content Security Policy：
-
-- 允许当前 `artifactDir` 内资源以及必要的 `data:` / `blob:` 内容。
-- 禁止公网请求、父页面 DOM、Node、Electron preload、弹窗、下载和顶层导航。
-- 静态资源请求固定到当前 draft 或已发布版本；`..`、绝对路径、符号链接逃逸、`.env`、项目元数据和缓存路径会被拒绝。
-- KV、知识库与关联项目调用通过当前 iframe、随机 nonce、request id 和操作白名单校验；页面不能指定目标项目 UUID、scope、数据库路径或发布 target。
-- 单个预览资源最大 20 MB。
-
-不要依赖 CDN、远程字体、远程 API 或需要 `allow-same-origin` 的浏览器能力。页面内部可以自由响应点击、拖拽和修改 DOM；需要在刷新、重启或切换配置后恢复的业务数据，应显式写入 Bridge。
-
-## 上传忽略规则
-
-项目根目录的 `.steamharnessignore` 是 CLI 打包上传文件时使用的唯一忽略配置。它独立于 Git，`.gitignore` 以及嵌套目录中的 `.gitignore` 都不参与上传判断；Server 只接收已经选择好的归档，Server Web 不读取本地目录。
-
-规则支持注释、目录、通配符、`**` 和 `!` 反向包含，路径统一按 `/` 匹配。缺少 `.steamharnessignore`、文件为空或只有注释时，会上传项目根目录下的全部普通文件，并在 CLI 上传前显示文件数量和总大小警告。`.steamharnessignore` 自身始终保留在上传包中。
-
-以下文件不能被排除：`package.json`、Workflow/Conversation 入口、Kanban 配置后的 HTML 入口，以及已存在的 `configuration.json`。如果规则忽略了必需文件，上传会指出命中的规则。符号链接、特殊设备文件、目录逃逸、单文件和包体大小限制属于独立安全校验，不会被忽略规则绕过。
-
-推荐的 Kanban 配置：
-
-```gitignore
-.git/
-node_modules/
-coverage/
-.cache/
-.turbo/
-*.log
-*.tmp
-*.tsbuildinfo
-.env
-.env.*
-!configuration.json
-
-src/
-tests/
-dist/**/*.map
-```
-
-不要在这里忽略实际 `artifactDir`。例如 `artifactDir` 为 `dist` 时，可以让 `.gitignore` 排除 `dist/` 以避免提交 Git，但 `.steamharnessignore` 必须保留 `dist`，这样构建产物仍会上传。
-
-## CLI Web 与 Server Web
-
-本地看板使用服务器数据时，可通过“在服务器新建项目”登记相同 UUID，无需上传源码。草稿数据桥接使用服务器登记的项目信息及双方关联授权；需要 Server Web 静态预览或发布版本时，再另行上传静态源码。
-
-CLI 可以按 `.steamharnessignore` 选择本地 Kanban 的文本和二进制静态资源并上传到 Server。服务器不会为 Kanban 执行 tsup、安装依赖或生成 Node runtime，而是校验配置的 HTML 入口后保留静态产物；Server Web 只查看和管理已经上传的服务器版本。
-
-Server Web 静态预览固定当前项目与所选 target。读取需要项目读取权限，当前项目 KV 和知识库写入需要数据写权限，访客只读；关联访问还校验双方声明和目标授予的 key 权限。站点接口签发绑定项目、用户和固定版本的短期签名 capability，资源 URL 带有 CSP nonce，不能读取其它项目或版本。签名使用 `STEAMHARNESS_AUTH_COOKIE_SECRET`，未配置时回退到 `STEAMHARNESS_SERVER_ADMIN_KEY`；多实例应使用同一稳定密钥。预览会在 capability 到期前换发，保留命名配置并重载 iframe；失败时重试，到期后仍失败则显示错误。Bridge 与配置操作始终携带首次加载得到的 `resolvedTarget`。命名配置按用户隔离，项目 KV 和知识库按项目共享。
-
-## Studio 本地分析接口
-
-Studio 的内置 `build-in-analysis` 项目可通过 `await window.steamHarnessKanban.studio.getLocalAnalysis()` 读取只读快照。快照包含 `version: 1`、`generatedAt`、`serverExcluded` 和 `projects`；每个项目提供 UUID、名称、实际目录、类型、可用性、实时连接、排队输入数量及 `runs` 摘要。运行摘要包含 ID、标题、状态、开始时间、耗时和入口，不包含参数、消息正文、日志或凭据。
-
-该连接仅由 Studio 为本地分析项目提供，并随项目会话关闭而失效。不接受文件路径或筛选参数，不提供写入与编辑器控制。CLI、Server 或独立浏览器没有此连接时返回 `KANBAN_BRIDGE_UNAVAILABLE`。项目数以当前工作区和已导入的本地项目为范围，服务器存储项目被排除；该接口不向服务器请求数据。
-
-历史按项目当前类型读取，目录别名合并时保留当前工作区的信息。实时状态需要有效心跳和仍存在的进程；心跳过期且未确认进程退出时显示 `unknown`，确认进程退出后的未完成运行显示 `interrupted`。多窗口的排队输入按 ID 去重，旧活动记录不会恢复已删除的终态运行。查询期间项目范围改变会重新读取，关闭预览会取消尚未完成的查询。
-
-## 项目关系与交付
-
-`steamHarness.projectInfo.relatedProjects` 是所有项目类型共用的关系声明。Kanban 项目组只会从其中双方已确认的关系生成依赖锁；待确认关系可以随项目保存和发布，但不授予 KV 权限，也不会进入 included/external 依赖组。平台让发布者为每个已确认关系选择交付方式，并把结果固化到 Kanban 的精确已发布版本：
-
-| 交付方式 | 版本依赖锁 | 下载行为 |
-| --- | --- | --- |
-| `included` | 固化关联项目的精确版本和 source hash；该版本必须保留源码。 | 有源码权限时随根项目下载；无权限时跳过并提供申请入口，不回退到关联项目 `latest`。 |
-| `external` | 只保留 alias 和关联项目 UUID，不锁定源码版本。 | 不随根项目下载，使用方自行准备关联项目。 |
-
-项目组仍由多个独立项目组成，各自拥有 UUID、版本、成员和权限。Server 会先校验所有项目及关系并预留版本，再保存和发布 included 项目，最后更新 Kanban 根项目的 `latest`；中途失败不会更新根项目的 `latest`。发布中断可以继续同一发布任务，已经成功的精确依赖不会重复发布。
-
-源码交付与运行数据彼此独立：项目组归档、上传、发布和下载都拒绝携带 `.env*`、KV、定时计划、运行历史、SQLite 或宿主用户配置。本地 KV 与 Server KV 始终是两套数据库。上传后的 Server 数据需要开发者在本地运行关联 Workflow entrypoint、通过已授权的服务器连接写入或使用业务同步接口初始化；下载到本地后同样需要在本地重新运行同步。平台只维护调用和 Bridge API，不自动复制数据。
-
-项目间 KV 授权来自双方 `projectInfo`，Server 不维护独立数据授权记录。目标项目可以向当前 Kanban 授予 `none/all/prefixes` 的读写能力；这不授予源码下载、运行或项目管理权限，撤销后新的 Bridge 访问和现有 revision 订阅立即失效。关联数据访问还必须满足用户在目标项目的角色权限。included 源码下载要求目标项目访客权限；申请审批后加入为访客。
-
-## 发布、下载与 CLI
-
-Kanban 发布保存不可变静态文件快照。图片、字体等二进制文件在文件 API 中以 `encoding: "base64"` 传输，CLI 下载时会恢复原始字节。
-
-```bash
-steamharness structure ./roadmap-kanban
-pnpm exec steamharness workspace pack roadmap-kanban --path ./roadmap-kanban
-pnpm exec steamharness workspace upload roadmap-kanban --path ./roadmap-kanban --create
-pnpm exec steamharness workspace publish roadmap-kanban
-pnpm exec steamharness workspace download roadmap-kanban --target latest --path ./roadmap-kanban-copy
-
-# 将 stocks 关联项目一起打包并发布；双方关系已写入各自 package.json
-pnpm exec steamharness workspace upload roadmap-kanban \
-  --path ./roadmap-kanban \
-  --dependency stocks=./stock-workflow \
-  --publish-group \
-  --release-log "发布行情看板及关联 Workflow"
-```
-
-`steamharness structure` 会读取 `projectType: "kanban"`、`artifactDir`、`entry` 和可选参数清单。Kanban 是静态项目，`steamharness run` 和 `steamharness json` 会返回明确的不支持执行错误。
-
-## 使用生成器
-
-```bash
-python .agents/skills/workflow-generator/scripts/create_workflow.py roadmap \
-  --dir ./roadmap-kanban --project-type kanban
-
-python .agents/skills/workflow-generator/scripts/create_workflow.py roadmap \
-  --dir ./roadmap-kanban --project-type kanban --with-kanban-params
-```
-
-两条命令都会生成完整的可编辑看板工程，包括 `.steamharnessignore`、`package.json`、`index.html`、`board-state.js`、`board-storage.js`、README 和纯逻辑测试。所有 scaffold 都生成 `configuration.json`；`--with-kanban-params` 加入标题和强调色字段；任务始终在页面内新建、编辑、拖拽和删除，并通过 KV Bridge 按配置隔离保存。
-
-生成器默认创建简体中文项目，不会自动加入翻译资源、语言切换或 locale 检测。只有明确要求国际化或多语言支持，并说明目标语言后，才会为项目加入对应适配。
-
-权限分组与此处的批量上传、发布项目组独立。预览每次请求复核账号状态、成员关系和目标权限；公开项目仍要求登录。
+发布以整个聚合项目为单位。数据库需求随包保存，绑定与凭据不随安装转移。详见 [数据库空间](/concepts/data-storage) 与 [打包](/cli/workspace/pack)。

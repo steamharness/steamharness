@@ -1,3 +1,4 @@
+import { readProjectManifest } from "@steamharness/project-manifest";
 import { randomUUID } from 'node:crypto';
 import { mkdir, readdir, readFile, realpath, rename, rm, stat, writeFile } from 'node:fs/promises';
 import path from 'node:path';
@@ -9,8 +10,8 @@ import type { RunRecord } from './workflow-workspace';
 export interface LocalRunSummary {
   id: string; title: string; status: string; createdAt?: number; durationMs?: number; entrypointId?: string; sessionId?: string;
 }
-interface Activity { version: 1; projectId: string; projectType: string; pid: number; updatedAt: number; runs: Array<LocalRunSummary & { changedAt?: number }>; queued: number; queuedInputIds?: string[] }
-export interface LocalAnalysisProject { id: string; name: string; folderPath: string; uri: string; inWorkspace?: boolean; projectType?: string }
+interface Activity { version: 1; projectId: string; entryId: string; projectType: string; pid: number; updatedAt: number; runs: Array<LocalRunSummary & { changedAt?: number }>; queued: number; queuedInputIds?: string[] }
+export interface LocalAnalysisProject { id: string; name: string; folderPath: string; uri: string; inWorkspace?: boolean; projectType?: string; entryId?: string }
 
 const activeStatus = (status: string): boolean => ['running', 'waiting_for_input'].includes(status);
 const runStatuses = new Set(['running', 'waiting_for_input', 'success', 'failed', 'aborted', 'timed_out', 'interrupted', 'unknown']);
@@ -36,7 +37,7 @@ export function summarizeLocalRuns(runs?: RunRecord[], sessions?: ConversationSe
 }
 
 // A separate lease per service keeps another Studio window's live status intact.
-export function createLocalActivityWriter(directory: string, project: Pick<Project, 'id' | 'projectType'>,
+export function createLocalActivityWriter(directory: string, project: Pick<Project, 'id' | 'entryId' | 'projectType'>,
   state: () => { runs: LocalRunSummary[]; queued: number; queuedInputIds?: string[] }, log: (message: string) => void) {
   const filename = path.join(directory, 'activity', `${randomUUID()}.json`);
   // Idle windows must not republish runs completed or deleted by another window.
@@ -52,7 +53,7 @@ export function createLocalActivityWriter(directory: string, project: Pick<Proje
       const version = runVersion(run);
       if (runVersions.get(run.id) !== version) { changedRuns.set(run.id, performance.timeOrigin + performance.now()); runVersions.set(run.id, version); }
     }
-    const value: Activity = { version: 1, projectId: project.id, projectType: project.projectType, pid: process.pid, updatedAt: Date.now(),
+    const value: Activity = { version: 1, projectId: project.id, entryId: project.entryId, projectType: project.projectType, pid: process.pid, updatedAt: Date.now(),
       runs: current.runs.filter(run => activeStatus(run.status) || changedRuns.has(run.id))
         .sort((a, b) => (b.createdAt ?? 0) - (a.createdAt ?? 0)).filter((run, index) => index < 100 || activeStatus(run.status))
         .map(run => ({ ...run, changedAt: changedRuns.get(run.id) })),
@@ -61,7 +62,7 @@ export function createLocalActivityWriter(directory: string, project: Pick<Proje
       await mkdir(path.dirname(filename), { recursive: true });
       if (!metadataPublished) {
         const temp = `${filename}.metadata.tmp`;
-        await writeFile(temp, JSON.stringify({ version: 1, projectId: project.id, projectType: project.projectType }), { mode: 0o600 });
+        await writeFile(temp, JSON.stringify({ version: 1, projectId: project.id, entryId: project.entryId, projectType: project.projectType }), { mode: 0o600 });
         await rename(temp, path.join(directory, 'project.json')); metadataPublished = true;
       }
       const temp = `${filename}.tmp`;
@@ -92,23 +93,27 @@ export async function readLocalStudioAnalysis(options: { storageDir: string; pro
   const now = options.now ?? Date.now(), seen = new Set<string>();
   let serverExcluded = 0;
   const projects = [];
-  for (const reference of [...options.projects].sort((a, b) => Number(!!b.inWorkspace) - Number(!!a.inWorkspace))) {
+  const references: LocalAnalysisProject[] = [];
+  for (const project of options.projects) {
+    try { const manifest = readProjectManifest(await readJson(path.join(project.folderPath, 'package.json'))); for (const entry of manifest.entries) references.push({ ...project, entryId: entry.entryId, projectType: entry.type, name: `${project.name} / ${entry.name}` }); }
+    catch { references.push(project); }
+  }
+  for (const reference of [...references].sort((a, b) => Number(!!b.inWorkspace) - Number(!!a.inWorkspace))) {
     const project = { ...reference, projectType: reference.projectType ?? 'unknown', availability: 'available', live: false, queued: 0, runs: [] as LocalRunSummary[] };
     try {
       const directory = await realpath(reference.folderPath);
-      if (seen.has(directory)) { continue; } seen.add(directory);
+      if (seen.has(`${directory}:${reference.entryId}`)) { continue; } seen.add(`${directory}:${reference.entryId}`);
       project.folderPath = directory;
       const manifest = await readJson(path.join(directory, 'package.json'));
       if (!sameProjectId(manifest?.id, reference.id)) { throw new Error('Project identity changed.'); }
-      if (manifest.steamHarness?.projectInfo?.dataStorage?.mode === 'server') { serverExcluded++; continue; }
       const names = manifest.steamHarness?.projectInfo?.localizedNames;
       const language = options.locale?.toLowerCase().startsWith('zh') ? 'zh-cn' : 'en';
       const name = record(names) ? Object.entries(names).find(([key]) => key.toLowerCase() === language)?.[1] : undefined;
       project.name = typeof name === 'string' && name.trim() ? name : typeof manifest.name === 'string' && manifest.name.trim() ? manifest.name : reference.name;
-      const root = await projectDataDirectory(options.storageDir, directory, reference.id);
-      const metadata = await readJson(path.join(root, 'project.json'));
-      const type = manifest.steamHarness?.kanban ? 'kanban' : projectType(reference.projectType) ?? projectType(manifest.steamHarness?.projectType)
-        ?? (metadata?.version === 1 && sameProjectId(metadata.projectId, reference.id) ? projectType(metadata.projectType) : undefined);
+      const registration = readProjectManifest(manifest).entries.find(entry => entry.entryId === reference.entryId)!;
+      project.name = `${project.name} / ${registration.name}`;
+      const root = await projectDataDirectory(options.storageDir, directory, reference.id, registration.entryId);
+      const type = registration.type;
       const workspace = type === 'conversation' || type === 'kanban' ? undefined : await readJson(path.join(root, 'runs.json'));
       const conversations = type !== 'kanban' && !workspace ? await readJson(path.join(root, 'conversations.json')) : undefined;
       if (workspace !== undefined && (!record(workspace) || workspace.version !== 1 || !Array.isArray(workspace.runs) || !workspace.runs.every((run: any) => record(run) && typeof run.id === 'string' && run.id))) { throw new Error('Invalid run history.'); }
@@ -124,7 +129,7 @@ export async function readLocalStudioAnalysis(options: { storageDir: string; pro
         if (!file.endsWith('.json')) { continue; }
         try {
           const lease = await readJson(path.join(root, 'activity', file));
-          if (lease?.version === 1 && sameProjectId(lease.projectId, reference.id) && projectType(lease.projectType)
+          if (lease?.version === 1 && sameProjectId(lease.projectId, reference.id) && lease.entryId === reference.entryId && projectType(lease.projectType)
             && (project.projectType === 'unknown' || lease.projectType === project.projectType) && Array.isArray(lease.runs)
             && lease.runs.every((run: any) => record(run) && typeof run.id === 'string' && run.id && typeof run.status === 'string')) { leases.push(lease); }
         } catch { /* A malformed or concurrently removed lease cannot prove liveness. */ }

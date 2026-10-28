@@ -4,6 +4,7 @@ export type ResourceScope = 'project' | 'conversation';
 
 export interface ResourceRequest {
   kind: ResourceKind;
+  database?: string;
   action: 'list' | 'get' | 'save' | 'delete';
   source?: ResourceSource;
   query?: string;

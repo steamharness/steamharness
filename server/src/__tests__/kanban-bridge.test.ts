@@ -1,236 +1,51 @@
-import assert from "node:assert/strict";
-import test from "node:test";
-import { invokeServerKanbanBridge } from "../kanban-bridge";
-import { HttpError } from "../protocol";
-import type { Storage } from "../storage";
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
+import assert from 'node:assert/strict';
+import { randomUUID } from 'node:crypto';
+import { mkdtemp, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
+import test from 'node:test';
+import { LocalDatabaseRegistry, createDatabasesContext, createLocalDatabaseResolver } from 'steamharness';
+import { invokeServerKanbanBridge, readKanbanBridgeCall } from '../kanban-bridge';
+import type { Storage } from '../storage';
+import type { KanbanBridgeCall } from '@steamharness/kanban-project';
 
-test("Kanban files preserve binary bytes and reject other projects and conversation attachments", async () => {
-  const root = await mkdtemp(join(tmpdir(), "kanban-files-"));
-  const bytes = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0, 255]);
-  const metadata = { id: "wf_abc123", name: "map.png", mimeType: "image/png", size: bytes.length, kind: "image", storage: "server", projectId: "demo", createdAt: "2026-10-08T00:00:00Z" };
-  let owner = "demo";
-  let conversationId: string | undefined;
-  let deleted = false;
-  const storage = {
-    async saveManagedFiles(input: { projectName: string; files: Array<{ buffer: Buffer }> }) {
-      assert.equal(input.projectName, "demo");
-      assert.deepEqual(input.files[0]!.buffer, bytes);
-      return [metadata];
-    },
-    async getManagedFile() { return { metadata: { ...metadata, projectId: owner, conversationId }, filePath: join(root, "content") }; },
-    async deleteManagedFile() { deleted = true; },
-  } as unknown as Storage;
-  const invoke = (operation: "files.createFile" | "files.readFile" | "files.deleteFile", input: Record<string, unknown>) => (
-    invokeServerKanbanBridge(storage, "demo", { requestId: "file", operation, input })
-  );
-  try {
-    await writeFile(join(root, "content"), bytes);
-    assert.deepEqual(await invoke("files.createFile", { name: "map.png", mimeType: "image/png", base64: bytes.toString("base64") }), { ...metadata, url: "/api/projects/files/wf_abc123" });
-    assert.deepEqual((await invoke("files.readFile", { fileId: metadata.id }) as { base64: string }).base64, bytes.toString("base64"));
-    owner = "another-project";
-    await assert.rejects(invoke("files.readFile", { fileId: metadata.id }), /unavailable/);
-    await assert.rejects(invoke("files.deleteFile", { fileId: metadata.id }), /unavailable/);
-    assert.equal(deleted, false);
-    owner = "demo";
-    conversationId = "private-conversation";
-    await assert.rejects(invoke("files.readFile", { fileId: metadata.id }), /unavailable/);
-    conversationId = undefined;
-    assert.equal(await invoke("files.deleteFile", { fileId: metadata.id }), true);
-    assert.equal(deleted, true);
-  } finally {
-    await rm(root, { recursive: true, force: true });
-  }
+const actor={userId:'reader',isSystemAdmin:false};
+const options={entryId:'board',actor,target:'1.0.0'};
+const all={mode:'all' as const};
+
+test('Kanban dispatches KV, knowledge, attachments and revisions through the selected entry database',async()=>{
+  const root=await mkdtemp(path.join(tmpdir(),'kanban-space-'));
+  try{
+    const registry=new LocalDatabaseRegistry(root),projectId=randomUUID();
+    const permissions={kv:{read:all,write:all},knowledge:{read:all,write:all}};
+    const request=registry.request({projectId,entryId:'board',alias:'data',permissions,target:{kind:'create',name:'Board'}});
+    const approved=registry.review(request.requestId,{approve:true});
+    const databases=createDatabasesContext({projectId,entryId:'board',requirements:[{alias:'data',host:'local',permissions,bindingRef:approved.bindingRef}],resolver:createLocalDatabaseResolver(registry)});
+    const storage={entryDatabases:async(...args:unknown[])=>{assert.deepEqual(args,[projectId,'board',actor,'1.0.0']);return databases;}} as unknown as Storage;
+    const call=(operation:KanbanBridgeCall['operation'],input:Record<string,unknown>={})=>invokeServerKanbanBridge(storage,projectId,{requestId:randomUUID(),operation,input:{database:'data',...input}},options);
+    await call('kv.setValue',{key:'board',value:{version:1}});
+    assert.deepEqual(await call('kv.getValue',{key:'board'}),{version:1});
+    const before=await call('database.revision');
+    await call('knowledge.createDocument',{id:'guide',title:'Guide',markdown:'# Guide\nshared'});
+    assert.equal((await call('knowledge.listDocuments') as {total:number}).total,1);
+    assert.equal((await call('knowledge.getDocument',{documentId:'guide'}) as {markdown:string}).markdown,'# Guide\nshared');
+    await call('knowledge.editDocument',{documentId:'guide',markdown:'updated'});
+    assert.equal((await call('knowledge.searchDocuments',{query:'updated'}) as {totalMatches:number}).totalMatches,1);
+    assert.equal((await call('knowledge.readDocumentLines',{documentId:'guide',startLine:1,endLine:1}) as {totalLines:number}).totalLines,1);
+    assert.notEqual(await call('database.revision'),before);
+    const bytes=Buffer.from([0,137,255,13,10]);
+    const file=await call('files.createFile',{name:'map.png',mimeType:'image/png',base64:bytes.toString('base64')}) as {id:string};
+    assert.deepEqual(Buffer.from((await call('files.readFile',{fileId:file.id}) as {base64:string}).base64,'base64'),bytes);
+    assert.equal(await call('files.deleteFile',{fileId:file.id}),true);
+    await call('knowledge.deleteDocument',{documentId:'guide'});
+    assert.equal(await call('knowledge.getDocument',{documentId:'guide'}),null);
+    registry.revoke(registry.authorization(approved.bindingRef!)!.grant.grantId);
+    await assert.rejects(call('kv.getValue',{key:'board'}),/no longer valid/);
+  }finally{await rm(root,{recursive:true,force:true});}
 });
 
-test("server Kanban bridge dispatches the complete project data API", async () => {
-  const calls: Array<{ operation: string; input: unknown }> = [];
-  const storage = {
-    getProjectStorageValue: async (input: unknown) => {
-      calls.push({ operation: "kv.get", input });
-      return { exists: true, value: { version: 1 }, revision: "1" };
-    },
-    setProjectStorageValue: async (input: unknown) => {
-      calls.push({ operation: "kv.set", input });
-      return { ok: true };
-    },
-    listKnowledgeDocuments: async (projectName: string, input: unknown) => {
-      calls.push({ operation: "knowledge.list", input: { projectName, input } });
-      return { items: [], hasMore: false, total: 0 };
-    },
-    getKnowledgeDocument: async (input: unknown) => {
-      calls.push({ operation: "knowledge.get", input });
-      return { id: "guide", title: "Guide", markdown: "# Guide" };
-    },
-    createKnowledgeDocument: async (input: unknown) => {
-      calls.push({ operation: "knowledge.create", input });
-      return { id: "guide", title: "Guide", markdown: "# Guide" };
-    },
-    editKnowledgeDocument: async (input: unknown) => {
-      calls.push({ operation: "knowledge.edit", input });
-      return { id: "guide", title: "Updated", markdown: "# Guide" };
-    },
-    deleteKnowledgeDocument: async (input: unknown) => {
-      calls.push({ operation: "knowledge.delete", input });
-      return { id: "guide", deleted: true };
-    },
-    searchKnowledgeDocuments: async (input: unknown) => {
-      calls.push({ operation: "knowledge.search", input });
-      return { query: "Guide", documentsSearched: 1, totalMatches: 1, matchesTruncated: false, matches: [] };
-    },
-    readKnowledgeDocumentLines: async (input: unknown) => {
-      calls.push({ operation: "knowledge.lines", input });
-      return { documentId: "guide", startLine: 1, endLine: 1, totalLines: 1, lines: [] };
-    },
-  } as unknown as Storage;
-  const invoke = (operation: Parameters<typeof invokeServerKanbanBridge>[2]["operation"], input: Record<string, unknown>) => (
-    invokeServerKanbanBridge(storage, "demo", { requestId: operation, operation, input })
-  );
-
-  await assert.doesNotReject(invoke("kv.getValue", { key: "board" }));
-  await assert.doesNotReject(invoke("kv.setValue", { key: "board", value: { version: 1 } }));
-  await assert.doesNotReject(invoke("knowledge.listDocuments", { pageSize: 20 }));
-  await assert.doesNotReject(invoke("knowledge.getDocument", { documentId: "guide" }));
-  await assert.doesNotReject(invoke("knowledge.createDocument", { id: "guide", title: "Guide", markdown: "# Guide" }));
-  await assert.doesNotReject(invoke("knowledge.editDocument", { documentId: "guide", title: "Updated" }));
-  await assert.doesNotReject(invoke("knowledge.deleteDocument", { documentId: "guide" }));
-  await assert.doesNotReject(invoke("knowledge.searchDocuments", { query: "Guide", pageSize: 20 }));
-  await assert.doesNotReject(invoke("knowledge.readDocumentLines", { documentId: "guide", startLine: 1, endLine: 1 }));
-
-  assert.deepEqual(calls, [
-    { operation: "kv.get", input: { storageKind: "kv", scope: "project", projectId: "demo", key: "board" } },
-    { operation: "kv.set", input: { storageKind: "kv", scope: "project", projectId: "demo", key: "board", value: { version: 1 }, source: { projectId: "demo" } } },
-    { operation: "knowledge.list", input: { projectName: "demo", input: { pageSize: 20 } } },
-    { operation: "knowledge.get", input: { projectName: "demo", documentId: "guide" } },
-    { operation: "knowledge.create", input: { projectName: "demo", id: "guide", title: "Guide", markdown: "# Guide" } },
-    { operation: "knowledge.edit", input: { projectName: "demo", documentId: "guide", title: "Updated" } },
-    { operation: "knowledge.delete", input: { projectName: "demo", documentId: "guide" } },
-    { operation: "knowledge.search", input: { projectName: "demo", query: "Guide", pageSize: 20 } },
-    { operation: "knowledge.lines", input: { projectName: "demo", documentId: "guide", startLine: 1, endLine: 1 } },
-  ]);
-});
-
-test("server Kanban bridge returns the fixed host locale without reading project data", async () => {
-  const storage = {} as Storage;
-
-  assert.equal(await invokeServerKanbanBridge(storage, "demo", {
-    requestId: "runtime-locale",
-    operation: "runtime.getLocale",
-    input: {},
-  }, { runtimeLocale: "zh-CN" }), "zh-CN");
-  assert.equal(await invokeServerKanbanBridge(storage, "demo", {
-    requestId: "runtime-locale-default",
-    operation: "runtime.getLocale",
-    input: {},
-  }), "en");
-});
-
-test("server Kanban bridge turns unavailable storage failures into a safe error", async () => {
-  const storage = {
-    getProjectStorageValue: async () => {
-      throw new Error("connect ECONNREFUSED postgres://private-host/workflow");
-    },
-  } as unknown as Storage;
-
-  await assert.rejects(
-    invokeServerKanbanBridge(storage, "demo", {
-      requestId: "request-1",
-      operation: "kv.getValue",
-      input: { key: "board" },
-    }),
-    (reason: unknown) => reason instanceof HttpError &&
-      reason.statusCode === 500 &&
-      reason.message === "Kanban project data operation failed.",
-  );
-});
-
-test("server Kanban bridge reads a confirmed fixed-target related project", async () => {
-  const calls: unknown[] = [];
-  const storage = {
-    resolveKanbanRelatedProject: async (input: unknown) => {
-      calls.push({ resolve: input });
-      return {
-        alias: "stocks",
-        projectId: "f4ee23d7-abbb-4ba3-8baf-75b7c6c0b964",
-      };
-    },
-    resolveRelatedProjectKVAccess: async (input: unknown) => {
-      calls.push({ authorize: input });
-      return { targetProjectId: "f4ee23d7-abbb-4ba3-8baf-75b7c6c0b964" };
-    },
-    getProjectStorageValue: async (input: unknown) => {
-      calls.push({ get: input });
-      return { exists: true, value: { schemaVersion: 3 }, revision: "3" };
-    },
-  } as unknown as Storage;
-  assert.deepEqual(await invokeServerKanbanBridge(storage, "kanban-project", {
-    requestId: "source-read",
-    operation: "relatedProject.kv.getValue",
-    input: { alias: "stocks", key: "stock-database.v3:catalog" },
-  }, { target: "1.2.3" }), { schemaVersion: 3 });
-  assert.deepEqual(calls, [
-    { resolve: {
-      projectName: "kanban-project",
-      target: "1.2.3",
-      alias: "stocks",
-    } },
-    { authorize: {
-      consumerProjectId: "kanban-project",
-      alias: "stocks",
-      key: "stock-database.v3:catalog",
-      operation: "read",
-    } },
-    { get: {
-      storageKind: "kv",
-      scope: "project",
-      projectId: "f4ee23d7-abbb-4ba3-8baf-75b7c6c0b964",
-      key: "stock-database.v3:catalog",
-    } },
-  ]);
-});
-
-test("server Kanban bridge hides unavailable related-project failures", async () => {
-  let dataRead = false;
-  const storage = {
-    resolveKanbanRelatedProject: async () => ({
-      alias: "stocks",
-      projectId: "f4ee23d7-abbb-4ba3-8baf-75b7c6c0b964",
-    }),
-    resolveRelatedProjectKVAccess: async () => {
-      throw new HttpError(403, 403, "Related project KV access is not granted for this key.");
-    },
-    getProjectStorageValue: async () => {
-      dataRead = true;
-      return { exists: false };
-    },
-  } as unknown as Storage;
-
-  await assert.rejects(
-    invokeServerKanbanBridge(storage, "demo", {
-      requestId: "source-read",
-      operation: "relatedProject.kv.getValue",
-      input: { alias: "stocks", key: "stock-database.v3:catalog" },
-    }),
-    (reason: unknown) => reason instanceof HttpError &&
-      reason.statusCode === 403,
-  );
-  assert.equal(dataRead, false);
-});
-
-test("server Kanban bridge returns null for missing knowledge documents", async () => {
-  const storage = {
-    getKnowledgeDocument: async () => {
-      throw new HttpError(404, 404, "Document does not exist.");
-    },
-  } as unknown as Storage;
-
-  await assert.doesNotReject(async () => {
-    assert.equal(await invokeServerKanbanBridge(storage, "demo", {
-      requestId: "request-1",
-      operation: "knowledge.getDocument",
-      input: { documentId: "missing" },
-    }), null);
-  });
+test('Kanban locale does not access storage and removed or undeclared operations are rejected',async()=>{
+  assert.equal(await invokeServerKanbanBridge({} as Storage,'demo',{requestId:'locale',operation:'runtime.getLocale',input:{}},{...options,runtimeLocale:'zh-CN'}),'zh-CN');
+  assert.equal(await invokeServerKanbanBridge({} as Storage,'demo',{requestId:'locale',operation:'runtime.getLocale',input:{}},options),'en');
+  for(const operation of ['relatedProject.kv.getValue','exec','kv.getValue'])assert.throws(()=>readKanbanBridgeCall({requestId:'bad',operation,input:{key:'board'}}),/invalid/);
 });

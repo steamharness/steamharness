@@ -34,6 +34,7 @@ import type {
 
 export interface CreateProjectMcpServerOptions {
   projectId: string;
+  entryId: string;
   structure: McpStructureReport;
   runner: McpRunner;
   fileInputMode: McpFileInputMode;
@@ -42,6 +43,7 @@ export interface CreateProjectMcpServerOptions {
   instructions?: string;
   beforeRun?(context: {
     projectId: string;
+  entryId: string;
     entrypointId: string;
     runId?: string;
     signal: AbortSignal;
@@ -55,12 +57,13 @@ export interface CreateProjectMcpServerOptions {
   onAudit?(event: McpAuditEvent): Promise<void> | void;
 }
 
-export function createProjectMcpServerName(projectId: string): string {
+export function createProjectMcpServerName(projectId: string, entryId: string): string {
   const normalized = projectId.trim();
   if (!/^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/.test(normalized)) {
     throw new Error("Workflow MCP project ID must be a safe non-empty identifier.");
   }
-  return `workflow-${normalized}`;
+  if (!/^[a-z][a-z0-9_-]{0,63}$/.test(entryId)) throw new Error("Workflow MCP requires a registered entryId.");
+  return `workflow-${normalized}-${entryId}`;
 }
 
 export function createProjectMcpServer(options: CreateProjectMcpServerOptions): Server {
@@ -77,7 +80,7 @@ export function createProjectMcpServer(options: CreateProjectMcpServerOptions): 
   const entrypoints = cloneEntrypoints(options.structure.entrypoints);
 
   const server = new Server(
-    { name: createProjectMcpServerName(options.projectId), version: options.version ?? "0.1.0" },
+    { name: createProjectMcpServerName(options.projectId,options.entryId), version: options.version ?? "0.1.0" },
     { capabilities: { tools: {} }, instructions: options.instructions },
   );
   const entrypointsById = new Map(entrypoints.map((entrypoint) => [entrypoint.id, entrypoint]));
@@ -115,16 +118,19 @@ export function createProjectMcpServer(options: CreateProjectMcpServerOptions): 
       await options.onAudit?.({
         type: "tool_call_started",
         projectId: options.projectId,
+        entryId: options.entryId,
         entrypointId: entrypoint.id,
       });
       auditStarted = true;
       await options.beforeRun?.({
         projectId: options.projectId,
+        entryId: options.entryId,
         entrypointId: entrypoint.id,
         signal,
       });
       const args = await projectMcpInputToArgs({
         projectId: options.projectId,
+        entryId: options.entryId,
         entrypointId: entrypoint.id,
         params: entrypoint.params,
         input: parsed.data,
@@ -134,6 +140,7 @@ export function createProjectMcpServer(options: CreateProjectMcpServerOptions): 
       });
       let report = await options.runner.run({
         projectId: options.projectId,
+        entryId: options.entryId,
         entrypointId: entrypoint.id,
         entrypointTitle: entrypoint.title,
         input: { ...parsed.data },
@@ -148,11 +155,12 @@ export function createProjectMcpServer(options: CreateProjectMcpServerOptions): 
         signal,
         extra.requestId,
       );
-      const toolResult = projectReportToMcpResult(report, entrypoint);
+      const toolResult = projectReportToMcpResult({...report,projectId:options.projectId,entryId:options.entryId},entrypoint);
       auditFinished = true;
       await Promise.resolve(options.onAudit?.({
         type: "tool_call_finished",
         projectId: options.projectId,
+        entryId: options.entryId,
         entrypointId: entrypoint.id,
         runId: report.runId,
         status: report.status,
@@ -164,6 +172,7 @@ export function createProjectMcpServer(options: CreateProjectMcpServerOptions): 
         await Promise.resolve(options.onAudit?.({
           type: "tool_call_finished",
           projectId: options.projectId,
+        entryId: options.entryId,
           entrypointId: entrypoint.id,
           status: signal.aborted ? "aborted" : "failed",
           isError: true,
@@ -214,6 +223,7 @@ async function resolveProjectMcpInteractions(
     await Promise.resolve(options.onAudit?.({
       type: "tool_call_waiting",
       projectId: options.projectId,
+        entryId: options.entryId,
       entrypointId: entrypoint.id,
       runId: report.runId,
       requestId: pending.requestId,
@@ -259,6 +269,7 @@ async function resolveProjectMcpInteractions(
       }
       await options.beforeRun?.({
         projectId: options.projectId,
+        entryId: options.entryId,
         entrypointId: entrypoint.id,
         runId: report.runId,
         signal,
@@ -266,12 +277,14 @@ async function resolveProjectMcpInteractions(
       await Promise.resolve(options.onAudit?.({
         type: "tool_call_resumed",
         projectId: options.projectId,
+        entryId: options.entryId,
         entrypointId: entrypoint.id,
         runId: report.runId,
         requestId: pending.requestId,
       })).catch(() => undefined);
       const resumed = await options.runner.resume({
         projectId: options.projectId,
+        entryId: options.entryId,
         entrypointId: entrypoint.id,
         entrypointTitle: entrypoint.title,
         runId: report.runId,
@@ -309,6 +322,7 @@ async function cancelProjectMcpWaitingRun(
 ): Promise<void> {
   await options.runner.cancel?.({
     projectId: options.projectId,
+        entryId: options.entryId,
     entrypointId: entrypoint.id,
     entrypointTitle: entrypoint.title,
     runId: report.runId,

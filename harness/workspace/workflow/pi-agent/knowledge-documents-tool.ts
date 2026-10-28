@@ -140,7 +140,7 @@ async function runKnowledgeDocumentsAction(
 ) {
   switch (args.action) {
     case "list": {
-      const documents = await steamharness.listKnowledgeDocuments(projectContext.storage.local);
+      const { items: documents } = await projectContext.databases.get("data").knowledge.listDocuments();
       return {
         action: "list" as const,
         count: documents.length,
@@ -149,7 +149,7 @@ async function runKnowledgeDocumentsAction(
     }
     case "get": {
       const documentId = requireToolString(args.documentId, "documentId", args.action);
-      const document = await steamharness.getKnowledgeDocument(projectContext.storage.local, documentId);
+      const document = await projectContext.databases.get("data").knowledge.getDocument(documentId);
       return {
         action: "get" as const,
         found: document !== undefined,
@@ -163,7 +163,7 @@ async function runKnowledgeDocumentsAction(
       };
     }
     case "create": {
-      const document = await steamharness.createKnowledgeDocument(projectContext.storage.local, {
+      const document = await projectContext.databases.get("data").knowledge.createDocument({
         id: normalizeOptionalString(args.documentId),
         title: requireToolString(args.title, "title", args.action),
         markdown: requireToolString(args.markdown, "markdown", args.action),
@@ -177,7 +177,7 @@ async function runKnowledgeDocumentsAction(
       };
     }
     case "edit": {
-      const document = await steamharness.editKnowledgeDocument(projectContext.storage.local, {
+      const document = await projectContext.databases.get("data").knowledge.editDocument({
         id: requireToolString(args.documentId, "documentId", args.action),
         ...(args.title === undefined ? {} : { title: args.title }),
         ...(args.markdown === undefined ? {} : { markdown: args.markdown }),
@@ -193,16 +193,14 @@ async function runKnowledgeDocumentsAction(
     case "delete": {
       return {
         action: "delete" as const,
-        ...(await steamharness.deleteKnowledgeDocument(
-          projectContext.storage.local,
-          requireToolString(args.documentId, "documentId", args.action),
+        ...(await projectContext.databases.get("data").knowledge.deleteDocument(requireToolString(args.documentId, "documentId", args.action),
         )),
       };
     }
     case "search": {
       return {
         action: "search" as const,
-        ...(await steamharness.searchKnowledgeDocuments(projectContext.storage.local, {
+        ...(await projectContext.databases.get("data").knowledge.searchDocuments({
           query: requireToolString(args.query, "query", args.action),
           ...(args.documentId === undefined ? {} : { documentId: args.documentId }),
           beforeLines: args.beforeLines,
@@ -215,7 +213,7 @@ async function runKnowledgeDocumentsAction(
     case "read_lines": {
       return {
         action: "read_lines" as const,
-        ...(await steamharness.readKnowledgeDocumentLines(projectContext.storage.local, {
+        ...(await projectContext.databases.get("data").knowledge.readDocumentLines({
           documentId: requireToolString(args.documentId, "documentId", args.action),
           startLine: requireToolNumber(args.startLine, "startLine", args.action),
           endLine: requireToolNumber(args.endLine, "endLine", args.action),

@@ -19,9 +19,31 @@ import {
   STEAMHARNESS_DESKTOP_RUNTIME_EVENT_PREFIX,
   STEAMHARNESS_PARAM_ERROR_MARKER,
 } from "../local";
-import type { CliProjectKVStore } from "../related-projects";
 import { prepareCliInvocation } from "../locale";
 import { resolveHarnessVersion } from "./harness-source";
+
+it("check validates all registered entries and supports selecting one entry", async () => {
+  const projectDir = await createArgsEchoProject();
+  const packagePath = path.join(projectDir, "package.json");
+  const pkg = JSON.parse(await readFile(packagePath, "utf8"));
+  pkg.steamHarness.entries.push({ ...pkg.steamHarness.entries[0], entryId: "second", name: "Second" });
+  await writeFile(packagePath, JSON.stringify(pkg));
+  const output: string[] = [];
+  const log = console.log;
+  console.log = value => { output.push(String(value)); };
+  try {
+    assert.equal(await main(["check", projectDir]), 0);
+    assert.deepEqual(JSON.parse(output.at(-1)!).entries.map((entry: { entryId: string }) => entry.entryId), ["main", "second"]);
+    pkg.steamHarness.entries[1].type = "conversation";
+    await writeFile(packagePath, JSON.stringify(pkg));
+    await assert.rejects(main(["check", projectDir]), /second.*conversation/);
+    assert.equal(await main(["check", projectDir, "--entry", "main"]), 0);
+    assert.equal(JSON.parse(output.at(-1)!).entryId, "main");
+  } finally {
+    console.log = log;
+    await rm(projectDir, { recursive: true, force: true });
+  }
+});
 
 it("run command preserves workflow args after explicit separator", async () => {
   const projectDir = await createArgsEchoProject();
@@ -154,12 +176,12 @@ it("runs image, video, and audio paths through the published Core file input", a
   }
 });
 
-it("local commands reject projects without an explicit data storage declaration", async () => {
+it("local commands reject projects without explicit entry registrations", async () => {
   const projectDir = await createArgsEchoProject(false);
   try {
     await assert.rejects(
       () => main(["json", projectDir]),
-      /dataStorage\.mode must be declared before this project can run or access data/,
+      /steamHarness must be an object/,
     );
   } finally {
     await rm(projectDir, { recursive: true, force: true });
@@ -247,7 +269,7 @@ it("structure rejects obsolete related-project fields before reporting success",
     };
     assert.match(
       report.diagnostics.error?.message ?? "",
-      /steamHarness\.projectInfo\.relatedProjects\[0] contains unsupported fields/,
+      /Project database and related-project declarations were removed|steamHarness\.projectInfo\.relatedProjects was removed/,
     );
   } finally {
     console.log = originalLog;
@@ -418,45 +440,6 @@ it("param resolver failures retain localizable metadata after the CLI marker", (
   });
 });
 
-const hasProjectStorageCore = typeof (steamHarness as unknown as {
-  createRemoteProjectRelatedProjectKVStoreFromEnv?: unknown;
-}).createRemoteProjectRelatedProjectKVStoreFromEnv === "function";
-
-it.runIf(hasProjectStorageCore)("CLI forwards the local PersistentValue store directory", async () => {
-  const projectDir = await createPersistentValueCliProject();
-  const persistentValueStoreDir = await mkdtemp(path.join(os.tmpdir(), "steamharness-cli-persistent-value-"));
-  const originalStoreDir = process.env.STEAMHARNESS_PERSISTENT_VALUE_STORE_DIR;
-  const originalLog = console.log;
-  process.env.STEAMHARNESS_PERSISTENT_VALUE_STORE_DIR = persistentValueStoreDir;
-  console.log = (() => undefined) as typeof console.log;
-
-  try {
-    assert.equal(await main(["json", projectDir]), 0);
-    const store = (createLocalProjectKVStore as unknown as (options: {
-      rootDir: string;
-      storageKind: "persistent_value";
-    }) => CliProjectKVStore)({
-      rootDir: persistentValueStoreDir,
-      storageKind: "persistent_value",
-    });
-    assert.equal(await store.getValue({
-      storageKind: "persistent_value",
-      scope: "project",
-      projectId: "22222222-2222-4222-8222-222222222222",
-      key: "local-key",
-    }), "from-cli");
-  } finally {
-    console.log = originalLog;
-    if (originalStoreDir === undefined) {
-      delete process.env.STEAMHARNESS_PERSISTENT_VALUE_STORE_DIR;
-    } else {
-      process.env.STEAMHARNESS_PERSISTENT_VALUE_STORE_DIR = originalStoreDir;
-    }
-    await rm(projectDir, { recursive: true, force: true });
-    await rm(persistentValueStoreDir, { recursive: true, force: true });
-  }
-});
-
 it("built unified CLI help executes from the CLI package", async (context) => {
   const cliPath = path.resolve("dist", "index.js");
   if (!existsSync(cliPath)) {
@@ -469,7 +452,7 @@ it("built unified CLI help executes from the CLI package", async (context) => {
   // keeps the packaged root CLI executable in the second-round test
   // layer without invoking any workflow or external service.
   assert.equal(result.exitCode, 0);
-  assert.match(result.stdout, /steamharness \[--locale <zh-CN\|en>] <run\|json\|structure\|resolve-params\|mcp>/);
+  assert.match(result.stdout, /steamharness \[--locale <zh-CN\|en>] <run\|json\|check\|structure\|resolve-params\|mcp>/);
   assert.match(result.stdout, /steamharness \[--locale <zh-CN\|en>] workspace <command>/);
   assert.equal(result.stderr.trim(), "");
 });
@@ -524,7 +507,7 @@ async function createArgsEchoProject(declareStorage = true): Promise<string> {
       type: "module",
       devDependencies: { "steamharness": await resolveHarnessVersion() },
       ...(declareStorage
-        ? { steamHarness: { projectInfo: { dataStorage: { mode: "local" } } } }
+        ? { steamHarness: { defaultEntry: 'main', entries: [{entryId:'main',name:'Main',type:'workflow',root:'.',entry:'index.ts',databases:[]}], projectInfo:{} } }
         : {}),
     }),
   );
@@ -608,52 +591,6 @@ async function createArgsEchoProject(declareStorage = true): Promise<string> {
     ].join("\n"),
   );
 
-  return projectDir;
-}
-
-async function createPersistentValueCliProject(): Promise<string> {
-  const projectDir = await mkdtemp(path.join(os.tmpdir(), "steamharness-cli-persistent-value-workflow-"));
-  await writeFile(
-    path.join(projectDir, "package.json"),
-    JSON.stringify({
-      id: "22222222-2222-4222-8222-222222222222",
-      type: "module",
-      devDependencies: { "steamharness": await resolveHarnessVersion() },
-      steamHarness: { projectInfo: { dataStorage: { mode: "local" } } },
-    }),
-  );
-  await writeFile(
-    path.join(projectDir, "index.ts"),
-    [
-      "const outputNode = steamharness.createOutputNode({",
-      "  name: \"output\",",
-      "  format() {",
-      "    return { errCode: 0, errMessage: \"\", items: [] };",
-      "  },",
-      "});",
-      "",
-      "export const persistentCliProject = steamharness.defineProject({",
-      "  name: \"persistent-cli-test\",",
-      "  async run(input, context) {",
-      "    await context.storage.local.persistentValue.setValue(\"local-key\", \"from-cli\");",
-      "    return steamharness.runNode(outputNode, input, context);",
-      "  },",
-      "});",
-      "",
-      "export const executor = steamharness.defineExecutor({",
-      "  projectType: \"workflow\",",
-      "  defaultEntrypoint: \"main\",",
-      "  entrypoints: [steamharness.defineEntrypoint({",
-      "    id: \"main\", title: \"Main\", workflow: persistentCliProject,",
-      "    createInput() { return {}; },",
-      "  })],",
-      "});",
-      "",
-      "export { persistentCliProject as workflow };",
-      "export default persistentCliProject;",
-      "",
-    ].join("\n"),
-  );
   return projectDir;
 }
 

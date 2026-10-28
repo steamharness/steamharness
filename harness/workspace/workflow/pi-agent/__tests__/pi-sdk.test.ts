@@ -1,3 +1,4 @@
+import { createApprovedTestContext } from "../../../test-databases";
 import { describe, expect, it, vi } from "vitest";
 import {
   __test_createDelayedToolEventBuffer,
@@ -11,7 +12,6 @@ import { KNOWLEDGE_DOCUMENTS_TOOL_NAME } from "../knowledge-documents-tool";
 import {
   createDisabledProjectConversationContext,
   createDisabledProjectTokenUsageContext,
-  createProjectRelatedProjectsContext,
   createProjectToolPermissionContext,
   type KVContext,
 } from "steamharness";
@@ -230,18 +230,7 @@ function createToolContext(
 ): RunContext {
   return {
     providers: {},
-    storage: {
-      local: {
-        kv: createMemoryKVContext(),
-        persistentValue: createMemoryKVContext(),
-        relatedProjects: createProjectRelatedProjectsContext(),
-      },
-      server: {
-        kv: createMemoryKVContext(),
-        persistentValue: createMemoryKVContext(),
-        relatedProjects: createProjectRelatedProjectsContext(),
-      },
-    },
+    ...createApprovedTestContext(),
     conversation: createDisabledProjectConversationContext(),
     tokenUsage: createDisabledProjectTokenUsageContext(),
     userInput: {

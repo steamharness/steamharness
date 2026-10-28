@@ -38,7 +38,7 @@ describe('project templates', () => {
       ids.add(created.id);
       const manifest = JSON.parse(await readFile(path.join(created.directory, 'package.json'), 'utf8'));
       expect(manifest).toMatchObject({ id: created.id, private: true, devDependencies: { 'steamharness': versions.harness, '@steamharness/cli': versions.cli },
-        steamHarness: { projectInfo: { dataStorage: { mode: 'local' } } } });
+        steamHarness: {defaultEntry:'main',entries:[{entryId:'main',type:template.projectType,databases:[]}]} });
       expect(JSON.stringify(manifest)).not.toMatch(/link:|file:|workspace:|\/Users\//);
       const card = manifest.steamHarness.projectCard;
       expect(card.icon).toBe(defaultProjectCardIcon(template.projectType));
@@ -69,20 +69,12 @@ describe('project templates', () => {
     expect(ids.size).toBe(7);
   }, 60_000);
 
-  it.each(['workflow-starter', 'workflow-hello', 'conversation-starter', 'conversation-round-output'])('matches untouched %s source to a published SDK and preserves edits', async templateId => {
-    const created = await createProjectFromTemplate({ templateId, name: templateId, parentDirectory: await parent(), versions });
-    const sdk = path.join(created.directory, 'node_modules/steamharness'); await mkdir(sdk, { recursive: true });
-    await writeFile(path.join(sdk, 'package.json'), JSON.stringify({ name: 'steamharness', type: 'module', exports: { './runtime-api': { import: './runtime-api.js' } } }));
-    await writeFile(path.join(sdk, 'runtime-api.js'), 'export const workflowRuntimeApi = { defineWorkflow() {} };');
-    expect(await prepareProjectTemplateRuntime(created.directory)).toBe(true);
-    const filename = path.join(created.directory, 'index.ts'), source = await readFile(filename, 'utf8');
-    expect(source).toContain("import type { WorkflowRuntimeApi } from 'steamharness/runtime-api'");
-    expect(source).toContain('workflow.defineWorkflow'); expect(source).toContain('workflow.defineExecutor');
-    expect(source).not.toMatch(/steamharness\.define|\.steamharness;/);
+  it('preserves authored template sources when preparing the installed runtime', async () => {
+    const created = await createProjectFromTemplate({templateId:'workflow-starter',name:'current',parentDirectory:await parent(),versions});
+    const filename=path.join(created.directory,'index.ts'),source=await readFile(filename,'utf8');
+    await writeFile(filename,source+'\n// User changes\n');
     expect(await prepareProjectTemplateRuntime(created.directory)).toBe(false);
-    await writeFile(filename, `${source}\n// User changes\n`);
-    expect(await prepareProjectTemplateRuntime(created.directory)).toBe(false);
-    expect(await readFile(filename, 'utf8')).toBe(`${source}\n// User changes\n`);
+    expect(await readFile(filename,'utf8')).toBe(source+'\n// User changes\n');
   });
 
   it('retains useful script diagnostics from inspection instead of reporting only the validation summary', async () => {
@@ -136,7 +128,7 @@ it.each(['workflow', 'conversation', 'kanban'] as const)('waits for a Server ID 
   const parentDirectory = await parent(), name = `allocated-${projectType}`, allocatedId = '78648759-bcde-4fd5-b3bd-9a2dd46a7192';
   const input = { templateId: `${projectType}-starter`, name, parentDirectory, versions };
   const created = await createProjectFromTemplate({ ...input, allocateProjectId: async project => {
-    expect(project).not.toHaveProperty('projectId'); expect(project).toMatchObject({ name, projectType, projectInfo: { dataStorage: { mode: 'local' } } });
+    expect(project).not.toHaveProperty('projectId'); expect(project).toMatchObject({ name, defaultEntry:'main', entries:[{entryId:'main',type:projectType,databases:[]}]});
     expect(await readdir(path.join(parentDirectory, name))).toEqual([]);
     return allocatedId;
   } });

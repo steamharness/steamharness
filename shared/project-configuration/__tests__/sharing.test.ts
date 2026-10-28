@@ -2,7 +2,7 @@ import {describe,it,expect} from 'vitest';
 import {createHash} from 'node:crypto';
 import {applyConfigurationAction,bindConfigurationTemplate,configurationSnapshot,configurationRule,configurationRuleHash,exportConfigurations,createConfigurationState,createPublicationDraft,freezeConfigurationTemplate,parseConfigurationDefinition,parseConfigurationTemplate,validateConfigurationAction,type ConfigurationValue,type ProjectConfigurationField} from '../index';
 let sequence=0;const id=()=>String(++sequence);
-const binding={projectId:'project',projectVersion:'1.0.0',sourceHash:'a'.repeat(64)};
+const binding={projectId:'project',entryId:"main",projectVersion:'1.0.0',sourceHash:'a'.repeat(64)};
 function published(fields:ProjectConfigurationField[]) {const author=createConfigurationState(fields,id),draft=createPublicationDraft(author);return freezeConfigurationTemplate(draft,binding);}
 describe('versioned configuration publication',()=>{
   it('filters private fields, defaults and nested values, preserving falsy values',()=>{

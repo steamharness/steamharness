@@ -15,7 +15,6 @@
     "@steamharness/i18n": "workspace:*",
     "@steamharness/knowledge-base": "workspace:*",
     "@steamharness/project-configuration": "workspace:*",
-    "@steamharness/project-dependencies": "workspace:*",
     "@steamharness/project-info": "workspace:*",
     "@steamharness/project-types": "workspace:*",
     "@tailwindcss/vite": "^4.1.0",

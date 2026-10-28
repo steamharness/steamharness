@@ -16,7 +16,7 @@ test("inspects a Kanban project without an executor", async () => {
     assert.equal(report.projectType, "kanban");
     assert.equal(report.kanban?.entry, "index.html");
     assert.deepEqual(report.configuration?.fields, [{ name: "title", type: "string", defaultValue: "Roadmap" }]);
-    assert.deepEqual(report.workflow.files, ["configuration.json", "index.html", "package.json"]);
+    assert.deepEqual(report.workflow.files, ["index.html"]);
   } finally {
     await rm(projectDir, { recursive: true, force: true });
   }
@@ -47,15 +47,11 @@ test("inspects a Kanban project from a configured artifact directory", async () 
     await mkdir(path.join(projectDir, "dist", "pages"), { recursive: true });
     await Promise.all([
       writeFile(path.join(projectDir, "package.json"), JSON.stringify({
-        id: "kanban-artifact-test",
+        id: "00000000-0000-4000-8000-000000000011",
         name: "Kanban Artifact Test",
         version: "0.1.0",
         steamHarness: {
-          projectType: "kanban",
-          kanban: {
-            artifactDir: "dist",
-            entry: "pages/board.html",
-          },
+          defaultEntry:"board",entries:[{entryId:"board",type:"kanban",name:"Board",root:".",entry:"dist/pages/board.html",databases:[]}],
         },
       })),
       writeFile(path.join(projectDir, "dist", "pages", "board.html"), "<!doctype html>"),
@@ -63,8 +59,8 @@ test("inspects a Kanban project from a configured artifact directory", async () 
 
     const report = inspectLocalProjectStructure({ projectDir: projectDir });
     assert.deepEqual(report.kanban, {
-      artifactDir: "dist",
-      entry: "pages/board.html",
+      artifactDir: "dist/pages",
+      entry: "board.html",
     });
     assert.ok(report.workflow.files.includes("dist/pages/board.html"));
   } finally {
@@ -97,7 +93,7 @@ test("rejects removed Kanban dataSources declarations", async () => {
 
     assert.throws(
       () => inspectLocalProjectStructure({ projectDir: projectDir }),
-      /dataSources was removed/,
+      /steamHarness.projectType was removed/,
     );
   } finally {
     await rm(projectDir, { recursive: true, force: true });
@@ -116,18 +112,17 @@ test("rejects a configured Kanban artifact entry through a symbolic-link directo
       throw error;
     }
     await writeFile(path.join(projectDir, "package.json"), JSON.stringify({
-      id: "kanban-symlink-test",
+      id: "00000000-0000-4000-8000-000000000013",
       name: "Kanban Symlink Test",
       version: "0.1.0",
       steamHarness: {
-        projectType: "kanban",
-        kanban: { artifactDir: "dist", entry: "index.html" },
+        defaultEntry:"board",entries:[{entryId:"board",type:"kanban",name:"Board",root:".",entry:"dist/index.html",databases:[]}],
       },
     }));
 
     assert.throws(
       () => inspectLocalProjectStructure({ projectDir: projectDir }),
-      /must contain regular artifact entry dist\/index\.html/,
+      /including symlinks/,
     );
   } finally {
     await Promise.all([
@@ -141,12 +136,11 @@ async function createKanbanFixture(): Promise<string> {
   const projectDir = await mkdtemp(path.join(os.tmpdir(), "steamharness-kanban-"));
   await Promise.all([
     writeFile(path.join(projectDir, "package.json"), JSON.stringify({
-      id: "kanban-test",
+      id: "00000000-0000-4000-8000-000000000012",
       name: "Kanban Test",
       version: "0.1.0",
         steamHarness: {
-          projectType: "kanban",
-          kanban: {},
+          defaultEntry:"board",entries:[{entryId:"board",type:"kanban",name:"Board",root:".",entry:"index.html",configuration:"configuration.json",databases:[]}],
         },
     })),
     writeFile(path.join(projectDir, "index.html"), "<!doctype html><title>Kanban</title>"),

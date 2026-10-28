@@ -1,6 +1,9 @@
+import type { ProjectAccessRequest, ProjectAccessRequestStatus } from "@steamharness/project-access";
+import { readProjectManifest, selectProjectEntry, projectManifestForDistribution, type ProjectEntry } from '@steamharness/project-manifest';
+import { DatabaseSpaceRepository } from './database-spaces';
 import { type AccessActor, type AccessCapability, type ResourceAccess } from "@steamharness/project-access";
 import {isDeepStrictEqual} from "node:util";
-import { bindConfigurationProfiles, configurationAccessView, type ConfigurationProfilePolicy, type ConfigurationAccess, bindConfigurationTemplate, configurationAgentModelPolicy, createPublicationDraft, parsePublicationDraft, freezeConfigurationTemplate, parseConfigurationTemplate, CONFIGURATION_TEMPLATE_FILE, type ConfigurationPublicationDraft, type ProjectConfigurationTemplate, configurationCapability, parseConfigurationFile, validateConfigurationFileSelection, type ProjectConfigurationField,parseConfigurationField, applyConfigurationAction, configurationSnapshot, exportConfigurations, parseConfigurationDefinition, readConfigurationState, validateConfigurationAction, ProjectConfigurationError, type ProjectConfigurationAction, type ProjectConfigurationState, type ProjectConfigurationExport, type ProjectConfiguration } from "@steamharness/project-configuration";
+import { bindConfigurationProfiles, configurationAccessView, type ConfigurationProfilePolicy, type ConfigurationAccess, bindConfigurationTemplate, configurationAgentModelPolicy, createPublicationDraft, parsePublicationDraft, freezeConfigurationTemplate, parseConfigurationTemplate, configurationTemplatePath, CONFIGURATION_TEMPLATE_FILE, type ConfigurationPublicationDraft, type ProjectConfigurationTemplate, configurationCapability, parseConfigurationFile, validateConfigurationFileSelection, type ProjectConfigurationField,parseConfigurationField, applyConfigurationAction, configurationSnapshot, exportConfigurations, parseConfigurationDefinition, readConfigurationState, validateConfigurationAction, ProjectConfigurationError, type ProjectConfigurationAction, type ProjectConfigurationState, type ProjectConfigurationExport, type ProjectConfiguration } from "@steamharness/project-configuration";
 import { createLocalProjectConfigurationStore, readProjectConfigurationDefinition } from "steamharness";
 
 import { createHash, createHmac, randomBytes, randomUUID, timingSafeEqual } from "node:crypto";
@@ -10,10 +13,10 @@ import { create as createTar, extract as extractTar, list as listTar, type ReadE
 import { Open as openZip } from "unzipper";
 import { copyProjectUploadFiles } from "@steamharness/project-upload/node";
 import { createProjectUploadPortablePathKey } from "@steamharness/project-upload";
-import { createKnowledgeDocument, createProjectKVContext, createProjectPersistentValueContext, createProjectRelatedProjectsContext, deleteKnowledgeDocument, editKnowledgeDocument, getKnowledgeDocument, isProjectKind, listKnowledgeDocumentPage, searchKnowledgeDocuments, readKnowledgeDocumentLines, HarnessError, type KVScope, type KVStore, type KVStoreGetInput, type KVWriteSource, type StorageKind, type ProjectKind, type StorageLocationContext, type KnowledgeDocument, type KnowledgeDocumentSummaryRecord, type KnowledgeSearchResultRecord, type KnowledgeDocumentLinesResult, type TokenUsageAggregate, type TokenUsageEntry, describeKnowledgeMutationKeys, isKnowledgeDocumentStorageKey } from "steamharness";
+import { createKnowledgeDocument, createProjectKVContext, createProjectPersistentValueContext, deleteKnowledgeDocument, editKnowledgeDocument, getKnowledgeDocument, isProjectKind, listKnowledgeDocumentPage, searchKnowledgeDocuments, readKnowledgeDocumentLines, HarnessError, type KVScope, type KVStore, type KVStoreGetInput, type KVWriteSource, type StorageKind, type ProjectKind, type KnowledgeContext, type KnowledgeDocument, type KnowledgeDocumentSummaryRecord, type KnowledgeSearchResultRecord, type KnowledgeDocumentLinesResult, type TokenUsageAggregate, type TokenUsageEntry, describeKnowledgeMutationKeys, isKnowledgeDocumentStorageKey } from "steamharness";
 import { getAuthCookieSecret } from "./account-auth";
 import { resolveServerPathRoots } from "./paths";
-import { ArtifactStorage, createObjectPath, DatabaseRepository, type ProjectMemberRecord, type ProjectInvitationRecord, type ProjectRole, type Visibility, type DbRecord, type DbVersionRecord, type ProjectStorageRevisionEvent, type DeploymentRecord } from "./persistence";
+import { ArtifactStorage, createObjectPath, DatabaseRepository, type ProjectMemberRecord, type ProjectInvitationRecord, type ProjectRole, type Visibility, type DbRecord, type DbVersionRecord, type ProjectStorageRevisionEvent } from "./persistence";
 import { HttpError, toHttpErrorWithStatus } from "./protocol";
 import { createProjectLocalStorageFromEnv } from "./local-storage";
 import { isProjectStorageNotFoundError, type ObjectStorage } from "./object-storage";
@@ -21,11 +24,10 @@ import { resolveProjectStorageDriver } from "./storage-driver";
 import { resolveServerDataRootFromEnv } from "./release-paths";
 import { createInvalidProjectUuidMessage, createUnsafeProjectIdMessage, isSafeProjectId, isProjectUuid, resolveProjectRoot } from "./workflow-ids";
 import { generateProjectCardMetadata, readProjectCardMetadataFromPackageJson, type ProjectCardMetadata } from "@steamharness/project-card-metadata";
-import { assertProjectDataStorageLocationAllowed, createDefaultProjectRelatedProjectGrant, isProjectAccessAllowed, isProjectKVAccessAllowed, normalizeDeclaredProjectInfoInput, normalizeProjectInfo, readProjectInfo, resolveProjectRelatedProjectAccess, writeProjectInfo, type DeclaredProjectInfo, type ProjectInfoContract, type RelatedProject, type RelatedProjectKVGrant } from "@steamharness/project-info";
-import { createKanbanContentSecurityPolicy, createKanbanArtifactEntryPath, injectKanbanBridge, isSafeKanbanPublicAssetPath, readKanbanArtifactConfig, readKanbanAssetMimeType, readPackageProjectType, type KanbanArtifactConfig } from "@steamharness/kanban-project";
+import { normalizeDeclaredProjectInfoInput, normalizeProjectInfo, readProjectInfo, writeProjectInfo, type DeclaredProjectInfo, type ProjectInfoContract } from "@steamharness/project-info";
+import { createKanbanContentSecurityPolicy, createKanbanArtifactEntryPath, injectKanbanBridge, isSafeKanbanPublicAssetPath,  readKanbanAssetMimeType,  type KanbanArtifactConfig } from "@steamharness/kanban-project";
 import { readRequiredCoreVersion } from "@steamharness/runtime-compatibility";
 import { readServerBuildInfo, type ServerBuildInfo } from "./build-info";
-import { STEAMHARNESS_PROJECT_GROUP_MANIFEST_FILE, createExternalProjectDependencyLocks, finalizeProjectDependencyLock, isProjectGroupHostDataPath, parseProjectDependencyLocks, parseProjectGroupManifest, type ProjectAccessRequest, type ProjectDependencyLock, type ProjectDependencyStatusResult, type ProjectDownloadPlan, type ProjectGroupManifestV1 } from "@steamharness/project-dependencies";
 export const PROJECT_CARD_IMAGE_MAX_BYTES = 1024 * 1024;
 const PROJECT_CARD_IMAGE_HASH_PATTERN = /^[a-f0-9]{64}$/;
 const MAX_KANBAN_ASSET_SIZE_BYTES = 20 * 1024 * 1024;
@@ -51,6 +53,7 @@ export interface ManagedFileReference {
   kind: ManagedFileKind;
   storage: ManagedFileStorage;
   projectId?: string;
+  entryId?: string;
   conversationId?: string;
   createdAt: string;
 }
@@ -83,16 +86,11 @@ export interface PreparationJob {
   result?: UploadPackageResult;
 }
 
-interface DeploymentPreparation {
-  deploymentId: string;
-  archiveName: string;
-  createdAt: string;
-}
-
 export interface Summary {
   id: string;
   name: string;
-  projectType: ProjectKind;
+  entries: ProjectEntry[];
+  defaultEntry: string;
   projectCard: ProjectCardMetadata;
   projectInfo: ProjectInfoContract;
   ownerUserId?: string;
@@ -139,8 +137,7 @@ export interface VersionSummary {
     releaseLog?: string;
     sourceHash?: string;
     sourceObjectPath?: string;
-    dependencies: ProjectDependencyLock[];
-    latest: boolean;
+      latest: boolean;
   }>;
 }
 
@@ -226,31 +223,6 @@ export type PersistentValueKnowledgeMutation =
       input: { documentId: string };
     };
 
-/**
- * Whether a target's grant covers every key a knowledge mutation touches.
- *
- * The mutation is applied by the store as a whole — index bookkeeping included
- * — so the document it names and the index it is listed in both have to be
- * granted, on the side that is being read and the side that is being written.
- * A mutation whose keys cannot be named is refused: "cannot say" is not the
- * same as "touches nothing".
- */
-export function isKnowledgeMutationGranted(
-  grant: RelatedProjectKVGrant,
-  mutation: PersistentValueKnowledgeMutation,
-): boolean {
-  const keys = describeKnowledgeMutationKeys(mutation);
-  if (keys === undefined) return false;
-  const covered = (
-    // A grant written before Knowledge existed has no rule here at all, and
-    // "no rule" is a refusal rather than an open door.
-    rule: RelatedProjectKVGrant["read"] | undefined,
-    key: string,
-  ): boolean => isKnowledgeDocumentStorageKey(key) && isProjectAccessAllowed(rule, key);
-  return keys.read.every((key) => covered(grant.knowledge?.read, key))
-    && keys.write.every((key) => covered(grant.knowledge?.write, key));
-}
-
 export type KnowledgeDocumentRecord = KnowledgeDocument;
 export type KnowledgeDocumentListItem = KnowledgeDocumentSummaryRecord;
 export type KnowledgeDocumentSearchResult = KnowledgeSearchResultRecord;
@@ -308,7 +280,6 @@ export interface PublishResult {
   latest: string;
   nextVersion: string;
   releaseLog: string;
-  dependencies: ProjectDependencyLock[];
 }
 
 export interface CloneProjectResult {
@@ -339,27 +310,16 @@ export interface Manifest {
   releaseLog?: string;
   sourceHash: string;
   sourceObjectPath?: string;
-  projectType?: ProjectKind;
-  dependencies?: ProjectDependencyLock[];
-}
-
-export interface ProjectGroupDownloadResult extends ProjectDownloadPlan {
-  projects: Array<{
-    alias?: string;
-    projectId: string;
-    projectName: string;
-    version: string;
-    sourceHash: string;
-    role: "root" | "dependency";
-    files: File[];
-  }>;
+  entries: ProjectEntry[];
+  defaultEntry: string;
 }
 
 export interface PackageMetadata {
   id: string;
   name: string;
   version: string;
-  projectType: ProjectKind;
+  entries: ProjectEntry[];
+  defaultEntry: string;
   projectCard: ProjectCardMetadata;
   projectInfo: ProjectInfoContract;
   requiredCoreVersion: string;
@@ -406,22 +366,10 @@ export interface ProjectAccessSummary {
 export interface ProjectCreateResult {
   projectId: string;
   projectName: string;
-  projectType: ProjectKind;
+  entries: ProjectEntry[];
+  defaultEntry: string;
   projectInfo: DeclaredProjectInfo;
   visibility: Visibility;
-}
-
-export interface RelatedProjectStatus {
-  relation: RelatedProject;
-  projectName?: string;
-  reciprocalAlias?: string;
-  grantFromRelatedProject?: RelatedProjectKVGrant;
-  confirmed: boolean;
-}
-
-export interface RelatedProjectListResult {
-  projectId: string;
-  relatedProjects: RelatedProjectStatus[];
 }
 
 export interface KanbanWorkspaceState {
@@ -431,7 +379,8 @@ export interface KanbanWorkspaceState {
   resolvedTarget: string;
   artifactDir: string;
   entry: string;
-  relatedProjects: RelatedProject[];
+  entryId: string;
+  databases: import("@steamharness/database-spaces").DatabaseRequirement[];
   configurations: ProjectConfiguration[];
   activeConfigurationId?: string;
 }
@@ -452,14 +401,9 @@ export interface KanbanPreviewCapability {
 interface StoredKanbanPreviewCapability {
   version: 1;
   projectName: string;
+  entryId: string;
   resolvedTarget: string;
   actorId: string;
-  expiresAtMs: number;
-}
-
-interface StoredProjectAccessRequestToken {
-  version: 1;
-  projectId: string;
   expiresAtMs: number;
 }
 
@@ -486,6 +430,7 @@ const TEXT_EXTENSIONS = new Set([
   ".yml",
 ]);
 export class Storage {
+  readonly databases: DatabaseSpaceRepository;
   readonly serverRoot: string;
   readonly repoRoot: string;
   readonly dataRoot: string;
@@ -496,7 +441,6 @@ export class Storage {
   private readonly deploymentLocks = new Map<string, Promise<void>>();
   private readonly preparationLocks = new Map<string, Promise<void>>();
   private readonly activePreparationJobs = new Set<string>();
-  private readonly activeDeploymentPreparations = new Set<string>();
   // HTML and its subresources can resolve the same database-backed
   // source concurrently; share materialization instead of deleting one directory twice.
   private readonly sourceMaterializationTasks = new Map<string, Promise<void>>();
@@ -522,6 +466,7 @@ export class Storage {
     this.repoRoot = options.repoRoot;
     this.dataRoot = options.dataRoot ?? path.join(options.serverRoot, ".data");
     this.db = options.db;
+    this.databases = new DatabaseSpaceRepository(options.db?.connectionString);
     this.artifacts = options.artifacts;
     this.objectStorage = options.objectStorage;
     this.kanbanPreviewCapabilitySecret = options.kanbanPreviewCapabilitySecret?.trim() ||
@@ -535,8 +480,8 @@ export class Storage {
     this.buildInfo ??= await readServerBuildInfo({ repoRoot: this.repoRoot, serverRoot: this.serverRoot,
       strict: process.env.NODE_ENV === "production" && process.env.STEAMHARNESS_SERVER_DEV !== "1" });
     await this.db?.init();
+    await this.databases.init();
     await this.resumePendingPreparationJobs();
-    await this.resumePendingProjectGroupPreparations();
     if (this.artifacts) void this.artifacts.init().catch(() => {
       console.warn("[steamharness-server] artifact storage initialization failed; continuing with degraded artifact availability.");
     });
@@ -549,7 +494,8 @@ export class Storage {
   async createProject(options: {
     projectId: string;
     projectName: string;
-    projectType: ProjectKind;
+    entries: ProjectEntry[];
+  defaultEntry: string;
     projectInfo: DeclaredProjectInfo;
     ownerUserId?: string;
     visibility?: Visibility;
@@ -573,9 +519,8 @@ export class Storage {
     const existing = await this.db.getProject(projectId);
     if (existing) {
       await this.db.access.assert("project", projectId, {userId: options.ownerUserId,isSystemAdmin: options.isSystemAdmin === true}, "upload");
-      if (existing.projectType !== options.projectType) throw new HttpError(409,409,"Project type cannot be changed.");
       if (options.groupId !== undefined && options.groupId !== existing.groupId) throw new HttpError(403,403,"Use the project transfer API to change its group.");
-      return {projectId:existing.id,projectName:existing.name,projectType:existing.projectType,projectInfo:this.normalizeDeclaredProjectInfo(existing.projectInfo),visibility:existing.visibility};
+      return {projectId:existing.id,projectName:existing.name,entries:existing.entries,defaultEntry:existing.defaultEntry,projectInfo:this.normalizeDeclaredProjectInfo(existing.projectInfo),visibility:existing.visibility};
     }
     if (!options.ownerUserId) throw new HttpError(401,401,"Account login is required to create a project.");
     if (options.groupId) await this.db.access.assert("group",options.groupId,{userId:options.ownerUserId,isSystemAdmin:options.isSystemAdmin===true},"createProject");
@@ -585,8 +530,8 @@ export class Storage {
       created = await this.db.createProjectRecord({
         projectId,
         projectName,
-        projectType: options.projectType,
-        projectCard: options.projectCard ?? generateProjectCardMetadata(options.projectType),
+        entries: options.entries, defaultEntry: options.defaultEntry,
+        projectCard: options.projectCard ?? generateProjectCardMetadata(options.entries[0]!.type),
         projectInfo,
         packageVersion: "0.0.0",
         ownerUserId: options.ownerUserId,
@@ -605,7 +550,7 @@ export class Storage {
     return {
       projectId: created.id,
       projectName: created.name,
-      projectType: created.projectType,
+      entries: created.entries, defaultEntry: created.defaultEntry,
       projectInfo,
       visibility: created.visibility,
     };
@@ -714,233 +659,8 @@ export class Storage {
     return { name, projectInfo };
   }
 
-  async listRelatedProjects(projectId: string): Promise<RelatedProjectListResult> {
-    this.assertProjectId(projectId);
-    const db = this.requireProjectDependencyDatabase();
-    const project = await db.getProject(projectId);
-    if (project === undefined) {
-      throw new HttpError(404, 404, `Workflow "${projectId}" does not exist.`);
-    }
-    const relatedProjects = await Promise.all(project.projectInfo.relatedProjects.map(async (relation) => {
-      const target = await db.getProject(relation.projectId);
-      const reciprocal = target?.projectInfo.relatedProjects.find(
-        (item) => item.projectId.toLowerCase() === projectId.toLowerCase(),
-      );
-      const confirmed = target !== undefined && resolveProjectRelatedProjectAccess({
-        consumerProjectId: projectId,
-        consumerProjectInfo: project.projectInfo,
-        targetProjectId: target.id,
-        targetProjectInfo: target.projectInfo,
-        alias: relation.alias,
-      }) !== undefined;
-      return {
-        relation: cloneRelatedProject(relation),
-        projectName: target?.name,
-        reciprocalAlias: reciprocal?.alias,
-        grantFromRelatedProject: reciprocal === undefined
-          ? undefined
-          : cloneRelatedProjectGrant(reciprocal.grantToRelatedProject),
-        confirmed,
-      } satisfies RelatedProjectStatus;
-    }));
-    return { projectId, relatedProjects };
-  }
-
-  async setRelatedProject(options: {
-    projectId: string;
-    alias: string;
-    targetProjectId: string;
-    grantToRelatedProject?: RelatedProject["grantToRelatedProject"];
-    updateTarget: boolean;
-    targetAlias?: string;
-    targetGrantToRelatedProject?: RelatedProject["grantToRelatedProject"];
-  }): Promise<RelatedProjectListResult> {
-    this.assertProjectId(options.projectId);
-    this.assertProjectId(options.targetProjectId);
-    const db = this.requireProjectDependencyDatabase();
-    const [project, target] = await Promise.all([
-      db.getProject(options.projectId),
-      db.getProject(options.targetProjectId),
-    ]);
-    if (project === undefined || target === undefined) {
-      throw new HttpError(404, 404, "Related project does not exist.");
-    }
-    const projectInfo = this.normalizeDeclaredProjectInfo(upsertRelatedProject(
-      project.projectInfo,
-      {
-        alias: options.alias,
-        projectId: target.id,
-        grantToRelatedProject: options.grantToRelatedProject ?? createDefaultProjectRelatedProjectGrant(),
-      },
-    ));
-    const updates = [{ projectId: project.id, projectName: project.name, projectInfo }];
-    let targetInfo: DeclaredProjectInfo | undefined;
-    if (options.updateTarget) {
-      const targetAlias = options.targetAlias?.trim();
-      if (!targetAlias) {
-        throw new HttpError(400, 400, "targetAlias is required when both projects are managed.");
-      }
-      targetInfo = this.normalizeDeclaredProjectInfo(upsertRelatedProject(
-        target.projectInfo,
-        {
-          alias: targetAlias,
-          projectId: project.id,
-          grantToRelatedProject: options.targetGrantToRelatedProject ?? createDefaultProjectRelatedProjectGrant(),
-        },
-      ));
-      updates.push({ projectId: target.id, projectName: target.name, projectInfo: targetInfo });
-    }
-    await db.updateProjectInfos(updates);
-    await Promise.all([
-      this.updateMaterializedDraftProjectInfo(project.id, project.name, projectInfo),
-      ...(targetInfo === undefined
-        ? []
-        : [this.updateMaterializedDraftProjectInfo(target.id, target.name, targetInfo)]),
-    ]);
-    return this.listRelatedProjects(project.id);
-  }
-
-  async removeRelatedProject(options: {
-    projectId: string;
-    alias: string;
-    updateTarget: boolean;
-  }): Promise<{ removed: boolean; relatedProjects: RelatedProjectStatus[] }> {
-    this.assertProjectId(options.projectId);
-    const db = this.requireProjectDependencyDatabase();
-    const project = await db.getProject(options.projectId);
-    if (project === undefined) {
-      throw new HttpError(404, 404, `Workflow "${options.projectId}" does not exist.`);
-    }
-    const relation = project.projectInfo.relatedProjects.find((item) => item.alias === options.alias);
-    if (relation === undefined) {
-      return { removed: false, relatedProjects: (await this.listRelatedProjects(project.id)).relatedProjects };
-    }
-    const projectInfo = this.normalizeDeclaredProjectInfo(removeRelatedProjectByAlias(
-      project.projectInfo,
-      options.alias,
-    ));
-    const updates = [{ projectId: project.id, projectName: project.name, projectInfo }];
-    let target: DbRecord | undefined;
-    let targetInfo: DeclaredProjectInfo | undefined;
-    if (options.updateTarget) {
-      target = await db.getProject(relation.projectId);
-      if (target !== undefined) {
-        targetInfo = this.normalizeDeclaredProjectInfo(removeRelatedProjectByProjectId(
-          target.projectInfo,
-          project.id,
-        ));
-        updates.push({ projectId: target.id, projectName: target.name, projectInfo: targetInfo });
-      }
-    }
-    await db.updateProjectInfos(updates);
-    await Promise.all([
-      this.updateMaterializedDraftProjectInfo(project.id, project.name, projectInfo),
-      ...(target !== undefined && targetInfo !== undefined
-        ? [this.updateMaterializedDraftProjectInfo(target.id, target.name, targetInfo)]
-        : []),
-    ]);
-    return { removed: true, relatedProjects: (await this.listRelatedProjects(project.id)).relatedProjects };
-  }
-
-  async resolveRelatedProjectKVAccess(options: {
-    consumerProjectId: string;
-    alias: string;
-    key: string;
-    operation: "read" | "write" | "update";
-  }): Promise<{ targetProjectId: string }> {
-    const access = await this.resolveConfirmedRelatedProject(options.consumerProjectId, options.alias);
-    const readAllowed = isProjectKVAccessAllowed(access.grant.read, options.key);
-    const writeAllowed = isProjectKVAccessAllowed(access.grant.write, options.key);
-    const allowed = options.operation === "read"
-      ? readAllowed
-      : options.operation === "write"
-        ? writeAllowed
-        : readAllowed && writeAllowed;
-    if (!allowed) {
-      throw new HttpError(403, 403, "Related project KV access is not granted for this key.");
-    }
-    return { targetProjectId: access.targetProjectId };
-  }
-
-  /**
-   * Whether a consumer may reach one of the target's knowledge keys.
-   *
-   * Knowledge is a grant of its own — a project that let another read its KV
-   * never agreed to hand over its documents — and it is decided per key, so a
-   * prefix rule opens the documents it names while the index every document is
-   * listed in stays out of reach unless the rule covers that too.
-   */
-  async resolveRelatedProjectKnowledgeAccess(options: {
-    consumerProjectId: string;
-    alias: string;
-    key: string;
-    operation: "read" | "write";
-  }): Promise<{ targetProjectId: string }> {
-    const access = await this.resolveConfirmedRelatedProject(options.consumerProjectId, options.alias);
-    const rule = options.operation === "read"
-      ? access.grant.knowledge?.read
-      : access.grant.knowledge?.write;
-    if (!isKnowledgeDocumentStorageKey(options.key) || !isProjectAccessAllowed(rule, options.key)) {
-      throw new HttpError(403, 403, "Related project Knowledge access is not granted for this key.");
-    }
-    return { targetProjectId: access.targetProjectId };
-  }
-
-  /**
-   * Whether a consumer may apply this mutation to the target's knowledge base.
-   *
-   * A mutation is applied by the store as a whole — index bookkeeping included
-   * — so the grant has to cover every key it reads and writes, not just the
-   * index the document is listed in: a rule that names one document must not
-   * let another be rewritten through the same call. A mutation whose keys
-   * cannot be named is refused rather than trusted.
-   */
-  async resolveRelatedProjectKnowledgeMutationAccess(options: {
-    consumerProjectId: string;
-    alias: string;
-    mutation: PersistentValueKnowledgeMutation;
-  }): Promise<{ targetProjectId: string }> {
-    const access = await this.resolveConfirmedRelatedProject(options.consumerProjectId, options.alias);
-    if (!isKnowledgeMutationGranted(access.grant, options.mutation)) {
-      throw new HttpError(403, 403, "Related project Knowledge access is not granted for this mutation.");
-    }
-    return { targetProjectId: access.targetProjectId };
-  }
-
-  async resolveConfirmedRelatedProject(
-    consumerProjectId: string,
-    alias: string,
-  ): Promise<{ targetProjectId: string; grant: RelatedProjectKVGrant }> {
-    this.assertProjectId(consumerProjectId);
-    const db = this.requireProjectDependencyDatabase();
-    const consumer = await db.getProject(consumerProjectId);
-    if (consumer === undefined) {
-      throw new HttpError(404, 404, "Related project is unavailable or awaiting confirmation.");
-    }
-    const declared = consumer.projectInfo.relatedProjects.find((item) => item.alias === alias);
-    if (declared === undefined) {
-      throw new HttpError(404, 404, "Related project is unavailable or awaiting confirmation.");
-    }
-    const target = await db.getProject(declared.projectId);
-    if (target === undefined) {
-      throw new HttpError(404, 404, "Related project is unavailable or awaiting confirmation.");
-    }
-    await this.assertServerProjectDataAccess(target.id);
-    const access = resolveProjectRelatedProjectAccess({
-      consumerProjectId: consumer.id,
-      consumerProjectInfo: consumer.projectInfo,
-      targetProjectId: target.id,
-      targetProjectInfo: target.projectInfo,
-      alias,
-    });
-    if (access === undefined) {
-      throw new HttpError(404, 404, "Related project is unavailable or awaiting confirmation.");
-    }
-    return { targetProjectId: target.id, grant: access.grant };
-  }
-
   async assertServerProjectDataAccess(projectId: string): Promise<ProjectInfoContract> {
-    return this.assertServerProjectStorageMode(projectId, "access server data");
+    return (await this.readPackageMetadata(projectId)).projectInfo;
   }
 
   async updateProjectVisibility(options: {
@@ -967,7 +687,7 @@ export class Storage {
     return this.createProjectAccessSummary(record, userId);
   }
 
-  get accessRepository() {return this.requireProjectDependencyDatabase().access;}
+  get accessRepository() {return this.requireProjectDatabase().access;}
   async requireProjectCapability(projectId:string,actor:AccessActor,capability:AccessCapability):Promise<ResourceAccess> {return this.accessRepository.assert("project",projectId,actor,capability);}
   async getProjectSummary(projectId:string):Promise<Summary> {return this.summarizeDbProject(await this.readProjectRecordForAccess(projectId));}
   async listProjects(): Promise<Summary[]> {
@@ -997,7 +717,7 @@ export class Storage {
       createdByUserId: version.createdByUserId,
       releaseLog: version.releaseLog,
       sourceHash: version.sourceHash,
-      dependencies: (version.dependencies ?? []).map(cloneProjectDependencyLock),
+
       latest: metadata.latest === version.version,
     }));
     return {
@@ -1085,10 +805,8 @@ export class Storage {
         packageRoot,
         options.projectName,
       );
-      await this.assertUploadedProjectType(options.projectName, metadata.projectType);
 
       await copyUploadedProjectSource(packageRoot, stagedSourceDir);
-      await copyWorkspaceDependencySources(packageRoot, stagedSourceDir);
       await options.onStage?.("validating");
       await validateProjectPackage(
         stagedSourceDir,
@@ -1338,6 +1056,9 @@ export class Storage {
     target: string;
     resolvedTarget: string;
     files: File[];
+    sourceHash: string;
+    entries: ProjectEntry[];
+    defaultEntry: string;
   }> {
     this.assertProjectId(options.projectName);
     const resolved = await this.resolveSourceTarget(
@@ -1351,6 +1072,9 @@ export class Storage {
       projectName: metadata.name,
       target: options.target,
       resolvedTarget: resolved.resolvedTarget,
+      sourceHash: await hashDirectory(resolved.sourceDir),
+      entries: (await this.readPackageMetadataForTarget(options.projectName,resolved.resolvedTarget)).entries,
+      defaultEntry: (await this.readPackageMetadataForTarget(options.projectName,resolved.resolvedTarget)).defaultEntry,
       files: await readProjectFiles(
         resolved.sourceDir,
         options.includeBinary === true,
@@ -1363,661 +1087,22 @@ export class Storage {
     return { available: latest !== null, target: latest };
   }
 
-  async getDownloadableSourceFiles(options: { projectName: string; target?: string }): Promise<{ projectId: string; projectName: string; target: string; resolvedTarget: string; files: File[] }> {
+  async getDownloadableSourceFiles(options: { projectName: string; target?: string }): Promise<{ projectId: string; projectName: string; target: string; resolvedTarget: string; files: File[]; sourceHash: string; entries: ProjectEntry[]; defaultEntry: string }> {
     this.assertProjectId(options.projectName);
     const target = options.target?.trim() || "latest";
     if (target === "draft") throw new HttpError(400, 400, "Download a published project version.");
     const resolved = await this.resolveSourceTarget(options.projectName, target);
     const metadata = await this.readPackageMetadataForTarget(options.projectName, resolved.resolvedTarget);
     return { projectId: options.projectName, projectName: metadata.name, target, resolvedTarget: resolved.resolvedTarget,
+      sourceHash: await hashDirectory(resolved.sourceDir), entries: metadata.entries, defaultEntry: metadata.defaultEntry,
       files: await readProjectFiles(resolved.sourceDir, true) };
   }
 
-  async createProjectGroupDeployment(options: {
-    manifest: ProjectGroupManifestV1;
-    releaseLog?: string;
-    createdByUserId: string;
-  }): Promise<DeploymentRecord> {
-    const db = this.requireProjectDependencyDatabase();
-    let manifest: ProjectGroupManifestV1;
-    try {
-      manifest = parseProjectGroupManifest(options.manifest);
-    } catch (error) {
-      throw toHttpErrorWithStatus(error, 400, 400, "Project group manifest is invalid.");
-    }
 
-    const root = await db.getProject(manifest.rootProjectId);
-    if (root === undefined || root.projectType !== "kanban") {
-      throw new HttpError(409, 409, "A project group root must be an existing Kanban project.");
-    }
-    for (const project of manifest.projects) {
-      const record = await db.getProject(project.projectId);
-      if (record === undefined) {
-        throw new HttpError(409, 409, `Included project "${project.projectId}" does not exist on this Server.`);
-      }
-      if (project.role === "dependency" && record.projectType !== "workflow") {
-        throw new HttpError(409, 409, `Included dependency "${project.projectId}" must be a Workflow project.`);
-      }
-    }
-
-    const deployment = await db.createProjectDeployment({
-      id: randomUUID(),
-      rootProjectId: manifest.rootProjectId,
-      manifest,
-      releaseLog: normalizeReleaseLog(options.releaseLog),
-      createdByUserId: options.createdByUserId,
-    });
-    try {
-      return await this.reserveProjectGroupDeploymentVersions(deployment, false);
-    } catch (error) {
-      await db.releaseProjectDeploymentVersionReservations(deployment.id).catch(() => undefined);
-      await db.updateProjectDeployment({
-        id: deployment.id,
-        status: "failed",
-        error: readErrorMessage(error),
-      }).catch(() => undefined);
-      throw error;
-    }
-  }
-
-  async getProjectGroupDeployment(deploymentId: string): Promise<DeploymentRecord> {
-    if (!isProjectUuid(deploymentId)) {
-      throw new HttpError(400, 400, createInvalidProjectUuidMessage(deploymentId, "deployment id"));
-    }
-    const deployment = await this.requireProjectDependencyDatabase().getProjectDeployment(deploymentId);
-    if (deployment === undefined) {
-      throw new HttpError(404, 404, `Deployment "${deploymentId}" does not exist.`);
-    }
-    return deployment;
-  }
-
-  async prepareProjectGroupDeployment(options: {
-    deploymentId: string;
-    archiveName: string;
-    archiveBuffer: Buffer;
-  }): Promise<DeploymentRecord> {
-    return this.withProjectGroupDeploymentLock(options.deploymentId, () =>
-      this.prepareProjectGroupDeploymentLocked(options));
-  }
-
-  async enqueueProjectGroupPreparation(options: {
-    deploymentId: string;
-    archiveName: string;
-    archiveBuffer: Buffer;
-  }): Promise<DeploymentRecord> {
-    assertArchiveName(options.archiveName);
-    if (!isTarGzipName(options.archiveName)) {
-      throw new HttpError(400, 400, "Project-group packages must use .tar.gz or .tgz format.");
-    }
-
-    return this.withProjectGroupDeploymentLock(options.deploymentId, async () => {
-      const db = this.requireProjectDependencyDatabase();
-      const deployment = await this.getProjectGroupDeployment(options.deploymentId);
-      if (deployment.status !== "planned" && deployment.status !== "failed") {
-        throw new HttpError(
-          409,
-          409,
-          `Deployment "${deployment.id}" cannot accept a package from status "${deployment.status}".`,
-        );
-      }
-
-      const preparation: DeploymentPreparation = {
-        deploymentId: deployment.id,
-        archiveName: options.archiveName,
-        createdAt: new Date().toISOString(),
-      };
-      const preparationDir = this.deploymentPreparationDir(deployment.id);
-      await rm(preparationDir, { recursive: true, force: true });
-      await mkdir(preparationDir, { recursive: true });
-      try {
-        await writeFile(this.deploymentPreparationArchivePath(preparation), options.archiveBuffer);
-        await writeJson(this.deploymentPreparationMetadataPath(deployment.id), preparation);
-        const transitioned = await db.transitionProjectDeploymentStatus({
-          id: deployment.id,
-          from: ["planned", "failed"],
-          status: "preparing",
-        });
-        if (!transitioned) {
-          throw new HttpError(409, 409, `Deployment "${deployment.id}" is already being prepared or published.`);
-        }
-      } catch (error) {
-        await rm(preparationDir, { recursive: true, force: true }).catch(() => undefined);
-        throw error;
-      }
-
-      this.scheduleProjectGroupPreparation(preparation);
-      return this.getProjectGroupDeployment(deployment.id);
-    });
-  }
-
-  private scheduleProjectGroupPreparation(preparation: DeploymentPreparation): void {
-    if (this.activeDeploymentPreparations.has(preparation.deploymentId)) return;
-    this.activeDeploymentPreparations.add(preparation.deploymentId);
-    setImmediate(() => {
-      void this.runProjectGroupPreparation(preparation).finally(() => {
-        this.activeDeploymentPreparations.delete(preparation.deploymentId);
-      });
-    });
-  }
-
-  private async runProjectGroupPreparation(preparation: DeploymentPreparation): Promise<void> {
-    try {
-      const archiveBuffer = await readFile(this.deploymentPreparationArchivePath(preparation));
-      await this.prepareProjectGroupDeployment({
-        deploymentId: preparation.deploymentId,
-        archiveName: preparation.archiveName,
-        archiveBuffer,
-      });
-    } catch (error) {
-      await this.requireProjectDependencyDatabase().updateProjectDeployment({
-        id: preparation.deploymentId,
-        status: "failed",
-        error: readErrorMessage(error),
-      }).catch(() => undefined);
-    } finally {
-      await rm(this.deploymentPreparationDir(preparation.deploymentId), {
-        recursive: true,
-        force: true,
-      }).catch(() => undefined);
-    }
-  }
-
-  private async resumePendingProjectGroupPreparations(): Promise<void> {
-    const root = this.deploymentPreparationsRoot();
-    if (!(await exists(root))) return;
-    const entries = await readdir(root, { withFileTypes: true });
-    for (const entry of entries) {
-      if (!entry.isDirectory() || !isProjectUuid(entry.name)) continue;
-      const deployment = await this.requireProjectDependencyDatabase().getProjectDeployment(entry.name);
-      if (deployment === undefined) continue;
-      if (deployment.status !== "planned" && deployment.status !== "preparing") continue;
-
-      const preparation = await readJson<DeploymentPreparation>(
-        this.deploymentPreparationMetadataPath(entry.name),
-      );
-      const valid = preparation !== undefined &&
-        preparation.deploymentId === entry.name &&
-        isTarGzipName(preparation.archiveName) &&
-        await exists(this.deploymentPreparationArchivePath(preparation));
-      if (!valid) {
-        await this.requireProjectDependencyDatabase().updateProjectDeployment({
-          id: entry.name,
-          status: "failed",
-          error: "Project-group preparation archive is missing after server restart.",
-        });
-        continue;
-      }
-
-      if (deployment.status === "planned") {
-        const transitioned = await this.requireProjectDependencyDatabase().transitionProjectDeploymentStatus({
-          id: entry.name,
-          from: ["planned"],
-          status: "preparing",
-        });
-        if (!transitioned) continue;
-      }
-      this.scheduleProjectGroupPreparation(preparation);
-    }
-  }
-
-  private async prepareProjectGroupDeploymentLocked(options: {
-    deploymentId: string;
-    archiveName: string;
-    archiveBuffer: Buffer;
-  }): Promise<DeploymentRecord> {
-    assertArchiveName(options.archiveName);
-    if (!isTarGzipName(options.archiveName)) {
-      throw new HttpError(400, 400, "Project-group packages must use .tar.gz or .tgz format.");
-    }
-    const db = this.requireProjectDependencyDatabase();
-    let deployment = await this.getProjectGroupDeployment(options.deploymentId);
-    if (
-      deployment.status !== "planned" &&
-      deployment.status !== "failed" &&
-      deployment.status !== "preparing"
-    ) {
-      throw new HttpError(409, 409, `Deployment "${deployment.id}" cannot be prepared from status "${deployment.status}".`);
-    }
-
-    const previousStatus = deployment.status;
-    if (!await db.transitionProjectDeploymentStatus({
-      id: deployment.id,
-      from: ["planned", "failed", "preparing"],
-      status: "preparing",
-    })) {
-      throw new HttpError(409, 409, `Deployment "${deployment.id}" is already being prepared or published.`);
-    }
-    try {
-      deployment = await this.reserveProjectGroupDeploymentVersions(
-        deployment,
-        previousStatus === "failed",
-      );
-    } catch (error) {
-      await db.updateProjectDeployment({
-        id: deployment.id,
-        status: "failed",
-        error: readErrorMessage(error),
-      }).catch(() => undefined);
-      throw error;
-    }
-    const tempDir = path.join(this.dataRoot, "tmp", randomUUID());
-    const archivePath = path.join(tempDir, options.archiveName);
-    const extractDir = path.join(tempDir, "group");
-    try {
-      const plannedVersions = new Map(deployment.items.map((item) => [item.projectId, item.plannedVersion!]));
-      await mkdir(extractDir, { recursive: true });
-      await writeFile(archivePath, options.archiveBuffer);
-      let projectGroupExpandedSize = await this.extractArchive(
-        archivePath,
-        options.archiveName,
-        extractDir,
-      );
-      const manifestPath = path.join(extractDir, STEAMHARNESS_PROJECT_GROUP_MANIFEST_FILE);
-      let uploadedManifest: ProjectGroupManifestV1;
-      try {
-        uploadedManifest = parseProjectGroupManifest(
-          JSON.parse(await readFile(manifestPath, "utf8")) as unknown,
-        );
-      } catch (error) {
-        throw new HttpError(400, 400, `Invalid ${STEAMHARNESS_PROJECT_GROUP_MANIFEST_FILE}: ${readErrorMessage(error)}`);
-      }
-      if (JSON.stringify(uploadedManifest) !== JSON.stringify(deployment.manifest)) {
-        throw new HttpError(409, 409, "Uploaded project-group manifest does not match the deployment plan.");
-      }
-
-      const allowedFiles = new Set([
-        STEAMHARNESS_PROJECT_GROUP_MANIFEST_FILE,
-        ...uploadedManifest.projects.map((project) => project.archivePath),
-      ]);
-      await walkFiles(extractDir, async (filePath) => {
-        const relativePath = normalizeSlash(path.relative(extractDir, filePath));
-        if (!allowedFiles.has(relativePath) || isProjectGroupHostDataPath(relativePath)) {
-          throw new HttpError(400, 400, `Project group contains forbidden file "${relativePath}".`);
-        }
-      });
-
-      const orderedProjects = [...uploadedManifest.projects].sort((left, right) => (
-        left.role === right.role ? 0 : left.role === "dependency" ? -1 : 1
-      ));
-      for (const project of orderedProjects) {
-        await db.updateProjectDeploymentItem({
-          deploymentId: deployment.id,
-          projectId: project.projectId,
-          status: "preparing",
-          stage: "validating",
-        });
-        const projectArchivePath = path.join(extractDir, ...project.archivePath.split("/"));
-        const innerExtractDir = path.join(tempDir, "inspect", project.projectId);
-        await mkdir(innerExtractDir, { recursive: true });
-        const remainingExpandedBytes = MAX_ARCHIVE_EXPANDED_SIZE_BYTES - projectGroupExpandedSize;
-        projectGroupExpandedSize += await extractTarGz(projectArchivePath, innerExtractDir, {
-          maxExpandedSizeBytes: remainingExpandedBytes,
-        });
-        await walkFiles(innerExtractDir, async (filePath) => {
-          const relativePath = normalizeSlash(path.relative(innerExtractDir, filePath));
-          if (isProjectGroupHostDataPath(relativePath)) {
-            throw new HttpError(400, 400, `Included project "${project.projectId}" contains forbidden host data "${relativePath}".`);
-          }
-        });
-        const packageRoot = await resolvePackageRoot(innerExtractDir, project.projectId);
-        const metadata = await validateProjectPackage(
-          packageRoot,
-          project.projectId,
-        );
-        const plannedVersion = plannedVersions.get(project.projectId)!;
-        if (metadata.version !== plannedVersion) {
-          throw new HttpError(
-            409,
-            409,
-            `Project "${project.projectId}" package version "${metadata.version}" does not match reserved version "${plannedVersion}".`,
-            {
-              projectId: project.projectId,
-              packageVersion: metadata.version,
-              expectedVersion: plannedVersion,
-            },
-          );
-        }
-        if (project.role === "root" && metadata.projectType !== "kanban") {
-          throw new HttpError(409, 409, "The project-group root archive must contain a Kanban project.");
-        }
-        if (project.role === "dependency" && metadata.projectType !== "workflow") {
-          throw new HttpError(409, 409, `Included dependency "${project.projectId}" must contain a Workflow project.`);
-        }
-        const result = await this.uploadPackage({
-          projectName: project.projectId,
-          archiveName: path.basename(project.archivePath),
-          archiveBuffer: await readFile(projectArchivePath),
-          onStage: async (stage) => db.updateProjectDeploymentItem({
-            deploymentId: deployment.id,
-            projectId: project.projectId,
-            status: "preparing",
-            stage,
-          }),
-        });
-        await db.updateProjectDeploymentItem({
-          deploymentId: deployment.id,
-          projectId: project.projectId,
-          status: "prepared",
-          stage: "prepared",
-          plannedVersion,
-          preparedSourceHash: result.sourceHash,
-          preparedConfigurationRevision: (await this.configurationPublicationDraft(project.projectId))?.revision,
-        });
-      }
-      await db.updateProjectDeployment({ id: deployment.id, status: "prepared" });
-    } catch (error) {
-      await db.updateProjectDeployment({
-        id: deployment.id,
-        status: "failed",
-        error: readErrorMessage(error),
-      });
-      throw error;
-    } finally {
-      await rm(tempDir, { recursive: true, force: true });
-    }
-    return this.getProjectGroupDeployment(deployment.id);
-  }
-
-  async publishProjectGroupDeployment(deploymentId: string, authority: {actorId?:string;administrator?:boolean} = {}): Promise<DeploymentRecord> {
-    return this.withProjectGroupDeploymentLock(deploymentId, () =>
-      this.publishProjectGroupDeploymentLocked(deploymentId,authority));
-  }
-
-  private async publishProjectGroupDeploymentLocked(
-    deploymentId: string,
-    authority: {actorId?:string;administrator?:boolean},
-  ): Promise<DeploymentRecord> {
-    const db = this.requireProjectDependencyDatabase();
-    const deployment = await this.getProjectGroupDeployment(deploymentId);
-    if (deployment.status === "published") return deployment;
-    if (
-      deployment.status !== "prepared" &&
-      deployment.status !== "failed" &&
-      deployment.status !== "publishing"
-    ) {
-      throw new HttpError(409, 409, `Deployment "${deployment.id}" must be prepared before publishing.`);
-    }
-    if (deployment.items.some((item) => !item.plannedVersion || !item.preparedSourceHash)) {
-      throw new HttpError(409, 409, `Deployment "${deployment.id}" has not finished preparing every project.`);
-    }
-    const projectIds = deployment.items.map((item) => item.projectId).sort();
-
-    if (!await db.transitionProjectDeploymentStatus({
-      id: deployment.id,
-      from: ["prepared", "failed", "publishing"],
-      status: "publishing",
-    })) {
-      throw new HttpError(409, 409, `Deployment "${deployment.id}" is already being prepared or published.`);
-    }
-    try {
-      await this.assertProjectGroupPublishReady(deployment);
-      await this.withProjectPublishLocks(projectIds, async () => {
-        const publishedDependencies = new Map<string, { version: string; sourceHash: string }>();
-        const dependencyProjects = deployment.manifest.projects.filter((project) => project.role === "dependency");
-        for (const project of dependencyProjects) {
-          if(authority.actorId||authority.administrator) await this.requireProjectCapability(project.projectId,{userId:authority.actorId,isSystemAdmin:authority.administrator===true},"publish");
-          const item = deployment.items.find((candidate) => candidate.projectId === project.projectId)!;
-          const existing = await this.resolvePublishedDeploymentItem(item);
-          if (existing !== undefined) {
-            publishedDependencies.set(project.projectId, existing);
-            await db.updateProjectDeploymentItem({
-              deploymentId: deployment.id,
-              projectId: project.projectId,
-              status: "published",
-              stage: "published",
-              publishedVersion: existing.version,
-              publishedSourceHash: existing.sourceHash,
-            });
-            continue;
-          }
-          await this.assertReservedDeploymentVersion(item);
-          await db.updateProjectDeploymentItem({
-            deploymentId: deployment.id,
-            projectId: project.projectId,
-            status: "publishing",
-            stage: "publishing",
-          });
-          const result = await this.publishLocked({
-            projectName: project.projectId,
-            releaseLog: deployment.releaseLog,
-            createdByUserId: authority.actorId??deployment.createdByUserId,
-            expectedVersion: item.plannedVersion,
-            expectedSourceHash: item.preparedSourceHash,
-            expectedConfigurationRevision:item.preparedConfigurationRevision,
-            administrator:authority.administrator,
-            reservationDeploymentId: deployment.id,
-          });
-          const publishedManifest = await this.readManifest(project.projectId, result.version);
-          if (!publishedManifest) throw new Error(`Published dependency "${project.projectId}" has no manifest.`);
-          publishedDependencies.set(project.projectId, {
-            version: result.version,
-            sourceHash: publishedManifest.sourceHash,
-          });
-          await db.updateProjectDeploymentItem({
-            deploymentId: deployment.id,
-            projectId: project.projectId,
-            status: "published",
-            stage: "published",
-            publishedVersion: result.version,
-            publishedSourceHash: publishedManifest.sourceHash,
-          });
-        }
-
-        const dependencies = deployment.manifest.dependencies.map((dependency) => (
-          finalizeProjectDependencyLock(dependency, publishedDependencies.get(dependency.projectId))
-        ));
-        const rootProject = deployment.manifest.projects.find((project) => project.role === "root")!;
-        if (authority.actorId || authority.administrator) {
-          await this.requireProjectCapability(rootProject.projectId, {userId:authority.actorId,isSystemAdmin:authority.administrator===true}, "publish");
-        }
-        const rootItem = deployment.items.find((item) => item.projectId === rootProject.projectId)!;
-        const existingRoot = await this.resolvePublishedDeploymentItem(rootItem);
-        let rootVersion: string;
-        let rootManifest: Manifest | undefined;
-        if (existingRoot !== undefined) {
-          if (JSON.stringify(existingRoot.manifest.dependencies ?? []) !== JSON.stringify(dependencies)) {
-            throw new HttpError(409, 409, "The previously published Kanban root has a different dependency lock.");
-          }
-          rootVersion = existingRoot.version;
-          rootManifest = existingRoot.manifest;
-        } else {
-          await this.assertReservedDeploymentVersion(rootItem);
-          await db.updateProjectDeploymentItem({
-            deploymentId: deployment.id,
-            projectId: rootProject.projectId,
-            status: "publishing",
-            stage: "activating_root",
-          });
-          const rootResult = await this.publishLocked({
-            projectName: rootProject.projectId,
-            releaseLog: deployment.releaseLog,
-            createdByUserId: authority.actorId??deployment.createdByUserId,
-            dependencies,
-            expectedVersion: rootItem.plannedVersion,
-            expectedSourceHash: rootItem.preparedSourceHash,
-            expectedConfigurationRevision:rootItem.preparedConfigurationRevision,
-            administrator:authority.administrator,
-            reservationDeploymentId: deployment.id,
-          });
-          rootVersion = rootResult.version;
-          rootManifest = await this.readManifest(rootProject.projectId, rootResult.version);
-        }
-        await db.updateProjectDeploymentItem({
-          deploymentId: deployment.id,
-          projectId: rootProject.projectId,
-          status: "published",
-          stage: "published",
-          publishedVersion: rootVersion,
-          publishedSourceHash: rootManifest?.sourceHash,
-        });
-      });
-      await db.updateProjectDeployment({
-        id: deployment.id,
-        status: "published",
-        publishedAt: new Date().toISOString(),
-      });
-    } catch (error) {
-      await db.updateProjectDeployment({
-        id: deployment.id,
-        status: "failed",
-        error: readErrorMessage(error),
-      });
-      throw error;
-    }
-    return this.getProjectGroupDeployment(deployment.id);
-  }
-
-  async getProjectDependencyStatus(options: {
-    projectName: string;
-    target?: string;
-    canDownloadProject: (projectId: string) => Promise<boolean>;
-    requestUrlForProject?: (projectId: string) => string;
-  }): Promise<ProjectDependencyStatusResult> {
-    const target = options.target?.trim() || "latest";
-    const resolved = await this.resolveSourceTarget(options.projectName, target);
-    const dependencies = resolved.resolvedTarget === "draft"
-      ? createExternalProjectDependencyLocks(
-          (await this.readPackageMetadataForTarget(options.projectName, "draft"))
-            .projectInfo.relatedProjects,
-        )
-      : await this.readVersionDependencyLocks(options.projectName, resolved.resolvedTarget);
-    const db = this.requireProjectDependencyDatabase();
-    const statuses = await Promise.all(dependencies.map(async (dependency) => {
-      const project = await db.getProject(dependency.projectId);
-      const sourceAvailable = dependency.delivery === "included"
-        ? await this.isPinnedProjectSourceAvailable(dependency)
-        : project !== undefined;
-      const sourceDownloadAllowed = project !== undefined && await options.canDownloadProject(dependency.projectId);
-      const root = await db.getProject(options.projectName);
-      const relationshipConfirmed = project !== undefined && root !== undefined &&
-        resolveProjectRelatedProjectAccess({
-          consumerProjectId: root.id,
-          consumerProjectInfo: root.projectInfo,
-          targetProjectId: project.id,
-          targetProjectInfo: project.projectInfo,
-          alias: dependency.alias,
-        }) !== undefined;
-      const dataInitialized = project !== undefined && await db.hasProjectKV(dependency.projectId);
-      return {
-        dependency: cloneProjectDependencyLock(dependency),
-        projectName: project?.name,
-        projectAvailable: project !== undefined,
-        sourceAvailable,
-        sourceDownloadAllowed,
-        relationshipConfirmed,
-        dataInitialized,
-        ...(dependency.delivery === "included" && project !== undefined && sourceAvailable &&
-          !sourceDownloadAllowed && options.requestUrlForProject
-          ? { requestUrl: options.requestUrlForProject(dependency.projectId) }
-          : {}),
-      };
-    }));
-    return {
-      rootProjectId: options.projectName,
-      rootVersion: resolved.resolvedTarget,
-      dependencies: statuses,
-      publishable: statuses.every((status) => (
-        status.projectAvailable &&
-        status.relationshipConfirmed &&
-        (status.dependency.delivery === "external" || status.sourceAvailable)
-      )),
-    };
-  }
-
-  async getProjectGroupDownload(options: {
-    projectName: string;
-    target?: string;
-    canDownloadProject: (projectId: string) => Promise<boolean>;
-    requestUrlForProject?: (projectId: string) => string;
-  }): Promise<ProjectGroupDownloadResult> {
-    const target = options.target?.trim() || "latest";
-    if (target === "draft") throw new HttpError(400, 400, "Project groups can only download immutable published versions.");
-    const resolved = await this.resolveSourceTarget(options.projectName, target);
-    const rootManifest = (await this.readManifest(options.projectName, resolved.resolvedTarget))!;
-    const dependencies = await this.readVersionDependencyLocks(options.projectName, resolved.resolvedTarget, rootManifest);
-    const downloads: ProjectDownloadPlan["downloads"] = [];
-    const skippedDependencies: ProjectDownloadPlan["skippedDependencies"] = [];
-    downloads.push({
-      projectId: options.projectName,
-      version: resolved.resolvedTarget,
-      sourceHash: rootManifest.sourceHash,
-      projectName: rootManifest.projectName,
-      role: "root",
-    });
-    const downloadsByProject = new Map<string, ProjectDownloadPlan["downloads"][number]>([
-      [`${options.projectName}\0${resolved.resolvedTarget}\0${rootManifest.sourceHash}`, downloads[0]!],
-    ]);
-    for (const dependency of dependencies) {
-      if (dependency.delivery === "external") {
-        skippedDependencies.push({ dependency: cloneProjectDependencyLock(dependency), reason: "external" });
-        continue;
-      }
-      if (!await this.isPinnedProjectSourceAvailable(dependency)) {
-        skippedDependencies.push({ dependency: cloneProjectDependencyLock(dependency), reason: "source_unavailable" });
-        continue;
-      }
-      if (!await options.canDownloadProject(dependency.projectId)) {
-        skippedDependencies.push({
-          dependency: cloneProjectDependencyLock(dependency),
-          reason: "permission_required",
-          ...(options.requestUrlForProject ? { requestUrl: options.requestUrlForProject(dependency.projectId) } : {}),
-        });
-        continue;
-      }
-      const metadata = await this.readPackageMetadataForTarget(dependency.projectId, dependency.version!);
-      const downloadKey = `${dependency.projectId}\0${dependency.version}\0${dependency.sourceHash}`;
-      const existingDownload = downloadsByProject.get(downloadKey);
-      if (existingDownload !== undefined) {
-        delete existingDownload.alias;
-        continue;
-      }
-      const download = {
-        alias: dependency.alias,
-        projectId: dependency.projectId,
-        version: dependency.version!,
-        sourceHash: dependency.sourceHash!,
-        projectName: metadata.name,
-        role: "dependency",
-      } satisfies ProjectDownloadPlan["downloads"][number];
-      downloads.push(download);
-      downloadsByProject.set(downloadKey, download);
-    }
-    const missingIncluded = skippedDependencies.some((item) => item.dependency.delivery === "included");
-    const plan: ProjectDownloadPlan = {
-      rootProjectId: options.projectName,
-      rootVersion: resolved.resolvedTarget,
-      dependencies: dependencies.map(cloneProjectDependencyLock),
-      downloads,
-      skippedDependencies,
-      complete: !missingIncluded,
-      copyAllowed: !missingIncluded,
-    };
-    const projects = await Promise.all(downloads.map(async (item) => {
-      const source = await this.readRetainedSourceFiles(item.projectId, item.version);
-      const forbiddenFile = source.files.find((file) => isProjectGroupHostDataPath(file.path));
-      if (forbiddenFile !== undefined) {
-        throw new HttpError(
-          409,
-          409,
-          `Project "${item.projectId}" version "${item.version}" contains host data that cannot be included in a project-group download.`,
-        );
-      }
-      return {
-        alias: item.alias,
-        projectId: item.projectId,
-        projectName: source.projectName,
-        version: item.version,
-        sourceHash: item.sourceHash,
-        role: item.role,
-        files: source.files,
-      };
-    }));
-    return { ...plan, projects };
-  }
 
   async listProjectAccessRequests(projectId: string): Promise<ProjectAccessRequest[]> {
     this.assertProjectId(projectId);
-    return this.requireProjectDependencyDatabase().listProjectAccessRequests(projectId);
+    return this.requireProjectDatabase().listProjectAccessRequests(projectId);
   }
 
   async createProjectAccessRequest(options: {
@@ -2030,7 +1115,7 @@ export class Storage {
     if (reason.length < 2 || reason.length > 1000) {
       throw new HttpError(400, 400, "Access request reason must contain 2 to 1000 characters.");
     }
-    const db = this.requireProjectDependencyDatabase();
+    const db = this.requireProjectDatabase();
     const project = await db.getProject(options.projectId);
     if (project === undefined) {
       throw new HttpError(404, 404, `Workflow "${options.projectId}" does not exist.`);
@@ -2049,7 +1134,7 @@ export class Storage {
     status: "approved" | "rejected";
     actor: AccessActor;
   }): Promise<ProjectAccessRequest> {
-    const resolved = await this.requireProjectDependencyDatabase().resolveProjectAccessRequest({
+    const resolved = await this.requireProjectDatabase().resolveProjectAccessRequest({
       ...options,
     });
     if (resolved === undefined) {
@@ -2074,119 +1159,9 @@ export class Storage {
     }
     return { projectId: payload.projectId };
   }
-
-  private async isPinnedProjectSourceAvailable(dependency: ProjectDependencyLock): Promise<boolean> {
-    if (dependency.delivery !== "included" || !dependency.version || !dependency.sourceHash) return false;
-    try {
-      const manifest = await this.readManifest(dependency.projectId, dependency.version);
-      return manifest?.sourceHash === dependency.sourceHash;
-    } catch {
-      return false;
-    }
-  }
-
-  private async resolvePublishedDeploymentItem(
-    item: DeploymentRecord["items"][number],
-  ): Promise<{ version: string; sourceHash: string; manifest: Manifest } | undefined> {
-    const version = item.publishedVersion ?? item.plannedVersion;
-    const sourceHash = item.publishedSourceHash ?? item.preparedSourceHash;
-    if (!version || !sourceHash) return undefined;
-    const manifest = await this.readManifest(item.projectId, version);
-    if (!manifest) return undefined;
-    if(manifest.sourceHash!==sourceHash) {
-      if(item.publishedSourceHash) return undefined;
-      const template=await this.configurationTemplate(item.projectId,version);
-      if(!template || template.sourceHash!==item.preparedSourceHash || template.draftRevision!==(item.preparedConfigurationRevision??0)) return undefined;
-    }
-    return { version, sourceHash:manifest.sourceHash, manifest };
-  }
-
-  private async assertReservedDeploymentVersion(
-    item: DeploymentRecord["items"][number],
-  ): Promise<void> {
-    if (!item.plannedVersion || !await this.requireProjectDependencyDatabase().hasProjectVersionReservation({
-      deploymentId: item.deploymentId,
-      projectId: item.projectId,
-      version: item.plannedVersion,
-    })) {
-      throw new HttpError(409, 409, `Reserved version for project "${item.projectId}" changed.`, {
-        expectedVersion: item.plannedVersion,
-      });
-    }
-  }
-
-  private async reserveProjectGroupDeploymentVersions(
-    deployment: DeploymentRecord,
-    reset: boolean,
-  ): Promise<DeploymentRecord> {
-    const db = this.requireProjectDependencyDatabase();
-    const projectIds = deployment.items.map((item) => item.projectId).sort();
-    return this.withProjectPublishLocks(projectIds, async () => {
-      if (reset) {
-        await db.resetProjectDeploymentItemsForPreparation(deployment.id);
-      }
-      let current = (await db.getProjectDeployment(deployment.id)) ?? deployment;
-      for (const item of current.items) {
-        if (item.plannedVersion !== undefined) continue;
-        const requestedVersion = current.manifest.projects.find(
-          (project) => project.projectId === item.projectId,
-        )?.version;
-        const plannedVersion = requestedVersion ?? await this.resolveNextVersion(item.projectId);
-        await this.assertVersionPublishable(item.projectId, plannedVersion, deployment.id);
-        await db.updateProjectDeploymentItem({
-          deploymentId: deployment.id,
-          projectId: item.projectId,
-          status: "planned",
-          stage: "version_reserved",
-          plannedVersion,
-        });
-      }
-      current = (await db.getProjectDeployment(deployment.id)) ?? current;
-      if (current.items.some((item) => item.plannedVersion === undefined)) {
-        throw new HttpError(409, 409, `Deployment "${deployment.id}" could not reserve every project version.`);
-      }
-      return current;
-    });
-  }
-
-  private async assertProjectGroupPublishReady(deployment: DeploymentRecord): Promise<void> {
-    const rootProject = deployment.manifest.projects.find((project) => project.role === "root");
-    if (rootProject === undefined) {
-      throw new HttpError(409, 409, "Project-group root is missing.");
-    }
-    const packageJson = await readPackageJson(this.draftSourceDir(rootProject.projectId));
-    const rootProjectInfo = readProjectInfo(packageJson);
-    const db = this.requireProjectDependencyDatabase();
-    for (const actual of deployment.manifest.dependencies) {
-      const expected = rootProjectInfo.relatedProjects.find(
-        (relation) => relation.alias === actual.alias,
-      );
-      if (
-        expected === undefined ||
-        actual.projectId !== expected.projectId
-      ) {
-        throw new HttpError(
-          409,
-          409,
-          `Project-group dependency ${JSON.stringify(actual.alias)} no longer matches the root project draft.`,
-        );
-      }
-      const target = await db.getProject(actual.projectId);
-      if (target === undefined || resolveProjectRelatedProjectAccess({
-        consumerProjectId: rootProject.projectId,
-        consumerProjectInfo: rootProjectInfo,
-        targetProjectId: target.id,
-        targetProjectInfo: target.projectInfo,
-        alias: actual.alias,
-      }) === undefined) {
-        throw new HttpError(409, 409, "Project-group relationships must be confirmed before publishing.");
-      }
-    }
-  }
-
-  private requireProjectDependencyDatabase(): DatabaseRepository {
+  private requireProjectDatabase(): DatabaseRepository {
     if (this.db === undefined) {
-      throw new HttpError(501, 501, "Project dependency delivery requires PostgreSQL storage.");
+      throw new HttpError(501, 501, "Project membership requests require PostgreSQL storage.");
     }
     return this.db;
   }
@@ -2195,6 +1170,7 @@ export class Storage {
     projectName: string;
     /** Written before public metadata so a failed upload never exposes a personal file. */
     configurationOwnerUserId?: string;
+    entryId?: string;
     files: Array<{
       name: string;
       mimeType?: string;
@@ -2218,6 +1194,7 @@ export class Storage {
         kind: mimeType.startsWith("image/") ? "image" : "file",
         storage: "server",
         projectId: options.projectName,
+        ...(options.entryId === undefined ? {} : {entryId: options.entryId}),
         conversationId: normalizeOptionalText(file.conversationId),
         createdAt: now,
       };
@@ -2231,7 +1208,7 @@ export class Storage {
         await mkdir(entry.dir, { recursive: true });
         await writeFile(path.join(entry.dir, "content"), entry.buffer);
         if (options.configurationOwnerUserId) {
-          await writeJson(path.join(entry.dir, "configuration-owner.json"), { projectId: options.projectName, userId: options.configurationOwnerUserId });
+          await writeJson(path.join(entry.dir, "configuration-owner.json"), { projectId: options.projectName, entryId: options.entryId, userId: options.configurationOwnerUserId });
         }
         await writeJson(path.join(entry.dir, "metadata.json"), entry.ref);
       }
@@ -2269,114 +1246,38 @@ export class Storage {
   }
 
   /** Configuration uploads are personal even when the containing project is shared. */
-  async assertManagedFileAccountAccess(fileId: string, actorId?: string): Promise<void> {
+  async assertManagedFileAccountAccess(fileId: string, actorId?: string, entryId?: string): Promise<void> {
     assertManagedFileId(fileId);
-    const owner=await readJson<{userId:string}>(path.join(this.managedFileDir(fileId),'configuration-owner.json'));
-    if(owner && owner.userId!==actorId) throw new HttpError(404,404,'Configuration attachment does not exist.');
+    const owner=await readJson<{userId:string;entryId:string}>(path.join(this.managedFileDir(fileId),'configuration-owner.json'));
+    if(owner && (owner.userId!==actorId || entryId !== undefined && owner.entryId!==entryId)) throw new HttpError(404,404,'Configuration attachment does not exist.');
   }
 
   async getKanbanWorkspace(options: {
     projectName: string;
+    entryId?: string;
     target?: string;
     actorId: string;
   }): Promise<KanbanWorkspaceState> {
-    const project = await this.resolveKanbanProject(options.projectName, options.target);
+    const project = await this.resolveKanbanProject(options.projectName, options.target, options.entryId);
     const state = await this.projectConfigurations(options, {action: "get"}) as ProjectConfigurationState;
     return { ...project, configurations: state.configurations.map(item => ({ ...item, values: configurationSnapshot(state, item.id, false).values })), activeConfigurationId: state.activeConfigurationId };
 
   }
 
-  async resolveKanbanRelatedProject(options: {
-    projectName: string;
-    target?: string;
-    alias: string;
-  }): Promise<RelatedProject> {
-    const project = await this.getKanbanRelatedProjectBindings(options);
-    const relation = project.relatedProjects.find((item) => item.alias === options.alias);
-    if (relation === undefined) {
-      throw new HttpError(404, 404, "Kanban related project is unavailable.");
-    }
-    return relation;
-  }
-
-  async getKanbanRelatedProjectBindings(options: {
-    projectName: string;
-    target?: string;
-  }): Promise<{
-    resolvedTarget: string;
-    relatedProjects: RelatedProject[];
-  }> {
-    this.assertProjectId(options.projectName);
-    await this.assertServerProjectDataAccess(options.projectName);
-    const target = options.target?.trim() || "draft";
-    // Live data belongs to the registered project. A local Kanban can use it
-    // before any source or static preview has been uploaded.
-    if (target === "draft" && this.db) {
-      const project = await this.db.getProject(options.projectName);
-      if (!project) throw new HttpError(404, 404, "Kanban project does not exist.");
-      if (project.projectType !== "kanban") throw new HttpError(409, 409, `Project "${project.name}" is not a Kanban project.`);
-      return { resolvedTarget: "draft", relatedProjects: project.projectInfo.relatedProjects.map(cloneRelatedProject) };
-    }
-    const resolved = await this.resolveSourceTarget(options.projectName, target);
-    const metadata = await this.readPackageMetadataForTarget(
-      options.projectName,
-      resolved.resolvedTarget,
-    );
-    if (metadata.projectType !== "kanban") {
-      throw new HttpError(409, 409, `Project "${metadata.name}" is not a Kanban project.`);
-    }
-    return {
-      resolvedTarget: resolved.resolvedTarget,
-      relatedProjects: metadata.projectInfo.relatedProjects.map(cloneRelatedProject),
-    };
-  }
-
-  async getProjectStorageRevision(projectId: string): Promise<string> {
-    this.assertProjectId(projectId);
-    await this.assertServerProjectDataAccess(projectId);
-    return this.db?.getProjectStorageRevision(projectId) ?? "0";
-  }
-
-  async subscribeProjectStorageRevisions(
-    listener: (event: ProjectStorageRevisionEvent) => void,
-  ): Promise<() => Promise<void>> {
-    if (!this.db) return async () => undefined;
-    this.projectStorageRevisionListeners.add(listener);
-    try {
-      this.projectStorageRevisionSubscription ??= this.db.listenProjectStorageRevisions((event) => {
-        for (const current of this.projectStorageRevisionListeners) current(event);
-      });
-      await this.projectStorageRevisionSubscription;
-    } catch (error) {
-      this.projectStorageRevisionListeners.delete(listener);
-      this.projectStorageRevisionSubscription = undefined;
-      throw error;
-    }
-
-    let released = false;
-    return async () => {
-      if (released) return;
-      released = true;
-      this.projectStorageRevisionListeners.delete(listener);
-      if (this.projectStorageRevisionListeners.size > 0) return;
-      const subscription = this.projectStorageRevisionSubscription;
-      this.projectStorageRevisionSubscription = undefined;
-      if (subscription) await (await subscription)();
-    };
-  }
-
   async issueKanbanPreviewCapability(options: {
     projectName: string;
+    entryId?: string;
     target?: string;
     actorId: string;
   }): Promise<KanbanPreviewCapability> {
-    const project = await this.resolveKanbanProject(options.projectName, options.target);
+    const project = await this.resolveKanbanProject(options.projectName, options.target, options.entryId);
     const actorId = requireKanbanActorId(options.actorId);
     const now = Date.now();
     const expiresAtMs = now + KANBAN_PREVIEW_CAPABILITY_TTL_MS;
     const token = createKanbanPreviewCapabilityToken({
       version: 1,
       projectName: options.projectName,
+      entryId: project.entryId,
       resolvedTarget: project.resolvedTarget,
       actorId,
       expiresAtMs,
@@ -2390,6 +1291,7 @@ export class Storage {
 
   async getKanbanAsset(options: {
     projectName: string;
+    entryId?: string;
     target?: string;
     actorId?: string;
     previewCapabilityToken?: string;
@@ -2401,6 +1303,7 @@ export class Storage {
           options.previewCapabilityToken,
           options.projectName,
           options.target,
+          options.entryId,
         )
       : requireKanbanActorId(options.actorId ?? "");
     if (this.db) {
@@ -2411,6 +1314,7 @@ export class Storage {
     const project = await this.resolveKanbanProject(
       options.projectName,
       options.target,
+      options.entryId,
     ).catch(() => {
       throw new HttpError(404, 404, "Kanban asset does not exist.");
     });
@@ -2457,6 +1361,7 @@ export class Storage {
       const workspace = await this.getKanbanWorkspace({
         projectName: options.projectName,
         target: project.resolvedTarget,
+        entryId: project.entryId,
         actorId,
       });
       const active = workspace.configurations.find((item) => item.id === workspace.activeConfigurationId)
@@ -2488,6 +1393,7 @@ export class Storage {
     token: string,
     projectName: string,
     target?: string,
+    entryId?: string,
   ): string {
     const now = Date.now();
     const capability = readKanbanPreviewCapabilityToken(
@@ -2498,7 +1404,8 @@ export class Storage {
       capability === undefined ||
       capability.expiresAtMs <= now ||
       capability.projectName !== projectName ||
-      capability.resolvedTarget !== target
+      capability.resolvedTarget !== target ||
+      capability.entryId !== entryId
     ) {
       throw new HttpError(404, 404, "Kanban preview does not exist or has expired.");
     }
@@ -2514,9 +1421,9 @@ export class Storage {
       const frozen=[];
       for(const input of refs) {
         const ref=parseConfigurationFile(input);
-        await this.assertManagedFileAccountAccess(ref.id,actorId);
+        await this.assertManagedFileAccountAccess(ref.id,actorId,template.entryId);
         const file=await this.getManagedFile(ref.id);
-        if(file.metadata.projectId!==projectId) throw new HttpError(403,403,'Configuration attachment belongs to another project.');
+        if(file.metadata.projectId!==projectId || file.metadata.entryId!==template.entryId) throw new HttpError(403,403,'Configuration attachment belongs to another project.');
         if(file.metadata.size!==ref.size||file.metadata.name!==ref.name||file.metadata.mimeType!==ref.mimeType)throw new HttpError(400,400,'Invalid server file reference.');
         let copy=copies.get(ref.id);
         if(!copy) {
@@ -2534,28 +1441,32 @@ export class Storage {
     if(!template.attachments.length) delete template.attachments;
   }
 
-  async uploadConfigurationFile(options:{projectName:string;actorId:string;key:string;name:string;mimeType:string;buffer:Buffer;target?:string;administrator?:boolean;actor?:AccessActor;field?:unknown}):Promise<ManagedFileReference[]> {
+  async uploadConfigurationFile(options:{projectName:string;entryId?:string;actorId:string;key:string;name:string;mimeType:string;buffer:Buffer;target?:string;administrator?:boolean;actor?:AccessActor;field?:unknown}):Promise<ManagedFileReference[]> {
     try {
-    const state=await this.projectConfigurations(options,{action:'get'}) as ProjectConfigurationState;
+    const metadata=await this.readPackageMetadataForTarget(options.projectName,options.target??'draft');
+    const entryId=selectProjectEntry({entries:metadata.entries,defaultEntry:metadata.defaultEntry},options.entryId).entryId;
+    const state=await this.projectConfigurations({...options,entryId},{action:'get'}) as ProjectConfigurationState;
     const field=state.fields.find(f=>f.name===options.key) ?? (options.field===undefined?undefined:parseConfigurationField(options.field));
     if(!field || field.type!=='file'||field.name!==options.key) throw new HttpError(400,400,'Unknown configuration file field.');
     if(!state.fields.some(existing=>existing.name===field.name)) applyConfigurationAction(state,{action:'field.save',revision:state.revision,field},randomUUID,undefined,state.capabilities?{subject:options.actorId,role:state.capabilities.role,online:state.capabilities.online}:undefined);
     if(!configurationCapability(state,field).editable) throw new HttpError(403,403,'Configuration is locked by the author.');
     validateConfigurationFileSelection(field,{name:options.name,mimeType:options.mimeType,size:options.buffer.length});
-    return await this.saveManagedFiles({projectName:options.projectName,configurationOwnerUserId:options.actorId,files:[{name:options.name,mimeType:options.mimeType,buffer:options.buffer}]});
+    return await this.saveManagedFiles({projectName:options.projectName,configurationOwnerUserId:options.actorId,entryId,files:[{name:options.name,mimeType:options.mimeType,buffer:options.buffer}]});
     } catch(error) {if(error instanceof ProjectConfigurationError)throw new HttpError(error.code==='CONFIGURATION_FORBIDDEN'?403:400,400,error.message,{code:error.code});throw error;}
   }
 
-  async configurationAttachment(options:{projectName:string;actorId:string;target?:string;actor?:AccessActor;administrator?:boolean},fileId:string):Promise<{metadata:ManagedFileReference;filePath:string}> {
-    const state=await this.projectConfigurations(options,{action:'get'}) as ProjectConfigurationState;
+  async configurationAttachment(options:{projectName:string;entryId?:string;actorId:string;target?:string;actor?:AccessActor;administrator?:boolean},fileId:string):Promise<{metadata:ManagedFileReference;filePath:string}> {
+    const metadata=await this.readPackageMetadataForTarget(options.projectName,options.target??'draft');
+    const entryId=selectProjectEntry({entries:metadata.entries,defaultEntry:metadata.defaultEntry},options.entryId).entryId;
+    const state=await this.projectConfigurations({...options,entryId},{action:'get'}) as ProjectConfigurationState;
     try {
       const file=await this.getManagedFile(fileId);
-      const owner=await readJson<{projectId:string;userId:string}>(path.join(this.managedFileDir(fileId),'configuration-owner.json'));
-      if(owner?.projectId===options.projectName && owner.userId===options.actorId) return file;
+      const owner=await readJson<{projectId:string;entryId:string;userId:string}>(path.join(this.managedFileDir(fileId),'configuration-owner.json'));
+      if(owner?.projectId===options.projectName && owner.userId===options.actorId && owner.entryId===entryId) return file;
       const access=await this.getProjectAccessSummary(options.projectName,options.actorId);
-      if(!owner && access.access?.capabilities.includes("manageSettings") && file.metadata.projectId===options.projectName) return file;
+      if(!owner && access.access?.capabilities.includes("manageSettings") && file.metadata.projectId===options.projectName && file.metadata.entryId===entryId) return file;
     } catch(error) {if(!(error instanceof HttpError && error.statusCode===404))throw error;}
-    const template=state.template ?? (options.target && options.target!=='draft'?await this.configurationTemplate(options.projectName,options.target):undefined);
+    const template=state.template ?? (options.target && options.target!=='draft'?await this.configurationTemplate(options.projectName,options.target,options.entryId):undefined);
     const asset=template?.attachments?.find(a=>a.id===fileId);
     if(asset) {
       const refs=template!.configurations.flatMap(profile=>template!.fields.filter(f=>f.type==='file').flatMap(field=>{
@@ -2570,19 +1481,20 @@ export class Storage {
     throw new HttpError(404,404,'Configuration attachment does not exist.');
   }
 
-  async configurationTemplate(projectName: string, target = "latest"): Promise<ProjectConfigurationTemplate | undefined> {
+  async configurationTemplate(projectName: string, target = "latest", entryId?: string): Promise<ProjectConfigurationTemplate | undefined> {
     const source = await this.resolveSourceTarget(projectName, target);
+    const registration = selectProjectEntry(readProjectManifest(await readPackageJson(source.sourceDir)), entryId);
     if (this.db) {
-      const cached = await this.db.readConfigurationTemplate(projectName, source.resolvedTarget);
+      const cached = await this.db.readConfigurationTemplate(projectName, registration.entryId, source.resolvedTarget);
       if (cached) return parseConfigurationTemplate(cached);
     }
-    try { return parseConfigurationTemplate(JSON.parse(await readFile(path.join(source.sourceDir, CONFIGURATION_TEMPLATE_FILE), "utf8"))); }
+    try { return parseConfigurationTemplate(JSON.parse(await readFile(path.join(source.sourceDir, configurationTemplatePath(registration.entryId)), "utf8"))); }
     catch (error) { if ((error as NodeJS.ErrnoException).code === "ENOENT") return undefined; throw error; }
   }
 
-  private async configurationPublicationDraft(projectId: string, update?: (stored: unknown) => ConfigurationPublicationDraft): Promise<ConfigurationPublicationDraft | undefined> {
-    if (this.db) return this.db.configurationPublicationDraft(projectId, update);
-    const file = path.join(this.projectDirectory(projectId), "configuration-publication.json");
+  private async configurationPublicationDraft(projectId: string, entryId: string, update?: (stored: unknown) => ConfigurationPublicationDraft): Promise<ConfigurationPublicationDraft | undefined> {
+    if (this.db) return this.db.configurationPublicationDraft(projectId, entryId, update);
+    const file = path.join(this.projectDirectory(projectId), `configuration-publication-${entryId}.json`);
     let stored: ConfigurationPublicationDraft | undefined;
     try { stored = parsePublicationDraft(JSON.parse(await readFile(file, "utf8"))); }
     catch(error) { if((error as NodeJS.ErrnoException).code !== "ENOENT") throw error; }
@@ -2592,7 +1504,7 @@ export class Storage {
     return next;
   }
 
-  async projectConfigurations(options: { projectName: string; actorId: string; target?: string; administrator?: boolean; actor?: AccessActor }, call: ProjectConfigurationAction): Promise<ProjectConfigurationState | ProjectConfigurationExport> {
+  async projectConfigurations(options: { projectName: string; entryId?: string; actorId: string; target?: string; administrator?: boolean; actor?: AccessActor }, call: ProjectConfigurationAction): Promise<ProjectConfigurationState | ProjectConfigurationExport> {
     try {
       validateConfigurationAction(call);
       const run=()=>this.projectConfigurationsUnlocked(options,call);
@@ -2603,7 +1515,7 @@ export class Storage {
     }
   }
 
-  private async projectConfigurationsUnlocked(options: { projectName: string; actorId: string; target?: string; administrator?: boolean; actor?: AccessActor }, call: ProjectConfigurationAction): Promise<ProjectConfigurationState | ProjectConfigurationExport> {
+  private async projectConfigurationsUnlocked(options: { projectName: string; entryId?: string; actorId: string; target?: string; administrator?: boolean; actor?: AccessActor }, call: ProjectConfigurationAction): Promise<ProjectConfigurationState | ProjectConfigurationExport> {
     this.assertProjectId(options.projectName);
     const actor = requireKanbanActorId(options.actorId);
     const access = await this.getProjectAccessSummary(options.projectName, actor);
@@ -2616,13 +1528,16 @@ export class Storage {
       target = "latest";
     }
     const source = await this.resolveSourceTarget(options.projectName, target);
+    const entry = selectProjectEntry(readProjectManifest(await readPackageJson(source.sourceDir)), options.entryId);
+    const entryId = entry.entryId;
+    options = { ...options, entryId };
     try {
       validateConfigurationAction(call);
       let fields: ProjectConfigurationState["fields"] = [];
       let agentModelPolicy: ProjectConfigurationState["agentModelPolicy"];
       let definitionVersion = 1;
       let profilePolicy:ConfigurationProfilePolicy|undefined;
-      try { const definition = readProjectConfigurationDefinition(source.sourceDir); fields = definition.fields; definitionVersion = definition.version; agentModelPolicy=definition.agentModelPolicy;profilePolicy=definition.profilePolicy; }
+      try { const definition = readProjectConfigurationDefinition(source.sourceDir, entryId); fields = definition.fields; definitionVersion = definition.version; agentModelPolicy=definition.agentModelPolicy;profilePolicy=definition.profilePolicy; }
       catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error; }
       // Personal values use the released template. Reading source drafts does
       // not grant access to an author's unpublished configuration fields.
@@ -2631,7 +1546,7 @@ export class Storage {
         if (latest) return this.projectConfigurationsUnlocked({...options,target:latest},call);
         if (profilePolicy) throw new ProjectConfigurationError('Publish the project configuration template before using role-controlled configurations.');
       }
-      const template = !canManagePublication && source.resolvedTarget !== 'draft' ? await this.configurationTemplate(options.projectName,source.resolvedTarget) : undefined;
+      const template = !canManagePublication && source.resolvedTarget !== 'draft' ? await this.configurationTemplate(options.projectName,source.resolvedTarget,options.entryId) : undefined;
       agentModelPolicy=configurationAgentModelPolicy({fields,agentModelPolicy},template??{fields:[]});
       profilePolicy=template?.profilePolicy??profilePolicy;
       if (!canManagePublication && definitionVersion === 2 && !template) fields = [];
@@ -2644,7 +1559,7 @@ export class Storage {
             const ref=parseConfigurationFile(input);
             if(template?.attachments?.some(a=>a.id===ref.id))continue;
             const file=await this.getManagedFile(ref.id);
-            const owner=await readJson<{userId:string}>(path.join(this.managedFileDir(ref.id),'configuration-owner.json'));
+            const owner=await readJson<{userId:string;entryId:string}>(path.join(this.managedFileDir(ref.id),'configuration-owner.json'));
             if(file.metadata.projectId!==options.projectName || owner && owner.userId!==actor || !owner && !canManagePublication)throw new HttpError(403,403,'Configuration file is not available to this account.');
             if(file.metadata.size!==ref.size||file.metadata.name!==ref.name||file.metadata.mimeType!==ref.mimeType)throw new HttpError(400,400,'Invalid server file reference.');
           }
@@ -2659,19 +1574,19 @@ export class Storage {
         await references(document.fields,Object.fromEntries(document.fields.filter(field=>field.defaultValue!==undefined).map(field=>[field.name,field.defaultValue])));
         for(const profile of document.configurations)await references(document.fields,profile.values);
       }
-      const initialId = `default-${createHash("sha256").update(JSON.stringify([options.projectName, actor])).digest("hex").slice(0,24)}`;
+      const initialId = `default-${createHash("sha256").update(JSON.stringify([options.projectName, entryId, actor])).digest("hex").slice(0,24)}`;
       const publicationCall = call.action.startsWith('publication.');
       if (publicationCall && !canManagePublication) throw new HttpError(403,403,"Maintainer access is required to manage official configurations.");
       let state: ProjectConfigurationState;
       if (!this.db) {
         const store = await createLocalProjectConfigurationStore(source.sourceDir, {
-          rootDir: path.join(this.dataRoot, "project-configurations"), storageKey: JSON.stringify([options.projectName, actor]), template:template??null,fields,agentModelPolicy,profilePolicy,access:configurationAccess,
+          entryId, rootDir: path.join(this.dataRoot, "project-configurations"), storageKey: JSON.stringify([options.projectName, entryId, actor]), template:template??null,fields,agentModelPolicy,profilePolicy,access:configurationAccess,
         });
         const result = await store.dispatch(publicationCall ? {action:'get'} : call);
         if(call.action === 'export') return result;
         state = result as ProjectConfigurationState;
       } else {
-        state = await this.db.projectConfigurationState(options.projectName, actor, stored => {
+        state = await this.db.projectConfigurationState(options.projectName, entryId, actor, stored => {
           let current = readConfigurationState(stored, template?.fields ?? fields, () => initialId,agentModelPolicy);
           if (template) current = bindConfigurationTemplate(current,template);
           else delete current.template;
@@ -2684,11 +1599,11 @@ export class Storage {
       if (canManagePublication) {
         const withSourcePolicy = (draft: ConfigurationPublicationDraft) => parsePublicationDraft({...draft,profilePolicy:state.profilePolicy,agentModelPolicy:configurationAgentModelPolicy(state,draft)});
         const operation = async () => {
-          let draft = await this.configurationPublicationDraft(options.projectName);
+          let draft = await this.configurationPublicationDraft(options.projectName, entryId);
           if(call.action === 'publication.save') {
             if(call.revision !== state.revision) throw new ProjectConfigurationError("Configuration changed. Refresh before saving your draft.","CONFIGURATION_CONFLICT");
             const input = withSourcePolicy(parsePublicationDraft(call.publication));
-            draft = await this.configurationPublicationDraft(options.projectName, stored => {
+            draft = await this.configurationPublicationDraft(options.projectName, entryId, stored => {
               if(input.revision !== (stored ? parsePublicationDraft(stored).revision : 0)) throw new ProjectConfigurationError("Publication draft changed. Refresh before saving.","CONFIGURATION_CONFLICT");
               return {...input,revision:input.revision+1,configurationRevision:state.revision,configurationAccountId:actor};
             });
@@ -2696,12 +1611,12 @@ export class Storage {
           state.publication = draft ? withSourcePolicy(draft) : createPublicationDraft(state);
           state.canManagePublication = true;
         state.sourceHash = await hashDirectory(source.sourceDir);
-          if(call.action === 'publication.preview') state.publicationPreview = freezeConfigurationTemplate(withSourcePolicy(call.publication??state.publication),{projectId:options.projectName,projectVersion:'preview',sourceHash:'0'.repeat(64)});
+          if(call.action === 'publication.preview') state.publicationPreview = freezeConfigurationTemplate(withSourcePolicy(call.publication??state.publication),{projectId:options.projectName,entryId,projectVersion:'preview',sourceHash:'0'.repeat(64)});
         };
         await operation();
       } else state.canManagePublication = false;
       if(source.resolvedTarget === "draft" && access.access?.capabilities.includes("publish")) {
-        state.publicationRevision=(await this.configurationPublicationDraft(options.projectName))?.revision;
+        state.publicationRevision=(await this.configurationPublicationDraft(options.projectName, entryId))?.revision;
         state.sourceHash=await hashDirectory(source.sourceDir);
       }
       state.fieldCapabilities=Object.fromEntries(state.fields.map(field=>[field.name,{...configurationCapability(state,field),paths:Object.fromEntries(Object.keys(field.paths??{}).map(pointer=>[pointer,configurationCapability(state,field,pointer)]))}]));
@@ -2834,7 +1749,7 @@ export class Storage {
       if (this.db) await this.createProject({
         projectId: metadata.id,
         projectName: metadata.name,
-        projectType: metadata.projectType,
+        entries: metadata.entries, defaultEntry: metadata.defaultEntry,
         projectInfo: this.normalizeDeclaredProjectInfo(metadata.projectInfo),
         projectCard: metadata.projectCard,
         ownerUserId: options.ownerUserId,
@@ -2951,10 +1866,9 @@ export class Storage {
     projectName: string;
     releaseLog?: string;
     createdByUserId?: string;
-    dependencies?: ProjectDependencyLock[];
-    expectedVersion?: string;
+      expectedVersion?: string;
     expectedSourceHash?: string;
-    expectedConfigurationRevision?: number;
+    expectedConfigurationRevisions?: Record<string,number>;
     administrator?: boolean;
   }): Promise<PublishResult> {
     this.assertProjectId(options.projectName);
@@ -2965,8 +1879,8 @@ export class Storage {
   }
 
   private async publishLocked(options: {
-    projectName: string; releaseLog?: string; createdByUserId?: string; dependencies?: ProjectDependencyLock[];
-    expectedVersion?: string; expectedSourceHash?: string; reservationDeploymentId?: string; expectedConfigurationRevision?: number; administrator?: boolean;
+    projectName: string; releaseLog?: string; createdByUserId?: string;
+    expectedVersion?: string; expectedSourceHash?: string; expectedConfigurationRevisions?: Record<string,number>; administrator?: boolean;
   }): Promise<PublishResult> {
     const assertPublisher = async () => {
       if (this.db && (options.createdByUserId || options.administrator)) {
@@ -2993,68 +1907,61 @@ export class Storage {
       if (options.expectedVersion !== undefined && options.expectedVersion !== version) {
         throw new HttpError(409, 409, "Project version differs from its reservation.");
       }
-      if (options.reservationDeploymentId && !await this.requireProjectDependencyDatabase().hasProjectVersionReservation({
-        deploymentId: options.reservationDeploymentId, projectId: options.projectName, version })) {
-        throw new HttpError(409, 409, "Project version reservation is unavailable.");
-      }
-      await this.assertVersionPublishable(options.projectName, version, options.reservationDeploymentId);
+      await this.assertVersionPublishable(options.projectName, version);
       const releaseLog = normalizeReleaseLog(options.releaseLog);
-      const dependencies = await this.resolvePublishDependencyLocks({ projectName: options.projectName, sourceDir, projectType: metadata.projectType, dependencies: options.dependencies });
       const authoredSourceHash = await hashDirectory(sourceDir);
       if (options.expectedSourceHash !== undefined && authoredSourceHash !== options.expectedSourceHash) {
         throw new HttpError(409, 409, "Project draft changed after preparation.");
       }
-      await rm(path.join(sourceDir,CONFIGURATION_TEMPLATE_FILE),{force:true});
-      await rm(path.join(sourceDir,"configuration-assets"),{recursive:true,force:true});
-      const publication = await this.configurationPublicationDraft(options.projectName);
-      let configurationTemplate: ProjectConfigurationTemplate | undefined;
-      if (publication) {
-        if(options.expectedSourceHash===undefined) throw new HttpError(409,409,"Confirm the current project source hash before publishing configurations.");
-        const access = await this.getProjectAccessSummary(options.projectName, options.createdByUserId);
-
-        if(options.expectedConfigurationRevision !== publication.revision) throw new HttpError(409,409,"Confirm the current configuration publication draft before publishing.");
-        const configurationAccountId=publication.configurationAccountId??access.ownerUserId??options.createdByUserId!;
-        // Publication authority was checked above. Read the recorded author's personal revision without binding a recipient template.
-        const ownerState = await this.projectConfigurations({projectName:options.projectName,actorId:configurationAccountId,administrator:true},{action:'get'}) as ProjectConfigurationState;
-        if(ownerState.revision !== publication.configurationRevision) throw new HttpError(409,409,"Configuration changed after publication preparation. Save the publication draft again.");
-        configurationTemplate = freezeConfigurationTemplate({...publication,agentModelPolicy:configurationAgentModelPolicy(ownerState,publication),profilePolicy:ownerState.profilePolicy},{projectId:options.projectName,projectVersion:version,sourceHash:authoredSourceHash});
-        await this.freezeConfigurationAttachments(options.projectName,sourceDir,configurationTemplate,configurationAccountId);
-        await writeJson(path.join(sourceDir, "configuration.json"), {version:2,fields:configurationTemplate.fields,...(configurationTemplate.agentModelPolicy?{agentModelPolicy:configurationTemplate.agentModelPolicy}:{}),...(configurationTemplate.profilePolicy?{profilePolicy:configurationTemplate.profilePolicy}:{})});
-        await writeJson(path.join(sourceDir, CONFIGURATION_TEMPLATE_FILE),configurationTemplate);
-      } else {
-        // v2 opts in to safe sharing defaults, without publishing historical personal values.
-        try {
-          const definition=readProjectConfigurationDefinition(sourceDir);
-          if(definition.version===2) {
-            const access=await this.getProjectAccessSummary(options.projectName,options.createdByUserId);
-
-            let empty=readConfigurationState(undefined,definition.fields,()=> 'default',definition.agentModelPolicy);
-            if(definition.profilePolicy)empty=bindConfigurationProfiles(empty,definition.profilePolicy);
-            configurationTemplate=freezeConfigurationTemplate(createPublicationDraft(empty),{projectId:options.projectName,projectVersion:version,sourceHash:authoredSourceHash});
-            await this.freezeConfigurationAttachments(options.projectName,sourceDir,configurationTemplate,options.createdByUserId);
-            await writeJson(path.join(sourceDir,'configuration.json'),{version:2,fields:configurationTemplate.fields,...(configurationTemplate.agentModelPolicy?{agentModelPolicy:configurationTemplate.agentModelPolicy}:{}),...(configurationTemplate.profilePolicy?{profilePolicy:configurationTemplate.profilePolicy}:{})});
-            await writeJson(path.join(sourceDir,CONFIGURATION_TEMPLATE_FILE),configurationTemplate);
-          }
-        } catch(error) {if((error as NodeJS.ErrnoException).code!=='ENOENT') throw error;}
+      await rm(path.join(sourceDir, "configuration-templates"), { recursive: true, force: true });
+      await rm(path.join(sourceDir, "configuration-assets"), { recursive: true, force: true });
+      const templates = new Map<string, ProjectConfigurationTemplate>();
+      for (const entry of metadata.entries) {
+        const entryId = entry.entryId;
+        const publication = await this.configurationPublicationDraft(options.projectName, entryId);
+        const definition = readProjectConfigurationDefinition(sourceDir, entryId);
+        let template: ProjectConfigurationTemplate | undefined;
+        if (publication) {
+          if (options.expectedSourceHash === undefined || options.expectedConfigurationRevisions?.[entryId] !== publication.revision) throw new HttpError(409,409,`Confirm source and configuration publication revision for entry "${entryId}".`);
+          const access = await this.getProjectAccessSummary(options.projectName, options.createdByUserId);
+          const configurationAccountId = publication.configurationAccountId ?? access.ownerUserId ?? options.createdByUserId!;
+          const ownerState = await this.projectConfigurations({ projectName: options.projectName, entryId, actorId: configurationAccountId, administrator: true }, { action: "get" }) as ProjectConfigurationState;
+          if (ownerState.revision !== publication.configurationRevision) throw new HttpError(409,409,`Configuration changed for entry "${entryId}". Save its publication draft again.`);
+          template = freezeConfigurationTemplate({ ...publication, agentModelPolicy: configurationAgentModelPolicy(ownerState,publication), profilePolicy: ownerState.profilePolicy }, { projectId: options.projectName, entryId, projectVersion: version, sourceHash: authoredSourceHash });
+          await this.freezeConfigurationAttachments(options.projectName, sourceDir, template, configurationAccountId);
+        } else if (definition.version === 2) {
+          let empty = readConfigurationState(undefined, definition.fields, () => "default", definition.agentModelPolicy);
+          if (definition.profilePolicy) empty = bindConfigurationProfiles(empty, definition.profilePolicy);
+          template = freezeConfigurationTemplate(createPublicationDraft(empty), { projectId: options.projectName, entryId, projectVersion: version, sourceHash: authoredSourceHash });
+          await this.freezeConfigurationAttachments(options.projectName, sourceDir, template, options.createdByUserId);
+        }
+        if (template) {
+          templates.set(entryId, template);
+          await writeJson(path.join(sourceDir, configurationTemplatePath(entryId)), template);
+          if (entry.configuration) await writeJson(path.join(sourceDir,entry.root,entry.configuration), { version: 2, fields: template.fields, ...(template.agentModelPolicy ? { agentModelPolicy: template.agentModelPolicy } : {}), ...(template.profilePolicy ? { profilePolicy: template.profilePolicy } : {}) });
+        }
       }
+      const distribution = projectManifestForDistribution(await readPackageJson(sourceDir));
+      await writeJson(path.join(sourceDir, "package.json"), distribution);
+      const published = readProjectManifest(distribution);
       const sourceHash = await hashDirectory(sourceDir);
       const artifacts = await this.uploadVersionArtifacts({ projectName: options.projectName, version, sourceHash, sourceDir });
       const manifest: Manifest = { projectId: options.projectName, projectName: metadata.name, version,
         createdAt: new Date().toISOString(), createdByUserId: options.createdByUserId, releaseLog, sourceHash,
-        sourceObjectPath: artifacts?.sourceObjectPath, projectType: metadata.projectType, dependencies };
+        sourceObjectPath: artifacts?.sourceObjectPath, entries: published.entries, defaultEntry: published.defaultEntry, };
       await writeJson(path.join(stagedVersionDir, "manifest.json"), manifest);
       await assertPublisher();
       await moveDirectoryIfAbsent(stagedVersionDir, this.versionDir(options.projectName, version), "Project version already exists.");
       versionDirCreated = true;
       if (this.db) {
-        await this.db.saveVersion({ ...manifest, sourceObjectPath: manifest.sourceObjectPath ?? "", releaseLog, dependencies, updateLatest: false });
+        await this.db.saveVersion({ ...manifest, sourceObjectPath: manifest.sourceObjectPath ?? "", releaseLog, updateLatest: false });
         dbVersionCreated = true;
-        if(configurationTemplate) await this.db.saveConfigurationTemplate(options.projectName,version,configurationTemplate);
+        for (const [entryId, template] of templates) await this.db.saveConfigurationTemplate(options.projectName, entryId, version, template);
       }
       await this.activatePublishedVersion({ projectId: options.projectName, projectName: metadata.name, version });
       committed = true;
       return { projectId: options.projectName, projectName: metadata.name, version, latest: version,
-        nextVersion: formatNextManagedVersion(parseSemver(version)), releaseLog, dependencies };
+        nextVersion: formatNextManagedVersion(parseSemver(version)), releaseLog, };
     } catch (error) {
       if (!committed && dbVersionCreated && version) await this.db?.deleteVersion(options.projectName, version);
       if (!committed && versionDirCreated && version) await rm(this.versionDir(options.projectName, version), { recursive: true, force: true });
@@ -3062,383 +1969,9 @@ export class Storage {
     } finally { await rm(tempDir, { recursive: true, force: true }); }
   }
 
-  private async resolvePublishDependencyLocks(options: {
-    projectName: string;
-    sourceDir: string;
-    projectType: ProjectKind;
-    dependencies?: ProjectDependencyLock[];
-  }): Promise<ProjectDependencyLock[]> {
-    const packageJson = await readPackageJson(options.sourceDir);
-    const projectInfo = readProjectInfo(packageJson);
-    const confirmed: RelatedProject[] = [];
-    if (this.db !== undefined) {
-      for (const relation of projectInfo.relatedProjects) {
-        const target = await this.db.getProject(relation.projectId);
-        if (target !== undefined && resolveProjectRelatedProjectAccess({
-          consumerProjectId: options.projectName,
-          consumerProjectInfo: projectInfo,
-          targetProjectId: target.id,
-          targetProjectInfo: target.projectInfo,
-          alias: relation.alias,
-        }) !== undefined) confirmed.push(relation);
-      }
-    }
-    const declared = createExternalProjectDependencyLocks(confirmed);
-    if (options.dependencies === undefined) {
-      return declared;
-    }
-
-    let dependencies: ProjectDependencyLock[];
-    try {
-      dependencies = parseProjectDependencyLocks(options.dependencies, { published: true });
-    } catch (error) {
-      throw toHttpErrorWithStatus(error, 400, 400, "Project dependency lock is invalid.");
-    }
-    if (dependencies.length !== declared.length) {
-      throw new HttpError(409, 409, "Published dependency lock does not match confirmed related projects.");
-    }
-    for (const expected of declared) {
-      const actual = dependencies.find((dependency) => dependency.alias === expected.alias);
-      if (
-        actual === undefined ||
-        actual.projectId !== expected.projectId
-      ) {
-        throw new HttpError(409, 409, `Published dependency lock ${JSON.stringify(expected.alias)} does not match a confirmed related project.`);
-      }
-    }
-    return dependencies.map(cloneProjectDependencyLock);
-  }
-
   async close(): Promise<void> {
-    if (this.projectStorageRevisionSubscription) await (await this.projectStorageRevisionSubscription)();
+    await this.databases.close();
     await this.db?.close();
-  }
-
-  async getProjectDataSummary(projectId: string): Promise<ProjectDataSummary> {
-    this.assertProjectId(projectId);
-    await this.assertServerProjectDataAccess(projectId);
-    if (this.db === undefined) {
-      throw new HttpError(501, 501, "Project data statistics require PostgreSQL storage.");
-    }
-    return this.db.getProjectDataSummary(projectId);
-  }
-
-  async listProjectKVEntries(options: {
-    projectId: string;
-    pageSize?: number;
-    cursor?: string;
-    scope?: "project" | "conversation";
-    query?: string;
-    valueType?: KVEntryValueType;
-    conversationId?: string;
-    runId?: string;
-  }): Promise<KVEntryPage> {
-    this.assertProjectId(options.projectId);
-    await this.assertServerProjectDataAccess(options.projectId);
-    if (this.db === undefined) {
-      throw new HttpError(501, 501, "Server KV inspection requires PostgreSQL storage.");
-    }
-
-    return this.db.listProjectKVEntries({
-      projectId: options.projectId,
-      pageSize: clampKVPageSize(options.pageSize),
-      cursor: options.cursor,
-      scope: options.scope,
-      query: normalizeRunQuery(options.query),
-      valueType: options.valueType,
-      conversationId: normalizeExactFilter(options.conversationId),
-      runId: normalizeExactFilter(options.runId),
-    });
-  }
-
-  async getProjectKVEntry(options: {
-    projectId: string;
-    scope: "project" | "conversation";
-    key: string;
-    conversationId?: string;
-  }): Promise<KVEntryDetail> {
-    this.assertProjectId(options.projectId);
-    await this.assertServerProjectDataAccess(options.projectId);
-    if (this.db === undefined) {
-      throw new HttpError(501, 501, "Server KV inspection requires PostgreSQL storage.");
-    }
-
-    const key = normalizeExactFilter(options.key);
-    if (key === "") {
-      throw new HttpError(400, 400, "KV key must be a non-empty string.");
-    }
-    const conversationId = normalizeExactFilter(options.conversationId);
-    if (options.scope === "conversation" && conversationId === "") {
-      throw new HttpError(400, 400, "conversationId is required for conversation KV entries.");
-    }
-
-    const entry = await this.db.getProjectKVEntry({
-      projectId: options.projectId,
-      scope: options.scope,
-      key,
-      conversationId: options.scope === "conversation" ? conversationId : undefined,
-    });
-    if (entry === undefined) {
-      throw new HttpError(404, 404, `Project KV entry "${key}" does not exist.`);
-    }
-    return entry;
-  }
-
-  async deleteProjectKVEntry(options: {
-    projectId: string;
-    scope: "project" | "conversation";
-    key: string;
-    conversationId?: string;
-  }): Promise<{ scope: "project" | "conversation"; key: string; conversationId?: string }> {
-    this.assertProjectId(options.projectId);
-    await this.assertServerProjectDataAccess(options.projectId);
-    if (this.db === undefined) {
-      throw new HttpError(501, 501, "Server KV inspection requires PostgreSQL storage.");
-    }
-
-    const key = normalizeExactFilter(options.key);
-    if (key === "") {
-      throw new HttpError(400, 400, "KV key must be a non-empty string.");
-    }
-    const conversationId = normalizeExactFilter(options.conversationId);
-    if (options.scope === "conversation" && conversationId === "") {
-      throw new HttpError(400, 400, "conversationId is required for conversation KV entries.");
-    }
-
-    // Storage-level delete is idempotent, but the console is deleting a row it
-    // is currently showing, so an already-absent entry is reported as missing
-    // rather than silently succeeding.
-    const removed = await this.db.deleteValue({
-      storageKind: "kv",
-      scope: options.scope,
-      projectId: options.projectId,
-      key,
-      ...(options.scope === "conversation" ? { conversationId } : {}),
-    });
-    if (!removed) {
-      throw new HttpError(404, 404, `Project KV entry "${key}" does not exist.`);
-    }
-
-    return {
-      scope: options.scope,
-      key,
-      ...(options.scope === "conversation" ? { conversationId } : {}),
-    };
-  }
-
-  async getProjectStorageValue(options: {
-    storageKind: StorageKind;
-    scope: KVScope;
-    projectId: string;
-    key: string;
-    conversationId?: string;
-  }): Promise<PersistentValueGetResult> {
-    const input = normalizeProjectStorageInput(options);
-    await this.assertServerProjectDataAccess(input.projectId);
-    if (this.db === undefined) {
-      throw new HttpError(501, 501, "PersistentValue requires PostgreSQL storage.");
-    }
-
-    const value = await this.db.getValueWithRevision(input);
-    return value === undefined
-      ? { exists: false }
-      : { exists: true, value: value.value, revision: value.revision };
-  }
-
-  async setProjectStorageValue(options: {
-    storageKind: StorageKind;
-    scope: KVScope;
-    projectId: string;
-    key: string;
-    conversationId?: string;
-    value: unknown;
-    source?: KVWriteSource;
-  }): Promise<{ ok: true }> {
-    const input = normalizeProjectStorageInput(options);
-    await this.assertServerProjectDataAccess(input.projectId);
-    if (this.db === undefined) {
-      throw new HttpError(501, 501, "PersistentValue requires PostgreSQL storage.");
-    }
-
-    if (options.value === undefined) {
-      throw new HttpError(400, 400, "Project storage value cannot be undefined.");
-    }
-
-    // HTTP writes share the storage-kind-isolated project domain with local clients.
-    await this.db.setValue({
-      ...input,
-      value: options.value,
-      source: normalizeProjectStorageSource(options.source),
-    });
-    return { ok: true };
-  }
-
-  async deleteProjectStorageValue(options: {
-    storageKind: StorageKind;
-    scope: KVScope;
-    projectId: string;
-    key: string;
-    conversationId?: string;
-  }): Promise<{ removed: boolean }> {
-    const input = normalizeProjectStorageInput(options);
-    await this.assertServerProjectDataAccess(input.projectId);
-    if (this.db === undefined) {
-      throw new HttpError(501, 501, "PersistentValue requires PostgreSQL storage.");
-    }
-
-    return { removed: await this.db.deleteValue(input) };
-  }
-
-  async compareAndSetProjectStorageValue(options: {
-    storageKind: StorageKind;
-    scope: KVScope;
-    projectId: string;
-    key: string;
-    conversationId?: string;
-    value: unknown;
-    expectedRevision: string | null;
-    source?: KVWriteSource;
-  }): Promise<PersistentValueCompareAndSetResult> {
-    const input = normalizeProjectStorageInput(options);
-    await this.assertServerProjectDataAccess(input.projectId);
-    if (this.db === undefined) {
-      throw new HttpError(501, 501, "PersistentValue requires PostgreSQL storage.");
-    }
-
-    if (options.value === undefined) {
-      throw new HttpError(400, 400, "Project storage value cannot be undefined.");
-    }
-
-    return this.db.compareAndSetValue({
-      ...input,
-      value: options.value,
-      source: normalizeProjectStorageSource(options.source),
-    }, options.expectedRevision);
-  }
-
-  async mutateProjectStorageKnowledgeDocument(options: {
-    projectId: string;
-    mutation: PersistentValueKnowledgeMutation;
-  }): Promise<KnowledgeDocumentRecord | { id: string; deleted: boolean }> {
-    return this.withPersistentValueKnowledgeMutationContext<
-      KnowledgeDocumentRecord | { id: string; deleted: boolean }
-    >(
-      options.projectId,
-      async (context) => {
-        switch (options.mutation.type) {
-          case "create":
-            return createKnowledgeDocument(context, options.mutation.input);
-          case "edit":
-            return editKnowledgeDocument(context, {
-              id: options.mutation.input.documentId,
-              title: options.mutation.input.title,
-              markdown: options.mutation.input.markdown,
-            });
-          case "delete":
-            return deleteKnowledgeDocument(context, options.mutation.input.documentId);
-        }
-      },
-      { conflictAs: 409, notFoundAs: 404 },
-    );
-  }
-
-  async listKnowledgeDocuments(
-    projectName: string,
-    options: { pageSize?: number; cursor?: string } = {},
-  ): Promise<KnowledgeDocumentPageRecord> {
-    this.assertProjectId(projectName);
-    return this.withKnowledgeContext(projectName, (context) =>
-      listKnowledgeDocumentPage(context, options));
-  }
-
-  async getKnowledgeDocument(options: {
-    projectName: string;
-    documentId: string;
-  }): Promise<KnowledgeDocumentRecord> {
-    this.assertProjectId(options.projectName);
-    const document = await this.withKnowledgeContext(options.projectName, (context) =>
-      getKnowledgeDocument(context, options.documentId));
-    if (document === undefined) {
-      throw new HttpError(404, 404, `Knowledge document "${options.documentId}" does not exist.`);
-    }
-    return document;
-  }
-
-  async createKnowledgeDocument(options: {
-    projectName: string;
-    id?: string;
-    title: string;
-    markdown: string;
-  }): Promise<KnowledgeDocumentRecord> {
-    this.assertProjectId(options.projectName);
-    return this.withPersistentValueKnowledgeMutationContext(options.projectName, (context) =>
-      createKnowledgeDocument(context, {
-        id: options.id,
-        title: options.title,
-        markdown: options.markdown,
-      }), { conflictAs: 409 });
-  }
-
-  async editKnowledgeDocument(options: {
-    projectName: string;
-    documentId: string;
-    title?: string;
-    markdown?: string;
-  }): Promise<KnowledgeDocumentRecord> {
-    this.assertProjectId(options.projectName);
-    return this.withPersistentValueKnowledgeMutationContext(options.projectName, (context) =>
-      editKnowledgeDocument(context, {
-        id: options.documentId,
-        title: options.title,
-        markdown: options.markdown,
-      }), { notFoundAs: 404 });
-  }
-
-  async deleteKnowledgeDocument(options: {
-    projectName: string;
-    documentId: string;
-  }): Promise<{ id: string; deleted: boolean }> {
-    this.assertProjectId(options.projectName);
-    return this.withPersistentValueKnowledgeMutationContext(options.projectName, (context) =>
-      deleteKnowledgeDocument(context, options.documentId));
-  }
-
-  async searchKnowledgeDocuments(options: {
-    projectName: string;
-    query: string;
-    documentId?: string;
-    beforeLines?: number;
-    afterLines?: number;
-    maxMatches?: number;
-    pageSize?: number;
-    cursor?: string;
-  }): Promise<KnowledgeDocumentSearchResult> {
-    this.assertProjectId(options.projectName);
-    return this.withKnowledgeContext(options.projectName, (context) =>
-      searchKnowledgeDocuments(context, {
-        query: options.query,
-        documentId: options.documentId,
-        beforeLines: options.beforeLines,
-        afterLines: options.afterLines,
-        maxMatches: options.maxMatches,
-        pageSize: options.pageSize,
-        cursor: options.cursor,
-      }), { notFoundAs: 404 });
-  }
-
-  async readKnowledgeDocumentLines(options: {
-    projectName: string;
-    documentId: string;
-    startLine: number;
-    endLine: number;
-  }): Promise<KnowledgeDocumentLinesRecord> {
-    this.assertProjectId(options.projectName);
-    return this.withKnowledgeContext(options.projectName, (context) =>
-      readKnowledgeDocumentLines(context, {
-        documentId: options.documentId,
-        startLine: options.startLine,
-        endLine: options.endLine,
-      }), { notFoundAs: 404 });
   }
 
   async getSystemTokenUsage(options: {
@@ -3716,49 +2249,6 @@ export class Storage {
     }
   }
 
-  private async assertServerProjectStorageMode(
-    projectId: string,
-    action: "access server data",
-  ): Promise<ProjectInfoContract> {
-    this.assertProjectId(projectId);
-    const stored = await this.db?.getProject(projectId);
-    const projectInfo = stored?.projectInfo ?? (await this.readPackageMetadata(projectId)).projectInfo;
-    try {
-      assertProjectDataStorageLocationAllowed(projectInfo, "server");
-      return projectInfo;
-    } catch {
-      const mode = projectInfo.dataStorage?.mode ?? null;
-      const data = {
-        projectId,
-        dataStorageMode: mode,
-        requiredLocation: "server" as const,
-        allowedModes: ["server", "both"] as const,
-      };
-      if (mode === null) {
-        throw new HttpError(
-          409,
-          409,
-          `Project "${projectId}" cannot ${action} because steamHarness.projectInfo.dataStorage.mode is not declared. Open the project in Desktop and save Project Info before retrying.`,
-          data,
-          {
-            messageKey: "server:projectDataStorageDeclarationRequired",
-            params: { projectId, action },
-          },
-        );
-      }
-      throw new HttpError(
-        409,
-        409,
-        `Project "${projectId}" cannot ${action} because data storage mode "${mode}" does not allow server storage.`,
-        data,
-        {
-          messageKey: "server:projectDataStorageServerForbidden",
-          params: { projectId, action, mode },
-        },
-      );
-    }
-  }
-
   private async readPackageMetadata(projectId: string): Promise<PackageMetadata> {
     const sourceDir = this.draftSourceDir(projectId);
     if (await exists(sourceDir)) {
@@ -3774,7 +2264,7 @@ export class Storage {
           id: record.id,
           name: record.name,
           version: record.packageVersion,
-          projectType: record.projectType,
+          entries: record.entries, defaultEntry: record.defaultEntry,
           projectCard: record.projectCard,
           projectInfo: record.projectInfo,
           requiredCoreVersion: "unknown",
@@ -3822,26 +2312,10 @@ export class Storage {
     return this.applyStoredProjectInfoMetadata(projectName, await validateProjectPackage(resolved.sourceDir, projectName));
   }
 
-  private async readProjectMetadataForEditing(
-    projectId: string,
-  ): Promise<PackageMetadata> {
-    try {
-      return await this.readPackageMetadata(projectId);
-    } catch (error) {
-      const record = await this.db?.getProject(projectId);
-      if (record !== undefined) {
-        return {
-          id: record.id,
-          name: record.name,
-          version: record.packageVersion,
-          projectType: record.projectType,
-          projectCard: record.projectCard,
-          projectInfo: record.projectInfo,
-          requiredCoreVersion: "unknown",
-        };
-      }
-      throw error;
-    }
+  private async readProjectMetadataForEditing(projectId: string): Promise<PackageMetadata> {
+    // readPackageMetadata already supports registered projects without a draft.
+    // An existing invalid draft must fail validation, never use stale catalog data.
+    return this.readPackageMetadata(projectId);
   }
 
   private async resolveProjectConfigTarget(
@@ -3942,12 +2416,9 @@ export class Storage {
     }
     const versions = await this.listVersionNames(projectName);
     const latest = await this.readLatest(projectName);
-    const reservations = this.db === undefined
-      ? []
-      : await this.db.listProjectVersionReservations(projectName);
     const candidates = latest !== null && SEMVER_PATTERN.test(latest)
-      ? [latest, ...versions, ...reservations]
-      : [...versions, ...reservations];
+      ? [latest, ...versions]
+      : versions;
     const sorted = candidates
       .map(parseSemver)
       .sort((left, right) =>
@@ -3967,7 +2438,6 @@ export class Storage {
   private async assertVersionPublishable(
     projectName: string,
     version: string,
-    reservationDeploymentId?: string,
   ): Promise<void> {
     assertVersion(version);
     const existing = await this.listVersionNames(projectName);
@@ -3980,20 +2450,7 @@ export class Storage {
       );
     }
 
-    const reservations = this.db === undefined
-      ? []
-      : await this.db.listProjectVersionReservations(projectName, reservationDeploymentId);
-    const conflictingReservation = reservations.find((candidate) => candidate === version);
-    if (conflictingReservation !== undefined) {
-      throw new HttpError(
-        409,
-        409,
-        `Workflow "${projectName}" version "${version}" is reserved by another deployment.`,
-        { projectId: projectName, version, reason: "version_reserved" },
-      );
-    }
-
-    const higherVersion = [...existing, ...reservations]
+    const higherVersion = existing
       .filter((candidate) => SEMVER_PATTERN.test(candidate))
       .sort(compareSemverVersions)
       .at(-1);
@@ -4027,19 +2484,13 @@ export class Storage {
           releaseLog: record.releaseLog,
           sourceHash: record.sourceHash,
           sourceObjectPath: record.sourceObjectPath,
-          dependencies: record.dependencies.map(cloneProjectDependencyLock),
+          entries: record.entries,
+          defaultEntry: record.defaultEntry,
         };
       }
     }
 
     return readJson<Manifest>(this.versionManifestPath(projectName, version));
-  }
-
-  private async readVersionDependencyLocks(projectName: string, version: string, manifest?: Manifest): Promise<ProjectDependencyLock[]> {
-    const stored = manifest ?? await this.readManifest(projectName, version);
-    if (!stored) throw new HttpError(404, 404, "Published version does not exist.");
-    try { return parseProjectDependencyLocks(stored.dependencies, { published: true }); }
-    catch (error) { throw new HttpError(409, 409, "Invalid project dependency lock.", { reason: readErrorMessage(error) }); }
   }
 
   private async assertVersionExists(
@@ -4070,51 +2521,6 @@ export class Storage {
     }
 
     return this.withLocalProjectPublishLock(projectName, operation);
-  }
-
-  private async withProjectPublishLocks<T>(
-    projectNames: readonly string[],
-    operation: () => Promise<T>,
-  ): Promise<T> {
-    const names = [...new Set(projectNames)].sort();
-    const acquire = (index: number): Promise<T> => {
-      const projectName = names[index];
-      if (projectName === undefined) return operation();
-      return this.withProjectPublishLock(projectName, () => acquire(index + 1));
-    };
-    return acquire(0);
-  }
-
-  private async withProjectGroupDeploymentLock<T>(
-    deploymentId: string,
-    operation: () => Promise<T>,
-  ): Promise<T> {
-    return this.withLocalProjectGroupDeploymentLock(deploymentId, () =>
-      this.db?.withProjectDeploymentLock(deploymentId, operation) ?? operation());
-  }
-
-  private async withLocalProjectGroupDeploymentLock<T>(
-    deploymentId: string,
-    operation: () => Promise<T>,
-  ): Promise<T> {
-    const previous = this.deploymentLocks.get(deploymentId) ?? Promise.resolve();
-    let release: () => void = () => {};
-    const current = new Promise<void>((resolve) => {
-      release = resolve;
-    });
-    const next = previous.catch(() => undefined).then(() => current);
-    this.deploymentLocks.set(deploymentId, next);
-
-    await previous.catch(() => undefined);
-
-    try {
-      return await operation();
-    } finally {
-      release();
-      if (this.deploymentLocks.get(deploymentId) === next) {
-        this.deploymentLocks.delete(deploymentId);
-      }
-    }
   }
 
   private async withLocalProjectPublishLock<T>(
@@ -4158,7 +2564,7 @@ export class Storage {
 
   private async summarizeDbProject(record: DbRecord, records?: Array<{ version: string }>): Promise<Summary> {
     const versions = (records ?? await this.db?.listVersions(record.id) ?? []).map(item => item.version).sort(compareSemverVersions);
-    return { id: record.id, name: record.name, projectType: record.projectType, projectCard: record.projectCard,
+    return { id: record.id, name: record.name, entries: record.entries, defaultEntry: record.defaultEntry, projectCard: record.projectCard,
       projectInfo: record.projectInfo, ownerUserId: record.ownerUserId, groupId:record.groupId, visibility: record.visibility,
       createdByUserId: record.createdByUserId, createdAt: record.createdAt, updatedAt: record.updatedAt,
       hasDraft: record.hasDraft, latest: record.latest, versions, nextVersion: resolveNextManagedVersionFromRecords(record.latest, versions) };
@@ -4181,7 +2587,7 @@ export class Storage {
     return {
       id: metadata.id,
       name: metadata.name,
-      projectType: metadata.projectType,
+      entries: metadata.entries, defaultEntry: metadata.defaultEntry,
       projectCard: metadata.projectCard,
       projectInfo: metadata.projectInfo,
       packageVersion: metadata.version,
@@ -4224,32 +2630,14 @@ export class Storage {
   private async persistDraftFromSourceDir(projectName: string, sourceDir = this.draftSourceDir(projectName)): Promise<void> {
     if (!this.db) return;
     const metadata = await validateProjectPackage(sourceDir, projectName);
-    await this.assertUploadedProjectType(projectName, metadata.projectType);
     const record=await this.db.getProject(projectName);
     if(record) {
       const packageJson=await readPackageJson(sourceDir);
       await writeJson(path.join(sourceDir,"package.json"),writeProjectInfo({...packageJson,name:record.name,steamHarness:{...(isRecord(packageJson.steamHarness)?packageJson.steamHarness:{}),projectCard:record.projectCard}},this.normalizeDeclaredProjectInfo(record.projectInfo)));
     }
-    await this.db.saveDraft({ projectId: metadata.id, projectName: metadata.name, projectType: metadata.projectType,
+    await this.db.saveDraft({ projectId: metadata.id, projectName: metadata.name, entries: metadata.entries, defaultEntry: metadata.defaultEntry,
       packageVersion: metadata.version, projectCard: metadata.projectCard, projectInfo: this.normalizeDeclaredProjectInfo(metadata.projectInfo),
       files: await readProjectFiles(sourceDir, true) });
-  }
-
-  private async assertUploadedProjectType(
-    projectId: string,
-    sourceProjectType: ProjectKind,
-  ): Promise<void> {
-    if (this.db === undefined) {
-      return;
-    }
-    const existing = await this.db.getProject(projectId);
-    if (existing === undefined || existing.projectType === sourceProjectType) return;
-
-    throw new HttpError(
-      409,
-      409,
-      `Workflow "${projectId}" was created as projectType "${existing.projectType}", but package.json declares "${sourceProjectType}". Create a project with the matching type or update steamHarness.projectType before uploading.`,
-    );
   }
 
   private async materializeDbDraftSource(projectName: string): Promise<void> {
@@ -4462,103 +2850,42 @@ export class Storage {
     }
   }
 
-  private async resolveKanbanProject(
-    projectName: string,
-    requestedTarget?: string,
-  ): Promise<Omit<KanbanWorkspaceState, "configurations" | "activeConfigurationId">> {
+  private async resolveKanbanProject(projectName: string, requestedTarget?: string, entryId?: string): Promise<Omit<KanbanWorkspaceState, "configurations" | "activeConfigurationId">> {
     this.assertProjectId(projectName);
-    await this.assertServerProjectDataAccess(projectName);
     const target = requestedTarget?.trim() || "draft";
     const resolved = await this.resolveSourceTarget(projectName, target);
     const metadata = await this.readPackageMetadataForTarget(projectName, resolved.resolvedTarget);
-    if (metadata.projectType !== "kanban") {
-      throw new HttpError(409, 409, `Project "${metadata.name}" is not a Kanban project.`);
-    }
-    return {
-      projectId: projectName,
-      projectName: metadata.name,
-      target,
-      resolvedTarget: resolved.resolvedTarget,
-      ...readKanbanArtifactConfig(await readPackageJson(resolved.sourceDir)),
-      relatedProjects: metadata.projectInfo.relatedProjects.map(cloneRelatedProject),
-    };
+    const registration = selectProjectEntry({entries: metadata.entries, defaultEntry: metadata.defaultEntry }, entryId);
+    if (registration.type !== "kanban") throw new HttpError(409, 409, "The selected entry is not Kanban.");
+    const artifact = path.posix.join(registration.root, registration.entry);
+    return { projectId: projectName, projectName: metadata.name, entryId: registration.entryId, databases: registration.databases, target, resolvedTarget: resolved.resolvedTarget, artifactDir: path.posix.dirname(artifact), entry: path.posix.basename(artifact) };
   }
 
-  private async withKnowledgeContext<T>(
-    projectName: string,
-    run: (context: StorageLocationContext) => Promise<T>,
-    options: { conflictAs?: number; notFoundAs?: number } = {},
-  ): Promise<T> {
-    this.assertProjectId(projectName);
-    return this.withPersistentValueKnowledgeContext(projectName, run, options);
+  async entryDatabaseRequirements(projectId: string, entryId: string, target = "draft") {
+    const metadata = target === "draft" ? await this.readProjectMetadataForEditing(projectId) : await this.readPackageMetadataForTarget(projectId,target);
+    return selectProjectEntry({entries:metadata.entries,defaultEntry:metadata.defaultEntry},entryId).databases;
   }
-
-  private async withPersistentValueKnowledgeContext<T>(
-    projectName: string,
-    run: (context: StorageLocationContext) => Promise<T>,
-    options: { conflictAs?: number; notFoundAs?: number } = {},
-  ): Promise<T> {
-    await this.assertServerProjectDataAccess(projectName);
-    if (this.db === undefined) {
-      throw new HttpError(501, 501, "PersistentValue knowledge base requires PostgreSQL storage.");
-    }
-
-    const context = this.createKnowledgeProjectContext(
-      projectName,
-    );
-    try {
-      return await run(context);
-    } catch (error) {
-      throw mapKnowledgeError(error, options);
-    }
+  async bindEntryDatabase(projectId: string, entryId: string, alias: string, bindingRef: string, actor: AccessActor) {
+    await this.requireProjectCapability(projectId,actor,"manageSettings");
+    const requirements = await this.entryDatabaseRequirements(projectId,entryId);
+    if(!requirements.some(item=>item.host==="server"&&item.alias===alias)) throw new HttpError(400,400,"The entry does not declare this server database alias.");
+    return this.databases.bind({projectId,entryId,alias},bindingRef);
   }
-
-  private async withPersistentValueKnowledgeMutationContext<T>(
-    projectName: string,
-    run: (context: StorageLocationContext) => Promise<T>,
-    options: { conflictAs?: number; notFoundAs?: number } = {},
-  ): Promise<T> {
-    await this.assertServerProjectDataAccess(projectName);
-    if (this.db === undefined) {
-      throw new HttpError(501, 501, "PersistentValue knowledge base requires PostgreSQL storage.");
-    }
-
-    this.assertProjectId(projectName);
-    try {
-      return await this.db.withNamespaceTransaction(
-        { storageKind: "persistent_value", scope: "project", projectId: projectName },
-        (store) => run(this.createKnowledgeProjectContext(projectName, store)),
-      );
-    } catch (error) {
-      throw mapKnowledgeError(error, options);
-    }
-  }
-
-  private createKnowledgeProjectContext(
-    projectId: string,
-    store?: KVStore,
-  ): StorageLocationContext {
-    const persistentStore = store ?? this.db;
-    if (persistentStore === undefined) {
-      throw new HttpError(501, 501, "Project knowledge base requires PostgreSQL storage.");
-    }
-
-    // The management knowledge base uses the same PersistentValue project
-    // domain as local client writes, without introducing a new table.
-    const source = { projectId };
-    return {
-      kv: createProjectKVContext({
-        store: persistentStore,
-        projectId,
-        source,
-      }),
-      persistentValue: createProjectPersistentValueContext({
-        store: persistentStore,
-        projectId,
-        source,
-      }),
-      relatedProjects: createProjectRelatedProjectsContext(),
-    };
+  async entryDatabases(projectId: string, entryId: string, actor: AccessActor, target = "draft", conversationId?: string) {
+    await this.requireProjectCapability(projectId, actor, "read");
+    const metadata = target === "draft" ? await this.readProjectMetadataForEditing(projectId) : await this.readPackageMetadataForTarget(projectId, target);
+    const entry = selectProjectEntry({entries: metadata.entries, defaultEntry: metadata.defaultEntry }, entryId);
+    const { createDatabasesContext, RemoteDatabaseSpaceStore } = await import("steamharness");
+    return createDatabasesContext({ projectId, entryId: entry.entryId, conversationId, requirements: await Promise.all(entry.databases.map(async requirement => requirement.host === "server" ? { ...requirement, bindingRef: await this.databases.bindingFor({projectId,entryId,alias:requirement.alias}) ?? requirement.bindingRef } : requirement)), resolver: { resolve: async requirement => {
+      if (requirement.host !== "server" || !requirement.bindingRef) return undefined;
+      const authorization = await this.databases.authorization(requirement.bindingRef, { projectId, entryId: entry.entryId });
+      const store = new RemoteDatabaseSpaceStore({ serverUrl: "", token: "" }, { projectId, entryId: entry.entryId, alias: requirement.alias, bindingRef: requirement.bindingRef }, authorization.space.spaceId, authorization.grant.credentialVersion, async <T>(body: Record<string, unknown>): Promise<T> => {
+        const write = !["get", "revision", "list"].includes(String(body.operation)) && !(body.operation === "transaction" && (body.entries as any[]).every(item => !item.mutation));
+        await this.requireProjectCapability(projectId, actor, write ? "writeData" : "read");
+        return await this.databases.data(authorization.space.spaceId, body, { ...actor, userId: actor.userId ?? "system-admin" }, false, requirement) as T;
+      });
+      return { authorization, store };
+    } } });
   }
 
   private projectsRoot(): string {
@@ -4567,24 +2894,6 @@ export class Storage {
 
   private preparationsRoot(): string {
     return path.join(this.dataRoot, "preparations");
-  }
-
-  private deploymentPreparationsRoot(): string {
-    return path.join(this.dataRoot, "deployment-preparations");
-  }
-
-  private deploymentPreparationDir(deploymentId: string): string {
-    return path.join(this.deploymentPreparationsRoot(), deploymentId);
-  }
-
-  private deploymentPreparationMetadataPath(deploymentId: string): string {
-    return path.join(this.deploymentPreparationDir(deploymentId), "preparation.json");
-  }
-
-  private deploymentPreparationArchivePath(
-    preparation: Pick<DeploymentPreparation, "deploymentId" | "archiveName">,
-  ): string {
-    return path.join(this.deploymentPreparationDir(preparation.deploymentId), preparation.archiveName);
   }
 
   private preparationProjectRoot(projectName: string): string {
@@ -4760,72 +3069,6 @@ function normalizeOptionalExactFilter(value: string | undefined): string | undef
   return normalized === "" ? undefined : normalized;
 }
 
-function cloneRelatedProject(relation: RelatedProject): RelatedProject {
-  return {
-    alias: relation.alias,
-    projectId: relation.projectId,
-    grantToRelatedProject: {
-      read: relation.grantToRelatedProject.read.mode === "prefixes"
-        ? { mode: "prefixes", prefixes: [...relation.grantToRelatedProject.read.prefixes] }
-        : { mode: relation.grantToRelatedProject.read.mode },
-      write: relation.grantToRelatedProject.write.mode === "prefixes"
-        ? { mode: "prefixes", prefixes: [...relation.grantToRelatedProject.write.prefixes] }
-        : { mode: relation.grantToRelatedProject.write.mode },
-    },
-  };
-}
-
-function cloneRelatedProjectGrant(
-  grant: RelatedProjectKVGrant,
-): RelatedProjectKVGrant {
-  return {
-    read: grant.read.mode === "prefixes"
-      ? { mode: "prefixes", prefixes: [...grant.read.prefixes] }
-      : { mode: grant.read.mode },
-    write: grant.write.mode === "prefixes"
-      ? { mode: "prefixes", prefixes: [...grant.write.prefixes] }
-      : { mode: grant.write.mode },
-  };
-}
-
-function upsertRelatedProject(
-  projectInfo: ProjectInfoContract,
-  relation: RelatedProject,
-): ProjectInfoContract {
-  const next = projectInfo.relatedProjects.filter((item) => item.alias !== relation.alias);
-  const existingForProject = next.find(
-    (item) => item.projectId.toLowerCase() === relation.projectId.toLowerCase(),
-  );
-  if (existingForProject !== undefined) {
-    throw new HttpError(409, 409, "The related project is already declared with another alias.");
-  }
-  return { ...projectInfo, relatedProjects: [...next, cloneRelatedProject(relation)] };
-}
-
-function removeRelatedProjectByAlias(
-  projectInfo: ProjectInfoContract,
-  alias: string,
-): ProjectInfoContract {
-  return {
-    ...projectInfo,
-    relatedProjects: projectInfo.relatedProjects
-      .filter((item) => item.alias !== alias)
-      .map(cloneRelatedProject),
-  };
-}
-
-function removeRelatedProjectByProjectId(
-  projectInfo: ProjectInfoContract,
-  projectId: string,
-): ProjectInfoContract {
-  return {
-    ...projectInfo,
-    relatedProjects: projectInfo.relatedProjects
-      .filter((item) => item.projectId.toLowerCase() !== projectId.toLowerCase())
-      .map(cloneRelatedProject),
-  };
-}
-
 /**
  * Build the configured object storage backend.
  *
@@ -4862,48 +3105,15 @@ async function validateProjectPackage(
     throw new HttpError(400, 400, "Workflow package must contain package.json.");
   }
 
-  const configurationPath = path.join(sourceDir, "configuration.json");
-  if (await exists(configurationPath)) {
-    try { parseConfigurationDefinition(JSON.parse(await readFile(configurationPath, "utf8"))); }
-    catch (error) { throw new HttpError(400, 400, readErrorMessage(error)); }
-  }
-  const packageJson = await readPackageJson(sourceDir);
-  if (readPackageProjectType(packageJson) === "kanban") {
-    let artifact: KanbanArtifactConfig;
-    try {
-      artifact = readKanbanArtifactConfig(packageJson);
-    } catch (error) {
-      throw new HttpError(400, 400, readErrorMessage(error));
+  try {
+    const { resolveProjectEntry } = await import("@steamharness/project-manifest/node");
+    const manifest = readProjectManifest(await readPackageJson(sourceDir));
+    for (const entry of manifest.entries) {
+      await resolveProjectEntry(sourceDir, entry.entryId);
+      readProjectConfigurationDefinition(sourceDir, entry.entryId);
     }
-    const artifactEntryPath = createKanbanArtifactEntryPath(artifact);
-    const entryPath = path.join(sourceDir, ...artifactEntryPath.split("/"));
-    const entryStat = await lstat(entryPath).catch(() => undefined);
-    if (entryStat === undefined || !entryStat.isFile() || entryStat.isSymbolicLink()) {
-      throw new HttpError(400, 400, `Kanban package must contain regular artifact entry ${artifactEntryPath}.`);
-    }
-    try {
-      await assertKanbanAssetHasNoSymbolicLinks(sourceDir, artifactEntryPath);
-    } catch {
-      throw new HttpError(400, 400, `Kanban artifact entry ${artifactEntryPath} must not contain symbolic links.`);
-    }
-    // Static Kanban projects follow the same Core compatibility contract.
-    return readProjectPackageMetadata(
-      sourceDir,
-      expectedId,
-      undefined,
-      hostCoreVersion,
-    );
-  }
-
-  if (!(await exists(path.join(sourceDir, "index.ts")))) {
-    throw new HttpError(400, 400, "Workflow package must contain index.ts.");
-  }
-  return readProjectPackageMetadata(
-    sourceDir,
-    expectedId,
-    undefined,
-    hostCoreVersion,
-  );
+  } catch (error) { throw new HttpError(400, 400, readErrorMessage(error)); }
+  return readProjectPackageMetadata(sourceDir, expectedId, undefined, hostCoreVersion);
 }
 
 async function readProjectPackageMetadata(
@@ -4943,21 +3153,16 @@ async function readProjectPackageMetadata(
     );
   }
 
-  const steamHarness = packageJson["steamHarness"];
-  const projectType = isRecord(steamHarness) ? steamHarness["projectType"] : undefined;
-  if (!isProjectKind(projectType)) {
-    throw new HttpError(400, 400, "package.json.steamHarness.projectType must be workflow, conversation or kanban.");
-  }
-  if (persistedProjectType !== undefined && persistedProjectType !== projectType) {
-    throw new HttpError(409, 409, "Uploaded project type does not match the stored project.");
-  }
-
+  let manifest;
+  try { manifest = readProjectManifest(packageJson); }
+  catch (error) { throw new HttpError(400, 400, error instanceof Error ? error.message : 'Invalid aggregate project.'); }
   return {
     id,
     name,
     version,
-    projectType,
-    projectCard: readProjectCardMetadataFromPackageJson(packageJson, projectType),
+    entries: manifest.entries,
+    defaultEntry: manifest.defaultEntry,
+    projectCard: readProjectCardMetadataFromPackageJson(packageJson, selectProjectEntry(manifest).type),
     projectInfo: readProjectInfo(packageJson),
     requiredCoreVersion,
   };
@@ -5040,16 +3245,7 @@ async function resolvePackageRoot(extractDir: string, expectedId?: string): Prom
 }
 
 async function isProjectPackageRoot(directory: string): Promise<boolean> {
-  if (!(await exists(path.join(directory, "package.json")))) return false;
-  if (await exists(path.join(directory, "index.ts"))) return true;
-  try {
-    const packageJson = await readPackageJson(directory);
-    if (readPackageProjectType(packageJson) !== "kanban") return false;
-    const entryPath = createKanbanArtifactEntryPath(readKanbanArtifactConfig(packageJson));
-    return exists(path.join(directory, ...entryPath.split("/")));
-  } catch {
-    return false;
-  }
+  try { readProjectManifest(await readPackageJson(directory)); return true; } catch { return false; }
 }
 
 async function packageRootMatchesExpectedId(
@@ -5074,55 +3270,6 @@ async function copyUploadedProjectSource(sourceDir: string, targetDir: string): 
   } catch (error) {
     throw new HttpError(400, 400, readErrorMessage(error));
   }
-}
-
-async function copyWorkspaceDependencySources(
-  packageRoot: string,
-  stagedSourceDir: string,
-): Promise<void> {
-  const dependencyRoots = await collectWorkspaceDependencyRoots(packageRoot);
-  if (dependencyRoots.length === 0) {
-    return;
-  }
-
-  const dependencyStoreRoot = path.join(stagedSourceDir, ".workspace-deps");
-  await mkdir(dependencyStoreRoot, { recursive: true });
-
-  for (const dependencyRoot of dependencyRoots) {
-    await copyUploadedProjectSource(
-      dependencyRoot,
-      path.join(dependencyStoreRoot, path.basename(dependencyRoot)),
-    );
-  }
-}
-
-async function collectWorkspaceDependencyRoots(packageRoot: string): Promise<string[]> {
-  const workspaceRoot = path.dirname(packageRoot);
-  const entries = await readdir(workspaceRoot, { withFileTypes: true });
-  const dependencyRoots: string[] = [];
-
-  for (const entry of entries) {
-    if (!entry.isDirectory() || entry.name === path.basename(packageRoot)) {
-      continue;
-    }
-
-    const candidate = path.join(workspaceRoot, entry.name);
-    if (
-      !(await exists(path.join(candidate, "package.json"))) ||
-      !(await exists(path.join(candidate, "index.ts")))
-    ) {
-      continue;
-    }
-
-    try {
-      await validateProjectPackage(candidate);
-      dependencyRoots.push(candidate);
-    } catch {
-      // Ignore sibling directories that are not valid project packages.
-    }
-  }
-
-  return dependencyRoots.sort((left, right) => left.localeCompare(right));
 }
 
 async function replaceDirectory(sourceDir: string, targetDir: string): Promise<void> {
@@ -5749,18 +3896,6 @@ function assertResolvedPathInsideRoot(rootPath: string, targetPath: string, allo
   }
 }
 
-function cloneProjectDependencyLock(
-  dependency: ProjectDependencyLock,
-): ProjectDependencyLock {
-  return {
-    alias: dependency.alias,
-    projectId: dependency.projectId,
-    delivery: dependency.delivery,
-    ...(dependency.version === undefined ? {} : { version: dependency.version }),
-    ...(dependency.sourceHash === undefined ? {} : { sourceHash: dependency.sourceHash }),
-  };
-}
-
 function createKanbanPreviewCapabilityToken(
   capability: StoredKanbanPreviewCapability,
   secret: string,
@@ -5802,6 +3937,14 @@ function readKanbanPreviewCapabilityToken(
   }
 }
 
+
+
+interface StoredProjectAccessRequestToken {
+  version: 1;
+  projectId: string;
+  expiresAtMs: number;
+}
+
 function createProjectAccessRequestToken(
   token: Omit<StoredProjectAccessRequestToken, "version">,
   secret: string,
@@ -5836,7 +3979,6 @@ function readProjectAccessRequestToken(
     return undefined;
   }
 }
-
 async function hashDirectory(rootDir: string): Promise<string> {
   const hash = createHash("sha256");
   const files: string[] = [];

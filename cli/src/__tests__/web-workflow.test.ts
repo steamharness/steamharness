@@ -9,14 +9,14 @@ import { migrateProjectHistory, projectStorageReferences, type RunRecord, type W
 import { layoutProjectGraph } from '../web/workflow-graph';
 import { t } from '../web/localization';
 import { createWebRuntime } from '../web/runtime';
-import { startWebServer } from '../web/server';
+import { startEntryWebServer as startWebServer } from '../web/server';
 import type { Project, Runtime, Report, InputRequest, ConversationSession, ParamState } from '../web/workflow-types';
 import { resolveHarnessRoot } from './harness-source';
 
 const services: Awaited<ReturnType<typeof startWebServer>>[] = [], folders: string[] = [];
 afterEach(async () => { for (const service of services.splice(0)) { await service.close(); } for (const directory of folders.splice(0)) { await rm(directory, { force: true, recursive: true }); } vi.unstubAllEnvs(); vi.restoreAllMocks(); });
 const request: InputRequest = { requestId: 'approval', nodeName: 'approval', title: 'Review', params: [{ name: 'approved', type: 'boolean', required: true }] };
-const project: Project = {
+const project: Project = {entryId:"main",aggregateName:"Test aggregate",defaultEntry:"main",entryRoot:'/test',databases:[],entries:[{entryId:"main",name:"Main",type:'workflow',root:".",entry:"index.ts",databases:[]}],
   id: '14ab25f6-5a51-4b9b-9a09-df612356fd01', uri: 'file:///test', folderPath: '/test', name: 'Test workflow', projectType: 'workflow', fields: [], defaultEntrypoint: 'main',
   entrypoints: [{ id: 'main', title: 'Main', fields: [{ name: 'subject', flag: '--subject', type: 'string', required: true, defaultValue: 'Default' }], paramResolver: { enabled: true }, tools: [{ name: 'read', enabled: true }] },
     { id: 'other', title: 'Other', fields: [{ name: 'subject', flag: '--subject', type: 'string', defaultValue: 'Other' }] }],
@@ -39,8 +39,10 @@ async function service(legacy?: ConversationSession[]) {
   vi.stubEnv('STEAMHARNESS_CLI_AUTH_DIR', path.join(directory, 'auth')); vi.stubEnv('STEAMHARNESS_SERVER_URL', ''); vi.stubEnv('STEAMHARNESS_SERVER_ADMIN_KEY', '');
   const executor = runtime(), descriptor = { ...project, folderPath: directory };
   vi.mocked(executor.inspect).mockResolvedValue({ projects: [descriptor], errors: [] });
-  const key = createHash('sha256').update(directory).digest('hex').slice(0, 24), dataDir = path.join(directory, 'data');
-  const historyDir = path.join(dataDir, key);
+  await writeFile(path.join(directory, 'package.json'), JSON.stringify({ id: project.id, name: 'test-workflow', steamHarness: { entries: project.entries, defaultEntry: 'main' } }));
+  await writeFile(path.join(directory, 'index.ts'), 'export {};');
+  const dataDir = path.join(directory, 'data');
+  const historyDir = path.join(dataDir, 'projects', project.id, 'entries', project.entryId);
   if (legacy) { await mkdir(historyDir, { recursive: true }); await writeFile(path.join(historyDir, 'conversations.json'), JSON.stringify({ sessions: legacy })); }
   const app = await startWebServer({ projectDir: directory, dataDir, runtime: executor }); services.push(app);
   const token = new URL(app.url).hash.slice('#session='.length);
@@ -133,7 +135,7 @@ describe('Workflow workspace controller', () => {
     const record = await c.start({ entrypointId: 'main', params: { subject: 'Plan' } }); await c.idle();
     expect(record.items.map(item => item.id)).toEqual(['prefix', 'plan']); expect(record.pendingInput).toEqual(request);
     const restored = controller(save.mock.calls.at(-1)![0]);
-    expect(restored.controller.runs[0].items).toEqual(record.items);
+    expect(restored.controller!.runs[0].items).toEqual(record.items);
   });
 
   it.each(['failed', 'aborted', 'timed_out'])('retains streamed diagnostics when an empty %s report has no final output', async status => {
@@ -167,10 +169,10 @@ describe('Workflow workspace controller', () => {
     const record = await c.start({ entrypointId: 'main', params: { subject: 'Main draft' } }); await c.idle();
     c.dispose(); await c.persist();
     const next = controller(save.mock.calls.at(-1)![0]);
-    expect(next.controller.runs[0].status).toBe('interrupted'); expect(next.controller.runs[0].pendingInput).toEqual(request);
-    expect(next.controller.running).toBe(true); expect(next.controller.draft('other').values).toEqual({ subject: 'Other draft' });
-    expect(next.controller.draft('main').values).toEqual({ subject: 'Main draft' });
-    await next.controller.resume(record.id, request.requestId, { approved: 'true' }); await next.controller.idle(); expect(next.controller.runs[0].status).toBe('success');
+    expect(next.controller!.runs[0].status).toBe('interrupted'); expect(next.controller!.runs[0].pendingInput).toEqual(request);
+    expect(next.controller!.running).toBe(true); expect(next.controller!.draft('other').values).toEqual({ subject: 'Other draft' });
+    expect(next.controller!.draft('main').values).toEqual({ subject: 'Main draft' });
+    await next.controller!.resume(record.id, request.requestId, { approved: 'true' }); await next.controller!.idle(); expect(next.controller!.runs[0].status).toBe('success');
   });
 
   it('cancels an active worker and ignores its late events and final success', async () => {
@@ -196,7 +198,7 @@ describe('Workflow workspace controller', () => {
     expect(projectStorageReferences(c.workspace.drafts).files.has(file.id)).toBe(true);
     const legacy: ConversationSession[] = [{ id: 'old-scope', title: 'Old', messages: [{ role: 'assistant', content: 'Output', files: [{ ...file, conversationId: 'old-scope' }] }] }];
     const migrated = controller(migrateProjectHistory(legacy), legacy);
-    await migrated.controller.remove(migrated.controller.runs[0].id); expect(migrated.runtime.deleteConversation).not.toHaveBeenCalled();
+    await migrated.controller!.remove(migrated.controller!.runs[0].id); expect(migrated.runtime.deleteConversation).not.toHaveBeenCalled();
   });
 
   it('deletes unreferenced managed attachments and the run scope', async () => {
@@ -398,7 +400,7 @@ it('inspects and executes a real offline workflow with its own Core, streaming, 
   await mkdir(path.join(directory, 'node_modules'));
   const harnessRoot = await resolveHarnessRoot();
   await symlink(harnessRoot, path.join(directory, 'node_modules/steamharness'), process.platform === 'win32' ? 'junction' : 'dir');
-  await writeFile(path.join(directory, 'package.json'), JSON.stringify({ id: project.id, name: 'Workflow fixture', type: 'module', steamHarness: { projectInfo: { dataStorage: { mode: 'local' } } } }));
+  await writeFile(path.join(directory, 'package.json'), JSON.stringify({ id: project.id, name: 'Workflow fixture', type: 'module', steamHarness: { defaultEntry: 'main', entries: [{entryId:'main',name:'Main',type:'workflow',root:'.',entry:'index.ts',databases:[]}],  } }));
   await writeFile(path.join(directory, 'index.ts'), `
     const preview = steamharness.createOutputNode({ name: 'preview-node', async *stream() {
       yield steamharness.createOutputItemChunk({ type:'output_item_start', item:{id:'preview',title:'Preview',content:'Before input',contentType:'text'} });

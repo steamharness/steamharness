@@ -1,3 +1,4 @@
+const entryBase = () => document.querySelector<HTMLMetaElement>('meta[name=steamharness-base]')?.content ?? '';
 import { t } from '../localization';
 import { iconHtml } from './ui';
 import './connection.css';
@@ -131,18 +132,18 @@ export class BrowserConnection {
           this.connectTimer = setTimeout(() => { if (active()) this.interrupted(); }, 10_000);
         }
         if (this.token) {
-          const session = await fetch('/api/session', { method: 'POST', headers: { Authorization: `Bearer ${this.token}` }, signal });
+          const session = await fetch(entryBase() + '/api/session', { method: 'POST', headers: { Authorization: `Bearer ${this.token}` }, signal });
           if (!active()) { return; }
           if (session.status === 401) { this.update('expired'); return; }
           if (!session.ok) { throw new Error('Cannot connect to the project.'); }
         }
-        const session = await fetch('/api/session', { headers: this.headers(), signal });
+        const session = await fetch(entryBase() + '/api/session', { headers: this.headers(), signal });
         if (!active()) { return; }
         if (session.status === 401) { this.update('expired'); return; }
         if (!session.ok) { throw new Error('Cannot connect to the project.'); }
         // Embedded card snapshots must not each reserve a browser HTTP connection.
         if (!this.live) { await this.snapshot(epoch, signal); return; }
-        const eventsUrl = new URL(this.fileUrl('/api/events'), location.href);
+        const eventsUrl = new URL(this.fileUrl(entryBase() + '/api/events'), location.href);
         eventsUrl.searchParams.set('clientId', this.clientId);
         await new Promise<void>(resolve => {
           const source = this.source = new EventSource(eventsUrl.href);
@@ -162,7 +163,7 @@ export class BrowserConnection {
             try { message = this.publicFiles(JSON.parse(event.data)); }
             catch { this.interrupted(); finish(); return; }
             alive();
-            if (message.type === 'state' && typeof message.project?.id === 'string') this.applicationId ??= message.project.id;
+            if (message.type === 'state' && typeof message.project?.id === 'string') this.applicationId ??= `${message.project.id}:${message.project.entryId}`;
             this.emit(message);
             if (active() && message?.type === 'state' && this.status !== 'connected') {
               clearTimeout(this.connectTimer);
@@ -184,14 +185,14 @@ export class BrowserConnection {
 
   private async snapshot(epoch: number, signal = AbortSignal.timeout(10_000)): Promise<void> {
     if (epoch !== this.epoch || this.closed) { return; }
-    const response = await fetch('/api/resource-state', { headers: this.headers(), signal });
+    const response = await fetch(entryBase() + '/api/resource-state', { headers: this.headers(), signal });
     if (epoch !== this.epoch || this.closed) { return; }
     if (response.status === 401) { this.disconnect(); this.update('expired'); return; }
     if (!response.ok) { throw new Error('Cannot connect to the project.'); }
     const state = await response.json();
     if (epoch !== this.epoch || this.closed) { return; }
     if (this.status !== 'connected') { this.attempts = 0; this.manual = false; this.retryFailed = false; this.update('connected'); }
-    if (state.type === 'state' && typeof state.project?.id === 'string') this.applicationId ??= state.project.id;
+    if (state.type === 'state' && typeof state.project?.id === 'string') this.applicationId ??= `${state.project.id}:${state.project.entryId}`;
     this.emit(state);
     this.snapshotTimer = setTimeout(() => {
       void this.snapshot(epoch).catch(() => { if (epoch === this.epoch && !this.closed) { this.interrupted(); } });
@@ -219,7 +220,7 @@ export class BrowserConnection {
       for (let attempt = 0; ; attempt++) {
         let response: Response, reply: Message;
         try {
-          response = await fetch('/api/message', { method: 'POST', headers: { ...this.headers(), 'Content-Type': 'application/json' }, body: JSON.stringify(body), signal: AbortSignal.any([signal, AbortSignal.timeout(timeout)]) });
+          response = await fetch(entryBase() + '/api/message', { method: 'POST', headers: { ...this.headers(), 'Content-Type': 'application/json' }, body: JSON.stringify(body), signal: AbortSignal.any([signal, AbortSignal.timeout(timeout)]) });
           if (this.closed || signal.aborted) { throw new ConnectionError(t("Connection changed.")); }
           if (response.status === 401) {
             if (epoch === this.epoch) { this.abortRequests(true); this.disconnect(); this.update('expired'); }
@@ -251,6 +252,7 @@ export class BrowserConnection {
 
   private headers(): Record<string, string> { return this.token ? { Authorization: `Bearer ${this.token}` } : {}; }
   fileUrl(path: string): string {
+    if (path.startsWith('/') && !path.startsWith('/entries/')) path = entryBase() + path;
     if (!this.token) { return path; }
     const url = new URL(path, location.href); url.searchParams.set('session', this.token); return `${url.pathname}${url.search}${url.hash}`;
   }
@@ -258,6 +260,6 @@ export class BrowserConnection {
     if (Array.isArray(value)) { return value.map(entry => this.publicFiles(entry)); }
     if (!value || typeof value !== 'object') { return value; }
     return Object.fromEntries(Object.entries(value).map(([key, entry]) => [key,
-      key === 'previewUrl' && typeof entry === 'string' && entry.startsWith('/api/file/') ? this.fileUrl(entry) : this.publicFiles(entry)]));
+      key === 'previewUrl' && typeof entry === 'string' && entry.includes('/api/file/') ? this.fileUrl(entry) : this.publicFiles(entry)]));
   }
 }

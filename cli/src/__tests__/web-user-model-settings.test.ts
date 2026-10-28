@@ -8,7 +8,7 @@ const settings: UserSettings = { agent: { permissionPolicy: 'workspace', models:
   { id: 'system', name: 'Plan', model: 'subscribed', source: 'system', credentialId: 'plan' },
 ] } };
 it('user model defaults honor system-only policy and remain empty in saved project arguments', () => {
-  const project: Project = { id: 'model', name: 'Model', uri: '', folderPath: '', projectType: 'conversation', entrypoints: [],
+  const project: Project = { entryId: 'main', aggregateName: 'Model', entries: [], defaultEntry: 'main', entryRoot: '', databases: [], id: 'model', name: 'Model', uri: '', folderPath: '', projectType: 'conversation', entrypoints: [],
     agentModelPolicy: { allowThirdParty: false }, fields: [{ name: 'model', type: 'string', flag: '--model', userSetting: { key: 'agent.model', mode: 'default' } }] };
   const configured = projectWithUserSettings(project, settings);
   expect(configured.fields[0].userSettingValue).toBe('system');

@@ -1,3 +1,4 @@
+import { declareConfigurationFixture, writeConfigurationFixtureManifest, configurationFixtureStore } from "./configuration-fixture";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { mkdtemp, mkdir, readFile, realpath, rm, writeFile, symlink } from "node:fs/promises";
@@ -6,7 +7,7 @@ import path from "node:path";
 import { createHash, randomUUID } from "node:crypto";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
-import {cacheVerifiedConfigurationTemplate,readCachedConfigurationFile,createConfigurationState,createPublicationDraft,freezeConfigurationTemplate,CONFIGURATION_TEMPLATE_FILE, createLocalProjectConfigurationStore, getConfig, withProjectConfiguration, currentConfigurationValues, type ProjectConfigurationState } from "../configuration";
+import {cacheVerifiedConfigurationTemplate,readCachedConfigurationFile,createConfigurationState,createPublicationDraft,freezeConfigurationTemplate,configurationTemplatePath, createLocalProjectConfigurationStore, getConfig, withProjectConfiguration, currentConfigurationValues, type ProjectConfigurationState } from "../configuration";
 
 test("local configuration uses canonical paths, atomic versions and persisted run snapshots", async () => {
   const temp = await mkdtemp(path.join(os.tmpdir(),"project-config-"));
@@ -15,8 +16,8 @@ test("local configuration uses canonical paths, atomic versions and persisted ru
     await mkdir(project); await mkdir(other);
     await writeFile(path.join(project,"configuration.json"),JSON.stringify({version:1,fields:[{name:"token",type:"string",secret:true}]}));
     await writeFile(path.join(project,".env"),"token=must-not-load");
-    const a = await createLocalProjectConfigurationStore(project,{rootDir});
-    const b = await createLocalProjectConfigurationStore(project,{rootDir});
+    const a = await configurationFixtureStore(project,{rootDir});
+    const b = await configurationFixtureStore(project,{rootDir});
     const initial = await a.read();
     const writes = await Promise.allSettled([a.dispatch({action:"save",revision:0,id:initial.activeConfigurationId,values:{token:"one"}}),b.dispatch({action:"save",revision:0,id:initial.activeConfigurationId,values:{token:"two"}})]);
     assert.equal(writes.filter(item => item.status === "fulfilled").length,1);
@@ -25,9 +26,9 @@ test("local configuration uses canonical paths, atomic versions and persisted ru
     await b.dispatch({action:"save",revision:latest.revision,id:latest.activeConfigurationId,values:{token:"new"}});
     assert.deepEqual(await b.snapshot({runId:"waiting"}),frozen);
     assert.equal((await a.snapshot()).values.token,"new");
-    assert.deepEqual((await (await createLocalProjectConfigurationStore(other,{rootDir})).snapshot()).values,{});
+    assert.deepEqual((await (await configurationFixtureStore(other,{rootDir})).snapshot()).values,{});
     const link = path.join(temp,"linked"); await symlink(project,link,"junction");
-    assert.deepEqual(await (await createLocalProjectConfigurationStore(link,{rootDir})).read(),await a.read());
+    assert.deepEqual(await (await configurationFixtureStore(link,{rootDir})).read(),await a.read());
     const before = await a.read();
     await assert.rejects(a.dispatch({action:"import",revision:before.revision,document:{version:1,kind:"steamharness-project-configurations",fields:[{name:"token",type:"number"}],configurations:[{name:"bad",values:{token:2}}]}}));
     assert.deepEqual(await a.read(),before);
@@ -51,7 +52,7 @@ test("schema changes retain inactive values and shadowed custom definitions on d
   const temp = await mkdtemp(path.join(os.tmpdir(),"configuration-schema-"));
   try {
     const rootDir = path.join(temp,"values");
-    const store = await createLocalProjectConfigurationStore(temp,{rootDir});
+    const store = await configurationFixtureStore(temp,{rootDir});
     const declared = [{name:"label",type:"string"}];
     const declare = (fields:unknown[]) => writeFile(path.join(temp,"configuration.json"),JSON.stringify({version:1,fields}));
     await declare(declared);
@@ -63,7 +64,7 @@ test("schema changes retain inactive values and shadowed custom definitions on d
     state = await store.read();
     await store.dispatch({action:"rename",revision:state.revision,id:state.activeConfigurationId,name:"Changed"});
     await declare(declared);
-    state = await (await createLocalProjectConfigurationStore(temp,{rootDir})).read();
+    state = await (await configurationFixtureStore(temp,{rootDir})).read();
     assert.deepEqual(state.customFields,[{name:"custom",type:"boolean"}]);
     assert.deepEqual((await store.snapshot()).values,{label:"saved",custom:false});
   } finally { await rm(temp,{recursive:true,force:true}); }
@@ -84,7 +85,7 @@ test("independent local processes enforce the same configuration revision", asyn
   const temp = await mkdtemp(path.join(os.tmpdir(), "configuration-processes-"));
   try {
     const rootDir = path.join(temp, "values");
-    const store = await createLocalProjectConfigurationStore(temp, {rootDir});
+    const store = await configurationFixtureStore(temp, {rootDir});
     const initial = await store.read();
     const source = `
       import {createLocalProjectConfigurationStore} from ${JSON.stringify(new URL("../configuration.ts", import.meta.url).href)};
@@ -105,11 +106,11 @@ for (const explicit of [false,true]) test(`an automatically assigned run ID keep
   const {runLocalProjectWithReport} = await import("../index");
   const project = await mkdtemp(path.join(os.tmpdir(), "configuration-resume-"));
   const applicationId = randomUUID();
-  const key = createHash("sha256").update(`application:${applicationId}`).digest("hex");
-  const runKey = createHash("sha256").update(await realpath(project)).digest("hex");
+  const key = createHash("sha256").update(`${applicationId}:main`).digest("hex");
+  const runKey = key;
   const root = path.join(os.homedir(), ".steamharness", "configurations");
   try {
-    await writeFile(path.join(project, "package.json"), JSON.stringify({id:applicationId, name:"config-resume", type:"module", steamHarness:{projectInfo:{dataStorage:{mode:"local"}}}}));
+    await writeFile(path.join(project, "package.json"), JSON.stringify({id:applicationId, name:"config-resume", type:"module", steamHarness:{defaultEntry:"main",entries:[{entryId:"main",type:"workflow",name:"Main",root:".",entry:"index.ts",databases:[], configuration:"configuration.json"}], projectInfo:{}}}));
     await writeFile(path.join(project, "configuration.json"), JSON.stringify({version:1, fields:[{name:"label", type:"string", defaultValue:"before"}]}));
     await writeFile(path.join(project, "index.ts"), `
       const approvalNode = steamharness.createUserInputNode({name:"confirm", params:[{name:"approved", type:"boolean", flag:"--approved"}]});
@@ -122,7 +123,7 @@ for (const explicit of [false,true]) test(`an automatically assigned run ID keep
     `);
     const waiting = await runLocalProjectWithReport({projectDir:project, configuration:explicit ? {id:"provided",name:"Provided",revision:4,values:{label:"explicit"}} : undefined, userInput:{requestInput() {}, getResolvedInput() {return undefined;}}});
     assert.equal(waiting.status, "waiting_for_input", JSON.stringify(waiting.result));
-    const store = await createLocalProjectConfigurationStore(project);
+    const store = await configurationFixtureStore(project);
     const state = await store.read();
     await store.dispatch({action:"save", revision:state.revision, id:state.activeConfigurationId, values:{label:"after"}});
     const userInput = {requestInput() {}, getResolvedInput(requestId: string) {return {requestId, nodeName:"confirm", values:{approved:true}, submittedAt:new Date()};}};
@@ -141,16 +142,17 @@ test("executor, parameter resolver, nodes and provider factory share one immutab
   const {runLocalProjectWithReport,resolveLocalProjectParams,createLLMProviderFromConfig}=await import("../index");
   const project=await mkdtemp(path.join(os.tmpdir(),"configuration-executor-"));
   const applicationId=randomUUID();
-  const key=createHash("sha256").update(`application:${applicationId}`).digest("hex");
-  const runKey=createHash("sha256").update(await realpath(project)).digest("hex");
+  const key=createHash("sha256").update(`${applicationId}:main`).digest("hex");
+  const runKey=key;
   const root=path.join(os.homedir(),".steamharness","configurations");
   try {
-    await writeFile(path.join(project,"package.json"),JSON.stringify({id:applicationId,name:"Configuration",type:"module",steamHarness:{projectInfo:{dataStorage:{mode:"local"}}}}));
+    await writeFile(path.join(project,"package.json"),JSON.stringify({id:applicationId,name:"Configuration",type:"module",steamHarness:{defaultEntry:"main",entries:[{entryId:"main",type:"workflow",name:"Main",root:".",entry:"index.ts",databases:[], configuration:"configuration.json"}], projectInfo:{}}}));
     await writeFile(path.join(project,"index.ts"), `
 const task=steamharness.defineProject({name:"configuration",async run(_input,context){return {errCode:0,errMessage:"",value:steamharness.getConfig("label"),nested:context.config.nested};}});
 export const executor=steamharness.defineExecutor({projectType:"workflow",defaultEntrypoint:"main",entrypoints:[steamharness.defineEntrypoint({id:"main",title:"Main",workflow:task,params:[{name:"label",type:"string",flag:"--label"}],createInput({paramValues}){return paramValues;},resolveParams(context){return {params:{label:{value:context.config.label}}};}})]});
 export default task;
 `);
+    await declareConfigurationFixture(project);
     const configuration={id:"test",name:"Test",revision:1,values:{label:"frozen",nested:{active:true}}};
     const result=await runLocalProjectWithReport({projectDir:project,configuration});
     assert.equal((result.result.ok ? result.result.data as any : undefined)?.output?.value,"frozen");
@@ -193,16 +195,16 @@ test("built-in Agent providers use isolated configuration credentials and never 
 test("unverified source upgrades reject reads and writes without falling back to an older template",async()=>{
   const root=await mkdtemp(path.join(os.tmpdir(),'configuration-upgrade-'));
   try {
-    const project=path.join(root,'project'),cacheDir=path.join(root,'cache'),rootDir=path.join(root,'personal');await mkdir(project);
+    const project=path.join(root,'project'),cacheDir=path.join(root,'cache'),rootDir=path.join(root,'personal');await mkdir(project);await declareConfigurationFixture(project);
     const author=createConfigurationState([{name:'settings',type:'json',defaultValue:{locked:0,open:1},sharing:{includeValue:true},paths:{'/locked':{editable:false}}}],()=> 'official');
-    const first=freezeConfigurationTemplate(createPublicationDraft(author),{projectId:'verified-project',projectVersion:'1.0.0',sourceHash:'a'.repeat(64)});
-    const sourceFile=path.join(project,CONFIGURATION_TEMPLATE_FILE);
+    const first=freezeConfigurationTemplate(createPublicationDraft(author),{projectId:JSON.parse(await readFile(path.join(project,'package.json'),'utf8')).id,entryId:"main",projectVersion:'1.0.0',sourceHash:'a'.repeat(64)});
+    const sourceFile=path.join(project,configurationTemplatePath("main"));
     await cacheVerifiedConfigurationTemplate(first,[],{cacheDir});await writeFile(sourceFile,JSON.stringify(first));
-    const store=await createLocalProjectConfigurationStore(project,{rootDir,templateCacheDir:cacheDir});
+    const store=await configurationFixtureStore(project,{rootDir,templateCacheDir:cacheDir});
     let state=await store.read();
     state=await store.dispatch({action:'save',revision:state.revision,id:state.activeConfigurationId,values:{settings:{locked:0,open:9}}}) as ProjectConfigurationState;
     const waiting=await store.snapshot({runId:'waiting'});
-    const key=createHash('sha256').update(await realpath(project)).digest('hex'),savedFile=path.join(rootDir,`${key}.json`),saved=await readFile(savedFile,'utf8');
+    const key=createHash('sha256').update(JSON.parse(await readFile(path.join(project,'package.json'),'utf8')).id+':main').digest('hex'),savedFile=path.join(rootDir,`${key}.json`),saved=await readFile(savedFile,'utf8');
     const next=structuredClone(first);next.projectVersion='2.0.0';next.configurations[0]!.values.settings={locked:2,open:2};
     await writeFile(sourceFile,JSON.stringify(next));
     await assert.rejects(store.read(),/online/);
@@ -227,14 +229,14 @@ test("unverified source upgrades reject reads and writes without falling back to
 test("verified templates enforce offline edits, preserve waiting runs, and cache immutable attachments outside source",async()=>{
   const root=await mkdtemp(path.join(os.tmpdir(),'configuration-offline-'));
   try {
-    const project=path.join(root,'project'),cacheDir=path.join(root,'cache'),rootDir=path.join(root,'personal');await mkdir(project);
+    const project=path.join(root,'project'),cacheDir=path.join(root,'cache'),rootDir=path.join(root,'personal');await mkdir(project);await declareConfigurationFixture(project);
     const bytes=Buffer.from('versioned-image'),reference={id:'wf_abcdef',name:'background.png',mimeType:'image/png',size:bytes.length,storage:'server' as const};
     const author=createConfigurationState([{name:'settings',type:'json',defaultValue:{locked:0,open:1},sharing:{includeValue:true},paths:{'/locked':{editable:false}}},{name:'background',type:'file',defaultValue:reference,sharing:{includeValue:true,editable:false}}],()=> 'profile');
-    const template=freezeConfigurationTemplate(createPublicationDraft(author),{projectId:'verified-project',projectVersion:'1.0.0',sourceHash:'a'.repeat(64)});
+    const template=freezeConfigurationTemplate(createPublicationDraft(author),{projectId:JSON.parse(await readFile(path.join(project,'package.json'),'utf8')).id,entryId:"main",projectVersion:'1.0.0',sourceHash:'a'.repeat(64)});
     template.attachments=[{id:reference.id,path:`configuration-assets/${reference.id}`,sha256:createHash('sha256').update(bytes).digest('hex')}];
-    await writeFile(path.join(project,CONFIGURATION_TEMPLATE_FILE),JSON.stringify(template));
+    await writeFile(path.join(project,configurationTemplatePath("main")),JSON.stringify(template));
     const options={rootDir,templateCacheDir:cacheDir};
-    const store=await createLocalProjectConfigurationStore(project,options);
+    const store=await configurationFixtureStore(project,options);
     await assert.rejects(store.read(),/online/);
     await assert.rejects(cacheVerifiedConfigurationTemplate(template,[{id:reference.id,bytes:Buffer.from('wrong')}],{cacheDir}),/hash mismatch/);
     await cacheVerifiedConfigurationTemplate(template,[{id:reference.id,bytes}],{cacheDir});
@@ -244,7 +246,7 @@ test("verified templates enforce offline edits, preserve waiting runs, and cache
     state=await store.dispatch({action:'save',revision:state.revision,id:state.activeConfigurationId,values:{settings:{locked:0,open:4}}}) as ProjectConfigurationState;
     assert.deepEqual((await store.snapshot()).values.settings,{locked:0,open:4});
     assert.deepEqual(await store.snapshot({runId:'waiting'}),waiting);
-    await rm(path.join(project,CONFIGURATION_TEMPLATE_FILE));
+    await rm(path.join(project,configurationTemplatePath("main")));
     assert.deepEqual((await store.snapshot()).values.settings,{locked:0,open:4});
     const file=await readCachedConfigurationFile(project,reference.id,options);assert.equal(Buffer.from(file!.base64,'base64').toString(),bytes.toString());
     await assert.rejects(store.dispatch({action:'publication.save',revision:state.revision,publication:createPublicationDraft(state)}),/online/);

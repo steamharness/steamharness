@@ -16,11 +16,40 @@
     "steamharness": "link:../../.."
   },
   "steamHarness": {
-    "projectInfo": {
-      "dataStorage": {
-        "mode": "local"
+    "projectInfo": {},
+    "entries": [
+      {
+        "entryId": "main",
+        "type": "conversation",
+        "name": "@steamharness/smoke-workflow",
+        "root": ".",
+        "entry": "index.ts",
+        "databases": [
+          {
+            "alias": "data",
+            "host": "local",
+            "permissions": {
+              "kv": {
+                "read": {
+                  "mode": "all"
+                },
+                "write": {
+                  "mode": "all"
+                }
+              },
+              "knowledge": {
+                "read": {
+                  "mode": "all"
+                },
+                "write": {
+                  "mode": "all"
+                }
+              }
+            }
+          }
+        ]
       }
-    },
-    "projectType": "conversation"
+    ],
+    "defaultEntry": "main"
   }
 }

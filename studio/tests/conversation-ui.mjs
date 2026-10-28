@@ -27,7 +27,7 @@ const cliVersion = JSON.parse(await fs.readFile(path.join(fixtureDir, 'node_modu
 if (!process.env.STEAMHARNESS_UI_CLI_ENTRY) { assert.equal(cliVersion, parallelManifest.devDependencies['@steamharness/cli']); }
 parallelManifest.id = 'b20a7d1d-b6f5-4b0c-8589-265d56fc879a';
 parallelManifest.name = 'Offline parallel conversation';
-parallelManifest.steamHarness.projectInfo = { localizedNames: { 'zh-CN': '\u5bf9\u8bdd\u793a\u4f8b' }, dataStorage: { mode: 'local' } };
+parallelManifest.steamHarness.projectInfo = { localizedNames: { 'zh-CN': '\u5bf9\u8bdd\u793a\u4f8b' } };
 await fs.writeFile(path.join(parallelDir, 'package.json'), JSON.stringify(parallelManifest));
 await fs.writeFile(path.join(parallelDir, 'index.ts'), await fs.readFile(path.join(fixtureDir, 'index.ts'), 'utf8'));
 await fs.symlink(path.join(fixtureDir, 'node_modules'), path.join(parallelDir, 'node_modules'), process.platform === 'win32' ? 'junction' : 'dir');

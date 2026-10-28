@@ -36,7 +36,7 @@ describe("ProjectListPage management table", () => {
         createProject({
           id: "conversation-demo",
           name: "Conversation Demo",
-          projectType: "conversation",
+          entries: [{entryId:"main",name:"Main",type:"conversation",root:".",entry:"index.ts",databases:[]}], defaultEntry:"main",
           projectCard: {
             icon: "bot",
             iconUrl: "https://example.test/bot.png",
@@ -60,7 +60,7 @@ describe("ProjectListPage management table", () => {
       projects: [createProject({
         id: "conversation-localized",
         name: "Conversation Localized",
-        projectType: "conversation",
+        entries: [{entryId:"main",name:"Main",type:"conversation",root:".",entry:"index.ts",databases:[]}], defaultEntry:"main",
       })],
     });
 
@@ -82,7 +82,7 @@ describe("ProjectListPage management table", () => {
       projects: [createProject({
         id: "kanban-demo",
         name: "Product Board",
-        projectType: "kanban",
+        entries: [{entryId:"main",name:"Main",type:"kanban",root:".",entry:"index.html",databases:[]}], defaultEntry:"main",
       })],
     });
 
@@ -186,7 +186,7 @@ describe("ProjectListPage management table", () => {
         createProject({
           id: "conversation-demo",
           name: "Chat Runner",
-          projectType: "conversation",
+          entries: [{entryId:"main",name:"Main",type:"conversation",root:".",entry:"index.ts",databases:[]}], defaultEntry:"main",
           projectCard: {
             icon: "message-circle",
             iconBackgroundColor: "#0f766e",
@@ -312,11 +312,10 @@ function createProjectListElement(options: RenderProjectListOptions = {}) {
 }
 
 function createProject(overrides: Partial<Summary>): Summary {
-  const serverRunnable = (overrides.projectType ?? "workflow") !== "kanban" && overrides.latest !== null;
   return {
     id: "demo",
     name: "Demo",
-    projectType: "workflow",
+    entries: [{entryId:"main",name:"Main",type:"workflow",root:".",entry:"index.ts",databases:[]}], defaultEntry:"main",
     projectCard: {
       icon: "workflow",
       iconBackgroundColor: "#2563eb",
@@ -325,8 +324,6 @@ function createProject(overrides: Partial<Summary>): Summary {
       localizedNames: {},
       declarations: [],
       platformSupport: { mode: "agnostic" },
-      dataStorage: { mode: "server" },
-      relatedProjects: [],
     },
     createdAt: "2026-05-26T00:00:00.000Z",
     updatedAt: "2026-05-26T00:00:00.000Z",

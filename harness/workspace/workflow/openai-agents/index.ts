@@ -51,23 +51,7 @@ const toolApproval = steamharness.createToolApprovalGate();
 disableOpenAIAgentsTracing();
 
 interface NodeRunContext {
-  storage: {
-    local: {
-      kv: {
-        conversation: {
-          getValue(key: string): Promise<unknown | undefined>;
-          setValue(key: string, value: unknown): Promise<void>;
-        };
-      };
-      persistentValue: {
-        workflow: {
-          getValue(key: string): Promise<unknown | undefined>;
-          setValue(key: string, value: unknown): Promise<void>;
-          updateValue(key: string, updater: (current: unknown | undefined) => unknown): Promise<unknown>;
-        };
-      };
-    };
-  };
+  databases: import("steamharness").DatabasesContext;
   conversation: {
     getValue(): Promise<{
       conversationId: string;
@@ -289,9 +273,9 @@ const outputNode = steamharness.createOutputNode<OpenAIAgentsStreamRunInput, Ope
     const answer = runResult.answer.trim() || "No response.";
 
     if (input.writeAgentState) {
-      await context.storage.local.kv.conversation.setValue(RUN_COUNT_KEY, input.runCount);
-      await context.storage.local.kv.conversation.setValue(FACTS_KEY, runResult.details.facts);
-      await context.storage.local.kv.conversation.setValue(HISTORY_KEY, {
+      await context.databases.get("data").kv.conversation.setValue(RUN_COUNT_KEY, input.runCount);
+      await context.databases.get("data").kv.conversation.setValue(FACTS_KEY, runResult.details.facts);
+      await context.databases.get("data").kv.conversation.setValue(HISTORY_KEY, {
         mode: runResult.details.mode,
         historyLength: runResult.details.historyLength,
         lastResponseId: runResult.details.lastResponseId,
@@ -367,8 +351,8 @@ export const openaiAgentsProject = steamharness.defineProject<OpenAIAgentsInput,
   async run(input, context) {
     const parsed = await steamharness.runNode(inputNode, input, context) as OpenAIAgentsParsedInput;
     const state = await context.conversation.getValue();
-    const runCount = Number(await context.storage.local.kv.conversation.getValue(RUN_COUNT_KEY) ?? 0) + 1;
-    const facts = readAgentFacts(await context.storage.local.kv.conversation.getValue(FACTS_KEY));
+    const runCount = Number(await context.databases.get("data").kv.conversation.getValue(RUN_COUNT_KEY) ?? 0) + 1;
+    const facts = readAgentFacts(await context.databases.get("data").kv.conversation.getValue(FACTS_KEY));
     const result = await steamharness.runStreamNode(
       outputNode,
       {
@@ -738,7 +722,7 @@ export function createOpenAIAgentTools(input: {
             value: args.value,
             updatedAt: new Date().toISOString(),
           });
-          await input.context.storage.local.kv.conversation.setValue(FACTS_KEY, facts);
+          await input.context.databases.get("data").kv.conversation.setValue(FACTS_KEY, facts);
           toolEvents.push({ name: "remember_fact", status: "completed" });
           return {
             remembered: true,

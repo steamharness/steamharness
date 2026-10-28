@@ -19,6 +19,6 @@ it.each(['en', 'zh-CN'])('uses the Server-assigned project ID in %s without sele
   fireEvent.click(within(dialog).getByRole('button', { name: label }));
   await waitFor(() => expect(created).toHaveBeenCalledWith(id));
   expect(create).toHaveBeenCalledOnce();
-  expect(create.mock.calls[0][0]).toMatchObject({ name: 'New application', projectType: 'workflow', groupId: null });
+  expect(create.mock.calls[0][0]).toMatchObject({ name: 'New application', entries:[{entryId:'main',type:'workflow',databases:[]}],defaultEntry:'main', groupId: null });
   expect(create.mock.calls[0][0]).not.toHaveProperty('projectId');
 });

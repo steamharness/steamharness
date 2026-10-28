@@ -17,7 +17,7 @@ const manifest = { id: '94b414b7-cdb4-491d-bc73-7282ebd74692', name: 'Default pr
   devDependencies: exampleManifest.devDependencies,
   description: 'Project description <img id="unsafe" src="invalid">', steamHarness: { projectInfo: {
     localizedNames: { en: 'Project information with a long display name', 'zh-CN': '\u9879\u76ee\u4fe1\u606f\u4e0e\u8f83\u957f\u7684\u5c55\u793a\u540d\u79f0' },
-    declarations: ['multilingual'], platformSupport: { mode: 'specific', platforms: ['macos', 'web'] }, dataStorage: { mode: 'local' },
+    declarations: ['multilingual'], platformSupport: { mode: 'specific', platforms: ['macos', 'web'] },
   } } };
 await fs.writeFile(path.join(projectDir, 'package.json'), JSON.stringify(manifest));
 await fs.symlink(await fs.realpath(path.join(root, 'examples/conversation/node_modules')), path.join(projectDir, 'node_modules'), process.platform === 'win32' ? 'junction' : 'dir');
@@ -165,7 +165,7 @@ async function selectionCopies(url, language) {
   };
   const embeddedResponse = await select(frame, '.assistant .message-content');
   await page.keyboard.press(copyKey); await copied(embeddedResponse);
-  await frame.evaluate(() => window.dispatchEvent(new MessageEvent('message', { data: { type: 'error', message: 'Related project error\nDiagnostic log: failed request' } })));
+  await frame.evaluate(() => window.dispatchEvent(new MessageEvent('message', { data: { type: 'error', message: 'Database binding error\nDiagnostic log: failed request' } })));
   const error = await select(frame, '#error'); await page.keyboard.press(copyKey); await copied(error);
   await frame.locator('#error').click({ button: 'right' });
   await page.waitForFunction(() => window.__menus.length === 1);

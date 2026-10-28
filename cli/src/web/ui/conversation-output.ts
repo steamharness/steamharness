@@ -74,9 +74,9 @@ export class ConversationOutput {
 
   private release(root: HTMLElement): void { this.displays.get(root)?.dispose(); this.displays.delete(root); }
 
-  update(message: ConversationMessage, projectId: string, conversationId: string, files: Attachment[], storageSource: 'local' | 'server' = 'local', filesSignature = attachmentSignature(files), collapseIntermediate = false): void {
+  update(message: ConversationMessage, projectId: string, entryId: string, conversationId: string, files: Attachment[], storageSource: 'local' | 'server' = 'local', filesSignature = attachmentSignature(files), collapseIntermediate = false): void {
     const items = (message.items ?? []).filter(item => item.metadata?.kind !== 'agent-session' && !isSilentAgentRetry(item) && (!this.options.composer || !isComposerOutputItem(item)));
-    const cards = conversationResourceCards(items, projectId, conversationId, storageSource);
+    const cards = conversationResourceCards(items, projectId, entryId, conversationId, storageSource);
     const cardByItem = new Map(cards.map((card) => [card.itemId, card]));
     const answers = [...new Map([...(message.resolvedInputs ?? []), ...(message.submittingInput ? [message.submittingInput] : [])].map((answer) => [answer.requestId, answer])).values()];
     const ordered: OutputEntry[] =
@@ -96,7 +96,7 @@ export class ConversationOutput {
       const content = entry.item?.content as { tool?: string; status?: string } | undefined;
       if (content?.tool === 'workflow-ui_present_card' && content.status === 'success' && !entry.card) { continue; }
       if (entry.item && (content?.tool !== 'workflow-ui_present_card' || content.status !== 'success')) { entry.activity = agentActivity(entry.item, message); }
-      if (entry.item && content?.tool !== 'workflow-ui_present_card' && !entry.card) { entry.card = conversationResourceCards([entry.item], projectId, conversationId, storageSource)[0]; }
+      if (entry.item && content?.tool !== 'workflow-ui_present_card' && !entry.card) { entry.card = conversationResourceCards([entry.item], projectId, entryId, conversationId, storageSource)[0]; }
       if (entry.card && entry.card.kind !== 'file') { blocks.push({ key: `resource:${entry.key}`, card: entry.card, item: entry.item }); continue; }
       if (entry.activity) {
         const last = blocks.at(-1);

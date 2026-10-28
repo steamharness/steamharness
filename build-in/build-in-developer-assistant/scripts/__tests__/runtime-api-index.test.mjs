@@ -4,7 +4,7 @@ import path from "node:path";
 import { describe, expect, it } from "vitest";
 import {
   checkRuntimeApiIndex,
-  readRelatedProjectMembers,
+  readResourceContextMembers,
   readRuntimeApiIndex,
   readRuntimeNamespaceMembers,
   renderRuntimeApiIndex,
@@ -14,7 +14,8 @@ import {
 /** A Core source tree holding just the files the readers look at. */
 async function createCoreSource(files) {
   const dir = await mkdtemp(path.join(os.tmpdir(), "runtime-api-index-"));
-  await mkdir(path.join(dir, "kv"), { recursive: true });
+  await mkdir(path.join(dir, "entries"), { recursive: true });
+  await mkdir(path.join(dir, "databases"), { recursive: true });
   for (const [relative, contents] of Object.entries(files)) {
     await writeFile(path.join(dir, relative), contents, "utf8");
   }
@@ -33,14 +34,14 @@ describe("the runtime API index", () => {
     expect(differences).toEqual([]);
   });
 
-  it("says what a related project exposes and what it does not", async () => {
-    const { relatedContext } = await readRuntimeApiIndex();
-    const storage = relatedContext.find((context) => context.name === "RelatedProjectStorageContext");
+  it("lists independent entry and database capabilities", async () => {
+    const { resourceContexts } = await readRuntimeApiIndex();
+    const storage = resourceContexts.find((context) => context.name === "DatabaseContext");
     const signatures = storage.members.map((member) => member.signature);
 
     expect(signatures).toContain("kv");
     expect(signatures).toContain("knowledge");
-    expect(signatures).toContain("runEntrypoint(entrypointId, args)");
+    expect(resourceContexts.find(context => context.name === "EntryContext").members.map(member => member.signature)).toContain("runEntrypoint(entrypointId, args)");
     // The line the surface must not cross: a relation is not a way to read the
     // target's conversation, and it is not a way to reach a third project.
     expect(signatures).not.toContain("conversation");
@@ -51,7 +52,7 @@ describe("the runtime API index", () => {
     const index = await renderRuntimeApiIndex();
 
     expect(index).toContain("这里没有列出的能力就是没有");
-    expect(index).toContain("只走一跳");
+    expect(index).toContain("申请并经宿主审批");
     expect(index).toContain("会话 KV");
   });
 
@@ -69,26 +70,28 @@ describe("the runtime API index", () => {
 
   it("refuses a context member it cannot name", async () => {
     const coreSource = await createCoreSource({
-      "kv/related-projects.ts": [
-        "export interface RelatedProjectStorageContext { kv: string; [key: string]: unknown }",
-        "export interface RelatedProjectKnowledgeContext { getDocument(id: string): void }",
-        "export interface RelatedProjectRunner { run(id: string): void }",
+      "entries/index.ts": "export interface EntriesContext { list(): void }; export interface EntryContext { run(): void }",
+      "databases/index.ts": [
+        "export interface DatabaseContext { kv: string; [key: string]: unknown }",
+        "export interface DatabaseKnowledgeContext { getDocument(id: string): void }",
+        "export interface DatabasesContext { run(id: string): void }",
       ].join("\n"),
     });
 
-    await expect(readRelatedProjectMembers(coreSource)).rejects.toThrow(/cannot read/);
+    await expect(readResourceContextMembers(coreSource)).rejects.toThrow(/cannot read/);
   });
 
   it("refuses a context that publishes no members", async () => {
     const coreSource = await createCoreSource({
-      "kv/related-projects.ts": [
-        "export interface RelatedProjectStorageContext { kv: string }",
-        "export interface RelatedProjectKnowledgeContext {}",
-        "export interface RelatedProjectRunner { run(id: string): void }",
+      "entries/index.ts": "export interface EntriesContext { list(): void }; export interface EntryContext { run(): void }",
+      "databases/index.ts": [
+        "export interface DatabaseContext { kv: string }",
+        "export interface DatabaseKnowledgeContext {}",
+        "export interface DatabasesContext { run(id: string): void }",
       ].join("\n"),
     });
 
-    await expect(readRelatedProjectMembers(coreSource)).rejects.toThrow(/no members to publish/);
+    await expect(readResourceContextMembers(coreSource)).rejects.toThrow(/no members to publish/);
   });
 
   it("refuses to overwrite a reference page it cannot find the generated block in", async () => {

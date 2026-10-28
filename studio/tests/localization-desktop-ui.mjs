@@ -40,8 +40,7 @@ async function verify(language) {
     await fs.symlink(cli, path.join(folder, 'node_modules/@steamharness/cli'), 'dir');
     const manifest = JSON.parse(await fs.readFile(path.join(folder, 'package.json'), 'utf8'));
     manifest.description = '\u539f\u59cb\u9879\u76ee\u63cf\u8ff0';
-    manifest.steamHarness.projectInfo = { ...manifest.steamHarness.projectInfo, declarations: ['multilingual', 'multiplatform'],
-      dataStorage: { mode: 'local' }, relatedProjects: type === 'workflow' ? [{ alias: 'linked-missing', projectId: crypto.randomUUID() }] : [] };
+    manifest.steamHarness.projectInfo = { ...manifest.steamHarness.projectInfo, declarations: ['multilingual', 'multiplatform'] };
     await fs.writeFile(path.join(folder, 'package.json'), JSON.stringify(manifest, null, 2)); projects.push({ type, folder, manifest });
   }
   const workspace = path.join(directory, 'localized.code-workspace');
@@ -104,16 +103,6 @@ async function verify(language) {
     }
     await screenshot('information-assistant.png'); proof.checks.push('Workflow, Conversation and Kanban information labels are translated; manifest content is preserved');
     await command('View: Show Explorer');
-    const related = page.locator('.part.sidebar .pane-header').filter({ hasText: t('Related Projects') }); await related.waitFor();
-    if (await related.getAttribute('aria-expanded') === 'false') { await related.click(); }
-    await field('linked-missing').locator('.label-description').filter({ hasText: t('Not imported') }).waitFor();
-    await field('linked-missing').locator('.label-name').click();
-    await page.getByText(t('Related project "{0}" has not been imported. Import it first.', 'linked-missing'), { exact: true }).waitFor();
-    await page.getByRole('button', { name: t('Import Project'), exact: true }).waitFor();
-    await screenshot('related-projects.png'); await command('Notifications: Clear All Notifications');
-    proof.checks.push('Related project state, import notification and action are translated');
-    projects[0].manifest.steamHarness.projectInfo.relatedProjects = [];
-    await fs.writeFile(path.join(projects[0].folder, 'package.json'), JSON.stringify(projects[0].manifest, null, 2));
     const runButton = page.locator('.part.titlebar .studio-workflow-run .action-label');
     assert.ok((await runButton.getAttribute('aria-label'))?.includes(t('Run Project')));
     await runButton.click();

@@ -35,7 +35,7 @@ it("passes the project's restriction to the Web configuration editor", async () 
   const state=createConfigurationState([{...AGENT_MODELS_CONFIGURATION_FIELD,allowThirdParty:false}],()=>"default");
   vi.spyOn(apiClient,"projectConfigurations").mockResolvedValue({errCode:0,errMessage:"",data:state});
   vi.spyOn(apiClient,"systemAiModelCatalog").mockResolvedValue({errCode:404,errMessage:"Unavailable"});
-  render(<ProjectConfigurationsTab project={{id:"project-a",hasDraft:true,projectType:"conversation"} as Summary}/>);
+  render(<ProjectConfigurationsTab entryId="main" project={{id:"project-a",hasDraft:true,entries:[],defaultEntry:"main"} as Pick<Summary,"id"|"hasDraft"|"access"> as Summary}/>);
   fireEvent.click(await screen.findByRole("button",{name:"Default"}));
   expect(screen.getByText("No models configured. Add a system AI model.")).toBeTruthy();
   click("Add model"); expect(screen.queryByRole("radiogroup")).toBeNull();
@@ -80,7 +80,7 @@ it("persists the model list through the configuration service only after applyin
   let state = createConfigurationState([AGENT_MODELS_CONFIGURATION_FIELD], () => "default");
   const service = vi.spyOn(apiClient, "projectConfigurations").mockImplementation(async (_id, call) => ({ errCode: 0, errMessage: "", data: call.action === "get" ? state : (state = applyConfigurationAction(state, call, () => "new")) }));
   vi.spyOn(apiClient, "systemAiModelCatalog").mockResolvedValue({errCode:0,errMessage:"",data:{credentials:[]}});
-  const {container} = render(<ProjectConfigurationsTab project={{ id: "project-a", hasDraft: true, projectType: "conversation" } as Summary}/>);
+  const {container} = render(<ProjectConfigurationsTab entryId="main" project={{ id: "project-a", hasDraft: true, entries:[],defaultEntry:"main" } as Pick<Summary,"id"|"hasDraft"|"access"> as Summary}/>);
   fireEvent.click(await screen.findByRole("button", { name: "Default" }));
   expect(screen.queryByRole("tablist")).toBeNull(); click("Add model");
   fireEvent.click(screen.getByRole("radio", { name: "Third-party AI" }));

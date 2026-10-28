@@ -7,7 +7,7 @@ const fields = parseConfigurationDefinition({version:1, fields:[
   {name:"enabled",type:"boolean"}, {name:"choice",type:"string",options:[{value:"a"},{value:"b"}],multiple:true},
   {name:"data",type:"json"}
 ]}).fields;
-const file={id:"wf_ab12",name:"底图.png",mimeType:"image/png",size:12,storage:"server" as const,projectId:"project"};
+const file={id:"wf_ab12",name:"底图.png",mimeType:"image/png",size:12,storage:"server" as const,projectId:"project",entryId:"main"};
 it("stores and round trips validated server file references, without embedding bytes",()=>{
   const field=parseConfigurationField({name:"image",type:"file",accept:["image/png",".webp"],control:undefined});
   let state=createConfigurationState([field],id);
@@ -22,7 +22,7 @@ it("stores and round trips validated server file references, without embedding b
 });
 it("rejects invalid, local, oversized or mismatched files and validates multiple selection",()=>{
   const field=parseConfigurationField({name:"image",type:"file",accept:["image/*"]});
-  for(const value of [[],null,"map.png",{...file,id:"../../file"},{...file,storage:"local"},{...file,name:"../map.png"},{...file,base64:"abc"},{...file,size:51*1024*1024},{...file,mimeType:"application/json"}]) expect(()=>validateConfigurationValue(field,value)).toThrow();
+  for(const value of [[],null,"map.png",{...file,entryId:"../main"},{...file,entryId:""},{...file,id:"../../file"},{...file,storage:"local"},{...file,name:"../map.png"},{...file,base64:"abc"},{...file,size:51*1024*1024},{...file,mimeType:"application/json"}]) expect(()=>validateConfigurationValue(field,value)).toThrow();
   const multiple={...field,multiple:true,required:true};
   expect(()=>validateConfigurationValue(multiple,[file])).not.toThrow();
   expect(()=>validateConfigurationValue(multiple,Array(33).fill(file))).toThrow();

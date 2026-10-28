@@ -28,7 +28,7 @@ const KNOWLEDGE_MARKDOWN_PREVIEW_WHITESPACE_PATTERN = /\s/u;
  *
  * Named as one member rather than as `Pick<StorageLocationContext, …>`
  * so a namespace that is not a run's own storage can be handed in — the
- * related-project scope builds one over the target project's store.
+ * database-space namespace builds one over the target project's store.
  */
 export interface KnowledgeContext {
   persistentValue: KVNamespace;
@@ -709,7 +709,14 @@ async function withKnowledgeDocumentMutationLock<T>(
       message: "Knowledge document mutations require an atomic PersistentValue namespace lock or mutation executor.",
     });
   }
-  return namespace.withLock(operation);
+  // A knowledge mutation only updates its own document and index. Optimistic
+  // hosts may retry the whole operation when another consumer changed the index.
+  for (let attempt = 0; ; attempt++) {
+    try { return await namespace.withLock(operation); }
+    catch (error) {
+      if (attempt >= 23 || (error as {code?:string}).code !== "DATABASE_TRANSACTION_CONFLICT") throw error;
+    }
+  }
 }
 
 async function executeKnowledgeDocumentMutation<T>(

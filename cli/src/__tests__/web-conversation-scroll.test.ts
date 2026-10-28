@@ -16,7 +16,7 @@ afterEach(() => {
 function card(id: string, kind: 'knowledge' | 'kv'): OutputItem {
   return { id, metadata: { kind: 'agent-part', partType: 'tool' }, content: {
     tool: 'db_status', status: 'success', output: { details: { resourceCard: { kind,
-      title: id, target: { source: 'local', projectId: 'scroll-test', ...(kind === 'kv' ? { key: id } : { documentId: id }) },
+      title: id, target: { source: 'local', projectId: 'scroll-test',entryId:'main',database:'data', ...(kind === 'kv' ? { key: id } : { documentId: id }) },
     } } },
   } };
 }
@@ -55,7 +55,7 @@ it('keeps batched resource cards and asynchronous layout changes visible until t
     scrollTop: { get: () => top, set: value => { top = value; clamp(); } },
   });
   const resize = () => { for (const observer of observers) if (observer.targets.has(content) || observer.targets.has(transcript)) observer.callback([], {} as ResizeObserver); };
-  const project: Project = { id: 'scroll-test', uri: 'file:///scroll-test', folderPath: '/scroll-test', name: 'Scroll Test', projectType: 'conversation', fields: [], entrypoints: [] };
+  const project: Project = {entryId:"main",aggregateName:"Test aggregate",defaultEntry:"main",entryRoot:'/scroll-test',databases:[],entries:[{entryId:"main",name:"Main",type:'conversation',root:".",entry:"index.ts",databases:[]}], id: 'scroll-test', uri: 'file:///scroll-test', folderPath: '/scroll-test', name: 'Scroll Test', projectType: 'conversation', fields: [], entrypoints: [] };
   const message: ConversationMessage = { id: 'answer', role: 'assistant', content: '', status: 'running', items: [] };
   const emit = (activeId = 'session') => {
     window.dispatchEvent(new MessageEvent('message', { data: {

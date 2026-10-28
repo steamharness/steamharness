@@ -6,18 +6,17 @@ import type { CreatedProject, ProjectCreationInput, StartEnvironment, StartSumma
 import type { ProjectType } from './projects';
 import type { DownloadedServerProject, ProjectTransferProgress, UpdatedServerProject } from './steamharness-server-projects';
 
-export interface RelatedProjectBinding { alias: string; projectDir: string }
-
 export interface WebReady {
   type: 'ready'; protocolVersion: number; hostProtocolVersion: number; url: string;
   assistantProtocolVersion?: number;
   accountProtocolVersion?: number;
   systemAiConnectionProtocolVersion?: number;
-  relatedProjectsProtocolVersion?: number;
+  entriesProtocolVersion: number;
+  databaseSpacesProtocolVersion: number;
   traceProtocolVersion?: number;
   userSettingsProtocolVersion?: number;
-  project: Pick<Project, 'id' | 'name' | 'projectType'>;
-  runtime: { harnessVersion: string; harnessPath: string };
+  project: Pick<Project, 'id' | 'name' | 'entries' | 'defaultEntry'>;
+  runtime?: { harnessVersion: string; harnessPath: string };
 }
 export interface WebSessionExit { code: number | null; signal: NodeJS.Signals | null; stderr: string }
 export interface WebSession {
@@ -26,7 +25,9 @@ export interface WebSession {
   close(): Promise<void>;
   updateAuth(connection?: Connection): void;
   updateUserSettings(settings: StudioUserSettings): void;
-  updateRelatedProjects(projects: RelatedProjectBinding[], resourceProjects?: string[]): void;
+  updateResourceProjects(projects: string[]): void;
+  reconnect?(): Promise<boolean>;
+  onReconnect?(callback: () => void): { dispose(): void };
   onExit(callback: (exit?: WebSessionExit) => void): { dispose(): void };
 }
 export interface Launcher {
@@ -49,7 +50,7 @@ export interface Launcher {
   inspectAssistant(target: AssistantWorkspaceFolder, folders: AssistantWorkspaceFolder[]): Promise<{ projects: Omit<Project, 'uri'>[]; errors: string[] }>;
   inspectAnalysis?(): Promise<Project>;
   updateAnalysisProjects?(projects: Project[]): void;
-  start(project: Project, surface: 'editor' | 'assistant', signal?: AbortSignal, relatedProjects?: RelatedProjectBinding[], resourceProjects?: string[], port?: number): Promise<WebSession>;
+  start(project: Project, surface: 'editor' | 'assistant', signal?: AbortSignal, resourceProjects?: string[]): Promise<WebSession>;
   cliEntry(projectDir: string): Promise<string>;
   resource?(project: Project, input: ResourceRequest, signal: AbortSignal): Promise<unknown>;
   dispose(): void;

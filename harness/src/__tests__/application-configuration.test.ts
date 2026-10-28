@@ -13,7 +13,8 @@ async function fixture() {
   const rootDir = path.join(directory, "values"), applicationId = randomUUID();
   const application = async (name: string, id: string | undefined = applicationId) => {
     const project = path.join(directory, name); await mkdir(project);
-    await writeFile(path.join(project, "package.json"), JSON.stringify({name:"same-package-name", id}));
+    await writeFile(path.join(project, "package.json"), JSON.stringify({name:"same-package-name", id,type:"module",steamHarness:{defaultEntry:"main",entries:["main","second"].map(entryId=>({entryId,type:"workflow",name:entryId,root:".",entry:"index.ts",configuration:"configuration.json",databases:[]}))}}));
+    await writeFile(path.join(project, "index.ts"),"export {};");
     await writeFile(path.join(project, "configuration.json"), JSON.stringify({version:1,fields:[{name:"label",type:"string"},{name:"enabled",type:"boolean"}]}));
     return project;
   };
@@ -23,7 +24,7 @@ async function fixture() {
 test("application copies share profiles, custom fields, values and the active selection", async t => {
   const f = await fixture(); t.after(() => rm(f.directory, {recursive:true,force:true}));
   const a = await createLocalProjectConfigurationStore(await f.application("first"), {rootDir:f.rootDir});
-  const b = await createLocalProjectConfigurationStore(await f.application("second", ` ${f.applicationId.toUpperCase()} `), {rootDir:f.rootDir});
+  const b = await createLocalProjectConfigurationStore(await f.application("second", f.applicationId.toUpperCase()), {rootDir:f.rootDir});
   let state = await a.read();
   state = await a.dispatch({action:"field.save",revision:state.revision,field:{name:"custom",type:"number"}}) as ProjectConfigurationState;
   state = await a.dispatch({action:"save",revision:state.revision,id:state.activeConfigurationId,values:{label:"shared",enabled:false,custom:0}}) as ProjectConfigurationState;
@@ -42,25 +43,20 @@ test("application copies share profiles, custom fields, values and the active se
   assert.equal((await a.snapshot()).values.label, "shared");
 });
 
-test("application binding adopts existing values once and preserves directory-scoped run snapshots", async t => {
-  const f = await fixture(); t.after(() => rm(f.directory, {recursive:true,force:true}));
-  const project = await f.application("old-install"), copy = await f.application("updated-install");
-  const legacy = await createLocalProjectConfigurationStore(project, {rootDir:f.rootDir,storageKey:await realpath(project)});
-  let state = await legacy.read();
-  state = await legacy.dispatch({action:"save",revision:state.revision,id:state.activeConfigurationId,values:{label:"before",enabled:false}}) as ProjectConfigurationState;
-  const waiting = await legacy.snapshot({runId:"waiting"});
-  const current = await createLocalProjectConfigurationStore(project, {rootDir:f.rootDir});
-  assert.deepEqual(await current.read(), state);
-  const second = await createLocalProjectConfigurationStore(copy, {rootDir:f.rootDir});
-  state = await second.dispatch({action:"save",revision:state.revision,id:state.activeConfigurationId,values:{label:"after",enabled:false}}) as ProjectConfigurationState;
-  assert.equal((await current.snapshot()).values.label, "after");
-  assert.deepEqual(await current.snapshot({runId:"waiting"}), waiting);
-  assert.equal((await second.snapshot({runId:"waiting"})).values.label, "after");
-  assert.equal((await legacy.read()).configurations[0]!.values.label, "before", "Adoption leaves the old file intact.");
-  const copyLegacy = await createLocalProjectConfigurationStore(copy, {rootDir:f.rootDir,storageKey:await realpath(copy)});
-  const oldCopy = await copyLegacy.read();
-  await copyLegacy.dispatch({action:"save",revision:oldCopy.revision,id:oldCopy.activeConfigurationId,values:{label:"unmerged"}});
-  assert.deepEqual(await (await createLocalProjectConfigurationStore(copy, {rootDir:f.rootDir})).read(), state, "An existing application store wins over another path's old values.");
+test("entries isolate profiles and run snapshots without adopting legacy directory data", async t => {
+  const f=await fixture();t.after(()=>rm(f.directory,{recursive:true,force:true}));
+  const project=await f.application("aggregate");
+  const legacy=await createLocalProjectConfigurationStore(project,{rootDir:f.rootDir,storageKey:await realpath(project)});
+  let old=await legacy.read();await legacy.dispatch({action:"save",revision:old.revision,id:old.activeConfigurationId,values:{label:"legacy"}});
+  const a=await createLocalProjectConfigurationStore(project,{rootDir:f.rootDir,entryId:"main"});
+  const b=await createLocalProjectConfigurationStore(project,{rootDir:f.rootDir,entryId:"second"});
+  assert.deepEqual((await a.snapshot()).values,{});
+  let state=await a.read();await a.dispatch({action:"save",revision:state.revision,id:state.activeConfigurationId,values:{label:"first"}});
+  const waiting=await a.snapshot({runId:"same-run"});
+  state=await b.read();await b.dispatch({action:"save",revision:state.revision,id:state.activeConfigurationId,values:{label:"second"}});
+  assert.equal((await b.snapshot({runId:"same-run"})).values.label,"second");
+  assert.deepEqual(await a.snapshot({runId:"same-run"}),waiting);
+  assert.equal((await legacy.snapshot()).values.label,"legacy");
 });
 
 test("independent processes editing two installations enforce one application revision", async t => {
@@ -80,19 +76,15 @@ test("independent processes editing two installations enforce one application re
   assert.deepEqual(await store.read(), await (await createLocalProjectConfigurationStore(projects[1]!, {rootDir:f.rootDir})).read());
 });
 
-test("directories without a valid application UUID retain canonical path isolation", async t => {
-  const f = await fixture(); t.after(() => rm(f.directory, {recursive:true,force:true}));
-  for (const id of ["invalid", undefined]) {
-    const first = await f.application(`first-${id}`, id), second = await f.application(`second-${id}`, id);
-    if (id === undefined) {
-      await writeFile(path.join(first,"package.json"), JSON.stringify({name:"same-package-name"}));
-      await writeFile(path.join(second,"package.json"), JSON.stringify({name:"same-package-name"}));
-    }
-    const a = await createLocalProjectConfigurationStore(first, {rootDir:f.rootDir}), state = await a.read();
-    await a.dispatch({action:"save",revision:state.revision,id:state.activeConfigurationId,values:{label:"isolated"}});
-    assert.deepEqual((await (await createLocalProjectConfigurationStore(second, {rootDir:f.rootDir})).snapshot()).values, {});
+test("configuration rejects unregistered projects and invalid project identities", async t => {
+  const f=await fixture();t.after(()=>rm(f.directory,{recursive:true,force:true}));
+  for(const id of ["invalid",undefined]) {
+    const project=await f.application(`invalid-${id}`,id);
+    if(id===undefined)await writeFile(path.join(project,"package.json"),JSON.stringify({name:"same-package-name"}));
+    await assert.rejects(createLocalProjectConfigurationStore(project,{rootDir:f.rootDir}),/aggregate project's UUID/);
   }
-  const invalid = await f.application("malformed");await writeFile(path.join(invalid,"package.json"), "{");
-  await assert.rejects(createLocalProjectConfigurationStore(invalid, {rootDir:f.rootDir}), SyntaxError);
-  assert.equal(await readFile(path.join(invalid,"package.json"),"utf8"), "{");
+  const project=await f.application("legacy");await writeFile(path.join(project,"package.json"),JSON.stringify({id:f.applicationId,name:"legacy",steamHarness:{projectType:"workflow"}}));
+  await assert.rejects(createLocalProjectConfigurationStore(project,{rootDir:f.rootDir}),/was removed/);
+  await writeFile(path.join(project,"package.json"),"{");
+  await assert.rejects(createLocalProjectConfigurationStore(project,{rootDir:f.rootDir}),SyntaxError);
 });

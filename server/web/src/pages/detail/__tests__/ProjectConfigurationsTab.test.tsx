@@ -5,7 +5,7 @@ import {applyConfigurationAction,bindConfigurationProfiles,configurationAccessVi
 import {apiClient} from "../../../api";
 import {ProjectConfigurationsTab} from "../ProjectConfigurationsTab";
 import type {Summary} from "../../../types";
-const project={id:"project-a",hasDraft:true,projectType:"workflow"} as Summary;
+const project={id:"project-a",hasDraft:true,entries:[],defaultEntry:"main"} as Pick<Summary,"id"|"hasDraft"|"access"> as Summary;
 const initial=()=>createConfigurationState([{name:"label",type:"string",defaultValue:"Original"},{name:"active",type:"boolean",defaultValue:false}],()=>"default");
 const ok=(data:unknown)=>({errCode:0,errMessage:"",data} as any);
 beforeEach(async()=>{await i18n.changeLanguage("en");});
@@ -17,24 +17,24 @@ const fileState=()=>createConfigurationState([{name:"image",type:"file",accept:[
 it("uploads files directly to server storage before applying the reference to the draft",async()=>{
  let state=fileState();const service=vi.spyOn(apiClient,"projectConfigurations").mockImplementation(async(_id,call)=>ok(call.action==="get"?state:(state=applyConfigurationAction(state,call,()=>"new"))));
  let finish!:(value:any)=>void;const upload=vi.spyOn(apiClient,"uploadProjectConfigurationFile").mockImplementation(()=>new Promise(resolve=>{finish=resolve;}));
- await render(<ProjectConfigurationsTab project={project}/>);
+ await render(<ProjectConfigurationsTab entryId="main" project={project}/>);
  await screen.findByLabelText("Choose file for image");
  const input=screen.getByLabelText("Choose file for image");expect(input).toHaveAttribute("accept","image/png");
  expect(screen.queryByRole("textbox")).toBeNull();
  const selected=new File(['png'],"底图.png",{type:"image/png"});fireEvent.change(input,{target:{files:[selected]}});
- expect(upload).toHaveBeenCalledWith("project-a",selected,"image","draft");expect(screen.getByRole("button",{name:"Save"})).toBeDisabled();
+ expect(upload).toHaveBeenCalledWith("project-a",selected,"image","draft","main");expect(screen.getByRole("button",{name:"Save"})).toBeDisabled();
  await act(async()=>finish(ok([imageFile])));
  expect(screen.getByText("底图.png")).toBeTruthy();fireEvent.click(screen.getByRole("button",{name:"Save"}));
- await waitFor(()=>expect(service).toHaveBeenLastCalledWith("project-a",expect.objectContaining({action:"save",revision:0,values:{image:imageFile}}),"draft"));
+ await waitFor(()=>expect(service).toHaveBeenLastCalledWith("project-a",expect.objectContaining({action:"save",revision:0,values:{image:imageFile}}),"draft","main"));
  await waitFor(()=>expect(screen.getByRole("button",{name:"Clear file selection"})).toBeEnabled());
  fireEvent.click(screen.getByRole("button",{name:"Clear file selection"}));fireEvent.click(screen.getByRole("button",{name:"Save"}));
- await waitFor(()=>expect(service).toHaveBeenLastCalledWith("project-a",expect.objectContaining({action:"save",values:{},unset:["image"]}),"draft"));
+ await waitFor(()=>expect(service).toHaveBeenLastCalledWith("project-a",expect.objectContaining({action:"save",values:{},unset:["image"]}),"draft","main"));
 });
 it("keeps the previous reference on failure and validates file type without network side effects",async()=>{
  const state=fileState();state.configurations[0]!.values.image=imageFile;
  vi.spyOn(apiClient,"projectConfigurations").mockResolvedValue(ok(state));
  const upload=vi.spyOn(apiClient,"uploadProjectConfigurationFile").mockResolvedValue({errCode:403,errMessage:"Permission denied"});
- await render(<ProjectConfigurationsTab project={project}/>);await screen.findByText("底图.png");
+ await render(<ProjectConfigurationsTab entryId="main" project={project}/>);await screen.findByText("底图.png");
  const input=screen.getByLabelText("Choose file for image");
  fireEvent.change(input,{target:{files:[new File(['png'],"new.png",{type:"image/png"})]}});
  expect(await screen.findByText("Permission denied")).toBeTruthy();expect(screen.getByText("底图.png")).toBeTruthy();
@@ -44,15 +44,15 @@ it("keeps the previous reference on failure and validates file type without netw
 it("ignores an upload from a project that has been closed",async()=>{
  vi.spyOn(apiClient,"projectConfigurations").mockResolvedValue(ok(fileState()));
  let finish!:(value:any)=>void;vi.spyOn(apiClient,"uploadProjectConfigurationFile").mockImplementation(()=>new Promise(resolve=>{finish=resolve;}));
- const {rerender}=await render(<ProjectConfigurationsTab project={project}/>);await screen.findByLabelText("Choose file for image");
+ const {rerender}=await render(<ProjectConfigurationsTab entryId="main" project={project}/>);await screen.findByLabelText("Choose file for image");
  fireEvent.change(screen.getByLabelText("Choose file for image"),{target:{files:[new File(['png'],"底图.png",{type:"image/png"})]}});
- rerender(<ProjectConfigurationsTab project={{...project,id:"project-b"}}/>);await openConfiguration();await screen.findByLabelText("Choose file for image");
+ rerender(<ProjectConfigurationsTab entryId="main" project={{...project,id:"project-b"}}/>);await openConfiguration();await screen.findByLabelText("Choose file for image");
  await act(async()=>finish(ok([imageFile])));
  expect(screen.queryByText("底图.png")).toBeNull();expect(screen.getByRole("button",{name:"Save"})).toBeDisabled();
 });
 it("creates custom file definitions with accept restrictions through the panel",async()=>{
  let state=initial();vi.spyOn(apiClient,"projectConfigurations").mockImplementation(async(_id,call)=>ok(call.action==="get"?state:(state=applyConfigurationAction(state,call,()=>"new"))));
- await render(<ProjectConfigurationsTab project={project}/>);fireEvent.click(await screen.findByRole("button",{name:"Add field"}));
+ await render(<ProjectConfigurationsTab entryId="main" project={project}/>);fireEvent.click(await screen.findByRole("button",{name:"Add field"}));
  fireEvent.change(screen.getByLabelText("Field key"),{target:{value:"photo"}});
  fireEvent.keyDown(screen.getByRole("combobox",{name:"Field type"}),{key:"ArrowDown"});
  fireEvent.click(await screen.findByRole("option",{name:"file"}));
@@ -63,7 +63,7 @@ it("creates custom file definitions with accept restrictions through the panel",
 });
 it.each(["workflow","conversation","kanban"] as const)("shows the same configuration editor for %s",async projectType=>{
  vi.spyOn(apiClient,"projectConfigurations").mockResolvedValue(ok(initial()));
- await render(<ProjectConfigurationsTab project={{...project,projectType}}/>);
+ await render(<ProjectConfigurationsTab entryId="main" project={{...project,entries:[{entryId:"main",name:"Main",type:projectType,root:".",entry:"index.ts",databases:[]}]}}/>);
  expect(await screen.findByLabelText("label")).toHaveProperty("value","Original");
  expect(screen.getByRole("button",{name:"Add field"})).toBeTruthy();
 });
@@ -76,7 +76,7 @@ it("edits inherited defaults directly and preserves explicit empty, false, zero 
   {name:"tags",type:"string",multiple:true,options:[{value:"east"},{value:"west"}],defaultValue:["east"]},
  ],()=>"default");state.configurations[0]!.values={};
  vi.spyOn(apiClient,"projectConfigurations").mockImplementation(async(_id,call)=>ok(call.action==="get"?state:(state=applyConfigurationAction(state,call,()=>"new"))));
- const {container}=await render(<ProjectConfigurationsTab project={project}/>);
+ const {container}=await render(<ProjectConfigurationsTab entryId="main" project={project}/>);
  await screen.findByLabelText("label");
  expect(screen.queryByRole("checkbox",{name:/Set value/})).toBeNull();
  for(const key of ["label","blank","count","active","data","mode","east","west"])expect(screen.getByLabelText(key)).toBeEnabled();
@@ -101,7 +101,7 @@ it("shows the inherited file immediately after clearing an override",async()=>{
  let state=createConfigurationState([{name:"image",type:"file",defaultValue:imageFile}],()=>"default");
  state.configurations[0]!.values.image={...imageFile,id:"wf_cd34",name:"replacement.png"};
  vi.spyOn(apiClient,"projectConfigurations").mockImplementation(async(_id,call)=>ok(call.action==="get"?state:(state=applyConfigurationAction(state,call,()=>"new"))));
- await render(<ProjectConfigurationsTab project={project}/>);await screen.findByText("replacement.png");
+ await render(<ProjectConfigurationsTab entryId="main" project={project}/>);await screen.findByText("replacement.png");
  fireEvent.click(screen.getByRole("button",{name:"Clear file selection"}));expect(screen.getByText("底图.png")).toBeTruthy();
  fireEvent.click(screen.getByRole("button",{name:"Save"}));await waitFor(()=>expect(state.configurations[0]!.values).toEqual({}));
  expect(screen.getByText("底图.png")).toBeTruthy();
@@ -109,7 +109,7 @@ it("shows the inherited file immediately after clearing an override",async()=>{
 it("keeps an optional enum unset until selected, including its first option",async()=>{
  let state=createConfigurationState([{name:"label",type:"string"},{name:"mode",type:"string",options:[{value:"auto"},{value:"manual"}]}],()=>"default");
  vi.spyOn(apiClient,"projectConfigurations").mockImplementation(async(_id,call)=>ok(call.action==="get"?state:(state=applyConfigurationAction(state,call,()=>"new"))));
- await render(<ProjectConfigurationsTab project={project}/>);await screen.findByLabelText("mode");
+ await render(<ProjectConfigurationsTab entryId="main" project={project}/>);await screen.findByLabelText("mode");
  expect(screen.getByLabelText("mode")).toHaveTextContent(/^$/);
  fireEvent.change(screen.getByLabelText("label"),{target:{value:"Draft"}});fireEvent.click(screen.getByRole("button",{name:"Save"}));
  await waitFor(()=>expect(state.configurations[0]!.values).toEqual({label:"Draft"}));
@@ -121,32 +121,32 @@ it("keeps an optional enum unset until selected, including its first option",asy
 });
 it("preserves a draft after a conflict, sends native values and can discard it",async()=>{
  const state=initial();const service=vi.spyOn(apiClient,"projectConfigurations").mockResolvedValue(ok(state));
- await render(<ProjectConfigurationsTab project={project}/>);
+ await render(<ProjectConfigurationsTab entryId="main" project={project}/>);
  const input=await screen.findByLabelText("label");fireEvent.change(input,{target:{value:"Draft"}});
  service.mockResolvedValueOnce({errCode:409,errMessage:"Configuration changed"});
  fireEvent.click(screen.getByRole("button",{name:"Save"}));
  expect(await screen.findByText("Configuration changed")).toBeTruthy();
  expect(input).toHaveProperty("value","Draft");
- expect(service).toHaveBeenLastCalledWith("project-a",expect.objectContaining({action:"save",revision:0,values:{label:"Draft",active:false}}),"draft");
+ expect(service).toHaveBeenLastCalledWith("project-a",expect.objectContaining({action:"save",revision:0,values:{label:"Draft",active:false}}),"draft","main");
  fireEvent.click(screen.getByRole("button",{name:"Refresh and discard draft"}));
  await waitFor(()=>expect(screen.getByLabelText("label")).toHaveProperty("value","Original"));
 });
 it("distinguishes a load failure from loading and retries without reloading the page",async()=>{
  const service=vi.spyOn(apiClient,"projectConfigurations").mockResolvedValueOnce({errCode:500,errMessage:"Unavailable"}).mockResolvedValue(ok(initial()));
- renderPage(<ProjectConfigurationsTab project={project}/>);
+ renderPage(<ProjectConfigurationsTab entryId="main" project={project}/>);
  expect(await screen.findByText("Unavailable")).toBeTruthy();
  fireEvent.click(screen.getByRole("button",{name:"Retry"}));await openConfiguration();
  expect(await screen.findByLabelText("label")).toBeTruthy();expect(service).toHaveBeenCalledTimes(2);
 });
 it("offers custom fields for an empty declaration",async()=>{
  vi.spyOn(apiClient,"projectConfigurations").mockResolvedValue(ok(createConfigurationState([],()=>"empty")));
- await render(<ProjectConfigurationsTab project={project}/>);
+ await render(<ProjectConfigurationsTab entryId="main" project={project}/>);
  expect(await screen.findByRole("button",{name:"Add field"})).toBeTruthy();
  expect(screen.getByText("No fields. Add a custom configuration field.")).toBeTruthy();
 });
 it("groups profile and transfer actions in accessible icon menus",async()=>{
  vi.spyOn(apiClient,"projectConfigurations").mockResolvedValue(ok(initial()));
- await render(<ProjectConfigurationsTab project={project}/>);
+ await render(<ProjectConfigurationsTab entryId="main" project={project}/>);
  await screen.findByLabelText("label");
  expect(screen.getByRole("heading",{name:"Configuration fields 2"})).toBeTruthy();
  expect(screen.queryByText(/Exports include every value/)).toBeNull();
@@ -169,12 +169,12 @@ it("copies a configuration from the menu and places custom field icons beside it
  const service=vi.spyOn(apiClient,"projectConfigurations").mockImplementation(async(_id,call)=>{
    state=call.action==="get"?state:applyConfigurationAction(state,call,()=>"copy");return ok(state);
  });
- await render(<ProjectConfigurationsTab project={project}/>);await screen.findByLabelText("custom");
+ await render(<ProjectConfigurationsTab entryId="main" project={project}/>);await screen.findByLabelText("custom");
  expect(screen.getByRole("button",{name:"Edit field"}).textContent).toBe("");
  fireEvent.keyDown(screen.getByRole("button",{name:"Configuration actions"}),{key:"ArrowDown"});
  fireEvent.click(await screen.findByRole("menuitem",{name:"Copy configuration"}));
  await waitFor(()=>expect(state.configurations).toHaveLength(2));
- expect(service).toHaveBeenLastCalledWith(project.id,expect.objectContaining({action:"duplicate",id:"default",revision:1}),"draft");
+ expect(service).toHaveBeenLastCalledWith(project.id,expect.objectContaining({action:"duplicate",id:"default",revision:1}),"draft","main");
  fireEvent.change(screen.getByLabelText("custom"),{target:{value:"Draft"}});
  expect(screen.getByRole("status").textContent).toBe("Unsaved changes");
 });
@@ -183,12 +183,12 @@ it("ignores a previous visit's save response after returning to the same project
  let finishSave!:(value:ReturnType<typeof ok>)=>void;
  vi.spyOn(apiClient,"projectConfigurations").mockImplementation((_id,call)=>call.action==="get"
    ? Promise.resolve(ok(initial())) : new Promise(resolve=>{finishSave=resolve;}));
- const view=await render(<ProjectConfigurationsTab project={project}/>);
+ const view=await render(<ProjectConfigurationsTab entryId="main" project={project}/>);
  fireEvent.change(await screen.findByLabelText("label"),{target:{value:"Previous visit"}});
  fireEvent.click(screen.getByRole("button",{name:"Save"}));
- view.rerender(<ProjectConfigurationsTab project={{...project,id:"project-b"}}/>);await openConfiguration();
+ view.rerender(<ProjectConfigurationsTab entryId="main" project={{...project,id:"project-b"}}/>);await openConfiguration();
  await waitFor(()=>expect(screen.getByLabelText("label")).toHaveProperty("value","Original"));
- view.rerender(<ProjectConfigurationsTab project={project}/>);await openConfiguration();
+ view.rerender(<ProjectConfigurationsTab entryId="main" project={project}/>);await openConfiguration();
  await waitFor(()=>expect(screen.getByLabelText("label")).toHaveProperty("value","Original"));
  fireEvent.change(screen.getByLabelText("label"),{target:{value:"Current draft"}});
  const saved=initial();saved.revision=1;saved.configurations[0]!.values.label="Previous visit";
@@ -201,19 +201,19 @@ it.each([23,null,{old:true}])("allows repairing a previous value after its field
  const state=createConfigurationState([{name:"tags",type:"json",defaultValue:value}],()=>"default");
  state.fields=[{name:"tags",type:"string",multiple:true,options:[{value:"east"},{value:"west"}]}];
  const service=vi.spyOn(apiClient,"projectConfigurations").mockResolvedValue(ok(state));
- await render(<ProjectConfigurationsTab project={project}/>);
+ await render(<ProjectConfigurationsTab entryId="main" project={project}/>);
  const east=await screen.findByRole("checkbox",{name:"east"});
  expect(east).not.toBeChecked();
  fireEvent.click(east);
  fireEvent.click(screen.getByRole("button",{name:"Save"}));
- expect(service).toHaveBeenLastCalledWith(project.id,expect.objectContaining({action:"save",values:{tags:["east"]}}),"draft");
+ expect(service).toHaveBeenLastCalledWith(project.id,expect.objectContaining({action:"save",values:{tags:["east"]}}),"draft","main");
 });
 
 it("shows locked fields and JSON child permissions, and preserves a denied raw edit as a draft",async()=>{
  const author=createConfigurationState([{name:"fixed",type:"string",defaultValue:"Official",sharing:{includeValue:true,editable:false}},{name:"settings",type:"json",defaultValue:{locked:0,open:false},sharing:{includeValue:true},paths:{"/locked":{editable:false}}}],()=>"author");
- let state=bindConfigurationTemplate(createConfigurationState([],()=>"personal"),freezeConfigurationTemplate(createPublicationDraft(author),{projectId:project.id,projectVersion:"1.0.0",sourceHash:"a".repeat(64)}));
+ let state=bindConfigurationTemplate(createConfigurationState([],()=>"personal"),freezeConfigurationTemplate(createPublicationDraft(author),{projectId:project.id,entryId:"main",projectVersion:"1.0.0",sourceHash:"a".repeat(64)}));
  const service=vi.spyOn(apiClient,"projectConfigurations").mockImplementation(async(_id,call)=>{try{if(call.action!=="get")state=applyConfigurationAction(state,call,()=>"new");return ok(state);}catch(error){return {errCode:403,errMessage:(error as Error).message} as any;}});
- await render(<ProjectConfigurationsTab project={project}/>);
+ await render(<ProjectConfigurationsTab entryId="main" project={project}/>);
  expect(await screen.findByLabelText("fixed")).toBeDisabled();expect(screen.queryByRole("tab",{name:"Publication and permissions"})).toBeNull();
  expect(screen.getByLabelText("/locked")).toBeDisabled();expect(screen.getByLabelText("/open")).toBeEnabled();
  fireEvent.change(screen.getByLabelText("/open"),{target:{value:"true"}});fireEvent.blur(screen.getByLabelText("/open"));
@@ -226,7 +226,7 @@ it("shows locked fields and JSON child permissions, and preserves a denied raw e
 it("keeps publication controls separate, previews filtered values and preserves an author draft on conflict",async()=>{
  const state=initial();state.canManagePublication=true;state.publication=createPublicationDraft(state);
  vi.spyOn(apiClient,"projectConfigurations").mockImplementation(async(_id,call)=>call.action==="get"?ok(state):{errCode:409,errMessage:"Publication draft changed"} as any);
- await render(<ProjectConfigurationsTab project={project}/>);await screen.findByLabelText("label");
+ await render(<ProjectConfigurationsTab entryId="main" project={project}/>);await screen.findByLabelText("label");
  fireEvent.mouseDown(screen.getByRole("tab",{name:"Publication and permissions"}),{button:0,ctrlKey:false});
  const include=screen.getAllByRole("checkbox",{name:"Include value"})[0]!;expect(include).not.toBeChecked();fireEvent.click(include);
  fireEvent.click(screen.getByRole("button",{name:"Recipient preview"}));
@@ -238,7 +238,7 @@ it("preserves JSON publication edits across folding and refreshes fields through
  const state=createConfigurationState([{name:"settings",type:"json",defaultValue:{host:"local",token:"private"},sharing:{includeValue:true},paths:{"/token":{publish:false}}}],()=>"author");
  state.canManagePublication=true;state.publication=createPublicationDraft(state);
  const service=vi.spyOn(apiClient,"projectConfigurations").mockImplementation(async(_id,call)=>call.action==="get"?ok(state):{errCode:409,errMessage:"Publication draft changed"} as any);
- await render(<ProjectConfigurationsTab project={project}/>);await screen.findByLabelText("settings");
+ await render(<ProjectConfigurationsTab entryId="main" project={project}/>);await screen.findByLabelText("settings");
  fireEvent.mouseDown(screen.getByRole("tab",{name:"Publication and permissions"}),{button:0,ctrlKey:false});
  const expand=screen.getByRole("button",{name:"settings: JSON path (JSON Pointer)"});
  expect(expand).toHaveAttribute("aria-expanded","false");fireEvent.click(expand);
@@ -254,7 +254,7 @@ it("preserves JSON publication edits across folding and refreshes fields through
  const preview=JSON.parse((screen.getByRole("textbox",{name:"Recipient preview"}) as HTMLTextAreaElement).value);
  expect(preview.configurations[0].values.settings).toEqual({host:"local"});
  fireEvent.click(screen.getByRole("button",{name:"Save publication draft"}));
- await waitFor(()=>expect(service).toHaveBeenLastCalledWith(project.id,expect.objectContaining({action:"publication.save",publication:expect.objectContaining({fields:[expect.objectContaining({paths:{"/token":{publish:false},"/host":{editable:false}}})]})}),"draft"));
+ await waitFor(()=>expect(service).toHaveBeenLastCalledWith(project.id,expect.objectContaining({action:"publication.save",publication:expect.objectContaining({fields:[expect.objectContaining({paths:{"/token":{publish:false},"/host":{editable:false}}})]})}),"draft","main"));
  expect(await screen.findByText("Publication draft changed")).toBeTruthy();
 });
 
@@ -262,7 +262,7 @@ it('starts with profiles and edits a non-current profile without changing the ru
  let state=applyConfigurationAction(initial(),{action:'create',name:'Secondary',revision:0},()=> 'secondary');
  state.activeConfigurationId='default';state.configurations[1]!.values.label='Second value';
  vi.spyOn(apiClient,'projectConfigurations').mockImplementation(async(_id,call)=>ok(call.action==='get'?state:(state=applyConfigurationAction(state,call,()=>crypto.randomUUID()))));
- renderPage(<ProjectConfigurationsTab project={project}/>);
+ renderPage(<ProjectConfigurationsTab entryId="main" project={project}/>);
  await screen.findByRole('table',{name:'Project configurations'});expect(screen.queryByLabelText('label')).toBeNull();expect(screen.queryByRole('button',{name:'Save'})).toBeNull();
  await openConfiguration('Secondary');expect(screen.getByLabelText('label')).toHaveValue('Second value');expect(state.activeConfigurationId).toBe('default');
  fireEvent.change(screen.getByLabelText('label'),{target:{value:'Edited second'}});fireEvent.click(screen.getByRole('button',{name:'Save'}));
@@ -274,7 +274,7 @@ it('starts with profiles and edits a non-current profile without changing the ru
 it('shows the active configuration distinctly and offers explicit use actions for other profiles',async()=>{
  const state=applyConfigurationAction(initial(),{action:'create',name:'Secondary',revision:0},()=> 'secondary');state.activeConfigurationId='default';
  vi.spyOn(apiClient,'projectConfigurations').mockResolvedValue(ok(state));
- renderPage(<ProjectConfigurationsTab project={project}/>);
+ renderPage(<ProjectConfigurationsTab entryId="main" project={project}/>);
  const active=await screen.findByRole('button',{name:'Default'});
  expect(active).toHaveAttribute('aria-current','true');expect(active.closest('tr')).toHaveAttribute('data-state','selected');
  expect(active.closest('tr')).toHaveTextContent('In use');expect(screen.queryByRole('button',{name:'Use this configuration: Default'})).toBeNull();
@@ -289,7 +289,7 @@ it('keeps the committed active profile while switching and recovers a failed use
  let state=applyConfigurationAction(initial(),{action:'create',name:'Secondary',revision:0},()=> 'secondary');state.activeConfigurationId='default';
  let finish!:(result:any)=>void;
  const service=vi.spyOn(apiClient,'projectConfigurations').mockImplementation(async(_id,call)=>call.action==='get'?ok(state):new Promise(resolve=>{finish=resolve;}));
- renderPage(<ProjectConfigurationsTab project={project}/>);
+ renderPage(<ProjectConfigurationsTab entryId="main" project={project}/>);
  const use=await screen.findByRole('button',{name:'Use this configuration: Secondary'});
  fireEvent.click(use);expect(use).toBeDisabled();expect(use).toHaveAttribute('aria-busy','true');expect(use).toHaveTextContent('Switching...');
  expect(screen.getByRole('button',{name:'Default'})).toHaveAttribute('aria-current','true');fireEvent.click(use);
@@ -309,7 +309,7 @@ it('refreshes detail usage after an external switch while preserving an unsaved 
  let poll!:()=>void;
  vi.spyOn(globalThis,'setInterval').mockImplementationOnce(callback=>{poll=callback as ()=>void;return 0 as unknown as ReturnType<typeof setInterval>;});
  const service=vi.spyOn(apiClient,'projectConfigurations').mockImplementation(async()=>ok(state));
- await render(<ProjectConfigurationsTab project={project}/>);expect(screen.getByText('In use')).toBeTruthy();
+ await render(<ProjectConfigurationsTab entryId="main" project={project}/>);expect(screen.getByText('In use')).toBeTruthy();
  fireEvent.change(screen.getByLabelText('label'),{target:{value:'Keep draft'}});
  state=applyConfigurationAction(state,{action:'select',id:'secondary',revision:state.revision},()=> 'unused');await act(async()=>{poll();});
  expect(screen.getByLabelText('label')).toHaveValue('Keep draft');expect(screen.queryByText('In use')).toBeNull();
@@ -319,7 +319,7 @@ it('refreshes detail usage after an external switch while preserving an unsaved 
 it('preserves unsaved values and publication rules on back navigation until saved or discarded',async()=>{
  const state=initial();state.canManagePublication=true;state.publication=createPublicationDraft(state);
  vi.spyOn(apiClient,'projectConfigurations').mockResolvedValue(ok(state));
- await render(<ProjectConfigurationsTab project={project}/>);
+ await render(<ProjectConfigurationsTab entryId="main" project={project}/>);
  fireEvent.change(screen.getByLabelText('label'),{target:{value:'Draft'}});fireEvent.click(screen.getByRole('button',{name:'Back to list'}));
  expect(screen.getByLabelText('label')).toHaveValue('Draft');expect(screen.getByText('Save or discard your draft before changing configurations.')).toBeTruthy();
  fireEvent.click(screen.getByRole('button',{name:'Refresh and discard draft'}));fireEvent.mouseDown(screen.getByRole('tab',{name:'Publication and permissions'}),{button:0,ctrlKey:false});
@@ -329,7 +329,7 @@ it('preserves unsaved values and publication rules on back navigation until save
 });
 it('creates a configuration from the list and deletes the viewed configuration back to the list',async()=>{
  let state=initial();vi.spyOn(apiClient,'projectConfigurations').mockImplementation(async(_id,call)=>ok(call.action==='get'?state:(state=applyConfigurationAction(state,call,()=> 'created'))));
- renderPage(<ProjectConfigurationsTab project={project}/>);fireEvent.click(await screen.findByRole('button',{name:'New configuration'}));
+ renderPage(<ProjectConfigurationsTab entryId="main" project={project}/>);fireEvent.click(await screen.findByRole('button',{name:'New configuration'}));
  fireEvent.change(screen.getByLabelText('Configuration name'),{target:{value:'Created'}});fireEvent.click(screen.getByRole('button',{name:'Confirm'}));
  expect(await screen.findByRole('heading',{name:'Created'})).toBeTruthy();expect(screen.getByLabelText('label')).toHaveValue('Original');
  fireEvent.keyDown(screen.getByRole('button',{name:'Configuration actions'}),{key:'ArrowDown'});fireEvent.click(await screen.findByRole('menuitem',{name:'Delete configuration'}));
@@ -342,7 +342,7 @@ it('returns to the list if a clean viewed configuration is removed by another ed
  let poll!:()=>void;
  vi.spyOn(globalThis,'setInterval').mockImplementationOnce(callback=>{poll=callback as ()=>void;return 0 as unknown as ReturnType<typeof setInterval>;});
  vi.spyOn(apiClient,'projectConfigurations').mockImplementation(async()=>ok(state));
- renderPage(<ProjectConfigurationsTab project={project}/>);await openConfiguration('Secondary');
+ renderPage(<ProjectConfigurationsTab entryId="main" project={project}/>);await openConfiguration('Secondary');
  state=applyConfigurationAction(state,{action:'delete',id:'secondary',revision:state.revision},()=> 'unused');
  await act(async()=>{poll();});
  expect(screen.getByRole('table',{name:'Project configurations'})).toBeTruthy();expect(screen.queryByLabelText('label')).toBeNull();
@@ -351,7 +351,7 @@ it('returns to the list if a clean viewed configuration is removed by another ed
 it("filters guest lists and keeps only allowed profile values editable",async()=>{
  const raw=bindConfigurationProfiles(createConfigurationState([{name:"mode",type:"string"},{name:"model",type:"string"}],()=>"legacy"),{version:1,defaultProfileKey:"ask",manageMinimumRole:"developer",profiles:[{key:"ask",name:"Ask",minimumRole:"guest",fixedValues:{mode:"ask"},tags:["Read only"]},{key:"build",name:"Build",minimumRole:"developer",fixedValues:{mode:"build"}}]});
  vi.spyOn(apiClient,"projectConfigurations").mockResolvedValue(ok(configurationAccessView(raw,{subject:"alice",role:"guest",online:true})));
- renderPage(<ProjectConfigurationsTab project={project}/>);
+ renderPage(<ProjectConfigurationsTab entryId="main" project={project}/>);
  fireEvent.click(await screen.findByRole("button",{name:/^Ask/}));
  expect(screen.queryByText("Build")).toBeNull();
  expect(screen.queryByRole("button",{name:"Create"})).toBeNull();
@@ -362,7 +362,7 @@ it("withdraws Build details after a role downgrade while preserving the editing 
  const raw=bindConfigurationProfiles(createConfigurationState([{name:"mode",type:"string"},{name:"model",type:"string"}],()=>"legacy"),{version:1,defaultProfileKey:"ask",manageMinimumRole:"developer",profiles:[{key:"ask",name:"Ask",minimumRole:"guest",fixedValues:{mode:"ask"}},{key:"build",name:"Build",minimumRole:"developer",fixedValues:{mode:"build"}}]});
  let role:"guest"|"developer"="developer";
  vi.spyOn(apiClient,"projectConfigurations").mockImplementation(async()=>ok(configurationAccessView(raw,{subject:"alice",role,online:true})));
- renderPage(<ProjectConfigurationsTab project={project}/>);
+ renderPage(<ProjectConfigurationsTab entryId="main" project={project}/>);
  fireEvent.click(await screen.findByRole("button",{name:/^Build/}));
  fireEvent.change(screen.getByLabelText("model"),{target:{value:"draft model"}});
  role="guest";

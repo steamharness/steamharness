@@ -44,6 +44,7 @@ export interface KVNamespaceMutation {
 }
 
 export interface KVWriteSource {
+  entryId?: string;
   projectId?: string;
   runId?: string;
   conversationId?: string;
@@ -64,7 +65,21 @@ export type NormalizedProjectKVStoreInput =
       key: string;
     };
 
+export interface KVStoreListInput extends KVNamespaceLockInput {
+  query?: string;
+  cursor?: string;
+  pageSize?: number;
+  keyPrefixes?: string[];
+}
+export interface KVStoreValuePage {
+  items: Array<{ key: string; value: unknown; updatedAt: string; scope: KVScope; conversationId?: string }>;
+  total: number;
+  hasMore: boolean;
+  nextCursor?: string;
+}
 export interface KVStore {
+  listValues?(input: KVStoreListInput): Promise<KVStoreValuePage>;
+  readRevision?(): Promise<string>;
   getValue(input: KVStoreGetInput): Promise<unknown | undefined>;
   setValue(input: KVStoreSetInput): Promise<void>;
   /**

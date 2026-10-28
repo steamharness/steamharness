@@ -71,7 +71,7 @@ const toolIds: string[] = workflow.listProjectCapabilityToolIds({ globalMemory?:
 
 Core 知识库和 KV 工具的成功结果可以携带资源卡片摘要，宿主按自身能力展示并打开对应资源。资源目标保留知识库文档 ID 或 KV 键，打开时重新校验权限。
 
-使用 `createAgentNode` / `createAgentConversationProject` 的自定义工具，也可以在成功结果的 `details.resourceCard` 中声明摘要。Core 将它原样传入现有工具输出，共享运行界面自动生成卡片；工具的 `content` 和普通消息接口保持原样。`kind` 支持 `knowledge`、`kv`、`project`、`kanban`、`browser`、`file`，`operation` 为 `read`、`write`、`open` 或 `show`，`title` 可选且最多 200 字符；`target` 使用下文同样的目标字段。关联项目必须填写实际资源的 `source` 和 `projectId`，不能填 Agent 自己的 ID。失败结果保留工具错误，不生成成功卡片。此摘要不执行写入或固定命令；控制固定与 Kanban 参数使用显式卡片能力。
+使用 `createAgentNode` / `createAgentConversationProject` 的自定义工具，也可以在成功结果的 `details.resourceCard` 中声明摘要。Core 将它原样传入现有工具输出，共享运行界面自动生成卡片；工具的 `content` 和普通消息接口保持原样。`kind` 支持 `knowledge`、`kv`、`project`、`kanban`、`browser`、`file`，`operation` 为 `read`、`write`、`open` 或 `show`，`title` 可选且最多 200 字符；`target` 使用下文同样的目标字段。资源目标必须携带 `projectId`、`entryId` 和实际数据库 `database` alias；可包含 `spaceId`。失败结果保留工具错误，不生成成功卡片。此摘要不执行写入或固定命令；控制固定与 Kanban 参数使用显式卡片能力。
 
 ```ts
 return {
@@ -81,7 +81,7 @@ return {
       kind: "knowledge",
       operation: "read",
       title: document.title,
-      target: { source: "server", projectId: databaseProjectId, documentId: document.id },
+      target: { source: "server", projectId: context.projectId, entryId: context.entryId, database: "data", documentId: document.id },
     },
   },
 };
@@ -94,7 +94,7 @@ return {
   "action": "upsert",
   "cardId": "roadmap-board",
   "kind": "kanban",
-  "target": { "source": "current", "configurationId": "configuration-id" },
+  "target": { "source": "current", "entryId": "map", "configurationId": "configuration-id" },
   "pinned": true,
   "preview": true,
   "kanban": { "mode": "preview", "values": { "title": "Roadmap" } }
@@ -125,3 +125,5 @@ const node = steamharness.createAgentNode({
 ```
 
 工具必须在 executor 的 `tools` 里声明（见 [createToolApprovalGate](./create-tool-approval-gate.mdx)），否则审批会因为「工具未注册」而失败。
+
+KV、知识库与记忆工具参数必须指定 `database` alias；宿主按该入口的声明与有效授权校验，不再有默认项目数据库。资源卡片和 Kanban 方法目标同时传递 `projectId + entryId`。

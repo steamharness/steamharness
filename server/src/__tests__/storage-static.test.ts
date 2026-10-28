@@ -16,10 +16,9 @@ function packageJson(version: string) {
     devDependencies: { "steamharness": serverPackage.dependencies["steamharness"] },
     scripts: { preinstall: "node side-effect.cjs", postinstall: "node side-effect.cjs", build: "node side-effect.cjs" },
     steamHarness: {
-      projectType: "workflow",
+      defaultEntry:"main",entries:[{entryId:"main",name:"Main",type:"workflow",root:".",entry:"index.ts",databases:[]}],
       projectInfo: {
         localizedNames: {}, declarations: [], platformSupport: { mode: "agnostic" },
-        dataStorage: { mode: "server" }, relatedProjects: [],
       },
     },
   };

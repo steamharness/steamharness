@@ -1,5 +1,7 @@
 # Unreleased
 
+- Breaking: project management displays registered entries, the default entry and separate configurations. Database pages manage requests, approval, sharing, bindings, grant recovery and space data. Related-project and project-owned database pages are removed.
+
 - Improved avatar previews in user management and profile dialogs: click to view a larger image that fits the viewport, then return keyboard focus to the avatar on close. Existing upload, profile, menu and project navigation actions are preserved.
 
 - Fixed avatar crop previews to fit the dialog proportionally, keeping small images usable and portrait images within the preview height. Show a loading placeholder while reading images.

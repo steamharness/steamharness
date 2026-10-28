@@ -29,7 +29,7 @@ const CARD_KINDS = new Set<PresentationCardKind>([
 ]);
 
 export async function runPresentationCardAction(
-  _context: NodeContext,
+  context: NodeContext,
   args: PresentationCardToolArgs,
 ): Promise<unknown> {
   if (args.action !== "upsert" && args.action !== "remove") {
@@ -48,7 +48,8 @@ export async function runPresentationCardAction(
   if (!CARD_KINDS.has(args.kind as PresentationCardKind)) {
     throw new Error("Card kind is invalid.");
   }
-  const target = readTarget(args.kind!, args.target);
+  const target = readTarget(args.kind!,args.target);
+  if(target.source === "current") { target.projectId ??= context.projectId; target.entryId ??= context.entryId; }
   if (args.pinned !== undefined && typeof args.pinned !== "boolean") {
     throw new Error("Card pinned must be a boolean.");
   }
@@ -94,12 +95,12 @@ export async function runPresentationCardAction(
 function readTarget(kind: PresentationCardKind, value: unknown): Record<string, string> {
   if (!isRecord(value)) throw new Error("Card target must be an object.");
   const allowed: Record<PresentationCardKind, readonly string[]> = {
-    kv: ["source", "projectId", "scope", "conversationId", "key"],
-    knowledge: ["source", "projectId", "documentId"],
-    project: ["source", "projectId", "configurationId"],
+    kv: ["source", "projectId", "entryId", "database", "spaceId", "scope", "conversationId", "key"],
+    knowledge: ["source", "projectId", "entryId", "database", "spaceId", "documentId"],
+    project: ["source", "projectId", "entryId", "configurationId"],
     browser: ["url"],
-    file: ["source", "projectId", "filePath"],
-    kanban: ["source", "projectId", "configurationId"],
+    file: ["source", "projectId", "entryId", "filePath"],
+    kanban: ["source", "projectId", "entryId", "configurationId"],
   };
   const target: Record<string, string> = {};
   for (const [key, entry] of Object.entries(value)) {
@@ -116,7 +117,8 @@ function readTarget(kind: PresentationCardKind, value: unknown): Record<string, 
     if (target.source !== "local" && target.source !== "server" && target.source !== "current") {
       throw new Error("Card target source is invalid.");
     }
-    if (target.source !== "current" && !target.projectId) throw new Error("Card target requires a project id.");
+    if (target.source !== "current" && (!target.projectId || !target.entryId)) throw new Error("Card target requires projectId and entryId.");
+    if ((kind === "kv" || kind === "knowledge") && !target.database) throw new Error("Database cards require a declared database alias.");
     if (kind === "kv" && (!target.key || !["project", "conversation"].includes(target.scope ?? ""))) {
       throw new Error("KV card requires a key and scope.");
     }

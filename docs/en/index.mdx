@@ -64,20 +64,9 @@ The Server does not install project dependencies, build, or load uploaded projec
 
 ## Project data and configuration
 
-The location of project data is declared in `package.json` under `steamHarness.projectInfo.dataStorage`; the runtime rejects access outside the declaration:
+Entries declare database aliases, hosts and permissions. After approval, `context.databases.get(alias)` exposes KV, knowledge and transactions. Multiple projects and entries can share one space while conversation KV stays isolated.
 
-| Mode | Allowed location | Notes |
-| --- | --- | --- |
-| `local` | Local only | The CLI can run offline |
-| `server` | Server only | Requires sign-in and the same project UUID binding |
-| `both` | Local and server | Each access explicitly chooses a location |
-
-- **KV / PersistentValue**: accessed through `context.storage.local` or `context.storage.server`; the two sides are separate data sets.
-- **Knowledge and project files**: stored by the Server and managed in the Server Web console.
-- **Project configuration**: `configuration.json` declares fields (string, number, boolean, JSON, file); values are managed in Studio, CLI Web, or the Server Web panel. Mark sensitive fields with `secret: true`.
-- **Related projects**: `projectInfo.relatedProjects` declares an alias, the target project UUID, and read/write grants; both sides must declare the relationship.
-
-Changing `dataStorage` only changes future allowed locations; it does not migrate existing data. See [Project data storage](/en/concepts/data-storage), [Project configuration](/en/concepts/project-configuration), [KV and conversations](/en/concepts/kv-and-conversation), and [File inputs](/en/concepts/files).
+Configurations, snapshots, conversations and drafts are scoped by `projectId + entryId`. Configuration edits apply on the next run. See [Database spaces](/en/concepts/data-storage), [Project configuration](/en/concepts/project-configuration) and [KV and conversations](/en/concepts/kv-and-conversation).
 
 ## Accounts, permissions, and collaboration
 
@@ -101,7 +90,7 @@ Enhanced adds System AI on top: the platform maintains the model catalogue, cred
 ## Development workflow
 
 1. **Create a project**: in Studio, choose New Project, then a Workflow, Conversation, or Kanban type and template; or create the directory manually.
-2. **Declare the project**: add `steamHarness.projectType` (`workflow`, `conversation`, or `kanban`) to the root `package.json`, plus optional `projectInfo` (names, display platforms, data storage, related projects).
+The root `package.json.id` is the aggregate identity. `steamHarness.entries` registers types, names, code paths, configuration and database requirements. Use fresh declarations and data; legacy models are rejected.
 3. **Write the entry point**: Workflow / Conversation use the Core Runtime API for the entry and executor; Kanban starts from `index.html` and static assets.
 4. **Run locally**: open the project in Studio and run it, or use `steamharness structure .`, `steamharness run .`, and `steamharness web .`.
 5. **Upload to a Server**: use the Workspace CLI to sign in, package the source, and publish a version; manage the project, members, and data in the Server Web console.
@@ -113,7 +102,7 @@ A minimal Workflow / Conversation project usually contains:
 
 ```text
 my-project/
-├── package.json   # name, steamHarness.projectType, projectInfo, Core/CLI versions
+The root `package.json.id` is the aggregate identity. `steamHarness.entries` registers types, names, code paths, configuration and database requirements. Use fresh declarations and data; legacy models are rejected.
 ├── index.ts       # entry point and executor
 └── ...
 ```
@@ -126,7 +115,7 @@ my-board/
 └── index.html
 ```
 
-`package.json` is the source of truth for project information. `steamHarness.projectType` selects the project type; `steamHarness.projectInfo` stores localized names, display platforms, data storage, and related projects. Workflow / Conversation must pin exact Core and CLI versions in `devDependencies`; Kanban only uses the Core version as static package metadata.
+The root `package.json.id` is the aggregate identity. `steamHarness.entries` registers types, names, code paths, configuration and database requirements. Use fresh declarations and data; legacy models are rejected.
 
 ## Built-in projects
 

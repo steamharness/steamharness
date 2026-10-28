@@ -1,5 +1,5 @@
 
-import { STEAMHARNESS_PROJECT_DECLARATION_DEFINITIONS, STEAMHARNESS_PROJECT_PLATFORM_DEFINITIONS, isProjectDataStorageLocationAllowed, resolveProjectName } from "@steamharness/project-info";
+import { STEAMHARNESS_PROJECT_DECLARATION_DEFINITIONS, STEAMHARNESS_PROJECT_PLATFORM_DEFINITIONS, resolveProjectName } from "@steamharness/project-info";
 import type { Summary } from "../types";
 
 
@@ -8,10 +8,6 @@ export interface ProjectPresentationLabel {
   id: string;
   labelKey?: string;
 }
-
-export type ProjectServerStorageAccess =
-  | { allowed: true; mode: "server" | "both" }
-  | { allowed: false; mode: "local" | null };
 
 const DECLARATION_LABEL_KEYS = new Map<string, string>(
   STEAMHARNESS_PROJECT_DECLARATION_DEFINITIONS.map((definition) => [definition.id, definition.labelKey]),
@@ -29,16 +25,6 @@ export function getProjectDisplayName(
 }
 
 
-
-export function getProjectServerStorageAccess(
-  project: Pick<Summary, "projectInfo">,
-): ProjectServerStorageAccess {
-  const mode = project.projectInfo.dataStorage?.mode ?? null;
-  if (isProjectDataStorageLocationAllowed(project.projectInfo, "server")) {
-    return { allowed: true, mode: mode as "server" | "both" };
-  }
-  return { allowed: false, mode: mode === "local" ? "local" : null };
-}
 
 export function listProjectDeclarationLabels(
   project: Pick<Summary, "projectInfo">,

@@ -8,7 +8,7 @@ import { promisify } from 'node:util';
 import type { Connection } from './workflow-auth-client';
 import { sanitizeProjectEnvironment } from './workflow-auth-client';
 import type { Project } from './workflow-types';
-import type { WebReady, WebSession, WebSessionExit, RelatedProjectBinding } from './workflow-cli-types';
+import type { WebReady, WebSession, WebSessionExit } from './workflow-cli-types';
 import type { StudioUserSettings } from './user-settings';
 
 export interface StudioControlConfiguration { mcpServer?: string; url: string; token: string }
@@ -21,7 +21,6 @@ export function sanitizeConnectionForSurface(connection: Connection | undefined,
 
 function hostAuthentication(connection: Connection | undefined, surface: 'editor' | 'assistant', systemAi = true) {
   return { connection: sanitizeConnectionForSurface(connection, surface) ?? null,
-    // Older CLIs ignore this additive field; newer ones apply it before ready.
     ...(surface === 'editor' && systemAi && connection && (connection.aiServerUrl !== undefined || connection.aiAccessToken !== undefined)
       ? { systemAiConnection: { serverUrl: connection.aiServerUrl, accessToken: connection.aiAccessToken } } : {}) };
 }
@@ -111,7 +110,7 @@ export async function startProjectCli(options: {
   surface: 'editor' | 'assistant'; connection?: Connection; assistant?: Project['assistant']; signal?: AbortSignal;
   assistantProjectDir?: string;
   expectedProjectId?: string;
-  relatedProjects?: RelatedProjectBinding[];
+  entryId: string;
   resourceProjects?: string[];
   studioControl?: StudioControlConfiguration;
   userSettings?: StudioUserSettings;
@@ -119,7 +118,7 @@ export async function startProjectCli(options: {
   const { entry } = await resolveProjectCli(options.projectDir);
   options.signal?.throwIfAborted();
   const authentication = hostAuthentication(options.connection, options.surface);
-  const child: ChildProcess = spawn(options.nodePath, [entry, '--locale', options.locale?.toLowerCase().startsWith('zh') ? 'zh-CN' : 'en', 'web', options.projectDir, '--port', String(options.port ?? 0), '--no-open', '--json', '--theme', options.theme, '--host-stdio', '--data-dir', options.dataDir],
+  const child: ChildProcess = spawn(options.nodePath, [entry, '--locale', options.locale?.toLowerCase().startsWith('zh') ? 'zh-CN' : 'en', 'web', options.projectDir, '--entry', options.entryId, '--port', String(options.port ?? 0), '--no-open', '--json', '--theme', options.theme, '--host-stdio', '--data-dir', options.dataDir],
     { cwd: options.projectDir, env: environment(options.studioControl), shell: false, stdio: ['pipe', 'pipe', 'pipe'], signal: options.signal });
   const events = new EventEmitter();
   const secrets = new Set([options.connection?.accessToken, options.connection?.aiAccessToken, options.studioControl?.token].filter((token): token is string => !!token));
@@ -131,7 +130,7 @@ export async function startProjectCli(options: {
   let closing = false, finished = false, buffer = '', stderr = '';
   let exit: WebSessionExit | undefined;
   const diagnostics = () => cleanError(stderr).slice(-8_000).trim();
-  let relatedProjectsKey = JSON.stringify([options.relatedProjects ?? [], options.resourceProjects ?? []]);
+  let resourceProjectsKey = JSON.stringify(options.resourceProjects ?? []);
   let systemAiSupported = true;
   let connectionKey = JSON.stringify(authentication);
   let userSettingsKey = JSON.stringify(options.userSettings);
@@ -176,7 +175,7 @@ export async function startProjectCli(options: {
             const message = JSON.parse(line) as WebReady;
             if (message.type !== 'ready') { continue; }
             const url = new URL(message.url);
-            if (message.protocolVersion !== 1 || message.hostProtocolVersion !== 1 || message.accountProtocolVersion !== 1 || (options.relatedProjects?.length && message.relatedProjectsProtocolVersion !== 1) || (options.assistant && message.assistantProtocolVersion !== 1) || (options.expectedProjectId && message.project?.id !== options.expectedProjectId) || url.protocol !== 'http:' || url.hostname !== '127.0.0.1' || !url.port || url.pathname !== '/' || !/^#session=[a-f0-9]{64}$/.test(url.hash)) {
+            if (message.protocolVersion !== 1 || message.hostProtocolVersion !== 1 || message.accountProtocolVersion !== 1 || (message.entriesProtocolVersion !== 1 || message.databaseSpacesProtocolVersion !== 1) || (options.assistant && message.assistantProtocolVersion !== 1) || (options.expectedProjectId && message.project?.id !== options.expectedProjectId) || url.protocol !== 'http:' || url.hostname !== '127.0.0.1' || !url.port || url.pathname !== `/entries/${options.entryId}/` || !message.project?.entries?.some(entry => entry.entryId === options.entryId) || !/^#session=[a-f0-9]{64}$/.test(url.hash)) {
               throw new Error(t("The project CLI does not support the current VS Code Web protocol. Update the project's @steamharness/cli."));
             }
             settle(undefined, message); return;
@@ -184,7 +183,7 @@ export async function startProjectCli(options: {
         }
       };
       child.once('error', failed); child.once('close', exited); child.stdout?.on('data', received);
-      child.stdin?.write(`${JSON.stringify({ type: 'configure', surface: options.surface, ...authentication, userSettings: options.userSettings, assistant: options.assistant, assistantProjectDir: options.assistantProjectDir, relatedProjects: options.relatedProjects ?? [], resourceProjects: options.resourceProjects ?? [] })}\n`);
+      child.stdin?.write(`${JSON.stringify({ type: 'configure', surface: options.surface, ...authentication, userSettings: options.userSettings, assistant: options.assistant, assistantProjectDir: options.assistantProjectDir, resourceProjects: options.resourceProjects ?? [] })}\n`);
     });
     systemAiSupported = ready.systemAiConnectionProtocolVersion === 1;
     connectionKey = JSON.stringify(hostAuthentication(options.connection, options.surface, systemAiSupported));
@@ -207,15 +206,12 @@ export async function startProjectCli(options: {
         connectionKey = key;
         if (!closing && !finished) { child.stdin?.write(`${JSON.stringify({ type: 'auth', ...authentication })}\n`); }
       },
-      updateRelatedProjects: (relatedProjects, resourceProjects = []) => {
-        if (closing || finished) { return; }
-        if (relatedProjects.length && ready.relatedProjectsProtocolVersion !== 1) {
-          throw new Error(t("The project CLI does not support the current VS Code Web protocol. Update the project's @steamharness/cli."));
-        }
-        const key = JSON.stringify([relatedProjects, resourceProjects]);
-        if (key === relatedProjectsKey) { return; }
-        relatedProjectsKey = key;
-        child.stdin?.write(`${JSON.stringify({ type: 'related-projects', relatedProjects, resourceProjects })}\n`);
+      updateResourceProjects: resourceProjects => {
+        if (closing || finished) return;
+        const key = JSON.stringify(resourceProjects);
+        if (key === resourceProjectsKey) return;
+        resourceProjectsKey = key;
+        child.stdin?.write(`${JSON.stringify({ type: 'resource-projects', resourceProjects })}\n`);
       },
       onExit: callback => { events.on('exit', callback); if (finished) { queueMicrotask(() => { if (events.listeners('exit').includes(callback)) callback(exit); }); } return { dispose: () => events.off('exit', callback) }; },
     };
@@ -223,10 +219,10 @@ export async function startProjectCli(options: {
 }
 
 /** Configuration RPC uses the project's installed CLI, without a running Web session. */
-export async function requestProjectCliConfiguration(projectDir: string, nodePath: string, call: Record<string, unknown>, signal: AbortSignal, connection?: Connection): Promise<unknown> {
+export async function requestProjectCliConfiguration(projectDir: string, nodePath: string, call: Record<string, unknown>, signal: AbortSignal, connection?: Connection, entryId?: string): Promise<unknown> {
   const {entry}=await resolveProjectCli(projectDir);
   return new Promise((resolve,reject)=>{
-    const child=spawn(nodePath,[entry,'configuration',projectDir],{cwd:projectDir,env:environment(),shell:false,stdio:['pipe','pipe','pipe'],signal});
+    const child=spawn(nodePath,[entry,'configuration',projectDir,...(entryId?['--entry',entryId]:[])],{cwd:projectDir,env:environment(),shell:false,stdio:['pipe','pipe','pipe'],signal});
     let stdout='',stderr='';
     const timeout=setTimeout(()=>child.kill('SIGKILL'),30_000);
     child.stdin.on('error',()=>undefined); child.stdin.end(JSON.stringify({call,connection:connection?{serverUrl:connection.serverUrl,accessToken:connection.accessToken}:null}));

@@ -6,6 +6,7 @@ import {
   createProjectFailure,
   formatProjectExecutionJson,
   inspectLocalProjectStructure,
+  inspectAggregateProjectStructure,
   parseToolPermissionPoliciesJson,
   resolveLocalProjectParams,
   runLocalProjectWithReport,
@@ -27,13 +28,8 @@ import {
   type RepositoryMode,
 } from "@steamharness/runtime-compatibility";
 import { prepareCliInvocation } from "./locale";
-import {
-  createCliRelatedProjectRuntime,
-  parseCliRelatedProjectSpec,
-  type CliRelatedProjectSpec,
-} from "./related-projects";
 
-type SteamHarnessCommand = "run" | "json" | "structure" | "resolve-params" | "help";
+type SteamHarnessCommand = "run" | "json" | "structure" | "check" | "resolve-params" | "help";
 
 export const STEAMHARNESS_DESKTOP_RUNTIME_EVENTS_ENV = "STEAMHARNESS_DESKTOP_RUNTIME_EVENTS";
 export const STEAMHARNESS_DESKTOP_RUNTIME_EVENT_PREFIX = "__STEAMHARNESS_RUNTIME_EVENT__";
@@ -61,6 +57,15 @@ export async function main(
   if (command === "structure") {
     return runStructureCommand(args);
   }
+  if (command === "check") {
+    const parsed = parseProjectArgs(args, { json: true });
+    assertLocalCliCoreCompatible(parsed.projectDir);
+    const report = parsed.entryId
+      ? inspectLocalProjectStructure({ projectDir: parsed.projectDir, entryId: parsed.entryId })
+      : inspectAggregateProjectStructure(parsed.projectDir);
+    console.log(JSON.stringify(report));
+    return 0;
+  }
   if (command === "resolve-params") {
     return runResolveParamsCommand(args, abortController.signal);
   }
@@ -69,34 +74,13 @@ export async function main(
     json: command === "json",
   });
   assertLocalCliCoreCompatible(parsed.projectDir);
-  const relatedProjectRuntime = createCliRelatedProjectRuntime({
-    consumerProjectDir: parsed.projectDir,
-    relatedProjects: parsed.relatedProjects,
-    localKvStoreDir: process.env.STEAMHARNESS_KV_STORE_DIR,
-    localPersistentValueStoreDir: process.env.STEAMHARNESS_PERSISTENT_VALUE_STORE_DIR,
-    runId: parsed.runId,
-    conversationId: parsed.conversationId,
-    env: process.env,
-  });
-  const storage = {
-    host: "local" as const,
-    local: {
-      kvStore: relatedProjectRuntime.localKvStore,
-      kvStoreDir: process.env.STEAMHARNESS_KV_STORE_DIR,
-      persistentValueStoreDir: process.env.STEAMHARNESS_PERSISTENT_VALUE_STORE_DIR,
-      relatedProjectResolver: relatedProjectRuntime.localResolver,
-    },
-    server: {
-      relatedProjectResolver: relatedProjectRuntime.serverResolver,
-    },
-  } as unknown as NonNullable<Parameters<typeof runLocalProjectWithReport>[0]>["storage"];
   const report = await runLocalProjectWithReport({
     projectDir: parsed.projectDir,
+    entryId: parsed.entryId,
     entrypointId: parsed.entrypointId,
     args: parsed.args,
     runId: parsed.runId,
     conversationId: parsed.conversationId,
-    storage,
     fileStoreDir: parsed.fileStoreDir ?? process.env.STEAMHARNESS_FILE_STORE_DIR,
     userInput: createCliUserInputContext(parsed.resolvedUserInputs),
     toolPermissionPolicies: parsed.toolPermissionPolicies,
@@ -141,7 +125,7 @@ function parseCommand(value: string | undefined): SteamHarnessCommand {
     return "help";
   }
 
-  if (value === "run" || value === "json" || value === "structure" || value === "resolve-params") {
+  if (value === "run" || value === "json" || value === "structure" || value === "check" || value === "resolve-params") {
     return value;
   }
 
@@ -155,7 +139,8 @@ async function runResolveParamsCommand(argv: string[], abortSignal: AbortSignal)
     const request = parseParamResolveRequest(readFileSync(0, "utf8"));
     const result = await resolveLocalProjectParams({
       projectDir: parsed.projectDir,
-      entrypointId: parsed.entrypointId,
+      entryId: parsed.entryId,
+    entrypointId: parsed.entrypointId,
       request,
       abortSignal,
     });
@@ -195,21 +180,21 @@ export function parseProjectArgs(
   args: string[];
   json: boolean;
   runId?: string;
+  entryId?: string;
   entrypointId?: string;
   conversationId?: string;
   fileStoreDir?: string;
   resolvedUserInputs: UserInputResolved[];
   toolPermissionPolicies?: ToolPermissionPolicyMap;
-  relatedProjects: CliRelatedProjectSpec[];
 } {
   let json = options.json;
   let runId: string | undefined;
+  let entryId: string | undefined;
   let entrypointId: string | undefined;
   let conversationId: string | undefined;
   let fileStoreDir: string | undefined;
   let resolvedUserInputs: UserInputResolved[] = [];
   let toolPermissionPolicies: ToolPermissionPolicyMap | undefined;
-  const relatedProjects: CliRelatedProjectSpec[] = [];
   const filteredArgv: string[] = [];
 
   for (let index = 0; index < argv.length; index += 1) {
@@ -246,12 +231,8 @@ export function parseProjectArgs(
       continue;
     }
 
-    if (arg === "--related-project") {
-      relatedProjects.push(parseCliRelatedProjectSpec(
-        readProjectArgValue(argv, ++index, "--related-project"),
-      ));
-      continue;
-    }
+    if (arg === "--entry") { entryId = readProjectArgValue(argv, ++index, "--entry"); continue; }
+    if (arg?.startsWith("--related")) throw new Error(`Unknown option: ${arg}`);
 
     if (arg === "--resolved-user-inputs-json") {
       resolvedUserInputs = parseResolvedUserInputs(
@@ -289,7 +270,7 @@ export function parseProjectArgs(
       fileStoreDir,
       resolvedUserInputs,
       toolPermissionPolicies,
-      relatedProjects,
+      entryId,
     };
   }
 
@@ -303,7 +284,7 @@ export function parseProjectArgs(
     fileStoreDir,
     resolvedUserInputs,
     toolPermissionPolicies,
-    relatedProjects,
+    entryId,
   };
 }
 
@@ -418,6 +399,7 @@ function runStructureCommand(argv: string[]): number {
     readProjectInfo(projectManifest);
     const report = inspectLocalProjectStructure({
       projectDir: parsed.projectDir,
+      entryId: parsed.entryId,
     });
 
     console.log(JSON.stringify(report, null, 2));

@@ -24,7 +24,7 @@ Studio 底部默认保留 Terminal，隐藏 Problems、Output、Debug Console �
 
 ## 数据来源
 
-项目清单中的 `steamHarness.projectInfo.dataStorage.mode` 决定可用来源：`local` 仅显示本地，`server` 仅显示服务器，其他模式允许切换本地和服务器。服务器请求使用 Studio 当前登录凭据，退出或切换账号时取消未完成的请求并刷新面板。
+当前入口的 `databases` 声明决定可用别名，每个别名明确指定 local 或 server 宿主。面板仅访问已审批且有效的绑定；未绑定时先通过数据库管理申请并绑定，不自动创建或回退数据库。服务器请求使用 Studio 当前登录凭据，退出或切换账号时取消未完成的请求并刷新面板。
 
 本地面板调用项目已安装的 `steamharness` 公共存储 API，与项目 CLI 使用同一目录：
 

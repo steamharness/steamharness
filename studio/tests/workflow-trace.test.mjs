@@ -1,3 +1,4 @@
+const key = project => `${project.uri}#entry=${project.entryId}`;
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { register } from 'tsx/esm/api';
@@ -6,7 +7,7 @@ register();
 const { TraceStore } = await import('../extensions/studio-workstation/src/workflow-trace-store.ts');
 const { traceRows, filterTraceRows } = await import('../extensions/studio-workstation/webview/trace-model.ts');
 const { projectFrameHtml } = await import('../extensions/studio-workstation/src/workflow-webview.ts');
-const project = (id, projectType = 'conversation') => ({ id, name: id, uri: `file:///${id}`, projectType });
+const project = (id, projectType = 'conversation') => ({ entryId: 'main', aggregateName: id, id, name: id, uri: `file:///${id}`, projectType });
 const snapshot = (project, extra = {}) => ({ project, ...extra });
 const send = (binding, snapshot) => binding.receive({ type: 'workflow-trace', version: 1, kind: 'state', snapshot });
 
@@ -15,31 +16,31 @@ test('trace connections reject late data, mismatched project identities and stal
   const old = store.bind(a, 1, () => {}), next = store.bind(a, 1, () => {});
   send(old, snapshot(a, { activeId: 'stale' })); assert.equal(store.state().snapshot, undefined);
   send(next, snapshot(b)); assert.equal(store.state().snapshot, undefined);
-  send(next, snapshot(a, { activeId: 'correct' })); old.dispose(); assert.equal(store.hasConnection(a.uri), true);
+  send(next, snapshot(a, { activeId: 'correct' })); old.dispose(); assert.equal(store.hasConnection(key(a)), true);
   assert.equal(store.state().snapshot.activeId, 'correct');
-  store.select(b.uri); assert.equal(store.state().snapshot, undefined);
+  store.select(key(b)); assert.equal(store.state().snapshot, undefined);
   store.update([b]); send(next, snapshot(a)); assert.equal(store.availableProjects().length, 1);
 });
 
 test('trace instances share live runs and connection replacement while keeping project and run selections independent', () => {
   const store = new TraceStore(), a = project('a', 'workflow'), b = project('b', 'workflow'); store.update([a, b], a);
   const original = store.bind(a, 1, () => {}); send(original, snapshot(a, { runs: [{ id: 'old' }], run: { id: 'latest' } }));
-  const second = store.fork(); second.select(b.uri);
-  assert.equal(store.selection.projectUri, a.uri); assert.equal(second.selection.projectUri, b.uri);
-  second.select(a.uri, { runId: 'old' });
+  const second = store.fork(); second.select(key(b));
+  assert.equal(store.selection.projectUri, key(a)); assert.equal(second.selection.projectUri, key(b));
+  second.select(key(a), { runId: 'old' });
   const replaced = store.bind(a, 1, () => {}); original.dispose();
   send(replaced, snapshot(a, { runs: [{ id: 'old' }], run: { id: 'new', logs: 'live output' } }));
-  assert.equal(second.hasConnection(a.uri), true); assert.equal(second.selection.runId, 'old');
+  assert.equal(second.hasConnection(key(a)), true); assert.equal(second.selection.runId, 'old');
   assert.equal(second.state().snapshot.run.logs, 'live output'); assert.equal(store.selection.runId, undefined);
   replaced.dispose(); assert.equal(second.state().status, 'closed');
 });
 test('a new trace instance starts at the default project without inheriting another view target', () => {
   const store = new TraceStore(), a = project('a', 'workflow'), b = project('b', 'workflow');
   store.update([a, b], a);
-  store.select(b.uri, { runId: 'historical', sessionId: 'old-session', messageId: 'old-message' });
+  store.select(key(b), { runId: 'historical', sessionId: 'old-session', messageId: 'old-message' });
   const second = store.fork(); second.update([a, b], a);
-  assert.deepEqual(second.selection, { projectUri: a.uri });
-  assert.deepEqual(store.selection, { projectUri: b.uri, runId: 'historical', sessionId: 'old-session', messageId: 'old-message' });
+  assert.deepEqual(second.selection, { projectUri: key(a) });
+  assert.deepEqual(store.selection, { projectUri: key(b), runId: 'historical', sessionId: 'old-session', messageId: 'old-message' });
 });
 
 test('assistant frames create independent conversations and restore the last selection across new service ports', () => {
@@ -91,7 +92,7 @@ test('Workflow history stays independent of editor selection and survives partia
   const store = new TraceStore(), a = project('a', 'workflow'), sent = []; store.update([a]);
   const binding = store.bind(a, 1, message => sent.push(message));
   send(binding, snapshot(a, { runs: [{ id: 'old' }], run: { id: 'latest' }, history: { query: '', hasMore: true } }));
-  store.select(a.uri, { runId: 'old' }); store.request('run', 'old');
+  store.select(key(a), { runId: 'old' }); store.request('run', 'old');
   assert.equal(sent[0].traceCommand.runId, 'old');
   binding.receive({ type: 'workflow-trace', version: 1, kind: 'run', runId: 'old', run: { id: 'old', logs: 'old logs' } });
   send(binding, snapshot(a, { runs: [{ id: 'latest' }], run: { id: 'latest' }, history: { query: 'filtered', hasMore: false } }));
@@ -133,7 +134,7 @@ test('selecting one conversation reply does not leak other rounds or sessions', 
 });
 
 test('reopening the CLI reloads a selected historical trace and failed lookups stop retrying', () => {
-  const store = new TraceStore(), a = project('a', 'workflow'), requests = []; store.update([a]); store.select(a.uri, { runId: 'old' });
+  const store = new TraceStore(), a = project('a', 'workflow'), requests = []; store.update([a]); store.select(key(a), { runId: 'old' });
   let binding = store.bind(a, 1, message => requests.push(message));
   const data = snapshot(a, { runs: [{ id: 'old' }], run: { id: 'latest', status: 'running' }, running: true });
   send(binding, data); assert.equal(requests.length, 1); assert.equal(store.state().loading, true);

@@ -14,11 +14,11 @@ it('signs a shared attachment list once per update and invalidates unchanged Mar
   const message: ConversationMessage = { role: 'assistant', content: '', status: 'success', items: Array.from({ length: 100 }, (_, index) => ({
     id: `text-${index}`, content: '[image](/image.png)', contentType: 'markdown',
   })) };
-  output.update(message, 'project', 'session', files);
+  output.update(message, 'project', "main", 'session', files);
   expect(map).toHaveBeenCalledOnce();
   const first = root.firstElementChild; expect(first!.querySelector('a')!.getAttribute('href')).toBe('/old.png');
-  output.update(message, 'project', 'session', files); expect(root.firstElementChild).toBe(first);
-  files[0].previewUrl = '/new.png'; output.update(message, 'project', 'session', files);
+  output.update(message, 'project', "main", 'session', files); expect(root.firstElementChild).toBe(first);
+  files[0].previewUrl = '/new.png'; output.update(message, 'project', "main", 'session', files);
   expect(root.firstElementChild).not.toBe(first); expect(root.firstElementChild!.querySelector('a')!.getAttribute('href')).toBe('/new.png');
 });
 
@@ -28,13 +28,13 @@ it.each(['recovery', 'length', 'lost-call'])('silently continues %s while preser
   const retry = (id: string, kind: string): OutputItem => ({ id, content: { type: 'retry', kind, attempt: 1, maxAttempts: 10, reason: 'fixture' },
     contentType: 'json', metadata: { kind: 'agent-part', partType: 'retry', status: 'success' } });
   const items = [{ id: 'body', content: 'Partial answer', contentType: 'markdown' }, retry('internal', kind), retry('network', 'dropped')];
-  output.update({ role: 'assistant', status: 'running', content: '', items }, 'project', 'conversation', []);
+  output.update({ role: 'assistant', status: 'running', content: '', items }, 'project', "main", 'conversation', []);
   expect(root.querySelectorAll('[data-kind="retry"]')).toHaveLength(1);
   expect(root.querySelector('[data-item-id="internal"]')).toBeNull();
   expect(root.querySelector('[data-item-id="network"]')).not.toBeNull();
   expect(root.querySelector('.pending')?.textContent).toBe('Responding...');
   expect(root.textContent).toContain('Partial answer');
-  output.update({ role: 'assistant', status: 'success', content: '', items }, 'project', 'conversation', []);
+  output.update({ role: 'assistant', status: 'success', content: '', items }, 'project', "main", 'conversation', []);
   expect(root.querySelectorAll('[data-kind="retry"]')).toHaveLength(1);
   expect(root.querySelector('.pending')).toBeNull();
 });
@@ -50,10 +50,10 @@ it('keeps the retry at its interruption point through completion, expansion and 
   for (const replay of [false, true]) {
     const root = document.createElement('div'); document.body.append(root);
     const output = new ConversationOutput(root, { copy() {}, plan() {}, file() {}, image() {}, resource() {} }); outputs.push(output);
-    output.update(message, 'project', 'conversation', []);
+    output.update(message, 'project', "main", 'conversation', []);
     const retry = root.querySelector<HTMLDetailsElement>('[data-kind="retry"]')!;
     retry.open = true; retry.dispatchEvent(new Event('toggle'));
-    output.update({ ...message, status: 'success', items }, 'project', 'conversation', []);
+    output.update({ ...message, status: 'success', items }, 'project', "main", 'conversation', []);
     expect(root.querySelectorAll('[data-kind="retry"]')).toHaveLength(1);
     expect(root.querySelector('[data-kind="retry"]')).toBe(retry);
     expect(retry.open).toBe(true);

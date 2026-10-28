@@ -16,11 +16,17 @@
     "steamharness": "link:../../.."
   },
   "steamHarness": {
-    "projectInfo": {
-      "dataStorage": {
-        "mode": "local"
+    "projectInfo": {},
+    "entries": [
+      {
+        "entryId": "main",
+        "type": "conversation",
+        "name": "@steamharness/gitlab-webhook-workflow",
+        "root": ".",
+        "entry": "index.ts",
+        "databases": []
       }
-    },
-    "projectType": "conversation"
+    ],
+    "defaultEntry": "main"
   }
 }

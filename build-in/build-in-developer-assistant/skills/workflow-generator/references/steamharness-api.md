@@ -21,7 +21,6 @@ Studio 在用户级 `studio.agent.permissionPolicy` 保存设置，默认 `auto`
 - 项目必须写完整的 `devDependencies.steamharness`，例如 `"0.2.7"` 或 `"0.2.7-20260826001"`。`^0.2.7`、`0.2.x`、`workspace:*`、`file:` 和其它 range 都是无效项目声明。`@steamharness/cli` 也必须精确，但独立版本化。
 - Core 运行门禁只比较宿主与项目的 `major.minor`。`0.2.0`、`0.2.99`、`0.2.4-20260826001` 和 `0.2.4-beta.1` 都属于 `0.2.x`；宿主 patch 无论较新或较旧都可直接运行，不比较 patch、日期或预发布顺序。`0.1.x`、`0.2.x` 和 `1.2.x` 不兼容。
 - patch 版本因此不得引入需要新兼容线的破坏性 Core API；此类 API 变化必须提升 minor。遇到 major/minor 不匹配时，保留项目精确声明并升级本地宿主或 CLI，不要把项目依赖改成 range 绕过门禁。
-- Desktop `0.1.22` 是首个支持 Core `0.2.x` 与 `projectInfo.dataStorage.mode` 的版本。采用 Core `0.2.x` 的内置项目发布索引必须设置 `minDesktopVersion: "0.1.22"` 或更高；旧 Desktop 应在安装或执行前阻断。
 - Desktop 精确绑定 Core/CLI，并在本地运行、恢复、参数解析和结构检查前校验项目 Core。CLI 同时校验实际 Core、CLI 自身的精确 Core 绑定和项目 Core，peer 只覆盖绑定 Core 的同一 minor。Server 只校验静态元数据，不加载或执行项目。
 - 内置项目发布索引还必须声明精确 `components.core` 与 `components.cli`。Desktop 只选择最低 Desktop 版本已满足且两个组件分别处于宿主同 `major.minor` 兼容线的发布；下载包的精确 Core/CLI 依赖必须与索引逐字一致。
 
@@ -50,26 +49,31 @@ Studio 在用户级 `studio.agent.permissionPolicy` 保存设置，默认 `auto`
 
 名称显示优先使用当前界面 locale 的名称，再回退根 `name`；搜索覆盖默认名称及所有本地化名称。`declarations` 是不验证真实功能的手工展示标签，当前注册 `multilingual` 与 `multiplatform`。`platformSupport` 只描述展示平台：平台无关使用 `{ "mode": "agnostic" }`；`specific` 至少包含一个平台，当前注册 `macos`、`windows` 与 `web`。符合小写 ID 格式的未来语言、声明和平台值必须原样保留。
 
-新 scaffold 必须创建 `projectInfo.dataStorage.mode` 并默认写 `both`，同时显式创建空的 `projectInfo.relatedProjects`；除此之外只写根 `name`，不根据文案语言、项目类型、依赖或产物推断 `localizedNames`、`declarations` 或 `platformSupport`。只有用户明确要求对应展示信息时才写入；`multilingual` 声明不能代替真实国际化实现。`platformSupport` 只是展示声明，不限制源码上传、下载或本地运行；下一节的 `steamHarness.release` 只声明关联项目的交付策略。
 
-## 发行配置（steamHarness.release）
+## 聚合项目声明与交付
 
-项目组交付读取项目里的关联项目配置，因此**每个可发布项目都必须在 `package.json` 写入 `steamHarness.release`**：
+根 package.json.id 是整个聚合项目唯一 UUID。类型属于入口，可注册多个同类型入口；entryId 唯一且与 Workflow 内部 entrypointId 分别传递。注册路径必须位于聚合目录内，禁止绝对路径、上级路径、符号链接越界、node_modules 和 .git。Workflow/Conversation 各模块导出自己的 executor，类型必须与注册匹配；静态分析仅遍历该模块的相对导入图。
 
 ```json
 {
+  "id": "d9232d44-28ca-48e9-a89a-157ee143bcdc",
+  "name": "Example",
   "steamHarness": {
-    "release": {
-      "dependencies": { "pricing": "included" }
-    }
+    "defaultEntry": "chat",
+    "entries": [
+      {"entryId":"chat","type":"conversation","name":"Chat","root":"agent","entry":"index.ts","databases":[]},
+      {"entryId":"jobs","type":"workflow","name":"Jobs","root":"jobs","entry":"index.ts","databases":[]},
+      {"entryId":"board","type":"kanban","name":"Board","root":"board","entry":"dist/index.html","databases":[]}
+    ]
   }
 }
 ```
 
-- Server 只保存完整源码，不安装依赖、不构建或执行上传代码。所有平台均可下载源码；本地执行与显式服务器数据访问继续保留。
-- `dependencies` 的键集合必须与 `projectInfo.relatedProjects` 的 alias 集合**双向完全一致**：每个已声明关系都要给出字符串值 `"included"` 或 `"external"`，多写一个未声明的 alias 同样报 `dependency-config`。例如 `"database": "external"` 有效，`"database": { "included": false, "external": true }` 无效。`dependency-config` 先检查值类型与 alias 声明，`dependency-state` 才检查关联项目的服务器状态。`included` 表示该关系随项目组联动交付并固化目标精确版本与 source hash，`external` 表示由用户自行安装。
-- 这里是项目源码里必须显式声明的**发行意图**。发布阶段生成的版本级 dependency lock（`delivery`、`version`、`sourceHash`）仍然不得写入源码，两者不要混淆。
-- 所有项目默认写 `{ "dependencies": {} }`。同时必须静态声明 `steamHarness.projectType`，其值与 Workflow/Conversation executor 的类型一致。
+每个入口可指定相对其 root 的 configuration JSON 和 schedulePresets。会话、草稿、工具权限、运行记录、定时计划、配置方案及快照按 projectId + entryId 隔离。配置修改在下一次执行生效。
+
+`context.entries.list()` 列出注册；`context.entries.get("jobs").listEntrypoints()` 列举 Workflow 操作；`runEntrypoint("refresh", ["--limit", "10"])` 调用操作。保留原用户、取消信号和工具权限，重新校验目标配置快照及授权。目标操作使用目标入口的数据库授权；调用方不会因此获得直接数据库句柄。嵌套调用上限 16。
+
+一个聚合是一个上传、版本和 Store 安装单元。打包包含所有注册代码、配置、依赖清单和 Kanban 静态产物，剥离全部 bindingRef；安装者重新申请数据库。普通 npm dependencies 保持包管理行为。Server 只处理静态元数据、文件和数据访问，不加载执行项目代码。
 
 ## 项目卡片（steamHarness.projectCard）
 
@@ -89,7 +93,7 @@ Studio 在用户级 `studio.agent.permissionPolicy` 保存设置，默认 `auto`
 
 - `icon` 必须是注册的图标名：`workflow`、`message-circle`、`bot`、`sparkles`、`code`、`git-branch`、`boxes`、`zap`、`database`、`file-text`、`cpu`、`brain`。
 - `iconUrl` 作为自定义图标，只接受 `http://` 或 `https://`；`iconColor` 与 `iconBackgroundColor` 必须是 `#RRGGBB`。缺失时宿主按项目类型取默认值。
-- 旧键 `appCard` 仍会被兼容读取，但 `appCard.kind` / `projectCard.kind` 已移除并会校验失败——项目类型由 executor 的 `projectType` 或 `steamHarness.projectType: "kanban"` 决定，不要写 `kind`。
+- 旧键 `appCard` 仍会被兼容读取，但 `appCard.kind` / `projectCard.kind` 已移除并会校验失败——项目类型由 executor 的 `projectType` 或 注册入口的 `type: "kanban"` 决定，不要写 `kind`。
 - 只有用户明确要求品牌化展示信息时才写入；不写时宿主使用项目类型默认图标。
 
 ## Workflow 定时建议
@@ -129,274 +133,26 @@ Workflow 可以在 package 中声明建议计划；Conversation 和 Kanban 声�
 
 Structure 将预设返回给宿主，但导入、打开或发布项目都不会自动创建计划；用户必须确认。计划不处理日期占位模板，动态日期由 Workflow 自行读取业务时区时间。
 
-## Kanban 静态项目
+## Kanban 静态入口
 
-Kanban 不使用 runtime API 或 executor，但上传和发布仍读取精确的 Core 版本声明。
+在 entries 注册 type: "kanban"，root 指向代码目录，entry 指向已构建 HTML 产物（例如 dist/index.html）。不生成 executor。宿主只消费产物，不安装依赖、执行构建脚本或连接 dev server。HTML/CSS/JS、图片和字体使用产物内相对路径。页面位于 allow-scripts sandbox 和离线 CSP，不能访问 Node、父页面 DOM、公网或顶层导航。
 
-Kanban 页面必须适配全屏工作区、手机、平板和 Conversation 对话卡片内的预览。Desktop 标题栏的尺寸切换默认填满预览区，其余模式默认使用手机 `390×844`、平板 `768×1024`、小卡片 `360×200`（CSS px），可拖动或输入宽高并恢复当前模式默认值；改变的是 iframe 的真实视口，不重载页面或修改业务配置。小卡片代表对话资源卡片中的 Kanban 内容，实际容器尺寸可变，也要适配约 `340–500px` 宽和 `180–200px` 高。声明 viewport meta，以页面自身容器宽高响应式重排，避免固定桌面最小尺寸和整页缩放。resize 不清空草稿或中断图片/文件请求，地图和 canvas 按容器重新测量。
-
-`window.steamHarnessKanban.getPresentation()` 返回 `{ mode: "fullscreen" | "phone" | "tablet" | "card" }`，模式变化通过 `steamharness:kanban-presentation-change` 的 `CustomEvent.detail` 通知。Conversation 内实际预览固定使用 `card`，卡片调大后仍保持该语义；展示模式不进入命名配置或 KV。地图、图片类或明确要求只读的小卡片应只呈现主要内容，隐藏所有编辑界面并阻止修改快捷键、绘制和实体拖动；切回其它模式恢复原编辑状态。通过 Bridge 读取模式，用页面实际宽高测量布局，不要依赖父窗口 DOM 或自建消息协议。
-
-最小目录继续使用项目根目录的 `index.html`：
-
-```json
-{
-  "id": "00000000-0000-4000-8000-000000000000",
-  "name": "@steamharness/roadmap-kanban",
-  "version": "0.1.0",
-  "private": true,
-  "type": "module",
-  "devDependencies": {
-    "@steamharness/cli": "0.2.0",
-    "steamharness": "0.2.0"
-  },
-  "steamHarness": {
-    "projectType": "kanban",
-    "projectInfo": {
-      "dataStorage": {
-        "mode": "both"
-      },
-      "relatedProjects": []
-    }
-  }
-}
-```
-
-示例版本只说明精确 SemVer 格式。新模板会写入当前 Core 与 CLI 版本；已有项目缺失声明时必须补齐并同步 lockfile，不能使用 `^`、`~`、`workspace:*` 或其它 range。
-
-需要消费 Vue、React、Vite 或其它工具生成的静态浏览器产物时，配置产物目录与其中的 HTML 入口：
-
-```json
-{
-  "steamHarness": {
-    "projectType": "kanban",
-    "kanban": {
-      "artifactDir": "dist",
-      "entry": "index.html"
-    },
-    "projectInfo": {
-      "dataStorage": { "mode": "both" },
-      "relatedProjects": [{
-        "alias": "catalog",
-        "projectId": "11111111-1111-4111-8111-111111111111",
-        "grantToRelatedProject": {
-          "read": { "mode": "all" },
-          "write": { "mode": "none" }
-        }
-      }]
-    }
-  }
-}
-```
-
-`artifactDir` 默认 `"."`，相对项目根；`entry` 默认 `"index.html"`，相对 `artifactDir`。两者禁止绝对路径、盘符、UNC、`..`、符号链接和版本控制/依赖目录，入口必须是 `.html` 或 `.htm`。跨项目访问统一声明在 `projectInfo.relatedProjects`，旧 `kanban.dataSources` 存在即校验失败。SteamHarness Desktop/Server 只消费构建产物，不自动安装依赖、不执行构建脚本，也不接入 dev server、端口或 HMR。
-
-`relatedProjects[]` 只接受 `alias`、`projectId` 和 `grantToRelatedProject`。其中 grant 的方向是“允许目标项目访问当前项目”，不是当前项目向目标请求权限；项目 A 访问 B 时，真正生效的是 B 反向指向 A 的关系项。旧 `access: { read: "all", write: "none" }` 不受支持，也不能机械重命名；必须先从调用代码和项目文档确认访问意图，再按当前 grant 方向写到正确一侧，而且新规则必须写成 `read/write: { mode: "none" | "all" | "prefixes" }`。修复只获得 A 根目录时，可以先把 A 的声明迁移为合法最小授权，但必须把 B 的反向声明和跨项目 KV 验证保留为未完成。
-
-项目开发工具修改 Vue、React、Vite 等框架源码后，需要更新预览产物。小助手应读取项目已有的非 watch `build` 脚本，按 `packageManager` 或现有 lockfile 选择包管理器并执行一次 `<manager> run build`，随后确认 `<artifactDir>/<entry>` 存在并运行 `steamharness structure`。依赖缺失时按 `SKILL.md` 的「依赖安装与环境」节处理：项目根可写、包管理器可用且安装确属本任务必需时直接装一次，优先与现有 lockfile 对齐的不可变模式，只补缺、不改依赖图、不编造构建脚本，lockfile 有变化要说明。不要启动 `dev`、`watch`、`serve` 或其它长期任务；构建无法执行或失败时必须说明入口仍是旧产物，不能把源码修改等同于预览已经更新。直接编辑产物目录内静态文件时不需要构建。
-
-上传只读取项目根目录 `.steamharnessignore`，不读取任何 `.gitignore`。缺失或空规则会上传全部普通文件；规则支持目录、glob、`**` 和 `!`。`.steamharnessignore` 自身始终保留，`package.json`、项目入口和已有 `configuration.json` 不能被排除。Kanban 的规则不得忽略实际产物目录；是否把 `dist` 提交 Git 与是否上传是两件独立的事。
-
-`.steamharnessignore` 必须是普通文件（符号链接会被拒绝）且内容为 UTF-8。必备上传路径必须真实存在：Workflow/Conversation 是 `package.json` 与 `index.ts`，Kanban 是 `package.json`、`artifactDir/entry` 和已存在的 `configuration.json`；上传清单里出现的路径也必须是普通文件或目录，符号链接同样会被拒绝。
-
-仓库提供的标准 scaffold 会在最小入口之外生成 `.steamharnessignore`、`board-state.js`、`board-storage.js`、`README.md` 和 `tests/*.test.mjs`，用于页面内任务操作、KV 持久化和离线逻辑验证。所有 scaffold 均生成 `configuration.json`，无字段时 fields 为空。
-
-需要宿主参数时增加 `configuration.json`：
-
-```json
-{
-  "version": 1,
-  "fields": [
-    { "name": "title", "type": "string", "defaultValue": "产品路线图" },
-    { "name": "accent", "type": "string", "control": "radio", "options": [
-      { "value": "#2563eb", "label": "蓝色" }
-    ] }
-  ]
-}
-```
-
-`fields` 使用独立的 ProjectConfigurationField，支持 string、number、boolean、枚举、多选、JSON 和 file。默认值使用原生类型，敏感字段用 secret 标记。宿主通过统一项目配置服务保存命名配置。文件配置声明 `type: "file"`，可用 `accept: ["image/png", ".json"]` 限制类型；面板直接选择文件并上传到当前 Server，保存值为服务器文件引用（单文件对象，`multiple: true` 为引用数组），不填写文件 JSON、base64 或本机路径，单文件最大 50 MiB。上传失败保留原值，清除配置不删除文件；导出包含完整引用，不包含文件内容。页面内文件 API 也可独立上传。页面读取和监听：
-
-参数用于同一 HTML 页面在不同命名配置下切换标题、主题、过滤条件或显示模式。任务、卡片、记录等业务数据应由页面本身提供新建、编辑和删除操作，并通过 KV Bridge 持久化；不要把业务列表做成逗号分隔的 textarea 参数。
-
-```js
-function render(configuration) {
-  const { title = "看板" } = configuration?.params ?? {};
-  document.querySelector("h1").textContent = title;
-}
-
-render(window.steamHarnessKanban?.getConfiguration());
-window.addEventListener("steamharness:kanban-configuration-change", (event) => {
-  render(event.detail);
-});
-```
-
-页面还可以访问固定到当前项目的异步数据 Bridge：
+`window.steamHarnessKanban.getConfiguration()` 读取当前命名配置；监听 `steamharness:kanban-configuration-change`。`getPresentation()` 返回 full/card 展示，监听 `steamharness:kanban-presentation-change`。无参数时使用全幅布局，在手机、平板、低高度卡片中保留草稿与保存状态。
 
 ```ts
-interface SteamHarnessKanbanApi {
-  getConfiguration(): { id: string; name: string; params: Record<string, unknown> };
-  getPresentation(): { mode: "fullscreen" | "phone" | "tablet" | "card" };
-  getRuntimeLocale(): Promise<"zh-CN" | "en">;
-  files: {
-    createFile(input: { name: string; mimeType?: string; buffer: Blob | ArrayBuffer | Uint8Array }): Promise<FileReference>;
-    readFile(fileId: string): Promise<{ file: FileReference; buffer: ArrayBuffer }>;
-    deleteFile(fileId: string): Promise<boolean>;
-  };
-  kv: {
-    getValue(key: string): Promise<unknown | undefined>;
-    setValue(key: string, value: JsonValue): Promise<void>;
-  };
-  relatedProjects: {
-    get(alias: string): {
-      kv: {
-        getValue(key: string): Promise<unknown | undefined>;
-        setValue(key: string, value: JsonValue): Promise<void>;
-        subscribe(listener: (event: { alias: string; revision: string }) => void): () => void;
-      };
-    };
-  };
-  knowledge: {
-    listDocuments(options?: { pageSize?: number; cursor?: string }): Promise<KnowledgeDocumentPage>;
-    getDocument(id: string): Promise<KnowledgeDocument | null>;
-    createDocument(input: { id?: string; title: string; markdown: string }): Promise<KnowledgeDocument>;
-    editDocument(id: string, input: { title?: string; markdown?: string }): Promise<KnowledgeDocument>;
-    deleteDocument(id: string): Promise<{ id: string; deleted: boolean }>;
-    searchDocuments(options: KnowledgeSearchOptions): Promise<KnowledgeSearchResult>;
-    readDocumentLines(id: string, options: { startLine: number; endLine: number }): Promise<KnowledgeDocumentLinesResult>;
-  };
-}
+const database = window.steamHarnessKanban.databases.get("data");
+const value = await database.kv.getValue("board.v1");
+await database.kv.setValue("board.v1", { markers: [] });
+const stop = database.subscribe(({ revision }) => { /* debounce a reread */ });
+const file = await database.files.createFile({ name: "map.png", buffer: blob });
+const { buffer } = await database.files.readFile(file.id);
 ```
 
-`getRuntimeLocale()` 返回宿主当前界面语言，已明确要求国际化的 Kanban 页面必须用它选择文案，不要自行猜测 `navigator.language`。
+alias 必须在当前入口声明并获批绑定。知识库通过 database.knowledge，附件通过 database.files；页面不能选择 spaceId、项目、授权或数据路径。普通 KV 不能绕过知识库授权。订阅只返回 alias 和不透明 revision，卸载时调用取消函数。单文件上限 50 MiB，附件超时 120 秒，其他请求 15 秒，并发上限 16。所有请求处理 reject，未绑定或撤销显示恢复入口，不自动创建数据库。
 
-当前项目 KV 只有 project scope 的 get/set。value 必须是 JSON 原生值且不能为 `undefined`；页面不能传项目、scope、projectName、数据库路径或 target。建议以 `<feature>.v1:${configuration.id || "default"}` 保存版本化且按配置隔离的数据。配置切换时使用请求代次避免旧读取覆盖新配置；写入使用串行防抖队列，并按 storage key 保留失败值与重试入口，切换配置时不能清空其它 key 的失败记录。
+页面方法通过 `window.steamHarnessKanban.methods.register({name,description,inputSchema,readOnly?}, handler)` 注册（准确参数见公开类型）。资源卡片与方法调用必须带 projectId、entryId；先发现实例再使用 instanceId、configurationId、method、args 调用。不同入口和同一入口不同实例互不控制。相对缩放、平移和写入超时后先查询状态，不自动重试。
 
-跨项目通过 `relatedProjects.get(alias).kv` 读写。宿主只接受 package 中已声明的 alias，并按目标项目对当前项目的 `grantToRelatedProject` 检查 key；请求不能携带目标 UUID、scope、target 或数据库路径。本地 Desktop 要求目标项目已经导入；Server Web 看板预览 要求访问者可读当前 Kanban，双方关系已确认后无需访问者成为目标项目成员。每次调用读取双方当前声明，撤销立即生效；待确认、缺失或越权统一返回安全的关联项目不可用错误。
-
-`steamHarness.projectInfo.relatedProjects` 是发布和下载时的唯一项目依赖目录，不要生成 `dependencies`、`steamHarness.dependencies` 或 Kanban 专用字段。发布阶段仅为双方确认且选择 included 的关系生成版本级 dependency lock；included 固化目标项目精确版本与 source hash，external 和单边待确认关系不联动下载。项目源码本身只声明关系，不写 `delivery`、`version` 或 `sourceHash`。
-
-project-group v1 只交付项目源码。归档、上传、发布和下载不得包含 KV、知识库、定时计划、运行历史、`.env*`、SQLite 或宿主用户配置。Desktop 本地 KV 与 Server KV 永久隔离，联动上传不会把本地行情或其它业务数据带到 Server，联动下载也不会把 Server KV 带到本地。数据初始化与跨宿主同步由项目开发者通过 本地 Workflow entrypoint、显式服务器存储连接或业务接口显式实现；Kanban 页面只能执行关联项目明确授予的 KV 操作，不能自行创建同步 run。
-
-`relatedProjects.get(alias).kv.subscribe(listener)` 在宿主取得当前 revision 后异步回调一次快照，并继续推送该 alias 的变化。revision 是不透明字符串，不包含项目、KV key 或数据库信息；页面应防抖重读当前数据并在刷新失败时保留最后一次成功内容。配置切换或卸载时调用返回的取消函数。自动联动只发生在同一 Desktop 本地后端或同一 Server 后端，不能把它当作 Desktop 与 Server 之间的数据同步。
-
-Bridge 缺失时回退为明确的只读或内存状态；调用失败只依赖安全 error `code` / `message`，不要解析宿主内部错误。非 JSON 或不可克隆输入统一以 `KANBAN_BRIDGE_INVALID_REQUEST` 拒绝。
-
-Bridge 同时最多保留 16 个请求，普通调用 15 秒超时，文件调用 120 秒超时。知识库列表 `pageSize` 上限 100，搜索 `pageSize` / `maxMatches` 上限 1000、前后上下文各 50 行，单次读取最多 1000 行。Server 看板预览的 Bridge 和配置 CRUD 固定页面首次加载的 `resolvedTarget`，版本变化后必须刷新页面。所有资源必须使用 `artifactDir` 内相对路径，并在 `sandbox="allow-scripts"`、离线 CSP、无 Node/preload 环境中工作；ES module、动态 import、WASM 和 `fetch()` 只能读取绑定项目、用户与固定版本且由宿主自动续期的短期 capability 下的同源产物，不能访问公网，也不要缓存或解析 capability URL。Kanban 支持 `steamharness structure`，不支持 `run`、`json`、Webhook 或 external run。
-
-文件 Bridge 与 KV 存储位置独立，始终使用当前服务器的 managed file storage；Desktop 未登录或目标 UUID 未创建于当前服务器时失败，不回退本地。`FileReference` 沿用 `FileReference` 的安全字段（`id/name/mimeType/size/kind/storage/projectId/createdAt/url`），`storage` 为 `server`。`createFile` 接受不超过 50 MiB 的 Blob、ArrayBuffer 或 Uint8Array；`readFile(id)` 返回原始字节及文件元数据，只接受当前项目且没有 conversation 作用域的文件，不能传 URL 或本地路径。图片可用 `URL.createObjectURL(new Blob([buffer], { type: file.mimeType }))` 显示，切换配置或卸载时释放。KV 保存文件引用与标注；不要把二进制数据分块存入 KV。替换图片时先上传和核验新文件，保存新引用成功后才能 `deleteFile` 旧文件。
-
-本地图片迁移使用 `steamharness workspace file-upload <项目 UUID> --file <路径> [--mime-type image/png]`，返回标准 `{ errCode: 0, errMessage: "", data: FileReference }`。通过 `steamharness workspace file-download <文件 ID> --output <新文件>` 读回比较字节或 SHA-256，已有文件不会覆盖；`file-delete <文件 ID>` 删除已明确不再使用的文件。三个命令使用 Desktop 注入的服务器身份或 CLI 登录态，不上传源码、不发布版本。CLI 过旧时要更新可用宿主或明确报告未验证，不改用图片 KV 分块兜底。
-
-```ts
-const outputNode = steamharness.createOutputNode<Input, OutputPayload>({
-  name: "output",
-  async *stream(input) {
-    yield input.message;
-  },
-  format(stream) {
-    return steamharness.createOutputPayload({
-      items: stream.items,
-    });
-  },
-});
-```
-
-标准折叠输出项使用 `steamharness.createDetailsOutputNode(...)`：
-
-```ts
-const detailsNode = steamharness.createDetailsOutputNode({
-  name: "output",
-  title: "点击展开",
-  icon: "info",
-  content: "这里是折叠内容。",
-});
-```
-
-当 workflow 必须暂停等待人工回答并在稍后恢复同一个 run 时，使用 `steamharness.createUserInputNode(...)`：
-
-```ts
-interface ApprovalPayload extends RunPayload {
-  requestId: string;
-  values: Record<string, unknown>;
-  submittedAt: string;
-}
-
-const approvalNode = steamharness.createUserInputNode<Plan, ApprovalPayload>({
-  name: "approval",
-  title: "Review plan",
-  description: "Confirm the deployment target before continuing.",
-  params: [
-    { name: "approved", flag: "--approved", type: "boolean" },
-    { name: "note", flag: "--note", type: "string", control: "textarea" },
-    { name: "reviewDate", flag: "--review-date", type: "string", control: "date" },
-  ],
-  defaultValues: { approved: false, reviewDate: "2026-07-26" },
-});
-```
-
-等待节点的 `params` 使用普通 `ParamDefinition` 字段，不使用 executor 的 Auxiliary/Quick/Mode 分组；字段的取值、控件和校验规则一致，不需要第二套表单 schema。当 runtime 没有该节点的已解析答案时，run report 会进入 `waiting_for_input` 并包含 `pendingUserInput`。当 本地宿主或 CLI Web 提交答案后，同一个 `runId` 会带着 `resolvedUserInputs` 恢复；除非自定义 `format` 映射到其它 `RunPayload`，节点会返回 `{ errCode: 0, errMessage: "", requestId, values, submittedAt }`。
-
-外部 agent 或当前节点输入需要动态决定问题字段时，可以另外提供 `resolveRequest(input, context)`，返回本次请求的 `title`、`description`、`params` 和 `defaultValues`。仍应在节点 options 中保留静态 `params`（没有固定字段时可为空数组）供结构分析使用；resolver 必须无副作用且对相同输入保持确定性，恢复同一个 requestId 时字段名和 option value 不能变化。
-
-当 workflow 有自定义工具调用需要启用/自动批准/人工审批时，在对应 entrypoint（Conversation 则为 executor）的 `tools` 静态数组中注册工具，并用 `steamharness.createToolApprovalGate()` 包装工具函数。不要为工具审批发明新的暂停协议；它会复用 user-input 等待/恢复机制。
-
-```ts
-const toolApproval = steamharness.createToolApprovalGate();
-
-// wrap() 返回的是 (context, ...args) => Promise<Result>：
-// 调用时必须把 NodeContext 显式作为第一个实参传入。
-const wrappedSearch = toolApproval.wrap(
-  "search",
-  async (query: string) => callSearchApi(query),
-  {
-    label: "Search",
-    description: "调用搜索服务。",
-    arguments: (query) => ({ query }),
-  },
-);
-
-const results = await wrappedSearch(context, "workflow project");
-
-// 需要自己判断审批结果时用 approve()：
-const decision = await toolApproval.approve(
-  { name: "search", label: "Search", arguments: { query } },
-  context,
-);
-if (!decision.approved) {
-  // decision.requestId / decision.values 可用于展示本次审批记录。
-}
-```
-
-未注册工具以 `input_validation` 失败，禁用工具以 `tool_permission_denied` 拒绝；需要审批时生成 `nodeName: "tool-approval"` 请求。requestId 包含 workflow、runId、toolName 及 callId、规范化参数和权限定义的 SHA256，防止旧决定批准不同调用；`approved` 布尔字段用于批准或拒绝。只有 plan 模式 Agent 对未自动批准工具提问，build 回合直接执行，普通 Workflow 仍按 autoApprove 询问。宿主传入的 enabled/autoApprove 策略须在恢复时继续传入，只对已注册工具生效。
-
-运行时配置使用 `steamharness.getConfig(name)`：
-
-```ts
-const apiKey = steamharness.getConfig("EXAMPLE_API_KEY");
-```
-
-只有 workflow 行为必须按执行宿主分支时，才使用运行平台 helper：
-
-```ts
-const platform = steamharness.getRuntimePlatform();
-const runsInDesktop = steamharness.isDesktop();
-```
-
-`steamharness.getRuntimePlatform()` 返回项目实际运行宿主。本地终端与 CLI Web 使用 `cli`，本地桌面宿主使用 `desktop`；非空未知标记直接抛 `TypeError`。Server 仅提供项目和数据存储，不是执行宿主。
-
-当用户明确要求项目支持中文和英文时，使用运行时语言 helper，而不是自行猜测浏览器或机器语言：
-
-```ts
-const locale = steamharness.getRuntimeLocale(); // "zh-CN" | "en"
-const title = locale === "en" ? "Market data" : "股票行情";
-```
-
-`steamharness.getRuntimeLocale()` 返回当前本地宿主选择的语言；宿主未注入语言时默认 `"zh-CN"`。国际化项目必须同时覆盖用户可见输出、错误以及日期和数字格式，并保留 `"zh-CN"` 回退。静态的 package、entrypoint 和参数清单不能在运行时读取该方法，继续使用项目默认语言。
-
-所有类型使用 `configuration.json` 声明字段，用项目配置面板管理实际值。SDK 的 `getConfig(key)` 与 `context.config` 读取冻结的 ProjectConfigurationSnapshot；不加载项目 env 或回退到 process.env。Workflow 恢复沿用旧快照，Conversation 下一轮使用新值，持久 Agent 在任务边界重载，Kanban 保存立即更新。Studio 与独立 CLI 共用按真实路径隔离的本地存储；Server 按项目和账号隔离，导入导出搬运字段和全部值，包括敏感值。
-
-执行接口的显式 `configuration` 也按 `runId` 持久冻结，恢复可省略快照。宿主在持久会话任务边界更新配置且保留 runId 时，使用新的 `configurationRunId`，恢复这一代时继续传入该身份；`createLocalProjectConfigurationStore(...).snapshot({runId,configuration})` 遵循相同的首次保存规则。读取只匹配自身键，不把对象原型成员当配置。切换声明或 Server 版本保留暂时不生效的值和被声明隐藏的自定义定义；运行和导出只包含当前有效字段，显式删除自定义字段仍清除值。
+上传由根 .steamharnessignore 选择文件，不使用 .gitignore；不能排除注册模块、配置或静态产物。发行包不携带数据库、凭据、历史或用户配置。
 
 ## 必需本地类型
 
@@ -541,17 +297,10 @@ export default exampleProject;
 - `steamharness.createUserInputNode(...)` 创建可持久化的人工输入暂停。它的表单 `params` 应遵循所选 entrypoint（Conversation 则为 executor）的 params，且每个返回 payload 必须包含 `errCode` 和 `errMessage`。
 - `steamharness.createToolApprovalGate()` 创建工具审批包装器。它依赖所选 entrypoint（Conversation 则为 executor）的 `tools` 注册工具元数据，并复用 user-input 机制暂停和恢复；未自动批准的工具只在 plan 模式的 agent 回合停下来问，build 回合直接执行。
 - 静态结构 report 会在 `definitions.apiCalls` 中列出识别到的 `steamharness.*` 调用。执行序列只记录 `run()` 内由 `steamharness.runNode`、`steamharness.runStreamNode`、`steamharness.runIf`、`steamharness.runFor` 或 `steamharness.runWhile` node hooks 支撑的调用。
-- `context.storage.local` 与 `context.storage.server` 分别表示本地和服务器位置；每个位置都包含 `kv`、`persistentValue` 与 `relatedProjects`。项目的 `steamHarness.projectInfo.dataStorage.mode` 必须声明为 `local`、`server` 或 `both`，禁止的位置会直接抛错，不回退、不复制也不删除另一端数据。
-- 服务器存储失败由 Core 标记 `metadata.code: "PROJECT_SERVER_ACCESS_FAILED"` 并保留服务器 URL、目标 `projectId`、存储类型和操作；关联访问还保留 `consumerProjectId` 与 `relatedProjectAlias`。最终报告通过 `ExecutionReport.error.metadata` 保留结构化错误，标准 `result.data` 继续提供 `errCode`、`errMessage`、`output`。宿主按实际访问引导用户确认新建同 UUID 的服务器项目或检查授权，不自动创建、不强制上传源码。
-- `context.storage.*.kv` 直接读写当前 UUID 项目的 project KV，`.conversation` 读写当前会话 KV；不存在 global 或 `.workflow` 作用域。服务器位置要求登录并绑定与 `package.json.id` 相同 UUID 的云端项目；`both` 项目只有真正访问 `context.storage.server` 时才要求登录。
-- `context.storage.*.kv.*.deleteValue(key)` 删除单条 KV 并返回布尔值：`true` 表示确实删除了已存在的条目，`false` 表示该键本来就不存在。删除是永久的、不可恢复，且未删到的键不是错误，因此可以用返回值区分“删掉了”和“本来就没有”。KV 值不允许是 `undefined`，所以 `setValue(key, undefined)` 永远不是删除，也不会把存储的 `null` 当成缺失。
-- `context.storage.*.relatedProjects.get(alias).kv` 访问直接关联项目。调用方用自己的 alias 找目标，权限读取目标项目对调用方的 `grantToRelatedProject`；`getValue` 检查 read，`setValue` 与 `deleteValue` 检查 write，`updateValue` 同时检查两者。关系必须双方声明且每次调用重新解析，不能递归进入目标关系，也不能跨 local/server 回退。
-- `context.storage.*.kv.*.updateValue(key, updater)` 在内置本地和 server KV 后端上原子更新 JSON 值；`context.storage.*.persistentValue.*.updateValue` 使用远程服务器时会通过服务端 compare-and-set 重试，所以 updater 必须保持纯函数并可能执行多次。自定义 store 未实现 `updateValue` 时才会回退到 read-modify-write。不要在 workflow 中依赖 store 内部的 namespace read lock；知识库 helper 会在本地大范围搜索时自行复用它。
 - `KVStore` 可选实现 `withNamespaceLock(input, operation)` 来串行化同一 project 或 conversation namespace 的多 key 操作。远程 store 无法把回调锁跨 HTTP 持有时，可选实现 `executeNamespaceMutation(input, mutation)`；内置知识库仅使用它传递受限的 create、edit、delete 服务端 mutation，不要把任意回调或代码发送到 server。
 - 每个位置的 `persistentValue` 是独立于同位置普通 `kv` 的持久值通道，顶层是当前 project，另有 `.conversation`，并提供 `getValue`、`setValue`、`deleteValue` 和 `updateValue`。本地 CLI/Desktop 需要显式配置本地 PersistentValue store；服务器位置使用登录态和同 UUID 项目绑定。
 - `context.files.createFile({ name, mimeType, buffer, kind })` 把 workflow 生成的文件写入 server-backed runtime file storage。
 - Server PostgreSQL 项目存储写入会自动记录最后写入来源（`projectId`、`runId`、`conversationId`），供 server/web 项目 KV 查看器使用。
-- 项目知识库 helper 封装所选位置顶层的 `persistentValue`，第一个参数必须显式传 `context.storage.local` 或 `context.storage.server`：`steamharness.listKnowledgeDocuments`、`steamharness.getKnowledgeDocument`、`steamharness.createKnowledgeDocument`、`steamharness.editKnowledgeDocument`、`steamharness.deleteKnowledgeDocument`、`steamharness.searchKnowledgeDocuments` 和 `steamharness.readKnowledgeDocumentLines`。
 - Workflow entrypoint 上的 `tokenUsage: { enabled: true, display?: boolean }` 会为该入口启用 token usage 收集；Conversation 仍在 executor 上配置。
 - Workflow entrypoint 上的 `tools: ToolPermissionDefinition[]` 会启用该入口的工具策略元数据；Conversation 仍在 executor 上配置。每项包含 `name`、可选 `label/description`、`enabled` 默认值和 `autoApprove` 默认值。
 - `params` 描述结构化 Desktop、server、external input。
@@ -650,73 +399,41 @@ try {
 
 必须 `await` `steamharness.endTimer(timer, context, { status?, message?, metadata? })`：`timer` 可以是 `steamharness.createTimerNode` 返回的 payload，也可以是 `timerId` 字符串；结束一个未启动的计时器、或重复结束同一个计时器，都会抛 `project_execution`。如果 workflow 业务代码在计时器仍为 `running` 时返回或中止，runtime cleanup 会在终端 report 前把它标记为 `cleared`，避免 UI 保留过期 running 卡片。
 
-## 运行时 KV 与 Conversation 状态
+## 独立数据库空间
 
-```ts
-const count = Number(await context.storage.local.kv.getValue("run.count") ?? 0);
-await context.storage.local.kv.setValue("run.count", count + 1);
-```
-
-KV 值必须可 JSON 序列化，不能是 `undefined`。项目必须在 `package.json` 声明存储位置：
+`context.databases.get(alias)` 返回入口声明的数据库上下文。声明示例：
 
 ```json
-{
-  "steamHarness": {
-    "projectInfo": {
-      "dataStorage": {
-        "mode": "local"
-      }
-    }
-  }
-}
+{"alias":"data","host":"local","permissions":{"kv":{"read":{"mode":"all"},"write":{"mode":"all"}},"knowledge":{"read":{"mode":"all"},"write":{"mode":"all"}}}}
 ```
 
-`local` 只允许本地存储并可离线运行；`server` 只允许服务器存储，要求登录且云端项目 UUID 与顶层 `id` 一致；`both` 允许代码逐次选择位置。禁止的位置访问直接失败，两端数据不会自动同步。显式服务器存储访问把 KV 持久化到 PostgreSQL，并可记录本地执行的 project、run 和 conversation 来源标识。
+把需求放入具体入口的 `databases`，无需求使用 `[]`。`host` 只接受 `local` 或 `server`，没有默认数据库、隐式回退或数据同步。获批后宿主登记授权，声明可保存非敏感 `bindingRef`。申请新空间或已有空间访问都必须经显式审批；local 由本机使用者审批，Server 新空间由管理员审批、共享由空间负责人或管理员审批。未绑定或失效时展示申请、绑定与重试入口，其他入口仍可运行。
 
-只应把需要独立于普通运行态 KV 保存的值写入所选位置的 `persistentValue`，例如本地项目知识库：
+一个空间可被多个 projectId 和 entryId 授权访问。数据按 spaceId 保存，项目删除不删除空间。授权绑定消费方项目和入口，分别限制 KV、知识库的读写和键前缀，审批可缩小权限，撤销和轮换后每次访问立即重新校验。不要把凭据、运行时注册表或数据库数据放进项目源码和发行包。
 
 ```ts
-await context.storage.local.persistentValue.setValue("knowledge.doc", {
-  markdown: "# Notes",
+const database = context.databases.get("data");
+await database.kv.updateValue("counter", value => Number(value ?? 0) + 1);
+await database.kv.conversation.setValue("draft", { text: "private" });
+const page = await database.listValues({ pageSize: 50 });
+await database.transaction(async db => {
+  await db.kv.setValue("ready", true);
+  await db.knowledge.createDocument({ id: "guide", title: "Guide", markdown: "# Guide" });
 });
+const unsubscribe = database.subscribe(revision => { /* debounce a reread */ });
 ```
 
-每个位置只保留 project 与 conversation 两种 scope：顶层 `persistentValue` 直接表示当前项目；声明 `executor.projectType: "conversation"` 时，`.conversation` 表示当前会话。KV 使用相同模型，且 KV 与 PersistentValue 始终位于不同存储域。
+KV 的 `.conversation` 使用 projectId + entryId + conversationId 命名空间；共享空间不会暴露另一入口会话。普通 KV 禁止读写知识库保留键和附件。知识库使用 `database.knowledge` 的 `listDocuments/getDocument/createDocument/editDocument/deleteDocument/searchDocuments/readDocumentLines`，附件使用 `database.knowledge.files.createFile/readFile/deleteFile`。`listDocuments` 返回分页结果，cursor 原样回传；附件引用包含 spaceId，读取和保留句柄也重新鉴权。`getRevision`、订阅、CAS、锁和事务均使用空间身份。
 
-每个位置都提供 `kv`、`persistentValue` 和 `relatedProjects`，且都暴露 `getValue`、`setValue`、`updateValue`。namespace 级的串行化 helper 按后端能力区分：本地 namespace 提供 `withLock(name, operation)` 与 `withReadLock(name, operation)`，远程/server 后端只提供 `withLock`，`executeMutation` 仅在 store 显式实现时可用。`relatedProjects.get(alias).kv` 提供 `getValue`、`setValue`、`updateValue`、`deleteValue`（删除按写权限判定），没有 lock helper，也不能枚举 key——需要跨项目原子更新时，把整个读改写放进 `updateValue`。
-
-**关联项目不止 KV。** 同一个 `get(alias)` 还提供：
-
-- `knowledge`：目标项目的知识库，就是本文这套知识库 helper 绑在对方项目上——`listDocuments` / `getDocument` / `createDocument` / `editDocument` / `deleteDocument` / `searchDocuments` / `readDocumentLines`。
-- `listEntrypoints()`：目标项目授权给本项目的入口（`{ id, title?, description? }[]`），只列出授权覆盖的那些。
-- `runEntrypoint(entrypointId, args)`：执行其中一个，`args` 就是该入口自己的 `createInput` 解析的那套命令行参数；返回该入口的输出 payload。
-
-三项都由**目标项目**在 `grantToRelatedProject` 里授权：`knowledge: { read, write }` 与 `entrypoints`（`none` / `all` / `prefixes`，按入口 id 匹配），不写就是不授权。知识库按 key 判定权限，所以前缀授权可以只开放指定文档；列名录与搜索要动所有文档共用的索引，会以该 key 被拒绝。目标项目的其它持久值与会话 KV 一律不开放，列表里没有的入口也调不到；关联关系只走一跳，被调起来的项目自己不能再访问关联项目。当前完整成员列表见 `references/runtime-api-index.md`（生成物）。
-
-本地宿主打开目标项目的存储，并从目标目录执行获授权的关联入口；选择服务器位置时只远程读写数据，入口仍在本地执行。服务器数据请求仍校验调用方成员权限和双方项目授权。宿主给不了时抛 `RELATED_PROJECT_UNAVAILABLE`（`metadata.code`），授权不足时抛 `RELATED_PROJECT_KNOWLEDGE_ACCESS_DENIED` 或 `RELATED_PROJECT_ENTRYPOINT_ACCESS_DENIED`。
-
-**本地存储根目录是调用方与版本共有的资源。** 本地运行从环境变量取目录：KV 用 `STEAMHARNESS_KV_STORE_DIR`（未配置时默认 `os.tmpdir()/steamharness-kv`），PersistentValue 用 `STEAMHARNESS_PERSISTENT_VALUE_STORE_DIR`，文件用 `STEAMHARNESS_FILE_STORE_DIR`。这些变量随进程继承，宿主（Desktop、上层 agent、父 CLI）调度出的进程因此默认使用**宿主自己的**根目录——在别人配置的环境里跑另一个项目，会把该项目的运行态数据写进宿主的存储，或反过来读到别人写的数据。跑本地检查前，把这三个变量指向该项目的临时目录。
-
-根目录的布局与条目字段随版本演进：早期版本的作用域是 `global` / `workflow` / `conversation`，条目里写工作流名 `projectName`；当前版本只有 project / conversation，条目里写 `projectId`，并在根目录写 `.workflow-storage-format.json` 标记（当前 `{ version: 2, storageKind }`）。两种后果都必须避免：
-
-- 旧版本在同一个根目录里读到当前版本写下的条目会抛 `project_execution`：`Local workflow KV entry is invalid and cannot be read safely.`。旧版本每次写入都会枚举整个根目录，所以只要目录里存在一个它不认识的条目，写入就会失败——和当前项目自己的代码无关。
-- 当前版本遇到没有标记或标记不符的根目录，会把它当作待重建的旧根目录：删除 `.inspection`、`.locks`、`.transactions`、`conversation`、`global`、`project` 后写入新标记；如果标记里的 `storageKind` 与本次用途不同（KV 目录被当 PersistentValue 目录使用，或反之），直接抛 `input_validation`。
-
-不要把不同项目的运行指向同一个根目录，也不要靠删除目录排查这类错误：先确认失败进程真正拿到的路径（`env | grep -E 'STEAMHARNESS_.*STORE'`）和实际安装的 Core/CLI 版本，再判断是不是项目代码的问题。
-
-不要把 `persistentValue` 用于短生命周期 cache 或草稿状态。CLI/Desktop 本地运行可通过 `STEAMHARNESS_PERSISTENT_VALUE_STORE_DIR` 选择独立的本地目录；服务器位置使用 `STEAMHARNESS_SERVER_URL` / 登录态和项目 UUID。没有对应位置的 store 时，`getValue`、`setValue`、`updateValue`、`withLock` 都会抛错，绝不会转写到另一位置。Core 0.2 已移除 `context.kv` 与 `context.persistentValue` 类型和运行时属性，不提供迁移 getter。
-
-跨项目 KV 的两个失败码会出现在错误的 `metadata.code` 里：关系未确认、目标不可用或未导入时抛 `input_validation` 并带 `RELATED_PROJECT_UNAVAILABLE`；双方关系存在但当前 key 超出授权范围时带 `RELATED_PROJECT_KV_ACCESS_DENIED`。调用方应按这两个 code 区分"该提示用户去 Desktop 重新识别/确认关系"和"该提示用户调整 `grantToRelatedProject` 的 read/write 规则"。
-
-Server Web 的项目 KV 检查器只读取 `storage_kind = kv` 的 project/conversation 数据，不展示 PersistentValue，也不存在全局 KV 入口。
+事务失败全部回滚，远程事务使用 CAS 并发检查，不能在事务回调中执行不可重试的外部副作用。数据库 API 抛出的授权与未绑定错误必须交给宿主展示，不得吞错后自动创建空间或回退另一宿主。
 
 ## 项目知识文档
 
-当 workflow 需要通过 PersistentValue 管理项目级 Markdown 文档时，使用知识文档 helper：
+知识文档 helper 的首参使用显式 DatabaseContext；也可直接调用 database.knowledge：
 
 
 ```ts
-const storage = context.storage.local;
+const storage = context.databases.get("data");
 const created = await steamharness.createKnowledgeDocument(storage, {
   title: "Runbook",
   markdown: "# Runbook\n\nUse this on-call note.",
@@ -737,7 +454,6 @@ const excerpt = await steamharness.readKnowledgeDocumentLines(storage, {
 });
 ```
 
-这些 helper 只写入所传位置顶层的 `persistentValue`。选择 `context.storage.local` 使用本地知识库，选择 `context.storage.server` 使用同 UUID 云端知识库；项目声明必须允许该位置，两类数据不会自动同步。不要手动使用保留 key `knowledge.documents`、`knowledge.documents.page.<pageId>`、`knowledge.documents.locator.<id>` 或 `knowledge.document.<id>`，除非任务就是调试内置知识库实现；摘要分页的 cursor 是不透明 token，只能原样回传。
 
 conversation knowledge 应用要保持映射稳定：一个 `context.conversation.conversationId` 派生一个合法知识文档 id；每次 run 通过 `context.conversation` 追加消息；workflow 通过 `steamharness.createKnowledgeDocument` 或 `steamharness.editKnowledgeDocument` 重写完整 transcript markdown。需要离线本地测试时，为 `STEAMHARNESS_PERSISTENT_VALUE_STORE_DIR` 配置临时目录；只有未配置本地或远程 store 的示例才应暴露显式 `--dry-run`。
 
@@ -1430,7 +1146,6 @@ const readKey: AgentTool = {
     required: ["key"],
   },
   async execute(_toolCallId, { key }) {
-    const value = await context.storage.server.relatedProjects.get("database").kv.getValue(key);
     return { content: [{ type: "text", text: JSON.stringify(value ?? null) }], details: { key } };
   },
 };
@@ -1564,35 +1279,15 @@ const response = await fetch("https://api.example.com/run", {
 
 ## Package
 
-```json
-{
-  "id": "11111111-1111-4111-8111-111111111111",
-  "name": "@steamharness/hello-workflow",
-  "version": "0.1.0",
-  "private": true,
-  "type": "module",
-  "devDependencies": {
-    "@steamharness/cli": "0.2.0",
-    "steamharness": "0.2.0"
-  },
-  "steamHarness": {
-    "projectInfo": {
-      "dataStorage": {
-        "mode": "both"
-      },
-      "relatedProjects": []
-    }
-  }
-}
-```
-
-workflow package 的顶层 `id` 必须是 UUID。它既是远程项目主键，也是 server 权限校验边界；不要再使用目录名、包名或 `steamHarness.id` 代替。`steamHarness.projectInfo.dataStorage.mode` 是必填权威声明，新项目默认 `both`。通用关系写在 `projectInfo.relatedProjects`：alias 匹配 `[a-z][a-z0-9_-]{0,63}`，最多 32 项，alias 与 projectId 均不得重复或指向自身；每项只允许 `alias`、`projectId`、`grantToRelatedProject`，权限规则为 `none | all | prefixes`，`prefixes` 必须非空且去重。双方默认显式互写 `read: all`、`write: none`，单边声明可保存但只表示待确认。旧 `access`、`kanban.dataSources`、`.workflow` 存储作用域和全局 KV 不会自动转换。Core/CLI 使用独立的精确版本，除此之外只声明真实第三方依赖。CLI binary 由外层 Desktop、workspace、server tooling 提供。上传只按项目根目录 `.steamharnessignore` 选择文件，`.gitignore` 不参与；下载恢复服务端已保存的完整文件清单，不再次应用上传忽略规则。
+package.json 注册聚合入口，Core/CLI 依赖使用仓库指定精确版本。入口类型与 executor 一致；configuration 和代码路径相对 root。发行前静态检查每个入口，构建所有 Kanban 产物。数据库仅发行需求；bindingRef、凭据、数据库数据、历史及个人配置不进入发行包。
 
 ## Server 数据服务
 
-Server 提供项目创建、上传、不可变源码发布、历史版本下载、知识库、KV、PersistentValue 和文件存储。它不执行上传代码。数据写入采用 owner / manager / writer / viewer 成员权限，源码下载另行授权；关联数据访问仍需双方确认。
+数据库资源独立于项目，路径以 /api/database-spaces 为根；先申请、审批、绑定，再按有效授权读写。已有空间共享不依赖项目间关系。任何旧项目数据库或组合交付协议均不支持。
 
 ## CLI 面
+
+`steamharness check/structure/run/json/web <聚合目录> --entry <entryId>` 选择注册入口，省略使用 defaultEntry。Workflow 内部操作另外使用 `--entrypoint <entrypointId>`。MCP 同样携带 entryId。
 
 外层 `steamharness` 命令由 Desktop、workspace 或 server tooling 提供，项目只声明精确版本依赖，不生成自己的包装脚本。
 
@@ -1600,17 +1295,16 @@ Server 提供项目创建、上传、不可变源码发布、历史版本下载�
 
 | 命令 | 用途 |
 | --- | --- |
-| `steamharness structure <dir>` | 静态结构与违规检查；Workflow/Conversation/Kanban 都支持。 |
-| `steamharness json <dir> --entrypoint <id> -- [args]` | 用 JSON report 运行一次，不渲染用户可见输出。Kanban 拒绝。 |
+| `steamharness structure <dir> --entry <entryId>` | 静态结构与违规检查；Workflow/Conversation/Kanban 都支持。 |
+| `steamharness json <dir> --entry <entryId> --entrypoint <id> -- [args]` | 用 JSON report 运行一次，不渲染用户可见输出。Kanban 拒绝。 |
 | `steamharness run <dir> -- [args]` | 真实运行并渲染 output items。Kanban 拒绝。 |
 | `steamharness resolve-params <dir>` | 单独调用入口的 `resolveParams`，用于调试参数联动。 |
 | `steamharness mcp` | 把本地项目能力暴露成 stdio MCP server。 |
 
-常用 flag：`--conversation-id <id>` 指定或续接会话；`--entrypoint <id>` 选择入口；`--related-project <alias>=<绝对目录>` 为 `relatedProjects` 提供本地目标（本地验证跨项目 KV 的唯一方式，双方声明必须已存在且目标项目 `.id` 合法）；`--run-id <id>`、`--resolved-user-inputs-json <json>`、`--tool-permissions-json <json>` 用于恢复等待中的 user-input 与工具策略；`--file-store-dir <dir>` 指定本地文件存储目录。旧的 `--version` 已移除，发布版本由宿主管理。
 
 **workspace 子命令**（连接 SteamHarness Server 时）：
 
-`login`、`logout`、`status`、`health`、`pack`、`upload`、`preparation`、`download`、`publish`、`versions`、`file-upload`、`file-download`、`file-delete`。常用 flag：`--path <dir>`、`--create`、`--no-wait`、`--project-group`、`--publish-group`、`--deployment <id>`、`--dependency <alias>=<路径>`。项目端点：`/api/projects/<id>/package|publish|versions|source-files|source-archive`。
+`login`、`logout`、`status`、`health`、`pack`、`upload`、`preparation`、`download`、`publish`、`versions`、`file-upload`、`file-download`、`file-delete`。常用 flag：`--path <dir>`、`--create`、`--no-wait`、`--group-id <id>`。项目端点：`/api/projects/<id>/package|publish|versions|source-files|source-archive`。
 
 ## 验证
 

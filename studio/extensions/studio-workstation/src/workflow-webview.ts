@@ -15,7 +15,8 @@ export function projectFrameHtml(url: string, title: string, projectUri: string,
       const vscode=acquireVsCodeApi(),frame=document.getElementById('workflow-frame'),origin=${literal(address.origin)};
       let theme=${literal(theme)},windowChrome=${literal(windowChrome)},editCommands=false,contextMenu=false;
       const clearDragRegions=()=>vscode.postMessage({type:'studio-window-drag-regions',version:1,width:1,height:1,regions:[]});
-      const saved=vscode.getState?.(),state={...(saved?.projectUri===${literal(projectUri)}?saved:{}),projectUri:${literal(projectUri)}};
+      const entryId=${literal(decodeURIComponent(address.pathname.match(/\/entries\/([^/]+)/)?.[1] ?? ''))};
+      const saved=vscode.getState?.(),state={...(saved?.projectUri===${literal(projectUri)}&&saved?.entryId===entryId?saved:{}),projectUri:${literal(projectUri)},entryId};
       let frameUrl=${literal(address.href)};
       ${conversationView ? `
       const validId=value=>typeof value==='string'&&/^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/i.test(value);
@@ -54,7 +55,7 @@ export function projectFrameHtml(url: string, title: string, projectUri: string,
             }
           }
           if(event.origin===origin&&${projectSetup}&&event.data?.type==='workflow-project-upload'&&event.data.version===1)vscode.postMessage({type:'workflow-project-upload',version:1});
-          if(event.origin===origin&&['workflow-trace','workflow-account','workflow-clipboard','workflow-resource','workflow-reconnect','workflow-drop-target','workflow-path-picker','workflow-path-open','workflow-user-settings','workflow-file-icons'].includes(event.data?.type)&&event.data.version===1)vscode.postMessage(event.data);
+          if(event.origin===origin&&['workflow-open-entry','workflow-trace','workflow-account','workflow-clipboard','workflow-resource','workflow-reconnect','workflow-drop-target','workflow-path-picker','workflow-path-open','workflow-user-settings','workflow-file-icons'].includes(event.data?.type)&&event.data.version===1)vscode.postMessage(event.data);
           return;
         }
         if(event.data?.type!=='workflow-host')return;

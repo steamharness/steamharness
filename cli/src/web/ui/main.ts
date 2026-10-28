@@ -1,3 +1,4 @@
+import { mountAggregateToolbar } from './aggregate';
 import { mountProjectConfigurations, projectConfigurationsButton } from './project-configurations';
 import { t, locale } from '../localization';
 import type { AccountState } from '../workflow-auth-client';
@@ -1061,7 +1062,7 @@ function initialize(): void {
     for (const action of view.root.querySelectorAll<HTMLButtonElement>('.trace-message, .export-message')) action.hidden = submissions.local(message);
     updateMessageMetadata(view);
     if (message.role === 'user') { view.content.textContent = message.content; }
-    else { view.output!.update(message, state!.project.id, state!.activeId, files, state!.project.projectInfo?.dataStorage?.mode === 'server' ? 'server' : 'local', filesSignature, collapseEnabled); }
+    else { view.output!.update(message, state!.project.id, state!.project.entryId, state!.activeId, files, state!.project.databases.some(database => database.host === 'server') ? 'server' : 'local', filesSignature, collapseEnabled); }
     const error = message.status === 'running' || message.status === 'sending' ? undefined : message.error;
     view.error.textContent = error ?? '';
     view.error.hidden = !error;

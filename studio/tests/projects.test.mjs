@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { readImportedProjects, readRecentProjects, readRelatedProjects, rememberImportedProjects, rememberProjects } from '../extensions/studio-workstation/src/projects.ts';
+import { readImportedProjects, readRecentProjects, rememberImportedProjects, rememberProjects } from '../extensions/studio-workstation/src/projects.ts';
 
 const project = (uri, lastOpened = 1, kind = 'folder') => ({ uri, label: 'Project', kind, lastOpened });
 
@@ -43,16 +43,8 @@ test('imported projects retain their identity independently of the recent histor
     { ...replacement, uri: 'https://example.com' }, { ...replacement, name: '' }, { ...replacement, id: replacement.id.toUpperCase() }]), [replacement]);
 });
 
-test('remembering an opened download preserves its version and group association', () => {
-  const source = { id: '294b1eec-23fa-42cf-9fd3-2417f71c0570', name: 'Board', uri: 'file:///board-1.0.0', version: '1.0.0', downloadRootUri: 'file:///board-1.0.0' };
+test('remembering an opened download preserves its version and aggregate identity', () => {
+  const source = { id: '294b1eec-23fa-42cf-9fd3-2417f71c0570', name: 'Board', uri: 'file:///board-1.0.0', version: '1.0.0' };
   const next = rememberImportedProjects([source], [{ id: source.id, uri: source.uri, name: 'Board renamed' }]);
   assert.deepEqual(next, [{ ...source, name: 'Board renamed' }]);
-});
-
-test('related projects resolve declared UUIDs rather than labels or paths', () => {
-  const id = '615e6cf6-b40a-456a-8d19-b71c63454c7a';
-  assert.deepEqual(readRelatedProjects({ steamHarness: { projectInfo: { relatedProjects: [
-    { alias: 'notes', projectId: id.toUpperCase(), path: '/arbitrary' }, null, {}, { alias: 'invalid', projectId: '/notes' }, { alias: '', projectId: id },
-  ] } } }), [{ alias: 'notes', projectId: id }]);
-  assert.deepEqual(readRelatedProjects(null), []);
 });

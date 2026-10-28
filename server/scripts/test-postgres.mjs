@@ -32,6 +32,8 @@ try {
     "--test-reporter=spec",
     "--test-concurrency=1",
     "src/__tests__/storage-postgres.test.ts",
+    "src/__tests__/database-spaces-postgres.test.ts",
+    "src/__tests__/database-spaces-http-postgres.test.ts",
     "src/__tests__/account-auth-postgres.test.ts",
     "src/__tests__/project-access-postgres.test.ts",
   ], {

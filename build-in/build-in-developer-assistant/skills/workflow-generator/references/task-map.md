@@ -11,7 +11,7 @@
 | 仅在宿主或测试中构造 Agent executor | `steamharness.defineAgentConversationExecutor`；`AgentProjectOptions` | `steamharness-api.md`「Agent（pi SDK 能力层）」 | 不把返回对象当作项目的静态声明 |
 | 定义 Workflow 主字段、Conversation Quick/Mode/Auxiliary 或联动 | `ParamDeclaration`、`ConversationParamDeclaration`、`ParamResolverContext`、`ParamResolveResult` | `references/param-panels.md`；`steamharness-api.md`「参数」 | `structure` 检查 `params` 与 `paramLayout.actions` |
 | 输出正文、详情或文件 | `steamharness.createOutputNode`、`runStreamNode`、`createOutputItemChunk`；`RunOutputPayload`、`OutputItem` | `steamharness-api.md`「必需本地类型」与「节点」 | run/json 检查正文 item 与详情 item |
-| 读取或修改项目数据 | `RunContext`、`RelatedProjectStorageContext` | `steamharness-api.md`「运行时 KV 与 Conversation 状态」「项目知识文档」 | 用隔离存储运行，按声明权限检查 |
+| 读取或修改项目数据 | `RunContext`、`DatabaseContext` | `steamharness-api.md`「独立数据库空间」「项目知识文档」 | 用隔离注册表申请审批，按声明与有效授权检查 |
 | 处理 Kanban 页面与命名参数 | `steamHarness.kanban`、`configuration.json` | `steamharness-api.md`「Kanban 静态项目」；`assets/kanban/` | 构建产物入口及 `structure` |
 | 上传图片、文件或迁移本地底图 | `context.files`、Kanban `files`、CLI `workspace file-upload/file-download` | `steamharness-api.md`「Kanban 静态项目」与 File param 契约 | 服务器引用及原始字节读回，KV 只存引用 |
 

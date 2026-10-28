@@ -21,10 +21,10 @@ it.each(['workflow', 'conversation'] as const)('retains structured remote storag
     const coreRoot = await resolveHarnessRoot(), version = JSON.parse(await readFile(path.join(coreRoot, 'package.json'), 'utf8')).version;
     await mkdir(path.join(directory, 'node_modules'));
     await symlink(coreRoot, path.join(directory, 'node_modules/steamharness'), process.platform === 'win32' ? 'junction' : 'dir');
-    await writeFile(path.join(directory, 'package.json'), JSON.stringify({ id, name: 'storage-error-fixture', type: 'module', version: '1.0.0', devDependencies: { steamharness: version }, steamHarness: { projectType: kind, projectInfo: { dataStorage: { mode: 'both' } } } }));
+    await writeFile(path.join(directory, 'package.json'), JSON.stringify({ id, name: 'storage-error-fixture', type: 'module', version: '1.0.0', devDependencies: { steamharness: version }, steamHarness: { defaultEntry: 'main', entries: [{entryId:'main',name:'Main',type:kind,root:'.',entry:'index.ts',databases:[{alias:'data',host:'server',bindingRef:crypto.randomUUID(),permissions:{kv:{read:{mode:'all'},write:{mode:'all'}},knowledge:{read:{mode:'all'},write:{mode:'all'}}}}]}],  } }));
     await writeFile(path.join(directory, 'index.ts'), `
       const flow = steamharness.defineProject({ name: 'storage-error', async run(input, context) {
-        await context.storage.server.kv.getValue('missing-key'); return { errCode: 0, errMessage: '' };
+        await context.databases.get('data').kv.getValue('missing-key'); return { errCode: 0, errMessage: '' };
       } });
       export const executor = steamharness.defineExecutor(${kind === 'workflow' ? `{ projectType: 'workflow', defaultEntrypoint: 'main',
         entrypoints: [steamharness.defineEntrypoint({ id: 'main', title: 'Main', workflow: flow, params: [], createInput() { return {}; } })] }`
@@ -33,7 +33,7 @@ it.each(['workflow', 'conversation'] as const)('retains structured remote storag
     const inspected = await runtime.inspect([directory]); expect(inspected.errors).toEqual([]);
     const report = await runtime.run({ project: { ...inspected.projects[0], uri: '' }, runId: 'failed-run', conversationId: 'fixture', args: [] }, () => undefined);
     expect(report.status).toBe('failed');
-    expect(report.error?.metadata, JSON.stringify(report)).toMatchObject({ code: 'PROJECT_SERVER_ACCESS_FAILED', serverUrl: connection.serverUrl, projectId: id, status: 404, key: 'missing-key', operation: 'get' });
+    expect(report.error?.metadata, JSON.stringify(report)).toMatchObject({ code: 'DATABASE_ACCESS_FAILED',entryId:'main',database:'data', serverUrl: connection.serverUrl, projectId: id, status: 404 });
     expect(JSON.stringify(report)).not.toContain('fixture-private-token');
   } finally {
     runtime.dispose(); await new Promise<void>(resolve => { server.close(() => resolve()); server.closeAllConnections(); });

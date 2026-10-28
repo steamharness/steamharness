@@ -806,5 +806,13 @@
   "Unable to refresh built-in models.": "Unable to refresh built-in models.",
   "Built-in models are managed by your AI account.": "Built-in models are managed by your AI account.",
   "Provider": "Provider",
-  "You can save up to 100 custom models.": "You can save up to 100 custom models."
+  "You can save up to 100 custom models.": "You can save up to 100 custom models.",
+  "Invalid project entry identifier.": "Invalid project entry identifier.",
+  "Entry ID": "Entry ID",
+  "Database binding": "Database binding",
+  "Not bound": "Not bound",
+  "Project windows": "Project windows",
+  "Database spaces": "Database spaces",
+  "Invalid resource operation.": "Invalid resource operation.",
+  "This folder cannot be upgraded in place. Download a new copy to preserve its workspace.": "This folder cannot be upgraded in place. Download a new copy to preserve its workspace."
 }

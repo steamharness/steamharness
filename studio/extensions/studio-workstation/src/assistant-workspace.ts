@@ -4,7 +4,7 @@ export const DEVELOPER_ASSISTANT_PROJECT_ID = 'a3aca697-b086-459b-84e4-d357ad2d9
 
 const assistantTools = new Set(['read', 'write', 'edit', 'bash', 'grep', 'find', 'ls', 'skill',
   'workflow-memory_global_memory', 'workflow-ui_present_card',
-  'workflow-studio_studio_state', 'workflow-studio_get_related_projects', 'workflow-studio_get_diagnostics', 'workflow-studio_open_file',
+  'workflow-studio_studio_state', 'workflow-studio_get_entries', 'workflow-studio_get_diagnostics', 'workflow-studio_open_file',
   'workflow-studio_set_theme', 'workflow-studio_open_terminal', 'workflow-studio_show_view']);
 
 export function createAssistantProject(

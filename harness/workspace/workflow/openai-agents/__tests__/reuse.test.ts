@@ -1,8 +1,8 @@
+import { createApprovedTestContext } from "../../../test-databases";
 import { beforeAll, describe, expect, it } from "vitest";
 import { installProjectRuntimeGlobal } from "steamharness/runtime-api";
 import {
   createDisabledProjectTokenUsageContext,
-  createProjectRelatedProjectsContext,
   createProjectToolPermissionContext,
   createProjectTokenUsageContext,
   createProjectConversationContext,
@@ -84,13 +84,7 @@ describe("openai-agents reusable mode", () => {
     const kv = createMemoryKVContext();
     const context = {
       providers: {},
-      storage: {
-        local: {
-          kv,
-          persistentValue: kv,
-          relatedProjects: createProjectRelatedProjectsContext(),
-        },
-      },
+      ...createApprovedTestContext(),
       conversation: createProjectConversationContext({
         enabled: true,
         conversationId: "reuse-thread",
@@ -178,7 +172,7 @@ describe("openai-agents reusable mode", () => {
       "streaming ",
       "world",
     ]);
-    expect(await context.storage.local.kv.conversation.getValue("openaiAgents.history")).toMatchObject({
+    expect(await context.databases.get("data").kv.conversation.getValue("openaiAgents.history")).toMatchObject({
       historyLength: 2,
     });
   });
@@ -569,7 +563,7 @@ describe("openai-agents reusable mode", () => {
       "openai-agents-tool-3-knowledge_documents",
       "openai-agents-answer",
     ]);
-    expect(await context.storage.local.persistentValue.getValue("knowledge.document.agent-runbook")).toMatchObject({
+    expect(await context.databases.get("data").knowledge.getDocument("agent-runbook")).toMatchObject({
       id: "agent-runbook",
       title: "Agent Runbook",
     });
@@ -1087,20 +1081,7 @@ function createToolContext(
 ) {
   const persistentValue = createMemoryKVContext();
   return {
-    storage: {
-      local: {
-        kv: {
-          conversation: {
-            async getValue() {
-              return undefined;
-            },
-            async setValue() {},
-          },
-        },
-        persistentValue,
-        relatedProjects: createProjectRelatedProjectsContext(),
-      },
-    },
+    ...createApprovedTestContext(),
     conversation: {
       async getValue() {
         return {
@@ -1157,18 +1138,7 @@ function createOpenAIAgentsContext(options: {
 
   return {
     providers: {},
-    storage: {
-      local: {
-        kv,
-        persistentValue,
-        relatedProjects: createProjectRelatedProjectsContext(),
-      },
-      server: {
-        kv: createMemoryKVContext(),
-        persistentValue: createMemoryKVContext(),
-        relatedProjects: createProjectRelatedProjectsContext(),
-      },
-    },
+    ...createApprovedTestContext(),
     conversation: createProjectConversationContext({
       enabled: true,
       conversationId: "stream-thread",

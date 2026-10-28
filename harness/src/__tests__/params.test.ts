@@ -83,7 +83,7 @@ test("conversation structure reports every declared parameter action", async () 
   const projectDir = await mkdtemp(path.join(os.tmpdir(), "steamharness-param-actions-"));
   try {
     await Promise.all([
-      writeFile(path.join(projectDir, "package.json"), JSON.stringify({
+      writeFile(path.join(projectDir, "package.json"), JSON.stringify({id:crypto.randomUUID(),steamHarness:{defaultEntry:"main",entries:[{entryId:"main",name:"Main",type:"conversation",root:".",entry:"index.ts",databases:[]}]},
         name: "param-actions-structure-test", version: "0.1.0", type: "module",
       })),
       writeFile(path.join(projectDir, "index.ts"), `
@@ -349,7 +349,7 @@ test("static structure and runtime resolver share quick param metadata", async (
   });
 });
 
-test("server-only parameter resolution ignores project env and requires a host connection", async () => {
+test("parameter resolution without database access works offline and ignores project environment", async () => {
   const projectDir = await mkdtemp(path.join(os.tmpdir(), "steamharness-server-param-resolver-"));
   const projectId = "917a6ac8-c01a-43db-b892-71c1d922bb92";
   const importMarker = "__projectServerParamResolverImported";
@@ -368,7 +368,7 @@ test("server-only parameter resolution ignores project env and requires a host c
     id: projectId,
     name: "server-param-resolver",
     type: "module",
-    steamHarness: { projectInfo: { dataStorage: { mode: "server" } } },
+    steamHarness: {defaultEntry:"main",entries:[{entryId:"main",type:"workflow",name:"Main",root:".",entry:"index.ts",databases:[]}], projectInfo:{}},
   }));
   await writeFile(path.join(projectDir, "index.ts"), [
     `(globalThis as Record<string, unknown>)[${JSON.stringify(importMarker)}] = true;`,
@@ -399,19 +399,16 @@ test("server-only parameter resolution ignores project env and requires a host c
   };
 
   try {
-    await assert.rejects(
-      resolveLocalProjectParams({ projectDir, request }),
-      /authenticated server connection/,
-    );
-    assert.equal((globalThis as Record<string, unknown>)[importMarker], undefined);
+    assert.deepEqual(await resolveLocalProjectParams({projectDir,request}),{params:{value:{value:"server"}}});
+    assert.equal((globalThis as Record<string, unknown>)[importMarker], true);
 
     await writeFile(path.join(projectDir, ".env"), [
       "STEAMHARNESS_SERVER_URL=https://server.example.test",
       "STEAMHARNESS_SERVER_ADMIN_KEY=project-env-key",
       "",
     ].join("\n"));
-    await assert.rejects(resolveLocalProjectParams({projectDir, request}), /authenticated server connection/);
-    assert.equal((globalThis as Record<string, unknown>)[importMarker], undefined);
+    assert.deepEqual(await resolveLocalProjectParams({projectDir,request}),{params:{value:{value:"server"}}});
+    assert.equal(process.env.STEAMHARNESS_SERVER_URL,undefined);
 
     assert.deepEqual(await resolveLocalProjectParams({
       projectDir,
@@ -469,7 +466,7 @@ async function createResolverProject(): Promise<string> {
     id: "11111111-1111-4111-8111-111111111111",
     name: "@steamharness/param-resolver-test",
     type: "module",
-    steamHarness: { projectInfo: { dataStorage: { mode: "local" } } },
+    steamHarness: {defaultEntry:"main",entries:[{entryId:"main",type:"workflow",name:"Main",root:".",entry:"index.ts",databases:[]}], projectInfo:{}},
   }));
   await writeFile(path.join(projectDir, "index.ts"), [
     "const testProject = steamharness.defineProject({ name: 'param-resolver-test', run: async () => ({ errCode: 0, errMessage: '' }) });",
@@ -506,7 +503,7 @@ async function createDateParamProject(): Promise<string> {
     id: "22222222-2222-4222-8222-222222222222",
     name: "@steamharness/date-param-test",
     type: "module",
-    steamHarness: { projectInfo: { dataStorage: { mode: "local" } } },
+    steamHarness: {defaultEntry:"main",entries:[{entryId:"main",type:"workflow",name:"Main",root:".",entry:"index.ts",databases:[]}], projectInfo:{}},
   }));
   await writeFile(path.join(projectDir, "index.ts"), [
     "const outputNode = steamharness.createOutputNode({ name: 'output', format(input) { return input; } });",

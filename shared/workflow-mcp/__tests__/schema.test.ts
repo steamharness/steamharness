@@ -178,7 +178,7 @@ describe("workflow MCP schemas", () => {
 
 describe("workflow MCP args and files", () => {
   it("converts typed input to the existing CLI args contract", async () => {
-    const args = await projectMcpInputToArgs({
+    const args = await projectMcpInputToArgs({ entryId: "main",
       projectId: "project-1",
       entrypointId: "main",
       params,
@@ -205,7 +205,7 @@ describe("workflow MCP args and files", () => {
   });
 
   it("applies optional static defaults when MCP clients omit those fields", async () => {
-    const args = await projectMcpInputToArgs({
+    const args = await projectMcpInputToArgs({ entryId: "main",
       projectId: "project-1",
       entrypointId: "main",
       params,
@@ -224,7 +224,7 @@ describe("workflow MCP args and files", () => {
   });
 
   it("serializes multiple boolean params as JSON arrays", async () => {
-    const args = await projectMcpInputToArgs({
+    const args = await projectMcpInputToArgs({ entryId: "main",
       projectId: "project-1",
       entrypointId: "main",
       params: [{ name: "flags", flag: "--flags", type: "boolean", multiple: true }],
@@ -246,7 +246,7 @@ describe("workflow MCP args and files", () => {
         createId: () => "wf_12345678901234567890",
         now: () => new Date("2026-08-28T00:00:00.000Z"),
       });
-      const args = await projectMcpInputToArgs({
+      const args = await projectMcpInputToArgs({ entryId: "main",
         projectId: "project-1",
         entrypointId: "main",
         params: [{ name: "file", flag: "--file", type: "file" }],
@@ -257,7 +257,7 @@ describe("workflow MCP args and files", () => {
       });
       const refs = JSON.parse(args[1] ?? "[]") as McpManagedFileReference[];
       expect(args[0]).toBe("--file");
-      expect(refs[0]).toMatchObject({
+      expect(refs[0]).toMatchObject({ entryId: "main",
         id: "wf_12345678901234567890",
         projectId: "project-1",
         storage: "local",
@@ -271,7 +271,7 @@ describe("workflow MCP args and files", () => {
 
   it("treats an empty optional file array as omitted", async () => {
     const resolveFiles = vi.fn();
-    await expect(projectMcpInputToArgs({
+    await expect(projectMcpInputToArgs({ entryId: "main",
       projectId: "project-1",
       entrypointId: "main",
       params: [{ name: "files", flag: "--files", type: "file", multiple: true }],
@@ -289,7 +289,7 @@ describe("workflow MCP args and files", () => {
     await writeFile(source, "large", "utf8");
     try {
       const resolver = createLocalProjectMcpFileResolver({ fileStoreDir: root, maxFileSizeBytes: 2 });
-      const context = {
+      const context = { entryId: "main",
         projectId: "project-1",
         entrypointId: "main",
         param: { name: "file", flag: "--file", type: "file" as const },
@@ -311,7 +311,7 @@ describe("workflow MCP args and files", () => {
     try {
       await symlink(source, linked, "file");
       const resolver = createLocalProjectMcpFileResolver({ fileStoreDir: path.join(root, "store") });
-      await expect(resolver([linked], {
+      await expect(resolver([linked], { entryId: "main",
         projectId: "project-1",
         entrypointId: "main",
         param: { name: "file", flag: "--file", type: "file" as const },
@@ -329,7 +329,7 @@ describe("workflow MCP args and files", () => {
     await writeFile(source, "valid", "utf8");
     try {
       const resolver = createLocalProjectMcpFileResolver({ fileStoreDir: store });
-      await expect(resolver([source, "relative.txt"], {
+      await expect(resolver([source, "relative.txt"], { entryId: "main",
         projectId: "project-1",
         entrypointId: "main",
         param: { name: "files", flag: "--files", type: "file", multiple: true },
@@ -342,7 +342,7 @@ describe("workflow MCP args and files", () => {
   });
 
   it("re-reads authoritative server metadata and enforces project ownership", async () => {
-    const metadata: McpManagedFileReference = {
+    const metadata: McpManagedFileReference = { entryId: "main",
       id: "wf_server_file_1234567890",
       name: "actual.txt",
       mimeType: "text/plain",
@@ -355,7 +355,7 @@ describe("workflow MCP args and files", () => {
     const resolver = createServerProjectMcpFileResolver({
       readFile: async (_projectId, fileId) => fileId === metadata.id ? metadata : undefined,
     });
-    const context = {
+    const context = { entryId: "main",
       projectId: "project-1",
       entrypointId: "main",
       param: { name: "file", flag: "--file", type: "file" as const },

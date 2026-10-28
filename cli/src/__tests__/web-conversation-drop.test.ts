@@ -7,7 +7,7 @@ const host = vi.hoisted(() => ({ postMessage: vi.fn(), getState: vi.fn(), setSta
 vi.mock('../web/ui/host', () => ({ acquireProjectHost: () => host }));
 vi.mock('../web/ui/conversation-tools', () => ({ ConversationTools: class { open = false; close() {} closeUsage() {} } }));
 const listeners: { target: EventTarget; type: string; listener: EventListenerOrEventListenerObject; options?: boolean | AddEventListenerOptions }[] = [];
-const project: Project = { id: 'drop', uri: 'file:///drop', folderPath: '/drop', name: 'Drop', projectType: 'conversation', fields: [], entrypoints: [] };
+const project: Project = {entryId:"main",aggregateName:"Test aggregate",defaultEntry:"main",entryRoot:'/drop',databases:[],entries:[{entryId:"main",name:"Main",type:'conversation',root:".",entry:"index.ts",databases:[]}], id: 'drop', uri: 'file:///drop', folderPath: '/drop', name: 'Drop', projectType: 'conversation', fields: [], entrypoints: [] };
 const session = (id: string): ConversationSession => ({ id, title: id, messages: [], draft: { text: '', attachments: [] } });
 const references = [{ path: '/workspace/资料', name: '资料', kind: 'directory' }, { path: '/tmp/a b.txt', name: 'a b.txt', kind: 'file' }];
 const transfer = (data: Record<string, string>, extra: object = {}) => ({ types: Object.keys(data), getData: (type: string) => data[type] ?? '', files: [], items: [], ...extra }) as unknown as DataTransfer;

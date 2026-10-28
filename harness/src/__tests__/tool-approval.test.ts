@@ -164,7 +164,7 @@ async function createToolApprovalProject(): Promise<string> {
       id: "11111111-1111-4111-8111-111111111111",
       name: "@steamharness/tool-approval-test",
       type: "module",
-      steamHarness: { projectInfo: { dataStorage: { mode: "local" } } },
+      steamHarness: {defaultEntry:"main",entries:[{entryId:"main",type:"workflow",name:"Main",root:".",entry:"index.ts",databases:[]}], projectInfo:{}},
     }),
   );
   await writeFile(

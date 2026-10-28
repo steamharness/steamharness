@@ -7,6 +7,11 @@
 - Fixed concurrent user model writes with a cross-window lock and prevented open-source windows from replacing hidden system models. Stale catalogue results no longer change a form after switching sources or reopening the editor.
 
 - Added a user model settings page with add, edit, delete and default actions across workspaces and SecretStorage for third-party keys. Open-source Studio offers third-party models; host extensions may supply a system AI catalogue. The assistant opens available choices before model settings.
+- Studio Control is embedded as the Assistant’s `studio-control` Workflow entry alongside the default `main` conversation, sharing one projectId, dependencies and distribution. Assistant calls the entry on demand while preserving tool approval, per-run permissions and authenticated connection revocation. Removed the independent control project and installation.
+
+- Fixed remote entry configuration and upload revision queries using an unavailable Server API path. Requests preserve entry selection, cancellation and configuration conflict codes.
+
+- Breaking: the project tree exposes aggregate entries in separate native tabs sharing one host. The host is released after its last tab closes. Entry resources use independently approved database spaces; host pages manage requests, approval and sharing. Transfers include the complete aggregate.
 
 - Fixed the Assistant permission shortcut to open the Permissions category in user settings, reusing the existing settings tab. Sidebar and standalone tool shortcuts now work independently of the conversation lifecycle.
 
@@ -46,7 +51,6 @@
 
 - Fix: Assistant startup retries immediately show progress and a spinner, prevent duplicate clicks, and display the original reason if retry fails before allowing another attempt.
 
-- [Fixed] Restore an exited project or Assistant CLI on its original port from Retry or Stop without replacing the page or drafts. Coalesce recovery requests, retain the latest account and related projects, and cancel recovery when the workspace closes.
 
 - [Improved] Steam tools initially occupy one third of the window. Manually resized widths are saved per workspace and restored after hiding, mode switches and reloads; temporary window constraints preserve the preferred width.
 
@@ -72,11 +76,9 @@
 
 ### Opening Projects
 
-- Recent projects, the File menu, Ctrl+R, folders/workspaces, related projects, resource cards, downloads/imports, and installation retries consistently offer a new or current window; cancelling leaves the window and installation unchanged.
 
 ### Project Avatars
 
-- Start, recent projects, project lists, related projects, Project Information, run tabs, and project pickers consistently show project icons and colors; new projects save random avatars with sufficient contrast.
 - Fixed project creation failing when template dependencies used version ranges by bundling exact compatible versions.
 
 ### Pi Durable
@@ -103,7 +105,6 @@
 - Added an upload button beside Run to publish local source as a Server project version.
 - Added a Versions sidebar with history, release notes, uploader, related versions, and downloads.
 - Added downloads into independent version folders under the default project location, with unique names for repeated downloads.
-- Added project versions to Start, recent projects, editor tabs, related projects, and resource panels.
 
 - Added a native Start workbench shared by the empty background and a restorable Start tab.
 - Added three project starters and four offline examples to the Start workbench.
@@ -119,7 +120,6 @@
 
 - Changed new project templates to declare their static project type explicitly and aligned the bundled Assistant and Studio Control with the project storage contract; Server uploads store source and data.
 - Changed Untitled to use the native blank text editor. Double-clicking the editor background or empty tab strip no longer creates files; commands and shortcuts still do.
-- Changed Recent Projects, Open Recent, workspace, and related-project lists to show unified Workflow, Conversation, and Kanban icons.
 - Changed project and template pickers to reuse the same type icons while folders and workspaces keep their existing icons.
 - Changed new projects and examples to share one creation dialog for type, template, name, and location.
 - Changed the default location to `Documents/steamharness-projects` under the home directory.
@@ -142,7 +142,6 @@
 - Fix profile image data URLs being discarded in Studio. Refresh avatars and names when returning to the window and periodically, preserving the active connection and ignoring stale refresh results.
 - Fixed the Start logo moving above its title in narrow editor groups; the logo stays beside the title and actions wrap based on the editor width.
 - Fixed transfers potentially uploading or downloading a prior selection through a new account after switching accounts during project selection, saves, or progress startup.
-- Fixed downloaded group members resolving related projects from other versions and manual reimports losing their version binding.
 - Fixed the Versions view retaining the old project after changing its UUID in the same folder, and cancelled requests reporting invalid responses.
 - Fixed isolated icons appearing during the first Start load by showing theme-aware skeletons and a loading indicator. Later refreshes keep existing content, and reduced motion disables animations.
 - Fixed low-contrast icons in the Start workbench New Project and Run Project buttons by rendering them in white.

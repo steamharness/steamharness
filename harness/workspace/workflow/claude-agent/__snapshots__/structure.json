@@ -2,10 +2,6 @@
   "projectName": "claude-agent",
   "projectType": "conversation",
   "files": [
-    "__tests__/input-node.test.ts",
-    "__tests__/knowledge-documents-tool.test.ts",
-    "__tests__/output-items.test.ts",
-    "__tests__/tool-approval-stream.test.ts",
     "index.ts",
     "interface.ts",
     "knowledge-documents-tool.ts",

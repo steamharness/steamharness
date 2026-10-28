@@ -5,7 +5,7 @@ const third = { id: "third", name: "Private endpoint", source: "third-party", mo
 const system = { id: "system", name: "Subscription", source: "system", model: "system-model", credentialId: "subscription-a" };
 describe("configured Agent models", () => {
   it("keeps code restrictions when a published template predates the policy", () => {
-    const template = freezeConfigurationTemplate(createPublicationDraft(createConfigurationState([field], () => "official")), { projectId: "project", projectVersion: "1", sourceHash: "0".repeat(64) });
+    const template = freezeConfigurationTemplate(createPublicationDraft(createConfigurationState([field], () => "official")), { projectId: "project",entryId:"main",projectVersion: "1", sourceHash: "0".repeat(64) });
     const recipient = bindConfigurationTemplate(createConfigurationState([{ ...field, allowThirdParty: false }], () => "personal"), template);
     expect(recipient.fields[0]!.allowThirdParty).toBe(false);
     expect(configurationSnapshot(recipient).agentModelPolicy).toEqual({ allowThirdParty: false });
@@ -13,7 +13,7 @@ describe("configured Agent models", () => {
   });
   it("retains a project policy even when the AI field is excluded from publication", () => {
     const state = createConfigurationState([{ ...field, allowThirdParty: false, sharing: { publish: false } }], () => "official");
-    const template = freezeConfigurationTemplate(createPublicationDraft(state), { projectId: "project", projectVersion: "1", sourceHash: "0".repeat(64) });
+    const template = freezeConfigurationTemplate(createPublicationDraft(state), { projectId: "project",entryId:"main",projectVersion: "1", sourceHash: "0".repeat(64) });
     expect(template.fields).toEqual([]);
     expect(template.reservedFields).toHaveLength(1);
     const recipient = bindConfigurationTemplate(createConfigurationState([], () => "personal"), template);
@@ -24,7 +24,7 @@ describe("configured Agent models", () => {
     const state = createConfigurationState([{ ...field, allowThirdParty: false }], () => "official");
     state.configurations[0]!.values[key] = [third, system] as any;
     const draft = parsePublicationDraft(createPublicationDraft(state));
-    const binding = { projectId: "project", projectVersion: "1", sourceHash: "0".repeat(64) };
+    const binding = { projectId: "project",entryId:"main",projectVersion: "1", sourceHash: "0".repeat(64) };
     expect(freezeConfigurationTemplate(draft, binding).configurations[0]!.values).toEqual({});
     draft.fields[0]!.sharing = { publish: true, includeValue: true };
     expect(() => freezeConfigurationTemplate(draft, binding)).toThrow(/only allows system AI/);
@@ -57,7 +57,7 @@ describe("configured Agent models", () => {
     expect(state.configurations).toHaveLength(1); expect(state.revision).toBe(0); expect(state.configurations[0]!.values).toEqual({[key]:[]});
     const saved = applyConfigurationAction(state,{action:"save",revision:0,id:"profile",values:{[key]:[system] as any}},()=>"new");
     expect(configurationSnapshot(saved).agentModelPolicy).toEqual({allowThirdParty:false});
-    const template=freezeConfigurationTemplate(createPublicationDraft(saved),{projectId:"project",projectVersion:"1",sourceHash:"0".repeat(64)});
+    const template=freezeConfigurationTemplate(createPublicationDraft(saved),{projectId:"project",entryId:"main",projectVersion:"1",sourceHash:"0".repeat(64)});
     const recipient=bindConfigurationTemplate(createConfigurationState(template.fields,()=>"personal"),template);
     expect(template.fields[0]!.allowThirdParty).toBe(false);
     expect(configurationSnapshot(recipient).agentModelPolicy).toEqual({allowThirdParty:false});
@@ -92,7 +92,7 @@ describe("configured Agent models", () => {
     const backup = exportConfigurations(state);
     const imported = applyConfigurationAction(createConfigurationState([field], () => "other"), { action: "import", revision: 0, document: backup }, () => "imported");
     expect(configurationSnapshot(imported, "imported").values[key]).toEqual([system, third]);
-    const template = freezeConfigurationTemplate(createPublicationDraft(state), { projectId: "project", projectVersion: "1", sourceHash: "0".repeat(64) });
+    const template = freezeConfigurationTemplate(createPublicationDraft(state), { projectId: "project",entryId:"main",projectVersion: "1", sourceHash: "0".repeat(64) });
     expect(JSON.stringify(template)).not.toContain(third.apiKey);
     expect(template.fields[0]!.defaultValue).toBeUndefined();
     expect(template.configurations[0]!.values[key]).toBeUndefined();
@@ -100,7 +100,7 @@ describe("configured Agent models", () => {
   it("treats model arrays as one permission unit, including direct writes and imports", () => {
     const owner = createConfigurationState([{ ...field, sharing: { publish: true, includeValue: true, editable: false } }], () => "official");
     owner.configurations[0]!.values[key] = [system] as any;
-    const template = freezeConfigurationTemplate(createPublicationDraft(owner), { projectId: "project", projectVersion: "1", sourceHash: "0".repeat(64) });
+    const template = freezeConfigurationTemplate(createPublicationDraft(owner), { projectId: "project",entryId:"main",projectVersion: "1", sourceHash: "0".repeat(64) });
     const state = bindConfigurationTemplate(createConfigurationState(template.fields, () => "personal"), template);
     expect(() => applyConfigurationAction(state, { action: "save", revision: state.revision, id: state.activeConfigurationId, values: { [key]: [third] as any } }, () => "new")).toThrow(/locked/);
     const document = exportConfigurations(state); document.configurations[0]!.values[key] = [third] as any;

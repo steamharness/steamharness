@@ -5,7 +5,7 @@ description: "The entry, boundary, and per-method document index of the workflow
 
 # Core API Overview
 
-The Core API section documents the `workflow.*` runtime API available directly to business workflows. Its boundary is `src/runtime-api.ts` in the Core repository: local hosts and CLI inject these methods into `globalThis.workflow`, so a business workflow does not import them from `"steamharness"`.
+The Core API section documents the `workflow.*` runtime API available directly to business workflows. Its boundary is `src/runtime-api.ts` in the Core repository: local hosts and CLI inject these methods into `globalThis.steamharness`, so a business workflow does not import them from `"steamharness"`.
 
 ## Entry boundary
 
@@ -64,7 +64,9 @@ Most API runs around `input`, `context`, `node`, and `payload`.
 | --- | --- | --- |
 | `config` | `ConfigurationValues` | Immutable configuration values for this run. |
 | `providers` | `ProviderRegistry` |LLM provider the registry and binding tables.|
-| `storage` | `StorageContext` | Explicit `local` and `server` locations, each with three-scope `kv` and `persistentValue`. The project `dataStorage.mode` strictly limits accessible locations. Core 0.2 no longer provides top-level `context.kv` or `context.persistentValue`. |
+| `databases` | `DatabasesContext` | Access approved spaces by alias, including KV, knowledge and transactions. |
+| `entries` | `EntriesContext` | List entries and invoke aggregate Workflows with authorization checks. |
+| `projectId` / `entryId` | `string` | Aggregate and current window identity. |
 | `conversation` | `ConversationContext` |Session state read/write entry. `setTitle` can safely suggest UI title; other reads and writes will throw errors when the session is not enabled.|
 | `tokenUsage` | `TokenUsageContext` | Token-usage reporting context. When disabled, `report()` is a no-op; when enabled, it writes KV, run reports, and runtime events. |
 | `userInput` | `UserInputContext \| undefined` |Wait/resume entry for user input and tool approval. Local hosts will be injected according to the host capacity.|

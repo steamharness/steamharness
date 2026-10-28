@@ -226,7 +226,7 @@ it('indexes rendered user messages once and keeps a clicked historical message i
     scrollHeight: { get: () => height }, clientHeight: { get: () => 400 },
     scrollTop: { get: () => top, set: value => { top = Math.max(0, Math.min(value, height - 400)); } },
   });
-  const project: Project = { id: 'index-test', uri: 'file:///index-test', folderPath: '/index-test', name: 'Index Test', projectType: 'conversation', fields: [], entrypoints: [] };
+  const project: Project = {entryId:"main",aggregateName:"Test aggregate",defaultEntry:"main",entryRoot:'/index-test',databases:[],entries:[{entryId:"main",name:"Main",type:'conversation',root:".",entry:"index.ts",databases:[]}], id: 'index-test', uri: 'file:///index-test', folderPath: '/index-test', name: 'Index Test', projectType: 'conversation', fields: [], entrypoints: [] };
   const messages: ConversationMessage[] = Array.from({ length: 4 }, (_, number) => [
     { id: `u${number}`, role: 'user' as const, content: `Request ${number}` },
     { id: `a${number}`, role: 'assistant' as const, content: `Reply ${number}`, status: 'success' },

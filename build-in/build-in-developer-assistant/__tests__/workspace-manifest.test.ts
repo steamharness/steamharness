@@ -51,7 +51,7 @@ describe("developer assistant workspace manifest", () => {
         },
         {
           code: "project_not_imported",
-          relation: "related-project",
+          relation: "assistant-folder",
           source: { kind: "project", projectId: "project-a" },
           target: { kind: "project", projectId: "project-d" },
           message: "Project D is not imported.",

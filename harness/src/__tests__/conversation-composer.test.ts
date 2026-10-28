@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, rm, writeFile, readFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
@@ -97,7 +97,7 @@ test("resolved Slash options preserve aliases and reject conflicting or invalid 
 test("static inspection carries Slash commands and conditional plain-text footers to hosts", async t => {
   const projectDir = await mkdtemp(path.join(os.tmpdir(), "workflow-composer-contract-"));
   t.after(() => rm(projectDir, { recursive: true, force: true }));
-  await writeFile(path.join(projectDir, "package.json"), JSON.stringify({ name: "composer", type: "module" }));
+  await writeFile(path.join(projectDir, "package.json"), JSON.stringify({id:crypto.randomUUID(),steamHarness:{defaultEntry:"main",entries:[{entryId:"main",name:"Main",type:"conversation",root:".",entry:"index.ts",databases:[]}]}, name: "composer", type: "module" }));
   const footer = [{ text: "Plan mode", localizedText: { "zh-CN": "Plan 模式" }, when: { param: "agent", value: "plan" } }, { param: "webSearch" }];
   const userInput = { hideComposer: true, effects: [{ when: { type: "review", values: { accepted: true } }, params: { webSearch: "false" } }] };
   const source = (footerSource: string, inputSource = JSON.stringify(userInput)) => `
@@ -136,7 +136,7 @@ test("Conversation process folding validates runtime and static defaults without
   }
   const projectDir = await mkdtemp(path.join(os.tmpdir(), "conversation-presentation-"));
   t.after(() => rm(projectDir, { recursive: true, force: true }));
-  await writeFile(path.join(projectDir, "package.json"), JSON.stringify({ name: "presentation", type: "module" }));
+  await writeFile(path.join(projectDir, "package.json"), JSON.stringify({id:crypto.randomUUID(),steamHarness:{defaultEntry:"main",entries:[{entryId:"main",name:"Main",type:"conversation",root:".",entry:"index.ts",databases:[]}]}, name: "presentation", type: "module" }));
   const write = (value: string) => writeFile(path.join(projectDir, "index.ts"), `
     const task = steamharness.defineProject({ name: "presentation", run(input) { return input; } });
     export const executor = steamharness.defineExecutor({ projectType: "conversation", workflow: task,
@@ -151,6 +151,8 @@ test("Conversation process folding validates runtime and static defaults without
   await writeFile(path.join(projectDir, "index.ts"), `
     const task = steamharness.defineProject({ name: "presentation", run(input) { return input; } });
     export const executor = steamharness.defineExecutor({ projectType: "conversation", workflow: task, createInput: () => ({}) });`);
+  assert.equal(inspectLocalProjectStructure({ projectDir }).conversation?.collapseIntermediate, undefined);
+  await writeFile(path.join(projectDir, "index.ts"), 'import "./agent";\n' + await readFile(path.join(projectDir, "index.ts"), "utf8"));
   assert.equal(inspectLocalProjectStructure({ projectDir }).conversation?.collapseIntermediate, true);
   for (const invalid of ['"yes"', '{}', 'getPreference()']) {
     await write(invalid);

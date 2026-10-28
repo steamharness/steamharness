@@ -17,18 +17,17 @@ import type {
   ProviderRegistry,
   StreamNodeDefinition,
   RunContext,
-  StorageContext,
-  StorageLocationContext,
   Definition,
   NodeMetadata,
   UserInputContext,
 } from "../types/index";
-import {
-  assertProjectDataStorageLocationAllowed,
-  readProjectInfo,
-  type ProjectDataStorageLocation,
-  type ProjectInfoContract,
-} from "@steamharness/project-info";
+import { resolveProjectEntrySync, type ResolvedProjectEntry } from "@steamharness/project-manifest/node";
+import { projectEntryKey } from "@steamharness/project-manifest";
+import type { AccessActor } from "@steamharness/project-access";
+import { createExecutorHostState, createExecutorResources, type EntryDeclaration } from "./entry-resources";
+import type { DatabaseResolver } from "../databases/index";
+import type { ToolPermissionContext } from "../tool-permissions/index";
+type ProjectDataStorageLocation = "local" | "server";
 import { createLocalProjectConfigurationStore, withProjectConfiguration, currentConfigurationValues, readProjectConfigurationDefinition, projectUsesConfiguredAgentModels, type ProjectConfigurationSnapshot } from "../configuration";
 import {
   combineNodeExecutionHooks,
@@ -98,11 +97,6 @@ import {
   type KVStore,
   type PersistentValueContext,
 } from "../kv/index";
-import { createRemoteProjectStorageStoreFromEnv } from "../kv/remote";
-import {
-  createProjectRelatedProjectsContext,
-  type RelatedProjectKVResolver,
-} from "../kv/related-projects";
 import {
   createProjectTokenUsageContext,
   type TokenUsageContext,
@@ -124,8 +118,8 @@ import {
 import {
   createKanbanArtifactEntryPath,
   createKanbanExecutionUnsupportedMessage,
-  readKanbanArtifactConfig,
-  readPackageProjectType,
+
+
 } from "@steamharness/kanban-project";
 import {
   parseProjectSchedulePresets,
@@ -134,6 +128,11 @@ import {
 } from "@steamharness/workflow-schedules";
 
 export interface RunWorkspaceProjectOptions {
+  entryId?: string;
+  actor?: AccessActor;
+  databaseResolver?: DatabaseResolver;
+  inheritedToolPermissions?: ToolPermissionContext;
+  authorizeEntry?(entryId: string, entrypointId: string | undefined, actor: AccessActor): Promise<void> | void;
   cwd?: string;
   projectName: string;
   args?: string[];
@@ -162,6 +161,11 @@ export interface RunWorkspaceProjectOptions {
 }
 
 export interface RunLocalProjectOptions {
+  entryId?: string;
+  actor?: AccessActor;
+  databaseResolver?: DatabaseResolver;
+  inheritedToolPermissions?: ToolPermissionContext;
+  authorizeEntry?(entryId: string, entrypointId: string | undefined, actor: AccessActor): Promise<void> | void;
   projectDir?: string;
   projectName?: string;
   args?: string[];
@@ -193,7 +197,6 @@ export interface ExecutionStorageBackendOptions {
   kvStoreDir?: string;
   persistentValueStore?: KVStore;
   persistentValueStoreDir?: string;
-  relatedProjectResolver?: RelatedProjectKVResolver;
 }
 
 export interface ExecutionStorageOptions {
@@ -202,15 +205,7 @@ export interface ExecutionStorageOptions {
   server?: ExecutionStorageBackendOptions;
 }
 
-interface ProjectStorageDeclaration {
-  projectId: string;
-  projectInfo: ProjectInfoContract;
-}
-
-interface ExecutorStorageContexts {
-  storage: StorageContext;
-  host: StorageLocationContext;
-}
+type ProjectStorageDeclaration = EntryDeclaration;
 
 const STEAMHARNESS_PROJECT_UUID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -265,13 +260,14 @@ async function runWorkspaceProjectWithReportInternal(
     runtime.throwIfAborted();
     const location = resolveProjectLocation(cwd, options.projectName);
     projectDir = location.projectDir;
-    const { modulePath } = location;
-    const projectStorageDeclaration = readProjectStorageDeclaration(projectDir);
+    const projectStorageDeclaration = readProjectStorageDeclaration(projectDir, options.entryId);
+    const modulePath = projectStorageDeclaration.modulePath;
 
     const scriptInspection = inspectProjectScripts({
       cwd,
       projectName: options.projectName,
-      projectDir,
+      projectDir: projectStorageDeclaration.rootDir,
+      entryFile: projectStorageDeclaration.modulePath,
     });
     definedNodes = scriptInspection.definedNodes;
 
@@ -293,12 +289,6 @@ async function runWorkspaceProjectWithReportInternal(
     }
 
     runtime.throwIfAborted();
-    assertProjectStorageHostAvailable({
-      declaration: projectStorageDeclaration,
-      env,
-      projectName: options.projectName,
-      options: options.storage,
-    });
 
     installProjectRuntimeGlobal();
     const module = await import(pathToFileURL(modulePath).href);
@@ -306,6 +296,7 @@ async function runWorkspaceProjectWithReportInternal(
       module as ExecutorModule,
       options.projectName,
     );
+    if (definition.projectType !== projectStorageDeclaration.registration.type) throw new Error("The registered entry type does not match its executor.");
     const selected = resolveExecutorExecution(
       definition,
       options.entrypointId,
@@ -383,11 +374,11 @@ async function runWorkspaceProjectWithReportInternal(
       ...extraContext,
       config: currentConfigurationValues(),
       providers: mergeProviderRegistries(extraContext.providers, options.providers),
-      storage: executorStorage.storage,
+      ...createExecutorResources(projectStorageDeclaration, { ...options, runId: runtime.runId, conversationId: conversation.conversationId, abortSignal: runtime.abortSignal }, () => context),
       conversation,
       tokenUsage,
       userInput,
-      toolPermissions: createProjectToolPermissionContext({
+      toolPermissions: options.inheritedToolPermissions ?? createProjectToolPermissionContext({
         definitions: execution.tools,
         policies: options.toolPermissionPolicies,
         userInput,
@@ -408,6 +399,9 @@ async function runWorkspaceProjectWithReportInternal(
         runId: runtime.runId,
         conversationId: conversation.conversationId,
         ...extraContext.metadata,
+        projectId: projectStorageDeclaration.projectId,
+        entryId: projectStorageDeclaration.entryId,
+        entryRootDir: projectStorageDeclaration.rootDir,
         ...(selected.entrypointId === undefined
           ? {}
           : {
@@ -478,13 +472,14 @@ async function debugWorkspaceProjectNodeWithReportInternal(
     runtime.throwIfAborted();
     const location = resolveProjectLocation(cwd, options.projectName);
     projectDir = location.projectDir;
-    const { modulePath } = location;
-    const projectStorageDeclaration = readProjectStorageDeclaration(projectDir);
+    const projectStorageDeclaration = readProjectStorageDeclaration(projectDir, options.entryId);
+    const modulePath = projectStorageDeclaration.modulePath;
 
     const scriptInspection = inspectProjectScripts({
       cwd,
       projectName: options.projectName,
-      projectDir,
+      projectDir: projectStorageDeclaration.rootDir,
+      entryFile: projectStorageDeclaration.modulePath,
     });
     definedNodes = scriptInspection.definedNodes;
 
@@ -500,12 +495,6 @@ async function debugWorkspaceProjectNodeWithReportInternal(
     }
 
     runtime.throwIfAborted();
-    assertProjectStorageHostAvailable({
-      declaration: projectStorageDeclaration,
-      env,
-      projectName: options.projectName,
-      options: options.storage,
-    });
 
     installProjectRuntimeGlobal();
     const module = await import(pathToFileURL(modulePath).href);
@@ -513,6 +502,7 @@ async function debugWorkspaceProjectNodeWithReportInternal(
       module as ExecutorModule,
       options.projectName,
     );
+    if (definition.projectType !== projectStorageDeclaration.registration.type) throw new Error("The registered entry type does not match its executor.");
     const selected = resolveExecutorExecution(
       definition,
       options.entrypointId,
@@ -592,11 +582,11 @@ async function debugWorkspaceProjectNodeWithReportInternal(
       ...extraContext,
       config: currentConfigurationValues(),
       providers: mergeProviderRegistries(extraContext.providers, options.providers),
-      storage: executorStorage.storage,
+      ...createExecutorResources(projectStorageDeclaration, { ...options, runId: runtime.runId, conversationId: conversation.conversationId, abortSignal: runtime.abortSignal }, () => context),
       conversation,
       tokenUsage,
       userInput,
-      toolPermissions: createProjectToolPermissionContext({
+      toolPermissions: options.inheritedToolPermissions ?? createProjectToolPermissionContext({
         definitions: execution.tools,
         policies: options.toolPermissionPolicies,
         userInput,
@@ -618,6 +608,9 @@ async function debugWorkspaceProjectNodeWithReportInternal(
         debugNode: options.nodeName,
         conversationId: conversation.conversationId,
         ...extraContext.metadata,
+        projectId: projectStorageDeclaration.projectId,
+        entryId: projectStorageDeclaration.entryId,
+        entryRootDir: projectStorageDeclaration.rootDir,
         ...(selected.entrypointId === undefined
           ? {}
           : {
@@ -762,8 +755,8 @@ async function runLocalProjectWithReportInternal(
 ): Promise<ExecutionReport<unknown>> {
   const projectDir = resolveLocalProjectDir(options.projectDir);
   let projectName = options.projectName ?? readLocalProjectName(projectDir);
-  assertLocalProjectIsExecutable(projectDir, projectName);
-  const projectStorageDeclaration = readProjectStorageDeclaration(projectDir);
+  assertLocalProjectIsExecutable(projectDir, projectName, options.entryId);
+  const projectStorageDeclaration = readProjectStorageDeclaration(projectDir, options.entryId);
   const args = options.args ?? [];
   const env = options.env ?? process.env;
   const startedAt = new Date();
@@ -802,11 +795,12 @@ async function runLocalProjectWithReportInternal(
   let result: RunResult<unknown>;
 
   try {
-    const modulePath = resolveLocalProjectModulePath(projectDir, projectName);
+    const modulePath = projectStorageDeclaration.modulePath;
     const scriptInspection = inspectProjectScripts({
       cwd: projectDir,
       projectName,
-      projectDir,
+      projectDir: projectStorageDeclaration.rootDir,
+      entryFile: projectStorageDeclaration.modulePath,
     });
     definedNodes = scriptInspection.definedNodes;
 
@@ -827,12 +821,6 @@ async function runLocalProjectWithReportInternal(
       });
     }
 
-    assertProjectStorageHostAvailable({
-      declaration: projectStorageDeclaration,
-      env,
-      projectName,
-      options: options.storage,
-    });
 
     installProjectRuntimeGlobal();
     const module = await import(pathToFileURL(modulePath).href);
@@ -840,6 +828,7 @@ async function runLocalProjectWithReportInternal(
       module as ExecutorModule,
       projectName,
     );
+    if (definition.projectType !== projectStorageDeclaration.registration.type) throw new Error("The registered entry type does not match its executor.");
     const selected = resolveExecutorExecution(
       definition,
       options.entrypointId,
@@ -932,11 +921,11 @@ async function runLocalProjectWithReportInternal(
       ...extraContext,
       config: currentConfigurationValues(),
       providers: mergeProviderRegistries(extraContext.providers, options.providers),
-      storage: executorStorage.storage,
+      ...createExecutorResources(projectStorageDeclaration, { ...options, runId, conversationId: conversation.conversationId, abortSignal: abortController.signal }, () => context),
       conversation,
       tokenUsage,
       userInput,
-      toolPermissions: createProjectToolPermissionContext({
+      toolPermissions: options.inheritedToolPermissions ?? createProjectToolPermissionContext({
         definitions: execution.tools,
         policies: options.toolPermissionPolicies,
         userInput,
@@ -958,8 +947,11 @@ async function runLocalProjectWithReportInternal(
         runId,
         conversationId: conversation.conversationId,
         agentStoreDir: options.storage?.[options.storage.host]?.agentStoreDir
-          ?? env.STEAMHARNESS_AGENT_STORE_DIR ?? path.join(projectDir, ".workflow", "agents"),
+          ?? env.STEAMHARNESS_AGENT_STORE_DIR ?? path.join(os.homedir(), ".steamharness", "runtime", projectStorageDeclaration.projectId, projectStorageDeclaration.entryId, "agents"),
         ...extraContext.metadata,
+        projectId: projectStorageDeclaration.projectId,
+        entryId: projectStorageDeclaration.entryId,
+        entryRootDir: projectStorageDeclaration.rootDir,
         ...(selected.entrypointId === undefined
           ? {}
           : {
@@ -1097,145 +1089,41 @@ function createResumeAwareRuntimeEventHandler(
 }
 
 export function inspectWorkspaceProjectStructure(options: {
-  cwd?: string;
-  projectName: string;
+  cwd?: string; projectName: string; entryId?: string;
 }): StructureReport {
-  const cwd = options.cwd ?? process.cwd();
-  const { projectDir } = resolveProjectLocation(cwd, options.projectName);
-
-  const scriptInspection = inspectProjectStructure({
-    cwd,
-    projectName: options.projectName,
-    projectDir,
-  });
-
-  if (scriptInspection.diagnostics.violations.length > 0) {
-    throw new HarnessError({
-      type: "input_validation",
-      message: `Workflow "${options.projectName}" script validation failed.`,
-      metadata: {
-        project: options.projectName,
-        violations: scriptInspection.diagnostics.violations,
-      },
-    });
-  }
-
-  const projectType = resolveInspectedProjectType(scriptInspection);
-  const schedulePresets = readProjectSchedulePresets(
-    projectDir,
-    projectType,
-    scriptInspection.entrypoints,
-  );
-  return {
-    projectType,
-    workflow: scriptInspection.workflow,
-    definitions: scriptInspection.definitions,
-    configuration: readConfigurationDeclaration(projectDir),
-    diagnostics: scriptInspection.diagnostics,
-    ...(projectType === "workflow"
-      ? {
-          defaultEntrypoint: scriptInspection.defaultEntrypoint,
-          entrypoints: scriptInspection.entrypoints,
-          schedulePresets,
-        }
-      : {
-          execution: scriptInspection.execution,
-          params: scriptInspection.params,
-          paramLayout: scriptInspection.paramLayout,
-          paramResolver: scriptInspection.paramResolver,
-          conversation: conversationPresentationDefaults(scriptInspection.conversation, projectDir),
-          tokenUsage: scriptInspection.tokenUsage,
-          tools: scriptInspection.tools,
-          registry: scriptInspection.registry,
-        }),
-  };
+  return inspectLocalProjectStructure({ projectDir: resolveProjectLocation(options.cwd ?? process.cwd(), options.projectName).projectDir, projectName: options.projectName, entryId: options.entryId });
 }
 
 export function inspectLocalProjectStructure(options: {
-  projectDir?: string;
-  projectName?: string;
+  projectDir?: string; projectName?: string; entryId?: string;
 } = {}): StructureReport {
-  const projectDir = resolveLocalProjectDir(options.projectDir);
-  const projectName = options.projectName ?? readLocalProjectName(projectDir);
-
-  if (readLocalPackageProjectType(projectDir) === "kanban") {
-    const packageJson = readLocalPackageJson(projectDir);
-    readSchedulePresetValue(packageJson, "kanban", []);
-    const artifact = readKanbanArtifactConfig(packageJson);
-    const artifactEntryPath = createKanbanArtifactEntryPath(artifact);
-    const entryPath = path.join(projectDir, ...artifactEntryPath.split("/"));
-    if (!existsSync(entryPath) || !isRegularKanbanArtifactEntry(projectDir, artifactEntryPath)) {
-      throw new HarnessError({
-        type: "input_validation",
-        message: `Kanban project "${projectName}" must contain regular artifact entry ${artifactEntryPath}.`,
-        metadata: { project: projectName, projectDir, artifact },
-      });
-    }
-    return {
-      projectType: "kanban",
-      workflow: {
-        name: projectName,
-        dir: projectDir,
-        files: readKanbanStructureFiles(projectDir),
-      },
-      definitions: { nodes: {}, apiCalls: [], variables: {}, registry: {} },
-      execution: { kind: "sequence", children: [] },
-      diagnostics: { warnings: [], violations: [] },
-      configuration: readConfigurationDeclaration(projectDir),
-      kanban: artifact,
-    };
+  const declaration = readProjectStorageDeclaration(resolveLocalProjectDir(options.projectDir), options.entryId);
+  const { registration, rootDir, modulePath, manifest } = declaration;
+  const projectName = options.projectName ?? registration.name;
+  const identity = { projectId: manifest.projectId, entryId: registration.entryId, entryName: registration.name, entries: manifest.entries, defaultEntry: manifest.defaultEntry };
+  const configuration = readProjectConfigurationDefinition(declaration.projectDir, registration.entryId);
+  if (registration.type === "kanban") {
+    readSchedulePresetValue({steamHarness:{schedulePresets:registration.schedulePresets}},"kanban",[]);
+    const entry = path.basename(registration.entry);
+    const artifactDir = path.posix.dirname(registration.entry);
+    return { ...identity, projectType: "kanban", workflow: { name: projectName, dir: rootDir, files: [registration.entry] }, definitions: { nodes: {}, apiCalls: [], variables: {}, registry: {} }, execution: { kind: "sequence", children: [] }, diagnostics: { warnings: [], violations: [] }, configuration, kanban: { artifactDir, entry } };
   }
-
-  const scriptInspection = inspectProjectStructure({
-    cwd: projectDir,
-    projectName,
-    projectDir,
-  });
-
-  if (scriptInspection.diagnostics.violations.length > 0) {
-    throw new HarnessError({
-      type: "input_validation",
-      message: `Workflow "${projectName}" script validation failed.`,
-      metadata: {
-        project: projectName,
-        violations: scriptInspection.diagnostics.violations,
-      },
-    });
-  }
-
-  const projectType = resolveInspectedProjectType(scriptInspection);
-  const schedulePresets = readProjectSchedulePresets(
-    projectDir,
-    projectType,
-    scriptInspection.entrypoints,
-  );
-  return {
-    projectType,
-    workflow: scriptInspection.workflow,
-    definitions: scriptInspection.definitions,
-    configuration: readConfigurationDeclaration(projectDir),
-    diagnostics: scriptInspection.diagnostics,
-    ...(projectType === "workflow"
-      ? {
-          defaultEntrypoint: scriptInspection.defaultEntrypoint,
-          entrypoints: scriptInspection.entrypoints,
-          schedulePresets,
-        }
-      : {
-          execution: scriptInspection.execution,
-          params: scriptInspection.params,
-          paramLayout: scriptInspection.paramLayout,
-          paramResolver: scriptInspection.paramResolver,
-          conversation: conversationPresentationDefaults(scriptInspection.conversation, projectDir),
-          tokenUsage: scriptInspection.tokenUsage,
-          tools: scriptInspection.tools,
-          registry: scriptInspection.registry,
-        }),
-  };
+  const inspection = inspectProjectStructure({ cwd: rootDir, projectName, projectDir: rootDir, entryFile: modulePath });
+  if (inspection.diagnostics.violations.length) throw new HarnessError({ type: "input_validation", message: `Entry "${registration.entryId}" script validation failed.`, metadata: { projectId: manifest.projectId, entryId: registration.entryId, violations: inspection.diagnostics.violations } });
+  const projectType = resolveInspectedProjectType(inspection);
+  if (projectType !== registration.type) throw new HarnessError({ type: "input_validation", message: `Entry "${registration.entryId}" is registered as ${registration.type}, but its executor declares ${projectType}.` });
+  const schedulePresets = readSchedulePresetValue({ steamHarness: { schedulePresets: registration.schedulePresets } }, projectType, inspection.entrypoints ?? []);
+  return { ...identity, projectType, workflow: inspection.workflow, definitions: inspection.definitions, configuration, diagnostics: inspection.diagnostics,
+    ...(projectType === "workflow" ? { defaultEntrypoint: inspection.defaultEntrypoint, entrypoints: inspection.entrypoints, schedulePresets } : { execution: inspection.execution, params: inspection.params, paramLayout: inspection.paramLayout, paramResolver: inspection.paramResolver, conversation: conversationPresentationDefaults(inspection.conversation, rootDir, modulePath), tokenUsage: inspection.tokenUsage, tools: inspection.tools, registry: inspection.registry }) };
 }
 
-function conversationPresentationDefaults(conversation: StructureReport["conversation"], projectDir: string): StructureReport["conversation"] {
-  return conversation?.collapseIntermediate === undefined && projectUsesConfiguredAgentModels(projectDir)
+export function inspectAggregateProjectStructure(projectDir = ".") {
+  const { manifest } = resolveProjectEntrySync(projectDir);
+  return { ...manifest, entries: manifest.entries.map((entry) => inspectLocalProjectStructure({ projectDir, entryId: entry.entryId })) };
+}
+
+function conversationPresentationDefaults(conversation: StructureReport["conversation"], projectDir: string, entryFile: string): StructureReport["conversation"] {
+  return conversation?.collapseIntermediate === undefined && projectUsesConfiguredAgentModels(projectDir, entryFile)
     ? { ...conversation, collapseIntermediate: true } : conversation;
 }
 
@@ -1259,6 +1147,7 @@ function resolveInspectedProjectType(
 export async function resolveWorkspaceProjectParams(options: {
   cwd?: string;
   projectName: string;
+  entryId?: string;
   entrypointId?: string;
   request: ParamResolveRequest;
   configuration?: ProjectConfigurationSnapshot;
@@ -1269,11 +1158,11 @@ export async function resolveWorkspaceProjectParams(options: {
 }): Promise<ParamResolveResult> {
   const cwd = options.cwd ?? process.cwd();
   const location = resolveProjectLocation(cwd, options.projectName);
-  const declaration = readProjectStorageDeclaration(location.projectDir);
+  const declaration = readProjectStorageDeclaration(location.projectDir, options.entryId);
   return resolveProjectParamsFromModule({
     projectName: options.projectName,
     projectDir: location.projectDir,
-    modulePath: location.modulePath,
+    modulePath: declaration.modulePath,
     declaration,
     storage: options.storage,
     entrypointId: options.entrypointId,
@@ -1288,6 +1177,7 @@ export async function resolveWorkspaceProjectParams(options: {
 export async function resolveLocalProjectParams(options: {
   projectDir?: string;
   projectName?: string;
+  entryId?: string;
   entrypointId?: string;
   request: ParamResolveRequest;
   configuration?: ProjectConfigurationSnapshot;
@@ -1298,12 +1188,12 @@ export async function resolveLocalProjectParams(options: {
 }): Promise<ParamResolveResult> {
   const projectDir = resolveLocalProjectDir(options.projectDir);
   const projectName = options.projectName ?? readLocalProjectName(projectDir);
-  assertLocalProjectIsExecutable(projectDir, projectName);
-  const declaration = readProjectStorageDeclaration(projectDir);
+  assertLocalProjectIsExecutable(projectDir, projectName, options.entryId);
+  const declaration = readProjectStorageDeclaration(projectDir, options.entryId);
   return resolveProjectParamsFromModule({
     projectName,
     projectDir,
-    modulePath: resolveLocalProjectModulePath(projectDir, projectName),
+    modulePath: declaration.modulePath,
     declaration,
     storage: options.storage,
     entrypointId: options.entrypointId,
@@ -1330,12 +1220,6 @@ async function resolveProjectParamsFromModuleInternal(options: {
 }): Promise<ParamResolveResult> {
   const abortSignal = options.abortSignal ?? new AbortController().signal;
   if (abortSignal.aborted) throw abortSignal.reason;
-  assertProjectStorageHostAvailable({
-    declaration: options.declaration,
-    env: options.env,
-    projectName: options.projectName,
-    options: options.storage,
-  });
   installProjectRuntimeGlobal();
   const module = await import(pathToFileURL(options.modulePath).href);
   const definition = resolveExecutorDefinition(module as ExecutorModule, options.projectName);
@@ -1437,309 +1321,10 @@ function readInputConversationId(input: unknown): string | undefined {
   return typeof value === "string" && value.trim() !== "" ? value : undefined;
 }
 
-function createExecutorStorageContexts(options: {
-  declaration: ProjectStorageDeclaration;
-  configuration?: ProjectConfigurationSnapshot;
-  env?: NodeJS.ProcessEnv;
-  projectName: string;
-  runId?: string;
-  conversationId?: string;
-  options?: ExecutionStorageOptions;
-}): ExecutorStorageContexts {
-  const executionStorage = resolveProjectExecutionStorageOptions(options.options, options.env);
-  const local = createExecutorStorageLocationContext({
-    location: "local",
-    declaration: options.declaration,
-    backend: executionStorage.local,
-    env: options.env,
-    projectName: options.projectName,
-    runId: options.runId,
-    conversationId: options.conversationId,
-  });
-  const server = createExecutorStorageLocationContext({
-    location: "server",
-    declaration: options.declaration,
-    backend: executionStorage.server,
-    env: options.env,
-    projectName: options.projectName,
-    runId: options.runId,
-    conversationId: options.conversationId,
-  });
-  const hostLocation = resolveProjectExecutionHostLocation(
-    options.declaration.projectInfo,
-    executionStorage.host,
-  );
-  const host = hostLocation === "local" ? local : server;
-  if (!host.available) {
-    throw createProjectStorageUnavailableError(hostLocation, host.unavailableReason);
-  }
-  return {
-    storage: { local: local.context, server: server.context },
-    host: host.context,
-  };
-}
-
-function createExecutorStorageLocationContext(options: {
-  location: ProjectDataStorageLocation;
-  declaration: ProjectStorageDeclaration;
-  backend?: ExecutionStorageBackendOptions;
-  configuration?: ProjectConfigurationSnapshot;
-  env?: NodeJS.ProcessEnv;
-  projectName: string;
-  runId?: string;
-  conversationId?: string;
-}): {
-  context: StorageLocationContext;
-  available: boolean;
-  unavailableReason?: string;
-} {
-  try {
-    assertProjectDataStorageLocationAllowed(
-      options.declaration.projectInfo,
-      options.location,
-    );
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    return {
-      context: createUnavailableProjectStorageLocationContext(
-        options.location,
-        options.declaration.projectId,
-        options.conversationId,
-        message,
-      ),
-      available: false,
-      unavailableReason: message,
-    };
-  }
-
-  const localSource = {
-    projectId: options.declaration.projectId,
-    runId: options.runId,
-    conversationId: options.conversationId,
-  };
-  if (options.location === "local") {
-    if (options.backend === undefined) {
-      const message = "This execution host does not provide local project storage.";
-      return {
-        context: createUnavailableProjectStorageLocationContext(
-          "local",
-          options.declaration.projectId,
-          options.conversationId,
-          message,
-        ),
-        available: false,
-        unavailableReason: message,
-      };
-    }
-    const kvStore = options.backend.kvStore ?? createLocalProjectKVStore({
-      rootDir: options.backend.kvStoreDir ?? path.join(os.tmpdir(), "steamharness-kv"),
-      storageKind: "kv",
-    });
-    const persistentValueStoreDir = options.backend.persistentValueStoreDir?.trim();
-    const persistentValueStore = options.backend.persistentValueStore ??
-      (persistentValueStoreDir === undefined || persistentValueStoreDir === ""
-        ? undefined
-        : createLocalProjectKVStore({
-            rootDir: persistentValueStoreDir,
-            storageKind: "persistent_value",
-          }));
-    return {
-      context: {
-        kv: createProjectKVContext({
-          store: kvStore,
-          projectId: options.declaration.projectId,
-          conversationId: options.conversationId,
-          source: localSource,
-        }),
-        persistentValue: createProjectPersistentValueContext({
-          store: persistentValueStore,
-          projectId: options.declaration.projectId,
-          conversationId: options.conversationId,
-          source: localSource,
-        }),
-        relatedProjects: createProjectRelatedProjectsContext(
-          options.backend.relatedProjectResolver,
-        ),
-      },
-      available: true,
-    };
-  }
-
-  const projectId = options.declaration.projectId;
-  const kvStore = options.backend?.kvStore ??
-    createRemoteProjectStorageStoreFromEnv(projectId, "kv", options.env);
-  const persistentValueStore = options.backend?.persistentValueStore ??
-    createRemoteProjectStorageStoreFromEnv(projectId, "persistent_value", options.env);
-  if (kvStore === undefined) {
-    const message = "Server storage requires an authenticated server connection for this project.";
-    return {
-      context: createUnavailableProjectStorageLocationContext(
-        "server",
-        projectId,
-        options.conversationId,
-        message,
-      ),
-      available: false,
-      unavailableReason: message,
-    };
-  }
-  const serverSource = {
-    projectId,
-    runId: options.runId,
-    conversationId: options.conversationId,
-  };
-  return {
-    context: {
-      kv: createProjectKVContext({
-        store: kvStore,
-        projectId,
-        conversationId: options.conversationId,
-        source: serverSource,
-      }),
-      persistentValue: createProjectPersistentValueContext({
-        store: persistentValueStore,
-        projectId,
-        conversationId: options.conversationId,
-        source: serverSource,
-      }),
-      relatedProjects: createProjectRelatedProjectsContext(
-        options.backend?.relatedProjectResolver,
-      ),
-    },
-    available: true,
-  };
-}
-
-function createUnavailableProjectStorageLocationContext(
-  location: ProjectDataStorageLocation,
-  projectId: string,
-  conversationId: string | undefined,
-  reason: string,
-): StorageLocationContext {
-  const store = createUnavailableProjectStorageStore(location, reason);
-  return {
-    kv: createProjectKVContext({ store, projectId, conversationId }),
-    persistentValue: createProjectPersistentValueContext({ store, projectId, conversationId }),
-    relatedProjects: createProjectRelatedProjectsContext(),
-  };
-}
-
-function createUnavailableProjectStorageStore(
-  location: ProjectDataStorageLocation,
-  reason: string,
-): KVStore {
-  const fail = (): never => {
-    throw createProjectStorageUnavailableError(location, reason);
-  };
-  return {
-    async getValue() { return fail(); },
-    async setValue() { fail(); },
-    async deleteValue() { return fail(); },
-    async updateValue() { return fail(); },
-    async withNamespaceLock() { return fail(); },
-    async withNamespaceReadLock() { return fail(); },
-    async executeNamespaceMutation() { return fail(); },
-  };
-}
-
-function createProjectStorageUnavailableError(
-  location: ProjectDataStorageLocation,
-  reason?: string,
-): HarnessError {
-  return new HarnessError({
-    type: "input_validation",
-    message: reason ?? `Workflow ${location} storage is unavailable.`,
-    metadata: { storageLocation: location },
-  });
-}
-
-function resolveProjectExecutionStorageOptions(
-  options: ExecutionStorageOptions | undefined,
-  env: NodeJS.ProcessEnv | undefined,
-): ExecutionStorageOptions {
-  if (options !== undefined) return options;
-  return {
-    host: "local",
-    local: {
-      kvStoreDir: env?.STEAMHARNESS_KV_STORE_DIR,
-      persistentValueStoreDir: env?.STEAMHARNESS_PERSISTENT_VALUE_STORE_DIR,
-    },
-  };
-}
-
-function resolveProjectExecutionHostLocation(
-  projectInfo: ProjectInfoContract,
-  preferredHost: ProjectDataStorageLocation,
-): ProjectDataStorageLocation {
-  const mode = projectInfo.dataStorage?.mode;
-  if (mode === undefined) {
-    throw new HarnessError({
-      type: "input_validation",
-      message: "steamHarness.projectInfo.dataStorage.mode must be declared before this project can run.",
-    });
-  }
-  return mode === "both" ? preferredHost : mode;
-}
-
-function assertProjectStorageHostAvailable(options: {
-  declaration: ProjectStorageDeclaration;
-  configuration?: ProjectConfigurationSnapshot;
-  env?: NodeJS.ProcessEnv;
-  projectName: string;
-  options?: ExecutionStorageOptions;
-}): void {
-  createExecutorStorageContexts({
-    declaration: options.declaration,
-    env: options.env,
-    projectName: options.projectName,
-    options: options.options,
-  });
-}
-
-function readProjectStorageDeclaration(
-  projectDir: string,
-): ProjectStorageDeclaration {
-  const packagePath = path.join(projectDir, "package.json");
-  let packageJson: unknown;
-  try {
-    packageJson = JSON.parse(readFileSync(packagePath, "utf8"));
-  } catch (error) {
-    throw new HarnessError({
-      type: "input_validation",
-      message: `Workflow package.json could not be read at ${packagePath}.`,
-      metadata: {
-        packagePath,
-        cause: error instanceof Error ? error.message : String(error),
-      },
-    });
-  }
-  let projectInfo: ProjectInfoContract;
-  try {
-    projectInfo = readProjectInfo(packageJson);
-  } catch (error) {
-    throw new HarnessError({
-      type: "input_validation",
-      message: error instanceof Error ? error.message : "steamHarness.projectInfo is invalid.",
-    });
-  }
-  if (projectInfo.dataStorage === null) {
-    throw new HarnessError({
-      type: "input_validation",
-      message: "steamHarness.projectInfo.dataStorage.mode must be declared before this project can run or access data.",
-      metadata: { packagePath },
-    });
-  }
-  const projectId = isRecord(packageJson) && typeof packageJson["id"] === "string"
-    ? packageJson["id"].trim() || undefined
-    : undefined;
-  if (projectId === undefined || !STEAMHARNESS_PROJECT_UUID_PATTERN.test(projectId)) {
-    throw new HarnessError({
-      type: "input_validation",
-      message: "package.json.id must be a UUID before this project can run or access data.",
-      metadata: { packagePath },
-    });
-  }
-  return { projectId, projectInfo };
+const createExecutorStorageContexts = createExecutorHostState;
+function readProjectStorageDeclaration(projectDir: string, entryId?: string): ProjectStorageDeclaration {
+  const resolved = resolveProjectEntrySync(projectDir, entryId);
+  return { ...resolved, projectId: resolved.manifest.projectId, entryId: resolved.registration.entryId };
 }
 
 function readReportConversationId(
@@ -2118,12 +1703,6 @@ function resolveRuntimeExecutorProjectType(
   definition: ExecutorDefinitionShape,
 ): ExecutorProjectType | undefined {
   if (isExecutorProjectKind(definition.projectType)) return definition.projectType;
-  if (Array.isArray(definition.entrypoints) || definition.defaultEntrypoint !== undefined) return "workflow";
-  if (isProjectDefinition(definition.workflow)
-      || typeof definition.createInput === "function"
-      || definition.conversation !== undefined) {
-    return "conversation";
-  }
   return undefined;
 }
 
@@ -2430,83 +2009,15 @@ function resolveProjectLocation(
   projectName: string,
 ): { projectDir: string; modulePath: string } {
   const projectDir = path.resolve(cwd, "workspace", "workflow", projectName);
-  const modulePath = resolveProjectModulePath(cwd, projectDir, projectName);
-
-  if (!existsSync(modulePath)) {
-    throw new HarnessError({
-      type: "input_validation",
-      message: `Workflow "${projectName}" does not exist.`,
-      metadata: {
-        project: projectName,
-        modulePath,
-      },
-    });
-  }
-
-  return { projectDir, modulePath };
-}
-
-function resolveProjectModulePath(
-  cwd: string,
-  projectDir: string,
-  projectName: string,
-): string {
-  const sourceModulePath = path.join(projectDir, "index.ts");
-  const projectCompiledModulePath = path.join(projectDir, "dist", "index.js");
-  const compiledModulePath = path.resolve(
-    cwd,
-    "dist",
-    "workspace",
-    "workflow",
-    projectName,
-    "index.js",
-  );
-
-  if (
-    existsSync(sourceModulePath) &&
-    isRunningCompiledExecutor() &&
-    existsSync(projectCompiledModulePath)
-  ) {
-    return projectCompiledModulePath;
-  }
-
-  if (
-    existsSync(sourceModulePath) &&
-    isRunningCompiledExecutor() &&
-    existsSync(compiledModulePath)
-  ) {
-    return compiledModulePath;
-  }
-
-  return sourceModulePath;
+  return { projectDir, modulePath: resolveProjectEntrySync(projectDir).modulePath };
 }
 
 function resolveLocalProjectDir(projectDir = "."): string {
   return path.resolve(process.cwd(), projectDir);
 }
 
-function resolveLocalProjectModulePath(
-  projectDir: string,
-  projectName: string,
-): string {
-  const sourceModulePath = path.join(projectDir, "index.ts");
-  const modulePath = path.join(projectDir, "index.js");
-  const compiledModulePath = path.join(projectDir, "dist", "index.js");
-
-  for (const candidate of [sourceModulePath, modulePath, compiledModulePath]) {
-    if (existsSync(candidate)) {
-      return candidate;
-    }
-  }
-
-  throw new HarnessError({
-    type: "input_validation",
-    message: `Workflow "${projectName}" does not have an index.ts or index.js entry.`,
-    metadata: {
-      project: projectName,
-      projectDir,
-    },
-  });
+function resolveLocalProjectModulePath(projectDir: string, _projectName: string, entryId?: string): string {
+  return resolveProjectEntrySync(projectDir, entryId).modulePath;
 }
 
 function readLocalProjectName(projectDir: string): string {
@@ -2527,26 +2038,6 @@ function readLocalProjectName(projectDir: string): string {
   }
 
   return path.basename(projectDir);
-}
-
-function readLocalPackageProjectType(projectDir: string): "kanban" | undefined {
-  const packageJsonPath = path.join(projectDir, "package.json");
-  if (!existsSync(packageJsonPath)) return undefined;
-  try {
-    return readPackageProjectType(JSON.parse(readFileSync(packageJsonPath, "utf8")) as unknown);
-  } catch {
-    return undefined;
-  }
-}
-
-function isRegularKanbanArtifactEntry(projectDir: string, artifactEntryPath: string): boolean {
-  let currentPath = projectDir;
-  for (const segment of artifactEntryPath.split("/")) {
-    currentPath = path.join(currentPath, segment);
-    const entryStat = lstatSync(currentPath);
-    if (entryStat.isSymbolicLink()) return false;
-  }
-  return lstatSync(currentPath).isFile();
 }
 
 function readLocalPackageJson(projectDir: string): unknown {
@@ -2633,8 +2124,8 @@ function readKanbanStructureFiles(projectDir: string, currentDir = projectDir): 
   }).sort((left, right) => left.localeCompare(right));
 }
 
-function assertLocalProjectIsExecutable(projectDir: string, projectName: string): void {
-  if (readLocalPackageProjectType(projectDir) !== "kanban") return;
+function assertLocalProjectIsExecutable(projectDir: string, projectName: string, entryId?: string): void {
+  if (resolveProjectEntrySync(projectDir, entryId).registration.type !== "kanban") return;
   throw new HarnessError({
     type: "input_validation",
     message: createKanbanExecutionUnsupportedMessage(projectName),
@@ -2976,24 +2467,35 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 export async function runWorkspaceProjectWithReport(options: Parameters<typeof runWorkspaceProjectWithReportInternal>[0]): ReturnType<typeof runWorkspaceProjectWithReportInternal> {
-  const runId = options.runId ?? createProjectRunId();
-  const snapshot = await (await createLocalProjectConfigurationStore(resolveProjectLocation(options.cwd ?? process.cwd(), options.projectName).projectDir)).snapshot({ runId: options.configurationRunId ?? runId, configuration: options.configuration });
-  return withProjectConfiguration(snapshot, () => runWorkspaceProjectWithReportInternal({ ...options, runId, configuration: snapshot }), resolveProjectLocation(options.cwd ?? process.cwd(), options.projectName).projectDir);
+  const projectDir=resolveProjectLocation(options.cwd??process.cwd(),options.projectName).projectDir;
+  const declaration=readProjectStorageDeclaration(projectDir,options.entryId);
+  const identity={projectId:declaration.projectId,entryId:declaration.entryId};
+  const runId=options.runId??createProjectRunId();
+  const snapshot=await (await createLocalProjectConfigurationStore(projectDir,{entryId:declaration.entryId})).snapshot({runId:options.configurationRunId??runId,configuration:options.configuration});
+  const report=await withProjectConfiguration(snapshot,()=>runWorkspaceProjectWithReportInternal({...options,runId,entryId:declaration.entryId,configuration:snapshot,onRuntimeEvent:event=>options.onRuntimeEvent?.({...event,...identity})}),projectDir,declaration.entryId);
+  return {...report,...identity};
 }
 
 export async function debugWorkspaceProjectNodeWithReport(options: Parameters<typeof debugWorkspaceProjectNodeWithReportInternal>[0]): ReturnType<typeof debugWorkspaceProjectNodeWithReportInternal> {
+  const projectDir = resolveProjectLocation(options.cwd ?? process.cwd(), options.projectName).projectDir;
+  const declaration = readProjectStorageDeclaration(projectDir, options.entryId);
+  const identity = { projectId: declaration.projectId, entryId: declaration.entryId };
   const runId = options.runId ?? createProjectRunId();
-  const snapshot = await (await createLocalProjectConfigurationStore(resolveProjectLocation(options.cwd ?? process.cwd(), options.projectName).projectDir)).snapshot({ runId: options.configurationRunId ?? runId, configuration: options.configuration });
-  return withProjectConfiguration(snapshot, () => debugWorkspaceProjectNodeWithReportInternal({ ...options, runId, configuration: snapshot }), resolveProjectLocation(options.cwd ?? process.cwd(), options.projectName).projectDir);
+  const snapshot = await (await createLocalProjectConfigurationStore(projectDir, { entryId: declaration.entryId })).snapshot({ runId: options.configurationRunId ?? runId, configuration: options.configuration });
+  const report = await withProjectConfiguration(snapshot, () => debugWorkspaceProjectNodeWithReportInternal({ ...options, runId, entryId: declaration.entryId, configuration: snapshot, onRuntimeEvent: event => options.onRuntimeEvent?.({ ...event, ...identity }) }), projectDir, declaration.entryId);
+  return { ...report, ...identity };
 }
 
 export async function runLocalProjectWithReport(options: RunLocalProjectOptions = {}): ReturnType<typeof runLocalProjectWithReportInternal> {
+  const declaration = readProjectStorageDeclaration(resolveLocalProjectDir(options.projectDir), options.entryId);
+  const identity = { projectId: declaration.projectId, entryId: declaration.entryId };
   const runId = options.runId ?? createProjectRunId();
-  const snapshot = await (await createLocalProjectConfigurationStore(resolveLocalProjectDir(options.projectDir))).snapshot({ runId: options.configurationRunId ?? runId, configuration: options.configuration });
-  return withProjectConfiguration(snapshot, () => runLocalProjectWithReportInternal({ ...options, runId, configuration: snapshot }),resolveLocalProjectDir(options.projectDir));
+  const snapshot = await (await createLocalProjectConfigurationStore(declaration.projectDir, { entryId: declaration.entryId })).snapshot({ runId: options.configurationRunId ?? runId, configuration: options.configuration });
+  const report = await withProjectConfiguration(snapshot, () => runLocalProjectWithReportInternal({ ...options, runId, entryId: declaration.entryId, configuration: snapshot, onRuntimeEvent: event => options.onRuntimeEvent?.({ ...event, ...identity }) }), declaration.projectDir, declaration.entryId);
+  return { ...report, ...identity };
 }
 
 async function resolveProjectParamsFromModule(options: Parameters<typeof resolveProjectParamsFromModuleInternal>[0]): Promise<ParamResolveResult> {
-  const snapshot = await (await createLocalProjectConfigurationStore(options.projectDir)).snapshot({ required: false,configuration:options.configuration,refreshAccess:false });
-  return withProjectConfiguration(snapshot, () => resolveProjectParamsFromModuleInternal(options),options.projectDir);
+  const snapshot = await (await createLocalProjectConfigurationStore(options.declaration.projectDir, { entryId: options.declaration.entryId })).snapshot({ required: false,configuration:options.configuration,refreshAccess:false });
+  return withProjectConfiguration(snapshot, () => resolveProjectParamsFromModuleInternal(options),options.declaration.projectDir, options.declaration.entryId);
 }

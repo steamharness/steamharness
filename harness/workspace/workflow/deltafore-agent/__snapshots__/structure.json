@@ -2,7 +2,6 @@
   "projectName": "deltafore-agent",
   "projectType": "conversation",
   "files": [
-    "agent/__tests__/prompts.test.ts",
     "agent/context.ts",
     "agent/decision.ts",
     "agent/input.ts",
@@ -11,7 +10,6 @@
     "index.ts",
     "interface.ts",
     "nodes/nodes.ts",
-    "tools/__tests__/openapi.test.ts",
     "tools/attribute-labels.ts",
     "tools/openapi.ts",
     "tools/runner.ts",

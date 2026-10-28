@@ -21,12 +21,14 @@
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
     "@types/semver": "^7.7.1",
-    "@vitest/coverage-v8": "^4.1.7",
+    "@vitest/coverage-v8": "4.1.10",
     "@steamharness/i18n": "workspace:*",
     "jsdom": "^29.1.1",
     "tsx": "^4.21.0",
     "typescript": "^6.0.3",
     "vitest": "^4.1.7",
-    "@steamharness/project-access": "workspace:*"
+    "@steamharness/project-access": "workspace:*",
+    "@steamharness/database-spaces": "workspace:*",
+    "@steamharness/project-manifest": "workspace:*"
   }
 }

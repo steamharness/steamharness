@@ -83,17 +83,17 @@ test("drift is reported per copy and file", async () => {
   const root = await createFixture();
   try {
     await writeFile(
-      path.join(root, "build-in/build-in-studio-control/scripts/release-gate.mjs"),
+      path.join(root, "build-in/build-in-analysis/scripts/release-gate.mjs"),
       "export const gate = 2;\n",
     );
     const { drift, copies } = await checkVendorCopies(root);
     assert.deepEqual(drift, [{
-      copy: "build-in/build-in-studio-control/scripts/release-gate.mjs",
+      copy: "build-in/build-in-analysis/scripts/release-gate.mjs",
       source: "shared/release-tools/release-gate.mjs",
       kind: "different",
     }]);
     const message = formatVendorCopyDrift(drift, copies);
-    assert.match(message, /build-in-studio-control\/scripts\/release-gate\.mjs is different/u);
+    assert.match(message, /build-in-analysis\/scripts\/release-gate\.mjs is different/u);
     assert.match(message, /check-vendor-copies\.mjs --fix/u);
   } finally {
     await rm(root, { recursive: true, force: true });
@@ -158,7 +158,7 @@ test("a vendored file without a shared source is reported as an extra", async ()
 test("--fix rewrites every copy from its source", async () => {
   const root = await createFixture();
   try {
-    await writeFile(path.join(root, "build-in/build-in-studio-control/scripts/release-gate.mjs"), "export const gate = 2;\n");
+    await writeFile(path.join(root, "build-in/build-in-analysis/scripts/release-gate.mjs"), "export const gate = 2;\n");
     await writeFile(
       path.join(root, "build-in/build-in-developer-assistant/scripts/prepare-local-siblings.mjs"),
       "export const prepare = 2;\n",
@@ -170,7 +170,7 @@ test("--fix rewrites every copy from its source", async () => {
     const { drift } = await checkVendorCopies(root);
     assert.deepEqual(drift, []);
     assert.equal(
-      await readFile(path.join(root, "build-in/build-in-studio-control/scripts/release-gate.mjs"), "utf8"),
+      await readFile(path.join(root, "build-in/build-in-analysis/scripts/release-gate.mjs"), "utf8"),
       "export const gate = 1;\n",
     );
     assert.equal(

@@ -2,7 +2,6 @@
   "projectName": "deltaforce-bilibili-collect",
   "projectType": "workflow",
   "files": [
-    "__tests__/deltaforce-bilibili-collect.test.ts",
     "index.ts",
     "interface.ts",
     "lib/bilibili.ts",

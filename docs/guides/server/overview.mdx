@@ -9,16 +9,16 @@ Server Web 是 SteamHarness Server 的浏览器管理端。登录后可查找 Wo
 
 ## 项目工作台
 
-项目列表可按项目 ID、名称、类型、上传者和版本搜索，并展示 latest、版本数量与更新时间。项目详情提供概览、设置、关联项目、版本、成员、邀请、知识库和 KV 数据。
+项目列表展示类型集合，筛选匹配任一入口类型；详情提供入口清单、逐入口配置、版本和成员。数据库空间独立管理，支持申请、审批、共享授权与数据浏览。
 
-上传包必须在 `package.json.steamHarness.projectType` 声明 `workflow`、`conversation` 或 `kanban`。名称和展示平台来自 `steamHarness.projectInfo`；展示平台不限制源码下载。
+上传包必须注册非空 `steamHarness.entries` 和有效 `defaultEntry`。名称和展示平台来自 projectInfo；数据库需求归各入口。
 
 ## 项目与数据
 
 - 使用 [Workspace CLI](/cli/server-workspace) 创建、上传、发布和下载项目。
-- 在 [项目管理](/guides/server/project-management) 中配置成员、组归属和双方关联权限。
+- 数据库空间通过申请、审批与绑定授权，独立于项目源码与成员申请。
 - 知识库支持文档创建、编辑、删除、检索和按行读取；KV 与 PersistentValue 保存项目或会话数据。
-- `dataStorage.mode` 为 `server` 或 `both` 时可访问服务器数据；`local` 项目仍可存储与下载源码。
+- 数据库空间通过申请、审批与绑定授权，独立于项目源码与成员申请。
 - Kanban 保留静态预览、配置和数据 Bridge。预览使用绑定项目、用户和版本的短期 capability，iframe 不继承账号凭据。
 
 ## 账号与设置

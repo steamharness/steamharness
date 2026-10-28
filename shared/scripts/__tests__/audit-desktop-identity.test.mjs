@@ -11,8 +11,8 @@ import {
 } from "../audit-desktop-identity.mjs";
 
 test("Desktop identity audit includes every split repository", () => {
-  assert.equal(SPLIT_REPOSITORIES.includes("build-in/build-in-studio-control"), true);
-  assert.equal(SPLIT_REPOSITORIES.length, 8);
+  assert.equal(SPLIT_REPOSITORIES.includes("build-in/build-in-developer-assistant"), true);
+  assert.equal(SPLIT_REPOSITORIES.length, 7);
 });
 
 test("Desktop identity audit scans the relocated built-in production files by default", async () => {
@@ -20,7 +20,7 @@ test("Desktop identity audit scans the relocated built-in production files by de
   try {
     await Promise.all(SPLIT_REPOSITORIES.map(repository => mkdir(path.join(splitRoot, repository), { recursive: true })));
     await writeFiles(path.join(splitRoot, "build-in/build-in-developer-assistant"), {
-      "src/runtime.ts": "steamharness.isApp();\n",
+      "studio-control/runtime.ts": "steamharness.isApp();\n",
     });
     await assert.rejects(auditDesktopIdentity({ splitRoot }), error => {
       assert.equal(error.violations[0].repository, "build-in/build-in-developer-assistant");
@@ -69,8 +69,8 @@ test("Desktop identity audit allows only explicit old-value rejection guards", a
     "src/__tests__/runtime-platform.test.ts": 'expect(normalize("app")).toThrow();\n',
     "CHANGELOG.next.md": "旧 app 值不再兼容。\n",
   });
-  await writeFiles(path.join(splitRoot, "build-in/build-in-studio-control"), {
-    "package.json": '{"name":"@steamharness/builtin-studio-control"}\n',
+  await writeFiles(path.join(splitRoot, "build-in/build-in-developer-assistant"), {
+    "package.json": '{"name":"@steamharness/builtin-developer-assistant"}\n',
     "scripts/builtin-release.mjs": [
       'if (Object.hasOwn(release, "minAppVersion")) {',
       '  throw new Error("minAppVersion is not supported; use minDesktopVersion.");',
@@ -80,7 +80,7 @@ test("Desktop identity audit allows only explicit old-value rejection guards", a
 
   const result = await auditDesktopIdentity({
     splitRoot,
-    repositories: ["harness", "build-in/build-in-studio-control"],
+    repositories: ["harness", "build-in/build-in-developer-assistant"],
   });
   assert.equal(result.repositories.length, 2);
   assert.equal(result.filesChecked, 4);

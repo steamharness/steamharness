@@ -7,7 +7,7 @@ description: "标准 workflow 错误类，用于可序列化的错误报告。"
 
 `workflow.HarnessError` 是业务 workflow 和 runtime 使用的标准错误类。它会保留错误类型、节点名、metadata 和经过清洗的 cause，最终进入执行报告。
 
-运行失败时，`ExecutionReport.error` 保留可序列化的结构化错误，`result.data` 继续提供标准的 `errCode`、`errMessage` 和 `output`。宿主需要判断服务器项目或关联授权问题时，读取 `report.error.metadata`；成功报告不包含 `error`。
+运行失败时，`ExecutionReport.error` 保留可序列化的结构化错误，`result.data` 继续提供标准的 `errCode`、`errMessage` 和 `output`。宿主需要判断服务器项目或数据库空间授权问题时，读取 `report.error.metadata`；成功报告不包含 `error`。
 
 ## 签名
 

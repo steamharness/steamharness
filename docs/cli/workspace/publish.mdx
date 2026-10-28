@@ -1,29 +1,16 @@
 ---
 title: "workspace publish"
-description: "将草稿保存为不可变源码版本。"
+description: "发布不可变聚合版本"
 ---
 
-# workspace publish
+# 发布不可变聚合版本
 
-发布校验草稿并保存不可变源码快照、SHA-256、发布者、发布时间、发布说明和关联项目版本锁，成功后更新 `latest`。所有类型都保留完整源码；下载不受操作系统限制。
-
-```bash
-steamharness workspace publish <project> [--release-log <text>]
-steamharness workspace publish --deployment <id>
+```sh
+pnpm exec steamharness workspace publish <project-id> --release-log "Update entries"
 ```
 
-发布版本取自已准备草稿的 `package.json.version`。Server 按项目串行发布；重复版本返回冲突，已有版本不会被覆盖。需要新版本时重新上传带新版本号的源码。发布不安装依赖、不构建或执行代码。
+一次操作覆盖一个 projectId 的所有注册入口，包含入口代码、依赖清单、业务配置定义和 Kanban 产物。先在本地安装依赖并构建静态入口，再运行 `steamharness check .`。
 
-## 项目组
+归档过滤凭据、宿主运行数据、Git 和 node_modules；保留数据库需求，剥离所有 `bindingRef`。安装者必须在自己的 local 或 server 宿主重新申请绑定，不继承作者授权。
 
-从本地发布项目组可使用 `--project-group`、`--path <dir>`、`--dependency <alias>=<path>` 和 `--create`。included 项目先发布，根 Kanban 最后更新 `latest`；根版本固化精确版本和源码哈希。
-
-已准备项目组使用 `--deployment <id>` 重试，不能同时传本地目录或项目组创建参数。已完成且哈希一致的项目会被复用。
-
-## API
-
-单项目：`POST /api/projects/{projectId}/publish`，请求体可包含 `releaseLog`。项目组：`POST /api/deployments/{deploymentId}/publish`。
-
-使用 [versions](/cli/workspace/versions) 查看结果，再用 [download](/cli/workspace/download) 下载任意历史版本。
-
-存在配置发布草稿时，CLI 携带草稿版本及已准备的源码摘要。源码、引用的个人配置或草稿版本变化时，Server 拒绝发布。发布仅在临时目录过滤版本配置文件并冻结附件，不修改作者目录；官方模板只允许维护者、所有者或系统管理员发布。详见[项目配置](/concepts/project-configuration)。
+发布从已准备草稿读取根 `package.json.version`，创建不可变快照；同一版本不能重发。所有入口共享该版本及源码哈希。Server 只处理静态数据。

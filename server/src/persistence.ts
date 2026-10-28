@@ -1,3 +1,5 @@
+import type { ProjectAccessRequest, ProjectAccessRequestStatus } from "@steamharness/project-access";
+import { readProjectManifest, type ProjectEntry } from '@steamharness/project-manifest';
 import { HttpError } from "./protocol";
 import { ProjectAccessRepository } from "./project-access";
 import type { AccessActor, ProjectRole } from "@steamharness/project-access";
@@ -15,7 +17,6 @@ import { normalizeProjectCardMetadata, type ProjectCardMetadata } from "@steamha
 import { normalizeProjectInfo, writeProjectInfo, type DeclaredProjectInfo, type ProjectInfoContract } from "@steamharness/project-info";
 import { isProjectKind, STEAMHARNESS_PROJECT_TYPES, type ProjectKind } from "@steamharness/project-types";
 import type { ObjectStorage } from "./object-storage";
-import { parseProjectGroupManifest, type ProjectAccessRequest, type ProjectAccessRequestStatus, type ProjectDependencyLock, type ProjectGroupManifestV1 } from "@steamharness/project-dependencies";
 const STEAMHARNESS_PROJECT_TYPES_SQL = createPostgresTextList(STEAMHARNESS_PROJECT_TYPES);
 // PostgreSQL assigns a new xmin to each externally visible row version. It is
 // a stronger compare-and-set token than updated_at, whose transaction-start
@@ -37,7 +38,8 @@ function createPostgresTextList(values: readonly string[]): string {
 export interface DbRecord {
   id: string;
   name: string;
-  projectType: ProjectKind;
+  entries: ProjectEntry[];
+  defaultEntry: string;
   projectCard: ProjectCardMetadata;
   projectInfo: ProjectInfoContract;
   packageVersion: string;
@@ -51,27 +53,15 @@ export interface DbRecord {
   updatedAt: string;
 }
 
-export interface DbVersionRecord { projectId: string; projectName: string; version: string; createdAt: string; createdByUserId?: string; releaseLog: string; sourceHash: string; sourceObjectPath: string; dependencies: ProjectDependencyLock[]; }
-
-export interface KanbanConfigurationRecord {
-  id: string;
-  name: string;
-  values: Record<string, string>;
-  createdAt: string;
-  updatedAt: string;
-}
-
-export interface KanbanConfigurationStateRecord {
-  configurations: KanbanConfigurationRecord[];
-  activeConfigurationId?: string;
-}
+export interface DbVersionRecord { projectId: string; projectName: string; version: string; createdAt: string; createdByUserId?: string; releaseLog: string; sourceHash: string; sourceObjectPath: string; entries: ProjectEntry[]; defaultEntry: string; }
 
 export interface DbVersionSummaryRecord { projectId: string; projectName: string; version: string; }
 
 export interface SaveProjectDraftInput {
   projectId: string;
   projectName: string;
-  projectType: ProjectKind;
+  entries: ProjectEntry[];
+  defaultEntry: string;
   packageVersion: string;
   projectCard: ProjectCardMetadata;
   projectInfo: ProjectInfoContract;
@@ -85,7 +75,8 @@ export interface SaveProjectDraftInput {
 export interface CreateProjectInput {
   projectId: string;
   projectName: string;
-  projectType: ProjectKind;
+  entries: ProjectEntry[];
+  defaultEntry: string;
   projectCard: ProjectCardMetadata;
   projectInfo: DeclaredProjectInfo;
   packageVersion?: string;
@@ -104,55 +95,9 @@ export interface SaveProjectVersionInput {
   releaseLog: string;
   sourceHash: string;
   sourceObjectPath: string;
-  dependencies?: ProjectDependencyLock[];
+  entries: ProjectEntry[];
+  defaultEntry: string;
   updateLatest?: boolean;
-}
-
-export type DeploymentStatus =
-  | "planned"
-  | "preparing"
-  | "prepared"
-  | "publishing"
-  | "published"
-  | "failed";
-
-export type DeploymentItemStatus =
-  | "planned"
-  | "preparing"
-  | "prepared"
-  | "publishing"
-  | "published"
-  | "failed";
-
-export interface DeploymentItemRecord {
-  deploymentId: string;
-  projectId: string;
-  alias?: string;
-  role: "root" | "dependency";
-  delivery: "included";
-  status: DeploymentItemStatus;
-  stage?: string;
-  plannedVersion?: string;
-  preparedSourceHash?: string;
-  preparedConfigurationRevision?: number;
-  publishedVersion?: string;
-  publishedSourceHash?: string;
-  error?: string;
-  updatedAt: string;
-}
-
-export interface DeploymentRecord {
-  id: string;
-  rootProjectId: string;
-  status: DeploymentStatus;
-  manifest: ProjectGroupManifestV1;
-  releaseLog: string;
-  createdByUserId: string;
-  error?: string;
-  createdAt: string;
-  updatedAt: string;
-  publishedAt?: string;
-  items: DeploymentItemRecord[];
 }
 
 export type { ProjectRole } from "@steamharness/project-access";
@@ -187,7 +132,7 @@ export class DatabaseRepository implements KVStore {
   private readonly publishLockPool: pg.Pool;
   private readonly projectKVRevisionReconnectDelayMs = STEAMHARNESS_KV_REVISION_RECONNECT_DELAY_MS;
 
-  constructor(connectionString: string) {
+  constructor(readonly connectionString: string) {
     this.pool = createPostgresPool({
       connectionString,
       label: "project storage",
@@ -211,7 +156,8 @@ export class DatabaseRepository implements KVStore {
       create table if not exists projects (
         id text primary key,
         name text not null,
-        project_type text not null check (project_type in (${STEAMHARNESS_PROJECT_TYPES_SQL})),
+        entries jsonb not null,
+        default_entry text not null,
         project_card jsonb,
         project_info jsonb not null default '{}'::jsonb,
         package_version text not null default '0.0.0',
@@ -224,6 +170,13 @@ export class DatabaseRepository implements KVStore {
         created_at timestamptz not null default now(),
         updated_at timestamptz not null default now()
       );
+
+      alter table projects add column if not exists entries jsonb;
+      alter table projects add column if not exists default_entry text;
+      delete from projects where entries is null;
+      alter table projects alter column entries set not null;
+      alter table projects alter column default_entry set not null;
+      alter table projects drop column if exists project_type;
 
       alter table projects
         add column if not exists group_id text references project_groups(id);
@@ -242,6 +195,8 @@ export class DatabaseRepository implements KVStore {
         project_id text not null references projects(id) on delete cascade,
         version text not null,
         project_name text not null,
+        entries jsonb not null,
+        default_entry text not null,
         created_at timestamptz not null,
         source_hash text not null,
         source_object_path text not null,
@@ -249,6 +204,12 @@ export class DatabaseRepository implements KVStore {
         created_by_user_id text,
         primary key (project_id, version)
       );
+
+      alter table project_versions add column if not exists entries jsonb;
+      alter table project_versions add column if not exists default_entry text;
+      delete from project_versions where entries is null;
+      alter table project_versions alter column entries set not null;
+      alter table project_versions alter column default_entry set not null;
 
       create table if not exists project_version_downloads (
         project_id text not null,
@@ -303,89 +264,34 @@ export class DatabaseRepository implements KVStore {
 
 
 
-      create table if not exists project_configuration_drafts (
-        project_id text primary key references projects(id) on delete cascade,
+      create table if not exists entry_configuration_drafts (
+        project_id text not null references projects(id) on delete cascade,
+        entry_id text not null,
+        primary key(project_id,entry_id),
         draft jsonb not null
       );
-      create table if not exists project_configuration_templates (
+      create table if not exists entry_configuration_templates (
         project_id text not null,
+        entry_id text not null,
         version text not null,
         template jsonb not null,
-        primary key(project_id, version),
+        primary key(project_id, entry_id, version),
         foreign key(project_id, version) references project_versions(project_id, version) on delete cascade
       );
-      create table if not exists project_configurations (
+      create table if not exists entry_configurations (
         project_id text not null references projects(id) on delete cascade,
+        entry_id text not null,
         user_id text not null,
         state jsonb not null,
-        primary key (project_id, user_id)
+        primary key (project_id, entry_id, user_id)
       );
 
-      create table if not exists project_kanban_configurations (
-        project_id text not null references projects(id) on delete cascade,
-        user_id text not null,
-        configuration_id text not null,
-        name text not null,
-        values jsonb not null default '{}'::jsonb,
-        created_at timestamptz not null,
-        updated_at timestamptz not null,
-        primary key (project_id, user_id, configuration_id)
-      );
 
-      create table if not exists project_kanban_active_configurations (
-        project_id text not null,
-        user_id text not null,
-        configuration_id text not null,
-        primary key (project_id, user_id),
-        foreign key (project_id, user_id, configuration_id)
-          references project_kanban_configurations(project_id, user_id, configuration_id)
-          on delete cascade
-      );
 
-      create table if not exists project_deployments (
-        id text primary key,
-        root_project_id text not null references projects(id) on delete cascade,
-        status text not null,
-        manifest jsonb not null,
-        release_log text not null default '',
-        created_by_user_id text not null,
-        error text,
-        created_at timestamptz not null,
-        updated_at timestamptz not null,
-        published_at timestamptz
-      );
 
-      create table if not exists project_deployment_items (
-        deployment_id text not null references project_deployments(id) on delete cascade,
-        project_id text not null references projects(id) on delete cascade,
-        alias text,
-        role text not null,
-        delivery text not null default 'included',
-        status text not null,
-        stage text,
-        planned_version text,
-        prepared_source_hash text,
-        published_version text,
-        published_source_hash text,
-        error text,
-        updated_at timestamptz not null,
-        primary key (deployment_id, project_id)
-      );
 
-      create table if not exists related_project_dependencies (
-        project_id text not null,
-        version text not null,
-        alias text not null,
-        dependency_project_id text not null,
-        delivery text not null,
-        dependency_version text,
-        source_hash text,
-        created_at timestamptz not null default now(),
-        primary key (project_id, version, alias),
-        foreign key (project_id, version)
-          references project_versions(project_id, version)
-          on delete cascade
-      );
+
+
 
       create table if not exists project_membership_requests (
         id text primary key,
@@ -399,34 +305,20 @@ export class DatabaseRepository implements KVStore {
         updated_at timestamptz not null
       );
 
-      alter table project_deployment_items add column if not exists prepared_configuration_revision integer;
-
-      create index if not exists project_versions_created_at_idx
-        on project_versions(project_id, created_at desc);
-      create index if not exists project_members_user_idx
-        on project_members(user_id, project_id);
-      create index if not exists project_kanban_configurations_user_updated_idx
-        on project_kanban_configurations(project_id, user_id, updated_at desc);
-      create index if not exists project_deployments_root_idx
-        on project_deployments(root_project_id, created_at desc);
-      create index if not exists project_deployment_items_project_idx
-        on project_deployment_items(project_id, updated_at desc);
-      create unique index if not exists project_deployment_items_active_version_idx
-        on project_deployment_items(project_id, planned_version)
-        where planned_version is not null
-          and published_version is null
-          and status in ('planned', 'preparing', 'prepared', 'publishing');
-      create index if not exists related_project_dependencies_project_idx
-        on related_project_dependencies(project_id, dependency_version);
-      create index if not exists project_storage_project_updated_idx
-        on project_storage(storage_kind, project_id, scope, updated_at desc);
-      create index if not exists project_storage_last_run_idx
-        on project_storage(last_project_id, last_run_id);
       create index if not exists project_membership_requests_project_idx
         on project_membership_requests(project_id, created_at desc);
       create unique index if not exists project_membership_requests_pending_idx
         on project_membership_requests(project_id, requester_user_id)
         where status = 'pending';
+
+      create index if not exists project_versions_created_at_idx
+        on project_versions(project_id, created_at desc);
+      create index if not exists project_members_user_idx
+        on project_members(user_id, project_id);
+      create index if not exists project_storage_project_updated_idx
+        on project_storage(storage_kind, project_id, scope, updated_at desc);
+      create index if not exists project_storage_last_run_idx
+        on project_storage(last_project_id, last_run_id);
 
     `);
     await this.pool.query(`
@@ -489,7 +381,7 @@ export class DatabaseRepository implements KVStore {
 
   async listProjects(): Promise<DbRecord[]> {
     const result = await this.pool.query<Row>(`
-      select id, name, project_type, project_card, project_info, package_version, has_draft, latest_version,
+      select id, name, entries, default_entry, project_card, project_info, package_version, has_draft, latest_version,
         owner_user_id, group_id, visibility, created_by_user_id,
         created_at, updated_at
       from projects
@@ -501,7 +393,7 @@ export class DatabaseRepository implements KVStore {
 
   async getProject(projectId: string): Promise<DbRecord | undefined> {
     const result = await this.pool.query<Row>(
-      `select id, name, project_type, project_card, project_info, package_version, has_draft, latest_version,
+      `select id, name, entries, default_entry, project_card, project_info, package_version, has_draft, latest_version,
         owner_user_id, group_id, visibility, created_by_user_id,
         created_at, updated_at
        from projects
@@ -520,7 +412,7 @@ export class DatabaseRepository implements KVStore {
       `update projects
        set project_card = $2::jsonb, updated_at = now()
        where id = $1
-       returning id, name, project_type, project_card, project_info, package_version, has_draft, latest_version,
+       returning id, name, entries, default_entry, project_card, project_info, package_version, has_draft, latest_version,
          owner_user_id, group_id, visibility, created_by_user_id, created_at, updated_at`,
       [projectId, JSON.stringify(projectCard)],
     );
@@ -554,7 +446,7 @@ export class DatabaseRepository implements KVStore {
           `update projects
            set name = $2, project_info = $3::jsonb, updated_at = now()
            where id = $1
-           returning id, name, project_type, project_card, project_info, package_version, has_draft, latest_version,
+           returning id, name, entries, default_entry, project_card, project_info, package_version, has_draft, latest_version,
              owner_user_id, group_id, visibility, created_by_user_id, created_at, updated_at`,
           [update.projectId, update.projectName, JSON.stringify(update.projectInfo)],
         );
@@ -614,7 +506,8 @@ export class DatabaseRepository implements KVStore {
       `insert into projects (
          id,
          name,
-         project_type,
+         entries,
+         default_entry,
          project_card,
          project_info,
          package_version,
@@ -627,14 +520,14 @@ export class DatabaseRepository implements KVStore {
          updated_at,
          group_id
        )
-       values ($1, $2, $3, $4::jsonb, $5::jsonb, $6, false, null, $7, $8, $9, now(), now(), $10)
+       values ($1, $2, $3::jsonb, $11, $4::jsonb, $5::jsonb, $6, false, null, $7, $8, $9, now(), now(), $10)
        on conflict (id) do nothing
-       returning id, name, project_type, project_card, project_info, package_version, has_draft, latest_version,
+       returning id, name, entries, default_entry, project_card, project_info, package_version, has_draft, latest_version,
          owner_user_id, group_id, visibility, created_by_user_id, created_at, updated_at`,
       [
         input.projectId,
         input.projectName,
-        input.projectType,
+        JSON.stringify(input.entries),
         JSON.stringify(input.projectCard),
         JSON.stringify(input.projectInfo),
         input.packageVersion ?? "0.0.0",
@@ -642,6 +535,7 @@ export class DatabaseRepository implements KVStore {
         input.visibility ?? "private",
         input.createdByUserId ?? null,
         input.groupId ?? null,
+        input.defaultEntry,
       ],
     );
 
@@ -732,212 +626,7 @@ export class DatabaseRepository implements KVStore {
     return (result.rowCount ?? 0) > 0;
   }
 
-  async createProjectDeployment(input: {
-    id: string;
-    rootProjectId: string;
-    manifest: ProjectGroupManifestV1;
-    releaseLog: string;
-    createdByUserId: string;
-  }): Promise<DeploymentRecord> {
-    const now = new Date();
-    const client = await this.pool.connect();
-    try {
-      await client.query("begin");
-      await client.query(
-        `insert into project_deployments (
-           id, root_project_id, status, manifest, release_log,
-           created_by_user_id, created_at, updated_at
-         ) values ($1, $2, 'planned', $3::jsonb, $4, $5, $6, $6)`,
-        [
-          input.id,
-          input.rootProjectId,
-          JSON.stringify(input.manifest),
-          input.releaseLog,
-          input.createdByUserId,
-          now,
-        ],
-      );
-      for (const project of input.manifest.projects) {
-        await client.query(
-          `insert into project_deployment_items (
-             deployment_id, project_id, alias, role, delivery,
-             status, updated_at
-           ) values ($1, $2, $3, $4, 'included', 'planned', $5)`,
-          [input.id, project.projectId, project.alias ?? null, project.role, now],
-        );
-      }
-      await client.query("commit");
-    } catch (error) {
-      await client.query("rollback");
-      throw error;
-    } finally {
-      client.release();
-    }
-    return (await this.getProjectDeployment(input.id))!;
-  }
 
-  async getProjectDeployment(id: string): Promise<DeploymentRecord | undefined> {
-    const result = await this.pool.query<DeploymentRow>(
-      `select id, root_project_id, status, manifest, release_log,
-        created_by_user_id, error, created_at, updated_at, published_at
-       from project_deployments where id = $1`,
-      [id],
-    );
-    const row = result.rows[0];
-    if (row === undefined) return undefined;
-    const items = await this.pool.query<DeploymentItemRow>(
-      `select deployment_id, project_id, alias,
-        role, delivery, status,
-        stage, planned_version, prepared_source_hash, prepared_configuration_revision, published_version,
-        published_source_hash, error, updated_at
-       from project_deployment_items
-       where deployment_id = $1
-       order by case role when 'dependency' then 0 else 1 end,
-         alias asc nulls last`,
-      [id],
-    );
-    return toProjectDeploymentRecord(row, items.rows);
-  }
-
-  async updateProjectDeployment(input: {
-    id: string;
-    status: DeploymentStatus;
-    error?: string;
-    publishedAt?: string;
-  }): Promise<DeploymentRecord | undefined> {
-    const result = await this.pool.query(
-      `update project_deployments
-       set status = $2,
-         error = $3,
-         published_at = coalesce($4, published_at),
-         updated_at = now()
-       where id = $1`,
-      [input.id, input.status, input.error ?? null, input.publishedAt ?? null],
-    );
-    if ((result.rowCount ?? 0) === 0) return undefined;
-    return this.getProjectDeployment(input.id);
-  }
-
-  async transitionProjectDeploymentStatus(input: {
-    id: string;
-    from: DeploymentStatus[];
-    status: DeploymentStatus;
-  }): Promise<boolean> {
-    const result = await this.pool.query(
-      `update project_deployments
-       set status = $3, error = null, updated_at = now()
-       where id = $1 and status = any($2::text[])`,
-      [input.id, input.from, input.status],
-    );
-    return (result.rowCount ?? 0) > 0;
-  }
-
-  async updateProjectDeploymentItem(input: {
-    deploymentId: string;
-    projectId: string;
-    status: DeploymentItemStatus;
-    stage?: string;
-    plannedVersion?: string;
-    preparedSourceHash?: string;
-    preparedConfigurationRevision?: number;
-    publishedVersion?: string;
-    publishedSourceHash?: string;
-    resetPublication?: boolean;
-    error?: string;
-  }): Promise<void> {
-    await this.pool.query(
-      `update project_deployment_items
-       set status = $3,
-         stage = $4,
-         planned_version = coalesce($5, planned_version),
-         prepared_source_hash = coalesce($6, prepared_source_hash),
-         prepared_configuration_revision = coalesce($11, prepared_configuration_revision),
-         published_version = case when $10 then null else coalesce($7, published_version) end,
-         published_source_hash = case when $10 then null else coalesce($8, published_source_hash) end,
-         error = $9,
-         updated_at = now()
-       where deployment_id = $1 and project_id = $2`,
-      [
-        input.deploymentId,
-        input.projectId,
-        input.status,
-        input.stage ?? null,
-        input.plannedVersion ?? null,
-        input.preparedSourceHash ?? null,
-        input.publishedVersion ?? null,
-        input.publishedSourceHash ?? null,
-        input.error ?? null,
-        input.resetPublication === true,
-        input.preparedConfigurationRevision ?? null,
-      ],
-    );
-  }
-
-  async listProjectVersionReservations(
-    projectId: string,
-    excludeDeploymentId?: string,
-  ): Promise<string[]> {
-    const result = await this.pool.query<{ planned_version: string }>(
-      `select planned_version
-       from project_deployment_items
-       where project_id = $1
-         and planned_version is not null
-         and published_version is null
-         and status in ('planned', 'preparing', 'prepared', 'publishing')
-         and ($2::text is null or deployment_id <> $2)
-       order by planned_version asc`,
-      [projectId, excludeDeploymentId ?? null],
-    );
-    return result.rows.map((row) => row.planned_version);
-  }
-
-  async hasProjectVersionReservation(input: {
-    deploymentId: string;
-    projectId: string;
-    version: string;
-  }): Promise<boolean> {
-    const result = await this.pool.query(
-      `select 1
-       from project_deployment_items
-       where deployment_id = $1
-         and project_id = $2
-         and planned_version = $3
-         and published_version is null
-         and status in ('planned', 'preparing', 'prepared', 'publishing')`,
-      [input.deploymentId, input.projectId, input.version],
-    );
-    return result.rows.length > 0;
-  }
-
-  async resetProjectDeploymentItemsForPreparation(deploymentId: string): Promise<void> {
-    await this.pool.query(
-      `update project_deployment_items
-       set status = 'planned',
-         stage = 'version_reserved',
-         planned_version = null,
-         prepared_source_hash = null,
-         prepared_configuration_revision = null,
-         published_version = null,
-         published_source_hash = null,
-         error = null,
-         updated_at = now()
-       where deployment_id = $1`,
-      [deploymentId],
-    );
-  }
-
-  async releaseProjectDeploymentVersionReservations(deploymentId: string): Promise<void> {
-    await this.pool.query(
-      `update project_deployment_items
-       set status = 'failed',
-         stage = 'reservation_failed',
-         planned_version = null,
-         error = 'Version reservation failed.',
-         updated_at = now()
-       where deployment_id = $1 and published_version is null`,
-      [deploymentId],
-    );
-  }
 
   async createProjectAccessRequest(input: {
     id: string;
@@ -1002,7 +691,6 @@ export class DatabaseRepository implements KVStore {
     );
     return toProjectAccessRequest(row);
   }
-
   async updateProjectAccess(input: {
     projectId: string;
     ownerUserId?: string;
@@ -1018,7 +706,7 @@ export class DatabaseRepository implements KVStore {
          created_by_user_id = coalesce(created_by_user_id, $4),
          updated_at = now()
        where id = $1
-       returning id, name, project_type, project_card, project_info, package_version, has_draft, latest_version,
+       returning id, name, entries, default_entry, project_card, project_info, package_version, has_draft, latest_version,
          owner_user_id, group_id, visibility, created_by_user_id, created_at, updated_at`,
       [
         input.projectId,
@@ -1039,7 +727,8 @@ export class DatabaseRepository implements KVStore {
         `insert into projects (
            id,
            name,
-           project_type,
+           entries,
+         default_entry,
            project_card,
            project_info,
            package_version,
@@ -1049,8 +738,10 @@ export class DatabaseRepository implements KVStore {
            created_by_user_id,
            updated_at
          )
-         values ($1, $2, $3, $4::jsonb, $5::jsonb, $6, true, $7, $8, $9, now())
+         values ($1, $2, $3::jsonb, $10, $4::jsonb, $5::jsonb, $6, true, $7, $8, $9, now())
          on conflict (id) do update set
+           entries = excluded.entries,
+           default_entry = excluded.default_entry,
            package_version = excluded.package_version,
            has_draft = true,
            owner_user_id = coalesce(projects.owner_user_id, excluded.owner_user_id),
@@ -1060,13 +751,14 @@ export class DatabaseRepository implements KVStore {
         [
           input.projectId,
           input.projectName,
-          input.projectType,
+          JSON.stringify(input.entries),
           JSON.stringify(input.projectCard),
           JSON.stringify(input.projectInfo),
           input.packageVersion,
           input.ownerUserId ?? null,
           input.visibility ?? "private",
           input.createdByUserId ?? null,
+          input.defaultEntry,
         ],
       );
       await client.query("delete from project_draft_files where project_id = $1", [
@@ -1116,29 +808,6 @@ export class DatabaseRepository implements KVStore {
     }
   }
 
-  async withProjectDeploymentLock<T>(
-    deploymentId: string,
-    operation: () => Promise<T>,
-  ): Promise<T> {
-    const client = await this.publishLockPool.connect();
-    try {
-      await client.query(
-        "select pg_advisory_lock(hashtext($1), hashtext($2))",
-        ["project_deployment", deploymentId],
-      );
-      return await operation();
-    } finally {
-      try {
-        await client.query(
-          "select pg_advisory_unlock(hashtext($1), hashtext($2))",
-          ["project_deployment", deploymentId],
-        );
-      } finally {
-        client.release();
-      }
-    }
-  }
-
   async readDraftFiles(projectId: string): Promise<File[]> {
     const result = await this.pool.query<FileRow>(
       `select path, content, size, encoding
@@ -1164,9 +833,9 @@ export class DatabaseRepository implements KVStore {
       await client.query(
         `insert into project_versions (
            project_id, version, project_name, created_at, source_hash,
-           source_object_path, release_log, created_by_user_id
+           source_object_path, release_log, created_by_user_id, entries, default_entry
          )
-         values ($1, $2, $3, $4, $5, $6, $7, $8)`,
+         values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
         [
           input.projectId,
           input.version,
@@ -1176,25 +845,10 @@ export class DatabaseRepository implements KVStore {
           input.sourceObjectPath,
           input.releaseLog,
           input.createdByUserId ?? null,
+          JSON.stringify(input.entries),
+          input.defaultEntry,
         ],
       );
-      for (const dependency of input.dependencies ?? []) {
-        await client.query(
-          `insert into related_project_dependencies (
-             project_id, version, alias, dependency_project_id,
-             delivery, dependency_version, source_hash, created_at
-           ) values ($1, $2, $3, $4, $5, $6, $7, now())`,
-          [
-            input.projectId,
-            input.version,
-            dependency.alias,
-            dependency.projectId,
-            dependency.delivery,
-            dependency.version ?? null,
-            dependency.sourceHash ?? null,
-          ],
-        );
-      }
       await client.query(
         `update projects
          set latest_version = case when $4 then $3 else latest_version end,
@@ -1256,40 +910,19 @@ export class DatabaseRepository implements KVStore {
   ): Promise<DbVersionRecord | undefined> {
     const result = await this.pool.query<VersionRow>(
       `select project_id, project_name, version, created_at, source_hash,
-        source_object_path, release_log, created_by_user_id
+        source_object_path, release_log, created_by_user_id, entries, default_entry
        from project_versions
        where project_id = $1 and version = $2`,
       [projectId, version],
     );
 
     if (result.rows[0] === undefined) return undefined;
-    const record = toVersionRecord(result.rows[0]);
-    record.dependencies = (await this.listVersionDependencies(projectId, version))
-      .map((dependency) => dependency.lock);
-    return record;
+    return toVersionRecord(result.rows[0]);
   }
 
   async listVersions(projectId: string): Promise<DbVersionRecord[]> {
-    const result = await this.pool.query<VersionRow>(
-      `select project_id, project_name, version, created_at, source_hash,
-        source_object_path, release_log, created_by_user_id
-       from project_versions
-       where project_id = $1
-       order by version asc`,
-      [projectId],
-    );
-
-    const dependencies = await this.listVersionDependencies(projectId);
-    const dependenciesByVersion = new Map<string, ProjectDependencyLock[]>();
-    for (const dependency of dependencies) {
-      const items = dependenciesByVersion.get(dependency.version) ?? [];
-      items.push(dependency.lock);
-      dependenciesByVersion.set(dependency.version, items);
-    }
-    return result.rows.map((row) => ({
-      ...toVersionRecord(row),
-      dependencies: dependenciesByVersion.get(row.version) ?? [],
-    }));
+    const result = await this.pool.query<VersionRow>(`SELECT project_id,project_name,version,created_at,source_hash,source_object_path,release_log,created_by_user_id,entries,default_entry FROM project_versions WHERE project_id=$1 ORDER BY created_at`, [projectId]);
+    return result.rows.map(toVersionRecord);
   }
 
   async listVersionDownloadCounts(projectId: string): Promise<Map<string, number>> {
@@ -1315,27 +948,6 @@ export class DatabaseRepository implements KVStore {
        set download_count = project_version_downloads.download_count + 1`,
       [downloads.map(item => item.projectId), downloads.map(item => item.version)],
     );
-  }
-
-  async listVersionDependencies(
-    projectId: string,
-    version?: string,
-  ): Promise<Array<{ version: string; lock: ProjectDependencyLock }>> {
-    const values: unknown[] = [projectId];
-    const versionFilter = version === undefined ? "" : " and version = $2";
-    if (version !== undefined) values.push(version);
-    const result = await this.pool.query<VersionDependencyRow>(
-      `select version, alias, dependency_project_id, delivery,
-        dependency_version, source_hash
-       from related_project_dependencies
-       where project_id = $1${versionFilter}
-       order by version asc, alias asc`,
-      values,
-    );
-    return result.rows.map((row) => ({
-      version: row.version,
-      lock: toProjectDependencyLock(row),
-    }));
   }
 
   async listVersionsForProjects(
@@ -1366,167 +978,33 @@ export class DatabaseRepository implements KVStore {
     return versions;
   }
 
-  async configurationPublicationDraft(projectId: string, update?: (stored: unknown) => ConfigurationPublicationDraft): Promise<ConfigurationPublicationDraft | undefined> {
+  async configurationPublicationDraft(projectId: string, entryId: string, update?: (stored: unknown) => ConfigurationPublicationDraft): Promise<ConfigurationPublicationDraft | undefined> {
     const client = await this.pool.connect();
     try {
-      await client.query("begin");
-      await client.query("select pg_advisory_xact_lock(hashtextextended($1, 0))", [JSON.stringify([projectId,"configuration-publication"])]);
-      const result = await client.query<{draft:ConfigurationPublicationDraft}>("select draft from project_configuration_drafts where project_id=$1 for update",[projectId]);
-      const next = update ? update(result.rows[0]?.draft) : result.rows[0]?.draft;
-      if(update) await client.query("insert into project_configuration_drafts(project_id,draft) values($1,$2::jsonb) on conflict(project_id) do update set draft=excluded.draft",[projectId,JSON.stringify(next)]);
-      await client.query("commit"); return next;
-    } catch(error) {await client.query("rollback");throw error;} finally {client.release();}
+      await client.query("BEGIN");
+      await client.query("SELECT pg_advisory_xact_lock(hashtextextended($1,0))", [JSON.stringify([projectId,entryId,"configuration-publication"])]);
+      const stored = await client.query("SELECT draft FROM entry_configuration_drafts WHERE project_id=$1 AND entry_id=$2 FOR UPDATE", [projectId,entryId]);
+      const next = update ? update(stored.rows[0]?.draft) : stored.rows[0]?.draft;
+      if (update) await client.query("INSERT INTO entry_configuration_drafts(project_id,entry_id,draft) VALUES($1,$2,$3::jsonb) ON CONFLICT(project_id,entry_id) DO UPDATE SET draft=excluded.draft", [projectId,entryId,JSON.stringify(next)]);
+      await client.query("COMMIT"); return next;
+    } catch (error) { await client.query("ROLLBACK"); throw error; } finally { client.release(); }
   }
-  async saveConfigurationTemplate(projectId:string, version:string, template:ProjectConfigurationTemplate):Promise<void> {
-    await this.pool.query("insert into project_configuration_templates(project_id,version,template) values($1,$2,$3::jsonb)",[projectId,version,JSON.stringify(template)]);
+  async saveConfigurationTemplate(projectId: string, entryId: string, version: string, template: ProjectConfigurationTemplate): Promise<void> {
+    await this.pool.query("INSERT INTO entry_configuration_templates(project_id,entry_id,version,template) VALUES($1,$2,$3,$4::jsonb)",[projectId,entryId,version,JSON.stringify(template)]);
   }
-  async readConfigurationTemplate(projectId:string,version:string):Promise<ProjectConfigurationTemplate|undefined> {
-    return (await this.pool.query<{template:ProjectConfigurationTemplate}>("select template from project_configuration_templates where project_id=$1 and version=$2",[projectId,version])).rows[0]?.template;
+  async readConfigurationTemplate(projectId: string, entryId: string, version: string): Promise<ProjectConfigurationTemplate | undefined> {
+    return (await this.pool.query("SELECT template FROM entry_configuration_templates WHERE project_id=$1 AND entry_id=$2 AND version=$3",[projectId,entryId,version])).rows[0]?.template;
   }
-
-  async projectConfigurationState(projectId: string, userId: string,
-    update: (stored: unknown) => ProjectConfigurationState): Promise<ProjectConfigurationState> {
+  async projectConfigurationState(projectId: string, entryId: string, userId: string, update: (stored: unknown) => ProjectConfigurationState): Promise<ProjectConfigurationState> {
     const client = await this.pool.connect();
     try {
-      await client.query("begin");
-      // Covers the absent-row case as well as concurrent writers on different Server instances.
-      await client.query("select pg_advisory_xact_lock(hashtextextended($1, 0))", [JSON.stringify([projectId, userId, "configuration"])]);
-      const stored = await client.query<{state: ProjectConfigurationState}>("select state from project_configurations where project_id=$1 and user_id=$2 for update", [projectId,userId]);
+      await client.query("BEGIN");
+      await client.query("SELECT pg_advisory_xact_lock(hashtextextended($1,0))", [JSON.stringify([projectId,entryId,userId,"configuration"])]);
+      const stored = await client.query("SELECT state FROM entry_configurations WHERE project_id=$1 AND entry_id=$2 AND user_id=$3 FOR UPDATE",[projectId,entryId,userId]);
       const next = update(stored.rows[0]?.state);
-      await client.query("insert into project_configurations(project_id,user_id,state) values($1,$2,$3::jsonb) on conflict(project_id,user_id) do update set state=excluded.state", [projectId,userId,JSON.stringify(next)]);
-      await client.query("commit"); return next;
-    } catch (error) { await client.query("rollback"); throw error; }
-    finally { client.release(); }
-  }
-
-  async readKanbanConfigurationState(
-    projectId: string,
-    userId: string,
-  ): Promise<KanbanConfigurationStateRecord> {
-    const [configurationsResult, activeResult] = await Promise.all([
-      this.pool.query<KanbanConfigurationRow>(
-        `select configuration_id, name, values, created_at, updated_at
-         from project_kanban_configurations
-         where project_id = $1 and user_id = $2
-         order by created_at asc, configuration_id asc`,
-        [projectId, userId],
-      ),
-      this.pool.query<{ configuration_id: string }>(
-        `select configuration_id
-         from project_kanban_active_configurations
-         where project_id = $1 and user_id = $2`,
-        [projectId, userId],
-      ),
-    ]);
-    const configurations = configurationsResult.rows.map(toKanbanConfigurationRecord);
-    const storedActiveId = activeResult.rows[0]?.configuration_id;
-    return {
-      configurations,
-      activeConfigurationId: configurations.some((item) => item.id === storedActiveId)
-        ? storedActiveId
-        : configurations[0]?.id,
-    };
-  }
-
-  async ensureKanbanConfiguration(
-    projectId: string,
-    userId: string,
-    configuration: KanbanConfigurationRecord,
-  ): Promise<void> {
-    const client = await this.pool.connect();
-    try {
-      await client.query("begin");
-      // PostgreSQL text rejects NUL-separated composite keys before
-      // hashtext runs, so lock the workflow/user pair as two text arguments.
-      await client.query(
-        "select pg_advisory_xact_lock(hashtext($1), hashtext($2))",
-        [projectId, userId],
-      );
-      await client.query(
-        `insert into project_kanban_configurations (
-           project_id, user_id, configuration_id, name, values, created_at, updated_at
-         )
-         select $1, $2, $3, $4, $5::jsonb, $6, $7
-         where not exists (
-           select 1 from project_kanban_configurations where project_id = $1 and user_id = $2
-         )`,
-        [
-          projectId,
-          userId,
-          configuration.id,
-          configuration.name,
-          JSON.stringify(configuration.values),
-          configuration.createdAt,
-          configuration.updatedAt,
-        ],
-      );
-      await client.query(
-        `insert into project_kanban_active_configurations (project_id, user_id, configuration_id)
-         select project_id, user_id, configuration_id
-         from project_kanban_configurations
-         where project_id = $1 and user_id = $2
-         order by created_at asc, configuration_id asc
-         limit 1
-         on conflict (project_id, user_id) do nothing`,
-        [projectId, userId],
-      );
-      await client.query("commit");
-    } catch (error) {
-      await client.query("rollback");
-      throw error;
-    } finally {
-      client.release();
-    }
-  }
-
-  async saveKanbanConfiguration(
-    projectId: string,
-    userId: string,
-    configuration: KanbanConfigurationRecord,
-  ): Promise<void> {
-    await this.pool.query(
-      `insert into project_kanban_configurations (
-         project_id, user_id, configuration_id, name, values, created_at, updated_at
-       ) values ($1, $2, $3, $4, $5::jsonb, $6, $7)
-       on conflict (project_id, user_id, configuration_id) do update set
-         name = excluded.name,
-         values = excluded.values,
-         updated_at = excluded.updated_at`,
-      [
-        projectId,
-        userId,
-        configuration.id,
-        configuration.name,
-        JSON.stringify(configuration.values),
-        configuration.createdAt,
-        configuration.updatedAt,
-      ],
-    );
-  }
-
-  async setActiveKanbanConfiguration(
-    projectId: string,
-    userId: string,
-    configurationId: string,
-  ): Promise<void> {
-    await this.pool.query(
-      `insert into project_kanban_active_configurations (project_id, user_id, configuration_id)
-       values ($1, $2, $3)
-       on conflict (project_id, user_id) do update set configuration_id = excluded.configuration_id`,
-      [projectId, userId, configurationId],
-    );
-  }
-
-  async deleteKanbanConfiguration(
-    projectId: string,
-    userId: string,
-    configurationId: string,
-  ): Promise<void> {
-    await this.pool.query(
-      `delete from project_kanban_configurations
-       where project_id = $1 and user_id = $2 and configuration_id = $3`,
-      [projectId, userId, configurationId],
-    );
+      await client.query("INSERT INTO entry_configurations(project_id,entry_id,user_id,state) VALUES($1,$2,$3,$4::jsonb) ON CONFLICT(project_id,entry_id,user_id) DO UPDATE SET state=excluded.state",[projectId,entryId,userId,JSON.stringify(next)]);
+      await client.query("COMMIT"); return next;
+    } catch (error) { await client.query("ROLLBACK"); throw error; } finally { client.release(); }
   }
 
   async getProjectDataSummary(projectId: string): Promise<ProjectDataSummary> {
@@ -2443,7 +1921,8 @@ export function sha256Buffer(buffer: Buffer): string {
 interface Row {
   id: string;
   name: string;
-  project_type: unknown;
+  entries: unknown;
+  default_entry: string;
   project_card: unknown;
   project_info: unknown;
   package_version: string;
@@ -2458,6 +1937,8 @@ interface Row {
 }
 
 interface VersionRow {
+  entries: ProjectEntry[];
+  default_entry: string;
   project_id: string;
   project_name: string;
   version: string;
@@ -2474,28 +1955,11 @@ interface VersionSummaryRow {
   version: string;
 }
 
-interface VersionDependencyRow {
-  version: string;
-  alias: string;
-  dependency_project_id: string;
-  delivery: string;
-  dependency_version: string | null;
-  source_hash: string | null;
-}
-
 interface FileRow {
   path: string;
   content: string;
   size: number;
   encoding: string | null;
-}
-
-interface KanbanConfigurationRow {
-  configuration_id: string;
-  name: string;
-  values: unknown;
-  created_at: Date;
-  updated_at: Date;
 }
 
 interface ProjectMemberRow {
@@ -2504,36 +1968,6 @@ interface ProjectMemberRow {
   role: string;
   created_by: string | null;
   created_at: Date;
-}
-
-interface DeploymentRow {
-  id: string;
-  root_project_id: string;
-  status: string;
-  manifest: unknown;
-  release_log: string;
-  created_by_user_id: string;
-  error: string | null;
-  created_at: Date;
-  updated_at: Date;
-  published_at: Date | null;
-}
-
-interface DeploymentItemRow {
-  deployment_id: string;
-  project_id: string;
-  alias: string | null;
-  role: string;
-  delivery: string;
-  status: string;
-  stage: string | null;
-  planned_version: string | null;
-  prepared_source_hash: string | null;
-  prepared_configuration_revision: number | null;
-  published_version: string | null;
-  published_source_hash: string | null;
-  error: string | null;
-  updated_at: Date;
 }
 
 
@@ -2575,14 +2009,13 @@ interface TokenUsageProjectTotalRow {
 }
 
 function toProjectRecord(row: Row): DbRecord {
-  if (!isProjectKind(row.project_type)) {
-    throw new Error(`Workflow "${row.id}" has invalid persisted project_type.`);
-  }
+  const manifest = readProjectManifest({ id: row.id, name: row.name, steamHarness: { entries: row.entries, defaultEntry: row.default_entry } });
   return {
     id: row.id,
     name: row.name,
-    projectType: row.project_type,
-    projectCard: normalizeProjectCardMetadata(row.project_card, row.project_type),
+    entries: manifest.entries,
+    defaultEntry: manifest.defaultEntry,
+    projectCard: normalizeProjectCardMetadata(row.project_card, manifest.entries[0]!.type),
     projectInfo: normalizeProjectInfo(row.project_info ?? {}),
     packageVersion: row.package_version,
     hasDraft: row.has_draft,
@@ -2596,38 +2029,9 @@ function toProjectRecord(row: Row): DbRecord {
   };
 }
 
-function toVersionRecord(row: VersionRow): DbVersionRecord { return { projectId: row.project_id, projectName: row.project_name, version: row.version, createdAt: row.created_at.toISOString(), sourceHash: row.source_hash, sourceObjectPath: row.source_object_path, releaseLog: row.release_log, createdByUserId: row.created_by_user_id ?? undefined, dependencies: [] }; }
-
-function toProjectDependencyLock(
-  row: VersionDependencyRow,
-): ProjectDependencyLock {
-  const delivery = row.delivery === "included" ? "included" as const : "external" as const;
-  return {
-    alias: row.alias,
-    projectId: row.dependency_project_id,
-    delivery,
-    ...(delivery === "included" && row.dependency_version
-      ? { version: row.dependency_version }
-      : {}),
-    ...(delivery === "included" && row.source_hash
-      ? { sourceHash: row.source_hash }
-      : {}),
-  };
-}
+function toVersionRecord(row: VersionRow): DbVersionRecord { return { projectId: row.project_id, projectName: row.project_name, version: row.version, createdAt: row.created_at.toISOString(), sourceHash: row.source_hash, sourceObjectPath: row.source_object_path, releaseLog: row.release_log, createdByUserId: row.created_by_user_id ?? undefined, entries: row.entries, defaultEntry: row.default_entry }; }
 
 function toVersionSummaryRecord(row: VersionSummaryRow): DbVersionSummaryRecord { return {projectId: row.project_id, projectName: row.project_name, version: row.version}; }
-
-function toKanbanConfigurationRecord(
-  row: KanbanConfigurationRow,
-): KanbanConfigurationRecord {
-  return {
-    id: row.configuration_id,
-    name: row.name,
-    values: sanitizeStringRecord(row.values),
-    createdAt: row.created_at.toISOString(),
-    updatedAt: row.updated_at.toISOString(),
-  };
-}
 
 function isProjectRole(value: unknown): value is ProjectRole {
   return value === "owner" || value === "maintainer" || value === "developer" || value === "guest";
@@ -2643,40 +2047,6 @@ function toProjectMemberRecord(
     role: row.role,
     createdBy: row.created_by ?? undefined,
     createdAt: row.created_at.toISOString(),
-  };
-}
-
-function toProjectDeploymentRecord(
-  row: DeploymentRow,
-  itemRows: DeploymentItemRow[],
-): DeploymentRecord {
-  return {
-    id: row.id,
-    rootProjectId: row.root_project_id,
-    status: isProjectDeploymentStatus(row.status) ? row.status : "failed",
-    manifest: parseProjectGroupManifest(row.manifest),
-    releaseLog: row.release_log,
-    createdByUserId: row.created_by_user_id,
-    error: row.error ?? undefined,
-    createdAt: row.created_at.toISOString(),
-    updatedAt: row.updated_at.toISOString(),
-    publishedAt: row.published_at?.toISOString(),
-    items: itemRows.map((item) => ({
-      deploymentId: item.deployment_id,
-      projectId: item.project_id,
-      alias: item.alias ?? undefined,
-      role: item.role === "root" ? "root" : "dependency",
-      delivery: "included",
-      status: isProjectDeploymentItemStatus(item.status) ? item.status : "failed",
-      stage: item.stage ?? undefined,
-      plannedVersion: item.planned_version ?? undefined,
-      preparedSourceHash: item.prepared_source_hash ?? undefined,
-      preparedConfigurationRevision: item.prepared_configuration_revision ?? undefined,
-      publishedVersion: item.published_version ?? undefined,
-      publishedSourceHash: item.published_source_hash ?? undefined,
-      error: item.error ?? undefined,
-      updatedAt: item.updated_at.toISOString(),
-    })),
   };
 }
 
@@ -2697,21 +2067,10 @@ function toProjectAccessRequest(
   };
 }
 
-
-function isProjectDeploymentStatus(value: unknown): value is DeploymentStatus {
-  return value === "planned" || value === "preparing" || value === "prepared" ||
-    value === "publishing" || value === "published" || value === "failed";
-}
-
-function isProjectDeploymentItemStatus(value: unknown): value is DeploymentItemStatus {
-  return value === "planned" || value === "preparing" || value === "prepared" ||
-    value === "publishing" || value === "published" || value === "failed";
-}
-
 function isProjectAccessRequestStatus(
   value: unknown,
 ): value is ProjectAccessRequestStatus {
-  return value === "pending" || value === "approved" || value === "rejected" || value === "revoked";
+  return value === "pending" || value === "approved" || value === "rejected";
 }
 
 function sanitizeStringRecord(value: unknown): Record<string, string> {

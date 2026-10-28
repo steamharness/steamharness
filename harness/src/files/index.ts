@@ -6,7 +6,7 @@ import { HarnessError } from "../workflow/errors";
 
 const DEFAULT_STEAMHARNESS_CREATED_FILE_LIMIT_BYTES = 50 * 1024 * 1024;
 
-export type FileStorage = "local" | "server" | "path" | "url";
+export type FileStorage = "local" | "server" | "database" | "path" | "url";
 
 export type FileKind = "image" | "file";
 
@@ -18,6 +18,8 @@ export interface FileReference {
   kind: FileKind;
   storage: FileStorage;
   projectId?: string;
+  entryId?: string;
+  spaceId?: string;
   conversationId?: string;
   createdAt: string;
   url?: string;
@@ -241,6 +243,8 @@ export function normalizeProjectFileReference(value: unknown): FileReference {
     kind,
     storage,
     projectId,
+    entryId: readNonEmptyString(value.entryId),
+    spaceId: readNonEmptyString(value.spaceId),
     conversationId,
     createdAt,
     url,
@@ -344,7 +348,7 @@ function parseMaybeJson(value: string): unknown | undefined {
 }
 
 function readProjectFileStorage(value: unknown, url?: string): FileStorage {
-  if (value === "local" || value === "server" || value === "path" || value === "url") {
+  if (value === "database" || value === "local" || value === "server" || value === "path" || value === "url") {
     return value;
   }
 

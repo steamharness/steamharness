@@ -99,7 +99,7 @@ describe("steamharness mcp", () => {
       env: { STEAMHARNESS_MCP_DESKTOP_AUDIT_IPC: "1" },
       send,
     });
-    const snapshot: Parameters<NonNullable<ReturnType<typeof createProjectMcpDesktopAuditWriter>>>[0] = {
+    const snapshot: Parameters<NonNullable<ReturnType<typeof createProjectMcpDesktopAuditWriter>>>[0] = {entryId:"main",
       projectId: "11111111-1111-4111-8111-111111111111",
       entrypointId: "main",
       entrypointTitle: "Main",
@@ -132,7 +132,7 @@ describe("steamharness mcp", () => {
     }, (snapshot) => { snapshots.push(snapshot); });
     await runner.inspectStructure();
 
-    const report = await runner.run({
+    const report = await runner.run({entryId:"main",
       projectId: "11111111-1111-4111-8111-111111111111",
       entrypointId: "main",
       entrypointTitle: "Main MCP fixture",
@@ -144,7 +144,7 @@ describe("steamharness mcp", () => {
 
     expect(snapshots.map((snapshot) => (snapshot.report as { status: string }).status))
       .toEqual(["running", "success"]);
-    expect(snapshots[1]).toMatchObject({
+    expect(snapshots[1]).toMatchObject({entryId:"main",
       projectId: "11111111-1111-4111-8111-111111111111",
       input: { message: "audit", count: 2 },
       args: ["--message", "audit", "--count", "2"],
@@ -166,7 +166,7 @@ describe("steamharness mcp", () => {
     await runner.inspectStructure();
     const signal = new AbortController().signal;
 
-    let report = await runner.run({
+    let report = await runner.run({entryId:"main",
       projectId: "11111111-1111-4111-8111-111111111111",
       entrypointId: "main",
       entrypointTitle: "Main MCP fixture",
@@ -177,7 +177,7 @@ describe("steamharness mcp", () => {
     const runId = report.runId;
     const firstPending = report.pendingUserInput;
     if (!firstPending) throw new Error("Expected first pending input.");
-    report = await runner.resume({
+    report = await runner.resume({entryId:"main",
       projectId: "11111111-1111-4111-8111-111111111111",
       entrypointId: "main",
       entrypointTitle: "Main MCP fixture",
@@ -189,7 +189,7 @@ describe("steamharness mcp", () => {
     });
     const secondPending = report.pendingUserInput;
     if (!secondPending) throw new Error("Expected second pending input.");
-    report = await runner.resume({
+    report = await runner.resume({entryId:"main",
       projectId: "11111111-1111-4111-8111-111111111111",
       entrypointId: "main",
       entrypointTitle: "Main MCP fixture",
@@ -225,7 +225,7 @@ describe("steamharness mcp", () => {
     }, (snapshot) => { snapshots.push(snapshot); });
     await runner.inspectStructure();
 
-    const report = await runner.run({
+    const report = await runner.run({entryId:"main",
       projectId: "11111111-1111-4111-8111-111111111111",
       entrypointId: "main",
       entrypointTitle: "Main MCP fixture",
@@ -262,7 +262,7 @@ describe("steamharness mcp", () => {
     }, (snapshot) => { snapshots.push(snapshot); });
     await runner.inspectStructure();
     const signal = new AbortController().signal;
-    const report = await runner.run({
+    const report = await runner.run({entryId:"main",
       projectId: "11111111-1111-4111-8111-111111111111",
       entrypointId: "main",
       entrypointTitle: "Main MCP fixture",
@@ -273,7 +273,7 @@ describe("steamharness mcp", () => {
     const pending = report.pendingUserInput;
     if (!pending) throw new Error("Expected pending input.");
 
-    await runner.cancel({
+    await runner.cancel({entryId:"main",
       projectId: "11111111-1111-4111-8111-111111111111",
       entrypointId: "main",
       entrypointTitle: "Main MCP fixture",
@@ -294,7 +294,7 @@ describe("steamharness mcp", () => {
     const connection = await connectProjectMcp(projectDir);
 
     assert.deepEqual(connection.client.getServerVersion(), {
-      name: "workflow-11111111-1111-4111-8111-111111111111",
+      name: "workflow-11111111-1111-4111-8111-111111111111-main",
       version: "0.1.0",
     });
     const tools = await connection.client.listTools();
@@ -307,6 +307,8 @@ describe("steamharness mcp", () => {
     });
     assert.equal(result.isError, undefined, JSON.stringify(result));
     assert.deepEqual(result.structuredContent, {
+      projectId: "11111111-1111-4111-8111-111111111111",
+      entryId: "main",
       runId: (result.structuredContent as { runId: string }).runId,
       status: "success",
       entrypointId: "main",
@@ -321,7 +323,7 @@ describe("steamharness mcp", () => {
           contentType: "text",
           collapsed: false,
         }],
-        echo: { message: "hello", count: 2, delayMs: 0, interact: false, useRelated: false },
+        echo: { message: "hello", count: 2, delayMs: 0, interact: false, useEntry: false },
       },
     });
     assert.match(connection.readStderr(), /fixture-project-log/);
@@ -388,22 +390,12 @@ describe("steamharness mcp", () => {
     assert.equal(responses.length, 0);
   });
 
-  it("passes confirmed related projects into the real workflow worker", async () => {
-    const dependencyDir = await createRelatedProject();
-    const projectDir = await createMcpProject("33333333-3333-4333-8333-333333333333");
-    const connection = await connectProjectMcp(projectDir, undefined, [
-      { alias: "dependency", projectDir: dependencyDir },
-    ]);
-
-    const result = await connection.client.callTool({
-      name: "main",
-      arguments: { message: "related" },
-    });
+  it("calls another registered Workflow entry through the real MCP worker", async () => {
+    const projectDir = await createMcpProject(true);
+    const connection = await connectProjectMcp(projectDir);
+    const result = await connection.client.callTool({ name: "main", arguments: { message: "aggregate", useEntry: true } });
     assert.equal(result.isError, undefined, JSON.stringify(result));
-    assert.equal(
-      (result.structuredContent as { output: { echo: { message: string } } }).output.echo.message,
-      "related",
-    );
+    expect((result.structuredContent as any).output.echo.nestedValue).toMatchObject({ errCode: 0, errMessage: "", value: "target-entry" });
   });
 
   it("cancels the active workflow worker when the MCP request is aborted", async () => {
@@ -537,7 +529,7 @@ describe("steamharness mcp", () => {
 async function connectProjectMcp(
   projectDir: string,
   elicitationResponses?: ElicitResult[],
-  relatedProjects: Array<{ alias: string; projectDir: string }> = [],
+  entryId?: string,
 ): Promise<{
   client: Client;
   transport: StdioClientTransport;
@@ -553,10 +545,7 @@ async function connectProjectMcp(
       projectDir,
       "--data-dir",
       dataDir,
-      ...relatedProjects.flatMap((project) => [
-        "--related-project",
-        `${project.alias}=${project.projectDir}`,
-      ]),
+      ...(entryId ? ["--entry", entryId] : []),
     ],
     cwd: projectDir,
     stderr: "pipe",
@@ -581,27 +570,22 @@ async function connectProjectMcp(
   return { client, transport, dataDir, readStderr: () => stderr };
 }
 
-async function createMcpProject(relatedProjectId?: string): Promise<string> {
+async function createMcpProject(aggregate = false): Promise<string> {
   const projectDir = await createTemporaryDirectory("steamharness-mcp-project-");
   await writeFile(path.join(projectDir, "package.json"), JSON.stringify({
     id: "11111111-1111-4111-8111-111111111111",
     name: "@steamharness/mcp-test-workflow",
     type: "module",
     devDependencies: { "steamharness": await resolveHarnessVersion() },
-    steamHarness: {
-      projectInfo: {
-        dataStorage: { mode: "local" },
-        relatedProjects: relatedProjectId ? [{
-          alias: "dependency",
-          projectId: relatedProjectId,
-          grantToRelatedProject: {
-            read: { mode: "all" },
-            write: { mode: "all" },
-          },
-        }] : [],
-      },
-    },
+    steamHarness: { defaultEntry: 'main', entries: [{entryId:'main',name:'Main',type:'workflow',root:'.',entry:'index.ts',databases:[]}], projectInfo:{} },
   }), "utf8");
+  if (aggregate) {
+    const manifest = JSON.parse(await readFile(path.join(projectDir, "package.json"), "utf8"));
+    manifest.steamHarness.entries.push({ entryId: "target", name: "Target", type: "workflow", root: ".", entry: "target.ts", databases: [] });
+    await writeFile(path.join(projectDir, "package.json"), JSON.stringify(manifest));
+    await writeFile(path.join(projectDir, "target.ts"), `const flow = steamharness.defineProject({ name: "target", async run() { return { errCode: 0, errMessage: "", value: "target-entry" }; } });
+      export const executor = steamharness.defineExecutor({ projectType: "workflow", defaultEntrypoint: "read", entrypoints: [steamharness.defineEntrypoint({ id: "read", title: "Read target", workflow: flow, createInput() { return {}; } })] });`);
+  }
   await writeFile(path.join(projectDir, "index.ts"), [
     'console.log("fixture-project-log");',
     "",
@@ -638,11 +622,9 @@ async function createMcpProject(relatedProjectId?: string): Promise<string> {
     "      const second = await steamharness.runNode(secondInputNode, {}, context);",
     "      return steamharness.runNode(outputNode, { message: input.message, count: input.count, firstAnswer: first.values.name, approved: second.values.approved }, context);",
     "    }",
-    "    if (input.useRelated) {",
-    '      const kv = context.storage.local.relatedProjects.get("dependency").kv;',
-    '      await kv.setValue("mcp-test", "related-value");',
-    '      const relatedValue = await kv.getValue("mcp-test");',
-    "      return steamharness.runNode(outputNode, { ...input, relatedValue }, context);",
+    "    if (input.useEntry) {",
+    '      const nestedValue = await context.entries.get("target").runEntrypoint("read");',
+    "      return steamharness.runNode(outputNode, { ...input, nestedValue }, context);",
     "    }",
     "    return steamharness.runNode(outputNode, input, context);",
     "  },",
@@ -658,7 +640,7 @@ async function createMcpProject(relatedProjectId?: string): Promise<string> {
     '      { name: "file", flag: "--file", type: "file", required: false },',
     '      { name: "delayMs", flag: "--delay-ms", type: "number", required: false, defaultValue: "0" },',
     '      { name: "interact", flag: "--interact", type: "boolean", required: false, defaultValue: "false" },',
-    '      { name: "useRelated", flag: "--use-related", type: "boolean", required: false, defaultValue: "false" },',
+    '      { name: "useEntry", flag: "--use-entry", type: "boolean", required: false, defaultValue: "false" },',
     "    ],",
     "    createInput({ args }) {",
     "      const read = (flag) => { const index = args.indexOf(flag); return index === -1 ? undefined : args[index + 1]; };",
@@ -669,7 +651,7 @@ async function createMcpProject(relatedProjectId?: string): Promise<string> {
     "        ...(file ? { file: JSON.parse(file) } : {}),",
     '        delayMs: Number(read("--delay-ms") ?? "0"),',
     '        interact: args.includes("--interact"),',
-    '        useRelated: args.includes("--use-related"),',
+    '        useEntry: args.includes("--use-entry"),',
     "      };",
     "    },",
     "  })],",
@@ -688,7 +670,7 @@ async function createConversationProject(): Promise<string> {
     name: "@steamharness/mcp-test-conversation",
     type: "module",
     devDependencies: { "steamharness": await resolveHarnessVersion() },
-    steamHarness: { projectInfo: { dataStorage: { mode: "local" } } },
+    steamHarness: { defaultEntry: 'main', entries: [{entryId:'main',name:'Main',type:'conversation',root:'.',entry:'index.ts',databases:[]}], projectInfo:{} },
   }), "utf8");
   await writeFile(path.join(projectDir, "index.ts"), [
     'const conversationProject = steamharness.defineProject({ name: "conversation", run(input) { return input; } });',
@@ -699,29 +681,6 @@ async function createConversationProject(): Promise<string> {
     "export default conversationProject;",
     "",
   ].join("\n"), "utf8");
-  return projectDir;
-}
-
-async function createRelatedProject(): Promise<string> {
-  const projectDir = await createTemporaryDirectory("steamharness-mcp-related-");
-  await writeFile(path.join(projectDir, "package.json"), JSON.stringify({
-    id: "33333333-3333-4333-8333-333333333333",
-    name: "@steamharness/mcp-test-related",
-    type: "module",
-    steamHarness: {
-      projectInfo: {
-        dataStorage: { mode: "local" },
-        relatedProjects: [{
-          alias: "consumer",
-          projectId: "11111111-1111-4111-8111-111111111111",
-          grantToRelatedProject: {
-            read: { mode: "all" },
-            write: { mode: "all" },
-          },
-        }],
-      },
-    },
-  }), "utf8");
   return projectDir;
 }
 

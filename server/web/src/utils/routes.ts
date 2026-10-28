@@ -9,7 +9,7 @@ export function projectSourceArchivePath(id: string, version: string): string {
 }
 
 // /detail 的设置与成员现在使用稳定子路由，避免只靠概览页内局部状态切换。
-const DETAIL_TABS = new Set<DetailTab>(["configurations","project", "settings", "members", "invitations", "dependencies", "knowledge", "versions", "kv"]);
+const DETAIL_TABS = new Set<DetailTab>(["configurations","project", "settings", "members", "invitations", "entries", "databases", "versions"]);
 const ADMIN_TABS = new Set<AdminTab>(["users", "audit"]);
 const SETTINGS_TABS = new Set<SettingsTab>(["profile", "appearance", "api-keys"]);
 
@@ -59,11 +59,17 @@ export function parseRoute(pathname: string): AppRoute {
     return { page: "admin", tab: "users" };
   }
 
+  if (segments[0] === "databases") return {page:"databases",id:segments[1]};
+
   if (segments[0] === "groups") return {page:"groups",id:segments[1]};
 
   if (segments[0] === "admin") {
     const tab = ADMIN_TABS.has(segments[1] as AdminTab) ? (segments[1] as AdminTab) : "users";
     return { page: "admin", tab };
+  }
+
+  if (segments.length === 5 && segments[0] === "detail" && segments[1] && segments[2] === "entries" && /^[a-z][a-z0-9_-]{0,63}$/.test(segments[3]) && segments[4] === "configurations") {
+    return { page: "detail", id: segments[1], entryId: segments[3], tab: "configurations" };
   }
 
   if (segments[0] === "detail" && segments[1]) {
@@ -89,10 +95,12 @@ export function routeToPath(route: AppRoute): string {
     const query = route.userCode ? `?user_code=${encodeURIComponent(route.userCode)}` : "";
     return `/login/device${query}`;
   }
+  if (route.page === "databases") return `/databases${route.id?`/${encodeURIComponent(route.id)}`:""}`;
   if (route.page === "groups") return `/groups${route.id?`/${encodeURIComponent(route.id)}`:""}`;
   if (route.page === "settings") return `/settings/${route.tab}`;
   if (route.page === "admin") return `/admin/${route.tab}`;
   if (route.page === "detail") {
+    if (route.entryId && route.tab === "configurations") return `/detail/${encodeURIComponent(route.id)}/entries/${encodeURIComponent(route.entryId)}/configurations`;
     return `/detail/${encodeURIComponent(route.id)}/${route.tab}`;
   }
   if (route.page === "invite") return `/invite/${encodeURIComponent(route.token)}`;

@@ -21,13 +21,13 @@ export function bindProjectResourceCards(webview: vscode.Webview, sessionUrl: st
       pending++;
       void (async () => {
         const url = new URL(typeof sessionUrl === 'function' ? sessionUrl() : sessionUrl), token = new URLSearchParams(url.hash.slice(1)).get('session');
-        const response = await fetch(new URL('/api/message', url), { method: 'POST', redirect: 'error',
+        const response = await fetch(new URL('api/message', url), { method: 'POST', redirect: 'error',
           headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }, body: JSON.stringify(action),
           signal: AbortSignal.any([controller.signal, AbortSignal.timeout(30_000)]) });
         const payload = await response.json() as { message?: string; messages?: ({ type: string } & ResourceCardResult)[] };
         if (!response.ok) { throw new Error(payload.message || t('Unable to open the resource.')); }
         const result = payload.messages?.find((reply: { type?: string }) => reply.type === 'resource-preview');
-        if (!result || !/^\/resource\/[a-f\d-]{36}(?:\?|$)/.test(result.url)) { throw new Error(t('Unable to open the resource.')); }
+        if (!result || !/^\/entries\/[a-z][a-z0-9_-]{0,63}\/resource\/[a-f\d-]{36}(?:\?|$)/.test(result.url)) { throw new Error(t('Unable to open the resource.')); }
         controller.signal.throwIfAborted();
         await open(result);
       })().catch(async error => {

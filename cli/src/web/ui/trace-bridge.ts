@@ -6,7 +6,7 @@ type Message = Record<string, any>;
 export function traceSnapshot(state: Message): Message | undefined {
   const project = state.project;
   if (!project || !['conversation', 'workflow'].includes(project.projectType)) { return; }
-  const base = { project: { id: project.id, name: project.name, projectType: project.projectType }, running: state.running };
+  const base = { project: { id: project.id, entryId: project.entryId, name: project.name, projectType: project.projectType }, running: state.running };
   if (project.projectType === 'workflow') {
     return { ...base, runs: state.runs, selectedId: state.selectedId, run: state.run, occupiedRun: state.occupiedRun, history: state.history };
   }

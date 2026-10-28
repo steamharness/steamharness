@@ -8,7 +8,7 @@ import {
 } from "../../knowledge/index";
 import { HarnessError } from "../../workflow/errors";
 import type { NodeContext } from "../../types/context";
-import { selectProjectStorage } from "./storage";
+import { selectDatabase } from "./databases";
 import type { Capability } from "./types";
 
 export const GLOBAL_MEMORY_MCP_SERVER_ID = "workflow-memory";
@@ -29,6 +29,7 @@ const GLOBAL_MEMORY_ACTIONS: readonly GlobalMemoryAction[] = [
 ];
 
 export interface GlobalMemoryToolArgs {
+  database: string;
   action: GlobalMemoryAction;
   memoryId?: string;
   title?: string;
@@ -46,7 +47,7 @@ export interface GlobalMemoryToolArgs {
  * prefix is what keeps the two apart.
  */
 export async function runGlobalMemoryAction(
-  context: Pick<NodeContext, "storage">,
+  context: Pick<NodeContext, "databases">,
   args: GlobalMemoryToolArgs,
 ): Promise<unknown> {
   if (!GLOBAL_MEMORY_ACTIONS.includes(args.action)) {
@@ -57,7 +58,7 @@ export async function runGlobalMemoryAction(
     });
   }
 
-  const storage = selectProjectStorage(context);
+  const storage = selectDatabase(context, args.database);
   switch (args.action) {
     case "list": {
       const memories = (await listKnowledgeDocuments(storage))
@@ -250,6 +251,7 @@ export const GLOBAL_MEMORY_CAPABILITY: Capability = {
   inputSchema: {
     type: "object",
     properties: {
+      database: { type: "string", minLength: 1, description: "The declared database alias." },
       action: {
         type: "string",
         enum: [...GLOBAL_MEMORY_ACTIONS],
@@ -262,7 +264,7 @@ export const GLOBAL_MEMORY_CAPABILITY: Capability = {
       pageSize: { type: "integer", minimum: 1, maximum: 100 },
       cursor: { type: "string", minLength: 1, maxLength: 200 },
     },
-    required: ["action"],
+    required: ["database", "action"],
   },
   async run(context, args) {
     return runGlobalMemoryAction(context, args as unknown as GlobalMemoryToolArgs);

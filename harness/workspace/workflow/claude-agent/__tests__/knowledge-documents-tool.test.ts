@@ -1,9 +1,9 @@
+import { createApprovedTestContext } from "../../../test-databases";
 import { beforeAll, describe, expect, it } from "vitest";
 import { installProjectRuntimeGlobal } from "steamharness/runtime-api";
 import {
   createDisabledProjectConversationContext,
   createDisabledProjectTokenUsageContext,
-  createProjectRelatedProjectsContext,
   type KVContext,
 } from "steamharness";
 import type { RunContext } from "steamharness/types/context";
@@ -150,18 +150,7 @@ describe("claude-agent knowledge_documents tool", () => {
 function createToolContext(): RunContext {
   return {
     providers: {},
-    storage: {
-      local: {
-        kv: createMemoryKVContext(),
-        persistentValue: createMemoryKVContext(),
-        relatedProjects: createProjectRelatedProjectsContext(),
-      },
-      server: {
-        kv: createMemoryKVContext(),
-        persistentValue: createMemoryKVContext(),
-        relatedProjects: createProjectRelatedProjectsContext(),
-      },
-    },
+    ...createApprovedTestContext(),
     conversation: createDisabledProjectConversationContext(),
     tokenUsage: createDisabledProjectTokenUsageContext(),
   };

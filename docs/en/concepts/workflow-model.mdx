@@ -3,40 +3,9 @@ title: "Workflow model"
 description: "How steamharness models workflows, nodes, providers, executors, and registries."
 ---
 
-# Workflow Model
+# Workflow model
 
-steamharness supports three project types: `workflow`, `conversation`, and `kanban`. Workflow and Conversation projects are self-contained TypeScript workflows. Their hosts (CLI and local hosts) provide the global `workflow` namespace, so project code must not import runtime APIs from `"steamharness"`. Each project records exact Core and CLI versions in `devDependencies`: the Core version determines host compatibility, while the CLI is released independently. Kanban is a static project with `index.html` as its entry file and does not use a runtime API or executor. See [Kanban HTML Project](/en/concepts/kanban).
-
-## Project Information and Display Declarations
-
-The root `package.json` is the sole source of truth for project information. Its required `name` is the default name and legacy-client fallback. `steamHarness.projectInfo` also stores localized names, manual display declarations, display platforms, data location, and related projects:
-
-```json
-{
-  "name": "Default Name",
-  "steamHarness": {
-    "projectInfo": {
-      "localizedNames": {
-        "zh-CN": "中文名称",
-        "en": "English Name"
-      },
-      "declarations": ["multilingual", "multiplatform"],
-      "platformSupport": {
-        "mode": "specific",
-        "platforms": ["macos", "windows", "web"]
-      },
-      "dataStorage": { "mode": "both" },
-      "relatedProjects": []
-    }
-  }
-}
-```
-
-`localizedNames` currently manages Simplified Chinese and English. Interfaces prefer the current-locale name, fall back to the root `name`, and search the default, Chinese, and English names together. `declarations` contains author-selected display labels only: hosts neither infer them from names or platforms nor verify that the project implements the declared capability. The current built-in declarations are `multilingual` and `multiplatform`.
-
-`platformSupport` also describes display compatibility only; it does not decide where a version can run. Use `{ "mode": "agnostic" }` for a platform-agnostic project, or `specific` with at least one of `macos`, `windows`, or `web`. Server stores source and data independently of display platforms. Readers and writers preserve unknown future locale, declaration, and platform IDs. A legacy project without `projectInfo` has no declarations, is platform agnostic, and uses only the root `name`.
-
-`relatedProjects` is shared by Workflow, Conversation, and Kanban. It is not private to the assistant or Kanban. Each item contains an alias, target-project UUID, and `grantToRelatedProject` read/write rules; the grant means "allow the target project to access this project." A relationship is confirmed only after both packages point to each other. A one-sided declaration is pending and grants no KV access. See [KV and session](/en/concepts/kv-and-conversation#related-project-kv) for the full format, validation limits, and access semantics. Removed `steamHarness.kanban.dataSources` is not converted and fails validation directly.
+One aggregate project uses its root `package.json.id`. Every registered entry has an independent `entryId`, type, code root, entry file, configuration and database requirements. Types may repeat; `defaultEntry` selects the default window. Workflow operations use the separate `entrypointId`.
 
 ## Runtime API
 
@@ -284,7 +253,7 @@ When any explicit group exists, the local Run workspace renders entrypoints in c
 
 Projects can use `package.json.steamHarness.schedulePresets` to propose schedules for an entrypoint. Structure validation checks the preset ID, entrypoint, time zone, trigger rule, and JSON parameters, then exposes the presets to the local host. Presets are not enabled automatically. See [Workflow scheduled runs](/en/concepts/workflow-schedules).
 
-Conversation executor keeps a single entry, places fields such as `workflow`, `params`, and `createInput` directly on executor, and does not declare or accept entrypoint. `projectType` of Executor only allows `"workflow"` or `"conversation"`. Kanban declares `"kanban"` in `package.json.steamHarness.projectType` and cannot forge executor.
+Conversation executor keeps a single entry, places fields such as `workflow`, `params`, and `createInput` directly on executor, and does not declare or accept entrypoint. `projectType` of Executor only allows `"workflow"` or `"conversation"`. Kanban registers static HTML in root `steamHarness.entries` and does not export an executor.
 
 `createInput` receives `projectName`, `projectDir`, `args`, `paramValues`, `config`, `abortSignal`, and optional `conversationId`. Workflow also receives the selected `entrypointId` and `entrypointTitle`; the same fields are written to `RunContext.metadata`, reports, and local run records. The local host converts parameters to workflow input through the selected execution configuration. Cancellation propagates `abortSignal` to the workflow context so long-running provider and SDK calls can stop promptly.
 
@@ -324,33 +293,72 @@ export const executor = steamharness.defineExecutor<Input, OutputPayload>({
 
 Local CLI `debug-node` uses the selected entrypoint registry to debug one node. Omitting the entry selects the default and never searches other entrypoints. Conversation uses its executor-level registry.
 
-## Package structure
 
-The workflow package declares exact Core and CLI dev dependencies, plus any required third-party dependencies. CLI and local hosts provide the outer runtime:
+## Package structure
 
 ```json
 {
-  "id": "1f221460-4fc7-48e2-bd23-651dee826692",
-  "name": "@steamharness/hello-workflow",
-  "version": "0.1.0",
+  "id": "00000000-0000-4000-8000-000000000001",
+  "name": "workspace-example",
+  "version": "1.0.0",
   "private": true,
   "type": "module",
-  "devDependencies": {
-    "@steamharness/cli": "0.2.0",
-    "steamharness": "0.2.0"
-  },
   "steamHarness": {
-    "projectType": "workflow",
-    "projectInfo": {
-      "dataStorage": {
-        "mode": "both"
+    "defaultEntry": "agent",
+    "entries": [
+      {
+        "entryId": "agent",
+        "type": "conversation",
+        "name": "Assistant",
+        "root": "agent",
+        "entry": "index.ts",
+        "databases": []
       },
-      "relatedProjects": []
-    }
+      {
+        "entryId": "database",
+        "type": "workflow",
+        "name": "Database operations",
+        "root": "database",
+        "entry": "index.ts",
+        "configuration": "configuration.json",
+        "databases": [
+          {
+            "alias": "data",
+            "host": "server",
+            "permissions": {
+              "kv": {
+                "read": {
+                  "mode": "all"
+                },
+                "write": {
+                  "mode": "all"
+                }
+              },
+              "knowledge": {
+                "read": {
+                  "mode": "all"
+                },
+                "write": {
+                  "mode": "all"
+                }
+              }
+            }
+          }
+        ]
+      },
+      {
+        "entryId": "map",
+        "type": "kanban",
+        "name": "Map",
+        "root": "map",
+        "entry": "dist/index.html",
+        "databases": []
+      }
+    ]
   }
 }
 ```
 
-`steamharness` must be an exact SemVer; `^`, `0.2.x`, `workspace:*`, and other ranges are rejected. Local hosts and CLI evaluate the project's required Core before execution but compare only `major.minor`: any patch or exact prerelease on that line runs directly, while a major or minor change requires a host upgrade. `@steamharness/cli` is also pinned exactly but versioned independently and does not replace Core runtime compatibility. Core 0.2 projects must also declare `steamHarness.projectInfo.dataStorage.mode` explicitly.
+Paths must stay inside the aggregate directory and cannot contain `..`, absolute paths or host data directories. Static analysis scans each registered entry independently, allowing different executors in one aggregate. Each Workflow or Conversation executor must match its registered type; Kanban points to built HTML. Only the root owns the SteamHarness identity. Child directories retain ordinary npm packages and dependencies.
 
-The minimum package of Kanban uses `steamHarness.projectType: "kanban"`, and the directory only requires `package.json + index.html`; parameterized items are added with optional `configuration.json`. The Kanban package records the Core and CLI versions equally precisely, so that project management tools maintain a uniform dependency model;Kanban itself does not implement Core runtime.
+Legacy root type, storage-location and project-relationship declarations are rejected. Use fresh declarations and data, [independent spaces](/en/concepts/data-storage), and `context.entries.get(entryId)` for calls within the aggregate.

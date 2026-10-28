@@ -6,7 +6,7 @@ import { createServer } from 'node:http';
 import os from 'node:os';
 import path from 'node:path';
 import { AGENT_MODELS_CONFIGURATION_KEY, type ProjectConfigurationState } from '@steamharness/project-configuration';
-import { startWebServer } from '../web/server';
+import { startEntryWebServer as startWebServer } from '../web/server';
 import { projectDataDirectory } from '../web/project-data-directory';
 import { resolveHarnessRoot, resolveHarnessVersion } from './harness-source';
 
@@ -25,7 +25,7 @@ it('loads user models through the host and worker without project configuration,
     const origin = `http://127.0.0.1:${(upstream.address() as { port: number }).port}`;
     await mkdir(path.join(directory, 'node_modules'));
     await symlink(await resolveHarnessRoot(), path.join(directory, 'node_modules/steamharness'), process.platform === 'win32' ? 'junction' : 'dir');
-    await writeFile(path.join(directory, 'package.json'), JSON.stringify({ type: 'module', id: applicationId, name: 'user-model-agent', version: '1.0.0', devDependencies: { steamharness: await resolveHarnessVersion() }, steamHarness: { projectInfo: { dataStorage: { mode: 'local' } } } }));
+    await writeFile(path.join(directory, 'package.json'), JSON.stringify({ type: 'module', id: applicationId, name: 'user-model-agent', version: '1.0.0', devDependencies: { steamharness: await resolveHarnessVersion() }, steamHarness: { defaultEntry: 'main', entries: [{ entryId: 'main', name: 'Main', type: 'conversation', root: '.', entry: 'index.ts', databases: [] }] } }));
     await writeFile(path.join(directory, 'index.ts'), `
       const agent = steamharness.createAgentConversationProject({ modelSource: 'user-settings', tools: [] });
       export const executor = steamharness.defineExecutor({ projectType: 'conversation', workflow: agent,
@@ -60,16 +60,16 @@ it('loads user models through the host and worker without project configuration,
     const view = JSON.stringify(await post({ type: 'ready' }));
     const exported = JSON.stringify(await post({ type: 'session-action', action: 'export', id: app.controller.current.id }));
     await app.controller.persist();
-    const history = await readFile(path.join(await projectDataDirectory(path.join(directory, 'data'), await realpath(directory), applicationId), 'conversations.json'), 'utf8');
+    const history = await readFile(path.join(await projectDataDirectory(path.join(directory, 'data'), await realpath(directory), applicationId, 'main'), 'conversations.json'), 'utf8');
     for (const secret of ['test-only-first-key', 'test-only-next-key']) {
       expect(view).not.toContain(secret); expect(exported).not.toContain(secret); expect(history).not.toContain(secret);
     }
   } finally {
     await app?.close(); await new Promise<void>(resolve => { upstream.close(() => resolve()); upstream.closeAllConnections(); });
-    const runKey = createHash('sha256').update(await realpath(directory)).digest('hex');
+    const runKey = createHash('sha256').update(`${applicationId}:main`).digest('hex');
     await rm(path.join(os.homedir(), '.steamharness', 'configurations', 'snapshots', runKey), { recursive: true, force: true });
     await rm(directory, { recursive: true, force: true });
-    const key = createHash('sha256').update(`application:${applicationId}`).digest('hex');
+    const key = createHash('sha256').update(`${applicationId}:main`).digest('hex');
     for (const suffix of ['.json', '.json.lock.sqlite']) await rm(path.join(os.homedir(), '.steamharness', 'configurations', `${key}${suffix}`), { force: true });
   }
 }, 30_000);
@@ -79,8 +79,8 @@ it('loads user models through the host and worker without project configuration,
 it('runs saved system and third-party models through the real Web worker with refreshed scoped credentials', async () => {
   const directory = await mkdtemp(path.join(os.tmpdir(), 'configured-agent-runtime-'));
   const applicationId = crypto.randomUUID();
-  const configurationKey = createHash('sha256').update(`application:${applicationId}`).digest('hex');
-  const runKey = createHash('sha256').update(await realpath(directory)).digest('hex');
+  const configurationKey = createHash('sha256').update(`${applicationId}:main`).digest('hex');
+  const runKey = createHash('sha256').update(`${applicationId}:main`).digest('hex');
   const configurationRoot = path.join(os.homedir(), '.steamharness', 'configurations');
   let app: Awaited<ReturnType<typeof startWebServer>> | undefined;
   let generation = 0, subscribed = true;
@@ -138,7 +138,7 @@ it('runs saved system and third-party models through the real Web worker with re
     const origin = `http://127.0.0.1:${(upstream.address() as { port: number }).port}`;
     await mkdir(path.join(directory, 'node_modules'));
     await symlink(await resolveHarnessRoot(), path.join(directory, 'node_modules/steamharness'), process.platform === 'win32' ? 'junction' : 'dir');
-    await writeFile(path.join(directory, 'package.json'), JSON.stringify({ type: 'module', id: applicationId, name: 'configured-agent', version: '1.0.0', devDependencies: { steamharness: await resolveHarnessVersion() }, steamHarness: { projectType: 'conversation', projectInfo: { dataStorage: { mode: 'local' } } } }));
+    await writeFile(path.join(directory, 'package.json'), JSON.stringify({ type: 'module', id: applicationId, name: 'configured-agent', version: '1.0.0', devDependencies: { steamharness: await resolveHarnessVersion() }, steamHarness: { defaultEntry: 'main', entries: [{entryId:'main',name:'Main',type:'conversation',root:'.',entry:'index.ts',databases:[]}],  } }));
     await writeFile(path.join(directory, 'index.ts'), `
       const agent = steamharness.createAgentConversationProject({ tools: [], outputItemId: 'answer' });
       export const executor = steamharness.defineExecutor({ projectType: 'conversation', workflow: agent,
@@ -176,8 +176,8 @@ it('runs saved system and third-party models through the real Web worker with re
     for (const [index, model] of models.entries()) {
       const catalogsBefore = catalogRequests.length;
       await post({ type: 'send', text: `Turn ${index}`, params: index ? { model: model.id } : {}, attachments: [] });
-      await app.controller.idle();
-      const answer = app.controller.current.messages.at(-1)!;
+      await app.controller!.idle();
+      const answer = app.controller!.current.messages.at(-1)!;
       expect(answer.status, answer.error).toBe('success'); expect(answer.content).toContain(`Answer from ${model.model}`);
       expect(answer.model).toBe(model.name);
       expect(calls.at(-1)?.model).toBe(model.model);
@@ -188,35 +188,35 @@ it('runs saved system and third-party models through the real Web worker with re
     }
     expect(calls.map(call => call.path)).toEqual(['/proxy/responses/responses', '/proxy/anthropic/messages', '/v1/chat/completions']);
     expect(catalogRequests.every(token => token === 'Bearer ai-identity')).toBe(true);
-    for (const secret of ['ai-identity', 'project-identity', 'third-identity', 'credentialToken']) expect(JSON.stringify(app.controller.current)).not.toContain(secret);
+    for (const secret of ['ai-identity', 'project-identity', 'third-identity', 'credentialToken']) expect(JSON.stringify(app.controller!.current)).not.toContain(secret);
     subscribed = false;
     await post({ type: 'send', text: 'Revoked subscription', params: { model: 'responses' }, attachments: [] });
-    await app.controller.idle();
-    expect(app.controller.current.messages.at(-1)?.status).toBe('failed'); expect(calls).toHaveLength(3);
+    await app.controller!.idle();
+    expect(app.controller!.current.messages.at(-1)?.status).toBe('failed'); expect(calls).toHaveLength(3);
 
     subscribed = true;
     await app.setHostConnection({ serverUrl: origin, accessToken: 'next-project-identity', aiServerUrl: origin, aiAccessToken: 'next-ai-identity' });
     const switchedAt = catalogRequests.length;
     await post({ type: 'send', text: 'Changed account', params: { model: 'responses' }, attachments: [] });
-    await app.controller.idle();
-    expect(app.controller.current.messages.at(-1)?.status).toBe('success');
+    await app.controller!.idle();
+    expect(app.controller!.current.messages.at(-1)?.status).toBe('success');
     expect(catalogRequests.slice(switchedAt)).toEqual(['Bearer next-ai-identity', 'Bearer next-ai-identity']);
     expect(calls.at(-1)?.token).toBe(`Bearer responses-${generation}`);
 
     await app.setHostConnection(undefined);
     const offlineAt = catalogRequests.length;
-    state = app.configurations.state;
+    state = app.configurations!.state;
     const updated = [{ ...models[2], model: 'third-next-model', apiKey: 'third-next-identity' }, ...models.slice(0, 2)];
     await post({ type: 'project-configuration', call: { action: 'save', revision: state.revision, id: state.activeConfigurationId, values: { [AGENT_MODELS_CONFIGURATION_KEY]: updated } } });
     await post({ type: 'send', text: 'Updated configuration without system sign-in', params: { model: 'deleted-entry' }, attachments: [] });
-    await app.controller.idle();
-    expect(app.controller.current.messages.at(-1)?.status).toBe('success');
-    expect(app.controller.current.messages.at(-1)?.content).toContain('Answer from third-next-model');
-    expect(app.controller.current.messages.at(-1)?.model).toBe('Third-party');
-    expect(app.controller.current.messages.filter(message => message.role === 'assistant').slice(0, 3).map(message => message.model)).toEqual(models.map(model => model.name));
+    await app.controller!.idle();
+    expect(app.controller!.current.messages.at(-1)?.status).toBe('success');
+    expect(app.controller!.current.messages.at(-1)?.content).toContain('Answer from third-next-model');
+    expect(app.controller!.current.messages.at(-1)?.model).toBe('Third-party');
+    expect(app.controller!.current.messages.filter(message => message.role === 'assistant').slice(0, 3).map(message => message.model)).toEqual(models.map(model => model.name));
     expect(calls.at(-1)).toMatchObject({ path: '/v1/chat/completions', model: 'third-next-model', token: 'Bearer third-next-identity' });
     expect(catalogRequests).toHaveLength(offlineAt);
-    for (const secret of ['next-ai-identity', 'next-project-identity', 'third-next-identity']) expect(JSON.stringify(app.controller.current)).not.toContain(secret);
+    for (const secret of ['next-ai-identity', 'next-project-identity', 'third-next-identity']) expect(JSON.stringify(app.controller!.current)).not.toContain(secret);
   } finally {
     await app?.close();
     await new Promise<void>(resolve => { upstream.close(() => resolve()); upstream.closeAllConnections(); });
@@ -228,8 +228,8 @@ it('runs saved system and third-party models through the real Web worker with re
 it.each(['project', 'user-settings'] as const)('switches %s models in a durable conversation without hiding prior replies or replaying inputs', async modelSource => {
   const directory = await mkdtemp(path.join(os.tmpdir(), 'configured-durable-models-'));
   const applicationId = crypto.randomUUID();
-  const configurationKey = createHash('sha256').update(`application:${applicationId}`).digest('hex');
-  const runKey = createHash('sha256').update(await realpath(directory)).digest('hex');
+  const configurationKey = createHash('sha256').update(`${applicationId}:main`).digest('hex');
+  const runKey = createHash('sha256').update(`${applicationId}:main`).digest('hex');
   const configurationRoot = path.join(os.homedir(), '.steamharness', 'configurations');
   const calls: { model: string; body: any; token: string }[] = [];
   let app: Awaited<ReturnType<typeof startWebServer>> | undefined;
@@ -267,7 +267,7 @@ it.each(['project', 'user-settings'] as const)('switches %s models in a durable 
   try {
     await mkdir(path.join(directory, 'node_modules'));
     await symlink(await resolveHarnessRoot(), path.join(directory, 'node_modules/steamharness'), process.platform === 'win32' ? 'junction' : 'dir');
-    await writeFile(path.join(directory, 'package.json'), JSON.stringify({ id: applicationId, name: 'durable-model-switch', version: '1.0.0', type: 'module', steamHarness: { projectType: 'conversation', projectInfo: { dataStorage: { mode: 'local' } } }, devDependencies: { steamharness: await resolveHarnessVersion() } }));
+    await writeFile(path.join(directory, 'package.json'), JSON.stringify({ id: applicationId, name: 'durable-model-switch', version: '1.0.0', type: 'module', steamHarness: { defaultEntry: 'main', entries: [{entryId:'main',name:'Main',type:'conversation',root:'.',entry:'index.ts',databases:[]}],  }, devDependencies: { steamharness: await resolveHarnessVersion() } }));
     await writeFile(path.join(directory, 'index.ts'), `
       export const executor = steamharness.defineExecutor({ projectType: 'conversation',
         workflow: steamharness.createAgentConversationProject({ modelSource: '${modelSource}', projectName: 'Switch models', outputItemId: 'answer', tools: [], session: { compaction: { enabled: false } } }),
@@ -300,34 +300,34 @@ it.each(['project', 'user-settings'] as const)('switches %s models in a durable 
         options.host.userSettings.agent.models = [model];
         await app.setHostUserSettings(options.host.userSettings);
       } else {
-        const state = app.configurations.state;
+        const state = app.configurations!.state;
         await post({ type: 'project-configuration', call: { action: 'save', revision: state.revision, id: state.activeConfigurationId, values: { [AGENT_MODELS_CONFIGURATION_KEY]: [model] } } });
       }
-      if (index) await expect.poll(() => app!.controller.hasRuns).toBe(false);
+      if (index) await expect.poll(() => app!.controller!.hasRuns).toBe(false);
       expect(calls).toHaveLength(index);
-      expect(app.controller.current.messages.filter(message => message.role === 'assistant')).toMatchObject(expected);
+      expect(app.controller!.current.messages.filter(message => message.role === 'assistant')).toMatchObject(expected);
       // A stale selection is resolved against the new configuration, never used
       // to restart the owner before the new input's parameters are available.
       const result = await post({ type: 'send', requestId: crypto.randomUUID(), text: `Input ${index}`, params: index ? { model: models[index - 1].id } : {}, attachments: [] });
       expect(result.some((message: { type: string }) => message.type === 'error'), JSON.stringify(result)).toBe(false);
       await expect.poll(() => {
-        const answer = app!.controller.current.messages.at(-1);
+        const answer = app!.controller!.current.messages.at(-1);
         if (answer?.status === 'failed') throw new Error(`Turn ${index}: ${answer.error}`);
         return answer?.status;
       }, { timeout: 12_000 }).toBe('success');
       expected.push({ status: 'success', model: model.name, content: `Reply ${index + 1} from ${model.model}` });
-      expect(app.controller.current.messages.filter(message => message.role === 'assistant')).toMatchObject(expected);
-      expect(app.controller.current.messages.filter(message => message.role === 'user').map(message => message.content)).toEqual(models.slice(0, index + 1).map((_, i) => `Input ${i}`));
+      expect(app.controller!.current.messages.filter(message => message.role === 'assistant')).toMatchObject(expected);
+      expect(app.controller!.current.messages.filter(message => message.role === 'user').map(message => message.content)).toEqual(models.slice(0, index + 1).map((_, i) => `Input ${i}`));
       expect(calls).toHaveLength(index + 1); expect(calls.at(-1)?.model).toBe(model.model);
       expect(calls.at(-1)?.token).toBe(model.source === 'system' ? 'Bearer system-identity' : 'Bearer third-identity');
       if (index) expect(JSON.stringify(calls.at(-1)?.body)).toContain(expected[index - 1].content);
-      if (sessionId) expect(app.controller.current.id).toBe(sessionId); else sessionId = app.controller.current.id;
+      if (sessionId) expect(app.controller!.current.id).toBe(sessionId); else sessionId = app.controller!.current.id;
     }
     await app.close(); app = await startWebServer(options);
-    expect(app.controller.current.id).toBe(sessionId);
-    expect(app.controller.current.messages.filter(message => message.role === 'assistant')).toMatchObject(expected);
+    expect(app.controller!.current.id).toBe(sessionId);
+    expect(app.controller!.current.messages.filter(message => message.role === 'assistant')).toMatchObject(expected);
     expect(calls).toHaveLength(3);
-    expect(JSON.stringify(app.controller.current)).not.toContain('third-identity');
+    expect(JSON.stringify(app.controller!.current)).not.toContain('third-identity');
   } finally {
     await app?.close();
     await new Promise<void>(resolve => { upstream.close(() => resolve()); upstream.closeAllConnections(); });

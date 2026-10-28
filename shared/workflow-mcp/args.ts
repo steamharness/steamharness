@@ -12,6 +12,7 @@ import type {
 
 export async function projectMcpInputToArgs(options: {
   projectId: string;
+  entryId: string;
   entrypointId: string;
   params: readonly McpParamDefinition[] | undefined;
   input: Record<string, unknown>;
@@ -37,6 +38,7 @@ export async function projectMcpInputToArgs(options: {
       if (values.length === 0 && param.required !== true) continue;
       const refs = await options.resolveFiles(values, {
         projectId: options.projectId,
+        entryId: options.entryId,
         entrypointId: options.entrypointId,
         param,
         signal: options.signal,

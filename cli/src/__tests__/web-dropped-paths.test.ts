@@ -47,7 +47,7 @@ it.each([
 
 it('keeps path-only input through initial Core arguments, queues, draft edits and retries', async () => {
   const references = [{ path: path.join(await directory(), 'folder'), name: 'folder', kind: 'directory' as const }];
-  const project: Project = { id: 'drop', uri: 'file:///drop', folderPath: '/drop', name: 'Drop', projectType: 'conversation', fields: [], entrypoints: [], conversation: { inputQueue: { enabled: true } } };
+  const project: Project = {entryId:"main",aggregateName:"Test aggregate",defaultEntry:"main",entryRoot:'/drop',databases:[],entries:[{entryId:"main",name:"Main",type:'conversation',root:".",entry:"index.ts",databases:[]}], id: 'drop', uri: 'file:///drop', folderPath: '/drop', name: 'Drop', projectType: 'conversation', fields: [], entrypoints: [], conversation: { inputQueue: { enabled: true } } };
   let finish: () => void = () => {};
   const runtime = { run: vi.fn(() => new Promise(resolve => { finish = () => resolve({ status: 'success' }); })) } as unknown as Runtime;
   const controller = new ConversationController(project, runtime, {}, { save: async () => {}, changed() {}, log() {} });

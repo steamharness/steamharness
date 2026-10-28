@@ -42,7 +42,13 @@ export default defineConfig({
   splitting: true,
   clean: true,
   dts: {
-    resolve: ["@steamharness/project-configuration", "@steamharness/project-access", "@steamharness/openai-responses", "@steamharness/project-types"],
+    compilerOptions: { paths: {
+      "@steamharness/project-manifest": ["./vendor/shared/project-manifest/index.ts"],
+      "@steamharness/project-manifest/node": ["./vendor/shared/project-manifest/node.ts"],
+      "@steamharness/database-spaces": ["./vendor/shared/database-spaces/index.ts"],
+      "@steamharness/database-spaces/catalog": ["./vendor/shared/database-spaces/catalog.ts"],
+    } },
+    resolve: ["@steamharness/project-configuration", "@steamharness/project-access", "@steamharness/openai-responses", "@steamharness/project-types", "@steamharness/project-manifest", "@steamharness/project-manifest/node", "@steamharness/database-spaces", "@steamharness/database-spaces/catalog"],
     entry: { index: "src/index.ts", agent: "src/agent/index.ts", "runtime-api": "src/runtime-api.ts", "node/output": "src/node/output/index.ts",
       "types/context": "src/types/context.ts", "executor/rules": "src/executor/rules.ts" },
   },

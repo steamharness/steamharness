@@ -5,38 +5,7 @@ description: "当前 steamharness 的 Workflow、Node、Provider、Executor 和 
 
 # Workflow 模型
 
-steamharness 支持 `workflow`、`conversation` 和 `kanban` 三种项目类型。Workflow 与 Conversation 是自包含的 TypeScript workflow；本地宿主和 CLI 会注入全局命名空间 `workflow`，业务 workflow 不应该从 `"steamharness"` 导入 runtime API。项目仍需在 `devDependencies` 中精确记录 Core 与 CLI 版本；Core 版本用于宿主兼容判断，CLI 独立发版。Kanban 是以 `index.html` 为入口的静态项目，不使用 runtime API 或 executor，详见 [Kanban HTML 项目](/concepts/kanban)。
-
-## 项目信息与展示声明
-
-项目源码以根 `package.json` 为项目信息的唯一权威来源。必填 `name` 是默认名称和旧客户端回退；`steamHarness.projectInfo` 还保存本地化名称、手工展示声明、展示平台、数据存储位置和关联项目：
-
-```json
-{
-  "name": "Default Name",
-  "steamHarness": {
-    "projectInfo": {
-      "localizedNames": {
-        "zh-CN": "中文名称",
-        "en": "English Name"
-      },
-      "declarations": ["multilingual", "multiplatform"],
-      "platformSupport": {
-        "mode": "specific",
-        "platforms": ["macos", "windows", "web"]
-      },
-      "dataStorage": { "mode": "both" },
-      "relatedProjects": []
-    }
-  }
-}
-```
-
-`localizedNames` 当前管理简体中文与英文；界面优先显示当前语言名称，没有时回退根 `name`，搜索同时覆盖默认、中文和英文名称。`declarations` 只是作者手工选择的展示标签，不根据名称或平台自动推断，也不验证项目是否真的实现了对应功能。当前内置声明为 `multilingual` 与 `multiplatform`。
-
-`platformSupport` 同样只描述项目展示平台，不决定版本在哪里运行。平台无关使用 `{ "mode": "agnostic" }`；指定平台使用 `specific`，并至少包含一个 `macos`、`windows` 或 `web`。Server 的源码与数据存储不受展示平台限制。未知的未来语言、声明和平台 ID 会在读取和写回时保留。旧项目缺少 `projectInfo` 时按无声明、平台无关并只使用根 `name` 处理。
-
-`relatedProjects` 是 Workflow、Conversation 和 Kanban 共用的项目关系声明，不是小助手或 Kanban 私有配置。每项包含 alias、目标项目 UUID，以及 `grantToRelatedProject` 读写规则；该授权方向表示“允许目标项目访问当前项目”。关系写入双方 package 后才确认，单边声明显示为待确认且不授予 KV 权限。完整格式、校验限制和访问语义见 [KV 与会话](/concepts/kv-and-conversation#关联项目-kv)。旧 `steamHarness.kanban.dataSources` 不会转换，会直接校验失败。
+一个聚合项目只使用根 `package.json.id`。每个注册入口有独立 `entryId`、类型、代码根目录、入口文件、配置和数据库需求。同类型可以注册多次；默认窗口由 `defaultEntry` 选择。Workflow 内部操作仍由 `entrypointId` 标识。
 
 ## Runtime API
 
@@ -284,7 +253,7 @@ export const executor = steamharness.defineExecutor<Input, OutputPayload>({
 
 项目可以通过 `package.json.steamHarness.schedulePresets` 为某个入口声明建议定时计划。Structure 会校验预设 ID、入口、时区、触发规则和 JSON 参数，并把目录交给本地宿主；预设不会自动启用。参见 [Workflow 定时运行](/concepts/workflow-schedules)。
 
-Conversation executor 保持单入口，把 `workflow`、`params`、`createInput` 等字段直接放在 executor 上，不声明或接受 entrypoint。Executor 的 `projectType` 只允许 `"workflow"` 或 `"conversation"`。Kanban 在 `package.json.steamHarness.projectType` 中声明 `"kanban"`，不能伪造 executor。
+Conversation executor 保持单入口，把 `workflow`、`params`、`createInput` 等字段直接放在 executor 上，不声明或接受 entrypoint。Executor 的 `projectType` 只允许 `"workflow"` 或 `"conversation"`。Kanban 在根 `steamHarness.entries` 中注册静态 HTML，不能伪造 executor。
 
 `createInput` 会接收 `projectName`、`projectDir`、`args`、`paramValues`、`config`、`abortSignal` 和可选 `conversationId`。Workflow 还会收到所选 `entrypointId`、`entrypointTitle`；相同字段会写入 `RunContext.metadata`、report 和本地运行记录。本地宿主通过所选执行配置把参数转换为 workflow input；取消运行时，`abortSignal` 会传播到 workflow context，便于长耗时 provider/SDK 调用及时停止。
 
@@ -324,33 +293,72 @@ export const executor = steamharness.defineExecutor<Input, OutputPayload>({
 
 本地 CLI 的 `debug-node` 使用所选 entrypoint registry 中的节点配置运行单节点调试；省略入口时使用默认入口，不会跨入口搜索同名节点。Conversation 继续使用 executor 顶层 registry。
 
-## 包结构
 
-workflow package 精确声明 Core 与 CLI 的 dev dependency，同时按需声明真实第三方依赖。本地宿主和 CLI 会提供外层运行时：
+## 包结构
 
 ```json
 {
-  "id": "1f221460-4fc7-48e2-bd23-651dee826692",
-  "name": "@steamharness/hello-workflow",
-  "version": "0.1.0",
+  "id": "00000000-0000-4000-8000-000000000001",
+  "name": "workspace-example",
+  "version": "1.0.0",
   "private": true,
   "type": "module",
-  "devDependencies": {
-    "@steamharness/cli": "0.2.0",
-    "steamharness": "0.2.0"
-  },
   "steamHarness": {
-    "projectType": "workflow",
-    "projectInfo": {
-      "dataStorage": {
-        "mode": "both"
+    "defaultEntry": "agent",
+    "entries": [
+      {
+        "entryId": "agent",
+        "type": "conversation",
+        "name": "Assistant",
+        "root": "agent",
+        "entry": "index.ts",
+        "databases": []
       },
-      "relatedProjects": []
-    }
+      {
+        "entryId": "database",
+        "type": "workflow",
+        "name": "Database operations",
+        "root": "database",
+        "entry": "index.ts",
+        "configuration": "configuration.json",
+        "databases": [
+          {
+            "alias": "data",
+            "host": "server",
+            "permissions": {
+              "kv": {
+                "read": {
+                  "mode": "all"
+                },
+                "write": {
+                  "mode": "all"
+                }
+              },
+              "knowledge": {
+                "read": {
+                  "mode": "all"
+                },
+                "write": {
+                  "mode": "all"
+                }
+              }
+            }
+          }
+        ]
+      },
+      {
+        "entryId": "map",
+        "type": "kanban",
+        "name": "Map",
+        "root": "map",
+        "entry": "dist/index.html",
+        "databases": []
+      }
+    ]
   }
 }
 ```
 
-`steamharness` 必须是精确 SemVer，不能写 `^`、`0.2.x`、`workspace:*` 或其它 range。本地宿主与 CLI 在运行前用项目要求的 Core 版本计算兼容性，但只比较 `major.minor`：同线任意 patch 或精确预发布版本可直接运行，major 或 minor 变化需要升级宿主。`@steamharness/cli` 同样固定精确版本但独立发版，不替代 Core 运行兼容判断。Core 0.2 项目还必须显式声明 `steamHarness.projectInfo.dataStorage.mode`。
+路径必须在聚合目录内，不能包含 `..`、绝对路径或宿主数据目录。静态分析只扫描对应入口的根目录与注册文件，允许聚合包含不同 executor。每个 Workflow／Conversation 模块的 executor 类型须匹配注册类型；Kanban 指向构建完成的 HTML。只有根声明拥有 SteamHarness 身份，子目录保留各自的普通 npm 包和依赖。
 
-Kanban 的最小 package 使用 `steamHarness.projectType: "kanban"`，目录只要求 `package.json + index.html`；参数化项目再增加可选 `configuration.json`。Kanban package 同样精确记录 Core 与 CLI 版本，以便项目管理工具保持统一依赖模型；Kanban 本身不执行 Core runtime。
+旧根类型、数据位置和项目关系声明直接拒绝；新项目使用全新声明与数据。数据库使用 [独立空间](/concepts/data-storage)，聚合内调用使用 `context.entries.get(entryId)`。

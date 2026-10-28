@@ -71,7 +71,7 @@ Host configuration appears only when the host injected a loopback bridge: `STEAM
 
 Successful Core knowledge and KV results can carry resource-card summaries. Hosts display and open resources according to their capabilities. Targets retain the knowledge document ID or KV key, and access is checked again when opened.
 
-Custom tools used by `createAgentNode` / `createAgentConversationProject` can attach a summary in `details.resourceCard` on a successful result. Core preserves it in the existing tool output and shared runtime UI generates the card automatically; tool `content` and the ordinary message API stay the same. `kind` accepts `knowledge`, `kv`, `project`, `kanban`, `browser`, or `file`; `operation` is `read`, `write`, `open`, or `show`; the optional `title` is at most 200 characters. `target` uses the fields described below. Related project tools must name the actual resource's `source` and `projectId`, rather than the Agent's ID. Failed calls keep their tool error and do not generate successful cards. A summary does not execute writes or pin commands; use the explicit card capability for pins and Kanban parameters.
+Custom tools used by `createAgentNode` / `createAgentConversationProject` can attach a summary in `details.resourceCard` on a successful result. Core preserves it in the existing tool output and shared runtime UI generates the card automatically; tool `content` and the ordinary message API stay the same. `kind` accepts `knowledge`, `kv`, `project`, `kanban`, `browser`, or `file`; `operation` is `read`, `write`, `open`, or `show`; the optional `title` is at most 200 characters. `target` uses the fields described below. Resource tools identify the target `projectId`, `entryId`, and database alias so the host can check the corresponding binding. Failed calls keep their tool error and do not generate successful cards. A summary does not execute writes or pin commands; use the explicit card capability for pins and Kanban parameters.
 
 ```ts
 return {
@@ -81,7 +81,7 @@ return {
       kind: "knowledge",
       operation: "read",
       title: document.title,
-      target: { source: "server", projectId: databaseProjectId, documentId: document.id },
+      target: { source: "server", projectId: context.projectId, entryId: context.entryId, database: "data", documentId: document.id },
     },
   },
 };
@@ -94,7 +94,7 @@ return {
   "action": "upsert",
   "cardId": "roadmap-board",
   "kind": "kanban",
-  "target": { "source": "current", "configurationId": "configuration-id" },
+  "target": { "source": "current", "entryId": "map", "configurationId": "configuration-id" },
   "pinned": true,
   "preview": true,
   "kanban": { "mode": "preview", "values": { "title": "Roadmap" } }
@@ -125,3 +125,5 @@ const node = steamharness.createAgentNode({
 ```
 
 The tools must be declared in the executor's `tools` (see [createToolApprovalGate](./create-tool-approval-gate.mdx)); otherwise the approval fails as an unregistered tool.
+
+KV, knowledge and memory tools require a `database` alias, checked against entry requirements and effective grants. There is no default project database. Resource cards and Kanban method targets carry `projectId + entryId`.

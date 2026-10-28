@@ -1,9 +1,9 @@
+import { createApprovedTestContext } from "../../../test-databases";
 import { beforeAll, describe, expect, it, vi } from "vitest";
 import { installProjectRuntimeGlobal } from "steamharness/runtime-api";
 import {
   createDisabledProjectConversationContext,
   createDisabledProjectTokenUsageContext,
-  createProjectRelatedProjectsContext,
   createProjectToolPermissionContext,
   type KVContext,
   type UserInputResolved,
@@ -216,18 +216,7 @@ function createNodeContext(
   return {
     config: {ANTHROPIC_API_KEY:"fixture-key"},
     providers: {},
-    storage: {
-      local: {
-        kv: createMemoryKVContext(),
-        persistentValue: createMemoryKVContext(),
-        relatedProjects: createProjectRelatedProjectsContext(),
-      },
-      server: {
-        kv: createMemoryKVContext(),
-        persistentValue: createMemoryKVContext(),
-        relatedProjects: createProjectRelatedProjectsContext(),
-      },
-    },
+    ...createApprovedTestContext(),
     conversation: createDisabledProjectConversationContext(),
     tokenUsage: createDisabledProjectTokenUsageContext(),
     userInput: {

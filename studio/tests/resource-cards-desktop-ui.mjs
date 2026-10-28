@@ -1,3 +1,4 @@
+import { approveLocalFixtureDatabase, fixtureDatabaseHost } from './approved-database-fixture.mjs';
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
 import { createServer } from 'node:http';
@@ -43,16 +44,23 @@ for (const language of languages) {
     await symlink(await realpath(path.join(original, 'node_modules/steamharness')), path.join(folder, 'node_modules/steamharness'), 'dir');
     await symlink(cli, path.join(folder, 'node_modules/@steamharness/cli'), 'dir');
     const manifest = JSON.parse(await readFile(path.join(folder, 'package.json'), 'utf8'));
-    const data = path.join(storageDir, createHash('sha256').update(folder).digest('hex').slice(0, 24));
-    const kv = core.createProjectKVContext({ projectId: manifest.id, store: core.createLocalProjectKVStore({ rootDir: path.join(data, 'kv') }) });
-    const values = core.createProjectPersistentValueContext({ projectId: manifest.id,
-      store: core.createLocalProjectKVStore({ rootDir: path.join(data, 'values'), storageKind: 'persistent_value' }) });
-    const document = await core.createKnowledgeDocument({ persistentValue: values }, { title: `${type} guide`, markdown: `# ${type} guide\n\nExact resource content.\n\n- Accessible preview` });
+    const data = path.join(storageDir,'projects',manifest.id,'entries',manifest.steamHarness.defaultEntry);
+    const database = await approveLocalFixtureDatabase(core,folder,manifest,path.join(directory,'databases'));
+    const kv = database.kv;
+    const document = await database.knowledge.createDocument({title:`${type} guide`,markdown:`# ${type} guide\n\nExact resource content.\n\n- Accessible preview`});
     projects.push({ folder, manifest, data, kv, document });
   }
   const [conversation, board] = projects;
-  const serverProjectId = conversation.manifest.steamHarness.projectInfo.relatedProjects?.find(project => project.alias === 'database')?.projectId ?? 'foreign-server-project';
-  const serverDocumentId = 'delta-force-harmonica-speedrun-1';
+  const serverProjectId = conversation.manifest.id;
+  const serverDocumentId = 'shared-guide';
+  const remote = fixtureDatabaseHost(core);
+  const remoteEntry = conversation.manifest.steamHarness.defaultEntry;
+  const shared = remote.create(serverProjectId,remoteEntry);
+  const denied = remote.create(serverProjectId,remoteEntry,'denied');
+  await shared.database.knowledge.createDocument({id:serverDocumentId,title:'Shared server guide',markdown:'# Shared server guide\n\nShared space permission verified.'});
+  remote.revoke(denied.authorization.grant.grantId);
+  conversation.manifest.steamHarness.entries[0].databases.push(shared.requirement,denied.requirement);
+  await writeFile(path.join(conversation.folder,'package.json'),JSON.stringify(conversation.manifest));
   await conversation.kv.setValue('card.value', { enabled: true, count: 7 });
   await board.kv.setValue('studio-kanban:tasks', [{ id: 'preview-task', title: 'Saved map marker', description: 'Card preview evidence',
     status: 'todo', priority: 'high', label: 'design' }]);
@@ -61,21 +69,21 @@ for (const language of languages) {
   await writeFile(path.join(conversation.folder, 'result.txt'), 'Card source file');
   const tool = (id, kind, target, title, extra = {}) => ({ id, contentType: 'json', collapsed: true,
     metadata: { kind: 'agent-part', partType: 'tool' }, content: { tool: kind === 'knowledge' ? 'kb_get_document' : 'resource_tool', status: 'success',
-      input: { documentId: target.documentId, key: target.key }, output: { details: { resourceCard: { ...(id.startsWith('server-') ? {} : { cardId: id }), kind, title, target, ...extra } } } } });
+      input: { documentId: target.documentId, key: target.key }, output: { details: { resourceCard: { ...(id.startsWith('server-') ? {} : { cardId: id }), kind, title, target:{entryId:target.projectId===board.manifest.id?board.manifest.steamHarness.defaultEntry:conversation.manifest.steamHarness.defaultEntry,database:target.source==='server'?'shared':'data',...target}, ...extra } } } } });
   const longTitle = 'Shared knowledge guide: ' + 'resource title with complete readable content '.repeat(5);
   const items = [
     tool('local-doc', 'knowledge', { source: 'local', projectId: conversation.manifest.id, documentId: conversation.document.id }, 'Local guide'),
     tool('server-doc', 'knowledge', { source: 'server', projectId: serverProjectId, documentId: serverDocumentId }, longTitle),
     { ...tool('server-list', 'knowledge', { source: 'server', projectId: serverProjectId }), content: {
       tool: 'kb_list_documents', status: 'success', input: { pageSize: 20 },
-      output: { details: { resourceCard: { kind: 'knowledge', operation: 'read', target: { source: 'server', projectId: serverProjectId } } } },
+      output: { details: { resourceCard: { kind: 'knowledge', operation: 'read', target: { source:'server',projectId:serverProjectId,entryId:remoteEntry,database:'shared' } } } },
     } },
     tool('local-kv', 'kv', { source: 'local', projectId: conversation.manifest.id, key: 'card.value', scope: 'project' }, 'card.value'),
     tool('foreign-local', 'knowledge', { source: 'local', projectId: board.manifest.id, documentId: board.document.id }, 'Imported project guide'),
     tool('map', 'kanban', { source: 'local', projectId: board.manifest.id, configurationId: 'named-map' }, 'Temporary map',
       { preview: true, kanban: { mode: 'preview', values: { title: 'Temporary card map' } } }),
     tool('project', 'project', { source: 'local', projectId: board.manifest.id }, 'Open board project'),
-    tool('blocked', 'knowledge', { source: 'server', projectId: 'denied-project', documentId: 'private' }, 'Restricted guide'),
+    tool('blocked', 'knowledge', { source: 'server', projectId:serverProjectId,entryId:remoteEntry,database:'denied',documentId:'private' }, 'Restricted guide'),
     { id: 'main-answer', contentType: 'markdown', content: '## Main answer\n\nThe answer stays in the conversation.', metadata: { finishReason: 'stop', usage: { totalTokens: 3 } } },
   ];
   const session = { id: 'card-session', title: 'Resource cards', createdAt: Date.now(), updatedAt: Date.now(), parameterValues: {},
@@ -85,7 +93,7 @@ for (const language of languages) {
   const workspace = path.join(directory, 'cards.code-workspace');
   await writeFile(workspace, JSON.stringify({ folders: projects.map(project => ({ path: project.folder })) }));
   const requests = [];
-  const server = createServer((request, response) => {
+  const server = createServer(async (request, response) => {
     response.setHeader('Content-Type', 'application/json');
     const address = new URL(request.url, 'http://fixture');
     const success = data => response.end(JSON.stringify({ errCode: 0, data }));
@@ -95,10 +103,7 @@ for (const language of languages) {
     if (address.pathname === '/api/auth/me') { success({ profile: { userId: 'card-user', email: 'cards@example.com', displayName: 'Card Test' },
       principal: { apiKeyId: 'card-key', expiresAt: '2030-01-01T00:00:00Z' } }); return; }
     if (address.pathname === '/api/auth/logout') { request.resume(); success({}); return; }
-    if (address.pathname.includes('/denied-project/')) { response.writeHead(403); response.end(JSON.stringify({ errCode: 403, errMessage: 'Permission denied.' })); return; }
-    if (address.pathname.endsWith(`/knowledge-documents/${serverDocumentId}`)) { success({ id: serverDocumentId, title: 'Shared server guide', markdown: '# Shared server guide\n\nForeign project permission verified.' }); return; }
-    if (address.pathname.endsWith('/knowledge-documents/search')) { success({ matches: [{ documentId: serverDocumentId, title: 'Shared server guide', lineNumber: 3, line: 'Foreign project permission verified.' }], totalMatches: 1, hasMore: false }); return; }
-    if (address.pathname.endsWith('/knowledge-documents')) { success({ items: [{ id: serverDocumentId, title: 'Shared server guide', markdownPreview: 'Foreign project' }], total: 1, hasMore: false }); return; }
+    if(await remote.handle(request,response))return;
     response.writeHead(404); response.end('{}');
   });
   await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
@@ -109,7 +114,7 @@ for (const language of languages) {
   const desktop = await desktopLocaleLaunch(language, directory);
   const child = spawn(desktop.executable, [...desktop.args, '--user-data-dir', dataDir, '--extensions-dir', path.join(root, '.studio/desktop-extensions'),
     `--locale=${language}`, '--disable-workspace-trust', '--disable-telemetry', '--skip-welcome', '--skip-release-notes', `--remote-debugging-port=${port}`, workspace],
-  { cwd: path.join(root, 'upstream/vscode'), env: { ...process.env, ...desktop.env, STEAMHARNESS_SERVER_URL: '', STEAMHARNESS_SERVER_ADMIN_KEY: '' }, stdio: ['ignore', log.fd, log.fd] });
+  { cwd: path.join(root, 'upstream/vscode'), env: { ...process.env, ...desktop.env, STEAMHARNESS_DATABASES_DIR:path.join(directory,'databases'), STEAMHARNESS_SERVER_URL: '', STEAMHARNESS_SERVER_ADMIN_KEY: '' }, stdio: ['ignore', log.fd, log.fd] });
   const exited = new Promise(resolve => { child.once('exit', resolve); child.once('error', resolve); });
   let browser, page;
   const proof = { language, cliVersion, projectId: conversation.manifest.id, serverProjectId, checks: [], screenshots: [], errors: [] };
@@ -256,7 +261,7 @@ for (const language of languages) {
     await screenshot('signed-out-preview');
     proof.checks.push('signing out invalidates an already rendered Server preview and clears the previous account content');
     proof.checks.push('sign-in feedback and actions remain readable without overlap in the narrow Assistant sidebar');
-    assert.ok(requests.some(address => address.includes(`/${serverProjectId}/knowledge-documents/${serverDocumentId}`)));
+    assert.ok(requests.some(address => address.includes('/api/database-spaces/')));
     assert.deepEqual(proof.errors, []);
     await writeFile(path.join(proofDir, `${language}-proof.json`), `${JSON.stringify(proof, null, 2)}\n`); console.log(JSON.stringify(proof));
   } catch (error) {

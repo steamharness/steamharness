@@ -41,11 +41,7 @@
       ],
       "platformSupport": {
         "mode": "agnostic"
-      },
-      "dataStorage": {
-        "mode": "local"
-      },
-      "relatedProjects": []
+      }
     },
     "builtinRelease": {
       "projectId": "developer-assistant",
@@ -57,6 +53,49 @@
       "icon": "bot",
       "iconBackgroundColor": "#0f766e"
     },
-    "projectType": "conversation"
+    "entries": [
+      {
+        "entryId": "main",
+        "type": "conversation",
+        "name": "Project Assistant",
+        "root": ".",
+        "entry": "index.ts",
+        "databases": [
+          {
+            "alias": "memory",
+            "host": "local",
+            "permissions": {
+              "kv": {
+                "read": {
+                  "mode": "all"
+                },
+                "write": {
+                  "mode": "all"
+                }
+              },
+              "knowledge": {
+                "read": {
+                  "mode": "all"
+                },
+                "write": {
+                  "mode": "all"
+                }
+              }
+            }
+          }
+        ],
+        "configuration": "configuration.json"
+      },
+      {
+        "entryId": "studio-control",
+        "type": "workflow",
+        "name": "Studio Control",
+        "root": "studio-control",
+        "entry": "index.ts",
+        "configuration": "configuration.json",
+        "databases": []
+      }
+    ],
+    "defaultEntry": "main"
   }
 }

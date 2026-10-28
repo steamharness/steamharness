@@ -21,15 +21,33 @@
     "vitest": "4.1.10"
   },
   "steamHarness": {
-    "projectType": "kanban",
-    "kanban": { "artifactDir": ".", "entry": "index.html" },
     "projectInfo": {
-      "localizedNames": { "zh-CN": "Studio 分析", "en": "Studio Analysis" },
-      "declarations": ["multilingual"],
-      "platformSupport": { "mode": "agnostic" },
-      "dataStorage": { "mode": "local" },
-      "relatedProjects": []
+      "localizedNames": {
+        "zh-CN": "Studio 分析",
+        "en": "Studio Analysis"
+      },
+      "declarations": [
+        "multilingual"
+      ],
+      "platformSupport": {
+        "mode": "agnostic"
+      }
     },
-    "projectCard": { "icon": "chart-column", "iconBackgroundColor": "#0f766e" }
+    "projectCard": {
+      "icon": "chart-column",
+      "iconBackgroundColor": "#0f766e"
+    },
+    "entries": [
+      {
+        "entryId": "main",
+        "type": "kanban",
+        "name": "Studio Analysis",
+        "root": ".",
+        "entry": "index.html",
+        "databases": [],
+        "configuration": "configuration.json"
+      }
+    ],
+    "defaultEntry": "main"
   }
 }

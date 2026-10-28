@@ -74,9 +74,9 @@ describe('Ring output interaction', () => {
     const root = new Element(); documentState.body.append(root);
     const output = new ConversationOutput(root as unknown as HTMLElement, { copy() {}, plan() {}, file() {}, image() {}, resource() {} });
     disposables.push(output);
-    output.update({ role: 'assistant', content: '', items: [ring(25)] }, 'project', 'conversation', []);
+    output.update({ role: 'assistant', content: '', items: [ring(25)] }, 'project', "main", 'conversation', []);
     const anchor = root.children[0]; anchor.focus();
-    output.update({ role: 'assistant', content: '', items: [ring(75)] }, 'project', 'conversation', []);
+    output.update({ role: 'assistant', content: '', items: [ring(75)] }, 'project', "main", 'conversation', []);
     expect(root.children[0]).toBe(anchor);
     expect(documentState.activeElement).toBe(anchor);
     expect(tooltips()).toHaveLength(1);

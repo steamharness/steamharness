@@ -9,16 +9,16 @@ Server Web is the browser administration client for SteamHarness Server. After s
 
 ## Project workspace
 
-The project list can search by project ID, name, type, publisher, and version. It shows latest, version count, and update time. Project details provide overview, settings, related projects, versions, members, invitations, knowledge, and KV data.
+Project lists display type sets and match any entry type. Details expose entries, entry configurations, versions and membership. Independent database management provides requests, approval, shared grants and data browsing.
 
-An uploaded package must declare `workflow`, `conversation`, or `kanban` in `package.json.steamHarness.projectType`. The name and display platforms come from `steamHarness.projectInfo`; a display platform does not restrict source downloads.
+Uploaded packages must register nonempty `steamHarness.entries` and a valid `defaultEntry`. Names and display platforms belong to projectInfo; database requirements belong to entries.
 
 ## Projects and data
 
 - Use [Workspace CLI](/en/cli/server-workspace) to create, upload, publish, and download projects.
-- Configure members, group ownership, and bilateral related-project grants in [Project management](/en/guides/server/project-management).
+- Configure membership and group ownership in [Project management](/en/guides/server/project-management), and grants on the database page.
 - Knowledge supports document creation, editing, deletion, search, and line reads; KV and PersistentValue store project or conversation data.
-- `dataStorage.mode` can be `server` or `both` for Server data access; `local` projects can still store and download source.
+- Database spaces require request, approval and binding, separate from source and membership requests.
 - Kanban keeps static previews, configuration, and the data Bridge. A preview uses a short-lived capability bound to a project, user, and version; its iframe does not inherit account credentials.
 
 ## Accounts and settings

@@ -806,5 +806,13 @@
   "Unable to refresh built-in models.": "无法刷新内置模型。",
   "Built-in models are managed by your AI account.": "内置模型由 AI 账户管理。",
   "Provider": "服务商",
-  "You can save up to 100 custom models.": "最多可以保存 100 个自定义模型。"
+  "You can save up to 100 custom models.": "最多可以保存 100 个自定义模型。",
+  "Invalid project entry identifier.": "项目入口标识无效。",
+  "Entry ID": "入口 ID",
+  "Database binding": "数据库绑定",
+  "Not bound": "未绑定",
+  "Project windows": "项目窗口",
+  "Database spaces": "数据库空间",
+  "Invalid resource operation.": "资源操作无效。",
+  "This folder cannot be upgraded in place. Download a new copy to preserve its workspace.": "无法在此文件夹中直接升级。请下载新副本以保留当前工作区。"
 }

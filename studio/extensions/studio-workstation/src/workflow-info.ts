@@ -21,7 +21,6 @@ export interface InfoState {
 
 const declarationNames = new Map([['multilingual', 'Multiple languages'], ['multiplatform', 'Multiple platforms']]);
 const platformNames = new Map([['macos', 'macOS'], ['windows', 'Windows'], ['web', 'Web']]);
-const storageNames = new Map([['local', 'Local'], ['server', 'Server'], ['both', 'Local and server']]);
 const typeNames = { workflow: 'Workflow', conversation: 'Conversation', kanban: 'Kanban' };
 
 function record(value: unknown): Record<string, unknown> {
@@ -49,7 +48,6 @@ export function projectInfoItems(project: Project, manifest: unknown): InfoItem[
   const declarations = strings(info.declarations);
   const localizedNames = record(info.localizedNames);
   const platform = record(info.platformSupport);
-  const storage = record(info.dataStorage);
   const basic = [
     row('name', t("Default name"), text(pkg.name) ?? project.name),
     row('type', t("Project type"), t(typeNames[project.projectType])),
@@ -59,28 +57,25 @@ export function projectInfoItems(project: Project, manifest: unknown): InfoItem[
   ];
   if (text(pkg.description)) { basic.push(row('description', t("Description"), text(pkg.description))); }
 
-  const related = (Array.isArray(info.relatedProjects) ? info.relatedProjects : []).map((value, index) => {
-    const relation = record(value), grant = record(relation.grantToRelatedProject), knowledge = record(grant.knowledge);
-    const id = `relation:${index}`;
-    const children = [
-      row(`${id}:uuid`, t("Project UUID"), text(relation.projectId)),
-      group(`${id}:grant`, t("Permissions Granted to Related Project"), 'shield', [
-        row(`${id}:read`, t("KV read"), access(grant.read)),
-        row(`${id}:write`, t("KV write"), access(grant.write)),
-        row(`${id}:knowledge-read`, t("Knowledge read"), access(knowledge.read)),
-        row(`${id}:knowledge-write`, t("Knowledge write"), access(knowledge.write)),
-        row(`${id}:entrypoints`, t("Entrypoints"), access(grant.entrypoints)),
-      ]),
-    ];
-    return group(id, text(relation.alias) ?? text(relation.projectId) ?? t("Related Projects"), 'link', children, false);
-  });
+  const entries = project.entries.map(entry => group(`window:${entry.entryId}`, entry.name, 'window', [
+    row(`window:${entry.entryId}:id`, t('Entry ID'), entry.entryId),
+    row(`window:${entry.entryId}:type`, t('Project type'), t(typeNames[entry.type])),
+    row(`window:${entry.entryId}:path`, t('Local path'), `${entry.root}/${entry.entry}`),
+  ], false));
+  const databases = project.databases.map(database => group(`database:${database.alias}`, database.alias, 'database', [
+    row(`database:${database.alias}:host`, t('Storage location'), database.host === 'local' ? t('Local') : t('Server')),
+    row(`database:${database.alias}:binding`, t('Database binding'), database.bindingRef ?? t('Not bound')),
+    row(`database:${database.alias}:kv-read`, t('KV read'), access(database.permissions.kv.read)),
+    row(`database:${database.alias}:kv-write`, t('KV write'), access(database.permissions.kv.write)),
+    row(`database:${database.alias}:knowledge-read`, t('Knowledge read'), access(database.permissions.knowledge.read)),
+    row(`database:${database.alias}:knowledge-write`, t('Knowledge write'), access(database.permissions.knowledge.write)),
+  ], false));
 
   const platforms = [row('platform-mode', t("Platform mode"), platform.mode === 'specific' ? t("Specific platforms")
     : platform.mode === undefined || platform.mode === 'agnostic' ? t("Platform independent") : text(platform.mode))];
   if (platform.mode === 'specific') {
     platforms.push(...strings(platform.platforms).map(id => row(`platform:${id}`, platformNames.get(id) ?? id, t("Supported"))));
   }
-  const mode = text(storage.mode);
   const items = [
     group('basic', t("Basic Information"), 'info', basic),
     group('declarations', t("Project Declarations"), 'verified', declarations.map(id => row(`declaration:${id}`, declarationNames.has(id) ? t(declarationNames.get(id)!) : id, t("Declared")))),
@@ -88,8 +83,8 @@ export function projectInfoItems(project: Project, manifest: unknown): InfoItem[
       .filter((entry): entry is [string, string] => typeof entry[1] === 'string' && !!entry[1].trim())
       .map(([locale, name]) => row(`name:${locale}`, locale, name))),
     group('platforms', t("Platform Support"), 'device-desktop', platforms),
-    group('storage', t("Data Storage"), 'database', [row('storage-mode', t("Storage location"), mode ? storageNames.has(mode) ? t(storageNames.get(mode)!) : mode : t("Not declared"))]),
-    group('related', t("Related resources"), 'references', related, false),
+    group('windows', t('Project windows'), 'window', entries, false),
+    group('databases', t('Database spaces'), 'database', databases, false),
   ];
   if (project.entrypoints.length) {
     items.push(group('entrypoints', t("Entrypoints"), 'run-all', project.entrypoints.map(entry => row(`entry:${entry.id}`, entry.title ?? entry.id,

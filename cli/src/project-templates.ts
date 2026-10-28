@@ -1,8 +1,7 @@
 import { randomUUID } from 'node:crypto';
-import { resolve } from 'import-meta-resolve';
 import { mkdir, readFile, realpath, rm, stat, writeFile } from 'node:fs/promises';
 import path from 'node:path';
-import { fileURLToPath, pathToFileURL } from 'node:url';
+import { fileURLToPath } from 'node:url';
 import { generateProjectCardMetadata, type ProjectCardMetadata } from '@steamharness/project-card-metadata';
 import type { DeclaredProjectInfo } from '@steamharness/project-info';
 import { isProjectUuid } from '@steamharness/workflow-ids';
@@ -27,7 +26,7 @@ export interface CreateProjectFromTemplateRequest {
   allocateProjectId?: (project: TemplateProjectRegistration) => Promise<string>;
 }
 export interface TemplateProjectRegistration {
-  name: string; projectType: ProjectTemplateType; projectInfo: DeclaredProjectInfo; projectCard: ProjectCardMetadata;
+  name: string; entries: import("@steamharness/project-manifest").ProjectEntry[]; defaultEntry: string; projectInfo: DeclaredProjectInfo; projectCard: ProjectCardMetadata;
 }
 export interface CreatedTemplateProject {
   id: string;
@@ -91,16 +90,16 @@ export async function createProjectFromTemplate(request: CreateProjectFromTempla
   } catch { throw new ProjectTemplateError('invalid-parent', 'Choose an existing parent folder.'); }
   const directory = path.join(parent, name);
   const projectCard = generateProjectCardMetadata(template.projectType);
-  const projectInfo: DeclaredProjectInfo = { localizedNames: { en: name, 'zh-CN': name }, declarations: [], relatedProjects: [], platformSupport: { mode: 'agnostic' }, dataStorage: { mode: 'local' } };
+  const projectInfo: DeclaredProjectInfo = { localizedNames: { en: name, 'zh-CN': name }, declarations: [], platformSupport: { mode: 'agnostic' } };
   const packageName = name.toLowerCase().replace(/[^a-z0-9-]+/g, '-').replace(/^-+|-+$/g, '') || 'project';
   const manifest = {
     id: '', name: packageName, version: '0.1.0', private: true, type: 'module',
     scripts: { dev: 'steamharness web .', inspect: 'steamharness structure .', 'run:json': 'steamharness json .' },
     devDependencies: { 'steamharness': request.versions.harness, '@steamharness/cli': request.versions.cli },
     steamHarness: {
-      projectType: template.projectType,
+      entries: [{ entryId: 'main', type: template.projectType, name, root: '.', entry: template.entryFile, configuration: 'configuration.json', databases: [] }],
+      defaultEntry: 'main',
       projectCard,
-      ...(template.projectType === 'kanban' ? { kanban: {} } : {}),
       projectInfo,
     },
   };
@@ -116,7 +115,7 @@ export async function createProjectFromTemplate(request: CreateProjectFromTempla
     throw error;
   }
   try {
-    manifest.id = request.allocateProjectId ? await request.allocateProjectId({ name, projectType: template.projectType, projectInfo, projectCard }) : randomUUID();
+    manifest.id = request.allocateProjectId ? await request.allocateProjectId({ name, entries: manifest.steamHarness.entries, defaultEntry: manifest.steamHarness.defaultEntry, projectInfo, projectCard }) : randomUUID();
     if (!isProjectUuid(manifest.id)) { throw new ProjectTemplateError('invalid-id', 'The Server returned an invalid project ID.'); }
     request.signal?.throwIfAborted();
     await writeFile(path.join(directory, 'package.json'), `${JSON.stringify(manifest, null, 2)}\n`, { flag: 'wx' });
@@ -136,38 +135,5 @@ function escapeHtml(value: string): string {
   return value.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;').replaceAll('"', '&quot;').replaceAll("'", '&#39;');
 }
 
-function workflowRuntimeSource(source: string): string {
-  return source.replaceAll('RuntimeApi', 'WorkflowRuntimeApi')
-    .replaceAll('const steamharness =', 'const workflow =')
-    .replaceAll('{ steamharness:', '{ workflow:')
-    .replaceAll('}).steamharness;', '}).workflow;')
-    .replaceAll('steamharness.', 'workflow.')
-    .replaceAll('.defineProject', '.defineWorkflow');
-}
-
-/** Match untouched scaffold files to the SDK actually installed, including published SDKs from before the API rename. */
-export async function prepareProjectTemplateRuntime(directory: string, signal?: AbortSignal): Promise<boolean> {
-  signal?.throwIfAborted();
-  const manifest = JSON.parse(await readFile(path.join(directory, 'package.json'), 'utf8'));
-  const templates = (await listProjectTemplates()).filter(template => template.projectType === manifest.steamHarness?.projectType && template.entryFile.endsWith('.ts'));
-  if (!templates.length) { return false; }
-  const runtime = await import(resolve('steamharness/runtime-api', pathToFileURL(path.join(directory, 'package.json')).href));
-  const modern = typeof runtime.projectRuntimeApi?.defineProject === 'function';
-  if (!modern && typeof runtime.workflowRuntimeApi?.defineWorkflow !== 'function') {
-    throw new Error('The installed SDK does not support this project template.');
-  }
-  for (const template of templates) {
-    const filename = path.join(directory, template.entryFile);
-    const source = await readFile(filename, 'utf8');
-    const canonical = await readFile(path.join(templateRoot, template.id, template.entryFile), 'utf8');
-    const published = workflowRuntimeSource(canonical);
-    // A setup retry must never rewrite user-edited source.
-    if (![canonical, published].includes(source.replaceAll('\r\n', '\n'))) { continue; }
-    const target = modern ? canonical : published;
-    if (source.replaceAll('\r\n', '\n') === target) { return false; }
-    signal?.throwIfAborted();
-    await writeFile(filename, source.includes('\r\n') ? target.replaceAll('\n', '\r\n') : target);
-    return true;
-  }
-  return false;
-}
+/** Templates require the current SDK and are authored against its public API. */
+export async function prepareProjectTemplateRuntime(_directory: string, signal?: AbortSignal): Promise<boolean> { signal?.throwIfAborted(); return false; }

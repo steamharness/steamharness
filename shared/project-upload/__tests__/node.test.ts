@@ -15,8 +15,7 @@ afterEach(async () => {
 describe("createProjectUploadPlan", () => {
   it("includes a git-ignored Kanban artifact and applies only .steamharnessignore", async () => {
     const root = await createProject({
-      projectType: "kanban",
-      kanban: { artifactDir: "dist", entry: "board.html" },
+      defaultEntry:"board", entries:[{entryId:"board",type:"kanban",name:"Board",root:".",entry:"dist/board.html",databases:[]}],
     });
     await mkdir(path.join(root, "dist"));
     await Promise.all([
@@ -30,7 +29,6 @@ describe("createProjectUploadPlan", () => {
 
     const plan = await createProjectUploadPlan(root);
     expect(plan.files.map((file) => file.path)).toEqual([
-      ".env",
       ".gitignore",
       ".steamharnessignore",
       "dist/app.js",
@@ -40,7 +38,7 @@ describe("createProjectUploadPlan", () => {
     expect(plan.ignoredPaths).toContain("dist/app.js.map");
   });
 
-  it("uploads node_modules when .steamharnessignore is missing", async () => {
+  it("excludes host dependencies even without .steamharnessignore", async () => {
     const root = await createProject();
     await mkdir(path.join(root, "node_modules", "pkg"), { recursive: true });
     await Promise.all([
@@ -51,7 +49,7 @@ describe("createProjectUploadPlan", () => {
     const plan = await createProjectUploadPlan(root);
     expect(plan.projectIgnorePresent).toBe(false);
     expect(plan.projectIgnoreConfigured).toBe(false);
-    expect(plan.files.map((file) => file.path)).toContain("node_modules/pkg/index.js");
+    expect(plan.files.map((file) => file.path)).not.toContain("node_modules/pkg/index.js");
   });
 
   it("rejects symbolic links instead of following host paths", async () => {
@@ -89,7 +87,7 @@ async function createProject(steamHarness?: Record<string, unknown>): Promise<st
     id: "00000000-0000-4000-8000-000000000001",
     name: "upload-test",
     version: "0.1.0",
-    ...(steamHarness === undefined ? {} : { steamHarness }),
+    steamHarness: steamHarness ?? {defaultEntry:"main",entries:[{entryId:"main",type:"workflow",name:"Main",root:".",entry:"index.ts",databases:[]}]},
   }));
   return root;
 }

@@ -21,7 +21,7 @@ test('role profiles filter guest responses and exports and enforce writes in the
     const author=await storage.projectConfigurations(options,{action:'get'}) as ProjectConfigurationState;
     assert.deepEqual(author.configurations.map(profile=>profile.profileKey),['ask','build']);
     await storage.projectConfigurations(options,{action:'publication.save',revision:author.revision,publication:author.publication});
-    await storage.publish({projectName:projectId,createdByUserId:'author',expectedConfigurationRevision:1,expectedSourceHash:author.sourceHash});
+    await storage.publish({projectName:projectId,createdByUserId:'author',expectedConfigurationRevisions:{main:1},expectedSourceHash:author.sourceHash});
     const guestOptions={...options,actorId:'downloader',target:'1.0.0'};
     let guest=await storage.projectConfigurations(guestOptions,{action:'get'}) as ProjectConfigurationState;
     assert.deepEqual(guest.configurations.map(profile=>profile.profileKey),['ask']);
@@ -51,7 +51,7 @@ async function fixture(fields:ProjectConfigurationField[],profilePolicy?:Configu
   const root=await mkdtemp(path.join(tmpdir(),'configuration-publication-'));
   const storage=new Storage({serverRoot:process.cwd(),repoRoot:process.cwd(),dataRoot:root});
   const prepared=await storage.createProjectFromFiles({projectName:projectId,files:[
-    {path:'package.json',content:JSON.stringify({id:projectId,name:'Config test',version:'1.0.0',devDependencies:{steamharness:pkg.dependencies.steamharness},steamHarness:{projectType:'workflow',projectInfo:{localizedNames:{},declarations:[],platformSupport:{mode:'agnostic'},dataStorage:{mode:'server'},relatedProjects:[]}}})},
+    {path:'package.json',content:JSON.stringify({id:projectId,name:'Config test',version:'1.0.0',devDependencies:{steamharness:pkg.dependencies.steamharness},steamHarness:{defaultEntry:"main",entries:[{entryId:"main",name:"Main",type:'workflow',root:".",entry:"index.ts",configuration:"configuration.json",databases:[]}],projectInfo:{localizedNames:{},declarations:[],platformSupport:{mode:'agnostic'},}}})},
     {path:'index.ts',content:'throw new Error("Server must never execute source");'},
     {path:'configuration.json',content:JSON.stringify({version:2,fields,...(profilePolicy?{profilePolicy}:{})})},
   ]});
@@ -64,7 +64,7 @@ test('published personal configurations do not require a draft for any project r
   try {
     const author = await storage.projectConfigurations(options, { action: 'get' }) as ProjectConfigurationState;
     await storage.projectConfigurations(options, { action: 'publication.save', revision: author.revision, publication: author.publication! });
-    await storage.publish({ projectName: projectId, createdByUserId: 'author', expectedConfigurationRevision: 1, expectedSourceHash: author.sourceHash });
+    await storage.publish({ projectName: projectId, createdByUserId: 'author', expectedConfigurationRevisions:{main:1}, expectedSourceHash: author.sourceHash });
     await rm(path.join(root, 'projects', projectId, 'draft'), { recursive: true, force: true });
     for (const actorId of ['author', 'developer', 'downloader']) {
       const published = { projectName: projectId, actorId, target: '1.0.0' };
@@ -94,8 +94,8 @@ test('official templates filter source, lock JSON edits, isolate accounts and re
     const attempts=await Promise.allSettled([1,2].map(()=>storage.projectConfigurations(options,{action:'publication.save',revision:author.revision,publication:draft})));
     assert.equal(attempts.filter(r=>r.status==='fulfilled').length,1);
     await assert.rejects(storage.projectConfigurations({...options,actorId:'downloader',administrator:false},{action:'publication.save',revision:0,publication:draft}),/Maintainer/);
-    await assert.rejects(storage.publish({projectName:projectId,createdByUserId:'author',expectedSourceHash:prepared.sourceHash,expectedConfigurationRevision:0}),/draft/);
-    await storage.publish({projectName:projectId,createdByUserId:'author',expectedSourceHash:prepared.sourceHash,expectedConfigurationRevision:1});
+    await assert.rejects(storage.publish({projectName:projectId,createdByUserId:'author',expectedSourceHash:prepared.sourceHash,expectedConfigurationRevisions:{main:0}}),/revision/);
+    await storage.publish({projectName:projectId,createdByUserId:'author',expectedSourceHash:prepared.sourceHash,expectedConfigurationRevisions:{main:1}});
     const distributed=await storage.getFiles({projectName:projectId,target:'1.0.0',includeBinary:true});
     const text=JSON.stringify(distributed.files);
     assert.ok(!text.includes('PRIVATE-MUST-NOT-SHIP'));assert.ok(!text.includes('AUTHOR-TOKEN-MUST-NOT-SHIP'));
@@ -117,11 +117,11 @@ test('official templates filter source, lock JSON edits, isolate accounts and re
 test('publication freezes only included attachments and preserves bytes after original deletion',async()=>{
   const {root,storage,options}=await fixture([{name:'image',type:'file',sharing:{includeValue:true,editable:false}},{name:'hidden',type:'file',sharing:{publish:false,includeValue:true}}]);
   try {
-    const refs=await storage.saveManagedFiles({projectName:projectId,files:[{name:'included.png',mimeType:'image/png',buffer:Buffer.from('included')},{name:'hidden.png',mimeType:'image/png',buffer:Buffer.from('hidden')}]});
+    const refs=await storage.saveManagedFiles({projectName:projectId,entryId:'main',files:[{name:'included.png',mimeType:'image/png',buffer:Buffer.from('included')},{name:'hidden.png',mimeType:'image/png',buffer:Buffer.from('hidden')}]});
     let author=await storage.projectConfigurations(options,{action:'get'}) as ProjectConfigurationState;
     author=await storage.projectConfigurations(options,{action:'save',revision:author.revision,id:author.activeConfigurationId,values:JSON.parse(JSON.stringify({image:refs[0],hidden:refs[1]}))}) as ProjectConfigurationState;
     await storage.projectConfigurations(options,{action:'publication.save',revision:author.revision,publication:author.publication});
-    await storage.publish({projectName:projectId,createdByUserId:'author',expectedConfigurationRevision:1,expectedSourceHash:author.sourceHash});
+    await storage.publish({projectName:projectId,createdByUserId:'author',expectedConfigurationRevisions:{main:1},expectedSourceHash:author.sourceHash});
     const template=(await storage.configurationTemplate(projectId,'1.0.0'))!;
     assert.equal(template.attachments?.length,1);
     assert.ok(!JSON.stringify(template).includes(refs[1]!.id));
@@ -137,13 +137,13 @@ test('configuration file upload permissions follow the selected published versio
  try {
   let author=await storage.projectConfigurations(options,{action:'get'}) as ProjectConfigurationState;
   await storage.projectConfigurations(options,{action:'publication.save',revision:author.revision,publication:author.publication});
-  await storage.publish({projectName:projectId,createdByUserId:'author',expectedConfigurationRevision:1,expectedSourceHash:author.sourceHash});
+  await storage.publish({projectName:projectId,createdByUserId:'author',expectedConfigurationRevisions:{main:1},expectedSourceHash:author.sourceHash});
   const source=await storage.getFiles({projectName:projectId,target:'draft'});
   await storage.saveDraftFiles({projectName:projectId,files:source.files.filter(file=>file.path==='package.json').map(file=>({...file,content:JSON.stringify({...JSON.parse(file.content!),version:'2.0.0'})}))});
   author=await storage.projectConfigurations(options,{action:'get'}) as ProjectConfigurationState;
   const publication=structuredClone(author.publication!);publication.fields[0]!.sharing={editable:false};
   await storage.projectConfigurations(options,{action:'publication.save',revision:author.revision,publication});
-  await storage.publish({projectName:projectId,createdByUserId:'author',expectedConfigurationRevision:2,expectedSourceHash:author.sourceHash});
+  await storage.publish({projectName:projectId,createdByUserId:'author',expectedConfigurationRevisions:{main:2},expectedSourceHash:author.sourceHash});
   const upload={projectName:projectId,actorId:'downloader',key:'image',name:'mine.png',mimeType:'image/png',buffer:Buffer.from('mine')};
   await assert.rejects(storage.uploadConfigurationFile({...upload,target:'2.0.0'}),/locked/);
   const refs=await storage.uploadConfigurationFile({...upload,target:'1.0.0'});
@@ -189,7 +189,7 @@ for(const publisher of ['author','administrator'])test(`${publisher} publishes a
   state=await storage.projectConfigurations(options,{action:'save',revision:state.revision,id:state.activeConfigurationId,values:{fixed:7}}) as ProjectConfigurationState;
   state=await storage.projectConfigurations(options,{action:'publication.save',revision:state.revision,publication:{...state.publication!,configurationAccountId:'forged-account'}}) as ProjectConfigurationState;
   assert.equal(state.publication!.configurationAccountId,'administrator');
-  await storage.publish({projectName:projectId,createdByUserId:publisher,administrator:publisher==='administrator',expectedConfigurationRevision:state.publication!.revision,expectedSourceHash:state.sourceHash});
+  await storage.publish({projectName:projectId,createdByUserId:publisher,administrator:publisher==='administrator',expectedConfigurationRevisions:{main:state.publication!.revision},expectedSourceHash:state.sourceHash});
   const recipient=await storage.projectConfigurations({projectName:projectId,actorId:'recipient',target:'1.0.0'},{action:'get'}) as ProjectConfigurationState;
   assert.equal(configurationSnapshot(recipient).values.fixed,7);
   assert.ok(!JSON.stringify(recipient.template).includes('configurationAccountId'));

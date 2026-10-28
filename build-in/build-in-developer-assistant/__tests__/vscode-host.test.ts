@@ -40,7 +40,7 @@ async function loadHost(environment: Record<string, string> = {}, connection?: M
 
 describe("VS Code assistant host", () => {
   const definition = {
-    id: "workflow-studio", command: [process.execPath, "/apps/cli/index.js", "mcp", "/apps/studio-control"],
+    id: "workflow-studio", command: [process.execPath, "/apps/cli/index.js", "mcp", "/apps/developer-assistant", "--entry", "studio-control"],
     inheritEnvironment: ["STEAMHARNESS_STUDIO_CONTROL_BRIDGE_URL", "STEAMHARNESS_STUDIO_CONTROL_BRIDGE_TOKEN"],
   };
 
@@ -50,7 +50,7 @@ describe("VS Code assistant host", () => {
     const connection = { id: "workflow-studio", tools: [
       { name: "studio_state", inputSchema: { type: "object", properties: {} } },
       { name: "open_file", inputSchema: { type: "object", properties: { filePath: { type: "string" } }, required: ["filePath"] } },
-      { name: "get_related_projects", inputSchema: { type: "object", properties: { projectDir: { type: "string" } } } },
+      { name: "get_entries", inputSchema: { type: "object", properties: { projectDir: { type: "string" } } } },
       { name: "legacy_desktop_tool", inputSchema: { type: "object" } },
     ], callTool, close };
     const host = await loadHost({ STEAMHARNESS_STUDIO_CONTROL_MCP_SERVER: JSON.stringify(definition),
@@ -67,10 +67,10 @@ describe("VS Code assistant host", () => {
     await tool.execute("call", { filePath: "index.ts" });
     expect(host.approve).toHaveBeenCalledWith({ name: "workflow-studio_open_file", arguments: { filePath: "index.ts" } }, context);
     expect(callTool).toHaveBeenCalledWith("open_file", { filePath: "index.ts" }, undefined);
-    const related = set.tools.find(tool => tool.name === "workflow-studio_get_related_projects")!;
+    const related = set.tools.find(tool => tool.name === "workflow-studio_get_entries")!;
     await related.execute("related", { projectDir: "projects/notes" });
-    expect(host.approve).toHaveBeenCalledWith({ name: "workflow-studio_get_related_projects", arguments: { projectDir: "projects/notes" } }, context);
-    expect(callTool).toHaveBeenCalledWith("get_related_projects", { projectDir: "projects/notes" }, undefined);
+    expect(host.approve).toHaveBeenCalledWith({ name: "workflow-studio_get_entries", arguments: { projectDir: "projects/notes" } }, context);
+    expect(callTool).toHaveBeenCalledWith("get_entries", { projectDir: "projects/notes" }, undefined);
     expect(host.connect).toHaveBeenCalledWith({ ...definition, environment: { STEAMHARNESS_STUDIO_CONTROL_PERMISSION_POLICY: "auto" } },
       expect.objectContaining({ env: expect.objectContaining({ STEAMHARNESS_STUDIO_CONTROL_BRIDGE_TOKEN: "test-capability" }) }));
     await set.close!(); expect(close).toHaveBeenCalledOnce();
@@ -156,8 +156,8 @@ describe("VS Code assistant host", () => {
     expect(input.systemPrompt).toContain("call the skill tool with action=list");
     expect(input.systemPrompt).toContain("run independently from any project opened in the editor");
     expect(input.systemPrompt).toContain("Do not infer additional roots from folders opened in VS Code");
-    expect(input.systemPrompt).toContain("Use get_related_projects");
-    expect(input.systemPrompt).toContain("Import status does not replace the permission policy");
+    expect(input.systemPrompt).toContain("Use get_entries");
+    expect(input.systemPrompt).toContain("database access requires a separately approved binding");
     expect(input.systemPrompt).not.toContain("Workspace-specific recovery policy");
     expect(input.systemPrompt).not.toContain("call create_cloud_app");
     expect(input.systemPrompt).toContain("Current \\u003cproject\\u003e");

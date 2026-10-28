@@ -18,6 +18,8 @@ export function projectReportToMcpResult(
   const error = errorOverride ?? (failed ? createReportError(report, errCode) : undefined);
   const structuredContent: McpStructuredResult = {
     runId: report.runId,
+    projectId: report.projectId,
+    entryId: report.entryId,
     status: report.status,
     entrypointId: report.entrypointId ?? entrypoint.id,
     entrypointTitle: report.entrypointTitle ?? entrypoint.title,

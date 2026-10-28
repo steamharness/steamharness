@@ -11,7 +11,7 @@ const dashedProviderKey = `sk-${"a".repeat(18)}01`;
 
 test("reports preserve structured failures alongside the normalized payload", () => {
   const error = serializeProjectError(new HarnessError({ type: "execution", message: "Project unavailable.",
-    metadata: { code: "PROJECT_SERVER_ACCESS_FAILED", projectId: "22222222-2222-4222-8222-222222222222", relatedProjectAlias: "database", status: 404 } }));
+    metadata: { code: "PROJECT_SERVER_ACCESS_FAILED", projectId: "22222222-2222-4222-8222-222222222222", entryId: "database", status: 404 } }));
   const options = { runId: "failure", projectName: "fixture", startedAt: new Date(), endedAt: new Date(), nodes: [] };
   const report = createProjectExecutionReport({ ...options, result: { ok: false, error } });
   assert.equal(report.status, "failed");
@@ -122,7 +122,7 @@ async function createUpstreamErrorProject(
       id: "22222222-2222-4222-8222-222222222222",
       name: "@steamharness/upstream-error-test",
       type: "module",
-      steamHarness: { projectInfo: { dataStorage: { mode: "local" } } },
+      steamHarness: {defaultEntry:"main",entries:[{entryId:"main",type:"workflow",name:"Main",root:".",entry:"index.ts",databases:[]}], projectInfo:{}},
     }),
   );
   await writeFile(

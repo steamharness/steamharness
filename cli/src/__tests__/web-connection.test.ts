@@ -33,7 +33,7 @@ async function connectionFixture(status: number, live = true) {
     navigator: navigatorState, sessionStorage: { getItem: () => null, setItem() {} }, history: { replaceState() {} },
     queueMicrotask() {}, addEventListener: (name: string, callback: (event?: { persisted: boolean }) => void) => listeners.set(name, callback),
     setTimeout: retry, clearTimeout: clear, fetch: fetcher,
-    EventSource: Source,
+    EventSource: Source, document: { querySelector: () => null },
   });
   const connection = new module.exports.BrowserConnection(message => { if (message.type === 'connection') updates.push(message.status); messages.push(message); }, live);
   const fire = (delay: number) => {

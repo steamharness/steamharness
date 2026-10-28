@@ -27,7 +27,7 @@ it('provides immediate Retry feedback and confirms or retries a scoped stop whil
   document.documentElement.lang = 'en';
   document.body.innerHTML = '<div id="app"></div>';
   await import('../web/ui/main');
-  const project: Project = { id: 'assistant', uri: 'studio-assistant:map', folderPath: '/assistant', name: 'Assistant', projectType: 'conversation',
+  const project: Project = {entryId:"main",aggregateName:"Test aggregate",defaultEntry:"main",entryRoot:'/assistant',databases:[],entries:[{entryId:"main",name:"Main",type:'conversation',root:".",entry:"index.ts",databases:[]}], id: 'assistant', uri: 'studio-assistant:map', folderPath: '/assistant', name: 'Assistant', projectType: 'conversation',
     fields: [], entrypoints: [], conversation: { inputQueue: { enabled: true } } };
   const session: ConversationSession = { id: 'original', title: 'Map', activeRunId: 'run', messages: [
     { id: 'answer', role: 'assistant', content: 'Working', status: 'running' },

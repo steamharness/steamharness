@@ -4,12 +4,12 @@ import { startWebServer } from './web/server';
 import { i18n } from '@steamharness/i18n';
 import { createInterface } from 'node:readline';
 import { createWebRuntime } from './web/runtime';
-import { parseHostConfiguration, parseHostAuthentication, parseHostRelatedProjects, parseHostResourceProjects } from './web/host-config';
+import { parseHostConfiguration, parseHostAuthentication, parseHostResourceProjects } from './web/host-config';
 import { ASSISTANT_PROTOCOL_VERSION, inspectWebProject } from './web/assistant-project';
 import { parseUserSettings } from 'steamharness';
 
 export function parseWebArgs(argv: string[]) {
-  const options = { projectDir: process.cwd(), port: 0, theme: 'auto' as 'auto' | 'light' | 'dark', dataDir: undefined as string | undefined, open: true, json: false, help: false, inspect: false, hostStdio: false };
+  const options = { projectDir: process.cwd(), port: 0, theme: 'auto' as 'auto' | 'light' | 'dark', dataDir: undefined as string | undefined, open: true, json: false, help: false, inspect: false, hostStdio: false, entryId: undefined as string | undefined };
   let projectSet = false;
   for (let index = 0; index < argv.length; index++) {
     const arg = argv[index];
@@ -18,9 +18,10 @@ export function parseWebArgs(argv: string[]) {
     else if (arg === '--inspect') { options.inspect = true; }
     else if (arg === '--host-stdio') { options.hostStdio = true; }
     else if (['--help', '-h'].includes(arg)) { options.help = true; }
-    else if (['--port', '--data-dir', '--theme'].includes(arg)) {
+    else if (['--port', '--data-dir', '--theme', '--entry'].includes(arg)) {
       const value = argv[++index]; if (!value || value.startsWith('--')) { throw new Error(`${arg} requires a value.`); }
-      if (arg === '--port') { if (!/^\d+$/.test(value) || Number(value) > 65535) { throw new Error('--port must be an integer between 0 and 65535.'); } options.port = Number(value); }
+      if (arg === '--entry') { options.entryId = value; }
+      else if (arg === '--port') { if (!/^\d+$/.test(value) || Number(value) > 65535) { throw new Error('--port must be an integer between 0 and 65535.'); } options.port = Number(value); }
       else if (arg === '--theme') { if (!['auto', 'light', 'dark'].includes(value)) { throw new Error('--theme must be auto, light, or dark.'); } options.theme = value as typeof options.theme; }
       else { options.dataDir = path.resolve(value); }
     } else if (arg.startsWith('-') || projectSet) { throw new Error(`Unknown web argument: ${arg}`); }
@@ -48,7 +49,7 @@ export async function main(argv: string[]): Promise<number> {
     }
   } catch (error) { input?.close(); throw error; }
   if (options.inspect) {
-    const runtime = createWebRuntime(options.projectDir, options.dataDir ?? '', () => undefined, () => [], { userSettings: () => host?.userSettings });
+    const runtime = createWebRuntime(options.projectDir, options.dataDir ?? '', () => undefined, { entryId: options.entryId, userSettings: () => host?.userSettings });
     try { console.log(JSON.stringify(await inspectWebProject(runtime, options.projectDir, host))); }
     finally { runtime.dispose(); input?.close(); process.stdin.pause(); }
     return 0;
@@ -56,7 +57,7 @@ export async function main(argv: string[]): Promise<number> {
   const app = await startWebServer({ ...options, host }).catch(error => { input?.close(); throw error; });
   const close = () => { process.off('SIGINT', close); process.off('SIGTERM', close); input?.close(); process.stdin.pause(); void app.close().catch(error => { console.error(error); process.exitCode = 1; }); };
   process.once('SIGINT', close); process.once('SIGTERM', close);
-  console.log(options.json ? JSON.stringify({ type: 'ready', protocolVersion: 1, hostProtocolVersion: 1, accountProtocolVersion: 1, systemAiConnectionProtocolVersion: 1, relatedProjectsProtocolVersion: 1, traceProtocolVersion: 1, userSettingsProtocolVersion: 1, assistantProtocolVersion: host?.assistant ? ASSISTANT_PROTOCOL_VERSION : undefined, url: app.url, project: { id: app.project.id, name: app.project.name, projectType: app.project.projectType }, runtime: (app.project as unknown as { runtime: unknown }).runtime }) : `SteamHarness Web: ${app.url}`);
+  console.log(options.json ? JSON.stringify({ type: 'ready', protocolVersion: 1, hostProtocolVersion: 1, accountProtocolVersion: 1, systemAiConnectionProtocolVersion: 1, entriesProtocolVersion: 1, databaseSpacesProtocolVersion: 1, traceProtocolVersion: 1, userSettingsProtocolVersion: 1, assistantProtocolVersion: host?.assistant ? ASSISTANT_PROTOCOL_VERSION : undefined, url: app.url, project: { id: app.project.id, name: app.project.name, entries: app.manifest.entries, defaultEntry: app.manifest.defaultEntry }, runtime: (app.project as unknown as { runtime: unknown }).runtime }) : `SteamHarness Web: ${app.url}`);
   if (lines) {
     void (async () => {
       try {
@@ -66,7 +67,7 @@ export async function main(argv: string[]): Promise<number> {
           if (message.type === 'auth') {
             void app.setHostConnection(parseHostAuthentication(message)).catch(() => { console.error('Workflow web host connection failed.'); process.exitCode = 1; close(); });
           }
-          else if (message.type === 'related-projects') { await app.setHostRelatedProjects(parseHostRelatedProjects(message.relatedProjects)); if (message.resourceProjects !== undefined) { app.setHostResourceProjects(parseHostResourceProjects(message.resourceProjects)); } }
+          else if (message.type === 'resource-projects') { app.setHostResourceProjects(parseHostResourceProjects(message.resourceProjects)); }
           else if (message.type === 'user-settings') { await app.setHostUserSettings(parseUserSettings(message.userSettings)); }
           else if (message.type === 'close') { break; }
           else { throw new Error('Unknown web host message.'); }

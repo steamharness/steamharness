@@ -1,42 +1,16 @@
 ---
 title: "workspace upload"
-description: "上传项目源码并可选发布不可变版本。"
+description: "上传聚合项目"
 ---
 
-# workspace upload
+# 上传聚合项目
 
-上传仅进行安全解包、静态元数据和文件校验、哈希与保存。服务器不会安装依赖、构建或加载项目代码。未传 `--file` 时，CLI 按项目根 `.steamharnessignore` 打包；`.gitignore` 不参与。
-
-```bash
-steamharness workspace upload <project> [--path <dir>] [--file <archive>] [--create] [--group-id <id>] [--release-log <text>] [--no-wait]
+```sh
+pnpm exec steamharness workspace upload <project-id> --path .
 ```
 
-| 参数 | 用途 |
-| --- | --- |
-| `--path` | 本地项目目录。 |
-| `--file` | 已有 tar.gz、tgz 或 zip 包。 |
-| `--create` | 已注册 ID 只核验现有项目；未注册时由服务器分配新 ID、写回本地 package.json.id 后上传，作为新应用处理，不接受自选 ID。不能与 --file 同用，项目组内各项目须先分别注册。 |
-| `--group-id` | 首次创建时选择归属组；需要该组开发者权限，不自动提升创建者角色。 |
-| `--release-log` | 上传成功后发布，并保存发布说明。 |
-| `--no-wait` | 返回文件处理任务 ID；不能与自动发布或项目组组合。 |
+一次操作覆盖一个 projectId 的所有注册入口，包含入口代码、依赖清单、业务配置定义和 Kanban 产物。先在本地安装依赖并构建静态入口，再运行 `steamharness check .`。
 
-所有类型必须在 `package.json.steamHarness.projectType` 声明类型。Workflow/Conversation 需要 `index.ts`；Kanban 需要已构建的 HTML 产物。开发者在本地完成所需的依赖安装和前端构建。
+归档过滤凭据、宿主运行数据、Git 和 node_modules；保留数据库需求，剥离所有 `bindingRef`。安装者必须在自己的 local 或 server 宿主重新申请绑定，不继承作者授权。
 
-## 文件处理
-
-`POST /api/projects/{projectId}/package` 返回任务。CLI 默认轮询 `GET /api/projects/{projectId}/preparations/{jobId}`。阶段为 `queued`、`extracting`、`validating`、`committing`，状态为 `queued`、`preparing`、`success`、`failed`。可用 `workspace preparation <project> <jobId>` 继续查询。
-
-解包拒绝路径穿越、符号链接、特殊成员和大小冲突。失败上传不会替换已有草稿或历史快照。请在 `.steamharnessignore` 中明确排除本机凭据、依赖和用户数据。
-
-## 项目组
-
-`--project-group`、`--dependency <alias>=<path>` 或 `--publish-group` 启用项目组模式。根必须为 Kanban；included 依赖按双方已确认关系打包，其余保持 external。Server 校验整组权限并预留版本，处理完成后可发布精确依赖锁。
-
-项目组不传输本地 KV、PersistentValue、文件存储、运行历史、环境变量或账号配置。数据通过独立数据接口由获授权的本地客户端写入。
-
-```bash
-steamharness workspace upload hello --path ./hello --create --release-log "首次发布"
-steamharness workspace upload dashboard --path ./dashboard --dependency data=./data-project --publish-group
-```
-
-已有项目上传、发布需要开发者及以上角色。上传不能修改项目信息、图标、可见性或组归属。`--group-id` 与 `--project-group` 独立，后者仍表示批量源码发布。
+`--file` 上传归档，`--no-wait` 返回准备任务，`preparation <project-id> <job-id>` 查询结果。只有静态校验通过才替换草稿；上传不安装依赖或执行代码。

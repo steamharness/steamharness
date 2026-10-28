@@ -1,4 +1,3 @@
-import type { ProjectAccessRule } from '@steamharness/project-info';
 import { t } from '../localization';
 import { projectTypeLabels, type Project } from '../workflow-types';
 
@@ -8,16 +7,8 @@ export interface ProjectInformationSection {
   rows: { label: string; value: string }[];
 }
 
-function access(rule?: ProjectAccessRule): string {
-  if (rule?.mode === 'all') { return t("All"); }
-  if (rule?.mode === 'none') { return t("Not allowed"); }
-  if (rule?.mode === 'prefixes') { return `${t("Prefixes")}: ${rule.prefixes.join(', ')}`; }
-  return t("Not declared");
-}
-
 export function projectInformation(project: Project): ProjectInformationSection[] {
   const info = project.projectInfo;
-  const storage = { local: t("Local"), server: t("Server"), both: t("Local and server") };
   const declarations: Record<string, string> = { multilingual: t("Multiple languages"), multiplatform: t("Multiple platforms") };
   const platforms: Record<string, string> = { macos: 'macOS', windows: 'Windows', web: 'Web' };
   const sections: ProjectInformationSection[] = [{
@@ -30,7 +21,6 @@ export function projectInformation(project: Project): ProjectInformationSection[
     ],
   }, {
     title: t("Project declarations"), expanded: true, rows: [
-      { label: t("Storage location"), value: info?.dataStorage ? storage[info.dataStorage.mode] : t("Not declared") },
       { label: t("Platform support"), value: info?.platformSupport.mode === 'specific'
         ? info.platformSupport.platforms.map(id => platforms[id] || id).join(', ') : t("Platform independent") },
       { label: t("Declarations"), value: info?.declarations.map(id => declarations[id] || id).join(', ') || t("Not declared") },
@@ -39,17 +29,8 @@ export function projectInformation(project: Project): ProjectInformationSection[
   if (info && Object.keys(info.localizedNames).length) {
     sections.push({ title: t("Localized names"), rows: Object.entries(info.localizedNames).map(([label, value]) => ({ label, value })) });
   }
-  for (const relation of info?.relatedProjects ?? []) {
-    const grant = relation.grantToRelatedProject;
-    sections.push({ title: t("Related project: {0}", relation.alias), rows: [
-      { label: t("Project UUID"), value: relation.projectId },
-      { label: t("KV read granted"), value: access(grant.read) },
-      { label: t("KV write granted"), value: access(grant.write) },
-      { label: t("Knowledge read granted"), value: access(grant.knowledge?.read) },
-      { label: t("Knowledge write granted"), value: access(grant.knowledge?.write) },
-      { label: t("Entrypoints granted"), value: access(grant.entrypoints) },
-    ] });
-  }
+  sections.push({ title: t("Windows"), expanded: true, rows: project.entries.map(entry => ({ label: entry.name, value: `${entry.entryId} · ${projectTypeLabels[entry.type]}` })) });
+  sections.push({ title: t("Databases"), rows: project.databases.map(database => ({ label: database.alias, value: `${database.host} · ${database.bindingRef ?? t("Apply for database space")}` })) });
   if (project.entrypoints.length) {
     sections.push({ title: t("Entrypoints"), rows: project.entrypoints.map(entry => ({
       label: entry.title || entry.id,

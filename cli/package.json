@@ -42,7 +42,6 @@
     "@steamharness/kanban-project": "workspace:*",
     "@steamharness/openai-responses": "workspace:*",
     "@steamharness/project-card-metadata": "workspace:*",
-    "@steamharness/project-dependencies": "workspace:*",
     "@steamharness/project-info": "workspace:*",
     "@steamharness/project-upload": "workspace:*",
     "@steamharness/repository-boundary": "workspace:*",
@@ -50,7 +49,7 @@
     "@steamharness/workflow-ids": "workspace:*",
     "@steamharness/workflow-mcp": "workspace:*",
     "@types/node": "^25.6.0",
-    "@vitest/coverage-v8": "^4.1.7",
+    "@vitest/coverage-v8": "4.1.10",
     "@vscode/codicons": "0.0.45",
     "dompurify": "3.3.1",
     "esbuild": "0.28.2",
@@ -62,7 +61,9 @@
     "vitest": "^4.1.7",
     "@steamharness/project-configuration": "workspace:*",
     "@steamharness/project-access": "workspace:*",
-    "@steamharness/service-urls": "workspace:*"
+    "@steamharness/service-urls": "workspace:*",
+    "@steamharness/database-spaces": "workspace:*",
+    "@steamharness/project-manifest": "workspace:*"
   },
   "repository": {
     "type": "git",

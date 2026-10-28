@@ -19,11 +19,18 @@
     "steamharness": "link:../../.."
   },
   "steamHarness": {
-    "projectInfo": {
-      "dataStorage": {
-        "mode": "local"
+    "projectInfo": {},
+    "entries": [
+      {
+        "entryId": "main",
+        "type": "workflow",
+        "name": "@steamharness/runtime-timer-workflow",
+        "root": ".",
+        "entry": "index.ts",
+        "databases": [],
+        "configuration": "configuration.json"
       }
-    },
-    "projectType": "workflow"
+    ],
+    "defaultEntry": "main"
   }
 }
