@@ -4,6 +4,7 @@ import * as path from 'node:path';
 import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
 import { ROOT, builtinProjectDirectory, exists, resolveMonorepoRoot } from './distribution.mjs';
+import { copyAssistantTemplate } from './assistant-template.mjs';
 
 const require = createRequire(import.meta.url);
 
@@ -37,14 +38,7 @@ export async function buildProjectRuntime(directory) {
   await esbuild.build({ ...options, entryPoints: [path.join(directory, 'src/assistant-workspace.ts')], outfile: path.join(runtime, 'assistant-workspace.mjs') });
   const assistantSource = await builtinProjectDirectory('developer-assistant');
   const assistant = path.join(runtime, 'developer-assistant');
-  await fs.rm(assistant, { recursive: true, force: true });
-  await fs.mkdir(assistant, { recursive: true });
-  for (const entry of await fs.readdir(assistantSource, { withFileTypes: true })) {
-    if (entry.isFile() && (entry.name === 'package.json' || entry.name.endsWith('.ts') && entry.name !== 'vitest.config.ts')) {
-      await fs.copyFile(path.join(assistantSource, entry.name), path.join(assistant, entry.name));
-    }
-  }
-  await fs.cp(path.join(assistantSource, 'skills'), path.join(assistant, 'skills'), { recursive: true });
+  await copyAssistantTemplate(assistantSource, assistant);
   await fs.writeFile(path.join(runtime, 'cli/package.json'), JSON.stringify(cliManifest, null, 2) + '\n');
   await fs.writeFile(path.join(runtime, 'tsconfig.json'), JSON.stringify({
     compilerOptions: { baseUrl: '.', paths: { 'steamharness': ['./harness.mjs'] } },
