@@ -41,17 +41,26 @@ for (const language of ['en', 'zh-cn']) test(`native Start preserves entry targe
   instance.lists = new Map(['current', 'recent'].map(key => [key, { element: document.createElement('div'), key: '', disposables: { clear() {} } }]));
   const calls = [];
   instance.button = (parent, label, _icon, command, target) => {
-    const button = parent.appendChild($('button', undefined, label));
+    const button = parent.appendChild($('button'));
+    button.appendChild($('span.studio-start-action-label', undefined, label));
     button.addEventListener('click', () => calls.push([command, target]));
     return button;
   };
   const labels = Object.fromEntries(Object.entries({ installFailed: 'Dependency installation failed', validationFailed: 'Project validation failed',
-    registrationFailed: 'Server registration needs attention', cancelled: 'Project setup cancelled', registering: 'Registering Project', details: 'Details' })
+    registrationFailed: 'Server registration needs attention', cancelled: 'Project setup cancelled', registering: 'Registering Project', details: 'Details', currentProject: 'Current Project' })
     .map(([key, message]) => [key, bundle[message]]));
   instance.service = { state: { labels, projects: [], recent: [], pending: ['dependencies', 'validation', 'registration'].map(stage => ({ id: stage, name: stage, stage, status: 'failed', error: '<specific error>' })),
     environment: { harness: '0.1.1' }, canCreate: true, busy: false } };
   instance.render();
   const current = instance.lists.get('current').element;
+  instance.service.state.recent = [true, false].map((current, index) => ({ uri: `file:///project-${index}`, label: 'Same name', kind: 'folder', lastOpened: 1, current }));
+  instance.render();
+  const recent = instance.lists.get('recent').element;
+  const recentRows = () => [...recent.querySelectorAll('.studio-start-project')].map(row => ({
+    current: row.firstElementChild.getAttribute('aria-current'), badge: row.querySelector('.studio-start-recent-current')?.textContent }));
+  assert.deepEqual(recentRows(), [{ current: 'true', badge: labels.currentProject }, { current: null, badge: undefined }]);
+  instance.service.state.recent.forEach(project => { project.current = !project.current; }); instance.render();
+  assert.deepEqual(recentRows(), [{ current: null, badge: undefined }, { current: 'true', badge: labels.currentProject }]);
   assert.deepEqual([...current.querySelectorAll('small')].map(node => node.textContent), [labels.installFailed, labels.validationFailed, labels.registrationFailed]);
   assert.equal(instance.stats.get('harness').textContent, '0.1.1');
   const details = current.querySelector('details'); details.open = true;
@@ -73,8 +82,9 @@ for (const language of ['en', 'zh-cn']) test(`native Start preserves entry targe
 });
 
 for (const [patchNames, files] of [
-  [['0061-studio-project-setup-stages.patch', '0065-studio-start-entry-targets.patch'], [file, css]],
-  [['0065-studio-start-entry-targets.patch'], [file]],
+  [['0061-studio-project-setup-stages.patch', '0065-studio-start-entry-targets.patch', '0067-studio-start-recent-projects.patch'], [file, css]],
+  [['0065-studio-start-entry-targets.patch', '0067-studio-start-recent-projects.patch'], [file, css]],
+  [['0067-studio-start-recent-projects.patch'], [file, css]],
 ]) test(`${patchNames.join(' + ')} replays twice and preserves the index`, async t => {
   const directory = await mkdtemp(path.join(tmpdir(), 'studio-setup-patch-')); t.after(() => rm(directory, { recursive: true, force: true }));
   const kernel = path.join(directory, 'vscode');

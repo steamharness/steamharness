@@ -42,7 +42,7 @@ export interface StudioStartState {
   badge?: string;
   templates: StartTemplate[];
   projects: Array<{ uri: string; entryId: string; name: string; version?: string; projectType: string; folderPath: string; avatarUrl?: string; update?: ProjectVersionStatus }>;
-  recent: RecentProject[];
+  recent: Array<RecentProject & { current: boolean }>;
   pending: PendingProjectSetup[];
   environment: StartEnvironment & { studio: string; vscode: string; account: string; server: string };
   summary?: StartSummary;

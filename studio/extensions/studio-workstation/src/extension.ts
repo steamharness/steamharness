@@ -127,7 +127,15 @@ export async function activate(context: vscode.ExtensionContext, runtime?: Launc
     await openProjectFolder(uri);
   });
   register('studio.removeRecentProject', async (project?: RecentProject) => {
-    if (project) {
+    if (!project || !readRecentProjects([project]).length) {
+      return;
+    }
+    const remove: vscode.MessageItem = { title: t('Remove from Recent Projects') };
+    const answer = await vscode.window.showWarningMessage(t('Remove "{0}" from recent projects?', project.label), {
+      modal: true,
+      detail: t('This only removes the recent entry. The project files and current workspace will not be affected.'),
+    }, remove, { title: t('Cancel'), isCloseAffordance: true });
+    if (answer === remove) {
       await saveRecent((previous) => previous.filter((entry) => entry.uri !== project.uri));
     }
   });

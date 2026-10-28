@@ -21,7 +21,7 @@ export function startPageLabels(): Record<string, string> {
     source: t('Open Project Source'), noCurrent: t('No SteamHarness projects in this workspace.'), noRecent: t('No recent projects.'),
     localVersion: t('Local Version'), serverVersion: t('Server Version'), upgrade: t('Upgrade...'), updateAvailable: t('Update Available'),
     upToDate: t('Up to Date'), localNewer: t('Local Version Is Newer'), downloadUnavailable: t('Source download is unavailable.'),
-    removeRecent: t('Remove from Recent Projects'), unavailable: t('Unavailable'), retry: t('Retry Project Setup'), openSource: t('Open Project Folder'),
+    currentProject: t('Current Project'), removeRecent: t('Remove from Recent Projects'), unavailable: t('Unavailable'), retry: t('Retry Project Setup'), openSource: t('Open Project Folder'),
     installFailed: t('Dependency installation failed'), cancelled: t('Project setup cancelled'), installing: t('Installing Dependencies'),
     validating: t('Validating Project'), registering: t('Registering Project'),
     validationFailed: t('Project validation failed'), registrationFailed: t('Server registration needs attention'), details: t('Details'),
@@ -129,6 +129,7 @@ export class StudioStartController implements vscode.Disposable {
       this.timer = setTimeout(() => { this.publish(); if (this.visible) { void this.refresh(); } }, 350);
     };
     this.subscriptions.push(projects.onDidChangeProjects(schedule), recent.onDidChangeTreeData(schedule), account.onDidChange(schedule),
+      vscode.workspace.onDidChangeWorkspaceFolders(schedule),
       projects.onDidChangeVersions(() => { clearTimeout(this.versionTimer); this.versionTimer = setTimeout(() => this.publish(), 150); }),
       vscode.workspace.onDidGrantWorkspaceTrust(() => this.resumeProjectSetup()),
       vscode.window.onDidChangeWindowState(state => { if (state.focused) { this.resumeProjectSetup(); } }),
@@ -194,7 +195,9 @@ export class StudioStartController implements vscode.Disposable {
         avatarUrl: projectAvatarDataUrl(project.aggregateProjectCard, project.entries.find(entry => entry.entryId === project.defaultEntry)?.type ?? project.projectType),
         update: this.projects.getVersionStatus(project),
         ...(projectVersion(project) ? { version: projectVersion(project) } : {}) }));
-    this.state.recent = this.recent.getChildren();
+    const currentUris = new Set([vscode.workspace.workspaceFile, ...(vscode.workspace.workspaceFolders ?? []).map(folder => folder.uri)]
+      .flatMap(uri => uri ? [uri.toString()] : []));
+    this.state.recent = this.recent.getChildren().map(project => ({ ...project, current: currentUris.has(project.uri) }));
     this.state.pending = this.pending();
     const account = this.account.getState();
     const labels = { 'signed-out': t('Signed Out'), checking: t('Connecting to Server'), authenticated: t('Server Connected'), expired: t('Server Sign-in Expired'), error: t('Server Connection Error') };

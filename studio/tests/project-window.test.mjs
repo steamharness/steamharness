@@ -32,7 +32,7 @@ const uri = value => ({ scheme: new URL(value).protocol.slice(0, -1), path: new 
 
 async function fixture(t, language = 'en') {
   const callbacks = new Map(), storage = new Map(), disposable = { dispose() {} };
-  const f = { choice: 'new', dialogs: [], opens: [], warnings: [], errors: [], folders: [uri('file:///projects/demo')] };
+  const f = { choice: 'new', dialogs: [], opens: [], warnings: [], warningDialogs: [], errors: [], storage, folders: [uri('file:///projects/demo')] };
   const vscode = {
     EventEmitter: class { event = () => disposable; fire() {} dispose() {} },
     Uri: { parse: uri },
@@ -40,7 +40,10 @@ async function fixture(t, language = 'en') {
       onDidChangeWorkspaceFolders: () => disposable, onDidChangeConfiguration: () => disposable,
       fs: { stat: async () => { if (f.missing) { throw new Error('missing'); } } } },
     window: { createOutputChannel: () => ({ appendLine() {}, dispose() {} }), showOpenDialog: async () => f.folders,
-      showErrorMessage: async message => { f.errors.push(message); }, showWarningMessage: async message => { f.warnings.push(message); },
+      showErrorMessage: async message => { f.errors.push(message); }, showWarningMessage: async (message, options, ...buttons) => {
+        f.warnings.push(message); f.warningDialogs.push({ message, options, buttons });
+        return f.warningChoice?.(buttons);
+      },
       showInformationMessage: async (message, options, ...buttons) => {
         f.dialogs.push({ message, options, buttons });
         return f.select ? f.select(buttons) : f.choice === 'new' ? buttons[0] : f.choice === 'current' ? buttons[1] : undefined;
@@ -59,6 +62,32 @@ async function fixture(t, language = 'en') {
 }
 
 for (const language of ['en', 'zh-cn']) {
+  test(`${language}: removing a recent project waits for confirmation and preserves other records and the workspace`, async t => {
+    const f = await fixture(t, language);
+    const project = { uri: 'file:///projects/demo', label: 'Demo <project>', kind: 'folder', lastOpened: 1 };
+    const other = { ...project, uri: 'file:///other/demo' };
+    const concurrent = { ...project, uri: 'vscode-remote://ssh-remote+host/projects/demo' };
+    f.storage.set('studio.recentProjects', [project, other]);
+    let answer;
+    f.warningChoice = () => new Promise(resolve => { answer = resolve; });
+    const removing = f.execute('studio.removeRecentProject', project);
+    assert.deepEqual(f.storage.get('studio.recentProjects'), [project, other]);
+    const dialog = f.warningDialogs[0];
+    assert.deepEqual(dialog.buttons.map(button => button.title), language === 'en' ? ['Remove from Recent Projects', 'Cancel'] : ['从最近项目中移除', '取消']);
+    assert.equal(dialog.message, language === 'en' ? 'Remove "Demo <project>" from recent projects?' : '要将“Demo <project>”从最近项目中移除吗？');
+    assert.equal(dialog.options.modal, true);
+    assert.equal(dialog.options.detail, language === 'en'
+      ? 'This only removes the recent entry. The project files and current workspace will not be affected.'
+      : '此操作只移除最近记录，不会删除项目文件或关闭当前工作区。');
+    answer(undefined); await removing;
+    assert.deepEqual(f.storage.get('studio.recentProjects'), [project, other]);
+    const confirmed = f.execute('studio.removeRecentProject', project);
+    f.storage.set('studio.recentProjects', [project, other, concurrent]);
+    answer(f.warningDialogs.at(-1).buttons[0]); await confirmed;
+    assert.deepEqual(JSON.parse(JSON.stringify(f.storage.get('studio.recentProjects'))), [other, concurrent]);
+    assert.deepEqual({ opens: f.opens, errors: f.errors }, { opens: [], errors: [] });
+  });
+
   for (const command of ['studio.openRecentProject', 'studio.openFolder', 'studio.openWorkspace']) {
     for (const choice of ['new', 'current', undefined]) {
       test(`${language}: ${command} respects the ${choice ?? 'cancelled'} window choice`, async t => {
@@ -84,6 +113,7 @@ test('cancelled pickers and invalid or missing recent projects never show a wind
   const f = await fixture(t); f.folders = undefined;
   await f.execute('studio.openFolder'); await f.execute('studio.openWorkspace');
   await f.execute('studio.openRecentProject'); await f.execute('studio.openRecentProject', { uri: 'javascript:alert(1)' });
+  await f.execute('studio.removeRecentProject'); await f.execute('studio.removeRecentProject', { uri: 'javascript:alert(1)' });
   f.missing = true;
   await f.execute('studio.openRecentProject', { uri: 'file:///missing', label: 'Missing', kind: 'folder', lastOpened: 1 });
   assert.deepEqual(f.opens, []); assert.deepEqual(f.dialogs, []); assert.equal(f.warnings.length, 1);

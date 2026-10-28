@@ -240,6 +240,27 @@ for (const language of ['en', 'zh-cn']) {
         fixture.view.dispose(); fixture.change.dispose(); fixture.host.remove(); delete globalThis.studioStartLoadingTest;
       });
     }
+    const recentBefore = await call({ action: 'state' });
+    const currentRecent = start().locator('.studio-start-recent [data-action="studio.openRecentProject"][aria-current="true"]');
+    assert.equal(await currentRecent.count(), recentBefore.start.recent.filter(project => project.current).length);
+    assert.equal(await currentRecent.first().locator('.studio-start-recent-current').textContent(), language === 'en' ? 'Current Project' : '当前项目');
+    const recentProject = start().locator('.studio-start-recent .studio-start-project').first();
+    await recentProject.hover();
+    await recentProject.locator('[data-action="studio.removeRecentProject"]').click();
+    const removeDialog = page.locator('.monaco-dialog-box:visible');
+    await removeDialog.waitFor();
+    await removeDialog.getByRole('button', { name: language === 'en' ? 'Cancel' : '取消', exact: true }).waitFor();
+    assert.ok((await removeDialog.textContent()).includes(language === 'en'
+      ? 'This only removes the recent entry. The project files and current workspace will not be affected.'
+      : '此操作只移除最近记录，不会删除项目文件或关闭当前工作区。'));
+    await page.screenshot({ path: path.join(proof, `${language}-remove-recent-confirmation.png`) });
+    await page.keyboard.press('Escape'); await removeDialog.waitFor({ state: 'hidden' });
+    assert.deepEqual((await call({ action: 'state' })).start.recent, recentBefore.start.recent);
+    await recentProject.locator('[data-action="studio.removeRecentProject"]').click();
+    await removeDialog.getByRole('button', { name: recentBefore.start.labels.removeRecent, exact: true }).click();
+    await until(() => call({ action: 'state' }), state => state.start.recent.length === recentBefore.start.recent.length - 1, 'Recent projects did not update after confirmation');
+    assert.deepEqual((await call({ action: 'state' })).folders, recentBefore.folders);
+    check(`${language}: current-project badge and recent removal confirmation preserve cancelled entries and the current workspace`);
     if (layoutOnly) { assert.deepEqual(errors, []); continue; }
     await start().locator('[data-action="studio.createProject"]').first().waitFor();
     assert.equal(await page.locator('.tabs-container .tab').count(), 0, 'The empty-group start must not create a tab');
@@ -482,13 +503,7 @@ for (const language of ['en', 'zh-cn']) {
     await command('studio.openStart'); await start().locator('[data-action="studio.openSettings"]').click();
     await until(() => findFrame('#settings-navigation'), Boolean, 'Studio settings did not open');
     await command('studio.openStart');
-    const before = await call({ action: 'state' }); assert.ok(before.start.recent.length);
-    const recentProject = start().locator('.studio-start-recent .studio-start-project').first();
-    await recentProject.hover();
-    await page.screenshot({ path: path.join(proof, `${language}-recent-hover.png`) });
-    await recentProject.locator('[data-action="studio.removeRecentProject"]').click();
-    await until(() => call({ action: 'state' }), state => state.start.recent.length < before.start.recent.length, 'Recent projects did not update');
-    check(`${language}: assistant, account, settings and recent-project updates`);
+    check(`${language}: assistant, account and settings`);
     const dirtyUntitled = await call({ action: 'untitled', text: 'unsaved stays here' }); await command('studio.openStart');
     // Web hot-exit backups are debounced and cannot finish during unload.
     await pause(2_000);

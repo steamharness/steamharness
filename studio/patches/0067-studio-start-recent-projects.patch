@@ -1,0 +1,36 @@
+diff --git a/src/vs/workbench/browser/parts/editor/media/studioStart.css b/src/vs/workbench/browser/parts/editor/media/studioStart.css
+index f2d378574349af4709810a11b4f2e70b6e42a41d..891e30a2dcbe2414b49cd1d5ab93c7ab37650ac2 100644
+--- a/src/vs/workbench/browser/parts/editor/media/studioStart.css
++++ b/src/vs/workbench/browser/parts/editor/media/studioStart.css
+@@ -68,6 +68,7 @@
+ .studio-start-project-actions { display:flex; flex-wrap:wrap; align-items:center; gap:8px; margin-top:auto; padding-top:14px; }
+ .studio-start-project { display:grid; grid-template-columns:minmax(0,1fr) 32px; align-items:start; gap:4px; }
+ .studio-start-recent [data-action="studio.openRecentProject"] { grid-template-columns:24px minmax(0,1fr); align-items:center; gap:12px; }
++.studio-start-recent-current { display:inline-block; margin-inline-start:8px; padding:0 6px; border:1px solid var(--vscode-contrastBorder,transparent); border-radius:var(--vscode-cornerRadius-small,4px); color:var(--vscode-badge-foreground); background:var(--vscode-badge-background); font-size:11px; line-height:18px; white-space:nowrap; }
+ .studio-start-recent [data-action="studio.openRecentProject"] > .codicon { justify-self:center; }
+ .studio-start-recent [data-action="studio.removeRecentProject"] { opacity:0; pointer-events:none; }
+ .studio-start-recent .studio-start-project:hover > [data-action="studio.removeRecentProject"], .studio-start-recent .studio-start-project:focus-within > [data-action="studio.removeRecentProject"] { opacity:1; pointer-events:auto; }
+diff --git a/src/vs/workbench/browser/parts/editor/studioStart.ts b/src/vs/workbench/browser/parts/editor/studioStart.ts
+index d482f9761c0ac693b5cf977b043f152afe993044..143a0f977b1420f2f8ad0e8e3d181b36ca4c90bc 100644
+--- a/src/vs/workbench/browser/parts/editor/studioStart.ts
++++ b/src/vs/workbench/browser/parts/editor/studioStart.ts
+@@ -22,7 +22,7 @@ export interface StudioStartState {
+ 	badge?: string;
+ 	templates: { id: string; projectType: string; kind: string; name: string; description: string }[];
+ 	projects: { uri: string; entryId: string; name: string; version?: string; projectType: string; folderPath: string; avatarUrl?: string; update?: { status: string; serverVersion?: string; canDownload: boolean; busy?: boolean } }[];
+-	recent: { uri: string; label: string; kind: string; lastOpened: number; projectType?: string; version?: string; avatarUrl?: string }[];
++	recent: { uri: string; label: string; kind: string; lastOpened: number; current?: boolean; projectType?: string; version?: string; avatarUrl?: string }[];
+ 	pending: { id: string; name: string; directory: string; status: string; stage?: string; error?: string }[];
+ 	environment: { studio: string; vscode: string; node?: string; harness?: string; cli?: string; account: string; server: string; error?: string };
+ 	summary?: { projects: number; running: number; waiting: number; unavailable: number; generatedAt: number };
+@@ -293,6 +293,10 @@ export class StudioStartView extends Disposable {
+ 					button.firstElementChild?.replaceWith($('img.studio-start-recent-avatar', { src: project.avatarUrl, alt: '' }));
+ 				}
+ 				button.title = project.uri;
++				if (project.current) {
++					button.setAttribute('aria-current', 'true');
++					append(button.lastElementChild!, $('span.studio-start-recent-current', undefined, text('currentProject')));
++				}
+ 				this.button(row, text('removeRecent'), 'close', 'studio.removeRecentProject', project, false, true, store);
+ 			}
+ 		});

@@ -1,5 +1,7 @@
 # Unreleased
 
+- Improved Start: recent projects show a Current Project badge for folders and workspaces open in this window. Removing a recent entry now requires confirmation and explains that project files and the current workspace are preserved.
+
 - Added **Open Project Window** below Explorer's file tree. It lists only the current project and its entries; each click on an entry or its open icon creates and activates a separate native tab. Focusing tools or the Assistant preserves the current project's list.
 
 - Breaking: project identity, name, version and declarations now use independent `steamharness.json` files. Removed reads and writes of `package.json.id` and `steamHarness`. Aggregates explicitly register child entries whose configuration defines icons, declarations, database aliases and schedules. Unregistered configurations stay inactive, and transfers preserve the parent and child structure.

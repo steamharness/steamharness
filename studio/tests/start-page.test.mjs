@@ -18,7 +18,7 @@ class Emitter {
 }
 const uri = filename => ({ scheme: 'file', fsPath: filename, toString: () => pathToFileURL(filename).href });
 function fixture(t, options = {}) {
-  const commands = new Map(), storage = options.storage ?? new Map(), calls = [], intervals = new Map(), projectsChanged = new Emitter(), accountChanged = new Emitter(), trustChanged = new Emitter(), windowChanged = new Emitter();
+  const commands = new Map(), storage = options.storage ?? new Map(), calls = [], intervals = new Map(), projectsChanged = new Emitter(), accountChanged = new Emitter(), trustChanged = new Emitter(), windowChanged = new Emitter(), workspaceChanged = new Emitter();
   const files = storage.get('test.files') ?? new Map(); storage.set('test.files', files);
   const f = { calls, storage, intervals, projectsChanged, accountChanged, projects: [], recent: [], warnings: [], errors: [], installs: [], progress: [],
     name: 'New project', parent: path.resolve('/projects'), newWindow: true, summary: { projects: 2, running: 1, waiting: 1, unavailable: 0, generatedAt: 1 },
@@ -40,7 +40,7 @@ function fixture(t, options = {}) {
         return name === 'vscode.openFolder' ? f.open?.(...args) : commands.get(name)?.(...args);
       } },
     workspace: { isTrusted: options.trusted ?? true, workspaceFolders: (options.folders ?? []).map(directory => ({ uri: uri(directory) })),
-      onDidGrantWorkspaceTrust: trustChanged.event, onDidChangeConfiguration: new Emitter().event,
+      onDidGrantWorkspaceTrust: trustChanged.event, onDidChangeConfiguration: new Emitter().event, onDidChangeWorkspaceFolders: workspaceChanged.event,
       openTextDocument: async value => ({ uri: value, getText: () => new TextDecoder().decode(files.get(value.fsPath)) }),
       fs: { readFile: async value => {
         if (path.basename(value.fsPath) === 'steamharness.json') { return Buffer.from(JSON.stringify({ id: f.manifestId })); }
@@ -83,6 +83,11 @@ function fixture(t, options = {}) {
   { getChildren: () => f.recent, onDidChangeTreeData: new Emitter().event }, async project => { f.remembered = project; }, { appendLine() {}, append() {} });
   t.after(() => controller.dispose());
   return Object.assign(f, { controller, execute: vscode.commands.executeCommand, state: async () => commands.get('studio.internalGetStartState')(),
+    setWorkspace: (folders, workspaceFile) => {
+      vscode.workspace.workspaceFolders = folders.map(value => ({ uri: vscode.Uri.parse(value) }));
+      vscode.workspace.workspaceFile = workspaceFile ? vscode.Uri.parse(workspaceFile) : undefined;
+      workspaceChanged.fire();
+    },
     grantTrust: () => { vscode.workspace.isTrusted = true; trustChanged.fire(); }, focus: () => windowChanged.fire({ focused: true }) });
 }
 
@@ -128,6 +133,21 @@ test('Start shows one aggregate card and opens the default entry even if it is n
   assert.deepEqual((await f.state()).projects.map(({ uri, entryId, name, projectType }) => ({ uri, entryId, name, projectType })),
     [{ uri: 'file:///aggregate', entryId: 'database', name: 'Aggregate', projectType: 'aggregate' }]);
   assert.equal((await f.state()).projects[0].version, '1.2.3');
+});
+
+test('recent projects identify current folders and workspace files by URI and refresh when the workspace changes', async t => {
+  const f = fixture(t);
+  const uris = ['file:///projects/demo', 'file:///other/demo', 'file:///projects/team.code-workspace',
+    'vscode-remote://ssh-remote+host/projects/demo', 'file:///projects'];
+  f.recent = uris.map((uri, index) => ({ uri, label: 'Same name', kind: index === 2 ? 'workspace' : 'folder', lastOpened: 1, current: true }));
+  await f.execute('studio.refreshStart');
+  assert.deepEqual((await f.state()).recent.map(project => project.current), [false, false, false, false, false]);
+  f.setWorkspace([uris[0], uris[3]], uris[2]);
+  await new Promise(resolve => setTimeout(resolve, 400));
+  assert.deepEqual((await f.state()).recent.map(project => project.current), [true, false, true, true, false]);
+  f.setWorkspace([]);
+  await new Promise(resolve => setTimeout(resolve, 400));
+  assert.deepEqual((await f.state()).recent.map(project => project.current), [false, false, false, false, false]);
 });
 
 test('creation opens the project before installation and hands progress, logs and retry to the new window', async t => {
