@@ -1,5 +1,7 @@
 # Unreleased
 
+- Local Conversations consume inherited Core Agent parameters consistently across structure reports, dynamic model options and execution input, including hidden and fixed fields.
+
 - Improvement: Web run failures summarize upstream HTML error pages with an HTTP status and actionable guidance. Original diagnostics are collapsed under Technical details in Conversation and Workflow.
 
 - Improvement: Moved database management into Project information and removed its toolbar button. Database cards show shared entries and connection status; requests and host grants have a separate view with readable permission controls. Key-value and knowledge data use searchable, paginated lists and detail editors.

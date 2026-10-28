@@ -63,14 +63,15 @@ test("parameter bindings resolve user defaults, optional overrides and fixed val
       assert.equal(parseProjectParamValues(params("default"), ["--access", "inherit"]).access, policy);
       assert.equal(parseProjectParamValues(params("fixed"), ["--access", "workspace"]).access, policy);
       assert.equal(createAgentProjectInput(["--message", "hello"], { permissionPolicy: "inherit" }).permissionPolicy, policy);
-      assert.equal(createAgentProjectInput(["--permission-policy", "workspace"], { permissionPolicy: "inherit" }).permissionPolicy, "workspace");
+      assert.equal(createAgentProjectInput(["--permission-policy", "workspace"], { permissionPolicy: "inherit" }).permissionPolicy, policy);
+      assert.equal(createAgentProjectInput(["--permission-policy", "workspace"], { paramOptions: { fields: { permissionPolicy: { userSetting: { key: "agent.permissionPolicy", mode: "default" } } } } }).permissionPolicy, "workspace");
       const fixed = params("fixed").map(field => ({ ...field, name: "permissionPolicy", flag: "--permission-policy" }));
       assert.equal(createAgentProjectInput(["--permission-policy", "workspace"], { params: [{ kind: "auxiliary", id: "access", label: "Access", fields: fixed }] }).permissionPolicy, policy);
     });
   }
   assert.equal(parseProjectParamValues(params("default"), []).access, "auto");
   const field = normalizeProjectParamDeclarations(createAgentProjectParams({ permissionPolicy: "inherit" })).params.find(field => field.name === "permissionPolicy")!;
-  assert.deepEqual(field.userSetting, { key: "agent.permissionPolicy", mode: "default" });
+  assert.deepEqual(field.userSetting, { key: "agent.permissionPolicy", mode: "fixed" });
   assert.deepEqual(field.options?.map(option => option.value), ["read-only", "workspace", "auto"]);
 });
 

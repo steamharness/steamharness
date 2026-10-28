@@ -5,12 +5,12 @@ description: "Create a complete Conversation Agent executor for embedding hosts 
 
 # defineAgentConversationExecutor
 
-`workflow.defineAgentConversationExecutor()` produces a complete conversation executor in one call: conversation wiring, token usage, tool declarations, params, input/output node orchestration and OpenAI gateway support all come from the runtime. It is for embedding hosts and tests. A project that must pass `steamharness structure` needs inline `conversation`, `tokenUsage`, `tools`, and `params` declarations inside `workflow.defineExecutor({...})`, while reusing `workflow.createAgentConversationProject(...)` and `workflow.createAgentProjectInput(...)`. Otherwise static analysis cannot see those declarations.
+`workflow.defineAgentConversationExecutor()` creates a complete Conversation Agent executor for embedding hosts and tests. Project entrypoints keep an inline `workflow.defineExecutor({...})` with `conversation`, `tokenUsage`, and `tools`. When its workflow comes from `workflow.createAgentConversationProject(...)`, Core inherits the built-in parameters and resolver automatically.
 
 The helper saves an embedding host from implementing streaming, approvals, compaction, or output-item assembly. Projects can reuse the underlying workflow and input implementation while keeping their declarations visible to the host.
 
 
-The permission menu contains only `read-only`, `workspace`, and `auto`. Setting `permissionPolicy: "inherit"` makes `createAgentProjectParams` bind its default to the user setting, with project overrides. Omitted options still default to `workspace`; a hostless binding uses `auto`. Use a custom inline `userSetting` binding with `mode: "fixed"` for a settings shortcut. See [User settings and permission inheritance](/en/core-api/user-settings).
+The permission menu contains `read-only`, `workspace`, and `auto`. Core projects follow Project Assistant: permissions bind to the user setting with `userSetting: { key: "agent.permissionPolicy", mode: "fixed" }`; hostless user settings use `auto`. An explicit `permissionPolicy` supplies a project default. Use `paramOptions.fields.permissionPolicy` to customize the binding, hide the field, or fix its actual value. See [User settings](/en/core-api/user-settings).
 
 ## Signature
 
@@ -30,10 +30,11 @@ Every [createAgentNode](./create-agent-node.mdx) option, plus:
 | Parameter | Type | Default | Description |
 | --- | --- | --- | --- |
 | `projectName` | `string` | — | Display name of the project. |
-| `projectName` | `string` | `agent` | Workflow name, also the node-name prefix (`<name>-input`, `<name>-output`, `<name>-agent`). |
+| `executorName` | `string` | `agent` | Workflow name, also the node-name prefix (`<name>-input`, `<name>-output`, `<name>-agent`). |
 | `collapseIntermediate` | `boolean` | `true` | Default folding of completed turns, keeping the final reply on success or the error on failure; emitted as `conversation.collapseIntermediate`; users can show or hide the process with each turn's button. |
 | `outputItemId` | `string` | `agent-answer` | Item id of the assistant's answer, also written to `conversation.openai.outputItemId`. The answer item carries exactly this value, so an adapter looking it up by id always finds it. |
-| `params` | `ConversationParamDeclaration[]` | see below | Replaces the default parameter table with Auxiliary, Quick, and Mode entries only. The standard message input is always shown. |
+| `params` | `ConversationParamDeclaration[]` | see below | Replaces the entire parameter table; supports Auxiliary, Quick, Mode, and Slash. |
+| `paramOptions` | `AgentProjectParamOptions` | — | Customize built-in defaults, bindings, visibility, fixed values, and groups by field name. |
 
 ## What it generates
 
@@ -43,16 +44,16 @@ Every [createAgentNode](./create-agent-node.mdx) option, plus:
 | `conversation` | Standard message input always enabled; `inputQueue.enabled`, `recovery.enabled`, `openai.outputItemId` |
 | `tokenUsage` | Enabled and displayed |
 | `tools` | `read`, `write`, `edit`, `bash`, `grep`, `find`, `ls` |
-| `params` | `workdir`, `provider`, `model`, `effort`, `agent`, `contextWindow`, `modelAttributes`, `permissionPolicy` |
+| `params` | `provider`, `model`, `effort`, `plan`, `permissionPolicy` |
 | `workflow` | Input node parses, agent node streams, output node writes the conversation |
 
-Parameter defaults come from the options you pass: `provider: "anthropic"`, for instance, becomes the provider parameter's default.
+Effort defaults to `high` and `/plan` is off. Models follow user settings by default; `modelSource: "project"` uses configured project models. Provider remains a hidden compatibility field.
 
-`resolveParams` reads the project configuration model list, hides the compatibility `provider` parameter and defaults to its first entry. The `model` parameter stores an entry ID; execution maps it to the real model and connection. Custom `params` receive patches only for declared fields. See [Project configurations](/en/concepts/project-configuration) for system and third-party setup.
+The inherited resolver supplies model choices from the selected source, hides `provider`, and applies visibility and fixed values. It patches declared fields only. `model` stores a configuration entry ID that execution resolves to a connection. Explicit `executor.params` replaces the table; explicit `resolveParams` retains custom logic while Core still applies visibility and fixed values. See [Project configurations](/en/concepts/project-configuration).
 
 ## Input and output
 
-Input is [createAgent](./create-agent.mdx)'s `AgentInput`. `createInput` reads the host composer's message and the params above (`--workdir` / `-C`, `--provider`, `--model` / `-m`, `--effort`, `--agent`, `--permission-policy`), and joins the remaining positional arguments into the prompt when the composer supplied no message.
+Input uses [createAgent](./create-agent.mdx)'s `AgentInput`. `createAgentProjectInput(context, options?)` accepts an `ExecutorContext` carrying `args` and `paramValues`, parses messages, attachments, and effective parameters, and maps `plan` to `agent`. The existing `createAgentProjectInput(args, options?)` overload remains available for programmatic and advanced arguments.
 
 Output is an `AgentOutputPayload`, and the turn's user message and assistant answer are appended to the conversation, so the host's history list, titles and export treat it as an ordinary conversation run.
 
@@ -73,11 +74,37 @@ For an embedding host or test:
 ```ts
 const agentExecutor = workflow.defineAgentConversationExecutor({
   projectName: "Pi",
-  projectName: "pi",
+  executorName: "pi",
   outputItemId: "pi-answer",
   provider: "anthropic",
   effort: "high",
 });
 ```
 
-A project entrypoint instead uses `workflow.defineExecutor({ projectType: "conversation", workflow: workflow.createAgentConversationProject(...), conversation: {...}, tokenUsage: {...}, tools: [...], params: [...], createInput({ args }) { return workflow.createAgentProjectInput(args); } })`. Keep the object and arrays inline, and use the same `outputItemId` in the workflow and `conversation.openai`. Add `resolveParams: workflow.createAgentProjectParamResolver()` for linked parameter options. For custom nodes around the agent, use [createAgentNode](./create-agent-node.mdx); see [defineExecutor](./define-executor.mdx) for project declaration rules.
+
+## Project parameter inheritance and customization
+
+Executors using a Core workflow can omit `params` and `resolveParams`. For a business workflow wrapping Core, set `coreAgent: agentProject` on the executor and retain the business workflow and `createInput`. Parameter options must be statically readable; inspection follows only the selected reference and never executes project code.
+
+`fields` supports `defaultValue`, `userSetting` (`null` clears a binding), `visible`, `fixedValue`, `label`, `description`, and `options`. Set a field to `false` to remove it. `groups` rearranges Quick/Auxiliary groups by field name; unassigned fields keep their original group. `fixedValue` replaces bindings and defaults and is enforced during input construction and at the Core execution boundary. Visibility controls presentation; add `fixedValue` to prevent overrides. An explicit default clears the user setting binding.
+
+```ts
+const agentProject = workflow.createAgentConversationProject({
+  modelSource: "project",
+  paramOptions: {
+    fields: {
+      effort: { defaultValue: "medium" },
+      plan: false,
+      permissionPolicy: { visible: false, fixedValue: "auto" },
+    },
+    groups: [{ kind: "quick", id: "ai", label: "AI",
+      fields: ["provider", "model", "effort"], summary: ["model", "effort"] }],
+  },
+});
+
+export const executor = workflow.defineExecutor({
+  projectType: "conversation",
+  workflow: agentProject,
+  createInput(context) { return workflow.createAgentProjectInput(context); },
+});
+```

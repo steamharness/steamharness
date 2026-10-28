@@ -1,5 +1,7 @@
 # Unreleased
 
+- The assistant and generated Agent examples now inherit Core parameters without duplicate declarations, preserving separate model and effort controls, Plan approval and user permission settings. Generator guidance covers business wrappers, hidden fields and fixed values.
+
 - Changed: generators, templates and examples use alias/databaseId references and document multiple databases, shared entries and host-managed permissions. Project code continues to access databases by entry-local alias.
 
 - The assistant now separates model and effort controls and uses the available model catalogue automatically loaded by the host. Its model menu groups sources and provides Add model at the bottom.

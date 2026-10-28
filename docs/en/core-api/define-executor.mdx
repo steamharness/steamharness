@@ -406,3 +406,7 @@ export const executor = steamharness.defineExecutor<Input, Output>({
 |`tools` must be statically declared|CLI Web can only show the selected entry or Conversation executor statically analyzed tools; the tool name must be stable.|
 |`tokenUsage.enabled` Off by default|If it is not configured, KV will not be written and the usage will not be displayed. When closed `context.tokenUsage.report()` is no-op.|
 |`registry` for single node debugging|Workflow searches only the registry of the selected portal; nodes that are not registered cannot be run individually through debug API.|
+
+## Built-in Core Agent parameters
+
+When `workflow` comes from `createAgentConversationProject`, omit `params` and `resolveParams`. A wrapping business workflow specifies its parameter source with `coreAgent`. Explicit tables still replace the defaults, and business `createInput` remains available. A field with `visible: false` is hidden from parameter actions; Core enforces `fixedValue` during parsing and execution. See [Core Agent parameters](/en/core-api/define-agent-conversation-executor#project-parameter-inheritance-and-customization).

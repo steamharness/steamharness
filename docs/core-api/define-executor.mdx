@@ -407,3 +407,7 @@ export const executor = workflow.defineExecutor<Input, Output>({
 | `tools` 必须静态声明 | CLI Web 只能展示所选入口或 Conversation executor 静态分析到的工具；工具名必须稳定。 |
 | `tokenUsage.enabled` 默认关闭 | 未配置时不会写 KV，也不会展示用量。关闭时 `context.tokenUsage.report()` 是 no-op。 |
 | `registry` 用于单节点调试 | Workflow 只搜索所选入口的 registry；没有注册的节点不能通过 debug API 单独运行。 |
+
+## Core Agent 内置参数
+
+`workflow` 来自 `createAgentConversationProject` 时，可省略 `params` 与 `resolveParams`；包装业务 workflow 时，通过 `coreAgent` 引用指定参数来源。显式参数表仍完整替换，业务 `createInput` 保留。字段的 `visible: false` 从参数动作中隐藏，`fixedValue` 由 Core 在解析和执行时强制应用。定制示例见 [Core Agent 参数](/core-api/define-agent-conversation-executor#项目参数继承与定制)。

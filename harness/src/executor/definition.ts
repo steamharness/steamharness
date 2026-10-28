@@ -9,6 +9,7 @@ import { assertConversationFooter } from "./conversation-footer";
 import { assertConversationCommands } from "./conversation-commands";
 import { assertConversationUserInput } from "./conversation-input";
 import { assertConversationPresentation } from "./conversation-presentation";
+import { inheritAgentProjectParams } from "../agent/project-executor";
 
 export const STEAMHARNESS_ENTRYPOINT_ID_PATTERN = /^[a-z][a-z0-9_-]{0,63}$/;
 
@@ -64,6 +65,7 @@ export function defineProjectExecutor<Input = unknown, Output = unknown>(
       });
     }
   } else {
+    inheritAgentProjectParams(definition);
     if (definition.conversation && "defaultInput" in definition.conversation) {
       throw new HarnessError({
         type: "input_validation",

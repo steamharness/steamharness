@@ -50,7 +50,7 @@ describe('project templates', () => {
       try {
         const inspected = await runtime.inspect([created.directory]); expect(inspected.errors).toEqual([]);
         const project = { ...inspected.projects[0], uri: pathToFileURL(created.directory).href }; expect(project.projectType).toBe(template.projectType);
-        expect(project.projectCard).toMatchObject(card);
+        expect(project.aggregateProjectCard).toMatchObject(card);
         if (template.projectType === 'kanban') { continue; }
         const execute = (round: number) => runtime.run({ project, conversationId: 'persistent-chat', runId: `round-${round}`,
           entrypointId: project.defaultEntrypoint, args: template.projectType === 'conversation' ? ['--message', 'Local reply'] : [] }, () => {});

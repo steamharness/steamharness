@@ -1,4 +1,4 @@
-import type { ConversationExecutorDefinition, ConversationParamDeclaration } from "../executor/types";
+import type { ConversationExecutorDefinition, ExecutorContext } from "../executor/types";
 import { defineProjectExecutor } from "../executor/definition";
 import { createOutputNode, createOutputPayload } from "../node/output/index";
 import { createInputNode } from "../node/input/index";
@@ -6,7 +6,6 @@ import { parseConversationDefaultInputArgs } from "../executor/default-input";
 import { parseAgentModelAttributes } from "./model-attributes";
 import type { NodeContext } from "../types/index";
 import { defineProject, runNode, runStreamNode } from "../workflow/index";
-import type { Definition } from "../types/index";
 import { HarnessError } from "../workflow/errors";
 import { createAgentProjectParamResolver } from "./system-llm";
 import { normalizeProjectParamDeclarations } from "../executor/param-definition";
@@ -29,27 +28,27 @@ import { readRuntimeLocaleSafe } from "./plan";
 import type { FileReference } from "../files/index";
 import {
   DEFAULT_AGENT_EFFORT,
-  DEFAULT_AGENT_PERMISSION_POLICY,
+  type AgentConversationProject,
   type AgentImageInput,
   type AgentInput,
   type AgentOutputPayload,
   type AgentProjectOptions,
 } from "./types";
 
+import { applyAgentParamValues, applyAgentProjectDefaults, applyAgentProjectFixedValues, createAgentProjectParams, registerAgentProject } from "./project-params";
+export { createAgentProjectParams } from "./project-params";
+
 const DEFAULT_OUTPUT_ITEM_ID = "agent-answer";
 
 /**
  * The workflow half of a conversation agent project.
  *
- * A project has to declare its executor as a statically analysable object
- * literal — Core's structure report reads `params`, `tools`, `conversation`
- * and `tokenUsage` straight off the AST of the project's `index.ts`, and a
- * factory that returns the whole executor hides all four. So the *logic* lives
- * here and the project composes the declaration around it.
+ * Parameters and their resolver are inherited by defineExecutor. Tools,
+ * conversation and tokenUsage remain explicit, statically readable declarations.
  */
 export function createAgentConversationProject(
   options: AgentProjectOptions = {},
-): Definition<AgentInput, AgentOutputPayload> {
+): AgentConversationProject {
   const executorName = options.executorName ?? "agent";
   const outputItemId = options.outputItemId ?? DEFAULT_OUTPUT_ITEM_ID;
   const node = createAgentNode({ ...options, name: `${executorName}-agent` });
@@ -130,10 +129,11 @@ export function createAgentConversationProject(
     },
   });
 
-  return defineProject<AgentInput, AgentOutputPayload>({
+  const params = options.params ?? createAgentProjectParams(options);
+  return registerAgentProject(defineProject<AgentInput, AgentOutputPayload>({
     name: executorName,
     async run(input, context) {
-      const parsed = await runNode(inputNode, input, context);
+      const parsed = await runNode(inputNode, applyAgentProjectDefaults(input, params), context);
       const result = await runStreamNode(outputNode, parsed, context);
 
       if (result.output === undefined) {
@@ -145,7 +145,7 @@ export function createAgentConversationProject(
 
       return result.output;
     },
-  });
+  }), options);
 }
 
 /**
@@ -157,9 +157,18 @@ export function createAgentConversationProject(
  */
 export function createAgentProjectInput(
   args: string[],
+  options?: AgentProjectOptions,
+): AgentInput;
+export function createAgentProjectInput(
+  context: Pick<ExecutorContext, "args" | "paramValues">,
+  options?: AgentProjectOptions,
+): AgentInput;
+export function createAgentProjectInput(
+  context: string[] | Pick<ExecutorContext, "args" | "paramValues">,
   options: AgentProjectOptions = {},
 ): AgentInput {
-  return createAgentInputFromArgs(args, options);
+  const args = Array.isArray(context) ? context : context.args;
+  return createAgentInputFromArgs(args, options, Array.isArray(context) ? undefined : context.paramValues);
 }
 
 /**
@@ -199,13 +208,12 @@ export function defineAgentConversationExecutor(
       const names = new Set(normalizeProjectParamDeclarations(definition.params).params.map(param => param.name));
       return { params: Object.fromEntries(Object.entries(result.params ?? {}).filter(([name]) => names.has(name))) };
     },
-    createInput({ args }) {
-      return createAgentProjectInput(args, options);
+    createInput(context) {
+      return createAgentProjectInput(context, options);
     },
   };
 
-  defineProjectExecutor<AgentInput, AgentOutputPayload>(definition);
-  return definition;
+  return defineProjectExecutor<AgentInput, AgentOutputPayload>(definition) as ConversationExecutorDefinition<AgentInput, AgentOutputPayload>;
 }
 
 /**
@@ -223,173 +231,6 @@ async function* runAgentNode(
   for await (const chunk of node.stream(input, context)) {
     yield chunk;
   }
-}
-
-export function createAgentProjectParams(options: AgentProjectOptions = {}): ConversationParamDeclaration[] {
-  return [
-    {
-      kind: "auxiliary",
-      id: "workspace",
-      label: "工作目录",
-      fields: [
-        {
-          name: "workdir",
-          flag: "--workdir",
-          shortFlag: "-C",
-          type: "string",
-          required: false,
-          label: "工作目录",
-          description: "代理操作的工作目录。",
-          defaultValue: options.workdir ?? ".",
-        },
-      ],
-    },
-    {
-      kind: "quick",
-      id: "model",
-      label: "Model",
-      icon: "sparkle",
-      summary: ["model"],
-      fields: [
-        {
-          // Hidden by the resolver; retained for existing project declarations.
-          name: "provider",
-          flag: "--provider",
-          type: "string",
-          required: true,
-          control: "select",
-          label: "AI 配置",
-          description: "SteamHarness Server 的系统 AI 配置。",
-          options: [],
-        },
-        {
-          name: "model",
-          flag: "--model",
-          shortFlag: "-m",
-          type: "string",
-          required: true,
-          control: "select",
-          label: "模型",
-          description: options.modelSource !== "project" ? "从用户设置中选择模型，默认使用第一个可用模型。" : "先在项目配置中添加模型。默认使用列表中的第一项。",
-          ...(options.modelSource !== "project" ? { userSetting: { key: "agent.model" as const, mode: "default" as const } } : {}),
-          options: [],
-        },
-      ],
-    },
-    {
-      kind: "quick",
-      id: "effort",
-      label: "Effort",
-      icon: "lightbulb",
-      summary: ["effort"],
-      fields: [
-        {
-          name: "effort",
-          flag: "--effort",
-          type: "string",
-          required: false,
-          label: "Effort",
-          description: "思考强度。超出模型支持范围时会自动收敛到该模型支持的档位。",
-          defaultValue: options.effort ?? DEFAULT_AGENT_EFFORT,
-          control: "select",
-          options: [
-            // The wording is part of the published catalogue the built-in projects
-            // declare inline and compare against, so it changes only with a Core
-            // release. The empty value resolves to pi's `off` — no reasoning level
-            // is sent, which is what "let the model decide" asks for.
-            { value: "", label: "模型默认", description: "交给模型决定。" },
-            { value: "off", label: "Off", description: "不做推理。" },
-            { value: "minimal", label: "Minimal" },
-            { value: "low", label: "Low" },
-            { value: "medium", label: "Medium" },
-            { value: "high", label: "High" },
-            { value: "xhigh", label: "Extra high" },
-            { value: "max", label: "Max", description: "仅部分模型支持。" },
-          ],
-        },
-      ],
-    },
-    {
-      kind: "mode",
-      name: "agent",
-      flag: "--agent",
-      required: false,
-      label: "代理模式",
-      description: "build 直接执行，plan 只输出计划等待批准。",
-      defaultValue: options.mode ?? "build",
-      options: [
-        { value: "build", label: "Build", description: "直接修改工作区。" },
-        { value: "plan", label: "Plan", description: "先给出计划，批准后再执行。" },
-      ],
-    },
-    {
-      kind: "auxiliary",
-      id: "model-settings",
-      label: "模型设置",
-      fields: [
-        {
-          name: "contextWindow",
-          flag: "--context-window",
-          type: "number",
-          required: false,
-          label: "上下文窗口",
-          description: "上下文用量一栏使用的分母（tokens）。留空时取模型自身的窗口。",
-        },
-        {
-          // Only meaningful for an endpoint this project reaches directly. A run on
-          // the account's system AI takes the Server catalogue's record instead, so
-          // the field says as much rather than inviting a value nothing reads.
-          name: "modelAttributes",
-          flag: "--model-attributes",
-          type: "string",
-          required: false,
-          label: "模型属性（JSON）",
-          description: "自定义端点模型的属性：input / reasoning / webSearch / contextWindow / maxTokens / cost / thinkingLevelMap。使用系统 AI 时由目录提供，无需填写。",
-        },
-        {
-          name: "webSearch", flag: "--web-search", type: "string", required: false,
-          label: "联网搜索", description: "自动跟随模型能力；可显式开启或关闭 OpenAI / Anthropic 原生搜索。",
-          control: "select", defaultValue: options.webSearch === undefined ? "" : String(options.webSearch),
-          options: [{ value: "", label: "自动" }, { value: "true", label: "开启" }, { value: "false", label: "关闭" }],
-        },
-      ],
-    },
-    {
-      kind: "quick",
-      id: "permission",
-      label: "权限",
-      icon: "shield",
-      summary: ["permissionPolicy"],
-      fields: [
-        {
-          name: "permissionPolicy",
-          flag: "--permission-policy",
-          type: "string",
-          required: false,
-          label: "Permission",
-          description: "工具权限策略，与内置 OpenCode 项目一致。",
-          ...(options.permissionPolicy === "inherit"
-            ? { userSetting: { key: "agent.permissionPolicy" as const, mode: "default" as const } }
-            : { defaultValue: options.permissionPolicy ?? DEFAULT_AGENT_PERMISSION_POLICY }),
-          control: "select",
-          options: [
-            { value: "read-only", label: "Read only", description: "隐藏写入与命令工具。" },
-            // The old wording promised that every path outside the workspace is
-            // refused, which a shell command is not bound by; the panel says what
-            // actually holds. The built-in projects declare this list inline and
-            // compare it against the published Core, so the wording travels with a
-            // release.
-            {
-              value: "workspace",
-              label: "Workspace",
-              description: "工作区内自动批准编辑和命令；读写与检索工具只能访问工作区与挂载目录，shell 命令不受此限制。",
-            },
-            { value: "auto", label: "Auto approve", description: "批准一切未被显式拒绝的权限，包括工作区之外的路径。" },
-          ],
-        },
-      ],
-    },
-  ];
 }
 
 /**
@@ -488,13 +329,25 @@ function readConversationTurnText(input: AgentInput): string | undefined {
 function createAgentInputFromArgs(
   args: string[],
   options: AgentProjectOptions,
+  resolvedValues?: ExecutorContext["paramValues"],
 ): AgentInput {
   const defaults = parseConversationDefaultInputArgs(args);
+  const parameterArgs = [...args];
   const message = defaults.message.trim();
   const input: AgentInput = {
     prompt: message,
     errCode: 0,
     errMessage: "",
+    ...(options.workdir === undefined ? {} : { workdir: options.workdir }),
+    ...(options.allowedDirectories === undefined ? {} : { allowedDirectories: [...options.allowedDirectories] }),
+    ...(options.systemPrompt === undefined ? {} : { systemPrompt: options.systemPrompt }),
+    ...(options.provider === undefined ? {} : { provider: options.provider }),
+    ...(options.model === undefined ? {} : { model: options.model }),
+    ...(options.effort === undefined ? {} : { effort: options.effort }),
+    ...(options.permissionPolicy === undefined ? {} : { permissionPolicy: options.permissionPolicy }),
+    ...(options.mode === undefined ? {} : { agent: options.mode }),
+    ...(options.webSearch === undefined ? {} : { webSearch: options.webSearch }),
+    ...(options.modelAttributes === undefined ? {} : { modelAttributes: structuredClone(options.modelAttributes) }),
     // Attachments arrive as references; the input node resolves them through
     // the run's file store, which no arg parser has access to.
     ...(defaults.images.length === 0 ? {} : { imageFiles: defaults.images }),
@@ -508,20 +361,28 @@ function createAgentInputFromArgs(
         input.workdir = args[++index] ?? options.workdir;
         break;
       case "--provider":
-        input.provider = args[++index];
+        index += 1;
         break;
       case "--model":
+        index += 1;
+        break;
       case "-m":
-        input.model = args[++index];
+        parameterArgs[index] = "--model";
+        index += 1;
         break;
       case "--effort":
-        input.effort = (args[++index] ?? "") as AgentInput["effort"];
+        index += 1;
         break;
+      case "--plan": {
+        const value = args[index + 1];
+        if (value === "true" || value === "false") index += 1;
+        break;
+      }
       case "--agent":
         input.agent = (args[++index] ?? "") as AgentInput["agent"];
         break;
       case "--permission-policy":
-        input.permissionPolicy = (args[++index] ?? "") as AgentInput["permissionPolicy"];
+        index += 1;
         break;
       case "--context-window": {
         const value = Number(args[++index]);
@@ -563,10 +424,13 @@ function createAgentInputFromArgs(
   }
 
   const declarations = options.params ?? createAgentProjectParams(options);
-  if (normalizeProjectParamDeclarations(declarations).params.some(param => param.name === "permissionPolicy" && param.userSetting)) {
-    input.permissionPolicy = parseProjectParamValues(declarations, args).permissionPolicy as AgentInput["permissionPolicy"];
-  }
-  return input;
+  const values = { ...(resolvedValues ?? parseProjectParamValues(declarations, parameterArgs)) };
+  if (resolvedValues === undefined && args.includes("--agent") && !args.includes("--plan")) delete values.plan;
+  const result = applyAgentParamValues(input, values);
+  // Explicit programmatic defaults remain available for parameters outside the composer.
+  return resolvedValues === undefined
+    ? applyAgentProjectDefaults(result, declarations)
+    : applyAgentProjectFixedValues(result, declarations);
 }
 
 /**

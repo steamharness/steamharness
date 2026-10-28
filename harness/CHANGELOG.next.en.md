@@ -1,5 +1,7 @@
 # Unreleased
 
+- Added built-in assistant parameters for Core Agent projects, inherited automatically by defineExecutor with model resolution. Fields support overrides, visibility, disabling, fixed values and grouping; business workflows can select a coreAgent contract. The input helper accepts ExecutorContext, and static reports share the runtime contract.
+
 - Allow up to 30 seconds for restricted project role checks so slow remote database access does not incorrectly downgrade developers or owners. Failed checks still revoke elevated access.
 
 - Breaking: package entries now list database alias strings, with alias-to-ID mappings in root config.json. Core resolves aliases across multiple databases and shared consumers; hosts maintain permissions, distributions preserve ID references, and legacy fields are rejected.
