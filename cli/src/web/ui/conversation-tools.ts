@@ -5,7 +5,7 @@ import { iconButton, markdownHtml, iconHtml, escapeHtml } from './ui';
 import { projectInformation } from './project-information';
 import { usageAmount, usagePeriods } from './ai-usage';
 import { imagePreview } from './image-preview';
-import { toolPermissions } from './tool-permissions';
+import { toolsAndSkills } from './tools-and-skills';
 import type { ProjectDatabases } from './project-databases';
 import './project-databases.css';
 
@@ -87,8 +87,8 @@ export class ConversationTools {
   }
 
   permissions(parameters: Parameters, policies: ToolPolicies, changed: (policies: ToolPolicies) => void): void {
-    this.show(t("Tool permissions"));
-    this.body.append(toolPermissions(parameters.tools ?? [], policies, changed, this.toolSections));
+    this.show(t("Tools and skills"));
+    this.body.append(toolsAndSkills(parameters.tools ?? [], policies, changed, this.toolSections));
   }
 
   usage(load: (requestId: string) => void): void {

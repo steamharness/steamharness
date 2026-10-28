@@ -7,7 +7,9 @@ description: "Register the skill tool to discover guides and read SKILL.md and r
 
 `workflow.createSkillTools()` returns the model-callable `skill` tool, displayed as **List and read skill guides**. The model discovers the project's task guides, reads the selected guide, then reads its reference files as needed. Guide contents enter the context when read.
 
-The returned array always contains one tool. That entry point can access multiple guides: “1 tool” in the permissions panel counts the `skill` entry point. The actual guide names and count come from `list`.
+The returned array always contains one tool. That entry point can access multiple guides; the actual guide names and count come from `list`.
+
+CLI Web's **Tools and skills** dialog puts the `skill` entry point in a separate **Skills** tab. Read-only guide cards show its name and description without Enable or Auto-approve switches. The **Tools** tab retains permission controls for other tools; viewing skills or switching tabs does not change policies. Conversation and Workflow share this interface. File changes, commands and other actions described by a skill still use the corresponding tool permissions.
 
 ## Signature
 

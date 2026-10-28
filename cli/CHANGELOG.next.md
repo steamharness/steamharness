@@ -1,5 +1,7 @@
 # Unreleased
 
+- 【改进】CLI Web 将工具与技能拆分为独立分页；工具保留权限设置，技能使用只读指南卡片展示，不再显示启用和自动批准开关。Conversation 与 Workflow 共用此界面。
+
 - 【修复】CLI Web 向项目运行进程传递经过校验的 `STEAMHARNESS_PROJECT_CONFIG` 数据库映射，确保父子配置在页面检查与 Workflow 执行时使用同一组 ID。
 
 - 【破坏性变更】项目身份、名称、版本和声明统一使用独立的 `steamharness.json`，移除 `package.json.id` 和 `steamHarness` 的读取与写回。聚合项目显式登记子入口，由子目录配置提供图标、声明、数据库别名与计划；未登记配置不生效，上传下载保留父子结构。

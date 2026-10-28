@@ -36,10 +36,10 @@ it('groups interleaved built-in, project and MCP tools without losing or duplica
     { name: 'workflow-ui_present_card' }, { name: 'tool_search' },
   ]);
   expect(f.sections().map(section => section.querySelector('.tool-group-title')?.textContent)).toEqual([
-    'File tools', 'Knowledge', 'Shell commands', 'Data storage', 'Studio', 'Agent tools', 'Skills', 'Memory',
+    'File tools', 'Knowledge', 'Shell commands', 'Data storage', 'Studio', 'Agent tools', 'Memory',
     'tikhub', 'minimax', 'issue_tracker', 'Other tools', 'Resource cards',
   ]);
-  expect(f.root.querySelectorAll('tbody tr')).toHaveLength(19);
+  expect(f.root.querySelectorAll('tbody tr')).toHaveLength(18);
   expect(f.sections().every(section => !section.open)).toBe(true);
   expect(f.section('File tools').querySelector('.tool-group-count')?.textContent).toBe('2 tools');
   expect(f.section('Knowledge').querySelector('tbody')?.textContent).toBe('kb_list_documentskb_get_document');
@@ -127,4 +127,87 @@ it('keeps an empty registry clear and free of empty sections', () => {
   const f = fixture([]);
   expect(f.sections()).toHaveLength(0); expect(f.root.querySelector('input')).toBeNull();
   expect(f.root.textContent).toContain('0 tools'); expect(f.root.textContent).toContain('No tools declared by this project');
+});
+
+it('separates skill guides into a read-only tab and preserves their policy when editing tools', () => {
+  const policies = { skill: { enabled: false, autoApprove: false } };
+  const f = fixture([
+    { name: 'skill', label: 'List and read skill guides', description: 'Read SKILL.md and references.\nActions use other tools.' },
+    { name: 'read' },
+  ], policies);
+  const [toolsTab, skillsTab] = document.querySelectorAll<HTMLButtonElement>('.tools-and-skills-tabs [role=tab]');
+  const skills = document.querySelector<HTMLElement>('.skill-guides')!;
+  expect(document.querySelector('.conversation-dialog h2')?.textContent).toBe('Tools and skills');
+  expect(toolsTab.textContent).toBe('Tools'); expect(skillsTab.textContent).toBe('Skills');
+  expect(toolsTab.getAttribute('aria-selected')).toBe('true'); expect(skills.hidden).toBe(true);
+  expect(f.root.querySelector('.tool-count')?.textContent).toBe('1 tools');
+  expect(f.root.textContent).not.toContain('List and read skill guides');
+  skillsTab.click();
+  expect(f.root.hidden).toBe(true); expect(skills.hidden).toBe(false);
+  expect(skills.querySelector('.skill-guide-heading h3')?.textContent).toBe('List and read skill guides');
+  expect(skills.querySelector('.skill-guide-name')?.textContent).toBe('skill');
+  expect(skills.querySelector('.skill-guide-badge')?.textContent).toBe('Read-only');
+  expect(skills.querySelector('.skill-guide-description')?.textContent).toBe('Read SKILL.md and references.\nActions use other tools.');
+  expect(skills.querySelector('input, select, button, .permissions-table')).toBeNull();
+  expect(skills.textContent).not.toContain('Auto-approve');
+  expect(f.changed).not.toHaveBeenCalled();
+  toolsTab.click();
+  f.section('File tools').querySelector<HTMLInputElement>('input')!.click();
+  const next = f.changed.mock.calls[0][0];
+  expect(next).toEqual({ read: { enabled: false, autoApprove: false }, skill: { enabled: false, autoApprove: false } });
+  next.skill.enabled = true;
+  expect(policies).toEqual({ skill: { enabled: false, autoApprove: false } });
+  expect(skills.querySelector('.skill-guide-badge')?.textContent).toBe('Read-only');
+});
+
+it('supports keyboard tabs and retains tool search and collapse state across tab changes', () => {
+  const f = fixture([{ name: 'read' }, { name: 'kb_get_document' }, { name: 'skill' }]);
+  const [tools, skills] = document.querySelectorAll<HTMLButtonElement>('.tools-and-skills-tabs [role=tab]');
+  for (const tab of [tools, skills]) {
+    const panel = document.getElementById(tab.getAttribute('aria-controls')!)!;
+    expect(panel.getAttribute('role')).toBe('tabpanel'); expect(panel.getAttribute('aria-labelledby')).toBe(tab.id);
+  }
+  f.section('File tools').querySelector('summary')!.click();
+  f.search('kb_get');
+  tools.focus();
+  tools.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true }));
+  expect(document.activeElement).toBe(skills); expect(skills.tabIndex).toBe(0); expect(tools.tabIndex).toBe(-1);
+  expect(skills.getAttribute('aria-selected')).toBe('true'); expect(f.root.hidden).toBe(true);
+  skills.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true }));
+  expect(document.activeElement).toBe(tools); expect(f.root.hidden).toBe(false);
+  expect(f.root.querySelector<HTMLInputElement>('[type=search]')?.value).toBe('kb_get');
+  expect(f.section('Knowledge').open).toBe(true); expect(f.section('File tools').hidden).toBe(true);
+  tools.dispatchEvent(new KeyboardEvent('keydown', { key: 'End', bubbles: true }));
+  expect(document.activeElement).toBe(skills);
+  skills.dispatchEvent(new KeyboardEvent('keydown', { key: 'Home', bubbles: true }));
+  expect(document.activeElement).toBe(tools);
+  tools.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowLeft', bubbles: true }));
+  expect(document.activeElement).toBe(skills);
+  tools.click(); f.search('');
+  expect(f.section('File tools').open).toBe(true); expect(f.section('Knowledge').open).toBe(false);
+  expect(f.changed).not.toHaveBeenCalled();
+});
+
+it('opens skill-only projects on Skills and keeps an undeclared skill tab empty', () => {
+  const f = fixture([{ name: 'skill' }]);
+  expect(document.querySelector('[data-tab=skills]')?.getAttribute('aria-selected')).toBe('true');
+  expect(f.root.hidden).toBe(true); expect(document.querySelector<HTMLElement>('.skill-guides')?.hidden).toBe(false);
+  f.dialogs.close(); f.dialogs.permissions({ fields: [], tools: [{ name: 'read' }] }, {}, f.changed);
+  document.querySelector<HTMLButtonElement>('[data-tab=skills]')!.click();
+  expect(document.querySelector('.skill-guides')?.textContent).toContain('No skills declared by this project');
+  expect(document.querySelector('.skill-guide')).toBeNull();
+  expect(f.changed).not.toHaveBeenCalled();
+});
+
+it('localizes skill tabs and renders skill labels and descriptions as inert text', () => {
+  initI18n({ preference: 'zh-CN' });
+  const description = '读取 <script>alert(1)</script> 和 SKILL.md。';
+  fixture([{ name: 'skill', label: '<img src=x onerror=alert(1)>', description }]);
+  expect(document.querySelector('.conversation-dialog h2')?.textContent).toBe('工具与技能');
+  expect(Array.from(document.querySelectorAll('.tools-and-skills-tabs button'), tab => tab.textContent)).toEqual(['工具', '技能']);
+  const skills = document.querySelector('.skill-guides')!;
+  expect(skills.querySelector('h3')?.textContent).toBe('<img src=x onerror=alert(1)>');
+  expect(skills.querySelector('.skill-guide-description')?.textContent).toBe(description);
+  expect(skills.querySelector('.skill-guide-badge')?.textContent).toBe('只读');
+  expect(skills.querySelector('img, script')).toBeNull(); expect(skills.textContent).not.toContain('自动批准');
 });

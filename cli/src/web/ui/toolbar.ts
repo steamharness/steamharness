@@ -17,7 +17,7 @@ export function projectInfoButton(): string {
 
 /** Hidden until the page reports its tools. The workflow page shows it unconditionally. */
 export function toolPermissionsButton(): string {
-  return `<button id="tools" class="icon-button" title="${t("Tool permissions")}" aria-label="${t("Tool permissions")}" hidden>${iconHtml('wrench')}</button>`;
+  return `<button id="tools" class="icon-button" title="${t("Tools and skills")}" aria-label="${t("Tools and skills")}" aria-haspopup="dialog" hidden>${iconHtml('wrench')}</button>`;
 }
 
 /**
