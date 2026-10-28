@@ -1,0 +1,40 @@
+diff --git a/src/vs/workbench/browser/parts/editor/studioStart.ts b/src/vs/workbench/browser/parts/editor/studioStart.ts
+index 20efc73706df76f6b69e3bc33344d2b3cf32cdf0..d482f9761c0ac693b5cf977b043f152afe993044 100644
+--- a/src/vs/workbench/browser/parts/editor/studioStart.ts
++++ b/src/vs/workbench/browser/parts/editor/studioStart.ts
+@@ -21,7 +21,7 @@ export interface StudioStartState {
+ 	labels: Record<string, string>;
+ 	badge?: string;
+ 	templates: { id: string; projectType: string; kind: string; name: string; description: string }[];
+-	projects: { uri: string; name: string; version?: string; projectType: string; folderPath: string; avatarUrl?: string; update?: { status: string; serverVersion?: string; canDownload: boolean; busy?: boolean } }[];
++	projects: { uri: string; entryId: string; name: string; version?: string; projectType: string; folderPath: string; avatarUrl?: string; update?: { status: string; serverVersion?: string; canDownload: boolean; busy?: boolean } }[];
+ 	recent: { uri: string; label: string; kind: string; lastOpened: number; projectType?: string; version?: string; avatarUrl?: string }[];
+ 	pending: { id: string; name: string; directory: string; status: string; stage?: string; error?: string }[];
+ 	environment: { studio: string; vscode: string; node?: string; harness?: string; cli?: string; account: string; server: string; error?: string };
+@@ -228,11 +228,12 @@ export class StudioStartView extends Disposable {
+ 		this.list('current', { projects: state.projects, pending: state.pending, installing: state.installing, ...listKey }, (root, store) => {
+ 			if (!state.projects.length && !state.pending.length) { append(root, $('p.studio-start-muted', undefined, text('noCurrent'))); }
+ 			for (const project of state.projects) {
++				const target = { uri: project.uri, entryId: project.entryId };
+ 				const card = append(root, $('article.studio-start-project-card'));
+ 				const updateAvailable = project.update?.status === 'upgrade';
+ 				card.classList.toggle('studio-start-project-update', updateAvailable);
+ 				const heading = append(card, $('.studio-start-project-heading'));
+-				const avatar = this.button(heading, `${text('run')} \u00b7 ${project.name}`, studioProjectIcon(project.projectType) ?? 'folder', 'studio.openProject', { uri: project.uri }, false, true, store);
++				const avatar = this.button(heading, `${text('run')} \u00b7 ${project.name}`, studioProjectIcon(project.projectType) ?? 'folder', 'studio.openProject', target, false, true, store);
+ 				avatar.classList.add('studio-start-project-avatar-button');
+ 				if (project.avatarUrl?.startsWith('data:image/svg+xml,')) {
+ 					avatar.firstElementChild?.replaceWith($('img.studio-start-project-avatar', { src: project.avatarUrl, alt: '' }));
+@@ -259,10 +260,10 @@ export class StudioStartView extends Disposable {
+ 					upgrade.disabled = !project.update?.canDownload || !!project.update?.busy;
+ 					if (!project.update?.canDownload) { upgrade.title = text('downloadUnavailable'); }
+ 				}
+-				const run = this.button(actions, text('run'), 'play', 'studio.openProject', { uri: project.uri }, false, updateAvailable, store);
++				const run = this.button(actions, text('run'), 'play', 'studio.openProject', target, false, updateAvailable, store);
+ 				if (!updateAvailable) { run.classList.add('studio-start-primary'); }
+ 				this.button(actions, text('upload'), 'cloud-upload', 'studio.uploadProject', { uri: project.uri }, false, true, store);
+-				this.button(actions, text('source'), 'code', 'studio.openProjectSource', { uri: project.uri }, false, true, store);
++				this.button(actions, text('source'), 'code', 'studio.openProjectSource', target, false, true, store);
+ 			}
+ 			for (const project of state.pending) {
+ 				const row = append(root, $('.studio-start-pending'));

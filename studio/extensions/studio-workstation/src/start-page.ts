@@ -18,7 +18,7 @@ export function startPageLabels(): Record<string, string> {
     importLink: t('Import from Link'), shareUrl: t('Project Share Link'), confirmImport: t('Import'), requiredShareUrl: t('Enter a project share link.'),
     system: t('System Status'), quick: t('Quick Access'), refresh: t('Refresh Status'), analysis: t('Open Studio Analysis'),
     openFolder: t('Open Folder'), openWorkspace: t('Open Workspace'), assistant: t('Open Project Assistant'), account: t('SteamHarness Account'), settings: t('Settings'),
-    source: t('Open Project Source'), noCurrent: t('No Workflow projects in this workspace.'), noRecent: t('No recent projects.'),
+    source: t('Open Project Source'), noCurrent: t('No SteamHarness projects in this workspace.'), noRecent: t('No recent projects.'),
     localVersion: t('Local Version'), serverVersion: t('Server Version'), upgrade: t('Upgrade...'), updateAvailable: t('Update Available'),
     upToDate: t('Up to Date'), localNewer: t('Local Version Is Newer'), downloadUnavailable: t('Source download is unavailable.'),
     removeRecent: t('Remove from Recent Projects'), unavailable: t('Unavailable'), retry: t('Retry Project Setup'), openSource: t('Open Project Folder'),
@@ -185,7 +185,7 @@ export class StudioStartController implements vscode.Disposable {
   private publish(): void {
     if (this.disposed) { return; }
     this.state.projects = this.projects.getProjects().filter(project => !project.assistant && !project.builtin)
-      .map(project => ({ uri: project.uri, name: project.name, projectType: project.projectType, folderPath: project.folderPath,
+      .map(project => ({ uri: project.uri, entryId: project.entryId, name: `${project.aggregateName} / ${project.name}`, projectType: project.projectType, folderPath: project.folderPath,
         avatarUrl: projectAvatarDataUrl(project.projectCard, project.projectType),
         update: this.projects.getVersionStatus(project),
         ...(projectVersion(project) ? { version: projectVersion(project) } : {}) }));

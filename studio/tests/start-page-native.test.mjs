@@ -20,7 +20,7 @@ const javascript = ts.transpileModule(`class StartView { ${methods.map(node => n
   compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.CommonJS },
 }).outputText;
 
-for (const language of ['en', 'zh-cn']) test(`native Start distinguishes installation, validation and registration failures in ${language}`, async t => {
+for (const language of ['en', 'zh-cn']) test(`native Start preserves entry targets and distinguishes project setup failures in ${language}`, async t => {
   const bundle = JSON.parse(await readFile(path.join(ROOT, `extensions/studio-workstation/l10n/bundle.l10n${language === 'en' ? '' : '.zh-cn'}.json`), 'utf8'));
   const dom = new JSDOM('<main></main>'); t.after(() => dom.window.close());
   const { document } = dom.window;
@@ -32,13 +32,19 @@ for (const language of ['en', 'zh-cn']) test(`native Start distinguishes install
     return element;
   };
   const module = { exports: {} };
-  runInNewContext(`${javascript}\nmodule.exports = StartView;`, { module, $, append: (parent, child) => parent.appendChild(child), clearNode: node => node.replaceChildren() });
+  runInNewContext(`${javascript}\nmodule.exports = StartView;`, { module, $, studioProjectIcon: type => type,
+    append: (parent, child) => parent.appendChild(child), clearNode: node => node.replaceChildren() });
   const instance = new module.exports();
   instance.element = document.querySelector('main'); instance.badge = document.createElement('span');
   instance.labels = new Map(); instance.actions = []; instance.error = document.createElement('div');
   instance.stats = new Map([['harness', document.createElement('span')]]);
   instance.lists = new Map(['current', 'recent'].map(key => [key, { element: document.createElement('div'), key: '', disposables: { clear() {} } }]));
-  instance.button = (parent, label) => parent.appendChild($('button', undefined, label));
+  const calls = [];
+  instance.button = (parent, label, _icon, command, target) => {
+    const button = parent.appendChild($('button', undefined, label));
+    button.addEventListener('click', () => calls.push([command, target]));
+    return button;
+  };
   const labels = Object.fromEntries(Object.entries({ installFailed: 'Dependency installation failed', validationFailed: 'Project validation failed',
     registrationFailed: 'Server registration needs attention', cancelled: 'Project setup cancelled', registering: 'Registering Project', details: 'Details' })
     .map(([key, message]) => [key, bundle[message]]));
@@ -54,25 +60,39 @@ for (const language of ['en', 'zh-cn']) test(`native Start distinguishes install
   instance.service.state.installing = 'registration'; instance.render();
   assert.equal([...current.querySelectorAll('small')].at(-1).textContent, labels.registering);
   assert.equal(current.querySelectorAll('details').length, 2);
+  const entries = [['agent', 'conversation'], ['database', 'workflow'], ['map-2d', 'kanban'], ['minimax', 'workflow'], ['tikhub', 'workflow']];
+  instance.service.state.projects = entries.map(([entryId, projectType]) => ({ uri: 'file:///aggregate', entryId,
+    name: `Aggregate / ${entryId}`, projectType, folderPath: '/aggregate' }));
+  instance.service.state.pending = []; instance.render();
+  const cards = [...current.querySelectorAll('.studio-start-project-card')];
+  assert.deepEqual(cards.map(card => card.querySelector('h3').textContent), entries.map(([entryId]) => `Aggregate / ${entryId}`));
+  for (const card of cards) { for (const button of card.querySelectorAll('button')) { button.click(); } }
+  assert.deepEqual(calls.filter(([command]) => ['studio.openProject', 'studio.openProjectSource'].includes(command))
+    .map(([command, target]) => [command, { ...target }]), entries.flatMap(([entryId]) =>
+      ['studio.openProject', 'studio.openProject', 'studio.openProjectSource'].map(command => [command, { uri: 'file:///aggregate', entryId }])));
 });
 
-test('the setup patch replays twice and preserves the index', async t => {
+for (const [patchNames, files] of [
+  [['0061-studio-project-setup-stages.patch', '0065-studio-start-entry-targets.patch'], [file, css]],
+  [['0065-studio-start-entry-targets.patch'], [file]],
+]) test(`${patchNames.join(' + ')} replays twice and preserves the index`, async t => {
   const directory = await mkdtemp(path.join(tmpdir(), 'studio-setup-patch-')); t.after(() => rm(directory, { recursive: true, force: true }));
   const kernel = path.join(directory, 'vscode');
-  for (const name of [file, css]) {
+  for (const name of files) {
     await mkdir(path.dirname(path.join(kernel, name)), { recursive: true });
     await copyFile(path.join(ROOT, 'upstream/vscode', name), path.join(kernel, name));
   }
   await mkdir(path.join(directory, 'patches'));
-  const patch = path.join(directory, 'patches/0061-studio-project-setup-stages.patch');
-  await copyFile(path.join(ROOT, 'patches/0061-studio-project-setup-stages.patch'), patch);
+  for (const patchName of patchNames) { await copyFile(path.join(ROOT, 'patches', patchName), path.join(directory, 'patches', patchName)); }
   const git = args => execFileSync('git', args, { cwd: kernel, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
-  git(['init', '-q']); git(['apply', '--reverse', patch]); git(['add', '.']);
+  git(['init', '-q']);
+  for (const patchName of [...patchNames].reverse()) { git(['apply', '--reverse', path.join(directory, 'patches', patchName)]); }
+  git(['add', '.']);
   git(['-c', 'user.name=Studio Test', '-c', 'user.email=studio@example.invalid', '-c', 'commit.gpgsign=false', '-c', 'core.hooksPath=/dev/null', 'commit', '-qm', 'fixture']);
   const index = git(['write-tree']);
   for (let attempt = 0; attempt < 2; attempt++) {
     await applyPatches(directory, kernel);
-    for (const name of [file, css]) { assert.equal(await readFile(path.join(kernel, name), 'utf8'), await readFile(path.join(ROOT, 'upstream/vscode', name), 'utf8')); }
+    for (const name of files) { assert.equal(await readFile(path.join(kernel, name), 'utf8'), await readFile(path.join(ROOT, 'upstream/vscode', name), 'utf8')); }
     assert.equal(git(['write-tree']), index);
   }
 });

@@ -41,7 +41,7 @@ export interface StudioStartState {
   /** Present only in the internal launcher; the public Studio leaves it empty. */
   badge?: string;
   templates: StartTemplate[];
-  projects: Array<{ uri: string; name: string; version?: string; projectType: string; folderPath: string; avatarUrl?: string; update?: ProjectVersionStatus }>;
+  projects: Array<{ uri: string; entryId: string; name: string; version?: string; projectType: string; folderPath: string; avatarUrl?: string; update?: ProjectVersionStatus }>;
   recent: RecentProject[];
   pending: PendingProjectSetup[];
   environment: StartEnvironment & { studio: string; vscode: string; account: string; server: string };

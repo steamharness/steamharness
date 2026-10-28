@@ -120,7 +120,7 @@
   "Open Studio Analysis": "打开 Studio Analysis",
   "Open Project Assistant": "打开项目小助手",
   "Open Project Source": "打开项目源码",
-  "No Workflow projects in this workspace.": "当前工作区没有 Workflow 项目。",
+  "No SteamHarness projects in this workspace.": "当前工作区没有 SteamHarness 项目。",
   "No recent projects.": "暂无最近项目。",
   "Unavailable": "不可用",
   "Retry Installation": "重试安装",

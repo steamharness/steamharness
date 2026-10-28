@@ -7,7 +7,7 @@ import ts from 'typescript';
 const source = ts.createSourceFile('workflow.ts', await readFile(new URL('../extensions/studio-workstation/src/workflow.ts', import.meta.url), 'utf8'), ts.ScriptTarget.Latest, true);
 const initializers = new Map();
 function visit(node) {
-  if (ts.isVariableDeclaration(node) && ['revealProject', 'createWorkspace', 'openProject'].includes(node.name.getText(source))) {
+  if (ts.isVariableDeclaration(node) && ['findProject', 'revealProject', 'createWorkspace', 'openProject'].includes(node.name.getText(source))) {
     initializers.set(node.name.getText(source), node.initializer.getText(source));
   }
   ts.forEachChild(node, visit);
@@ -100,4 +100,25 @@ test('an immediate Steam retry waits for canceled startup cleanup and then opens
   });
   await openProject(project, 1, new AbortController().signal);
   assert.deepEqual({ starts, pending: opening.size, reveals: panel.reveals }, { starts: 1, pending: 0, reveals: [] });
+});
+
+test('Start targets open distinct aggregate entries and reuse only the matching entry panel', async () => {
+  const uri = 'file:///aggregate', entries = ['agent', 'database', 'minimax'];
+  const projects = entries.map(entryId => ({ uri, entryId, folderPath: '/aggregate', defaultEntry: 'agent',
+    projectType: entryId === 'agent' ? 'conversation' : 'workflow' }));
+  const provider = { projects }, workspaces = new Map(), opening = new Map(), starts = [];
+  const findProject = load('findProject', { provider, externalProjects: new Map() });
+  const openProject = load('openProject', {
+    provider, findProject, workspaces, opening, settling: new Map(), assertNotUpgrading() {}, revealProject,
+    createWorkspace: async project => {
+      starts.push(project.entryId);
+      const { panel } = panelFixture(); panel.active = true; panel.viewColumn = 1;
+      workspaces.set(`${project.uri}#entry=${project.entryId}`, { panel, running: true });
+    },
+  });
+  await openProject({ uri, entryId: 'minimax' });
+  await openProject({ uri, entryId: 'database' });
+  await openProject({ uri });
+  await openProject({ uri, entryId: 'minimax' });
+  assert.deepEqual({ starts, panels: workspaces.size, pending: opening.size }, { starts: ['minimax', 'database', 'agent'], panels: 3, pending: 0 });
 });
