@@ -25,6 +25,8 @@ Arguments after `--` pass unchanged to the Workflow. `--locale zh-CN|en` selects
 
 ## CLI Web
 
+Exporting a conversation, message or workflow record in Studio opens the native save dialog. After you confirm a location and the file is written successfully, a notification in the lower-right corner shows the saved path. Cancellation shows no success notification; save failures show an error. Standalone CLI Web uses browser downloads.
+
 One root directory starts one aggregate host and initially displays only `defaultEntry`. Click the **Project windows** icon in the top toolbar to see compact entry cards with names, types, default/current markers and runtime states. Use the open icon on the right to open a new browser page in standalone CLI Web or a new native Studio tab. Every click creates another tab, including for the current entry. Tabs retain independent page state and drafts on the shared aggregate host. Closing one tab leaves the others open; closing the last Studio tab releases the host.
 
 Each entry has an `/entries/<entryId>/` URL and independent controller. Its optional `projectCard` configures `icon`, `iconColor` and `iconBackgroundColor`, with `#RRGGBB` colors. Omitted properties use defaults for that entry type. The root `steamharness.json.projectCard` identifies the aggregate card; entry icons are independent. Declare the sole version in root `steamharness.json.version`; entries do not accept their own version.

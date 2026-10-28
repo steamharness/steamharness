@@ -1,5 +1,7 @@
 # Unreleased
 
+- Improvement: Conversation, message and workflow exports in Studio use the native save dialog and show the saved path in a notification after writing succeeds. Cancellation stays quiet and write failures show an error.
+
 - Fix: Studio local analysis ignores stale imports whose standalone manifests were removed or converted to aggregate child entries. Local history uses project declarations without deployment database configuration; actual read failures remain unavailable.
 
 - Improvement: CLI Web separates tools and skills into tabs. Tools retain permission controls; skills appear as read-only guide cards without Enable or Auto-approve switches, shared by Conversation and Workflow.

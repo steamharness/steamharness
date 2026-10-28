@@ -1,5 +1,7 @@
 # Unreleased
 
+- Improved CLI Web exports: conversations, messages and workflow records use the native save dialog, with a notification showing the saved path after writing succeeds. Cancellation stays quiet and save failures show an error notification.
+
 - Improved Start: recent projects show a Current Project badge for folders and workspaces open in this window. Removing a recent entry now requires confirmation and explains that project files and the current workspace are preserved.
 
 - Added **Open Project Window** below Explorer's file tree. It lists only the current project and its entries; each click on an entry or its open icon creates and activates a separate native tab. Focusing tools or the Assistant preserves the current project's list.

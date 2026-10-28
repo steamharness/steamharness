@@ -90,6 +90,8 @@ Checks statically validate registered entries. Missing database bindings affect 
 
 ## Uploads, downloads, and versions
 
+Exporting a conversation, message or workflow record opens Studio's native save dialog. After confirmation, a notification in the lower-right corner shows the saved path only once the file is written successfully. Cancellation shows no success notification, and write failures show an error notification.
+
 One aggregate has one version, upload archive and installation directory. The version panel displays the root version and all entries. Build Kanban and validate locally before uploading; Server does not install dependencies or execute code.
 
 Downloads preserve every entry path and database alias-to-ID references while excluding host credentials. References do not grant access; the host still validates the project and entry grant after installation. Source access still checks membership. Transfers require the Node extension host; install dependencies with the project package manager.

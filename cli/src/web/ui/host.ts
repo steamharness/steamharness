@@ -40,7 +40,7 @@ export function acquireProjectHost(options: { live?: boolean; connectionBanner?:
   const emit = (message: Message) => window.dispatchEvent(new MessageEvent('message', { data: message }));
   const trace = new TraceBridge(message => { if (window.parent !== window) { window.parent.postMessage(message, '*'); } });
   let projectSetupHost = false, userSettingsHost = false;
-  let resourceHost = false, databaseHost = false, editHost = false, nativePasteHost = false, pathPickerHost = false, pathOpenHost = false, fileIconsHost = false;
+  let resourceHost = false, databaseHost = false, editHost = false, nativePasteHost = false, pathPickerHost = false, pathOpenHost = false, fileIconsHost = false, downloadHost = false;
   let dropTarget: string | undefined;
   const pathPickers = new Map<string, Message>();
   const pathOpens = new Map<string, Message>();
@@ -176,6 +176,7 @@ export function acquireProjectHost(options: { live?: boolean; connectionBanner?:
     if (event.data.dropVersion === 1) advertiseDropTarget();
     if (event.data.pathPickerVersion !== undefined) pathPickerHost = event.data.pathPickerVersion === 1;
     if (event.data.pathOpenVersion !== undefined) pathOpenHost = event.data.pathOpenVersion === 1;
+    if (event.data.downloadVersion !== undefined) downloadHost = event.data.downloadVersion === 1;
     if (event.data.fileIconsVersion !== undefined || event.data.fileIconsChanged?.version === 1) {
       if (event.data.fileIconsVersion !== undefined) fileIconsHost = event.data.fileIconsVersion === 1;
       fileIconRequests.clear(); emit({ type: 'file-icons-changed', enabled: fileIconsHost });
@@ -255,6 +256,10 @@ export function acquireProjectHost(options: { live?: boolean; connectionBanner?:
       if (reply.action === 'inline') { emit(reply); }
       else { window.open(reply.url, '_blank', 'noopener'); }
     } else if (reply.type === 'download') {
+      if (downloadHost) {
+        window.parent.postMessage({ type: 'workflow-download', version: 1, requestId: crypto.randomUUID(), name: reply.name, content: reply.content }, '*');
+        return;
+      }
       const url = URL.createObjectURL(new Blob([reply.content], { type: reply.mimeType ?? 'application/json' }));
       const link = document.createElement('a'); link.href = url; link.download = reply.name; link.click(); setTimeout(() => URL.revokeObjectURL(url), 1_000);
     } else if (reply.type === 'preview') {

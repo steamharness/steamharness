@@ -18,6 +18,7 @@ import { assistantWorkspaceAvailable } from './assistant-workspace';
 import { bindProjectClipboard } from './workflow-clipboard';
 import { bindProjectPathPicker } from './workflow-path-picker';
 import { bindProjectPathOpen } from './workflow-path-open';
+import { bindProjectDownload } from './workflow-download';
 import { openProjectUserSettings } from './workflow-user-settings';
 import { ProjectFileIcons } from './workflow-file-icons';
 import { bindProjectResourceCards, type ResourceCardResult } from './workflow-resource-cards';
@@ -229,6 +230,7 @@ export async function activateProject(context: vscode.ExtensionContext, launcher
       const clipboardBinding = bindProjectClipboard(panel.webview);
       const pickerBinding = bindProjectPathPicker(panel.webview, vscode.Uri.file(project.folderPath));
       const pathOpenBinding = bindProjectPathOpen(panel.webview);
+      const downloadBinding = bindProjectDownload(vscode.Uri.file(project.folderPath));
       const fileIconsBinding = fileIcons.bind(panel.webview);
       const resourceBinding = bindProjectResourceCards(panel.webview, () => session.ready.url, async result => {
         if (closed) { throw new Error(t('Unable to open the resource.')); }
@@ -263,7 +265,7 @@ export async function activateProject(context: vscode.ExtensionContext, launcher
         });
         return true;
       };
-      listeners.push({ dispose: () => traceBinding.dispose() }, clipboardBinding, pickerBinding, pathOpenBinding, fileIconsBinding, resourceBinding, panel.webview.onDidReceiveMessage(message => {
+      listeners.push({ dispose: () => traceBinding.dispose() }, clipboardBinding, pickerBinding, pathOpenBinding, downloadBinding, fileIconsBinding, resourceBinding, panel.webview.onDidReceiveMessage(message => {
         if (reconnect(message ?? {}, panel.webview)) return;
         if (message?.type === 'workflow-database' && message.version === 1 && message.projectUri === project.uri && typeof message.alias === 'string' && typeof message.requestId === 'string' && message.requestId.length <= 128) {
           void databases.openProjectDatabase(project, message.alias).then(() => {
@@ -297,7 +299,7 @@ export async function activateProject(context: vscode.ExtensionContext, launcher
           return;
         }
         if (message?.type === 'workflow-account' && message.version === 1) { account.open(); }
-        else if (!clipboardBinding.receive(message) && !resourceBinding.receive(message) && !pickerBinding.receive(message) && !pathOpenBinding.receive(message) && !fileIconsBinding.receive(message)) { traceBinding.receive(message); }
+        else if (!clipboardBinding.receive(message) && !resourceBinding.receive(message) && !pickerBinding.receive(message) && !pathOpenBinding.receive(message) && !downloadBinding.receive(message) && !fileIconsBinding.receive(message)) { traceBinding.receive(message); }
       }));
       panel.webview.html = projectFrameHtml(address.href, projectDisplayName(project), project.uri, theme(), globalThis.crypto.randomUUID().replace(/-/g, ''), vscode.env.language, chromeFor(project.uri, 'viewType' in panel && panel.viewType === 'studio.project'), conversationView, !project.assistant && !!launcher.uploadProject);
       if ('reveal' in panel) {
