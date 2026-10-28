@@ -32,7 +32,8 @@ test('Server spaces require approval and preserve shared data, indexes, attachme
       return {authorization,store};
     }}}).get('data');
     const x=open(a,approved.databaseId!,owner),y=open(b,shared.databaseId!,other);
-    assert.equal((await repository.page(owner,{section:'spaces',page:1,pageSize:20,projectId:a.projectId})).total,1);
+    assert.equal((await repository.page(owner,{section:'spaces',page:1,pageSize:20,projectId:a.projectId,databaseIds:[spaceId]})).total,1);
+    assert.equal((await repository.page(owner,{section:'spaces',page:1,pageSize:20,projectId:a.projectId,databaseIds:[]})).total,0);
     await assert.rejects(repository.authorization(spaceId,{...a,entryId:'foreign'}),/unavailable/);
     await x.kv.setValue('shared',1);assert.equal(await y.kv.getValue('shared'),1);
     await x.kv.conversation.setValue('private',true);assert.equal(await y.kv.conversation.getValue('private'),undefined);

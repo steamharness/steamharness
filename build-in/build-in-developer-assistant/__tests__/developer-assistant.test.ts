@@ -138,7 +138,7 @@ describe("developer assistant workflow", () => {
     expect(source).not.toContain("desktop-control-mcp");
     expect(source).not.toContain("connectMcpServer");
     expect(source).toContain("context.toolPermissions?.getTool(tool.name)?.enabled !== false");
-    expect(source).toContain('steamharness.createAgentProjectParamResolver({ modelSource: "user-settings" })');
+    expect(source).not.toContain("createAgentProjectParamResolver");
     expect(source).not.toContain("openCodeDependency");
     expect(source).not.toContain("STEAMHARNESS_BUILTIN_OPENCODE_ENTRY");
   });

@@ -147,8 +147,8 @@ describe("workflow-generator contract", () => {
 
     expect(structure.diagnostics.violations).toEqual([]);
     expect(structure.projectType).toBe("conversation");
-    expect(structure.params?.map((param) => param.name)).toEqual(["workdir", "provider", "model", "plan"]);
-    expect(structure.paramLayout?.actions.map((action) => action.kind)).toEqual(["auxiliary", "quick", "slash"]);
+    expect(structure.params?.map((param) => param.name)).toEqual(["provider", "model", "effort", "plan", "permissionPolicy"]);
+    expect(structure.paramLayout?.actions.map((action) => action.kind)).toEqual(["quick", "quick", "slash", "quick"]);
     expect(structure.params?.find(param => param.name === "plan")).toMatchObject({ panel: "slash", type: "boolean", defaultValue: "false" });
     expect(structure.conversation?.footer).toEqual([{ text: "Plan mode", localizedText: { "zh-CN": "Plan 模式" },
       when: { param: "plan", value: "true" } }]);

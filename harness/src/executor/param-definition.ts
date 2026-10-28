@@ -24,6 +24,13 @@ export function readProjectParamDefinitionError(
   param: ParamDefinition,
   declaredProperties?: { options?: boolean },
 ): string | undefined {
+  if (param.visible !== undefined && typeof param.visible !== "boolean") return `Parameter "${param.name}" visible must be boolean.`;
+  if (param.fixedValue !== undefined && (typeof param.fixedValue !== "string" || param.userSetting !== undefined || param.defaultValue !== undefined)) {
+    return `Parameter "${param.name}" fixedValue must be a string without defaultValue or userSetting.`;
+  }
+  if (param.fixedValue !== undefined && param.type === "boolean" && !["true", "false"].includes(param.fixedValue)) {
+    return `Boolean parameter "${param.name}" fixedValue must be true or false.`;
+  }
   if (param.userSetting !== undefined) {
     const binding = param.userSetting;
     if (!binding || typeof binding !== "object" || !["agent.permissionPolicy", "agent.model"].includes(binding.key) ||
@@ -169,7 +176,7 @@ export function normalizeProjectParamDeclarations(
         throw paramError(`Slash parameter "${declaration.name}" must be a single string selector or boolean with a flag.`);
       }
       const { kind: _kind, ...field } = declaration;
-      let defaultValue = declaration.defaultValue;
+      let defaultValue = declaration.fixedValue ?? declaration.defaultValue;
       if (declaration.type === "boolean") {
         if (declaration.options !== undefined || defaultValue !== undefined && !["true", "false"].includes(defaultValue)) {
           throw paramError(`Boolean Slash parameter "${declaration.name}" cannot declare options and must default to true or false.`);
@@ -193,7 +200,7 @@ export function normalizeProjectParamDeclarations(
           throw paramError(`Slash parameter "${declaration.name}" defaultValue must name an option.`);
         }
       }
-      addField({ ...field, defaultValue, panel: "slash", ...(declaration.type === "string" ? { control: "select" } : {}) });
+      addField({ ...field, ...(field.fixedValue === undefined ? { defaultValue } : {}), panel: "slash", ...(declaration.type === "string" ? { control: "select" } : {}) });
       layout.actions.push({ kind: "slash", name: declaration.name });
     } else if ("kind" in declaration && declaration.kind === "mode") {
       if (!Array.isArray(declaration.options) || declaration.options.length < 2) {
@@ -206,12 +213,12 @@ export function normalizeProjectParamDeclarations(
         }
         optionValues.add(option.value);
       }
-      const defaultValue = declaration.defaultValue ?? declaration.options[0]!.value;
+      const defaultValue = declaration.fixedValue ?? declaration.defaultValue ?? declaration.options[0]!.value;
       if (!optionValues.has(defaultValue)) {
         throw paramError(`Mode parameter "${declaration.name}" defaultValue must name an option.`);
       }
       const { kind: _kind, ...field } = declaration;
-      addField({ ...field, defaultValue, type: "string", control: "select", panel: "mode" });
+      addField({ ...field, ...(field.fixedValue === undefined ? { defaultValue } : {}), type: "string", control: "select", panel: "mode" });
       layout.actions.push({ kind: "mode", name: declaration.name });
     } else {
       if (declaration.panel !== undefined) {
@@ -220,6 +227,15 @@ export function normalizeProjectParamDeclarations(
       addField(declaration);
     }
   }
+  const hidden = new Set(params.filter(p => p.visible === false).map(p => p.name));
+  layout.actions = layout.actions.flatMap((action): typeof layout.actions => {
+    if (action.kind === "quick" || action.kind === "auxiliary") {
+      const visible = action.params.filter(name => !hidden.has(name));
+      if (!visible.length) return [];
+      return [{ ...action, params: visible, ...(action.kind === "quick" ? { summary: action.summary.filter(name => !hidden.has(name)) } : {}) }];
+    }
+    return hidden.has(action.name) ? [] : [action];
+  });
   return { params, layout: layout.actions.length > 0 ? layout : undefined };
 }
 

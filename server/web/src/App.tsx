@@ -44,8 +44,9 @@ type PendingKnowledgeNavigation = {
 };
 
 function leavesKnowledgeWorkspace(current: AppRoute, next: AppRoute): boolean {
-  return current.page === "databases" &&
-    (next.page !== "databases" || next.id !== current.id);
+  if (current.page === "databases") return next.page !== "databases" || next.id !== current.id;
+  return current.page === "detail" && current.tab === "databases" &&
+    (next.page !== "detail" || next.id !== current.id || next.tab !== "databases");
 }
 
 function pushToast(tone: "success" | "error", message: string) {
@@ -1032,7 +1033,7 @@ function AppContent() {
         onBrandClick={() => navigateTo({ page: "projects" })}
         onLogout={logout}
       >
-        {page==="databases" ? <DatabaseSpacesPage key={route.page==="databases"?route.id:"spaces"} spaceId={route.page==="databases"?route.id:undefined} onOpenSpace={id=>navigateTo({page:"databases",id})} onBack={()=>navigateTo({page:"databases"})} onDirtyChange={value=>{knowledgeDraftDirtyRef.current=value;}} /> : page==="groups" ? <GroupsPage key={route.page==="groups"?route.id??"root":"root"} id={route.page==="groups"?route.id:undefined} onOpenGroup={id=>navigateTo({page:"groups",id})} onOpenProject={id=>navigateTo({page:"detail",id,tab:"project"})}/> : <ProjectListPage
+        {page==="databases" ? <DatabaseSpacesPage key="database-workspace" spaceId={route.page==="databases"?route.id:undefined} onOpenSpace={id=>navigateTo({page:"databases",id})} onBack={()=>navigateTo({page:"databases"})} onDirtyChange={value=>{knowledgeDraftDirtyRef.current=value;}} /> : page==="groups" ? <GroupsPage key={route.page==="groups"?route.id??"root":"root"} id={route.page==="groups"?route.id:undefined} onOpenGroup={id=>navigateTo({page:"groups",id})} onOpenProject={id=>navigateTo({page:"detail",id,tab:"project"})}/> : <ProjectListPage
           total={projectTotal} serverPage={projectPage} onServerPageChange={setProjectPage}
           onServerSearch={(q,status)=>{setProjectQuery(q);setProjectStatus(status);setProjectPage(1);}}
           projects={projects}
@@ -1164,6 +1165,7 @@ function AppContent() {
           onRevokeProjectInvitation={(invitationId) => void revokeProjectInvitation(invitationId)}
           refreshToken={detailRefreshToken}
           onContentBusyChange={setDetailContentBusy}
+          onDirtyChange={value => { knowledgeDraftDirtyRef.current = value; }}
           onNavigateTab={navigateDetail}
           onNavigateProjectTab={(projectId, tab) => navigateTo({ page: "detail", id: projectId, tab })}
           sidebarCollapsed={false}
@@ -1173,8 +1175,8 @@ function AppContent() {
       </AppLayout>
       <ConfirmActionDialog
         action={pendingKnowledgeNavigation ? {
-          title: t("appKnowledgeGuardTitle"),
-          description: t("appKnowledgeGuardDescription"),
+          title: t("databaseDiscardDraft"),
+          description: t("databaseDiscardDescription"),
           confirmLabel: t("appKnowledgeGuardConfirm"),
           cancelLabel: t("appKnowledgeGuardCancel"),
           tone: "warning",

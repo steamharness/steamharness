@@ -771,11 +771,11 @@
   "idle": "空闲",
   "starting": "启动中",
   "Database binding requires attention": "请处理数据库绑定",
-  "Open database management": "打开数据库管理",
+  "View linked databases": "查看关联数据库",
   "Passed": "已通过",
   "Action required": "需要处理",
   "Waiting": "等待中",
-  "Open Databases to request, approve or restore access.": "打开数据库管理以申请、审批或恢复访问。",
+  "Check database links in Project information. Manage requests and permissions in Studio or Server Web.": "请在项目信息中检查数据库关联，申请与授权请在 Studio 或 Server Web 中处理。",
   "Please sign in to the project Server.": "请登录项目 Server。",
   "Register this aggregate project on the selected Server.": "请在所选 Server 注册此聚合项目。",
   "This entry could not start. Fix its declaration or dependencies, then try again.": "此入口无法启动。修复声明或依赖后重试。",
@@ -900,5 +900,12 @@
   "Selected prefixes": "指定前缀",
   "Overview": "概览",
   "Entry: {0}": "入口：{0}",
-  "Database information could not be loaded. Choose Refresh to retry.": "数据库信息加载失败，请点击“刷新”重试。"
+  "Database information could not be loaded. Choose Refresh to retry.": "数据库信息加载失败，请点击“刷新”重试。",
+  "Browse data in host": "在宿主中浏览数据",
+  "Choose Refresh to retry.": "请点击刷新重试。",
+  "Copy database ID": "复制数据库 ID",
+  "No databases are linked to this entry.": "当前入口未关联数据库。",
+  "Request and approve database access in Studio or Server Web. CLI approval commands are also available.": "数据库申请与审批请前往 Studio 或 Server Web，也可使用 CLI 审批命令。",
+  "This database reference is set by the environment.": "此数据库引用由环境变量设置。",
+  "Data preview is not available in this Web session. Open the database in Studio or Server Web.": "当前 Web 运行方式暂不支持数据预览，请在 Studio 或 Server Web 中打开数据库。"
 }

@@ -122,7 +122,7 @@ async function load(reset = false): Promise<void> {
     sourceSelect.innerHTML = page.sources.map(value => `<option value="${value}">${value === 'local' ? t("Local") : t("Server")}</option>`).join('');
     sourceSelect.value = source; sourceSelect.disabled = page.sources.length === 1;
     login.hidden = source !== 'server' || authenticated;
-    newButton.disabled = !source || source === 'server' && (!knowledge || !authenticated);
+    newButton.disabled = readOnly || !source || source === 'server' && !authenticated;
     rows = page.items; renderRows();
     count.textContent = `${page.total} ${page.search ? t("matches") : knowledge ? t("documents") : t("items")} \u00b7 ${pageIndex + 1}`;
     previous.disabled = pageIndex === 0; next.disabled = !page.hasMore;
@@ -141,7 +141,7 @@ async function load(reset = false): Promise<void> {
       sourceSelect.value = source ?? ''; sourceSelect.disabled = storage.sources.length === 1;
     }
     error(storage.message); login.hidden = source !== 'server' || authenticated;
-    newButton.disabled = !source || source === 'server' && (!knowledge || !authenticated);
+    newButton.disabled = readOnly || !source || source === 'server' && !authenticated;
     if (!rows.length) { list.innerHTML = `<div class="resource-empty">${t("Unable to load data")}</div>`; }
   } finally { if (epoch === listEpoch) { app.dataset.loading = 'false'; list.setAttribute('aria-busy', 'false'); } }
 }
@@ -180,7 +180,7 @@ function renderDetail(edit: boolean, create = false): void {
   const title = knowledge ? value.title ?? '' : value.key ?? '';
   const body = knowledge ? value.markdown ?? '' : JSON.stringify(value.value, null, 2) ?? '';
   const writable = !readOnly && (source === 'local' || source === 'server' && authenticated);
-  const editable = writable && (knowledge || source === 'local');
+  const editable = writable;
   detail.innerHTML = `<header class="detail-toolbar">${button('detail-back', 'arrow-left', t("Back to list"))}<span class="detail-title" title="${escapeHtml(title)}">${escapeHtml(create ? knowledge ? t("New document") : t("New key") : title)}</span><span id="detail-dirty" hidden>${t("Unsaved")}</span><span class="toolbar-spacer"></span>
     ${edit ? button('detail-save', 'save', t("Save")) + button('detail-cancel', 'close', t("Cancel editing")) : editable ? button('detail-edit', 'edit', t("Edit")) : ''}
     ${!edit ? button('detail-copy', 'copy', t("Copy")) + (writable ? button('detail-delete', 'trash', t("Delete")) : '') : ''}</header>

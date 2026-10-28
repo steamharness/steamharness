@@ -1,11 +1,13 @@
 import { spawn } from 'node:child_process';
 import type { Project } from './workflow-types';
 import type { ResourceRequest } from './workflow-resources-types';
+import type { HostDatabaseRequest } from './workflow-databases-types';
 import { sanitizeProjectEnvironment, AuthError, type Connection } from './workflow-auth-client';
 import { sanitizeConnectionForSurface } from './workflow-cli-process';
+import { t } from './localization';
 
 export function requestProjectResource(options: {
-  project: Project; input: ResourceRequest; worker: string; storageDir: string;
+  project: Project; input: ResourceRequest | HostDatabaseRequest; worker: string; storageDir: string;
   nodePath: string; connection?: Connection; signal: AbortSignal;
 }): Promise<unknown> {
   return new Promise((resolve, reject) => {
@@ -26,7 +28,7 @@ export function requestProjectResource(options: {
       clearTimeout(timeout);
       try {
         const result = JSON.parse(stdout) as { value?: unknown; error?: string; status?: number; source?: string; sources?: string[] };
-        if (result.error || code !== 0) { throw Object.assign(new AuthError(clean(result.error || stderr || 'Resource worker stopped.'), result.status), { source: result.source, sources: result.sources }); }
+        if (result.error || code !== 0) { throw Object.assign(new AuthError(t(clean(result.error || stderr || 'Resource worker stopped.')), result.status), { source: result.source, sources: result.sources }); }
         resolve(result.value);
       } catch (error) { reject(error instanceof SyntaxError ? new Error(clean(stderr || 'Invalid resource worker response.')) : error); }
     });

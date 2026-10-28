@@ -36,7 +36,7 @@ it('confirms discarding a draft before choosing a different key or leaving the s
  fireEvent.click(screen.getByRole('button',{name:'two'}));
  expect(await screen.findByRole('alertdialog')).toHaveTextContent('Discard unsaved changes?');
  fireEvent.click(screen.getByRole('button',{name:'Cancel'}));expect(screen.getByLabelText('Key')).toHaveValue('one');
- fireEvent.click(screen.getByRole('button',{name:'Back to spaces'}));
+ fireEvent.mouseDown(screen.getByRole('tab',{name:'Database spaces'}),{button:0,ctrlKey:false});
  expect(onBack).not.toHaveBeenCalled();fireEvent.click(screen.getByRole('button',{name:'Confirm'}));
  await waitFor(()=>expect(onBack).toHaveBeenCalledOnce());
 });
@@ -64,4 +64,73 @@ it('routes knowledge operations through the shared space identity and preserves 
  const repository=createServerKnowledgeRepository(apiClient,spaceId),signal=new AbortController().signal;
  await repository.getDocument('guide',{signal});expect(call).toHaveBeenCalledWith(spaceId,'knowledge.getDocument',{documentId:'guide'},signal);
  await repository.updateDocument('guide',{title:'Changed',markdown:'Shared'});expect(call).toHaveBeenLastCalledWith(spaceId,'knowledge.editDocument',{documentId:'guide',title:'Changed',markdown:'Shared'},undefined);
+});
+
+it('defaults to project databases, requests filtered pages, and keeps independent data tabs',async()=>{
+ const other='52c24be2-6bbf-462f-862c-b4ea76cf3c0b';
+ const list=vi.mocked(apiClient.databasePage).mockResolvedValue(ok({items:[{spaceId,name:'Memory',canManage:true},{spaceId:other,name:'Archive',canManage:true}],total:2,pageSize:20}));
+ render(<DatabaseSpacesPage project={{id:'project',name:'Project',defaultEntry:'agent',entries:[]} as any}/>);
+ expect(screen.getByRole('combobox',{name:'Database filter'})).toHaveTextContent('Used by this project');
+ await waitFor(()=>expect(list).toHaveBeenCalledWith('spaces',1,'','project'));
+ fireEvent.click(await screen.findByRole('button',{name:/Memory/}));
+ fireEvent.click(screen.getByRole('button',{name:/Archive/}));
+ expect(screen.getByRole('tab',{name:'Memory'})).toBeTruthy();expect(screen.getByRole('tab',{name:'Archive'})).toHaveAttribute('aria-selected','true');
+ fireEvent.click(screen.getByRole('button',{name:'Close Archive'}));
+ expect(screen.getByRole('tab',{name:'Memory'})).toHaveAttribute('aria-selected','true');expect(screen.queryByRole('tab',{name:'Archive'})).toBeNull();
+ const directory=screen.getByRole('navigation',{name:'Database directory'}).parentElement!;
+ fireEvent.change(directory.querySelector('input')!,{target:{value:'memory'}});
+ await waitFor(()=>expect(list).toHaveBeenCalledWith('spaces',1,'memory','project'));
+});
+it('recovers a failed directory request without discarding opened data tabs',async()=>{
+ const list=vi.mocked(apiClient.databasePage).mockRejectedValueOnce(new Error('Host offline')).mockResolvedValue(ok({items:[],total:0,pageSize:20}));
+ render(<DatabaseSpacesPage spaceId={spaceId}/>);expect(await screen.findByText('Host offline')).toBeTruthy();
+ fireEvent.click(screen.getAllByRole('button',{name:'Refresh'})[0]);await waitFor(()=>expect(list).toHaveBeenCalledTimes(2));
+ await waitFor(()=>expect(screen.queryByText('Host offline')).toBeNull());expect(screen.getByRole('tab',{name:spaceId})).toHaveAttribute('aria-selected','true');
+});
+it('returns to the directory when the database ID is removed from the route', async () => {
+ const view = render(<DatabaseSpacesPage spaceId={spaceId}/>);
+ await screen.findByRole('button', {name:'one'});
+ view.rerender(<DatabaseSpacesPage/>);
+ expect(screen.getByRole('tab', {name:'Database spaces'})).toHaveAttribute('aria-selected','true');
+ expect(screen.queryByLabelText('JSON value')).toBeNull();
+});
+it('clears a discarded KV draft before returning from another data type', async () => {
+ render(<DatabaseSpacesPage spaceId={spaceId}/>);
+ fireEvent.click(await screen.findByRole('button', {name:'one'}));
+ fireEvent.change(screen.getByLabelText('JSON value'), {target:{value:'42'}});
+ fireEvent.mouseDown(screen.getByRole('tab', {name:'Attachments'}), {button:0,ctrlKey:false});
+ fireEvent.click(await screen.findByRole('button', {name:'Confirm'}));
+ fireEvent.mouseDown(screen.getByRole('tab', {name:'KV'}), {button:0,ctrlKey:false});
+ expect(screen.queryByLabelText('JSON value')).toBeNull();
+ fireEvent.click(await screen.findByRole('button', {name:'one'}));
+ expect(screen.getByLabelText('JSON value')).toHaveValue(JSON.stringify({count:1}, null, 2));
+});
+it('locks attachment preparation and cancels upload if its data tab closes before the file is read', async () => {
+ let finish!:(bytes:ArrayBuffer)=>void;
+ const operation = vi.spyOn(apiClient, 'databaseOperation').mockResolvedValue(ok({id:fileId}));
+ const file = new File(['attachment'], 'notes.txt', {type:'text/plain'});
+ Object.defineProperty(file, 'arrayBuffer', {value: () => new Promise<ArrayBuffer>(resolve => {finish=resolve;})});
+ const view = render(<DatabaseSpacesPage spaceId={spaceId}/>);
+ fireEvent.mouseDown(screen.getByRole('tab', {name:'Attachments'}), {button:0,ctrlKey:false});
+ const upload = screen.getByLabelText('Upload attachment');
+ fireEvent.change(upload, {target:{files:[file]}});
+ expect(upload).toBeDisabled(); expect(screen.getByLabelText('Attachment ID')).toBeDisabled();
+ expect(operation).not.toHaveBeenCalled();
+ view.rerender(<DatabaseSpacesPage spaceId={fileId}/>);
+ await act(async () => finish(new ArrayBuffer(1)));
+ expect(operation).not.toHaveBeenCalled();
+});
+it('reports attachment read errors and allows selecting the same file again', async () => {
+ const operation = vi.spyOn(apiClient, 'databaseOperation').mockResolvedValue(ok({id:fileId}));
+ const file = new File(['attachment'], 'notes.txt', {type:'text/plain'});
+ const read = vi.fn().mockRejectedValueOnce(new Error('File unavailable')).mockResolvedValue(new ArrayBuffer(1));
+ Object.defineProperty(file, 'arrayBuffer', {value:read});
+ render(<DatabaseSpacesPage spaceId={spaceId}/>);
+ fireEvent.mouseDown(screen.getByRole('tab', {name:'Attachments'}), {button:0,ctrlKey:false});
+ const upload = screen.getByLabelText('Upload attachment');
+ fireEvent.change(upload, {target:{files:[file]}});
+ expect(await screen.findByText('File unavailable')).toBeTruthy(); expect(upload).toBeEnabled();
+ fireEvent.change(upload, {target:{files:[file]}});
+ await waitFor(() => expect(operation).toHaveBeenCalledWith(spaceId, 'files.createFile', {name:'notes.txt', mimeType:'text/plain', base64:'AA=='}));
+ expect(await screen.findByDisplayValue(fileId)).toBeTruthy();
 });

@@ -52,3 +52,12 @@ Conversation 的 `commands` 是 `conversation.commands` 中的静态执行命令
 本地宿主读取 `paramLayout` 展示入口；终端 CLI 与本地定时任务只读取 flag 和参数值，不展示分组。Server Web 不展示执行参数表单。等待输入节点的 `params` 是独立的暂停表单，继续使用自身的字段契约，不写 executor 的组声明。
 
 用户要求“收进高级选项”时创建 Auxiliary 并把相关字段放入同一个 `fields`；要求多个收缩面板时创建多个 Auxiliary。要求“模型和 Effort 在一个入口，权限另一个入口”时创建两个 Quick，各自设置 `summary`。要求“点一下切换模式”时创建 Mode，不靠把参数命名为 `agent` 来触发。完成后检查 `steamharness structure` 的 `params` 和 `paramLayout.actions`，再检查 `createInput({ paramValues })` 是否按同一字段名读取。
+
+
+## Core Agent 内置参数
+
+`createAgentConversationProject` 直接作为 `defineExecutor.workflow` 时，省略 `params` 与标准 `resolveParams`。业务包装 workflow 使用 `coreAgent` 指向所选 Core 项目；多个 Agent 的契约互相隔离。默认是 Model / Effort / Permission 三个 Quick 和 boolean `/plan`；effort 为 high，Plan 关闭，模型与权限绑定当前用户设置。
+
+通过 `paramOptions.fields` 定制字段的默认值、`visible`、`fixedValue` 和 `userSetting`；false 禁用字段，`userSetting: null` 移除用户设置继承。`paramOptions.groups` 用字段名重排，未分配字段保留原组。隐藏字段仍参与解析，固定值不能被用户设置、命令行、传入 paramValues 或直接 AgentInput 覆盖。完整替换使用显式 `executor.params`，定制动态选项使用 `resolveParams`。静态报告读取同一份规范化契约，不执行项目代码。
+
+自定义 createInput 调用 `createAgentProjectInput(context, options)`，消费宿主统一解析的参数后继续追加业务提示词、宿主输入或业务模式快照。

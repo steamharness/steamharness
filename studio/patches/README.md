@@ -88,4 +88,6 @@
 
 `0064-studio-windows-background-updater-paths.patch` 统一安装目标与后台更新辅助程序的扩展长度路径转换，避免传统目录替换在较深依赖路径上重试失败。
 
+`0066-studio-database-workspace.patch` 将数据库目录加入 Steam 工具，并把独立数据标签归入数据库工具分类，保留原生标签操作。
+
 新内核修改应通过 `git diff` 导出统一格式补丁，并排除脚本生成的 `product.json` 及 Studio 扩展链接。品牌配置由 `config/product.json` 维护。

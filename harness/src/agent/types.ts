@@ -2,11 +2,12 @@ import type { AgentMessage, AgentTool } from "@earendil-works/pi-agent-core";
 export type { AgentTool } from "@earendil-works/pi-agent-core";
 import type { Api, Model, MutableModels } from "@earendil-works/pi-ai";
 import type { NodeContext } from "../types/context";
+import type { Definition } from "../types/node";
 import type { FileReference } from "../files/index";
 import type { AgentApiKind } from "./pi";
 import type { OutputItem } from "../node/output/index";
 import type { RunPayload } from "../types/payload";
-import type { ConversationParamDeclaration } from "../executor/types";
+import type { ConversationParamDeclaration, ParamOption, UserSettingParamBinding } from "../executor/types";
 import type { ToolPermissionDefinition } from "../tool-permissions/index";
 import type { AgentSessionCommand, AgentSessionOptions, AgentSessionReceipt, AgentSessionSnapshot } from "./session-types";
 
@@ -493,6 +494,27 @@ export interface AgentNodeOptions extends AgentRuntimeOptions {
   historyLimit?: number;
 }
 
+export type AgentProjectParamName = "provider" | "model" | "effort" | "plan" | "permissionPolicy";
+export interface AgentProjectParamOverride {
+  defaultValue?: string;
+  userSetting?: UserSettingParamBinding | null;
+  visible?: boolean;
+  fixedValue?: string;
+  label?: string;
+  description?: string;
+  options?: ParamOption[];
+}
+export interface AgentProjectParamOptions {
+  fields?: Partial<Record<AgentProjectParamName, AgentProjectParamOverride | false>>;
+  groups?: ({ kind: "quick"; id: string; label: string; icon?: string; summary: AgentProjectParamName[]; fields: AgentProjectParamName[] }
+    | { kind: "auxiliary"; id: string; label: string; fields: AgentProjectParamName[] })[];
+}
+declare const agentConversationProjectBrand: unique symbol;
+/** A Core conversation project carrying an isolated, non-serialized parameter contract. */
+export interface AgentConversationProject extends Definition<AgentInput, AgentOutputPayload> {
+  readonly [agentConversationProjectBrand]: true;
+}
+
 export interface AgentProjectOptions extends AgentNodeOptions {
   /** Default presentation of completed turns. Defaults to true; does not change stored output. */
   collapseIntermediate?: boolean;
@@ -503,6 +525,8 @@ export interface AgentProjectOptions extends AgentNodeOptions {
   /** Assistant output item id; must match `conversation.openai.outputItemId`. */
   outputItemId?: string;
   params?: ConversationParamDeclaration[];
+  /** Customize the built-in assistant parameters without repeating their declarations. */
+  paramOptions?: AgentProjectParamOptions;
 }
 
 export interface AgentRuntime {

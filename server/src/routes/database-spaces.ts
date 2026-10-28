@@ -15,7 +15,21 @@ export function createDatabaseSpaceRouter(storage: Storage): Router {
     if (!entry) throw new HttpError(404,404,'The consumer entry is not registered.');
     return entry;
   };
-  router.get('/database-spaces',run(req=>req.query.section?storage.databases.page(actor(req),{section:String(req.query.section),page:Number(req.query.page),pageSize:Number(req.query.pageSize),search:String(req.query.search??''),projectId:typeof req.query.projectId==='string'?req.query.projectId:undefined,entryId:typeof req.query.entryId==='string'?req.query.entryId:undefined}):storage.databases.read(actor(req))));
+  router.get('/database-spaces',run(async req => {
+    if (!req.query.section) return storage.databases.read(actor(req));
+    const section = String(req.query.section), projectId = typeof req.query.projectId === 'string' ? req.query.projectId : undefined;
+    const entryId = typeof req.query.entryId === 'string' ? req.query.entryId : undefined;
+    let databaseIds: string[] | undefined;
+    if (section === 'spaces' && (projectId || entryId)) {
+      if (!projectId) throw new HttpError(400, 400, 'The consumer entry is not registered.');
+      await storage.requireProjectCapability(projectId, requestActor(req), 'read');
+      const project = await storage.getProjectSummary(projectId);
+      const entries = entryId ? project.entries.filter(entry => entry.entryId === entryId) : project.entries;
+      if (!entries.length && entryId) throw new HttpError(404, 404, 'The consumer entry is not registered.');
+      databaseIds = [...new Set(entries.flatMap(entry => entry.databases.map(database => database.databaseId)))];
+    }
+    return storage.databases.page(actor(req), { section, page: Number(req.query.page), pageSize: Number(req.query.pageSize), search: String(req.query.search ?? ''), projectId, entryId, databaseIds });
+  }));
   router.post('/database-spaces/requests', run(async req => { await consumer(req,req.body.projectId,req.body.entryId,true); return storage.databases.request(req.body,actor(req)); }));
   router.post('/database-spaces/requests/:requestId/review', run(req => {
     if (typeof req.body.approve !== 'boolean') throw new HttpError(400, 400, 'Explicit approval or rejection is required.');

@@ -146,9 +146,9 @@ describe("VS Code assistant host", () => {
       STEAMHARNESS_DEVELOPER_ASSISTANT_WORKSPACE_MANIFEST: manifestPath,
     });
     const executor = host.module.executor as unknown as { createInput(context: ExecutorContext): Promise<AgentInput> };
-    const input = await executor.createInput({ args: ["--message", "Read my project"],
+    const input = await withUserSettings({ agent: { permissionPolicy: "workspace" } }, () => executor.createInput({ args: ["--message", "Read my project"],
       paramValues: { provider: "system", model: "model", plan: "true", permissionPolicy: "workspace" },
-    } as unknown as ExecutorContext);
+    } as unknown as ExecutorContext));
     expect(input).toMatchObject({ errCode: 0, errMessage: "", prompt: "Read my project", workdir: root,
       allowedDirectories: [root, path.join(root, "linked")], agent: "plan", permissionPolicy: "workspace" });
     expect(input.systemPrompt).toContain("Studio VS Code");
@@ -165,7 +165,7 @@ describe("VS Code assistant host", () => {
       .toContain("Studio VS Code");
   });
 
-  it.each(["conversation", "openai"])("defaults %s input to Auto approve and preserves explicit policies", async kind => {
+  it.each(["conversation", "openai"])("inherits the user policy for %s input and rejects per-turn permission overrides", async kind => {
     const root = await mkdtemp(path.join(tmpdir(), "assistant-permission-"));
     temporary.push(root);
     const target = { kind: "folder", folderId: "primary" };
@@ -184,19 +184,21 @@ describe("VS Code assistant host", () => {
       messages: [{ type: "message", role: "user", content: [{ type: "input_text", text: "Read my project" }] }],
       settings: {},
     } : undefined;
-    for (const permissionPolicy of [undefined, "inherit", "read-only", "workspace", "auto"]) {
+    for (const userPolicy of ["read-only", "workspace", "auto"] as const) for (const permissionPolicy of [undefined, "inherit", "read-only", "workspace", "auto"]) {
       const context = { args: ["--message", "Read my project"],
         paramValues: permissionPolicy === undefined ? {} : { permissionPolicy }, hostInput,
       } as unknown as ExecutorContext;
-      const expected = permissionPolicy === undefined || permissionPolicy === "inherit" ? "read-only" : permissionPolicy;
-      const input = await withUserSettings({ agent: { permissionPolicy: "read-only" } }, () => executor.createInput(context));
-      expect(input.permissionPolicy).toBe(expected);
-      expect(withUserSettings({ agent: { permissionPolicy: "read-only" } }, () => executor.createContext(context)).metadata?.studioControlPermissionPolicy).toBe(expected);
+      const input = await withUserSettings({ agent: { permissionPolicy: userPolicy } }, () => executor.createInput(context));
+      expect(input.permissionPolicy).toBe(userPolicy);
+      expect(withUserSettings({ agent: { permissionPolicy: userPolicy } }, () => executor.createContext(context)).metadata?.studioControlPermissionPolicy).toBe(userPolicy);
       if (input.permissionPolicy === "auto") {
         expect(input.systemPrompt).toContain("including absolute paths outside the workspace");
         expect(input.systemPrompt).not.toContain("Never access files outside those roots");
       } else expect(input.systemPrompt).toContain("Never access files outside those roots");
     }
+    const context = { args: ["--message", "Read my project"], paramValues: {}, hostInput } as unknown as ExecutorContext;
+    expect((await executor.createInput(context)).permissionPolicy).toBe("auto");
+    expect(executor.createContext(context).metadata?.studioControlPermissionPolicy).toBe("auto");
   });
 
   it.each(["read-only", "workspace", "auto"])("passes the run's %s policy to MCP without accepting a configured override", async permissionPolicy => {
@@ -211,7 +213,7 @@ describe("VS Code assistant host", () => {
     await tools.close!();
   });
 
-  it.each(["auto", "workspace"])("enforces %s file access through Core coding tools for the assistant's actual input", async permissionPolicy => {
+  it.each(["auto", "workspace"] as const)("enforces %s file access through Core coding tools for the assistant's actual input", async permissionPolicy => {
     const base = await mkdtemp(path.join(tmpdir(), "assistant-files-")); temporary.push(base);
     const root = path.join(base, "primary"), outside = path.join(base, "outside");
     await mkdir(root); await mkdir(outside);
@@ -223,9 +225,9 @@ describe("VS Code assistant host", () => {
     }));
     const host = await loadHost({ STEAMHARNESS_DEVELOPER_ASSISTANT_WORKDIR: root, STEAMHARNESS_DEVELOPER_ASSISTANT_WORKSPACE_MANIFEST: manifestPath });
     const executor = host.module.executor as unknown as { createInput(context: ExecutorContext): Promise<AgentInput> };
-    const input = await executor.createInput({ args: ["--message", "Use the external fixture files"],
-      paramValues: permissionPolicy === "auto" ? {} : { permissionPolicy },
-    } as unknown as ExecutorContext);
+    const input = await withUserSettings({ agent: { permissionPolicy } }, () => executor.createInput({ args: ["--message", "Use the external fixture files"],
+      paramValues: { permissionPolicy: permissionPolicy === "auto" ? "workspace" : "auto" },
+    } as unknown as ExecutorContext));
     const ai = await import("@earendil-works/pi-ai");
     const faux = ai.fauxProvider({ models: [{ id: "fixture", name: "Fixture", reasoning: false, contextWindow: 32_000, maxTokens: 1_000 }] });
     const models = ai.createModels(); models.setProvider(faux.provider);

@@ -152,14 +152,14 @@ test('KV and Knowledge actions follow data source, authentication, readonly prev
   assert.deepEqual(actions(), ['open', 'edit', 'copyKey', 'copyContent', 'delete']);
   assert.deepEqual(actions({ kind: 'knowledge' }), ['open', 'edit', 'copyId', 'copyContent', 'delete']);
   assert.deepEqual(actions({ source: 'server' }), ['open', 'copyKey', 'copyContent']);
-  assert.deepEqual(actions({ source: 'server', authenticated: true }), ['open', 'copyKey', 'copyContent', 'delete']);
+  assert.deepEqual(actions({ source: 'server', authenticated: true }), ['open', 'edit', 'copyKey', 'copyContent', 'delete']);
   assert.deepEqual(actions({ source: 'server', authenticated: true, kind: 'knowledge' }), ['open', 'edit', 'copyId', 'copyContent', 'delete']);
   assert.deepEqual(actions({ readOnly: true }), ['open', 'copyKey', 'copyContent']);
   assert.deepEqual(actions({ saving: true }), ['copyKey', 'copyContent']);
   assert.deepEqual(actions({ target: 'detail', editing: true }), []);
   assert.deepEqual(actions({ target: 'list' }), ['newKey', 'refresh']);
   assert.deepEqual(actions({ target: 'list', kind: 'knowledge' }), ['newDocument', 'refresh']);
-  assert.deepEqual(actions({ target: 'list', source: 'server', authenticated: true }), ['refresh']);
+  assert.deepEqual(actions({ target: 'list', source: 'server', authenticated: true }), ['newKey', 'refresh']);
   assert.deepEqual(actions({ target: 'list', readOnly: true }), ['refresh']);
   assert.deepEqual(actions({ target: 'list', saving: true }), []);
   assert.deepEqual(actions({ hasProject: false }), []);

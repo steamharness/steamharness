@@ -1,0 +1,37 @@
+@import './scrollbars.css';
+* { box-sizing: border-box; }
+html, body { height: 100%; margin: 0; overflow: hidden; }
+body { color: var(--vscode-foreground); background: var(--vscode-sideBar-background); font: var(--vscode-font-size, 13px) var(--vscode-font-family, sans-serif); }
+[hidden] { display: none !important; }
+button, input, select { font: inherit; color: inherit; }
+button { cursor: pointer; }
+button:disabled { opacity: .5; cursor: default; }
+button:focus-visible, select:focus-visible, input:focus-visible, summary:focus-visible { outline: 1px solid var(--vscode-focusBorder); outline-offset: -1px; }
+#databases-app { height: 100%; display: flex; flex-direction: column; min-width: 0; }
+header { display: flex; align-items: center; gap: 8px; padding: 8px 12px; }
+header strong { font-size: 12px; font-weight: 600; }
+.database-actions { display: flex; gap: 2px; margin-left: auto; }
+.icon-button { display: inline-flex; align-items: center; justify-content: center; width: 26px; height: 26px; padding: 0; border: 0; border-radius: 4px; background: transparent; }
+.icon-button:hover:not(:disabled), .database-title:hover:not(:disabled), .database-child:hover:not(:disabled) { background: var(--vscode-toolbar-hoverBackground); }
+.database-filters { display: flex; flex-direction: column; gap: 8px; padding: 0 12px 8px; }
+.select-control, .database-search { display: flex; align-items: center; min-width: 0; position: relative; }
+select, input { width: 100%; min-width: 0; height: 28px; border: 1px solid var(--vscode-input-border, transparent); border-radius: 3px; background: var(--vscode-input-background); color: var(--vscode-input-foreground); padding: 4px 8px; }
+select { appearance: none; padding-right: 24px; }
+.select-control > .codicon { position: absolute; right: 7px; pointer-events: none; }
+.database-search > .codicon { position: absolute; left: 7px; color: var(--vscode-descriptionForeground); }
+.database-search input { padding-left: 28px; }
+.database-context, #database-status { font-size: 11px; color: var(--vscode-descriptionForeground); padding: 2px 12px; overflow-wrap: anywhere; }
+#database-error { padding: 8px 12px; color: var(--vscode-errorForeground); overflow-wrap: anywhere; }
+#database-login { margin: 8px 12px; background: var(--vscode-button-background); color: var(--vscode-button-foreground); border: 0; padding: 6px; }
+#database-list { flex: 1; overflow: auto; min-height: 0; padding: 6px 0; }
+.database-tree summary { display: flex; align-items: center; gap: 4px; padding: 2px 10px; list-style: none; cursor: pointer; }
+.database-tree summary::-webkit-details-marker { display: none; }
+.database-tree[open] summary > .codicon { transform: rotate(90deg); }
+.database-title { display: flex; align-items: center; gap: 7px; flex: 1; min-width: 0; height: 28px; padding: 0; border: 0; border-radius: 3px; background: transparent; text-align: left; }
+.database-title > span:not(.codicon) { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.database-host { font-size: 10px; color: var(--vscode-descriptionForeground); }
+.database-id, .database-usage { margin: 4px 14px 8px 36px; color: var(--vscode-descriptionForeground); font-size: 11px; overflow-wrap: anywhere; user-select: text; }
+.database-id { font-family: var(--vscode-editor-font-family, monospace); }
+.database-child { display: flex; align-items: center; gap: 8px; width: 100%; padding: 6px 20px 6px 36px; background: transparent; border: 0; text-align: left; }
+.database-child > .codicon:last-child { margin-left: auto; color: var(--vscode-descriptionForeground); }
+.database-empty { padding: 24px 12px; color: var(--vscode-descriptionForeground); line-height: 1.6; }

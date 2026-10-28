@@ -285,6 +285,15 @@ export function createProjectRuntime(context: vscode.ExtensionContext, account: 
       } catch (error) { await bridge?.close(); throw error; }
     }, signal),
     cliEntry: async folder => { assertAvailable(); return (await resolveProjectCli(folder)).entry; },
+    database: async (input, signal) => {
+      assertAvailable();
+      const folderPath = await assistantDirectory();
+      signal.throwIfAborted();
+      return requestProjectResource({ project: { id: DEVELOPER_ASSISTANT_PROJECT_ID, entryId: 'main', folderPath } as Project, input,
+        worker: vscode.Uri.joinPath(context.extensionUri, 'dist', 'resources-worker.mjs').fsPath,
+        storageDir: path.join(context.globalStorageUri.fsPath, 'workflow', 'web'), nodePath: executable(), connection: account.getConnection(),
+        signal: AbortSignal.any([signal, controller.signal]) });
+    },
     resource: (project, input, signal) => {
       assertAvailable();
       return requestProjectResource({ project, input, worker: vscode.Uri.joinPath(context.extensionUri, 'dist', 'resources-worker.mjs').fsPath,

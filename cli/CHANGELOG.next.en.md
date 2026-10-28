@@ -4,9 +4,13 @@
 
 - Breaking: project identity, name, version and declarations now use independent `steamharness.json` files. Removed reads and writes of `package.json.id` and `steamHarness`. Aggregates explicitly register child entries whose configuration defines icons, declarations, database aliases and schedules. Unregistered configurations stay inactive, and transfers preserve the parent and child structure.
 
+- Improvement: CLI Web databases show references and icon actions with host navigation; requests, reviews and grants live in Studio, Server Web or CLI commands. Standalone Web sessions explain the preview limitation.
+
+- Local Conversations consume inherited Core Agent parameters consistently across structure reports, dynamic model options and execution input, including hidden and fixed fields.
+
 - Improvement: Web run failures summarize upstream HTML error pages with an HTTP status and actionable guidance. Original diagnostics are collapsed under Technical details in Conversation and Workflow.
 
-- Improvement: Moved database management into Project information and removed its toolbar button. Database cards show shared entries and connection status; requests and host grants have a separate view with readable permission controls. Key-value and knowledge data use searchable, paginated lists and detail editors.
+- Improvement: Moved database management into Project information and removed its toolbar button. Database cards show shared entries and connection status; reference settings stay in Project information, while host interfaces maintain requests and permissions.
 
 - Improvement: Use a clear plus icon for the New conversation toolbar button to make the create action easier to recognize.
 
@@ -14,7 +18,7 @@
 
 - Changed: database management saves aliases and approved database IDs, while hosts manage requests and permissions. Entries support multiple references, approved requests display IDs, and archives preserve references.
 
-- Fixed database binding guidance to open database management directly for requests, approval and recovery. The assistant and Conversation share the management interface, and startup checks use readable status labels. Review IDs no longer overwrite response IDs and leave management requests waiting indefinitely.
+- Fixed database binding guidance to open the linked databases in Project information. Requests and permissions are managed by the host; the assistant and Conversation share the linking interface, and startup checks use readable status labels. Review IDs no longer overwrite response IDs and leave management requests waiting indefinitely.
 
 - User model menus group built-in and custom models with direct choices and an Add model action at the bottom of standalone model controls. Model and effort can be selected independently while preserving custom project grouping, reset and source restrictions.
 

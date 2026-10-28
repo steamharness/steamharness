@@ -2,6 +2,10 @@
 
 - Breaking: project identity, name, version and declarations now use independent `steamharness.json` files. Removed reads and writes of `package.json.id` and `steamHarness`. Aggregates explicitly register child entries whose configuration defines icons, declarations, database aliases and schedules. Unregistered configurations stay inactive, and transfers preserve the parent and child structure.
 
+- Fixed database requests and reviews continuing across account changes, and catalog refreshes releasing active operation locks. Changes to `config.json` refresh project references. Project data tabs validate the alias ID and host so old drafts cannot write into a replacement database after migration.
+
+- Added: Database sidebar defaults to project usage with local, server, all and search filters. Independent data tabs reuse KV and knowledge panels; host requests, reviews and grants are also available through Steam database tools.
+
 - Fixed opening project entries from the Assistant sidebar by preserving their assistant startup configuration. New tabs activate automatically and the current entry can still open repeatedly. Open failures now show an error notification as well as a log entry.
 
 - Fixed Assistant extension and standalone runtime bundles omitting `config.json`, configuration definitions or the registered Studio Control entry, which could prevent startup after an upgrade.

@@ -78,6 +78,37 @@ test('database HTTP authorization authorizes database IDs independently of manif
     const binding = await send('owner', `/database-spaces/${approved.databaseId}/authorization?projectId=${a}&entryId=database`);
     assert.equal(binding.space.ownerId, users.owner);
     const spaceId = binding.space.spaceId;
+    const directory = (projectId = a, entryId?: string) => `/database-spaces?section=spaces&projectId=${projectId}${entryId ? `&entryId=${entryId}` : ''}`;
+    // Approval history does not mean the current project references this space.
+    assert.equal((await send('owner', directory())).total, 0);
+    const entries = [entry('database'), entry('limited')].map(item => ({ ...item, databases: [{ alias: 'data', databaseId: spaceId }] }));
+    await pool.query('update projects set entries=$1::jsonb where id=$2', [JSON.stringify(entries), a]);
+    assert.deepEqual((await send('owner', directory())).items.map((item: any) => item.spaceId), [spaceId]);
+    assert.equal((await send('owner', directory(a, 'limited'))).total, 1);
+    const guestPage = await send('guest', directory());
+    assert.equal(guestPage.items[0].spaceId, spaceId); assert.equal(guestPage.items[0].canManage, false);
+    assert.equal((await request('guest', `/database-spaces/${spaceId}/values`)).status, 403);
+    await send('consumer', directory(), undefined, 403);
+    await send('owner', directory(a, 'missing'), undefined, 404);
+    await send('owner', '/database-spaces?section=spaces&entryId=database', undefined, 400);
+    const nextRequest = await send('owner', '/database-spaces/requests', { projectId: a, entryId: 'database', alias: 'data', permissions, target: {kind:'create',name:'Replacement'} });
+    const next = await send('admin', `/database-spaces/requests/${nextRequest.requestId}/review`, {approve:true});
+    assert.equal((await send('owner', directory())).total, 1);
+    entries[0]!.databases[0]!.databaseId = next.databaseId;
+    await pool.query('update projects set entries=$1::jsonb where id=$2', [JSON.stringify(entries), a]);
+    assert.equal((await send('owner', directory())).total, 2);
+    assert.deepEqual((await send('owner', directory(a, 'database'))).items.map((item: any) => item.spaceId), [next.databaseId]);
+    await pool.query('update projects set entries=$1::jsonb where id=$2', [JSON.stringify(entries.map(item => ({...item,databases:[]}))), a]);
+    assert.equal((await send('owner', directory())).total, 0);
+    assert.equal((await send('owner', '/database-spaces?section=spaces')).total, 2);
+    const foreignRequest = await send('consumer', '/database-spaces/requests', {projectId:b,entryId:'agent',alias:'data',permissions,target:{kind:'create',name:'Private foreign space'}});
+    const foreign = await send('admin', `/database-spaces/requests/${foreignRequest.requestId}/review`, {approve:true});
+    await pool.query('update projects set entries=$1::jsonb where id=$2', [JSON.stringify(entries.map(item => ({...item,databases:[{alias:'data',databaseId:foreign.databaseId}]}))), a]);
+    // A guessed ID in project metadata must not disclose an unrelated private space.
+    assert.equal((await send('guest', directory())).total, 0);
+    assert.equal((await send('owner', directory())).total, 0);
+    assert.equal((await send('admin', directory())).total, 1);
+    await pool.query('update projects set entries=$1::jsonb where id=$2', [JSON.stringify(entries), a]);
     const open = (user: string, projectId: string, entryId: string, databaseId: string) => createDatabasesContext({ projectId, entryId, conversationId: 'thread', requirements: [{ alias: 'data', databaseId }], resolver: createRemoteDatabaseResolver({ serverUrl: base, token: tokens[user]! }) }).get('data');
     const x = open('owner', a, 'database', spaceId);
     await x.kv.setValue('shared', 1);

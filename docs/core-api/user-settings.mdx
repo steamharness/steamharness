@@ -86,7 +86,7 @@ createInput({ paramValues }) {
 }
 ```
 
-将示例改为 `mode: "default"` 即可允许项目单独覆盖。`createAgentProjectParams({ permissionPolicy: "inherit" })` 自动生成该可覆盖绑定。独立 CLI 可以解析宿主注入值，打开用户设置页需要 Studio 宿主。
+将示例改为 `mode: "default"` 即可允许项目单独覆盖。Core 项目默认生成 `fixed` 绑定；需要允许覆盖时，使用 `paramOptions.fields.permissionPolicy.userSetting: { key: "agent.permissionPolicy", mode: "default" }`。独立 CLI 可以解析宿主注入值，打开用户设置页需要 Studio 宿主。
 
 ## 用户模型与免配置 Agent
 

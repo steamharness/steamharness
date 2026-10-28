@@ -3067,7 +3067,10 @@ paths:
         - Database Spaces
       summary: List visible spaces, requests, grants and bindings
       description: Authenticated. Every operation checks the current actor and effective grant. Approval never
-        widens requested permissions.
+        widens requested permissions. With section=spaces, projectId requires project read access and filters by
+        database IDs currently referenced by its entries, not historical grants. entryId requires projectId.
+        Project readers can see referenced space metadata that is already visible to them or authorized for the consumer;
+        a reference alone grants no visibility. Data management still requires space ownership or host administration.
       parameters:
         - name: section
           in: query
@@ -3464,6 +3467,7 @@ paths:
                   enum:
                     - kv.listValues
                     - kv.getValue
+                    - kv.getEntry
                     - kv.setValue
                     - kv.deleteValue
                     - database.revision

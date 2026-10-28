@@ -69,10 +69,10 @@ const assistantProject = steamharness.createAgentConversationProject({
 /**
  * The project declaration.
  *
- * `conversation`, `tokenUsage`, `tools` and `params` have to stay inline
+ * `conversation`, `tokenUsage` and `tools` have to stay inline
  * object literals: Core reads them off this file's AST to build the structure
  * report the host renders, and anything reached through a function call is
- * invisible to it.
+ * invisible to it. Core Agent params and their resolver are inherited from the workflow.
  */
 export const executor = steamharness.defineExecutor<AgentInput, AgentOutputPayload>({
   projectType: "conversation",
@@ -184,103 +184,7 @@ export const executor = steamharness.defineExecutor<AgentInput, AgentOutputPaylo
       autoApprove: true,
     },
   ],
-  params: [
-    {
-      kind: "quick",
-      id: "model",
-      label: "Model",
-      icon: "sparkle",
-      summary: ["model"],
-      fields: [
-        {
-          name: "provider",
-          flag: "--provider",
-          type: "string",
-          required: true,
-          label: "Provider",
-          description: "SteamHarness Server system AI configuration.",
-          control: "select",
-          options: [],
-        },
-        {
-          name: "model",
-          flag: "--model",
-          type: "string",
-          required: true,
-          label: "Model",
-          description: "Choose a model from user settings.",
-          userSetting: { key: "agent.model", mode: "default" },
-          control: "select",
-          options: [],
-        },
-      ],
-    },
-    {
-      kind: "quick",
-      id: "effort",
-      label: "Effort",
-      icon: "lightbulb",
-      summary: ["effort"],
-      fields: [
-        {
-          name: "effort",
-          flag: "--effort",
-          type: "string",
-          required: false,
-          label: "Effort",
-          description: "思考强度。超出模型支持范围时会自动收敛到该模型支持的档位。",
-          defaultValue: "high",
-          control: "select",
-          options: [
-            { value: "", label: "模型默认", description: "交给模型决定。" },
-            { value: "off", label: "Off", description: "不做推理。" },
-            { value: "minimal", label: "Minimal" },
-            { value: "low", label: "Low" },
-            { value: "medium", label: "Medium" },
-            { value: "high", label: "High" },
-            { value: "xhigh", label: "Extra high" },
-            { value: "max", label: "Max", description: "仅部分模型支持。" },
-          ],
-        },
-      ],
-    },
-    {
-      kind: "slash",
-      name: "plan",
-      flag: "--plan",
-      type: "boolean",
-      required: false,
-      label: "Plan",
-      description: "开启或关闭 Plan 模式。",
-      // A literal, because the structure report only carries statically readable defaults.
-      defaultValue: "false",
-    },
-    {
-      kind: "quick",
-      id: "permission",
-      label: "Permission",
-      icon: "shield",
-      summary: ["permissionPolicy"],
-      fields: [
-        {
-          name: "permissionPolicy",
-          flag: "--permission-policy",
-          type: "string",
-          required: false,
-          label: "Permission",
-          description: "工具权限策略：read-only 隐藏写入与命令工具，workspace 限定在工作区内，auto 批准一切未被显式拒绝的权限。",
-          userSetting: { key: "agent.permissionPolicy", mode: "fixed" },
-          control: "select",
-          options: [
-            { value: "read-only", label: "Read only", description: "隐藏写入与命令工具。" },
-            { value: "workspace", label: "Workspace", description: "工作区内自动批准编辑和命令；读写与检索工具只能访问工作区与挂载目录，shell 命令不受此限制。" },
-            { value: "auto", label: "Auto approve", description: "批准一切未被显式拒绝的权限，包括工作区之外的路径。" },
-          ],
-        },
-      ],
-    },
-  ],
-  resolveParams: steamharness.createAgentProjectParamResolver({ modelSource: "user-settings" }),
+
   createContext({ paramValues }) {
     return { metadata: { studioControlPermissionPolicy: readDeveloperAssistantPermissionPolicy(paramValues.permissionPolicy) } };
   },

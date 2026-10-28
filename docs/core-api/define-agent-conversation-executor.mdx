@@ -5,12 +5,12 @@ description: "为宿主嵌入或测试一步构造完整的 Conversation Agent e
 
 # defineAgentConversationExecutor
 
-`workflow.defineAgentConversationExecutor()` 用一次调用生成完整的 conversation executor：conversation 配置、token usage、工具声明、参数、输入/输出节点编排和 OpenAI 网关对接全部由 runtime 提供。它适合宿主嵌入或测试。需要通过 `steamharness structure` 的项目必须在 `workflow.defineExecutor({...})` 内联声明 `conversation`、`tokenUsage`、`tools` 和 `params`，并复用 `workflow.createAgentConversationProject(...)` 与 `workflow.createAgentProjectInput(...)`；否则静态结构报告无法读到这些声明。
+`workflow.defineAgentConversationExecutor()` 为宿主嵌入或测试一次构造完整的 Conversation Agent executor。项目入口继续使用内联 `workflow.defineExecutor({...})`，声明 `conversation`、`tokenUsage` 和 `tools`；其 `workflow` 来自 `workflow.createAgentConversationProject(...)` 时，Core 自动补全内置参数与 resolver。
 
 这层封装让嵌入方无需实现流式循环、审批、压缩或输出项拼装。项目也可复用其中的工作流与输入实现，同时保留可被宿主读取的内联声明。
 
 
-权限菜单只包含 `read-only`、`workspace` 和 `auto`。传入 `permissionPolicy: "inherit"` 时，`createAgentProjectParams` 将默认值绑定到用户设置，允许项目覆盖；未传选项仍默认 `workspace`，无宿主时用户设置为 `auto`。自定义内联参数可通过 `userSetting` 的 `mode: "fixed"` 改为直接展示系统值并跳转设置。见[用户设置与权限继承](/core-api/user-settings)。
+权限菜单包含 `read-only`、`workspace` 和 `auto`。Core 项目默认与小助手一致：权限使用 `userSetting: { key: "agent.permissionPolicy", mode: "fixed" }` 跟随用户设置；无宿主时用户设置为 `auto`。显式 `permissionPolicy` 提供项目默认值；使用 `paramOptions.fields.permissionPolicy` 可定制绑定、隐藏或固定实际值。见[用户设置与权限继承](/core-api/user-settings)。
 
 ## 签名
 
@@ -30,10 +30,11 @@ workflow.defineAgentConversationExecutor(options?: AgentProjectOptions):
 | 参数 | 类型 | 默认 | 说明 |
 | --- | --- | --- | --- |
 | `projectName` | `string` | — | 项目展示名。 |
-| `projectName` | `string` | `agent` | workflow 名，也是节点名前缀（`<name>-input`、`<name>-output`、`<name>-agent`）。 |
+| `executorName` | `string` | `agent` | workflow 名，也是节点名前缀（`<name>-input`、`<name>-output`、`<name>-agent`）。 |
 | `collapseIntermediate` | `boolean` | `true` | 结束后默认收起中间过程，成功保留最终回复，失败保留错误原因；写入 `conversation.collapseIntermediate`；用户可通过每轮消息的按钮展开或收起。 |
 | `outputItemId` | `string` | `agent-answer` | 助手正文回答的 item id，同时写入 `conversation.openai.outputItemId`。正文 item 用的就是这个值本身，因此适配器按 id 查找时一定能找到它。 |
-| `params` | `ConversationParamDeclaration[]` | 见下 | 完全覆盖默认参数表，只允许 Auxiliary、Quick 和 Mode。标准主输入框始终展示。 |
+| `params` | `ConversationParamDeclaration[]` | 见下 | 完整替换默认参数表，支持 Auxiliary、Quick、Mode 和 Slash。 |
+| `paramOptions` | `AgentProjectParamOptions` | — | 按内置字段名调整默认值、绑定、显隐、固定值与分组。 |
 
 ## 生成的 executor
 
@@ -43,16 +44,16 @@ workflow.defineAgentConversationExecutor(options?: AgentProjectOptions):
 | `conversation` | 标准主输入框始终启用；`inputQueue.enabled`、`recovery.enabled`、`openai.outputItemId` |
 | `tokenUsage` | 启用并展示 |
 | `tools` | `read`、`write`、`edit`、`bash`、`grep`、`find`、`ls` |
-| `params` | `workdir`、`provider`、`model`、`effort`、`agent`、`contextWindow`、`modelAttributes`、`permissionPolicy` |
+| `params` | `provider`, `model`, `effort`, `plan`, `permissionPolicy` |
 | `workflow` | 输入节点解析 → agent 节点流式执行 → 输出节点落 conversation |
 
-参数默认值来自传入的选项，例如 `provider: "anthropic"` 会让 provider 参数的默认值变成 `anthropic`。
+Effort 默认 `high`，`/plan` 默认关闭。模型默认跟随用户设置；`modelSource: "project"` 使用项目配置模型。Provider 是兼容用的隐藏字段。
 
-`resolveParams` 从项目配置的 AI 模型列表生成模型选项，隐藏兼容用的 `provider` 参数，默认选择列表第一项。参数 `model` 保存条目 ID；运行时映射到实际模型和连接。自定义 `params` 时只更新已经声明的字段。系统 AI 与第三方 AI 的配置方法见[项目配置](/concepts/project-configuration)。
+自动 resolver 根据模型来源生成选项，隐藏 `provider`，并应用隐藏及固定值策略；只为有效参数返回补丁。`model` 保存配置条目 ID，执行时解析实际连接。显式 `executor.params` 完整替换参数表；显式 `resolveParams` 保留自定义处理，隐藏与固定值规则仍由 Core 应用。模型配置见[项目配置](/concepts/project-configuration)。
 
 ## 输入与输出
 
-输入沿用 [createAgent](./create-agent.mdx) 的 `AgentInput`；`createInput` 会读取宿主 composer 的消息和上述参数（`--workdir` / `-C`、`--provider`、`--model` / `-m`、`--effort`、`--agent`、`--permission-policy`），composer 没给消息时把剩余位置参数拼成 prompt。
+输入使用 [createAgent](./create-agent.mdx) 的 `AgentInput`。`createAgentProjectInput(context, options?)` 接受带 `args` 与 `paramValues` 的 `ExecutorContext`，解析消息、附件与有效参数，自动把 `plan` 映射为 `agent`。原有 `createAgentProjectInput(args, options?)` 仍可用于程序化调用及高级参数。
 
 输出是 `AgentOutputPayload`，同时把本轮的用户消息和助手回答写入 conversation，因此宿主的历史列表、标题和导出都按普通 conversation 运行处理。
 
@@ -73,11 +74,39 @@ workflow.defineAgentConversationExecutor(options?: AgentProjectOptions):
 ```ts
 const agentExecutor = workflow.defineAgentConversationExecutor({
   projectName: "Pi",
-  projectName: "pi",
+  executorName: "pi",
   outputItemId: "pi-answer",
   provider: "anthropic",
   effort: "high",
 });
 ```
 
-项目入口应写成 `workflow.defineExecutor({ projectType: "conversation", workflow: workflow.createAgentConversationProject(...), conversation: {...}, tokenUsage: {...}, tools: [...], params: [...], createInput({ args }) { return workflow.createAgentProjectInput(args); } })`，其中对象与数组必须是内联字面量，`outputItemId` 在 workflow 和 `conversation.openai` 中保持一致。参数联动可加 `resolveParams: workflow.createAgentProjectParamResolver()`。需要自定义前后节点时使用 [createAgentNode](./create-agent-node.mdx)；完整声明规则见 [defineExecutor](./define-executor.mdx)。
+
+## 项目参数继承与定制
+
+Context 输入只消费当前参数表中启用的字段；固定用户设置绑定不接受宿主参数值覆盖。旧的 `-m` 与 `--agent plan|build` 参数在继承入口中继续可用，显式 `--plan` 优先于旧模式参数；消息和附件的值不作为参数解析。字段定制中的 `undefined` 等同于省略，使用 `userSetting: null` 清除绑定。静态继承支持 `workflow` / `coreAgent` 简写属性与 SDK 命名空间导入。
+
+直接绑定 Core workflow 的 executor 可省略 `params`、`resolveParams`。若业务 workflow 包装了 Core，在 executor 中设置 `coreAgent: agentProject`，保留原来的业务 workflow 和 `createInput`。参数选项必须能静态读取；结构分析只读取选定引用，不执行项目代码。
+
+`fields` 支持 `defaultValue`、`userSetting`（`null` 清除绑定）、`visible`、`fixedValue`、`label`、`description` 和 `options`。设为 `false` 移除字段；`groups` 用字段名重排 Quick/Auxiliary 分组，未分配字段保留原分组。`fixedValue` 覆盖绑定及默认值，并在输入构造和 Core 执行入口强制应用。隐藏只控制展示，需要禁止覆盖时同时使用 `fixedValue`。显式默认值会清除用户设置绑定。
+
+```ts
+const agentProject = workflow.createAgentConversationProject({
+  modelSource: "project",
+  paramOptions: {
+    fields: {
+      effort: { defaultValue: "medium" },
+      plan: false,
+      permissionPolicy: { visible: false, fixedValue: "auto" },
+    },
+    groups: [{ kind: "quick", id: "ai", label: "AI",
+      fields: ["provider", "model", "effort"], summary: ["model", "effort"] }],
+  },
+});
+
+export const executor = workflow.defineExecutor({
+  projectType: "conversation",
+  workflow: agentProject,
+  createInput(context) { return workflow.createAgentProjectInput(context); },
+});
+```

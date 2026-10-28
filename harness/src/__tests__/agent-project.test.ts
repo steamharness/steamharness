@@ -10,8 +10,9 @@ import { createModels } from "@earendil-works/pi-ai";
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
 import { openNodeSqliteStorage } from "@earendil-works/pi-durable/storage/sqlite/node";
 import { agentConversationDirectory } from "../agent/storage";
-import { createAgentProjectInput, defineAgentConversationExecutor } from "../agent/project";
+import { createAgentConversationProject, createAgentProjectInput, defineAgentConversationExecutor } from "../agent/project";
 import { normalizeProjectParamDeclarations } from "../executor/param-definition";
+import { parseProjectParamValues } from "../executor/params";
 import { AGENT_OUTPUT_KINDS } from "../agent/output-items";
 import { createAgentNode } from "../agent/node";
 import type { OutputItemStreamChunk } from "../node/output/index";
@@ -259,7 +260,7 @@ test("defineAgentConversationExecutor produces a complete conversation executor"
   const paramNames = normalizeProjectParamDeclarations(executor.params).params.map((param) => param.name);
   assert.deepEqual(
     paramNames,
-    ["workdir", "provider", "model", "effort", "agent", "contextWindow", "modelAttributes", "webSearch", "permissionPolicy"],
+    ["provider", "model", "effort", "plan", "permissionPolicy"],
   );
 });
 
@@ -268,31 +269,28 @@ test("the generated params expose the agent capability in the UI", () => {
   const normalized = normalizeProjectParamDeclarations(executor.params);
   const params = new Map(normalized.params.map((param) => [param.name, param]));
 
-  assert.equal(params.get("agent")?.control, "select");
-  assert.deepEqual(
-    params.get("agent")?.options?.map((option) => option.value),
-    ["build", "plan"],
-  );
+  assert.equal(params.get("plan")?.panel, "slash");
+  assert.equal(params.get("plan")?.defaultValue, "false");
   assert.deepEqual(
     params.get("permissionPolicy")?.options?.map((option) => option.value),
     ["read-only", "workspace", "auto"],
   );
-  assert.equal(params.get("effort")?.defaultValue, "medium");
+  assert.equal(params.get("effort")?.defaultValue, "high");
   // Model, effort and permission each have their own composer control.
   assert.deepEqual(
     ["provider", "model", "effort", "permissionPolicy"].map((name) => params.get(name)?.panel),
     ["quick", "quick", "quick", "quick"],
   );
-  assert.equal(params.get("contextWindow")?.type, "number");
   assert.deepEqual(normalized.layout?.actions.map((action) => action.kind), [
-    "auxiliary", "quick", "quick", "mode", "auxiliary", "quick",
+    "quick", "quick", "slash", "quick",
   ]);
 });
 
 test("createInput reads the composer message and the agent params", () => {
-  const executor = defineAgentConversationExecutor({ projectName: "pi" });
+  const executor = defineAgentConversationExecutor({ projectName: "pi", permissionPolicy: "workspace" });
+  const args = ["--plan", "true", "--effort", "high", "--permission-policy", "read-only", "refactor the parser"];
   const input = executor.createInput({
-    args: ["--agent", "plan", "--effort", "high", "--permission-policy", "read-only", "refactor the parser"],
+    args, paramValues: parseProjectParamValues(executor.params, args),
   } as never) as unknown as Record<string, unknown> | undefined;
 
   assert.ok(input);
@@ -300,6 +298,31 @@ test("createInput reads the composer message and the agent params", () => {
   assert.equal(input["agent"], "plan");
   assert.equal(input["effort"], "high");
   assert.equal(input["permissionPolicy"], "read-only");
+});
+
+test("a project-fixed permission reaches the real agent despite an explicit input override", async () => {
+  const { ai, faux, models, model } = await createFauxModel();
+  let offered: string[] = [];
+  faux.setResponses([request => {
+    const tools = new Set<string>();
+    for (const message of request.messages) {
+      if (message.role !== "system") continue;
+      for (const tool of message.toolsRemoved ?? []) tools.delete(tool.name);
+      for (const tool of message.toolsAdded ?? []) tools.add(tool.name);
+    }
+    offered = [...tools];
+    return ai.fauxAssistantMessage("Business answer");
+  }]);
+  const project = createAgentConversationProject({ models, resolvedModel: model,
+    paramOptions: { fields: { effort: { defaultValue: "medium" }, permissionPolicy: { visible: false, fixedValue: "read-only" } } } });
+  await withTempDir(async workdir => {
+    const result = await project.run({ errCode: 0, errMessage: "", prompt: "Question", workdir, permissionPolicy: "auto" }, createContext("fixed-policy"));
+    assert.equal(result.effort, "medium");
+    assert.ok(offered.includes("read"));
+    assert.equal(offered.includes("write"), false);
+    assert.equal(offered.includes("bash"), false);
+    assert.ok(JSON.stringify(result.items).includes("Business answer"));
+  });
 });
 
 /** The host's catalogue, as the workflow runtime builds it: built-ins plus the declared tools. */

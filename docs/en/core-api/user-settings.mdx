@@ -86,7 +86,7 @@ createInput({ paramValues }) {
 }
 ```
 
-Change the example to `mode: "default"` to allow project overrides. `createAgentProjectParams({ permissionPolicy: "inherit" })` generates that editable binding. Standalone CLI can resolve injected settings, but opening the settings page requires Studio.
+Change the example to `mode: "default"` to allow project overrides. Core projects generate a `fixed` binding by default. Set `paramOptions.fields.permissionPolicy.userSetting` to `{ key: "agent.permissionPolicy", mode: "default" }` to allow overrides. Standalone CLI can resolve injected settings, but opening the settings page requires Studio.
 
 ## User models and Agents without connection configuration
 

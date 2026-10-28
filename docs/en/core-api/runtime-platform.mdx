@@ -19,3 +19,7 @@ const local = workflow.isCli();
 ```
 
 Runtime platform does not choose the data host. Entries resolve aliases and database IDs from root config.json; the host determines the data location. Access approved spaces with `context.databases.get(alias)`. Local execution can use server spaces.
+
+## Host database management
+
+Trusted native hosts can import `createLocalDatabaseManagementContext(spaceId, { registry?, conversationNamespace? })` from `steamharness` to obtain a `DatabaseContext` for an existing local space. It uses the local management identity independently of project grants, so the host can manage retained data after consumer revocation. Each operation checks that the space exists; it does not create spaces or restore project access. Do not expose this management entry through project RPC or untrusted project code.

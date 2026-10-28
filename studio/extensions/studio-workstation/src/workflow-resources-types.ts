@@ -5,6 +5,8 @@ export type ResourceScope = 'project' | 'conversation';
 export interface ResourceRequest {
   kind: ResourceKind;
   database?: string;
+  /** Data tabs reject alias migrations instead of applying an old draft to a new space. */
+  expectedDatabaseId?: string;
   action: 'list' | 'get' | 'save' | 'delete';
   source?: ResourceSource;
   query?: string;

@@ -3,99 +3,30 @@
 .project-information-tabs > button { border: 0; border-bottom: 2px solid transparent; padding: 10px 0; background: transparent; color: var(--muted); }
 .project-information-tabs > button[aria-selected=true] { color: var(--vscode-editor-foreground); border-bottom-color: var(--vscode-focusBorder, var(--focus)); }
 .project-databases { min-width: 0; }
-.project-databases button { display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-height: 32px; padding: 6px 10px; border: 1px solid var(--border); border-radius: 5px; background: var(--vscode-button-secondaryBackground); color: var(--vscode-button-secondaryForeground, inherit); }
-.project-databases button:hover:not(:disabled) { background: var(--vscode-button-secondaryHoverBackground, var(--vscode-toolbar-hoverBackground)); }
-.project-databases .database-primary { border-color: transparent; background: var(--vscode-button-background); color: var(--vscode-button-foreground); }
-.project-databases .database-primary:hover:not(:disabled) { background: var(--vscode-button-hoverBackground); }
-.project-databases .database-danger, .database-data-status[data-error=true], .database-error { color: var(--vscode-errorForeground); }
-.project-databases h4 { margin: 0; font-size: 13px; font-weight: 600; }
-.database-navigation { display: flex; align-items: center; flex-wrap: wrap; gap: 4px; margin-bottom: 20px; }
-.database-navigation > button:not(.database-refresh), .database-data-tabs > button { border: 0; background: transparent; color: var(--muted); }
-.database-navigation > button[aria-pressed=true], .database-data-tabs > button[aria-pressed=true] { background: var(--selection); color: var(--vscode-editor-foreground); }
-.database-navigation > .database-refresh { margin-left: auto; border-color: transparent; background: transparent; color: var(--muted); }
+.database-section-heading, .database-card-heading, .database-metadata { display: flex; align-items: center; gap: 10px; }
+.database-section-heading { justify-content: space-between; margin-bottom: 16px; }
+.database-actions { display: flex; align-items: center; gap: 4px; margin-left: auto; }
+.project-databases .database-icon-button { display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px; padding: 0; border: 0; border-radius: 4px; background: transparent; color: var(--muted); }
+.project-databases .database-icon-button:hover:not(:disabled) { background: var(--vscode-toolbar-hoverBackground, var(--selection)); color: var(--vscode-editor-foreground); }
+.project-databases .database-icon-button:focus-visible { outline: 1px solid var(--vscode-focusBorder, var(--focus)); outline-offset: 1px; }
 .database-content { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+.database-card { display: flex; flex-direction: column; gap: 10px; min-width: 0; padding: 14px; border: 1px solid var(--border); border-radius: 6px; }
+.database-name { min-width: 0; flex: 1; }
+.database-name h4 { margin: 0 0 3px; font-size: 13px; font-weight: 600; overflow-wrap: anywhere; }
+.database-card-heading > .codicon { color: var(--muted); font-size: 20px; }
 .database-muted { margin: 0; color: var(--muted); font-size: 12px; line-height: 1.6; overflow-wrap: anywhere; }
-.database-section-heading { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px; font-weight: 600; }
-.database-section-heading + .database-muted { margin-top: -6px; }
-.database-card { display: flex; flex-direction: column; gap: 12px; min-width: 0; padding: 16px; border: 1px solid var(--border); border-radius: 8px; }
-.database-card-heading { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
-.database-card-heading h4 { font-size: 14px; overflow-wrap: anywhere; }
+.database-error { margin: 0; color: var(--vscode-errorForeground); font-size: 12px; overflow-wrap: anywhere; }
+.database-metadata { flex-wrap: wrap; }
 .database-badge { display: inline-flex; align-items: center; gap: 5px; font-size: 11px; color: var(--muted); }
 .database-badge::before { content: ''; width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
 .database-badge[data-status=connected] { color: var(--vscode-testing-iconPassed, #22863a); }
 .database-badge[data-status=attention] { color: var(--vscode-editorWarning-foreground, #b07800); }
-.database-card-subtitle { margin: -4px 0 0; color: var(--muted); overflow-wrap: anywhere; }
-.database-id { display: block; font-family: var(--vscode-editor-font-family, monospace); font-size: 12px; color: var(--muted); overflow-wrap: anywhere; user-select: text; }
-.database-entry-usage { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; font-size: 12px; color: var(--muted); }
-.database-entry-usage > span:first-child { margin-right: 4px; }
-.database-entry { padding: 2px 6px; border: 1px solid var(--border); border-radius: 4px; }
-.database-entry[data-current=true] { color: var(--vscode-editor-foreground); background: var(--selection); }
-.database-warning { margin: 0; line-height: 1.6; color: var(--vscode-editorWarning-foreground); }
-.database-error { margin: 0 0 14px; overflow-wrap: anywhere; line-height: 1.6; }
-.database-notice { margin: 0; padding: 10px 12px; border-left: 2px solid var(--vscode-testing-iconPassed, #22863a); background: var(--vscode-textBlockQuote-background); line-height: 1.6; }
-.database-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
-.database-empty { display: flex; align-items: center; flex-direction: column; gap: 10px; padding: 36px 20px; text-align: center; border: 1px dashed var(--border); border-radius: 8px; }
-.database-empty > .codicon { margin-bottom: 4px; font-size: 28px; color: var(--muted); }
-.database-empty > p { max-width: 360px; margin: 0 0 6px; color: var(--muted); line-height: 1.6; }
-.project-databases label { display: flex; flex-direction: column; gap: 6px; min-width: 0; font-size: 12px; }
-.project-databases input:not([type=file]), .project-databases textarea, .project-databases select { width: 100%; min-width: 0; padding: 7px 9px; color: var(--vscode-input-foreground); background: var(--vscode-input-background); border: 1px solid var(--vscode-input-border, var(--border)); border-radius: 4px; }
-.project-databases textarea { resize: vertical; }
-.project-databases input[readonly] { color: var(--muted); }
-.database-form { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; padding: 16px; margin: 0; background: var(--vscode-textBlockQuote-background); border: 1px solid var(--border); border-radius: 6px; }
-.database-form > h4, .database-form > p, .database-form > .database-actions, .database-form > fieldset { grid-column: 1 / -1; }
-.database-card > .database-form { margin-top: 2px; }
-.database-access-toolbar { display: flex; align-items: flex-end; flex-wrap: wrap; gap: 12px; }
-.database-access-toolbar > label { flex: 1; min-width: 140px; }
-.database-access-toolbar > select { width: auto; max-width: 180px; }
-.database-list-title { margin-top: 12px !important; padding-top: 12px; border-top: 1px solid var(--border); }
-.database-permission-summary { display: grid; grid-template-columns: 110px minmax(0, 1fr); gap: 8px 12px; margin: 0; font-size: 12px; line-height: 1.6; }
-.database-permission-summary dt { color: var(--muted); }
-.database-permission-summary dd { display: flex; flex-wrap: wrap; gap: 4px 18px; margin: 0; overflow-wrap: anywhere; }
-.database-permissions { min-width: 0; margin: 0; padding: 12px; border: 1px solid var(--border); border-radius: 4px; }
-.database-permissions legend { padding: 0 6px; font-size: 12px; }
-.database-permission-resource { display: grid; grid-template-columns: 100px repeat(2, minmax(0, 1fr)); align-items: start; gap: 12px; padding: 8px 0; }
-.database-permission-resource > strong { padding-top: 24px; font-size: 12px; }
-.database-grant-controls summary, .database-permission-details summary, .database-card > details > summary { cursor: pointer; color: var(--muted); font-size: 12px; list-style: none; }
-.project-databases details > summary::before { display: inline-block; content: '›'; margin-right: 6px; transition: transform .1s; }
-.project-databases details[open] > summary::before { transform: rotate(90deg); }
-.database-grant-controls[open] > summary, .database-permission-details[open] > summary, .database-card > details[open] > summary { margin-bottom: 12px; }
-.database-grant-controls > .database-form { margin-top: 12px; }
-.database-data { min-width: 0; }
-.database-data-tabs { display: flex; flex-wrap: wrap; gap: 4px; padding-bottom: 12px; margin-bottom: 16px; border-bottom: 1px solid var(--border); }
-.database-data-status { margin: 0 0 12px; color: var(--muted); overflow-wrap: anywhere; }
-.database-data-toolbar { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; margin-bottom: 12px; }
-.database-search { display: flex; flex: 1; min-width: 180px; gap: 6px; }
-.database-data-layout { display: grid; grid-template-columns: minmax(200px, .85fr) minmax(0, 1.15fr); align-items: start; border: 1px solid var(--border); border-radius: 6px; overflow: hidden; }
-.database-records, .database-record-detail { min-width: 0; }
-.database-records { border-right: 1px solid var(--border); }
-.database-record-list { min-height: 220px; max-height: 460px; overflow: auto; padding: 6px; }
-.project-databases .database-record { display: flex; flex-direction: column; align-items: flex-start; gap: 6px; width: 100%; padding: 10px; background: transparent; border: 0; text-align: left; }
-.database-record strong, .database-record > span { display: block; width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.database-record strong { font-size: 12px; font-weight: 500; }
-.database-record > span { color: var(--muted); font-size: 11px; }
-.project-databases .database-record[aria-pressed=true] { background: var(--selection); }
-.database-pagination { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; padding: 10px; border-top: 1px solid var(--border); }
-.database-pagination > span { flex: 1 1 100%; color: var(--muted); font-size: 11px; }
-.database-pagination > button { min-height: 28px; padding: 4px 8px; font-size: 11px; }
-.database-record-detail { padding: 16px; }
-.database-empty-detail { padding: 16px 8px; margin: 0; color: var(--muted); font-size: 12px; line-height: 1.6; }
-.database-editor { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 12px 8px; margin-top: 14px; }
-.database-editor > label { flex: 1 1 100%; }
-.database-value-editor { min-height: 220px; font: 12px/1.6 var(--vscode-editor-font-family, monospace); tab-size: 2; }
-.database-upload { align-items: center; padding: 24px; margin: 16px 0; border: 1px dashed var(--border); border-radius: 6px; }
-.database-upload .codicon { font-size: 24px; color: var(--muted); }
-.database-record-metadata { display: grid; grid-template-columns: 100px minmax(0, 1fr); gap: 8px; font-size: 12px; }
-.database-record-metadata dt { color: var(--muted); }
-.database-record-metadata dd { margin: 0; overflow-wrap: anywhere; }
-@media (max-width: 680px) {
-  .project-information-dialog > .dialog-body { padding: 12px; }
-  .database-card { padding: 12px; }
-  .database-form { grid-template-columns: minmax(0, 1fr); padding: 12px; }
-  .database-permission-resource { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .database-permission-resource > strong { grid-column: 1 / -1; padding-top: 0; }
-  .database-data-layout { grid-template-columns: minmax(0, 1fr); }
-  .database-records { border-right: 0; border-bottom: 1px solid var(--border); }
-  .database-record-list { min-height: 100px; max-height: 220px; }
-  .database-navigation > button { padding-inline: 7px; font-size: 12px; }
-  .database-navigation > .database-refresh span:not(.codicon) { display: none; }
-}
+.database-id { font: 12px var(--vscode-editor-font-family, monospace); color: var(--muted); overflow-wrap: anywhere; user-select: text; }
+.database-entry-usage { display: flex; flex-wrap: wrap; gap: 6px; font-size: 11px; color: var(--muted); }
+.database-entry { padding: 2px 6px; border: 1px solid var(--border); border-radius: 3px; }
+.database-entry[data-current=true] { color: var(--vscode-editor-foreground); }
+.database-form { display: flex; flex-wrap: wrap; gap: 12px; padding: 12px; border: 1px solid var(--border); border-radius: 6px; }
+.database-form > label { display: flex; flex-direction: column; flex: 1 1 180px; gap: 6px; font-size: 12px; }
+.database-form input { width: 100%; min-width: 0; box-sizing: border-box; }
+.database-form > .database-actions { align-self: flex-end; }
+@media (max-width: 680px) { .database-card { padding: 10px; } .database-form > label { flex-basis: 100%; } }

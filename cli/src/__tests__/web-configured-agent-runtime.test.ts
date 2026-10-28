@@ -30,11 +30,7 @@ it('loads user models through the host and worker without project configuration,
     await writeFile(path.join(directory, 'index.ts'), `
       const agent = steamharness.createAgentConversationProject({ modelSource: 'user-settings', tools: [] });
       export const executor = steamharness.defineExecutor({ projectType: 'conversation', workflow: agent,
-        params: [{ kind: 'quick', id: 'ai', label: 'Model', summary: ['model'], fields: [
-          { name: 'provider', flag: '--provider', type: 'string', control: 'select', options: [] },
-          { name: 'model', flag: '--model', type: 'string', required: true, control: 'select', options: [], userSetting: { key: 'agent.model', mode: 'default' } }
-        ] }], resolveParams: steamharness.createAgentProjectParamResolver({ modelSource: 'user-settings' }),
-        createInput({ args, paramValues }) { return { errCode: 0, errMessage: '', prompt: steamharness.parseConversationDefaultInputArgs(args).message, model: paramValues.model }; }
+        createInput(context) { return steamharness.createAgentProjectInput(context); }
       }); export default agent;
     `);
     const settings: import('steamharness').UserSettings = { agent: { permissionPolicy: 'auto', models: [{

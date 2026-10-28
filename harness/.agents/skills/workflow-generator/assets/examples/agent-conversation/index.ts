@@ -34,19 +34,8 @@ export const executor = steamharness.defineExecutor<AgentInput, AgentOutputPaylo
     { name: "find", label: "Find", enabled: true, autoApprove: true },
     { name: "ls", label: "List", enabled: true, autoApprove: true },
   ],
-  params: [
-    { kind: "auxiliary", id: "workspace", label: "工作目录", fields: [
-      { name: "workdir", flag: "--workdir", type: "string", defaultValue: "." },
-    ] },
-    { kind: "quick", id: "ai", label: "AI", summary: ["model"], fields: [
-      { name: "provider", flag: "--provider", type: "string", control: "select", required: true, options: [] },
-      { name: "model", flag: "--model", type: "string", control: "select", required: true, options: [] },
-    ] },
-    { kind: "slash", name: "plan", flag: "--plan", type: "boolean", label: "Plan", defaultValue: "false" },
-  ],
-  resolveParams: steamharness.createAgentProjectParamResolver(),
-  createInput({ args, paramValues }) {
-    return { ...steamharness.createAgentProjectInput(args), agent: paramValues.plan === "true" ? "plan" : "build" };
+  createInput(context) {
+    return steamharness.createAgentProjectInput(context);
   },
 });
 

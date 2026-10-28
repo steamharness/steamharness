@@ -100,6 +100,28 @@ test('revoking an approved alias removes resource access immediately',async t=>{
   await assert.rejects(f.request({kind:'kv',action:'get',key:'retained'}),/host authorization/);
 });
 
+test('open data tabs reject migrated aliases while fresh requests follow config and environment overrides', async t => {
+  const f = await fixture(t), original = f.requirement.databaseId;
+  await f.database.kv.setValue('draft', 'original');
+  const pending = f.registry.request({ projectId: f.project.id, entryId: 'main', alias: 'data', permissions, target: { kind: 'create', name: 'Replacement' } });
+  const replacement = f.registry.review(pending.requestId, { approve: true }).databaseId;
+  await writeFile(path.join(f.project.folderPath, 'config.json'), JSON.stringify({ version: 1, databases: { data: replacement } }));
+  for (const action of ['list', 'get', 'save', 'delete']) {
+    await assert.rejects(f.request({ kind: 'kv', action, key: 'draft', value: 'stale draft', expectedDatabaseId: original }), /reference changed/);
+  }
+  await assert.rejects(f.request({ kind: 'knowledge', action: 'save', create: true, title: 'Stale', markdown: 'draft', expectedDatabaseId: original }), /reference changed/);
+  await f.request({ kind: 'kv', action: 'save', key: 'fresh', value: 'replacement', expectedDatabaseId: replacement });
+  assert.equal((await f.request({ kind: 'kv', action: 'get', key: 'fresh' })).value, 'replacement');
+  assert.equal(await f.database.kv.getValue('draft'), 'original');
+  assert.equal(await f.database.kv.getValue('fresh'), undefined);
+  const previous = process.env.STEAMHARNESS_PROJECT_CONFIG;
+  try {
+    process.env.STEAMHARNESS_PROJECT_CONFIG = JSON.stringify({ databases: { data: original } });
+    await assert.rejects(f.request({ kind: 'kv', action: 'save', key: 'draft', value: 'stale', expectedDatabaseId: replacement }), /reference changed/);
+    assert.equal((await f.request({ kind: 'kv', action: 'get', key: 'draft', expectedDatabaseId: original })).value, 'original');
+  } finally { if (previous === undefined) delete process.env.STEAMHARNESS_PROJECT_CONFIG; else process.env.STEAMHARNESS_PROJECT_CONFIG = previous; }
+});
+
 test('declared server requirements never fall back to a local registry',async t=>{
   const f=await fixture(t,'server');
   await assert.rejects(f.request({kind:'kv',action:'list'}),/host authorization/);

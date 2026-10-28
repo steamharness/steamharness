@@ -1,6 +1,7 @@
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { i18n } from "@steamharness/i18n/react";
+import { resolveResourceAccess } from '@steamharness/project-access';
 import { App } from "../App";
 import { apiClient } from "../api";
 import type { AuthPrincipal } from "../types";
@@ -121,4 +122,34 @@ describe("main sidebar submenus", () => {
     expect(within(reopened).getByRole("button", { name: "系统设置" })).toHaveAttribute("aria-current", "page");
     expect(within(reopened).getByRole("button", { name: "项目工作台" })).toBeTruthy();
   });
+});
+
+it.each(['sidebar', 'history'] as const)('protects project database drafts during %s navigation', async mode => {
+  await i18n.changeLanguage('en');
+  const id = 'adbe104c-5528-4db6-817d-bb567996876f';
+  const project: any = { id:'project', name:'Project', entries:[{entryId:'agent',type:'workflow',name:'Agent',root:'.',entry:'index.ts',databases:[{alias:'data',databaseId:id}]}], defaultEntry:'agent', versions:[], hasDraft:true,
+    projectInfo:{localizedNames:{},declarations:[],platformSupport:{mode:'agnostic'}}, access:resolveResourceAccess([{type:'project',id:'project',role:'owner'}]) };
+  vi.mocked(apiClient.listProjects).mockResolvedValue({errCode:0,errMessage:'',data:{items:[project],total:1,page:1,pageSize:20}});
+  vi.spyOn(apiClient,'getProject').mockResolvedValue({errCode:0,errMessage:'',data:project});
+  vi.spyOn(apiClient,'listVersions').mockResolvedValue({errCode:0,errMessage:'',data:{versions:[]} as any});
+  vi.spyOn(apiClient,'listProjectMembers').mockResolvedValue({errCode:0,errMessage:'',data:{items:[]} as any});
+  vi.spyOn(apiClient,'databasePage').mockResolvedValue({errCode:0,errMessage:'',data:{items:[{spaceId:id,name:'Memory',canManage:true}],total:1,pageSize:20}});
+  vi.spyOn(apiClient,'databaseValues').mockResolvedValue({errCode:0,errMessage:'',data:{items:[{key:'one',namespace:'space',value:1}],total:1,pageSize:30}});
+  window.history.replaceState(null,'','/detail/project/databases');
+  render(<App/>);
+  fireEvent.click(await screen.findByRole('button',{name:/Memory/}));
+  fireEvent.click(await screen.findByRole('button',{name:'one'}));
+  fireEvent.change(screen.getByLabelText('JSON value'),{target:{value:'42'}});
+  const navigate = () => {
+    if (mode === 'sidebar') fireEvent.click(within(screen.getByRole('navigation',{name:'Main navigation'})).getByRole('button',{name:'Overview'}));
+    else { window.history.replaceState(null,'','/projects'); fireEvent.popState(window); }
+  };
+  navigate();
+  expect(await screen.findByRole('alertdialog')).toHaveTextContent('Discard unsaved changes?');
+  expect(window.location.pathname).toBe('/detail/project/databases');
+  fireEvent.click(screen.getByRole('button',{name:'Keep editing'}));
+  expect(screen.getByLabelText('JSON value')).toHaveValue('42');
+  navigate(); fireEvent.click(await screen.findByRole('button',{name:'Discard and continue'}));
+  await waitFor(() => expect(window.location.pathname).toBe(mode === 'sidebar' ? '/detail/project/project' : '/projects'));
+  expect(screen.queryByLabelText('JSON value')).toBeNull();
 });

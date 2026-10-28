@@ -17,7 +17,7 @@ export function parseProjectParamValues(
   const definitions = normalizeProjectParamDeclarations(params).params;
   const values: ParamValues = Object.fromEntries(definitions.map((param) => [
     param.name,
-    param.userSetting ? userSettingParamDefault(param.userSetting.key)
+    param.fixedValue !== undefined ? normalizeValue(param, param.fixedValue) : param.userSetting ? userSettingParamDefault(param.userSetting.key)
       : isMultiParam(param) ? readMultiValue(param.defaultValue ?? "") : param.defaultValue ?? "",
   ]));
   const flags = new Map<string, ParamDefinition>();
@@ -35,7 +35,11 @@ export function parseProjectParamValues(
     if (arg === undefined) break;
     const param = flags.get(arg);
     if (param) {
-      if (param.userSetting?.mode === "fixed") { index += 2; continue; }
+      if (param.fixedValue !== undefined || param.userSetting?.mode === "fixed") {
+        const next = args[index + 1];
+        index += param.type === "boolean" && next !== "true" && next !== "false" ? 1 : 2;
+        continue;
+      }
       if (isMultiParam(param)) {
         values[param.name] = normalizeValue(param, args[index + 1] ?? "");
         index += 2;
@@ -52,7 +56,7 @@ export function parseProjectParamValues(
 
     const positionalParam = positional[positionalIndex];
     if (positionalParam) {
-      values[positionalParam.name] = normalizeValue(positionalParam, arg);
+      if (positionalParam.fixedValue === undefined) values[positionalParam.name] = normalizeValue(positionalParam, arg);
       positionalIndex += 1;
     }
     index += 1;

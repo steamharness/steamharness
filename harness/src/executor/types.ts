@@ -94,6 +94,10 @@ interface ParamDefinitionBase {
   /** Command for a boolean Slash parameter. Defaults to the parameter name. */
   command?: string;
   defaultValue?: string;
+  /** Hidden fields remain parseable and are omitted from parameter actions. */
+  visible?: boolean;
+  /** A project-owned value that callers cannot override. */
+  fixedValue?: string;
   userSetting?: UserSettingParamBinding;
   /** Re-run resolveParams when the main composer input changes. Defaults to false. */
   resolveOnInput?: boolean;
@@ -324,6 +328,8 @@ export interface ProjectExecutorDefinition {
 export type ConversationExecutorDefinition<Input, Output> =
   Omit<ExecutionDefinition<Input, Output>, "params"> & {
     projectType: "conversation";
+    /** Parameter source when workflow wraps a Core Agent project. */
+    coreAgent?: import("../agent/types").AgentConversationProject;
     params?: ConversationParamDeclaration[];
     conversation?: ConversationDefinition;
     defaultEntrypoint?: never;

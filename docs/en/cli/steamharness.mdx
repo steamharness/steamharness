@@ -29,9 +29,9 @@ One root directory starts one aggregate host and initially displays only `defaul
 
 Each entry has an `/entries/<entryId>/` URL and independent controller. Its optional `projectCard` configures `icon`, `iconColor` and `iconBackgroundColor`, with `#RRGGBB` colors. Omitted properties use defaults for that entry type. The root `steamharness.json.projectCard` identifies the aggregate card; entry icons are independent. Declare the sole version in root `steamharness.json.version`; entries do not accept their own version.
 
-Select the **Project information** icon in the toolbar, then open its **Databases** tab, or select **Open database management** in the **Database binding requires attention** prompt. The Studio assistant, Conversation, Workflow and Kanban share this interface for requests, approval, shared access, narrowing, revocation, rotation and data management. Root config.json centralizes aliases and approved database IDs; package entries list their database aliases; STEAMHARNESS_PROJECT_CONFIG can override deployment values. Entries may reference multiple databases. Saving a mapping does not grant access; the host maintains permissions. Pending requests do not create spaces. See [Database spaces](/en/concepts/data-storage).
+Select **Project information → Databases** to view database names, IDs, connection status and sharing entries. Icon actions link, change or copy IDs. Browsing opens a Studio database tab; standalone Web sessions report that data preview is unavailable. Requests, reviews and grant maintenance are available in Studio, Server Web or CLI `databases` commands.
 
-The Databases tab shows aliases, connection status, hosts and entries sharing each database. **Project databases** links or changes IDs; **Browse data** opens key-value, knowledge and attachment tools. **Requests and permissions** selects a host and handles requests, reviews and grants with readable read/write scope controls. There is no separate database toolbar button.
+Root `config.json` centralizes aliases and approved IDs; entries list only their aliases in their owning `steamharness.json`, with `STEAMHARNESS_PROJECT_CONFIG` deployment overrides. Entries may use multiple databases. Saving a reference does not grant access. See [Database spaces](/en/concepts/data-storage).
 
 ## Validation and output
 

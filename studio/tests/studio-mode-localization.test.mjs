@@ -43,7 +43,7 @@ for (const language of ['en', 'zh-cn']) {
     assert.equal(labels.moveEditorsError, language === 'en' ? 'Unable to move tool workspace editors back to the IDE.' : '无法将工具工作区的编辑器移回 IDE。');
     assert.equal(labels.editorEmpty, language === 'en' ? 'Open a file from Explorer or Quick Open to start editing.' : '从资源管理器或快速打开中选择文件，开始编辑。');
     assert.equal(labels.openFile, language === 'en' ? 'Open File' : '打开文件');
-    for (const id of ['editor', 'kv', 'knowledge', 'info', 'assistant', 'versions', 'trace', 'terminal', 'browser', 'project']) {
+    for (const id of ['editor', 'databases', 'kv', 'knowledge', 'info', 'assistant', 'versions', 'trace', 'terminal', 'browser', 'project']) {
       assert.ok(labels[id]); assert.ok(labels[`${id}Hint`]);
       assert.equal(/\p{Script=Han}/u.test(labels[id]), language !== 'en');
     }

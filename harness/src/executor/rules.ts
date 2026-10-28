@@ -18,6 +18,8 @@ import { assertConversationUserInput } from "./conversation-input";
 import { assertConversationPresentation } from "./conversation-presentation";
 import { assertConversationCommands } from "./conversation-commands";
 import { STEAMHARNESS_ENTRYPOINT_ID_PATTERN } from "./definition";
+import { createAgentProjectParams } from "../agent/project-params";
+import type { AgentProjectOptions } from "../agent/types";
 import type { TokenUsageDefinition } from "../token-usage/index";
 import type { ToolPermissionDefinition } from "../tool-permissions/index";
 import {
@@ -1463,6 +1465,7 @@ function analyzeSourceFile(
   };
   const scopeStack = [createScopeKey(filePath, "source", 0)];
   const constValues = new Map<string, StructureValue>();
+  const coreOptions = new WeakMap<ts.ObjectLiteralExpression, AgentProjectOptions | null>();
   const nodeIdsByVariable = new Map<string, string>();
   const nodeNamesById = new Map<string, string>();
   const outputVariables = new Map<string, StructureReference>();
@@ -1670,7 +1673,15 @@ function analyzeSourceFile(
         prop.name.text === "params",
     );
 
-    if (paramsProperty === undefined) return;
+    if (paramsProperty === undefined) {
+      const options = readCoreAgentOptions(objectArg);
+      if (options) {
+        const normalized = normalizeProjectParamDeclarations(options.params ?? createAgentProjectParams(options));
+        analysis.executorParams = normalized.params;
+        analysis.executorParamLayout = normalized.layout;
+      }
+      return;
+    }
     const normalized = readExecutorParamDeclarations(paramsProperty, "Conversation executor");
     if (normalized !== undefined) {
       analysis.executorParams = normalized.params;
@@ -1688,7 +1699,80 @@ function analyzeSourceFile(
       ts.isIdentifier(property.name) &&
       property.name.text === "resolveParams"
     ));
-    if (resolver) analysis.executorParamResolver = { enabled: true };
+    if (resolver || readCoreAgentOptions(objectArg)) analysis.executorParamResolver = { enabled: true };
+  }
+
+  function readCoreAgentOptions(executor: ts.ObjectLiteralExpression): AgentProjectOptions | undefined {
+    if (coreOptions.has(executor)) return coreOptions.get(executor) ?? undefined;
+    coreOptions.set(executor, null);
+    const findReference = (name: string) => executor.properties.find(
+      (property): property is ts.PropertyAssignment | ts.ShorthandPropertyAssignment =>
+        (ts.isPropertyAssignment(property) || ts.isShorthandPropertyAssignment(property)) && readStructurePropertyName(property.name) === name,
+    );
+    const explicit = findReference("coreAgent");
+    const reference = explicit ?? findReference("workflow");
+    if (!reference) return;
+    const seen = new Set<string>();
+    const resolve = (expression: ts.Expression): ts.Expression => {
+      expression = unwrapExpression(expression);
+      if (!ts.isIdentifier(expression) || seen.has(expression.text)) return expression;
+      seen.add(expression.text);
+      for (const statement of sourceFile.statements) {
+        if (!ts.isVariableStatement(statement) || !(statement.declarationList.flags & ts.NodeFlags.Const)) continue;
+        for (const declaration of statement.declarationList.declarations) {
+          if (ts.isIdentifier(declaration.name) && declaration.name.text === expression.text && declaration.initializer) return resolve(declaration.initializer);
+        }
+      }
+      return expression;
+    };
+    const call = resolve(ts.isPropertyAssignment(reference) ? reference.initializer : reference.name);
+    let factory = ts.isCallExpression(call) ? readProjectApiCallName(call.expression) : undefined;
+    if (ts.isCallExpression(call)) {
+      for (const statement of sourceFile.statements) {
+        if (!ts.isImportDeclaration(statement) || !ts.isStringLiteral(statement.moduleSpecifier) || !["steamharness", "steamharness/agent"].includes(statement.moduleSpecifier.text)) continue;
+        const bindings = statement.importClause?.namedBindings;
+        if (ts.isIdentifier(call.expression) && bindings && ts.isNamedImports(bindings)) for (const item of bindings.elements) {
+          if (item.name.text === call.expression.text) factory = item.propertyName?.text ?? item.name.text;
+        }
+        if (bindings && ts.isNamespaceImport(bindings) && ts.isPropertyAccessExpression(call.expression) &&
+          ts.isIdentifier(call.expression.expression) && bindings.name.text === call.expression.expression.text) factory = call.expression.name.text;
+      }
+    }
+    if (!ts.isCallExpression(call) || factory !== "createAgentConversationProject") {
+      if (explicit) invalid("coreAgent must reference a statically named Core Agent conversation project.");
+      return;
+    }
+    try {
+      const options: AgentProjectOptions = {};
+      const argument = call.arguments[0] === undefined ? undefined : resolve(call.arguments[0]);
+      if (argument !== undefined && !ts.isObjectLiteralExpression(argument)) throw new Error("Core Agent options must be a static object.");
+      for (const property of argument?.properties ?? []) {
+        if (ts.isSpreadAssignment(property)) throw new Error("Core Agent options cannot spread dynamic parameter configuration.");
+        if (!ts.isPropertyAssignment(property) && !ts.isShorthandPropertyAssignment(property)) continue;
+        const name = readStructurePropertyName(property.name);
+        if (!name || !["modelSource", "model", "effort", "permissionPolicy", "mode", "params", "paramOptions"].includes(name)) continue;
+        const expression = ts.isPropertyAssignment(property) ? property.initializer : property.name;
+        (options as Record<string, unknown>)[name] = literal(evaluateExpression(resolve(expression)));
+      }
+      normalizeProjectParamDeclarations(options.params ?? createAgentProjectParams(options));
+      coreOptions.set(executor, options);
+      return options;
+    } catch (error) { invalid(error instanceof Error ? error.message : String(error)); }
+    function invalid(message: string): void {
+      analysis.executorConfigurationViolations.push({ type: "invalid_executor_param_configuration", name: "coreAgent", message,
+        locations: [createLocation(cwd, filePath, sourceFile, reference!)] });
+    }
+    function literal(value: StructureValue): unknown {
+      if (value.kind === "literal") return value.value;
+      if (value.kind === "variable" && value.resolved) return literal(value.resolved);
+      if (value.kind === "variable" && value.name === "undefined") return undefined;
+      if (value.kind === "array") return value.value.map(literal);
+      if (value.kind === "object") return Object.fromEntries(Object.entries(value.value).map(([key, child]) => {
+        if (key.startsWith("...")) throw new Error("Core Agent parameter configuration must be static.");
+        return [key, literal(child)];
+      }));
+      throw new Error("Core Agent parameter configuration must be static.");
+    }
   }
 
   function collectExecutorTools(node: ts.Node): void {
@@ -2509,6 +2593,8 @@ function analyzeSourceFile(
       description: readStringProperty(obj, "description"),
       command: readStringProperty(obj, "command"),
       defaultValue: readStringProperty(obj, "defaultValue"),
+      visible: readBooleanProperty(obj, "visible"),
+      fixedValue: readStringProperty(obj, "fixedValue"),
       ...(findStaticPropertyAssignment(obj, "userSetting") === undefined ? {} : {
         userSetting: readParamUserSetting(obj),
       }),
