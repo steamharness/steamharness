@@ -1,7 +1,3 @@
-.project-information-dialog { width: min(900px, calc(100vw - 24px)); }
-.project-information-tabs { display: flex; gap: 20px; margin: 8px 0 18px; border-bottom: 1px solid var(--border); }
-.project-information-tabs > button { border: 0; border-bottom: 2px solid transparent; padding: 10px 0; background: transparent; color: var(--muted); }
-.project-information-tabs > button[aria-selected=true] { color: var(--vscode-editor-foreground); border-bottom-color: var(--vscode-focusBorder, var(--focus)); }
 .project-databases { min-width: 0; }
 .database-section-heading, .database-card-heading, .database-metadata { display: flex; align-items: center; gap: 10px; }
 .database-section-heading { justify-content: space-between; margin-bottom: 16px; }

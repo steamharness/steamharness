@@ -7,17 +7,8 @@ import { iconHtml } from './ui';
  * the moment a page builds its markup.
  */
 
-export function aiUsageButton(): string {
-  return `<button id="usage" class="icon-button" title="${t("System AI usage")}" aria-label="${t("System AI usage")}" aria-haspopup="dialog" hidden>${iconHtml('graph')}</button>`;
-}
-
 export function projectInfoButton(): string {
-  return `<button id="project-info" class="icon-button" title="${t("Project information")}" aria-label="${t("Project information")}" aria-haspopup="dialog">${iconHtml('package')}</button>`;
-}
-
-/** Hidden until the page reports its tools. The workflow page shows it unconditionally. */
-export function toolPermissionsButton(): string {
-  return `<button id="tools" class="icon-button" title="${t("Tools and skills")}" aria-label="${t("Tools and skills")}" aria-haspopup="dialog" hidden>${iconHtml('wrench')}</button>`;
+  return `<button id="project-info" class="icon-button" title="${t("Project information")}" aria-label="${t("Project information")}" aria-haspopup="dialog" aria-controls="project-information-dialog">${iconHtml('package')}</button>`;
 }
 
 /**

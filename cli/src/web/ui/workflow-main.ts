@@ -1,5 +1,5 @@
 import { mountAggregateToolbar } from './aggregate';
-import { mountProjectConfigurations, projectConfigurationsButton } from './project-configurations';
+import { mountProjectConfigurations } from './project-configurations';
 import { t, locale } from '../localization';
 import './style.css';
 import './workflow-style.css';
@@ -13,7 +13,7 @@ import { ConversationTools } from './conversation-tools';
 import { updateProjectAvatar } from './avatar';
 import { iconHtml, iconButton, escapeHtml } from './ui';
 import { runStatusLabels as statusLabels, workflowHistoryStatus, updateHistoryStatus, updateRunningCount } from './history-status';
-import { aiUsageButton, narrowMenuDismiss, projectInfoButton, toolPermissionsButton } from './toolbar';
+import { narrowMenuDismiss, projectInfoButton } from './toolbar';
 import { projectParameters, projectParamValue, type Project, type ParamState, type ParamValues, type Attachment } from '../workflow-types';
 import type { Draft, RunRecord } from '../workflow-workspace';
 import type { AccountState } from '../workflow-auth-client';
@@ -40,7 +40,7 @@ const app = document.querySelector<HTMLElement>('#app')!;
 const host = acquireProjectHost();
 app.classList.add('workflow-app');
 app.innerHTML = `
-  <header class="toolbar"><div class="project-title"><button id="menu-toggle" class="icon-button" aria-label="${t("Show runs")}" title="${t("Show runs")}">${iconHtml('layout-sidebar-left')}</button><h1 id="workflow-title">Workflow</h1></div><div class="toolbar-actions"><span id="running-count" class="running-count" hidden></span>${projectConfigurationsButton()}${aiUsageButton()}${toolPermissionsButton()}${projectInfoButton()}</div></header>
+  <header class="toolbar"><div class="project-title"><button id="menu-toggle" class="icon-button" aria-label="${t("Show runs")}" title="${t("Show runs")}">${iconHtml('layout-sidebar-left')}</button><h1 id="workflow-title">Workflow</h1></div><div class="toolbar-actions"><span id="running-count" class="running-count" hidden></span>${projectInfoButton()}</div></header>
   <aside id="project-menu" class="project-menu" aria-label="${t("Runs")}"><div class="menu-heading"><span>${t("Runs")}</span><div class="menu-actions"><button id="history-toggle" class="icon-button" aria-label="${t("Search runs")}" title="${t("Search runs")}">${iconHtml('search')}</button><button id="new" class="icon-button" aria-label="${t("New run")}" title="${t("New run")}">${iconHtml('add')}</button><button id="hide-menu" class="icon-button" aria-label="${t("Hide runs")}" title="${t("Hide runs")}">${iconHtml('chevron-left')}</button></div></div><section id="run-history"><nav id="run-list"></nav><div id="empty-history" class="no-history">${t("No runs")}</div><button id="load-more-history" class="all-history" hidden>${iconHtml('chevron-down')}<span>${t("Load more")}</span></button></section></aside>
   <main><section id="server-guidance" class="project-server-guidance" aria-labelledby="server-guidance-title" role="region" aria-live="polite" hidden></section><div id="error" class="error" role="alert" hidden></div><div id="active-run" class="workflow-active" hidden><button id="show-active" class="workflow-active-link"></button><button id="stop-active" class="icon-button" title="${t("Stop run")}" aria-label="${t("Stop run")}">${iconHtml('debug-stop')}</button></div>
     <div id="workspace-scroll" class="workspace-scroll"><section id="entrypoints" class="workflow-entrypoints" aria-label="${t("Workflow entrypoint")}"></section>
@@ -53,7 +53,10 @@ app.innerHTML = `
     <section id="workflow-form" class="workflow-form" aria-label="${t("Entrypoint parameters")}"><div class="workflow-form-top"><div id="input-mode" class="input-mode" role="group" aria-label="${t("Parameter mode")}"><button data-mode="form" aria-pressed="true">${t("Form")}</button><button data-mode="raw" aria-pressed="false">JSON</button></div><button id="refresh-params" class="icon-button" title="${t("Refresh parameters")}" aria-label="${t("Refresh parameters")}">${iconHtml('refresh')}</button></div><div id="main-fields" class="workflow-main-fields"></div><textarea id="raw-args" aria-label="${t("JSON argument array")}" spellcheck="false" rows="4" hidden></textarea><div id="parameter-error" class="error" role="alert" hidden></div><div class="workflow-form-bottom"><div id="parameter-actions" class="parameter-actions"></div><span id="parameter-status" class="parameter-status" hidden>${iconHtml('loading')}</span><button id="run" class="workflow-run-button">${iconHtml('play')}<span>${t("Run")}</span></button></div></section>
   </main><dialog id="history-dialog" class="conversation-dialog"><header><label class="history-search">${iconHtml('search')}<input id="search-history" type="search" placeholder="${t("Search runs")}" aria-label="${t("Search runs")}"></label><button id="close-history" class="icon-button" title="${t("Close")}" aria-label="${t("Close")}">${iconHtml('close')}</button></header><div id="search-results" class="dialog-body"></div><button id="search-more" class="all-history" hidden>${t("Load more")}</button></dialog>
   <dialog id="node-dialog" class="conversation-dialog"><header><h2 id="node-title"></h2><button id="close-node" class="icon-button" title="${t("Close")}" aria-label="${t("Close")}">${iconHtml('close')}</button></header><pre id="node-detail" class="dialog-body web-preview"></pre></dialog>`;
-const configurationPanel = mountProjectConfigurations(host);
+const configurationPanel = mountProjectConfigurations(host, {
+  open: () => { if (state) { fields.close(); dialogs.projectInfo(state.project, 'configurations'); } },
+  isOpen: () => dialogs.activeSection === 'configurations',
+});
 const aggregateToolbar = mountAggregateToolbar(host);
 const element = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
 const traceButton = iconButton('history', t("Trace"), () => post({ type: 'trace', runId: state?.run?.id }));
@@ -74,7 +77,13 @@ const saved = (host.getState() ?? {}) as { menuOpen?: boolean; entrypointId?: st
 let menuOpen = saved.menuOpen ?? true, tab = 'result', scale = 1, graphWidth = 400, graphHeight = 160, graphSignature = '';
 let editTimer: ReturnType<typeof setTimeout> | undefined, searchTimer: ReturnType<typeof setTimeout> | undefined;
 let prompt: InputPrompt | undefined, promptKey = '';
-const narrow = matchMedia('(max-width: 680px)'), dialogs = new ConversationTools(aggregateToolbar.databases);
+const narrow = matchMedia('(max-width: 680px)'), dialogs = new ConversationTools(aggregateToolbar.databases, {
+  configurations: configurationPanel,
+  tools: () => ({ parameters: parameters(), policies: draft().policies, readOnly: !connected,
+    changed: policies => { draft().policies = structuredClone(policies); post({ type: 'tool-policy', policies }); } }),
+  usage: { available: () => state?.account.status === 'authenticated' && !!state.account.aiConfigured,
+    load: requestId => post({ type: 'usage', requestId }) },
+});
 const output = new ConversationOutput(element('run-output'), {
   copy: text => host.postMessage({ type: 'copy', text }), plan: text => dialogs.plan(text), file: id => host.postMessage({ type: 'open-file', id }),
   image: (src, title) => dialogs.image(src, title), resource: (card, action, requestId) => post({ type: 'resource', cardId: card.id, runId: state?.run?.id, action, requestId }),
@@ -158,6 +167,7 @@ function renderEntrypoints(): void {
   selectEntrypoint(entries.some(entry => entry.id === saved.entrypointId) ? saved.entrypointId : defaultId || undefined);
 }
 function controls(): void {
+  dialogs.updatePermissions?.();
   if (state) { updateProjectAvatar(element('project-info'), state.project); }
   serverGuidance.update(state?.serverData, state?.project.id ?? '', { connected, working: checkingServer || !!state?.serverData?.checking, canCreate: !state?.project.assistant });
   element<HTMLButtonElement>('run').disabled = disabled() || resolving || serverBlocked();
@@ -171,9 +181,6 @@ function controls(): void {
   element('workflow-form').setAttribute('aria-busy', String(resolving));
   for (const button of Array.from(element('input-mode').querySelectorAll<HTMLButtonElement>('button'))) { button.setAttribute('aria-pressed', String(button.dataset.mode === draft().inputMode)); button.disabled = disabled(); }
   if (draft().inputMode === 'form') { fields.update(); }
-  element('usage').hidden = state?.account.status !== 'authenticated';
-  element<HTMLButtonElement>('tools').disabled = !connected;
-  element('tools').hidden = false;
   prompt?.setBusy(!connected || serverBlocked() || state?.run?.status === 'running' || submitting);
   app.dataset.connection = connected ? 'connected' : 'disconnected';
 }
@@ -317,8 +324,6 @@ element('delete-run').onclick = async () => {
 for (const name of ['result', 'flow', 'logs']) { element(`tab-${name}`).onclick = () => changeTab(name); }
 element('zoom-in').onclick = () => zoom(scale + 0.1); element('zoom-out').onclick = () => zoom(scale - 0.1); element('fit-graph').onclick = fitGraph;
 element('close-node').onclick = () => element<HTMLDialogElement>('node-dialog').close();
-element('tools').onclick = () => dialogs.permissions(parameters(), draft().policies, policies => { draft().policies = structuredClone(policies); post({ type: 'tool-policy', policies }); });
-element('usage').onclick = () => dialogs.usage(requestId => post({ type: 'usage', requestId }));
 element('project-info').onclick = () => { if (state) { fields.close(); dialogs.projectInfo(state.project); } };
 addEventListener('message', event => {
   if (event.source !== null && event.source !== window.parent) return;

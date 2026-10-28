@@ -5,7 +5,6 @@ import { AGENT_MODELS_CONFIGURATION_FIELD, AGENT_MODELS_CONFIGURATION_KEY, creat
 
 const host = vi.hoisted(() => ({ postMessage: vi.fn(), getState: vi.fn(), setState: vi.fn() }));
 vi.mock('../web/ui/host', () => ({ acquireProjectHost: () => host }));
-vi.mock('../web/ui/conversation-tools', () => ({ ConversationTools: class { open = false; close() {} closeUsage() {} } }));
 const listeners: { target: EventTarget; type: string; listener: EventListenerOrEventListenerObject; options?: boolean | AddEventListenerOptions }[] = [];
 
 afterEach(() => {
@@ -147,11 +146,11 @@ it('guides an empty Agent model list to the active configuration and preserves t
   expect(feedback.hidden).toBe(false);expect(feedback.classList.contains('model-configuration-required')).toBe(true);
   expect(feedback.querySelector('.message-error')?.textContent).toBe(f.sessions[0].messages[0].error);
   expect(errorAction.closest('.message-actions')).toBeNull();
-  expect(errorAction.getAttribute('aria-haspopup')).toBe('dialog');expect(errorAction.getAttribute('aria-controls')).toBe('project-configurations-dialog');
+  expect(errorAction.getAttribute('aria-haspopup')).toBe('dialog');expect(errorAction.getAttribute('aria-controls')).toBe('project-information-dialog');
   f.action('ai').focus();f.action('ai').click();
   const request=host.postMessage.mock.calls.map(([message])=>message).find(message=>message.type==='project-configuration'&&message.call.action==='get');
   f.emit({type:'project-configuration-result',requestId:request.requestId,value:configurations});await Promise.resolve();
-  const dialog=document.querySelector<HTMLDialogElement>('.project-configurations')!;
+  const dialog=document.querySelector<HTMLDialogElement>('.project-information-dialog')!;
   expect(dialog.open).toBe(true);expect(document.querySelector<HTMLElement>('.configuration-body')!.hidden).toBe(false);
   expect(document.activeElement?.textContent).toBe('Add model');expect(f.input.value).toBe('Keep my message');
   dialog.close();expect(document.activeElement).toBe(f.action('ai'));

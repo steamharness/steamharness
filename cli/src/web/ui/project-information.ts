@@ -30,7 +30,7 @@ export function projectInformation(project: Project): ProjectInformationSection[
   if (info && Object.keys(info.localizedNames).length) {
     sections.push({ title: t("Localized names"), rows: Object.entries(info.localizedNames).map(([label, value]) => ({ label, value })) });
   }
-  sections.push({ title: t("Windows"), expanded: true, rows: project.entries.map(entry => ({ label: entry.name, value: `${entry.entryId} · ${projectTypeLabels[entry.type]}`, avatarUrl: projectAvatarDataUrl(entry.projectCard, entry.type) })) });
+  sections.push({ title: t("Project windows"), expanded: true, rows: project.entries.map(entry => ({ label: entry.name, value: `${entry.entryId} · ${projectTypeLabels[entry.type]}`, avatarUrl: projectAvatarDataUrl(entry.projectCard, entry.type) })) });
   if (project.entrypoints.length) {
     sections.push({ title: t("Entrypoints"), rows: project.entrypoints.map(entry => ({
       label: entry.title || entry.id,

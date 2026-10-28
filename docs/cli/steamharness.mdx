@@ -31,6 +31,8 @@ pnpm exec steamharness mcp . --entry database
 
 每个入口使用 `/entries/<entryId>/` URL 和独立控制器。入口的可选 `projectCard` 配置 `icon`、`iconColor` 与 `iconBackgroundColor`，颜色使用 `#RRGGBB`；未配置的字段采用入口类型的默认值。根 `steamharness.json.projectCard` 用于聚合项目卡片，入口图标相互独立。版本只在根 `steamharness.json.version` 声明，入口不接受独立版本。
 
+点击右上角的 **项目信息** 图标，统一查看概览、项目配置、工具、技能与数据库。面板使用固定宽高，左侧分栏导航，右侧内容独立滚动；切换分栏不会改变面板大小，也不会丢弃配置草稿或工具搜索。工具与技能供支持它们的入口使用。技能仅作只读展示，没有启用或自动批准开关。原有的配置模型快捷入口会直接打开面板中的项目配置。
+
 点击顶部“项目信息”图标打开“数据库”页，查看数据库名称、ID、连接状态及共享入口。图标操作支持关联、更改或复制 ID；浏览图标跳转至 Studio 的数据库标签，普通 Web 运行方式提示暂不支持数据预览。申请、审批与授权维护通过 Studio、Server Web 或 CLI `databases` 命令完成。
 
 根 `config.json` 集中记录别名和获批 ID，各入口在实际所属的 `steamharness.json` 中只声明使用的别名，支持 `STEAMHARNESS_PROJECT_CONFIG` 覆盖。一个入口可关联多个数据库；保存映射不授予权限。详见 [数据库空间](/concepts/data-storage)。

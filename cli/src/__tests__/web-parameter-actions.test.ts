@@ -163,7 +163,7 @@ describe('Quick parameter triggers', () => {
     f.state.modelConfigurationRequired = true; f.state.loading = true; f.actions.update();
     expect(button.disabled).toBe(false);expect(button.ariaLabel).toContain('Configure model');
     expect(button.attributes.get('aria-haspopup')).toBe('dialog');
-    expect(button.attributes.get('aria-controls')).toBe('project-configurations-dialog');
+    expect(button.attributes.get('aria-controls')).toBe('project-information-dialog');
     button.dispatchEvent(new Event('click'));expect(f.onConfigureModel).toHaveBeenCalledOnce();
     expect(f.popup.hidden).toBe(true);expect(f.onChange).not.toHaveBeenCalled();
     f.state.modelConfigurationRequired=false;f.state.loading=false;

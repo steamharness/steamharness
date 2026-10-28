@@ -175,7 +175,7 @@ export class ParameterActions {
         if (view.count) { view.count.textContent = String(fields.length); }
         view.button.dataset.configureModel = String(!!configureModel);
         view.button.setAttribute('aria-haspopup', configureModel ? 'dialog' : action.kind === 'quick' ? 'menu' : 'dialog');
-        view.button.setAttribute('aria-controls', configureModel ? 'project-configurations-dialog' : this.popup.id);
+        view.button.setAttribute('aria-controls', configureModel ? 'project-information-dialog' : this.popup.id);
         view.button.setAttribute('aria-busy', String(loading && !configureModel && !shortcut));
       }
       const fixed = action.kind === 'quick' && this.groupFields(action).length === 1 && settingsShortcut(this.groupFields(action)[0]);

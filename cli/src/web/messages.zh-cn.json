@@ -1,4 +1,10 @@
 {
+  "Project details, declarations and entry windows.": "查看项目详情、声明与窗口入口。",
+  "Manage configuration profiles, values and publication permissions.": "管理配置方案、配置值与发布权限。",
+  "Control which tools can run and which actions need approval.": "设置工具是否启用，以及执行时是否需要批准。",
+  "Read the guides available to this entry. Skills have no permission switches.": "查看当前入口的技能指南。技能仅供阅读，无需设置权限。",
+  "Account balance and current subscription usage.": "查看账户余额与当前订阅用量。",
+  "Linked databases and the entries that use them.": "查看关联数据库，以及使用它们的窗口入口。",
   "Request failed (HTTP {0}).": "请求失败（HTTP {0}）。",
   "The service returned an unexpected page.": "服务返回了异常页面。",
   "Check the API key and whether it has access to this model.": "请检查 API Key 是否正确，以及是否有该模型的访问权限。",

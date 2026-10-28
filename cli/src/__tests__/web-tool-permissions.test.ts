@@ -135,15 +135,15 @@ it('separates skill guides into a read-only tab and preserves their policy when 
     { name: 'skill', label: 'List and read skill guides', description: 'Read SKILL.md and references.\nActions use other tools.' },
     { name: 'read' },
   ], policies);
-  const [toolsTab, skillsTab] = document.querySelectorAll<HTMLButtonElement>('.tools-and-skills-tabs [role=tab]');
+  const [toolsTab, skillsTab] = document.querySelectorAll<HTMLButtonElement>('.project-information-tabs [role=tab]');
   const skills = document.querySelector<HTMLElement>('.skill-guides')!;
-  expect(document.querySelector('.conversation-dialog h2')?.textContent).toBe('Tools and skills');
+  expect(document.querySelector('.conversation-dialog h2')?.textContent).toBe('Project information');
   expect(toolsTab.textContent).toBe('Tools'); expect(skillsTab.textContent).toBe('Skills');
-  expect(toolsTab.getAttribute('aria-selected')).toBe('true'); expect(skills.hidden).toBe(true);
+  expect(toolsTab.getAttribute('aria-selected')).toBe('true'); expect((skills.closest('[role=tabpanel]') as HTMLElement).hidden).toBe(true);
   expect(f.root.querySelector('.tool-count')?.textContent).toBe('1 tools');
   expect(f.root.textContent).not.toContain('List and read skill guides');
   skillsTab.click();
-  expect(f.root.hidden).toBe(true); expect(skills.hidden).toBe(false);
+  expect((f.root.closest('[role=tabpanel]') as HTMLElement).hidden).toBe(true); expect((skills.closest('[role=tabpanel]') as HTMLElement).hidden).toBe(false);
   expect(skills.querySelector('.skill-guide-heading h3')?.textContent).toBe('List and read skill guides');
   expect(skills.querySelector('.skill-guide-name')?.textContent).toBe('skill');
   expect(skills.querySelector('.skill-guide-badge')?.textContent).toBe('Read-only');
@@ -162,7 +162,7 @@ it('separates skill guides into a read-only tab and preserves their policy when 
 
 it('supports keyboard tabs and retains tool search and collapse state across tab changes', () => {
   const f = fixture([{ name: 'read' }, { name: 'kb_get_document' }, { name: 'skill' }]);
-  const [tools, skills] = document.querySelectorAll<HTMLButtonElement>('.tools-and-skills-tabs [role=tab]');
+  const [tools, skills] = document.querySelectorAll<HTMLButtonElement>('.project-information-tabs [role=tab]');
   for (const tab of [tools, skills]) {
     const panel = document.getElementById(tab.getAttribute('aria-controls')!)!;
     expect(panel.getAttribute('role')).toBe('tabpanel'); expect(panel.getAttribute('aria-labelledby')).toBe(tab.id);
@@ -172,9 +172,9 @@ it('supports keyboard tabs and retains tool search and collapse state across tab
   tools.focus();
   tools.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true }));
   expect(document.activeElement).toBe(skills); expect(skills.tabIndex).toBe(0); expect(tools.tabIndex).toBe(-1);
-  expect(skills.getAttribute('aria-selected')).toBe('true'); expect(f.root.hidden).toBe(true);
+  expect(skills.getAttribute('aria-selected')).toBe('true'); expect((f.root.closest('[role=tabpanel]') as HTMLElement).hidden).toBe(true);
   skills.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true }));
-  expect(document.activeElement).toBe(tools); expect(f.root.hidden).toBe(false);
+  expect(document.activeElement).toBe(tools); expect((f.root.closest('[role=tabpanel]') as HTMLElement).hidden).toBe(false);
   expect(f.root.querySelector<HTMLInputElement>('[type=search]')?.value).toBe('kb_get');
   expect(f.section('Knowledge').open).toBe(true); expect(f.section('File tools').hidden).toBe(true);
   tools.dispatchEvent(new KeyboardEvent('keydown', { key: 'End', bubbles: true }));
@@ -191,7 +191,7 @@ it('supports keyboard tabs and retains tool search and collapse state across tab
 it('opens skill-only projects on Skills and keeps an undeclared skill tab empty', () => {
   const f = fixture([{ name: 'skill' }]);
   expect(document.querySelector('[data-tab=skills]')?.getAttribute('aria-selected')).toBe('true');
-  expect(f.root.hidden).toBe(true); expect(document.querySelector<HTMLElement>('.skill-guides')?.hidden).toBe(false);
+  expect((f.root.closest('[role=tabpanel]') as HTMLElement).hidden).toBe(true); expect((document.querySelector('.skill-guides')!.closest('[role=tabpanel]') as HTMLElement).hidden).toBe(false);
   f.dialogs.close(); f.dialogs.permissions({ fields: [], tools: [{ name: 'read' }] }, {}, f.changed);
   document.querySelector<HTMLButtonElement>('[data-tab=skills]')!.click();
   expect(document.querySelector('.skill-guides')?.textContent).toContain('No skills declared by this project');
@@ -203,8 +203,8 @@ it('localizes skill tabs and renders skill labels and descriptions as inert text
   initI18n({ preference: 'zh-CN' });
   const description = '读取 <script>alert(1)</script> 和 SKILL.md。';
   fixture([{ name: 'skill', label: '<img src=x onerror=alert(1)>', description }]);
-  expect(document.querySelector('.conversation-dialog h2')?.textContent).toBe('工具与技能');
-  expect(Array.from(document.querySelectorAll('.tools-and-skills-tabs button'), tab => tab.textContent)).toEqual(['工具', '技能']);
+  expect(document.querySelector('.conversation-dialog h2')?.textContent).toBe('项目信息');
+  expect(Array.from(document.querySelectorAll('.project-information-tabs button'), tab => tab.textContent)).toEqual(['工具', '技能']);
   const skills = document.querySelector('.skill-guides')!;
   expect(skills.querySelector('h3')?.textContent).toBe('<img src=x onerror=alert(1)>');
   expect(skills.querySelector('.skill-guide-description')?.textContent).toBe(description);

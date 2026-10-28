@@ -1,5 +1,5 @@
 import { mountAggregateToolbar } from './aggregate';
-import { mountProjectConfigurations, projectConfigurationsButton } from './project-configurations';
+import { mountProjectConfigurations } from './project-configurations';
 import { t, locale } from '../localization';
 import type { AccountState } from '../workflow-auth-client';
 import type { ProjectServerState } from '../project-server-state';
@@ -27,7 +27,7 @@ import type { ConnectionState } from './connection';
 import { StateRevisions } from './state-revisions';
 import { iconHtml as icon, escapeHtml as escape, iconButton, updateIcon } from './ui';
 import { conversationHistoryStatus, updateHistoryStatus, updateConversationRunningCount } from './history-status';
-import { aiUsageButton, narrowMenuDismiss, projectInfoButton, toolPermissionsButton } from './toolbar';
+import { narrowMenuDismiss, projectInfoButton } from './toolbar';
 import { updateProjectAvatar, updateUserAvatar } from './avatar';
 import './style.css';
 import {
@@ -58,7 +58,7 @@ function initialize(): void {
   app.innerHTML = `
     <header class="toolbar">
       <div class="project-title"><button id="menu-toggle" class="icon-button" title="${t("Show conversations")}" aria-label="${t("Show conversations")}" aria-controls="project-menu">${icon('layout-sidebar-left')}</button><div class="project-heading"><h1 id="conversation-title">Workflow</h1><span id="assistant-folder" hidden></span></div><span id="project-name" class="project-name"></span></div>
-      <div class="toolbar-actions"><span id="running-count" class="running-count" hidden></span><button id="new" class="icon-button" title="${t("New conversation")}" aria-label="${t("New conversation")}">${icon('add')}</button>${projectConfigurationsButton()}${aiUsageButton()}${toolPermissionsButton()}${projectInfoButton()}</div>
+      <div class="toolbar-actions"><span id="running-count" class="running-count" hidden></span><button id="new" class="icon-button" title="${t("New conversation")}" aria-label="${t("New conversation")}">${icon('add')}</button>${projectInfoButton()}</div>
     </header>
     <aside id="project-menu" class="project-menu" aria-label="${t("Conversations")}">
       <div class="menu-heading"><span id="menu-label">${t("Conversations")}</span><div class="menu-actions"><button id="history-toggle" class="icon-button" title="${t("Search conversations")}" aria-label="${t("Search conversations")}" aria-haspopup="dialog" aria-controls="history-popover" aria-expanded="false" popovertarget="history-popover">${icon('search')}</button><button id="hide-menu" class="icon-button" title="${t("Hide conversations")}" aria-label="${t("Hide conversations")}">${icon('chevron-left')}</button></div></div>
@@ -76,7 +76,10 @@ function initialize(): void {
       <button class="session-action" data-action="delete" role="menuitem" tabindex="-1">${icon('trash')}<span>${t("Delete conversation")}</span></button>
     </div>`;
 
-  const configurationPanel = mountProjectConfigurations(vscode);
+  const configurationPanel = mountProjectConfigurations(vscode, {
+    open: () => { if (state) { parameterActions.close(); dialogs.projectInfo(state.project, 'configurations'); } },
+    isOpen: () => dialogs.activeSection === 'configurations',
+  });
   const aggregateToolbar = mountAggregateToolbar(vscode);
 
   interface State { serverData?: ProjectServerState; project: Project; sessions: ConversationSession[]; activeId: string; running: boolean; conversationAccess?: { readOnly: boolean }; parameterValues?: Record<string, ParamValues>; account?: AccountState; authenticationRevision?: number; parameterRevision?: number; serverInstanceId?: string }
@@ -211,7 +214,13 @@ function initialize(): void {
     reorder: ids => post({ type: 'queue-reorder', ids }),
     resume: () => post({ type: 'queue-run' }),
   });
-  const dialogs = new ConversationTools(aggregateToolbar.databases);
+  const dialogs = new ConversationTools(aggregateToolbar.databases, {
+    configurations: configurationPanel,
+    tools: () => ({ parameters: currentParameters(), policies: currentSession()?.toolPermissionPolicies ?? {}, readOnly: readOnly(),
+      changed: policies => post({ type: 'tool-policy', entrypointId: entrypoint.value, policies }) }),
+    usage: { available: () => !!state?.account?.aiConfigured && !!state.project.requiresLogin && state.account.status === 'authenticated',
+      load: requestId => post({ type: 'usage', requestId }) },
+  });
   const contentSearch = new ContentSearch(transcript, () => { followingLatest = false; });
   const currentParameters = () => projectParameters(state!.project, entrypoint.value || undefined);
   const values = (): ParamValues => paramValues[formKey] ??= {};
@@ -573,14 +582,9 @@ function initialize(): void {
     textarea.disabled = readOnly() || busy() && !pendingSend();
     entrypoint.disabled = busy() || parametersLoading();
     document.querySelector<HTMLButtonElement>('#new')!.disabled = false;
+    dialogs.updatePermissions?.();
     const waiting = currentSession()?.messages.some((message) => message.pendingInput);
     app.dataset.runState = state.running ? 'running' : waiting ? 'waiting' : submitting || pendingSend() ? 'submitting' : 'idle';
-    document.querySelector<HTMLElement>('#tools')!.hidden = !conversation && !currentParameters().tools?.length;
-    document.querySelector<HTMLButtonElement>('#tools')!.disabled = readOnly();
-    // AI usage is a private deployment surface: it only appears when the host
-    // injected a system-AI connection (internal Studio), never in the plain
-    // open-source CLI web.
-    document.querySelector<HTMLElement>('#usage')!.hidden = !state.account?.aiConfigured || !state.project.requiresLogin || state.account?.status !== 'authenticated';
     const attach = document.querySelector<HTMLButtonElement>('#attach')!;
     attach.hidden = !conversation;
     attach.disabled = busy() || uploading > 0 || !navigationReady() || !connectionAvailable;
@@ -999,7 +1003,7 @@ function initialize(): void {
       view.configureModel = iconButton('settings-gear', t('Configure model'), () => currentParameters().fields.some(field => field.userSetting?.key === 'agent.model') ? vscode.postMessage({ type: 'open-user-setting', key: 'agent.model' }) : configurationPanel.openAgentModels());
       view.configureModel.append(document.createTextNode(t('Configure model')));
       view.configureModel.className = 'configure-model-message'; view.configureModel.hidden = true;
-      view.configureModel.setAttribute('aria-haspopup', 'dialog'); view.configureModel.setAttribute('aria-controls', 'project-configurations-dialog');
+      view.configureModel.setAttribute('aria-haspopup', 'dialog'); view.configureModel.setAttribute('aria-controls', 'project-information-dialog');
       view.feedback.append(view.configureModel);
       view.output = new ConversationOutput(view.content, {
         composer: true,
@@ -1381,8 +1385,6 @@ function initialize(): void {
   document.querySelector('#new')!.addEventListener('click', () => navigate());
   document.querySelector('#project-info')!.addEventListener('click', () => { if (state) { parameterActions.close(); dialogs.projectInfo(state.project); } });
   document.querySelector('#cancel-queue-edit')!.addEventListener('click', () => post({ type: 'queue-cancel-edit' }));
-  document.querySelector('#tools')!.addEventListener('click', () => dialogs.permissions(currentParameters(), currentSession()?.toolPermissionPolicies ?? {}, (policies) => post({ type: 'tool-policy', entrypointId: entrypoint.value, policies })));
-  document.querySelector('#usage')!.addEventListener('click', () => dialogs.usage(requestId => post({ type: 'usage', requestId })));
   document.querySelector('#parameter-login')!.addEventListener('click', () => vscode.postMessage({ type: 'login' }));
   document.querySelector('#menu-toggle')!.addEventListener('click', () => showMenu(true));
   document.querySelector('#hide-menu')!.addEventListener('click', () => showMenu(false));

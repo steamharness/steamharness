@@ -7,6 +7,9 @@ import { createAgentModelsControl } from './agent-models';
 
 type Host = { postMessage(message: Record<string, unknown>): void };
 export interface ProjectConfigurationsPanel {
+  readonly element: HTMLElement;
+  activate(): void;
+  deactivate(): void;
   needsAgentModels(): boolean;
   openAgentModels(): void;
 }
@@ -14,9 +17,11 @@ export function projectConfigurationsButton(): string {
   return `<button id="project-configurations" class="icon-button" aria-haspopup="dialog" title="${t('Project configurations')}" aria-label="${t('Project configurations')}">${iconHtml('settings-gear')}</button>`;
 }
 /** Shared by all three local project pages. Drafts keep their original revision until saved/discarded. */
-export function mountProjectConfigurations(host: Host): ProjectConfigurationsPanel {
-  const trigger = document.getElementById('project-configurations')!;
-  const dialog = document.createElement('dialog'); dialog.id = 'project-configurations-dialog'; dialog.className = 'conversation-dialog project-configurations';
+export function mountProjectConfigurations(host: Host, embedded?: { open(): void; isOpen(): boolean }): ProjectConfigurationsPanel {
+  const trigger = document.getElementById('project-configurations');
+  const dialog = embedded ? document.createElement('section') : document.createElement('dialog');
+  dialog.id = 'project-configurations-dialog'; dialog.className = embedded ? 'project-configurations project-configurations-embedded' : 'conversation-dialog project-configurations';
+  const isOpen = () => embedded ? embedded.isOpen() : (dialog as HTMLDialogElement).open;
   let suspendedDetailId:string|undefined;
   let detailId:string|undefined, selectingId:string|undefined, publicationView=false, publicationDirty=false, missingAgentModels=false;
   let opening = 0;
@@ -26,8 +31,8 @@ export function mountProjectConfigurations(host: Host): ProjectConfigurationsPan
   document.querySelector('.composer-toolbar .run-options')?.append(modeStatus);
   const listActionButtons:HTMLButtonElement[]=[];
   const heading = document.createElement('header'), title = document.createElement('h2'); title.textContent = t('Project configurations');
-  title.id = 'project-configurations-title'; dialog.setAttribute('aria-labelledby', title.id);
-  const close = iconButton('close', t('Close'), () => dialog.close()); heading.append(title, close);
+  title.id = 'project-configurations-title'; dialog.setAttribute(embedded ? 'aria-label' : 'aria-labelledby', embedded ? t('Project configurations') : title.id);
+  const close = iconButton('close', t('Close'), () => (dialog as HTMLDialogElement).close()); heading.append(title, close);
   const body = document.createElement('div'); body.className = 'dialog-body configuration-body';
   const status = document.createElement('p'); status.role = 'status'; status.className = 'configuration-status'; status.textContent = t('Loading...');
   const toolbar = document.createElement('section'); toolbar.className = 'configuration-profiles';
@@ -77,7 +82,7 @@ export function mountProjectConfigurations(host: Host): ProjectConfigurationsPan
   showView(false);
   tabs.onkeydown=event=>{if(!['ArrowLeft','ArrowRight','Home','End'].includes(event.key)||publicationTab.hidden)return;event.preventDefault();const next=event.key==='Home'?valuesTab:event.key==='End'?publicationTab:document.activeElement===valuesTab?publicationTab:valuesTab;next.click();next.focus();};
   tabs.append(valuesTab,publicationTab);
-  body.append(fieldsHeader,fields); dialog.append(heading,listToolbar,listBody,toolbar,tabs,body,publicationBody,actions,publicationFooter); document.body.append(dialog);
+  body.append(fieldsHeader,fields); if(!embedded)dialog.append(heading); dialog.append(listToolbar,listBody,toolbar,tabs,body,publicationBody,actions,publicationFooter); if(!embedded)document.body.append(dialog);
   let latest: ProjectConfigurationState | undefined, draft: ProjectConfigurationState | undefined, dirty = false, working = false, editingField = false;
   const readers = new Map<string, () => unknown>(), overrides = new Set<string>(), resets = new Map<string, HTMLButtonElement>();
   const modelControls: ReturnType<typeof createAgentModelsControl>[] = [];
@@ -526,22 +531,24 @@ export function mountProjectConfigurations(host: Host): ProjectConfigurationsPan
   }
   async function open(field?: string) {
     const attempt = ++opening, hadState = !!latest;
-    if (!dialog.open) opener = document.activeElement instanceof HTMLElement && document.activeElement !== document.body ? document.activeElement : trigger;
+    if (!isOpen()) opener = document.activeElement instanceof HTMLElement && document.activeElement !== document.body ? document.activeElement : trigger ?? undefined;
     const blocked = !!field && (working || editingField || !clean());
     if(!working&&!editingField&&!dirty&&!publicationDirty){detailId=undefined;draft=undefined;showView(false);}
     if (latest) render(latest);
-    if (!dialog.open) dialog.showModal();
+    if (!embedded && !isOpen()) (dialog as HTMLDialogElement).showModal();
     if (blocked) return;
     if (field && hadState) showActiveField(field);
     try {
       render(await request({action:'get'}));
       // A slow refresh must not navigate again after the user closes or browses the panel.
-      if (!field || hadState || attempt !== opening || !dialog.open || working || editingField || !clean()) return;
+      if (!field || hadState || attempt !== opening || !isOpen() || working || editingField || !clean()) return;
       showActiveField(field);
-    } catch (e) { if (attempt === opening && dialog.open) error(e); }
+    } catch (e) { if (attempt === opening && isOpen()) error(e); }
   }
-  trigger.onclick = () => { void open(); };
-  dialog.addEventListener('close',()=>{++opening;hideMenus();(opener?.isConnected?opener:trigger).focus();});
+  let revealing = false;
+  function reveal(field?: string) { revealing = true; try { embedded?.open(); } finally { revealing = false; } void open(field); }
+  if(trigger)trigger.onclick = () => reveal();
+  dialog.addEventListener('close',()=>{++opening;hideMenus();(opener?.isConnected?opener:trigger)?.focus();});
   window.addEventListener('message',event=>{
     if(event.source!==null) return;
     const message=event.data;
@@ -551,7 +558,7 @@ export function mountProjectConfigurations(host: Host): ProjectConfigurationsPan
     if (message?.type === 'state' && typeof message.authenticationRevision === 'number' && message.authenticationRevision !== authenticationRevision) {
       authenticationRevision = message.authenticationRevision; modelControls.forEach(control => control.invalidate());
     }
-    if(message?.type==='project-configurations-open') (trigger as HTMLButtonElement).click();
+    if(message?.type==='project-configurations-open') reveal();
   });
-  return { needsAgentModels: () => missingAgentModels, openAgentModels: () => { void open(AGENT_MODELS_CONFIGURATION_KEY); } };
+  return { element: dialog, activate: () => { if(!revealing)void open(); }, deactivate: () => { ++opening; hideMenus(); }, needsAgentModels: () => missingAgentModels, openAgentModels: () => reveal(AGENT_MODELS_CONFIGURATION_KEY) };
 }
