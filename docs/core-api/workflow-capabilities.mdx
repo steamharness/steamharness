@@ -51,6 +51,14 @@ const toolIds: string[] = workflow.listProjectCapabilityToolIds({ globalMemory?:
 
 每个能力都发布一份 JSON Schema，并同样在实现里校验：MCP 客户端并不受 schema 约束，agent SDK 也把它当类型断言，所以长度上限只写在 schema 里等于没写。知识库 `markdown` ≤ 200000、`title`/`documentId` ≤ 200、`query` ≤ 500、`cursor` ≤ 80，跨会话记忆 `markdown` ≤ 100000、`title` ≤ 200，KV `key` ≤ 500；超出以 `input_validation` 失败。
 
+## 大结果续读
+
+KV 的 `get`、知识库的 `list/get/search/read_lines`、记忆的 `list/get/search` 采用相同的结果分页协议；原生工具、MCP 和直接 action API 保持一致。小结果沿用原结构；超过 40 000 UTF-8 字节时返回 `{ paged: true, encoding: "json", content, offset, totalChars, truncated, nextOffset?, resultHash }`，整个序列化分页信封也不超过此上限。
+
+保留原读取参数，增加 `resultOffset: nextOffset` 和上一页的 `resultHash`，按顺序拼接 `content`，最后解析 JSON。`resultOffset` 是 UTF-16 字符偏移；可用 `resultLimit`（正整数，最多 200000）缩小页长。结果发生变化时哈希校验拒绝拼接，须从 `resultOffset: 0` 开始并省略哈希重新读取。条目游标 `cursor` 与结果字符偏移分别使用，不能混用。
+
+写入动作拒绝结果分页参数，避免续读变成重复写入。知识库 create/edit 在要求回显正文时最多返回 4000 字符；记忆 remember 同样回显最多 4000 字符并提供 `markdownLength` 与 `markdownTruncated`，完整内容通过读取动作获取。记忆 `pageSize` 必须为 1–100 的整数；知识库 `maxMarkdownLength` 必须为 100–20000 的整数，`includeMarkdown` 必须是布尔值；无效值在写入前拒绝。
+
 ## KV 保留键
 
 `kv_store` 与运行时共用同一个命名空间，因此它拒绝写入运行时自己的键：`tokenUsage.total` 与 `tokenUsage.entry.*`（项目与 conversation 两个作用域），以及 conversation 作用域下的 `conversation.state` 与 `agent.*`（包含 `agent.pendingPlanApproval` 等待确认状态）。Agent 执行历史由独立 Durable SQLite 保存，见 [createAgentNode](./create-agent-node.mdx)。被拒绝时返回 `input_validation`，不会静默覆盖记账或运行状态。

@@ -51,6 +51,14 @@ Resuming a paused approval goes through `runProjectCapabilityAction`: the paused
 
 Every capability publishes a JSON Schema and enforces it in the implementation too: an MCP client is not bound by the schema and the agent SDK treats it as a type assertion, so a bound that lives only in the schema is not a bound. Knowledge `markdown` ≤ 200,000, `title`/`documentId` ≤ 200, `query` ≤ 500, `cursor` ≤ 80; memory `markdown` ≤ 100,000, `title` ≤ 200; KV `key` ≤ 500. Exceeding one fails as `input_validation`.
 
+## Reading large results
+
+KV `get`, knowledge `list/get/search/read_lines`, and memory `list/get/search` share a result pagination protocol across native tools, MCP and direct action APIs. Small results keep their existing shape. Results exceeding 40,000 UTF-8 bytes return `{ paged: true, encoding: "json", content, offset, totalChars, truncated, nextOffset?, resultHash }`; the complete serialized envelope also fits within that byte limit.
+
+Keep the original read arguments and add `resultOffset: nextOffset` and the previous `resultHash`. Concatenate `content` in order, then parse the complete JSON. Offsets count UTF-16 code units; `resultLimit` (a positive integer up to 200000) can request smaller pages. If the result changes, hash validation rejects the continuation; restart at `resultOffset: 0` without the hash. Entry `cursor` values and result character offsets serve separate purposes.
+
+Writes reject result pagination arguments, preventing continuation from repeating a mutation. Knowledge create/edit echoes at most 4000 body characters when requested. Memory remember likewise echoes at most 4000 characters with `markdownLength` and `markdownTruncated`; use read actions for the complete stored content. Memory `pageSize` must be an integer from 1 to 100; knowledge `maxMarkdownLength` must be an integer from 100 to 20000 and `includeMarkdown` must be boolean. Invalid values fail before writing.
+
 ## Reserved KV keys
 
 `kv_store` shares its namespaces with the runtime, so it refuses to write runtime-owned keys: `tokenUsage.total` and `tokenUsage.entry.*` in both scopes, plus `conversation.state` and `agent.*` in the conversation scope, including waiting decisions such as `agent.pendingPlanApproval`. Agent execution history uses separate Durable SQLite storage; see [createAgentNode](./create-agent-node.mdx). The attempt fails as `input_validation` instead of silently overwriting accounting or run state.

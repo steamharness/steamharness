@@ -3,6 +3,7 @@ import path from "node:path";
 import type { AgentTool } from "@earendil-works/pi-agent-core";
 import { loadTypebox } from "./pi";
 import type { TypeboxLike } from "./tools";
+import { fitTextPage, MAX_TOOL_PAGE_BYTES, pageInteger, splitsSurrogate } from "./result-pages";
 
 /** The tool a project offers for discovering and reading its skills. */
 export const SKILL_TOOL_NAME = "skill";
@@ -12,10 +13,6 @@ export const SKILL_ENTRY_FILE = "SKILL.md";
 
 /** Maximum characters requested in one read; larger files remain pageable. */
 export const MAX_SKILL_FILE_CHARS = 200_000;
-
-// Durable tools bound their output at 50 KiB. Budget the serialized JSON,
-// including escapes and metadata, so pagination survives that second limit.
-const MAX_SKILL_PAGE_BYTES = 40_000;
 
 interface SkillActionArgs {
   action?: unknown;
@@ -76,8 +73,8 @@ export async function createSkillTools(options: SkillToolOptions): Promise<Agent
       '1. Call {"action":"list"} to get skill names, descriptions and relative file paths. Select a guide relevant to the user\'s task.',
       '2. Call {"action":"read","skill":"<listed name>"} to read that guide\'s SKILL.md before following its instructions.',
       '3. Read any needed reference with {"action":"read","skill":"<listed name>","path":"references/guide.md"}. Paths are relative to the selected skill directory.',
-      `Results are JSON: list returns skills with files and filesTruncated (at most ${MAX_SKILL_FILE_LISTING} paths per skill); read returns skill, path, content, offset, totalChars and truncated. Each page fits within 40,000 UTF-8 bytes of JSON.`,
-      "If truncated is true, read the same skill and path with offset=nextOffset until truncated is false. Concatenate content in order to read the complete file. Do not repeat the first page or stop the task because a page has more content.",
+      `Results are JSON and fit within 40,000 UTF-8 bytes. list returns skills with files and filesTruncated (at most ${MAX_SKILL_FILE_LISTING} paths per skill). Continue a truncated catalog with offset=nextOffset. For filesTruncated, call list with that skill and offset=nextFileOffset, then continue with nextOffset. Long descriptions have descriptionTruncated=true; read SKILL.md for the full description.`,
+      "read returns skill, path, content, offset, totalChars and truncated. If truncated is true, read the same skill and path with offset=nextOffset until truncated is false. Concatenate content in order to read the complete file. Do not repeat the first page or stop the task because a page has more content.",
       "This tool reads guide and script contents. Carry out instructed file edits, commands or other actions with the appropriate tools and their permissions.",
     ].join("\n"),
     parameters: Type.Unsafe({
@@ -90,7 +87,7 @@ export async function createSkillTools(options: SkillToolOptions): Promise<Agent
         },
         skill: {
           type: "string",
-          description: 'Required for "read": use the exact name returned by "list", not the display description or a directory path. Ignored by "list".',
+          description: 'Required for "read": use the exact name returned by "list". For "list", optionally select one skill to page through all its file paths.',
         },
         path: {
           type: "string",
@@ -98,11 +95,11 @@ export async function createSkillTools(options: SkillToolOptions): Promise<Agent
         },
         offset: {
           type: "integer", minimum: 0,
-          description: "For read: zero-based UTF-16 character offset, initially 0. Continue with the previous result's nextOffset.",
+          description: "Zero-based offset, initially 0: characters for read, skills for list, or file paths for list with a skill. Continue with nextOffset.",
         },
         limit: {
           type: "integer", minimum: 1, maximum: MAX_SKILL_FILE_CHARS,
-          description: "For read: maximum characters in this page; the serialized byte budget may return fewer. Omit for the largest safe page.",
+          description: "Maximum characters for read, or entries for list (up to 60). The serialized byte budget may return fewer.",
         },
       },
       required: ["action"],
@@ -128,32 +125,40 @@ export async function runSkillAction(
   directories: readonly string[],
   args: SkillActionArgs,
 ): Promise<unknown> {
+  const offset = pageInteger(args.offset, 0, "skill offset", 0, Number.MAX_SAFE_INTEGER);
+  const limit = pageInteger(args.limit, MAX_SKILL_FILE_CHARS, "skill limit", 1, MAX_SKILL_FILE_CHARS);
   if (args.action === "list") {
     const skills = await listSkills(directories);
-    return {
-      action: "list" as const,
-      skills: await Promise.all(skills.map(async (skill) => ({
-        name: skill.name,
-        description: skill.description,
-        ...(await listSkillFiles(skill.directory)),
-      }))),
-    };
+    const wanted = typeof args.skill === "string" ? args.skill.trim() : "";
+    if (wanted !== "") {
+      const skill = requireSkill(skills, wanted);
+      const listing = await listSkillFiles(skill.directory, offset, Math.min(limit, MAX_SKILL_FILE_LISTING));
+      return { action: "list", skill: skill.name, offset, ...listing,
+        truncated: listing.filesTruncated, ...(listing.filesTruncated ? { nextOffset: listing.nextFileOffset } : {}) };
+    }
+    if (offset > skills.length) throw new Error("skill offset is beyond the catalog.");
+    const entries: unknown[] = [];
+    const result = () => ({ action: "list", skills: entries, offset, totalSkills: skills.length,
+      truncated: offset + entries.length < skills.length,
+      ...(offset + entries.length < skills.length ? { nextOffset: offset + entries.length } : {}) });
+    for (const skill of skills.slice(offset, offset + Math.min(limit, MAX_SKILL_FILE_LISTING))) {
+      const description = skill.description.slice(0, splitsSurrogate(skill.description, 2000) ? 1999 : 2000);
+      entries.push({ name: skill.name, description,
+        ...(description.length < skill.description.length ? { descriptionTruncated: true } : {}),
+        ...(await listSkillFiles(skill.directory, 0, MAX_SKILL_FILE_LISTING)) });
+      if (Buffer.byteLength(JSON.stringify(result())) > MAX_TOOL_PAGE_BYTES) { entries.pop(); break; }
+    }
+    if (skills.length > offset && entries.length === 0) throw new Error("Skill metadata exceeds the page byte budget; shorten its name.");
+    return result();
   }
 
   if (args.action === "read") {
     const skills = await listSkills(directories);
     const wanted = typeof args.skill === "string" ? args.skill.trim() : "";
-    const skill = skills.find((entry) => entry.name === wanted);
-    if (skill === undefined) {
-      throw new Error(
-        `Unknown skill "${wanted}". Available: ${skills.map((entry) => entry.name).join(", ") || "(none)"}.`,
-      );
-    }
+    const skill = requireSkill(skills, wanted);
     const relative = typeof args.path === "string" && args.path.trim() !== ""
       ? args.path.trim()
       : SKILL_ENTRY_FILE;
-    const offset = readInteger(args.offset, 0, "offset", 0, Number.MAX_SAFE_INTEGER);
-    const limit = readInteger(args.limit, MAX_SKILL_FILE_CHARS, "limit", 1, MAX_SKILL_FILE_CHARS);
     const content = await readSkillFile(skill.directory, relative);
     if (offset > content.length || splitsSurrogate(content, offset)) {
       throw new Error("skill offset must be within the file and at a complete character boundary.");
@@ -165,23 +170,7 @@ export async function runSkillAction(
       offset,
       totalChars: content.length,
     };
-    const page = (length: number) => {
-      let end = offset + length;
-      if (splitsSurrogate(content, end)) end--;
-      return { ...base, content: content.slice(offset, end), truncated: end < content.length,
-        ...(end < content.length ? { nextOffset: end } : {}) };
-    };
-    let low = 0, high = Math.min(limit, content.length - offset);
-    while (low < high) {
-      const mid = Math.ceil((low + high) / 2);
-      if (Buffer.byteLength(JSON.stringify(page(mid)), "utf8") <= MAX_SKILL_PAGE_BYTES) low = mid;
-      else high = mid - 1;
-    }
-    const result = page(low);
-    if (result.truncated && result.nextOffset === offset) {
-      throw new Error("skill limit must fit at least one complete character; increase limit.");
-    }
-    return result;
+    return fitTextPage(content, offset, limit, page => ({ ...base, ...page }));
   }
 
   throw new Error('skill action must be "list" or "read".');
@@ -211,26 +200,31 @@ async function listSkills(directories: readonly string[]): Promise<SkillEntry[]>
 
 async function listSkillFiles(
   directory: string,
-): Promise<{ files: string[]; filesTruncated: boolean }> {
+  offset: number,
+  limit: number,
+): Promise<{ files: string[]; filesTruncated: boolean; nextFileOffset?: number }> {
   const files: string[] = [];
+  let seen = 0;
   await collect(directory, "");
-
-  // A listing the model cannot tell was cut short reads as "that is all of
-  // it", so the cap travels with the list rather than being silently applied.
-  const truncated = files.length > MAX_SKILL_FILE_LISTING;
-  return { files: files.slice(0, MAX_SKILL_FILE_LISTING), filesTruncated: truncated };
+  if (seen < offset) throw new Error("skill offset is beyond its file listing.");
+  let count = Math.min(limit, files.length);
+  // Keep a single skill small enough to fit in a catalog page, even with long paths.
+  while (count > 1 && Buffer.byteLength(JSON.stringify(files.slice(0, count))) > 20_000) count--;
+  const truncated = count < files.length;
+  return { files: files.slice(0, count), filesTruncated: truncated,
+    ...(truncated ? { nextFileOffset: offset + count } : {}) };
 
   async function collect(current: string, prefix: string): Promise<void> {
     // One past the cap: that extra entry is what makes truncation visible.
-    if (files.length > MAX_SKILL_FILE_LISTING) return;
+    if (files.length > limit) return;
 
     for (const entry of await readDirectory(current)) {
-      if (files.length > MAX_SKILL_FILE_LISTING) return;
+      if (files.length > limit) return;
       const relative = prefix === "" ? entry.name : `${prefix}/${entry.name}`;
       if (entry.isDirectory()) {
         await collect(path.join(current, entry.name), relative);
       } else if (entry.isFile()) {
-        files.push(relative);
+        if (seen++ >= offset) files.push(relative);
       }
     }
   }
@@ -261,16 +255,11 @@ async function readSkillFile(
   return readFile(realTarget, "utf8");
 }
 
-function readInteger(value: unknown, fallback: number, name: string, minimum: number, maximum: number): number {
-  if (value === undefined) return fallback;
-  if (typeof value !== "number" || !Number.isSafeInteger(value) || value < minimum || value > maximum) {
-    throw new Error(`skill ${name} must be an integer between ${minimum} and ${maximum}.`);
-  }
-  return value;
-}
-
-function splitsSurrogate(value: string, offset: number): boolean {
-  return offset > 0 && /[\uD800-\uDBFF]/u.test(value[offset - 1]!) && /[\uDC00-\uDFFF]/u.test(value[offset] ?? "");
+function requireSkill(skills: SkillEntry[], wanted: string): SkillEntry {
+  const skill = skills.find(entry => entry.name === wanted);
+  if (skill !== undefined) return skill;
+  const available = skills.map(entry => entry.name).join(", ");
+  throw new Error(`Unknown skill "${wanted}". Available: ${available.slice(0, 4000) || "(none)"}.${available.length > 4000 ? ' Use action="list" to see more.' : ""}`);
 }
 
 async function resolveRealPath(target: string, relative: string): Promise<string> {
@@ -290,7 +279,7 @@ function isInside(root: string, target: string): boolean {
 
 async function readDirectory(directory: string): Promise<import("node:fs").Dirent[]> {
   try {
-    return await readdir(directory, { withFileTypes: true });
+    return (await readdir(directory, { withFileTypes: true })).sort((a, b) => a.name < b.name ? -1 : a.name > b.name ? 1 : 0);
   } catch {
     // A root that does not exist is simply a root with no skills in it.
     return [];

@@ -85,6 +85,7 @@ The returned runtime exposes:
 | `planFork` | `initial`, `current`, or `asOf` (default): inherit the empty initial plan, current plan, or plan at the fork point. |
 
 The `subagent` tool describes its child tool allowlist and exact usable model overrides. Without configured usable overrides, its schema omits `model`; omit it to inherit the parent's model and credentials. Rejected overrides explain how to retry without `model`. The built-in assistant includes `skill` in its read-only child subset, allowing paged access to bundled guides without granting shell or editing tools.
+Large foreground and background child results use JSON pages with a `taskId`. Continue through `subagent` with `{ resultTaskId: taskId, resultOffset: nextOffset, resultHash }`, omitting `task`, `background` and `model`. Reads access an existing delegation owned by this conversation and never create another child. Concatenate `content` in order and parse the complete JSON; each page fits within 40,000 UTF-8 bytes. Failed or cancelled children return `isError: true` to foreground callers; failed delegations remain failed, and background failures explicitly notify the parent.
 
 Every command has a stable `requestId` and optional numeric `targetId` from the snapshot (defaults to the main conversation). The API copies commands before waiting for readiness or queuing, so later caller mutations do not change the operation. Reusing an identity with different content fails; retransmission returns the original receipt.
 
@@ -260,6 +261,9 @@ The `web_search` event carries `search: { id, status, query?, sources, error? }`
 Convenience Agent projects expose automatic, on, and off choices under model settings: `--web-search ""`, `--web-search true`, and `--web-search false`. Projects with static inline parameters must declare this parameter themselves.
 
 ## Your own tools
+
+Local coding-tool `read` bounds output by bytes and can reach lines beyond 8 MiB. Continue complete lines with `offset: nextOffset`, or long lines and raw text with `byteOffset: nextByteOffset` (UTF-8 bytes), omitting line `offset` and `limit`. With `session.environment`, the same byte reads use that environment, including read-only children without shell access. `grep`, `find` and `ls` report truncation and `nextOffset`; long matching lines are previews that can be read in full with `read`. Shell output is bounded by UTF-8 bytes with an explicit truncation marker; timeout and cancellation diagnostics remain visible. Redirect verbose commands to a file when their complete output is needed.
+
 
 The built-in tools are `read`, `write`, `edit`, `bash`, `grep`, `find` and `ls`, plus `ask_user` in plan mode only — the model uses it to put a question to the user mid-turn (one or more questions, each with optional choices, optionally multi-select, optionally accepting the user's own words); the run pauses for the answer and carries on with the same plan. To add more, use `extraTools` on a programmatic runtime, or [createAgentNode](./create-agent-node.mdx)'s `createTools` inside a workflow.
 

@@ -1239,7 +1239,7 @@ const readKey: AgentTool = {
 
 **技能按需读取，不注入提示词。** `await steamharness.createSkillTools({ directories, approve? })` 返回一个 `skill` 工具：
 
-- `action: "list"`：列出每个技能的名字、一句话描述和文件清单。
+- `action: "list"`：按名称排序列出技能名、说明与文件清单；整页 JSON 最多 40000 UTF-8 字节，返回 offset/totalSkills/truncated，有剩余时用 offset=nextOffset 继续列技能。每份技能最多 60 个文件路径，也受字节限制；filesTruncated=true 时用 action=list、skill=准确名称、offset=nextFileOffset 续列文件，再按 nextOffset 继续。说明最多 2000 字符，descriptionTruncated=true 时读取 SKILL.md 获取完整内容。
 - `action: "read"`：按页读技能里的一个文件；支持 `offset`（默认 0，UTF-16 字符偏移）与 `limit`（正整数，最多 200000 字符）。返回 `content`、`offset`、`totalChars`、`truncated`；有后续页时返回 `nextOffset`，用它继续相同 skill/path，直到 truncated=false，拼接所有 content。每页序列化 JSON 最多 40000 UTF-8 字节，避免执行层再次截断；若外层仍截断，减小 limit 重读并续读，不能反复请求第一页后停工。`path` 省略时读 `SKILL.md`，只能落在该技能目录内——`..` 越界、绝对路径和指向目录外的软链接都会被拒绝，不存在的文件会点名说是哪一个。
 
 一个技能就是一个含 `SKILL.md` 的目录，名字与描述取它 frontmatter 里的 `name` 与 `description`（没有 frontmatter 就用目录名）。**不要把整份 `SKILL.md` 塞进系统提示词**——它有几十 KB，而大多数轮次用不上；让模型自己 list 再 read 才是这个工具的用意。`directories` 按优先级排序，先出现的目录里的同名技能胜出，所以项目自带的副本会压过随宿主一起发布的那份。需要按名字重跑时用 `steamharness.runSkillAction(directories, args)`。
@@ -1257,6 +1257,10 @@ const readKey: AgentTool = {
 **输出项按「结束顺序」排列。** payload 里每一项的位置取自它*结束*的那一刻，而不是开始的那一刻：推理与文字都是攒够一段才落行的——推理在下一次活动开始时被冲出来，文字在被打断时结束——按开始位置排会读成前后颠倒。宿主按 payload 顺序渲染即可，那就是模型实际的执行顺序。
 
 依赖：`@earendil-works/pi-agent-core` 与 `@earendil-works/pi-ai` 由 `steamharness` 直接依赖，宿主侧安装 `steamharness` 即可，项目不需要单独声明。
+
+普通本机编码 read 可读取 8 MiB 之后的行；长单行和原始文本用 byteOffset=nextByteOffset（UTF-8 字节偏移）续读，省略行 offset/limit。配置 session.environment 时字节读取仍通过该环境执行，适用于没有 bash 的只读子代理。grep/find/ls 用 offset=nextOffset 续列；长匹配行是预览，用 read 获取全文。shell 截断会明确标记并保留超时或取消说明；完整日志重定向到文件后读取，预取消的命令不会启动。
+
+长子代理结果返回 taskId 与 JSON 分页，用 subagent 的 resultTaskId=taskId、resultOffset=nextOffset、resultHash 读取同一委派，省略 task/background/model；不会重复启动子任务。失败的前台子任务返回 isError=true，后台失败明确通知父会话。
 
 ## 工作流能力工具
 
@@ -1287,6 +1291,8 @@ Core 提供「工作流能力」工具，把项目跟它周围的东西接起来
 `workflow-ui_present_card` 用 `action: "upsert" | "remove"` 和稳定 `cardId` 向 Conversation 宿主发送卡片命令。remove 只接受 `cardId`；upsert 还需 `kind`（`kv`、`knowledge`、`project`、`browser`、`file`、`kanban`）及目标 `target`。`pinned` 是当前客户端按会话保存的固定状态，显式的 Agent 固定命令可覆盖用户上次的固定选择。顶层 `preview: boolean` 用于 `kanban`、`project` 或 `browser` 卡片，控制右上预览是否直接展开；已识别的 Kanban 项目和浏览器卡片默认 `preview: true` 且固定，`preview: false` 可关闭。`project` 卡片指向 Kanban 项目时点击进入 Dock 预览；浏览器预览仅在 Electron 可用。`target.source: "current"` 在小助手中指其当前操作的项目；小助手自己的 KV/知识库调用仍指向小助手项目。`kanban: { mode: "preview", values }` 是另一项参数能力：preview 只覆盖该卡片和 Dock 的参数；持久保存由 Studio Control manage_configurations 完成。浏览器仅 HTTP(S)，文件卡片使用 `target: { source: "current", filePath: "README.md" }`，路径必须是项目内相对路径；文件、KV、知识库卡片省略顶层 preview，显式 false 忽略、true 拒绝；宿主打开时重新校验项目权限，历史回放不重复执行保存。普通消息接口不变，主回答仍直接呈现在对话正文。
 
 **参数边界由 Core 自己检查。** 每个能力的 JSON Schema 都声明了长度上限，而 MCP 客户端并不受 schema 约束、agent SDK 也把它当类型断言，所以这些上限在实现里同样执行：知识库 `markdown` ≤ 200000、`title`/`documentId` ≤ 200、`query` ≤ 500、`cursor` ≤ 80，跨会话记忆 `markdown` ≤ 100000、`title` ≤ 200，KV `key` ≤ 500。超出会以 `input_validation` 失败，而不是一路写到存储里。
+
+**大结果按字节续读。** KV get、知识库 list/get/search/read_lines、记忆 list/get/search 的小结果保留原结构，大结果返回 paged=true、encoding=json、content、offset、totalChars、truncated、nextOffset 与 resultHash；整个分页 JSON 最多 40000 UTF-8 字节。保留原读取参数，传 resultOffset=nextOffset 和上一页 resultHash，按顺序拼接 content 后解析完整 JSON。resultLimit 可缩小页长；哈希变化时从 offset 0 省略 hash 重读，禁止拼接不同版本。写操作不接受结果分页，知识库 create/edit 与记忆 remember 的正文回显最多 4000 字符，完整内容使用读取动作。记忆 pageSize 为 1–100 整数，知识库 maxMarkdownLength 为 100–20000 整数、includeMarkdown 为布尔值，无效值在写前拒绝。MCP schema 上限 256 KiB 按实际序列化 UTF-8 字节计数。
 
 **KV 保留键。** `kv_store` 与运行时的记账共用同一个命名空间，所以它拒绝写入属于运行时自己的键：`tokenUsage.total` 与 `tokenUsage.entry.*`（项目与 conversation 两个作用域），以及 conversation 作用域下的 `conversation.state` 与 `agent.*`（待批准的计划就存在 `agent.pendingPlanApproval`）。被拒绝时返回 `input_validation`。
 

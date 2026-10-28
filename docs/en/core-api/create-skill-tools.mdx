@@ -61,10 +61,10 @@ Read references/checklist.md before following the checklist.
 | Argument | Type | Description |
 | --- | --- | --- |
 | `action` | `"list" \| "read"` | Required. `list` discovers guides; `read` returns one file from a selected guide. |
-| `skill` | `string` | Required for `read`: use the complete name returned by `list`. Ignored by `list`. |
+| `skill` | `string` | Required for `read`: use the exact returned name. For `list`, optionally select a skill to page through all its files. |
 | `path` | `string` | For `read`, a path relative to the skill directory. Omit it or pass an empty string to read `SKILL.md`. Ignored by `list`. |
-| `offset` | `number` | Zero-based UTF-16 character offset for `read`, default `0`. Continue with the previous page's `nextOffset`. |
-| `limit` | `number` | Positive maximum characters per read page, at most `200000`. The serialized byte budget may return fewer; omit for the largest safe page. |
+| `offset` | `number` | Zero-based characters for `read`, skills for `list`, or file paths for `list` with a skill. Continue with `nextOffset`. |
+| `limit` | `number` | Positive maximum characters for `read` (up to `200000`), or entries for `list` (up to 60). The serialized byte budget may return fewer. |
 
 Use the following sequence.
 
@@ -84,11 +84,14 @@ The tool returns JSON in a text block. Its decoded payload looks like this:
     "description": "Check build and delivery results against the project's release checklist.",
     "files": ["SKILL.md", "references/checklist.md", "scripts/check.mjs"],
     "filesTruncated": false
-  }]
+  }],
+  "offset": 0,
+  "totalSkills": 1,
+  "truncated": false
 }
 ```
 
-Choose the guides relevant to the task using their names and summaries. Each guide lists at most 60 files; `filesTruncated: true` means more files exist. Guides are sorted by name. When none are available, `skills` is `[]`.
+Choose relevant guides by name and summary. Catalog JSON also fits within 40,000 UTF-8 bytes. When `truncated: true`, continue with `offset: nextOffset`; `totalSkills` counts all guides. Descriptions contain at most 2000 characters; when `descriptionTruncated: true`, read `SKILL.md` for the full text. Each guide lists at most 60 files, also bounded by bytes. For `filesTruncated: true`, call `{"action":"list","skill":"release-guide","offset":nextFileOffset}` using the returned offset, then continue with `nextOffset`. File ordering is stable. Guides are sorted by name; an empty catalog returns `skills: []`.
 
 ### 2. Read the entry guide
 

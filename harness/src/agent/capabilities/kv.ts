@@ -4,6 +4,7 @@ import { HarnessError } from "../../workflow/errors";
 import type { NodeContext } from "../../types/context";
 import { selectDatabase } from "./databases";
 import type { Capability } from "./types";
+import { pageJsonResult, RESULT_PAGE_DESCRIPTION, RESULT_PAGE_PROPERTIES, validateResultPageArgs, type ResultPageArgs } from "../result-pages";
 
 export const KV_MCP_SERVER_ID = "workflow-kv";
 export const KV_MCP_TOOL_NAME = "kv_store";
@@ -12,7 +13,7 @@ export const KV_MCP_TOOL_ID = `${KV_MCP_SERVER_ID}_${KV_MCP_TOOL_NAME}`;
 type KvAction = "get" | "set";
 type KvScope = "project" | "conversation";
 
-interface KvToolArgs {
+interface KvToolArgs extends ResultPageArgs {
   database: string;
   action: KvAction;
   scope: KvScope;
@@ -44,6 +45,7 @@ export async function runKvAction(
   context: Pick<NodeContext, "databases">,
   args: KvToolArgs,
 ): Promise<unknown> {
+  validateResultPageArgs(args, args.action === "get");
   // Nothing validates the arguments on the way in — an MCP client publishes
   // the schema but is not obliged to honour it — so the shape is checked here.
   if (args.action !== "get" && args.action !== "set") {
@@ -68,13 +70,13 @@ export async function runKvAction(
 
   if (args.action === "get") {
     const value = await namespace.getValue(key);
-    return {
+    return pageJsonResult({
       action: "get" as const,
       scope: args.scope,
       key,
       found: value !== undefined,
       ...(value === undefined ? {} : { value }),
-    };
+    }, args);
   }
 
   if (args.value === undefined) {
@@ -147,6 +149,7 @@ export const KV_CAPABILITY: Capability = {
   description: [
     "Read or write JSON values in the workflow project or conversation KV namespace.",
     "Keys the runtime keeps for itself — tokenUsage.* and, in the conversation namespace, agent.* — are reserved and refused.",
+    RESULT_PAGE_DESCRIPTION,
   ].join(" "),
   inputSchema: {
     type: "object",
@@ -160,6 +163,7 @@ export const KV_CAPABILITY: Capability = {
       },
       key: { type: "string", minLength: 1, maxLength: 500 },
       value: { description: 'The JSON value to store; required when action is "set".' },
+      ...RESULT_PAGE_PROPERTIES,
     },
     required: ["database", "action", "scope", "key"],
   },

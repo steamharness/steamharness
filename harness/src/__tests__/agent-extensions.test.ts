@@ -261,6 +261,36 @@ test("remote environment tools target the supplied filesystem and always clean u
   assert.equal(await readFile(path.join(directory, "remote.txt"), "utf8"), "remote");
 });
 
+test("environment read continues a long multilingual line using the same filesystem without local or shell fallback", async t => {
+  const directory = await mkdtemp(path.join(tmpdir(), "agent-environment-read-"));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  const body = `开始${"中文😀".repeat(12_000)}${"\n".repeat(5000)}END`;
+  await writeFile(path.join(directory, "long.txt"), `header\n${body}`);
+  const env = new NodeExecutionEnv({ cwd: directory });
+  const f = agent({ compaction: { enabled: false }, environment: { id: env.id, label: "Read fixture", open: async () => env } });
+  f.instance.state.tools = [tool("read", async () => { throw new Error("Local fallback is forbidden"); })];
+  let recovered = "", reads = 0;
+  const respond = (request: ai.TranscriptContext): ai.AssistantMessage => {
+    const result = request.messages.filter(message => message.role === "toolResult").at(-1);
+    if (!result) return ai.fauxAssistantMessage([ai.fauxToolCall("read", { path: "long.txt", offset: 2 })], { stopReason: "toolUse" });
+    assert.notEqual(result.isError, true, JSON.stringify(result));
+    const content = result.content[0]!;
+    assert.equal(content.type, "text");
+    recovered += content.type === "text" ? content.text : ""; reads++;
+    const details = (result as unknown as { details: { nextByteOffset?: number } }).details;
+    if (details.nextByteOffset !== undefined) return ai.fauxAssistantMessage([ai.fauxToolCall("read", {
+      path: "long.txt", byteOffset: details.nextByteOffset,
+    })], { stopReason: "toolUse" });
+    assert.equal(recovered, body);
+    return ai.fauxAssistantMessage("Read complete");
+  };
+  f.provider.setResponses(Array.from({ length: 10 }, () => respond));
+  const run = f.instance.prompt("Read the whole long line");
+  t.after(async () => { f.lease.resolve(); await run; await f.instance.close(); });
+  await until(() => f.snapshot()?.turns.some(turn => turn.status === "done"));
+  assert.equal(recovered, body); assert.ok(reads > 1);
+});
+
 test("environment identity mismatches close the resource and reopening cannot change the durable target", async t => {
   const directory = await mkdtemp(path.join(tmpdir(), "agent-environment-id-")); t.after(() => rm(directory, { recursive: true, force: true }));
   let cleaned = 0;

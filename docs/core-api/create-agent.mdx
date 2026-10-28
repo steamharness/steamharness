@@ -90,6 +90,7 @@ const agent = await workflow.createAgent({
 | `environment` | `{ id, label, open(target, context) }`，由宿主提供的 `AgentExecutionEnv`；见下方远端环境边界。 |
 
 `subagent` 工具说明列出子工具白名单和可用的精确模型覆盖；未配置可用覆盖时，参数中不提供 `model`，省略它继承父模型及凭据。未获准的模型报错会提示省略 `model` 重试。内置小助手的只读子工具包含 `skill`，可按页读取随包指南；不授予 shell 或编辑能力。
+较大的前台或后台子代理结果按 JSON 分页返回，页中携带 `taskId`。用 `subagent` 的 `{ resultTaskId: taskId, resultOffset: nextOffset, resultHash }` 续读，省略 `task`、`background` 和 `model`；读取只访问当前会话原有委派，不会新建子任务。按顺序拼接 `content` 并解析完整 JSON；每页最多 40 000 UTF-8 字节。子代理失败或取消会向前台返回 `isError: true`，失败委派记录为 failed；后台失败也明确通知父会话。
 
 命令均包含稳定 `requestId`，可带快照内数字 `targetId`（省略为主会话）。接口在等待就绪或排队前复制命令，调用方后续修改原对象不会改变本次操作。同一 requestId 不可换载荷；重发返回原回执。
 
@@ -263,6 +264,9 @@ try {
 便捷 Agent 项目的「模型设置」提供自动、开启、关闭三种选择，对应 `--web-search ""`、`--web-search true`、`--web-search false`。静态内联参数的项目需自行声明该参数。
 
 ## 自带工具
+
+默认本机编码工具的 `read` 按字节限制输出，可读取 8 MiB 之后的行。完整行用 `offset: nextOffset` 续读，超长行或原始文本用 `byteOffset: nextByteOffset`（UTF-8 字节偏移），此模式省略行 `offset` 和 `limit`。配置 `session.environment` 时，同一字节续读入口通过该环境读取，也适用于没有 shell 的只读子代理。`grep`、`find`、`ls` 返回截断标记与 `nextOffset`；长匹配行只返回预览，可用 `read` 获取全文。`bash` 输出按 UTF-8 字节限制并明确标记截断，超时或取消说明保留在尾部；需要完整日志时先重定向到文件再读取。
+
 
 内置工具只有 `read`、`write`、`edit`、`bash`、`grep`、`find`、`ls`，以及只在 plan 模式提供的 `ask_user`——模型用它中途向用户提问（一次可问多个问题，每题可选选项、可多选、可再附一个自定义回答输入框），运行暂停等回答，回答后同一份计划继续。要在它们之外再加工具，编程式运行时用 `extraTools`，workflow 节点用 [createAgentNode](./create-agent-node.mdx) 的 `createTools`。
 

@@ -1,5 +1,7 @@
 # Unreleased
 
+- Fixed assistant continuation guidance for skill catalogs, file listings and large JSON results. Long child output reads the existing task instead of delegating again. Read-only environments can continue long text lines, and child failures and shell truncation receive explicit recovery guidance.
+
 - Fixed assistant skill pagination and recovery so implementation and checks can finish in one run. Read-only subagents can read bundled skills and inherit the current model. Clarified filePath card arguments, deferred tool discovery scope and project-local CLI use.
 
 - Breaking: project identity, name, version and declarations now use independent `steamharness.json` files. Removed reads and writes of `package.json.id` and `steamHarness`. Aggregates explicitly register child entries whose configuration defines icons, declarations, database aliases and schedules. Unregistered configurations stay inactive, and transfers preserve the parent and child structure.

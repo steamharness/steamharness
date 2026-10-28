@@ -203,6 +203,14 @@ test("a real stdio MCP server is connected, listed and called", async () => {
   }
 });
 
+test("MCP schema limits count UTF-8 bytes for multilingual descriptions", async () => {
+  const connection: McpServerConnection = {
+    id: "utf8", tools: [{ name: "big", inputSchema: { type: "object", description: "中".repeat(100_000) } }],
+    async callTool() { return { content: [], isError: false }; }, async close() {},
+  };
+  await assert.rejects(() => createMcpTools({ Type: { Unsafe: (schema: unknown) => schema } as never, connection }), /UTF-8 bytes/);
+});
+
 test("a caller with no SDK to hand still gets usable tools", async () => {
   const connection: McpServerConnection = {
     id: "echo",

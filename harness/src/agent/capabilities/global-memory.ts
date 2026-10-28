@@ -10,6 +10,8 @@ import { HarnessError } from "../../workflow/errors";
 import type { NodeContext } from "../../types/context";
 import { selectDatabase } from "./databases";
 import type { Capability } from "./types";
+import { pageInteger, pageJsonResult, RESULT_PAGE_DESCRIPTION, RESULT_PAGE_PROPERTIES, splitsSurrogate,
+  validateResultPageArgs, type ResultPageArgs } from "../result-pages";
 
 export const GLOBAL_MEMORY_MCP_SERVER_ID = "workflow-memory";
 export const GLOBAL_MEMORY_MCP_TOOL_NAME = "global_memory";
@@ -28,7 +30,7 @@ const GLOBAL_MEMORY_ACTIONS: readonly GlobalMemoryAction[] = [
   "forget",
 ];
 
-export interface GlobalMemoryToolArgs {
+export interface GlobalMemoryToolArgs extends ResultPageArgs {
   database: string;
   action: GlobalMemoryAction;
   memoryId?: string;
@@ -47,6 +49,21 @@ export interface GlobalMemoryToolArgs {
  * prefix is what keeps the two apart.
  */
 export async function runGlobalMemoryAction(
+  context: Pick<NodeContext, "databases">,
+  args: GlobalMemoryToolArgs,
+): Promise<unknown> {
+  const readOnly = ["get", "list", "search"].includes(args.action);
+  validateResultPageArgs(args, readOnly);
+  if (args.pageSize !== undefined) pageInteger(args.pageSize, 50, "pageSize", 1, 100);
+  if (args.cursor !== undefined) {
+    if (typeof args.cursor !== "string" || args.cursor.length === 0) throw new HarnessError({ type: "input_validation", message: "global_memory cursor must be a non-empty string.", nodeName: GLOBAL_MEMORY_MCP_TOOL_ID });
+    assertWithinBounds(args.cursor, "cursor", args.action);
+  }
+  const result = await runGlobalMemoryActionResult(context, args);
+  return readOnly ? pageJsonResult(result, args) : result;
+}
+
+async function runGlobalMemoryActionResult(
   context: Pick<NodeContext, "databases">,
   args: GlobalMemoryToolArgs,
 ): Promise<unknown> {
@@ -120,7 +137,10 @@ export async function runGlobalMemoryAction(
       const document = existing === undefined
         ? await createKnowledgeDocument(storage, { id: documentId, title, markdown })
         : await editKnowledgeDocument(storage, { id: documentId, title, markdown });
-      return { action: "remember" as const, memory: stripMemoryPrefix(document) };
+      const end = splitsSurrogate(document.markdown, 4000) ? 3999 : 4000;
+      return { action: "remember" as const, memory: { ...stripMemoryPrefix(document),
+        markdown: document.markdown.slice(0, end), markdownLength: document.markdown.length,
+        markdownTruncated: document.markdown.length > end } };
     }
     case "forget": {
       const memoryId = requireMemoryId(args.memoryId, args.action);
@@ -247,6 +267,8 @@ export const GLOBAL_MEMORY_CAPABILITY: Capability = {
   description: [
     "Read and maintain durable user preferences, project decisions, and requested changes for the developer assistant.",
     "Use remember only for stable, reusable information. Never store credentials, secrets, or transient task progress.",
+    "remember returns at most 4,000 body characters; use get to read the stored content.",
+    RESULT_PAGE_DESCRIPTION,
   ].join(" "),
   inputSchema: {
     type: "object",
@@ -263,6 +285,7 @@ export const GLOBAL_MEMORY_CAPABILITY: Capability = {
       query: { type: "string", minLength: 1, maxLength: 500 },
       pageSize: { type: "integer", minimum: 1, maximum: 100 },
       cursor: { type: "string", minLength: 1, maxLength: 200 },
+      ...RESULT_PAGE_PROPERTIES,
     },
     required: ["database", "action"],
   },

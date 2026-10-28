@@ -203,6 +203,94 @@ test("a memory cursor says which action it came from", async () => {
   );
 });
 
+type JsonPage = { paged: true; content: string; resultHash: string; nextOffset?: number; truncated: boolean };
+
+async function collectJsonPages(call: (args: Record<string, unknown>) => Promise<unknown>): Promise<unknown> {
+  let args: Record<string, unknown> = {}, content = "", pages = 0;
+  do {
+    const result = await call(args) as JsonPage;
+    assert.equal(result.paged, true);
+    assert.ok(Buffer.byteLength(JSON.stringify(result)) <= 40_000);
+    assert.equal(Buffer.from(result.content).toString(), result.content);
+    content += result.content; pages++;
+    if (!result.truncated) { assert.equal(result.nextOffset, undefined); break; }
+    assert.ok(result.nextOffset! > Number(args.resultOffset ?? 0));
+    args = { resultOffset: result.nextOffset, resultHash: result.resultHash };
+  } while (pages < 100);
+  assert.ok(pages > 1);
+  return JSON.parse(content);
+}
+
+test("large KV values and knowledge lines survive JSON paging in direct and MCP tools", async () => {
+  const context = createContext();
+  const body = `${'中文😀"\\\u0001'.repeat(8000)}END`;
+  await runCapability(KV_MCP_TOOL_ID, context, { action: "set", scope: "project", key: "big", value: { body } });
+  const [kv] = (await createProjectCapabilityTools({ context })).filter(tool => tool.name === KV_MCP_TOOL_ID);
+  const direct = await collectJsonPages(async args => {
+    const result = await kv!.execute("page", { database: "data", action: "get", scope: "project", key: "big", ...args });
+    return JSON.parse(textOf(result.content));
+  });
+  assert.deepEqual((direct as { value: unknown }).value, { body });
+
+  await runCapability(KNOWLEDGE_MCP_TOOL_ID, context, { action: "create", documentId: "big", title: "Big", markdown: body });
+  const server = await createProjectCapabilityServer(KNOWLEDGE_MCP_TOOL_ID, { context });
+  const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+  await server.connect(serverTransport);
+  const client = new Client({ name: "paging", version: "1" }, { capabilities: {} });
+  await client.connect(clientTransport);
+  try {
+    const recovered = await collectJsonPages(async args => {
+      const result = await client.callTool({ name: "knowledge_documents",
+        arguments: { database: "data", action: "read_lines", documentId: "big", startLine: 1, endLine: 1, ...args } });
+      assert.notEqual(result.isError, true);
+      return JSON.parse(textOf(result.content));
+    }) as { lines: { content: string }[] };
+    assert.equal(recovered.lines[0]!.content, body);
+    const search = await collectJsonPages(args => runCapability(KNOWLEDGE_MCP_TOOL_ID, context,
+      { action: "search", query: "END", ...args })) as { matches: { line: string }[] };
+    assert.equal(search.matches[0]!.line, body);
+  } finally { await client.close(); await server.close(); }
+});
+
+test("result paging detects concurrent changes, validates cursors and never repeats a mutation", async () => {
+  const context = createContext();
+  const get = { action: "get", scope: "project", key: "big" };
+  await runCapability(KV_MCP_TOOL_ID, context, { ...get, action: "set", value: "a".repeat(50_000) });
+  const first = await runCapability(KV_MCP_TOOL_ID, context, get) as JsonPage;
+  await runCapability(KV_MCP_TOOL_ID, context, { ...get, action: "set", value: "b".repeat(50_000) });
+  await assert.rejects(() => runCapability(KV_MCP_TOOL_ID, context,
+    { ...get, resultOffset: first.nextOffset, resultHash: first.resultHash }), /changed.*Restart/);
+  for (const invalid of [{ resultOffset: -1 }, { resultOffset: 1.5 }, { resultOffset: 1 }, { resultLimit: 0 }, { resultHash: "bad" }]) {
+    await assert.rejects(() => runCapability(KV_MCP_TOOL_ID, context, { ...get, ...invalid }), /resultOffset|resultLimit|resultHash/);
+  }
+  await assert.rejects(() => runCapability(KV_MCP_TOOL_ID, context,
+    { ...get, action: "set", value: "must not be written", resultOffset: 0 }), /only available for read actions/);
+  const stored = await collectJsonPages(args => runCapability(KV_MCP_TOOL_ID, context, { ...get, ...args })) as { value: string };
+  assert.equal(stored.value, "b".repeat(50_000));
+});
+
+test("memory and document writes return bounded acknowledgements and can be fully read afterward", async () => {
+  const context = createContext();
+  const markdown = `START${'中文😀"\\\u0001'.repeat(8000)}END`;
+  const written = await runCapability(GLOBAL_MEMORY_MCP_TOOL_ID, context,
+    { action: "remember", memoryId: "big", title: "Big", markdown }) as { memory: { markdownTruncated: boolean } };
+  assert.ok(Buffer.byteLength(JSON.stringify(written)) <= 40_000);
+  assert.equal(written.memory.markdownTruncated, true);
+  const read = await collectJsonPages(args => runCapability(GLOBAL_MEMORY_MCP_TOOL_ID, context,
+    { action: "get", memoryId: "big", ...args })) as { memory: { markdown: string } };
+  assert.equal(read.memory.markdown, markdown);
+  const created = await runCapability(KNOWLEDGE_MCP_TOOL_ID, context,
+    { action: "create", documentId: "big-doc", title: "Big doc", markdown, includeMarkdown: true, maxMarkdownLength: 20_000 });
+  assert.ok(Buffer.byteLength(JSON.stringify(created)) <= 40_000);
+  for (const pageSize of [0, -1, 1.5, 101, Number.NaN]) {
+    await assert.rejects(() => runCapability(GLOBAL_MEMORY_MCP_TOOL_ID, context, { action: "list", pageSize }), /pageSize/);
+  }
+  for (const maxMarkdownLength of [-1, 1.5, 20_001, "100"]) {
+    await assert.rejects(() => runCapability(KNOWLEDGE_MCP_TOOL_ID, context,
+      { action: "edit", documentId: "big-doc", markdown: "must not write", maxMarkdownLength }), /maxMarkdownLength/);
+  }
+});
+
 test("knowledge documents are managed through one tool", async () => {
   const context = createContext();
 

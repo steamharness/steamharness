@@ -707,3 +707,60 @@ test("a rejected child model explains recovery and a corrected delegation comple
   assert.equal(f.snapshot().conversations.length, 2);
   assert.equal(f.faux.state.callCount, 4);
 });
+
+test("long subagent results are fully pageable in the same turn without starting another child", async t => {
+  const f = session({ subagents: { tools: [] }, compaction: { enabled: false } });
+  const answer = `${'中文😀"\\\u0001'.repeat(8000)}END`;
+  let recovered = "", reads = 0, childRequests = 0;
+  const respond = (request: ai.TranscriptContext): ai.AssistantMessage => {
+    if (request.messages.some(message => message.role === "user" && message.content === "Long child")) {
+      childRequests++; return ai.fauxAssistantMessage(answer);
+    }
+    const result = request.messages.filter(message => message.role === "toolResult").at(-1);
+    if (!result) return ai.fauxAssistantMessage([ai.fauxToolCall("subagent", { task: "Long child" })], { stopReason: "toolUse" });
+    assert.notEqual(result.isError, true);
+    const text = result.content.flatMap(block => block.type === "text" ? [block.text] : []).join("");
+    const page = JSON.parse(text) as { taskId: number; content: string; resultHash: string; truncated: boolean; nextOffset?: number };
+    assert.ok(Buffer.byteLength(text) <= 41_000);
+    recovered += page.content; reads++;
+    if (!page.truncated) {
+      assert.equal((JSON.parse(recovered) as { answer: string }).answer, answer);
+      return ai.fauxAssistantMessage("Read all child output");
+    }
+    return ai.fauxAssistantMessage([ai.fauxToolCall("subagent", {
+      resultTaskId: page.taskId, resultOffset: page.nextOffset!, resultHash: page.resultHash,
+    })], { stopReason: "toolUse" });
+  };
+  f.faux.setResponses(Array.from({ length: 25 }, () => respond));
+  f.instance.requestId = "parent";
+  const run = f.instance.prompt("Delegate and read all output");
+  t.after(async () => { f.lease.resolve(); await run; await f.instance.close(); });
+  await until(() => f.snapshot()?.turns.some(turn => turn.requestId === "parent" && turn.status === "done"));
+  assert.equal(childRequests, 1); assert.ok(reads > 1);
+  assert.equal(f.snapshot().conversations.length, 2);
+  assert.equal(f.snapshot().history.filter(task => task.kind === "project.delegation").length, 1);
+});
+
+for (const background of [false, true]) test(`failed subagents report failure to the parent (background=${background})`, async t => {
+  const f = session({ subagents: { tools: [] }, compaction: { enabled: false } });
+  let failureSeen = false;
+  const respond = (request: ai.TranscriptContext): ai.AssistantMessage => {
+    if (request.messages.some(message => message.role === "user" && message.content === "Fail child")) {
+      return ai.fauxAssistantMessage([], { stopReason: "error", errorMessage: "401 Unauthorized" });
+    }
+    if (request.messages.some(message => message.role === "user" && typeof message.content === "string" && message.content.startsWith("Subagent failed"))) {
+      failureSeen = true; return ai.fauxAssistantMessage("Child failure handled");
+    }
+    const result = request.messages.filter(message => message.role === "toolResult").at(-1);
+    if (!result) return ai.fauxAssistantMessage([ai.fauxToolCall("subagent", { task: "Fail child", background })], { stopReason: "toolUse" });
+    if (!background) {
+      assert.equal(result.isError, true); assert.match(JSON.stringify(result), /failed|Unauthorized/);
+      failureSeen = true;
+    }
+    return ai.fauxAssistantMessage("Parent continues");
+  };
+  f.faux.setResponses(Array.from({ length: 10 }, () => respond));
+  const run = f.instance.prompt("Handle child failure");
+  t.after(async () => { f.lease.resolve(); await run; await f.instance.close(); });
+  await until(() => failureSeen && f.snapshot()?.history.some(task => task.kind === "project.delegation" && task.status === "failed"));
+});

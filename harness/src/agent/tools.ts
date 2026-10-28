@@ -1,7 +1,6 @@
 import { spawn } from "node:child_process";
 import { createReadStream, promises as fs } from "node:fs";
 import path from "node:path";
-import { createInterface } from "node:readline";
 import type { AgentTool } from "@earendil-works/pi-agent-core";
 import {
   AGENT_ASK_TOOL_NAME,
@@ -9,6 +8,7 @@ import {
   readAgentQuestions,
 } from "./ask";
 import type { AgentQuestion } from "./types";
+import { pageInteger } from "./result-pages";
 
 /**
  * The subset of TypeBox this module needs. Passed in by the runtime so the SDK
@@ -87,16 +87,8 @@ const DEFAULT_READ_LIMIT = 400;
 const DEFAULT_GREP_LIMIT = 100;
 const DEFAULT_FIND_LIMIT = 200;
 const DEFAULT_BASH_TIMEOUT_MS = 120_000;
-const MAX_OUTPUT_CHARS = 60_000;
-/**
- * Size at which `read` stops loading a whole file into memory.
- *
- * A log or a database dump is gigabytes; reading it whole to return the first
- * four hundred lines is how a tool call takes the process down with it. Past
- * this the leading bytes are streamed, and the call is answered with the slice
- * it asked for out of them.
- */
-const MAX_READ_BYTES = 8 * 1024 * 1024;
+const MAX_OUTPUT_BYTES = 38_000;
+const MAX_READ_PAGE_BYTES = 20_000;
 const SKIPPED_DIRECTORIES = new Set([".git", "node_modules", "dist", ".shared", "coverage"]);
 
 /**
@@ -175,45 +167,37 @@ function createReadTool({ Type, scope }: { Type: TypeboxLike; scope: AgentToolSc
     name: "read",
     label: "Read",
     description:
-      "Read a text file. Paths are relative to the working directory. Returns numbered lines; use offset and limit for large files.",
+      "Read a text file. Paths are relative to the working directory. Returns numbered lines; use offset and limit for line ranges. Results are byte-bounded. Continue with the returned nextOffset, or byteOffset=nextByteOffset for a long line. byteOffset mode returns unnumbered text and supports reading an entire long line without bash.",
     parameters: Type.Object({
       path: Type.String({ description: "File path to read." }),
       offset: Type.Optional(Type.Number({ description: "1-based first line to return." })),
       limit: Type.Optional(Type.Number({ description: "Maximum number of lines." })),
+      byteOffset: Type.Optional(Type.Number({ description: "Zero-based UTF-8 byte offset for continuation, or 0 to start reading raw text. Omit offset and limit in this mode." })),
     }),
-    async execute(_toolCallId: string, params: { path: string; offset?: number; limit?: number }) {
+    async execute(_toolCallId: string, params: { path: string; offset?: number; limit?: number; byteOffset?: number }) {
       const file = await resolveInsideScope(scope, params.path);
       const stats = await fs.stat(file);
       if (stats.isDirectory()) {
         throw new Error(`${params.path} is a directory; use the ls tool.`);
       }
 
-      const offset = Math.max(1, Math.trunc(params.offset ?? 1));
-      const limit = Math.max(1, Math.trunc(params.limit ?? DEFAULT_READ_LIMIT));
-
-      if (stats.size > MAX_READ_BYTES) {
-        const slice = await readLineRange(file, offset, limit);
-        const body = slice.lines.map((line, index) => `${offset + index}\t${line}`).join("\n");
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: `${body}\n… (large file: ${String(stats.size)} bytes; only the first ${String(MAX_READ_BYTES)} were read)`,
-            },
-          ],
-          details: { path: file, truncated: true, bytes: stats.size, requestedFrom: offset },
-        };
-      }
-
-      const text = await fs.readFile(file, "utf8");
-      const lines = text.split("\n");
-      const slice = lines.slice(offset - 1, offset - 1 + limit);
-      const body = slice.map((line, index) => `${offset + index}\t${line}`).join("\n");
-      const truncated = offset - 1 + slice.length < lines.length;
-
+      const offset = pageInteger(params.offset, 1, "offset", 1, Number.MAX_SAFE_INTEGER);
+      const limit = Math.min(1000, pageInteger(params.limit, DEFAULT_READ_LIMIT, "limit", 1, Number.MAX_SAFE_INTEGER));
+      const raw = params.byteOffset !== undefined;
+      if (raw && (params.offset !== undefined || params.limit !== undefined)) throw new Error("Use byteOffset without offset or limit.");
+      const start = raw ? pageInteger(params.byteOffset, 0, "byteOffset", 0, stats.size) : await findLineByteOffset(file, offset);
+      const page = await readFileBytePage(file, start, stats.size, raw ? undefined : limit);
+      const lines = page.text.endsWith("\n") ? page.text.slice(0, -1).split("\n") : page.text.split("\n");
+      const body = raw ? page.text : lines.map((line, index) => `${offset + index}\t${line}`).join("\n");
+      const truncated = page.end < stats.size;
+      const nextOffset = !raw && page.text.endsWith("\n") ? offset + lines.length : undefined;
+      const continuation = nextOffset === undefined ? `byteOffset=${page.end}` : `offset=${nextOffset}`;
+      const note = truncated ? `\n… (truncated; continue read with ${continuation})` : "";
+      const large = !raw && stats.size > 8 * 1024 * 1024 ? `\n(large file: ${stats.size} bytes)` : "";
       return {
-        content: [{ type: "text" as const, text: truncated ? `${body}\n… (truncated)` : body }],
-        details: { path: file, lines: lines.length, truncated },
+        content: [{ type: "text" as const, text: body + note + large }],
+        details: { path: file, truncated, bytes: stats.size, requestedFrom: offset, byteOffset: start,
+          ...(truncated ? { nextByteOffset: page.end, ...(nextOffset === undefined ? {} : { nextOffset }) } : {}) },
       };
     },
   };
@@ -299,6 +283,7 @@ function createBashTool({ Type, scope }: { Type: TypeboxLike; scope: AgentToolSc
       "Run a shell command in the working directory. Returns combined stdout and stderr.",
       "Commands run with the host process's own privileges and are not confined to the working directory,",
       "so only run what the task actually needs.",
+      "Long output is explicitly truncated. Redirect verbose commands to a file and use read to inspect the complete output.",
     ].join(" "),
     parameters: Type.Object({
       command: Type.String({ description: "Command to run." }),
@@ -320,7 +305,7 @@ function createBashTool({ Type, scope }: { Type: TypeboxLike; scope: AgentToolSc
       }
       return {
         content: [{ type: "text" as const, text: result.output === "" ? "(no output)" : result.output }],
-        details: { command: params.command, exitCode: result.exitCode },
+        details: { command: params.command, exitCode: result.exitCode, truncated: result.truncated },
       };
     },
   };
@@ -330,38 +315,43 @@ function createGrepTool({ Type, scope }: { Type: TypeboxLike; scope: AgentToolSc
   return {
     name: "grep",
     label: "Search",
-    description: "Search file contents with a regular expression under the working directory.",
+    description: "Search file contents with a regular expression under the working directory. Continue truncated results with offset=nextOffset. Long matching lines are previews; use read for their full contents.",
     parameters: Type.Object({
       pattern: Type.String({ description: "JavaScript regular expression source." }),
       path: Type.Optional(Type.String({ description: "Directory or file to search." })),
       limit: Type.Optional(Type.Number({ description: "Maximum matches to return." })),
+      offset: Type.Optional(Type.Number({ description: "Zero-based match offset, initially 0. Continue with nextOffset." })),
     }),
-    async execute(_toolCallId: string, params: { pattern: string; path?: string; limit?: number }) {
+    async execute(_toolCallId: string, params: { pattern: string; path?: string; limit?: number; offset?: number }) {
       const root = await resolveInsideScope(scope, params.path ?? ".");
       const regexp = compileRegExp(params.pattern);
-      const limit = Math.max(1, Math.trunc(params.limit ?? DEFAULT_GREP_LIMIT));
+      const limit = Math.min(1000, pageInteger(params.limit, DEFAULT_GREP_LIMIT, "limit", 1, Number.MAX_SAFE_INTEGER));
+      const offset = pageInteger(params.offset, 0, "offset", 0, Number.MAX_SAFE_INTEGER);
       const matches: string[] = [];
+      let seen = 0;
 
       for await (const file of walkFiles(root)) {
-        if (matches.length >= limit) break;
+        if (matches.length > limit) break;
         const text = await readTextFileOrUndefined(file);
         if (text === undefined) continue;
         for (const [index, line] of text.split("\n").entries()) {
-          if (matches.length >= limit) break;
+          if (matches.length > limit) break;
           if (regexp.test(line)) {
+            if (seen++ < offset) continue;
             matches.push(`${path.relative(scope.workdir, file)}:${index + 1}: ${line.trim()}`);
           }
         }
       }
 
+      const page = renderTextList(matches, limit, offset, "No matches.");
       return {
         content: [
           {
             type: "text" as const,
-            text: matches.length === 0 ? "No matches." : matches.join("\n"),
+            text: page.text,
           },
         ],
-        details: { pattern: params.pattern, matches: matches.length },
+        details: { pattern: params.pattern, matches: page.count, truncated: page.truncated, ...(page.truncated ? { nextOffset: page.nextOffset } : {}) },
       };
     },
   };
@@ -371,28 +361,33 @@ function createFindTool({ Type, scope }: { Type: TypeboxLike; scope: AgentToolSc
   return {
     name: "find",
     label: "Find files",
-    description: "List files whose path contains a substring, under the working directory.",
+    description: "List files whose path contains a substring, under the working directory. Continue truncated results with offset=nextOffset.",
     parameters: Type.Object({
       query: Type.String({ description: "Substring to match against the file path." }),
       limit: Type.Optional(Type.Number({ description: "Maximum paths to return." })),
+      offset: Type.Optional(Type.Number({ description: "Zero-based path offset; continue with nextOffset." })),
     }),
-    async execute(_toolCallId: string, params: { query: string; limit?: number }) {
-      const limit = Math.max(1, Math.trunc(params.limit ?? DEFAULT_FIND_LIMIT));
+    async execute(_toolCallId: string, params: { query: string; limit?: number; offset?: number }) {
+      const limit = Math.min(1000, pageInteger(params.limit, DEFAULT_FIND_LIMIT, "limit", 1, Number.MAX_SAFE_INTEGER));
+      const offset = pageInteger(params.offset, 0, "offset", 0, Number.MAX_SAFE_INTEGER);
       const found: string[] = [];
+      let seen = 0;
 
       for await (const file of walkFiles(scope.workdir)) {
-        if (found.length >= limit) break;
+        if (found.length > limit) break;
         const relative = path.relative(scope.workdir, file);
         if (relative.toLowerCase().includes(params.query.toLowerCase())) {
+          if (seen++ < offset) continue;
           found.push(relative);
         }
       }
 
+      const page = renderTextList(found, limit, offset, "No files matched.");
       return {
         content: [
-          { type: "text" as const, text: found.length === 0 ? "No files matched." : found.join("\n") },
+          { type: "text" as const, text: page.text },
         ],
-        details: { query: params.query, files: found.length },
+        details: { query: params.query, files: page.count, truncated: page.truncated, ...(page.truncated ? { nextOffset: page.nextOffset } : {}) },
       };
     },
   };
@@ -402,11 +397,13 @@ function createLsTool({ Type, scope }: { Type: TypeboxLike; scope: AgentToolScop
   return {
     name: "ls",
     label: "List",
-    description: "List the entries of a directory.",
+    description: "List the entries of a directory. Continue truncated results with offset=nextOffset.",
     parameters: Type.Object({
       path: Type.Optional(Type.String({ description: "Directory to list. Defaults to the working directory." })),
+      offset: Type.Optional(Type.Number({ description: "Zero-based entry offset; continue with nextOffset." })),
+      limit: Type.Optional(Type.Number({ description: "Maximum entries (up to 1000), default 200." })),
     }),
-    async execute(_toolCallId: string, params: { path?: string }) {
+    async execute(_toolCallId: string, params: { path?: string; offset?: number; limit?: number }) {
       const directory = await resolveInsideScope(scope, params.path ?? ".");
       const entries = await fs.readdir(directory, { withFileTypes: true });
       const rendered = entries
@@ -414,12 +411,32 @@ function createLsTool({ Type, scope }: { Type: TypeboxLike; scope: AgentToolScop
         .map((entry) => (entry.isDirectory() ? `${entry.name}/` : entry.name))
         .sort();
 
+      const offset = pageInteger(params.offset, 0, "offset", 0, Number.MAX_SAFE_INTEGER);
+      const limit = Math.min(1000, pageInteger(params.limit, DEFAULT_FIND_LIMIT, "limit", 1, Number.MAX_SAFE_INTEGER));
+      const page = renderTextList(rendered.slice(offset), limit, offset, "");
       return {
-        content: [{ type: "text" as const, text: rendered.join("\n") }],
-        details: { path: directory, entries: rendered.length },
+        content: [{ type: "text" as const, text: page.text }],
+        details: { path: directory, entries: page.count, totalEntries: rendered.length, truncated: page.truncated, ...(page.truncated ? { nextOffset: page.nextOffset } : {}) },
       };
     },
   };
+}
+
+function renderTextList(values: string[], limit: number, offset: number, empty: string) {
+  const lines: string[] = [];
+  let bytes = 0;
+  for (const value of values.slice(0, limit)) {
+    const buffer = Buffer.from(value);
+    let end = Math.min(buffer.length, 10_000);
+    while (end < buffer.length && end > 0 && (buffer[end]! & 0xc0) === 0x80) end--;
+    const line = end < buffer.length ? `${buffer.subarray(0, end).toString()} … (entry truncated; use read)` : value;
+    const length = Buffer.byteLength(line) + 1;
+    if (bytes + length > MAX_OUTPUT_BYTES) break;
+    lines.push(line); bytes += length;
+  }
+  const truncated = lines.length < values.length;
+  const nextOffset = offset + lines.length;
+  return { text: (lines.length ? lines.join("\n") : empty) + (truncated ? `\n… (truncated; continue with offset=${nextOffset})` : ""), count: lines.length, truncated, nextOffset };
 }
 
 /**
@@ -485,39 +502,50 @@ async function resolveRealPathOrSelf(absolute: string): Promise<string> {
   }
 }
 
-/** Lines `[offset, offset + limit)` of a file, read without loading all of it. */
-async function readLineRange(
-  file: string,
-  offset: number,
-  limit: number,
-): Promise<{ lines: string[] }> {
-  // Bounded by bytes as well as lines: one minified line can be as large as the
-  // file that contains it.
-  const stream = createReadStream(file, { encoding: "utf8", end: MAX_READ_BYTES - 1 });
-  const reader = createInterface({ input: stream, crlfDelay: Infinity });
-  const lines: string[] = [];
-
+/** Scan past earlier lines without retaining them, including lines beyond 8 MiB. */
+async function findLineByteOffset(file: string, offset: number): Promise<number> {
+  if (offset === 1) return 0;
+  const stream = createReadStream(file);
+  let line = 1, position = 0;
   try {
-    let index = 0;
-    for await (const line of reader) {
-      index += 1;
-      if (index < offset) continue;
-      if (lines.length >= limit) break;
-      lines.push(line);
+    for await (const chunk of stream) {
+      const bytes = chunk as Buffer;
+      for (let index = bytes.indexOf(10); index !== -1; index = bytes.indexOf(10, index + 1)) {
+        if (++line === offset) return position + index + 1;
+      }
+      position += bytes.length;
     }
   } finally {
-    reader.close();
     stream.destroy();
   }
+  throw new Error(`offset ${offset} is beyond end of file (${line} lines).`);
+}
 
-  return { lines };
+async function readFileBytePage(file: string, start: number, size: number, limit?: number): Promise<{ text: string; end: number }> {
+  const handle = await fs.open(file, "r");
+  try {
+    const buffer = Buffer.alloc(Math.min(MAX_READ_PAGE_BYTES + 4, size - start));
+    const { bytesRead } = await handle.read(buffer, 0, buffer.length, start);
+    if (bytesRead > 0 && (buffer[0]! & 0xc0) === 0x80) throw new Error("byteOffset must be at a UTF-8 character boundary; use nextByteOffset.");
+    let end = Math.min(bytesRead, MAX_READ_PAGE_BYTES);
+    // The extra bytes tell us whether the proposed end cuts a UTF-8 character.
+    if (end < bytesRead) while (end > 0 && (buffer[end]! & 0xc0) === 0x80) end--;
+    if (limit !== undefined) {
+      let lines = 0;
+      for (let index = buffer.indexOf(10); index !== -1 && index < end; index = buffer.indexOf(10, index + 1)) {
+        if (++lines === limit) { end = index + 1; break; }
+      }
+    }
+    return { text: buffer.subarray(0, end).toString("utf8"), end: start + end };
+  } finally { await handle.close(); }
 }
 
 async function runShellCommand(
   command: string,
   cwd: string,
   options: { timeoutMs: number; signal?: AbortSignal },
-): Promise<{ exitCode: number | null; output: string }> {
+): Promise<{ exitCode: number | null; output: string; truncated: boolean }> {
+  options.signal?.throwIfAborted();
   return new Promise((resolve, reject) => {
     const child = spawn(command, {
       cwd,
@@ -530,6 +558,7 @@ async function runShellCommand(
       detached: process.platform !== "win32",
     });
     let output = "";
+    let truncated = false;
     let settled = false;
 
     const timer = setTimeout(() => {
@@ -547,21 +576,28 @@ async function runShellCommand(
       settled = true;
       clearTimeout(timer);
       options.signal?.removeEventListener("abort", onAbort);
-      resolve({ exitCode, output: truncate(appendBuffer(output, suffix)) });
+      resolve({ exitCode, truncated, output: output + (truncated ? "\n… (output truncated; redirect to a file and use read for the complete output)" : "") + suffix });
     }
 
     options.signal?.addEventListener("abort", onAbort, { once: true });
+    if (options.signal?.aborted) onAbort();
 
-    child.stdout?.on("data", (chunk: Buffer) => {
-      output = appendBuffer(output, chunk.toString("utf8"));
-    });
-    child.stderr?.on("data", (chunk: Buffer) => {
-      output = appendBuffer(output, chunk.toString("utf8"));
-    });
+    const append = (chunk: string) => {
+      if (settled || truncated) return;
+      const bytes = Buffer.from(output + chunk);
+      if (bytes.length <= MAX_OUTPUT_BYTES) { output += chunk; return; }
+      truncated = true;
+      let end = MAX_OUTPUT_BYTES;
+      while (end > 0 && (bytes[end]! & 0xc0) === 0x80) end--;
+      output = bytes.subarray(0, end).toString("utf8");
+    };
+    child.stdout?.setEncoding("utf8").on("data", append);
+    child.stderr?.setEncoding("utf8").on("data", append);
     child.once("error", (error) => {
       if (settled) return;
       settled = true;
       clearTimeout(timer);
+      options.signal?.removeEventListener("abort", onAbort);
       reject(error);
     });
     child.once("close", (code) => finish(code));
@@ -588,17 +624,6 @@ function killProcessTree(child: { pid?: number; kill(signal: NodeJS.Signals): bo
   child.kill("SIGKILL");
 }
 
-function appendBuffer(current: string, chunk: string): string {
-  if (current.length >= MAX_OUTPUT_CHARS) return current;
-  return (current + chunk).slice(0, MAX_OUTPUT_CHARS);
-}
-
-function truncate(value: string): string {
-  return value.length <= MAX_OUTPUT_CHARS
-    ? value
-    : `${value.slice(0, MAX_OUTPUT_CHARS)}\n… (output truncated)`;
-}
-
 async function* walkFiles(root: string): AsyncGenerator<string> {
   let stats;
   try {
@@ -612,7 +637,7 @@ async function* walkFiles(root: string): AsyncGenerator<string> {
     return;
   }
 
-  const entries = await fs.readdir(root, { withFileTypes: true });
+  const entries = (await fs.readdir(root, { withFileTypes: true })).sort((a, b) => a.name < b.name ? -1 : a.name > b.name ? 1 : 0);
   for (const entry of entries) {
     if (entry.name.startsWith(".") && entry.name !== ".") continue;
     if (SKIPPED_DIRECTORIES.has(entry.name)) continue;

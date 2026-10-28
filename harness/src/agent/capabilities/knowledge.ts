@@ -11,6 +11,8 @@ import { HarnessError } from "../../workflow/errors";
 import type { NodeContext } from "../../types/context";
 import { selectDatabase } from "./databases";
 import type { Capability } from "./types";
+import { pageInteger, pageJsonResult, RESULT_PAGE_DESCRIPTION, RESULT_PAGE_PROPERTIES, splitsSurrogate,
+  validateResultPageArgs, type ResultPageArgs } from "../result-pages";
 
 export const KNOWLEDGE_MCP_SERVER_ID = "workflow-knowledge";
 export const KNOWLEDGE_MCP_TOOL_NAME = "knowledge_documents";
@@ -28,7 +30,7 @@ const KNOWLEDGE_ACTIONS: readonly KnowledgeAction[] = [
   "read_lines",
 ];
 
-interface KnowledgeToolArgs {
+interface KnowledgeToolArgs extends ResultPageArgs {
   database: string;
   action: KnowledgeAction;
   documentId?: string;
@@ -46,6 +48,18 @@ interface KnowledgeToolArgs {
 }
 
 export async function runKnowledgeAction(
+  context: Pick<NodeContext, "databases">,
+  args: KnowledgeToolArgs,
+): Promise<unknown> {
+  const readOnly = ["get", "list", "search", "read_lines"].includes(args.action);
+  validateResultPageArgs(args, readOnly);
+  if (args.maxMarkdownLength !== undefined) pageInteger(args.maxMarkdownLength, 8000, "maxMarkdownLength", 100, 20_000);
+  if (args.includeMarkdown !== undefined && typeof args.includeMarkdown !== "boolean") throw new HarnessError({ type: "input_validation", message: "includeMarkdown must be a boolean.", nodeName: KNOWLEDGE_MCP_TOOL_ID });
+  const result = await runKnowledgeActionResult(context, args);
+  return readOnly ? pageJsonResult(result, args) : result;
+}
+
+async function runKnowledgeActionResult(
   context: Pick<NodeContext, "databases">,
   args: KnowledgeToolArgs,
 ): Promise<unknown> {
@@ -81,7 +95,7 @@ export async function runKnowledgeAction(
     }
     case "create": {
       const document = await createKnowledgeDocument(storage, {
-        id: optionalString(args.documentId),
+        id: optionalBoundedString(args.documentId, "documentId", args.action),
         title: requireString(args.title, "title", args.action),
         markdown: requireString(args.markdown, "markdown", args.action),
       });
@@ -89,7 +103,7 @@ export async function runKnowledgeAction(
         action: "create" as const,
         document: summarizeDocument(document, {
           includeMarkdown: args.includeMarkdown === true,
-          maxMarkdownLength: args.maxMarkdownLength,
+          maxMarkdownLength: Math.min(args.maxMarkdownLength ?? 8000, 4000),
         }),
       };
     }
@@ -105,7 +119,7 @@ export async function runKnowledgeAction(
         action: "edit" as const,
         document: summarizeDocument(document, {
           includeMarkdown: args.includeMarkdown === true,
-          maxMarkdownLength: args.maxMarkdownLength,
+          maxMarkdownLength: Math.min(args.maxMarkdownLength ?? 8000, 4000),
         }),
       };
     }
@@ -165,7 +179,7 @@ function summarizeDocument(
 }
 
 function truncateMarkdown(value: string, maxLength: number): string {
-  return value.length <= maxLength ? value : `${value.slice(0, maxLength)}\n[markdown truncated]`;
+  return value.length <= maxLength ? value : `${value.slice(0, splitsSurrogate(value, maxLength) ? maxLength - 1 : maxLength)}\n[markdown truncated]`;
 }
 
 /**
@@ -247,6 +261,7 @@ export const KNOWLEDGE_CAPABILITY: Capability = {
     "Manage project Markdown knowledge documents stored by steamharness.",
     "Use list/get/search/read_lines to inspect documents and create/edit/delete to change them.",
     "Large Markdown bodies are truncated; use read_lines for precise ranges.",
+    RESULT_PAGE_DESCRIPTION,
   ].join(" "),
   inputSchema: {
     type: "object",
@@ -269,6 +284,7 @@ export const KNOWLEDGE_CAPABILITY: Capability = {
       endLine: { type: "integer", minimum: 1 },
       includeMarkdown: { type: "boolean", description: "Include the body, truncated." },
       maxMarkdownLength: { type: "integer", minimum: 100, maximum: 20_000 },
+      ...RESULT_PAGE_PROPERTIES,
     },
     required: ["database", "action"],
   },

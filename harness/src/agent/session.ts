@@ -6,7 +6,7 @@ import {
   AgentDoc, CompactionTask, InboxDoc, LiveDoc, ProviderDoc, UsageDoc, configure, defineDoc, defineExtension, defineTask,
   type Conversation, type ConversationId, type ConversationWatch, type EntryId, type EntryRecord,
   type Harness, type JsonObject, type Registry, type TaskId, type Storage, type SubmissionRecord,
-  type ToolRegistration, type TaskGraphWatch, type Cursor, type Tx, type AgentChange, type TaskRecord, type RegistryReader,
+  type ToolRegistration, type TaskGraphWatch, type Cursor, type Tx, type AgentChange, type TaskRecord, type RegistryReader, type TaskOutcome,
 } from "@earendil-works/pi-durable";
 import type { RunOutputItemInput } from "../node/output/index";
 import type { TokenUsageAggregate } from "../token-usage/index";
@@ -17,6 +17,7 @@ import { createAgentStreamRetryText } from "./plan";
 import type { AgentTurnContinuationKind } from "./types";
 import type { AgentSearchMessage } from "./web-search";
 import type { AgentPlanItem, AgentSessionCommand, AgentSessionOptions, AgentSessionReceipt, AgentSessionResources, AgentSessionSnapshot, AgentSessionTask, AgentSessionTurn } from "./session-types";
+import { pageJsonResult, RESULT_PAGE_DESCRIPTION, RESULT_PAGE_PROPERTIES, validateResultPageArgs, type ResultPageArgs } from "./result-pages";
 
 const SessionDoc = defineDoc({
   kind: "project.session", version: 1, scope: "conversation", history: "rewindable", fork: "initial",
@@ -32,6 +33,16 @@ const DelegationDoc = defineDoc({ kind: "project.delegation", version: 1, scope:
 const plain = <T>(value: T): T => value === undefined ? value : JSON.parse(JSON.stringify(value)) as T;
 const object = (value: unknown): Record<string, unknown> => value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {};
 const textOf = (message: AssistantMessage | undefined): string => message?.content.flatMap(block => block.type === "text" ? [block.text] : []).join("") ?? "";
+
+function delegationOutput(taskId: number, outcome: TaskOutcome<unknown>, args: ResultPageArgs) {
+  const answer = outcome.status === "completed" ? String(outcome.result)
+    : `Subagent ${outcome.status}: ${outcome.error?.message ?? outcome.reason ?? "no result"}`;
+  const result = pageJsonResult({ taskId, status: outcome.status, answer }, args, { taskId });
+  const paged = result as { paged?: boolean };
+  const text = paged.paged || Object.values(args).some(value => value !== undefined) || answer.split("\n").length >= 1800
+    ? JSON.stringify(result) : answer;
+  return { output: [{ type: "text" as const, text }], isError: outcome.status !== "completed" };
+}
 
 /** A projection and command adapter over the one executing Harness. No second queue or task scheduler. */
 export class DurableAgentSession {
@@ -88,31 +99,45 @@ export class DurableAgentSession {
         "Delegate a focused task. Background results return to this conversation. Subagents cannot delegate again.",
         `Child tools are restricted to the parent's enabled tools intersected with: ${this.options.subagents.tools.join(", ") || "(none)"}. Only delegate tasks those tools can perform.`,
         "Omit model to inherit the current parent's model and credentials.",
+        "To read an existing delegation result, provide resultTaskId=taskId without task, background or model. This never starts another child. For a paged result, keep resultTaskId and continue with resultOffset=nextOffset and resultHash.",
+        RESULT_PAGE_DESCRIPTION,
         childModels.length ? `Allowed model overrides: ${childModels.map(model => `${model.provider}/${model.modelId}`).join(", ")}. Use only these exact provider/modelId pairs.`
           : "Model overrides are disabled for this project; do not supply model or guess model names.",
       ].join("\n"), replay: "safe",
-      parameters: Type.Object({ task: Type.String({ minLength: 1, maxLength: 100_000 }), background: Type.Optional(Type.Boolean()),
+      parameters: Type.Object({ task: Type.Optional(Type.String({ minLength: 1, maxLength: 100_000 })), background: Type.Optional(Type.Boolean()),
+        resultTaskId: Type.Optional(Type.Integer({ minimum: 1 })),
+        ...Object.fromEntries(Object.entries(RESULT_PAGE_PROPERTIES).map(([name, schema]) => [name, Type.Optional(Type.Unsafe(schema))])),
         ...(childModels.length ? { model: Type.Optional(Type.Union(childModels.map(model => Type.Object({
           provider: Type.Literal(model.provider), modelId: Type.Literal(model.modelId),
         })))) } : {}) }),
       execute: async (args, api, ctx) => {
         const parent = await this.harness.commit(tx => tx.conversation(api.conversationId), ctx);
         if (!parent || parent.owner !== undefined) throw new Error("Subagents cannot delegate again.");
-        const input = args as { task: string; background?: boolean; model?: { provider: string; modelId: string } };
+        const input = args as ResultPageArgs & { task?: string; background?: boolean; model?: { provider: string; modelId: string }; resultTaskId?: number };
+        validateResultPageArgs(input, input.resultTaskId !== undefined);
+        if (input.resultTaskId !== undefined) {
+          if (input.task !== undefined || input.background !== undefined || input.model !== undefined) throw new Error("Read an existing result with resultTaskId only; omit task, background and model.");
+          const result = await api.getTask(input.resultTaskId as TaskId<string>, ctx);
+          if (!result || result.kind !== "project.delegation" || result.conversationId !== api.conversationId) throw new Error("Unknown subagent result for this conversation.");
+          if (result.state.status !== "terminal") throw new Error("The subagent is still running; read its result after it settles.");
+          return delegationOutput(input.resultTaskId, result.state.outcome, input);
+        }
+        if (typeof input.task !== "string" || input.task.trim() === "") throw new Error("A subagent task is required to start a child; use resultTaskId to read an existing result.");
+        const prompt = input.task;
         if (input.model && !this.allowedChildModel(input.model)) throw this.childModelError();
         const id = await api.commit(async tx => {
           const memo = await tx.doc(DelegationDoc, api.taskId);
           if (memo.taskId) return memo.taskId;
           const live = await scanAll(cursor => tx.scanTasks({ kind: "project.delegation" }, 100, cursor));
           if (live.filter(task => task.state.status !== "terminal").length >= (this.options.subagents!.maxAgents ?? 4)) throw new Error("The project's subagent limit was reached.");
-          memo.taskId = await tx.createTask(this.delegation, { prompt: input.task, background: input.background === true, model: input.model ?? null, sourceId: api.callId },
+          memo.taskId = await tx.createTask(this.delegation, { prompt, background: input.background === true, model: input.model ?? null, sourceId: api.callId },
             { conversationId: api.conversationId, ownership: input.background ? { kind: "conversation" } : { kind: "task", taskId: api.taskId }, background: input.background === true });
           return memo.taskId;
         }, ctx);
         await api.details({ taskId: id, background: input.background === true }, ctx);
         if (input.background) return { output: [{ type: "text", text: `Background task ${id} started. Its result will return here.` }] };
         const result = await api.waitForTask(id as TaskId<string>, ctx);
-        return { output: [{ type: "text", text: result.state.outcome.status === "completed" ? String(result.state.outcome.result) : `Subagent ${result.state.outcome.status}` }] };
+        return delegationOutput(id, result.state.outcome, {});
       },
     });
     registry.install(defineExtension({ name: "project.session", tools, tasks: [this.delegation] }));
@@ -137,7 +162,7 @@ export class DurableAgentSession {
 
   private createDelegationTask() {
     type Input = { prompt: string; background: boolean; model: { provider: string; modelId: string } | null; sourceId: string };
-    type State = { phase: "create" } | { phase: "wait"; childId: number } | { phase: "report"; childId: number; answer: string };
+    type State = { phase: "create" } | { phase: "wait"; childId: number } | { phase: "report"; childId: number; answer: string; failed?: boolean };
     return defineTask<Input, State, string>({
       name: "project.delegation", version: 1, initial: () => ({ phase: "create" }),
       phases: {
@@ -165,17 +190,19 @@ export class DurableAgentSession {
             entry: { kind: "project.input", data: { requestId: `delegate:${task.id}`, mode: "followUp" } } }, ctx)).wait(ctx);
           const history = await runtime.context(child.id, ctx, settled.status === "done" ? { at: settled.answer } : undefined);
           const message = [...history.messages].reverse().find(message => message.role === "assistant");
-          const answer = settled.status === "done" ? textOf(message) : `Subagent failed: ${settled.reason}`;
-          await runtime.commit(() => ({ status: "running", checkpoint: { phase: "report", childId: child.id, answer } }), ctx);
+          const failed = settled.status !== "done";
+          const answer = settled.status !== "done" ? `Subagent failed: ${settled.reason}${settled.detail ? `: ${String(settled.detail)}` : ""}` : textOf(message);
+          await runtime.commit(() => ({ status: "running", checkpoint: { phase: "report", childId: child.id, answer, failed } }), ctx);
         },
         report: async (task, runtime, ctx) => {
-          const { childId, answer } = task.state.checkpoint;
+          const { childId, answer, failed } = task.state.checkpoint;
           if (task.input.background) {
             const parent = (await runtime.conversation(task.conversationId, ctx))!;
-            await parent.submit({ type: "input", content: `Subagent result (${childId}):\n${answer}`, whenBusy: "followUp", requestId: `report:${task.id}`,
+            const output = delegationOutput(task.id, failed ? { status: "failed", error: { message: answer } } : { status: "completed", result: answer }, {});
+            await parent.submit({ type: "input", content: `Subagent ${failed ? "failed" : "result"} (${childId}, resultTaskId=${task.id}):\n${output.output[0]!.text}`, whenBusy: "followUp", requestId: `report:${task.id}`,
               entry: { kind: "project.child-result", data: { requestId: `report:${task.id}`, sourceId: childId, mode: "report" } } }, ctx);
           }
-          await runtime.commit(() => ({ status: "terminal", outcome: { status: "completed", result: answer } }), ctx);
+          await runtime.commit(() => ({ status: "terminal", outcome: failed ? { status: "failed", error: { message: answer } } : { status: "completed", result: answer } }), ctx);
         },
       },
       abort: async (_task, runtime, ctx) => { await runtime.commit(() => ({ status: "terminal", outcome: { status: "aborted" } }), ctx); },

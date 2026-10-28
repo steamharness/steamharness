@@ -190,6 +190,10 @@ describe("developer assistant workflow", () => {
     expect(prompt).toContain("Workspace warnings are non-blocking");
     expect(prompt).toContain("Bundled skill paths are instruction sources, not implied task targets");
     expect(prompt).toContain("offset=nextOffset until truncated=false");
+    expect(prompt).toContain("resultOffset=nextOffset and resultHash");
+    expect(prompt).toContain("resultTaskId=taskId");
+    expect(prompt).toContain("byteOffset=nextByteOffset");
+    expect(prompt).toContain("offset=nextFileOffset");
     expect(prompt).toContain("Only if a required file is missing, denied or still unreadable after these recovery steps");
     expect(prompt).toContain("Carry the user's requested work through implementation and relevant verification in the current run");
     expect(prompt).toContain("omit model unless an exact allowed override is offered");

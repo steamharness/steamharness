@@ -61,10 +61,10 @@ description: 按项目发布清单检查构建与交付结果。
 | 参数 | 类型 | 说明 |
 | --- | --- | --- |
 | `action` | `"list" \| "read"` | 必填。`list` 发现技能；`read` 读取某个技能的一份文件。 |
-| `skill` | `string` | `read` 时必填，使用 `list` 返回的完整技能名。`list` 忽略此参数。 |
+| `skill` | `string` | `read` 时必填，使用 `list` 返回的完整技能名。`list` 可指定它来分页列出该技能的全部文件。 |
 | `path` | `string` | `read` 时指定相对于技能目录的文件路径，省略或为空时读取 `SKILL.md`。`list` 忽略此参数。 |
-| `offset` | `number` | `read` 的 UTF-16 字符偏移，默认 `0`。续读时直接传上一页的 `nextOffset`。 |
-| `limit` | `number` | `read` 每页最多返回的字符数，正整数且不超过 `200000`；实际页长还受序列化字节限制。省略时返回最大安全页。 |
+| `offset` | `number` | 从 `0` 开始：`read` 为 UTF-16 字符偏移，`list` 为技能条数，指定 `skill` 的 `list` 为文件条数。续读使用 `nextOffset`。 |
+| `limit` | `number` | `read` 的字符数上限，正整数且不超过 `200000`；`list` 的条数上限，最多 60。实际页长还受序列化字节限制。 |
 
 建议按以下顺序调用。
 
@@ -84,11 +84,14 @@ description: 按项目发布清单检查构建与交付结果。
     "description": "按项目发布清单检查构建与交付结果。",
     "files": ["SKILL.md", "references/checklist.md", "scripts/check.mjs"],
     "filesTruncated": false
-  }]
+  }],
+  "offset": 0,
+  "totalSkills": 1,
+  "truncated": false
 }
 ```
 
-先根据名称和摘要选择当前任务需要的技能。每份技能的文件清单最多 60 条，`filesTruncated: true` 表示清单还有未列出的文件；技能列表按名称排序，没有可用技能时 `skills` 为 `[]`。
+先根据名称和摘要选择当前任务需要的技能。列表 JSON 也限制在 40 000 UTF-8 字节内，`truncated: true` 时用 `offset: nextOffset` 继续列出技能；`totalSkills` 是技能总数。说明最多 2000 字符，`descriptionTruncated: true` 时读取 `SKILL.md` 获取完整内容。每份技能的文件清单最多 60 条，还受字节预算限制；`filesTruncated: true` 时使用 `{"action":"list","skill":"release-guide","offset":返回的 nextFileOffset}`，随后按 `nextOffset` 续列文件。文件顺序稳定。技能按名称排序，没有可用技能时 `skills` 为 `[]`。
 
 ### 2. 读取技能入口
 

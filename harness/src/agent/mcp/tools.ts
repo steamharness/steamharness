@@ -112,10 +112,10 @@ function assertUsableSchema(toolId: string, schema: unknown): void {
     );
   }
 
-  const size = JSON.stringify(schema)?.length ?? 0;
+  const size = Buffer.byteLength(JSON.stringify(schema) ?? "", "utf8");
   if (size > MAX_SCHEMA_BYTES) {
     throw new Error(
-      `MCP tool "${toolId}" published a schema of ${String(size)} characters; the limit is ${String(MAX_SCHEMA_BYTES)}.`,
+      `MCP tool "${toolId}" published a schema of ${String(size)} UTF-8 bytes; the limit is ${String(MAX_SCHEMA_BYTES)}.`,
     );
   }
 }

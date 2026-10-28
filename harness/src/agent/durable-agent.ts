@@ -27,6 +27,7 @@ import { AgentExtensionResources, mergeAgentRegistries } from "./extensions";
 import { DurableAgentSession } from "./session";
 import { durableContextMessages } from "./durable-context";
 import { normalizeAssistantCancellation } from "./stream-error";
+import { withEnvironmentByteReads } from "./environment-read";
 import type { AgentSessionCommand, AgentSessionOptions, AgentSessionReceipt } from "./session-types";
 
 const context = BACKGROUND_CONTEXT;
@@ -341,7 +342,7 @@ export class DurableAgent {
     const remoteTools = this.options.session?.environment ? CodingTools.tools ?? [] : [];
     const localNames = new Set(["read", "write", "edit", "bash", "grep", "find", "ls"]);
     const tools = this.state.tools.filter(tool => !this.options.session?.environment || !localNames.has(tool.name)).map(tool => this.adaptTool(tool));
-    tools.push(...remoteTools.filter(tool => this.state.tools.some(allowed => allowed.name === tool.name)));
+    tools.push(...remoteTools.filter(tool => this.state.tools.some(allowed => allowed.name === tool.name)).map(withEnvironmentByteReads));
     this.session?.setTools(tools);
     const promptSection = section("workflow", () => this.state.systemPrompt, { tag: false });
     this.registry.install(defineExtension({
@@ -599,6 +600,7 @@ export class DurableAgent {
       executionMode: tool.executionMode,
       prepareArguments: tool.prepareArguments,
       structuredOutputSchema: tool.outputSchema,
+      ...(["read", "bash", "grep", "find", "ls"].includes(tool.name) ? { outputLimits: { maxLines: 40_000 } } : {}),
       execute: async (args, api, callContext) => {
         await this.checkConfigurationAccess();
         const prefix = `${api.conversationId}:${api.taskId}:`;

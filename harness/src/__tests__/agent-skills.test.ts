@@ -99,7 +99,43 @@ test("the first root wins when two roots offer the same skill", async () => {
     assert.deepEqual(await runSkillAction([path.join(first, "missing"), second], { action: "list" }), {
       action: "list",
       skills: [{ name: "alpha", description: "另一个 alpha。", files: ["SKILL.md"], filesTruncated: false }],
+      offset: 0, totalSkills: 1, truncated: false,
     });
+  });
+});
+
+test("skill catalogs and file listings can be fully read without exceeding the JSON byte budget", async () => {
+  await withSkillRoots(async ({ first }) => {
+    await Promise.all(Array.from({ length: 30 }, (_, index) => writeSkill(first, `skill-${String(index).padStart(2, "0")}`,
+      `---\ndescription: ${'中文😀"\\'.repeat(1000)}\n---\n`)));
+    const names: string[] = [];
+    let offset = 0, pages = 0;
+    do {
+      const page = await runSkillAction([first], { action: "list", offset }) as {
+        skills: { name: string; descriptionTruncated: boolean }[]; nextOffset?: number;
+      };
+      assert.ok(Buffer.byteLength(JSON.stringify(page)) <= 40_000);
+      assert.ok(page.skills.every(skill => skill.descriptionTruncated));
+      names.push(...page.skills.map(skill => skill.name)); pages++;
+      if (page.nextOffset === undefined) break;
+      assert.ok(page.nextOffset > offset); offset = page.nextOffset;
+    } while (pages < 40);
+    assert.equal(names.length, 30); assert.equal(new Set(names).size, 30); assert.ok(pages > 1);
+
+    const skill = names[0]!;
+    await Promise.all(Array.from({ length: 130 }, (_, index) => writeFileAt(first,
+      `${skill}/references/${"子".repeat(60)}/${"层".repeat(60)}/${String(index).padStart(3, "0")}-${"长路径".repeat(20)}.md`, "tail")));
+    const files: string[] = []; offset = 0; pages = 0;
+    do {
+      const page = await runSkillAction([first], { action: "list", skill, offset }) as { files: string[]; nextOffset?: number };
+      assert.ok(Buffer.byteLength(JSON.stringify(page)) <= 40_000);
+      files.push(...page.files); pages++;
+      if (page.nextOffset === undefined) break;
+      assert.ok(page.nextOffset > offset); offset = page.nextOffset;
+    } while (pages < 30);
+    assert.equal(files.length, 131); assert.equal(new Set(files).size, 131); assert.ok(pages > 2);
+    await assert.rejects(() => runSkillAction([first], { action: "list", skill, offset: 999 }), /beyond/);
+    await assert.rejects(() => runSkillAction([first], { action: "list", offset: 999 }), /beyond/);
   });
 });
 

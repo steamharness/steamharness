@@ -1,5 +1,7 @@
 # Unreleased
 
+- Fixed paged skill catalogs and file listings, byte-bounded JSON continuation with change detection for knowledge/KV/memory and long child results, and bounded write acknowledgements. Fixed large-file tails and read-only environment long-line reads, silent search/list omissions, missing shell truncation and timeout diagnostics, commands starting after cancellation, failed children reported as completed, and UTF-8 MCP schema size checks.
+
 - Fixed skill reads with JSON byte-bounded pages and offset/limit/nextOffset continuation, preventing durable output truncation. Subagents advertise only allowed exact model overrides and explain inheritance. File cards expose target fields, actionable errors and ignore inapplicable preview=false.
 
 - Breaking: project identity, name, version and declarations now use independent `steamharness.json` files. Removed reads and writes of `package.json.id` and `steamHarness`. Aggregates explicitly register child entries whose configuration defines icons, declarations, database aliases and schedules. Unregistered configurations stay inactive, and transfers preserve the parent and child structure.

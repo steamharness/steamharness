@@ -31,7 +31,7 @@ A tool is named `<serverId>_<toolName>` by default, as in `project-tools_project
 
 ## Arguments and failures
 
-- A tool's arguments come from the `inputSchema` the server published and travel to the model unchanged — but the schema's shape is checked before the tool is registered: it must be an object, no deeper than 64 levels, and no larger than 256 KiB serialized. Exceeding any of those throws and the tool is **not registered**: a schema deep enough to exhaust the stack takes the process down at registration time, where it is no longer obvious which server sent it.
+- A tool's arguments come from the `inputSchema` the server published and travel to the model unchanged — but the schema's shape is checked before the tool is registered: it must be an object, no deeper than 64 levels, and no larger than 256 KiB of serialized UTF-8 bytes (including multibyte descriptions). Exceeding any of those throws and the tool is **not registered**: a schema deep enough to exhaust the stack takes the process down at registration time, where it is no longer obvious which server sent it.
 - When the server marks a call as failed (`isError`), the tool **throws** rather than returning the error as ordinary output, so the model can see that the call did not succeed.
 
 ## Tool approval
