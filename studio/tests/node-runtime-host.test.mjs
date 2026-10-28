@@ -75,6 +75,15 @@ test('local changes update new terminal/task/debug environments and preserve exp
   assert.equal(h.collection.mutations.length, 0); assert.equal(h.errors.length, 1);
 });
 
+test('new runtime requests revalidate an executable removed after a successful resolution', async t => {
+  const h = await host(t);
+  h.configuration.nodePath = h.local; h.change();
+  assert.equal((await h.commands.get('studio.internalGetNodeRuntime')()).path, h.local);
+  await rm(h.local);
+  assert.match((await h.commands.get('studio.internalGetNodeRuntime')()).error, /Cannot run Node/);
+  await assert.rejects(h.commands.get('studio.internalResolveNodeTask')(), /Cannot run Node/);
+});
+
 test('zsh shell integration restores the selected Node after an nvm-style startup override', { skip: process.platform !== 'darwin' }, async t => {
   const h = await host(t), other = path.join(h.directory, 'nvm-bin'), user = path.join(h.directory, 'user');
   await mkdir(other); await mkdir(user);

@@ -11,7 +11,10 @@ export function configuredNodeRuntime(storageDirectory?: string): Promise<NodeRu
   if (cached?.key === key) return cached.value;
   const value = resolveNodeRuntime({ source, nodePath, storageDirectory });
   cached = { key, value };
-  void value.catch(() => { if (cached?.value === value) cached = undefined; });
+  // Share concurrent callers, then revalidate for the next session/status
+  // request: local installations and repaired bundles can change in place.
+  const clear = () => { if (cached?.value === value) cached = undefined; };
+  void value.then(clear, clear);
   return value;
 }
 export function resetNodeRuntime(): void { cached = undefined; }

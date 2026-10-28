@@ -1,7 +1,7 @@
 import { execFile } from 'node:child_process';
-import { createHash } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { createReadStream } from 'node:fs';
-import { access, mkdir, readFile, realpath, writeFile } from 'node:fs/promises';
+import { access, mkdir, readFile, realpath, rename, rm, stat, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { promisify } from 'node:util';
 import { t } from './localization';
@@ -43,23 +43,47 @@ async function findLocalNode(searchPath: string): Promise<string> {
   throw new Error(t('No local Node.js was found. Choose an executable in Settings or use the bundled runtime.'));
 }
 
-async function readManifest(file: string): Promise<{ root: string; manifest: RuntimeManifest }> {
+async function writeCommand(file: string, content: string): Promise<void> {
+  if (await readFile(file, 'utf8').catch(() => undefined) === content) return;
+  const temporary = `${file}.${randomUUID()}.partial`;
   try {
-    const manifest = JSON.parse(await readFile(file, 'utf8')) as RuntimeManifest;
+    await writeFile(temporary, content, { mode: 0o755 });
+    await rename(temporary, file);
+  } finally { await rm(temporary, { force: true }); }
+}
+
+async function readManifest(file: string): Promise<{ root: string; manifest: RuntimeManifest; identity: string }> {
+  try {
+    const contents = await readFile(file, 'utf8');
+    const manifest = JSON.parse(contents) as RuntimeManifest;
+    const root = path.dirname(file);
+    const realRoot = await realpath(root);
+    const inside = (parent: string, child: string): boolean => {
+      const relative = path.relative(parent, child);
+      return relative !== '..' && !relative.startsWith(`..${path.sep}`) && !path.isAbsolute(relative);
+    };
+    const resolvePath = async (value: string): Promise<string> => {
+      if (typeof value !== 'string' || path.isAbsolute(value) || !inside(root, path.resolve(root, value))) throw new Error('Invalid runtime path');
+      const resolved = await realpath(path.resolve(root, value));
+      if (!inside(realRoot, resolved)) throw new Error('Runtime link escapes its installation');
+      return resolved;
+    };
     if (manifest.schemaVersion !== 1 || !/^\d+\.\d+\.\d+$/.test(manifest.nodeVersion)) throw new Error('Invalid manifest');
     for (const key of ['node', 'npm', 'pnpm', 'bin'] as const) {
-      const value = manifest[key];
-      if (typeof value !== 'string' || path.isAbsolute(value) || path.relative(path.dirname(file), path.resolve(path.dirname(file), value)).startsWith('..')) throw new Error('Invalid runtime path');
-      await access(path.resolve(path.dirname(file), value));
+      await resolvePath(manifest[key]);
     }
-    if (manifest.hashes) for (const relative of [manifest.node, manifest.npm, manifest.pnpm]) {
-      const expected = manifest.hashes[relative];
-      if (!expected || !/^[a-f0-9]{64}$/.test(expected)) throw new Error('Missing checksum');
-      const hash = createHash('sha256');
-      for await (const chunk of createReadStream(path.resolve(path.dirname(file), relative))) hash.update(chunk);
-      if (hash.digest('hex') !== expected) throw new Error('Corrupt runtime');
+    if (manifest.hashes) {
+      for (const relative of [manifest.node, manifest.npm, manifest.pnpm]) if (!manifest.hashes[relative]) throw new Error('Missing checksum');
+      // The manifest can cover the complete manager payload. Checking just its
+      // entrypoints misses missing or damaged modules loaded by npm and pnpm.
+      for (const [relative, expected] of Object.entries(manifest.hashes)) {
+        if (!/^[a-f0-9]{64}$/.test(expected)) throw new Error('Invalid checksum');
+        const hash = createHash('sha256');
+        for await (const chunk of createReadStream(await resolvePath(relative))) hash.update(chunk);
+        if (hash.digest('hex') !== expected) throw new Error('Corrupt runtime');
+      }
     }
-    return { root: path.dirname(file), manifest };
+    return { root, manifest, identity: createHash('sha256').update(contents).digest('hex') };
   } catch {
     throw new Error(t('The bundled Node.js runtime is missing or damaged. Repair the installation or choose a local Node.js in Settings.'));
   }
@@ -81,6 +105,7 @@ export async function resolveNodeRuntime(options: NodeRuntimeOptions = {}): Prom
     identity: '', pathEntries: source === 'host' ? [] : [path.dirname(nodePath)] };
   try {
     runtime.nodePath = await realpath(nodePath);
+    if (source !== 'host') runtime.pathEntries = [path.dirname(runtime.nodePath)];
     runtime.version = (await promisify(execFile)(runtime.nodePath, ['--version'], { env: nodeRuntimeEnvironment(runtime, env), timeout: 10_000, windowsHide: true })).stdout.trim();
   } catch { throw new Error(t('Cannot run Node.js at {0}. Choose another executable in Settings.', nodePath)); }
   const match = /^v(\d+)\.(\d+)\.(\d+)$/.exec(runtime.version);
@@ -96,7 +121,9 @@ export async function resolveNodeRuntime(options: NodeRuntimeOptions = {}): Prom
       try { await access(candidate); runtime.npmCli = candidate; break; } catch { /* Optional local npm. */ }
     }
   }
-  runtime.identity = createHash('sha256').update(JSON.stringify([runtime.nodePath, runtime.version, runtime.npmCli, runtime.pnpmCli, runtime.electron])).digest('hex');
+  const executable = await stat(runtime.nodePath);
+  runtime.identity = createHash('sha256').update(JSON.stringify([runtime.nodePath, runtime.version, runtime.npmCli, runtime.pnpmCli, runtime.electron,
+    executable.dev, executable.ino, executable.size, executable.mtimeMs, executable.ctimeMs, bundle?.identity])).digest('hex');
   if (local && bundle && options.storageDirectory) {
     // npm.cmd distributed with Node always picks its neighbouring node.exe.
     // These shims make terminal package managers follow the selected local Node.
@@ -109,8 +136,8 @@ export async function resolveNodeRuntime(options: NodeRuntimeOptions = {}): Prom
       // page, which cannot reliably represent Unicode installation paths.
       const content = process.platform === 'win32' ? `@echo off\r\nnode "%~dp0${name}.cjs" %*\r\n`
         : `#!/bin/sh\nexec ${quote(runtime.nodePath)} ${quote(cli)} "$@"\n`;
-      if (process.platform === 'win32') await writeFile(path.join(directory, `${name}.cjs`), `process.argv[1]=${JSON.stringify(cli)};\nrequire(${JSON.stringify(cli)});\n`);
-      await writeFile(path.join(directory, name + (process.platform === 'win32' ? '.cmd' : '')), content, { mode: 0o755 });
+      if (process.platform === 'win32') await writeCommand(path.join(directory, `${name}.cjs`), `process.argv[1]=${JSON.stringify(cli)};\nrequire(${JSON.stringify(cli)});\n`);
+      await writeCommand(path.join(directory, name + (process.platform === 'win32' ? '.cmd' : '')), content);
     }
     runtime.pathEntries.unshift(directory);
   }

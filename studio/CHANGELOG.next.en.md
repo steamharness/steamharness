@@ -1,5 +1,7 @@
 # Unreleased
 
+- Resolve local Node symlinks before preparing child environments, revalidate runtimes for new sessions and status requests, and check every declared toolchain checksum, rejecting paths and links outside the installation.
+
 - Unify project Node runtime selection, validation and environment propagation, with optional host toolchains and local executables. Changes apply to new sessions; service recovery retains its original environment. Public Studio does not download or bundle Node.
 
 - Improved CLI Web exports: conversations, messages and workflow records use the native save dialog, with a notification showing the saved path after writing succeeds. Cancellation stays quiet and save failures show an error notification.

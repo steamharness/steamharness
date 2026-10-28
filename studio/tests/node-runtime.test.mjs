@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { createHash } from 'node:crypto';
-import { chmod, copyFile, mkdir, mkdtemp, readFile, realpath, rm, writeFile } from 'node:fs/promises';
+import { chmod, copyFile, mkdir, mkdtemp, readFile, realpath, rm, symlink, writeFile } from 'node:fs/promises';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { tmpdir } from 'node:os';
@@ -67,6 +67,17 @@ test('local selection honours legacy paths and original PATH while using the sel
   }
 });
 
+test('a local executable alias keeps child processes on the resolved Node installation', { skip: process.platform === 'win32' }, async t => {
+  const f = await fixture(t), aliases = path.join(f.directory, 'aliases');
+  await mkdir(aliases);
+  await symlink(f.node, path.join(aliases, 'selected-node'));
+  await writeFile(path.join(aliases, 'node'), '#!/bin/sh\necho wrong-node\n', { mode: 0o755 });
+  const runtime = await resolveNodeRuntime({ source: 'local', nodePath: path.join(aliases, 'selected-node'), manifestPath: f.file });
+  const result = await execute(runtime.nodePath, ['-e', `console.log(require('node:child_process').execFileSync('node',['-p','process.execPath'],{encoding:'utf8'}).trim())`],
+    { env: nodeRuntimeEnvironment(runtime, { PATH: aliases }) });
+  assert.equal(result.stdout.trim(), f.node);
+});
+
 test('missing and corrupt bundles fail explicitly while local mode remains available for repair', async t => {
   const f = await fixture(t);
   await rm(path.join(f.directory, 'pnpm.mjs'));
@@ -84,6 +95,12 @@ test('missing and corrupt bundles fail explicitly while local mode remains avail
 test('bundled manifests cannot escape their installation directory', async t => {
   const f = await fixture(t), manifest = JSON.parse(await readFile(f.file, 'utf8'));
   manifest.node = '../outside-node'; await writeFile(f.file, JSON.stringify(manifest));
+  await assert.rejects(resolveNodeRuntime({ manifestPath: f.file }), /missing or damaged/);
+});
+
+test('bundled manifests reject symlinks to executables outside the installation', { skip: process.platform === 'win32' }, async t => {
+  const f = await fixture(t);
+  await rm(f.node); await symlink(process.execPath, f.node);
   await assert.rejects(resolveNodeRuntime({ manifestPath: f.file }), /missing or damaged/);
 });
 
@@ -107,4 +124,16 @@ test('bundled entrypoint checksums detect corruption and errors follow the displ
     await assert.rejects(resolveNodeRuntime({ manifestPath: f.file }), message);
   }
   configureLocalization({}, 'en');
+});
+
+test('bundled integrity checks cover package manager dependencies as well as entrypoints', async t => {
+  const f = await fixture(t), dependency = path.join(f.directory, 'manager-dependency.cjs');
+  await writeFile(dependency, 'module.exports = 1;');
+  const manifest = JSON.parse(await readFile(f.file, 'utf8'));
+  manifest.hashes = Object.fromEntries(await Promise.all([manifest.node, manifest.npm, manifest.pnpm, path.basename(dependency)].map(async file =>
+    [file, createHash('sha256').update(await readFile(path.join(f.directory, file))).digest('hex')])));
+  await writeFile(f.file, JSON.stringify(manifest));
+  assert.equal((await resolveNodeRuntime({ manifestPath: f.file })).source, 'bundled');
+  await rm(dependency);
+  await assert.rejects(resolveNodeRuntime({ manifestPath: f.file }), /missing or damaged/);
 });
