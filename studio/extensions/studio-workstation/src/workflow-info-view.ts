@@ -79,7 +79,8 @@ export class InfoView implements vscode.WebviewViewProvider, vscode.Disposable {
     if (!this.view) { return; }
     this.view.description = this.selected && projectDisplayName(this.selected);
     const state: InfoState = { type: 'info-state', generation: this.generation,
-      project: this.selected && { uri: projectWindowKey(this.selected), name: this.selected.name, avatarUrl: projectAvatarDataUrl(this.selected.projectCard, this.selected.projectType) }, items: this.items,
+      project: this.selected && { uri: projectWindowKey(this.selected), name: this.selected.aggregateName,
+        avatarUrl: projectAvatarDataUrl(this.selected.aggregateProjectCard, this.selected.entries.find(entry => entry.entryId === this.selected!.defaultEntry)?.type ?? this.selected.projectType) }, items: this.items,
       update: this.selected && !this.selected.builtin ? this.versions.getVersionStatus(this.selected) : undefined };
     void this.view.webview.postMessage(state);
   }

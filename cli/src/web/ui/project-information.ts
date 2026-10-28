@@ -1,10 +1,11 @@
 import { t } from '../localization';
 import { projectTypeLabels, type Project } from '../workflow-types';
+import { projectAvatarDataUrl } from '@steamharness/project-card-metadata/avatar';
 
 export interface ProjectInformationSection {
   title: string;
   expanded?: boolean;
-  rows: { label: string; value: string }[];
+  rows: { label: string; value: string; avatarUrl?: string }[];
 }
 
 export function projectInformation(project: Project): ProjectInformationSection[] {
@@ -14,7 +15,7 @@ export function projectInformation(project: Project): ProjectInformationSection[
   const sections: ProjectInformationSection[] = [{
     title: t("Basic information"), expanded: true, rows: [
       { label: t("Default name"), value: project.manifest?.name || project.name },
-      { label: t("Project type"), value: projectTypeLabels[project.projectType] },
+      { label: t("Project type"), value: [...new Set(project.entries.map(entry => projectTypeLabels[entry.type]))].join(' / ') },
       { label: t("Version"), value: project.manifest?.version || t("Not declared") },
       { label: t("Project UUID"), value: project.id },
       { label: project.assistant ? t("Working directory") : t("Local path"), value: project.assistant?.workdir || project.folderPath },
@@ -29,7 +30,7 @@ export function projectInformation(project: Project): ProjectInformationSection[
   if (info && Object.keys(info.localizedNames).length) {
     sections.push({ title: t("Localized names"), rows: Object.entries(info.localizedNames).map(([label, value]) => ({ label, value })) });
   }
-  sections.push({ title: t("Windows"), expanded: true, rows: project.entries.map(entry => ({ label: entry.name, value: `${entry.entryId} · ${projectTypeLabels[entry.type]}` })) });
+  sections.push({ title: t("Windows"), expanded: true, rows: project.entries.map(entry => ({ label: entry.name, value: `${entry.entryId} · ${projectTypeLabels[entry.type]}`, avatarUrl: projectAvatarDataUrl(entry.projectCard, entry.type) })) });
   sections.push({ title: t("Databases"), rows: project.databases.map(database => ({ label: database.alias, value: `${database.host} · ${database.bindingRef ?? t("Apply for database space")}` })) });
   if (project.entrypoints.length) {
     sections.push({ title: t("Entrypoints"), rows: project.entrypoints.map(entry => ({

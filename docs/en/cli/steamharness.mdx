@@ -25,7 +25,9 @@ Arguments after `--` pass unchanged to the Workflow. `--locale zh-CN|en` selects
 
 ## CLI Web
 
-One root directory starts one aggregate host. The window selector beside the project name displays entry names, types and states. Each entry has an `/entries/<entryId>/` URL and independent controller. Switching preserves drafts, history and background runs.
+One root directory starts one aggregate host and initially displays only `defaultEntry`. Click **Project windows** in the top toolbar to see entry icons, names, types, the default marker and runtime states. **Open in new tab** opens a browser tab in standalone CLI Web or a native Studio tab. **Open side by side** keeps the primary entry and displays another entry on the right. Drag the separator or use its arrow keys to resize. Switching the right pane retains previously opened pages and drafts; closing a split pane leaves background runs active.
+
+Each entry has an `/entries/<entryId>/` URL and independent controller. Its optional `projectCard` configures `icon`, `iconColor` and `iconBackgroundColor`, with `#RRGGBB` colors. Omitted properties use defaults for that entry type. The root `steamHarness.projectCard` identifies the aggregate card; entry icons are independent. Declare the sole version in root `package.json.version`; entries do not accept their own version.
 
 Select **Databases** in the toolbar to open database management, or select **Open database management** in the **Database binding requires attention** prompt. The Studio assistant, Conversation, Workflow and Kanban share this interface for requests, approval, shared access, binding, narrowing, revocation, rotation and data management. Pending requests do not create spaces. See [Database spaces](/en/concepts/data-storage).
 

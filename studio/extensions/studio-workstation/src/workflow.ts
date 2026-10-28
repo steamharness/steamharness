@@ -51,7 +51,7 @@ class ProjectsProvider implements vscode.TreeDataProvider<ProjectTreeNode> {
   private published = '';
   projects: Project[] = [];
   refresh(): void {
-    const signature = JSON.stringify(this.projects.map(({ uri, id, entryId, name, aggregateName, projectType, projectCard, folderPath, manifest }) => ({ uri, id, entryId, name, aggregateName, projectType, projectCard, folderPath, version: manifest?.version })));
+    const signature = JSON.stringify(this.projects.map(({ uri, id, entryId, name, aggregateName, projectType, projectCard, aggregateProjectCard, entries, defaultEntry, folderPath, manifest }) => ({ uri, id, entryId, name, aggregateName, projectType, projectCard, aggregateProjectCard, entries, defaultEntry, folderPath, version: manifest?.version })));
     if (signature === this.published) { return; }
     this.published = signature;
     this.change.fire();
@@ -66,10 +66,11 @@ class ProjectsProvider implements vscode.TreeDataProvider<ProjectTreeNode> {
       project.aggregateNode ? vscode.TreeItemCollapsibleState.Expanded : vscode.TreeItemCollapsibleState.None);
     item.id = project.aggregateNode ? `${project.uri}#aggregate` : projectWindowKey(project);
     item.resourceUri = vscode.Uri.parse(project.uri);
-    item.description = [projectTypeLabels[project.projectType], projectVersion(project)].filter(Boolean).join(' \u00b7 ');
+    item.description = project.aggregateNode ? projectVersion(project) : projectTypeLabels[project.projectType];
     item.tooltip = `${projectDisplayName(project)}\n${project.folderPath}`;
     item.contextValue = 'studio.project';
-    item.iconPath = vscode.Uri.parse(projectAvatarDataUrl(project.projectCard, project.projectType));
+    item.iconPath = vscode.Uri.parse(projectAvatarDataUrl(project.aggregateNode ? project.aggregateProjectCard : project.projectCard,
+      project.aggregateNode ? project.entries.find(entry => entry.entryId === project.defaultEntry)?.type ?? project.projectType : project.projectType));
     if (!project.aggregateNode) item.command = { command: 'studio.openProject', title: t("Run Project"), arguments: [project] };
     return item;
   }
@@ -241,7 +242,93 @@ export async function activateProject(context: vscode.ExtensionContext, launcher
         if (closed) { throw new Error(t('Unable to open the resource.')); }
         await openCard(result, project, session, address);
       });
-      listeners.push({ dispose: () => traceBinding.dispose() }, clipboardBinding, pickerBinding, pathOpenBinding, fileIconsBinding, resourceBinding, panel.webview.onDidReceiveMessage(message => {
+      const resolveHostedEntry = async (entryId: string): Promise<Project> => {
+        if (!project.entries.some(entry => entry.entryId === entryId)) throw new Error('Unknown project entry.');
+        if (entryId === project.entryId) return project;
+        if (!project.assistant) return resolveProjectTab(vscode.Uri.parse(project.uri), entryId);
+        const known = findProject(project.uri, entryId);
+        if (known) return known;
+        const inspected = await launcher.inspect([project.folderPath]);
+        const descriptor = inspected.projects.find(entry => entry.id === project.id && entry.entryId === entryId);
+        if (!descriptor) throw new Error(inspected.errors.join('\n') || 'Unknown project entry.');
+        const target = { ...descriptor, uri: project.uri, assistant: project.assistant, requiresLogin: false };
+        if (!closed) externalProjects.set(projectWindowKey(target), target);
+        return target;
+      };
+      const openHostedEntry = (entryId: string) => resolveHostedEntry(entryId).then(target => { if (!closed) return openProject(target); });
+      const reconnect = (message: Record<string, any>, webview: vscode.Webview) => {
+        if (message.type !== 'workflow-reconnect' || message.version !== 1 || typeof message.requestId !== 'string' || message.requestId.length > 64) return false;
+        void (session.reconnect?.() ?? Promise.resolve(false)).then(async () => {
+          if (!closed) {
+            const token = new URLSearchParams(new URL(session.ready.url).hash.slice(1)).get('session');
+            await webview.postMessage({ type: 'workflow-host', recovery: { requestId: message.requestId, ...(token ? { token } : {}) } });
+          }
+        }).catch(error => {
+          output.appendLine(`SteamHarness Web recovery: ${String(error)}`);
+          if (!closed) void webview.postMessage({ type: 'workflow-host', recovery: { requestId: message.requestId, error: String((error as Error).message) } });
+        });
+        return true;
+      };
+      type EntryBinding = { receive(message: Record<string, any>): void; dispose(): void; reconnect(): void };
+      const entryBindings = new Map<string, { entryId: string; pending: Promise<EntryBinding> }>();
+      const disposeEntryBindings = () => {
+        for (const entry of entryBindings.values()) void entry.pending.then(binding => binding.dispose(), () => undefined);
+        entryBindings.clear();
+      };
+      const receiveEntry = (envelope: Record<string, any>) => {
+        if (closed || envelope.version !== 1 || envelope.projectId !== project.id || typeof envelope.frameId !== 'string'
+          || !/^[a-f0-9-]{36}$/i.test(envelope.frameId) || typeof envelope.entryId !== 'string'
+          || !project.entries.some(entry => entry.entryId === envelope.entryId) || envelope.entryId === project.entryId
+          || !envelope.message || envelope.message.version !== 1) return;
+        const { frameId, entryId, message } = envelope;
+        let entry = entryBindings.get(frameId);
+        if (entry && entry.entryId !== entryId) return;
+        if (message.type === 'workflow-entry-dispose' || message.type === 'workflow-frame-ready') {
+          if (entry) { entryBindings.delete(frameId); void entry.pending.then(binding => binding.dispose(), () => undefined); }
+          if (message.type === 'workflow-entry-dispose') return;
+          entry = undefined;
+        }
+        if (!entry) {
+          if (entryBindings.size >= 64) return;
+          const created = { entryId, pending: Promise.resolve(undefined as unknown as EntryBinding) };
+          created.pending = resolveHostedEntry(entryId).then(target => {
+            if (closed || entryBindings.get(frameId) !== created) throw new Error('Entry window closed.');
+            // The existing platform adapters reply only to this entry's iframe.
+            const webview = new Proxy(panel.webview, { get(owner, key) {
+              if (key === 'postMessage') return (message: unknown) => !closed && entryBindings.get(frameId) === created
+                ? panel.webview.postMessage({ type: 'workflow-entry-host', version: 1, frameId, message }) : Promise.resolve(false);
+              const value = Reflect.get(owner, key, owner); return typeof value === 'function' ? value.bind(owner) : value;
+            } });
+            const entryUrl = () => { const url = new URL(session.ready.url); url.pathname = `/entries/${entryId}/`; return url.href; };
+            let entryTrace = trace.bind(target, session.ready.traceProtocolVersion, webview);
+            const clipboard = bindProjectClipboard(webview), picker = bindProjectPathPicker(webview, vscode.Uri.file(target.assistant?.workdir ?? target.entryRoot));
+            const pathOpen = bindProjectPathOpen(webview), icons = fileIcons.bind(webview);
+            const resources = bindProjectResourceCards(webview, entryUrl, result => openCard(result, target, session, address));
+            const adapters = [clipboard, picker, pathOpen, icons, resources];
+            return {
+              receive(value: Record<string, any>) {
+                if (reconnect(value, webview)) return;
+                if (value.type === 'workflow-open-entry' && value.projectId === project.id && typeof value.entryId === 'string') {
+                  void openHostedEntry(value.entryId).catch(error => output.appendLine(String(error))); return;
+                }
+                if (value.type === 'workflow-account') { account.open(); return; }
+                if (value.type === 'workflow-user-settings') { void openProjectUserSettings(value).catch(error => output.appendLine(String(error))); return; }
+                if (value.type === 'workflow-project-upload' && launcher.uploadProject && !target.assistant && projectAvailable(target)) {
+                  void vscode.commands.executeCommand('studio.uploadProject', { uri: target.uri }).then(undefined, error => output.appendLine(String(error))); return;
+                }
+                if (!adapters.some(adapter => adapter.receive(value))) entryTrace.receive(value);
+              },
+              dispose() { entryTrace.dispose(); for (const adapter of adapters) adapter.dispose(); },
+              reconnect() { entryTrace.dispose(); entryTrace = trace.bind(target, session.ready.traceProtocolVersion, webview); },
+            };
+          });
+          entry = created; entryBindings.set(frameId, created);
+        }
+        void entry.pending.then(binding => { if (!closed && entryBindings.get(frameId) === entry) binding.receive(message); })
+          .catch(error => { if (!closed && entryBindings.get(frameId) === entry) output.appendLine(`Entry window: ${String(error)}`); });
+      };
+      listeners.push({ dispose: () => traceBinding.dispose() }, { dispose: disposeEntryBindings }, clipboardBinding, pickerBinding, pathOpenBinding, fileIconsBinding, resourceBinding, panel.webview.onDidReceiveMessage(message => {
+        if (message?.type === 'workflow-entry-message') { receiveEntry(message); return; }
         if (message?.type === 'workflow-reconnect' && message.version === 1 && typeof message.requestId === 'string' && message.requestId.length <= 64) {
           void (session.reconnect?.() ?? Promise.resolve(false)).then(async () => {
             if (closed) return;
@@ -255,10 +342,11 @@ export async function activateProject(context: vscode.ExtensionContext, launcher
           return;
         }
         if (message?.type === 'workflow-open-entry' && message.version === 1 && message.projectId === project.id && typeof message.entryId === 'string') {
-          void resolveProjectTab(vscode.Uri.parse(project.uri), message.entryId).then(target => openProject(target)).catch(error => output.appendLine(String(error)));
+          void openHostedEntry(message.entryId).catch(error => output.appendLine(String(error)));
           return;
         }
         if (message?.type === 'workflow-frame-ready') {
+          disposeEntryBindings();
           const entry = workspaces.get(projectWindowKey(project));
           if (entry?.close === close) { entry.loaded = true; }
           frameReady(); updateEntry();
@@ -286,6 +374,7 @@ export async function activateProject(context: vscode.ExtensionContext, launcher
       if (session.onReconnect) listeners.push(session.onReconnect(() => {
         if (closed) return;
         traceBinding.dispose(); traceBinding = trace.bind(project, session.ready.traceProtocolVersion, panel.webview);
+        for (const entry of entryBindings.values()) void entry.pending.then(binding => binding.reconnect(), () => undefined);
         const entry = workspaces.get(projectWindowKey(project));
         if (entry?.close === close) entry.running = true;
         const token = new URLSearchParams(new URL(session.ready.url).hash.slice(1)).get('session');

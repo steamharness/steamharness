@@ -43,7 +43,7 @@ New Workflow, Conversation, and Kanban projects require sign-in and successful S
 
 **Current Projects** shows each project's name, type, version, and folder. **Run Project** opens its runtime; the upload button publishes its source and the code button opens its source. **Recent Projects** shows versions, reopens folders or workspaces, and allows removing entries. Quick access includes folders, workspaces, Download Project, Versions, Project Assistant, SteamHarness Account, and Settings.
 
-Current Projects, Recent Projects, **Open Recent** (Ctrl+R), Studio workspace and registered entry lists, Project Information, and project pickers use the icon, foreground color, and background color from `steamHarness.projectCard`. New projects use their Workflow, Conversation, or Kanban type icon with random colors saved in the manifest and a contrast ratio of at least 4.5:1. Older projects without avatar metadata use type defaults. Template pickers retain type icons. Studio reads declarations statically, without running the project or requiring its dependencies to be installed. Unrecognized folders and saved workspaces keep their existing icons.
+Current and recent projects, **Open Recent** (Ctrl+R), and Studio workspaces use the root `steamHarness.projectCard`. Each entry has its own optional `steamHarness.entries[].projectCard`, with `icon`, `iconColor` and `iconBackgroundColor`; omitted properties use defaults for its type. Entry tree nodes, native tabs, the window panel and split headings display that entry icon. New aggregate projects save randomly generated colors with at least 4.5:1 contrast. Templates use type icons. Studio reads declarations without executing projects or requiring their dependencies.
 
 **System Status** shows Studio, VS Code, the Node executable used for runs, Core/CLI availability, account and server connection, and counts of imported local projects, running tasks, and tasks waiting for input. Run counts refresh every five seconds only while Start is visible. Failures retain prior results and display an error; unreadable data is marked unavailable. **Open Studio Analysis** provides full history and statistics. CPU, memory, and remote Runner monitoring are not included.
 
@@ -78,7 +78,9 @@ Editor actions follow tool permissions and Build/Plan approvals; state, diagnost
 
 ## Aggregate entries and databases
 
-The project tree exposes aggregates and registered entries. Tabs use “Project name / Entry name”. Entries share one host process; switching preserves background work, and closing the last tab releases the host.
+The Start page shows one card per aggregate; **Run Project** opens `defaultEntry`. The project tree retains registered entries and native tabs are titled “Project name / Entry name”. Entry labels do not display a version; only the aggregate owns one.
+
+Use **Project windows** in the running page toolbar. **Open in new tab** opens a native Studio tab; **Open side by side** opens an entry on the right, with a draggable and keyboard accessible separator. Switching split entries retains their pages and drafts. Closing a split view leaves background runs active. Tabs and split views share the aggregate host; closing the last native tab releases it.
 
 Information displays aggregate identity, version, entry type and database requirements. KV and knowledge panels select an entry and alias first. Database management supports new-space and shared-access requests, explicit approval, binding, narrowing, revocation and rotation, including pending, rejected and invalid states. CLI Web and Studio share a user-level SQLite registry.
 

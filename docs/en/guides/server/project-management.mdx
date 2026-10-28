@@ -7,6 +7,8 @@ description: "Manage aggregate entries, membership, versions and independent dat
 
 Project managers use Server Web to manage members, invitations, source access, and independent database spaces. Server stores project metadata, permissions, and version snapshots; it never executes uploaded project code.
 
+The aggregate entry list displays each entry’s `projectCard` icon, foreground and background. These properties live in entry declarations and travel with source uploads and version snapshots. Entries have no independent versions; the aggregate owns the root version.
+
 ## Project avatars
 
 Project lists, details, and settings display avatars from `projectCard.icon`, `iconColor`, and `iconBackgroundColor`. New projects without an avatar use their project type's icon with randomly generated, saved foreground and background colors. Their contrast ratio is at least 4.5:1. Refreshing the page or reconnecting an existing project does not generate new colors.

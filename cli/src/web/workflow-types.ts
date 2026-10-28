@@ -90,6 +90,7 @@ export interface Project extends Parameters {
   entryRoot: string;
   databases: import("@steamharness/database-spaces").DatabaseRequirement[];
   projectCard?: import('@steamharness/project-card-metadata').ProjectCardMetadata;
+  aggregateProjectCard?: import('@steamharness/project-card-metadata').ProjectCardMetadata;
   id: string;
   uri: string;
   folderPath: string;

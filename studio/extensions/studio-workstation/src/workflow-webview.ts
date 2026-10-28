@@ -14,6 +14,8 @@ export function projectFrameHtml(url: string, title: string, projectUri: string,
     <script nonce="${nonce}">
       const vscode=acquireVsCodeApi(),frame=document.getElementById('workflow-frame'),origin=${literal(address.origin)};
       let theme=${literal(theme)},windowChrome=${literal(windowChrome)},editCommands=false,contextMenu=false;
+      const entryRoutes=new Map(),dropRoutes=new Map();let activeRoute;
+      const postHost=(message,frameId)=>frame.contentWindow.postMessage(frameId?{type:'workflow-entry-host',version:1,frameId,message}:message,origin);
       const clearDragRegions=()=>vscode.postMessage({type:'studio-window-drag-regions',version:1,width:1,height:1,regions:[]});
       const entryId=${literal(decodeURIComponent(address.pathname.match(/\/entries\/([^/]+)/)?.[1] ?? ''))};
       const saved=vscode.getState?.(),state={...(saved?.projectUri===${literal(projectUri)}&&saved?.entryId===entryId?saved:{}),projectUri:${literal(projectUri)},entryId};
@@ -30,38 +32,55 @@ export function projectFrameHtml(url: string, title: string, projectUri: string,
       addEventListener('vscode-webview-exec-command',event=>{
         const command=typeof event.detail==='string'?event.detail:event.detail?.command;
         if(!editCommands||document.activeElement!==frame&&!contextMenu||!['paste','copy','cut','selectAll','undo','redo'].includes(command))return;
-        event.preventDefault();frame.contentWindow.postMessage({type:'workflow-host',editCommand:command,...(contextMenu?{restoreFocus:true}:{}),...(command==='paste'&&event.detail?.clipboard?{clipboardData:event.detail.clipboard}:{})},origin);contextMenu=false;
+        event.preventDefault();postHost({type:'workflow-host',editCommand:command,...(contextMenu?{restoreFocus:true}:{}),...(command==='paste'&&event.detail?.clipboard?{clipboardData:event.detail.clipboard}:{})},activeRoute);contextMenu=false;
       });
-      frame.addEventListener('load',()=>{if(windowChrome?.active)clearDragRegions();editCommands=false;contextMenu=false;vscode.postMessage({type:'workflow-drop-target',version:1});frame.contentWindow.postMessage({type:'workflow-host',theme,windowChrome,locale:${literal(locale)},traceVersion:1,clipboardVersion:1,nativePasteVersion:document.documentElement.dataset.vscodeNativeClipboard==='1'?1:0,resourceVersion:1,${projectSetup ? 'projectSetupVersion:1,' : ''}recoveryVersion:1,dropVersion:1,pathPickerVersion:1,pathOpenVersion:1,userSettingsVersion:1,fileIconsVersion:1},origin);vscode.postMessage({type:'workflow-frame-ready'});});
+      frame.addEventListener('load',()=>{if(windowChrome?.active)clearDragRegions();editCommands=false;contextMenu=false;activeRoute=undefined;entryRoutes.clear();dropRoutes.clear();vscode.postMessage({type:'workflow-drop-target',version:1});postHost({type:'workflow-host',theme,windowChrome,locale:${literal(locale)},traceVersion:1,clipboardVersion:1,nativePasteVersion:document.documentElement.dataset.vscodeNativeClipboard==='1'?1:0,resourceVersion:1,${projectSetup ? 'projectSetupVersion:1,' : ''}recoveryVersion:1,dropVersion:1,pathPickerVersion:1,pathOpenVersion:1,userSettingsVersion:1,fileIconsVersion:1,entryWindowVersion:1});vscode.postMessage({type:'workflow-frame-ready'});});
       addEventListener('message',event=>{
         if(event.source===frame.contentWindow){
-          ${conversationView ? `
-          if(event.origin===origin&&event.data?.type==='workflow-navigation'&&event.data.version===1&&validId(event.data.id)&&typeof event.data.create==='boolean'){
-            state.conversationView.conversation={id:event.data.id,create:event.data.create};vscode.setState(state);
-          }` : ''}
-          if(event.origin===origin&&event.data?.type==='workflow-window-drag'&&event.data.version===1&&windowChrome?.active===true){
-            const {width,height,regions}=event.data;vscode.postMessage({type:'studio-window-drag-regions',version:1,width,height,regions});
+          if(event.origin!==origin)return;
+          let message=event.data,route;
+          if(message?.type==='workflow-entry-focus'&&message.version===1){activeRoute=entryRoutes.has(message.frameId)?message.frameId:undefined;return;}
+          if(message?.type==='workflow-entry-message'&&message.version===1){
+            if(typeof message.frameId!=='string'||!(/^[a-f0-9-]{36}$/i).test(message.frameId)||typeof message.entryId!=='string'||!(/^[a-z][a-z0-9_-]{0,63}$/).test(message.entryId)||typeof message.projectId!=='string'||!message.message||message.message.version!==1)return;
+            route={frameId:message.frameId,entryId:message.entryId,projectId:message.projectId};
+            const previous=entryRoutes.get(route.frameId);
+            if(previous&&(previous.entryId!==route.entryId||previous.projectId!==route.projectId)||!previous&&entryRoutes.size>=64)return;
+            entryRoutes.set(route.frameId,route);message=message.message;
+            if(message.type==='workflow-entry-dispose'){
+              entryRoutes.delete(route.frameId);for(const [target,frameId]of dropRoutes)if(frameId===route.frameId)dropRoutes.delete(target);
+              if(activeRoute===route.frameId)activeRoute=undefined;
+              vscode.postMessage({type:'workflow-entry-message',version:1,...route,message});return;
+            }
           }
-          if(event.origin===origin&&event.data?.type==='workflow-edit'&&event.data.version===1)editCommands=true;
-          if(event.origin===origin&&event.data?.type==='workflow-edit'&&event.data.version===1&&event.data.command==='paste'&&document.activeElement===frame&&document.documentElement.dataset.vscodeNativeClipboard==='1'){
+          ${conversationView ? `
+          if(!route&&message?.type==='workflow-navigation'&&message.version===1&&validId(message.id)&&typeof message.create==='boolean'){
+            state.conversationView.conversation={id:message.id,create:message.create};vscode.setState(state);
+          }` : ''}
+          if(!route&&message?.type==='workflow-window-drag'&&message.version===1&&windowChrome?.active===true){
+            const {width,height,regions}=message;vscode.postMessage({type:'studio-window-drag-regions',version:1,width,height,regions});
+          }
+          if(message?.type==='workflow-edit'&&message.version===1){editCommands=true;if(message.command)activeRoute=route?.frameId;}
+          if(message?.type==='workflow-edit'&&message.version===1&&message.command==='paste'&&document.activeElement===frame&&document.documentElement.dataset.vscodeNativeClipboard==='1'){
             contextMenu=false;
             frame.dispatchEvent(new Event('vscode-webview-paste',{bubbles:true}));
           }
-          if(event.origin===origin&&event.data?.type==='workflow-contextmenu'&&event.data.version===1&&editCommands&&document.activeElement===frame){
-            const {x,y,editable,selection}=event.data,rect=frame.getBoundingClientRect();
+          if(message?.type==='workflow-contextmenu'&&message.version===1&&editCommands&&document.activeElement===frame){
+            const {x,y,editable,selection}=message,rect=frame.getBoundingClientRect();
             if((editable===true||selection===true)&&Number.isFinite(x)&&Number.isFinite(y)&&x>=0&&y>=0&&x<=rect.width&&y<=rect.height){
               frame.setAttribute('data-vscode-context',JSON.stringify({preventDefaultContextMenuItems:editable!==true,studioFrameSelection:selection===true}));
-              contextMenu=true;frame.dispatchEvent(new MouseEvent('contextmenu',{bubbles:true,cancelable:true,clientX:rect.left+x,clientY:rect.top+y}));
+              activeRoute=route?.frameId;contextMenu=true;frame.dispatchEvent(new MouseEvent('contextmenu',{bubbles:true,cancelable:true,clientX:rect.left+x,clientY:rect.top+y}));
             }
           }
-          if(event.origin===origin&&${projectSetup}&&event.data?.type==='workflow-project-upload'&&event.data.version===1)vscode.postMessage({type:'workflow-project-upload',version:1});
-          if(event.origin===origin&&['workflow-open-entry','workflow-trace','workflow-account','workflow-clipboard','workflow-resource','workflow-reconnect','workflow-drop-target','workflow-path-picker','workflow-path-open','workflow-user-settings','workflow-file-icons'].includes(event.data?.type)&&event.data.version===1)vscode.postMessage(event.data);
+          if(message?.type==='workflow-drop-target'&&message.version===1){if(typeof message.target==='string')dropRoutes.set(message.target,route?.frameId);vscode.postMessage(message);}
+          else if(['workflow-open-entry','workflow-trace','workflow-account','workflow-clipboard','workflow-resource','workflow-reconnect','workflow-path-picker','workflow-path-open','workflow-user-settings','workflow-file-icons',...(route?['workflow-frame-ready']:[]),...(${projectSetup}?['workflow-project-upload']:[])].includes(message?.type)&&message.version===1)vscode.postMessage(route?{type:'workflow-entry-message',version:1,...route,message}:message);
           return;
         }
+        if(event.data?.type==='workflow-entry-host'&&event.data.version===1&&entryRoutes.has(event.data.frameId)&&event.data.message?.type==='workflow-host'){postHost(event.data.message,event.data.frameId);return;}
         if(event.data?.type!=='workflow-host')return;
         if(event.data.theme==='dark'||event.data.theme==='light')theme=event.data.theme;
         if(event.data.windowChrome){windowChrome=event.data.windowChrome;if(!windowChrome.active)clearDragRegions();}
-        frame.contentWindow.postMessage(event.data,origin);
+        const frameId=event.data.drop?dropRoutes.get(event.data.drop.target):event.data.editCommand?activeRoute:undefined;
+        postHost(event.data,frameId);
       });
       frame.src=frameUrl;
     </script></body></html>`;

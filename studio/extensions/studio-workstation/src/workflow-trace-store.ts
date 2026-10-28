@@ -1,4 +1,4 @@
-import { projectVersion, projectWindowKey, projectDisplayName, type Project } from './workflow-types';
+import { projectWindowKey, projectDisplayName, type Project } from './workflow-types';
 import type { TracePanelState, TraceSnapshot, TraceSelection, TraceTarget, TraceRun } from './workflow-trace-types';
 import type { TraceAgentAction } from './workflow-agent-types';
 
@@ -125,8 +125,7 @@ export class TraceStore {
     const source = this.sources.get(this.selection.projectUri ?? '');
     const sessionId = this.selection.sessionId ?? source?.snapshot?.activeId;
     return { type: 'trace-state', generation: this.generation, reveal: this.reveal,
-      projects: this.availableProjects().map(project => ({ uri: projectWindowKey(project), name: projectDisplayName(project), projectType: project.projectType,
-        ...(projectVersion(project) ? { version: projectVersion(project) } : {}) })),
+      projects: this.availableProjects().map(project => ({ uri: projectWindowKey(project), name: projectDisplayName(project), projectType: project.projectType })),
       selection: this.selection, snapshot: source?.snapshot, run: source?.runs.get(this.selection.runId ?? ''),
       status: source?.status ?? 'idle', loading: !!source?.requested.has(this.selection.runId ?? ''),
       pending: [...source?.pending.values() ?? []].includes(sessionId ?? ''),

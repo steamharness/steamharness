@@ -69,7 +69,7 @@ try {
   await page.goto(launch.url); await ready(); await formReady();
   assert.equal(await page.locator('#web-account').innerText(), 'Workflow UI');
   await page.locator('#project-info').click(); await page.locator('.project-information-name').waitFor();
-  assert.equal(await page.locator('.project-information-name').innerText(), launch.project.name);
+  assert.equal(await page.locator('.project-information-name').innerText(), launch.project.aggregateName);
   await page.locator('.conversation-dialog[open] header button').last().click();
   proof.checks.push('project information opens from the left toolbar');
   await page.locator('#usage').click(); const usage = page.locator('.conversation-dialog[open]');

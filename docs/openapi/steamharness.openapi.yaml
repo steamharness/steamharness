@@ -7264,6 +7264,8 @@ components:
             - conversation
             - kanban
         name: *a11
+        projectCard:
+          $ref: "#/components/schemas/ProjectCardMetadata"
         root:
           type: string
           description: Safe code directory relative to the aggregate root. No traversal or absolute paths.

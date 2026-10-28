@@ -41,7 +41,7 @@ export class ConversationTools {
 
   projectInfo(project: Project): void {
     this.show(t("Project information"));
-    const heading = document.createElement('h3'); heading.className = 'project-information-name'; heading.textContent = project.name;
+    const heading = document.createElement('h3'); heading.className = 'project-information-name'; heading.textContent = project.aggregateName;
     this.body.append(heading);
     if (project.manifest?.description) {
       const description = document.createElement('p'); description.className = 'project-information-description'; description.textContent = project.manifest.description; this.body.append(description);
@@ -51,7 +51,9 @@ export class ConversationTools {
       const summary = document.createElement('summary'); summary.innerHTML = `${iconHtml('chevron-right')}<span>${escapeHtml(section.title)}</span>`;
       const list = document.createElement('dl');
       for (const row of section.rows) {
-        const label = document.createElement('dt'), value = document.createElement('dd'); label.textContent = row.label; value.textContent = row.value; list.append(label, value);
+        const label = document.createElement('dt'), value = document.createElement('dd'); label.textContent = row.label; value.textContent = row.value;
+        if (row.avatarUrl) { const icon = document.createElement('img'); icon.src = row.avatarUrl; icon.alt = ''; icon.className = 'entry-information-icon'; label.prepend(icon); }
+        list.append(label, value);
       }
       details.append(summary, list); this.body.append(details);
     }

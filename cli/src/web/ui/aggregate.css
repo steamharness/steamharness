@@ -7,3 +7,6 @@
 .toolbar:has(.aggregate-navigation) { flex-wrap: wrap; }
 .project-title:has(.aggregate-navigation) { flex: 1 1 260px; flex-wrap: wrap; }
 .aggregate-navigation { flex-wrap: wrap; max-width: 100%; }
+.toolbar:has(.aggregate-navigation) > .toolbar-actions { flex-wrap: wrap; justify-content: flex-end; max-width: 100%; }
+.project-information-section dt:has(.entry-information-icon) { display: flex; align-items: center; gap: 6px; }
+.entry-information-icon { width: 24px; height: 24px; flex: 0 0 24px; border-radius: 4px; }

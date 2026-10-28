@@ -55,6 +55,7 @@ export interface ParamRequest {
 
 export interface Project extends Parameters {
   projectCard?: import('@steamharness/project-card-metadata').ProjectCardMetadata;
+  aggregateProjectCard?: import('@steamharness/project-card-metadata').ProjectCardMetadata;
   entryId: string;
   aggregateName: string;
   entries: import('@steamharness/project-manifest').ProjectEntry[];
@@ -209,9 +210,7 @@ export const projectTypeLabels: Record<ProjectKind, string> = {
 
 export function projectVersion(project: Project): string | undefined { return project.manifest?.version; }
 export function projectDisplayName(project: Project): string {
-  const version = projectVersion(project);
-  const name = `${project.aggregateName} / ${project.name}`;
-  return version ? `${name} \u00b7 ${version}` : name;
+  return `${project.aggregateName} / ${project.name}`;
 }
 
 export function projectParameters(project: Project, entrypointId?: string): Parameters {

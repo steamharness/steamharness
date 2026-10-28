@@ -1,22 +1,21 @@
 import { t } from '../localization';
-import { escapeHtml } from './ui';
+import { mountEntryWindows } from './entry-windows';
 import './aggregate.css';
 import { mountDatabaseData } from './database-data';
 import { requestAction } from './action-dialog';
 type Host = { postMessage(message: Record<string, any>): unknown };
 /** All entry types share this project-level navigation and host database UI. */
 export function mountAggregateToolbar(host: Host) {
-  const title = document.querySelector('.project-title') ?? document.querySelector('.toolbar');
+  const title = document.querySelector('.toolbar-actions') ?? document.querySelector('.toolbar');
   const navigation = document.createElement('div'); navigation.className = 'aggregate-navigation';
-  navigation.innerHTML = `<span class="aggregate-name"></span><select aria-label="${t('Project window')}"></select><button type="button">${t('Databases')}</button>`;
-  title?.append(navigation);
-  const select = navigation.querySelector('select')!, name = navigation.querySelector('span')!;
+  navigation.innerHTML = `<button class="aggregate-databases" type="button">${t('Databases')}</button>`;
+  if (title) { title.prepend(navigation); mountEntryWindows(navigation); }
   const dialog = document.createElement('dialog'); dialog.className = 'conversation-dialog database-dialog';
   dialog.setAttribute('aria-label', t('Databases'));
   dialog.innerHTML = `<header><h2>${t('Databases')}</h2><button type="button" aria-label="${t('Close')}">×</button></header><div class="dialog-body"><p class="database-error" role="alert"></p><div class="database-content"></div><button class="database-refresh" type="button">${t('Check again')}</button></div>`;
   document.body.append(dialog);
   const content = dialog.querySelector<HTMLElement>('.database-content')!, error = dialog.querySelector<HTMLElement>('.database-error')!;
-  let project: any, aggregate: any, pending: string | undefined;
+  let project: any, pending: string | undefined;
   let receiveData: ((value: any) => void) | undefined;
   const setBusy = (busy: boolean) => {
     if (busy) dialog.setAttribute('aria-busy', 'true'); else dialog.removeAttribute('aria-busy');
@@ -27,14 +26,9 @@ export function mountAggregateToolbar(host: Host) {
   };
   const send = (value: Record<string, any>) => { if (pending) return; pending = crypto.randomUUID(); error.textContent = ''; setBusy(true); void host.postMessage({ type: 'databases', requestId: pending, ...value }); };
   const openDatabases = () => { if (!dialog.open) dialog.showModal(); send({ action: 'get' }); };
-  navigation.querySelector('button')!.onclick = openDatabases;
+  navigation.querySelector<HTMLButtonElement>('.aggregate-databases')!.onclick = openDatabases;
   dialog.querySelector('header button')!.addEventListener('click', () => dialog.close());
   dialog.querySelector<HTMLButtonElement>('.database-refresh')!.onclick = () => send({ action: 'get' });
-  select.onchange = () => {
-    const entry = aggregate?.entries.find((entry: any) => entry.entryId === select.value); if (!entry) return;
-    if (window.parent !== window) window.parent.postMessage({ type: 'workflow-open-entry', version: 1, projectId: project.id, entryId: entry.entryId }, '*');
-    else location.assign(entry.href);
-  };
   const button = (label: string, action: () => void) => { const result = document.createElement('button'); result.type = 'button'; result.textContent = label; result.onclick = action; return result; };
   const input = (placeholder: string, value = '') => { const result = document.createElement('input'); result.placeholder = placeholder; result.setAttribute('aria-label', placeholder); result.value = value; return result; };
   const row = (title: string) => { const result = document.createElement('section'); result.className = 'database-row'; const heading = document.createElement('strong'); heading.textContent = title; result.append(heading); content.append(result); return result; };
@@ -90,12 +84,6 @@ export function mountAggregateToolbar(host: Host) {
     if (event.source !== null && event.source !== window.parent) return;
     const message = event.data;
     if (message?.type === 'state' && message.project) project = message.project;
-    if (message?.type === 'state' && message.aggregate) {
-      aggregate = message.aggregate; name.textContent = aggregate.name;
-      const signature = JSON.stringify(aggregate.entries);
-      if (select.dataset.signature !== signature) { select.innerHTML = aggregate.entries.map((entry: any) => `<option value="${escapeHtml(entry.entryId)}">${escapeHtml(entry.name)} · ${escapeHtml(entry.type)} · ${escapeHtml(t(entry.status))}</option>`).join(''); select.dataset.signature = signature; }
-      select.value = project.entryId;
-    }
     if (!pending || message?.requestId !== pending) return;
     if (message.type === 'databases-result') {
       pending = undefined; setBusy(false);

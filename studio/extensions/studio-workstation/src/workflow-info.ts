@@ -1,12 +1,14 @@
 import { t } from './localization';
 import type { Project } from './workflow-types';
 import type { ProjectVersionStatus } from './steamharness-server-projects';
+import { projectAvatarDataUrl } from '@steamharness/project-card-metadata/avatar';
 
 export interface InfoItem {
   id: string;
   label: string;
   value?: string;
   icon?: string;
+  avatarUrl?: string;
   expanded?: boolean;
   children?: InfoItem[];
 }
@@ -50,18 +52,18 @@ export function projectInfoItems(project: Project, manifest: unknown): InfoItem[
   const platform = record(info.platformSupport);
   const basic = [
     row('name', t("Default name"), text(pkg.name) ?? project.name),
-    row('type', t("Project type"), t(typeNames[project.projectType])),
+    row('type', t("Project type"), [...new Set(project.entries.map(entry => t(typeNames[entry.type])))].join(' / ')),
     row('version', t("Version"), text(pkg.version) ?? t("Not declared")),
     row('uuid', t("Project UUID"), project.id),
     row('path', t("Local path"), project.folderPath, 'folder'),
   ];
   if (text(pkg.description)) { basic.push(row('description', t("Description"), text(pkg.description))); }
 
-  const entries = project.entries.map(entry => group(`window:${entry.entryId}`, entry.name, 'window', [
+  const entries = project.entries.map(entry => ({ ...group(`window:${entry.entryId}`, entry.name, 'window', [
     row(`window:${entry.entryId}:id`, t('Entry ID'), entry.entryId),
     row(`window:${entry.entryId}:type`, t('Project type'), t(typeNames[entry.type])),
     row(`window:${entry.entryId}:path`, t('Local path'), `${entry.root}/${entry.entry}`),
-  ], false));
+  ], false), avatarUrl: projectAvatarDataUrl(entry.projectCard, entry.type) }));
   const databases = project.databases.map(database => group(`database:${database.alias}`, database.alias, 'database', [
     row(`database:${database.alias}:host`, t('Storage location'), database.host === 'local' ? t('Local') : t('Server')),
     row(`database:${database.alias}:binding`, t('Database binding'), database.bindingRef ?? t('Not bound')),

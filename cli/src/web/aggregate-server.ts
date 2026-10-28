@@ -23,7 +23,7 @@ export async function startAggregateWebServer(options: WebOptions) {
   let host = options.host;
   const catalog = () => ({ projectId: manifest.projectId, name: manifest.name, defaultEntry: manifest.defaultEntry, entries: manifest.entries.map(entry => {
     const running = entries.get(entry.entryId);
-    return { entryId: entry.entryId, name: entry.name, type: entry.type, href: `/entries/${entry.entryId}/`, status: failures.has(entry.entryId) ? 'error' : running?.running ? 'running' : running ? 'idle' : 'starting' };
+    return { entryId: entry.entryId, name: entry.name, type: entry.type, projectCard: entry.projectCard, href: `/entries/${entry.entryId}/`, status: failures.has(entry.entryId) ? 'error' : running?.running ? 'running' : running ? 'idle' : 'starting' };
   }) });
   const matches = (value: string) => { const input = Buffer.from(value), expected = Buffer.from(credentials.capability); return input.length === expected.length && timingSafeEqual(input, expected); };
   const launch = (entryId: string): Promise<void> => {

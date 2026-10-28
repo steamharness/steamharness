@@ -814,5 +814,6 @@
   "Project windows": "Project windows",
   "Database spaces": "Database spaces",
   "Invalid resource operation.": "Invalid resource operation.",
-  "This folder cannot be upgraded in place. Download a new copy to preserve its workspace.": "This folder cannot be upgraded in place. Download a new copy to preserve its workspace."
+  "This folder cannot be upgraded in place. Download a new copy to preserve its workspace.": "This folder cannot be upgraded in place. Download a new copy to preserve its workspace.",
+  "Aggregate Project": "Aggregate Project"
 }

@@ -33,7 +33,7 @@ function renderItem(item: InfoItem, nested = false): string {
     const open = sections[state!.project!.uri]?.[item.id] ?? (item.expanded && !empty);
     const count = ['related', 'entrypoints'].includes(item.id) && !empty ? String(item.children.length) : '';
     return `<details class="info-section${nested ? ' nested' : ''}" data-section="${id}"${open ? ' open' : ''}>
-      <summary>${iconHtml('chevron-right')}${item.icon ? iconHtml(item.icon) : ''}<span class="section-label">${label}</span>
+      <summary>${iconHtml('chevron-right')}${item.avatarUrl?.startsWith('data:image/svg+xml,') ? `<img class="entry-info-icon" src="${escapeHtml(item.avatarUrl)}" alt="">` : item.icon ? iconHtml(item.icon) : ''}<span class="section-label">${label}</span>
         ${empty || count ? `<span class="section-meta">${empty ? escapeHtml(t("Not declared")) : count}</span>` : ''}</summary>
       <div class="section-content">${item.children.map(child => renderItem(child, true)).join('')}</div></details>`;
   }

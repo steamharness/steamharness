@@ -4,7 +4,7 @@ import { projectAvatarDataUrl } from '@steamharness/project-card-metadata/avatar
 import { t } from './localization';
 import { localizationHtml } from './localization-host';
 import { webviewContextMenu } from './webview-context-menu';
-import { projectVersion, projectDisplayName, type Project } from './workflow-types';
+import { projectVersion, type Project } from './workflow-types';
 import type { Launcher } from './workflow-cli-types';
 import type { AccountController } from './workflow-auth';
 import { AuthError, normalizeProjectServerUrl, type Connection } from './workflow-auth-client';
@@ -114,7 +114,7 @@ export class VersionsView implements vscode.WebviewViewProvider, vscode.Disposab
 
   async selectProject(): Promise<void> {
     const picked = await vscode.window.showQuickPick(this.localProjects.map(project => ({
-      label: projectDisplayName(project), description: project.projectType, detail: project.folderPath, project,
+      label: project.aggregateName, description: projectVersion(project), detail: project.folderPath, project,
     })), { title: t('Select Project'), placeHolder: t('Project') });
     const selected = this.localProjects.find(project => project.uri === picked?.project.uri);
     if (!selected || selected === this.preferred || this.disposed) { return; }
@@ -187,7 +187,7 @@ export class VersionsView implements vscode.WebviewViewProvider, vscode.Disposab
       localVersion: local && projectVersion(local), update: local && this.getVersionStatus(local), versions: this.versions,
       canDownload: !this.error && !!remote?.sourceDownload?.allowed && !!this.launcher.downloadProject,
       transfersAvailable: !!this.launcher.downloadProject, error: this.error };
-    this.view.description = local ? projectDisplayName(local) : undefined;
+    this.view.description = local?.aggregateName;
     this.view.badge = state.update?.status === 'upgrade' ? { value: 1, tooltip: t('Update Available') } : undefined;
     void this.view.webview.postMessage(state);
   }

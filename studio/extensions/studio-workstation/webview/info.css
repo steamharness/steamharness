@@ -20,6 +20,7 @@ button { font: inherit; color: inherit; }
 summary { display: flex; align-items: center; gap: 7px; min-height: 36px; padding: 8px 0; list-style: none; cursor: pointer; }
 summary::-webkit-details-marker { display: none; }
 summary > .codicon { flex: 0 0 16px; color: var(--vscode-descriptionForeground); }
+.entry-info-icon { width: 24px; height: 24px; flex: 0 0 24px; border-radius: 4px; }
 summary > .codicon-chevron-right { font-size: 12px; transition: transform 100ms; }
 details[open] > summary > .codicon-chevron-right { transform: rotate(90deg); }
 .section-label { flex: 1; min-width: 0; overflow-wrap: anywhere; font-weight: 600; }

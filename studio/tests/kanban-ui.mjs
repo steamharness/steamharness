@@ -46,7 +46,7 @@ try {
   await page.goto(launch.url); await ready(); const preview = await board(); await preview.locator('.task').first().waitFor();
   assert.equal(await page.locator('#web-account').innerText(), server.profile.displayName); assert.equal(await preview.locator('.task').count(), 3);
   await page.locator('#project-info').click(); await page.locator('.project-information-name').waitFor();
-  assert.equal(await page.locator('.project-information-name').innerText(), launch.project.name);
+  assert.equal(await page.locator('.project-information-name').innerText(), launch.project.aggregateName);
   await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
   await page.locator('.conversation-dialog[open] header button').last().click();
   await page.locator('.project-information-name').waitFor({ state: 'hidden' });

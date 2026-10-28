@@ -1,4 +1,4 @@
-import type { ComponentProps } from "react";
+import type { ComponentProps, ReactNode } from "react";
 import { useTranslation } from "@steamharness/i18n/react";
 import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from "./select";
 import { cn } from "@/lib/utils";
@@ -7,7 +7,7 @@ const EMPTY_VALUE = "__empty_value__";
 type SelectChangeEvent = { target: { value: string }; currentTarget: { value: string } };
 
 export type SelectFieldProps = Omit<ComponentProps<typeof Select>, "value" | "defaultValue"> & {
-  options: Array<{ label: string; value: string }>;
+  options: Array<{ label: string; value: string; icon?: ReactNode }>;
   value?: string;
   defaultValue?: string;
   placeholder?: string;
@@ -43,7 +43,7 @@ export function SelectField({
       </SelectTrigger>
       <SelectContent className={contentClassName}>
         <SelectGroup>
-          {options.map(option => <SelectItem key={option.value} value={option.value || EMPTY_VALUE}>{option.label}</SelectItem>)}
+          {options.map(option => <SelectItem key={option.value} value={option.value || EMPTY_VALUE}>{option.icon ? <span className="flex items-center gap-2">{option.icon}<span>{option.label}</span></span> : option.label}</SelectItem>)}
         </SelectGroup>
       </SelectContent>
     </Select>

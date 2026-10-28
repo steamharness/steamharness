@@ -17,6 +17,23 @@ describe("aggregate project manifest", () => {
     expect(projectManifestTypes(manifest)).toEqual(["conversation", "workflow", "kanban"]);
     expect(() => selectProjectEntry(manifest, "missing")).toThrow("Unknown project entry");
   });
+  it("keeps entry icons independent of the aggregate and preserves them for distribution", () => {
+    const p = pkg();
+    Object.assign(p.steamHarness, { projectCard: { icon: 'brain', iconColor: '#eeeeee', iconBackgroundColor: '#111111' } });
+    Object.assign(p.steamHarness.entries[0]!, { projectCard: { icon: 'bot', iconColor: '#123456', iconBackgroundColor: '#ABCDEF' } });
+    Object.assign(p.steamHarness.entries[1]!, { projectCard: { icon: 'database' } });
+    const manifest = readProjectManifest(projectManifestForDistribution(p));
+    expect(manifest.entries[0]!.projectCard).toMatchObject({ icon: 'bot', iconColor: '#123456', iconBackgroundColor: '#abcdef' });
+    expect(manifest.entries[1]!.projectCard?.icon).toBe('database');
+    expect(manifest.entries[2]!.projectCard).toBeUndefined();
+  });
+  it("rejects entry versions and invalid icon declarations", () => {
+    for (const invalid of [{ version: '2.0.0' }, { projectCard: { icon: 'invalid' } },
+      { projectCard: { iconColor: 'red' } }, { projectCard: { iconBackgroundColor: 'url(javascript:alert(1))' } }]) {
+      const p = pkg(); Object.assign(p.steamHarness.entries[0]!, invalid);
+      expect(() => readProjectManifest(p)).toThrow();
+    }
+  });
   it("rejects duplicate identities, missing defaults and unsafe paths", () => {
     const p = pkg(); p.steamHarness.entries.push(entry("one"));
     expect(() => readProjectManifest(p)).toThrow("duplicate entryId");

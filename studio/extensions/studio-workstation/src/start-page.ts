@@ -31,7 +31,7 @@ export function startPageLabels(): Record<string, string> {
     confirmCreate: t('Create'), cancel: t('Cancel'), requiredName: t('Enter a project name.'),
     requiredParent: t('Choose an existing parent folder.'),
     'type.workflow': t('Workflow'), 'type.conversation': t('Conversation'), 'type.kanban': t('Kanban'),
-    'type.link': t('Import from Link'),
+    'type.link': t('Import from Link'), 'type.aggregate': t('Aggregate Project'),
     'stat.studio': 'Studio', 'stat.vscode': 'VS Code', 'stat.node': 'Node.js', 'stat.harness': 'Harness', 'stat.cli': 'CLI',
     'stat.account': t('Account'), 'stat.server': t('Server'), 'stat.projects': t('Local Projects'), 'stat.running': t('Running'), 'stat.waiting': t('Waiting for Input'),
   };
@@ -184,9 +184,14 @@ export class StudioStartController implements vscode.Disposable {
 
   private publish(): void {
     if (this.disposed) { return; }
-    this.state.projects = this.projects.getProjects().filter(project => !project.assistant && !project.builtin)
-      .map(project => ({ uri: project.uri, entryId: project.entryId, name: `${project.aggregateName} / ${project.name}`, projectType: project.projectType, folderPath: project.folderPath,
-        avatarUrl: projectAvatarDataUrl(project.projectCard, project.projectType),
+    const aggregates = new Map<string, Project>();
+    for (const project of this.projects.getProjects().filter(project => !project.assistant && !project.builtin)) {
+      const key = `${project.id}:${project.uri}`;
+      if (!aggregates.has(key) || project.entryId === project.defaultEntry) aggregates.set(key, project);
+    }
+    this.state.projects = [...aggregates.values()]
+      .map(project => ({ uri: project.uri, entryId: project.defaultEntry, name: project.aggregateName, projectType: project.entries.length > 1 ? 'aggregate' : project.projectType, folderPath: project.folderPath,
+        avatarUrl: projectAvatarDataUrl(project.aggregateProjectCard, project.entries.find(entry => entry.entryId === project.defaultEntry)?.type ?? project.projectType),
         update: this.projects.getVersionStatus(project),
         ...(projectVersion(project) ? { version: projectVersion(project) } : {}) }));
     this.state.recent = this.recent.getChildren();

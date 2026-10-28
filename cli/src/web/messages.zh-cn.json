@@ -790,5 +790,18 @@
   "Delete database data?": "删除数据库数据？",
   "Revoke database access?": "撤销数据库访问？",
   "Rotate database credentials?": "轮换数据库凭据？",
-  "Narrow permissions": "收窄权限"
+  "Narrow permissions": "收窄权限",
+  "Project windows": "项目窗口",
+  "Entry window": "入口窗口",
+  "Resize entry windows": "调整入口窗口宽度",
+  "Open in new tab": "新标签页打开",
+  "Open in new Studio tab": "在新的 Studio 标签页中打开",
+  "Open in new browser tab": "在新的浏览器标签页中打开",
+  "Open side by side": "在当前页分屏打开",
+  "Close split window": "关闭分屏窗口",
+  "Default window": "默认入口",
+  "Current window": "当前窗口",
+  "Open in split view": "已在分屏中打开",
+  "Show split window": "显示分屏窗口",
+  "running": "运行中"
 }

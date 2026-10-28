@@ -110,22 +110,24 @@ test('project and account changes debounce, invalidate old summaries and preserv
   const ready = new Promise(resolve => { started = resolve; });
   f.readSummary = () => { f.readSummary = undefined; started(); return new Promise(resolve => { release = resolve; }); };
   await f.execute('studio.internalStartPageVisibility', true); await ready;
-  f.projects = [{ id, aggregateName: 'Aggregate', name: 'Current', uri: 'file:///current', entryId: 'main', projectType: 'workflow' }];
+  f.projects = [{ id, aggregateName: 'Aggregate', name: 'Current', uri: 'file:///current', entryId: 'main', defaultEntry: 'main', entries: [{entryId:'main',type:'workflow'}], projectType: 'workflow' }];
   for (let i = 0; i < 10; i++) { f.projectsChanged.fire(); }
   f.account = { status: 'authenticated', serverUrl: 'http://localhost:7126', user: { displayName: 'Local User' } }; f.accountChanged.fire();
   release({ ...f.summary, projects: 99 }); await f.execute('studio.refreshStart');
-  assert.equal((await f.state()).summary.projects, 2); assert.equal((await f.state()).projects[0].name, 'Aggregate / Current'); assert.equal((await f.state()).environment.account, 'Local User');
+  assert.equal((await f.state()).summary.projects, 2); assert.equal((await f.state()).projects[0].name, 'Aggregate'); assert.equal((await f.state()).environment.account, 'Local User');
   assert.equal(f.summaryReads, 2);
 });
 
-test('Start preserves every aggregate entry sharing one project URI, including entries without database bindings', async t => {
+test('Start shows one aggregate card and opens the default entry even if it is not first', async t => {
   const f = fixture(t);
   const entries = [['agent', 'conversation'], ['database', 'workflow'], ['map-2d', 'kanban'], ['minimax', 'workflow'], ['tikhub', 'workflow']];
   f.projects = entries.map(([entryId, projectType]) => ({ id, aggregateName: 'Aggregate', name: entryId,
-    uri: 'file:///aggregate', folderPath: '/aggregate', entryId, projectType, databases: [{ alias: 'data', host: 'server' }] }));
+    uri: 'file:///aggregate', folderPath: '/aggregate', entryId, projectType, defaultEntry: 'database',
+    entries: entries.map(([entryId,type])=>({entryId,type})), manifest: {version:'1.2.3'}, databases: [] }));
   await f.execute('studio.refreshStart');
   assert.deepEqual((await f.state()).projects.map(({ uri, entryId, name, projectType }) => ({ uri, entryId, name, projectType })),
-    entries.map(([entryId, projectType]) => ({ uri: 'file:///aggregate', entryId, name: `Aggregate / ${entryId}`, projectType })));
+    [{ uri: 'file:///aggregate', entryId: 'database', name: 'Aggregate', projectType: 'aggregate' }]);
+  assert.equal((await f.state()).projects[0].version, '1.2.3');
 });
 
 test('creation opens the project before installation and hands progress, logs and retry to the new window', async t => {
@@ -246,14 +248,14 @@ test('form validation returns inline errors and current-project cards receive pa
   const validation = await f.execute('studio.internalValidateProjectCreation', { name: 'Existing', templateId: 'workflow-starter', parentDirectory: f.parent });
   assert.match(validation.error, /already exists/);
   f.projects = [
-    { id, aggregateName: 'Aggregate', name: 'Board', uri: 'file:///board', entryId: 'board', folderPath: '/board', projectType: 'kanban', projectCard: { icon: 'boxes', iconColor: '#112233', iconBackgroundColor: '#aabbcc' } },
+    { id, aggregateName: 'Aggregate', name: 'Board', uri: 'file:///board', entryId: 'board', defaultEntry:'board', entries:[{entryId:'board',type:'kanban'}], folderPath: '/board', projectType: 'kanban', aggregateProjectCard: { icon: 'boxes', iconColor: '#112233', iconBackgroundColor: '#aabbcc' } },
     { id, name: 'Assistant', uri: 'file:///assistant', projectType: 'conversation', assistant: {} },
   ];
   await f.execute('studio.refreshStart');
   const [{ avatarUrl, ...project }] = (await f.state()).projects;
   assert.match(decodeURIComponent(avatarUrl), /stroke="#112233"/);
   assert.match(decodeURIComponent(avatarUrl), /fill="#aabbcc"/);
-  assert.deepEqual([project], [{ uri: 'file:///board', entryId: 'board', folderPath: '/board', name: 'Aggregate / Board', projectType: 'kanban',
+  assert.deepEqual([project], [{ uri: 'file:///board', entryId: 'board', folderPath: '/board', name: 'Aggregate', projectType: 'kanban',
     update: { status: 'unpublished', canDownload: false } }]);
 });
 

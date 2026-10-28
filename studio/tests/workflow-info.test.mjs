@@ -102,6 +102,7 @@ test('late reads and disposal do not overwrite the selected project', async t =>
   await provider.update([first, second], second);
   finish({ name: 'Slow', version: '1.0.0' }); await pending;
   assert.deepEqual([view.description, values(state().items).name, values(state().items).version], ['Aggregate / Fast', 'Fast', '2.0.0']);
+  assert.equal(state().project.name, 'Aggregate');
   const closing = provider.update([first], first); provider.dispose(); const count = messages.length; await closing;
   assert.equal(messages.length, count);
 });

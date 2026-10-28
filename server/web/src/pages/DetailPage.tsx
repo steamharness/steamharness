@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { projectAvatarDataUrl } from '@steamharness/project-card-metadata/avatar';
 import { LayoutDashboard, Layers, Database, Settings2, Package, Users, Mail, type LucideIcon } from 'lucide-react';
 import type { ServerWebResourceKey } from '@steamharness/i18n';
 import { useTranslation } from '@steamharness/i18n/react';
@@ -40,6 +41,6 @@ export function DetailPage(props:DetailPageProps){
     {active==='invitations'&&<ProjectInvitationsTab {...props}/>}
     {active==='versions'&&<VersionsTab {...props}/>}
     {active==='databases'&&<DatabaseSpacesPage project={props.project}/>}
-    {active==='configurations'&&<><div className="p-4"><SelectField aria-label={t('aggregateEntries')} value={entryId} onValueChange={value => { setEntryId(value); props.onSelectEntry?.(value); }} options={props.project.entries.map(entry=>({value:entry.entryId,label:`${entry.name} · ${entry.type}`}))}/></div><ProjectConfigurationsTab key={`${props.project.id}/${entryId}`} project={props.project} entryId={entryId}/></>}
+    {active==='configurations'&&<><div className="p-4"><SelectField aria-label={t('aggregateEntries')} value={entryId} onValueChange={value => { setEntryId(value); props.onSelectEntry?.(value); }} options={props.project.entries.map(entry=>({value:entry.entryId,label:`${entry.name} · ${entry.type}`,icon:<img className="size-5 rounded" src={projectAvatarDataUrl(entry.projectCard,entry.type)} alt=""/>}))}/></div><ProjectConfigurationsTab key={`${props.project.id}/${entryId}`} project={props.project} entryId={entryId}/></>}
   </div>;
 }

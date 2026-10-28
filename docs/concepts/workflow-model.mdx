@@ -310,6 +310,11 @@ export const executor = steamharness.defineExecutor<Input, OutputPayload>({
         "entryId": "agent",
         "type": "conversation",
         "name": "Assistant",
+        "projectCard": {
+          "icon": "bot",
+          "iconColor": "#ffffff",
+          "iconBackgroundColor": "#0f766e"
+        },
         "root": "agent",
         "entry": "index.ts",
         "databases": []
@@ -358,6 +363,8 @@ export const executor = steamharness.defineExecutor<Input, OutputPayload>({
   }
 }
 ```
+
+入口的 `projectCard` 可单独配置 `icon`、`iconColor`、`iconBackgroundColor`，两种颜色为 `#RRGGBB`。省略属性采用入口类型默认值；不会继承根项目头像。图标随入口清单用于窗口面板、标签、分屏和 Server／Store 展示。根 `steamHarness.projectCard` 标识聚合项目。版本只属于根 `package.json.version`，入口声明不接受 `version`。
 
 路径必须在聚合目录内，不能包含 `..`、绝对路径或宿主数据目录。静态分析只扫描对应入口的根目录与注册文件，允许聚合包含不同 executor。每个 Workflow／Conversation 模块的 executor 类型须匹配注册类型；Kanban 指向构建完成的 HTML。只有根声明拥有 SteamHarness 身份，子目录保留各自的普通 npm 包和依赖。
 
