@@ -84,6 +84,8 @@ The returned runtime exposes:
 | `compaction` | `{ enabled?, reserveTokens?, keepRecentTokens?, backgroundTokens? }`. Check before every model request and compact at 90% of the context window by default. `reserveTokens` can reserve space earlier; `backgroundTokens` can start background compaction earlier. `enabled: false` disables automatic threshold and overflow recovery while retaining manual compaction. |
 | `planFork` | `initial`, `current`, or `asOf` (default): inherit the empty initial plan, current plan, or plan at the fork point. |
 
+The `subagent` tool describes its child tool allowlist and exact usable model overrides. Without configured usable overrides, its schema omits `model`; omit it to inherit the parent's model and credentials. Rejected overrides explain how to retry without `model`. The built-in assistant includes `skill` in its read-only child subset, allowing paged access to bundled guides without granting shell or editing tools.
+
 Every command has a stable `requestId` and optional numeric `targetId` from the snapshot (defaults to the main conversation). The API copies commands before waiting for readiness or queuing, so later caller mutations do not change the operation. Reusing an identity with different content fails; retransmission returns the original receipt.
 
 | `type` | Fields and effect |

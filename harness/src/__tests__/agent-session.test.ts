@@ -655,3 +655,55 @@ test("background subagents have restricted tools and return exactly one durable 
   assert.equal(snapshot().conversations.length, 2);
   assert.equal(snapshot().usage.length, 2);
 });
+
+for (const override of [false, true]) test(`subagents advertise usable models and finish with inherited or allowed credentials (override=${override})`, async t => {
+  const f = session({ subagents: { tools: ["read"], ...(override ? { models: [{ provider: "faux", modelId: "other" }, { provider: "missing", modelId: "unavailable" }] } : {}) } });
+  const modelIds: string[] = [];
+  const stream = f.instance.models.streamSimple.bind(f.instance.models);
+  f.instance.models.streamSimple = (...args) => { modelIds.push(args[0].id); return stream(...args); };
+  f.instance.state.tools = [{ name: "read", label: "Read", description: "Read", parameters: ai.Type.Object({}),
+    execute: async () => ({ content: [ai.fauxText("Read")], details: {} }) }];
+  const respond = (request: ai.TranscriptContext): ai.AssistantMessage => {
+    if (request.messages.some(message => message.role === "user" && message.content === "Child task")) return ai.fauxAssistantMessage("Child finished");
+    if (request.messages.some(message => message.role === "toolResult")) return ai.fauxAssistantMessage("Parent finished");
+    const tool = request.messages.flatMap(message => message.role === "system" ? message.toolsAdded ?? [] : []).find(tool => tool.name === "subagent")!;
+    assert.match(tool.description, /Omit model to inherit/);
+    assert.match(tool.description, /read/);
+    const properties = (tool.parameters as { properties: Record<string, unknown> }).properties;
+    assert.equal("model" in properties, override);
+    if (override) {
+      assert.match(JSON.stringify(properties.model), /other/);
+      assert.doesNotMatch(JSON.stringify(properties.model), /unavailable/);
+    } else assert.match(tool.description, /Model overrides are disabled/);
+    return ai.fauxAssistantMessage([ai.fauxToolCall("subagent", { task: "Child task", ...(override ? { model: { provider: "faux", modelId: "other" } } : {}) })], { stopReason: "toolUse" });
+  };
+  f.faux.setResponses(Array.from({ length: 5 }, () => respond));
+  const run = f.instance.prompt("Delegate");
+  t.after(async () => { f.lease.resolve(); await run; await f.instance.close(); });
+  await until(() => f.snapshot()?.turns.some(turn => turn.status === "done" && !turn.requestId.startsWith("delegate:")));
+  assert.equal(f.snapshot().conversations.length, 2);
+  assert.deepEqual(modelIds, ["test", override ? "other" : "test", "test"]);
+});
+
+test("a rejected child model explains recovery and a corrected delegation completes in the same turn", async t => {
+  const f = session({ subagents: { tools: [] } });
+  f.faux.setResponses([
+    ai.fauxAssistantMessage([ai.fauxToolCall("subagent", { task: "Child task", model: { provider: "faux", modelId: "other" } })], { stopReason: "toolUse" }),
+    request => {
+      const error = request.messages.find(message => message.role === "toolResult");
+      assert.ok(error && error.isError);
+      assert.match(JSON.stringify(error), /Omit model to inherit/);
+      return ai.fauxAssistantMessage([ai.fauxToolCall("subagent", { task: "Child task" })], { stopReason: "toolUse" });
+    },
+    ai.fauxAssistantMessage("Child finished"),
+    request => {
+      assert.match(JSON.stringify(request.messages), /Child finished/);
+      return ai.fauxAssistantMessage("Task completed");
+    },
+  ]);
+  const run = f.instance.prompt("Delegate and recover");
+  t.after(async () => { f.lease.resolve(); await run; await f.instance.close(); });
+  await until(() => f.snapshot()?.turns.some(turn => turn.status === "done" && !turn.requestId.startsWith("delegate:")));
+  assert.equal(f.snapshot().conversations.length, 2);
+  assert.equal(f.faux.state.callCount, 4);
+});

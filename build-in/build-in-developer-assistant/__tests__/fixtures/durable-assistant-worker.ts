@@ -40,7 +40,7 @@ const { executor: declaration } = await import("../../index");
 const executor = declaration as ConversationExecutorDefinition<AgentInput, AgentOutputPayload>;
 const projectId = "durable-assistant", conversationId = scenario, projectName = "developer-assistant";
 const runId = phase === "fresh" ? "fresh-run" : "original-run";
-const host = ["session", "extensions", "blocks", "approval-session"].includes(scenario) ? createAgentSessionHost(conversationId) : undefined;
+const host = ["session", "extensions", "blocks", "approval-session", "skill-recovery"].includes(scenario) ? createAgentSessionHost(conversationId) : undefined;
 const keepAlive = host ? setInterval(() => undefined, 1_000) : undefined;
 let sessionSnapshot: AgentSessionSnapshot | undefined;
 let childTools: string[] = [];
@@ -81,7 +81,53 @@ const input = await executor.createInput(executorContext);
 const extraContext = await executor.createContext?.(executorContext);
 Object.assign(context.metadata!, extraContext?.metadata);
 const write = ai.fauxAssistantMessage([ai.fauxToolCall("write", { path: "recovered.txt", content: "created" }, { id: "write-once" })], { stopReason: "toolUse" });
-if (scenario === "blocks" && phase !== "replay") {
+if (scenario === "skill-recovery" && phase !== "replay") {
+  const original = await readFile(path.resolve(import.meta.dirname, "../../skills/workflow-generator/SKILL.md"), "utf8");
+  const respond = (request: ai.TranscriptContext): ai.AssistantMessage => {
+    const results = request.messages.filter(message => message.role === "toolResult");
+    const child = request.messages.some(message => message.role === "user" && message.content === "Read bundled skill tail");
+    if (child) {
+      childTools = [...new Set(request.messages.flatMap(message => message.role === "system" ? message.toolsAdded?.map(tool => tool.name) ?? [] : []))].sort();
+      assert.ok(childTools.includes("skill"));
+      assert.ok(!childTools.includes("bash") && !childTools.includes("write") && !childTools.includes("subagent"));
+    }
+    const pages = results.filter(message => message.toolName === "skill").map(message => {
+      assert.ok(!message.isError);
+      const body = message.content.filter(block => block.type === "text").map(block => block.text).join("");
+      assert.ok(Buffer.byteLength(body) <= 40_000);
+      return JSON.parse(body) as { content: string; truncated: boolean; nextOffset?: number };
+    });
+    if (!pages.length || pages.at(-1)!.truncated) return ai.fauxAssistantMessage([ai.fauxToolCall("skill", {
+      action: "read", skill: "workflow-generator", offset: pages.at(-1)?.nextOffset ?? (child ? original.length - 1_000 : 0),
+    })], { stopReason: "toolUse" });
+    const content = pages.map(page => page.content).join("");
+    if (child) {
+      assert.equal(content, original.slice(-1_000));
+      return ai.fauxAssistantMessage("Bundled skill tail verified");
+    }
+    assert.equal(content, original);
+    if (!results.some(message => message.toolName === "subagent")) return ai.fauxAssistantMessage([
+      ai.fauxToolCall("subagent", { task: "Read bundled skill tail" }),
+    ], { stopReason: "toolUse" });
+    assert.match(JSON.stringify(results.find(message => message.toolName === "subagent")), /Bundled skill tail verified/);
+    const cards = results.filter(message => message.toolName === "workflow-ui_present_card");
+    if (!cards.length) return ai.fauxAssistantMessage([ai.fauxToolCall("workflow-ui_present_card", {
+      action: "upsert", cardId: "readme", kind: "file", target: { source: "current", path: "README.md" }, preview: false,
+    })], { stopReason: "toolUse" });
+    if (cards.length === 1) {
+      assert.ok(cards[0]!.isError);
+      assert.match(JSON.stringify(cards[0]), /target.path|filePath/);
+      return ai.fauxAssistantMessage([ai.fauxToolCall("workflow-ui_present_card", {
+        action: "upsert", cardId: "readme", kind: "file", target: { source: "current", filePath: "README.md" }, preview: false,
+      })], { stopReason: "toolUse" });
+    }
+    assert.ok(!cards.at(-1)!.isError);
+    if (!results.some(message => message.toolName === "write")) return write;
+    assert.ok(!results.find(message => message.toolName === "write")!.isError);
+    return ai.fauxAssistantMessage("Skill read, delegation, card recovery and implementation completed in one turn.");
+  };
+  faux.setResponses(Array.from({ length: 30 }, () => respond));
+} else if (scenario === "blocks" && phase !== "replay") {
   faux.setResponses([ai.fauxAssistantMessage([
     { type: "thinking", thinking: "Inspect the fixture before answering. Keep the thought, explanation and tool arguments in separate streamed blocks." },
     ai.fauxText("I will inspect the fixture. "), ai.fauxToolCall("read", { path: "inspected.md" }),
@@ -166,8 +212,8 @@ if (scenario === "blocks" && phase !== "replay") {
 }
 try {
   const running = executor.workflow.run(input, context);
-  if (scenario === "blocks") {
-    await until(() => !!sessionSnapshot?.turns.some(turn => turn.status === "done") && sessionSnapshot.tasks.length === 0);
+  if (scenario === "blocks" || scenario === "skill-recovery") {
+    await until(() => !!sessionSnapshot?.turns.some(turn => turn.conversationId === sessionSnapshot!.conversationId && turn.status === "done") && sessionSnapshot.tasks.length === 0);
     host!.close();
   }
   if (scenario === "approval-session" && ["approve", "replay"].includes(phase)) {
@@ -200,8 +246,11 @@ try {
     host!.close();
   }
   const output = await running;
-  process.send?.({ type: "done", output, calls: faux.state.callCount,
-    conversation: await conversation.getValue(), usage: await kv.getValue(TOKEN_USAGE_TOTAL_KEY), snapshot: sessionSnapshot, childTools });
+  const result = { type: "done", output, calls: faux.state.callCount,
+    conversation: await conversation.getValue(), usage: await kv.getValue(TOKEN_USAGE_TOTAL_KEY), snapshot: sessionSnapshot, childTools };
+  // Skill pages make this fixture larger than the IPC channel's high-water
+  // mark. Flush the message before disconnecting the worker.
+  await new Promise<void>((resolve, reject) => process.send!(result, error => error ? reject(error) : resolve()));
 } catch (pause) {
   if ((pause as { type?: string }).type !== "user_input_required") throw pause;
   process.send?.({ type: "waiting", request: (pause as { metadata?: { request?: unknown } }).metadata?.request, calls: faux.state.callCount, snapshot: sessionSnapshot });

@@ -114,6 +114,8 @@ test("read defaults to the entry file and can name any file inside the skill", a
       skill: "alpha",
       path: "SKILL.md",
       content: SKILL_DOCUMENT,
+      offset: 0,
+      totalChars: SKILL_DOCUMENT.length,
       truncated: false,
     });
 
@@ -182,20 +184,44 @@ test("an unknown skill or action names what was available", async () => {
   });
 });
 
-test("a very large file is cut short rather than sent whole", async () => {
+test("large UTF-8 and escaped files can be reconstructed from bounded JSON pages", async () => {
   await withSkillRoots(async ({ first }) => {
-    await mkdir(path.join(first, "big"), { recursive: true });
-    await writeFile(
-      path.join(first, "big", "SKILL.md"),
-      `---\nname: big\ndescription: 很大。\n---\n${"x".repeat(MAX_SKILL_FILE_CHARS + 10)}`,
-    );
+    const original = `---\nname: big\n---\n${'中文😀\n"\\\u0001'.repeat(30_000)}END`;
+    assert.ok(original.length > MAX_SKILL_FILE_CHARS);
+    await writeSkill(first, "big", original);
+    let offset = 0, reconstructed = "", pages = 0;
+    do {
+      const page = await runSkillAction([first], { action: "read", skill: "big", offset }) as {
+        content: string; truncated: boolean; offset: number; nextOffset?: number; totalChars: number;
+      };
+      assert.ok(Buffer.byteLength(JSON.stringify(page)) <= 40_000);
+      assert.equal(page.offset, offset);
+      assert.equal(page.totalChars, original.length);
+      assert.equal(Buffer.from(page.content).toString(), page.content, "page must not split a surrogate pair");
+      reconstructed += page.content; pages++;
+      if (!page.truncated) { assert.equal(page.nextOffset, undefined); break; }
+      assert.equal(page.nextOffset, offset + page.content.length);
+      assert.ok(page.nextOffset! > offset);
+      offset = page.nextOffset!;
+    } while (pages < 100);
+    assert.ok(pages > 1);
+    assert.equal(reconstructed, original);
+    const end = await runSkillAction([first], { action: "read", skill: "big", offset: original.length }) as { content: string; truncated: boolean };
+    assert.equal(end.content, ""); assert.equal(end.truncated, false);
+  });
+});
 
-    const read = await runSkillAction([first], { action: "read", skill: "big" }) as {
-      content: string;
-      truncated: boolean;
-    };
-    assert.equal(read.content.length, MAX_SKILL_FILE_CHARS);
-    assert.equal(read.truncated, true);
+test("skill read validates page bounds and permits smaller recovery pages", async () => {
+  await withSkillRoots(async ({ first }) => {
+    await writeSkill(first, "alpha", "😀abcdef");
+    for (const args of [{ offset: -1 }, { offset: 0.5 }, { offset: "2" }, { offset: 99 }, { offset: 1 },
+      { limit: 0 }, { limit: MAX_SKILL_FILE_CHARS + 1 }, { limit: "1" }, { limit: 1 }]) {
+      await assert.rejects(() => runSkillAction([first], { action: "read", skill: "alpha", ...args }), /offset|limit/u);
+    }
+    const page = await runSkillAction([first], { action: "read", skill: "alpha", limit: 2 }) as { content: string; nextOffset: number };
+    assert.equal(page.content, "😀"); assert.equal(page.nextOffset, 2);
+    const tail = await runSkillAction([first], { action: "read", skill: "alpha", offset: page.nextOffset, limit: 3 }) as { content: string; nextOffset: number };
+    assert.equal(tail.content, "abc"); assert.equal(tail.nextOffset, 5);
   });
 });
 

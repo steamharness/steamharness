@@ -21,6 +21,7 @@ export interface AgentSessionOptions {
     /** Explicit subset of the parent's tools. Subagents cannot delegate again. */
     tools: string[];
     maxAgents?: number;
+    /** Allowed overrides, using registered provider/modelId pairs. Omit to inherit the parent's model only. */
     models?: { provider: string; modelId: string }[];
   };
   /** Native durable tools can call api.executeTool(); all calls pass the same approval hooks. */

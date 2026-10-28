@@ -89,6 +89,8 @@ const agent = await workflow.createAgent({
 | `codeMode` | `{ memoryLimitBytes?, timeoutMs? }`，默认关闭；QuickJS worker 编排已有工具，默认 64 MiB / 300 秒，上限 256 MiB / 300 秒。 |
 | `environment` | `{ id, label, open(target, context) }`，由宿主提供的 `AgentExecutionEnv`；见下方远端环境边界。 |
 
+`subagent` 工具说明列出子工具白名单和可用的精确模型覆盖；未配置可用覆盖时，参数中不提供 `model`，省略它继承父模型及凭据。未获准的模型报错会提示省略 `model` 重试。内置小助手的只读子工具包含 `skill`，可按页读取随包指南；不授予 shell 或编辑能力。
+
 命令均包含稳定 `requestId`，可带快照内数字 `targetId`（省略为主会话）。接口在等待就绪或排队前复制命令，调用方后续修改原对象不会改变本次操作。同一 requestId 不可换载荷；重发返回原回执。
 
 | `type` | 参数及效果 |

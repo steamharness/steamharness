@@ -82,15 +82,24 @@ export class DurableAgentSession {
         return { output: [{ type: "text", text: "Plan saved." }] };
       },
     }];
+    const childModels = this.options.subagents?.models?.filter(model => this.models.getModel(model.provider, model.modelId)) ?? [];
     if (this.options.subagents) tools.push({
-      name: "subagent", description: "Delegate a focused task with the project's restricted tools. Background results return to this conversation.", replay: "safe",
+      name: "subagent", description: [
+        "Delegate a focused task. Background results return to this conversation. Subagents cannot delegate again.",
+        `Child tools are restricted to the parent's enabled tools intersected with: ${this.options.subagents.tools.join(", ") || "(none)"}. Only delegate tasks those tools can perform.`,
+        "Omit model to inherit the current parent's model and credentials.",
+        childModels.length ? `Allowed model overrides: ${childModels.map(model => `${model.provider}/${model.modelId}`).join(", ")}. Use only these exact provider/modelId pairs.`
+          : "Model overrides are disabled for this project; do not supply model or guess model names.",
+      ].join("\n"), replay: "safe",
       parameters: Type.Object({ task: Type.String({ minLength: 1, maxLength: 100_000 }), background: Type.Optional(Type.Boolean()),
-        model: Type.Optional(Type.Object({ provider: Type.String(), modelId: Type.String() })) }),
+        ...(childModels.length ? { model: Type.Optional(Type.Union(childModels.map(model => Type.Object({
+          provider: Type.Literal(model.provider), modelId: Type.Literal(model.modelId),
+        })))) } : {}) }),
       execute: async (args, api, ctx) => {
         const parent = await this.harness.commit(tx => tx.conversation(api.conversationId), ctx);
         if (!parent || parent.owner !== undefined) throw new Error("Subagents cannot delegate again.");
         const input = args as { task: string; background?: boolean; model?: { provider: string; modelId: string } };
-        if (input.model && !this.allowedChildModel(input.model)) throw new Error("The subagent model is not allowed by the project.");
+        if (input.model && !this.allowedChildModel(input.model)) throw this.childModelError();
         const id = await api.commit(async tx => {
           const memo = await tx.doc(DelegationDoc, api.taskId);
           if (memo.taskId) return memo.taskId;
@@ -119,6 +128,13 @@ export class DurableAgentSession {
     return !!this.models.getModel(model.provider, model.modelId) && !!this.options.subagents?.models?.some(allowed => allowed.provider === model.provider && allowed.modelId === model.modelId);
   }
 
+  private childModelError(): Error {
+    const allowed = this.options.subagents?.models?.filter(model => this.models.getModel(model.provider, model.modelId)) ?? [];
+    return new Error(`The subagent model is not allowed by the project. Omit model to inherit the parent's model and credentials.${allowed.length
+      ? ` Allowed overrides: ${allowed.map(model => `${model.provider}/${model.modelId}`).join(", ")}.`
+      : " Model overrides are disabled."}`);
+  }
+
   private createDelegationTask() {
     type Input = { prompt: string; background: boolean; model: { provider: string; modelId: string } | null; sourceId: string };
     type State = { phase: "create" } | { phase: "wait"; childId: number } | { phase: "report"; childId: number; answer: string };
@@ -132,7 +148,7 @@ export class DurableAgentSession {
           const allowed = new Set(this.options.subagents.tools);
           const tools = parentAgent.tools.filter(tool => allowed.has(tool.name) && tool.name !== "subagent");
           const model = task.input.model;
-          if (model && !this.allowedChildModel(model)) throw new Error("The subagent model is not allowed by the project.");
+          if (model && !this.allowedChildModel(model)) throw this.childModelError();
           await runtime.commit(async tx => {
             const existing = (await tx.scanConversations({ ownerTaskId: task.id }, 1)).items[0];
             const child = existing ?? await tx.createConversation({ ownership: { kind: "task", taskId: task.id } });
@@ -399,7 +415,7 @@ export class DurableAgentSession {
         const record = await this.harness.commit(tx => tx.conversation(target.id), context);
         if (command.model && record?.owner) {
           const agent = await target.agent(context);
-          if ((agent.model?.provider !== command.model.provider || agent.model.modelId !== command.model.modelId) && !this.allowedChildModel(command.model)) throw new Error("The subagent model is not allowed by the project.");
+          if ((agent.model?.provider !== command.model.provider || agent.model.modelId !== command.model.modelId) && !this.allowedChildModel(command.model)) throw this.childModelError();
         }
         await target.commit(async tx => {
           await configure(tx, target.id, { ...(command.model ? { model: command.model } : {}), ...(command.effort ? { thinkingLevel: command.effort as "medium" } : {}) });

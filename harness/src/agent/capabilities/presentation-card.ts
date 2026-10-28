@@ -27,6 +27,14 @@ const CARD_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$/;
 const CARD_KINDS = new Set<PresentationCardKind>([
   "kv", "knowledge", "project", "browser", "file", "kanban",
 ]);
+const CARD_TARGET_FIELDS: Record<PresentationCardKind, readonly string[]> = {
+  kv: ["source", "projectId", "entryId", "database", "spaceId", "scope", "conversationId", "key"],
+  knowledge: ["source", "projectId", "entryId", "database", "spaceId", "documentId"],
+  project: ["source", "projectId", "entryId", "configurationId"],
+  browser: ["url"],
+  file: ["source", "projectId", "entryId", "filePath"],
+  kanban: ["source", "projectId", "entryId", "configurationId"],
+};
 
 export async function runPresentationCardAction(
   context: NodeContext,
@@ -56,7 +64,8 @@ export async function runPresentationCardAction(
   if (args.preview !== undefined && typeof args.preview !== "boolean") {
     throw new Error("Card preview must be a boolean.");
   }
-  if (args.preview !== undefined && args.kind !== "kanban" && args.kind !== "project" && args.kind !== "browser") {
+  const supportsPreview = args.kind === "kanban" || args.kind === "project" || args.kind === "browser";
+  if (args.preview === true && !supportsPreview) {
     throw new Error("Card preview requires a Kanban, project, or browser card.");
   }
   if (args.title !== undefined && (typeof args.title !== "string" || args.title.trim() === "" || args.title.length > 200)) {
@@ -87,25 +96,20 @@ export async function runPresentationCardAction(
     target,
     ...(args.title === undefined ? {} : { title: args.title.trim() }),
     ...(args.pinned === undefined ? {} : { pinned: args.pinned }),
-    ...(args.preview === undefined ? {} : { preview: args.preview }),
+    ...(args.preview === undefined || !supportsPreview ? {} : { preview: args.preview }),
     ...(kanban === undefined ? {} : { kanban }),
   };
 }
 
 function readTarget(kind: PresentationCardKind, value: unknown): Record<string, string> {
   if (!isRecord(value)) throw new Error("Card target must be an object.");
-  const allowed: Record<PresentationCardKind, readonly string[]> = {
-    kv: ["source", "projectId", "entryId", "database", "spaceId", "scope", "conversationId", "key"],
-    knowledge: ["source", "projectId", "entryId", "database", "spaceId", "documentId"],
-    project: ["source", "projectId", "entryId", "configurationId"],
-    browser: ["url"],
-    file: ["source", "projectId", "entryId", "filePath"],
-    kanban: ["source", "projectId", "entryId", "configurationId"],
-  };
   const target: Record<string, string> = {};
   for (const [key, entry] of Object.entries(value)) {
-    if (!allowed[kind].includes(key) || typeof entry !== "string" || entry.trim() === "" || entry.length > 2_048) {
-      throw new Error("Card target contains an invalid field.");
+    if (!CARD_TARGET_FIELDS[kind].includes(key)) {
+      throw new Error(`Card target contains an invalid field "${key}" for ${kind}. Allowed fields: ${CARD_TARGET_FIELDS[kind].join(", ")}.${kind === "file" ? ' Use filePath for the workspace-relative file path, for example {"source":"current","filePath":"README.md"}.' : ""}`);
+    }
+    if (typeof entry !== "string" || entry.trim() === "" || entry.length > 2_048) {
+      throw new Error(`Card target field "${key}" must be a non-empty string of at most 2048 characters.`);
     }
     target[key] = entry.trim();
   }
@@ -142,18 +146,25 @@ export const PRESENTATION_CARD_CAPABILITY: Capability = {
   toolName: PRESENTATION_CARD_MCP_TOOL_NAME,
   toolId: PRESENTATION_CARD_MCP_TOOL_ID,
   title: "Conversation resource card",
-  description: "Show, update, pin, or remove a resource card in the current Conversation. preview controls the Kanban or Desktop browser preview; Kanban projects and browser cards preview and pin by default. Set target.configurationId to preview a specific named Kanban configuration without selecting or modifying the host configuration. Omitted IDs use the active configuration when the preview opens. Kanban parameter mode=preview is temporary. Persist values with Studio Control manage_configurations using an explicit target, configuration ID and revision.",
+  description: 'Show, update, pin, or remove a resource card in the current Conversation. For a file use {"action":"upsert","cardId":"readme","kind":"file","target":{"source":"current","filePath":"README.md"}}. Omit preview on file, KV and knowledge cards. preview controls the Kanban or Desktop browser preview; Kanban projects and browser cards preview and pin by default. Set target.configurationId to preview a specific named Kanban configuration without selecting or modifying the host configuration. Omitted IDs use the active configuration when the preview opens. Kanban parameter mode=preview is temporary. Persist values with Studio Control manage_configurations using an explicit target, configuration ID and revision.',
   inputSchema: {
     type: "object",
     properties: {
       action: { type: "string", enum: ["upsert", "remove"] },
       cardId: { type: "string", minLength: 1, maxLength: 128 },
       kind: { type: "string", enum: [...CARD_KINDS] },
-      target: { type: "object", additionalProperties: { type: "string" },
-        description: "Resource target. Kanban/project previews accept configurationId, the ID returned by Studio Control get_configurations. Previewing it does not change the host selection.",
+      target: { type: "object", additionalProperties: false,
+        properties: Object.fromEntries([...new Set(Object.values(CARD_TARGET_FIELDS).flat())].map(field => [field, {
+          type: "string", minLength: 1, maxLength: 2_048,
+          ...(field === "source" ? { enum: ["local", "server", "current"] } : {}),
+          description: field === "filePath" ? "File cards: workspace-relative path, e.g. README.md. Required for kind=file."
+            : field === "url" ? "Browser cards: HTTP(S) URL. Required for kind=browser."
+            : `Used by ${Object.entries(CARD_TARGET_FIELDS).filter(([, fields]) => fields.includes(field)).map(([kind]) => kind).join(", ")} cards.`,
+        }])),
+        description: "Use only fields for the selected kind. File: source, projectId, entryId, filePath. Browser: url. KV: source, projectId, entryId, database, spaceId, scope, conversationId, key. Knowledge: source, projectId, entryId, database, spaceId, documentId. Kanban/project: source, projectId, entryId, configurationId. source=current resolves missing projectId and entryId from the host.",
       },
       pinned: { type: "boolean" },
-      preview: { type: "boolean" },
+      preview: { type: "boolean", description: "Only Kanban, project or browser cards. Omit for file, KV and knowledge cards; false is ignored for those kinds." },
       title: { type: "string", minLength: 1, maxLength: 200 },
       kanban: {
         type: "object",

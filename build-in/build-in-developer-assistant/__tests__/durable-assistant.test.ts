@@ -33,6 +33,22 @@ interface Result {
   snapshot: AgentSessionSnapshot; childTools: string[];
 }
 
+it("reads the shipped skill completely, delegates skill access, recovers a card and writes in one durable turn", async () => {
+  const directory = await temporary();
+  const initial = await finished(directory, "skill-recovery", "initial");
+  expect(await readFile(path.join(directory, "recovered.txt"), "utf8")).toBe("created");
+  expect(initial.childTools).toEqual(["find", "grep", "ls", "read", "skill"]);
+  expect(initial.snapshot.turns.filter(turn => !turn.requestId.startsWith("delegate:"))).toHaveLength(1);
+  expect(initial.snapshot.turns.every(turn => turn.status === "done")).toBe(true);
+  const items = initial.snapshot.turns.flatMap(turn => turn.items);
+  const skillReads = items.filter(item => (item.content as { tool?: string })?.tool === "skill");
+  expect(skillReads.length).toBeGreaterThan(2);
+  expect(JSON.stringify(skillReads)).not.toContain("Output truncated to its beginning");
+  const replay = await finished(directory, "skill-recovery", "replay");
+  expect(replay.calls).toBe(0);
+  expect(replay.snapshot.turns).toEqual(initial.snapshot.turns);
+}, 45_000);
+
 it("streams thinking, an inline preface and a real read tool without failing or replaying the task", async () => {
   const directory = await temporary();
   await writeFile(path.join(directory, "inspected.md"), "streamed fixture");
@@ -98,7 +114,7 @@ it("recovers actual assistant background tools, reports once, and persists plan,
   await writeFile(path.join(directory, "inspected.md"), "durable inspection fixture");
   const initial = worker(directory, "session", "initial");
   const checkpoint = await receive(initial, "checkpoint");
-  expect(checkpoint.childTools).toEqual(["find", "grep", "ls", "read"]);
+  expect(checkpoint.childTools).toEqual(["find", "grep", "ls", "read", "skill"]);
   expect(checkpoint.snapshot.history.some(task => task.toolName === "read" && task.status === "completed")).toBe(true);
   const exited = once(initial, "exit"); initial.kill("SIGKILL"); await exited;
   const resumed = await finished(directory, "session", "resume");

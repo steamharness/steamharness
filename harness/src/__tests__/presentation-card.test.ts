@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { PRESENTATION_CARD_MCP_TOOL_ID, runPresentationCardAction } from "../agent/capabilities/index";
+import { PRESENTATION_CARD_CAPABILITY, PRESENTATION_CARD_MCP_TOOL_ID, runPresentationCardAction } from "../agent/capabilities/index";
 import type { NodeContext } from "../types/context";
 
 const context = {projectId:"11111111-1111-4111-8111-111111111111",entryId:"main"} as NodeContext;
@@ -51,9 +51,9 @@ test("presentation card rejects unsafe targets and malformed preview parameters"
   await assert.rejects(() => runPresentationCardAction(context, {
     action: "upsert", cardId: "x", kind: "file", target: { projectId:context.projectId,entryId:context.entryId,source: "current", filePath: "src/index.ts" }, preview: true,
   }), /preview requires/u);
-  await assert.rejects(() => runPresentationCardAction(context, {
+  assert.deepEqual(await runPresentationCardAction(context, {
     action: "upsert", cardId: "x", kind: "file", target: { projectId:context.projectId,entryId:context.entryId,source: "current", filePath: "src/index.ts" }, preview: false,
-  }), /preview requires/u);
+  }), { action: "upsert", cardId: "x", kind: "file", target: { projectId:context.projectId,entryId:context.entryId,source: "current", filePath: "src/index.ts" } });
   await assert.rejects(() => runPresentationCardAction(context, {
     action: "upsert", cardId: "x", kind: "project", target: { projectId:context.projectId,entryId:context.entryId,source: "current" }, preview: "true" as unknown as boolean,
   }), /preview must be a boolean/u);
@@ -69,6 +69,19 @@ test("presentation card rejects unsafe targets and malformed preview parameters"
   await assert.rejects(() => runPresentationCardAction(context, {
     action: "upsert", cardId: "bad id", kind: "project", target: { projectId:context.projectId,entryId:context.entryId,source: "current" },
   }), /Card id/u);
+});
+
+test("file card contracts expose filePath and invalid arguments explain how to retry", async () => {
+  const target = (PRESENTATION_CARD_CAPABILITY.inputSchema as { properties: { target: { properties: Record<string, unknown>; additionalProperties: boolean } } }).properties.target;
+  assert.ok(target.properties.filePath);
+  assert.equal(target.properties.path, undefined);
+  assert.equal(target.additionalProperties, false);
+  await assert.rejects(() => runPresentationCardAction(context, {
+    action: "upsert", cardId: "readme", kind: "file", target: { source: "current", path: "README.md" }, preview: false,
+  }), /invalid field "path".*Use filePath/u);
+  assert.deepEqual(await runPresentationCardAction(context, {
+    action: "upsert", cardId: "readme", kind: "file", target: { source: "current", filePath: "README.md" }, preview: false,
+  }), { action: "upsert", cardId: "readme", kind: "file", target: { source: "current", filePath: "README.md", projectId: context.projectId, entryId: context.entryId } });
 });
 
 test("saving configurations requires the explicit Studio Control target and revision", async () => {

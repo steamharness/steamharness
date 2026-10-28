@@ -8,7 +8,7 @@ Studio 内置的独立小助手，基于 Core Agent 能力运行，使用宿主�
 
 快捷参数中的 Permission 支持 `read-only`、`workspace` 和 `auto`，默认 `auto`（Auto approve）。普通消息与 OpenAI 请求在未指定策略时均使用该默认值。`read-only` 隐藏写入与命令工具；`workspace` 对读写和检索工具应用宿主授权的目录范围，但 shell 不是沙箱；`auto` 批准未被显式拒绝的权限，可读写、检索当前进程有权限的任意目录，包括工作区外的绝对路径。提示词和 Studio Control 均跟随本轮权限，`studio_state` 返回实际权限与目录访问范围。Build/Plan 由 Core 管理，Plan 可先调研、提问并等待批准。
 
-本仓直接维护 `skills/workflow-generator`，通过 `skill` 工具按需列出与读取，不安装到用户全局目录。实现 SteamHarness 时，小助手先读取该技能和相关 API 引用；其它任务仅选用相关技能。必需引用缺失或不可完整读取时，报告未验证阶段并停止对应操作。
+本仓直接维护 `skills/workflow-generator`，通过 `skill` 工具按需列出与读取，不安装到用户全局目录。实现 SteamHarness 时，小助手先读取该技能和相关 API 引用；其它任务仅选用相关技能。技能正文超过单页限制时，用返回的 `nextOffset` 继续读取，直至 `truncated: false`；外层截断可减小 `limit` 重试。仅在恢复后仍缺失、拒绝访问或不可读取时停止对应操作，并继续独立任务。小助手在同一轮内完成修改和相关验证，修正可恢复工具错误后继续。只读子代理包含 `skill`，默认继承当前模型和凭据；仅显式白名单允许模型覆盖。文件卡片使用 `target.filePath` 并省略 `preview`。
 
 工具权限中的 **Skills** 是技能分区，里面的 **List and read skill guides**（`skill`）是统一读取入口。分区中的“1 个工具”只表示这个入口，不代表只能使用一份技能。可以让小助手“列出可用技能”，它会调用 `{"action":"list"}` 返回名称、用途和文件清单；随后用 `{"action":"read","skill":"workflow-generator"}` 读取技能正文，再用 `{"action":"read","skill":"workflow-generator","path":"references/task-map.md"}` 读取引用。`path` 相对于所选技能目录。读取脚本会返回脚本文本，执行步骤由小助手使用相应工具完成。完整参数、返回值和读取限制见 [createSkillTools](../../docs/core-api/create-skill-tools.mdx)。
 

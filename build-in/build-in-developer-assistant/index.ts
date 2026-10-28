@@ -36,7 +36,7 @@ const assistantProject = steamharness.createAgentConversationProject({
   modelSource: "user-settings",
   executorName: STEAMHARNESS_NAME,
   outputItemId: OUTPUT_ITEM_ID,
-  session: { subagents: { tools: ["read", "grep", "find", "ls"], maxAgents: 4 }, planFork: "asOf", toolSearch: {} },
+  session: { subagents: { tools: ["read", "grep", "find", "ls", "skill"], maxAgents: 4 }, planFork: "asOf", toolSearch: {} },
   async createTools(context): Promise<AgentToolSet> {
     readAssistantHost();
     const approve = async (toolId: string, args: unknown): Promise<void> => {
@@ -130,7 +130,7 @@ export const executor = steamharness.defineExecutor<AgentInput, AgentOutputPaylo
     {
       name: "skill",
       label: "List and read skill guides",
-      description: "Browse the task guides bundled with this assistant.\nlist: list skill names, descriptions and files.\nread: set skill to a listed name; omit path for SKILL.md, or supply a relative reference path such as references/task-map.md.\nRead the guide before following its steps. The bundled workflow-generator covers SteamHarness project development. File edits and commands use the corresponding tools and permissions.",
+      description: "Browse the task guides bundled with this assistant.\nlist: list skill names, descriptions and files.\nread: set skill to a listed name; omit path for SKILL.md, or supply a relative reference path such as references/task-map.md. Continue truncated pages with offset=nextOffset until truncated=false.\nRead the guide before following its steps. The bundled workflow-generator covers SteamHarness project development. File edits and commands use the corresponding tools and permissions.",
       enabled: true,
       autoApprove: true,
     },

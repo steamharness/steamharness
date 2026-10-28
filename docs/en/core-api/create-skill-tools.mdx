@@ -9,7 +9,7 @@ description: "Register the skill tool to discover guides and read SKILL.md and r
 
 The returned array always contains one tool. That entry point can access multiple guides; the actual guide names and count come from `list`.
 
-CLI Web's **Tools and skills** dialog puts the `skill` entry point in a separate **Skills** tab. Read-only guide cards show its name and description without Enable or Auto-approve switches. The **Tools** tab retains permission controls for other tools; viewing skills or switching tabs does not change policies. Conversation and Workflow share this interface. File changes, commands and other actions described by a skill still use the corresponding tool permissions.
+CLI Web's **Project information** panel puts the `skill` entry point in a separate **Skills** section. Read-only guide cards show its name and description without Enable or Auto-approve switches. The **Tools** section retains permission controls for other tools; viewing skills or switching sections does not change policies. Conversation and Workflow share this interface. File changes, commands and other actions described by a skill still use the corresponding tool permissions.
 
 ## Signature
 
@@ -63,6 +63,8 @@ Read references/checklist.md before following the checklist.
 | `action` | `"list" \| "read"` | Required. `list` discovers guides; `read` returns one file from a selected guide. |
 | `skill` | `string` | Required for `read`: use the complete name returned by `list`. Ignored by `list`. |
 | `path` | `string` | For `read`, a path relative to the skill directory. Omit it or pass an empty string to read `SKILL.md`. Ignored by `list`. |
+| `offset` | `number` | Zero-based UTF-16 character offset for `read`, default `0`. Continue with the previous page's `nextOffset`. |
+| `limit` | `number` | Positive maximum characters per read page, at most `200000`. The serialized byte budget may return fewer; omit for the largest safe page. |
 
 Use the following sequence.
 
@@ -120,7 +122,15 @@ Read the entry guide before following its instructions.
 
 Files are read as UTF-8. Both the resolved path and any symlink's real target must remain inside the selected skill directory. Paths that escape it, external symlinks, missing files and directory paths raise errors. Unknown-skill errors list the available names so the caller can select again.
 
-A file returns at most 200,000 characters, setting `truncated: true` when it exceeds that limit. Split instructions across reference files when complete reads are required; a truncated result is partial content.
+Read results also contain `offset` and the file's `totalChars`. Each JSON page, including escapes and metadata, fits within 40,000 UTF-8 bytes so the durable execution layer can preserve valid JSON. Each page contains at most 200,000 characters. Chinese text, emoji and escaped text count toward the serialized byte budget; surrogate pairs are never split.
+
+When `truncated: true`, the result includes `nextOffset`. Read the same `skill` and `path` with `offset: nextOffset`, concatenating `content` in order until `truncated: false`. Pagination is a normal read operation: do not repeat the first page or abandon a task because more pages exist. If an outer output limit is smaller, retry that page with a smaller `limit`, then use the new `nextOffset`. Negative, fractional, out-of-file or surrogate-splitting offsets raise errors, as does a limit too small for one complete character.
+
+```json
+{ "action": "read", "skill": "release-guide", "path": "SKILL.md", "offset": 12000, "limit": 4000 }
+```
+
+The offset above is illustrative; use the previous result's actual `nextOffset`. Required instructions are complete only after every page has been read.
 
 ## Agent integration
 

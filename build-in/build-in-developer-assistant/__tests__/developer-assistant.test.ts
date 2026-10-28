@@ -189,7 +189,12 @@ describe("developer assistant workflow", () => {
     expect(prompt).toContain("Check Git status only when that root is a Git repository");
     expect(prompt).toContain("Workspace warnings are non-blocking");
     expect(prompt).toContain("Bundled skill paths are instruction sources, not implied task targets");
-    expect(prompt).toContain("if a required file is missing, denied or only partially available");
+    expect(prompt).toContain("offset=nextOffset until truncated=false");
+    expect(prompt).toContain("Only if a required file is missing, denied or still unreadable after these recovery steps");
+    expect(prompt).toContain("Carry the user's requested work through implementation and relevant verification in the current run");
+    expect(prompt).toContain("omit model unless an exact allowed override is offered");
+    expect(prompt).toContain('filePath:"README.md"');
+    expect(prompt).toContain("a missing global steamharness executable does not mean the local dependency is unavailable");
     expect(prompt).toContain("select only the minimum relevant set");
     expect(prompt).toContain("distinguish framework source from preview artifacts");
     expect(prompt).toContain("existing one-shot build script");

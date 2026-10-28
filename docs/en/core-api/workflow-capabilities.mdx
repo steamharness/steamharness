@@ -101,6 +101,8 @@ return {
 }
 ```
 
+File card example: `{"action":"upsert","cardId":"readme","kind":"file","target":{"source":"current","filePath":"README.md"}}`. The path field is `filePath`; the tool schema lists the supported target fields. Omit `preview` for file, KV and knowledge cards; explicit `false` is ignored, while `true` is rejected. Runtime errors for unknown target fields name the field and list valid fields so callers can correct and retry.
+
 `kanban.mode: "preview"` applies temporary native JSON overrides to that preview. Save values through Studio Control `manage_configurations` with an explicit storage, project, configuration ID and revision. History replay never writes configurations.
 
 Kanban and project cards accept `target.configurationId` from Studio Control `get_configurations`. Explicit IDs keep a fixed profile without selecting it. Missing IDs use the active profile when opening the preview. A deleted profile is unavailable. See [Project configurations](/en/concepts/project-configuration).
