@@ -84,6 +84,8 @@ const agentExecutor = workflow.defineAgentConversationExecutor({
 
 ## 项目参数继承与定制
 
+Context 输入只消费当前参数表中启用的字段；固定用户设置绑定不接受宿主参数值覆盖。旧的 `-m` 与 `--agent plan|build` 参数在继承入口中继续可用，显式 `--plan` 优先于旧模式参数；消息和附件的值不作为参数解析。字段定制中的 `undefined` 等同于省略，使用 `userSetting: null` 清除绑定。静态继承支持 `workflow` / `coreAgent` 简写属性与 SDK 命名空间导入。
+
 直接绑定 Core workflow 的 executor 可省略 `params`、`resolveParams`。若业务 workflow 包装了 Core，在 executor 中设置 `coreAgent: agentProject`，保留原来的业务 workflow 和 `createInput`。参数选项必须能静态读取；结构分析只读取选定引用，不执行项目代码。
 
 `fields` 支持 `defaultValue`、`userSetting`（`null` 清除绑定）、`visible`、`fixedValue`、`label`、`description` 和 `options`。设为 `false` 移除字段；`groups` 用字段名重排 Quick/Auxiliary 分组，未分配字段保留原分组。`fixedValue` 覆盖绑定及默认值，并在输入构造和 Core 执行入口强制应用。隐藏只控制展示，需要禁止覆盖时同时使用 `fixedValue`。显式默认值会清除用户设置绑定。

@@ -1,5 +1,7 @@
 # Unreleased
 
+- Fixed Core Agent input to exclude disabled fields, enforce fixed user-setting bindings, preserve legacy model and mode flags, and keep message text out of parameter parsing. Static inheritance supports shorthand references and namespace imports; undefined field overrides retain existing defaults.
+
 - The assistant and generated Agent examples now inherit Core parameters without duplicate declarations, preserving separate model and effort controls, Plan approval and user permission settings. Generator guidance covers business wrappers, hidden fields and fixed values.
 
 - Changed: generators, templates and examples use alias/databaseId references and document multiple databases, shared entries and host-managed permissions. Project code continues to access databases by entry-local alias.

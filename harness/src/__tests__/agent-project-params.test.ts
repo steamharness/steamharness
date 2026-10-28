@@ -1,8 +1,13 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { randomUUID } from "node:crypto";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
 import { createAgentConversationProject, createAgentProjectInput, createAgentProjectParams } from "../agent/project";
 import { applyAgentProjectDefaults } from "../agent/project-params";
 import { defineProjectExecutor } from "../executor/definition";
+import { runLocalProjectWithReport } from "../executor/index";
 import { normalizeProjectParamDeclarations } from "../executor/param-definition";
 import { parseProjectParamValues, validateProjectParamResolveResult } from "../executor/params";
 import { analyzeProjectScriptSource } from "../executor/rules";
@@ -165,6 +170,81 @@ test("legacy model aliases override defaults while disabled fields stay disabled
   assert.equal(createAgentProjectInput(["-m", "selected"], { paramOptions: { fields: { model: false } } }).model, undefined);
 });
 
+test("inherited input keeps legacy aliases and ignores parameter-like message text", async () => {
+  const core = createAgentConversationProject({ model: "default" });
+  const executor = defineProjectExecutor({ projectType: "conversation", workflow: core, createInput: createAgentProjectInput });
+  if (executor.projectType !== "conversation") return assert.fail();
+  for (const [args, expected] of [
+    [["--message", "Question", "-m", "selected"], { model: "selected", agent: "build" }],
+    [["--message", "Question", "-m", "selected", "--model", "last"], { model: "last", agent: "build" }],
+    [["--message", "Question", "--agent", "plan"], { model: "default", agent: "plan" }],
+    [["--message", "Question", "--agent", "plan", "--plan", "false"], { model: "default", agent: "build" }],
+    [["--message", "--plan"], { model: "default", agent: "build" }],
+    [["--message", "-m"], { model: "default", agent: "build" }],
+  ] as const) {
+    const input = await executor.createInput({ ...resolverContext(), args: [...args] });
+    assert.equal(input.model, expected.model);
+    assert.equal(input.agent, expected.agent);
+  }
+  for (const model of ["resolved", "default"]) {
+    const resolved = await executor.createInput({ ...resolverContext(), args: ["-m", "raw"], paramValues: { model } });
+    assert.equal(resolved.model, model);
+  }
+  const fixed = defineProjectExecutor({ projectType: "conversation", workflow: createAgentConversationProject({ paramOptions: { fields: { plan: { fixedValue: "false" } } } }), createInput: createAgentProjectInput });
+  if (fixed.projectType !== "conversation") return assert.fail();
+  assert.equal((await fixed.createInput({ ...resolverContext(), args: ["--agent", "plan"] })).agent, "build");
+});
+
+test("offline execution resolves inherited aliases before constructing input", async t => {
+  const directory = await mkdtemp(path.join(os.tmpdir(), "agent-param-runtime-"));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  await writeFile(path.join(directory, "package.json"), JSON.stringify({ id: randomUUID(), name: "Agent params", type: "module", steamHarness: {
+    defaultEntry: "main", entries: [{ entryId: "main", name: "Main", type: "conversation", root: ".", entry: "index.ts", databases: [] }],
+  } }));
+  await writeFile(path.join(directory, "index.ts"), `
+    const coreAgent = steamharness.createAgentConversationProject({ model: "default" });
+    const workflow = steamharness.defineProject({ name: "Echo parameters", async run(input) { return input; } });
+    export const executor = steamharness.defineExecutor({ projectType: "conversation", workflow, coreAgent,
+      createInput(context) { return steamharness.createAgentProjectInput(context); }
+    });
+  `);
+  for (const [args, model, agent] of [
+    [["--message", "Question", "-m", "selected", "--agent", "plan"], "selected", "plan"],
+    [["--message", "--plan"], "default", "build"],
+  ] as const) {
+    const report = await runLocalProjectWithReport({ projectDir: directory, args: [...args] });
+    assert.equal(report.status, "success", JSON.stringify(report.result));
+    if (report.result.ok) {
+      const output = (report.result.data as { output: { model: string; agent: string } }).output;
+      assert.equal(output.model, model);
+      assert.equal(output.agent, agent);
+    }
+  }
+});
+
+test("inherited contexts discard disabled fields and enforce fixed user bindings", async () => {
+  const core = createAgentConversationProject({ paramOptions: { fields: { plan: false, effort: false } } });
+  const executor = defineProjectExecutor({ projectType: "conversation", workflow: core, createInput: createAgentProjectInput });
+  if (executor.projectType !== "conversation") return assert.fail();
+  await withUserSettings({ agent: { permissionPolicy: "read-only" } }, async () => {
+    const input = await executor.createInput({ ...resolverContext(), args: ["--message", "Question", "--agent", "plan"], paramValues: { plan: "true", effort: "max", permissionPolicy: "auto" } });
+    assert.equal(input.agent, undefined);
+    assert.equal(input.effort, undefined);
+    assert.equal(input.permissionPolicy, "read-only");
+  });
+  const input = createAgentProjectInput({ args: [], paramValues: { plan: "true", effort: "max" } }, { paramOptions: { fields: { plan: false, effort: false } } });
+  assert.equal(input.agent, undefined);
+  assert.equal(input.effort, undefined);
+});
+
+test("undefined field overrides preserve defaults and user bindings", () => {
+  const options: AgentProjectOptions = { paramOptions: { fields: { model: { userSetting: undefined }, effort: { defaultValue: undefined } } } };
+  assert.deepEqual(createAgentProjectParams(options), createAgentProjectParams());
+  const report = analyzeProjectScriptSource(`const workflow = steamharness.createAgentConversationProject({ paramOptions: { fields: { model: { userSetting: undefined }, effort: { defaultValue: undefined } } } }); export const executor = steamharness.defineExecutor({ projectType: "conversation", workflow });`);
+  assert.deepEqual(report.executorConfigurationViolations, []);
+  assert.deepEqual(report.executorParams, normalizeProjectParamDeclarations(createAgentProjectParams()).params);
+});
+
 test("fixed positional and multiple parameters cannot be overridden by argv", () => {
   assert.deepEqual(parseProjectParamValues([
     { name: "target", type: "positional", fixedValue: "project" },
@@ -193,6 +273,21 @@ test("static discovery supports direct factories and imported aliases", () => {
   ]) {
     const report = analyzeProjectScriptSource(`${source} export const executor = steamharness.defineExecutor({ projectType: "conversation", workflow: selected, createInput: steamharness.createAgentProjectInput });`);
     assert.deepEqual(report.executorParams, normalizeProjectParamDeclarations(createAgentProjectParams()).params);
+  }
+});
+
+test("static discovery supports shorthand references and namespace import aliases", () => {
+  const expected = normalizeProjectParamDeclarations(createAgentProjectParams(customized));
+  for (const source of [
+    `const workflow = steamharness.createAgentConversationProject(${JSON.stringify(customized)}); export const executor = steamharness.defineExecutor({ projectType: "conversation", workflow });`,
+    `const coreAgent = steamharness.createAgentConversationProject(${JSON.stringify(customized)}); const workflow = steamharness.defineProject({ name: "business", run(input, context) { return coreAgent.run(input, context); } }); export const executor = steamharness.defineExecutor({ projectType: "conversation", workflow, coreAgent });`,
+    `import * as core from "steamharness/agent"; const selected = core.createAgentConversationProject(${JSON.stringify(customized)}); export const executor = steamharness.defineExecutor({ projectType: "conversation", workflow: selected });`,
+  ]) {
+    const report = analyzeProjectScriptSource(source);
+    assert.deepEqual(report.executorConfigurationViolations, []);
+    assert.deepEqual(report.executorParams, expected.params);
+    assert.deepEqual(report.executorParamLayout, expected.layout);
+    assert.deepEqual(report.executorParamResolver, { enabled: true });
   }
 });
 

@@ -1042,6 +1042,8 @@ Core 内置一层基于 pi agent SDK 的 agent 能力，覆盖输入、输出、
 
   `AgentProjectOptions.paramOptions.fields` 按 provider/model/effort/plan/permissionPolicy 定制 `defaultValue`、`visible`、`fixedValue`、`userSetting`、`label`、`description` 和 `options`；false 禁用字段，`userSetting: null` 移除绑定。`groups` 用字段名重新编排 Quick / Auxiliary，未分配字段保留原组。`ParamDefinition.visible: false` 隐藏入口但保留解析；`ParamDefinition.fixedValue` 固定项目值，在输入构造及 Core 执行入口覆盖用户设置、argv 与直接输入。显式 `executor.resolveParams` 保留自定义解析；静态分析与运行时使用同一规范化逻辑，参数选项必须能静态读取。
 
+  Context 输入仅消费已启用字段，固定用户设置绑定忽略宿主覆盖；字段定制中的 undefined 保留默认值与原绑定。旧 -m / --agent 参数在继承入口中仍可使用，显式 --plan 优先；不要把消息或附件的值当成参数。静态继承支持 workflow / coreAgent 简写属性及 SDK 命名空间导入。
+
   自动继承的 resolver 优先从非空用户模型列表生成动态选项，保留用户默认继承，并隐藏兼容的 provider 参数；`modelSource: "project"` 明确使用项目配置的 `STEAMHARNESS_AGENT_MODELS` JSON 列表。Core 自动提供 provider/model 的 selector 定义；model 的值是列表条目 ID，缺省使用第一项。显式完整替换参数表时，可继续用 `createAgentProjectParamResolver()` 或自定义 resolver。项目配置第一项提供系统 AI／第三方 AI 切换及统一模型列表的增删改查：系统条目含 `id/name/model/source: "system"/credentialId`，第三方条目含 `id/name/model/source: "third-party"/apiKind/baseUrl/apiKey`。Core 静态识别 Agent 工厂调用并补入 `control: "ai-models"` 字段；间接封装可显式声明。系统运行严格校验当前账号的订阅和模型，每轮建立并关闭回环代理；第三方直接使用配置连接，不请求系统 AI。不要把 Key 写入源码、参数或日志。模型值按运行快照冻结，分享默认只发布结构，完整备份包含值。调用方显式提供端点或注入 `models`/`resolvedModel` 时保留独立调用语义。
   仅允许系统 AI 时，显式声明模型字段 `allowThirdParty: false`（只允许用于 `control: "ai-models"`）。配置面板隐藏第三方入口，保存和导入拒绝第三方条目；运行快照 `agentModelPolicy` 冻结限制，参数选项跳过旧第三方条目，Core 拒绝直接 URL/API Key、`models` 与 `resolvedModel` 覆盖。完整备份保留旧值供清理；不要为此项目生成自建直连分支。分发模板与 `configuration.json` 通过顶层 `agentModelPolicy` 保留源码限制，即使模型字段不发布也不丢失；旧草稿及模板不能放宽限制。要允许接收者添加系统模型，保留字段的 `sharing.publish: true`。
 

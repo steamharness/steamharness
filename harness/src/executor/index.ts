@@ -47,7 +47,8 @@ import {
   inspectProjectStructure,
   type DefinedNode,
 } from "./rules";
-import { parseProjectParamValues, validateProjectParamResolveResult } from "./params";
+import { validateProjectParamResolveResult } from "./params";
+import { parseExecutorParamValues } from "../agent/project-executor";
 import { STEAMHARNESS_ENTRYPOINT_ID_PATTERN } from "./definition";
 import { assertProjectParamDeclarations, normalizeProjectParamDeclarations } from "./param-definition";
 import { assertConversationFooter } from "./conversation-footer";
@@ -312,7 +313,7 @@ async function runWorkspaceProjectWithReportInternal(
       entrypointId: selected.entrypointId,
       entrypointTitle: selected.entrypointTitle,
       args,
-      paramValues: parseProjectParamValues(execution.params, args),
+      paramValues: parseExecutorParamValues(execution, args),
       config: currentConfigurationValues(),
       abortSignal: runtime.abortSignal,
       hostInput: options.hostInput,
@@ -518,7 +519,7 @@ async function debugWorkspaceProjectNodeWithReportInternal(
       entrypointId: selected.entrypointId,
       entrypointTitle: selected.entrypointTitle,
       args,
-      paramValues: parseProjectParamValues(execution.params, args),
+      paramValues: parseExecutorParamValues(execution, args),
       config: currentConfigurationValues(),
       abortSignal: runtime.abortSignal,
       hostInput: options.hostInput,
@@ -855,7 +856,7 @@ async function runLocalProjectWithReportInternal(
       entrypointId: selected.entrypointId,
       entrypointTitle: selected.entrypointTitle,
       args,
-      paramValues: parseProjectParamValues(execution.params, args),
+      paramValues: parseExecutorParamValues(execution, args),
       config: currentConfigurationValues(),
       abortSignal: abortController.signal,
       hostInput: options.hostInput,
@@ -1237,7 +1238,7 @@ async function resolveProjectParamsFromModuleInternal(options: {
     entrypointId: selected.entrypointId,
     entrypointTitle: selected.entrypointTitle,
     args,
-    paramValues: parseProjectParamValues(execution.params, args),
+    paramValues: parseExecutorParamValues(execution, args),
     config: currentConfigurationValues(),
     abortSignal,
     hostInput: options.hostInput,

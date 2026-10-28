@@ -84,6 +84,8 @@ const agentExecutor = workflow.defineAgentConversationExecutor({
 
 ## Project parameter inheritance and customization
 
+Context input consumes only enabled fields from the selected parameter table; fixed user-setting bindings reject host parameter overrides. Legacy `-m` and `--agent plan|build` flags remain available through inherited executors, with explicit `--plan` taking precedence over the legacy mode flag. Message and attachment values are excluded from parameter parsing. An `undefined` field override is equivalent to omission; use `userSetting: null` to clear a binding. Static inheritance supports shorthand `workflow` / `coreAgent` properties and SDK namespace imports.
+
 Executors using a Core workflow can omit `params` and `resolveParams`. For a business workflow wrapping Core, set `coreAgent: agentProject` on the executor and retain the business workflow and `createInput`. Parameter options must be statically readable; inspection follows only the selected reference and never executes project code.
 
 `fields` supports `defaultValue`, `userSetting` (`null` clears a binding), `visible`, `fixedValue`, `label`, `description`, and `options`. Set a field to `false` to remove it. `groups` rearranges Quick/Auxiliary groups by field name; unassigned fields keep their original group. `fixedValue` replaces bindings and defaults and is enforced during input construction and at the Core execution boundary. Visibility controls presentation; add `fixedValue` to prevent overrides. An explicit default clears the user setting binding.

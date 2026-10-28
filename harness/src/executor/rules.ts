@@ -1705,8 +1705,12 @@ function analyzeSourceFile(
   function readCoreAgentOptions(executor: ts.ObjectLiteralExpression): AgentProjectOptions | undefined {
     if (coreOptions.has(executor)) return coreOptions.get(executor) ?? undefined;
     coreOptions.set(executor, null);
-    const explicit = findStaticPropertyAssignment(executor, "coreAgent");
-    const reference = explicit ?? findStaticPropertyAssignment(executor, "workflow");
+    const findReference = (name: string) => executor.properties.find(
+      (property): property is ts.PropertyAssignment | ts.ShorthandPropertyAssignment =>
+        (ts.isPropertyAssignment(property) || ts.isShorthandPropertyAssignment(property)) && readStructurePropertyName(property.name) === name,
+    );
+    const explicit = findReference("coreAgent");
+    const reference = explicit ?? findReference("workflow");
     if (!reference) return;
     const seen = new Set<string>();
     const resolve = (expression: ts.Expression): ts.Expression => {
@@ -1721,15 +1725,17 @@ function analyzeSourceFile(
       }
       return expression;
     };
-    const call = resolve(reference.initializer);
+    const call = resolve(ts.isPropertyAssignment(reference) ? reference.initializer : reference.name);
     let factory = ts.isCallExpression(call) ? readProjectApiCallName(call.expression) : undefined;
-    if (ts.isCallExpression(call) && ts.isIdentifier(call.expression)) {
+    if (ts.isCallExpression(call)) {
       for (const statement of sourceFile.statements) {
         if (!ts.isImportDeclaration(statement) || !ts.isStringLiteral(statement.moduleSpecifier) || !["steamharness", "steamharness/agent"].includes(statement.moduleSpecifier.text)) continue;
         const bindings = statement.importClause?.namedBindings;
-        if (bindings && ts.isNamedImports(bindings)) for (const item of bindings.elements) {
+        if (ts.isIdentifier(call.expression) && bindings && ts.isNamedImports(bindings)) for (const item of bindings.elements) {
           if (item.name.text === call.expression.text) factory = item.propertyName?.text ?? item.name.text;
         }
+        if (bindings && ts.isNamespaceImport(bindings) && ts.isPropertyAccessExpression(call.expression) &&
+          ts.isIdentifier(call.expression.expression) && bindings.name.text === call.expression.expression.text) factory = call.expression.name.text;
       }
     }
     if (!ts.isCallExpression(call) || factory !== "createAgentConversationProject") {
@@ -1759,6 +1765,7 @@ function analyzeSourceFile(
     function literal(value: StructureValue): unknown {
       if (value.kind === "literal") return value.value;
       if (value.kind === "variable" && value.resolved) return literal(value.resolved);
+      if (value.kind === "variable" && value.name === "undefined") return undefined;
       if (value.kind === "array") return value.value.map(literal);
       if (value.kind === "object") return Object.fromEntries(Object.entries(value.value).map(([key, child]) => {
         if (key.startsWith("...")) throw new Error("Core Agent parameter configuration must be static.");

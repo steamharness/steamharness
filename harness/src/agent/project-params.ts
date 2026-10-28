@@ -2,7 +2,7 @@ import { HarnessError } from "../workflow/errors";
 import { normalizeProjectParamDeclarations } from "../executor/param-definition";
 import { parseProjectParamValues } from "../executor/params";
 import type { ConversationParamDeclaration, ParamFieldDeclaration, ParamValues } from "../executor/types";
-import type { AgentConversationProject, AgentInput, AgentProjectOptions } from "./types";
+import type { AgentConversationProject, AgentInput, AgentProjectOptions, AgentProjectParamOverride } from "./types";
 
 export interface AgentProjectParamContract {
   params: ConversationParamDeclaration[];
@@ -128,7 +128,7 @@ export function createAgentProjectParams(options: AgentProjectOptions = {}): Con
       const updated = declaration.fields.flatMap(field => {
         const patch = fields[field.name as keyof typeof fields];
         if (patch === false) return [];
-        const next = { ...field, ...patch };
+        const next = { ...field, ...definedOverrides(patch) };
         if (patch?.userSetting === null || patch?.defaultValue !== undefined || patch?.fixedValue !== undefined) delete next.userSetting;
         if (next.userSetting) delete next.defaultValue;
         if (patch?.fixedValue !== undefined) delete next.defaultValue;
@@ -140,7 +140,7 @@ export function createAgentProjectParams(options: AgentProjectOptions = {}): Con
     } else {
       const patch = fields[declaration.name as keyof typeof fields];
       if (patch !== false) {
-        const next = { ...declaration, ...patch };
+        const next = { ...declaration, ...definedOverrides(patch) };
         if (patch?.userSetting === null || patch?.defaultValue !== undefined || patch?.fixedValue !== undefined) delete next.userSetting;
         if (next.userSetting || patch?.fixedValue !== undefined) delete next.defaultValue;
         declarations.push(next as ConversationParamDeclaration);
@@ -180,6 +180,48 @@ export function createAgentProjectParams(options: AgentProjectOptions = {}): Con
   return declarations;
 }
 
+/** Resolve only declared fields, preserving resolved overrides and legacy Agent flags. */
+export function resolveAgentProjectParamValues(
+  params: ConversationParamDeclaration[],
+  args: string[] = [],
+  supplied?: ParamValues,
+): ParamValues {
+  const fields = normalizeProjectParamDeclarations(params).params;
+  const flags = new Map(fields.flatMap(field => [field.flag, field.shortFlag]
+    .filter((flag): flag is string => flag !== undefined).map(flag => [flag, field] as const)));
+  const model = fields.find(field => field.name === "model" && field.flag === "--model");
+  const plan = fields.find(field => field.name === "plan" && field.flag === "--plan" && field.type === "boolean");
+  const canonical: string[] = [];
+  let legacyMode: string | undefined;
+  let explicitPlan = false;
+  for (let index = 0; index < args.length; index++) {
+    const arg = args[index]!;
+    const field = flags.get(arg) ?? (arg === "-m" && model ? model : undefined);
+    if (field) {
+      canonical.push(flags.has(arg) ? arg : field.flag!);
+      if (field === plan) explicitPlan = true;
+      const next = args[index + 1];
+      if (next !== undefined && (field.type !== "boolean" || next === "true" || next === "false")) canonical.push(args[++index]!);
+    } else if (arg === "--agent" && plan) {
+      const mode = args[++index];
+      if (mode === "plan" || mode === "build") legacyMode = mode;
+    } else if (arg.startsWith("-")) {
+      // Standard composer payloads and undeclared options are not Agent flags.
+      if (!arg.includes("=")) index++;
+    } else {
+      canonical.push(arg);
+    }
+  }
+  if (legacyMode !== undefined && !explicitPlan) canonical.push("--plan", legacyMode === "plan" ? "true" : "false");
+  const values = parseProjectParamValues(params, canonical);
+  for (const field of fields) {
+    if (field.fixedValue !== undefined || field.userSetting?.mode === "fixed") continue;
+    const value = supplied?.[field.name];
+    if (value !== undefined) values[field.name] = value;
+  }
+  return values;
+}
+
 export function applyAgentParamValues(input: AgentInput, values: ParamValues): AgentInput {
   const result = { ...input };
   for (const name of ["provider", "model", "effort", "permissionPolicy"] as const) {
@@ -211,4 +253,8 @@ function fail(message: string): never { throw new HarnessError({ type: "input_va
 function remainingSummary(summary: string[], fields: { name: string }[]): string[] {
   const kept = summary.filter(name => fields.some(field => field.name === name));
   return kept.length ? kept : fields.map(field => field.name);
+}
+
+function definedOverrides(patch: AgentProjectParamOverride | undefined): AgentProjectParamOverride {
+  return Object.fromEntries(Object.entries(patch ?? {}).filter(([, value]) => value !== undefined));
 }

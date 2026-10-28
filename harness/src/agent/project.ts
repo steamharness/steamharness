@@ -9,7 +9,6 @@ import { defineProject, runNode, runStreamNode } from "../workflow/index";
 import { HarnessError } from "../workflow/errors";
 import { createAgentProjectParamResolver } from "./system-llm";
 import { normalizeProjectParamDeclarations } from "../executor/param-definition";
-import { parseProjectParamValues } from "../executor/params";
 import {
   createAgentNode,
   readAgentRunContextUsage,
@@ -35,7 +34,7 @@ import {
   type AgentProjectOptions,
 } from "./types";
 
-import { applyAgentParamValues, applyAgentProjectDefaults, applyAgentProjectFixedValues, createAgentProjectParams, registerAgentProject } from "./project-params";
+import { applyAgentParamValues, applyAgentProjectDefaults, applyAgentProjectFixedValues, createAgentProjectParams, registerAgentProject, resolveAgentProjectParamValues } from "./project-params";
 export { createAgentProjectParams } from "./project-params";
 
 const DEFAULT_OUTPUT_ITEM_ID = "agent-answer";
@@ -331,8 +330,9 @@ function createAgentInputFromArgs(
   options: AgentProjectOptions,
   resolvedValues?: ExecutorContext["paramValues"],
 ): AgentInput {
+  const declarations = options.params ?? createAgentProjectParams(options);
+  const names = new Set(normalizeProjectParamDeclarations(declarations).params.map(field => field.name));
   const defaults = parseConversationDefaultInputArgs(args);
-  const parameterArgs = [...args];
   const message = defaults.message.trim();
   const input: AgentInput = {
     prompt: message,
@@ -367,7 +367,6 @@ function createAgentInputFromArgs(
         index += 1;
         break;
       case "-m":
-        parameterArgs[index] = "--model";
         index += 1;
         break;
       case "--effort":
@@ -379,7 +378,8 @@ function createAgentInputFromArgs(
         break;
       }
       case "--agent":
-        input.agent = (args[++index] ?? "") as AgentInput["agent"];
+        if (names.has("plan") && (resolvedValues === undefined || resolvedValues.plan !== undefined)) input.agent = (args[index + 1] ?? "") as AgentInput["agent"];
+        index += 1;
         break;
       case "--permission-policy":
         index += 1;
@@ -423,8 +423,8 @@ function createAgentInputFromArgs(
     }
   }
 
-  const declarations = options.params ?? createAgentProjectParams(options);
-  const values = { ...(resolvedValues ?? parseProjectParamValues(declarations, parameterArgs)) };
+  const values = resolvedValues === undefined ? resolveAgentProjectParamValues(declarations, args)
+    : Object.fromEntries(Object.entries(resolvedValues).filter(([name]) => names.has(name)));
   if (resolvedValues === undefined && args.includes("--agent") && !args.includes("--plan")) delete values.plan;
   const result = applyAgentParamValues(input, values);
   // Explicit programmatic defaults remain available for parameters outside the composer.
