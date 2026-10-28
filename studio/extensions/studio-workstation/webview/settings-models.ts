@@ -1,5 +1,6 @@
 import { t } from './localization';
 import { SettingsDropdown } from './settings-dropdown';
+import { modelIcon } from './model-icons';
 import type { UserModelEntry, UserModelsState } from '../src/user-model-types';
 
 function node<K extends keyof HTMLElementTagNameMap>(tag: K, text?: string, className = ''): HTMLElementTagNameMap[K] {
@@ -209,15 +210,22 @@ export class SettingsModels {
         const name = node('th'); name.scope = 'row';
         const identity = node('div', undefined, 'settings-model-identity');
         const copy = node('div', undefined, 'settings-model-copy');
-        const title = node('div', undefined, 'settings-model-name'); title.append(node('strong', entry.name));
+        const title = node('div', undefined, 'settings-model-name');
+        const label = node('strong', entry.name); label.title = entry.name; title.append(label);
         if (entry.id === defaultId) { const badge = node('span', undefined, 'settings-model-default'); badge.append(icon('check'), node('span', t('Default model'))); title.append(badge); }
+        if (entry.name !== entry.model) { const id = node('code', entry.model, 'muted'); id.title = entry.model; title.append(id); }
         copy.append(title);
-        if (entry.name !== entry.model) copy.append(node('code', entry.model, 'muted'));
-        identity.append(icon(entry.source === 'system' ? 'sparkle' : 'plug'), copy); name.append(identity);
-        const source = node('td'); const badge = node('span', undefined, 'settings-model-source-badge');
-        badge.append(icon(entry.source === 'system' ? 'sparkle' : 'plug'), node('span', entry.source === 'system' ? this.state.providerNames?.[entry.id] ?? t('System AI') : t('Third-party'))); source.append(badge);
-        if (entry.source === 'third-party') source.append(node('small', protocols.find(protocol => protocol.value === entry.apiKind)?.label, 'muted'));
-        if (entry.source === 'third-party') source.append(node('small', entry.baseUrl, 'muted'));
+        identity.append(modelIcon(entry.model, entry.source === 'system' ? 'sparkle' : 'plug'), copy); name.append(identity);
+        const source = node('td'); const provider = node('div', undefined, 'settings-model-provider');
+        if (entry.source === 'system') {
+          const label = this.state.providerNames?.[entry.id] ?? t('System AI');
+          const name = node('span', label, 'settings-model-source-badge'); name.title = label; provider.append(name);
+        } else {
+          const protocol = node('span', protocols.find(protocol => protocol.value === entry.apiKind)?.label, 'settings-model-source-badge');
+          const endpoint = node('small', entry.baseUrl, 'muted'); endpoint.title = entry.baseUrl;
+          provider.append(protocol, endpoint);
+        }
+        source.append(provider);
         const controls = node('td');
         const actions = node('div', undefined, 'settings-model-actions');
         const button = (label: string, glyph: string, action: (button: HTMLButtonElement) => void, danger = false) => {

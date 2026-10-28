@@ -1,5 +1,7 @@
 # Unreleased
 
+- Improved model tables with compact rows, consistent hover backgrounds, inline custom-provider details, and locally bundled brand icons for common models.
+
 - Improved model settings with a three-column table grouping all automatically loaded built-ins above custom models, a built-in refresh action, catalogue names and centered custom-model dialogs. Model and effort now use separate controls; the grouped model menu keeps Add model at the bottom across locales, themes, narrow windows and keyboard navigation.
 
 - Fixed the assistant's empty model control to show Configure model with setup guidance and open Settings → Models directly. Configured models restore the list, with keyboard and English/Chinese support.

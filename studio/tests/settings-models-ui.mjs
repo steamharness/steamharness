@@ -61,7 +61,7 @@ try {
     await page.locator('#user-model-name').fill('My coding model');
     await choose('#user-model-apiKind', 'OpenAI Chat Completions');
     await page.locator('#user-model-baseUrl').fill('https://model.example.test/v1');
-    await page.locator('#user-model-model').fill('coding-model');
+    await page.locator('#user-model-model').fill('MiniMax-M3');
     await screenshot('third-party-dialog');
     await page.locator('#user-model-apiKey').fill('ui-test-only-secret');
     await save.click();
@@ -82,11 +82,14 @@ try {
     assert.deepEqual(await pane.getByRole('columnheader').allTextContents(), zh ? ['模型', '服务商', '操作'] : ['Model', 'Provider', 'Actions']);
     const firstRow = pane.locator(`[data-model-id="${entry.id}"]`);
     assert.ok((await firstRow.innerText()).includes(zh ? '默认模型' : 'Default model'));
+    assert.equal(await firstRow.locator('.settings-model-brand-minimax').count(), 1, 'API compatibility must not misidentify the model brand');
+    assert.ok((await firstRow.boundingBox()).height <= 40, 'Custom model details fit in a compact row');
     await edit(firstRow).click(); assert.equal(await page.locator('#user-model-apiKey').inputValue(), '');
     await send({ type: 'settings-models', state }); // Replacing rows must not break the dialog's return focus.
     await cancel.click(); assert.equal(await edit(firstRow).evaluate(button => document.activeElement === button), true);
 
-    const builtins = Array.from({ length: 12 }, (_, index) => ({ id: `system-${index}`, source: 'system', credentialId: 'plan-one', model: `system-model-${index}`, name: `Built-in Model ${index}` }));
+    const brandModels = ['openai/gpt-6.1-sol', 'anthropic.claude-sonnet-4-5', 'gemini-2.5-pro', 'deepseek-chat', 'qwen3-coder', 'kimi-k2', 'MiniMax-M3', 'doubao-seed-1-6', 'grok-4', 'mistral-large', 'meta-llama/Llama-4', 'glm-4.5'];
+    const builtins = brandModels.map((model, index) => ({ id: `system-${index}`, source: 'system', credentialId: 'plan-one', model, name: `Built-in Model ${index}` }));
     state = { ...state, systemAvailable: true, entries: [...state.entries, ...builtins], providerNames: Object.fromEntries(builtins.map(model => [model.id, 'My AI account'])) };
     await send({ type: 'settings-models', state });
     const systemGroup = pane.locator('[data-model-group="system"]'), customGroup = pane.locator('[data-model-group="third-party"]');
@@ -95,6 +98,19 @@ try {
     assert.equal(await systemGroup.getByRole('button', { name: zh ? '编辑' : 'Edit', exact: true }).count(), 0);
     assert.equal(await systemGroup.getByRole('button', { name: zh ? '删除' : 'Delete', exact: true }).count(), 0);
     assert.equal(await customGroup.locator('[data-model-id]').count(), 1);
+    assert.equal(await systemGroup.locator('.settings-model-brand').count(), brandModels.length, 'Common model families have brand icons');
+    assert.equal(await systemGroup.locator('.settings-model-brand').evaluateAll(icons => icons.every(icon => getComputedStyle(icon).maskImage.includes('data:image/svg+xml'))), true, 'Icons work offline from the bundled stylesheet');
+    assert.equal(await systemGroup.locator('[data-model-id]').evaluateAll(rows => rows.every(row => row.getBoundingClientRect().height <= 40)), true, 'Built-in rows remain compact');
+    const hoverRow = systemGroup.locator('[data-model-id="system-1"]');
+    await page.evaluate(() => document.documentElement.style.setProperty('--vscode-list-hoverBackground', 'rgba(127, 127, 127, .15)'));
+    await hoverRow.hover();
+    const hoverBackgrounds = await hoverRow.locator(':scope > *').evaluateAll(cells => cells.map(cell => {
+      const style = getComputedStyle(cell); return [style.backgroundColor, style.backgroundImage];
+    }));
+    assert.ok(hoverBackgrounds[0][1].includes('0.15'), 'Translucent theme hover is applied');
+    assert.ok(hoverBackgrounds.every(value => JSON.stringify(value) === JSON.stringify(hoverBackgrounds[0])), 'Sticky actions and the rest of the row use the same background without stacked hover layers');
+    await screenshot('compact-hover');
+    await page.evaluate(() => document.documentElement.style.removeProperty('--vscode-list-hoverBackground'));
     const groupToggle = systemGroup.locator('.settings-model-group button');
     await groupToggle.press('Enter'); assert.equal(await systemGroup.locator('[data-model-id]').count(), 0);
     assert.equal(await groupToggle.evaluate(button => document.activeElement === button), true);
@@ -133,6 +149,8 @@ try {
     await page.locator('#settings-search').fill('');
     const long = { ...state.entries[1], id: 'long-model', name: 'A long model name for documentation, coding and project planning', model: 'provider/long-model-identifier-for-project-planning', baseUrl: 'https://long-provider-endpoint.example.test/compatible/api/v1' };
     state = { ...state, entries: [...state.entries, long] }; await send({ type: 'settings-models', state });
+    assert.ok((await pane.locator('[data-model-id="long-model"]').boundingBox()).height <= 40, 'Long custom names and endpoints do not increase row height');
+    assert.equal(await pane.locator('[data-model-id="long-model"] .settings-model-identity > .codicon-plug').count(), 1, 'Unknown model identifiers retain a neutral fallback');
     await screenshot('table');
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true, 'Only the table scrolls horizontally');
     const viewport = pane.getByRole('region', { name: zh ? '我的模型' : 'Your models' });
@@ -162,7 +180,7 @@ try {
     await page.setViewportSize({ width, height: 900 });
     await add.click(); await send({ type: 'settings-navigate', state: { section: 'general' } });
     assert.equal(await dialog.count(), 0, 'Host navigation never leaves an orphaned modal');
-    checks.push(`${language}/${theme}/${width}: modal focus, cancel, save errors, secrets, automatic built-ins, refresh races, grouped table actions, search and short-window scrolling`);
+    checks.push(`${language}/${theme}/${width}: compact rows, offline brand icons, translucent hover, modal focus, save errors, secrets, built-in refresh races, grouped actions, search and short-window scrolling`);
     await page.close();
   }
   assert.deepEqual(errors, []); console.log(JSON.stringify({ checks, errors, screenshots: output.pathname }, null, 2));
