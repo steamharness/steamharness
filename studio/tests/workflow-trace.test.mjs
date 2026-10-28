@@ -174,13 +174,13 @@ test('the outer webview configures an immediately loaded frame and validates tra
   };
   const document = { activeElement: frame, documentElement: { dataset: { vscodeNativeClipboard: '1' } }, getElementById: () => frame };
   runInNewContext(html.match(/<script nonce="nonce">([\s\S]*?)<\/script>/)[1], {
-    acquireVsCodeApi: () => ({ setState() {}, postMessage: message => sent.push(message) }),
+    URL, acquireVsCodeApi: () => ({ setState() {}, postMessage: message => sent.push(message) }),
     document,
     addEventListener: (name, callback) => { listeners[name] = callback; },
     MouseEvent: class { constructor(type, options) { this.type = type; Object.assign(this, options); } },
     Event: class { constructor(type, options) { this.type = type; Object.assign(this, options); } },
   });
-  assert.deepEqual(JSON.parse(JSON.stringify(frameMessages)), [[{ type: 'workflow-host', theme: 'dark', locale: 'zh-CN', traceVersion: 1, clipboardVersion: 1, nativePasteVersion: 1, resourceVersion: 1, recoveryVersion: 1, dropVersion: 1, pathPickerVersion: 1, pathOpenVersion: 1, userSettingsVersion: 1, fileIconsVersion: 1 }, 'http://127.0.0.1:3000']]);
+  assert.deepEqual(JSON.parse(JSON.stringify(frameMessages)), [[{ type: 'workflow-host', theme: 'dark', locale: 'zh-CN', traceVersion: 1, clipboardVersion: 1, nativePasteVersion: 1, resourceVersion: 1, recoveryVersion: 1, dropVersion: 1, pathPickerVersion: 1, pathOpenVersion: 1, userSettingsVersion: 1, fileIconsVersion: 1, entryWindowVersion: 1 }, 'http://127.0.0.1:3000']]);
   assert.equal(sent.shift().type, 'workflow-drop-target');
   assert.equal(sent.shift().type, 'workflow-frame-ready');
   const data = { type: 'workflow-trace', version: 1, kind: 'open' };

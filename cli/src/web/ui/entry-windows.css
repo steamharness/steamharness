@@ -1,34 +1,25 @@
-.entry-windows-button { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
-.entry-windows-dialog { width: min(680px, calc(100vw - 24px)); }
-.entry-windows-project { margin: 0 0 8px; color: var(--color-text-muted); overflow-wrap: anywhere; }
-.entry-windows-list { display: flex; flex-direction: column; }
-.entry-window-row { display: flex; align-items: center; gap: 12px; padding: 14px 0; border-bottom: 1px solid var(--color-border); }
-.entry-window-row:last-child { border-bottom: 0; }
-.entry-window-icon { width: 36px; height: 36px; flex-shrink: 0; border-radius: 6px; }
-.entry-window-identity { display: flex; flex: 1; min-width: 0; flex-direction: column; gap: 3px; overflow-wrap: anywhere; }
-.entry-window-identity strong { font-size: 13px; font-weight: 600; }
-.entry-window-identity > span { color: var(--color-text-muted); font-size: 12px; }
-.entry-window-actions { display: flex; flex-wrap: wrap; gap: 6px; justify-content: flex-end; }
-.entry-window-actions button { color: var(--color-text); background: var(--color-surface); border: 1px solid var(--color-border); border-radius: 6px; padding: 6px 10px; min-height: 32px; font: inherit; cursor: pointer; }
-.entry-window-actions button:hover:not(:disabled) { background: var(--vscode-toolbar-hoverBackground); }
-.entry-workspace { display: grid; height: 100dvh; width: 100%; grid-template-columns: minmax(0, 1fr); overflow: hidden; }
-.entry-workspace.has-entry-pane { grid-template-columns: minmax(0, var(--primary-entry-width, 50%)) 5px minmax(0, 1fr); }
-.entry-workspace > #app { height: 100%; min-height: 0; min-width: 0; }
-.entry-pane { display: grid; grid-template-rows: auto minmax(0, 1fr); min-height: 0; min-width: 0; overflow: hidden; background: var(--color-bg); }
-.entry-pane-heading { display: flex; align-items: center; min-height: 40px; gap: 8px; padding: 4px 8px; border-bottom: 1px solid var(--color-border); }
-.entry-pane-icon { flex: 0 0 24px; width: 24px; height: 24px; border-radius: 4px; }
-.entry-pane-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 500; }
-.entry-pane-type { color: var(--color-text-muted); font-size: 12px; }
-.entry-pane-frames { min-height: 0; min-width: 0; overflow: hidden; }
-.entry-pane-frame { display: block; width: 100%; height: 100%; border: 0; }
-.entry-pane[hidden], .entry-pane-frame[hidden], .entry-pane-separator[hidden] { display: none; }
-.entry-pane-separator { background: var(--color-border); cursor: col-resize; touch-action: none; }
-.entry-pane-separator:hover, .entry-pane-separator:focus-visible { background: var(--color-accent); }
-.entry-pane-resizing { cursor: col-resize; }
-.entry-pane-resizing iframe { pointer-events: none; }
-@media (max-width: 680px) {
-  .entry-window-row { flex-wrap: wrap; gap: 8px; }
-  .entry-window-actions { width: 100%; padding-left: 44px; justify-content: flex-start; }
-  .entry-pane-type { display: none; }
+.entry-windows-dialog { width: min(560px, calc(100vw - 32px)); }
+.entry-windows-heading-icon { display: flex; align-items: center; justify-content: center; width: 32px; height: 32px; border-radius: 6px; color: var(--muted); background: var(--vscode-button-secondaryBackground); }
+.entry-windows-heading { flex: 1; min-width: 0; }
+.entry-windows-project { margin: 3px 0 0; color: var(--muted); font-size: 12px; overflow-wrap: anywhere; }
+.entry-windows-dialog > .dialog-body { padding: 12px; }
+.entry-windows-list { display: flex; flex-direction: column; gap: 8px; }
+.entry-window-row { display: flex; align-items: center; gap: 12px; padding: 12px; border: 1px solid var(--border); border-radius: 6px; }
+.entry-window-row.is-current { background: var(--vscode-list-inactiveSelectionBackground); }
+.entry-window-icon { width: 40px; height: 40px; flex: 0 0 40px; border-radius: 8px; }
+.entry-window-identity { display: flex; flex: 1; min-width: 0; flex-direction: column; gap: 6px; overflow-wrap: anywhere; }
+.entry-window-heading, .entry-window-details { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 8px; }
+.entry-window-heading strong { min-width: 0; font-size: 13px; font-weight: 600; }
+.entry-window-current, .entry-window-default { border: 1px solid var(--border); border-radius: 4px; padding: 1px 5px; font-size: 11px; font-weight: 400; color: var(--muted); }
+.entry-window-details { font-size: 12px; color: var(--muted); }
+.entry-window-status { display: inline-flex; align-items: center; gap: 5px; }
+.entry-window-status::before { content: ''; width: 5px; height: 5px; border-radius: 50%; background: currentColor; }
+.entry-window-status[data-status=running]::before { background: var(--vscode-testing-iconPassed, currentColor); }
+.entry-window-status[data-status=starting]::before { background: var(--vscode-editorWarning-foreground, currentColor); }
+.entry-window-status[data-status=error] { color: var(--vscode-errorForeground); }
+.entry-window-row > .entry-window-open { width: 32px; height: 32px; }
+@media (max-width: 400px) {
+  .entry-window-row { gap: 8px; padding: 10px; }
+  .entry-window-icon { width: 32px; height: 32px; flex-basis: 32px; border-radius: 6px; }
 }
-@media (pointer: coarse) { .entry-window-actions button, .entry-windows-button { min-height: 44px; } }
+@media (pointer: coarse) { .entry-window-row > .entry-window-open, .aggregate-navigation .entry-windows-button { width: 44px; height: 44px; } }

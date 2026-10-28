@@ -11,7 +11,7 @@ for (const enabled of [false, true]) {
     const listeners = {}, sent = [], frameMessages = [], child = { postMessage: value => frameMessages.push(value) };
     const frame = { contentWindow: child, addEventListener: (type, callback) => { listeners[type] = callback; }, set src(_value) { listeners.load(); } };
     runInNewContext(html.match(/<script nonce="nonce">([\s\S]*?)<\/script>/)[1], {
-      acquireVsCodeApi: () => ({ setState() {}, postMessage: value => sent.push(value) }),
+      URL, acquireVsCodeApi: () => ({ setState() {}, postMessage: value => sent.push(value) }),
       document: { documentElement: { dataset: {} }, getElementById: () => frame },
       addEventListener: (type, callback) => { listeners[type] = callback; },
     });

@@ -346,7 +346,7 @@ Local CLI `debug-node` uses the selected entrypoint registry to debug one node. 
 }
 ```
 
-Each entry can configure `projectCard.icon`, `iconColor` and `iconBackgroundColor`, using `#RRGGBB` colors. Omitted properties use entry type defaults and do not inherit the root avatar. Entry lists carry these icons to window panels, tabs, split views, Server and Store. The root `steamHarness.projectCard` identifies the aggregate. Only root `package.json.version` owns a version; entry declarations reject `version`.
+Each entry can configure `projectCard.icon`, `iconColor` and `iconBackgroundColor`, using `#RRGGBB` colors. Omitted properties use entry type defaults and do not inherit the root avatar. Entry lists carry these icons to window panels, tabs, Server and Store. The root `steamHarness.projectCard` identifies the aggregate. Only root `package.json.version` owns a version; entry declarations reject `version`.
 
 Paths must stay inside the aggregate directory and cannot contain `..`, absolute paths or host data directories. Static analysis scans each registered entry independently, allowing different executors in one aggregate. Each Workflow or Conversation executor must match its registered type; Kanban points to built HTML. Only the root owns the SteamHarness identity. Child directories retain ordinary npm packages and dependencies.
 

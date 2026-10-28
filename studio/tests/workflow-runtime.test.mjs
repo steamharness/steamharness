@@ -395,7 +395,7 @@ test('the project frame retains the latest native chrome reservation across ifra
   const initial = { active: true, projectUri: 'file:///project', height: 52, left: 228, right: 0, revision: 1 };
   const html = projectFrameHtml('http://127.0.0.1:3000/', 'Project', initial.projectUri, 'dark', 'fixture', 'en', initial);
   runInNewContext(/<script nonce="fixture">([\s\S]*?)<\/script>/.exec(html)[1], {
-    acquireVsCodeApi: () => ({ setState() {}, postMessage: message => native.push(JSON.parse(JSON.stringify(message))) }),
+    URL, acquireVsCodeApi: () => ({ setState() {}, postMessage: message => native.push(JSON.parse(JSON.stringify(message))) }),
     document: { getElementById: () => frame, documentElement: { dataset: {} } },
     addEventListener: (type, callback) => listeners.set(type, callback),
   });

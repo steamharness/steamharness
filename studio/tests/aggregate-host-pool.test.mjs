@@ -48,3 +48,13 @@ test('failed and unknown entry leases are released and separate aggregates never
   const other=await pool.acquire('b',{entryId:'agent'},async()=>b);
   await lease.close(); assert.equal(a.closes,1); assert.equal(b.closes,0); await other.close(); await pool.close();
 });
+
+test('multiple tabs of the same entry hold independent leases on a single aggregate host', async () => {
+  const pool = new AggregateWebHostPool(), host = session(); let starts = 0;
+  const start = async () => { starts++; return host; };
+  const [first, second] = await Promise.all([pool.acquire('root', { entryId: 'agent' }, start), pool.acquire('root', { entryId: 'agent' }, start)]);
+  assert.equal(starts, 1);
+  await first.close(); assert.equal(host.closes, 0);
+  assert.equal(new URL(second.ready.url).pathname, '/entries/agent/');
+  await second.close(); assert.equal(host.closes, 1); await pool.close();
+});

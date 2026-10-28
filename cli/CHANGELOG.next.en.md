@@ -1,6 +1,6 @@
 # Unreleased
 
-- Improvement: Aggregates open their default entry and expose a window panel for new browser/Studio tabs and side-by-side entry views, preserving drafts and background runs. Entries have independent icons and colors; only the root project owns a version.
+- Improvement: Aggregates open their default entry and use an icon-only Project windows button. Compact entry cards show types, default/current markers and runtime states, with an icon to open a new browser page or Studio tab. Removed split views; every entry, including the current one, can open repeatedly with independent view state on the shared host. Entry icons and colors are independent; only the root owns a version.
 
 - Changed: database management saves aliases and approved database IDs, while hosts manage requests and permissions. Entries support multiple references, approved requests display IDs, and archives preserve references.
 

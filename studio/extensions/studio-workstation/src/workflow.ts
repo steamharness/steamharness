@@ -88,7 +88,11 @@ export async function activateProject(context: vscode.ExtensionContext, launcher
   const versionStatus = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 109);
   versionStatus.name = t('Project Updates');
   versionStatus.backgroundColor = new vscode.ThemeColor('statusBarItem.warningBackground');
-  const workspaces = new Map<string, { panel: vscode.WebviewPanel; project: Project; running: boolean; loaded: boolean; ready: Promise<void>; close(): Promise<void> }>();
+  const workspaces = new Map<vscode.WebviewPanel, { panel: vscode.WebviewPanel; project: Project; running: boolean; loaded: boolean; ready: Promise<void>; close(): Promise<void> }>();
+  const findWorkspace = (project: Project) => {
+    const candidates = [...workspaces.values()].filter(entry => projectWindowKey(entry.project) === projectWindowKey(project));
+    return candidates.find(entry => entry.panel.active) ?? candidates.find(entry => entry.running) ?? candidates[0];
+  };
   const opening = new Map<string, Promise<AssistantConversation>>();
   const starting = new Map<AbortController, Project>();
   const startingSources = new Map<AbortController, string[]>();
@@ -161,7 +165,7 @@ export async function activateProject(context: vscode.ExtensionContext, launcher
     toolInstances.update(provider.projects, target);
     updateVersionEntry();
     void vscode.commands.executeCommand('setContext', 'studio.projectAvailable', !!target);
-    const workspace = target ? workspaces.get(projectWindowKey(target)) : undefined;
+    const workspace = target ? findWorkspace(target) : undefined;
     if (projectScanReady) { mode.update(!!target && vscode.workspace.isTrusted, target?.uri, !!workspace?.running && workspace.loaded); }
     if (!target) { status.hide(); return; }
     status.text = t("$(play) Run Project \u00B7 {0}", projectDisplayName(target));
@@ -218,7 +222,7 @@ export async function activateProject(context: vscode.ExtensionContext, launcher
     const close = (): Promise<void> => {
       if (closed) { return session.closed; }
       closed = true; sessions.delete(session); sessionSources.delete(session); sessionStops.delete(session);
-      if (!sidebar && workspaces.get(projectWindowKey(project))?.close === close) { workspaces.delete(projectWindowKey(project)); }
+      if ('reveal' in panel) { workspaces.delete(panel); }
       for (const listener of listeners.splice(0)) { listener.dispose(); }
       const settled = session.close().finally(() => { if (settling.get(projectWindowKey(project)) === settled) { settling.delete(projectWindowKey(project)); } });
       settling.set(projectWindowKey(project), settled); updateEntry(); return settled;
@@ -255,7 +259,9 @@ export async function activateProject(context: vscode.ExtensionContext, launcher
         if (!closed) externalProjects.set(projectWindowKey(target), target);
         return target;
       };
-      const openHostedEntry = (entryId: string) => resolveHostedEntry(entryId).then(target => { if (!closed) return openProject(target); });
+      const openHostedEntry = (entryId: string) => resolveHostedEntry(entryId).then(target => {
+        if (!closed) return createWorkspace(target, undefined, undefined, undefined, undefined, true, target.projectType === 'conversation' ? 'new' : undefined);
+      });
       const reconnect = (message: Record<string, any>, webview: vscode.Webview) => {
         if (message.type !== 'workflow-reconnect' || message.version !== 1 || typeof message.requestId !== 'string' || message.requestId.length > 64) return false;
         void (session.reconnect?.() ?? Promise.resolve(false)).then(async () => {
@@ -269,85 +275,14 @@ export async function activateProject(context: vscode.ExtensionContext, launcher
         });
         return true;
       };
-      type EntryBinding = { receive(message: Record<string, any>): void; dispose(): void; reconnect(): void };
-      const entryBindings = new Map<string, { entryId: string; pending: Promise<EntryBinding> }>();
-      const disposeEntryBindings = () => {
-        for (const entry of entryBindings.values()) void entry.pending.then(binding => binding.dispose(), () => undefined);
-        entryBindings.clear();
-      };
-      const receiveEntry = (envelope: Record<string, any>) => {
-        if (closed || envelope.version !== 1 || envelope.projectId !== project.id || typeof envelope.frameId !== 'string'
-          || !/^[a-f0-9-]{36}$/i.test(envelope.frameId) || typeof envelope.entryId !== 'string'
-          || !project.entries.some(entry => entry.entryId === envelope.entryId) || envelope.entryId === project.entryId
-          || !envelope.message || envelope.message.version !== 1) return;
-        const { frameId, entryId, message } = envelope;
-        let entry = entryBindings.get(frameId);
-        if (entry && entry.entryId !== entryId) return;
-        if (message.type === 'workflow-entry-dispose' || message.type === 'workflow-frame-ready') {
-          if (entry) { entryBindings.delete(frameId); void entry.pending.then(binding => binding.dispose(), () => undefined); }
-          if (message.type === 'workflow-entry-dispose') return;
-          entry = undefined;
-        }
-        if (!entry) {
-          if (entryBindings.size >= 64) return;
-          const created = { entryId, pending: Promise.resolve(undefined as unknown as EntryBinding) };
-          created.pending = resolveHostedEntry(entryId).then(target => {
-            if (closed || entryBindings.get(frameId) !== created) throw new Error('Entry window closed.');
-            // The existing platform adapters reply only to this entry's iframe.
-            const webview = new Proxy(panel.webview, { get(owner, key) {
-              if (key === 'postMessage') return (message: unknown) => !closed && entryBindings.get(frameId) === created
-                ? panel.webview.postMessage({ type: 'workflow-entry-host', version: 1, frameId, message }) : Promise.resolve(false);
-              const value = Reflect.get(owner, key, owner); return typeof value === 'function' ? value.bind(owner) : value;
-            } });
-            const entryUrl = () => { const url = new URL(session.ready.url); url.pathname = `/entries/${entryId}/`; return url.href; };
-            let entryTrace = trace.bind(target, session.ready.traceProtocolVersion, webview);
-            const clipboard = bindProjectClipboard(webview), picker = bindProjectPathPicker(webview, vscode.Uri.file(target.assistant?.workdir ?? target.entryRoot));
-            const pathOpen = bindProjectPathOpen(webview), icons = fileIcons.bind(webview);
-            const resources = bindProjectResourceCards(webview, entryUrl, result => openCard(result, target, session, address));
-            const adapters = [clipboard, picker, pathOpen, icons, resources];
-            return {
-              receive(value: Record<string, any>) {
-                if (reconnect(value, webview)) return;
-                if (value.type === 'workflow-open-entry' && value.projectId === project.id && typeof value.entryId === 'string') {
-                  void openHostedEntry(value.entryId).catch(error => output.appendLine(String(error))); return;
-                }
-                if (value.type === 'workflow-account') { account.open(); return; }
-                if (value.type === 'workflow-user-settings') { void openProjectUserSettings(value).catch(error => output.appendLine(String(error))); return; }
-                if (value.type === 'workflow-project-upload' && launcher.uploadProject && !target.assistant && projectAvailable(target)) {
-                  void vscode.commands.executeCommand('studio.uploadProject', { uri: target.uri }).then(undefined, error => output.appendLine(String(error))); return;
-                }
-                if (!adapters.some(adapter => adapter.receive(value))) entryTrace.receive(value);
-              },
-              dispose() { entryTrace.dispose(); for (const adapter of adapters) adapter.dispose(); },
-              reconnect() { entryTrace.dispose(); entryTrace = trace.bind(target, session.ready.traceProtocolVersion, webview); },
-            };
-          });
-          entry = created; entryBindings.set(frameId, created);
-        }
-        void entry.pending.then(binding => { if (!closed && entryBindings.get(frameId) === entry) binding.receive(message); })
-          .catch(error => { if (!closed && entryBindings.get(frameId) === entry) output.appendLine(`Entry window: ${String(error)}`); });
-      };
-      listeners.push({ dispose: () => traceBinding.dispose() }, { dispose: disposeEntryBindings }, clipboardBinding, pickerBinding, pathOpenBinding, fileIconsBinding, resourceBinding, panel.webview.onDidReceiveMessage(message => {
-        if (message?.type === 'workflow-entry-message') { receiveEntry(message); return; }
-        if (message?.type === 'workflow-reconnect' && message.version === 1 && typeof message.requestId === 'string' && message.requestId.length <= 64) {
-          void (session.reconnect?.() ?? Promise.resolve(false)).then(async () => {
-            if (closed) return;
-
-            const token = new URLSearchParams(new URL(session.ready.url).hash.slice(1)).get('session');
-            await panel.webview.postMessage({ type: 'workflow-host', recovery: { requestId: message.requestId, ...(token ? { token } : {}) } });
-          }).catch(error => {
-            output.appendLine(`SteamHarness Web recovery: ${String(error)}`);
-            if (!closed) void panel.webview.postMessage({ type: 'workflow-host', recovery: { requestId: message.requestId, error: String((error as Error).message) } });
-          });
-          return;
-        }
+      listeners.push({ dispose: () => traceBinding.dispose() }, clipboardBinding, pickerBinding, pathOpenBinding, fileIconsBinding, resourceBinding, panel.webview.onDidReceiveMessage(message => {
+        if (reconnect(message ?? {}, panel.webview)) return;
         if (message?.type === 'workflow-open-entry' && message.version === 1 && message.projectId === project.id && typeof message.entryId === 'string') {
           void openHostedEntry(message.entryId).catch(error => output.appendLine(String(error)));
           return;
         }
         if (message?.type === 'workflow-frame-ready') {
-          disposeEntryBindings();
-          const entry = workspaces.get(projectWindowKey(project));
+          const entry = 'reveal' in panel ? workspaces.get(panel) : undefined;
           if (entry?.close === close) { entry.loaded = true; }
           frameReady(); updateEntry();
           void vscode.commands.executeCommand<ProjectWindowChrome>('studio.internalGetWindowChrome').then(chrome => {
@@ -368,14 +303,13 @@ export async function activateProject(context: vscode.ExtensionContext, launcher
       panel.webview.html = projectFrameHtml(address.href, projectDisplayName(project), project.uri, theme(), globalThis.crypto.randomUUID().replace(/-/g, ''), vscode.env.language, chromeFor(project.uri, 'viewType' in panel && panel.viewType === 'studio.project'), conversationView, !project.assistant && !!launcher.uploadProject);
       if ('reveal' in panel) {
         panel.title = projectDisplayName(project); panel.iconPath = vscode.Uri.parse(projectAvatarDataUrl(project.projectCard, project.projectType));
-        workspaces.set(projectWindowKey(project), { panel, project, running: true, loaded: false, ready, close });
+        workspaces.set(panel, { panel, project, running: true, loaded: false, ready, close });
         listeners.push(panel.onDidChangeViewState(scheduleEntry));
       }
       if (session.onReconnect) listeners.push(session.onReconnect(() => {
         if (closed) return;
         traceBinding.dispose(); traceBinding = trace.bind(project, session.ready.traceProtocolVersion, panel.webview);
-        for (const entry of entryBindings.values()) void entry.pending.then(binding => binding.reconnect(), () => undefined);
-        const entry = workspaces.get(projectWindowKey(project));
+        const entry = 'reveal' in panel ? workspaces.get(panel) : undefined;
         if (entry?.close === close) entry.running = true;
         const token = new URLSearchParams(new URL(session.ready.url).hash.slice(1)).get('session');
         void panel.webview.postMessage({ type: 'workflow-host', recovery: { ...(token ? { token } : {}) } });
@@ -385,7 +319,7 @@ export async function activateProject(context: vscode.ExtensionContext, launcher
         session.onExit(exit => {
           traceBinding.dispose();
           if (!closed) {
-            const entry = workspaces.get(projectWindowKey(project));
+            const entry = 'reveal' in panel ? workspaces.get(panel) : undefined;
             if (entry?.close === close) { entry.running = false; }
             updateEntry();
             output.appendLine(`SteamHarness Web stopped: ${project.name}${exit ? `; code=${exit.code}; signal=${exit.signal}` : ''}`);
@@ -432,12 +366,12 @@ export async function activateProject(context: vscode.ExtensionContext, launcher
       }
       signal?.throwIfAborted();
     }
-    const existing = workspaces.get(projectWindowKey(selected));
+    const existing = findWorkspace(selected);
     if (existing?.running) { await revealProject(existing.panel, viewColumn, signal); return; }
     const created = (async () => { await existing?.close(); return createWorkspace(selected, existing?.panel, undefined, viewColumn, signal, toolTab); })(); opening.set(projectWindowKey(selected), created);
     try {
       await created; signal?.throwIfAborted();
-      const panel = workspaces.get(projectWindowKey(selected))?.panel;
+      const panel = findWorkspace(selected)?.panel;
       if (panel && (signal || existing && viewColumn !== undefined)) { await revealProject(panel, viewColumn, signal, !!existing); }
     } finally { opening.delete(projectWindowKey(selected)); }
   };
@@ -611,10 +545,7 @@ export async function activateProject(context: vscode.ExtensionContext, launcher
       catch { panel.dispose(); return; }
     }
     if (!project) { panel.dispose(); return; }
-    await opening.get(projectWindowKey(project));
-    if (workspaces.has(projectWindowKey(project))) { panel.dispose(); return; }
-    const created = createWorkspace(project, panel); opening.set(projectWindowKey(project), created);
-    try { await created; } finally { opening.delete(projectWindowKey(project)); }
+    await createWorkspace(project, panel, undefined, undefined, undefined, false, project.projectType === 'conversation' ? 'restore' : undefined);
   } };
   context.subscriptions.push(launcher, provider, status, versionStatus, versions.onDidChangeVersions(updateVersionEntry),
     vscode.window.registerWebviewPanelSerializer('studio.project', projectSerializer),
@@ -631,7 +562,7 @@ export async function activateProject(context: vscode.ExtensionContext, launcher
         project={...candidate,uri};externalProjects.set(projectWindowKey(project),project);
       }
       await openProject(project);
-      const entry = workspaces.get(projectWindowKey(project));
+      const entry = findWorkspace(project);
       if (!entry) throw new Error(t('Project configurations are unavailable.'));
       let timeout: ReturnType<typeof setTimeout> | undefined;
       try {
@@ -665,7 +596,7 @@ export async function activateProject(context: vscode.ExtensionContext, launcher
       });
       try {
         await Promise.race([openProject(project, vscode.ViewColumn.One, controller.signal), canceled]);
-        const entry = workspaces.get(projectWindowKey(project));
+        const entry = findWorkspace(project);
         if (!entry?.running) { return false; }
         panelClosed = entry.panel.onDidDispose(() => controller.abort());
         await Promise.race([entry.ready, canceled, new Promise<never>((_resolve, reject) => {
