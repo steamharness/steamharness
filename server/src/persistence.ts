@@ -1,5 +1,5 @@
 import type { ProjectAccessRequest, ProjectAccessRequestStatus } from "@steamharness/project-access";
-import { readProjectManifest, type ProjectEntry } from '@steamharness/project-manifest';
+import { normalizeProjectManifest, type ProjectEntry } from '@steamharness/project-manifest';
 import { HttpError } from "./protocol";
 import { ProjectAccessRepository } from "./project-access";
 import type { AccessActor, ProjectRole } from "@steamharness/project-access";
@@ -2012,7 +2012,7 @@ interface TokenUsageProjectTotalRow {
 }
 
 function toProjectRecord(row: Row): DbRecord {
-  const manifest = readProjectManifest({ id: row.id, name: row.name, steamHarness: { entries: row.entries, defaultEntry: row.default_entry } });
+  const manifest = normalizeProjectManifest({ projectId: row.id, name: row.name, entries: row.entries, defaultEntry: row.default_entry });
   return {
     id: row.id,
     name: row.name,

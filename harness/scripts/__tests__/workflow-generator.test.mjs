@@ -47,7 +47,7 @@ test("workflow generator reads standalone Core and CLI versions", async () => {
     assert.equal(generated.steamHarness.entries.length, 1);
     assert.deepEqual(generated.steamHarness.entries[0], {
       entryId: "main", type: "workflow", name: "standalone-check", root: ".",
-      entry: "index.ts", configuration: "configuration.json", databases: [],
+      entry: "index.ts", configuration: "configuration.json",
     });
   } finally {
     await rm(temporaryRoot, { recursive: true, force: true });

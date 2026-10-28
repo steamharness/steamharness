@@ -6,12 +6,13 @@ import { fileURLToPath } from 'node:url';
 import { build } from 'esbuild';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
-const compiled = await build({ stdin: { contents: "export { readProjectManifest } from '@steamharness/project-manifest';", resolveDir: root }, bundle: true, platform: 'node', format: 'esm', write: false });
-const { readProjectManifest } = await import(`data:text/javascript;base64,${Buffer.from(compiled.outputFiles[0].text).toString('base64')}`);
+const compiled = await build({ stdin: { contents: "export { readProjectManifestFromDirectory } from '@steamharness/project-manifest/node';", resolveDir: root }, bundle: true, platform: 'node', format: 'esm', write: false });
+const { readProjectManifestFromDirectory } = await import(`data:text/javascript;base64,${Buffer.from(compiled.outputFiles[0].text).toString('base64')}`);
 for (const relative of ['examples/conversation', 'examples/workflow', 'examples/kanban', 'tests/fixtures/conversation-features', 'tests/fixtures/parameter-layout']) {
   test(`${relative} declares a runnable entry and database ID references`, async () => {
     const directory = path.join(root, relative);
-    const manifest = readProjectManifest(JSON.parse(await readFile(path.join(directory, 'package.json'), 'utf8')));
+    const manifest = await readProjectManifestFromDirectory(directory, {});
+    assert.equal(JSON.parse(await readFile(path.join(directory, 'config.json'), 'utf8')).entries, undefined);
     assert.ok(manifest.entries.some(entry => entry.entryId === manifest.defaultEntry));
     for (const entry of manifest.entries) {
       await access(path.join(directory, entry.root, entry.entry));

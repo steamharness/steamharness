@@ -42,7 +42,7 @@ export interface ResolvedDatabase {
   authorization: DatabaseAuthorization;
   store: KVStore;
 }
-/** Supplied by the trusted host; the manifest records only aliases and database IDs. */
+/** Supplied by the trusted host; config.json records only aliases and database IDs. */
 export interface DatabaseResolver {
   resolve(requirement: DatabaseRequirement, consumer: DatabaseConsumer): Promise<ResolvedDatabase | undefined> | ResolvedDatabase | undefined;
 }
@@ -65,7 +65,7 @@ export function createDatabasesContext(options: DatabaseConsumer & { requirement
     list: () => structuredClone(requirements),
     get(alias) {
       const requirement = requirements.find((item) => item.alias === alias);
-      if (!requirement) throw new DatabaseAccessError("DATABASE_UNBOUND", `Database alias "${alias}" is not declared by entry "${options.entryId}".`);
+      if (!requirement) throw new DatabaseAccessError("DATABASE_UNBOUND", `Database alias "${alias}" is not declared for entry "${options.entryId}".`);
       const existing = contexts.get(alias); if (existing) return existing;
       let cachedStore: ResolvedDatabase | undefined;
       const pinned = new AsyncLocalStorage<ResolvedDatabase>();

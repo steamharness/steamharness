@@ -32,11 +32,11 @@ import type { NodeContext } from "../types/context";
 const BRIDGE_URL_ENV = "STEAMHARNESS_DEVELOPER_ASSISTANT_HOST_BRIDGE_URL";
 const BRIDGE_TOKEN_ENV = "STEAMHARNESS_DEVELOPER_ASSISTANT_HOST_BRIDGE_TOKEN";
 
-test("database capabilities require an explicit declared alias", () => {
+test("database capabilities require an explicit configured alias", () => {
   const context = createTestResources();
   assert.ok(selectDatabase(context, "data").kv);
   assert.throws(() => selectDatabase(context, ""), /alias/);
-  assert.throws(() => selectDatabase(context, "missing"), /not declared/);
+  assert.throws(() => selectDatabase(context, "missing"), /not declared for entry/);
 });
 
 test("kv stores and reads back through the scope the caller named", async () => {

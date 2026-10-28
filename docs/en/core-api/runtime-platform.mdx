@@ -18,4 +18,4 @@ const platform = workflow.getRuntimePlatform();
 const local = workflow.isCli();
 ```
 
-Runtime platform does not choose the data host. Entries explicitly declare local or server database requirements and access approved spaces with `context.databases.get(alias)`. Local execution can use server spaces.
+Runtime platform does not choose the data host. Entries resolve aliases and database IDs from root config.json; the host determines the data location. Access approved spaces with `context.databases.get(alias)`. Local execution can use server spaces.

@@ -1,4 +1,4 @@
-import { readProjectManifest } from "@steamharness/project-manifest";
+import { readProjectManifestFromDirectory } from "@steamharness/project-manifest/node";
 import { randomBytes } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
@@ -78,6 +78,7 @@ export class ProjectServerCreation {
       if (typeof pkg?.id !== 'string' || pkg.id.toLowerCase() !== this.project.id.toLowerCase()
 
         || JSON.stringify(readProjectInfo(pkg)) !== JSON.stringify(confirmation.projectInfo)) throw new Error(t('The local project changed. Reopen it before creating a Server project.'));
+      const manifest = await readProjectManifestFromDirectory(this.project.folderPath, {});
       this.assertCurrent(confirmation.connection, confirmation.identity);
       if (this.confirmations.get(confirmation.context.token) !== confirmation || confirmation.expiresAt <= Date.now() || confirmation.abort.signal.aborted) {
         throw new Error(t('Project creation confirmation expired. Open the dialog again.'));
@@ -89,7 +90,7 @@ export class ProjectServerCreation {
         if (existing.status !== 404) throw new Error(t('The project is already available or needs access. Choose Check again before continuing.'));
         this.assertCurrent(confirmation.connection, confirmation.identity);
         const result = await this.request(confirmation.connection, '/api/projects', confirmation.abort.signal, false, {
-          name: input.name.trim(), entries: readProjectManifest(pkg).entries, defaultEntry: readProjectManifest(pkg).defaultEntry, projectInfo: confirmation.projectInfo,
+          name: input.name.trim(), entries: manifest.entries, defaultEntry: manifest.defaultEntry, projectInfo: confirmation.projectInfo,
           projectCard: readProjectCardMetadataFromPackageJson(pkg, this.project.projectType),
           visibility: 'private', ...(input.groupId ? { groupId: input.groupId } : {}),
         });

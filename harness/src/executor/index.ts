@@ -260,7 +260,7 @@ async function runWorkspaceProjectWithReportInternal(
     runtime.throwIfAborted();
     const location = resolveProjectLocation(cwd, options.projectName);
     projectDir = location.projectDir;
-    const projectStorageDeclaration = readProjectStorageDeclaration(projectDir, options.entryId);
+    const projectStorageDeclaration = readProjectStorageDeclaration(projectDir, options.entryId, options.env);
     const modulePath = projectStorageDeclaration.modulePath;
 
     const scriptInspection = inspectProjectScripts({
@@ -472,7 +472,7 @@ async function debugWorkspaceProjectNodeWithReportInternal(
     runtime.throwIfAborted();
     const location = resolveProjectLocation(cwd, options.projectName);
     projectDir = location.projectDir;
-    const projectStorageDeclaration = readProjectStorageDeclaration(projectDir, options.entryId);
+    const projectStorageDeclaration = readProjectStorageDeclaration(projectDir, options.entryId, options.env);
     const modulePath = projectStorageDeclaration.modulePath;
 
     const scriptInspection = inspectProjectScripts({
@@ -755,8 +755,8 @@ async function runLocalProjectWithReportInternal(
 ): Promise<ExecutionReport<unknown>> {
   const projectDir = resolveLocalProjectDir(options.projectDir);
   let projectName = options.projectName ?? readLocalProjectName(projectDir);
-  assertLocalProjectIsExecutable(projectDir, projectName, options.entryId);
-  const projectStorageDeclaration = readProjectStorageDeclaration(projectDir, options.entryId);
+  assertLocalProjectIsExecutable(projectDir, projectName, options.entryId, options.env);
+  const projectStorageDeclaration = readProjectStorageDeclaration(projectDir, options.entryId, options.env);
   const args = options.args ?? [];
   const env = options.env ?? process.env;
   const startedAt = new Date();
@@ -1158,7 +1158,7 @@ export async function resolveWorkspaceProjectParams(options: {
 }): Promise<ParamResolveResult> {
   const cwd = options.cwd ?? process.cwd();
   const location = resolveProjectLocation(cwd, options.projectName);
-  const declaration = readProjectStorageDeclaration(location.projectDir, options.entryId);
+  const declaration = readProjectStorageDeclaration(location.projectDir, options.entryId, options.env);
   return resolveProjectParamsFromModule({
     projectName: options.projectName,
     projectDir: location.projectDir,
@@ -1188,8 +1188,8 @@ export async function resolveLocalProjectParams(options: {
 }): Promise<ParamResolveResult> {
   const projectDir = resolveLocalProjectDir(options.projectDir);
   const projectName = options.projectName ?? readLocalProjectName(projectDir);
-  assertLocalProjectIsExecutable(projectDir, projectName, options.entryId);
-  const declaration = readProjectStorageDeclaration(projectDir, options.entryId);
+  assertLocalProjectIsExecutable(projectDir, projectName, options.entryId, options.env);
+  const declaration = readProjectStorageDeclaration(projectDir, options.entryId, options.env);
   return resolveProjectParamsFromModule({
     projectName,
     projectDir,
@@ -1322,8 +1322,8 @@ function readInputConversationId(input: unknown): string | undefined {
 }
 
 const createExecutorStorageContexts = createExecutorHostState;
-function readProjectStorageDeclaration(projectDir: string, entryId?: string): ProjectStorageDeclaration {
-  const resolved = resolveProjectEntrySync(projectDir, entryId);
+function readProjectStorageDeclaration(projectDir: string, entryId?: string, env?: NodeJS.ProcessEnv): ProjectStorageDeclaration {
+  const resolved = resolveProjectEntrySync(projectDir, entryId, env);
   return { ...resolved, projectId: resolved.manifest.projectId, entryId: resolved.registration.entryId };
 }
 
@@ -2007,9 +2007,9 @@ function readProjectDeclaredDependencies(projectDir: string): Set<string> {
 function resolveProjectLocation(
   cwd: string,
   projectName: string,
-): { projectDir: string; modulePath: string } {
+): { projectDir: string } {
   const projectDir = path.resolve(cwd, "workspace", "workflow", projectName);
-  return { projectDir, modulePath: resolveProjectEntrySync(projectDir).modulePath };
+  return { projectDir };
 }
 
 function resolveLocalProjectDir(projectDir = "."): string {
@@ -2124,8 +2124,8 @@ function readKanbanStructureFiles(projectDir: string, currentDir = projectDir): 
   }).sort((left, right) => left.localeCompare(right));
 }
 
-function assertLocalProjectIsExecutable(projectDir: string, projectName: string, entryId?: string): void {
-  if (resolveProjectEntrySync(projectDir, entryId).registration.type !== "kanban") return;
+function assertLocalProjectIsExecutable(projectDir: string, projectName: string, entryId?: string, env?: NodeJS.ProcessEnv): void {
+  if (resolveProjectEntrySync(projectDir, entryId, env).registration.type !== "kanban") return;
   throw new HarnessError({
     type: "input_validation",
     message: createKanbanExecutionUnsupportedMessage(projectName),
@@ -2468,7 +2468,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 export async function runWorkspaceProjectWithReport(options: Parameters<typeof runWorkspaceProjectWithReportInternal>[0]): ReturnType<typeof runWorkspaceProjectWithReportInternal> {
   const projectDir=resolveProjectLocation(options.cwd??process.cwd(),options.projectName).projectDir;
-  const declaration=readProjectStorageDeclaration(projectDir,options.entryId);
+  const declaration=readProjectStorageDeclaration(projectDir,options.entryId,options.env);
   const identity={projectId:declaration.projectId,entryId:declaration.entryId};
   const runId=options.runId??createProjectRunId();
   const snapshot=await (await createLocalProjectConfigurationStore(projectDir,{entryId:declaration.entryId})).snapshot({runId:options.configurationRunId??runId,configuration:options.configuration});
@@ -2478,7 +2478,7 @@ export async function runWorkspaceProjectWithReport(options: Parameters<typeof r
 
 export async function debugWorkspaceProjectNodeWithReport(options: Parameters<typeof debugWorkspaceProjectNodeWithReportInternal>[0]): ReturnType<typeof debugWorkspaceProjectNodeWithReportInternal> {
   const projectDir = resolveProjectLocation(options.cwd ?? process.cwd(), options.projectName).projectDir;
-  const declaration = readProjectStorageDeclaration(projectDir, options.entryId);
+  const declaration = readProjectStorageDeclaration(projectDir, options.entryId, options.env);
   const identity = { projectId: declaration.projectId, entryId: declaration.entryId };
   const runId = options.runId ?? createProjectRunId();
   const snapshot = await (await createLocalProjectConfigurationStore(projectDir, { entryId: declaration.entryId })).snapshot({ runId: options.configurationRunId ?? runId, configuration: options.configuration });
@@ -2487,7 +2487,7 @@ export async function debugWorkspaceProjectNodeWithReport(options: Parameters<ty
 }
 
 export async function runLocalProjectWithReport(options: RunLocalProjectOptions = {}): ReturnType<typeof runLocalProjectWithReportInternal> {
-  const declaration = readProjectStorageDeclaration(resolveLocalProjectDir(options.projectDir), options.entryId);
+  const declaration = readProjectStorageDeclaration(resolveLocalProjectDir(options.projectDir), options.entryId, options.env);
   const identity = { projectId: declaration.projectId, entryId: declaration.entryId };
   const runId = options.runId ?? createProjectRunId();
   const snapshot = await (await createLocalProjectConfigurationStore(declaration.projectDir, { entryId: declaration.entryId })).snapshot({ runId: options.configurationRunId ?? runId, configuration: options.configuration });

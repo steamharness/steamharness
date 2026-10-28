@@ -146,7 +146,7 @@ export async function renderRuntimeApiIndex() {
   }
 
   lines.push(
-    "数据库按入口内 alias 访问，清单只记录 alias 与已获批的 databaseId；支持多库和跨入口共享，权限由宿主维护。每次访问重新校验授权。",
+    "数据库按 alias 访问，根 config.json 集中记录 alias 与已获批的 databaseId，各入口在 package.json 中仅声明使用的数据库别名；STEAMHARNESS_PROJECT_CONFIG 可覆盖部署值，package.json 的各入口仅声明别名。支持多库和跨入口共享，权限由宿主维护。每次访问重新校验授权。",
     "会话 KV 按 projectId + entryId + conversationId 隔离。跨入口调用保留用户身份、取消信号与工具权限，加载目标配置快照。",
     "",
     "## 运行时成员（`steamharness.*`）",
@@ -171,7 +171,7 @@ export async function renderRuntimeCapabilities() {
     "export const RUNTIME_CAPABILITIES = `Runtime surface (generated from Core):",
     ...resourceContexts.map(context => `- ${context.name}: ${context.members.map(member => member.signature).join(", ")}.`),
     "- context.entries.get(entryId) calls Workflow operations inside this aggregate with the original actor and tool restrictions.",
-    "- context.databases.get(alias) resolves an entry-local alias to its approved databaseId; manifests record references and hosts maintain all permissions.",
+    "- context.databases.get(alias) resolves a project alias to its databaseId; root config.json only stores alias-to-ID mappings, package entries list the aliases they use, STEAMHARNESS_PROJECT_CONFIG overrides deployment values, and hosts maintain all permissions.",
     "- Database grants are rechecked on every access; knowledge and attachments require knowledge permissions.",
     "`;", "",
   ].join("\n");

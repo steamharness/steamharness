@@ -75,3 +75,5 @@
 ### Fixed
 
 - Fix direct navigation and refresh of the Server Web `/projects` page returning a JSON 404 from the removed API route guard.
+
+- Keep project deployment configuration in root config.json, centralizing database aliases and IDs; package entries declare only the aliases they use. STEAMHARNESS_PROJECT_CONFIG can override deployment values; migration updates one ID, permissions remain host-managed, and distributions retain authored values.

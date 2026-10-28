@@ -198,7 +198,7 @@ describe("workflow-generator contract", () => {
 
   it("keeps the generator scaffold able to produce publishable package metadata", async () => {
     const script = await readFile(path.join(skillRoot, "scripts", "create_workflow.py"), "utf8");
-    for (const required of ["projectCard", "entries", "defaultEntry", "databases"]) {
+    for (const required of ["projectCard", "entries", "defaultEntry"]) {
       expect(script, `create_workflow.py 未生成 steamHarness.${required}`).toContain(required);
     }
   });

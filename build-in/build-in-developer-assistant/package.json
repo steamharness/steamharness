@@ -60,13 +60,10 @@
         "name": "Project Assistant",
         "root": ".",
         "entry": "index.ts",
+        "configuration": "configuration.json",
         "databases": [
-          {
-            "alias": "memory",
-            "databaseId": "00000000-0000-4000-8000-000000000001"
-          }
-        ],
-        "configuration": "configuration.json"
+          "memory"
+        ]
       },
       {
         "entryId": "studio-control",
@@ -74,8 +71,7 @@
         "name": "Studio Control",
         "root": "studio-control",
         "entry": "index.ts",
-        "configuration": "configuration.json",
-        "databases": []
+        "configuration": "configuration.json"
       }
     ],
     "defaultEntry": "main"

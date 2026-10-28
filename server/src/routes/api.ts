@@ -1,4 +1,4 @@
-import { readProjectManifest } from "@steamharness/project-manifest";
+import { normalizeProjectManifest } from "@steamharness/project-manifest";
 import { createDatabaseSpaceRouter } from './database-spaces';
 import { createGroupRouter, requestActor, pageQuery } from "./groups";
 import { resolveResourceAccess, type AccessCapability } from "@steamharness/project-access";
@@ -752,7 +752,7 @@ export function createApiRouter(
       if ("projectType" in body) throw new HttpError(400,400,"Register project entries instead of projectType.");
       const projectId = randomUUID();
       let manifest;
-      try { manifest = readProjectManifest({ id: projectId, name: projectName, steamHarness: { entries: body["entries"], defaultEntry: body["defaultEntry"] } }); }
+      try { manifest = normalizeProjectManifest({ projectId, name: projectName, entries: body["entries"], defaultEntry: body["defaultEntry"] }); }
       catch(error) { throw toHttpErrorWithStatus(error,400,400,"Invalid aggregate project declaration."); }
       const projectInfo = readDeclaredProjectInfo(body["projectInfo"]);
       const visibility = readOptionalString(body["visibility"], "visibility");

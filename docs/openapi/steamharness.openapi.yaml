@@ -7181,7 +7181,7 @@ components:
         - knowledge
     DatabaseRequirement:
       type: object
-      description: Entry-local alias for a host-approved database ID. Permissions and credentials belong to the host.
+      description: Resolved alias and host-approved ID from root config.json and deployment overrides. Package entries list only alias strings; permissions and credentials belong to the host.
       properties:
         alias: *a2
         databaseId: *a10

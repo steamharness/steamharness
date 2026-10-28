@@ -1,4 +1,4 @@
-import { readProjectManifest } from '@steamharness/project-manifest';
+import { readProjectManifestFromDirectory } from '@steamharness/project-manifest/node';
 import { spawn } from 'node:child_process';
 import { mkdir, mkdtemp, readFile, readdir, rename, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -81,7 +81,7 @@ export async function uploadServerProject(options: TransferOptions & { projectId
     const client = new ProjectServerClient(options.connection);
     try { await client.versions(options.projectId, options.signal); }
     catch (error) { if (error instanceof AuthError && error.status === 404) { throw new Error(t('This project ID is not registered. Open the project and apply for a new application ID before uploading.')); } else { throw error; } }
-    const manifest = readProjectManifest(JSON.parse(await readFile(path.join(options.directory,'package.json'),'utf8')));
+    const manifest = await readProjectManifestFromDirectory(options.directory, {});
     const expectedConfigurationRevisions = Object.fromEntries(await Promise.all(manifest.entries.map(async entry => {
       const state = await client.configurations<{publicationRevision?:number}>(options.projectId, entry.entryId, 'draft', options.signal);
       return [entry.entryId,state.publicationRevision??0];
@@ -130,7 +130,7 @@ export async function downloadServerProject(options: TransferOptions & { project
     const result = await runWorkspaceTransfer(options, ['download', options.projectId, '--target', options.version, '--path', path.join(staging, 'root')], path.join(staging, '.packs')) as { projectId: string; path: string };
     if (result.projectId !== options.projectId || path.resolve(result.path) !== path.join(staging,'root')) throw new Error(t('The server returned an invalid response.'));
     const pkg = JSON.parse(await readFile(path.join(result.path,'package.json'),'utf8'));
-    const aggregate = readProjectManifest(pkg);
+    const aggregate = await readProjectManifestFromDirectory(result.path, {});
     if (aggregate.projectId !== options.projectId || pkg.version !== options.version) throw new Error(t('The server returned an invalid response.'));
     const projects = [{projectId:result.projectId,projectName:aggregate.name,path:result.path,alreadyAvailable:false}];
     const downloaded: DownloadedServerProject[] = [];

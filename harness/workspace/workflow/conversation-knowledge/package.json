@@ -24,13 +24,10 @@
         "name": "@steamharness/conversation-knowledge-workflow",
         "root": ".",
         "entry": "index.ts",
+        "configuration": "configuration.json",
         "databases": [
-          {
-            "alias": "data",
-            "databaseId": "00000000-0000-4000-8000-000000000001"
-          }
-        ],
-        "configuration": "configuration.json"
+          "data"
+        ]
       }
     ],
     "defaultEntry": "main"

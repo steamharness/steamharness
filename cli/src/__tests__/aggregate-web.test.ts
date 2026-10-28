@@ -23,8 +23,9 @@ async function fixture(database = false) {
     entryId, type, name: entryId, root: entryId, entry: type === 'kanban' ? 'index.html' : 'index.ts', configuration: 'configuration.json',
     databases: database && entryId === 'agent' ? [{ alias: 'data', databaseId: randomUUID() }] : [],
   }));
-  const id = randomUUID(), pkg = { id, name: 'Aggregate test', steamHarness: { entries, defaultEntry: 'agent' } };
+  const id = randomUUID(), pkg = { id, name: 'Aggregate test', steamHarness: { entries: entries.map(({databases, ...entry})=>({...entry,databases:databases.map(database=>database.alias)})), defaultEntry: 'agent' } };
   await writeFile(path.join(directory, 'package.json'), JSON.stringify(pkg));
+  if(database) await writeFile(path.join(directory,'config.json'),JSON.stringify({version:1,databases:{data:entries[0]!.databases[0]!.databaseId}}));
   for (const entry of entries) {
     await mkdir(path.join(directory, entry.root));
     await writeFile(path.join(directory, entry.root, entry.entry), entry.type === 'kanban' ? '<!doctype html><title>Board</title>' : 'export {};');
@@ -94,7 +95,7 @@ it('requires database approval and binding, then applies narrowed and revoked gr
   const grant = result.value.local.grants[0], binding = result.value.local.bindings[0];
   expect((await f.post('agent', { type: 'databases', action: 'review', host: 'local', requestId: randomUUID(), databaseRequestId: request.requestId, approve: true })).ok).toBe(false);
   await database({ action: 'bind', host: 'local', alias: 'data', databaseId: binding.spaceId });
-  expect(JSON.parse(await readFile(path.join(f.directory, 'package.json'), 'utf8')).steamHarness.entries[0].databases[0].databaseId).toBe(binding.spaceId);
+  expect(JSON.parse(await readFile(path.join(f.directory, 'config.json'), 'utf8')).databases.data).toBe(binding.spaceId);
   await data('kv.setValue', { key: 'shared', value: { count: 1 } });
   expect((await data('kv.getValue', { key: 'shared' })).value.data).toEqual({ count: 1 });
   await data('knowledge.createDocument', { id: 'guide', title: 'Guide', markdown: 'Shared knowledge' });

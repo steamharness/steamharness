@@ -21,8 +21,9 @@ async function fixture(kind: ProjectKind, database = true) {
   vi.spyOn(os, 'homedir').mockReturnValue(directory);
   const requirement = { alias: 'data', databaseId: crypto.randomUUID() };
   const registration = { entryId: 'main', name: 'Main', type: kind, root: '.', entry: kind === 'kanban' ? 'index.html' : 'index.ts', databases: database ? [requirement] : [] };
-  const pkg = { id, name: 'Application', steamHarness: { defaultEntry: 'main', entries: [registration] } };
+  const pkg = { id, name: 'Application', steamHarness: { defaultEntry: 'main', entries: [{...registration,databases:registration.databases.map(database=>database.alias)}] } };
   await writeFile(path.join(directory, 'package.json'), JSON.stringify(pkg));
+  if (database) await writeFile(path.join(directory, 'config.json'), JSON.stringify({version:1,databases:{data:requirement.databaseId}}));
   await writeFile(path.join(directory, registration.entry), kind === 'kanban' ? '<html></html>' : 'export {};');
   const project: Project = { id, entryId: 'main', uri: directory, folderPath: directory, entryRoot: directory, name: 'Main', aggregateName: pkg.name,
     defaultEntry: 'main', entries: [registration], databases: registration.databases, projectType: kind, fields: [{name:'subject',type:'string',flag:'--subject'}], entrypoints: [], ...(kind === 'kanban' ? { kanban: { artifactDir: '.', entry: 'index.html' } } : {}) };
@@ -70,6 +71,8 @@ it.each(['workflow', 'conversation'] as const)('preserves %s drafts through requ
 });
 it.each(['workflow', 'conversation', 'kanban'] as const)('runs %s without a database or Server registration', async kind => {
   const f = await fixture(kind, false);
+  // A mapping used by another entry is not a requirement of this entry.
+  await writeFile(path.join(f.directory, 'config.json'), JSON.stringify({version:1,databases:{unused:crypto.randomUUID()}}));
   expect((await f.settled()).serverData).toMatchObject({ blocking: false, checks: [] });
 });
 it('recovers from a previous data error by checking the live grant rather than replaying a mutation', async () => {

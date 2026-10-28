@@ -163,3 +163,5 @@
 
 - 移除 小助手的 Context 参数菜单。
 - 移除 小助手单参数 Quick 使用的二级菜单。
+
+- 项目部署配置统一放在根 config.json，集中维护数据库别名和 ID，各入口在 package.json 中仅声明使用的数据库别名；STEAMHARNESS_PROJECT_CONFIG 可覆盖部署值。迁移只改一处 ID，权限继续由宿主维护，发行不写入环境覆盖值。

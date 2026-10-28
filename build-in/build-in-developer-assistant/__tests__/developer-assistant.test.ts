@@ -24,7 +24,11 @@ describe("developer assistant workflow", () => {
   it("keeps its distributed identity and records an approved database ID for assistant data", async () => {
     const manifest = JSON.parse(await readFile(path.join(projectDir, "package.json"), "utf8"));
     expect(manifest.id).toBe("a3aca697-b086-459b-84e4-d357ad2d9fb2");
-    expect(manifest.steamHarness.entries[0]).toMatchObject({ entryId: "main", type: "conversation", databases: [expect.objectContaining({ alias: "memory", databaseId: expect.any(String) })] });
+    expect(manifest.steamHarness.entries[0]).toMatchObject({ entryId: "main", type: "conversation" });
+    expect(manifest.steamHarness.entries[0].databases).toEqual(["memory"]);
+    const config = JSON.parse(await readFile(path.join(projectDir, "config.json"), "utf8"));
+    expect(config).not.toHaveProperty("entries");
+    expect(config.databases.memory).toEqual(expect.any(String));
   });
   it("registers Studio Control within the same project and analyzes each executor independently", () => {
     const aggregate = inspectAggregateProjectStructure(projectDir);
@@ -245,7 +249,7 @@ describe("developer assistant workflow", () => {
     expect(repairReference).toContain("旧版 CLI 返回 `0` 也不能覆盖直接发现的合同错误");
     expect(repairReference).toContain("context.databases.get(alias)");
     expect(repairReference).toContain("不要把字段机械改名");
-    expect(repairReference).toContain("入口只记录 alias 与 databaseId");
+    expect(repairReference).toContain("config.json 集中记录 alias 与 databaseId");
     expect(repairReference).toContain("代码工作区授权");
     expect(repairReference).toContain("KV 权限");
   });

@@ -1,7 +1,7 @@
 import * as vscode from 'vscode';
 import { readProjectCardMetadataFromPackageJson } from '@steamharness/project-card-metadata';
 import { projectAvatarDataUrl } from '@steamharness/project-card-metadata/avatar';
-import { readProjectManifest, selectProjectEntry } from '@steamharness/project-manifest';
+import { readProjectDeclaration, selectProjectEntry } from '@steamharness/project-manifest';
 import type { ProjectType } from './projects';
 import type { Launcher } from './workflow-cli-types';
 
@@ -100,7 +100,7 @@ export class ProjectIcons implements vscode.Disposable {
       throw error;
     }
     try {
-      const manifest = readProjectManifest(pkg);
+      const manifest = readProjectDeclaration(pkg);
       setManifest(pkg);
       return selectProjectEntry(manifest).type;
     } catch { return undefined; }

@@ -107,7 +107,7 @@ it.each([
   const databaseId = '00000000-0000-4000-8000-000000000001';
   const requirement = { alias: 'memory', databaseId, status: 'invalid' };
   const catalog = { spaces: [] as any[], requests: [] as any[], bindings: [] as any[], grants: [] as any[] };
-  const respond = (requirements: object[] = [requirement]) => f.emit({ type: 'databases-result', requestId: requests().at(-1)!.requestId, value: { projectId: f.project.id, entryId: f.project.entryId, requirements, local: catalog } });
+  const respond = (requirements: object[] = [requirement], environmentOverrides: string[] = []) => f.emit({ type: 'databases-result', requestId: requests().at(-1)!.requestId, value: { projectId: f.project.id, entryId: f.project.entryId, requirements, environmentOverrides, local: catalog } });
   const click = (en: string, zh: string) => {
     const control = [...dialog.querySelectorAll('button')].find(button => button.textContent === (language === 'en' ? en : zh))!;
     expect(control.disabled).toBe(false); control.click();
@@ -141,6 +141,11 @@ it.each([
   [...document.querySelectorAll<HTMLButtonElement>('.aggregate-navigation button')].find(button => button.textContent === (language === 'en' ? 'Databases' : '数据库'))!.click();
   expect(dialog.open).toBe(true); expect(document.querySelectorAll('.database-dialog')).toHaveLength(1);
   expect(requests().at(-1)!.action).toBe('get');
+  respond([requirement], ['memory']);
+  expect(dialog.textContent).toContain(language === 'en' ? 'Changing an alias updates every entry that uses it.' : '修改别名映射会影响所有引用它的入口。');
+  expect(dialog.textContent).toContain(language === 'en' ? 'This database ID is set by the environment.' : '此数据库 ID 由环境变量指定');
+  expect(dialog.querySelector<HTMLInputElement>('input[aria-label="' + (language === 'en' ? 'Database ID' : '数据库 ID') + '"]')!.disabled).toBe(true);
+  expect([...dialog.querySelectorAll('button')].find(button => button.textContent === (language === 'en' ? 'Save database reference' : '保存数据库引用'))!.disabled).toBe(true);
 });
 
 it('keeps the database recovery action disabled while disconnected and allows retrying a failed management request', async () => {

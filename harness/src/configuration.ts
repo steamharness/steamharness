@@ -1,5 +1,5 @@
 import { projectEntrySources } from "./project-sources";
-import { resolveProjectEntrySync } from "@steamharness/project-manifest/node";
+import { resolveProjectDeclarationEntrySync } from "@steamharness/project-manifest/node";
 import { projectEntryKey } from "@steamharness/project-manifest";
 import {isDeepStrictEqual} from "node:util";
 import { AsyncLocalStorage } from "node:async_hooks";
@@ -86,7 +86,7 @@ function discoverProjectAgentModels(projectDir: string, cache?: AgentModelSource
 }
 
 export function readProjectConfigurationDefinition(projectDir: string, entryId?: string) {
-  const resolved = resolveProjectEntrySync(projectDir, entryId);
+  const resolved = resolveProjectDeclarationEntrySync(projectDir, entryId);
   const file = resolved.configurationPath;
   projectDir = resolved.rootDir;
   const definition: ProjectConfigurationDefinition = file && existsSync(file) ? parseConfigurationDefinition(JSON.parse(readFileSync(file, "utf8"))) : { version: 1, fields: [] };
@@ -105,7 +105,7 @@ export interface LocalProjectConfigurationOptions {
   connection?:()=>ConfigurationConnection|null;
 }
 export async function createLocalProjectConfigurationStore(projectDir: string, options: LocalProjectConfigurationOptions = {}) {
-  const resolved = resolveProjectEntrySync(projectDir, options.entryId);
+  const resolved = resolveProjectDeclarationEntrySync(projectDir, options.entryId);
   return createLocalEntryConfigurationStore(resolved.rootDir, { ...options, entryId: resolved.registration.entryId, entryFile: resolved.modulePath, templateFile: path.join(resolved.projectDir, configurationTemplatePath(resolved.registration.entryId)), identity: projectEntryKey(resolved.manifest.projectId, resolved.registration.entryId), configurationFile: resolved.configurationPath, accessProjectDir: resolved.projectDir });
 }
 async function createLocalEntryConfigurationStore(projectDir: string, options: LocalProjectConfigurationOptions = {}) {

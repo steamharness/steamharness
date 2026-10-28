@@ -61,9 +61,9 @@ Studio 在用户级 `studio.agent.permissionPolicy` 保存设置，默认 `auto`
   "steamHarness": {
     "defaultEntry": "chat",
     "entries": [
-      {"entryId":"chat","type":"conversation","name":"Chat","root":"agent","entry":"index.ts","databases":[]},
-      {"entryId":"jobs","type":"workflow","name":"Jobs","root":"jobs","entry":"index.ts","databases":[]},
-      {"entryId":"board","type":"kanban","name":"Board","root":"board","entry":"dist/index.html","databases":[]}
+      {"entryId":"chat","type":"conversation","name":"Chat","root":"agent","entry":"index.ts"},
+      {"entryId":"jobs","type":"workflow","name":"Jobs","root":"jobs","entry":"index.ts"},
+      {"entryId":"board","type":"kanban","name":"Board","root":"board","entry":"dist/index.html"}
     ]
   }
 }
@@ -73,7 +73,7 @@ Studio 在用户级 `studio.agent.permissionPolicy` 保存设置，默认 `auto`
 
 `context.entries.list()` 列出注册；`context.entries.get("jobs").listEntrypoints()` 列举 Workflow 操作；`runEntrypoint("refresh", ["--limit", "10"])` 调用操作。保留原用户、取消信号和工具权限，重新校验目标配置快照及授权。目标操作使用目标入口的数据库授权；调用方不会因此获得直接数据库句柄。嵌套调用上限 16。
 
-一个聚合是一个上传、版本和 Store 安装单元。打包包含所有注册代码、配置、依赖清单和 Kanban 静态产物，保留数据库 alias/databaseId 引用；引用本身不授予权限。普通 npm dependencies 保持包管理行为。Server 只处理静态元数据、文件和数据访问，不加载执行项目代码。
+一个聚合是一个上传、版本和 Store 安装单元。打包包含所有注册代码、配置、依赖清单和 Kanban 静态产物，保留根 config.json 中的数据库映射；引用本身不授予权限。普通 npm dependencies 保持包管理行为。Server 只处理静态元数据、文件和数据访问，不加载执行项目代码。
 
 ## 项目卡片（steamHarness.projectCard）
 
@@ -401,13 +401,18 @@ try {
 
 ## 独立数据库空间
 
-`context.databases.get(alias)` 返回入口声明的数据库上下文。声明示例：
+`context.databases.get(alias)` 返回项目别名对应的数据库上下文，访问时按当前入口校验宿主授权。根 `config.json` 示例：
 
 ```json
-{"alias":"data","databaseId":"00000000-0000-4000-8000-000000000001"}
+{
+  "version": 1,
+  "databases": {
+    "data": "00000000-0000-4000-8000-000000000001"
+  }
+}
 ```
 
-把引用放入具体入口的 `databases`，不使用数据库时填 `[]`。示例 UUID 必须替换为宿主批准的真实 ID。只允许 `alias`、`databaseId`，拒绝旧的 `host`、`permissions`、`bindingRef` 字段。每个入口可引用多个数据库，同一库可授权多个项目和入口；别名在入口内唯一。业务代码始终按别名访问，更换数据库只修改 ID 映射。申请独立于清单，由宿主审批和维护 KV/知识库权限。保存引用不创建空间或授予权限。未授权或撤销时展示宿主管理入口，其他入口仍可运行。
+`package.json` 的各入口用 `"databases": ["data"]` 声明使用的别名，不写 ID。一个数据库只配置一个别名，可被多个入口引用；每个入口可引用多个库。业务代码按别名访问，更换库只修改 config.json 中一处 ID。`STEAMHARNESS_PROJECT_CONFIG` 接受 JSON，按别名覆盖 ID；不自动读取 .env。无效或缺失映射明确失败。分发保留文件配置，不写入环境覆盖值。申请和权限由宿主独立维护；保存映射不创建数据库或授予权限。每次访问重新校验授权。
 
 一个空间可被多个 projectId 和 entryId 授权访问。数据按 spaceId 保存，项目删除不删除空间。授权绑定消费方项目和入口，分别限制 KV、知识库的读写和键前缀，审批可缩小权限，撤销和轮换后每次访问立即重新校验。不要把凭据、运行时注册表或数据库数据放进项目源码和发行包。
 
@@ -1279,7 +1284,7 @@ const response = await fetch("https://api.example.com/run", {
 
 ## Package
 
-package.json 注册聚合入口，Core/CLI 依赖使用仓库指定精确版本。入口类型与 executor 一致；configuration 和代码路径相对 root。发行前静态检查每个入口，构建所有 Kanban 产物。数据库只发行 alias/databaseId 引用；权限、凭据、数据库数据、历史及个人配置不进入发行包。
+package.json 注册聚合入口，Core/CLI 依赖使用仓库指定精确版本。入口类型与 executor 一致；configuration 和代码路径相对 root。发行前静态检查每个入口，构建所有 Kanban 产物。数据库通过 config.json 发行集中映射，各入口在 package.json 中仅声明使用的数据库别名；权限、凭据、数据库数据、历史及个人配置不进入发行包。
 
 ## Server 数据服务
 

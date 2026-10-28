@@ -1,4 +1,5 @@
 import { projectManifestForDistribution } from "@steamharness/project-manifest";
+import { readProjectManifestFromDirectory } from "@steamharness/project-manifest/node";
 import { copyFile, lstat, mkdir, readFile, readdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import {
@@ -96,6 +97,8 @@ export async function createProjectUploadPlan(rootDir: string): Promise<UploadPl
     packageJson,
     availableRegularPaths,
   );
+  // Validate authored configuration; never export the machine's environment overrides.
+  await readProjectManifestFromDirectory(projectRoot, {});
   matcher.assertRequiredPaths(requiredPaths);
   for (const requiredPath of requiredPaths) {
     if (!availableRegularPaths.has(requiredPath)) {

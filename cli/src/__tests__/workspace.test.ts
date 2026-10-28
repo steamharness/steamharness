@@ -586,15 +586,18 @@ describe("server workspace CLI helpers", () => {
     expect(fetchMock).toHaveBeenCalledOnce(); expect(fetchMock.mock.calls[0][1].method).toBe("GET");
   });
 
-  it('packages every registered entry and removes installed database bindings',async()=>{
+  it('packages every entry and its authored config separately from package.json',async()=>{
     const root=await mkdtemp(path.join(os.tmpdir(),'aggregate-pack-'));
     try {
-      const entries=[{entryId:'one',name:'One',type:'workflow',root:'one',entry:'index.ts',databases:[]},{entryId:'two',name:'Two',type:'workflow',root:'two',entry:'index.ts',databases:[]},{entryId:'map',name:'Map',type:'kanban',root:'map',entry:'index.html',databases:[{alias:'data',databaseId:'c6033af9-e762-4a4e-a319-523cdb55103e'}]}];
+      const entries=[{entryId:'one',name:'One',type:'workflow',root:'one',entry:'index.ts',databases:[]},{entryId:'two',name:'Two',type:'workflow',root:'two',entry:'index.ts',databases:[]},{entryId:'map',name:'Map',type:'kanban',root:'map',entry:'index.html',databases:['data']}];
       await writeFile(path.join(root,'package.json'),JSON.stringify({id:'a7e15f8a-e179-4986-8b0d-1e69a0e65b51',name:'Aggregate',steamHarness:{defaultEntry:'one',entries}}));
+      const config={version:1,databases:{data:'c6033af9-e762-4a4e-a319-523cdb55103e'}};
+      await writeFile(path.join(root,'config.json'),JSON.stringify(config));
       for(const entry of entries){await mkdir(path.join(root,entry.root));await writeFile(path.join(root,entry.root,entry.entry),'export {};');}
       const staging=path.join(root,'staging');await stageProjectSource({projectDir:root,projectName:'aggregate',stagingRoot:staging});
       const manifest=JSON.parse(readFileSync(path.join(staging,'aggregate','package.json'),'utf8'));
-      expect(manifest.steamHarness.entries).toHaveLength(3);expect(manifest.steamHarness.entries[2].databases[0]).not.toHaveProperty('bindingRef');
+      expect(manifest.steamHarness.entries).toHaveLength(3);expect(manifest.steamHarness.entries[2].databases).toEqual(['data']);
+      expect(JSON.parse(readFileSync(path.join(staging,'aggregate','config.json'),'utf8'))).toEqual(config);
       for(const entry of entries)expect(existsSync(path.join(staging,'aggregate',entry.root,entry.entry))).toBe(true);
     }finally{await rm(root,{recursive:true,force:true});}
   });

@@ -4,7 +4,7 @@ import { mkdtemp, mkdir, writeFile, symlink, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { emptyDatabasePermissions } from "../../database-spaces/index";
-import { readProjectManifest, selectProjectEntry, projectManifestForDistribution, projectManifestTypes } from "../index";
+import { readProjectManifest, normalizeProjectManifest, selectProjectEntry, projectManifestForDistribution, projectManifestTypes } from "../index";
 import { resolveProjectEntry } from "../node";
 const id = "3bd18168-f4f6-486b-842c-ab9f8098d9d4";
 const entry = (entryId: string, type = "workflow") => ({ entryId, type, name: entryId, root: entryId, entry: type === "kanban" ? "dist/index.html" : "index.ts", databases: [] });
@@ -51,25 +51,30 @@ describe("aggregate project manifest", () => {
     }
     expect(() => readProjectManifest({ id, name: "old" })).toThrow();
   });
-  it("preserves database IDs for distribution without mutating the source", () => {
-    const p = pkg(); Object.assign(p.steamHarness.entries[0]!, { databases: [{ alias: "data", databaseId: id }] });
-    const distribution = projectManifestForDistribution(p);
-    expect(readProjectManifest(distribution).entries[0]!.databases).toEqual([{ alias: "data", databaseId: id }]);
-    expect(readProjectManifest(p).entries[0]!.databases).toEqual([{ alias: "data", databaseId: id }]);
-  });
-  it("accepts multiple database references per entry and shared IDs across entries", () => {
+  it("keeps deployment configuration out of the distributed package", () => {
     const p = pkg();
-    Object.assign(p.steamHarness.entries[0]!, { databases: [{ alias: "data", databaseId: id }, { alias: "archive", databaseId: "00000000-0000-4000-8000-000000000001" }] });
-    Object.assign(p.steamHarness.entries[1]!, { databases: [{ alias: "shared", databaseId: id }] });
-    expect(readProjectManifest(p).entries[0]!.databases).toHaveLength(2);
-    expect(readProjectManifest(p).entries[1]!.databases[0]!.databaseId).toBe(id);
+    Object.assign(p.steamHarness.entries[0]!, { databases: ["data"] });
+    const distribution = projectManifestForDistribution(p);
+    expect(distribution.steamHarness.entries[0]!.databases).toEqual(["data"]);
+    expect(distribution.steamHarness.entries.slice(1).every(entry => !("databases" in entry))).toBe(true);
+    expect(p.steamHarness.entries[0]!.databases).toEqual(["data"]);
+  });
+  it("resolves multiple aliases and shares a single configured database across entries", () => {
+    const p = pkg();
+    Object.assign(p.steamHarness.entries[0]!, { databases: ["data", "archive"] });
+    Object.assign(p.steamHarness.entries[1]!, { databases: ["data"] });
+    const manifest = readProjectManifest(p, { version: 1, databases: { data: id, archive: "00000000-0000-4000-8000-000000000001" } });
+    expect(manifest.entries.map(entry => entry.databases.length)).toEqual([2, 1, 0, 0]);
+    expect(manifest.entries[1]!.databases).toEqual([manifest.entries[0]!.databases[0]]);
+    expect(normalizeProjectManifest(JSON.parse(JSON.stringify(manifest)))).toEqual(manifest);
+    expect(() => readProjectManifest({ ...pkg(), steamHarness: { ...pkg().steamHarness, entries: manifest.entries } })).toThrow("only alias strings");
   });
   it("rejects permission declarations, binding references, invalid IDs and duplicate aliases", () => {
     for (const database of [{ alias: "data", host: "server", permissions: emptyDatabasePermissions() }, { alias: "data", databaseId: id, permissions: emptyDatabasePermissions() }, { alias: "data", databaseId: id, bindingRef: id }, { alias: "data", databaseId: "invalid" }]) {
       const p = pkg(); Object.assign(p.steamHarness.entries[0]!, { databases: [database] });
       expect(() => readProjectManifest(p)).toThrow();
     }
-    const p = pkg(); Object.assign(p.steamHarness.entries[0]!, { databases: [{ alias: "data", databaseId: id }, { alias: "data", databaseId: id }] });
+    const p = pkg(); Object.assign(p.steamHarness.entries[0]!, { databases: ["data", "data"] });
     expect(() => readProjectManifest(p)).toThrow("duplicate aliases");
   });
   it("rejects entry roots and files escaping through symlinks", async () => {

@@ -44,7 +44,7 @@ describe("packaged workflow generator", () => {
       expect(outputTypes).toContain('export interface RingContent');
 
       expect(generated.steamHarness.defaultEntry).toBe("main");
-      expect(generated.steamHarness.entries).toEqual([{ entryId: "main", type: "workflow", name: "storage-contract", root: ".", entry: "index.ts", configuration: "configuration.json", databases: [] }]);
+      expect(generated.steamHarness.entries).toEqual([{ entryId: "main", type: "workflow", name: "storage-contract", root: ".", entry: "index.ts", configuration: "configuration.json" }]);
       expect(generated.steamHarness).not.toHaveProperty("projectType");
       expect(generated.steamHarness).not.toHaveProperty("release");
       expect(generated.steamHarness.projectCard).toEqual({

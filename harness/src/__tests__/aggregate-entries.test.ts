@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
@@ -68,9 +68,9 @@ test("entry operations use target grants while rechecking the caller and inherit
     const permissions = { kv: { read: all, write: all }, knowledge: { read: all, write: all } };
     const request = registry.request({ projectId, entryId: "two", alias: "cache", target: { kind: "create", name: "Target cache" }, permissions });
     const approval = registry.review(request.requestId, { approve: true });
-    const { readFile } = await import("node:fs/promises");
+    await writeFile(path.join(directory, "config.json"), JSON.stringify({ version: 1, databases: { cache: approval.databaseId } }));
     const pkg = JSON.parse(await readFile(path.join(directory, "package.json"), "utf8"));
-    pkg.steamHarness.entries[1].databases = [{ alias: "cache", databaseId: approval.databaseId }];
+    pkg.steamHarness.entries.find((entry: {entryId: string}) => entry.entryId === "two").databases = ["cache"];
     await writeFile(path.join(directory, "package.json"), JSON.stringify(pkg));
     await writeFile(path.join(directory, "two.ts"), `const flow = steamharness.defineProject({ name: "Cache", async run(_input, context) {
       await context.databases.get("cache").kv.setValue("cached", context.actor.userId);

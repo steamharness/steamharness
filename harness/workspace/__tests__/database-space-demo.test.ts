@@ -14,7 +14,6 @@ it("runs same-type aggregate entries only after explicit independent approvals a
     const databaseResolver = createLocalDatabaseResolver(registry);
     const manifest = JSON.parse(await readFile(path.join(projectDir, "package.json"), "utf8"));
     const projectId = manifest.id;
-    const requirement = manifest.steamHarness.entries[0].databases[0];
     const run = async (entryId: string, action: string, target = projectDir) => {
       const report = await runLocalProjectWithReport({ projectDir: target, entryId, args: ["--action", action, "--value", "shared"], databaseResolver });
       expect(report.status, JSON.stringify(report.result)).toBe("success");

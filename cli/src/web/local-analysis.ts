@@ -1,4 +1,4 @@
-import { readProjectManifest } from "@steamharness/project-manifest";
+import { readProjectManifestFromDirectory } from '@steamharness/project-manifest/node';
 import { randomUUID } from 'node:crypto';
 import { mkdir, readdir, readFile, realpath, rename, rm, stat, writeFile } from 'node:fs/promises';
 import path from 'node:path';
@@ -95,7 +95,7 @@ export async function readLocalStudioAnalysis(options: { storageDir: string; pro
   const projects = [];
   const references: LocalAnalysisProject[] = [];
   for (const project of options.projects) {
-    try { const manifest = readProjectManifest(await readJson(path.join(project.folderPath, 'package.json'))); for (const entry of manifest.entries) references.push({ ...project, entryId: entry.entryId, projectType: entry.type, name: `${project.name} / ${entry.name}` }); }
+    try { const manifest = await readProjectManifestFromDirectory(project.folderPath); for (const entry of manifest.entries) references.push({ ...project, entryId: entry.entryId, projectType: entry.type, name: `${project.name} / ${entry.name}` }); }
     catch { references.push(project); }
   }
   for (const reference of [...references].sort((a, b) => Number(!!b.inWorkspace) - Number(!!a.inWorkspace))) {
@@ -110,7 +110,7 @@ export async function readLocalStudioAnalysis(options: { storageDir: string; pro
       const language = options.locale?.toLowerCase().startsWith('zh') ? 'zh-cn' : 'en';
       const name = record(names) ? Object.entries(names).find(([key]) => key.toLowerCase() === language)?.[1] : undefined;
       project.name = typeof name === 'string' && name.trim() ? name : typeof manifest.name === 'string' && manifest.name.trim() ? manifest.name : reference.name;
-      const registration = readProjectManifest(manifest).entries.find(entry => entry.entryId === reference.entryId)!;
+      const registration = (await readProjectManifestFromDirectory(directory)).entries.find(entry => entry.entryId === reference.entryId)!;
       project.name = `${project.name} / ${registration.name}`;
       const root = await projectDataDirectory(options.storageDir, directory, reference.id, registration.entryId);
       const type = registration.type;

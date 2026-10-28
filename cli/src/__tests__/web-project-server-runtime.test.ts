@@ -21,7 +21,8 @@ it.each(['workflow', 'conversation'] as const)('retains structured remote storag
     const coreRoot = await resolveHarnessRoot(), version = JSON.parse(await readFile(path.join(coreRoot, 'package.json'), 'utf8')).version;
     await mkdir(path.join(directory, 'node_modules'));
     await symlink(coreRoot, path.join(directory, 'node_modules/steamharness'), process.platform === 'win32' ? 'junction' : 'dir');
-    await writeFile(path.join(directory, 'package.json'), JSON.stringify({ id, name: 'storage-error-fixture', type: 'module', version: '1.0.0', devDependencies: { steamharness: version }, steamHarness: { defaultEntry: 'main', entries: [{entryId:'main',name:'Main',type:kind,root:'.',entry:'index.ts',databases:[{alias:'data',databaseId:crypto.randomUUID()}]}],  } }));
+    await writeFile(path.join(directory, 'package.json'), JSON.stringify({ id, name: 'storage-error-fixture', type: 'module', version: '1.0.0', devDependencies: { steamharness: version }, steamHarness: { defaultEntry: 'main', entries: [{entryId:'main',name:'Main',type:kind,root:'.',entry:'index.ts',databases:["data"]}],  } }));
+    await writeFile(path.join(directory, 'config.json'), JSON.stringify({version:1,databases:{data:crypto.randomUUID()}}));
     await writeFile(path.join(directory, 'index.ts'), `
       const flow = steamharness.defineProject({ name: 'storage-error', async run(input, context) {
         await context.databases.get('data').kv.getValue('missing-key'); return { errCode: 0, errMessage: '' };

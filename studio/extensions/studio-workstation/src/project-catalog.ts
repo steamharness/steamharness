@@ -1,5 +1,5 @@
 import * as vscode from 'vscode';
-import { readProjectManifest } from '@steamharness/project-manifest';
+import { readProjectDeclaration } from '@steamharness/project-manifest';
 import { IMPORTED_PROJECTS_KEY, readImportedProjects, rememberImportedProjects } from './projects';
 import type { DownloadedServerProject } from './steamharness-server-projects';
 
@@ -11,7 +11,7 @@ export async function resourceProjectDirectories(context: Pick<vscode.ExtensionC
   const directories = await Promise.all(readImportedProjects(context.globalState.get(IMPORTED_PROJECTS_KEY)).map(async project => {
     try {
       const uri = vscode.Uri.parse(project.uri);
-      if (uri.scheme !== 'file' || readProjectManifest(await readPackageManifest(uri)).projectId !== project.id) return undefined;
+      if (uri.scheme !== 'file' || readProjectDeclaration(await readPackageManifest(uri)).projectId !== project.id) return undefined;
       return uri.fsPath;
     } catch { return undefined; }
   }));

@@ -720,7 +720,7 @@ async function createEntrypointProject(): Promise<string> {
     name: "entrypoint-test",
     version: "0.1.0",
     type: "module",
-    steamHarness: {defaultEntry:"main",entries:[{entryId:"main",type:"workflow",name:"Main",root:".",entry:"index.ts",databases:[]}], projectInfo:{}},
+    steamHarness: {defaultEntry:"main",entries:[{entryId:"main",type:"workflow",name:"Main",root:".",entry:"index.ts",databases:["data"]}], projectInfo:{}},
   }));
   await writeFile(path.join(projectDir, "index.ts"), `
     const mainProject = steamharness.defineProject({
@@ -799,9 +799,7 @@ async function createEntrypointProject(): Promise<string> {
   const all={mode:"all" as const};const permissions={kv:{read:all,write:all},knowledge:{read:all,write:all}};
   const request=registry.request({projectId:"11111111-1111-4111-8111-111111111111",entryId:"main",alias:"data",target:{kind:"create",name:"Test data"},permissions});
   const approved=registry.review(request.requestId,{approve:true});
-  const pkg=JSON.parse(await readFile(path.join(projectDir,"package.json"),"utf8"));
-  pkg.steamHarness.entries[0].databases=[{alias:"data",databaseId:approved.databaseId}];
-  await writeFile(path.join(projectDir,"package.json"),JSON.stringify(pkg));
+  await writeFile(path.join(projectDir,"config.json"),JSON.stringify({version:1,databases:{data:approved.databaseId}}));
   fixtureDatabases.set(projectDir,createLocalDatabaseResolver(registry));
   return projectDir;
 }

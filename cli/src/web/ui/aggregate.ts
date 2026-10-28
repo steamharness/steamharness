@@ -35,10 +35,17 @@ export function mountAggregateToolbar(host: Host) {
   const render = (state: any) => {
     content.replaceChildren();
     if (state.serverError) error.textContent = state.serverError;
+    const shared = document.createElement('p');
+    shared.textContent = t('Changing an alias updates every entry that uses it.');
+    content.append(shared);
     for (const requirement of state.requirements) {
       const section = row(`${requirement.alias} · ${t(requirement.status)}`);
       const databaseId = input(t('Database ID'), requirement.databaseId);
       section.append(databaseId, button(t('Save database reference'), () => send({ action: 'bind', alias: requirement.alias, databaseId: databaseId.value })));
+      if (state.environmentOverrides?.includes(requirement.alias)) {
+        const detail = document.createElement('p'); detail.textContent = t('This database ID is set by the environment. Update the environment to change it.'); section.append(detail);
+        for (const control of section.querySelectorAll<HTMLInputElement | HTMLButtonElement>('input, button')) control.disabled = true;
+      }
       if (requirement.error) { const detail = document.createElement('p'); detail.textContent = requirement.error; section.append(detail); }
       if (requirement.status === 'bound') {
         section.append(document.createTextNode(`${requirement.space.host} · ${requirement.space.name}`));

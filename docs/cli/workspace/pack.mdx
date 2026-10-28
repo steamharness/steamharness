@@ -11,6 +11,6 @@ pnpm exec steamharness workspace pack <project-id> --path . --output project.tgz
 
 一次操作覆盖一个 projectId 的所有注册入口，包含入口代码、依赖清单、业务配置定义和 Kanban 产物。先在本地安装依赖并构建静态入口，再运行 `steamharness check .`。
 
-归档过滤凭据、宿主运行数据、Git 和 node_modules，保留 `alias → databaseId` 引用。引用不授予访问权；使用其他宿主或项目身份时，申请相应访问或替换数据库 ID。
+归档过滤凭据、宿主运行数据、Git 和 node_modules，保留根 `config.json` 中的 `alias → databaseId` 映射，不导出环境变量覆盖值。引用不授予访问权；使用其他宿主或项目身份时，申请相应访问或替换数据库 ID。
 
 默认输出 `.tgz`；打包是本地操作，不创建远程项目或空间。普通 npm 依赖继续由各包的 package.json 与锁文件管理。

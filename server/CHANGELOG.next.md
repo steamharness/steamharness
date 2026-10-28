@@ -75,3 +75,5 @@
 ### 修复
 
 - 修复直接访问或刷新 Server Web `/projects` 页面时，被已移除 API 的路由拦截并返回 JSON 404 的问题。
+
+- 项目部署配置统一放在根 config.json，集中维护数据库别名和 ID，各入口在 package.json 中仅声明使用的数据库别名；STEAMHARNESS_PROJECT_CONFIG 可覆盖部署值。迁移只改一处 ID，权限继续由宿主维护，发行不写入环境覆盖值。

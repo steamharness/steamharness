@@ -1,6 +1,6 @@
 # Unreleased
 
-- 【破坏性变更】入口数据库清单只记录 alias 与 databaseId，支持多库和跨项目、入口共享；Core 按别名解析，权限完全由宿主管理，发行保留 ID 引用，拒绝旧声明字段。
+- 【破坏性变更】入口数据库清单只列别名字符串，根 config.json 集中记录别名与 databaseId，支持多库和跨项目、入口共享；Core 按别名解析，权限完全由宿主管理，发行保留 ID 引用，拒绝旧声明字段。
 
 - 【改进】默认 Conversation 参数将模型与 effort 拆为两个独立 Quick 入口；用户模型快照支持完整宿主内置目录，同时保留 100 个自定义模型限制及全局唯一 ID 校验。
 
@@ -14,3 +14,5 @@
 - 【改进】参数支持 `userSetting: { key: "agent.permissionPolicy", mode: "fixed" | "default" }`：固定跟随时只显示系统当前权限并打开用户设置；可覆盖时保留三个权限选项，以系统值为默认，重置后继续跟随。继承状态与项目覆盖分别保存，现有任务保持原权限。
 
 - 【新增】公开用户设置快照 API `getUserSettings`、`withUserSettings` 与宿主校验 `parseUserSettings`，隔离并发执行并复制冻结设置。Agent 显式 `permissionPolicy: "inherit"` 继承用户权限，无宿主时回退 `auto`；未配置仍默认 `workspace`，本轮输入优先，工具与路径范围使用同一有效值。
+
+- 项目部署配置统一放在根 config.json，集中维护数据库别名和 ID，各入口在 package.json 中仅声明使用的数据库别名；STEAMHARNESS_PROJECT_CONFIG 可覆盖部署值。迁移只改一处 ID，权限继续由宿主维护，发行不写入环境覆盖值。

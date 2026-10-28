@@ -11,7 +11,7 @@ Server Web 是 SteamHarness Server 的浏览器管理端。登录后可查找 Wo
 
 项目列表展示类型集合，筛选匹配任一入口类型；详情提供入口清单、逐入口配置、版本和成员。数据库空间独立管理，支持申请、审批、共享授权与数据浏览。
 
-上传包必须注册非空 `steamHarness.entries` 和有效 `defaultEntry`。名称和展示平台来自 projectInfo；数据库需求归各入口。
+上传包必须注册非空 `steamHarness.entries` 和有效 `defaultEntry`。名称和展示平台来自 projectInfo；数据库别名与 ID 记录在根 config.json，各入口在 package.json 中仅声明使用的数据库别名。
 
 ## 项目与数据
 

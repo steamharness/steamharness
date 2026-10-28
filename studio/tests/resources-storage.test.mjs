@@ -24,8 +24,9 @@ async function fixture(t, host = 'local', approved = true) {
     const request=registry.request({projectId:project.id,entryId:project.entryId,alias:'data',permissions,target:{kind:'create',name:'Test data'}});
     requirement.databaseId=registry.review(request.requestId,{approve:true}).databaseId;
   }
-  const manifest={id:project.id,name:'Test',steamHarness:{defaultEntry:'main',entries:[{entryId:'main',type:'workflow',name:'Main',root:'.',entry:'index.ts',databases:[requirement]}]}};
+  const manifest={id:project.id,name:'Test',steamHarness:{defaultEntry:'main',entries:[{entryId:'main',type:'workflow',name:'Main',root:'.',entry:'index.ts',databases:["data"]}]}};
   await writeFile(path.join(folderPath,'package.json'),JSON.stringify(manifest));
+  await writeFile(path.join(folderPath,'config.json'),JSON.stringify({version:1,databases:{data:requirement.databaseId}}));
   const database=core.createDatabasesContext({projectId:project.id,entryId:'main',requirements:[requirement],resolver:core.createLocalDatabaseResolver(registry)}).get('data');
   const request=(input,connection)=>runResourceRequest({project,input:{database:'data',...input},connection},core);
   return {root,project,requirement,manifest,registry,database,request};

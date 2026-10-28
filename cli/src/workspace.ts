@@ -1,4 +1,5 @@
-import { readProjectManifest, projectManifestForDistribution, type ProjectEntry } from "@steamharness/project-manifest";
+import { readProjectManifestFromDirectory } from '@steamharness/project-manifest/node';
+import { readProjectDeclaration, projectManifestForDistribution, type ProjectEntry } from "@steamharness/project-manifest";
 import { configurationTemplatePath } from "@steamharness/project-configuration";
 import { defaultServerUrl } from "./service-url";
 
@@ -438,7 +439,7 @@ async function commandDownload(parsed: ParsedArgs): Promise<void> {
   assertApiOk(result); if (!result.data) throw new Error("Project download is unavailable.");
   const targetDir = parsed.options.path ? path.resolve(parsed.options.path) : path.join(resolveRepoRoot(), "workspace", "workflow", projectArg);
   await materializeAggregateDownload({ ...result.data, projectId }, targetDir);
-  printApiResponse({ ...result, data: { projectId, path: targetDir, entries: readProjectManifest(JSON.parse(result.data.files.find(file => file.path === "package.json")!.content)).entries } });
+  printApiResponse({ ...result, data: { projectId, path: targetDir, entries: (await readProjectManifestFromDirectory(targetDir, {})).entries } });
 }
 
 interface AggregateDownload { projectId: string; resolvedTarget?: string; sourceHash?: string; files: Array<{path:string;content:string;encoding?:"base64"}> }
@@ -457,7 +458,7 @@ export async function materializeAggregateDownload(download: AggregateDownload, 
       await mkdir(path.dirname(destination), { recursive: true }); await writeFile(destination, decodeProjectFileContent(file), { flag: "wx" });
     }
     const pkg = await assertDownloadedProjectMetadata(stage, download.projectId);
-    const manifest = readProjectManifest(pkg);
+    const manifest = await readProjectManifestFromDirectory(stage, {});
     for (const entry of manifest.entries) {
       const templateFile = download.files.find(file => file.path === configurationTemplatePath(entry.entryId));
       if (!templateFile) continue;
@@ -500,7 +501,7 @@ async function assertDownloadedProjectMetadata(
       projectId: JSON.stringify(projectId),
     }));
   }
-  readProjectManifest(metadata);
+  readProjectDeclaration(metadata);
   return metadata;
 }
 
@@ -595,7 +596,7 @@ async function readProjectPackageContext(
     ? packageJson.id.trim()
     : undefined;
   const projectName = readRequiredPackageString(packageJson, "name");
-  const manifest = readProjectManifest(packageJson);
+  const manifest = await readProjectManifestFromDirectory(projectDir, {});
 
   return {
     projectArg,

@@ -1,5 +1,5 @@
 import ignore, { type Ignore } from "ignore";
-import { readProjectManifest } from "@steamharness/project-manifest";
+import { PROJECT_CONFIG_FILE, readProjectDeclaration } from "@steamharness/project-manifest";
 
 export const STEAMHARNESS_IGNORE_FILE = ".steamharnessignore";
 
@@ -28,8 +28,9 @@ export function resolveProjectUploadRequiredPaths(
   const normalizedAvailablePaths = new Set(
     Array.from(availablePaths, (filePath) => normalizeProjectUploadPath(filePath)),
   );
-  const manifest = readProjectManifest(packageJson);
+  const manifest = readProjectDeclaration(packageJson);
   const required = new Set<string>(["package.json"]);
+  if (normalizedAvailablePaths.has(PROJECT_CONFIG_FILE)) required.add(PROJECT_CONFIG_FILE);
   for (const entry of manifest.entries) {
     const prefix = entry.root === "." ? "" : `${entry.root}/`;
     required.add(`${prefix}${entry.entry}`);

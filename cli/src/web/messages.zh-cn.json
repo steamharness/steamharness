@@ -803,5 +803,7 @@
   "Open in new browser tab": "在新的浏览器标签页中打开",
   "Default window": "默认入口",
   "Current window": "当前窗口",
-  "running": "运行中"
+  "running": "运行中",
+  "Changing an alias updates every entry that uses it.": "修改别名映射会影响所有引用它的入口。",
+  "This database ID is set by the environment. Update the environment to change it.": "此数据库 ID 由环境变量指定，请修改环境变量来更换数据库。"
 }

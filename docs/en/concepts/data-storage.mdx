@@ -9,18 +9,35 @@ A database is an independent resource of a local or server host. One `spaceId` c
 
 ## Record database references
 
-Each entry records only an `alias` and its approved `databaseId`. The host manages permissions and credentials. Old `host`, `permissions` and `bindingRef` declaration fields are rejected.
+The aggregate root `config.json` stores deployment configuration. `databases` maps each unique alias to an approved database ID and contains no `entries`. Each `package.json` entry lists the aliases it uses in a `databases` string array. The host manages permissions and credentials. Package entries accept alias strings only; old `{alias, databaseId}` objects and `host`, `permissions`, and `bindingRef` declarations are rejected.
 
 ```json
 {
-"databases": [
-  { "alias": "data", "databaseId": "00000000-0000-4000-8000-000000000001" },
-  { "alias": "archive", "databaseId": "00000000-0000-4000-8000-000000000002" }
-]
+  "version": 1,
+  "databases": {
+    "data": "00000000-0000-4000-8000-000000000001",
+    "archive": "00000000-0000-4000-8000-000000000002"
+  }
 }
 ```
 
-Replace these example UUIDs with IDs approved by your host. Entries may reference multiple databases; the same database can be granted to multiple projects and entries. Aliases are unique within an entry. Use `context.databases.get("data")` in code; replacing a database changes only the manifest mapping.
+Each entry references its required aliases in `package.json`:
+
+```json
+{
+  "steamHarness": {
+    "defaultEntry": "agent",
+    "entries": [
+      { "entryId": "agent", "type": "conversation", "name": "Agent", "root": "agent", "entry": "index.ts", "databases": ["data", "archive"] },
+      { "entryId": "database", "type": "workflow", "name": "Database", "root": "database", "entry": "index.ts", "databases": ["data"] }
+    ]
+  }
+}
+```
+
+Replace example UUIDs with IDs approved by your host. Use one alias for each database, share it between entries, and associate multiple databases with an entry when needed. Application code uses `context.databases.get("data")`. To migrate every consumer, change `databases.data` once in `config.json`; subsequent executions resolve the new ID.
+
+The `STEAMHARNESS_PROJECT_CONFIG` environment variable accepts a JSON object, such as `{"databases":{"data":"00000000-0000-4000-8000-000000000003"}}`. It overrides database IDs by alias, taking precedence over the file. A complete configuration can also be provided without a file. Unknown aliases, invalid UUIDs, and duplicate database IDs fail explicitly. Configuration does not execute project code or automatically load `.env`. Inject the variable when starting the host. Uploads, archives, and Store distributions preserve authored `config.json` values without writing the machine's environment overrides into source.
 
 Host grants independently control `kv.read/write` and `knowledge.read/write`, using `{"mode":"none"}`, `{"mode":"all"}` or `{"mode":"prefixes","prefixes":["public:"]}`. KV listing applies the granted key range before pagination and counting. Client-supplied key prefixes may only narrow that range.
 
@@ -30,7 +47,7 @@ Host grants independently control `kv.read/write` and `knowledge.read/write`, us
 2. Request a new space or access to an existing `spaceId`. The request is `pending`; no space is created and data access remains unavailable.
 3. The local host user explicitly reviews local requests. A Server system administrator approves new spaces, with the applicant becoming owner. The owner or a system administrator reviews shared access.
 4. A reviewer may reject with a reason or narrow permissions before approval. Approval returns a `databaseId` and creates a host grant for the project and entry. The application does not need a manifest reference before requesting access.
-5. Enter the approved ID under the desired alias and select **Save database reference**. The entry rechecks access and can run once checks pass. Saving records the mapping; it does not create or authorize a database. Rejected or revoked access requires a new host request; rotated credentials are refreshed by the host.
+5. Enter the approved ID under the desired alias and select **Save database reference**. Saving updates the shared mapping in root config.json and adds the alias to the current package entry; actual access rechecks the current entry grant; it does not create or authorize a database. Rejected or revoked access requires a new host request; rotated credentials are refreshed by the host.
 
 CLI Web and Studio share a user-level SQLite registry, with data directories separated by `spaceId`. Server persists catalog and data independently in PostgreSQL. Project membership still limits the caller; database grants cannot elevate their role.
 

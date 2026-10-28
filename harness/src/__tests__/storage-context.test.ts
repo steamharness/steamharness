@@ -12,8 +12,9 @@ async function fixture(host: "local" | "server") {
   const projectId=randomUUID();const all={mode:"all" as const};
   const permissions={kv:{read:all,write:all},knowledge:{read:all,write:all}};
   const requirement:DatabaseRequirement={alias:"data",databaseId:randomUUID()};
-  const pkg={id:projectId,name:"storage-test",type:"module",steamHarness:{defaultEntry:"main",entries:[{entryId:"main",name:"Main",type:"workflow",root:".",entry:"index.ts",databases:[requirement]}]}};
+  const pkg={id:projectId,name:"storage-test",type:"module",steamHarness:{defaultEntry:"main",entries:[{entryId:"main",name:"Main",type:"workflow",root:".",entry:"index.ts",databases:["data"]}]}};
   await writeFile(path.join(directory,"package.json"),JSON.stringify(pkg));
+  await writeFile(path.join(directory,"config.json"),JSON.stringify({version:1,databases:{data:requirement.databaseId}}));
   await writeFile(path.join(directory,"index.ts"),`
     const flow=steamharness.defineProject({name:"storage",async run(_input,context){
       if(Reflect.has(context,"storage")||Reflect.has(context,"kv")||Reflect.has(context,"persistentValue"))throw new Error("Removed database getter exists");
@@ -36,7 +37,7 @@ test("executors require explicitly approved bindings and expose databases instea
   assert.equal((await run()).status,"failed");assert.equal(f.registry.read().spaces.length,0);
   const approved=f.registry.review(request.requestId,{approve:true});
   f.requirement.databaseId=approved.databaseId!;
-  await writeFile(path.join(f.directory,"package.json"),JSON.stringify(f.pkg));
+  await writeFile(path.join(f.directory,"config.json"),JSON.stringify({version:1,databases:{data:f.requirement.databaseId}}));
   const report=await run();assert.equal(report.status,"success",JSON.stringify(report.result));
   assert.equal(report.result.ok&&(report.result.data as any).output.value,"main");
   f.registry.revoke(f.registry.authorization(approved.bindingRef!)!.grant.grantId);

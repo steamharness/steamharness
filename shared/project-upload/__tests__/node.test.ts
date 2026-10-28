@@ -1,8 +1,8 @@
-import { mkdtemp, mkdir, rm, symlink, writeFile } from "node:fs/promises";
+import { mkdtemp, mkdir, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { createProjectUploadPlan } from "../node";
+import { copyProjectUploadFiles, createProjectUploadPlan } from "../node";
 
 const tempDirectories: string[] = [];
 
@@ -13,6 +13,23 @@ afterEach(async () => {
 });
 
 describe("createProjectUploadPlan", () => {
+  it("requires config.json when present and copies authored values without environment overrides", async () => {
+    const root = await createProject({defaultEntry:"main",entries:[{entryId:"main",type:"workflow",name:"Main",root:".",entry:"index.ts",databases:["data"]}]});
+    const target = await mkdtemp(path.join(os.tmpdir(), "config-upload-")); tempDirectories.push(target);
+    const config = { version: 1, databases: { data: "00000000-0000-4000-8000-000000000001" } };
+    await writeFile(path.join(root, "index.ts"), "export {};");
+    await writeFile(path.join(root, "config.json"), JSON.stringify(config));
+    await writeFile(path.join(root, ".steamharnessignore"), "config.json\n");
+    await expect(createProjectUploadPlan(root)).rejects.toThrow('Required upload path "config.json"');
+    await writeFile(path.join(root, ".steamharnessignore"), "");
+    const before = process.env.STEAMHARNESS_PROJECT_CONFIG;
+    process.env.STEAMHARNESS_PROJECT_CONFIG = JSON.stringify({ databases: { data: "00000000-0000-4000-8000-000000000002" } });
+    try { await copyProjectUploadFiles(root, target); }
+    finally { if (before === undefined) delete process.env.STEAMHARNESS_PROJECT_CONFIG; else process.env.STEAMHARNESS_PROJECT_CONFIG = before; }
+    expect(JSON.parse(await readFile(path.join(target, "config.json"), "utf8"))).toEqual(config);
+    const pkg = JSON.parse(await readFile(path.join(target, "package.json"), "utf8"));
+    expect(pkg.steamHarness.entries[0].databases).toEqual(["data"]);
+  });
   it("includes a git-ignored Kanban artifact and applies only .steamharnessignore", async () => {
     const root = await createProject({
       defaultEntry:"board", entries:[{entryId:"board",type:"kanban",name:"Board",root:".",entry:"dist/board.html",databases:[]}],

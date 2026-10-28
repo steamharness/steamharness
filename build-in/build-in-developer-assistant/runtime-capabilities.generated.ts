@@ -6,6 +6,6 @@ export const RUNTIME_CAPABILITIES = `Runtime surface (generated from Core):
 - DatabaseContext: listValues(input), kv, knowledge, getBinding(), getRevision(), subscribe(listener, options), transaction(operation).
 - DatabaseKnowledgeContext: listDocuments(input), getDocument(documentId), createDocument(input), editDocument(input), deleteDocument(documentId), searchDocuments(input), files, readDocumentLines(input).
 - context.entries.get(entryId) calls Workflow operations inside this aggregate with the original actor and tool restrictions.
-- context.databases.get(alias) resolves an entry-local alias to its approved databaseId; manifests record references and hosts maintain all permissions.
+- context.databases.get(alias) resolves a project alias to its databaseId; root config.json only stores alias-to-ID mappings, package entries list the aliases they use, STEAMHARNESS_PROJECT_CONFIG overrides deployment values, and hosts maintain all permissions.
 - Database grants are rechecked on every access; knowledge and attachments require knowledge permissions.
 `;

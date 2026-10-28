@@ -59,7 +59,9 @@ describe("independent built-in project release", () => {
     }
     expect(definition.components).toEqual(resolved);
     expect(definition.minDesktopVersion).toBe("0.1.24");
-    expect(definition.entries).toEqual(definition.packageJson.steamHarness.entries);
+    expect(definition.entries.map(({databases, ...entry}) => ({...entry,...(databases.length?{databases:databases.map(database=>database.alias)}:{})}))).toEqual(definition.packageJson.steamHarness.entries);
+    expect(definition.entries[0].databases.some(database => database.alias === "memory")).toBe(true);
+    expect(definition.entries[1].databases).toEqual([]);
     expect(definition.defaultEntry).toBe("main");
     expect(definition.packageJson.steamHarness.projectInfo).toMatchObject({
       localizedNames: {
@@ -189,6 +191,7 @@ describe("independent built-in project release", () => {
     try {
       const fixture = path.join(workspace, "build-in", "build-in-project");
       await mkdir(fixture, { recursive: true });
+      await writeFile(path.join(fixture, "config.json"), await readFile(path.join(root, "config.json")));
       for (const [name, version] of Object.entries(definition.components)) {
         await mkdir(path.join(workspace, name));
         await writeFile(path.join(workspace, name, "package.json"), JSON.stringify({
@@ -221,6 +224,7 @@ describe("independent built-in project release", () => {
   it("requires explicit entry registration and the 0.2 Desktop floor", async () => {
     const definition = await readBuiltinDefinition(root, { mode: 'dev' });
     const fixture = await mkdtemp(path.join(os.tmpdir(), `builtin-${definition.projectId}-storage-contract-`));
+    await writeFile(path.join(fixture, "config.json"), await readFile(path.join(root, "config.json")));
     const manifest = releaseManifest(definition);
     const entries = manifest.steamHarness.entries;
     delete manifest.steamHarness.entries;

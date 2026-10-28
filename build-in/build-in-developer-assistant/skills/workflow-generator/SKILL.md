@@ -26,10 +26,10 @@ description: 生成、修改或迁移 steamharness Workflow、Conversation 或 K
 
 ## 当前 API 规则
 
-- 一个根 package.json.id UUID 注册多个 steamHarness.entries，并指定 defaultEntry。每项含 entryId、type、name、root、entry、databases，可选 configuration/schedulePresets。可注册同类型多入口，根不声明单一类型。entryId 是窗口身份，entrypointId 是 Workflow 操作身份。
+- 一个根 package.json.id UUID 注册多个 steamHarness.entries，并指定 defaultEntry。每项含 entryId、type、name、root、entry，可选 configuration/schedulePresets。可注册同类型多入口，根不声明单一类型。entryId 是窗口身份，entrypointId 是 Workflow 操作身份。
 - Workflow/Conversation 分别从注册模块加载 executor，按相对导入图静态分析。Kanban 注册构建后的 HTML；路径限制在聚合内。
 - 使用 context.entries.get(entryId) 列举和调用聚合内 Workflow 操作；保留原用户、取消与工具权限，并重新校验目标配置快照。目标数据库仍需有效授权。
-- 使用 context.databases.get(alias)，具体入口的 databases 仅记录 alias 与已申请的 databaseId，权限由宿主维护。支持多个数据库和跨入口共享，别名在入口内唯一。新空间和共享访问经宿主审批后填入 ID；每次访问校验，支持收窄、撤销、轮换。不得自动审批或自动回退。
+- 使用 context.databases.get(alias)，根 config.json 集中记录 alias 和已申请的 databaseId，各入口在 package.json 中仅列出使用的数据库别名字符串，STEAMHARNESS_PROJECT_CONFIG 可覆盖部署值，权限由宿主维护。支持多个数据库和跨入口共享，一个数据库只配置一个别名，多个入口引用它。新空间和共享访问经宿主审批后填入 ID；每次访问校验，支持收窄、撤销、轮换。不得自动审批或自动回退。
 - KV 使用 database.kv，知识库使用 database.knowledge；附件使用 database.knowledge.files。会话命名空间按 projectId + entryId + conversationId 隔离，普通 KV 禁止访问知识库保留键。
 - 一个聚合是一个商品、版本和安装单元。发行所有注册入口、依赖清单及静态产物，保留 alias/databaseId 引用；引用不授予权限，安装后由宿主校验身份和授权。普通 npm 依赖按包管理，不生成项目关系与组合发布锁。
 

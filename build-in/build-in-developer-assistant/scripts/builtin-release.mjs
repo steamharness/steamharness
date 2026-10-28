@@ -18,7 +18,7 @@ import os from "node:os";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 import semver from "semver";
-import { readProjectManifest, projectManifestForDistribution } from "steamharness";
+import { readProjectManifestFromDirectory, projectManifestForDistribution } from "steamharness";
 import { create as createTar, list as listTar } from "tar";
 import { parse as parseYaml, stringify as stringifyYaml } from "yaml";
 import { resolveReleaseMode, resolveVersionReference } from "./release-gate.mjs";
@@ -131,7 +131,7 @@ export async function readBuiltinDefinition(root = repoRoot, options = {}) {
     harness: await readRuntimeComponentVersion(packageJson, "steamharness", root, referenceMode),
     cli: await readRuntimeComponentVersion(packageJson, "@steamharness/cli", root, referenceMode),
   };
-  const manifest = readProjectManifest(packageJson);
+  const manifest = await readProjectManifestFromDirectory(root, {});
   const harnessVersion = semver.parse(components.harness);
   if (harnessVersion?.major === 0 && harnessVersion.minor === 2
       && semver.lt(minDesktopVersion, "0.1.22")) {

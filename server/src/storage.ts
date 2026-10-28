@@ -1,5 +1,6 @@
+import { readProjectManifestFromDirectory } from '@steamharness/project-manifest/node';
 import type { ProjectAccessRequest, ProjectAccessRequestStatus } from "@steamharness/project-access";
-import { readProjectManifest, selectProjectEntry, projectManifestForDistribution, type ProjectEntry } from '@steamharness/project-manifest';
+import { readProjectDeclaration, selectProjectEntry, projectManifestForDistribution, PROJECT_CONFIG_ENV, readProjectConfig, type ProjectEntry } from '@steamharness/project-manifest';
 import { DatabaseSpaceRepository } from './database-spaces';
 import { type AccessActor, type AccessCapability, type ResourceAccess } from "@steamharness/project-access";
 import {isDeepStrictEqual} from "node:util";
@@ -1483,7 +1484,7 @@ export class Storage {
 
   async configurationTemplate(projectName: string, target = "latest", entryId?: string): Promise<ProjectConfigurationTemplate | undefined> {
     const source = await this.resolveSourceTarget(projectName, target);
-    const registration = selectProjectEntry(readProjectManifest(await readPackageJson(source.sourceDir)), entryId);
+    const registration = selectProjectEntry(await readProjectManifestFromDirectory(source.sourceDir, {}), entryId);
     if (this.db) {
       const cached = await this.db.readConfigurationTemplate(projectName, registration.entryId, source.resolvedTarget);
       if (cached) return parseConfigurationTemplate(cached);
@@ -1528,7 +1529,7 @@ export class Storage {
       target = "latest";
     }
     const source = await this.resolveSourceTarget(options.projectName, target);
-    const entry = selectProjectEntry(readProjectManifest(await readPackageJson(source.sourceDir)), options.entryId);
+    const entry = selectProjectEntry(await readProjectManifestFromDirectory(source.sourceDir, {}), options.entryId);
     const entryId = entry.entryId;
     options = { ...options, entryId };
     try {
@@ -1943,7 +1944,7 @@ export class Storage {
       }
       const distribution = projectManifestForDistribution(await readPackageJson(sourceDir));
       await writeJson(path.join(sourceDir, "package.json"), distribution);
-      const published = readProjectManifest(distribution);
+      const published = await readProjectManifestFromDirectory(sourceDir, {});
       const sourceHash = await hashDirectory(sourceDir);
       const artifacts = await this.uploadVersionArtifacts({ projectName: options.projectName, version, sourceHash, sourceDir });
       const manifest: Manifest = { projectId: options.projectName, projectName: metadata.name, version,
@@ -2855,7 +2856,7 @@ export class Storage {
     const target = requestedTarget?.trim() || "draft";
     const resolved = await this.resolveSourceTarget(projectName, target);
     const metadata = await this.readPackageMetadataForTarget(projectName, resolved.resolvedTarget);
-    const registration = selectProjectEntry({entries: metadata.entries, defaultEntry: metadata.defaultEntry }, entryId);
+    const registration = configuredDatabaseEntry(metadata.entries, metadata.defaultEntry, entryId);
     if (registration.type !== "kanban") throw new HttpError(409, 409, "The selected entry is not Kanban.");
     const artifact = path.posix.join(registration.root, registration.entry);
     return { projectId: projectName, projectName: metadata.name, entryId: registration.entryId, databases: registration.databases, target, resolvedTarget: resolved.resolvedTarget, artifactDir: path.posix.dirname(artifact), entry: path.posix.basename(artifact) };
@@ -2863,12 +2864,12 @@ export class Storage {
 
   async entryDatabaseRequirements(projectId: string, entryId: string, target = "draft") {
     const metadata = target === "draft" ? await this.readProjectMetadataForEditing(projectId) : await this.readPackageMetadataForTarget(projectId,target);
-    return selectProjectEntry({entries:metadata.entries,defaultEntry:metadata.defaultEntry},entryId).databases;
+    return configuredDatabaseEntry(metadata.entries, metadata.defaultEntry, entryId).databases;
   }
   async entryDatabases(projectId: string, entryId: string, actor: AccessActor, target = "draft", conversationId?: string) {
     await this.requireProjectCapability(projectId, actor, "read");
     const metadata = target === "draft" ? await this.readProjectMetadataForEditing(projectId) : await this.readPackageMetadataForTarget(projectId, target);
-    const entry = selectProjectEntry({entries: metadata.entries, defaultEntry: metadata.defaultEntry }, entryId);
+    const entry = configuredDatabaseEntry(metadata.entries, metadata.defaultEntry, entryId);
     const { createDatabasesContext, RemoteDatabaseSpaceStore } = await import("steamharness");
     return createDatabasesContext({ projectId, entryId: entry.entryId, conversationId, requirements: entry.databases, resolver: { resolve: async requirement => {
       const authorization = await this.databases.authorization(requirement.databaseId, { projectId, entryId: entry.entryId });
@@ -3100,9 +3101,9 @@ async function validateProjectPackage(
 
   try {
     const { resolveProjectEntry } = await import("@steamharness/project-manifest/node");
-    const manifest = readProjectManifest(await readPackageJson(sourceDir));
+    const manifest = await readProjectManifestFromDirectory(sourceDir, {});
     for (const entry of manifest.entries) {
-      await resolveProjectEntry(sourceDir, entry.entryId);
+      await resolveProjectEntry(sourceDir, entry.entryId, {});
       readProjectConfigurationDefinition(sourceDir, entry.entryId);
     }
   } catch (error) { throw new HttpError(400, 400, readErrorMessage(error)); }
@@ -3147,7 +3148,7 @@ async function readProjectPackageMetadata(
   }
 
   let manifest;
-  try { manifest = readProjectManifest(packageJson); }
+  try { manifest = await readProjectManifestFromDirectory(sourceDir, {}); }
   catch (error) { throw new HttpError(400, 400, error instanceof Error ? error.message : 'Invalid aggregate project.'); }
   return {
     id,
@@ -3238,7 +3239,7 @@ async function resolvePackageRoot(extractDir: string, expectedId?: string): Prom
 }
 
 async function isProjectPackageRoot(directory: string): Promise<boolean> {
-  try { readProjectManifest(await readPackageJson(directory)); return true; } catch { return false; }
+  try { readProjectDeclaration(await readPackageJson(directory)); return true; } catch { return false; }
 }
 
 async function packageRootMatchesExpectedId(
@@ -4045,4 +4046,15 @@ function readNumberEnv(name: string, fallback: number): number {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+/** Apply host deployment overrides to the normalized metadata for this source target. */
+function configuredDatabaseEntry(entries: ProjectEntry[], defaultEntry: string, entryId?: string): ProjectEntry {
+  const entry = selectProjectEntry({ entries, defaultEntry }, entryId);
+  if (process.env[PROJECT_CONFIG_ENV] === undefined) return entry;
+  const config = readProjectConfig({
+    version: 1,
+    databases: Object.fromEntries(entries.flatMap(item => item.databases.map(database => [database.alias, database.databaseId]))),
+  }, process.env);
+  return { ...entry, databases: entry.databases.map(database => ({ ...database, databaseId: config.databases[database.alias]! })) };
 }

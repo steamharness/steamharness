@@ -8,7 +8,7 @@ export async function runResourceRequest(request, core) {
   const input = request.input;
   if (!['kv','knowledge'].includes(input.kind) || !['list','get','save','delete'].includes(input.action)) throw new Error('Invalid resource operation.');
   const folder = await realpath(request.project.folderPath);
-  const manifest = core.readProjectManifest(JSON.parse(await readFile(path.join(folder,'package.json'),'utf8')));
+  const manifest = await core.readProjectManifestFromDirectory(folder);
   if (manifest.projectId !== request.project.id) throw new Error('The project identity changed.');
   const entry = core.selectProjectEntry(manifest, request.project.entryId);
   const requirement = entry.databases.find(item => item.alias === input.database);

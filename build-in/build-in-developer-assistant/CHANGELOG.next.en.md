@@ -140,3 +140,5 @@
 - Removed Project Assistant's Context parameter menu; the context window now comes from the model itself.
 - Removed Desktop Control integration, its built-in dependency, and unadapted Kanban host control tools.
 - Removed Conversation's enable setting and custom main field declarations.
+
+- Keep project deployment configuration in root config.json, centralizing database aliases and IDs; package entries declare only the aliases they use. STEAMHARNESS_PROJECT_CONFIG can override deployment values; migration updates one ID, permissions remain host-managed, and distributions retain authored values.

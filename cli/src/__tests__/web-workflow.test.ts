@@ -37,7 +37,7 @@ function controller(saved: Partial<WorkspaceContract> = {}, legacy?: Conversatio
 async function service(legacy?: ConversationSession[]) {
   const directory = await realpath(await mkdtemp(path.join(os.tmpdir(), 'workflow-workspace-'))); folders.push(directory);
   vi.stubEnv('STEAMHARNESS_CLI_AUTH_DIR', path.join(directory, 'auth')); vi.stubEnv('STEAMHARNESS_SERVER_URL', ''); vi.stubEnv('STEAMHARNESS_SERVER_ADMIN_KEY', '');
-  const executor = runtime(), descriptor = { ...project, folderPath: directory };
+  const executor = runtime(), descriptor = { ...project, folderPath: directory, entryRoot: directory };
   vi.mocked(executor.inspect).mockResolvedValue({ projects: [descriptor], errors: [] });
   await writeFile(path.join(directory, 'package.json'), JSON.stringify({ id: project.id, name: 'test-workflow', steamHarness: { entries: project.entries, defaultEntry: 'main' } }));
   await writeFile(path.join(directory, 'index.ts'), 'export {};');

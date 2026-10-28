@@ -1,7 +1,7 @@
 import { LocalDatabaseRegistry, createLocalDatabaseResolver, createRemoteDatabaseResolver, databaseHostRequest, bindProjectDatabase, createDatabasesContext, executeDatabaseOperation, type DatabaseResolver } from 'steamharness';
-import { readFile } from 'node:fs/promises';
 import path from 'node:path';
-import { readProjectManifest, selectProjectEntry } from '@steamharness/project-manifest';
+import { PROJECT_CONFIG_ENV, selectProjectEntry } from '@steamharness/project-manifest';
+import { readProjectManifestFromDirectory } from '@steamharness/project-manifest/node';
 import type { DatabasePermissions } from '@steamharness/database-spaces';
 import type { WebConnection } from './runtime';
 import type { Project } from './workflow-types';
@@ -16,7 +16,7 @@ export class DatabaseManagement {
     return { resolve: async (requirement, consumer) => await local.resolve(requirement, consumer) ?? remote?.resolve(requirement, consumer) };
   }
   async refreshDeclaration() {
-    const manifest = readProjectManifest(JSON.parse(await readFile(path.join(this.project.folderPath, 'package.json'), 'utf8')));
+    const manifest = await readProjectManifestFromDirectory(this.project.folderPath);
     if (manifest.projectId !== this.project.id) throw new Error('Project identity changed. Reopen the project.');
     const entry = selectProjectEntry(manifest, this.project.entryId);
     if (entry.type !== this.project.projectType || path.resolve(this.project.folderPath, entry.root) !== this.project.entryRoot) throw new Error('Project entry changed. Reopen the project.');
@@ -37,7 +37,8 @@ export class DatabaseManagement {
       try { const authorization = await databases.get(requirement.alias).getBinding(); return { ...requirement, status: 'bound', space: authorization.space }; }
       catch (error) { return { ...requirement, status: 'invalid', error: error instanceof Error ? error.message : String(error) }; }
     }));
-    return { projectId: this.project.id, entryId: this.project.entryId, requirements, local: this.registry.read(), server, serverError };
+    const environmentOverrides = Object.keys(JSON.parse(process.env[PROJECT_CONFIG_ENV] ?? '{}').databases ?? {});
+    return { projectId: this.project.id, entryId: this.project.entryId, requirements, environmentOverrides, local: this.registry.read(), server, serverError };
   }
   async dispatch(message: Record<string, any>) {
     await this.refreshDeclaration();

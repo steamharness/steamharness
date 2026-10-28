@@ -170,7 +170,7 @@ def package_json(name: str, project_type: str) -> str:
     workflow_metadata = f''',
   "steamHarness": {{
     "defaultEntry": "main",
-    "entries": [{{ "entryId": "main", "type": "{project_type}", "name": "{name}", "root": ".", "entry": "{entry_file}", "configuration": "configuration.json", "databases": [] }}],
+    "entries": [{{ "entryId": "main", "type": "{project_type}", "name": "{name}", "root": ".", "entry": "{entry_file}", "configuration": "configuration.json" }}],
     "projectCard": {{ "icon": "{icon}", "iconBackgroundColor": "{icon_background}" }}
   }}'''
     return f'''{{

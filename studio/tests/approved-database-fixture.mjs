@@ -10,9 +10,11 @@ export async function approveLocalFixtureDatabase(core, folder, manifest, direct
   const registry = new core.LocalDatabaseRegistry(directory);
   const request = registry.request({projectId:manifest.id,entryId:entry.entryId,alias:'data',permissions,target:{kind:'create',name:'UI fixture'}});
   const {databaseId} = registry.review(request.requestId,{approve:true});
-  entry.databases = [{alias:'data',databaseId}];
+  const requirements = [{alias:'data',databaseId}];
+  entry.databases = ['data'];
+  await writeFile(path.join(folder,'config.json'),JSON.stringify({version:1,databases:{data:databaseId}}));
   await writeFile(path.join(folder,'package.json'),JSON.stringify(manifest));
-  return core.createDatabasesContext({projectId:manifest.id,entryId:entry.entryId,requirements:entry.databases,resolver:core.createLocalDatabaseResolver(registry)}).get('data');
+  return core.createDatabasesContext({projectId:manifest.id,entryId:entry.entryId,requirements,resolver:core.createLocalDatabaseResolver(registry)}).get('data');
 }
 
 /** A test-only remote data host, using the same approved catalog and SDK namespaces. */

@@ -64,7 +64,7 @@ The Server does not install project dependencies, build, or load uploaded projec
 
 ## Project data and configuration
 
-Entries declare database aliases, hosts and permissions. After approval, `context.databases.get(alias)` exposes KV, knowledge and transactions. Multiple projects and entries can share one space while conversation KV stays isolated.
+Entries declare database aliases, root config.json maps aliases to approved IDs, and hosts maintain permissions. After approval, `context.databases.get(alias)` exposes KV, knowledge and transactions. Multiple projects and entries can share one space while conversation KV stays isolated.
 
 Configurations, snapshots, conversations and drafts are scoped by `projectId + entryId`. Configuration edits apply on the next run. See [Database spaces](/en/concepts/data-storage), [Project configuration](/en/concepts/project-configuration) and [KV and conversations](/en/concepts/kv-and-conversation).
 

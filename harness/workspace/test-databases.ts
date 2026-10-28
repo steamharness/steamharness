@@ -1,10 +1,10 @@
 import { randomUUID } from 'node:crypto';
 import { mkdtempSync, rmSync } from 'node:fs';
-import { cp, mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promises';
+import { cp, mkdtemp, rm, symlink, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { afterAll } from 'vitest';
-import { LocalDatabaseRegistry, createDatabasesContext, createEntriesContext, createLocalDatabaseResolver, runLocalProjectWithReport, type KVStore, type ProjectManifest } from 'steamharness';
+import { LocalDatabaseRegistry, createDatabasesContext, createEntriesContext, createLocalDatabaseResolver, readProjectManifestFromDirectorySync, runLocalProjectWithReport, type KVStore, type ProjectManifest } from 'steamharness';
 
 const permissions = {kv:{read:{mode:'all' as const},write:{mode:'all' as const}},knowledge:{read:{mode:'all' as const},write:{mode:'all' as const}}};
 const directories: string[] = [];
@@ -35,13 +35,16 @@ export async function runApprovedProject(options: Parameters<typeof runLocalProj
   try {
     await cp(options.projectDir,projectDir,{recursive:true,filter: source => !path.relative(options.projectDir,source).split(path.sep).some(part => ['node_modules','.git','dist','.data','.artifacts'].includes(part))});
     await symlink(path.join(options.projectDir,'node_modules'),path.join(projectDir,'node_modules'),process.platform === 'win32' ? 'junction' : 'dir');
-    const pkg = JSON.parse(await readFile(path.join(projectDir,'package.json'),'utf8'));
+    const manifest = readProjectManifestFromDirectorySync(projectDir, {});
     const registry = new LocalDatabaseRegistry(path.join(directory,'databases'));
-    for (const entry of pkg.steamHarness.entries) for (const requirement of entry.databases) {
-      const request=registry.request({projectId:pkg.id,entryId:entry.entryId,alias:requirement.alias,permissions,target:{kind:'create',name:`Test / ${entry.entryId}`}});
-      requirement.databaseId=registry.review(request.requestId,{approve:true}).databaseId;
+    const databases: Record<string, string> = {};
+    for (const entry of manifest.entries) for (const requirement of entry.databases) {
+      const spaceId = databases[requirement.alias];
+      const target = spaceId ? { kind: 'access' as const, spaceId } : { kind: 'create' as const, name: `Test / ${requirement.alias}` };
+      const request=registry.request({projectId:manifest.projectId,entryId:entry.entryId,alias:requirement.alias,permissions,target});
+      databases[requirement.alias]=registry.review(request.requestId,{approve:true}).databaseId!;
     }
-    await writeFile(path.join(projectDir,'package.json'),JSON.stringify(pkg));
+    await writeFile(path.join(projectDir,'config.json'),JSON.stringify({version:1,databases}));
     const resolver=createLocalDatabaseResolver(registry);
     return await runLocalProjectWithReport({...options,projectDir,databaseResolver:{async resolve(requirement,consumer){
       const resolved=await resolver.resolve(requirement,consumer);return resolved && databaseStore ? {...resolved,store:databaseStore} : resolved;

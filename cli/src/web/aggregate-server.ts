@@ -2,7 +2,8 @@ import { createServer } from 'node:http';
 import { randomBytes, timingSafeEqual } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
-import { readProjectManifest, selectProjectEntry } from '@steamharness/project-manifest';
+import { selectProjectEntry } from '@steamharness/project-manifest';
+import { readProjectManifestFromDirectory } from '@steamharness/project-manifest/node';
 import { startEntryWebServer, type WebOptions } from './server';
 import type { Project } from './workflow-types';
 import { t } from './localization';
@@ -13,7 +14,7 @@ const escape = (value: string) => value.replace(/[&<>"']/g, value => ({'&':'&amp
 /** One public HTTP service; each registered entry owns its controllers and state. */
 export async function startAggregateWebServer(options: WebOptions) {
   const directory = options.host?.assistantProjectDir ?? options.projectDir;
-  const readManifest = async () => readProjectManifest(JSON.parse(await readFile(path.join(directory, 'package.json'), 'utf8')));
+  const readManifest = () => readProjectManifestFromDirectory(directory);
   let manifest = await readManifest();
   const selectedId = selectProjectEntry(manifest, options.entryId).entryId;
   const credentials = { capability: randomBytes(32).toString('hex'), cookie: `project_web_${randomBytes(8).toString('hex')}` };

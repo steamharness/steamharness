@@ -95,7 +95,7 @@ try {
     for (const folderPath of request.paths) {
       try {
         const pkg = JSON.parse(readFileSync(path.join(folderPath, 'package.json'), 'utf8'));
-        const manifest = core.readProjectManifest(pkg);
+        const manifest = await core.readProjectManifestFromDirectory(folderPath);
         for (const registration of manifest.entries.filter(entry => !request.entryId || entry.entryId === request.entryId)) {
         const structure = inspectLocalProjectStructure({ projectDir: folderPath, entryId: registration.entryId });
         const projectInfo = readProjectInfo(pkg);
@@ -288,7 +288,7 @@ try {
     } else if (request.method === 'resource') {
       const target = request.target ?? {};
       if (typeof target.database !== 'string') throw new Error('A declared database alias is required.');
-      const registration = core.selectProjectEntry(core.readProjectManifest(JSON.parse(await readFile(path.join(projectDir, 'package.json'), 'utf8'))), request.project.entryId);
+      const registration = core.selectProjectEntry(await core.readProjectManifestFromDirectory(projectDir), request.project.entryId);
       const local = core.createLocalDatabaseResolver();
       const connection = core.databaseConnectionFromEnv();
       const remote = connection && core.createRemoteDatabaseResolver(connection);

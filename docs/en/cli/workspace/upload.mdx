@@ -11,6 +11,6 @@ pnpm exec steamharness workspace upload <project-id> --path .
 
 One operation covers every registered entry of one projectId, including code, dependency manifests, configuration definitions and Kanban artifacts. Install dependencies and build static entries locally, then run `steamharness check .`.
 
-Archives exclude credentials, host runtime data, Git and node_modules. Database alias-to-ID references remain. References do not grant access: request host access for another project identity or replace the database ID for another host.
+Archives exclude credentials, host runtime data, Git and node_modules. Authored database aliases and IDs remain in root config.json; environment overrides are excluded. References do not grant access: request host access for another project identity or replace the database ID for another host.
 
 Use `--file` for an archive and `--no-wait` for asynchronous preparation. Query `preparation <project-id> <job-id>`. Only a statically valid upload replaces the draft. Upload never installs dependencies or executes code.

@@ -64,7 +64,7 @@ Server 不安装项目依赖、不构建、也不加载上传的项目代码。K
 
 ## 项目数据与配置
 
-入口通过 `databases` 声明 alias、宿主和权限，获批后用 `context.databases.get(alias)` 访问 KV、知识库及事务。一个空间可以供多个项目和入口共享，会话 KV 继续隔离。
+入口通过 `databases` 仅声明别名，根 `config.json` 记录别名到获批 ID 的映射，宿主维护权限，代码用 `context.databases.get(alias)` 访问 KV、知识库及事务。一个空间可以供多个项目和入口共享，会话 KV 继续隔离。
 
 配置、快照、会话与草稿按 `projectId + entryId` 管理。配置修改从下一次运行生效。详见 [数据库空间](/concepts/data-storage)、[项目配置](/concepts/project-configuration) 和 [KV 与会话](/concepts/kv-and-conversation)。
 
