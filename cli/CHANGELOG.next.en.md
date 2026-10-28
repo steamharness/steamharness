@@ -1,5 +1,7 @@
 # Unreleased
 
+- Fixed database binding guidance to open database management directly for requests, approval and recovery. The assistant and Conversation now include the database toolbar, and startup checks use readable status labels. Review IDs no longer overwrite response IDs and leave management requests waiting indefinitely.
+
 - User model menus group built-in and custom models with direct choices and an Add model action at the bottom of standalone model controls. Model and effort can be selected independently while preserving custom project grouping, reset and source restrictions.
 
 - Fixed empty user model controls to show Configure model with setup guidance and open model settings directly. Adding a model restores the selection list.

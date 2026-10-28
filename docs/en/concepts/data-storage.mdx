@@ -15,11 +15,11 @@ Permissions independently control `kv.read/write` and `knowledge.read/write`. Ea
 
 ## Request and approval
 
-1. Select an entry and alias in CLI Web or Studio database management. Server Web also has an independent database page.
+1. Open the target entry in CLI Web or Studio and select **Databases** in the toolbar. If **Database binding requires attention** is shown, select **Open database management** in that prompt to manage its alias. This also works in the Studio assistant. Server Web has an independent database page.
 2. Request a new space or access to an existing `spaceId`. The request is `pending`; no space is created and data access remains unavailable.
 3. The local host user explicitly reviews local requests. A Server system administrator approves new spaces, with the applicant becoming owner. The owner or a system administrator reviews shared access.
-4. A reviewer may reject with a reason or narrow permissions before approval. Approval creates a grant and binding for the consumer.
-5. Only `bindingRef` belongs in the entry declaration. Rejected requests can be retried. Revocation requires a new request. The host refreshes rotated credentials; old credentials are rejected.
+4. A reviewer may reject with a reason or narrow permissions before approval. Approval creates a grant and binding; select **Bind approved space** under the target alias to bind the entry.
+5. Binding rechecks the entry, which can run once the checks pass. Only `bindingRef` belongs in the entry declaration. Rejected requests can be retried. Revocation requires a new request. The host refreshes rotated credentials; old credentials are rejected.
 
 CLI Web and Studio share a user-level SQLite registry, with data directories separated by `spaceId`. Server persists catalog and data independently in PostgreSQL. Project membership still limits the caller; database grants cannot elevate their role.
 

@@ -163,7 +163,7 @@ it.each(['en', 'zh-CN'] as const)('offers only project creation and rechecking i
   const guidance = document.getElementById('server-guidance')!;
   expect(guidance.hidden).toBe(false);
   expect(guidance.textContent).toContain(language === 'en' ? 'Register this aggregate project' : '在所选 Server 注册此聚合项目');
-  expect([...guidance.querySelectorAll('button')].map(button => button.id)).toEqual(['server-guidance-create', 'server-guidance-retry']);
+  expect([...guidance.querySelectorAll('button')].filter(button => !button.hidden).map(button => button.id)).toEqual(['server-guidance-create', 'server-guidance-retry']);
   expect(guidance.textContent).not.toMatch(/Account \/ Server|账号 \/ 服务器|switch.*Server|切换.*服务器/);
   expect(document.getElementById('server-guidance-create')!.hidden).toBe(false);
   expect(document.getElementById('server-guidance-create')!.textContent).toBe(language === 'en' ? 'Create project' : '创建项目');
@@ -183,6 +183,26 @@ it.each(['en', 'zh-CN'] as const)('offers only project creation and rechecking i
   await vi.waitFor(() => expect(guidance.hidden).toBe(true));
   expect(document.getElementById('preview-stage')!.hidden).toBe(false);
   expect(frame.src).toContain('/kanban/ready/index.html');
+});
+
+it.each(['en', 'zh-CN'] as const)('opens database management directly from blocked Kanban guidance (%s)', async language => {
+  const { sources, sendState, fetcher } = await fixture(language);
+  sources[0].onopen!();
+  sendState(1, 'blocked', { kind: 'setup-required', database: 'annotations' });
+  const action = document.querySelector<HTMLButtonElement>('#server-guidance-databases')!;
+  expect(action.hidden).toBe(false); expect(action.disabled).toBe(false);
+  expect(action.textContent).toBe(language === 'en' ? 'Open database management' : '打开数据库管理');
+  fetcher.mockImplementation(async (_url?: unknown, options?: any) => {
+    const message = JSON.parse(options.body);
+    expect(message).toMatchObject({ type: 'databases', action: 'get' });
+    return { ok: true, status: 200, json: async () => ({ messages: [{ type: 'databases-result', requestId: message.requestId, value: { requirements: [] } }] }) };
+  });
+  action.click();
+  const dialog = document.querySelector<HTMLDialogElement>('.database-dialog')!;
+  expect(dialog.open).toBe(true);
+  await vi.waitFor(() => expect(dialog.hasAttribute('aria-busy')).toBe(false));
+  expect(document.querySelector<HTMLIFrameElement>('#kanban-preview')!.getAttribute('src')).toBeNull();
+  expect(document.getElementById('server-guidance')!.hidden).toBe(false);
 });
 
 it('offers project creation without host upload support and hides it when access is denied', async () => {

@@ -87,9 +87,12 @@ it('requires database approval and binding, then applies narrowed and revoked gr
   let result = await database({ action: 'request', host: 'local', alias: 'data', target: { kind: 'create', name: 'Approved space' } });
   expect(result.value.local.spaces).toEqual([]);
   const request = result.value.local.requests[0]; expect(request.status).toBe('pending');
-  result = await database({ action: 'review', host: 'local', requestId: request.requestId, approve: true });
+  const reviewMessageId = randomUUID();
+  result = await database({ action: 'review', host: 'local', requestId: reviewMessageId, databaseRequestId: request.requestId, approve: true });
+  expect(result.requestId).toBe(reviewMessageId);
+  expect(result.value.local.requests[0]).toMatchObject({ requestId: request.requestId, status: 'approved' });
   const grant = result.value.local.grants[0], binding = result.value.local.bindings[0];
-  expect((await f.post('agent', { type: 'databases', action: 'review', host: 'local', requestId: request.requestId, approve: true })).ok).toBe(false);
+  expect((await f.post('agent', { type: 'databases', action: 'review', host: 'local', requestId: randomUUID(), databaseRequestId: request.requestId, approve: true })).ok).toBe(false);
   await database({ action: 'bind', host: 'local', alias: 'data', bindingRef: binding.bindingRef });
   expect(JSON.parse(await readFile(path.join(f.directory, 'package.json'), 'utf8')).steamHarness.entries[0].databases[0].bindingRef).toBe(binding.bindingRef);
   await data('kv.setValue', { key: 'shared', value: { count: 1 } });

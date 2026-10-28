@@ -4,3 +4,6 @@
 .database-data label { display: flex; flex-direction: column; gap: 4px; }
 .database-data-result { max-height: 280px; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; }
 .database-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.toolbar:has(.aggregate-navigation) { flex-wrap: wrap; }
+.project-title:has(.aggregate-navigation) { flex: 1 1 260px; flex-wrap: wrap; }
+.aggregate-navigation { flex-wrap: wrap; max-width: 100%; }

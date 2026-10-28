@@ -76,6 +76,7 @@ function initialize(): void {
     </div>`;
 
   const configurationPanel = mountProjectConfigurations(vscode);
+  const aggregateToolbar = mountAggregateToolbar(vscode);
 
   interface State { serverData?: ProjectServerState; project: Project; sessions: ConversationSession[]; activeId: string; running: boolean; conversationAccess?: { readOnly: boolean }; parameterValues?: Record<string, ParamValues>; account?: AccountState; authenticationRevision?: number; parameterRevision?: number; serverInstanceId?: string }
   interface FieldView {
@@ -100,6 +101,7 @@ function initialize(): void {
   const serverBlocked = () => !!state?.serverData && state.serverData.blocking !== false && (state.serverData.checking || !!state.serverData.issue);
   const serverGuidance = new ProjectServerGuidance(document.getElementById('server-guidance')!, {
     create: () => { vscode.postMessage({ type: 'open-project-create' }); },
+    databases: aggregateToolbar.openDatabases,
     retry: () => { checkingServer = true; updateControls(); post({ type: 'project-server-check' }); },
   });
   let renderedProject = '';

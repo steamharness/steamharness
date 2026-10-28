@@ -53,7 +53,7 @@ app.innerHTML = `
   </main><dialog id="history-dialog" class="conversation-dialog"><header><label class="history-search">${iconHtml('search')}<input id="search-history" type="search" placeholder="${t("Search runs")}" aria-label="${t("Search runs")}"></label><button id="close-history" class="icon-button" title="${t("Close")}" aria-label="${t("Close")}">${iconHtml('close')}</button></header><div id="search-results" class="dialog-body"></div><button id="search-more" class="all-history" hidden>${t("Load more")}</button></dialog>
   <dialog id="node-dialog" class="conversation-dialog"><header><h2 id="node-title"></h2><button id="close-node" class="icon-button" title="${t("Close")}" aria-label="${t("Close")}">${iconHtml('close')}</button></header><pre id="node-detail" class="dialog-body web-preview"></pre></dialog>`;
 const configurationPanel = mountProjectConfigurations(host);
-mountAggregateToolbar(host);
+const aggregateToolbar = mountAggregateToolbar(host);
 const element = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
 const traceButton = iconButton('history', t("Trace"), () => post({ type: 'trace', runId: state?.run?.id }));
 traceButton.id = 'open-trace'; document.querySelector('.run-heading-actions')!.prepend(traceButton);
@@ -64,6 +64,7 @@ const stateRevisions = new StateRevisions();
 const serverBlocked = () => !!state?.serverData && state.serverData.blocking !== false && (state.serverData.checking || !!state.serverData.issue);
 const serverGuidance = new ProjectServerGuidance(element('server-guidance'), {
   create: () => { host.postMessage({ type: 'open-project-create' }); },
+  databases: aggregateToolbar.openDatabases,
   retry: () => { checkingServer = true; controls(); post({ type: 'project-server-check' }); },
 });
 let paramStates: Record<string, ParamState> = {};

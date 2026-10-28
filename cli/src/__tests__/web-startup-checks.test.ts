@@ -52,7 +52,7 @@ it.each(['workflow', 'conversation'] as const)('preserves %s drafts through requ
   expect((await f.post({ type: 'databases', action: 'request', host: 'local', alias: 'data', target: { kind: 'create', name: 'Data' } })).ok).toBe(true);
   const pending = f.registry.read().requests[0]!;
   expect(pending.status).toBe('pending'); expect(f.registry.read().spaces).toEqual([]);
-  expect((await f.post({ type: 'databases', action: 'review', host: 'local', requestId: pending.requestId, approve: true })).ok).toBe(true);
+  expect((await f.post({ type: 'databases', action: 'review', host: 'local', databaseRequestId: pending.requestId, approve: true })).ok).toBe(true);
   expect((await f.settled()).serverData.issue).toBeDefined();
   const approved = f.registry.read().requests[0]!;
   expect((await f.post({ type: 'databases', action: 'bind', host: 'local', alias: 'data', bindingRef: approved.bindingRef })).ok).toBe(true);

@@ -62,7 +62,7 @@ export class DatabaseManagement {
     } else if (message.action === 'review') {
       if (typeof message.approve !== 'boolean') throw new Error('An explicit approval or rejection is required.');
       const decision = { approve: message.approve, reason: message.reason, permissions: message.permissions as DatabasePermissions | undefined };
-      if (host === 'local') this.registry.review(message.requestId, decision); else await remote(`/requests/${encodeURIComponent(message.requestId)}/review`, decision);
+      if (host === 'local') this.registry.review(message.databaseRequestId, decision); else await remote(`/requests/${encodeURIComponent(message.databaseRequestId)}/review`, decision);
     } else if (message.action === 'bind') {
       await bindProjectDatabase(this.project.folderPath, this.project.entryId, message.alias, message.bindingRef, this.resolver());
     } else if (['revoke', 'rotate', 'narrow'].includes(message.action)) {

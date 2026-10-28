@@ -44,12 +44,13 @@ let serverInstanceId: string | undefined;
 let values: ParamValues = {}, saveTimer: ReturnType<typeof setTimeout> | undefined, readyTimer: ReturnType<typeof setTimeout> | undefined, pendingBridge = 0;
 let methodSession: ReturnType<typeof createKanbanMethodSession> | undefined;
 const methodCalls = new Map<string, AbortController>();
+const aggregateToolbar = mountAggregateToolbar(host);
 const serverGuidance = new ProjectServerGuidance(element('server-guidance'), {
   create: () => { void host.postMessage({ type: 'open-project-create' }); },
+  databases: aggregateToolbar.openDatabases,
   retry: () => { void checkApplication(); },
 });
 mountProjectConfigurations(host);
-mountAggregateToolbar(host);
 function persist(): void { host.setState({ mode, sizes }); }
 function menu(_open: boolean): void { app.classList.remove('menu-open'); layoutPreview(); }
 function request(message: Message): Promise<Message> {

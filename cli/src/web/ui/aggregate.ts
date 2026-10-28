@@ -7,10 +7,9 @@ type Host = { postMessage(message: Record<string, any>): unknown };
 /** All entry types share this project-level navigation and host database UI. */
 export function mountAggregateToolbar(host: Host) {
   const title = document.querySelector('.project-title') ?? document.querySelector('.toolbar');
-  if (!title) return;
   const navigation = document.createElement('div'); navigation.className = 'aggregate-navigation';
   navigation.innerHTML = `<span class="aggregate-name"></span><select aria-label="${t('Project window')}"></select><button type="button">${t('Databases')}</button>`;
-  title.append(navigation);
+  title?.append(navigation);
   const select = navigation.querySelector('select')!, name = navigation.querySelector('span')!;
   const dialog = document.createElement('dialog'); dialog.className = 'conversation-dialog database-dialog';
   dialog.setAttribute('aria-label', t('Databases'));
@@ -27,7 +26,8 @@ export function mountAggregateToolbar(host: Host) {
     }
   };
   const send = (value: Record<string, any>) => { if (pending) return; pending = crypto.randomUUID(); error.textContent = ''; setBusy(true); void host.postMessage({ type: 'databases', requestId: pending, ...value }); };
-  navigation.querySelector('button')!.onclick = () => { dialog.showModal(); send({ action: 'get' }); };
+  const openDatabases = () => { if (!dialog.open) dialog.showModal(); send({ action: 'get' }); };
+  navigation.querySelector('button')!.onclick = openDatabases;
   dialog.querySelector('header button')!.addEventListener('click', () => dialog.close());
   dialog.querySelector<HTMLButtonElement>('.database-refresh')!.onclick = () => send({ action: 'get' });
   select.onchange = () => {
@@ -69,7 +69,7 @@ export function mountAggregateToolbar(host: Host) {
         if (request.status !== 'pending') continue;
         const permissions = document.createElement('textarea'); permissions.setAttribute('aria-label', t('Approved permissions')); permissions.value = JSON.stringify(request.permissions, null, 2); section.append(permissions);
         const reason = input(t('Review reason'));
-        section.append(reason, button(t('Approve'), () => { try { send({ action: 'review', host, requestId: request.requestId, approve: true, permissions: JSON.parse(permissions.value), reason: reason.value }); } catch (failure) { error.textContent = String(failure); } }), button(t('Reject'), () => send({ action: 'review', host, requestId: request.requestId, approve: false, reason: reason.value })));
+        section.append(reason, button(t('Approve'), () => { try { send({ action: 'review', host, databaseRequestId: request.requestId, approve: true, permissions: JSON.parse(permissions.value), reason: reason.value }); } catch (failure) { error.textContent = String(failure); } }), button(t('Reject'), () => send({ action: 'review', host, databaseRequestId: request.requestId, approve: false, reason: reason.value })));
       }
       for (const space of catalog.spaces) {
         const section = row(`${host} · ${space.name}`); const id = document.createElement('code'); id.textContent = space.spaceId; section.append(id);
@@ -89,13 +89,14 @@ export function mountAggregateToolbar(host: Host) {
   addEventListener('message', event => {
     if (event.source !== null && event.source !== window.parent) return;
     const message = event.data;
+    if (message?.type === 'state' && message.project) project = message.project;
     if (message?.type === 'state' && message.aggregate) {
-      project = message.project; aggregate = message.aggregate; name.textContent = aggregate.name;
+      aggregate = message.aggregate; name.textContent = aggregate.name;
       const signature = JSON.stringify(aggregate.entries);
       if (select.dataset.signature !== signature) { select.innerHTML = aggregate.entries.map((entry: any) => `<option value="${escapeHtml(entry.entryId)}">${escapeHtml(entry.name)} · ${escapeHtml(entry.type)} · ${escapeHtml(t(entry.status))}</option>`).join(''); select.dataset.signature = signature; }
       select.value = project.entryId;
     }
-    if (message?.requestId !== pending) return;
+    if (!pending || message?.requestId !== pending) return;
     if (message.type === 'databases-result') {
       pending = undefined; setBusy(false);
       const receive = receiveData; receiveData = undefined;
@@ -104,4 +105,5 @@ export function mountAggregateToolbar(host: Host) {
     }
     else if (message.type === 'error') { pending = undefined; receiveData = undefined; setBusy(false); error.textContent = message.message; }
   });
+  return { openDatabases };
 }
