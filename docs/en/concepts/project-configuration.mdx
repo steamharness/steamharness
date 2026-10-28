@@ -208,6 +208,8 @@ Guests see only accessible base profiles. They may edit author-approved values, 
 
 Restricted local values are scoped by application, Server, and account, and shared between windows of the same account. Signed-out users and failed online checks get only the guest default; previous Build permission is not reused. Reads and parameter discovery use a short-lived role cache rather than requests on each keystroke. Writes, sends, queue starts, restores, and restricted tool calls recheck online authority. Conversation history, stored personal values, and editing drafts are preserved; a draft does not grant authority.
 
+Online role checks wait up to 30 seconds to accommodate remote database latency while Server resolves inherited access. Timeouts still count as failed online checks.
+
 Supplied `configuration` snapshots and resumed runs revalidate the current account, role, stable identity, and fixed assignments. Unauthorized profiles are rejected; an active Build task is never silently continued as Ask. Published templates freeze the policy using version `3`, which unsupported hosts must reject with an upgrade prompt. Projects can check `steamharness.getProjectConfiguration()?.profilePolicyVersion`. Personal exports and configuration responses include only visible profiles and attachments; source archives still carry the complete official template and never automatically include personal credentials.
 
 Server authorizes the actual authenticated actor and inherited roles, ignoring client roles and tags. Maintainers and above keep official template management. Studio Control uses the same service even with the panel closed; read-only mode additionally rejects writes. This policy does not prevent users from modifying their own source copies.

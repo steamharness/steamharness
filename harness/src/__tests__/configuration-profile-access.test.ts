@@ -6,6 +6,7 @@ import {createHash,randomUUID} from 'node:crypto';
 import {tmpdir,homedir} from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
+import {createServer} from 'node:http';
 import {assertProjectConfigurationAccess,createLocalProjectConfigurationStore,createConfigurationState,bindConfigurationProfiles,createPublicationDraft,freezeConfigurationTemplate,cacheVerifiedConfigurationTemplate,readCachedConfigurationFile,configurationSnapshot,type ConfigurationAccess,type ProjectConfigurationState} from '../configuration';
 import {resolveProjectConfigurationAccess} from '../configuration-access';
 
@@ -59,6 +60,24 @@ test('project role comes from authenticated Server access and a failed refresh n
     assert.equal(offline.subject,JSON.stringify([connection.serverUrl,'alice']));
     assert.equal((await resolveProjectConfigurationAccess(project,null,true)).role,'guest');
   }finally{globalThis.fetch=original;await rm(project,{recursive:true,force:true});}
+});
+
+test('project roles remain available when authenticated access takes more than five seconds',async()=>{
+  const project=await mkdtemp(path.join(tmpdir(),'configuration-slow-access-'));
+  const server=createServer((request,response)=>{
+    const reply=()=>response.end(JSON.stringify({errCode:0,data:request.url==='/api/auth/me'?{profile:{userId:'alice'}}:{access:{effectiveRole:'owner'}}}));
+    if(request.url==='/api/auth/me')reply();else setTimeout(reply,5_200);
+  });
+  try{
+    await writeFile(path.join(project,'package.json'),JSON.stringify({id:randomUUID()}));
+    await new Promise<void>(resolve=>server.listen(0,'127.0.0.1',resolve));
+    const address=server.address() as {port:number};
+    const access=await resolveProjectConfigurationAccess(project,{serverUrl:`http://127.0.0.1:${address.port}`,accessToken:'test'},true,{cacheDir:path.join(project,'identity-cache')});
+    assert.equal(access.role,'owner');assert.equal(access.online,true);
+  }finally{
+    server.closeAllConnections();await new Promise<void>(resolve=>server.close(()=>resolve()));
+    await rm(project,{recursive:true,force:true});
+  }
 });
 
 test('restricted downloads still require the verified template and keep locked values when account storage is scoped',async()=>{
