@@ -1,3 +1,5 @@
+@import './model-icons.css';
+
 #account-app.settings-root { width: 100%; height: 100vh; margin: 0; padding: 0; }
 .settings-layout { display: grid; grid-template-columns: 260px minmax(0, 1fr); max-width: 1360px; height: 100%; margin: 0 auto; }
 .settings-sidebar { display: flex; flex-direction: column; gap: 24px; min-width: 0; min-height: 0; padding: 42px 20px 24px 28px; overflow: auto; }
@@ -138,35 +140,44 @@
 .settings-model-empty p { max-width: 380px; }
 .settings-model-table-viewport { overflow: auto; }
 .settings-model-table-viewport:focus-visible { outline: 1px solid var(--vscode-focusBorder); outline-offset: 2px; }
-.settings-model-table { min-width: 600px; border-spacing: 0; border-collapse: separate; }
-.settings-model-table th, .settings-model-table td { padding: 12px 16px; vertical-align: middle; border-bottom: 1px solid var(--vscode-panel-border); overflow-wrap: anywhere; }
-.settings-model-table thead th { padding-top: 12px; padding-bottom: 12px; background: var(--vscode-editor-background); font-size: 11px; }
+.settings-model-table { min-width: 600px; border-spacing: 0; border-collapse: separate; background: var(--vscode-editor-background); line-height: 20px; }
+.settings-model-table th, .settings-model-table td { padding: 5px 12px; vertical-align: middle; border-bottom: 1px solid var(--vscode-panel-border); }
+.settings-model-table thead th { padding-top: 7px; padding-bottom: 7px; background: var(--vscode-editor-background); font-size: 11px; }
 .settings-model-table th:first-child { width: 48%; }
 .settings-model-table th:nth-child(2) { width: auto; }
-.settings-model-table th:last-child { width: 136px; }
+.settings-model-table th:last-child { width: 128px; }
 .settings-model-table tbody th { position: static; color: var(--vscode-foreground); background: transparent; }
 .settings-model-table tbody tr:last-child > * { border-bottom: 0; }
-.settings-model-table small { display: block; margin-top: 5px; font-size: 11px; line-height: 1.5; }
-.settings-model-table code { font: 12px/1.5 var(--vscode-editor-font-family, monospace); }
-.settings-model-table tr > :last-child { position: sticky; right: 0; background: var(--vscode-sideBar-background, var(--vscode-editor-background)); text-align: right; }
+.settings-model-table small { font-size: 11px; }
+.settings-model-table code { font: 11px/20px var(--vscode-editor-font-family, monospace); }
+.settings-model-table tbody tr { background: transparent; }
+.settings-model-table .settings-model-row { --settings-model-hover: transparent; }
+.settings-model-table .settings-model-row:hover, .settings-model-table .settings-model-row:focus-within { --settings-model-hover: var(--vscode-list-hoverBackground, transparent); }
+/* Composite a translucent theme hover over the same opaque base in every cell, including sticky actions. */
+.settings-model-table .settings-model-row > * { background: linear-gradient(var(--settings-model-hover), var(--settings-model-hover)) var(--vscode-editor-background); }
+.settings-model-table .settings-model-row > :last-child, .settings-model-table thead tr > :last-child { position: sticky; right: 0; text-align: right; }
 .settings-model-table thead tr > :last-child { z-index: 1; background: var(--vscode-editor-background); }
-.settings-model-table tbody tr:hover > :last-child { background: var(--vscode-list-hoverBackground); }
-.settings-model-table .settings-model-group th { position: static; padding: 4px 8px; background: var(--vscode-editor-background); text-align: left; }
-.settings-model-group button { justify-content: flex-start; gap: 10px; width: 100%; padding: 8px; color: var(--vscode-foreground); background: transparent; font-weight: 500; }
+.settings-model-table .settings-model-group th { position: static; padding: 0; background: var(--vscode-editor-background); text-align: left; }
+.settings-model-group button { justify-content: flex-start; gap: 8px; width: 100%; min-height: 32px; padding: 4px 12px; border-radius: 0; color: var(--vscode-foreground); background: transparent; font-size: 12px; font-weight: 500; }
 .settings-model-group button:hover { background: var(--vscode-list-hoverBackground); }
 .settings-model-group small { margin: 0; font-weight: 400; }
-.settings-model-table td[colspan] { text-align: left; }
-.settings-model-identity { display: flex; align-items: flex-start; gap: 10px; }
-.settings-model-identity > .codicon { flex-shrink: 0; margin-top: 2px; color: var(--vscode-descriptionForeground); }
-.settings-model-name { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
-.settings-model-copy { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; min-width: 0; }
-.settings-model-copy strong { font-weight: 500; font-size: 13px; }
+.settings-model-table td[colspan] { padding: 8px 12px; text-align: left; }
+.settings-model-identity { display: flex; align-items: center; gap: 8px; min-height: 28px; }
+.settings-model-identity > .codicon { flex-shrink: 0; color: var(--vscode-descriptionForeground); }
+.settings-model-name { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.settings-model-copy { flex: 1; min-width: 0; }
+.settings-model-copy strong { min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-weight: 500; font-size: 12px; }
+.settings-model-name code { flex: 0 1 auto; min-width: 0; max-width: 40%; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 .settings-model-default, .settings-model-source-badge { display: inline-flex; align-items: center; gap: 5px; font-size: 11px; }
-.settings-model-default { padding: 1px 7px; border-radius: 4px; background: var(--vscode-badge-background, var(--vscode-button-secondaryBackground)); color: var(--vscode-badge-foreground, var(--vscode-foreground)); }
+.settings-model-default { flex: 0 0 auto; padding: 0 5px; border-radius: 3px; white-space: nowrap; background: var(--vscode-badge-background, var(--vscode-button-secondaryBackground)); color: var(--vscode-badge-foreground, var(--vscode-foreground)); font-size: 10px; line-height: 18px; }
 .settings-model-default > .codicon { font-size: 12px; }
-.settings-model-source-badge > .codicon { color: var(--vscode-descriptionForeground); }
+.settings-model-provider { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.settings-model-source-badge { min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.settings-model-provider > small { flex: 1; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.settings-model-provider > small::before { content: '·'; margin-right: 8px; }
 .settings-model-actions { display: flex; flex-wrap: wrap; gap: 8px; }
-.settings-model-row .settings-model-actions { justify-content: flex-end; gap: 4px; }
+.settings-model-row .settings-model-actions { justify-content: flex-end; flex-wrap: nowrap; gap: 2px; }
+.settings-model-row .icon-button { width: 28px; height: 28px; min-height: 28px; flex-basis: 28px; }
 .settings-model-delete:hover:not(:disabled) { color: var(--vscode-errorForeground); }
 .settings-model-confirm.icon-button { width: auto; height: auto; flex: 0 1 auto; padding: 4px 6px; color: var(--vscode-errorForeground); font-size: 11px; }
 .settings-model-dialog { width: min(640px, calc(100vw - 32px)); max-width: none; max-height: min(760px, calc(100dvh - 48px)); margin: auto; padding: 0; overflow: hidden; border: 1px solid var(--vscode-widget-border, var(--vscode-panel-border)); border-radius: 12px; background: var(--vscode-editorWidget-background, var(--vscode-editor-background)); color: var(--vscode-foreground); box-shadow: 0 16px 64px var(--vscode-widget-shadow, #0005); font: inherit; }

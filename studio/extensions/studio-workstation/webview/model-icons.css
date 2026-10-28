@@ -1,0 +1,14 @@
+/* Lobe Icons, MIT: ../resources/model-icons/LICENSE. Bundled locally as data URLs. */
+.settings-model-brand { display: inline-block; flex: 0 0 16px; width: 16px; height: 16px; background-color: currentColor; mask: center / contain no-repeat; }
+.settings-model-brand-openai { mask-image: url('../resources/model-icons/openai.svg'); }
+.settings-model-brand-claude { mask-image: url('../resources/model-icons/claude.svg'); }
+.settings-model-brand-gemini { mask-image: url('../resources/model-icons/gemini.svg'); }
+.settings-model-brand-deepseek { mask-image: url('../resources/model-icons/deepseek.svg'); }
+.settings-model-brand-qwen { mask-image: url('../resources/model-icons/qwen.svg'); }
+.settings-model-brand-kimi { mask-image: url('../resources/model-icons/kimi.svg'); }
+.settings-model-brand-minimax { mask-image: url('../resources/model-icons/minimax.svg'); }
+.settings-model-brand-doubao { mask-image: url('../resources/model-icons/doubao.svg'); }
+.settings-model-brand-grok { mask-image: url('../resources/model-icons/grok.svg'); }
+.settings-model-brand-mistral { mask-image: url('../resources/model-icons/mistral.svg'); }
+.settings-model-brand-meta { mask-image: url('../resources/model-icons/meta.svg'); }
+.settings-model-brand-zhipu { mask-image: url('../resources/model-icons/zhipu.svg'); }
