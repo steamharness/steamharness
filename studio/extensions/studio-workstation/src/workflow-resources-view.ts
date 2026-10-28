@@ -6,7 +6,7 @@ import { projectDisplayName, projectWindowKey, type Project } from './workflow-t
 import type { Launcher } from './workflow-cli-types';
 import type { AccountController } from './workflow-auth';
 import type { ResourceKind, ResourceRequest } from './workflow-resources-types';
-interface Selection { key:string; project:Project; alias:string }
+interface Selection { key:string; project:Project; alias:string; databaseId:string }
 export class ResourceViews implements vscode.Disposable {
   private selections:Selection[]=[];
   private selected?:Selection;
@@ -26,7 +26,7 @@ export class ResourceViews implements vscode.Disposable {
       account.onDidChange(()=>{const key=JSON.stringify(account.getConnection());if(key!==this.connectionKey){this.connectionKey=key;this.reset();}}));
   }
   update(projects:Project[],preferred?:Project):void{
-    this.selections=projects.filter(project=>!project.assistant).flatMap(project=>project.databases.map(database=>({key:`${projectWindowKey(project)}:database=${database.alias}`,project,alias:database.alias})));
+    this.selections=projects.filter(project=>!project.assistant).flatMap(project=>project.databases.map(database=>({key:`${projectWindowKey(project)}:database=${database.alias}`,project,alias:database.alias,databaseId:database.databaseId})));
     const preferredKey=preferred&&projectWindowKey(preferred);
     const changedPreferred=preferredKey!==this.preferredKey;this.preferredKey=preferredKey;
     const selected=(changedPreferred?this.selections.find(item=>projectWindowKey(item.project)===preferredKey):this.selections.find(item=>item.key===this.selected?.key))??this.selections[0];
@@ -69,7 +69,7 @@ export class ResourceViews implements vscode.Disposable {
         if(result!==remove){await view.webview.postMessage({type:'resources-result',id:message.id,generation,value:{cancelled:true}});return;}
       }
       signal.throwIfAborted();
-      const value=await this.launcher.resource(selected.project,{...input,source:undefined,kind,database:selected.alias},signal);
+      const value=await this.launcher.resource(selected.project,{...input,source:undefined,kind,database:selected.alias,expectedDatabaseId:selected.databaseId},signal);
       if(generation===this.generation)await view.webview.postMessage({type:'resources-result',id:message.id,generation,value});
     }catch(error){
       if(generation!==this.generation)return;const detail=error instanceof Error?error.message:String(error);this.output.appendLine(`Database ${kind}: ${detail}`);

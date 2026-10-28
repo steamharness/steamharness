@@ -59,8 +59,9 @@ test('active entries and explicit aliases select independently and stable scans 
 });
 test('the host supplies entry, alias and source and rejects untrusted workspace mutations',async t=>{
  const f=fixture(t),a=project('first');f.provider.update([a],a);
- await f.send('kv',{action:'list',source:'server',database:'forged'});
+ await f.send('kv',{action:'list',source:'server',database:'forged',expectedDatabaseId:'forged'});
  assert.equal(f.calls[0][0].entryId,'main');assert.equal(f.calls[0][1].source,undefined);assert.equal(f.calls[0][1].database,'data');
+ assert.equal(f.calls[0][1].expectedDatabaseId,a.databases[0].databaseId);
  f.vscode.workspace.isTrusted=false;await f.send('kv',{action:'save',key:'x',value:1});
  assert.equal(f.calls.length,1);assert.match(f.messages.get('kv').at(-1).error,/Trust/);
 });
@@ -76,6 +77,18 @@ test('switching entry cancels old work and late replies cannot update the panel'
  f.provider.update([a,b],a);await f.send('knowledge');const generation=f.state('knowledge').generation;
  f.provider.update([a,b],b);assert.equal(f.calls[0][2].aborted,true);finish({items:['stale']});await new Promise(resolve=>setImmediate(resolve));
  assert.equal(f.messages.get('knowledge').some(message=>message.type==='resources-result'&&message.generation===generation),false);
+});
+test('migrating an alias in place cancels pending work and old-generation writes while new requests use the new ID',async t=>{
+ let finish;const f=fixture(t,()=>new Promise(resolve=>finish=resolve)),a=project('first');
+ const original=a.databases[0].databaseId,replacement='00000000-0000-4000-8000-000000000002';
+ f.provider.update([a],a);await f.send('kv');const generation=f.state('kv').generation;
+ a.databases[0].databaseId=replacement;f.provider.update([a],a);
+ assert.equal(f.calls[0][1].expectedDatabaseId,original);assert.equal(f.calls[0][2].aborted,true);
+ assert.ok(f.state('kv').generation>generation);
+ finish({items:['old']});await new Promise(resolve=>setImmediate(resolve));
+ assert.equal(f.messages.get('kv').some(message=>message.type==='resources-result'&&message.generation===generation),false);
+ await f.send('kv',{action:'save',key:'draft',value:'old'},{generation});assert.equal(f.calls.length,1);
+ await f.send('kv');assert.equal(f.calls[1][1].expectedDatabaseId,replacement);
 });
 test('stable account checks preserve work while account rotation and logout cancel it',async t=>{
  const connection={serverUrl:'https://server.test',accessToken:'token'};
