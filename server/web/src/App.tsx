@@ -44,8 +44,9 @@ type PendingKnowledgeNavigation = {
 };
 
 function leavesKnowledgeWorkspace(current: AppRoute, next: AppRoute): boolean {
-  return current.page === "databases" &&
-    (next.page !== "databases" || next.id !== current.id);
+  if (current.page === "databases") return next.page !== "databases" || next.id !== current.id;
+  return current.page === "detail" && current.tab === "databases" &&
+    (next.page !== "detail" || next.id !== current.id || next.tab !== "databases");
 }
 
 function pushToast(tone: "success" | "error", message: string) {
@@ -1164,6 +1165,7 @@ function AppContent() {
           onRevokeProjectInvitation={(invitationId) => void revokeProjectInvitation(invitationId)}
           refreshToken={detailRefreshToken}
           onContentBusyChange={setDetailContentBusy}
+          onDirtyChange={value => { knowledgeDraftDirtyRef.current = value; }}
           onNavigateTab={navigateDetail}
           onNavigateProjectTab={(projectId, tab) => navigateTo({ page: "detail", id: projectId, tab })}
           sidebarCollapsed={false}
@@ -1173,8 +1175,8 @@ function AppContent() {
       </AppLayout>
       <ConfirmActionDialog
         action={pendingKnowledgeNavigation ? {
-          title: t("appKnowledgeGuardTitle"),
-          description: t("appKnowledgeGuardDescription"),
+          title: t("databaseDiscardDraft"),
+          description: t("databaseDiscardDescription"),
           confirmLabel: t("appKnowledgeGuardConfirm"),
           cancelLabel: t("appKnowledgeGuardCancel"),
           tone: "warning",

@@ -60,9 +60,9 @@ export class DatabaseDataPanel implements vscode.Disposable {
         }
       }
       signal.throwIfAborted();
-      const request = { ...input, kind: this.kind, source: undefined };
+      const request = { ...input, kind: this.kind, source: undefined, expectedDatabaseId: undefined };
       const value = this.target.project && this.target.alias
-        ? await this.launcher.resource!(this.target.project, { ...request, database: this.target.alias }, signal)
+        ? await this.launcher.resource!(this.target.project, { ...request, database: this.target.alias, expectedDatabaseId: this.target.space.spaceId, source: this.target.space.host }, signal)
         : await this.launcher.database!({ kind: 'host', action: 'resource', host: this.target.space.host, spaceId: this.target.space.spaceId, input: request }, signal);
       if (!this.disposed && generation === this.generation) await this.panel.webview.postMessage({ type: 'resources-result', id: message.id, generation, value });
     } catch (error) {

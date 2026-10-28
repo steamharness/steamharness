@@ -48,7 +48,7 @@ test('directory shares one database between entries and opens an alias-scoped, r
   const panel = f.panels[0]; assert.match(panel.webview.html, /resources-ui.js/);
   f.send(panel, { type: 'ready' });
   f.send(panel, { type: 'request', id: 1, generation: 0, projectUri: `local:${id}`, input: { kind: 'knowledge', action: 'list', database: 'forged', source: 'server' } }); await tick();
-  assert.equal(f.resourceCalls[0][0].entryId, 'agent'); assert.equal(f.resourceCalls[0][1].database, 'data'); assert.equal(f.resourceCalls[0][1].kind, 'kv'); assert.equal(f.resourceCalls[0][1].source, undefined);
+  assert.equal(f.resourceCalls[0][0].entryId, 'agent'); assert.equal(f.resourceCalls[0][1].database, 'data'); assert.equal(f.resourceCalls[0][1].kind, 'kv'); assert.equal(f.resourceCalls[0][1].source, 'local'); assert.equal(f.resourceCalls[0][1].expectedDatabaseId, id);
   f.send(f.view, { type: 'open', key: `local:${id}`, kind: 'kv', filter: 'project' }); assert.equal(f.panels.length, 1); assert.equal(panel.revealed, true);
   f.send(f.view, { type: 'open', key: `server:${secondId}`, kind: 'knowledge', filter: 'all' });
   const remote = f.panels[1]; f.send(remote, { type: 'ready' }); f.send(remote, { type: 'request', id: 2, generation: 0, projectUri: `server:${secondId}`, input: { action: 'list' } }); await tick();
@@ -59,6 +59,30 @@ test('account changes cancel catalog reads, discard late responses, and stable a
   const signal = f.calls[0][1]; f.account({ serverUrl: 'https://server.test', accessToken: 'test' }); assert.equal(signal.aborted, false);
   f.account(undefined); assert.equal(signal.aborted, true); finish({ local: catalog([space()]) }); await tick();
   assert.equal(f.state(f.view).databases.length, 0); assert.equal(f.state(f.view).authenticated, false);
+});
+test('account changes cancel native approvals without submitting old choices with the new account', async t => {
+  const pending = { requestId: 'pending', status: 'pending', projectId: 'project', entryId: 'agent', alias: 'data', permissions: {}, target: { kind: 'create', name: 'Memory' } };
+  const f = fixture(t, async () => ({ local: { ...catalog(), requests: [pending] } })); await tick();
+  let finish;
+  f.vscode.window.showQuickPick = async choices => choices[0];
+  f.vscode.window.showInputBox = () => new Promise(resolve => { finish = resolve; });
+  f.send(f.view, { type: 'review' }); await tick(); assert.equal(typeof finish, 'function');
+  f.account({ serverUrl: 'https://other.test', accessToken: 'other' });
+  finish('Approved'); await tick();
+  assert.equal(f.calls.filter(([input]) => input.action === 'review').length, 0);
+  assert.equal(f.state(f.view).error, '');
+});
+test('refreshing the catalog while an approval is open cannot release its operation lock', async t => {
+  const pending = { requestId: 'pending', status: 'pending', projectId: 'project', entryId: 'agent', alias: 'data', permissions: {}, target: { kind: 'create', name: 'Memory' } };
+  const f = fixture(t, async () => ({ local: { ...catalog(), requests: [pending] } })); await tick();
+  let finish, prompts = 0;
+  f.vscode.window.showQuickPick = async choices => { prompts++; return choices[0]; };
+  f.vscode.window.showInputBox = () => new Promise(resolve => { finish = resolve; });
+  f.send(f.view, { type: 'review' }); await tick(); assert.equal(prompts, 2);
+  await f.controller.refresh(); assert.equal(f.state(f.view).loading, true);
+  f.send(f.view, { type: 'review' }); await tick(); assert.equal(prompts, 2);
+  finish(''); await tick(); assert.equal(f.calls.filter(([input]) => input.action === 'review').length, 1);
+  assert.equal(f.state(f.view).loading, false);
 });
 test('a denied duplicate mutation cannot unlock a running operation, and untrusted workspaces cannot write', async t => {
   const f = fixture(t); await tick(); f.send(f.view, { type: 'open', key: `local:${id}`, kind: 'kv', filter: 'all' });

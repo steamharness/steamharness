@@ -32,7 +32,7 @@ export function DatabaseSpacesPage({ project, spaceId, onOpenSpace, onBack, onDi
     return () => { live = false; };
   }, [page, search, filter, project?.id, revision]);
   useEffect(() => {
-    if (!spaceId) return;
+    if (!spaceId) { setActive('overview'); return; }
     setOpened(current => current.some(item => item.id === spaceId) ? current : [...current, { id: spaceId, name: spaceId }]); setActive(spaceId);
   }, [spaceId]);
   useEffect(() => { if (catalog) setOpened(current => current.map(item => ({ ...item, name: catalog.items.find(space => space.spaceId === item.id)?.name ?? item.name }))); }, [catalog]);

@@ -1,5 +1,7 @@
 # Unreleased
 
+- Fixed project database directories to deduplicate current entry references instead of historical grants. Project read access is checked, and metadata visibility does not grant database management rights.
+
 - Changed: database authorization resolves databaseId, projectId and entryId for many-to-many references. Hosts maintain all data permissions. Startup preserves unsupported project rows, snapshots and storage instead of deleting them.
 
 - Fixed forged database request approval metadata exposing other spaces and grants. KV listing intersects host declarations, grants and client key prefixes before counting and pagination.

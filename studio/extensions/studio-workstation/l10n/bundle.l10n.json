@@ -862,5 +862,6 @@
   "This project has no linked databases.": "This project has no linked databases.",
   "Used by this project": "Used by this project",
   "{0} databases": "{0} databases",
-  "Browse local and server databases": "Browse local and server databases"
+  "Browse local and server databases": "Browse local and server databases",
+  "The database reference changed. Close this tab and reopen the database.": "The database reference changed. Close this tab and reopen the database."
 }

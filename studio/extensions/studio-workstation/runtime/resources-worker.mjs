@@ -14,6 +14,7 @@ export async function runResourceRequest(request, core) {
   const entry = core.selectProjectEntry(manifest, request.project.entryId);
   const requirement = entry.databases.find(item => item.alias === input.database);
   if (!requirement) throw new Error('Select a declared database alias.');
+  if (input.expectedDatabaseId && input.expectedDatabaseId !== requirement.databaseId) throw new Error('The database reference changed. Close this tab and reopen the database.');
   let source, sources = [];
   const local = core.createLocalDatabaseResolver();
   const remote = request.connection && core.createRemoteDatabaseResolver({serverUrl:request.connection.serverUrl,token:request.connection.accessToken});

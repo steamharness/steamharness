@@ -551,7 +551,7 @@ export async function activateProject(context: vscode.ExtensionContext, launcher
     try { return await callback(...args); }
     catch (error) { output.appendLine(String(error)); await vscode.window.showErrorMessage(error instanceof Error ? error.message : String(error)); }
   });
-  const watcher = vscode.workspace.createFileSystemWatcher('**/{package.json,index.ts,configuration.json}');
+  const watcher = vscode.workspace.createFileSystemWatcher('**/{package.json,index.ts,config.json,configuration.json}');
   const projectSerializer: vscode.WebviewPanelSerializer = { deserializeWebviewPanel: async (panel, state: { projectUri?: string; entryId?: string } | undefined) => {
     await initialScan;
     let project = state?.projectUri ? findProject(state.projectUri, state.entryId) : undefined;

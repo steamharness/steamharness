@@ -22,6 +22,7 @@ export interface DetailPageProps {
   onRevokeProjectInvitation: (invitationId: string) => void;
   refreshToken?: number;
   onContentBusyChange?: (busy: boolean) => void;
+  onDirtyChange?: (dirty: boolean) => void;
   onNavigateTab: (tab: DetailTab) => void;
   onNavigateProjectTab: (projectId: string, tab: DetailTab) => void;
   sidebarCollapsed: boolean;

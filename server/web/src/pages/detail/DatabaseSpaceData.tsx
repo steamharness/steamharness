@@ -34,11 +34,13 @@ export function DatabaseSpaceData({ spaceId, onDirtyChange }: { spaceId: string;
       .finally(() => { if (live) setLoading(false); });
     return () => { live = false; };
   }, [spaceId, page, search, revision, tab]);
-  const run = async (operation: string, input: unknown, receive?: (data: any) => void) => {
-    if (busyRef.current) return;
+  const run = async (operation: string, input: unknown | (() => Promise<unknown>), receive?: (data: any) => void) => {
+    if (!alive.current || busyRef.current) return;
     busyRef.current = true; setBusy(true); setError('');
     try {
-      const result = await apiClient.databaseOperation(spaceId, operation, input);
+      const body = typeof input === 'function' ? await input() : input;
+      if (!alive.current) return;
+      const result = await apiClient.databaseOperation(spaceId, operation, body);
       if (!alive.current) return;
       if (!isApiSuccess(result)) throw new Error(result.errMessage);
       receive?.(result.data); setRevision(value => value + 1);
@@ -54,7 +56,7 @@ export function DatabaseSpaceData({ spaceId, onDirtyChange }: { spaceId: string;
     if (dirty || knowledgeDirty) setConfirmation({ title: t('databaseDiscardDraft'), description: t('databaseDiscardDescription'), confirmLabel: t('commonConfirm'), tone: 'warning', onConfirm: () => { setConfirmation(null); change(); } });
     else change();
   };
-  const selectTab = (next: string) => { if (next !== tab) guardDraft(() => { setTab(next); setDirty(false); setKnowledgeDirty(false); }); };
+  const selectTab = (next: string) => { if (next !== tab) guardDraft(() => { setTab(next); setSelected(false); setCreating(false); setDirty(false); setKnowledgeDirty(false); }); };
   const address = { key, namespace, ...(namespace.startsWith('conversation:') ? { scope: 'conversation' } : {}) };
   const imageCache = useMemo(() => new Map<string, Promise<string>>(), [spaceId]);
   const imagesAbort = useMemo(() => new AbortController(), [spaceId]);
@@ -98,11 +100,14 @@ export function DatabaseSpaceData({ spaceId, onDirtyChange }: { spaceId: string;
     </>}
     {tab === 'files' && <FieldGroup>
       <Field><FieldLabel htmlFor="database-UploadAttachment">{t('databaseUploadAttachment')}</FieldLabel><Input id="database-UploadAttachment" type="file" disabled={busy} onChange={event => {
-        const file = event.target.files?.[0]; if (!file) return;
+        const file = event.target.files?.[0]; event.target.value = ''; if (!file) return;
         if (file.size > 50 * 1024 * 1024) { setError(t('databaseAttachmentSize')); return; }
-        void file.arrayBuffer().then(bytes => { let binary = ''; for (const byte of new Uint8Array(bytes)) binary += String.fromCharCode(byte); void run('files.createFile', { name: file.name, mimeType: file.type, base64: btoa(binary) }, result => setFileId(result.id)); }).catch(error => setError(String(error)));
+        void run('files.createFile', async () => {
+          const bytes = await file.arrayBuffer(); let binary = ''; for (const byte of new Uint8Array(bytes)) binary += String.fromCharCode(byte);
+          return { name: file.name, mimeType: file.type, base64: btoa(binary) };
+        }, result => setFileId(result.id));
       }} /></Field>
-      <Field><FieldLabel htmlFor="database-AttachmentId">{t('databaseAttachmentId')}</FieldLabel><Input id="database-AttachmentId" value={fileId} onChange={event => setFileId(event.target.value)} /><code className="break-all">{fileId ? `database://${spaceId}/files/${fileId}` : ''}</code></Field>
+      <Field><FieldLabel htmlFor="database-AttachmentId">{t('databaseAttachmentId')}</FieldLabel><Input id="database-AttachmentId" value={fileId} disabled={busy} onChange={event => setFileId(event.target.value)} /><code className="break-all">{fileId ? `database://${spaceId}/files/${fileId}` : ''}</code></Field>
       <div className="flex flex-wrap gap-2"><Button disabled={!fileId || busy} variant="outline" onClick={() => void run('files.readFile', { fileId }, result => {
         const bytes = Uint8Array.from(atob(result.base64), char => char.charCodeAt(0));
         const url = URL.createObjectURL(new Blob([bytes], { type: result.file.mimeType })); const link = document.createElement('a'); link.href = url; link.download = result.file.name; link.click(); setTimeout(() => URL.revokeObjectURL(url), 1000);

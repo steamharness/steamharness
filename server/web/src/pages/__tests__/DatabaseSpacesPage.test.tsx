@@ -87,3 +87,50 @@ it('recovers a failed directory request without discarding opened data tabs',asy
  fireEvent.click(screen.getAllByRole('button',{name:'Refresh'})[0]);await waitFor(()=>expect(list).toHaveBeenCalledTimes(2));
  await waitFor(()=>expect(screen.queryByText('Host offline')).toBeNull());expect(screen.getByRole('tab',{name:spaceId})).toHaveAttribute('aria-selected','true');
 });
+it('returns to the directory when the database ID is removed from the route', async () => {
+ const view = render(<DatabaseSpacesPage spaceId={spaceId}/>);
+ await screen.findByRole('button', {name:'one'});
+ view.rerender(<DatabaseSpacesPage/>);
+ expect(screen.getByRole('tab', {name:'Database spaces'})).toHaveAttribute('aria-selected','true');
+ expect(screen.queryByLabelText('JSON value')).toBeNull();
+});
+it('clears a discarded KV draft before returning from another data type', async () => {
+ render(<DatabaseSpacesPage spaceId={spaceId}/>);
+ fireEvent.click(await screen.findByRole('button', {name:'one'}));
+ fireEvent.change(screen.getByLabelText('JSON value'), {target:{value:'42'}});
+ fireEvent.mouseDown(screen.getByRole('tab', {name:'Attachments'}), {button:0,ctrlKey:false});
+ fireEvent.click(await screen.findByRole('button', {name:'Confirm'}));
+ fireEvent.mouseDown(screen.getByRole('tab', {name:'KV'}), {button:0,ctrlKey:false});
+ expect(screen.queryByLabelText('JSON value')).toBeNull();
+ fireEvent.click(await screen.findByRole('button', {name:'one'}));
+ expect(screen.getByLabelText('JSON value')).toHaveValue(JSON.stringify({count:1}, null, 2));
+});
+it('locks attachment preparation and cancels upload if its data tab closes before the file is read', async () => {
+ let finish!:(bytes:ArrayBuffer)=>void;
+ const operation = vi.spyOn(apiClient, 'databaseOperation').mockResolvedValue(ok({id:fileId}));
+ const file = new File(['attachment'], 'notes.txt', {type:'text/plain'});
+ Object.defineProperty(file, 'arrayBuffer', {value: () => new Promise<ArrayBuffer>(resolve => {finish=resolve;})});
+ const view = render(<DatabaseSpacesPage spaceId={spaceId}/>);
+ fireEvent.mouseDown(screen.getByRole('tab', {name:'Attachments'}), {button:0,ctrlKey:false});
+ const upload = screen.getByLabelText('Upload attachment');
+ fireEvent.change(upload, {target:{files:[file]}});
+ expect(upload).toBeDisabled(); expect(screen.getByLabelText('Attachment ID')).toBeDisabled();
+ expect(operation).not.toHaveBeenCalled();
+ view.rerender(<DatabaseSpacesPage spaceId={fileId}/>);
+ await act(async () => finish(new ArrayBuffer(1)));
+ expect(operation).not.toHaveBeenCalled();
+});
+it('reports attachment read errors and allows selecting the same file again', async () => {
+ const operation = vi.spyOn(apiClient, 'databaseOperation').mockResolvedValue(ok({id:fileId}));
+ const file = new File(['attachment'], 'notes.txt', {type:'text/plain'});
+ const read = vi.fn().mockRejectedValueOnce(new Error('File unavailable')).mockResolvedValue(new ArrayBuffer(1));
+ Object.defineProperty(file, 'arrayBuffer', {value:read});
+ render(<DatabaseSpacesPage spaceId={spaceId}/>);
+ fireEvent.mouseDown(screen.getByRole('tab', {name:'Attachments'}), {button:0,ctrlKey:false});
+ const upload = screen.getByLabelText('Upload attachment');
+ fireEvent.change(upload, {target:{files:[file]}});
+ expect(await screen.findByText('File unavailable')).toBeTruthy(); expect(upload).toBeEnabled();
+ fireEvent.change(upload, {target:{files:[file]}});
+ await waitFor(() => expect(operation).toHaveBeenCalledWith(spaceId, 'files.createFile', {name:'notes.txt', mimeType:'text/plain', base64:'AA=='}));
+ expect(await screen.findByDisplayValue(fileId)).toBeTruthy();
+});

@@ -40,7 +40,7 @@ export function DetailPage(props:DetailPageProps){
     {active==='members'&&<ProjectMembersTab {...props}/>}
     {active==='invitations'&&<ProjectInvitationsTab {...props}/>}
     {active==='versions'&&<VersionsTab {...props}/>}
-    {active==='databases'&&<DatabaseSpacesPage project={props.project}/>}
+    {active==='databases'&&<DatabaseSpacesPage key={props.project.id} project={props.project} onDirtyChange={props.onDirtyChange}/>}
     {active==='configurations'&&<><div className="p-4"><SelectField aria-label={t('aggregateEntries')} value={entryId} onValueChange={value => { setEntryId(value); props.onSelectEntry?.(value); }} options={props.project.entries.map(entry=>({value:entry.entryId,label:`${entry.name} · ${entry.type}`,icon:<img className="size-5 rounded" src={projectAvatarDataUrl(entry.projectCard,entry.type)} alt=""/>}))}/></div><ProjectConfigurationsTab key={`${props.project.id}/${entryId}`} project={props.project} entryId={entryId}/></>}
   </div>;
 }

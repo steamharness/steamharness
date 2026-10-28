@@ -862,5 +862,6 @@
   "This project has no linked databases.": "当前项目未关联数据库。",
   "Used by this project": "本项目使用的",
   "{0} databases": "{0} 个数据库",
-  "Browse local and server databases": "浏览本地和服务器数据库"
+  "Browse local and server databases": "浏览本地和服务器数据库",
+  "The database reference changed. Close this tab and reopen the database.": "数据库引用已更改，请关闭此标签页并重新打开数据库。"
 }

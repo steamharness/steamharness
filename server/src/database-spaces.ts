@@ -37,12 +37,19 @@ export class DatabaseSpaceRepository {
     } catch (error) { await client.query('ROLLBACK'); throw error; } finally { client.release(); }
   }
   read(actor: DatabaseActor) { return this.transaction(false, catalog => catalog.visible(actor)); }
-  page(actor: DatabaseActor, options: {section:string;page:number;pageSize:number;search?:string;projectId?:string;entryId?:string}) {
+  /** databaseIds may only come from a project whose read capability was checked by the router. */
+  page(actor: DatabaseActor, options: {section:string;page:number;pageSize:number;search?:string;projectId?:string;entryId?:string;databaseIds?:readonly string[]}) {
     const page=Math.max(1,Math.floor(options.page)||1),pageSize=Math.min(100,Math.max(1,Math.floor(options.pageSize)||20));
     return this.transaction(false,catalog=>{
       const visible=catalog.visible(actor);
       if(!["spaces","requests","grants"].includes(options.section)) throw new HttpError(400,400,"Unknown database collection.");
-      const items=(visible[options.section as "spaces"|"requests"|"grants"] as any[]).filter(item=>((!options.projectId&&!options.entryId)|| (options.section==="spaces" ? visible.bindings.some(binding=>binding.spaceId===item.spaceId&&(!options.projectId||binding.projectId===options.projectId)&&(!options.entryId||binding.entryId===options.entryId)) : (!options.projectId||item.projectId===options.projectId)&&(!options.entryId||item.entryId===options.entryId)))&&(!options.search||JSON.stringify(item).toLowerCase().includes(options.search.toLowerCase()))).map(item=>({...item,canManage:actor.isSystemAdmin||item.ownerId===actor.userId||visible.spaces.find(space=>space.spaceId===item.spaceId)?.ownerId===actor.userId,canReview:actor.isSystemAdmin||item.target?.kind==="access"&&visible.spaces.find(space=>space.spaceId===item.target.spaceId)?.ownerId===actor.userId}));
+      const knownSpaces = new Set(visible.spaces.map(space => space.spaceId));
+      const authorizedSpaces = new Set(catalog.state.bindings.filter(binding => binding.projectId === options.projectId &&
+        (!options.entryId || binding.entryId === options.entryId) && catalog.resolve(binding.spaceId, binding)).map(binding => binding.spaceId));
+      const collection = options.section === 'spaces' && options.databaseIds !== undefined
+        ? catalog.state.spaces.filter(space => options.databaseIds!.includes(space.spaceId) && (knownSpaces.has(space.spaceId) || authorizedSpaces.has(space.spaceId)))
+        : visible[options.section as 'spaces' | 'requests' | 'grants'];
+      const items=(collection as any[]).filter(item=>(options.section==='spaces'||(!options.projectId||item.projectId===options.projectId)&&(!options.entryId||item.entryId===options.entryId))&&(!options.search||JSON.stringify(item).toLowerCase().includes(options.search.toLowerCase()))).map(item=>({...item,canManage:actor.isSystemAdmin||item.ownerId===actor.userId||visible.spaces.find(space=>space.spaceId===item.spaceId)?.ownerId===actor.userId,canReview:actor.isSystemAdmin||item.target?.kind==="access"&&visible.spaces.find(space=>space.spaceId===item.target.spaceId)?.ownerId===actor.userId}));
       return {items:items.slice((page-1)*pageSize,page*pageSize),total:items.length,page,pageSize};
     });
   }

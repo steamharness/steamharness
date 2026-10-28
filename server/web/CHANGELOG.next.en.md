@@ -1,5 +1,7 @@
 # Unreleased
 
+- Fixed draft navigation and page-close protection within project database details, discarded KV drafts returning, duplicate attachment preparation and uploads starting after their tab closes. The database root route now returns to the directory.
+
 - Improvement: Database workspace adds a paginated directory, project/server filtering and independent data tabs, with KV list/detail panes and a dedicated requests and permissions page.
 
 - Improvement: Aggregate entry lists display each entry’s declared icon and foreground/background colors. Entries do not own independent versions.
