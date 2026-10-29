@@ -72,6 +72,26 @@ it('shows loading, empty, filtered and retryable errors including timeouts', asy
   expect(document.querySelector('.skill-status')?.textContent).toBe('No matching skills');
 });
 
+it('keeps preview loading and retry states reachable beside the return control, then restores the catalog', () => {
+  tab().click(); dialogs.skillsResult(request(), guides); button('Preview workflow-generator').click();
+  expect(document.activeElement).toBe(button('Back to skills'));
+  expect(document.querySelector('.skill-preview')?.textContent).toContain('Loading...');
+  expect(document.querySelector('.skill-status')?.closest('[hidden]')).toBeNull();
+  dialogs.skillsResult(request(), undefined, 'Guide temporarily unavailable');
+  expect(document.querySelector('.skill-preview [role=alert]')?.textContent).toContain('Guide temporarily unavailable');
+  button('Retry').click();
+  expect(document.querySelectorAll('.skill-preview [role=status]')).toHaveLength(1);
+  dialogs.skillsResult(request(), { skill: guides[0], content: '# Ready\nFull guide after retry.' });
+  expect(document.querySelector('.skill-preview')?.textContent).toContain('Full guide after retry.');
+  expect(document.querySelector('.skill-status')?.getAttribute('hidden')).not.toBeNull();
+  expect(document.activeElement).toBe(button('Back to skills'));
+  button('Back to skills').click(); button('Refresh skills').click();
+  expect(document.querySelector('.skill-status')?.textContent).toBe('Loading...');
+  expect(document.querySelector('.skill-status')?.closest('[hidden]')).toBeNull();
+  dialogs.skillsResult(request(), guides);
+  expect(document.querySelectorAll('.skill-guide')).toHaveLength(2);
+});
+
 it('localizes real metadata and sanitizes document HTML, scripts and unsafe links', () => {
   initI18n({ preference: 'zh-CN' }); tab().click();
   const guide = { ...guides[0], name: '<img src=x onerror=alert(1)>', description: '<script>bad()</script>' };

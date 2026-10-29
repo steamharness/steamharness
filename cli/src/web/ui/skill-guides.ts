@@ -10,6 +10,7 @@ export class SkillGuides {
   readonly element = document.createElement('div');
   private readonly catalog = document.createElement('div');
   private readonly detail = document.createElement('div');
+  private readonly previewBody = document.createElement('div');
   private readonly list = document.createElement('ul');
   private readonly status = document.createElement('div');
   private readonly search = document.createElement('input');
@@ -26,6 +27,7 @@ export class SkillGuides {
 
   constructor(private readonly loader?: SkillGuidesLoader) {
     this.element.className = 'skill-guides'; this.catalog.className = 'skill-catalog'; this.detail.className = 'skill-preview'; this.detail.hidden = true;
+    this.previewBody.className = 'skill-preview-body';
     const toolbar = document.createElement('div'); toolbar.className = 'skill-catalog-toolbar';
     const search = document.createElement('label'); search.className = 'skill-search'; search.innerHTML = iconHtml('search');
     this.search.type = 'search'; this.search.placeholder = t('Search skills'); this.search.ariaLabel = t('Search skills');
@@ -73,6 +75,7 @@ export class SkillGuides {
   }
 
   private showStatus(text: string, error = false): void {
+    (this.selected ? this.previewBody : this.element).append(this.status);
     this.status.hidden = false; this.status.replaceChildren(); this.status.setAttribute('role', error ? 'alert' : 'status');
     const message = document.createElement('p'); message.textContent = text; this.status.append(message);
     if (error && this.retry) {
@@ -107,7 +110,8 @@ export class SkillGuides {
   private open(guide: AgentSkillGuide): void {
     if (!this.selected) this.scroll = this.element.closest('.project-settings-panel')?.scrollTop ?? 0;
     this.selected = guide.id; this.catalog.hidden = true; this.detail.hidden = false;
-    this.detail.replaceChildren(this.previewHeader(guide));
+    this.previewBody.replaceChildren(); this.previewBody.scrollTop = 0;
+    this.detail.replaceChildren(this.previewHeader(guide), this.previewBody);
     this.detail.querySelector<HTMLButtonElement>('button')?.focus({ preventScroll: true });
     const panel = this.element.closest('.project-settings-panel'); if (panel) panel.scrollTop = 0;
     this.request(() => this.open(guide), guide.id);
@@ -145,6 +149,6 @@ export class SkillGuides {
       button.onclick = () => { article.hidden = raw; source.hidden = !raw; for (const sibling of tabs.children) sibling.setAttribute('aria-pressed', String(sibling === button)); };
       tabs.append(button);
     }
-    this.detail.append(meta, description, tabs, article, source);
+    this.previewBody.append(meta, description, tabs, article, source);
   }
 }
