@@ -2894,6 +2894,7 @@ function analyzeSourceFile(
           value,
           label: readStringProperty(element, "label"),
           description: readStringProperty(element, "description"),
+          ...(readStringProperty(element, "group") === undefined ? {} : { group: readStringProperty(element, "group") }),
           ...(readStringProperty(element, "command") === undefined ? {} : { command: readStringProperty(element, "command") }),
         };
       })

@@ -103,10 +103,10 @@ Studio groups built-in models above custom models in one table. Built-in names c
 
 Lists are copied and frozen. Base URLs require HTTP(S) without authentication, query, or fragment; entry IDs must be unique, with at most 100 saved custom models. Host built-in catalogues are not subject to that count limit. Invalid model configurations are rejected.
 
-With a nonempty user list, Agent nodes and direct `createAgent()` automatically select the first permitted model; turn `model` can select a list ID. Explicit developer endpoints, `models`, and `resolvedModel` keep their existing behavior. `modelSource: "user-settings"` requires user models and reports an empty list; `modelSource: "project"` explicitly retains the original project configuration source. A project's `allowThirdParty: false` applies to user models and explicit endpoints alike.
+Agent nodes and direct `createAgent()` compose project supplements with user models by default; `modelSource: "user-settings"` uses the same rule. The first project entry supplies the project default; an empty project list follows the user default. Turn `model` can select an entry ID from the composed list. `modelSource: "project"` uses only project entries and their settings references. Explicit developer endpoints, `models`, and `resolvedModel` keep their existing behavior. A project's `allowThirdParty: false` applies to user models and explicit endpoints alike.
 
 ```ts
-// Generate overridable model parameters from the user's list and default.
+// Generate overridable model parameters from settings and project supplements.
 const project = steamharness.createAgentConversationProject({
   modelSource: "user-settings",
   permissionPolicy: "inherit",
@@ -121,11 +121,11 @@ const project = steamharness.createAgentConversationProject({
 
 Reused third-party connections retain developer `modelAttributes` defaults. System catalogue search restrictions remain authoritative and cannot be enabled through turn attribute overrides.
 
-The built-in assistant uses user models. Model and effort are separate Quick parameters. The model control groups available built-in and custom models, with **Add model** opening settings at the bottom. Changing effort keeps the model selection. Selecting a model overrides the default for the project or conversation; resetting follows the user default again. The original project model configuration APIs remain available and are not used by the assistant.
+The built-in assistant composes user models with project supplements. Model and effort are separate Quick parameters; changing effort keeps the model selection. Project configurations can reference settings models or add project-owned connections. With project supplements, the menu groups Settings models and Project models; an empty project list retains the built-in/custom grouping. **Add model** opens settings at the bottom. Selecting a model overrides the default for the project or conversation. Reset follows the project default when supplements exist, otherwise the user default. References store only `{ id, name, source: "user-settings", modelId }`, without connection details or keys. Missing references are unavailable and fail explicitly at execution.
 
 With no available models, the control shows **Configure model** and guidance to add a model in settings. Clicking it opens **Settings → Models** directly; adding a model restores the choices.
 
-A custom model field with `mode: "fixed"` also opens the list first, with read-only choices and an **Add model** action leading to settings to change the user default. `mode: "default"` allows a project override. `createAgentProjectParams()` generates separate `model` and `effort` groups by default; custom projects may still group Quick parameters freely.
+A custom model field with `mode: "fixed"` also opens the list first, with read-only choices and an **Add model** action leading to settings. `mode: "default"` allows a project override. `createAgentProjectParams()` generates separate `model` and `effort` groups by default; custom projects may still group Quick parameters freely.
 
 Updates apply after a safe task boundary. Active and background work retain their connection snapshot. A directly created Agent with a host-resolved model also resolves inherited permissions from that creation snapshot; explicit turn permissions still take precedence. Recreate the Agent after its work finishes to adopt new host model settings. Interrupted recovery obtains a key from the host only for the same model and endpoint; a removed or changed endpoint fails explicitly instead of receiving a new key at an old address.
 

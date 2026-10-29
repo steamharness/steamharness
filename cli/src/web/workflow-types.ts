@@ -1,4 +1,5 @@
 import { t } from './localization';
+import { AGENT_MODELS_CONFIGURATION_KEY, parseProjectAgentModels, resolveProjectAgentModels, type ConfigurationValues } from '@steamharness/project-configuration';
 import type { KanbanArtifactConfig, KanbanBridgeCall } from '@steamharness/kanban-project';
 import type { ProjectInfoContract } from '@steamharness/project-info';
 import type { AgentSessionCommand, AgentSessionReceipt, AgentSessionSnapshot } from 'steamharness/agent';
@@ -24,7 +25,7 @@ export interface Field {
   userModelSources?: Record<string, 'system' | 'third-party'>;
   multiple?: boolean;
   resolveOnInput?: boolean;
-  options?: { value: string; label?: string; description?: string; command?: string }[];
+  options?: { value: string; label?: string; description?: string; command?: string; group?: string }[];
   accept?: string[];
   format?: 'json';
   step?: number;
@@ -323,9 +324,10 @@ export function projectParameters(project: Project, entrypointId?: string): Para
   return project.entrypoints.find((entry) => entry.id === entrypointId) ?? project;
 }
 
-export function projectWithUserSettings(project: Project, settings: import('steamharness').UserSettings): Project {
-  const models = (settings.agent.models ?? []).filter(model => project.agentModelPolicy?.allowThirdParty !== false || model.source === 'system');
-  const sources = Object.fromEntries(models.map(model => [model.id, model.source]));
+export function projectWithUserSettings(project: Project, settings: import('steamharness').UserSettings, values: ConfigurationValues = {}): Project {
+  const models = resolveProjectAgentModels(parseProjectAgentModels(values[AGENT_MODELS_CONFIGURATION_KEY] ?? []), settings.agent.models ?? [], true)
+    .filter(model => project.agentModelPolicy?.allowThirdParty !== false || model.source !== 'third-party');
+  const sources = Object.fromEntries(models.flatMap(model => model.source === 'unavailable' ? [] : [[model.id, model.source]]));
   const fields = (parameters: Parameters) => parameters.fields.map(field => {
     if (!field.userSetting) return field;
     return field.userSetting.key === 'agent.model'

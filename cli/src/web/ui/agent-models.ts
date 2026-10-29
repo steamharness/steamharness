@@ -1,12 +1,14 @@
-import { AGENT_MODEL_PROTOCOLS, parseAgentModels, type ConfiguredAgentModel, type AgentModelCatalogEntry } from '@steamharness/project-configuration';
+import { AGENT_MODEL_PROTOCOLS, parseProjectAgentModels, type ProjectAgentModel, type UserAgentModelSummary, type AgentModelCatalogEntry } from '@steamharness/project-configuration';
 import { t } from '../localization';
 import { iconButton, iconHtml } from './ui';
 
 export function createAgentModelsControl(options: {
   value: unknown; disabled: boolean; allowThirdParty?: boolean; changed(): void;
   loadCatalog(): Promise<{ entries: AgentModelCatalogEntry[]; subscriptionUrl?: string; unavailable?: boolean }>;
+  loadUserModels?(): Promise<UserAgentModelSummary[]>;
 }) {
-  let models = parseAgentModels(options.value ?? []), source: 'system' | 'third-party' = 'system';
+  let models = parseProjectAgentModels(options.value ?? []), source: ProjectAgentModel['source'] = 'system';
+  let userModels: UserAgentModelSummary[] | undefined;
   const systemOnly = options.allowThirdParty === false;
   let editingId: string | undefined, formDirty = false, generation = 0;
   let catalog: Awaited<ReturnType<typeof options.loadCatalog>> | undefined;
@@ -28,10 +30,10 @@ export function createAgentModelsControl(options: {
   const close = iconButton('close', t('Close'), () => dialog.close()); close.disabled = options.disabled; heading.append(title, close);
   const body = document.createElement('div'); body.className = 'dialog-body configuration-ai-editor-body';
   const sources = document.createElement('div'); sources.role = 'radiogroup'; sources.ariaLabel = t('AI source'); sources.className = 'configuration-ai-sources';
-  const availableSources: ('system' | 'third-party')[] = systemOnly ? ['system'] : ['system', 'third-party'];
-  sources.hidden = systemOnly;
+  const availableSources: ProjectAgentModel['source'][] = ['system', ...(!systemOnly ? ['third-party' as const] : []), ...(options.loadUserModels || models.some(model => model.source === 'user-settings') ? ['user-settings' as const] : [])];
+  sources.hidden = availableSources.length === 1;
   const sourceButtons = availableSources.map(value => {
-    const control = button(value === 'system' ? 'System AI' : 'Third-party AI', () => {
+    const control = button(value === 'system' ? 'System AI' : value === 'user-settings' ? 'Settings models' : 'Third-party AI', () => {
       if (source === value || !clean()) return;
       source = value; renderForm();
     });
@@ -40,8 +42,9 @@ export function createAgentModelsControl(options: {
   sources.onkeydown = event => {
     if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
     event.preventDefault();
-    const index = event.key === 'Home' ? 0 : event.key === 'End' ? sourceButtons.length - 1 : source === 'system' ? sourceButtons.length - 1 : 0;
-    sourceButtons[index]!.click(); sourceButtons[source === 'system' ? 0 : 1]!.focus();
+    const current = availableSources.indexOf(source);
+    const index = event.key === 'Home' ? 0 : event.key === 'End' ? sourceButtons.length - 1 : (current + (event.key === 'ArrowRight' ? 1 : -1) + sourceButtons.length) % sourceButtons.length;
+    sourceButtons[index]!.click(); sourceButtons[availableSources.indexOf(source)]!.focus();
   };
   const form = document.createElement('div'); form.className = 'configuration-ai-form';
   const formNotice = document.createElement('p'); formNotice.role = 'status'; formNotice.className = 'configuration-status error';
@@ -50,13 +53,13 @@ export function createAgentModelsControl(options: {
   const apply = button('Apply model', () => {
     try {
       const saved = models.find(entry => entry.id === editingId);
-      const modelName = catalog?.entries.find(entry => entry.id === credential?.value)?.models.find(entry => entry.id === model.value)?.name;
-      const common = { id: editingId ?? crypto.randomUUID(), name: source === 'system' ? modelName || (saved?.source === 'system' ? saved.name : '') || model.value.trim() : name.value.trim() || model.value.trim(), model: model.value.trim() };
-      const candidate = source === 'system' ? { ...common, source, credentialId: credential.value } : { ...common, source, apiKind: protocol.value, baseUrl: url.value, apiKey: key.value };
-      parseAgentModels([candidate], options);
+      const modelName = source === 'system' ? catalog?.entries.find(entry => entry.id === credential.value)?.models.find(entry => entry.id === model.value)?.name : userModels?.find(entry => entry.id === model.value)?.name;
+      const identity = { id: editingId ?? crypto.randomUUID(), name: source === 'system' ? modelName || (saved?.source === 'system' ? saved.name : '') || model.value.trim() : name.value.trim() || modelName || model.value.trim() };
+      const candidate = source === 'user-settings' ? { ...identity, source, modelId: model.value } : source === 'system' ? { ...identity, model: model.value.trim(), source, credentialId: credential.value } : { ...identity, model: model.value.trim(), source, apiKind: protocol.value, baseUrl: url.value, apiKey: key.value };
+      parseProjectAgentModels([candidate], options);
       const index = models.findIndex(model => model.id === editingId), next = [...models];
-      if (index < 0) next.push(candidate as ConfiguredAgentModel); else next[index] = candidate as ConfiguredAgentModel;
-      models = parseAgentModels(next); formDirty = false; options.changed(); display(); dialog.close();
+      if (index < 0) next.push(candidate as ProjectAgentModel); else next[index] = candidate as ProjectAgentModel;
+      models = parseProjectAgentModels(next); formDirty = false; options.changed(); display(); dialog.close();
     } catch (error) { formNotice.textContent = t((error as Error).message); }
   });
   apply.className = 'configuration-primary';
@@ -106,11 +109,33 @@ export function createAgentModelsControl(options: {
     }
     if (request === generation && dialog.open) { const retry = iconButton('refresh', t('Refresh system AI models'), () => { status.remove(); void load(true); }); status.append(retry); }
   }
+  async function loadSettingsModels() {
+    const request = ++generation;
+    const selected = models.find(entry => entry.id === editingId);
+    const selectedId = model.value || (selected?.source === 'user-settings' ? selected.modelId : '');
+    const status = document.createElement('p'); status.role = 'status'; status.className = 'configuration-ai-catalog'; status.textContent = t('Loading settings models...'); form.append(status);
+    try {
+      const entries = await (options.loadUserModels?.() ?? Promise.resolve([]));
+      if (request !== generation || !dialog.open || !element.isConnected || source !== 'user-settings') return;
+      userModels = entries.filter(entry => !systemOnly || entry.source === 'system');
+      const draftSelection = model.value || selectedId;
+      model.replaceChildren();
+      for (const entry of userModels) (model as HTMLSelectElement).add(new Option(`${entry.name} · ${entry.model}`, entry.id));
+      if (draftSelection && !userModels.some(entry => entry.id === draftSelection)) (model as HTMLSelectElement).add(new Option(`${draftSelection} · ${t('Unavailable')}`, draftSelection));
+      if (draftSelection) model.value = draftSelection;
+      status.textContent = t(userModels.length ? 'References follow the model connection in Settings. No credentials are copied.' : 'No available models in Settings. Add a model in Settings first.');
+    } catch (error) { if (request === generation && dialog.open) status.textContent = t((error as Error).message); }
+    if (request === generation && dialog.open) status.append(iconButton('refresh', t('Refresh settings models'), () => { status.remove(); void loadSettingsModels(); }));
+  }
   function renderForm() {
     ++generation; form.replaceChildren(); formNotice.textContent = '';
     const entry = models.find(entry => entry.id === editingId && entry.source === source);
-    sourceButtons.forEach((control, index) => { const active = index === (source === 'system' ? 0 : 1); control.setAttribute('aria-checked', String(active)); control.tabIndex = active ? 0 : -1; });
-    if (source === 'system') {
+    sourceButtons.forEach((control, index) => { const active = availableSources[index] === source; control.setAttribute('aria-checked', String(active)); control.tabIndex = active ? 0 : -1; });
+    if (source === 'user-settings') {
+      name = input('Model name', entry?.name);
+      model = document.createElement('select'); model.ariaLabel = t('Settings model'); model.onchange = edited; field('Settings model', model);
+      void loadSettingsModels();
+    } else if (source === 'system') {
       credential = document.createElement('select'); credential.ariaLabel = t('Provider'); field('Provider', credential);
       model = document.createElement('select'); model.ariaLabel = t('Model'); model.onchange = edited; field('Model', model);
       void load();
@@ -118,15 +143,15 @@ export function createAgentModelsControl(options: {
       name = input('Model name', entry?.name);
       protocol = document.createElement('select'); for (const value of AGENT_MODEL_PROTOCOLS) protocol.add(new Option(value, value)); protocol.value = entry?.source === 'third-party' ? entry.apiKind : 'openai-completions'; protocol.onchange = edited; field('API protocol', protocol);
       url = input('Base URL', entry?.source === 'third-party' ? entry.baseUrl : '', 'url');
-      model = input('Model ID', entry?.model);
+      model = input('Model ID', entry?.source === 'third-party' ? entry.model : '');
       key = input('API key', entry?.source === 'third-party' ? entry.apiKey : '', 'password'); key.autocomplete = 'new-password';
       key.closest('label')!.className = 'configuration-ai-wide';
     }
   }
-  function open(entry?: ConfiguredAgentModel) {
+  function open(entry?: ProjectAgentModel) {
     if (options.disabled || !clean()) return;
     opener = document.activeElement instanceof HTMLElement ? document.activeElement : add;
-    editingId = entry?.id; formDirty = false; source = systemOnly ? 'system' : entry?.source ?? source;
+    editingId = entry?.id; formDirty = false; source = systemOnly && entry?.source === 'third-party' ? 'system' : entry?.source ?? source;
     title.textContent = t(entry ? 'Edit model' : 'Add model'); notice.textContent = '';
     renderForm(); if (!dialog.open) dialog.showModal();
     (source === 'system' ? credential : name).focus();
@@ -139,18 +164,18 @@ export function createAgentModelsControl(options: {
   function display() {
     list.replaceChildren(); count.textContent = `${t('Configured models')} · ${models.length}`;
     if (!models.length) { const empty = document.createElement('li'); empty.className = 'configuration-ai-empty'; empty.textContent = t(systemOnly ? 'No models configured. Add a system AI model.' : 'No models configured. Add a system or third-party model.'); list.append(empty); }
-    const defaultIndex = models.findIndex(entry => !systemOnly || entry.source === 'system');
+    const defaultIndex = models.findIndex(entry => !systemOnly || entry.source !== 'third-party');
     models.forEach((entry, index) => {
       const row = document.createElement('li'), text = document.createElement('div'); text.className = 'configuration-ai-model-name';
       const number = document.createElement('span'); number.className = 'configuration-ai-model-index'; number.textContent = String(index + 1); number.ariaHidden = 'true';
       const title = document.createElement('span'); title.textContent = entry.name;
-      const detail = document.createElement('small'); detail.textContent = `${t(entry.source === 'system' ? 'System AI' : 'Third-party AI')} · ${entry.model}`;
+      const detail = document.createElement('small'); detail.textContent = `${t(entry.source === 'system' ? 'System AI' : entry.source === 'user-settings' ? 'Settings models' : 'Third-party AI')} · ${entry.source === 'user-settings' ? entry.modelId : entry.model}`;
       text.append(title, detail); row.append(number, text);
       if (systemOnly && entry.source === 'third-party') detail.append(` · ${t('Unavailable')}`);
       if (index === defaultIndex) { const badge = document.createElement('span'); badge.className = 'configuration-active'; badge.textContent = t('Default model'); row.append(badge); }
       const controls = document.createElement('div'); controls.className = 'configuration-ai-model-actions';
       const actions = [
-        ...(index !== defaultIndex && (!systemOnly || entry.source === 'system') ? [iconButton('arrow-up', t('Set as default model') + ': ' + entry.name, () => { if (!clean()) return; models = [entry, ...models.filter(model => model.id !== entry.id)]; options.changed(); display(); })] : []),
+        ...(index !== defaultIndex && (!systemOnly || entry.source !== 'third-party') ? [iconButton('arrow-up', t('Set as default model') + ': ' + entry.name, () => { if (!clean()) return; models = [entry, ...models.filter(model => model.id !== entry.id)]; options.changed(); display(); })] : []),
         iconButton('edit', t('Edit model') + ': ' + entry.name, () => open(entry)),
         iconButton('trash', t('Delete model') + ': ' + entry.name, () => { if (!clean()) return; models = models.filter(model => model.id !== entry.id); options.changed(); display(); }),
       ];
@@ -160,8 +185,8 @@ export function createAgentModelsControl(options: {
   display();
   return {
     element,
-    read() { if (formDirty && dialog.open) throw new Error(t('Add or cancel the model being edited first.')); return parseAgentModels(models, options); },
-    invalidate() { catalog = undefined; ++generation; if (source === 'system' && dialog.open) { form.querySelector('.configuration-ai-catalog')?.remove(); void load(true); } },
+    read() { if (formDirty && dialog.open) throw new Error(t('Add or cancel the model being edited first.')); return parseProjectAgentModels(models, options); },
+    invalidate() { catalog = undefined; userModels = undefined; ++generation; if (dialog.open && source !== 'third-party') { form.querySelector('.configuration-ai-catalog')?.remove(); if (source === 'system') void load(true); else void loadSettingsModels(); } },
     dispose() { ++generation; if (dialog.open) dialog.close(); },
   };
 }

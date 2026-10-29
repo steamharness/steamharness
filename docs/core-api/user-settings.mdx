@@ -103,10 +103,10 @@ Studio 以“内置模型在上、自定义模型在下”的分组表格展示�
 
 模型列表会复制并冻结。Base URL 必须是 HTTP(S) 地址，不含认证、查询或片段；条目 ID 必须唯一，最多保存 100 条自定义模型。宿主的内置目录不受该数量限制。非法模型配置会被拒绝。
 
-当用户列表非空时，Core Agent 节点与直接 `createAgent()` 可自动使用第一个允许的模型；本轮 `model` 可以指定列表中的 ID。显式开发者 endpoint、`models` 或 `resolvedModel` 保持原方式。`modelSource: "user-settings"` 明确只使用用户模型，列表为空时提示添加模型；`modelSource: "project"` 明确保留旧项目配置来源。项目的 `allowThirdParty: false` 对用户模型和显式端点同样生效，不会被用户设置绕过。
+Core Agent 节点与直接 `createAgent()` 默认将项目补充模型与用户模型组合；`modelSource: "user-settings"` 使用相同规则。项目列表第一项是项目默认值，项目列表为空时沿用用户默认值；本轮 `model` 可以指定组合列表中的条目 ID。`modelSource: "project"` 仅使用项目声明的模型及设置模型引用。显式开发者 endpoint、`models` 或 `resolvedModel` 保持原方式。项目的 `allowThirdParty: false` 对用户模型和显式端点同样生效，不会被用户设置绕过。
 
 ```ts
-// 自动生成可覆盖的模型参数，列表和默认值来自用户设置。
+// 自动生成可覆盖的模型参数，组合用户设置与项目补充配置。
 const project = steamharness.createAgentConversationProject({
   modelSource: "user-settings",
   permissionPolicy: "inherit",
@@ -121,11 +121,11 @@ const project = steamharness.createAgentConversationProject({
 
 复用模型连接时，三方连接保留开发者的 `modelAttributes` 默认值；系统模型目录声明的搜索能力限制仍然有效，不能用本轮属性覆盖放开。
 
-小助手使用用户模型列表。模型与 effort 为两个独立的 Quick 参数；点击模型入口按内置／自定义分组展示可用模型，底部 **添加模型** 打开设置。修改 effort 不改变模型选择。手动选择模型作为当前项目／会话覆盖，重置后恢复用户默认值。原项目模型配置 API 继续保留，小助手不使用其中的模型。
+小助手组合用户模型与项目补充模型。模型与 effort 为两个独立的 Quick 参数，修改 effort 不改变模型选择。项目配置可引用设置模型或补充项目专属连接；有补充配置时，菜单按“设置模型”和“项目模型”分组，项目列表为空时保留原内置／自定义分组。底部 **添加模型** 打开设置。手动选择模型作为当前项目／会话覆盖；重置时，有项目补充配置则恢复项目默认值，否则跟随用户默认值。设置引用只保存 `{ id, name, source: "user-settings", modelId }`，不复制连接或密钥；缺失引用显示不可用，执行时明确失败。
 
 没有可用模型时，入口显示“配置模型”并提示前往设置添加模型，点击直接打开 **设置 → 模型**；添加后恢复可选列表。
 
-自定义模型字段使用 `mode: "fixed"` 时也先展示列表，列表只读，通过底部 **添加模型** 进入设置修改用户默认值；`mode: "default"` 允许在项目中选择覆盖。`createAgentProjectParams()` 默认生成独立的 `model`、`effort` 分组，自定义项目仍可自由组合 Quick 参数。
+自定义模型字段使用 `mode: "fixed"` 时也先展示只读列表，底部 **添加模型** 仍打开设置；`mode: "default"` 允许在项目中选择覆盖。`createAgentProjectParams()` 默认生成独立的 `model`、`effort` 分组，自定义项目仍可自由组合 Quick 参数。
 
 模型设置变化只影响安全边界后的任务。正在执行的任务及后台工作保留原连接快照。直接创建并由宿主解析模型的 Agent，其继承权限也使用同一份创建时快照；本轮显式权限继续优先。需要采用新的宿主模型设置时，结束原任务后重新创建 Agent。中断恢复从宿主补充同一模型与同一端点的密钥；已移除或改变端点的模型会明确失败，不会把新密钥发到旧地址。
 

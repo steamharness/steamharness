@@ -1,6 +1,6 @@
 import {readProjectDeclarationFromDirectory} from '@steamharness/project-manifest/node';
 import { hydrateUserSettings, userSettingsJsonReplacer } from './user-settings';
-import {configurationCapability} from '@steamharness/project-configuration';
+import {configurationCapability, configurationSnapshot} from '@steamharness/project-configuration';
 import { getUserSettings, parseUserSettings, type UserSettings } from 'steamharness';
 import { ProjectConfigurations } from './project-configurations';
 import { uploadConfigurationFile } from './configuration-files';
@@ -278,7 +278,7 @@ async function startProjectWebServer(options: WebOptions, credentials: { capabil
     if(signature!==configurationSignature) {
       configurationSignature=signature;
       project.agentModelPolicy = configurations.state.agentModelPolicy;
-      Object.assign(project, projectWithUserSettings(project, userSettings));
+      Object.assign(project, projectWithUserSettings(project, userSettings, configurationSnapshot(configurations.state, undefined, false).values));
       parameterRevision++;
       parameterStates.clear();
       kanbanController?.configurationChanged(configurations.state);
@@ -290,7 +290,7 @@ async function startProjectWebServer(options: WebOptions, credentials: { capabil
   await configurations.initialize();
   configurationSignature=configurations.signature;
   project.agentModelPolicy = configurations.state.agentModelPolicy;
-  Object.assign(project, projectWithUserSettings(project, userSettings));
+  Object.assign(project, projectWithUserSettings(project, userSettings, configurationSnapshot(configurations.state, undefined, false).values));
   conversationController = isProject || isKanban ? undefined : new ConversationController(project, runtime, saved, {
     canRun: session => ownership?.execute(session.id) ?? true,
     canStart: () => !projectServer?.blocking || projectServer.ready,
@@ -549,6 +549,10 @@ async function startProjectWebServer(options: WebOptions, credentials: { capabil
       const value = await loadAgentModelCatalog(connection);
       if (epoch !== authEpoch) throw new Error('Account changed. Refresh AI models.');
       return [{ type: 'project-ai-catalog-result', requestId: message.requestId, value }];
+    }
+    if (message.type === 'project-user-models') {
+      const entries = (userSettings.agent.models ?? []).map(({ id, name, model, source }) => ({ id, name, model, source }));
+      return [{ type: 'project-user-models-result', requestId: message.requestId, value: entries }];
     }
     if (message.type === 'project-skills') {
       if (typeof message.requestId !== 'string' || message.requestId.length > 256
@@ -970,7 +974,7 @@ async function startProjectWebServer(options: WebOptions, credentials: { capabil
       if (JSON.stringify(settings) === JSON.stringify(userSettings)) return;
       userSettings = settings;
       rememberModelKeys(settings);
-      Object.assign(project, projectWithUserSettings(project, settings));
+      Object.assign(project, projectWithUserSettings(project, settings, configurationSnapshot(configurations.state, undefined, false).values));
       ++parameterRevision;
       conversationController?.configurationChanged();
       broadcast();

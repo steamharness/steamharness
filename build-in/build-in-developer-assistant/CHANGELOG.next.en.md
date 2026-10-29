@@ -1,5 +1,7 @@
 # Unreleased
 
+- Improved: The assistant retains settings models and composes project supplements, supporting settings references, project-owned connections and project defaults.
+
 - Fixed: Update generator references for bounded retries of model-call exceptions and manual compaction, distinguishing provider failures from host storage, usage and observer failures.
 
 - Fixed: Document Core Agent retry behavior for in-stream transient upstream failures and connection interruptions, including preservation of partial text and committed tool results.

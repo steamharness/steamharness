@@ -93,6 +93,16 @@ async function fixture(host?: WebHostConfiguration, beforeStart?: () => Promise<
 }
 
 describe('steamharness web', () => {
+  it('lists host model references without credentials and refreshes them after host settings change', async () => {
+    const model = { id: 'host-model', name: 'Host model', model: 'actual', source: 'third-party' as const, apiKind: 'openai-completions' as const, baseUrl: 'https://models.example/v1', apiKey: 'test-only-reference-secret' };
+    const { app, post } = await fixture({ surface: 'editor', userSettings: { agent: { permissionPolicy: 'auto', models: [model] } } });
+    const result = await (await post({ type: 'project-user-models', requestId: 'models' })).json();
+    expect(result.messages.find((message: any) => message.type === 'project-user-models-result').value).toEqual([{ id: model.id, name: model.name, model: model.model, source: model.source }]);
+    expect(JSON.stringify(result)).not.toMatch(/test-only-reference-secret|apiKey|baseUrl/);
+    app.setHostUserSettings({ agent: { permissionPolicy: 'auto', models: [] } });
+    const refreshed = await (await post({ type: 'project-user-models', requestId: 'refresh' })).json();
+    expect(refreshed.messages.find((message: any) => message.type === 'project-user-models-result').value).toEqual([]);
+  });
   it('resolves and persists dropped paths, imports browser folders, and passes readable context to Core', async () => {
     const { app, directory, runtime, post } = await fixture();
     const folder = path.join(directory, 'dropped folder'); await mkdir(folder); await writeFile(path.join(folder, 'source.txt'), 'original bytes');

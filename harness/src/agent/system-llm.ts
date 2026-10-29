@@ -264,15 +264,18 @@ export function createAgentProjectParamResolver(options: { modelSource?: "user-s
 ) => Promise<ParamResolveResult> {
   return async (context) => {
     const configured = agentConfiguredModels(context.config, options.modelSource);
-    const models = configured.models.filter(model => !configured.systemOnly || model.source === "system");
+    const models = configured.models.filter(model => !configured.systemOnly || model.source !== "third-party");
     const selected = models.find(model => model.id === context.paramValues?.model) ?? models[0];
+    const unavailable = models.filter(model => model.source === "unavailable");
     return { params: {
       // Kept as a hidden wire parameter for existing inline Agent declarations.
       provider: { value: null, visible: false, disabled: true, resolvedOptions: [] },
       model: {
         value: configured.fromUser && (!context.paramValues?.model || context.paramValues.model === selected?.id) ? undefined : selected?.id ?? null,
         disabled: false,
-        resolvedOptions: models.map(model => ({ value: model.id, label: model.name, description: model.model })),
+        resolvedOptions: models.map(model => ({ value: model.id, label: model.name, description: model.source === "unavailable" ? "Referenced model unavailable in user settings." : model.model,
+          ...(configured.hasProjectModels ? { group: model.origin === "project" ? "Project models" : "Settings models" } : {}) })),
+        ...(unavailable.length ? { options: Object.fromEntries(unavailable.map(model => [model.id, { disabled: true }])) } : {}),
       },
     } };
   };

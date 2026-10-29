@@ -1,7 +1,7 @@
 import { getProjectConfiguration } from "./configuration";
 import { AsyncLocalStorage } from "node:async_hooks";
 import { AGENT_PERMISSION_POLICIES, type AgentPermissionPolicy } from "./agent/types";
-import { parseAgentModels, type ConfiguredAgentModel } from "@steamharness/project-configuration";
+import { AGENT_MODELS_CONFIGURATION_KEY, parseAgentModels, parseProjectAgentModels, resolveProjectAgentModels, type ConfiguredAgentModel } from "@steamharness/project-configuration";
 
 /** A user model reference or third-party connection accepted by the execution host. */
 export type UserAgentModel = ConfiguredAgentModel;
@@ -56,7 +56,10 @@ function parseUserModels(value: unknown): UserAgentModel[] {
 /** Scalar defaults for user-bound project parameters; credentials never enter parameter metadata. */
 export function userSettingParamDefault(key: "agent.permissionPolicy" | "agent.model"): string {
   const { agent } = getUserSettings();
-  return key === "agent.permissionPolicy" ? agent.permissionPolicy : agent.models?.find(model => getProjectConfiguration()?.agentModelPolicy?.allowThirdParty !== false || model.source === "system")?.id ?? "";
+  if (key === "agent.permissionPolicy") return agent.permissionPolicy;
+  const configuration = getProjectConfiguration();
+  const models = resolveProjectAgentModels(parseProjectAgentModels(configuration?.values[AGENT_MODELS_CONFIGURATION_KEY] ?? []), agent.models ?? [], true);
+  return models.find(model => configuration?.agentModelPolicy?.allowThirdParty !== false || model.source !== "third-party")?.id ?? "";
 }
 
 /** Run host work in an isolated settings snapshot, including asynchronous descendants. */

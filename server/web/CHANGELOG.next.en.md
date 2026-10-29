@@ -1,5 +1,7 @@
 # Unreleased
 
+- Improved: Project model configurations support execution-host settings references alongside system and third-party project models.
+
 - Added: Add a settings memory panel with paginated filters, source details, editing, forgetting, scope clearing and failed extraction retries.
 
 - Fixed draft navigation and page-close protection within project database details, discarded KV drafts returning, duplicate attachment preparation and uploads starting after their tab closes. The database root route now returns to the directory.

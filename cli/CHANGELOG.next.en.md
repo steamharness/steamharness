@@ -1,5 +1,7 @@
 # Unreleased
 
+- Improved: Project configurations reference settings models or define project models; composed menus group settings and project entries and follow project defaults without copying host credentials.
+
 - Added: Open local file links, inline code paths and plain absolute paths from Agent replies and plans in the Studio editor, including relative paths, file URIs and line/column locations. Fixed managed attachment link handling.
 
 - Fixed embedded project configuration styles affecting nested dialogs, restoring content and footer spacing when adding or editing models in Project information.

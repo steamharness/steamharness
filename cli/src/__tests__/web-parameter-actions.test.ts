@@ -215,6 +215,18 @@ describe('Quick parameter triggers', () => {
 });
 
 describe('Quick parameter menus', () => {
+  it('groups project supplements and settings references without hiding unavailable references', () => {
+    const f = fixture();
+    f.state.states.model = { resolvedOptions: [
+      { value: 'local', label: 'Project endpoint', group: 'Project models' },
+      { value: 'settings', label: 'User endpoint', group: 'Settings models' },
+      { value: 'missing', label: 'Removed reference', group: 'Settings models' },
+    ], options: { missing: { disabled: true } } };
+    f.actions.render(f.parameters); f.flush(); f.container.children[0].dispatchEvent(new Event('click'));
+    expect(f.popup.querySelectorAll('.quick-model-group').map(group => group.textContent)).toEqual(['Settings models', 'Project models']);
+    expect(f.popup.querySelectorAll('[role=option]').map(option => option.dataset.focusKey)).toEqual(['option:settings', 'option:missing', 'option:local']);
+    expect(f.popup.querySelector('[data-focus-key=option:missing]')?.disabled).toBe(true);
+  });
   it('groups account and custom models in one menu while effort remains an independent selection', () => {
     const f = fixture();
     const model = f.parameters.fields[0];

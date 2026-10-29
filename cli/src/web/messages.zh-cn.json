@@ -935,5 +935,18 @@
   "Markdown source": "Markdown 源码",
   "Preview": "预览",
   "Global memory": "全局记忆",
-  "Private account memory for this project.": "当前账号的个人全局及项目记忆。"
+  "Private account memory for this project.": "当前账号的个人全局及项目记忆。",
+  "Settings models": "设置模型",
+  "Project models": "项目模型",
+  "Settings model": "设置中的模型",
+  "Loading settings models...": "正在加载设置中的模型…",
+  "Refresh settings models": "刷新设置模型",
+  "References follow the model connection in Settings. No credentials are copied.": "引用跟随设置中的模型连接，不复制凭据。",
+  "No available models in Settings. Add a model in Settings first.": "设置中暂无可用模型，请先在设置中添加。",
+  "Referenced model unavailable in user settings.": "引用的模型在用户设置中不可用。",
+  "The referenced model is unavailable in user settings. Update the project model reference.": "引用的模型在用户设置中不可用，请更新项目中的模型引用。",
+  "Unknown user settings model reference property.": "设置模型引用包含不支持的字段。",
+  "Invalid user settings model reference ID.": "设置模型引用的 ID 不正确。",
+  "Invalid AI model modelId.": "引用的设置模型 ID 不正确。",
+  "Reset to project default": "重置为项目默认模型"
 }

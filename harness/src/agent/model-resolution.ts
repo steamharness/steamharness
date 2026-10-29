@@ -42,9 +42,10 @@ export async function resolveAgentSystemAIInput(
     const configured = modelSettings.models;
     const requested = input.model ?? options.model;
     if (systemOnly && configured.some(model => model.id === requested && model.source === "third-party")) throw new HarnessError({ type: "input_validation", message: modelSettings.fromUser ? "This project only allows system AI. Select a system AI model in user settings." : "This project only allows system AI. Select a system AI model in Project configurations." });
-    const models = configured.filter(model => !systemOnly || model.source === "system");
+    const models = configured.filter(model => !systemOnly || model.source !== "third-party");
     const selected = requested === undefined ? models[0] : models.find(model => model.id === requested);
     if (!selected) throw new HarnessError({ type: "input_validation", message: models.length ? "The selected AI model is no longer configured. Select a model again." : modelSettings.fromUser ? "Add a model in user settings before running the Agent." : "Add a model in Project configurations before running the Agent." });
+    if (selected.source === "unavailable") throw new HarnessError({ type: "input_validation", message: "The referenced model is unavailable in user settings. Update the project model reference." });
     if (selected.source === "third-party") {
       return { input: { ...input, provider: `configured-${selected.id}`, model: selected.model,
         baseUrl: selected.apiKind === "anthropic-messages" ? resolveAgentBridgeBaseUrl("anthropic", selected.baseUrl) : selected.baseUrl,

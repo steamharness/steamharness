@@ -25,6 +25,17 @@ it('user model defaults honor system-only policy and remain empty in saved proje
   expect(project.fields[0].userModelSources).toBeUndefined();
   expect(JSON.stringify(unrestricted)).not.toContain('apiKey');
 });
+it('projects display the same composed default and keep both connection identities private', () => {
+  const project = { entrypoints: [], fields: [{ name: 'model', type: 'string', userSetting: { key: 'agent.model', mode: 'default' } }] } as unknown as Project;
+  const local = { ...settings.agent.models![0], model: 'project-model', apiKey: 'project-only-key' };
+  const composed = projectWithUserSettings(project, settings, { STEAMHARNESS_AGENT_MODELS: [local] as any });
+  expect(composed.fields[0].userSettingValue).toBe('project:third');
+  expect(composed.fields[0].userModelSources).toEqual({ 'project:third': 'third-party', third: 'third-party', system: 'system' });
+  expect(JSON.stringify(composed)).not.toMatch(/project-only-key|test-only-secret|baseUrl/);
+  const reference = projectWithUserSettings(project, settings, { STEAMHARNESS_AGENT_MODELS: [{ id: 'alias', name: 'Alias', source: 'user-settings', modelId: 'third' }] });
+  expect(reference.fields[0].userSettingValue).toBe('alias');
+  expect(reference.fields[0].userModelSources).toEqual({ alias: 'third-party', system: 'system' });
+});
 it('histories, public state and exports omit keys; recovery rehydrates only the same endpoint reference', () => {
   const serialized = JSON.stringify({ agentParameters: { userSettings: settings }, messages: [{ userSettings: settings }] }, userSettingsJsonReplacer);
   expect(serialized).not.toContain('test-only-secret'); expect(serialized).not.toContain('apiKey');

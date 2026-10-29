@@ -66,7 +66,7 @@ test("user-bound model fields preserve inheritance, explicit selections and proj
       const legacy = await resolveAgentSystemAIInput(input, { modelSource: "project" }, undefined);
       assert.equal(legacy.input.model, "legacy-model");
       const user = await resolveAgentSystemAIInput(input, { modelSource: "user-settings" }, undefined);
-      assert.equal(user.input.model, third.model);
+      assert.equal(user.input.model, "legacy-model", "Project supplements supply their own default alongside user models");
     });
   });
   await assert.rejects(resolveAgentSystemAIInput(input, { modelSource: "user-settings" }, undefined), /user settings/);

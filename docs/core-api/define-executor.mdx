@@ -109,7 +109,7 @@ params: [
 | `control` | `"text" \| "textarea" \| "radio" \| "select" \| "checkboxes" \| "audio" \| "date" \| "time" \| "datetime" \| "date-range"` | CLI Web 的表单控件提示；`audio` 必须与 `type: "file"` 一起使用，日期相关控件仍使用 `type: "string"`。 |
 | `step` | `number` | 这个字段属于第几步，从 `1` 开始。同一步的字段一起问；声明了 `step` 的请求在用户输入节点里一次只展示一步（问题上方有「‹ 第 N / M 问 ›」前后翻页，未答的必答题会在那里标出）。一次问多个独立问题时用它，同一个问题的多个字段不要拆步。 |
 | `resolveOnInput` | `boolean` | 是否在主输入内容变化时执行 `resolveParams`。默认 `false`；只有联动确实依赖输入文本时才设为 `true`。 |
-| `options` | `{ value, label?, description?, command? }[]` | 枚举选项；Slash 选项的 `command` 是不带 `/` 的命令名，默认使用 `value`。 |
+| `options` | `{ value, label?, description?, group?, command? }[]` | 枚举选项；可选字符串 `group` 供模型菜单显示分组，不改变选项值。Slash 选项的 `command` 是不带 `/` 的命令名，默认使用 `value`。 |
 | `accept` | `string[]` | 文件类型限制。 |
 | `audio` | `{ maxDurationSeconds?: number, maxBytes?: number }` | 音频文件可选时长和大小限制；音频输入只能接受一个文件，默认限制由宿主提供。 |
 | `format` | `"json"` | file param 使用 JSON 引用格式。 |
@@ -164,7 +164,7 @@ CLI Web 在参数刷新和发送时校验累积的动态选项与执行命令是
 | `value` | `string \| string[] \| null` | 替换当前参数值；`null` 表示显式清空。 |
 | `visible` | `boolean` | 控制参数是否显示。 |
 | `disabled` | `boolean` | 控制参数是否可操作。 |
-| `resolvedOptions` | `{ value, label?, description?, command? }[] \| null` | 数组替换参数当前的完整选项列表；`null` 恢复静态 `options`。 |
+| `resolvedOptions` | `{ value, label?, description?, group?, command? }[] \| null` | 数组替换参数当前的完整选项列表；`null` 恢复静态 `options`。 |
 | `options` | `Record<string, { visible?, disabled? }>` | 修改当前选项列表中单个值的显示或禁用状态。 |
 
 ## `NodeRegistryEntry`

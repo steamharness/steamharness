@@ -1,5 +1,7 @@
 # Unreleased
 
+- Improved: Agent models compose project supplements with user settings, including host model references, project defaults, distinct colliding IDs and unavailable-reference checks using one snapshot for choices and requests.
+
 - Fixed: Retry transient request-construction, stream-iteration/result, summary and deferred-fetch exceptions, including nested transport codes and HTTP 408/409/5xx. Manual compaction uses bounded retries while retaining text, tool results and per-attempt summary usage; host storage and callback failures remain terminal.
 
 - Fixed: Retry temporary upstream unavailability, in-stream upstream_error failures without an HTTP status, and connection failures such as ECONNRESET across ordinary requests, durable sessions and automatic compaction, preserving diagnostics, partial text and committed tool results within the existing retry budget.
