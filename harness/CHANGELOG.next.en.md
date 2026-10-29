@@ -1,5 +1,7 @@
 # Unreleased
 
+- Fixed: Retry temporary upstream unavailability, in-stream upstream_error failures without an HTTP status, and connection failures such as ECONNRESET across ordinary requests, durable sessions and automatic compaction, preserving diagnostics, partial text and committed tool results within the existing retry budget.
+
 - Renamed the development project generation skill to steamharness-generator and synchronized skill copies, validation and generator references.
 
 - Added skills.directories to Core Agent nodes and projects so runtime tools and host previews share one declaration. Hosts can list project and Core built-in guides and read complete SKILL.md files by catalog ID without running tool factories or tasks.

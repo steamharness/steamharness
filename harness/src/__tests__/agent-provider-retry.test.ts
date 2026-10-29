@@ -167,6 +167,42 @@ test("a stream that dies before producing anything is re-issued", async () => {
   assert.ok(!events.includes("error"), "the dropped attempt must not surface");
 });
 
+test("temporary upstream failures without an HTTP status use the request retry budget", async () => {
+  const ai = await import("@earendil-works/pi-ai");
+  const { models, state } = scriptedModels(ai, [
+    [{ type: "error", message: "upstream_error: Upstream service temporarily unavailable" }],
+    [{ type: "text", delta: "Recovered" }, { type: "done" }],
+  ]);
+  const runtime = await createRuntime(models);
+  const events = await drain(await runtime.streamFn(runtime.model, CONTEXT));
+  assert.equal(state.attempts, 2);
+  assert.equal(events.at(-1), "done");
+  assert.ok(!events.includes("error"));
+});
+
+for (const type of ["error", "response.failed"]) test(`HTTP 200 SSE ${type} failures retry through the real Responses adapter`, async t => {
+  let requests = 0;
+  const server = createServer((_request, response) => {
+    requests++;
+    const error = { code: "upstream_error", message: "Upstream service temporarily unavailable" };
+    const event = requests === 1
+      ? type === "error" ? { type, ...error } : { type, response: { status: "failed", error } }
+      : { type: "response.completed", response: { id: "resp_recovered", status: "completed", output: [],
+        usage: { input_tokens: 1, output_tokens: 0, total_tokens: 1 } } };
+    response.writeHead(200, { "content-type": "text/event-stream" });
+    response.end(`event: ${event.type}\ndata: ${JSON.stringify(event)}\n\n`);
+  });
+  await new Promise<void>(resolve => server.listen(0, "127.0.0.1", resolve));
+  t.after(() => new Promise<void>(resolve => server.close(() => resolve())));
+  const address = server.address();
+  assert.ok(address !== null && typeof address !== "string");
+  const runtime = await createPiRuntime({ provider: "self-hosted", model: "gpt-6.1-sol",
+    baseUrl: `http://127.0.0.1:${address.port}/v1`, apiKey: "test-key", apiKind: "openai-responses" });
+  const events = await drainEvents(await runtime.streamFn(runtime.model, CONTEXT, { maxRetries: 1 }));
+  assert.equal(requests, 2);
+  assert.equal(events.at(-1)?.type, "done");
+});
+
 test("a stream that announced itself and then died is still replayed", async () => {
   const ai = await import("@earendil-works/pi-ai");
   // This is the shape the bridge produces: the adapters push `start` as soon as

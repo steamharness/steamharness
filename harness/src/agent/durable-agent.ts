@@ -26,7 +26,7 @@ import { openAgentStorage, type AgentStorageFactory } from "./storage";
 import { AgentExtensionResources, mergeAgentRegistries } from "./extensions";
 import { DurableAgentSession } from "./session";
 import { durableContextMessages } from "./durable-context";
-import { normalizeAssistantCancellation } from "./stream-error";
+import { normalizeAssistantError } from "./stream-error";
 import { withEnvironmentByteReads } from "./environment-read";
 import type { AgentSessionCommand, AgentSessionOptions, AgentSessionReceipt } from "./session-types";
 
@@ -351,7 +351,7 @@ export class DurableAgent {
       tools,
       hooks: [hook(GenerationTask, {
         afterResponse: (message, _api, requestContext) => {
-          Object.assign(message, normalizeAssistantCancellation(message, requestContext.abortSignal));
+          Object.assign(message, normalizeAssistantError(message, requestContext.abortSignal));
           if (message.stopReason === "error" && isRetryableAssistantError(message) && message.content.length > 0) {
             // Continue from text already committed to the answer. Calls without a
             // result never become tool intents and must not reach the next request.
@@ -724,7 +724,7 @@ export class DurableAgent {
     const nativeSummary = args[1].messages.some(message => message.role === "system" &&
       typeof message.content === "string" && message.content.startsWith("You are a context summarization assistant."));
     if (!nativeSummary) {
-      const message = await this.models.completeSimple(...args);
+      const message = normalizeAssistantError(await this.models.completeSimple(...args), args[2]?.signal);
       await onUsage(message.usage);
       return message;
     }
@@ -740,7 +740,7 @@ export class DurableAgent {
     }) as AgentMessage[];
     const summary = await summarizeAgentMessages({
       models: { completeSimple: async (model, summaryContext, options) => {
-        last = await this.models.completeSimple(model, summaryContext, { ...args[2], ...options });
+        last = normalizeAssistantError(await this.models.completeSimple(model, summaryContext, { ...args[2], ...options }), args[2]?.signal);
         return last;
       } },
       model: args[0], messages, instructions, signal: args[2]?.signal,

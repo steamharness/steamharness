@@ -74,6 +74,20 @@ test("tool continuations below 90% retain their context without summarizing", as
   assert.equal(summaries.length, 0);
 });
 
+test("automatic compaction retries a temporary upstream failure before continuing the turn", async t => {
+  const { instance, faux, models } = fixture(); t.after(() => instance.close());
+  instance.state.messages[0] = { role: "user", content: "x".repeat(360_000), timestamp: 1 };
+  let summaries = 0;
+  models.completeSimple = async () => ++summaries === 1
+    ? ai.fauxAssistantMessage([], { stopReason: "error", errorMessage: "upstream_error: Upstream service temporarily unavailable" })
+    : ai.fauxAssistantMessage("Earlier work is complete.");
+  faux.setResponses([ai.fauxAssistantMessage("Finished")]);
+  await instance.prompt("Continue");
+  assert.equal(instance.state.errorMessage, undefined);
+  assert.equal(summaries, 2);
+  assert.equal(faux.state.callCount, 1);
+});
+
 test("the configured window overrides catalogue metadata for automatic compaction", async t => {
   const { instance, faux, summaries } = fixture({ window: 1_000_000, contextWindow: 100_000 });
   t.after(() => instance.close());

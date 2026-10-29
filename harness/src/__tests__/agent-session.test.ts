@@ -176,6 +176,57 @@ test("retry records stay between interrupted and resumed text in live and reopen
   assert.deepEqual(reopened.snapshot().turns.find(turn => turn.requestId === "retry-turn")!.items, items);
 });
 
+for (const partial of [false, true]) test(`temporary upstream errors resume after completed tools without replaying them (partial=${partial})`, async t => {
+  const directory = await mkdtemp(path.join(tmpdir(), "agent-session-upstream-"));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  const database = path.join(directory, "session.sqlite"), first = session({ compaction: { enabled: false } }, database);
+  const errorMessage = "upstream_error: Upstream service temporarily unavailable";
+  let tools = 0;
+  first.instance.state.tools = [{ name: "inspect", label: "Inspect", description: "Inspect", parameters: ai.Type.Object({}),
+    execute: async () => { tools++; return { content: [ai.fauxText("Committed result")], details: {} }; } }];
+  first.faux.setResponses([
+    ai.fauxAssistantMessage([ai.fauxToolCall("inspect", {})], { stopReason: "toolUse" }),
+    ai.fauxAssistantMessage(partial ? "Before interruption" : [], { stopReason: "error", errorMessage }),
+    request => {
+      assert.match(JSON.stringify(request.messages), /Committed result/);
+      if (partial) assert.match(JSON.stringify(request.messages), /Before interruption/);
+      return ai.fauxAssistantMessage("Finished");
+    },
+  ]);
+  first.instance.requestId = "upstream-turn";
+  const running = first.instance.prompt("Inspect and finish"); void running.catch(() => undefined);
+  t.after(async () => { first.lease.resolve(); await running; await first.instance.close(); });
+  await until(() => first.snapshot()?.turns[0]?.status === "done");
+  assert.equal(tools, 1);
+  assert.equal(first.faux.state.callCount, 3);
+  const turn = first.snapshot().turns[0]!;
+  const retries = turn.items.filter(item => item.metadata?.partType === "retry");
+  assert.equal(retries.length, 1);
+  const retry = retries[0]!.content as { attempt: number; maxAttempts: number; kind: string; reason: string };
+  assert.equal(retry.attempt, 1); assert.equal(retry.maxAttempts, 10); assert.equal(retry.kind, "dropped");
+  assert.ok(retry.reason.includes(errorMessage));
+  first.lease.resolve(); await running; await first.instance.close();
+  const reopened = session({ compaction: { enabled: false } }, database);
+  reopened.instance.requestId = "upstream-turn"; reopened.lease.resolve();
+  t.after(() => reopened.instance.close());
+  await reopened.instance.prompt("Inspect and finish");
+  assert.equal(reopened.faux.state.callCount, 0);
+  assert.deepEqual(reopened.snapshot().turns[0]!.items, turn.items);
+});
+
+for (const partial of [false, true]) test(`temporary upstream errors exhaust ten retries and expose the original reason (partial=${partial})`, async t => {
+  const f = session({ compaction: { enabled: false } });
+  const errorMessage = "upstream_error: Upstream service temporarily unavailable";
+  f.faux.setResponses(Array.from({ length: 11 }, () => ai.fauxAssistantMessage(partial ? "Partial" : [], { stopReason: "error", errorMessage })));
+  const running = f.instance.prompt("Continue"); void running.catch(() => undefined);
+  t.after(async () => { f.lease.resolve(); await running; await f.instance.close(); });
+  await until(() => f.snapshot()?.turns[0]?.status === "unanswered");
+  const turn = f.snapshot().turns[0]!;
+  assert.equal(turn.reason, "model_error"); assert.ok(turn.detail?.includes(errorMessage));
+  assert.equal(f.faux.state.callCount, 11);
+  assert.equal(turn.items.filter(item => item.metadata?.partType === "retry").length, 10);
+});
+
 test("session retry counters restart after successful tool requests and preserve both records on replay", async t => {
   const directory = await mkdtemp(path.join(tmpdir(), "agent-session-retry-reset-"));
   t.after(() => rm(directory, { recursive: true, force: true }));
