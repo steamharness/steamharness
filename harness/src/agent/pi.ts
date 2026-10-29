@@ -13,7 +13,7 @@ import type { AgentModelAttributes } from "./types";
 import type { TypeboxLike } from "./tools";
 import { HarnessError } from "../workflow/errors";
 import { withAgentWebSearch, resolveAgentWebSearch } from "./web-search";
-import { normalizeAssistantError } from "./stream-error";
+import { createAssistantErrorMessage, normalizeAssistantError } from "./stream-error";
 
 /**
  * How many times one model call may be retried before the run fails.
@@ -293,16 +293,24 @@ function createRetryingStreamFn(ai: PiAiModule, models: MutableModels, apiKey?: 
   ) => {
     const requestOptions: SimpleStreamOptions = { ...options, ...(apiKey === undefined ? {} : { apiKey }), maxRetries: 0 };
     const budget = options?.maxRetries ?? AGENT_PROVIDER_MAX_RETRIES;
-    // The first call stays on the synchronous path: `streamSimple` throws
-    // outright when the request cannot even be built (missing auth), and pi's
-    // loop relies on that rejection to fail the turn.
-    const first = models.streamSimple(model, ai.normalizeContext(context), requestOptions);
+    const requestContext = ai.normalizeContext(context);
+    let first: AssistantMessageEventStream;
+    try {
+      first = models.streamSimple(model, requestContext, requestOptions);
+    } catch (cause) {
+      const error = createAssistantErrorMessage(model, cause, options?.signal);
+      // Keep deterministic construction errors (such as missing auth) on the
+      // original rejection path. Transport failures use the same retry budget.
+      if (!ai.isRetryableAssistantError(error) && !options?.signal?.aborted) throw cause;
+      first = ai.createAssistantMessageEventStream();
+      first.push({ type: "error", reason: error.stopReason as "error" | "aborted", error }); first.end(error);
+    }
     const stream = ai.createAssistantMessageEventStream();
     void pumpAssistantStream({
       ai,
       models,
       model,
-      context,
+      context: requestContext,
       requestOptions,
       stream,
       first,
@@ -330,26 +338,6 @@ interface AssistantStreamPumpOptions {
 }
 
 /**
- * The emptiest assistant message a terminal event can carry for a model.
- *
- * Only used when a stream died before the consumer was ever shown a partial,
- * so there is no text, no usage and nothing already on screen to preserve —
- * the error itself is the whole message.
- */
-function createEmptyAssistantMessage(model: Model<Api>): AssistantMessage {
-  return {
-    role: "assistant",
-    content: [],
-    api: model.api,
-    provider: model.provider,
-    model: model.id,
-    usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
-    stopReason: "error",
-    timestamp: Date.now(),
-  } as unknown as AssistantMessage;
-}
-
-/**
  * Forwards one assistant stream, re-issuing the request while that is safe.
  *
  * Every path ends with a terminal event: the consumer resolves its final
@@ -358,7 +346,6 @@ function createEmptyAssistantMessage(model: Model<Api>): AssistantMessage {
  */
 async function pumpAssistantStream(options: AssistantStreamPumpOptions): Promise<void> {
   const { ai, models, model, context, requestOptions, stream, budget, signal } = options;
-  let attemptStream = options.first;
   // What the consumer has already been told about this call. `start` alone does
   // not count as content — the adapters push it as soon as the response headers
   // land, so a stream that dies before its first token leaves the consumer with
@@ -374,93 +361,50 @@ async function pumpAssistantStream(options: AssistantStreamPumpOptions): Promise
   let lastPartial: AssistantMessage | undefined;
 
   for (let attempt = 0; ; attempt += 1) {
-    let failed: AssistantMessage | undefined;
-
-    for await (const raw of attemptStream) {
-      const message = raw.type === "error" ? normalizeAssistantError(raw.error, signal) : undefined;
-      const event = raw.type === "error" ? { ...raw, error: message!, reason: message!.stopReason as "error" | "aborted" } : raw;
-      if (
-        event.type === "error" &&
-        !contentSent &&
-        attempt < budget &&
-        event.reason !== "aborted" &&
-        !signal?.aborted &&
-        ai.isRetryableAssistantError(event.error)
-      ) {
-        failed = event.error;
-        break;
+    let message: AssistantMessage | undefined;
+    try {
+      const attemptStream = attempt === 0 ? options.first : models.streamSimple(model, context, requestOptions);
+      for await (const event of attemptStream) {
+        if (event.type === "done" || event.type === "error") {
+          message = event.type === "done" ? event.message : event.error;
+          break;
+        }
+        lastPartial = event.partial;
+        if (event.type === "start") {
+          if (startSent) continue;
+          startSent = true;
+        } else contentSent = true;
+        stream.push(event);
       }
-      if (event.type === "start") {
-        if (startSent) continue;
-        startSent = true;
-      } else {
-        contentSent = true;
-      }
-      if (event.type !== "done" && event.type !== "error") {
-        lastPartial = (event as { partial?: AssistantMessage }).partial ?? lastPartial;
-      }
-      stream.push(event);
-      if (event.type === "done" || event.type === "error") {
-        stream.end();
-        return;
-      }
+      // An adapter may supply only end(result). Never await an unset result:
+      // end() alone otherwise strands the consumer indefinitely.
+      message ??= await Promise.race([attemptStream.result(), Promise.resolve(undefined)])
+        ?? createAssistantErrorMessage(model, `The model stream ended without a terminal event (${model.provider}).`, signal, lastPartial);
+      message = normalizeAssistantError(message, signal);
+    } catch (cause) {
+      // This includes both iterator/result failures and construction failures on
+      // subsequent attempts. Always settle a terminal event or spend one retry.
+      message = normalizeAssistantError(message ?? createAssistantErrorMessage(model, cause, signal, lastPartial), signal);
     }
-
-    if (failed === undefined) {
-      // The stream stopped without saying anything. The adapters are supposed
-      // to always end with `done` or `error`, so this is a transport that ended
-      // the body without a verdict — and ending the consumer's stream on it is
-      // not "nothing to report": `result()` would never resolve, and pi awaits
-      // that, so the run would hang instead of ending.
-      //
-      // It is treated the way the same cut would be if the adapter had labelled
-      // it: a retryable failure. The text the consumer already saw rides on the
-      // message, so a turn that has to be carried on keeps what the user read.
-      const noVerdict = {
-        ...(lastPartial ?? createEmptyAssistantMessage(model)),
-        stopReason: "error",
-        errorMessage: `The model stream ended without a terminal event (${model.provider}).`,
-      } as AssistantMessage;
-
-      if (!contentSent && attempt < budget) {
-        // Nothing reached the consumer, so this attempt is replayable: spend the
-        // wrapper's own budget rather than hand a half-empty answer on.
-        failed = noVerdict;
-      } else {
-        stream.push({ type: "error", reason: "error", error: noVerdict });
-        stream.end();
-        return;
-      }
+    if (message.stopReason !== "error" && message.stopReason !== "aborted") {
+      stream.push({ type: "done", reason: message.stopReason as "stop" | "length" | "toolUse" | "deferred", message });
+      stream.end(message); return;
+    }
+    if (contentSent || attempt >= budget || signal?.aborted || !ai.isRetryableAssistantError(message)) {
+      stream.push({ type: "error", reason: message.stopReason, error: message });
+      stream.end(message); return;
     }
 
     if (!(await waitBeforeRetry(attempt + 1, signal))) {
       stream.push({
         type: "error",
         reason: "aborted",
-        error: { ...failed, stopReason: "aborted", errorMessage: "Request aborted" },
+        error: { ...message, stopReason: "aborted", errorMessage: "Request aborted" },
       });
       stream.end();
       return;
     }
 
-    try {
-      attemptStream = models.streamSimple(model, ai.normalizeContext(context), requestOptions);
-    } catch (error) {
-      // A later attempt can fail before it produces a stream — an expired token
-      // is the usual reason. The previous error message is what the consumer
-      // ends up seeing, with this failure named.
-      stream.push({
-        type: "error",
-        reason: "error",
-        error: {
-          ...failed,
-          stopReason: "error",
-          errorMessage: error instanceof Error ? error.message : String(error),
-        },
-      });
-      stream.end();
-      return;
-    }
   }
 }
 

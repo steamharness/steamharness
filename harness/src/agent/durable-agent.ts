@@ -19,14 +19,14 @@ import { HarnessError } from "../workflow/errors";
 import type { AgentAskResume, AgentContextUsage, AgentWebSearch } from "./types";
 import type { AgentSearchMessage, AgentSearchStreamOptions } from "./web-search";
 import { AGENT_SEARCH_RESUME_PROMPT } from "./web-search";
-import { DEFAULT_AGENT_COMPACTION_SETTINGS, estimateAgentContextTokens, readAgentContextUsage,
+import { AgentCompactionResponseError, DEFAULT_AGENT_COMPACTION_SETTINGS, estimateAgentContextTokens, readAgentContextUsage,
   findCompactionSplitIndex, shouldCompactAgent, summarizeAgentMessages, type AgentCompactionSettings } from "./compaction";
 import { createAgentStreamResumePrompt } from "./plan";
 import { openAgentStorage, type AgentStorageFactory } from "./storage";
 import { AgentExtensionResources, mergeAgentRegistries } from "./extensions";
 import { DurableAgentSession } from "./session";
 import { durableContextMessages } from "./durable-context";
-import { normalizeAssistantError } from "./stream-error";
+import { createAssistantErrorMessage, normalizeAssistantError } from "./stream-error";
 import { withEnvironmentByteReads } from "./environment-read";
 import type { AgentSessionCommand, AgentSessionOptions, AgentSessionReceipt } from "./session-types";
 
@@ -157,6 +157,7 @@ export class DurableAgent {
               ? { ...model, contextWindow: this.state.contextWindow } : model;
           };
           if (key === "completeSimple") return this.summarize.bind(this);
+          if (key === "fetchDeferred") return this.fetchDeferred.bind(this);
           const value = Reflect.get(this.models, key, this.models);
           return typeof value === "function" ? value.bind(this.models) : value;
         },
@@ -720,6 +721,10 @@ export class DurableAgent {
   private async summarize(...args: Parameters<Models["completeSimple"]>): ReturnType<Models["completeSimple"]> {
     let last: AssistantMessage | undefined;
     let total: Usage | undefined;
+    const complete = async (...request: Parameters<Models["completeSimple"]>): Promise<AssistantMessage> => {
+      try { return normalizeAssistantError(await this.models.completeSimple(...request), request[2]?.signal); }
+      catch (cause) { return createAssistantErrorMessage(request[0], cause, request[2]?.signal); }
+    };
     const onUsage = async (usage: Usage): Promise<void> => {
       if (!total) total = structuredClone(usage);
       else {
@@ -736,7 +741,7 @@ export class DurableAgent {
     const nativeSummary = args[1].messages.some(message => message.role === "system" &&
       typeof message.content === "string" && message.content.startsWith("You are a context summarization assistant."));
     if (!nativeSummary) {
-      const message = normalizeAssistantError(await this.models.completeSimple(...args), args[2]?.signal);
+      const message = await complete(...args);
       await onUsage(message.usage);
       return message;
     }
@@ -752,7 +757,7 @@ export class DurableAgent {
     }) as AgentMessage[];
     const summary = await summarizeAgentMessages({
       models: { completeSimple: async (model, summaryContext, options) => {
-        last = normalizeAssistantError(await this.models.completeSimple(model, summaryContext, { ...args[2], ...options }), args[2]?.signal);
+        last = await complete(model, summaryContext, { ...args[2], ...options });
         return last;
       } },
       model: args[0], messages, instructions, signal: args[2]?.signal,
@@ -761,7 +766,7 @@ export class DurableAgent {
     }).catch(error => {
       // Let Durable apply its persisted retry policy to an incomplete provider
       // response. A cancelled invocation must never place a late summary.
-      if (!args[2]?.signal?.aborted && last && last.stopReason !== "stop") return undefined;
+      if (!args[2]?.signal?.aborted && error instanceof AgentCompactionResponseError && error.response.stopReason !== "stop") return undefined;
       throw error;
     });
     if (summary === undefined) return { ...last!, usage: total! };
@@ -770,26 +775,23 @@ export class DurableAgent {
 
   private streamModel(...args: Parameters<Models["streamSimple"]>): ReturnType<Models["streamSimple"]> {
     if (this.fatalFailure !== undefined) throw this.fatalFailure;
-    const source = this.models.streamSimple(args[0], args[1], { ...args[2],
-      onAgentWebSearch: (search: AgentWebSearch) => {
-        if (!this.options.session || args[2]?.sessionId === this.rootModelSessionId) return this.emitWebSearch(search);
-      },
-    } as AgentSearchStreamOptions);
     const stream = createAssistantMessageEventStream();
     const requestId = this.activeRequest;
     const recordId = this.options.session ? this.modelAttempts.get(args[2]?.sessionId ?? "") ?? `aux:${randomUUID()}` : this.attemptId;
     void (async () => {
       let partial: AssistantMessage | undefined;
-      const interrupted = (cause: unknown): AssistantMessage => ({
-        ...(partial ?? { role: "assistant", content: [], api: args[0].api, provider: args[0].provider,
-          model: args[0].id, timestamp: Date.now(), usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0,
-            totalTokens: 0, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } } }),
-        stopReason: args[2]?.signal?.aborted || cause instanceof Error && cause.name === "AbortError" ? "aborted" : "error",
-        errorMessage: String(cause),
-      });
+      const interrupted = (cause: unknown) => createAssistantErrorMessage(args[0], cause, args[2]?.signal, partial);
       try {
         let message: AssistantMessage | undefined;
         try {
+          const source = this.models.streamSimple(args[0], args[1], { ...args[2],
+            onAgentWebSearch: async (search: AgentWebSearch) => {
+              if (!this.options.session || args[2]?.sessionId === this.rootModelSessionId) {
+                try { await this.emitWebSearch(search); }
+                catch (cause) { this.fail(cause); throw cause; }
+              }
+            },
+          } as AgentSearchStreamOptions);
           for await (const event of source) {
             if (event.type === "done" || event.type === "error") {
               message = event.type === "done" ? event.message : event.error;
@@ -798,15 +800,14 @@ export class DurableAgent {
             partial = event.partial;
             stream.push(event);
           }
+          // Read an already supplied result, but never wait on end() alone.
+          message ??= await Promise.race([source.result(), Promise.resolve(undefined)])
+            ?? interrupted("Model stream ended without a terminal event.");
         } catch (cause) {
-          // Iterator failures are transport failures; storage/observer failures
-          // below remain fatal and must not be hidden by provider retries.
-          message = interrupted(cause);
+          // Catch only provider setup/iteration/result failures. Storage and
+          // observer failures below remain fatal and must not be retried.
+          message ??= interrupted(cause);
         }
-        // end() without a terminal event leaves result() pending forever. An
-        // already supplied result is valid; otherwise settle a retryable error.
-        message ??= await Promise.race([source.result(), Promise.resolve(undefined)])
-          ?? interrupted("Model stream ended without a terminal event.");
         const usage = json(message.usage);
         await this.root!.commit(async tx => {
           (await tx.doc(RunDoc, this.root!.id, requestId, null)).usage[recordId] = usage;
@@ -827,6 +828,13 @@ export class DurableAgent {
       }
     })();
     return stream;
+  }
+
+  private async fetchDeferred(...args: Parameters<Models["fetchDeferred"]>): ReturnType<Models["fetchDeferred"]> {
+    if (this.fatalFailure !== undefined) throw this.fatalFailure;
+    // Poll failures must reach the same persisted policy as returned errors.
+    try { return normalizeAssistantError(await this.models.fetchDeferred(...args), args[2]?.signal); }
+    catch (cause) { return createAssistantErrorMessage(args[0], cause, args[2]?.signal); }
   }
 
   private async emitUsage(recordId: string, usage: unknown): Promise<void> {

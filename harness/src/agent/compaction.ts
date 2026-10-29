@@ -1,6 +1,9 @@
 import type { Api, AssistantMessage, Context, Message, Model, MutableModels, Usage } from "@earendil-works/pi-ai";
+import { retryAssistantCall } from "@earendil-works/pi-ai";
 import type { AgentMessage } from "@earendil-works/pi-agent-core";
 import type { AgentContextUsage } from "./types";
+import { createAssistantErrorMessage, normalizeAssistantError } from "./stream-error";
+import { AGENT_PROVIDER_MAX_RETRIES } from "./pi";
 
 /**
  * Core checks context before each model request, including tool continuations.
@@ -29,6 +32,13 @@ export const AGENT_SUMMARIZATION_SYSTEM_PROMPT = [
   "Drop: greetings, restated instructions, and reasoning that did not change the outcome.",
   "Reply with the summary only.",
 ].join("\n");
+
+/** Only a failed provider response, never a host accounting/observer failure. */
+export class AgentCompactionResponseError extends Error {
+  constructor(readonly response: AssistantMessage) {
+    super(response.errorMessage?.trim() || `The model returned an incomplete compaction summary (${response.stopReason}).`);
+  }
+}
 
 export function shouldCompactAgent(
   usage: AgentContextUsage | undefined,
@@ -145,6 +155,8 @@ export async function compactAgentMessages(options: {
   onUsage?: (usage: Usage) => void | Promise<void>;
   /** Summarize all existing messages even when they fit in the recent context budget. */
   force?: boolean;
+  /** Base retry backoff; each summary request retains the ten-retry budget. */
+  retryDelayMs?: number;
 }): Promise<AgentCompactionResult> {
   options.signal?.throwIfAborted();
   const settings = options.settings ?? DEFAULT_AGENT_COMPACTION_SETTINGS;
@@ -158,12 +170,18 @@ export async function compactAgentMessages(options: {
   const head = options.messages.slice(0, splitIndex);
   const tail = options.messages.slice(splitIndex);
   const summary = await summarizeAgentMessages({
-    models: options.models,
+    models: { completeSimple: (...args) => retryAssistantCall(async () => {
+      let message: AssistantMessage;
+      try { message = normalizeAssistantError(await options.models.completeSimple(...args), args[2]?.signal); }
+      catch (cause) { message = createAssistantErrorMessage(args[0], cause, args[2]?.signal); }
+      // Accounting failures are host failures, outside the provider catch.
+      await options.onUsage?.(message.usage);
+      return message;
+    }, { enabled: true, maxRetries: AGENT_PROVIDER_MAX_RETRIES, baseDelayMs: options.retryDelayMs ?? 500, maxAgentDelayMs: 8_000 }, options.signal) },
     model: options.model,
     messages: head,
     instructions: options.instructions,
     signal: options.signal,
-    onUsage: options.onUsage,
     reserveTokens: settings.reserveTokens,
   });
 
@@ -217,12 +235,12 @@ export async function summarizeAgentMessages(options: {
       const context: Context = { systemPrompt, messages: [{ role: "user",
         content: [{ type: "text", text: chunk }], timestamp: readLastTimestamp(options.messages) }] };
       const message: AssistantMessage = await options.models.completeSimple(options.model, context, {
-        maxTokens, ...(options.signal === undefined ? {} : { signal: options.signal }),
+        maxTokens, maxRetries: 0, ...(options.signal === undefined ? {} : { signal: options.signal }),
       });
       await options.onUsage?.(message.usage);
       options.signal?.throwIfAborted();
       if (message.stopReason !== "stop" || message.content.some(block => block.type === "toolCall")) {
-        throw new Error(message.errorMessage?.trim() || `The model returned an incomplete compaction summary (${message.stopReason}).`);
+        throw new AgentCompactionResponseError(message);
       }
       const text = message.content.filter((block): block is { type: "text"; text: string } => block.type === "text")
         .map(block => block.text).join("\n").trim();

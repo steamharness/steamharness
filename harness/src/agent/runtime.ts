@@ -469,6 +469,7 @@ class ProjectAgentRuntime implements AgentRuntime {
       settings,
       signal: host?.abortSignal,
       onUsage: usage => host?.reportUsage?.(sumAgentUsage([usage])!),
+      retryDelayMs: this.options.retryDelayMs,
       force,
     }).catch(error => {
       throwIfRunAborted(host?.abortSignal);

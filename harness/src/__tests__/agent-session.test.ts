@@ -31,6 +31,110 @@ function session(options: import("../agent/session-types").AgentSessionOptions =
   return { instance, faux, lease, suspend, snapshot: () => snapshot! };
 }
 
+for (const boundary of ["create", "iterate", "result"] as const) {
+  for (const partial of boundary === "create" ? [false] : [false, true]) {
+    test(`durable ${boundary} exceptions recover after tools without replaying them (partial=${partial})`, { timeout: 5000 }, async t => {
+      const f = session({ compaction: { enabled: false } }); t.after(() => f.instance.close()); f.lease.resolve();
+      let tools = 0, calls = 0;
+      f.instance.state.tools = [{ name: "inspect", label: "Inspect", description: "Inspect", parameters: ai.Type.Object({}),
+        execute: async () => { tools++; return { content: [ai.fauxText("Committed result")], details: {} }; } }];
+      f.faux.setResponses([
+        ai.fauxAssistantMessage([ai.fauxToolCall("inspect", {})], { stopReason: "toolUse" }),
+        request => {
+          assert.match(JSON.stringify(request.messages), /Committed result/);
+          if (partial) assert.match(JSON.stringify(request.messages), /Before interruption/);
+          return ai.fauxAssistantMessage("Finished");
+        },
+      ]);
+      const base = f.instance.models.streamSimple.bind(f.instance.models);
+      f.instance.models.streamSimple = (...args) => {
+        if (++calls !== 2) return base(...args);
+        const error = new Error("Provider transport failed", { cause: { code: "ECONNREFUSED" } });
+        if (boundary === "create") throw error;
+        const source = ai.createAssistantMessageEventStream();
+        const message = ai.fauxAssistantMessage(partial ? "Before interruption" : []);
+        if (boundary === "iterate") source[Symbol.asyncIterator] = async function* () {
+          if (partial) yield { type: "text_delta", contentIndex: 0, delta: "Before interruption", partial: message };
+          throw error;
+        };
+        else {
+          if (partial) source.push({ type: "text_delta", contentIndex: 0, delta: "Before interruption", partial: message });
+          source.end(); source.result = async () => { throw error; };
+        }
+        return source;
+      };
+      await f.instance.prompt("Inspect and finish");
+      assert.equal(f.instance.state.errorMessage, undefined);
+      assert.equal(f.snapshot().turns[0]!.status, "done");
+      assert.equal(tools, 1); assert.equal(calls, 3);
+      const retries = f.snapshot().turns[0]!.items.filter(item => item.metadata?.partType === "retry");
+      assert.equal(retries.length, 1);
+      assert.match(JSON.stringify(retries), /ECONNREFUSED/);
+    });
+  }
+}
+
+test("synchronous provider exceptions exhaust exactly ten durable retries", { timeout: 5000 }, async t => {
+  const f = session({ compaction: { enabled: false } }); t.after(() => f.instance.close()); f.lease.resolve();
+  let calls = 0;
+  f.instance.models.streamSimple = () => { calls++; throw Object.assign(new Error("Provider failed"), { status: 501 }); };
+  await f.instance.prompt("Continue");
+  assert.equal(calls, 11);
+  const turn = f.snapshot().turns[0]!;
+  assert.equal(turn.status, "unanswered"); assert.equal(turn.reason, "model_error");
+  assert.match(turn.detail ?? "", /501/);
+  assert.equal(turn.items.filter(item => item.metadata?.partType === "retry").length, 10);
+});
+
+for (const status of [401, 422]) test(`a rejected deferred fetch with HTTP ${status} does not retry`, { timeout: 5000 }, async t => {
+  const f = session({ compaction: { enabled: false } }); t.after(() => f.instance.close()); f.lease.resolve();
+  f.faux.setResponses([ai.fauxAssistantMessage([], { stopReason: "deferred", deferred: {
+    provider: "faux", modelId: "test", api: "faux", id: "deferred-result", pollAfterMs: 0,
+  } })]);
+  let polls = 0;
+  f.instance.models.fetchDeferred = async () => { polls++; throw Object.assign(new Error("Provider rejected request"), { status }); };
+  await f.instance.prompt("Continue");
+  assert.equal(f.faux.state.callCount, 1); assert.equal(polls, 1);
+  assert.equal(f.snapshot().turns[0]!.status, "unanswered");
+  assert.match(f.snapshot().turns[0]!.detail ?? "", new RegExp(String(status)));
+});
+
+test("a rejected transient deferred fetch enters the persisted generation retry policy", { timeout: 5000 }, async t => {
+  const f = session({ compaction: { enabled: false } }); t.after(() => f.instance.close()); f.lease.resolve();
+  f.faux.setResponses([ai.fauxAssistantMessage([], { stopReason: "deferred", deferred: {
+    provider: "faux", modelId: "test", api: "faux", id: "deferred-result", pollAfterMs: 0,
+  } }), ai.fauxAssistantMessage("Recovered")]);
+  let polls = 0;
+  f.instance.models.fetchDeferred = async () => { polls++; throw new Error("Poll failed", { cause: { code: "ETIMEDOUT" } }); };
+  await f.instance.prompt("Continue");
+  assert.equal(f.instance.state.errorMessage, undefined);
+  assert.equal(f.snapshot().turns[0]!.status, "done");
+  assert.equal(f.faux.state.callCount, 2); assert.equal(polls, 1);
+  assert.equal(f.snapshot().turns[0]!.items.filter(item => item.metadata?.partType === "retry").length, 1);
+});
+
+test("web-search observer errors remain fatal even when their text resembles a transport failure", { timeout: 5000 }, async t => {
+  const f = session({ compaction: { enabled: false } }); t.after(() => f.instance.close()); f.lease.resolve();
+  let calls = 0;
+  f.instance.subscribe(event => { if (event.type === "project_web_search" as string) throw new Error("Connection error in search observer"); });
+  f.instance.models.streamSimple = (...args) => {
+    calls++;
+    const source = ai.createAssistantMessageEventStream();
+    void (async () => {
+      try {
+        await (args[2] as AgentSearchStreamOptions)?.onAgentWebSearch?.({ id: "search", status: "running", query: "Inspect", sources: [] });
+        source.push({ type: "done", reason: "stop", message: ai.fauxAssistantMessage("Finished") });
+      } catch (cause) {
+        source.push({ type: "error", reason: "error", error: ai.fauxAssistantMessage([], { stopReason: "error", errorMessage: String(cause) }) });
+      }
+      source.end();
+    })();
+    return source;
+  };
+  await assert.rejects(f.instance.prompt("Search"), /search observer/);
+  assert.equal(calls, 1);
+});
+
 test("host suspension preserves an active generation and resumes committed text without replaying tools", { timeout: 10_000 }, async t => {
   const directory = await mkdtemp(path.join(tmpdir(), "agent-host-suspend-"));
   t.after(() => rm(directory, { recursive: true, force: true }));

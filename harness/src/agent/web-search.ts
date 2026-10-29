@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import type { Api, AssistantMessage, Context, Model, MutableModels, SimpleStreamOptions } from "@earendil-works/pi-ai";
 import { HarnessError } from "../workflow/errors";
 import type { AgentSearchSource, AgentWebSearch } from "./types";
+import { createAssistantErrorMessage } from "./stream-error";
 
 type RecordValue = Record<string, unknown>;
 type SearchApi = "openai-responses" | "anthropic-messages";
@@ -95,14 +96,15 @@ export function withAgentWebSearch(ai: PiAi, models: MutableModels, settings: {
               stream.push(event);
               if (event.type === "done" || event.type === "error") { stream.end(message); return; }
             }
-            throw new Error(`The model stream ended without a terminal event (${model.provider}).`);
+            const message = await Promise.race([source.result(), Promise.resolve(undefined)]);
+            if (!message) throw new Error(`The model stream ended without a terminal event (${model.provider}).`);
+            await collector.finish(message);
+            collector.attach(message);
+            if (message.stopReason === "error" || message.stopReason === "aborted") stream.push({ type: "error", reason: message.stopReason, error: message });
+            else stream.push({ type: "done", reason: message.stopReason as "stop" | "length" | "toolUse" | "deferred", message });
+            stream.end(message);
           } catch (error) {
-            const message: AssistantMessage = { ...(last ?? { role: "assistant", api: model.api, provider: model.provider, model: model.id,
-              content: [], timestamp: Date.now(), stopReason: options?.signal?.aborted ? "aborted" : "error",
-              usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, totalTokens: 0,
-                cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } } }),
-              stopReason: options?.signal?.aborted ? "aborted" : "error",
-              errorMessage: error instanceof Error ? error.message : String(error) };
+            const message = createAssistantErrorMessage(model, error, options?.signal, last);
             // An observer failure must still resolve the consumer's stream.
             await collector.finish(message).catch(() => undefined);
             collector.attach(message);

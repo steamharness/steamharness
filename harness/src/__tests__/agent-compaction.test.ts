@@ -88,6 +88,85 @@ test("automatic compaction retries a temporary upstream failure before continuin
   assert.equal(faux.state.callCount, 1);
 });
 
+for (const chunked of [false, true]) test(`rejected compaction requests retry without losing history or successful usage (chunked=${chunked})`, async t => {
+  const { instance, faux, models } = fixture(); t.after(() => instance.close());
+  instance.state.messages[0] = { role: "user", content: "旧".repeat(chunked ? 103_000 : 90_000), timestamp: 1 };
+  let calls = 0, billed = 0;
+  models.completeSimple = async () => {
+    calls++;
+    if (calls === (chunked ? 2 : 1)) throw new Error("Summary request failed", { cause: { statusCode: 501 } });
+    return ai.fauxAssistantMessage("A concise checkpoint.");
+  };
+  instance.subscribe(event => {
+    if (event.type === "project_usage" as string && (event as unknown as { recordId: string }).recordId.startsWith("compaction:")) billed++;
+  });
+  faux.setResponses([ai.fauxAssistantMessage("Finished")]);
+  await instance.prompt("Continue");
+  assert.equal(instance.state.errorMessage, undefined);
+  assert.ok(calls > (chunked ? 2 : 1));
+  assert.equal(billed, calls, "even a rejected request settles one usage record, without dropping prior chunks");
+  assert.equal(faux.state.callCount, 1);
+});
+
+for (const thrown of [false, true]) test(`manual compaction retries transient failures and bills every attempt (thrown=${thrown})`, async () => {
+  const { models } = fixture(); let calls = 0, billed = 0;
+  models.completeSimple = async (_model, _source, options) => {
+    assert.equal(options?.maxRetries, 0);
+    if (++calls === 1) {
+      if (thrown) throw new Error("Summary failed", { cause: { code: "ETIMEDOUT" } });
+      return ai.fauxAssistantMessage([], { stopReason: "error", errorMessage: "409 Request failed" });
+    }
+    return ai.fauxAssistantMessage("Recovered summary");
+  };
+  const result = await compactAgentMessages({ models, model: models.getModel("faux", "compact")!,
+    messages: [{ role: "user", content: "Earlier work", timestamp: 1 }], force: true, retryDelayMs: 0, onUsage: () => { billed++; } });
+  assert.equal(result.summary, "Recovered summary"); assert.equal(calls, 2); assert.equal(billed, 2);
+});
+
+for (const cancelled of [false, true]) test(`manual summary rejection is bounded and retains its original history (cancelled=${cancelled})`, async () => {
+  const { models } = fixture(); let calls = 0, billed = 0;
+  const controller = new AbortController(), messages: AgentMessage[] = [{ role: "user", content: "Original history", timestamp: 1 }];
+  const original = structuredClone(messages);
+  models.completeSimple = async () => {
+    calls++;
+    if (cancelled) controller.abort(new Error("Summary cancelled"));
+    throw new Error("Request failed", { cause: { code: "ECONNREFUSED" } });
+  };
+  await assert.rejects(compactAgentMessages({ models, model: models.getModel("faux", "compact")!, messages,
+    force: true, signal: controller.signal, retryDelayMs: 0, onUsage: () => { billed++; } }), cancelled ? /Summary cancelled/ : /ECONNREFUSED/);
+  assert.equal(calls, cancelled ? 1 : 11); assert.equal(billed, calls);
+  assert.deepEqual(messages, original);
+});
+
+for (const status of [401, 501]) test(`automatic summary rejections retain history after HTTP ${status}`, async t => {
+  const { instance, models, faux } = fixture(); t.after(() => instance.close());
+  instance.state.messages[0] = { role: "user", content: "x".repeat(360_000), timestamp: 1 };
+  let calls = 0;
+  models.completeSimple = async () => { calls++; throw Object.assign(new Error("Summary rejected"), { status }); };
+  await instance.prompt("Continue");
+  assert.equal(calls, status === 401 ? 1 : 11);
+  assert.equal(faux.state.callCount, 0);
+  assert.match(instance.state.errorMessage ?? "", new RegExp(String(status)));
+  assert.match(serializeAgentMessages(instance.state.messages), /x{360000}/);
+});
+
+for (const durable of [false, true]) test(`summary accounting failures remain fatal even after a retryable response (durable=${durable})`, async t => {
+  const { instance, models } = fixture(); t.after(() => instance.close());
+  let calls = 0;
+  models.completeSimple = async () => { calls++; return ai.fauxAssistantMessage([], { stopReason: "error", errorMessage: "upstream_error" }); };
+  const fail = () => { throw new Error("Connection error from accounting observer"); };
+  if (durable) {
+    instance.state.messages[0] = { role: "user", content: "x".repeat(360_000), timestamp: 1 };
+    instance.subscribe(event => { if (event.type === "project_usage" as string) fail(); });
+    await instance.prompt("Continue");
+    assert.match(instance.state.errorMessage ?? "", /accounting observer/);
+  } else {
+    await assert.rejects(compactAgentMessages({ models, model: models.getModel("faux", "compact")!, messages: instance.state.messages,
+      force: true, retryDelayMs: 0, onUsage: fail }), /accounting observer/);
+  }
+  assert.equal(calls, 1);
+});
+
 test("the configured window overrides catalogue metadata for automatic compaction", async t => {
   const { instance, faux, summaries } = fixture({ window: 1_000_000, contextWindow: 100_000 });
   t.after(() => instance.close());

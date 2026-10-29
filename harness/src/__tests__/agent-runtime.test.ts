@@ -811,13 +811,13 @@ for (const stopReason of ["error", "aborted", "length", "toolUse", "pending", "d
       stopReason, errorMessage: stopReason === "error" ? "Summary provider failed" : undefined,
     });
     await withTempDir(async (workdir) => {
-      const runtime = await createAgentRuntime({ pi, workdir });
+      const runtime = await createAgentRuntime({ pi, workdir, retryDelayMs: 0 });
       runtime.restoreTranscript?.([{ role: "user", content: "original request", timestamp: 1 }, ai.fauxAssistantMessage("original answer")]);
       const before = structuredClone(runtime.readTranscript?.());
       const events: AgentStreamEvent[] = [];
       await assert.rejects(async () => {
         for await (const event of runtime.run({ prompt: "/compact", errCode: 0, errMessage: "" })) events.push(event);
-      }, stopReason === "error" ? /Summary provider failed/ : /compaction summary/i);
+      }, stopReason === "error" ? /Summary provider failed/ : stopReason === "aborted" ? /connection lost/i : /compaction summary/i);
       assert.deepEqual(runtime.readTranscript?.(), before);
       assert.deepEqual(events.filter(event => event.type === "compaction"), [{ type: "compaction", phase: "start", auto: false }]);
     });

@@ -8,7 +8,7 @@ import type {
   MutableModels,
   SimpleStreamOptions,
 } from "@earendil-works/pi-ai";
-import { AGENT_PROVIDER_MAX_RETRIES, createPiRuntime } from "../agent/pi";
+import { AGENT_PROVIDER_MAX_RETRIES, createPiRuntime, type AgentApiKind } from "../agent/pi";
 
 type PiAi = typeof import("@earendil-works/pi-ai");
 
@@ -98,13 +98,13 @@ function scriptedModels(ai: PiAi, script: ReadonlyArray<readonly Step[]>) {
   return { models, state };
 }
 
-async function createRuntime(models: MutableModels) {
+async function createRuntime(models: MutableModels, apiKind: AgentApiKind = "openai-responses") {
   return createPiRuntime({
     provider: "self-hosted",
     model: "MiniMax-M3",
     baseUrl: "http://127.0.0.1:9/v1",
     apiKey: "test-key",
-    apiKind: "openai-responses",
+    apiKind,
     models,
   });
 }
@@ -123,6 +123,162 @@ async function drainEvents(
 /** Drains a stream and reports the event types the consumer saw. */
 async function drain(stream: AsyncIterable<AssistantMessageEvent>): Promise<string[]> {
   return (await drainEvents(stream)).map((event) => event.type);
+}
+
+for (const api of ["openai-completions", "openai-responses", "anthropic-messages"] as const) {
+for (const boundary of ["create", "iterate", "result"] as const) {
+  test(`${api} exceptions at the ${boundary} boundary spend the request retry budget`, { timeout: 5000 }, async () => {
+    const ai = await import("@earendil-works/pi-ai");
+    const { models, state } = scriptedModels(ai, [[{ type: "done" }]]);
+    const base = models.streamSimple.bind(models);
+    let calls = 0;
+    models.streamSimple = (...args) => {
+      if (++calls > 1) return base(...args);
+      const error = new Error("Transport failed", { cause: { code: "ECONNREFUSED" } });
+      if (boundary === "create") throw error;
+      const source = ai.createAssistantMessageEventStream();
+      if (boundary === "iterate") source[Symbol.asyncIterator] = async function* () { throw error; };
+      else { source.end(); source.result = async () => { throw error; }; }
+      return source;
+    };
+    const runtime = await createRuntime(models, api);
+    const stream = await runtime.streamFn(runtime.model, CONTEXT, { maxRetries: 1 });
+    assert.equal((await drain(stream)).at(-1), "done");
+    assert.equal((await stream.result()).stopReason, "stop");
+    assert.equal(calls, 2); assert.equal(state.options[0]?.maxRetries, 0);
+  });
+}
+}
+
+test("exceptions while creating later attempts still share the same bounded budget", { timeout: 5000 }, async () => {
+  const ai = await import("@earendil-works/pi-ai");
+  const { models } = scriptedModels(ai, [[{ type: "error", message: "terminated" }]]);
+  const base = models.streamSimple.bind(models);
+  let calls = 0;
+  models.streamSimple = (...args) => {
+    if (++calls === 1) return base(...args);
+    throw Object.assign(new Error("Transport failed"), { status: 501 });
+  };
+  const runtime = await createRuntime(models, "openai-completions");
+  const stream = await runtime.streamFn(runtime.model, CONTEXT, { maxRetries: 2 });
+  assert.equal((await drain(stream)).at(-1), "error");
+  assert.equal(calls, 3);
+  assert.match((await stream.result()).errorMessage ?? "", /501/);
+});
+
+test("iterator exceptions settle a partial response without replaying already visible content", { timeout: 2000 }, async () => {
+  const ai = await import("@earendil-works/pi-ai");
+  const { models } = scriptedModels(ai, []);
+  const partial = assistantMessage({ content: [{ type: "text", text: "Retained" }] });
+  let calls = 0;
+  models.streamSimple = () => {
+    calls++;
+    const source = ai.createAssistantMessageEventStream();
+    source[Symbol.asyncIterator] = async function* () {
+      yield { type: "text_delta", contentIndex: 0, delta: "Retained", partial };
+      throw Object.assign(new Error("Transport failed"), { code: "ECONNRESET" });
+    };
+    return source;
+  };
+  const runtime = await createRuntime(models, "openai-completions");
+  const stream = await runtime.streamFn(runtime.model, CONTEXT, { maxRetries: 1 });
+  assert.deepEqual(await drain(stream), ["text_delta", "error"]);
+  const result = await stream.result();
+  assert.deepEqual(result.content, partial.content); assert.equal(result.usage, partial.usage);
+  assert.equal(ai.isRetryableAssistantError(result), true); assert.equal(calls, 1);
+});
+
+test("a result supplied without a terminal event completes the consumer", async () => {
+  const ai = await import("@earendil-works/pi-ai");
+  const { models } = scriptedModels(ai, []);
+  models.streamSimple = () => { const source = ai.createAssistantMessageEventStream(); source.end(assistantMessage({})); return source; };
+  const runtime = await createRuntime(models, "openai-completions");
+  assert.deepEqual(await drain(await runtime.streamFn(runtime.model, CONTEXT, { maxRetries: 0 })), ["done"]);
+});
+
+test("a committed terminal event stays authoritative if iterator cleanup fails", async () => {
+  const ai = await import("@earendil-works/pi-ai");
+  const { models } = scriptedModels(ai, []); let calls = 0;
+  models.streamSimple = () => {
+    calls++;
+    const source = ai.createAssistantMessageEventStream();
+    source[Symbol.asyncIterator] = async function* () {
+      try { yield { type: "done", reason: "stop", message: assistantMessage({}) } as const; }
+      finally { throw new Error("Connection lost during cleanup"); }
+    };
+    return source;
+  };
+  const runtime = await createRuntime(models, "openai-completions");
+  assert.deepEqual(await drain(await runtime.streamFn(runtime.model, CONTEXT, { maxRetries: 1 })), ["done"]);
+  assert.equal(calls, 1);
+});
+
+test("non-transient construction errors keep their original rejection and are never retried", async () => {
+  const ai = await import("@earendil-works/pi-ai");
+  const { models } = scriptedModels(ai, []);
+  const error = new Error("Invalid API key");
+  let calls = 0;
+  models.streamSimple = () => { calls++; throw error; };
+  const runtime = await createRuntime(models, "openai-completions");
+  await assert.rejects(async () => runtime.streamFn(runtime.model, CONTEXT), error);
+  assert.equal(calls, 1);
+});
+
+for (const boundary of ["iterate", "result"] as const) test(`permanent ${boundary} exceptions settle once without retrying`, { timeout: 2000 }, async () => {
+  const ai = await import("@earendil-works/pi-ai");
+  const { models } = scriptedModels(ai, []);
+  let calls = 0;
+  models.streamSimple = () => {
+    calls++;
+    const source = ai.createAssistantMessageEventStream();
+    const error = Object.assign(new Error("Request rejected"), { status: 401 });
+    if (boundary === "iterate") source[Symbol.asyncIterator] = async function* () { throw error; };
+    else { source.end(); source.result = async () => { throw error; }; }
+    return source;
+  };
+  const runtime = await createRuntime(models, "openai-completions");
+  const stream = await runtime.streamFn(runtime.model, CONTEXT, { maxRetries: 1 });
+  assert.deepEqual(await drain(stream), ["error"]); assert.equal(calls, 1);
+  assert.match((await stream.result()).errorMessage ?? "", /401/);
+});
+
+test("caller cancellation while an iterator throws settles an aborted response without retrying", { timeout: 2000 }, async () => {
+  const ai = await import("@earendil-works/pi-ai");
+  const { models } = scriptedModels(ai, []);
+  const controller = new AbortController(); let calls = 0;
+  models.streamSimple = () => {
+    calls++;
+    const source = ai.createAssistantMessageEventStream();
+    source[Symbol.asyncIterator] = async function* () { controller.abort(); throw new Error("Transport failed", { cause: { code: "ETIMEDOUT" } }); };
+    return source;
+  };
+  const runtime = await createRuntime(models, "openai-completions");
+  const stream = await runtime.streamFn(runtime.model, CONTEXT, { signal: controller.signal });
+  assert.deepEqual(await drain(stream), ["error"]);
+  assert.equal((await stream.result()).stopReason, "aborted"); assert.equal(calls, 1);
+});
+
+for (const apiKind of ["openai-completions", "openai-responses", "anthropic-messages"] as const) {
+  for (const status of [408, 409, 501, 400]) test(`${apiKind} adapter HTTP ${status} uses the configured retry classification`, async () => {
+    const runtime = await createPiRuntime({ provider: "http-status-test", model: "test-model",
+      baseUrl: "http://127.0.0.1:9/v1", apiKey: "test-key", apiKind });
+    let requests = 0;
+    const stream = await runtime.streamFn(runtime.model, CONTEXT, { maxRetries: 1, fetch: async () => {
+      if (++requests === 1) return new Response(JSON.stringify({ error: { message: "Request failed", type: "provider_failure" } }), { status });
+      const events: Array<Record<string, unknown>> = apiKind === "openai-responses"
+        ? [{ type: "response.completed", response: { id: "resp_recovered", status: "completed", output: [], usage: { input_tokens: 1, output_tokens: 0 } } }]
+        : apiKind === "anthropic-messages" ? [
+          { type: "message_start", message: { id: "recovered", type: "message", role: "assistant", model: "test-model", content: [],
+            usage: { input_tokens: 1, output_tokens: 0 } } },
+          { type: "message_delta", delta: { stop_reason: "end_turn", stop_sequence: null }, usage: { output_tokens: 0 } },
+          { type: "message_stop" },
+        ] : [{ id: "recovered", choices: [{ index: 0, delta: {}, finish_reason: "stop" }] }];
+      return new Response(events.map(event => `event: ${event.type ?? "message"}\ndata: ${JSON.stringify(event)}\n\n`).join(""), { headers: { "content-type": "text/event-stream" } });
+    } });
+    const events = await drain(stream);
+    assert.equal(requests, status === 400 ? 1 : 2);
+    assert.equal(events.at(-1), status === 400 ? "error" : "done", (await stream.result()).errorMessage);
+  });
 }
 
 test("the wrapper spends the budget, so each attempt is a single request", async () => {
