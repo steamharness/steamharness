@@ -1,21 +1,21 @@
 import { useEffect, useId, useRef, useState } from "react";
 import { ArrowUpIcon, PencilIcon, PlusIcon, RefreshCwIcon, Trash2Icon } from "lucide-react";
 import { useTranslation } from "@steamharness/i18n/react";
-import { AGENT_MODEL_PROTOCOLS, parseAgentModelCatalog, parseProjectAgentModels, type AgentModelCatalogEntry, type AgentModelProtocol, type ProjectAgentModel } from "@steamharness/project-configuration";
+import { AGENT_MODEL_PROTOCOLS, parseAgentModelCatalog, parseAgentModels, type AgentModelCatalogEntry, type AgentModelProtocol, type ConfiguredAgentModel } from "@steamharness/project-configuration";
 import { apiClient } from "../../api";
 import { Alert, AlertDescription, Badge, Button, Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, Empty, EmptyHeader, EmptyTitle, Field, FieldDescription, FieldGroup, FieldLabel, Input, SelectField, Skeleton, Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 
-type ModelDraft = { id?: string; name: string; source: ProjectAgentModel['source']; modelId: string; credentialId: string; model: string; apiKind: AgentModelProtocol; baseUrl: string; apiKey: string };
-const blank = (source: ModelDraft["source"]): ModelDraft => ({ source, name: "", modelId: "", model: "", credentialId: "", apiKind: "openai-completions", baseUrl: "", apiKey: "" });
+type ModelDraft = { id?: string; name: string; source: "system" | "third-party"; credentialId: string; model: string; apiKind: AgentModelProtocol; baseUrl: string; apiKey: string };
+const blank = (source: ModelDraft["source"]): ModelDraft => ({ source, name: "", model: "", credentialId: "", apiKind: "openai-completions", baseUrl: "", apiKey: "" });
 
 export function AgentModelsInput({ value, disabled, allowThirdParty = true, onChange, onDraftChange }: {
   value: string; disabled: boolean; allowThirdParty?: boolean; onChange(value: string): void; onDraftChange(dirty: boolean): void;
 }) {
   const { t } = useTranslation("serverWeb"), id = useId();
   const opener = useRef<HTMLButtonElement>(null);
-  const models = parseProjectAgentModels(value ? JSON.parse(value) : []);
-  const defaultIndex = models.findIndex(model => allowThirdParty || model.source !== "third-party");
+  const models = parseAgentModels(value ? JSON.parse(value) : []);
+  const defaultIndex = models.findIndex(model => allowThirdParty || model.source === "system");
   const [source, setSource] = useState<ModelDraft["source"]>("system");
   const [draft, setDraft] = useState<ModelDraft>(), [draftDirty, setDraftDirty] = useState(false);
   const [catalog, setCatalog] = useState<AgentModelCatalogEntry[]>(), [catalogError, setCatalogError] = useState("");
@@ -33,10 +33,10 @@ export function AgentModelsInput({ value, disabled, allowThirdParty = true, onCh
     return () => controller.abort();
   }, [systemOpen, retry, t, allowThirdParty]);
   const guard = () => { if (draftDirty) { setError(t("configurationAiFinishDraft")); return false; } return true; };
-  const open = (trigger: HTMLButtonElement, entry?: ProjectAgentModel) => {
+  const open = (trigger: HTMLButtonElement, entry?: ConfiguredAgentModel) => {
     if (!guard()) return;
     opener.current = trigger;
-    const next = !allowThirdParty && entry?.source === "third-party" ? { ...blank("system"), id: entry.id } : { ...blank(entry?.source ?? source), ...entry };
+    const next = !allowThirdParty && entry?.source === "third-party" ? { ...blank("system"), id: entry.id } : { ...blank(allowThirdParty ? entry?.source ?? source : "system"), ...entry };
     setSource(next.source); setDraft(next); setDraftDirty(false); onDraftChange(false); setError("");
   };
   const close = () => { setDraft(undefined); setDraftDirty(false); onDraftChange(false); setError(""); };
@@ -47,14 +47,14 @@ export function AgentModelsInput({ value, disabled, allowThirdParty = true, onCh
     setSource(nextSource); setDraft({ ...blank(nextSource), ...saved, id: draft?.id });
   };
   const edit = (patch: Partial<ModelDraft>) => { setDraft(draft => draft && { ...draft, ...patch }); setDraftDirty(true); onDraftChange(true); setError(""); };
-  const change = (next: ProjectAgentModel[]) => { onChange(JSON.stringify(parseProjectAgentModels(next))); setError(""); };
+  const change = (next: ConfiguredAgentModel[]) => { onChange(JSON.stringify(parseAgentModels(next))); setError(""); };
   const apply = () => {
     if (!draft) return;
     try {
       const modelName = catalog?.find(entry=>entry.id===draft.credentialId)?.models.find(model=>model.id===draft.model)?.name;
       const common = { id: draft.id ?? crypto.randomUUID(), name: draft.source === "system" ? modelName || draft.name || draft.model.trim() : draft.name.trim() || draft.model.trim(), model: draft.model.trim() };
-      const entry = draft.source === "user-settings" ? { id: common.id, name: draft.name.trim() || draft.modelId.trim(), source: draft.source, modelId: draft.modelId.trim() } : draft.source === "system" ? { ...common, source: draft.source, credentialId: draft.credentialId } : { ...common, source: draft.source, apiKind: draft.apiKind, baseUrl: draft.baseUrl, apiKey: draft.apiKey };
-      parseProjectAgentModels([entry], { allowThirdParty });
+      const entry = draft.source === "system" ? { ...common, source: draft.source, credentialId: draft.credentialId } : { ...common, source: draft.source, apiKind: draft.apiKind, baseUrl: draft.baseUrl, apiKey: draft.apiKey };
+      parseAgentModels([entry], { allowThirdParty });
       const index = models.findIndex(model => model.id === draft.id), next = [...models];
       if (index < 0) next.push(entry); else next[index] = entry;
       change(next); close();
@@ -69,17 +69,13 @@ export function AgentModelsInput({ value, disabled, allowThirdParty = true, onCh
     {error && !draft && <Alert variant="destructive"><AlertDescription>{error}</AlertDescription></Alert>}
     <Dialog open={!!draft} onOpenChange={open=>{if(!open&&!disabled)close();}}><DialogContent className="max-h-[90dvh] overflow-y-auto" onCloseAutoFocus={event=>{event.preventDefault();opener.current?.focus();}}>
       <DialogHeader><DialogTitle>{t(draft?.id?"configurationAiEdit":"configurationAiAdd")}</DialogTitle><DialogDescription>{t("configurationAiDefaultHelp")}</DialogDescription></DialogHeader>
-      <ToggleGroup type="single" variant="segmented" size="sm" spacing={1} value={source} disabled={disabled} onValueChange={switchSource} aria-label={t("configurationAiSource")}>
+      {allowThirdParty && <ToggleGroup type="single" variant="segmented" size="sm" spacing={1} value={source} disabled={disabled} onValueChange={switchSource} aria-label={t("configurationAiSource")}>
         <ToggleGroupItem value="system">{t("configurationAiSystem")}</ToggleGroupItem>
-        {allowThirdParty && <ToggleGroupItem value="third-party">{t("configurationAiThirdParty")}</ToggleGroupItem>}
-        <ToggleGroupItem value="user-settings">{t("configurationAiSettings")}</ToggleGroupItem>
-      </ToggleGroup>
+        <ToggleGroupItem value="third-party">{t("configurationAiThirdParty")}</ToggleGroupItem>
+      </ToggleGroup>}
       {error && <Alert variant="destructive"><AlertDescription>{error}</AlertDescription></Alert>}
       {draft && <FieldGroup className="grid gap-4 sm:grid-cols-2">
-      {source === "user-settings" ? <>
-        <Field data-invalid={!!error}><FieldLabel htmlFor={`${id}-reference`}>{t("configurationAiSettingsId")}</FieldLabel><Input id={`${id}-reference`} aria-invalid={!!error} disabled={disabled} value={draft.modelId} onChange={event => edit({modelId:event.target.value})}/><FieldDescription>{t("configurationAiSettingsHelp")}</FieldDescription></Field>
-        <Field><FieldLabel htmlFor={`${id}-name`}>{t("configurationAiName")}</FieldLabel><Input id={`${id}-name`} disabled={disabled} value={draft.name} onChange={event => edit({name:event.target.value})}/></Field>
-      </> : source === "system" ? <>
+      {source === "system" ? <>
         <Field><FieldLabel htmlFor={`${id}-subscription`}>Provider</FieldLabel><SelectField id={`${id}-subscription`} disabled={disabled || loading} value={draft.credentialId} onValueChange={value => { const credential = catalog?.find(entry => entry.id === value); edit({credentialId:value,model:credential?.models[0]?.id ?? ""}); }} options={[
           {value:"",label:t("configurationAiSelectSubscription")},...(catalog??[]).map(entry=>({value:entry.id,label:entry.name})),
           ...(draft.credentialId&&!catalog?.some(entry=>entry.id===draft.credentialId)?[{value:draft.credentialId,label:draft.credentialId}]:[]),
@@ -108,10 +104,10 @@ export function AgentModelsInput({ value, disabled, allowThirdParty = true, onCh
     {!models.length ? <Empty><EmptyHeader><EmptyTitle>{t(allowThirdParty ? "configurationAiEmpty" : "configurationAiEmptySystemOnly")}</EmptyTitle></EmptyHeader></Empty> : <div className="overflow-hidden rounded-md border"><Table aria-label={t("configurationAiModels")}>
       <TableHeader><TableRow><TableHead>{t("configurationAiName")}</TableHead><TableHead>{t("configurationAiSource")}</TableHead><TableHead className="text-right">{t("configurationActions")}</TableHead></TableRow></TableHeader>
       <TableBody>{models.map((model,index)=><TableRow key={model.id}>
-        <TableCell className="whitespace-normal"><div className="flex flex-wrap items-center gap-2"><span>{model.name}</span>{index===defaultIndex&&<Badge variant="secondary">{t("configurationAiDefault")}</Badge>}{!allowThirdParty&&model.source==="third-party"&&<Badge variant="outline">{t("configurationAiDisabled")}</Badge>}</div><FieldDescription className="wrap-anywhere">{model.source === "user-settings" ? model.modelId : model.model}</FieldDescription></TableCell>
-        <TableCell>{t(model.source==="system"?"configurationAiSystem":model.source==="user-settings"?"configurationAiSettings":"configurationAiThirdParty")}</TableCell>
+        <TableCell className="whitespace-normal"><div className="flex flex-wrap items-center gap-2"><span>{model.name}</span>{index===defaultIndex&&<Badge variant="secondary">{t("configurationAiDefault")}</Badge>}{!allowThirdParty&&model.source==="third-party"&&<Badge variant="outline">{t("configurationAiDisabled")}</Badge>}</div><FieldDescription className="wrap-anywhere">{model.model}</FieldDescription></TableCell>
+        <TableCell>{t(model.source==="system"?"configurationAiSystem":"configurationAiThirdParty")}</TableCell>
         <TableCell><div className="flex justify-end gap-1">
-          {index!==defaultIndex&&(allowThirdParty||model.source!=="third-party")&&<Button variant="ghost" size="icon" disabled={disabled} title={t("configurationAiSetDefault")} aria-label={`${t("configurationAiSetDefault")}: ${model.name}`} onClick={()=>{if(guard())change([model,...models.filter(entry=>entry.id!==model.id)]);}}><ArrowUpIcon data-icon="inline-start"/></Button>}
+          {index!==defaultIndex&&(allowThirdParty||model.source==="system")&&<Button variant="ghost" size="icon" disabled={disabled} title={t("configurationAiSetDefault")} aria-label={`${t("configurationAiSetDefault")}: ${model.name}`} onClick={()=>{if(guard())change([model,...models.filter(entry=>entry.id!==model.id)]);}}><ArrowUpIcon data-icon="inline-start"/></Button>}
           <Button variant="ghost" size="icon" disabled={disabled} title={t("configurationAiEdit")} aria-label={`${t("configurationAiEdit")}: ${model.name}`} onClick={event=>open(event.currentTarget,model)}><PencilIcon data-icon="inline-start"/></Button>
           <Button variant="ghost" size="icon" disabled={disabled} title={t("configurationAiDelete")} aria-label={`${t("configurationAiDelete")}: ${model.name}`} onClick={()=>{if(guard())change(models.filter(entry=>entry.id!==model.id));}}><Trash2Icon data-icon="inline-start"/></Button>
         </div></TableCell>

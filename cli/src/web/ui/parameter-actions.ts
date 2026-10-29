@@ -317,7 +317,7 @@ export class ParameterActions {
     const reset = document.createElement('button');
     reset.type = 'button'; reset.className = 'quick-reset'; reset.setAttribute('role', 'menuitem');
     reset.dataset.focusKey = 'reset'; reset.disabled = disabled || loading || fields.every(field => field.userSetting?.mode === 'fixed');
-    reset.textContent = single && fields[0].userSetting ? fields[0].userSetting.key === 'agent.model' && states[fields[0].name]?.resolvedOptions?.some(option => option.group) ? t('Reset to project default') : t('Reset to user settings') : t("Reset options"); reset.append(icon('discard'));
+    reset.textContent = single && fields[0].userSetting ? t('Reset to user settings') : t("Reset options"); reset.append(icon('discard'));
     reset.addEventListener('click', () => { this.activeParam = undefined; this.options.onReset(fields.filter(field => field.userSetting?.mode !== 'fixed').map((field) => field.name)); });
     const field = single ? fields[0] : fields.find((field) => field.name === this.activeParam && states[field.name]?.disabled !== true);
     this.activeParam = single ? undefined : field?.name;
@@ -344,19 +344,15 @@ export class ParameterActions {
         hint.textContent = loading ? t('Loading...') : t('No available models. Open Settings to add a model.'); list.append(hint);
       }
       const visible = this.visibleOptions(field);
-      const composedModels = field.name === 'model' && visible.some(option => option.group);
-      const groupedModels = composedModels || field.userSetting?.key === 'agent.model' && !!field.userModelSources;
-      const group = (option: NonNullable<Field['options']>[number]) => composedModels ? option.group ?? '' : field.userModelSources?.[option.value] ?? 'third-party';
-      const groups = composedModels ? [...new Set(['Settings models', 'Project models', ...visible.map(group)])] : ['system', 'third-party'];
-      const choices = groupedModels ? groups.flatMap(key => visible.filter(option => group(option) === key)) : visible;
-      let previousGroup: string | undefined;
+      const groupedModels = field.userSetting?.key === 'agent.model' && !!field.userModelSources;
+      const choices = groupedModels ? [...visible.filter(option => field.userModelSources![option.value] === 'system'), ...visible.filter(option => field.userModelSources![option.value] !== 'system')] : visible;
+      let previousGroup: 'system' | 'third-party' | undefined;
       for (const option of choices) {
         const source = field.userModelSources?.[option.value] ?? 'third-party';
-        const currentGroup = group(option);
-        if (groupedModels && currentGroup !== previousGroup) {
+        if (groupedModels && source !== previousGroup) {
           const heading = document.createElement('div'); heading.className = 'quick-model-group';
-          heading.textContent = composedModels ? t(currentGroup) : source === 'system' ? t('Built-in models') : t('Custom models'); heading.setAttribute('role', 'presentation'); list.append(heading);
-          previousGroup = currentGroup;
+          heading.textContent = source === 'system' ? t('Built-in models') : t('Custom models'); heading.setAttribute('role', 'presentation'); list.append(heading);
+          previousGroup = source;
         }
         const selected = multiple ? Array.isArray(values[field.name]) && values[field.name].includes(option.value) : projectParamEffectiveValue(field, values[field.name]) === option.value;
         const button = document.createElement('button'); button.type = 'button'; button.className = 'quick-option-row';
@@ -367,7 +363,7 @@ export class ParameterActions {
         if (selected) { check.append(icon('check')); }
         const copy = document.createElement('span'); copy.className = 'quick-option-copy';
         const label = document.createElement('span'); label.textContent = option.label || option.value; copy.append(label);
-        if (option.description) { const description = document.createElement('small'); description.textContent = composedModels && states[field.name]?.options?.[option.value]?.disabled ? t(option.description) : option.description; copy.append(description); }
+        if (option.description) { const description = document.createElement('small'); description.textContent = option.description; copy.append(description); }
         if (groupedModels) button.append(icon(source === 'system' ? 'sparkle' : 'plug'), copy, check);
         else button.append(check, copy);
         button.addEventListener('click', () => {

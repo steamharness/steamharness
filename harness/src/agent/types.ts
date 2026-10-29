@@ -410,7 +410,7 @@ export type AgentToolFactory = (
 export interface AgentRuntimeOptions {
   /** Host-scoped account memory; false disables inherited memory. */
   memory?: false | import("./memory").AgentMemoryBinding;
-  /** Project models supplement user models by default; project uses only project entries and their host references. */
+  /** Use host settings when supported, otherwise project models. "project" always uses project models. */
   modelSource?: "user-settings" | "project";
   /** Enable durable session control, task projections, and background work. */
   session?: AgentSessionOptions;

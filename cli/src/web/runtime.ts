@@ -49,7 +49,7 @@ export function createWebRuntime(projectDir: string, storageDir: string, connect
   const configurations = (entryId = options.entryId) => {
     const key = entryId ?? "default";
     let store = configurationStores.get(key);
-    if (!store) { store = createLocalProjectConfigurationStore(projectDir, { entryId, connection: () => connection() ?? null }); configurationStores.set(key, store); }
+    if (!store) { store = createLocalProjectConfigurationStore(projectDir, { entryId, connection: () => connection() ?? null, userSettings: options.userSettings }); configurationStores.set(key, store); }
     return store;
   };
   const invoke = <T>(request: Record<string, unknown>, onEvent?: (event: Record<string, unknown>) => void): Promise<T> => new Promise((resolve, reject) => {

@@ -68,8 +68,6 @@ export interface ParamOption {
   value: string;
   label?: string;
   description?: string;
-  /** Optional display group; it does not change the option's identity or value. */
-  group?: string;
   /** Slash menu command without the leading slash. Defaults to the option value. */
   command?: string;
 }

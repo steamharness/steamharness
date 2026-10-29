@@ -109,7 +109,7 @@ Main and grouped fields use the properties below. Source declarations no longer 
 | `control` | `"text" \| "textarea" \| "radio" \| "select" \| "checkboxes" \| "audio" \| "date" \| "time" \| "datetime" \| "date-range"` | CLI Web form control hints; `audio` must use `type: "file"`, while date-related controls still use `type: "string"`. |
 | `step` | `number` |Which step this field is asked in, starting at `1`. Fields sharing a step are asked together, and a user-input node that declares steps shows one step at a time — a "‹ question N of M ›" control above the field pages between them and flags a required question that is still unanswered. Use it when one request asks several separate questions; do not split the fields of a single question across steps.|
 | `resolveOnInput` | `boolean` |Whether to execute `resolveParams` when the main input content changes. Default `false`; set to `true` only if linkage does depend on input text.|
-| `options` | `{ value, label?, description?, group?, command? }[]` | Enumerates options. Optional string `group` supplies a model menu display group without changing option values. A Slash option's `command` omits the leading `/` and defaults to `value`. |
+| `options` | `{ value, label?, description?, command? }[]` | Enumerates options. A Slash option's `command` omits the leading `/` and defaults to `value`. |
 | `accept` | `string[]` |File type restrictions.|
 | `audio` | `{ maxDurationSeconds?: number, maxBytes?: number }` |Optional duration and byte limits for one audio file; hosts provide defaults when omitted.|
 | `format` | `"json"` |file param uses the JSON reference format.|
@@ -164,7 +164,7 @@ Project Assistant defaults to Build and uses a single `/plan` toggle. Its `creat
 | `value` | `string \| string[] \| null` |Replace the current parameter value;`null` indicates an explicit clear.|
 | `visible` | `boolean` |Controls whether the parameter is displayed.|
 | `disabled` | `boolean` |Whether the control parameters are operable.|
-| `resolvedOptions` | `{ value, label?, description?, group?, command? }[] \| null` |Array replaces the current full list of options for the argument;`null` restores static `options`.|
+| `resolvedOptions` | `{ value, label?, description?, command? }[] \| null` |Array replaces the current full list of options for the argument;`null` restores static `options`.|
 | `options` | `Record<string, { visible?, disabled? }>` |Modifies the display or disabled state of individual values in the current selection list.|
 
 ## `NodeRegistryEntry`

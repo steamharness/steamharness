@@ -1,7 +1,7 @@
 import { getProjectConfiguration } from "./configuration";
 import { AsyncLocalStorage } from "node:async_hooks";
 import { AGENT_PERMISSION_POLICIES, type AgentPermissionPolicy } from "./agent/types";
-import { AGENT_MODELS_CONFIGURATION_KEY, parseAgentModels, parseProjectAgentModels, resolveProjectAgentModels, type ConfiguredAgentModel } from "@steamharness/project-configuration";
+import { AGENT_MODELS_CONFIGURATION_KEY, parseAgentModels, type ConfiguredAgentModel } from "@steamharness/project-configuration";
 
 /** A user model reference or third-party connection accepted by the execution host. */
 export type UserAgentModel = ConfiguredAgentModel;
@@ -10,7 +10,7 @@ export type UserAgentModel = ConfiguredAgentModel;
 export interface UserSettings {
   readonly agent: {
     readonly permissionPolicy: AgentPermissionPolicy;
-    /** Ordered user models; the first permitted entry is the default. */
+    /** Ordered host models; [] means settings are supported but empty. Omit to use project models. */
     readonly models?: readonly Readonly<UserAgentModel>[];
   };
 }
@@ -58,8 +58,8 @@ export function userSettingParamDefault(key: "agent.permissionPolicy" | "agent.m
   const { agent } = getUserSettings();
   if (key === "agent.permissionPolicy") return agent.permissionPolicy;
   const configuration = getProjectConfiguration();
-  const models = resolveProjectAgentModels(parseProjectAgentModels(configuration?.values[AGENT_MODELS_CONFIGURATION_KEY] ?? []), agent.models ?? [], true);
-  return models.find(model => configuration?.agentModelPolicy?.allowThirdParty !== false || model.source !== "third-party")?.id ?? "";
+  const models = agent.models ?? parseAgentModels(configuration?.values[AGENT_MODELS_CONFIGURATION_KEY] ?? []);
+  return models.find(model => configuration?.agentModelPolicy?.allowThirdParty !== false || model.source === "system")?.id ?? "";
 }
 
 /** Run host work in an isolated settings snapshot, including asynchronous descendants. */

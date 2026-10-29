@@ -17,16 +17,6 @@ function Editor({ initial = [], disabled = false, allowThirdParty = true }: { in
   return <AgentModelsInput value={value} disabled={disabled} allowThirdParty={allowThirdParty} onChange={next => { changed(JSON.parse(next)); setValue(next); }} onDraftChange={draftChanged}/>;
 }
 const click = (name: string) => fireEvent.click(screen.getByRole("button", { name }));
-it.each(["en", "zh-CN"])("saves host references without connection fields in %s", async language => {
-  await i18n.changeLanguage(language); render(<Editor allowThirdParty={false}/>);
-  click(language === "en" ? "Add model" : "添加模型");
-  fireEvent.click(screen.getByRole("radio", { name: language === "en" ? "Settings models" : "设置模型" }));
-  const referenceId = language === "en" ? "Settings model ID" : "设置中的模型条目 ID";
-  fireEvent.change(screen.getByLabelText(referenceId), { target: { value: "host-model" } });
-  expect(screen.queryByLabelText("API Key")).toBeNull();
-  click(language === "en" ? "Apply model" : "应用模型");
-  expect(changed).toHaveBeenLastCalledWith([{ id: expect.any(String), name: "host-model", source: "user-settings", modelId: "host-model" }]);
-});
 it("offers only system models in a restricted project and can replace an old third-party entry", async () => {
   vi.spyOn(apiClient,"systemAiModelCatalog").mockResolvedValue({errCode:0,errMessage:"",data:{credentials:[{id:"subscription",name:"Plan",providerType:"anthropic",models:["system-model"]}]}});
   const other={...third,id:"other-third",name:"Other custom"};
@@ -34,7 +24,7 @@ it("offers only system models in a restricted project and can replace an old thi
   expect(screen.getAllByText("Unavailable")).toHaveLength(2);
   expect(screen.getByText("Default model").closest("tr")?.textContent).toContain(system.name);
   click("Edit model: Custom");
-  expect(screen.queryByRole("radio", { name: "Third-party AI" })).toBeNull(); expect(screen.queryByLabelText("API Key")).toBeNull();
+  expect(screen.queryByRole("radiogroup")).toBeNull(); expect(screen.queryByLabelText("API Key")).toBeNull();
   await waitFor(()=>expect(screen.getByRole("combobox",{name:"Provider"})).toBeEnabled());
   fireEvent.keyDown(screen.getByRole("combobox",{name:"Provider"}),{key:"ArrowDown"});fireEvent.click(await screen.findByRole("option",{name:"Plan"}));click("Apply model");
   expect(changed).toHaveBeenLastCalledWith([expect.objectContaining({id:"third",source:"system"}),other,system]);
@@ -48,13 +38,14 @@ it("passes the project's restriction to the Web configuration editor", async () 
   render(<ProjectConfigurationsTab entryId="main" project={{id:"project-a",hasDraft:true,entries:[],defaultEntry:"main"} as Pick<Summary,"id"|"hasDraft"|"access"> as Summary}/>);
   fireEvent.click(await screen.findByRole("button",{name:"Default"}));
   expect(screen.getByText("No models configured. Add a system AI model.")).toBeTruthy();
-  click("Add model"); expect(screen.queryByRole("radio", { name: "Third-party AI" })).toBeNull();
+  click("Add model"); expect(screen.queryByRole("radiogroup")).toBeNull();
   expect(await screen.findByText("System AI is unavailable. Sign in and configure a system AI account.")).toBeTruthy();
 });
 it("uses mutually exclusive source forms, loads subscriptions on demand and manages a mixed list", async () => {
   const catalog = vi.spyOn(apiClient, "systemAiModelCatalog").mockResolvedValue({ errCode: 0, errMessage: "", data: { credentials: [{ id: "subscription", name: "Plan", providerType: "anthropic", models: ["system-model"] }] } });
   const { container } = render(<Editor initial={[system]}/>); expect(catalog).not.toHaveBeenCalled();
   expect(screen.queryByRole("dialog")).toBeNull(); click("Add model");
+  expect(screen.getAllByRole("radio").map(button => button.textContent)).toEqual(["System AI", "Third-party AI"]);
   fireEvent.click(screen.getByRole("radio", { name: "Third-party AI" })); expect(screen.getByLabelText("API Key")).toHaveAttribute("type", "password"); expect(screen.queryByLabelText("Provider")).toBeNull();
   fireEvent.change(screen.getByLabelText("Model name"), { target: { value: third.name } });
   fireEvent.change(screen.getByLabelText("Base URL"), { target: { value: third.baseUrl } });

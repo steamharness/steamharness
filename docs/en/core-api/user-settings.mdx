@@ -103,10 +103,10 @@ Studio groups built-in models above custom models in one table. Built-in names c
 
 Lists are copied and frozen. Base URLs require HTTP(S) without authentication, query, or fragment; entry IDs must be unique, with at most 100 saved custom models. Host built-in catalogues are not subject to that count limit. Invalid model configurations are rejected.
 
-Agent nodes and direct `createAgent()` compose project supplements with user models by default; `modelSource: "user-settings"` uses the same rule. The first project entry supplies the project default; an empty project list follows the user default. Turn `model` can select an entry ID from the composed list. `modelSource: "project"` uses only project entries and their settings references. Explicit developer endpoints, `models`, and `resolvedModel` keep their existing behavior. A project's `allowThirdParty: false` applies to user models and explicit endpoints alike.
+Core Agents use two exclusive model sources. The default and `modelSource: "user-settings"` use only built-in/custom models from Settings in Studio and hide project AI models, without combining or referencing project models. Standalone CLI Web lacks model settings and automatically falls back to project models for choices and defaults. Empty `models: []` still means settings are supported: Studio asks users to add a model in Settings. `modelSource: "project"` always uses project models, with System AI and Third-party AI as the two add sources. Hosts omit `agent.models` when model settings are unavailable; omission and an empty array have different meanings. Explicit developer endpoints, `models`, and `resolvedModel` retain their behavior. `allowThirdParty: false` applies to both sources and explicit endpoints.
 
 ```ts
-// Generate overridable model parameters from settings and project supplements.
+// Generate overridable model parameters from the user's list and default.
 const project = steamharness.createAgentConversationProject({
   modelSource: "user-settings",
   permissionPolicy: "inherit",
@@ -117,15 +117,15 @@ const project = steamharness.createAgentConversationProject({
 // resolveParams: steamharness.createAgentProjectParamResolver({ modelSource: "user-settings" })
 ```
 
-`createAgentProjectParams()` also generates the user model binding by default. When automatically using user models, the resolver preserves an empty override so later user default changes still apply. Pass `modelSource: "project"` explicitly to generate the original project model controls. A model ID named `inherit` is an ordinary ID; permission inheritance still uses `permissionPolicy: "inherit"`.
+`createAgentProjectParams()` also emits the user model binding by default. In Studio the resolver preserves an empty override marker so later Settings defaults take effect. Standalone CLI Web displays project model controls and opens Project configurations for setup. Explicit `modelSource: "project"` always emits project model controls. Model ID `inherit` remains an ordinary ID; permission inheritance uses `permissionPolicy: "inherit"`.
 
 Reused third-party connections retain developer `modelAttributes` defaults. System catalogue search restrictions remain authoritative and cannot be enabled through turn attribute overrides.
 
-The built-in assistant composes user models with project supplements. Model and effort are separate Quick parameters; changing effort keeps the model selection. Project configurations can reference settings models or add project-owned connections. With project supplements, the menu groups Settings models and Project models; an empty project list retains the built-in/custom grouping. **Add model** opens settings at the bottom. Selecting a model overrides the default for the project or conversation. Reset follows the project default when supplements exist, otherwise the user default. References store only `{ id, name, source: "user-settings", modelId }`, without connection details or keys. Missing references are unavailable and fail explicitly at execution.
+The built-in assistant uses Settings models in Studio. Model and effort are separate Quick parameters. The model control groups built-in and custom models, with **Add model** opening Settings. Resetting follows the user default. The same project in standalone CLI Web uses project model configuration, with System AI and Third-party AI as the two add sources.
 
 With no available models, the control shows **Configure model** and guidance to add a model in settings. Clicking it opens **Settings → Models** directly; adding a model restores the choices.
 
-A custom model field with `mode: "fixed"` also opens the list first, with read-only choices and an **Add model** action leading to settings. `mode: "default"` allows a project override. `createAgentProjectParams()` generates separate `model` and `effort` groups by default; custom projects may still group Quick parameters freely.
+A custom model field with `mode: "fixed"` also opens the list first, with read-only choices and an **Add model** action leading to settings to change the user default. `mode: "default"` allows a project override. `createAgentProjectParams()` generates separate `model` and `effort` groups by default; custom projects may still group Quick parameters freely.
 
 Updates apply after a safe task boundary. Active and background work retain their connection snapshot. A directly created Agent with a host-resolved model also resolves inherited permissions from that creation snapshot; explicit turn permissions still take precedence. Recreate the Agent after its work finishes to adopt new host model settings. Interrupted recovery obtains a key from the host only for the same model and endpoint; a removed or changed endpoint fails explicitly instead of receiving a new key at an old address.
 

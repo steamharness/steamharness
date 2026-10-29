@@ -12,35 +12,14 @@ beforeEach(() => {
 afterEach(() => { document.body.replaceChildren(); vi.restoreAllMocks(); vi.unstubAllGlobals(); });
 const third = { id: 'third', name: 'Custom', source: 'third-party', model: 'custom-model', apiKind: 'openai-completions', baseUrl: 'https://models.example/v1', apiKey: 'private-test-key' };
 const system = { id: 'system', name: 'Subscribed', source: 'system', model: 'system-model', credentialId: 'subscription' };
-function mount(value: unknown = [], disabled = false, loadCatalog = vi.fn(async () => ({ entries: [{ id: 'subscription', name: 'Plan', models: [{ id: 'system-model', name: 'System model' }] }] })), allowThirdParty = true, loadUserModels?: () => Promise<import('@steamharness/project-configuration').UserAgentModelSummary[]>) {
-  const changed = vi.fn(), control = createAgentModelsControl({ value, disabled, loadCatalog, changed, allowThirdParty, loadUserModels }); document.body.append(control.element);
+function mount(value: unknown = [], disabled = false, loadCatalog = vi.fn(async () => ({ entries: [{ id: 'subscription', name: 'Plan', models: [{ id: 'system-model', name: 'System model' }] }] })), allowThirdParty = true) {
+  const changed = vi.fn(), control = createAgentModelsControl({ value, disabled, loadCatalog, changed, allowThirdParty }); document.body.append(control.element);
   return { ...control, changed, loadCatalog };
 }
 const click = (name: string) => [...document.querySelectorAll<HTMLButtonElement>('button')].find(button => button.ariaLabel === name || button.textContent === name)!.click();
-it('imports a host model as a reference without copying its connection and preserves missing selections', async () => {
-  const load = vi.fn().mockResolvedValueOnce([{ id: third.id, name: third.name, model: third.model, source: third.source }]).mockResolvedValueOnce([]);
-  const control = mount([], false, undefined, true, load);
-  click('Add model'); click('Settings models');
-  await vi.waitFor(() => expect(document.querySelector<HTMLSelectElement>('[aria-label="Settings model"]')!.value).toBe(third.id));
-  expect(document.querySelector('input[type=password]')).toBeNull();
-  click('Apply model');
-  expect(control.read()).toEqual([{ id: expect.any(String), name: third.name, source: 'user-settings', modelId: third.id }]);
-  expect(JSON.stringify(control.read())).not.toMatch(/apiKey|baseUrl|private-test-key/);
-  click('Edit model: Custom');
-  await vi.waitFor(() => expect(document.querySelector<HTMLSelectElement>('[aria-label="Settings model"]')!.textContent).toContain('Unavailable'));
-  expect(document.querySelector<HTMLSelectElement>('[aria-label="Settings model"]')!.value).toBe(third.id);
-  click('Apply model'); expect(control.read()[0]).toMatchObject({ modelId: third.id });
-});
-it('allows system settings references in a restricted project and ignores stale reference loads', async () => {
-  let finish!: (value: any) => void;
-  const control = mount([], false, undefined, false, () => new Promise(resolve => { finish = resolve; }));
-  click('Add model'); click('Settings models'); click('System AI');
-  finish([{...system}]); await Promise.resolve();
-  expect(document.querySelector('[aria-label="Settings model"]')).toBeNull();
-  click('Settings models'); finish([third, system]);
-  await vi.waitFor(() => expect(document.querySelector<HTMLSelectElement>('[aria-label="Settings model"]')!.options).toHaveLength(1));
-  expect(document.querySelector<HTMLSelectElement>('[aria-label="Settings model"]')!.value).toBe(system.id);
-  click('Apply model'); expect(control.read()[0]).toMatchObject({ source: 'user-settings', modelId: system.id });
+it('offers exactly system and third-party sources for project models', () => {
+  mount(); click('Add model');
+  expect([...document.querySelectorAll('[role="radio"]')].map(button => button.textContent)).toEqual(['System AI', 'Third-party AI']);
 });
 it('limits a system-only project to subscribed models and lets old third-party entries be removed or replaced', async () => {
   const control = mount([third, {...third,id:'other-third',name:'Other custom'}, system], false, undefined, false);

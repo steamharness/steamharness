@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { ParameterActions } from '../web/ui/parameter-actions';
 import type { Parameters, ParamState, ParamValue, ParamValues } from '../web/workflow-types';
+import { projectWithUserSettings, type Project } from '../web/workflow-types';
 
 afterEach(() => vi.unstubAllGlobals());
 
@@ -89,6 +90,17 @@ function fixture() {
 }
 
 describe('Quick parameter triggers', () => {
+  it('opens project configuration when standalone Web falls back from the host model binding', () => {
+    const f = fixture();
+    f.parameters.fields[0].userSetting = { key: 'agent.model', mode: 'default' };
+    const source = { ...f.parameters, entrypoints: [] } as unknown as Project;
+    const standalone = projectWithUserSettings(source, { agent: { permissionPolicy: 'auto' } });
+    f.state.states.model = { resolvedOptions: [] }; f.state.modelConfigurationRequired = true;
+    f.actions.render(standalone); f.flush();
+    f.container.children[0].dispatchEvent(new Event('click'));
+    expect(f.onConfigureModel).toHaveBeenCalledOnce();
+    expect(f.onOpenUserSetting).not.toHaveBeenCalled();
+  });
   it('keeps model management reachable in grouped selectors during loading and active tasks', () => {
     const f = fixture();
     f.parameters.fields[0].userSetting = { key: 'agent.model', mode: 'default' };
@@ -215,18 +227,6 @@ describe('Quick parameter triggers', () => {
 });
 
 describe('Quick parameter menus', () => {
-  it('groups project supplements and settings references without hiding unavailable references', () => {
-    const f = fixture();
-    f.state.states.model = { resolvedOptions: [
-      { value: 'local', label: 'Project endpoint', group: 'Project models' },
-      { value: 'settings', label: 'User endpoint', group: 'Settings models' },
-      { value: 'missing', label: 'Removed reference', group: 'Settings models' },
-    ], options: { missing: { disabled: true } } };
-    f.actions.render(f.parameters); f.flush(); f.container.children[0].dispatchEvent(new Event('click'));
-    expect(f.popup.querySelectorAll('.quick-model-group').map(group => group.textContent)).toEqual(['Settings models', 'Project models']);
-    expect(f.popup.querySelectorAll('[role=option]').map(option => option.dataset.focusKey)).toEqual(['option:settings', 'option:missing', 'option:local']);
-    expect(f.popup.querySelector('[data-focus-key=option:missing]')?.disabled).toBe(true);
-  });
   it('groups account and custom models in one menu while effort remains an independent selection', () => {
     const f = fixture();
     const model = f.parameters.fields[0];

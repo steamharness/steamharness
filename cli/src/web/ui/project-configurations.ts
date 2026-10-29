@@ -489,7 +489,7 @@ export function mountProjectConfigurations(host: Host, embedded?: { open(): void
       const value=Object.hasOwn(values,field.name)?values[field.name]:field.defaultValue,capability=configurationCapability(next,field);
       if(!capability.editable){const locked=document.createElement('span');locked.innerHTML=iconHtml('lock');locked.title=t('Locked by the project author for this version');fieldHeading.append(locked);}
       if (field.control === 'ai-models') {
-        const models = createAgentModelsControl({ value, disabled: !capability.editable, allowThirdParty: field.allowThirdParty, changed: () => changed(field.name), loadCatalog: () => send({type:'project-ai-catalog'}), loadUserModels: () => send({type:'project-user-models'}) });
+        const models = createAgentModelsControl({ value, disabled: !capability.editable, allowThirdParty: field.allowThirdParty, changed: () => changed(field.name), loadCatalog: () => send({type:'project-ai-catalog'}) });
         modelControls.push(models); readers.set(field.name, () => models.read()); row.append(models.element); fields.append(row); continue;
       }
       if(field.type==='file') {

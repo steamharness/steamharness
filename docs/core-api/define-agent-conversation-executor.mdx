@@ -47,7 +47,7 @@ workflow.defineAgentConversationExecutor(options?: AgentProjectOptions):
 | `params` | `provider`, `model`, `effort`, `plan`, `permissionPolicy` |
 | `workflow` | 输入节点解析 → agent 节点流式执行 → 输出节点落 conversation |
 
-Effort 默认 `high`，`/plan` 默认关闭。模型默认组合用户设置与项目补充配置；项目列表第一项为项目默认值，空列表跟随用户默认值。`modelSource: "project"` 仅使用项目配置的模型及设置模型引用。Provider 是兼容用的隐藏字段。
+Effort 默认 `high`，`/plan` 默认关闭。模型默认或 `modelSource: "user-settings"` 在 Studio 中仅使用设置模型并隐藏项目 AI 配置；独立 CLI Web 自动退化为项目模型。`modelSource: "project"` 在所有宿主中仅使用项目配置，保留系统 AI／第三方 AI 两种添加来源。Provider 是兼容用的隐藏字段。
 
 自动 resolver 根据模型来源生成选项，隐藏 `provider`，并应用隐藏及固定值策略；只为有效参数返回补丁。`model` 保存配置条目 ID，执行时解析实际连接。显式 `executor.params` 完整替换参数表；显式 `resolveParams` 保留自定义处理，隐藏与固定值规则仍由 Core 应用。模型配置见[项目配置](/concepts/project-configuration)。
 

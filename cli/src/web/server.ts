@@ -1,6 +1,6 @@
 import {readProjectDeclarationFromDirectory} from '@steamharness/project-manifest/node';
 import { hydrateUserSettings, userSettingsJsonReplacer } from './user-settings';
-import {configurationCapability, configurationSnapshot} from '@steamharness/project-configuration';
+import {configurationCapability} from '@steamharness/project-configuration';
 import { getUserSettings, parseUserSettings, type UserSettings } from 'steamharness';
 import { ProjectConfigurations } from './project-configurations';
 import { uploadConfigurationFile } from './configuration-files';
@@ -62,7 +62,7 @@ export async function startEntryWebServer(options: WebOptions, sharedCredentials
         current = await open();
         if (host && Object.hasOwn(host, 'connection')) await current.setHostConnection(host.connection);
         if (host?.resourceProjects) current.setHostResourceProjects(host.resourceProjects);
-        if (host?.userSettings) current.setHostUserSettings(host.userSettings);
+        if (host?.userSettings) await current.setHostUserSettings(host.userSettings);
       }
     })().finally(() => { restarting = undefined; });
     void restarting.catch(error => process.stderr.write(`Application identity restart: ${String(error)}\n`));
@@ -78,7 +78,7 @@ export async function startEntryWebServer(options: WebOptions, sharedCredentials
     setHostUserSettings: async (value: UserSettings) => {
       const settings = parseUserSettings(value);
       host = { ...host, surface: host?.surface ?? 'editor', userSettings: settings };
-      await restarting; current.setHostUserSettings(settings);
+      await restarting; await current.setHostUserSettings(settings);
     },
     setHostResourceProjects: (value: string[]) => {
       host = { ...host, surface: host?.surface ?? 'editor', resourceProjects: value };
@@ -157,6 +157,10 @@ async function startProjectWebServer(options: WebOptions, credentials: { capabil
   if (!options.runtime) { assertLocalCliCoreCompatible(projectDir, descriptor.runtime!.harnessVersion); }
   if (!['conversation', 'workflow', 'kanban'].includes(descriptor.projectType)) { runtime.dispose(); throw new Error('Unsupported Workflow project type.'); }
   const project: Project = projectWithUserSettings(descriptor, userSettings);
+  const applyUserSettings = () => {
+    const view = projectWithUserSettings({ ...descriptor, agentModelPolicy: project.agentModelPolicy }, userSettings);
+    project.fields = view.fields; project.entrypoints = view.entrypoints;
+  };
   const databases = new DatabaseManagement(project, () => connection);
   const resources = new ResourcePreviews(project, runtime, storageDir, () => connection, () => resourceProjects, () => broadcast());
   const key = project.assistant ? createHash('sha256').update(`assistant:${project.id}:${project.assistant.workdir}`).digest('hex').slice(0, 24)
@@ -278,7 +282,7 @@ async function startProjectWebServer(options: WebOptions, credentials: { capabil
     if(signature!==configurationSignature) {
       configurationSignature=signature;
       project.agentModelPolicy = configurations.state.agentModelPolicy;
-      Object.assign(project, projectWithUserSettings(project, userSettings, configurationSnapshot(configurations.state, undefined, false).values));
+      applyUserSettings();
       parameterRevision++;
       parameterStates.clear();
       kanbanController?.configurationChanged(configurations.state);
@@ -286,11 +290,11 @@ async function startProjectWebServer(options: WebOptions, credentials: { capabil
       resources.clear();
     }
     broadcast();
-  }, () => isLocalBuiltinAssistant(project) ? undefined : connection, project.entryId);
+  }, () => isLocalBuiltinAssistant(project) ? undefined : connection, project.entryId, () => userSettings);
   await configurations.initialize();
   configurationSignature=configurations.signature;
   project.agentModelPolicy = configurations.state.agentModelPolicy;
-  Object.assign(project, projectWithUserSettings(project, userSettings, configurationSnapshot(configurations.state, undefined, false).values));
+  applyUserSettings();
   conversationController = isProject || isKanban ? undefined : new ConversationController(project, runtime, saved, {
     canRun: session => ownership?.execute(session.id) ?? true,
     canStart: () => !projectServer?.blocking || projectServer.ready,
@@ -549,10 +553,6 @@ async function startProjectWebServer(options: WebOptions, credentials: { capabil
       const value = await loadAgentModelCatalog(connection);
       if (epoch !== authEpoch) throw new Error('Account changed. Refresh AI models.');
       return [{ type: 'project-ai-catalog-result', requestId: message.requestId, value }];
-    }
-    if (message.type === 'project-user-models') {
-      const entries = (userSettings.agent.models ?? []).map(({ id, name, model, source }) => ({ id, name, model, source }));
-      return [{ type: 'project-user-models-result', requestId: message.requestId, value: entries }];
     }
     if (message.type === 'project-skills') {
       if (typeof message.requestId !== 'string' || message.requestId.length > 256
@@ -969,14 +969,15 @@ async function startProjectWebServer(options: WebOptions, credentials: { capabil
     handle: (request: IncomingMessage, response: ServerResponse) => { server.emit("request", request, response); },
     get running() { return projectController?.runs.some(run => run.status === "running") || conversationController?.sessions.some(sessionRunning) || false; },
     origin, url: `${origin}${options.mount?.basePath ?? ""}/#session=${capability}`, project, configurations, controller, projectController, kanbanController,
-    setHostUserSettings: (value: UserSettings) => {
+    setHostUserSettings: async (value: UserSettings) => {
       const settings = parseUserSettings(value);
       if (JSON.stringify(settings) === JSON.stringify(userSettings)) return;
       userSettings = settings;
       rememberModelKeys(settings);
-      Object.assign(project, projectWithUserSettings(project, settings, configurationSnapshot(configurations.state, undefined, false).values));
+      applyUserSettings();
       ++parameterRevision;
       conversationController?.configurationChanged();
+      await configurations.refresh().catch(() => undefined);
       broadcast();
     },
     setHostResourceProjects: (value: string[]) => { resourceProjects = value; resources.clear(); },

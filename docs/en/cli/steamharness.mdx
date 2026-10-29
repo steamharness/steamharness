@@ -25,6 +25,8 @@ Arguments after `--` pass unchanged to the Workflow. `--locale zh-CN|en` selects
 
 ## CLI Web
 
+Core Agents use built-in/custom models from Settings in Studio by default or with `modelSource: "user-settings"`, hiding project AI models. Standalone `steamharness web` lacks model settings and automatically uses project models; Configure model opens project configuration with System AI and Third-party AI sources. An empty Studio catalogue still opens Settings. Explicit `modelSource: "project"` always uses project models.
+
 Core Agent entries recover unfinished work with its original run identity after a forced exit. Host shutdown closes workers; workers that do not finish cleanup exit within five seconds to release conversation ownership. Failure, stop or timeout preserves and pauses queued input. Only a successful turn automatically starts the next queued message. You can explicitly resume the queue or send new input; successful new input then advances the retained queue in order.
 
 In Studio, click local file links, inline code paths or plain absolute paths in Agent replies and plans to open the file in the editor. Relative paths, `file://` links and locations such as `src/main.ts:12:3` or `src/main.ts#L12C3` are supported. Relative paths resolve from the aggregate project root or Assistant's bound working directory. Web links open in the browser. Standalone CLI Web cannot open the local editor and prompts you to use Studio when opening a local path.

@@ -1,6 +1,7 @@
 # Unreleased
 
-- Improved: The assistant retains settings models and composes project supplements, supporting settings references, project-owned connections and project defaults.
+- [Changed] The assistant uses only built-in/custom Settings models in Studio and hides project AI models. Standalone CLI Web automatically uses project model configuration.
+
 
 - Fixed: Update generator references for bounded retries of model-call exceptions and manual compaction, distinguishing provider failures from host storage, usage and observer failures.
 

@@ -10,6 +10,7 @@ import { DatabaseSync } from "node:sqlite";
 import path from "node:path";
 import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import ts from "typescript";
+import { getUserSettings, type UserSettings } from "./user-settings";
 import { setTimeout as delay } from "node:timers/promises";
 import {resolveProjectConfigurationAccess,type ConfigurationConnection} from './configuration-access';
 export {resolveProjectConfigurationAccess} from './configuration-access';
@@ -41,8 +42,8 @@ export function projectUsesConfiguredAgentModels(projectDir: string, entryFile?:
   return discoverProjectAgentModels(projectDir, undefined, entryFile);
 }
 
-type AgentModelSourceCache = Map<string, { stamp: string; found: boolean }>;
-function discoverProjectAgentModels(projectDir: string, cache?: AgentModelSourceCache, entryFile?: string): boolean {
+type AgentModelSourceCache = Map<string, { stamp: string; found: boolean; projectModels: boolean }>;
+function discoverProjectAgentModels(projectDir: string, cache?: AgentModelSourceCache, entryFile?: string, projectOnly = false): boolean {
   const skipped = new Set(["node_modules", "vendor", "dist", "out", "build", "test", "tests", "__tests__", "fixtures"]);
   const scan = (directory: string): boolean => {
     if (!existsSync(directory)) return false;
@@ -55,7 +56,7 @@ function discoverProjectAgentModels(projectDir: string, cache?: AgentModelSource
       if (info.size > 1024 * 1024) continue;
       const stamp = `${info.ino}:${info.size}:${info.mtimeMs}:${info.ctimeMs}`;
       const previous = cache?.get(file);
-      if (previous?.stamp === stamp) { if (previous.found) return true; continue; }
+      if (previous?.stamp === stamp) { if (projectOnly ? previous.projectModels : previous.found) return true; continue; }
       const source = ts.createSourceFile(file, readFileSync(file, "utf8"), ts.ScriptTarget.Latest, true);
       const factories = new Set(["createAgentNode", "createAgentConversationProject", "createAgentProjectParamResolver", "defineAgentConversationExecutor"]);
       const imports = new Set<string>(), namespaces = new Set(["steamharness"]);
@@ -68,21 +69,79 @@ function discoverProjectAgentModels(projectDir: string, cache?: AgentModelSource
           if (!binding.isTypeOnly && factories.has(binding.propertyName?.text ?? binding.name.text)) imports.add(binding.name.text);
         }
       }
-      let found = false;
+      // Resolve local constants without evaluating project code. Unknown options
+      // may select project models, so keep that configuration available.
+      const constants = new Map<string, ts.Expression>();
+      const collect = (node: ts.Node): void => {
+        if (ts.isVariableDeclarationList(node) && (node.flags & ts.NodeFlags.Const)) for (const declaration of node.declarations) {
+          if (ts.isIdentifier(declaration.name) && declaration.initializer) constants.set(declaration.name.text, declaration.initializer);
+        }
+        ts.forEachChild(node, collect);
+      };
+      collect(source);
+      const unwrap = (value: ts.Expression, seen = new Set<string>()): ts.Expression => {
+        if (ts.isParenthesizedExpression(value) || ts.isAsExpression(value) || ts.isSatisfiesExpression(value) || ts.isTypeAssertionExpression(value)) return unwrap(value.expression, seen);
+        if (ts.isIdentifier(value) && constants.has(value.text) && !seen.has(value.text)) return unwrap(constants.get(value.text)!, new Set([...seen, value.text]));
+        return value;
+      };
+      const modelSource = (argument?: ts.Expression, seen = new Set<ts.Node>()): "user-settings" | "project" | "unknown" | undefined => {
+        if (!argument) return undefined;
+        const value = unwrap(argument);
+        if (ts.isIdentifier(value) && value.text === "undefined") return undefined;
+        if (!ts.isObjectLiteralExpression(value) || seen.has(value)) return "unknown";
+        const visited = new Set([...seen, value]);
+        let selected: ReturnType<typeof modelSource>;
+        for (const property of value.properties) {
+          if (ts.isSpreadAssignment(property)) { selected = modelSource(property.expression, visited) ?? selected; continue; }
+          const name = property.name && (ts.isIdentifier(property.name) || ts.isStringLiteral(property.name)) ? property.name.text : undefined;
+          if (name !== "modelSource") continue;
+          const expression = ts.isPropertyAssignment(property) ? property.initializer : ts.isShorthandPropertyAssignment(property) ? property.name : undefined;
+          const mode = expression && unwrap(expression);
+          selected = mode && ts.isStringLiteral(mode) && (mode.text === "user-settings" || mode.text === "project") ? mode.text : "unknown";
+        }
+        return selected;
+      };
+      let found = false, projectModels = false;
       const visit = (node: ts.Node): void => {
-        if (found) return;
         if (ts.isCallExpression(node)) {
           const expression = node.expression;
           if (ts.isIdentifier(expression) && imports.has(expression.text) ||
-            ts.isPropertyAccessExpression(expression) && ts.isIdentifier(expression.expression) && namespaces.has(expression.expression.text) && factories.has(expression.name.text)) { found = true; return; }
+            ts.isPropertyAccessExpression(expression) && ts.isIdentifier(expression.expression) && namespaces.has(expression.expression.text) && factories.has(expression.name.text)) {
+            found = true;
+            const mode = modelSource(node.arguments[0]);
+            projectModels ||= mode === "project" || mode === "unknown";
+          }
         }
         ts.forEachChild(node, visit);
       };
-      visit(source); cache?.set(file, { stamp, found }); if (found) return true;
+      visit(source); cache?.set(file, { stamp, found, projectModels }); if (projectOnly ? projectModels : found) return true;
     }
     return false;
   };
   return scan(projectDir);
+}
+
+function usesOnlyUserAgentModels(projectDir: string, entryFile?: string, cache?: AgentModelSourceCache, settings = getUserSettings()): boolean {
+  return settings.agent.models !== undefined && discoverProjectAgentModels(projectDir, cache, entryFile)
+    && !discoverProjectAgentModels(projectDir, cache, entryFile, true);
+}
+
+/** Host presentation only: keep saved project models intact for standalone CLI use. */
+function withoutProjectAgentModels(state: ProjectConfigurationState): ProjectConfigurationState {
+  const fields = (items: ProjectConfigurationField[]) => items.filter(field => field.name !== AGENT_MODELS_CONFIGURATION_KEY);
+  const values = (items: ConfigurationValues) => {
+    const { [AGENT_MODELS_CONFIGURATION_KEY]: _ignored, ...remaining } = items;
+    return remaining;
+  };
+  const profiles = (policy: ConfigurationProfilePolicy) => ({ ...policy, profiles: policy.profiles.map(profile => ({ ...profile, fixedValues: values(profile.fixedValues) })) });
+  return { ...state, fields: fields(state.fields), customFields: fields(state.customFields),
+    configurations: state.configurations.map(configuration => ({ ...configuration, values: values(configuration.values) })),
+    ...(state.profilePolicy ? { profilePolicy: profiles(state.profilePolicy) } : {}),
+    ...(state.conflicts ? { conflicts: state.conflicts.filter(conflict => conflict.key !== AGENT_MODELS_CONFIGURATION_KEY) } : {}),
+    ...(state.shadowedCustomFields ? { shadowedCustomFields: fields(state.shadowedCustomFields) } : {}),
+    ...(state.template ? { template: { ...state.template, fields: fields(state.template.fields),
+      configurations: state.template.configurations.map(configuration => ({ ...configuration, values: values(configuration.values) })),
+      ...(state.template.profilePolicy ? { profilePolicy: profiles(state.template.profilePolicy) } : {}) } } : {}) };
 }
 
 export function readProjectConfigurationDefinition(projectDir: string, entryId?: string) {
@@ -91,6 +150,10 @@ export function readProjectConfigurationDefinition(projectDir: string, entryId?:
   projectDir = resolved.rootDir;
   const definition: ProjectConfigurationDefinition = file && existsSync(file) ? parseConfigurationDefinition(JSON.parse(readFileSync(file, "utf8"))) : { version: 1, fields: [] };
   if (!definition.fields.some(field => field.name === AGENT_MODELS_CONFIGURATION_KEY) && projectUsesConfiguredAgentModels(projectDir, resolved.modulePath)) definition.fields.unshift({...structuredClone(AGENT_MODELS_CONFIGURATION_FIELD),...definition.agentModelPolicy});
+  if (usesOnlyUserAgentModels(projectDir, resolved.modulePath)) {
+    definition.agentModelPolicy = configurationAgentModelPolicy(definition);
+    definition.fields = definition.fields.filter(field => field.name !== AGENT_MODELS_CONFIGURATION_KEY);
+  }
   return definition;
 }
 
@@ -103,6 +166,7 @@ export interface LocalProjectConfigurationOptions {
   /** Trusted host injection. These options are never taken from RPC action payloads. */
   access?: ConfigurationAccess;
   connection?:()=>ConfigurationConnection|null;
+  userSettings?: () => UserSettings | undefined;
 }
 export async function createLocalProjectConfigurationStore(projectDir: string, options: LocalProjectConfigurationOptions = {}) {
   const resolved = resolveProjectDeclarationEntrySync(projectDir, options.entryId);
@@ -158,6 +222,14 @@ async function createProjectConfigurationStoreForIdentity(projectDir: string, op
 
   // Run snapshots use the same project and entry identity as configuration profiles.
   const runKey = key;
+  const settingsModelsOnly = () => usesOnlyUserAgentModels(directory, options.entryFile, agentModelSources, options.userSettings?.() ?? getUserSettings());
+  const view = (state: ProjectConfigurationState) => settingsModelsOnly() ? withoutProjectAgentModels(state) : state;
+  const snapshotView = (snapshot: ProjectConfigurationSnapshot): ProjectConfigurationSnapshot => {
+    if (!settingsModelsOnly()) return snapshot;
+    const { [AGENT_MODELS_CONFIGURATION_KEY]: _ignored, ...values } = snapshot.values;
+    return { ...snapshot, values };
+  };
+  const validateSnapshot = (state: ProjectConfigurationState, snapshot: ProjectConfigurationSnapshot) => validateConfigurationSnapshotAccess(view(state), snapshotView(snapshot), options.access);
   const declared = async () => {
     let definition: ProjectConfigurationDefinition = {version:1,fields:[]};
     try { definition = parseConfigurationDefinition(JSON.parse(await readFile(options.configurationFile ?? path.join(directory, ".no-entry-configuration"), "utf8"))); }
@@ -233,7 +305,7 @@ async function createProjectConfigurationStoreForIdentity(projectDir: string, op
     } finally { guard.close(); }
   };
   const capabilities = (state: ProjectConfigurationState): ProjectConfigurationState => ({...configurationAccessView(state,options.access),fieldCapabilities:Object.fromEntries(state.fields.map(field=>[field.name,{...configurationCapability(state,field),paths:Object.fromEntries(Object.keys(field.paths??{}).map(pointer=>[pointer,configurationCapability(state,field,pointer)]))}]))});
-  const read = async () => capabilities(await exclusive(load));
+  const read = async () => capabilities(view(await exclusive(load)));
   return {
     read,
     async dispatch(call: ProjectConfigurationAction) {
@@ -243,7 +315,7 @@ async function createProjectConfigurationStoreForIdentity(projectDir: string, op
       if (call.action === "export") return exportConfigurations(await read(), call.id,options.access);
       return exclusive(async () => {
         const next = applyConfigurationAction(await load(), call, randomUUID,undefined,options.access);
-        await atomic(filename, next); return capabilities(next);
+        await atomic(filename, next); return capabilities(view(next));
       });
     },
     async snapshot(snapshotOptions: { id?: string; runId?: string; required?: boolean; configuration?: ProjectConfigurationSnapshot; requireExisting?:boolean } = {}): Promise<ProjectConfigurationSnapshot> {
@@ -263,19 +335,19 @@ async function createProjectConfigurationStoreForIdentity(projectDir: string, op
             if(!trusted || template.projectId!==state.template?.projectId || template.entryId!==options.entryId || !template.configurations.some(profile=>profile.id===persisted.templateId))throw new ProjectConfigurationError('Invalid run configuration snapshot.');
             state={...state,template,fields:template.fields,configurations:state.configurations.map(profile=>profile.id===saved.id?{...profile,templateId:persisted.templateId}:profile)};
           }
-          return validateConfigurationSnapshotAccess(state,saved,options.access);
+          return validateSnapshot(state,saved);
         }
         catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error; }
         if (snapshotOptions.requireExisting && options.profilePolicy) throw new ProjectConfigurationError('This restricted run has no verified configuration snapshot. Start a new task.', 'CONFIGURATION_FORBIDDEN');
         const state=await load();
         if(snapshotOptions.id && state.profilePolicy && !configurationAccessView(state,options.access).configurations.some(profile=>profile.id===snapshotOptions.id))throw new ProjectConfigurationError('This configuration is not available to this account.','CONFIGURATION_FORBIDDEN');
-        const snapshot = validateConfigurationSnapshotAccess(state,provided ?? configurationSnapshot(configurationAccessView(state,options.access), snapshotOptions.id, snapshotOptions.required !== false),options.access);
+        const snapshot = validateSnapshot(state,provided ?? configurationSnapshot(configurationAccessView(view(state),options.access), snapshotOptions.id, snapshotOptions.required !== false));
         await atomic(runFile, state.template ? {snapshot,template:state.template,templateId:state.configurations.find(profile=>profile.id===snapshot.id)?.templateId??state.template.defaultConfigurationId} : snapshot);
         return snapshot;
       });
       const state=await exclusive(load);
       if(snapshotOptions.id && state.profilePolicy && !configurationAccessView(state,options.access).configurations.some(profile=>profile.id===snapshotOptions.id))throw new ProjectConfigurationError('This configuration is not available to this account.','CONFIGURATION_FORBIDDEN');
-      return validateConfigurationSnapshotAccess(state,provided ?? configurationSnapshot(configurationAccessView(state,options.access),snapshotOptions.id,snapshotOptions.required!==false),options.access);
+      return validateSnapshot(state,provided ?? configurationSnapshot(configurationAccessView(view(state),options.access),snapshotOptions.id,snapshotOptions.required!==false));
     },
   };
 }

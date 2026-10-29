@@ -1,8 +1,9 @@
 # Unreleased
 
+- [Changed] Agent models use separate settings and project modes: Studio hides project AI configuration, standalone CLI Web uses project models, and empty settings never fall back. Project models retain only System AI and Third-party AI sources.
+
 - [Fixed] Core Agent projects and coreAgent wrappers inherit host recovery, reconnecting unfinished work with its original runId after a crash so later input is not blocked by stale busy state.
 
-- Improved: Agent models compose project supplements with user settings, including host model references, project defaults, distinct colliding IDs and unavailable-reference checks using one snapshot for choices and requests.
 
 - Fixed: Retry transient request-construction, stream-iteration/result, summary and deferred-fetch exceptions, including nested transport codes and HTTP 408/409/5xx. Manual compaction uses bounded retries while retaining text, tool results and per-attempt summary usage; host storage and callback failures remain terminal.
 

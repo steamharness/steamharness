@@ -140,7 +140,6 @@ function validateResolvedOptions(
     if (option.description !== undefined && typeof option.description !== "string") {
       throw resolverError(`Resolved option description "${option.value}" for parameter "${paramName}" must be a string.`);
     }
-    if (option.group !== undefined && typeof option.group !== "string") throw resolverError(`Resolved option group "${option.value}" for parameter "${paramName}" must be a string.`);
     if (option.command !== undefined && typeof option.command !== "string") {
       throw resolverError(`Resolved option command "${option.value}" for parameter "${paramName}" must be a string.`);
     }

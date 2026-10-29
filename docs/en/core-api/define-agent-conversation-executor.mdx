@@ -47,7 +47,7 @@ Every [createAgentNode](./create-agent-node.mdx) option, plus:
 | `params` | `provider`, `model`, `effort`, `plan`, `permissionPolicy` |
 | `workflow` | Input node parses, agent node streams, output node writes the conversation |
 
-Effort defaults to `high` and `/plan` is off. Models compose user settings and project supplements by default. The first project entry supplies the project default; an empty project list follows the user default. `modelSource: "project"` uses only configured project models and their settings references. Provider remains a hidden compatibility field.
+Effort defaults to `high` and `/plan` is off. The default and `modelSource: "user-settings"` use only Settings models in Studio and hide project AI configuration; standalone CLI Web automatically falls back to project models. `modelSource: "project"` uses only project configuration on every host, retaining System AI and Third-party AI as the two add sources. Provider remains a hidden compatibility field.
 
 The inherited resolver supplies model choices from the selected source, hides `provider`, and applies visibility and fixed values. It patches declared fields only. `model` stores a configuration entry ID that execution resolves to a connection. Explicit `executor.params` replaces the table; explicit `resolveParams` retains custom logic while Core still applies visibility and fixed values. See [Project configurations](/en/concepts/project-configuration).
 

@@ -1,5 +1,5 @@
 /** The portable business configuration contract. This module is browser safe. */
-import { parseProjectAgentModels, AGENT_MODELS_CONFIGURATION_KEY, type AgentModelPolicy } from "./agent-models";
+import { parseAgentModels, AGENT_MODELS_CONFIGURATION_KEY, type AgentModelPolicy } from "./agent-models";
 import { isProjectRole, roleAtLeast, type ProjectRole } from "@steamharness/project-access";
 export * from "./agent-models";
 export const PROJECT_CONFIGURATION_FILE = "configuration.json";
@@ -239,7 +239,7 @@ export function validateConfigurationSnapshotAccess(state: ProjectConfigurationS
   // Imported and persisted snapshots carry values, never permission to relax
   // restrictions declared by the current project or its official template.
   const agentModelPolicy=configurationAgentModelPolicy(state,{fields:[],agentModelPolicy:snapshot.agentModelPolicy});
-  if(agentModelPolicy?.allowThirdParty===false)parseProjectAgentModels(snapshot.values[AGENT_MODELS_CONFIGURATION_KEY]??[],agentModelPolicy);
+  if(agentModelPolicy?.allowThirdParty===false)parseAgentModels(snapshot.values[AGENT_MODELS_CONFIGURATION_KEY]??[],agentModelPolicy);
   if(agentModelPolicy)snapshot={...snapshot,agentModelPolicy};
   if(state.template) {
     const profile=state.configurations.find(item=>item.id===snapshot.id);
@@ -273,7 +273,7 @@ function validateSharingRule(value: unknown): void {
   if (!record(value) || Object.entries(value).some(([key,entry]) => !['publish','includeValue','editable'].includes(key) || typeof entry !== 'boolean')) return invalid('Invalid configuration sharing rule.');
 }
 export function validateConfigurationValue(field: ProjectConfigurationField, value: unknown): asserts value is ConfigurationValue {
-  if (field.control === "ai-models") { parseProjectAgentModels(value, field); return; }
+  if (field.control === "ai-models") { parseAgentModels(value, field); return; }
   if (field.type === "file") {
     const files = field.multiple ? value : [value];
     if (!Array.isArray(files) || files.length > 32) return invalid(`Invalid value for configuration field: ${field.name}.`);
@@ -287,7 +287,7 @@ export function validateConfigurationValue(field: ProjectConfigurationField, val
   if (field.options && (field.multiple ? value as string[] : [value]).some(item => !field.options!.some(option => option.value === String(item)))) invalid(`Invalid option for configuration field: ${field.name}.`);
 }
 function validateStoredConfigurationValue(field: ProjectConfigurationField, value: unknown): void {
-  if (field.control === "ai-models") parseProjectAgentModels(value);
+  if (field.control === "ai-models") parseAgentModels(value);
   else validateConfigurationValue(field, value);
 }
 export function validateConfigurationFileSelection(field: ProjectConfigurationField, file: {name: string; mimeType: string; size: number}): void {

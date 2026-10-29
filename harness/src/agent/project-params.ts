@@ -46,7 +46,7 @@ export function createAgentProjectParams(options: AgentProjectOptions = {}): Con
           type: "string",
           required: true,
           label: "Model",
-          description: options.modelSource === "project" ? "选择项目配置中的模型。" : "Choose a model from user settings or project configurations.",
+          description: options.modelSource === "project" ? "Choose a model from project configurations." : "Choose a model from host settings, or project configurations in CLI Web.",
           ...(options.model !== undefined ? { defaultValue: options.model } : options.modelSource === "project" ? {} : { userSetting: { key: "agent.model" as const, mode: "default" as const } }),
           control: "select",
           options: [],

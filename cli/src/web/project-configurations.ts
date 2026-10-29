@@ -1,4 +1,4 @@
-import { createLocalProjectConfigurationStore } from 'steamharness';
+import { createLocalProjectConfigurationStore, type UserSettings } from 'steamharness';
 import {configurationPublication} from '../configuration-publication';
 import type {WebConnection} from './runtime';
 import {configurationAccessView,ProjectConfigurationError,type ProjectConfigurationAction, type ProjectConfigurationState} from '@steamharness/project-configuration';
@@ -25,9 +25,9 @@ export class ProjectConfigurations {
   private poll?: ReturnType<typeof setInterval>;
   private reading = false;
   error?: string;
-  constructor(private readonly projectDir: string, private readonly changed: () => void, private readonly connection: () => WebConnection | undefined = () => undefined, private readonly entryId?: string) {}
+  constructor(private readonly projectDir: string, private readonly changed: () => void, private readonly connection: () => WebConnection | undefined = () => undefined, private readonly entryId?: string, private readonly userSettings?: () => UserSettings | undefined) {}
   async initialize() {
-    this.store = await createLocalProjectConfigurationStore(this.projectDir,{entryId: this.entryId, connection:()=>this.connection()??null});
+    this.store = await createLocalProjectConfigurationStore(this.projectDir,{entryId: this.entryId, connection:()=>this.connection()??null, userSettings: this.userSettings});
     this.value = {...await this.store.read(true),canManagePublication:false};
     this.accessIdentity=this.connectionIdentity();
     this.poll = setInterval(() => {

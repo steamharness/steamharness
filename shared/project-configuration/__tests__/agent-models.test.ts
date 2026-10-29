@@ -4,6 +4,13 @@ import { AGENT_MODELS_CONFIGURATION_FIELD as field, AGENT_MODELS_CONFIGURATION_K
 const third = { id: "third", name: "Private endpoint", source: "third-party", model: "custom-model", apiKind: "openai-completions", baseUrl: "https://models.example/v1", apiKey: "test-only-key" };
 const system = { id: "system", name: "Subscription", source: "system", model: "system-model", credentialId: "subscription-a" };
 describe("configured Agent models", () => {
+  it("accepts project connections but rejects references to host settings", () => {
+    const reference = { id: "alias", name: "Alias", source: "user-settings", modelId: "host-model" };
+    const state = createConfigurationState([field], () => "default");
+    expect(() => parseAgentModels([reference])).toThrow();
+    expect(() => applyConfigurationAction(state, { action: "save", revision: 0, id: "default", values: { [key]: [reference] } }, () => "new")).toThrow();
+    expect(parseAgentModels([system, third])).toEqual([system, third]);
+  });
   it("keeps code restrictions when a published template predates the policy", () => {
     const template = freezeConfigurationTemplate(createPublicationDraft(createConfigurationState([field], () => "official")), { projectId: "project",entryId:"main",projectVersion: "1", sourceHash: "0".repeat(64) });
     const recipient = bindConfigurationTemplate(createConfigurationState([{ ...field, allowThirdParty: false }], () => "personal"), template);
