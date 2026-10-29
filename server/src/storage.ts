@@ -1593,7 +1593,7 @@ export class Storage {
           if (template) current = bindConfigurationTemplate(current,template);
           else delete current.template;
           if(profilePolicy)current=bindConfigurationProfiles(current,profilePolicy);
-          if(current.profilePolicy)current.activeConfigurationId=configurationAccessView(current,configurationAccess).activeConfigurationId;
+          // Apply role fallback to responses while preserving the account's saved selection.
           if (stored && current.revision === (stored as ProjectConfigurationState).revision && (!isDeepStrictEqual((stored as ProjectConfigurationState).fields,current.fields) || !isDeepStrictEqual((stored as ProjectConfigurationState).agentModelPolicy,current.agentModelPolicy) || !isDeepStrictEqual((stored as ProjectConfigurationState).profilePolicy,current.profilePolicy) || (stored as ProjectConfigurationState).activeConfigurationId!==current.activeConfigurationId)) current.revision++;
           return call.action === "get" || call.action === "export" || publicationCall ? current : applyConfigurationAction(current,call,randomUUID,undefined,configurationAccess);
         });

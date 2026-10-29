@@ -1546,7 +1546,9 @@ paths:
       description: Requires project read or source-download access and an account identity. Values are isolated by
         project and account. Download access only exposes the version template and permitted personal values.
         Official drafts require the actual original owner or an administrator. The Server never executes
-        project code.
+        project code. A temporary role fallback changes the response view while preserving the account's
+        saved selection; access recovery reuses it. Saving fallback values preserves that selection,
+        while an explicit select action updates it.
       operationId: getProjectConfigurations
       parameters:
         - $ref: "#/components/parameters/ProjectName"

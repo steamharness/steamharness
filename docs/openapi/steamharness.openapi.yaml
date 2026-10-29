@@ -1503,7 +1503,9 @@ paths:
         Official drafts require an actual maintainer, owner or system administrator. For v2 projects,
         non-managers use the latest published template for default or draft targets even with source-draft
         read access. Unpublished role-controlled configurations return a publication-required error. The
-        Server never executes project code.
+        Server never executes project code. A temporary role fallback changes the response view while
+        preserving the account's saved selection; access recovery reuses it. Saving fallback values
+        preserves that selection, while an explicit select action updates it.
       operationId: getProjectConfigurations
       parameters:
         - $ref: "#/components/parameters/ProjectName"

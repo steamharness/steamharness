@@ -27,20 +27,34 @@ test('restricted local stores isolate accounts, preserve overrides, and reject a
     assert.equal(snapshot.values.mode,'build');assert.equal(snapshot.values.model,'alice-model');
     await assert.rejects(store.snapshot({runId:'pre-policy-run',requireExisting:true}),/no verified configuration snapshot/);
     access.role='guest';
-    assert.deepEqual((await store.read()).configurations.map(profile=>profile.profileKey),['ask']);
+    const guest=await store.read();
+    assert.deepEqual(guest.configurations.map(profile=>profile.profileKey),['ask']);
+    assert.equal(guest.activeConfigurationId,'profile-ask');
+    assert.equal(guest.revision,snapshot.revision);
     await assert.rejects(store.snapshot({runId:'original'}),/not available/);
     await assert.rejects(store.snapshot({configuration:snapshot}),/not available/);
+    await store.dispatch({action:'save',id:guest.activeConfigurationId,revision:guest.revision,values:{model:'ask-model'}});
+    assert.ok(!JSON.stringify(await store.dispatch({action:'export'})).includes('alice-model'));
     access.role='developer';access.online=false;
-    assert.equal((await store.snapshot()).values.mode,'ask');
+    const offlineWindow=await configurationFixtureStore(project,options);
+    const offline=await offlineWindow.snapshot({runId:'offline'});
+    assert.equal(offline.values.mode,'ask');
+    assert.equal(offline.values.model,'ask-model');
     access.online=true;
-    assert.equal((await store.snapshot()).values.mode,'ask');
-    state=await store.read();
-    await store.dispatch({action:'select',id:'profile-build',revision:state.revision});
+    assert.equal((await store.snapshot()).values.mode,'build');
     assert.equal((await store.snapshot()).values.model,'alice-model');
+    assert.deepEqual(await store.snapshot({runId:'original'}),snapshot);
+    assert.deepEqual(await store.snapshot({runId:'offline'}),offline);
     const bob=await configurationFixtureStore(project,{...options,access:{...access,subject:'server:bob'}});
     assert.equal((await bob.snapshot()).values.mode,'ask');assert.equal((await bob.snapshot()).values.model,undefined);
     const secondWindow=await configurationFixtureStore(project,options);
     assert.equal((await secondWindow.snapshot()).values.model,'alice-model');
+    access.online=false;
+    state=await secondWindow.read();
+    await secondWindow.dispatch({action:'select',id:state.activeConfigurationId,revision:state.revision});
+    access.online=true;
+    assert.equal((await store.snapshot()).values.mode,'ask');
+    assert.equal((await (await configurationFixtureStore(project,options)).snapshot()).values.model,'ask-model');
   }finally{await rm(project,{recursive:true,force:true});}
 });
 
@@ -113,10 +127,19 @@ test('restricted downloads still require the verified template and keep locked v
     assert.equal((await store.snapshot()).values.locked,'new official');
     assert.deepEqual(await store.snapshot({runId:'ask'}),ask);
     assert.deepEqual(await store.snapshot({runId:'build'}),build);
+    state=await store.read();
+    state=await store.dispatch({action:'select',id:buildId,revision:state.revision}) as ProjectConfigurationState;
     access.role='guest';
+    const guest=await store.read();
+    assert.equal(guest.revision,state.revision);
+    assert.equal((await store.snapshot()).profileKey,'ask');
     assert.deepEqual(await store.snapshot({runId:'ask'}),ask);
     await assert.rejects(store.snapshot({runId:'build'}),/not available/);
     await assert.rejects(store.snapshot({id:'profile-build'}),/not available/);
+    access.role='developer';
+    const reopened=await configurationFixtureStore(project,options);
+    assert.equal((await reopened.snapshot()).id,buildId);
+    assert.equal((await reopened.snapshot()).values.mode,'build');
   }finally{await rm(project,{recursive:true,force:true});}
 });
 

@@ -1,5 +1,7 @@
 # Unreleased
 
+- Fixed file and PostgreSQL project configuration reads overwriting the account's selected profile during a temporary role fallback. Access recovery restores the saved selection; explicit changes and guest isolation remain enforced.
+
 - Fixed project pagination to exclude retained records without aggregate entry declarations consistently with detail reads, preserving their versions and stored data.
 
 - Improved: Development startup supervises local memory with persistent storage and internal credentials, cleans it up on exit, and supports disabling autostart or using an external service.

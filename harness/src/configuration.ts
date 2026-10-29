@@ -272,7 +272,7 @@ async function createProjectConfigurationStoreForIdentity(projectDir: string, op
     let state = readConfigurationState(stored, template?.fields ?? definition.fields, () => `default-${key.slice(0, 24)}`,policy);
     if (template) state = bindConfigurationTemplate(state, template);
     if(options.profilePolicy)state=bindConfigurationProfiles(state,options.profilePolicy);
-    if(state.profilePolicy)state.activeConfigurationId=configurationAccessView(state,options.access).activeConfigurationId;
+    // Views and snapshots enforce the current role while preserving the saved selection.
     const changed = !isDeepStrictEqual(stored,state);
     if (!stored || changed) {
       if (stored && changed && state.revision === (stored as ProjectConfigurationState).revision) state.revision++;

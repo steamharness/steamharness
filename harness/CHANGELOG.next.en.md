@@ -1,5 +1,7 @@
 # Unreleased
 
+- [Fixed] Preserve the selected restricted configuration across temporary outages, role changes, and reopening. Guest fallback still enforces execution permissions, and an explicit Ask selection remains saved.
+
 - [Changed] Agent models use separate settings and project modes: Studio hides project AI configuration, standalone CLI Web uses project models, and empty settings never fall back. Project models retain only System AI and Third-party AI sources.
 
 - [Fixed] Core Agent projects and coreAgent wrappers inherit host recovery, reconnecting unfinished work with its original runId after a crash so later input is not blocked by stale busy state.

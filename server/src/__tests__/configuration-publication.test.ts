@@ -46,6 +46,26 @@ test('role profiles filter guest responses and exports and enforce writes in the
     assert.equal(configurationSnapshot(developer).values.model,undefined);
     const defaultDeveloper=await storage.projectConfigurations({...devOptions,target:undefined},{action:'get'}) as ProjectConfigurationState;
     assert.deepEqual(defaultDeveloper.configurations.map(profile=>profile.profileKey),['ask','build']);
+    const accessSummary=storage.getProjectAccessSummary;
+    let downgraded=true;
+    storage.getProjectAccessSummary=(id,userId)=>accessSummary(id,downgraded&&userId==='developer'?'downloader':userId);
+    let fallback=await storage.projectConfigurations(devOptions,{action:'get'}) as ProjectConfigurationState;
+    assert.equal(fallback.revision,developer.revision);
+    assert.equal(configurationSnapshot(fallback).values.mode,'ask');
+    await assert.rejects(storage.projectConfigurations(devOptions,{action:'select',id:build.id,revision:fallback.revision}),/not available/);
+    fallback=await storage.projectConfigurations(devOptions,{action:'save',id:fallback.activeConfigurationId,revision:fallback.revision,values:{model:'ask-model'}}) as ProjectConfigurationState;
+    assert.ok(!JSON.stringify(await storage.projectConfigurations(devOptions,{action:'export'})).includes('"mode":"build"'));
+    downgraded=false;
+    developer=await storage.projectConfigurations(devOptions,{action:'get'}) as ProjectConfigurationState;
+    assert.equal(developer.activeConfigurationId,build.id);
+    assert.equal(configurationSnapshot(developer).values.mode,'build');
+    await storage.projectConfigurations(devOptions,{action:'select',id:fallback.activeConfigurationId,revision:developer.revision});
+    downgraded=true;
+    await storage.projectConfigurations(devOptions,{action:'get'});
+    downgraded=false;
+    developer=await storage.projectConfigurations(devOptions,{action:'get'}) as ProjectConfigurationState;
+    assert.equal(configurationSnapshot(developer).values.mode,'ask');
+    assert.equal(configurationSnapshot(developer).values.model,'ask-model');
   }finally{await rm(root,{recursive:true,force:true});}
 });
 async function fixture(fields:ProjectConfigurationField[],profilePolicy?:ConfigurationProfilePolicy) {
