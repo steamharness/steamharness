@@ -236,7 +236,7 @@ export function MemoryPage() {
         `${t(value.startsWith("directory:") ? "directory" : "project")} · ${value.split(":").slice(1).join(":")}`;
   const showDetail = selected !== null || draft !== null || detailLoading;
   return (
-    <section className="flex min-h-0 flex-col gap-4" aria-label={t("title")}>
+    <section className="flex min-h-0 min-w-0 flex-1 flex-col gap-6 p-4 lg:p-6" aria-label={t("title")}>
       <div>
         <h1 className="text-lg font-semibold">{t("title")}</h1>
         <p className="mt-1 text-sm text-muted-foreground">{t("privacy")}</p>
