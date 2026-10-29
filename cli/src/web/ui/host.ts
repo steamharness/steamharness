@@ -366,7 +366,7 @@ export function acquireProjectHost(options: { live?: boolean; connectionBanner?:
       if (message.type === 'open-path') {
         if (!pathOpenHost) { emit({ type: 'error', requestType: 'open-path', projectUri: message.projectUri, sessionId: message.sessionId, message: t('Open this conversation in Studio to open referenced files and folders.') }); return; }
         const requestId = crypto.randomUUID(); pathOpens.set(requestId, message);
-        window.parent.postMessage({ type: 'workflow-path-open', version: 1, requestId, path: message.path }, '*'); return;
+        window.parent.postMessage({ type: 'workflow-path-open', version: 1, requestId, path: message.path, ...(message.line === undefined ? {} : { line: message.line }), ...(message.column === undefined ? {} : { column: message.column }) }, '*'); return;
       }
       if (message.type === 'login') { accountPanel.open(); return; }
       void request(message).catch(error => emit({ type: 'error', silent: error instanceof ConnectionError, connectionError: error instanceof ConnectionError, requestType: message.type, sessionId: message.sessionId, messageId: message.messageId, requestId: message.requestId, errorScope: message.errorScope, message: error.message }));

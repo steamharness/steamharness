@@ -1,6 +1,7 @@
 import { marked } from 'marked';
 import DOMPurify from 'dompurify';
 import type { Attachment } from '../workflow-types';
+import { fileLinkTarget } from './output-file-links';
 
 export const iconHtml = (name: string): string => `<span class="codicon codicon-${name}" aria-hidden="true"></span>`;
 export function updateIcon(root: HTMLElement, name?: string): void {
@@ -39,11 +40,11 @@ export function markdownHtml(text: string, files: Attachment[] = []): string {
   };
   renderer.link = (token) => {
     const file = managedFileForUrl(token.href, files);
-    return `<a href="${escapeHtml(file?.previewUrl ?? token.href)}"${token.title ? ` title="${escapeHtml(token.title)}"` : ''}${file ? ` data-workflow-file="${escapeHtml(file.id)}"` : ''}>${renderer.parser.parseInline(token.tokens)}</a>`;
+    return `<a href="${escapeHtml(file?.previewUrl ?? token.href)}"${token.title ? ` title="${escapeHtml(token.title)}"` : ''}${file ? ` data-workflow-file="${escapeHtml(file.id)}"` : fileLinkTarget(token.href) ? ` data-workflow-path="${escapeHtml(token.href)}"` : ''}>${renderer.parser.parseInline(token.tokens)}</a>`;
   };
   const fragment = DOMPurify.sanitize(marked.parse(text, { async: false, breaks: true, renderer }), {
     ALLOWED_TAGS: ['p', 'br', 'strong', 'em', 'del', 'code', 'pre', 'ul', 'ol', 'li', 'blockquote', 'h1', 'h2', 'h3', 'h4', 'table', 'thead', 'tbody', 'tr', 'th', 'td', 'hr', 'a', 'img', 'details', 'summary', 'input'],
-    ALLOWED_ATTR: ['href', 'title', 'src', 'alt', 'class', 'open', 'data-workflow-file', 'type', 'checked', 'disabled'],
+    ALLOWED_ATTR: ['href', 'title', 'src', 'alt', 'class', 'open', 'data-workflow-file', 'data-workflow-path', 'type', 'checked', 'disabled'],
     RETURN_DOM_FRAGMENT: true,
   });
   for (const input of Array.from(fragment.querySelectorAll('input'))) { input.type = 'checkbox'; input.disabled = true; }

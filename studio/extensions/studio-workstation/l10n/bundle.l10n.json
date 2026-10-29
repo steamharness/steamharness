@@ -1,4 +1,6 @@
 {
+  "Invalid file line or column.": "Invalid file line or column.",
+  "Only local file or folder paths can be opened.": "Only local file or folder paths can be opened.",
   "Import from Link": "Import from Link",
   "Project Share Link": "Project Share Link",
   "Import": "Import",

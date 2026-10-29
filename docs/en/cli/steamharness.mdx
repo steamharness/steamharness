@@ -25,6 +25,8 @@ Arguments after `--` pass unchanged to the Workflow. `--locale zh-CN|en` selects
 
 ## CLI Web
 
+In Studio, click local file links, inline code paths or plain absolute paths in Agent replies and plans to open the file in the editor. Relative paths, `file://` links and locations such as `src/main.ts:12:3` or `src/main.ts#L12C3` are supported. Relative paths resolve from the aggregate project root or Assistant's bound working directory. Web links open in the browser. Standalone CLI Web cannot open the local editor and prompts you to use Studio when opening a local path.
+
 Exporting a conversation, message or workflow record in Studio opens the native save dialog, defaulting to the Downloads folder in your home directory. You can choose another location. After you confirm a location and the file is written successfully, a notification in the lower-right corner shows the saved path. Cancellation shows no success notification; save failures show an error. Standalone CLI Web uses browser downloads.
 
 One root directory starts one aggregate host and initially displays only `defaultEntry`. Click the **Project windows** icon in the top toolbar to see compact entry cards with names, types, default/current markers and runtime states. Use the open icon on the right to open a new browser page in standalone CLI Web or a new native Studio tab. Every click creates another tab, including for the current entry. Tabs retain independent page state and drafts on the shared aggregate host. Closing one tab leaves the others open; closing the last Studio tab releases the host.

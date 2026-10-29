@@ -5,12 +5,14 @@ import { escapeHtml, iconHtml, iconButton, markdownHtml, mediaUrl, updateIcon } 
 import { agentActivity, activeAgentActivity, activityGroupSummary, activityValueText, isSilentAgentRetry, type AgentActivity } from './agent-activity';
 import { RingOutput, isComposerOutputItem, ringOutputContent } from './output-display';
 import { attachmentSignature } from './attachment-state';
+import { bindOutputFileLinks, type FileLinkTarget } from './output-file-links';
 
 interface OutputOptions {
   composer?: boolean;
   copy(text: string, button: HTMLButtonElement): void;
   plan(text: string): void;
   file(id: string): void;
+  path?(target: FileLinkTarget): void;
   image(src: string, title: string): void;
   resource(card: ResourceCard, action?: 'open' | 'inline' | 'window' | 'project', requestId?: string): void;
 }
@@ -313,10 +315,7 @@ export class ConversationOutput {
 
   private markdown(text: string, files: Attachment[]): HTMLDivElement {
     const root = document.createElement('div'); root.className = 'message-content'; root.innerHTML = markdownHtml(text, files);
-    for (const link of Array.from(root.querySelectorAll('a'))) {
-      if (link.dataset.projectFile) { link.addEventListener('click', (event) => { event.preventDefault(); this.options.file(link.dataset.projectFile!); }); }
-      else { link.target = '_blank'; link.rel = 'noopener noreferrer'; }
-    }
+    bindOutputFileLinks(root, this.options);
     for (const image of Array.from(root.querySelectorAll('img'))) {
       image.loading = 'lazy'; image.tabIndex = 0; image.classList.add('preview-image');
       const open = () => this.options.image(image.src, image.alt);
@@ -343,7 +342,10 @@ export class ConversationOutput {
       summary.addEventListener('click', (event) => { event.preventDefault(); this.options.plan(text); }); root.append(summary); return root;
     }
     if (!item.collapsed && ['markdown', 'text', undefined].includes(item.contentType)) {
-      if (item.contentType === 'text') { const root = document.createElement('div'); root.className = 'message-content plain-output'; root.textContent = text; return root; }
+      if (item.contentType === 'text') {
+        const root = document.createElement('div'); root.className = 'message-content plain-output'; root.textContent = text;
+        bindOutputFileLinks(root, this.options); return root;
+      }
       return this.markdown(text, files);
     }
     const root = document.createElement('details'); root.className = 'output-detail'; root.open = !item.collapsed;

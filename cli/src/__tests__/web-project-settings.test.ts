@@ -44,6 +44,7 @@ beforeEach(() => {
   });
   databases = new ProjectDatabases(host);
   dialogs = new ConversationTools(databases, {
+    path: target => host.postMessage({ type: 'open-path', ...target }),
     configurations,
     tools: () => ({ parameters: { fields: [], tools }, policies, changed: policiesChanged, readOnly }),
     usage: { available: () => available, load: requestId => host.postMessage({ type: 'usage', requestId }) },
@@ -54,6 +55,14 @@ afterEach(() => {
   dialogs.close(); databases.dispose(); if (listener) window.removeEventListener('message', listener); listener = undefined;
   vi.clearAllTimers(); vi.useRealTimers(); vi.restoreAllMocks(); vi.unstubAllGlobals();
   Reflect.deleteProperty(HTMLDialogElement.prototype, 'showModal'); Reflect.deleteProperty(HTMLDialogElement.prototype, 'close'); document.body.replaceChildren();
+});
+
+it('opens plan file references through the same editor callback as answer links', () => {
+  dialogs.plan('[configuration](file:///work/configuration.json#L12C3) and `src/main.ts`');
+  const links = document.querySelectorAll<HTMLAnchorElement>('.message-content a');
+  expect(links).toHaveLength(2);
+  links[0].click(); expect(host.postMessage).toHaveBeenLastCalledWith({ type: 'open-path', path: '/work/configuration.json', line: 12, column: 3 });
+  links[1].click(); expect(host.postMessage).toHaveBeenLastCalledWith({ type: 'open-path', path: 'src/main.ts' });
 });
 
 it('opens one settings shell with six sections, accessible vertical navigation and no eager requests', () => {

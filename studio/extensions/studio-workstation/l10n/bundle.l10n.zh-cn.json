@@ -1,4 +1,6 @@
 {
+  "Invalid file line or column.": "文件行号或列号无效。",
+  "Only local file or folder paths can be opened.": "仅支持打开本地文件或文件夹路径。",
   "Import from Link": "从链接导入",
   "Project Share Link": "项目分享链接",
   "Import": "导入",

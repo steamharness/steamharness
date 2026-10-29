@@ -215,6 +215,7 @@ function initialize(): void {
     resume: () => post({ type: 'queue-run' }),
   });
   const dialogs = new ConversationTools(aggregateToolbar.databases, {
+    path: target => post({ type: 'open-path', ...target }),
     configurations: configurationPanel,
     skills: { load: (requestId, skillId) => post({ type: 'project-skills', requestId, skillId, entrypointId: entrypoint.value || undefined }) },
     tools: () => ({ parameters: currentParameters(), policies: currentSession()?.toolPermissionPolicies ?? {}, readOnly: readOnly(),
@@ -1009,6 +1010,7 @@ function initialize(): void {
       view.output = new ConversationOutput(view.content, {
         composer: true,
         copy, plan: (text) => dialogs.plan(text), file: (id) => post({ type: 'open-file', id }),
+        path: target => post({ type: 'open-path', ...target }),
         image: (src, title) => dialogs.image(src, title), resource: (card, action, requestId) => post({ type: 'resource', messageId: view.message.id, cardId: card.id, action, requestId }),
       });
       view.metadata.after(view.output.processToggle);

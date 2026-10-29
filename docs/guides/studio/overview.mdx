@@ -7,6 +7,8 @@ description: "在基于 VS Code OSS 的 Studio 中打开和运行本地 Workflow
 
 Studio 基于 VS Code OSS，提供 Electron 桌面工作站与浏览器工作站。通过标准编辑器入口打开本地文件夹、编辑源码、使用终端和管理扩展。
 
+Agent 回复与计划中的本地文件链接、行内代码路径（如 `configuration.json`）和正文绝对路径可以点击，在 Studio 编辑区打开对应文件。相对路径从聚合项目根目录解析，小助手从其绑定的工作目录解析；支持中文、空格、Windows 路径与 `file://` 链接。路径可附加 `:行号:列号` 或 `#L行号C列号` 定位源码，例如 `src/main.ts:12:3`。普通网页链接继续在浏览器中打开，文档文件沿用 Studio 文档预览；文件不存在时显示错误。
+
 ## IDE 与 Steam 模式
 
 普通文件夹使用 IDE 模式；识别到 Workflow、Conversation 或 Kanban 项目后，可切换到 Steam 模式。Steam 隐藏顶部导航栏和底部状态栏，左侧固定项目运行页面，右侧标签工作区承载工具与新打开的编辑器。右上角按钮可隐藏或恢复工具区，项目页面保持运行。

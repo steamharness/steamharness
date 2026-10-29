@@ -14,9 +14,11 @@ import type { ProjectDatabases } from './project-databases';
 import type { ProjectConfigurationsPanel } from './project-configurations';
 import './project-databases.css';
 import './project-settings.css';
+import { bindOutputFileLinks, type FileLinkTarget } from './output-file-links';
 
 export type ProjectSettingsSection = 'overview' | 'configurations' | 'tools' | 'skills' | 'usage' | 'databases' | 'memory';
 export interface ProjectSettingsOptions {
+  path?(target: FileLinkTarget): void;
   configurations?: ProjectConfigurationsPanel;
   tools?(): { parameters: Parameters; policies: ToolPolicies; changed(policies: ToolPolicies): void; readOnly?: boolean };
   usage?: { available(): boolean; load(requestId: string): void };
@@ -81,7 +83,8 @@ export class ConversationTools {
   }
 
   plan(content: string): void {
-    this.show(t("Plan")); const article = document.createElement('article'); article.className = 'message-content'; article.innerHTML = markdownHtml(content); this.body.append(article);
+    this.show(t("Plan")); const article = document.createElement('article'); article.className = 'message-content'; article.innerHTML = markdownHtml(content);
+    bindOutputFileLinks(article, { file() {}, path: this.settings.path }); this.body.append(article);
   }
 
   image(src: string, title: string): void {

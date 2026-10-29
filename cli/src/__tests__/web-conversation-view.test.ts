@@ -91,3 +91,12 @@ it('ordinary CLI pages continue opening the last selected conversation', async (
   f.receive([{ ...session('running'), draft: { text: 'Last selected draft', attachments: [] } }]);
   expect(f.input.value).toBe('Last selected draft'); expect(f.requests()).toEqual([]);
 });
+
+it('forwards file links in restored assistant replies with the current project and conversation', async () => {
+  const f = await fixture();
+  f.receive([{ ...session('running'), messages: [
+    { id: 'reply', role: 'assistant', content: '[configuration](file:///work/a%20b.json#L12C3)', status: 'success' },
+  ] }]);
+  document.querySelector<HTMLAnchorElement>('.message-content a')!.click();
+  expect(host.postMessage).toHaveBeenCalledWith({ type: 'open-path', path: '/work/a b.json', line: 12, column: 3, projectUri: project.uri, sessionId: 'running' });
+});

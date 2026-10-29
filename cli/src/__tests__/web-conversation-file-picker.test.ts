@@ -131,12 +131,12 @@ it('emits native cancellation and errors with the original project and conversat
 });
 
 it('opens referenced paths through the authenticated Studio bridge and reports scoped failures', async () => {
-  const f = hostFixture(), request = { type: 'open-path', path: '/Desktop/a b.docx', projectUri: 'file:///project', sessionId: 'one' };
+  const f = hostFixture(), request = { type: 'open-path', path: './src/a b.ts', line: 12, column: 3, projectUri: 'file:///project', sessionId: 'one' };
   f.receive({ pathOpenVersion: 1 }, {}); await f.host.postMessage(request);
   expect(f.sent).toHaveLength(0); expect(f.messages().at(-1)).toMatchObject({ type: 'error', requestType: 'open-path' });
   f.receive({ pathOpenVersion: 1 }); await f.host.postMessage(request);
   const sent = f.sent.at(-1);
-  expect(sent).toMatchObject({ type: 'workflow-path-open', version: 1, path: request.path });
+  expect(sent).toMatchObject({ type: 'workflow-path-open', version: 1, path: request.path, line: 12, column: 3 });
   const reply = { version: 1, requestId: sent.requestId, error: 'File moved' }, before = f.messages().length;
   f.receive({ pathOpened: reply }, {}); f.receive({ pathOpened: { ...reply, version: 2 } }); f.receive({ pathOpened: { ...reply, requestId: 'foreign' } });
   expect(f.messages()).toHaveLength(before);

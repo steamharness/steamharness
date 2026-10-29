@@ -6,6 +6,22 @@ import type { Attachment, ConversationMessage, OutputItem } from '../web/workflo
 const outputs: ConversationOutput[] = [];
 afterEach(() => { for (const output of outputs.splice(0)) output.dispose(); document.body.replaceChildren(); });
 
+it('keeps file links actionable through streaming, collapsed output and history replay', () => {
+  const root = document.createElement('div'), path = vi.fn(); document.body.append(root);
+  const output = new ConversationOutput(root, { copy() {}, plan() {}, file() {}, path, image() {}, resource() {} }); outputs.push(output);
+  for (const status of ['running', 'success', 'success'] as const) {
+    output.update({ role: 'assistant', status, content: '', items: [
+      { id: 'body', content: '[configuration](./configuration.json:5:2)', contentType: 'markdown' },
+      { id: 'detail', content: '`src/main.ts`', contentType: 'markdown', collapsed: true },
+      { id: 'plain', content: 'File: /work/main.ts:8', contentType: 'text' },
+    ] }, 'project', 'main', 'session', []);
+    root.querySelector<HTMLAnchorElement>('a')!.click(); expect(path).toHaveBeenLastCalledWith({ path: './configuration.json', line: 5, column: 2 });
+    root.querySelector<HTMLAnchorElement>('details a')!.click(); expect(path).toHaveBeenLastCalledWith({ path: 'src/main.ts' });
+    root.querySelector<HTMLAnchorElement>('.plain-output a')!.click(); expect(path).toHaveBeenLastCalledWith({ path: '/work/main.ts', line: 8 });
+  }
+  expect(path).toHaveBeenCalledTimes(9);
+});
+
 it('signs a shared attachment list once per update and invalidates unchanged Markdown when a preview changes', () => {
   const root = document.createElement('div'); document.body.append(root);
   const output = new ConversationOutput(root, { copy() {}, plan() {}, file() {}, image() {}, resource() {} }); outputs.push(output);

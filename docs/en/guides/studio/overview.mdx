@@ -7,6 +7,8 @@ description: "Open and run local Workflow projects in the VS Code OSS based Stea
 
 Studio is based on VS Code OSS and provides Electron and browser workstations. Open folders, edit source, use terminals, and manage extensions through standard editor commands.
 
+Click local file links, inline code paths such as `configuration.json`, or plain absolute paths in Agent replies and plans to open the file in the Studio editor. Relative paths resolve from the aggregate project root, or the bound working directory for Assistant. Unicode, spaces, Windows paths and `file://` links are supported. Append `:line:column` or `#LlineCcolumn` to select a source location, for example `src/main.ts:12:3`. Web links open in the browser, document files use Studio document previews, and missing files show an error.
+
 ## IDE and Steam modes
 
 Ordinary folders use IDE mode. Recognized Workflow, Conversation and Kanban projects also support Steam mode. Steam hides the navigation and status bars, keeps the running project on the left, and opens tools and additional editors in the right tab workspace. The top-right button hides or restores tools while the project keeps running.
