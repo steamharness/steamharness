@@ -4,6 +4,7 @@ import { spawn } from "node:child_process";
 import { pathToFileURL } from "node:url";
 import { prepareDevelopmentSources } from "./development-sources.mjs";
 import { resolveRepositoryMode } from "./repository-mode.mjs";
+import { runDevelopmentServer } from "./development-memory.mjs";
 
 const root = path.resolve(import.meta.dirname, "..");
 
@@ -116,7 +117,9 @@ async function main() {
     : plan.hotReload ? "source watch + Vite HMR" : "source + manual web reload";
   process.stdout.write(`[repository:${plan.mode}] Server ${runtime} runtime\n`);
   if (plan.build !== undefined) await run(plan.build[0], plan.build[1], { cwd: root, env: plan.env });
-  process.exitCode = await run(plan.command, plan.args, { cwd: root, env: plan.env });
+  process.exitCode = plan.mode === "dev"
+    ? await runDevelopmentServer({ root, command: plan.command, args: plan.args, env: plan.env })
+    : await run(plan.command, plan.args, { cwd: root, env: plan.env });
 }
 
 function run(command, args, options) {

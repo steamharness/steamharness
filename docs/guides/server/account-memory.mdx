@@ -22,7 +22,7 @@ Studio 设置采用连续面板：账号记忆和自动保存分行说明，右�
 
 ## 服务配置
 
-单独运行 Memory Service，需要 Node 22.13+、SQLite FTS5 和可写持久卷。服务固定复用 TencentDB-Agent-Memory 的 `ecc01a545da0b2ac6cae2f0f0af0d39d41469793` 审查版本，保留 MIT 许可证、源码来源和补丁；不使用上游的私有 service 扩展。仅服务依赖 jieba 原生模块，Core、CLI 和 Studio 不加载该模块。
+Memory Service 需要 Node 22.13+、SQLite FTS5 和可写持久卷。服务固定复用 TencentDB-Agent-Memory 的 `ecc01a545da0b2ac6cae2f0f0af0d39d41469793` 审查版本，保留 MIT 许可证、源码来源和补丁；不使用上游的私有 service 扩展。仅服务依赖 jieba 原生模块，Core、CLI 和 Studio 不加载该模块。
 
 | 所在进程 | 配置 | 用途 |
 | --- | --- | --- |
@@ -34,10 +34,29 @@ Studio 设置采用连续面板：账号记忆和自动保存分行说明，右�
 | Server | `STEAMHARNESS_SERVER_MEMORY_URL` | 内部 Memory Service 地址 |
 | Server | `STEAMHARNESS_SERVER_MEMORY_TOKEN` | 匹配的内部服务凭据 |
 | Server | `STEAMHARNESS_SERVER_MEMORY_DISABLED=1` | 故障关闭开关，保留正常对话 |
+| 开发启动器 | `STEAMHARNESS_SERVER_MEMORY_AUTOSTART=0` | 仅关闭本机服务自动启动，保留外部服务接入 |
 
 未配置提炼模型时仍可手动保存与 BM25 检索，不需要配置 embedding。自动提炼不会调用工具；只处理已持久完成回合中的用户文字和最终回答，排除推理、原始工具结果及召回注入。失败任务最多自动尝试 3 次，面板提供失败状态和重试入口。
 
 未配置提炼模型时，新回合提交返回 `accepted: false`，不创建必然失败的提炼任务。临时服务故障返回 503，宿主保留待提交回合供恢复后重试；已有任务的稳定 ID 不变。
+
+### 开发环境自动启动
+
+在开发分支执行 `pnpm -C server dev` 或 `pnpm -C server start:local` 时，启动器会自动启动本机 Memory Service，健康检查通过后启动 Server。无需先构建或另外开终端；服务使用随机空闲的 loopback 端口和自动生成的内部凭据，Server 热重载时继续复用同一服务，退出时一并停止。强制结束启动器后，服务也会通过 IPC 断开退出。
+
+配置读取 Server 的 `.env`，已有进程环境变量优先。SQLite 默认保存在 `<Server 数据目录>/memory`，可用 `STEAMHARNESS_MEMORY_DATA_DIR` 指定持久目录；相对路径基于 Server 根目录。重启不清空记忆。可用 `STEAMHARNESS_MEMORY_PORT` 固定端口；端口占用或服务启动失败会给出提示，Server 继续运行。
+
+```sh
+# 只关闭自动启动，仍可连接手动配置的外部记忆服务
+STEAMHARNESS_SERVER_MEMORY_AUTOSTART=0 pnpm -C server dev
+
+# 关闭记忆功能，同时不启动本机记忆服务
+STEAMHARNESS_SERVER_MEMORY_DISABLED=1 pnpm -C server dev
+```
+
+这两个开关也可以写入 Server 的 `.env`。已配置 `STEAMHARNESS_SERVER_MEMORY_URL` 时，启动器沿用外部服务及对应 `STEAMHARNESS_SERVER_MEMORY_TOKEN`，不会另启本机服务或停止外部进程。生产模式继续使用独立部署；`main`、tag 和 detached checkout 不自动启动源码服务。
+
+### 独立部署
 
 在仓库根执行：
 

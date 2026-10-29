@@ -22,7 +22,7 @@ Studio settings use a continuous surface with descriptive preference rows and co
 
 ## Service configuration
 
-Run Memory Service separately with Node 22.13+, SQLite FTS5 and a persistent writable volume. It pins the reviewed TencentDB-Agent-Memory revision `ecc01a545da0b2ac6cae2f0f0af0d39d41469793` with its MIT license, provenance and replayable patch. It does not use upstream's private service extensions. Only Memory Service loads native jieba; Core, CLI and Studio do not.
+Memory Service requires Node 22.13+, SQLite FTS5 and a persistent writable volume. It pins the reviewed TencentDB-Agent-Memory revision `ecc01a545da0b2ac6cae2f0f0af0d39d41469793` with its MIT license, provenance and replayable patch. It does not use upstream's private service extensions. Only Memory Service loads native jieba; Core, CLI and Studio do not.
 
 | Process | Setting | Purpose |
 | --- | --- | --- |
@@ -34,10 +34,29 @@ Run Memory Service separately with Node 22.13+, SQLite FTS5 and a persistent wri
 | Server | `STEAMHARNESS_SERVER_MEMORY_URL` | Internal Memory Service URL |
 | Server | `STEAMHARNESS_SERVER_MEMORY_TOKEN` | Matching internal credential |
 | Server | `STEAMHARNESS_SERVER_MEMORY_DISABLED=1` | Disable memory while conversations continue |
+| Development supervisor | `STEAMHARNESS_SERVER_MEMORY_AUTOSTART=0` | Disable local autostart while retaining external-service access |
 
 Manual saves and BM25 retrieval work without an extraction model or embeddings. Automatic extraction has no tools. It processes only durable completed turns containing user text and the final answer, excluding reasoning, raw tool results and recalled injection. Jobs attempt automatically at most three times, with failure status and manual retry in the panel.
 
 Without an extraction model, new turn submissions return `accepted: false` without creating guaranteed-to-fail jobs. Temporary service failures return 503 so the host retains pending turns for retry after recovery. Existing jobs keep their stable IDs.
+
+### Automatic development startup
+
+On a development branch, `pnpm -C server dev` and `pnpm -C server start:local` start a local Memory Service and wait for its health check before starting Server. No separate terminal or service build is needed. The supervisor assigns a free loopback port and generates an internal credential. Server hot reloads reuse that service; exiting stops it. IPC disconnection also stops the service if its supervisor is killed.
+
+Configuration follows Server's `.env`, with inherited environment values taking priority. SQLite persists under `<Server data directory>/memory` by default. Set `STEAMHARNESS_MEMORY_DATA_DIR` to override it; relative paths use the Server root. Restarts preserve records. `STEAMHARNESS_MEMORY_PORT` can pin the port. A busy port or local startup failure is reported while Server continues running.
+
+```sh
+# Disable local autostart only; an explicitly configured external service still works
+STEAMHARNESS_SERVER_MEMORY_AUTOSTART=0 pnpm -C server dev
+
+# Disable all memory access and local autostart
+STEAMHARNESS_SERVER_MEMORY_DISABLED=1 pnpm -C server dev
+```
+
+Both switches can also be set in Server's `.env`. An explicit `STEAMHARNESS_SERVER_MEMORY_URL` reuses the external service with its matching `STEAMHARNESS_SERVER_MEMORY_TOKEN`; the supervisor neither starts nor stops that external process. Production continues to use independent deployment. Main branches, tags and detached checkouts never autostart the source service.
+
+### Independent deployment
 
 From the repository root:
 

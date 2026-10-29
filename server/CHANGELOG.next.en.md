@@ -2,6 +2,8 @@
 
 - Fixed project pagination to exclude retained records without aggregate entry declarations consistently with detail reads, preserving their versions and stored data.
 
+- Improved: Development startup supervises local memory with persistent storage and internal credentials, cleans it up on exit, and supports disabling autostart or using an external service.
+
 - Fixed unconfigured memory service guidance to request administrator setup instead of repeated sign-in. Verified existing account sessions can manage memory while project API keys cannot.
 
 - Fixed lasting response-language and style instructions entering global memory across projects. A missing extraction model no longer creates guaranteed-to-fail jobs; temporary outages preserve turns for retry.

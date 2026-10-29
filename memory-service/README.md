@@ -4,7 +4,22 @@ Private account memory using TencentDB-Agent-Memory L0/L1 prompts, jieba and SQL
 No embedding service is required. See `vendor/tencent/UPSTREAM.md` for the pinned revision,
 MIT license, exact reused files and replayable patch. L2/L3 and the upstream private service mode are not enabled.
 
-Requires Node 22.13+ with SQLite/FTS5 (the image uses Node 24). From the monorepo root:
+Requires Node 22.13+ with SQLite/FTS5 (the image uses Node 24).
+
+On development branches, `pnpm -C server dev` and `pnpm -C server start:local` automatically
+start this service, wait for authenticated health, and pass Server its loopback URL and token.
+No separate terminal or service build is required. Ports are assigned by the OS unless
+`STEAMHARNESS_MEMORY_PORT` is set. SQLite defaults to `<Server data root>/memory`; set
+`STEAMHARNESS_MEMORY_DATA_DIR` in the Server environment to override it. Server's `.env` also
+provides the optional extraction model settings. Restarts and hot reloads preserve data.
+The service exits with its supervisor, including IPC disconnection after a forced kill.
+
+Set `STEAMHARNESS_SERVER_MEMORY_AUTOSTART=0` to disable only local autostart, or
+`STEAMHARNESS_SERVER_MEMORY_DISABLED=1` to disable memory altogether. An explicit
+`STEAMHARNESS_SERVER_MEMORY_URL` always selects an external service, which the supervisor
+never stops. Main/tag/detached release mode and production deployment stay independent.
+
+For independent deployment, run from the monorepo root:
 
 ```sh
 pnpm --filter @steamharness/memory-service build
