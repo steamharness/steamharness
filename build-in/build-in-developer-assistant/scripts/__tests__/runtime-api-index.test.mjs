@@ -41,7 +41,7 @@ describe("the runtime API index", () => {
 
     expect(signatures).toContain("kv");
     expect(signatures).toContain("knowledge");
-    expect(resourceContexts.find(context => context.name === "EntryContext").members.map(member => member.signature)).toContain("runEntrypoint(entrypointId, args)");
+    expect(resourceContexts.find(context => context.name === "EntryContext").members.map(member => member.signature)).toContain("runEntrypoint(entrypointId, args, options)");
     // The line the surface must not cross: a relation is not a way to read the
     // target's conversation, and it is not a way to reach a third project.
     expect(signatures).not.toContain("conversation");

@@ -16,7 +16,8 @@ import { createAgentRetryChunks, formatAgentSearchSources } from "./output-items
 import { createAgentStreamRetryText } from "./plan";
 import type { AgentTurnContinuationKind } from "./types";
 import type { AgentSearchMessage } from "./web-search";
-import type { AgentPlanItem, AgentSessionCommand, AgentSessionOptions, AgentSessionReceipt, AgentSessionResources, AgentSessionSnapshot, AgentSessionTask, AgentSessionTurn } from "./session-types";
+import type { AgentDefinition, AgentPlanItem, AgentSessionCommand, AgentSessionOptions, AgentSessionReceipt, AgentSessionResources, AgentSessionSnapshot, AgentSessionTask, AgentSessionTurn, AgentSubagentAction, AgentWorkInfo } from "./session-types";
+import { AgentDefinitionsDoc, AgentRoleDoc, AgentWorkProgressDoc, AgentSessionLifecycleDoc, enqueueAgentWork, type DelegationInput, type DelegationState } from "./subagents";
 import { pageJsonResult, RESULT_PAGE_DESCRIPTION, RESULT_PAGE_PROPERTIES, validateResultPageArgs, type ResultPageArgs } from "./result-pages";
 
 const SessionDoc = defineDoc({
@@ -52,6 +53,7 @@ export class DurableAgentSession {
   private readonly watches = new Map<number, ConversationWatch>();
   private snapshots = Promise.resolve();
   private commands = Promise.resolve();
+  private readonly workMutations = new Map<number, Promise<void>>();
   private stopped = false;
   private pending = false;
   private timer?: ReturnType<typeof setTimeout>;
@@ -76,6 +78,18 @@ export class DurableAgentSession {
 
   install(registry: Registry): void {
     if (this.options.subagents && (!Number.isSafeInteger(this.options.subagents.maxAgents ?? 4) || (this.options.subagents.maxAgents ?? 4) < 1)) throw new Error("maxAgents must be a positive integer.");
+    const definitions = this.options.subagents?.definitions ?? [];
+    if (new Set(definitions.map(item => item.id)).size !== definitions.length) throw new Error("Agent role ids must be unique.");
+    for (const definition of definitions) {
+      if (!/^[a-z][a-z0-9-]{0,63}$/.test(definition.id) || !definition.description?.trim() || !definition.systemPrompt?.trim()
+        || definition.systemPrompt.length > 100_000 || !Array.isArray(definition.tools)
+        || definition.tools.some(name => !this.options.subagents!.tools.includes(name) || ["subagent", "update_plan"].includes(name))
+        || !Number.isSafeInteger(definition.maxConcurrency ?? 1) || (definition.maxConcurrency ?? 1) < 1
+        || definition.model && !this.allowedChildModel(definition.model)
+        || definition.effort && !["off", "minimal", "low", "medium", "high", "xhigh", "max"].includes(definition.effort)) {
+        throw new Error(`Invalid agent role definition: ${definition.id}`);
+      }
+    }
     const names = this.options.nativeTools?.map(tool => tool.name) ?? [];
     if (new Set(names).size !== names.length || names.some(name => name === "subagent" || name === "update_plan")) throw new Error("Native session tool names must be unique and cannot replace session tools.");
     const tools: ToolRegistration[] = [...(this.options.nativeTools ?? []), {
@@ -97,6 +111,9 @@ export class DurableAgentSession {
     if (this.options.subagents) tools.push({
       name: "subagent", description: [
         "Delegate a focused task. Background results return to this conversation. Subagents cannot delegate again.",
+        ...(definitions.length ? ["Named work: action=spawn, agentId, stable workId, task, background=true. Capacity limits queue work durably.",
+          "Management actions: list; get/wait/stop/retry with taskId; send with taskId, task and mode (steer/followUp). Retry continues committed context and requires reconciliation of uncertain side effects.",
+          `Roles: ${definitions.map(item => `${item.id}: ${item.description}`).join("; ")}`] : []),
         `Child tools are restricted to the parent's enabled tools intersected with: ${this.options.subagents.tools.join(", ") || "(none)"}. Only delegate tasks those tools can perform.`,
         "Omit model to inherit the current parent's model and credentials.",
         "To read an existing delegation result, provide resultTaskId=taskId without task, background or model. This never starts another child. For a paged result, keep resultTaskId and continue with resultOffset=nextOffset and resultHash.",
@@ -105,6 +122,11 @@ export class DurableAgentSession {
           : "Model overrides are disabled for this project; do not supply model or guess model names.",
       ].join("\n"), replay: "safe",
       parameters: Type.Object({ task: Type.Optional(Type.String({ minLength: 1, maxLength: 100_000 })), background: Type.Optional(Type.Boolean()),
+        ...(definitions.length ? {
+          action: Type.Optional(Type.Union(["spawn", "list", "get", "wait", "send", "stop", "retry"].map(value => Type.Literal(value)))),
+          agentId: Type.Optional(Type.String()), workId: Type.Optional(Type.String()), taskId: Type.Optional(Type.Integer({ minimum: 1 })),
+          mode: Type.Optional(Type.Union([Type.Literal("steer"), Type.Literal("followUp")])),
+        } : {}),
         resultTaskId: Type.Optional(Type.Integer({ minimum: 1 })),
         ...Object.fromEntries(Object.entries(RESULT_PAGE_PROPERTIES).map(([name, schema]) => [name, Type.Optional(Type.Unsafe(schema))])),
         ...(childModels.length ? { model: Type.Optional(Type.Union(childModels.map(model => Type.Object({
@@ -114,6 +136,23 @@ export class DurableAgentSession {
         const parent = await this.harness.commit(tx => tx.conversation(api.conversationId), ctx);
         if (!parent || parent.owner !== undefined) throw new Error("Subagents cannot delegate again.");
         const input = args as ResultPageArgs & { task?: string; background?: boolean; model?: { provider: string; modelId: string }; resultTaskId?: number };
+        const managed = args as { action?: AgentSubagentAction["action"]; agentId?: string; workId?: string; taskId?: number; task?: string; background?: boolean; mode?: "steer" | "followUp" };
+        if (managed.action || managed.agentId) {
+          if (input.resultTaskId !== undefined || input.model !== undefined) throw new Error("Named agent management cannot be combined with anonymous result or model arguments.");
+          const action = managed.action ?? "spawn";
+          const command = action === "spawn" ? { action, agentId: managed.agentId!, workId: managed.workId!, prompt: managed.task!, background: managed.background,
+            reportToParent: true } : action === "send" ? { action, taskId: managed.taskId!, prompt: managed.task!, mode: managed.mode }
+            : action === "list" ? { action } : { action, taskId: managed.taskId! };
+          const result = await this.manageAgents(api.conversationId, command as AgentSubagentAction, `tool:${api.taskId}`, ctx,
+            managed.background ? undefined : api.taskId);
+          await api.details({ agents: plain(result) } as unknown as JsonObject, ctx);
+          const wait = action === "wait" || action === "spawn" && !managed.background;
+          if (wait && result[0]) {
+            const settled = await api.waitForTask(result[0].taskId as TaskId<string>, ctx);
+            return delegationOutput(result[0].taskId, settled.state.outcome, {});
+          }
+          return { output: [{ type: "text", text: JSON.stringify(result) }] };
+        }
         validateResultPageArgs(input, input.resultTaskId !== undefined);
         if (input.resultTaskId !== undefined) {
           if (input.task !== undefined || input.background !== undefined || input.model !== undefined) throw new Error("Read an existing result with resultTaskId only; omit task, background and model.");
@@ -128,8 +167,6 @@ export class DurableAgentSession {
         const id = await api.commit(async tx => {
           const memo = await tx.doc(DelegationDoc, api.taskId);
           if (memo.taskId) return memo.taskId;
-          const live = await scanAll(cursor => tx.scanTasks({ kind: "project.delegation" }, 100, cursor));
-          if (live.filter(task => task.state.status !== "terminal").length >= (this.options.subagents!.maxAgents ?? 4)) throw new Error("The project's subagent limit was reached.");
           memo.taskId = await tx.createTask(this.delegation, { prompt, background: input.background === true, model: input.model ?? null, sourceId: api.callId },
             { conversationId: api.conversationId, ownership: input.background ? { kind: "conversation" } : { kind: "task", taskId: api.taskId }, background: input.background === true });
           return memo.taskId;
@@ -160,48 +197,146 @@ export class DurableAgentSession {
       : " Model overrides are disabled."}`);
   }
 
+  /** Re-check restored children against today's project and parent authorization. */
+  async authorizeChild(conversationId: ConversationId, toolName?: string): Promise<void> {
+    const record = await this.harness.commit(tx => tx.conversation(conversationId), context);
+    if (!record?.owner) return;
+    if (!this.options.subagents) throw new Error("Delegation is no longer enabled for this project.");
+    const role = await this.harness.snapshot(AgentRoleDoc, conversationId, context);
+    const definition = role?.definition as unknown as AgentDefinition | null;
+    const current = definition && this.options.subagents.definitions?.find(item => item.id === definition.id);
+    if (definition && !current) throw new Error("The agent role is no longer authorized by this project.");
+    if (definition?.model && !this.allowedChildModel(definition.model)) throw this.childModelError();
+    if (toolName) {
+      const parent = await this.harness.conversation(record.owner.conversationId, context);
+      const tools = (await parent?.agent(context))?.tools ?? [];
+      if (toolName === "subagent" || !tools.some(tool => tool.name === toolName)
+        || !(this.options.subagents.tools.includes(toolName) || !definition && toolName === "memory")
+        || definition && (!definition.tools.includes(toolName) || !current?.tools.includes(toolName))) {
+        throw new Error(`Tool is not authorized for this agent role: ${toolName}`);
+      }
+    }
+  }
+
+  private async mutateWork<T>(taskId: number, change: () => Promise<T>): Promise<T> {
+    const previous = this.workMutations.get(taskId) ?? Promise.resolve();
+    let release!: () => void;
+    const gate = new Promise<void>(resolve => { release = resolve; });
+    const current = previous.then(() => gate);
+    this.workMutations.set(taskId, current);
+    await previous;
+    try { return await change(); }
+    finally { release(); if (this.workMutations.get(taskId) === current) this.workMutations.delete(taskId); }
+  }
+
+  private async submitManagedInput(child: Conversation, input: Parameters<Conversation["submit"]>[0], ctx: typeof context) {
+    const record = await this.harness.commit(tx => tx.conversation(child.id), ctx);
+    const role = record?.owner && await this.harness.snapshot(AgentRoleDoc, child.id, ctx);
+    if (!record?.owner || !role?.workId) return child.submit(input, ctx);
+    return this.mutateWork(record.owner.taskId, async () => {
+      const task = await this.harness.commit(tx => tx.task(record.owner!.taskId), ctx);
+      if (!task || task.abortRequested || !["running", "waiting", "pending"].includes(task.state.status)
+        || object(task.state.checkpoint).phase !== "wait") throw new Error("The agent is settling or stopped. Retry settled work before sending more input.");
+      return child.submit(input, ctx);
+    });
+  }
+
   private createDelegationTask() {
-    type Input = { prompt: string; background: boolean; model: { provider: string; modelId: string } | null; sourceId: string };
-    type State = { phase: "create" } | { phase: "wait"; childId: number } | { phase: "report"; childId: number; answer: string; failed?: boolean };
-    return defineTask<Input, State, string>({
+    return defineTask<DelegationInput, DelegationState, string>({
       name: "project.delegation", version: 1, initial: () => ({ phase: "create" }),
       phases: {
         create: async (task, runtime, ctx) => {
           const parent = await this.harness.conversation(task.conversationId, ctx);
           if (!parent || !this.options.subagents) throw new Error("Delegation is not enabled for this conversation.");
           const parentAgent = await parent.agent(ctx);
-          const allowed = new Set(this.options.subagents.tools);
-          const tools = parentAgent.tools.filter(tool => (allowed.has(tool.name) || tool.name === "memory") && tool.name !== "subagent");
+          const definition = task.input.definition as unknown as AgentDefinition | undefined;
+          const currentDefinition = this.options.subagents.definitions?.find(item => item.id === definition?.id);
+          const allowed = new Set((definition?.tools ?? this.options.subagents.tools).filter(name =>
+            this.options.subagents!.tools.includes(name) && (!definition || currentDefinition?.tools.includes(name))));
+          const tools = parentAgent.tools.filter(tool => (allowed.has(tool.name) || !definition && tool.name === "memory") && tool.name !== "subagent");
+          if (definition && (!this.options.subagents.definitions?.some(item => item.id === definition.id)
+            || definition.tools.some(name => !this.options.subagents!.tools.includes(name)))) throw new Error("The agent role is no longer authorized by this project.");
           const modelTools = tools.map(tool => tool.name === "memory" ? {...tool,parameters:Type.Object({
             action:Type.Union([Type.Literal("list"),Type.Literal("get"),Type.Literal("search")]),
             scope:Type.Optional(Type.Union([Type.Literal("global"),Type.Literal("current")])),
             id:Type.Optional(Type.String()),query:Type.Optional(Type.String()),cursor:Type.Optional(Type.String()),
           },{additionalProperties:false})} : tool);
-          const model = task.input.model;
+          const model = definition?.model ?? task.input.model;
           if (model && !this.allowedChildModel(model)) throw this.childModelError();
-          await runtime.commit(async tx => {
-            const existing = (await tx.scanConversations({ ownerTaskId: task.id }, 1)).items[0];
-            const child = existing ?? await tx.createConversation({ ownership: { kind: "task", taskId: task.id } });
-            await configure(tx, child.id, { tools: tools as ToolRegistration[], modelTools: modelTools as ToolRegistration[],
-              model: model ?? parentAgent.model!, thinkingLevel: parentAgent.thinkingLevel,
-              ...(parentAgent.cwd ? { cwd: parentAgent.cwd } : {}) });
-            const info = await tx.doc(SessionDoc, child.id); info.title = task.input.prompt.slice(0, 120); info.background = task.input.background;
-            return { status: "running", checkpoint: { phase: "wait", childId: child.id } };
-          }, ctx);
+          // Admission and child creation share the Session commit line. Waiters have
+          // no slot until admitted; a restart reconstructs this queue from task IDs.
+          while (true) {
+            let admitted = false;
+            let blockers: TaskId[] = [];
+            await runtime.commit(async tx => {
+              const live = (await scanAll(cursor => tx.scanTasks({ conversationId: task.conversationId, kind: "project.delegation" }, 100, cursor)))
+                .filter(item => item.state.status !== "terminal").sort((left, right) => left.id - right.id);
+              const active = live.filter(item => object(item.state.checkpoint).phase !== "create");
+              const selected = [...active];
+              for (const candidate of live.filter(item => object(item.state.checkpoint).phase === "create")) {
+                const candidateInput = candidate.input as DelegationInput;
+                const roleLimit = Number(this.options.subagents!.definitions?.find(item => item.id === candidateInput.agentId)?.maxConcurrency
+                  ?? object(candidateInput.definition).maxConcurrency ?? this.options.subagents!.maxAgents ?? 4);
+                if (selected.length < (this.options.subagents!.maxAgents ?? 4)
+                  && selected.filter(item => (item.input as DelegationInput).agentId === candidateInput.agentId).length < roleLimit) selected.push(candidate);
+              }
+              if (!selected.some(item => item.id === task.id)) {
+                blockers = selected.map(item => item.id);
+                return;
+              }
+              const existing = (await tx.scanConversations({ ownerTaskId: task.id }, 1)).items[0];
+              let child = existing;
+              if (!child && task.input.retryChildId) {
+                const last = (await tx.scanEntries({ conversationId: task.input.retryChildId as ConversationId, order: "descending" }, 1)).items[0];
+                if (last) child = await tx.forkConversation(task.input.retryChildId as ConversationId, last.id, { ownership: { kind: "task", taskId: task.id } });
+              }
+              child ??= await tx.createConversation({ ownership: { kind: "task", taskId: task.id } });
+              await configure(tx, child.id, { tools: tools as ToolRegistration[], modelTools: modelTools as ToolRegistration[],
+                model: model ?? parentAgent.model!, thinkingLevel: (definition?.effort ?? parentAgent.thinkingLevel) as "medium",
+                ...(parentAgent.cwd ? { cwd: parentAgent.cwd } : {}) });
+              if (definition) {
+                const role = await tx.doc(AgentRoleDoc, child.id);
+                role.definition = task.input.definition!; role.workId = task.input.workId!; role.attempt = task.input.attempt ?? 1;
+                role.metadata = task.input.metadata ?? {};
+              }
+              const info = await tx.doc(SessionDoc, child.id);
+              info.title = task.input.label ?? task.input.prompt.slice(0, 120); info.background = task.input.background;
+              admitted = true;
+              return { status: "running", checkpoint: { phase: "wait", childId: child.id } };
+            }, ctx);
+            if (admitted) break;
+            if (!blockers.length) throw new Error("Agent work cannot acquire a concurrency slot.");
+            await Promise.race(blockers.map(id => runtime.waitForTask(id, ctx)));
+          }
         },
         wait: async (task, runtime, ctx) => {
           const child = (await runtime.conversation(task.state.checkpoint.childId as ConversationId, ctx))!;
-          const settled = await (await child.submit({ type: "input", content: task.input.prompt, requestId: `delegate:${task.id}`,
+          const content = task.input.retryOf ? `Continue the previous work from its committed context. Inspect uncertain external writes before repeating them. Do not repeat completed actions.\n\n${task.input.prompt}` : task.input.prompt;
+          const settled = await (await child.submit({ type: "input", content, requestId: `delegate:${task.id}`,
             entry: { kind: "project.input", data: { requestId: `delegate:${task.id}`, mode: "followUp" } } }, ctx)).wait(ctx);
-          const history = await runtime.context(child.id, ctx, settled.status === "done" ? { at: settled.answer } : undefined);
-          const message = [...history.messages].reverse().find(message => message.role === "assistant");
-          const failed = settled.status !== "done";
-          const answer = settled.status !== "done" ? `Subagent failed: ${settled.reason}${settled.detail ? `: ${String(settled.detail)}` : ""}` : textOf(message);
-          await runtime.commit(() => ({ status: "running", checkpoint: { phase: "report", childId: child.id, answer, failed } }), ctx);
+          while (true) {
+            await child.waitForIdle(ctx);
+            // Message admission and settlement share a short lock. A message
+            // accepted at the idle boundary must finish before releasing its slot.
+            const closed = await this.mutateWork(task.id, async () => {
+              const submissions = await scanAll(cursor => this.storage.scanSubmissions({ conversationId: child.id }, 100, cursor, ctx));
+              if (submissions.some(input => input.status === "queued" || input.status === "placed")) return false;
+              const history = await runtime.context(child.id, ctx);
+              const message = [...history.messages].reverse().find(message => message.role === "assistant");
+              const progress = await runtime.snapshot(AgentWorkProgressDoc, task.conversationId, String(task.id), ctx);
+              const unanswered = [...submissions].reverse().find(input => input.type === "input" && input.status === "unanswered");
+              const failure = unanswered?.status === "unanswered" ? unanswered : settled.status !== "done" ? settled : undefined;
+              const failed = !!failure || !!progress?.error;
+              const answer = failure ? `Subagent failed: ${failure.reason}${failure.detail ? `: ${String(failure.detail)}` : ""}` : progress?.error || textOf(message);
+              await runtime.commit(() => ({ status: "running", checkpoint: { phase: "report", childId: child.id, answer, failed } }), ctx);
+              return true;
+            });
+            if (closed) break;
+          }
         },
         report: async (task, runtime, ctx) => {
           const { childId, answer, failed } = task.state.checkpoint;
-          if (task.input.background) {
+          if (task.input.background && task.input.reportToParent !== false) {
             const parent = (await runtime.conversation(task.conversationId, ctx))!;
             const output = delegationOutput(task.id, failed ? { status: "failed", error: { message: answer } } : { status: "completed", result: answer }, {});
             await parent.submit({ type: "input", content: `Subagent ${failed ? "failed" : "result"} (${childId}, resultTaskId=${task.id}):\n${output.output[0]!.text}`, whenBusy: "followUp", requestId: `report:${task.id}`,
@@ -212,6 +347,89 @@ export class DurableAgentSession {
       },
       abort: async (_task, runtime, ctx) => { await runtime.commit(() => ({ status: "terminal", outcome: { status: "aborted" } }), ctx); },
     });
+  }
+
+  private async agentWorks(conversationId: ConversationId): Promise<AgentWorkInfo[]> {
+    const works = await this.harness.commit(async tx => {
+      const records = await scanAll(cursor => tx.scanTasks({ conversationId, kind: "project.delegation" }, 100, cursor));
+      const results: AgentWorkInfo[] = [];
+      for (const task of records) {
+        const input = task.input as DelegationInput;
+        if (!input.agentId || !input.workId) continue;
+        const child = (await tx.scanConversations({ ownerTaskId: task.id }, 1)).items[0];
+        const outcome = task.state.status === "terminal" ? task.state.outcome : undefined;
+        results.push({ taskId: task.id, workId: input.workId, agentId: input.agentId, label: input.label ?? input.prompt.slice(0, 120),
+          status: outcome?.status ?? (object(task.state.checkpoint).phase === "create" ? "queued" : task.state.status),
+          attempt: input.attempt ?? 1, ...(child ? { childConversationId: child.id } : {}),
+          ...(input.retryOf ? { retryOf: input.retryOf } : {}), ...(input.metadata ? { metadata: plain(input.metadata) } : {}),
+          ...(outcome?.status === "completed" ? { result: String(outcome.result) } : {}),
+          ...(outcome && outcome.status !== "completed" ? { error: outcome.error?.message ?? outcome.reason ?? outcome.status } : {}) });
+      }
+      return results;
+    }, context);
+    // Task documents are immutable after settlement. Read their persisted projection
+    // outside a write transaction so listing completed work cannot acquire it.
+    return Promise.all(works.map(async work => {
+      const progress = await this.harness.snapshot(AgentWorkProgressDoc, conversationId, String(work.taskId), context);
+      return { ...work, ...(work.status === "completed" && progress?.error ? { status: "failed", error: progress.error } : {}),
+        ...(progress?.total ? { progress: { completed: progress.completed, total: progress.total,
+          ...(progress.phase ? { phase: progress.phase } : {}) } } : {}) };
+    }));
+  }
+
+  async interrupt(): Promise<void> {
+    await this.root.commit(async tx => { (await tx.doc(AgentSessionLifecycleDoc, this.root.id)).interrupted = true; }, context);
+    await this.control({ type: "cancel", scope: "all", requestId: `host-interrupted:${this.ownerId}` });
+    await this.root.commit(async tx => { (await tx.doc(AgentSessionLifecycleDoc, this.root.id)).interrupted = false; }, context);
+  }
+
+  private async manageAgents(conversationId: ConversationId, action: AgentSubagentAction, requestId: string,
+    ctx: typeof context = context, ownerTaskId?: TaskId): Promise<AgentWorkInfo[]> {
+    const parent = await this.harness.commit(tx => tx.conversation(conversationId), ctx);
+    if (!this.options.subagents || !parent || parent.owner) throw new Error("Only a parent agent with delegation enabled can manage subagents.");
+    if (action.action === "spawn") {
+      const id = await this.harness.commit(tx => enqueueAgentWork(tx, this.registry.snapshot(), action, {
+        conversationId, ownership: ownerTaskId ? { kind: "task", taskId: ownerTaskId } : { kind: "conversation" },
+        ...(ownerTaskId ? {} : { background: action.background !== false }),
+      }), ctx);
+      this.harness.resume();
+      return (await this.agentWorks(conversationId)).filter(item => item.taskId === id);
+    }
+    const works = await this.agentWorks(conversationId);
+    if (action.action === "list") return works;
+    const work = works.find(item => item.taskId === action.taskId);
+    if (!work) throw new Error("Unknown agent work for this parent conversation.");
+    if (action.action === "stop") {
+      await this.harness.abortTask(work.taskId as TaskId, ctx);
+      await this.harness.waitForTask(work.taskId as TaskId, ctx);
+    }
+    if (action.action === "send") {
+      if (!work.childConversationId || !["running", "waiting", "pending"].includes(work.status)) throw new Error("The agent is not running. Retry settled work to continue its committed context.");
+      if (!action.prompt?.trim() || action.prompt.length > 100_000 || action.mode && !["steer", "followUp"].includes(action.mode)) throw new Error("Invalid agent message.");
+      const child = (await this.harness.conversation(work.childConversationId as ConversationId, ctx))!;
+      await this.submitManagedInput(child, { type: "input", content: action.prompt, whenBusy: action.mode ?? "followUp", requestId: `agent-message:${requestId}`,
+        entry: { kind: "project.input", data: { requestId: `agent-message:${requestId}`, mode: action.mode ?? "followUp" } } }, ctx);
+    }
+    if (action.action === "retry") {
+      if (!["failed", "faulted", "aborted", "orphaned"].includes(work.status)) throw new Error("Only failed or cancelled agent work can be retried.");
+      const id = await this.harness.commit(async tx => {
+        const records = await scanAll(cursor => tx.scanTasks({ conversationId, kind: "project.delegation" }, 100, cursor));
+        const existing = records.find(record => (record.input as DelegationInput).sourceId === `retry:${requestId}`);
+        if (existing) return existing.id;
+        const later = records.find(record => (record.input as DelegationInput).retryOf === work.taskId);
+        if (later) return later.id;
+        const originalRecord = records.find(record => record.id === work.taskId)!;
+        const original = originalRecord.input as DelegationInput;
+        if (originalRecord.owner && (await tx.task(originalRecord.owner))?.state.status === "terminal") throw new Error("Resume the owning batch before retrying this work.");
+        return tx.createTask(this.delegation, { ...original, attempt: Math.max(...works.filter(item => item.workId === work.workId).map(item => item.attempt)) + 1,
+          retryOf: work.taskId, ...(work.childConversationId ? { retryChildId: work.childConversationId } : {}), sourceId: `retry:${requestId}` },
+        { conversationId, ownership: originalRecord.owner ? { kind: "task", taskId: originalRecord.owner } : { kind: "conversation" },
+          ...(originalRecord.owner ? {} : { background: true }) });
+      }, ctx);
+      this.harness.resume();
+      return (await this.agentWorks(conversationId)).filter(item => item.taskId === id);
+    }
+    return (await this.agentWorks(conversationId)).filter(item => item.taskId === work.taskId);
   }
 
   async start(prompt: string): Promise<void> {
@@ -234,6 +452,8 @@ export class DurableAgentSession {
       this.submissions.set(record.id, changes.get(record.id) ?? record);
     }
     await this.root.commit(async tx => {
+      const roles = await tx.doc(AgentDefinitionsDoc, this.root.id);
+      roles.definitions = Object.fromEntries((this.options.subagents?.definitions ?? []).map(item => [item.id, plain(item) as unknown as JsonObject]));
       const doc = await tx.doc(SessionDoc, this.root.id);
       const hash = createHash("sha256").update(prompt).digest("hex");
       if (doc.promptHash !== hash) {
@@ -323,7 +543,12 @@ export class DurableAgentSession {
     if (this.stopped) return Promise.reject(Object.assign(new Error("The agent session is closed."), { code: "AGENT_NOT_READY" }));
     const next = this.commands.catch(() => undefined).then(() => this.perform(command));
     this.commands = next.then(() => undefined, () => undefined);
-    return next;
+    // Waiting for work must not hold the command line: stop/send remain usable.
+    return next.then(async receipt => {
+      if (command.type !== "subagent" || command.action !== "wait" || !receipt.taskId) return receipt;
+      await this.harness.waitForTask(receipt.taskId as TaskId, context);
+      return { ...receipt, agents: (await this.agentWorks(receipt.conversationId as ConversationId)).filter(item => item.taskId === receipt.taskId) };
+    });
   }
 
   private async target(id?: number): Promise<Conversation> {
@@ -361,6 +586,11 @@ export class DurableAgentSession {
       saved = true;
     };
     switch (command.type) {
+      case "subagent": {
+        receipt.agents = await this.manageAgents(target.id, command, command.requestId);
+        receipt.taskId = receipt.agents[0]?.taskId;
+        break;
+      }
       case "task": {
         const task = this.options.registry?.snapshot().task(command.name);
         if (!task || /^(pi|project)\./.test(command.name)) throw new Error("The project has not registered this task.");
@@ -375,7 +605,7 @@ export class DurableAgentSession {
       case "submit": {
         if (typeof command.prompt !== "string" || command.prompt.length > 100_000 || !["steer", "followUp", "reject"].includes(command.mode)) throw new Error("Invalid agent input.");
         const content = command.images?.length ? [{ type: "text" as const, text: command.prompt }, ...command.images.map(image => ({ type: "image" as const, ...image }))] : command.prompt;
-        const submission = await target.submit({ type: "input", content, requestId: command.requestId, whenBusy: command.mode,
+        const submission = await this.submitManagedInput(target, { type: "input", content, requestId: command.requestId, whenBusy: command.mode,
           entry: { kind: "project.input", data: { requestId: command.requestId, mode: command.mode } } }, context);
         receipt.submissionId = submission.id;
         break;
@@ -511,6 +741,8 @@ export class DurableAgentSession {
   }
 
   async snapshot(): Promise<AgentSessionSnapshot> {
+    const agents = await this.agentWorks(this.root.id);
+    const workByTask = new Map(agents.map(item => [item.taskId, item]));
     // All table reads precede document creation and share the Session mutation line.
     const frame = await this.harness.commit(async tx => {
       // A final failure snapshot is read after live subscriptions have stopped.
@@ -605,7 +837,11 @@ export class DurableAgentSession {
             replay: state.replay === "safe" ? "safe" : this.replays.get(tool) ?? "never" } : {}),
           ...(slot && "details" in slot ? { details: plain(slot.details) } : task.state.status === "terminal" ? { details: plain(task.state.outcome) } : {}),
           ...(task.kind === "pi.generation" && typeof state.attempt === "number" ? { attempt: state.attempt } : {}),
+          ...(workByTask.has(task.id) ? { agent: workByTask.get(task.id)!, status: workByTask.get(task.id)!.status,
+            label: workByTask.get(task.id)!.label, attempt: workByTask.get(task.id)!.attempt } : {}),
         };
+        const progress = await this.harness.snapshot(AgentWorkProgressDoc, record.id, String(task.id), context);
+        if (progress?.total) descriptor.progress = { completed: progress.completed, total: progress.total, ...(progress.phase ? { phase: progress.phase } : {}) };
         (task.state.status === "terminal" ? history : tasks).push(descriptor);
       }
       for (const submission of submitted) {
@@ -642,7 +878,8 @@ export class DurableAgentSession {
       backgroundCount: tasks.filter(task => task.background && task.parentId === undefined && task.conversationId === this.root.id).length, epoch,
       configuration: { version: info?.configurationVersion ?? 0, provider: agent.model?.provider ?? "", model: agent.model?.modelId ?? "", effort: agent.thinkingLevel ?? "off", ...(agent.cwd ? { cwd: agent.cwd } : {}) },
       prompt: { hash: info?.promptHash ?? "", version: info?.promptVersion ?? 0 }, plan: { version: plan?.version ?? 0, items: plain(plan?.items ?? []) as AgentPlanItem[] },
-      tasks, history: history.slice(-200), turns, conversations: infos, contexts, receipts, records: records.sort((a, b) => a.id - b.id).slice(-200), usage,
+      tasks, history: [...history.filter(task => !task.kind.startsWith("pi.")), ...history.filter(task => task.kind.startsWith("pi.")).slice(-200)]
+        .sort((a, b) => a.id - b.id), turns, conversations: infos, contexts, receipts, records: records.sort((a, b) => a.id - b.id).slice(-200), usage, agents,
       resources: this.resources([...new Set(frame.rows.flatMap(row => (row.agent.modelTools && !Array.isArray(row.agent.modelTools) ? row.agent.modelTools.add : row.agent.modelTools) ?? []))]),
       ...(live?.compactionFailure ? { compactionFailure: live.compactionFailure.error } : {}) };
   }

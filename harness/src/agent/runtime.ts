@@ -81,6 +81,7 @@ export interface AgentRuntimeInternalOptions extends AgentRuntimeOptions {
   sessionLease?: Promise<void>;
   sessionSuspend?: Promise<void>;
   resumeSession?: boolean;
+  interruptSession?: boolean;
   compaction?: AgentCompactionSettings;
   /** Node has already resolved and checked this connection. */
   modelResolved?: boolean;
@@ -381,6 +382,7 @@ class ProjectAgentRuntime implements AgentRuntime {
         sessionLease: this.options.sessionLease,
         sessionSuspend: this.options.sessionSuspend,
         resumeSession: this.options.resumeSession,
+        interruptSession: this.options.interruptSession,
         workdir: this.options.workdir,
         databasePath: this.options.databasePath,
         memoryEnabled: !!this.options.memory,

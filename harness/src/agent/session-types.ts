@@ -11,6 +11,48 @@ export interface AgentPlanItem {
   status: "pending" | "in_progress" | "completed";
 }
 
+/** A project-defined role. Tools and models can only narrow the parent's authorization. */
+export interface AgentDefinition {
+  id: string;
+  description: string;
+  systemPrompt: string;
+  tools: string[];
+  model?: { provider: string; modelId: string };
+  effort?: string;
+  maxConcurrency?: number;
+}
+
+export interface AgentWorkInput {
+  workId: string;
+  agentId: string;
+  prompt: string;
+  label?: string;
+  metadata?: Record<string, JsonValue>;
+  /** Reports are durable follow-up inputs. Project batch tasks usually consume the receipt themselves. */
+  reportToParent?: boolean;
+}
+
+export interface AgentWorkInfo {
+  taskId: number;
+  workId: string;
+  agentId: string;
+  label: string;
+  status: string;
+  attempt: number;
+  childConversationId?: number;
+  retryOf?: number;
+  progress?: { completed: number; total: number; phase?: string };
+  metadata?: Record<string, JsonValue>;
+  result?: string;
+  error?: string;
+}
+
+export type AgentSubagentAction =
+  | ({ action: "spawn"; background?: boolean } & AgentWorkInput)
+  | { action: "list" }
+  | { action: "get" | "wait" | "stop" | "retry"; taskId: number }
+  | { action: "send"; taskId: number; prompt: string; mode?: "steer" | "followUp" };
+
 export interface AgentSessionOptions {
   registry?: RegistryReader;
   toolSearch?: { catalogs?: readonly AgentToolCatalog[] };
@@ -23,6 +65,7 @@ export interface AgentSessionOptions {
     maxAgents?: number;
     /** Allowed overrides, using registered provider/modelId pairs. Omit to inherit the parent's model only. */
     models?: { provider: string; modelId: string }[];
+    definitions?: readonly AgentDefinition[];
   };
   /** Native durable tools can call api.executeTool(); all calls pass the same approval hooks. */
   nativeTools?: ToolRegistration[];
@@ -43,6 +86,7 @@ export type AgentSessionCommand = { requestId: string; targetId?: number } & (
   | { type: "cancel"; scope: "foreground" | "all" | "task"; taskId?: number }
   | { type: "snapshot" }
   | { type: "task"; name: string; input: JsonValue; background?: boolean }
+  | ({ type: "subagent" } & AgentSubagentAction)
 );
 
 export interface AgentSessionReceipt {
@@ -52,6 +96,7 @@ export interface AgentSessionReceipt {
   submissionId?: number;
   taskId?: number;
   forkId?: number;
+  agents?: AgentWorkInfo[];
 }
 
 export interface AgentSessionTask {
@@ -77,6 +122,8 @@ export interface AgentSessionTask {
   checkpoint?: unknown;
   wakeAt?: number;
   script?: string;
+  agent?: AgentWorkInfo;
+  progress?: { completed: number; total: number; phase?: string };
 }
 
 export interface AgentSessionResources {
@@ -129,4 +176,5 @@ export interface AgentSessionSnapshot {
   usage: { conversationId: number; parentId?: number; models: Record<string, unknown>; tools: Record<string, unknown> }[];
   compactionFailure?: string;
   resources?: AgentSessionResources;
+  agents?: AgentWorkInfo[];
 }

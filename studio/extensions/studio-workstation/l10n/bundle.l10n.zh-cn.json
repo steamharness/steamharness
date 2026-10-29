@@ -890,5 +890,12 @@
   "The selected Node.js has no package manager. Repair the bundled runtime or choose a local Node.js installation with npm.": "所选 Node.js 没有包管理器。请修复内置运行时，或选择包含 npm 的本地 Node.js 安装。",
   "Memory": "记忆",
   "Sign in again to authorize account memory.": "请重新登录以授权账号记忆。",
-  "Memory is unavailable.": "记忆暂时不可用。"
+  "Memory is unavailable.": "记忆暂时不可用。",
+  "Queued": "排队中",
+  "Retry task": "重试任务",
+  "Agent role": "Agent 角色",
+  "Work item": "工作项",
+  "Failure reason": "失败原因",
+  "Progress": "进度",
+  "Open Settings": "打开设置"
 }

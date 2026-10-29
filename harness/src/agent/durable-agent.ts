@@ -29,7 +29,10 @@ import { durableContextMessages } from "./durable-context";
 import { createAssistantErrorMessage, normalizeAssistantError } from "./stream-error";
 import { withEnvironmentByteReads } from "./environment-read";
 import type { AgentSessionCommand, AgentSessionOptions, AgentSessionReceipt, AgentSessionSnapshot } from "./session-types";
+import { AgentRoleDoc } from "./subagents";
 import { recallAgentMemory, submitAgentMemoryTurn, type AgentMemoryBinding } from "./memory";
+import { BUILTIN_AGENT_SKILLS_PROMPT } from "./builtin-skills";
+import { AGENT_MEMORY_SKILL_PROMPT } from "./builtin-memory-skill";
 
 const context = BACKGROUND_CONTEXT;
 const deferred = () => {
@@ -77,6 +80,7 @@ export interface DurableAgentOptions {
   sessionSuspend?: Promise<void>;
   /** Reattach the host and scheduler without submitting the workflow's bootstrap prompt. */
   resumeSession?: boolean;
+  interruptSession?: boolean;
   workdir?: string;
   session?: AgentSessionOptions;
   initialState: DurableAgentState;
@@ -179,7 +183,16 @@ export class DurableAgent {
       });
       this.resources = new AgentExtensionResources(this.options.session ?? {});
       await this.resources.install(this.registry, tool => this.adaptTool(tool));
-      const registry = mergeAgentRegistries(this.registry, this.options.session?.registry);
+      const registry = mergeAgentRegistries(this.registry, this.options.session?.registry,
+        async (name, args, api, callContext) => {
+          await this.checkConfigurationAccess();
+          await this.session?.authorizeChild(api.conversationId, name);
+          const prefix = `${api.conversationId}:${api.taskId}:`;
+          if (!this.approvedCalls.has(`${prefix}${api.callId}`)) {
+            const decision = await this.approve({ type: "toolCall", id: api.callId, name, arguments: json(args) as JsonObject }, callContext, prefix);
+            if (decision?.block) return { output: [{ type: "text", text: decision.reason }], isError: true };
+          }
+        });
       registry.snapshot();
       const compactionPolicy = () => {
         const settings = this.compactionSettings();
@@ -384,7 +397,12 @@ export class DurableAgent {
     const tools = this.state.tools.filter(tool => !this.options.session?.environment || !localNames.has(tool.name)).map(tool => this.adaptTool(tool));
     tools.push(...remoteTools.filter(tool => this.state.tools.some(allowed => allowed.name === tool.name)).map(withEnvironmentByteReads));
     this.session?.setTools(tools);
-    const promptSection = section("workflow", () => this.state.systemPrompt, { tag: false });
+    const promptSection = section("workflow", async (input, ctx) => {
+      const role = await input.read.snapshot(AgentRoleDoc, input.conversationId, ctx);
+      if (typeof role?.definition?.systemPrompt !== "string") return this.state.systemPrompt;
+      return [role.definition.systemPrompt, BUILTIN_AGENT_SKILLS_PROMPT,
+        ...(this.options.memory ? [AGENT_MEMORY_SKILL_PROMPT] : [])].join("\n\n");
+    }, { tag: false });
     this.registry.install(defineExtension({
       name: "workflow",
       sections: [promptSection],
@@ -459,6 +477,7 @@ export class DurableAgent {
         },
         beforeRequest: async (request, api, requestContext) => {
           await this.checkConfigurationAccess();
+          await this.session?.authorizeChild(api.conversationId);
           const root = (await harness.conversation(api.conversationId, context))!;
           const logicalRequestId = this.session ? await this.session.requestIdFor(root.id) : requestId;
           const history = await root.context(context);
@@ -541,6 +560,7 @@ export class DurableAgent {
       }), hook(ToolTask, {
         beforeTool: async (call, api, callContext) => {
           await this.checkConfigurationAccess();
+          await this.session?.authorizeChild(api.conversationId, call.name);
           const decision = await this.approve(call, callContext, `${api.conversationId}:${api.taskId}:`);
           return decision?.block ? { block: decision.reason } : undefined;
         },
@@ -553,6 +573,7 @@ export class DurableAgent {
     if (this.session) await this.session.configureRoot({ ...change, tools: null });
     else await root.configure(change, context);
     if (this.session) await this.session.start(this.state.systemPrompt);
+    if (this.options.interruptSession) await this.session?.interrupt();
     const view = await root.context(context);
     const resuming = this.options.resumeSession === true && this.session !== undefined;
     const run = resuming ? { cutoff: Math.max(0, ...view.entries.map(entry => entry.id)), end: 0, usage: {} as JsonObject } : await root.commit(async tx => {

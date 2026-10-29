@@ -33,6 +33,8 @@ export function ownedActivity(snapshot: TraceAgentSnapshot): boolean {
 }
 
 export const terminalTask = (task: TraceTask): boolean => ['completed', 'aborted', 'failed', 'faulted', 'orphaned'].includes(task.status);
+export const retryableAgentTask = (task: TraceTask): boolean => !!task.agent && ['aborted', 'failed', 'faulted', 'orphaned'].includes(task.status);
+export const taskConversation = (task: TraceTask): number => task.agent?.childConversationId ?? task.conversationId;
 
 export function orderedTasks(tasks: TraceTask[], all: TraceTask[]): { task: TraceTask; depth: number }[] {
   const byId = new Map(all.map(task => [task.id, task])), visible = new Set(tasks.map(task => task.id));

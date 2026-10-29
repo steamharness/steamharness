@@ -1,11 +1,11 @@
 import { t, locale } from './localization';
 import { iconButton, iconHtml, escapeHtml, markdownHtml } from './ui';
-import { agentSession, latestAgentPlan, orderedTasks, ownedActivity, terminalTask, type AgentPlanDocument } from './trace-agent-model';
+import { agentSession, latestAgentPlan, orderedTasks, ownedActivity, terminalTask, retryableAgentTask, taskConversation, type AgentPlanDocument } from './trace-agent-model';
 import type { TracePanelState } from '../src/workflow-trace-types';
 import type { TraceAgentAction, TraceAgentCommand, TraceAgentSnapshot, TraceTask } from '../src/workflow-agent-types';
 
 export type AgentTab = 'tasks' | 'plan' | 'records' | 'usage';
-const status = (value: string) => t(({ pending: 'Pending', running: 'Running', waiting: 'Waiting', completed: 'Completed',
+const status = (value: string) => t(({ queued: 'Queued', pending: 'Pending', running: 'Running', waiting: 'Waiting', completed: 'Completed',
   aborted: 'Stopped', failed: 'Failed', faulted: 'Failed', orphaned: 'Unavailable', blocked: 'Blocked', in_progress: 'In progress',
   idle: 'Not connected', connecting: 'Connecting', ready: 'Ready', missing_task: 'Task definition missing', task_too_old: 'Task definition incompatible', migration_failed: 'Task migration failed' } as Record<string, string>)[value] ?? value);
 interface Position { scroll: number; scrolls: Map<string, number>; expanded: Set<string>; task?: number }
@@ -196,9 +196,19 @@ export class TraceAgentView {
       button.title = label; button.innerHTML = `${iconHtml(expanded ? 'chevron-down' : 'chevron-right')}${iconHtml(stopping ? 'loading' : task.status === 'completed' ? 'check' : task.blockedOn.length ? 'debug-pause' : task.toolName ? 'tools' : 'circle-outline')}<span>${escapeHtml(label)}</span><small>${escapeHtml(stopping ? t('Stopping') : status(task.status))}</small>`;
       button.onclick = () => { this.selectedTask = expanded ? undefined : task.id; this.signature = ''; this.render(); };
       row.append(button);
+      const progress = task.progress ?? task.agent?.progress;
+      if (task.agent || progress) {
+        const info = document.createElement('small');
+        info.textContent = [task.agent?.agentId, progress && `${progress.completed}/${progress.total}`, progress?.phase ?? task.phase].filter(Boolean).join(' · ');
+        info.title = info.textContent; row.append(info);
+      }
       if (!terminalTask(task)) {
         const stop = iconButton('debug-stop', t('Stop task'), () => this.command({ type: 'cancel', scope: 'task', taskId: task.id, targetId: task.conversationId }));
         stop.dataset.focus = `stop-${task.id}`; stop.disabled = !connected || task.stopping; row.append(stop);
+      }
+      if (retryableAgentTask(task)) {
+        const retry = iconButton('refresh', t('Retry task'), () => this.command({ type: 'subagent', action: 'retry', taskId: task.id, targetId: task.conversationId }));
+        retry.dataset.focus = `retry-${task.id}`; retry.disabled = !connected; row.append(retry);
       }
       entry.append(row); if (expanded) entry.append(this.taskDetails(task, connected)); list.append(entry);
     }
@@ -207,11 +217,14 @@ export class TraceAgentView {
   private taskDetails(task: TraceTask, connected: boolean): HTMLElement {
     const content = document.createElement('div'); content.className = 'trace-task-detail'; content.id = `trace-task-${task.id}`;
     const tools = document.createElement('div'); tools.className = 'trace-detail-tools';
-    const open = iconButton('comment', t('Open conversation'), () => this.openConversation(task.conversationId));
+    const open = iconButton('comment', t('Open conversation'), () => this.openConversation(taskConversation(task)));
     open.disabled = !connected; open.dataset.focus = `open-task-${task.id}`;
     const copy = iconButton('copy', t('Copy record'), () => this.copy(JSON.stringify(task, null, 2))); copy.dataset.focus = `copy-task-${task.id}`;
     tools.append(open, copy); content.append(tools);
+    const progress = task.progress ?? task.agent?.progress;
     this.fields([[t('Task'), task.id], [t('Status'), status(task.status)], [t('Phase'), task.phase], [t('Replay policy'), task.replay],
+      [t('Agent role'), task.agent?.agentId], [t('Work item'), task.agent?.workId], [t('Failure reason'), task.agent?.error],
+      [t('Progress'), progress && `${progress.completed}/${progress.total}`],
       [t('Attempt'), task.attempt], [t('Blocked by'), task.blockedOn.join(', ')], [t('Blocked reason'), task.blockedReason && status(task.blockedReason)],
       [t('Definition version'), task.definitionVersion], [t('Wake time'), task.wakeAt === undefined ? undefined : new Date(task.wakeAt).toLocaleString(locale())]], content);
     for (const [label, value] of [[t('Tool arguments'), task.arguments], [t('Checkpoint'), task.checkpoint], [t('Script'), task.script], [t('Details'), task.details]]) {

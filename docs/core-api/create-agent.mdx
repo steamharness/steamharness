@@ -80,7 +80,7 @@ const agent = await workflow.createAgent({
 
 | `session` 字段 | 说明 |
 | --- | --- |
-| `subagents` | 显式启用委派：`{ tools: string[], maxAgents?: number, models?: { provider, modelId }[] }`。工具只能取父 Agent 与白名单的交集；默认继承父模型，显式选模型须命中精确 provider/modelId 白名单；子 Agent 禁止再次委派，活动委派默认最多 4 个。 |
+| `subagents` | 显式启用委派：`{ tools: string[], maxAgents?: number, models?: { provider, modelId }[], definitions?: AgentDefinition[] }`。工具只能取父 Agent 与白名单的交集；默认继承父模型，显式选模型须命中精确 provider/modelId 白名单；子 Agent 禁止再次委派，活动委派默认最多 4 个。 |
 | `nativeTools` | Pi Durable `ToolRegistration[]`；可用 `api.executeTool()` 嵌套调用，仍执行 caller 限制、权限审批及取消传播。 |
 | `compaction` | `{ enabled?, reserveTokens?, keepRecentTokens?, backgroundTokens? }`。默认在每次模型请求前检查，达到上下文窗口的 90% 时先压缩；`reserveTokens` 可要求更早预留空间，`backgroundTokens` 可提前启动后台压缩。`enabled: false` 关闭自动阈值与溢出恢复，仍可手动压缩。 |
 | `planFork` | `initial`、`current` 或 `asOf`（默认）：分叉计划为空初始值、当前值或分叉点值。 |
@@ -409,3 +409,46 @@ for await (const event of agent.run({ prompt: "总结这个仓库", errCode: 0, 
 ```
 
 在 workflow 里跑完整流程时，用 [createAgentNode](./create-agent-node.mdx) 或 [defineAgentConversationExecutor](./define-agent-conversation-executor.mdx) 会更省事。
+
+
+## 命名多 Agent 与持久工作队列
+
+在 `session.subagents.definitions` 中由项目代码声明角色；同一父会话下的工作项使用独立子会话，通过 Pi Durable 的任务检查点和 FIFO 队列共享并发槽位。单个 Agent 内的工具继续按原顺序执行。
+
+```ts
+const session = {
+  subagents: {
+    tools: ["read", "grep", "write"],
+    maxAgents: 4,
+    definitions: [
+      { id: "researcher", description: "Research one source", systemPrompt: "Research the assigned source and return evidence.",
+        tools: ["read", "grep"], maxConcurrency: 3 },
+      { id: "writer", description: "Verify and save one draft", systemPrompt: "Save the assigned draft and verify the result.",
+        tools: ["read", "write"], maxConcurrency: 1 },
+    ],
+  },
+};
+```
+
+`AgentDefinition` 还接受可选 `model: { provider, modelId }`、`effort`；省略时继承父会话。模型覆盖必须在 `subagents.models` 白名单内。角色提示替换项目协调者提示，平台规则继续生效；工具取父授权、总白名单、角色快照与当前配置的交集。恢复后再次检查权限，子 Agent 不能委派。
+
+`AgentSessionCommand` 的 `type: "subagent"` 支持以下 action，所有命令均携带稳定 `requestId`：
+
+| action | 参数和结果 |
+| --- | --- |
+| `spawn` | `agentId`、`workId`、`prompt`，可选 `label`、JSON `metadata`、`background`、`reportToParent`。相同 workId 复用任务，冲突载荷拒绝。 |
+| `list` | 列出当前父会话工作项。 |
+| `get` / `wait` | `taskId`；查询或等待结果，等待不阻塞停止命令。 |
+| `send` | `taskId`、`prompt`，可选 `mode: "steer" | "followUp"`。已接受的追加消息完成后才释放工作项槽位，结果包含最新回答；收尾或停止后须重试再继续。 |
+| `stop` | `taskId`；只取消该工作项及其执行树，不自动重试。 |
+| `retry` | `taskId`；为失败或取消项新建关联 attempt，保留原历史，从最新已提交上下文继续。所属批次已停止时须先恢复批次。 |
+
+回执和快照的 `agents` 提供 `taskId`、`workId`、`agentId`、`status`（含 `queued`）、`attempt`、`retryOf`、`childConversationId`、`metadata`、`progress`、`error` 和 `result`。Tasks 复用这些字段展示角色、素材、阶段和完成数，打开子会话、停止或重试均走 Core 控制通道。业务任务历史保留，内部 Pi 步骤只保留最近 200 项。
+
+原匿名 `subagent({ task, background?, model? })` 与历史任务继续可用；命名工具调用使用 `{ action: "spawn", agentId, workId, task, background: true }`，管理 action 使用 taskId。工具的后台结果默认回传；命令或业务任务可用 `reportToParent: false` 自行消费回执。
+
+业务 durable task 或 native tool 可在事务中调用公开 `enqueueAgentWork(tx, registry, input, options)` / `enqueueAgentWorks(tx, registry, inputs, options)`，与工具和宿主共用管理服务。批量派发使用后者（每批 1–1000 项），完成全部表读取后再创建任务；Pi 事务首次表写入后不能继续读表，不能循环调用单项 API。使用任务 ownership 可让批次停止级联取消所有等待和运行项。
+
+Native tool 用 `readAgentWorkContext(api, ctx)` 获取获授权的角色、workId、attempt、父会话与 metadata。进度保存在会话级 family 文档，结束后仍可读取：`tx.doc(AgentWorkProgressDoc, parentConversationId, String(taskId), null)`，更新 `completed`、`total`、`phase` 及可选 JSON `data`。非空 `error` 表示业务核验失败；重试成功时清空它，不能把仅结束模型输出视为业务完成。跨入口调用使用 `context.entries.get(id).runEntrypoint(operation, args, { abortSignal: ctx.abortSignal })`，工作项取消与父宿主取消共同生效。
+
+重试不能证明外部副作用失败。付费请求或写入结果未知时，先读取服务状态或业务回执；保留稳定业务 ID、草稿和阶段检查点，索引冲突仅重试索引阶段，不重放已提交正文。

@@ -15,6 +15,7 @@ import { normalizeProjectParamDeclarations } from "../executor/param-definition"
 import { parseProjectParamValues } from "../executor/params";
 import { AGENT_OUTPUT_KINDS } from "../agent/output-items";
 import { createAgentNode } from "../agent/node";
+import { createAgentSessionHost, controlAgentSession } from "../agent/session-control";
 import type { OutputItemStreamChunk } from "../node/output/index";
 import { createAgentPlanApprovalRequest, readAgentPlanDecision } from "../agent/plan";
 import { createProjectConversationContext } from "../conversation/index";
@@ -182,6 +183,35 @@ function createContext(conversationId: string, files?: FileStore): RunContext {
     }),
   } as unknown as RunContext;
 }
+
+test("context-created sessions bind the host control channel for managed work", { timeout: 15000 }, async () => {
+  const { ai, faux, models, model } = await createFauxModel();
+  faux.setResponses(Array.from({ length: 10 }, () => ai.fauxAssistantMessage("Completed")));
+  const scope = "dynamic-session-controls", context = createContext(scope);
+  const host = createAgentSessionHost(scope);
+  let created = 0;
+  const project = createAgentConversationProject({ models, resolvedModel: model, createSession: () => {
+    created++;
+    return { compaction: { enabled: false }, subagents: { tools: [], definitions: [
+      { id: "researcher", description: "Research", systemPrompt: "Research only", tools: [] },
+    ] } };
+  } });
+  const running = project.run({ prompt: "Start", errCode: 0, errMessage: "" }, context);
+  try {
+    const end = Date.now() + 8000;
+    while (true) {
+      try { await controlAgentSession(scope, { type: "snapshot", requestId: "ready" }); break; }
+      catch (error) {
+        if ((error as { code?: string }).code !== "AGENT_NOT_READY" || Date.now() > end) throw error;
+        await new Promise(resolve => setTimeout(resolve, 5));
+      }
+    }
+    const spawned = await controlAgentSession(scope, { type: "subagent", action: "spawn", requestId: "spawn", agentId: "researcher", workId: "one", prompt: "Research" });
+    const settled = await controlAgentSession(scope, { type: "subagent", action: "wait", requestId: "wait", taskId: spawned.taskId! });
+    assert.equal(settled.agents![0].status, "completed");
+    assert.equal(created, 1);
+  } finally { host.close(); await running; }
+});
 
 /** The message shape the model is asked with, as the faux provider sees it. */
 interface AgentRequestMessage {

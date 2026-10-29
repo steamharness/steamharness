@@ -890,5 +890,12 @@
   "The selected Node.js has no package manager. Repair the bundled runtime or choose a local Node.js installation with npm.": "The selected Node.js has no package manager. Repair the bundled runtime or choose a local Node.js installation with npm.",
   "Memory": "Memory",
   "Sign in again to authorize account memory.": "Sign in again to authorize account memory.",
-  "Memory is unavailable.": "Memory is unavailable."
+  "Memory is unavailable.": "Memory is unavailable.",
+  "Queued": "Queued",
+  "Retry task": "Retry task",
+  "Agent role": "Agent role",
+  "Work item": "Work item",
+  "Failure reason": "Failure reason",
+  "Progress": "Progress",
+  "Open Settings": "Open Settings"
 }

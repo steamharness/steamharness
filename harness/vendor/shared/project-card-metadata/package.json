@@ -12,7 +12,8 @@
     },
     "./avatar": {
       "types": "./avatar.ts",
-      "import": "./avatar.ts"
+      "import": "./avatar.ts",
+      "default": "./avatar.ts"
     }
   },
   "dependencies": {

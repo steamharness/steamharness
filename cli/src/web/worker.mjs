@@ -216,7 +216,7 @@ try {
       if (request.project.conversation?.durable?.enabled || request.project.conversation?.recovery?.enabled) {
         const agent = await import(resolve('steamharness/agent', pathToFileURL(path.join(runtimeProjectDir, 'package.json')).href));
         controller.signal.throwIfAborted();
-        agentHost = agent.createAgentSessionHost(request.conversationId, { resume: request.resumeAgent === true });
+        agentHost = agent.createAgentSessionHost(request.conversationId, { resume: request.resumeAgent === true, interrupt: request.interruptAgent === true });
         if (ownerDisconnected) agentHost.suspend();
       }
       if (request.project.conversation?.durable?.enabled) {

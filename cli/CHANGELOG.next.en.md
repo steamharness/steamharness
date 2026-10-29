@@ -1,5 +1,7 @@
 # Unreleased
 
+- Added: Interrupt unfinished managed execution trees on reopening and require explicit batch recovery. Keep pending user input separate from business queues; only successful user turns advance it, never background reports.
+
 - Added: A Project memory switch defaults off for ordinary projects and on for the Assistant. Memory navigation updates quietly when configuration changes, and disabled projects cannot call memory operations.
 
 - [Changed] Studio model parameters use only Settings models and hide project AI. Standalone CLI Web falls back to project configuration consistently for setup, defaults and requests. Removed project references to Settings models.

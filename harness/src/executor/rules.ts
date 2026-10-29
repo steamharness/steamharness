@@ -1748,8 +1748,14 @@ function analyzeSourceFile(
       if (argument !== undefined && !ts.isObjectLiteralExpression(argument)) throw new Error("Core Agent options must be a static object.");
       for (const property of argument?.properties ?? []) {
         if (ts.isSpreadAssignment(property)) throw new Error("Core Agent options cannot spread dynamic parameter configuration.");
+        if (ts.isMethodDeclaration(property) && readStructurePropertyName(property.name) === "createSession") { options.session = {}; continue; }
         if (!ts.isPropertyAssignment(property) && !ts.isShorthandPropertyAssignment(property)) continue;
         const name = readStructurePropertyName(property.name);
+        if (name === "session" || name === "createSession") {
+          const value = resolve(ts.isPropertyAssignment(property) ? property.initializer : property.name);
+          if (!(ts.isIdentifier(value) && value.text === "undefined") && value.kind !== ts.SyntaxKind.NullKeyword) options.session = {};
+          continue;
+        }
         if (!name || !["modelSource", "model", "effort", "permissionPolicy", "mode", "params", "paramOptions"].includes(name)) continue;
         const expression = ts.isPropertyAssignment(property) ? property.initializer : property.name;
         (options as Record<string, unknown>)[name] = literal(evaluateExpression(resolve(expression)));
@@ -1849,7 +1855,8 @@ function analyzeSourceFile(
       conversationProperty === undefined ||
       !ts.isObjectLiteralExpression(conversationProperty.initializer)
     ) {
-      if (readCoreAgentOptions(objectArg)) analysis.executorConversation = { recovery: { enabled: true } };
+      const options = readCoreAgentOptions(objectArg);
+      if (options) analysis.executorConversation = { recovery: { enabled: true }, ...(options.session ? { durable: { enabled: true } } : {}) };
       return;
     }
 
@@ -1870,7 +1877,7 @@ function analyzeSourceFile(
     const recovery = readCoreAgentOptions(objectArg) || recoveryProperty !== undefined && ts.isObjectLiteralExpression(recoveryProperty.initializer)
       && readBooleanProperty(recoveryProperty.initializer, "enabled") === true ? { enabled: true as const } : undefined;
     const durableProperty = findStaticPropertyAssignment(conversationProperty.initializer, "durable");
-    const durable = durableProperty !== undefined && ts.isObjectLiteralExpression(durableProperty.initializer)
+    const durable = readCoreAgentOptions(objectArg)?.session || durableProperty !== undefined && ts.isObjectLiteralExpression(durableProperty.initializer)
       && readBooleanProperty(durableProperty.initializer, "enabled") === true ? { enabled: true as const } : undefined;
     if (collapseIntermediate !== undefined || durable !== undefined || recovery !== undefined || attachments !== undefined || inputQueue !== undefined || openai !== undefined || footer !== undefined || commands !== undefined || userInput !== undefined) {
       analysis.executorConversation = {

@@ -77,13 +77,24 @@ test('Trace commands retain owner/session identity, scoped errors, pending state
   receive('command', { requestId: sent.at(-1).traceCommand.requestId, error: 'old source' }); assert.equal(store.state().error, undefined);
   next.dispose();
 });
-test('a durable built-in assistant exposes Trace with its project version while explicit opens select the timeline', () => {
+test('a durable built-in assistant exposes Trace while explicit opens select the timeline', () => {
   const fixture = durableTraceState(), project = { ...fixture.snapshot.project, uri: fixture.selection.projectUri,
     manifest: { version: '1.2.3' }, assistant: { standalone: true } };
   const store = new TraceStore(); store.update([]); const binding = store.bind(project, 1, () => {});
   binding.receive({ type: 'workflow-trace', version: 1, kind: 'state', snapshot: fixture.snapshot });
   assert.equal(store.availableProjects().length, 1); assert.equal(store.selection.projectUri, key(project));
-  assert.equal(store.state().projects[0].version, '1.2.3');
+  assert.equal(store.state().projects[0].projectType, project.projectType);
   binding.receive({ type: 'workflow-trace', version: 1, kind: 'open', target: { sessionId: 'main', messageId: 'reply' } });
   assert.equal(store.state().reveal, 1); assert.equal(store.selection.messageId, 'reply'); binding.dispose();
+});
+
+test('named work opens its child and exposes retry only for failed or cancelled attempts', async () => {
+  const { retryableAgentTask, taskConversation } = await import('../extensions/studio-workstation/webview/trace-agent-model.ts');
+  const task = { id: 42, conversationId: 1, status: 'failed', agent: { childConversationId: 2 } };
+  assert.equal(retryableAgentTask(task), true); assert.equal(taskConversation(task), 2);
+  assert.equal(retryableAgentTask({ ...task, status: 'queued' }), false);
+  assert.equal(retryableAgentTask({ ...task, status: 'completed' }), false);
+  assert.equal(retryableAgentTask({ ...task, status: 'aborted' }), true);
+  assert.equal(retryableAgentTask({ ...task, agent: undefined }), false);
+  assert.equal(taskConversation({ ...task, agent: undefined }), 1);
 });

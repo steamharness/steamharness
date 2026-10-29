@@ -193,14 +193,14 @@ export function defineAgentConversationExecutor(
     conversation: {
       collapseIntermediate: options.collapseIntermediate ?? true,
       recovery: { enabled: true },
-      ...(options.session ? { durable: { enabled: true as const } } : {}),
+      ...(options.session || options.createSession ? { durable: { enabled: true as const } } : {}),
       inputQueue: { enabled: true },
       openai: { enabled: true, outputItemId },
     },
     tokenUsage: { enabled: true, display: true },
-    tools: options.toolDefinitions ?? [...readAgentToolDefinitions(undefined), ...(options.session ? [
+    tools: options.toolDefinitions ?? [...readAgentToolDefinitions(undefined), ...(options.session || options.createSession ? [
       { name: "update_plan", label: "Task plan", enabled: true, autoApprove: true },
-      ...(options.session.subagents ? [{ name: "subagent", label: "Delegate task", enabled: true, autoApprove: true }] : []),
+      ...(options.session?.subagents || options.createSession ? [{ name: "subagent", label: "Delegate task", enabled: true, autoApprove: true }] : []),
     ] : [])],
     params: options.params ?? createAgentProjectParams(options),
     async resolveParams(context) {

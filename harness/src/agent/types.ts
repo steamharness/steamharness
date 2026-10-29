@@ -473,6 +473,8 @@ export interface AgentRuntimeOptions {
 }
 
 export interface AgentNodeOptions extends AgentRuntimeOptions {
+  /** Resolve session roles and native tools under this run's authorized project configuration. */
+  createSession?: (context: NodeContext) => AgentSessionOptions | Promise<AgentSessionOptions>;
   name?: string;
   /** Skill roots, resolved relative to the entry root. Shared by runtime tools and read-only host previews. */
   skills?: { directories: readonly string[] };

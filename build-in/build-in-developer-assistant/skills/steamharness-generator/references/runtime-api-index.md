@@ -17,7 +17,7 @@
 
 - `registration`
 - `listEntrypoints()`
-- `runEntrypoint(entrypointId, args)`
+- `runEntrypoint(entrypointId, args, options)`
 
 ### 数据库目录（`DatabasesContext`）
 
@@ -61,6 +61,11 @@
 - `steamharness.agentHook(...)`
 - `steamharness.AgentToolTask(...)`
 - `steamharness.AgentGenerationTask(...)`
+- `steamharness.enqueueAgentWork(...)`
+- `steamharness.enqueueAgentWorks(...)`
+- `steamharness.readAgentWorkContext(...)`
+- `steamharness.AgentWorkProgressDoc(...)`
+- `steamharness.AgentSessionLifecycleDoc(...)`
 - `steamharness.createAgentConversationProject(...)`
 - `steamharness.createAgentNode(...)`
 - `steamharness.createAgentProjectInput(...)`

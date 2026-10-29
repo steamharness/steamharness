@@ -20,7 +20,8 @@ export type { Task as AgentTask, TaskRuntime as AgentTaskRuntime, Registry as Ag
   ToolRegistration as AgentNativeTool, Extension as AgentExtension, Storage as AgentStorage, TaskId as AgentTaskId } from "@earendil-works/pi-durable";
 export type { ExecutionEnv as AgentExecutionEnv } from "@earendil-works/pi-durable/env";
 export { controlAgentSession, createAgentSessionHost } from "./session-control";
-export type { AgentPlanItem, AgentSessionCommand, AgentSessionOptions, AgentSessionReceipt, AgentSessionResources, AgentSessionSnapshot, AgentSessionTask, AgentSessionTurn } from "./session-types";
+export type { AgentDefinition, AgentWorkInput, AgentWorkInfo, AgentSubagentAction, AgentPlanItem, AgentSessionCommand, AgentSessionOptions, AgentSessionReceipt, AgentSessionResources, AgentSessionSnapshot, AgentSessionTask, AgentSessionTurn } from "./session-types";
+export { enqueueAgentWork, enqueueAgentWorks, readAgentWorkContext, AgentWorkProgressDoc, AgentSessionLifecycleDoc } from "./subagents";
 export {
   createAgentConversationProject,
   createAgentProjectInput,

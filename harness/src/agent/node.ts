@@ -1,6 +1,6 @@
 import { createHash, randomUUID } from "node:crypto";
 import { agentConversationDirectory } from "./storage";
-import { agentSessionLease, agentSessionResuming, agentSessionSuspended, bindAgentSessionControl } from "./session-control";
+import { agentSessionLease, agentSessionResuming, agentSessionInterrupted, agentSessionSuspended, bindAgentSessionControl } from "./session-control";
 import path from "node:path";
 import { BaseStreamNode } from "../node/base";
 import {
@@ -269,7 +269,7 @@ class AgentStreamNode extends BaseStreamNode<AgentInput, OutputItemStreamChunk, 
         toolSet = { ...toolSet, tools: [...(toolSet?.tools ?? []), ...skills] };
       }
       if (toolSet) runtime.setExternalTools(toolSet.tools, toolSet.catalogs);
-      unbind = this.options.session && context.conversation?.conversationId && runtime.control
+      unbind = (this.options.session || this.options.createSession) && context.conversation?.conversationId && runtime.control
         ? bindAgentSessionControl(context.conversation.conversationId, command => runtime.control!(command)) : undefined;
     } catch (error) {
       try { await runtime.close(); }
@@ -650,7 +650,7 @@ class AgentStreamNode extends BaseStreamNode<AgentInput, OutputItemStreamChunk, 
     };
   }
 
-  private resolveRuntime(input: AgentInput, context: NodeContext): Promise<AgentRuntime> {
+  private async resolveRuntime(input: AgentInput, context: NodeContext): Promise<AgentRuntime> {
     const key = readSessionKey(this.options, context);
     const directory = typeof context.metadata?.["agentStoreDir"] === "string"
       ? context.metadata["agentStoreDir"] : path.join(input.workdir ?? this.options.workdir ?? process.cwd(), ".workflow", "agents");
@@ -658,10 +658,11 @@ class AgentStreamNode extends BaseStreamNode<AgentInput, OutputItemStreamChunk, 
     const identity = JSON.stringify([context.metadata?.["project"], key]);
     const runtimeOptions: AgentRuntimeInternalOptions = {
       ...this.options,
-      session: input.hostInput === undefined ? this.options.session : undefined,
+      session: input.hostInput === undefined ? await this.options.createSession?.(context) ?? this.options.session : undefined,
       sessionLease: context.conversation?.conversationId && (input.agent ?? this.options.mode) !== "plan" ? agentSessionLease(context.conversation.conversationId) : undefined,
       sessionSuspend: context.conversation?.conversationId && (input.agent ?? this.options.mode) !== "plan" ? agentSessionSuspended(context.conversation.conversationId) : undefined,
       resumeSession: !!context.conversation?.conversationId && (input.agent ?? this.options.mode) !== "plan" && input.hostInput === undefined && agentSessionResuming(context.conversation.conversationId),
+      interruptSession: !!context.conversation?.conversationId && agentSessionInterrupted(context.conversation.conversationId),
       databasePath: this.options.databasePath ?? (!this.options.storage && context.conversation?.enabled && input.hostInput === undefined
         ? path.join(sessionDirectory, `${createHash("sha256").update(identity).digest("hex")}.sqlite`) : undefined),
       workdir: input.workdir ?? this.options.workdir,

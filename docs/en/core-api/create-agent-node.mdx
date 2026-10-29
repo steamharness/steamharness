@@ -21,6 +21,7 @@ When the model field declares `allowThirdParty: false`, the node only selects sy
 ```ts
 const node = workflow.createAgentNode({
   name?: string,
+  createSession?: (context: NodeContext) => AgentSessionOptions | Promise<AgentSessionOptions>,
   sessionKey?: string,
   outputItemId?: string,
   workdir?: string,
@@ -149,3 +150,10 @@ const result = await workflow.runStreamNode(agentNode, input, context);
 
 return result.output ?? { errCode: 0, errMessage: "", items: [], prompt: "", workdir: "", effort: "medium", agent: "build", toolCallCount: 0 };
 ```
+
+
+### Construct sessions from authorized configuration
+
+`createSession(context)` builds `AgentSessionOptions` after host authorization for tools and models; it takes precedence over static `session`. Use it to return roles, native tools and a task registry for project Ask/Build configuration. Ask must omit collection and writer roles. The convenience executor and `defineExecutor` selecting a Core project through `workflow` or `coreAgent` inherit durable and recovery declarations. Executors using an independent hand-written node still declare control capabilities inline. Explicit permission lists must include native tools, `update_plan` and `subagent` as needed.
+
+`createAgentSessionHost(scopeId, { resume: true, interrupt: true })` cancels the previous execution tree and unconsumed input before accepting an explicit new command, retaining business document checkpoints. `AgentSessionLifecycleDoc.interrupted` is true only during that cancellation, allowing task abort handlers to mark batches interrupted. Reopening a CLI Web / Studio conversation with unfinished business tasks pauses work and queued user input. The next explicit input first clears the old tree; the project must explicitly resume its batch. Internal worker restarts retain checkpoint recovery. Ordinary conversations without business tasks continue normal recovery.

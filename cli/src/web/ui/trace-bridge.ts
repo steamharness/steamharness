@@ -111,6 +111,9 @@ export class TraceBridge {
   private validCommand(command: Message | undefined, agent: Message, targetId: number, conversationId: number): boolean {
     if (!command || !agent.conversations.some((entry: Message) => entry.id === targetId)) return false;
     if (command.type === 'cancel' && command.scope === 'task') return agent.tasks.some((task: Message) => task.id === command.taskId && task.conversationId === targetId);
+    if (command.type === 'subagent') return command.action === 'retry' && Number.isSafeInteger(command.taskId)
+      && agent.history.some((task: Message) => task.id === command.taskId && task.conversationId === targetId && task.agent
+        && ['failed', 'faulted', 'aborted', 'orphaned'].includes(task.status));
     if (targetId !== conversationId) return false;
     if (command.type === 'compact') return command.instructions === undefined || typeof command.instructions === 'string';
     if (command.type === 'reset') return command.handoff === undefined || typeof command.handoff === 'string';

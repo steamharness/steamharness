@@ -21,6 +21,7 @@ description: "创建一个把 Agent 跑成 workflow 节点的流式节点。"
 ```ts
 const node = workflow.createAgentNode({
   name?: string,
+  createSession?: (context: NodeContext) => AgentSessionOptions | Promise<AgentSessionOptions>,
   sessionKey?: string,
   outputItemId?: string,
   workdir?: string,
@@ -149,3 +150,10 @@ const result = await workflow.runStreamNode(agentNode, input, context);
 
 return result.output ?? { errCode: 0, errMessage: "", items: [], prompt: "", workdir: "", effort: "medium", agent: "build", toolCallCount: 0 };
 ```
+
+
+### 按授权配置创建会话
+
+`createSession(context)` 在工具和模型完成宿主授权后创建本轮的 `AgentSessionOptions`；提供工厂时优先于静态 `session`。用它按项目 Ask/Build 配置返回角色、native tools 和任务 registry；Ask 应返回不含采集和写入角色的配置。`defineAgentConversationExecutor`、选定 Core 项目的 `defineExecutor({ workflow })` 或 `defineExecutor({ coreAgent })` 自动继承 durable 与 recovery 声明；手写独立节点的 executor 仍需内联声明控制能力。自定义权限表须包含所有需要的 native tools、`update_plan` 和 `subagent`。
+
+`createAgentSessionHost(scopeId, { resume: true, interrupt: true })` 先取消旧执行树与未消费输入，再接受明确的新命令，保留业务文档检查点。`AgentSessionLifecycleDoc.interrupted` 仅在这次取消期间为 true，可供项目 task 的 abort 将批次标为中断。CLI Web / Studio 重新打开尚有业务任务的会话时暂停任务及用户待发队列；下次明确输入先完成中断清理，批次仍需项目显式恢复。内部 worker 意外重启保留原恢复机制。普通无业务任务会话继续按检查点恢复。

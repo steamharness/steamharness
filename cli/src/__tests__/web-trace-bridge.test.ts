@@ -111,3 +111,17 @@ describe('embedded execution trace bridge', () => {
     bridge.select('local-unsaved'); expect(sent.at(-1).snapshot.activeId).toBe('local-unsaved');
   });
 });
+
+it('forwards named-agent retries through Core only for settled work in its parent scope', () => {
+  const sent: any[] = [], bridge = new TraceBridge(message => sent.push(message)); bridge.enable(1);
+  const failed = { id: 42, conversationId: 1, status: 'failed', agent: { taskId: 42, agentId: 'researcher', childConversationId: 2 } };
+  const agent = { ownerId: 'owner', conversationId: 1, conversations: [{ id: 1 }, { id: 2 }], tasks: [], history: [failed] };
+  bridge.receive({ type: 'state', project, activeId: 'main', sessions: [{ id: 'main', agent, messages: [] }] });
+  bridge.receive({ type: 'connection', status: 'connected' });
+  const action = { type: 'agent', sessionId: 'main', ownerId: 'owner', conversationId: 1, requestId: 'retry', command: { type: 'subagent', action: 'retry', taskId: 42 } };
+  expect(bridge.command(action)).toMatchObject({ type: 'agent-command', command: { type: 'subagent', action: 'retry', taskId: 42, targetId: 1 } });
+  expect(bridge.command({ ...action, command: { ...action.command, targetId: 2 } })).toBeUndefined();
+  expect(bridge.command({ ...action, command: { ...action.command, action: 'spawn' } })).toBeUndefined();
+  failed.status = 'completed'; bridge.receive({ type: 'state', project, sessions: [{ id: 'main', agent, messages: [] }] });
+  expect(bridge.command(action)).toBeUndefined(); bridge.enable(2);
+});

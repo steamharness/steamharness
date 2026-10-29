@@ -760,3 +760,68 @@ it.each([
   expect(restored.current.messages[1].error).toBeUndefined(); expect(restored.current.messages[1].report).toBeUndefined();
   restored.recover(); expect(f.runtime.run).toHaveBeenCalledOnce();
 });
+
+it('holds durable user messages in the host after failure; only a successful user turn releases them', async () => {
+  const f = fixture(); await f.start(); const initial = f.snapshot(), owner = f.controller.current;
+  vi.mocked(f.runtime.agentControl!).mockImplementation(async (_run, command) => ({ requestId: command.requestId, conversationId: 1, status: 'accepted' }));
+  await f.controller.send({ text: 'Second', params: { model: 'one' }, attachments: [] }, owner, true, 'second');
+  const second: AgentSessionTurn = { requestId: 'second', conversationId: 1, prompt: 'Second', mode: 'followUp', status: 'placed', epoch: 0, entryId: 3, items: [] };
+  f.emit({ ...initial, revision: 2, foreground: true, turns: [...initial.turns, second] });
+  await f.controller.send({ text: 'Queued third', params: { model: 'one' }, attachments: [] }, owner, true, 'third');
+  expect(owner.queuedInputs).toMatchObject([{ id: 'third', hostQueued: true }]);
+  expect(f.runtime.agentControl).toHaveBeenCalledTimes(1);
+  const failed = { ...second, status: 'unanswered' as const, reason: 'model_error', detail: 'Connection failed' };
+  f.emit({ ...initial, revision: 3, turns: [...initial.turns, failed] });
+  expect(owner.queuePaused).toBe(true);
+  const report: AgentSessionTurn = { requestId: 'background-result', conversationId: 1, prompt: 'Background done', mode: 'report', status: 'done', epoch: 0, entryId: 4, answerId: 5, items: [] };
+  f.emit({ ...initial, revision: 4, turns: [...initial.turns, failed, report] });
+  await Promise.resolve(); expect(f.runtime.agentControl).toHaveBeenCalledTimes(1); expect(owner.queuePaused).toBe(true);
+  await f.controller.send({ text: 'New user request', params: { model: 'one' }, attachments: [] }, owner, true, 'fourth');
+  expect(f.runtime.agentControl).toHaveBeenCalledTimes(2);
+  const fourth: AgentSessionTurn = { requestId: 'fourth', conversationId: 1, prompt: 'New user request', mode: 'followUp', status: 'done', epoch: 0, entryId: 6, answerId: 7, items: [] };
+  f.emit({ ...initial, revision: 5, turns: [...initial.turns, failed, report, fourth] });
+  await vi.waitFor(() => expect(f.runtime.agentControl).toHaveBeenCalledTimes(3));
+  expect(vi.mocked(f.runtime.agentControl!).mock.calls[2][1]).toMatchObject({ type: 'submit', requestId: 'third' });
+  await f.finish();
+});
+
+it('reopening an unfinished managed execution tree pauses it and its user queue until explicit input', async () => {
+  const f = fixture(); await f.start(); const initial = f.snapshot(), owner = f.controller.current;
+  f.emit({ ...initial, revision: 2, tasks: [{ id: 42, kind: 'project.delegation', conversationId: 1, status: 'running', label: 'Video', background: true, stopping: false, blockedOn: [],
+    agent: { taskId: 42, workId: 'video', agentId: 'researcher', label: 'Video', status: 'running', attempt: 1 } }] });
+  owner.queuedInputs = [{ id: 'queued-after-exit', text: 'Wait for success', params: { model: 'one' }, attachments: [], createdAt: 1, hostQueued: true }];
+  const saved = JSON.parse(JSON.stringify({ sessions: f.controller.sessions, activeId: owner.id, selectionVersion: 1 }));
+  owner.queuePaused = true; // The old host exits without draining its saved queue.
+  await f.finish();
+  const restored = new ConversationController(f.controller.project, f.runtime, saved, { save: f.save, changed: vi.fn(), log: vi.fn() }); controllers.push(restored);
+  expect(restored.current.agentInterrupted).toBe(true); expect(restored.current.queuePaused).toBe(true);
+  restored.recover(); expect(f.runtime.run).toHaveBeenCalledTimes(1);
+  vi.mocked(f.runtime.agentControl!).mockImplementation(async (_run, command) => ({ requestId: command.requestId, conversationId: 1, status: 'accepted' }));
+  const sending = restored.send({ text: 'Another request', params: { model: 'one' }, attachments: [] }, restored.current, true, 'explicit');
+  await vi.waitFor(() => expect(f.runs).toHaveLength(2));
+  expect(vi.mocked(f.runtime.run).mock.calls[1][0]).toMatchObject({ resumeAgent: true, interruptAgent: true });
+  f.emit({ ...initial, ownerId: 'new-owner', receipts: [{ requestId: 'interrupt:explicit', conversationId: 1, status: 'accepted' }] });
+  await sending;
+  expect(restored.current.agentInterrupted).toBeUndefined();
+  expect(restored.current.queuedInputs).toMatchObject([{ id: 'queued-after-exit', hostQueued: true }]);
+  expect(vi.mocked(f.runtime.agentControl!).mock.calls.at(-1)![1]).toMatchObject({ requestId: 'explicit', type: 'submit' });
+  f.runs.at(-1)!.finish({ status: 'success' }); await restored.idle();
+});
+
+it('edits, removes and immediately sends host-held messages without stopping the batch', async () => {
+  const f = fixture(); await f.start(); const initial = f.snapshot(), owner = f.controller.current;
+  f.emit({ ...initial, foreground: true, revision: 2 });
+  vi.mocked(f.runtime.agentControl!).mockImplementation(async (_run, command) => ({ requestId: command.requestId, conversationId: 1, status: 'accepted' }));
+  await f.controller.send({ text: 'Queued', params: { model: 'one' }, attachments: [] }, owner, true, 'queued');
+  await f.controller.editQueued('queued');
+  await f.controller.send({ text: 'Edited', params: { model: 'one' }, attachments: [] }, owner, false, 'edit-request');
+  expect(owner.queuedInputs).toMatchObject([{ id: 'queued', text: 'Edited', hostQueued: true }]);
+  await f.controller.send({ text: 'Remove', params: { model: 'one' }, attachments: [] }, owner, true, 'remove');
+  await f.controller.removeQueued('remove');
+  expect(owner.queuedInputs).toHaveLength(1); expect(f.runtime.agentControl).not.toHaveBeenCalled();
+  await f.controller.promoteQueued('queued');
+  expect(owner.queuedInputs).toHaveLength(0);
+  expect(f.runtime.agentControl).toHaveBeenCalledExactlyOnceWith(owner.activeRunId, expect.objectContaining({ type: 'submit', mode: 'steer', prompt: 'Edited' }), owner.id, []);
+  expect(f.runtime.cancel).not.toHaveBeenCalled();
+  await f.finish();
+});

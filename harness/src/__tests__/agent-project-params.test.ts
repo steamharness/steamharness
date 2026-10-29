@@ -65,6 +65,21 @@ test("wrapped business workflows inherit only their explicitly selected agent", 
   assert.equal(ordinary.projectType === "conversation" && ordinary.params, undefined);
 });
 
+test("selected Core executors inherit durable control for static and context-created sessions", () => {
+  for (const options of [{ session: {} }, { createSession: () => ({}) }]) {
+    const core = createAgentConversationProject(options);
+    const executor = defineProjectExecutor({ projectType: "conversation", workflow: { name: "business", run: core.run }, coreAgent: core, createInput: createAgentProjectInput });
+    assert.equal(executor.projectType === "conversation" && executor.conversation?.durable?.enabled, true);
+    assert.equal(executor.projectType === "conversation" && executor.conversation?.recovery?.enabled, true);
+  }
+  for (const declaration of ["session: {}", "createSession: () => ({})", "createSession(context) { return {}; }"]) {
+    const source = `const coreAgent = steamharness.createAgentConversationProject({ ${declaration} });
+      export const executor = steamharness.defineExecutor({ projectType: "conversation", workflow: coreAgent });`;
+    const analysis = analyzeProjectScriptSource(source);
+    assert.equal(analysis.executorConversation?.durable?.enabled, true);
+  }
+});
+
 test("explicit parameter replacement and custom resolution remain independent", async () => {
   const project = createAgentConversationProject();
   const executor = defineProjectExecutor({ projectType: "conversation", workflow: project, params: [], createInput: createAgentProjectInput });

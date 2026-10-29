@@ -9,6 +9,19 @@ import { inspectAggregateProjectStructure, inspectLocalProjectStructure, runLoca
 import { createLocalProjectConfigurationStore } from "../configuration";
 import { LocalDatabaseRegistry, createLocalDatabaseResolver } from "../databases/index";
 import { createProjectToolPermissionContext } from "../tool-permissions/index";
+import { createEntriesContext } from "../entries/index";
+
+test("a child operation signal stops only its entry call while the parent signal still fences every call", async () => {
+  const parent = new AbortController(), child = new AbortController(); const signals: AbortSignal[] = [];
+  const entries = createEntriesContext({ projectId: randomUUID(), name: "test", defaultEntry: "one", entries: [{ entryId: "one", name: "one", type: "workflow", root: ".", entry: "one.ts", databases: [] }] },
+    { actor: { userId: "alice", isSystemAdmin: false }, projectId: "project", sourceEntryId: "one", abortSignal: parent.signal },
+    { list: async () => [], run: async (_entry, _operation, _args, identity) => { assert.equal(identity.actor.userId, "alice"); signals.push(identity.abortSignal!); return {}; } });
+  await entries.get("one").runEntrypoint("read", [], { abortSignal: child.signal });
+  child.abort(new Error("Work stopped")); assert.equal(signals[0].aborted, true); assert.equal(parent.signal.aborted, false);
+  await entries.get("one").runEntrypoint("read"); assert.equal(signals[1].aborted, false);
+  parent.abort(new Error("Host stopped")); assert.equal(signals[1].aborted, true);
+  await assert.rejects(entries.get("one").runEntrypoint("read", [], { abortSignal: new AbortController().signal }), /Host stopped/);
+});
 
 async function fixture() {
   const directory = await mkdtemp(path.join(os.tmpdir(), "aggregate-entries-"));

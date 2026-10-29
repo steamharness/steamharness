@@ -1,5 +1,5 @@
 import type { Context } from "@earendil-works/chord";
-import { createRegistry, defineDoc, defineExtension, type Agent, type Harness, type RegistryReader, type RegistrySnapshot, type ToolRegistration, type ConversationId, type JsonObject } from "@earendil-works/pi-durable";
+import { createRegistry, defineDoc, defineExtension, type Agent, type Harness, type RegistryReader, type RegistrySnapshot, type ToolRegistration, type ToolExecutionApi, type ToolExecutionResult, type ConversationId, type JsonObject } from "@earendil-works/pi-durable";
 import { createToolSearchTool } from "@earendil-works/pi-durable/tool-search";
 import type { ExecutionEnv } from "@earendil-works/pi-durable/env";
 import type { AgentTool, AgentToolSet } from "./types";
@@ -37,7 +37,8 @@ export function canonical(value: unknown): string {
 }
 
 /** Merges immutable publications; the Harness itself pins each phase and wakes missing tasks. */
-export function mergeAgentRegistries(internal: RegistryReader, application?: RegistryReader): RegistryReader {
+export function mergeAgentRegistries(internal: RegistryReader, application?: RegistryReader,
+  authorizeTool?: (name: string, args: unknown, api: ToolExecutionApi, context: Context) => Promise<ToolExecutionResult | void>): RegistryReader {
   return {
     snapshot: () => {
       const own = internal.snapshot(), extra = application?.snapshot();
@@ -58,7 +59,16 @@ export function mergeAgentRegistries(internal: RegistryReader, application?: Reg
       }
       const merged = createRegistry();
       // Project argument transforms run before the Core approval hook.
-      for (const extension of [...(extra?.installed() ?? []), ...extensions]) merged.install(extension);
+      for (const extension of [...(extra?.installed() ?? []), ...extensions]) merged.install(!authorizeTool ? extension : {
+        ...extension,
+        tools: extension.tools?.map(tool => ({ ...tool, execute: async (args, api, context) => {
+          // Restored ToolTasks may already be past beforeTool. Guard the actual
+          // side-effect boundary as well as fresh argument/approval phases.
+          const blocked = await authorizeTool(tool.name, args, api, context);
+          if (blocked) return blocked;
+          return tool.execute(args, api, context);
+        } })),
+      });
       return merged.snapshot();
     },
     subscribe: listener => {

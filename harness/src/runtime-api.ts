@@ -20,6 +20,10 @@ import {
   agentHook,
   AgentToolTask,
   AgentGenerationTask,
+  enqueueAgentWork, enqueueAgentWorks,
+  readAgentWorkContext,
+  AgentWorkProgressDoc,
+  AgentSessionLifecycleDoc,
 } from "./agent/index";
 import {
   connectMcpServer,
@@ -88,6 +92,10 @@ export const projectRuntimeApi = {
   agentHook,
   AgentToolTask,
   AgentGenerationTask,
+  enqueueAgentWork, enqueueAgentWorks,
+  readAgentWorkContext,
+  AgentWorkProgressDoc,
+  AgentSessionLifecycleDoc,
   createAgentConversationProject,
   createAgentNode,
   createAgentProjectInput,

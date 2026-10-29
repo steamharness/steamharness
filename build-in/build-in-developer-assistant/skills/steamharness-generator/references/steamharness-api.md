@@ -676,7 +676,7 @@ params: [
 规则：
 
 - `ConversationDefinition` 的 `recovery` 使用内联 `{ enabled: true }` 声明可跨进程恢复。只为持久 Agent 等可恢复项目启用；CLI Web / Studio 保存原 runId、args 和已解析答案，worker 意外退出最多自动恢复 3 次，再用现有 Retry 继续原运行。关闭宿主保留检查点，显式停止先保存取消意图、停 worker，再调用 `steamharness/agent` 的 `cancelAgentConversation({ agentStoreDir, conversationId })`，重开不能复活。
-- `ConversationDefinition` 的 `durable` 字段使用内联 `{ enabled: true }`，并在 Agent 选项设置 `session: { ... }`，启用持久输入队列、steer、后台任务及 Studio Trace 任务视图。Harness 是队列与历史的唯一权威，不能另建宿主队列调度同一 Agent。CLI Web / Studio 通过稳定 requestId 的双向命令和快照确认提交；多客户端各自选择会话，共享同一个执行 owner。常驻 owner 调度由本地 CLI / Studio 宿主负责。
+- `ConversationDefinition` 的 `durable` 字段使用内联 `{ enabled: true }`，并在 Agent 选项设置 `session: { ... }`，启用持久输入队列、steer、后台任务及 Studio Trace 任务视图。Harness 是已提交输入、业务任务与执行历史的唯一权威。宿主可持久保留尚未提交的用户待发消息；忙碌时不提前放进 Pi inbox，失败或强退后暂停，只有成功用户轮次才顺序提交，后台 report 不能触发发送。CLI Web / Studio 通过稳定 requestId 的双向命令和快照确认提交；多客户端各自选择会话，共享同一个执行 owner。常驻 owner 调度由本地 CLI / Studio 宿主负责。
 - Slash 只用于 Conversation，支持单选 `type: "string"` 和开关 `type: "boolean"`，不能声明 `control`、`panel` 或 `multiple`。单选须有非空 `options`，默认使用首项，显式默认值必须属于选项；boolean 不提供 `options`，默认 `"false"`。选项级 `command` 默认取 `value`，boolean 参数级 `command` 默认取 `name`，命令不带 `/`、在项目内唯一且匹配 `/^[a-z][a-z0-9_-]*$/`。`resolvedOptions` 也可提供命令，省略时沿用同值静态选项的别名再回退到 `value`，格式和唯一性仍须合法。菜单遵守 visibility/disabled，选择后更新普通参数值、移除光标处命令并触发 resolver，不直接发送消息。
 - `ConversationDefinition.commands` 使用静态 `ConversationCommandDefinition[]` 定义通用执行命令，与 Slash 参数共享菜单；单独输入 `/` 展示全部命令。每项声明 `command`、非空 `label`、可选 `description` / `localizedLabel` / `localizedDescription` 和 `action`。`{ kind: "prompt", text: "..." }` 将声明的文字作为独立回合运行该项目，`{ kind: "export" }` 下载当前会话的完整 JSON 并在正文保存命令与结果。命令必须满足 `/^[a-z][a-z0-9_-]*$/`，不得与静态或动态参数命令重复。命令保留其他草稿正文和附件，在运行、等待审批、队列未清空或编辑队列时禁用。
 - `ConversationDefinition.footer` 使用静态 `ConversationFooterItem[]` 在标准输入框外下方展示纯文字。每项只声明 `{ text: "Plan mode", localizedText: { "zh-CN": "Plan 模式" } }` 或 `{ param: "plan" }`，可加 `when: { param: "plan", value: "true" }`。参数引用必须存在，显示当前选项标签或原值；隐藏的引用参数不展示，条件不匹配不展示。翻译缺失回退到 `text`，不解析 HTML/Markdown。小助手采用 `kind: "slash", name: "plan", type: "boolean", defaultValue: "false"`，单个 `/plan` 开关控制 Plan，默认 Build，`createInput` 映射 `paramValues.plan === "true" ? "plan" : "build"` 到 Agent 的 `agent`。
@@ -1164,7 +1164,7 @@ const result = await steamharness.runStreamNode(agentNode, input, context);
 - 总结响应的计费用量同样通过 `host.reportUsage` 上报，包括失败或取消响应中的已消耗 token；不能把它当作总结后的上下文大小。直接调用 `compactAgentMessages` 可传 `onUsage(usage)`，在摘要校验前接收模型返回的 pi `Usage`。
 - **取消运行会中止本轮**：`context.abortSignal` 一触发就调用 pi 侧的 `agent.abort()`，模型流与正在执行的工具一起停下，本轮以 `execution_aborted` 结束（工作流据此把运行标成 aborted，而不是失败），已经花掉的 token 仍会照常上报。
 
-配置对象（`AgentProjectOptions`，三个成员共用）：`workdir`、`systemPrompt`、`provider`、`model`、`baseUrl`、`apiKind`、`modelAttributes`、`webSearch`、`effort`、`permissionPolicy`、`mode`、`tools`、`toolDefinitions`、`allowedDirectories`、`extraTools`、`createTools`、`session`、`sessionId`、`sessionKey`、`databasePath`、`storage`、`name`、`historyLimit`，以及项目级 `executorName`、`projectName`、`outputItemId`、`params`。
+配置对象（`AgentProjectOptions`，三个成员共用）：`workdir`、`systemPrompt`、`provider`、`model`、`baseUrl`、`apiKind`、`modelAttributes`、`webSearch`、`effort`、`permissionPolicy`、`mode`、`tools`、`toolDefinitions`、`allowedDirectories`、`extraTools`、`createTools`、`createSession`、`session`、`sessionId`、`sessionKey`、`databasePath`、`storage`、`name`、`historyLimit`，以及项目级 `executorName`、`projectName`、`outputItemId`、`params`。
 
 内置工具为 `read`、`write`、`edit`、`bash`、`grep`、`find`、`ls`，以及**只在 plan 模式提供**的 `ask_user`。问答和计划通过 `context.userInput` 暂停，跨进程以原 runId 恢复；工具从原持久意图继续，askResume 回填答案，plan 决定使用稳定续跑身份，旧决定不能批准新 run。文件类工具经 realpath 校验工作区与 allowedDirectories；grep/find 不跟随软链接。bash 以宿主身份执行，不是文件沙箱。工具审批复用 context.toolPermissions，plan 回合才对未自动批准工具提问，build 直接执行，禁用工具仍拒绝。模型用量携带稳定 recordId，Core 原子 upsert，重放不重复累计；上游强杀前未返回的用量须另行对账。
 
@@ -1468,3 +1468,53 @@ Live sessions submit after each committed answer without waiting for the host le
 recall again for follow-up inputs. Recall is request-only and never becomes stored history or
 extraction input. Durable turn receipts plus the host outbox preserve delivery across restarts
 without duplicates. Initial memory activation skips previously completed conversation history.
+
+
+## 命名多 Agent 与持久工作队列
+
+在 `session.subagents.definitions` 中由项目代码声明角色；同一父会话下的工作项使用独立子会话，通过 Pi Durable 的任务检查点和 FIFO 队列共享并发槽位。单个 Agent 内的工具继续按原顺序执行。
+
+```ts
+const session = {
+  subagents: {
+    tools: ["read", "grep", "write"],
+    maxAgents: 4,
+    definitions: [
+      { id: "researcher", description: "Research one source", systemPrompt: "Research the assigned source and return evidence.",
+        tools: ["read", "grep"], maxConcurrency: 3 },
+      { id: "writer", description: "Verify and save one draft", systemPrompt: "Save the assigned draft and verify the result.",
+        tools: ["read", "write"], maxConcurrency: 1 },
+    ],
+  },
+};
+```
+
+`AgentDefinition` 还接受可选 `model: { provider, modelId }`、`effort`；省略时继承父会话。模型覆盖必须在 `subagents.models` 白名单内。角色提示替换项目协调者提示，平台规则继续生效；工具取父授权、总白名单、角色快照与当前配置的交集。恢复后再次检查权限，子 Agent 不能委派。
+
+`AgentSessionCommand` 的 `type: "subagent"` 支持以下 action，所有命令均携带稳定 `requestId`：
+
+| action | 参数和结果 |
+| --- | --- |
+| `spawn` | `agentId`、`workId`、`prompt`，可选 `label`、JSON `metadata`、`background`、`reportToParent`。相同 workId 复用任务，冲突载荷拒绝。 |
+| `list` | 列出当前父会话工作项。 |
+| `get` / `wait` | `taskId`；查询或等待结果，等待不阻塞停止命令。 |
+| `send` | `taskId`、`prompt`，可选 `mode: "steer" | "followUp"`。 |
+| `stop` | `taskId`；只取消该工作项及其执行树，不自动重试。 |
+| `retry` | `taskId`；为失败或取消项新建关联 attempt，保留原历史，从最新已提交上下文继续。所属批次已停止时须先恢复批次。 |
+
+回执和快照的 `agents` 提供 `taskId`、`workId`、`agentId`、`status`（含 `queued`）、`attempt`、`retryOf`、`childConversationId`、`metadata`、`progress`、`error` 和 `result`。Tasks 复用这些字段展示角色、素材、阶段和完成数，打开子会话、停止或重试均走 Core 控制通道。业务任务历史保留，内部 Pi 步骤只保留最近 200 项。
+
+原匿名 `subagent({ task, background?, model? })` 与历史任务继续可用；命名工具调用使用 `{ action: "spawn", agentId, workId, task, background: true }`，管理 action 使用 taskId。工具的后台结果默认回传；命令或业务任务可用 `reportToParent: false` 自行消费回执。
+
+业务 durable task 或 native tool 可在事务中调用公开 `steamharness.enqueueAgentWork(tx, registry, input, options)` / `steamharness.enqueueAgentWorks(tx, registry, inputs, options)`，与工具和宿主共用管理服务。批量派发使用后者（每批 1–1000 项），完成全部表读取后再创建任务；Pi 事务首次表写入后不能继续读表，不能循环调用单项 API。使用任务 ownership 可让批次停止级联取消所有等待和运行项。
+
+Native tool 用 `steamharness.readAgentWorkContext(api, ctx)` 获取获授权的角色、workId、attempt、父会话与 metadata。进度保存在会话级 family 文档，结束后仍可读取：`tx.doc(steamharness.AgentWorkProgressDoc, parentConversationId, String(taskId), null)`，更新 `completed`、`total`、`phase` 及可选 JSON `data`。非空 `error` 表示业务核验失败；重试成功时清空它，不能把仅结束模型输出视为业务完成。跨入口调用使用 `context.entries.get(id).runEntrypoint(operation, args, { abortSignal: ctx.abortSignal })`，工作项取消与父宿主取消共同生效。
+
+重试不能证明外部副作用失败。付费请求或写入结果未知时，先读取服务状态或业务回执；保留稳定业务 ID、草稿和阶段检查点，索引冲突仅重试索引阶段，不重放已提交正文。
+
+
+### 按授权配置创建会话
+
+`createSession(context)` 在工具和模型完成宿主授权后创建本轮的 `AgentSessionOptions`；提供工厂时优先于静态 `session`。用它按项目 Ask/Build 配置返回角色、native tools 和任务 registry；Ask 应返回不含采集和写入角色的配置。`defineAgentConversationExecutor`、选定 Core 项目的 `defineExecutor({ workflow })` 或 `defineExecutor({ coreAgent })` 自动继承 durable 与 recovery 声明；手写独立节点的 executor 仍需内联声明控制能力。自定义权限表须包含所有需要的 native tools、`update_plan` 和 `subagent`。
+
+`createAgentSessionHost(scopeId, { resume: true, interrupt: true })` 先取消旧执行树与未消费输入，再接受明确的新命令，保留业务文档检查点。`steamharness.AgentSessionLifecycleDoc.interrupted` 仅在这次取消期间为 true，可供项目 task 的 abort 将批次标为中断。CLI Web / Studio 重新打开尚有业务任务的会话时暂停任务及用户待发队列；下次明确输入先完成中断清理，批次仍需项目显式恢复。内部 worker 意外重启保留原恢复机制。普通无业务任务会话继续按检查点恢复。

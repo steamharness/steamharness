@@ -194,6 +194,7 @@ export interface Run {
   userSettings?: import('steamharness').UserSettings;
   /** Reattach the durable owner without resubmitting a historical input. */
   resumeAgent?: boolean;
+  interruptAgent?: boolean;
   configurationRunId?: string;
   configurationSelection?: {id:string;profileKey:string;subject:string};
   resumeConfiguration?: boolean;
@@ -264,7 +265,7 @@ export interface ConversationMessage {
   timers?: TimerRecord[];
 }
 
-export interface ConversationQueuedInput { configurationSelection?: Run['configurationSelection']; configurationPending?: boolean; id: string; requestId?: string; text: string; params: ParamValues; states?: Record<string, ParamState>; entrypointId?: string; attachments: Attachment[]; references?: PathReference[]; createdAt: number }
+export interface ConversationQueuedInput { configurationSelection?: Run['configurationSelection']; configurationPending?: boolean; hostQueued?: boolean; id: string; requestId?: string; text: string; params: ParamValues; states?: Record<string, ParamState>; entrypointId?: string; attachments: Attachment[]; references?: PathReference[]; createdAt: number }
 
 export interface ConversationSession {
   agentParameters?: { userSettings?: import('steamharness').UserSettings; configurationRevision?: number; configurationSelection?: Run['configurationSelection']; args: string[]; entrypointId?: string; policies: unknown };
@@ -286,6 +287,7 @@ export interface ConversationSession {
   queuedInputs?: ConversationQueuedInput[];
   /** Preserved across restarts; only a successful run resumes automatic sending. */
   queuePaused?: boolean;
+  agentInterrupted?: boolean;
   draft?: { text: string; attachments: Attachment[]; references?: PathReference[]; editingQueueId?: string };
   titleLocked?: boolean;
   activeRunId?: string;
@@ -308,6 +310,7 @@ export function messageSettled(message: ConversationMessage): boolean {
 }
 
 export function sessionRunning(session: ConversationSession): boolean {
+  if (session.agentInterrupted) return false;
   if (!session.agent) return !!session.activeRunId;
   const id = session.agentConversationId ?? session.agent.conversationId;
   const context = session.agent.contexts.find(context => context.conversationId === id);

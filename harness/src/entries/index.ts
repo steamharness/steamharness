@@ -19,7 +19,7 @@ export interface EntryRunner {
 export interface EntryContext {
   readonly registration: Readonly<ProjectEntry>;
   listEntrypoints(): Promise<EntryOperation[]>;
-  runEntrypoint(entrypointId: string, args?: readonly string[]): Promise<unknown>;
+  runEntrypoint(entrypointId: string, args?: readonly string[], options?: { abortSignal?: AbortSignal }): Promise<unknown>;
 }
 export interface EntriesContext {
   list(): ReadonlyArray<ProjectEntry>;
@@ -35,7 +35,13 @@ export function createEntriesContext(manifest: ProjectManifest, identity: EntryC
       return {
         registration: Object.freeze(structuredClone(registration)),
         async listEntrypoints() { assertActive(); return runner.list(entryId, identity); },
-        async runEntrypoint(entrypointId, args = []) { assertActive(); return runner.run(entryId, entrypointId, args, identity); },
+        async runEntrypoint(entrypointId, args = [], options = {}) {
+          assertActive();
+          const abortSignal = options.abortSignal && identity.abortSignal ? AbortSignal.any([identity.abortSignal, options.abortSignal])
+            : options.abortSignal ?? identity.abortSignal;
+          abortSignal?.throwIfAborted();
+          return runner.run(entryId, entrypointId, args, { ...identity, abortSignal });
+        },
       };
     },
   };
