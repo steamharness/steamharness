@@ -94,6 +94,31 @@ test("enabling memory does not import completed conversation history", async t =
   assert.equal(m.turns[0]!.messages[0]!.content, "Only this new preference");
 });
 
+test("re-enabling memory never submits turns completed while project memory was disabled", async t => {
+  const dir = await mkdtemp(path.join(tmpdir(), "memory-disabled-interval-")); t.after(() => rm(dir, { recursive: true, force: true }));
+  const database = path.join(dir, "agent.sqlite"), m = memory();
+  const first = await start(database, { provider: m.provider }); t.after(first.close);
+  await until(() => m.turns.length === 1);
+  await first.close();
+
+  const queriesBeforeDisable = m.queries.length;
+  const disabled = await start(database, false, true); t.after(disabled.close);
+  await until(() => !!disabled.snapshot());
+  await disabled.runtime.control!({ type: "submit", requestId: "disabled", prompt: "PRIVATE_DISABLED_TURN", mode: "followUp" });
+  await until(() => disabled.snapshot()?.turns.some(turn => turn.requestId === "disabled" && turn.status === "done") === true);
+  assert.equal(m.turns.length, 1);
+  assert.equal(m.queries.length, queriesBeforeDisable, "Disabled sessions must not recall memory");
+  assert.ok(disabled.requests.every(prompt => !prompt.includes("PRIVATE_RECALL_SENTINEL")));
+  await disabled.close();
+
+  const restored = await start(database, { provider: m.provider }, true); t.after(restored.close);
+  await until(() => !!restored.snapshot());
+  assert.equal(m.turns.length, 1, "Enabling memory must not import the disabled interval");
+  await restored.runtime.control!({ type: "submit", requestId: "enabled-again", prompt: "New preference after enabling", mode: "followUp" });
+  await until(() => m.turns.length >= 2);
+  assert.deepEqual(m.turns.map(turn => turn.messages[0]!.content), ["Initial user preference", "New preference after enabling"]);
+});
+
 test("a read-only live session recalls without submitting completed turns", async t => {
   const dir = await mkdtemp(path.join(tmpdir(), "memory-read-only-session-")); t.after(() => rm(dir, { recursive: true, force: true }));
   const database = path.join(dir, "agent.sqlite"), m = memory(), f = await start(database, { provider: m.provider }, false, "read-only"); t.after(f.close);

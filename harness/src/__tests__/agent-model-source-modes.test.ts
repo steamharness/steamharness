@@ -170,3 +170,28 @@ test("Core Agent project memory has portable opt-in defaults and persisted per-p
   assert.equal((await store.snapshot({required:false})).values[AGENT_MEMORY_CONFIGURATION_KEY],true);
  }finally{await rm(directory,{recursive:true,force:true});}
 });
+
+test("memory defaults resolve constants in their lexical scope without borrowing shadowed opt-ins", async () => {
+  const directory = await mkdtemp(path.join(os.tmpdir(), "agent-memory-shadowed-"));
+  try {
+    await declareConfigurationFixture(directory);
+    const cases: [string, boolean][] = [
+      ["const options = {}; steamharness.createAgentConversationProject(options); function unused() { const options = {memory:true}; }", false],
+      ["const memory = true; function make(memory) { steamharness.createAgentConversationProject({memory}); }", false],
+      ["const options = {memory:true}; function make() { const options = {}; steamharness.createAgentConversationProject(options); }", false],
+      ["const options = {}; function make() { const options = {memory:true}; steamharness.createAgentConversationProject(options); }", true],
+      ["const memory = true; function unused(memory) {} steamharness.createAgentConversationProject({memory});", true],
+      ["const memory = true; { let memory; steamharness.createAgentConversationProject({memory}); }", false],
+      ["const memory = true; function make({memory}) { steamharness.createAgentConversationProject({memory}); }", false],
+      ["const memory = true; try {} catch (memory) { steamharness.createAgentConversationProject({memory}); }", false],
+      ["const memory = true; for (const memory of []) { steamharness.createAgentConversationProject({memory}); }", false],
+      ["const memory = true; function make() { if (true) { var memory; } steamharness.createAgentConversationProject({memory}); }", false],
+      ["const memory = true; (function memory() { steamharness.createAgentConversationProject({memory}); });", false],
+      ["const memory = true; (class memory { make() { steamharness.createAgentConversationProject({memory}); } });", false],
+    ];
+    for (const [source, expected] of cases) {
+      await writeFile(path.join(directory, "index.ts"), source);
+      assert.equal(readProjectConfigurationDefinition(directory).fields.find(field => field.name === AGENT_MEMORY_CONFIGURATION_KEY)?.defaultValue, expected, source);
+    }
+  } finally { await rm(directory, { recursive: true, force: true }); }
+});

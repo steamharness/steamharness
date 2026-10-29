@@ -1467,7 +1467,8 @@ persisted completed user/final-answer messages are submitted; recalled data is p
 Live sessions submit after each committed answer without waiting for the host lease to end and
 recall again for follow-up inputs. Recall is request-only and never becomes stored history or
 extraction input. Durable turn receipts plus the host outbox preserve delivery across restarts
-without duplicates. Initial memory activation skips previously completed conversation history.
+without duplicates. Initial memory activation skips previously completed conversation history;
+re-enabling also excludes turns completed while memory was disabled.
 
 
 ## 命名多 Agent 与持久工作队列

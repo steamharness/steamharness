@@ -72,17 +72,39 @@ function discoverProjectAgentModels(projectDir: string, cache?: AgentModelSource
       }
       // Resolve local constants without evaluating project code. Unknown options
       // may select project models, so keep that configuration available.
-      const constants = new Map<string, ts.Expression>();
+      const constants = new Map<ts.Node, Map<string, ts.Expression | undefined>>();
+      const lexicalScope = (node: ts.Node, functionScoped = false): ts.Node => {
+        while (!ts.isSourceFile(node) && !ts.isFunctionLike(node) && !ts.isClassLike(node) && !ts.isClassStaticBlockDeclaration(node) && (functionScoped ||
+          !ts.isBlock(node) && !ts.isCaseBlock(node) && !ts.isCatchClause(node) &&
+          !ts.isForStatement(node) && !ts.isForInStatement(node) && !ts.isForOfStatement(node))) node = node.parent;
+        return node;
+      };
+      const bind = (scope: ts.Node, name: ts.BindingName, value?: ts.Expression): void => {
+        let declarations = constants.get(scope);
+        if (!declarations) constants.set(scope, declarations = new Map());
+        if (ts.isIdentifier(name)) declarations.set(name.text, value);
+        else for (const element of name.elements) if (ts.isBindingElement(element)) bind(scope, element.name);
+      };
       const collect = (node: ts.Node): void => {
-        if (ts.isVariableDeclarationList(node) && (node.flags & ts.NodeFlags.Const)) for (const declaration of node.declarations) {
-          if (ts.isIdentifier(declaration.name) && declaration.initializer) constants.set(declaration.name.text, declaration.initializer);
+        if (ts.isVariableDeclaration(node)) {
+          const list = ts.isVariableDeclarationList(node.parent) ? node.parent : undefined;
+          bind(lexicalScope(node.parent, !!list && !(list.flags & ts.NodeFlags.BlockScoped)), node.name,
+            list && (list.flags & ts.NodeFlags.Const) ? node.initializer : undefined);
         }
+        if (ts.isParameter(node)) bind(lexicalScope(node.parent), node.name);
+        if ((ts.isFunctionDeclaration(node) || ts.isClassDeclaration(node)) && node.name) bind(lexicalScope(node.parent), node.name);
+        if ((ts.isFunctionExpression(node) || ts.isClassExpression(node)) && node.name) bind(node, node.name);
         ts.forEachChild(node, collect);
       };
       collect(source);
-      const unwrap = (value: ts.Expression, seen = new Set<string>()): ts.Expression => {
+      const unwrap = (value: ts.Expression, seen = new Set<ts.Node>()): ts.Expression => {
         if (ts.isParenthesizedExpression(value) || ts.isAsExpression(value) || ts.isSatisfiesExpression(value) || ts.isTypeAssertionExpression(value)) return unwrap(value.expression, seen);
-        if (ts.isIdentifier(value) && constants.has(value.text) && !seen.has(value.text)) return unwrap(constants.get(value.text)!, new Set([...seen, value.text]));
+        if (ts.isIdentifier(value)) for (let owner: ts.Node | undefined = value.parent; owner; owner = owner.parent) {
+          const declarations = constants.get(owner);
+          if (!declarations?.has(value.text)) continue;
+          const initializer = declarations.get(value.text);
+          return initializer && !seen.has(initializer) ? unwrap(initializer, new Set([...seen, initializer])) : value;
+        }
         return value;
       };
       const modelSource = (argument?: ts.Expression, seen = new Set<ts.Node>()): "user-settings" | "project" | "unknown" | undefined => {

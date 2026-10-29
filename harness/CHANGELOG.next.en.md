@@ -1,5 +1,7 @@
 # Unreleased
 
+- Fixed: Re-enabling project memory skips turns completed while disabled. Static defaults resolve variables within their lexical scope so unrelated locals cannot accidentally enable memory.
+
 - Added: Add named agent roles, durable FIFO concurrency, shared management commands and checkpoint retries. Dynamic sessions and wrapped executors inherit durable control; recovery rechecks role access and retains business task history and progress.
 
 - Changed: Project memory defaults off and the built-in Assistant explicitly opts in. A project configuration switch controls authorization, recall, saving and tools without deleting existing memories.

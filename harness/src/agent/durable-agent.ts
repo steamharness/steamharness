@@ -222,15 +222,20 @@ export class DurableAgent {
         },
       }, context);
       this.root = await this.harness.root(context, { agent: { model: { provider: this.state.model.provider, modelId: this.state.model.id } } });
-      if (this.options.memoryEnabled) {
-        const existing = await this.root.context(context);
-        const memory = await this.root.commit(async tx => {
-          const identity = await tx.doc(MemoryIdentityDoc, this.root!.id);
-          const session = await tx.doc(MemorySessionDoc, this.root!.id);
-          // Enabling memory does not import completed conversation history.
-          if (session.cutoff < 0) session.cutoff = Math.max(0, ...existing.entries.map(entry => entry.id));
-          return { id: identity.id, cutoff: session.cutoff };
-        }, context);
+      const existing = this.options.memoryEnabled ? await this.root.context(context) : undefined;
+      const memory = await this.root.commit(async tx => {
+        const session = await tx.doc(MemorySessionDoc, this.root!.id);
+        if (!existing) {
+          // The next activation must also exclude turns completed while disabled.
+          session.cutoff = -1;
+          return undefined;
+        }
+        const identity = await tx.doc(MemoryIdentityDoc, this.root!.id);
+        // Enabling memory does not import completed conversation history.
+        if (session.cutoff < 0) session.cutoff = Math.max(0, ...existing.entries.map(entry => entry.id));
+        return { id: identity.id, cutoff: session.cutoff };
+      }, context);
+      if (memory) {
         this.memoryIdentity = memory.id; this.memoryCutoff = memory.cutoff;
       }
       await this.resources.restore(this.harness, this.root.id, context);
