@@ -20,6 +20,9 @@ export function inheritAgentProjectParams<Input, Output>(definition: Conversatio
     if (definition.coreAgent !== undefined) throw new HarnessError({ type: "input_validation", message: "coreAgent must reference a Core Agent conversation project." });
     return;
   }
+  // The durable database retains unfinished work after a process exits. Hosts
+  // must reconnect using the original run identity before admitting new input.
+  definition.conversation = { ...definition.conversation, recovery: { enabled: true } };
   const declarations = definition.params ??= structuredClone(contract.params);
   const fields = normalizeProjectParamDeclarations(declarations).params;
   const names = new Set(fields.map(field => field.name));

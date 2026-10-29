@@ -43,7 +43,8 @@ const DEFAULT_OUTPUT_ITEM_ID = "agent-answer";
  * The workflow half of a conversation agent project.
  *
  * Parameters and their resolver are inherited by defineExecutor. Tools,
- * conversation and tokenUsage remain explicit, statically readable declarations.
+ * conversation presentation and tokenUsage remain explicit, statically readable
+ * declarations. Host recovery is inherited with the selected Agent contract.
  */
 export function createAgentConversationProject(
   options: AgentProjectOptions = {},

@@ -25,6 +25,8 @@ Arguments after `--` pass unchanged to the Workflow. `--locale zh-CN|en` selects
 
 ## CLI Web
 
+Core Agent entries recover unfinished work with its original run identity after a forced exit. Host shutdown closes workers; workers that do not finish cleanup exit within five seconds to release conversation ownership. Failure, stop or timeout preserves and pauses queued input. Only a successful turn automatically starts the next queued message. You can explicitly resume the queue or send new input; successful new input then advances the retained queue in order.
+
 In Studio, click local file links, inline code paths or plain absolute paths in Agent replies and plans to open the file in the editor. Relative paths, `file://` links and locations such as `src/main.ts:12:3` or `src/main.ts#L12C3` are supported. Relative paths resolve from the aggregate project root or Assistant's bound working directory. Web links open in the browser. Standalone CLI Web cannot open the local editor and prompts you to use Studio when opening a local path.
 
 Exporting a conversation, message or workflow record in Studio opens the native save dialog, defaulting to the Downloads folder in your home directory. You can choose another location. After you confirm a location and the file is written successfully, a notification in the lower-right corner shows the saved path. Cancellation shows no success notification; save failures show an error. Standalone CLI Web uses browser downloads.

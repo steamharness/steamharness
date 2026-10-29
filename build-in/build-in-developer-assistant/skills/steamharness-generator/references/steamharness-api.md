@@ -1237,6 +1237,8 @@ const readKey: AgentTool = {
 - 一个服务的工具总数上限 256，超出的分页在合并前就被拒绝；列目录时游标只在「有进展」时推进，重复游标会以循环为由中止。
 - 生命周期是每轮连接、`finally` 关闭。SDK 在 `connectMcpServer` 内部用动态 `import()` 加载，不使用 MCP 的运行时不解析也不加载它。
 
+`defineExecutor` 选定 `createAgentConversationProject` 作为 `workflow` 或包装入口的 `coreAgent` 时，自动继承 `conversation.recovery: { enabled: true }`，运行时与静态报告保持一致，不需要项目重复声明。宿主重启使用原 runId 接回未完成请求，不能通过更换 requestId 或清空数据库绕过 busy；待发队列仅在成功后自动推进，失败、取消和超时保留消息。
+
 **Core Agent 项目优先声明 `skills: { directories: ["skills"] }`。** `createAgentConversationProject` / `createAgentNode` 相对入口根目录解析路径，自动创建带工具权限校验的 `skill`，无需在 `createTools` 重复创建；仍需在内联 `executor.tools` 保留 `skill` 权限元数据。宿主读取选定 `createAgentConversationProject` 的技能声明（包装 Conversation 通过 `coreAgent` 关联），使用 `listLocalProjectSkills({ projectDir, entryId?, entrypointId? })` 列出真实项目及默认加载的 Core 内置指南（`id/name/description/source`），并用 `readLocalProjectSkill({ projectDir, entryId?, entrypointId?, skillId })` 按目录 ID 读取完整原始 `SKILL.md`（`{ skill, content }`）。预览不运行任务或工具工厂，不接受任意路径；非 Core Agent 返回空目录。同名项目与内置指南保留独立 ID，项目根目录之间仍按先出现者优先。
 
 **技能按需读取，不注入提示词。** `await steamharness.createSkillTools({ directories, approve? })` 返回一个 `skill` 工具：

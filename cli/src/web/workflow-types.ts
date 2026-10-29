@@ -285,6 +285,8 @@ export interface ConversationSession {
   parameterRevisions?: Record<string, Record<string, string>>;
   toolPermissionPolicies?: ToolPolicies;
   queuedInputs?: ConversationQueuedInput[];
+  /** Preserved across restarts; only a successful run resumes automatic sending. */
+  queuePaused?: boolean;
   draft?: { text: string; attachments: Attachment[]; references?: PathReference[]; editingQueueId?: string };
   titleLocked?: boolean;
   activeRunId?: string;

@@ -1,5 +1,7 @@
 # Unreleased
 
+- [Fixed] Bound worker shutdown and release conversation ownership after forced exit. Queues advance automatically only after success; failures, cancellation and timeouts retain pending messages, and new explicit input can run before the paused queue.
+
 - Fixed memory panel layout with a continuous list, on-demand details and compact switches. Configuration, outage and authorization states are distinct, with a working return to the list on narrow layouts.
 
 - Improved: Project configurations reference settings models or define project models; composed menus group settings and project entries and follow project defaults without copying host credentials.

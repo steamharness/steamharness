@@ -1849,6 +1849,7 @@ function analyzeSourceFile(
       conversationProperty === undefined ||
       !ts.isObjectLiteralExpression(conversationProperty.initializer)
     ) {
+      if (readCoreAgentOptions(objectArg)) analysis.executorConversation = { recovery: { enabled: true } };
       return;
     }
 
@@ -1866,7 +1867,7 @@ function analyzeSourceFile(
     const userInput = readConversationUserInputProperty(conversationProperty.initializer);
     const collapseIntermediate = readConversationPresentationProperty(conversationProperty.initializer);
     const recoveryProperty = findStaticPropertyAssignment(conversationProperty.initializer, "recovery");
-    const recovery = recoveryProperty !== undefined && ts.isObjectLiteralExpression(recoveryProperty.initializer)
+    const recovery = readCoreAgentOptions(objectArg) || recoveryProperty !== undefined && ts.isObjectLiteralExpression(recoveryProperty.initializer)
       && readBooleanProperty(recoveryProperty.initializer, "enabled") === true ? { enabled: true as const } : undefined;
     const durableProperty = findStaticPropertyAssignment(conversationProperty.initializer, "durable");
     const durable = durableProperty !== undefined && ts.isObjectLiteralExpression(durableProperty.initializer)

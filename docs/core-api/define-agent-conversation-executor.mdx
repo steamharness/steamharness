@@ -23,7 +23,7 @@ workflow.defineAgentConversationExecutor(options?: AgentProjectOptions):
 
 ## 选项
 
-`session` 可启用 [持久会话控制](./create-agent.mdx#持久会话控制)。便捷 executor 自动声明 `conversation.durable: { enabled: true }`，默认权限列表增加 `update_plan` 和启用时的 `subagent`。自定义 `toolDefinitions` 时须自行包含这些声明。静态内联项目须同时声明 recovery/durable 并传 session；例如 `session: { subagents: { tools: ["read", "grep", "find", "ls"], maxAgents: 4 }, planFork: "asOf" }`。子 Agent 工具只收紧父权限，后台结果自动单次回传。CLI Web / Studio 保持执行 owner 存活，在四个侧栏视图展示任务、计划、记录和用量。
+`session` 可启用 [持久会话控制](./create-agent.mdx#持久会话控制)。便捷 executor 自动声明 `conversation.durable: { enabled: true }`，默认权限列表增加 `update_plan` 和启用时的 `subagent`。自定义 `toolDefinitions` 时须自行包含这些声明。静态内联项目须声明 durable 并传 session；选定 Core Agent 项目时 recovery 自动继承；例如 `session: { subagents: { tools: ["read", "grep", "find", "ls"], maxAgents: 4 }, planFork: "asOf" }`。子 Agent 工具只收紧父权限，后台结果自动单次回传。CLI Web / Studio 保持执行 owner 存活，在四个侧栏视图展示任务、计划、记录和用量。
 
 除 [createAgentNode](./create-agent-node.mdx) 的全部选项外：
 
@@ -61,7 +61,7 @@ Effort 默认 `high`，`/plan` 默认关闭。模型默认组合用户设置与�
 
 **多轮上下文和未完成任务由 Pi Durable 保存。** Core 按项目、会话和 `sessionKey` 选择 SQLite 文件，按提交保存消息、工具意图与结果、审批等待和用量身份。相同 `runId` 恢复同一请求；已完成请求只重建自身的输出。旧 KV transcript 不再读取，存储失败终止运行。多个 Agent 节点须使用不同 `sessionKey`；`hostInput` 网关运行默认使用内存存储。详见 [createAgentNode](./create-agent-node.mdx)。
 
-封装启用 `conversation.recovery: { enabled: true }`。需要静态结构分析的项目应在 `defineExecutor` 中内联声明相同字段；CLI Web / Studio 据此恢复中断 worker。
+`defineExecutor` 选定 `createAgentConversationProject` 作为 `workflow` 或 `coreAgent` 时，运行时与静态结构报告都会自动继承 `conversation.recovery: { enabled: true }`，并保留项目自己的对话展示配置。CLI Web / Studio 强退重启后使用原 `runId` 恢复未完成任务；恢复失败时保留待发队列，只有一轮成功后才自动继续。
 
 > **正文 item 的 id 必须与 `conversation.openai.outputItemId` 一致。** OpenAI / Responses 适配器是在 `report.outputs[].output.items` 里**按 id 查找**这段正文的：CLI 本地网关与 `__openai-responses-runner` 都走这条查找，两者不一致时运行会以「did not produce output item」失败。
 

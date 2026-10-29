@@ -9,19 +9,28 @@ let ts;
 let assistantScopeDirectory;
 let agentHost;
 let ownerDisconnected = false;
+let shutdownTimer;
 
 
 const write = process.stdout.write.bind(process.stdout);
 const send = (kind, value) => write(`__STEAMHARNESS_WEB__${JSON.stringify({ kind, value })}\n`);
 console.log = console.error;
 const controller = new AbortController();
-process.on('SIGTERM', () => { agentHost?.close(); controller.abort(new Error('Stopped.')); });
-process.on('SIGINT', () => { agentHost?.close(); controller.abort(new Error('Stopped.')); });
-process.on('disconnect', () => {
+const shutdown = (suspend = false) => {
+  // Uncooperative project tools must not keep a dead owner's worker, sockets
+  // or SQLite lock alive forever. Normal cleanup gets a bounded grace period.
+  shutdownTimer ??= setTimeout(() => process.exit(1), 5_000).unref();
+  if (suspend && agentHost) agentHost.suspend();
+  else { agentHost?.close(); controller.abort(new Error(suspend ? 'Owner disconnected.' : 'Stopped.')); }
+};
+process.on('SIGTERM', () => shutdown());
+process.on('SIGINT', () => shutdown());
+const disconnectOwner = () => {
   ownerDisconnected = true;
-  if (agentHost) agentHost.suspend();
-  else controller.abort(new Error('Owner disconnected.'));
-});
+  shutdown(true);
+};
+process.on('disconnect', disconnectOwner);
+process.on('message', message => { if (message?.type === 'shutdown') disconnectOwner(); });
 
 
 async function requiresSystemAi(directory) {
@@ -203,9 +212,14 @@ try {
       let agentControl;
       let runFinished = false;
       let runFailure;
+      if (request.project.conversation?.durable?.enabled || request.project.conversation?.recovery?.enabled) {
+        const agent = await import(resolve('steamharness/agent', pathToFileURL(path.join(runtimeProjectDir, 'package.json')).href));
+        controller.signal.throwIfAborted();
+        agentHost = agent.createAgentSessionHost(request.conversationId, { resume: request.resumeAgent === true });
+        if (ownerDisconnected) agentHost.suspend();
+      }
       if (request.project.conversation?.durable?.enabled) {
         const agent = await import(resolve('steamharness/agent', pathToFileURL(path.join(runtimeProjectDir, 'package.json')).href));
-        agentHost = agent.createAgentSessionHost(request.conversationId, { resume: request.resumeAgent === true });
         agentControl = async ({ command, scopeId, attachments }) => core.withProjectConfiguration(configuration, async () => {
           if (typeof scopeId !== 'string' || !command || typeof command.requestId !== 'string') throw new Error('Invalid agent command.');
           if(command.type!=='cancel')await core.assertProjectConfigurationAccess(projectDir,configuration, request.project.entryId);

@@ -22,7 +22,7 @@ interface ControllerOptions {
   changed(): void;
   log(message: string): void;
 }
-interface RunTask { sessionId: string; cancelled: boolean; finished: Promise<void>; promote?: boolean }
+interface RunTask { sessionId: string; cancelled: boolean; finished: Promise<void> }
 interface PendingSave { promise: Promise<void>; resolve(): void; reject(error: unknown): void }
 
 export class ConversationController {
@@ -45,6 +45,7 @@ export class ConversationController {
       entry.updatedAt ??= entry.messages.at(-1)?.createdAt ?? entry.createdAt;
       delete entry.activeRunId;
       entry.queuedInputs ??= [];
+      if (entry.queuedInputs.length && !project.conversation?.durable?.enabled) entry.queuePaused = true;
       const agent = this.project.conversation?.durable?.enabled
         ? this.sessions.find(session => session.id === (entry.agentOwnerId ?? entry.id))?.agent : undefined;
       for (const message of entry.messages) {
@@ -270,7 +271,7 @@ export class ConversationController {
       this.changed(); await this.persist(); return;
     }
     const waiting = entry.messages.some((message) => message.pendingInput || message.cancelRequested || message.recovering);
-    if (entry.activeRunId || waiting || entry.queuedInputs?.length) {
+    if (entry.activeRunId || waiting || entry.queuedInputs?.length && (editingId || this.queueCanContinue(entry))) {
       if (!this.project.conversation?.inputQueue?.enabled) { throw new Error(t("The current session is running.")); }
       if (editingId) {
         const index = entry.queuedInputs!.findIndex((item) => item.id === editingId);
@@ -456,6 +457,10 @@ export class ConversationController {
         this.options.log(`Workflow run: ${answer.error}`);
       }
     } finally {
+      if (!historical) {
+        if (!task.cancelled && !this.disposed && answer.status === 'success') delete entry.queuePaused;
+        else entry.queuePaused = true;
+      }
       if (!historical && answer.status !== 'running' && answer.status !== 'failed') answer.recovering = false;
       if (!historical && answer.status !== 'waiting_for_input' && answer.status !== 'running') {
         answer.timers = answer.timers?.map((timer) => timer.status === 'running'
@@ -475,7 +480,7 @@ export class ConversationController {
       try { await this.persist(); }
       finally { if (this.tasks.get(answer.runId!) === task) this.tasks.delete(answer.runId!); this.changed(); }
       if (restart) this.recover();
-      else if (!this.disposed && !this.removing.has(entry.id) && !answer.pendingInput && !answer.cancelRequested && (!task.cancelled || task.promote)) { this.drain(entry); }
+      else if (!task.cancelled && answer.status === 'success' && !this.disposed && !this.removing.has(entry.id) && !answer.pendingInput && !answer.cancelRequested) { this.drain(entry); }
     }
   }
   private owner(entry: ConversationSession): ConversationSession {
@@ -730,8 +735,15 @@ export class ConversationController {
     entry.parameterRevisions = { ...entry.parameterRevisions, [key]: { ...entry.parameterRevisions?.[key],
       ...Object.fromEntries(Object.keys(updates).map(name => [name, revision])) } };
   }
+  private queueCanContinue(entry: ConversationSession): boolean {
+    if (entry.queuePaused) return false;
+    for (let index = entry.messages.length - 1; index >= 0; --index) {
+      if (entry.messages[index].role === 'assistant') return entry.messages[index].status === 'success';
+    }
+    return false;
+  }
   private drain(entry: ConversationSession, explicit = false): void {
-    if (this.options.canStart?.() === false || !explicit && this.options.canDrain?.() === false || this.project.conversation?.durable?.enabled || entry.activeRunId || entry.messages.some((message) => message.pendingInput || message.cancelRequested || message.recovering) || entry.draft?.editingQueueId || this.disposed || this.removing.has(entry.id)) { return; }
+    if (this.options.canStart?.() === false || !explicit && (this.options.canDrain?.() === false || !this.queueCanContinue(entry)) || this.project.conversation?.durable?.enabled || entry.activeRunId || entry.messages.some((message) => message.pendingInput || message.cancelRequested || message.recovering) || entry.draft?.editingQueueId || this.disposed || this.removing.has(entry.id)) { return; }
     const input = entry.queuedInputs?.shift();
     if (input) {
       try { this.start(entry, input); }
@@ -828,8 +840,6 @@ export class ConversationController {
     }
     await this.reorderQueued([id, ...queue.filter((input) => input.id !== id).map((input) => input.id)], entry);
     if (entry.draft?.editingQueueId) { entry.draft = { text: '', attachments: [] }; }
-    const task = entry.activeRunId && this.tasks.get(entry.activeRunId);
-    if (task) task.promote = true;
     await this.stop(entry); this.drain(entry, true);
   }
   async retry(id: string, entry = this.current): Promise<void> {

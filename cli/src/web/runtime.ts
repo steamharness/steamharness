@@ -3,6 +3,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import type { UserSettings } from 'steamharness';
 import { fileURLToPath } from 'node:url';
+import { setTimeout as delay } from 'node:timers/promises';
 import { STEAMHARNESS_RUNTIME_LOCALE_ENV, createLocalProjectConfigurationStore, type ProjectConfigurationSnapshot } from 'steamharness';
 import { locale } from './localization';
 import { redactProjectData, type Runtime, type Report, type Project } from './workflow-types';
@@ -42,6 +43,7 @@ export function createWebRuntime(projectDir: string, storageDir: string, connect
   const children = new Set<ChildProcess>();
   const active = new Map<string, ChildProcess>();
   const controls = new Map<string, (command: AgentSessionCommand, scopeId: string, attachments?: unknown[]) => Promise<AgentSessionReceipt>>();
+  const runCancellation = new Map<string, AbortController>();
   let disposed = false;
   const configurationStores = new Map<string, ReturnType<typeof createLocalProjectConfigurationStore>>();
   const configurations = (entryId = options.entryId) => {
@@ -148,6 +150,22 @@ export function createWebRuntime(projectDir: string, storageDir: string, connect
     child.stdin!.on('error', () => undefined);
     child.stdin!.end(JSON.stringify({ ...request, memoryAvailable:!!auth?.memoryToken, userSettings, storageDir, runtimeProjectDir: projectDir, entryId: (request.project as Project)?.entryId ?? options.entryId, actor: options.actor?.() }));
   });
+  const invokeRun = async (request: Record<string, unknown>, onEvent: (event: Record<string, unknown>) => void, signal: AbortSignal): Promise<Report> => {
+    // A replacement host can start before its orphaned worker finishes cleanup.
+    // Wait only for the storage owner of the original recovering request. Never
+    // retry admission conflicts or steal a live owner's lock.
+    const deadline = Date.now() + 6_000;
+    while (true) {
+      signal.throwIfAborted();
+      try {
+        const report = await invoke<Report>({ method: 'run', ...request }, onEvent);
+        if (disposed || !request.resumeConfiguration && !request.resumeAgent || !agentOwnerConflict(report) || Date.now() >= deadline) return report;
+      } catch (error) {
+        if (disposed || !request.resumeConfiguration && !request.resumeAgent || !agentOwnerConflict(error) || Date.now() >= deadline) throw error;
+      }
+      await delay(100, undefined, { signal });
+    }
+  };
   return {
     available: true,
     listSkills: (project, entrypointId) => invoke({ method: 'skills', project, entrypointId }),
@@ -172,11 +190,15 @@ export function createWebRuntime(projectDir: string, storageDir: string, connect
     inspect: (paths) => invoke({ method: 'inspect', paths }),
     resolveParams: (project, request, entrypointId) => invoke({ method: 'resolve', project, request, entrypointId }),
     run: async (request, onEvent) => {
-      if(!request.configurationSelection)return invoke({method:'run',...request},onEvent);
-      const selection=request.configurationSelection;
-      const configuration=await (await configurations(request.project.entryId)).snapshot({id:selection.id,runId:request.configurationRunId??request.runId,requireExisting:request.resumeConfiguration});
-      if(configuration.accessSubject!==selection.subject||configuration.profileKey!==selection.profileKey)throw new Error('This run configuration is not available to this account.');
-      return invoke({method:'run',...request,configuration},onEvent);
+      const runId = String(request.runId), cancellation = new AbortController();
+      runCancellation.set(runId, cancellation);
+      try {
+        if(!request.configurationSelection)return await invokeRun({...request},onEvent,cancellation.signal);
+        const selection=request.configurationSelection;
+        const configuration=await (await configurations(request.project.entryId)).snapshot({id:selection.id,runId:request.configurationRunId??request.runId,requireExisting:request.resumeConfiguration});
+        if(configuration.accessSubject!==selection.subject||configuration.profileKey!==selection.profileKey)throw new Error('This run configuration is not available to this account.');
+        return await invokeRun({...request,configuration},onEvent,cancellation.signal);
+      } finally { if (runCancellation.get(runId) === cancellation) runCancellation.delete(runId); }
     },
     uploadFiles: (project, conversationId, files) => invoke({ method: 'upload', project, conversationId, files }),
     readFile: (project, id) => invoke({ method: 'file', project, id }),
@@ -185,11 +207,30 @@ export function createWebRuntime(projectDir: string, storageDir: string, connect
     deleteConversation: async (project, conversationId) => { await invoke({ method: 'delete-conversation', project, conversationId }); },
     cancelConversation: async (project, conversationId) => { await invoke({ method: 'cancel-conversation', project, conversationId }); },
     cancel: (runId) => {
+      for (const cancellation of runId ? [runCancellation.get(runId)] : runCancellation.values()) cancellation?.abort(new Error('Stopped.'));
       const running = runId ? [active.get(runId)].filter((child): child is ChildProcess => !!child) : [...active.values()];
       for (const child of running) { child.kill('SIGTERM'); const timer = setTimeout(() => { if (children.has(child)) { child.kill('SIGKILL'); } }, 5_000); timer.unref(); }
     },
-    dispose: () => { disposed = true; for (const child of children) { child.kill('SIGKILL'); } },
+    dispose: () => {
+      if (disposed) return;
+      disposed = true;
+      for (const cancellation of runCancellation.values()) cancellation.abort(new Error('Web runtime has stopped.'));
+      for (const child of children) {
+        // Let the worker close its IPC channel after parking the run. Closing
+        // both ends concurrently can leave ChildProcess's close event pending.
+        if (child.connected) child.send({ type: 'shutdown' }, error => { if (error) child.kill('SIGTERM'); });
+        else child.kill('SIGTERM');
+        const timer = setTimeout(() => { if (children.has(child)) child.kill('SIGKILL'); }, 5_000); timer.unref();
+        child.once('close', () => clearTimeout(timer));
+      }
+    },
   };
+}
+
+function agentOwnerConflict(value: unknown, depth = 0): boolean {
+  if (!value || typeof value !== 'object' || depth > 4) return false;
+  const error = value as Record<string, any>;
+  return error.metadata?.agentFailure === 'owner_conflict' || ['cause', 'error', 'result'].some(key => agentOwnerConflict(error[key], depth + 1));
 }
 
 /**

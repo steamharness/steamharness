@@ -23,7 +23,7 @@ Core validates the returned definition for embedding callers. Passing it to a pr
 
 ## Options
 
-`session` enables [durable session control](./create-agent.mdx#durable-session-control). The convenience executor adds `conversation.durable: { enabled: true }` and default permissions for `update_plan` and, when enabled, `subagent`. Custom `toolDefinitions` must include these declarations explicitly. Static inline projects declare recovery/durable and pass session, for example `session: { subagents: { tools: ["read", "grep", "find", "ls"], maxAgents: 4 }, planFork: "asOf" }`. Child tools only narrow parent permissions; background results are delivered once. CLI Web / Studio keeps the execution owner alive and displays tasks, plans, records, and usage in four sidebar views.
+`session` enables [durable session control](./create-agent.mdx#durable-session-control). The convenience executor adds `conversation.durable: { enabled: true }` and default permissions for `update_plan` and, when enabled, `subagent`. Custom `toolDefinitions` must include these declarations explicitly. Static inline projects declare durable and pass session; selected Core Agent projects inherit recovery, for example `session: { subagents: { tools: ["read", "grep", "find", "ls"], maxAgents: 4 }, planFork: "asOf" }`. Child tools only narrow parent permissions; background results are delivered once. CLI Web / Studio keeps the execution owner alive and displays tasks, plans, records, and usage in four sidebar views.
 
 Every [createAgentNode](./create-agent-node.mdx) option, plus:
 
@@ -61,7 +61,7 @@ Two exceptions: a turn that only called tools and produced no text appends no em
 
 **Pi Durable preserves multi-turn context and unfinished tasks.** Core selects SQLite by project, conversation and `sessionKey`, committing messages, tool intents and results, approval waits and usage identities. The same `runId` resumes the same request; completed requests reconstruct only their own output. Old KV transcripts are not read, and storage failures stop execution. Use different session keys for different agent nodes. Gateway runs carrying `hostInput` use memory by default; see [createAgentNode](./create-agent-node.mdx).
 
-The helper enables `conversation.recovery: { enabled: true }`. Projects requiring static structure analysis must declare that field inline in `defineExecutor`. CLI Web / Studio use it to recover interrupted workers.
+When `defineExecutor` selects a `createAgentConversationProject` as its `workflow` or `coreAgent`, both runtime and static structure reports inherit `conversation.recovery: { enabled: true }` while preserving project presentation settings. After a forced exit, CLI Web / Studio reconnect unfinished work with the original `runId`. Failed recovery retains queued input; automatic queue advancement requires a successful turn.
 
 > **The answer item's id must equal `conversation.openai.outputItemId`.** The OpenAI/Responses adapters look that answer up **by id** in `report.outputs[].output.items` — the local gateway and CLI `__openai-responses-runner` all do — and a mismatch fails the run with "did not produce output item".
 
