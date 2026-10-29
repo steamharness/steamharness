@@ -5,8 +5,10 @@ import { createProjectRuntime } from './workflow-runtime-node';
 import { activateProjectAccount } from './workflow-auth';
 import { withUserModelWriteLock } from './user-models-node';
 import { activateNodeRuntime } from './node-runtime-host';
+import { prepareInternalLayer } from './internal-layer';
 
 export async function activate(context: vscode.ExtensionContext): Promise<void> {
+  await prepareInternalLayer();
   await activateNodeRuntime(context);
   const account = await activateProjectAccount(context, run => withUserModelWriteLock(context.globalStorageUri.fsPath, run));
   return activateWorkstation(context, createProjectRuntime(context, account), account);
