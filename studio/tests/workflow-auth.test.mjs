@@ -148,6 +148,23 @@ test('a rejected password or missing profile never becomes a saved login', async
   assert.equal(f.account.getState().status, 'error');
 });
 
+test('unchanged AI connection checks do not publish account revisions', async () => {
+  const f = fixture();
+  await f.account.login(serverUrl, user.email, 'correct-password');
+  const connection = { serverUrl: 'https://ai.workflow.test', accessToken: 'ai-session' };
+  f.account.setAiConnection(connection);
+  const state = f.account.getState(), count = f.events.length;
+  f.account.setAiConnection({ ...connection, serverUrl: `${connection.serverUrl}/` });
+  f.account.setAiConnection({ ...connection });
+  assert.deepEqual(f.account.getState(), state);
+  assert.equal(f.events.length, count);
+  f.account.setAiConnection({ ...connection, accessToken: 'renewed-ai-session' });
+  assert.equal(f.events.length, count + 1, 'Actual credential changes still notify consumers');
+  f.account.setAiConnection(undefined);
+  f.account.setAiConnection(undefined);
+  assert.equal(f.events.length, count + 2);
+});
+
 test('AI connection is cleared when the project account changes or signs out', async () => {
   const f = fixture();
   await f.account.login(serverUrl, user.email, 'correct-password');

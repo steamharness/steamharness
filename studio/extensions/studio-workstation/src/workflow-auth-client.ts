@@ -277,9 +277,11 @@ export class Account {
     if (connection && (typeof connection.accessToken !== 'string' || !connection.accessToken || connection.accessToken.length > 16_384)) {
       throw new AuthError(t('Invalid AI login.'));
     }
-    this.aiConnection = connection
+    const next = connection
       ? { serverUrl: normalizeProjectServerUrl(connection.serverUrl), accessToken: connection.accessToken }
       : undefined;
+    if (next?.serverUrl === this.aiConnection?.serverUrl && next?.accessToken === this.aiConnection?.accessToken) { return; }
+    this.aiConnection = next;
     this.state = { ...this.state, aiServerUrl: this.aiConnection?.serverUrl, aiConfigured: this.aiConnection !== undefined, revision: this.state.revision + 1 };
     this.onChange(this.getState());
   }

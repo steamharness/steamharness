@@ -8,7 +8,7 @@ import type { AgentMessage } from "@earendil-works/pi-agent-core";
 import { HarnessError } from "../workflow/errors";
 import { parseAgentWebSearch, type AgentSearchMessage } from "./web-search";
 import { DurableAgent } from "./durable-agent";
-import { getAgentMemoryBinding, createAgentMemoryTool, recallAgentMemory, submitAgentMemoryTurn, flushAgentMemoryOutbox } from "./memory";
+import { getAgentMemoryBinding, createAgentMemoryTool, submitAgentMemoryTurn, flushAgentMemoryOutbox } from "./memory";
 import { AGENT_MEMORY_SKILL_PROMPT } from "./builtin-memory-skill";
 import { BUILTIN_AGENT_SKILLS_PROMPT } from "./builtin-skills";
 import { withStreamingMessage } from "./durable-context";
@@ -382,6 +382,7 @@ class ProjectAgentRuntime implements AgentRuntime {
         workdir: this.options.workdir,
         databasePath: this.options.databasePath,
         memoryEnabled: !!this.options.memory,
+        memory: this.options.memory || undefined,
         storage: this.options.storage,
         retryDelayMs: this.options.retryDelayMs,
         compaction: this.compactionSettings(),
@@ -512,9 +513,9 @@ class ProjectAgentRuntime implements AgentRuntime {
     );
     const memory = this.options.memory;
     if (memory) {
+      agent.memoryReadOnly = mode === "plan" || parsed.permissionPolicy === "read-only";
       if (mode !== "plan" && parsed.permissionPolicy !== "read-only" && !memory.readOnly) void flushAgentMemoryOutbox(memory);
-      const recalled = await recallAgentMemory(memory, parsed.prompt);
-      agent.state.systemPrompt += "\n\n" + AGENT_MEMORY_SKILL_PROMPT + (recalled ? "\n\n" + recalled : "");
+      agent.state.systemPrompt += "\n\n" + AGENT_MEMORY_SKILL_PROMPT;
     }
     let parkedApproval: HarnessError | undefined;
     agent.askResume = input.askResume;
@@ -661,7 +662,7 @@ class ProjectAgentRuntime implements AgentRuntime {
 
     const finalMessage = agent.state.messages.at(-1);
     const memoryAnswer = finalMessage?.role === 'assistant' ? finalMessage.content.filter(part => part.type === 'text').map(part => part.text).join('') : '';
-    if (memory && !memory.readOnly && mode !== "plan" && parsed.permissionPolicy !== "read-only" && memoryAnswer.trim() && (this.options.databasePath || this.options.storage)) {
+    if (!this.options.session && memory && !memory.readOnly && mode !== "plan" && parsed.permissionPolicy !== "read-only" && memoryAnswer.trim() && (this.options.databasePath || this.options.storage)) {
       const turnId = createHash('sha256').update(agent.memoryTurnId ?? input.requestId ?? randomUUID()).digest('hex');
       await submitAgentMemoryTurn(memory, {turnId, messages:[
         {id:`${turnId}:user`,role:"user",content:parsed.prompt,timestamp:Date.now()},

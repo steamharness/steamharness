@@ -20,6 +20,8 @@ Account changes and sign-out clear panel content and discard stale responses. Li
 
 Studio settings use a continuous surface with descriptive preference rows and compact switches on the right. Scope and source filters lead into the memory list, with details shown on selection. Loading, empty, unconfigured and temporary-error states stay distinct without resizing the panel.
 
+Studio checks account status silently in the background. Routine profile and system AI connection updates preserve the memory panel, including filters, details, focus and unsaved drafts. Switching accounts or servers, or an expired sign-in, immediately clears previous content and discards stale responses.
+
 ## Service configuration
 
 Memory Service requires Node 22.13+, SQLite FTS5 and a persistent writable volume. It pins the reviewed TencentDB-Agent-Memory revision `ecc01a545da0b2ac6cae2f0f0af0d39d41469793` with its MIT license, provenance and replayable patch. It does not use upstream's private service extensions. Only Memory Service loads native jieba; Core, CLI and Studio do not.
@@ -45,6 +47,8 @@ Without an extraction model, new turn submissions return `accepted: false` witho
 On a development branch, `pnpm -C server dev` and `pnpm -C server start:local` start a local Memory Service and wait for its health check before starting Server. No separate terminal or service build is needed. The supervisor assigns a free loopback port and generates an internal credential. Server hot reloads reuse that service; exiting stops it. IPC disconnection also stops the service if its supervisor is killed.
 
 Configuration follows Server's `.env`, with inherited environment values taking priority. SQLite persists under `<Server data directory>/memory` by default. Set `STEAMHARNESS_MEMORY_DATA_DIR` to override it; relative paths use the Server root. Restarts preserve records. `STEAMHARNESS_MEMORY_PORT` can pin the port. A busy port or local startup failure is reported while Server continues running.
+
+Automatic startup runs in the development launcher. Running `tsx src/index.ts` directly or retaining a process started with an older command does not start Memory Service. After updating the sources, stop that process and run one of the development commands above.
 
 ```sh
 # Disable local autostart only; an explicitly configured external service still works

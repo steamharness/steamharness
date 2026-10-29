@@ -20,6 +20,8 @@ description: "保存、召回、查看和遗忘私有偏好与项目决策，无
 
 Studio 设置采用连续面板：账号记忆和自动保存分行说明，右侧使用紧凑开关；下方展示范围、来源筛选和记忆列表，选择记录后展开详情。加载、空记录、未配置和临时故障分别展示，切换内容不会改变面板尺寸。
 
+Studio 在后台静默校验账号状态；普通账号资料和系统 AI 连接更新不会重建记忆面板，保留当前筛选、详情、焦点及未保存草稿。切换账号、服务器或登录失效时立即清除旧内容，丢弃过期请求。
+
 ## 服务配置
 
 Memory Service 需要 Node 22.13+、SQLite FTS5 和可写持久卷。服务固定复用 TencentDB-Agent-Memory 的 `ecc01a545da0b2ac6cae2f0f0af0d39d41469793` 审查版本，保留 MIT 许可证、源码来源和补丁；不使用上游的私有 service 扩展。仅服务依赖 jieba 原生模块，Core、CLI 和 Studio 不加载该模块。
@@ -45,6 +47,8 @@ Memory Service 需要 Node 22.13+、SQLite FTS5 和可写持久卷。服务固�
 在开发分支执行 `pnpm -C server dev` 或 `pnpm -C server start:local` 时，启动器会自动启动本机 Memory Service，健康检查通过后启动 Server。无需先构建或另外开终端；服务使用随机空闲的 loopback 端口和自动生成的内部凭据，Server 热重载时继续复用同一服务，退出时一并停止。强制结束启动器后，服务也会通过 IPC 断开退出。
 
 配置读取 Server 的 `.env`，已有进程环境变量优先。SQLite 默认保存在 `<Server 数据目录>/memory`，可用 `STEAMHARNESS_MEMORY_DATA_DIR` 指定持久目录；相对路径基于 Server 根目录。重启不清空记忆。可用 `STEAMHARNESS_MEMORY_PORT` 固定端口；端口占用或服务启动失败会给出提示，Server 继续运行。
+
+自动启动由开发启动器执行。直接运行 `tsx src/index.ts` 或旧命令启动的现有进程不会带起 Memory Service；更新源码后，需退出旧进程并重新执行上述开发命令。
 
 ```sh
 # 只关闭自动启动，仍可连接手动配置的外部记忆服务

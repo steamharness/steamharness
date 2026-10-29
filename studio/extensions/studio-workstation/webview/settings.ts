@@ -475,7 +475,9 @@ export function createSettingsView(root: HTMLElement, vscode: WebviewApi): { acc
   return {
     accountRoot: find('settings-account'),
     setAccount(state) {
-      const identity=state.status==='authenticated'?`${state.serverUrl}:${state.user?.userId}:${state.revision}`:'';
+      // Profile and AI connection revisions do not change the memory account.
+      const identity = state.user && ['authenticated', 'checking', 'error'].includes(state.status)
+        ? JSON.stringify([state.serverUrl, state.user.userId]) : '';
       if(identity!==memoryAccount){memoryAccount=identity;clearMemory();}
       account = state;
       const name = find('settings-account-name'), label = find('settings-account-label');

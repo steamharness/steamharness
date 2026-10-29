@@ -77,6 +77,25 @@ try {
     assert.equal((await panel.locator('.am-content').textContent()).length > 500, true);
     if (shell.width <= 620) assert.equal(await panel.locator('.am-list').isVisible(), false);
     assert.equal((await panel.boundingBox()).height, shell.height, 'Details cannot resize the panel');
+    await panel.getByRole('button', { name: language === 'en' ? 'Edit' : '编辑', exact: true }).click();
+    await panel.locator('textarea').fill('Preserve this unsaved memory draft');
+    await page.evaluate(() => {
+      window.preservedMemory = { panel: document.querySelector('.account-memory'), draft: document.querySelector('.am-detail textarea'),
+        requests: window.messages.filter(message => message.type === 'settings-memory').length };
+    });
+    for (const [index, status] of ['authenticated', 'checking', 'error', 'authenticated'].entries()) {
+      await send('account', { state: { status, revision: index + 2, aiConfigured: true, serverUrl: 'https://server.example.test',
+        user: { userId: 'user-id', displayName: 'SteamHarness Admin', email: 'admin@example.test' } } });
+      assert.equal(await page.evaluate(() => {
+        const previous = window.preservedMemory;
+        return document.querySelector('.account-memory') === previous.panel
+          && document.querySelector('.am-detail textarea') === previous.draft
+          && document.activeElement === previous.draft
+          && previous.draft.value === 'Preserve this unsaved memory draft'
+          && window.messages.filter(message => message.type === 'settings-memory').length === previous.requests;
+      }), true, 'Background account updates preserve the panel, draft and focus without loading again');
+    }
+    await panel.getByRole('button', { name: language === 'en' ? 'Cancel' : '取消', exact: true }).click();
     await panel.getByRole('button', { name: language === 'en' ? 'Back to list' : '返回列表' }).click();
     await page.evaluate(() => { window.memoryFixture.caps.connected = false; window.memoryFixture.caps.status = 'unconfigured'; });
     await refresh(); await panel.locator('.am-unavailable').waitFor();

@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { AsyncLocalStorage } from "node:async_hooks";
 import { assertCurrentProjectConfigurationAccess } from "../configuration";
 import { BACKGROUND_CONTEXT, awaitWithContext, type Context } from "@earendil-works/chord/context";
@@ -28,7 +28,8 @@ import { DurableAgentSession } from "./session";
 import { durableContextMessages } from "./durable-context";
 import { createAssistantErrorMessage, normalizeAssistantError } from "./stream-error";
 import { withEnvironmentByteReads } from "./environment-read";
-import type { AgentSessionCommand, AgentSessionOptions, AgentSessionReceipt } from "./session-types";
+import type { AgentSessionCommand, AgentSessionOptions, AgentSessionReceipt, AgentSessionSnapshot } from "./session-types";
+import { recallAgentMemory, submitAgentMemoryTurn, type AgentMemoryBinding } from "./memory";
 
 const context = BACKGROUND_CONTEXT;
 const deferred = () => {
@@ -48,6 +49,14 @@ const MemoryIdentityDoc = defineDoc({
   kind: 'project.agent.memory-identity', version: 1, scope: 'conversation', history: 'latest', fork: 'initial',
   initial: () => ({ id: randomUUID() }),
 });
+const MemorySessionDoc = defineDoc({
+  kind: 'project.agent.memory-session', version: 1, scope: 'conversation', history: 'latest', fork: 'initial',
+  initial: () => ({ cutoff: -1 }),
+});
+const MemoryTurnDoc = defineDocFamily({
+  kind: 'project.agent.memory-turn', version: 1, scope: 'conversation', history: 'latest', fork: 'initial', family: true,
+  initial: () => ({ submitted: false as boolean }),
+});
 
 export interface DurableAgentState {
   systemPrompt: string;
@@ -63,6 +72,7 @@ export interface DurableAgentState {
 
 export interface DurableAgentOptions {
   memoryEnabled?: boolean;
+  memory?: AgentMemoryBinding;
   sessionLease?: Promise<void>;
   sessionSuspend?: Promise<void>;
   /** Reattach the host and scheduler without submitting the workflow's bootstrap prompt. */
@@ -123,6 +133,11 @@ export class DurableAgent {
   private seeded = false;
   /** Both identities live in the durable database and survive a host restart. */
   private memoryIdentity = '';
+  private memoryCutoff = 0;
+  private memorySubmissions = Promise.resolve();
+  private readonly submittedMemoryTurns = new Set<string>();
+  private readonly recalledMemory = new Map<number, { key: string; text: string }>();
+  memoryReadOnly = false;
   get memoryTurnId(): string | undefined { return this.memoryIdentity && this.activeRequest ? `${this.memoryIdentity}:${this.activeRequest}` : undefined; }
   private fatalFailure?: unknown;
   private failActive?: (error: unknown) => void;
@@ -194,7 +209,17 @@ export class DurableAgent {
         },
       }, context);
       this.root = await this.harness.root(context, { agent: { model: { provider: this.state.model.provider, modelId: this.state.model.id } } });
-      if (this.options.memoryEnabled) this.memoryIdentity = await this.root.commit(async tx => (await tx.doc(MemoryIdentityDoc, this.root!.id)).id, context);
+      if (this.options.memoryEnabled) {
+        const existing = await this.root.context(context);
+        const memory = await this.root.commit(async tx => {
+          const identity = await tx.doc(MemoryIdentityDoc, this.root!.id);
+          const session = await tx.doc(MemorySessionDoc, this.root!.id);
+          // Enabling memory does not import completed conversation history.
+          if (session.cutoff < 0) session.cutoff = Math.max(0, ...existing.entries.map(entry => entry.id));
+          return { id: identity.id, cutoff: session.cutoff };
+        }, context);
+        this.memoryIdentity = memory.id; this.memoryCutoff = memory.cutoff;
+      }
       await this.resources.restore(this.harness, this.root.id, context);
       if (this.options.session) {
         this.session = new DurableAgentSession(this.harness, this.root, this.options.session,
@@ -202,6 +227,11 @@ export class DurableAgent {
             await this.refresh();
             this.state.model = this.models.getModel(snapshot.configuration.provider, snapshot.configuration.model) ?? this.state.model;
             this.state.thinkingLevel = snapshot.configuration.effort;
+            // A live host lease outlives foreground answers. Submit each committed
+            // turn before publishing completion, rather than waiting for that lease.
+            const saving = this.memorySubmissions.then(() => this.submitMemoryTurns(snapshot));
+            this.memorySubmissions = saving.catch(error => { try { this.options.memory?.onError?.(error); } catch {} });
+            await this.memorySubmissions;
             await this.emit({ type: "project_session", snapshot } as unknown as AgentEvent);
           }, error => this.fail(error), this.models, storage, registry,
           (loaded) => this.resources!.snapshot(registry.snapshot(), loaded, this.options.storage?.label ?? (this.options.databasePath ? "SQLite" : "Memory")),
@@ -427,7 +457,7 @@ export class DurableAgent {
           }, context);
           return continuation === undefined ? undefined : { continue: continuation };
         },
-        beforeRequest: async (_request, api, requestContext) => {
+        beforeRequest: async (request, api, requestContext) => {
           await this.checkConfigurationAccess();
           const root = (await harness.conversation(api.conversationId, context))!;
           const logicalRequestId = this.session ? await this.session.requestIdFor(root.id) : requestId;
@@ -504,7 +534,9 @@ export class DurableAgent {
             if (failure) throw new HarnessError({ type: "execution", message: failure });
           }
           const compacted = await this.compactBeforeRequest(root, api, requestContext);
-          if (compacted || partials.length > 0) return { messages: (await root.context(context)).messages };
+          const messages = compacted || partials.length > 0 ? (await root.context(context)).messages : request.messages;
+          if (this.options.memory) return { messages: await this.memoryMessages(root, logicalRequestId, messages) };
+          if (compacted || partials.length > 0) return { messages };
         },
       }), hook(ToolTask, {
         beforeTool: async (call, api, callContext) => {
@@ -599,6 +631,59 @@ export class DurableAgent {
       await this.session?.stop();
       await this.aborting;
       await this.emit({ type: "agent_end", messages: [] });
+    }
+  }
+
+  private async memoryMessages(conversation: Conversation, requestId: string, messages: readonly Message[]): Promise<readonly Message[]> {
+    const binding = this.options.memory;
+    if (!binding) return messages;
+    const history = await conversation.context(context);
+    const input = [...history.entries].reverse().find(entry =>
+      ["project.input", "pi.user"].includes(entry.kind) && entry.model?.some(message => message.role === "user"));
+    const user = input?.model?.find(message => message.role === "user");
+    const query = typeof user?.content === "string" ? user.content
+      : user?.content.filter(block => block.type === "text").map(block => block.text).join("") ?? "";
+    const key = JSON.stringify([requestId, query]);
+    let recalled = this.recalledMemory.get(conversation.id);
+    if (recalled?.key !== key) {
+      recalled = { key, text: await recallAgentMemory(binding, query) };
+      this.recalledMemory.set(conversation.id, recalled);
+    }
+    if (!recalled.text) return messages;
+    const system = messages.findIndex(message => message.role === "system");
+    return system < 0 ? [{ role: "system", content: recalled.text, timestamp: Date.now() }, ...messages]
+      : messages.map((message, index) => index === system && message.role === "system"
+        ? { ...message, content: `${message.content}\n\n${recalled.text}` } : message);
+  }
+
+  private async submitMemoryTurns(snapshot: AgentSessionSnapshot): Promise<void> {
+    const binding = this.options.memory;
+    if (!binding || !this.root || (!this.options.databasePath && !this.options.storage)) return;
+    for (const turn of snapshot.turns) {
+      // Owned subagents and their reports are model-generated input, not user evidence.
+      if (turn.conversationId !== this.root.id || turn.mode === "report" || turn.status !== "done"
+        || turn.entryId === undefined || turn.entryId <= this.memoryCutoff || turn.answerId === undefined) continue;
+      const turnId = createHash("sha256").update(`${this.memoryIdentity}:${turn.requestId}`).digest("hex");
+      if (this.submittedMemoryTurns.has(turnId)) continue;
+      const sent = await this.root.commit(async tx => (await tx.doc(MemoryTurnDoc, this.root!.id, turnId, null)).submitted, context);
+      if (sent) { this.submittedMemoryTurns.add(turnId); continue; }
+      let submitted = this.memoryReadOnly || binding.readOnly;
+      if (!submitted) {
+        const history = await this.root.context(context, { at: turn.answerId as EntryRecord["id"] });
+        const answer = history.entries.find(entry => entry.id === turn.answerId)?.model?.find(message => message.role === "assistant");
+        const text = answer?.content.filter(block => block.type === "text").map(block => block.text).join("") ?? "";
+        if (!text.trim() || answer?.stopReason === "error" || answer?.stopReason === "aborted") continue;
+        submitted = await submitAgentMemoryTurn(binding, {
+          turnId, messages: [
+            { id: `${turnId}:user`, role: "user", content: turn.prompt, timestamp: Date.now() },
+            { id: `${turnId}:assistant`, role: "assistant", content: text, timestamp: answer!.timestamp },
+          ],
+        });
+      }
+      if (submitted) {
+        await this.root.commit(async tx => { (await tx.doc(MemoryTurnDoc, this.root!.id, turnId, null)).submitted = true; }, context);
+        this.submittedMemoryTurns.add(turnId);
+      }
     }
   }
 

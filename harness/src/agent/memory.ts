@@ -300,9 +300,10 @@ export async function recallAgentMemory(
 export async function submitAgentMemoryTurn(
   binding: AgentMemoryBinding,
   turn: AgentMemoryTurn,
-): Promise<void> {
+): Promise<boolean> {
   const dir = binding.outboxDirectory;
   let file: string | undefined;
+  let staged = false;
   try {
     if (dir) {
       await fs.mkdir(dir, { recursive: true, mode: 0o700 });
@@ -323,14 +324,18 @@ export async function submitAgentMemoryTurn(
           if ((e as NodeJS.ErrnoException).code !== "EEXIST") throw e;
           turn = JSON.parse(await fs.readFile(file, "utf8")) as AgentMemoryTurn;
         }
+        staged = true;
       } finally {
         await fs.rm(temp, { force: true });
       }
     }
     await sendTurn(binding, turn);
     if (file) await fs.rm(file, { force: true });
+    return true;
   } catch (e) {
     reportMemoryError(binding, e);
+    // A durable outbox can finish delivery after this runtime exits.
+    return staged;
   }
 }
 async function sendTurn(binding: AgentMemoryBinding, turn: AgentMemoryTurn) {

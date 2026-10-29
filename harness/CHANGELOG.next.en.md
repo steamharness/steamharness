@@ -1,5 +1,7 @@
 # Unreleased
 
+- Fixed: Persistent assistant sessions submit automatic memory after each answer is saved without waiting for process exit. Follow-up turns recall fresh records; durable receipts and the offline outbox prevent duplicate delivery after recovery, and initial activation does not import older conversations.
+
 - [Fixed] Preserve the selected restricted configuration across temporary outages, role changes, and reopening. Guest fallback still enforces execution permissions, and an explicit Ask selection remains saved.
 
 - [Changed] Agent models use separate settings and project modes: Studio hides project AI configuration, standalone CLI Web uses project models, and empty settings never fall back. Project models retain only System AI and Third-party AI sources.
