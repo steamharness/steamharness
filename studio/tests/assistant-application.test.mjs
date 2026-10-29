@@ -14,11 +14,11 @@ test('the assistant owns its app and dependencies and never borrows the opened p
   const source = await createAssistantDependencyFixture(); t.after(source.dispose);
   const directory = await mkdtemp(path.join(tmpdir(), 'studio-assistant-app-')); t.after(() => rm(directory, { recursive: true, force: true }));
   const templateDir = path.join(directory, 'template');
-  await mkdir(path.join(templateDir, 'skills/workflow-generator'), { recursive: true });
+  await mkdir(path.join(templateDir, 'skills/steamharness-generator'), { recursive: true });
   await writeFile(path.join(templateDir, 'package.json'), JSON.stringify({name:'assistant',type:'module',devDependencies:{steamharness:'link:../harness'}}));
   await writeFile(path.join(templateDir, 'steamharness.json'), JSON.stringify({id:'a3aca697-b086-459b-84e4-d357ad2d9fb2',name:'Project Assistant',version:'1.0.0'}));
   await writeFile(path.join(templateDir, 'index.ts'), 'export const executor = steamharness.defineExecutor({});');
-  await writeFile(path.join(templateDir, 'skills/workflow-generator/SKILL.md'), 'Assistant skill');
+  await writeFile(path.join(templateDir, 'skills/steamharness-generator/SKILL.md'), 'Assistant skill');
   await mkdir(path.join(templateDir, 'studio-control'));
   await writeFile(path.join(templateDir, 'studio-control/index.ts'), 'export const executor = steamharness.defineExecutor({ projectType: \'workflow\' });');
   const userProject = path.join(directory, 'opened-project');
@@ -32,7 +32,7 @@ test('the assistant owns its app and dependencies and never borrows the opened p
   const manifest = JSON.parse(await readFile(path.join(application, 'package.json'), 'utf8'));
   assert.deepEqual(manifest.devDependencies, { 'steamharness': '2.3.4', '@steamharness/cli': '1.2.3' });
   assert.equal(manifest.dependencies, undefined);
-  assert.equal(await readFile(path.join(application, 'skills/workflow-generator/SKILL.md'), 'utf8'), 'Assistant skill');
+  assert.equal(await readFile(path.join(application, 'skills/steamharness-generator/SKILL.md'), 'utf8'), 'Assistant skill');
   assert.equal(await readFile(path.join(application, 'studio-control/index.ts'), 'utf8'), await readFile(path.join(templateDir, 'studio-control/index.ts'), 'utf8'));
   assert.equal(await prepareAssistantApplication(options), application);
   await writeFile(path.join(templateDir, 'studio-control/index.ts'), 'export const executor = steamharness.defineExecutor({ projectType: \'workflow\', entrypoints: [] });');

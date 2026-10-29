@@ -11,7 +11,7 @@
 
 同一份载荷在仓库内有多个副本，任何一份漂移都会让某个消费方更弱：
 
-- **skill 载荷**：真相源是 `build-in/build-in-developer-assistant/skills/workflow-generator/`，开发副本是 `harness/.agents/skills/workflow-generator/`。改动共享载荷（`SKILL.md`、`references/**`、`scripts/**`、`assets/**`）后必须运行 `node scripts/check-skill-copies.mjs --fix` 并把两份一起提交；`AGENTS.md`、`agents/openai.yaml`、`references/project-repair.md` 是目录特有文件，不参与同步。
+- **skill 载荷**：真相源是 `build-in/build-in-developer-assistant/skills/steamharness-generator/`，开发副本是 `harness/.agents/skills/steamharness-generator/`。改动共享载荷（`SKILL.md`、`references/**`、`scripts/**`、`assets/**`）后必须运行 `node scripts/check-skill-copies.mjs --fix` 并把两份一起提交；`AGENTS.md`、`agents/openai.yaml`、`references/project-repair.md` 是目录特有文件，不参与同步。
 - **发布工具**：`shared/release-tools/` 在 `harness|cli|server/vendor/shared/release-tools/` 与两个内置项目的 `scripts/` 中有逐字节副本。改动后运行 `node scripts/check-vendor-copies.mjs --fix` 并一起提交。`builtin-release.mjs` 在 developer-assistant 里有意保留打包过滤，不参与守卫。
 
 改动 `.gitmodules`、上述两个守卫脚本或根 workspace 配置后，必须在本地依次运行：

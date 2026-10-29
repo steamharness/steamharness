@@ -1,4 +1,0 @@
-interface:
-  display_name: "SteamHarness 项目生成器"
-  short_description: "生成、迁移并修复 Workflow、Conversation 与 Kanban 项目"
-  default_prompt: "使用 $project-generator 在指定目录中生成、修改或迁移 steamharness 项目；遇到普通文件夹降级或数据库空间权限时，按当前授权根分阶段修复并准确报告未完成项。"

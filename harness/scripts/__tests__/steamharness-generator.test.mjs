@@ -13,7 +13,7 @@ const generator = path.join(
   root,
   ".agents",
   "skills",
-  "workflow-generator",
+  "steamharness-generator",
   "scripts",
   "create_workflow.py",
 );
@@ -25,7 +25,7 @@ test("workflow generator reads standalone Core and CLI versions", async () => {
   try {
     const core = JSON.parse(await readFile(path.join(root, "package.json"), "utf8"));
     const fixtureRoot = path.join(temporaryRoot, "core");
-    const fixtureGenerator = path.join(fixtureRoot, ".agents/skills/workflow-generator/scripts/create_workflow.py");
+    const fixtureGenerator = path.join(fixtureRoot, ".agents/skills/steamharness-generator/scripts/create_workflow.py");
     await mkdir(path.dirname(fixtureGenerator), { recursive: true });
     await mkdir(path.join(fixtureRoot, "workspace"));
     await copyFile(generator, fixtureGenerator);

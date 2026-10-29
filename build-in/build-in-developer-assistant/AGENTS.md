@@ -4,7 +4,7 @@
 - 本仓位于 monorepo 的 `build-in/build-in-developer-assistant`，随仓库一起提交。`dev` 和功能分支上用 `link:../../harness` / `link:../../cli` 引用开源源码根中的聚合仓库源码（CI 由 `scripts/prepare-local-siblings.mjs` 按清单相对路径准备检出），因此改 Core/CLI 不需要先发版；`alpha` 与 `main` 上必须是精确的已发布版本。`scripts/release-gate.mjs` 是这条规则的执行者：发布模式（alpha/main/tag）下拒绝相对路径、拒绝特性分支版本、要求声明的 Core/CLI 已在 registry 上发布，并在 tag 流水线上要求版本高于当前通道。
 - Issue 编号仅作为可选上下文；没有 issue 也可以直接分析、修改、测试、提交和说明，不得把创建或关联 issue 作为强制前置条件。
 - 本仓库只维护 `developer-assistant` 内置项目，项目根注册 `main` Conversation 与 `studio-control` Workflow 两个入口；Studio Control 源码和专项规则位于 `studio-control/`；不得再引用旧 monorepo 内置项目目录或其它仓库内部路径。
-- `skills/workflow-generator/AGENTS.md` 是 generator 专项规则入口；修改该目录前必须同时读取它。
+- `skills/steamharness-generator/AGENTS.md` 是 generator 专项规则入口；修改该目录前必须同时读取它。
 - 节点 payload 必须继承 `RunPayload`，成功时使用 `errCode: 0, errMessage: ""`。
 - Studio 开发态从同级 `build-in/build-in-developer-assistant` 获取本项目依赖；VS Code 宿主通过 `STEAMHARNESS_DEVELOPER_ASSISTANT_HOST=vscode` 使用已有适配。宿主注入 `STEAMHARNESS_STUDIO_CONTROL_MCP_SERVER` 时通过本项目的 `mcp --entry studio-control` 连接内置控制入口，使用现有工具权限和审批；不读取旧 Desktop Control 配置。原始控制凭据只传给 MCP 子进程，不进入编码工具 shell。
 - 用户可见行为变化必须同步中文/英文 `CHANGELOG.next*.md`，并按实际影响更新 `../../docs` 文档。

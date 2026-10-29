@@ -10,7 +10,7 @@ const root = path.resolve(import.meta.dirname, "../..");
 const generator = path.join(
   root,
   "skills",
-  "workflow-generator",
+  "steamharness-generator",
   "scripts",
   "create_workflow.py",
 );
@@ -31,7 +31,7 @@ async function siblingVersion(manifest, packageName) {
 
 describe("packaged workflow generator", () => {
   it("generates the current project storage and release contract", async () => {
-    const temporaryRoot = await mkdtemp(path.join(os.tmpdir(), "workflow-generator-"));
+    const temporaryRoot = await mkdtemp(path.join(os.tmpdir(), "steamharness-generator-"));
     const target = path.join(temporaryRoot, "generated");
     const manifest = JSON.parse(await readFile(path.join(root, "package.json"), "utf8"));
 

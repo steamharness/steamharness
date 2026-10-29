@@ -15,7 +15,7 @@ import { inspectProjectStructure } from "steamharness/executor/rules";
 // 所以用测试代替人工记忆。
 
 const root = path.resolve(import.meta.dirname, "..");
-const skillRoot = path.join(root, "skills", "workflow-generator");
+const skillRoot = path.join(root, "skills", "steamharness-generator");
 
 // 宿主内部面：由 Core 注入宿主使用，不面向项目源码，因此不要求出现在生成规则里。
 const HOST_INTERNAL_RUNTIME_API = new Set<string>([]);
@@ -95,7 +95,7 @@ function createDefinitionChecker(): DefinitionChecker {
   return cachedDefinitionChecker;
 }
 
-describe("workflow-generator contract", () => {
+describe("steamharness-generator contract", () => {
   it("distinguishes binary file migration from project publication and global runtime discovery", async () => {
     const rules = await readFile(path.join(skillRoot, "SKILL.md"), "utf8");
     const prompt = await readFile(path.join(root, "assistant-prompt.ts"), "utf8");
@@ -166,7 +166,7 @@ describe("workflow-generator contract", () => {
       .filter((name) => !HOST_INTERNAL_RUNTIME_API.has(name))
       .filter((name) => !mentionsIdentifier(corpus, `steamharness.${name}`));
 
-    expect(missing, `skills/workflow-generator 未覆盖这些 steamharness.* 成员：${missing.join(", ")}`).toEqual([]);
+    expect(missing, `skills/steamharness-generator 未覆盖这些 steamharness.* 成员：${missing.join(", ")}`).toEqual([]);
   });
 
   it("documents every executor, entrypoint and param definition field", async () => {
@@ -179,7 +179,7 @@ describe("workflow-generator contract", () => {
       }
     }
 
-    expect(missing, `skills/workflow-generator 未覆盖这些定义字段：${missing.join(", ")}`).toEqual([]);
+    expect(missing, `skills/steamharness-generator 未覆盖这些定义字段：${missing.join(", ")}`).toEqual([]);
   });
 
   // 这组断言来自一次真实排查：宿主（Desktop）把自己的 STEAMHARNESS_*_STORE_DIR 注入到
@@ -191,7 +191,7 @@ describe("workflow-generator contract", () => {
     for (const token of [
       "LocalDatabaseRegistry", "createLocalDatabaseResolver", "databaseId", "dist-tags", "--entry",
     ]) {
-      expect(corpus, `skills/workflow-generator 未覆盖本地运行必需的事实：${token}`).toContain(token);
+      expect(corpus, `skills/steamharness-generator 未覆盖本地运行必需的事实：${token}`).toContain(token);
     }
     expect(corpus, "解析精确版本时不得把 registry 的 latest 标签当作版本来源").toContain("不要用 `latest`");
   });

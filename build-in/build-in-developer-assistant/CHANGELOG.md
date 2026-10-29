@@ -157,7 +157,7 @@
 
 ### 变更
 
-- 变更 发布门禁新增 `workflow-generator-contract` 守门，Core 契约漂移而 skill 未同步时直接失败。
+- 变更 发布门禁新增 `steamharness-generator-contract` 守门，Core 契约漂移而 skill 未同步时直接失败。
 - 变更 生成器依赖解析按包名识别仓库布局并支持日期型预发布版本，不再回退到宿主产品版本。
 
 ### 修复
@@ -169,7 +169,7 @@
 
 ### 变更
 
-- 变更 发布前的 `workflow-generator-contract` 增加 App 运行标识检查，提前拦截会让 Desktop 身份校验失败的 skill 文本。
+- 变更 发布前的 `steamharness-generator-contract` 增加 App 运行标识检查，提前拦截会让 Desktop 身份校验失败的 skill 文本。
 
 ### 修复
 

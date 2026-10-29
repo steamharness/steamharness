@@ -123,7 +123,7 @@ describe("VS Code assistant host", () => {
     expect(tools.close).toBeUndefined();
     expect(host.options.skills?.directories).toEqual([path.resolve(import.meta.dirname, "..", "skills")]);
     const result = await runSkillAction(host.options.skills!.directories, { action: "list" });
-    expect(JSON.stringify(result)).toContain("workflow-generator");
+    expect(JSON.stringify(result)).toContain("steamharness-generator");
     const disabled = await host.options.createTools!({
       toolPermissions: { getTool: (name: string) => ({ enabled: name !== "skill" }) },
     } as unknown as NodeContext) as AgentToolSet;

@@ -5,7 +5,7 @@ import { ConversationTools } from '../web/ui/conversation-tools';
 import type { AgentSkillGuide } from 'steamharness';
 
 const guides: AgentSkillGuide[] = [
-  { id: 'project:workflow-generator', name: 'workflow-generator', description: 'Generate and repair projects.', source: 'project' },
+  { id: 'project:steamharness-generator', name: 'steamharness-generator', description: 'Generate and repair projects.', source: 'project' },
   { id: 'builtin:i-have-adhd', name: 'i-have-adhd', description: 'Communication guide.', source: 'builtin' },
 ];
 let dialogs: ConversationTools;
@@ -35,9 +35,9 @@ it('lazily loads actual guides, counts both sources and preserves list state aft
   search.value = 'generate'; search.dispatchEvent(new Event('input'));
   expect(document.querySelector('.skill-count')?.textContent).toBe('1 of 2 skills');
   const section = document.querySelector<HTMLElement>('[data-section=skills]')!; section.scrollTop = 145;
-  const opener = button('Preview workflow-generator'); opener.click();
+  const opener = button('Preview steamharness-generator'); opener.click();
   expect(load.mock.calls.at(-1)?.[1]).toBe(guides[0].id);
-  const content = '---\nname: workflow-generator\n---\n# Full guide\n' + '内容完整。\n'.repeat(45_000) + '\nTAIL_END';
+  const content = '---\nname: steamharness-generator\n---\n# Full guide\n' + '内容完整。\n'.repeat(45_000) + '\nTAIL_END';
   dialogs.skillsResult(request(), { skill: guides[0], content });
   expect(document.activeElement).toBe(button('Back to skills'));
   expect(document.querySelector('.skill-preview-document')?.textContent).toContain('TAIL_END');
@@ -73,7 +73,7 @@ it('shows loading, empty, filtered and retryable errors including timeouts', asy
 });
 
 it('keeps preview loading and retry states reachable beside the return control, then restores the catalog', () => {
-  tab().click(); dialogs.skillsResult(request(), guides); button('Preview workflow-generator').click();
+  tab().click(); dialogs.skillsResult(request(), guides); button('Preview steamharness-generator').click();
   expect(document.activeElement).toBe(button('Back to skills'));
   expect(document.querySelector('.skill-preview')?.textContent).toContain('Loading...');
   expect(document.querySelector('.skill-status')?.closest('[hidden]')).toBeNull();

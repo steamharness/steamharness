@@ -28,7 +28,7 @@ const root = path.resolve(import.meta.dirname, "..");
 /** The document the contract lives in, and the fence it lives between. */
 export const CONTRACT_FILE = path.join(
   root,
-  "skills/workflow-generator/references/steamharness-api.md",
+  "skills/steamharness-generator/references/steamharness-api.md",
 );
 const BEGIN_MARKER = "<!-- agent-tool-contract:begin -->";
 const END_MARKER = "<!-- agent-tool-contract:end -->";

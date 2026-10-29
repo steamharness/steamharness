@@ -82,7 +82,7 @@ const extraContext = await executor.createContext?.(executorContext);
 Object.assign(context.metadata!, extraContext?.metadata);
 const write = ai.fauxAssistantMessage([ai.fauxToolCall("write", { path: "recovered.txt", content: "created" }, { id: "write-once" })], { stopReason: "toolUse" });
 if (scenario === "skill-recovery" && phase !== "replay") {
-  const original = await readFile(path.resolve(import.meta.dirname, "../../skills/workflow-generator/SKILL.md"), "utf8");
+  const original = await readFile(path.resolve(import.meta.dirname, "../../skills/steamharness-generator/SKILL.md"), "utf8");
   const respond = (request: ai.TranscriptContext): ai.AssistantMessage => {
     const results = request.messages.filter(message => message.role === "toolResult");
     const child = request.messages.some(message => message.role === "user" && message.content === "Read bundled skill tail");
@@ -98,7 +98,7 @@ if (scenario === "skill-recovery" && phase !== "replay") {
       return JSON.parse(body) as { content: string; truncated: boolean; nextOffset?: number };
     });
     if (!pages.length || pages.at(-1)!.truncated) return ai.fauxAssistantMessage([ai.fauxToolCall("skill", {
-      action: "read", skill: "workflow-generator", offset: pages.at(-1)?.nextOffset ?? (child ? original.length - 1_000 : 0),
+      action: "read", skill: "steamharness-generator", offset: pages.at(-1)?.nextOffset ?? (child ? original.length - 1_000 : 0),
     })], { stopReason: "toolUse" });
     const content = pages.map(page => page.content).join("");
     if (child) {

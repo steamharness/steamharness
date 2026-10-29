@@ -157,7 +157,7 @@ All notable public changes of this release unit are recorded here.
 
 ### Changed
 
-- Changed the release gate to fail `workflow-generator-contract` when Core drifts from what the generator skill documents.
+- Changed the release gate to fail `steamharness-generator-contract` when Core drifts from what the generator skill documents.
 - Changed generator dependency resolution to identify the repository layout by package name and accept dated prereleases.
 
 ### Fixed
@@ -169,7 +169,7 @@ All notable public changes of this release unit are recorded here.
 
 ### Changed
 
-- Changed the pre-release `workflow-generator-contract` check to scan for removed App identity markers and block failing skill text.
+- Changed the pre-release `steamharness-generator-contract` check to scan for removed App identity markers and block failing skill text.
 
 ### Fixed
 

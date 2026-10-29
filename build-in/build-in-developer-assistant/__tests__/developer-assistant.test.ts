@@ -241,11 +241,11 @@ describe("developer assistant workflow", () => {
 
   it("keeps the skill it ships as the one its own tool reads", async () => {
     const [generatorSkill, repairReference] = await Promise.all([
-      readFile(path.join(projectDir, "skills", "workflow-generator", "SKILL.md"), "utf8"),
+      readFile(path.join(projectDir, "skills", "steamharness-generator", "SKILL.md"), "utf8"),
       readFile(path.join(
         projectDir,
         "skills",
-        "workflow-generator",
+        "steamharness-generator",
         "references",
         "project-repair.md",
       ), "utf8"),
@@ -265,11 +265,11 @@ describe("developer assistant workflow", () => {
 
   it("documents how each parameter action renders", async () => {
     const [generatorSkill, panelReference] = await Promise.all([
-      readFile(path.join(projectDir, "skills", "workflow-generator", "SKILL.md"), "utf8"),
+      readFile(path.join(projectDir, "skills", "steamharness-generator", "SKILL.md"), "utf8"),
       readFile(path.join(
         projectDir,
         "skills",
-        "workflow-generator",
+        "steamharness-generator",
         "references",
         "param-panels.md",
       ), "utf8"),

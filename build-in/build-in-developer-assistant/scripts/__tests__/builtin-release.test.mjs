@@ -352,7 +352,7 @@ describe("independent built-in project release", () => {
 
   it("packages both assistant entries and skills while dropping repository infrastructure", async () => {
     const definition = await readBuiltinDefinition(root, { mode: 'dev' });
-    const skillRoot = "skills/workflow-generator";
+    const skillRoot = "skills/steamharness-generator";
 
     // 规则层：仓库根的 scripts/__tests__ 必须排除，skill 自己的 scripts/ 必须保留。
     expect(shouldPackEntry(root, path.join(root, "scripts"))).toBe(false);

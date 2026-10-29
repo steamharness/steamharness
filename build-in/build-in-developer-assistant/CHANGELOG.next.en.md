@@ -1,6 +1,8 @@
 # Unreleased
 
-- Declared assistant skill roots through Core Agent so the catalog and runtime tools stay aligned. Project information lists workflow-generator and Core built-in guides with complete read-only document previews.
+- Renamed the project generation skill to steamharness-generator, including its directory, assistant prompts, development and packaging references, and documentation.
+
+- Declared assistant skill roots through Core Agent so the catalog and runtime tools stay aligned. Project information lists steamharness-generator and Core built-in guides with complete read-only document previews.
 
 - Fixed assistant continuation guidance for skill catalogs, file listings and large JSON results. Long child output reads the existing task instead of delegating again. Read-only environments can continue long text lines, and child failures and shell truncation receive explicit recovery guidance.
 

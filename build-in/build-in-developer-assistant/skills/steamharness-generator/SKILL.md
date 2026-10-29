@@ -1,9 +1,9 @@
 ---
-name: workflow-generator
+name: steamharness-generator
 description: 生成、修改或迁移 steamharness Workflow、Conversation 或 Kanban 项目；适用于 executor、HTML 看板、参数配置、标准化 package 元数据、运行时约定，以及因旧清单或结构校验失败被 Desktop 降级为普通文件夹、数据库空间未绑定的修复。
 ---
 
-# 工作流代码生成器
+# SteamHarness 项目生成器
 
 ## 核心流程
 

@@ -336,9 +336,9 @@ test("declared skill roots supply the real skill tool, preserve the custom tool 
       faux.setResponses([
         ...(enabled ? [ai.fauxAssistantMessage([ai.fauxToolCall("skill", { action: "read", skill: "alpha" })], { stopReason: "toolUse" })] : []),
         request => { seen.push(JSON.stringify(request)); return ai.fauxAssistantMessage("Done"); },
-      ] as never[]);
+      ]);
       const project = createAgentConversationProject({ models, resolvedModel: model, skills: { directories: ["guides"] },
-        createTools: () => ({ tools: [], close: () => { closed.push(true); } }) });
+        createTools: () => ({ tools: [], close: async () => { closed.push(true); } }) });
       const context = createContext(`skills-${enabled}`);
       context.metadata = { ...context.metadata, entryRootDir: root };
       context.toolPermissions = createProjectToolPermissionContext({ definitions: [{ name: "skill", enabled, autoApprove: true }], projectName: "skills", runId: `skills-${enabled}` });

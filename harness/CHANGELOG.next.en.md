@@ -1,5 +1,7 @@
 # Unreleased
 
+- Renamed the development project generation skill to steamharness-generator and synchronized skill copies, validation and generator references.
+
 - Added skills.directories to Core Agent nodes and projects so runtime tools and host previews share one declaration. Hosts can list project and Core built-in guides and read complete SKILL.md files by catalog ID without running tool factories or tasks.
 
 - Fixed paged skill catalogs and file listings, byte-bounded JSON continuation with change detection for knowledge/KV/memory and long child results, and bounded write acknowledgements. Fixed large-file tails and read-only environment long-line reads, silent search/list omissions, missing shell truncation and timeout diagnostics, commands starting after cancellation, failed children reported as completed, and UTF-8 MCP schema size checks.
