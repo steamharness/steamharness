@@ -39,7 +39,10 @@ const en = {
   loading: "Loading memories…",
   error: "Memory is unavailable. Retry or check the service configuration.",
   unconfigured:
-    "Memory is not configured. Sign in again if your account was connected before this feature was added.",
+    "Account memory is not configured on this server. Ask your administrator to configure the memory service.",
+  unauthorized: "Verify your account authorization to access memory.",
+  authorize: "Verify account authorization",
+  unsupported: "This server does not support account memory yet. Ask your administrator to update it.",
   disabled: "Account memory is turned off.",
   readonly: "Read-only memory",
   content: "Memory content",
@@ -49,7 +52,9 @@ const en = {
   version: "Version",
   sources: "Source excerpts",
   enabled: "Account memory",
+  enabledNote: "Let the assistant recall your preferences and project decisions across conversations.",
   autoSave: "Automatically save durable memories",
+  autoSaveNote: "Extract long-term preferences and project context after conversations. You can edit or forget them at any time.",
   privacy:
     "Private to your account. Deleting a conversation does not forget its memories.",
   locked: "Permission locked",
@@ -98,7 +103,10 @@ const zh: Record<keyof typeof en, string> = {
   select: "选择一条记忆，查看完整内容。",
   loading: "正在加载记忆…",
   error: "记忆暂时不可用，请重试或检查服务配置。",
-  unconfigured: "尚未配置记忆。如果账号在此功能上线前已登录，请重新登录授权。",
+  unconfigured: "当前服务器尚未配置账号记忆服务，请联系管理员完成配置。",
+  unauthorized: "验证当前账号的访问授权后，即可查看和管理记忆。",
+  authorize: "验证账号授权",
+  unsupported: "当前服务器尚不支持账号记忆，请联系管理员升级服务。",
   disabled: "账号记忆已关闭。",
   readonly: "只读记忆",
   content: "记忆内容",
@@ -108,7 +116,9 @@ const zh: Record<keyof typeof en, string> = {
   version: "版本",
   sources: "来源片段",
   enabled: "账号记忆",
+  enabledNote: "允许助手跨对话召回你的长期偏好和项目约定。",
   autoSave: "自动保存长期记忆",
+  autoSaveNote: "对话后自动提炼长期偏好和项目背景，你可以随时编辑或遗忘。",
   privacy: "仅当前账号可见。删除对话不会遗忘长期记忆。",
   locked: "权限已锁定",
   lockedNote: "恢复项目权限前，仅显示记录数量。",
@@ -156,7 +166,7 @@ export function createMemoryClient(
 ): MemoryClient {
   return {
     async call(action, input = {}) {
-      const endpoint = memoryEndpoint[action];
+      const endpoint = Object.hasOwn(memoryEndpoint, action) ? memoryEndpoint[action] : undefined;
       if (!endpoint) throw new Error("Unknown memory operation.");
       const url = new URL(
         (options.baseUrl ??
@@ -176,12 +186,15 @@ export function createMemoryClient(
         headers: { "Content-Type": "application/json", ...options.headers?.() },
         ...(endpoint.method === "GET" ? {} : { body: JSON.stringify(input) }),
         credentials: "same-origin",
+        redirect: "error",
         signal: AbortSignal.timeout(10000),
       });
-      const b: any = await response.json();
-      if (!response.ok || b.errCode !== 0)
+      let b: any;
+      try { b = await response.json(); }
+      catch { throw Object.assign(new Error("Invalid memory service response."), { status: response.status }); }
+      if (!response.ok || b?.errCode !== 0)
         throw Object.assign(
-          new Error(b.errMessage ?? "Memory request failed."),
+          new Error(b?.errMessage ?? "Memory request failed."),
           { status: response.status },
         );
       return b.data;

@@ -1,5 +1,7 @@
 # Unreleased
 
+- Fixed memory settings with descriptive rows and compact switches. Reuse valid account sessions, distinguish service setup from authorization, and discard replies after sign-out.
+
 - Added: Click local file paths in Agent replies and plans to open them in the editor. Resolve relative paths from the project root or Assistant working directory, support line/column locations and paths containing spaces or Unicode, and reuse document previews.
 
 - Added: Add a native account memory panel in settings, clear stale data when switching accounts and bind CLI assistant memory through host authorization.

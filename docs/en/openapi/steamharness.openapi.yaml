@@ -4144,6 +4144,7 @@ paths:
       tags: [Account Memory]
       operationId: submitMemoryTurn
       summary: Submit a completed durable turn
+      description: New turns return accepted=false without creating extraction jobs when the model is unconfigured or automatic saving is off. Temporary outages return 503 for host retry.
       security:
         - MemoryRuntimeAuth: []
       requestBody:

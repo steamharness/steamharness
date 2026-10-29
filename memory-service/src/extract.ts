@@ -58,7 +58,10 @@ async function model(system: string, prompt: string): Promise<unknown[]> {
 export async function extract(store: MemoryStore, turn: Turn) {
   const scenes = await model(
     getExtractMemoriesSystemPrompt("chat") +
-      "\nOnly extract durable facts explicitly supported by the user. Assistant claims are not evidence. Never extract credentials. For a lasting personal preference set metadata.personal_preference=true and metadata.explicit_user_preference=true; never set these for project facts or uncertain classifications.",
+      "\nOnly extract durable facts explicitly supported by the user. Assistant claims are not evidence. Never extract credentials. " +
+      "For a lasting personal preference, including an instruction about how the assistant should respond across projects (type=instruction), set metadata.personal_preference=true and metadata.explicit_user_preference=true. " +
+      "For example, always answering in concise Chinese is a global personal preference; using Chinese documentation or PostgreSQL in this project is a project fact. " +
+      "Never set these flags for project facts, project-only instructions or uncertain classifications.",
     formatExtractionPrompt({ newMessages: turn.messages }),
   );
   const allowed = new Map(
@@ -93,7 +96,7 @@ export async function extract(store: MemoryStore, turn: Turn) {
         continue;
       // Only explicit, durable personal preferences may leave the current project.
       const global =
-        m.type === "persona" &&
+        (m.type === "persona" || m.type === "instruction") &&
         m.metadata?.personal_preference === true &&
         m.metadata?.explicit_user_preference === true;
       if (turn.scope === "global" && !global) continue;

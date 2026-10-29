@@ -27,11 +27,13 @@ afterEach(() => {
 function mount(
   call: (action: string, input?: Record<string, unknown>) => Promise<any>,
   account = false,
+  onAuthorize?: () => void,
 ) {
   const panel = createMemoryPanel({
     client: { call },
     locale: "zh-CN",
     account,
+    onAuthorize,
   });
   panels.push(panel);
   document.body.append(panel.element);
@@ -67,6 +69,61 @@ test("full detail is fetched, sources stay inert, and manual edits carry the cur
   expect(
     calls.find((call) => call.action === "update").input.operationId,
   ).toBeTruthy();
+});
+test("account switches have accessible labels, save preferences and restore them after failure", async () => {
+  let preferences = { enabled: true, automatic: true };
+  let fail = false;
+  const changes: any[] = [];
+  const { ui } = mount(async (action, input) => {
+    if (action === "capabilities") return { ...caps, enabled: preferences.enabled };
+    if (action === "preferences") return preferences;
+    if (action === "scopes" || action === "jobs") return [];
+    if (action === "setPreferences") {
+      changes.push(input);
+      if (fail) throw new Error("offline");
+      return (preferences = input as typeof preferences);
+    }
+    return { items: [] };
+  }, true);
+  const enabled = await ui.findByRole("switch", { name: "账号记忆" });
+  const automatic = ui.getByRole("switch", { name: "自动保存长期记忆" });
+  await waitFor(() => expect(enabled).toBeEnabled());
+  expect(enabled).toBeChecked();
+  expect(automatic).toBeChecked();
+  fireEvent.click(enabled);
+  await waitFor(() => expect(enabled).toBeEnabled());
+  expect(changes).toEqual([{ enabled: false, automatic: true }]);
+  expect(automatic).toBeDisabled();
+  fail = true;
+  fireEvent.click(enabled);
+  await ui.findByText(memoryText("zh", "error"));
+  expect(enabled).not.toBeChecked();
+  expect(automatic).toBeChecked();
+  expect(automatic).toBeDisabled();
+});
+test("unconfigured service does not ask for sign-in or request unavailable records", async () => {
+  const actions: string[] = [];
+  const { ui, panel } = mount(async (action) => {
+    actions.push(action);
+    if (action === "capabilities")
+      return { ...caps, connected: false, status: "unconfigured" };
+    throw new Error("Service not configured");
+  }, true);
+  await ui.findByText(memoryText("zh", "unconfigured"));
+  expect(actions).toEqual(["capabilities"]);
+  expect(panel.element.textContent).not.toMatch(/登录|sign in/i);
+  expect(panel.element.querySelector<HTMLElement>(".am-layout")?.hidden).toBe(true);
+  expect(ui.getByRole("switch", { name: "账号记忆" })).toBeDisabled();
+  expect(ui.getByRole("button", { name: "记住" })).toBeDisabled();
+});
+test("authorization errors offer host verification without conflating service configuration", async () => {
+  const authorize = vi.fn();
+  const { ui } = mount(async () => {
+    throw Object.assign(new Error("No account credential"), { status: 401 });
+  }, true, authorize);
+  fireEvent.click(await ui.findByRole("button", { name: "验证账号授权" }));
+  expect(authorize).toHaveBeenCalledOnce();
+  expect(ui.queryByText(memoryText("zh", "unconfigured"))).toBeNull();
 });
 test("read-only panels offer reading and hide editing actions", async () => {
   const { ui } = mount(async (action) =>
@@ -110,7 +167,8 @@ test("service errors differ from empty data and stale pagination is disabled", a
   failure = true;
   fireEvent.click(ui.getByRole("button", { name: "刷新" }));
   await ui.findByText(memoryText("zh", "error"));
-  expect(ui.getByRole("button", { name: "下一页" })).toBeDisabled();
+  expect(ui.getByRole("button", { name: "下一页", hidden: true })).toBeDisabled();
+  expect(ui.getByRole("button", { name: "记住" })).toBeDisabled();
   expect(ui.queryByText("暂无记忆")).toBeNull();
 });
 test("management client encodes IDs and keeps credentials in its host adapter", async () => {
@@ -127,4 +185,17 @@ test("management client encodes IDs and keeps credentials in its host adapter", 
   );
   expect(memoryText("fr", "edit")).toBe("Edit");
   expect(memoryText("zh-cn", "edit")).toBe("编辑");
+});
+test("unsupported servers retain HTTP status even when they return HTML", async () => {
+  const request = vi.fn(async () => new Response("<html>Not found</html>", { status: 404 }));
+  await expect(createMemoryClient({ baseUrl: "https://server.test", fetch: request }).call("capabilities"))
+    .rejects.toMatchObject({ status: 404 });
+});
+test("canceling a manual memory returns to the empty list", async () => {
+  const { ui, panel } = mount(async (action) => action === "capabilities" ? caps : { items: [] });
+  await ui.findByText("暂无记忆");
+  fireEvent.click(ui.getByRole("button", { name: "记住" }));
+  expect(panel.element).toHaveClass("am-show-detail");
+  fireEvent.click(ui.getByRole("button", { name: "取消" }));
+  expect(panel.element).not.toHaveClass("am-show-detail");
 });

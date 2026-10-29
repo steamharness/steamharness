@@ -1,4 +1,3 @@
-import { memoryEndpoint } from '../../../../shared/account-memory/index';
 import { t } from './localization';
 import { localizationHtml } from './localization-host';
 import { webviewContextMenu } from './webview-context-menu';
@@ -13,7 +12,7 @@ import { UserModels, USER_MODELS_SECRET } from './user-models';
 import type { UserModelCatalogProvider, UserModelWriteLock } from './user-model-types';
 import { publicServiceUrls, serviceChannelFromServerUrl } from '../../../../shared/service-urls/index';
 import {
-  DEFAULT_STEAMHARNESS_SERVER_URL, Account,
+  DEFAULT_STEAMHARNESS_SERVER_URL, Account, ServerClient,
   type AccountState, type Connection,
 } from './workflow-auth-client';
 
@@ -315,17 +314,20 @@ export class AccountController implements vscode.Disposable {
         void this.sections.refresh();
         return;
       }
-      if(message.type==='settings-memory'){
-        const connection=this.account.getConnection();const endpoint=memoryEndpoint[String(message.action)];
-        try{
-          if(!connection?.memoryToken||!endpoint)throw Object.assign(new Error(t('Sign in again to authorize account memory.')),{status:401});
-          const input=message.input??{},url=new URL(connection.serverUrl+'/api/me'+endpoint.path.replace(':id',encodeURIComponent(String(input.id??''))));
-          if(endpoint.method==='GET')for(const[k,v]of Object.entries(input))if(v!==undefined)url.searchParams.set(k,String(v));
-          const response=await fetch(url,{method:endpoint.method,headers:{Authorization:`Bearer ${connection.memoryToken}`,'Content-Type':'application/json'},...(endpoint.method==='GET'?{}:{body:JSON.stringify(input)}),signal:AbortSignal.timeout(10000),redirect:'error'});const result=await response.json() as any;
-          if(this.panel!==panel||JSON.stringify(this.account.getConnection())!==JSON.stringify(connection))return;
-          if(!response.ok||result.errCode!==0)throw Object.assign(new Error(result.errMessage??t('Memory is unavailable.')),{status:response.status});
-          await panel.webview.postMessage({type:'settings-memory-result',requestId:message.requestId,data:result.data});
-        }catch(error){if(this.panel===panel&&JSON.stringify(this.account.getConnection())===JSON.stringify(connection))await panel.webview.postMessage({type:'settings-memory-result',requestId:message.requestId,error:error instanceof Error?error.message:t('Memory is unavailable.'),status:(error as any).status});}
+      if (message.type === 'settings-memory') {
+        const session = this.account.getSession();
+        const current = () => {
+          const active = this.account.getSession();
+          return this.panel === panel && active?.serverUrl === session?.serverUrl && active?.user.userId === session?.user.userId &&
+            active?.accessToken === session?.accessToken && active?.memoryToken === session?.memoryToken && active?.sessionCookie === session?.sessionCookie;
+        };
+        try {
+          if (!session) { throw Object.assign(new Error('Account authorization required.'), { status: 401 }); }
+          const data = await new ServerClient(session.serverUrl).accountMemory(session, String(message.action), message.input);
+          if (current()) { await panel.webview.postMessage({ type: 'settings-memory-result', requestId: message.requestId, data }); }
+        } catch (error) {
+          if (current()) { await panel.webview.postMessage({ type: 'settings-memory-result', requestId: message.requestId, error: t('Memory is unavailable.'), status: (error as { status?: number }).status }); }
+        }
         return;
       }
       if (message.type === 'settings-view-state') {

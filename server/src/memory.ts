@@ -285,6 +285,23 @@ export class AccountMemory {
     );
     return r.rows[0] ?? { enabled: true, automatic: true };
   }
+  private async health(): Promise<{ automatic: boolean }> {
+    if (!this.configured)
+      throw new HttpError(503, 503, "Memory service is not configured.");
+    try {
+      const response = await fetch(`${this.url!.replace(/\/$/, "")}/health`, {
+        headers: { Authorization: `Bearer ${this.token}` },
+        signal: AbortSignal.timeout(1500),
+        redirect: "error",
+      });
+      if (!response.ok) throw new Error("Memory health check failed.");
+      const body = await response.json();
+      if (body.fts !== true) throw new Error("Memory search is unavailable.");
+      return { automatic: body.automatic === true };
+    } catch {
+      throw new HttpError(503, 503, "Memory service is temporarily unavailable.");
+    }
+  }
   async capabilities(identity: MemoryIdentity) {
     await this.validate(identity);
     const prefs = await this.preferences(identity.userId);
@@ -292,18 +309,9 @@ export class AccountMemory {
       automatic = false;
     if (this.configured)
       try {
-        const r = await fetch(`${this.url!.replace(/\/$/, "")}/health`, {
-          headers: { Authorization: `Bearer ${this.token}` },
-          signal: AbortSignal.timeout(1500),
-          redirect: "error",
-        });
-        if (r.ok) {
-          const b = await r.json();
-          if (b.fts) {
-            status = "ready";
-            automatic = b.automatic === true;
-          }
-        }
+        const health = await this.health();
+        status = "ready";
+        automatic = health.automatic;
       } catch {}
     return {
       connected: this.configured,
@@ -546,6 +554,9 @@ export class AccountMemory {
             "Turn ID reused with different messages.",
           );
         if (existing) return { accepted: true, jobId: id };
+        // Manual-only mode is healthy, but cannot process L0 turns. Do not enqueue
+        // guaranteed failures; transient service errors still fail for host retry.
+        if (!(await this.health()).automatic) return { accepted: false };
         const states = await this.service(identity.userId, {
           method: "stageTurn",
           turn: payload,

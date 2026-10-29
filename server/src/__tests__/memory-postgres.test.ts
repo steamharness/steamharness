@@ -8,10 +8,14 @@ import { createServer, type Server } from "node:http";
 import express from "express";
 import pg from "pg";
 import { AccountRepository } from "../account-db";
+import { AuthService } from "../account-auth";
+import { configureProjectAuthContext, getProjectAuthContext } from "../auth";
 import { DatabaseRepository } from "../persistence";
 import { AccountMemory } from "../memory";
 import { createMemoryRouter } from "../routes/memory";
 import { HttpError } from "../protocol";
+import { createServerAgentMemoryProvider } from "steamharness";
+import { createAgentRuntime } from "steamharness/agent";
 const databaseUrl = process.env.STEAMHARNESS_TEST_DATABASE_URL;
 const listen = (server: Server) =>
   new Promise<string>((resolve) =>
@@ -70,10 +74,14 @@ test(
       }
     })();
     let web: Server | undefined;
+    let auth: AuthService | undefined;
+    const previousAuth = getProjectAuthContext();
     try {
       await accounts.init();
       await database.init();
       await memory.init();
+      auth = new AuthService({ databaseUrl: url, accountDb: accounts });
+      configureProjectAuthContext({ authService: auth, accountDb: accounts });
       for (const userId of ["a", "b"]) {
         await accounts.upsertUserProfile({
           userId,
@@ -129,6 +137,25 @@ test(
       );
       web = createServer(app);
       const origin = await listen(web);
+      const invitation = await auth.inviteUser({ email: "session@memory.test", displayName: "Session account", redirectTo: origin });
+      const session = await auth.acceptInvitation({ token: new URL(invitation.invitationLink!).pathname.split("/").at(-1)!, password: "test-password" });
+      let sessionCookie = "";
+      auth.setAuthCookie({ append(_name, value) { sessionCookie = value.split(";", 1)[0]!; } }, session);
+      const accountCall = async (endpoint: string, body?: unknown) => {
+        const response = await fetch(origin + "/api/me" + endpoint, {
+          method: body ? "POST" : "GET", redirect: "error",
+          headers: { Cookie: sessionCookie, "Content-Type": "application/json" },
+          ...(body ? { body: JSON.stringify(body) } : {}),
+        });
+        return { status: response.status, body: await response.json() };
+      };
+      assert.equal((await accountCall("/memory/capabilities")).body.data.status, "ready", "An existing account cookie can manage memory without a separate memory token");
+      assert.equal((await accountCall("/memories", { scope: "global", content: "既有账号会话保存的记忆", operationId: randomUUID() })).status, 200);
+      assert.equal((await accountCall("/memories")).body.data.items[0].content, "既有账号会话保存的记忆");
+      const deniedProjectKey = await fetch(origin + "/api/me/memories", { headers: { Authorization: `Bearer ${keyA.token}` } });
+      assert.equal(deniedProjectKey.status, 401, "A project API key is never an account memory credential");
+      await auth.revokeSession(session.refreshToken);
+      assert.equal((await accountCall("/memories")).status, 401, "Revoking the login also revokes cookie memory access immediately");
       for (const requestOrigin of ["null", "invalid-origin", "https://other.test"]) {
         const response = await fetch(origin + "/api/me/memory/capabilities", { headers: { Origin: requestOrigin } });
         assert.equal(response.status, 403, "invalid and cross-site cookie requests fail before account access");
@@ -478,8 +505,10 @@ test(
       );
       assert.equal((await call(grantB.token, "/memories")).status, 403);
     } finally {
+      configureProjectAuthContext(previousAuth);
       if (web) await close(web);
       await memory.close();
+      await auth?.close();
       await accounts.close();
       await database.close();
       await pool.end();
@@ -490,3 +519,160 @@ test(
     }
   },
 );
+
+test("real extraction HTTP and Core provider preserve global preferences across scopes without queuing unconfigured extraction", { skip: !databaseUrl, timeout: 60000 }, async () => {
+  const admin = new pg.Pool({ connectionString: databaseUrl });
+  const schema = "memory_" + randomUUID().replaceAll("-", "");
+  await admin.query(`CREATE SCHEMA ${schema}`);
+  const connection = new URL(databaseUrl!);
+  connection.searchParams.set("options", `-c search_path=${schema}`);
+  const url = connection.toString();
+  const pool = new pg.Pool({ connectionString: url });
+  const accounts = new AccountRepository(url), database = new DatabaseRepository(url);
+  const root = await mkdtemp(path.join(tmpdir(), "memory-extraction-http-"));
+  const modelKeys = ["STEAMHARNESS_MEMORY_MODEL_BASE_URL", "STEAMHARNESS_MEMORY_MODEL_API_KEY", "STEAMHARNESS_MEMORY_MODEL"];
+  const previous = modelKeys.map(key => process.env[key]);
+  const { createMemoryHttpServer } = await import(new URL("../../../memory-service/src/server.ts", import.meta.url).href);
+  const serviceToken = "isolated-memory-service-token-at-least-32";
+  let service: Server = createMemoryHttpServer({ root, token: serviceToken, automatic: false });
+  const serviceUrl = await listen(service);
+  const memory = new AccountMemory(url, serviceUrl, serviceToken);
+  let web: Server | undefined, model: Server | undefined;
+  let extractionCalls = 0;
+  let dedupCalls = 0;
+  const agentRequests: any[] = [];
+  try {
+    await accounts.init();
+    await database.init();
+    await memory.init();
+    for (const userId of ["a", "b"]) {
+      await accounts.upsertUserProfile({ userId, email: `${userId}@extraction.test` });
+      await pool.query("UPDATE user_profiles SET status='active' WHERE user_id=$1", [userId]);
+    }
+    const key = await accounts.createApiKey({ userId: "a", name: "host", source: "cli", scopes: [] });
+    const manager = await memory.issue("a", key.record.id);
+    for (const id of ["p", "q"]) {
+      await pool.query("INSERT INTO projects(id,name,owner_user_id,entries,default_entry) VALUES($1,$1,'a','[]'::jsonb,'main')", [id]);
+      await pool.query("INSERT INTO project_members(project_id,user_id,role) VALUES($1,'a','owner')", [id]);
+    }
+    const app = express();
+    app.use("/api/me", createMemoryRouter(memory));
+    app.use((error: any, _req: any, res: any, _next: any) => res.status(error instanceof HttpError ? error.statusCode : 500).json({ errCode: error.errCode ?? 500, errMessage: error.message }));
+    web = createServer(app);
+    const origin = await listen(web);
+    const identity = await memory.identify(manager);
+    const grant = await memory.grant(identity, { scope: "project:p" });
+    const provider = createServerAgentMemoryProvider({ serverUrl: origin, getGrant: async () => grant });
+    const turn = { turnId: "real-http-turn", messages: [
+      { id: "real-user", role: "user" as const, content: "以后所有项目都用简洁中文回答；本项目使用 PostgreSQL。", timestamp: Date.now() },
+      { id: "real-answer", role: "assistant" as const, content: "好的。", timestamp: Date.now() },
+    ] };
+    assert.equal((await provider.capabilities()).automatic, false);
+    assert.deepEqual(await provider.submitTurn(turn), { accepted: false }, "manual-only service must not accumulate guaranteed-to-fail jobs");
+    assert.equal((await pool.query("SELECT count(*)::int AS n FROM memory_jobs")).rows[0].n, 0);
+    const manual = await provider.remember({ scope: "current", content: "Manual memory works without an extraction model.", operationId: "manual-only" });
+    assert.equal((await provider.get(manual.id)).content, manual.content);
+
+    model = createServer(async (req, res) => {
+      assert.equal(req.url, "/v1/chat/completions");
+      assert.equal(req.headers.authorization, "Bearer isolated-model-key");
+      const chunks: Buffer[] = [];
+      for await (const chunk of req) chunks.push(chunk);
+      const body = JSON.parse(Buffer.concat(chunks).toString("utf8"));
+      if (body.model === "agent-wire-check") {
+        agentRequests.push(body);
+        res.writeHead(200, { "Content-Type": "text/event-stream" });
+        res.end(`data: ${JSON.stringify({ id: "agent-wire-check", choices: [{ index: 0, delta: { role: "assistant", content: "Verified final answer" }, finish_reason: null }] })}\n\ndata: ${JSON.stringify({ id: "agent-wire-check", choices: [{ index: 0, delta: {}, finish_reason: "stop" }] })}\n\ndata: [DONE]\n\n`);
+        return;
+      }
+      let result: unknown;
+      if (body.messages[0].content.includes("情境切分")) {
+        extractionCalls++;
+        assert.match(body.messages[1].content, /\[real-user\] \[user\]/);
+        result = [{ memories: [
+          { type: "instruction", content: "用户要求跨项目用简洁中文回答。", source_message_ids: ["real-user"], metadata: { personal_preference: true, explicit_user_preference: true } },
+          { type: "instruction", content: "本项目使用 PostgreSQL。", source_message_ids: ["real-user"], metadata: {} },
+        ] }];
+      } else {
+        dedupCalls++;
+        result = [...body.messages[1].content.matchAll(/### 第 \d+ 条新记忆 \(record_id: ([^)]+)\)/g)].map(match => ({ record_id: match[1], action: "skip" }));
+      }
+      res.end(JSON.stringify({ choices: [{ message: { content: JSON.stringify(result) } }] }));
+    });
+    process.env.STEAMHARNESS_MEMORY_MODEL_BASE_URL = (await listen(model)) + "/v1";
+    process.env.STEAMHARNESS_MEMORY_MODEL_API_KEY = "isolated-model-key";
+    process.env.STEAMHARNESS_MEMORY_MODEL = "isolated-protocol-fixture";
+    const port = (service.address() as any).port;
+    await close(service);
+    await assert.rejects(provider.submitTurn({ ...turn, turnId: "temporary-outage" }), { status: 503 }, "a temporary outage remains retryable instead of acknowledging and dropping the turn");
+    assert.equal((await pool.query("SELECT count(*)::int AS n FROM memory_jobs")).rows[0].n, 0);
+    service = createMemoryHttpServer({ root, token: serviceToken });
+    await new Promise<void>(resolve => service.listen(port, "127.0.0.1", resolve));
+    assert.equal((await provider.capabilities()).automatic, true);
+    assert.equal((await provider.get(manual.id)).content, manual.content, "SQLite survives a real service restart");
+    const submitted = await provider.submitTurn(turn) as { accepted: boolean; jobId: string };
+    const waitDone = async (id: string) => {
+      const deadline = Date.now() + 15000;
+      while (true) {
+        const job = (await pool.query("SELECT status,error FROM memory_jobs WHERE id=$1", [id])).rows[0];
+        if (job?.status === "done") return;
+        assert.notEqual(job?.status, "failed", job?.error);
+        assert.ok(Date.now() < deadline, "real HTTP extraction job completes");
+        await new Promise(resolve => setTimeout(resolve, 50));
+      }
+    };
+    await waitDone(submitted.jobId);
+    assert.equal(extractionCalls, 1);
+    const repeat = await provider.submitTurn({ ...turn, turnId: "new-turn-same-facts" }) as { jobId: string };
+    await waitDone(repeat.jobId);
+    assert.equal(extractionCalls, 2);
+    assert.equal(dedupCalls, 1, "conflict checking uses the real model HTTP protocol");
+    assert.equal((await provider.list()).items.length, 3, "repeated facts produce no duplicate memories");
+    const otherGrant = await memory.grant(identity, { scope: "project:q" });
+    const other = createServerAgentMemoryProvider({ serverUrl: origin, getGrant: async () => otherGrant });
+    const recalled = await other.recall("简洁中文 PostgreSQL");
+    assert.deepEqual(recalled.map(item => item.content), ["用户要求跨项目用简洁中文回答。"]);
+    assert.equal(recalled[0].scope, "global");
+    assert.equal((await provider.recall("PostgreSQL"))[0].scope, "project:p");
+    const runFreshSession = async (name: string) => {
+      const runtime = await createAgentRuntime({
+        provider: "memory-wire-check", model: "agent-wire-check", apiKind: "openai-completions",
+        apiKey: "isolated-model-key", baseUrl: process.env.STEAMHARNESS_MEMORY_MODEL_BASE_URL,
+        workdir: root, databasePath: path.join(root, `${name}.sqlite`),
+        memory: { provider: other, readOnly: true },
+      });
+      try {
+        let answer = "";
+        for await (const event of runtime.run({ prompt: "简洁中文 英文", requestId: name, errCode: 0, errMessage: "" }))
+          if (event.type === "text_delta") answer += event.delta;
+        assert.equal(answer, "Verified final answer");
+      } finally { await runtime.close(); }
+    };
+    await runFreshSession("before-forget");
+    assert.ok(JSON.stringify(agentRequests.at(-1).messages).includes(recalled[0].content), "stored memory reaches an actual model HTTP request in a fresh session");
+    assert.equal(agentRequests.at(-1).messages.filter((message: any) => ["system", "developer"].includes(message.role)).some((message: any) => JSON.stringify(message.content).includes("Current user instructions take precedence")), true);
+    const item = recalled[0];
+    const edited = await other.update({ id: item.id, version: item.version, content: "用户要求跨项目用简洁英文回答。", operationId: "edit-global" });
+    assert.equal(edited.version, item.version + 1);
+    await assert.rejects(other.update({ id: item.id, version: item.version, content: "stale", operationId: "stale-global" }), { status: 409 });
+    await other.forget({ id: item.id, operationId: "forget-global" });
+    assert.equal((await other.recall("简洁中文 英文")).length, 0);
+    await runFreshSession("after-forget");
+    assert.equal(agentRequests.length, 2);
+    assert.equal(JSON.stringify(agentRequests.at(-1).messages).includes(item.content), false, "a new model request excludes forgotten memory");
+    assert.equal((await provider.submitTurn(turn) as any).jobId, submitted.jobId);
+    assert.equal(extractionCalls, 2, "replayed durable turn cannot recreate a forgotten preference");
+    assert.equal((await other.list()).items.length, 0, "current-scope lists do not include another project's decisions");
+    await pool.query("UPDATE api_keys SET revoked_at=now() WHERE id=$1", [key.record.id]);
+    await assert.rejects(other.recall("中文"), { status: 401 });
+  } finally {
+    if (web) await close(web);
+    await memory.close();
+    await close(service);
+    if (model) await close(model);
+    modelKeys.forEach((key, i) => { if (previous[i] === undefined) delete process.env[key]; else process.env[key] = previous[i]; });
+    await accounts.close(); await database.close(); await pool.end();
+    await rm(root, { recursive: true, force: true });
+    await admin.query(`DROP SCHEMA ${schema} CASCADE`); await admin.end();
+  }
+});

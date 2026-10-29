@@ -78,7 +78,7 @@ export function createSettingsView(root: HTMLElement, vscode: WebviewApi): { acc
   const memoryPending=new Map<string,{resolve:(value:any)=>void;reject:(error:Error)=>void;timer:ReturnType<typeof setTimeout>}>();
   const memoryClient={call:(action:string,input?:Record<string,unknown>)=>new Promise((resolve,reject)=>{const requestId=crypto.randomUUID();const timer=setTimeout(()=>{memoryPending.delete(requestId);reject(new Error('Memory request timed out.'));},12000);memoryPending.set(requestId,{resolve,reject,timer});vscode.postMessage({type:'settings-memory',requestId,action,input});})};
   function clearMemory(){memoryPanel?.dispose();memoryPanel=undefined;for(const p of memoryPending.values()){clearTimeout(p.timer);p.reject(new Error('Account changed.'));}memoryPending.clear();find('settings-memory').replaceChildren();}
-  function showMemory(){if(view.section==='memory'&&!memoryPanel){memoryPanel=createMemoryPanel({client:memoryClient,locale:locale(),account:true});find('settings-memory').append(memoryPanel.element);}}
+  function showMemory(){if(view.section==='memory'&&!memoryPanel){memoryPanel=createMemoryPanel({client:memoryClient,locale:locale(),account:true,onAuthorize:()=>vscode.postMessage({type:'open-login'})});find('settings-memory').append(memoryPanel.element);}}
 
   let view: SettingsViewState = { section: 'general', query: '', target: 'user', ...vscode.getState?.() };
   let scrollTimer: ReturnType<typeof setTimeout> | undefined;

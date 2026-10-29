@@ -1,5 +1,9 @@
 # Unreleased
 
+- Fixed unconfigured memory service guidance to request administrator setup instead of repeated sign-in. Verified existing account sessions can manage memory while project API keys cannot.
+
+- Fixed lasting response-language and style instructions entering global memory across projects. A missing extraction model no longer creates guaranteed-to-fail jobs; temporary outages preserve turns for retry.
+
 - Added: Add private account memory APIs, separate login credentials, scoped authorization, a durable extraction queue and a standalone memory service without embeddings.
 
 - Breaking: project identity, name, version and declarations now use independent `steamharness.json` files. Removed reads and writes of `package.json.id` and `steamHarness`. Aggregates explicitly register child entries whose configuration defines icons, declarations, database aliases and schedules. Unregistered configurations stay inactive, and transfers preserve the parent and child structure.

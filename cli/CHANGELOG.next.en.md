@@ -1,5 +1,7 @@
 # Unreleased
 
+- Fixed memory panel layout with a continuous list, on-demand details and compact switches. Configuration, outage and authorization states are distinct, with a working return to the list on narrow layouts.
+
 - Improved: Project configurations reference settings models or define project models; composed menus group settings and project entries and follow project defaults without copying host credentials.
 
 - Added: Open local file links, inline code paths and plain absolute paths from Agent replies and plans in the Studio editor, including relative paths, file URIs and line/column locations. Fixed managed attachment link handling.

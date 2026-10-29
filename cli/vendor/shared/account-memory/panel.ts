@@ -4,12 +4,16 @@ import {
   type MemoryClient,
   type MemoryRecord,
 } from "./index";
+import { formatDateTime } from "../i18n/utils/format";
+
+let panelSequence = 0;
 
 /** Host owns authentication and theme; no credentials enter this panel. */
 export function createMemoryPanel(options: {
   client: MemoryClient;
   locale: string;
   account?: boolean;
+  onAuthorize?: () => void;
 }) {
   const t = (key: MemoryTextKey) => memoryText(options.locale, key);
   const el = <K extends keyof HTMLElementTagNameMap>(
@@ -34,11 +38,13 @@ export function createMemoryPanel(options: {
     select.append(node);
   };
   const root = el("section", undefined, "account-memory");
+  const panelId = `am-panel-${++panelSequence}`;
   root.ariaLabel = t("title");
   let epoch = 0,
     detailEpoch = 0,
     disposed = false,
-    pending = false;
+    pending = false,
+    available = false;
   let cursor: string | undefined, nextCursor: string | undefined;
   let history: (string | undefined)[] = [],
     selected: MemoryRecord | undefined;
@@ -59,12 +65,14 @@ export function createMemoryPanel(options: {
             ?.label ||
           `${t(value.startsWith("directory:") ? "directory" : "project")} · ${value.split(":").slice(1).join(":")}`;
   const intro = el("p", t("privacy"), "am-muted");
+  const surface = el("div", undefined, "am-surface");
   const toolbar = el("div", undefined, "am-toolbar"),
     status = el("div", undefined, "am-status");
   const layout = el("div", undefined, "am-layout"),
     list = el("ul", undefined, "am-list");
   const detail = el("article", t("select"), "am-detail"),
     footer = el("div", undefined, "am-footer");
+  layout.hidden = footer.hidden = true;
   status.setAttribute("role", "status");
   status.ariaLive = "polite";
   list.ariaLabel = t("title");
@@ -103,35 +111,42 @@ export function createMemoryPanel(options: {
   const automatic = el("input");
   automatic.type = "checkbox";
   automatic.disabled = true;
-  for (const [input, key] of [
-    [enabled, "enabled"],
-    [automatic, "autoSave"],
+  for (const [input, key, note] of [
+    [enabled, "enabled", "enabledNote"],
+    [automatic, "autoSave", "autoSaveNote"],
   ] as const) {
-    const label = el("label", t(key));
-    label.prepend(input);
+    const label = el("label", undefined, "am-preference");
+    const description = el("span", undefined, "am-preference-copy");
+    const explanation = el("span", t(note), "am-muted");
+    explanation.id = `${panelId}-${key}`;
+    description.append(el("span", t(key), "am-preference-title"), explanation);
+    input.className = "am-switch";
+    input.setAttribute("role", "switch");
+    input.ariaLabel = t(key);
+    input.setAttribute("aria-describedby", explanation.id);
+    label.append(description, input);
     controls.append(label);
     input.onchange = () => void changePreferences();
   }
   const create = button("new", () => edit());
   const clear = button("clear", () => confirm("clear", scope));
   create.disabled = clear.disabled = true;
-  toolbar.append(
-    scopes,
-    origins,
-    search,
+  const toolbarActions = el("div", undefined, "am-toolbar-actions");
+  toolbarActions.append(
     button("refresh", () => void load()),
     create,
     clear,
   );
+  toolbar.append(scopes, origins, search, toolbarActions);
   layout.append(list, detail);
-  root.append(
-    intro,
+  surface.append(
     ...(options.account ? [controls] : []),
     toolbar,
     status,
     layout,
     footer,
   );
+  root.append(intro, surface);
   const reset = () => {
     cursor = undefined;
     nextCursor = undefined;
@@ -143,6 +158,7 @@ export function createMemoryPanel(options: {
   };
   const updateControls = () => {
     const writable =
+      available &&
       caps?.status === "ready" &&
       !caps?.readOnly &&
       (caps?.enabled || options.account);
@@ -151,8 +167,19 @@ export function createMemoryPanel(options: {
       !writable ||
       registered.some((entry) => entry.scope === scope && entry.locked);
     clear.disabled = pending || !writable || !scope;
-    enabled.disabled = automatic.disabled = pending || !caps || caps.readOnly;
+    enabled.disabled = pending || !available || caps?.readOnly;
+    automatic.disabled = enabled.disabled || !prefs.enabled;
+    scopes.disabled = origins.disabled = search.disabled = pending || (!available && layout.hidden);
   };
+  function showUnavailable(key: MemoryTextKey) {
+    available = false;
+    list.replaceChildren();
+    layout.hidden = footer.hidden = true;
+    status.classList.add("am-unavailable");
+    status.replaceChildren(el("p", t(key)));
+    if (key === "unauthorized" && options.onAuthorize)
+      status.append(button("authorize", options.onAuthorize));
+  }
   scopes.onchange = () => {
     scope = scopes.value;
     reset();
@@ -203,8 +230,11 @@ export function createMemoryPanel(options: {
     nextCursor = undefined;
     previous.disabled = next.disabled = true;
     status.textContent = t("loading");
+    status.classList.remove("am-unavailable");
+    available = false;
+    caps = undefined;
+    updateControls();
     selected = undefined;
-    list.replaceChildren();
     detail.textContent = t("select");
     root.classList.remove("am-show-detail");
     root.setAttribute("aria-busy", "true");
@@ -214,6 +244,18 @@ export function createMemoryPanel(options: {
       if (!valid(version)) return;
       caps = capability;
       status.replaceChildren();
+      if (!caps.connected || caps.status === "unconfigured") {
+        showUnavailable("unconfigured");
+        return;
+      }
+      if (caps.status !== "ready") {
+        showUnavailable("error");
+        return;
+      }
+      if (!caps.enabled && !options.account) {
+        showUnavailable("disabled");
+        return;
+      }
       if (options.account) {
         const [p, entries, jobs] = await Promise.all([
           options.client.call("preferences"),
@@ -247,25 +289,16 @@ export function createMemoryPanel(options: {
           status.append(note);
         }
       }
-      if (!caps.connected || caps.status === "unconfigured") {
-        status.textContent = t("unconfigured");
-        return;
-      }
-      if (caps.status !== "ready") {
-        status.textContent = t("error");
-        return;
-      }
-      if (!caps.enabled && !options.account) {
-        status.textContent = t("disabled");
-        return;
-      }
-      if (options.account && !caps.automatic)
+      if (options.account && prefs.enabled && prefs.automatic && !caps.automatic)
         status.append(el("p", t("autoUnavailable"), "am-muted"));
       if (caps.readOnly) status.append(el("p", t("readonly"), "am-muted"));
       if (registered.some((entry) => entry.scope === scope && entry.locked)) {
         const page = await options.client.call("list", { pageSize: 1 });
         if (!valid(version)) return;
+        list.replaceChildren();
         lockedRow(scope, page.locked?.[scope] ?? 0);
+        available = true;
+        layout.hidden = false;
         return;
       }
       const page = await options.client.call("list", {
@@ -275,7 +308,10 @@ export function createMemoryPanel(options: {
         cursor,
       });
       if (!valid(version)) return;
-      if (!page.items.length) {
+      list.replaceChildren();
+      const emptyPage = !page.items.length && !Object.keys(page.locked ?? {}).length;
+      root.classList.toggle("am-empty-page", emptyPage);
+      if (emptyPage) {
         const empty = el("li", undefined, "am-empty-state");
         empty.append(
           el("strong", t("empty")),
@@ -292,7 +328,7 @@ export function createMemoryPanel(options: {
         summary.title = item.content;
         const meta = el(
           "span",
-          `${scopeName(item.scope)} · ${t(item.origin === "manual" ? "manual" : "automatic")} · ${new Date(item.updatedAt).toLocaleString(options.locale)}`,
+          `${scopeName(item.scope)} · ${t(item.origin === "manual" ? "manual" : "automatic")} · ${formatDateTime(item.updatedAt)}`,
           "am-meta",
         );
         row.append(summary, meta);
@@ -307,16 +343,19 @@ export function createMemoryPanel(options: {
       for (const [lockedScope, count] of Object.entries(page.locked ?? {}))
         lockedRow(lockedScope, count);
       nextCursor = page.nextCursor;
+      available = true;
+      layout.hidden = false;
+      footer.hidden = !nextCursor && !history.length;
       previous.disabled = !history.length;
       next.disabled = !nextCursor;
     } catch (error) {
       if (valid(version))
-        status.textContent = t(
+        showUnavailable(
           (error as any)?.status === 403
             ? "locked"
             : (error as any)?.status === 401
-              ? "unconfigured"
-              : "error",
+              ? "unauthorized"
+              : (error as any)?.status === 404 ? "unsupported" : "error",
         );
     } finally {
       if (valid(version)) {
@@ -340,6 +379,7 @@ export function createMemoryPanel(options: {
     root.classList.remove("am-show-detail");
   }
   async function openDetail(id: string) {
+    if (!available || pending) return;
     const version = epoch,
       request = ++detailEpoch;
     root.classList.add("am-show-detail");
@@ -365,7 +405,7 @@ export function createMemoryPanel(options: {
       el("p", item.content, "am-content"),
       el(
         "p",
-        `${t("version")} ${item.version} · ${new Date(item.updatedAt).toLocaleString(options.locale)}`,
+        `${t("version")} ${item.version} · ${formatDateTime(item.updatedAt)}`,
         "am-muted",
       ),
     );
@@ -445,7 +485,7 @@ export function createMemoryPanel(options: {
       text,
       error,
       save,
-      button("cancel", () => (item ? view() : detail.replaceChildren())),
+      button("cancel", () => (item ? view() : back())),
     );
     text.focus();
   }
@@ -467,7 +507,7 @@ export function createMemoryPanel(options: {
       el("h3", t(action === "forget" ? "confirmForget" : "confirmClear")),
       el("p", t("consequence")),
       confirmButton,
-      button("cancel", () => (item ? view() : detail.replaceChildren())),
+      button("cancel", () => (item ? view() : back())),
     );
     root.classList.add("am-show-detail");
     confirmButton.focus();

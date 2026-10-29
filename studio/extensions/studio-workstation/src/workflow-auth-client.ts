@@ -1,4 +1,5 @@
 import { t } from './localization';
+import { createMemoryClient } from '../../../../shared/account-memory/index';
 declare const __STEAMHARNESS_DEFAULT_SERVER_URL__: string;
 export const DEFAULT_STEAMHARNESS_SERVER_URL = typeof __STEAMHARNESS_DEFAULT_SERVER_URL__ !== 'undefined'
   ? __STEAMHARNESS_DEFAULT_SERVER_URL__ : 'http://localhost:7126';
@@ -99,6 +100,23 @@ export class ServerClient {
   readonly serverUrl: string;
   constructor(serverUrl: string, private readonly fetcher: typeof fetch = fetch) {
     this.serverUrl = normalizeProjectServerUrl(serverUrl);
+  }
+
+  /** Account settings may reuse the authenticated login session; project keys are never accepted. */
+  async accountMemory(session: LoginSession, action: string, input?: Record<string, unknown>): Promise<any> {
+    if (normalizeProjectServerUrl(session.serverUrl) !== this.serverUrl || (!session.memoryToken && !session.sessionCookie)) {
+      throw new AuthError(t('Sign in again to authorize account memory.'), 401);
+    }
+    const call = (headers: Record<string, string>) => createMemoryClient({
+      baseUrl: this.serverUrl, fetch: this.fetcher, headers: () => headers,
+    }).call(action, input);
+    if (session.memoryToken) {
+      try { return await call({ Authorization: `Bearer ${session.memoryToken}` }); }
+      catch (error) {
+        if ((error as { status?: number }).status !== 401 || !session.sessionCookie) { throw error; }
+      }
+    }
+    return call({ Cookie: session.sessionCookie! });
   }
 
   private async request<T>(path: string, options: {

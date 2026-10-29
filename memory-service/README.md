@@ -17,6 +17,8 @@ Configure `STEAMHARNESS_MEMORY_SERVICE_TOKEN` (at least 32 random characters),
 `STEAMHARNESS_MEMORY_MODEL_API_KEY`, `STEAMHARNESS_MEMORY_MODEL`.
 Only the service stores the extraction model credential. Tools are disabled for extraction.
 Without a model manual memory and BM25 recall work; automatic extraction reports unconfigured.
+Server does not enqueue new turns in this manual-only mode. A temporary health-check failure
+returns a retryable service error instead, so the host retains its pending turn.
 
 Server needs `STEAMHARNESS_SERVER_MEMORY_URL=http://127.0.0.1:7141` and the matching
 `STEAMHARNESS_SERVER_MEMORY_TOKEN`. Set `STEAMHARNESS_SERVER_MEMORY_DISABLED=1` to
@@ -55,6 +57,9 @@ manual content. A manual change invalidates older extraction snapshots for that 
 sources and cleared generations suppress older jobs. New explicit manual requests may remember again.
 Each extraction produces at most 20 candidates across all scenes. Source references are deduplicated,
 and the total UTF-8 result stays below 220 KB so multibyte content fits the internal apply request limit.
+Explicit lasting personal preferences classified as either `persona` or `instruction` can enter
+global memory, including response language and style across projects. Both explicit preference
+flags are required; project-only conventions and uncertain facts remain in the current scope.
 
 The first release isolates every account, project and host-registered directory; no team sharing,
 implicit directory merging, dual writes, old database migration or embedding fallback is provided.

@@ -28,7 +28,7 @@ test('details revalidate access and discard an earlier selection response',async
 });
 test('unconfigured and failed service states do not masquerade as an empty list',async()=>{
  call.mockImplementation(async action=>action==='capabilities'?{connected:false,enabled:true,status:'unconfigured'}:action==='preferences'?{enabled:true,automatic:false}:[]);
- render(<MemoryPage/>);await screen.findByText(/Memory is not configured/);expect(screen.queryByText('No memories yet')).toBeNull();expect(screen.getByRole('button',{name:'Remember'})).toBeDisabled();
+ render(<MemoryPage/>);await screen.findByText(/not configured on this server/);expect(screen.queryByText(/sign in again/i)).toBeNull();expect(screen.queryByText('No memories yet')).toBeNull();expect(screen.getByRole('button',{name:'Remember'})).toBeDisabled();
 });
 test('stale responses after an account panel unmount never repopulate the new panel',async()=>{
  let finish!:(value:unknown)=>void;call.mockImplementation(async action=>action==='list'?new Promise(resolve=>finish=resolve):action==='capabilities'?{status:'ready',connected:true,enabled:true}:action==='preferences'?{enabled:true,automatic:true}:[]);

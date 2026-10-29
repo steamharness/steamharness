@@ -9,7 +9,7 @@ Server stores account memory across devices. Studio and Server Web expose it und
 
 ## Use and privacy
 
-- Personal global memory contains explicit lasting preferences. Project conventions and decisions stay in personal project memory. Uncertain project facts are never promoted to global.
+- Personal global memory contains explicit lasting preferences, including instructions about response language and style across projects, whether upstream classifies them as `persona` or `instruction`. Project conventions and decisions stay in personal project memory. Project-only instructions and uncertain facts are never promoted to global.
 - All records are private to the account, including records for the same project. Directories use random host-registered identities; equal folder names on different devices do not merge.
 - Ask the assistant to remember immediately, edit or forget, or use the panel. Edits require the current version; conflicts preserve the draft and request a refresh.
 - Deleting a conversation does not forget long-term memory. Clearing a scope requires separate confirmation and prevents older turns from recreating cleared records.
@@ -17,6 +17,8 @@ Server stores account memory across devices. Studio and Server Web expose it und
 - The read-only Skills tab previews the complete `steamharness-memory/SKILL.md`. Memory and automatic saving controls belong to the Memory panel.
 
 Account changes and sign-out clear panel content and discard stale responses. Lists use server filtering and cursor pagination; details show full text, sources, versions and update times. Panels support English, Chinese and the host theme. The CLI dialog retains its viewport-constrained 1040×720 size.
+
+Studio settings use a continuous surface with descriptive preference rows and compact switches on the right. Scope and source filters lead into the memory list, with details shown on selection. Loading, empty, unconfigured and temporary-error states stay distinct without resizing the panel.
 
 ## Service configuration
 
@@ -35,6 +37,8 @@ Run Memory Service separately with Node 22.13+, SQLite FTS5 and a persistent wri
 
 Manual saves and BM25 retrieval work without an extraction model or embeddings. Automatic extraction has no tools. It processes only durable completed turns containing user text and the final answer, excluding reasoning, raw tool results and recalled injection. Jobs attempt automatically at most three times, with failure status and manual retry in the panel.
 
+Without an extraction model, new turn submissions return `accepted: false` without creating guaranteed-to-fail jobs. Temporary service failures return 503 so the host retains pending turns for retry after recovery. Existing jobs keep their stable IDs.
+
 From the repository root:
 
 ```sh
@@ -46,7 +50,7 @@ The source also includes `memory-service/compose.yaml`. Restrict its port to loo
 
 ## Login and authorization
 
-CLI and Studio must sign in again through password or device authorization to receive an independent memory management credential. Project API keys cannot manage account-wide memory. Only the trusted host retains management credentials. Agents receive a five-minute grant for global plus the current project or directory, and cannot choose account identities, other projects or issue grants.
+Password and device sign-in issue an independent memory management credential. Studio account settings can also reuse a valid account login session held by the host, so browsing memory does not require another sign-in. Account verification is offered only when no valid authorization remains; an unconfigured or temporarily unavailable service does not ask users to sign in again. Project API keys cannot manage account-wide memory. Only the trusted host retains management credentials and session cookies. Agents receive a five-minute grant for global plus the current project or directory, and cannot choose account identities, other projects or issue grants.
 
 Every request and extraction commit rechecks account status, parent login and project access. Revocation or account disabling stops access. Planning, read-only runs and subagents cannot save. Core makes no memory promise without a binding. Legacy database memory APIs remain available; the built-in assistant does not implicitly fall back, dual-write or migrate old records.
 

@@ -1,5 +1,7 @@
 # Unreleased
 
+- Fixed account memory setup guidance to request administrator configuration instead of asking signed-in users to sign in again.
+
 - Improved: Project model configurations support execution-host settings references alongside system and third-party project models.
 
 - Added: Add a settings memory panel with paginated filters, source details, editing, forgetting, scope clearing and failed extraction retries.
