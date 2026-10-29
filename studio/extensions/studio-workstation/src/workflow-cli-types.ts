@@ -33,6 +33,7 @@ export interface WebSession {
 }
 export interface Launcher {
   available: boolean;
+  downloadDirectory?: string;
   projectCreationDirectory?: string;
   templates?(): Promise<StartTemplate[]>;
   validateProjectCreation?(input: ProjectCreationInput): Promise<void>;

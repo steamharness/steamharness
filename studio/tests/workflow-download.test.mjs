@@ -1,20 +1,23 @@
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
+import { createRequire } from 'node:module';
+import { homedir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { test } from 'node:test';
 import { runInNewContext } from 'node:vm';
 import { build } from 'esbuild';
 
 const compiled = await build({ entryPoints: ['extensions/studio-workstation/src/workflow-download.ts'], bundle: true, platform: 'node', format: 'cjs', external: ['vscode', '@vscode/l10n'], write: false });
+const runtimeCompiled = await build({ entryPoints: ['extensions/studio-workstation/src/workflow-runtime-node.ts'], bundle: true, platform: 'node', format: 'cjs', external: ['vscode'], write: false });
+const require = createRequire(import.meta.url);
 const chinese = JSON.parse(await readFile('extensions/studio-workstation/l10n/bundle.l10n.zh-cn.json', 'utf8'));
 const tick = () => new Promise(resolve => setImmediate(resolve));
 const uri = fsPath => ({ scheme: 'file', fsPath });
 const request = (requestId = 'export-1', name = 'conversation-1.json', content = '{"text":"对话内容\\n下一行"}') => ({ type: 'workflow-download', version: 1, requestId, name, content });
 const deferred = () => { let resolve, reject; const promise = new Promise((yes, no) => { resolve = yes; reject = no; }); return { promise, resolve, reject }; };
 
-function fixture({ showSaveDialog = async () => uri(resolve('exports', '对话.json')), writeFile = async () => {}, language = 'en' } = {}) {
+function fixture({ showSaveDialog = async () => uri(resolve('exports', '对话.json')), writeFile = async () => {}, language = 'en', defaultUri = uri(resolve('user', 'Downloads')) } = {}) {
   const module = { exports: {} }, dialogs = [], writes = [], information = [], errors = [];
-  const defaultUri = uri(resolve('workspace'));
   runInNewContext(compiled.outputFiles[0].text, {
     module, exports: module.exports, Error, TextEncoder,
     require: name => name === 'vscode' ? {
@@ -29,6 +32,23 @@ function fixture({ showSaveDialog = async () => uri(resolve('exports', '对话.j
   });
   return { binding: module.exports.bindProjectDownload(defaultUri), defaultUri, dialogs, writes, information, errors };
 }
+
+test('desktop exports default to the user Downloads folder, independently of Studio and project folders', async t => {
+  const module = { exports: {} }, directory = resolve('studio-installation');
+  runInNewContext(runtimeCompiled.outputFiles[0].text, {
+    module, exports: module.exports, process, AbortController, AbortSignal, URL, setTimeout, clearTimeout, queueMicrotask,
+    require: name => name === 'vscode' ? {
+      env: { language: 'en' }, workspace: { onDidChangeConfiguration: () => ({ dispose() {} }) },
+    } : require(name),
+  });
+  const runtime = module.exports.createProjectRuntime({ extensionUri: { fsPath: directory }, globalStorageUri: { fsPath: resolve('studio-data') } },
+    { getConnection: () => undefined, onDidChange: () => ({ dispose() {} }) });
+  t.after(() => runtime.dispose());
+  const f = fixture({ defaultUri: uri(runtime.downloadDirectory) }), message = request();
+  f.binding.receive(message); await tick();
+  assert.equal(f.dialogs[0].defaultUri.fsPath, join(homedir(), 'Downloads', message.name));
+  assert.notEqual(f.dialogs[0].defaultUri.fsPath, join(directory, message.name));
+});
 
 for (const language of ['en', 'zh-cn']) {
   test(`${language}: notifies the chosen path only after the complete UTF-8 file is saved`, async () => {

@@ -3,6 +3,7 @@ import { AggregateWebHostPool } from './workflow-host-pool';
 import { upgradeServerProject } from './workflow-project-update-node';
 import * as vscode from 'vscode';
 import * as path from 'node:path';
+import { homedir } from 'node:os';
 import { realpath, stat } from 'node:fs/promises';
 import { pathToFileURL } from 'node:url';
 import { inspectProjectCli, resolveProjectCli, startProjectCli, requestProjectCliConfiguration, type StudioControlConfiguration } from './workflow-cli-process';
@@ -130,6 +131,7 @@ export function createProjectRuntime(context: vscode.ExtensionContext, account: 
   };
   return {
     available: true,
+    downloadDirectory: path.join(homedir(), 'Downloads'),
     nodeRuntime: async () => { const runtime = await selectedRuntime(); return { nodePath: runtime.nodePath, env: nodeRuntimeEnvironment(runtime), electron: runtime.electron }; },
     analyzeProjectType: async sources => {
       const directory = await assistantDirectory();

@@ -1,7 +1,7 @@
 import * as vscode from 'vscode';
 import { t } from './localization';
 
-export function bindProjectDownload(defaultUri: vscode.Uri) {
+export function bindProjectDownload(defaultUri?: vscode.Uri) {
   let disposed = false, queue = Promise.resolve();
   const pending = new Set<string>();
   return {
@@ -18,7 +18,7 @@ export function bindProjectDownload(defaultUri: vscode.Uri) {
         if (disposed) return;
         try {
           const target = await vscode.window.showSaveDialog({
-            defaultUri: vscode.Uri.joinPath(defaultUri, name), title: t('Export file'), saveLabel: t('Export'),
+            defaultUri: defaultUri ? vscode.Uri.joinPath(defaultUri, name) : undefined, title: t('Export file'), saveLabel: t('Export'),
           });
           if (!target || disposed) return;
           await vscode.workspace.fs.writeFile(target, new TextEncoder().encode(content));
