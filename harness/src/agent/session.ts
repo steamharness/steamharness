@@ -17,7 +17,7 @@ import { createAgentStreamRetryText } from "./plan";
 import type { AgentTurnContinuationKind } from "./types";
 import type { AgentSearchMessage } from "./web-search";
 import type { AgentDefinition, AgentPlanItem, AgentSessionCommand, AgentSessionOptions, AgentSessionReceipt, AgentSessionResources, AgentSessionSnapshot, AgentSessionTask, AgentSessionTurn, AgentSubagentAction, AgentWorkInfo } from "./session-types";
-import { AgentDefinitionsDoc, AgentRoleDoc, AgentWorkProgressDoc, AgentSessionLifecycleDoc, enqueueAgentWork, type DelegationInput, type DelegationState } from "./subagents";
+import { AgentDefinitionsDoc, AgentRoleDoc, AgentWorkProgressDoc, AgentSessionLifecycleDoc, enqueueAgentWork, waitForAgentWorkChange, type DelegationInput, type DelegationState } from "./subagents";
 import { pageJsonResult, RESULT_PAGE_DESCRIPTION, RESULT_PAGE_PROPERTIES, validateResultPageArgs, type ResultPageArgs } from "./result-pages";
 
 const SessionDoc = defineDoc({
@@ -138,7 +138,10 @@ export class DurableAgentSession {
         const input = args as ResultPageArgs & { task?: string; background?: boolean; model?: { provider: string; modelId: string }; resultTaskId?: number };
         const managed = args as { action?: AgentSubagentAction["action"]; agentId?: string; workId?: string; taskId?: number; task?: string; background?: boolean; mode?: "steer" | "followUp" };
         if (managed.action || managed.agentId) {
-          if (input.resultTaskId !== undefined || input.model !== undefined) throw new Error("Named agent management cannot be combined with anonymous result or model arguments.");
+          // An explicit action selects the managed command. Models sometimes
+          // populate every optional legacy result field; those fields must not
+          // redirect or reject a named operation. Model overrides remain forbidden.
+          if (input.model != null) throw new Error("Named agent management cannot override the role model.");
           const action = managed.action ?? "spawn";
           const command = action === "spawn" ? { action, agentId: managed.agentId!, workId: managed.workId!, prompt: managed.task!, background: managed.background,
             reportToParent: true } : action === "send" ? { action, taskId: managed.taskId!, prompt: managed.task!, mode: managed.mode }
@@ -306,7 +309,7 @@ export class DurableAgentSession {
             }, ctx);
             if (admitted) break;
             if (!blockers.length) throw new Error("Agent work cannot acquire a concurrency slot.");
-            await Promise.race(blockers.map(id => runtime.waitForTask(id, ctx)));
+            await waitForAgentWorkChange(blockers, (id, waitContext) => runtime.waitForTask(id, waitContext), ctx);
           }
         },
         wait: async (task, runtime, ctx) => {

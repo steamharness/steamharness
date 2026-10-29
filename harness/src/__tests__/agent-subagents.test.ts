@@ -6,7 +6,9 @@ import { tmpdir } from "node:os";
 import * as ai from "@earendil-works/pi-ai";
 import { DurableAgent } from "../agent/durable-agent";
 import type { AgentDefinition, AgentSessionSnapshot, AgentSessionOptions } from "../agent/session-types";
-import { AgentWorkProgressDoc } from "../agent/subagents";
+import { AgentWorkProgressDoc, waitForAgentWorkChange } from "../agent/subagents";
+import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
+import type { TaskId } from "@earendil-works/pi-durable";
 import { BUILTIN_AGENT_SKILLS_PROMPT } from "../agent/builtin-skills";
 
 function latch() { let resolve!: () => void; const promise = new Promise<void>(done => { resolve = done; }); return { promise, resolve }; }
@@ -18,6 +20,25 @@ const roles: AgentDefinition[] = [
   { id: "researcher", description: "Research one source", systemPrompt: "RESEARCH ROLE ONLY", tools: ["research"], maxConcurrency: 3 },
   { id: "writer", description: "Record one source", systemPrompt: "WRITER ROLE ONLY", tools: ["record"], maxConcurrency: 1 },
 ];
+
+test("admission races release losing task subscriptions on every wakeup and on failure", async () => {
+  let active = 0;
+  const ids = [1, 2, 3] as TaskId[];
+  for (let tick = 0; tick < 30; tick++) {
+    const winner = latch();
+    const waiting = waitForAgentWorkChange(ids, (id, context) => {
+      active++;
+      return new Promise<void>((resolve, reject) => {
+        context.abortSignal!.addEventListener("abort", () => { active--; reject(new Error("cancelled waiter")); }, { once: true });
+        if (id === 1) void winner.promise.then(resolve);
+      });
+    }, BACKGROUND_CONTEXT);
+    winner.resolve();
+    await waiting;
+    assert.equal(active, 0, "A wakeup must release all three subscriptions before waiting again");
+  }
+  await assert.rejects(waitForAgentWorkChange(ids, async () => { throw new Error("storage unavailable"); }, BACKGROUND_CONTEXT), /storage unavailable/);
+});
 function fixture(databasePath?: string, definitions = roles, resumeSession = false, interruptSession = false, allowedModels: { provider: string; modelId: string }[] = [], nativeTools: AgentSessionOptions["nativeTools"] = []) {
   const faux = ai.fauxProvider({ models: [{ id: "test", contextWindow: 100_000, maxTokens: 200 }, { id: "alternate", reasoning: true, contextWindow: 100_000, maxTokens: 200 }] });
   const models = ai.createModels(); models.setProvider(faux.provider);
@@ -29,6 +50,25 @@ function fixture(databasePath?: string, definitions = roles, resumeSession = fal
   agent.subscribe(event => { const value = event as unknown as { type: string; snapshot: AgentSessionSnapshot }; if (value.type === "project_session") snapshot = value.snapshot; });
   return { agent, faux, lease, suspend, snapshot: () => snapshot! };
 }
+
+test("named management uses its action when a gateway populates legacy result fields", async t => {
+  const f = fixture();
+  let result: ai.ToolResultMessage | undefined;
+  f.faux.setResponses([
+    ai.fauxAssistantMessage([ai.fauxToolCall("subagent", { action: "list", agentId: "researcher", workId: "unused", task: "status", taskId: 1,
+      background: true, mode: "followUp", resultTaskId: 1, resultOffset: 0, resultLimit: 20000, resultHash: "a".repeat(64) })], { stopReason: "toolUse" }),
+    (request: ai.TranscriptContext) => {
+      result = request.messages.find(message => message.role === "toolResult") as ai.ToolResultMessage;
+      return ai.fauxAssistantMessage("Listed");
+    },
+  ]);
+  const run = f.agent.prompt("List current work");
+  t.after(async () => { f.lease.resolve(); await run; await f.agent.close(); });
+  await until(() => !!result);
+  assert.equal(result!.isError, false);
+  assert.deepEqual(JSON.parse(result!.content.filter(part => part.type === "text").map(part => part.text).join("")), []);
+  assert.equal(f.snapshot().agents?.length, 0, "Listing must never spawn the filled placeholder work");
+});
 
 test("30 named work items overlap at 3 researchers and 1 writer, with durable FIFO admission and isolated prompts", async t => {
   const f = fixture(), gate = latch(); let researchers = 0, writers = 0, maxResearchers = 0, maxWriters = 0;

@@ -413,7 +413,7 @@ for await (const event of agent.run({ prompt: "总结这个仓库", errCode: 0, 
 
 ## 命名多 Agent 与持久工作队列
 
-在 `session.subagents.definitions` 中由项目代码声明角色；同一父会话下的工作项使用独立子会话，通过 Pi Durable 的任务检查点和 FIFO 队列共享并发槽位。单个 Agent 内的工具继续按原顺序执行。
+在 `session.subagents.definitions` 中由项目代码声明角色；同一父会话下的工作项使用独立子会话，通过 Pi Durable 的任务检查点和 FIFO 队列共享并发槽位。单个 Agent 内的工具继续按原顺序执行。队列每次重新检查槽位时会释放上一轮未命中的任务等待，避免长批次积累订阅。
 
 ```ts
 const session = {
@@ -446,6 +446,8 @@ const session = {
 回执和快照的 `agents` 提供 `taskId`、`workId`、`agentId`、`status`（含 `queued`）、`attempt`、`retryOf`、`childConversationId`、`metadata`、`progress`、`error` 和 `result`。Tasks 复用这些字段展示角色、素材、阶段和完成数，打开子会话、停止或重试均走 Core 控制通道。业务任务历史保留，内部 Pi 步骤只保留最近 200 项。
 
 原匿名 `subagent({ task, background?, model? })` 与历史任务继续可用；命名工具调用使用 `{ action: "spawn", agentId, workId, task, background: true }`，管理 action 使用 taskId。工具的后台结果默认回传；命令或业务任务可用 `reportToParent: false` 自行消费回执。
+
+显式 `action` 优先选择命名管理操作，忽略模型附带的匿名结果分页字段；命名角色仍不能通过工具参数覆盖模型。
 
 业务 durable task 或 native tool 可在事务中调用公开 `enqueueAgentWork(tx, registry, input, options)` / `enqueueAgentWorks(tx, registry, inputs, options)`，与工具和宿主共用管理服务。批量派发使用后者（每批 1–1000 项），完成全部表读取后再创建任务；Pi 事务首次表写入后不能继续读表，不能循环调用单项 API。使用任务 ownership 可让批次停止级联取消所有等待和运行项。
 

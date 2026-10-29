@@ -4,6 +4,8 @@
 
 - Added: Add named agent roles, durable FIFO concurrency, shared management commands and checkpoint retries. Dynamic sessions and wrapped executors inherit durable control; recovery rechecks role access and retains business task history and progress.
 
+- Fixed: Release losing task waits before rechecking multi-agent concurrency slots. Explicit management actions ignore model-filled legacy result fields so listing or inspecting work is not incorrectly rejected.
+
 - Changed: Project memory defaults off and the built-in Assistant explicitly opts in. A project configuration switch controls authorization, recall, saving and tools without deleting existing memories.
 
 - Fixed: Persistent assistant sessions submit automatic memory after each answer is saved without waiting for process exit. Follow-up turns recall fresh records; durable receipts and the offline outbox prevent duplicate delivery after recovery, and initial activation does not import older conversations.

@@ -2,6 +2,14 @@ import { defineDoc, defineDocFamily, type JsonObject, type RegistrySnapshot, typ
 import type { Context } from "@earendil-works/chord";
 import type { JsonValue } from "@earendil-works/chord";
 import type { AgentWorkInput } from "./session-types";
+import { withCancel } from "@earendil-works/chord/context";
+
+/** Release losing subscriptions before the next admission attempt. */
+export async function waitForAgentWorkChange(ids: readonly TaskId[], wait: (id: TaskId, context: Context) => Promise<unknown>, context: Context): Promise<void> {
+  const child = withCancel(context);
+  try { await Promise.race(ids.map(id => wait(id, child.context))); }
+  finally { child.cancel(); }
+}
 
 export const AgentDefinitionsDoc = defineDoc({ kind: "project.agent-definitions", version: 1, scope: "conversation",
   history: "latest", fork: "initial", initial: () => ({ definitions: {} as Record<string, JsonObject> }) });

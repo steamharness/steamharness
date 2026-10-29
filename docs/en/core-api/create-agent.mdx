@@ -412,7 +412,7 @@ Inside a workflow, [createAgentNode](./create-agent-node.mdx) or [defineAgentCon
 
 ## Named agents and durable work queues
 
-Projects declare roles in `session.subagents.definitions`. Each item gets an independent child conversation. Pi Durable checkpoints and a FIFO queue share per-parent concurrency slots; tools within one agent retain their existing order.
+Projects declare roles in `session.subagents.definitions`. Each item gets an independent child conversation. Pi Durable checkpoints and a FIFO queue share per-parent concurrency slots; tools within one agent retain their existing order. Each admission check releases the previous round's losing task waits so long batches do not accumulate subscriptions.
 
 ```ts
 const session = {
@@ -444,6 +444,8 @@ All `type: "subagent"` commands carry a stable `requestId`:
 Receipts and snapshots expose `agents` with `taskId`, `workId`, `agentId`, `status` (including `queued`), `attempt`, `retryOf`, `childConversationId`, `metadata`, `progress`, `error` and `result`. Tasks uses these fields for roles, sources, phases and counts; opening a child, stopping and retrying use Core control. Business task history is retained; only internal Pi steps are limited to the latest 200 records.
 
 Anonymous `subagent({ task, background?, model? })` and historical tasks remain supported. Named tool calls use `{ action: "spawn", agentId, workId, task, background: true }`; management actions use taskId. Tool background work reports to the parent by default. Commands and business tasks may set `reportToParent: false` to consume receipts themselves.
+
+An explicit `action` selects named management and ignores legacy result pagination fields populated by a model. Tool arguments still cannot override a named role's model.
 
 Durable tasks and native tools can call exported `enqueueAgentWork(tx, registry, input, options)` or `enqueueAgentWorks(tx, registry, inputs, options)` in a transaction. Use the bulk API for 1–1000 items, completing all table reads before creating tasks. Pi transactions cannot read tables after the first table write; do not loop over the single-item API. Task ownership makes batch cancellation cascade to queued and running items.
 
