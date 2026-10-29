@@ -82,7 +82,7 @@ it('preserves configuration drafts, tool search and section scroll while navigat
   input.value = 'Keep this draft'; input.dispatchEvent(new Event('input'));
   tab('tools').click(); const search = panel('tools').querySelector<HTMLInputElement>('[type=search]')!;
   search.value = 'read'; search.dispatchEvent(new Event('input')); panel('tools').scrollTop = 75;
-  tab('skills').click(); expect(panel('skills').querySelector('input, select, button')).toBeNull(); expect(panel('skills').textContent).not.toContain('Auto-approve');
+  tab('skills').click(); expect(panel('skills').querySelector('input[type=checkbox], select')).toBeNull(); expect(panel('skills').textContent).not.toContain('Auto-approve');
   tab('tools').click(); expect(search.value).toBe('read'); expect(panel('tools').scrollTop).toBe(75);
   tab('configurations').click(); expect(input.value).toBe('Keep this draft'); expect(panel('configurations').contains(input)).toBe(true);
   expect(host.postMessage).toHaveBeenCalledTimes(1); expect(policiesChanged).not.toHaveBeenCalled();
@@ -132,7 +132,7 @@ it('loads databases on demand once per open and retains their view across sectio
 it('updates read-only tool controls while keeping skills free of permission controls', () => {
   dialogs.projectInfo(project, 'tools'); const input = panel('tools').querySelector<HTMLInputElement>('[type=checkbox]')!;
   readOnly = true; dialogs.updatePermissions(); expect(input.disabled).toBe(true); input.click(); expect(policiesChanged).not.toHaveBeenCalled();
-  tab('skills').click(); expect(panel('skills').querySelector('input, select, button')).toBeNull();
+  tab('skills').click(); expect(panel('skills').querySelector('input[type=checkbox], select')).toBeNull();
   readOnly = false; dialogs.updatePermissions(); tab('tools').click(); expect(input.disabled).toBe(false); input.click();
   expect(policiesChanged).toHaveBeenCalledWith({ read: { enabled: false, autoApprove: false } });
 });
@@ -161,7 +161,7 @@ it('refreshes the live registry while retaining tool filters and the skills read
   expect(nextSearch.value).toBe('read'); expect(document.activeElement).toBe(nextSearch);
   expect(panel('tools').textContent).toContain('Read current files');
   expect([...panel('tools').querySelectorAll<HTMLInputElement>('[type=checkbox]')].every(input => input.disabled)).toBe(true);
-  expect(panel('skills').textContent).toContain('Updated guide'); expect(panel('skills').querySelector('input, button')).toBeNull();
+  expect(panel('skills').textContent).not.toContain('Updated guide'); expect(panel('skills').querySelector('input[type=checkbox]')).toBeNull();
 });
 
 it('keeps a failed initial configuration request actionable after leaving and returning to its section', async () => {

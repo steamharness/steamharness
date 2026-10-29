@@ -133,7 +133,7 @@ describe("developer assistant workflow", () => {
     expect(source).toContain("steamharness.createProjectCapabilityTools({");
     expect(source).toContain("globalMemory: true");
     // Skills are read on demand rather than injected into every prompt.
-    expect(source).toContain('steamharness.createSkillTools({ directories: [SKILLS_DIRECTORY], approve })');
+    expect(source).toContain('skills: { directories: [SKILLS_DIRECTORY] }');
     expect(source).not.toContain("skillPaths");
     expect(source).not.toContain("desktop-control-mcp");
     expect(source).not.toContain("connectMcpServer");

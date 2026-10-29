@@ -4,6 +4,38 @@ import type { AgentTool } from "@earendil-works/pi-agent-core";
 import { loadTypebox } from "./pi";
 import type { TypeboxLike } from "./tools";
 import { fitTextPage, MAX_TOOL_PAGE_BYTES, pageInteger, splitsSurrogate } from "./result-pages";
+import { BUILTIN_AGENT_SKILLS_DIRECTORY } from "./builtin-skills";
+
+/** Read-only guide metadata. IDs distinguish project guides from built-in instructions. */
+export interface AgentSkillGuide {
+  id: string;
+  name: string;
+  description: string;
+  source: "project" | "builtin";
+}
+
+export interface AgentSkillPreview { skill: AgentSkillGuide; content: string }
+
+/** Uses the same discovery and file containment rules as the skill tool. */
+export async function listAgentSkillGuides(directories: readonly string[]): Promise<AgentSkillGuide[]> {
+  return (await discoverAgentSkillGuides(directories)).map(({ directory: _directory, ...guide }) => guide);
+}
+
+/** Only the entry document of a discovered guide can be previewed. */
+export async function readAgentSkillGuide(directories: readonly string[], id: string): Promise<AgentSkillPreview> {
+  const entry = (await discoverAgentSkillGuides(directories)).find(guide => guide.id === id);
+  if (!entry) throw new Error("This skill is no longer available. Refresh the skill list.");
+  const { directory, ...skill } = entry;
+  return { skill, content: await readSkillFile(directory, SKILL_ENTRY_FILE) };
+}
+
+async function discoverAgentSkillGuides(directories: readonly string[]): Promise<(AgentSkillGuide & { directory: string })[]> {
+  const guides: (AgentSkillGuide & { directory: string })[] = [];
+  for (const [source, roots] of [["project", directories], ["builtin", [BUILTIN_AGENT_SKILLS_DIRECTORY]]] as const) {
+    for (const skill of await listSkills(roots)) guides.push({ ...skill, source, id: `${source}:${skill.name}` });
+  }
+  return guides;
+}
 
 /** The tool a project offers for discovering and reading its skills. */
 export const SKILL_TOOL_NAME = "skill";

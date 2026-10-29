@@ -325,6 +325,31 @@ test("a project-fixed permission reaches the real agent despite an explicit inpu
   });
 });
 
+test("declared skill roots supply the real skill tool, preserve the custom tool lifecycle and obey disabled permissions", async () => {
+  await withTempDir(async root => {
+    await mkdir(path.join(root, "guides/alpha"), { recursive: true });
+    await writeFile(path.join(root, "guides/alpha/SKILL.md"), "---\nname: alpha\n---\n# Alpha guide");
+    for (const enabled of [true, false]) {
+      const { ai, faux, models, model } = await createFauxModel();
+      const closed: boolean[] = [];
+      const seen: string[] = [];
+      faux.setResponses([
+        ...(enabled ? [ai.fauxAssistantMessage([ai.fauxToolCall("skill", { action: "read", skill: "alpha" })], { stopReason: "toolUse" })] : []),
+        request => { seen.push(JSON.stringify(request)); return ai.fauxAssistantMessage("Done"); },
+      ] as never[]);
+      const project = createAgentConversationProject({ models, resolvedModel: model, skills: { directories: ["guides"] },
+        createTools: () => ({ tools: [], close: () => { closed.push(true); } }) });
+      const context = createContext(`skills-${enabled}`);
+      context.metadata = { ...context.metadata, entryRootDir: root };
+      context.toolPermissions = createProjectToolPermissionContext({ definitions: [{ name: "skill", enabled, autoApprove: true }], projectName: "skills", runId: `skills-${enabled}` });
+      const result = await project.run({ errCode: 0, errMessage: "", prompt: "Read alpha", workdir: root }, context);
+      assert.deepEqual(closed, [true]);
+      if (enabled) { assert.equal(result.toolCallCount, 1); assert.ok(seen.join("").includes("# Alpha guide")); }
+      else { assert.equal(result.toolCallCount, 0); assert.equal(seen.join("").includes('"name":"skill"'), false); }
+    }
+  });
+});
+
 /** The host's catalogue, as the workflow runtime builds it: built-ins plus the declared tools. */
 function createToolPermissionContext(extra: Array<{ name: string; autoApprove: boolean }>) {
   return createProjectToolPermissionContext({

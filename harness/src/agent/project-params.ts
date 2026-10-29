@@ -7,10 +7,12 @@ import type { AgentConversationProject, AgentInput, AgentProjectOptions, AgentPr
 export interface AgentProjectParamContract {
   params: ConversationParamDeclaration[];
   modelSource?: "user-settings" | "project";
+  skillDirectories: readonly string[];
 }
 const contracts = new WeakMap<object, AgentProjectParamContract>();
 export function registerAgentProject(project: object, options: AgentProjectOptions): AgentConversationProject {
-  contracts.set(project, { params: structuredClone(options.params ?? createAgentProjectParams(options)), modelSource: options.modelSource });
+  contracts.set(project, { params: structuredClone(options.params ?? createAgentProjectParams(options)), modelSource: options.modelSource,
+    skillDirectories: [...(options.skills?.directories ?? [])] });
   return project as AgentConversationProject;
 }
 export function readAgentProjectContract(project: unknown): AgentProjectParamContract | undefined {

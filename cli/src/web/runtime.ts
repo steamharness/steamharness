@@ -135,6 +135,8 @@ export function createWebRuntime(projectDir: string, storageDir: string, connect
   });
   return {
     available: true,
+    listSkills: (project, entrypointId) => invoke({ method: 'skills', project, entrypointId }),
+    readSkill: (project, skillId, entrypointId) => invoke({ method: 'skills', project, entrypointId, skillId }),
     agentControl: async (runId, command, scopeId, attachments) => {
       const control = controls.get(runId);
       if (!control) throw Object.assign(new Error('The agent session is not ready.'), { code: 'AGENT_NOT_READY' });

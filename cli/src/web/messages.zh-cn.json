@@ -918,5 +918,20 @@
   "No databases are linked to this entry.": "当前入口未关联数据库。",
   "Request and approve database access in Studio or Server Web. CLI approval commands are also available.": "数据库申请与审批请前往 Studio 或 Server Web，也可使用 CLI 审批命令。",
   "This database reference is set by the environment.": "此数据库引用由环境变量设置。",
-  "Data preview is not available in this Web session. Open the database in Studio or Server Web.": "当前 Web 运行方式暂不支持数据预览，请在 Studio 或 Server Web 中打开数据库。"
+  "Data preview is not available in this Web session. Open the database in Studio or Server Web.": "当前 Web 运行方式暂不支持数据预览，请在 Studio 或 Server Web 中打开数据库。",
+  "Skill preview is unavailable. Update the project runtime.": "技能预览暂不可用，请更新项目运行时。",
+  "Browse project and Core guides. Select a skill to preview its complete SKILL.md.": "查看项目与 Core 提供的技能，点击即可预览完整 SKILL.md。",
+  "Search skills": "搜索技能",
+  "Refresh skills": "刷新技能",
+  "{0} skills": "{0} 项技能",
+  "{0} of {1} skills": "显示 {0} / {1} 项技能",
+  "No matching skills": "没有匹配的技能",
+  "No skills available to this entry": "当前入口暂无可用技能",
+  "Preview {0}": "预览 {0}",
+  "Core built-in": "Core 内置",
+  "Project skill": "项目技能",
+  "Back to skills": "返回技能列表",
+  "Skill document": "技能文档",
+  "Markdown source": "Markdown 源码",
+  "Preview": "预览"
 }

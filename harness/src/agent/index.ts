@@ -82,6 +82,8 @@ export {
   createSkillTools,
   runSkillAction,
   type SkillToolOptions,
+  type AgentSkillGuide,
+  type AgentSkillPreview,
 } from "./skills";
 
 export {

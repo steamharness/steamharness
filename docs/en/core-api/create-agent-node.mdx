@@ -39,6 +39,7 @@ const node = workflow.createAgentNode({
   toolDefinitions?: ToolPermissionDefinition[],
   allowedDirectories?: string[],
   extraTools?: AgentTool[],
+  skills?: { directories: readonly string[] },
   createTools?: (context: NodeContext) => AgentTool[] | AgentToolSet | Promise<AgentTool[] | AgentToolSet>,
   sessionId?: string,
   historyLimit?: number,
@@ -61,6 +62,7 @@ Every [createAgent](./create-agent.mdx) option, plus:
 | --- | --- | --- |
 | `name` | `string` | Node name. Defaults to `agent`. |
 | `outputItemId` | `string` | Id of the output item the answer belongs to. The OpenAI/Responses adapters find the answer by id, so it must equal `conversation.openai.outputItemId`; when it is left out the id is derived from the conversation, which no adapter can name in advance. |
+| `skills` | `{ directories: readonly string[] }` | Skill roots, relative to the entry root. Core creates a permission-checked `skill` tool each run. Core Agent project declarations also provide a read-only host catalog. See [Skill roots and host previews](./define-agent-conversation-executor.mdx#skill-roots-and-host-previews). |
 | `createTools` | `(context) => AgentTool[] \| AgentToolSet` | Builds the tools that go alongside the built-ins before each run. A factory rather than a list because those tools close over the run's `NodeContext` — its storage, its approval gate, its user input. To start something with a lifetime — a stdio MCP child, say — return `{ tools, close?() }`; `close` runs when the turn ends, errors included. |
 | `sessionKey` | `string` | SQLite isolation key within a project and conversation. Falls back to `sessionId`, then `agent`. Use a different key for each agent node. |
 | `databasePath` | `string` | Explicit Durable SQLite file. Hosts normally provide `storage.agentStoreDir` and let the node select an isolated path. |

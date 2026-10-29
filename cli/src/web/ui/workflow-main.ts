@@ -79,6 +79,7 @@ let editTimer: ReturnType<typeof setTimeout> | undefined, searchTimer: ReturnTyp
 let prompt: InputPrompt | undefined, promptKey = '';
 const narrow = matchMedia('(max-width: 680px)'), dialogs = new ConversationTools(aggregateToolbar.databases, {
   configurations: configurationPanel,
+  skills: { load: (requestId, skillId) => post({ type: 'project-skills', requestId, skillId, entrypointId }) },
   tools: () => ({ parameters: parameters(), policies: draft().policies, readOnly: !connected,
     changed: policies => { draft().policies = structuredClone(policies); post({ type: 'tool-policy', policies }); } }),
   usage: { available: () => state?.account.status === 'authenticated' && !!state.account.aiConfigured,
@@ -127,6 +128,7 @@ function resolve(trigger: Record<string, unknown> = { kind: 'init' }): void {
   post({ type: 'resolve', requestId: ++requestId, params: draft().values, rawArgs: draft().rawArgs, inputMode: draft().inputMode, trigger });
 }
 function selectEntrypoint(id?: string): void {
+  if (entrypointId !== id) dialogs.close();
   if (editTimer && state && entrypointId !== id) { post({ type: 'workflow-draft', params: draft().values, rawArgs: draft().rawArgs, inputMode: draft().inputMode }); }
   clearTimeout(editTimer); ++requestId; clearError(); submitting = false; fields.close(); entrypointId = id;
   paramStates = {}; const current = draft();
@@ -328,6 +330,9 @@ element('project-info').onclick = () => { if (state) { fields.close(); dialogs.p
 addEventListener('message', event => {
   if (event.source !== null && event.source !== window.parent) return;
   const message = event.data;
+  if (message?.type === 'project-skills-result' || message?.type === 'error' && message.requestType === 'project-skills') {
+    dialogs.skillsResult(message.requestId, message.value, message.type === 'error' ? message.message : undefined); return;
+  }
   if (message?.type === 'project-server-checked') { checkingServer = false; controls(); return; }
   if (message?.type === 'state' && message.project?.projectType === 'workflow') {
     if (!stateRevisions.accept(message)) return;

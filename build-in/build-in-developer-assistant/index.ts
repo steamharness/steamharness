@@ -36,6 +36,7 @@ const assistantProject = steamharness.createAgentConversationProject({
   modelSource: "user-settings",
   executorName: STEAMHARNESS_NAME,
   outputItemId: OUTPUT_ITEM_ID,
+  skills: { directories: [SKILLS_DIRECTORY] },
   session: { subagents: { tools: ["read", "grep", "find", "ls", "skill"], maxAgents: 4 }, planFork: "asOf", toolSearch: {} },
   async createTools(context): Promise<AgentToolSet> {
     readAssistantHost();
@@ -54,12 +55,11 @@ const assistantProject = steamharness.createAgentConversationProject({
       globalMemory: true,
       approve,
     })).filter((tool) => capabilityToolIdsToOffer.has(tool.name));
-    const skills = await steamharness.createSkillTools({ directories: [SKILLS_DIRECTORY], approve });
     const control = await createStudioControlTools(approve,
       readDeveloperAssistantPermissionPolicy(context.metadata?.studioControlPermissionPolicy as string | undefined),
       toolId => context.toolPermissions?.getTool(toolId)?.enabled !== false);
 
-    const offered = [...capabilities, ...skills, ...control.tools].filter(
+    const offered = [...capabilities, ...control.tools].filter(
       (tool) => context.toolPermissions?.getTool(tool.name)?.enabled !== false,
     );
     return { tools: offered, ...(control.catalogs ? { catalogs: control.catalogs } : {}) };

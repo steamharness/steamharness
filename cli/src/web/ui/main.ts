@@ -216,6 +216,7 @@ function initialize(): void {
   });
   const dialogs = new ConversationTools(aggregateToolbar.databases, {
     configurations: configurationPanel,
+    skills: { load: (requestId, skillId) => post({ type: 'project-skills', requestId, skillId, entrypointId: entrypoint.value || undefined }) },
     tools: () => ({ parameters: currentParameters(), policies: currentSession()?.toolPermissionPolicies ?? {}, readOnly: readOnly(),
       changed: policies => post({ type: 'tool-policy', entrypointId: entrypoint.value, policies }) }),
     usage: { available: () => !!state?.account?.aiConfigured && !!state.project.requiresLogin && state.account.status === 'authenticated',
@@ -1418,7 +1419,7 @@ function initialize(): void {
     if (sessionMenuTrigger && event.target instanceof Node && event.target.contains(sessionMenuTrigger)) { closeSessionMenu(); }
   }, true);
   document.querySelector('#refresh-params')!.addEventListener('click', () => requestParams({ kind: 'init' }, true));
-  entrypoint.addEventListener('change', () => { cancelParameterRequest(); renderParameters(); });
+  entrypoint.addEventListener('change', () => { dialogs.close(); cancelParameterRequest(); renderParameters(); });
   transcript.addEventListener('scroll', () => {
     const resized = transcript.scrollHeight !== transcriptScrollHeight || transcript.clientHeight !== transcriptViewportHeight;
     // Regrouping cards can shrink the content and clamp scrollTop before it grows
@@ -1524,6 +1525,9 @@ function initialize(): void {
   let renderScheduled = false;
   window.addEventListener('message', (event) => {
     if (event.source !== null && event.source !== window.parent) return;
+    if (event.data?.type === 'project-skills-result' || event.data?.type === 'error' && event.data.requestType === 'project-skills') {
+      dialogs.skillsResult(event.data.requestId, event.data.value, event.data.type === 'error' ? event.data.message : undefined); return;
+    }
     const message = event.data;
     if (message?.type === 'project-server-checked' || message?.type === 'error' && message.requestType === 'project-server-check') { checkingServer = false; updateControls(); return; }
     if (fileIcons.receive(message)) return;

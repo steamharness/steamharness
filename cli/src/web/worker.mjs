@@ -170,7 +170,14 @@ try {
       const reference = JSON.parse(await readFile(path.join(filesDir, id, 'metadata.json'), 'utf8'));
       return { reference, path: reference.path };
     };
-    if (request.method === 'kanban-bridge') {
+    if (request.method === 'skills') {
+      const options = { projectDir: request.project.folderPath, entryId: request.project.entryId, entrypointId: request.entrypointId };
+      if (typeof core.listLocalProjectSkills !== 'function' || typeof core.readLocalProjectSkill !== 'function') {
+        throw new Error('Update this project\'s SteamHarness runtime to browse its skill guides.');
+      }
+      send('result', request.skillId === undefined ? await core.listLocalProjectSkills(options)
+        : await core.readLocalProjectSkill({ ...options, skillId: request.skillId }));
+    } else if (request.method === 'kanban-bridge') {
       send('result', await runKanbanDataCall(core, request.project, request.storageDir, request.call));
     } else if (request.method === 'resolve') {
       send('result', await resolveLocalProjectParams({

@@ -1,9 +1,49 @@
-.skill-guides-hint, .skill-guides-empty { margin: 0 0 16px; color: var(--muted); font-size: 12px; line-height: 1.6; }
-.skill-guide-list { display: grid; gap: 12px; margin: 0; padding: 0; list-style: none; }
-.skill-guide { min-width: 0; padding: 14px; border: 1px solid var(--border); border-radius: 6px; }
-.skill-guide-heading { display: flex; align-items: center; gap: 8px; }
-.skill-guide-heading > .codicon { flex-shrink: 0; color: var(--muted); }
-.skill-guide-heading > h3 { flex: 1; min-width: 0; margin: 0; font-size: 13px; font-weight: 500; overflow-wrap: anywhere; }
-.skill-guide-badge { flex-shrink: 0; padding: 2px 6px; border-radius: 3px; background: var(--vscode-textCodeBlock-background); color: var(--muted); font-size: 11px; }
-.skill-guide-name { display: block; margin-top: 6px; color: var(--muted); font-size: 11px; overflow-wrap: anywhere; }
-.skill-guide-description { margin: 10px 0 0; color: var(--muted); font-size: 12px; line-height: 1.6; white-space: pre-wrap; overflow-wrap: anywhere; }
+.skill-guides { min-width: 0; }
+.skill-guides [hidden] { display: none !important; }
+.skill-catalog-toolbar { display: flex; align-items: center; gap: 12px; margin-bottom: 18px; }
+.skill-search { display: flex; align-items: center; flex: 1; min-width: 0; gap: 8px; padding: 0 12px; border: 1px solid var(--border); border-radius: 7px; background: var(--vscode-input-background); }
+.skill-search > .codicon { color: var(--muted); }
+.skill-search input { width: 100%; min-width: 0; height: 36px; padding: 0; border: 0; outline: 0; color: inherit; background: transparent; font: inherit; font-size: 12px; }
+.skill-search:focus-within { border-color: var(--settings-accent); }
+.skill-count { flex-shrink: 0; color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; }
+.skill-guide-list { display: grid; gap: 10px; margin: 0; padding: 0; list-style: none; }
+.skill-guide-list > li { min-width: 0; }
+.skill-guides .skill-guide { display: flex; align-items: flex-start; gap: 14px; width: 100%; min-width: 0; padding: 18px; border: 1px solid var(--border); border-radius: 10px; color: inherit; background: var(--settings-surface); text-align: left; cursor: pointer; transition: border-color 140ms, background 140ms; }
+.skill-guides .skill-guide:hover { border-color: color-mix(in srgb, var(--settings-accent) 55%, var(--border)); background: color-mix(in srgb, var(--settings-accent) 5%, var(--settings-surface)); }
+.skill-guide-icon { display: grid; place-items: center; flex-shrink: 0; width: 36px; height: 36px; border-radius: 9px; color: var(--settings-accent); background: color-mix(in srgb, var(--settings-accent) 10%, transparent); }
+.skill-guide-icon > .codicon { font-size: 18px; }
+.skill-guide-text { flex: 1; min-width: 0; }
+.skill-guide-heading { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+.skill-guide-heading > strong { min-width: 0; font-size: 13px; font-weight: 600; overflow-wrap: anywhere; }
+.skill-guides .skill-guide-badge { flex-shrink: 0; padding: 2px 7px; border: 1px solid var(--border); border-radius: 5px; color: var(--muted); background: var(--vscode-editor-background); font-size: 10px; font-weight: 400; line-height: 1.6; }
+.skill-guide-description { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; margin-top: 7px; color: var(--muted); font-size: 12px; line-height: 1.7; overflow-wrap: anywhere; }
+.skill-guide-open { align-self: center; flex-shrink: 0; color: var(--muted); }
+.skill-status { display: grid; justify-items: center; gap: 12px; margin-top: 16px; padding: 30px 20px; border: 1px dashed var(--border); border-radius: 10px; color: var(--muted); text-align: center; font-size: 12px; line-height: 1.7; overflow-wrap: anywhere; }
+.skill-status > p { margin: 0; }
+.project-settings-panel[data-section=skills]:has(.skill-preview:not([hidden])) > .project-settings-heading { display: none; }
+.skill-preview-toolbar { display: flex; align-items: center; position: sticky; top: 0; z-index: 1; gap: 10px; min-width: 0; padding: 6px 0; background: var(--vscode-editorWidget-background); }
+.skill-preview-toolbar > strong { flex: 1; min-width: 0; font-size: 16px; overflow-wrap: anywhere; }
+.skill-preview-toolbar > .icon-button { flex-shrink: 0; width: 30px; height: 30px; border: 1px solid var(--border); border-radius: 6px; }
+.skill-preview-meta { margin: 8px 0 18px 40px; color: var(--muted); font-size: 11px; }
+.skill-preview-description { margin: 0 0 18px; color: var(--muted); font-size: 12px; line-height: 1.7; overflow-wrap: anywhere; }
+.skill-preview-modes { display: inline-flex; gap: 3px; margin-bottom: 16px; padding: 3px; border: 1px solid var(--border); border-radius: 7px; background: var(--settings-surface); }
+.skill-preview-modes > button { min-height: 28px; padding: 4px 12px; border: 0; border-radius: 4px; background: transparent; color: var(--muted); font-size: 12px; }
+.skill-preview-modes > button[aria-pressed=true] { background: var(--vscode-editor-background); color: inherit; box-shadow: 0 1px 3px #0001; }
+.skill-preview-document { padding: 22px; border: 1px solid var(--border); border-radius: 10px; background: var(--settings-surface); overflow-wrap: anywhere; user-select: text; }
+.skill-preview-document > :first-child { margin-top: 0; }
+.skill-preview-document > :last-child { margin-bottom: 0; }
+.skill-preview-document h1 { font-size: 22px; line-height: 1.4; }
+.skill-preview-document h2 { font-size: 18px; }
+.skill-preview-document h3 { font-size: 15px; }
+.skill-preview-document :is(table, pre) { max-width: 100%; overflow-x: auto; }
+.skill-preview-document table { display: block; width: max-content; }
+.skill-preview-document img { max-width: 100%; }
+.skill-preview-source { margin: 0; padding: 20px; border: 1px solid var(--border); border-radius: 10px; background: var(--settings-surface); font-size: 12px; line-height: 1.8; white-space: pre-wrap; overflow-wrap: anywhere; user-select: text; }
+@media (max-width: 680px) {
+  .skill-catalog-toolbar { gap: 8px; }
+  .skill-guides .skill-guide { gap: 10px; padding: 14px; }
+  .skill-guide-icon { width: 30px; height: 30px; }
+  .skill-preview-document { padding: 16px; }
+  .skill-preview-toolbar > strong { font-size: 14px; }
+}
+@media (prefers-reduced-motion: reduce) { .skill-guides .skill-guide { transition: none; } }

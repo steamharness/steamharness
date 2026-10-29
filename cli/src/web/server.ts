@@ -546,6 +546,15 @@ async function startProjectWebServer(options: WebOptions, credentials: { capabil
       if (epoch !== authEpoch) throw new Error('Account changed. Refresh AI models.');
       return [{ type: 'project-ai-catalog-result', requestId: message.requestId, value }];
     }
+    if (message.type === 'project-skills') {
+      if (typeof message.requestId !== 'string' || message.requestId.length > 256
+        || message.skillId !== undefined && (typeof message.skillId !== 'string' || message.skillId.length > 8192)) throw new Error('Invalid skill request.');
+      const entrypointId = message.entrypointId || project.defaultEntrypoint;
+      if (entrypointId !== undefined && (typeof entrypointId !== 'string' || !project.entrypoints.some(entry => entry.id === entrypointId))) throw new Error('Unknown entrypoint.');
+      if (!runtime.listSkills || !runtime.readSkill) throw new Error(t('Skill preview is unavailable. Update the project runtime.'));
+      const value = message.skillId === undefined ? await runtime.listSkills(project, entrypointId) : await runtime.readSkill(project, message.skillId, entrypointId);
+      return [{ type: 'project-skills-result', requestId: message.requestId, value }];
+    }
     if (message.type === 'project-configuration-upload') {
       const current = await configurations.refresh(), epoch = authEpoch;
       if (message.revision !== current.revision) throw new Error('Configuration changed. Refresh before saving your draft.');

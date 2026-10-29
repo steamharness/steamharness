@@ -9,6 +9,8 @@ import {
   SKILL_TOOL_NAME,
   createSkillTools,
   runSkillAction,
+  listAgentSkillGuides,
+  readAgentSkillGuide,
 } from "../agent/skills";
 
 const SKILL_DOCUMENT = [
@@ -22,6 +24,31 @@ const SKILL_DOCUMENT = [
   "Read `references/guide.md` before starting.",
   "",
 ].join("\n");
+
+test("host catalogs include every project guide and distinct built-in guides, with complete safe entry previews", async () => {
+  await withSkillRoots(async ({ first, second }) => {
+    for (let i = 0; i < 70; i++) {
+      const directory = path.join(first, `guide-${i}`); await mkdir(directory);
+      await writeFile(path.join(directory, "SKILL.md"), `---\nname: guide-${i}\ndescription: ${"详细说明".repeat(700)}\n---\n# Guide ${i}`);
+    }
+    const full = `---\nname: i-have-adhd\ndescription: Project override\n---\n${"完整内容😀".repeat(50_000)}\nEND`;
+    for (const root of [first, second]) await mkdir(path.join(root, "communication"));
+    await writeFile(path.join(first, "communication/SKILL.md"), full);
+    await writeFile(path.join(second, "communication/SKILL.md"), "---\nname: i-have-adhd\n---\nWrong precedence");
+    const guides = await listAgentSkillGuides([first, second]);
+    assert.equal(guides.length, 72);
+    assert.equal(guides.filter(guide => guide.name === "i-have-adhd").length, 2);
+    assert.equal(guides.find(guide => guide.name === "guide-0")?.description.length, 2800);
+    assert.equal(JSON.stringify(guides).includes(first), false);
+    assert.equal((await readAgentSkillGuide([first, second], "project:i-have-adhd")).content, full);
+    assert.match((await readAgentSkillGuide([first], "builtin:i-have-adhd")).content, /name: i-have-adhd/u);
+    await assert.rejects(() => readAgentSkillGuide([first], "project:../../package.json"), /no longer available/u);
+    const outside = path.join(second, "outside.md"); await writeFile(outside, "outside");
+    await mkdir(path.join(first, "escape"));
+    await symlink(outside, path.join(first, "escape/SKILL.md"), process.platform === "win32" ? "file" : undefined);
+    await assert.rejects(() => readAgentSkillGuide([first], "project:escape"), /outside/u);
+  });
+});
 
 async function withSkillRoots(
   build: (roots: { first: string; second: string }) => Promise<void>,

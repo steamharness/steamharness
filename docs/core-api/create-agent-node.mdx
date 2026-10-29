@@ -39,6 +39,7 @@ const node = workflow.createAgentNode({
   toolDefinitions?: ToolPermissionDefinition[],
   allowedDirectories?: string[],
   extraTools?: AgentTool[],
+  skills?: { directories: readonly string[] },
   createTools?: (context: NodeContext) => AgentTool[] | AgentToolSet | Promise<AgentTool[] | AgentToolSet>,
   sessionId?: string,
   historyLimit?: number,
@@ -61,6 +62,7 @@ const node = workflow.createAgentNode({
 | --- | --- | --- |
 | `name` | `string` | 节点名，默认 `agent`。 |
 | `outputItemId` | `string` | 正文回答所属输出项的 id。OpenAI / Responses 适配器按 id 查找正文，所以它必须与 `conversation.openai.outputItemId` 相同；不传时 id 按会话派生，适配器无法预先知道。 |
+| `skills` | `{ directories: readonly string[] }` | 技能目录；相对当前入口根目录解析。Core 为每轮创建带权限校验的 `skill` 工具；通过 Core Agent 项目声明时也提供宿主只读目录，详见[技能目录与宿主预览](./define-agent-conversation-executor.mdx#技能目录与宿主预览)。 |
 | `createTools` | `(context) => AgentTool[] \| AgentToolSet` | 每次运行前组装内置工具之外的工具。用工厂而不是数组，是因为自带工具要闭包住本轮的 `NodeContext`——它的 storage、审批门和用户输入。要启动有生命周期的东西（例如一个 stdio MCP 子进程）就返回 `{ tools, close?() }`，`close` 会在本轮结束时调用（成功失败都会）。 |
 | `sessionKey` | `string` | 同一项目和会话内的 SQLite 会话隔离键。缺省用 `sessionId`，再缺省用 `agent`；多个 agent 节点须使用不同的值。 |
 | `databasePath` | `string` | 显式指定 Durable SQLite 文件；通常由宿主提供 `storage.agentStoreDir` 后自动选择隔离路径。 |

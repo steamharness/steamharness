@@ -110,3 +110,10 @@ export const executor = workflow.defineExecutor({
   createInput(context) { return workflow.createAgentProjectInput(context); },
 });
 ```
+
+
+## Skill roots and host previews
+
+`createAgentConversationProject({ skills: { directories: ["skills"] } })` shares one declaration between runtime tools and host catalogs. Roots resolve relative to the selected entry root, or may be absolute. The first root wins for duplicate project guide names. Core automatically creates the `skill` tool with the current tool permissions; keep its permission metadata in the inline `executor.tools` declaration and do not create a second copy in `createTools`. `createAgentNode` accepts the option for runtime use. Host catalogs read the selected `createAgentConversationProject` declaration; wrapped Conversations link it explicitly through `coreAgent`.
+
+Hosts call `listLocalProjectSkills({ projectDir, entryId?, entrypointId? })` for `AgentSkillGuide[]`, containing `id`, `name`, the complete `description` and `source: "project" | "builtin"`. The catalog includes the selected Core Agent's project guides and its default Core guides; identical names from different sources have distinct IDs. `readLocalProjectSkill({ projectDir, entryId?, entrypointId?, skillId })` returns `{ skill, content }`, with the complete original `SKILL.md`, independent of model tool page limits. These APIs read guides without calling tool factories or running tasks. Non-Core Agent entries have empty catalogs. Preview accepts only discovered catalog IDs, never file paths, and rejects symlinks that escape the guide directory.

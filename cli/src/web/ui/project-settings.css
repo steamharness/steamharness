@@ -111,12 +111,6 @@
 .project-settings-panel .permissions-table tbody tr:hover { background: color-mix(in srgb, var(--settings-surface) 65%, transparent); }
 .project-settings-panel .permissions-table input { width: 14px; height: 14px; accent-color: var(--settings-accent); }
 .project-settings-panel .permission-tool-description { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
-.project-settings-panel .skill-guide { padding: 20px; border-radius: 10px; background: var(--settings-surface); }
-.project-settings-panel .skill-guide-heading { flex-wrap: wrap; }
-.project-settings-panel .skill-guide-heading > .codicon { color: var(--settings-accent); }
-.project-settings-panel .skill-guide-heading > h3 { flex-basis: 100px; font-weight: 600; }
-.project-settings-panel .skill-guide-badge { color: var(--muted); border: 1px solid var(--border); border-radius: 4px; background: var(--vscode-editor-background); }
-.project-settings-panel .skill-guides-empty { padding: 28px 16px; border: 1px dashed var(--border); border-radius: 8px; text-align: center; }
 .project-settings-actions { display: flex; justify-content: flex-end; margin-bottom: 8px; }
 .project-settings-usage .usage-balance { padding: 20px; border: 1px solid var(--border); border-radius: 10px; background: var(--settings-surface); }
 .project-settings-usage .usage-balance > strong { font-variant-numeric: tabular-nums; }

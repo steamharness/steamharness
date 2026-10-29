@@ -1,4 +1,7 @@
 import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
+
+export const BUILTIN_AGENT_SKILLS_DIRECTORY = fileURLToPath(new URL("./skills", import.meta.url));
 
 // This path is relative to src/agent in development and dist after bundling.
 // Keep the upstream guide as a file so its attribution and original content

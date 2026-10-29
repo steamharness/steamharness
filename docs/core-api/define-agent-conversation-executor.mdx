@@ -110,3 +110,10 @@ export const executor = workflow.defineExecutor({
   createInput(context) { return workflow.createAgentProjectInput(context); },
 });
 ```
+
+
+## 技能目录与宿主预览
+
+`createAgentConversationProject({ skills: { directories: ["skills"] } })` 使用同一声明驱动技能工具与宿主目录。路径相对于当前入口根目录解析，也可使用绝对路径；多个根目录中的同名技能以第一个为准。Core 自动注册 `skill` 工具并沿用当前工具权限，项目仍在内联 `executor.tools` 中声明其权限元数据，不要再在 `createTools` 中重复创建该工具。`createAgentNode` 也接受同一选项供运行时使用；宿主目录只读取选定 `createAgentConversationProject` 的声明，包装 Conversation 时通过 `coreAgent` 显式关联。
+
+宿主通过 `listLocalProjectSkills({ projectDir, entryId?, entrypointId? })` 获取 `AgentSkillGuide[]`：每项包含 `id`、`name`、完整 `description` 与 `source: "project" | "builtin"`。列表包含选定 Core Agent 的项目指南及其默认加载的 Core 内置指南；同名的两种来源保留独立 ID。通过 `readLocalProjectSkill({ projectDir, entryId?, entrypointId?, skillId })` 获取 `{ skill, content }`，`content` 为完整原始 `SKILL.md`，不受模型工具分页限制。两个 API 都只读取目录，不调用工具工厂、不运行任务；非 Core Agent 入口返回空目录。预览只接受已发现的目录 ID，不接受文件路径，并拒绝越界软链接。

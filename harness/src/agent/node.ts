@@ -43,6 +43,7 @@ import {
   readRuntimeLocaleSafe,
 } from "./plan";
 import { createAgentRuntime, resolveAgentWorkdir, type AgentRuntimeInternalOptions } from "./runtime";
+import { createSkillTools } from "./skills";
 import { DEFAULT_AGENT_EFFORT, DEFAULT_AGENT_MODE } from "./types";
 import type {
   AgentContextUsage,
@@ -259,8 +260,14 @@ class AgentStreamNode extends BaseStreamNode<AgentInput, OutputItemStreamChunk, 
       if (this.options.createTools !== undefined) {
         const created = await this.options.createTools(context);
         toolSet = Array.isArray(created) ? { tools: created } : created;
-        runtime.setExternalTools(toolSet.tools, toolSet.catalogs);
       }
+      if (this.options.skills && context.toolPermissions?.getTool("skill")?.enabled !== false) {
+        const gate = createToolApprovalGate();
+        const roots = this.options.skills.directories.map(directory => path.resolve(String(context.metadata?.entryRootDir ?? process.cwd()), directory));
+        const skills = await createSkillTools({ directories: roots, approve: async (name, args) => { await gate.approve({ name, arguments: args }, context); } });
+        toolSet = { ...toolSet, tools: [...(toolSet?.tools ?? []), ...skills] };
+      }
+      if (toolSet) runtime.setExternalTools(toolSet.tools, toolSet.catalogs);
       unbind = this.options.session && context.conversation?.conversationId && runtime.control
         ? bindAgentSessionControl(context.conversation.conversationId, command => runtime.control!(command)) : undefined;
     } catch (error) {

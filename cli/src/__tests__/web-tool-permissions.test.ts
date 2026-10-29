@@ -144,11 +144,9 @@ it('separates skill guides into a read-only tab and preserves their policy when 
   expect(f.root.textContent).not.toContain('List and read skill guides');
   skillsTab.click();
   expect((f.root.closest('[role=tabpanel]') as HTMLElement).hidden).toBe(true); expect((skills.closest('[role=tabpanel]') as HTMLElement).hidden).toBe(false);
-  expect(skills.querySelector('.skill-guide-heading h3')?.textContent).toBe('List and read skill guides');
-  expect(skills.querySelector('.skill-guide-name')?.textContent).toBe('skill');
-  expect(skills.querySelector('.skill-guide-badge')?.textContent).toBe('Read-only');
-  expect(skills.querySelector('.skill-guide-description')?.textContent).toBe('Read SKILL.md and references.\nActions use other tools.');
-  expect(skills.querySelector('input, select, button, .permissions-table')).toBeNull();
+  expect(skills.querySelector('.skill-guide')).toBeNull();
+  expect(skills.textContent).not.toContain('List and read skill guides');
+  expect(skills.querySelector('input[type=checkbox], select, .permissions-table')).toBeNull();
   expect(skills.textContent).not.toContain('Auto-approve');
   expect(f.changed).not.toHaveBeenCalled();
   toolsTab.click();
@@ -157,7 +155,7 @@ it('separates skill guides into a read-only tab and preserves their policy when 
   expect(next).toEqual({ read: { enabled: false, autoApprove: false }, skill: { enabled: false, autoApprove: false } });
   next.skill.enabled = true;
   expect(policies).toEqual({ skill: { enabled: false, autoApprove: false } });
-  expect(skills.querySelector('.skill-guide-badge')?.textContent).toBe('Read-only');
+  expect(skills.querySelector('.skill-guide')).toBeNull();
 });
 
 it('supports keyboard tabs and retains tool search and collapse state across tab changes', () => {
@@ -194,20 +192,18 @@ it('opens skill-only projects on Skills and keeps an undeclared skill tab empty'
   expect((f.root.closest('[role=tabpanel]') as HTMLElement).hidden).toBe(true); expect((document.querySelector('.skill-guides')!.closest('[role=tabpanel]') as HTMLElement).hidden).toBe(false);
   f.dialogs.close(); f.dialogs.permissions({ fields: [], tools: [{ name: 'read' }] }, {}, f.changed);
   document.querySelector<HTMLButtonElement>('[data-tab=skills]')!.click();
-  expect(document.querySelector('.skill-guides')?.textContent).toContain('No skills declared by this project');
+  expect(document.querySelector('.skill-guides')?.textContent).toContain('Skill preview is unavailable. Update the project runtime.');
   expect(document.querySelector('.skill-guide')).toBeNull();
   expect(f.changed).not.toHaveBeenCalled();
 });
 
-it('localizes skill tabs and renders skill labels and descriptions as inert text', () => {
+it('localizes skill tabs without presenting tool registration metadata as a skill', () => {
   initI18n({ preference: 'zh-CN' });
   const description = '读取 <script>alert(1)</script> 和 SKILL.md。';
   fixture([{ name: 'skill', label: '<img src=x onerror=alert(1)>', description }]);
   expect(document.querySelector('.conversation-dialog h2')?.textContent).toBe('项目信息');
   expect(Array.from(document.querySelectorAll('.project-information-tabs button'), tab => tab.textContent)).toEqual(['工具', '技能']);
   const skills = document.querySelector('.skill-guides')!;
-  expect(skills.querySelector('h3')?.textContent).toBe('<img src=x onerror=alert(1)>');
-  expect(skills.querySelector('.skill-guide-description')?.textContent).toBe(description);
-  expect(skills.querySelector('.skill-guide-badge')?.textContent).toBe('只读');
+  expect(skills.querySelector('.skill-guide')).toBeNull();
   expect(skills.querySelector('img, script')).toBeNull(); expect(skills.textContent).not.toContain('自动批准');
 });

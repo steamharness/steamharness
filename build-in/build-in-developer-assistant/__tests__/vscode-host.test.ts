@@ -4,7 +4,7 @@ import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { AgentInput, AgentProjectOptions, AgentToolSet, McpServerConnection, NodeContext, ExecutorContext } from "steamharness";
 import { installProjectRuntimeGlobal } from "steamharness/runtime-api";
-import { createAgentRuntime, withUserSettings } from "steamharness";
+import { createAgentRuntime, runSkillAction, withUserSettings } from "steamharness";
 import { createDeveloperAssistantSystemPrompt } from "../assistant-prompt";
 
 const temporary: string[] = [];
@@ -107,7 +107,7 @@ describe("VS Code assistant host", () => {
     expect(close).toHaveBeenCalledOnce();
   });
 
-  it.each([undefined, "vscode"])("offers skills without a Desktop MCP process for host %s", async (value) => {
+  it.each([undefined, "vscode"])("declares Core skill roots without a Desktop MCP process for host %s", async (value) => {
     const host = await loadHost({
       ...(value === undefined ? {} : { STEAMHARNESS_DEVELOPER_ASSISTANT_HOST: value }),
       STEAMHARNESS_DESKTOP_CONTROL_MCP_SERVER: "invalid legacy control configuration",
@@ -116,15 +116,14 @@ describe("VS Code assistant host", () => {
     });
     const tools = await host.options.createTools!({} as NodeContext) as AgentToolSet;
     expect(tools.tools.map((tool) => tool.name)).toEqual([
-      "workflow-memory_global_memory", "workflow-ui_present_card", "skill",
+      "workflow-memory_global_memory", "workflow-ui_present_card",
     ]);
     expect(host.connect).not.toHaveBeenCalled();
     expect(host.getConfig.mock.calls.every(([name]) => !name.startsWith("STEAMHARNESS_DESKTOP_CONTROL"))).toBe(true);
     expect(tools.close).toBeUndefined();
-    const skill = tools.tools.find((tool) => tool.name === "skill")!;
-    const result = await skill.execute("list", { action: "list" });
+    expect(host.options.skills?.directories).toEqual([path.resolve(import.meta.dirname, "..", "skills")]);
+    const result = await runSkillAction(host.options.skills!.directories, { action: "list" });
     expect(JSON.stringify(result)).toContain("workflow-generator");
-    expect(host.approve).toHaveBeenCalledWith({ name: "skill", arguments: { action: "list" } }, expect.anything());
     const disabled = await host.options.createTools!({
       toolPermissions: { getTool: (name: string) => ({ enabled: name !== "skill" }) },
     } as unknown as NodeContext) as AgentToolSet;

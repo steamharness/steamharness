@@ -6,6 +6,7 @@ import { projectInformation } from './project-information';
 import { usageAmount, usagePeriods } from './ai-usage';
 import { imagePreview } from './image-preview';
 import { toolsAndSkills } from './tools-and-skills';
+import { SkillGuides, type SkillGuidesLoader } from './skill-guides';
 import type { ProjectDatabases } from './project-databases';
 import type { ProjectConfigurationsPanel } from './project-configurations';
 import './project-databases.css';
@@ -16,6 +17,7 @@ export interface ProjectSettingsOptions {
   configurations?: ProjectConfigurationsPanel;
   tools?(): { parameters: Parameters; policies: ToolPolicies; changed(policies: ToolPolicies): void; readOnly?: boolean };
   usage?: { available(): boolean; load(requestId: string): void };
+  skills?: SkillGuidesLoader;
 }
 
 export class ConversationTools {
@@ -35,6 +37,7 @@ export class ConversationTools {
   private section?: ProjectSettingsSection;
   private usageBody?: HTMLElement;
   private opener?: HTMLElement;
+  private skillGuides?: SkillGuides;
   private readonly toolSections = new Map<string, boolean>();
   constructor(private readonly databases?: ProjectDatabases, private readonly settings: ProjectSettingsOptions = {}) {
     this.dialog.id = 'project-information-dialog'; this.dialog.className = 'conversation-dialog';
@@ -50,6 +53,7 @@ export class ConversationTools {
   private cleanup(): void {
     this.disposeImage?.(); this.disposeImage = undefined; this.disposeProject?.(); this.disposeProject = undefined;
     this.disposeNavigation?.(); this.disposeNavigation = undefined; this.refreshTools = undefined;
+    this.skillGuides?.dispose(); this.skillGuides = undefined;
     this.settings.configurations?.deactivate(); this.usageOpen = false; this.usageRequestId = undefined; this.usageBody = undefined;
     clearTimeout(this.usageTimer); this.usageTimer = undefined;
     this.refresh = undefined; this.selectSection = undefined; this.section = undefined; this.settingsProject = undefined;
@@ -57,6 +61,9 @@ export class ConversationTools {
   }
   close(): void { if (this.dialog.open) this.dialog.close(); this.cleanup(); }
   closeUsage(): void { if (this.usageBody) this.close(); }
+  skillsResult(requestId: string | undefined, value?: import('steamharness').AgentSkillGuide[] | import('steamharness').AgentSkillPreview, error?: string): void {
+    this.skillGuides?.result(requestId, value, error);
+  }
   updatePermissions(): void {
     if (!this.open || !this.settings.tools) return;
     this.refreshTools?.(this.settings.tools());
@@ -151,7 +158,6 @@ export class ConversationTools {
       let panels = toolsAndSkills(tools.parameters.tools ?? [], tools.policies, changed, this.toolSections);
       panels.update(tools.policies, !!tools.readOnly);
       add('tools', t('Tools'), 'wrench', t('Control which tools can run and which actions need approval.'), panels.tools);
-      add('skills', t('Skills'), 'book', t('Read the guides available to this entry. Skills have no permission switches.'), panels.skills);
       this.refreshTools = current => {
         const nextCatalog = JSON.stringify(current.parameters.tools ?? []);
         if (catalog !== nextCatalog) {
@@ -165,12 +171,16 @@ export class ConversationTools {
             const input = next.tools.querySelector<HTMLInputElement>('[type=search]');
             if (input) { input.value = search.value; input.dispatchEvent(new Event('input')); }
           }
-          panels.tools.replaceWith(next.tools); panels.skills.replaceWith(next.skills); panels = next; catalog = nextCatalog;
+          panels.tools.replaceWith(next.tools); panels = next; catalog = nextCatalog;
           if (focused) ([...panels.tools.querySelectorAll<HTMLElement>('[aria-label]:not(:disabled)')].find(control => control.getAttribute('aria-label') === label) ?? panels.tools.closest<HTMLElement>('[role=tabpanel]'))?.focus({ preventScroll: true });
           panels.tools.parentElement!.scrollTop = scroll;
         }
         panels.update(current.policies, !!current.readOnly);
       };
+    }
+    if (tools || this.settings.skills) {
+      const skills = this.skillGuides = new SkillGuides(this.settings.skills);
+      add('skills', t('Skills'), 'book', t('Browse project and Core guides. Select a skill to preview its complete SKILL.md.'), skills.element, () => skills.activate());
     }
     const usage = this.settings.usage;
     if (project && usage?.available()) {

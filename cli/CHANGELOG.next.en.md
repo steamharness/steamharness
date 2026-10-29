@@ -1,5 +1,7 @@
 # Unreleased
 
+- Fixed the Skills page to list and count actual project and Core built-in guides, with search and complete SKILL.md previews and Markdown source. The discovery tool is no longer shown as a skill, and navigation keeps the panel size fixed.
+
 - Fix: CLI Web Project information synchronizes tool registrations and permissions while preserving search and focus. Configuration failures no longer remain stuck loading, and closing the panel dismisses its editors. Refined cards, selection states and light/dark styling, with horizontal tabs on narrow screens and stable panel dimensions.
 
 - Improvement: Conversation, message and workflow exports in Studio use the native save dialog and show the saved path in a notification after writing succeeds. Cancellation stays quiet and write failures show an error.

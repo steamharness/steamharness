@@ -472,6 +472,8 @@ export interface AgentRuntimeOptions {
 
 export interface AgentNodeOptions extends AgentRuntimeOptions {
   name?: string;
+  /** Skill roots, resolved relative to the entry root. Shared by runtime tools and read-only host previews. */
+  skills?: { directories: readonly string[] };
   /**
    * Item id the answer is emitted under.
    *
