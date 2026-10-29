@@ -92,8 +92,8 @@
 .project-settings-panel[data-section=configurations] > .project-settings-heading { margin-bottom: 12px; }
 .project-configurations.project-configurations-embedded { display: flex; flex: 1; flex-direction: column; width: auto; max-height: none; min-width: 0; min-height: 0; overflow: hidden; }
 .project-configurations-embedded .configuration-profiles { padding: 10px 0; }
-.project-configurations-embedded .dialog-body { padding: 16px 0; }
-.project-configurations-embedded .configuration-footer { padding: 12px 0 0; }
+.project-configurations-embedded > .dialog-body { padding: 16px 0; }
+.project-configurations-embedded > .configuration-footer { padding: 12px 0 0; }
 .project-configurations-embedded .configuration-view-tabs { padding: 8px 0; }
 .project-configurations-embedded .configuration-list > ul { border-radius: 8px; }
 .project-configurations-embedded .configuration-field { padding: 16px; border-radius: 8px; background: var(--settings-surface); }

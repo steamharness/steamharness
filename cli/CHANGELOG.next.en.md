@@ -1,5 +1,7 @@
 # Unreleased
 
+- Fixed embedded project configuration styles affecting nested dialogs, restoring content and footer spacing when adding or editing models in Project information.
+
 - Added: Show global/current memory in project information according to Core capabilities, with compact details, editing and forgetting; keep account credentials in the host and scope worker grants.
 
 - [Fix] Keep the skill preview return toolbar outside its independent document scroll area, preventing content from overlapping navigation while preserving loading, retry and return states.
