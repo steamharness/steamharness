@@ -1,0 +1,15 @@
+**
+!package.json
+!pnpm-lock.yaml
+!pnpm-workspace.yaml
+!memory-service/
+!memory-service/package.json
+!memory-service/tsconfig.json
+!memory-service/tsup.config.ts
+!memory-service/README.md
+!memory-service/src/
+!memory-service/src/**
+!memory-service/vendor/
+!memory-service/vendor/**
+!memory-service/scripts/
+!memory-service/scripts/**

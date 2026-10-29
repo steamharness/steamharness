@@ -89,6 +89,14 @@ try {
   const execute = async () => {
   const language = /^zh/i.test(process.env[core.STEAMHARNESS_RUNTIME_LOCALE_ENV] ?? process.env.STEAMHARNESS_LOCALE ?? 'en') ? 'zh-CN' : 'en';
   const { readProjectInfo, readProjectCardMetadata, resolveProjectName, runKanbanDataCall } = await import(new URL(import.meta.url.includes('/src/web/') ? './kanban-data.ts' : './kanban-data.mjs', import.meta.url));
+  if(request.method==='memory-capabilities'){
+    try{
+      send('result',typeof core.getLocalProjectMemoryCapabilities==='function'
+        ?await core.getLocalProjectMemoryCapabilities({projectDir:request.project.folderPath,entryId:request.project.entryId,entrypointId:request.entrypointId})
+        :{connected:false,enabled:false,status:'unconfigured',automatic:false,readOnly:true,scopes:[]});
+    }catch(error){throw Object.assign(error,{metadata:{...error.metadata,status:error.status??error.metadata?.status}});}
+    return;
+  }
   if (request.method === 'inspect') {
     const projects = [];
     const errors = [];
@@ -330,7 +338,20 @@ try {
     } else { throw new Error('Unknown runtime method.'); }
   } else { throw new Error('Unknown runtime method.'); }
   };
-  await withSettings(execute);
+  const memoryPending=new Map();
+  process.on('message', message=>{if(message?.type!=='memory-grant-result')return;const p=memoryPending.get(message.id);if(!p)return;memoryPending.delete(message.id);clearTimeout(p.timer);message.error?p.reject(Object.assign(new Error(message.error),{status:message.status})):p.resolve(message.grant);});
+  let memoryGrant;
+  const getMemoryGrant=()=>memoryGrant&&Date.parse(memoryGrant.expiresAt)>Date.now()+30000?Promise.resolve(memoryGrant):new Promise((resolve,reject)=>{const id=crypto.randomUUID();const timer=setTimeout(()=>{memoryPending.delete(id);reject(new Error('Memory authorization timed out.'));},5000);memoryPending.set(id,{resolve:grant=>{memoryGrant=grant;resolve(grant);},reject,timer});process.send?.({type:'memory-grant',id});});
+  let memoryBinding=false;
+  if(request.memoryAvailable&&['run','memory-capabilities'].includes(request.method)&&core.createServerAgentMemoryProvider&&core.withAgentMemory){
+    if(request.method==='memory-capabilities'){
+      // Resolve the entry first: disabled/non-Agent entries must not request a grant.
+      memoryBinding={provider:{capabilities:async()=>{const grant=await getMemoryGrant();return core.createServerAgentMemoryProvider({serverUrl:grant.serverUrl,getGrant:getMemoryGrant}).capabilities();}}};
+    }else{
+      try{const grant=await getMemoryGrant();memoryBinding={provider:core.createServerAgentMemoryProvider({serverUrl:grant.serverUrl,getGrant:getMemoryGrant}),outboxDirectory:grant.outboxDirectory,onError:()=>send('event',{type:'runtime_log',text:/^zh/i.test(process.env.STEAMHARNESS_RUNTIME_LOCALE??'')?'账号记忆暂时不可用。\n':'Account memory is temporarily unavailable.\n',runId:request.runId})};}catch{send('event',{type:'runtime_log',text:/^zh/i.test(process.env.STEAMHARNESS_RUNTIME_LOCALE??'')?'账号记忆授权暂时不可用。\n':'Account memory authorization is unavailable.\n',runId:request.runId});}
+    }
+  }
+  await (core.withAgentMemory?core.withAgentMemory(memoryBinding,()=>withSettings(execute)):withSettings(execute));
 } catch (error) {
   write(`__STEAMHARNESS_WEB__${JSON.stringify({ kind: 'error', error: error.message, code: error.code, metadata: error.metadata, status: error.metadata?.status })}\n`);
   process.exitCode = 1;

@@ -23,6 +23,8 @@ tags:
     description: 固定角色、多级组继承、成员、邀请和归属管理。 / Fixed roles, hierarchy and membership.
   - name: Database Spaces
     description: 独立空间、显式申请审批、消费方绑定与共享授权。
+  - name: Account Memory
+    description: Account-private global, project and directory memory, BM25 retrieval and asynchronous L0/L1 extraction.
 paths:
   /health:
     get:
@@ -3633,8 +3635,534 @@ paths:
           description: Project role or active host database grant denies access.
         "404":
           description: Resource or registered entry unavailable.
+  /api/me/memory/capabilities:
+    get:
+      tags: [Account Memory]
+      operationId: memoryCapabilities
+      summary: 读取记忆能力
+      security:
+        - MemoryManagementAuth: []
+        - SessionCookie: []
+        - MemoryRuntimeAuth: []
+      responses:
+        "200":
+          description: Success in errCode / errMessage / data envelope.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MemoryCapabilitiesResponse"
+        "400":
+          description: Invalid filters, cursor or operation.
+        "401":
+          description: Missing, expired or revoked independent memory credential. Project API keys cannot access account memory.
+        "403":
+          description: Read-only grant, disabled account or memory, unauthorized scope, or revoked project access.
+        "404":
+          description: Record not found in authorized scopes.
+        "409":
+          description: Stale version or stable ID reused with different content.
+        "503":
+          description: Memory service unavailable; normal conversations remain available.
+  /api/me/memories:
+    get:
+      tags: [Account Memory]
+      operationId: listMemories
+      summary: 分页筛选与搜索记忆
+      security:
+        - MemoryManagementAuth: []
+        - SessionCookie: []
+        - MemoryRuntimeAuth: []
+      description: Authorization filtering precedes sorting, statistics and pagination. Locked bodies, sources and search hit counts are never returned.
+      parameters:
+        - in: query
+          name: scope
+          schema: {type: string}
+        - in: query
+          name: query
+          schema: {type: string}
+        - in: query
+          name: origin
+          schema: {type: string, enum: [manual, automatic]}
+        - in: query
+          name: cursor
+          schema: {type: string}
+        - in: query
+          name: pageSize
+          schema: {type: integer, minimum: 1, maximum: 100, default: 20}
+      responses:
+        "200":
+          description: Success in errCode / errMessage / data envelope.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MemoryListResponse"
+        "400":
+          description: Invalid filters, cursor or operation.
+        "401":
+          description: Missing, expired or revoked independent memory credential. Project API keys cannot access account memory.
+        "403":
+          description: Read-only grant, disabled account or memory, unauthorized scope, or revoked project access.
+        "404":
+          description: Record not found in authorized scopes.
+        "409":
+          description: Stale version or stable ID reused with different content.
+        "503":
+          description: Memory service unavailable; normal conversations remain available.
+    post:
+      tags: [Account Memory]
+      operationId: rememberMemory
+      summary: 手动记住
+      security:
+        - MemoryManagementAuth: []
+        - SessionCookie: []
+        - MemoryRuntimeAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MemoryCreate"
+      responses:
+        "200":
+          description: Success in errCode / errMessage / data envelope.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MemoryMutationResponse"
+        "400":
+          description: Invalid filters, cursor or operation.
+        "401":
+          description: Missing, expired or revoked independent memory credential. Project API keys cannot access account memory.
+        "403":
+          description: Read-only grant, disabled account or memory, unauthorized scope, or revoked project access.
+        "404":
+          description: Record not found in authorized scopes.
+        "409":
+          description: Stale version or stable ID reused with different content.
+        "503":
+          description: Memory service unavailable; normal conversations remain available.
+  /api/me/memories/{id}:
+    get:
+      tags: [Account Memory]
+      operationId: getMemory
+      summary: 读取完整记忆
+      security:
+        - MemoryManagementAuth: []
+        - SessionCookie: []
+        - MemoryRuntimeAuth: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: {type: string}
+      responses:
+        "200":
+          description: Success in errCode / errMessage / data envelope.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MemoryRecordResponse"
+        "400":
+          description: Invalid filters, cursor or operation.
+        "401":
+          description: Missing, expired or revoked independent memory credential. Project API keys cannot access account memory.
+        "403":
+          description: Read-only grant, disabled account or memory, unauthorized scope, or revoked project access.
+        "404":
+          description: Record not found in authorized scopes.
+        "409":
+          description: Stale version or stable ID reused with different content.
+        "503":
+          description: Memory service unavailable; normal conversations remain available.
+    patch:
+      tags: [Account Memory]
+      operationId: updateMemory
+      summary: 按版本编辑记忆
+      security:
+        - MemoryManagementAuth: []
+        - SessionCookie: []
+        - MemoryRuntimeAuth: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: {type: string}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MemoryEdit"
+      responses:
+        "200":
+          description: Success in errCode / errMessage / data envelope.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MemoryMutationResponse"
+        "400":
+          description: Invalid filters, cursor or operation.
+        "401":
+          description: Missing, expired or revoked independent memory credential. Project API keys cannot access account memory.
+        "403":
+          description: Read-only grant, disabled account or memory, unauthorized scope, or revoked project access.
+        "404":
+          description: Record not found in authorized scopes.
+        "409":
+          description: Stale version or stable ID reused with different content.
+        "503":
+          description: Memory service unavailable; normal conversations remain available.
+    delete:
+      tags: [Account Memory]
+      operationId: forgetMemory
+      summary: 遗忘记忆
+      security:
+        - MemoryManagementAuth: []
+        - SessionCookie: []
+        - MemoryRuntimeAuth: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: {type: string}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MemoryOperation"
+      responses:
+        "200":
+          description: Success in errCode / errMessage / data envelope.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MemoryResponse"
+        "400":
+          description: Invalid filters, cursor or operation.
+        "401":
+          description: Missing, expired or revoked independent memory credential. Project API keys cannot access account memory.
+        "403":
+          description: Read-only grant, disabled account or memory, unauthorized scope, or revoked project access.
+        "404":
+          description: Record not found in authorized scopes.
+        "409":
+          description: Stale version or stable ID reused with different content.
+        "503":
+          description: Memory service unavailable; normal conversations remain available.
+  /api/me/memory/preferences:
+    get:
+      tags: [Account Memory]
+      operationId: getMemoryPreferences
+      summary: 读取账号记忆偏好
+      security:
+        - MemoryManagementAuth: []
+        - SessionCookie: []
+      responses:
+        "200":
+          description: Success in errCode / errMessage / data envelope.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MemoryPreferencesResponse"
+        "400":
+          description: Invalid filters, cursor or operation.
+        "401":
+          description: Missing, expired or revoked independent memory credential. Project API keys cannot access account memory.
+        "403":
+          description: Read-only grant, disabled account or memory, unauthorized scope, or revoked project access.
+        "404":
+          description: Record not found in authorized scopes.
+        "409":
+          description: Stale version or stable ID reused with different content.
+        "503":
+          description: Memory service unavailable; normal conversations remain available.
+    patch:
+      tags: [Account Memory]
+      operationId: updateMemoryPreferences
+      summary: 设置账号记忆偏好
+      security:
+        - MemoryManagementAuth: []
+        - SessionCookie: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MemoryPreferences"
+      responses:
+        "200":
+          description: Success in errCode / errMessage / data envelope.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MemoryPreferencesResponse"
+        "400":
+          description: Invalid filters, cursor or operation.
+        "401":
+          description: Missing, expired or revoked independent memory credential. Project API keys cannot access account memory.
+        "403":
+          description: Read-only grant, disabled account or memory, unauthorized scope, or revoked project access.
+        "404":
+          description: Record not found in authorized scopes.
+        "409":
+          description: Stale version or stable ID reused with different content.
+        "503":
+          description: Memory service unavailable; normal conversations remain available.
+  /api/me/memory/grants:
+    post:
+      tags: [Account Memory]
+      operationId: createMemoryGrant
+      summary: 签发当前范围短期授权
+      security:
+        - MemoryManagementAuth: []
+        - SessionCookie: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MemoryGrant"
+      responses:
+        "200":
+          description: Success in errCode / errMessage / data envelope.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MemoryResponse"
+        "400":
+          description: Invalid filters, cursor or operation.
+        "401":
+          description: Missing, expired or revoked independent memory credential. Project API keys cannot access account memory.
+        "403":
+          description: Read-only grant, disabled account or memory, unauthorized scope, or revoked project access.
+        "404":
+          description: Record not found in authorized scopes.
+        "409":
+          description: Stale version or stable ID reused with different content.
+        "503":
+          description: Memory service unavailable; normal conversations remain available.
+  /api/me/memory/revoke:
+    post:
+      tags: [Account Memory]
+      operationId: revokeMemoryCredential
+      summary: 撤销管理凭据及其子授权
+      security:
+        - MemoryManagementAuth: []
+        - SessionCookie: []
+      responses:
+        "200":
+          description: Success in errCode / errMessage / data envelope.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MemoryResponse"
+        "400":
+          description: Invalid filters, cursor or operation.
+        "401":
+          description: Missing, expired or revoked independent memory credential. Project API keys cannot access account memory.
+        "403":
+          description: Read-only grant, disabled account or memory, unauthorized scope, or revoked project access.
+        "404":
+          description: Record not found in authorized scopes.
+        "409":
+          description: Stale version or stable ID reused with different content.
+        "503":
+          description: Memory service unavailable; normal conversations remain available.
+  /api/me/memory/scopes:
+    get:
+      tags: [Account Memory]
+      operationId: listMemoryScopes
+      summary: 列出范围与锁定状态
+      security:
+        - MemoryManagementAuth: []
+        - SessionCookie: []
+      responses:
+        "200":
+          description: Success in errCode / errMessage / data envelope.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MemoryResponse"
+        "400":
+          description: Invalid filters, cursor or operation.
+        "401":
+          description: Missing, expired or revoked independent memory credential. Project API keys cannot access account memory.
+        "403":
+          description: Read-only grant, disabled account or memory, unauthorized scope, or revoked project access.
+        "404":
+          description: Record not found in authorized scopes.
+        "409":
+          description: Stale version or stable ID reused with different content.
+        "503":
+          description: Memory service unavailable; normal conversations remain available.
+  /api/me/memory/jobs:
+    get:
+      tags: [Account Memory]
+      operationId: listMemoryJobs
+      summary: 列出待提炼与失败任务
+      security:
+        - MemoryManagementAuth: []
+        - SessionCookie: []
+      responses:
+        "200":
+          description: Success in errCode / errMessage / data envelope.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MemoryResponse"
+        "400":
+          description: Invalid filters, cursor or operation.
+        "401":
+          description: Missing, expired or revoked independent memory credential. Project API keys cannot access account memory.
+        "403":
+          description: Read-only grant, disabled account or memory, unauthorized scope, or revoked project access.
+        "404":
+          description: Record not found in authorized scopes.
+        "409":
+          description: Stale version or stable ID reused with different content.
+        "503":
+          description: Memory service unavailable; normal conversations remain available.
+  /api/me/memory/jobs/{id}/retry:
+    post:
+      tags: [Account Memory]
+      operationId: retryMemoryJob
+      summary: 重试失败提炼任务
+      security:
+        - MemoryManagementAuth: []
+        - SessionCookie: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: {type: string}
+      responses:
+        "200":
+          description: Success in errCode / errMessage / data envelope.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MemoryResponse"
+        "400":
+          description: Invalid filters, cursor or operation.
+        "401":
+          description: Missing, expired or revoked independent memory credential. Project API keys cannot access account memory.
+        "403":
+          description: Read-only grant, disabled account or memory, unauthorized scope, or revoked project access.
+        "404":
+          description: Record not found in authorized scopes.
+        "409":
+          description: Stale version or stable ID reused with different content.
+        "503":
+          description: Memory service unavailable; normal conversations remain available.
+  /api/me/memory/recall:
+    post:
+      tags: [Account Memory]
+      operationId: recallMemory
+      summary: 召回全局与当前范围记忆
+      security:
+        - MemoryRuntimeAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MemoryRecall"
+      responses:
+        "200":
+          description: Success in errCode / errMessage / data envelope.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MemoryRecallResponse"
+        "400":
+          description: Invalid filters, cursor or operation.
+        "401":
+          description: Missing, expired or revoked independent memory credential. Project API keys cannot access account memory.
+        "403":
+          description: Read-only grant, disabled account or memory, unauthorized scope, or revoked project access.
+        "404":
+          description: Record not found in authorized scopes.
+        "409":
+          description: Stale version or stable ID reused with different content.
+        "503":
+          description: Memory service unavailable; normal conversations remain available.
+  /api/me/memory/turns:
+    post:
+      tags: [Account Memory]
+      operationId: submitMemoryTurn
+      summary: 提交已持久完成回合
+      security:
+        - MemoryRuntimeAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MemoryTurn"
+      responses:
+        "200":
+          description: Success in errCode / errMessage / data envelope.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MemoryTurnResponse"
+        "400":
+          description: Invalid filters, cursor or operation.
+        "401":
+          description: Missing, expired or revoked independent memory credential. Project API keys cannot access account memory.
+        "403":
+          description: Read-only grant, disabled account or memory, unauthorized scope, or revoked project access.
+        "404":
+          description: Record not found in authorized scopes.
+        "409":
+          description: Stale version or stable ID reused with different content.
+        "503":
+          description: Memory service unavailable; normal conversations remain available.
+  /api/me/memory/clear:
+    post:
+      tags: [Account Memory]
+      operationId: clearMemoryScope
+      summary: 清空范围并阻止旧回合回写
+      security:
+        - MemoryManagementAuth: []
+        - SessionCookie: []
+        - MemoryRuntimeAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MemoryClear"
+      responses:
+        "200":
+          description: Success in errCode / errMessage / data envelope.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MemoryResponse"
+        "400":
+          description: Invalid filters, cursor or operation.
+        "401":
+          description: Missing, expired or revoked independent memory credential. Project API keys cannot access account memory.
+        "403":
+          description: Read-only grant, disabled account or memory, unauthorized scope, or revoked project access.
+        "404":
+          description: Record not found in authorized scopes.
+        "409":
+          description: Stale version or stable ID reused with different content.
+        "503":
+          description: Memory service unavailable; normal conversations remain available.
 components:
   securitySchemes:
+    MemoryManagementAuth:
+      type: http
+      scheme: bearer
+      description: Independent shma_ account memory credential issued only by password or device login and retained in the trusted host. Existing project API keys are not accepted.
+    MemoryRuntimeAuth:
+      type: http
+      scheme: bearer
+      description: Short-lived shmu_ grant restricted to personal global and the host-selected current project or directory. Account identity and allowed scopes are resolved by Server.
     BearerAuth:
       type: http
       scheme: bearer
@@ -3703,6 +4231,180 @@ components:
           schema:
             $ref: "#/components/schemas/ApiFailure"
   schemas:
+    MemoryResponse:
+      type: object
+      required: [errCode, errMessage, data]
+      properties:
+        errCode: {type: integer, const: 0}
+        errMessage: {type: string, const: ""}
+        data:
+          description: Operation result; lists return items, nextCursor and permission-filtered locked counts. Capabilities return connected, enabled, status, automatic, readOnly, currentScope and scopes.
+    MemoryCapabilitiesResponse:
+      allOf:
+        - $ref: "#/components/schemas/MemoryResponse"
+        - type: object
+          properties:
+            data:
+              type: object
+              required: [connected, enabled, status, automatic, readOnly, scopes]
+              properties:
+                connected: {type: boolean}
+                enabled: {type: boolean}
+                status: {type: string, enum: [ready, unavailable, unconfigured]}
+                automatic: {type: boolean}
+                readOnly: {type: boolean}
+                currentScope: {type: string}
+                scopes:
+                  type: array
+                  items: {type: string}
+    MemoryListResponse:
+      allOf:
+        - $ref: "#/components/schemas/MemoryResponse"
+        - type: object
+          properties:
+            data:
+              type: object
+              required: [items, locked]
+              properties:
+                items:
+                  type: array
+                  maxItems: 100
+                  items: {$ref: "#/components/schemas/AccountMemoryRecord"}
+                nextCursor: {type: string}
+                locked:
+                  type: object
+                  description: Unfiltered counts only; omitted during keyword searches. No locked content or source text is returned.
+                  additionalProperties: {type: integer, minimum: 0}
+    MemoryRecordResponse:
+      allOf:
+        - $ref: "#/components/schemas/MemoryResponse"
+        - type: object
+          properties:
+            data: {$ref: "#/components/schemas/AccountMemoryRecord"}
+    MemoryMutationResponse:
+      allOf:
+        - $ref: "#/components/schemas/MemoryResponse"
+        - type: object
+          properties:
+            data:
+              oneOf:
+                - $ref: "#/components/schemas/AccountMemoryRecord"
+                - type: object
+                  description: Replaying a completed write after forgetting returns only a tombstone.
+                  required: [id, deleted]
+                  properties:
+                    id: {type: string}
+                    deleted: {type: boolean, const: true}
+    MemoryRecallResponse:
+      allOf:
+        - $ref: "#/components/schemas/MemoryResponse"
+        - type: object
+          properties:
+            data:
+              type: array
+              maxItems: 8
+              items: {$ref: "#/components/schemas/AccountMemoryRecord"}
+    MemoryPreferencesResponse:
+      allOf:
+        - $ref: "#/components/schemas/MemoryResponse"
+        - type: object
+          properties:
+            data: {$ref: "#/components/schemas/MemoryPreferences"}
+    MemoryTurnResponse:
+      allOf:
+        - $ref: "#/components/schemas/MemoryResponse"
+        - type: object
+          properties:
+            data:
+              type: object
+              required: [accepted]
+              properties:
+                accepted: {type: boolean}
+                jobId: {type: string}
+    AccountMemoryRecord:
+      type: object
+      required: [id, scope, content, origin, version, updatedAt, sources]
+      properties:
+        id: {type: string}
+        scope: {type: string, description: "global, project:<business ID>, or directory:<host registered UUID>"}
+        content: {type: string, maxLength: 16000}
+        origin: {type: string, enum: [manual, automatic]}
+        version: {type: integer, minimum: 1}
+        updatedAt: {type: string, format: date-time}
+        sources:
+          type: array
+          items:
+            type: object
+            properties:
+              id: {type: string}
+              role: {type: string}
+              content: {type: string}
+    MemoryOperation:
+      type: object
+      required: [operationId]
+      properties:
+        operationId: {type: string, minLength: 1, maxLength: 200, description: "Stable per user operation; reuse with different content returns 409."}
+    MemoryCreate:
+      allOf:
+        - $ref: "#/components/schemas/MemoryOperation"
+        - type: object
+          required: [scope, content]
+          properties:
+            scope: {type: string}
+            content: {type: string, minLength: 1, maxLength: 16000}
+    MemoryEdit:
+      allOf:
+        - $ref: "#/components/schemas/MemoryOperation"
+        - type: object
+          required: [version, content]
+          properties:
+            version: {type: integer, minimum: 1}
+            content: {type: string, minLength: 1, maxLength: 16000}
+    MemoryClear:
+      allOf:
+        - $ref: "#/components/schemas/MemoryOperation"
+        - type: object
+          required: [scope]
+          properties:
+            scope: {type: string}
+    MemoryPreferences:
+      type: object
+      required: [enabled, automatic]
+      properties:
+        enabled: {type: boolean}
+        automatic: {type: boolean}
+    MemoryGrant:
+      type: object
+      description: Manager only. Select a business project scope or register a host directory. Returns token (shmu_), scope and expiresAt; grants expire after five minutes and cannot create new grants.
+      properties:
+        scope: {type: string}
+        directory: {type: boolean}
+        directoryId: {type: string, format: uuid}
+        label: {type: string, maxLength: 200}
+        readOnly: {type: boolean, default: false}
+    MemoryRecall:
+      type: object
+      required: [query]
+      properties:
+        query: {type: string}
+    MemoryTurn:
+      type: object
+      required: [turnId, messages]
+      description: Scoped write grant only. Stable IDs are required. Only persisted user text and the final assistant answer are allowed; no reasoning, tool results or recall injection.
+      properties:
+        turnId: {type: string, minLength: 1, maxLength: 160}
+        messages:
+          type: array
+          minItems: 2
+          maxItems: 2
+          items:
+            type: object
+            required: [id, role, content, timestamp]
+            properties:
+              id: {type: string}
+              role: {type: string, enum: [user, assistant]}
+              content: {type: string, maxLength: 100000}
+              timestamp: {type: number}
     ApiSuccessBase:
       type: object
       properties:
@@ -3965,6 +4667,9 @@ components:
         accessToken:
           type: string
           description: 非 Web 客户端请求 `source=desktop` 或 `source=cli` 时返回的 API Key 明文，仅返回一次。
+        memoryToken:
+          type: string
+          description: Independent shma_ host-only account-memory credential issued on fresh desktop/CLI password login. Never send it to project workers or browser state. Older API keys cannot mint it.
         apiKey:
           $ref: "#/components/schemas/ApiKeyRecord"
         user:
@@ -4219,6 +4924,9 @@ components:
               properties:
                 accessToken:
                   type: string
+                memoryToken:
+                  type: string
+                  description: Independent host-only account-memory credential issued after device approval; project workers receive scoped short-lived grants instead.
                 apiKey:
                   $ref: "#/components/schemas/ApiKeyRecord"
                 user:

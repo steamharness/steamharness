@@ -1150,7 +1150,7 @@ function initialize(): void {
     if (switching) { followingLatest = true; }
     const authenticationChanged = previous && previous.authenticationRevision !== next.authenticationRevision;
     const parametersChanged = previous && (authenticationChanged || previous.parameterRevision !== next.parameterRevision || previous.serverInstanceId !== next.serverInstanceId);
-    if (previous && previous.authenticationRevision !== next.authenticationRevision) { dialogs.closeUsage(); }
+    if (previous && previous.authenticationRevision !== next.authenticationRevision) { dialogs.close(); }
     if (parametersChanged) {
       cancelParameterRequest();
       parameterCache.clear();
@@ -1548,7 +1548,7 @@ function initialize(): void {
       manualReconnect = !!message.manual;
       reconnectFailed = !!message.retryFailed;
       connectionAvailable = message.status === 'connected';
-      if (!connectionAvailable) { checkingServer = false; paramsNeedInit ||= resolving; cancelParameterRequest(); dialogs.closeUsage(); }
+      if (!connectionAvailable) { checkingServer = false; paramsNeedInit ||= resolving; cancelParameterRequest(); dialogs.close(); }
       updateControls();
       updateConnectionFeedback(); syncTranscriptLayout();
       if (restored && state) { parameterCache.clear(); syncNavigation(); dispatchSubmissions(); paramsNeedInit = true; requestParams({ kind: 'init' }); }

@@ -209,6 +209,7 @@ export interface Run {
 }
 
 export interface Runtime {
+  memoryCapabilities?(project: Project): Promise<import("steamharness/agent").AgentMemoryCapabilities>;
   listSkills?(project: Project, entrypointId?: string): Promise<import('steamharness').AgentSkillGuide[]>;
   readSkill?(project: Project, skillId: string, entrypointId?: string): Promise<import('steamharness').AgentSkillPreview>;
   agentControl?(runId: string, command: AgentSessionCommand, scopeId: string, attachments?: Attachment[]): Promise<AgentSessionReceipt>;

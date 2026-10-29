@@ -885,5 +885,8 @@
   "Cannot run Node.js at {0}. Choose another executable in Settings.": "Cannot run Node.js at {0}. Choose another executable in Settings.",
   "Node.js 22.19.0 or newer is required; found {0}.": "Node.js 22.19.0 or newer is required; found {0}.",
   "Node.js changes apply to new sessions. Restart existing project services and terminals to use the selected runtime.": "Node.js changes apply to new sessions. Restart existing project services and terminals to use the selected runtime.",
-  "The selected Node.js has no package manager. Repair the bundled runtime or choose a local Node.js installation with npm.": "The selected Node.js has no package manager. Repair the bundled runtime or choose a local Node.js installation with npm."
+  "The selected Node.js has no package manager. Repair the bundled runtime or choose a local Node.js installation with npm.": "The selected Node.js has no package manager. Repair the bundled runtime or choose a local Node.js installation with npm.",
+  "Memory": "Memory",
+  "Sign in again to authorize account memory.": "Sign in again to authorize account memory.",
+  "Memory is unavailable.": "Memory is unavailable."
 }

@@ -36,7 +36,8 @@ test("host catalogs include every project guide and distinct built-in guides, wi
     await writeFile(path.join(first, "communication/SKILL.md"), full);
     await writeFile(path.join(second, "communication/SKILL.md"), "---\nname: i-have-adhd\n---\nWrong precedence");
     const guides = await listAgentSkillGuides([first, second]);
-    assert.equal(guides.length, 72);
+    assert.equal(guides.length, 73);
+    assert.match((await readAgentSkillGuide([], "builtin:steamharness-memory")).content, /# Account memory/u);
     assert.equal(guides.filter(guide => guide.name === "i-have-adhd").length, 2);
     assert.equal(guides.find(guide => guide.name === "guide-0")?.description.length, 2800);
     assert.equal(JSON.stringify(guides).includes(first), false);

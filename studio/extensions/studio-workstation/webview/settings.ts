@@ -1,5 +1,7 @@
 import { SettingsModels } from './settings-models';
-import { t } from './localization';
+import { t, locale } from './localization';
+import { createMemoryPanel } from '../../../../shared/account-memory/panel';
+import '../../../../shared/account-memory/styles.css';
 import { renderAccountSections } from './account-sections';
 import { SettingsDropdown } from './settings-dropdown';
 import { bindAvatar } from './avatar';
@@ -48,6 +50,7 @@ export function createSettingsView(root: HTMLElement, vscode: WebviewApi): { acc
         <section id="settings-editor" class="settings-panel" aria-label="${t('Editor')}" hidden></section>
         <section id="settings-permissions" class="settings-panel" aria-label="${t('Permissions')}" hidden></section>
         <section id="settings-models" class="settings-panel" aria-label="${t('Models')}" hidden></section>
+        <section id="settings-memory" class="settings-panel" hidden></section>
         <section id="settings-account" class="settings-panel" aria-label="${t('Account')}" hidden></section>
         <section id="settings-provider" class="settings-panel" hidden><div id="settings-sign-in" class="settings-card settings-empty" hidden><p>${t('Sign in to view this information.')}</p><button type="button" class="secondary" id="settings-provider-sign-in">${t('Sign In')}</button></div><div id="account-sections" hidden></div></section>
         <section id="settings-about" class="settings-panel" aria-label="${t('About')}" hidden><div class="settings-card settings-about"><span class="settings-product-icon codicon codicon-terminal" aria-hidden="true"></span><h2>SteamHarness Studio</h2><p class="muted">${t('Your workspace for building and running SteamHarness projects.')}</p><dl><dt>${t('Studio version')}</dt><dd id="settings-studio-version"></dd><dt>${t('VS Code version')}</dt><dd id="settings-vscode-version"></dd></dl><button type="button" class="secondary" data-settings-action="documentation">${t('Documentation')}</button></div></section>
@@ -70,6 +73,13 @@ export function createSettingsView(root: HTMLElement, vscode: WebviewApi): { acc
   let snapshot: SettingsState | undefined;
   let account: AccountState | undefined;
   let providers: AccountSectionState[] = [];
+  let memoryPanel:ReturnType<typeof createMemoryPanel>|undefined;
+  let memoryAccount='';
+  const memoryPending=new Map<string,{resolve:(value:any)=>void;reject:(error:Error)=>void;timer:ReturnType<typeof setTimeout>}>();
+  const memoryClient={call:(action:string,input?:Record<string,unknown>)=>new Promise((resolve,reject)=>{const requestId=crypto.randomUUID();const timer=setTimeout(()=>{memoryPending.delete(requestId);reject(new Error('Memory request timed out.'));},12000);memoryPending.set(requestId,{resolve,reject,timer});vscode.postMessage({type:'settings-memory',requestId,action,input});})};
+  function clearMemory(){memoryPanel?.dispose();memoryPanel=undefined;for(const p of memoryPending.values()){clearTimeout(p.timer);p.reject(new Error('Account changed.'));}memoryPending.clear();find('settings-memory').replaceChildren();}
+  function showMemory(){if(view.section==='memory'&&!memoryPanel){memoryPanel=createMemoryPanel({client:memoryClient,locale:locale(),account:true});find('settings-memory').append(memoryPanel.element);}}
+
   let view: SettingsViewState = { section: 'general', query: '', target: 'user', ...vscode.getState?.() };
   let scrollTimer: ReturnType<typeof setTimeout> | undefined;
   let restoredScroll: number | undefined;
@@ -103,6 +113,7 @@ export function createSettingsView(root: HTMLElement, vscode: WebviewApi): { acc
       { id: 'editor', label: t('Editor'), icon: 'code' },
       { id: 'models', label: t('Models'), icon: 'sparkle' },
       { id: 'permissions', label: t('Permissions'), icon: 'shield' },
+      { id:'memory',label:t('Memory'),icon:'book' },
       ...(snapshot?.providers ?? []).map(provider => ({ id: `provider:${provider.id}`, label: provider.title, icon: provider.icon ?? 'extensions' })),
       { id: 'about', label: t('About'), icon: 'info' },
     ];
@@ -338,7 +349,8 @@ export function createSettingsView(root: HTMLElement, vscode: WebviewApi): { acc
     const selected = categories().find(category => category.id === view.section) ?? categories().find(category => category.id === 'general')!;
     const activeSection = selected.id;
     let matches = 0;
-    for (const section of ['general', 'editor', 'permissions', 'models', 'account', 'provider', 'about']) {
+    showMemory();
+    for (const section of ['general', 'editor', 'permissions', 'models', 'memory', 'account', 'provider', 'about']) {
       const pane = find<HTMLElement>(`settings-${section}`);
       let visible = searching ? false : section === (activeSection.startsWith('provider:') ? 'provider' : activeSection);
       if (section === 'general' || section === 'editor' || section === 'permissions') {
@@ -422,6 +434,7 @@ export function createSettingsView(root: HTMLElement, vscode: WebviewApi): { acc
   find('settings-provider-sign-in').addEventListener('click', openAccount);
   window.addEventListener('message', event => {
     const message = event.data;
+    if(message.type==='settings-memory-result'){const p=memoryPending.get(message.requestId);if(p){memoryPending.delete(message.requestId);clearTimeout(p.timer);message.error?p.reject(Object.assign(new Error(message.error),{status:message.status})):p.resolve(message.data);}return;}
     if (models.handle(message)) { return; }
     if (message.type === 'settings') {
       snapshot = message.state;
@@ -462,6 +475,8 @@ export function createSettingsView(root: HTMLElement, vscode: WebviewApi): { acc
   return {
     accountRoot: find('settings-account'),
     setAccount(state) {
+      const identity=state.status==='authenticated'?`${state.serverUrl}:${state.user?.userId}:${state.revision}`:'';
+      if(identity!==memoryAccount){memoryAccount=identity;clearMemory();}
       account = state;
       const name = find('settings-account-name'), label = find('settings-account-label');
       name.textContent = state.user?.displayName || state.user?.email || 'SteamHarness'; name.title = name.textContent;

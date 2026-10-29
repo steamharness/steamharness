@@ -7,6 +7,8 @@ description: "Log on to SteamHarness Server by browser device flow, and save the
 
 `workspace login` will initiate a device flow login request to SteamHarness Server, open the browser authorization page, and wait for the user to write the CLI dedicated API Key to the local `workflow-auth.json` after approval on the Web side. The CLI saves its own credentials and does not require manual token entry.
 
+A new sign-in also issues an independent account-memory management credential stored only in the host login configuration. Project workers receive short-lived grants for their current scope. Run this command again for older logins; project API keys cannot access all account memory. Never copy this configuration into a project or distribution. See [Account memory](/en/guides/server/account-memory).
+
 ## Command Format
 
 ```bash

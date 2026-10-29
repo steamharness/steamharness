@@ -933,5 +933,7 @@
   "Back to skills": "返回技能列表",
   "Skill document": "技能文档",
   "Markdown source": "Markdown 源码",
-  "Preview": "预览"
+  "Preview": "预览",
+  "Global memory": "全局记忆",
+  "Private account memory for this project.": "当前账号的个人全局及项目记忆。"
 }

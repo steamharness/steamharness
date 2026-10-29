@@ -23,7 +23,7 @@ export type SessionState =
 export type DetailTab = "configurations" | "project" | "settings" | "members" | "invitations" | "entries" | "databases" | "versions";
 
 export type AdminTab = "users" | "audit";
-export type SettingsTab = "profile" | "appearance" | "api-keys";
+export type SettingsTab = "profile" | "appearance" | "api-keys" | "memory";
 export type Page = "login" | "device" | "projects" | "groups" | "databases" | "settings" | "admin" | "detail" | "invite" | "account-invite" | "access-request" | "source-share";
 export type ThemeMode = "light" | "dark" | "system";
 

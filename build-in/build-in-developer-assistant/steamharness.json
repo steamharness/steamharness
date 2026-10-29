@@ -32,9 +32,7 @@
       "root": ".",
       "entry": "index.ts",
       "configuration": "configuration.json",
-      "databases": [
-        "memory"
-      ]
+      "databases": []
     },
     {
       "entryId": "studio-control",

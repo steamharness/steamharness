@@ -1,5 +1,7 @@
 # Unreleased
 
+- Added: Add private account memory APIs, separate login credentials, scoped authorization, a durable extraction queue and a standalone memory service without embeddings.
+
 - Breaking: project identity, name, version and declarations now use independent `steamharness.json` files. Removed reads and writes of `package.json.id` and `steamHarness`. Aggregates explicitly register child entries whose configuration defines icons, declarations, database aliases and schedules. Unregistered configurations stay inactive, and transfers preserve the parent and child structure.
 
 - Fixed project database directories to deduplicate current entry references instead of historical grants. Project read access is checked, and metadata visibility does not grant database management rights.

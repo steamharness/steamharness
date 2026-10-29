@@ -30,6 +30,7 @@ interface AuthSessionResponse {
   // the cookie. The shape mirrors the device flow's /device/token response
   // for consistency across login paths.
   accessToken?: string;
+  memoryToken?: string;
   apiKey?: {
     id: string;
     userId?: string;
@@ -375,6 +376,7 @@ export function createAuthRouter(): Router {
       };
       if (apiKeyRecord && apiKeyToken) {
         responseBody.accessToken = apiKeyToken;
+        responseBody.memoryToken = await getProjectAuthContext().memory?.issue(session.user.userId, apiKeyRecord.id, apiKeyRecord.expiresAt);
         responseBody.apiKey = apiKeyRecord;
         responseBody.user = {
           userId: session.user.userId,
@@ -627,6 +629,7 @@ export function createAuthRouter(): Router {
       });
       res.json(ok({
         accessToken: consumed.apiKey.token,
+        memoryToken: await getProjectAuthContext().memory?.issue(consumedRecord.result!.user!.userId, consumed.apiKey.record.id, consumed.apiKey.record.expiresAt),
         apiKey: consumed.apiKey.record,
         user: consumedRecord.result!.user,
         expiresAt: consumed.apiKey.record.expiresAt,

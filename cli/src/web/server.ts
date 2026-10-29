@@ -22,6 +22,7 @@ import { Controller } from './workflow-controller';
 import { KanbanController } from './kanban-controller';
 import { createProjectActions } from './workflow-actions';
 import { migrateProjectHistory, type WorkspaceContract } from './workflow-workspace';
+import { WebAccountMemory } from './account-memory';
 import { createWebRuntime, cliRoot, type WebConnection } from './runtime';
 import { redactProjectData, projectWithUserSettings, validateProjectValues, validateConversationCommandStates, mergeProjectParamStates, projectParameters, projectParamArgs, type Runtime, type Project, type ConversationSession, type ConversationDraftUpdate, type Attachment, type ParamValues, type ParamState } from './workflow-types';
 import { conversationResourceCards, type ResourceCardReference } from './resource-cards';
@@ -120,6 +121,7 @@ async function startProjectWebServer(options: WebOptions, credentials: { capabil
   let projectCheckRevision = 0;
   const waitingRuns = new Map<AbortController, string | undefined>();
   const cancelWaitingRuns = (runId?: string) => { for (const [abort, id] of waitingRuns) if (!runId || id === runId) abort.abort(); };
+  const memory = new WebAccountMemory(storageDir, () => connection, () => account.user?.userId);
   const executor = options.runtime ?? createWebRuntime(projectDir, storageDir, () => connection, { entryId: options.entryId, actor: () => ({ userId: account.user?.userId, isSystemAdmin: false }), allowSystemAi: allowAiConnection, userSettings: () => userSettings });
   const runtimeOverrides: Pick<Runtime, 'run' | 'resolveParams' | 'cancel' | 'dispose'> = {
     run: async (request, emit) => {
@@ -385,6 +387,7 @@ async function startProjectWebServer(options: WebOptions, credentials: { capabil
       ? hostManaged ? hostConnection?.aiAccessToken : process.env.STEAMHARNESS_AI_API_KEY ?? config.aiApiKey
       : undefined;
     if (token) { sensitiveTokens.add(token); }
+    const memorySecret=hostManaged?hostConnection?.memoryToken:config.memoryToken; if(memorySecret)sensitiveTokens.add(memorySecret);
     if (aiToken) { sensitiveTokens.add(aiToken); }
     const identity = signedOut ? '' : `${serverUrl}\n${token}\n${aiServerUrl}\n${aiToken}`;
     const expired = account.expiresAt && Date.parse(account.expiresAt) <= Date.now();
@@ -401,6 +404,7 @@ async function startProjectWebServer(options: WebOptions, credentials: { capabil
     authIdentity = identity;
     const candidate = !signedOut && serverUrl && token ? {
       serverUrl: serverUrl.replace(/\/+$/, ''), accessToken: token,
+      memoryToken: hostManaged ? hostConnection?.memoryToken : config.memoryToken,
       ...(aiServerUrl && aiToken ? { aiServerUrl: aiServerUrl.replace(/\/+$/, ''), aiAccessToken: aiToken } : {}),
     } : undefined;
     if (changed) {
@@ -878,6 +882,11 @@ async function startProjectWebServer(options: WebOptions, credentials: { capabil
         const bearer = String(request.headers.authorization ?? '').replace(/^Bearer /, '');
         const readSession = request.method === 'GET' && (url.pathname === '/api/events' || url.pathname.startsWith('/api/file/')) ? url.searchParams.get('session') ?? '' : '';
         if (!authMatches(value) && !authMatches(bearer) && !authMatches(readSession)) { json(response, 401, { message: 'Open the URL printed by steamharness web.' }); return; }
+        if (url.pathname === '/api/memory' && request.method === 'POST') {
+          response.setHeader('Cache-Control','no-store');const input=await readBody(request);const epoch=authEpoch;
+          try{const data=input.action==='capabilities'&&runtime.memoryCapabilities?await runtime.memoryCapabilities(project):await memory.call(project,String(input.action),input.input);if(epoch!==authEpoch){json(response,409,{errCode:409,errMessage:'Account changed.'});return;}json(response,200,{errCode:0,errMessage:'',data});}
+          catch(error){json(response,503,{errCode:503,errMessage:(error as Error).message});}return;
+        }
         if (url.pathname === '/api/session' && request.method === 'GET') { json(response, 200, { connected: true }); return; }
         if (url.pathname === '/api/resource-state' && request.method === 'GET') { json(response, 200, { type: 'state', project: { id: project.id, entryId: project.entryId }, authenticationRevision: authRevision, resourceRevision: resources.revision }); return; }
         if (url.pathname === '/api/events' && request.method === 'GET') {
@@ -971,7 +980,7 @@ async function startProjectWebServer(options: WebOptions, credentials: { capabil
       if (hostManaged && JSON.stringify(value) === JSON.stringify(hostConnection)) { return; }
       authEpoch++; authCheck?.abort();
       resources.clear();
-      hostConnection = value && !allowAiConnection ? { serverUrl: value.serverUrl, accessToken: value.accessToken } : value;
+      hostConnection = value && !allowAiConnection ? { serverUrl: value.serverUrl, accessToken: value.accessToken, memoryToken:value.memoryToken } : value;
       hostManaged = true; signedOut = !value;
       await refreshAuth(true);
     },

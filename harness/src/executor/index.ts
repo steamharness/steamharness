@@ -51,6 +51,7 @@ import {
 import { validateProjectParamResolveResult } from "./params";
 import { parseExecutorParamValues } from "../agent/project-executor";
 import { readAgentProjectContract } from "../agent/project-params";
+import { getAgentMemoryBinding, getAgentMemoryCapabilities, type AgentMemoryCapabilities } from "../agent/memory";
 import { listAgentSkillGuides, readAgentSkillGuide, type AgentSkillGuide, type AgentSkillPreview } from "../agent/skills";
 import { STEAMHARNESS_ENTRYPOINT_ID_PATTERN } from "./definition";
 import { assertProjectParamDeclarations, normalizeProjectParamDeclarations } from "./param-definition";
@@ -1128,6 +1129,12 @@ export function inspectAggregateProjectStructure(projectDir = ".") {
 
 export interface LocalProjectSkillsOptions { projectDir?: string; entryId?: string; entrypointId?: string }
 
+/** Reports the selected entry's effective memory binding without running a task or tool factory. */
+export async function getLocalProjectMemoryCapabilities(options: LocalProjectSkillsOptions = {}): Promise<AgentMemoryCapabilities> {
+  const selected = await localAgentProjectContract(options);
+  return getAgentMemoryCapabilities(selected ? selected.contract.memory ?? getAgentMemoryBinding() : false);
+}
+
 /** Lists the selected Core Agent's project guides and always-loaded built-in guides without running a task or tool factory. */
 export async function listLocalProjectSkills(options: LocalProjectSkillsOptions = {}): Promise<AgentSkillGuide[]> {
   const directories = await localProjectSkillDirectories(options);
@@ -1142,6 +1149,11 @@ export async function readLocalProjectSkill(options: LocalProjectSkillsOptions &
 }
 
 async function localProjectSkillDirectories(options: LocalProjectSkillsOptions): Promise<string[] | undefined> {
+  const selected = await localAgentProjectContract(options);
+  return selected?.contract.skillDirectories.map(directory => path.resolve(selected.rootDir, directory));
+}
+
+async function localAgentProjectContract(options: LocalProjectSkillsOptions) {
   const projectDir = resolveLocalProjectDir(options.projectDir);
   const declaration = readProjectStorageDeclaration(projectDir, options.entryId);
   if (declaration.registration.type === "kanban") return undefined;
@@ -1152,7 +1164,7 @@ async function localProjectSkillDirectories(options: LocalProjectSkillsOptions):
   const { execution } = resolveExecutorExecution(definition, options.entrypointId, declaration.registration.name);
   const source = definition.projectType === "conversation" ? definition.coreAgent ?? execution.workflow : execution.workflow;
   const contract = readAgentProjectContract(source);
-  return contract?.skillDirectories.map(directory => path.resolve(declaration.rootDir, directory));
+  return contract ? { contract, rootDir: declaration.rootDir } : undefined;
 }
 
 function conversationPresentationDefaults(conversation: StructureReport["conversation"], projectDir: string, entryFile: string): StructureReport["conversation"] {

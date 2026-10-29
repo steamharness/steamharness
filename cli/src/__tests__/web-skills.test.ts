@@ -4,7 +4,7 @@ import path from 'node:path';
 import os from 'node:os';
 import { randomUUID } from 'node:crypto';
 import { writeProjectFixture } from '../../scripts/test-project-fixture.mjs';
-import { createWebRuntime } from '../web/runtime';
+import { createWebRuntime, type WebConnection } from '../web/runtime';
 import { startEntryWebServer } from '../web/server';
 import { resolveHarnessRoot } from './harness-source';
 
@@ -25,6 +25,7 @@ it('lists and previews the selected agent through the real worker and authentica
       { entryId: 'main', name: 'Main', type: 'conversation', root: '.', entry: 'index.ts', databases: [] },
       { entryId: 'child', name: 'Child', type: 'conversation', root: 'child', entry: 'index.ts', databases: [] },
       { entryId: 'plain', name: 'Plain workflow', type: 'workflow', root: 'plain', entry: 'index.ts', databases: [] },
+      { entryId: 'disabled', name: 'Memory disabled', type: 'conversation', root: 'disabled', entry: 'index.ts', databases: [] },
     ] }));
   await mkdir(path.join(root, 'guides', 'large'), { recursive: true });
   const content = '---\nname: large\ndescription: Full project guide\n---\n# Guide\n' + '中文内容😀\n'.repeat(50_000) + '\nEND_OF_GUIDE';
@@ -49,7 +50,14 @@ it('lists and previews the selected agent through the real worker and authentica
       steamharness.defineEntrypoint({ id: 'plain', title: 'Plain', workflow: plain, createInput() { return {}; } }),
     ] });
   `);
-  const runtime = createWebRuntime(root, path.join(root, 'data'), () => undefined);
+  await writeFile(path.join(root, 'disabled/index.ts'), `
+    const agent = steamharness.createAgentConversationProject({ memory: false,
+      createTools() { throw new Error('Capability inspection must not invoke tools'); } });
+    export const executor = steamharness.defineExecutor({ projectType: 'conversation', workflow: agent,
+      createInput(context) { return steamharness.createAgentProjectInput(context); } });
+  `);
+  let connection: WebConnection | undefined;
+  const runtime = createWebRuntime(root, path.join(root, 'data'), () => connection);
   const app = await startEntryWebServer({ projectDir: root, dataDir: path.join(root, 'data'), runtime });
   try {
     const token = new URL(app.url).hash.slice('#session='.length);
@@ -63,6 +71,7 @@ it('lists and previews the selected agent through the real worker and authentica
     expect(guides).toEqual([
       { id: 'project:large', name: 'large', description: 'Full project guide', source: 'project' },
       expect.objectContaining({ id: 'builtin:i-have-adhd', source: 'builtin' }),
+      expect.objectContaining({ id: 'builtin:steamharness-memory', source: 'builtin' }),
     ]);
     expect(JSON.stringify(guides)).not.toContain(root);
     const preview = await post({ type: 'project-skills', requestId: 'preview', skillId: 'project:large' });
@@ -75,10 +84,16 @@ it('lists and previews the selected agent through the real worker and authentica
     expect(unauthorized.status).toBe(401);
     const inspection = await runtime.inspect([root]); expect(inspection.errors).toEqual([]);
     const wrapped = { ...inspection.projects.find(project => project.entryId === 'child')!, uri: 'file:///child' };
-    expect((await runtime.listSkills!(wrapped)).map(guide => guide.id)).toEqual(['project:child', 'builtin:i-have-adhd']);
+    expect((await runtime.listSkills!(wrapped)).map(guide => guide.id)).toEqual(['project:child', 'builtin:i-have-adhd', 'builtin:steamharness-memory']);
     expect((await runtime.readSkill!(wrapped, 'project:child')).content).toContain('Child entry guide');
     const workflow = { ...inspection.projects.find(project => project.entryId === 'plain')!, uri: 'file:///plain' };
     expect(await runtime.listSkills!(workflow, 'plain')).toEqual([]);
     await expect(runtime.readSkill!(workflow, 'project:child', 'plain')).rejects.toThrow('does not declare');
+    connection = { serverUrl: 'http://127.0.0.1:1', accessToken: 'project-test', memoryToken: 'shma_host-test' };
+    const disabled = { ...inspection.projects.find(project => project.entryId === 'disabled')!, uri: 'file:///disabled' };
+    await expect(runtime.memoryCapabilities!(disabled)).resolves.toMatchObject({ connected: false, enabled: false });
+    await expect(runtime.memoryCapabilities!(workflow)).resolves.toMatchObject({ connected: false, enabled: false });
+    // An enabled Agent does contact the host; the closed server above is deliberate.
+    await expect(runtime.memoryCapabilities!(wrapped)).rejects.toThrow('Memory authorization is unavailable');
   } finally { await app.close(); runtime.dispose(); }
 }, 60_000);

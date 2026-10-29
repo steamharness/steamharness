@@ -6,7 +6,7 @@ import { inspectAggregateProjectStructure, inspectLocalProjectStructure } from "
 const projectDir = path.resolve(process.cwd());
 // Run-scoped Knowledge and KV must not expose the assistant's store as project data.
 const CORE_TOOL_NAMES = [
-  "workflow-memory_global_memory",
+  "memory",
   "workflow-ui_present_card",
   "skill",
 ];
@@ -21,14 +21,11 @@ const SESSION_TOOL_NAMES = ["tool_search", "codemode", "update_plan", "subagent"
 const EXPECTED_TOOL_NAMES = [...SESSION_TOOL_NAMES, ...CONTROL_TOOL_NAMES, ...CORE_TOOL_NAMES, ...CODING_TOOL_NAMES];
 
 describe("developer assistant workflow", () => {
-  it("keeps its distributed identity and records an approved database ID for assistant data", async () => {
+  it("keeps its distributed identity without requiring an assistant memory database", async () => {
     const manifest = JSON.parse(await readFile(path.join(projectDir, "steamharness.json"), "utf8"));
     expect(manifest.id).toBe("a3aca697-b086-459b-84e4-d357ad2d9fb2");
     expect(manifest.entries[0]).toMatchObject({ entryId: "main", type: "conversation" });
-    expect(manifest.entries[0].databases).toEqual(["memory"]);
-    const config = JSON.parse(await readFile(path.join(projectDir, "config.json"), "utf8"));
-    expect(config).not.toHaveProperty("entries");
-    expect(config.databases.memory).toEqual(expect.any(String));
+    expect(manifest.entries[0].databases).toEqual([]);
   });
   it("registers Studio Control within the same project and analyzes each executor independently", () => {
     const aggregate = inspectAggregateProjectStructure(projectDir);
@@ -131,7 +128,7 @@ describe("developer assistant workflow", () => {
     // The four workflow capabilities come from Core, described once and
     // rendered both as MCP servers and as agent tools.
     expect(source).toContain("steamharness.createProjectCapabilityTools({");
-    expect(source).toContain("globalMemory: true");
+    expect(source).not.toContain("globalMemory: true");
     // Skills are read on demand rather than injected into every prompt.
     expect(source).toContain('skills: { directories: [SKILLS_DIRECTORY] }');
     expect(source).not.toContain("skillPaths");

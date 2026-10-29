@@ -283,7 +283,7 @@ function applyState(next: State): void {
   if (state?.project.uri !== next.project.uri || state?.run?.id !== next.run?.id) { clearError(false); }
   const serverChanged = serverBlocked() !== (!!next.serverData && next.serverData.blocking !== false && (next.serverData.checking || !!next.serverData.issue));
   const authChanged = revision !== next.authenticationRevision; revision = next.authenticationRevision; state = next;
-  if (authChanged) { dialogs.closeUsage(); }
+  if (authChanged) { dialogs.close(); }
   if (!draftsLoaded) {
     for (const key of Object.keys(drafts)) { delete drafts[key]; }
     Object.assign(drafts, structuredClone(next.drafts)); draftsLoaded = true;
@@ -340,7 +340,7 @@ addEventListener('message', event => {
   }
   else if (message?.type === 'connection') {
     const restored = !connected && message.status === 'connected'; connected = message.status === 'connected'; controls(); if (restored) { resolve(); }
-    if (!connected) { checkingServer = false; dialogs.closeUsage(); }
+    if (!connected) { checkingServer = false; dialogs.close(); }
   } else if (message?.type === 'params' && message.requestId === requestId && message.entrypointId === entrypointId) {
     resolving = false;
     if (message.error) { element('parameter-error').textContent = message.error; element('parameter-error').hidden = false; }

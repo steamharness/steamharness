@@ -36,6 +36,7 @@ try {
     "src/__tests__/database-spaces-http-postgres.test.ts",
     "src/__tests__/account-auth-postgres.test.ts",
     "src/__tests__/project-access-postgres.test.ts",
+    "src/__tests__/memory-postgres.test.ts",
   ], {
     env: { ...process.env, STEAMHARNESS_TEST_DATABASE_URL: databaseUrl, STEAMHARNESS_AUTH_COOKIE_SECRET: "isolated-postgres-test-cookie-secret" },
   });

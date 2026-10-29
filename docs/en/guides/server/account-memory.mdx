@@ -1,0 +1,61 @@
+---
+title: "Account memory"
+description: "Save, recall, inspect and forget private preferences and project decisions without embeddings."
+---
+
+# Account memory
+
+Server stores account memory across devices. Studio and Server Web expose it under **Settings → Memory**. CLI Web exposes **Project information → Global memory**, restricted to personal global and the current project or directory. Core capabilities determine whether this tab exists: disconnected or disabled memory is hidden; temporary outages retain an error state.
+
+## Use and privacy
+
+- Personal global memory contains explicit lasting preferences. Project conventions and decisions stay in personal project memory. Uncertain project facts are never promoted to global.
+- All records are private to the account, including records for the same project. Directories use random host-registered identities; equal folder names on different devices do not merge.
+- Ask the assistant to remember immediately, edit or forget, or use the panel. Edits require the current version; conflicts preserve the draft and request a refresh.
+- Deleting a conversation does not forget long-term memory. Clearing a scope requires separate confirmation and prevents older turns from recreating cleared records.
+- Revoked project access exposes only locked counts and allows clearing. Bodies, summaries, sources and search hits remain hidden until access is restored.
+- The read-only Skills tab previews the complete `steamharness-memory/SKILL.md`. Memory and automatic saving controls belong to the Memory panel.
+
+Account changes and sign-out clear panel content and discard stale responses. Lists use server filtering and cursor pagination; details show full text, sources, versions and update times. Panels support English, Chinese and the host theme. The CLI dialog retains its viewport-constrained 1040×720 size.
+
+## Service configuration
+
+Run Memory Service separately with Node 22.13+, SQLite FTS5 and a persistent writable volume. It pins the reviewed TencentDB-Agent-Memory revision `ecc01a545da0b2ac6cae2f0f0af0d39d41469793` with its MIT license, provenance and replayable patch. It does not use upstream's private service extensions. Only Memory Service loads native jieba; Core, CLI and Studio do not.
+
+| Process | Setting | Purpose |
+| --- | --- | --- |
+| Memory Service | `STEAMHARNESS_MEMORY_SERVICE_TOKEN` | Internal credential, at least 32 characters |
+| Memory Service | `STEAMHARNESS_MEMORY_DATA_DIR` | Persistent directory for account SQLite files |
+| Memory Service | `STEAMHARNESS_MEMORY_MODEL_BASE_URL` | Dedicated extraction model's OpenAI-compatible `/v1` endpoint |
+| Memory Service | `STEAMHARNESS_MEMORY_MODEL_API_KEY` | Extraction credential held only by this service |
+| Memory Service | `STEAMHARNESS_MEMORY_MODEL` | Administrator-selected extraction model |
+| Server | `STEAMHARNESS_SERVER_MEMORY_URL` | Internal Memory Service URL |
+| Server | `STEAMHARNESS_SERVER_MEMORY_TOKEN` | Matching internal credential |
+| Server | `STEAMHARNESS_SERVER_MEMORY_DISABLED=1` | Disable memory while conversations continue |
+
+Manual saves and BM25 retrieval work without an extraction model or embeddings. Automatic extraction has no tools. It processes only durable completed turns containing user text and the final answer, excluding reasoning, raw tool results and recalled injection. Jobs attempt automatically at most three times, with failure status and manual retry in the panel.
+
+From the repository root:
+
+```sh
+pnpm --filter @steamharness/memory-service build
+pnpm --filter @steamharness/memory-service start
+```
+
+The source also includes `memory-service/compose.yaml`. Restrict its port to loopback or an internal network. Keep the credential and volume inaccessible to project processes.
+
+## Login and authorization
+
+CLI and Studio must sign in again through password or device authorization to receive an independent memory management credential. Project API keys cannot manage account-wide memory. Only the trusted host retains management credentials. Agents receive a five-minute grant for global plus the current project or directory, and cannot choose account identities, other projects or issue grants.
+
+Every request and extraction commit rechecks account status, parent login and project access. Revocation or account disabling stops access. Planning, read-only runs and subagents cannot save. Core makes no memory promise without a binding. Legacy database memory APIs remain available; the built-in assistant does not implicitly fall back, dual-write or migrate old records.
+
+## Storage and recovery
+
+PostgreSQL holds the persistent Server instance identity, preferences, scopes, credentials, jobs and operation receipts. Account SQLite files hold pending L0 turn text, memory bodies, sources, FTS5 indexes, atomic receipts and deletion suppression. Completed L0 text is removed. Hosts retain only pending submission records, not a second authoritative cloud copy.
+
+Pause memory traffic and workers for a coordinated backup of PostgreSQL and the service volume. `memory-service/scripts/snapshot.mjs` uses `VACUUM INTO` to include WAL data. Preserve `memory_instance` when restoring; changing it changes account namespaces. Verify recovery on an isolated database and volume. Do not copy an active SQLite main file by itself.
+
+Clear increments scope generations; forget retains content fingerprints and suppressed source IDs. Manual changes invalidate earlier extraction snapshots. SQLite atomically commits bodies and receipts, so network retries do not duplicate writes. Disable memory before rolling back code and preserve tables, volumes and suppression data.
+
+Responses use `errCode / errMessage / data`. See [OpenAPI](/en/openapi/steamharness.openapi.yaml) and the [Core account memory API](/en/core-api/account-memory).

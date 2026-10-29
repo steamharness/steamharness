@@ -1,0 +1,61 @@
+---
+title: "账号记忆"
+description: "保存、召回、查看和遗忘私有偏好与项目决策，无需 embedding。"
+---
+
+# 账号记忆
+
+账号记忆由 Server 统一保存，同一账号可在不同设备召回。Studio 和 Server Web 的「设置 → 记忆」展示该账号的记忆；CLI Web 的「项目信息 → 全局记忆」只展示个人全局及当前项目或目录。项目入口是否显示此分页由 Core 的有效记忆能力决定；关闭或未接入时隐藏，临时故障时显示故障状态。
+
+## 使用与隐私
+
+- 个人全局保存用户明确表达的长期偏好；个人项目保存项目约定与实现决策。无法明确归类的项目事实不会提升为全局。
+- 所有记忆均为账号私有，同一项目的其他成员不可读取。目录采用宿主注册的随机身份，不同设备的同名目录不自动合并。
+- 用户可要求助手立即记住、编辑或遗忘，也可在面板操作。编辑携带版本，冲突时保留草稿并提示刷新。
+- 删除对话不会自动遗忘记忆。清空范围需要单独确认；旧回合不会因此重新生成已清空的内容。
+- 失去项目访问权限后，面板只显示锁定数量并允许清空，不提供正文、摘要、来源或搜索命中。恢复权限后重新可用。
+- 技能页只读展示 `steamharness-memory` 和完整 `SKILL.md`。记忆开关与自动保存开关位于记忆面板。
+
+账号切换或退出会清除面板内容并丢弃旧请求。列表使用服务端筛选、游标分页；详情展示全文、来源、版本和更新时间。所有入口支持中英文和宿主主题，CLI 弹窗维持受视口约束的 1040×720 尺寸。
+
+## 服务配置
+
+单独运行 Memory Service，需要 Node 22.13+、SQLite FTS5 和可写持久卷。服务固定复用 TencentDB-Agent-Memory 的 `ecc01a545da0b2ac6cae2f0f0af0d39d41469793` 审查版本，保留 MIT 许可证、源码来源和补丁；不使用上游的私有 service 扩展。仅服务依赖 jieba 原生模块，Core、CLI 和 Studio 不加载该模块。
+
+| 所在进程 | 配置 | 用途 |
+| --- | --- | --- |
+| Memory Service | `STEAMHARNESS_MEMORY_SERVICE_TOKEN` | 至少 32 字符的内部服务凭据 |
+| Memory Service | `STEAMHARNESS_MEMORY_DATA_DIR` | 每账号 SQLite 持久目录 |
+| Memory Service | `STEAMHARNESS_MEMORY_MODEL_BASE_URL` | 专用提炼模型的 OpenAI-compatible `/v1` 地址 |
+| Memory Service | `STEAMHARNESS_MEMORY_MODEL_API_KEY` | 专用模型凭据，仅服务持有 |
+| Memory Service | `STEAMHARNESS_MEMORY_MODEL` | 管理员选择的提炼模型 |
+| Server | `STEAMHARNESS_SERVER_MEMORY_URL` | 内部 Memory Service 地址 |
+| Server | `STEAMHARNESS_SERVER_MEMORY_TOKEN` | 匹配的内部服务凭据 |
+| Server | `STEAMHARNESS_SERVER_MEMORY_DISABLED=1` | 故障关闭开关，保留正常对话 |
+
+未配置提炼模型时仍可手动保存与 BM25 检索，不需要配置 embedding。自动提炼不会调用工具；只处理已持久完成回合中的用户文字和最终回答，排除推理、原始工具结果及召回注入。失败任务最多自动尝试 3 次，面板提供失败状态和重试入口。
+
+在仓库根执行：
+
+```sh
+pnpm --filter @steamharness/memory-service build
+pnpm --filter @steamharness/memory-service start
+```
+
+也可使用随源码提供的 `memory-service/compose.yaml`。将服务端口限制在内部网络或 loopback，并保护持久卷和服务凭据，不向项目进程开放。
+
+## 登录与授权
+
+CLI 和 Studio 需要重新通过密码或设备授权登录以取得独立的记忆管理凭据。普通项目 API Key 不能访问账号全部记忆。管理凭据只保存在宿主；Agent 只取得 5 分钟的受限凭据，范围固定为全局加当前项目或目录，不能自选用户身份、其他项目或签发新授权。
+
+每次请求和提炼写入前都会检查账号状态、父登录和项目权限。撤销父登录或禁用账号会阻止继续访问；规划、只读模式和子 Agent 不保存记忆。无绑定时，Core 不向模型承诺跨会话记忆。旧数据库记忆 API 继续保留，内置助手不隐式回退、双写或迁移旧数据。
+
+## 数据与恢复
+
+PostgreSQL 保存持久 Server 实例身份、偏好、范围、授权、任务及操作收据。每账号 SQLite 保存 L0 待提炼原文、记忆正文、来源、FTS5 索引、原子收据和删除抑制记录；完成提炼后移除 L0 原文。宿主只保存尚未确认提交的回合队列，不保存第二份云端权威记忆。
+
+备份时暂停记忆请求与任务，协调保存 Server PostgreSQL 和 Memory Service 持久卷。源码提供 `memory-service/scripts/snapshot.mjs`，通过 `VACUUM INTO` 复制 SQLite 的 WAL 数据。恢复必须同时保留 `memory_instance`，否则账号命名空间会改变；先在隔离数据库和卷中验证恢复。不要直接复制正在写入的 SQLite 主文件。
+
+清空会递增范围版本，遗忘会保存正文指纹和来源抑制记录。手工更改使旧提炼快照失效；操作收据与正文在同一 SQLite 事务提交，网络重试不会重复写入。回滚时先关闭记忆，保留表、卷与抑制记录。
+
+接口采用 `errCode / errMessage / data`，参见 [OpenAPI](/openapi/steamharness.openapi.yaml) 和 [Core 账号记忆 API](/core-api/account-memory)。

@@ -62,7 +62,8 @@
                 "group": "使用 Server Web",
                 "pages": [
                   "guides/server/overview",
-                  "guides/server/project-management"
+                  "guides/server/project-management",
+                  "guides/server/account-memory"
                 ]
               },
               {
@@ -112,6 +113,7 @@
                   "core-api/create-question-classifier-node",
                   "core-api/user-settings",
                   "core-api/create-agent",
+                  "core-api/account-memory",
                   "core-api/create-agent-node",
                   "core-api/define-agent-conversation-executor",
                   "core-api/connect-mcp-server",
@@ -331,7 +333,8 @@
                 "group": "Using Server Web",
                 "pages": [
                   "en/guides/server/overview",
-                  "en/guides/server/project-management"
+                  "en/guides/server/project-management",
+                  "en/guides/server/account-memory"
                 ]
               },
               {
@@ -381,6 +384,7 @@
                   "en/core-api/create-question-classifier-node",
                   "en/core-api/user-settings",
                   "en/core-api/create-agent",
+                  "en/core-api/account-memory",
                   "en/core-api/create-agent-node",
                   "en/core-api/define-agent-conversation-executor",
                   "en/core-api/connect-mcp-server",

@@ -2,12 +2,14 @@ import { getProjectConfiguration, withProjectConfiguration } from "../configurat
 import { getUserSettings, withUserSettings, type UserSettings } from "../user-settings";
 import { resolveAgentSystemAIInput } from "./model-resolution";
 import path from "node:path";
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import type { AssistantMessage, Usage } from "@earendil-works/pi-ai";
 import type { AgentMessage } from "@earendil-works/pi-agent-core";
 import { HarnessError } from "../workflow/errors";
 import { parseAgentWebSearch, type AgentSearchMessage } from "./web-search";
 import { DurableAgent } from "./durable-agent";
+import { getAgentMemoryBinding, createAgentMemoryTool, recallAgentMemory, submitAgentMemoryTurn, flushAgentMemoryOutbox } from "./memory";
+import { AGENT_MEMORY_SKILL_PROMPT } from "./builtin-memory-skill";
 import { BUILTIN_AGENT_SKILLS_PROMPT } from "./builtin-skills";
 import { withStreamingMessage } from "./durable-context";
 import type { AgentSessionCommand, AgentSessionReceipt } from "./session-types";
@@ -108,6 +110,18 @@ export interface AgentRuntimeInternalOptions extends AgentRuntimeOptions {
 export async function createAgentRuntime(
   options: AgentRuntimeInternalOptions = {},
 ): Promise<AgentRuntime> {
+  options = { ...options, memory: options.memory ?? getAgentMemoryBinding() };
+  if (options.memory) {
+    const binding = options.memory;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    try {
+      const capabilities = await Promise.race([binding.provider.capabilities(), new Promise<never>((_, reject) => {
+        timer = setTimeout(() => reject(new Error('Memory capabilities timed out.')), 2000);
+      })]);
+      options = { ...options, memory: !capabilities.connected || !capabilities.enabled ? false : { ...binding, readOnly: binding.readOnly || capabilities.readOnly } };
+    } catch (error) { try { binding.onError?.(error); } catch {} }
+    finally { clearTimeout(timer); }
+  }
   const settings = getUserSettings();
   const configuration = getProjectConfiguration();
   const resolveHostModels = !options.pi && !options.modelResolved && (configuration !== undefined ||
@@ -367,6 +381,7 @@ class ProjectAgentRuntime implements AgentRuntime {
         resumeSession: this.options.resumeSession,
         workdir: this.options.workdir,
         databasePath: this.options.databasePath,
+        memoryEnabled: !!this.options.memory,
         storage: this.options.storage,
         retryDelayMs: this.options.retryDelayMs,
         compaction: this.compactionSettings(),
@@ -494,6 +509,12 @@ class ProjectAgentRuntime implements AgentRuntime {
       this.externalTools,
       this.options,
     );
+    const memory = this.options.memory;
+    if (memory) {
+      if (mode !== "plan" && parsed.permissionPolicy !== "read-only" && !memory.readOnly) void flushAgentMemoryOutbox(memory);
+      const recalled = await recallAgentMemory(memory, parsed.prompt);
+      agent.state.systemPrompt += "\n\n" + AGENT_MEMORY_SKILL_PROMPT + (recalled ? "\n\n" + recalled : "");
+    }
     let parkedApproval: HarnessError | undefined;
     agent.askResume = input.askResume;
     this.attachApproval(agent, host, (error) => {
@@ -637,6 +658,15 @@ class ProjectAgentRuntime implements AgentRuntime {
       throw parkedApproval;
     }
 
+    const finalMessage = agent.state.messages.at(-1);
+    const memoryAnswer = finalMessage?.role === 'assistant' ? finalMessage.content.filter(part => part.type === 'text').map(part => part.text).join('') : '';
+    if (memory && !memory.readOnly && mode !== "plan" && parsed.permissionPolicy !== "read-only" && memoryAnswer.trim() && (this.options.databasePath || this.options.storage)) {
+      const turnId = createHash('sha256').update(agent.memoryTurnId ?? input.requestId ?? randomUUID()).digest('hex');
+      await submitAgentMemoryTurn(memory, {turnId, messages:[
+        {id:`${turnId}:user`,role:"user",content:parsed.prompt,timestamp:Date.now()},
+        {id:`${turnId}:assistant`,role:"assistant",content:memoryAnswer,timestamp:Date.now()},
+      ]});
+    }
     if (mode === "plan" && answer.trim() !== "") {
       yield* this.requestPlanApproval(parsed, answer, host);
     }
@@ -827,7 +857,8 @@ function applyRunConfiguration(
   agent.state.tools = [
     ...allTools.filter((tool) => active.has(tool.name)),
     ...askTool,
-    ...externalTools,
+    ...(options.memory ? [createAgentMemoryTool(pi.Type as TypeboxLike, options.memory, parsed.agent === "plan" || parsed.permissionPolicy === "read-only")] : []),
+    ...externalTools.filter(tool => !options.memory || tool.name !== 'memory'),
   ];
 }
 

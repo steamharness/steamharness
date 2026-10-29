@@ -8,6 +8,8 @@ export interface AuthUserInfo {
 export interface AuthConfig {
   serverUrl: string;
   apiKey: string;
+  /** Host-only account memory credential; never forwarded to project workers. */
+  memoryToken?: string;
   /** Optional private system-AI service connection; never falls back to the project server. */
   aiServerUrl?: string;
   aiApiKey?: string;
@@ -49,6 +51,7 @@ export function normalizeProjectAuthConfig(
   const aiServerUrl = readString(value.aiServerUrl);
   const aiApiKey = readString(value.aiApiKey);
   return {
+    ...(readString(value.memoryToken) ? { memoryToken: readString(value.memoryToken) } : {}),
     // Accept legacy field names (remoteUrl, token) from pre-migration
     // config files so existing users don't lose their credentials on upgrade.
     serverUrl: readString(value.serverUrl) ?? readString(value.remoteUrl) ?? "",

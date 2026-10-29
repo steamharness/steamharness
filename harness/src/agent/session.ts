@@ -171,13 +171,18 @@ export class DurableAgentSession {
           if (!parent || !this.options.subagents) throw new Error("Delegation is not enabled for this conversation.");
           const parentAgent = await parent.agent(ctx);
           const allowed = new Set(this.options.subagents.tools);
-          const tools = parentAgent.tools.filter(tool => allowed.has(tool.name) && tool.name !== "subagent");
+          const tools = parentAgent.tools.filter(tool => (allowed.has(tool.name) || tool.name === "memory") && tool.name !== "subagent");
+          const modelTools = tools.map(tool => tool.name === "memory" ? {...tool,parameters:Type.Object({
+            action:Type.Union([Type.Literal("list"),Type.Literal("get"),Type.Literal("search")]),
+            scope:Type.Optional(Type.Union([Type.Literal("global"),Type.Literal("current")])),
+            id:Type.Optional(Type.String()),query:Type.Optional(Type.String()),cursor:Type.Optional(Type.String()),
+          },{additionalProperties:false})} : tool);
           const model = task.input.model;
           if (model && !this.allowedChildModel(model)) throw this.childModelError();
           await runtime.commit(async tx => {
             const existing = (await tx.scanConversations({ ownerTaskId: task.id }, 1)).items[0];
             const child = existing ?? await tx.createConversation({ ownership: { kind: "task", taskId: task.id } });
-            await configure(tx, child.id, { tools: tools as ToolRegistration[], modelTools: tools as ToolRegistration[],
+            await configure(tx, child.id, { tools: tools as ToolRegistration[], modelTools: modelTools as ToolRegistration[],
               model: model ?? parentAgent.model!, thinkingLevel: parentAgent.thinkingLevel,
               ...(parentAgent.cwd ? { cwd: parentAgent.cwd } : {}) });
             const info = await tx.doc(SessionDoc, child.id); info.title = task.input.prompt.slice(0, 120); info.background = task.input.background;

@@ -24,6 +24,9 @@ import { createPublicSystemAiUnavailableHandler } from "./public-system-ai";
 import { createStorageFromEnv } from "./storage";
 import { createWebDevServerOptions } from "./web-dev";
 
+import { AccountMemory } from "./memory";
+import { createMemoryRouter } from "./routes/memory";
+
 loadServerEnv();
 
 // i18n must be initialized before any request-localized error is serialized.
@@ -36,7 +39,10 @@ const accountDb = databaseUrl
 await accountDb?.init();
 const storage = await createStorageFromEnv();
 const authService = ensureProjectAuthService(accountDb);
+const memory = databaseUrl ? new AccountMemory(databaseUrl) : undefined;
+await memory?.init();
 configureProjectAuthContext({
+  memory,
   accountDb,
   authService,
   dataDir: storage.dataRoot,
@@ -123,6 +129,7 @@ if (isProjectLocalStorage(storage.objectStorage)) {
 // without exposing that service's implementation.
 app.use("/api/ai", createPublicSystemAiUnavailableHandler());
 app.use("/api/auth", createAuthRouter());
+app.use("/api/me", createMemoryRouter(memory));
 app.use("/api/me", createMeAliasRouter());
 app.use("/api/admin", createAdminAliasRouter());
 // Sandboxed Kanban subresources authenticate with their scoped,
@@ -168,6 +175,7 @@ const requestShutdown = (signal: NodeJS.Signals) => {
     server.closeAllConnections?.();
     await serverStop;
     await storage.close();
+    await memory?.close();
     await accountDb?.close();
   })();
   shutdownPromise = shutdown;

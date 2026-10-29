@@ -2,6 +2,8 @@
 
 - 【修复】模型上游暂时不可用、无 HTTP 状态的流内 upstream_error 及 ECONNRESET 等连接失败正常触发自动重试；普通请求、持久会话与自动压缩统一处理，保留原始原因、已有正文和工具结果，仍受原有重试预算约束。
 
+- 【新增】Core Agent 增加宿主绑定的账号记忆 provider、原生 memory 工具、内置 steamharness-memory 技能及按回合召回和持久提交。
+
 - 【变更】开发用项目生成技能统一命名为 steamharness-generator，技能副本与相关检查、生成脚本引用同步更新。
 
 - 【新增】Core Agent 可通过 skills.directories 统一声明技能目录，运行时自动组装带权限校验的技能工具；宿主可列出项目及 Core 内置技能，并按目录 ID 只读预览完整 SKILL.md，无需运行工具工厂或任务。

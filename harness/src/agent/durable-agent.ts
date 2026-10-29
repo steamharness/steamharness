@@ -5,7 +5,7 @@ import { BACKGROUND_CONTEXT, awaitWithContext, type Context } from "@earendil-wo
 import { copyJson, type JsonValue } from "@earendil-works/chord";
 import { applyImmutable } from "@earendil-works/chord/delta";
 import {
-  Harness, MemoryStorage, ToolTask, GenerationTask, CompactionTask, LiveDoc, ConversationBusy, createRegistry, defineDocFamily,
+  Harness, MemoryStorage, ToolTask, GenerationTask, CompactionTask, LiveDoc, ConversationBusy, createRegistry, defineDoc, defineDocFamily,
   defineExtension, hook, section, watchEvents,
   type AgentEvent as DurableEvent, type AgentEventStream, type Conversation,
   type EntryRecord, type JsonObject, type Storage, type ToolRegistration, type HookApi,
@@ -44,6 +44,10 @@ const RunDoc = defineDocFamily({
   initial: () => ({ cutoff: 0, initialized: false as boolean, approvals: {} as JsonObject, usage: {} as JsonObject,
     retries: {} as JsonObject, continuations: {} as JsonObject, pendingRetries: {} as JsonObject, failure: "", end: 0 }),
 });
+const MemoryIdentityDoc = defineDoc({
+  kind: 'project.agent.memory-identity', version: 1, scope: 'conversation', history: 'latest', fork: 'initial',
+  initial: () => ({ id: randomUUID() }),
+});
 
 export interface DurableAgentState {
   systemPrompt: string;
@@ -58,6 +62,7 @@ export interface DurableAgentState {
 }
 
 export interface DurableAgentOptions {
+  memoryEnabled?: boolean;
   sessionLease?: Promise<void>;
   sessionSuspend?: Promise<void>;
   /** Reattach the host and scheduler without submitting the workflow's bootstrap prompt. */
@@ -116,6 +121,9 @@ export class DurableAgent {
   private readonly approvedCalls = new Set<string>();
   private readonly searchStates = new Map<string, string>();
   private seeded = false;
+  /** Both identities live in the durable database and survive a host restart. */
+  private memoryIdentity = '';
+  get memoryTurnId(): string | undefined { return this.memoryIdentity && this.activeRequest ? `${this.memoryIdentity}:${this.activeRequest}` : undefined; }
   private fatalFailure?: unknown;
   private failActive?: (error: unknown) => void;
 
@@ -185,6 +193,7 @@ export class DurableAgent {
         },
       }, context);
       this.root = await this.harness.root(context, { agent: { model: { provider: this.state.model.provider, modelId: this.state.model.id } } });
+      if (this.options.memoryEnabled) this.memoryIdentity = await this.root.commit(async tx => (await tx.doc(MemoryIdentityDoc, this.root!.id)).id, context);
       await this.resources.restore(this.harness, this.root.id, context);
       if (this.options.session) {
         this.session = new DurableAgentSession(this.harness, this.root, this.options.session,
@@ -603,6 +612,9 @@ export class DurableAgent {
       ...(["read", "bash", "grep", "find", "ls"].includes(tool.name) ? { outputLimits: { maxLines: 40_000 } } : {}),
       execute: async (args, api, callContext) => {
         await this.checkConfigurationAccess();
+        if (tool.name === "memory" && api.conversationId !== this.root?.id && !["list", "get", "search"].includes(String((args as {action?:unknown})?.action))) {
+          return {output:[{type:"text",text:"Subagent memory is read-only."}],isError:true};
+        }
         const prefix = `${api.conversationId}:${api.taskId}:`;
         if (!this.approvedCalls.has(`${prefix}${api.callId}`)) {
           const decision = await this.approve({ type: "toolCall", id: api.callId, name: tool.name, arguments: json(args) as JsonObject }, callContext, prefix);
@@ -614,7 +626,7 @@ export class DurableAgent {
         let progress = Promise.resolve();
         let result;
         try {
-          result = await tool.execute(api.callId, args, callContext.abortSignal, update => {
+          result = await tool.execute(tool.name === "memory" ? `${this.memoryIdentity}:${api.conversationId}:${api.callId}` : api.callId, args, callContext.abortSignal, update => {
             const snapshot = json(update);
             progress = progress.then(() => api.details(snapshot, callContext));
             void progress.catch(error => this.fail(error));

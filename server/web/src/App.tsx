@@ -1,3 +1,4 @@
+import { memoryText } from "@steamharness/account-memory";
 import { DatabaseSpacesPage } from "./pages/DatabaseSpacesPage";
 
 import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
@@ -882,6 +883,7 @@ function AppContent() {
       profile: accountView.me?.profile,
     }) ?? undefined;
   const settingsNavItems = [
+    {id:"settings-memory",label:memoryText(i18n.language,"title"),icon:Database,active:page==="settings"&&settingsTab==="memory",onClick:()=>navigateTo({page:"settings",tab:"memory"})},
     {
       id: "settings-profile",
       label: t("accountProfileTitle"),
@@ -972,6 +974,7 @@ function AppContent() {
   const detailNavItems = detailNavGroups.flatMap(group => group.items);
 
   const settingsBusy = {
+    memory: undefined,
     profile: busy.account || busy.saveProfile,
     appearance: busy.account,
     "api-keys": busy.account || busy.apiKeys || busy.createKeyBusy || busy.revokeKeyId,
@@ -1093,6 +1096,7 @@ function AppContent() {
     >
       {page === "settings" ? (
         <AccountPage
+          key={session.principal.userId}
           tab={settingsTab}
           me={accountView.me}
           apiKeys={accountView.apiKeys}

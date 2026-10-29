@@ -885,5 +885,8 @@
   "Cannot run Node.js at {0}. Choose another executable in Settings.": "无法运行 {0} 中的 Node.js。请在设置中选择其他可执行文件。",
   "Node.js 22.19.0 or newer is required; found {0}.": "需要 Node.js 22.19.0 或更高版本；当前为 {0}。",
   "Node.js changes apply to new sessions. Restart existing project services and terminals to use the selected runtime.": "Node.js 修改将应用于新会话。请重启已有项目服务和终端以使用所选运行时。",
-  "The selected Node.js has no package manager. Repair the bundled runtime or choose a local Node.js installation with npm.": "所选 Node.js 没有包管理器。请修复内置运行时，或选择包含 npm 的本地 Node.js 安装。"
+  "The selected Node.js has no package manager. Repair the bundled runtime or choose a local Node.js installation with npm.": "所选 Node.js 没有包管理器。请修复内置运行时，或选择包含 npm 的本地 Node.js 安装。",
+  "Memory": "记忆",
+  "Sign in again to authorize account memory.": "请重新登录以授权账号记忆。",
+  "Memory is unavailable.": "记忆暂时不可用。"
 }

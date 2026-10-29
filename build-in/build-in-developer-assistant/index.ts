@@ -47,12 +47,10 @@ const assistantProject = steamharness.createAgentConversationProject({
     // Run-scoped Knowledge and KV address the assistant's own store, not the
     // user's project. Studio Control provides editor capabilities separately.
     const capabilityToolIdsToOffer = new Set([
-      "workflow-memory_global_memory",
       "workflow-ui_present_card",
     ]);
     const capabilities = (await steamharness.createProjectCapabilityTools({
       context,
-      globalMemory: true,
       approve,
     })).filter((tool) => capabilityToolIdsToOffer.has(tool.name));
     const control = await createStudioControlTools(approve,
@@ -114,8 +112,8 @@ export const executor = steamharness.defineExecutor<AgentInput, AgentOutputPaylo
     { name: "workflow-studio_open_terminal", label: "Studio terminal", description: "Open a terminal in a permitted directory without executing commands.", enabled: true, autoApprove: false },
     { name: "workflow-studio_show_view", label: "Studio view", description: "Show Explorer, Search, Source Control, Terminal or Assistant.", enabled: true, autoApprove: false },
     {
-      name: "workflow-memory_global_memory",
-      label: "Global memory",
+      name: "memory",
+      label: "Account memory",
       description: "Remember stable user preferences, changes, and project decisions.",
       enabled: true,
       autoApprove: true,

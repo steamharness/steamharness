@@ -153,3 +153,5 @@
   .project-settings-panel .permissions-table :is(td, th) { padding: 10px 6px; }
   .project-settings-panel .database-card { padding: 16px; }
 }
+
+.project-settings-panel[data-section="memory"]{display:flex;flex-direction:column;min-height:0;overflow:hidden;height:100%}.project-settings-panel[data-section="memory"][hidden]{display:none}.project-settings-memory{flex:1;min-height:0;overflow:hidden}

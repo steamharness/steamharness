@@ -40,6 +40,7 @@ function fixture() {
   let unavailable = false;
   let gate;
   let verificationGate;
+  let memoryToken;
   const events = [];
   const requests = [];
   const writes = [];
@@ -53,7 +54,7 @@ function fixture() {
       if (gate) { await gate; }
       const body = JSON.parse(options.body);
       if (body.password !== 'correct-password') { status = 401; }
-      else { data = { authenticated: true, accessToken: acceptedToken, apiKey: { id: `key-${acceptedToken}` } }; }
+      else { data = { authenticated: true, accessToken: acceptedToken, apiKey: { id: `key-${acceptedToken}` }, ...(memoryToken ? { memoryToken } : {}) }; }
     } else if (options.method === 'DELETE') {
       if (options.headers.Cookie !== 'wf_session=test-cookie') { status = 403; }
       else { data = { revoked: true }; }
@@ -79,6 +80,7 @@ function fixture() {
     set unavailable(value) { unavailable = value; },
     set gate(value) { gate = value; },
     set verificationGate(value) { verificationGate = value; },
+    set memoryToken(value) { memoryToken = value; },
   };
 }
 
@@ -115,6 +117,23 @@ test('account avatars accept Server image data URLs and local storage URLs', asy
     const session = await new ServerClient(serverUrl, f.fetcher).verify({ serverUrl, accessToken: token });
     assert.equal(session.user.avatarUrl, undefined);
   }
+});
+
+test('account memory credentials persist only in secret storage and host connections', async () => {
+  const f = fixture();
+  f.memoryToken = 'shma_test-host-secret';
+  await f.account.restore();
+  await f.account.login(serverUrl, user.email, 'correct-password');
+  assert.equal(JSON.parse(f.stored).memoryToken, 'shma_test-host-secret');
+  assert.equal(f.account.getConnection().memoryToken, 'shma_test-host-secret');
+  assert.ok(!JSON.stringify(f.account.getState()).includes('shma_test-host-secret'));
+  assert.ok(!JSON.stringify(f.events).includes('shma_test-host-secret'));
+  const restored = new Account(serverUrl, f.secrets, () => undefined, url => new ServerClient(url, f.fetcher));
+  await restored.restore();
+  assert.equal(restored.getConnection().memoryToken, 'shma_test-host-secret');
+  await restored.logout();
+  assert.equal(restored.getConnection(), undefined);
+  assert.equal(f.stored, undefined);
 });
 
 test('a rejected password or missing profile never becomes a saved login', async () => {

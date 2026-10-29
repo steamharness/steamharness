@@ -199,7 +199,7 @@ window.addEventListener('message', event => {
   }
   if (message.type === 'kanban-method-cancel') { methodCalls.get(message.requestId)?.abort(); return; }
   if (message.requestId && pending.has(message.requestId)) { const waiting = pending.get(message.requestId)!; clearTimeout(waiting.timer); pending.delete(message.requestId); message.type === 'error' ? waiting.reject(new Error(message.message)) : waiting.resolve(message); }
-  if (message.type === 'connection') { connected = message.status === 'connected'; controls(); if (connected) { publishMethods();  } else { dialogs.closeUsage(); for (const waiting of pending.values()) { clearTimeout(waiting.timer); waiting.reject(new Error(t("Connection interrupted."))); } pending.clear(); for (const call of methodCalls.values()) { call.abort(); } } }
+  if (message.type === 'connection') { connected = message.status === 'connected'; controls(); if (connected) { publishMethods();  } else { dialogs.close(); for (const waiting of pending.values()) { clearTimeout(waiting.timer); waiting.reject(new Error(t("Connection interrupted."))); } pending.clear(); for (const call of methodCalls.values()) { call.abort(); } } }
   if (message.type === 'state') {
     if (!stateRevisions.accept(message)) return;
     if (message.serverInstanceId !== serverInstanceId) { state = undefined; previewKey = ''; authRevision = -1; }
@@ -207,7 +207,7 @@ window.addEventListener('message', event => {
     project = message.project; element('kanban-title').textContent = project!.name;
     serverData = message.serverData;
     updateProjectAvatar(element('project-info'), project!);
-    if (authRevision !== message.authenticationRevision) { authRevision = message.authenticationRevision; previewKey = ''; dialogs.closeUsage(); }
+    if (authRevision !== message.authenticationRevision) { authRevision = message.authenticationRevision; previewKey = ''; dialogs.close(); }
     usageAvailable = message.account.status === 'authenticated' && !!message.account.aiConfigured; update(message.kanban);
   }
   if (message.type === 'usage') { dialogs.usageResult(message.requestId, message.usage); }

@@ -1,5 +1,7 @@
 # Unreleased
 
+- Added: Add a native account memory panel in settings, clear stale data when switching accounts and bind CLI assistant memory through host authorization.
+
 - Resolve local Node symlinks before preparing child environments, revalidate runtimes for new sessions and status requests, and check every declared toolchain checksum, rejecting paths and links outside the installation.
 
 - Unify project Node runtime selection, validation and environment propagation, with optional host toolchains and local executables. Changes apply to new sessions; service recovery retains its original environment. Public Studio does not download or bundle Node.

@@ -1,0 +1,27 @@
+services:
+  memory:
+    build:
+      context: ..
+      dockerfile: memory-service/Dockerfile
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:7141:7141"
+    environment:
+      STEAMHARNESS_MEMORY_SERVICE_TOKEN: ${STEAMHARNESS_MEMORY_SERVICE_TOKEN:?Set a dedicated service credential}
+      STEAMHARNESS_MEMORY_MODEL_BASE_URL: ${STEAMHARNESS_MEMORY_MODEL_BASE_URL:-}
+      STEAMHARNESS_MEMORY_MODEL_API_KEY: ${STEAMHARNESS_MEMORY_MODEL_API_KEY:-}
+      STEAMHARNESS_MEMORY_MODEL: ${STEAMHARNESS_MEMORY_MODEL:-}
+    volumes:
+      - memory:/data
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:7141/health',{headers:{Authorization:'Bearer '+process.env.STEAMHARNESS_MEMORY_SERVICE_TOKEN}}).then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+volumes:
+  memory:

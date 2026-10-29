@@ -215,3 +215,5 @@
   .settings-model-dialog-header, .settings-model-fields { padding: 16px; }
   .settings-model-dialog-footer { padding: 12px 16px; }
 }
+
+#settings-memory{height:calc(100dvh - 170px);min-height:360px}#settings-memory[hidden]{display:none}

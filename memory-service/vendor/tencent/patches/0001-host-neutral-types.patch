@@ -1,0 +1,24 @@
+--- a/l1-extraction.ts
++++ b/l1-extraction.ts
+@@ -6,7 +6,7 @@
+  * User prompt template fills in previous_scene_name, background_messages, new_messages.
+  */
+ 
+-import type { ConversationMessage } from "../conversation/l0-recorder.js";
++import type { ConversationMessage } from "./types.js";
+ 
+ // ============================
+ // System Prompt
+--- a/l1-dedup.ts
++++ b/l1-dedup.ts
+@@ -6,8 +6,8 @@
+  * supporting cross-type merge and multi-target operations.
+  */
+ 
+-import type { MemoryPromptMode } from "../../config.js";
+-import type { MemoryRecord, ExtractedMemory } from "../record/l1-writer.js";
++import type { MemoryPromptMode } from "./l1-extraction.js";
++import type { MemoryRecord, ExtractedMemory } from "./types.js";
+ 
+ // ============================
+ // System Prompt

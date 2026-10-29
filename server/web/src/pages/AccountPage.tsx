@@ -1,3 +1,4 @@
+import { MemoryPage } from "./MemoryPage";
 import { AlertCircle, CheckCircle2, Copy, ImagePlus, KeyRound, Languages, MonitorCog, Moon, RefreshCw, ShieldCheck, Sun, Upload, UserRound } from "lucide-react";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { formatDateTime, i18n, useTranslation, type LocalePreference } from "@steamharness/i18n/react";
@@ -94,6 +95,7 @@ export function AccountPage({
     displayName.trim() !== (profile?.displayName ?? "").trim() ||
     (avatarUrl ?? null) !== (profile?.avatarUrl ?? null);
 
+  if (tab === "memory") return <MemoryPage />;
   return (
     <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-6 p-4 lg:p-6">
       <div className="flex min-h-0 flex-1 flex-col gap-6">

@@ -7,6 +7,8 @@ description: "通过 browser device flow 登录 SteamHarness Server，并保存 
 
 `workspace login` 会向 SteamHarness Server 发起 device flow 登录请求，打开浏览器授权页，等待用户在 Web 端批准后把 CLI 专用 API Key 写入本地 `workflow-auth.json`。无需手工输入 token。
 
+新登录同时取得独立的账号记忆管理凭据，仅保存于宿主的登录配置，项目 worker 只取得当前范围的短期授权。旧登录需重新执行本命令；现有项目 API Key 不能访问账号全部记忆。不要把此配置复制到项目或发布包。详见[账号记忆](/guides/server/account-memory)。
+
 ## 命令格式
 
 ```bash

@@ -27,4 +27,6 @@ pnpm exec steamharness workspace download <project-id> --target latest --path ./
 
 `upload --file` 接受已打包归档，`--no-wait` 返回准备任务，`preparation` 查询静态准备结果。`file-upload/file-download/file-delete` 管理业务文件。`--server`、`--token` 可覆盖保存的登录信息；不要把凭据加入 manifest。
 
+CLI Web 的「项目信息 → 全局记忆」按 Core 实际能力显示，可切换个人全局与当前项目／目录、搜索和分页，并查看、编辑或遗忘。弹窗保持受视口约束的固定尺寸；服务暂时故障时保留入口并显示故障状态。未接入或关闭时隐藏。账号记忆需要重新登录取得独立凭据，不使用项目 API Key，也不写入业务数据库。
+
 配置模板、方案、快照与附件按入口保存。数据库通过 CLI Web、Studio 或 Server Web 的独立空间管理申请与绑定，下载后需重新获批。

@@ -11,7 +11,7 @@ export function projectSourceArchivePath(id: string, version: string): string {
 // /detail 的设置与成员现在使用稳定子路由，避免只靠概览页内局部状态切换。
 const DETAIL_TABS = new Set<DetailTab>(["configurations","project", "settings", "members", "invitations", "entries", "databases", "versions"]);
 const ADMIN_TABS = new Set<AdminTab>(["users", "audit"]);
-const SETTINGS_TABS = new Set<SettingsTab>(["profile", "appearance", "api-keys"]);
+const SETTINGS_TABS = new Set<SettingsTab>(["profile", "appearance", "api-keys", "memory"]);
 
 export function parseRoute(pathname: string): AppRoute {
   let segments: string[];

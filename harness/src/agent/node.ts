@@ -12,6 +12,7 @@ import {
 } from "../node/output/index";
 import type { NodeContext, UserInputRequest } from "../types/index";
 import { createToolApprovalGate } from "../tool-permissions/index";
+import { getAgentMemoryBinding } from "./memory";
 import { HarnessError } from "../workflow/errors";
 import { assertCurrentProjectConfigurationAccess } from "../configuration";
 import { resolveAgentSystemAIInput } from "./model-resolution";
@@ -705,6 +706,9 @@ export function createNodeAgentHost(
 
   return {
     async approveToolCall(request) {
+      // Memory is authorized by the host binding and its scoped provider. An
+      // explicit project declaration can further restrict it through the gate.
+      if (request.toolName === 'memory' && getAgentMemoryBinding() && !context.toolPermissions?.getTool('memory')) return;
       // The built-in tools are declared auto-approved, so this only asks when a
       // host has explicitly marked one as needing approval — and refuses
       // outright when the host disabled it.

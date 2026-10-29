@@ -13,6 +13,8 @@ export interface User {
 export interface Connection {
   serverUrl: string;
   accessToken: string;
+  /** Secret host credential. Only the CLI host receives it, never a project worker. */
+  memoryToken?: string;
   /** Optional private system-AI service connection kept separate from project auth. */
   aiServerUrl?: string;
   aiAccessToken?: string;
@@ -41,6 +43,7 @@ interface MeResponse {
   principal?: { apiKeyId?: string; expiresAt?: string };
 }
 interface LoginResponse {
+  memoryToken?: string;
   authenticated: boolean;
   accessToken?: string;
   apiKey?: { id?: string };
@@ -150,6 +153,7 @@ export class ServerClient {
     }
     return {
       serverUrl: this.serverUrl, accessToken: connection.accessToken,
+      ...(connection.memoryToken ? { memoryToken: connection.memoryToken } : {}),
       user: { userId: profile.userId, email: profile.email, displayName: profile.displayName, avatarUrl },
       apiKeyId: me.principal.apiKeyId, expiresAt: me.principal.expiresAt,
     };
@@ -168,7 +172,7 @@ export class ServerClient {
     if (!result.authenticated || !result.accessToken || !result.apiKey?.id) {
       throw new AuthError(t("The server did not return desktop sign-in credentials."));
     }
-    try { return { ...await this.verify({ serverUrl: this.serverUrl, accessToken: result.accessToken }), sessionCookie }; }
+    try { return { ...await this.verify({ serverUrl: this.serverUrl, accessToken: result.accessToken, memoryToken: result.memoryToken }), sessionCookie }; }
     catch (error) {
       if (sessionCookie) {
         await this.request(`/api/auth/api-keys/${encodeURIComponent(result.apiKey.id)}`, { sessionCookie, method: 'DELETE' }).catch(() => undefined);
@@ -247,7 +251,7 @@ export class Account {
   getSession(): LoginSession | undefined { return this.verified ? this.session : undefined; }
   getConnection(): Connection | undefined {
     const session = this.getSession();
-    return session ? { serverUrl: session.serverUrl, accessToken: session.accessToken,
+    return session ? { serverUrl: session.serverUrl, accessToken: session.accessToken, ...(session.memoryToken ? { memoryToken:session.memoryToken } : {}),
       ...(this.aiConnection ? { aiServerUrl: this.aiConnection.serverUrl, aiAccessToken: this.aiConnection.accessToken } : {}) } : undefined;
   }
 

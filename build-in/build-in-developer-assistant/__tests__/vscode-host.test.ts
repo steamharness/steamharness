@@ -116,7 +116,7 @@ describe("VS Code assistant host", () => {
     });
     const tools = await host.options.createTools!({} as NodeContext) as AgentToolSet;
     expect(tools.tools.map((tool) => tool.name)).toEqual([
-      "workflow-memory_global_memory", "workflow-ui_present_card",
+      "workflow-ui_present_card",
     ]);
     expect(host.connect).not.toHaveBeenCalled();
     expect(host.getConfig.mock.calls.every(([name]) => !name.startsWith("STEAMHARNESS_DESKTOP_CONTROL"))).toBe(true);

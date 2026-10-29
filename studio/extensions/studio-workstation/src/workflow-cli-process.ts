@@ -17,7 +17,7 @@ export interface StudioControlConfiguration { mcpServer?: string; url: string; t
 /** Older project CLIs reject assistant-only fields in the editor connection. */
 export function sanitizeConnectionForSurface(connection: Connection | undefined, surface: 'editor' | 'assistant'): Connection | undefined {
   return connection ? surface === 'assistant' ? { ...connection }
-    : { serverUrl: connection.serverUrl, accessToken: connection.accessToken } : undefined;
+    : { serverUrl: connection.serverUrl, accessToken: connection.accessToken, ...(connection.memoryToken ? {memoryToken:connection.memoryToken} : {}) } : undefined;
 }
 
 function hostAuthentication(connection: Connection | undefined, surface: 'editor' | 'assistant', systemAi = true) {
@@ -123,7 +123,7 @@ export async function startProjectCli(options: {
   const child: ChildProcess = spawn(options.nodePath, [entry, '--locale', options.locale?.toLowerCase().startsWith('zh') ? 'zh-CN' : 'en', 'web', options.projectDir, '--entry', options.entryId, '--port', String(options.port ?? 0), '--no-open', '--json', '--theme', options.theme, '--host-stdio', '--data-dir', options.dataDir],
     { cwd: options.projectDir, env: environment(options.studioControl, options.runtime), shell: false, stdio: ['pipe', 'pipe', 'pipe'], signal: options.signal });
   const events = new EventEmitter();
-  const secrets = new Set([options.connection?.accessToken, options.connection?.aiAccessToken, options.studioControl?.token].filter((token): token is string => !!token));
+  const secrets = new Set([options.connection?.accessToken, options.connection?.aiAccessToken, options.connection?.memoryToken, options.studioControl?.token].filter((token): token is string => !!token));
   const rememberModels = (settings?: StudioUserSettings) => { for (const model of settings?.agent.models ?? []) if (model.source === 'third-party') secrets.add(model.apiKey); };
   rememberModels(options.userSettings);
   const cleanError = (message: string): string => { for (const token of secrets) { message = message.replaceAll(token, '[redacted]'); } return message; };
@@ -201,7 +201,7 @@ export async function startProjectCli(options: {
         child.stdin?.write(`${JSON.stringify({ type: 'user-settings', userSettings: settings })}\n`);
       },
       updateAuth: connection => {
-        if (connection) { secrets.add(connection.accessToken); if (connection.aiAccessToken) { secrets.add(connection.aiAccessToken); } }
+        if (connection) { secrets.add(connection.accessToken); if (connection.aiAccessToken) { secrets.add(connection.aiAccessToken); } if (connection.memoryToken) secrets.add(connection.memoryToken); }
         const authentication = hostAuthentication(connection, options.surface, systemAiSupported);
         const key = JSON.stringify(authentication);
         if (key === connectionKey) { return; }

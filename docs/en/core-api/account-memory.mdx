@@ -1,0 +1,40 @@
+---
+title: "Account memory API"
+description: "Bind host-authorized cross-session memory to Core Agents."
+---
+
+# Account memory API
+
+Import `AgentMemoryProvider`, `AgentMemoryBinding`, `withAgentMemory()`, `getAgentMemoryCapabilities()` and `createServerAgentMemoryProvider()` from `steamharness/agent`. Core does not load SQLite, jieba or embeddings.
+
+```ts
+import { createAgent, createServerAgentMemoryProvider, withAgentMemory } from 'steamharness/agent';
+
+// The trusted host obtains or refreshes only a short-lived shmu_ grant.
+// Never return an account management credential here.
+declare function getScopedGrant(): Promise<{ token: string; scope: string }>;
+const provider = createServerAgentMemoryProvider({
+  serverUrl: 'https://your-server.example',
+  getGrant: getScopedGrant,
+});
+const agent = await withAgentMemory({ provider, outboxDirectory: './.data/memory-outbox' }, () =>
+  createAgent({ databasePath: './.data/agent.sqlite' }),
+);
+try {
+  for await (const event of agent.run({ prompt: 'Remember that this project uses PostgreSQL.' })) {
+    // Render event using the host output protocol.
+  }
+} finally {
+  await agent.close();
+}
+```
+
+`AgentRuntimeOptions.memory` accepts a binding or `false`. Otherwise it inherits the host binding in the current async context. Without a binding, or when account memory is disabled, the model receives neither the native tool nor its memory guidance. Bindings accept `readOnly` and `onError`. The host must isolate `outboxDirectory` by account and current scope; this directory stores pending turns, never credentials.
+
+Hosts import `getLocalProjectMemoryCapabilities({ projectDir, entryId?, entrypointId? })` from `steamharness` to query the selected entry's effective binding. Wrapped conversations identify their Agent through `coreAgent`. Explicit `memory: false` and non-Agent entries report disconnected without requesting a memory grant. Inspection loads entry declarations without running tasks or tool factories. `getAgentMemoryCapabilities()` directly queries the supplied binding or the current async context.
+
+Providers implement capabilities, `recall`, `submitTurn`, `list`, `get`, `remember`, `update` and `forget`. Public tool scopes are only `global` and `current`, mapped by the adapter to host-authorized scopes. The model cannot choose an account or arbitrary project. Mutations carry stable `operationId` values. Edits require `version` and return HTTP 409 on conflicts.
+
+Before model calls, recall returns at most eight relevant records and 2,000 estimated tokens, with a two-second timeout. Records are reference data with scopes and origins, injected only for that turn; current user instructions take precedence. Durable agents submit only user text and the final answer after successful completion. Durable conversation identities produce stable turn and message IDs, so recovery and network retries do not duplicate saves.
+
+Planning, read-only runs and subagents can only read. The native tool supports `list/get/search/remember/update/forget`. The built-in `steamharness-memory` skill explains classification and forgetting. Legacy database memory APIs remain separate without implicit fallback or migration. See [Account memory](/en/guides/server/account-memory) for deployment, panels and recovery.

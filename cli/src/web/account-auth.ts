@@ -28,7 +28,7 @@ export async function loginWebAccount(serverUrl: string, email: string, password
     const { data: me } = await request('/api/auth/me', { headers: { Authorization: `Bearer ${token}` } });
     if (typeof me.profile?.userId !== 'string' || !me.profile.userId || typeof me.profile.email !== 'string' || typeof me.profile.displayName !== 'string') { throw new Error('SteamHarness Server did not return an account profile.'); }
     const existing = await readCliAuthConfig();
-    await writeCliAuthConfig({ ...existing, serverUrl, apiKey: token, expiresAt: me.principal?.expiresAt ?? result.data.expiresAt, user: me.profile, source: 'password' });
+    await writeCliAuthConfig({ ...existing, serverUrl, apiKey: token, memoryToken: typeof result.data.memoryToken === "string" ? result.data.memoryToken : undefined, expiresAt: me.principal?.expiresAt ?? result.data.expiresAt, user: me.profile, source: 'password' });
     saved = true;
   } finally {
     if (cookie) {

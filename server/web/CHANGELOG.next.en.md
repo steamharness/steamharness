@@ -1,5 +1,7 @@
 # Unreleased
 
+- Added: Add a settings memory panel with paginated filters, source details, editing, forgetting, scope clearing and failed extraction retries.
+
 - Fixed draft navigation and page-close protection within project database details, discarded KV drafts returning, duplicate attachment preparation and uploads starting after their tab closes. The database root route now returns to the directory.
 
 - Improvement: Database workspace adds a paginated directory, project/server filtering and independent data tabs, with KV list/detail panes and a dedicated requests and permissions page.

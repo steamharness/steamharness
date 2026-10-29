@@ -1821,3 +1821,34 @@ test("empty failures use the persisted provider retry budget without continuatio
     assert.match(events.message, /terminated/);
   });
 });
+
+test('host-bound account memory reaches the actual model request once per turn and only persisted visible messages are submitted', async()=>{
+ const { withAgentMemory }=await import('../agent/memory');
+ const seen:string[]=[],submitted:import('../agent/memory').AgentMemoryTurn[]=[];
+ let recalled=true;
+ const {pi,ai}=await createFauxRuntime(Array.from({length:2},()=> (context:{messages:import('@earendil-works/pi-ai').Message[]})=>{seen.push(ai.getCurrentSystemPrompt(context.messages));return ai.fauxAssistantMessage([ai.fauxText('Visible final answer')]);}) as never[]);
+ const provider:import('../agent/memory').AgentMemoryProvider={capabilities:async()=>({connected:true,enabled:true,status:'ready',automatic:true,readOnly:false,scopes:['global']}),recall:async()=>recalled?[{id:'preference',scope:'global',content:'MEMORY_SENTINEL_PREFERENCE',origin:'manual',version:1,updatedAt:'2026-01-01',sources:[]}]:[],submitTurn:async turn=>{submitted.push(turn);},list:async()=>({items:[]}),get:async()=>{throw new Error('unused');},remember:async()=>{throw new Error('unused');},update:async()=>{throw new Error('unused');},forget:async()=>({})};
+ await withTempDir(async workdir=>{
+  const runtime=await withAgentMemory({provider,outboxDirectory:path.join(workdir,'outbox')},()=>createAgentRuntime({pi,workdir,databasePath:path.join(workdir,'agent.sqlite')}));
+  try{
+   for await(const event of runtime.run({prompt:'Visible user prompt',requestId:'memory-turn-1',errCode:0,errMessage:''})){void event;}
+   recalled=false;
+   for await(const event of runtime.run({prompt:'Next user prompt',requestId:'memory-turn-2',errCode:0,errMessage:''})){void event;}
+   assert.equal(seen[0].split('MEMORY_SENTINEL_PREFERENCE').length,2);assert.equal(seen[1].includes('MEMORY_SENTINEL_PREFERENCE'),false);
+   assert.equal(submitted.length,2);assert.deepEqual(submitted[0].messages.map(m=>[m.role,m.content]),[['user','Visible user prompt'],['assistant','Visible final answer']]);assert.ok(submitted.every(turn=>!JSON.stringify(turn).includes('MEMORY_SENTINEL_PREFERENCE')));
+  }finally{await runtime.close();}
+ });
+});
+
+test('memory turn identities survive replay and moving storage while different databases remain independent',async()=>{
+ const turns:import('../agent/memory').AgentMemoryTurn[]=[];
+ const {pi,ai}=await createFauxRuntime(Array.from({length:2},()=>()=>ai.fauxAssistantMessage([ai.fauxText('Final persisted answer')])));
+ const provider:import('../agent/memory').AgentMemoryProvider={capabilities:async()=>({connected:true,enabled:true,status:'ready',automatic:true,readOnly:false,scopes:['global']}),recall:async()=>[],submitTurn:async turn=>{turns.push(turn);},list:async()=>({items:[]}),get:async()=>{throw new Error('unused');},remember:async()=>{throw new Error('unused');},update:async()=>{throw new Error('unused');},forget:async()=>({})};
+ await withTempDir(async workdir=>{
+  const run=async(databasePath:string)=>{const runtime=await createAgentRuntime({pi,workdir,databasePath,memory:{provider}});try{for await(const _event of runtime.run({prompt:'User text',requestId:'same-request',errCode:0,errMessage:''})){/* Drain. */}}finally{await runtime.close();}};
+  const first=path.join(workdir,'first.sqlite');await run(first);await run(first);
+  const {rename}=await import('node:fs/promises');const moved=path.join(workdir,'moved.sqlite');await rename(first,moved);await run(moved);
+  await run(path.join(workdir,'independent.sqlite'));
+  assert.equal(turns[0].turnId,turns[1].turnId);assert.equal(turns[0].turnId,turns[2].turnId);assert.notEqual(turns[0].turnId,turns[3].turnId);
+ });
+});

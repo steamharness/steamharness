@@ -1,0 +1,3 @@
+# Preserve the upstream license and replayable unified-diff context verbatim.
+LICENSE -whitespace
+patches/*.patch -whitespace

@@ -16,3 +16,10 @@ it('handles overlapping credentials, repeated matches, empty secrets and incompl
   expect(redact('long-') + redact('token-next long-token token long-') + redact('', true)).toBe('[redacted] [redacted] [redacted] long-');
   expect(createSecretStreamRedactor([])('plain log')).toBe('plain log');
 });
+
+it('redacts short-lived grants added after spawning a worker, including split chunks', () => {
+  const values=['initial-account-credential'];const redact=createSecretStreamRedactor(values);
+  const start=redact('Worker started. ');values.push('shmu_dynamically-issued-grant');
+  const output=start+redact('scope shmu_dyn')+redact('amically-issued-grant complete')+redact('',true);
+  expect(output).toBe('Worker started. scope [redacted] complete');
+});

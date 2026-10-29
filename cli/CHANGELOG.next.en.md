@@ -1,5 +1,7 @@
 # Unreleased
 
+- Added: Show global/current memory in project information according to Core capabilities, with compact details, editing and forgetting; keep account credentials in the host and scope worker grants.
+
 - [Fix] Keep the skill preview return toolbar outside its independent document scroll area, preventing content from overlapping navigation while preserving loading, retry and return states.
 
 - Fixed the Skills page to list and count actual project and Core built-in guides, with search and complete SKILL.md previews and Markdown source. The discovery tool is no longer shown as a skill, and navigation keeps the panel size fixed.

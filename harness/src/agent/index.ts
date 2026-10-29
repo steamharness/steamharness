@@ -211,3 +211,6 @@ export { parseAgentModelAttributes } from "./model-attributes";
 
 /** The factory callers use: creates a runnable agent from plain options. */
 export { createAgentRuntime as createAgent } from "./runtime";
+
+export { withAgentMemory, getAgentMemoryBinding, getAgentMemoryCapabilities, createServerAgentMemoryProvider } from "./memory";
+export type { AgentMemoryProvider, AgentMemoryBinding, AgentMemoryCapabilities, AgentMemoryItem, AgentMemoryScope, AgentMemoryTurn } from "./memory";

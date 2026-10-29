@@ -1,0 +1,39 @@
+---
+title: "账号记忆 API"
+description: "为 Core Agent 绑定宿主授权的跨会话记忆。"
+---
+
+# 账号记忆 API
+
+从 `steamharness/agent` 导入 `AgentMemoryProvider`、`AgentMemoryBinding`、`withAgentMemory()`、`getAgentMemoryCapabilities()` 和 `createServerAgentMemoryProvider()`。Core 本身不加载 SQLite、jieba 或 embedding。
+
+```ts
+import { createAgent, createServerAgentMemoryProvider, withAgentMemory } from 'steamharness/agent';
+
+// 由可信宿主取得或刷新，只包含短期 shmu_ 授权；不返回账号管理凭据。
+declare function getScopedGrant(): Promise<{ token: string; scope: string }>;
+const provider = createServerAgentMemoryProvider({
+  serverUrl: 'https://your-server.example',
+  getGrant: getScopedGrant,
+});
+const agent = await withAgentMemory({ provider, outboxDirectory: './.data/memory-outbox' }, () =>
+  createAgent({ databasePath: './.data/agent.sqlite' }),
+);
+try {
+  for await (const event of agent.run({ prompt: '请记住这个项目使用 PostgreSQL。' })) {
+    // 按宿主的输出协议处理 event。
+  }
+} finally {
+  await agent.close();
+}
+```
+
+`AgentRuntimeOptions.memory` 可显式传入绑定或设为 `false`。未指定时继承当前异步上下文的宿主绑定；无绑定或账号关闭记忆时，不向模型提供原生 `memory` 工具及记忆引导。绑定可设 `readOnly` 和 `onError`。宿主必须按账号和当前范围隔离 `outboxDirectory`，该目录只保存待提交回合，不保存凭据。
+
+宿主从 `steamharness` 导入 `getLocalProjectMemoryCapabilities({ projectDir, entryId?, entrypointId? })`，查询当前入口声明与宿主绑定合并后的有效能力。包装 Conversation 通过 `coreAgent` 关联；显式 `memory: false` 或非 Core Agent 入口返回未接入，不请求记忆授权。检查只加载入口声明，不运行任务或工具工厂。`getAgentMemoryCapabilities()` 则直接查询指定或当前异步上下文中的绑定。
+
+Provider 实现能力查询、`recall`、`submitTurn`、`list`、`get`、`remember`、`update` 和 `forget`。公开工具作用域只有 `global` 和 `current`，由适配器映射到宿主授权的范围，模型不能指定用户或任意项目。写操作使用稳定 `operationId`；编辑携带 `version`，冲突返回 409。
+
+调用模型前按相关性召回最多 8 条、最多 2,000 估算 tokens，2 秒超时。记录作为带范围与来源的参考注入，当轮结束后不累积到后续上下文；当前用户指令优先。持久 Agent 成功完成后，只提交用户文字与最终回答。回合及消息 ID 从持久会话身份生成；进程恢复和网络重试重复提交不会重复保存。
+
+规划、只读运行和子 Agent 只能读取。原生工具支持 `list/get/search/remember/update/forget`；内置 `steamharness-memory` 技能说明归类和遗忘规则。旧数据库记忆 API 保持独立，不自动回退或迁移。部署、账号面板和恢复流程见 [账号记忆](/guides/server/account-memory)。

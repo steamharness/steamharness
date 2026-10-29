@@ -63,7 +63,7 @@ describe("independent built-in project release", () => {
     expect(definition.entries.map(({ entryId, root }) => ({ entryId, root }))).toEqual(
       definition.projectDocument.entries.map(({ entryId, root }) => ({ entryId, root })),
     );
-    expect(definition.entries[0].databases.some(database => database.alias === "memory")).toBe(true);
+    expect(definition.entries[0].databases).toEqual([]);
     expect(definition.entries[1].databases).toEqual([]);
     expect(definition.defaultEntry).toBe("main");
     expect(definition.projectDocument.projectInfo).toMatchObject({

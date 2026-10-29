@@ -1,10 +1,10 @@
 /** Keep a possible credential suffix until the next chunk, including at EOF. */
 export function createSecretStreamRedactor(values: readonly string[]) {
-  const secrets = [...new Set(values.filter(Boolean))].sort((a, b) => b.length - a.length);
-  const expression = secrets.length ? new RegExp(secrets.map(value => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|'), 'g') : undefined;
-  const overlap = Math.max(0, ...secrets.map(value => value.length - 1));
   let pending = '';
   return (chunk: string, final = false): string => {
+    const secrets = [...new Set(values.filter(Boolean))].sort((a, b) => b.length - a.length);
+    const expression = secrets.length ? new RegExp(secrets.map(value => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|'), 'g') : undefined;
+    const overlap = Math.max(0, ...secrets.map(value => value.length - 1));
     pending += chunk;
     const boundary = final ? pending.length : Math.max(0, pending.length - overlap);
     let end = boundary, cursor = 0, output = '';

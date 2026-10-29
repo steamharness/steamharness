@@ -1,0 +1,225 @@
+.account-memory {
+  --am-border: var(
+    --vscode-panel-border,
+    var(--border, var(--border-color, #ddd))
+  );
+  --am-bg: var(--vscode-editor-background, var(--bg, #fff));
+  --am-fg: var(--vscode-foreground, var(--text, #242424));
+  --am-muted: var(
+    --vscode-descriptionForeground,
+    var(--muted, var(--text-muted, #777))
+  );
+  --am-focus: var(--vscode-focusBorder, var(--accent, #0f766e));
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  height: 100%;
+  gap: 12px;
+  color: var(--am-fg);
+  font: 13px/1.5 system-ui;
+  text-align: start;
+  user-select: text;
+  container: account-memory / inline-size;
+}
+.account-memory p {
+  margin: 0;
+}
+.am-muted,
+.am-meta {
+  color: var(--am-muted);
+}
+.am-toolbar,
+.am-preferences,
+.am-footer,
+.am-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.am-toolbar input {
+  flex: 1;
+  min-width: 120px;
+}
+.account-memory button,
+.account-memory select,
+.account-memory input,
+.account-memory textarea {
+  font: inherit;
+  color: inherit;
+  background: var(--am-bg);
+  border: 1px solid var(--am-border);
+  border-radius: 6px;
+  min-height: 30px;
+  padding: 4px 9px;
+}
+.account-memory button {
+  cursor: pointer;
+}
+.account-memory button:disabled {
+  cursor: default;
+  opacity: 0.45;
+}
+.account-memory :is(button, input, select, textarea):focus-visible {
+  outline: 2px solid var(--am-focus);
+  outline-offset: 2px;
+}
+.am-preferences label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.am-preferences input {
+  min-height: 0;
+}
+.am-layout {
+  flex: 1;
+  min-height: 180px;
+  display: grid;
+  grid-template-columns: minmax(180px, 1fr) minmax(200px, 1fr);
+  border-block: 1px solid var(--am-border);
+  overflow: hidden;
+}
+.am-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.am-list,
+.am-detail {
+  min-width: 0;
+  overflow: auto;
+  padding-block: 8px;
+  scrollbar-gutter: stable;
+}
+.account-memory :is(.am-list, .am-detail, .am-status, textarea) {
+  scrollbar-width: thin;
+  scrollbar-color: transparent transparent;
+}
+.account-memory :is(.am-list, .am-detail, .am-status, textarea):is(:hover, :focus-within) {
+  scrollbar-color: var(--vscode-scrollbarSlider-background, var(--am-border)) transparent;
+}
+.am-detail {
+  padding-inline: 16px;
+  border-inline-start: 1px solid var(--am-border);
+  overflow-wrap: anywhere;
+}
+.account-memory .am-row {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  text-align: start;
+  border: 0;
+  border-radius: 0;
+  border-block-end: 1px solid var(--am-border);
+  padding: 10px 12px;
+  gap: 5px;
+}
+.am-row:hover,
+.am-row:focus-visible {
+  background: var(--vscode-list-hoverBackground, var(--surface-hover, #8881));
+}
+.am-summary {
+  display: block;
+  width: 100%;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.am-meta {
+  font-size: 11px;
+}
+.am-content,
+.am-source {
+  white-space: pre-wrap;
+}
+.am-source {
+  margin: 8px 0;
+  padding: 8px;
+  border-inline-start: 2px solid var(--am-border);
+  color: var(--am-muted);
+}
+.am-detail textarea {
+  display: block;
+  width: 100%;
+  box-sizing: border-box;
+  min-height: 200px;
+  resize: vertical;
+  white-space: pre-wrap;
+}
+.am-footer {
+  justify-content: flex-end;
+}
+.am-empty {
+  display: block;
+  margin: 30px 12px 8px;
+}
+.am-list > .am-muted {
+  margin: 0 12px;
+}
+.am-locked {
+  padding: 12px;
+  border-block-end: 1px solid var(--am-border);
+}
+.am-status {
+  max-height: 80px;
+  overflow: auto;
+}
+.am-row[aria-pressed="true"] {
+  background: var(
+    --vscode-list-activeSelectionBackground,
+    var(--surface-hover, #8882)
+  );
+}
+.am-detail {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.am-empty-state {
+  margin: 30px 12px;
+}
+.am-status:empty {
+  display: none;
+}
+.am-error {
+  color: var(--vscode-errorForeground, var(--error, #b42318));
+}
+.am-job {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.am-detail > button:first-child {
+  margin-bottom: 12px;
+}
+@media (max-width: 700px) {
+  .am-layout {
+    grid-template-columns: 1fr;
+  }
+  .am-detail {
+    display: none;
+    border: 0;
+  }
+  .am-show-detail .am-detail {
+    display: block;
+  }
+  .am-show-detail .am-list {
+    display: none;
+  }
+  .am-toolbar {
+    gap: 6px;
+  }
+  .am-toolbar input {
+    flex-basis: 100%;
+  }
+}
+@container account-memory (max-width: 620px) {
+  .am-layout { grid-template-columns: 1fr; }
+  .am-detail { display: none; border: 0; }
+  .am-show-detail .am-detail { display: flex; }
+  .am-show-detail .am-list { display: none; }
+  .am-toolbar { gap: 6px; }
+  .am-toolbar input { flex-basis: 100%; }
+}
