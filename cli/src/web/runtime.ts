@@ -179,9 +179,10 @@ export function createWebRuntime(projectDir: string, storageDir: string, connect
     memoryCapabilities: async project => {
       const auth=connection(),account=`${auth?.serverUrl}:${auth?.memoryToken}:${options.actor?.().userId}`;
       if(account!==memoryCapabilityAccount){memoryCapabilityAccount=account;memoryCapabilitiesCache.clear();}
-      const key=JSON.stringify([account,project.id,project.uri,project.folderPath,project.entryId,project.assistant?.workdir]);
+      const configuration=await (await configurations(project.entryId)).snapshot({required:false});
+      const key=JSON.stringify([account,project.id,project.uri,project.folderPath,project.entryId,project.assistant?.workdir,configuration.id,configuration.revision]);
       const current=()=>connection()?.serverUrl===auth?.serverUrl&&connection()?.memoryToken===auth?.memoryToken&&`${connection()?.serverUrl}:${connection()?.memoryToken}:${options.actor?.().userId}`===account;
-      try{const capabilities=await invoke<import('steamharness/agent').AgentMemoryCapabilities>({method:'memory-capabilities',project});
+      try{const capabilities=await invoke<import('steamharness/agent').AgentMemoryCapabilities>({method:'memory-capabilities',project,configuration});
         if(!current())throw new Error('Account changed.');
         if(capabilities.connected)memoryCapabilitiesCache.set(key,capabilities);else memoryCapabilitiesCache.delete(key);
         return capabilities;

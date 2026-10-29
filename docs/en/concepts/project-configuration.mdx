@@ -54,6 +54,12 @@ Export the current profile or all profiles as JSON with `version: 1` and `kind: 
 
 Import adds profiles with new IDs and preserves the active selection. Missing fields become custom fields. Conflicting types, multiple flags, options or accepted file types, undeclared value keys, invalid JSON/types and requests above 1 MiB reject the entire batch. No partial fields or profiles are written. Store exported sensitive values carefully.
 
+## Project memory
+
+Core Agent projects expose a **Project memory** switch (`STEAMHARNESS_AGENT_MEMORY`, boolean). Ordinary projects default off; the built-in Assistant defaults on. Save a change in the current configuration to apply it to the next run. Turning it off stops global/current project or directory recall, automatic saving and the native tool, and hides the memory tab while retaining existing records. Account settings and service authorization still apply; the project switch cannot bypass them.
+
+Agent options can declare `memory: true` as an opt-in default. Saved configuration takes precedence; `memory: false` always disables that Agent. Field declarations, published templates and role locks follow this page's rules. Wrappers that static discovery cannot identify can declare `{ "name": "STEAMHARNESS_AGENT_MEMORY", "type": "boolean", "label": "Project memory", "defaultValue": false }` in `configuration.json`. See the [account memory API](/en/core-api/account-memory).
+
 ## Agent model list
 
 Core Agents have two model modes. Studio uses all built-in/custom models from Settings by default and hides project AI models without offering settings references. Explicit `modelSource: "project"` always uses project configuration. The default and `modelSource: "user-settings"` automatically fall back to project mode in standalone CLI Web. Project mode shows AI models first in configuration details, with System AI and Third-party AI as the only add/edit sources. Cancel or Escape discards only the current model edit and restores focus.

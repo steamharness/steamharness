@@ -17,7 +17,7 @@ const provider = createServerAgentMemoryProvider({
   getGrant: getScopedGrant,
 });
 const agent = await withAgentMemory({ provider, outboxDirectory: './.data/memory-outbox' }, () =>
-  createAgent({ databasePath: './.data/agent.sqlite' }),
+  createAgent({ memory: true, databasePath: './.data/agent.sqlite' }),
 );
 try {
   for await (const event of agent.run({ prompt: '请记住这个项目使用 PostgreSQL。' })) {
@@ -28,9 +28,11 @@ try {
 }
 ```
 
-`AgentRuntimeOptions.memory` 可显式传入绑定或设为 `false`。未指定时继承当前异步上下文的宿主绑定；无绑定或账号关闭记忆时，不向模型提供原生 `memory` 工具及记忆引导。绑定可设 `readOnly` 和 `onError`。宿主必须按账号和当前范围隔离 `outboxDirectory`，该目录只保存待提交回合，不保存凭据。
+`AgentRuntimeOptions.memory` 默认关闭。设为 `true` 时使用当前宿主绑定，也可显式传入 `AgentMemoryBinding`；`false` 始终关闭。静态识别的 Core Agent 入口在「项目配置」中展示“项目记忆”开关，使用保留布尔字段 `STEAMHARNESS_AGENT_MEMORY`，默认 `false`；源码显式声明 `memory: true` 时提供开启默认值，内置小助手已这样声明。保存的项目值从下一次执行覆盖默认值，关闭时同时禁用工具、召回、自动提交和记忆分页，不删除已有记忆。账号总开关仍然生效，项目不能绕过账号关闭状态，也不能凭空创建宿主绑定。
 
-宿主从 `steamharness` 导入 `getLocalProjectMemoryCapabilities({ projectDir, entryId?, entrypointId? })`，查询当前入口声明与宿主绑定合并后的有效能力。包装 Conversation 通过 `coreAgent` 关联；显式 `memory: false` 或非 Core Agent 入口返回未接入，不请求记忆授权。检查只加载入口声明，不运行任务或工具工厂。`getAgentMemoryCapabilities()` 则直接查询指定或当前异步上下文中的绑定。
+绑定可设 `readOnly` 和 `onError`。宿主必须按账号和当前范围隔离 `outboxDirectory`，该目录只保存待提交回合，不保存凭据。
+
+宿主从 `steamharness` 导入 `getLocalProjectMemoryCapabilities({ projectDir, entryId?, entrypointId? })`，按执行所用的配置快照查询当前入口声明与宿主绑定合并后的有效能力；未进入执行上下文时读取当前已保存配置。包装 Conversation 通过 `coreAgent` 关联；默认关闭的项目、显式 `memory: false` 或非 Core Agent 入口返回未接入，不请求记忆授权。检查只加载入口声明，不运行任务或工具工厂。`getAgentMemoryCapabilities()` 则直接查询指定或当前异步上下文中的绑定。
 
 Provider 实现能力查询、`recall`、`submitTurn`、`list`、`get`、`remember`、`update` 和 `forget`。公开工具作用域只有 `global` 和 `current`，由适配器映射到宿主授权的范围，模型不能指定用户或任意项目。写操作使用稳定 `operationId`；编辑携带 `version`，冲突返回 409。
 

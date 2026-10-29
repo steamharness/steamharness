@@ -1,7 +1,7 @@
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
-import { inspectAggregateProjectStructure, inspectLocalProjectStructure } from "steamharness";
+import { AGENT_MEMORY_CONFIGURATION_KEY, inspectAggregateProjectStructure, inspectLocalProjectStructure } from "steamharness";
 
 const projectDir = path.resolve(process.cwd());
 // Run-scoped Knowledge and KV must not expose the assistant's store as project data.
@@ -48,6 +48,8 @@ describe("developer assistant workflow", () => {
     const source = await readFile(path.join(projectDir, "index.ts"), "utf8");
 
     expect(structure.diagnostics).toEqual({ warnings: [], violations: [] });
+    expect(structure.configuration?.fields.find(field=>field.name===AGENT_MEMORY_CONFIGURATION_KEY)).toMatchObject({type:"boolean",defaultValue:true});
+    expect(source).toContain("memory: true");
     expect(structure.definitions.apiCalls.map((call) => call.method))
       .toContain("createAgentConversationProject");
     expect(structure.params?.filter((param) => param.panel === "quick").map((param) => param.name))

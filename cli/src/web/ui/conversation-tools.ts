@@ -45,6 +45,8 @@ export class ConversationTools {
   private skillGuides?: SkillGuides;
   private memoryPanel?: ReturnType<typeof createMemoryPanel>;
   private memoryEpoch=0;
+  private memoryRevision?: number;
+  private refreshMemory?: () => void;
   private readonly toolSections = new Map<string, boolean>();
   constructor(private readonly databases?: ProjectDatabases, private readonly settings: ProjectSettingsOptions = {}) {
     this.dialog.id = 'project-information-dialog'; this.dialog.className = 'conversation-dialog';
@@ -58,7 +60,7 @@ export class ConversationTools {
   get open(): boolean { return this.dialog.open; }
   get activeSection(): ProjectSettingsSection | undefined { return this.open ? this.section : undefined; }
   private cleanup(): void {
-    this.memoryEpoch++; this.memoryPanel?.dispose();this.memoryPanel=undefined;
+    this.memoryEpoch++; this.refreshMemory=undefined; this.memoryPanel?.dispose();this.memoryPanel=undefined;
     this.disposeImage?.(); this.disposeImage = undefined; this.disposeProject?.(); this.disposeProject = undefined;
     this.disposeNavigation?.(); this.disposeNavigation = undefined; this.refreshTools = undefined;
     this.skillGuides?.dispose(); this.skillGuides = undefined;
@@ -72,9 +74,12 @@ export class ConversationTools {
   skillsResult(requestId: string | undefined, value?: import('steamharness').AgentSkillGuide[] | import('steamharness').AgentSkillPreview, error?: string): void {
     this.skillGuides?.result(requestId, value, error);
   }
-  updatePermissions(): void {
-    if (!this.open || !this.settings.tools) return;
-    this.refreshTools?.(this.settings.tools());
+  updatePermissions(configurationRevision?: number): void {
+    const changed = configurationRevision !== this.memoryRevision;
+    this.memoryRevision = configurationRevision;
+    if (!this.open) return;
+    if (changed) this.refreshMemory?.();
+    if (this.settings.tools) this.refreshTools?.(this.settings.tools());
   }
   private show(title: string): void {
     const opener = this.open ? this.opener : document.activeElement instanceof HTMLElement ? document.activeElement : undefined;
@@ -200,14 +205,27 @@ export class ConversationTools {
       add('usage', t('AI usage'), 'graph', t('Account balance and current subscription usage.'), container, () => { this.usageOpen = true; this.loadUsage(usage.load); });
     }
     if (project) {
-      const generation=++this.memoryEpoch;
       const client:MemoryClient={call:async(action,input)=>{const base=document.querySelector<HTMLMetaElement>('meta[name=steamharness-base]')?.content??'';const r=await fetch(base+'/api/memory',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action,input}),signal:AbortSignal.timeout(10000)});const b=await r.json();if(!r.ok||b.errCode!==0)throw Object.assign(new Error(b.errMessage),{status:r.status});return b.data;}};
-      void client.call('capabilities').then(capabilities=>{
-        if(generation!==this.memoryEpoch||!this.open||!capabilities.connected||!capabilities.enabled)return;
-        const container=document.createElement('div');container.className='project-settings-memory';
-        add('memory',t('Global memory'),'book',t('Private account memory for this project.'),container,()=>{this.memoryPanel=createMemoryPanel({client,locale:document.documentElement.lang||'en'});container.append(this.memoryPanel.element);});
-        const tab=tabs.at(-1)!;tab.panel.hidden=true;tab.tab.setAttribute('aria-selected','false');tab.tab.tabIndex=-1;
-      }).catch(()=>undefined);
+      const refreshMemory = this.refreshMemory = () => {
+        const generation=++this.memoryEpoch;
+        void client.call('capabilities').then(capabilities=>{
+          if(generation!==this.memoryEpoch||!this.open)return;
+          const existing=tabs.find(tab=>tab.id==='memory');
+          if(!capabilities.connected||!capabilities.enabled){
+            if(existing){
+              if(this.section==='memory')this.selectSection?.('overview');
+              this.memoryPanel?.dispose();this.memoryPanel=undefined;
+              existing.tab.remove();existing.panel.remove();tabs.splice(tabs.indexOf(existing),1);
+            }
+            return;
+          }
+          if(existing)return;
+          const container=document.createElement('div');container.className='project-settings-memory';
+          add('memory',t('Global memory'),'book',t('Private account memory for this project.'),container,()=>{this.memoryPanel=createMemoryPanel({client,locale:document.documentElement.lang||'en'});container.append(this.memoryPanel.element);});
+          const tab=tabs.at(-1)!;tab.panel.hidden=true;tab.tab.setAttribute('aria-selected','false');tab.tab.tabIndex=-1;
+        }).catch(()=>undefined);
+      };
+      refreshMemory();
     }
     if (project && this.databases) {
       const container = document.createElement('div');

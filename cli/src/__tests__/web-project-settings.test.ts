@@ -224,3 +224,22 @@ it('matches keyboard navigation to the responsive tab orientation and releases i
   expect(navigation.getAttribute('aria-orientation')).toBe('vertical');
   dialogs.close(); expect(remove).toHaveBeenCalledWith('change', expect.any(Function));
 });
+
+
+it('updates the memory tab only when project configuration changes and rejects stale capabilities',async()=>{
+ let enabled=false;
+ const fetcher=vi.fn(async()=>new Response(JSON.stringify({errCode:0,data:{connected:enabled,enabled,status:'ready',scopes:['global'],readOnly:false,automatic:true}})));
+ vi.stubGlobal('fetch',fetcher);
+ dialogs.updatePermissions(0);dialogs.projectInfo(project);await settle();
+ expect(tab('memory')).toBeNull();expect(fetcher).toHaveBeenCalledTimes(1);
+ dialogs.updatePermissions(0);await settle();expect(fetcher).toHaveBeenCalledTimes(1);
+ enabled=true;dialogs.updatePermissions(1);await settle();expect(tab('memory')).toBeTruthy();
+ const dialog=document.querySelector('dialog');
+ dialogs.updatePermissions(1);await settle();expect(fetcher).toHaveBeenCalledTimes(2);
+ enabled=false;dialogs.updatePermissions(2);await settle();expect(tab('memory')).toBeNull();expect(document.querySelector('dialog')).toBe(dialog);
+ let finish!:(value:Response)=>void;
+ fetcher.mockImplementationOnce(()=>new Promise(resolve=>{finish=resolve;}));
+ dialogs.updatePermissions(3);dialogs.close();
+ finish(new Response(JSON.stringify({errCode:0,data:{connected:true,enabled:true}})));await settle();
+ expect(tab('memory')).toBeNull();
+});

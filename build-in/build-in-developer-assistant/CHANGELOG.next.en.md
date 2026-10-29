@@ -1,5 +1,7 @@
 # Unreleased
 
+- Changed: The Assistant explicitly opts into account memory and supports project-level opt-out; ordinary Core Agent projects default to memory off.
+
 - [Changed] The assistant uses only built-in/custom Settings models in Studio and hides project AI models. Standalone CLI Web automatically uses project model configuration.
 
 

@@ -22,7 +22,7 @@ import type { ProjectServerState } from '../project-server-state';
 import { ProjectServerGuidance } from './project-server-guidance';
 import { StateRevisions } from './state-revisions';
 
-interface State {
+interface State { parameterRevision?: number;
   project: Project;
   runs: Pick<RunRecord, 'id' | 'title' | 'status' | 'createdAt' | 'entrypointId'>[];
   run?: RunRecord;
@@ -171,7 +171,7 @@ function renderEntrypoints(): void {
   selectEntrypoint(entries.some(entry => entry.id === saved.entrypointId) ? saved.entrypointId : defaultId || undefined);
 }
 function controls(): void {
-  dialogs.updatePermissions?.();
+  dialogs.updatePermissions?.(state?.parameterRevision);
   if (state) { updateProjectAvatar(element('project-info'), state.project); }
   serverGuidance.update(state?.serverData, state?.project.id ?? '', { connected, working: checkingServer || !!state?.serverData?.checking, canCreate: !state?.project.assistant });
   element<HTMLButtonElement>('run').disabled = disabled() || resolving || serverBlocked();

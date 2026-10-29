@@ -29,7 +29,7 @@ import { createExecutorHostState, createExecutorResources, type EntryDeclaration
 import type { DatabaseResolver } from "../databases/index";
 import type { ToolPermissionContext } from "../tool-permissions/index";
 type ProjectDataStorageLocation = "local" | "server";
-import { createLocalProjectConfigurationStore, withProjectConfiguration, currentConfigurationValues, readProjectConfigurationDefinition, projectUsesConfiguredAgentModels, type ProjectConfigurationSnapshot } from "../configuration";
+import { createLocalProjectConfigurationStore, getProjectConfiguration, withProjectConfiguration, currentConfigurationValues, readProjectConfigurationDefinition, projectUsesConfiguredAgentModels, type ProjectConfigurationSnapshot } from "../configuration";
 import {
   combineNodeExecutionHooks,
   createNodeExecutionReporter,
@@ -51,7 +51,7 @@ import {
 import { validateProjectParamResolveResult } from "./params";
 import { parseExecutorParamValues } from "../agent/project-executor";
 import { readAgentProjectContract } from "../agent/project-params";
-import { getAgentMemoryBinding, getAgentMemoryCapabilities, type AgentMemoryCapabilities } from "../agent/memory";
+import { resolveAgentMemoryBinding, getAgentMemoryCapabilities, type AgentMemoryCapabilities } from "../agent/memory";
 import { listAgentSkillGuides, readAgentSkillGuide, type AgentSkillGuide, type AgentSkillPreview } from "../agent/skills";
 import { STEAMHARNESS_ENTRYPOINT_ID_PATTERN } from "./definition";
 import { assertProjectParamDeclarations, normalizeProjectParamDeclarations } from "./param-definition";
@@ -1132,7 +1132,9 @@ export interface LocalProjectSkillsOptions { projectDir?: string; entryId?: stri
 /** Reports the selected entry's effective memory binding without running a task or tool factory. */
 export async function getLocalProjectMemoryCapabilities(options: LocalProjectSkillsOptions = {}): Promise<AgentMemoryCapabilities> {
   const selected = await localAgentProjectContract(options);
-  return getAgentMemoryCapabilities(selected ? selected.contract.memory ?? getAgentMemoryBinding() : false);
+  if (!selected) return getAgentMemoryCapabilities(false);
+  const snapshot = getProjectConfiguration() ?? await (await createLocalProjectConfigurationStore(resolveLocalProjectDir(options.projectDir), { entryId: options.entryId })).snapshot({ required: false });
+  return withProjectConfiguration(snapshot, () => getAgentMemoryCapabilities(resolveAgentMemoryBinding(selected.contract.memory)));
 }
 
 /** Lists the selected Core Agent's project guides and always-loaded built-in guides without running a task or tool factory. */

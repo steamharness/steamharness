@@ -17,11 +17,12 @@ export {resolveProjectConfigurationAccess} from './configuration-access';
 import {
   applyConfigurationAction, configurationSnapshot, configurationAgentModelPolicy, exportConfigurations, parseAgentModelPolicy, parseConfigurationDefinition, readConfigurationState,
   bindConfigurationTemplate, configurationCapability, parseConfigurationTemplate, configurationTemplatePath, CONFIGURATION_TEMPLATE_FILE, type ProjectConfigurationTemplate,
-  PROJECT_CONFIGURATION_FILE, ProjectConfigurationError, validateConfigurationAction, isConfigurationValue, AGENT_MODELS_CONFIGURATION_FIELD, AGENT_MODELS_CONFIGURATION_KEY,
+  PROJECT_CONFIGURATION_FILE, ProjectConfigurationError, validateConfigurationAction, isConfigurationValue, AGENT_MODELS_CONFIGURATION_FIELD, AGENT_MODELS_CONFIGURATION_KEY, AGENT_MEMORY_CONFIGURATION_FIELD, AGENT_MEMORY_CONFIGURATION_KEY,
   bindConfigurationProfiles,configurationAccessView,validateConfigurationSnapshotAccess,type ConfigurationAccess,type ConfigurationProfilePolicy,
   type AgentModelPolicy, type ProjectConfigurationDefinition, type ProjectConfigurationField, type ConfigurationValue, type ConfigurationValues, type ProjectConfigurationAction, type ProjectConfigurationSnapshot, type ProjectConfigurationState,
 } from "@steamharness/project-configuration";
 export * from "@steamharness/project-configuration";
+export { AGENT_MEMORY_CONFIGURATION_KEY, AGENT_MEMORY_CONFIGURATION_FIELD } from "@steamharness/project-configuration";
 
 const scope = new AsyncLocalStorage<ProjectConfigurationSnapshot>();
 const directoryScope = new AsyncLocalStorage<{ directory: string; entryId?: string }>();
@@ -42,8 +43,8 @@ export function projectUsesConfiguredAgentModels(projectDir: string, entryFile?:
   return discoverProjectAgentModels(projectDir, undefined, entryFile);
 }
 
-type AgentModelSourceCache = Map<string, { stamp: string; found: boolean; projectModels: boolean }>;
-function discoverProjectAgentModels(projectDir: string, cache?: AgentModelSourceCache, entryFile?: string, projectOnly = false): boolean {
+type AgentModelSourceCache = Map<string, { stamp: string; found: boolean; projectModels: boolean; memoryDefault: boolean }>;
+function discoverProjectAgentModels(projectDir: string, cache?: AgentModelSourceCache, entryFile?: string, mode: "found" | "projectModels" | "memoryDefault" = "found"): boolean {
   const skipped = new Set(["node_modules", "vendor", "dist", "out", "build", "test", "tests", "__tests__", "fixtures"]);
   const scan = (directory: string): boolean => {
     if (!existsSync(directory)) return false;
@@ -56,7 +57,7 @@ function discoverProjectAgentModels(projectDir: string, cache?: AgentModelSource
       if (info.size > 1024 * 1024) continue;
       const stamp = `${info.ino}:${info.size}:${info.mtimeMs}:${info.ctimeMs}`;
       const previous = cache?.get(file);
-      if (previous?.stamp === stamp) { if (projectOnly ? previous.projectModels : previous.found) return true; continue; }
+      if (previous?.stamp === stamp) { if (previous[mode]) return true; continue; }
       const source = ts.createSourceFile(file, readFileSync(file, "utf8"), ts.ScriptTarget.Latest, true);
       const factories = new Set(["createAgentNode", "createAgentConversationProject", "createAgentProjectParamResolver", "defineAgentConversationExecutor"]);
       const imports = new Set<string>(), namespaces = new Set(["steamharness"]);
@@ -101,7 +102,26 @@ function discoverProjectAgentModels(projectDir: string, cache?: AgentModelSource
         }
         return selected;
       };
-      let found = false, projectModels = false;
+      const memoryEnabled = (argument?: ts.Expression, seen = new Set<ts.Node>()): boolean | undefined => {
+        if (!argument) return undefined;
+        const value = unwrap(argument);
+        if (!ts.isObjectLiteralExpression(value) || seen.has(value)) return false;
+        const visited = new Set([...seen, value]);
+        let enabled: boolean | undefined;
+        for (const property of value.properties) {
+          if (ts.isSpreadAssignment(property)) {
+            enabled = memoryEnabled(property.expression, visited) ?? enabled;
+            continue;
+          }
+          const name = property.name && (ts.isIdentifier(property.name) || ts.isStringLiteral(property.name)) ? property.name.text : undefined;
+          if (name !== "memory") continue;
+          const expression = ts.isPropertyAssignment(property) ? property.initializer : ts.isShorthandPropertyAssignment(property) ? property.name : undefined;
+          const setting = expression && unwrap(expression);
+          enabled = !!setting && (setting.kind === ts.SyntaxKind.TrueKeyword || ts.isObjectLiteralExpression(setting));
+        }
+        return enabled;
+      };
+      let found = false, projectModels = false, memoryDefault = false;
       const visit = (node: ts.Node): void => {
         if (ts.isCallExpression(node)) {
           const expression = node.expression;
@@ -110,11 +130,12 @@ function discoverProjectAgentModels(projectDir: string, cache?: AgentModelSource
             found = true;
             const mode = modelSource(node.arguments[0]);
             projectModels ||= mode === "project" || mode === "unknown";
+            memoryDefault ||= memoryEnabled(node.arguments[0]) === true;
           }
         }
         ts.forEachChild(node, visit);
       };
-      visit(source); cache?.set(file, { stamp, found, projectModels }); if (projectOnly ? projectModels : found) return true;
+      visit(source); cache?.set(file, { stamp, found, projectModels, memoryDefault }); if ({ found, projectModels, memoryDefault }[mode]) return true;
     }
     return false;
   };
@@ -123,7 +144,15 @@ function discoverProjectAgentModels(projectDir: string, cache?: AgentModelSource
 
 function usesOnlyUserAgentModels(projectDir: string, entryFile?: string, cache?: AgentModelSourceCache, settings = getUserSettings()): boolean {
   return settings.agent.models !== undefined && discoverProjectAgentModels(projectDir, cache, entryFile)
-    && !discoverProjectAgentModels(projectDir, cache, entryFile, true);
+    && !discoverProjectAgentModels(projectDir, cache, entryFile, "projectModels");
+}
+
+function addAgentConfigurationFields(definition: ProjectConfigurationDefinition, projectDir: string, entryFile?: string, cache?: AgentModelSourceCache) {
+  if (!discoverProjectAgentModels(projectDir, cache, entryFile)) return;
+  if (!definition.fields.some(field => field.name === AGENT_MEMORY_CONFIGURATION_KEY)) definition.fields.splice(definition.fields.findIndex(field => field.name === AGENT_MODELS_CONFIGURATION_KEY) + 1, 0, {
+    ...structuredClone(AGENT_MEMORY_CONFIGURATION_FIELD), defaultValue: discoverProjectAgentModels(projectDir, cache, entryFile, "memoryDefault"),
+  });
+  if (!definition.fields.some(field => field.name === AGENT_MODELS_CONFIGURATION_KEY)) definition.fields.unshift({ ...structuredClone(AGENT_MODELS_CONFIGURATION_FIELD), ...definition.agentModelPolicy });
 }
 
 /** Host presentation only: keep saved project models intact for standalone CLI use. */
@@ -149,7 +178,7 @@ export function readProjectConfigurationDefinition(projectDir: string, entryId?:
   const file = resolved.configurationPath;
   projectDir = resolved.rootDir;
   const definition: ProjectConfigurationDefinition = file && existsSync(file) ? parseConfigurationDefinition(JSON.parse(readFileSync(file, "utf8"))) : { version: 1, fields: [] };
-  if (!definition.fields.some(field => field.name === AGENT_MODELS_CONFIGURATION_KEY) && projectUsesConfiguredAgentModels(projectDir, resolved.modulePath)) definition.fields.unshift({...structuredClone(AGENT_MODELS_CONFIGURATION_FIELD),...definition.agentModelPolicy});
+  addAgentConfigurationFields(definition, projectDir, resolved.modulePath);
   if (usesOnlyUserAgentModels(projectDir, resolved.modulePath)) {
     definition.agentModelPolicy = configurationAgentModelPolicy(definition);
     definition.fields = definition.fields.filter(field => field.name !== AGENT_MODELS_CONFIGURATION_KEY);
@@ -234,7 +263,7 @@ async function createProjectConfigurationStoreForIdentity(projectDir: string, op
     let definition: ProjectConfigurationDefinition = {version:1,fields:[]};
     try { definition = parseConfigurationDefinition(JSON.parse(await readFile(options.configurationFile ?? path.join(directory, ".no-entry-configuration"), "utf8"))); }
     catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error; }
-    if (!definition.fields.some(field => field.name === AGENT_MODELS_CONFIGURATION_KEY) && discoverProjectAgentModels(directory, agentModelSources, options.entryFile)) definition.fields.unshift({...structuredClone(AGENT_MODELS_CONFIGURATION_FIELD),...definition.agentModelPolicy});
+    addAgentConfigurationFields(definition, directory, options.entryFile, agentModelSources);
     return definition;
   };
   const verifiedTemplate = async (value: ProjectConfigurationTemplate): Promise<boolean> => {

@@ -3,6 +3,16 @@ import { parseAgentModels, AGENT_MODELS_CONFIGURATION_KEY, type AgentModelPolicy
 import { isProjectRole, roleAtLeast, type ProjectRole } from "@steamharness/project-access";
 export * from "./agent-models";
 export const PROJECT_CONFIGURATION_FILE = "configuration.json";
+export const AGENT_MEMORY_CONFIGURATION_KEY = "STEAMHARNESS_AGENT_MEMORY";
+export const AGENT_MEMORY_CONFIGURATION_FIELD: ProjectConfigurationField = {
+  name: AGENT_MEMORY_CONFIGURATION_KEY,
+  type: "boolean",
+  label: "Project memory",
+  description: "Allow this project to recall and save private account memories. Changes apply to the next run. Turning this off keeps existing memories.",
+  defaultValue: false,
+  sharing: { publish: true, includeValue: true, editable: true },
+};
+
 export type ConfigurationValue = null | string | number | boolean | ConfigurationValue[] | { [key: string]: ConfigurationValue };
 export type ConfigurationValues = Record<string, ConfigurationValue>;
 export interface ProjectConfigurationField {
@@ -122,6 +132,7 @@ function parseConfigurationFieldValue(value: unknown, stored = false): ProjectCo
   if (value.control !== undefined && !["text", "textarea", "select", "radio", "checkboxes", "ai-models"].includes(String(value.control))) return invalid("Invalid configuration control.");
   if (value.control === "ai-models" && (value.type !== "json" || value.name !== AGENT_MODELS_CONFIGURATION_KEY || value.multiple)) return invalid("AI models require the reserved JSON configuration field.");
   if (value.name === AGENT_MODELS_CONFIGURATION_KEY && (value.type !== "json" || value.control !== "ai-models")) return invalid("AI models require the reserved JSON configuration field.");
+  if (value.name === AGENT_MEMORY_CONFIGURATION_KEY && (value.type !== "boolean" || value.secret || value.control !== undefined)) return invalid("Project memory requires the reserved boolean configuration field.");
   if (value.allowThirdParty !== undefined && (value.control !== "ai-models" || typeof value.allowThirdParty !== "boolean")) return invalid("allowThirdParty requires an AI models field and a boolean value.");
   if (value.options !== undefined && (!Array.isArray(value.options) || value.options.some(option => !record(option) || typeof option.value !== "string" || option.label !== undefined && typeof option.label !== "string"))) return invalid("Invalid configuration options.");
   if (value.options !== undefined && (value.type !== "string" || new Set((value.options as {value: string}[]).map(option => option.value)).size !== (value.options as unknown[]).length)) return invalid("Options require unique string values.");

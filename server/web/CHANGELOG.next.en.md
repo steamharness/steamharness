@@ -1,5 +1,7 @@
 # Unreleased
 
+- Added: A localized Project memory switch follows existing configuration permissions, publication and next-run behavior.
+
 - Fixed memory settings page padding and section spacing to match other settings pages and keep content away from page edges.
 
 - Fixed sign-in depending on project and release data. Project load failures preserve authenticated sessions and show a workspace error with refresh recovery.

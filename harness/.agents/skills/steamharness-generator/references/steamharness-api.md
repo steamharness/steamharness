@@ -1443,14 +1443,20 @@ Studio 将内置／自定义模型分组显示：宿主自动完整加载内置�
 
 ## Host-bound account memory
 
-`AgentRuntimeOptions.memory` accepts `false` or `AgentMemoryBinding`. Omitted memory inherits
-`withAgentMemory(binding, callback)` from the trusted host. A binding provides an `AgentMemoryProvider`
-(capabilities, recall, submitTurn, list, get, remember, update, forget), optional readOnly, an account/scope
-isolated `outboxDirectory` and onError. `getAgentMemoryCapabilities()` queries that binding.
-Hosts use `getLocalProjectMemoryCapabilities({projectDir,entryId?,entrypointId?})` from `steamharness`
-to inspect the selected entry's effective memory without running tasks or tool factories. It follows
-the selected registered Agent (or a conversation wrapper's `coreAgent`), respects `memory:false`,
-and returns disconnected for non-Agent entries without requesting a memory grant.
+`AgentRuntimeOptions.memory` accepts a boolean or `AgentMemoryBinding`, and defaults off.
+`memory:true` opts into `withAgentMemory(binding, callback)` from the trusted host; false always
+disables the Agent. Detected Core Agent entries expose the reserved boolean project configuration
+`STEAMHARNESS_AGENT_MEMORY` (Project memory), default false unless the Agent statically opts in.
+The built-in Assistant declares memory:true. A saved project override applies to the next run:
+off disables memory tools, recall, turn submission and the tab without deleting existing memories.
+An account-level disable or missing host binding cannot be bypassed by project opt-in.
+A binding provides an `AgentMemoryProvider` (capabilities, recall, submitTurn, list, get, remember,
+update, forget), optional readOnly, an account/scope isolated `outboxDirectory` and onError.
+`getAgentMemoryCapabilities()` queries that binding. Hosts use
+`getLocalProjectMemoryCapabilities({projectDir,entryId?,entrypointId?})` from `steamharness` with
+the same verified configuration snapshot as execution, or the current saved configuration. It follows
+the selected registered Agent (or a conversation wrapper's `coreAgent`) without running tools/tasks.
+Default-off, explicitly disabled and non-Agent entries never request memory authorization.
 `createServerAgentMemoryProvider({serverUrl,getGrant})` takes only short-lived scope grants, never an
 account management credential. The host resolves the real project/directory identity; model tools may
 select only global/current. Never use the assistant's fixed built-in project ID for a user's project.

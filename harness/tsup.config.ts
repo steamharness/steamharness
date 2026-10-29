@@ -43,6 +43,7 @@ export default defineConfig({
   clean: true,
   dts: {
     compilerOptions: { paths: {
+      "@steamharness/project-configuration": ["./vendor/shared/project-configuration/index.ts"],
       "@steamharness/project-manifest": ["./vendor/shared/project-manifest/index.ts"],
       "@steamharness/project-manifest/node": ["./vendor/shared/project-manifest/node.ts"],
       "@steamharness/database-spaces": ["./vendor/shared/database-spaces/index.ts"],

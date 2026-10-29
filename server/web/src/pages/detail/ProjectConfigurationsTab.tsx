@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { ArrowLeftIcon, ArrowRightLeftIcon, CheckIcon, CircleCheckIcon, ChevronRightIcon, CopyIcon, DownloadIcon, FileIcon, ImportIcon, MoreHorizontalIcon, PencilIcon, PlusIcon, RotateCcwIcon, Trash2Icon, UploadIcon, XIcon, LockIcon } from "lucide-react";
 import { useTranslation } from "@steamharness/i18n/react";
-import {applyTemplateValues, configurationCapability, configurationSnapshot, parseConfigurationField, parseConfigurationFile, validateConfigurationFileSelection, type ProjectConfigurationFile, type ConfigurationValues, type ProjectConfigurationAction, type ProjectConfigurationField, type ProjectConfigurationState, type ProjectConfigurationExport } from "@steamharness/project-configuration";
+import {AGENT_MEMORY_CONFIGURATION_KEY,applyTemplateValues, configurationCapability, configurationSnapshot, parseConfigurationField, parseConfigurationFile, validateConfigurationFileSelection, type ProjectConfigurationFile, type ConfigurationValues, type ProjectConfigurationAction, type ProjectConfigurationField, type ProjectConfigurationState, type ProjectConfigurationExport } from "@steamharness/project-configuration";
 import { apiClient } from "../../api";
 import { Alert, AlertDescription, Badge, Button, Checkbox, Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, Empty, EmptyHeader, EmptyTitle, Field, FieldDescription, FieldGroup, FieldLabel, FieldSet, FieldLegend, Input, SelectField, Separator, Skeleton, Table, TableBody, TableCell, TableHead, TableHeader, TableRow, Textarea } from "@/components/ui";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuGroup, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
@@ -12,6 +12,7 @@ import {AgentModelsInput} from "./AgentModelsInput";
 import {Tabs, TabsList, TabsTrigger, TabsContent} from "@/components/ui/tabs";
 import { formatBytes } from "../../utils/format";
 import { cn } from "@/lib/utils";
+import { Switch } from "@/components/ui/switch";
 
 function fieldValueText(field:ProjectConfigurationField, value:unknown):string {
   return value===undefined?"":field.type==="json"||field.type==="file"||field.multiple?JSON.stringify(value,null,2):String(value);
@@ -202,10 +203,10 @@ export function ProjectConfigurationsTab({project,entryId}: Pick<DetailPageProps
           const change=(value:string)=>{setValues(values=>({...values,[f.name]:value}));setSetKeys(keys=>[...new Set([...keys,f.name])]);edit();};
           const defaultValue=templateDefaults?templateDefaults[f.name]:f.defaultValue;
           const reset=()=>{setValues(values=>({...values,[f.name]:fieldValueText(f,defaultValue)}));setSetKeys(keys=>keys.filter(key=>key!==f.name));edit();};
-          const resetLabel=t(defaultValue===undefined?"configurationClearValue":"configurationRestoreDefault",{name:f.label||f.name});
+          const resetLabel=t(defaultValue===undefined?"configurationClearValue":"configurationRestoreDefault",{name:f.name===AGENT_MEMORY_CONFIGURATION_KEY?t("configurationMemory"):f.label||f.name});
           return <Field key={f.name} data-disabled={disabled} className={cn("min-w-0 gap-3 rounded-lg border p-4",(f.type==="file"||f.type==="json"||f.multiple)&&"md:col-span-2")}>
-            <div className="flex items-center gap-2"><FieldLabel htmlFor={`configuration-${f.name}`} className="min-w-0 flex-1 wrap-anywhere">{f.control==="ai-models"?t("configurationAiModels"):f.label||f.name}{f.required?" *":""}</FieldLabel>{!capability.editable&&<LockIcon aria-label={t("configurationLocked")}><title>{t("configurationLocked")}</title></LockIcon>}
-              {inlineBoolean&&<Checkbox id={`configuration-${f.name}`} disabled={disabled} checked={value==="true"} onCheckedChange={checked=>change(String(checked))}/>}
+            <div className="flex items-center gap-2"><FieldLabel htmlFor={`configuration-${f.name}`} className="min-w-0 flex-1 wrap-anywhere">{f.control==="ai-models"?t("configurationAiModels"):f.name===AGENT_MEMORY_CONFIGURATION_KEY?t("configurationMemory"):f.label||f.name}{f.required?" *":""}</FieldLabel>{!capability.editable&&<LockIcon aria-label={t("configurationLocked")}><title>{t("configurationLocked")}</title></LockIcon>}
+              {inlineBoolean&&(f.name===AGENT_MEMORY_CONFIGURATION_KEY?<Switch id={`configuration-${f.name}`} disabled={disabled} checked={value==="true"} onCheckedChange={checked=>change(String(checked))}/>:<Checkbox id={`configuration-${f.name}`} disabled={disabled} checked={value==="true"} onCheckedChange={checked=>change(String(checked))}/>)}
               {f.type!=="file"&&f.control!=="ai-models"&&<Button variant="ghost" size="icon" disabled={disabled||!set} title={resetLabel} aria-label={resetLabel} onClick={reset}><RotateCcwIcon/></Button>}
               {custom&&<div className="flex gap-1"><Button variant="ghost" size="icon" disabled={busy} title={t("configurationEditField")} aria-label={t("configurationEditField")} onClick={()=>startField(f)}><PencilIcon/></Button><Button variant="ghost" size="icon" disabled={busy} title={t("configurationDeleteField")} aria-label={t("configurationDeleteField")} onClick={()=>{if(clean())void dispatch({action:"field.delete",key:f.name});}}><Trash2Icon/></Button></div>}
             </div>
@@ -217,7 +218,7 @@ export function ProjectConfigurationsTab({project,entryId}: Pick<DetailPageProps
             :f.multiple?<Textarea id={`configuration-${f.name}`} disabled={disabled} rows={4} value={value} onChange={event=>change(event.target.value)}/>
             :inlineBoolean?null
             :<Input id={`configuration-${f.name}`} disabled={disabled} type={f.type==="number"?"number":f.secret?"password":"text"} step="any" value={value} onChange={event=>change(event.target.value)}/>}
-            {(!capability.editable||f.control!=="ai-models")&&<FieldDescription>{!capability.editable?t("configurationLocked"):f.description||f.name}</FieldDescription>}
+            {(!capability.editable||f.control!=="ai-models")&&<FieldDescription>{!capability.editable?t("configurationLocked"):f.name===AGENT_MEMORY_CONFIGURATION_KEY?t("configurationMemoryDescription"):f.description||f.name}</FieldDescription>}
           </Field>;
         })}
       </FieldGroup>}

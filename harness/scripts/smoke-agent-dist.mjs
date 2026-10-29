@@ -55,6 +55,12 @@ try {
   }
   await writeFile(path.join(temporary, "consumer.ts"), `
 import { createAgentRegistry, defineAgentTask, defineAgentExtension, type AgentNativeTool, type AgentSessionOptions } from "./dist/agent.js";
+import { AGENT_MEMORY_CONFIGURATION_KEY, AGENT_MEMORY_CONFIGURATION_FIELD, type AgentRuntimeOptions } from "./dist/index.js";
+const memoryKey: "STEAMHARNESS_AGENT_MEMORY" = AGENT_MEMORY_CONFIGURATION_KEY;
+// @ts-expect-error The public memory key retains its literal type.
+const invalidMemoryKey: number = AGENT_MEMORY_CONFIGURATION_KEY;
+const memoryDefault = AGENT_MEMORY_CONFIGURATION_FIELD.defaultValue;
+const optedIn: AgentRuntimeOptions = { memory: true };
 const task = defineAgentTask<{ value: string }, { phase: "done" }, string>({
   name: "test.typed", version: 1, initial: () => ({ phase: "done" }),
   phases: { done: async (task, runtime, context) => {
@@ -113,7 +119,7 @@ void session;
     get: async () => {}, remember: async () => {}, update: async () => {}, forget: async () => {},
   } }, () => createAgent({ provider: 'openai', model: 'dist-smoke', baseUrl: `http://127.0.0.1:${address.port}/v1`,
     apiKey: 'offline-fixture', apiKind: 'openai-completions', contextWindow: 8192, workdir: temporary,
-    databasePath: path.join(temporary, 'memory-agent.sqlite'), tools: [] }));
+    memory: true, databasePath: path.join(temporary, 'memory-agent.sqlite'), tools: [] }));
   try { for await (const _event of memoryAgent.run({ prompt: 'A persisted user memory turn', requestId: 'memory-dist' })) { /* Drain. */ } }
   finally { await memoryAgent.close(); }
   assert.match(systemPrompt, /# Account memory/); assert.match(systemPrompt, /DIST_MEMORY_SENTINEL/);

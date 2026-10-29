@@ -169,7 +169,7 @@ export function createMemoryPanel(options: {
     clear.disabled = pending || !writable || !scope;
     enabled.disabled = pending || !available || caps?.readOnly;
     automatic.disabled = enabled.disabled || !prefs.enabled;
-    scopes.disabled = origins.disabled = search.disabled = pending || (!available && layout.hidden);
+    scopes.disabled = origins.disabled = search.disabled = pending || (!available && !!layout.hidden);
   };
   function showUnavailable(key: MemoryTextKey) {
     available = false;

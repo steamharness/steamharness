@@ -48,7 +48,9 @@ it('loads user models through the host and worker without project configuration,
     expect(resolution.params.model.resolvedOptions).toEqual([{ value: 'first', label: 'User first', description: 'actual-one' }]);
     await post({ type: 'send', text: 'First', params: {}, attachments: [] }); await app.controller.idle();
     expect(app.controller.current.messages.at(-1)).toMatchObject({ status: 'success', content: 'Answer actual-one', model: 'User first' });
-    const updated: import('steamharness').UserSettings = { agent: { permissionPolicy: 'auto', models: [{ ...settings.agent.models![0], model: 'actual-two', apiKey: 'test-only-next-key' }] } };
+    const selectedModel = settings.agent.models![0];
+    if (selectedModel.source !== 'third-party') throw new Error('Expected the third-party fixture model.');
+    const updated: import('steamharness').UserSettings = { agent: { permissionPolicy: 'auto', models: [{ ...selectedModel, model: 'actual-two', apiKey: 'test-only-next-key' }] } };
     await app.setHostUserSettings(updated);
     await post({ type: 'send', text: 'Second', params: {}, attachments: [] }); await app.controller.idle();
     expect(app.controller.current.messages.at(-1)).toMatchObject({ status: 'success', content: 'Answer actual-two' });

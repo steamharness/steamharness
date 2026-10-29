@@ -40,7 +40,7 @@ it('lists and previews the selected agent through the real worker and authentica
   await mkdir(path.join(root, 'child/guides/child'), { recursive: true });
   await writeFile(path.join(root, 'child/guides/child/SKILL.md'), '---\nname: child\n---\nChild entry guide');
   await writeFile(path.join(root, 'child/index.ts'), `
-    const agent = steamharness.createAgentConversationProject({ skills: { directories: ['guides'] } });
+    const agent = steamharness.createAgentConversationProject({ memory: true, skills: { directories: ['guides'] } });
     const wrapper = steamharness.defineProject({ name: 'wrapper', async run() { throw new Error('Preview must not run the wrapper'); } });
     export const executor = steamharness.defineExecutor({ projectType: 'conversation', workflow: wrapper, coreAgent: agent, createInput() { return {}; } });
   `);
@@ -91,6 +91,10 @@ it('lists and previews the selected agent through the real worker and authentica
     await expect(runtime.readSkill!(workflow, 'project:child', 'plain')).rejects.toThrow('does not declare');
     connection = { serverUrl: 'http://127.0.0.1:1', accessToken: 'project-test', memoryToken: 'shma_host-test' };
     const disabled = { ...inspection.projects.find(project => project.entryId === 'disabled')!, uri: 'file:///disabled' };
+    const ordinary = { ...inspection.projects.find(project => project.entryId === 'main')!, uri: 'file:///main' };
+    await expect(runtime.memoryCapabilities!(ordinary)).resolves.toMatchObject({ connected: false, enabled: false });
+    const blocked=await fetch(`${app.origin}/api/memory`,{method:'POST',headers:{Authorization:`Bearer ${token}`,'Content-Type':'application/json'},body:JSON.stringify({action:'list'})});
+    expect(blocked.status).toBe(403);
     await expect(runtime.memoryCapabilities!(disabled)).resolves.toMatchObject({ connected: false, enabled: false });
     await expect(runtime.memoryCapabilities!(workflow)).resolves.toMatchObject({ connected: false, enabled: false });
     // An enabled Agent does contact the host; the closed server above is deliberate.

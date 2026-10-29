@@ -5,6 +5,7 @@ import { randomUUID } from "node:crypto";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { estimateAgentTokens } from "../agent/compaction";
+import { AGENT_MEMORY_CONFIGURATION_KEY, createLocalProjectConfigurationStore, withProjectConfiguration } from "../configuration";
 import { getLocalProjectMemoryCapabilities } from "../executor/index";
 import {
   createAgentMemoryTool,
@@ -13,6 +14,7 @@ import {
   flushAgentMemoryOutbox,
   withAgentMemory,
   getAgentMemoryBinding,
+  resolveAgentMemoryBinding,
   createServerAgentMemoryProvider,
   type AgentMemoryProvider,
 } from "../agent/memory";
@@ -64,7 +66,7 @@ test("entry capabilities follow the selected Core Agent binding without executin
   const root = await mkdtemp(path.join(tmpdir(), "memory-entry-"));
   try {
     await writeFile(path.join(root, "package.json"), JSON.stringify({ type: "module" }));
-    const entries = ["inherited", "disabled", "wrapped", "plain"];
+    const entries = ["inherited", "enabled", "disabled", "wrapped", "plain"];
     await writeFile(path.join(root, "steamharness.json"), JSON.stringify({
       id: randomUUID(), name: "Memory entry capabilities", version: "1.0.0", defaultEntry: "inherited",
       entries: entries.map(entryId => ({ entryId, root: entryId })),
@@ -78,7 +80,7 @@ test("entry capabilities follow the selected Core Agent binding without executin
       const wrapped = entryId === "wrapped";
       await writeFile(path.join(root, entryId, "index.ts"), `
         const agent = steamharness.createAgentConversationProject({
-          ${entryId === "disabled" ? "memory: false," : ""}
+          ${entryId === "disabled" ? "memory: false," : entryId === "enabled" || wrapped ? "memory: true," : ""}
           createTools() { throw new Error('Inspection must not invoke tool factories'); }
         });
         const wrapper = steamharness.defineProject({ name: 'wrapper', async run() { throw new Error('Inspection must not run tasks'); } });
@@ -93,16 +95,49 @@ test("entry capabilities follow the selected Core Agent binding without executin
       queries++;
       return { connected: true, enabled: true, status: "ready", automatic: true, readOnly: false, scopes: ["global"] };
     } });
+    const capabilities = async (entryId?: string) => {
+      const store = await createLocalProjectConfigurationStore(root, { entryId, rootDir: path.join(root, "profiles") });
+      return withProjectConfiguration(await store.snapshot({required:false}), () => getLocalProjectMemoryCapabilities({projectDir:root,entryId}));
+    };
     await withAgentMemory({ provider: p }, async () => {
-      for (const entryId of ["disabled", "plain"])
-        assert.equal((await getLocalProjectMemoryCapabilities({ projectDir: root, entryId })).connected, false);
+      for (const entryId of ["inherited", "disabled", "plain"])
+        assert.equal((await capabilities(entryId)).connected, false);
       assert.equal(queries, 0, "disabled and non-Agent entries never contact the host provider");
-      for (const entryId of ["inherited", "wrapped"])
-        assert.equal((await getLocalProjectMemoryCapabilities({ projectDir: root, entryId })).enabled, true);
+      for (const entryId of ["enabled", "wrapped"])
+        assert.equal((await capabilities(entryId)).enabled, true);
       assert.equal(queries, 2);
+      const snapshot = (enabled: boolean) => ({id:"test",name:"Test",revision:1,values:{[AGENT_MEMORY_CONFIGURATION_KEY]:enabled}});
+      await withProjectConfiguration(snapshot(false), async () => {
+        assert.equal((await getLocalProjectMemoryCapabilities({projectDir:root,entryId:"enabled"})).enabled,false);
+      });
+      assert.equal(queries,2,"project opt-out does not contact the host");
+      await withProjectConfiguration(snapshot(true), async () => {
+        assert.equal((await getLocalProjectMemoryCapabilities({projectDir:root,entryId:"inherited"})).enabled,true);
+        assert.equal((await getLocalProjectMemoryCapabilities({projectDir:root,entryId:"disabled"})).enabled,false);
+      });
+      assert.equal(queries,3);
     });
-    assert.equal((await getLocalProjectMemoryCapabilities({ projectDir: root })).enabled, false);
+    assert.equal((await capabilities()).enabled, false);
   } finally { await rm(root, { recursive: true, force: true }); }
+});
+test("project opt-in never creates a provider and explicit runtime opt-out wins", async () => {
+  const binding = {provider:provider()};
+  const snapshot = (value: unknown) => ({id:"test",name:"Test",revision:1,values:{[AGENT_MEMORY_CONFIGURATION_KEY]:value as boolean}});
+  await withAgentMemory(binding, async () => {
+    assert.equal(resolveAgentMemoryBinding(),false);
+    assert.equal(resolveAgentMemoryBinding(true),binding);
+    assert.equal(resolveAgentMemoryBinding(binding),binding);
+    for(const value of [false,"true",1]) withProjectConfiguration(snapshot(value),()=>{
+      assert.equal(resolveAgentMemoryBinding(true),false);
+      assert.equal(resolveAgentMemoryBinding(binding),false);
+    });
+    withProjectConfiguration(snapshot(true),()=>{
+      assert.equal(resolveAgentMemoryBinding(),binding);
+      assert.equal(resolveAgentMemoryBinding(false),false);
+    });
+  });
+  assert.equal(resolveAgentMemoryBinding(true),false);
+  assert.equal(withProjectConfiguration(snapshot(true),()=>resolveAgentMemoryBinding()),false);
 });
 test("recall budgets CJK content and replaces empty/deleted records each run", async () => {
   let removed = false;

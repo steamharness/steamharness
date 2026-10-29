@@ -8,7 +8,7 @@ import { createServer } from "node:http";
 import { createHash } from "node:crypto";
 import { createPiRuntime } from "../agent/pi";
 import { defineAgentConversationExecutor } from "../agent/project";
-import { AGENT_MODELS_CONFIGURATION_FIELD, AGENT_MODELS_CONFIGURATION_KEY as key, configurationTemplatePath, cacheVerifiedConfigurationTemplate, createConfigurationState, createPublicationDraft, freezeConfigurationTemplate, createLocalProjectConfigurationStore, readProjectConfigurationDefinition, withProjectConfiguration } from "../configuration";
+import { AGENT_MEMORY_CONFIGURATION_KEY, AGENT_MODELS_CONFIGURATION_FIELD, AGENT_MODELS_CONFIGURATION_KEY as key, configurationTemplatePath, cacheVerifiedConfigurationTemplate, createConfigurationState, createPublicationDraft, freezeConfigurationTemplate, createLocalProjectConfigurationStore, readProjectConfigurationDefinition, withProjectConfiguration } from "../configuration";
 import { createAgentProjectParamResolver } from "../agent/system-llm";
 import { resolveAgentSystemAIInput } from "../agent/node";
 
@@ -135,7 +135,7 @@ test("static Agent discovery adds the first configuration field without executin
     await writeFile(path.join(root, "index.ts"), 'throw new Error("must never execute");\nexport const resolver = steamharness.createAgentProjectParamResolver();');
     await mkdir(path.join(root, "__tests__"));
     await writeFile(path.join(root, "configuration.json"), JSON.stringify({ version: 1, fields: [{ name: "title", type: "string" }] }));
-    assert.deepEqual(readProjectConfigurationDefinition(root).fields.map(field => field.name), [key, "title"]);
+    assert.deepEqual(readProjectConfigurationDefinition(root).fields.map(field => field.name), [key, AGENT_MEMORY_CONFIGURATION_KEY, "title"]);
     const store = await configurationFixtureStore(root, { rootDir: path.join(root, ".configurations") });
     assert.equal((await store.read()).fields[0]!.control, "ai-models");
     assert.deepEqual((await store.snapshot()).values[key], []);

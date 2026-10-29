@@ -1,7 +1,7 @@
 import {act,fireEvent,render as renderPage,screen,waitFor} from "@testing-library/react";
 import {afterEach,beforeEach,expect,it,vi} from "vitest";
 import {i18n} from "@steamharness/i18n/react";
-import {applyConfigurationAction,bindConfigurationProfiles,configurationAccessView,bindConfigurationTemplate,configurationSnapshot,createPublicationDraft,freezeConfigurationTemplate,createConfigurationState} from "@steamharness/project-configuration";
+import {AGENT_MEMORY_CONFIGURATION_FIELD,AGENT_MEMORY_CONFIGURATION_KEY,applyConfigurationAction,bindConfigurationProfiles,configurationAccessView,bindConfigurationTemplate,configurationSnapshot,createPublicationDraft,freezeConfigurationTemplate,createConfigurationState} from "@steamharness/project-configuration";
 import {apiClient} from "../../../api";
 import {ProjectConfigurationsTab} from "../ProjectConfigurationsTab";
 import type {Summary} from "../../../types";
@@ -371,4 +371,18 @@ it("withdraws Build details after a role downgrade while preserving the editing 
  expect(screen.queryByRole("button",{name:"Add field"})).toBeNull();
  role="developer";
  await waitFor(()=>expect(screen.getByLabelText("model")).toHaveValue("draft model"),{timeout:4000});
+});
+
+
+it.each([['en','Project memory'],['zh-CN','项目记忆']])('saves project memory from the localized switch in %s',async(locale,label)=>{
+ await i18n.changeLanguage(locale);
+ let state=createConfigurationState([AGENT_MEMORY_CONFIGURATION_FIELD],()=> 'memory-profile');
+ const service=vi.spyOn(apiClient,'projectConfigurations').mockImplementation(async(_id,call)=>ok(call.action==='get'?state:(state=applyConfigurationAction(state,call,()=> 'unused'))));
+ const view=renderPage(<ProjectConfigurationsTab entryId="main" project={project}/>);
+ fireEvent.click(await screen.findByRole('button',{name:'Default'}));
+ const toggle=await screen.findByRole('switch',{name:label});expect(toggle).not.toBeChecked();
+ fireEvent.click(toggle);fireEvent.click(screen.getByRole('button',{name:locale==='en'?'Save':'保存'}));
+ await waitFor(()=>expect(service).toHaveBeenLastCalledWith('project-a',expect.objectContaining({action:'save',values:{[AGENT_MEMORY_CONFIGURATION_KEY]:true}}),'draft','main'));
+ await waitFor(()=>expect(state.configurations[0]!.values[AGENT_MEMORY_CONFIGURATION_KEY]).toBe(true));
+ view.unmount();
 });

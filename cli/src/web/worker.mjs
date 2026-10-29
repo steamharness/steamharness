@@ -100,8 +100,9 @@ try {
   const { readProjectInfo, readProjectCardMetadata, resolveProjectName, runKanbanDataCall } = await import(new URL(import.meta.url.includes('/src/web/') ? './kanban-data.ts' : './kanban-data.mjs', import.meta.url));
   if(request.method==='memory-capabilities'){
     try{
+      const configuration = await (await core.createLocalProjectConfigurationStore(projectDir, {entryId:request.project.entryId})).snapshot({configuration:request.configuration,required:false});
       send('result',typeof core.getLocalProjectMemoryCapabilities==='function'
-        ?await core.getLocalProjectMemoryCapabilities({projectDir:request.project.folderPath,entryId:request.project.entryId,entrypointId:request.entrypointId})
+        ?await core.withProjectConfiguration(configuration,()=>core.getLocalProjectMemoryCapabilities({projectDir:request.project.folderPath,entryId:request.project.entryId,entrypointId:request.entrypointId}))
         :{connected:false,enabled:false,status:'unconfigured',automatic:false,readOnly:true,scopes:[]});
     }catch(error){throw Object.assign(error,{metadata:{...error.metadata,status:error.status??error.metadata?.status}});}
     return;
@@ -358,12 +359,11 @@ try {
   const getMemoryGrant=()=>memoryGrant&&Date.parse(memoryGrant.expiresAt)>Date.now()+30000?Promise.resolve(memoryGrant):new Promise((resolve,reject)=>{const id=crypto.randomUUID();const timer=setTimeout(()=>{memoryPending.delete(id);reject(new Error('Memory authorization timed out.'));},5000);memoryPending.set(id,{resolve:grant=>{memoryGrant=grant;resolve(grant);},reject,timer});process.send?.({type:'memory-grant',id});});
   let memoryBinding=false;
   if(request.memoryAvailable&&['run','memory-capabilities'].includes(request.method)&&core.createServerAgentMemoryProvider&&core.withAgentMemory){
-    if(request.method==='memory-capabilities'){
-      // Resolve the entry first: disabled/non-Agent entries must not request a grant.
-      memoryBinding={provider:{capabilities:async()=>{const grant=await getMemoryGrant();return core.createServerAgentMemoryProvider({serverUrl:grant.serverUrl,getGrant:getMemoryGrant}).capabilities();}}};
-    }else{
-      try{const grant=await getMemoryGrant();memoryBinding={provider:core.createServerAgentMemoryProvider({serverUrl:grant.serverUrl,getGrant:getMemoryGrant}),outboxDirectory:grant.outboxDirectory,onError:()=>send('event',{type:'runtime_log',text:/^zh/i.test(process.env.STEAMHARNESS_RUNTIME_LOCALE??'')?'账号记忆暂时不可用。\n':'Account memory is temporarily unavailable.\n',runId:request.runId})};}catch{send('event',{type:'runtime_log',text:/^zh/i.test(process.env.STEAMHARNESS_RUNTIME_LOCALE??'')?'账号记忆授权暂时不可用。\n':'Account memory authorization is unavailable.\n',runId:request.runId});}
-    }
+    // Only an opted-in Agent may request a grant, including during execution.
+    // Populate its outbox before capabilities resolve and Core captures the binding.
+    let provider;
+    const loadProvider=async()=>{const grant=await getMemoryGrant();memoryBinding.outboxDirectory=grant.outboxDirectory;return provider??=core.createServerAgentMemoryProvider({serverUrl:grant.serverUrl,getGrant:getMemoryGrant});};
+    memoryBinding={provider:Object.fromEntries(['capabilities','recall','submitTurn','list','get','remember','update','forget'].map(method=>[method,async(...args)=>(await loadProvider())[method](...args)])),onError:()=>send('event',{type:'runtime_log',text:/^zh/i.test(process.env.STEAMHARNESS_RUNTIME_LOCALE??'')?'账号记忆暂时不可用。\n':'Account memory is temporarily unavailable.\n',runId:request.runId})};
   }
   await (core.withAgentMemory?core.withAgentMemory(memoryBinding,()=>withSettings(execute)):withSettings(execute));
 } catch (error) {

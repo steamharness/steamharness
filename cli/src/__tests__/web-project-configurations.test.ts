@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import {afterEach,beforeEach,expect,it,vi} from 'vitest';
-import {bindConfigurationProfiles,configurationAccessView,AGENT_MODELS_CONFIGURATION_FIELD,AGENT_MODELS_CONFIGURATION_KEY,createConfigurationState,bindConfigurationTemplate,createPublicationDraft,freezeConfigurationTemplate,applyConfigurationAction,type ProjectConfigurationState} from '@steamharness/project-configuration';
+import {AGENT_MEMORY_CONFIGURATION_FIELD,AGENT_MEMORY_CONFIGURATION_KEY,bindConfigurationProfiles,configurationAccessView,AGENT_MODELS_CONFIGURATION_FIELD,AGENT_MODELS_CONFIGURATION_KEY,createConfigurationState,bindConfigurationTemplate,createPublicationDraft,freezeConfigurationTemplate,applyConfigurationAction,type ProjectConfigurationState} from '@steamharness/project-configuration';
 import {readFileSync} from 'node:fs';
 import path from 'node:path';
 import {mountProjectConfigurations,projectConfigurationsButton,type ProjectConfigurationsPanel} from '../web/ui/project-configurations';
@@ -428,4 +428,18 @@ it('hides a restricted detail on role downgrade and restores its untouched editi
  message({type:'state',configurations:configurationAccessView(raw,access)});
  expect(document.querySelector<HTMLElement>('#configuration-values-panel')!.hidden).toBe(false);
  expect(title().value).toBe('saved draft');
+});
+
+
+it('shows project memory as an accessible switch and saves explicit opt-in and opt-out',async()=>{
+ state=createConfigurationState([AGENT_MEMORY_CONFIGURATION_FIELD],()=> 'memory-profile');
+ await openPanel();
+ let toggle=document.querySelector<HTMLInputElement>('[role=switch][aria-label="Project memory"]')!;
+ expect(toggle.checked).toBe(false);
+ expect(document.body.textContent).toContain('Changes apply to the next run');
+ toggle.checked=true;toggle.dispatchEvent(new Event('change'));button('Save').click();await settle();
+ expect(state.configurations[0]!.values[AGENT_MEMORY_CONFIGURATION_KEY]).toBe(true);
+ toggle=document.querySelector<HTMLInputElement>('[role=switch][aria-label="Project memory"]')!;
+ toggle.checked=false;toggle.dispatchEvent(new Event('change'));button('Save').click();await settle();
+ expect(state.configurations[0]!.values[AGENT_MEMORY_CONFIGURATION_KEY]).toBe(false);
 });

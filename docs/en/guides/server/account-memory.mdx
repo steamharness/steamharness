@@ -7,6 +7,9 @@ description: "Save, recall, inspect and forget private preferences and project d
 
 Server stores account memory across devices. Studio and Server Web expose it under **Settings → Memory**. CLI Web exposes **Project information → Global memory**, restricted to personal global and the current project or directory. Core capabilities determine whether this tab exists: disconnected or disabled memory is hidden; temporary outages retain an error state.
 
+Ordinary projects default to memory off; the built-in Assistant opts in. Open the current configuration under **Project information → Project configurations**, change **Project memory** and save. The next run uses this setting for global/current recall, saving and tools. Turning it off retains existing records, which remain manageable in account settings. The account switch is separate and must also allow memory.
+
+
 ## Use and privacy
 
 - Personal global memory contains explicit lasting preferences, including instructions about response language and style across projects, whether upstream classifies them as `persona` or `instruction`. Project conventions and decisions stay in personal project memory. Project-only instructions and uncertain facts are never promoted to global.

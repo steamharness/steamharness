@@ -888,8 +888,14 @@ async function startProjectWebServer(options: WebOptions, credentials: { capabil
         if (!authMatches(value) && !authMatches(bearer) && !authMatches(readSession)) { json(response, 401, { message: 'Open the URL printed by steamharness web.' }); return; }
         if (url.pathname === '/api/memory' && request.method === 'POST') {
           response.setHeader('Cache-Control','no-store');const input=await readBody(request);const epoch=authEpoch;
-          try{const data=input.action==='capabilities'&&runtime.memoryCapabilities?await runtime.memoryCapabilities(project):await memory.call(project,String(input.action),input.input);if(epoch!==authEpoch){json(response,409,{errCode:409,errMessage:'Account changed.'});return;}json(response,200,{errCode:0,errMessage:'',data});}
-          catch(error){json(response,503,{errCode:503,errMessage:(error as Error).message});}return;
+          try{
+            const capabilities=await runtime.memoryCapabilities?.(project);
+            if(epoch!==authEpoch)throw Object.assign(new Error('Account changed.'),{status:409});
+            if(input.action!=='capabilities'&&!capabilities?.enabled)throw Object.assign(new Error(t('Memory is disabled for this project.')),{status:403});
+            const data=input.action==='capabilities'?capabilities??{connected:false,enabled:false,status:'unconfigured',automatic:false,readOnly:true,scopes:[]}:await memory.call(project,String(input.action),input.input);
+            if(epoch!==authEpoch)throw Object.assign(new Error('Account changed.'),{status:409});
+            json(response,200,{errCode:0,errMessage:'',data});
+          }catch(error){const status=Number((error as {status?:number}).status)||503;json(response,status,{errCode:status,errMessage:(error as Error).message});}return;
         }
         if (url.pathname === '/api/session' && request.method === 'GET') { json(response, 200, { connected: true }); return; }
         if (url.pathname === '/api/resource-state' && request.method === 'GET') { json(response, 200, { type: 'state', project: { id: project.id, entryId: project.entryId }, authenticationRevision: authRevision, resourceRevision: resources.revision }); return; }

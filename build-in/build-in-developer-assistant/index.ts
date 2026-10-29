@@ -33,6 +33,7 @@ const toolApproval = steamharness.createToolApprovalGate();
  * at, the persona that workspace implies, and the capabilities Studio offers.
  */
 const assistantProject = steamharness.createAgentConversationProject({
+  memory: true,
   modelSource: "user-settings",
   executorName: STEAMHARNESS_NAME,
   outputItemId: OUTPUT_ITEM_ID,

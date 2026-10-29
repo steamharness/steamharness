@@ -1,9 +1,12 @@
 import { t } from '../localization';
 import { iconButton, iconHtml, updateIcon } from './ui';
 import { requestAction } from './action-dialog';
-import { AGENT_MODELS_CONFIGURATION_KEY,applyTemplateValues,configurationCapability,configurationSnapshot,configurationPointerPart,createPublicationDraft,freezeConfigurationTemplate,type ConfigurationPublicationDraft, parseConfigurationField, parseConfigurationFile, validateConfigurationFileSelection, type ProjectConfigurationFile, type ProjectConfigurationAction, type ProjectConfigurationField, type ProjectConfigurationState, type ConfigurationValues } from '@steamharness/project-configuration';
+import { AGENT_MEMORY_CONFIGURATION_KEY,AGENT_MEMORY_CONFIGURATION_FIELD,AGENT_MODELS_CONFIGURATION_KEY,applyTemplateValues,configurationCapability,configurationSnapshot,configurationPointerPart,createPublicationDraft,freezeConfigurationTemplate,type ConfigurationPublicationDraft, parseConfigurationField, parseConfigurationFile, validateConfigurationFileSelection, type ProjectConfigurationFile, type ProjectConfigurationAction, type ProjectConfigurationField, type ProjectConfigurationState, type ConfigurationValues } from '@steamharness/project-configuration';
 import './project-configurations.css';
 import { createAgentModelsControl } from './agent-models';
+
+const fieldLabel = (field: ProjectConfigurationField) => field.control === 'ai-models' ? t('AI models') : field.name === AGENT_MEMORY_CONFIGURATION_KEY ? t('Project memory') : field.label || field.name;
+const fieldDescription = (field: ProjectConfigurationField) => field.name === AGENT_MEMORY_CONFIGURATION_KEY ? t(AGENT_MEMORY_CONFIGURATION_FIELD.description!) : field.description ?? field.name;
 
 type Host = { postMessage(message: Record<string, unknown>): void };
 export interface ProjectConfigurationsPanel {
@@ -390,9 +393,9 @@ export function mountProjectConfigurations(host: Host, embedded?: { open(): void
     const table=publicationTable(['Configuration fields','Publish field','Include value','Allow user edits']);table.ariaLabel=t('Publication and permissions');
     const columns=[['publish','Publish field'],['includeValue','Include value'],['editable','Allow user edits']]as const;
     for(const field of publication.fields){
-      const group=table.createTBody(),row=group.insertRow(),name=document.createElement('th');name.scope='row';name.textContent=field.control==='ai-models'?t('AI models'):field.label||field.name;row.append(name);
+      const group=table.createTBody(),row=group.insertRow(),name=document.createElement('th');name.scope='row';name.textContent=fieldLabel(field);row.append(name);
       for(const [key,label]of columns){
-        const cell=row.insertCell(),check=document.createElement('input');check.type='checkbox';check.ariaLabel=`${field.control==='ai-models'?t('AI models'):field.label||field.name}: ${t(label)}`;check.checked=({publish:true,includeValue:false,editable:true,...field.sharing})[key];
+        const cell=row.insertCell(),check=document.createElement('input');check.type='checkbox';check.ariaLabel=`${fieldLabel(field)}: ${t(label)}`;check.checked=({publish:true,includeValue:false,editable:true,...field.sharing})[key];
         check.onchange=()=>{field.sharing={...field.sharing,[key]:check.checked};publicationEdited();};cell.append(check);
       }
       if(field.type==='json'){
@@ -480,7 +483,7 @@ export function mountProjectConfigurations(host: Host, embedded?: { open(): void
     for (const field of [...next.fields].sort((a,b)=>Number(b.control==='ai-models')-Number(a.control==='ai-models'))) {
       const row=document.createElement('section'); row.className='configuration-field'; const fieldHeading=document.createElement('div'); fieldHeading.className='configuration-field-heading';
       row.tabIndex=-1;fieldRows.set(field.name,row);
-      const title=document.createElement('label'); title.htmlFor=`configuration-field-${field.name}`; title.textContent=(field.control==='ai-models'?t('AI models'):field.label || field.name)+(field.required?' *':''); fieldHeading.append(title); row.append(fieldHeading);
+      const title=document.createElement('label'); title.htmlFor=`configuration-field-${field.name}`; title.textContent=(fieldLabel(field))+(field.required?' *':''); fieldHeading.append(title); row.append(fieldHeading);
       const controls=document.createElement('div'); controls.className='configuration-field-actions'; fieldHeading.append(controls);
       if (next.capabilities?.manageConfigurations!==false && next.customFields.some(f=>f.name===field.name)) {
         const remove=iconButton('trash',t('Delete field'),()=>{if(clean())void dispatch({action:'field.delete',key:field.name});}); remove.dataset.action='delete';
@@ -504,20 +507,21 @@ export function mountProjectConfigurations(host: Host, embedded?: { open(): void
         row.append(jsonObjectControl(field,value,next,()=>input));
       }
       input.disabled=!capability.editable && !(field.type==='json' && Object.keys(field.paths??{}).some(pointer=>configurationCapability(next,field,pointer).editable));
-      input.id=title.htmlFor; input.ariaLabel=field.label||field.name;
+      input.id=title.htmlFor; input.ariaLabel=fieldLabel(field);
       input.oninput=()=>changed(field.name); input.onchange=()=>changed(field.name);
-      const reset=iconButton('discard',t(defaults[field.name]===undefined?'Clear value for {0}':'Restore default for {0}',field.label||field.name),()=>{
+      const reset=iconButton('discard',t(defaults[field.name]===undefined?'Clear value for {0}':'Restore default for {0}',fieldLabel(field)),()=>{
         const value=defaults[field.name];
         if(input instanceof HTMLSelectElement) {if(field.multiple)for(const option of input.options)option.selected=Array.isArray(value)&&value.includes(option.value);else input.value=value===undefined?'':String(value);}
         else if(input instanceof HTMLInputElement&&field.type==='boolean')input.checked=value===true;
         else input.value=value===undefined?'':field.type==='json'||field.multiple?JSON.stringify(value,null,2):String(value);
         overrides.delete(field.name);changed();input.focus();
       }); if(!capability.editable)reset.disabled=true;resets.set(field.name,reset);controls.prepend(reset);
-      const control=document.createElement('div'); control.className='configuration-field-control'; control.append(input); row.append(control);
+      const control=document.createElement('div'); control.className='configuration-field-control'; control.append(input);
+      if(field.name===AGENT_MEMORY_CONFIGURATION_KEY){input.setAttribute('role','switch');input.classList.add('configuration-memory-switch');fieldHeading.insertBefore(input,controls);}else row.append(control);
       if (field.secret && input instanceof HTMLInputElement && input.type==='password') {
         const reveal=iconButton('eye',t('Show sensitive values'),()=>{const hidden=input.type==='password'; input.type=hidden?'text':'password'; updateIcon(reveal,hidden?'eye-closed':'eye'); reveal.title=reveal.ariaLabel=t(hidden?'Hide sensitive values':'Show sensitive values'); reveal.ariaPressed=String(hidden);}); reveal.ariaPressed='false'; control.classList.add('configuration-secret'); control.append(reveal);
       }
-      const help=document.createElement('small'); help.textContent=field.description??field.name; row.append(help);
+      const help=document.createElement('small'); help.textContent=fieldDescription(field); row.append(help);
       fields.append(row);
     }
     updateActions();

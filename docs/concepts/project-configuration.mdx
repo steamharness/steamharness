@@ -54,6 +54,12 @@ Studio、独立 CLI 与 CLI Web 共用本机用户级配置存储，严格按 `p
 
 导入默认新增配置、重新生成 ID 并保留当前选择。未存在的字段添加为自定义字段；同名字段类型、多选属性、选项或文件类型限制冲突、未知字段值、无效类型、无效 JSON 或超过 1 MiB 的请求会整批拒绝，不留下部分字段或配置。妥善保管含敏感值的导出文件。
 
+## 项目记忆
+
+Core Agent 项目自动展示“项目记忆”开关（`STEAMHARNESS_AGENT_MEMORY`，布尔值）。普通项目默认关闭，内置小助手默认开启；修改当前配置并保存，从下一次执行生效。关闭同时停止账号全局与当前项目／目录的召回、自动保存和原生工具，并隐藏全局记忆分页，已有记忆保留。账号设置中的总开关及服务授权继续生效，项目开关不能绕过它们。
+
+项目可以在 Agent 选项中显式声明 `memory: true` 提供开启默认值；配置值优先，`memory: false` 则始终关闭该 Agent。声明字段、发布模板与角色锁定沿用本页规则。不可被静态识别的封装可在 `configuration.json` 声明 `{ "name": "STEAMHARNESS_AGENT_MEMORY", "type": "boolean", "label": "Project memory", "defaultValue": false }`。参见[账号记忆 API](/core-api/account-memory)。
+
 ## Agent 模型列表
 
 Core Agent 的模型有两种模式：Studio 默认使用设置中的全部内置／自定义模型，项目配置不展示“AI 模型”，也不提供设置模型引用。显式 `modelSource: "project"` 始终使用项目配置；默认或 `modelSource: "user-settings"` 在独立 CLI Web 中自动退化为此模式。项目模式在配置详情第一项展示“AI 模型”，添加／编辑弹窗仅提供“系统 AI”和“第三方 AI”两种来源。取消或按 Escape 只放弃本次模型编辑并恢复焦点。

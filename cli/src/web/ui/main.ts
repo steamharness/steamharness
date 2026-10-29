@@ -584,7 +584,7 @@ function initialize(): void {
     textarea.disabled = readOnly() || busy() && !pendingSend();
     entrypoint.disabled = busy() || parametersLoading();
     document.querySelector<HTMLButtonElement>('#new')!.disabled = false;
-    dialogs.updatePermissions?.();
+    dialogs.updatePermissions?.(state?.parameterRevision);
     const waiting = currentSession()?.messages.some((message) => message.pendingInput);
     app.dataset.runState = state.running ? 'running' : waiting ? 'waiting' : submitting || pendingSend() ? 'submitting' : 'idle';
     const attach = document.querySelector<HTMLButtonElement>('#attach')!;

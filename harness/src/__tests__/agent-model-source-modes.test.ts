@@ -4,7 +4,7 @@ import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { declareConfigurationFixture, configurationFixtureId } from "./configuration-fixture";
-import { AGENT_MODELS_CONFIGURATION_FIELD, AGENT_MODELS_CONFIGURATION_KEY as key, cacheVerifiedConfigurationTemplate,
+import { AGENT_MEMORY_CONFIGURATION_KEY, AGENT_MODELS_CONFIGURATION_FIELD, AGENT_MODELS_CONFIGURATION_KEY as key, cacheVerifiedConfigurationTemplate,
   configurationTemplatePath, createConfigurationState, createLocalProjectConfigurationStore, createPublicationDraft,
   freezeConfigurationTemplate, projectUsesConfiguredAgentModels, readProjectConfigurationDefinition, withProjectConfiguration } from "../configuration";
 import { withUserSettings, type UserSettings } from "../user-settings";
@@ -65,16 +65,16 @@ test("host configuration views omit project AI while preserving saved models for
     for (const models of [[user], []]) {
       host = settings(models);
       state = await store.read();
-      assert.deepEqual(state.fields.map(field => field.name), ["title"]);
+      assert.deepEqual(state.fields.map(field => field.name), [AGENT_MEMORY_CONFIGURATION_KEY, "title"]);
       assert.ok(!JSON.stringify(state).includes("fixture-project-key"));
       assert.equal((await store.snapshot()).values[key], undefined);
       assert.equal((await store.snapshot({ runId: "cli-run" })).values[key], undefined);
       assert.equal((await store.snapshot({ configuration: frozen })).values[key], undefined);
-      assert.deepEqual(withUserSettings(host, () => readProjectConfigurationDefinition(directory)).fields.map(field => field.name), ["title"]);
+      assert.deepEqual(withUserSettings(host, () => readProjectConfigurationDefinition(directory)).fields.map(field => field.name), [AGENT_MEMORY_CONFIGURATION_KEY, "title"]);
     }
     state = await store.dispatch({ action: "save", id: state.activeConfigurationId, revision: state.revision, values: { title: "Updated" } }) as typeof state;
     host = settings();
-    assert.deepEqual((await store.snapshot()).values, { [key]: [project], title: "Updated" });
+    assert.deepEqual((await store.snapshot()).values, { [AGENT_MEMORY_CONFIGURATION_KEY]:false, [key]: [project], title: "Updated" });
     assert.deepEqual((await store.snapshot({ runId: "cli-run" })).values, frozen.values);
     assert.equal((await store.read()).fields[0]?.name, key);
   } finally { await rm(directory, { recursive: true, force: true }); }
@@ -139,10 +139,34 @@ test("each registered entry discovers its own model mode and imported Agent decl
     const options = { rootDir: path.join(directory, ".profiles"), userSettings: () => settings([]) };
     const main = await createLocalProjectConfigurationStore(directory, options);
     const explicit = await createLocalProjectConfigurationStore(directory, { ...options, entryId: "project-agent" });
-    assert.deepEqual((await main.read()).fields, []);
+    assert.deepEqual((await main.read()).fields.map(f=>f.name), [AGENT_MEMORY_CONFIGURATION_KEY]);
     assert.equal((await explicit.read()).fields[0]?.name, key);
     await writeFile(path.join(directory, "project-agent.ts"), "steamharness.createAgentNode({modelSource:'user-settings'});");
-    assert.deepEqual((await explicit.read()).fields, []);
-    assert.deepEqual((await main.read()).fields, []);
+    assert.deepEqual((await explicit.read()).fields.map(f=>f.name), [AGENT_MEMORY_CONFIGURATION_KEY]);
+    assert.deepEqual((await main.read()).fields.map(f=>f.name), [AGENT_MEMORY_CONFIGURATION_KEY]);
   } finally { await rm(directory, { recursive: true, force: true }); }
+});
+
+
+test("Core Agent project memory has portable opt-in defaults and persisted per-profile overrides",async()=>{
+ const directory=await mkdtemp(path.join(os.tmpdir(),'agent-memory-config-'));
+ try{
+  await declareConfigurationFixture(directory);
+  const store=await createLocalProjectConfigurationStore(directory,{rootDir:path.join(directory,'.profiles')});
+  for(const [options,expected] of [["{}",false],["{memory:true}",true],["{...{memory:true},modelSource:'user-settings'}",true],["{memory:true,...{memory:false}}",false],["{memory:false,...{memory:true}}",true]] as const){
+   await writeFile(path.join(directory,'index.ts'),`throw new Error('Configuration discovery must be static'); const options=${options}; steamharness.createAgentConversationProject(options);`);
+   const declared=readProjectConfigurationDefinition(directory).fields.find(f=>f.name===AGENT_MEMORY_CONFIGURATION_KEY);
+   assert.equal(declared?.type,'boolean');assert.equal(declared.defaultValue,expected);
+   const sample=await createLocalProjectConfigurationStore(directory,{rootDir:path.join(directory,'.samples',Buffer.from(options).toString('hex'))});
+   const state=await sample.read();assert.equal((await sample.snapshot({required:false})).values[AGENT_MEMORY_CONFIGURATION_KEY],expected);
+   assert.equal(state.fields.find(f=>f.name===AGENT_MEMORY_CONFIGURATION_KEY)?.defaultValue,expected);
+  }
+  let state=await store.read();
+  state=await store.dispatch({action:'save',revision:state.revision,id:state.activeConfigurationId,values:{[AGENT_MEMORY_CONFIGURATION_KEY]:false}}) as typeof state;
+  assert.equal((await store.snapshot({required:false})).values[AGENT_MEMORY_CONFIGURATION_KEY],false);
+  const frozen=await store.snapshot({required:false});
+  await store.dispatch({action:'save',revision:state.revision,id:state.activeConfigurationId,values:{[AGENT_MEMORY_CONFIGURATION_KEY]:true}});
+  assert.equal(frozen.values[AGENT_MEMORY_CONFIGURATION_KEY],false,'in-flight runs keep their configuration');
+  assert.equal((await store.snapshot({required:false})).values[AGENT_MEMORY_CONFIGURATION_KEY],true);
+ }finally{await rm(directory,{recursive:true,force:true});}
 });

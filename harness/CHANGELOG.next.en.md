@@ -1,5 +1,7 @@
 # Unreleased
 
+- Changed: Project memory defaults off and the built-in Assistant explicitly opts in. A project configuration switch controls authorization, recall, saving and tools without deleting existing memories.
+
 - Fixed: Persistent assistant sessions submit automatic memory after each answer is saved without waiting for process exit. Follow-up turns recall fresh records; durable receipts and the offline outbox prevent duplicate delivery after recovery, and initial activation does not import older conversations.
 
 - [Fixed] Preserve the selected restricted configuration across temporary outages, role changes, and reopening. Guest fallback still enforces execution permissions, and an explicit Ask selection remains saved.

@@ -1,5 +1,7 @@
 # Unreleased
 
+- Added: A Project memory switch defaults off for ordinary projects and on for the Assistant. Memory navigation updates quietly when configuration changes, and disabled projects cannot call memory operations.
+
 - [Changed] Studio model parameters use only Settings models and hide project AI. Standalone CLI Web falls back to project configuration consistently for setup, defaults and requests. Removed project references to Settings models.
 
 - [Fixed] Bound worker shutdown and release conversation ownership after forced exit. Queues advance automatically only after success; failures, cancellation and timeouts retain pending messages, and new explicit input can run before the paused queue.

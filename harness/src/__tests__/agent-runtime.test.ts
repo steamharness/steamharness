@@ -1829,7 +1829,7 @@ test('host-bound account memory reaches the actual model request once per turn a
  const {pi,ai}=await createFauxRuntime(Array.from({length:2},()=> (context:{messages:import('@earendil-works/pi-ai').Message[]})=>{seen.push(ai.getCurrentSystemPrompt(context.messages));return ai.fauxAssistantMessage([ai.fauxText('Visible final answer')]);}) as never[]);
  const provider:import('../agent/memory').AgentMemoryProvider={capabilities:async()=>({connected:true,enabled:true,status:'ready',automatic:true,readOnly:false,scopes:['global']}),recall:async()=>recalled?[{id:'preference',scope:'global',content:'MEMORY_SENTINEL_PREFERENCE',origin:'manual',version:1,updatedAt:'2026-01-01',sources:[]}]:[],submitTurn:async turn=>{submitted.push(turn);},list:async()=>({items:[]}),get:async()=>{throw new Error('unused');},remember:async()=>{throw new Error('unused');},update:async()=>{throw new Error('unused');},forget:async()=>({})};
  await withTempDir(async workdir=>{
-  const runtime=await withAgentMemory({provider,outboxDirectory:path.join(workdir,'outbox')},()=>createAgentRuntime({pi,workdir,databasePath:path.join(workdir,'agent.sqlite')}));
+  const runtime=await withAgentMemory({provider,outboxDirectory:path.join(workdir,'outbox')},()=>createAgentRuntime({pi,workdir,memory:true,databasePath:path.join(workdir,'agent.sqlite')}));
   try{
    for await(const event of runtime.run({prompt:'Visible user prompt',requestId:'memory-turn-1',errCode:0,errMessage:''})){void event;}
    recalled=false;
@@ -1851,4 +1851,28 @@ test('memory turn identities survive replay and moving storage while different d
   await run(path.join(workdir,'independent.sqlite'));
   assert.equal(turns[0].turnId,turns[1].turnId);assert.equal(turns[0].turnId,turns[2].turnId);assert.notEqual(turns[0].turnId,turns[3].turnId);
  });
+});
+
+
+test('project memory defaults off and a disabled account cannot be re-enabled by a project', async()=>{
+ const {withAgentMemory}=await import('../agent/memory');
+ const {withProjectConfiguration,AGENT_MEMORY_CONFIGURATION_KEY:key}=await import('../configuration');
+ for(const mode of ['default','project-off','account-off'] as const) {
+  let contacts=0;
+  const provider = new Proxy({capabilities:async()=>{contacts++;return {connected:true,enabled:false,status:'ready',automatic:false,readOnly:true,scopes:[]};}}, {get(target,key){return Reflect.get(target,key)??(()=>{throw new Error('Disabled memory must never be called');});}}) as unknown as import('../agent/memory').AgentMemoryProvider;
+  const {pi,ai}=await createFauxRuntime([(context:{messages:import('@earendil-works/pi-ai').Message[]})=>{
+   assert.ok(!ai.getCurrentSystemPrompt(context.messages).includes('# Account memory'));
+   return ai.fauxAssistantMessage([ai.fauxText('Normal conversation')]);
+  }] as never[]);
+  const stream=pi.streamFn;
+  pi.streamFn=(...args)=>{assert.ok(!args[1].tools?.some(tool=>tool.name==='memory'));return stream(...args);};
+  await withTempDir(async workdir=>{
+   const snapshot:import('../configuration').ProjectConfigurationSnapshot={id:'test',name:'Test',revision:1,values:mode==='project-off'?{[key]:false}: {}};
+   const runtime=await withAgentMemory({provider},()=>withProjectConfiguration(snapshot,()=>createAgentRuntime({pi,workdir,databasePath:path.join(workdir,'agent.sqlite'),...(mode==='default'?{}:{memory:true})})));
+   try{
+    for await(const _ of runtime.run({prompt:'Hello',errCode:0,errMessage:''})){/* Drain. */}
+    assert.equal(contacts,mode==='account-off'?1:0);
+   }finally{await runtime.close();}
+  });
+ }
 });

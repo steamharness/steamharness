@@ -101,6 +101,8 @@ export const serverWeb: typeof EnServerWeb = {
   accessGrantHighest: "直接角色和祖先组角色取最高值；公开项目向登录用户提供访客权限。",
   accessReadOnly: "访客对服务器数据只读，仍可使用个人配置。",
 
+  configurationMemory: "项目记忆",
+  configurationMemoryDescription: "允许此项目召回和保存账号私有记忆。修改从下一次执行生效，关闭后保留已有记忆。",
   configurationAiModels: "AI 模型",
   configurationAiSource: "AI 来源",
   configurationAiSystem: "系统 AI",

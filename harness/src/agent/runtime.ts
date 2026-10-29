@@ -8,7 +8,7 @@ import type { AgentMessage } from "@earendil-works/pi-agent-core";
 import { HarnessError } from "../workflow/errors";
 import { parseAgentWebSearch, type AgentSearchMessage } from "./web-search";
 import { DurableAgent } from "./durable-agent";
-import { getAgentMemoryBinding, createAgentMemoryTool, submitAgentMemoryTurn, flushAgentMemoryOutbox } from "./memory";
+import { resolveAgentMemoryBinding, createAgentMemoryTool, submitAgentMemoryTurn, flushAgentMemoryOutbox, type AgentMemoryBinding } from "./memory";
 import { AGENT_MEMORY_SKILL_PROMPT } from "./builtin-memory-skill";
 import { BUILTIN_AGENT_SKILLS_PROMPT } from "./builtin-skills";
 import { withStreamingMessage } from "./durable-context";
@@ -107,10 +107,12 @@ export interface AgentRuntimeInternalOptions extends AgentRuntimeOptions {
  * provider-shaped, while this object owns the run contract core exposes —
  * input parsing, effort, permission policy, compaction and plan mode.
  */
+type ResolvedAgentRuntimeOptions = Omit<AgentRuntimeInternalOptions, "memory"> & { memory: AgentMemoryBinding | false };
+
 export async function createAgentRuntime(
-  options: AgentRuntimeInternalOptions = {},
+  inputOptions: AgentRuntimeInternalOptions = {},
 ): Promise<AgentRuntime> {
-  options = { ...options, memory: options.memory ?? getAgentMemoryBinding() };
+  let options: ResolvedAgentRuntimeOptions = { ...inputOptions, memory: resolveAgentMemoryBinding(inputOptions.memory) };
   if (options.memory) {
     const binding = options.memory;
     let timer: ReturnType<typeof setTimeout> | undefined;
@@ -163,7 +165,7 @@ class ProjectAgentRuntime implements AgentRuntime {
     if (!this.options.session || !this.agent) throw Object.assign(new Error("The agent session is not running."), { code: "AGENT_NOT_READY" });
     return this.agent.control(command);
   }
-  private readonly options: AgentRuntimeInternalOptions;
+  private readonly options: ResolvedAgentRuntimeOptions;
   private readonly toolDefinitions = readAgentToolDefinitions(undefined);
   private readonly allTools: PiAgentTool[];
   private agent: PiAgent | undefined;
@@ -185,7 +187,7 @@ class ProjectAgentRuntime implements AgentRuntime {
 
   constructor(
     private pi: PiRuntime,
-    options: AgentRuntimeInternalOptions,
+    options: ResolvedAgentRuntimeOptions,
     private readonly resolveInput?: (input: AgentInput, signal?: AbortSignal) => Promise<AgentInput>,
     private readonly modelClosers: (() => Promise<void>)[] = [],
     private readonly userSettings?: UserSettings,
@@ -823,7 +825,7 @@ function applyRunConfiguration(
   parsed: AgentParsedInput,
   definitions: ReturnType<typeof readAgentToolDefinitions>,
   externalTools: readonly PiAgentTool[],
-  options: AgentRuntimeOptions,
+  options: ResolvedAgentRuntimeOptions,
 ): void {
   agent.state.thinkingLevel = clampThinkingLevel(pi, parsed.effort);
   // Plan mode leads: its read-only contract must not be talked out of by a

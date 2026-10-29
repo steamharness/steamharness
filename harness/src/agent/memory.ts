@@ -5,6 +5,7 @@ import path from "node:path";
 import type { AgentTool } from "@earendil-works/pi-agent-core";
 import type { TypeboxLike } from "./tools";
 import { estimateAgentTokens } from "./compaction";
+import { AGENT_MEMORY_CONFIGURATION_KEY, getConfig } from "../configuration";
 export type AgentMemoryScope = "global" | "current";
 export interface AgentMemoryItem {
   id: string;
@@ -76,6 +77,15 @@ export function withAgentMemory<T>(
 }
 export function getAgentMemoryBinding() {
   return bindings.getStore();
+}
+/** Host availability is separate from a project's explicit opt-in. */
+export function resolveAgentMemoryBinding(
+  setting?: boolean | AgentMemoryBinding,
+): AgentMemoryBinding | false {
+  const configured = getConfig(AGENT_MEMORY_CONFIGURATION_KEY);
+  if (setting === false || configured !== undefined && configured !== true) return false;
+  if (configured !== true && !setting) return false;
+  return typeof setting === "object" ? setting : getAgentMemoryBinding() || false;
 }
 export async function getAgentMemoryCapabilities(
   binding: AgentMemoryBinding | false | undefined = getAgentMemoryBinding(),
