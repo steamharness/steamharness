@@ -10,6 +10,7 @@ import { ProjectAvatar } from "@/components/ProjectAvatar";
 import { getProjectKindDefinition, getProjectKindLabelKey } from "@steamharness/project-types";
 import { formatDate } from "../utils/format";
 import { Button } from "@/components/ui/button";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { PageStats } from "@/components/ui/page-stats";
 import { PaginationFooter } from "@/components/ui/pagination-footer";
@@ -62,6 +63,7 @@ interface ProjectListPageProps {
   total?:number; serverPage?:number; onServerPageChange?:(page:number)=>void; onServerSearch?:(query:string,status:string)=>void;
   selectedId: string;
   loading?: string;
+  error?: string;
   onRefresh: () => void;
   onOpenDetail: (project: Summary) => void;
 }
@@ -72,6 +74,7 @@ export function ProjectListPage({
   projects,
   selectedId,
   loading,
+  error,
   onRefresh, onOpenDetail, total,serverPage,onServerPageChange,onServerSearch,
 }: ProjectListPageProps) {
   const { t, i18n: serverWebI18n } = useTranslation("serverWeb");
@@ -199,6 +202,14 @@ export function ProjectListPage({
           <TableBody>
             {loading ? (
               <TableLoadingRows colSpan={5} />
+            ) : error ? (
+              <TableRow>
+                <TableCell colSpan={5}>
+                  <Alert variant="destructive">
+                    <AlertDescription>{error}</AlertDescription>
+                  </Alert>
+                </TableCell>
+              </TableRow>
             ) : filteredProjects.length === 0 ? (
               <TableEmptyRow
                 colSpan={5}

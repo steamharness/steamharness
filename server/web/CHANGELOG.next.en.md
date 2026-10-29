@@ -1,5 +1,7 @@
 # Unreleased
 
+- Fixed sign-in depending on project and release data. Project load failures preserve authenticated sessions and show a workspace error with refresh recovery.
+
 - Fixed account memory setup guidance to request administrator configuration instead of asking signed-in users to sign in again.
 
 - Improved: Project model configurations support execution-host settings references alongside system and third-party project models.

@@ -84,6 +84,7 @@ function AppContent() {
   const [projectQuery,setProjectQuery]=useState("");
   const [projectStatus,setProjectStatus]=useState("all");
   const [projects, setProjects] = useState<Summary[]>([]);
+  const [projectListError, setProjectListError] = useState<string>();
   const [accountView, setAccountView] = useState<AccountViewState>({ me: null, apiKeys: null });
   const [auditView, setAuditView] = useState<AuditViewState>({ page: null, selectedEventId: null });
   const [adminUsers, setAdminUsers] = useState<AdminUsersState>({
@@ -110,6 +111,7 @@ function AppContent() {
   const auditCursorHistoryRef = useRef<Array<string | undefined>>([undefined]);
   const auditRequestRef = useRef(0);
   const validateSessionRequestRef = useRef(0);
+  const projectsRequestRef = useRef(0);
   const [auditPageIndex, setAuditPageIndex] = useState(0);
   const page = route.page;
   const requestedDetailTab = route.page === "detail" ? route.tab : undefined;
@@ -206,6 +208,7 @@ function AppContent() {
 
   useEffect(() => {
     void validateSession();
+    void loadReleaseAnnouncement();
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -257,19 +260,9 @@ function AppContent() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [session.status, page, route, auditFilters]);
 
-  // stage one replaces localStorage admin tokens with server-backed session checks.
-  async function validateSession() {
-    const requestId = ++validateSessionRequestRef.current;
-    setBusy({ global: t("busyConnectingServer") });
+  async function loadReleaseAnnouncement() {
     const health = await apiClient.health();
-    if (requestId !== validateSessionRequestRef.current) {
-      return;
-    }
-    if (!isApiSuccess(health)) {
-      setBusy({});
-      setSession({ status: "anonymous", message: t("appConnectServerFailed") });
-      return;
-    }
+    if (!isApiSuccess(health)) return;
     const releaseAnnouncement = consumeUnseenServerRelease(health.data);
     if (releaseAnnouncement) {
       toast(releaseAnnouncement.title, {
@@ -286,6 +279,12 @@ function AppContent() {
           : undefined,
       });
     }
+  }
+
+  // Authentication depends only on the account session, not project or release data.
+  async function validateSession() {
+    const requestId = ++validateSessionRequestRef.current;
+    setBusy((state) => ({ ...state, global: t("busyConnectingServer") }));
     const sessionState = await apiClient.getSession();
     if (requestId !== validateSessionRequestRef.current) {
       return;
@@ -305,37 +304,12 @@ function AppContent() {
       return;
     }
 
-    const workflows = await apiClient.listProjects();
-    if (requestId !== validateSessionRequestRef.current) {
-      return;
-    }
-    if (!isApiSuccess(workflows)) {
-      if (workflows.errCode === 401) {
-        setSession({ status: "anonymous", message: t("appSessionExpiredRelogin") });
-        return;
-      }
-      setSession({ status: "anonymous", message: workflows.errMessage });
-      return;
-    }
     // Directly opening account-system routes can race multiple
     // bootstrap validations; only the latest request may reset account/admin
     // view state or older responses will blank pages after they already loaded.
     setSession({ status: "ready", principal: sessionState.data.principal });
     setAccountView({ me: null, apiKeys: null });
     setAdminUsers({ items: null, total: 0, page: 1, pageSize: 20, totalPages: 0, search: "", status: "" });
-    const uploadedProjects = workflows.data.items;
-    setProjectTotal(workflows.data.total);
-    const selected=readRouteProjectId(routeRef.current);
-    if(selected && !uploadedProjects.some(p=>p.id===selected)) {
-      const detailResult=await apiClient.getProject(selected);
-      if(isApiSuccess(detailResult)) uploadedProjects.push(detailResult.data);
-    }
-    setProjects(uploadedProjects);
-    setSelectedId((current) => {
-      const routeProjectId = readRouteProjectId(route);
-      if (routeProjectId && uploadedProjects.some((p) => p.id === routeProjectId)) return routeProjectId;
-      return current;
-    });
   }
 
   async function loadAccountView() {
@@ -386,10 +360,17 @@ function AppContent() {
   }
 
   async function loadProjects(options: { keepSelection?: boolean } = {}) {
+    const requestId = ++projectsRequestRef.current;
     setBusy((s) => ({ ...s, global: t("busyGlobalRefreshProjects") }));
+    setProjectListError(undefined);
     const res = await apiClient.listProjects({page:projectPage,q:projectQuery,status:projectStatus});
+    if (requestId !== projectsRequestRef.current) return;
     setBusy((s) => ({ ...s, global: undefined }));
-    if (!isApiSuccess(res)) { pushToast("error", res.errMessage); return; }
+    if (!isApiSuccess(res)) {
+      setProjectListError(res.errMessage);
+      if (res.errCode === 401) await validateSession();
+      return;
+    }
     const uploadedProjects = res.data.items;
     setProjectTotal(res.data.total);
     const selected=readRouteProjectId(routeRef.current);
@@ -397,6 +378,7 @@ function AppContent() {
       const detailResult=await apiClient.getProject(selected);
       if(isApiSuccess(detailResult)) uploadedProjects.push(detailResult.data);
     }
+    if (requestId !== projectsRequestRef.current) return;
     setProjects(uploadedProjects);
     setSelectedId((current) => {
       const routeProjectId = readRouteProjectId(route);
@@ -733,7 +715,9 @@ function AppContent() {
   async function completeLogout() {
     await apiClient.logout();
     setSession({ status: "anonymous" });
+    projectsRequestRef.current += 1;
     setProjects([]);
+    setProjectListError(undefined);
     setAccountView({ me: null, apiKeys: null });
     setAdminUsers({ items: null, total: 0, page: 1, pageSize: 20, totalPages: 0, search: "", status: "" });
     setSelectedId("");
@@ -1040,6 +1024,7 @@ function AppContent() {
           total={projectTotal} serverPage={projectPage} onServerPageChange={setProjectPage}
           onServerSearch={(q,status)=>{setProjectQuery(q);setProjectStatus(status);setProjectPage(1);}}
           projects={projects}
+          error={projectListError}
           selectedId={selectedProject?.id ?? ""}
           loading={busy.global}
           onRefresh={() => void loadProjects({ keepSelection: true })}

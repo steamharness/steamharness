@@ -161,8 +161,22 @@ test('Server startup preserves unsupported project rows, snapshots and storage',
     assert.equal((await raw.query('select value from project_storage where project_id=$1', [id])).rows[0].value, true);
     assert.deepEqual(await db.listProjects(), []);
     assert.equal(await db.getProject(id), undefined);
-    await raw.query(`insert into projects(id,name,entries,default_entry) values($1,'New project',$2,'main')`, [randomUUID(), JSON.stringify([{entryId:'main',name:'Main',type:'workflow',root:'.',entry:'index.ts',databases:[]}])]);
+    const entries = JSON.stringify([{entryId:'main',name:'Main',type:'workflow',root:'.',entry:'index.ts',databases:[]}]);
+    const currentId = randomUUID();
+    await raw.query(`insert into projects(id,name,entries,default_entry) values($1,'New project',$2,'main')`, [currentId, entries]);
+    await raw.query(`insert into projects(id,name,entries,default_entry) values($1,'Missing default',$3,null),($2,'Missing entries',null,'main')`, [randomUUID(), randomUUID(), entries]);
     assert.equal((await db.listProjects()).length, 1);
+    // Apply the same manifest filter before pagination and counting; retained
+    // legacy records must not enter the HTTP list's summary lookup.
+    const actor = { isSystemAdmin: true };
+    assert.deepEqual(await db.access.listProjectIds(actor, { pageSize: 1 }), {
+      items: [currentId], total: 1, page: 1, pageSize: 1,
+    });
+    assert.deepEqual(await db.access.listProjectIds(actor, { page: 2, pageSize: 1 }), {
+      items: [], total: 1, page: 2, pageSize: 1,
+    });
+    assert.equal((await db.access.listProjectIds(actor, { q: 'Retained' })).total, 0);
+    assert.equal((await raw.query('select count(*)::int as total from projects')).rows[0].total, 4);
   } finally {
     await db.close(); await raw.end(); await admin.query(`drop schema ${schema} cascade`); await admin.end();
   }

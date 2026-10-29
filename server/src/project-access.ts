@@ -454,7 +454,7 @@ export class ProjectAccessRepository {
   ): Promise<AccessPage<string>> {
     await this.assertActiveActor(actor);
     const { page, pageSize, offset } = pagination(query);
-    const filter = `from readable_projects p where ($3='' or p.name ilike '%'||$3||'%' or p.id ilike '%'||$3||'%' or p.project_info::text ilike '%'||$3||'%') and ($4::boolean or p.group_id is not distinct from $5::text) and ($6='all' or ($6='published' and p.latest_version is not null) or ($6='draft' and p.latest_version is null)) and ($7::int=0 or ($7<=10 and p.visibility='public') or $2::boolean or exists(select 1 from project_members m where m.project_id=p.id and m.user_id=$1 and ${rankSql("m.role")}>=$7) or exists(select 1 from ancestors a join group_members m on m.group_id=a.id where a.root_id=p.group_id and m.user_id=$1 and ${rankSql("m.role")}>=$7))`;
+    const filter = `from readable_projects p where p.entries is not null and p.default_entry is not null and ($3='' or p.name ilike '%'||$3||'%' or p.id ilike '%'||$3||'%' or p.project_info::text ilike '%'||$3||'%') and ($4::boolean or p.group_id is not distinct from $5::text) and ($6='all' or ($6='published' and p.latest_version is not null) or ($6='draft' and p.latest_version is null)) and ($7::int=0 or ($7<=10 and p.visibility='public') or $2::boolean or exists(select 1 from project_members m where m.project_id=p.id and m.user_id=$1 and ${rankSql("m.role")}>=$7) or exists(select 1 from ancestors a join group_members m on m.group_id=a.id where a.root_id=p.group_id and m.user_id=$1 and ${rankSql("m.role")}>=$7))`;
     const args = [
       actor.userId ?? null,
       actor.isSystemAdmin,

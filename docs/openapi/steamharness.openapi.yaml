@@ -665,7 +665,7 @@ paths:
       operationId: listProjects
       responses:
         "200":
-          description: 项目摘要列表。
+          description: 项目摘要分页列表；条目和总数均排除缺少 entries 或 defaultEntry 的旧格式记录，保留其数据库记录与关联数据。
           content:
             application/json:
               schema:
