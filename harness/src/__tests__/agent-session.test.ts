@@ -6,7 +6,7 @@ import path from "node:path";
 import * as ai from "@earendil-works/pi-ai";
 import { DurableAgent } from "../agent/durable-agent";
 import type { AgentSessionSnapshot } from "../agent/session-types";
-import { projectSessionUsage } from "../agent/session";
+import { projectSessionEntries, projectSessionUsage } from "../agent/session";
 import type { AgentSearchMessage, AgentSearchStreamOptions } from "../agent/web-search";
 
 function latch() {
@@ -30,6 +30,17 @@ function session(options: import("../agent/session-types").AgentSessionOptions =
   instance.subscribe(event => { const value = event as unknown as { type: string; snapshot: AgentSessionSnapshot }; if (value.type === "project_session") snapshot = value.snapshot; });
   return { instance, faux, lease, suspend, snapshot: () => snapshot! };
 }
+
+test("restored failed responses never display unexecuted tool calls as running", () => {
+  const failed = ai.fauxAssistantMessage([ai.fauxText("Retained output"), ai.fauxToolCall("inspect", {})], {
+    stopReason: "error", errorMessage: "Upstream response stream was interrupted",
+  });
+  const entries = [{ id: 1, kind: "pi.assistant", model: [failed] }] as unknown as
+    Parameters<typeof projectSessionEntries>[0];
+  const items = projectSessionEntries(entries, undefined, "restored-failure");
+  assert.ok(items.some(item => item.content === "Retained output"));
+  assert.equal(items.filter(item => item.metadata?.partType === "tool").length, 0);
+});
 
 for (const boundary of ["create", "iterate", "result"] as const) {
   for (const partial of boundary === "create" ? [false] : [false, true]) {
@@ -86,15 +97,15 @@ test("synchronous provider exceptions exhaust exactly ten durable retries", { ti
   assert.equal(turn.items.filter(item => item.metadata?.partType === "retry").length, 10);
 });
 
-for (const status of [401, 422]) test(`a rejected deferred fetch with HTTP ${status} does not retry`, { timeout: 5000 }, async t => {
+for (const status of [401, 422]) test(`a rejected deferred fetch with HTTP ${status} exhausts the fallback budget`, { timeout: 5000 }, async t => {
   const f = session({ compaction: { enabled: false } }); t.after(() => f.instance.close()); f.lease.resolve();
-  f.faux.setResponses([ai.fauxAssistantMessage([], { stopReason: "deferred", deferred: {
+  f.faux.setResponses(Array.from({ length: 11 }, () => ai.fauxAssistantMessage([], { stopReason: "deferred", deferred: {
     provider: "faux", modelId: "test", api: "faux", id: "deferred-result", pollAfterMs: 0,
-  } })]);
+  } })));
   let polls = 0;
   f.instance.models.fetchDeferred = async () => { polls++; throw Object.assign(new Error("Provider rejected request"), { status }); };
   await f.instance.prompt("Continue");
-  assert.equal(f.faux.state.callCount, 1); assert.equal(polls, 1);
+  assert.equal(f.faux.state.callCount, 11); assert.equal(polls, 11);
   assert.equal(f.snapshot().turns[0]!.status, "unanswered");
   assert.match(f.snapshot().turns[0]!.detail ?? "", new RegExp(String(status)));
 });
@@ -280,20 +291,26 @@ test("retry records stay between interrupted and resumed text in live and reopen
   assert.deepEqual(reopened.snapshot().turns.find(turn => turn.requestId === "retry-turn")!.items, items);
 });
 
-for (const partial of [false, true]) test(`temporary upstream errors resume after completed tools without replaying them (partial=${partial})`, async t => {
+for (const partial of [false, true]) test(`a 502 followed by an unknown interrupted tool call recovers without replaying committed tools (partial=${partial})`, async t => {
   const directory = await mkdtemp(path.join(tmpdir(), "agent-session-upstream-"));
   t.after(() => rm(directory, { recursive: true, force: true }));
   const database = path.join(directory, "session.sqlite"), first = session({ compaction: { enabled: false } }, database);
-  const errorMessage = "upstream_error: Upstream service temporarily unavailable";
+  const errorMessage = "Upstream response stream was interrupted";
   let tools = 0;
   first.instance.state.tools = [{ name: "inspect", label: "Inspect", description: "Inspect", parameters: ai.Type.Object({}),
     execute: async () => { tools++; return { content: [ai.fauxText("Committed result")], details: {} }; } }];
   first.faux.setResponses([
     ai.fauxAssistantMessage([ai.fauxToolCall("inspect", {})], { stopReason: "toolUse" }),
-    ai.fauxAssistantMessage(partial ? "Before interruption" : [], { stopReason: "error", errorMessage }),
+    ai.fauxAssistantMessage([], { stopReason: "error", errorMessage: "502 Upstream service temporarily unavailable" }),
+    ai.fauxAssistantMessage([...(partial ? [ai.fauxThinking("Retained reasoning"), ai.fauxText("Before interruption")] : []),
+      { ...ai.fauxToolCall("inspect", {}), id: "incomplete-call" }], { stopReason: "error", errorMessage }),
     request => {
       assert.match(JSON.stringify(request.messages), /Committed result/);
-      if (partial) assert.match(JSON.stringify(request.messages), /Before interruption/);
+      if (partial) {
+        assert.match(JSON.stringify(request.messages), /Before interruption/);
+        assert.match(JSON.stringify(request.messages), /Retained reasoning/);
+      }
+      assert.doesNotMatch(JSON.stringify(request.messages), /incomplete-call/);
       return ai.fauxAssistantMessage("Finished");
     },
   ]);
@@ -302,12 +319,14 @@ for (const partial of [false, true]) test(`temporary upstream errors resume afte
   t.after(async () => { first.lease.resolve(); await running; await first.instance.close(); });
   await until(() => first.snapshot()?.turns[0]?.status === "done");
   assert.equal(tools, 1);
-  assert.equal(first.faux.state.callCount, 3);
+  assert.equal(first.faux.state.callCount, 4);
   const turn = first.snapshot().turns[0]!;
   const retries = turn.items.filter(item => item.metadata?.partType === "retry");
-  assert.equal(retries.length, 1);
-  const retry = retries[0]!.content as { attempt: number; maxAttempts: number; kind: string; reason: string };
-  assert.equal(retry.attempt, 1); assert.equal(retry.maxAttempts, 10); assert.equal(retry.kind, "dropped");
+  assert.equal(retries.length, 2);
+  assert.deepEqual(retries.map(item => (item.content as { attempt: number }).attempt), [1, 2]);
+  assert.equal(turn.items.filter(item => item.metadata?.partType === "tool").length, 1);
+  const retry = retries[1]!.content as { attempt: number; maxAttempts: number; kind: string; reason: string };
+  assert.equal(retry.attempt, 2); assert.equal(retry.maxAttempts, 10); assert.equal(retry.kind, "dropped");
   assert.ok(retry.reason.includes(errorMessage));
   first.lease.resolve(); await running; await first.instance.close();
   const reopened = session({ compaction: { enabled: false } }, database);
@@ -318,17 +337,49 @@ for (const partial of [false, true]) test(`temporary upstream errors resume afte
   assert.deepEqual(reopened.snapshot().turns[0]!.items, turn.items);
 });
 
-for (const partial of [false, true]) test(`temporary upstream errors exhaust ten retries and expose the original reason (partial=${partial})`, async t => {
+for (const errorMessage of ["未知供应商错误", "", undefined, "401 Unauthorized", "quota exceeded"])
+for (const partial of [false, true]) test(`model errors (${String(errorMessage)}) exhaust ten retries and expose the original reason (partial=${partial})`, async t => {
   const f = session({ compaction: { enabled: false } });
-  const errorMessage = "upstream_error: Upstream service temporarily unavailable";
   f.faux.setResponses(Array.from({ length: 11 }, () => ai.fauxAssistantMessage(partial ? "Partial" : [], { stopReason: "error", errorMessage })));
   const running = f.instance.prompt("Continue"); void running.catch(() => undefined);
   t.after(async () => { f.lease.resolve(); await running; await f.instance.close(); });
   await until(() => f.snapshot()?.turns[0]?.status === "unanswered");
   const turn = f.snapshot().turns[0]!;
-  assert.equal(turn.reason, "model_error"); assert.ok(turn.detail?.includes(errorMessage));
+  assert.equal(turn.reason, "model_error"); assert.ok(turn.detail?.includes(errorMessage || "Model request failed"));
   assert.equal(f.faux.state.callCount, 11);
   assert.equal(turn.items.filter(item => item.metadata?.partType === "retry").length, 10);
+});
+
+for (const recovers of [false, true]) test(`model errors do not advance queued inputs before success (recovers=${recovers})`, async t => {
+  const f = session({ compaction: { enabled: false } }), gate = latch();
+  const base = f.instance.models.streamSimple.bind(f.instance.models);
+  let calls = 0;
+  f.instance.models.streamSimple = (...args) => {
+    if (++calls > 1) return base(...args);
+    const stream = ai.createAssistantMessageEventStream();
+    void gate.promise.then(() => {
+      const error = ai.fauxAssistantMessage("Retained partial", { stopReason: "error", errorMessage: "未识别的错误" });
+      stream.push({ type: "error", reason: "error", error }); stream.end(error);
+    });
+    return stream;
+  };
+  f.faux.setResponses(recovers ? [request => {
+    assert.doesNotMatch(JSON.stringify(request.messages), /Queued question/);
+    assert.match(JSON.stringify(request.messages), /Retained partial/);
+    return ai.fauxAssistantMessage("Recovered answer");
+  }, request => {
+    assert.match(JSON.stringify(request.messages), /Queued question/);
+    return ai.fauxAssistantMessage("Queued answer");
+  }] : Array.from({ length: 10 }, () => ai.fauxAssistantMessage([], { stopReason: "error", errorMessage: "未识别的错误" })));
+  f.instance.requestId = "initial";
+  const run = f.instance.prompt("Original question");
+  t.after(async () => { gate.resolve(); f.lease.resolve(); await run; await f.instance.close(); });
+  await until(() => calls === 1);
+  await f.instance.control({ type: "submit", requestId: "queued", prompt: "Queued question", mode: "followUp" });
+  gate.resolve();
+  await until(() => f.snapshot()?.turns.some(turn => turn.requestId === (recovers ? "queued" : "initial") && turn.status === (recovers ? "done" : "unanswered")));
+  assert.equal(calls, recovers ? 3 : 11);
+  if (!recovers) assert.equal(f.snapshot().turns.find(turn => turn.requestId === "queued")?.status, "queued");
 });
 
 test("session retry counters restart after successful tool requests and preserve both records on replay", async t => {
@@ -914,7 +965,7 @@ for (const background of [false, true]) test(`failed subagents report failure to
     }
     return ai.fauxAssistantMessage("Parent continues");
   };
-  f.faux.setResponses(Array.from({ length: 10 }, () => respond));
+  f.faux.setResponses(Array.from({ length: 30 }, () => respond));
   const run = f.instance.prompt("Handle child failure");
   t.after(async () => { f.lease.resolve(); await run; await f.instance.close(); });
   await until(() => failureSeen && f.snapshot()?.history.some(task => task.kind === "project.delegation" && task.status === "failed"));

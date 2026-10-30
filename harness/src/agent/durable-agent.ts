@@ -13,7 +13,7 @@ import {
 import { CodingTools } from "@earendil-works/pi-durable/tools";
 import type { AgentEvent, AgentMessage, AgentTool } from "@earendil-works/pi-agent-core";
 import type { Api, AssistantMessage, ImageContent, Message, Model, Models, ToolCall, Usage } from "@earendil-works/pi-ai";
-import { createAssistantMessageEventStream, isRetryableAssistantError } from "@earendil-works/pi-ai";
+import { createAssistantMessageEventStream } from "@earendil-works/pi-ai";
 import { estimateMessageTokens } from "@earendil-works/pi-ai/utils/estimate";
 import { HarnessError } from "../workflow/errors";
 import type { AgentAskResume, AgentContextUsage, AgentWebSearch } from "./types";
@@ -27,6 +27,7 @@ import { AgentExtensionResources, mergeAgentRegistries } from "./extensions";
 import { DurableAgentSession } from "./session";
 import { durableContextMessages } from "./durable-context";
 import { createAssistantErrorMessage, normalizeAssistantError } from "./stream-error";
+import { AGENT_PROVIDER_MAX_RETRIES } from "./provider-retry";
 import { withEnvironmentByteReads } from "./environment-read";
 import type { AgentSessionCommand, AgentSessionOptions, AgentSessionReceipt, AgentSessionSnapshot } from "./session-types";
 import { AgentRoleDoc } from "./subagents";
@@ -215,7 +216,8 @@ export class DurableAgent {
           this.fail(error);
         },
         settings: {
-          retry: { enabled: true, maxRetries: 10, baseDelayMs: this.options.retryDelayMs ?? 500, maxAgentDelayMs: 8_000 },
+          retry: { enabled: true, allErrors: true, maxRetries: AGENT_PROVIDER_MAX_RETRIES,
+            baseDelayMs: this.options.retryDelayMs ?? 500, maxAgentDelayMs: 8_000 },
           stream: { maxRetries: 0 }, get compaction() { return compactionPolicy(); },
           progress: { partialIntervalMs: 50, outputIntervalMs: 100 },
           toolExecution: "sequential",
@@ -413,16 +415,22 @@ export class DurableAgent {
       sections: [promptSection],
       tools,
       hooks: [hook(GenerationTask, {
-        afterResponse: (message, _api, requestContext) => {
+        afterResponse: async (message, api, requestContext) => {
           Object.assign(message, normalizeAssistantError(message, requestContext.abortSignal));
-          if (message.stopReason === "error" && isRetryableAssistantError(message) && message.content.length > 0) {
-            // Continue from text already committed to the answer. Calls without a
-            // result never become tool intents and must not reach the next request.
+          if (message.stopReason === "error" || message.stopReason === "aborted") {
+            // A failed response never commits tool intents, even if the provider
+            // streamed a complete-looking call before its terminal error.
             message.content = message.content.filter(block => block.type !== "toolCall");
-            message.stopReason = "stop";
-            (message as InterruptedMessage).projectInterrupted = message.errorMessage ?? "Stream interrupted";
-            (message as InterruptedMessage).projectContextUsageInvalid = true;
-            delete message.errorMessage;
+          }
+          if (message.stopReason === "error") {
+            const root = (await harness.conversation(api.conversationId, context))!;
+            const logicalRequestId = this.session ? await this.session.requestIdFor(root.id) : requestId;
+            const failures = await root.commit(async tx => Number((await tx.doc(RunDoc, root.id, logicalRequestId, null))
+              .continuations["count:transport"] ?? 0) + 1, context);
+            if (failures > AGENT_PROVIDER_MAX_RETRIES) {
+              message.errorMessage = `The model request failed ${failures} times in a row (${message.errorMessage || "Model request failed"}).`;
+              return { retry: false as const };
+            }
           }
         },
         onYield: async (message, api) => {
@@ -450,11 +458,10 @@ export class DurableAgent {
             }, context);
             return continuation === undefined ? undefined : { continue: continuation };
           }
-          const kind = (message as InterruptedMessage).projectInterrupted ? "dropped"
-            : message.stopReason === "length" && message.content.length > 0 ? "length"
+          const kind = message.stopReason === "length" && message.content.length > 0 ? "length"
             : message.stopReason === "toolUse" && !message.content.some(block => block.type === "toolCall") ? "lost-call" : undefined;
           if (kind === undefined) return;
-          const reason = kind === "length" ? "max output tokens" : kind === "lost-call" ? "tool call missing" : (message as InterruptedMessage).projectInterrupted ?? "Stream interrupted";
+          const reason = kind === "length" ? "max output tokens" : "tool call missing";
           const maxAttempts = kind === "length" ? 2 : 10;
           const continuation = await root.commit(async tx => {
             const run = await tx.doc(RunDoc, root.id, logicalRequestId, null);
@@ -467,8 +474,7 @@ export class DurableAgent {
             if (attempt > maxAttempts) {
               run.continuations[api.taskId] = false;
               run.failure = kind === "length" ? `The model ran out of output tokens mid-answer ${attempt} times in a row (${reason}). Raise maxTokens or split the request.`
-                : kind === "lost-call" ? `A tool call the model made went missing ${attempt} times in a row (${reason}).`
-                : `The model stream was cut off mid-answer ${attempt} times in a row (${reason}).`;
+                : `A tool call the model made went missing ${attempt} times in a row (${reason}).`;
               await tx.appendEntry(root.id, { kind: "project.failure", data: { message: run.failure } });
               return;
             }
@@ -512,30 +518,33 @@ export class DurableAgent {
             if (root.id === this.root!.id) this.rootModelSessionId = identity?.sessionId;
           }
           const partials = history.entries.filter(entry => entry.byTaskId === api.taskId &&
-            entry.model?.[0]?.role === "assistant" && entry.model[0].stopReason === "aborted" &&
+            entry.model?.[0]?.role === "assistant" && ["aborted", "error"].includes(entry.model[0].stopReason) &&
             entry.model[0].content.some(block => block.type === "text" || block.type === "thinking"));
           if (partials.length > 0) {
-            // Durable excludes aborted partials from model context. Promote only
+            // Durable excludes failed partials from model context. Promote only
             // committed text/reasoning and persist the continuation atomically.
             const failure = await root.commit(async tx => {
               const run = await tx.doc(RunDoc, root.id, logicalRequestId, null);
               for (const entry of partials) {
                 if (run.retries[entry.id] !== undefined) continue;
                 const message = json(entry.model![0]) as unknown as InterruptedMessage;
+                const kind = message.stopReason === "error" ? "dropped" : "recovery";
+                const reason = message.errorMessage || "Model request interrupted";
                 message.content = message.content.filter(block => block.type !== "toolCall");
                 message.stopReason = "stop";
+                message.projectInterrupted = reason;
                 message.projectContextUsageInvalid = true;
                 const attempt = Number(run.continuations["count:transport"] ?? 0) + 1;
                 run.continuations["count:transport"] = attempt;
                 run.retries[entry.id] = attempt;
                 if (attempt > 10) {
-                  run.failure = `The model stream was cut off mid-answer ${attempt} times in a row (Model request interrupted).`;
+                  run.failure = `The model request failed ${attempt} times in a row (${reason}).`;
                   break;
                 }
                 await tx.appendEntry(root.id, {
-                  kind: "project.retry", data: { attempt, maxAttempts: 10, kind: "recovery", reason: "Model request interrupted" },
+                  kind: "project.retry", data: { attempt, maxAttempts: 10, kind, reason },
                   edits: [{ target: entry.id, action: "replace", messages: [message] }],
-                  model: [{ role: "user", content: createAgentStreamResumePrompt({ kind: "recovery", reason: "Model request interrupted", keptPartial: true }), timestamp: Date.now() }],
+                  model: [{ role: "user", content: createAgentStreamResumePrompt({ kind, reason, keptPartial: true }), timestamp: Date.now() }],
                 });
               }
               return run.failure;
@@ -875,7 +884,7 @@ export class DurableAgent {
       reserveTokens: Math.min(args[2]?.maxTokens ?? this.compactionSettings().reserveTokens, this.compactionSettings().reserveTokens),
       onUsage,
     }).catch(error => {
-      // Let Durable apply its persisted retry policy to an incomplete provider
+      // Let Durable apply its persisted fallback policy to an incomplete provider
       // response. A cancelled invocation must never place a late summary.
       if (!args[2]?.signal?.aborted && error instanceof AgentCompactionResponseError && error.response.stopReason !== "stop") return undefined;
       throw error;
@@ -1036,7 +1045,7 @@ export class DurableAgent {
       return;
     }
     for (const original of entry.model ?? []) {
-      const message = original.role === "assistant" && original.stopReason === "aborted"
+      const message = original.role === "assistant" && (original.stopReason === "aborted" || original.stopReason === "error")
         ? { ...original, content: original.content.filter(block => block.type !== "toolCall") } : original;
       if (message.role === "assistant") {
         for (const search of (message as AgentSearchMessage).projectWebSearch?.searches ?? []) await this.emitWebSearch(search);

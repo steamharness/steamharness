@@ -1,85 +1,63 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { fauxAssistantMessage, isRetryableAssistantError, type Api, type Model } from "@earendil-works/pi-ai";
+import { fauxAssistantMessage, type Api, type Model } from "@earendil-works/pi-ai";
 import { createAssistantErrorMessage, normalizeAssistantError } from "../agent/stream-error";
+import { retryAssistantResponse, waitBeforeRetry } from "../agent/provider-retry";
 
 const model = { api: "faux", provider: "faux", id: "test" } as Model<Api>;
 
-test("temporary provider wording and bare transport codes reach Pi's retry classifier without losing diagnostics", () => {
-  for (const errorMessage of [
-    "upstream_error: Upstream service temporarily unavailable",
-    "Upstream service temporarily unavailable",
-    "The provider is temporarily unavailable",
-    "temporarily_unavailable: Please try later",
-    "upstream_error: Failed to reach upstream",
-    "upstream_error: Request id 400 failed",
-    "read ECONNRESET", "write EPIPE", "UND_ERR_SOCKET: other side disconnected", "ERR_STREAM_PREMATURE_CLOSE",
-    "ECONNREFUSED", "ETIMEDOUT", "ENETUNREACH", "EHOSTUNREACH", "ECONNABORTED",
-    "UND_ERR_CONNECT_TIMEOUT", "UND_ERR_HEADERS_TIMEOUT", "UND_ERR_BODY_TIMEOUT",
-    "408 Request failed", "409 Request failed", "501 Request failed", "HTTP 507", 'statusCode: 599',
-  ]) {
+for (const errorMessage of ["Upstream response stream was interrupted", "未知供应商错误", "", undefined,
+  "401 invalid API key", "422 invalid argument", "insufficient_quota", "context_length_exceeded", "read ECONNRESET"]) {
+  test(`fallback retries model errors independently of their diagnostics: ${String(errorMessage)}`, async () => {
     const source = fauxAssistantMessage("Partial", { stopReason: "error", errorMessage });
-    const normalized = normalizeAssistantError(source);
-    assert.equal(isRetryableAssistantError(normalized), true, errorMessage);
-    assert.ok(normalized.errorMessage?.includes(errorMessage));
-    assert.equal(normalized.content, source.content);
-    assert.equal(normalized.usage, source.usage);
+    assert.equal(normalizeAssistantError(source), source);
+    let calls = 0;
+    const result = await retryAssistantResponse(async () => ++calls === 1 ? source : fauxAssistantMessage("Recovered"), undefined, 0);
+    assert.equal(calls, 2); assert.equal(result.stopReason, "stop");
     assert.equal(source.errorMessage, errorMessage);
-    assert.equal(normalizeAssistantError(normalized), normalized, "normalizing twice must not add another prefix");
-  }
+    assert.equal(source.content[0]?.type, "text");
+  });
+}
+
+test("unknown errors exhaust ten retries and preserve the final diagnostic", async () => {
+  let calls = 0;
+  const result = await retryAssistantResponse(async () => fauxAssistantMessage([], {
+    stopReason: "error", errorMessage: `未知错误 ${++calls}`,
+  }), undefined, 0);
+  assert.equal(calls, 11); assert.equal(result.stopReason, "error"); assert.equal(result.errorMessage, "未知错误 11");
 });
 
-test("upstream wrappers do not turn auth, validation, quota or context errors into transient failures", () => {
-  for (const detail of [
-    "401 invalid API key", "invalid_api_token", "invalid_credentials", "authentication_error", "unauthorized", "403 permission denied",
-    "bad_request", "invalid_request_error", "invalid_model", "model_not_found", "invalid_input", "invalid parameter", "invalid arguments", "422 invalid argument",
-    "insufficient_quota", "quota_exceeded", "quota_exhausted", "quota exceeded", "quota exhausted", "billing error", "out of budget",
-    "context_length_exceeded", "context_window_exceeded", "input_too_long", "maximum context length exceeded",
-  ]) {
-    const source = fauxAssistantMessage([], { stopReason: "error", errorMessage: `upstream_error: ${detail}` });
-    assert.equal(isRetryableAssistantError(normalizeAssistantError(source)), false, detail);
-  }
-});
-
-test("only failed provider responses are normalized and caller cancellation stays terminal", () => {
-  const errorMessage = "upstream_error: Upstream service temporarily unavailable";
-  const source = fauxAssistantMessage([], { stopReason: "error", errorMessage });
+test("caller cancellation stays terminal, including a late success and aborting during backoff", async () => {
   const controller = new AbortController(); controller.abort();
+  const source = fauxAssistantMessage([], { stopReason: "aborted" });
   assert.equal(normalizeAssistantError(source, controller.signal), source);
-  const aborted = { ...source, stopReason: "aborted" as const };
-  assert.equal(normalizeAssistantError(aborted, controller.signal), aborted);
-  assert.equal(isRetryableAssistantError(normalizeAssistantError(aborted)), true);
-  const success = { ...source, stopReason: "stop" as const };
-  assert.equal(normalizeAssistantError(success), success);
+  assert.equal(normalizeAssistantError(fauxAssistantMessage("Late success"), controller.signal).stopReason, "aborted");
+  const waiting = new AbortController();
+  const wait = waitBeforeRetry(10, waiting.signal); waiting.abort();
+  assert.equal(await wait, false);
+  let calls = 0;
+  await assert.rejects(retryAssistantResponse(async () => { calls++; return source; }, controller.signal, 0), { name: "AbortError" });
+  assert.equal(calls, 0);
+  const active = new AbortController();
+  const result = await retryAssistantResponse(async () => { calls++; active.abort(); return source; }, active.signal, 0);
+  assert.equal(calls, 1); assert.equal(result.stopReason, "aborted");
 });
 
-test("structured provider failures retain only safe classification fields, with bounded cyclic causes", () => {
+test("structured provider failures retain safe diagnostics and billed partials with bounded cyclic causes", () => {
   const cause = { code: "ECONNREFUSED", statusCode: 501, cause: undefined as unknown,
     headers: { authorization: "secret-header" }, request: { apiKey: "secret-key" }, response: { body: "secret-body" } };
   cause.cause = cause;
   const partial = fauxAssistantMessage("Retained");
   const message = createAssistantErrorMessage(model, new Error("Transport failed", { cause }), undefined, partial);
-  assert.equal(isRetryableAssistantError(message), true);
   assert.match(message.errorMessage ?? "", /Transport failed.*ECONNREFUSED.*501/);
   assert.doesNotMatch(message.errorMessage ?? "", /secret|authorization|apiKey|\[object Object\]/);
   assert.equal(message.content, partial.content); assert.equal(message.usage, partial.usage);
 });
 
-test("structured rejection statuses and unrelated numbers are not promoted to transient failures", () => {
-  for (const status of [400, 401, 402, 403, 404, 405, 410, 413, 422]) {
-    assert.equal(isRetryableAssistantError(createAssistantErrorMessage(model, { message: "Request rejected", status })), false);
-  }
-  for (const errorMessage of ["Request 408 failed", "tokens=408; request_id=501", "request_id=1408; output=1501"]) {
-    const message = fauxAssistantMessage([], { stopReason: "error", errorMessage });
-    assert.equal(normalizeAssistantError(message), message);
-    assert.equal(isRetryableAssistantError(message), false);
-  }
-});
-
-test("thrown AbortError is retryable only when the caller has not cancelled", () => {
+test("a provider AbortError is an error unless the caller cancelled", () => {
   const cause = new DOMException("The operation was aborted", "AbortError");
-  assert.equal(isRetryableAssistantError(createAssistantErrorMessage(model, cause)), true);
+  assert.equal(createAssistantErrorMessage(model, cause).stopReason, "error");
+  assert.equal(normalizeAssistantError(fauxAssistantMessage([], { stopReason: "aborted" })).stopReason, "error");
   const controller = new AbortController(); controller.abort();
-  const cancelled = createAssistantErrorMessage(model, cause, controller.signal);
-  assert.equal(cancelled.stopReason, "aborted"); assert.equal(isRetryableAssistantError(cancelled), false);
+  assert.equal(createAssistantErrorMessage(model, cause, controller.signal).stopReason, "aborted");
 });

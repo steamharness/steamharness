@@ -10,6 +10,11 @@ overrides:
   '@steamharness/server': link:server
   '@steamharness/server-web': link:server/web
 
+patchedDependencies:
+  '@earendil-works/pi-durable@1.2.0':
+    hash: lz23w6ngrmmrht3esgvopxgopy
+    path: patches/@earendil-works__pi-durable@1.2.0.patch
+
 importers:
 
   .: {}
@@ -218,7 +223,7 @@ importers:
         version: 1.2.0
       '@earendil-works/pi-durable':
         specifier: 1.2.0
-        version: 1.2.0(@aws-sdk/credential-provider-node@3.972.86)(@modelcontextprotocol/sdk@1.29.0(zod@4.4.3))(@smithy/signature-v4@5.7.4)(undici@7.30.1)(ws@8.22.0)(zod@4.4.3)
+        version: 1.2.0(patch_hash=lz23w6ngrmmrht3esgvopxgopy)(@aws-sdk/credential-provider-node@3.972.86)(@modelcontextprotocol/sdk@1.29.0(zod@4.4.3))(@smithy/signature-v4@5.7.4)(undici@7.30.1)(ws@8.22.0)(zod@4.4.3)
       '@modelcontextprotocol/sdk':
         specifier: ^1.29.0
         version: 1.29.0(zod@4.4.3)
@@ -5446,7 +5451,7 @@ snapshots:
     dependencies:
       quickjs-wasi: 3.6.2
 
-  '@earendil-works/pi-durable@1.2.0(@aws-sdk/credential-provider-node@3.972.86)(@modelcontextprotocol/sdk@1.29.0(zod@4.4.3))(@smithy/signature-v4@5.7.4)(undici@7.30.1)(ws@8.22.0)(zod@4.4.3)':
+  '@earendil-works/pi-durable@1.2.0(patch_hash=lz23w6ngrmmrht3esgvopxgopy)(@aws-sdk/credential-provider-node@3.972.86)(@modelcontextprotocol/sdk@1.29.0(zod@4.4.3))(@smithy/signature-v4@5.7.4)(undici@7.30.1)(ws@8.22.0)(zod@4.4.3)':
     dependencies:
       '@earendil-works/chord': 1.2.0
       '@earendil-works/pi-ai': 1.2.0(@aws-sdk/credential-provider-node@3.972.86)(@modelcontextprotocol/sdk@1.29.0(zod@4.4.3))(@smithy/signature-v4@5.7.4)(undici@7.30.1)(ws@8.22.0)(zod@4.4.3)

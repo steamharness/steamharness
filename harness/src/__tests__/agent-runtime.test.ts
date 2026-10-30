@@ -845,7 +845,7 @@ test("manual compact preserves the transcript when the provider returns after ca
 });
 
 for (const outcome of ["success", "error", "cancelled"] as const) {
-  test(`manual compact reports summary usage exactly once on ${outcome}`, async () => {
+  test(`manual compact reports summary usage once per attempt on ${outcome}`, async () => {
     const { pi, ai } = await createFauxRuntime([]);
     const controller = new AbortController();
     pi.models.completeSimple = async () => {
@@ -855,7 +855,7 @@ for (const outcome of ["success", "error", "cancelled"] as const) {
       return message;
     };
     await withTempDir(async workdir => {
-      const runtime = await createAgentRuntime({ pi, workdir });
+      const runtime = await createAgentRuntime({ pi, workdir, retryDelayMs: 0 });
       runtime.restoreTranscript?.([{ role: "user", content: "original request", timestamp: 1 }, ai.fauxAssistantMessage("original answer")]);
       const usages: AgentUsage[] = [];
       const host: AgentHost = { abortSignal: controller.signal, reportUsage: async usage => { usages.push(usage); } };
@@ -866,7 +866,8 @@ for (const outcome of ["success", "error", "cancelled"] as const) {
       } else {
         await assert.rejects(run, outcome === "error" ? /Summary provider failed/ : /Summary cancelled/);
       }
-      assert.deepEqual(usages, [{ inputTokens: 120, outputTokens: 30, totalTokens: 180, cacheReadTokens: 20, cacheWriteTokens: 10, reasoningTokens: 5 }]);
+      assert.deepEqual(usages, Array.from({ length: outcome === "error" ? 11 : 1 }, () =>
+        ({ inputTokens: 120, outputTokens: 30, totalTokens: 180, cacheReadTokens: 20, cacheWriteTokens: 10, reasoningTokens: 5 })));
     });
   });
 }
@@ -1246,13 +1247,12 @@ test("a turn the provider refused fails the run instead of reporting an empty su
   // pi does not reject when the stream fails: it records the message on the
   // agent and resolves, which used to leave a run that "succeeded" with no
   // output at all and a host waiting on output that never came.
-  const { pi, ai } = await createFauxRuntime([
-    () => ai.fauxAssistantMessage("", { stopReason: "error", errorMessage: "upstream refused the request" }),
-  ]);
+  const { pi, ai } = await createFauxRuntime(Array.from({ length: 11 }, () =>
+    () => ai.fauxAssistantMessage("", { stopReason: "error", errorMessage: "upstream refused the request" })));
 
   await withTempDir(async (workdir) => {
     await assert.rejects(
-      () => collectEvents({ pi, workdir }, { prompt: "hi", errCode: 0, errMessage: "" }),
+      () => collectEvents({ pi, workdir, retryDelayMs: 0 }, { prompt: "hi", errCode: 0, errMessage: "" }),
       /upstream refused the request/,
     );
   });
@@ -1471,7 +1471,7 @@ test("a stream cut off mid-answer is continued rather than failed", async () => 
   // original prompt again would ask for the whole thing twice.
   assert.equal(requests.length, 1);
   assert.deepEqual(requests[0]?.slice(0, 2), ["user:write it", "assistant:half an answer"]);
-  assert.match(requests[0]?.[2] ?? "", /^user:Your previous response was cut off/);
+  assert.match(requests[0]?.[2] ?? "", /^user:Your previous model request failed/);
 });
 
 test("a continuation never sends the tool call that never ran", async () => {
@@ -1517,7 +1517,7 @@ test("a turn that keeps dropping gives up saying what happened", async () => {
         // The transport's one-word error is not an answer the user can act on,
         // and the count is the drops that happened — the budget allows ten
         // continuations, so the last attempt is an eleventh call.
-        assert.match(error.message, /cut off mid-answer 11 times/);
+        assert.match(error.message, /model request failed 11 times/);
         assert.match(error.message, /terminated/);
         return true;
       },
@@ -1780,23 +1780,22 @@ test("cancelling a durable continuation settles the turn", async () => {
   });
 });
 
-test("a failure the provider would repeat is not continued", async () => {
+test("provider errors formerly classified as permanent also continue", async () => {
   const { pi, ai } = await createFauxRuntime([
     () => ai.fauxAssistantMessage([ai.fauxText("thinking")], {
       stopReason: "error",
       errorMessage: "invalid api key",
     }),
-    () => ai.fauxAssistantMessage([ai.fauxText("should never be asked")]),
+    () => ai.fauxAssistantMessage([ai.fauxText("Recovered after failure")]),
   ]);
 
   await withTempDir(async (workdir) => {
     const events = await collectEvents(
       { pi, workdir, retryDelayMs: 0 },
       { prompt: "go", errCode: 0, errMessage: "" },
-    ).catch((error: unknown) => error as Error);
-
-    assert.ok(events instanceof Error);
-    assert.match(events.message, /invalid api key/);
+    );
+    assert.equal(events.filter(event => event.type === "retry").length, 1);
+    assert.ok(events.some(event => event.type === "text_delta" && event.delta === "Recovered after failure"));
   });
 });
 

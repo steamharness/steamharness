@@ -74,12 +74,12 @@ test("tool continuations below 90% retain their context without summarizing", as
   assert.equal(summaries.length, 0);
 });
 
-test("automatic compaction retries a temporary upstream failure before continuing the turn", async t => {
+test("automatic compaction retries an unknown upstream failure before continuing the turn", async t => {
   const { instance, faux, models } = fixture(); t.after(() => instance.close());
   instance.state.messages[0] = { role: "user", content: "x".repeat(360_000), timestamp: 1 };
   let summaries = 0;
   models.completeSimple = async () => ++summaries === 1
-    ? ai.fauxAssistantMessage([], { stopReason: "error", errorMessage: "upstream_error: Upstream service temporarily unavailable" })
+    ? ai.fauxAssistantMessage([], { stopReason: "error", errorMessage: "供应商摘要失败" })
     : ai.fauxAssistantMessage("Earlier work is complete.");
   faux.setResponses([ai.fauxAssistantMessage("Finished")]);
   await instance.prompt("Continue");
@@ -108,13 +108,13 @@ for (const chunked of [false, true]) test(`rejected compaction requests retry wi
   assert.equal(faux.state.callCount, 1);
 });
 
-for (const thrown of [false, true]) test(`manual compaction retries transient failures and bills every attempt (thrown=${thrown})`, async () => {
+for (const thrown of [false, true]) test(`manual compaction retries unknown failures and bills every attempt (thrown=${thrown})`, async () => {
   const { models } = fixture(); let calls = 0, billed = 0;
   models.completeSimple = async (_model, _source, options) => {
     assert.equal(options?.maxRetries, 0);
     if (++calls === 1) {
-      if (thrown) throw new Error("Summary failed", { cause: { code: "ETIMEDOUT" } });
-      return ai.fauxAssistantMessage([], { stopReason: "error", errorMessage: "409 Request failed" });
+      if (thrown) throw new Error("Summary failed", { cause: { status: 422 } });
+      return ai.fauxAssistantMessage([], { stopReason: "error", errorMessage: "供应商未知错误" });
     }
     return ai.fauxAssistantMessage("Recovered summary");
   };
@@ -144,7 +144,7 @@ for (const status of [401, 501]) test(`automatic summary rejections retain histo
   let calls = 0;
   models.completeSimple = async () => { calls++; throw Object.assign(new Error("Summary rejected"), { status }); };
   await instance.prompt("Continue");
-  assert.equal(calls, status === 401 ? 1 : 11);
+  assert.equal(calls, 11);
   assert.equal(faux.state.callCount, 0);
   assert.match(instance.state.errorMessage ?? "", new RegExp(String(status)));
   assert.match(serializeAgentMessages(instance.state.messages), /x{360000}/);
@@ -242,24 +242,24 @@ for (const outcome of ["failure", "cancelled"] as const) {
 }
 
 for (const repeats of [false, true]) {
-  test(`a provider context overflow compacts and retries once (repeated=${repeats})`, async t => {
+  test(`a provider context overflow compacts once and shares the fallback budget (repeated=${repeats})`, async t => {
     const { instance, faux, summaries } = fixture(); t.after(() => instance.close());
     const overflow = () => ai.fauxAssistantMessage([], { stopReason: "error", errorMessage: "context_length_exceeded: maximum context length exceeded" });
-    faux.setResponses([overflow, repeats ? overflow : () => ai.fauxAssistantMessage("Recovered")]);
+    faux.setResponses(repeats ? Array.from({ length: 11 }, () => overflow) : [overflow, () => ai.fauxAssistantMessage("Recovered")]);
     await instance.prompt("Continue");
     assert.equal(summaries.length, 1);
-    assert.equal(faux.state.callCount, 2);
+    assert.equal(faux.state.callCount, repeats ? 11 : 2);
     if (repeats) assert.match(instance.state.errorMessage ?? "", /context_length_exceeded/);
     else assert.equal(instance.state.errorMessage, undefined);
   });
 }
 
-test("explicitly disabling automatic compaction also disables overflow retries", async t => {
+test("disabling compaction still retains the fallback for every model error", async t => {
   const { instance, faux, summaries } = fixture({ enabled: false }); t.after(() => instance.close());
-  faux.setResponses([ai.fauxAssistantMessage([], { stopReason: "error", errorMessage: "context_length_exceeded" })]);
+  faux.setResponses(Array.from({ length: 11 }, () => ai.fauxAssistantMessage([], { stopReason: "error", errorMessage: "context_length_exceeded" })));
   await instance.prompt("Continue");
   assert.equal(summaries.length, 0);
-  assert.equal(faux.state.callCount, 1);
+  assert.equal(faux.state.callCount, 11);
   assert.match(instance.state.errorMessage ?? "", /context_length_exceeded/);
 });
 
@@ -295,12 +295,12 @@ for (const outcome of ["failure", "cancelled"] as const) {
     models.completeSimple = async () => {
       calls++;
       if (calls === 2 && outcome === "cancelled") controller.abort(new Error("Summary cancelled"));
-      return ai.fauxAssistantMessage("Checkpoint", { stopReason: calls === 2 && outcome === "failure" ? "error" : "stop",
-        errorMessage: calls === 2 ? "Summary failed" : undefined });
+      return ai.fauxAssistantMessage("Checkpoint", { stopReason: calls >= 2 && outcome === "failure" ? "error" : "stop",
+        errorMessage: calls >= 2 ? "Summary failed" : undefined });
     };
     await assert.rejects(compactAgentMessages({ models, model, messages, force: true, signal: controller.signal,
-      onUsage: () => { billed++; } }), outcome === "failure" ? /Summary failed/ : /Summary cancelled/);
-    assert.equal(billed, 2);
+      retryDelayMs: 0, onUsage: () => { billed++; } }), outcome === "failure" ? /Summary failed/ : /Summary cancelled/);
+    assert.equal(billed, outcome === "failure" ? 12 : 2);
     assert.deepEqual(messages, original);
   });
 }

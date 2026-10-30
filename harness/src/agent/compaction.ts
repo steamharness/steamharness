@@ -1,9 +1,8 @@
 import type { Api, AssistantMessage, Context, Message, Model, MutableModels, Usage } from "@earendil-works/pi-ai";
-import { retryAssistantCall } from "@earendil-works/pi-ai";
 import type { AgentMessage } from "@earendil-works/pi-agent-core";
 import type { AgentContextUsage } from "./types";
 import { createAssistantErrorMessage, normalizeAssistantError } from "./stream-error";
-import { AGENT_PROVIDER_MAX_RETRIES } from "./pi";
+import { retryAssistantResponse } from "./provider-retry";
 
 /**
  * Core checks context before each model request, including tool continuations.
@@ -170,14 +169,14 @@ export async function compactAgentMessages(options: {
   const head = options.messages.slice(0, splitIndex);
   const tail = options.messages.slice(splitIndex);
   const summary = await summarizeAgentMessages({
-    models: { completeSimple: (...args) => retryAssistantCall(async () => {
+    models: { completeSimple: (...args) => retryAssistantResponse(async () => {
       let message: AssistantMessage;
       try { message = normalizeAssistantError(await options.models.completeSimple(...args), args[2]?.signal); }
       catch (cause) { message = createAssistantErrorMessage(args[0], cause, args[2]?.signal); }
       // Accounting failures are host failures, outside the provider catch.
       await options.onUsage?.(message.usage);
       return message;
-    }, { enabled: true, maxRetries: AGENT_PROVIDER_MAX_RETRIES, baseDelayMs: options.retryDelayMs ?? 500, maxAgentDelayMs: 8_000 }, options.signal) },
+    }, options.signal, options.retryDelayMs) },
     model: options.model,
     messages: head,
     instructions: options.instructions,

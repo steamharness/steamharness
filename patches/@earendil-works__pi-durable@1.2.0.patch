@@ -1,0 +1,86 @@
+diff --git a/dist/harness/compaction.js b/dist/harness/compaction.js
+index c3fb798f4f3fcf13465484b104d40e68cd245b36..9a0ca97e8d35d5ec6cfe4eb08c5acfa6ba7196cd 100644
+--- a/dist/harness/compaction.js
++++ b/dist/harness/compaction.js
+@@ -131,7 +131,7 @@ export const CompactionTask = defineTask({
+             const summary = summaryText(message);
+             const policy = runtime.settings.retry;
+             const retry = message.stopReason === "error" &&
+-                isRetryableAssistantError(message) &&
++                (policy.allErrors || isRetryableAssistantError(message)) &&
+                 policy.enabled &&
+                 attempt <= policy.maxRetries;
+             const until = retry ? runtime.now() + retryDelayMs(policy, attempt) : 0;
+diff --git a/dist/harness/generation.js b/dist/harness/generation.js
+index 136bed43fe2c45f1739109e34af5590d5036a3f7..a21ff505bf09ff388594ea4ca651e554c04f9dea 100644
+--- a/dist/harness/generation.js
++++ b/dist/harness/generation.js
+@@ -354,7 +354,11 @@ async function classify(runtime, request, message, context) {
+         }, context);
+         return;
+     }
+-    await runtime.hooks.each("afterResponse", (hook) => hook(message, runtime, context));
++    let retryAllowed = true;
++    await runtime.hooks.each("afterResponse", async (hook) => {
++        if ((await hook(message, runtime, context))?.retry === false)
++            retryAllowed = false;
++    });
+     const calls = message.content.filter((content) => content.type === "toolCall");
+     if (message.stopReason === "toolUse" && calls.length > 0) {
+         return startToolRound(runtime, request, message, calls, context);
+@@ -365,7 +369,8 @@ async function classify(runtime, request, message, context) {
+     // The retry and compaction policies govern the next attempt, so they are read now rather than pinned at preparation.
+     const settings = runtime.settings;
+     const overflow = message.stopReason === "error" && isContextOverflow(message);
+-    if (overflow && compacted === undefined && settings.compaction.enabled) {
++    if (retryAllowed && overflow && compacted === undefined && settings.compaction.enabled &&
++        (!settings.retry.allErrors || settings.retry.enabled && attempt <= settings.retry.maxRetries)) {
+         const policy = settings.compaction;
+         const view = await runtime.context(conversationId, context, { at: cutoff });
+         if (selectCut(view, policy.keepRecentTokens) !== undefined) {
+@@ -375,17 +380,16 @@ async function classify(runtime, request, message, context) {
+                 await appendAssistant(tx, conversationId, message);
+                 delete live.generation;
+                 const child = await createCompaction(tx, conversationId, { reason: "overflow" }, runtime.taskId);
+-                const checkpoint = { phase: "prepare", attempt, compacted: child, overflow: text };
++                const checkpoint = { phase: "prepare", attempt: attempt + (settings.retry.allErrors ? 1 : 0), compacted: child, overflow: text };
+                 return { status: "waiting", checkpoint, on: [child], policy: "allSettled" };
+             }, context);
+             return;
+         }
+     }
+     const policy = settings.retry;
+-    // An overflow is never retried: only a compaction can make the next request fit.
+-    const retry = message.stopReason === "error" &&
+-        !overflow &&
+-        isRetryableAssistantError(message) &&
++    // Classification is optional; the owner can supply one bounded fallback for every model error.
++    const retry = retryAllowed && message.stopReason === "error" &&
++        (policy.allErrors || !overflow && isRetryableAssistantError(message)) &&
+         policy.enabled &&
+         attempt <= policy.maxRetries;
+     const until = retry ? runtime.now() + retryDelayMs(policy, attempt) : 0;
+diff --git a/dist/harness/types.d.ts b/dist/harness/types.d.ts
+index ea3adc9e21bcc4b101da614ce9913e3858777f0d..949dfe13811f45c8d27839c5d242793ee4e07caa 100644
+--- a/dist/harness/types.d.ts
++++ b/dist/harness/types.d.ts
+@@ -437,6 +437,8 @@ export type ConversationStreamOptions = {
+ /** Durable generation attempt retries; the JSON shape of pi-ai `RetryPolicy`. */
+ export type ConversationRetryPolicy = {
+     enabled: boolean;
++    /** Retry every model error, including unknown errors and errors remaining after overflow compaction. */
++    allErrors?: boolean;
+     maxRetries: number;
+     baseDelayMs: number;
+     maxAgentDelayMs?: number;
+@@ -692,8 +694,8 @@ export interface GenerationHooks {
+     }, api: HookApi, context: Context): HookResult<{
+         readonly messages: readonly Message[];
+     }>;
+-    /** Every terminal provider message, before classification. */
+-    afterResponse(message: AssistantMessage, api: HookApi, context: Context): void | Promise<void>;
++    /** Every terminal provider message, before classification. A host may veto retries after its shared budget is spent. */
++    afterResponse(message: AssistantMessage, api: HookApi, context: Context): HookResult<{ readonly retry: false }> | void | Promise<void>;
+     /** A final answer; the first `continue` appends a user message and continues the run. */
+     onYield(answer: AssistantMessage, api: HookApi, context: Context): HookResult<{
+         readonly continue: UserInput;

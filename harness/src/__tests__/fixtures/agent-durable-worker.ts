@@ -11,6 +11,7 @@ const tool = (name: string, replay: "safe" | "never", execute: () => Promise<unk
   execute: async () => { await execute(); return { content: [{ type: "text" as const, text: "ok" }], details: {} }; },
 });
 const agent = new DurableAgent({
+  retryDelayMs: 0,
   databasePath: path.join(directory, "session.sqlite"), models,
   ...(phase === "attach" ? { resumeSession: true, session: { compaction: { enabled: false } } } : {}),
   initialState: { systemPrompt: "Offline durable test", model: models.getModel("faux", "durable")!,

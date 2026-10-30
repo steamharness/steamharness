@@ -469,7 +469,7 @@ test("process recovery and transport continuations share the persisted continuat
   const resumed = worker(directory, "stream", "budget"); children.push(resumed);
   const done = await message(resumed, "done");
   assert.equal(done.calls, 10);
-  assert.match(String(done.errorMessage), /cut off mid-answer 11 times/);
+  assert.match(String(done.errorMessage), /model request failed 11 times/);
   await once(resumed, "exit");
 });
 

@@ -293,8 +293,8 @@ export interface AgentPendingApproval {
 /**
  * Why a turn had to be continued instead of being finished.
  *
- * `dropped` is a transport failure — the proxy or the bridge cut the stream
- * while the model was answering, and pi classified it as retryable. `length`
+ * `dropped` covers every failed model request, including errors without known
+ * wording or partial output. Caller cancellation is excluded. `length`
  * is the provider reporting that the response stopped at the model's output
  * token limit: nothing in the stack calls that an error, so without a name for
  * it here a half-written answer would be indistinguishable from a finished one.

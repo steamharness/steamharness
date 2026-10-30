@@ -934,7 +934,7 @@ export function projectSessionEntries(entries: readonly EntryRecord[], partial: 
       const itemId = `agent-session-${scope}-${id}-${index}`;
       if (block.type === "text") items.push({ id: itemId, title: "Output", content: block.text, contentType: "markdown", collapsed: false, metadata: { kind: "agent-part", partType: "text" } });
       else if (block.type === "thinking") items.push({ id: itemId, title: "Thinking", content: { text: block.thinking }, contentType: "json", collapsed: true, metadata: { kind: "agent-part", partType: "reasoning" } });
-      else if (block.type === "toolCall" && message.stopReason !== "aborted" && message.stopReason !== "pending") {
+      else if (block.type === "toolCall" && message.stopReason !== "error" && message.stopReason !== "aborted" && message.stopReason !== "pending") {
         const item: RunOutputItemInput = { id: itemId, title: block.name, content: { tool: block.name, input: block.arguments, status: "running" }, contentType: "json", collapsed: true, metadata: { kind: "agent-part", partType: "tool", status: "running" } };
         calls.set(block.id, item); items.push(item);
       }

@@ -21,6 +21,9 @@
       "@steamharness/cli": "link:cli",
       "@steamharness/server": "link:server",
       "@steamharness/server-web": "link:server/web"
+    },
+    "patchedDependencies": {
+      "@earendil-works/pi-durable@1.2.0": "patches/@earendil-works__pi-durable@1.2.0.patch"
     }
   }
 }

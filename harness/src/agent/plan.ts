@@ -206,7 +206,7 @@ export function createAgentStreamResumePrompt(options: {
 
   const cut = options.kind === "recovery"
     ? "The agent host restarted while your previous response was in progress."
-    : `Your previous response was cut off by a connection error (${options.reason}) before it finished.`;
+    : `Your previous model request failed (${options.reason}) before the response finished.`;
 
   if (options.keptPartial) {
     return [
@@ -270,12 +270,12 @@ export function createAgentStreamRetryText(options: {
 
   return readRuntimeLocaleSafe() === "zh-CN"
     ? {
-        title: `模型连接中断，正在续写（${progress}）`,
-        content: "模型流在回答中途断开。已经生成的内容保留在本轮，现在让它从中断处继续。",
+        title: `模型请求失败，正在重试（${progress}）`,
+        content: "模型请求发生错误，正在自动重试。保留已生成的内容和已完成的工具结果，从失败处继续。",
       }
     : {
-        title: `Model stream dropped — continuing (${progress})`,
-        content: "The model's stream was cut off mid-answer. What it already produced is kept, and it is being asked to carry on from there.",
+        title: `Model request failed — retrying (${progress})`,
+        content: "The model request failed and is being retried. Existing output and completed tool results are kept so work can continue.",
       };
 }
 

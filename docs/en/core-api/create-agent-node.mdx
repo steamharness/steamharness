@@ -124,7 +124,9 @@ When the model declares web search support, the node enables OpenAI Responses or
 
 The answer never gets pushed into a detail block by response metadata such as `finishReason` or usage.
 
-Automatic retry outputs use `partType: "retry"`, with `content.kind` distinguishing `dropped`, `recovery`, `length`, and `lost-call`. CLI Web / Studio show connection retries (`dropped`) as collapsed details after interrupted content and before its continuation. Other internal continuations run silently, with records retained in Trace and exports. Live output, durable session `turns[].items`, and restored history retain the same order; completing a run does not append the record again below the answer.
+Automatic retry outputs use `partType: "retry"`, with `content.kind` distinguishing `dropped`, `recovery`, `length`, and `lost-call`. CLI Web / Studio show model request retries (`dropped`) as collapsed details after interrupted content and before its continuation. Other internal continuations run silently, with records retained in Trace and exports. Live output, durable session `turns[].items`, and restored history retain the same order; completing a run does not append the record again below the answer.
+
+Every model request error receives up to 10 fallback retries, independent of its wording, HTTP status, or provider classification. Ordinary streams, durable sessions, deferred responses, and context compaction follow this rule with capped exponential backoff, per-attempt usage, and original diagnostics. Existing text and completed tool results are retained; unfinished tool calls in failed responses never execute. User cancellation immediately interrupts requests and backoff. Host configuration, authorization, storage, and callback failures are reported directly. Failed or cancelled turns leave queued inputs pending; only a successful turn advances them.
 
 A complete successful model response resets the retry count, so later failures in the same answer start at `Retry 1 / 10`. Retry records retain separate output item IDs even when their attempt numbers restart at 1.
 

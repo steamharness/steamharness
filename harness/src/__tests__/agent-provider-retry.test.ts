@@ -185,7 +185,7 @@ test("iterator exceptions settle a partial response without replaying already vi
   assert.deepEqual(await drain(stream), ["text_delta", "error"]);
   const result = await stream.result();
   assert.deepEqual(result.content, partial.content); assert.equal(result.usage, partial.usage);
-  assert.equal(ai.isRetryableAssistantError(result), true); assert.equal(calls, 1);
+  assert.match(result.errorMessage ?? "", /ECONNRESET/); assert.equal(calls, 1);
 });
 
 test("a result supplied without a terminal event completes the consumer", async () => {
@@ -213,18 +213,20 @@ test("a committed terminal event stays authoritative if iterator cleanup fails",
   assert.equal(calls, 1);
 });
 
-test("non-transient construction errors keep their original rejection and are never retried", async () => {
+test("construction errors use fallback and retain their original diagnostic", async () => {
   const ai = await import("@earendil-works/pi-ai");
   const { models } = scriptedModels(ai, []);
   const error = new Error("Invalid API key");
   let calls = 0;
   models.streamSimple = () => { calls++; throw error; };
   const runtime = await createRuntime(models, "openai-completions");
-  await assert.rejects(async () => runtime.streamFn(runtime.model, CONTEXT), error);
-  assert.equal(calls, 1);
+  const stream = await runtime.streamFn(runtime.model, CONTEXT, { maxRetries: 1 });
+  assert.deepEqual(await drain(stream), ["error"]);
+  assert.equal((await stream.result()).errorMessage, error.message);
+  assert.equal(calls, 2);
 });
 
-for (const boundary of ["iterate", "result"] as const) test(`permanent ${boundary} exceptions settle once without retrying`, { timeout: 2000 }, async () => {
+for (const boundary of ["iterate", "result"] as const) test(`HTTP 401 ${boundary} exceptions use the bounded fallback`, { timeout: 2000 }, async () => {
   const ai = await import("@earendil-works/pi-ai");
   const { models } = scriptedModels(ai, []);
   let calls = 0;
@@ -238,7 +240,7 @@ for (const boundary of ["iterate", "result"] as const) test(`permanent ${boundar
   };
   const runtime = await createRuntime(models, "openai-completions");
   const stream = await runtime.streamFn(runtime.model, CONTEXT, { maxRetries: 1 });
-  assert.deepEqual(await drain(stream), ["error"]); assert.equal(calls, 1);
+  assert.deepEqual(await drain(stream), ["error"]); assert.equal(calls, 2);
   assert.match((await stream.result()).errorMessage ?? "", /401/);
 });
 
@@ -259,7 +261,7 @@ test("caller cancellation while an iterator throws settles an aborted response w
 });
 
 for (const apiKind of ["openai-completions", "openai-responses", "anthropic-messages"] as const) {
-  for (const status of [408, 409, 501, 400]) test(`${apiKind} adapter HTTP ${status} uses the configured retry classification`, async () => {
+  for (const status of [408, 409, 501, 400]) test(`${apiKind} adapter HTTP ${status} uses fallback regardless of HTTP classification`, async () => {
     const runtime = await createPiRuntime({ provider: "http-status-test", model: "test-model",
       baseUrl: "http://127.0.0.1:9/v1", apiKey: "test-key", apiKind });
     let requests = 0;
@@ -276,8 +278,8 @@ for (const apiKind of ["openai-completions", "openai-responses", "anthropic-mess
       return new Response(events.map(event => `event: ${event.type ?? "message"}\ndata: ${JSON.stringify(event)}\n\n`).join(""), { headers: { "content-type": "text/event-stream" } });
     } });
     const events = await drain(stream);
-    assert.equal(requests, status === 400 ? 1 : 2);
-    assert.equal(events.at(-1), status === 400 ? "error" : "done", (await stream.result()).errorMessage);
+    assert.equal(requests, 2);
+    assert.equal(events.at(-1), "done", (await stream.result()).errorMessage);
   });
 }
 
@@ -409,7 +411,7 @@ test("a cancelled stream is never replayed", async () => {
   const controller = new AbortController(); controller.abort();
   const events = await drainEvents(await runtime.streamFn(runtime.model, CONTEXT, { signal: controller.signal }));
 
-  assert.equal(state.attempts, 1);
+  assert.equal(state.attempts, 0);
   assert.equal(events.at(-1)?.type, "error");
   assert.equal((events.at(-1) as { error: AssistantMessage }).error.stopReason, "aborted");
 });
@@ -446,7 +448,7 @@ test("an attempt that stops without a verdict becomes a retryable error", async 
   const error = (terminal as { error?: AssistantMessage } | undefined)?.error;
   assert.equal(error?.stopReason, "error");
   assert.match(error?.errorMessage ?? "", /ended without/);
-  assert.equal(ai.isRetryableAssistantError(error as AssistantMessage), true);
+  assert.equal((error as AssistantMessage).stopReason, "error");
   // The text the user already saw rides on the error, so the turn can be
   // continued from it instead of replayed.
   assert.equal(JSON.stringify(error?.content), JSON.stringify([{ type: "text", text: "half an answer" }]));
@@ -482,18 +484,18 @@ test("the budget bounds an attempt that keeps stopping without a verdict", async
   assert.equal(events.at(-1)?.type, "error");
 });
 
-test("a non-retryable failure is reported straight away", async () => {
+for (const message of ["invalid api key", "quota exceeded", "Upstream response stream was interrupted", "未知错误", ""]) test(`model failures use fallback without recognizing their text: ${message}`, async () => {
   const ai = await import("@earendil-works/pi-ai");
   const { models, state } = scriptedModels(ai, [
-    [{ type: "error", message: "invalid api key" }],
+    [{ type: "error", message }],
     [{ type: "done" }],
   ]);
   const runtime = await createRuntime(models);
 
-  const events = await drain(await runtime.streamFn(runtime.model, CONTEXT));
+  const events = await drain(await runtime.streamFn(runtime.model, CONTEXT, { maxRetries: 1 }));
 
-  assert.equal(state.attempts, 1);
-  assert.equal(events.at(-1), "error");
+  assert.equal(state.attempts, 2);
+  assert.equal(events.at(-1), "done");
 });
 
 test("the budget bounds how often a stream is re-issued", async () => {

@@ -44,7 +44,7 @@ function fixture(databasePath?: string, definitions = roles, resumeSession = fal
   const models = ai.createModels(); models.setProvider(faux.provider);
   const lease = latch(), suspend = latch();
   let snapshot: AgentSessionSnapshot | undefined;
-  const agent = new DurableAgent({ models, databasePath, sessionLease: lease.promise, sessionSuspend: suspend.promise, resumeSession, interruptSession,
+  const agent = new DurableAgent({ models, databasePath, retryDelayMs: 0, sessionLease: lease.promise, sessionSuspend: suspend.promise, resumeSession, interruptSession,
     session: { nativeTools, compaction: { enabled: false }, subagents: { tools: ["research", "record"], definitions, models: allowedModels, maxAgents: 4 } },
     initialState: { model: models.getModel("faux", "test")!, systemPrompt: "ROOT COORDINATOR ONLY", tools: [], messages: [], thinkingLevel: "off" } });
   agent.subscribe(event => { const value = event as unknown as { type: string; snapshot: AgentSessionSnapshot }; if (value.type === "project_session") snapshot = value.snapshot; });
@@ -284,13 +284,13 @@ test("restored native tools recheck host permission before executing a saved int
 });
 
 test("retry keeps the work identity, history and committed tool results, and duplicate commands create one attempt", async t => {
-  const f = fixture(); let calls = 0, failed = false;
+  const f = fixture(); let calls = 0, failures = 0;
   f.agent.state.tools = [{ name: "research", label: "Research", description: "Checkpoint", replay: "safe", parameters: ai.Type.Object({}),
     execute: async () => { calls++; return { content: [ai.fauxText("COMMITTED RECEIPT")], details: {} }; } }];
   f.faux.setResponses(Array.from({ length: 30 }, () => (request: ai.TranscriptContext) => {
     if (!request.messages.some(message => message.role === "user" && String(message.content).includes("Retry work"))) return ai.fauxAssistantMessage("Root");
     if (!request.messages.some(message => message.role === "toolResult")) return ai.fauxAssistantMessage([ai.fauxToolCall("research", {})], { stopReason: "toolUse" });
-    if (!failed) { failed = true; return ai.fauxAssistantMessage([], { stopReason: "error", errorMessage: "401 Unauthorized" }); }
+    if (failures++ < 11) { return ai.fauxAssistantMessage([], { stopReason: "error", errorMessage: "401 Unauthorized" }); }
     assert.match(JSON.stringify(request.messages), /COMMITTED RECEIPT/);
     return ai.fauxAssistantMessage("Completed from checkpoint");
   }));

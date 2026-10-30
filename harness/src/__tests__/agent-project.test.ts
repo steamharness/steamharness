@@ -85,8 +85,8 @@ for (const outcome of ["success", "failed", "error", "length"] as const) {
     const requests: string[][] = [];
     faux.setResponses([
       ai.fauxAssistantMessage([ai.fauxText("Original answer")]),
-      ai.fauxAssistantMessage([ai.fauxText(outcome === "success" ? "Remember the user's goal." : outcome === "failed" ? "" : "Partial summary")],
-        { stopReason: outcome === "error" || outcome === "length" ? outcome : "stop", errorMessage: outcome === "error" ? "Summary provider failed" : undefined }),
+      ...Array.from({ length: outcome === "error" ? 11 : 1 }, () => ai.fauxAssistantMessage([ai.fauxText(outcome === "success" ? "Remember the user's goal." : outcome === "failed" ? "" : "Partial summary")],
+        { stopReason: outcome === "error" || outcome === "length" ? outcome : "stop", errorMessage: outcome === "error" ? "Summary provider failed" : undefined })),
       (request: { messages: AgentRequestMessage[] }) => {
         requests.push(readRequestLines(request.messages));
         return ai.fauxAssistantMessage([ai.fauxText("Continued")]);
@@ -97,7 +97,7 @@ for (const outcome of ["success", "failed", "error", "length"] as const) {
       const executor = defineAgentConversationExecutor({ models, resolvedModel: model });
       await executor.workflow.run({ prompt: "Original goal", workdir, errCode: 0, errMessage: "" }, context);
       const before = await readStoredTranscript(context);
-      const node = createAgentNode({ models, resolvedModel: model });
+      const node = createAgentNode({ models, resolvedModel: model, ...{ retryDelayMs: 0 } });
       const input = { prompt: "/compact", workdir, errCode: 0, errMessage: "" };
       const chunks: OutputItemStreamChunk[] = [];
       const collect = async () => { for await (const chunk of node.stream(input, context)) chunks.push(chunk); };
@@ -1261,13 +1261,12 @@ test("a retry follows interrupted thinking before the resumed answer", async () 
 
 test("a provider failure reaches the host as a failure", async () => {
   const { ai, faux, models, model } = await createFauxModel();
-  faux.setResponses([
-    ai.fauxAssistantMessage("", { stopReason: "error", errorMessage: "upstream refused the request" }),
-  ] as never[]);
+  faux.setResponses(Array.from({ length: 11 }, () =>
+    ai.fauxAssistantMessage("", { stopReason: "error", errorMessage: "upstream refused the request" })) as never[]);
 
   await withTempDir(async (workdir) => {
     const executor = defineAgentConversationExecutor({
-      projectName: "pi",
+      projectName: "pi", ...{ retryDelayMs: 0 },
       outputItemId: "pi-answer",
       models,
       resolvedModel: model,

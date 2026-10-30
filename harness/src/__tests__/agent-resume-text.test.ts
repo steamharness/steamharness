@@ -25,14 +25,14 @@ function withRuntimeLocale(value: string | undefined, run: () => void): void {
   }
 }
 
-test("a dropped stream is still resumed with the connection wording", () => {
+test("a model failure resumes with the original reason", () => {
   const prompt = createAgentStreamResumePrompt({
     kind: "dropped",
     reason: "terminated",
     keptPartial: true,
   });
 
-  assert.match(prompt, /cut off by a connection error \(terminated\)/);
+  assert.match(prompt, /model request failed \(terminated\)/);
   assert.match(prompt, /Continue from exactly where you stopped\./);
 });
 
@@ -91,7 +91,7 @@ test("the retry row says which budget it is spending", () => {
     assert.match(length.content, /输出上限/);
 
     const dropped = createAgentStreamRetryText({ attempt: 1, maxAttempts: 10, kind: "dropped" });
-    assert.match(dropped.title, /连接中断/);
+    assert.match(dropped.title, /请求失败/);
     assert.match(dropped.title, /（1\/10）/);
     assert.doesNotMatch(length.content, /[A-Za-z]{4,}/, "zh-CN must not leak the English sentence");
 
@@ -107,7 +107,7 @@ test("the retry row says which budget it is spending", () => {
     assert.match(length.content, /output token limit/);
 
     const dropped = createAgentStreamRetryText({ attempt: 3, maxAttempts: 10, kind: "dropped" });
-    assert.match(dropped.title, /Model stream dropped/);
+    assert.match(dropped.title, /Model request failed/);
     assert.match(dropped.title, /\(3\/10\)/);
 
     const lost = createAgentStreamRetryText({ attempt: 2, maxAttempts: 10, kind: "lost-call" });
@@ -116,7 +116,7 @@ test("the retry row says which budget it is spending", () => {
   });
 });
 
-test("a caller that does not name a kind keeps the dropped wording", () => {
+test("a caller that does not name a kind uses the general model failure wording", () => {
   // The builder is exported; a caller written before the two causes were told
   // apart must not change what its users read.
   withRuntimeLocale("en", () => {

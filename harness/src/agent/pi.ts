@@ -14,22 +14,8 @@ import type { TypeboxLike } from "./tools";
 import { HarnessError } from "../workflow/errors";
 import { withAgentWebSearch, resolveAgentWebSearch } from "./web-search";
 import { createAssistantErrorMessage, normalizeAssistantError } from "./stream-error";
-
-/**
- * How many times one model call may be retried before the run fails.
- *
- * The budget covers the whole call, not just getting a response back: a
- * connection that never lands and a response that dies halfway both count
- * against it, and both are re-issued by the stream wrapper below. Each retry
- * waits out a doubling backoff capped at 8s, so ten of them ride out roughly a
- * minute of trouble — a Server AI proxy restart, a dropped stream — before the
- * run gives up.
- *
- * Only transient failures are replayed: pi classifies the error, and an auth,
- * validation or quota failure still ends the run on the first response instead
- * of being sent ten times. An abort is never retried either.
- */
-export const AGENT_PROVIDER_MAX_RETRIES = 10;
+import { AGENT_PROVIDER_MAX_RETRIES, waitBeforeRetry } from "./provider-retry";
+export { AGENT_PROVIDER_MAX_RETRIES, waitBeforeRetry } from "./provider-retry";
 
 /**
  * How many times a turn that ran out of output tokens is continued.
@@ -255,25 +241,14 @@ export async function createPiRuntime(options: PiRuntimeOptions): Promise<PiRunt
   };
 }
 
-/** Backoff before a retried attempt: doubling, capped at 8s, with jitter. */
-const AGENT_RETRY_BASE_DELAY_MS = 500;
-const AGENT_RETRY_MAX_DELAY_MS = 8_000;
-
 /**
  * `models.streamSimple` with a retry budget this wrapper spends itself.
  *
- * A model call fails in two ways, and only the second one is visible as a
- * stream event:
+ * Every model error uses the same fallback, whether returned by the provider
+ * or thrown during setup, iteration or result retrieval. Error text and HTTP
+ * status do not decide whether to retry. Caller cancellation stays terminal.
  *
- * 1. **The request never gets a response** — a dropped connection, `408`/`409`/
- *    `429`, any 5xx from the AI proxy bridge.
- * 2. **The response starts and then dies** — a mid-stream
- *    `TypeError: terminated` when the bridge or the Server is cut off while the
- *    model is answering. pi cannot retry this one: its own budget only covers
- *    getting the response headers back, which is how a run used to end on a
- *    failure a second attempt would have fixed.
- *
- * Both are retried here instead, and the budget is spent in exactly one place.
+ * The budget is spent in exactly one place.
  * pi is handed `maxRetries: 0`, so every attempt is a single request: letting
  * both layers retry would multiply them (a ten-attempt budget became a hundred
  * requests, each waiting out its own backoff). The cost is that a `retry-after`
@@ -283,7 +258,7 @@ const AGENT_RETRY_MAX_DELAY_MS = 8_000;
  * A retry is only safe while no content has been produced: once a token reached
  * the consumer, pi's agent loop holds half an answer for this call, and
  * replaying the request would leave both versions in the transcript. A failure
- * after that point stays fatal, exactly as before.
+ * after that point is returned to the durable runtime for continuation.
  */
 function createRetryingStreamFn(ai: PiAiModule, models: MutableModels, apiKey?: string): PiStreamFn {
   const streamFn = async (
@@ -296,12 +271,10 @@ function createRetryingStreamFn(ai: PiAiModule, models: MutableModels, apiKey?: 
     const requestContext = ai.normalizeContext(context);
     let first: AssistantMessageEventStream;
     try {
+      options?.signal?.throwIfAborted();
       first = models.streamSimple(model, requestContext, requestOptions);
     } catch (cause) {
       const error = createAssistantErrorMessage(model, cause, options?.signal);
-      // Keep deterministic construction errors (such as missing auth) on the
-      // original rejection path. Transport failures use the same retry budget.
-      if (!ai.isRetryableAssistantError(error) && !options?.signal?.aborted) throw cause;
       first = ai.createAssistantMessageEventStream();
       first.push({ type: "error", reason: error.stopReason as "error" | "aborted", error }); first.end(error);
     }
@@ -363,6 +336,7 @@ async function pumpAssistantStream(options: AssistantStreamPumpOptions): Promise
   for (let attempt = 0; ; attempt += 1) {
     let message: AssistantMessage | undefined;
     try {
+      signal?.throwIfAborted();
       const attemptStream = attempt === 0 ? options.first : models.streamSimple(model, context, requestOptions);
       for await (const event of attemptStream) {
         if (event.type === "done" || event.type === "error") {
@@ -390,7 +364,7 @@ async function pumpAssistantStream(options: AssistantStreamPumpOptions): Promise
       stream.push({ type: "done", reason: message.stopReason as "stop" | "length" | "toolUse" | "deferred", message });
       stream.end(message); return;
     }
-    if (contentSent || attempt >= budget || signal?.aborted || !ai.isRetryableAssistantError(message)) {
+    if (contentSent || attempt >= budget || message.stopReason === "aborted" || signal?.aborted) {
       stream.push({ type: "error", reason: message.stopReason, error: message });
       stream.end(message); return;
     }
@@ -406,41 +380,6 @@ async function pumpAssistantStream(options: AssistantStreamPumpOptions): Promise
     }
 
   }
-}
-
-/**
- * Waits out the backoff for a retry; false means the run was cancelled.
- *
- * Exported because the runtime spends the same budget on a second kind of
- * retry: a turn whose model call died *after* it had produced content cannot be
- * replayed by the stream wrapper above, so it is resumed as a fresh
- * continuation, and that wait has to look the same to a user watching it.
- */
-export function waitBeforeRetry(attempt: number, signal: AbortSignal | undefined): Promise<boolean> {
-  const delayMs = Math.min(
-    AGENT_RETRY_BASE_DELAY_MS * 2 ** (attempt - 1),
-    AGENT_RETRY_MAX_DELAY_MS,
-  ) * (1 - Math.random() * 0.25);
-
-  if (signal === undefined) {
-    return new Promise((resolve) => {
-      setTimeout(() => resolve(true), delayMs);
-    });
-  }
-  if (signal.aborted) return Promise.resolve(false);
-
-  return new Promise((resolve) => {
-    let timer: ReturnType<typeof setTimeout>;
-    const onAbort = () => {
-      clearTimeout(timer);
-      resolve(false);
-    };
-    timer = setTimeout(() => {
-      signal.removeEventListener("abort", onAbort);
-      resolve(true);
-    }, delayMs);
-    signal.addEventListener("abort", onAbort, { once: true });
-  });
 }
 
 /**
