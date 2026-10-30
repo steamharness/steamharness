@@ -50,4 +50,23 @@ describe('custom tool resource cards', () => {
     expect(conversationResourceCards([explicit], projectId, "main", conversationId, 'server')[0].target).toMatchObject({ source: 'server', projectId, documentId: 'doc' });
     expect(conversationResourceCards([file], projectId, "main", conversationId, 'server')[0].target.source).toBe('local');
   });
+
+  it.each([
+    ['kanban', { configurationId: 'named-map' }], ['project', { configurationId: 'named-map' }],
+    ['file', { filePath: 'README.md' }], ['kv', { database: 'data', key: 'map', scope: 'project' }],
+    ['knowledge', { database: 'data', documentId: 'doc' }],
+  ] as const)('preserves an explicit current %s target instead of replacing it with the conversation owner', (kind, fields) => {
+    const target = { source: 'current', projectId: 'workspace', entryId: 'map-2d', ...fields };
+    const presentation = { action: 'upsert', cardId: 'map', kind, target };
+    const output = { content: [{ type: 'text', text: JSON.stringify(presentation) }], details: {} };
+    expect(conversationResourceCards([item('workflow-ui_present_card', output)], projectId, 'main', conversationId, 'server')[0].target)
+      .toEqual({ ...target, source: kind === 'kv' || kind === 'knowledge' ? 'server' : 'local' });
+    expect(target.source).toBe('current');
+  });
+
+  it('fills only missing current target identifiers and keeps a sibling entry', () => {
+    const presentation = { action: 'upsert', cardId: 'map', kind: 'kanban', target: { source: 'current', entryId: 'map-2d' } };
+    expect(conversationResourceCards([item('workflow-ui_present_card', presentation)], projectId, 'agent', conversationId)[0].target)
+      .toEqual({ source: 'local', projectId, entryId: 'map-2d' });
+  });
 });

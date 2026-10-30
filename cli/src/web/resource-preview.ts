@@ -101,7 +101,7 @@ export class ResourcePreviews {
     if (id === this.owner.id) {
       if (!workspace && entryId === this.owner.entryId) { return this.owner; }
       // The dedicated assistant owns the conversation; its workspace owns project previews.
-      const root = await realpath(workspace ?? this.owner.folderPath), inspected = await this.runtime.inspect([root]);
+      const root = await realpath(workspace ?? this.owner.folderPath), inspected = await this.runtime.inspect([root], entryId);
       const project = inspected.projects.find(project => path.resolve(project.folderPath) === root && project.entryId === entryId);
       if (!project) { throw new Error(t('The resource project is unavailable.')); }
       return { ...project, uri: pathToFileURL(root).href };
@@ -111,7 +111,8 @@ export class ResourcePreviews {
       try { root = await realpath(directory); pkg = JSON.parse(await readFile(path.join(root, 'steamharness.json'), 'utf8')); }
       catch { continue; }
       if (String(pkg.id).toLowerCase() !== id.toLowerCase()) { continue; }
-      const inspected = await this.runtime.inspect([root]);
+      // A resource can belong to another entry than this runtime's conversation.
+      const inspected = await this.runtime.inspect([root], entryId);
       const project = inspected.projects.find(project => project.id.toLowerCase() === id.toLowerCase() && project.entryId === entryId);
       if (!project) { throw new Error(t('The resource project is unavailable.')); }
       return { ...project, uri: pathToFileURL(root).href };

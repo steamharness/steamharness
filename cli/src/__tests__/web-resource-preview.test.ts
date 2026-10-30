@@ -70,7 +70,7 @@ describe('resource previews', () => {
     openedPreviews.push(previews);
     const result = await previews.open(card(kind, { source: 'local', projectId: owner.id }));
     expect(result.data).toMatchObject({ format: 'kanban', project: {entryId:"main",aggregateName:"Test aggregate",defaultEntry:"main", id: board.id, folderPath: board.folderPath, projectType: 'kanban' } });
-    expect(runtime.inspect).toHaveBeenCalledWith([board.folderPath]);
+    expect(runtime.inspect).toHaveBeenCalledWith([board.folderPath], 'main');
     expect(String((await previews.asset(new URL(result.data.kanban!.url, 'http://localhost')))?.content)).toContain('Map preview');
   });
 
@@ -91,7 +91,7 @@ describe('resource previews', () => {
     const previews = new ResourcePreviews(owner, runtime, storageDir, () => undefined, () => [board.folderPath]);
     openedPreviews.push(previews);
     await expect(previews.open(card('kanban', { source: 'local', projectId: owner.id }))).rejects.toThrow('The resource project is unavailable.');
-    expect(runtime.inspect).toHaveBeenCalledWith([workdir]);
+    expect(runtime.inspect).toHaveBeenCalledWith([workdir], 'main');
     expect(runtime.inspect).toHaveBeenCalledTimes(1);
   });
 

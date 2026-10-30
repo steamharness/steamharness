@@ -65,7 +65,10 @@ export function conversationResourceCards(items: OutputItem[], projectId: string
     const kind = descriptor.kind as ResourceCard['kind'];
     if (!['kv', 'knowledge', 'project', 'browser', 'file', 'kanban'].includes(kind)) { continue; }
     const target = Object.fromEntries(Object.entries(record(descriptor.target) ?? {}).filter((entry): entry is [string, string] => typeof entry[1] === 'string' && entry[1].length < 8192));
-    if (target.source === 'current') { target.source = kind === 'kv' || kind === 'knowledge' ? storageSource : 'local'; target.projectId = projectId; target.entryId = entryId; }
+    if (target.source === 'current') {
+      target.source = kind === 'kv' || kind === 'knowledge' ? storageSource : 'local';
+      target.projectId ??= projectId; target.entryId ??= entryId;
+    }
     if (target.source && !['local', 'server'].includes(target.source)) { continue; }
     if (kind === 'browser') {
       try { const url = new URL(target.url); if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password) { continue; } } catch { continue; }

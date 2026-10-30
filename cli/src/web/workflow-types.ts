@@ -216,7 +216,7 @@ export interface Runtime {
   agentControl?(runId: string, command: AgentSessionCommand, scopeId: string, attachments?: Attachment[]): Promise<AgentSessionReceipt>;
   available: boolean;
   kanbanBridge?(project: Project, call: KanbanBridgeCall): Promise<unknown>;
-  inspect(paths: string[]): Promise<{ projects: Omit<Project, 'uri'>[]; errors: string[] }>;
+  inspect(paths: string[], entryId?: string): Promise<{ projects: Omit<Project, 'uri'>[]; errors: string[] }>;
   resolveParams(project: Project, request: ParamRequest, entrypointId?: string): Promise<{ params?: Record<string, ParamState> }>;
   run(request: Run, onEvent: (event: Record<string, unknown>) => void): Promise<Report>;
   uploadFiles(project: Project, conversationId: string, files: Upload[]): Promise<Attachment[]>;

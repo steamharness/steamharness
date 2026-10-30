@@ -148,7 +148,7 @@ export function createWebRuntime(projectDir: string, storageDir: string, connect
         { code: 'STEAMHARNESS_WORKER_INTERRUPTED' })); }
     });
     child.stdin!.on('error', () => undefined);
-    child.stdin!.end(JSON.stringify({ ...request, memoryAvailable:!!auth?.memoryToken, userSettings, storageDir, runtimeProjectDir: projectDir, entryId: (request.project as Project)?.entryId ?? options.entryId, actor: options.actor?.() }));
+    child.stdin!.end(JSON.stringify({ ...request, memoryAvailable:!!auth?.memoryToken, userSettings, storageDir, runtimeProjectDir: projectDir, entryId: (request.project as Project)?.entryId ?? request.entryId ?? options.entryId, actor: options.actor?.() }));
   });
   const invokeRun = async (request: Record<string, unknown>, onEvent: (event: Record<string, unknown>) => void, signal: AbortSignal): Promise<Report> => {
     // A replacement host can start before its orphaned worker finishes cleanup.
@@ -188,7 +188,7 @@ export function createWebRuntime(projectDir: string, storageDir: string, connect
         return capabilities;
       }catch(error){const previous=memoryCapabilitiesCache.get(key);if(previous&&current()&&![401,403,404].includes(Number((error as any)?.metadata?.status)))return {...previous,status:'unavailable'};memoryCapabilitiesCache.delete(key);throw error;}
     },
-    inspect: (paths) => invoke({ method: 'inspect', paths }),
+    inspect: (paths, entryId) => invoke({ method: 'inspect', paths, entryId }),
     resolveParams: (project, request, entrypointId) => invoke({ method: 'resolve', project, request, entrypointId }),
     run: async (request, onEvent) => {
       const runId = String(request.runId), cancellation = new AbortController();

@@ -214,6 +214,9 @@ test('resource cards share Core presentation/removal semantics and reject unsafe
   const item = (content) => ({ id: 'tool', metadata: { kind: 'agent-part', partType: 'tool' }, content: { status: 'success', tool: 'workflow-ui_present_card', input: content } });
   const upsert = item({ action: 'upsert', cardId: 'knowledge', kind: 'knowledge', title: 'Notes', target: { source: 'current', documentId: 'doc' } });
   assert.deepEqual(conversationResourceCards([upsert], project.id, 'session')[0].target, { source: 'local', documentId: 'doc', projectId: project.id });
+  const map = item({ action: 'upsert', cardId: 'map', kind: 'kanban', target: { source: 'current', projectId: 'workspace', entryId: 'map-2d', configurationId: 'official' } });
+  assert.deepEqual(conversationResourceCards([map], project.id, 'session')[0].target,
+    { source: 'local', projectId: 'workspace', entryId: 'map-2d', configurationId: 'official' });
   assert.deepEqual(conversationResourceCards([upsert, item({ action: 'remove', cardId: 'knowledge' })], project.id, 'session'), []);
   for (const target of [{ kind: 'browser', target: { url: 'command:workbench.action' } }, { kind: 'file', target: { filePath: '../secret' } }]) {
     assert.deepEqual(conversationResourceCards([item({ action: 'upsert', cardId: 'unsafe', ...target })], project.id, 'session'), []);
