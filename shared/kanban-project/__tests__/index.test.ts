@@ -22,6 +22,43 @@ import {
 } from "../index";
 
 describe("kanban project contract", () => {
+  it("settles the host ready/configuration handshake without repeated events or method catalogs", () => {
+    const configuration = { id: "map", name: "Map", params: { layers: ["ground"], view: { zoom: 1 } } };
+    const listeners: Array<(event: MessageEvent) => void> = [];
+    const outgoing: Array<Record<string, unknown>> = [];
+    const pending: Array<Record<string, unknown>> = [];
+    const parent = { postMessage(message: Record<string, unknown>) {
+      outgoing.push(message);
+      if (message.type === "steamharness:kanban-ready") pending.push({ type: "steamharness:kanban-configuration", nonce: "nonce", configuration });
+    } };
+    const pageWindow = {
+      parent, setTimeout: () => 1, clearTimeout() {}, dispatchEvent: vi.fn(),
+      addEventListener(type: string, listener: (event: MessageEvent) => void) { if (type === "message") listeners.push(listener); },
+    } as unknown as Window & { steamHarnessKanban: KanbanBrowserApi };
+    const send = (data: Record<string, unknown>) => { for (const listener of listeners) listener({ source: parent, data } as MessageEvent); };
+    const settle = () => {
+      for (let attempts = 0; pending.length && attempts < 10; attempts++) send(pending.shift()!);
+      expect(pending).toHaveLength(0);
+    };
+    const script = createKanbanBridgeScript(configuration, "nonce").replace(/^<script[^>]*>/, "").replace(/<\/script>$/, "");
+    new Function("window", "document", script)(pageWindow, { readyState: "complete" });
+    settle();
+    expect(outgoing.filter(message => message.type === "steamharness:kanban-ready")).toHaveLength(1);
+    expect(pageWindow.dispatchEvent).not.toHaveBeenCalled();
+    const unregister = pageWindow.steamHarnessKanban.methods.register({ name: "map.getInfo", description: "Map info", inputSchema: { type: "object" }, readOnly: true }, () => ({}));
+    const catalogs = outgoing.length;
+    for (let index = 0; index < 5; index++) send({ type: "steamharness:kanban-configuration", nonce: "nonce", configuration: structuredClone(configuration) });
+    expect(outgoing).toHaveLength(catalogs);
+    expect(pageWindow.dispatchEvent).not.toHaveBeenCalled();
+    configuration.params.view.zoom = 2;
+    send({ type: "steamharness:kanban-configuration", nonce: "nonce", configuration: structuredClone(configuration) });
+    settle();
+    expect(pageWindow.dispatchEvent).toHaveBeenCalledTimes(1);
+    expect(pageWindow.steamHarnessKanban.getConfiguration().params).toEqual(configuration.params);
+    expect(outgoing.at(-1)).toMatchObject({ type: "steamharness:kanban-method-catalog", methods: [{ name: "map.getInfo" }] });
+    unregister();
+  });
+
   it("validates the local Studio query and exposes only an argument-free read method", async () => {
     expect(parseKanbanBridgeCall({ requestId: 'stats', operation: 'studio.getLocalAnalysis', input: {} }).operation).toBe('studio.getLocalAnalysis');
     expect(() => parseKanbanBridgeCall({ requestId: 'stats', operation: 'studio.getLocalAnalysis', input: { path: '/other' } })).toThrow();

@@ -47,12 +47,13 @@ let sizes = { ...defaults, ...saved?.sizes }, mode: KanbanPresentationMode = sav
 if (!['fullscreen', 'phone', 'tablet', 'card'].includes(mode)) { mode = 'fullscreen'; }
 let menuOpen = false, state: KanbanState | undefined, project: Project | undefined;
 let usageAvailable = false;
-let connected = false, working = false, methodWorking = false, transitioning = false, dirty = false, editing = 0, signature = '', previewKey = '', authRevision = -1;
+let connected = false, working = false, methodWorking = false, transitioning = false, dirty = false, editing = 0, signature = '', previewKey = '', configurationKey = '', authRevision = -1;
 let serverData: ProjectServerState | undefined, previewBlocked = false;
 const stateRevisions = new StateRevisions();
 let serverInstanceId: string | undefined;
 let values: ParamValues = {}, saveTimer: ReturnType<typeof setTimeout> | undefined, readyTimer: ReturnType<typeof setTimeout> | undefined, pendingBridge = 0;
 let methodSession: ReturnType<typeof createKanbanMethodSession> | undefined;
+let methodPublishTimer: ReturnType<typeof setTimeout> | undefined;
 const methodCalls = new Map<string, AbortController>();
 const serverGuidance = new ProjectServerGuidance(element('server-guidance'), {
   create: () => { void host.postMessage({ type: 'open-project-create' }); },
@@ -105,24 +106,33 @@ function update(next: KanbanState): void {
 function inject(): void {
   if (!state) { return; }
   frame.style.colorScheme = document.documentElement.dataset.theme ?? 'normal';
+  const nextConfigurationKey = JSON.stringify(state.configuration);
+  const configurationChanged = nextConfigurationKey !== configurationKey;
+  configurationKey = nextConfigurationKey;
   for (const message of [
-    { type: 'steamharness:kanban-configuration', configuration: state.configuration },
+    ...(configurationChanged ? [{ type: 'steamharness:kanban-configuration', configuration: state.configuration }] : []),
     { type: 'steamharness:kanban-theme', theme: document.documentElement.dataset.theme },
     { type: 'steamharness:kanban-presentation', presentation: { mode } },
     { type: 'steamharness:kanban-keyboard-host', version: 1, enabled: host.keyboard?.enabled === true },
     ...state.databaseRevisions.map(item => ({ type: 'steamharness:kanban-database-revision', ...item })),
   ]) { frame.contentWindow?.postMessage({ ...message, nonce: state.preview.nonce }, '*'); }
 }
-function publishMethods(): void { if (connected && state && methodSession) { host.postMessage({ type: 'kanban-method-state', nonce: state.preview.nonce, instanceId: methodSession.instanceId, ...methodSession.getState() }); } }
+function publishMethods(): void {
+  if (methodPublishTimer || !connected || !state || !methodSession) return;
+  methodPublishTimer = setTimeout(() => {
+    methodPublishTimer = undefined;
+    if (connected && state && methodSession) host.postMessage({ type: 'kanban-method-state', nonce: state.preview.nonce, instanceId: methodSession.instanceId, ...methodSession.getState() });
+  }, 50);
+}
 function mountPreview(): void {
   if (!state || previewBlocked) { return; }
-  clearTimeout(readyTimer); methodSession?.close(); pendingBridge = 0; previewKey = state.preview.url;
+  clearTimeout(readyTimer); methodSession?.close(); pendingBridge = 0; previewKey = state.preview.url; configurationKey = '';
   methodSession = createKanbanMethodSession({ nonce: state.preview.nonce, getConfiguration: () => state?.configuration, getPresentation: () => ({ mode }), postMessage: message => frame.contentWindow?.postMessage(message, '*') });
   element('preview-status').hidden = false; element('preview-status').dataset.error = 'false'; element('preview-status').querySelector('span:nth-child(2)')!.textContent = t("Loading Kanban"); element('retry-preview').hidden = true;
   readyTimer = setTimeout(() => { element('preview-status').dataset.error = 'true'; element('preview-status').querySelector('span:nth-child(2)')!.textContent = t("Failed to load Kanban"); element('retry-preview').hidden = false; }, 10_000);
   frame.sandbox.add('allow-forms', 'allow-downloads'); frame.src = state.preview.url; frame.title = project?.name ?? 'Kanban'; layoutPreview();
 }
-frame.addEventListener('load', inject);
+frame.addEventListener('load', () => { configurationKey = ''; inject(); });
 addEventListener('workflow-keyboard-host-change', inject);
 function layoutPreview(): void {
   const stage = element('preview-stage'), viewport = element('preview-viewport'); app.dataset.previewMode = mode;
@@ -221,7 +231,7 @@ new ResizeObserver(layoutPreview).observe(element('preview-stage'));
 new MutationObserver(inject).observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
 let methodHeartbeat = setInterval(publishMethods, 5_000);
 narrow.addEventListener('change', layoutPreview); menu(menuOpen); controls();
-addEventListener('pagehide', () => { methodSession?.close(); clearTimeout(saveTimer); clearTimeout(readyTimer); clearInterval(methodHeartbeat); });
+addEventListener('pagehide', () => { methodSession?.close(); clearTimeout(saveTimer); clearTimeout(readyTimer); clearTimeout(methodPublishTimer); methodPublishTimer = undefined; clearInterval(methodHeartbeat); });
 addEventListener('pageshow', event => {
   if (!event.persisted) { return; }
   mountPreview(); clearInterval(methodHeartbeat); methodHeartbeat = setInterval(publishMethods, 5_000);

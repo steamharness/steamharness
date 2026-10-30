@@ -482,6 +482,8 @@ window.addEventListener("message",function(event){
     return;
   }
   if(event.data.type==="steamharness:kanban-configuration"){
+    // Hosts resend configuration after ready; identical snapshots must not acknowledge each other forever.
+    if(JSON.stringify(event.data.configuration)===JSON.stringify(current))return;
     if(event.data.configuration?.id!==current.id)resetKanbanMethods();
     current=event.data.configuration;
     window.dispatchEvent(new CustomEvent(${eventName},{detail:clone()}));

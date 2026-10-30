@@ -1,5 +1,7 @@
 # Unreleased
 
+- Fixed repeated Kanban configuration acknowledgements flooding the host and disrupting map loading; page method updates are coalesced. Connection recovery uses a delayed compact overlay, preserving the map layout and avoiding flicker during brief interruptions.
+
 - Fixed sending new input after Stop and handling legacy queues and edited submission identities. Queue-enabled conversations accept consecutive sends; Send now and withdrawal respond immediately and restore failed actions, while Stop and failure keep older messages paused.
 
 - Fixed memory job feedback to distinguish paused authorization from extraction failures, explain recovery, and disable unavailable or repeated retries without reporting edit conflicts.

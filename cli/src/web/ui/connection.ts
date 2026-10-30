@@ -21,6 +21,8 @@ export class BrowserConnection {
   private connectTimer?: ReturnType<typeof setTimeout>;
   private heartbeatTimer?: ReturnType<typeof setTimeout>;
   private snapshotTimer?: ReturnType<typeof setTimeout>;
+  private bannerShowTimer?: ReturnType<typeof setTimeout>;
+  private bannerHideTimer?: ReturnType<typeof setTimeout>;
   private status: ConnectionState = 'connecting';
   private attempts = 0;
   private closed = false;
@@ -34,16 +36,19 @@ export class BrowserConnection {
     queueMicrotask(() => {
       if (showBanner) {
         this.banner = document.createElement('div');
+        this.banner.hidden = true;
         this.banner.id = 'connection-status'; this.banner.className = 'connection-banner'; this.banner.setAttribute('role', 'status'); this.banner.setAttribute('aria-live', 'polite');
         this.banner.innerHTML = `<span class="connection-icon" aria-hidden="true"></span><div class="connection-copy"><strong></strong><span></span></div><button type="button" class="connection-retry">${iconHtml('refresh')}<span>${t("Reconnect")}</span></button>`;
         this.banner.querySelector('button')!.addEventListener('click', () => { void this.reconnect(); });
-        document.querySelector('main')!.prepend(this.banner);
+        const container = document.querySelector('main')!;
+        container.classList.add('connection-container');
+        container.prepend(this.banner);
       }
       void this.connect();
     });
     addEventListener('offline', () => { this.abortRequests(true); this.disconnect(); this.update('offline'); });
     addEventListener('online', () => { void this.connect(); });
-    addEventListener('pagehide', () => { this.closed = true; this.abortRequests(true); this.disconnect(); });
+    addEventListener('pagehide', () => { this.closed = true; this.abortRequests(true); this.disconnect(); clearTimeout(this.bannerShowTimer); clearTimeout(this.bannerHideTimer); this.bannerShowTimer = this.bannerHideTimer = undefined; if (this.banner) this.banner.hidden = true; });
     addEventListener('pageshow', event => { if (event.persisted) { this.closed = false; void this.connect(); } });
   }
 
@@ -51,7 +56,21 @@ export class BrowserConnection {
     this.status = status;
     this.emit({ type: 'connection', status, manual: this.manual, retryFailed: this.retryFailed });
     if (!this.banner) { return; }
-    this.banner.hidden = status === 'connected';
+    if (status === 'connected') {
+      clearTimeout(this.bannerShowTimer); this.bannerShowTimer = undefined;
+      if (!this.banner.hidden && !this.bannerHideTimer) {
+        this.banner.querySelector('button')!.disabled = true;
+        // Keep one notification through brief recoveries instead of flashing on every retry.
+        this.bannerHideTimer = setTimeout(() => { this.bannerHideTimer = undefined; if (this.status === 'connected') this.banner!.hidden = true; }, 1_000);
+      }
+      return;
+    }
+    clearTimeout(this.bannerHideTimer); this.bannerHideTimer = undefined;
+    if (status === 'offline' || status === 'expired' || this.manual) {
+      clearTimeout(this.bannerShowTimer); this.bannerShowTimer = undefined; this.banner.hidden = false;
+    } else if (this.banner.hidden && !this.bannerShowTimer) {
+      this.bannerShowTimer = setTimeout(() => { this.bannerShowTimer = undefined; if (!this.closed && this.status !== 'connected') this.banner!.hidden = false; }, 750);
+    }
     this.banner.dataset.status = status;
     const retrying = status === 'connecting' || status === 'reconnecting';
     this.banner.querySelector('.connection-icon')!.innerHTML = iconHtml(retrying ? 'loading' : status === 'expired' ? 'warning' : 'debug-disconnect');

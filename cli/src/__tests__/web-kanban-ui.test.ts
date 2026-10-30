@@ -41,6 +41,7 @@ async function fixture(language: 'en' | 'zh-CN') {
   class Source {
     onopen?: () => void;
     onmessage?: (event: { data: string }) => void;
+    onerror?: () => void;
     close = vi.fn();
     addEventListener() {}
     constructor() { sources.push(this); }
@@ -49,7 +50,7 @@ async function fixture(language: 'en' | 'zh-CN') {
   (await import('@steamharness/i18n')).initI18n({ preference: language });
   await import('../web/ui/kanban-main');
   await vi.waitFor(() => expect(sources).toHaveLength(1));
-  const receive = (state: object) => sources[0].onmessage!({ data: JSON.stringify(state) });
+  const receive = (state: object) => sources.at(-1)!.onmessage!({ data: JSON.stringify(state) });
   const sendState = (revision: number, nonce = 'first', serverDataIssue?: ProjectServerIssue, serverData?: ProjectServerState, serverInstanceId = 'kanban-process') => receive({
     type: 'state', project: { id: 'map', entryId: 'board', aggregateName: 'Map aggregate', name: 'Map 2D', projectType: 'kanban', folderPath: '/map', uri: 'file:///map', fields: [], entrypoints: [], databases: [], entries: [{ entryId: 'board', type: 'kanban', name: 'Map 2D', databases: [] }] },
     account: { status: 'authenticated', serverUrl: 'https://server.test', revision,
@@ -98,6 +99,69 @@ it('offers retry when an iframe fails to become ready and recovers on a fresh pr
   expect(status.hidden).toBe(false);
   window.dispatchEvent(new MessageEvent('message', { source: frame.contentWindow!, data: { type: KANBAN_PREVIEW_READY_MESSAGE, nonce: 'second' } }));
   expect(status.hidden).toBe(true);
+});
+
+it.each(['en', 'zh-CN'] as const)('keeps the map mounted and stabilizes connection feedback through repeated interruptions (%s)', async language => {
+  const { sources, sendState } = await fixture(language);
+  sendState(1);
+  const frame = document.querySelector<HTMLIFrameElement>('#kanban-preview')!, preview = frame.src;
+  const banner = document.getElementById('connection-status')!;
+  sources[0].onerror!();
+  await vi.advanceTimersByTimeAsync(500);
+  expect(banner.hidden).toBe(true);
+  window.dispatchEvent(new Event('online'));
+  await vi.advanceTimersByTimeAsync(0);
+  expect(sources).toHaveLength(2); sendState(2);
+  await vi.advanceTimersByTimeAsync(1_000);
+  expect(banner.hidden).toBe(true); expect(frame.src).toBe(preview);
+
+  sources[1].onerror!();
+  await vi.advanceTimersByTimeAsync(750);
+  expect(banner.hidden).toBe(false);
+  expect(banner.textContent).toContain(language === 'en' ? 'Reconnecting...' : '正在重新连接...');
+  await vi.advanceTimersByTimeAsync(1_250);
+  expect(sources).toHaveLength(3); sendState(3);
+  await vi.advanceTimersByTimeAsync(500);
+  expect(banner.hidden).toBe(false);
+  sources[2].onerror!();
+  await vi.advanceTimersByTimeAsync(1_000);
+  expect(banner.hidden).toBe(false); expect(frame.src).toBe(preview);
+  await vi.advanceTimersByTimeAsync(1_000);
+  expect(sources).toHaveLength(4); sendState(4);
+  await vi.advanceTimersByTimeAsync(1_000);
+  expect(banner.hidden).toBe(true); expect(frame.src).toBe(preview);
+});
+
+it('publishes one current method catalog for a burst of map registrations and stops publishing after page departure', async () => {
+  const { sendState, fetcher } = await fixture('en'); sendState(1);
+  const frame = document.querySelector<HTMLIFrameElement>('#kanban-preview')!;
+  const send = (data: object) => window.dispatchEvent(new MessageEvent('message', { source: frame.contentWindow!, data: { nonce: 'first', ...data } }));
+  send({ type: KANBAN_PREVIEW_READY_MESSAGE, documentId: 'map-document' });
+  const methods = Array.from({ length: 11 }, (_, index) => ({ name: `map.query${index}`, description: 'Map query', inputSchema: { type: 'object' }, readOnly: true }));
+  for (let revision = 1; revision <= methods.length; revision++) send({ type: 'steamharness:kanban-method-catalog', documentId: 'map-document', configurationId: 'profile', revision, methods: methods.slice(0, revision) });
+  const publications = () => fetcher.mock.calls.filter(([, options]) => options?.body && JSON.parse(options.body).type === 'kanban-method-state');
+  expect(publications()).toHaveLength(0);
+  await vi.advanceTimersByTimeAsync(50);
+  expect(publications()).toHaveLength(1);
+  expect(JSON.parse(publications()[0]![1].body).methods).toEqual(methods);
+  await vi.advanceTimersByTimeAsync(5_000);
+  expect(publications()).toHaveLength(2);
+  send({ type: 'steamharness:kanban-method-catalog', documentId: 'map-document', configurationId: 'profile', revision: 12, methods: [] });
+  window.dispatchEvent(new Event('pagehide'));
+  await vi.advanceTimersByTimeAsync(5_000);
+  expect(publications()).toHaveLength(2);
+});
+
+it('does not send unchanged configuration back on ready acknowledgements or state snapshots', async () => {
+  const { sendState } = await fixture('en'); sendState(1);
+  const frame = document.querySelector<HTMLIFrameElement>('#kanban-preview')!;
+  const post = vi.spyOn(frame.contentWindow!, 'postMessage');
+  const ready = () => window.dispatchEvent(new MessageEvent('message', { source: frame.contentWindow!, data: { type: KANBAN_PREVIEW_READY_MESSAGE, nonce: 'first', documentId: 'map' } }));
+  ready(); ready(); sendState(2); ready();
+  const configurations = () => post.mock.calls.filter(([message]) => message.type === 'steamharness:kanban-configuration');
+  expect(configurations()).toHaveLength(1);
+  frame.dispatchEvent(new Event('load')); ready();
+  expect(configurations()).toHaveLength(2);
 });
 
 it.each(['en', 'zh-CN'] as const)('shows startup checks before mounting Server previews and keeps local previews available (%s)', async language => {

@@ -17,6 +17,8 @@ Build on the client before upload. Server validates, stores and serves static fi
 
 The host injects `window.steamHarnessKanban`. `getConfiguration()` reads the current entry configuration; `getPresentation()` reads the presentation mode. Listen for `steamharness:kanban-configuration-change` and `steamharness:kanban-presentation-change`. Named configurations, snapshots and configuration files are isolated by `projectId + entryId`.
 
+Identical configuration snapshots do not repeat configuration events or ready notifications. Changes update the existing page. CLI Web and Studio retain the preview during connection recovery; a sustained interruption shows a compact overlay without shifting the map canvas.
+
 ## Data bridge
 
 ```js
