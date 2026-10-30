@@ -33,7 +33,9 @@ function inject(): void {
   frame.contentWindow?.postMessage({ type: 'steamharness:kanban-theme', nonce, theme: document.documentElement.dataset.theme }, '*');
   frame.contentWindow?.postMessage({ type: 'steamharness:kanban-configuration', nonce, configuration: data.kanban.configuration }, '*');
   frame.contentWindow?.postMessage({ type: 'steamharness:kanban-presentation', nonce, presentation: { mode: new URL(location.href).searchParams.get('resourcePresentation') === 'card' ? 'card' : 'fullscreen' } }, '*');
+  frame.contentWindow?.postMessage({ type: 'steamharness:kanban-keyboard-host', nonce, version: 1, enabled: host.keyboard?.enabled === true }, '*');
 }
+addEventListener('workflow-keyboard-host-change', inject);
 function render(next: ResourcePreviewData): void {
   data = next; frame = undefined; clearTimeout(readyTimer); content.replaceChildren(); status.hidden = true;
   selection = ['kv', 'knowledge'].includes(next.card.kind) ? next.card.target : undefined;
@@ -85,6 +87,10 @@ addEventListener('message', event => {
   const message: Message = event.data;
   if (event.source === frame?.contentWindow) {
     if (data?.format !== 'kanban' || !data.kanban || message?.nonce !== data.kanban.nonce) { return; }
+    if (message.type === 'steamharness:kanban-keyboard' && message.version === 1) {
+      if (document.activeElement === frame) host.keyboard?.forward(message.event);
+      return;
+    }
     if (message.type === KANBAN_PREVIEW_READY_MESSAGE) { clearTimeout(readyTimer); status.hidden = true; inject(); return; }
     if (message.type !== KANBAN_BRIDGE_REQUEST_MESSAGE) { return; }
     const target = frame.contentWindow, nonce = data.kanban.nonce, current = frame;

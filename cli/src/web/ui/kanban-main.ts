@@ -109,6 +109,7 @@ function inject(): void {
     { type: 'steamharness:kanban-configuration', configuration: state.configuration },
     { type: 'steamharness:kanban-theme', theme: document.documentElement.dataset.theme },
     { type: 'steamharness:kanban-presentation', presentation: { mode } },
+    { type: 'steamharness:kanban-keyboard-host', version: 1, enabled: host.keyboard?.enabled === true },
     ...state.databaseRevisions.map(item => ({ type: 'steamharness:kanban-database-revision', ...item })),
   ]) { frame.contentWindow?.postMessage({ ...message, nonce: state.preview.nonce }, '*'); }
 }
@@ -122,6 +123,7 @@ function mountPreview(): void {
   frame.sandbox.add('allow-forms', 'allow-downloads'); frame.src = state.preview.url; frame.title = project?.name ?? 'Kanban'; layoutPreview();
 }
 frame.addEventListener('load', inject);
+addEventListener('workflow-keyboard-host-change', inject);
 function layoutPreview(): void {
   const stage = element('preview-stage'), viewport = element('preview-viewport'); app.dataset.previewMode = mode;
   element('dimensions').hidden = mode === 'fullscreen'; element('resize-preview').hidden = mode === 'fullscreen';
@@ -172,12 +174,13 @@ window.addEventListener('message', event => {
   const message: Message = event.data;
   if (event.source === frame.contentWindow) {
     if (!state || previewBlocked || message?.nonce !== state.preview.nonce) { return; }
+    if (message.type === 'steamharness:kanban-keyboard' && message.version === 1) {
+      if (document.activeElement === frame) host.keyboard?.forward(message.event);
+      return;
+    }
     methodSession?.receive(message); controls();
     if (message.type === KANBAN_PREVIEW_READY_MESSAGE || message.type === 'steamharness:kanban-method-catalog') { publishMethods(); }
-    if (message.type === KANBAN_PREVIEW_READY_MESSAGE) { clearTimeout(readyTimer); element('preview-status').hidden = true;
-      frame.contentWindow?.postMessage({ type: 'steamharness:kanban-theme', nonce: state.preview.nonce, theme: document.documentElement.dataset.theme }, '*');
-      frame.contentWindow?.postMessage({ type: 'steamharness:kanban-presentation', nonce: state.preview.nonce, presentation: { mode } }, '*'); return;
-    }
+    if (message.type === KANBAN_PREVIEW_READY_MESSAGE) { clearTimeout(readyTimer); element('preview-status').hidden = true; inject(); return; }
     if (message.type !== KANBAN_BRIDGE_REQUEST_MESSAGE) { return; }
     const nonce = state.preview.nonce, target = frame.contentWindow, generation = methodSession;
     const respond = (reply: Message) => { if (generation === methodSession && nonce === state?.preview.nonce) { target?.postMessage({ type: KANBAN_BRIDGE_RESPONSE_MESSAGE, nonce, requestId: message.requestId, ...reply }, '*'); } };

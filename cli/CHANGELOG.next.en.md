@@ -1,5 +1,7 @@
 # Unreleased
 
+- Fixed: Workflow, Conversation and Kanban pages in Studio handle project shortcuts first and forward unhandled keys to Studio, preserving text editing, clipboard shortcuts and IME input.
+
 - Added: Project configuration reuses the AI model list for a single subagent selection with Follow main model. Removed selections stay unavailable, and Studio can configure child models while using Settings for the main model.
 
 - Added read-only Kanban runtime diagnostics with the latest 50 bridge requests, file routing, HTTP status, pending reads and safe failure categories, plus queries of explicitly read-only page methods.

@@ -33,11 +33,18 @@ export function projectFrameHtml(url: string, title: string, projectUri: string,
         if(!editCommands||document.activeElement!==frame&&!contextMenu||!['paste','copy','cut','selectAll','undo','redo'].includes(command))return;
         event.preventDefault();postHost({type:'workflow-host',editCommand:command,...(contextMenu?{restoreFocus:true}:{}),...(command==='paste'&&event.detail?.clipboard?{clipboardData:event.detail.clipboard}:{})});contextMenu=false;
       });
-      frame.addEventListener('load',()=>{if(windowChrome?.active)clearDragRegions();editCommands=false;contextMenu=false;vscode.postMessage({type:'workflow-drop-target',version:1});postHost({type:'workflow-host',theme,windowChrome,locale:${literal(locale)},traceVersion:1,clipboardVersion:1,nativePasteVersion:document.documentElement.dataset.vscodeNativeClipboard==='1'?1:0,resourceVersion:1,databaseVersion:1,${projectSetup ? 'projectSetupVersion:1,' : ''}recoveryVersion:1,dropVersion:1,pathPickerVersion:1,pathOpenVersion:1,downloadVersion:1,userSettingsVersion:1,fileIconsVersion:1,entryWindowVersion:1});vscode.postMessage({type:'workflow-frame-ready'});});
+      frame.addEventListener('load',()=>{if(windowChrome?.active)clearDragRegions();editCommands=false;contextMenu=false;vscode.postMessage({type:'workflow-drop-target',version:1});postHost({type:'workflow-host',theme,windowChrome,locale:${literal(locale)},keyboardVersion:1,traceVersion:1,clipboardVersion:1,nativePasteVersion:document.documentElement.dataset.vscodeNativeClipboard==='1'?1:0,resourceVersion:1,databaseVersion:1,${projectSetup ? 'projectSetupVersion:1,' : ''}recoveryVersion:1,dropVersion:1,pathPickerVersion:1,pathOpenVersion:1,downloadVersion:1,userSettingsVersion:1,fileIconsVersion:1,entryWindowVersion:1});vscode.postMessage({type:'workflow-frame-ready'});});
       addEventListener('message',event=>{
         if(event.source===frame.contentWindow){
           if(event.origin!==origin)return;
           const message=event.data;
+          if(message?.type==='workflow-keyboard'&&message.version===1&&document.activeElement===frame){
+            const key=message.event;
+            if(key&&['keydown','keyup'].includes(key.type)&&typeof key.key==='string'&&key.key.length<=64&&typeof key.code==='string'&&key.code.length<=64&&Number.isInteger(key.keyCode)&&key.keyCode>=0&&key.keyCode<=255&&['ctrlKey','metaKey','altKey','shiftKey','repeat'].every(name=>typeof key[name]==='boolean')){
+              window.dispatchEvent(new KeyboardEvent(key.type,{key:key.key,code:key.code,keyCode:key.keyCode,ctrlKey:key.ctrlKey,metaKey:key.metaKey,altKey:key.altKey,shiftKey:key.shiftKey,repeat:key.repeat,bubbles:true,cancelable:true}));
+            }
+            return;
+          }
           ${conversationView ? `
           if(message?.type==='workflow-navigation'&&message.version===1&&validId(message.id)&&typeof message.create==='boolean'){
             state.conversationView.conversation={id:message.id,create:message.create};vscode.setState(state);

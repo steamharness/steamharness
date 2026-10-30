@@ -41,6 +41,8 @@ window.steamHarnessKanban.methods.register({
 
 ## 安全与宿主
 
+Studio 中的快捷键以页面处理为先：在 `keydown` 处理函数中调用 `event.preventDefault()` 可保留项目快捷键；未处理的按键交给 Studio 的快捷键系统。该规则同时适用于独立 Kanban 标签和资源卡片预览。普通浏览器中的 Kanban 保留浏览器的按键行为。
+
 CLI Web 使用 `/entries/map/`；Studio 可以将入口打开为独立标签；Server Web 提供经过鉴权的静态预览。预览使用沙箱、受约束的相对资源路径和短期能力凭据；`studio.getLocalAnalysis()` 仅由支持的本地 Studio 宿主提供。
 
 发布以整个聚合项目为单位。数据库需求随包保存，绑定与凭据不随安装转移。详见 [数据库空间](/concepts/data-storage) 与 [打包](/cli/workspace/pack)。

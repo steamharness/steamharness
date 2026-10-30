@@ -1,9 +1,11 @@
 import type { ParamDefinition } from "./run-workspace/types";
 import { createKanbanMethodsBridgeScript, type KanbanBrowserMethodsApi } from "./methods";
+import { installProjectKeyboardBridge } from "./keyboard";
 const DATABASE_ALIAS_PATTERN = /^[a-z][a-z0-9_-]{0,63}$/;
 
 export * from "./revision-stream";
 export * from "./methods";
+export * from "./keyboard";
 
 
 export const KANBAN_MANIFEST_FILE = "kanban.json";
@@ -405,6 +407,11 @@ export function createKanbanBridgeScript(
   return `<script nonce=${safeNonce}>(function(){
 let current=${initial};
 let presentation={mode:"fullscreen"};
+let keyboardHost=false;
+(${installProjectKeyboardBridge.toString()})(window,()=>keyboardHost,event=>window.parent.postMessage({type:"steamharness:kanban-keyboard",version:1,nonce:${safeNonce},event},"*"));
+window.addEventListener("message",event=>{
+  if(event.source===window.parent&&event.data?.nonce===${safeNonce}&&event.data.type==="steamharness:kanban-keyboard-host")keyboardHost=event.data.version===1&&event.data.enabled===true;
+});
 let sequence=0;
 const safeErrorMessages=${safeErrorMessages};
 const pending=new Map();

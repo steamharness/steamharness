@@ -10,9 +10,10 @@ import { ProjectWindowChrome } from './window-chrome';
 import { chooseConversationFiles } from './conversation-file-picker';
 import type { FileImport } from './conversation-drop';
 import { ProjectServerCreateDialog } from './project-server-create';
+import { acquireHostKeyboard } from './host-keyboard';
 
 type Message = Record<string, any>;
-interface Host { postMessage(message: Message): void | Promise<void | boolean>; getState(): unknown; setState(state: unknown): void }
+interface Host { postMessage(message: Message): void | Promise<void | boolean>; getState(): unknown; setState(state: unknown): void; keyboard?: ReturnType<typeof acquireHostKeyboard> }
 interface EditTarget { element: HTMLElement; selection?: { start: number; end: number; direction: 'forward' | 'backward' | 'none'; value: string } }
 
 export function acquireProjectHost(options: { live?: boolean; connectionBanner?: boolean } = {}): Host {
@@ -27,6 +28,7 @@ export function acquireProjectHost(options: { live?: boolean; connectionBanner?:
   }, { capture: true });
   const embedded = (globalThis as unknown as { acquireVsCodeApi?: () => Host }).acquireVsCodeApi;
   if (embedded) { return embedded(); }
+  const keyboard = acquireHostKeyboard();
   let windowChrome: ProjectWindowChrome | undefined;
   addEventListener('pagehide', () => windowChrome?.dispose());
   if (document.documentElement.dataset.theme === 'auto') {
@@ -163,6 +165,7 @@ export function acquireProjectHost(options: { live?: boolean; connectionBanner?:
   addEventListener('pagehide', () => projectCreation.close());
   addEventListener('message', event => {
     if (window.parent === window || event.source !== window.parent || event.data?.type !== 'workflow-host') { return; }
+    if (event.data.keyboardVersion !== undefined) keyboard.enable(event.data.keyboardVersion);
     if (event.data.windowChrome && (event.data.windowChrome.active === true || windowChrome)) {
       (windowChrome ??= new ProjectWindowChrome(message => window.parent.postMessage(message, '*'))).update(event.data.windowChrome);
     }
@@ -296,6 +299,7 @@ export function acquireProjectHost(options: { live?: boolean; connectionBanner?:
     accountPanel = new AccountPanel(accountContainer, request, openHostAccount);
   });
   return {
+    keyboard,
     postMessage: async (message) => {
       if (message.type === 'open-account') { accountPanel?.open(); return; }
       if (message.type === 'open-project-create') { void projectCreation.open(); return; }

@@ -41,6 +41,8 @@ Targets include `projectId`, `entryId`, source, location and instance. Resource 
 
 ## Hosts and security
 
+In Studio, page shortcuts take priority: call `event.preventDefault()` in a `keydown` handler to claim a shortcut. Unhandled keys reach Studio's keybinding service. This applies to both Kanban tabs and resource card previews. Kanban pages in a standalone browser retain normal browser keyboard behavior.
+
 CLI Web uses `/entries/map/`; Studio opens entries as independent tabs. Server Web provides authenticated static previews. Previews use sandboxing, constrained relative asset paths and short-lived capabilities. `studio.getLocalAnalysis()` is available only in supported local Studio hosts.
 
 Publish the aggregate as one unit. Requirements travel with the package; bindings and credentials do not. See [Database spaces](/en/concepts/data-storage) and [Packaging](/en/cli/workspace/pack).
