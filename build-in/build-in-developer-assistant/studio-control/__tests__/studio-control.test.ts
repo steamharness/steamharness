@@ -22,7 +22,7 @@ describe("Studio Control workflow", () => {
     expect(() => inspectLocalProjectStructure({ projectDir: path.resolve(import.meta.dirname, "../.."), entryId: "studio-control" })).not.toThrow();
     const { executor } = await import("../index");
     expect(executor.entrypoints?.map(entry => entry.id)).toEqual([
-      "get_configurations", "manage_configurations", "open_configurations", "studio_state", "get_entries", "open_file", "get_diagnostics", "set_theme", "open_terminal", "show_view",
+      "get_configurations", "manage_configurations", "open_configurations", "studio_state", "get_entries", "open_file", "get_kanban_diagnostics", "get_diagnostics", "set_theme", "open_terminal", "show_view",
     ]);
   });
 
@@ -30,6 +30,7 @@ describe("Studio Control workflow", () => {
     ["get_configurations", {input:JSON.stringify({storage:"local",projectDir:"/workspace"})}, "studio.configurations.get", {storage:"local",projectDir:"/workspace"}],
     ["manage_configurations", {input:JSON.stringify({storage:"server",projectId:"project",target:"latest",call:{action:"create",revision:0}})}, "studio.configurations.manage", {storage:"server",projectId:"project",target:"latest",call:{action:"create",revision:0}}],
     ["open_configurations", {input:JSON.stringify({storage:"local",projectDir:"/workspace"})}, "studio.configurations.open", {storage:"local",projectDir:"/workspace"}],
+    ["get_kanban_diagnostics", {input:JSON.stringify({projectDir:"/workspace",entryId:"map-2d"})}, "studio.kanban.diagnostics", {projectDir:"/workspace",entryId:"map-2d"}],
     ["studio_state", {}, "studio.state.get", {}],
     ["get_entries", {}, "studio.entries.get", {}],
     ["get_entries", { projectDir: "" }, "studio.entries.get", {}],

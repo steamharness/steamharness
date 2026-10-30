@@ -900,5 +900,7 @@
   "Work item": "Work item",
   "Failure reason": "Failure reason",
   "Progress": "Progress",
-  "Open Settings": "Open Settings"
+  "Open Settings": "Open Settings",
+  "Select a Kanban entry to read runtime diagnostics.": "Select a Kanban entry to read runtime diagnostics.",
+  "Kanban runtime diagnostics are unavailable.": "Kanban runtime diagnostics are unavailable."
 }

@@ -24,9 +24,11 @@ import { readFile } from 'node:fs/promises';
 import type { ProjectType } from './projects';
 import { uploadServerProject, downloadServerProject, allocateServerProjectId } from './steamharness-server-projects-node';
 import { ProjectServerClient } from './steamharness-server-projects';
+import { readStudioKanbanDiagnostics } from './studio-kanban';
 
 export function createProjectRuntime(context: vscode.ExtensionContext, account: AccountController): Launcher {
   const sessions = new Set<WebSession>();
+  const kanbanSessions = new Map<WebSession, string>();
   const controller = new AbortController();
   const hosts = new AggregateWebHostPool(session => { sessions.add(session); void session.closed.then(() => sessions.delete(session)); });
   let settingsTimer: ReturnType<typeof setTimeout> | undefined;
@@ -45,6 +47,8 @@ export function createProjectRuntime(context: vscode.ExtensionContext, account: 
   const userModelsChanged = account.onDidChangeUserModels?.(syncUserSettings);
   const selectedRuntime = () => configuredNodeRuntime(context.globalStorageUri.fsPath);
   const configurationService = {
+    kanban: (input: { projectDir: string; projectId: string; entryId: string; call?: unknown }, signal: AbortSignal) =>
+      readStudioKanbanDiagnostics(kanbanSessions, input, AbortSignal.any([signal, controller.signal])),
     configuration: async (input: Record<string,unknown>, signal: AbortSignal): Promise<unknown> => {
       assertAvailable();
       if(input.storage==='local') {
@@ -291,6 +295,10 @@ export function createProjectRuntime(context: vscode.ExtensionContext, account: 
         if (JSON.stringify(account.getConnection()) !== JSON.stringify(connection)) { session.updateAuth(account.getConnection()); }
         try { session.updateUserSettings(settingsSnapshot()); }
         catch (error) { await session.close(); throw error; }
+        if (!project.assistant && session.ready.project.entries.some(entry => entry.type === 'kanban')) {
+          kanbanSessions.set(session, project.folderPath);
+          void session.closed.then(() => kanbanSessions.delete(session));
+        }
         return session;
       } catch (error) { await bridge?.close(); throw error; }
     }, signal); },

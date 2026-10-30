@@ -900,5 +900,7 @@
   "Work item": "工作项",
   "Failure reason": "失败原因",
   "Progress": "进度",
-  "Open Settings": "打开设置"
+  "Open Settings": "打开设置",
+  "Select a Kanban entry to read runtime diagnostics.": "请选择 Kanban 入口以读取运行时诊断。",
+  "Kanban runtime diagnostics are unavailable.": "Kanban 运行时诊断不可用。"
 }

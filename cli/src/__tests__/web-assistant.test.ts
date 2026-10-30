@@ -37,7 +37,7 @@ it('loads the dedicated assistant declaration instead of the workspace executor'
   const descriptor: Project = {entryId:"main",aggregateName:"Test aggregate",defaultEntry:"main",entryRoot:assistantProjectDir,databases:[],entries:[{entryId:"main",name:"Main",type:'conversation',root:".",entry:"index.ts",databases:[]}], id: '364764e9-ef0e-4e86-9e56-77d0410e1723', uri: '', folderPath: assistantProjectDir, name: 'Project Assistant', projectType: 'conversation',
     fields: [{ name: 'permissionPolicy', type: 'string', defaultValue: 'auto' }], entrypoints: [],
     tools: [{ name: 'skill' }, { name: 'read' }, { name: 'memory' }, { name: 'workflow-desktop_open_project' },
-      { name: 'workflow-studio_studio_state' }, { name: 'workflow-studio_get_diagnostics' }, { name: 'workflow-studio_open_file' },
+      { name: 'workflow-studio_studio_state' }, { name: 'workflow-studio_get_diagnostics' }, { name: 'workflow-studio_get_kanban_diagnostics' }, { name: 'workflow-studio_open_file' },
       { name: 'workflow-studio_set_theme' }, { name: 'workflow-studio_open_terminal' }, { name: 'workflow-studio_show_view' }, { name: 'unregistered_control' }],
   };
   const runtime = { available: true, inspect: vi.fn(async () => ({ projects: [descriptor], errors: [] })), dispose: vi.fn() } as unknown as Runtime;
@@ -46,7 +46,7 @@ it('loads the dedicated assistant declaration instead of the workspace executor'
   expect(result.assistantProtocolVersion).toBe(1);
   expect(result.projects[0]).toMatchObject({ id: '364764e9-ef0e-4e86-9e56-77d0410e1723', folderPath: assistantProjectDir, assistant, requiresLogin: false,
     fields: [{ name: 'permissionPolicy', defaultValue: 'auto' }], tools: [{ name: 'skill' }, { name: 'read' }, { name: 'memory' },
-      { name: 'workflow-studio_studio_state' }, { name: 'workflow-studio_get_diagnostics' }, { name: 'workflow-studio_open_file' },
+      { name: 'workflow-studio_studio_state' }, { name: 'workflow-studio_get_diagnostics' }, { name: 'workflow-studio_get_kanban_diagnostics' }, { name: 'workflow-studio_open_file' },
       { name: 'workflow-studio_set_theme' }, { name: 'workflow-studio_open_terminal' }, { name: 'workflow-studio_show_view' }],
   });
   expect(() => parseHostConfiguration({ type: 'configure', surface: 'assistant', assistant })).toThrow('dedicated assistant');

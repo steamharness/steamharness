@@ -37,11 +37,13 @@ export class KanbanMethodHub {
     for (const [id, instance] of this.instances) { if (Date.now() - instance.seen > 15_000) { this.remove(id); } }
     return [...this.instances].map(([instanceId, { seen: _, clientId: __, ...state }]) => ({ instanceId, ...state }));
   }
-  async invoke(value: unknown): Promise<KanbanJsonValue> {
+  async invoke(value: unknown, options: { readOnly?: boolean } = {}): Promise<KanbanJsonValue> {
     const call = parseKanbanMethodInvocation(value); this.list();
     const instance = this.instances.get(call.instanceId);
     if (!instance?.ready || instance.configurationId !== call.configurationId || call.configurationId !== this.configuration().id) { throw new Error('Kanban method instance changed. List instances again.'); }
-    if (!instance.methods.some(method => method.name === call.method)) { throw new Error('Kanban page did not register this method.'); }
+    const method = instance.methods.find(method => method.name === call.method);
+    if (!method) { throw new Error('Kanban page did not register this method.'); }
+    if (options.readOnly && method.readOnly !== true) { throw new Error('Kanban diagnostics can only invoke methods declared readOnly.'); }
     if ([...this.pending.values()].filter(item => item.instanceId === call.instanceId).length >= 4) { throw new Error('Too many Kanban method calls.'); }
     const requestId = randomUUID();
     return new Promise((resolve, reject) => {

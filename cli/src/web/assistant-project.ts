@@ -13,7 +13,7 @@ export function isLocalBuiltinAssistant(project: Project): boolean {
 
 const assistantTools = new Set(['read', 'write', 'edit', 'bash', 'grep', 'find', 'ls', 'skill',
   'memory', 'workflow-ui_present_card',
-  'workflow-studio_studio_state', 'workflow-studio_get_diagnostics', 'workflow-studio_open_file',
+  'workflow-studio_studio_state', 'workflow-studio_get_diagnostics', 'workflow-studio_get_kanban_diagnostics', 'workflow-studio_open_file',
   'workflow-studio_set_theme', 'workflow-studio_open_terminal', 'workflow-studio_show_view']);
 
 export async function inspectWebProject(runtime: Runtime, projectDir: string, host?: WebHostConfiguration) {

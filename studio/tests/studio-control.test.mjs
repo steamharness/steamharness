@@ -70,6 +70,30 @@ test('entry queries return the aggregate registrations and reject removed operat
   await assert.rejects(f.execute('studio.relatedProjects.get',{}),/Unsupported/);
 });
 
+test('Kanban runtime diagnostics enforce project paths and entry types under every permission policy', async t => {
+  const calls = [];
+  const f = await fixture(t, { configuration: async () => ({}), kanban: async input => { calls.push(input); return { available: true }; } });
+  const project = { ...manifest(ids[0]), entries: [
+    { entryId: 'map-2d', name: 'Map', type: 'kanban', root: '.', entry: 'index.html', databases: [] },
+    ...manifest(ids[0]).entries,
+  ] };
+  await writeFile(path.join(f.workdir, 'index.html'), '<html></html>');
+  await saveManifest(f.workdir, project);
+  await saveManifest(f.outside, project);
+  const call = { instanceId: 'page', configurationId: 'config', method: 'map.getInfo', args: {} };
+  for (const policy of ['read-only', 'workspace', 'auto']) {
+    assert.equal((await f.execute('studio.kanban.diagnostics', { entryId: 'map-2d', call }, policy)).available, true);
+    assert.equal(calls.at(-1).projectId, ids[0]); assert.equal(calls.at(-1).projectDir, await realpath(f.workdir));
+    assert.deepEqual(calls.at(-1).call, call);
+    await assert.rejects(f.execute('studio.kanban.diagnostics', { entryId: 'main' }, policy), /Kanban entry/);
+    await assert.rejects(f.execute('studio.kanban.diagnostics', { entryId: 'map-2d', permissionPolicy: 'auto' }, policy), /Unsupported/);
+  }
+  await assert.rejects(f.execute('studio.kanban.diagnostics', { entryId: 'map-2d', projectDir: f.outside }), /registered workspace/);
+  await f.execute('studio.kanban.diagnostics', { entryId: 'map-2d', projectDir: f.outside }, 'auto');
+  f.controller.abort();
+  await assert.rejects(f.execute('studio.kanban.diagnostics', { entryId: 'map-2d' }), { name: 'AbortError' });
+});
+
 test('state exposes registered scope and themes while hiding an editor outside the scope', async t => {
   const f = await fixture(t);
   const state = await f.execute('studio.state.get', {});

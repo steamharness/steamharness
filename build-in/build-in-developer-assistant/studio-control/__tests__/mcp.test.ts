@@ -35,7 +35,7 @@ it.each(["workspace", "read-only", "auto"])("exposes the Workflow through real s
       STEAMHARNESS_STUDIO_CONTROL_BRIDGE_URL: `http://127.0.0.1:${address.port}/studio-control`, STEAMHARNESS_STUDIO_CONTROL_BRIDGE_TOKEN: token,
     } });
     expect(connection.tools.map(tool => tool.name)).toEqual(expect.arrayContaining([
-      "get_configurations", "manage_configurations", "open_configurations", "studio_state", "get_entries", "open_file", "get_diagnostics", "set_theme", "open_terminal", "show_view",
+      "get_configurations", "manage_configurations", "open_configurations", "studio_state", "get_entries", "open_file", "get_diagnostics", "get_kanban_diagnostics", "set_theme", "open_terminal", "show_view",
     ]));
     const configurationInput = {storage:"local",projectDir:"/workspace",export:true};
     await connection.callTool("get_configurations", {input:JSON.stringify(configurationInput)});
@@ -51,6 +51,7 @@ it.each(["workspace", "read-only", "auto"])("exposes the Workflow through real s
     expect(JSON.stringify(related.content)).toContain("studio-mcp-result");
     expect(calls).toContainEqual({ operation: "studio.entries.get", input: { projectDir: "projects/notes" }, permissionPolicy });
     for (const [tool, input, operation] of [
+      ["get_kanban_diagnostics", {input:JSON.stringify({projectDir:"/workspace",entryId:"map-2d",call:{instanceId:"page",configurationId:"config",method:"map.getInfo",args:{}}})}, "studio.kanban.diagnostics"],
       ["get_entries", {}, "studio.entries.get"],
       ["get_diagnostics", {}, "studio.diagnostics.get"],
       ["get_diagnostics", { filePath: "index.ts" }, "studio.diagnostics.get"],
@@ -61,7 +62,7 @@ it.each(["workspace", "read-only", "auto"])("exposes the Workflow through real s
     ] as const) {
       const response = await connection.callTool(tool, input);
       expect(response.isError, JSON.stringify(response.content)).not.toBe(true);
-      expect(calls).toContainEqual({ operation, input, permissionPolicy });
+      expect(calls).toContainEqual({ operation, input: tool === "get_kanban_diagnostics" ? JSON.parse((input as {input:string}).input) : input, permissionPolicy });
     }
   } finally {
     await connection?.close();

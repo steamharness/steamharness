@@ -4,7 +4,7 @@
 
 Studio 内置的独立小助手，基于 Core Agent 能力运行，使用宿主提供的 SteamHarness Server 系统 AI 配置。小助手的工作目录和授权根目录由宿主通过 `STEAMHARNESS_DEVELOPER_ASSISTANT_WORKDIR` 与 `STEAMHARNESS_DEVELOPER_ASSISTANT_WORKSPACE_MANIFEST` 提供，不从编辑器当前项目或 conversation 参数推断。
 
-宿主默认为 `vscode`，也可显式设置 `STEAMHARNESS_DEVELOPER_ASSISTANT_HOST=vscode`。小助手使用 Core 编码工具、项目内的 `skill` 工具、宿主授权的账号 `memory` 工具和文件/浏览器资源卡。Studio 注入控制连接时，还可通过 Studio Control 标准 MCP 读取工作区和诊断、查询聚合入口、打开文件并定位行列、切换已安装主题、打开终端及常用视图。编辑器操作沿用工具权限与 Build/Plan 审批规则，状态、诊断和入口查询默认自动批准。`get_entries` 返回聚合项目的 `projectId`、`entries` 和 `defaultEntry`；数据库访问需要单独申请、审批和绑定。控制连接缺失时保留编码能力，不连接旧 Desktop Control，通过通用配置工具管理三类项目的配置，不提供实时页面方法。
+宿主默认为 `vscode`，也可显式设置 `STEAMHARNESS_DEVELOPER_ASSISTANT_HOST=vscode`。小助手使用 Core 编码工具、项目内的 `skill` 工具、宿主授权的账号 `memory` 工具和文件/浏览器资源卡。Studio 注入控制连接时，还可通过 Studio Control 标准 MCP 读取工作区和诊断、查询聚合入口、打开文件并定位行列、切换已安装主题、打开终端及常用视图。编辑器操作沿用工具权限与 Build/Plan 审批规则，状态、诊断和入口查询默认自动批准。`get_entries` 返回聚合项目的 `projectId`、`entries` 和 `defaultEntry`；数据库访问需要单独申请、审批和绑定。控制连接缺失时保留编码能力，不连接旧 Desktop Control，通过通用配置工具管理三类项目的配置。有控制连接时，可通过 `get_kanban_diagnostics` 读取已打开的本地 Kanban 预览的桥接路由、失败和明确声明的只读页面方法，以实际 `imageReady` 等状态验收；不提供任意脚本或写入页面方法。
 
 快捷参数中的 Permission 支持 `read-only`、`workspace` 和 `auto`，默认 `auto`（Auto approve）。普通消息与 OpenAI 请求在未指定策略时均使用该默认值。`read-only` 隐藏写入与命令工具；`workspace` 对读写和检索工具应用宿主授权的目录范围，但 shell 不是沙箱；`auto` 批准未被显式拒绝的权限，可读写、检索当前进程有权限的任意目录，包括工作区外的绝对路径。提示词和 Studio Control 均跟随本轮权限，`studio_state` 返回实际权限与目录访问范围。Build/Plan 由 Core 管理，Plan 可先调研、提问并等待批准。
 

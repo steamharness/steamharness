@@ -1,5 +1,7 @@
 # Unreleased
 
+- Added read-only Kanban runtime diagnostics with the latest 50 bridge requests, file routing, HTTP status, pending reads and safe failure categories, plus queries of explicitly read-only page methods.
+
 - Fixed the subagent summary to use a neutral color. Red is limited to failed tasks and error details, so historical failures do not make the entire entry look like an error alert.
 
 - Fix: Route conversation execution diagnostics to Studio Trace by origin. Keep parameter, attachment and resource-opening errors above the composer with a dismiss button; hiding an alert preserves validation.

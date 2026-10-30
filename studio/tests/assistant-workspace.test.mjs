@@ -3,7 +3,7 @@ import { test } from 'node:test';
 import { createAssistantProject } from '../extensions/studio-workstation/src/assistant-workspace.ts';
 
 test('the assistant keeps every supported Studio Control tool and the template permission default', () => {
-  const tools = ['studio_state', 'get_diagnostics', 'open_file', 'set_theme', 'open_terminal', 'show_view']
+  const tools = ['studio_state', 'get_diagnostics', 'get_kanban_diagnostics', 'open_file', 'set_theme', 'open_terminal', 'show_view']
     .map(name => ({ name: `workflow-studio_${name}`, enabled: true, autoApprove: true }));
   const target = { uri: 'file:///workspace', folderPath: '/workspace', name: 'Workspace' };
   for (const policy of ['auto', 'workspace', 'read-only']) {

@@ -10,6 +10,19 @@ function fixture() {
   return { hub, configuration, emit, call, disconnect };
 }
 describe('Kanban page method routing', () => {
+  it('limits diagnostics to explicitly readOnly methods before sending to the page', async () => {
+    const { hub, emit, call } = fixture();
+    hub.publish({ clientId: 'client', instanceId: 'instance', ready: true, configurationId: 'configuration', presentation: { mode: 'fullscreen' }, methods: [
+      { name: 'tasks.list', description: 'Read', inputSchema: { type: 'object' }, readOnly: true },
+      { name: 'tasks.delete', description: 'Write', inputSchema: { type: 'object' }, readOnly: false },
+      { name: 'tasks.unknown', description: 'Unspecified', inputSchema: { type: 'object' } },
+    ] });
+    for (const method of ['tasks.delete', 'tasks.unknown']) await expect(hub.invoke({ ...call, method }, { readOnly: true })).rejects.toThrow('readOnly');
+    expect(emit).not.toHaveBeenCalled();
+    const running = hub.invoke(call, { readOnly: true });
+    hub.reply({ ...emit.mock.calls[0][0], clientId: 'client', ok: true, value: { imageReady: false } });
+    expect(await running).toEqual({ imageReady: false });
+  });
   it('discovers the exact preview and routes replies only from its instance', async () => {
     const { hub, emit, call } = fixture(); expect(hub.list()[0]).toMatchObject({ configurationName: 'Config', instanceId: 'instance', ready: true });
     const running = hub.invoke(call); const request = emit.mock.calls[0][0];

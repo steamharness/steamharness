@@ -1,5 +1,7 @@
 # Unreleased
 
+- Added Kanban runtime diagnostics and page-readiness checks to the assistant. Project-managed files, configuration attachments and database files now have distinct import guidance; backend readback does not prove rendering, and timeouts require transport diagnosis before image transcoding.
+
 - Added generator guidance for named agents, durable concurrency queues, management commands and staged safe retries.
 
 - Changed: The Assistant explicitly opts into account memory and supports project-level opt-out; ordinary Core Agent projects default to memory off.

@@ -81,6 +81,14 @@ export const executor = steamharness.defineExecutor<StudioControlInput, StudioCo
       }),
     }),
     steamharness.defineEntrypoint({
+      id: "get_kanban_diagnostics",
+      title: "Read Kanban runtime diagnostics",
+      description: "Inspect an already open local Kanban entry by projectDir and entryId. Returns its exact configuration, live instances and registered methods, plus the last 50 bridge requests with file/database routing, HTTP status and safe error categories. Does not open or reload previews. Query without call first; optionally pass call:{instanceId,configurationId,method,args} from that result to invoke a method explicitly declared readOnly (for example map.getInfo to verify imageReady). Empty instances or a successful file download do not prove page rendering. No screenshots, scripts or mutations.",
+      workflow: studioControlProject,
+      params: [{ name: "input", flag: "--input", type: "string", required: true, label: "Kanban diagnostic request (JSON)" }],
+      createInput: ({ paramValues }) => createInput("studio.kanban.diagnostics", JSON.parse(readRequiredString(paramValues, "input"))),
+    }),
+    steamharness.defineEntrypoint({
       id: "get_diagnostics",
       title: "Read Studio diagnostics",
       description: "Read VS Code errors and warnings within the selected permission policy's path scope, optionally restricted to one file. Auto approve includes files outside the workspace. Positions are one-based; results may be truncated.",

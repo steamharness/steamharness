@@ -108,6 +108,7 @@ export const executor = steamharness.defineExecutor<AgentInput, AgentOutputPaylo
     { name: "workflow-studio_studio_state", label: "Studio state", description: "Read the current Studio workspace, editor and supported capabilities.", enabled: true, autoApprove: true },
     { name: "workflow-studio_get_entries", label: "Project entries", description: "Read the permitted aggregate project identity and registered entry IDs, names and types.", enabled: true, autoApprove: true },
     { name: "workflow-studio_get_diagnostics", label: "Studio diagnostics", description: "Read errors and warnings within the selected permission policy's file scope.", enabled: true, autoApprove: true },
+    { name: "workflow-studio_get_kanban_diagnostics", label: "Kanban runtime diagnostics", description: "Read the open Kanban preview's configuration, bridge failures and registered readOnly page methods; query actual image readiness without changing project data.", enabled: true, autoApprove: true },
     { name: "workflow-studio_open_file", label: "Open file in Studio", description: "Open a permitted file and reveal a line and column.", enabled: true, autoApprove: false },
     { name: "workflow-studio_set_theme", label: "Studio theme", description: "Change the installed VS Code color theme.", enabled: true, autoApprove: false },
     { name: "workflow-studio_open_terminal", label: "Studio terminal", description: "Open a terminal in a permitted directory without executing commands.", enabled: true, autoApprove: false },

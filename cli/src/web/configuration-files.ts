@@ -27,7 +27,7 @@ export async function uploadConfigurationFile(projectId: string, field: ProjectC
 }
 
 /** Read configuration attachments through their narrow account/version permission, not project data access. */
-export async function readConfigurationFile(projectId: string, state: ProjectConfigurationState, fileId: string, connection: WebConnection | undefined, options: { entryId?: string; target?: string; signal?: AbortSignal } = {}) {
+export async function readConfigurationFile(projectId: string, state: ProjectConfigurationState, fileId: string, connection: WebConnection | undefined, options: { entryId?: string; target?: string; signal?: AbortSignal; onRequest?(): void; onResponse?(status: number): void } = {}) {
   let reference;
   for (const profile of state.configurations) for (const field of state.fields.filter(field => field.type === 'file')) {
     const value = configurationSnapshot(state, profile.id, false).values[field.name];
@@ -39,10 +39,12 @@ export async function readConfigurationFile(projectId: string, state: ProjectCon
   if (!connection) throw unavailable();
   const target = options.target ?? 'draft';
   try {
+    options.onRequest?.();
     const response = await fetch(`${connection.serverUrl}/api/projects/${encodeURIComponent(projectId)}/configurations/files/${encodeURIComponent(fileId)}?target=${encodeURIComponent(target)}${options.entryId?`&entryId=${encodeURIComponent(options.entryId)}`:''}`, {
       headers: { Authorization: `Bearer ${connection.accessToken}` }, redirect: 'error',
       signal: options.signal ? AbortSignal.any([options.signal, AbortSignal.timeout(120_000)]) : AbortSignal.timeout(120_000),
     });
+    options.onResponse?.(response.status);
     // A project-managed file can predate the attachment API. Let the caller try
     // its authenticated project bridge; permission and server failures must stop here.
     if (response.status === 404) return;

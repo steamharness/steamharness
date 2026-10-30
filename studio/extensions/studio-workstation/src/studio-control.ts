@@ -14,7 +14,7 @@ const views: Record<string, string> = {
   'source-control': 'workbench.view.scm', terminal: 'workbench.action.terminal.focus',
   assistant: 'studio.openAssistant',
 };
-const operations = ['studio.configurations.get', 'studio.configurations.manage', 'studio.configurations.open', 'studio.state.get', 'studio.entries.get', 'studio.file.open', 'studio.diagnostics.get', 'studio.theme.set', 'studio.terminal.open', 'studio.view.show'];
+const operations = ['studio.configurations.get', 'studio.configurations.manage', 'studio.configurations.open', 'studio.state.get', 'studio.entries.get', 'studio.file.open', 'studio.diagnostics.get', 'studio.kanban.diagnostics', 'studio.theme.set', 'studio.terminal.open', 'studio.view.show'];
 
 export const STUDIO_CONTROL_ENTRY_ID = 'studio-control';
 
@@ -30,6 +30,7 @@ export function studioControlWorkspaceAvailable(scope: NonNullable<Project['assi
 
 export function createStudioControlHandler(assistant: NonNullable<Project['assistant']>, signal: AbortSignal, _context: Pick<vscode.ExtensionContext, 'globalState'>, services?: {
   configuration(input: Record<string, unknown>, signal: AbortSignal): Promise<unknown>;
+  kanban?(input: { projectDir: string; projectId: string; entryId: string; call?: unknown }, signal: AbortSignal): Promise<unknown>;
 }) {
   const installedThemes = (): string[] => [...new Set(vscode.extensions.all.flatMap(extension =>
     (extension.packageJSON?.contributes?.themes ?? []).flatMap((theme: { id?: string; label?: string }) =>
@@ -59,6 +60,7 @@ export function createStudioControlHandler(assistant: NonNullable<Project['assis
       'studio.configurations.open': ['storage', 'projectDir', 'projectId', 'entryId', 'target'],
       'studio.state.get': [], 'studio.entries.get': ['projectDir'], 'studio.file.open': ['filePath', 'line', 'column'],
       'studio.diagnostics.get': ['filePath'], 'studio.theme.set': ['theme'],
+      'studio.kanban.diagnostics': ['projectDir', 'entryId', 'call'],
       'studio.terminal.open': ['cwd'], 'studio.view.show': ['view'],
     };
     if (!Object.hasOwn(keys, operation) || Object.keys(input).some(key => !keys[operation].includes(key))) {
@@ -75,6 +77,20 @@ export function createStudioControlHandler(assistant: NonNullable<Project['assis
       return input[key] as number;
     };
     switch (operation) {
+      case 'studio.kanban.diagnostics': {
+        const directory = await allowedPath(optionalString('projectDir') ?? assistant.workdir);
+        await allowedPath(path.join(directory, 'steamharness.json'));
+        const declaration = await readProjectDeclarationFromDirectory(directory);
+        const entry = selectProjectEntry(declaration, requiredString('entryId'));
+        if (entry.type !== 'kanban') throw new Error(t('Select a Kanban entry to read runtime diagnostics.'));
+        await allowedPath(path.resolve(directory, entry.root));
+        if (!services?.kanban) throw new Error(t('Kanban runtime diagnostics are unavailable.'));
+        assertAvailable();
+        const value = await services.kanban({ projectDir: directory, projectId: declaration.projectId, entryId: entry.entryId,
+          ...(input.call === undefined ? {} : { call: input.call }) }, signal);
+        assertAvailable();
+        return value;
+      }
       case 'studio.configurations.get': case 'studio.configurations.manage': case 'studio.configurations.open': {
         if (!['local','server'].includes(requiredString('storage'))) throw new Error(t('Invalid configuration storage.'));
         const reading = operation === 'studio.configurations.get';

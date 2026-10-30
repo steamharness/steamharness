@@ -915,7 +915,7 @@ async function startProjectWebServer(options: WebOptions, credentials: { capabil
           const message = await readBody(request);
           let messages: Message[] = [];
           const operation = () => handleMessage(message).then(value => { messages = value; });
-          const concurrent = ['stop', 'workflow-stop', 'navigate', 'resolve', 'ready', 'project-server-check', 'usage', 'resource', 'resource-data', 'resource-refresh', 'resource-select', 'resource-bridge', 'kanban-bridge', 'kanban-method-state', 'kanban-method-reply', 'kanban-methods'].includes(message.type)
+          const concurrent = ['stop', 'workflow-stop', 'navigate', 'resolve', 'ready', 'project-server-check', 'usage', 'resource', 'resource-data', 'resource-refresh', 'resource-select', 'resource-bridge', 'kanban-bridge', 'kanban-method-state', 'kanban-method-reply', 'kanban-methods', 'kanban-diagnostics'].includes(message.type)
             || message.type === 'agent-command' && message.command?.type === 'cancel';
           const task = concurrent ? operation() : mutations.catch(() => undefined).then(operation);
           if (!concurrent) { mutations = task; }

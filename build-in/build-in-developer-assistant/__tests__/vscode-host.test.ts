@@ -51,6 +51,7 @@ describe("VS Code assistant host", () => {
       { name: "studio_state", inputSchema: { type: "object", properties: {} } },
       { name: "open_file", inputSchema: { type: "object", properties: { filePath: { type: "string" } }, required: ["filePath"] } },
       { name: "get_entries", inputSchema: { type: "object", properties: { projectDir: { type: "string" } } } },
+      { name: "get_kanban_diagnostics", inputSchema: { type: "object", properties: { input: { type: "string" } }, required: ["input"] } },
       { name: "legacy_desktop_tool", inputSchema: { type: "object" } },
     ], callTool, close };
     const host = await loadHost({ STEAMHARNESS_STUDIO_CONTROL_MCP_SERVER: JSON.stringify(definition),
@@ -71,6 +72,11 @@ describe("VS Code assistant host", () => {
     await related.execute("related", { projectDir: "projects/notes" });
     expect(host.approve).toHaveBeenCalledWith({ name: "workflow-studio_get_entries", arguments: { projectDir: "projects/notes" } }, context);
     expect(callTool).toHaveBeenCalledWith("get_entries", { projectDir: "projects/notes" }, undefined);
+    const diagnostics = set.tools.find(tool => tool.name === "workflow-studio_get_kanban_diagnostics")!;
+    const request = { input: JSON.stringify({ projectDir: "projects/notes", entryId: "map-2d" }) };
+    await diagnostics.execute("runtime", request);
+    expect(callTool).toHaveBeenCalledWith("get_kanban_diagnostics", request, undefined);
+    expect(host.approve).toHaveBeenCalledWith({ name: "workflow-studio_get_kanban_diagnostics", arguments: request }, context);
     expect(host.connect).toHaveBeenCalledWith({ ...definition, environment: { STEAMHARNESS_STUDIO_CONTROL_PERMISSION_POLICY: "auto" } },
       expect.objectContaining({ env: expect.objectContaining({ STEAMHARNESS_STUDIO_CONTROL_BRIDGE_TOKEN: "test-capability" }) }));
     await set.close!(); expect(close).toHaveBeenCalledOnce();

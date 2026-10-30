@@ -90,6 +90,34 @@ async function fixture(options: { server?: boolean; artifact?: boolean; noParams
 }
 
 describe('Kanban CLI Web workspace', () => {
+  it('exposes safe runtime failures, clears stale evidence, and queries the exact live page without writing', async () => {
+    const { app, post, bridge, state, runtime } = await fixture();
+    vi.mocked(runtime.kanbanBridge!).mockRejectedValue(new Error('private-server-token', { cause: new DOMException('private-timeout', 'TimeoutError') }));
+    await bridge('files.readFile', { fileId: 'wf_ab12' });
+    const inspect = async (call?: object) => (await post({ type: 'kanban-diagnostics', ...(call ? { call } : {}) }).then(response => response.json())).messages[0].value;
+    const failed = await inspect();
+    expect(failed).toMatchObject({ available: true, projectId: id, entryId: 'main', instances: [], requests: [
+      { operation: 'files.readFile', fileId: 'wf_ab12', ok: false, attempts: [{ source: 'configuration-cache' }, { source: 'database' }], error: { category: 'timeout' } },
+    ] });
+    expect(JSON.stringify(failed)).not.toContain('private-');
+    const hub = app.kanbanController!.methods, disconnect = hub.connect('diagnostic-client');
+    const configurationId = (await state()).kanban.configuration.id;
+    hub.publish({ clientId: 'diagnostic-client', instanceId: 'page', configurationId, ready: true, presentation: { mode: 'fullscreen' }, methods: [
+      { name: 'map.getInfo', description: 'Map state', inputSchema: { type: 'object' }, readOnly: true },
+      { name: 'map.pan', description: 'Pan', inputSchema: { type: 'object' }, readOnly: false },
+    ] });
+    const emit = vi.spyOn(hub as any, 'emit').mockImplementation((message: any) => {
+      if (message.type === 'kanban-method-invoke') hub.reply({ ...message, clientId: 'diagnostic-client', ok: true, value: { imageReady: false } });
+    });
+    const call = { instanceId: 'page', configurationId, method: 'map.getInfo', args: {} };
+    expect((await inspect(call)).result).toEqual({ imageReady: false });
+    expect((await post({ type: 'kanban-diagnostics', call: { ...call, method: 'map.pan' } })).status).toBe(400);
+    expect(emit).toHaveBeenCalledTimes(1);
+    await post({ type: 'kanban-refresh' });
+    expect(await inspect()).toMatchObject({ instances: [], requests: [] });
+    expect((await post({ type: 'kanban-diagnostics', call })).status).toBe(400);
+    disconnect();
+  });
   it('routes local Studio analysis through its read-only host capability without Server login', async () => {
     const { bridge, runtime } = await fixture();
     vi.stubEnv('STEAMHARNESS_STUDIO_CONTROL_BRIDGE_URL', ''); vi.stubEnv('STEAMHARNESS_STUDIO_CONTROL_BRIDGE_TOKEN', '');
@@ -275,6 +303,9 @@ describe('Kanban CLI Web workspace', () => {
     expect(reply.value.file).toEqual(file);
     expect(Buffer.from(reply.value.base64, 'base64').equals(bytes)).toBe(true);
     expect(routes).toEqual([`/api/projects/${id}/configurations/files/${file.id}`]);
+    const diagnostics = await post({ type: 'kanban-diagnostics' }).then(response => response.json());
+    expect(diagnostics.messages[0].value.requests.at(-1)).toMatchObject({ operation: 'files.readFile', fileId: file.id, ok: true,
+      attempts: [{ source: 'configuration-cache' }, { source: 'configuration-attachment', status: 404 }, { source: 'database' }] });
     expect(runtime.kanbanBridge).toHaveBeenCalledOnce();
   });
 
