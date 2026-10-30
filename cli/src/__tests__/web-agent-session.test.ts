@@ -2,7 +2,7 @@ import { afterEach, expect, it, vi } from 'vitest';
 import type { AgentSessionCommand, AgentSessionReceipt, AgentSessionSnapshot, AgentSessionTurn } from 'steamharness/agent';
 import { ConversationController } from '../web/conversation-controller';
 import { conversationPrompt } from '../web/conversation-paths';
-import { messageSettled, type Project, type Report, type Runtime } from '../web/workflow-types';
+import { messageSettled, sessionRunning, type Project, type Report, type Runtime } from '../web/workflow-types';
 
 const controllers: ConversationController[] = [];
 afterEach(() => { for (const controller of controllers.splice(0)) controller.dispose(); vi.useRealTimers(); });
@@ -57,6 +57,78 @@ it('shares a progress checkpoint across concurrently streaming conversations', a
   f.save.mockClear(); await vi.advanceTimersByTimeAsync(1000); expect(f.save).toHaveBeenCalledOnce();
   for (const run of f.runs) run.finish({ status: 'success' });
   await f.controller!.idle();
+});
+
+it('isolates roots with identical internal conversation and task identities while switching views', async () => {
+  const f = fixture(); await f.start();
+  const first = f.controller.current, original = f.snapshot();
+  const task = { id: 42, conversationId: 1, kind: 'project.delegation', label: 'Old video', status: 'running', background: true, stopping: false, blockedOn: [] };
+  f.emit({ ...original, revision: 2, tasks: [task], backgroundCount: 1 });
+  first.queuedInputs = [{ id: 'old-queue', text: 'Old follow-up', params: {}, attachments: [], createdAt: 1, hostQueued: true }];
+  first.queuePaused = true;
+  await f.controller.create(true);
+  const second = f.controller.current;
+  expect(second.agent).toBeUndefined(); expect(second.messages).toEqual([]);
+  await f.controller.send({ text: 'Hello', params: { model: 'one' }, attachments: [] });
+  await vi.waitFor(() => expect(f.runs).toHaveLength(2));
+  const fresh: AgentSessionSnapshot = { ...f.snapshot(), ownerId: 'second-owner', turns: [{ ...f.snapshot().turns[0], prompt: 'Hello',
+    items: [{ id: 'hello', title: 'Output', content: 'Hello only', contentType: 'markdown' }] }] };
+  f.emit(fresh);
+  f.runs[0].emit({ type: 'node_chunk', chunk: { type: 'output_item_start', item: { id: 'agent-session', metadata: { kind: 'agent-session' },
+    content: { ...original, revision: 100, tasks: [task], backgroundCount: 1 } } } });
+  expect(second.agent?.ownerId).toBe('second-owner'); expect(second.agent?.tasks).toEqual([]);
+  expect(second.messages.at(-1)?.content).toBe('Hello only'); expect(second.queuedInputs).toEqual([]);
+  expect(first.agent?.tasks).toEqual([task]); expect(first.queuedInputs?.map(input => input.id)).toEqual(['old-queue']);
+  vi.mocked(f.runtime.agentControl!).mockImplementation(async (_run, command) => ({ requestId: command.requestId, conversationId: 1, status: 'accepted' }));
+  await f.controller.send({ text: 'Only this root', params: { model: 'one' }, attachments: [] }, second, true, 'new-only');
+  expect(f.runtime.agentControl).toHaveBeenCalledExactlyOnceWith(second.activeRunId,
+    expect.objectContaining({ type: 'submit', requestId: 'new-only' }), second.id, []);
+  expect(first.queuePaused).toBe(true);
+  for (const run of f.runs) run.finish({ status: 'success' });
+  await f.controller.idle();
+});
+
+it('keeps Stop available for owned background tasks without including independent forks', async () => {
+  const f = fixture(); await f.start(); const initial = f.snapshot(), owner = f.controller.current;
+  const context = { conversationId: 1, foreground: false, backgroundCount: 1, epoch: 0, configuration: initial.configuration, prompt: initial.prompt, plan: initial.plan };
+  const task = { id: 42, conversationId: 2, kind: 'app.batch', label: 'Background', status: 'running', background: true, stopping: false, blockedOn: [] };
+  f.emit({ ...initial, revision: 2, contexts: [context], tasks: [task],
+    conversations: [...initial.conversations, { id: 2, parentId: 1, title: 'Owned child', background: true }] });
+  expect(sessionRunning(owner)).toBe(true);
+  f.emit({ ...initial, revision: 3, contexts: [context], tasks: [task],
+    conversations: [...initial.conversations, { id: 2, parentId: 1, forkEntryId: 2, title: 'Independent fork', background: true }] });
+  expect(sessionRunning(owner)).toBe(false);
+  await f.finish();
+});
+
+it.each(['failed', 'aborted', 'interrupted'] as const)('settles a disconnected managed tree after %s before accepting input with new configuration', async failure => {
+  let revision = 0;
+  const f = fixture(() => revision); await f.start(); const owner = f.controller.current, initial = f.snapshot();
+  f.emit({ ...initial, revision: 2, backgroundCount: 1,
+    tasks: [{ id: 42, conversationId: 1, kind: 'app.batch', label: 'Waiting for sources', status: 'running', background: true, stopping: false, blockedOn: [] }] });
+  owner.queuedInputs = [{ id: 'waiting', text: 'Wait for user success', params: { model: 'one' }, attachments: [], createdAt: 1, hostQueued: true }];
+  owner.queuePaused = true;
+  if (failure === 'interrupted') f.runs[0].fail(Object.assign(new Error('Worker exited'), { code: 'STEAMHARNESS_WORKER_INTERRUPTED' }));
+  else f.runs[0].finish({ status: failure, result: failure === 'failed' ? { error: { message: 'Owner failed' } } : undefined });
+  await f.controller.idle();
+  expect(f.runs).toHaveLength(1); expect(owner.agentInterrupted).toBe(true); expect(sessionRunning(owner)).toBe(false);
+  revision = 1;
+  vi.mocked(f.runtime.agentControl!).mockImplementation(async (_run, command) => ({ requestId: command.requestId, conversationId: 1, status: 'accepted' }));
+  const sending = f.controller.send({ text: 'Continue explicitly', params: { model: 'one' }, attachments: [] }, owner, true, 'explicit-new');
+  await vi.waitFor(() => expect(f.runs).toHaveLength(2));
+  expect(vi.mocked(f.runtime.run).mock.calls[1][0]).toMatchObject({ resumeAgent: true, interruptAgent: true });
+  f.emit({ ...initial, ownerId: 'reconnected', revision: 1, receipts: [{ requestId: 'interrupt:explicit-new', conversationId: 1, status: 'accepted' }] });
+  // Cleanup uses the committed configuration; the new input then reattaches at
+  // an idle boundary with the updated configuration and awaits its own receipt.
+  await vi.waitFor(() => expect(f.runs).toHaveLength(3));
+  f.emit({ ...initial, ownerId: 'new-configuration', revision: 1, receipts: [{ requestId: 'explicit-new', conversationId: 1, status: 'accepted' }] });
+  await sending;
+  expect(owner.agentInterrupted).toBeUndefined(); expect(owner.queuePaused).toBe(true);
+  expect(owner.queuedInputs?.map(input => input.id)).toEqual(['waiting']);
+  expect(vi.mocked(f.runtime.run).mock.calls[2][0].agentCommands).toEqual([
+    expect.objectContaining({ command: expect.objectContaining({ type: 'submit', requestId: 'explicit-new' }) }),
+  ]);
+  await f.finish();
 });
 
 it('deduplicates a committed durable turn without requiring saved input presentation metadata', async () => {

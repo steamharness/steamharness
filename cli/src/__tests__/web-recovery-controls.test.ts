@@ -94,7 +94,7 @@ it('provides immediate Retry feedback and confirms or retries a scoped stop whil
   expect(feedback.hidden).toBe(true); expect(document.querySelector<HTMLElement>('#error')!.hidden).toBe(true);
   expect(textarea.value).toBe('');
 
-  // Durable cancellation keeps its foreground scope and owner identity.
+  // Composer Stop cancels the owned execution tree, including background work.
   [...document.querySelectorAll<HTMLButtonElement>('#session-list button')].find(button => button.textContent?.includes('Map'))!.click();
   project.conversation!.durable = { enabled: true };
   session.agent = { version: 1, ownerId: 'owner', revision: 1, conversationId: 1, foreground: true, backgroundCount: 0, epoch: 0,
@@ -106,7 +106,7 @@ it('provides immediate Retry feedback and confirms or retries a scoped stop whil
   send.click();
   const durable = stopMessages().at(-1)!;
   expect(durable).toMatchObject({ type: 'agent-command', projectUri: project.uri, sessionId: session.id, agentOwner: 'owner', taskIds: [42], runId: session.activeRunId,
-    command: { type: 'cancel', scope: 'foreground', requestId: durable.requestId } });
+    command: { type: 'cancel', scope: 'all', requestId: durable.requestId } });
   const restored = { ...session, agent: { ...session.agent, ownerId: 'replacement' } };
   await render([restored], session.id, { serverInstanceId: 'restored', stateRevision: 1 });
   expect(send.disabled).toBe(true); expect(feedback.textContent).toBe('Stopping...');

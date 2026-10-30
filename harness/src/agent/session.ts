@@ -777,10 +777,8 @@ export class DurableAgentSession {
         break;
       }
       case "cancel": {
-        const current = (await this.harness.snapshot(SessionDoc, target.id, context))!.commands[command.requestId]!;
-        let ids = current.taskIds as number[] | undefined, inputs = current.inputIds as number[] | undefined;
-        if (!ids) {
-          if (!["all", "foreground", "task"].includes(command.scope)) throw new Error("Unknown cancellation scope.");
+        if (!["all", "foreground", "task"].includes(command.scope)) throw new Error("Unknown cancellation scope.");
+        if (command.scope === "task") {
           const frame = await this.snapshot();
           const owned = new Set([target.id as number]);
           let size = 0;
@@ -788,26 +786,16 @@ export class DurableAgentSession {
             size = owned.size;
             for (const conversation of frame.conversations) if (conversation.parentId !== undefined && conversation.forkEntryId === undefined && owned.has(conversation.parentId)) owned.add(conversation.id);
           }
-          const excluded = new Set<number>();
-          if (command.scope === "foreground") {
-            for (const task of frame.tasks) if (task.background) excluded.add(task.id);
-            let count = -1;
-            while (count !== excluded.size) { count = excluded.size; for (const task of frame.tasks) if (task.parentId !== undefined && excluded.has(task.parentId)) excluded.add(task.id); }
-          }
-          if (command.scope === "task") {
-            const task = frame.tasks.find(task => task.id === command.taskId) ?? frame.history.find(task => task.id === command.taskId);
-            if (!task || !owned.has(task.conversationId)) throw new Error("The task does not belong to the target conversation.");
-            ids = [task.id]; inputs = [];
-          } else {
-            ids = frame.tasks.filter(task => owned.has(task.conversationId) && !excluded.has(task.id)).map(task => task.id);
-            const scopes = new Set(frame.conversations.filter(conversation => owned.has(conversation.id) && (command.scope === "all" || !conversation.background)).map(conversation => conversation.id));
-            inputs = [...this.submissions.values()].filter(input => scopes.has(input.conversationId) && input.status === "queued").map(input => input.id);
-          }
-          await target.commit(async tx => { const record = (await tx.doc(SessionDoc, target.id)).commands[command.requestId]!; record.taskIds = ids!; record.inputIds = inputs!; }, context);
+          const task = frame.tasks.find(task => task.id === command.taskId) ?? frame.history.find(task => task.id === command.taskId);
+          if (!task || !owned.has(task.conversationId)) throw new Error("The task does not belong to the target conversation.");
+          await this.harness.abortTask(task.id as TaskId, context);
+          await this.harness.waitForTask(task.id as TaskId, context);
+        } else {
+          // Durable marks the whole ownership tree and withdraws queued inputs
+          // atomically. Cancelling a snapshot one task at a time lets coordinators
+          // dispatch replacement work between marks and leave it running.
+          await target.abort(context, { background: command.scope === "all" });
         }
-        for (const id of inputs ?? []) await this.harness.abortSubmission(id as import("@earendil-works/pi-durable").SubmissionId, context);
-        for (const id of ids) await this.harness.abortTask(id as TaskId, context);
-        for (const id of ids) await this.harness.waitForTask(id as TaskId, context);
         break;
       }
       case "snapshot": break;

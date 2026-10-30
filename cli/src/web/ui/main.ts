@@ -1394,7 +1394,7 @@ function initialize(): void {
     const message = state.project.conversation?.durable?.enabled
       ? { type: 'agent-command', agentOwner: request.agentOwner, runId: request.runId,
         taskIds: request.taskIds,
-        command: { type: 'cancel', scope: 'foreground', requestId: request.requestId } }
+        command: { type: 'cancel', scope: 'all', requestId: request.requestId } }
       : { type: 'stop', runId: request.runId };
     try { await vscode.postMessage({ ...message, projectUri: request.projectUri, sessionId: request.sessionId, requestId: request.requestId, errorScope: 'stop' }); }
     catch (error) { finishStop({ ...request, type: 'error', message: String((error as Error)?.message ?? error) }); }

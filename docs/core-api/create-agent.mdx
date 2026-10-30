@@ -109,6 +109,8 @@ const agent = await workflow.createAgent({
 | `snapshot` | 取得并发布最新完整快照。 |
 | `task` | `name`、严格 JSON `input`（最多 256 KiB）、可选 `background`；只能创建项目 registry 注册的任务，回执含 `taskId`，同身份重发不会新建任务。Date、Map、函数、非有限数等在记录 requestId 前拒绝。 |
 
+会话范围的取消由 Durable 在同一事务标记整个目标执行树并撤回待执行输入，回执返回前等待清理完成，避免逐项停止时协调者派发遗漏任务。宿主运行的主动取消同样包含后台任务；宿主挂起保留检查点，遵循单独的恢复流程。
+
 快照带 `version: 1`、每次打开改变的 `ownerId`、递增 `revision`、`contexts`、`tasks/history`、`turns`、`plan`、`records`、`receipts` 和逐会话 `usage`。快照是辅助状态；assistant 主回答继续平铺。重连读取完整快照，旧 owner 的 revision 不可压制新 owner。提示记录只有摘要/版本，配置记录不保存凭据。后台子结果由持久 reporter 用稳定身份回传一次；费用按父子会话分别归属，不重复累加重放。
 
 `tasks/history` 中的委派任务在子会话创建后提供 `childConversationId`，匿名和命名 `subagent` 均支持；任务结束及重开历史后仍保留关联，已删除的子会话不提供此字段。宿主可据此打开快照内的对应子会话，不应从任务标题推断身份。

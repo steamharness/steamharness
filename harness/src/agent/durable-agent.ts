@@ -324,7 +324,7 @@ export class DurableAgent {
 
   abort(): void {
     if (this.root !== undefined) {
-      this.aborting ??= this.root.abort(context);
+      this.aborting ??= this.root.abort(context, { background: true });
       void this.aborting.catch(error => this.fail(error));
     }
   }

@@ -459,14 +459,15 @@ export class ConversationController {
         if (historical) this.failAgentTurns(entry, message, true);
         else { answer.status = 'failed'; answer.recovering = !!this.project.conversation?.recovery?.enabled; answer.error = message; }
       } else if (interrupted) {
+        const managed = entry.agent?.tasks.some(task => !task.kind.startsWith('pi.'));
         answer.recoveryAttempts = (answer.recoveryAttempts ?? 0) + (this.disposed ? 0 : 1);
-        restart = !this.disposed && answer.recoveryAttempts <= 3;
+        restart = !managed && !this.disposed && answer.recoveryAttempts <= 3;
         if (!historical) {
-          answer.status = this.disposed || restart ? 'running' : 'failed';
-          answer.recovering = true;
+          answer.status = managed ? 'aborted' : this.disposed || restart ? 'running' : 'failed';
+          answer.recovering = !managed;
           answer.error = restart || this.disposed ? undefined : t("Run interrupted");
         }
-        if (historical && !restart && !this.disposed) this.failAgentTurns(entry, t("Run interrupted"), true);
+        if (historical && !restart && !this.disposed) this.failAgentTurns(entry, t("Run interrupted"), !managed);
       } else if (historical) {
         if (!task.cancelled) this.failAgentTurns(entry, error instanceof Error ? error.message : String(error));
         this.rejectAgentWaiters(entry.id, error instanceof Error ? error : new Error(String(error)));
@@ -502,6 +503,7 @@ export class ConversationController {
         } catch (error) { if (!historical) answer.error = String(error); this.options.log(`Workflow cancellation: ${String(error)}`); }
       }
       if (entry.activeRunId === answer.runId) { delete entry.activeRunId; }
+      if (!restart && entry.agent?.tasks.some(task => !task.kind.startsWith('pi.'))) this.pauseInterruptedAgent(entry);
       if (!restart) this.rejectAgentWaiters(entry.id, Object.assign(new Error('The agent owner disconnected.'), { code: 'STEAMHARNESS_WORKER_INTERRUPTED' }));
       this.changed();
       try { await this.persist(); }
@@ -739,6 +741,17 @@ export class ConversationController {
   }
   private rejectAgentWaiters(ownerId: string, error: Error): void {
     for (const [id, waiter] of this.agentWaiters) if (waiter.ownerId === ownerId) { waiter.reject(error); this.agentWaiters.delete(id); }
+  }
+  private pauseInterruptedAgent(owner: ConversationSession): void {
+    for (const entry of this.sessions.filter(session => (session.agentOwnerId ?? session.id) === owner.id)) {
+      entry.agentInterrupted = true; entry.queuePaused = true;
+      for (const input of entry.queuedInputs ?? []) input.hostQueued = true;
+      for (const pending of entry.agentCommands ?? []) if (pending.command.type === 'submit') {
+        const input = entry.agentInputs?.[pending.command.requestId];
+        if (input && !entry.queuedInputs?.some(item => item.id === input.id)) (entry.queuedInputs ??= []).push({ ...input, hostQueued: true });
+      }
+      entry.agentCommands = [];
+    }
   }
   private failAgentTurns(owner: ConversationSession, error: string, recovering = false): void {
     for (const entry of this.sessions.filter(session => (session.agentOwnerId ?? session.id) === owner.id)) {

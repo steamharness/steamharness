@@ -314,8 +314,17 @@ export function sessionRunning(session: ConversationSession): boolean {
   if (!session.agent) return !!session.activeRunId;
   const id = session.agentConversationId ?? session.agent.conversationId;
   const context = session.agent.contexts.find(context => context.conversationId === id);
-  if (context) return context.foreground;
-  return id === session.agent.conversationId ? session.agent.foreground : session.agent.turns.some(turn => turn.conversationId === id && turn.status === 'placed');
+  if (context?.foreground ?? (id === session.agent.conversationId ? session.agent.foreground
+    : session.agent.turns.some(turn => turn.conversationId === id && turn.status === 'placed'))) return true;
+  const owned = new Set([id]);
+  let size = 0;
+  while (size !== owned.size) {
+    size = owned.size;
+    for (const child of session.agent.conversations) {
+      if (child.parentId !== undefined && child.forkEntryId === undefined && owned.has(child.parentId)) owned.add(child.id);
+    }
+  }
+  return session.agent.tasks.some(task => owned.has(task.conversationId));
 }
 
 export const projectTypeLabels: Record<ProjectKind, string> = {

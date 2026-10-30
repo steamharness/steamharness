@@ -69,6 +69,55 @@ test("custom tasks checkpoint timers, join dependencies, deduplicate commands an
   assert.equal(cleaned, 1);
 });
 
+for (const stop of ["control", "host"] as const) test(`${stop} stop joins background coordinators and their owned work before another input`, { timeout: 8000 }, async t => {
+  const registry = createRegistry(); let cleaned = 0;
+  const sleeper = defineTask<null, { phase: "sleep" }, null>({ name: "test.background-child", version: 1,
+    initial: () => ({ phase: "sleep" }), phases: { sleep: async (_task, runtime, ctx) => {
+      await runtime.sleep(Date.now() + 60_000, ctx);
+    } }, abort: async (_task, runtime, ctx) => {
+      cleaned++; await runtime.commit(() => ({ status: "terminal", outcome: { status: "aborted" } }), ctx);
+    } });
+  const batch = defineTask<null, { phase: "dispatch" } | { phase: "wait" }, null>({ name: "test.background-batch", version: 1,
+    initial: () => ({ phase: "dispatch" }), phases: {
+      dispatch: async (task, runtime, ctx) => { await runtime.commit(async tx => {
+        const child = await tx.createTask(sleeper, null, { ownership: { kind: "task", taskId: task.id } });
+        return { status: "waiting", on: [child], policy: "allSettled", checkpoint: { phase: "wait" } };
+      }, ctx); },
+      wait: async (_task, runtime, ctx) => { await runtime.commit(() => ({ status: "terminal", outcome: { status: "completed", result: null } }), ctx); },
+    }, abort: async (_task, runtime, ctx) => {
+      cleaned++; await runtime.commit(() => ({ status: "terminal", outcome: { status: "aborted" } }), ctx);
+    } });
+  registry.install(defineExtension({ name: "background-batch", tasks: [sleeper, batch] }));
+  const f = agent({ registry }); f.provider.setResponses([ai.fauxAssistantMessage("Ready"), ai.fauxAssistantMessage("Next input accepted")]);
+  const run = f.instance.prompt("Start");
+  let forkId: number | undefined;
+  t.after(async () => {
+    if (forkId !== undefined) await f.instance.control({ type: "cancel", scope: "all", targetId: forkId, requestId: "cleanup-fork" });
+    f.lease.resolve(); f.instance.abort(); await run; await f.instance.close();
+  });
+  await until(() => f.snapshot()?.turns.some(turn => turn.status === "done"));
+  const fork = await f.instance.control({ type: "fork", requestId: "independent", entryId: f.snapshot().turns[0]!.answerId! });
+  forkId = fork.forkId!;
+  const independent = await f.instance.control({ type: "task", targetId: forkId, requestId: "fork-task", name: "test.background-child", input: null, background: true });
+  const receipt = await f.instance.control({ type: "task", requestId: "batch", name: "test.background-batch", input: null, background: true });
+  await until(() => f.snapshot()?.tasks.length === 3);
+  if (stop === "control") {
+    const command = { type: "cancel" as const, scope: "all" as const, requestId: "stop-all" };
+    const stopped = await f.instance.control(command);
+    assert.deepEqual(await f.instance.control(command), stopped);
+  } else {
+    f.instance.abort();
+    await until(() => f.snapshot()?.tasks.length === 1);
+  }
+  assert.equal(cleaned, 2); assert.equal(f.snapshot().tasks.length, 1);
+  assert.equal(f.snapshot().tasks[0]!.id, independent.taskId);
+  assert.equal(f.snapshot().history.find(task => task.id === receipt.taskId)?.status, "aborted");
+  assert.ok(f.snapshot().history.every(task => !task.stopping));
+  await f.instance.control({ type: "submit", requestId: "next", prompt: "New request", mode: "followUp" });
+  await until(() => f.snapshot().turns.some(turn => turn.requestId === "next" && turn.status === "done"));
+  assert.equal(f.provider.state.callCount, 2);
+});
+
 test("task commands capture their JSON input before waiting and reject non-JSON values before reserving request ids", async t => {
   const registry = createRegistry(); const inputs: unknown[] = [];
   registry.install(defineExtension({ name: "capture", tasks: [defineTask<{ value: string[] }, { phase: "capture" }, null>({

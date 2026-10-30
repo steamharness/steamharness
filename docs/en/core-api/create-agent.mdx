@@ -104,6 +104,8 @@ Every command has a stable `requestId` and optional numeric `targetId` from the 
 | `snapshot` | Publish the latest complete snapshot. |
 | `task` | `name`, strict JSON `input` (at most 256 KiB), optional `background`; create a project-registered task. The receipt contains `taskId`, and retransmission does not create another task. Date, Map, functions and non-finite numbers are rejected before recording the requestId. |
 
+Conversation cancellation atomically marks the target execution tree and withdraws queued input through Durable, then waits for cleanup before acknowledging. This prevents coordinators from dispatching work between individual cancellation requests. Explicit host run cancellation also includes background tasks; host suspension preserves checkpoints through its separate recovery path.
+
 Snapshots include `version: 1`, an `ownerId` that changes on reopen, increasing `revision`, `contexts`, `tasks/history`, `turns`, `plan`, `records`, `receipts`, and per-conversation `usage`. Treat snapshots as auxiliary state; assistant answers remain inline. Reconnect from a full snapshot, allowing a new owner to restart its revision sequence. Prompt records contain only a digest/version, and configuration records contain no credentials. A durable reporter delivers each background child result once using a stable identity. Usage belongs to individual parent/child conversations and replay does not add it again.
 
 Delegations in `tasks/history` expose `childConversationId` after a child is created, for both anonymous and named `subagent` work. The link survives settlement and reopening; deleted children omit it. Hosts can open that child from the snapshot without inferring identity from task labels.

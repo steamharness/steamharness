@@ -1,5 +1,7 @@
 # Unreleased
 
+- Fixed conversation cancellation to atomically stop and join the target execution tree, preventing coordinators from dispatching work between cancellations. Explicit host cancellation also stops background batches and owned tasks.
+
 - Fixed: Existing Agent sessions discover and persist authorized catalog additions through tool search, so adding Studio diagnostics no longer invalidates the whole directory. Existing descriptions, parameters and replay policies stay pinned; incompatible changes and unauthorized tools remain rejected.
 
 - Added project-defined subagent work attempt limits and backoff. Failed work continues in its original task and child conversation with committed checkpoints, verified completion receipts, non-retryable barriers, persistent budgets and cancellation. Only the final outcome returns to the parent.
