@@ -12,7 +12,8 @@ import { ROOT, assertRuntime, assertUpstream, exists } from '../scripts/distribu
 await assertRuntime();
 const upstream = await assertUpstream();
 const layoutOnly = process.argv.includes('--layout-only');
-const proof = path.join(ROOT, layoutOnly ? '.studio/start-page-layout-ui' : '.studio/start-page-ui'); await mkdir(proof, { recursive: true });
+const groupsOnly = process.argv.includes('--groups-only');
+const proof = path.join(ROOT, groupsOnly ? '.studio/editor-group-close-ui' : layoutOnly ? '.studio/start-page-layout-ui' : '.studio/start-page-ui'); await mkdir(proof, { recursive: true });
 const { createProjectFromTemplate, listProjectTemplates } = await import('../extensions/studio-workstation/dist/project-templates.mjs');
 const versions = JSON.parse(await readFile(path.join(ROOT, 'extensions/studio-workstation/dist/project-template-versions.json'), 'utf8'));
 const checks = [], errors = [];
@@ -27,7 +28,7 @@ for (const language of ['en', 'zh-cn']) {
   const directory = await realpath(await mkdtemp(path.join(tmpdir(), 'studio-start-ui-')));
   const workdir = path.join(directory, 'projects'), extension = path.join(directory, 'extensions/start-test');
   const readyFile = path.join(directory, 'ready.json'), token = randomBytes(24).toString('hex');
-  let browser, child, page, log = '';
+  let browser, child, page, sourceMessages, log = '';
   try {
     await mkdir(workdir, { recursive: true }); await mkdir(extension, { recursive: true });
     if (language === 'zh-cn' && process.env.STEAMHARNESS_UI_LANGUAGE_PACK) {
@@ -35,6 +36,10 @@ for (const language of ['en', 'zh-cn']) {
       const contents = await readFile(path.join(location, 'package.json'), 'utf8'), manifest = JSON.parse(contents);
       const localization = manifest.contributes?.localizations?.find(entry => entry.languageId === language);
       assert.ok(localization, `The cached language pack does not support ${language}`);
+      const main = localization.translations.find(entry => entry.id === 'vscode');
+      const pack = JSON.parse(await readFile(path.resolve(location, main.path), 'utf8'));
+      sourceMessages = Object.fromEntries(Object.entries(pack.contents).flatMap(([moduleId, translations]) =>
+        Object.entries(translations).map(([key, value]) => [`${moduleId}#${key}`, value])));
       const data = path.join(directory, 'server/data'); await mkdir(data, { recursive: true });
       await writeFile(path.join(data, 'languagepacks.json'), JSON.stringify({ [language]: {
         hash: createHash('sha256').update(contents).digest('hex'), label: localization.localizedLanguageName,
@@ -77,8 +82,11 @@ for (const language of ['en', 'zh-cn']) {
       args: ['--disable-features=LocalNetworkAccessChecks'] });
     const context = await browser.newContext({ viewport: { width: 1440, height: 1000 }, locale: language === 'en' ? 'en-US' : 'zh-CN' });
     await context.addCookies([{ name: 'vscode.nls.locale', value: language, domain: '127.0.0.1', path: '/' }]);
-    // Source workbenches do not load a language pack before initializing the extension host.
-    await context.addInitScript(language => { globalThis._VSCODE_NLS_LANGUAGE = language; }, language);
+    // Source Web workbenches need the installed pack's stable module/key messages before startup.
+    await context.addInitScript(({ language, messages }) => {
+      globalThis._VSCODE_NLS_LANGUAGE = language;
+      if (messages) { globalThis._VSCODE_NLS_MESSAGES = messages; }
+    }, { language, messages: sourceMessages });
     // Keep the Webview origin validation while serving its bootstrap from this checkout.
     await context.route(/https:\/\/[^/]+\.vscode-cdn\.net\/.*\/webview\/browser\/pre\/(?:index\.html|fake\.html|service-worker\.js)(?:\?|$)/, async route => {
       const filename = path.posix.basename(new URL(route.request().url()).pathname);
@@ -108,7 +116,7 @@ for (const language of ['en', 'zh-cn']) {
       }
     };
     await command('workbench.action.closeAllEditors');
-    const initial = await until(() => call({ action: 'state' }), state => state.start.templates.length === 7 && (layoutOnly || state.start.projects.length === 7), 'Current projects were not scanned');
+    const initial = await until(() => call({ action: 'state' }), state => state.start.templates.length === 7 && (layoutOnly || groupsOnly || state.start.projects.length === 7), 'Current projects were not scanned');
     assert.equal(initial.language, language);
     await command('workbench.action.closeSidebar'); await command('workbench.action.closeAuxiliaryBar');
     const settingsAction = page.locator('.activitybar').getByRole('button', { name: language === 'en' ? 'Settings' : '设置', exact: true });
@@ -123,6 +131,57 @@ for (const language of ['en', 'zh-cn']) {
       await command('workbench.action.closeAllEditors');
     }
     check(`${language}: the settings gear opens Studio settings directly with the mouse, Enter and Space`);
+    const groups = () => page.locator('.part.editor > .content .editor-group-container:visible');
+    const inactiveGroup = () => page.locator('.part.editor > .content .editor-group-container:not(.active):visible').first();
+    const emptyClose = () => groups().locator(':scope > .editor-group-container-toolbar .codicon-close');
+    const tabbedClose = () => groups().locator(':scope > .title .editor-layout-actions .codicon-close');
+    const nativeChinese = language === 'zh-cn' && !!sourceMessages;
+    const waitForGroups = count => until(() => call({ action: 'state' }), state => state.groups.length === count, `Expected ${count} editor groups`);
+    await command('workbench.action.newGroupRight'); await waitForGroups(2);
+    for (const theme of ['Default Light Modern', 'Default Dark Modern']) {
+      await call({ action: 'theme', theme });
+      await page.waitForFunction(dark => document.querySelector('.monaco-workbench')?.classList.contains('vs-dark') === dark, theme.includes('Dark'));
+      assert.equal(await emptyClose().count(), 2);
+      for (const button of await emptyClose().all()) {
+        await button.waitFor({ state: 'visible' });
+        assert.match(await button.getAttribute('aria-label'), nativeChinese ? /关闭/ : /Close Group/);
+        assert.equal(await button.evaluate(element => {
+          const rect = element.getBoundingClientRect(), group = element.closest('.editor-group-container').getBoundingClientRect();
+          const hit = document.elementFromPoint(rect.x + rect.width / 2, rect.y + rect.height / 2);
+          return (element === hit || element.contains(hit)) && group.right - rect.right < 20 && rect.top - group.top < 20;
+        }), true, 'Close must be reachable above Start in the upper-right corner');
+      }
+      await page.screenshot({ path: path.join(proof, `${language}-${theme.includes('Dark') ? 'dark' : 'light'}-empty-groups.png`) });
+    }
+    await command('workbench.action.newGroupBelow'); await waitForGroups(3);
+    await inactiveGroup().locator(':scope > .editor-group-container-toolbar .codicon-close').click();
+    await waitForGroups(2);
+    await emptyClose().first().focus(); await emptyClose().first().press('Enter'); await waitForGroups(1);
+    assert.equal(await emptyClose().isVisible(), false);
+    check(`${language}: empty groups close with mouse and keyboard above Start, including inactive groups and nested splits`);
+    await call({ action: 'file', path: emptyFile });
+    await command('workbench.action.splitEditorRight'); await waitForGroups(2);
+    const unsaved = await call({ action: 'untitled', text: 'keep unsaved group contents' });
+    assert.equal(await tabbedClose().count(), 2);
+    const dirtyGroup = groups().filter({ has: page.locator('.tab.dirty') });
+    await dirtyGroup.locator('.editor-layout-actions .codicon-close').click();
+    const dialog = page.locator('.monaco-dialog-box:visible');
+    await dialog.getByRole('button', { name: nativeChinese ? /取消/ : /^Cancel$/ }).click();
+    const cancelled = await waitForGroups(2);
+    assert.ok(cancelled.documents.some(document => document.uri === unsaved && document.dirty && document.text === 'keep unsaved group contents'));
+    await page.screenshot({ path: path.join(proof, `${language}-unsaved-cancel.png`) });
+    await dirtyGroup.locator('.editor-layout-actions .codicon-close').click();
+    await dialog.getByRole('button', { name: nativeChinese ? /不保存/ : /Don't Save/ }).click();
+    await waitForGroups(1);
+    assert.equal(await tabbedClose().count(), 0);
+    assert.ok((await call({ action: 'state' })).groups[0].tabs.some(tab => tab.uri === pathToFileURL(emptyFile).href));
+    await command('workbench.action.splitEditorRight'); await waitForGroups(2);
+    await inactiveGroup().locator('.editor-layout-actions .codicon-close').click();
+    await waitForGroups(1);
+    assert.equal(await tabbedClose().count(), 0);
+    check(`${language}: populated groups close the selected group, preserve unsaved changes on cancel, and hide Close for the final group`);
+    await command('workbench.action.closeAllEditors');
+    if (groupsOnly) { assert.deepEqual(errors, []); continue; }
     // Exercise the real native view with a delayed state source, independent of extension startup speed.
     await page.evaluate(async () => {
       const { StudioStartView } = await import(new URL('vs/workbench/browser/parts/editor/studioStart.js', globalThis._VSCODE_FILE_ROOT).href);

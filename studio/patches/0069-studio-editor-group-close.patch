@@ -1,0 +1,51 @@
+diff --git a/src/vs/workbench/browser/parts/editor/editor.contribution.ts b/src/vs/workbench/browser/parts/editor/editor.contribution.ts
+index 5f4cad341b607350189fe5909ee8d8f50b463584..4e3a02c99c3e458d9e4d3056e05f0c494f138250 100644
+--- a/src/vs/workbench/browser/parts/editor/editor.contribution.ts
++++ b/src/vs/workbench/browser/parts/editor/editor.contribution.ts
+@@ -355,6 +355,14 @@ MenuRegistry.appendMenuItem(MenuId.EmptyEditorGroup, { command: { id: LOCK_GROUP
+ MenuRegistry.appendMenuItem(MenuId.EmptyEditorGroup, { command: { id: UNLOCK_GROUP_COMMAND_ID, title: localize('unlockGroupAction', "Unlock Group"), icon: Codicon.lock, toggled: ContextKeyExpr.true() }, group: 'navigation', order: 10, when: ActiveEditorGroupLockedContext });
+ MenuRegistry.appendMenuItem(MenuId.EmptyEditorGroup, { command: { id: CLOSE_EDITOR_GROUP_COMMAND_ID, title: localize('closeGroupAction', "Close Group"), icon: Codicon.close }, group: 'navigation', order: 20, when: ContextKeyExpr.or(IsAuxiliaryWindowContext, EditorPartMultipleEditorGroupsContext) });
+ 
++// Editor Group Toolbar
++MenuRegistry.appendMenuItem(MenuId.EditorTitleLayout, {
++	command: { id: CLOSE_EDITORS_AND_GROUP_COMMAND_ID, title: localize('closeGroupAction', "Close Group"), icon: Codicon.close },
++	group: 'navigation',
++	order: 100,
++	when: EditorPartMultipleEditorGroupsContext
++});
++
+ // Empty Editor Group Context Menu
+ MenuRegistry.appendMenuItem(MenuId.EmptyEditorGroupContext, { command: { id: SPLIT_EDITOR_UP, title: localize('splitUp', "Split Up") }, group: '2_split', order: 10 });
+ MenuRegistry.appendMenuItem(MenuId.EmptyEditorGroupContext, { command: { id: SPLIT_EDITOR_DOWN, title: localize('splitDown', "Split Down") }, group: '2_split', order: 20 });
+diff --git a/src/vs/workbench/browser/parts/editor/media/editorgroupview.css b/src/vs/workbench/browser/parts/editor/media/editorgroupview.css
+index 86c87f9d3ed126d754cc06f733ca0c2ed6974143..5c1c1e68fb5696afedffd78d3be43cdf717e2b31 100644
+--- a/src/vs/workbench/browser/parts/editor/media/editorgroupview.css
++++ b/src/vs/workbench/browser/parts/editor/media/editorgroupview.css
+@@ -231,6 +231,10 @@
+ 
+ .monaco-workbench .part.editor > .content .editor-group-container > .editor-group-container-toolbar {
+ 	display: none;
++	position: absolute;
++	top: 0;
++	right: 0;
++	z-index: 2; /* keep empty group actions above the Studio Start watermark */
+ 	height: 35px;
+ }
+ 
+diff --git a/src/vs/workbench/browser/parts/editor/media/multieditortabscontrol.css b/src/vs/workbench/browser/parts/editor/media/multieditortabscontrol.css
+index 1e11ae5f864b171f5d3203acee957c8e73f94932..b02530a3bbbe0b17d3deada29cd2d34151e40219 100644
+--- a/src/vs/workbench/browser/parts/editor/media/multieditortabscontrol.css
++++ b/src/vs/workbench/browser/parts/editor/media/multieditortabscontrol.css
+@@ -573,6 +573,12 @@
+ }
+ 
+ .monaco-workbench .part.editor > .content .editor-group-container > .title .editor-layout-actions {
++	display: flex;
++	align-items: center;
++	padding-right: 8px;
++}
++
++.monaco-workbench .part.editor > .content .editor-group-container > .title .editor-layout-actions.hidden {
+ 	display: none;
+ }
+ 

@@ -82,6 +82,7 @@ for (const language of ['en', 'zh-cn']) test(`native Start preserves entry targe
 });
 
 for (const [patchNames, files] of [
+  [['0069-studio-editor-group-close.patch'], ['src/vs/workbench/browser/parts/editor/editor.contribution.ts', 'src/vs/workbench/browser/parts/editor/media/editorgroupview.css', 'src/vs/workbench/browser/parts/editor/media/multieditortabscontrol.css']],
   [['0061-studio-project-setup-stages.patch', '0065-studio-start-entry-targets.patch', '0067-studio-start-recent-projects.patch'], [file, css]],
   [['0065-studio-start-entry-targets.patch', '0067-studio-start-recent-projects.patch'], [file, css]],
   [['0067-studio-start-recent-projects.patch'], [file, css]],
