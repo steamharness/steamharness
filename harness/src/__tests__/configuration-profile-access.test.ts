@@ -95,6 +95,29 @@ test('project roles remain available when authenticated access takes more than f
   }
 });
 
+test('parallel agent checks share a fresh role lookup and retry transient failures without reusing a grant',async()=>{
+  const project=await mkdtemp(path.join(tmpdir(),'configuration-agent-access-')),original=globalThis.fetch;
+  try{
+    await declareConfigurationFixture(project);
+    await writeFile(path.join(project,'steamharness.json'),JSON.stringify({id:randomUUID()}));
+    const connection={serverUrl:'https://configuration-agents.test',accessToken:'fixture-only'};
+    const options={cacheDir:path.join(project,'identity-cache')};
+    let accounts=0,projects=0,denied=false;
+    globalThis.fetch=async input=>{
+      if(String(input).endsWith('/api/auth/me')){accounts++;return Response.json({errCode:0,data:{profile:{userId:'alice'}}});}
+      projects++;
+      if(denied)return new Response('',{status:403});
+      if(projects<3)return new Response('',{status:503});
+      return Response.json({errCode:0,data:{access:{effectiveRole:'developer'}}});
+    };
+    const results=await Promise.all(Array.from({length:4},()=>resolveProjectConfigurationAccess(project,connection,true,options)));
+    assert.ok(results.every(access=>access.role==='developer'&&access.online));assert.equal(accounts,1);assert.equal(projects,3);
+    denied=true;
+    const revoked=await resolveProjectConfigurationAccess(project,connection,true,options);
+    assert.equal(revoked.role,'guest');assert.equal(revoked.online,false);assert.equal(projects,4,'An explicit denial must not be retried or reuse the previous role');
+  }finally{globalThis.fetch=original;await rm(project,{recursive:true,force:true});}
+});
+
 test('restricted downloads still require the verified template and keep locked values when account storage is scoped',async()=>{
   const project=await mkdtemp(path.join(tmpdir(),'configuration-template-role-'));
   try{

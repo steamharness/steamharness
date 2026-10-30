@@ -1506,7 +1506,7 @@ const session = {
 | `spawn` | `agentId`、`workId`、`prompt`，可选 `label`、JSON `metadata`、`background`、`reportToParent`。相同 workId 复用任务，冲突载荷拒绝。 |
 | `list` | 列出当前父会话工作项。 |
 | `get` / `wait` | `taskId`；查询或等待结果，等待不阻塞停止命令。 |
-| `send` | `taskId`、`prompt`，可选 `mode: "steer" | "followUp"`。 |
+| `send` | `taskId`、`prompt`，可选 `mode: "steer" | "followUp"`。检查工作项上的 `messageDelivery`：`accepted` 表示已送达；`not_running` 附带 `nextAction: "wait" | "get" | "retry"`，命令回执为 `settled`，不报工具错误、不重启任务。批次 ID 使用项目批次工具管理。 |
 | `stop` | `taskId`；只取消该工作项及其执行树，不自动重试。 |
 | `retry` | `taskId`；为失败或取消项新建关联 attempt，保留原历史，从最新已提交上下文继续。所属批次已停止时须先恢复批次。 |
 

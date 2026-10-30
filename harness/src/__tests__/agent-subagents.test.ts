@@ -182,7 +182,11 @@ test("stopping queued work never starts it and a wait does not prevent cancellat
   const first = await f.agent.control({ type: "subagent", action: "spawn", requestId: "one", agentId: "researcher", workId: "one", prompt: "Work" });
   await until(() => calls === 1);
   const second = await f.agent.control({ type: "subagent", action: "spawn", requestId: "two", agentId: "researcher", workId: "two", prompt: "Work" });
+  const queuedMessage = await f.agent.control({ type: "subagent", action: "send", requestId: "queued-message", taskId: second.taskId!, prompt: "Extra" });
+  assert.deepEqual(queuedMessage.agents![0].messageDelivery, { status: "not_running", nextAction: "wait" });
   await f.agent.control({ type: "subagent", action: "stop", requestId: "stop-two", taskId: second.taskId! });
+  const stoppedMessage = await f.agent.control({ type: "subagent", action: "send", requestId: "stopped-message", taskId: second.taskId!, prompt: "Extra" });
+  assert.deepEqual(stoppedMessage.agents![0].messageDelivery, { status: "not_running", nextAction: "retry" });
   const waiting = f.agent.control({ type: "subagent", action: "wait", requestId: "wait-one", taskId: first.taskId! });
   await f.agent.control({ type: "subagent", action: "stop", requestId: "stop-one", taskId: first.taskId! });
   assert.equal((await waiting).agents![0].status, "aborted"); assert.equal(calls, 1);
@@ -208,9 +212,34 @@ test("a message sent to running work finishes in the same owned conversation bef
   await until(() => f.snapshot().agents?.some(work => work.taskId === first.taskId && work.status === "completed") === true);
   assert.ok(f.snapshot().turns.some(turn => turn.requestId === "agent-message:follow-up" && turn.status === "done"));
   assert.equal(f.snapshot().agents!.find(work => work.taskId === first.taskId)!.result, "Follow-up completed");
-  await assert.rejects(f.agent.control({ type: "subagent", action: "send", requestId: "too-late", taskId: first.taskId!, prompt: "Late" }), /not running/);
+  const late = await f.agent.control({ type: "subagent", action: "send", requestId: "too-late", taskId: first.taskId!, prompt: "Late" });
+  assert.equal(late.status, "settled");
+  assert.deepEqual(late.agents![0].messageDelivery, { status: "not_running", nextAction: "get" });
+  assert.equal(late.agents![0].result, "Follow-up completed");
+  assert.ok(!f.snapshot().turns.some(turn => turn.prompt === "Late"), "A late send must never restart settled work");
   const child = f.snapshot().agents!.find(work => work.taskId === first.taskId)!.childConversationId!;
   await assert.rejects(f.agent.control({ type: "submit", targetId: child, mode: "followUp", requestId: "late-child", prompt: "Late" }), /settling or stopped/);
+});
+
+for (const partial of [false, true]) test(`child stream failures use the full retry budget without replaying tools (partial=${partial})`, async t => {
+  const f = fixture(); let modelCalls = 0, toolCalls = 0;
+  f.agent.state.tools = [{ name: "research", label: "Research", description: "Commit once", parameters: ai.Type.Object({}),
+    execute: async () => { toolCalls++; return { content: [ai.fauxText("Durable evidence")], details: {} }; } }];
+  f.faux.setResponses(Array.from({ length: 35 }, () => (request: ai.TranscriptContext) => {
+    if (!request.messages.some(message => message.role === "user" && message.content === "Retry child")) return ai.fauxAssistantMessage("Root");
+    if (!request.messages.some(message => message.role === "toolResult")) return ai.fauxAssistantMessage([ai.fauxToolCall("research", {})], { stopReason: "toolUse" });
+    if (++modelCalls <= 10) return ai.fauxAssistantMessage(partial ? "Saved partial" : [], { stopReason: modelCalls % 2 ? "aborted" : "error", errorMessage: "Upstream response stream was interrupted" });
+    return ai.fauxAssistantMessage("Recovered child");
+  }));
+  const run = f.agent.prompt("Start");
+  t.after(async () => { f.lease.resolve(); await run; await f.agent.close(); });
+  await until(() => !!f.snapshot());
+  const receipt = await f.agent.control({ type: "subagent", action: "spawn", requestId: "retry-child", agentId: "researcher", workId: "retry-child", prompt: "Retry child" });
+  await until(() => f.snapshot().agents?.some(work => work.taskId === receipt.taskId && work.status === "completed") === true);
+  assert.equal(modelCalls, 11); assert.equal(toolCalls, 1);
+  const child = f.snapshot().agents!.find(work => work.taskId === receipt.taskId)!;
+  assert.equal(child.result, "Recovered child");
+  assert.equal(f.snapshot().turns.find(turn => turn.conversationId === child.childConversationId)!.items.filter(item => item.metadata?.partType === "retry").length, 10);
 });
 
 test("SQLite restores queued role snapshots without adopting a changed role prompt", async t => {

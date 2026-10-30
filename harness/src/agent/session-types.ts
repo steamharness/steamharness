@@ -45,6 +45,8 @@ export interface AgentWorkInfo {
   metadata?: Record<string, JsonValue>;
   result?: string;
   error?: string;
+  /** Per-command delivery receipt; a settled child is never restarted by send. */
+  messageDelivery?: { status: "accepted" | "not_running"; nextAction?: "wait" | "get" | "retry" };
 }
 
 export type AgentSubagentAction =

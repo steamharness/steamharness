@@ -451,11 +451,13 @@ const session = {
 | `spawn` | `agentId`、`workId`、`prompt`，可选 `label`、JSON `metadata`、`background`、`reportToParent`。相同 workId 复用任务，冲突载荷拒绝。 |
 | `list` | 列出当前父会话工作项。 |
 | `get` / `wait` | `taskId`；查询或等待结果，等待不阻塞停止命令。 |
-| `send` | `taskId`、`prompt`，可选 `mode: "steer" | "followUp"`。已接受的追加消息完成后才释放工作项槽位，结果包含最新回答；收尾或停止后须重试再继续。 |
+| `send` | `taskId`、`prompt`，可选 `mode: "steer" | "followUp"`。已接受的追加消息完成后才释放槽位。排队、收尾或已结束时返回当前工作项和 `messageDelivery: { status: "not_running", nextAction: "wait" | "get" | "retry" }`，命令回执为 `settled`，不会重新启动任务。已接受时为 `{ status: "accepted" }`。 |
 | `stop` | `taskId`；只取消该工作项及其执行树，不自动重试。 |
 | `retry` | `taskId`；为失败或取消项新建关联 attempt，保留原历史，从最新已提交上下文继续。所属批次已停止时须先恢复批次。 |
 
 回执和快照的 `agents` 提供 `taskId`、`workId`、`agentId`、`status`（含 `queued`）、`attempt`、`retryOf`、`childConversationId`、`metadata`、`progress`、`error` 和 `result`。Tasks 复用这些字段展示角色、素材、阶段和完成数，打开子会话、停止或重试均走 Core 控制通道。业务任务历史保留，内部 Pi 步骤只保留最近 200 项。
+
+`send` 遇到正常的生命周期变化会返回送达回执，工具调用不因此报错；应先检查 `messageDelivery`，不能把 `not_running` 当成消息已送达。完成项用 `get` 读取结果，失败或取消项明确 `retry` 后继续。批次任务 ID 不能用于子 Agent 管理，应使用项目的批次工具。直接向已结束子会话提交输入仍会拒绝，避免绕过并发槽位或取消状态。
 
 原匿名 `subagent({ task, background?, model? })` 与历史任务继续可用；命名工具调用使用 `{ action: "spawn", agentId, workId, task, background: true }`，管理 action 使用 taskId。工具的后台结果默认回传；命令或业务任务可用 `reportToParent: false` 自行消费回执。
 

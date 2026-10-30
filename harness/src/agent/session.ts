@@ -114,6 +114,7 @@ export class DurableAgentSession {
         "Delegate a focused task. Background results return to this conversation. Subagents cannot delegate again.",
         ...(definitions.length ? ["Named work: action=spawn, agentId, stable workId, task, background=true. Capacity limits queue work durably.",
           "Management actions: list; get/wait/stop/retry with taskId; send with taskId, task and mode (steer/followUp). Retry continues committed context and requires reconciliation of uncertain side effects.",
+          "Send only to running work. A not_running delivery receipt returns its current state without starting work: get completed results, wait for queued work, or explicitly retry failed/cancelled work. Batch task IDs are not subagent task IDs; use the project's batch tools for batch controls.",
           `Roles: ${definitions.map(item => `${item.id}: ${item.description}`).join("; ")}`] : []),
         `Child tools are restricted to the parent's enabled tools intersected with: ${this.options.subagents.tools.join(", ") || "(none)"}. Only delegate tasks those tools can perform.`,
         this.options.subagents.model ? "Omit model. The project has selected a shared model for all subagents."
@@ -234,14 +235,22 @@ export class DurableAgentSession {
     finally { release(); if (this.workMutations.get(taskId) === current) this.workMutations.delete(taskId); }
   }
 
-  private async submitManagedInput(child: Conversation, input: Parameters<Conversation["submit"]>[0], ctx: typeof context) {
+  private submitManagedInput(child: Conversation, input: Parameters<Conversation["submit"]>[0], ctx: typeof context): ReturnType<Conversation["submit"]>;
+  private submitManagedInput(child: Conversation, input: Parameters<Conversation["submit"]>[0], ctx: typeof context, returnSettled: true): Promise<Awaited<ReturnType<Conversation["submit"]>> | undefined>;
+  private async submitManagedInput(child: Conversation, input: Parameters<Conversation["submit"]>[0], ctx: typeof context, returnSettled = false) {
     const record = await this.harness.commit(tx => tx.conversation(child.id), ctx);
     const role = record?.owner && await this.harness.snapshot(AgentRoleDoc, child.id, ctx);
     if (!record?.owner || !role?.workId) return child.submit(input, ctx);
     return this.mutateWork(record.owner.taskId, async () => {
+      // A tool replay after settlement must still acknowledge a message that
+      // was already admitted, rather than turn its successful delivery red.
+      if (input.requestId && await this.harness.commit(tx => tx.submissionByRequest(child.id, input.requestId!), ctx)) return child.submit(input, ctx);
       const task = await this.harness.commit(tx => tx.task(record.owner!.taskId), ctx);
       if (!task || task.abortRequested || !["running", "waiting", "pending"].includes(task.state.status)
-        || object(task.state.checkpoint).phase !== "wait") throw new Error("The agent is settling or stopped. Retry settled work before sending more input.");
+        || object(task.state.checkpoint).phase !== "wait") {
+        if (returnSettled) return undefined;
+        throw new Error("The agent is settling or stopped. Retry settled work before sending more input.");
+      }
       return child.submit(input, ctx);
     });
   }
@@ -412,11 +421,13 @@ export class DurableAgentSession {
       await this.harness.waitForTask(work.taskId as TaskId, ctx);
     }
     if (action.action === "send") {
-      if (!work.childConversationId || !["running", "waiting", "pending"].includes(work.status)) throw new Error("The agent is not running. Retry settled work to continue its committed context.");
       if (!action.prompt?.trim() || action.prompt.length > 100_000 || action.mode && !["steer", "followUp"].includes(action.mode)) throw new Error("Invalid agent message.");
-      const child = (await this.harness.conversation(work.childConversationId as ConversationId, ctx))!;
-      await this.submitManagedInput(child, { type: "input", content: action.prompt, whenBusy: action.mode ?? "followUp", requestId: `agent-message:${requestId}`,
-        entry: { kind: "project.input", data: { requestId: `agent-message:${requestId}`, mode: action.mode ?? "followUp" } } }, ctx);
+      const child = work.childConversationId ? await this.harness.conversation(work.childConversationId as ConversationId, ctx) : undefined;
+      const submission = child && await this.submitManagedInput(child, { type: "input", content: action.prompt, whenBusy: action.mode ?? "followUp", requestId: `agent-message:${requestId}`,
+        entry: { kind: "project.input", data: { requestId: `agent-message:${requestId}`, mode: action.mode ?? "followUp" } } }, ctx, true);
+      const current = (await this.agentWorks(conversationId)).find(item => item.taskId === work.taskId)!;
+      return [{ ...current, messageDelivery: submission ? { status: "accepted" } : { status: "not_running",
+        nextAction: current.status === "queued" || ["running", "waiting", "pending"].includes(current.status) ? "wait" : current.status === "completed" ? "get" : "retry" } }];
     }
     if (action.action === "retry") {
       if (!["failed", "faulted", "aborted", "orphaned"].includes(work.status)) throw new Error("Only failed or cancelled agent work can be retried.");
@@ -597,6 +608,7 @@ export class DurableAgentSession {
       case "subagent": {
         receipt.agents = await this.manageAgents(target.id, command, command.requestId);
         receipt.taskId = receipt.agents[0]?.taskId;
+        if (receipt.agents[0]?.messageDelivery?.status === "not_running") receipt.status = "settled";
         break;
       }
       case "task": {

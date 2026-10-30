@@ -224,6 +224,8 @@ Local and Server configurations retain the account's explicitly selected profile
 
 Online role checks wait up to 30 seconds to accommodate remote database latency while Server resolves inherited access. Timeouts still count as failed online checks.
 
+Concurrent agents share an in-flight role lookup. Network errors, rate limits and temporary server failures receive up to three attempts within that deadline. Explicit denials apply immediately; exhausted checks still fall back to guest access and never reuse an old Build grant.
+
 Supplied `configuration` snapshots and resumed runs revalidate the current account, role, stable identity, and fixed assignments. Unauthorized profiles are rejected; an active Build task is never silently continued as Ask. Published templates freeze the policy using version `3`, which unsupported hosts must reject with an upgrade prompt. Projects can check `steamharness.getProjectConfiguration()?.profilePolicyVersion`. Personal exports and configuration responses include only visible profiles and attachments; source archives still carry the complete official template and never automatically include personal credentials.
 
 Server authorizes the actual authenticated actor and inherited roles, ignoring client roles and tags. Maintainers and above keep official template management. Studio Control uses the same service even with the panel closed; read-only mode additionally rejects writes. This policy does not prevent users from modifying their own source copies.
