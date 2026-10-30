@@ -825,3 +825,104 @@ it('edits, removes and immediately sends host-held messages without stopping the
   expect(f.runtime.cancel).not.toHaveBeenCalled();
   await f.finish();
 });
+
+it.each(['removeQueued', 'promoteQueued'] as const)('uses the admitted request identity for %s after a queue edit', async method => {
+  const f = fixture(); await f.start(); const initial = f.snapshot(), owner = f.controller.current;
+  owner.agentInputs = { edited: { id: 'original-row', requestId: 'edited', text: 'Edited input', params: { model: 'one' }, attachments: [], createdAt: 1 } };
+  f.emit({ ...initial, revision: 2, turns: [...initial.turns,
+    { requestId: 'edited', conversationId: 1, prompt: 'Edited input', mode: 'followUp', status: 'queued', epoch: 0, items: [] }] });
+  vi.mocked(f.runtime.agentControl!).mockImplementation(async (_run, command) => ({ requestId: command.requestId, conversationId: 1, status: 'accepted' }));
+  await f.controller[method]('original-row', owner, 'queue-action');
+  expect(f.runtime.agentControl).toHaveBeenCalledExactlyOnceWith(owner.activeRunId,
+    expect.objectContaining({ type: method === 'removeQueued' ? 'withdraw' : 'promote', inputId: 'edited' }), owner.id, undefined);
+  await f.finish();
+});
+
+it.each(['removeQueued', 'promoteQueued'] as const)('handles legacy and configuration-held inputs locally for %s after stopping', async method => {
+  const f = fixture(); await f.start(); const owner = f.controller.current;
+  owner.queuePaused = true;
+  owner.queuedInputs = [{ id: 'legacy', text: 'Keep input', params: { model: 'one' }, attachments: [], createdAt: 1 },
+    { id: 'configuration', text: 'Configured input', params: { model: 'one' }, attachments: [], createdAt: 2, configurationPending: true }];
+  vi.mocked(f.runtime.agentControl!).mockImplementation(async (_run, command) => {
+    if (command.type === 'promote' || command.type === 'withdraw') throw new Error('The queued input does not exist.');
+    return { requestId: command.requestId, conversationId: 1, status: 'accepted' };
+  });
+  for (const id of ['legacy', 'configuration']) await f.controller[method](id, owner);
+  expect(owner.queuedInputs).toEqual([]);
+  if (method === 'promoteQueued') {
+    expect(f.runtime.agentControl).toHaveBeenCalledTimes(2);
+    expect(vi.mocked(f.runtime.agentControl!).mock.calls.every(([, command]) => command.type === 'submit' && command.mode === 'steer')).toBe(true);
+  } else expect(f.runtime.agentControl).not.toHaveBeenCalled();
+  expect(owner.queuePaused).toBe(true);
+  await f.finish();
+});
+
+it('sends new input after stopping even when old presentation metadata has no admitted turn', async () => {
+  const f = fixture(); await f.start(); const owner = f.controller.current;
+  owner.queuePaused = true;
+  owner.agentInputs = { stale: { id: 'stale', text: 'Interrupted admission', params: { model: 'one' }, attachments: [], createdAt: 1 } };
+  owner.queuedInputs = [{ id: 'waiting', text: 'Wait for success', params: { model: 'one' }, attachments: [], createdAt: 1, hostQueued: true }];
+  vi.mocked(f.runtime.agentControl!).mockImplementation(async (_run, command) => ({ requestId: command.requestId, conversationId: 1, status: 'accepted' }));
+  await f.controller.send({ text: 'New request', params: { model: 'one' }, attachments: [] }, owner, true, 'new-request');
+  expect(f.runtime.agentControl).toHaveBeenCalledExactlyOnceWith(owner.activeRunId,
+    expect.objectContaining({ type: 'submit', requestId: 'new-request', prompt: 'New request' }), owner.id, []);
+  expect(owner.queuedInputs?.map(input => input.id)).toEqual(['waiting']);
+  expect(owner.queuePaused).toBe(true);
+  await f.finish();
+});
+
+it('holds concurrent follow-ups while an actual submit command is still awaiting admission', async () => {
+  const f = fixture(); await f.start(); const owner = f.controller.current;
+  owner.queuePaused = true;
+  let accept!: () => void;
+  vi.mocked(f.runtime.agentControl!).mockImplementation((_run, command) => new Promise(resolve => { accept = () => resolve({ requestId: command.requestId, conversationId: 1, status: 'accepted' }); }));
+  const first = f.controller.send({ text: 'First follow-up', params: { model: 'one' }, attachments: [] }, owner, true, 'first-follow-up');
+  await vi.waitFor(() => expect(f.runtime.agentControl).toHaveBeenCalledOnce());
+  await f.controller.send({ text: 'Next follow-up', params: { model: 'one' }, attachments: [] }, owner, true, 'next-follow-up');
+  expect(f.runtime.agentControl).toHaveBeenCalledOnce();
+  expect(owner.queuedInputs).toMatchObject([{ requestId: 'next-follow-up', hostQueued: true }]);
+  accept(); await first; await f.finish();
+});
+
+it('preserves old host queues across snapshots and restores a failed manual send into the latest queue array', async () => {
+  const f = fixture(); await f.start(); const owner = f.controller.current, initial = f.snapshot();
+  owner.queuePaused = true;
+  const legacy = { id: 'legacy', text: 'Retain me', params: { model: 'one' }, attachments: [], createdAt: 1 };
+  owner.queuedInputs = [legacy];
+  f.emit({ ...initial, revision: 2 });
+  expect(owner.queuedInputs).toMatchObject([{ ...legacy, hostQueued: true }]);
+  vi.mocked(f.runtime.agentControl!).mockImplementation(async () => { f.emit({ ...initial, revision: 3 }); throw new Error('Submit failed'); });
+  await expect(f.controller.promoteQueued('legacy')).rejects.toThrow('Submit failed');
+  expect(owner.queuedInputs).toMatchObject([{ ...legacy, hostQueued: true }]);
+  expect(owner.queuePaused).toBe(true);
+  await f.finish();
+});
+
+it('pauses the user queue for direct foreground Stop even when no turn changes status', async () => {
+  const f = fixture(); await f.start(); const owner = f.controller.current;
+  owner.queuedInputs = ['one', 'two'].map(id => ({ id, text: id, params: { model: 'one' }, attachments: [], createdAt: 1, hostQueued: true }));
+  vi.mocked(f.runtime.agentControl!).mockImplementation(async (_run, command) => ({ requestId: command.requestId, conversationId: 1, status: 'accepted' }));
+  await f.controller.agentCommand(owner.id, { type: 'cancel', scope: 'foreground', requestId: 'stop' });
+  await f.controller.removeQueued('one');
+  expect(owner.queuePaused).toBe(true); expect(owner.queuedInputs?.map(input => input.id)).toEqual(['two']);
+  expect(f.runtime.agentControl).toHaveBeenCalledOnce();
+  await f.finish();
+});
+
+it('retains never-placed Core input after cancellation and manually resubmits it with a fresh identity', async () => {
+  const f = fixture(); await f.start(); const owner = f.controller.current, initial = f.snapshot();
+  const input = { id: 'core-queued', requestId: 'core-queued', text: 'Never started', params: { model: 'one' }, attachments: [], createdAt: 1 };
+  owner.agentInputs = { 'core-queued': input };
+  const turn: AgentSessionTurn = { requestId: input.id, conversationId: 1, prompt: input.text, mode: 'followUp', status: 'queued', epoch: 0, items: [] };
+  f.emit({ ...initial, revision: 2, turns: [...initial.turns, turn] });
+  f.emit({ ...initial, revision: 3, turns: [...initial.turns, { ...turn, status: 'unanswered', reason: 'aborted' }] });
+  const retained = owner.queuedInputs![0];
+  expect(retained).toMatchObject({ id: input.id, text: input.text, hostQueued: true });
+  expect(retained.requestId).not.toBe(input.id); expect(owner.queuePaused).toBe(true);
+  vi.mocked(f.runtime.agentControl!).mockImplementation(async (_run, command) => ({ requestId: command.requestId, conversationId: 1, status: 'accepted' }));
+  await f.controller.promoteQueued(retained.id);
+  expect(f.runtime.agentControl).toHaveBeenCalledExactlyOnceWith(owner.activeRunId,
+    expect.objectContaining({ type: 'submit', requestId: retained.requestId, prompt: input.text, mode: 'steer' }), owner.id, []);
+  expect(owner.queuedInputs).toEqual([]);
+  await f.finish();
+});

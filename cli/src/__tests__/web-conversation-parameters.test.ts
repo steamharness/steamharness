@@ -92,6 +92,99 @@ it('renders static parameters without a worker or loading state while typing and
   expect(f.input.value).toBe('next turn');
 });
 
+it('sends consecutive inputs immediately while earlier submissions are still unconfirmed', async () => {
+  const f = await fixture({ dynamic: false });
+  const send = document.querySelector<HTMLButtonElement>('#send')!;
+  for (const text of ['First request', 'Second request', 'Third request']) {
+    f.type(text);
+    expect(send.disabled).toBe(false); expect(send.querySelector('.codicon-loading')).toBeNull();
+    expect(f.action('ai').disabled).toBe(false);
+    send.click(); expect(f.input.value).toBe('');
+  }
+  const sent = host.postMessage.mock.calls.map(([message]) => message).filter(message => message.type === 'send');
+  expect(sent.map(message => message.text)).toEqual(['First request', 'Second request', 'Third request']);
+  expect(new Set(sent.map(message => message.requestId)).size).toBe(3);
+  expect(document.querySelectorAll('#input-queue .queued-input')).toHaveLength(2);
+  expect(document.querySelector('#input-queue .codicon-loading')).toBeNull();
+  await vi.advanceTimersByTimeAsync(0);
+  expect(document.querySelector<HTMLButtonElement>('#attach')!.disabled).toBe(false);
+});
+
+it('sends a new stopped-conversation input directly and leaves the old paused queue intact', async () => {
+  const f = await fixture({ dynamic: false });
+  f.sessions[0].queuePaused = true;
+  f.sessions[0].messages = [{ id: 'stopped', role: 'assistant', content: '', status: 'aborted' }];
+  f.sessions[0].queuedInputs = [{ id: 'old', text: 'Wait for success', params: {}, attachments: [], createdAt: 1 }];
+  f.receive(); f.type('New request'); document.querySelector<HTMLButtonElement>('#send')!.click();
+  const calls = host.postMessage.mock.calls.map(([message]) => message);
+  expect(calls.filter(message => message.type === 'send').map(message => message.text)).toEqual(['New request']);
+  expect(calls.some(message => message.type === 'queue-run' || message.type === 'queue-promote')).toBe(false);
+  expect(Array.from(document.querySelectorAll('#input-queue .queued-input')).map(row => (row as HTMLElement).dataset.id)).toEqual(['old']);
+  expect(document.querySelector('#transcript .message.user')?.textContent).toContain('New request');
+});
+
+it.each(['queue-promote', 'queue-remove'] as const)('responds immediately to %s, restores errors and retries the same identity', async type => {
+  const f = await fixture({ dynamic: false });
+  f.sessions[0].queuePaused = true;
+  f.sessions[0].queuedInputs = [{ id: 'queued', text: 'Queued input', params: {}, attachments: [], createdAt: 1 }];
+  f.receive();
+  const selector = type === 'queue-promote' ? '[aria-label="Send now"]' : '[aria-label="Withdraw input"]';
+  document.querySelector<HTMLButtonElement>(`#input-queue ${selector}`)!.click();
+  expect(document.querySelector('#input-queue .queued-input')).toBeNull();
+  const request = host.postMessage.mock.calls.map(([message]) => message).find(message => message.type === type);
+  expect(request).toMatchObject({ id: 'queued', sessionId: 'first' });
+  f.receive(); expect(document.querySelector('#input-queue .queued-input')).toBeNull();
+  f.emit({ ...request, type: 'error', requestType: type, message: 'Temporary failure' });
+  expect(document.querySelector('#input-queue .queued-input-error')?.textContent).toBe('Temporary failure');
+  document.querySelector<HTMLButtonElement>('#input-queue [aria-label="Retry"]')!.click();
+  expect(document.querySelector('#input-queue .queued-input')).toBeNull();
+  expect(host.postMessage.mock.calls.map(([message]) => message).filter(message => message.type === type)).toEqual([request, request]);
+});
+
+it.each(['queue-promote', 'queue-remove'] as const)('handles unsent local %s while a new conversation is being created', async type => {
+  const f = await fixture({ dynamic: false });
+  f.project.conversation!.durable = { enabled: true };
+  for (const session of f.sessions) session.messages = [{ role: 'user', content: 'Previous request' }];
+  f.receive(); host.postMessage.mockImplementation(() => undefined);
+  document.querySelector<HTMLButtonElement>('#new')!.click();
+  const navigation = host.postMessage.mock.calls.map(([message]) => message).filter(message => message.type === 'navigate').at(-1)!;
+  f.type('First local'); document.querySelector<HTMLButtonElement>('#send')!.click();
+  f.type('Second local'); document.querySelector<HTMLButtonElement>('#send')!.click();
+  const row = document.querySelector<HTMLElement>('#input-queue .queued-input')!;
+  expect(row).not.toBeNull();
+  row.querySelector<HTMLButtonElement>(type === 'queue-promote' ? '[aria-label="Send now"]' : '[aria-label="Withdraw input"]')!.click();
+  expect(document.querySelector('#input-queue .queued-input')).toBeNull();
+  await Promise.resolve();
+  f.emit({ type: 'navigated', requestId: navigation.requestId, activeId: navigation.id });
+  const sends = host.postMessage.mock.calls.map(([message]) => message).filter(message => message.type === 'send');
+  expect(sends.map(message => message.text)).toEqual(type === 'queue-remove' ? ['First local'] : ['First local', 'Second local']);
+  if (type === 'queue-promote') expect(sends[1].mode).toBe('steer');
+  expect(host.postMessage.mock.calls.map(([message]) => message).filter(message => message.type === type)).toEqual([]);
+});
+
+it('keeps ordinary Send now intent until admission so the host can interrupt the current run', async () => {
+  const f = await fixture({ dynamic: false, running: true });
+  f.type('Interrupt with this'); document.querySelector<HTMLButtonElement>('#send')!.click();
+  const send = host.postMessage.mock.calls.map(([message]) => message).find(message => message.type === 'send');
+  document.querySelector<HTMLButtonElement>('#input-queue [aria-label="Send now"]')!.click();
+  expect(document.querySelector('#input-queue .queued-input')).toBeNull();
+  expect(host.postMessage.mock.calls.some(([message]) => message.type === 'queue-promote')).toBe(false);
+  f.emit({ type: 'sent', requestId: send.requestId, sessionId: 'first', projectUri: f.project.uri });
+  expect(host.postMessage.mock.calls.map(([message]) => message).find(message => message.type === 'queue-promote')).toMatchObject({ id: send.requestId });
+  expect(send.mode).toBe('followUp');
+});
+
+it('restores an optimistically withdrawn row when the host rejects message transport', async () => {
+  const f = await fixture({ dynamic: false });
+  f.sessions[0].queuedInputs = [{ id: 'retained', text: 'Retain this', params: {}, attachments: [], createdAt: 1 }];
+  f.receive(); host.postMessage.mockImplementation(message => message.type === 'queue-remove' ? false : undefined);
+  document.querySelector<HTMLButtonElement>('#input-queue [aria-label="Withdraw input"]')!.click();
+  expect(document.querySelector('#input-queue .queued-input')).toBeNull();
+  await vi.advanceTimersByTimeAsync(0);
+  expect(document.querySelector('#input-queue .queued-input-label')?.textContent).toBe('Retain this');
+  expect(document.querySelector('#input-queue .queued-input-error')?.textContent).toContain('Message delivery was not confirmed');
+});
+
 it('shows the configured model name in the immediate reply and the persisted answer without reloading options', async () => {
   const f = await fixture();
   const id = '11111111-2222-4333-8444-555555555555';

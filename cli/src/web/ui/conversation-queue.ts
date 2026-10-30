@@ -1,6 +1,6 @@
 import { t } from '../localization';
-import { sessionRunning, type ConversationSession } from '../workflow-types';
-import { iconButton, updateIcon } from './ui';
+import { sessionRunning, type ConversationQueuedInput, type ConversationSession } from '../workflow-types';
+import { iconButton } from './ui';
 
 interface QueueState {
   projectUri: string;
@@ -18,7 +18,12 @@ export interface QueueAction {
   requestId: string;
   type: 'queue-promote' | 'queue-remove';
 }
-interface PendingAction extends QueueAction { phase: 'waiting' | 'sending' | 'accepted' | 'failed'; error?: string }
+interface PendingAction extends QueueAction {
+  phase: 'waiting' | 'sending' | 'accepted' | 'failed';
+  input: ConversationQueuedInput;
+  index: number;
+  error?: string;
+}
 interface QueueRow {
   root: HTMLDivElement;
   label: HTMLSpanElement;
@@ -44,6 +49,7 @@ export class ConversationQueue {
 
   constructor(private readonly root: HTMLElement, private readonly options: {
     action(action: QueueAction): void;
+    pendingAction?(action: QueueAction): boolean;
     edit(id: string): void;
     reorder(ids: string[]): void;
     resume(): void;
@@ -60,7 +66,8 @@ export class ConversationQueue {
     if (scope !== this.scope) { this.scope = scope; this.rows.clear(); this.list.replaceChildren(); }
     for (const [key, action] of this.actions) {
       const session = state.sessions.find(session => session.id === action.sessionId);
-      if (action.projectUri === state.projectUri && !session?.queuedInputs?.some(input => input.id === action.id) && !state.pendingIds.has(action.id)) this.actions.delete(key);
+      if (action.projectUri === state.projectUri && (!session || action.phase === 'accepted'
+        && !session.queuedInputs?.some(input => this.matches(action, input)) && !state.pendingIds.has(action.input.requestId ?? action.id))) this.actions.delete(key);
     }
     this.render();
   }
@@ -77,13 +84,24 @@ export class ConversationQueue {
   }
 
   private key(id: string): string { return JSON.stringify([this.state!.projectUri, this.state!.session.id, id]); }
+  private matches(action: PendingAction, input: Pick<ConversationQueuedInput, 'id' | 'requestId'>): boolean {
+    return action.id === input.id || action.input.id === input.id || (action.input.requestId ?? action.id) === (input.requestId ?? input.id);
+  }
+  private actionFor(input: Pick<ConversationQueuedInput, 'id' | 'requestId'>): PendingAction | undefined {
+    return [...this.actions.values()].find(action => action.projectUri === this.state!.projectUri
+      && action.sessionId === this.state!.session.id && this.matches(action, input));
+  }
 
   private act(id: string, type: QueueAction['type']): void {
     const state = this.state!;
-    if (!state.ready || type === 'queue-promote' && state.canExecute === false || !state.session.queuedInputs?.some(input => input.id === id)) return;
-    const previous = this.actions.get(this.key(id));
-    if (previous && previous.phase !== 'failed' && !(previous.phase === 'accepted' && previous.type === 'queue-promote' && type === 'queue-remove')) return;
-    this.actions.set(this.key(id), { projectUri: state.projectUri, sessionId: state.session.id, id, type,
+    const input = state.session.queuedInputs?.find(input => input.id === id) ?? [...this.actions.values()].find(action =>
+      action.projectUri === state.projectUri && action.sessionId === state.session.id && action.input.id === id)?.input;
+    if (!state.ready || type === 'queue-promote' && state.canExecute === false || !input) return;
+    const previous = this.actionFor(input);
+    if (previous && previous.phase !== 'failed') return;
+    const actionId = previous?.id ?? id;
+    this.actions.set(this.key(actionId), { projectUri: state.projectUri, sessionId: state.session.id, id: actionId, type, input,
+      index: previous?.index ?? state.session.queuedInputs!.indexOf(input),
       requestId: previous?.type === type ? previous.requestId : crypto.randomUUID(), phase: 'waiting' });
     this.render();
   }
@@ -104,7 +122,8 @@ export class ConversationQueue {
     const error = document.createElement('div'); error.className = 'queued-input-error'; error.setAttribute('role', 'alert');
     const errorText = document.createElement('span');
     const retry = iconButton('refresh', t('Retry'), () => {
-      const action = this.actions.get(this.key(id));
+      const input = this.state?.session.queuedInputs?.find(input => input.id === id);
+      const action = this.actionFor(input ?? { id });
       if (action?.phase === 'failed') this.act(id, action.type);
     });
     error.append(errorText, retry);
@@ -125,52 +144,52 @@ export class ConversationQueue {
   private render(): void {
     const state = this.state;
     if (!state) return;
-    const queue = state.session.queuedInputs ?? [];
+    const queue = [...(state.session.queuedInputs ?? [])];
+    for (const action of this.actions.values()) {
+      if (action.projectUri === state.projectUri && action.sessionId === state.session.id && action.phase === 'failed'
+        && !queue.some(input => this.matches(action, input))) queue.splice(Math.min(action.index, queue.length), 0, action.input);
+    }
     const visible = queue.filter(input => {
-      const action = this.actions.get(this.key(input.id));
-      return action?.type !== 'queue-remove' || action.phase !== 'accepted';
+      const action = this.actionFor(input);
+      return !action || action.phase === 'failed';
     });
     this.root.hidden = !visible.length;
     this.title.textContent = t('Queued messages ({0})', visible.length);
     this.resume.hidden = state.durable || sessionRunning(state.session) || state.session.messages.some(message => message.pendingInput);
-    this.resume.disabled = !state.ready || state.canExecute === false;
+    this.resume.disabled = !state.ready || state.canExecute === false || queue.some(input => state.pendingIds.has(input.requestId ?? input.id));
     for (const [id, row] of this.rows) if (!visible.some(input => input.id === id)) { row.root.remove(); this.rows.delete(id); }
     for (const [index, input] of visible.entries()) {
       let row = this.rows.get(input.id);
       if (!row) { row = this.createRow(input.id); this.rows.set(input.id, row); }
-      // Keep existing nodes in place so streamed snapshots do not restart the spinner or lose focus.
+      // Keep untouched rows in place while snapshots stream in.
       if (this.list.children[index] !== row.root) this.list.insertBefore(row.root, this.list.children[index] ?? null);
-      const action = this.actions.get(this.key(input.id));
-      const pending = action && (action.phase === 'waiting' || action.phase === 'sending');
-      const promoted = action?.type === 'queue-promote' && action.phase === 'accepted'
-        || state.session.agent?.turns.some(turn => turn.requestId === input.id && turn.mode === 'steer') === true;
-      const submitting = state.pendingIds.has(input.id);
+      const action = this.actionFor(input);
+      const promoted = state.session.agent?.turns.some(turn => turn.requestId === (input.requestId ?? input.id) && turn.mode === 'steer') === true;
       const text = input.text || [...input.attachments, ...(input.references ?? [])].map(file => file.name).join(', ');
       if (row.label.textContent !== text) row.label.textContent = text;
       row.label.title = text;
-      const status = pending ? action.type === 'queue-remove' ? t('Withdrawing...') : t('Sending now...') : submitting ? t('Sending message...') : promoted ? t('Send requested') : '';
+      const status = promoted ? t('Send requested') : '';
       if (row.status.textContent !== status) row.status.textContent = status;
       row.status.hidden = !status; row.status.title = status;
-      row.root.setAttribute('aria-busy', String(!!pending || submitting));
+      row.root.setAttribute('aria-busy', 'false');
       row.edit.hidden = row.up.hidden = state.durable;
-      row.edit.disabled = row.up.disabled = !state.ready || submitting || !!pending;
+      row.edit.disabled = row.up.disabled = !state.ready || state.pendingIds.has(input.requestId ?? input.id);
       row.up.disabled ||= index === 0;
-      row.send.disabled = !state.ready || state.canExecute === false || submitting || !!pending || promoted;
-      row.remove.disabled = !state.ready || !!pending;
+      row.send.disabled = !state.ready || state.canExecute === false || promoted;
+      row.remove.disabled = !state.ready;
       row.retry.disabled = !state.ready || action?.type === 'queue-promote' && state.canExecute === false;
-      row.send.title = row.send.ariaLabel = submitting && !pending ? t('Sending message...') : pending && action.type === 'queue-promote' ? t('Sending now...') : t('Send now');
-      row.remove.title = row.remove.ariaLabel = pending && action.type === 'queue-remove' ? t('Withdrawing...') : t('Withdraw input');
-      row.root.draggable = !state.durable && state.ready && !submitting && !pending;
-      updateIcon(row.send, submitting && !pending || pending && action.type === 'queue-promote' ? 'loading' : 'send');
-      updateIcon(row.remove, pending && action.type === 'queue-remove' ? 'loading' : 'close');
+      row.root.draggable = !state.durable && state.ready && !state.pendingIds.has(input.requestId ?? input.id);
       row.error.hidden = !action?.error;
       if (row.errorText.textContent !== (action?.error ?? '')) row.errorText.textContent = action?.error ?? '';
     }
     for (const action of this.actions.values()) {
-      if (action.projectUri !== state.projectUri || action.phase !== 'waiting' || !state.ready || action.type === 'queue-promote' && state.canExecute === false || state.pendingIds.has(action.id)
-        || !state.sessions.find(session => session.id === action.sessionId)?.queuedInputs?.some(input => input.id === action.id)) continue;
+      if (action.projectUri !== state.projectUri || action.phase !== 'waiting' || !state.ready || action.type === 'queue-promote' && state.canExecute === false) continue;
+      const request: QueueAction = { projectUri: action.projectUri, sessionId: action.sessionId, id: action.id, requestId: action.requestId, type: action.type };
+      if (state.pendingIds.has(action.input.requestId ?? action.id)) {
+        if (this.options.pendingAction?.(request)) action.phase = 'accepted';
+        continue;
+      }
       action.phase = 'sending';
-      const { phase: _, error: __, ...request } = action;
       this.options.action(request);
     }
   }

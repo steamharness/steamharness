@@ -17,6 +17,22 @@ function fixture(options: { canStart?(): boolean; canDrain?(): boolean } = {}) {
   return { controller, runtime, save };
 }
 
+it.each(['removeQueued', 'promoteQueued'] as const)('resolves edited ordinary queue input by submission identity for %s', async action => {
+  const { controller, runtime } = fixture();
+  controller.project.conversation = { inputQueue: { enabled: true } };
+  controller.current.queuePaused = true;
+  controller.current.queuedInputs = [
+    { id: 'first', text: 'Remain paused', params: {}, attachments: [], createdAt: 1 },
+    { id: 'original', requestId: 'edited', text: 'Edited input', params: {}, attachments: [], createdAt: 2 },
+  ];
+  vi.mocked(runtime.run).mockResolvedValue({ status: 'failed' });
+  await controller[action]('edited'); await controller.idle();
+  expect(controller.current.queuedInputs?.map(input => input.id)).toEqual(['first']);
+  if (action === 'promoteQueued') expect(controller.current.messages.at(-2)?.content).toBe('Edited input');
+  else expect(runtime.run).not.toHaveBeenCalled();
+  controller.dispose();
+});
+
 it('retains queued inputs while Server setup is required and waits for an explicit action to drain them', async () => {
   let available = true;
   const { controller, runtime } = fixture({ canStart: () => available });

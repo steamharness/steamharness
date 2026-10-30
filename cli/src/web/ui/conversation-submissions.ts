@@ -7,6 +7,7 @@ export interface ConversationSubmission {
   queued: boolean;
   modelName?: string;
   replacesId?: string;
+  mode?: 'followUp' | 'steer';
   phase: 'pending' | 'sending' | 'accepted' | 'failed';
   error?: string;
 }
@@ -41,6 +42,11 @@ export class ConversationSubmissions {
 
   list(): ConversationSubmission[] { return [...this.entries.values()]; }
   get(id: string): ConversationSubmission | undefined { return this.entries.get(id); }
+  discardPending(id: string): boolean {
+    if (this.entries.get(id)?.phase !== 'pending') return false;
+    this.entries.delete(id); this.previews.delete(id);
+    return true;
+  }
   retain(projectUri: string, sessionIds: Set<string>): void {
     for (const entry of this.entries.values()) {
       if (entry.projectUri === projectUri && !sessionIds.has(entry.sessionId)) {

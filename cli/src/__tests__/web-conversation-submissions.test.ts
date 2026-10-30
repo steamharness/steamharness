@@ -55,6 +55,16 @@ describe('Immediate conversation submission', () => {
     expect(pending.list()).toEqual([]);
   });
 
+  it('withdraws only unsent local input and removes its preview without waiting for a server snapshot', () => {
+    const pending = new ConversationSubmissions(); pending.add(submission(true));
+    const displayed = pending.project('project', session(), false);
+    expect(pending.discardPending('request')).toBe(true);
+    expect(pending.project('project', displayed, false).queuedInputs).toEqual([]);
+    expect(pending.busy('project', 'chat')).toBe(false);
+    pending.add({ ...submission(true), phase: 'sending' });
+    expect(pending.discardPending('request')).toBe(false); expect(pending.list()).toHaveLength(1);
+  });
+
   it('reconciles edited queue submissions even though their queue row retains its original identity', () => {
     const pending = new ConversationSubmissions(); const entry = pending.add({ ...submission(true), replacesId: 'old-queue-id' });
     const stored = { ...session(), queuedInputs: [{ ...entry.input, id: 'old-queue-id', text: 'Original text' }] };

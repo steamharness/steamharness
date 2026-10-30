@@ -258,7 +258,7 @@ export class ConversationController {
         || input.configurationSelection && !isDeepStrictEqual(previous.configurationSelection, input.configurationSelection));
       if (configChanged) {
         if (!owner.agent && owner.activeRunId || owner.agent?.tasks.length || owner.agent?.foreground || owner.agent?.turns.some(turn => turn.status === 'queued' || turn.status === 'placed')) {
-          (entry.queuedInputs ??= []).push({...queued,configurationPending:true});
+          (entry.queuedInputs ??= []).push({ ...queued, hostQueued: true, configurationPending: true });
           if (!preserveDraft) entry.draft = { text: '', attachments: [] };
           this.changed(); await this.persist(); return;
         }
@@ -572,8 +572,18 @@ export class ConversationController {
       entry.agentConversationId ??= snapshot.conversationId;
       const turns = snapshot.turns.filter(turn => turn.conversationId === entry.agentConversationId);
       const anchors = entry === owner ? entry.messages.filter(message => message.role === 'assistant' && message.runId) : [];
-      const hostQueue = (entry.queuedInputs ?? []).filter(input => (input.hostQueued || input.configurationPending)
-        && !turns.some(turn => turn.requestId === (input.requestId ?? input.id) && turn.status !== 'queued' && turn.status !== 'unanswered'));
+      const hostQueue = (entry.queuedInputs ?? []).filter(input => {
+        const turn = turns.find(turn => turn.requestId === (input.requestId ?? input.id));
+        // Older hosts saved local queues without an ownership marker. A row
+        // with no admitted turn still belongs to this host.
+        return !turn || turn.status === 'unanswered' && turn.entryId === undefined
+          || (input.hostQueued || input.configurationPending) && turn.status === 'queued';
+      }).map(input => {
+        const cancelled = turns.some(turn => turn.requestId === (input.requestId ?? input.id) && turn.status === 'unanswered' && turn.entryId === undefined);
+        // Core request identities are idempotent, including cancelled inputs.
+        // Retain never-placed input under a fresh identity for its next send.
+        return { ...input, hostQueued: true, ...(cancelled ? { requestId: globalThis.crypto.randomUUID() } : {}) };
+      });
       const hostIds = new Set(hostQueue.map(input => input.requestId ?? input.id));
       entry.queuedInputs = [...turns.filter(turn => turn.status === 'queued' && turn.mode !== 'report' && !hostIds.has(turn.requestId)).map(turn => entry.agentInputs?.[turn.requestId]
         ?? { id: turn.requestId, text: turn.prompt, params: {}, attachments: [], createdAt: entry.updatedAt ?? Date.now() }), ...hostQueue];
@@ -651,6 +661,8 @@ export class ConversationController {
     if (!this.project.conversation?.durable?.enabled || !this.runtime.agentControl) throw new Error('Durable session control is unavailable.');
     const entry = this.sessions.find(session => session.id === sessionId);
     if (!entry || this.disposed) throw new Error(t("Conversation no longer exists."));
+    const stopping = command.type === 'cancel' && command.scope !== 'task';
+    if (stopping) entry.queuePaused = true;
     const owner = this.owner(entry);
     const stored = entry.agentCommands?.find(item => item.command.requestId === command.requestId);
     const prepared = { ...command, targetId: command.targetId ?? stored?.command.targetId ?? entry.agentConversationId };
@@ -674,6 +686,7 @@ export class ConversationController {
     };
     try {
       const receipt = await Promise.race([apply(), confirmed]); this.acknowledgeAgent(owner, receipt);
+      if (stopping) entry.queuePaused = true;
       if (owner.agentInterrupted) for (const session of this.sessions.filter(session => (session.agentOwnerId ?? session.id) === owner.id)) delete session.agentInterrupted;
       if (receipt.forkId !== undefined) {
         const fork = this.sessions.find(session => session.agentOwnerId === owner.id && session.agentConversationId === receipt.forkId);
@@ -782,7 +795,8 @@ export class ConversationController {
     const id = entry.agentConversationId ?? agent.conversationId;
     return (agent.contexts.find(context => context.conversationId === id)?.foreground ?? (id === agent.conversationId && agent.foreground))
       || agent.turns.some(turn => turn.conversationId === id && (turn.status === 'queued' || turn.status === 'placed'))
-      || Object.keys(entry.agentInputs ?? {}).some(requestId => !agent.turns.some(turn => turn.requestId === requestId && ['done', 'unanswered'].includes(turn.status)));
+      || !!entry.agentCommands?.some(({ command }) => command.type === 'submit' && (command.targetId ?? id) === id
+        && !agent.turns.some(turn => turn.conversationId === id && turn.requestId === command.requestId && ['done', 'unanswered'].includes(turn.status)));
   }
   private drain(entry: ConversationSession, explicit = false): void {
     if (this.options.canStart?.() === false || !explicit && (this.options.canDrain?.() === false || !this.queueCanContinue(entry)) || this.draining.has(entry.id)
@@ -866,12 +880,12 @@ export class ConversationController {
     this.changed(); await this.persist();
   }
   async removeQueued(id: string, entry = this.current, requestId: string = globalThis.crypto.randomUUID()): Promise<void> {
-    if (this.project.conversation?.durable?.enabled && !entry.queuedInputs?.find(input => input.id === id)?.hostQueued) {
-      if (entry.queuedInputs?.some(input => input.id === id)) await this.agentCommand(entry.id, { type: 'withdraw', requestId, inputId: id });
-      return;
-    }
-    entry.queuedInputs = (entry.queuedInputs ?? []).filter((input) => input.id !== id);
-    if (entry.draft?.editingQueueId === id) { entry.draft = { text: '', attachments: [] }; }
+    const input = entry.queuedInputs?.find(input => input.id === id || input.requestId === id);
+    if (!input) return;
+    const turn = this.queuedAgentTurn(entry, input);
+    if (turn) await this.agentCommand(entry.id, { type: 'withdraw', requestId, inputId: turn.requestId });
+    entry.queuedInputs = (entry.queuedInputs ?? []).filter(item => item !== input && item.id !== input.id);
+    if (entry.draft?.editingQueueId === input.id) { entry.draft = { text: '', attachments: [] }; }
     this.changed(); await this.persist();
     this.drain(entry);
   }
@@ -889,21 +903,28 @@ export class ConversationController {
   }
   async promoteQueued(id: string, entry = this.current, requestId: string = globalThis.crypto.randomUUID()): Promise<void> {
     const queue = entry.queuedInputs ?? [];
-    if (!queue.some((input) => input.id === id)) { return; }
-    if (this.project.conversation?.durable?.enabled && !queue.find(input => input.id === id)?.hostQueued) {
-      await this.agentCommand(entry.id, { type: 'promote', requestId, inputId: id });
+    const input = queue.find(input => input.id === id || input.requestId === id);
+    if (!input) return;
+    const turn = this.queuedAgentTurn(entry, input);
+    if (turn) {
+      await this.agentCommand(entry.id, { type: 'promote', requestId, inputId: turn.requestId });
       return;
     }
     if (this.project.conversation?.durable?.enabled) {
-      const index = queue.findIndex(input => input.id === id), input = queue[index];
+      const index = queue.indexOf(input);
       queue.splice(index, 1);
       try { await this.send(input, entry, true, input.requestId ?? input.id, 'steer'); }
-      catch (error) { queue.splice(Math.min(index, queue.length), 0, input); this.changed(); await this.persist(); throw error; }
+      catch (error) { (entry.queuedInputs ??= []).splice(Math.min(index, entry.queuedInputs!.length), 0, input); this.changed(); await this.persist(); throw error; }
       return;
     }
-    await this.reorderQueued([id, ...queue.filter((input) => input.id !== id).map((input) => input.id)], entry);
+    await this.reorderQueued([input.id, ...queue.filter(item => item.id !== input.id).map(item => item.id)], entry);
     if (entry.draft?.editingQueueId) { entry.draft = { text: '', attachments: [] }; }
     await this.stop(entry); this.drain(entry, true);
+  }
+  private queuedAgentTurn(entry: ConversationSession, input: ConversationQueuedInput) {
+    if (!this.project.conversation?.durable?.enabled) return;
+    const agent = this.owner(entry).agent, conversationId = entry.agentConversationId ?? agent?.conversationId;
+    return agent?.turns.find(turn => turn.conversationId === conversationId && turn.requestId === (input.requestId ?? input.id));
   }
   async retry(id: string, entry = this.current): Promise<void> {
     const index = entry.messages.findIndex((message) => message.id === id && message.role === 'assistant');

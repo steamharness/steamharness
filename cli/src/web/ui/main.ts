@@ -214,7 +214,23 @@ function initialize(): void {
   accessNotice.textContent = t('This conversation is open or running in another window. You can read it here or start a new conversation.');
   document.querySelector('main')!.prepend(accessNotice);
   const queueView = new ConversationQueue(document.querySelector<HTMLElement>('#input-queue')!, {
-    action: action => { void vscode.postMessage(action); },
+    action: action => {
+      const fail = (error: unknown): void => { queueView.receive({ ...action, type: 'error', requestType: action.type, message: String((error as Error)?.message ?? error) }); };
+      try {
+        void Promise.resolve(vscode.postMessage(action)).then(delivered => {
+          if (delivered === false) throw new Error(t('Message delivery was not confirmed. Retry to check or send it again.'));
+        }).catch(fail);
+      } catch (error) { fail(error); }
+    },
+    pendingAction: action => {
+      const entry = submissions.get(action.id);
+      if (entry?.projectUri !== action.projectUri || entry.sessionId !== action.sessionId || entry.phase !== 'pending' || entry.replacesId) return false;
+      if (action.type === 'queue-promote' && !state?.project.conversation?.durable?.enabled) return false;
+      if (action.type === 'queue-remove') submissions.discardPending(entry.input.id);
+      else { entry.mode = 'steer'; entry.queued = false; }
+      queueMicrotask(() => { if (state) render(state, false); persist(); dispatchSubmissions(); });
+      return true;
+    },
     edit: id => { saveDraft(); post({ type: 'queue-edit', id }); },
     reorder: ids => post({ type: 'queue-reorder', ids }),
     resume: () => post({ type: 'queue-run' }),
@@ -236,7 +252,8 @@ function initialize(): void {
   const hideComposer = (): boolean => state?.project.projectType === 'conversation' && state.project.conversation?.userInput?.hideComposer !== false
     && !!currentSession()?.messages.some(message => message.pendingInput);
   const pendingSend = (): boolean => !!state && submissions.busy(state.project.uri, state.activeId);
-  const busy = (): boolean => readOnly() || submitting || pendingSend() || hideComposer() || (!!state?.running || !!currentSession()?.messages.some((message) => message.pendingInput)) && !canQueue();
+  const sendBlocked = (): boolean => submitting || pendingSend() && !canQueue();
+  const busy = (): boolean => readOnly() || sendBlocked() || hideComposer() || (!!state?.running || !!currentSession()?.messages.some((message) => message.pendingInput)) && !canQueue();
   const navigationReady = (): boolean => !!state && !navigationNeeded && !navigationRequest && !localSessions.has(state.activeId) && state.activeId === serverSessionId;
   const fileMenu = new ConversationFileMenu(document.querySelector<HTMLButtonElement>('#attach')!, kind => {
     if (!state || !advertisedDropTarget || uploading) return;
@@ -576,11 +593,11 @@ function initialize(): void {
     const stopping = stopRequests.get(`${state.project.uri}:${state.activeId}`);
     const pendingStop = stopping?.phase === 'pending';
     const stop = state.running && (!connectionAvailable || serverBlocked() || !canQueue() || !hasInput);
-    updateIcon(sendButton, pendingStop ? 'loading' : stop ? 'debug-stop' : submitting || pendingSend() || uploading ? 'loading' : conversation ? 'arrow-up' : 'play');
+    updateIcon(sendButton, pendingStop ? 'loading' : stop ? 'debug-stop' : sendBlocked() || uploading ? 'loading' : conversation ? 'arrow-up' : 'play');
     sendButton.title = sendButton.ariaLabel = pendingStop ? t("Stopping...") : stop ? t("Stop") : editingQueueId ? t("Save queued message") : conversation ? t("Send") : t("Run");
     sendButton.setAttribute('aria-busy', String(pendingStop));
     sendButton.classList.toggle('stop', stop);
-    sendButton.disabled = readOnly() || pendingStop || !stop && (!connectionAvailable || serverBlocked() || !conversation && !navigationReady() || submitting || pendingSend() || !conversation && resolving || uploading > 0 || conversation && !hasInput);
+    sendButton.disabled = readOnly() || pendingStop || !stop && (!connectionAvailable || serverBlocked() || !conversation && !navigationReady() || sendBlocked() || !conversation && resolving || uploading > 0 || conversation && !hasInput);
     stopFeedback.hidden = !stopping;
     stopFeedback.className = stopping?.phase === 'failed' ? 'error' : 'stop-feedback';
     stopFeedback.setAttribute('role', stopping?.phase === 'failed' ? 'alert' : 'status');
@@ -591,7 +608,7 @@ function initialize(): void {
     document.querySelector<HTMLButtonElement>('#new')!.disabled = false;
     dialogs.updatePermissions?.(state?.parameterRevision);
     const waiting = currentSession()?.messages.some((message) => message.pendingInput);
-    app.dataset.runState = state.running ? 'running' : waiting ? 'waiting' : submitting || pendingSend() ? 'submitting' : 'idle';
+    app.dataset.runState = state.running ? 'running' : waiting ? 'waiting' : sendBlocked() ? 'submitting' : 'idle';
     const attach = document.querySelector<HTMLButtonElement>('#attach')!;
     attach.hidden = !conversation;
     attach.disabled = busy() || uploading > 0 || !navigationReady() || !connectionAvailable;
@@ -799,7 +816,7 @@ function initialize(): void {
       entry.phase = 'sending'; changed = true;
       const { input } = entry;
       vscode.postMessage({ type: 'send', projectUri: entry.projectUri, sessionId: entry.sessionId, requestId: input.id,
-        mode: 'followUp', text: input.text, params: input.params, entrypointId: input.entrypointId, attachments: input.attachments, ...(input.references?.length ? { references: input.references } : {}),
+        mode: entry.mode ?? 'followUp', text: input.text, params: input.params, entrypointId: input.entrypointId, attachments: input.attachments, ...(input.references?.length ? { references: input.references } : {}),
         preserveDraft: true, editingQueueId: entry.replacesId });
     }
     if (changed) persist();
@@ -947,8 +964,8 @@ function initialize(): void {
     const session = currentSession();
     if (!state || !session) return;
     queueView.update({ projectUri: state.project.uri, session, sessions: state.sessions, durable: state.project.conversation?.durable?.enabled === true,
-      ready: !readOnly() && connectionAvailable && navigationReady(), canExecute: !serverBlocked(),
-      pendingIds: new Set(submissions.list().filter(entry => entry.projectUri === state!.project.uri).map(entry => entry.input.id)) });
+      ready: !readOnly() && connectionAvailable, canExecute: !serverBlocked(),
+      pendingIds: new Set(submissions.list().filter(entry => entry.projectUri === state!.project.uri && (entry.phase === 'pending' || entry.phase === 'sending')).map(entry => entry.input.id)) });
   }
 
   async function uploadFiles(files: File[], importRequestId?: string): Promise<void> {
@@ -1286,7 +1303,7 @@ function initialize(): void {
       persist(); updateFields();
     }
     if (parametersChanged) { updateFields(); }
-    if (paramsNeedInit && !busy() && !inputTimer) { requestParams(pendingParameterTrigger ?? { kind: 'init' }); }
+    if (paramsNeedInit && !busy() && !pendingSend() && !inputTimer) { requestParams(pendingParameterTrigger ?? { kind: 'init' }); }
     updateControls();
     if (switching && !next.running && !composerArea.hidden && document.hasFocus()) { textarea.focus(); }
     if (switching) { transcriptScrollTop = transcript.scrollTop; }
@@ -1335,7 +1352,7 @@ function initialize(): void {
         attachments: structuredClone(draftFiles), ...(draftReferences.length ? { references: structuredClone(draftReferences) } : {}), createdAt: Date.now() };
       submissions.add({ projectUri: state.project.uri, sessionId: session.id, input, phase: 'pending', replacesId: editingQueueId,
         modelName: conversationModelName({ params: input.params, states: paramStates }, currentParameters().fields),
-        queued: !!editingQueueId || state.running || !!session.queuedInputs?.length });
+        queued: !!editingQueueId || state.running || pendingSend() || !session.queuePaused && !!session.queuedInputs?.length });
       paramsNeedInit ||= resolving || inputTimer !== undefined || currentParameters().fields.some(field => field.resolveOnInput);
       cancelParameterRequest();
       delete parameterEdits[formKey]; textarea.value = ''; draftFiles = []; draftReferences = []; editingQueueId = undefined;
