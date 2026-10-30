@@ -1,5 +1,7 @@
 # Unreleased
 
+- Fixed the subagent summary to use a neutral color. Red is limited to failed tasks and error details, so historical failures do not make the entire entry look like an error alert.
+
 - Fixed resource cards to preserve explicit project and entry targets and inspect previews using the target entry, preventing false project-unavailable errors when opening maps from the Assistant or another entry in the same project.
 
 - Added a subagent status entry beside “Responding…” with running, queued and completed counts. Expand roles, phases, progress, results and errors, and open child conversations. The entry remains after the parent response, preserves expansion across streaming and subsequent replies, and identifies offline snapshots.
