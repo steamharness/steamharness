@@ -206,7 +206,8 @@ for (const language of languages) {
     await knowledge.locator('.resource-row').filter({ hasText: 'Shared server guide' }).waitFor();
     await card('server-doc').locator('.resource-target').click();
     await knowledge.locator('#resource-detail .markdown-body h1').filter({ hasText: 'Shared server guide' }).waitFor();
-    assert.equal(await knowledge.locator('#resource-source').inputValue(), 'server');
+    assert.equal(await knowledge.locator('#resources-app').getAttribute('data-source'), 'server');
+    assert.equal(await knowledge.locator('#resource-source').count(), 0);
     assert.equal(await knowledge.locator('#resource-new').isVisible(), false);
     assert.equal(await knowledge.locator('#detail-delete').count(), 0);
     await knowledge.locator('#resource-search').fill('Foreign'); await knowledge.locator('.resource-row').filter({ hasText: 'permission verified' }).waitFor();

@@ -91,6 +91,8 @@ CLI Web and Studio share a user-level SQLite registry, with data directories sep
 
 The Studio directory defaults to **Used by this project**, with local, server and all filters and name, ID or alias search. A database shared by multiple entries appears once with its consuming entries. Open a database, KV or knowledge child in an independent editor tab using the same paginated list and detail editor as the bottom resources panel. Opening the same target again reveals its tab. Host management can inspect retained local data; navigation from a project entry still enforces that entry grant.
 
+The bottom KV and knowledge panels select databases directly, deduplicating references across projects and entries by ID and displaying host-managed names. Different databases with the same name include their IDs. The database determines its local or server location, shown by an icon without a separate host selector. Name updates and switches to entries sharing the same database preserve the current content and unsaved drafts.
+
 Open project data tabs validate the alias against the database ID and host they opened. After migrating an ID through `config.json` or an environment override, close the old tab and reopen the database. Drafts from old tabs cannot write into the replacement database. Account changes cancel host requests and reviews that have not been submitted.
 
 Server Web uses a directory and database tabs, with server pagination, project filtering, search, KV list and detail editing, knowledge, attachments and a separate requests and permissions page. It manages server databases and does not read local SQLite.

@@ -38,7 +38,7 @@ for (const type of ['conversation', 'workflow', 'kanban']) {
   for (let index=0;index<31;index++) await kv.setValue(`item.${String(index).padStart(2,'0')}`,index);
   await database.knowledge.createDocument({title:`${type} notes`,markdown:`# ${type}\n\nPanel resource evidence.\n\n- First item\n- Second item`});
   const values = database;
-  projects.push({ type, folder, manifest, kv, values });
+  projects.push({ type, folder, manifest, kv, values, databaseId: (await database.getBinding()).space.spaceId });
 }
 const debug = createServer(); await new Promise(resolve => debug.listen(0, '127.0.0.1', resolve)); const port = debug.address().port; await new Promise(resolve => debug.close(resolve));
 const log = await open(path.join(proofDir, 'desktop.log'), 'w');
@@ -101,8 +101,9 @@ try {
   await writeFile(workspace, JSON.stringify({ folders: [...folders, ...projects.map(project => ({ path: project.folder }))] }));
   const kvTab = panel.locator('.composite-bar .action-label').filter({ hasText: /^KV$/ }); await kvTab.waitFor({ timeout: 45_000 }); await kvTab.click();
   let kv = await frameFor('kv'); await kv.locator('.resource-row').first().waitFor(); await stable(kv);
-  assert.equal(await kv.locator('#resource-project option').count(), 3);
-  await kv.locator('#resource-project').selectOption({ label: projects[0].manifest.projectInfo.localizedNames['zh-CN'] });
+  assert.equal(await kv.locator('#resource-database option').count(), 3);
+  assert.equal(await kv.locator('#resource-source').count(), 0);
+  await kv.locator('#resource-database').selectOption(projects[0].databaseId);
   await stable(kv); await kv.locator('#resource-search').fill('conversation.state'); await kv.locator('.resource-row').filter({ hasText: 'conversation.state' }).click();
   await kv.locator('.detail-content').filter({ hasText: '"count": 7' }).waitFor();
   await snapshot('kv-light.png'); await layout(kv);
@@ -126,12 +127,12 @@ try {
   await writeFile(settingsPath, JSON.stringify({ 'workbench.colorTheme': 'Dark Modern', 'git.openRepositoryInParentFolders': 'never' }));
   await knowledge.locator('body.vscode-dark').waitFor();
   await page.setViewportSize({ width: 650, height: 850 }); await layout(knowledge); await snapshot('knowledge-narrow.png');
-  await knowledge.locator('#detail-back').click(); await knowledge.locator('#resource-project').selectOption({ label: projects[2].manifest.projectInfo.localizedNames['zh-CN'] });
+  await knowledge.locator('#detail-back').click(); await knowledge.locator('#resource-database').selectOption(projects[2].databaseId);
   await knowledge.locator('.resource-row').filter({ hasText: 'kanban notes' }).waitFor(); await stable(knowledge);
   assert.equal(await knowledge.locator('.resource-row').filter({ hasText: 'conversation notes' }).count(), 0);
   await kvTab.click(); kv = await frameFor('kv'); await kv.locator('#resource-search').fill('kanban.state'); await kv.locator('.resource-row').filter({ hasText: 'kanban.state' }).waitFor();
   await layout(kv); await snapshot('kv-narrow.png');
-  proof.checks.push('light/dark/high-contrast themes, narrow panels and synchronized project selection preserve layout and data isolation');
+  proof.checks.push('light/dark/high-contrast themes, narrow panels and synchronized database selection preserve layout and data isolation');
   await writeFile(workspace, JSON.stringify({ folders })); await kvTab.waitFor({ state: 'hidden', timeout: 30_000 }); await knowledgeTab.waitFor({ state: 'hidden' });
   proof.checks.push('removing the Workflow folders hides both resource tabs');
   assert.deepEqual(proof.errors, []); await writeFile(path.join(proofDir, 'proof.json'), `${JSON.stringify(proof, null, 2)}\n`); console.log(JSON.stringify(proof));

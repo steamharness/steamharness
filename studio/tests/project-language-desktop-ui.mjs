@@ -110,16 +110,18 @@ async function verify(language) {
     if (await info.locator('[data-section=names]').getAttribute('open') === null) { await info.locator('[data-section=names] > summary').click(); }
     for (const name of Object.values(names)) { await info.getByText(name, { exact: true }).waitFor(); }
     proof.checks.push('Information preserves the default name and both author-provided localized names');
-    for (const [name, selector, select] of [
-      ['KV', 'body[data-resource-kind=kv] #resources-app', '#resource-project'],
-      [panelLabel('studio-knowledge'), 'body[data-resource-kind=knowledge] #resources-app', '#resource-project'],
-      [panelLabel('studio-trace'), '#trace-app', '#trace-project'],
+    for (const [name, selector] of [
+      ['KV', 'body[data-resource-kind=kv] #resources-app'],
+      [panelLabel('studio-knowledge'), 'body[data-resource-kind=knowledge] #resources-app'],
     ]) {
       const frame = await panel(name, selector);
-      await frame.locator(`${select} option:checked`).filter({ hasText: expected }).waitFor({ state: 'attached' });
-      assert.equal(await frame.locator(`${select} option:checked`).innerText(), expected);
+      assert.equal(await frame.locator('#resource-database').getAttribute('aria-label'), language === 'en' ? 'Database' : '数据库');
+      assert.equal(await frame.locator('#resource-source').count(), 0);
     }
-    proof.checks.push('KV, Knowledge and Trace project selectors use the same localized project name');
+    const trace = await panel(panelLabel('studio-trace'), '#trace-app');
+    await trace.locator('#trace-project option:checked').filter({ hasText: expected }).waitFor({ state: 'attached' });
+    assert.equal(await trace.locator('#trace-project option:checked').innerText(), expected);
+    proof.checks.push('KV and Knowledge use localized database controls; Trace retains the localized project name');
     await conversation.locator('#message').fill('\u4fdd\u7559\u4e2d\u6587\u7528\u6237\u5185\u5bb9');
     await conversation.locator('#send').click();
     await conversation.locator('.message.assistant:not(.streaming) .message-content').filter({ hasText: '\u4fdd\u7559\u4e2d\u6587\u7528\u6237\u5185\u5bb9' }).waitFor();

@@ -6,11 +6,13 @@ import { createRequire } from 'node:module';
 const require = createRequire(import.meta.url);
 
 const compiled = await build({ entryPoints: ['extensions/studio-workstation/src/workflow-resources-view.ts'], bundle: true, platform: 'node', format: 'cjs', external: ['vscode'], write: false });
-const project = (name, projectType = 'conversation') => ({ id: name, uri: `file:///${name}`, folderPath: `/${name}`, name, projectType,entryId:'main',databases:[{alias:'data',databaseId:'00000000-0000-4000-8000-000000000001'}] });
+const firstId='00000000-0000-4000-8000-000000000001', secondId='00000000-0000-4000-8000-000000000002';
+const project = (name, projectType = 'conversation') => ({ id: name, uri: `file:///${name}`, folderPath: `/${name}`, name, projectType,entryId:'main',databases:[{alias:'data',databaseId:name==='second'?secondId:firstId}] });
 
-function fixture(t, operation = async () => ({ items: [], total: 0, hasMore: false }), connection, register = true) {
+function fixture(t, operation = async () => ({ items: [], total: 0, hasMore: false, source:'local' }), connection, register = true) {
   const providers = new Map(), commands = new Map(), views = new Map(), messages = new Map(), receivers = new Map(), calls = [], contextValues = [], copied = [], invalidated = [];
   let accountChanged;
+  let catalogOperation=async()=>({local:{spaces:[],bindings:[],grants:[],requests:[]}});
   const disposable = { dispose() {} };
   const vscode = {
     Uri: { joinPath: (_root, ...parts) => ({ toString: () => parts.join('/') }) },
@@ -20,9 +22,10 @@ function fixture(t, operation = async () => ({ items: [], total: 0, hasMore: fal
     commands: { registerCommand: (id, fn) => { commands.set(id, fn); return disposable; }, executeCommand: async (...args) => contextValues.push(args) },
   };
   const module = { exports: {} };
-  runInNewContext(compiled.outputFiles[0].text, { module, exports: module.exports, require: name => name === 'vscode' ? vscode : require(name), crypto: globalThis.crypto, AbortController });
+  runInNewContext(compiled.outputFiles[0].text, { module, exports: module.exports, require: name => name === 'vscode' ? vscode : require(name), crypto: globalThis.crypto, AbortController, setTimeout, clearTimeout });
   const provider = new module.exports.ResourceViews({ subscriptions: [], extensionUri: {} }, {
     resource: async (...args) => { calls.push(args); return operation(...args); },
+    database: async (...args) => catalogOperation(...args),
   }, { getConnection: () => connection, onDidChange: callback => { accountChanged = callback; return disposable; },
     invalidate: async current => { invalidated.push(current); connection = undefined; accountChanged({ status: 'expired' }); }, open() {} }, { appendLine() {} }, register);
   t.after(() => provider.dispose());
@@ -36,26 +39,61 @@ function fixture(t, operation = async () => ({ items: [], total: 0, hasMore: fal
   }
   const state = kind => messages.get(kind).findLast(item => item.type === 'resources-state');
   const send = async (kind, input = { action: 'list' }, extra = {}) => {
-    receivers.get(kind)({ type: 'request', id: 1, generation: state(kind).generation, projectUri: state(kind).selected, input, ...extra });
+    receivers.get(kind)({ type: 'request', id: 1, generation: state(kind).generation, databaseKey: state(kind).selected, input, ...extra });
     await new Promise(resolve => setImmediate(resolve));
   };
   return { provider, commands, messages, receivers, views, calls, state, send, contextValues, copied, invalidated, vscode,
+    catalog: operation => {catalogOperation=operation;},
     accountChanged: (status = 'signed-out', nextConnection) => { connection = nextConnection; accountChanged({ status }); } };
 }
 
-const key = (project, alias = 'data') => `${project.uri}#entry=${project.entryId}:database=${alias}`;
+const key = (project, alias = project.databases[0].alias) => project.databases.find(database=>database.alias===alias).databaseId;
 
-test('resource choices identify each entry and declared alias and exclude the assistant',t=>{
+test('resource choices identify databases and exclude the assistant',t=>{
  const f=fixture(t),a=project('Aggregate'),b={...a,entryId:'other',databases:[{alias:'shared',databaseId:'00000000-0000-4000-8000-000000000002'}]};
  f.provider.update([a,b,{...project('assistant'),assistant:{standalone:true}}]);
- assert.deepEqual(Array.from(f.state('kv').projects,item=>item.uri),[key(a),key(b,'shared')]);
+ assert.deepEqual(Array.from(f.state('kv').databases,item=>item.key),[key(a),key(b,'shared')]);
  assert.equal(f.contextValues.at(-1)[2],true);f.provider.update([]);assert.equal(f.contextValues.at(-1)[2],false);
 });
 test('active entries and explicit aliases select independently and stable scans preserve selection',t=>{
  const f=fixture(t),a=project('first'),b=project('second');f.provider.update([a,b],a);
- f.receivers.get('kv')({type:'select',projectUri:key(b)});assert.equal(f.state('knowledge').selected,key(b));
+ f.receivers.get('kv')({type:'select',databaseKey:key(b)});assert.equal(f.state('knowledge').selected,key(b));
  f.provider.update([a,b],a);assert.equal(f.state('kv').selected,key(b));
  f.provider.update([a,b],b);f.provider.update([a,b],a);assert.equal(f.state('kv').selected,key(a));
+});
+test('shared database references have one choice and switching consumers preserves in-flight reads',async t=>{
+ let finish;const f=fixture(t,()=>new Promise(resolve=>finish=resolve)),a=project('Aggregate');
+ const entries=['agent','database','minimax','tikhub'].map(entryId=>({...a,entryId,databases:[{alias:entryId,databaseId:firstId}]}));
+ f.provider.update(entries,entries[0]);await f.send('knowledge');
+ const generation=f.state('knowledge').generation;
+ assert.equal(f.state('knowledge').databases.length,1);
+ assert.equal(f.state('knowledge').databases[0].databaseId,firstId);
+ f.provider.update(entries,entries[2]);
+ assert.equal(f.state('knowledge').generation,generation);assert.equal(f.calls[0][2].aborted,false);
+ finish({items:[],source:'server'});await new Promise(resolve=>setImmediate(resolve));
+ assert.equal(f.state('knowledge').source,'server');
+});
+test('catalog names replace IDs without clearing drafts or cancelling pending work',async t=>{
+ const f=fixture(t,()=>new Promise(()=>{})),a=project('first');f.provider.update([a],a);await f.send('kv');
+ const generation=f.state('kv').generation;
+ f.catalog(async()=>({local:{spaces:[{spaceId:firstId,name:'Shared database',host:'local'}],grants:[],bindings:[],requests:[]}}));
+ await f.provider.refreshCatalog();
+ assert.equal(f.state('kv').databases[0].name,'Shared database');assert.equal(f.views.get('kv').description,'Shared database');
+ assert.equal(f.state('kv').generation,generation);assert.equal(f.calls[0][2].aborted,false);
+});
+test('late catalog replies cannot expose a previous account database name',async t=>{
+ const f=fixture(t),a=project('first');f.provider.update([a],a);let finish,signal;
+ f.catalog((_input,current)=>{signal=current;return new Promise(resolve=>finish=resolve);});
+ const pending=f.provider.refreshCatalog();f.accountChanged('signed-in',{serverUrl:'https://other.test',accessToken:'other'});
+ assert.equal(signal.aborted,true);
+ finish({local:{spaces:[{spaceId:firstId,name:'Previous account',host:'local'}],grants:[],bindings:[],requests:[]}});await pending;
+ assert.equal(f.state('kv').databases[0].name,firstId);
+});
+test('resolved database hosts are fixed by the extension and cannot be changed by the webview',async t=>{
+ const f=fixture(t,async()=>({items:[],source:'server'})),a=project('first');f.provider.update([a],a);
+ await f.send('kv',{action:'list',source:'local'});await f.send('kv',{action:'save',key:'one',value:1,source:'local'});
+ assert.equal(f.calls[0][1].source,undefined);assert.equal(f.calls[1][1].source,'server');
+ assert.equal(f.calls[1][1].expectedDatabaseId,firstId);
 });
 test('the host supplies entry, alias and source and rejects untrusted workspace mutations',async t=>{
  const f=fixture(t),a=project('first');f.provider.update([a],a);
@@ -68,11 +106,11 @@ test('the host supplies entry, alias and source and rejects untrusted workspace 
 test('separate resource panel instances keep selections and pending operations independent',async t=>{
  let finish;const f=fixture(t,()=>new Promise(resolve=>finish=resolve),undefined,false),g=fixture(t,undefined,undefined,false),a=project('first'),b=project('second');
  f.provider.update([a,b],a);g.provider.update([a,b],a);await f.send('kv');
- g.receivers.get('kv')({type:'select',projectUri:key(b)});g.provider.dispose();
+ g.receivers.get('kv')({type:'select',databaseKey:key(b)});g.provider.dispose();
  assert.equal(f.calls[0][2].aborted,false);finish({items:[{key:'retained'}],total:1});await new Promise(resolve=>setImmediate(resolve));
  assert.equal(f.messages.get('kv').at(-1).value.items[0].key,'retained');assert.equal(f.commands.has('studio.refreshResources'),false);
 });
-test('switching entry cancels old work and late replies cannot update the panel',async t=>{
+test('switching database cancels old work and late replies cannot update the panel',async t=>{
  let finish;const f=fixture(t,()=>new Promise(resolve=>finish=resolve)),a=project('first'),b=project('second');
  f.provider.update([a,b],a);await f.send('knowledge');const generation=f.state('knowledge').generation;
  f.provider.update([a,b],b);assert.equal(f.calls[0][2].aborted,true);finish({items:['stale']});await new Promise(resolve=>setImmediate(resolve));
@@ -97,8 +135,8 @@ test('stable account checks preserve work while account rotation and logout canc
  f.accountChanged('signed-in',{...connection,accessToken:'other'});assert.equal(signal.aborted,true);
  f.accountChanged();assert.equal(f.state('kv').authenticated,false);
 });
-test('copy validates the current entry and generation',async t=>{
+test('copy validates the current database and generation',async t=>{
  const f=fixture(t),a=project('first');f.provider.update([a],a);
- await f.receivers.get('kv')({type:'copy',text:'value',projectUri:key(a),generation:f.state('kv').generation});
- await f.receivers.get('kv')({type:'copy',text:'stale',projectUri:key(a),generation:0});assert.deepEqual(f.copied,['value']);
+ await f.receivers.get('kv')({type:'copy',text:'value',databaseKey:key(a),generation:f.state('kv').generation});
+ await f.receivers.get('kv')({type:'copy',text:'stale',databaseKey:key(a),generation:0});assert.deepEqual(f.copied,['value']);
 });

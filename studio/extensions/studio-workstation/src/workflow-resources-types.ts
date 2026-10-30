@@ -2,6 +2,12 @@ export type ResourceKind = 'kv' | 'knowledge';
 export type ResourceSource = 'local' | 'server';
 export type ResourceScope = 'project' | 'conversation';
 
+export interface ResourceDatabaseOption {
+  key: string;
+  databaseId: string;
+  name: string;
+}
+
 export interface ResourceRequest {
   kind: ResourceKind;
   database?: string;

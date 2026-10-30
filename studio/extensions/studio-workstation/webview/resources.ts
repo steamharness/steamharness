@@ -3,7 +3,7 @@ import { escapeHtml, iconHtml, markdownHtml } from './ui';
 import './resources.css';
 import { installContextMenu, type ContextAction } from './context-menu';
 import { resourceMenuActions, sameResource } from './resource-context';
-import type { ResourceDetail, ResourceKind, ResourcePage, ResourceRequest, ResourceRow, ResourceSource } from '../src/workflow-resources-types';
+import type { ResourceDatabaseOption, ResourceDetail, ResourceKind, ResourcePage, ResourceRequest, ResourceRow, ResourceSource } from '../src/workflow-resources-types';
 
 declare function acquireVsCodeApi(): { postMessage(message: object): void; getState(): Record<string, string> | undefined; setState(state: object): void };
 
@@ -14,8 +14,8 @@ const app = document.querySelector<HTMLDivElement>('#resources-app')!;
 const saved = vscode.getState() ?? {};
 const button = (id: string, icon: string, label: string): string => `<button id="${id}" class="icon-button" type="button" title="${label}" aria-label="${label}">${iconHtml(icon)}</button>`;
 app.innerHTML = `<header class="resource-toolbar">
-  <div class="select-control project-select"><select id="resource-project" aria-label="${t("Project")}"></select>${iconHtml('chevron-down')}</div>
-  <div class="select-control source-select"><select id="resource-source" aria-label="${t("Data source")}"><option value="local">${t("Local")}</option><option value="server">${t("Server")}</option></select>${iconHtml('chevron-down')}</div>
+  <div class="select-control database-select"><select id="resource-database" aria-label="${t("Database")}"></select>${iconHtml('chevron-down')}</div>
+  <span id="resource-location" class="resource-location" role="img" hidden></span>
   ${knowledge ? '' : `<div class="select-control scope-select"><select id="resource-scope" aria-label="${t("Scope")}"><option value="">${t("All scopes")}</option><option value="project">${t("Project")}</option><option value="conversation">${t("Session")}</option></select>${iconHtml('chevron-down')}</div>`}
   <div class="resource-search">${iconHtml('search')}<input id="resource-search" type="search" placeholder="${knowledge ? t("Search document content") : t("Search keys or values")}" aria-label="${t("Search")}"></div>
   <span class="toolbar-spacer"></span><div class="resource-toolbar-actions">${button('resource-new', 'add', knowledge ? t("New document") : t("New key"))}${button('resource-refresh', 'refresh', t("Refresh"))}
@@ -31,8 +31,8 @@ app.innerHTML = `<header class="resource-toolbar">
   </main>
   <dialog id="resource-confirm"><form method="dialog"><p>${t("Discard unsaved changes?")}</p><div><button value="cancel">${t("Cancel")}</button><button value="discard" class="primary">${t("Discard")}</button></div></form></dialog>`;
 
-const projectSelect = document.querySelector<HTMLSelectElement>('#resource-project')!;
-const sourceSelect = document.querySelector<HTMLSelectElement>('#resource-source')!;
+const databaseSelect = document.querySelector<HTMLSelectElement>('#resource-database')!;
+const location = document.querySelector<HTMLElement>('#resource-location')!;
 const search = document.querySelector<HTMLInputElement>('#resource-search')!;
 const scopeSelect = document.querySelector<HTMLSelectElement>('#resource-scope');
 const list = document.querySelector<HTMLDivElement>('#resource-list')!;
@@ -44,7 +44,7 @@ const next = document.querySelector<HTMLButtonElement>('#resource-next')!;
 const newButton = document.querySelector<HTMLButtonElement>('#resource-new')!;
 const login = document.querySelector<HTMLButtonElement>('#resource-login')!;
 let generation = -1, serial = 0, listEpoch = 0, detailEpoch = 0;
-let projectUri = '', source: ResourceSource | undefined;
+let databaseKey = '', source: ResourceSource | undefined;
 let rows: ResourceRow[] = [], currentRow: ResourceRow | undefined, currentDetail: ResourceDetail | undefined;
 let cursors: (string | undefined)[] = [undefined], pageIndex = 0;
 let dirty = false, authenticated = false, saving = false, readOnly = false;
@@ -53,17 +53,26 @@ search.value = saved.query ?? '';
 if (scopeSelect) { scopeSelect.value = saved.scope ?? ''; }
 newButton.disabled = true;
 
-function persist(): void { vscode.setState({ query: search.value, scope: scopeSelect?.value ?? '', source: source ?? '', projectUri }); }
-const dataContext = (): string => JSON.stringify([generation, projectUri, source]);
-const contextVersion = (): string => JSON.stringify([generation, projectUri, source, readOnly, authenticated, saving]);
-const copyText = (text: string): void => vscode.postMessage({ type: 'copy', generation, projectUri, text });
+function persist(): void { vscode.setState({ query: search.value, scope: scopeSelect?.value ?? '', databaseKey }); }
+function updateLocation(): void {
+  app.dataset.source = source ?? '';
+  location.hidden = !source;
+  const label = source === 'local' ? t('Local') : t('Server');
+  location.title = label; location.setAttribute('aria-label', label);
+  location.innerHTML = source ? iconHtml(source === 'local' ? 'device-desktop' : 'server') : '';
+  login.hidden = source !== 'server' || authenticated;
+  newButton.disabled = readOnly || !databaseKey || !source || source === 'server' && !authenticated;
+}
+const dataContext = (): string => JSON.stringify([generation, databaseKey, source]);
+const contextVersion = (): string => JSON.stringify([generation, databaseKey, source, readOnly, authenticated, saving]);
+const copyText = (text: string): void => vscode.postMessage({ type: 'copy', generation, databaseKey, text });
 const contentText = (value: ResourceDetail): string => knowledge ? value.markdown ?? '' : JSON.stringify(value.value, null, 2) ?? '';
 installContextMenu(vscode, target => {
   const item = target.closest<HTMLElement>('.resource-row');
   const row = item ? rows.find(row => row.id === item.dataset.id) : target.closest('#resource-detail') ? currentRow : undefined;
   const area = item ? 'row' : target.closest('#resource-detail') ? 'detail' : 'list';
   if ((area !== 'list' && !row) || !target.closest('.resource-workspace')) { return []; }
-  const actions = resourceMenuActions({ kind, source, readOnly, authenticated, saving, hasProject: !!projectUri,
+  const actions = resourceMenuActions({ kind, source, readOnly, authenticated, saving, hasProject: !!databaseKey,
     target: area, editing: !!detail.querySelector('#detail-form') });
   return actions.map(id => ({ id, run: async () => {
     const version = contextVersion();
@@ -88,7 +97,7 @@ function request<T>(input: Omit<ResourceRequest, 'kind'>): Promise<T> {
   const id = ++serial;
   return new Promise((resolve, reject) => {
     pending.set(id, { resolve: value => resolve(value as T), reject });
-    vscode.postMessage({ type: 'request', id, generation, projectUri, input: { ...input, source, kind } });
+    vscode.postMessage({ type: 'request', id, generation, databaseKey, input: { ...input, kind } });
   });
 }
 async function canDiscard(): Promise<boolean> {
@@ -108,7 +117,7 @@ function filters(): Pick<ResourceRequest, 'scope' | 'query' | 'cursor'> {
   return { scope: (scopeSelect?.value || undefined) as ResourceRequest['scope'], query: search.value.trim(), cursor: cursors[pageIndex] };
 }
 async function load(reset = false): Promise<void> {
-  if (!projectUri) { return; }
+  if (!databaseKey) { return; }
   const epoch = ++listEpoch;
   const version = generation;
   if (reset) { cursors = [undefined]; pageIndex = 0; }
@@ -119,10 +128,7 @@ async function load(reset = false): Promise<void> {
     const page = await request<ResourcePage>({ action: 'list', ...filters() });
     if (epoch !== listEpoch || version !== generation) { return; }
     source = page.source;
-    sourceSelect.innerHTML = page.sources.map(value => `<option value="${value}">${value === 'local' ? t("Local") : t("Server")}</option>`).join('');
-    sourceSelect.value = source; sourceSelect.disabled = page.sources.length === 1;
-    login.hidden = source !== 'server' || authenticated;
-    newButton.disabled = readOnly || !source || source === 'server' && !authenticated;
+    updateLocation();
     rows = page.items; renderRows();
     count.textContent = `${page.total} ${page.search ? t("matches") : knowledge ? t("documents") : t("items")} \u00b7 ${pageIndex + 1}`;
     previous.disabled = pageIndex === 0; next.disabled = !page.hasMore;
@@ -134,14 +140,9 @@ async function load(reset = false): Promise<void> {
     persist();
   } catch (failure) {
     if (epoch !== listEpoch || version !== generation) { return; }
-    const storage = failure as Error & { source?: ResourceSource; sources?: ResourceSource[] };
+    const storage = failure as Error & { source?: ResourceSource };
     if (storage.source) { source = storage.source; }
-    if (storage.sources) {
-      sourceSelect.innerHTML = storage.sources.map(value => `<option value="${value}">${value === 'local' ? t("Local") : t("Server")}</option>`).join('');
-      sourceSelect.value = source ?? ''; sourceSelect.disabled = storage.sources.length === 1;
-    }
-    error(storage.message); login.hidden = source !== 'server' || authenticated;
-    newButton.disabled = readOnly || !source || source === 'server' && !authenticated;
+    error(storage.message); updateLocation();
     if (!rows.length) { list.innerHTML = `<div class="resource-empty">${t("Unable to load data")}</div>`; }
   } finally { if (epoch === listEpoch) { app.dataset.loading = 'false'; list.setAttribute('aria-busy', 'false'); } }
 }
@@ -206,7 +207,7 @@ function renderDetail(edit: boolean, create = false): void {
   } else {
     const editButton = document.querySelector<HTMLButtonElement>('#detail-edit');
     if (editButton) { editButton.onclick = () => renderDetail(true); }
-    document.querySelector<HTMLButtonElement>('#detail-copy')!.onclick = () => vscode.postMessage({ type: 'copy', generation, projectUri, text: body });
+    document.querySelector<HTMLButtonElement>('#detail-copy')!.onclick = () => vscode.postMessage({ type: 'copy', generation, databaseKey, text: body });
     const deleteButton = document.querySelector<HTMLButtonElement>('#detail-delete');
     if (deleteButton) { deleteButton.onclick = () => void remove(); }
   }
@@ -249,20 +250,17 @@ async function remove(row = currentRow): Promise<void> {
 
 document.querySelector<HTMLButtonElement>('#resource-refresh')!.onclick = async () => {
   const context = contextVersion();
-  if (!saving && await canDiscard() && context === contextVersion()) { dirty = false; await load(); }
+  if (!saving && await canDiscard() && context === contextVersion()) { dirty = false; vscode.postMessage({ type: 'refresh' }); await load(); }
 };
 newButton.onclick = async () => {
   const context = contextVersion();
-  if (projectUri && source && !saving && !readOnly && !newButton.disabled && await canDiscard() && context === contextVersion()) {
+  if (databaseKey && source && !saving && !readOnly && !newButton.disabled && await canDiscard() && context === contextVersion()) {
     clearDetail(); currentDetail = {}; app.classList.add('show-detail'); renderDetail(true, true);
   }
 };
 login.onclick = () => vscode.postMessage({ type: 'login' });
-projectSelect.onchange = async () => {
-  if (await canDiscard()) { vscode.postMessage({ type: 'select', projectUri: projectSelect.value }); } else { projectSelect.value = projectUri; }
-};
-sourceSelect.onchange = async () => {
-  if (await canDiscard()) { source = sourceSelect.value as ResourceSource; rows = []; clearDetail(); persist(); await load(true); } else { sourceSelect.value = source ?? ''; }
+databaseSelect.onchange = async () => {
+  if (await canDiscard()) { vscode.postMessage({ type: 'select', databaseKey: databaseSelect.value }); } else { databaseSelect.value = databaseKey; }
 };
 if (scopeSelect) { scopeSelect.onchange = async () => { if (await canDiscard()) { clearDetail(); persist(); await load(true); } }; }
 let searchTimer: number | undefined;
@@ -281,19 +279,23 @@ window.addEventListener('message', event => {
     if (message.error) { task.reject(Object.assign(new Error(message.error), { source: message.source, sources: message.sources })); } else { task.resolve(message.value); }
   }
   if (message.type === 'resources-state') {
-    projectSelect.innerHTML = message.projects.map((project: { uri: string; name: string; version?: string; folderPath: string }) => `<option value="${escapeHtml(project.uri)}" title="${escapeHtml(project.folderPath)}">${escapeHtml([project.name, project.version].filter(Boolean).join(' \u00b7 '))}</option>`).join('');
-    projectSelect.value = message.selected ?? ''; authenticated = message.authenticated; readOnly = message.readOnly === true;
+    const databases = message.databases as ResourceDatabaseOption[];
+    const duplicateNames = new Set(databases.filter(database => databases.some(other => other.key !== database.key && other.name === database.name)).map(database => database.name));
+    const options = databases.map(database => `<option value="${escapeHtml(database.key)}" title="${escapeHtml(database.databaseId)}">${escapeHtml(duplicateNames.has(database.name) ? `${database.name} · ${database.databaseId}` : database.name)}</option>`).join('');
+    if (databaseSelect.innerHTML !== options) { databaseSelect.innerHTML = options; }
+    databaseSelect.disabled = databases.length <= 1;
+    databaseSelect.value = message.selected ?? ''; authenticated = message.authenticated; readOnly = message.readOnly === true;
+    databaseSelect.title = databases.find(database => database.key === message.selected)?.databaseId ?? '';
     newButton.hidden = readOnly;
-    if (generation === message.generation) { return; }
-    for (const task of pending.values()) { task.reject(new Error('Project data context changed.')); } pending.clear();
-    const changed = projectUri !== message.selected;
-    projectUri = message.selected ?? ''; generation = message.generation; saving = false; newButton.disabled = true;
-    app.dataset.projectUri = projectUri; rows = []; cursors = [undefined]; pageIndex = 0; ++listEpoch; clearDetail(); error();
-    if (changed) { source = saved.projectUri === projectUri ? saved.source as ResourceSource || undefined : undefined; }
-    if (message.source) { source = message.source; }
+    if (generation === message.generation) { if (message.source) { source = message.source; } updateLocation(); return; }
+    for (const task of pending.values()) { task.reject(new Error(t('Database context changed.'))); } pending.clear();
+    databaseKey = message.selected ?? ''; generation = message.generation; saving = false; newButton.disabled = true;
+    app.dataset.databaseKey = databaseKey; app.dataset.loading = 'false'; rows = []; cursors = [undefined]; pageIndex = 0; ++listEpoch; clearDetail(); error();
+    source = message.source;
     const focus = message.focus;
     if (focus) { source = focus.source; search.value = ''; if (scopeSelect) { scopeSelect.value = focus.scope ?? ''; } }
-    if (projectUri) {
+    updateLocation();
+    if (databaseKey) {
       persist();
       const version = generation;
       void load(true).then(async () => {
@@ -303,7 +305,7 @@ window.addEventListener('message', event => {
         }
       });
     }
-    else { list.innerHTML = `<div class="resource-empty">${t("No Workflow project detected")}</div>`; count.textContent = ''; }
+    else { list.innerHTML = `<div class="resource-empty">${t("No databases linked")}</div>`; count.textContent = ''; }
   }
 });
 vscode.postMessage({ type: 'ready' });

@@ -35,13 +35,13 @@ export class DatabaseDataPanel implements vscode.Disposable {
   }
   private publish() {
     if (!this.disposed) void this.panel.webview.postMessage({ type: 'resources-state', kind: this.kind, generation: this.generation,
-      selected: this.target.key, projects: [{ uri: this.target.key, name: this.target.space.name, folderPath: this.target.space.spaceId }],
+      selected: this.target.key, databases: [{ key: this.target.key, name: this.target.space.name, databaseId: this.target.space.spaceId }],
       source: this.target.space.host, authenticated: !!this.account.getConnection(), readOnly: false });
   }
   private async receive(message: any) {
     if (message?.type === 'ready') { this.publish(); return; }
     if (message?.type === 'login') { this.account.open(); return; }
-    if (message?.generation !== this.generation || message.projectUri !== this.target.key) return;
+    if (message?.generation !== this.generation || message.databaseKey !== this.target.key) return;
     if (message.type === 'copy' && typeof message.text === 'string') { await vscode.env.clipboard.writeText(message.text); return; }
     const input = message.input as ResourceRequest;
     if (message.type !== 'request' || !Number.isSafeInteger(message.id) || !input) return;

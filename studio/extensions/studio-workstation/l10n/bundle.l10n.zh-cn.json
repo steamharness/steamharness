@@ -836,6 +836,8 @@
   "Allowed prefixes, separated by commas": "允许的前缀，以逗号分隔",
   "Approve requested permissions": "按申请权限批准",
   "Change this access grant? Existing consumers may stop working. Stored data will be kept.": "更改此授权？现有入口可能停止工作，已保存的数据会保留。",
+  "Database context changed.": "数据库已切换。",
+  "No databases linked": "尚未关联数据库",
   "Database": "数据库",
   "Database alias": "数据库别名",
   "Database approvals": "数据库审批",

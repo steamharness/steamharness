@@ -22,8 +22,8 @@ select { text-overflow: ellipsis; }
 .select-control select { appearance: none; width: 100%; padding-right: 28px; color: var(--vscode-dropdown-foreground, var(--vscode-foreground)); background: var(--vscode-dropdown-background, var(--vscode-input-background)); border-color: var(--vscode-dropdown-border, var(--control-border)); }
 .select-control > .codicon { position: absolute; right: 8px; top: 6px; pointer-events: none; color: var(--vscode-dropdown-foreground, var(--muted)); }
 .select-control:has(select:disabled) > .codicon { opacity: .45; }
-.project-select { width: 180px; }
-.source-select { width: 90px; }
+.database-select { width: 220px; max-width: 100%; }
+.resource-location { display: inline-flex; align-items: center; color: var(--muted); flex: none; }
 .scope-select { width: 120px; }
 .resource-search { display: flex; align-items: center; gap: 6px; flex: 1 1 200px; min-width: 140px; max-width: 400px; height: 28px; padding: 0 8px; background: var(--vscode-input-background, #fff); border: 1px solid var(--control-border); border-radius: var(--control-radius); color: var(--muted); }
 .resource-search > .codicon { flex: none; }
@@ -87,7 +87,7 @@ dialog button { padding: 4px 12px; border: 0; color: var(--vscode-button-seconda
 dialog button.primary { color: var(--vscode-button-foreground, #fff); background: var(--vscode-button-background, #007acc); }
 @media (max-width: 620px) {
   .resource-toolbar { gap: 6px; padding: 6px 8px; }
-  .project-select { width: 140px; flex: 1 1 140px; }
+  .database-select { width: 180px; flex: 1 1 180px; }
   .resource-search { flex: 1 1 160px; max-width: none; }
   .resource-toolbar > .toolbar-spacer { display: none; }
   .resource-workspace { grid-template-columns: minmax(0, 1fr); }

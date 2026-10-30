@@ -47,11 +47,11 @@ test('directory shares one database between entries and opens an alias-scoped, r
   f.send(f.view, { type: 'open', key: `local:${id}`, kind: 'kv', filter: 'project' });
   const panel = f.panels[0]; assert.match(panel.webview.html, /resources-ui.js/);
   f.send(panel, { type: 'ready' });
-  f.send(panel, { type: 'request', id: 1, generation: 0, projectUri: `local:${id}`, input: { kind: 'knowledge', action: 'list', database: 'forged', source: 'server' } }); await tick();
+  f.send(panel, { type: 'request', id: 1, generation: 0, databaseKey: `local:${id}`, input: { kind: 'knowledge', action: 'list', database: 'forged', source: 'server' } }); await tick();
   assert.equal(f.resourceCalls[0][0].entryId, 'agent'); assert.equal(f.resourceCalls[0][1].database, 'data'); assert.equal(f.resourceCalls[0][1].kind, 'kv'); assert.equal(f.resourceCalls[0][1].source, 'local'); assert.equal(f.resourceCalls[0][1].expectedDatabaseId, id);
   f.send(f.view, { type: 'open', key: `local:${id}`, kind: 'kv', filter: 'project' }); assert.equal(f.panels.length, 1); assert.equal(panel.revealed, true);
   f.send(f.view, { type: 'open', key: `server:${secondId}`, kind: 'knowledge', filter: 'all' });
-  const remote = f.panels[1]; f.send(remote, { type: 'ready' }); f.send(remote, { type: 'request', id: 2, generation: 0, projectUri: `server:${secondId}`, input: { action: 'list' } }); await tick();
+  const remote = f.panels[1]; f.send(remote, { type: 'ready' }); f.send(remote, { type: 'request', id: 2, generation: 0, databaseKey: `server:${secondId}`, input: { action: 'list' } }); await tick();
   assert.equal(f.calls.at(-1)[0].spaceId, secondId); assert.equal(f.calls.at(-1)[0].input.kind, 'knowledge');
 });
 test('account changes cancel catalog reads, discard late responses, and stable account checks keep work', async t => {
@@ -88,7 +88,7 @@ test('a denied duplicate mutation cannot unlock a running operation, and untrust
   const f = fixture(t); await tick(); f.send(f.view, { type: 'open', key: `local:${id}`, kind: 'kv', filter: 'all' });
   const panel = f.panels[0]; f.send(panel, { type: 'ready' }); let finish;
   f.launcher.database = async (...args) => { f.calls.push(args); return new Promise(resolve => { finish = resolve; }); };
-  const save = id => f.send(panel, { type: 'request', id, generation: 0, projectUri: `local:${space().spaceId}`, input: { action: 'save', key: 'one', value: 1 } });
+  const save = id => f.send(panel, { type: 'request', id, generation: 0, databaseKey: `local:${space().spaceId}`, input: { action: 'save', key: 'one', value: 1 } });
   const count = f.calls.length; save(1); save(2); save(3); await tick(); assert.equal(f.calls.length, count + 1);
   finish({ value: 1 }); await tick(); f.vscode.workspace.isTrusted = false; save(4); await tick();
   assert.match(panel.messages.at(-1).error, /Trust/); assert.equal(f.calls.length, count + 1);

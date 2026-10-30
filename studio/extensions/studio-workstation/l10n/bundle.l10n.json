@@ -836,6 +836,8 @@
   "Allowed prefixes, separated by commas": "Allowed prefixes, separated by commas",
   "Approve requested permissions": "Approve requested permissions",
   "Change this access grant? Existing consumers may stop working. Stored data will be kept.": "Change this access grant? Existing consumers may stop working. Stored data will be kept.",
+  "Database context changed.": "Database context changed.",
+  "No databases linked": "No databases linked",
   "Database": "Database",
   "Database alias": "Database alias",
   "Database approvals": "Database approvals",
