@@ -40,3 +40,46 @@ test('Chinese controls and empty state use the current UI language',async()=>{
  await i18n.changeLanguage('zh-CN');call.mockImplementation(async action=>action==='list'?{items:[]}:action==='capabilities'?{status:'ready',connected:true,enabled:true}:action==='preferences'?{enabled:true,automatic:true}:[]);
  render(<MemoryPage/>);await screen.findByText('暂无记忆');expect(screen.getByRole('button',{name:'记住'})).toBeEnabled();
 });
+test('revoked-login jobs explain the paused save and send one explicit retry',async()=>{
+ const base=call.getMockImplementation()!;
+ let status='failed';
+ let finish!:()=>void;
+ call.mockImplementation(async(action,input)=>{
+  if(action==='jobs')return [{id:'old-login-turn',status,reason:'authorization_changed',retryable:true}];
+  if(action==='retry') {await new Promise<void>(resolve=>finish=resolve);status='pending';return {};}
+  return base(action,input);
+ });
+ render(<MemoryPage/>);
+ await screen.findByRole('button',{name:record.content});
+ fireEvent.click(screen.getByText(/Extraction jobs/));
+ expect(screen.getByText('Memory save paused')).toBeVisible();
+ expect(screen.getByText(/login used for this turn is no longer valid/)).toBeVisible();
+ expect(screen.queryByText('Extraction failed')).toBeNull();
+ const retry=screen.getByRole('button',{name:'Retry extraction'});
+ fireEvent.click(retry);
+ await waitFor(()=>expect(retry).toBeDisabled());
+ fireEvent.click(retry);
+ expect(call.mock.calls.filter(args=>args[0]==='retry')).toHaveLength(1);
+ expect(call.mock.calls.find(args=>args[0]==='retry')?.[1]).toMatchObject({id:'old-login-turn'});
+ finish();
+ await screen.findByText('Pending extraction');
+});
+test('locked jobs disable retry and a rejected retry does not report an edit conflict',async()=>{
+ const base=call.getMockImplementation()!;
+ call.mockImplementation(async(action,input)=>{
+  if(action==='jobs')return [
+   {id:'locked',status:'failed',reason:'scope_locked',retryable:false},
+   {id:'retryable',status:'failed',reason:'extraction_failed',retryable:true},
+  ];
+  if(action==='retry')throw Object.assign(new Error('Automatic saving disabled'),{status:409});
+  return base(action,input);
+ });
+ render(<MemoryPage/>);
+ await screen.findByRole('button',{name:record.content});
+ fireEvent.click(screen.getByText(/Extraction jobs/));
+ const buttons=screen.getAllByRole('button',{name:'Retry extraction'});
+ expect(buttons[0]).toBeDisabled();
+ fireEvent.click(buttons[1]!);
+ await screen.findByText(/Could not retry/);
+ expect(screen.queryByText(/This memory changed/)).toBeNull();
+});

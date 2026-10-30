@@ -1,7 +1,7 @@
 import { afterEach, expect, test, vi } from "vitest";
 import { fireEvent, waitFor, within } from "@testing-library/react";
 import { createMemoryPanel } from "../panel";
-import { memoryText, createMemoryClient } from "../index";
+import { memoryText, memoryJobText, createMemoryClient } from "../index";
 const item = {
   id: "one",
   scope: "global",
@@ -100,6 +100,78 @@ test("account switches have accessible labels, save preferences and restore them
   expect(enabled).not.toBeChecked();
   expect(automatic).toBeChecked();
   expect(automatic).toBeDisabled();
+});
+test("revoked-login jobs explain the interruption and retry with the current host without duplicate clicks", async () => {
+  let finish!: () => void;
+  let status = "failed";
+  const call = vi.fn(async (action: string, input?: Record<string, unknown>) => {
+    if (action === "capabilities") return caps;
+    if (action === "preferences") return { enabled: true, automatic: true };
+    if (action === "scopes") return [];
+    if (action === "jobs") return [{ id: "old-login-turn", status, reason: "authorization_changed", retryable: true }];
+    if (action === "retry") {
+      expect(input).toEqual({ id: "old-login-turn" });
+      await new Promise<void>(resolve => finish = resolve);
+      status = "pending";
+      return {};
+    }
+    return { items: [] };
+  });
+  const { ui } = mount(call, true);
+  await ui.findByText("记忆保存已暂停");
+  expect(ui.getByText(memoryText("zh", "authorizationChanged"))).toBeVisible();
+  expect(ui.queryByText("提炼失败")).toBeNull();
+  const retry = ui.getByRole("button", { name: "重新提炼" });
+  await waitFor(() => expect(retry).toBeEnabled());
+  fireEvent.click(retry);
+  expect(retry).toBeDisabled();
+  expect(retry).toHaveTextContent("正在重试…");
+  fireEvent.click(retry);
+  expect(call.mock.calls.filter(args => args[0] === "retry")).toHaveLength(1);
+  finish();
+  await ui.findByText("待提炼");
+});
+test.each(["scope_locked", "automatic_disabled"])("%s jobs retain their reason and cannot retry", async reason => {
+  const { ui } = mount(async action => {
+    if (action === "capabilities") return caps;
+    if (action === "preferences") return { enabled: true, automatic: true };
+    if (action === "scopes") return [];
+    if (action === "jobs") return [{ id: "blocked", status: "failed", reason, retryable: false }];
+    return { items: [] };
+  }, true);
+  const text = memoryJobText({ status: "failed", reason });
+  await ui.findByText(memoryText("zh", text.detail!));
+  expect(ui.getByRole("button", { name: "重新提炼" })).toBeDisabled();
+});
+test("retry errors preserve the edit draft and distinguish a rejected retry from an edit conflict", async () => {
+  const { ui } = mount(async action => {
+    if (action === "capabilities") return caps;
+    if (action === "preferences") return { enabled: true, automatic: true };
+    if (action === "scopes") return [];
+    if (action === "jobs") return [{ id: "failed", status: "failed", reason: "extraction_failed", retryable: true }];
+    if (action === "get") return item;
+    if (action === "retry") throw Object.assign(new Error("Automatic memory is disabled."), { status: 409 });
+    return { items: [item] };
+  }, true);
+  fireEvent.click(await ui.findByRole("button", { name: /完整的中文记忆/ }));
+  fireEvent.click(await ui.findByRole("button", { name: "编辑" }));
+  const draft = ui.getByRole("textbox", { name: "记忆内容" });
+  fireEvent.input(draft, { target: { value: "尚未保存的草稿" } });
+  fireEvent.click(ui.getByRole("button", { name: "重新提炼" }));
+  await ui.findByText(memoryText("zh", "retryError"));
+  expect(draft).toHaveValue("尚未保存的草稿");
+  expect(ui.queryByText(memoryText("zh", "conflict"))).toBeNull();
+  await waitFor(() => expect(ui.getByRole("button", { name: "重新提炼" })).toBeEnabled());
+});
+test("job reasons have English fallbacks and distinguish running from queued extraction", () => {
+  for (const reason of ["authorization_changed", "automatic_disabled", "scope_locked", "extraction_interrupted", "unknown"]) {
+    const text = memoryJobText({ status: "failed", reason });
+    expect(memoryText("fr", text.label)).toMatch(/paused|failed/);
+    expect(memoryText("fr", text.detail!)).toBeTruthy();
+    expect(memoryText("zh-CN", text.detail!)).not.toBe(memoryText("en", text.detail!));
+  }
+  expect(memoryJobText({ status: "running" }).label).toBe("extracting");
+  expect(memoryJobText({ status: "pending" }).label).toBe("pending");
 });
 test("unconfigured service does not ask for sign-in or request unavailable records", async () => {
   const actions: string[] = [];

@@ -61,7 +61,17 @@ const en = {
   lockedNote:
     "Only the number of records is visible until project access is restored.",
   pending: "Pending extraction",
+  jobs: "Extraction jobs",
+  extracting: "Extracting memories…",
   failed: "Extraction failed",
+  interrupted: "Memory save paused",
+  authorizationChanged: "The login used for this turn is no longer valid. Retry with your current account authorization.",
+  automaticDisabled: "Turn on account memory and automatic saving before retrying.",
+  extractionInterrupted: "Processing was interrupted. Retry to continue saving this turn.",
+  extractionFailed: "The extraction service could not finish this turn. Retry when the service is available.",
+  jobScopeLocked: "Access to the original project must be restored before retrying.",
+  retrying: "Retrying…",
+  retryError: "Could not retry. Check automatic saving, service availability and access to this scope.",
   retry: "Retry extraction",
   confirmForget: "Forget this memory?",
   confirmClear: "Clear all memories in this scope?",
@@ -123,7 +133,17 @@ const zh: Record<keyof typeof en, string> = {
   locked: "权限已锁定",
   lockedNote: "恢复项目权限前，仅显示记录数量。",
   pending: "待提炼",
+  jobs: "提炼任务",
+  extracting: "正在提炼记忆…",
   failed: "提炼失败",
+  interrupted: "记忆保存已暂停",
+  authorizationChanged: "此回合使用的旧登录已失效，可使用当前账号授权重新提炼。",
+  automaticDisabled: "开启账号记忆和自动保存后，可重新提炼。",
+  extractionInterrupted: "处理过程被中断，可重新提炼以继续保存此回合。",
+  extractionFailed: "提炼服务未能完成此回合，请在服务恢复后重试。",
+  jobScopeLocked: "恢复原项目的访问权限后，可重新提炼。",
+  retrying: "正在重试…",
+  retryError: "重试未成功，请检查自动保存、服务状态及此范围的访问权限。",
   retry: "重新提炼",
   confirmForget: "遗忘这条记忆？",
   confirmClear: "清空此范围的全部记忆？",
@@ -140,6 +160,19 @@ const zh: Record<keyof typeof en, string> = {
 export type MemoryTextKey = keyof typeof en;
 export function memoryText(locale: string, key: MemoryTextKey): string {
   return /^zh/i.test(locale) ? zh[key] : en[key];
+}
+export function memoryJobText(job: { status: string; reason?: string }): {
+  label: MemoryTextKey; detail?: MemoryTextKey;
+} {
+  if (job.status !== "failed")
+    return { label: job.status === "running" ? "extracting" : "pending" };
+  switch (job.reason) {
+    case "authorization_changed": return { label: "interrupted", detail: "authorizationChanged" };
+    case "automatic_disabled": return { label: "interrupted", detail: "automaticDisabled" };
+    case "scope_locked": return { label: "interrupted", detail: "jobScopeLocked" };
+    case "extraction_interrupted": return { label: "failed", detail: "extractionInterrupted" };
+    default: return { label: "failed", detail: "extractionFailed" };
+  }
 }
 export const memoryEndpoint: Record<string, { path: string; method: string }> =
   {

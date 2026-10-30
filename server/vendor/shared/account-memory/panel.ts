@@ -1,5 +1,6 @@
 import {
   memoryText,
+  memoryJobText,
   type MemoryTextKey,
   type MemoryClient,
   type MemoryRecord,
@@ -170,6 +171,9 @@ export function createMemoryPanel(options: {
     enabled.disabled = pending || !available || caps?.readOnly;
     automatic.disabled = enabled.disabled || !prefs.enabled;
     scopes.disabled = origins.disabled = search.disabled = pending || (!available && !!layout.hidden);
+    for (const retry of status.querySelectorAll<HTMLButtonElement>(".am-job button"))
+      retry.disabled = pending || retry.dataset.retryable === "false" ||
+        !prefs.enabled || !prefs.automatic || !caps?.automatic;
   };
   function showUnavailable(key: MemoryTextKey) {
     available = false;
@@ -277,15 +281,26 @@ export function createMemoryPanel(options: {
             );
         scopes.value = scope;
         for (const job of jobs) {
-          const note = el(
-            "div",
-            t(job.status === "failed" ? "failed" : "pending"),
-            "am-job",
-          );
-          if (job.status === "failed")
-            note.append(
-              button("retry", () => void mutate("retry", { id: job.id })),
-            );
+          const note = el("div", undefined, "am-job");
+          const copy = el("div", undefined, "am-job-copy");
+          const text = memoryJobText(job);
+          copy.append(el("span", t(text.label)));
+          if (text.detail) copy.append(el("p", t(text.detail), "am-muted"));
+          note.append(copy);
+          if (job.status === "failed") {
+            const error = el("p", undefined, "am-error");
+            copy.append(error);
+            const retry = button("retry", () => {
+              const version = epoch;
+              error.textContent = "";
+              retry.textContent = t("retrying");
+              void mutate("retry", { id: job.id }, error).finally(() => {
+                if (valid(version)) retry.textContent = t("retry");
+              });
+            });
+            retry.dataset.retryable = String(job.retryable !== false);
+            note.append(retry);
+          }
           status.append(note);
         }
       }
@@ -529,7 +544,7 @@ export function createMemoryPanel(options: {
     } catch (cause) {
       if (valid(version))
         (error ?? status).textContent = t(
-          (cause as any)?.status === 409 ? "conflict" : "error",
+          action === "retry" ? "retryError" : (cause as any)?.status === 409 ? "conflict" : "error",
         );
     } finally {
       if (!disposed) {

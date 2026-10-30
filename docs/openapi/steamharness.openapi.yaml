@@ -4003,6 +4003,7 @@ paths:
       tags: [Account Memory]
       operationId: listMemoryJobs
       summary: 列出待提炼与失败任务
+      description: 返回当前账号最多 30 个排队、处理中或失败的任务。需要时提供原因 reason（authorization_changed、automatic_disabled、scope_locked、extraction_interrupted 或 extraction_failed），并根据账号偏好和范围权限返回 retryable。权限锁定的任务不暴露范围名称或正文。
       security:
         - MemoryManagementAuth: []
         - SessionCookie: []
@@ -4030,6 +4031,7 @@ paths:
       tags: [Account Memory]
       operationId: retryMemoryJob
       summary: 重试失败提炼任务
+      description: 校验原范围权限、账号偏好和提炼能力后，使用当前管理登录显式重新授权失败任务。保留任务身份、缓存候选和原范围快照，防止旧任务覆盖编辑或清空结果。任务不存在或属于其他账号返回 404，范围锁定返回 403，自动保存关闭或未配置提炼模型返回 409。排队、处理中或已完成的任务重复请求不会再次入队。
       security:
         - MemoryManagementAuth: []
         - SessionCookie: []

@@ -1,5 +1,7 @@
 # Unreleased
 
+- Fixed memory job feedback to distinguish paused authorization from extraction failures, explain recovery, and disable unavailable or repeated retries without reporting edit conflicts.
+
 - Added: Project configuration selects one subagent model from existing AI models, with inheritance, permission restrictions and unavailable-selection feedback.
 
 - Added: A localized Project memory switch follows existing configuration permissions, publication and next-run behavior.

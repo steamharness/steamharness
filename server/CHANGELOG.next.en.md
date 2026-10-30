@@ -1,5 +1,7 @@
 # Unreleased
 
+- Fixed memory extraction retries after a revoked login by validating the current login and original scope; retained task snapshots prevent retries from undoing edits or clears. Reduced settings query latency for accounts with many past directories.
+
 - Added: Project configuration accepts agent-model single selectors storing a configured model ID or empty inheritance, with existing permissions and publication rules.
 
 - Fixed file and PostgreSQL project configuration reads overwriting the account's selected profile during a temporary role fallback. Access recovery restores the saved selection; explicit changes and guest isolation remain enforced.

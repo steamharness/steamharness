@@ -350,22 +350,23 @@ export class AccountMemory {
         "INSERT INTO memory_scopes(user_id,scope) VALUES($1,$2) ON CONFLICT DO NOTHING",
         [identity.userId, scope],
       );
-      const token = "shmu_" + randomBytes(32).toString("base64url"),
-        expiresAt = new Date(Date.now() + 5 * 60000).toISOString();
-      await db.query(
-        "INSERT INTO memory_credentials(hash,user_id,parent_credential,parent_session,scope,read_only,expires_at) VALUES($1,$2,$3,$4,$5,$6,$7)",
-        [
-          hash(token),
-          identity.userId,
-          identity.credential ?? null,
-          identity.sessionHash ?? null,
-          scope,
-          body.readOnly === true,
-          expiresAt,
-        ],
-      );
-      return { token, scope, expiresAt };
+      return this.scopedCredential(identity, scope, body.readOnly === true, db);
     });
+  }
+  private async scopedCredential(
+    identity: MemoryIdentity,
+    scope: string,
+    readOnly: boolean,
+    db: pg.PoolClient,
+  ) {
+    const token = "shmu_" + randomBytes(32).toString("base64url"),
+      expiresAt = new Date(Date.now() + 5 * 60000).toISOString();
+    await db.query(
+      "INSERT INTO memory_credentials(hash,user_id,parent_credential,parent_session,scope,read_only,expires_at) VALUES($1,$2,$3,$4,$5,$6,$7)",
+      [hash(token), identity.userId, identity.credential ?? null,
+        identity.sessionHash ?? null, scope, readOnly, expiresAt],
+    );
+    return { token, scope, expiresAt };
   }
   async revoke(identity: MemoryIdentity) {
     if (!identity.manager)
@@ -394,23 +395,61 @@ export class AccountMemory {
       }
       if (!prefs.enabled && !identity.manager)
         throw new HttpError(403, 403, "Account memory is disabled.");
-      let all = identity.scope
-        ? ["global", identity.scope]
-        : [
-            "global",
-            ...(
-              await db.query(
-                "SELECT scope FROM memory_scopes WHERE user_id=$1",
-                [identity.userId],
-              )
-            ).rows.map((r) => r.scope),
-          ];
+      if (action === "retry") {
+        if (!identity.manager)
+          throw new HttpError(403, 403, "Account memory credential required.");
+        if (identity.readOnly)
+          throw new HttpError(403, 403, "Memory authorization is read-only.");
+        const job = (await db.query(
+          "SELECT scope,status FROM memory_jobs WHERE id=$1 AND user_id=$2 FOR UPDATE",
+          [b.id, identity.userId],
+        )).rows[0];
+        if (!job) throw new HttpError(404, 404, "Memory job not found.");
+        await this.authorizeScope(identity.userId, job.scope, db);
+        if (job.status !== "failed") return {};
+        if (!prefs.enabled || !prefs.automatic)
+          throw new HttpError(409, 409, "Automatic memory is disabled.");
+        if (!(await this.health()).automatic)
+          throw new HttpError(409, 409, "Memory extraction model is not configured.");
+        // A manual retry is authorized by the current login. Keep the original
+        // scope snapshots, result and receipts so edits/clears cannot be undone.
+        const grant = await this.scopedCredential(identity, job.scope, false, db);
+        const authorized: MemoryIdentity = {
+          userId: identity.userId, credential: hash(grant.token),
+          scope: job.scope, readOnly: false, manager: false,
+        };
+        await db.query(
+          "UPDATE memory_jobs SET identity=$3,status='pending',attempts=0,error=NULL,lease_until=NULL,available_at=now(),updated_at=now() WHERE id=$1 AND user_id=$2 AND status='failed'",
+          [b.id, identity.userId, JSON.stringify(authorized)],
+        );
+        return {};
+      }
+      if (action === "jobs" && !identity.manager)
+        throw new HttpError(403, 403, "Account memory credential required.");
+      const jobs = action === "jobs" ? (await db.query(
+        "SELECT id,scope,status,attempts,error,updated_at FROM memory_jobs WHERE user_id=$1 AND status IN ('pending','running','failed') ORDER BY created_at DESC LIMIT 30",
+        [identity.userId],
+      )).rows : undefined;
+      const filteredScope = action === "list" && b.scope
+        ? this.selectScope(identity, b.scope) : undefined;
+      const registered = !identity.scope && !jobs && !filteredScope ? (await db.query(
+        "SELECT scope,label FROM memory_scopes WHERE user_id=$1", [identity.userId],
+      )).rows : [];
+      let all: string[] = jobs ? jobs.map(job => job.scope)
+        : filteredScope ? [filteredScope]
+        : identity.scope ? ["global", identity.scope]
+        : ["global", ...registered.map(r => r.scope)];
       all = [...new Set(all)];
+      // Registered directories already belong to this account. Do not issue one
+      // ownership query per historical folder on every settings request.
+      const ownedDirectories = new Set(registered
+        .filter(r => r.scope.startsWith("directory:")).map(r => r.scope));
+      if (identity.scope?.startsWith("directory:")) ownedDirectories.add(identity.scope);
       const readable: string[] = [],
         locked: string[] = [];
       for (const s of all) {
         try {
-          await this.authorizeScope(identity.userId, s, db);
+          if (!ownedDirectories.has(s)) await this.authorizeScope(identity.userId, s, db);
           readable.push(s);
         } catch (e) {
           if (
@@ -424,12 +463,6 @@ export class AccountMemory {
       if (action === "scopes") {
         if (!identity.manager)
           throw new HttpError(403, 403, "Account memory credential required.");
-        const registered = (
-          await db.query(
-            "SELECT scope,label FROM memory_scopes WHERE user_id=$1",
-            [identity.userId],
-          )
-        ).rows;
         return registered.map((r) => ({
           scope: r.scope,
           label: locked.includes(r.scope) ? "" : r.label,
@@ -437,23 +470,16 @@ export class AccountMemory {
         }));
       }
       if (action === "jobs") {
-        if (!identity.manager)
-          throw new HttpError(403, 403, "Account memory credential required.");
-        return (
-          await db.query(
-            "SELECT id,status,attempts,error,updated_at FROM memory_jobs WHERE user_id=$1 AND status IN ('pending','running','failed') ORDER BY created_at DESC LIMIT 30",
-            [identity.userId],
-          )
-        ).rows;
-      }
-      if (action === "retry") {
-        if (!identity.manager)
-          throw new HttpError(403, 403, "Account memory credential required.");
-        await db.query(
-          "UPDATE memory_jobs SET status='pending',attempts=0,error=NULL,available_at=now() WHERE id=$1 AND user_id=$2 AND status='failed'",
-          [b.id, identity.userId],
-        );
-        return {};
+        return jobs!.map(({ scope, ...job }) => ({
+          ...job,
+          reason: locked.includes(scope) ? "scope_locked"
+            : job.error === "Authorization changed." ? "authorization_changed"
+            : job.error === "Automatic memory is disabled." ? "automatic_disabled"
+            : job.error === "Memory extraction interrupted." ? "extraction_interrupted"
+            : job.error ? "extraction_failed" : undefined,
+          retryable: job.status === "failed" && !identity.readOnly &&
+            prefs.enabled && prefs.automatic && !locked.includes(scope),
+        }));
       }
       if (action === "list") {
         for (const key of ["scope", "query", "origin", "cursor"])
@@ -698,7 +724,8 @@ export class AccountMemory {
         [
           job.id,
           denied || job.attempts >= 3 ? "failed" : "pending",
-          denied ? "Authorization changed." : "Memory extraction failed.",
+          e instanceof HttpError && e.message === "Automatic memory is disabled."
+            ? e.message : denied ? "Authorization changed." : "Memory extraction failed.",
         ],
       );
     }

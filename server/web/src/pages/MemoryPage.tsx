@@ -3,6 +3,7 @@ import { i18n, useTranslation } from "@steamharness/i18n/react";
 import {
   createMemoryClient,
   memoryText,
+  memoryJobText,
   type MemoryTextKey,
   type MemoryRecord,
 } from "@steamharness/account-memory";
@@ -171,7 +172,7 @@ export function MemoryPage() {
       setRefresh((v) => v + 1);
     } catch (e) {
       if (alive.current && epoch === generation.current)
-        setError((e as any).status === 409 ? t("conflict") : t("error"));
+        setError(action === "retry" ? t("retryError") : (e as any).status === 409 ? t("conflict") : t("error"));
     } finally {
       if (alive.current) setBusy(false);
     }
@@ -350,28 +351,32 @@ export function MemoryPage() {
         </p>
       )}
       {jobs.length > 0 && <details>
-        <summary className="cursor-pointer text-sm text-muted-foreground">{t("pending")} · {jobs.length}</summary>
+        <summary className="cursor-pointer text-sm text-muted-foreground">{t("jobs")} · {jobs.length}</summary>
         <div className="mt-2 flex max-h-36 flex-col gap-2 overflow-auto">
-      {jobs.map((job) => (
+      {jobs.map((job) => {
+        const text = memoryJobText(job);
+        return (
         <div
           key={job.id}
-          className="flex items-center gap-3 text-xs text-muted-foreground"
+          className="flex items-center justify-between gap-3"
         >
-          <Badge variant="secondary">
-            {t(job.status === "failed" ? "failed" : "pending")}
-          </Badge>
+          <div className="flex min-w-0 flex-col gap-1">
+            <Badge variant="secondary">{t(text.label)}</Badge>
+            {text.detail && <p className="text-sm text-muted-foreground">{t(text.detail)}</p>}
+          </div>
           {job.status === "failed" && (
             <Button
               variant="ghost"
               size="sm"
-              disabled={busy}
+              disabled={busy || job.retryable === false || !preferences.enabled || !preferences.automatic || !automaticAvailable}
               onClick={() => void mutate("retry", { id: job.id })}
             >
               {t("retry")}
             </Button>
           )}
         </div>
-      ))}
+        );
+      })}
         </div>
       </details>}
       <div

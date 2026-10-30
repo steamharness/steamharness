@@ -146,6 +146,10 @@
 .am-status:empty, .am-error:empty { display: none; }
 .am-error { color: var(--vscode-errorForeground, var(--error, #b42318)); }
 .am-job { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.am-job + .am-job { border-block-start: 1px solid var(--am-border); margin-block-start: 8px; padding-block-start: 8px; }
+.am-job-copy { min-width: 0; overflow-wrap: anywhere; }
+.am-job-copy > span { font-weight: 600; }
+.am-job button { flex: 0 0 auto; }
 .am-detail > button:first-child { align-self: flex-start; }
 @container account-memory (max-width: 760px) {
   .am-toolbar { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }

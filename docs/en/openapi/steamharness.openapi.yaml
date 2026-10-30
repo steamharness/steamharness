@@ -4055,6 +4055,7 @@ paths:
       tags: [Account Memory]
       operationId: listMemoryJobs
       summary: List pending and failed extraction jobs
+      description: Returns up to 30 account-owned pending, running or failed jobs. Each job includes reason (authorization_changed, automatic_disabled, scope_locked, extraction_interrupted or extraction_failed) when applicable and retryable based on current account preferences and scope access. Locked jobs do not expose scope labels or content.
       security:
         - MemoryManagementAuth: []
         - SessionCookie: []
@@ -4082,6 +4083,7 @@ paths:
       tags: [Account Memory]
       operationId: retryMemoryJob
       summary: Retry failed extraction
+      description: Explicitly reauthorizes a failed job with the current management login after checking the original scope, account preferences and extraction availability. Preserves task identity, cached candidates and the original scope snapshot to prevent old tasks from undoing edits or clears. Missing or other-account jobs return 404; locked scopes return 403; disabled automatic saving or an unconfigured extraction model returns 409. Repeated requests for an already pending, running or completed job do not enqueue duplicate work.
       security:
         - MemoryManagementAuth: []
         - SessionCookie: []

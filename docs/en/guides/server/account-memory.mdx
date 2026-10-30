@@ -45,6 +45,8 @@ Manual saves and BM25 retrieval work without an extraction model or embeddings. 
 
 Without an extraction model, new turn submissions return `accepted: false` without creating guaranteed-to-fail jobs. Temporary service failures return 503 so the host retains pending turns for retry after recovery. Existing jobs keep their stable IDs.
 
+Extraction jobs distinguish queued work, running work, saves paused by expired authorization, and extraction service failures. After the original login is revoked, the account can explicitly retry using its current login to authorize the original scope. Background workers never switch logins automatically. Restore project access before retrying a locked scope, and enable account memory and automatic saving first. Retries preserve the original task ID, scope and extraction snapshot, so forgotten, cleared or manually superseded content cannot be recreated.
+
 ### Automatic development startup
 
 On a development branch, `pnpm -C server dev` and `pnpm -C server start:local` start a local Memory Service and wait for its health check before starting Server. No separate terminal or service build is needed. The supervisor assigns a free loopback port and generates an internal credential. Server hot reloads reuse that service; exiting stops it. IPC disconnection also stops the service if its supervisor is killed.

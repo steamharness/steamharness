@@ -4,6 +4,8 @@
 
 - Resource panels now list distinct databases by their host-managed names, with one option for databases shared across entries. Removed the local/server selector; a read-only icon shows the database location. Name updates and switches between shared entries preserve data and drafts.
 
+- Fixed memory job feedback to distinguish paused authorization from extraction failures, explain recovery, and disable unavailable or repeated retries without reporting edit conflicts.
+
 - Added Studio Control diagnostics for open Kanban entries and read-only page queries, scoped to the aggregate directory, entry and current configuration so the assistant can verify actual image readiness.
 
 - Add: Trace now includes an Errors filter for node, tool and run failures and model retry reasons, retaining diagnostics after success. Composer parameter and operation alerts can be dismissed and ignore late errors from other conversations.

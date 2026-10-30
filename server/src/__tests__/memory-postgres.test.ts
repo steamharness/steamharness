@@ -313,6 +313,30 @@ test(
         (await call(grantA.token, "/memories/" + created.id)).body.data.content,
         "人工修改",
       );
+      const pastDirectories = Array.from({ length: 80 }, () => `directory:${randomUUID()}`);
+      await pool.query(
+        "INSERT INTO memory_scopes(user_id,scope,label) SELECT 'a',scope,'Past folder' FROM unnest($1::text[]) AS scope",
+        [pastDirectories],
+      );
+      const memoryConnection = await (memory as any).pool.connect();
+      const originalQuery = memoryConnection.query;
+      let settingsQueries = 0;
+      memoryConnection.query = function (...args: any[]) {
+        settingsQueries++;
+        return originalQuery.apply(this, args);
+      };
+      memoryConnection.release();
+      try {
+        const settings = await Promise.all([
+          call(a, "/memory/preferences"), call(a, "/memory/scopes"),
+          call(a, "/memory/jobs"), call(a, "/memories?scope=global"),
+        ]);
+        assert.ok(settings.every(r => r.status === 200));
+        assert.ok(settingsQueries < 60, `Settings must not issue one authorization query per past folder (${settingsQueries} queries)`);
+      } finally {
+        memoryConnection.query = originalQuery;
+        await pool.query("DELETE FROM memory_scopes WHERE user_id='a' AND scope=ANY($1::text[])", [pastDirectories]);
+      }
       const turn = {
         turnId: "stable-turn",
         messages: [
@@ -471,6 +495,16 @@ test(
         },
       ]);
       await waitJob(deniedJob, "failed");
+      const retryPath = `/memory/jobs/${deniedJob}/retry`;
+      assert.equal((await call(grantA.token, retryPath, "POST", {})).status, 403,
+        "a project worker cannot authorize retries");
+      assert.equal((await call(b, retryPath, "POST", {})).status, 404,
+        "another account cannot retry this task");
+      assert.equal((await call(a, retryPath, "POST", {})).status, 403,
+        "retry must recheck current project access");
+      const lockedJobs = (await call(a, "/memory/jobs")).body.data;
+      assert.equal(lockedJobs.find((j: any) => j.id === deniedJob).reason, "scope_locked");
+      assert.equal(lockedJobs.find((j: any) => j.id === deniedJob).retryable, false);
       await pool.query(
         "INSERT INTO project_members(project_id,user_id,role) VALUES('p','a','owner')",
       );
@@ -483,6 +517,42 @@ test(
         ).body.data.items.length,
         0,
       );
+      const snapshot = (await pool.query("SELECT states,payload_hash FROM memory_jobs WHERE id=$1", [deniedJob])).rows[0];
+      await call(a, "/memory/preferences", "PATCH", { enabled: true, automatic: false });
+      assert.equal((await call(a, retryPath, "POST", {})).status, 409,
+        "disabled automatic saving cannot be bypassed by retry");
+      await call(a, "/memory/preferences", "PATCH", { enabled: true, automatic: true });
+      await call(a, "/memory/clear", "POST", { scope: "project:p", operationId: "clear-before-retry" });
+      assert.equal((await call(a, retryPath, "POST", {})).status, 200);
+      assert.equal((await call(a, retryPath, "POST", {})).status, 200,
+        "a repeated retry acknowledgement does not duplicate work");
+      await waitJob(deniedJob, "done");
+      assert.deepEqual((await pool.query("SELECT states,payload_hash FROM memory_jobs WHERE id=$1", [deniedJob])).rows[0], snapshot,
+        "retry keeps the original deletion/edit snapshot and stable payload identity");
+      assert.equal((await call(a, "/memories?query=" + encodeURIComponent("权限撤销"))).body.data.items.length, 0,
+        "retrying a cleared task cannot recreate its old candidates");
+
+      const oldKey = await accounts.createApiKey({ userId: "a", name: "old login", source: "cli", scopes: [] });
+      const oldManager = await memory.issue("a", oldKey.record.id);
+      const oldGrant = (await call(oldManager, "/memory/grants", "POST", { directory: true })).body.data;
+      const revoked = defer();
+      const revokedJob = (await call(oldGrant.token, "/memory/turns", "POST", {
+        ...turn, turnId: "revoked-login-retry",
+      })).body.data.jobId;
+      await revoked.began;
+      await pool.query("UPDATE api_keys SET revoked_at=now() WHERE id=$1", [oldKey.record.id]);
+      revoked.release([{ scope: oldGrant.scope, content: "重新授权后保存的约定", sources: [turn.messages[0]] }]);
+      await waitJob(revokedJob, "failed");
+      const failedJob = (await call(a, "/memory/jobs")).body.data.find((j: any) => j.id === revokedJob);
+      assert.equal(failedJob.reason, "authorization_changed");
+      assert.equal(failedJob.retryable, true);
+      assert.equal((await call(oldManager, `/memory/jobs/${revokedJob}/retry`, "POST", {})).status, 401);
+      assert.equal((await call(a, `/memory/jobs/${revokedJob}/retry`, "POST", {})).status, 200,
+        "explicit retry replaces a revoked parent with the current manager authorization");
+      await waitJob(revokedJob, "done");
+      const recovered = (await call(a, "/memories?query=" + encodeURIComponent("重新授权"))).body.data.items;
+      assert.equal(recovered[0]?.content, "重新授权后保存的约定");
+      assert.equal(recovered[0]?.scope, oldGrant.scope);
       const privatePayloads = (
         await pool.query("SELECT payload FROM memory_jobs WHERE user_id=$1", [
           "a",
