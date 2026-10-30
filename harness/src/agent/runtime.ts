@@ -1,4 +1,4 @@
-import { getProjectConfiguration, withProjectConfiguration } from "../configuration";
+import { currentConfigurationValues, getProjectConfiguration, withProjectConfiguration } from "../configuration";
 import { getUserSettings, withUserSettings, type UserSettings } from "../user-settings";
 import { resolveAgentSystemAIInput } from "./model-resolution";
 import path from "node:path";
@@ -135,25 +135,47 @@ export async function createAgentRuntime(
     : resolveAgentSystemAIInput(input, original, signal));
   const closers: (() => Promise<void>)[] = [];
   let resolveInput: ((input: AgentInput, signal?: AbortSignal) => Promise<AgentInput>) | undefined;
-  if (resolveHostModels) {
-    // Keep bridges and the host snapshot alive for durable and background tasks.
-    // A later host update belongs to the next runtime, never to this one.
-    const resolved = await resolveModel({} as AgentInput);
-    closers.push(resolved.close);
-    options = { ...options, ...resolved.input };
-    resolveInput = async (input, signal) => {
-      if (input.model === undefined && input.provider === undefined && input.baseUrl === undefined && input.apiKey === undefined) {
-        return { ...input, ...resolved.input, modelAttributes: resolved.input.modelAttributes === undefined ? input.modelAttributes
-          : { ...resolved.input.modelAttributes, ...input.modelAttributes,
-            ...(resolved.input.modelAttributes.webSearch === undefined ? {} : { webSearch: resolved.input.modelAttributes.webSearch }) } };
-      }
-      const next = await resolveModel(input, signal);
-      closers.push(next.close);
-      return next.input;
-    };
-  }
   try {
+    if (resolveHostModels) {
+      // Keep bridges and the host snapshot alive for durable and background tasks.
+      // A later host update belongs to the next runtime, never to this one.
+      const resolved = await resolveModel({} as AgentInput);
+      closers.push(resolved.close);
+      options = { ...options, ...resolved.input };
+      resolveInput = async (input, signal) => {
+        if (input.model === undefined && input.provider === undefined && input.baseUrl === undefined && input.apiKey === undefined) {
+          return { ...input, ...resolved.input, modelAttributes: resolved.input.modelAttributes === undefined ? input.modelAttributes
+            : { ...resolved.input.modelAttributes, ...input.modelAttributes,
+              ...(resolved.input.modelAttributes.webSearch === undefined ? {} : { webSearch: resolved.input.modelAttributes.webSearch }) } };
+        }
+        const next = await resolveModel(input, signal);
+        closers.push(next.close);
+        return next.input;
+      };
+    }
     const pi = options.pi ?? await createPiRuntime(options);
+    const subagents = options.session?.subagents;
+    if (subagents?.modelConfiguration !== undefined && (typeof subagents.modelConfiguration !== "string" || !subagents.modelConfiguration.trim())) {
+      throw new HarnessError({ type: "input_validation", message: "The subagent model configuration field name must be a non-empty string." });
+    }
+    if (subagents?.modelConfiguration) {
+      const selected = (configuration?.values ?? currentConfigurationValues())[subagents.modelConfiguration];
+      if (selected !== undefined && typeof selected !== "string") throw new HarnessError({ type: "input_validation", message: "The subagent model configuration must select one model or follow the main model." });
+      if (typeof selected === "string" && selected !== "") {
+        // Resolve against this run's project snapshot, independently of the main
+        // model's source. Each child provider owns its credentials and bridge.
+        const resolve = () => resolveAgentSystemAIInput({ errCode: 0, errMessage: "", prompt: "", model: selected }, { modelSource: "project" }, undefined);
+        const child = await (configuration ? withProjectConfiguration(configuration, resolve) : resolve());
+        closers.push(child.close);
+        const childPi = await createPiRuntime({ ...child.input, provider: `subagent-${selected}`, models: pi.models, webSearch: false });
+        pi.models = childPi.models;
+        const model = { provider: childPi.providerId, modelId: childPi.modelId };
+        options = { ...options, models: pi.models, session: { ...options.session, subagents: { ...subagents,
+          model, models: [...(subagents.models ?? []), model] } } };
+      } else {
+        options = { ...options, session: { ...options.session, subagents: { ...subagents, model: undefined } } };
+      }
+    }
     return new ProjectAgentRuntime(pi, options, resolveInput, closers, resolveHostModels ? settings : undefined);
   } catch (error) {
     await Promise.allSettled(closers.map(close => close()));

@@ -957,5 +957,7 @@
   "Phase: {0}": "阶段：{0}",
   "{0}/{1} completed": "已完成 {0}/{1}",
   "Current activity: {0}": "当前活动：{0}",
-  "Error: {0}": "错误：{0}"
+  "Error: {0}": "错误：{0}",
+  "Follow main model": "跟随主模型",
+  "Unavailable model: {0}": "模型不可用：{0}"
 }

@@ -80,6 +80,29 @@ test("host configuration views omit project AI while preserving saved models for
   } finally { await rm(directory, { recursive: true, force: true }); }
 });
 
+test("project subagent selectors retain project models in Studio views and frozen snapshots", async () => {
+  const directory = await mkdtemp(path.join(os.tmpdir(), "agent-child-model-modes-"));
+  try {
+    await declareConfigurationFixture(directory);
+    await writeFile(path.join(directory, "index.ts"), "throw new Error('do not execute'); steamharness.createAgentConversationProject({ modelSource: 'user-settings' });");
+    await writeFile(path.join(directory, "configuration.json"), JSON.stringify({ version: 1, fields: [
+      { name: "CHILD_MODEL", type: "string", control: "agent-model", defaultValue: "" },
+    ] }));
+    const host = settings([user]);
+    const store = await createLocalProjectConfigurationStore(directory, { rootDir: path.join(directory, ".profiles"), userSettings: () => host });
+    let state = await store.read();
+    assert.ok(state.fields.some(field => field.name === key));
+    state = await store.dispatch({ action: "save", id: state.activeConfigurationId, revision: state.revision,
+      values: { [key]: [project], CHILD_MODEL: project.id } }) as typeof state;
+    const frozen = await store.snapshot({ runId: "child-run" });
+    assert.deepEqual(frozen.values[key], [project]);
+    assert.equal(frozen.values.CHILD_MODEL, project.id);
+    assert.deepEqual((await store.snapshot({ runId: "child-run" })).values, frozen.values);
+    assert.deepEqual((await store.snapshot({ configuration: frozen })).values, frozen.values);
+    assert.ok(withUserSettings(host, () => readProjectConfigurationDefinition(directory)).fields.some(field => field.name === key));
+  } finally { await rm(directory, { recursive: true, force: true }); }
+});
+
 test("model-source discovery follows static aliases and refreshes without changing Agent detection", async () => {
   const directory = await mkdtemp(path.join(os.tmpdir(), "agent-source-discovery-"));
   try {

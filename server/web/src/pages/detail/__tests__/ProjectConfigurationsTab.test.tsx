@@ -1,7 +1,7 @@
 import {act,fireEvent,render as renderPage,screen,waitFor} from "@testing-library/react";
 import {afterEach,beforeEach,expect,it,vi} from "vitest";
 import {i18n} from "@steamharness/i18n/react";
-import {AGENT_MEMORY_CONFIGURATION_FIELD,AGENT_MEMORY_CONFIGURATION_KEY,applyConfigurationAction,bindConfigurationProfiles,configurationAccessView,bindConfigurationTemplate,configurationSnapshot,createPublicationDraft,freezeConfigurationTemplate,createConfigurationState} from "@steamharness/project-configuration";
+import {AGENT_MEMORY_CONFIGURATION_FIELD,AGENT_MEMORY_CONFIGURATION_KEY,AGENT_MODELS_CONFIGURATION_FIELD,AGENT_MODELS_CONFIGURATION_KEY,applyConfigurationAction,bindConfigurationProfiles,configurationAccessView,bindConfigurationTemplate,configurationSnapshot,createPublicationDraft,freezeConfigurationTemplate,createConfigurationState} from "@steamharness/project-configuration";
 import {apiClient} from "../../../api";
 import {ProjectConfigurationsTab} from "../ProjectConfigurationsTab";
 import type {Summary} from "../../../types";
@@ -14,6 +14,41 @@ async function openConfiguration(name="Default") {fireEvent.click(await screen.f
 async function render(ui:Parameters<typeof renderPage>[0]) {const view=renderPage(ui);await openConfiguration();return view;}
 const imageFile={id:"wf_ab12",name:"底图.png",mimeType:"image/png",size:3,storage:"server" as const,projectId:"project-a"};
 const fileState=()=>createConfigurationState([{name:"image",type:"file",accept:["image/png"]}],()=>"default");
+it("selects one existing model for subagents and saves an explicit return to inheritance",async()=>{
+ let state=createConfigurationState([AGENT_MODELS_CONFIGURATION_FIELD,{name:"CHILD_MODEL",type:"string",control:"agent-model",label:"Subagent model",defaultValue:""}],()=>"default");
+ state.configurations[0]!.values[AGENT_MODELS_CONFIGURATION_KEY]=[{id:"child",name:"Research",source:"system",model:"research-model",credentialId:"system"}];
+ const service=vi.spyOn(apiClient,"projectConfigurations").mockImplementation(async(_id,call)=>ok(call.action==="get"?state:(state=applyConfigurationAction(state,call,()=>"new"))));
+ await render(<ProjectConfigurationsTab entryId="main" project={project}/>);
+ const select=await screen.findByRole("combobox",{name:"Subagent model"});
+ expect(select).toHaveTextContent("Follow main model");
+ fireEvent.keyDown(select,{key:"ArrowDown"});
+ fireEvent.click(await screen.findByRole("option",{name:"Research · research-model"}));
+ fireEvent.click(screen.getByRole("button",{name:"Save"}));
+ await waitFor(()=>expect(state.configurations[0]!.values.CHILD_MODEL).toBe("child"));
+ await waitFor(()=>expect(screen.getByRole("button",{name:"Save"})).toBeDisabled());
+ fireEvent.keyDown(screen.getByRole("combobox",{name:"Subagent model"}),{key:"ArrowDown"});
+ fireEvent.click(await screen.findByRole("option",{name:"Follow main model"}));
+ fireEvent.click(screen.getByRole("button",{name:"Save"}));
+ await waitFor(()=>expect(service).toHaveBeenLastCalledWith(project.id,expect.objectContaining({action:"save",values:expect.objectContaining({CHILD_MODEL:""})}),"draft","main"));
+});
+it.each([["en","Unavailable model: removed","Save"],["zh-CN","模型不可用：removed","保存"]])("preserves removed model IDs and filters forbidden third-party models in %s",async(language,unavailable,save)=>{
+ await i18n.changeLanguage(language);
+ const state=createConfigurationState([{...AGENT_MODELS_CONFIGURATION_FIELD,allowThirdParty:false},{name:"CHILD_MODEL",type:"string",control:"agent-model",label:"Subagent model",defaultValue:""}],()=>"default");
+ state.agentModelPolicy={allowThirdParty:false};
+ state.configurations[0]!.values.CHILD_MODEL="removed";
+ state.configurations[0]!.values[AGENT_MODELS_CONFIGURATION_KEY]=[
+   {id:"allowed",name:"Allowed",source:"system",model:"system-model",credentialId:"system"},
+   {id:"forbidden",name:"Forbidden",source:"third-party",model:"custom-model",apiKind:"openai-completions",baseUrl:"https://fixture.test/v1",apiKey:"fixture-only"},
+ ];
+ vi.spyOn(apiClient,"projectConfigurations").mockResolvedValue(ok(state));
+ await render(<ProjectConfigurationsTab entryId="main" project={project}/>);
+ const select=await screen.findByRole("combobox",{name:"Subagent model"});
+ expect(select).toHaveTextContent(unavailable);expect(select).toHaveAttribute("aria-invalid","true");
+ expect(screen.getByRole("button",{name:save})).toBeDisabled();
+ fireEvent.keyDown(select,{key:"ArrowDown"});
+ expect(await screen.findByRole("option",{name:"Allowed · system-model"})).toBeTruthy();
+ expect(screen.queryByRole("option",{name:/Forbidden/})).toBeNull();
+});
 it("uploads files directly to server storage before applying the reference to the draft",async()=>{
  let state=fileState();const service=vi.spyOn(apiClient,"projectConfigurations").mockImplementation(async(_id,call)=>ok(call.action==="get"?state:(state=applyConfigurationAction(state,call,()=>"new"))));
  let finish!:(value:any)=>void;const upload=vi.spyOn(apiClient,"uploadProjectConfigurationFile").mockImplementation(()=>new Promise(resolve=>{finish=resolve;}));

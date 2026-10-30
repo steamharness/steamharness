@@ -99,6 +99,12 @@ Lists belong to named profiles and freeze with execution snapshots. Saving anoth
 
 Conversation and Studio Assistant support switching models within the same conversation. Editing, deleting or replacing configured models preserves completed replies and the model names recorded for those turns. Subsequent messages use the currently selected available model and retain conversation context. If the new model fails to start, that send operation returns the error while completed replies remain visible.
 
+## Subagent model selection
+
+Declare a string field with `control: "agent-model"`, `defaultValue: ""` and no `multiple`, `secret` or static `options`. Set `session.subagents.modelConfiguration` to its field name. The single selector reuses the current profile's AI model list: an empty string follows the main model (or an explicit role default), and a non-empty value stores one stable configured model ID for all new child roles and anonymous tasks. The main model keeps its current selection. See [Create an Agent](/en/core-api/create-agent).
+
+Projects with this selector keep their AI model list visible in Studio even when the main model uses Settings. Add the desired model to that list before selecting it. Editing or deleting a selected entry never silently chooses another one; removed IDs display as unavailable and execution fails until repaired or explicitly returned to inheritance. System-only model restrictions, profile permissions, publication rules and frozen run snapshots still apply. The selector cannot be a multiselect; this version shares one selected model across all subagents.
+
 ## Runtime access
 
 ```ts

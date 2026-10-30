@@ -1,4 +1,5 @@
 import { t } from '../localization';
+import { parseAgentModels } from '@steamharness/project-configuration';
 import { iconButton, iconHtml, updateIcon } from './ui';
 import { requestAction } from './action-dialog';
 import { AGENT_MEMORY_CONFIGURATION_KEY,AGENT_MEMORY_CONFIGURATION_FIELD,AGENT_MODELS_CONFIGURATION_KEY,applyTemplateValues,configurationCapability,configurationSnapshot,configurationPointerPart,createPublicationDraft,freezeConfigurationTemplate,type ConfigurationPublicationDraft, parseConfigurationField, parseConfigurationFile, validateConfigurationFileSelection, type ProjectConfigurationFile, type ProjectConfigurationAction, type ProjectConfigurationField, type ProjectConfigurationState, type ConfigurationValues } from '@steamharness/project-configuration';
@@ -91,6 +92,22 @@ export function mountProjectConfigurations(host: Host, embedded?: { open(): void
   let latest: ProjectConfigurationState | undefined, draft: ProjectConfigurationState | undefined, dirty = false, working = false, editingField = false;
   const readers = new Map<string, () => unknown>(), overrides = new Set<string>(), resets = new Map<string, HTMLButtonElement>();
   const modelControls: ReturnType<typeof createAgentModelsControl>[] = [];
+  const modelSelectors = new Set<HTMLSelectElement>();
+  function refreshModelSelectors() {
+    let models: ReturnType<typeof parseAgentModels>;
+    try { models = parseAgentModels(readers.get(AGENT_MODELS_CONFIGURATION_KEY)?.() ?? []); }
+    catch { return; } // A model dialog may still have an unapplied draft.
+    const policy = draft?.agentModelPolicy ?? draft?.fields.find(field => field.control === 'ai-models');
+    models = models.filter(model => policy?.allowThirdParty !== false || model.source === 'system');
+    for (const select of modelSelectors) {
+      const selected = select.value;
+      select.replaceChildren(new Option(t('Follow main model'), ''));
+      for (const model of models) select.add(new Option(`${model.name} · ${model.model}`, model.id));
+      const missing = !!selected && !models.some(model => model.id === selected);
+      if (missing) select.add(new Option(t('Unavailable model: {0}', selected), selected));
+      select.value = selected; select.setAttribute('aria-invalid', String(missing));
+    }
+  }
   let authenticationRevision: number | undefined;
   const pending = new Map<string,{resolve(value:any):void;reject(error:Error):void;timer:ReturnType<typeof setTimeout>}>();
   const error = (e: unknown) => { for(const output of [status,publicationStatus]){output.textContent = t((e as Error).message ?? String(e)); output.classList.add('error');} };
@@ -142,7 +159,7 @@ export function mountProjectConfigurations(host: Host, embedded?: { open(): void
     const requestId = crypto.randomUUID();
     return new Promise((resolve,reject) => { const timer = setTimeout(() => { pending.delete(requestId); reject(new Error(t('The request timed out. Check the current status.'))); },timeout); pending.set(requestId,{resolve,reject,timer}); host.postMessage({...message,requestId}); });
   }
-  function changed(key?: string) { if (key) overrides.add(key); dirty = true; updateActions(); status.textContent = t('Unsaved changes'); status.classList.remove('error'); }
+  function changed(key?: string) { if (key) overrides.add(key); if (key === AGENT_MODELS_CONFIGURATION_KEY) refreshModelSelectors(); dirty = true; updateActions(); status.textContent = t('Unsaved changes'); status.classList.remove('error'); }
   function lockControls(root: ParentNode): () => void {
     const controls = [...root.querySelectorAll<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement | HTMLButtonElement>('input,textarea,select,button')].map(control => [control, control.disabled] as const);
     for (const [control] of controls) control.disabled = true;
@@ -463,7 +480,7 @@ export function mountProjectConfigurations(host: Host, embedded?: { open(): void
     if ((editingField || working) && draft) return;
     if ((dirty||publicationDirty) && draft) { if (draft.revision !== next.revision) error(new Error(t('Configuration changed. Your draft is preserved. Refresh before saving.'))); return; }
     if (draft?.revision === next.revision && JSON.stringify(draft)===JSON.stringify(next)) return;
-    modelControls.forEach(control=>control.dispose());
+    modelControls.forEach(control=>control.dispose()); modelSelectors.clear();
     draft = structuredClone(next); dirty = false; fields.replaceChildren(); fieldRows.clear(); readers.clear(); overrides.clear(); resets.clear(); modelControls.length = 0;
     if(detailId&&!next.configurations.some(c=>c.id===detailId)){detailId=undefined;publicationDraft=undefined;showView(false);}
     renderList(next);
@@ -500,7 +517,12 @@ export function mountProjectConfigurations(host: Host, embedded?: { open(): void
         const help=document.createElement('small');help.textContent=field.description??t('Files are uploaded to the server. Save to apply the selection.');row.append(help);fields.append(row);continue;
       }
       let input: HTMLInputElement|HTMLTextAreaElement|HTMLSelectElement;
-      if (field.options) { const select=document.createElement('select'); select.multiple=!!field.multiple; for (const option of field.options) { const o=new Option(option.label??option.value,option.value); o.selected=field.multiple ? Array.isArray(value)&&value.includes(option.value) : value===option.value; select.add(o); } if(!field.multiple)select.value=value===undefined?'':String(value); input=select; readers.set(field.name,()=>field.multiple ? Array.from(select.selectedOptions).map(o=>o.value) : select.value); }
+      if (field.control === 'agent-model') {
+        const select = document.createElement('select'), selected = typeof value === 'string' ? value : '';
+        select.add(new Option(selected, selected)); select.value = selected; modelSelectors.add(select);
+        input = select; readers.set(field.name, () => select.value);
+      }
+      else if (field.options) { const select=document.createElement('select'); select.multiple=!!field.multiple; for (const option of field.options) { const o=new Option(option.label??option.value,option.value); o.selected=field.multiple ? Array.isArray(value)&&value.includes(option.value) : value===option.value; select.add(o); } if(!field.multiple)select.value=value===undefined?'':String(value); input=select; readers.set(field.name,()=>field.multiple ? Array.from(select.selectedOptions).map(o=>o.value) : select.value); }
       else if (field.type==='json'||field.multiple) { const text=document.createElement('textarea'); text.rows=4; text.value=value===undefined?'':JSON.stringify(value,null,2); input=text; readers.set(field.name,()=>JSON.parse(text.value)); }
       else { const text=document.createElement('input'); text.type=field.type==='boolean'?'checkbox':field.type==='number'?'number':field.secret?'password':'text'; text.step='any'; text.value=value===undefined?'':String(value); text.checked=value===true; input=text; readers.set(field.name,()=>field.type==='boolean'?text.checked:field.type==='number'?(text.value.trim()?Number(text.value):NaN):text.value); }
       if(field.type==='json' && value && typeof value==='object' && !Array.isArray(value)) {
@@ -524,7 +546,7 @@ export function mountProjectConfigurations(host: Host, embedded?: { open(): void
       const help=document.createElement('small'); help.textContent=fieldDescription(field); row.append(help);
       fields.append(row);
     }
-    updateActions();
+    refreshModelSelectors(); updateActions();
   }
   function focusField(field: string) {
     const row=fieldRows.get(field);

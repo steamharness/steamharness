@@ -104,6 +104,8 @@ export const serverWeb: typeof EnServerWeb = {
   configurationMemory: "项目记忆",
   configurationMemoryDescription: "允许此项目召回和保存账号私有记忆。修改从下一次执行生效，关闭后保留已有记忆。",
   configurationAiModels: "AI 模型",
+  configurationFollowMainModel: "跟随主模型",
+  configurationUnavailableModel: "模型不可用：{{model}}",
   configurationAiSource: "AI 来源",
   configurationAiSystem: "系统 AI",
   configurationAiThirdParty: "第三方 AI",

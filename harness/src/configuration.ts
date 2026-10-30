@@ -179,6 +179,7 @@ function addAgentConfigurationFields(definition: ProjectConfigurationDefinition,
 
 /** Host presentation only: keep saved project models intact for standalone CLI use. */
 function withoutProjectAgentModels(state: ProjectConfigurationState): ProjectConfigurationState {
+  if (state.fields.some(field => field.control === "agent-model")) return state;
   const fields = (items: ProjectConfigurationField[]) => items.filter(field => field.name !== AGENT_MODELS_CONFIGURATION_KEY);
   const values = (items: ConfigurationValues) => {
     const { [AGENT_MODELS_CONFIGURATION_KEY]: _ignored, ...remaining } = items;
@@ -201,7 +202,7 @@ export function readProjectConfigurationDefinition(projectDir: string, entryId?:
   projectDir = resolved.rootDir;
   const definition: ProjectConfigurationDefinition = file && existsSync(file) ? parseConfigurationDefinition(JSON.parse(readFileSync(file, "utf8"))) : { version: 1, fields: [] };
   addAgentConfigurationFields(definition, projectDir, resolved.modulePath);
-  if (usesOnlyUserAgentModels(projectDir, resolved.modulePath)) {
+  if (usesOnlyUserAgentModels(projectDir, resolved.modulePath) && !definition.fields.some(field => field.control === "agent-model")) {
     definition.agentModelPolicy = configurationAgentModelPolicy(definition);
     definition.fields = definition.fields.filter(field => field.name !== AGENT_MODELS_CONFIGURATION_KEY);
   }
@@ -275,12 +276,12 @@ async function createProjectConfigurationStoreForIdentity(projectDir: string, op
   const runKey = key;
   const settingsModelsOnly = () => usesOnlyUserAgentModels(directory, options.entryFile, agentModelSources, options.userSettings?.() ?? getUserSettings());
   const view = (state: ProjectConfigurationState) => settingsModelsOnly() ? withoutProjectAgentModels(state) : state;
-  const snapshotView = (snapshot: ProjectConfigurationSnapshot): ProjectConfigurationSnapshot => {
-    if (!settingsModelsOnly()) return snapshot;
+  const snapshotView = (snapshot: ProjectConfigurationSnapshot, state: ProjectConfigurationState): ProjectConfigurationSnapshot => {
+    if (!settingsModelsOnly() || state.fields.some(field => field.control === "agent-model")) return snapshot;
     const { [AGENT_MODELS_CONFIGURATION_KEY]: _ignored, ...values } = snapshot.values;
     return { ...snapshot, values };
   };
-  const validateSnapshot = (state: ProjectConfigurationState, snapshot: ProjectConfigurationSnapshot) => validateConfigurationSnapshotAccess(view(state), snapshotView(snapshot), options.access);
+  const validateSnapshot = (state: ProjectConfigurationState, snapshot: ProjectConfigurationSnapshot) => validateConfigurationSnapshotAccess(view(state), snapshotView(snapshot, state), options.access);
   const declared = async () => {
     let definition: ProjectConfigurationDefinition = {version:1,fields:[]};
     try { definition = parseConfigurationDefinition(JSON.parse(await readFile(options.configurationFile ?? path.join(directory, ".no-entry-configuration"), "utf8"))); }

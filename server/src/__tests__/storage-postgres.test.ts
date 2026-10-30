@@ -137,9 +137,9 @@ test("PostgreSQL preserves source AI policy through stale drafts and hidden publ
     assert.deepEqual(preview.publicationPreview!.agentModelPolicy,{allowThirdParty:false});
     await storage.publish({projectName:id,createdByUserId:"author",expectedSourceHash:state.sourceHash,expectedConfigurationRevisions:{main:state.publication!.revision}});
     const template=(await db.readConfigurationTemplate(id,"main","1.0.0"))!;
-    assert.deepEqual(template.agentModelPolicy,{allowThirdParty:false});assert.deepEqual(template.fields,[]);assert.ok(!JSON.stringify(template).includes(third.apiKey));
+    assert.deepEqual(template.agentModelPolicy,{allowThirdParty:false});assert.ok(!template.fields.some(field=>field.name===key));assert.ok(!JSON.stringify(template).includes(third.apiKey));
     const recipient=await storage.projectConfigurations({projectName:id,actorId:"recipient",target:"1.0.0"},{action:"get"}) as ProjectConfigurationState;
-    assert.deepEqual(recipient.fields,[]);assert.deepEqual(configurationSnapshot(recipient).agentModelPolicy,{allowThirdParty:false});
+    assert.ok(!recipient.fields.some(field=>field.name===key));assert.deepEqual(configurationSnapshot(recipient).agentModelPolicy,{allowThirdParty:false});
   } finally {
     await accounts.close();await db.close();await rm(root,{recursive:true,force:true});
     await admin.query(`drop schema ${schema} cascade`);await admin.end();

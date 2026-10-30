@@ -74,6 +74,8 @@ Core Agent projects show AI models first in configuration details. Add system su
 
 Authors can declare `allowThirdParty: false` on the model field in the source `configuration.json`. The editor then only offers system AI. Third-party saves and imports fail atomically, and publishing the model field retains this rule. Existing third-party entries display as unavailable and can be removed or replaced with system models. Execution also rejects custom endpoint overrides.
 
+Projects can declare a single Subagent model selector with `control: "agent-model"`. Choose Follow main model or one entry from the same AI models list; removed selections remain visibly unavailable. See [Project configurations](/en/concepts/project-configuration#subagent-model-selection) for the declaration and Core binding.
+
 The configuration page opens with a profile list. Click a profile to view its fields and publication permissions, then use Back to list to return. The active profile has a highlighted row and an In use badge; other profiles offer a Use this configuration button. Viewing a profile preserves the execution selection. Switching disables duplicate actions, and failure keeps the previous selection and allows retrying. Unsaved values and permission rules must be saved or discarded before returning.
 
 Edit fields directly and save changes together. Use the reset icon to restore a default or clear a field without a default; no separate enable checkbox is needed.

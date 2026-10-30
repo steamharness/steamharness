@@ -92,6 +92,34 @@ async function openPanel() {
 }
 const button=(text:string)=>[...document.querySelectorAll<HTMLButtonElement>('button')].find(b=>b.ariaLabel===text||b.textContent===text)!;
 const title=()=>document.querySelector<HTMLInputElement>('input[aria-label="title"]')!;
+it('selects one configured model for child agents and saves an explicit return to inheritance', async()=>{
+ state=createConfigurationState([AGENT_MODELS_CONFIGURATION_FIELD,{name:'CHILD_MODEL',type:'string',control:'agent-model',defaultValue:''}],()=> 'profile');
+ state.configurations[0]!.values[AGENT_MODELS_CONFIGURATION_KEY]=[
+  {id:'one',name:'Main',source:'system',credentialId:'plan',model:'main-model'},
+  {id:'two',name:'Research',source:'system',credentialId:'plan',model:'research-model'},
+ ];
+ await openPanel();
+ let select=document.querySelector<HTMLSelectElement>('select[aria-label="CHILD_MODEL"]')!;
+ expect([...select.options].map(option=>option.value)).toEqual(['','one','two']);
+ expect(select.options[0].label).toBe('Follow main model');expect(select.value).toBe('');
+ select.value='two';select.dispatchEvent(new Event('change'));button('Save').click();await settle();
+ expect(state.configurations[0]!.values.CHILD_MODEL).toBe('two');
+ select=document.querySelector<HTMLSelectElement>('select[aria-label="CHILD_MODEL"]')!;
+ expect(select.value).toBe('two');select.value='';select.dispatchEvent(new Event('change'));button('Save').click();await settle();
+ expect(state.configurations[0]!.values.CHILD_MODEL).toBe('');
+});
+it('preserves a removed child model as unavailable instead of silently changing its selection', async()=>{
+ state=createConfigurationState([AGENT_MODELS_CONFIGURATION_FIELD,{name:'CHILD_MODEL',type:'string',control:'agent-model',defaultValue:''}],()=> 'profile');
+ state.configurations[0]!.values={CHILD_MODEL:'one',[AGENT_MODELS_CONFIGURATION_KEY]:[{id:'one',name:'Research',source:'system',credentialId:'plan',model:'research-model'}]};
+ await openPanel();
+ button('Delete model: Research').click();
+ const select=document.querySelector<HTMLSelectElement>('select[aria-label="CHILD_MODEL"]')!;
+ expect(select.value).toBe('one');expect(select.getAttribute('aria-invalid')).toBe('true');
+ expect(select.selectedOptions[0].textContent).toBe('Unavailable model: one');
+ select.value='';select.dispatchEvent(new Event('change'));button('Save').click();await settle();
+ expect(state.configurations[0]!.values.CHILD_MODEL).toBe('');
+ expect(state.configurations[0]!.values[AGENT_MODELS_CONFIGURATION_KEY]).toEqual([]);
+});
 it('saves Agent models through the profile service and blocks unapplied model drafts',async()=>{
  state=createConfigurationState([AGENT_MODELS_CONFIGURATION_FIELD,{name:'title',type:'string'}],()=> 'profile');
  await openPanel();button('Add model').click();button('Third-party AI').click();

@@ -80,7 +80,7 @@ const agent = await workflow.createAgent({
 
 | `session` 字段 | 说明 |
 | --- | --- |
-| `subagents` | 显式启用委派：`{ tools: string[], maxAgents?: number, models?: { provider, modelId }[], definitions?: AgentDefinition[] }`。工具只能取父 Agent 与白名单的交集；默认继承父模型，显式选模型须命中精确 provider/modelId 白名单；子 Agent 禁止再次委派，活动委派默认最多 4 个。 |
+| `subagents` | 显式启用委派：`{ tools: string[], maxAgents?: number, modelConfiguration?: string, model?: { provider, modelId }, models?: { provider, modelId }[], definitions?: AgentDefinition[] }`。工具只能取父 Agent 与白名单的交集；默认继承父模型，也可配置统一子模型；代码指定模型须命中精确 provider/modelId 白名单；子 Agent 禁止再次委派，活动委派默认最多 4 个。 |
 | `nativeTools` | Pi Durable `ToolRegistration[]`；可用 `api.executeTool()` 嵌套调用，仍执行 caller 限制、权限审批及取消传播。 |
 | `compaction` | `{ enabled?, reserveTokens?, keepRecentTokens?, backgroundTokens? }`。默认在每次模型请求前检查，达到上下文窗口的 90% 时先压缩；`reserveTokens` 可要求更早预留空间，`backgroundTokens` 可提前启动后台压缩。`enabled: false` 关闭自动阈值与溢出恢复，仍可手动压缩。 |
 | `planFork` | `initial`、`current` 或 `asOf`（默认）：分叉计划为空初始值、当前值或分叉点值。 |
@@ -433,6 +433,16 @@ const session = {
 ```
 
 `AgentDefinition` 还接受可选 `model: { provider, modelId }`、`effort`；省略时继承父会话。模型覆盖必须在 `subagents.models` 白名单内。角色提示替换项目协调者提示，平台规则继续生效；工具取父授权、总白名单、角色快照与当前配置的交集。恢复后再次检查权限，子 Agent 不能委派。
+
+项目可在 `configuration.json` 声明单选模型字段：
+
+```json
+{ "name": "SUBAGENT_MODEL", "type": "string", "control": "agent-model", "label": "子 Agent 模型", "defaultValue": "" }
+```
+
+在上述 `subagents` 中设置 `modelConfiguration: "SUBAGENT_MODEL"`。配置面板复用 `STEAMHARNESS_AGENT_MODELS`，提供“跟随主模型”（空字符串）或一个模型条目 ID。指定模型统一用于新建的命名与匿名子任务，优先于角色模型；主模型不变。空值恢复代码中的角色默认值，未定义角色模型时跟随主模型。修改配置从下一次执行创建的子任务开始生效；恢复沿用原快照。即使主模型来自 Studio 设置，也保留项目模型列表供子模型使用。无效、删除或未授权的模型明确报错，系统 AI 限制照常生效；连接、凭据和代理独立管理，effort 按子模型能力收紧。
+
+开发者也可直接设置 `subagents.model: { provider, modelId }`，并在注册的 `subagents.models` 中授权它；无需配置控件。设置 `modelConfiguration` 后以字段值为准，选择“跟随主模型”会清除这个统一覆盖。已有子会话保留创建时模型。
 
 `AgentSessionCommand` 的 `type: "subagent"` 支持以下 action，所有命令均携带稳定 `requestId`：
 

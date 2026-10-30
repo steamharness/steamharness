@@ -1,5 +1,7 @@
 # Unreleased
 
+- Added: Select one shared subagent model in project configuration or define it in code. Reuse configured models with inheritance, independent connections and credentials, capability clamping and system-AI authorization.
+
 - Durable delegation tasks expose `childConversationId` for anonymous and named subagents while active, settled and reopened, allowing conversation and Trace views to open the corresponding child.
 
 - Fixed: Apply up to 10 fallback retries to every model request error without classifying its text or status, including streams, durable sessions, deferred responses and summaries. Retain partial output, committed tool results and per-attempt usage; discard unfinished calls, keep queued inputs pending on failure, and honor cancellation immediately.

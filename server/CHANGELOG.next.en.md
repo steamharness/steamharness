@@ -1,5 +1,7 @@
 # Unreleased
 
+- Added: Project configuration accepts agent-model single selectors storing a configured model ID or empty inheritance, with existing permissions and publication rules.
+
 - Fixed file and PostgreSQL project configuration reads overwriting the account's selected profile during a temporary role fallback. Access recovery restores the saved selection; explicit changes and guest isolation remain enforced.
 
 - Fixed project pagination to exclude retained records without aggregate entry declarations consistently with detail reads, preserving their versions and stored data.

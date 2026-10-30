@@ -24,7 +24,7 @@ export interface ProjectConfigurationField {
   required?: boolean;
   secret?: boolean;
   multiple?: boolean;
-  control?: "text" | "textarea" | "select" | "radio" | "checkboxes" | "ai-models";
+  control?: "text" | "textarea" | "select" | "radio" | "checkboxes" | "ai-models" | "agent-model";
   /** Only for the reserved AI models field; configured in project source. */
   allowThirdParty?: boolean;
   options?: { value: string; label?: string }[];
@@ -129,7 +129,8 @@ function parseConfigurationFieldValue(value: unknown, stored = false): ProjectCo
   if (value.multiple && value.type !== "string" && value.type !== "file") return invalid("Only string and file fields support multiple values.");
   if (value.accept !== undefined && (value.type !== "file" || !Array.isArray(value.accept) || !value.accept.every(entry => typeof entry === "string" && /^(?:\.[a-zA-Z0-9.+_-]+|[a-zA-Z0-9!#$&^_.+-]+\/(?:[a-zA-Z0-9!#$&^_.+-]+|\*))$/.test(entry)))) return invalid("Invalid configuration file accept types.");
   if (value.type === "file" && value.control !== undefined) return invalid("File fields use the file picker control.");
-  if (value.control !== undefined && !["text", "textarea", "select", "radio", "checkboxes", "ai-models"].includes(String(value.control))) return invalid("Invalid configuration control.");
+  if (value.control !== undefined && !["text", "textarea", "select", "radio", "checkboxes", "ai-models", "agent-model"].includes(String(value.control))) return invalid("Invalid configuration control.");
+  if (value.control === "agent-model" && (value.type !== "string" || value.multiple || value.options !== undefined || value.secret)) return invalid("Agent model selection requires a single, non-secret string field without static options.");
   if (value.control === "ai-models" && (value.type !== "json" || value.name !== AGENT_MODELS_CONFIGURATION_KEY || value.multiple)) return invalid("AI models require the reserved JSON configuration field.");
   if (value.name === AGENT_MODELS_CONFIGURATION_KEY && (value.type !== "json" || value.control !== "ai-models")) return invalid("AI models require the reserved JSON configuration field.");
   if (value.name === AGENT_MEMORY_CONFIGURATION_KEY && (value.type !== "boolean" || value.secret || value.control !== undefined)) return invalid("Project memory requires the reserved boolean configuration field.");
@@ -285,6 +286,10 @@ function validateSharingRule(value: unknown): void {
 }
 export function validateConfigurationValue(field: ProjectConfigurationField, value: unknown): asserts value is ConfigurationValue {
   if (field.control === "ai-models") { parseAgentModels(value, field); return; }
+  if (field.control === "agent-model") {
+    if (typeof value !== "string" || value !== "" && (!/^[A-Za-z0-9_-]+$/.test(value) || value.length > 200)) return invalid("Agent model selection must be empty or a configured model ID.");
+    return;
+  }
   if (field.type === "file") {
     const files = field.multiple ? value : [value];
     if (!Array.isArray(files) || files.length > 32) return invalid(`Invalid value for configuration field: ${field.name}.`);

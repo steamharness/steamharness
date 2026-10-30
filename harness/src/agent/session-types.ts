@@ -63,6 +63,10 @@ export interface AgentSessionOptions {
     /** Explicit subset of the parent's tools. Subagents cannot delegate again. */
     tools: string[];
     maxAgents?: number;
+    /** Default for all child roles and anonymous delegations. Must be in models. */
+    model?: { provider: string; modelId: string };
+    /** Project configuration field with control="agent-model". Empty means inherit the main model. */
+    modelConfiguration?: string;
     /** Allowed overrides, using registered provider/modelId pairs. Omit to inherit the parent's model only. */
     models?: { provider: string; modelId: string }[];
     definitions?: readonly AgentDefinition[];

@@ -79,7 +79,7 @@ The returned runtime exposes:
 
 | `session` field | Meaning |
 | --- | --- |
-| `subagents` | Opt in with `{ tools: string[], maxAgents?: number, models?: { provider, modelId }[], definitions?: AgentDefinition[] }`. Child tools intersect the parent tools and this allowlist. Children inherit the parent model unless selecting an exact allowed provider/modelId. Children cannot delegate again; the default limit is 4 active delegations. |
+| `subagents` | Opt in with `{ tools: string[], maxAgents?: number, modelConfiguration?: string, model?: { provider, modelId }, models?: { provider, modelId }[], definitions?: AgentDefinition[] }`. Child tools intersect the parent tools and this allowlist. Children inherit the parent model or use a shared child selection. Code-defined models must match an allowed provider/modelId. Children cannot delegate again; the default limit is 4 active delegations. |
 | `nativeTools` | Pi Durable `ToolRegistration[]`. Nested `api.executeTool()` calls retain caller restrictions, approval hooks, and cancellation propagation. |
 | `compaction` | `{ enabled?, reserveTokens?, keepRecentTokens?, backgroundTokens? }`. Check before every model request and compact at 90% of the context window by default. `reserveTokens` can reserve space earlier; `backgroundTokens` can start background compaction earlier. `enabled: false` disables automatic threshold and overflow recovery while retaining manual compaction. |
 | `planFork` | `initial`, `current`, or `asOf` (default): inherit the empty initial plan, current plan, or plan at the fork point. |
@@ -431,6 +431,16 @@ const session = {
 ```
 
 `AgentDefinition` also accepts optional `model: { provider, modelId }` and `effort`; omitted values inherit the parent. Overrides must match `subagents.models`. Role prompts replace project coordinator instructions while platform rules remain. Tools intersect parent authorization, the overall allowlist, the role snapshot and current configuration. Recovery rechecks access; children cannot delegate.
+
+Projects can declare a single-model field in `configuration.json`:
+
+```json
+{ "name": "SUBAGENT_MODEL", "type": "string", "control": "agent-model", "label": "Subagent model", "defaultValue": "" }
+```
+
+Set `modelConfiguration: "SUBAGENT_MODEL"` in `subagents` above. The editor reuses `STEAMHARNESS_AGENT_MODELS` and offers Follow main model (an empty string) or one configured model ID. A selected model applies to new named and anonymous child tasks ahead of role defaults, without changing the main model. An empty value restores code-defined role defaults, or the main model when no role model is set. Saved changes apply to children created by the next execution; recovery retains its original snapshot. Project models remain available for child selection when Studio Settings supplies the main model. Invalid, removed or unauthorized models fail explicitly, including system-AI-only restrictions. Connections, credentials and proxies have independent lifetimes, and effort is clamped to child capabilities.
+
+Developers can instead set `subagents.model: { provider, modelId }` and authorize the registered pair in `subagents.models`, without an editor field. When `modelConfiguration` is set, the field takes precedence and Follow main model clears this shared override. Existing children retain their creation-time model.
 
 All `type: "subagent"` commands carry a stable `requestId`:
 

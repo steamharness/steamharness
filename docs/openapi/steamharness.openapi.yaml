@@ -6602,9 +6602,12 @@ components:
             - radio
             - checkboxes
             - ai-models
+            - agent-model
           description: ai-models is reserved for the STEAMHARNESS_AGENT_MODELS JSON field. Entries contain id, name,
             model and source. System entries use credentialId; third-party entries use apiKind, baseUrl and
             apiKey. Values are private unless explicitly included in publication.
+            agent-model is a non-secret, single string selector without static options. Empty follows the main
+            model; otherwise the value is one stable ID from STEAMHARNESS_AGENT_MODELS.
         allowThirdParty:
           type: boolean
           description: Only valid for ai-models. Set false in configuration.json to allow only system AI. Saves and

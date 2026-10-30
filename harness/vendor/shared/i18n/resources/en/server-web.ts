@@ -102,6 +102,8 @@ export const serverWeb = {
   configurationMemory: "Project memory",
   configurationMemoryDescription: "Allow this project to recall and save private account memories. Changes apply to the next run. Turning this off keeps existing memories.",
   configurationAiModels: "AI models",
+  configurationFollowMainModel: "Follow main model",
+  configurationUnavailableModel: "Unavailable model: {{model}}",
   configurationAiSource: "AI source",
   configurationAiSystem: "System AI",
   configurationAiThirdParty: "Third-party AI",

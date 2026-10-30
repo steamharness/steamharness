@@ -1,5 +1,7 @@
 # Unreleased
 
+- Added: Project configuration selects one subagent model from existing AI models, with inheritance, permission restrictions and unavailable-selection feedback.
+
 - Added: A localized Project memory switch follows existing configuration permissions, publication and next-run behavior.
 
 - Fixed memory settings page padding and section spacing to match other settings pages and keep content away from page edges.

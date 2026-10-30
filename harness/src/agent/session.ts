@@ -1,7 +1,7 @@
 import { createHash, randomUUID } from "node:crypto";
 import { BACKGROUND_CONTEXT as context } from "@earendil-works/chord/context";
 import type { JsonValue } from "@earendil-works/chord";
-import { Type, type AssistantMessage, type Models, type Usage } from "@earendil-works/pi-ai";
+import { Type, clampThinkingLevel, type AssistantMessage, type Models, type Usage } from "@earendil-works/pi-ai";
 import {
   AgentDoc, CompactionTask, InboxDoc, LiveDoc, ProviderDoc, UsageDoc, configure, defineDoc, defineExtension, defineTask,
   type Conversation, type ConversationId, type ConversationWatch, type EntryId, type EntryRecord,
@@ -78,6 +78,7 @@ export class DurableAgentSession {
 
   install(registry: Registry): void {
     if (this.options.subagents && (!Number.isSafeInteger(this.options.subagents.maxAgents ?? 4) || (this.options.subagents.maxAgents ?? 4) < 1)) throw new Error("maxAgents must be a positive integer.");
+    if (this.options.subagents?.model && !this.allowedChildModel(this.options.subagents.model)) throw this.childModelError();
     const definitions = this.options.subagents?.definitions ?? [];
     if (new Set(definitions.map(item => item.id)).size !== definitions.length) throw new Error("Agent role ids must be unique.");
     for (const definition of definitions) {
@@ -85,7 +86,7 @@ export class DurableAgentSession {
         || definition.systemPrompt.length > 100_000 || !Array.isArray(definition.tools)
         || definition.tools.some(name => !this.options.subagents!.tools.includes(name) || ["subagent", "update_plan"].includes(name))
         || !Number.isSafeInteger(definition.maxConcurrency ?? 1) || (definition.maxConcurrency ?? 1) < 1
-        || definition.model && !this.allowedChildModel(definition.model)
+        || !this.options.subagents?.model && definition.model && !this.allowedChildModel(definition.model)
         || definition.effort && !["off", "minimal", "low", "medium", "high", "xhigh", "max"].includes(definition.effort)) {
         throw new Error(`Invalid agent role definition: ${definition.id}`);
       }
@@ -107,7 +108,7 @@ export class DurableAgentSession {
         return { output: [{ type: "text", text: "Plan saved." }] };
       },
     }];
-    const childModels = this.options.subagents?.models?.filter(model => this.models.getModel(model.provider, model.modelId)) ?? [];
+    const childModels = this.options.subagents?.model ? [] : this.options.subagents?.models?.filter(model => this.models.getModel(model.provider, model.modelId)) ?? [];
     if (this.options.subagents) tools.push({
       name: "subagent", description: [
         "Delegate a focused task. Background results return to this conversation. Subagents cannot delegate again.",
@@ -115,7 +116,8 @@ export class DurableAgentSession {
           "Management actions: list; get/wait/stop/retry with taskId; send with taskId, task and mode (steer/followUp). Retry continues committed context and requires reconciliation of uncertain side effects.",
           `Roles: ${definitions.map(item => `${item.id}: ${item.description}`).join("; ")}`] : []),
         `Child tools are restricted to the parent's enabled tools intersected with: ${this.options.subagents.tools.join(", ") || "(none)"}. Only delegate tasks those tools can perform.`,
-        "Omit model to inherit the current parent's model and credentials.",
+        this.options.subagents.model ? "Omit model. The project has selected a shared model for all subagents."
+          : "Omit model to inherit the current parent's model and credentials, unless the role defines its own default.",
         "To read an existing delegation result, provide resultTaskId=taskId without task, background or model. This never starts another child. For a paged result, keep resultTaskId and continue with resultOffset=nextOffset and resultHash.",
         RESULT_PAGE_DESCRIPTION,
         childModels.length ? `Allowed model overrides: ${childModels.map(model => `${model.provider}/${model.modelId}`).join(", ")}. Use only these exact provider/modelId pairs.`
@@ -209,7 +211,7 @@ export class DurableAgentSession {
     const definition = role?.definition as unknown as AgentDefinition | null;
     const current = definition && this.options.subagents.definitions?.find(item => item.id === definition.id);
     if (definition && !current) throw new Error("The agent role is no longer authorized by this project.");
-    if (definition?.model && !this.allowedChildModel(definition.model)) throw this.childModelError();
+    if (!this.options.subagents.model && definition?.model && !this.allowedChildModel(definition.model)) throw this.childModelError();
     if (toolName) {
       const parent = await this.harness.conversation(record.owner.conversationId, context);
       const tools = (await parent?.agent(context))?.tools ?? [];
@@ -264,7 +266,7 @@ export class DurableAgentSession {
             scope:Type.Optional(Type.Union([Type.Literal("global"),Type.Literal("current")])),
             id:Type.Optional(Type.String()),query:Type.Optional(Type.String()),cursor:Type.Optional(Type.String()),
           },{additionalProperties:false})} : tool);
-          const model = definition?.model ?? task.input.model;
+          const model = this.options.subagents.model ?? definition?.model ?? task.input.model;
           if (model && !this.allowedChildModel(model)) throw this.childModelError();
           // Admission and child creation share the Session commit line. Waiters have
           // no slot until admitted; a restart reconstructs this queue from task IDs.
@@ -294,8 +296,11 @@ export class DurableAgentSession {
                 if (last) child = await tx.forkConversation(task.input.retryChildId as ConversationId, last.id, { ownership: { kind: "task", taskId: task.id } });
               }
               child ??= await tx.createConversation({ ownership: { kind: "task", taskId: task.id } });
+              const childModel = model ?? parentAgent.model!;
+              const registered = this.models.getModel(childModel.provider, childModel.modelId);
+              const effort = (definition?.effort ?? parentAgent.thinkingLevel ?? "off") as "medium";
               await configure(tx, child.id, { tools: tools as ToolRegistration[], modelTools: modelTools as ToolRegistration[],
-                model: model ?? parentAgent.model!, thinkingLevel: (definition?.effort ?? parentAgent.thinkingLevel) as "medium",
+                model: childModel, thinkingLevel: registered ? clampThinkingLevel(registered, effort) : effort,
                 ...(parentAgent.cwd ? { cwd: parentAgent.cwd } : {}) });
               if (definition) {
                 const role = await tx.doc(AgentRoleDoc, child.id);

@@ -1,5 +1,7 @@
 # Unreleased
 
+- Added: Project configuration reuses the AI model list for a single subagent selection with Follow main model. Removed selections stay unavailable, and Studio can configure child models while using Settings for the main model.
+
 - Added read-only Kanban runtime diagnostics with the latest 50 bridge requests, file routing, HTTP status, pending reads and safe failure categories, plus queries of explicitly read-only page methods.
 
 - Fixed the subagent summary to use a neutral color. Red is limited to failed tasks and error details, so historical failures do not make the entire entry look like an error alert.

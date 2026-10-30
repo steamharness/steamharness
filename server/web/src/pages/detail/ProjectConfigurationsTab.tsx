@@ -13,6 +13,13 @@ import {Tabs, TabsList, TabsTrigger, TabsContent} from "@/components/ui/tabs";
 import { formatBytes } from "../../utils/format";
 import { cn } from "@/lib/utils";
 import { Switch } from "@/components/ui/switch";
+import { AGENT_MODELS_CONFIGURATION_KEY, parseAgentModels } from "@steamharness/project-configuration";
+
+function configuredModelOptions(raw: string, systemOnly: boolean) {
+  try { return parseAgentModels(JSON.parse(raw || "[]")).filter(model => !systemOnly || model.source === "system")
+    .map(model => ({ value: model.id, label: `${model.name} · ${model.model}` })); }
+  catch { return []; }
+}
 
 function fieldValueText(field:ProjectConfigurationField, value:unknown):string {
   return value===undefined?"":field.type==="json"||field.type==="file"||field.multiple?JSON.stringify(value,null,2):String(value);
@@ -211,6 +218,7 @@ export function ProjectConfigurationsTab({project,entryId}: Pick<DetailPageProps
               {custom&&<div className="flex gap-1"><Button variant="ghost" size="icon" disabled={busy} title={t("configurationEditField")} aria-label={t("configurationEditField")} onClick={()=>startField(f)}><PencilIcon/></Button><Button variant="ghost" size="icon" disabled={busy} title={t("configurationDeleteField")} aria-label={t("configurationDeleteField")} onClick={()=>{if(clean())void dispatch({action:"field.delete",key:f.name});}}><Trash2Icon/></Button></div>}
             </div>
             {f.control==="ai-models"?<AgentModelsInput key={`${current.id}:${state.revision}:${editorGeneration}`} value={value} disabled={disabled} allowThirdParty={f.allowThirdParty} onChange={change} onDraftChange={dirty=>{modelDraftRef.current=dirty;if(dirty)edit();}}/>
+            :f.control==="agent-model"?<ProjectModelSelect id={`configuration-${f.name}`} value={value} disabled={disabled} models={values[AGENT_MODELS_CONFIGURATION_KEY]??"[]"} systemOnly={state.agentModelPolicy?.allowThirdParty===false} onChange={change}/>
             :f.type==="file"?<ConfigurationFileInput field={f} value={value} busy={disabled} uploading={uploading===f.name} overridden={set} onUpload={files=>void uploadFiles(f,files)} onClear={reset}/>
             :f.options&&f.multiple?<FieldSet disabled={disabled} className="gap-3"><FieldLegend variant="label" className="sr-only">{f.label||f.name}</FieldLegend><div className="flex flex-wrap gap-x-4 gap-y-2">{f.options.map(option=>{let selected:string[]=[];try{const parsed:unknown=JSON.parse(value||"[]");if(Array.isArray(parsed))selected=parsed.filter((item):item is string=>typeof item==="string");}catch{}return <Field key={option.value} orientation="horizontal" className="w-auto"><Checkbox id={`configuration-${f.name}-${option.value}`} checked={selected.includes(option.value)} onCheckedChange={checked=>change(JSON.stringify(checked?[...selected,option.value]:selected.filter(v=>v!==option.value)))}/><FieldLabel htmlFor={`configuration-${f.name}-${option.value}`}>{option.label||option.value}</FieldLabel></Field>;})}</div></FieldSet>
             :f.options?<SelectField id={`configuration-${f.name}`} disabled={disabled} value={value} options={f.options.map(o=>({value:o.value,label:o.label||o.value}))} onValueChange={change}/>
@@ -246,6 +254,15 @@ export function ProjectConfigurationsTab({project,entryId}: Pick<DetailPageProps
       <DialogFooter><Button disabled={busy} onClick={()=>{try{const parsed=parseConfigurationField({...field,...(defaultText.trim()?{defaultValue:JSON.parse(defaultText)}:{defaultValue:undefined}),options:field?.type==="string"&&optionsText.trim()?optionsText.split("\n").filter(Boolean).map(value=>({value})):undefined,accept:field?.type==="file"?field.accept?.map(value=>value.trim()).filter(Boolean):undefined});void dispatch({action:"field.save",field:parsed,key:originalKey||undefined});}catch(e){setError((e as Error).message);}}}>{t("configurationSave")}</Button></DialogFooter>
     </DialogContent></Dialog>
   </section>;
+}
+
+function ProjectModelSelect({ id, value, disabled, models, systemOnly, onChange }: { id: string; value: string; disabled: boolean; models: string; systemOnly: boolean; onChange(value: string): void }) {
+  const { t } = useTranslation("serverWeb");
+  const options = configuredModelOptions(models, systemOnly);
+  const missing = !!value && !options.some(option => option.value === value);
+  return <SelectField id={id} value={value} disabled={disabled} aria-invalid={missing} onValueChange={onChange}
+    options={[{ value: "", label: t("configurationFollowMainModel") }, ...options,
+      ...(missing ? [{ value, label: t("configurationUnavailableModel", { model: value }) }] : [])]}/>;
 }
 
 function ConfigurationFileInput({field,value,busy,uploading,overridden,onUpload,onClear}:{field:ProjectConfigurationField;value:string;busy:boolean;uploading:boolean;overridden:boolean;onUpload(files:File[]):void;onClear():void}) {
