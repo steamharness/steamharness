@@ -113,6 +113,8 @@ export interface AgentSessionTask {
   blockedReason?: string;
   toolName?: string;
   callId?: string;
+  /** Owned child for anonymous as well as named delegations, including settled history. */
+  childConversationId?: number;
   /** Submitted tool arguments, also available after the task has settled. */
   arguments?: unknown;
   replay?: "safe" | "never";

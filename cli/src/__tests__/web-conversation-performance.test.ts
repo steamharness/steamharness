@@ -5,7 +5,7 @@ import type { Attachment, ConversationMessage, Project } from '../web/workflow-t
 const host = vi.hoisted(() => ({ postMessage: vi.fn(), getState: vi.fn(), setState: vi.fn() }));
 const update = vi.hoisted(() => vi.fn());
 vi.mock('../web/ui/host', () => ({ acquireProjectHost: () => host }));
-vi.mock('../web/ui/conversation-output', () => ({ ConversationOutput: class { update = update; dispose() {} tick() {} } }));
+vi.mock('../web/ui/conversation-output', () => ({ ConversationOutput: class { update = update; updateSubagents() {} moveSubagentsTo() {} dispose() {} tick() {} } }));
 vi.mock('../web/ui/conversation-tools', () => ({ ConversationTools: class { open = false; close() {} closeUsage() {} } }));
 
 afterEach(() => {

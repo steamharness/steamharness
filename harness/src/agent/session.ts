@@ -796,6 +796,8 @@ export class DurableAgentSession {
       deletedCount = deleted.size;
       for (const { record } of frame.rows) if (record.owner && deleted.has(record.owner.conversationId)) deleted.add(record.id);
     }
+    const delegationChildren = new Map(frame.rows.filter(row => row.record.owner && !deleted.has(row.record.id))
+      .map(row => [row.record.owner!.taskId, row.record.id]));
     for (const { record, live, inbox, spend, info, entries, submitted, allTasks, agent, plan } of frame.rows) {
       if (deleted.has(record.id)) continue;
       const conversation = (await this.harness.conversation(record.id, context))!;
@@ -826,6 +828,7 @@ export class DurableAgentSession {
         const inspected = inspections.get(task.id);
         const descriptor: AgentSessionTask = {
           id: task.id, conversationId: record.id, ...(task.owner === undefined ? {} : { parentId: task.owner }), kind: task.kind,
+          ...(task.kind === "project.delegation" && delegationChildren.has(task.id) ? { childConversationId: delegationChildren.get(task.id)! } : {}),
           label: tool ?? (task.kind === "project.delegation" ? String(object(task.input).prompt ?? "Subagent").slice(0, 120) : task.kind),
           status: task.state.status === "terminal" ? task.state.outcome.status : inspected?.kind === "blocked" ? "blocked" : task.state.status,
           ...(state.phase ? { phase: String(state.phase) } : {}), background: task.background || info?.background === true,

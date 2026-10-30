@@ -1506,6 +1506,8 @@ const session = {
 
 回执和快照的 `agents` 提供 `taskId`、`workId`、`agentId`、`status`（含 `queued`）、`attempt`、`retryOf`、`childConversationId`、`metadata`、`progress`、`error` 和 `result`。Tasks 复用这些字段展示角色、素材、阶段和完成数，打开子会话、停止或重试均走 Core 控制通道。业务任务历史保留，内部 Pi 步骤只保留最近 200 项。
 
+委派任务的 `tasks/history[].childConversationId` 同时覆盖匿名和命名子 Agent，子会话创建后提供，完成和重开后保留；已删除子会话省略。CLI Web 对话在回复状态旁显示子 Agent 数量和就地执行详情，主回复结束后仍可查看并打开子会话；按当前 conversationId 统计，排除工具包装任务和独立 fork。
+
 原匿名 `subagent({ task, background?, model? })` 与历史任务继续可用；命名工具调用使用 `{ action: "spawn", agentId, workId, task, background: true }`，管理 action 使用 taskId。工具的后台结果默认回传；命令或业务任务可用 `reportToParent: false` 自行消费回执。
 
 显式 `action` 优先选择命名管理操作，忽略模型附带的匿名结果分页字段；命名角色仍不能通过工具参数覆盖模型。

@@ -10,7 +10,7 @@ import { AccountPanel } from '../web/ui/account';
 const host = vi.hoisted(() => ({ postMessage: vi.fn(), getState: vi.fn(), setState: vi.fn() }));
 const projectInfo = vi.hoisted(() => vi.fn());
 vi.mock('../web/ui/host', () => ({ acquireProjectHost: () => host }));
-vi.mock('../web/ui/conversation-output', () => ({ ConversationOutput: class { update() {} dispose() {} } }));
+vi.mock('../web/ui/conversation-output', () => ({ ConversationOutput: class { update() {} updateSubagents() {} moveSubagentsTo() {} dispose() {} } }));
 vi.mock('../web/ui/conversation-tools', () => ({ ConversationTools: class { open = false; close() {} closeUsage() {} projectInfo = projectInfo; } }));
 
 const project: Project = {entryId:"main",aggregateName:"Test aggregate",defaultEntry:"main",entryRoot:'/avatar-test',databases:[],entries:[{entryId:"main",name:"Main",type:'conversation',root:".",entry:"index.ts",databases:[]}], id: 'avatar-test', uri: 'file:///avatar-test', folderPath: '/avatar-test', name: 'Avatar Test', projectType: 'conversation', fields: [], entrypoints: [],

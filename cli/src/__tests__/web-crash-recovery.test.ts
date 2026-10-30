@@ -19,11 +19,13 @@ it.each(['generation', 'uncooperative-tool'])('recovers a wrapped Agent after it
   const runKey = createHash('sha256').update(await realpath(directory)).digest('hex');
   let cli: ChildProcess | undefined, workerPid: number | undefined;
   let restored: Awaited<ReturnType<typeof startWebServer>> | undefined;
-  let calls = 0;
+  let calls = 0, recovered = false;
   const model = createServer(async (request, response) => {
     for await (const _chunk of request) { /* Consume the local fixture request. */ }
     ++calls;
-    if (calls === 2) { response.writeHead(401, { 'content-type': 'application/json' }); response.end(JSON.stringify({ error: { message: 'Fixture authorization failure' } })); return; }
+    // Keep the failure in place through Core's ten fallback attempts. A single
+    // failure now recovers successfully and legitimately releases queued input.
+    if (calls > 1 && !recovered) { response.writeHead(401, { 'content-type': 'application/json' }); response.end(JSON.stringify({ error: { message: 'Fixture authorization failure' } })); return; }
     response.writeHead(200, { 'content-type': 'text/event-stream' });
     const delta = calls === 1 && phase === 'uncooperative-tool'
       ? { tool_calls: [{ index: 0, id: 'stuck', type: 'function', function: { name: 'stuck_tool', arguments: '{}' } }] }
@@ -112,13 +114,17 @@ it.each(['generation', 'uncooperative-tool'])('recovers a wrapped Agent after it
     expect(session.messages.at(-1)?.status).toBe('failed');
     expect(session.messages.at(-1)?.error).not.toContain('busy');
     expect(session.queuedInputs?.map(input => input.text)).toEqual(['Queued one', 'Queued two']);
-    expect(calls).toBe(2);
+    const failedCalls = calls;
+    // A generation interrupted by SIGKILL may already consume the first
+    // attempt. Both phases must retry and exhaust within the bounded budget.
+    expect(failedCalls).toBeGreaterThan(2); expect(failedCalls).toBeLessThanOrEqual(12);
     await restored.controller!.cancelQueueEdit();
-    expect(calls).toBe(2);
+    expect(calls).toBe(failedCalls);
+    recovered = true;
     await restored.controller!.send({ text: 'Explicit input after restart', params: {}, attachments: [] });
     await restored.controller!.idle();
     expect(session.messages.filter(message => message.role === 'assistant').map(message => message.status)).toEqual(['failed', 'success', 'success', 'success']);
-    expect(session.queuedInputs).toEqual([]); expect(calls).toBe(5);
+    expect(session.queuedInputs).toEqual([]); expect(calls).toBe(failedCalls + 3);
     expect(session.messages.filter(message => message.role === 'user').map(message => message.content)).toEqual(['Original input', 'Explicit input after restart', 'Queued one', 'Queued two']);
     if (phase === 'uncooperative-tool') expect(Number(await readFile(path.join(directory, 'tool-started'), 'utf8'))).not.toBe(Number(await readFile(path.join(directory, 'worker-pid'), 'utf8')));
   } finally {
@@ -129,4 +135,4 @@ it.each(['generation', 'uncooperative-tool'])('recovers a wrapped Agent after it
     await rm(directory, { recursive: true, force: true });
     await Promise.all([rm(path.join(configurationRoot, `${configurationKey}.json`), { force: true }), rm(path.join(configurationRoot, `${configurationKey}.json.lock.sqlite`), { force: true }), rm(path.join(configurationRoot, 'snapshots', runKey), { recursive: true, force: true })]);
   }
-}, 50_000);
+}, 120_000);

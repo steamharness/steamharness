@@ -2,6 +2,8 @@
 
 - Fixed conversation resource cards to retain explicit target projects instead of replacing them with the Assistant project, preserving map entry and named configuration references.
 
+- Added an inline subagent entry beside the response status. Expand actual task state, progress, results and errors, and open child conversations, including anonymous delegations and reopened history. The entry remains after the parent reply completes.
+
 - Added: Show named roles, sources, phases and completion counts in Tasks, with child conversation navigation, cancellation and failed-item retry through Core control.
 
 - Fixed repeated memory settings reloads during background account checks and system AI connection updates. Preserve filters, details, focus and unsaved drafts; clear previous content when switching accounts or servers, or when sign-in expires.

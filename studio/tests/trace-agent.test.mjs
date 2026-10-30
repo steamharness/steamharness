@@ -4,8 +4,14 @@ import { test } from 'node:test';
 import { register } from 'tsx/esm/api';
 import { durableTraceState } from './fixtures/trace-agent.mjs';
 register();
-const { agentSession, latestAgentPlan, ownedActivity, orderedTasks, terminalTask } = await import('../extensions/studio-workstation/webview/trace-agent-model.ts');
+const { agentSession, latestAgentPlan, ownedActivity, orderedTasks, terminalTask, taskConversation } = await import('../extensions/studio-workstation/webview/trace-agent-model.ts');
 const { TraceStore } = await import('../extensions/studio-workstation/src/workflow-trace-store.ts');
+
+test('task navigation resolves anonymous and named children in live or settled snapshots', () => {
+  assert.equal(taskConversation({ conversationId: 1, childConversationId: 2 }), 2);
+  assert.equal(taskConversation({ conversationId: 1, childConversationId: 2, agent: { childConversationId: 3 } }), 3);
+  assert.equal(taskConversation({ conversationId: 1 }), 1);
+});
 
 test('Trace projects the selected child context while the current marker follows the actual editor', () => {
   const state = durableTraceState(); state.selection.sessionId = 'child';

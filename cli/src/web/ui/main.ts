@@ -15,6 +15,7 @@ import { requestAction } from './action-dialog';
 import { renderRequestError } from './request-error';
 import { ContentSearch } from './content-search';
 import { ConversationOutput } from './conversation-output';
+import { conversationSubagents, type ConversationSubagentsState } from './conversation-subagents';
 import { collapseIntermediateDefault } from './conversation-presentation';
 import { attachmentSignature } from './attachment-state';
 import { conversationPrompt, pathReferences, type PathReference } from '../conversation-paths';
@@ -189,6 +190,7 @@ function initialize(): void {
   const sessionActions = Array.from(sessionMenu.querySelectorAll<HTMLButtonElement>('.session-action'));
   const fields = new Map<string, FieldView>();
   const messages = new Map<string, MessageView>();
+  let subagentOutput: ConversationOutput | undefined;
   const saved = (vscode.getState() ?? {}) as { drafts?: Record<string, string>; params?: Record<string, ParamValues>; parameterEdits?: Record<string, Record<string, string | null>>; panelOpen?: boolean; projectUri?: string; navigation?: SavedNavigation; submissions?: ConversationSubmission[] };
   let collapseEnabled = false;
   const drafts = saved.drafts ?? {};
@@ -1011,6 +1013,7 @@ function initialize(): void {
         composer: true,
         copy, plan: (text) => dialogs.plan(text), file: (id) => post({ type: 'open-file', id }),
         path: target => post({ type: 'open-path', ...target }),
+        subagent: (conversationId, ownerId) => post({ type: 'agent-open', conversationId, agentOwner: ownerId }),
         image: (src, title) => dialogs.image(src, title), resource: (card, action, requestId) => post({ type: 'resource', messageId: view.message.id, cardId: card.id, action, requestId }),
       });
       view.metadata.after(view.output.processToggle);
@@ -1095,6 +1098,12 @@ function initialize(): void {
       if (serverBlocked() || readOnly() || message.status === 'running') { view.prompt.setBusy(true); }
     } else if (!message.pendingInput) { view.prompt?.root.remove(); view.prompt = undefined; }
     else { view.prompt?.setBusy(serverBlocked() || readOnly() || message.status === 'running' || !!message.submittingInput, message.error ?? ''); }
+  }
+
+  function subagentState(session: ConversationSession): ConversationSubagentsState | undefined {
+    const owner = state?.sessions.find(entry => entry.id === (session.agentOwnerId ?? session.id));
+    return conversationSubagents(session.agent ?? owner?.agent, session.agentConversationId,
+      connectionAvailable && !serverBlocked(), session.agentInterrupted ?? owner?.agentInterrupted);
   }
 
   function updateLatest(): void { latest.hidden = transcript.scrollHeight - transcript.scrollTop - transcript.clientHeight < 100; }
@@ -1191,6 +1200,7 @@ function initialize(): void {
       editingQueueId = session.draft?.editingQueueId;
       renderedSession = next.activeId;
       for (const view of messages.values()) { view.output?.dispose(); } messages.clear();
+      subagentOutput = undefined;
       transcriptContent.replaceChildren();
       document.querySelector<HTMLElement>('#error')!.hidden = true;
       sizeComposer();
@@ -1215,6 +1225,7 @@ function initialize(): void {
       const active = new Set<string>();
       const files = session.messages.flatMap(entry => [...(entry.files ?? []), ...(entry.attachments ?? [])]);
       const filesSignature = attachmentSignature(files);
+      let latestOutput: ConversationOutput | undefined;
       let epoch = 0;
       session.messages.forEach((message, index) => {
         const id = message.id || `${index}:${message.role}`;
@@ -1224,6 +1235,7 @@ function initialize(): void {
         const current = transcriptContent.children[index] ?? null;
         if (current !== view.root) transcriptContent.insertBefore(view.root, current);
         updateMessage(view, message, files, filesSignature);
+        if (view.output) latestOutput = view.output;
         if (message.role === 'user') indexedMessages.push({ root: view.root, message });
         let divider = view.root.querySelector<HTMLElement>('.context-epoch');
         if ((message.contextEpoch ?? 0) > epoch) {
@@ -1232,6 +1244,9 @@ function initialize(): void {
         } else divider?.remove();
         epoch = message.contextEpoch ?? epoch;
       });
+      if (latestOutput) {
+        subagentOutput?.moveSubagentsTo(latestOutput); latestOutput.updateSubagents(subagentState(session)); subagentOutput = latestOutput;
+      } else { subagentOutput?.updateSubagents(); subagentOutput = undefined; }
       for (const [id, view] of messages) { if (!active.has(id)) { view.output?.dispose(); view.root.remove(); messages.delete(id); } }
     }
     messageIndex.update(indexedMessages);
@@ -1550,6 +1565,12 @@ function initialize(): void {
       manualReconnect = !!message.manual;
       reconnectFailed = !!message.retryFailed;
       connectionAvailable = message.status === 'connected';
+      const session = currentSession();
+      const latest = session && [...session.messages].reverse().find(message => message.role === 'assistant');
+      if (session && latest) {
+        const index = session.messages.indexOf(latest);
+        messages.get(latest.id || `${index}:${latest.role}`)?.output?.updateSubagents(subagentState(session));
+      }
       if (!connectionAvailable) { checkingServer = false; paramsNeedInit ||= resolving; cancelParameterRequest(); dialogs.close(); }
       updateControls();
       updateConnectionFeedback(); syncTranscriptLayout();

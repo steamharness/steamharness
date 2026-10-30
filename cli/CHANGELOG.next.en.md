@@ -2,6 +2,8 @@
 
 - Fixed resource cards to preserve explicit project and entry targets and inspect previews using the target entry, preventing false project-unavailable errors when opening maps from the Assistant or another entry in the same project.
 
+- Added a subagent status entry beside “Responding…” with running, queued and completed counts. Expand roles, phases, progress, results and errors, and open child conversations. The entry remains after the parent response, preserves expansion across streaming and subsequent replies, and identifies offline snapshots.
+
 - Added: Interrupt unfinished managed execution trees on reopening and require explicit batch recovery. Keep pending user input separate from business queues; only successful user turns advance it, never background reports.
 
 - Added: A Project memory switch defaults off for ordinary projects and on for the Assistant. Memory navigation updates quietly when configuration changes, and disabled projects cannot call memory operations.

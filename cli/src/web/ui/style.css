@@ -71,7 +71,7 @@ h1 { font-size: 14px; font-weight: 500; margin: 0; min-width: 0; overflow: hidde
 .parameter-feedback { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 .parameter-status { display: flex; gap: 6px; align-items: center; padding-bottom: 8px; color: var(--muted); font-size: 11px; }
 .stop-feedback { padding-bottom: 8px; color: var(--muted); font-size: 12px; }
-.parameter-status .codicon, .refreshing .codicon, .pending .codicon, .send-button > .codicon-loading { animation: spin 1.2s linear infinite; }
+.parameter-status .codicon, .refreshing .codicon, .pending > .codicon-loading, .send-button > .codicon-loading { animation: spin 1.2s linear infinite; }
 .parameter-error { flex: 1 1 220px; min-width: 0; font-size: 13px; line-height: 1.6; margin-bottom: 8px; color: var(--vscode-errorForeground); overflow-wrap: anywhere; }
 .no-history { padding: 16px 18px; color: var(--muted); font-size: 12px; }
 summary::-webkit-details-marker { display: none; }
@@ -206,8 +206,34 @@ main { grid-area: main; min-width: 0; min-height: 0; display: flex; flex-directi
 .activity-section > header { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: 28px; }
 .activity-section pre { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; font: 11px/1.6 var(--vscode-editor-font-family, monospace); color: var(--vscode-editor-foreground); }
 .activity-error pre { color: var(--vscode-errorForeground); }
-.message-output > .pending { display: flex; min-width: 0; max-width: 100%; }
-.message-output > .pending > span:last-child { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.message-output > .pending { display: flex; flex-wrap: wrap; min-width: 0; max-width: 100%; }
+.message-output > .pending > .pending-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.subagents-summary { display: flex; padding: 8px 0; }
+.subagents-button { display: inline-flex; align-items: center; gap: 6px; max-width: 100%; min-width: 0; border: 1px solid var(--border); border-radius: 12px; padding: 3px 8px; background: transparent; color: var(--muted); font-size: 11px; line-height: 1.4; text-align: left; }
+.subagents-button:hover { background: var(--vscode-toolbar-hoverBackground); color: var(--vscode-editor-foreground); }
+.subagents-button > .codicon, .subagents-button > span:last-child { flex: none; }
+.subagents-button > span:not(:last-child) { overflow-wrap: anywhere; }
+.subagents-button[aria-expanded=true] > span:last-child { transform: rotate(90deg); }
+.subagents-button[data-state=failed] { color: var(--vscode-errorForeground); }
+.subagents-panel { border: 1px solid var(--border); border-radius: 8px; margin: 2px 0 12px; min-width: 0; background: var(--vscode-editorWidget-background, var(--vscode-editor-background)); }
+.subagents-connection { margin: 10px 12px; color: var(--muted); font-size: 12px; }
+.subagents-list { max-height: min(400px, 50vh); overflow: auto; overscroll-behavior: contain; padding: 4px 10px; }
+.subagent-task + .subagent-task { border-top: 1px solid var(--border); }
+.subagent-task > summary { display: flex; align-items: center; gap: 8px; min-height: 38px; padding: 7px 2px; cursor: pointer; list-style: none; }
+.subagent-title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; }
+.subagent-icon, .subagent-chevron { display: inline-flex; flex: none; color: var(--muted); }
+.subagent-status { flex: none; color: var(--muted); font-size: 11px; }
+.subagent-task[data-state=running] .subagent-icon > .codicon { animation: spin 1.2s linear infinite; }
+.subagent-task[data-state=failed] .subagent-icon, .subagent-task[data-state=failed] .subagent-status, .subagent-error { color: var(--vscode-errorForeground); }
+.subagent-task[data-state=completed] .subagent-icon { color: var(--vscode-testing-iconPassed, var(--muted)); }
+.subagent-task[open] .subagent-chevron { transform: rotate(90deg); }
+.subagent-detail { padding: 0 2px 10px 24px; font-size: 12px; overflow-wrap: anywhere; }
+.subagent-detail p { margin: 0 0 8px; }
+.subagent-meta { color: var(--muted); font-size: 11px; }
+.subagent-detail progress { display: block; width: min(100%, 280px); height: 5px; margin: 8px 0; accent-color: var(--vscode-progressBar-background); }
+.subagent-detail pre { max-height: 180px; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; margin: 8px 0; font: 11px/1.6 var(--vscode-editor-font-family, monospace); }
+.subagent-open { display: inline-flex; align-items: center; gap: 6px; border: 0; padding: 4px 0; background: transparent; color: var(--vscode-textLink-foreground); font-size: 12px; }
+.subagent-open:hover:not(:disabled) { text-decoration: underline; }
 .timer-record .timer-duration { margin-left: auto; min-width: 48px; text-align: right; font-variant-numeric: tabular-nums; }
 .timer-details { white-space: pre-line; font-size: 12px; line-height: 1.6; }
 .timer-record[open] summary .codicon { transform: none; }

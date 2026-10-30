@@ -111,6 +111,8 @@ const agent = await workflow.createAgent({
 
 快照带 `version: 1`、每次打开改变的 `ownerId`、递增 `revision`、`contexts`、`tasks/history`、`turns`、`plan`、`records`、`receipts` 和逐会话 `usage`。快照是辅助状态；assistant 主回答继续平铺。重连读取完整快照，旧 owner 的 revision 不可压制新 owner。提示记录只有摘要/版本，配置记录不保存凭据。后台子结果由持久 reporter 用稳定身份回传一次；费用按父子会话分别归属，不重复累加重放。
 
+`tasks/history` 中的委派任务在子会话创建后提供 `childConversationId`，匿名和命名 `subagent` 均支持；任务结束及重开历史后仍保留关联，已删除的子会话不提供此字段。宿主可据此打开快照内的对应子会话，不应从任务标题推断身份。
+
 `turns[].reason` 是未完成轮次的原因码，`turns[].detail` 保留模型或重试耗尽的具体错误。宿主即使继续驻留，也应把 `model_error` 等失败显示为失败并展示原因；`aborted` 表示持久取消。续写耗尽同样报告失败，不当作正常完成。
 
 `turns[].usage` 是该轮已返回模型响应的累计用量，包含工具循环、失败重试和轮内压缩响应，字段为 `inputTokens`、`outputTokens`、`totalTokens`、`cachedInputTokens`、`cacheCreationTokens`、`reasoningTokens`、`calls`。继承的 fork 历史、其他轮次和其他会话不会重复计入该回答。空闲后台压缩的消耗保留在逐会话 `usage` 中，不回写已完成回答。`contexts[].contextUsage` 则是对应会话当前模型上下文的 `{ used, total }`，包括流式内容，在后续输入、fork、压缩和 reset 后更新，与累计消耗独立。

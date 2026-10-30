@@ -9,6 +9,7 @@ export interface TraceTask {
   id: number; conversationId: number; parentId?: number; kind: string; label: string; status: string;
   phase?: string; background: boolean; stopping: boolean; blockedOn: number[]; blockedReason?: string;
   toolName?: string; callId?: string; arguments?: unknown; replay?: 'safe' | 'never'; attempt?: number;
+  childConversationId?: number;
   details?: unknown; definitionVersion?: number; checkpoint?: unknown; wakeAt?: number; script?: string;
   agent?: TraceAgentWork; progress?: { completed: number; total: number; phase?: string };
 }

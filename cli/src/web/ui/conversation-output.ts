@@ -6,6 +6,7 @@ import { agentActivity, activeAgentActivity, activityGroupSummary, activityValue
 import { RingOutput, isComposerOutputItem, ringOutputContent } from './output-display';
 import { attachmentSignature } from './attachment-state';
 import { bindOutputFileLinks, type FileLinkTarget } from './output-file-links';
+import { ConversationSubagents, type ConversationSubagentsState } from './conversation-subagents';
 
 interface OutputOptions {
   composer?: boolean;
@@ -13,6 +14,7 @@ interface OutputOptions {
   plan(text: string): void;
   file(id: string): void;
   path?(target: FileLinkTarget): void;
+  subagent?(conversationId: number, ownerId: string): void;
   image(src: string, title: string): void;
   resource(card: ResourceCard, action?: 'open' | 'inline' | 'window' | 'project', requestId?: string): void;
 }
@@ -28,6 +30,7 @@ export class ConversationOutput {
   private readonly activities = new Map<string, AgentActivity>();
   private readonly displays = new Map<HTMLElement, RingOutput>();
   private pending?: HTMLDivElement;
+  private subagents?: ConversationSubagents;
   private process?: { root: HTMLDetailsElement; list: HTMLDivElement };
   private readonly resourceTheme = new MutationObserver(() => this.syncResourceTheme());
   private syncResourceTheme(): void {
@@ -65,6 +68,7 @@ export class ConversationOutput {
   dispose(): void {
     window.removeEventListener('message', this.resourceReply); this.resourceTheme.disconnect();
     this.processToggle.remove();
+    this.subagents?.remove();
     for (const display of this.displays.values()) { display.dispose(); } this.displays.clear();
   }
 
@@ -230,14 +234,45 @@ export class ConversationOutput {
     if ((message.status === 'running' || message.status === 'sending') && !message.pendingInput) {
       if (!this.pending) {
         this.pending = document.createElement('div'); this.pending.className = 'pending';
-        this.pending.innerHTML = `${iconHtml('loading')}<span></span>`;
+        this.pending.innerHTML = `${iconHtml('loading')}<span class="pending-label"></span>`;
       }
-      const label = this.pending.lastElementChild!;
+      const label = this.pending.querySelector('.pending-label')!;
       const text = message.status === 'sending' ? t('Sending message...') : activeAgentActivity(message)?.title ?? t("Responding...");
       if (label.textContent !== text) { label.textContent = text; }
       if (this.pending.parentElement !== this.root) { this.root.append(this.pending); }
     } else { this.pending?.remove(); }
+    this.placeSubagents();
     this.tick();
+  }
+
+  updateSubagents(state?: ConversationSubagentsState): void {
+    if (!state || !this.options.subagent) { this.subagents?.remove(); this.subagents = undefined; return; }
+    this.subagents ??= new ConversationSubagents(this.options.subagent);
+    this.subagents.update(state); this.placeSubagents();
+  }
+
+  moveSubagentsTo(output: ConversationOutput): void {
+    if (output === this || !this.subagents) return;
+    output.subagents?.remove(); output.subagents = this.subagents; this.subagents = undefined;
+    output.placeSubagents();
+  }
+
+  private placeSubagents(): void {
+    if (!this.subagents) return;
+    const { button, summary, panel } = this.subagents;
+    const focused = button.contains(document.activeElement) || panel.contains(document.activeElement) ? document.activeElement as HTMLElement : undefined;
+    const append = (parent: HTMLElement, child: HTMLElement): void => {
+      if (parent.moveBefore && parent.isConnected && child.isConnected) parent.moveBefore(child, null);
+      else parent.append(child);
+    };
+    const row = this.pending?.parentElement === this.root ? this.pending : summary;
+    if (button.parentElement !== row) append(row, button);
+    if (row === summary && summary.parentElement !== this.root) append(this.root, summary);
+    else if (row !== summary) summary.remove();
+    if (panel.parentElement !== this.root) append(this.root, panel);
+    // Keep details after the response status, including when a reply resumes.
+    if (row.nextElementSibling !== panel) row.after(panel);
+    if (focused?.isConnected && document.activeElement !== focused) focused.focus({ preventScroll: true });
   }
 
   tick(): void {
