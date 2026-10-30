@@ -49,6 +49,8 @@ Root `config.json` centralizes aliases and approved IDs; entries list only their
 
 Use [workspace commands](/en/cli/server-workspace) for remote static project management. Server never executes project code.
 
+Kanban cards in assistant replies preview their saved project, entry and configuration, keeping the owning host's entry prefix in resource URLs. Studio's `get_kanban_diagnostics` covers both open workspace boards and assistant cards, returning page instances, configuration identity and the latest 50 reads; `previews` identifies card sources. Use the current `instanceId` and `configurationId` to call page methods explicitly declared `readOnly: true` and verify actual state such as image readiness. Closing or refreshing a card invalidates its old instance; missing live instances do not prove successful rendering. File bridge reads allow up to 120 seconds without an earlier transport timeout; reads exceeding that limit still require investigation of the file path.
+
 ## User models and permissions
 
 Studio can inject user permission snapshots and updates into CLI Web, using a capability handshake for older CLIs. Projects inherit only with explicit `permissionPolicy: "inherit"`; an omitted policy still defaults to `workspace`. Standalone CLI does not persist this preference in this release, and `inherit` uses `auto` without host injection. Active durable work keeps its startup snapshot; subsequent input adopts updates at a safe idle boundary. See [User settings and permission inheritance](/en/core-api/user-settings).

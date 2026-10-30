@@ -1,5 +1,7 @@
 # Unreleased
 
+- Fixed Kanban and image cards losing their aggregate entry path and showing `Unknown project entry.`. Card instances and reads now appear in read-only runtime diagnostics, and file reads retain their full timeout through the preview transport.
+
 - Fixed repeated Kanban configuration acknowledgements flooding the host and disrupting map loading; page method updates are coalesced. Connection recovery uses a delayed compact overlay, preserving the map layout and avoiding flicker during brief interruptions.
 
 - Fixed sending new input after Stop and handling legacy queues and edited submission identities. Queue-enabled conversations accept consecutive sends; Send now and withdrawal respond immediately and restore failed actions, while Stop and failure keep older messages paused.

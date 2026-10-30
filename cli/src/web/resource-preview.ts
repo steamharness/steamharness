@@ -7,12 +7,14 @@ import { readFile, realpath, stat } from 'node:fs/promises';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import {
-  parseKanbanBridgeCall, type KanbanInjectedConfiguration,
+  parseKanbanBridgeCall, parseKanbanMethodInvocation, type KanbanInjectedConfiguration,
 } from '@steamharness/kanban-project';
 import type { ResourceCard } from './resource-cards';
 import type { Project, Runtime } from './workflow-types';
 import type { WebConnection } from './runtime';
 import { KanbanPreview } from './kanban-preview';
+import { KanbanMethodHub } from './kanban-methods';
+import { KanbanDiagnostics, type KanbanReadAttempt } from './kanban-diagnostics';
 import { t, locale } from './localization';
 
 export interface ResourcePreviewData {
@@ -27,6 +29,9 @@ interface PreviewEntry {
   file?: { root: string; filename: string; mimeType: string };
   local?: KanbanPreview;
   remote?: { url: URL; prefix: string; connection: WebConnection };
+  methods?: KanbanMethodHub;
+  diagnostics?: KanbanDiagnostics;
+  clients?: Map<string, { instanceId: string; seen: number; disconnect(): void; messages: Record<string, any>[] }>;
 }
 
 const imageMimeTypes: Record<string, string> = {
@@ -47,9 +52,16 @@ export class ResourcePreviews {
   private readonly configurationReaders = new Map<string, { read(): Promise<ProjectConfigurationState>; revision: number }>();
   constructor(private readonly owner: Project, private readonly runtime: Runtime, private readonly storageDir: string,
     private readonly connection: () => WebConnection | undefined,
-    private readonly resourceProjects: () => readonly string[] = () => [], private readonly changed: () => void = () => {}) {}
+    private readonly resourceProjects: () => readonly string[] = () => [], private readonly changed: () => void = () => {},
+    private readonly basePath = '') {}
 
-  clear(): void { this.generation++; this.entries.clear(); this.configurationReaders.clear(); }
+  private remove(id: string): void {
+    const entry = this.entries.get(id);
+    this.entries.delete(id);
+    entry?.methods?.clear(); entry?.diagnostics?.clear();
+    for (const client of entry?.clients?.values() ?? []) client.disconnect();
+  }
+  clear(): void { this.generation++; for (const id of this.entries.keys()) this.remove(id); this.configurationReaders.clear(); }
   close(): void { this.clear(); clearInterval(this.poll); }
   private watchConfiguration(key: string, revision: number, read: () => Promise<ProjectConfigurationState>): void {
     this.configurationReaders.set(key, { read, revision });
@@ -68,12 +80,12 @@ export class ResourcePreviews {
   }
   get revision(): number { return this.generation; }
 
-  private async server(id: string, suffix: string, init: RequestInit = {}): Promise<any> {
+  private async server(id: string, suffix: string, init: RequestInit = {}, timeoutMs = 30_000): Promise<any> {
     const connection = this.connection();
     if (!connection) { throw new Error(t('Please sign in to preview this server resource.')); }
     const response = await fetch(`${connection.serverUrl}/api/projects/${encodeURIComponent(id)}${suffix}`, {
       ...init, headers: { Authorization: `Bearer ${connection.accessToken}`, 'Content-Type': 'application/json' },
-      signal: AbortSignal.timeout(30_000), redirect: 'error',
+      signal: AbortSignal.timeout(timeoutMs), redirect: 'error',
     });
     const result = await response.json();
     if (!response.ok || result.errCode !== 0) { throw new Error(result.errMessage || t('You do not have access to this resource.')); }
@@ -140,7 +152,7 @@ export class ResourcePreviews {
       const mimeType = imageMimeTypes[path.extname(filename).toLowerCase()];
       if (mimeType) {
         entry.file = { root, filename, mimeType };
-        data.content = `/resource-assets/${id}/image`; data.format = 'image';
+        data.content = `${this.basePath}/resource-assets/${id}/image`; data.format = 'image';
       } else {
         data.content = await readFile(filename, 'utf8'); data.format = /\.mdx?$/i.test(filename) ? 'markdown' : 'text';
       }
@@ -160,7 +172,7 @@ export class ResourcePreviews {
         const segments = url.pathname.slice(expected.length).split('/');
         const assetPrefix = `${expected}${segments.slice(0, 3).join('/')}/`;
         entry.remote = { url, prefix: assetPrefix, connection };
-        data.kanban = { url: `/resource-assets/${id}/${url.pathname.slice(assetPrefix.length)}`, nonce: workspace.preview.nonce, configuration: { id: '', name: '', params: {} } };
+        data.kanban = { url: `${this.basePath}/resource-assets/${id}/${url.pathname.slice(assetPrefix.length)}`, nonce: workspace.preview.nonce, configuration: { id: '', name: '', params: {} } };
       } else {
         const store = await createLocalProjectConfigurationStore(project.folderPath, { entryId: project.entryId });
         configurations = await store.read();
@@ -173,14 +185,73 @@ export class ResourcePreviews {
       if (!entry.remote) {
         if (!project.kanban) { throw new Error(t('This project does not provide a Kanban preview.')); }
         entry.local = new KanbanPreview(project.entryRoot, project.kanban, () => configuration);
-        data.kanban = { url: entry.local.url, nonce: entry.local.nonce, configuration };
+        data.kanban = { url: this.basePath + entry.local.url, nonce: entry.local.nonce, configuration };
       } else { data.kanban!.configuration = configuration; }
       data.format = 'kanban';
+      entry.clients = new Map(); entry.diagnostics = new KanbanDiagnostics();
+      entry.methods = new KanbanMethodHub(() => configuration, message => {
+        for (const client of entry.clients!.values()) {
+          if (client.instanceId === message.instanceId) client.messages.push(message);
+        }
+      });
     } else { data.format = 'project'; data.content = project; }
     if (generation !== this.generation) { throw new Error(t('Resource access changed. Open the card again.')); }
-    if (this.entries.size >= 64) { this.entries.delete(this.entries.keys().next().value!); }
+    if (this.entries.size >= 64) { this.remove(this.entries.keys().next().value!); }
     this.entries.set(id, entry);
-    return { id, data, url: `/resource/${id}?projectLocale=${locale()}` };
+    return { id, data, url: `${this.basePath}/resource/${id}?projectLocale=${locale()}` };
+  }
+
+  private methodEntry(id: string, message: Record<string, any>): PreviewEntry {
+    this.get(id);
+    const entry = this.entries.get(id)!;
+    if (!entry.methods || message.nonce !== entry.data.kanban?.nonce) throw new Error('Kanban preview changed.');
+    return entry;
+  }
+
+  // Card pages poll instead of reserving an SSE connection for every nested iframe.
+  methodState(id: string, message: Record<string, any>): Record<string, any>[] {
+    const entry = this.methodEntry(id, message), clients = entry.clients!;
+    for (const [key, client] of clients) {
+      if (Date.now() - client.seen > 15_000) { clients.delete(key); client.disconnect(); }
+    }
+    let client = clients.get(message.clientId);
+    if (!client) {
+      if (clients.size >= 8) throw new Error('Too many Kanban preview clients.');
+      client = { instanceId: message.instanceId, seen: Date.now(), disconnect: entry.methods!.connect(message.clientId), messages: [] };
+      clients.set(message.clientId, client);
+    }
+    entry.methods!.publish(message);
+    client.instanceId = message.instanceId; client.seen = Date.now();
+    return client.messages.splice(0);
+  }
+  methodReply(id: string, message: Record<string, any>): void { this.methodEntry(id, message).methods!.reply(message); }
+  methodClose(id: string, message: Record<string, any>): void {
+    const clients = this.methodEntry(id, message).clients!, client = clients.get(message.clientId);
+    clients.delete(message.clientId); client?.disconnect();
+  }
+
+  async diagnostics(input: { projectDir: string; projectId: string; entryId: string; call?: unknown }) {
+    const generation = this.generation;
+    const matches = [...this.entries].filter(([, entry]) => {
+      const project = entry.data.project;
+      return entry.methods && project?.id === input.projectId && project.entryId === input.entryId
+        && path.resolve(project.folderPath) === input.projectDir;
+    });
+    let result: unknown;
+    if (input.call !== undefined) {
+      const call = parseKanbanMethodInvocation(input.call);
+      const owners = matches.filter(([, entry]) => entry.methods!.list().some(instance => instance.instanceId === call.instanceId));
+      if (owners.length !== 1) throw new Error('Kanban method instance changed. List instances again.');
+      result = await owners[0]![1].methods!.invoke(call, { readOnly: true });
+      if (generation !== this.generation || this.entries.get(owners[0]![0]) !== owners[0]![1]) throw new Error('Kanban preview changed. Read diagnostics again.');
+    }
+    const previews = matches.map(([previewId, entry]) => ({ source: 'resource-card' as const, previewId, generation,
+      configuration: { id: entry.data.kanban!.configuration.id, name: entry.data.kanban!.configuration.name },
+      instances: entry.methods!.list(), requests: entry.diagnostics!.snapshot() }));
+    return { available: previews.length > 0, ...(previews.length ? {} : { reason: 'preview-not-open' }),
+      projectId: input.projectId, entryId: input.entryId, previews,
+      instances: previews.flatMap(preview => preview.instances), requests: previews.flatMap(preview => preview.requests).sort((a, b) => a.startedAt - b.startedAt).slice(-50),
+      ...(input.call === undefined ? {} : { result }) };
   }
 
   get(id: string): ResourcePreviewData {
@@ -239,19 +310,34 @@ export class ResourcePreviews {
       throw new Error(t('This resource preview is read-only.'));
     }
     if (call.operation === 'runtime.getLocale') { return locale(); }
-    if(call.operation==='files.readFile'&&project.folderPath) {
-      const fileId=String(call.input.fileId),cached=await readCachedConfigurationFile(project.folderPath,fileId,{entryId:project.entryId});if(cached)return cached;
-      const state=await(await createLocalProjectConfigurationStore(project.folderPath, { entryId: project.entryId })).read();
-      const file=await readConfigurationFile(project.id,state,fileId,this.connection(),{entryId:project.entryId,target:state.template?.projectVersion});if(file)return file;
-    }
-    let result: unknown;
-    if (data.card.target.source === 'server') {
-      result = await this.server(project.id, '/kanban/bridge', { method: 'POST', body: JSON.stringify({ call, entryId: project.entryId }) });
-    } else {
-      if (!this.runtime.kanbanBridge) { throw new Error(t('The resource project is unavailable.')); }
-      result = await this.runtime.kanbanBridge(project, call);
-    }
-    if (generation !== this.generation) { throw new Error(t('Resource access changed. Open the card again.')); }
-    return result;
+    const entry = this.entries.get(id)!, attempts: KanbanReadAttempt[] = [];
+    const diagnostic = entry.diagnostics!.start(call, data.kanban!.configuration.id, Date.now(), attempts);
+    try {
+      let result: unknown;
+      if (call.operation === 'files.readFile' && project.folderPath) {
+        attempts.push({ source: 'configuration-cache' });
+        const fileId = String(call.input.fileId);
+        result = await readCachedConfigurationFile(project.folderPath, fileId, { entryId: project.entryId });
+        if (result === undefined) {
+          const state = await (await createLocalProjectConfigurationStore(project.folderPath, { entryId: project.entryId })).read();
+          result = await readConfigurationFile(project.id, state, fileId, this.connection(), {
+            entryId: project.entryId, target: state.template?.projectVersion,
+            onRequest: () => attempts.push({ source: 'configuration-attachment' }), onResponse: status => { attempts.at(-1)!.status = status; },
+          });
+        }
+      }
+      if (result === undefined) {
+        attempts.push({ source: 'database' });
+        if (data.card.target.source === 'server') {
+          result = await this.server(project.id, '/kanban/bridge', { method: 'POST', body: JSON.stringify({ call, entryId: project.entryId }) }, call.operation === 'files.readFile' ? 120_000 : 30_000);
+        } else {
+          if (!this.runtime.kanbanBridge) { throw new Error(t('The resource project is unavailable.')); }
+          result = await this.runtime.kanbanBridge(project, call);
+        }
+      }
+      if (generation !== this.generation || this.entries.get(id) !== entry) { throw new Error(t('Resource access changed. Open the card again.')); }
+      entry.diagnostics!.finish(diagnostic);
+      return result;
+    } catch (error) { entry.diagnostics!.finish(diagnostic, error); throw error; }
   }
 }

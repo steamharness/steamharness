@@ -162,7 +162,7 @@ async function startProjectWebServer(options: WebOptions, credentials: { capabil
     project.fields = view.fields; project.entrypoints = view.entrypoints;
   };
   const databases = new DatabaseManagement(project, () => connection);
-  const resources = new ResourcePreviews(project, runtime, storageDir, () => connection, () => resourceProjects, () => broadcast());
+  const resources = new ResourcePreviews(project, runtime, storageDir, () => connection, () => resourceProjects, () => broadcast(), options.mount?.basePath);
   const key = project.assistant ? createHash('sha256').update(`assistant:${project.id}:${project.assistant.workdir}`).digest('hex').slice(0, 24)
     : path.relative(storageDir, await projectDataDirectory(storageDir, projectDir, project.id, project.entryId));
   const historyPath = path.join(storageDir, key, 'conversations.json');
@@ -592,6 +592,10 @@ async function startProjectWebServer(options: WebOptions, credentials: { capabil
       return [{ type: 'resource-data', requestId: message.requestId, id: preview.id, data: preview.data }];
     }
     if (message.type === 'resource-bridge') { return [{ type: 'resource-bridge', requestId: message.requestId, value: await resources.bridge(String(message.id), message.call) }]; }
+    if (message.type === 'resource-method-state') { return [{ type: 'resource-method-state', requestId: message.requestId, messages: resources.methodState(String(message.id), message) }]; }
+    if (message.type === 'resource-method-reply') { resources.methodReply(String(message.id), message); return []; }
+    if (message.type === 'resource-method-close') { resources.methodClose(String(message.id), message); return []; }
+    if (message.type === 'resource-kanban-diagnostics') { return [{ type: 'kanban-diagnostics-result', requestId: message.requestId, value: await resources.diagnostics(message.target) }]; }
     if (message.type === 'resource') {
       if (!['open', 'inline', 'window', 'project', undefined].includes(message.action)) { throw new Error(t('Invalid resource action.')); }
       const { card, reference } = findResourceCard(message as ResourceCardReference);
@@ -915,7 +919,7 @@ async function startProjectWebServer(options: WebOptions, credentials: { capabil
           const message = await readBody(request);
           let messages: Message[] = [];
           const operation = () => handleMessage(message).then(value => { messages = value; });
-          const concurrent = ['stop', 'workflow-stop', 'navigate', 'resolve', 'ready', 'project-server-check', 'usage', 'resource', 'resource-data', 'resource-refresh', 'resource-select', 'resource-bridge', 'kanban-bridge', 'kanban-method-state', 'kanban-method-reply', 'kanban-methods', 'kanban-diagnostics'].includes(message.type)
+          const concurrent = ['stop', 'workflow-stop', 'navigate', 'resolve', 'ready', 'project-server-check', 'usage', 'resource', 'resource-data', 'resource-refresh', 'resource-select', 'resource-bridge', 'resource-method-state', 'resource-method-reply', 'resource-method-close', 'resource-kanban-diagnostics', 'kanban-bridge', 'kanban-method-state', 'kanban-method-reply', 'kanban-methods', 'kanban-diagnostics'].includes(message.type)
             || message.type === 'agent-command' && message.command?.type === 'cancel';
           const task = concurrent ? operation() : mutations.catch(() => undefined).then(operation);
           if (!concurrent) { mutations = task; }

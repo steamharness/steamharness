@@ -13,7 +13,7 @@ async function fixture(t) {
   const input = { projectDir: directory, projectId: 'project', entryId: 'map-2d' };
   const session = { ready: { url: 'http://127.0.0.1:43123/entries/agent/#session=private-capability',
     project: { id: 'project', entries: [{ entryId: 'map-2d', type: 'kanban' }, { entryId: 'agent', type: 'conversation' }] } } };
-  const sessions = new Map([[session, directory]]);
+  const sessions = new Map([[session, { directory }]]);
   return { directory, input, session, sessions, signal: new AbortController().signal };
 }
 
@@ -41,9 +41,41 @@ test('never starts a host or reads another project, directory or non-Kanban entr
   }
 });
 
+test('routes card diagnostics through the owning assistant entry without requiring a separate Kanban host', async t => {
+  const f = await fixture(t);
+  f.session.ready.project = { id: 'assistant', entries: [{ entryId: 'main', type: 'conversation' }] };
+  f.sessions.set(f.session, { directory: f.directory, resourceEntryId: 'main' });
+  const value = { available: true, projectId: 'project', entryId: 'map-2d', instances: [{ instanceId: 'card-page' }], requests: [] };
+  const result = await readStudioKanbanDiagnostics(f.sessions, f.input, f.signal, async (url, options) => {
+    assert.equal(String(url), 'http://127.0.0.1:43123/entries/main/api/message');
+    assert.deepEqual(JSON.parse(options.body), { type: 'resource-kanban-diagnostics', applicationId: 'assistant:main', target: f.input });
+    return Response.json({ messages: [{ type: 'kanban-diagnostics-result', value }] });
+  });
+  assert.deepEqual(result, value);
+});
+
+test('merges assistant cards and the workspace, then invokes only the host owning the chosen instance', async t => {
+  const f = await fixture(t), assistant = { ready: { url: 'http://127.0.0.1:43124/entries/main/#session=assistant-capability', project: { id: 'assistant' } } };
+  f.sessions.set(assistant, { directory: f.directory, resourceEntryId: 'main' });
+  const calls = [];
+  const fetch = async (_url, options) => {
+    const body = JSON.parse(options.body), card = body.type === 'resource-kanban-diagnostics';
+    calls.push(body);
+    return Response.json({ messages: [{ type: 'kanban-diagnostics-result', value: { available: true, projectId: 'project', entryId: 'map-2d',
+      instances: [{ instanceId: card ? 'card-page' : 'workspace-page' }], requests: [], ...(body.target?.call ? { result: { imageReady: true } } : {}) } }] });
+  };
+  const result = await readStudioKanbanDiagnostics(f.sessions, f.input, f.signal, fetch);
+  assert.deepEqual(result.instances.map(instance => instance.instanceId), ['workspace-page', 'card-page']);
+  const call = { instanceId: 'card-page', configurationId: 'map', method: 'map.getInfo', args: {} };
+  assert.deepEqual((await readStudioKanbanDiagnostics(f.sessions, { ...f.input, call }, f.signal, fetch)).result, { imageReady: true });
+  assert.equal(calls.filter(body => body.call || body.target?.call).length, 1);
+  assert.deepEqual(calls.at(-1).target.call, call);
+  await assert.rejects(readStudioKanbanDiagnostics(f.sessions, { ...f.input, call: { ...call, instanceId: 'old-page' } }, f.signal, fetch), /changed/);
+});
+
 test('rejects ambiguous hosts, non-loopback URLs, expired capability and mismatched responses', async t => {
   const f = await fixture(t), fetch = () => assert.fail('Invalid hosts must not be fetched');
-  await assert.rejects(readStudioKanbanDiagnostics(new Map([...f.sessions, [{ ...f.session }, f.directory]]), f.input, f.signal, fetch), /Multiple/);
+  await assert.rejects(readStudioKanbanDiagnostics(new Map([...f.sessions, [{ ...f.session }, { directory: f.directory }]]), f.input, f.signal, fetch), /Multiple/);
   for (const url of ['https://remote.test/#session=secret', 'http://127.0.0.1:1234/', 'http://user:password@127.0.0.1:1234/#session=secret']) {
     f.session.ready.url = url;
     await assert.rejects(readStudioKanbanDiagnostics(f.sessions, f.input, f.signal, fetch), /local Kanban|session capability/i);

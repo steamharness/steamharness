@@ -24,11 +24,11 @@ import { readFile } from 'node:fs/promises';
 import type { ProjectType } from './projects';
 import { uploadServerProject, downloadServerProject, allocateServerProjectId } from './steamharness-server-projects-node';
 import { ProjectServerClient } from './steamharness-server-projects';
-import { readStudioKanbanDiagnostics } from './studio-kanban';
+import { readStudioKanbanDiagnostics, type StudioKanbanHost } from './studio-kanban';
 
 export function createProjectRuntime(context: vscode.ExtensionContext, account: AccountController): Launcher {
   const sessions = new Set<WebSession>();
-  const kanbanSessions = new Map<WebSession, string>();
+  const kanbanSessions = new Map<WebSession, StudioKanbanHost>();
   const controller = new AbortController();
   const hosts = new AggregateWebHostPool(session => { sessions.add(session); void session.closed.then(() => sessions.delete(session)); });
   let settingsTimer: ReturnType<typeof setTimeout> | undefined;
@@ -295,8 +295,9 @@ export function createProjectRuntime(context: vscode.ExtensionContext, account: 
         if (JSON.stringify(account.getConnection()) !== JSON.stringify(connection)) { session.updateAuth(account.getConnection()); }
         try { session.updateUserSettings(settingsSnapshot()); }
         catch (error) { await session.close(); throw error; }
-        if (!project.assistant && session.ready.project.entries.some(entry => entry.type === 'kanban')) {
-          kanbanSessions.set(session, project.folderPath);
+        if (project.assistant || session.ready.project.entries.some(entry => entry.type === 'kanban')) {
+          kanbanSessions.set(session, { directory: project.assistant?.workdir ?? project.folderPath,
+            ...(project.assistant ? { resourceEntryId: project.entryId } : {}) });
           void session.closed.then(() => kanbanSessions.delete(session));
         }
         return session;

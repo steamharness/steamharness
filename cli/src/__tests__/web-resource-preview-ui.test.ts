@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, expect, it, vi } from 'vitest';
-import { KANBAN_PREVIEW_READY_MESSAGE } from '@steamharness/kanban-project';
+import { KANBAN_PREVIEW_READY_MESSAGE, KANBAN_BRIDGE_REQUEST_MESSAGE, KANBAN_BRIDGE_RESPONSE_MESSAGE } from '@steamharness/kanban-project';
 import type { ResourcePreviewData } from '../web/resource-preview';
 
 const host = vi.hoisted(() => ({ postMessage: vi.fn(), getState: vi.fn(), setState: vi.fn() }));
@@ -103,4 +103,48 @@ it('renders file images and recovers from loading errors without stale image eve
   f.receive({ type: 'state', authenticationRevision: 2, resourceRevision: 2 });
   expect(document.querySelector('img')).toBeNull();
   expect(f.last()).toMatchObject({ type: 'resource-data', id: 'renewed', reference });
+});
+
+it('registers card page methods by polling, routes diagnostic replies, and revokes the old page on refresh', async () => {
+  const f = await fixture();
+  const data: ResourcePreviewData = { card: { id: 'map', kind: 'kanban', title: 'Map', target: { source: 'local' } }, format: 'kanban',
+    kanban: { url: '/entries/main/kanban/first/index.html', nonce: 'first', configuration: { id: 'map', name: 'Map', params: {} } } };
+  await f.reply({ type: 'resource-data', data });
+  const frame = document.querySelector('iframe')!, post = vi.spyOn(frame.contentWindow!, 'postMessage');
+  const page = (message: Record<string, unknown>) => listeners.get('message')!({ source: frame.contentWindow, data: { nonce: 'first', ...message } });
+  page({ type: KANBAN_PREVIEW_READY_MESSAGE, documentId: 'document' });
+  page({ type: 'steamharness:kanban-method-catalog', documentId: 'document', configurationId: 'map', revision: 1,
+    methods: [{ name: 'map.getInfo', description: 'Image state', inputSchema: { type: 'object' }, readOnly: true }] });
+  await vi.advanceTimersByTimeAsync(0);
+  expect(f.last()).toMatchObject({ type: 'resource-method-state', id: 'original', configurationId: 'map', ready: true,
+    presentation: { mode: 'card' }, methods: [{ name: 'map.getInfo', readOnly: true }] });
+  const instanceId = f.last().instanceId;
+  await f.reply({ type: 'resource-method-state', messages: [{ type: 'kanban-method-invoke', requestId: 'diagnostic-call', instanceId,
+    configurationId: 'map', method: 'map.getInfo', args: {} }] });
+  const invocation = post.mock.calls.find(([message]) => message.type === 'steamharness:kanban-method-invoke')![0];
+  page({ type: 'steamharness:kanban-method-result', requestId: invocation.requestId, documentId: 'document', configurationId: 'map', revision: 1, ok: true, value: { imageReady: true } });
+  await Promise.resolve(); await Promise.resolve();
+  expect(f.last()).toMatchObject({ type: 'resource-method-reply', id: 'original', requestId: 'diagnostic-call', ok: true, value: { imageReady: true } });
+  f.refresh.click();
+  expect(host.postMessage).toHaveBeenCalledWith(expect.objectContaining({ type: 'resource-method-close', id: 'original', nonce: 'first' }));
+  await f.reply({ type: 'error', message: 'Refresh failed' });
+  host.postMessage.mockClear();
+  await vi.advanceTimersByTimeAsync(10_000);
+  expect(host.postMessage).not.toHaveBeenCalled();
+  expect(document.querySelector('[role=alert]')?.textContent).toBe('Refresh failed');
+});
+
+it('lets slow file reads finish after 30 seconds and keeps their original bridge response', async () => {
+  const f = await fixture();
+  await f.reply({ type: 'resource-data', data: { card: { id: 'map', kind: 'kanban', title: 'Map', target: { source: 'local' } }, format: 'kanban',
+    kanban: { url: '/entries/main/kanban/first/index.html', nonce: 'first', configuration: { id: 'map', name: 'Map', params: {} } } } });
+  const frame = document.querySelector('iframe')!, post = vi.spyOn(frame.contentWindow!, 'postMessage');
+  listeners.get('message')!({ source: frame.contentWindow, data: { type: KANBAN_BRIDGE_REQUEST_MESSAGE, nonce: 'first', requestId: 'file-read',
+    operation: 'files.readFile', input: { database: 'data', fileId: 'wf_ab12' } } });
+  const requestId = f.last().requestId;
+  await vi.advanceTimersByTimeAsync(31_000);
+  expect(post.mock.calls.some(([message]) => message.requestId === 'file-read')).toBe(false);
+  f.receive({ type: 'resource-bridge', requestId, value: { base64: 'original-image' } });
+  await Promise.resolve(); await Promise.resolve();
+  expect(post).toHaveBeenCalledWith(expect.objectContaining({ type: KANBAN_BRIDGE_RESPONSE_MESSAGE, requestId: 'file-read', ok: true, value: { base64: 'original-image' } }), '*');
 });

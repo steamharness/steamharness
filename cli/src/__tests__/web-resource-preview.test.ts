@@ -50,6 +50,44 @@ function largePng(): Buffer {
 }
 
 describe('resource previews', () => {
+  it('diagnoses the card instance and its reads, with read-only calls isolated by target and preview lifetime', async () => {
+    const { previews, card, board, runtime } = await fixture();
+    const preview = await previews.open(card('kanban', { source: 'local', projectId: board.id }));
+    const target = { projectDir: board.folderPath, projectId: board.id, entryId: board.entryId };
+    const state = { clientId: 'card-client', instanceId: 'card-page', nonce: preview.data.kanban!.nonce,
+      configurationId: preview.data.kanban!.configuration.id, ready: true, presentation: { mode: 'card' }, methods: [
+        { name: 'map.getInfo', description: 'Image state', inputSchema: { type: 'object' }, readOnly: true },
+        { name: 'map.pan', description: 'Pan map', inputSchema: { type: 'object' } },
+      ] };
+    expect(previews.methodState(preview.id, state)).toEqual([]);
+    expect((await previews.diagnostics(target)).instances[0]).toMatchObject({ instanceId: 'card-page', presentation: { mode: 'card' } });
+    expect((await previews.diagnostics({ ...target, projectId: 'another' })).available).toBe(false);
+    expect((await previews.diagnostics({ ...target, entryId: 'other' })).available).toBe(false);
+    expect((await previews.diagnostics({ ...target, projectDir: board.folderPath + '-other' })).available).toBe(false);
+    const call = { instanceId: 'card-page', configurationId: state.configurationId, method: 'map.getInfo', args: {} };
+    await expect(previews.diagnostics({ ...target, call: { ...call, method: 'map.pan' } })).rejects.toThrow('readOnly');
+    await expect(previews.diagnostics({ ...target, call: { ...call, configurationId: 'stale' } })).rejects.toThrow('changed');
+    const checking = previews.diagnostics({ ...target, call });
+    const invoke = previews.methodState(preview.id, state)[0]!;
+    expect(invoke).toMatchObject({ type: 'kanban-method-invoke', method: 'map.getInfo' });
+    expect(() => previews.methodReply(preview.id, { ...state, clientId: 'other-client', requestId: invoke.requestId, ok: true, value: {} })).toThrow('changed');
+    previews.methodReply(preview.id, { ...state, requestId: invoke.requestId, ok: true, value: { imageReady: false } });
+    expect((await checking).result).toEqual({ imageReady: false });
+    vi.mocked(runtime.kanbanBridge!).mockRejectedValueOnce(new Error('private backend token', { cause: new DOMException('private details', 'TimeoutError') }));
+    await expect(previews.bridge(preview.id, { requestId: 'file-read', operation: 'files.readFile', input: { database: 'data', fileId: 'wf_ab12' } })).rejects.toThrow();
+    const diagnostics = await previews.diagnostics(target);
+    expect(diagnostics.previews[0]).toMatchObject({ source: 'resource-card', previewId: preview.id });
+    expect(diagnostics.requests[0]).toMatchObject({ configurationId: state.configurationId, fileId: 'wf_ab12', error: { category: 'timeout' },
+      attempts: [{ source: 'configuration-cache' }, { source: 'database' }] });
+    expect(JSON.stringify(diagnostics)).not.toContain('private');
+    const pending = expect(previews.diagnostics({ ...target, call })).rejects.toThrow('changed or closed');
+    previews.methodClose(preview.id, state); await pending;
+    expect((await previews.diagnostics(target)).instances).toEqual([]);
+    previews.clear();
+    expect((await previews.diagnostics(target)).available).toBe(false);
+    expect(() => previews.methodState(preview.id, state)).toThrow('access changed');
+  });
+
   it('uses the board resource owner and exact conversation scope rather than the caller storage', async () => {
     const { previews, card, board, runtime } = await fixture();
     const result = await previews.open(card('knowledge', { source: 'local', projectId: board.id, documentId: 'doc', conversationId: 'target-session' }));

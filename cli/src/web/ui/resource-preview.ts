@@ -5,7 +5,7 @@ import { acquireProjectHost } from './host';
 import { iconButton, markdownHtml, updateIcon } from './ui';
 import type { ResourcePreviewData } from '../resource-preview';
 import type { ResourceCardReference } from '../resource-cards';
-import { KANBAN_PREVIEW_READY_MESSAGE, KANBAN_BRIDGE_REQUEST_MESSAGE, KANBAN_BRIDGE_RESPONSE_MESSAGE,
+import { createKanbanMethodSession, KANBAN_PREVIEW_READY_MESSAGE, KANBAN_BRIDGE_REQUEST_MESSAGE, KANBAN_BRIDGE_RESPONSE_MESSAGE,
   KANBAN_BRIDGE_MAX_PENDING_REQUESTS, parseKanbanBridgeCall, createKanbanBridgeError } from '@steamharness/kanban-project';
 
 type Message = Record<string, any>;
@@ -18,11 +18,39 @@ let reference: ResourceCardReference | undefined, selection: Message | undefined
 try { reference = JSON.parse(new URL(location.href).searchParams.get('resourceRef') ?? 'null') ?? undefined; } catch { /* Older preview URLs have no saved-card reference. */ }
 let readyTimer: ReturnType<typeof setTimeout> | undefined, pendingBridge = 0, epoch = 0, authRevision: number | undefined, resourceRevision: number | undefined;
 const pending = new Map<string, { resolve(message: Message): void; reject(error: Error): void; timer: ReturnType<typeof setTimeout> }>();
+let methodSession: ReturnType<typeof createKanbanMethodSession> | undefined, methodTimer: ReturnType<typeof setTimeout> | undefined;
+const methodCalls = new Map<string, AbortController>();
+function closeMethods(): void {
+  if (methodSession && data?.kanban && connected) host.postMessage({ type: 'resource-method-close', id, nonce: data.kanban.nonce });
+  clearTimeout(methodTimer); methodSession?.close(); methodSession = undefined;
+  for (const call of methodCalls.values()) call.abort();
+  methodCalls.clear();
+}
+async function pollMethods(session: NonNullable<typeof methodSession>): Promise<void> {
+  if (session !== methodSession || !data?.kanban) return;
+  if (!connected) { methodTimer = setTimeout(() => void pollMethods(session), 1_000); return; }
+  const previewId = id, nonce = data.kanban.nonce;
+  try {
+    const reply = await request({ type: 'resource-method-state', nonce, instanceId: session.instanceId, ...session.getState() });
+    if (session !== methodSession) return;
+    for (const message of reply.messages ?? []) {
+      if (message.type === 'kanban-method-cancel') { methodCalls.get(message.requestId)?.abort(); continue; }
+      if (message.type !== 'kanban-method-invoke' || message.instanceId !== session.instanceId) continue;
+      const abort = new AbortController(); methodCalls.set(message.requestId, abort);
+      void session.invoke({ instanceId: message.instanceId, configurationId: message.configurationId, method: message.method, args: message.args }, abort.signal)
+        .then(value => { if (session === methodSession) host.postMessage({ type: 'resource-method-reply', id: previewId, nonce, requestId: message.requestId, instanceId: message.instanceId, ok: true, value }); })
+        .catch(error => { if (session === methodSession) host.postMessage({ type: 'resource-method-reply', id: previewId, nonce, requestId: message.requestId, instanceId: message.instanceId, ok: false, error: error.message }); })
+        .finally(() => methodCalls.delete(message.requestId));
+    }
+  } catch { /* Connection and resource revisions own recovery; do not replace the preview. */ }
+  finally { if (session === methodSession) methodTimer = setTimeout(() => void pollMethods(session), 1_000); }
+}
 function request(message: Message): Promise<Message> {
   if (!connected) { return Promise.reject(new Error(t('Connection interrupted.'))); }
   const requestId = crypto.randomUUID();
   return new Promise((resolve, reject) => {
-    const timer = setTimeout(() => { pending.delete(requestId); reject(new Error(t('The request timed out. Check the current status.'))); }, 30_000);
+    const timer = setTimeout(() => { pending.delete(requestId); reject(new Error(t('The request timed out. Check the current status.'))); },
+      message.type === 'resource-bridge' && message.call?.operation?.startsWith('files.') ? 125_000 : 30_000);
     pending.set(requestId, { resolve, reject, timer }); host.postMessage({ ...message, id, requestId });
   });
 }
@@ -54,6 +82,10 @@ function render(next: ResourcePreviewData): void {
     frame = document.createElement('iframe'); frame.title = next.card.title; frame.sandbox.add('allow-scripts');
     frame.src = next.kanban?.url ?? String(next.content); content.append(frame);
     if (next.format === 'kanban') {
+      methodSession = createKanbanMethodSession({ nonce: next.kanban!.nonce, getConfiguration: () => next.kanban!.configuration,
+        getPresentation: () => ({ mode: new URL(location.href).searchParams.get('resourcePresentation') === 'card' ? 'card' : 'fullscreen' }),
+        postMessage: message => frame?.contentWindow?.postMessage(message, '*') });
+      methodTimer = setTimeout(() => { if (methodSession) void pollMethods(methodSession); }, 0);
       status.hidden = false; status.textContent = t('Loading Kanban');
       readyTimer = setTimeout(() => fail(new Error(t('Unable to load this preview. Retry or open it separately.'))), 20_000);
     } else {
@@ -76,7 +108,7 @@ function render(next: ResourcePreviewData): void {
 async function load(nextSelection?: Message): Promise<void> {
   if (nextSelection) { selection = nextSelection; }
   const generation = ++epoch; status.hidden = false; status.textContent = t('Loading...'); status.setAttribute('role', 'status');
-  clearTimeout(readyTimer); frame = undefined; content.replaceChildren(); refresh.disabled = true; updateIcon(refresh.querySelector('.codicon')!, 'loading');
+  closeMethods(); clearTimeout(readyTimer); frame = undefined; content.replaceChildren(); refresh.disabled = true; updateIcon(refresh.querySelector('.codicon')!, 'loading');
   try { const reply = await request({ type: nextSelection ? 'resource-select' : data ? 'resource-refresh' : 'resource-data', reference, selection }); if (generation === epoch) { id = reply.id ?? id; render(reply.data); } }
   catch (error) { if (generation === epoch) { content.replaceChildren(); fail(error); } }
   finally { if (generation === epoch) { refresh.disabled = false; updateIcon(refresh.querySelector('.codicon')!, 'refresh'); } }
@@ -87,6 +119,7 @@ addEventListener('message', event => {
   const message: Message = event.data;
   if (event.source === frame?.contentWindow) {
     if (data?.format !== 'kanban' || !data.kanban || message?.nonce !== data.kanban.nonce) { return; }
+    methodSession?.receive(message);
     if (message.type === 'steamharness:kanban-keyboard' && message.version === 1) {
       if (document.activeElement === frame) host.keyboard?.forward(message.event);
       return;
@@ -110,11 +143,11 @@ addEventListener('message', event => {
   if (message.type === 'state') {
     if (authRevision !== undefined && authRevision !== message.authenticationRevision
       || resourceRevision !== undefined && resourceRevision !== message.resourceRevision) {
-      clearTimeout(readyTimer); data = undefined; frame = undefined; content.replaceChildren(); void load();
+      closeMethods(); clearTimeout(readyTimer); data = undefined; frame = undefined; content.replaceChildren(); void load();
     }
     authRevision = message.authenticationRevision;
     resourceRevision = message.resourceRevision;
   }
 });
 new MutationObserver(inject).observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
-addEventListener('pagehide', () => { epoch++; clearTimeout(readyTimer); for (const waiting of pending.values()) { clearTimeout(waiting.timer); } pending.clear(); });
+addEventListener('pagehide', () => { epoch++; closeMethods(); clearTimeout(readyTimer); for (const waiting of pending.values()) { clearTimeout(waiting.timer); } pending.clear(); });

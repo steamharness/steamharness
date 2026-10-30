@@ -49,6 +49,8 @@ Core Agent 入口在强退重启后按原运行身份恢复未完成任务。宿
 
 远程静态项目管理使用 [workspace 命令](/cli/server-workspace)，Server 不运行项目代码。
 
+小助手回复中的看板卡片按保存的项目、入口和配置预览，资源地址保留卡片宿主的入口前缀。Studio 的 `get_kanban_diagnostics` 同时支持已打开的项目看板与小助手卡片，返回页面实例、配置身份和最近 50 条读取记录；`previews` 可区分卡片来源。使用当前 `instanceId`、`configurationId` 调用明确声明 `readOnly: true` 的页面方法，可核验图片加载等实际状态。关闭或刷新卡片后，旧实例失效；没有活实例时不能视为页面验收通过。文件桥接最多等待 120 秒，传输层不会提前截断；超过该时限仍须排查实际文件读取链路。
+
 ## 用户模型与权限
 
 CLI Web 可由 Studio 宿主注入用户权限快照及后续更新，通过能力握手兼容旧 CLI。项目显式选择 `permissionPolicy: "inherit"` 才继承；未配置仍默认 `workspace`。独立 CLI 本期不保存用户权限设置，没有宿主注入时 `inherit` 使用 `auto`。持久会话中的当前任务保留启动快照，后续输入在空闲安全边界后采用新值。见[用户设置与权限继承](/core-api/user-settings)。

@@ -1,7 +1,7 @@
 import { writeProjectFixture } from '../../scripts/test-project-fixture.mjs';
 import { afterEach, expect, it, vi } from 'vitest';
 import { randomUUID } from 'node:crypto';
-import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, realpath, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { startWebServer } from '../web/server';
@@ -17,7 +17,7 @@ afterEach(async () => {
 });
 
 async function fixture(database = false) {
-  const directory = await mkdtemp(path.join(os.tmpdir(), 'aggregate-web-')); folders.push(directory);
+  const directory = await realpath(await mkdtemp(path.join(os.tmpdir(), 'aggregate-web-'))); folders.push(directory);
   vi.spyOn(os, 'homedir').mockReturnValue(path.join(directory, 'host'));
   vi.stubEnv('STEAMHARNESS_CLI_AUTH_DIR', path.join(directory, 'auth'));
   vi.stubEnv('STEAMHARNESS_SERVER_URL', ''); vi.stubEnv('STEAMHARNESS_SERVER_ADMIN_KEY', '');
@@ -33,7 +33,7 @@ async function fixture(database = false) {
     await writeFile(path.join(directory, entry.root, entry.entry), entry.type === 'kanban' ? '<!doctype html><title>Board</title>' : 'export {};');
     await writeFile(path.join(directory, entry.root, 'configuration.json'), JSON.stringify({ version: 1, fields: [{ name: 'label', type: 'string' }] }));
   }
-  const projects: Project[] = entries.map(entry => ({ id, entryId: entry.entryId, name: entry.name, aggregateName: pkg.name, entries, defaultEntry: 'agent', entryRoot: path.join(directory, entry.root), databases: entry.databases, folderPath: directory, uri: '', projectType: entry.type, fields: [], entrypoints: entry.type === 'workflow' ? [{ id: 'operation', title: 'Operation', fields: [] }] : [], ...(entry.type === 'workflow' ? { defaultEntrypoint: 'operation' } : {}) }));
+  const projects: Project[] = entries.map(entry => ({ id, entryId: entry.entryId, name: entry.name, aggregateName: pkg.name, entries, defaultEntry: 'agent', entryRoot: path.join(directory, entry.root), databases: entry.databases, folderPath: directory, uri: '', projectType: entry.type, fields: [], entrypoints: entry.type === 'workflow' ? [{ id: 'operation', title: 'Operation', fields: [] }] : [], ...(entry.type === 'workflow' ? { defaultEntrypoint: 'operation' } : entry.type === 'kanban' ? { kanban: { artifactDir: '.', entry: entry.entry } } : {}) }));
   const active = new Map<string, { runId?: string; finish(report: Report): void }>();
   const runtime: Runtime = { available: true, inspect: vi.fn(async () => ({ projects, errors: [] })), resolveParams: vi.fn(async () => ({})),
     run: vi.fn(async request => new Promise<Report>(finish => active.set(request.project.entryId, { runId: request.runId, finish }))),
@@ -92,4 +92,31 @@ it('keeps host catalogs, approvals and data out of CLI Web while retaining expli
   expect(result.value.requirements[0]).toMatchObject({ status: 'bound', space: { name: 'Approved by host' } });
   expect(result.value).not.toHaveProperty('local'); expect(result.value).not.toHaveProperty('server');
   expect(JSON.parse(await readFile(path.join(f.directory, 'config.json'), 'utf8')).databases.data).toBe(approval.databaseId);
+});
+
+it('keeps saved cross-entry Kanban and image card URLs inside their owning aggregate mount', async () => {
+  const f = await fixture(), state = await f.state('agent'), board = await f.state('board');
+  await writeFile(path.join(f.directory, 'card.svg'), '<svg xmlns="http://www.w3.org/2000/svg"/>');
+  const cards = [
+    { cardId: 'map', kind: 'kanban', title: 'Saved map', target: { source: 'local', projectId: state.project.id, entryId: 'board', configurationId: board.configurations.activeConfigurationId } },
+    { cardId: 'image', kind: 'file', target: { source: 'local', filePath: 'card.svg' } },
+  ];
+  f.app.controller!.current.messages.push({ id: 'answer', role: 'assistant', content: '', items: cards.map(output => ({
+    metadata: { kind: 'agent-part', partType: 'tool' }, content: { status: 'success', tool: 'workflow-ui_present_card', output: { action: 'upsert', ...output } },
+  })) });
+  const headers = { Authorization: `Bearer ${new URLSearchParams(new URL(f.app.url).hash.slice(1)).get('session')}` };
+  for (const card of cards) {
+    const preview = await f.call('agent', { type: 'resource', messageId: 'answer', cardId: card.cardId, action: 'inline' });
+    expect(preview.url).toMatch(/^\/entries\/agent\/resource\//);
+    expect((await fetch(new URL(preview.url, f.app.origin), { headers })).status).toBe(200);
+    const data = (await f.call('agent', { type: 'resource-data', id: preview.id })).data;
+    const assetUrl = data.kanban?.url ?? data.content;
+    expect(assetUrl).toMatch(/^\/entries\/agent\/(?:kanban|resource-assets)\//);
+    const asset = await fetch(new URL(assetUrl, f.app.origin), { headers });
+    expect(asset.status).toBe(200);
+    expect(await asset.text()).toContain(card.cardId === 'map' ? '<title>Board</title>' : '<svg');
+    // This was the URL emitted before mount-aware resource previews.
+    const unmounted = await fetch(new URL(assetUrl.replace('/entries/agent', ''), f.app.origin), { headers });
+    expect(unmounted.status).toBe(404); expect(await unmounted.text()).toBe('Unknown project entry.');
+  }
 });
