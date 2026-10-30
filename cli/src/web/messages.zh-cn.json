@@ -1,4 +1,5 @@
 {
+  "Dismiss error": "关闭错误提示",
   "Project details, declarations and entry windows.": "查看项目详情、声明与窗口入口。",
   "Manage configuration profiles, values and publication permissions.": "管理配置方案、配置值与发布权限。",
   "Control which tools can run and which actions need approval.": "设置工具是否启用，以及执行时是否需要批准。",

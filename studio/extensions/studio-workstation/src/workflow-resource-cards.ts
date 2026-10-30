@@ -31,7 +31,8 @@ export function bindProjectResourceCards(webview: vscode.Webview, sessionUrl: st
         controller.signal.throwIfAborted();
         await open(result);
       })().catch(async error => {
-        if (!controller.signal.aborted) { await webview.postMessage({ type: 'workflow-host', resourceError: { type: 'error', message: error.message } }); }
+        if (!controller.signal.aborted) { await webview.postMessage({ type: 'workflow-host', resourceError: { type: 'error', errorSource: 'request', requestType: 'resource',
+          projectUri: action.projectUri, sessionId: action.sessionId, messageId: action.messageId, message: error.message } }); }
       }).finally(() => pending--);
       return true;
     },

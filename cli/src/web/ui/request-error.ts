@@ -4,6 +4,28 @@ import './request-error.css';
 const rendered = new WeakMap<HTMLElement, string>();
 const detailLimit = 16_000;
 
+/** Dismissing an alert changes its visibility, not the validation result. */
+export class RequestErrorAlert {
+  private readonly content = document.createElement('div');
+  private readonly close = document.createElement('button');
+  private error?: string;
+  constructor(private readonly root: HTMLElement) {
+    root.classList.add('request-error-alert');
+    this.content.className = 'request-error-content';
+    this.close.type = 'button'; this.close.className = 'icon-button request-error-close';
+    this.close.innerHTML = '<span class="codicon codicon-close" aria-hidden="true"></span>';
+    this.close.onclick = () => { root.hidden = true; };
+    root.replaceChildren(this.content, this.close);
+  }
+  get hasError(): boolean { return !!this.error; }
+  show(error?: string): void {
+    this.error = error;
+    renderRequestError(this.content, error);
+    this.close.title = this.close.ariaLabel = t('Dismiss error');
+    this.root.hidden = !error;
+  }
+}
+
 function responseStatus(message: string, htmlOffset: number): number | undefined {
   const prefix = message.slice(0, htmlOffset);
   const code = prefix.match(/\bAPI\s+error\s*\(([45]\d{2})\)/i)?.[1]

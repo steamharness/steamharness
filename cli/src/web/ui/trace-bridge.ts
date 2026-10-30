@@ -1,5 +1,6 @@
 import { t } from '../localization';
 import { StateRevisions } from './state-revisions';
+import { isExecutionError } from './execution-error';
 type Message = Record<string, any>;
 
 // Only execution data crosses into an embedding host; account and draft state stay here.
@@ -31,6 +32,8 @@ export class TraceBridge {
   private status = 'connecting';
   private readonly revisions = new StateRevisions();
   private activeId?: string;
+  private errors: Message[] = [];
+  private errorRevision = 0;
   constructor(private readonly send: (message: Message) => void) {}
   get active(): boolean { return this.enabled; }
   enable(version: unknown): void {
@@ -42,9 +45,11 @@ export class TraceBridge {
     if (message.type === 'state') {
       if (!this.revisions.accept(message)) return;
       const restarted = this.state?.serverInstanceId !== message.serverInstanceId;
+      if (this.state && (this.state.project?.id !== message.project?.id || this.state.project?.entryId !== message.project?.entryId)) this.errors = [];
       this.state = message; this.snapshot = undefined;
       if (this.enabled && (!this.cooling || restarted)) this.flush();
     }
+    if (isExecutionError(message)) this.executionError(message);
     if (message.type === 'connection') { this.status = message.status; this.publish('status', { status: this.status }); }
     if (message.type === 'trace-run') { this.publish('run', { run: message.run, runId: message.runId, error: message.error }); }
   }
@@ -94,7 +99,26 @@ export class TraceBridge {
   private project(): Message | undefined {
     const snapshot = this.state && traceSnapshot(this.state);
     if (snapshot && this.activeId) snapshot.activeId = this.activeId;
+    if (snapshot && this.errors.length) snapshot.errors = this.errors.map(({ key: _key, ...error }) => error);
     return snapshot;
+  }
+  private executionError(message: Message): void {
+    if (!this.state || typeof message.message !== 'string' || !message.message.trim()
+      || message.projectUri && message.projectUri !== this.state.project?.uri) return;
+    let sessionId = message.sessionId;
+    if (this.state.project?.projectType === 'conversation') {
+      const session = this.state.sessions?.find((session: Message) => sessionId ? session.id === sessionId
+        : session.messages?.some((answer: Message) => message.messageId ? answer.id === message.messageId : message.runId && answer.runId === message.runId));
+      if (!session) return;
+      sessionId = session.id;
+    } else if (this.state.project?.projectType !== 'workflow' || !message.runId) return;
+    const key = String(message.errorId ?? JSON.stringify([sessionId, message.messageId, message.runId, message.requestId, message.timestamp, message.message]));
+    if (this.errors.some(error => error.key === key)) return;
+    this.errorRevision++;
+    this.errors = [...this.errors, { key, id: `notification-${this.errorRevision}`, sessionId, messageId: message.messageId, runId: message.runId,
+      message: message.message, timestamp: message.timestamp ?? Date.now() }].slice(-200);
+    this.snapshot = undefined;
+    if (this.enabled && !this.cooling) this.flush();
   }
   private flush(): void {
     clearTimeout(this.timer); this.timer = undefined;
@@ -102,10 +126,11 @@ export class TraceBridge {
     if (!this.snapshot) { this.cooling = false; return; }
     this.publish('state', { snapshot: this.snapshot });
     const published = this.state;
+    const errors = this.errorRevision;
     this.cooling = true;
     this.timer = setTimeout(() => {
       this.timer = undefined; this.cooling = false;
-      if (this.enabled && this.state !== published) this.flush();
+      if (this.enabled && (this.state !== published || this.errorRevision !== errors)) this.flush();
     }, 100);
   }
   private validCommand(command: Message | undefined, agent: Message, targetId: number, conversationId: number): boolean {

@@ -18,7 +18,7 @@ app.innerHTML = `<header class="resource-toolbar trace-toolbar">
   <div class="resource-toolbar-actions" id="trace-actions"><button id="trace-current" class="icon-button" title="${t('Follow current conversation')}" aria-label="${t('Follow current conversation')}">${icon('eye')}</button><button id="trace-connect" class="icon-button" title="${t("Load project trace")}" aria-label="${t("Load project trace")}">${icon('debug-start')}</button><button id="trace-more" class="icon-button" title="${t("Load more runs")}" aria-label="${t("Load more runs")}" hidden>${icon('history')}</button></div>
   </header><nav id="trace-tabs" role="tablist" aria-label="${t('Execution views')}"></nav><div id="trace-notice" role="status" hidden></div>
   <section id="trace-execution" role="tabpanel" aria-labelledby="trace-tab-trace"><div class="trace-controls"><div id="trace-modes" role="group" aria-label="${t("Trace view")}">
-    <button data-mode="duration" aria-pressed="true">${icon('watch')}<span>${t("Duration")}</span></button><button data-mode="rounds" aria-pressed="false">${icon('list-tree')}<span>${t("Turns")}</span></button><button data-mode="calls" aria-pressed="false">${icon('symbol-method')}<span>${t("Calls")}</span></button></div>
+    <button data-mode="duration" aria-pressed="true">${icon('watch')}<span>${t("Duration")}</span></button><button data-mode="rounds" aria-pressed="false">${icon('list-tree')}<span>${t("Turns")}</span></button><button data-mode="calls" aria-pressed="false">${icon('symbol-method')}<span>${t("Calls")}</span></button><button data-mode="errors" aria-pressed="false">${icon('error')}<span>${t('Errors')}</span></button></div>
     <label class="resource-search trace-search">${icon('search')}<input id="trace-search" type="search" placeholder="${t("Search trace")}" aria-label="${t("Search trace")}"></label>
     <button id="trace-follow" class="icon-button" title="${t("Follow execution")}" aria-label="${t("Follow execution")}" aria-pressed="true">${icon('arrow-down')}</button>
   </div><section id="trace-timeline" aria-label="${t("Execution timeline")}"></section>
@@ -28,12 +28,12 @@ app.innerHTML = `<header class="resource-toolbar trace-toolbar">
 const element = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
 const select = (id: string) => element<HTMLSelectElement>(id);
 const scroll = element('trace-scroll');
-const labels: Record<TraceLane, string> = { input: t("Input"), model: t("Model"), tool: t("Tool"), node: t("Node"), output: t("Output"), log: t("Logs") };
+const labels: Record<TraceLane, string> = { input: t("Input"), model: t("Model"), tool: t("Tool"), node: t("Node"), output: t("Output"), log: t("Logs"), error: t('Errors') };
 const statuses: Record<string, string> = { connecting: t("Connecting"), connected: t("Connected"), reconnecting: t("Reconnecting"), offline: t("Offline"), expired: t("Connection expired"), closed: t("Project closed"),
   running: t("Running"), success: t("Completed"), failed: t("Failed"), aborted: t("Stopped"), stopped: t("Stopped"), waiting: t("Waiting for input"), waiting_for_input: t("Waiting for input"), timed_out: t("Timed out"), interrupted: t("Interrupted") };
 let state: TracePanelState | undefined;
 const saved = (host.getState() ?? {}) as { mode?: string; follow?: boolean; tab?: string; projectUri?: string };
-let mode = ['duration', 'rounds', 'calls'].includes(saved.mode ?? '') ? saved.mode! : 'duration', follow = saved.follow ?? true;
+let mode = ['duration', 'rounds', 'calls', 'errors'].includes(saved.mode ?? '') ? saved.mode! : 'duration', follow = saved.follow ?? true;
 const tabs = [['trace', t('Trace'), 'history'], ['tasks', t('Tasks'), 'list-tree'], ['plan', t('Plan'), 'checklist'], ['records', t('Records'), 'notebook'], ['usage', t('Usage'), 'dashboard']] as const;
 type Tab = 'trace' | AgentTab;
 let tab: Tab = tabs.some(([id]) => id === saved.tab) ? saved.tab as Tab : 'trace';
@@ -111,7 +111,8 @@ function focusRow(id: string): void {
 }
 function timeline(filtered: TraceRow[]): void {
   const target = element('trace-timeline'); target.replaceChildren();
-  const entries = filtered.filter(row => row.lane !== 'log'); target.hidden = !entries.length;
+  const entries = filtered.filter(row => row.lane !== 'log' && row.lane !== 'error'); target.hidden = mode === 'errors' || !entries.length;
+  if (target.hidden) return;
   const timed = entries.filter(row => row.start !== undefined);
   const start = Math.min(...timed.map(row => row.start!));
   const end = Math.max(...timed.map(row => row.end ?? (row.status === 'running' ? Date.now() : row.start!)));
@@ -184,7 +185,7 @@ function renderTrace(): void {
   }
   timeline(filtered);
   element('trace-empty').hidden = filtered.length > 0;
-  element('trace-empty').textContent = !state.projects.length ? t("No Workflow or Conversation projects") : query ? t("No matching records") : state.loading ? t("Loading trace...") : state.status === 'idle' ? t("No trace loaded") : !state.snapshot ? t("Connecting to project...") : t("No execution records");
+  element('trace-empty').textContent = !state.projects.length ? t("No Workflow or Conversation projects") : query ? t("No matching records") : state.loading ? t("Loading trace...") : state.status === 'idle' ? t("No trace loaded") : !state.snapshot ? t("Connecting to project...") : mode === 'errors' ? t('No execution errors') : t("No execution records");
 }
 function render(): void {
   if (!state) { return; }

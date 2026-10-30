@@ -57,4 +57,14 @@ describe('live conversation state', () => {
     expect(view.messages[0].items).toEqual(source.messages[0].items);
     expect(source.agent.turns[0].items).toEqual([{ title: 'Answer', content: 'Answer' }]);
   });
+
+  it('retains report errors for Trace without transferring duplicate result data', () => {
+    const source = session([]);
+    source.messages[0].report = { status: 'failed', error: { message: 'Runtime failed' },
+      result: { success: false, data: 'Large duplicate result', error: { message: 'Provider failed', metadata: { attempt: 2 } } } };
+    const report = new ConversationState().sessions([source])[0].messages[0].report!;
+    expect(report.error?.message).toBe('Runtime failed');
+    expect(report.result).toEqual({ success: false, error: { message: 'Provider failed', metadata: { attempt: 2 } } });
+    expect(report.result?.data).toBeUndefined(); expect(source.messages[0].report.result?.data).toBe('Large duplicate result');
+  });
 });

@@ -44,8 +44,9 @@ export class ConversationState {
     if (report) {
       let cached = this.reports.get(report);
       if (!cached) {
-        const { status, durationMs, nodes, logs, output, resolvedUserInputs } = report;
-        cached = { report: { status, durationMs, nodes, logs, output, resolvedUserInputs },
+        const { status, durationMs, nodes, logs, output, resolvedUserInputs, error, result } = report;
+        cached = { report: { status, durationMs, nodes, logs, output, resolvedUserInputs,
+          ...(error ? { error } : {}), ...(result?.error ? { result: { success: result.success, error: result.error } } : {}) },
           nodes: new Map(nodes?.filter(node => node.executionId !== undefined).map(node => [node.executionId, node])) };
         this.reports.set(report, cached);
       }

@@ -1,4 +1,7 @@
 {
+  "Errors": "Errors",
+  "Run error": "Run error",
+  "No execution errors": "No execution errors",
   "Invalid file line or column.": "Invalid file line or column.",
   "Only local file or folder paths can be opened.": "Only local file or folder paths can be opened.",
   "Import from Link": "Import from Link",

@@ -28,6 +28,7 @@
 .lane-input { --lane-color: var(--trace-input); }.lane-model { --lane-color: var(--trace-model); }.lane-tool { --lane-color: var(--trace-tool); }.lane-node { --lane-color: var(--trace-node); }.lane-output { --lane-color: var(--trace-model); }.lane-log { --lane-color: var(--muted); }
 .trace-bar.status-running { opacity: 1; border-style: dashed; }
 .trace-bar.status-failed { background: var(--vscode-errorForeground); }
+.lane-error { --lane-color: var(--vscode-errorForeground); }
 #trace-scroll { flex: 1; min-height: 0; overflow: auto; }
 #trace-list { padding: 0 12px 8px; }
 .trace-row { border-bottom: 1px solid var(--border); min-width: 0; }

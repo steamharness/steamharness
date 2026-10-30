@@ -17,6 +17,7 @@ export interface TraceSnapshot {
   durable?: boolean; agents?: Record<string, TraceAgentSnapshot>;
   runs?: TraceRunSummary[]; selectedId?: string; run?: TraceRun; occupiedRun?: TraceRun;
   history?: { total: number; hasMore: boolean; query: string };
+  errors?: { id: string; sessionId?: string; messageId?: string; runId?: string; message: string; timestamp?: number | string }[];
 }
 export interface TraceTarget { sessionId?: string; messageId?: string; runId?: string }
 export interface TraceSelection extends TraceTarget { projectUri?: string }

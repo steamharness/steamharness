@@ -1,4 +1,7 @@
 .message-error { margin: 12px 0; }
+.request-error-alert:not([hidden]) { display: flex; align-items: flex-start; gap: 8px; }
+.request-error-content { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.request-error-close { flex: none; margin-left: auto; color: inherit; }
 .request-error { min-width: 0; white-space: normal; }
 .request-error-summary { margin: 0; font-weight: 500; }
 .request-error-hint { margin: 4px 0 0; color: var(--muted); }

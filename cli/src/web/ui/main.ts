@@ -12,7 +12,8 @@ import { ConversationMessageIndex, type IndexedUserMessage } from './conversatio
 import { InputPrompt } from './input-prompt';
 import { ConversationTools } from './conversation-tools';
 import { requestAction } from './action-dialog';
-import { renderRequestError } from './request-error';
+import { renderRequestError, RequestErrorAlert } from './request-error';
+import { isExecutionError } from './execution-error';
 import { ContentSearch } from './content-search';
 import { ConversationOutput } from './conversation-output';
 import { conversationSubagents, type ConversationSubagentsState } from './conversation-subagents';
@@ -182,6 +183,8 @@ function initialize(): void {
   transcriptResize.observe(transcript);
   transcriptResize.observe(transcriptContent);
   const paramError = document.querySelector<HTMLDivElement>('#parameter-error')!;
+  const parameterError = new RequestErrorAlert(paramError);
+  const operationError = new RequestErrorAlert(document.querySelector<HTMLElement>('#error')!);
   const chats = document.querySelector<HTMLElement>('#chats')!;
   const moreHistory = document.querySelector<HTMLButtonElement>('#load-more-history')!;
   const allHistorySearch = document.querySelector<HTMLInputElement>('#search-all-history')!;
@@ -336,7 +339,7 @@ function initialize(): void {
     pendingParameterTrigger = undefined;
     paramsNeedInit = false;
     resolving = true;
-    paramError.hidden = true;
+    parameterError.show();
     const id = ++requestId;
     const fail = (error: string): void => { window.dispatchEvent(new MessageEvent('message', { data: {
       type: 'params', projectUri: state?.project.uri, sessionId: state?.activeId, requestId: id, error,
@@ -448,7 +451,7 @@ function initialize(): void {
     const cached = parameterCache.get(formKey);
     if (cached?.signature === parameterSignature()) { paramStates = structuredClone(cached.states); parametersReady = true; }
     parameterActions.render(parameters);
-    paramError.hidden = true;
+    parameterError.show();
     updateFields();
     persist();
     requestParams({ kind: 'init' });
@@ -562,7 +565,7 @@ function initialize(): void {
     const refresh = document.querySelector<HTMLButtonElement>('#refresh-params')!;
     refresh.hidden = !dynamic || !fields.size;
     refresh.disabled = busy() || state.running || resolving || serverBlocked();
-    refresh.title = refresh.ariaLabel = paramError.hidden ? t('Refresh parameters') : t('Retry loading parameters');
+    refresh.title = refresh.ariaLabel = parameterError.hasError ? t('Retry loading parameters') : t('Refresh parameters');
     refresh.classList.toggle('refreshing', parametersLoading());
     document.querySelector<HTMLElement>('#parameter-status')!.hidden = !parametersLoading() || !dynamic;
     document.querySelector('#parameters')!.setAttribute('aria-busy', String(parametersLoading()));
@@ -968,7 +971,7 @@ function initialize(): void {
     } catch (error) { if (scope === dropScope() && (!importRequestId || pendingDrops.delete(importRequestId))) { uploading = Math.max(0, uploading - 1); showError(String(error)); updateControls(); } }
   }
 
-  function showError(message: string): void { renderRequestError(document.querySelector<HTMLElement>('#error')!, message); }
+  function showError(message: string): void { operationError.show(message); }
 
   async function copy(text: string, button: HTMLButtonElement): Promise<void> {
     if (await vscode.postMessage({ type: 'copy', text }) === false) { return; }
@@ -1202,7 +1205,7 @@ function initialize(): void {
       for (const view of messages.values()) { view.output?.dispose(); } messages.clear();
       subagentOutput = undefined;
       transcriptContent.replaceChildren();
-      document.querySelector<HTMLElement>('#error')!.hidden = true;
+      operationError.show();
       sizeComposer();
     }
     const editingChanged = editingQueueId !== session.draft?.editingQueueId;
@@ -1310,7 +1313,7 @@ function initialize(): void {
     if (!draftReferences.length && conversationComposer.submitCommand()) { return; }
     if (busy() || state.project.projectType !== 'conversation' && resolving || uploading || state.project.projectType === 'conversation' && !hasInput) { return; }
     const validateOnServer = state.project.projectType === 'conversation' && currentParameters().paramResolver?.enabled
-      && (!parametersReady || resolving || parameterOptionsStale || paramsNeedInit || inputTimer !== undefined || !paramError.hidden);
+      && (!parametersReady || resolving || parameterOptionsStale || paramsNeedInit || inputTimer !== undefined || parameterError.hasError);
     for (const [name, view] of fields) {
       if (validateOnServer) { break; }
       if (view.root.hidden || paramStates[name]?.disabled) { continue; }
@@ -1324,7 +1327,7 @@ function initialize(): void {
         return;
       }
     }
-    document.querySelector<HTMLElement>('#error')!.hidden = true;
+    operationError.show();
     stopRequests.delete(`${state.project.uri}:${state.activeId}`);
     if (state.project.projectType === 'conversation') {
       const session = currentSession()!;
@@ -1546,6 +1549,7 @@ function initialize(): void {
       dialogs.skillsResult(event.data.requestId, event.data.value, event.data.type === 'error' ? event.data.message : undefined); return;
     }
     const message = event.data;
+    if (message?.type === 'error' && state && message.projectUri && message.projectUri !== state.project.uri) return;
     if (message?.type === 'project-server-checked' || message?.type === 'error' && message.requestType === 'project-server-check') { checkingServer = false; updateControls(); return; }
     if (fileIcons.receive(message)) return;
     if (message.type === 'error' && message.requestType === 'resolve') {
@@ -1557,6 +1561,8 @@ function initialize(): void {
     }
     // ConversationOutput owns inline preview errors, including late replies from older cards.
     if (message.type === 'error' && message.requestType === 'resource' && message.requestId) { return; }
+    // Execution diagnostics belong to the run and Studio Trace, never the composer alert.
+    if (isExecutionError(message)) { return; }
     if (['stopped', 'agent-receipt', 'error'].includes(message.type) && finishStop(message)) { return; }
     if (queueView.receive(message)) return;
     if (message.type === 'connection') {
@@ -1644,9 +1650,8 @@ function initialize(): void {
       }
       if (message.error) {
         authenticationRequired = /SteamHarness Server login is not configured|Unauthorized/.test(String(message.error));
-        paramError.textContent = String(message.error).includes('SteamHarness Server login is not configured') ? t("Sign in to SteamHarness Server, then refresh parameters.")
-          : String(message.error).includes('Unauthorized') ? t("Sign-in expired. Sign in to SteamHarness Server again.") : message.error;
-        paramError.hidden = false;
+        parameterError.show(String(message.error).includes('SteamHarness Server login is not configured') ? t("Sign in to SteamHarness Server, then refresh parameters.")
+          : String(message.error).includes('Unauthorized') ? t("Sign-in expired. Sign in to SteamHarness Server again.") : message.error);
       } else {
         authenticationRequired = false;
         parameterOptionsStale = false;

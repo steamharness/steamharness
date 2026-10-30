@@ -267,6 +267,11 @@ it.each(['timeout', 'transport', 'host-rejection'])('ends %s failures, retains c
     f.action('mode').click(); await Promise.resolve();
   }
   expect(f.loading()).toBe(false); expect(document.querySelector<HTMLElement>('#parameter-error')!.hidden).toBe(false);
+  const alert = document.querySelector<HTMLElement>('#parameter-error')!;
+  alert.querySelector('button')!.click(); expect(alert.hidden).toBe(true);
+  f.receive({ running: true }); expect(alert.hidden).toBe(true);
+  expect(document.querySelector<HTMLButtonElement>('#refresh-params')!.title).toBe('Retry loading parameters');
+  f.receive({ running: false });
   expect(f.action('advanced').disabled).toBe(false);
   const count = f.requests().length;
   document.querySelector<HTMLButtonElement>('#refresh-params')!.click(); expect(f.requests()).toHaveLength(count + 1);
@@ -372,10 +377,11 @@ it('releases obsolete background loading immediately when an edit returns to its
   refresh.click(); expect(f.requests()).toHaveLength(3);
 });
 
-it.each(['pending', 'failed'])('validates required dynamic defaults on send while initial loading is %s', async phase => {
+it.each(['pending', 'failed', 'dismissed'])('validates required dynamic defaults on send while initial loading is %s', async phase => {
   const f = await fixture({ requiredModel: true });
   const request = f.requests()[0];
-  if (phase === 'failed') f.emit({ ...request, type: 'params', error: 'Catalogue unavailable' });
+  if (phase !== 'pending') f.emit({ ...request, type: 'params', error: 'Catalogue unavailable' });
+  if (phase === 'dismissed') document.querySelector<HTMLButtonElement>('#parameter-error button')!.click();
   f.type('resolve defaults when sending');
   document.querySelector<HTMLButtonElement>('#send')!.click();
   const send = host.postMessage.mock.calls.map(([message]) => message).find(message => message.type === 'send');

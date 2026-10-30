@@ -30,8 +30,10 @@ test('host re-resolves a saved card before opening it and never trusts client-su
 
 test('a denied resource does not open a panel and reports the server error', async () => {
   const { binding, opened, messages } = fixture(async () => new Response(JSON.stringify({ message: 'Access denied' }), { status: 403 }));
-  binding.receive({ type: 'workflow-resource', version: 1, request: { type: 'resource', cardId: 'card' } }); await tick();
-  assert.equal(opened.length, 0); assert.equal(messages[0].resourceError.message, 'Access denied'); binding.dispose();
+  binding.receive({ type: 'workflow-resource', version: 1, request: { type: 'resource', cardId: 'card', sessionId: 'session', messageId: 'answer', projectUri: 'file:///project' } }); await tick();
+  assert.equal(opened.length, 0);
+  assert.deepEqual(JSON.parse(JSON.stringify(messages[0].resourceError)), { type: 'error', errorSource: 'request', requestType: 'resource',
+    sessionId: 'session', messageId: 'answer', projectUri: 'file:///project', message: 'Access denied' }); binding.dispose();
 });
 
 test('closing or rebinding a conversation cancels a pending resource open', async () => {

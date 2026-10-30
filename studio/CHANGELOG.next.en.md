@@ -1,5 +1,7 @@
 # Unreleased
 
+- Add: Trace now includes an Errors filter for node, tool and run failures and model retry reasons, retaining diagnostics after success. Composer parameter and operation alerts can be dismissed and ignore late errors from other conversations.
+
 - Fixed conversation resource cards to retain explicit target projects instead of replacing them with the Assistant project, preserving map entry and named configuration references.
 
 - Added an inline subagent entry beside the response status. Expand actual task state, progress, results and errors, and open child conversations, including anonymous delegations and reopened history. The entry remains after the parent reply completes.

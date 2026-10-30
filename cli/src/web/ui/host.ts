@@ -37,7 +37,10 @@ export function acquireProjectHost(options: { live?: boolean; connectionBanner?:
   const conversationView = new URLSearchParams(location.search).get('projectView');
   const storageKey = `steamharness-web:${document.querySelector<HTMLMetaElement>('meta[name=steamharness-project]')?.content ?? location.pathname}${conversationView ? `:${conversationView}` : ''}:${location.pathname}`;
   let navigationSignature: string | undefined;
-  const emit = (message: Message) => window.dispatchEvent(new MessageEvent('message', { data: message }));
+  const emit = (message: Message) => {
+    trace.receive(message);
+    window.dispatchEvent(new MessageEvent('message', { data: message }));
+  };
   const trace = new TraceBridge(message => { if (window.parent !== window) { window.parent.postMessage(message, '*'); } });
   let projectSetupHost = false, userSettingsHost = false;
   let resourceHost = false, databaseHost = false, editHost = false, nativePasteHost = false, pathPickerHost = false, pathOpenHost = false, fileIconsHost = false, downloadHost = false;
@@ -147,7 +150,6 @@ export function acquireProjectHost(options: { live?: boolean; connectionBanner?:
     }
     projectCreation.update(message);
     if (message.type === 'state' && message.account) { accountPanel.update(message.account); }
-    trace.receive(message);
     emit(message);
   }, options.live, options.connectionBanner, () => recovery.recover());
   const request = async (message: Message) => {
@@ -246,8 +248,8 @@ export function acquireProjectHost(options: { live?: boolean; connectionBanner?:
   });
   const handleReply = (reply: Message) => {
     projectCreation.update(reply);
-    trace.receive(reply);
     if (reply.type === 'trace-run') {
+      trace.receive(reply);
       if (!trace.active) { handleReply({ type: 'preview', title: t("Trace"), content: reply.run }); }
       return;
     }
@@ -369,7 +371,7 @@ export function acquireProjectHost(options: { live?: boolean; connectionBanner?:
         window.parent.postMessage({ type: 'workflow-path-open', version: 1, requestId, path: message.path, ...(message.line === undefined ? {} : { line: message.line }), ...(message.column === undefined ? {} : { column: message.column }) }, '*'); return;
       }
       if (message.type === 'login') { accountPanel.open(); return; }
-      void request(message).catch(error => emit({ type: 'error', silent: error instanceof ConnectionError, connectionError: error instanceof ConnectionError, requestType: message.type, sessionId: message.sessionId, messageId: message.messageId, requestId: message.requestId, errorScope: message.errorScope, message: error.message }));
+      void request(message).catch(error => emit({ type: 'error', errorSource: 'request', silent: error instanceof ConnectionError, connectionError: error instanceof ConnectionError, requestType: message.type, projectUri: message.projectUri, sessionId: message.sessionId, messageId: message.messageId, requestId: message.requestId, errorScope: message.errorScope, message: error.message }));
     },
     getState: () => { try { return JSON.parse(localStorage.getItem(storageKey) ?? 'null'); } catch { return undefined; } },
     setState: (state) => {

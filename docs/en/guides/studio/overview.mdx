@@ -84,6 +84,8 @@ The assistant's **Permission** directly shows the current user policy and opens 
 
 Editor actions follow tool permissions and Build/Plan approvals; state, diagnostic and entry reads are automatically approved. Opening a terminal never executes commands. Closing the session, removing a root or revoking trust invalidates control. A Node extension host is required; the browser-only extension cannot provide this service. Legacy Desktop Dock, updates and launch-at-login are not offered.
 
+The **Errors** filter in Trace shows run, node and tool failures and model retry reasons by conversation, turn and keyword. Existing diagnostics remain after a successful retry. Execution errors stay out of the alert above the composer; parameter validation, attachment and resource-opening errors remain there with an **×** dismiss button. Hiding a parameter error does not bypass validation.
+
 ## Aggregate entries and databases
 
 The Start page shows one card per aggregate; **Run Project** opens `defaultEntry`. **Open Project Window**, below the file tree in Explorer, shows only the current project. Expand its row to see its registered entries; other projects are not listed. Clicking an entry or its open icon creates and activates a separate native tab every time, including for the current entry. Focusing a tool or the Assistant preserves the current project's entry list. Manifest changes refresh the list automatically; the view title also provides a refresh icon. Native tabs are titled “Project name / Entry name”. Entry labels do not display a version; only the aggregate owns one.

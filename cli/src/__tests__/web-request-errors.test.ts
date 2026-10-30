@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { initI18n } from '@steamharness/i18n';
-import { renderRequestError } from '../web/ui/request-error';
+import { renderRequestError, RequestErrorAlert } from '../web/ui/request-error';
 import type { ConversationMessage, Project } from '../web/workflow-types';
 
 const host = vi.hoisted(() => ({ postMessage: vi.fn(), getState: vi.fn(), setState: vi.fn() }));
@@ -84,6 +84,23 @@ it('preserves expanded diagnostics through updates, clears them on retry, and ke
   }
 });
 
+it.each([['en', 'Dismiss error'], ['zh-CN', '关闭错误提示']] as const)('dismisses %s alerts without clearing their validation result or diagnostics', (language, label) => {
+  initI18n({ preference: language });
+  const root = document.createElement('div'), alert = new RequestErrorAlert(root);
+  alert.show(failure);
+  const close = root.querySelector('button')!, details = root.querySelector('details')!;
+  expect(close.type).toBe('button'); expect(close.ariaLabel).toBe(label);
+  details.open = true; close.click();
+  expect(root.hidden).toBe(true); expect(alert.hasError).toBe(true);
+  alert.show(failure);
+  expect(root.hidden).toBe(false); expect(root.querySelector('details')).toBe(details); expect(details.open).toBe(true);
+  alert.show();
+  expect(root.hidden).toBe(true); expect(alert.hasError).toBe(false);
+  alert.show('Please select a model.');
+  expect(root.querySelector('.request-error-content')?.textContent).toBe('Please select a model.');
+  expect(root.querySelectorAll('button')).toHaveLength(1);
+});
+
 it('formats saved Conversation failures, retry errors and request alerts without changing history', async () => {
   vi.resetModules(); vi.useFakeTimers(); host.postMessage.mockReset();
   for (const target of [window, document]) {
@@ -127,5 +144,28 @@ it('formats saved Conversation failures, retry errors and request alerts without
   emit({ type: 'error', requestType: 'attach', message: gatewayError });
   const alert = document.querySelector<HTMLElement>('#error')!;
   expect(alert.hidden).toBe(false); expect(alert.querySelector('.request-error-summary')!.textContent).toBe('Request failed (HTTP 502).');
+  alert.querySelector('button')!.click();
+  await render('running'); expect(alert.hidden).toBe(true);
+  // Execution notifications can arrive after the successful state or without a request type on older hosts.
+  for (const notification of [{ errorSource: 'execution', requestType: 'run' }, {}, { runId: 'run' }]) {
+    emit({ type: 'error', sessionId: 'session', messageId: 'answer', message: gatewayError, ...notification });
+    expect(alert.hidden).toBe(true);
+  }
+  // A user operation during execution must still be visible and independently dismissible.
+  emit({ type: 'error', requestType: 'attach', message: gatewayError });
+  expect(alert.hidden).toBe(false);
+  alert.querySelector('button')!.click();
+  await render('success'); expect(alert.hidden).toBe(true);
+  emit({ type: 'error', errorSource: 'execution', sessionId: 'session', messageId: 'answer', message: gatewayError });
+  expect(alert.hidden).toBe(true);
+  emit({ type: 'error', errorSource: 'request', requestType: 'resource', sessionId: 'session', messageId: 'answer', message: 'Resource unavailable' });
+  expect(alert.hidden).toBe(false); expect(alert.textContent).toContain('Resource unavailable');
+  alert.querySelector('button')!.click();
+  for (const scope of [{ sessionId: 'different' }, { projectUri: 'file:///other' }]) {
+    emit({ type: 'error', requestType: 'attach', message: 'Late error', ...scope });
+    expect(alert.hidden).toBe(true);
+  }
+  emit({ type: 'error', requestType: 'attach', message: gatewayError });
+  expect(alert.hidden).toBe(false);
   expect(answer.error).toBe(failure);
 });

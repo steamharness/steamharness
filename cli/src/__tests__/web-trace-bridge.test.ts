@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { TraceBridge, traceSnapshot } from '../web/ui/trace-bridge';
+import { isExecutionError } from '../web/ui/execution-error';
 
 const project = { id: 'project', name: 'Example', projectType: 'conversation', privateField: 'private' };
 const state = { type: 'state', project, activeId: 'session', running: true, account: { token: 'secret' },
@@ -8,6 +9,48 @@ const state = { type: 'state', project, activeId: 'session', running: true, acco
 describe('embedded execution trace bridge', () => {
   beforeEach(() => vi.useFakeTimers());
   afterEach(() => vi.useRealTimers());
+  it('classifies errors by origin instead of the current running flag', () => {
+    for (const running of [true, false]) {
+      expect(isExecutionError({ type: 'error', running, errorSource: 'execution', sessionId: 'session' })).toBe(true);
+      expect(isExecutionError({ type: 'error', running, messageId: 'answer' })).toBe(true);
+      for (const requestType of ['send', 'retry', 'resume', 'resolve', 'attach', 'resource', 'open-path', 'stop']) {
+        expect(isExecutionError({ type: 'error', running, requestType, messageId: 'answer' })).toBe(false);
+      }
+      expect(isExecutionError({ type: 'error', running, errorSource: 'request', messageId: 'answer' })).toBe(false);
+      expect(isExecutionError({ type: 'error', running })).toBe(false);
+      expect(isExecutionError({ type: 'error', running, errorSource: 'execution', connectionError: true })).toBe(false);
+    }
+  });
+  it('coalesces execution notifications and replays them after recovery, success and a late Trace handshake', () => {
+    const sent: any[] = [], bridge = new TraceBridge(message => sent.push(message));
+    bridge.receive({ ...state, project: { ...project, uri: 'file:///project' } });
+    const failure = { type: 'error', sessionId: 'session', messageId: 'answer', message: 'First attempt failed' };
+    bridge.receive(failure); bridge.receive(failure);
+    bridge.receive({ ...failure, requestType: 'attach', message: 'Operation during run' });
+    bridge.receive({ ...failure, projectUri: 'file:///other', message: 'Other project' });
+    bridge.receive({ ...failure, sessionId: 'missing', message: 'Other session' });
+    bridge.enable(1);
+    expect(sent.at(-1).snapshot.errors).toHaveLength(1);
+    bridge.receive({ ...failure, message: 'Second attempt failed' });
+    vi.advanceTimersByTime(100);
+    expect(sent.at(-1).snapshot.errors).toHaveLength(2);
+    bridge.receive({ ...state, running: false, sessions: [{ ...state.sessions[0], messages: [{ ...state.sessions[0].messages[0], status: 'success' }] }] });
+    vi.advanceTimersByTime(100);
+    expect(sent.at(-1).snapshot.errors.map((error: any) => error.message)).toEqual(['First attempt failed', 'Second attempt failed']);
+    expect(sent.at(-1).snapshot.sessions[0].messages[0].status).toBe('success');
+    bridge.enable(2); bridge.enable(1); expect(sent.at(-1).snapshot.errors).toHaveLength(2);
+    bridge.receive({ ...state, project: { ...project, entryId: 'different' } }); vi.advanceTimersByTime(100);
+    expect(sent.at(-1).snapshot.errors).toBeUndefined(); bridge.enable(2);
+  });
+  it('bounds supplemental diagnostics and keeps workflow errors scoped to their run', () => {
+    const sent: any[] = [], bridge = new TraceBridge(message => sent.push(message));
+    bridge.receive({ type: 'state', project: { ...project, projectType: 'workflow' }, run: { id: 'run' } });
+    for (let i = 0; i < 205; i++) bridge.receive({ type: 'error', errorSource: 'execution', runId: 'run', errorId: `attempt-${i}`, message: `Failure ${i}` });
+    bridge.receive({ type: 'error', errorSource: 'execution', message: 'Unscoped' });
+    bridge.enable(1);
+    expect(sent.at(-1).snapshot.errors).toHaveLength(200);
+    expect(sent.at(-1).snapshot.errors[0].message).toBe('Failure 5'); bridge.enable(2);
+  });
   it('does not project standalone states, coalesces host frames and replays only the newest state after enabling', () => {
     const sent: any[] = [], bridge = new TraceBridge(message => sent.push(message)), projected = vi.fn(() => []);
     bridge.receive({ ...state, get sessions() { return projected(); } }); expect(projected).not.toHaveBeenCalled();
