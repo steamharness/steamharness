@@ -20,6 +20,10 @@ export interface AgentDefinition {
   model?: { provider: string; modelId: string };
   effort?: string;
   maxConcurrency?: number;
+  /** Total work attempts, including the first. Omit to disable automatic work retries. */
+  retry?: { maxAttempts: number; delayMs?: number };
+  /** Require a nonzero, fully completed AgentWorkProgressDoc before accepting success. */
+  requireProgress?: boolean;
 }
 
 export interface AgentWorkInput {
@@ -28,6 +32,8 @@ export interface AgentWorkInput {
   prompt: string;
   label?: string;
   metadata?: Record<string, JsonValue>;
+  /** Project-owned batches may require a verified progress receipt for this work. */
+  requireProgress?: boolean;
   /** Reports are durable follow-up inputs. Project batch tasks usually consume the receipt themselves. */
   reportToParent?: boolean;
 }
@@ -65,6 +71,8 @@ export interface AgentSessionOptions {
     /** Explicit subset of the parent's tools. Subagents cannot delegate again. */
     tools: string[];
     maxAgents?: number;
+    /** Default work retry policy; a role may override it. Separate from model transport retries. */
+    retry?: { maxAttempts: number; delayMs?: number };
     /** Default for all child roles and anonymous delegations. Must be in models. */
     model?: { provider: string; modelId: string };
     /** Project configuration field with control="agent-model". Empty means inherit the main model. */

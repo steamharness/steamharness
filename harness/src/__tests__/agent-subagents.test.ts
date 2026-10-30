@@ -141,6 +141,141 @@ test("failed business verification remains failed and retryable even when the mo
   assert.equal(retry.agents![0].attempt, 2);
 });
 
+for (const blocked of [false, true]) test(`automatic work retries reuse committed context and respect retry barriers (blocked=${blocked})`, async t => {
+  let calls = 0;
+  const f = fixture(undefined, [{ ...roles[0], requireProgress: true, retry: { maxAttempts: 3, delayMs: 0 } }], false, false, [], [
+    { name: "research", description: "Verify evidence", replay: "safe", parameters: ai.Type.Object({}), execute: async (_args, api, ctx) => {
+      calls++;
+      await api.commit(async tx => {
+        const owner = (await tx.conversation(api.conversationId))!.owner!;
+        const progress = await tx.doc(AgentWorkProgressDoc, owner.conversationId, String(owner.taskId), null);
+        progress.total = 1; progress.completed = calls > 1 ? 1 : 0;
+        progress.error = calls > 1 ? "" : "Evidence temporarily unavailable"; progress.retryable = !blocked;
+      }, ctx);
+      return { output: [ai.fauxText(calls > 1 ? "Verified evidence" : "Saved draft checkpoint")], isError: calls === 1 };
+    } },
+  ]);
+  f.faux.setResponses(Array.from({ length: 30 }, () => (request: ai.TranscriptContext) => {
+    if (!JSON.stringify(request.messages.filter(message => message.role === "system")).includes("RESEARCH ROLE ONLY")) return ai.fauxAssistantMessage("Root");
+    let lastUser = -1; request.messages.forEach((message, index) => { if (message.role === "user") lastUser = index; });
+    if (calls > 0 && !request.messages.slice(lastUser+1).some(message => message.role === "toolResult"))
+      assert.ok(JSON.stringify(request.messages).includes("Saved draft checkpoint"), "Retry must retain committed tools and evidence");
+    return request.messages.slice(lastUser+1).some(message => message.role === "toolResult") ? ai.fauxAssistantMessage("Finished")
+      : ai.fauxAssistantMessage([ai.fauxToolCall("research", {})], { stopReason: "toolUse" });
+  }));
+  const run = f.agent.prompt("Start");
+  t.after(async () => { f.lease.resolve(); await run; await f.agent.close(); });
+  await until(() => !!f.snapshot());
+  const first = await f.agent.control({ type: "subagent", action: "spawn", requestId: "automatic", agentId: "researcher", workId: "automatic", prompt: "Verify", reportToParent: true });
+  await until(() => f.snapshot().agents?.some(work => work.taskId === first.taskId && ["completed", "failed"].includes(work.status)) === true);
+  const work = f.snapshot().agents!.find(work => work.taskId === first.taskId)!;
+  assert.equal(work.status, blocked ? "failed" : "completed"); assert.equal(work.attempt, blocked ? 1 : 2);
+  assert.equal(calls, blocked ? 1 : 2); assert.equal(f.snapshot().agents!.length, 1);
+  await until(() => f.snapshot().turns.filter(turn => turn.mode === "report").length === 1);
+  assert.equal(f.snapshot().turns.filter(turn => turn.conversationId === work.childConversationId).length, blocked ? 1 : 2);
+});
+
+test("a failed child turn retries after transport exhaustion without inheriting the old unanswered failure", async t => {
+  const f = fixture(undefined, [{ ...roles[0], retry: { maxAttempts: 3, delayMs: 0 } }]);
+  let calls = 0;
+  f.faux.setResponses(Array.from({ length: 30 }, () => (request: ai.TranscriptContext) => {
+    if (!JSON.stringify(request.messages.filter(message => message.role === "system")).includes("RESEARCH ROLE ONLY")) return ai.fauxAssistantMessage("Root");
+    return ++calls <= 11 ? ai.fauxAssistantMessage([], { stopReason: "error", errorMessage: "503 Service Unavailable" })
+      : ai.fauxAssistantMessage("Recovered");
+  }));
+  const run = f.agent.prompt("Start");
+  t.after(async () => { f.lease.resolve(); await run; await f.agent.close(); });
+  await until(() => !!f.snapshot());
+  const first = await f.agent.control({ type: "subagent", action: "spawn", requestId: "transport", agentId: "researcher", workId: "transport", prompt: "Verify" });
+  await until(() => f.snapshot().agents?.some(work => work.taskId === first.taskId && work.status === "completed") === true);
+  const work = f.snapshot().agents!.find(work => work.taskId === first.taskId)!;
+  assert.equal(calls, 12); assert.equal(work.attempt, 2); assert.equal(work.result, "Recovered");
+  assert.deepEqual(f.snapshot().turns.filter(turn => turn.conversationId === work.childConversationId).map(turn => turn.status), ["unanswered", "done"]);
+  assert.equal(f.snapshot().agents!.length, 1);
+});
+
+for (const total of [0, -1]) test(`an invalid required completion receipt exhausts the work budget and cannot be bypassed by retry (total=${total})`, async t => {
+  const f = fixture(undefined, [{ ...roles[0], requireProgress: true, retry: { maxAttempts: 3, delayMs: 0 } }], false, false, [], [
+    { name: "research", description: "Save an invalid completion receipt", replay: "safe", parameters: ai.Type.Object({}), execute: async (_args, api, ctx) => {
+      await api.commit(async tx => {
+        const owner = (await tx.conversation(api.conversationId))!.owner!;
+        const progress = await tx.doc(AgentWorkProgressDoc, owner.conversationId, String(owner.taskId), null);
+        progress.total = total; progress.completed = 0;
+      }, ctx);
+      return { output: [ai.fauxText("Unverified receipt")] };
+    } },
+  ]);
+  let calls = 0;
+  f.faux.setResponses(Array.from({ length: 30 }, () => (request: ai.TranscriptContext) => {
+    if (JSON.stringify(request.messages.filter(message => message.role === "system")).includes("RESEARCH ROLE ONLY")) {
+      let lastUser = -1; request.messages.forEach((message, index) => { if (message.role === "user") lastUser = index; });
+      if (!request.messages.slice(lastUser+1).some(message => message.role === "toolResult"))
+        return ai.fauxAssistantMessage([ai.fauxToolCall("research", {})], { stopReason: "toolUse" });
+      calls++;
+    }
+    return ai.fauxAssistantMessage("Finished without a verified receipt");
+  }));
+  const run = f.agent.prompt("Start");
+  t.after(async () => { f.lease.resolve(); await run; await f.agent.close(); });
+  await until(() => !!f.snapshot());
+  const first = await f.agent.control({ type: "subagent", action: "spawn", requestId: "incomplete", agentId: "researcher", workId: "incomplete", prompt: "Verify" });
+  await until(() => f.snapshot().agents?.some(work => work.taskId === first.taskId && work.status === "failed") === true);
+  const failed = f.snapshot().agents!.find(work => work.taskId === first.taskId)!;
+  assert.equal(calls, 3); assert.equal(failed.attempt, 3); assert.match(failed.error!, /Retry limit reached \(3\/3\).*verified progress/);
+  await assert.rejects(f.agent.control({ type: "subagent", action: "retry", requestId: "bypass-budget", taskId: first.taskId! }), /retry limit reached/);
+  assert.equal(f.snapshot().agents!.length, 1); assert.equal(calls, 3);
+});
+
+test("stopping during work retry backoff never starts the next attempt", async t => {
+  const f = fixture(undefined, [{ ...roles[0], requireProgress: true, retry: { maxAttempts: 3, delayMs: 60000 } }]);
+  let calls = 0;
+  f.faux.setResponses(Array.from({ length: 10 }, () => (request: ai.TranscriptContext) => {
+    if (JSON.stringify(request.messages.filter(message => message.role === "system")).includes("RESEARCH ROLE ONLY")) calls++;
+    return ai.fauxAssistantMessage("Unverified");
+  }));
+  const run = f.agent.prompt("Start");
+  t.after(async () => { f.lease.resolve(); await run; await f.agent.close(); });
+  await until(() => !!f.snapshot());
+  const first = await f.agent.control({ type: "subagent", action: "spawn", requestId: "backoff", agentId: "researcher", workId: "backoff", prompt: "Verify" });
+  await until(() => f.snapshot().tasks.some(task => task.id === first.taskId && task.phase === "retry"));
+  const stopped = await f.agent.control({ type: "subagent", action: "stop", requestId: "stop-backoff", taskId: first.taskId! });
+  assert.equal(stopped.agents![0].status, "aborted"); assert.equal(stopped.agents![0].attempt, 1); assert.equal(calls, 1);
+});
+
+for (const reduceLimit of [false, true]) test(`SQLite preserves a scheduled work retry without resetting its budget (reduceLimit=${reduceLimit})`, async t => {
+  const directory = await mkdtemp(path.join(tmpdir(), "agent-work-retries-"));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  const database = path.join(directory, "session.sqlite");
+  const definition = { ...roles[0], requireProgress: true, retry: { maxAttempts: 2, delayMs: 1000 } };
+  let calls = 0;
+  const respond = (request: ai.TranscriptContext) => {
+    if (JSON.stringify(request.messages.filter(message => message.role === "system")).includes("RESEARCH ROLE ONLY")) calls++;
+    return ai.fauxAssistantMessage("Not verified");
+  };
+  const first = fixture(database, [definition]); first.faux.setResponses(Array.from({ length: 10 }, () => respond));
+  const initial = first.agent.prompt("Start");
+  await until(() => !!first.snapshot());
+  const spawned = await first.agent.control({ type: "subagent", action: "spawn", requestId: "persist-retry", agentId: "researcher", workId: "persist-retry", prompt: "Verify" });
+  await until(() => first.snapshot().tasks.some(task => task.id === spawned.taskId && task.phase === "retry"));
+  first.suspend.resolve(); await initial; await first.agent.close();
+  const second = fixture(database, [{ ...definition, retry: { ...definition.retry, maxAttempts: reduceLimit ? 1 : 2 } }], true);
+  second.faux.setResponses(Array.from({ length: 10 }, () => respond));
+  const resumed = second.agent.prompt("Start");
+  t.after(async () => { second.lease.resolve(); await resumed; await second.agent.close(); });
+  await until(() => second.snapshot()?.agents?.some(work => work.taskId === spawned.taskId && work.status === "failed") === true);
+  assert.equal(calls, reduceLimit ? 1 : 2); assert.equal(second.snapshot().agents!.length, 1);
+  assert.equal(second.snapshot().agents![0].attempt, reduceLimit ? 1 : 2);
+  assert.match(second.snapshot().agents![0].error!, /Retry limit reached/);
+});
+
+test("invalid automatic work retry limits are rejected before starting work", async () => {
+  for (const retry of [{ maxAttempts: 0 }, { maxAttempts: 11 }, { maxAttempts: 1.5 }, { maxAttempts: 3, delayMs: -1 }]) {
+    const f = fixture(undefined, [{ ...roles[0], retry }]);
+    await assert.rejects(f.agent.prompt("Start"), /Invalid agent role definition/);
+    await f.agent.close();
+  }
+});
+
 test("roles cannot call another role's tools or delegate, and explicit model/effort overrides require the allowlist", async t => {
   const definition = { ...roles[0], model: { provider: "faux", modelId: "alternate" }, effort: "high" };
   const denied = fixture(undefined, [definition]);

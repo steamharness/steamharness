@@ -432,6 +432,10 @@ const session = {
 
 `AgentDefinition` also accepts optional `model: { provider, modelId }` and `effort`; omitted values inherit the parent. Overrides must match `subagents.models`. Role prompts replace project coordinator instructions while platform rules remain. Tools intersect parent authorization, the overall allowlist, the role snapshot and current configuration. Recovery rechecks access; children cannot delegate.
 
+Set `subagents.retry: { maxAttempts: 3, delayMs: 1000 }` or override `retry` on a role. `maxAttempts` includes the initial attempt (1–10); omitting the policy disables automatic work retries. `delayMs` sets the initial backoff (0–60000 milliseconds), doubling up to 60 seconds. This work budget is separate from model transport retries. Each attempt continues in the original task and child conversation with committed text, tool results, business checkpoints and a stable per-attempt request ID. Tasks updates `attempt` and returns only the final result. Exhaustion stops the work and reports the cause; management `retry` cannot bypass the configured limit. Reopening preserves the budget, explicit resumption follows the checkpoint and respects a reduced current limit, and cancellation never retries.
+
+Set `requireProgress: true` on a role or on project work passed to `enqueueAgentWork(s)` to require a business completion receipt. Success requires `AgentWorkProgressDoc.total > 0`, `completed >= total` and an empty `error`; a text claim of completion is insufficient. Tools can set `retryable: false` for uncertain paid requests or writes and index repair barriers, then clear the error and set `retryable: true` after reconciliation. Wait for the original task during automatic retries; never create a new work ID or batch to bypass exhaustion.
+
 Projects can declare a single-model field in `configuration.json`:
 
 ```json

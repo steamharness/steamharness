@@ -1497,6 +1497,10 @@ const session = {
 
 `AgentDefinition` 还接受可选 `model: { provider, modelId }`、`effort`；省略时继承父会话。模型覆盖必须在 `subagents.models` 白名单内。角色提示替换项目协调者提示，平台规则继续生效；工具取父授权、总白名单、角色快照与当前配置的交集。恢复后再次检查权限，子 Agent 不能委派。
 
+有界工作重试由项目代码设置 `subagents.retry: { maxAttempts: 3, delayMs: 1000 }`，角色可用同名 `retry` 覆盖。次数包含首次，范围 1–10；省略策略不自动重试，delayMs 范围 0–60000，指数退避不超过 60 秒。原任务和原来的子会话复用已提交上下文，attempt 与错误历史持久保存；最终只回传一次结果。恢复不重置预算，当前上限收紧仍有效，主动取消不重试。模型请求重试与工作重试分别计数；达到工作上限后必须停止，管理 retry 不能绕过上限，不生成通过新 workId 或新批次无限重试的协调者逻辑。
+
+角色或项目调用 `enqueueAgentWork(s)` 的工作项可设置 `requireProgress: true`，要求 `AgentWorkProgressDoc.total > 0`、`completed >= total` 且 `error` 为空才算成功。工具用 `retryable: false` 暂停未知付费请求、未知写入或索引待修复等不能安全重试的工作；核对完成后才清空错误并设 true。自动重试只补未完成工作，不能重放已完成的副作用。
+
 项目可在 `configuration.json` 声明 `{ "name": "SUBAGENT_MODEL", "type": "string", "control": "agent-model", "defaultValue": "" }`，并设置 `subagents.modelConfiguration: "SUBAGENT_MODEL"`。单选复用当前配置的 `STEAMHARNESS_AGENT_MODELS`；空值恢复角色默认模型，未指定角色模型时跟随主模型；非空值为一个稳定模型条目 ID，统一覆盖新建命名与匿名子任务，不改变主模型。Studio 使用设置主模型时仍保留项目模型列表供子 Agent 选择。移除或未授权的模型明确报错，不静默回退；系统 AI 限制继续生效。连接与凭据独立，effort 按实际模型能力收紧。修改从下一次执行新建子任务生效，已有子会话保留创建模型，恢复使用原快照。代码也可直接提供 `subagents.model: { provider, modelId }`，必须在已注册的 `subagents.models` 白名单中；若同时配置字段，字段优先，空值清除统一覆盖。不生成多个子模型选择器或多选字段。
 
 `AgentSessionCommand` 的 `type: "subagent"` 支持以下 action，所有命令均携带稳定 `requestId`：

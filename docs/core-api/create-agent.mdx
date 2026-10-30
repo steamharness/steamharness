@@ -434,6 +434,10 @@ const session = {
 
 `AgentDefinition` 还接受可选 `model: { provider, modelId }`、`effort`；省略时继承父会话。模型覆盖必须在 `subagents.models` 白名单内。角色提示替换项目协调者提示，平台规则继续生效；工具取父授权、总白名单、角色快照与当前配置的交集。恢复后再次检查权限，子 Agent 不能委派。
 
+项目可设置 `subagents.retry: { maxAttempts: 3, delayMs: 1000 }`，或在角色定义中设置 `retry` 覆盖默认策略。`maxAttempts` 为包含首次在内的总尝试数（1–10），省略策略时不自动重试工作；`delayMs` 为首次退避时间（0–60000 毫秒），之后指数增长且不超过 60 秒。这是整个子工作的重试预算，与模型请求层的重试分别计数。重试在原任务、原子会话中继续，保留已提交的文字、工具结果和业务检查点，使用稳定的逐次请求 ID；Tasks 的 `attempt` 更新，最终结果只回传一次。达到上限后停止并报告原因，`retry` 管理命令不能绕过配置上限。重开宿主不重置次数；明确恢复时按保存检查点继续，当前项目收紧的上限仍生效，主动取消不重试。
+
+需要业务完成回执的角色设置 `requireProgress: true`，或仅在项目调用 `enqueueAgentWork(s)` 时给工作项设置该字段。只有 `AgentWorkProgressDoc.total > 0`、`completed >= total` 且 `error` 为空才成功，纯文本“已完成”不算完成。工具可写入 `retryable: false` 阻止自动重试，例如付费请求或正文写入结果未知、索引需修复；核对完成后再清除错误并设置 `retryable: true`。自动重试期间等待原任务，耗尽后不创建新 workId 或批次规避限制。
+
 项目可在 `configuration.json` 声明单选模型字段：
 
 ```json

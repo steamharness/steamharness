@@ -19,7 +19,11 @@ export const AgentRoleDoc = defineDoc({ kind: "project.agent-role", version: 1, 
 // Task-scoped documents retire at settlement. Keep progress under the parent
 // conversation, keyed by task ID, so completed/failed work remains inspectable.
 export const AgentWorkProgressDoc = defineDocFamily({ kind: "project.agent-work-progress", version: 1, scope: "conversation", history: "latest", fork: "initial", family: true,
-  initial: () => ({ completed: 0, total: 0, phase: "", error: "", data: null as JsonValue }) });
+  initial: () => ({ completed: 0, total: 0, phase: "", error: "", data: null as JsonValue,
+    retryable: null as boolean | null }) });
+/** Work retries survive task settlement and host reconnection; never mix with business progress. */
+export const AgentWorkRetryDoc = defineDocFamily({ kind: "project.agent-work-retries", version: 1, scope: "conversation", history: "latest", fork: "initial", family: true,
+  initial: () => ({ attempt: 0, maxAttempts: 1, failures: [] as { attempt: number; error: string }[] }) });
 /** True only while a new host interrupts the previous execution tree before accepting input. */
 export const AgentSessionLifecycleDoc = defineDoc({ kind: "project.agent-lifecycle", version: 1, scope: "conversation",
   history: "latest", fork: "initial", initial: () => ({ interrupted: false as boolean }) });
@@ -28,9 +32,12 @@ export type DelegationInput = {
   prompt: string; background: boolean; model: { provider: string; modelId: string } | null; sourceId: string;
   workId?: string; agentId?: string; definition?: JsonObject; label?: string; metadata?: Record<string, JsonValue>;
   reportToParent?: boolean; attempt?: number; retryOf?: number; retryChildId?: number;
+  retry?: { maxAttempts: number; delayMs?: number };
+  requireProgress?: boolean;
 };
-export type DelegationState = { phase: "create" } | { phase: "wait"; childId: number }
-  | { phase: "report"; childId: number; answer: string; failed?: boolean };
+export type DelegationState = { phase: "create" } | { phase: "wait"; childId: number; attempt?: number }
+  | { phase: "report"; childId: number; answer: string; failed?: boolean; retryable?: boolean; attempt?: number }
+  | { phase: "retry"; childId: number; attempt: number; wakeAt: number; error: string };
 
 /** Identify the authorized role/work owning a native tool, without inspecting internal task inputs. */
 export async function readAgentWorkContext(api: ToolExecutionApi, context: Context) {
@@ -79,7 +86,8 @@ export async function enqueueAgentWorks(tx: Tx, registry: RegistrySnapshot, inpu
     }
     const stored: DelegationInput = { prompt: input.prompt, background: options.background === true, model: null,
       sourceId: input.workId, workId: input.workId, agentId: input.agentId, definition: JSON.parse(JSON.stringify(definition)),
-      attempt: 1, label: input.label, metadata: input.metadata, reportToParent: input.reportToParent ?? false };
+      ...(definition.retry ? { retry: definition.retry as DelegationInput["retry"] } : {}),
+      attempt: 1, label: input.label, metadata: input.metadata, requireProgress: input.requireProgress, reportToParent: input.reportToParent ?? false };
     const id = await tx.createTask(task, JSON.parse(JSON.stringify(stored)) as DelegationInput, options);
     matches.set(input.workId, { id, input: stored }); ids.push(id);
   }

@@ -1,5 +1,7 @@
 # Unreleased
 
+- Documented subagent attempt budgets, durable retries, completion receipts and non-retryable barriers in the generator API reference to prevent unbounded retries and repeated side effects.
+
 - Added: Generator guidance covers single subagent model fields and Core bindings, reusing configured models with inheritance and authorization constraints.
 
 - Added Kanban runtime diagnostics and page-readiness checks to the assistant. Project-managed files, configuration attachments and database files now have distinct import guidance; backend readback does not prove rendering, and timeouts require transport diagnosis before image transcoding.

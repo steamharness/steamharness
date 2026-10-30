@@ -17,7 +17,7 @@ import { createAgentStreamRetryText } from "./plan";
 import type { AgentTurnContinuationKind } from "./types";
 import type { AgentSearchMessage } from "./web-search";
 import type { AgentDefinition, AgentPlanItem, AgentSessionCommand, AgentSessionOptions, AgentSessionReceipt, AgentSessionResources, AgentSessionSnapshot, AgentSessionTask, AgentSessionTurn, AgentSubagentAction, AgentWorkInfo } from "./session-types";
-import { AgentDefinitionsDoc, AgentRoleDoc, AgentWorkProgressDoc, AgentSessionLifecycleDoc, enqueueAgentWork, waitForAgentWorkChange, type DelegationInput, type DelegationState } from "./subagents";
+import { AgentDefinitionsDoc, AgentRoleDoc, AgentWorkProgressDoc, AgentWorkRetryDoc, AgentSessionLifecycleDoc, enqueueAgentWork, waitForAgentWorkChange, type DelegationInput, type DelegationState } from "./subagents";
 import { pageJsonResult, RESULT_PAGE_DESCRIPTION, RESULT_PAGE_PROPERTIES, validateResultPageArgs, type ResultPageArgs } from "./result-pages";
 
 const SessionDoc = defineDoc({
@@ -34,6 +34,9 @@ const DelegationDoc = defineDoc({ kind: "project.delegation", version: 1, scope:
 const plain = <T>(value: T): T => value === undefined ? value : JSON.parse(JSON.stringify(value)) as T;
 const object = (value: unknown): Record<string, unknown> => value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {};
 const textOf = (message: AssistantMessage | undefined): string => message?.content.flatMap(block => block.type === "text" ? [block.text] : []).join("") ?? "";
+const validWorkRetry = (retry: AgentDefinition["retry"]) => !retry || Number.isSafeInteger(retry.maxAttempts)
+  && retry.maxAttempts >= 1 && retry.maxAttempts <= 10 && Number.isSafeInteger(retry.delayMs ?? 1000)
+  && (retry.delayMs ?? 1000) >= 0 && (retry.delayMs ?? 1000) <= 60_000;
 
 function delegationOutput(taskId: number, outcome: TaskOutcome<unknown>, args: ResultPageArgs) {
   const answer = outcome.status === "completed" ? String(outcome.result)
@@ -79,6 +82,7 @@ export class DurableAgentSession {
   install(registry: Registry): void {
     if (this.options.subagents && (!Number.isSafeInteger(this.options.subagents.maxAgents ?? 4) || (this.options.subagents.maxAgents ?? 4) < 1)) throw new Error("maxAgents must be a positive integer.");
     if (this.options.subagents?.model && !this.allowedChildModel(this.options.subagents.model)) throw this.childModelError();
+    if (!validWorkRetry(this.options.subagents?.retry)) throw new Error("Agent work retry requires maxAttempts (1-10) and delayMs (0-60000).");
     const definitions = this.options.subagents?.definitions ?? [];
     if (new Set(definitions.map(item => item.id)).size !== definitions.length) throw new Error("Agent role ids must be unique.");
     for (const definition of definitions) {
@@ -86,6 +90,7 @@ export class DurableAgentSession {
         || definition.systemPrompt.length > 100_000 || !Array.isArray(definition.tools)
         || definition.tools.some(name => !this.options.subagents!.tools.includes(name) || ["subagent", "update_plan"].includes(name))
         || !Number.isSafeInteger(definition.maxConcurrency ?? 1) || (definition.maxConcurrency ?? 1) < 1
+        || !validWorkRetry(definition.retry) || definition.requireProgress !== undefined && typeof definition.requireProgress !== "boolean"
         || !this.options.subagents?.model && definition.model && !this.allowedChildModel(definition.model)
         || definition.effort && !["off", "minimal", "low", "medium", "high", "xhigh", "max"].includes(definition.effort)) {
         throw new Error(`Invalid agent role definition: ${definition.id}`);
@@ -114,6 +119,7 @@ export class DurableAgentSession {
         "Delegate a focused task. Background results return to this conversation. Subagents cannot delegate again.",
         ...(definitions.length ? ["Named work: action=spawn, agentId, stable workId, task, background=true. Capacity limits queue work durably.",
           "Management actions: list; get/wait/stop/retry with taskId; send with taskId, task and mode (steer/followUp). Retry continues committed context and requires reconciliation of uncertain side effects.",
+          "Project-configured automatic work retries are bounded. Wait while they run; after the budget is exhausted, report the failure and stop retrying. Do not create a new workId or batch to bypass the limit.",
           "Send only to running work. A not_running delivery receipt returns its current state without starting work: get completed results, wait for queued work, or explicitly retry failed/cancelled work. Batch task IDs are not subagent task IDs; use the project's batch tools for batch controls.",
           `Roles: ${definitions.map(item => `${item.id}: ${item.description}`).join("; ")}`] : []),
         `Child tools are restricted to the parent's enabled tools intersected with: ${this.options.subagents.tools.join(", ") || "(none)"}. Only delegate tasks those tools can perform.`,
@@ -173,7 +179,8 @@ export class DurableAgentSession {
         const id = await api.commit(async tx => {
           const memo = await tx.doc(DelegationDoc, api.taskId);
           if (memo.taskId) return memo.taskId;
-          memo.taskId = await tx.createTask(this.delegation, { prompt, background: input.background === true, model: input.model ?? null, sourceId: api.callId },
+          memo.taskId = await tx.createTask(this.delegation, { prompt, background: input.background === true, model: input.model ?? null, sourceId: api.callId,
+            ...(this.options.subagents?.retry ? { retry: this.options.subagents.retry } : {}) },
             { conversationId: api.conversationId, ownership: input.background ? { kind: "conversation" } : { kind: "task", taskId: api.taskId }, background: input.background === true });
           return memo.taskId;
         }, ctx);
@@ -319,7 +326,10 @@ export class DurableAgentSession {
               const info = await tx.doc(SessionDoc, child.id);
               info.title = task.input.label ?? task.input.prompt.slice(0, 120); info.background = task.input.background;
               admitted = true;
-              return { status: "running", checkpoint: { phase: "wait", childId: child.id } };
+              const retries = await tx.doc(AgentWorkRetryDoc, task.conversationId, String(task.id), null);
+              retries.attempt = task.input.attempt ?? 1;
+              retries.maxAttempts = this.workRetryPolicy(task.input).maxAttempts;
+              return { status: "running", checkpoint: { phase: "wait", childId: child.id, attempt: retries.attempt } };
             }, ctx);
             if (admitted) break;
             if (!blockers.length) throw new Error("Agent work cannot acquire a concurrency slot.");
@@ -328,9 +338,11 @@ export class DurableAgentSession {
         },
         wait: async (task, runtime, ctx) => {
           const child = (await runtime.conversation(task.state.checkpoint.childId as ConversationId, ctx))!;
-          const content = task.input.retryOf ? `Continue the previous work from its committed context. Inspect uncertain external writes before repeating them. Do not repeat completed actions.\n\n${task.input.prompt}` : task.input.prompt;
-          const settled = await (await child.submit({ type: "input", content, requestId: `delegate:${task.id}`,
-            entry: { kind: "project.input", data: { requestId: `delegate:${task.id}`, mode: "followUp" } } }, ctx)).wait(ctx);
+          const attempt = task.state.checkpoint.attempt ?? task.input.attempt ?? 1;
+          const content = task.input.retryOf || attempt > (task.input.attempt ?? 1) ? `Continue the previous work from its committed context. Inspect uncertain external writes before repeating them. Do not repeat completed actions. Complete and verify the remaining work.\n\n${task.input.prompt}` : task.input.prompt;
+          const requestId = attempt === (task.input.attempt ?? 1) ? `delegate:${task.id}` : `delegate:${task.id}:attempt:${attempt}`;
+          const settled = await (await child.submit({ type: "input", content, requestId,
+            entry: { kind: "project.input", data: { requestId, mode: "followUp" } } }, ctx)).wait(ctx);
           while (true) {
             await child.waitForIdle(ctx);
             // Message admission and settlement share a short lock. A message
@@ -341,18 +353,41 @@ export class DurableAgentSession {
               const history = await runtime.context(child.id, ctx);
               const message = [...history.messages].reverse().find(message => message.role === "assistant");
               const progress = await runtime.snapshot(AgentWorkProgressDoc, task.conversationId, String(task.id), ctx);
-              const unanswered = [...submissions].reverse().find(input => input.type === "input" && input.status === "unanswered");
+              const unanswered = [...submissions].reverse().find(input => input.id >= settled.id && input.type === "input" && input.status === "unanswered");
               const failure = unanswered?.status === "unanswered" ? unanswered : settled.status !== "done" ? settled : undefined;
-              const failed = !!failure || !!progress?.error;
-              const answer = failure ? `Subagent failed: ${failure.reason}${failure.detail ? `: ${String(failure.detail)}` : ""}` : progress?.error || textOf(message);
-              await runtime.commit(() => ({ status: "running", checkpoint: { phase: "report", childId: child.id, answer, failed } }), ctx);
+              const incomplete = (task.input.requireProgress === true || object(task.input.definition).requireProgress === true)
+                && !(progress && progress.total > 0 && progress.completed >= progress.total);
+              const failed = !!failure || !!progress?.error || incomplete;
+              const answer = failure ? `Subagent failed: ${failure.reason}${failure.detail ? `: ${String(failure.detail)}` : ""}` : progress?.error
+                || (incomplete ? "Subagent ended without verified progress completion. Save the required evidence/result and its completion receipt." : textOf(message));
+              const retryable = progress?.retryable !== false && !/^(aborted|cancelled|interrupted|orphaned)$/.test(failure?.reason ?? "")
+                && !/\bHTTP (?:400|401|403|404|402)\b|not authorized|not allowed|permission denied|invalid api key|insufficient (?:quota|balance)/i.test(answer);
+              await runtime.commit(() => ({ status: "running", checkpoint: { phase: "report", childId: child.id, answer, failed, retryable, attempt } }), ctx);
               return true;
             });
             if (closed) break;
           }
         },
         report: async (task, runtime, ctx) => {
-          const { childId, answer, failed } = task.state.checkpoint;
+          const { childId, failed } = task.state.checkpoint;
+          const attempt = task.state.checkpoint.attempt ?? task.input.attempt ?? 1;
+          const policy = this.workRetryPolicy(task.input);
+          let answer = task.state.checkpoint.answer;
+          if (failed && task.state.checkpoint.retryable !== false && attempt < policy.maxAttempts) {
+            await runtime.commit(async tx => {
+              const retries = await tx.doc(AgentWorkRetryDoc, task.conversationId, String(task.id), null);
+              if (!retries.failures.some(item => item.attempt === attempt)) retries.failures.push({ attempt, error: answer });
+              await tx.appendEntry(task.conversationId, { kind: "project.subagent-retry", data: { taskId: task.id, attempt: attempt+1, maxAttempts: policy.maxAttempts, error: answer } });
+              return { status: "running", checkpoint: { phase: "retry", childId, attempt: attempt+1,
+                wakeAt: runtime.now() + Math.min((policy.delayMs ?? 1000) * 2 ** (attempt-1), 60_000), error: answer } };
+            }, ctx);
+            return;
+          }
+          if (failed) await runtime.commit(async tx => {
+            const retries = await tx.doc(AgentWorkRetryDoc, task.conversationId, String(task.id), null);
+            if (!retries.failures.some(item => item.attempt === attempt)) retries.failures.push({ attempt, error: answer });
+          }, ctx);
+          if (failed && task.input.retry && attempt >= policy.maxAttempts) answer = `Retry limit reached (${attempt}/${policy.maxAttempts}). Stop retrying and report this failure. ${answer}`;
           if (task.input.background && task.input.reportToParent !== false) {
             const parent = (await runtime.conversation(task.conversationId, ctx))!;
             const output = delegationOutput(task.id, failed ? { status: "failed", error: { message: answer } } : { status: "completed", result: answer }, {});
@@ -361,9 +396,29 @@ export class DurableAgentSession {
           }
           await runtime.commit(() => ({ status: "terminal", outcome: failed ? { status: "failed", error: { message: answer } } : { status: "completed", result: answer } }), ctx);
         },
+        retry: async (task, runtime, ctx) => {
+          const { childId, attempt, wakeAt } = task.state.checkpoint;
+          await runtime.sleep(wakeAt, ctx);
+          await runtime.commit(async tx => {
+            const progress = await tx.doc(AgentWorkProgressDoc, task.conversationId, String(task.id), null);
+            if (attempt > this.workRetryPolicy(task.input).maxAttempts || progress.retryable === false) return {
+              status: "running", checkpoint: { phase: "report", childId, attempt: attempt-1, failed: true, retryable: false, answer: task.state.checkpoint.error },
+            };
+            const retries = await tx.doc(AgentWorkRetryDoc, task.conversationId, String(task.id), null);
+            retries.attempt = attempt;
+            progress.error = ""; progress.retryable = null;
+            if (task.input.agentId) (await tx.doc(AgentRoleDoc, childId as ConversationId)).attempt = attempt;
+            return { status: "running", checkpoint: { phase: "wait", childId, attempt } };
+          }, ctx);
+        },
       },
       abort: async (_task, runtime, ctx) => { await runtime.commit(() => ({ status: "terminal", outcome: { status: "aborted" } }), ctx); },
     });
+  }
+
+  private workRetryPolicy(input: DelegationInput) {
+    const current = this.options.subagents?.definitions?.find(role => role.id === input.agentId)?.retry ?? this.options.subagents?.retry;
+    return { maxAttempts: Math.min(input.retry?.maxAttempts ?? 1, current?.maxAttempts ?? 1), delayMs: input.retry?.delayMs ?? 1000 };
   }
 
   private async agentWorks(conversationId: ConversationId): Promise<AgentWorkInfo[]> {
@@ -388,7 +443,8 @@ export class DurableAgentSession {
     // outside a write transaction so listing completed work cannot acquire it.
     return Promise.all(works.map(async work => {
       const progress = await this.harness.snapshot(AgentWorkProgressDoc, conversationId, String(work.taskId), context);
-      return { ...work, ...(work.status === "completed" && progress?.error ? { status: "failed", error: progress.error } : {}),
+      const retries = await this.harness.snapshot(AgentWorkRetryDoc, conversationId, String(work.taskId), context);
+      return { ...work, attempt: Math.max(work.attempt, retries?.attempt ?? 0), ...(work.status === "completed" && progress?.error ? { status: "failed", error: progress.error } : {}),
         ...(progress?.total ? { progress: { completed: progress.completed, total: progress.total,
           ...(progress.phase ? { phase: progress.phase } : {}) } } : {}) };
     }));
@@ -439,6 +495,7 @@ export class DurableAgentSession {
         if (later) return later.id;
         const originalRecord = records.find(record => record.id === work.taskId)!;
         const original = originalRecord.input as DelegationInput;
+        if (original.retry && work.attempt >= this.workRetryPolicy(original).maxAttempts) throw new Error("Agent work retry limit reached. Stop retrying and report the failure; do not bypass it with a new workId.");
         if (originalRecord.owner && (await tx.task(originalRecord.owner))?.state.status === "terminal") throw new Error("Resume the owning batch before retrying this work.");
         return tx.createTask(this.delegation, { ...original, attempt: Math.max(...works.filter(item => item.workId === work.workId).map(item => item.attempt)) + 1,
           retryOf: work.taskId, ...(work.childConversationId ? { retryChildId: work.childConversationId } : {}), sourceId: `retry:${requestId}` },
@@ -472,7 +529,8 @@ export class DurableAgentSession {
     }
     await this.root.commit(async tx => {
       const roles = await tx.doc(AgentDefinitionsDoc, this.root.id);
-      roles.definitions = Object.fromEntries((this.options.subagents?.definitions ?? []).map(item => [item.id, plain(item) as unknown as JsonObject]));
+      roles.definitions = Object.fromEntries((this.options.subagents?.definitions ?? []).map(item => [item.id, plain({ ...item,
+        ...(item.retry ?? this.options.subagents?.retry ? { retry: item.retry ?? this.options.subagents?.retry } : {}) }) as unknown as JsonObject]));
       const doc = await tx.doc(SessionDoc, this.root.id);
       const hash = createHash("sha256").update(prompt).digest("hex");
       if (doc.promptHash !== hash) {
