@@ -153,7 +153,9 @@ Registry publication 使用不可变快照，在途工具和 hook 固定实现�
 
 ### 工具发现与 MCP
 
-`AgentToolCatalog` 为 `{ id, tools?, allowedTools?, open() }`。预声明 `tools` 是不含 `execute` 的工具描述，打开会话时保存定义，搜索只读取元数据，首次实际调用才连接；没有预声明 schema 时必须给最终工具 id 的 `allowedTools`，首次搜索才连接目录并保存工具定义。实际调用时重新连接并核对名称、描述、schema 和 replay，以及该会话首次保存的定义；同时更新宿主描述和服务定义也不能绕过核对。定义漂移返回错误并关闭连接；使用新定义须创建新会话，暂时连接失败可再次调用重试。工具发现不会连接未声明的服务。`createTools` 可返回 `{ tools, catalogs, close? }`，或编程式配置 `session.toolSearch.catalogs`。
+`AgentToolCatalog` 为 `{ id, tools?, allowedTools?, open() }`。预声明 `tools` 是不含 `execute` 的工具描述，打开会话时保存定义，搜索只读取元数据，首次实际调用才连接；没有预声明 schema 时必须给最终工具 id 的 `allowedTools`，首次搜索才连接目录并保存工具定义。重开已有会话后，`tool_search` 仍会连接已授权的非预声明目录，发现并保存新增工具；预声明目录的新增描述在打开会话时保存。目录增加工具不会使原有工具失效，也无需丢弃会话。
+
+每个已有工具仍须保持首次保存的名称、描述、schema 和 replay，实际连接会核对当前描述与持久定义；同时更新宿主描述和服务定义也不能绕过核对。撤权的工具不提供给模型，原定义仍保留，重新授权不能绕过核对。缺失或改变已有定义、重复名称或返回未授权工具会报 `Tool catalog definition changed` 并关闭连接，不执行工具，也不保存发现的新定义。改变已有定义须创建新会话；暂时连接失败可再次调用重试。工具发现不会连接未声明的服务。`createTools` 可返回 `{ tools, catalogs, close? }`，或编程式配置 `session.toolSearch.catalogs`。
 
 标准 MCP 助手 `workflow.createMcpToolCatalog({ definition, allowedTools, descriptors?, connect?, approve? })` 验证服务器定义但不立即启动进程。这里 `allowedTools` 使用 MCP 原始名称，最终 id 沿用 `<serverId>_<toolName>`；凭据按已有 MCP 环境继承规则传入。所有目录都由会话 owner 管理并在关闭后释放。
 

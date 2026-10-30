@@ -36,6 +36,18 @@ export function canonical(value: unknown): string {
     ? Object.fromEntries(Object.entries(item).sort(([a], [b]) => a.localeCompare(b))) : item);
 }
 
+function rememberCatalogTools(catalogs: Record<string, JsonObject[]>, id: string, tools: Directory["tools"]): void {
+  const saved = Object.hasOwn(catalogs, id) ? catalogs[id]! : [];
+  const names = new Set(saved.map(descriptor => descriptor.name));
+  const added = tools.filter(descriptor => !names.has(descriptor.name)).map(tool => {
+    const { execute: _execute, ...descriptor } = tool as AgentTool;
+    return descriptor;
+  });
+  // Keep revoked definitions pinned too: reauthorization must not let a
+  // previously admitted task execute against a different schema.
+  if (added.length) catalogs[id] = [...saved, ...JSON.parse(JSON.stringify(added)) as JsonObject[]];
+}
+
 /** Merges immutable publications; the Harness itself pins each phase and wakes missing tasks. */
 export function mergeAgentRegistries(internal: RegistryReader, application?: RegistryReader,
   authorizeTool?: (name: string, args: unknown, api: ToolExecutionApi, context: Context) => Promise<ToolExecutionResult | void>): RegistryReader {
@@ -97,12 +109,16 @@ export class AgentExtensionResources {
     if (this.options.toolSearch) {
       const search = createToolSearchTool();
       registry.install(defineExtension({ name: "tool-search", tools: [{ ...search, execute: async (args, api, context) => {
-        for (const directory of this.directories) if (!directory.tools.length && directory.catalog.allowedTools?.length) {
+        for (const directory of this.directories) if (!directory.catalog.tools && directory.catalog.allowedTools?.length) {
           const connection = await this.connect(directory);
+          // A restored manifest is a compatibility baseline, not the complete
+          // current catalog. Discover authorized additions on the first search.
+          if (directory.tools.length === connection.tools.length) continue;
           await api.commit(async tx => {
-            (await tx.doc(CatalogDoc, this.rootId!)).catalogs[directory.catalog.id] = JSON.parse(JSON.stringify(connection.tools.map(({ execute: _execute, ...descriptor }) => descriptor))) as JsonObject[];
+            rememberCatalogTools((await tx.doc(CatalogDoc, this.rootId!)).catalogs, directory.catalog.id, connection.tools);
           }, context);
           directory.tools = connection.tools;
+          directory.fingerprints = connection.tools.map(toolFingerprint);
           this.publish(directory);
         }
         return search.execute(args as { query: string; limit?: number }, { ...api, agent: async ctx => (await this.harness!.conversation(api.conversationId, ctx))!.agent(ctx) as Promise<Agent> }, context);
@@ -157,10 +173,9 @@ export class AgentExtensionResources {
         const fingerprints = new Set(connection.tools.map(toolFingerprint));
         if (connection.tools.length > 256 || new Set(connection.tools.map(tool => tool.name)).size !== connection.tools.length
           || connection.tools.some(tool => !allowed.has(tool.name))
-          || (directory.tools.length && (connection.tools.length !== directory.tools.length
-            || directory.tools.some(expected => !fingerprints.has(toolFingerprint(expected)))))
-          || (directory.fingerprints && (connection.tools.length !== directory.fingerprints.length
-            || directory.fingerprints.some(expected => !fingerprints.has(expected))))) throw new Error(`Tool catalog definition changed: ${directory.catalog.id}`);
+          || (directory.catalog.tools && connection.tools.length !== directory.tools.length)
+          || directory.tools.some(expected => !fingerprints.has(toolFingerprint(expected)))
+          || directory.fingerprints?.some(expected => !fingerprints.has(expected))) throw new Error(`Tool catalog definition changed: ${directory.catalog.id}. Existing definitions must stay unchanged; use a new session for changed definitions.`);
         directory.state = "ready";
         return connection;
       } catch (error) {
@@ -180,8 +195,10 @@ export class AgentExtensionResources {
       if (doc.id && doc.id !== identity) throw new Error("Execution environment identity changed. Open a new session for a different target.");
       doc.id = identity;
       const manifests = await tx.doc(CatalogDoc, rootId);
-      for (const { catalog } of this.directories) if (catalog.tools && !Object.hasOwn(manifests.catalogs, catalog.id)) {
-        manifests.catalogs[catalog.id] = JSON.parse(JSON.stringify(catalog.tools)) as JsonObject[];
+      for (const { catalog } of this.directories) if (catalog.tools) {
+        // Pin newly declared schemas before tasks resume, retaining every
+        // existing definition even if the host has changed its descriptor.
+        rememberCatalogTools(manifests.catalogs, catalog.id, catalog.tools);
       }
     }, context);
     const previous = await harness.snapshot(CatalogDoc, rootId, context);

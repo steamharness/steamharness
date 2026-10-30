@@ -1,5 +1,7 @@
 # Unreleased
 
+- Fixed: Existing Agent sessions discover and persist authorized catalog additions through tool search, so adding Studio diagnostics no longer invalidates the whole directory. Existing descriptions, parameters and replay policies stay pinned; incompatible changes and unauthorized tools remain rejected.
+
 - Added project-defined subagent work attempt limits and backoff. Failed work continues in its original task and child conversation with committed checkpoints, verified completion receipts, non-retryable barriers, persistent budgets and cancellation. Only the final outcome returns to the parent.
 
 - [Fixed] Return current work and delivery receipts when sending to queued, settling or settled subagents, without failing on normal lifecycle changes or restarting work. Concurrent role checks share in-flight lookups and retry transient network/service failures within the original deadline; explicit denials remain immediate.

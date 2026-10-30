@@ -1,5 +1,7 @@
 # Unreleased
 
+- Fixed: Existing Assistant conversations discover newly added Studio diagnostics while keeping existing tools usable. Catalog additions preserve checks on existing definitions and permissions.
+
 - Documented subagent attempt budgets, durable retries, completion receipts and non-retryable barriers in the generator API reference to prevent unbounded retries and repeated side effects.
 
 - Added: Generator guidance covers single subagent model fields and Core bindings, reusing configured models with inheritance and authorization constraints.

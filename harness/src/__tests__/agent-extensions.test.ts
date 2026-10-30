@@ -226,6 +226,121 @@ test("predeclared catalogs retain their durable definition when both host and se
   assert.match(resumedMessages, /Tool catalog definition changed/);
 });
 
+for (const predeclared of [false, true]) test(`reopened ${predeclared ? "predeclared" : "discovered"} catalogs load authorized additions and pin their definitions`, async t => {
+  const directory = await mkdtemp(path.join(tmpdir(), "agent-catalog-addition-")); t.after(() => rm(directory, { recursive: true, force: true }));
+  const file = path.join(directory, "session.sqlite");
+  const calls: string[] = []; let opened = 0, closed = 0;
+  const original = tool("studio_state", async () => { calls.push("state"); return { content: [], details: {} }; });
+  const diagnostics = { ...tool("get_kanban_diagnostics", async () => {
+    calls.push("diagnostics"); return { content: [{ type: "text" as const, text: JSON.stringify({ imageReady: false }) }], details: {} };
+  }), description: "Read live Kanban imageReady state", parameters: ai.Type.Object({ entryId: ai.Type.String() }) };
+  const catalog = (tools: AgentTool[]) => ({ id: "studio", ...(predeclared ? { tools } : { allowedTools: tools.map(item => item.name) }),
+    open: async () => { opened++; return { tools, close: async () => { closed++; } }; } });
+  const first = agent({ toolSearch: { catalogs: [catalog([original])] } }, file);
+  first.provider.setResponses([ai.fauxAssistantMessage([ai.fauxToolCall("tool_search", { query: "studio state" })], { stopReason: "toolUse" }),
+    ai.fauxAssistantMessage([ai.fauxToolCall("studio_state", {})], { stopReason: "toolUse" }), ai.fauxAssistantMessage("Saved")]);
+  const run = first.instance.prompt("Read studio state");
+  try { await until(() => first.snapshot()?.turns.some(turn => turn.status === "done")); }
+  finally { first.lease.resolve(); await run; await first.instance.close(); }
+  assert.equal(opened, 1); assert.equal(closed, 1);
+
+  const next = agent({ toolSearch: { catalogs: [catalog([original, diagnostics])] } }, file); next.instance.requestId = "added";
+  next.provider.setResponses([
+    // Previously loaded tools remain callable before rediscovery.
+    ai.fauxAssistantMessage([ai.fauxToolCall("studio_state", {})], { stopReason: "toolUse" }),
+    ai.fauxAssistantMessage([ai.fauxToolCall("tool_search", { query: "get_kanban_diagnostics" })], { stopReason: "toolUse" }),
+    request => {
+      assert.ok(ai.getCurrentTools(request.messages).some(item => item.name === diagnostics.name && item.description === diagnostics.description));
+      assert.match(JSON.stringify(request.messages), /Loaded 1 tool/);
+      return ai.fauxAssistantMessage([ai.fauxToolCall(diagnostics.name, { entryId: "map-2d" })], { stopReason: "toolUse" });
+    }, request => {
+      assert.match(JSON.stringify(request.messages), /imageReady/);
+      return ai.fauxAssistantMessage("Read live state");
+    },
+  ]);
+  const resumed = next.instance.prompt("Inspect the live map");
+  try {
+    await until(() => next.snapshot()?.turns.some(turn => turn.requestId === "added" && turn.status === "done"));
+    assert.deepEqual(calls, ["state", "state", "diagnostics"]);
+    assert.deepEqual(next.snapshot().resources?.catalogs[0]?.loaded, [original.name, diagnostics.name]);
+  } finally { next.lease.resolve(); await resumed; await next.instance.close(); }
+  assert.equal(opened, 2); assert.equal(closed, 2);
+
+  // Discovering an addition must not make its schema mutable on the next restart.
+  const changed = agent({ toolSearch: { catalogs: [catalog([original, { ...diagnostics, description: "Changed definition" }])] } }, file);
+  changed.instance.requestId = "changed";
+  changed.provider.setResponses([ai.fauxAssistantMessage([ai.fauxToolCall(diagnostics.name, { entryId: "map-2d" })], { stopReason: "toolUse" }), request => {
+    assert.match(JSON.stringify(request.messages), /Tool catalog definition changed/); return ai.fauxAssistantMessage("Blocked");
+  }]);
+  const rejected = changed.instance.prompt("Use a changed tool");
+  try {
+    await until(() => changed.snapshot()?.turns.some(turn => turn.requestId === "changed" && turn.status === "done"));
+    assert.equal(changed.snapshot().resources?.catalogs[0]?.state, "failed");
+    assert.deepEqual(calls, ["state", "state", "diagnostics"]);
+  } finally { changed.lease.resolve(); await rejected; await changed.instance.close(); }
+  assert.equal(closed, 3);
+});
+
+test("rediscovery rejects unauthorized additions, removed tools and changed descriptions, schemas or replay policies", async t => {
+  const directory = await mkdtemp(path.join(tmpdir(), "agent-catalog-rejected-")); t.after(() => rm(directory, { recursive: true, force: true }));
+  let called = 0;
+  const original = tool("catalog_read", async () => { called++; return { content: [], details: {} }; });
+  const added = tool("catalog_diagnostics", original.execute);
+  const replacements = [
+    [original, { ...added, name: "not_authorized" }],
+    [added],
+    [{ ...original, description: "Changed description" }, added],
+    [{ ...original, parameters: ai.Type.Object({ different: ai.Type.String() }) }, added],
+    [{ ...original, replay: "never" as const }, added],
+    [original, added, added],
+  ];
+  for (const [index, tools] of replacements.entries()) {
+    const file = path.join(directory, `${index}.sqlite`); let closed = 0;
+    const catalog = (entries: AgentTool[]) => ({ id: "permitted", allowedTools: [original.name, added.name],
+      open: async () => ({ tools: entries, close: async () => { closed++; } }) });
+    const first = agent({ toolSearch: { catalogs: [catalog([original])] } }, file);
+    first.provider.setResponses([ai.fauxAssistantMessage([ai.fauxToolCall("tool_search", { query: "catalog read" })], { stopReason: "toolUse" }), ai.fauxAssistantMessage("Saved")]);
+    const run = first.instance.prompt("Discover tools");
+    try { await until(() => first.snapshot()?.turns.some(turn => turn.status === "done")); }
+    finally { first.lease.resolve(); await run; await first.instance.close(); }
+    const next = agent({ toolSearch: { catalogs: [catalog(tools)] } }, file); next.instance.requestId = "next";
+    next.provider.setResponses([ai.fauxAssistantMessage([ai.fauxToolCall("tool_search", { query: "catalog diagnostics" })], { stopReason: "toolUse" }), request => {
+      assert.match(JSON.stringify(request.messages), /Tool catalog definition changed/);
+      assert.ok(!ai.getCurrentTools(request.messages).some(item => item.name === added.name)); return ai.fauxAssistantMessage("Blocked");
+    }]);
+    const resumed = next.instance.prompt("Discover diagnostics");
+    try {
+      await until(() => next.snapshot()?.turns.some(turn => turn.requestId === "next" && turn.status === "done"));
+      assert.equal(next.snapshot().resources?.catalogs[0]?.state, "failed");
+      assert.deepEqual(next.snapshot().resources?.catalogs[0]?.tools, [original.name]);
+    } finally { next.lease.resolve(); await resumed; await next.instance.close(); }
+    assert.equal(closed, 2);
+  }
+  assert.equal(called, 0);
+});
+
+test("discovering new tools while an old tool is revoked retains its original definition for reauthorization", async t => {
+  const directory = await mkdtemp(path.join(tmpdir(), "agent-catalog-reauthorize-")); t.after(() => rm(directory, { recursive: true, force: true }));
+  const file = path.join(directory, "session.sqlite"); let called = 0;
+  const original = tool("catalog_read", async () => { called++; return { content: [], details: {} }; });
+  const added = tool("catalog_diagnostics", original.execute);
+  for (const [index, tools] of [[original], [added], [{ ...original, description: "Changed after revocation" }, added]].entries()) {
+    const current = agent({ toolSearch: { catalogs: [{ id: "permitted", allowedTools: tools.map(item => item.name), open: async () => ({ tools }) }] } }, file);
+    current.instance.requestId = `turn-${index}`;
+    current.provider.setResponses([ai.fauxAssistantMessage([ai.fauxToolCall("tool_search", { query: index === 1 ? added.name : original.name })], { stopReason: "toolUse" }), request => {
+      const latest = request.messages.filter(item => item.role === "toolResult").at(-1)!;
+      if (index === 2) assert.match(JSON.stringify(latest), /Tool catalog definition changed/);
+      else assert.match(JSON.stringify(latest), /Loaded 1 tool/);
+      if (index === 1) assert.ok(!ai.getCurrentTools(request.messages).some(item => item.name === original.name));
+      return ai.fauxAssistantMessage("Checked");
+    }]);
+    const run = current.instance.prompt("Discover the authorized tool");
+    try { await until(() => current.snapshot()?.turns.some(turn => turn.requestId === current.instance.requestId && turn.status === "done")); }
+    finally { current.lease.resolve(); await run; await current.instance.close(); }
+  }
+  assert.equal(called, 0);
+});
+
 test("catalog ids that match object prototype keys open without inherited manifests", async () => {
   const entry = tool("catalog_read", async () => ({ content: [], details: {} }));
   for (const predeclared of [false, true]) {
