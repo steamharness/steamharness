@@ -120,7 +120,7 @@ The overview shows project counts and types, run status distributions, a 14-day 
 
 Histories come from Studio's local CLI storage. CLIs with activity recording also provide live states across Studio windows. Unverified runs from older CLIs display an unknown status. Unreadable projects are marked unavailable, and no sample data is substituted. Standalone browsers and CLIs without a Studio connection do not provide this data interface.
 
-Stale imports are no longer counted separately when their existing folders lack a standalone `steamharness.json` or have become aggregate child entries. Inaccessible folders, missing manifests in the current workspace, malformed declarations, identity changes, and history read failures remain unavailable. Local analysis reads declarations and local history without resolving deployment database bindings or migrating legacy `package.json` declarations.
+Stale imports are no longer counted separately when their folders were deleted, lack a standalone `steamharness.json`, or have become aggregate child entries, and do not cause Start status refresh failures. Missing folders or manifests in the current workspace, folder permission errors, malformed declarations, identity changes, and history read failures remain unavailable. Local analysis reads declarations and local history without resolving deployment database bindings or migrating legacy `package.json` declarations.
 
 ## Accounts and servers
 

@@ -1,5 +1,6 @@
 import { writeProjectFixture } from '../../scripts/test-project-fixture.mjs';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import * as fs from 'node:fs/promises';
 import { mkdtemp, mkdir, readFile, readdir, realpath, rm, symlink, utimes, writeFile } from 'node:fs/promises';
 import { createServer } from 'node:http';
 import { spawn } from 'node:child_process';
@@ -10,6 +11,11 @@ import { pathToFileURL } from 'node:url';
 import { createLocalActivityWriter, readLocalStudioAnalysis, requestStudioAnalysis, summarizeLocalRuns, type LocalRunSummary } from '../web/local-analysis';
 import { webProjectDataDirectory } from '../web/kanban-data';
 import type { ConversationSession } from '../web/workflow-types';
+
+vi.mock('node:fs/promises', async importOriginal => {
+  const actual = await importOriginal<typeof import('node:fs/promises')>();
+  return { ...actual, realpath: vi.fn(actual.realpath) };
+});
 
 const cleanup: (() => Promise<unknown>)[] = [];
 afterEach(async () => { for (const clean of cleanup.splice(0).reverse()) await clean(); });
@@ -130,10 +136,30 @@ describe('local Studio analysis', () => {
   });
   it('deduplicates real directories and includes local runs for entries using a Server database', async () => {
     const f = await fixture(), link = path.join(f.root, 'link'); await symlink(f.folderPath, link, process.platform === 'win32' ? 'junction' : 'dir');
-    const projects = [f.reference, { ...f.reference, folderPath: link }, { ...f.reference, folderPath: path.join(f.root, 'missing'), uri: 'file:///missing' }];
-    const value = await readLocalStudioAnalysis({ storageDir: f.storageDir, projects }); expect(value.projects).toHaveLength(2); expect(value.projects[1].availability).toBe('missing');
+    const projects = [f.reference, { ...f.reference, folderPath: link }, { ...f.reference, folderPath: path.join(f.root, 'missing'), uri: 'file:///missing', inWorkspace: true }];
+    const value = await readLocalStudioAnalysis({ storageDir: f.storageDir, projects }); expect(value.projects).toHaveLength(2); expect(value.projects.find(project => project.inWorkspace)?.availability).toBe('missing');
     await writeFile(path.join(f.folderPath, 'config.json'), JSON.stringify({version:1,databases:{data:'00000000-0000-4000-8000-000000000001'}}));
     expect((await f.snapshot()).projects).toHaveLength(1);
+  });
+  it('ignores deleted imported folders while retaining readable history and reporting missing workspace projects', async () => {
+    const f = await fixture(); await f.history([{ id: 'local-run', status: 'success' }]);
+    const deleted = { ...f.reference, folderPath: path.join(f.root, 'deleted-worktree'), uri: 'file:///deleted-worktree', inWorkspace: false };
+    const value = await readLocalStudioAnalysis({ storageDir: f.storageDir, projects: [deleted, f.reference] });
+    expect(value.projects).toHaveLength(1);
+    expect(value.projects[0]).toMatchObject({ availability: 'available', runs: [{ id: 'local-run' }] });
+    await rm(f.folderPath, { recursive: true });
+    expect((await f.snapshot()).projects).toEqual([]);
+    const current = await readLocalStudioAnalysis({ storageDir: f.storageDir, projects: [{ ...f.reference, inWorkspace: true }] });
+    expect(current.projects).toHaveLength(1);
+    expect(current.projects[0].availability).toBe('missing');
+  });
+  it('retains imported folder permission failures', async () => {
+    const f = await fixture();
+    vi.mocked(fs.realpath).mockRejectedValueOnce(Object.assign(new Error('Access denied'), { code: 'EACCES' }));
+    const value = await readLocalStudioAnalysis({ storageDir: f.storageDir,
+      projects: [{ ...f.reference, inWorkspace: false }] });
+    expect(value.projects).toHaveLength(1);
+    expect(value.projects[0].availability).toBe('unreadable');
   });
   it('ignores old standalone registrations after their folders become aggregate entries', async () => {
     const f = await fixture(); await f.history([{ id: 'aggregate-run', status: 'success' }]);

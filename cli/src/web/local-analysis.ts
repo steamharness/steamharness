@@ -100,7 +100,11 @@ export async function readLocalStudioAnalysis(options: { storageDir: string; pro
   const references: AnalysisReference[] = [];
   for (const reference of options.projects) {
     try {
-      const directory = await realpath(reference.folderPath);
+      const directory = await realpath(reference.folderPath).catch((error: NodeJS.ErrnoException) => {
+        if (!reference.inWorkspace && error.code === 'ENOENT') { return undefined; }
+        throw error;
+      });
+      if (!directory) { continue; }
       const document = await readJson(path.join(directory, 'steamharness.json'));
       // Imported folders can lose their standalone manifest or become aggregate entry roots.
       const child = record(document) && projectType(document.type)
