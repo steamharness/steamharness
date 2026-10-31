@@ -254,7 +254,10 @@ function initialize(): void {
   const pendingSend = (): boolean => !!state && submissions.busy(state.project.uri, state.activeId);
   const sendBlocked = (): boolean => submitting || pendingSend() && !canQueue();
   const busy = (): boolean => readOnly() || sendBlocked() || hideComposer() || (!!state?.running || !!currentSession()?.messages.some((message) => message.pendingInput)) && !canQueue();
-  const navigationReady = (): boolean => !!state && !navigationNeeded && !navigationRequest && !localSessions.has(state.activeId) && state.activeId === serverSessionId;
+  // Background draft saves keep the current server target available.
+  const navigationReady = (): boolean => !!state && !navigationNeeded
+    && (!navigationRequest || navigationRequest.activeId === state.activeId)
+    && !localSessions.has(state.activeId) && state.activeId === serverSessionId;
   const fileMenu = new ConversationFileMenu(document.querySelector<HTMLButtonElement>('#attach')!, kind => {
     if (!state || !advertisedDropTarget || uploading) return;
     const requestId = crypto.randomUUID();

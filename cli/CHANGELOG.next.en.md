@@ -1,5 +1,7 @@
 # Unreleased
 
+- Fixed file selection and response retry buttons flickering while typing by keeping background draft saves from disabling them. Conversation switches still wait for host confirmation.
+
 - Fixed Kanban attachment workers to use the full file deadline, preventing large map images from being stopped by the ordinary 30-second task limit. Timeouts return a recognized bridge error.
 
 - Fixed the context window usage tooltip to follow light, dark and host themes for its background, text, border and shadow.

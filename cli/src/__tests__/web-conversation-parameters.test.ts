@@ -92,6 +92,44 @@ it('renders static parameters without a worker or loading state while typing and
   expect(f.input.value).toBe('next turn');
 });
 
+it('keeps file selection and response retry available while typing saves the current draft', async () => {
+  const f = await fixture(); f.reply();
+  f.sessions[0].messages = [{ id: 'answer', role: 'assistant', content: 'Finished answer', status: 'success' }];
+  f.receive(); f.input.focus();
+  host.postMessage.mockImplementation(() => undefined);
+  const attach = document.querySelector<HTMLButtonElement>('#attach')!;
+  const retry = document.querySelector<HTMLButtonElement>('.retry-message')!;
+  const icons = [attach.firstElementChild, retry.firstElementChild];
+  for (const text of ['h', 'hello', 'hello 中文']) {
+    f.type(text); await vi.advanceTimersByTimeAsync(300);
+    const request = host.postMessage.mock.calls.map(([message]) => message).filter(message => message.type === 'navigate').at(-1)!;
+    expect(request.updates[0].draft.text).toBe(text);
+    expect([attach.disabled, retry.disabled]).toEqual([false, false]);
+    expect([attach.firstElementChild, retry.firstElementChild]).toEqual(icons);
+    expect(document.activeElement).toBe(f.input); expect(f.input.value).toBe(text);
+    f.emit({ type: 'navigated', requestId: request.requestId, activeId: request.id });
+    expect([attach.disabled, retry.disabled]).toEqual([false, false]);
+  }
+  expect(f.requests()).toHaveLength(1); expect(f.loading()).toBe(false);
+});
+
+it('keeps waiting for an in-flight conversation switch when returning to the server conversation', async () => {
+  const f = await fixture({ dynamic: false });
+  for (const session of f.sessions) session.messages = [{ id: `answer-${session.id}`, role: 'assistant', content: 'Finished answer', status: 'success' }];
+  f.receive(); host.postMessage.mockImplementation(() => undefined);
+  const controls = () => [document.querySelector<HTMLButtonElement>('#attach')!.disabled,
+    document.querySelector<HTMLButtonElement>('.retry-message')!.disabled];
+  const navigation = () => host.postMessage.mock.calls.map(([message]) => message).filter(message => message.type === 'navigate').at(-1)!;
+  document.querySelector<HTMLButtonElement>('[data-session-id="second"]')!.click();
+  const second = navigation(); expect(controls()).toEqual([true, true]);
+  document.querySelector<HTMLButtonElement>('[data-session-id="first"]')!.click();
+  expect(controls()).toEqual([true, true]);
+  f.emit({ type: 'navigated', requestId: second.requestId, activeId: second.id });
+  const first = navigation(); expect(first.id).toBe('first'); expect(controls()).toEqual([true, true]);
+  f.emit({ type: 'navigated', requestId: first.requestId, activeId: first.id });
+  expect(controls()).toEqual([false, false]);
+});
+
 it('sends consecutive inputs immediately while earlier submissions are still unconfirmed', async () => {
   const f = await fixture({ dynamic: false });
   const send = document.querySelector<HTMLButtonElement>('#send')!;
