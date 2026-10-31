@@ -92,4 +92,6 @@
 
 `0067-studio-start-recent-projects.patch` 为最近项目中当前窗口打开的文件夹或工作区显示“当前项目”标记，状态与双语标签由 Studio 扩展提供。
 
+`0070-studio-start-partial-status.patch` 让开始页展示可读取项目的统计，局部项目异常不再使整组计数显示为不可用；具体读取异常仍由 Studio Analysis 展示。
+
 新内核修改应通过 `git diff` 导出统一格式补丁，并排除脚本生成的 `product.json` 及 Studio 扩展链接。品牌配置由 `config/product.json` 维护。

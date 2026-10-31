@@ -2,6 +2,7 @@ import * as vscode from 'vscode';
 import { readProjectDeclarationWithReader } from '@steamharness/project-manifest';
 import { IMPORTED_PROJECTS_KEY, readImportedProjects, rememberImportedProjects } from './projects';
 import type { DownloadedServerProject } from './steamharness-server-projects';
+import { updateProjectHistory } from './project-history';
 
 export async function readProjectDocument(uri: vscode.Uri): Promise<unknown> {
   return JSON.parse(new TextDecoder().decode(await vscode.workspace.fs.readFile(vscode.Uri.joinPath(uri, 'steamharness.json'))));
@@ -18,7 +19,7 @@ export async function resourceProjectDirectories(context: Pick<vscode.ExtensionC
   return [...new Set(directories.filter((value): value is string => !!value))];
 }
 export async function rememberDownloadedProjects(context: Pick<vscode.ExtensionContext, 'globalState'>, projects: DownloadedServerProject[], replacedRoot?: string): Promise<void> {
-  const previous = readImportedProjects(context.globalState.get(IMPORTED_PROJECTS_KEY));
   const incoming = projects.map(project => ({ id: project.id, name: project.name, version: project.version, uri: vscode.Uri.file(project.directory).toString() }));
-  await context.globalState.update(IMPORTED_PROJECTS_KEY, rememberImportedProjects(previous.filter(project => project.uri !== replacedRoot), incoming));
+  await updateProjectHistory(context, history => ({ ...history,
+    imported: rememberImportedProjects(history.imported.filter(project => project.uri !== replacedRoot), incoming) }));
 }

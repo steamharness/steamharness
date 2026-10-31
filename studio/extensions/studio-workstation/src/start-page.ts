@@ -6,7 +6,8 @@ import type { AccountController } from './workflow-auth';
 import { projectVersion, type Project } from './workflow-types';
 import type { CreatedProject, PendingProjectSetup, ProjectCreationDialog, ProjectCreationDialogResult, StudioStartState } from './start-page-types';
 import { parseServerProjectShareLink, type ProjectVersionStatus } from './steamharness-server-projects';
-import { IMPORTED_PROJECTS_KEY, readImportedProjects, rememberImportedProjects, type RecentProject } from './projects';
+import { rememberImportedProjects, type RecentProject } from './projects';
+import { updateProjectHistory } from './project-history';
 import { chooseProjectWindow, openProjectFolder, type ProjectWindowOptions } from './project-window';
 
 const PENDING_KEY = 'studio.pendingProjectSetups';
@@ -72,7 +73,7 @@ export class StudioStartController implements vscode.Disposable {
 
   constructor(private readonly context: vscode.ExtensionContext, private readonly launcher: Launcher,
     private readonly account: AccountController, private readonly projects: ProjectSource,
-    private readonly recent: { getChildren(): RecentProject[]; onDidChangeTreeData: vscode.Event<void> },
+    private readonly recent: { getChildren(): RecentProject[]; onDidChangeTreeData: vscode.Event<void>; reconcile?(): Promise<void> },
     private readonly remember: (project: CreatedProject) => Promise<void>, private readonly output: vscode.OutputChannel) {
     this.state = { version: 1, labels: startPageLabels(), templates: [], projects: [], recent: [], pending: [], busy: false,
       badge: process.env.STEAMHARNESS_STUDIO_INTERNAL === '1'
@@ -223,6 +224,8 @@ export class StudioStartController implements vscode.Disposable {
     this.refreshing = (async () => {
       while (this.requested && !this.disposed) {
         this.requested = false;
+        await this.recent.reconcile?.();
+        if (this.disposed) { return; }
         const revision = this.revision;
         const environment = this.environmentNeeded;
         const [templates, runtime, summary] = await Promise.allSettled([
@@ -241,8 +244,7 @@ export class StudioStartController implements vscode.Disposable {
           this.environmentNeeded = false;
         } else if (runtime.status === 'rejected') { errors.push(this.errorMessage(runtime.reason)); }
         if (summary.status === 'fulfilled' && summary.value) {
-          if (!summary.value.unavailable || !this.state.summary) { this.state.summary = summary.value; }
-          if (summary.value.unavailable) { errors.push(t('Some local projects could not be read. Open Studio Analysis for details.')); }
+          this.state.summary = summary.value;
         } else if (summary.status === 'rejected') { errors.push(this.errorMessage(summary.reason)); }
         this.state.error = errors.length ? t('Status refresh failed: {0}', errors.join('\n')) : undefined;
         this.publish();
@@ -331,7 +333,8 @@ export class StudioStartController implements vscode.Disposable {
             if (!inspected.projects.some(entry => entry.id === project.id) || inspected.errors.length) { throw new Error(inspected.errors.join('\n') || t('Project validation failed')); }
             this.appendInstallationLog(`${t('Project validation succeeded.')}\n`);
             const uri = vscode.Uri.file(project.directory).toString();
-            await this.context.globalState.update(IMPORTED_PROJECTS_KEY, rememberImportedProjects(readImportedProjects(this.context.globalState.get(IMPORTED_PROJECTS_KEY)), [{ id: project.id, name: project.name, uri }]));
+            await updateProjectHistory(this.context, history => ({ ...history,
+              imported: rememberImportedProjects(history.imported, [{ id: project.id, name: project.name, uri }]) }));
             await this.remember(project);
             await vscode.commands.executeCommand('studio.refreshProjects');
           } finally { cancellation.dispose(); }

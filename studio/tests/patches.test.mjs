@@ -51,6 +51,7 @@ test('the pinned kernel skips superseded historical patches even in a shallow ch
     'src/vs/workbench/browser/parts/globalCompositeBar.ts'];
   const { upstream } = await pinnedKernel(t, [...files, 'src/vs/workbench/contrib/webview/browser/webviewElement.ts']);
   const index = path.join(upstream, '.git/index');
+  await applyPatches(ROOT, upstream);
   const before = await Promise.all(files.map(file => fs.readFile(path.join(upstream, file))));
   await applyPatches(ROOT, upstream);
   assert.deepEqual(await Promise.all(files.map(file => fs.readFile(path.join(upstream, file)))), before);

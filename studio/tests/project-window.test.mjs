@@ -38,7 +38,7 @@ async function fixture(t, language = 'en') {
     Uri: { parse: uri },
     workspace: { workspaceFolders: [], getConfiguration: () => ({ get: (_key, fallback) => fallback }),
       onDidChangeWorkspaceFolders: () => disposable, onDidChangeConfiguration: () => disposable,
-      fs: { stat: async () => { if (f.missing) { throw new Error('missing'); } } } },
+      fs: { stat: async () => { if (f.statError) { throw f.statError; } if (f.missing) { throw { code: 'FileNotFound' }; } } } },
     window: { createOutputChannel: () => ({ appendLine() {}, dispose() {} }), showOpenDialog: async () => f.folders,
       showErrorMessage: async message => { f.errors.push(message); }, showWarningMessage: async (message, options, ...buttons) => {
         f.warnings.push(message); f.warningDialogs.push({ message, options, buttons });
@@ -68,6 +68,8 @@ for (const language of ['en', 'zh-cn']) {
     const other = { ...project, uri: 'file:///other/demo' };
     const concurrent = { ...project, uri: 'vscode-remote://ssh-remote+host/projects/demo' };
     f.storage.set('studio.recentProjects', [project, other]);
+    const imported = [project, other, concurrent].map(entry => ({ id: '294b1eec-23fa-42cf-9fd3-2417f71c0570', uri: entry.uri, name: entry.label }));
+    f.storage.set('studio.importedProjects', imported);
     let answer;
     f.warningChoice = () => new Promise(resolve => { answer = resolve; });
     const removing = f.execute('studio.removeRecentProject', project);
@@ -81,10 +83,12 @@ for (const language of ['en', 'zh-cn']) {
       : '此操作只移除最近记录，不会删除项目文件或关闭当前工作区。');
     answer(undefined); await removing;
     assert.deepEqual(f.storage.get('studio.recentProjects'), [project, other]);
+    assert.deepEqual(f.storage.get('studio.importedProjects'), imported);
     const confirmed = f.execute('studio.removeRecentProject', project);
     f.storage.set('studio.recentProjects', [project, other, concurrent]);
     answer(f.warningDialogs.at(-1).buttons[0]); await confirmed;
     assert.deepEqual(JSON.parse(JSON.stringify(f.storage.get('studio.recentProjects'))), [other, concurrent]);
+    assert.deepEqual(JSON.parse(JSON.stringify(f.storage.get('studio.importedProjects'))), imported.slice(1));
     assert.deepEqual({ opens: f.opens, errors: f.errors }, { opens: [], errors: [] });
   });
 
@@ -116,7 +120,32 @@ test('cancelled pickers and invalid or missing recent projects never show a wind
   await f.execute('studio.removeRecentProject'); await f.execute('studio.removeRecentProject', { uri: 'javascript:alert(1)' });
   f.missing = true;
   await f.execute('studio.openRecentProject', { uri: 'file:///missing', label: 'Missing', kind: 'folder', lastOpened: 1 });
-  assert.deepEqual(f.opens, []); assert.deepEqual(f.dialogs, []); assert.equal(f.warnings.length, 1);
+  assert.deepEqual(f.opens, []); assert.deepEqual(f.dialogs, []); assert.deepEqual(f.warnings, []);
+});
+
+test('opening a deleted recent project silently forgets its imported registration while permission failures retain it', async t => {
+  const f = await fixture(t);
+  const project = { uri: 'file:///project', label: 'Project', kind: 'folder', lastOpened: 1 };
+  const imported = { id: '294b1eec-23fa-42cf-9fd3-2417f71c0570', uri: project.uri, name: project.label };
+  f.storage.set('studio.recentProjects', [project]); f.storage.set('studio.importedProjects', [imported]);
+  f.statError = { code: 'NoPermissions', message: 'Access denied' };
+  await f.execute('studio.openRecentProject', project);
+  assert.deepEqual({ recent: f.storage.get('studio.recentProjects'), imported: f.storage.get('studio.importedProjects') },
+    { recent: [project], imported: [imported] });
+  f.statError = { code: 'FileNotFound' }; f.errors.length = 0;
+  await f.execute('studio.openRecentProject', project);
+  assert.deepEqual({ recent: [...f.storage.get('studio.recentProjects')], imported: [...f.storage.get('studio.importedProjects')], warnings: f.warnings, errors: f.errors, opens: f.opens },
+    { recent: [], imported: [], warnings: [], errors: [], opens: [] });
+});
+
+test('clearing recent projects also removes their imported registrations', async t => {
+  const f = await fixture(t);
+  const project = { uri: 'file:///project', label: 'Project', kind: 'folder', lastOpened: 1 };
+  f.storage.set('studio.recentProjects', [project]);
+  f.storage.set('studio.importedProjects', [{ id: '294b1eec-23fa-42cf-9fd3-2417f71c0570', uri: project.uri, name: project.label }]);
+  f.warningChoice = buttons => buttons[0];
+  await f.execute('studio.clearRecentProjects');
+  assert.deepEqual({ recent: [...f.storage.get('studio.recentProjects')], imported: [...f.storage.get('studio.importedProjects')] }, { recent: [], imported: [] });
 });
 
 test('a disposed project view cannot open a window after the dialog resolves', async t => {

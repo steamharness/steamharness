@@ -80,7 +80,7 @@ function fixture(t, options = {}) {
     getProjects: () => f.projects, onDidChangeProjects: projectsChanged.event,
     getVersionStatus: () => ({ status: 'unpublished', canDownload: false }), onDidChangeVersions: new Emitter().event,
   },
-  { getChildren: () => f.recent, onDidChangeTreeData: new Emitter().event }, async project => { f.remembered = project; }, { appendLine() {}, append() {} });
+  { getChildren: () => f.recent, onDidChangeTreeData: new Emitter().event, reconcile: async () => { await f.reconcile?.(); } }, async project => { f.remembered = project; }, { appendLine() {}, append() {} });
   t.after(() => controller.dispose());
   return Object.assign(f, { controller, execute: vscode.commands.executeCommand, state: async () => commands.get('studio.internalGetStartState')(),
     setWorkspace: (folders, workspaceFile) => {
@@ -103,10 +103,24 @@ test('start status polls only while visible and preserves last good counts after
   f.readSummary = () => { throw new Error('history unavailable'); };
   await f.execute('studio.refreshStart'); assert.equal((await f.state()).summary.running, 1); assert.match((await f.state()).error, /history unavailable/);
   f.readSummary = () => ({ ...f.summary, running: 0, unavailable: 1 }); await f.execute('studio.refreshStart');
-  assert.equal((await f.state()).summary.running, 1); assert.match((await f.state()).error, /could not be read/);
+  assert.equal((await f.state()).summary.running, 0); assert.equal((await f.state()).error, undefined);
   f.readSummary = undefined; await f.execute('studio.refreshStart'); assert.equal((await f.state()).error, undefined);
   await f.execute('studio.internalStartPageVisibility', false); assert.equal(f.intervals.size, 0);
   const reads = f.summaryReads; await f.execute('studio.refreshStart'); assert.equal(f.summaryReads, reads);
+});
+
+test('refresh reconciles deleted recent records before reading counts and partial data does not become a global error', async t => {
+  const f = fixture(t); await f.execute('studio.refreshStart');
+  f.recent = [{ uri: 'file:///deleted', label: 'Deleted', kind: 'folder', lastOpened: 1 }];
+  f.reconcile = async () => { f.recent = []; };
+  f.readSummary = async () => {
+    assert.deepEqual(f.recent, []);
+    return { projects: 1, running: 0, waiting: 1, unavailable: 1, generatedAt: 2 };
+  };
+  await f.execute('studio.internalStartPageVisibility', true); await f.execute('studio.refreshStart');
+  const state = await f.state();
+  assert.deepEqual({ recent: state.recent, summary: state.summary, error: state.error },
+    { recent: [], summary: { projects: 1, running: 0, waiting: 1, unavailable: 1, generatedAt: 2 }, error: undefined });
 });
 
 test('project and account changes debounce, invalidate old summaries and preserve current state', async t => {

@@ -7,6 +7,14 @@ import { IMPORTED_PROJECTS_KEY } from '../extensions/studio-workstation/src/proj
 
 const compiled = await build({ entryPoints: ['extensions/studio-workstation/src/studio-analysis.ts'], bundle: true, platform: 'node', format: 'cjs', external: ['vscode'], write: false });
 const require = createRequire(import.meta.url);
+test('start summaries retain readable project counts when another project is unavailable', () => {
+  const f = fixture();
+  const summary = f.api.studioAnalysisSummary({ generatedAt: 42, projects: [
+    { availability: 'available', runs: [{ status: 'running' }, { status: 'waiting_for_input' }, { status: 'success' }] },
+    { availability: 'available', runs: [] }, { availability: 'unreadable', runs: [{ status: 'running' }] },
+  ] });
+  assert.deepEqual(JSON.parse(JSON.stringify(summary)), { projects: 2, running: 1, waiting: 1, unavailable: 1, generatedAt: 42 });
+});
 function fixture(imported = []) {
   const vscode = { workspace: { isTrusted: true }, Uri: { parse: value => { const url = new URL(value); return { scheme: url.protocol.slice(0, -1), fsPath: decodeURIComponent(url.pathname) }; } } };
   const module = { exports: {} };

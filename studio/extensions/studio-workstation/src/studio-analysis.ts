@@ -1,6 +1,15 @@
 import * as vscode from 'vscode';
 import { IMPORTED_PROJECTS_KEY, readImportedProjects } from './projects';
 import type { Project } from './workflow-types';
+import type { StartSummary } from './start-page-types';
+
+export function studioAnalysisSummary(result: { generatedAt: number; projects: Array<{ availability: string; runs: Array<{ status: string }> }> }): StartSummary {
+  const available = result.projects.filter(project => project.availability === 'available');
+  const runs = available.flatMap(project => project.runs);
+  return { projects: available.length, running: runs.filter(run => run.status === 'running').length,
+    waiting: runs.filter(run => run.status === 'waiting_for_input').length,
+    unavailable: result.projects.length - available.length, generatedAt: result.generatedAt };
+}
 
 export function studioAnalysisProjects(context: Pick<vscode.ExtensionContext, 'globalState'>, current: Project[]) {
   const projects = new Map(readImportedProjects(context.globalState.get(IMPORTED_PROJECTS_KEY)).map(project => [project.uri, project]));

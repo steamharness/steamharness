@@ -1,7 +1,7 @@
 import './localization-host';
 import { t } from './localization';
 import * as vscode from 'vscode';
-import { projectTypeIcons, readRecentProjects, rememberProjects, type RecentProject } from './projects';
+import { projectTypeIcons, RECENT_PROJECTS_KEY, readRecentProjects, rememberProjects, type RecentProject } from './projects';
 import { ProjectIcons } from './project-icons';
 import { activateProject } from './workflow';
 import type { Launcher } from './workflow-cli-types';
@@ -10,14 +10,14 @@ import { activateDocumentPreviews } from './document-preview';
 import { StudioStartController } from './start-page';
 import { activateInternalLayer } from './internal-layer';
 import { openProjectFolder } from './project-window';
-
-const RECENT_PROJECTS_KEY = 'studio.recentProjects';
+import { isMissingProject, pruneMissingProjectHistory, updateProjectHistory } from './project-history';
 
 class RecentProjectsProvider {
   private readonly change = new vscode.EventEmitter<void>();
   readonly onDidChangeTreeData = this.change.event;
 
   constructor(private readonly context: vscode.ExtensionContext, private readonly icons: ProjectIcons) {}
+  async reconcile(): Promise<void> { if (await pruneMissingProjectHistory(this.context)) { this.refresh(); } }
   refresh(): void { this.change.fire(); }
   dispose(): void { this.change.dispose(); }
   getChildren(): RecentProject[] {
@@ -66,13 +66,13 @@ export async function activate(context: vscode.ExtensionContext, runtime?: Launc
     }));
   };
 
-  let pendingSave = Promise.resolve();
-  const saveRecent = (update: (previous: RecentProject[]) => RecentProject[]): Promise<void> => {
-    pendingSave = pendingSave.catch(() => undefined).then(async () => {
-      await context.globalState.update(RECENT_PROJECTS_KEY, update(recent.getChildren()));
-      recent.refresh();
+  const saveRecent = async (update: (previous: RecentProject[]) => RecentProject[], forgetRemoved = false): Promise<void> => {
+    await updateProjectHistory(context, history => {
+      const next = update(history.recent), retained = new Set(next.map(project => project.uri));
+      const removed = new Set(forgetRemoved ? history.recent.filter(project => !retained.has(project.uri)).map(project => project.uri) : []);
+      return { recent: next, imported: history.imported.filter(project => !removed.has(project.uri)) };
     });
-    return pendingSave;
+    recent.refresh();
   };
 
   const rememberCurrentWorkspace = async (): Promise<void> => {
@@ -117,11 +117,9 @@ export async function activate(context: vscode.ExtensionContext, runtime?: Launc
     const uri = vscode.Uri.parse(project.uri);
     try {
       await vscode.workspace.fs.stat(uri);
-    } catch {
-      const remove = await vscode.window.showWarningMessage(t('Project is no longer available.'), t('Remove from Recent Projects'));
-      if (remove) {
-        await saveRecent((previous) => previous.filter((entry) => entry.uri !== project.uri));
-      }
+    } catch (error) {
+      if (!isMissingProject(error)) { throw error; }
+      await saveRecent(previous => previous.filter(entry => entry.uri !== project.uri), true);
       return;
     }
     await openProjectFolder(uri);
@@ -136,18 +134,18 @@ export async function activate(context: vscode.ExtensionContext, runtime?: Launc
       detail: t('This only removes the recent entry. The project files and current workspace will not be affected.'),
     }, remove, { title: t('Cancel'), isCloseAffordance: true });
     if (answer === remove) {
-      await saveRecent((previous) => previous.filter((entry) => entry.uri !== project.uri));
+      await saveRecent((previous) => previous.filter((entry) => entry.uri !== project.uri), true);
     }
   });
   register('studio.clearRecentProjects', async () => {
     const clear = t('Clear');
     const answer = await vscode.window.showWarningMessage(t('Clear recent projects?'), { modal: true }, clear);
     if (answer === clear) {
-      await saveRecent(() => []);
+      await saveRecent(() => [], true);
     }
   });
   register('studio.internalDetectProjectTypes', (uris: string[]) => icons.resolveMany(Array.isArray(uris) ? uris.filter(uri => typeof uri === 'string').slice(0, 500) : []));
-  register('studio.refreshProjects', () => { icons.refresh(); recent.refresh(); });
+  register('studio.refreshProjects', async () => { await recent.reconcile(); icons.refresh(); recent.refresh(); });
   register('studio.newFile', async () => {
     await vscode.window.showTextDocument(await vscode.workspace.openTextDocument());
   });
@@ -168,6 +166,7 @@ export async function activate(context: vscode.ExtensionContext, runtime?: Launc
       }
     }),
   );
+  await recent.reconcile();
   await rememberCurrentWorkspace();
   // The private Studio layer restores its AI connection before any workflow
   // runtime is created, so assistant workers see the current session on the

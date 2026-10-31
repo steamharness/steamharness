@@ -16,7 +16,7 @@ import type { Project } from './workflow-types';
 import { requestProjectResource } from './workflow-resources-node';
 import { createStudioControlHandler, STUDIO_CONTROL_ENTRY_ID, studioControlWorkspaceAvailable } from './studio-control';
 import { startStudioControlBridge, type StudioControlBridge } from './studio-control-bridge';
-import { createStudioAnalysisHandler, studioAnalysisProjects } from './studio-analysis';
+import { createStudioAnalysisHandler, studioAnalysisProjects, studioAnalysisSummary } from './studio-analysis';
 import { projectTemplatesRuntime, installProjectDependencies, defaultProjectParentDirectory } from './project-create-node';
 import { configuredNodeRuntime } from './node-runtime-configuration';
 import { nodeRuntimeEnvironment, type NodeRuntime } from './node-runtime';
@@ -200,9 +200,7 @@ export function createProjectRuntime(context: vscode.ExtensionContext, account: 
     },
     analysisSummary: async () => {
       const result = await readAnalysis() as { generatedAt: number; projects: Array<{ availability: string; runs: Array<{ status: string }> }> };
-      const unavailable = result.projects.filter(project => project.availability !== 'available').length;
-      return { projects: result.projects.length, running: result.projects.flatMap(project => project.runs).filter(run => run.status === 'running').length,
-        waiting: result.projects.flatMap(project => project.runs).filter(run => run.status === 'waiting_for_input').length, unavailable, generatedAt: result.generatedAt };
+      return studioAnalysisSummary(result);
     },
     updateAnalysisProjects: projects => { analysisProjects = [...projects]; },
     inspectAnalysis: async () => {

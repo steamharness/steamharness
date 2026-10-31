@@ -37,7 +37,7 @@ for (const language of ['en', 'zh-cn']) test(`native Start preserves entry targe
   const instance = new module.exports();
   instance.element = document.querySelector('main'); instance.badge = document.createElement('span');
   instance.labels = new Map(); instance.actions = []; instance.error = document.createElement('div');
-  instance.stats = new Map([['harness', document.createElement('span')]]);
+  instance.stats = new Map(['harness', 'projects', 'running', 'waiting'].map(key => [key, document.createElement('span')]));
   instance.lists = new Map(['current', 'recent'].map(key => [key, { element: document.createElement('div'), key: '', disposables: { clear() {} } }]));
   const calls = [];
   instance.button = (parent, label, _icon, command, target) => {
@@ -53,6 +53,10 @@ for (const language of ['en', 'zh-cn']) test(`native Start preserves entry targe
     environment: { harness: '0.1.1' }, canCreate: true, busy: false } };
   instance.render();
   const current = instance.lists.get('current').element;
+  instance.service.state.summary = { projects: 2, running: 1, waiting: 0, unavailable: 1, generatedAt: 42 };
+  instance.render();
+  assert.deepEqual(['projects', 'running', 'waiting'].map(key => instance.stats.get(key).textContent), ['2', '1', '0']);
+  assert.equal(instance.error.hidden, true);
   instance.service.state.recent = [true, false].map((current, index) => ({ uri: `file:///project-${index}`, label: 'Same name', kind: 'folder', lastOpened: 1, current }));
   instance.render();
   const recent = instance.lists.get('recent').element;
@@ -82,6 +86,7 @@ for (const language of ['en', 'zh-cn']) test(`native Start preserves entry targe
 });
 
 for (const [patchNames, files] of [
+  [['0070-studio-start-partial-status.patch'], [file]],
   [['0069-studio-editor-group-close.patch'], ['src/vs/workbench/browser/parts/editor/editor.contribution.ts', 'src/vs/workbench/browser/parts/editor/media/editorgroupview.css', 'src/vs/workbench/browser/parts/editor/media/multieditortabscontrol.css']],
   [['0061-studio-project-setup-stages.patch', '0065-studio-start-entry-targets.patch', '0067-studio-start-recent-projects.patch'], [file, css]],
   [['0065-studio-start-entry-targets.patch', '0067-studio-start-recent-projects.patch'], [file, css]],

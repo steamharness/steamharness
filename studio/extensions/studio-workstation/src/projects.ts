@@ -12,6 +12,7 @@ export interface RecentProject {
 }
 
 export const IMPORTED_PROJECTS_KEY = 'studio.importedProjects';
+export const RECENT_PROJECTS_KEY = 'studio.recentProjects';
 
 export interface ImportedProject {
   id: string;

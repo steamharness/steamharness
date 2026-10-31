@@ -1,0 +1,12 @@
+diff --git a/src/vs/workbench/browser/parts/editor/studioStart.ts b/src/vs/workbench/browser/parts/editor/studioStart.ts
+--- a/src/vs/workbench/browser/parts/editor/studioStart.ts
++++ b/src/vs/workbench/browser/parts/editor/studioStart.ts
+@@ -303,7 +303,7 @@ export class StudioStartView extends Disposable {
+ 		const environment = state.environment;
+ 		for (const [key, element] of this.stats) {
+ 			const value = key === 'studio' ? environment.studio : key === 'vscode' ? environment.vscode
+-				: ['projects', 'running', 'waiting'].includes(key) ? state.summary && !state.summary.unavailable ? String(state.summary[key as 'projects']) : text('unavailable')
++				: ['projects', 'running', 'waiting'].includes(key) ? state.summary ? String(state.summary[key as 'projects']) : text('unavailable')
+ 					: environment[key as 'node'] || text('unavailable');
+ 			if (element.textContent !== value) { element.textContent = value; }
+ 		}

@@ -1,5 +1,7 @@
 # Unreleased
 
+- Fixed recent history and imported registrations to stay in sync when folders are deleted or recent entries are removed. Start updates readable project counts while keeping individual read failures in Analysis, without marking all counts unavailable or showing a persistent refresh failure.
+
 - Fixed: Unhandled project shortcuts reach Studio while Kanban shortcuts take priority, including nested previews, without interrupting text editing or IME input.
 
 - Resource panels now list distinct databases by their host-managed names, with one option for databases shared across entries. Removed the local/server selector; a read-only icon shows the database location. Name updates and switches between shared entries preserve data and drafts.
