@@ -129,6 +129,20 @@ test('registration rejects permission errors and an unexpected server identity',
   forbidden = false; await assert.rejects(allocateServerProjectId(options), /unexpected project/);
 });
 
+test('ID allocation accepts normalized Server entries with reordered object keys and rejects changed entry paths', async t => {
+  const entries = [{ ...entriesFor()[0], configuration: 'configuration.json' }];
+  let different = false;
+  const http = await server(t, () => ({ data: { projectId: id, defaultEntry: 'main', entries: entries.map(entry => ({
+    configuration: different ? 'other.json' : entry.configuration, databases: [], entry: entry.entry, root: entry.root,
+    name: entry.name, type: entry.type, entryId: entry.entryId,
+  })) } }));
+  const options = { project: { name: 'Created', entries, defaultEntry: 'main', projectInfo: { platformSupport: { mode: 'agnostic' } } },
+    connection: { serverUrl: http.url, accessToken: 'test-token' }, signal: signal(), assertCurrent() {} };
+  assert.equal(await allocateServerProjectId(options), id);
+  different = true;
+  await assert.rejects(allocateServerProjectId(options), /unexpected project/);
+});
+
 test('API errors redact credentials and retain permission status', async () => {
   const client = new ProjectServerClient({ serverUrl: 'https://steamharness.test', accessToken: 'private-token' }, async () => Response.json({ errCode: 403, errMessage: 'private-token forbidden' }, { status: 403 }));
   await assert.rejects(client.projects(signal()), error => error.status === 403 && error.message === 'Your project or group role does not allow this operation.' && !error.message.includes('private-token'));

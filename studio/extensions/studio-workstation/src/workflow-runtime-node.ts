@@ -25,6 +25,7 @@ import type { ProjectType } from './projects';
 import { uploadServerProject, downloadServerProject, allocateServerProjectId } from './steamharness-server-projects-node';
 import { ProjectServerClient } from './steamharness-server-projects';
 import { readStudioKanbanDiagnostics, type StudioKanbanHost } from './studio-kanban';
+import type { TemplateProjectRegistration } from '../../../vendor/project-templates/project-templates';
 
 export function createProjectRuntime(context: vscode.ExtensionContext, account: AccountController): Launcher {
   const sessions = new Set<WebSession>();
@@ -101,6 +102,19 @@ export function createProjectRuntime(context: vscode.ExtensionContext, account: 
     if (requiresWorkspaceTrust && !vscode.workspace.isTrusted) { throw new Error(t("Trust the current workspace first.")); }
     if (controller.signal.aborted) { throw new Error('Workflow host has stopped.'); }
   };
+  const allocateProjectId = async (project: TemplateProjectRegistration, signal: AbortSignal): Promise<string> => {
+    const connection = account.getConnection(), state = account.getState();
+    if (!connection || !state.user) { throw new Error(t('Sign in to SteamHarness Server first.')); }
+    const registration = new AbortController();
+    const current = (): boolean => account.getConnection()?.serverUrl === connection.serverUrl
+      && account.getConnection()?.accessToken === connection.accessToken && account.getState().user?.userId === state.user!.userId;
+    const assertCurrent = (): void => {
+      if (!current()) { throw new Error(t('The account used to create this project changed. Sign in with that account before retrying registration.')); }
+    };
+    const changed = account.onDidChange(() => { if (!current()) { registration.abort(); } });
+    try { return await allocateServerProjectId({ project, connection, assertCurrent, signal: AbortSignal.any([signal, registration.signal]) }); }
+    finally { changed.dispose(); }
+  };
   const assertAssistantWorkspace = (assistant: NonNullable<Project['assistant']>): void => {
     const folders = (vscode.workspace.workspaceFolders ?? []).filter(folder => folder.uri.scheme === 'file')
       .map(folder => ({ uri: folder.uri.toString(), folderPath: folder.uri.fsPath, name: folder.name }));
@@ -153,19 +167,13 @@ export function createProjectRuntime(context: vscode.ExtensionContext, account: 
     validateProjectCreation: templates.validate,
     createProject: async (input, signal = controller.signal) => {
       assertAvailable(false);
-      const connection = account.getConnection(), state = account.getState();
-      if (!connection || !state.user) { throw new Error(t('Sign in before creating a project so the Server can assign its ID.')); }
-      const registration = new AbortController();
-      const current = (): boolean => account.getConnection()?.serverUrl === connection.serverUrl
-        && account.getConnection()?.accessToken === connection.accessToken && account.getState().user?.userId === state.user!.userId;
-      const assertCurrent = (): void => {
-        if (!current()) { throw new Error(t('The account used to create this project changed. Sign in with that account before retrying registration.')); }
-      };
-      const changed = account.onDidChange(() => { if (!current()) { registration.abort(); } });
-      const combined = AbortSignal.any([signal, controller.signal, registration.signal]);
-      try {
-        return await templates.create(input, combined, project => allocateServerProjectId({ project, connection, assertCurrent, signal: combined }));
-      } finally { changed.dispose(); }
+      const combined = AbortSignal.any([signal, controller.signal]);
+      return templates.create(input, combined, undefined, true);
+    },
+    registerProject: async (directory, signal) => {
+      assertAvailable();
+      const combined = AbortSignal.any([signal, controller.signal]);
+      return templates.register(directory, combined, project => allocateProjectId(project, combined));
     },
     installDependencies: async (directory, signal, log) => installProjectDependencies({ directory, signal: AbortSignal.any([signal, controller.signal]), log, runtime: await selectedRuntime() }),
     hasProjectDependencies: async directory => {

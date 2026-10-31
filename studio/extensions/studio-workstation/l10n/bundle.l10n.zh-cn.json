@@ -761,6 +761,8 @@
   "The account used to create this project changed. Sign in with that account before retrying registration.": "创建项目时使用的账号已发生变化，请使用原账号登录后重试注册。",
   "Sign in before creating a project so the Server can assign its ID.": "请先登录，再创建项目并由服务器分配 ID。",
   "Applying for a new project ID": "正在申请新项目 ID",
+  "Creating Project": "正在创建项目",
+  "Project created without an ID. Retry Project Setup to apply for an ID later. {0}": "项目已创建，ID 暂为空。稍后可通过“重试项目设置”申请 ID。{0}",
   "This project ID is not registered. Open the project and apply for a new application ID before uploading.": "此项目 ID 尚未注册。请打开项目，重新申请应用 ID 后再上传。",
   "The Server returned an invalid project ID.": "服务器返回的项目 ID 无效。",
   "Permissions": "权限",

@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { mkdir, readFile, realpath, rm, stat, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, realpath, rename, rm, stat, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { generateProjectCardMetadata, type ProjectCardMetadata } from '@steamharness/project-card-metadata';
@@ -23,6 +23,8 @@ export interface CreateProjectFromTemplateRequest {
   parentDirectory: string;
   versions: { harness: string; cli: string };
   signal?: AbortSignal;
+  /** Leave the ID empty so the destination host can register after opening the project. */
+  deferProjectId?: boolean;
   allocateProjectId?: (project: TemplateProjectRegistration) => Promise<string>;
 }
 export interface TemplateProjectRegistration {
@@ -30,13 +32,14 @@ export interface TemplateProjectRegistration {
 }
 export interface CreatedTemplateProject {
   id: string;
+  idAllocationError?: string;
   name: string;
   directory: string;
   projectType: ProjectTemplateType;
   entryFile: string;
 }
 export class ProjectTemplateError extends Error {
-  constructor(readonly code: 'invalid-name' | 'invalid-template' | 'invalid-version' | 'invalid-parent' | 'directory-exists' | 'invalid-id', message: string) {
+  constructor(readonly code: 'invalid-name' | 'invalid-template' | 'invalid-version' | 'invalid-parent' | 'directory-exists' | 'invalid-id' | 'identity-changed', message: string) {
     super(message);
     this.name = 'ProjectTemplateError';
   }
@@ -115,9 +118,20 @@ export async function createProjectFromTemplate(request: CreateProjectFromTempla
     if ((error as NodeJS.ErrnoException).code === 'EEXIST') { throw new ProjectTemplateError('directory-exists', 'The project folder already exists.'); }
     throw error;
   }
+  let idAllocationError: string | undefined;
   try {
-    projectManifest.id = request.allocateProjectId ? await request.allocateProjectId({ name, entries: projectManifest.entries, defaultEntry: projectManifest.defaultEntry, projectInfo, projectCard }) : randomUUID();
-    if (!isProjectUuid(projectManifest.id)) { throw new ProjectTemplateError('invalid-id', 'The Server returned an invalid project ID.'); }
+    if (request.deferProjectId) {
+      projectManifest.id = '';
+    } else if (request.allocateProjectId) {
+      try {
+        projectManifest.id = await request.allocateProjectId({ name, entries: projectManifest.entries, defaultEntry: projectManifest.defaultEntry, projectInfo, projectCard });
+        if (!isProjectUuid(projectManifest.id)) { throw new ProjectTemplateError('invalid-id', 'The Server returned an invalid project ID.'); }
+      } catch (error) {
+        request.signal?.throwIfAborted();
+        projectManifest.id = '';
+        idAllocationError = error instanceof Error ? error.message : String(error);
+      }
+    } else { projectManifest.id = randomUUID(); }
     request.signal?.throwIfAborted();
     await writeFile(path.join(directory, 'package.json'), `${JSON.stringify(manifest, null, 2)}\n`, { flag: 'wx' });
     await writeFile(path.join(directory, 'steamharness.json'), `${JSON.stringify(projectManifest, null, 2)}\n`, { flag: 'wx' });
@@ -130,7 +144,32 @@ export async function createProjectFromTemplate(request: CreateProjectFromTempla
       await writeFile(path.join(directory, file.filename), file.content, { flag: 'wx' });
     }
   } catch (error) { await rm(directory, { recursive: true, force: true }); throw error; }
-  return { id: projectManifest.id, name, directory, projectType: template.projectType, entryFile: template.entryFile };
+  return { id: projectManifest.id, ...(idAllocationError === undefined ? {} : { idAllocationError }), name, directory, projectType: template.projectType, entryFile: template.entryFile };
+}
+
+/** Retry registration without regenerating source files or replacing concurrent edits. */
+export async function registerTemplateProject(request: {
+  directory: string; signal?: AbortSignal; allocateProjectId: (project: TemplateProjectRegistration) => Promise<string>;
+}): Promise<string> {
+  request.signal?.throwIfAborted();
+  const filename = path.join(request.directory, 'steamharness.json'), source = await readFile(filename, 'utf8');
+  const manifest = JSON.parse(source);
+  if (manifest.id !== '') { throw new ProjectTemplateError('identity-changed', 'Project identity changed. Open the project folder to review it.'); }
+  const id = await request.allocateProjectId({ name: manifest.name, entries: manifest.entries, defaultEntry: manifest.defaultEntry,
+    projectInfo: manifest.projectInfo, projectCard: manifest.projectCard });
+  request.signal?.throwIfAborted();
+  if (!isProjectUuid(id)) { throw new ProjectTemplateError('invalid-id', 'The Server returned an invalid project ID.'); }
+  const temporary = path.join(request.directory, `.steamharness-identity-${randomUUID()}.tmp`);
+  try {
+    const indentation = /\n([\t ]+)\S/.exec(source)?.[1] ?? '  ';
+    const content = JSON.stringify({ ...manifest, id }, null, indentation) + '\n';
+    await writeFile(temporary, source.includes('\r\n') ? content.replaceAll('\n', '\r\n') : content,
+      { flag: 'wx', mode: (await stat(filename)).mode & 0o777 });
+    request.signal?.throwIfAborted();
+    if (await readFile(filename, 'utf8') !== source) { throw new ProjectTemplateError('identity-changed', 'Project identity changed. Open the project folder to review it.'); }
+    await rename(temporary, filename);
+  } finally { await rm(temporary, { force: true }); }
+  return id;
 }
 
 function escapeHtml(value: string): string {

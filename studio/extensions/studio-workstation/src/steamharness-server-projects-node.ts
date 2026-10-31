@@ -7,6 +7,8 @@ import { t, locale } from './localization';
 import { AuthError, type Connection } from './workflow-auth-client';
 import { ProjectServerClient, type DownloadedServerProject, type ProjectPreparation, type ProjectTransferProgress } from './steamharness-server-projects';
 import { isProjectUuid } from '../../../../shared/workflow-ids/index';
+import { normalizeProjectEntry } from '@steamharness/project-manifest';
+import { isDeepStrictEqual } from 'node:util';
 import type { TemplateProjectRegistration } from '../../../vendor/project-templates/project-templates';
 import { nodeRuntimeEnvironment, type NodeRuntime } from './node-runtime';
 
@@ -19,7 +21,12 @@ export async function allocateServerProjectId(options: {
     ...options.project, visibility: 'private',
   });
   options.assertCurrent();
-  if (typeof result?.projectId !== 'string' || !isProjectUuid(result.projectId) || JSON.stringify(result.entries) !== JSON.stringify(options.project.entries) || result.defaultEntry !== options.project.defaultEntry) {
+  let matchingEntries = false;
+  try {
+    const normalized = (entries: unknown[]): unknown => JSON.parse(JSON.stringify(entries.map(entry => normalizeProjectEntry(entry))));
+    matchingEntries = Array.isArray(result?.entries) && isDeepStrictEqual(normalized(result.entries), normalized(options.project.entries));
+  } catch { /* Malformed or different registrations must not be bound to this project. */ }
+  if (typeof result?.projectId !== 'string' || !isProjectUuid(result.projectId) || !matchingEntries || result.defaultEntry !== options.project.defaultEntry) {
     throw new Error(t('The server returned an unexpected project. Retry project setup.'));
   }
   return result.projectId;

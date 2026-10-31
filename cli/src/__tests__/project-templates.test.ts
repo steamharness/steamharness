@@ -3,7 +3,7 @@ import { mkdtemp, mkdir, readFile, readdir, realpath, rm, symlink, writeFile } f
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { createProjectFromTemplate, listProjectTemplates, prepareProjectTemplateRuntime, validateProjectName } from '../project-templates';
+import { createProjectFromTemplate, listProjectTemplates, prepareProjectTemplateRuntime, registerTemplateProject, validateProjectName } from '../project-templates';
 import { createWebRuntime } from '../web/runtime';
 import { resolveHarnessRoot } from './harness-source';
 import { defaultProjectCardIcon, getProjectCardColorContrastRatio } from '@steamharness/project-card-metadata';
@@ -127,7 +127,7 @@ describe('project templates', () => {
   });
 });
 
-it.each(['workflow', 'conversation', 'kanban'] as const)('waits for a Server ID before writing a %s project and cleans up allocation failures', async projectType => {
+it.each(['workflow', 'conversation', 'kanban'] as const)('creates a complete %s project even when Server ID allocation fails', async projectType => {
   const parentDirectory = await parent(), name = `allocated-${projectType}`, allocatedId = '78648759-bcde-4fd5-b3bd-9a2dd46a7192';
   const input = { templateId: `${projectType}-starter`, name, parentDirectory, versions };
   const created = await createProjectFromTemplate({ ...input, allocateProjectId: async project => {
@@ -137,10 +137,56 @@ it.each(['workflow', 'conversation', 'kanban'] as const)('waits for a Server ID 
   } });
   expect(created.id).toBe(allocatedId);
   expect(JSON.parse(await readFile(path.join(created.directory, 'steamharness.json'), 'utf8')).id).toBe(allocatedId);
-  await expect(createProjectFromTemplate({ ...input, name: 'failed', allocateProjectId: async () => { throw new Error('allocation denied'); } })).rejects.toThrow('allocation denied');
-  await expect(readFile(path.join(parentDirectory, 'failed', 'package.json'))).rejects.toHaveProperty('code', 'ENOENT');
-  await expect(createProjectFromTemplate({ ...input, name: 'invalid', allocateProjectId: async () => '111' })).rejects.toThrow('invalid project ID');
+  const failed = await createProjectFromTemplate({ ...input, name: 'failed', allocateProjectId: async () => { throw new Error('allocation denied'); } });
+  expect(failed).toMatchObject({ id: '', idAllocationError: 'allocation denied' });
+  const invalid = await createProjectFromTemplate({ ...input, name: 'invalid', allocateProjectId: async () => '111' });
+  expect(invalid.id).toBe(''); expect(invalid.idAllocationError).toMatch(/invalid project ID/);
+  for (const project of [failed, invalid]) {
+    expect(JSON.parse(await readFile(path.join(project.directory, 'steamharness.json'), 'utf8')).id).toBe('');
+    expect(JSON.parse(await readFile(path.join(project.directory, 'package.json'), 'utf8')).devDependencies.steamharness).toBe(versions.harness);
+    expect(await readFile(path.join(project.directory, project.entryFile), 'utf8')).not.toBe('');
+    expect(await readFile(path.join(project.directory, 'configuration.json'), 'utf8')).not.toBe('');
+  }
   const cancellation = new AbortController();
   await expect(createProjectFromTemplate({ ...input, name: 'cancelled', signal: cancellation.signal, allocateProjectId: async () => { cancellation.abort(); return allocatedId; } })).rejects.toHaveProperty('name', 'AbortError');
-  expect(await readdir(parentDirectory)).toEqual([name]);
+  await expect(readFile(path.join(parentDirectory, 'cancelled', 'package.json'))).rejects.toHaveProperty('code', 'ENOENT');
+  const rejected = new AbortController();
+  await expect(createProjectFromTemplate({ ...input, name: 'aborted', signal: rejected.signal, allocateProjectId: async () => { rejected.abort(); throw rejected.signal.reason; } })).rejects.toHaveProperty('name', 'AbortError');
+  await expect(readFile(path.join(parentDirectory, 'aborted', 'package.json'))).rejects.toHaveProperty('code', 'ENOENT');
+});
+
+it('retries registration without regenerating an unregistered project or losing edited source', async () => {
+  const project = await createProjectFromTemplate({ templateId: 'workflow-starter', name: 'retry', parentDirectory: await parent(), versions,
+    allocateProjectId: async () => { throw new Error('offline'); } });
+  const filename = path.join(project.directory, 'index.ts');
+  await writeFile(filename, '// User source stays intact\n');
+  const id = '78648759-bcde-4fd5-b3bd-9a2dd46a7192';
+  const before = JSON.parse(await readFile(path.join(project.directory, 'steamharness.json'), 'utf8'));
+  expect(await registerTemplateProject({ directory: project.directory, allocateProjectId: async registration => {
+    expect(registration.name).toBe('retry'); expect(registration).not.toHaveProperty('projectId'); return id;
+  } })).toBe(id);
+  expect(JSON.parse(await readFile(path.join(project.directory, 'steamharness.json'), 'utf8'))).toEqual({ ...before, id });
+  expect(await readFile(filename, 'utf8')).toBe('// User source stays intact\n');
+  await expect(registerTemplateProject({ directory: project.directory, allocateProjectId: async () => { throw new Error('must not allocate twice'); } })).rejects.toThrow('identity changed');
+});
+
+it('creates local files immediately when registration is deferred to the destination host', async () => {
+  const project = await createProjectFromTemplate({ templateId: 'workflow-starter', name: 'deferred', parentDirectory: await parent(), versions,
+    deferProjectId: true, allocateProjectId: async () => { throw new Error('The source host must not request an ID'); } });
+  expect(project.id).toBe(''); expect(project).not.toHaveProperty('idAllocationError');
+  expect(JSON.parse(await readFile(path.join(project.directory, 'steamharness.json'), 'utf8')).id).toBe('');
+  expect(await readFile(path.join(project.directory, 'index.ts'), 'utf8')).not.toBe('');
+});
+
+it.each(['edited', 'cancelled', 'invalid'] as const)('preserves an unregistered manifest when registration is %s', async failure => {
+  const project = await createProjectFromTemplate({ templateId: 'workflow-starter', name: failure, parentDirectory: await parent(), versions,
+    allocateProjectId: async () => { throw new Error('offline'); } });
+  const filename = path.join(project.directory, 'steamharness.json'), source = await readFile(filename, 'utf8'), cancellation = new AbortController();
+  await expect(registerTemplateProject({ directory: project.directory, signal: cancellation.signal, allocateProjectId: async () => {
+    if (failure === 'edited') await writeFile(filename, source.replace(failure, 'Updated name'));
+    if (failure === 'cancelled') cancellation.abort();
+    return failure === 'invalid' ? '111' : '78648759-bcde-4fd5-b3bd-9a2dd46a7192';
+  } })).rejects.toThrow();
+  expect(await readFile(filename, 'utf8')).toBe(failure === 'edited' ? source.replace(failure, 'Updated name') : source);
+  expect((await readdir(project.directory)).some(name => name.startsWith('.steamharness-identity-'))).toBe(false);
 });

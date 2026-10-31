@@ -14,7 +14,8 @@ interface TemplateModule {
   validateProjectName(value: string): string;
   listProjectTemplates(): Promise<Array<Omit<StartTemplate, 'name' | 'description'> & { name: Record<string, string>; description: Record<string, string> }>>;
   createProjectFromTemplate(input: { templateId: string; name: string; parentDirectory: string; versions: { harness: string; cli: string }; signal?: AbortSignal;
-    allocateProjectId?: (project: TemplateProjectRegistration) => Promise<string> }): Promise<CreatedProject>;
+    deferProjectId?: boolean; allocateProjectId?: (project: TemplateProjectRegistration) => Promise<string> }): Promise<CreatedProject>;
+  registerTemplateProject(input: { directory: string; signal?: AbortSignal; allocateProjectId: (project: TemplateProjectRegistration) => Promise<string> }): Promise<string>;
 }
 
 export function defaultProjectParentDirectory(): string { return path.join(homedir(), 'Documents', 'steamharness-projects'); }
@@ -46,13 +47,15 @@ export function projectTemplatesRuntime(extensionDirectory: string, locale: stri
         name: template.name[language] || template.name.en, description: template.description[language] || template.description.en }));
     },
     create: async (input: { templateId: string; name: string; parentDirectory: string }, signal?: AbortSignal,
-      allocateProjectId?: (project: TemplateProjectRegistration) => Promise<string>): Promise<CreatedProject> => {
+      allocateProjectId?: (project: TemplateProjectRegistration) => Promise<string>, deferProjectId = false): Promise<CreatedProject> => {
       await validate(input);
       signal?.throwIfAborted();
       const versions = JSON.parse(await readFile(path.join(directory, 'project-template-versions.json'), 'utf8'));
       if (input.parentDirectory === defaultProjectParentDirectory()) { await mkdir(input.parentDirectory, { recursive: true }); }
-      return (await module()).createProjectFromTemplate({ ...input, versions, signal, allocateProjectId });
+      return (await module()).createProjectFromTemplate({ ...input, versions, signal, allocateProjectId, deferProjectId });
     },
+    register: async (directory: string, signal: AbortSignal, allocateProjectId: (project: TemplateProjectRegistration) => Promise<string>): Promise<string> =>
+      (await module()).registerTemplateProject({ directory, signal, allocateProjectId }),
     prepare: async (projectDirectory: string, nodePath: string, signal: AbortSignal, runtime?: NodeRuntime): Promise<boolean> => {
       // Use a fresh process so a long-lived extension host cannot retain an SDK from before a reinstall.
       const script = 'const templates = await import(process.argv[1]); const changed = await templates.prepareProjectTemplateRuntime(process.argv[2]); process.stdout.write(JSON.stringify(changed));';

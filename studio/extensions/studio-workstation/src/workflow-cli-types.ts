@@ -38,6 +38,7 @@ export interface Launcher {
   templates?(): Promise<StartTemplate[]>;
   validateProjectCreation?(input: ProjectCreationInput): Promise<void>;
   createProject?(input: { templateId: string; name: string; parentDirectory: string }, signal?: AbortSignal): Promise<CreatedProject>;
+  registerProject?(directory: string, signal: AbortSignal): Promise<string>;
   installDependencies?(directory: string, signal: AbortSignal, log: (message: string) => void): Promise<void>;
   hasProjectDependencies?(directory: string): Promise<boolean>;
   prepareProjectTemplate?(directory: string, signal: AbortSignal): Promise<boolean>;

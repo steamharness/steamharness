@@ -13,7 +13,7 @@ import { createAssistantDependencyFixture } from './assistant-dependency-fixture
 const compiled = await build({ entryPoints: ['extensions/studio-workstation/src/workflow-runtime-node.ts'], bundle: true, platform: 'node', format: 'cjs', external: ['vscode'], write: false });
 const require = createRequire(import.meta.url);
 
-test('new projects apply for an ID using the current account and cancel when it changes', async t => {
+test('creation defers ID allocation to the project window and registration uses its current account', async t => {
   const directory = await mkdtemp(path.join(tmpdir(), 'studio-allocation-account-')); t.after(() => rm(directory, { recursive: true, force: true }));
   const allocatedId = 'a3aca697-b086-459b-84e4-d357ad2d9fb2';
   const allocationRuntime = await build({ entryPoints: ['extensions/studio-workstation/src/workflow-runtime-node.ts'], bundle: true,
@@ -22,9 +22,12 @@ test('new projects apply for an ID using the current account and cancel when it 
       build.onLoad({ filter: /project-create-node\.ts$/ }, () => ({ contents: `
         export const defaultProjectParentDirectory = () => '/projects';
         export const installProjectDependencies = async () => {};
-        export const projectTemplatesRuntime = () => ({ create: async (input, signal, allocate) => {
-          const id = await allocate({ name: input.name, entries:[{entryId:'main',type:'workflow',name:input.name,root:'.',entry:'index.ts',databases:[]}],defaultEntry:'main',projectInfo:{platformSupport:{mode:'agnostic'}} });
-          signal.throwIfAborted(); return { ...input, id, projectType: 'workflow', directory: input.parentDirectory };
+        export const projectTemplatesRuntime = () => ({ create: async (input, signal, allocate, deferProjectId) => {
+          if (allocate || deferProjectId !== true) throw new Error('Creation must defer registration');
+          signal.throwIfAborted(); return { ...input, id: '', projectType: 'workflow', directory: input.parentDirectory };
+        }, register: async (_directory, signal, allocate) => {
+          const id = await allocate({ name: 'Created', entries:[{entryId:'main',type:'workflow',name:'Created',root:'.',entry:'index.ts',databases:[]}],defaultEntry:'main',projectInfo:{platformSupport:{mode:'agnostic'}} });
+          signal.throwIfAborted(); return id;
         } });` }));
     } }] });
   let connection = { serverUrl: 'https://server.example', accessToken: 'owner-token' }, userId = 'owner', requests = 0, changeDuringRequest = false;
@@ -44,12 +47,15 @@ test('new projects apply for an ID using the current account and cancel when it 
   });
   const runtime = module.exports.createProjectRuntime({ extensionUri: { fsPath: directory }, globalStorageUri: { fsPath: directory } }, account); t.after(() => runtime.dispose());
   const input = { name: 'Created', templateId: 'workflow-starter', parentDirectory: directory };
-  assert.equal((await runtime.createProject(input)).id, allocatedId); assert.equal(requests, 1);
+  assert.equal((await runtime.createProject(input)).id, ''); assert.equal(requests, 0);
+  assert.equal(await runtime.registerProject(directory, new AbortController().signal), allocatedId); assert.equal(requests, 1);
   changeDuringRequest = true;
-  await assert.rejects(runtime.createProject(input), error => error.name === 'AbortError' || /account used to create/.test(error.message));
+  await assert.rejects(runtime.registerProject(directory, new AbortController().signal), /account used to create|abort/i);
   assert.equal(requests, 2); assert.equal(listeners.size, 1);
   connection = undefined;
-  await assert.rejects(runtime.createProject(input), /Sign in before creating/); assert.equal(requests, 2);
+  const signedOut = await runtime.createProject(input);
+  assert.equal(signedOut.id, ''); assert.equal(requests, 2);
+  await assert.rejects(runtime.registerProject(directory, new AbortController().signal), /Sign in/);
 });
 
 // The built-in projects live in the monorepo, so the extension resolves the

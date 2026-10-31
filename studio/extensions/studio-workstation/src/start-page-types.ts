@@ -10,6 +10,7 @@ export interface StartTemplate {
 }
 export interface CreatedProject {
   id: string; name: string; directory: string; projectType: StartTemplate['projectType']; entryFile: string;
+  idAllocationError?: string;
 }
 export interface ProjectCreationInput {
   templateId: string; name: string; parentDirectory: string;
@@ -29,6 +30,8 @@ export interface StartSummary {
   projects: number; running: number; waiting: number; unavailable: number; generatedAt: number;
 }
 export interface PendingProjectSetup extends CreatedProject {
+  /** When present, id is the setup key and projectId is the manifest ID, which can be empty. */
+  projectId?: string;
   status: 'failed' | 'cancelled'; error?: string; installOnOpen?: boolean;
   stage?: 'dependencies' | 'validation' | 'registration';
   dependenciesInstalled?: boolean;

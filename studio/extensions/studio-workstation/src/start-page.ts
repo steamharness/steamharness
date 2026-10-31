@@ -41,6 +41,7 @@ export function startPageLabels(): Record<string, string> {
 export function readPendingProjectSetups(value: unknown): PendingProjectSetup[] {
   if (!Array.isArray(value)) { return []; }
   return value.filter((item): item is PendingProjectSetup => !!item && typeof item.id === 'string' && /^[a-f0-9-]{36}$/i.test(item.id)
+    && (item.projectId === undefined || item.projectId === '' || typeof item.projectId === 'string' && /^[a-f0-9-]{36}$/i.test(item.projectId))
     && typeof item.name === 'string' && !!item.name && typeof item.directory === 'string' && !!item.directory
     && ['workflow', 'conversation', 'kanban'].includes(item.projectType) && ['failed', 'cancelled'].includes(item.status));
 }
@@ -118,7 +119,7 @@ export class StudioStartController implements vscode.Disposable {
     });
     register('studio.retryProjectSetup', (id?: string) => this.runCreation(async () => {
       const project = this.pending().find(entry => entry.id === id);
-      if (project) { await this.setupInProjectWindow(project); }
+      if (project) { await this.setupInProjectWindow({ ...project, idAllocationError: undefined }); }
     }));
     register('studio.openCreatedProject', async (id?: string) => {
       const project = this.pending().find(entry => entry.id === id);
@@ -277,17 +278,17 @@ export class StudioStartController implements vscode.Disposable {
       const options = await chooseProjectWindow(t('Where would you like to open the new project?'));
       if (!options) { return; }
       this.creation.signal.throwIfAborted();
-      const account = this.account.getState();
-      const registration = { serverUrl: account.serverUrl, ...(account.user ? { userId: account.user.userId } : {}) };
-      const project = await vscode.window.withProgress({ location: vscode.ProgressLocation.Notification, title: t('Applying for a new project ID'), cancellable: false },
+      const project = await vscode.window.withProgress({ location: vscode.ProgressLocation.Notification, title: t('Creating Project'), cancellable: false },
         () => this.launcher.createProject!(input, this.creation.signal));
-      await this.openProjectWindow({ ...project, registration }, options);
+      const pending = { ...project, ...(project.id ? {} : { id: globalThis.crypto.randomUUID(), projectId: '' }) };
+      await this.remember(project);
+      await this.openProjectWindow(pending, options);
     });
   }
 
-  private async validateCreated(project: CreatedProject): Promise<void> {
+  private async validateCreated(project: CreatedProject & { projectId?: string }): Promise<void> {
     const manifest = JSON.parse(new TextDecoder().decode(await vscode.workspace.fs.readFile(vscode.Uri.joinPath(vscode.Uri.file(project.directory), 'steamharness.json'))));
-    if (manifest.id !== project.id) { throw new Error(t('Project identity changed. Open the project folder to review it.')); }
+    if (manifest.id !== (project.projectId ?? project.id)) { throw new Error(t('Project identity changed. Open the project folder to review it.')); }
   }
 
   private async install(input: PendingProjectSetup): Promise<void> {
@@ -319,6 +320,18 @@ export class StudioStartController implements vscode.Disposable {
               project = { ...project, dependenciesInstalled: true };
               this.appendInstallationLog(`\n${t('Dependencies installed successfully.')}\n`);
             }
+            if (project.projectId === '') {
+              stage = 'registration';
+              await this.updatePending({ ...project, stage });
+              progress.report({ message: t('Applying for a new project ID') });
+              if (project.idAllocationError !== undefined || !this.launcher.registerProject) {
+                throw new Error(t('Project created without an ID. Retry Project Setup to apply for an ID later. {0}', project.idAllocationError ?? ''));
+              }
+              await this.validateCreated(project);
+              const projectId = await this.launcher.registerProject(project.directory, signal);
+              project = { ...project, projectId };
+              await this.updatePending({ ...project, stage });
+            }
             stage = 'validation';
             await this.updatePending({ ...project, stage });
             progress.report({ message: t('Validating Project') });
@@ -330,12 +343,13 @@ export class StudioStartController implements vscode.Disposable {
             await this.validateCreated(project);
             const inspected = await this.launcher.inspect([project.directory], { validationDetails: true });
             signal.throwIfAborted();
-            if (!inspected.projects.some(entry => entry.id === project.id) || inspected.errors.length) { throw new Error(inspected.errors.join('\n') || t('Project validation failed')); }
+            const projectId = project.projectId ?? project.id;
+            if (!inspected.projects.some(entry => entry.id === projectId) || inspected.errors.length) { throw new Error(inspected.errors.join('\n') || t('Project validation failed')); }
             this.appendInstallationLog(`${t('Project validation succeeded.')}\n`);
             const uri = vscode.Uri.file(project.directory).toString();
             await updateProjectHistory(this.context, history => ({ ...history,
-              imported: rememberImportedProjects(history.imported, [{ id: project.id, name: project.name, uri }]) }));
-            await this.remember(project);
+              imported: rememberImportedProjects(history.imported, [{ id: projectId, name: project.name, uri }]) }));
+            await this.remember({ ...project, id: projectId });
             await vscode.commands.executeCommand('studio.refreshProjects');
           } finally { cancellation.dispose(); }
         });
@@ -400,6 +414,7 @@ export class StudioStartController implements vscode.Disposable {
     if (code === 'directory-exists') { return t('The project folder already exists. Choose another name.'); }
     if (code === 'invalid-parent') { return t('Choose an existing parent folder.'); }
     if (code === 'invalid-id') { return t('The Server returned an invalid project ID.'); }
+    if (code === 'identity-changed') { return t('Project identity changed. Open the project folder to review it.'); }
     if (code === 'invalid-version') { return t('The project template requires exact published dependency versions.'); }
     if (code === 'package-manager-missing') { return t('Install pnpm or npm, then retry dependency installation.'); }
     if (code === 'package-manager-timeout') { return t('Dependency installation timed out. Review the installation log and retry.'); }

@@ -96,6 +96,15 @@ test('the shipped template runtime uses the host locale and exact bundled versio
   const card = manifest.projectCard;
   assert.equal(card.icon, 'workflow');
   assert.ok(getProjectCardColorContrastRatio(card.iconColor, card.iconBackgroundColor) >= 4.5);
+  const deferred = await runtime.create({ ...input, name: 'Deferred' }, undefined,
+    async () => { throw new Error('Source-window allocation must be skipped'); }, true);
+  assert.equal(deferred.id, '');
+  const filename = path.join(deferred.directory, 'index.ts');
+  await writeFile(filename, '// Edits made in the opened project window\n');
+  const assignedId = '78648759-bcde-4fd5-b3bd-9a2dd46a7192';
+  assert.equal(await runtime.register(deferred.directory, new AbortController().signal, async () => assignedId), assignedId);
+  assert.equal(JSON.parse(await readFile(path.join(deferred.directory, 'steamharness.json'), 'utf8')).id, assignedId);
+  assert.equal(await readFile(filename, 'utf8'), '// Edits made in the opened project window\n');
 });
 
 test('the standalone snapshot matches CLI source when checked out together', async () => {
