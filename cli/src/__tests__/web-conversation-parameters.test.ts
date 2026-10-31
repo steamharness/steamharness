@@ -62,7 +62,7 @@ async function fixture({ dynamic = true, resolveOnInput = false, running = false
   host.postMessage.mockImplementation(message => {
     if (message.type === 'navigate') queueMicrotask(() => emit({ ...message, type: 'navigated', activeId: message.id }));
   });
-  const receive = (patch: Partial<typeof state> = {}) => {
+  const receive = (patch: Partial<typeof state> = {}, render = true) => {
     state = { ...state, ...patch };
     if (patch.running !== undefined || running) {
       const session = state.sessions.find(session => session.id === state.activeId)!;
@@ -70,7 +70,7 @@ async function fixture({ dynamic = true, resolveOnInput = false, running = false
       session.messages = state.running ? [{ id: 'run', role: 'assistant', content: 'Working', status: 'running' }]
         : session.messages.map(message => message.status === 'running' ? { ...message, status: 'success' } : message);
     }
-    emit(state); frame();
+    emit(state); if (render) frame();
   };
   const requests = () => host.postMessage.mock.calls.map(([message]) => message).filter(message => message.type === 'resolve');
   const reply = (params: Record<string, ParamState> = {}, request = requests().at(-1)!) => emit({ ...request, type: 'params', params });
@@ -90,6 +90,89 @@ it('renders static parameters without a worker or loading state while typing and
   f.receive({ running: false });
   expect(f.requests()).toHaveLength(0); expect(f.loading()).toBe(false);
   expect(f.input.value).toBe('next turn');
+});
+
+it('opens a fork only for the current view request and exposes its source conversation', async () => {
+  const f = await fixture({ dynamic: false });
+  f.project.conversation!.durable = { enabled: true };
+  f.sessions[0].messages = [{ id: 'answer', role: 'assistant', content: 'Finished', status: 'success', entryId: 459 }];
+  f.receive();
+  const navigations = () => host.postMessage.mock.calls.map(([message]) => message).filter(message => message.type === 'navigate');
+  const reply = { type: 'agent-receipt', projectUri: f.project.uri, sessionId: 'first', forkSessionId: 'fork', receipt: { status: 'accepted' } };
+  f.emit({ ...reply, requestId: 'other-view' });
+  f.emit({ type: 'agent-opened', projectUri: f.project.uri, sourceSessionId: 'first', sessionId: 'fork', requestId: 'other-open' });
+  expect(navigations()).toEqual([]);
+  document.querySelector<HTMLButtonElement>('.fork-message')!.click();
+  document.querySelector<HTMLFormElement>('.action-dialog form')!.dispatchEvent(new Event('submit', { cancelable: true }));
+  await vi.advanceTimersByTimeAsync(1);
+  const request = host.postMessage.mock.calls.map(([message]) => message).find(message => message.command?.type === 'fork')!;
+  expect(request).toMatchObject({ sessionId: 'first', command: { entryId: 459 } });
+  f.emit({ ...reply, requestId: 'unrelated' }); expect(navigations()).toEqual([]);
+  f.sessions.push({ id: 'fork', title: 'Fork of first', messages: [], agentOwnerId: 'first', agentConversationId: 679,
+    forkSource: { sessionId: 'first', entryId: 459 } });
+  // The transport delivers state before the receipt, while rendering is deferred.
+  f.receive({}, false);
+  f.emit({ ...reply, requestId: request.command.requestId });
+  await vi.advanceTimersByTimeAsync(1);
+  expect(navigations().at(-1)).toMatchObject({ id: 'fork' });
+  const source = document.querySelector<HTMLButtonElement>('#conversation-source')!;
+  expect(source.hidden).toBe(false); expect(source.textContent).toBe('Fork · first');
+  source.click(); await vi.advanceTimersByTimeAsync(1);
+  expect(navigations().at(-1)).toMatchObject({ id: 'first' }); expect(source.hidden).toBe(true);
+  const count = navigations().length;
+  f.emit({ ...reply, requestId: request.command.requestId }); expect(navigations()).toHaveLength(count);
+});
+
+it('does not follow a late fork receipt after the user has left its source conversation', async () => {
+  const f = await fixture({ dynamic: false });
+  f.project.conversation!.durable = { enabled: true };
+  f.sessions[0].messages = [{ id: 'answer', role: 'assistant', content: 'Finished', status: 'success', entryId: 459 }];
+  f.sessions.push({ id: 'fork', title: 'Fork', messages: [], agentOwnerId: 'first', agentConversationId: 679 }); f.receive();
+  document.querySelector<HTMLButtonElement>('.fork-message')!.click();
+  document.querySelector<HTMLFormElement>('.action-dialog form')!.dispatchEvent(new Event('submit', { cancelable: true }));
+  await vi.advanceTimersByTimeAsync(1);
+  const request = host.postMessage.mock.calls.map(([message]) => message).find(message => message.command?.type === 'fork')!;
+  document.querySelector<HTMLButtonElement>('[data-session-id="second"]')!.click(); await vi.advanceTimersByTimeAsync(1);
+  f.emit({ type: 'agent-receipt', projectUri: f.project.uri, sessionId: 'first', requestId: request.command.requestId, forkSessionId: 'fork' });
+  const navigations = host.postMessage.mock.calls.map(([message]) => message).filter(message => message.type === 'navigate');
+  expect(navigations.at(-1)).toMatchObject({ id: 'second' });
+  expect(document.querySelector<HTMLButtonElement>('#conversation-source')!.hidden).toBe(true);
+});
+
+it('does not navigate on a late success after the matching fork request failed', async () => {
+  const f = await fixture({ dynamic: false }); f.project.conversation!.durable = { enabled: true };
+  f.sessions[0].messages = [{ id: 'answer', role: 'assistant', content: 'Finished', status: 'success', entryId: 459 }];
+  f.sessions.push({ id: 'fork', title: 'Fork', messages: [], agentOwnerId: 'first', agentConversationId: 679 }); f.receive();
+  document.querySelector<HTMLButtonElement>('.fork-message')!.click();
+  document.querySelector<HTMLFormElement>('.action-dialog form')!.dispatchEvent(new Event('submit', { cancelable: true }));
+  await vi.advanceTimersByTimeAsync(1);
+  const request = host.postMessage.mock.calls.map(([message]) => message).find(message => message.command?.type === 'fork')!;
+  const context = { projectUri: f.project.uri, sessionId: 'first', requestId: request.requestId };
+  f.emit({ ...context, type: 'error', requestType: 'agent-command', errorScope: 'fork', message: 'Could not fork' });
+  f.emit({ ...context, type: 'agent-receipt', forkSessionId: 'fork' });
+  await vi.advanceTimersByTimeAsync(1);
+  expect(host.postMessage.mock.calls.some(([message]) => message.type === 'navigate')).toBe(false);
+});
+
+it('correlates child navigation with its request and source conversation', async () => {
+  const f = await fixture({ dynamic: false }); f.project.conversation!.durable = { enabled: true };
+  f.sessions[0].messages = [{ id: 'answer', role: 'assistant', content: 'Finished', status: 'success' }];
+  f.sessions[0].agent = { version: 1, ownerId: 'owner', revision: 1, conversationId: 1, foreground: false, backgroundCount: 0, epoch: 0,
+    configuration: { version: 0, provider: 'fixture', model: 'model', effort: 'high' }, prompt: { hash: 'prompt', version: 1 }, plan: { version: 0, items: [] },
+    conversations: [{ id: 1, title: 'Main', background: false }, { id: 2, parentId: 1, title: 'Child', background: false }], contexts: [],
+    tasks: [], history: [{ id: 42, conversationId: 1, childConversationId: 2, kind: 'project.delegation', label: 'Research', status: 'completed',
+      background: false, stopping: false, blockedOn: [] }], turns: [], receipts: [], records: [], usage: [] };
+  f.sessions.push({ id: 'child', title: 'Research', messages: [], agentOwnerId: 'first', agentConversationId: 2 }); f.receive();
+  document.querySelector<HTMLButtonElement>('.subagents-button')!.click();
+  document.querySelector<HTMLButtonElement>('.subagent-open')!.click();
+  const request = host.postMessage.mock.calls.map(([message]) => message).find(message => message.type === 'agent-open')!;
+  expect(request).toMatchObject({ sessionId: 'first', conversationId: 2, agentOwner: 'owner', requestId: expect.any(String) });
+  f.emit({ type: 'agent-opened', requestId: 'other', sourceSessionId: 'first', projectUri: f.project.uri, sessionId: 'child' });
+  expect(host.postMessage.mock.calls.some(([message]) => message.type === 'navigate')).toBe(false);
+  f.emit({ type: 'agent-opened', requestId: request.requestId, sourceSessionId: 'first', projectUri: f.project.uri, sessionId: 'child' });
+  await vi.advanceTimersByTimeAsync(1);
+  expect(host.postMessage.mock.calls.map(([message]) => message).filter(message => message.type === 'navigate').at(-1)).toMatchObject({ id: 'child' });
+  expect(document.querySelector<HTMLButtonElement>('#conversation-source')!.textContent).toBe('Subagent · first');
 });
 
 it('keeps file selection and response retry available while typing saves the current draft', async () => {

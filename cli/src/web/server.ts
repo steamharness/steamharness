@@ -659,7 +659,7 @@ async function startProjectWebServer(options: WebOptions, credentials: { capabil
           const sameTasks = Array.isArray(message.taskIds) && message.taskIds.length > 0
             && message.taskIds.every((id: unknown) => Number.isSafeInteger(id))
             && JSON.stringify([...message.taskIds].sort((a, b) => a - b)) === JSON.stringify(current.agent?.tasks.map(task => task.id).sort((a, b) => a - b));
-          if (message.errorScope !== 'stop' || message.command.type !== 'cancel' || message.command.scope !== 'foreground'
+          if (message.errorScope !== 'stop' || message.command.type !== 'cancel' || !['foreground', 'all'].includes(message.command.scope)
             || !message.runId || message.runId !== current.activeRunId || !sameTasks) throw new Error(t('Task state changed. Refresh the trace and try again.'));
         }
         const receipt = await controller.agentCommand(current.id, message.command);
@@ -671,7 +671,7 @@ async function startProjectWebServer(options: WebOptions, credentials: { capabil
         if (!Number.isSafeInteger(message.conversationId)) throw new Error('Invalid agent conversation.');
         if (message.agentOwner !== undefined && current.agent?.ownerId !== message.agentOwner) throw new Error(t('Task state changed. Refresh the trace and try again.'));
         const sessionId = await controller.openAgentConversation(current.id, message.conversationId);
-        replies.push(state(message.clientId), { type: 'agent-opened', sessionId }); break;
+        replies.push(state(message.clientId), { type: 'agent-opened', sessionId, sourceSessionId: current.id, projectUri: project.uri, requestId: message.requestId }); break;
       }
       case 'resolve': {
         try {

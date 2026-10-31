@@ -34,7 +34,7 @@ it('shows one live entry on the latest response and routes child navigation thro
   const entry = document.querySelector<HTMLButtonElement>('.subagents-button')!; expect(entry.closest('[data-message-id]')?.getAttribute('data-message-id')).toBe('current');
   entry.click(); const row = document.querySelector<HTMLDetailsElement>('.subagent-task')!; row.open = true;
   row.querySelector<HTMLButtonElement>('.subagent-open')!.click();
-  expect(host.postMessage).toHaveBeenLastCalledWith({ type: 'agent-open', projectUri: project.uri, sessionId: 'parent', conversationId: 2, agentOwner: 'owner' });
+  expect(host.postMessage).toHaveBeenLastCalledWith({ type: 'agent-open', projectUri: project.uri, sessionId: 'parent', conversationId: 2, agentOwner: 'owner', requestId: expect.any(String) });
   emit({ type: 'connection', status: 'offline' }); expect(row.querySelector<HTMLButtonElement>('.subagent-open')!.disabled).toBe(true);
   emit({ type: 'connection', status: 'connected' }); expect(row.querySelector<HTMLButtonElement>('.subagent-open')!.disabled).toBe(false);
   const focused = row.querySelector<HTMLButtonElement>('.subagent-open')!; focused.focus();

@@ -59,7 +59,7 @@ function initialize(): void {
   app.dataset.initialized = 'true';
   app.innerHTML = `
     <header class="toolbar">
-      <div class="project-title"><button id="menu-toggle" class="icon-button" title="${t("Show conversations")}" aria-label="${t("Show conversations")}" aria-controls="project-menu">${icon('layout-sidebar-left')}</button><div class="project-heading"><h1 id="conversation-title">Workflow</h1><span id="assistant-folder" hidden></span></div><span id="project-name" class="project-name"></span></div>
+      <div class="project-title"><button id="menu-toggle" class="icon-button" title="${t("Show conversations")}" aria-label="${t("Show conversations")}" aria-controls="project-menu">${icon('layout-sidebar-left')}</button><div class="project-heading"><h1 id="conversation-title">Workflow</h1><span id="assistant-folder" hidden></span><button id="conversation-source" class="conversation-source" hidden></button></div><span id="project-name" class="project-name"></span></div>
       <div class="toolbar-actions"><span id="running-count" class="running-count" hidden></span><button id="new" class="icon-button" title="${t("New conversation")}" aria-label="${t("New conversation")}">${icon('add')}</button>${projectInfoButton()}</div>
     </header>
     <aside id="project-menu" class="project-menu" aria-label="${t("Conversations")}">
@@ -128,6 +128,7 @@ function initialize(): void {
   const stopRequests = new Map<string, StopRequest>();
   window.addEventListener('pagehide', () => { for (const request of stopRequests.values()) { clearTimeout(request.timer); } stopRequests.clear(); });
   let preferredSessionId: string | undefined;
+  let agentNavigation: { requestId: string; type: 'fork' | 'open'; projectUri: string; sessionId: string; ownerId: string } | undefined;
   let serverSessionId: string | undefined;
   let navigationNeeded = false;
   let navigationSequence = 0;
@@ -207,6 +208,16 @@ function initialize(): void {
   const persist = (): void => { vscode.setState({ drafts, params: paramValues, parameterEdits, panelOpen, submissions: submissions.list(), projectUri: state?.project.uri ?? saved.projectUri,
     navigation: state ? (conversationView || navigationNeeded || draftUpdates.size) ? { projectUri: state.project.uri, activeId: preferredSessionId ?? state.activeId, updates: [...draftUpdates.values()] } : undefined : saved.navigation }); };
   const post = (message: Record<string, unknown>): void => { if (state) { vscode.postMessage({ projectUri: state.project.uri, sessionId: state.activeId, ...message }); } };
+  const beginAgentNavigation = (type: 'fork' | 'open'): string => {
+    const requestId = crypto.randomUUID();
+    agentNavigation = { requestId, type, projectUri: state!.project.uri, sessionId: state!.activeId, ownerId: currentSession()?.agentOwnerId ?? state!.activeId };
+    return requestId;
+  };
+  document.querySelector('#conversation-source')!.addEventListener('click', () => {
+    const session = currentSession();
+    const sourceId = session?.forkSource?.sessionId ?? session?.agentOwnerId;
+    if (sourceId) navigate(sourceId);
+  });
   const currentSession = () => state?.sessions.find((session) => session.id === state?.activeId);
   const readOnly = () => state?.conversationAccess?.readOnly === true;
   const accessNotice = document.createElement('div');
@@ -787,6 +798,7 @@ function initialize(): void {
 
   function navigate(id?: string): void {
     if (!state) { return; }
+    agentNavigation = undefined;
     saveDraft(false);
     let session = id ? state.sessions.find(entry => entry.id === id) : state.sessions.find(entry => !entry.messages.length && !entry.activeRunId && !entry.queuedInputs?.length && !entry.draft?.text && !entry.draft?.attachments.length && !entry.draft?.references?.length);
     if (!session && id) { return; }
@@ -1036,7 +1048,7 @@ function initialize(): void {
         composer: true,
         copy, plan: (text) => dialogs.plan(text), file: (id) => post({ type: 'open-file', id }),
         path: target => post({ type: 'open-path', ...target }),
-        subagent: (conversationId, ownerId) => post({ type: 'agent-open', conversationId, agentOwner: ownerId }),
+        subagent: (conversationId, ownerId) => post({ type: 'agent-open', conversationId, agentOwner: ownerId, requestId: beginAgentNavigation('open') }),
         image: (src, title) => dialogs.image(src, title), resource: (card, action, requestId) => post({ type: 'resource', messageId: view.message.id, cardId: card.id, action, requestId }),
       });
       view.metadata.after(view.output.processToggle);
@@ -1049,8 +1061,9 @@ function initialize(): void {
           description: t('Create and open a new conversation with the history up to and including this response. Later messages are not included. The original conversation stays unchanged, so you can explore a different direction in the new one.'),
           confirm: t('Fork'),
         });
-        if (result !== undefined && state?.activeId === sessionId && state?.project.uri === projectUri && connectionAvailable && navigationReady()) {
-          post({ type: 'agent-command', command: { type: 'fork', requestId: crypto.randomUUID(), entryId } });
+        if (result !== undefined && state && state.activeId === sessionId && state.project.uri === projectUri && connectionAvailable && navigationReady()) {
+          const requestId = beginAgentNavigation('fork');
+          post({ type: 'agent-command', requestId, command: { type: 'fork', requestId, entryId } });
         }
       });
       fork.classList.add('fork-message'); actions.append(fork);
@@ -1199,6 +1212,11 @@ function initialize(): void {
     document.querySelector('#project-name')!.textContent = next.project.name;
     document.querySelector<HTMLElement>('#project-name')!.hidden = !session.messages.length;
     document.querySelector('#conversation-title')!.textContent = session.messages.length ? session.title : next.project.name;
+    const source = next.sessions.find(entry => entry.id === (session.forkSource?.sessionId ?? session.agentOwnerId));
+    const sourceButton = document.querySelector<HTMLButtonElement>('#conversation-source')!;
+    sourceButton.hidden = !source;
+    sourceButton.textContent = source ? `${session.forkSource ? t('Fork') : t('Subagent')} · ${source.title}` : '';
+    sourceButton.title = sourceButton.ariaLabel = t('Open source conversation');
     if (projectChanged || JSON.stringify(previous?.project.entrypoints) !== JSON.stringify(next.project.entrypoints)) {
       historyLimit = historyPageSize;
       const selected = projectChanged ? undefined : entrypoint.value;
@@ -1603,10 +1621,19 @@ function initialize(): void {
       if (restored && state) { parameterCache.clear(); syncNavigation(); dispatchSubmissions(); paramsNeedInit = true; requestParams({ kind: 'init' }); }
       return;
     }
+    if (message.type === 'error' && agentNavigation?.requestId === message.requestId) agentNavigation = undefined;
     if (message.type === 'agent-opened' || message.type === 'agent-receipt' && message.forkSessionId) {
+      const request = agentNavigation;
+      if (!request || message.requestId !== request.requestId || (message.type === 'agent-opened' ? 'open' : 'fork') !== request.type) return;
+      agentNavigation = undefined;
       // New-session replies can arrive before the next animation-frame render.
       if (pendingState) { const next = pendingState; pendingState = undefined; render(next); }
-      navigate(message.forkSessionId ?? message.sessionId); return;
+      if (state?.project.uri !== request.projectUri || state.activeId !== request.sessionId || message.projectUri !== request.projectUri
+        || (message.type === 'agent-opened' ? message.sourceSessionId : message.sessionId) !== request.sessionId) return;
+      const targetId = message.forkSessionId ?? message.sessionId;
+      const target = state.sessions.find(session => session.id === targetId);
+      if (!target || (target.agentOwnerId ?? target.id) !== request.ownerId) return;
+      navigate(targetId); return;
     }
     if (message.type === 'trace-navigate') { navigate(message.sessionId); return; }
     if (message.type === 'navigated' && navigationRequest && navigationRequest.requestId === message.requestId) {

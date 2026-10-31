@@ -1,10 +1,11 @@
 import { t } from './localization';
+import { createHash } from 'node:crypto';
 import { isDeepStrictEqual } from 'node:util';
 import { getUserSettings, parseUserSettings, type UserSettings } from 'steamharness';
 import { conversationPrompt, type PathReference } from './conversation-paths';
 import type { AgentSessionCommand, AgentSessionReceipt, AgentSessionSnapshot } from 'steamharness/agent';
 import {
-  applyOutputChunk, outputText, validateProjectValues, projectParameters, projectParamArgs, resolvedProjectValues, projectFormValue, sessionRunning, conversationModelName,
+  applyOutputChunk, outputText, validateProjectValues, projectParameters, projectParamArgs, projectParamValue, resolvedProjectValues, projectFormValue, sessionRunning, conversationModelName,
   type ConversationSession, type ConversationMessage, type ConversationQueuedInput, type ConversationDraftUpdate, type Attachment,
   type Project, type Runtime, type Run, type ParamValues,
   type ResolvedInput,
@@ -264,7 +265,8 @@ export class ConversationController {
         }
         await this.reloadConfiguration(owner, true);
       }
-      const changed = previous && (JSON.stringify(previous.args) !== JSON.stringify(args) || previous.entrypointId !== input.entrypointId || JSON.stringify(previous.policies) !== JSON.stringify(owner.toolPermissionPolicies));
+      const forkEffort = await this.configureForkEffort(entry, owner, input, args, id);
+      const changed = !forkEffort && previous && (JSON.stringify(previous.args) !== JSON.stringify(args) || previous.entrypointId !== input.entrypointId || JSON.stringify(previous.policies) !== JSON.stringify(owner.toolPermissionPolicies));
       if (changed) {
         if (owner.agent?.tasks.length || owner.agent?.foreground || owner.agent?.turns.some(turn => turn.status === 'placed' || turn.status === 'queued') || !owner.agent) throw new Error(t('Wait for active tasks before changing session settings.'));
         if (entry !== owner) throw new Error(t('Change workflow settings in the main conversation.'));
@@ -516,6 +518,36 @@ export class ConversationController {
     const owner = this.sessions.find(session => session.id === (entry.agentOwnerId ?? entry.id));
     if (!owner) throw new Error(t("Conversation no longer exists."));
     return owner;
+  }
+  private async configureForkEffort(entry: ConversationSession, owner: ConversationSession, input: Omit<ConversationQueuedInput, 'id' | 'createdAt'>, args: string[], requestId: string): Promise<boolean> {
+    const previous = owner.agentParameters;
+    const fork = owner.agent?.conversations.find(conversation => conversation.id === entry.agentConversationId && conversation.forkEntryId !== undefined);
+    const field = projectParameters(this.project, input.entrypointId).fields.find(field => field.name === 'effort' && field.flag === '--effort' && field.type === 'string');
+    if (!fork || !field || !previous || previous.entrypointId !== input.entrypointId || !isDeepStrictEqual(previous.policies, owner.toolPermissionPolicies)) return false;
+    const withoutEffort = (values: string[]) => {
+      const index = values.indexOf('--effort');
+      return index < 0 ? values : [...values.slice(0, index), ...values.slice(index + 2)];
+    };
+    if (!isDeepStrictEqual(withoutEffort(previous.args), withoutEffort(args))) return false;
+    // Forks share a worker, but own their Agent configuration. Changing effort
+    // must not restart that worker or rewrite the original conversation's args.
+    if (input.states?.[field.name]?.visible === false) return true;
+    const value = projectParamValue(field, input.params[field.name]);
+    const effort = value === '' ? 'off' : value === 'ultra' ? 'max' : value;
+    if (typeof effort !== 'string' || !['off', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max'].includes(effort)) return false;
+    const key = createHash('sha256').update(requestId).digest('hex');
+    let configuration = owner.agent?.contexts.find(context => context.conversationId === fork.id)?.configuration;
+    if (!configuration) {
+      await this.agentCommand(entry.id, { type: 'snapshot', requestId: `effort-state:${key}` }, undefined, input.configurationSelection);
+      configuration = owner.agent?.contexts.find(context => context.conversationId === fork.id)?.configuration;
+      if (!configuration) throw new Error(t('Task state changed. Refresh the trace and try again.'));
+    }
+    if (configuration.effort !== effort) {
+      if (sessionRunning(entry)) throw new Error(t('Wait for active tasks before changing session settings.'));
+      await this.agentCommand(entry.id, { type: 'configure', expectedVersion: configuration.version, effort,
+        requestId: `effort:${key}` }, undefined, input.configurationSelection);
+    }
+    return true;
   }
   private agentAnchor(owner: ConversationSession): ConversationMessage | undefined {
     const anchors = owner.messages.filter(message => message.role === 'assistant' && message.runId && message.args);

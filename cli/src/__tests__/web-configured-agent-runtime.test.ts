@@ -227,6 +227,7 @@ it('runs saved system and third-party models through the real Web worker with re
 it.each(['project', 'user-settings'] as const)('switches %s models in a durable conversation without hiding prior replies or replaying inputs', async modelSource => {
   const directory = await mkdtemp(path.join(os.tmpdir(), 'configured-durable-models-'));
   const applicationId = crypto.randomUUID();
+  const clientId = crypto.randomUUID();
   const configurationKey = createHash('sha256').update(`${applicationId}:main`).digest('hex');
   const runKey = createHash('sha256').update(`${applicationId}:main`).digest('hex');
   const configurationRoot = path.join(os.homedir(), '.steamharness', 'configurations');
@@ -274,6 +275,7 @@ it.each(['project', 'user-settings'] as const)('switches %s models in a durable 
         params: [{ kind: 'quick', id: 'ai', label: 'AI', summary: ['model'], fields: [
           { name: 'provider', flag: '--provider', type: 'string', required: true, control: 'select', options: [] },
           { name: 'model', flag: '--model', type: 'string', required: true, control: 'select', options: [], ${modelSource === 'user-settings' ? "userSetting: { key: 'agent.model', mode: 'default' }" : ''} },
+          { name: 'effort', flag: '--effort', type: 'string', control: 'select', defaultValue: 'high', options: [{ value: 'high' }, { value: 'xhigh' }] },
         ] }], resolveParams: steamharness.createAgentProjectParamResolver({ modelSource: '${modelSource}' }),
         createInput({ args }) { return steamharness.createAgentProjectInput(args); },
       });
@@ -284,7 +286,7 @@ it.each(['project', 'user-settings'] as const)('switches %s models in a durable 
     app = await startWebServer(options);
     const post = async (message: object) => {
       const token = new URL(app!.url).hash.slice('#session='.length);
-      const response = await fetch(`${app!.origin}/api/message`, { method: 'POST', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }, body: JSON.stringify(message) });
+      const response = await fetch(`${app!.origin}/api/message`, { method: 'POST', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ ...message, clientId }) });
       const result = await response.json(); expect(response.status, JSON.stringify(result)).toBe(200); return result.messages;
     };
     const models: import('steamharness').UserAgentModel[] = [
@@ -327,10 +329,40 @@ it.each(['project', 'user-settings'] as const)('switches %s models in a durable 
     expect(app.controller!.current.messages.filter(message => message.role === 'assistant')).toMatchObject(expected);
     expect(calls).toHaveLength(3);
     expect(JSON.stringify(app.controller!.current)).not.toContain('third-identity');
+    const owner = app.controller!.current;
+    const committed = JSON.parse(JSON.stringify(owner.agentParameters));
+    const forkParams = { ...[...owner.messages].reverse().find(message => message.role === 'user')!.input!.params, effort: 'xhigh' };
+    const forkReply = await post({ type: 'agent-command', sessionId: owner.id,
+      command: { type: 'fork', requestId: crypto.randomUUID(), entryId: owner.messages.at(-1)!.entryId } });
+    const forkId = forkReply.find((message: { type: string }) => message.type === 'agent-receipt')!.forkSessionId;
+    const fork = app.controller!.sessions.find(session => session.id === forkId)!;
+    const currentOwner = () => app!.controller!.sessions.find(session => session.id === owner.id)!;
+    const continueFork = async (text: string) => {
+      const result = await post({ type: 'send', sessionId: forkId, requestId: crypto.randomUUID(), text,
+        params: forkParams, attachments: [] });
+      expect(result.some((message: { type: string }) => message.type === 'error'), JSON.stringify(result)).toBe(false);
+      await expect.poll(() => {
+        const answer = app!.controller!.sessions.find(session => session.id === forkId)!.messages.at(-1);
+        if (answer?.status === 'failed') throw new Error(answer.error);
+        return answer?.status;
+      }, { timeout: 12_000 }).toBe('success');
+    };
+    await continueFork('Continue the fork with more reasoning');
+    expect(calls).toHaveLength(4);
+    expect(currentOwner().agentParameters).toEqual(committed);
+    expect(currentOwner().agent!.configuration.effort).toBe('high');
+    expect(currentOwner().agent!.contexts.find(context => context.conversationId === fork.agentConversationId)!.configuration).toMatchObject({ effort: 'xhigh', version: 1 });
+    expect(currentOwner().messages.filter(message => message.role === 'assistant')).toMatchObject(expected);
+    await app.close(); app = await startWebServer(options);
+    await continueFork('Continue the reopened fork');
+    expect(calls).toHaveLength(5);
+    expect(app.controller!.sessions.find(session => session.id === owner.id)!.agent!.configuration.effort).toBe('high');
+    expect(app.controller!.sessions.find(session => session.id === forkId)!.agent!.contexts
+      .find(context => context.conversationId === fork.agentConversationId)!.configuration).toMatchObject({ effort: 'xhigh', version: 1 });
   } finally {
     await app?.close();
     await new Promise<void>(resolve => { upstream.close(() => resolve()); upstream.closeAllConnections(); });
     await rm(directory, { recursive: true, force: true });
     await Promise.all([rm(path.join(configurationRoot, `${configurationKey}.json`), { force: true }), rm(path.join(configurationRoot, `${configurationKey}.json.lock.sqlite`), { force: true }), rm(path.join(configurationRoot, 'snapshots', runKey), { recursive: true, force: true })]);
   }
-}, 40_000);
+}, 55_000);

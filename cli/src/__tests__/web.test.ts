@@ -298,7 +298,9 @@ describe('steamharness web', () => {
     expect(control).toHaveBeenCalledWith(childId, request.command);
     expect((await post({ ...request, agentOwner: 'previous-owner' })).status).toBe(400);
     expect(control).toHaveBeenCalledOnce();
-    expect((await post({ type: 'agent-open', sessionId: childId, agentOwner: 'owner', conversationId: 1 })).status).toBe(200);
+    const opened = await post({ type: 'agent-open', sessionId: childId, agentOwner: 'owner', conversationId: 1, requestId: 'open-from-child' });
+    expect(opened.status).toBe(200);
+    expect((await opened.json()).messages).toContainEqual({ type: 'agent-opened', sessionId: root.id, sourceSessionId: childId, projectUri: app.project.uri, requestId: 'open-from-child' });
     expect(open).toHaveBeenCalledWith(childId, 1);
     expect((await post({ type: 'agent-open', sessionId: childId, agentOwner: 'previous-owner', conversationId: 1 })).status).toBe(400);
     expect(open).toHaveBeenCalledOnce(); expect(app.controller!.current.id).toBe(root.id);
@@ -1352,7 +1354,7 @@ describe('steamharness web', () => {
   }, 15_000);
 });
 
-it('binds a stop across process replacement to the original run and exact task identities', async () => {
+it.each(['foreground', 'all'])('binds a %s stop across process replacement to the original run and exact task identities', async scope => {
   const { app, post } = await fixture();
   const current = app.controller!.current;
   current.activeRunId = 'restored-run';
@@ -1363,7 +1365,7 @@ it('binds a stop across process replacement to the original run and exact task i
     history: [], turns: [], receipts: [], records: [], contexts: [], usage: [] };
   const control = vi.spyOn(app.controller, 'agentCommand').mockResolvedValue({ requestId: 'original-stop', conversationId: 1, status: 'accepted' });
   const request = { type: 'agent-command', sessionId: current.id, agentOwner: 'exited-owner', runId: 'restored-run', taskIds: [42], errorScope: 'stop',
-    command: { type: 'cancel', scope: 'foreground', requestId: 'original-stop' } };
+    command: { type: 'cancel', scope, requestId: 'original-stop' } };
   expect((await post({ ...request, taskIds: [43] })).status).toBe(400);
   expect((await post({ ...request, runId: 'another-run' })).status).toBe(400);
   expect((await post({ ...request, taskIds: [] })).status).toBe(400);

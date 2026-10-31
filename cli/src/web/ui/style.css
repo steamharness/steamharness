@@ -12,6 +12,8 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .toolbar { grid-area: toolbar; display: flex; min-height: 52px; align-items: center; justify-content: space-between; gap: 12px; padding: 8px 16px; }
 .project-title { display: flex; min-width: 0; align-items: center; gap: 8px; }
 .project-heading { min-width: 0; flex: 1; }
+.conversation-source { display: block; max-width: 100%; padding: 0; margin-top: 3px; border: 0; background: transparent; color: var(--muted); font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; cursor: pointer; }
+.conversation-source:hover { color: var(--vscode-textLink-foreground, var(--focus)); text-decoration: underline; }
 #assistant-folder { display: block; color: var(--muted); font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin-top: 3px; }
 .assistant-welcome { padding: 20px 16px; color: var(--muted); }
 body[data-surface=assistant] { background: var(--vscode-sideBar-background, var(--vscode-editor-background)); }

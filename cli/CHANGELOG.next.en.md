@@ -1,5 +1,7 @@
 # Unreleased
 
+- Fixed independent fork effort changes and reopening without incorrectly requiring the main conversation. Fork and child navigation now follows only the current view's matching request, ignores late, duplicate or unrelated receipts, and exposes the source conversation. Stop All retains run and task identity checks across worker replacement.
+
 - Fixed file selection and response retry buttons flickering while typing by keeping background draft saves from disabling them. Conversation switches still wait for host confirmation.
 
 - Fixed template creation to preserve complete local projects with an empty ID when Server ID allocation fails. Registration can be retried separately while preserving source edits.

@@ -564,6 +564,84 @@ it('restores fork history and its source when the fork receipt was lost before c
   await f.finish();
 });
 
+it.each(['live', 'reopened', 'missing context', 'owner busy'])('changes fork effort through its own configuration without retiring the owner (%s)', async state => {
+  const reopened = state === 'reopened';
+  const f = fixture();
+  f.controller.project.fields.push({ name: 'effort', flag: '--effort', type: 'string', defaultValue: 'high' });
+  await f.start();
+  const initial = f.snapshot();
+  const configuration = { ...initial.configuration, effort: 'high' };
+  let frame: AgentSessionSnapshot = { ...initial, revision: 2, configuration, foreground: state === 'owner busy',
+    conversations: [...initial.conversations, { id: 679, parentId: 1, forkEntryId: 2, title: 'Fork', background: false }],
+    contexts: (state === 'missing context' ? [1] : [1, 679]).map(conversationId => ({ conversationId, foreground: state === 'owner busy' && conversationId === 1, backgroundCount: 0, epoch: 0,
+      configuration: { ...configuration }, prompt: initial.prompt, plan: initial.plan })) };
+  f.emit(frame);
+  const forkId = await f.controller.openAgentConversation(f.controller.current.id, 679);
+  let controller = f.controller;
+  if (reopened) {
+    await f.finish();
+    const saved = JSON.parse(JSON.stringify({ sessions: controller.sessions, activeId: forkId, selectionVersion: 1 }));
+    controller.dispose();
+    controller = new ConversationController(f.controller.project, f.runtime, saved, { save: f.save, changed: vi.fn(), log: vi.fn() });
+    controllers.push(controller);
+  }
+  const fork = controller.sessions.find(session => session.id === forkId)!;
+  const owner = controller.sessions.find(session => session.id === fork.agentOwnerId)!;
+  const committed = JSON.parse(JSON.stringify(owner.agentParameters));
+  vi.mocked(f.runtime.agentControl!).mockImplementation(async (_run, command) => {
+    if (command.type === 'snapshot') {
+      frame = { ...frame, revision: frame.revision + 1, contexts: [...frame.contexts, { ...frame.contexts[0], conversationId: 679 }] };
+      f.emit(frame);
+    }
+    if (command.type === 'configure') {
+      frame = { ...frame, revision: frame.revision + 1, contexts: frame.contexts.map(context => context.conversationId === 679
+        ? { ...context, configuration: { ...context.configuration, effort: command.effort!, version: command.expectedVersion + 1 } } : context) };
+      f.emit(frame);
+    }
+    return { requestId: command.requestId, conversationId: command.targetId!, status: 'accepted' };
+  });
+  const sending = controller.send({ text: 'Continue here', params: { model: 'one', effort: 'xhigh' }, attachments: [] }, fork, false, 'fork-effort');
+  if (reopened) {
+    await vi.waitFor(() => expect(f.runs).toHaveLength(2));
+    const replay = vi.mocked(f.runtime.run).mock.calls[1][0];
+    expect(replay).toMatchObject({ conversationId: owner.id, resumeAgent: true });
+    const command = replay.agentCommands![0].command;
+    expect(command).toMatchObject({ type: 'configure', targetId: 679, effort: 'xhigh', expectedVersion: 0 });
+    frame = { ...frame, ownerId: 'reconnected', revision: 1, receipts: [{ requestId: command.requestId, conversationId: 679, status: 'accepted' }],
+      contexts: frame.contexts.map(context => context.conversationId === 679 ? { ...context, configuration: { ...context.configuration, version: 1, effort: 'xhigh' } } : context) };
+    f.emit(frame);
+  }
+  await sending;
+  expect(owner.agentParameters).toEqual(committed);
+  expect(owner.agent!.configuration.effort).toBe('high');
+  expect(owner.agent!.contexts.find(context => context.conversationId === 679)!.configuration.effort).toBe('xhigh');
+  expect(f.runtime.cancel).not.toHaveBeenCalled();
+  expect(f.runtime.agentControl).toHaveBeenLastCalledWith(owner.activeRunId,
+    { type: 'submit', targetId: 679, requestId: 'fork-effort', prompt: 'Continue here', mode: 'followUp' }, fork.id, []);
+  await controller.send({ text: 'Continue again', params: { model: 'one', effort: 'xhigh' }, attachments: [] }, fork);
+  expect(vi.mocked(f.runtime.agentControl!).mock.calls.filter(([, command]) => command.type === 'configure')).toHaveLength(reopened ? 0 : 1);
+  await controller.send({ text: 'Return to high', params: { model: 'one', effort: 'high' }, attachments: [] }, fork);
+  expect(vi.mocked(f.runtime.agentControl!).mock.calls.filter(([, command]) => command.type === 'configure')).toHaveLength(reopened ? 1 : 2);
+  expect(owner.agent!.contexts.find(context => context.conversationId === 679)!.configuration).toMatchObject({ effort: 'high', version: 2 });
+  expect(owner.agentParameters).toEqual(committed); expect(f.runtime.cancel).not.toHaveBeenCalled();
+  f.runs.at(-1)!.finish({ status: 'success' }); await controller.idle();
+});
+
+it('keeps workflow and managed-child settings protected when fork effort is independently editable', async () => {
+  const f = fixture(); f.controller.project.fields.push({ name: 'effort', flag: '--effort', type: 'string', defaultValue: 'high' });
+  await f.start(); const initial = f.snapshot();
+  f.emit({ ...initial, revision: 2, conversations: [...initial.conversations,
+    { id: 2, parentId: 1, forkEntryId: 2, title: 'Fork', background: false }, { id: 3, parentId: 1, title: 'Managed worker', background: false }] });
+  for (const conversationId of [2, 3]) {
+    const id = await f.controller.openAgentConversation(f.controller.current.id, conversationId);
+    const entry = f.controller.sessions.find(session => session.id === id)!;
+    await expect(f.controller.send({ text: 'New settings', params: { model: conversationId === 2 ? 'two' : 'one', effort: 'xhigh' }, attachments: [] }, entry))
+      .rejects.toThrow(/main conversation|主会话/);
+  }
+  expect(f.runtime.agentControl).not.toHaveBeenCalled(); expect(f.runtime.cancel).not.toHaveBeenCalled();
+  await f.finish();
+});
+
 it.each(['fork', 'owner'])('isolates equal command identities across a second %s', async scope => {
   const f = fixture(); await f.start();
   const first = f.controller!.current;
