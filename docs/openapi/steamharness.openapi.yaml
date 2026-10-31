@@ -3360,7 +3360,10 @@ paths:
         - Database Spaces
       summary: Read or mutate approved space data
       description: Authenticated. Every operation checks the current actor and effective grant. Approval never
-        widens requested permissions.
+        widens requested permissions. Single get, revision and list reads use committed data without a space-wide
+        exclusive lock; writes, CAS and multi-key transactions remain serialized. Attachment bytes use private
+        object storage while PostgreSQL retains metadata and a digest. Legacy inline attachments move on first
+        read without changing file IDs or logical revisions. The Base64 JSON wire format is unchanged.
       parameters:
         - name: spaceId
           in: path

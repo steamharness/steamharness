@@ -1,5 +1,7 @@
 # Unreleased
 
+- Fixed Kanban database reads contending for a space-wide exclusive lock and delaying annotations and revision checks behind large attachments. Images and other attachments now use private file storage with metadata and a digest in PostgreSQL; legacy attachments move on first read while retaining references and revisions.
+
 - Fixed memory extraction retries after a revoked login by validating the current login and original scope; retained task snapshots prevent retries from undoing edits or clears. Reduced settings query latency for accounts with many past directories.
 
 - Added: Project configuration accepts agent-model single selectors storing a configured model ID or empty inheritance, with existing permissions and publication rules.

@@ -20,7 +20,7 @@ import { getAuthCookieSecret } from "./account-auth";
 import { resolveServerPathRoots } from "./paths";
 import { ArtifactStorage, createObjectPath, DatabaseRepository, type ProjectMemberRecord, type ProjectInvitationRecord, type ProjectRole, type Visibility, type DbRecord, type DbVersionRecord, type ProjectStorageRevisionEvent } from "./persistence";
 import { HttpError, toHttpErrorWithStatus } from "./protocol";
-import { createProjectLocalStorageFromEnv } from "./local-storage";
+import { createProjectLocalStorageFromEnv, LocalStorage } from "./local-storage";
 import { isProjectStorageNotFoundError, type ObjectStorage } from "./object-storage";
 import { resolveProjectStorageDriver } from "./storage-driver";
 import { resolveServerDataRootFromEnv } from "./release-paths";
@@ -468,7 +468,7 @@ export class Storage {
     this.repoRoot = options.repoRoot;
     this.dataRoot = options.dataRoot ?? path.join(options.serverRoot, ".data");
     this.db = options.db;
-    this.databases = new DatabaseSpaceRepository(options.db?.connectionString);
+    this.databases = new DatabaseSpaceRepository(options.db?.connectionString, options.objectStorage ?? new LocalStorage({ root: path.join(this.dataRoot, 'object-storage'), publicBaseUrl: 'http://localhost' }));
     this.artifacts = options.artifacts;
     this.objectStorage = options.objectStorage;
     this.kanbanPreviewCapabilitySecret = options.kanbanPreviewCapabilitySecret?.trim() ||

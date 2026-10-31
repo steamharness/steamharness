@@ -137,6 +137,10 @@ test('database HTTP authorization authorizes database IDs independently of manif
     assert.notEqual(await x.getRevision(), revision);
     const retained = await x.knowledge.files.readFile(file.id);
     assert.equal((await retained.readBuffer()).toString(), 'shared bytes');
+    const attachment = (await pool.query('SELECT value FROM database_space_values WHERE space_id=$1 AND key=$2', [spaceId, `__knowledge_file:${file.id}`])).rows[0].value;
+    assert.equal(attachment.base64, undefined);
+    assert.match(attachment.blob.sha256, /^[a-f0-9]{64}$/);
+    assert.equal(attachment.file.id, file.id);
     // Permissions are maintained by the host, independently of recorded aliases and IDs.
     await send('owner', `/database-spaces/grants/${(await y.getBinding()).grant.grantId}/narrow`, { permissions: { ...permissions, kv: { read: {mode:'prefixes',prefixes:['public:']}, write: none } } });
     await assert.rejects(y.kv.getValue('shared'), /does not allow/);
@@ -151,6 +155,7 @@ test('database HTTP authorization authorizes database IDs independently of manif
     await send('consumer', `/database-spaces/${spaceId}/data`, { ...raw, operation: 'get' }, 403);
     await send('owner', `/database-spaces/grants/${(await y.getBinding()).grant.grantId}/revoke`, {});
     await assert.rejects(y.kv.getValue('shared'), /revoked/);
+    await assert.rejects(y.knowledge.files.readFile(file.id), /revoked/);
     assert.equal((await send('consumer', `/database-spaces/consumers/${b}/agent`))[0].status, 'invalid');
     const retry = await send('consumer', '/database-spaces/requests', { projectId: b, entryId: 'agent', alias: 'data', permissions, target: { kind: 'access', spaceId } });
     await send('owner', `/database-spaces/requests/${retry.requestId}/review`, { approve: false, reason: 'No longer required' });

@@ -40,7 +40,17 @@ export function createDatabaseSpaceRouter(storage: Storage): Router {
     return storage.databases.manage(req.params.grantId!, req.params.action as 'revoke' | 'rotate' | 'narrow', actor(req), req.body.permissions);
   }));
   router.get('/database-spaces/:spaceId/authorization', run(async req => { const projectId = String(req.query.projectId ?? ''), entryId = String(req.query.entryId ?? ''); await consumer(req, projectId, entryId); return storage.databases.authorization(req.params.spaceId!, { projectId, entryId }); }));
-  router.post('/database-spaces/:spaceId/data', run(async req => { const operation = req.body.operation; const write = !['get', 'revision', 'list'].includes(operation) && !(operation === 'transaction' && Array.isArray(req.body.entries) && req.body.entries.every((item: any) => !item.mutation)); await consumer(req,req.body.projectId,req.body.entryId,write); return storage.databases.data(req.params.spaceId!,req.body,actor(req)); }));
+  router.post('/database-spaces/:spaceId/data', (req, res, next) => {
+    const abort = new AbortController();
+    const disconnected = () => { if (!res.writableEnded) abort.abort(new Error('Database request disconnected.')); };
+    res.once('close', disconnected);
+    const operation = req.body.operation;
+    const write = !['get', 'revision', 'list'].includes(operation) && !(operation === 'transaction' && Array.isArray(req.body.entries) && req.body.entries.every((item: any) => !item.mutation));
+    void consumer(req, req.body.projectId, req.body.entryId, write)
+      .then(() => storage.databases.data(req.params.spaceId!, req.body, actor(req), false, abort.signal))
+      .then(value => { if (!abort.signal.aborted) res.json(ok(value)); }, error => { if (!abort.signal.aborted) next(toHttpErrorWithStatus(error, 400, 400, 'Database operation failed.')); })
+      .finally(() => res.off('close', disconnected));
+  });
   router.get('/database-spaces/:spaceId/values',run(req=>storage.databases.listValues(req.params.spaceId!,actor(req),Number(req.query.page)||1,Number(req.query.pageSize)||30,String(req.query.search??''))));
   router.post('/database-spaces/:spaceId/manage',run(async req=>executeDatabaseOperation(await storage.databases.managementDatabase(req.params.spaceId!,actor(req),req.body.input?.namespace),String(req.body.operation),req.body.input??{})));
   router.get('/database-spaces/consumers/:projectId/:entryId',run(async req=>{

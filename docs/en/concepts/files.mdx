@@ -101,6 +101,8 @@ After upload, `await context.files.resolveFile(reference)` resolves a file on th
 
 Kanban pages use `createFile/readFile/deleteFile` on `window.steamHarnessKanban.databases.get(alias).files` to access approved space attachments under knowledge permissions. See [Kanban data Bridge](/en/concepts/kanban#data-bridge).
 
+Server saves space images and other attachments in separate private file storage; PostgreSQL retains file metadata and a content digest. Existing inline attachments are validated and moved on first read, preserving their IDs, references and data revisions. A failed migration retains the original data. Reads still require authorization, and the existing Base64 JSON wire format remains compatible.
+
 Do not save base64 file contents into KV or session history. Save the reference metadata returned by `file.toJSON()` when cross-round multiplexing is required.
 
 `workspace/workflow/gpt-image` The example uses the same file param process to receive one or more reference images:

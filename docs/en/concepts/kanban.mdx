@@ -34,6 +34,8 @@ const unsubscribe = database.subscribe(({ revision }) => refreshMap(revision));
 
 The alias must be declared in this entry's `databases` and approved before use. The host validates entry identity, actor and space grants. Pages cannot select arbitrary projects or spaces. Use `database.knowledge` for documents and `database.files.createFile/readFile/deleteFile` for attachments.
 
+Server stores attachment content in private file storage, retaining metadata and a digest in PostgreSQL. Ordinary KV, revision and list reads do not wait for attachment transfers. Writes, CAS and multi-key transactions retain concurrency checks. Existing inline attachments move on first read without changing file references.
+
 ## Page methods
 
 ```js

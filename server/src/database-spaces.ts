@@ -5,6 +5,8 @@ import { assertDatabaseAuthorization, DATABASE_IDENTIFIER_PATTERN, DATABASE_UUID
 import { databaseReadPrefixes, isKnowledgeDocumentStorageKey } from 'steamharness';
 import { createPostgresPool } from './postgres';
 import { HttpError } from './protocol';
+import { DatabaseAttachments, DATABASE_ATTACHMENT_CHUNK_SIZE, isDatabaseAttachment, type AttachmentValue } from './database-attachments';
+import type { ObjectStorage } from './object-storage';
 
 interface Address { spaceId: string; storageKind: 'kv' | 'persistent_value'; scope: 'project' | 'conversation'; conversationId?: string; key: string }
 interface Consumer { projectId: string; entryId: string; alias: string; bindingRef: string; credentialVersion?: number }
@@ -14,7 +16,11 @@ const emptyCatalog = (): DatabaseCatalogState => ({ spaces: [], requests: [], gr
 /** Independent host resources: intentionally no foreign key to projects. */
 export class DatabaseSpaceRepository {
   private readonly pool?: pg.Pool;
-  constructor(connectionString?: string) { if (connectionString) this.pool = createPostgresPool({ connectionString, label: 'database spaces' }); }
+  private readonly attachments?: DatabaseAttachments;
+  constructor(connectionString?: string, objectStorage?: ObjectStorage) {
+    if (connectionString) this.pool = createPostgresPool({ connectionString, label: 'database spaces' });
+    if (objectStorage) this.attachments = new DatabaseAttachments(objectStorage);
+  }
   private requirePool() { if (!this.pool) throw new HttpError(501, 501, 'Database spaces require the host PostgreSQL registry.'); return this.pool; }
   async init() {
     if (!this.pool) return;
@@ -83,38 +89,93 @@ export class DatabaseSpaceRepository {
       return {authorization,store};
     }}}).get("space");
   }
-  async data(spaceId: string, raw: Record<string, any>, actor: DatabaseActor, management = false): Promise<unknown> {
+  async data(spaceId: string, raw: Record<string, any>, actor: DatabaseActor, management = false, signal?: AbortSignal): Promise<unknown> {
+    signal?.throwIfAborted();
     if (!DATABASE_UUID_PATTERN.test(spaceId)) throw new HttpError(400, 400, 'Invalid database space.');
     const consumer: Consumer = { projectId: raw.projectId, entryId: raw.entryId, alias: raw.alias, bindingRef: raw.bindingRef, credentialVersion: raw.credentialVersion };
     if (!DATABASE_UUID_PATTERN.test(consumer.projectId ?? '') || !DATABASE_IDENTIFIER_PATTERN.test(consumer.entryId ?? '') || !DATABASE_IDENTIFIER_PATTERN.test(consumer.alias ?? '') || !DATABASE_UUID_PATTERN.test(consumer.bindingRef ?? '')) throw new HttpError(400, 400, 'A database binding and consumer identity are required.');
-    return this.transaction(false, async (catalog, client) => {
+    const authorize = (catalog: DatabaseCatalog) => {
       const authorization = management ? managerAuthorization(catalog,spaceId,actor) : catalog.authorization(consumer.bindingRef);
       if (!authorization || authorization.space.spaceId !== spaceId || authorization.grant.revokedAt || authorization.grant.credentialVersion !== consumer.credentialVersion) throw new HttpError(403, 403, 'Database authorization changed. Restore this binding.');
-      await client.query('SELECT pg_advisory_xact_lock(hashtextextended($1,0))', [`database-space:${spaceId}`]);
-      const address = (value: any): Address => {
-        if (!value || value.spaceId !== spaceId || !['kv', 'persistent_value'].includes(value.storageKind) || !['project', 'conversation'].includes(value.scope) || typeof value.key !== 'string' || !value.key.trim() || value.key.length > 1024 || /\0/.test(value.key)) throw new HttpError(400, 400, 'Invalid database address.');
-        if (value.scope === 'conversation' && (typeof value.conversationId !== 'string' || !management && !value.conversationId.startsWith(`${consumer.projectId}:${consumer.entryId}:`) || value.conversationId.length > 512)) throw new HttpError(403, 403, 'Invalid database conversation namespace.');
-        return value as Address;
-      };
-      const check = (entry: Address, operation: 'read' | 'write') => {
-        const knowledge = isKnowledgeDocumentStorageKey(entry.key) || entry.key.startsWith('__knowledge_file:');
-        if (entry.storageKind === 'kv' && knowledge || entry.storageKind === 'persistent_value' && !knowledge) throw new HttpError(403, 403, 'Knowledge storage must use the knowledge API.');
-        try {
-          assertDatabaseAuthorization(authorization,{...consumer,databaseId:spaceId},entry.storageKind==='kv'?'kv':'knowledge',operation,entry.key);
+      return authorization;
+    };
+    const address = (value: any): Address => {
+      if (!value || value.spaceId !== spaceId || !['kv', 'persistent_value'].includes(value.storageKind) || !['project', 'conversation'].includes(value.scope) || typeof value.key !== 'string' || !value.key.trim() || value.key.length > 1024 || /\0/.test(value.key)) throw new HttpError(400, 400, 'Invalid database address.');
+      if (value.scope === 'conversation' && (typeof value.conversationId !== 'string' || !management && !value.conversationId.startsWith(`${consumer.projectId}:${consumer.entryId}:`) || value.conversationId.length > 512)) throw new HttpError(403, 403, 'Invalid database conversation namespace.');
+      return value as Address;
+    };
+    const check = (authorization: DatabaseAuthorization, entry: Address, operation: 'read' | 'write') => {
+      const knowledge = isKnowledgeDocumentStorageKey(entry.key) || entry.key.startsWith('__knowledge_file:');
+      if (entry.storageKind === 'kv' && knowledge || entry.storageKind === 'persistent_value' && !knowledge) throw new HttpError(403, 403, 'Knowledge storage must use the knowledge API.');
+      try {
+        assertDatabaseAuthorization(authorization, { ...consumer, databaseId: spaceId }, entry.storageKind === 'kv' ? 'kv' : 'knowledge', operation, entry.key);
+      } catch (error) { throw new HttpError(403, 403, error instanceof Error ? error.message : 'Database access denied.'); }
+    };
+    const args = (entry: Address) => [spaceId, entry.storageKind, entry.scope === 'conversation' ? `conversation:${entry.conversationId}` : 'space', entry.key];
+    const prepared = new Map<string, AttachmentValue>();
+    const uploads = raw.operation === 'transaction' && Array.isArray(raw.entries) && raw.entries.length <= 10000
+      ? raw.entries.filter(item => item?.mutation?.operation === 'set' && isDatabaseAttachment(item.entry)).map(item => ({ entry: item.entry, value: item.mutation.value }))
+      : ['set', 'compare-and-set'].includes(raw.operation) && isDatabaseAttachment(raw.entry) ? [{ entry: raw.entry, value: raw.value }] : [];
+    if (this.attachments && uploads.length) {
+      // Authorize and check revisions before touching private storage. Recheck in
+      // the final transaction, since grants/values may change during disk I/O.
+      const allowed = await this.transaction(false, async (catalog, client) => {
+        signal?.throwIfAborted();
+        const authorization = authorize(catalog);
+        const entries = raw.operation === 'transaction' ? raw.entries : [{ entry: raw.entry, expectedRevision: raw.expectedRevision, mutation: { operation: 'set' } }];
+        const addresses = entries.map((item: any) => address(item.entry));
+        if (new Set(addresses.map((entry: Address) => JSON.stringify(args(entry)))).size !== entries.length) throw new HttpError(400, 400, 'Duplicate transaction address.');
+        for (const [index, item] of entries.entries()) {
+          const entry = addresses[index];
+          if (raw.operation !== 'set') {
+            check(authorization, entry, 'read');
+            const before = await client.query('SELECT revision::text FROM database_space_values WHERE space_id=$1 AND kind=$2 AND namespace=$3 AND key=$4', args(entry));
+            if ((before.rows[0]?.revision ?? null) !== item.expectedRevision) return false;
+          }
+          if (item.mutation) {
+            if (!['set', 'delete'].includes(item.mutation.operation)) throw new HttpError(400, 400, 'Invalid transaction mutation.');
+            check(authorization, entry, 'write');
+          }
         }
-        catch (error) { throw new HttpError(403, 403, error instanceof Error ? error.message : 'Database access denied.'); }
+        return true;
+      });
+      if (!allowed) return { applied: false };
+      for (const upload of uploads) {
+        signal?.throwIfAborted();
+        prepared.set(JSON.stringify(args(upload.entry)), await this.attachments.store(spaceId, upload.entry.key, upload.value));
+      }
+    }
+    const result = await this.transaction(false, async (catalog, client) => {
+      signal?.throwIfAborted();
+      const authorization = authorize(catalog);
+      // Single reads use PostgreSQL's committed snapshot. Only mutations and
+      // multi-key revision checks need to serialize at the space boundary.
+      if (!['get', 'revision', 'list'].includes(raw.operation)) {
+        await client.query('SELECT pg_advisory_xact_lock(hashtextextended($1,0))', [`database-space:${spaceId}`]);
+      }
+      signal?.throwIfAborted();
+      const permitted = (entry: Address, operation: 'read' | 'write') => check(authorization, entry, operation);
+      const read = async (entry: Address): Promise<Value> => {
+        permitted(entry, 'read');
+        // Do not transfer legacy Base64 while holding a connection/transaction.
+        // The compatibility reader fetches bounded chunks after COMMIT below.
+        const columns = this.attachments && isDatabaseAttachment(entry)
+          ? "value - 'base64' AS value, length(value->>'base64') AS legacy_length, revision::text"
+          : 'value,revision::text';
+        const result = await client.query(`SELECT ${columns} FROM database_space_values WHERE space_id=$1 AND kind=$2 AND namespace=$3 AND key=$4`, args(entry));
+        return result.rows[0] ? { exists: true, ...result.rows[0] } : { exists: false };
       };
-      const args = (entry: Address) => [spaceId, entry.storageKind, entry.scope === 'conversation' ? `conversation:${entry.conversationId}` : 'space', entry.key];
-      const read = async (entry: Address): Promise<Value> => { check(entry, 'read'); const result = await client.query('SELECT value,revision::text FROM database_space_values WHERE space_id=$1 AND kind=$2 AND namespace=$3 AND key=$4', args(entry)); return result.rows[0] ? { exists: true, value: result.rows[0].value, revision: result.rows[0].revision } : { exists: false }; };
       const write = async (entry: Address, value: unknown) => {
-        check(entry, 'write'); const json = JSON.stringify(value); if (json === undefined || json.length > 70 * 1024 * 1024) throw new HttpError(400, 400, 'Invalid database JSON value.');
+        permitted(entry, 'write');
+        if (this.attachments && isDatabaseAttachment(entry)) value = prepared.get(JSON.stringify(args(entry)));
+        const json = JSON.stringify(value); if (json === undefined || json.length > 70 * 1024 * 1024) throw new HttpError(400, 400, 'Invalid database JSON value.');
         // Consumer attribution is trusted host data, never caller-supplied identity.
         const source = { projectId: consumer.projectId, entryId: consumer.entryId, userId: actor.userId };
         const result = await client.query(`INSERT INTO database_space_values(space_id,kind,namespace,key,value,source) VALUES($1,$2,$3,$4,$5,$6) ON CONFLICT(space_id,kind,namespace,key) DO UPDATE SET value=excluded.value,source=excluded.source,revision=nextval('database_space_revision'),updated_at=now() RETURNING revision::text`, [...args(entry), json, JSON.stringify(source)]);
         await revision(result.rows[0].revision);
       };
       const revision = async (value?: string) => { const next = value ?? (await client.query("SELECT nextval('database_space_revision')::text AS revision")).rows[0].revision; await client.query('INSERT INTO database_space_revisions VALUES($1,$2) ON CONFLICT(space_id) DO UPDATE SET revision=excluded.revision', [spaceId, next]); };
-      const remove = async (entry: Address) => { check(entry, 'write'); const result = await client.query('DELETE FROM database_space_values WHERE space_id=$1 AND kind=$2 AND namespace=$3 AND key=$4', args(entry)); if (result.rowCount) await revision(); return { removed: !!result.rowCount }; };
+      const remove = async (entry: Address) => { permitted(entry, 'write'); const result = await client.query('DELETE FROM database_space_values WHERE space_id=$1 AND kind=$2 AND namespace=$3 AND key=$4', args(entry)); if (result.rowCount) await revision(); return { removed: !!result.rowCount }; };
       if (raw.operation === 'revision') {
         const grant = authorization.grant;
         if (authorization.binding.projectId !== consumer.projectId || authorization.binding.entryId !== consumer.entryId || !(['kv', 'knowledge'] as const).some(resource => databaseReadPrefixes(grant.permissions[resource].read)?.length !== 0)) throw new HttpError(403, 403, 'Database revisions require read access.');
@@ -151,7 +212,7 @@ export class DatabaseSpaceRepository {
         if (!Array.isArray(raw.entries) || raw.entries.length > 10000) throw new HttpError(400, 400, 'Invalid database transaction.');
         const entries = raw.entries.map((item: any) => ({ ...item, entry: address(item.entry) }));
         if (new Set(entries.map((item: any) => JSON.stringify(args(item.entry)))).size !== entries.length) throw new HttpError(400, 400, 'Duplicate transaction address.');
-        for (const item of entries) { const before = await read(item.entry); if ((before.revision ?? null) !== item.expectedRevision) return { applied: false }; if (item.mutation) { if (!['set', 'delete'].includes(item.mutation.operation)) throw new HttpError(400, 400, 'Invalid transaction mutation.'); check(item.entry, 'write'); } }
+        for (const item of entries) { const before = await read(item.entry); if ((before.revision ?? null) !== item.expectedRevision) return { applied: false }; if (item.mutation) { if (!['set', 'delete'].includes(item.mutation.operation)) throw new HttpError(400, 400, 'Invalid transaction mutation.'); permitted(item.entry, 'write'); } }
         for (const item of entries) if (item.mutation) { if (item.mutation.operation === 'set') await write(item.entry, item.mutation.value); else await remove(item.entry); }
         return { applied: true };
       }
@@ -159,9 +220,49 @@ export class DatabaseSpaceRepository {
       if (raw.operation === 'get') return read(entry);
       if (raw.operation === 'set') { await write(entry, raw.value); return { written: true }; }
       if (raw.operation === 'delete') return remove(entry);
-      if (raw.operation === 'compare-and-set') { const before = await read(entry); check(entry, 'write'); if ((before.revision ?? null) !== raw.expectedRevision) return { applied: false }; await write(entry, raw.value); return { applied: true }; }
+      if (raw.operation === 'compare-and-set') { const before = await read(entry); permitted(entry, 'write'); if ((before.revision ?? null) !== raw.expectedRevision) return { applied: false }; await write(entry, raw.value); return { applied: true }; }
       throw new HttpError(400, 400, 'Unsupported database operation.');
     });
+    if (!this.attachments || raw.operation !== 'get' || !isDatabaseAttachment(raw.entry) || !(result as Value).exists) return result;
+
+    const value = result as Value & { value: AttachmentValue; legacy_length?: number | null };
+    const entry = raw.entry as Address;
+    const parameters = args(entry);
+    let base64: string;
+    if (value.legacy_length != null) {
+      if (value.legacy_length > Math.ceil(50 * 1024 * 1024 / 3) * 4) throw new HttpError(400, 400, 'Database attachment is too large.');
+      const chunks: string[] = [];
+      let migrated: AttachmentValue | undefined;
+      for (let offset = 0; offset < value.legacy_length; offset += DATABASE_ATTACHMENT_CHUNK_SIZE) {
+        signal?.throwIfAborted();
+        // Release the pooled connection between chunks so two large legacy
+        // images cannot starve small reads even with a two-connection pool.
+        const chunk = await this.requirePool().query("SELECT substr(value->>'base64',$6,$7) AS chunk,value->'blob' AS blob FROM database_space_values WHERE space_id=$1 AND kind=$2 AND namespace=$3 AND key=$4 AND revision=$5", [...parameters, value.revision, offset + 1, DATABASE_ATTACHMENT_CHUNK_SIZE]);
+        const row = chunk.rows[0];
+        if (!row) throw new HttpError(409, 409, 'Database attachment changed during download. Retry the read.');
+        if (row.blob) { migrated = { ...value.value, blob: row.blob }; break; }
+        if (typeof row.chunk !== 'string') throw new HttpError(409, 409, 'Database attachment changed during download. Retry the read.');
+        chunks.push(row.chunk);
+      }
+      base64 = migrated ? await this.attachments.read(spaceId, entry.key, migrated) : chunks.join('');
+      signal?.throwIfAborted();
+      const stored = migrated ?? await this.attachments.store(spaceId, entry.key, { ...value.value, base64 });
+      await this.transaction(false, async (catalog, client) => {
+        signal?.throwIfAborted();
+        check(authorize(catalog), entry, 'read');
+        // Storage migration preserves the logical value, revision, attribution
+        // and timestamps; a concurrent update/delete must never be overwritten.
+        const update = await client.query('UPDATE database_space_values SET value=$6 WHERE space_id=$1 AND kind=$2 AND namespace=$3 AND key=$4 AND revision=$5', [...parameters, value.revision, JSON.stringify(stored)]);
+        if (!update.rowCount) throw new HttpError(409, 409, 'Database attachment changed during download. Retry the read.');
+      });
+    } else {
+      base64 = await this.attachments.read(spaceId, entry.key, value.value);
+      await this.transaction(false, catalog => {
+        signal?.throwIfAborted();
+        check(authorize(catalog), entry, 'read');
+      });
+    }
+    return { exists: true, revision: value.revision, value: { file: value.value.file, base64 } };
   }
 }
 

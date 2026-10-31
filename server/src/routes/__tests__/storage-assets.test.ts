@@ -89,6 +89,7 @@ test("storage asset route cannot serve private objects", async () => {
     const privatePaths = [
       path.join(root, "storage", "projects", "demo", "1.0.0", "hash", "source.tar.gz"),
       path.join(root, "storage", "runner-artifacts", "sha256", "c".repeat(64)),
+      path.join(root, "storage", "database-spaces", USER_ID, "attachments", USER_ID, AVATAR_HASH),
     ];
     for (const privatePath of privatePaths) {
       await mkdir(path.dirname(privatePath), { recursive: true });
@@ -98,6 +99,7 @@ test("storage asset route cannot serve private objects", async () => {
     for (const pathname of [
       `/storage/projects/demo/1.0.0/hash/source.tar.gz`,
       `/storage/runner-artifacts/sha256/${"c".repeat(64)}`,
+      `/storage/database-spaces/${USER_ID}/attachments/${USER_ID}/${AVATAR_HASH}`,
       `/storage/avatars/workflows/1.0.0/source.tar.gz`,
     ]) {
       const response = await request(pathname);

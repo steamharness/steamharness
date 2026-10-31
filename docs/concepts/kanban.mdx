@@ -34,6 +34,8 @@ const unsubscribe = database.subscribe(({ revision }) => refreshMap(revision));
 
 必须在该入口的 `databases` 中声明 alias，获批后才能访问。数据 Bridge 在宿主端校验入口、用户及空间授权；页面不能选择任意项目或数据库。知识库通过 `database.knowledge` 访问，附件通过 `database.files.createFile/readFile/deleteFile` 访问。
 
+Server 将附件内容保存到私有文件存储，数据库只保存元数据和摘要。普通 KV、版本和列表读取不会等待附件传输结束；写入、CAS 和多键事务仍保留并发校验。旧内联附件首次读取时兼容转存，现有文件引用无需修改。
+
 ## 页面方法
 
 ```js
