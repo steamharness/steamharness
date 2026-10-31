@@ -5,7 +5,7 @@ import { DatabaseSync } from 'node:sqlite';
 import { t } from './localization';
 
 export interface ConversationAccess { readOnly: boolean; reason?: 'opened' | 'running' }
-interface Owner { database: DatabaseSync; clients: Map<string, string>; executing: boolean; running: boolean }
+interface Owner { database: DatabaseSync; clients: Map<string, string>; executing: boolean; running: boolean; retained: number }
 
 /** OS-released locks: a crashed window cannot leave a lease that blocks recovery. */
 export class ConversationOwnership {
@@ -43,7 +43,7 @@ export class ConversationOwnership {
       if ((error as { errcode?: number }).errcode === 5) return;
       throw error;
     }
-    const owner = { database, clients: new Map<string, string>(), executing: false, running: false };
+    const owner = { database, clients: new Map<string, string>(), executing: false, running: false, retained: 0 };
     this.owners.set(id, owner);
     this.acquired.add(id);
     return owner;
@@ -78,10 +78,27 @@ export class ConversationOwnership {
     return true;
   }
 
+  /** Hold the new scope through its migration save, including unopened forks. */
+  independent(id: string): () => void {
+    const previous = this.scopes.get(id) ?? id;
+    this.scopes.set(id, id);
+    const owner = this.acquire(id);
+    if (!owner) { this.scopes.set(id, previous); throw new Error(t('This conversation is open or running in another window. You can read it here or start a new conversation.')); }
+    owner.retained++;
+    if (previous !== id) {
+      const parent = this.owners.get(previous), client = parent?.clients.get(id);
+      if (client) { parent!.clients.delete(id); owner.clients.set(id, client); }
+    }
+    return () => {
+      owner.retained--;
+      if (!owner.retained && !owner.executing && !owner.clients.size) this.release(id);
+    };
+  }
+
   update(executing: Set<string>, running: Set<string>): void {
     for (const [id, owner] of this.owners) {
       owner.executing = executing.has(id); owner.running = running.has(id);
-      if (!owner.executing && !owner.clients.size) this.release(id);
+      if (!owner.retained && !owner.executing && !owner.clients.size) this.release(id);
     }
   }
 
@@ -100,7 +117,7 @@ export class ConversationOwnership {
     for (const [scope, owner] of this.owners) {
       if (owner.clients.get(id) !== clientId) continue;
       owner.clients.delete(id);
-      if (!owner.executing && !owner.clients.size) this.release(scope);
+      if (!owner.retained && !owner.executing && !owner.clients.size) this.release(scope);
     }
   }
 

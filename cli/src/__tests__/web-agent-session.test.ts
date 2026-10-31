@@ -400,6 +400,138 @@ it('rebuilds idle workflow settings and refuses to change them while tasks run',
   await f.finish();
 });
 
+it('opens an independent fork with its own configuration and execution while its source is busy', async () => {
+  const f = fixture(); await f.start();
+  f.runtime.isolateAgentConversation = vi.fn(async () => ({ replacements: [], files: [] }));
+  vi.mocked(f.runtime.agentControl!).mockImplementation(async (_run, command) => ({ requestId: command.requestId, conversationId: command.targetId!, status: 'accepted' }));
+  const owner = f.controller.current, initial = f.snapshot();
+  const sourceParameters = structuredClone(owner.agentParameters);
+  f.emit({ ...initial, revision: 2, foreground: true, conversations: [...initial.conversations,
+    { id: 2, parentId: 1, forkEntryId: 2, title: 'Fork', background: false }] });
+  const forkId = await f.controller.openAgentConversation(owner.id, 2);
+  const fork = f.controller.sessions.find(session => session.id === forkId)!;
+  expect(fork.agentOwnerId).toBeUndefined(); expect(fork.agent).toBeUndefined(); expect(sessionRunning(fork)).toBe(false);
+  expect(fork.messages.map(message => message.content)).toEqual(['First', 'First answer']);
+  expect(fork.messages.every(message => !message.runId && !message.input && !message.pendingInput)).toBe(true);
+  expect(await f.controller.openAgentConversation(owner.id, 2)).toBe(forkId);
+  await f.controller.send({ text: 'New model here', params: { model: 'two' }, attachments: [] }, fork);
+  await vi.waitFor(() => expect(f.runs).toHaveLength(2));
+  expect(vi.mocked(f.runtime.run).mock.calls[1][0]).toMatchObject({ conversationId: forkId, resumeAgent: false, args: ['--model', 'two', '--message', 'New model here'] });
+  f.emit({ ...initial, ownerId: 'fork-owner', revision: 1, turns: [] });
+  f.runs[0].emit({ type: 'node_chunk', chunk: { type: 'output_item_start', item: { id: 'agent-session', metadata: { kind: 'agent-session' }, content: { ...initial, revision: 100 } } } });
+  expect(fork.agent?.ownerId).toBe('fork-owner'); expect(owner.agentParameters).toEqual(sourceParameters);
+  expect(f.runtime.cancel).not.toHaveBeenCalled();
+  for (const run of f.runs) run.finish({ status: 'success' }); await f.controller.idle();
+});
+
+it('upgrades a legacy fork before sending and keeps its pending user queue paused', async () => {
+  const f = fixture(); await f.start(); const owner = f.controller.current;
+  const original = { id: `wf_${'a'.repeat(32)}`, name: 'image.png', mimeType: 'image/png', size: 1, kind: 'image' as const,
+    storage: 'local' as const, createdAt: '2026-01-01T00:00:00Z', conversationId: owner.id, path: '/source/image.png' };
+  owner.messages[0].attachments = [original];
+  owner.agent!.conversations.push({ id: 2, parentId: 1, forkEntryId: 2, title: 'Legacy fork', background: false });
+  const id = await f.controller.openAgentConversation(owner.id, 2);
+  const fork = f.controller.sessions.find(session => session.id === id)!;
+  const copied = { ...original, id: `wf_${'b'.repeat(32)}`, conversationId: id, path: '/branch/image.png' };
+  fork.queuedInputs = [{ id: 'old-input', text: 'Do not auto send', params: {}, attachments: [original], createdAt: 1 }];
+  fork.draft = { text: original.path, attachments: [original] };
+  f.runtime.isolateAgentConversation = vi.fn(async () => ({ replacements: [{ from: original.id, to: copied.id }, { from: original.path, to: copied.path }], files: [copied] }));
+  vi.mocked(f.runtime.agentControl!).mockImplementation(async (_run, command) => ({ requestId: command.requestId, conversationId: command.targetId!, status: 'accepted' }));
+  await f.controller.send({ text: 'Explicit new input', params: { model: 'two' }, attachments: [original] }, fork, true);
+  expect(fork.agentOwnerId).toBeUndefined(); expect(fork.queuePaused).toBe(true);
+  expect(fork.queuedInputs?.map(input => input.text)).toEqual(['Do not auto send']);
+  expect(fork.queuedInputs![0].attachments).toEqual([copied]);
+  expect(fork.draft).toEqual({ text: copied.path, attachments: [copied] });
+  expect(fork.messages[0].attachments).toEqual([copied]);
+  expect(owner.messages[0].attachments).toEqual([original]);
+  expect(f.runtime.isolateAgentConversation).toHaveBeenCalledOnce();
+  const request = vi.mocked(f.runtime.run).mock.calls[1][0];
+  expect(request.conversationId).toBe(id); expect(JSON.stringify(request.args)).toContain(copied.id);
+  expect(JSON.stringify(request.args)).not.toContain(original.id);
+  for (const run of f.runs) run.finish({ status: 'failed' }); await f.controller.idle();
+});
+
+it.each(['retry', 'promote', 'withdraw'] as const)('isolates a legacy fork before its %s action resolves historical controls', async action => {
+  const f = fixture(); await f.start(); const owner = f.controller.current;
+  owner.parameterValues = { '': { model: 'two' } };
+  owner.agent!.conversations.push({ id: 2, parentId: 1, forkEntryId: 2, title: 'Legacy fork', background: false });
+  const id = await f.controller.openAgentConversation(owner.id, 2);
+  const fork = f.controller.sessions.find(session => session.id === id)!;
+  fork.queuedInputs = [{ id: 'queued', text: 'Queued follow-up', params: { model: 'two' }, attachments: [], createdAt: 1 }];
+  owner.agent!.turns.push({ ...f.snapshot().turns[0], conversationId: 2, requestId: 'queued', prompt: 'Queued follow-up', status: 'queued' });
+  f.runtime.isolateAgentConversation = vi.fn(async () => ({ replacements: [], files: [] }));
+  vi.mocked(f.runtime.agentControl!).mockImplementation(async (_run, command) => ({ requestId: command.requestId, conversationId: command.targetId!, status: 'accepted' }));
+  try {
+    if (action === 'retry') {
+      await f.controller.retry('missing-answer', fork); expect(f.runtime.isolateAgentConversation).not.toHaveBeenCalled();
+      await f.controller.retry(fork.messages.at(-1)!.id!, fork);
+    } else if (action === 'promote') await f.controller.promoteQueued('queued', fork);
+    else await f.controller.removeQueued('queued', fork);
+    expect(fork.agentOwnerId).toBeUndefined(); expect(fork.queuePaused).toBe(true);
+    expect(vi.mocked(f.runtime.agentControl!).mock.calls.every(([, command]) => command.type === 'delete' || command.type === 'cancel')).toBe(true);
+    if (action === 'withdraw') {
+      expect(fork.queuedInputs).toEqual([]); expect(f.runs).toHaveLength(1);
+    } else {
+      await vi.waitFor(() => expect(f.runs).toHaveLength(2));
+      expect(vi.mocked(f.runtime.run).mock.calls[1][0]).toMatchObject({ conversationId: id, resumeAgent: false,
+        args: ['--model', 'two', '--message', action === 'retry' ? 'First' : 'Queued follow-up'] });
+    }
+  } finally {
+    for (const run of f.runs) run.finish({ status: 'failed' }); await f.controller.idle();
+  }
+});
+
+it('preserves legacy forks when deleting their original execution host', async () => {
+  const f = fixture(); await f.start(); const owner = f.controller.current;
+  owner.agent!.conversations.push({ id: 2, parentId: 1, forkEntryId: 2, title: 'Legacy fork', background: false });
+  const forkId = await f.controller.openAgentConversation(owner.id, 2);
+  f.runtime.isolateAgentConversation = vi.fn(async () => ({ replacements: [], files: [] }));
+  vi.mocked(f.runtime.agentControl!).mockImplementation(async (_run, command) => ({ requestId: command.requestId, conversationId: command.targetId ?? 1, status: 'accepted' }));
+  await f.controller.remove(owner.id);
+  expect(f.controller.sessions.map(session => session.id)).toEqual([forkId]);
+  expect(f.controller.current.agentOwnerId).toBeUndefined();
+  expect(f.runtime.deleteConversation).not.toHaveBeenCalledWith(f.controller.project, forkId);
+});
+
+it('keeps a legacy fork retryable when retiring its old execution view fails', async () => {
+  const f = fixture(); await f.start(); const owner = f.controller.current;
+  owner.agent!.conversations.push({ id: 2, parentId: 1, forkEntryId: 2, title: 'Legacy fork', background: false });
+  const id = await f.controller.openAgentConversation(owner.id, 2), fork = f.controller.sessions.find(session => session.id === id)!;
+  const messages = structuredClone(fork.messages);
+  f.runtime.isolateAgentConversation = vi.fn(async () => ({ replacements: [], files: [] }));
+  vi.mocked(f.runtime.agentControl!).mockRejectedValueOnce(new Error('Retirement transport failed'));
+  const input = { text: 'New branch input', params: { model: 'two' }, attachments: [] };
+  await expect(f.controller.send(input, fork)).rejects.toThrow('Retirement transport failed');
+  expect(fork.agentOwnerId).toBe(owner.id); expect(fork.messages).toEqual(messages); expect(f.runs).toHaveLength(1);
+  vi.mocked(f.runtime.agentControl!).mockImplementation(async (_run, command) => ({ requestId: command.requestId, conversationId: command.targetId!, status: 'accepted' }));
+  await f.controller.send(input, fork); expect(fork.agentOwnerId).toBeUndefined();
+  for (const run of f.runs) run.finish({ status: 'failed' }); await f.controller.idle();
+});
+
+it('waits for an in-progress fork migration save before admitting concurrent input', async () => {
+  const f = fixture(); await f.start(); const owner = f.controller.current;
+  owner.agent!.conversations.push({ id: 2, parentId: 1, forkEntryId: 2, title: 'Legacy fork', background: false });
+  const id = await f.controller.openAgentConversation(owner.id, 2), fork = f.controller.sessions.find(session => session.id === id)!;
+  f.runtime.isolateAgentConversation = vi.fn(async () => ({ replacements: [], files: [] }));
+  vi.mocked(f.runtime.agentControl!).mockImplementation(async (_run, command) => ({ requestId: command.requestId, conversationId: command.targetId!, status: 'accepted' }));
+  let release!: () => void;
+  const saving = new Promise<void>(resolve => { release = resolve; });
+  f.save.mockImplementation(async () => { if (!fork.agentOwnerId && !fork.activeRunId) await saving; });
+  const first = f.controller.send({ text: 'First new input', params: {}, attachments: [] }, fork);
+  let second: Promise<void> | undefined;
+  try {
+    await vi.waitFor(() => expect(fork.agentOwnerId).toBeUndefined());
+    second = f.controller.send({ text: 'Second new input', params: {}, attachments: [] }, fork);
+    await Promise.resolve(); expect(f.runs).toHaveLength(1);
+    release(); await Promise.all([first, second]);
+    expect(f.runtime.isolateAgentConversation).toHaveBeenCalledOnce();
+    expect(f.runs).toHaveLength(2); expect(fork.queuedInputs).toMatchObject([{ text: 'Second new input' }]);
+  } finally {
+    release(); await Promise.allSettled([first, second]);
+    for (const run of f.runs) run.finish({ status: 'failed' }); await f.controller.idle();
+  }
+});
+
 it('deletes a root together with its dependent views after joining the worker', async () => {
   const f = fixture(); await f.start();
   const owner = f.controller!.current;

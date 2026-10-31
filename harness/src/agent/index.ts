@@ -13,6 +13,7 @@ export {
 
 export { createAgentNode, createNodeAgentHost } from "./node";
 export { cancelAgentConversation, forkAgentConversation, exportAgentDatabase, importAgentDatabase, type AgentStorageFactory } from "./storage";
+export { isolateAgentConversation } from "./isolate";
 export type { AgentExecutionEnvironment, AgentToolCatalog } from "./extensions";
 export { createRegistry as createAgentRegistry, defineTask as defineAgentTask, defineDoc as defineAgentDoc,
   defineExtension as defineAgentExtension, hook as agentHook, ToolTask as AgentToolTask, GenerationTask as AgentGenerationTask } from "@earendil-works/pi-durable";

@@ -92,7 +92,7 @@ it('renders static parameters without a worker or loading state while typing and
   expect(f.input.value).toBe('next turn');
 });
 
-it('opens a fork only for the current view request and exposes its source conversation', async () => {
+it.each(['legacy', 'independent'])('opens a %s fork only for the current view request and exposes its source conversation', async kind => {
   const f = await fixture({ dynamic: false });
   f.project.conversation!.durable = { enabled: true };
   f.sessions[0].messages = [{ id: 'answer', role: 'assistant', content: 'Finished', status: 'success', entryId: 459 }];
@@ -108,8 +108,8 @@ it('opens a fork only for the current view request and exposes its source conver
   const request = host.postMessage.mock.calls.map(([message]) => message).find(message => message.command?.type === 'fork')!;
   expect(request).toMatchObject({ sessionId: 'first', command: { entryId: 459 } });
   f.emit({ ...reply, requestId: 'unrelated' }); expect(navigations()).toEqual([]);
-  f.sessions.push({ id: 'fork', title: 'Fork of first', messages: [], agentOwnerId: 'first', agentConversationId: 679,
-    forkSource: { sessionId: 'first', entryId: 459 } });
+  f.sessions.push({ id: 'fork', title: 'Fork of first', messages: [], ...(kind === 'legacy' ? { agentOwnerId: 'first', agentConversationId: 679 } : {}),
+    forkSource: { sessionId: 'first', entryId: 459, ...(kind === 'independent' ? { agentOwnerId: 'first', agentConversationId: 679 } : {}) } });
   // The transport delivers state before the receipt, while rendering is deferred.
   f.receive({}, false);
   f.emit({ ...reply, requestId: request.command.requestId });

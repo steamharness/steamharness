@@ -1,5 +1,5 @@
 import { readFileSync } from 'node:fs';
-import { readFile, writeFile, readdir, rm, stat, mkdir, link, mkdtemp } from 'node:fs/promises';
+import { readFile, writeFile, readdir, rm, stat, mkdir, link, mkdtemp, copyFile, rename } from 'node:fs/promises';
 import path from 'node:path';
 import { createHash } from 'node:crypto';
 import { register } from 'tsx/esm/api';
@@ -10,6 +10,18 @@ let assistantScopeDirectory;
 let agentHost;
 let ownerDisconnected = false;
 let shutdownTimer;
+let handleAgentControl;
+const pendingAgentControls = [];
+const activeAgentControls = new Set();
+const dispatchAgentControl = message => {
+  const pending = handleAgentControl(message);
+  activeAgentControls.add(pending);
+  void pending.finally(() => activeAgentControls.delete(pending));
+};
+const sendAgentReceipt = message => new Promise(resolve => {
+  if (!process.connected) { resolve(); return; }
+  process.send(message, () => resolve());
+});
 
 
 const write = process.stdout.write.bind(process.stdout);
@@ -30,7 +42,15 @@ const disconnectOwner = () => {
   shutdown(true);
 };
 process.on('disconnect', disconnectOwner);
-process.on('message', message => { if (message?.type === 'shutdown') disconnectOwner(); });
+// Controls can arrive while stdin, Core or configuration is still loading.
+// Keep them from the first IPC listener until the session handler is installed.
+process.on('message', message => {
+  if (message?.type === 'shutdown') disconnectOwner();
+  else if (message?.type === 'agent-control') {
+    if (handleAgentControl) dispatchAgentControl(message);
+    else pendingAgentControls.push(message);
+  }
+});
 
 
 async function requiresSystemAi(directory) {
@@ -246,13 +266,13 @@ try {
             }
           }
         },projectDir,request.project.entryId);
-        process.on('message', async message => {
-          if (message?.type !== 'agent-control') return;
+        handleAgentControl = async message => {
           try {
             const receipt = await withSettings(() => agentControl(message));
-            process.send?.({ type: 'agent-receipt', id: message.id, receipt });
-          } catch (error) { process.send?.({ type: 'agent-receipt', id: message.id, error: error.message, code: error.code }); }
-        });
+            await sendAgentReceipt({ type: 'agent-receipt', id: message.id, receipt });
+          } catch (error) { await sendAgentReceipt({ type: 'agent-receipt', id: message.id, error: error.message, code: error.code }); }
+        };
+        for (const message of pendingAgentControls.splice(0)) dispatchAgentControl(message);
       }
       const running = runLocalProjectWithReport({
         configuration,
@@ -332,6 +352,33 @@ try {
       const { forkAgentConversation } = await import(resolve('steamharness/agent', coreUrl));
       if (typeof forkAgentConversation !== 'function') throw new Error('Update this project\'s SteamHarness runtime to fork stored conversations.');
       send('result', await forkAgentConversation({ agentStoreDir: path.join(dataDir, 'agents'), conversationId: request.conversationId, command: request.command }));
+    } else if (request.method === 'isolate-conversation') {
+      const { isolateAgentConversation } = await import(resolve('steamharness/agent', coreUrl));
+      if (typeof isolateAgentConversation !== 'function') throw new Error('Update this project\'s SteamHarness runtime to create independent conversations.');
+      const replacements = [], files = [];
+      const includedFiles = new Set(request.fileIds ?? []);
+      // Copies have deterministic identities so a lost receipt can be retried.
+      // Historical paths keep working after either conversation is deleted.
+      for (const id of await readdir(filesDir).catch(() => [])) {
+        if (!/^wf_[a-f0-9]{32}$/.test(id) || !includedFiles.has(id)) continue;
+        const source = await readManagedFile(id);
+        if (source.reference.conversationId !== request.sourceConversationId) continue;
+        const newId = `wf_${createHash('sha256').update(JSON.stringify([request.conversationId, id])).digest('hex').slice(0, 32)}`;
+        const directory = path.join(filesDir, newId), preview = path.join(directory, 'preview');
+        await mkdir(preview, { recursive: true });
+        const content = path.join(directory, 'content'), previewPath = path.join(preview, path.basename(source.reference.name));
+        await copyFile(path.join(filesDir, id, 'content'), content);
+        await link(content, previewPath).catch(error => { if (error.code !== 'EEXIST') throw error; });
+        const reference = { ...source.reference, id: newId, conversationId: request.conversationId, path: previewPath, previewUrl: undefined, url: undefined };
+        const metadata = path.join(directory, `${crypto.randomUUID()}.tmp`);
+        await writeFile(metadata, JSON.stringify(reference)); await rename(metadata, path.join(directory, 'metadata.json'));
+        files.push(reference);
+        if (source.reference.path) replacements.push({ from: source.reference.path, to: previewPath });
+        replacements.push({ from: id, to: newId });
+      }
+      await isolateAgentConversation({ agentStoreDir: path.join(dataDir, 'agents'), sourceConversationId: request.sourceConversationId,
+        conversationId: request.conversationId, targetId: request.targetId, replacements, retireSource: request.retireSource === true });
+      send('result', { replacements, files });
     } else if (request.method === 'cancel-conversation' || request.method === 'delete-conversation') {
       const { cancelAgentConversation } = await import(resolve('steamharness/agent', coreUrl));
       await cancelAgentConversation({ agentStoreDir: path.join(dataDir, 'agents'), conversationId: request.conversationId });
@@ -375,6 +422,9 @@ try {
   write(`__STEAMHARNESS_WEB__${JSON.stringify({ kind: 'error', error: error.message, code: error.code, metadata: error.metadata, status: error.metadata?.status })}\n`);
   process.exitCode = 1;
 } finally {
+  // Startup failures still owe receipts to controls admitted during loading.
+  // Flush those replies before closing IPC, so callers get the real failure.
+  while (activeAgentControls.size) await Promise.all([...activeAgentControls]);
   agentHost?.close();
   if (assistantScopeDirectory) { await rm(assistantScopeDirectory, { recursive: true, force: true }); }
   // Cleanup has joined the durable scheduler and released its storage owner.

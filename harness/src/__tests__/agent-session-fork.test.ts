@@ -8,6 +8,8 @@ import { Harness, ProviderDoc, createRegistry, defineDoc, type ConversationId } 
 import { createModels, fauxAssistantMessage } from "@earendil-works/pi-ai";
 import { agentConversationDirectory, forkAgentConversation, openAgentStorage } from "../agent/storage";
 import { SessionDoc } from "../agent/session-state";
+import { forkSessionConversation } from "../agent/session-state";
+import { isolateAgentConversation } from "../agent/isolate";
 
 test("offline forks preserve the selected history and document policies with durable command receipts", async t => {
   const directory = await mkdtemp(path.join(tmpdir(), "agent-offline-fork-"));
@@ -63,4 +65,59 @@ test("offline forks preserve the selected history and document policies with dur
     await last.harness.commit(async tx => { (await tx.doc(SessionDoc, receipt.forkId as ConversationId)).deleted = true; }, context);
   } finally { await last.close(); }
   await assert.rejects(forkAgentConversation({ ...options, command: { ...options.command, requestId: "deleted", targetId: receipt.forkId } }), /deleted/);
+});
+
+test("isolated forks have their own root, lock, provider and document history while the source stays live", async t => {
+  const directory = await mkdtemp(path.join(tmpdir(), "agent-independent-fork-"));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  const AsOf = defineDoc({ kind: "fixture.plan", version: 1, scope: "conversation", history: "rewindable", fork: "asOf", initial: () => ({ value: "initial" }) });
+  const Runtime = defineDoc({ kind: "fixture.runtime", version: 1, scope: "conversation", history: "latest", fork: "initial", initial: () => ({ pending: false as boolean }) });
+  const open = async (id: string) => {
+    const store = await openAgentStorage(path.join(agentConversationDirectory(directory, id), "session.sqlite"));
+    const harness = await Harness.open(store.storage, { models: createModels(), registry: createRegistry() }, context);
+    return { harness, root: await harness.root(context), close: async () => { try { await harness.close(context); } finally { store.release(); } } };
+  };
+  const source = await open("source");
+  t.after(source.close);
+  const first = await source.root.commit(async tx => {
+    (await tx.doc(AsOf, source.root.id)).value = "first";
+    return (await tx.appendEntry(source.root.id, { kind: "pi.user", model: [{ role: "user", content: "First /files/old.png", timestamp: 1 }] })).id;
+  }, context);
+  const second = await source.root.commit(async tx => {
+    (await tx.doc(AsOf, source.root.id)).value = "second";
+    (await tx.doc(Runtime, source.root.id)).pending = true;
+    return (await tx.appendEntry(source.root.id, { kind: "pi.user", model: [{ role: "user", content: "Second", timestamp: 2 }] })).id;
+  }, context);
+  const receipt = await forkSessionConversation(source.harness, source.root, { type: "fork", requestId: "live-independent", entryId: second });
+  const options = { agentStoreDir: directory, sourceConversationId: "source", conversationId: "branch", targetId: receipt.forkId!,
+    replacements: [{ from: "/files/old.png", to: "/branch/new.png" }] };
+  await isolateAgentConversation(options);
+  const branch = await open("branch");
+  try {
+    assert.deepEqual(await branch.harness.commit(tx => tx.scanConversations({}, 100), context).then(page => page.items), [{ id: branch.root.id }]);
+    assert.equal(branch.root.id, 1);
+    assert.equal((await branch.harness.snapshot(Runtime, branch.root.id, context))?.pending ?? false, false);
+    assert.equal((await branch.harness.snapshot(AsOf, branch.root.id, context))?.value, "second");
+    assert.equal((await branch.harness.snapshotAsOf(AsOf, branch.root.id, first, context))?.value, "first");
+    assert.deepEqual((await branch.harness.inspect(context)).tasks, []);
+    assert.notEqual((await source.harness.snapshot(ProviderDoc, source.root.id, context))?.sessionId,
+      (await branch.harness.snapshot(ProviderDoc, branch.root.id, context))?.sessionId);
+    assert.match(JSON.stringify((await branch.root.context(context)).messages), /\/branch\/new.png/);
+    await branch.root.commit(tx => tx.appendEntry(branch.root.id, { kind: "pi.user", model: [{ role: "user", content: "Branch only", timestamp: 3 }] }), context);
+    assert.doesNotMatch(JSON.stringify((await source.root.context(context)).messages), /Branch only/);
+    await source.root.abort(context, { background: true });
+    assert.match(JSON.stringify((await branch.root.context(context)).messages), /Branch only/);
+  } finally { await branch.close(); }
+  await isolateAgentConversation(options);
+  const again = await open("branch");
+  try { assert.match(JSON.stringify((await again.root.context(context)).messages), /Branch only/); }
+  finally { await again.close(); }
+  const nested = await forkAgentConversation({ agentStoreDir: directory, conversationId: "branch", command: { type: "fork", requestId: "nested", entryId: first } });
+  await isolateAgentConversation({ agentStoreDir: directory, sourceConversationId: "branch", conversationId: "nested", targetId: nested.forkId!, retireSource: true });
+  const child = await open("nested");
+  try {
+    assert.equal((await child.harness.snapshot(AsOf, child.root.id, context))?.value, "first");
+    assert.doesNotMatch(JSON.stringify((await child.root.context(context)).messages), /Second|Branch only/);
+  } finally { await child.close(); }
+  await assert.rejects(isolateAgentConversation({ ...options, targetId: source.root.id }), /already exists/);
 });

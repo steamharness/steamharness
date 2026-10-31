@@ -2,7 +2,7 @@ import { writeProjectFixture } from '../../scripts/test-project-fixture.mjs';
 import { expect, it } from 'vitest';
 import { once } from 'node:events';
 import { createHash } from 'node:crypto';
-import { mkdtemp, mkdir, rm, symlink, writeFile } from 'node:fs/promises';
+import { mkdtemp, mkdir, rm, symlink, writeFile, readFile } from 'node:fs/promises';
 import { createServer } from 'node:http';
 import os from 'node:os';
 import path from 'node:path';
@@ -11,7 +11,7 @@ import { resolveHarnessRoot, resolveHarnessVersion } from './harness-source';
 
 it('forks through the page protocol without system AI and resumes only when the user sends in the branch', async () => {
   const directory = await mkdtemp(path.join(os.tmpdir(), 'web-offline-fork-'));
-  const projectId = crypto.randomUUID(), calls: Record<string, any>[] = [];
+  const projectId = crypto.randomUUID(), clientId = crypto.randomUUID(), calls: Record<string, any>[] = [];
   let catalogCalls = 0;
   let aiAvailable = true;
   let phase = 'initial conversation';
@@ -61,10 +61,12 @@ it('forks through the page protocol without system AI and resumes only when the 
     app = await open(true);
     const post = async (message: object) => {
       const token = new URL(app!.url).hash.slice('#session='.length);
-      const response = await fetch(`${app!.origin}/api/message`, { method: 'POST', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }, body: JSON.stringify(message) });
+      const response = await fetch(`${app!.origin}/api/message`, { method: 'POST', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ clientId, ...message }) });
       const result = await response.json(); expect(response.status, JSON.stringify(result)).toBe(200); return result.messages;
     };
-    await post({ type: 'send', text: 'First input', params: {}, attachments: [] });
+    const upload = await post({ type: 'upload', files: [{ name: 'diagram.png', mimeType: 'image/png', data: Buffer.from('fixture-image').toString('base64') }] });
+    const attachment = upload.find((reply: any) => reply.type === 'attachments').files[0];
+    await post({ type: 'send', text: 'First input', params: {}, attachments: [attachment] });
     await expect.poll(() => app!.controller.current.messages.at(-1)?.status, { timeout: 15000 }).not.toBe('running');
     expect(app.controller.current.messages.at(-1)?.error).toBeUndefined();
     expect(app.controller.current.messages.at(-1)?.status).toBe('success');
@@ -94,6 +96,11 @@ it('forks through the page protocol without system AI and resumes only when the 
     expect(receipt?.forkSessionId).toBeTruthy();
     let fork = app.controller.sessions.find(session => session.id === receipt.forkSessionId)!;
     expect(fork.messages.map(message => message.content)).toEqual(['First input', 'Answer 1']);
+    expect(fork.agentOwnerId).toBeUndefined(); expect(fork.agent).toBeUndefined();
+    expect(fork.messages.every(message => !message.runId && !message.sessionRequestId && !message.pendingInput && !message.report)).toBe(true);
+    const copied = fork.messages[0].attachments![0];
+    expect(copied.id).not.toBe(attachment.id); expect(copied.conversationId).toBe(fork.id);
+    expect(await readFile(copied.path!, 'utf8')).toBe('fixture-image');
     expect(owner.messages).toEqual(originalMessages);
     expect(owner.activeRunId).toBeUndefined();
     expect({ calls: calls.length, catalogCalls }).toEqual(beforeFork);
@@ -101,6 +108,12 @@ it('forks through the page protocol without system AI and resumes only when the 
     const replay = await post({ type: 'agent-command', command });
     expect(replay.find((reply: any) => reply.type === 'agent-receipt').forkSessionId).toBe(fork.id);
     expect(app.controller.sessions).toHaveLength(3);
+    phase = 'fork an independent branch before its first input';
+    const nestedReply = await post({ type: 'agent-command', sessionId: fork.id, command: { ...command, requestId: 'nested-offline' } });
+    const nestedId = nestedReply.find((reply: any) => reply.type === 'agent-receipt').forkSessionId;
+    const nested = app.controller.sessions.find(session => session.id === nestedId)!;
+    expect(nested.agentOwnerId).toBeUndefined(); expect(nested.forkSource?.sessionId).toBe(fork.id);
+    expect({ calls: calls.length, catalogCalls }).toEqual(beforeFork);
     await app.controller.persist();
     await writeFile(path.join(directory, 'index.ts'), source);
     phase = 'restore AI connection';
@@ -109,14 +122,26 @@ it('forks through the page protocol without system AI and resumes only when the 
     await app.close(); app = await open(true);
     owner = app.controller.sessions.find(session => session.id === ownerId)!;
     fork = app.controller.sessions.find(session => session.id === forkId)!;
-    await app.controller.select(fork.id);
+    await post({ type: 'navigate', id: fork.id, updates: [], requestId: 1 });
     phase = 'send branch input';
-    await post({ type: 'send', text: 'Branch input', params: {}, attachments: [] });
-    await expect.poll(() => fork.messages.at(-1)?.content, { timeout: 15000 }).toBe('Answer 3');
+    await post({ type: 'send', sessionId: forkId, text: 'Branch input', params: {}, attachments: [] });
+    await expect.poll(() => app!.controller.sessions.find(session => session.id === forkId)?.messages.at(-1)?.content, { timeout: 15000 }).toBe('Answer 3');
+    fork = app.controller.sessions.find(session => session.id === forkId)!;
     const branchRequest = JSON.stringify(calls[2]);
     expect(branchRequest).toContain('First input'); expect(branchRequest).toContain('Answer 1'); expect(branchRequest).toContain('Branch input');
     expect(branchRequest).not.toContain('Later input'); expect(branchRequest).not.toContain('Answer 2');
     expect(owner.messages).toEqual(originalMessages);
+    phase = 'delete the original conversation';
+    await post({ type: 'session-action', action: 'delete', id: owner.id });
+    expect(app.controller.sessions.some(session => session.id === forkId)).toBe(true);
+    expect(await readFile(fork.messages[0].attachments![0].path!, 'utf8')).toBe('fixture-image');
+    await post({ type: 'send', sessionId: forkId, text: 'Still independent', params: {}, attachments: [] });
+    await expect.poll(() => app!.controller.sessions.find(session => session.id === forkId)?.messages.at(-1)?.content, { timeout: 15000 }).toBe('Answer 4');
+    phase = 'reopen after deleting the source';
+    await app.close(); app = await open(true);
+    await post({ type: 'navigate', id: forkId, updates: [], requestId: 1 });
+    await post({ type: 'send', sessionId: forkId, text: 'After reopening', params: {}, attachments: [] });
+    await expect.poll(() => app!.controller.current.messages.at(-1)?.content, { timeout: 15000 }).toBe('Answer 5');
   } catch (error) {
     throw new Error(`Conversation fork regression failed during ${phase}: ${String(error)}`, { cause: error });
   } finally {

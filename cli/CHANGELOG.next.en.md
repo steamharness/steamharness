@@ -1,5 +1,6 @@
 # Unreleased
 
+- Fixed forks to run as independent new conversations with isolated models, modes, permissions, execution locks and recovery. Source deletion preserves branches, historical attachments are copied, old execution controls are removed, and legacy shared-host forks migrate safely. Worker startup now retains early control commands, preventing follow-up confirmation timeouts after reopening.
 - Fixed duplicate refresh icons in conversation Kanban preview headers during loading and repeated refreshes.
 
 - Fixed conversation forks to copy history through the selected response without rerunning the project or checking System AI. A progress dialog opens after confirmation, opens the branch on success and displays failure reasons. Branch creation works when AI is unavailable; model validation happens when sending new input.

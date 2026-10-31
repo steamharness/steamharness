@@ -215,6 +215,7 @@ export interface Runtime {
   readSkill?(project: Project, skillId: string, entrypointId?: string): Promise<import('steamharness').AgentSkillPreview>;
   agentControl?(runId: string, command: AgentSessionCommand, scopeId: string, attachments?: Attachment[]): Promise<AgentSessionReceipt>;
   forkAgentConversation?(project: Project, conversationId: string, command: Extract<AgentSessionCommand, { type: 'fork' }>): Promise<AgentSessionReceipt>;
+  isolateAgentConversation?(project: Project, sourceConversationId: string, conversationId: string, targetId: number, retireSource: boolean, fileIds: string[]): Promise<{ replacements: { from: string; to: string }[]; files: Attachment[] }>;
   available: boolean;
   kanbanBridge?(project: Project, call: KanbanBridgeCall): Promise<unknown>;
   inspect(paths: string[], entryId?: string): Promise<{ projects: Omit<Project, 'uri'>[]; errors: string[] }>;
@@ -273,7 +274,7 @@ export interface ConversationSession {
   agent?: AgentSessionSnapshot;
   agentOwnerId?: string;
   agentConversationId?: number;
-  forkSource?: { sessionId: string; entryId: number };
+  forkSource?: { sessionId: string; entryId: number; agentOwnerId?: string; agentConversationId?: number };
   agentCommands?: { command: AgentSessionCommand; scopeId: string; attachments?: Attachment[] }[];
   /** Presentation metadata only; Harness owns input scheduling and consumption. */
   agentInputs?: Record<string, ConversationQueuedInput>;

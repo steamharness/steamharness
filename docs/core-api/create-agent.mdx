@@ -127,6 +127,8 @@ session 会向模型提供 `update_plan`，启用委派时再提供 `subagent({ 
 
 没有活动执行 owner 时，宿主可调用 `forkAgentConversation({ agentStoreDir, conversationId, command: { type: "fork", requestId, entryId, targetId? } })`。`conversationId` 是原 workflow 会话 ID，`targetId` 是可选的内部数字会话 ID。该 API 要求会话目录恰有一个 SQLite 数据库并取得独占锁，复用活动 `fork` 的文档策略和持久回执，只分叉已提交历史，不加载项目或校验 AI 凭据，不恢复待执行任务。有活动 owner 时仍通过其控制通道发送 `fork`，避免竞争存储所有权。
 
+宿主可通过 `isolateAgentConversation({ agentStoreDir, sourceConversationId, conversationId, targetId, replacements?, retireSource? })` 把内部 conversation 复制到另一个 workflow 会话的独立根 SQLite。先用 `fork` 选定截止位置，再传回执的 `forkId` 作为 `targetId`。该操作只读取源库的一致快照，即使源 owner 活动也不会执行源任务；目标仅包含可见历史和按 fork 策略保留的文档，保留历史 `asOf` 检查点，不导入任务、输入队列、审批、provider 身份或用量。重复目标与来源复用既有结果，不覆盖目标的新消息；不同来源及已有普通会话拒绝覆盖。宿主复制托管文件后可用 `replacements: [{ from, to }]` 更新历史中的文件 ID 和路径。无活动 owner 时可用 `retireSource: true` 停止并隐藏旧内部分支；有 owner 时通过原控制通道对该分支执行 `delete`。CLI Web 与 Studio 用此 API 将用户分支作为独立新对话管理。
+
 ## 扩展执行与恢复
 
 Core 从 `steamharness/agent` 导出 `createAgentRegistry`、`defineAgentTask`、`defineAgentExtension`、`defineAgentDoc`、`agentHook`、`AgentToolTask`、`AgentGenerationTask` 及对应类型；注入式项目也可通过 `workflow` 使用这些函数，无需安装 Pi。任务直接使用 Durable 的检查点、依赖等待和取消协议：

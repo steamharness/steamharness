@@ -18,6 +18,7 @@ interface ControllerOptions {
   canDrain?(): boolean;
   configurationRevision?(): number;
   userSettings?(): UserSettings;
+  independent?(session: ConversationSession): () => void;
   /** Capture mutable inputs synchronously, before returning the save promise. */
   save(sessions: ConversationSession[], activeId: string): Promise<void>;
   changed(): void;
@@ -25,6 +26,19 @@ interface ControllerOptions {
 }
 interface RunTask { sessionId: string; cancelled: boolean; finished: Promise<void> }
 interface PendingSave { promise: Promise<void>; resolve(): void; reject(error: unknown): void }
+type ForkIsolation = { replacements: { from: string; to: string }[]; files: Attachment[] };
+function forkReferences<T>(value: T, result: ForkIsolation): T {
+  const replacements = [...result.replacements].sort((a, b) => b.from.length - a.from.length);
+  const files = new Map(result.files.map(file => [file.id, file]));
+  const rewrite = (item: unknown): unknown => {
+    if (typeof item === 'string') return replacements.reduce((text, pair) => text.split(pair.from).join(pair.to), item);
+    if (Array.isArray(item)) return item.map(rewrite);
+    if (!item || typeof item !== 'object') return item;
+    const object = Object.fromEntries(Object.entries(item).map(([key, value]) => [key, rewrite(value)]));
+    return typeof object.id === 'string' && typeof object.mimeType === 'string' && files.has(object.id) ? files.get(object.id) : object;
+  };
+  return rewrite(value) as T;
+}
 
 export class ConversationController {
   readonly sessions: ConversationSession[];
@@ -34,6 +48,7 @@ export class ConversationController {
   private readonly reloading = new Map<string, Promise<void>>();
   private readonly removing = new Set<string>();
   private readonly draining = new Set<string>();
+  private readonly isolating = new Map<string, Promise<ForkIsolation | undefined>>();
   private readonly agentWaiters = new Map<string, { ownerId: string; targetId?: number; requestId: string; promise: Promise<AgentSessionReceipt>; resolve(receipt: AgentSessionReceipt): void; reject(error: Error): void }>();
   private agentSave?: ReturnType<typeof setTimeout>;
   private saving = false;
@@ -139,7 +154,7 @@ export class ConversationController {
     return !!owner.agentParameters && !isDeepStrictEqual(owner.agentParameters.userSettings, this.currentUserSettings());
   }
   async create(force = false): Promise<void> {
-    const blank = force ? undefined : this.sessions.find((entry) => !entry.messages.length && !entry.activeRunId && !entry.queuedInputs?.length && !entry.draft?.text && !entry.draft?.attachments.length && !entry.draft?.references?.length);
+    const blank = force ? undefined : this.sessions.find((entry) => !entry.forkSource && !entry.agent && !entry.agentOwnerId && !entry.messages.length && !entry.activeRunId && !entry.queuedInputs?.length && !entry.draft?.text && !entry.draft?.attachments.length && !entry.draft?.references?.length);
     const next = blank ?? this.blank();
     next.updatedAt = Date.now();
     if (blank) { this.sessions.splice(this.sessions.indexOf(blank), 1); }
@@ -182,6 +197,9 @@ export class ConversationController {
     const entry = this.sessions[index];
     this.removing.add(id);
     try {
+      // Upgrade old fork views before deleting either end of their shared host.
+      await this.ensureIndependentFork(entry);
+      for (const fork of this.sessions.filter(session => session.agentOwnerId === entry.id)) await this.ensureIndependentFork(fork);
       if (entry.agentOwnerId) {
         const owner = this.owner(entry);
         const descendants = new Set([entry.agentConversationId]);
@@ -202,7 +220,9 @@ export class ConversationController {
         this.changed(); await this.persist(); return;
       }
       const task = entry.activeRunId && this.tasks.get(entry.activeRunId);
-      if (task || entry.agent || entry.messages.some(message => message.pendingInput || message.cancelRequested || message.recovering)) await this.stop(entry);
+      // Offline deletion cancels persisted work directly; reopening a settled
+      // workflow just to stop it can require unavailable models or approvals.
+      if (task || entry.messages.some(message => message.pendingInput || message.cancelRequested || message.recovering)) await this.stop(entry);
       for (const child of this.sessions.filter(session => session.agentOwnerId === entry.id)) {
         await this.runtime.deleteConversation(this.project, child.id);
         this.sessions.splice(this.sessions.indexOf(child), 1);
@@ -222,6 +242,7 @@ export class ConversationController {
   }
   async recordCommand(command: string, content: string, entry = this.current): Promise<void> {
     if (this.disposed || this.removing.has(entry.id) || !this.sessions.includes(entry)) { throw new Error(t("Conversation no longer exists.")); }
+    await this.ensureIndependentFork(entry);
     const now = Date.now();
     entry.messages.push({ id: globalThis.crypto.randomUUID(), role: 'user', content: `/${command}`, createdAt: now },
       { id: globalThis.crypto.randomUUID(), role: 'assistant', content, status: 'success', createdAt: now });
@@ -232,6 +253,8 @@ export class ConversationController {
     const parameters = projectParameters(this.project, input.entrypointId);
     validateProjectValues(parameters.fields, input.params, input.states);
     if (this.disposed || this.removing.has(entry.id) || !this.sessions.includes(entry)) { throw new Error(t("Conversation no longer exists.")); }
+    const isolation = await this.ensureIndependentFork(entry);
+    if (isolation) input = forkReferences(input, isolation);
     if (this.project.projectType !== 'conversation' && input.text) { this.rawArgs(input.text); }
     if (this.project.projectType === 'conversation' && !input.text.trim() && !input.attachments.length && !input.references?.length) { return; }
     const id = requestId ?? globalThis.crypto.randomUUID();
@@ -519,6 +542,50 @@ export class ConversationController {
     if (!owner) throw new Error(t("Conversation no longer exists."));
     return owner;
   }
+  private async ensureIndependentFork(entry: ConversationSession): Promise<ForkIsolation | undefined> {
+    const existing = this.isolating.get(entry.id);
+    if (existing) return existing;
+    if (!entry.agentOwnerId || !this.runtime.isolateAgentConversation) return;
+    const owner = this.owner(entry), info = owner.agent?.conversations.find(item => item.id === entry.agentConversationId)
+      ?? (entry.forkSource && entry.agentConversationId ? { id: entry.agentConversationId, forkEntryId: entry.forkSource.entryId } : undefined);
+    if (info?.forkEntryId === undefined) return; // Managed agents remain views of their owner.
+    const operation = (async () => {
+      const targetId = info.id;
+      if (owner.activeRunId && sessionRunning(entry)) await this.runtime.agentControl!(owner.activeRunId,
+        { type: 'cancel', targetId, scope: 'all', requestId: `isolate-stop:${entry.id}` }, entry.id);
+      const fileIds = [...new Set(JSON.stringify([entry.messages, entry.queuedInputs, entry.draft]).match(/wf_[a-f0-9]{32}/g) ?? [])];
+      const result = await this.runtime.isolateAgentConversation!(this.project, owner.id, entry.id, targetId, !owner.activeRunId, fileIds);
+      const history = forkReferences(entry.messages, result);
+      if (owner.activeRunId) await this.runtime.agentControl!(owner.activeRunId,
+        { type: 'delete', targetId, requestId: `isolate-retire:${entry.id}` }, entry.id);
+      const previous = { ...entry };
+      entry.messages = history.map(message => ({ id: globalThis.crypto.randomUUID(), role: message.role, content: message.content,
+        createdAt: message.createdAt, entryId: message.entryId, entrypointId: message.entrypointId, model: message.model, durationMs: message.durationMs,
+        ...(message.role === 'assistant' ? { status: ['running', 'waiting_for_input', 'sending'].includes(message.status ?? '') ? 'failed' : message.status,
+          error: message.error, items: message.items?.filter(item => item.metadata?.kind !== 'agent-session') } : {}),
+        attachments: message.attachments, references: message.references, files: message.files }));
+      entry.forkSource = { sessionId: entry.forkSource?.sessionId ?? owner.id, entryId: entry.forkSource?.entryId ?? info.forkEntryId!,
+        agentOwnerId: owner.id, agentConversationId: targetId };
+      delete entry.agentOwnerId; delete entry.agentConversationId; delete entry.agent;
+      delete entry.agentParameters; delete entry.agentInputs; delete entry.agentCommands; delete entry.agentInterrupted;
+      let release: (() => void) | undefined;
+      try { release = this.options.independent?.(entry); }
+      catch (error) { Object.assign(entry, previous); throw error; }
+      // Never replay source controls or send a copied queue just by opening a branch.
+      if (entry.queuedInputs?.length) {
+        entry.queuedInputs = forkReferences(entry.queuedInputs, result);
+        for (const input of entry.queuedInputs) input.hostQueued = true;
+        entry.queuePaused = true;
+      }
+      if (entry.draft) entry.draft = forkReferences(entry.draft, result);
+      try {
+        if (!this.sessions.includes(entry)) this.sessions.push(entry);
+        await this.persist(); this.changed(); return result;
+      } finally { release?.(); }
+    })().finally(() => this.isolating.delete(entry.id));
+    this.isolating.set(entry.id, operation);
+    return operation;
+  }
   private async configureForkEffort(entry: ConversationSession, owner: ConversationSession, input: Omit<ConversationQueuedInput, 'id' | 'createdAt'>, args: string[], requestId: string): Promise<boolean> {
     const previous = owner.agentParameters;
     const fork = owner.agent?.conversations.find(conversation => conversation.id === entry.agentConversationId && conversation.forkEntryId !== undefined);
@@ -559,7 +626,10 @@ export class ConversationController {
   async openAgentConversation(sessionId: string, conversationId: number): Promise<string> {
     const entry = this.sessions.find(session => session.id === sessionId);
     if (!entry) throw new Error(t("Conversation no longer exists."));
-    const owner = this.owner(entry), info = owner.agent?.conversations.find(conversation => conversation.id === conversationId);
+    const owner = this.owner(entry);
+    const isolated = this.sessions.find(session => session.forkSource?.agentOwnerId === owner.id && session.forkSource.agentConversationId === conversationId);
+    if (isolated) return isolated.id;
+    const info = owner.agent?.conversations.find(conversation => conversation.id === conversationId);
     if (!info) throw new Error('The conversation is not part of this agent session.');
     if (conversationId === owner.agent?.conversationId) return owner.id;
     let source = entry;
@@ -573,20 +643,24 @@ export class ConversationController {
       }
     }
     const existing = this.sessions.find(session => session.agentOwnerId === owner.id && session.agentConversationId === conversationId);
-    if (existing) return existing.id;
+    if (existing) { await this.ensureIndependentFork(existing); return existing.id; }
     const child = this.createAgentView(owner, source, info);
     if (owner.agent) this.projectAgent(owner, owner.agent, true);
+    await this.ensureIndependentFork(child);
     this.changed(); await this.persist(); return child.id;
   }
   private createAgentView(owner: ConversationSession, source: ConversationSession, info: AgentSessionSnapshot['conversations'][number]): ConversationSession {
-    const child = { ...this.blank(), title: info.title, agentOwnerId: owner.id, agentConversationId: info.id, agent: owner.agent,
+    const identity = createHash('sha256').update(JSON.stringify([owner.id, info.id])).digest('hex').slice(0, 32);
+    const id = this.runtime.isolateAgentConversation && info.forkEntryId !== undefined
+      ? `${identity.slice(0, 8)}-${identity.slice(8, 12)}-${identity.slice(12, 16)}-${identity.slice(16, 20)}-${identity.slice(20)}` : undefined;
+    const child = { ...this.blank(id), title: info.title, agentOwnerId: owner.id, agentConversationId: info.id, agent: owner.agent,
       parameterValues: JSON.parse(JSON.stringify(source.parameterValues ?? {})), toolPermissionPolicies: JSON.parse(JSON.stringify(source.toolPermissionPolicies ?? {})) };
     if (info.forkEntryId !== undefined) {
       child.forkSource = { sessionId: source.id, entryId: info.forkEntryId };
       const boundary = source.messages.findIndex(message => message.entryId === info.forkEntryId);
       child.messages = boundary < 0 ? [] : JSON.parse(JSON.stringify(source.messages.slice(0, boundary + 1)));
     }
-    this.sessions.push(child);
+    if (!this.runtime.isolateAgentConversation || info.forkEntryId === undefined) this.sessions.push(child);
     return child;
   }
   private acknowledgeAgent(owner: ConversationSession, receipt: AgentSessionReceipt): void {
@@ -695,6 +769,12 @@ export class ConversationController {
     if (!this.project.conversation?.durable?.enabled || !this.runtime.agentControl) throw new Error('Durable session control is unavailable.');
     const entry = this.sessions.find(session => session.id === sessionId);
     if (!entry || this.disposed) throw new Error(t("Conversation no longer exists."));
+    const previousTarget = entry.agentConversationId ?? (this.isolating.has(entry.id) ? entry.forkSource?.agentConversationId : undefined);
+    const isolation = await this.ensureIndependentFork(entry);
+    if (isolation) {
+      command = { ...forkReferences(command, isolation), ...(command.targetId === previousTarget ? { targetId: undefined } : {}) };
+      if (attachments) attachments = forkReferences(attachments, isolation);
+    }
     const stopping = command.type === 'cancel' && command.scope !== 'task';
     if (stopping) entry.queuePaused = true;
     const owner = this.owner(entry);
@@ -729,7 +809,8 @@ export class ConversationController {
       if (stopping) entry.queuePaused = true;
       if (owner.agentInterrupted) for (const session of this.sessions.filter(session => (session.agentOwnerId ?? session.id) === owner.id)) delete session.agentInterrupted;
       if (receipt.forkId !== undefined) {
-        const fork = this.sessions.find(session => session.agentOwnerId === owner.id && session.agentConversationId === receipt.forkId);
+        const fork = this.sessions.find(session => session.agentOwnerId === owner.id && session.agentConversationId === receipt.forkId
+          || session.forkSource?.agentOwnerId === owner.id && session.forkSource.agentConversationId === receipt.forkId);
         if (!fork) {
           const info = { id: receipt.forkId, title: `${entry.title} · ${t("Fork")}`, background: false, parentId: receipt.conversationId,
             ...(command.type === 'fork' ? { forkEntryId: command.entryId } : {}) };
@@ -738,7 +819,8 @@ export class ConversationController {
             for (const session of this.sessions.filter(session => (session.agentOwnerId ?? session.id) === owner.id)) session.agent = agent;
           }
           const source = this.sessions.find(session => (session.agentOwnerId ?? session.id) === owner.id && session.agentConversationId === receipt.conversationId) ?? entry;
-          this.createAgentView(owner, source, info);
+          const child = this.createAgentView(owner, source, info);
+          await this.ensureIndependentFork(child);
         }
       }
       this.changed(); await this.persist(); return receipt;
@@ -876,6 +958,9 @@ export class ConversationController {
     }
   }
   async stop(entry = this.current): Promise<void> {
+    // Root cancellation must mark the run synchronously, before late chunks
+    // or completion events can land in the same turn of the event loop.
+    if (entry.agentOwnerId || this.isolating.has(entry.id)) await this.ensureIndependentFork(entry);
     entry.queuePaused = true;
     let controlError: unknown;
     if (this.project.conversation?.durable?.enabled && entry.agent && !entry.messages.some(message => message.pendingInput)) {
@@ -919,6 +1004,7 @@ export class ConversationController {
     if (controlError) throw controlError;
   }
   async resume(messageId: string, requestId: string, values: Record<string, unknown>, entry = this.current): Promise<void> {
+    await this.ensureIndependentFork(entry);
     const answer = entry.messages.find((message) => message.id === messageId && message.pendingInput?.requestId === requestId);
     if (!answer?.pendingInput || entry.activeRunId) { return; }
     const request = answer.pendingInput;
@@ -939,6 +1025,7 @@ export class ConversationController {
     this.changed(); await this.persist();
   }
   async removeQueued(id: string, entry = this.current, requestId: string = globalThis.crypto.randomUUID()): Promise<void> {
+    await this.ensureIndependentFork(entry);
     const input = entry.queuedInputs?.find(input => input.id === id || input.requestId === id);
     if (!input) return;
     const turn = this.queuedAgentTurn(entry, input);
@@ -952,6 +1039,7 @@ export class ConversationController {
     entry.draft = { text: '', attachments: [] }; this.changed(); await this.persist(); this.drain(entry);
   }
   async runQueued(entry = this.current): Promise<void> {
+    await this.ensureIndependentFork(entry);
     if (this.owner(entry).agentInterrupted) await this.agentCommand(entry.id, { type: 'snapshot', requestId: globalThis.crypto.randomUUID() });
     this.drain(entry, true); await this.persist();
   }
@@ -961,6 +1049,7 @@ export class ConversationController {
     entry.queuedInputs = ids.map((id) => queue.find((input) => input.id === id)!); this.changed(); await this.persist();
   }
   async promoteQueued(id: string, entry = this.current, requestId: string = globalThis.crypto.randomUUID()): Promise<void> {
+    await this.ensureIndependentFork(entry);
     const queue = entry.queuedInputs ?? [];
     const input = queue.find(input => input.id === id || input.requestId === id);
     if (!input) return;
@@ -987,6 +1076,8 @@ export class ConversationController {
   }
   async retry(id: string, entry = this.current): Promise<void> {
     const index = entry.messages.findIndex((message) => message.id === id && message.role === 'assistant');
+    if (index < 0) return;
+    await this.ensureIndependentFork(entry);
     const answer = entry.messages[index];
     if (answer?.recovering && !entry.activeRunId && !answer.cancelRequested) {
       const anchor = this.project.conversation?.durable?.enabled ? this.agentAnchor(this.owner(entry)) : undefined;
@@ -997,7 +1088,7 @@ export class ConversationController {
     if (!user || entry.activeRunId && !entry.agent) { return; }
     if (user.input) { await this.send(user.input, entry); return; }
     const parameters = projectParameters(this.project, user.entrypointId);
-    const params: ParamValues = {};
+    const params: ParamValues = { ...entry.parameterValues?.[user.entrypointId ?? ''] };
     for (const field of parameters.fields) { const index = user.args?.indexOf(field.flag ?? '') ?? -1; if (index >= 0) { params[field.name] = user.args![index + 1]; } }
     await this.send({ text: user.content, params, entrypointId: user.entrypointId, attachments: user.attachments ?? [], references: user.references }, entry);
   }

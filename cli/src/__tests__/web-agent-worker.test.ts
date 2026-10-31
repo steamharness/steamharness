@@ -7,7 +7,7 @@ import { mkdtemp, mkdir, readFile, realpath, rm, symlink, writeFile } from 'node
 import { createServer } from 'node:http';
 import os from 'node:os';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { createLocalProjectConfigurationStore } from 'steamharness';
 import type { AgentSessionSnapshot } from 'steamharness/agent';
 import { createWebRuntime } from '../web/runtime';
@@ -181,13 +181,14 @@ it('preserves the live generation when the worker loses its IPC owner and resume
   }
 }, 30_000);
 
-it('reports the original workflow failure to commands waiting for session startup', async () => {
+it.each(['bootstrap', 'early-ipc'])('reports the original workflow failure to %s commands waiting for session startup', async delivery => {
   const directory = await mkdtemp(path.join(os.tmpdir(), 'workflow-agent-startup-'));
   const applicationId = crypto.randomUUID();
   const configurationKey = createHash('sha256').update(`application:${applicationId}`).digest('hex');
   const runKey = createHash('sha256').update(await realpath(directory)).digest('hex');
   const configurationRoot = path.join(os.homedir(), '.steamharness', 'configurations');
   const runtime = createWebRuntime(directory, path.join(directory, 'data'), () => undefined);
+  let child: ChildProcess | undefined;
   try {
     await mkdir(path.join(directory, 'node_modules'));
     await symlink(await resolveHarnessRoot(), path.join(directory, 'node_modules/steamharness'), process.platform === 'win32' ? 'junction' : 'dir');
@@ -206,11 +207,42 @@ it('reports the original workflow failure to commands waiting for session startu
     `);
     const inspected = await runtime.inspect([directory]); expect(inspected.errors).toEqual([]);
     const events: Record<string, any>[] = [];
-    const report = await runtime.run({ project: { ...inspected.projects[0], uri: '' }, conversationId: 'failed-session', runId: 'failed-run', args: ['--message', 'First'],
-      agentCommands: [{ scopeId: 'failed-session', command: { type: 'snapshot', requestId: 'waiting-snapshot' } }] }, event => events.push(event));
-    expect(report.status).toBe('failed');
-    expect(events.find(event => event.type === 'agent_command_failed')).toMatchObject({ requestId: 'waiting-snapshot', message: expect.stringContaining('Fixture tool initialization failed') });
+    const request = { project: { ...inspected.projects[0], uri: '' }, conversationId: 'failed-session', runId: 'failed-run', args: ['--message', 'First'] };
+    if (delivery === 'bootstrap') {
+      const report = await runtime.run({ ...request,
+        agentCommands: [{ scopeId: 'failed-session', command: { type: 'snapshot', requestId: 'waiting-snapshot' } }] }, event => events.push(event));
+      expect(report.status).toBe('failed');
+      expect(events.find(event => event.type === 'agent_command_failed')).toMatchObject({ requestId: 'waiting-snapshot', message: expect.stringContaining('Fixture tool initialization failed') });
+    } else {
+      // Deliver the command before stdin is available. This deterministic
+      // barrier exercises the IPC listener before any session can be mounted.
+      const preload = path.join(directory, 'ipc-barrier.mjs');
+      await writeFile(preload, `
+        process.on('message', message => {
+          if (message?.type === 'agent-control') process.send({ type: 'fixture-control-delivered' });
+        });
+        const added = event => {
+          if (event === 'message' && new Error().stack.includes('worker.mjs:')) {
+            process.removeListener('newListener', added);
+            process.send({ type: 'fixture-worker-listening' });
+          }
+        };
+        process.on('newListener', added);
+      `);
+      child = spawn(process.execPath, ['--import', pathToFileURL(preload).href, fileURLToPath(new URL('../web/worker.mjs', import.meta.url))], { cwd: directory, stdio: ['pipe', 'pipe', 'pipe', 'ipc'] });
+      const messages: any[] = []; let output = '', diagnostics = '';
+      child.on('message', message => messages.push(message));
+      child.stdout!.on('data', chunk => { output += chunk; }); child.stderr!.on('data', chunk => { diagnostics += chunk; });
+      const closed = once(child, 'close');
+      await expect.poll(() => messages.some(message => message.type === 'fixture-worker-listening'), { timeout: 5000 }).toBe(true);
+      child.send({ type: 'agent-control', id: 'early-snapshot', scopeId: 'failed-session', command: { type: 'snapshot', requestId: 'waiting-snapshot' } });
+      await expect.poll(() => messages.some(message => message.type === 'fixture-control-delivered'), { timeout: 5000 }).toBe(true);
+      child.stdin!.end(JSON.stringify({ method: 'run', ...request, storageDir: path.join(directory, 'data'), runtimeProjectDir: directory }));
+      await closed;
+      expect(messages.find(message => message.type === 'agent-receipt'), output + diagnostics).toMatchObject({ id: 'early-snapshot', code: 'AGENT_SESSION_ENDED', error: expect.stringContaining('Fixture tool initialization failed') });
+    }
   } finally {
+    if (child && child.exitCode === null && child.signalCode === null) { const closed = once(child, 'close'); child.kill('SIGKILL'); await closed; }
     runtime.dispose(); await rm(directory, { recursive: true, force: true });
     await Promise.all([rm(path.join(configurationRoot, `${configurationKey}.json`), { force: true }), rm(path.join(configurationRoot, `${configurationKey}.json.lock.sqlite`), { force: true }), rm(path.join(configurationRoot, 'snapshots', runKey), { recursive: true, force: true })]);
   }

@@ -1639,7 +1639,8 @@ function initialize(): void {
       const targetId = message.forkSessionId ?? message.sessionId;
       const target = state.sessions.find(session => session.id === targetId);
       if (message.forkSessionId) forkDialog.success(message, targetId);
-      if (!target || (target.agentOwnerId ?? target.id) !== request.ownerId) {
+      if (!target || !((target.agentOwnerId ?? target.id) === request.ownerId
+        || target.forkSource?.agentOwnerId === request.ownerId && (message.forkSessionId ? target.forkSource.sessionId === request.sessionId : true))) {
         if (message.forkSessionId) forkDialog.failOpening(targetId, t('The conversation was created, but opening it was not confirmed. Open it from conversation history.'));
         return;
       }

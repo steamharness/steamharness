@@ -275,7 +275,7 @@ it.each(['project', 'user-settings'] as const)('switches %s models in a durable 
         params: [{ kind: 'quick', id: 'ai', label: 'AI', summary: ['model'], fields: [
           { name: 'provider', flag: '--provider', type: 'string', required: true, control: 'select', options: [] },
           { name: 'model', flag: '--model', type: 'string', required: true, control: 'select', options: [], ${modelSource === 'user-settings' ? "userSetting: { key: 'agent.model', mode: 'default' }" : ''} },
-          { name: 'effort', flag: '--effort', type: 'string', control: 'select', defaultValue: 'high', options: [{ value: 'high' }, { value: 'xhigh' }] },
+          { name: 'effort', flag: '--effort', type: 'string', control: 'select', defaultValue: 'high', options: [{ value: 'high' }, { value: 'xhigh' }, { value: 'medium' }] },
         ] }], resolveParams: steamharness.createAgentProjectParamResolver({ modelSource: '${modelSource}' }),
         createInput({ args }) { return steamharness.createAgentProjectInput(args); },
       });
@@ -329,14 +329,24 @@ it.each(['project', 'user-settings'] as const)('switches %s models in a durable 
     expect(app.controller!.current.messages.filter(message => message.role === 'assistant')).toMatchObject(expected);
     expect(calls).toHaveLength(3);
     expect(JSON.stringify(app.controller!.current)).not.toContain('third-identity');
+    // Keep two choices available so the branch can select a different model.
+    if (modelSource === 'user-settings') {
+      options.host.userSettings.agent.models = [models[2], models[1]];
+      await app.setHostUserSettings(options.host.userSettings);
+    } else {
+      const state = app.configurations!.state;
+      await post({ type: 'project-configuration', call: { action: 'save', revision: state.revision, id: state.activeConfigurationId, values: { [AGENT_MODELS_CONFIGURATION_KEY]: [models[2], models[1]] } } });
+    }
     const owner = app.controller!.current;
-    const committed = JSON.parse(JSON.stringify(owner.agentParameters));
-    const forkParams = { ...[...owner.messages].reverse().find(message => message.role === 'user')!.input!.params, effort: 'xhigh' };
+    const forkParams = { ...[...owner.messages].reverse().find(message => message.role === 'user')!.input!.params, model: models[1].id, effort: 'medium' };
     const forkReply = await post({ type: 'agent-command', sessionId: owner.id,
       command: { type: 'fork', requestId: crypto.randomUUID(), entryId: owner.messages.at(-1)!.entryId } });
     const forkId = forkReply.find((message: { type: string }) => message.type === 'agent-receipt')!.forkSessionId;
     const fork = app.controller!.sessions.find(session => session.id === forkId)!;
+    const committed = JSON.parse(JSON.stringify(owner.agentParameters));
+    expect(fork.agentOwnerId).toBeUndefined();
     const currentOwner = () => app!.controller!.sessions.find(session => session.id === owner.id)!;
+    const currentFork = () => app!.controller!.sessions.find(session => session.id === forkId)!;
     const continueFork = async (text: string) => {
       const result = await post({ type: 'send', sessionId: forkId, requestId: crypto.randomUUID(), text,
         params: forkParams, attachments: [] });
@@ -351,14 +361,16 @@ it.each(['project', 'user-settings'] as const)('switches %s models in a durable 
     expect(calls).toHaveLength(4);
     expect(currentOwner().agentParameters).toEqual(committed);
     expect(currentOwner().agent!.configuration.effort).toBe('high');
-    expect(currentOwner().agent!.contexts.find(context => context.conversationId === fork.agentConversationId)!.configuration).toMatchObject({ effort: 'xhigh', version: 1 });
+    expect(currentFork().agent!.configuration.effort).toBe('medium');
+    expect(calls.at(-1)?.model).toBe(models[1].model);
+    const forkVersion = currentFork().agent!.configuration.version;
     expect(currentOwner().messages.filter(message => message.role === 'assistant')).toMatchObject(expected);
     await app.close(); app = await startWebServer(options);
     await continueFork('Continue the reopened fork');
     expect(calls).toHaveLength(5);
     expect(app.controller!.sessions.find(session => session.id === owner.id)!.agent!.configuration.effort).toBe('high');
-    expect(app.controller!.sessions.find(session => session.id === forkId)!.agent!.contexts
-      .find(context => context.conversationId === fork.agentConversationId)!.configuration).toMatchObject({ effort: 'xhigh', version: 1 });
+    expect(currentFork().agent!.configuration).toMatchObject({ effort: 'medium', version: forkVersion });
+    expect(calls.at(-1)?.model).toBe(models[1].model);
   } finally {
     await app?.close();
     await new Promise<void>(resolve => { upstream.close(() => resolve()); upstream.closeAllConnections(); });

@@ -95,3 +95,28 @@ it('removes a root and its persisted fork views even after the local views are g
   await history.save(sessions, 'new');
   expect(JSON.parse(await readFile(filename, 'utf8')).sessions).toEqual([]);
 });
+
+it.each([false, true])('persists migration to a separate scope before deleting the source (opened=%s)', async opened => {
+  const f = await fixture();
+  const sessions: ConversationSession[] = [{ id: 'root', title: 'Root', messages: [] },
+    { id: 'fork', title: 'Fork', messages: [], agentOwnerId: 'root' }];
+  const owner = new ConversationOwnership(path.join(f.directory, 'owners'), id => sessions.find(session => session.id === id)?.agentOwnerId ?? id);
+  owners.push(owner); const other = f.owner();
+  owner.assertWritable('root', 'root-page');
+  if (opened) owner.select('fork-page', 'fork');
+  const filename = path.join(f.directory, 'conversations.json'), history = new ConversationHistory(filename, {}, owner);
+  await history.save(sessions, 'root');
+  delete sessions[1].agentOwnerId;
+  const release = owner.independent('fork');
+  owner.update(new Set(), new Set());
+  expect(owner.scope('fork')).toBe('fork'); expect(owner.owns('fork')).toBe(true);
+  expect(other.execute('fork')).toBe(false);
+  await history.save(sessions, 'root');
+  release();
+  expect(owner.owns('fork')).toBe(opened);
+  sessions.shift(); await history.save(sessions, 'fork');
+  const saved = JSON.parse(await readFile(filename, 'utf8'));
+  expect(saved.sessions).toEqual([{ id: 'fork', title: 'Fork', messages: [] }]);
+  if (!opened) expect(other.execute('fork')).toBe(true);
+  else expect(() => owner.assertWritable('fork', 'other-page')).toThrow('another window');
+});

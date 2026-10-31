@@ -183,6 +183,7 @@ export function createWebRuntime(projectDir: string, storageDir: string, connect
       return control(command, scopeId, attachments);
     },
     forkAgentConversation: (project, conversationId, command) => invoke({ method: 'fork-conversation', project, conversationId, command }),
+    isolateAgentConversation: (project, sourceConversationId, conversationId, targetId, retireSource, fileIds) => invoke({ method: 'isolate-conversation', project, sourceConversationId, conversationId, targetId, retireSource, fileIds }),
     kanbanBridge: (project, call) => invoke({ method: 'kanban-bridge', project, call }),
     memoryCapabilities: async project => {
       const auth=connection(),account=`${auth?.serverUrl}:${auth?.memoryToken}:${options.actor?.().userId}`;
