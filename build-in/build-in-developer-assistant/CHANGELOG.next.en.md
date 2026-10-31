@@ -1,5 +1,7 @@
 # Unreleased
 
+- Fixed both generated boards to use the database alias API, clearly mark temporary edits without a binding, and prevent overwriting tasks after failed reads. Preflight checks include configuration, ignore files and symlink conflicts to avoid partial projects; database binding guidance is corrected. Generator scaffolds also support names beginning with digits and multiline prompts.
+
 - Fixed: Existing Assistant conversations discover newly added Studio diagnostics while keeping existing tools usable. Catalog additions preserve checks on existing definitions and permissions.
 
 - Documented subagent attempt budgets, durable retries, completion receipts and non-retryable barriers in the generator API reference to prevent unbounded retries and repeated side effects.

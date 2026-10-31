@@ -13,6 +13,8 @@ Kanban 是聚合项目中的静态 HTML 入口，不导出 executor。注册示�
 
 构建必须先在客户端完成。Server 只验证、保存及提供静态文件，不安装依赖或运行构建。资源引用使用入口相对路径，上传与安装保留全部注册入口的产物。
 
+Studio 提供最小看板、基础任务看板和参数化任务看板，入口均为 `index.html`。看板支持 `dev` 和 `inspect` 脚本，不提供执行 Workflow 的 `run:json` 脚本。任务看板以 `data` 别名访问获批数据库；未绑定时可临时编辑，刷新会丢失修改，页面会明确提示。绑定后，不同命名配置的任务分开保存。
+
 ## 配置与展示
 
 宿主注入 `window.steamHarnessKanban`。`getConfiguration()` 读取当前入口配置，`getPresentation()` 读取展示模式；监听 `steamharness:kanban-configuration-change` 和 `steamharness:kanban-presentation-change` 更新页面。命名配置、快照和配置附件按 `projectId + entryId` 隔离。

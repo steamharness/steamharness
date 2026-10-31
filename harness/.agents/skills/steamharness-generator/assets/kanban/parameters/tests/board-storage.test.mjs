@@ -178,6 +178,50 @@ test("retains a failed save across configuration switches and retries it after r
   assert.deepEqual(writes.at(-1).value, serializeBoardState(edited));
 });
 
+test("keeps unbound configuration edits temporary and separate", async () => {
+  const statuses = [];
+  let writes = 0;
+  const controller = createBoardStorageController({
+    kv: {
+      async getValue() { throw Object.assign(new Error("unbound"), { code: "DATABASE_UNBOUND" }); },
+      async setValue() { writes += 1; },
+    },
+    onStatus: status => statuses.push(status),
+  });
+  await controller.load("first", FALLBACK);
+  const edited = { ...FALLBACK, tasks: [] };
+  controller.scheduleSave(edited);
+  await controller.flush();
+  assert.deepEqual((await controller.load("second", FALLBACK)).state, FALLBACK);
+  assert.deepEqual((await controller.load("first", FALLBACK)).state, edited);
+  assert.equal(writes, 0);
+  assert.match(statuses.at(-1).message, /临时模式/);
+});
+
+test("blocks writes after denied, failed or invalid reads and permits retry", async () => {
+  for (const invalid of ["DATABASE_ACCESS_DENIED", "offline", { version: 2, tasks: [] }]) {
+    let fail = true;
+    let writes = 0;
+    const controller = createBoardStorageController({ kv: {
+      async getValue() {
+        if (!fail) return serializeBoardState(FALLBACK);
+        if (typeof invalid === "string") throw new Error(invalid);
+        return invalid;
+      },
+      async setValue() { writes += 1; },
+    } });
+    assert.equal((await controller.load("first", FALLBACK)).loadFailed, true);
+    controller.scheduleSave({ ...FALLBACK, tasks: [] });
+    await assert.rejects(controller.save(FALLBACK), /尚未成功加载/);
+    await controller.flush();
+    assert.equal(writes, 0);
+    fail = false;
+    assert.equal((await controller.load("first", FALLBACK)).loadFailed, undefined);
+    await controller.save(FALLBACK);
+    assert.equal(writes, 1);
+  }
+});
+
 function deferred() {
   let resolve;
   let reject;

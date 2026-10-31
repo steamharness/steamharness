@@ -213,6 +213,8 @@ const { buffer } = await database.files.readFile(file.id);
 
 alias 必须在当前入口声明并获批绑定。知识库通过 database.knowledge，附件通过 database.files；页面不能选择 spaceId、项目、授权或数据路径。普通 KV 不能绕过知识库授权。订阅只返回 alias 和不透明 revision，卸载时调用取消函数。单文件上限 50 MiB，附件超时 120 秒，其他请求 15 秒，并发上限 16。所有请求处理 reject，未绑定或撤销显示恢复入口，不自动创建数据库。
 
+模板与生成器同样使用 `databases.get("data").kv`，不使用已移除的顶层 `kv`。Studio 任务看板示例未绑定时明确显示临时模式，绑定后按命名配置分开保存；权限错误或读取失败不能伪装成保存成功。生成器先检查全部目标文件（包含 `configuration.json` 和 `.steamharnessignore`）是否冲突，再写入项目文件；数字开头的项目名称转换为合法 TypeScript 标识符，多行提示词写为转义后的字符串字面量。
+
 页面方法通过 `window.steamHarnessKanban.methods.register({name,description,inputSchema,readOnly?}, handler)` 注册（准确参数见公开类型）。资源卡片与方法调用必须带 projectId、entryId；先发现实例再使用 instanceId、configurationId、method、args 调用。不同入口和同一入口不同实例互不控制。相对缩放、平移和写入超时后先查询状态，不自动重试。
 
 文件导入先识别消费端：CLI `workspace file-upload/file-download` 的普通项目托管文件、File 配置字段的配置附件、`databases.get(alias).files` 的数据库附件不是同一种读取权限或通道。数据库附件引用包含 `storage: "database"` 与 `spaceId`；配置附件使用配置所属项目、入口与版本的窄权限读取。通用项目文件下载成功不能证明配置附件或数据库附件可用。迁移前保留原引用，按页面真实调用路径读回相同字节，再查询页面就绪状态（例如 `imageReady`）；无页面证据时如实报告。附件 404 后转向数据库仍失败时检查引用归属，不盲目换接口。大文件超时先诊断传输与存储，不把压缩、有损转码、分片或迁移当作默认修复。

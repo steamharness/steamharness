@@ -87,7 +87,9 @@ def main() -> None:
         raise SystemExit("--with-kanban-params 只能与 --project-type kanban 一起使用。")
 
     if workflow_dir.exists() and any(workflow_dir.iterdir()):
-        existing_files = [workflow_dir / "package.json", workflow_dir / "steamharness.json"]
+        existing_files = [workflow_dir / name for name in (
+            "package.json", "steamharness.json", "configuration.json", ".steamharnessignore",
+        )]
         existing_files += (
             [workflow_dir / path for path in kanban_template_files(args.with_kanban_params)]
             if args.project_type == "kanban"
@@ -97,7 +99,7 @@ def main() -> None:
                 workflow_dir / "README.md",
             ]
         )
-        conflicts = [str(path) for path in existing_files if path.exists()]
+        conflicts = sorted({str(path) for path in existing_files if path.exists() or path.is_symlink()})
         if conflicts:
             raise SystemExit(
                 "workflow 文件已存在，不会覆盖："
@@ -141,11 +143,12 @@ def normalize_name(value: str) -> str:
 
 
 def to_pascal_case(name: str) -> str:
-    return "".join(part.capitalize() for part in name.split("-") if part) or "Workflow"
+    identifier = "".join(part.capitalize() for part in name.split("-") if part) or "Workflow"
+    return f"Project{identifier}" if identifier[0].isdigit() else identifier
 
 
 def write_file(path: Path, content: str) -> None:
-    if path.exists():
+    if path.exists() or path.is_symlink():
         raise SystemExit(f"拒绝覆盖已有文件：{path}")
 
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -328,7 +331,7 @@ export type {type_name}Output = ExecutorResult<{type_name}OutputPayload>;
 
 
 def index_ts(name: str, type_name: str, prompt: str, project_type: str) -> str:
-    escaped_prompt = prompt.replace("\\", "\\\\").replace('"', '\\"')
+    prompt_literal = json.dumps(prompt, ensure_ascii=False)
     workflow_const = f"{to_camel_case(name)}Workflow"
     if project_type == "workflow":
         executor_definition = f'''  defaultEntrypoint: "main",
@@ -378,7 +381,7 @@ def index_ts(name: str, type_name: str, prompt: str, project_type: str) -> str:
   {type_name}OutputPayload,
 }} from "./interface";
 
-const defaultPrompt = "{escaped_prompt}";
+const defaultPrompt = {prompt_literal};
 
 const outputNode = steamharness.createOutputNode<{type_name}Input, {type_name}OutputPayload>({{
   name: "{name}-output",

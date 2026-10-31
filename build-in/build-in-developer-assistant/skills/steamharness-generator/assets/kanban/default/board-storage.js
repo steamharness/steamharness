@@ -40,21 +40,33 @@ export function createBoardStorageController({
   let pendingSave;
   let pendingHandle;
   const failedSaves = new Map();
+  const temporaryStates = new Map();
   const latestSaveVersions = new Map();
   let saveQueue = Promise.resolve();
   let saveVersion = 0;
+  let readBlocked = true;
+  let temporary = false;
+
+  function temporaryStatus() {
+    onStatus({ state: "unavailable", message: "临时模式：绑定数据库后可保存任务，刷新页面会丢失当前修改" });
+  }
 
   async function load(configurationId, fallbackState) {
     await flush().catch(() => undefined);
     const loadGeneration = generation + 1;
     generation = loadGeneration;
     currentKey = createBoardStorageKey(configurationId);
+    readBlocked = true;
+    temporary = false;
     if (!kv) {
-      onStatus({ state: "unavailable", message: "当前宿主未提供持久化存储" });
-      return { applied: true, state: fallbackState, stored: false };
+      readBlocked = false;
+      temporary = true;
+      temporaryStatus();
+      return { applied: true, state: temporaryStates.get(currentKey) ?? fallbackState, stored: false };
     }
     const failedSave = failedSaves.get(currentKey);
     if (failedSave) {
+      readBlocked = false;
       onStatus({ state: "error", message: "保存失败，可重试" });
       return {
         applied: true,
@@ -67,19 +79,29 @@ export function createBoardStorageController({
     try {
       const stored = await kv.getValue(currentKey);
       if (loadGeneration !== generation) return { applied: false };
+      if (stored != null && !isStoredBoardState(stored)) throw new Error("保存的任务格式无效");
       const state = restoreBoardState(stored, fallbackState);
-      onStatus({ state: "saved", message: stored === undefined ? "尚未保存" : "已恢复" });
-      return { applied: true, state, stored: stored !== undefined };
-    } catch {
+      readBlocked = false;
+      onStatus({ state: "saved", message: stored == null ? "尚未保存" : "已恢复" });
+      return { applied: true, state, stored: stored != null };
+    } catch (error) {
       if (loadGeneration !== generation) return { applied: false };
+      if (error?.code === "DATABASE_UNBOUND") {
+        readBlocked = false;
+        temporary = true;
+        temporaryStatus();
+        return { applied: true, state: temporaryStates.get(currentKey) ?? fallbackState, stored: false };
+      }
       onStatus({ state: "error", message: "加载失败，可重试" });
       return { applied: true, state: fallbackState, stored: false, loadFailed: true };
     }
   }
 
   function scheduleSave(state) {
-    if (!kv) {
-      onStatus({ state: "unavailable", message: "当前宿主未提供持久化存储" });
+    if (readBlocked) return;
+    if (temporary) {
+      temporaryStates.set(currentKey, structuredClone(state));
+      temporaryStatus();
       return;
     }
     if (pendingHandle !== undefined) cancel(pendingHandle);
@@ -94,7 +116,11 @@ export function createBoardStorageController({
   }
 
   function save(state) {
-    if (!kv) return Promise.resolve();
+    if (readBlocked) return Promise.reject(new Error("看板尚未成功加载，未覆盖已有数据"));
+    if (temporary) {
+      scheduleSave(state);
+      return Promise.resolve();
+    }
     return enqueueSave(createSaveRecord(state));
   }
 

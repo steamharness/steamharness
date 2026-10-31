@@ -40,6 +40,40 @@ test('missing pnpm falls back to npm and missing both managers reports a recover
   await assert.rejects(installProjectDependencies({ ...missing, signal: new AbortController().signal }), { code: 'package-manager-missing' });
 });
 
+test('new projects ignore ancestor Corepack settings without changing caller environment or project files', { skip: process.platform === 'win32' }, async t => {
+  const f = await fixture(t, { pnpm: `
+    if (process.env.COREPACK_ENABLE_PROJECT_SPEC !== '0' || process.env.COREPACK_ENABLE_AUTO_PIN !== '0') {
+      console.error('This project is configured to use yarn by an ancestor'); process.exit(1);
+    }
+    console.log(process.argv.slice(2).join(' '));` });
+  await writeFile(path.join(f.directory, 'package.json'), JSON.stringify({ packageManager: 'yarn@4.0.0' }));
+  const directory = path.join(f.directory, 'new-project'); await mkdir(directory);
+  const source = JSON.stringify({ name: 'new-project', private: true });
+  await writeFile(path.join(directory, 'package.json'), source);
+  const original = { ...f.env };
+  await installProjectDependencies({ ...f, directory, signal: new AbortController().signal });
+  assert.ok(f.output.includes('pnpm install')); assert.deepEqual(f.env, original);
+  assert.equal(await readFile(path.join(directory, 'package.json'), 'utf8'), source);
+});
+
+test('explicit project package-manager settings remain available to Corepack', { skip: process.platform === 'win32' }, async t => {
+  const f = await fixture(t, { pnpm: `
+    if (process.env.COREPACK_ENABLE_PROJECT_SPEC === '0') process.exit(1);
+    console.log(process.argv.slice(2).join(' '));` });
+  await writeFile(path.join(f.directory, 'package.json'), JSON.stringify({ packageManager: 'pnpm@10.15.1' }));
+  delete f.env.COREPACK_ENABLE_PROJECT_SPEC;
+  await installProjectDependencies({ ...f, signal: new AbortController().signal });
+  assert.ok(f.output.includes('pnpm install'));
+});
+
+test('an explicit npm project uses npm even when pnpm is installed', { skip: process.platform === 'win32' }, async t => {
+  const f = await fixture(t, { pnpm: 'process.exit(99);', npm: 'console.log(process.argv.slice(2).join(" "));' });
+  await writeFile(path.join(f.directory, 'package.json'), JSON.stringify({ packageManager: 'npm@10.0.0' }));
+  await installProjectDependencies({ ...f, signal: new AbortController().signal });
+  assert.ok(f.output.includes('npm install'));
+  assert.ok(!/^pnpm install$/m.test(f.output));
+});
+
 test('failed installation retains source and retries the same directory', { skip: process.platform === 'win32' }, async t => {
   const f = await fixture(t, { pnpm: `if (!process.argv.includes('--version')) { console.error('registry unavailable'); process.exit(1); }` });
   await assert.rejects(installProjectDependencies({ ...f, signal: new AbortController().signal }), /registry unavailable/);

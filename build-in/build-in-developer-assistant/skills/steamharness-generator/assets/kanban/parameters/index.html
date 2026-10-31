@@ -144,8 +144,9 @@
     let draggedTaskId = null;
     let initializationVersion = 0;
     let boardLoading = true;
+    let boardReadOnly = true;
     const storage = createBoardStorageController({
-      kv: window.steamHarnessKanban?.kv,
+      kv: window.steamHarnessKanban?.databases.get("data").kv,
       onStatus(status) {
         storageStatus.dataset.state = status.state;
         storageStatusText.textContent = status.message;
@@ -164,6 +165,7 @@
     }
 
     function openTaskDialog(task) {
+      if (boardReadOnly) return;
       editingTaskId = task?.id ?? null;
       document.getElementById("dialog-title").textContent = task ? "编辑任务" : "新建任务";
       titleInput.value = task?.title ?? "";
@@ -220,7 +222,7 @@
         tasks.forEach((task) => {
           const card = document.createElement("article");
           card.className = "card";
-          card.draggable = true;
+          card.draggable = !boardReadOnly;
           card.dataset.taskId = task.id;
 
           const main = document.createElement("div");
@@ -231,6 +233,7 @@
           edit.className = "edit-action";
           edit.type = "button";
           edit.textContent = "编辑";
+          edit.disabled = boardReadOnly;
           edit.addEventListener("click", () => openTaskDialog(task));
           main.append(title, edit);
           card.append(main);
@@ -277,6 +280,7 @@
     }
 
     function updateBoard(nextState) {
+      if (boardReadOnly) return;
       state = nextState;
       render();
       storage.scheduleSave(state);
@@ -320,6 +324,7 @@
       document.documentElement.style.setProperty("--accent", params.accent || fallback.accent);
       state = createInitialState(params.title || fallback.title);
       boardLoading = true;
+      boardReadOnly = true;
       newTaskButton.disabled = true;
       render();
       const result = await storage.load(configuration?.id, state);
@@ -327,7 +332,8 @@
       state = { ...result.state, title: String(params.title || fallback.title) };
       lastStorageFailure = result.loadFailed ? "load" : result.saveFailed ? "save" : null;
       boardLoading = false;
-      newTaskButton.disabled = false;
+      boardReadOnly = Boolean(result.loadFailed);
+      newTaskButton.disabled = boardReadOnly;
       render();
     }
 

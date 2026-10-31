@@ -70,8 +70,18 @@ export function projectTemplatesRuntime(extensionDirectory: string, locale: stri
 }
 
 export async function installProjectDependencies(options: { directory: string; signal: AbortSignal; log: (message: string) => void; env?: NodeJS.ProcessEnv; runtime?: NodeRuntime }): Promise<void> {
+  options.signal.throwIfAborted();
   const runtime = options.runtime;
-  const env = runtime ? nodeRuntimeEnvironment(runtime, options.env) : options.env ?? process.env;
+  const env = { ...(runtime ? nodeRuntimeEnvironment(runtime, options.env) : options.env ?? process.env) };
+  const manifest = JSON.parse(await readFile(path.join(options.directory, 'package.json'), 'utf8').catch(error => {
+    if (error.code === 'ENOENT') return '{}';
+    throw error;
+  }));
+  if (!manifest.packageManager) {
+    // A new project's manager must not be selected by an unrelated ancestor (for example, ~/package.json).
+    env.COREPACK_ENABLE_PROJECT_SPEC = '0';
+    env.COREPACK_ENABLE_AUTO_PIN = '0';
+  }
   const run = (manager: 'pnpm' | 'npm', args: string[], probe = false): Promise<void> => new Promise((resolve, reject) => {
     options.signal.throwIfAborted();
     const windows = process.platform === 'win32';
@@ -118,7 +128,7 @@ export async function installProjectDependencies(options: { directory: string; s
     if (options.signal.aborted) { abort(); }
   });
   let manager: 'pnpm' | 'npm' = 'pnpm';
-  if (runtime?.npmCli && !runtime.pnpmCli) manager = 'npm';
+  if (manifest.packageManager?.startsWith('npm@') || runtime?.npmCli && !runtime.pnpmCli) manager = 'npm';
   try { await run(manager, ['--version'], true); }
   catch (error) {
     options.signal.throwIfAborted();

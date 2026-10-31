@@ -1,6 +1,6 @@
 {
   "name": "steamharness",
-  "version": "0.1.2-dev.20261031001",
+  "version": "0.1.2-dev.20261031002",
   "license": "MIT",
   "packageManager": "pnpm@10.15.1",
   "type": "module",

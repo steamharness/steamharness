@@ -1,5 +1,7 @@
 # Unreleased
 
+- Fixed dependency setup for new projects to ignore unrelated ancestor Corepack settings and respect an explicit npm choice. Updated board templates, execution scripts and bilingual guidance.
+
 - Fixed recent history and imported registrations to stay in sync when folders are deleted or recent entries are removed. Start updates readable project counts while keeping individual read failures in Analysis, without marking all counts unavailable or showing a persistent refresh failure.
 
 - Fixed project creation to generate local files and open the selected window immediately. Install dependencies, allocate an ID, and validate in that window; allocation or sign-in failures retain complete files with an empty ID, and retries preserve source and dependencies. Server entry key order no longer causes false project mismatches.

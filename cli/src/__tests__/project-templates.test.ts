@@ -40,6 +40,9 @@ describe('project templates', () => {
       const npm = JSON.parse(await readFile(path.join(created.directory, 'package.json'), 'utf8'));
       expect(npm).toMatchObject({private:true, devDependencies:{steamharness:versions.harness,'@steamharness/cli':versions.cli}});
       expect(npm).not.toHaveProperty('id'); expect(npm).not.toHaveProperty('steamHarness');
+      expect(npm.scripts.inspect).toBe('steamharness structure .');
+      if (template.projectType === 'kanban') expect(npm.scripts).not.toHaveProperty('run:json');
+      else expect(npm.scripts['run:json']).toBe('steamharness json .');
       expect(manifest).toMatchObject({ id: created.id,
         version: "0.1.0", defaultEntry:'main',entries:[{entryId:'main',type:template.projectType,databases:[]}] });
       expect(JSON.stringify(manifest)).not.toMatch(/link:|file:|workspace:|\/Users\//);

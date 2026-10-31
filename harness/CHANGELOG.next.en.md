@@ -1,5 +1,7 @@
 # Unreleased
 
+- Fixed generator boards to use the database API and temporary editing mode, prevent overwrites after failed reads, and check configuration and ignore-file conflicts before writing project files. Generator scaffolds also support names beginning with digits and multiline prompts.
+
 - Fixed database attachment handles to reuse their downloaded snapshot instead of transferring the entire file again for its content. Every read still validates the current binding and knowledge grant.
 
 - Fixed conversation cancellation to atomically stop and join the target execution tree, preventing coordinators from dispatching work between cancellations. Explicit host cancellation also stops background batches and owned tasks.

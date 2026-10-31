@@ -6,10 +6,12 @@ import { runInNewContext } from 'node:vm';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import path from 'node:path';
 import { homedir } from 'node:os';
+import { readFile } from 'node:fs/promises';
 
 const compiled = await build({ entryPoints: ['extensions/studio-workstation/src/start-page.ts'], bundle: true, platform: 'node', format: 'cjs', external: ['vscode'], write: false });
 const require = createRequire(import.meta.url);
 const id = '8f6a6240-4860-4efc-bd07-932868be2b98';
+const templateCatalog = JSON.parse(await readFile(new URL('../../cli/src/project-templates/catalog.json', import.meta.url), 'utf8'));
 class Emitter {
   listeners = new Set();
   event = callback => { this.listeners.add(callback); return { dispose: () => this.listeners.delete(callback) }; };
@@ -60,9 +62,9 @@ function fixture(t, options = {}) {
   };
   const launcher = {
     projectCreationDirectory: path.join(homedir(), 'Documents', 'steamharness-projects'),
-    templates: async () => [ { id: 'workflow-starter', projectType: 'workflow', kind: 'starter', name: 'Workflow', description: 'Minimal' },
+    templates: async () => options.templates ?? [ { id: 'workflow-starter', projectType: 'workflow', kind: 'starter', name: 'Workflow', description: 'Minimal' },
       { id: 'workflow-hello', projectType: 'workflow', kind: 'example', name: 'Hello', description: 'Offline' } ],
-    createProject: async input => { f.created = (f.created ?? 0) + 1; await f.create?.(); return { id: f.projectId, idAllocationError: f.idAllocationError, name: input.name, directory: path.join(input.parentDirectory, input.name), projectType: 'workflow', entryFile: 'index.ts' }; },
+    createProject: async input => { f.created = (f.created ?? 0) + 1; await f.create?.(); return { id: f.projectId, idAllocationError: f.idAllocationError, name: input.name, directory: path.join(input.parentDirectory, input.name), projectType: options.projectType ?? 'workflow', entryFile: options.projectType === 'kanban' ? 'index.html' : 'index.ts' }; },
     registerProject: async directory => { f.registrations = (f.registrations ?? 0) + 1; await f.register?.(directory); f.manifestId = id; return id; },
     validateProjectCreation: async input => { await f.validate?.(input); },
     installDependencies: async (directory, signal, log) => { f.installs.push(directory); log('install log'); await f.install?.(signal); },
@@ -233,6 +235,25 @@ for (const newWindow of [true, false]) test(`creation opens the ${newWindow ? 'n
   assert.equal(target.remembered.id, id); assert.equal(target.created, undefined);
   assert.equal((await target.state()).pending.length, 0);
 });
+
+for (const template of templateCatalog) for (const newWindow of [true, false]) {
+  test(`${template.id} completes setup in the ${newWindow ? 'new' : 'current'} project window`, async t => {
+    const templates = [{ ...template, name: template.name.en, description: template.description.en }];
+    const f = fixture(t, { templates, projectType: template.projectType, projectId: '', manifestId: '' });
+    f.name = template.id; f.newWindow = newWindow;
+    await f.execute(template.kind === 'example' ? 'studio.createExample' : 'studio.createProject', template.kind === 'example' ? template.id : template.projectType);
+    const opened = f.calls.find(([name]) => name === 'vscode.openFolder');
+    assert.ok(opened); assert.equal(opened[2].forceNewWindow, newWindow);
+    assert.equal(f.registrations, undefined); assert.deepEqual(f.installs, []);
+    assert.equal((await f.state()).pending[0].entryFile, template.entryFile);
+    f.controller.dispose();
+    const target = fixture(t, { templates, projectType: template.projectType, storage: f.storage, folders: [opened[1].fsPath], manifestId: '' });
+    await until(() => target.remembered, 'Template setup did not complete in its project window');
+    assert.equal(target.created, undefined); assert.equal(target.registrations, 1);
+    assert.deepEqual(target.installs, [opened[1].fsPath]); assert.deepEqual(target.errors, []);
+    assert.equal((await target.state()).pending.length, 0);
+  });
+}
 
 test('ID allocation errors in the opened project window retain its files and can be retried', async t => {
   const f = fixture(t, { projectId: '', manifestId: '' });

@@ -13,6 +13,8 @@ Kanban is a static HTML entry in an aggregate project and does not export an exe
 
 Build on the client before upload. Server validates, stores and serves static files without installing dependencies or executing builds. Relative assets and all registered entry artifacts are retained during packaging and installation.
 
+Studio includes a minimal board, a task board and a parameterized task board, each with `index.html` as its entry. Boards provide `dev` and `inspect` scripts, without the Workflow execution script `run:json`. Task boards use an approved database with the `data` alias. Without a binding, they allow temporary edits and clearly indicate that reloading loses changes. After binding, named configurations keep separate task data.
+
 ## Configuration and presentation
 
 The host injects `window.steamHarnessKanban`. `getConfiguration()` reads the current entry configuration; `getPresentation()` reads the presentation mode. Listen for `steamharness:kanban-configuration-change` and `steamharness:kanban-presentation-change`. Named configurations, snapshots and configuration files are isolated by `projectId + entryId`.
