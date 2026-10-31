@@ -1,6 +1,6 @@
 {
   "name": "@steamharness/cli",
-  "version": "0.1.2",
+  "version": "0.1.2-dev.20261031001",
   "license": "MIT",
   "packageManager": "pnpm@10.15.1",
   "type": "module",
@@ -30,14 +30,14 @@
     "@modelcontextprotocol/sdk": "1.29.0",
     "import-meta-resolve": "4.2.0",
     "tsx": "^4.21.0",
-    "zod": "4.4.3",
-    "@steamharness/account-memory": "workspace:*"
+    "zod": "4.4.3"
   },
   "peerDependencies": {
-    "steamharness": "^0.1.2"
+    "steamharness": "^0.1.2-dev.20261031001"
   },
   "devDependencies": {
     "@dagrejs/dagre": "1.1.8",
+    "@steamharness/account-memory": "workspace:*",
     "@steamharness/auth-config": "workspace:*",
     "@steamharness/i18n": "workspace:*",
     "@steamharness/kanban-project": "workspace:*",
@@ -56,7 +56,7 @@
     "esbuild": "0.28.2",
     "marked": "17.0.1",
     "semver": "^7.7.4",
-    "steamharness": "0.1.2",
+    "steamharness": "0.1.2-dev.20261031001",
     "tsup": "^8.5.1",
     "typescript": "^6.0.3",
     "vitest": "^4.1.7",
