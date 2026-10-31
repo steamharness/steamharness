@@ -72,6 +72,8 @@ file.toJSON()
 
 `toLLMImagePart()` 只接受图片文件；非图片会抛出输入校验错误。
 
+数据库附件通过 `database.knowledge.files.readFile(id)` 读取为文件内容快照。同一文件句柄的 `readBuffer()`、`readBase64()` 等操作复用已下载内容，每次仍检查当前数据库绑定与读取授权；撤销或收窄权限后，已保留的句柄也不能继续读取。
+
 ## Runtime 生成文件
 
 workflow 运行中生成截图、导出物或其它文件时，使用

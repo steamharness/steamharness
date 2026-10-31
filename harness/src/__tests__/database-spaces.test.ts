@@ -118,3 +118,38 @@ test("a database ID cannot bypass entry authorization and host grants can be nar
     await assert.rejects(original.getRevision(), /read grant/);
   } finally { await rm(directory, { recursive: true, force: true }); }
 });
+
+test("attachment buffers reuse their downloaded snapshot while every read revalidates the grant", async t => {
+  const directory = await mkdtemp(path.join(os.tmpdir(), "database-file-snapshot-"));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  const registry = new LocalDatabaseRegistry(directory);
+  const consumer = { projectId: randomUUID(), entryId: "map" };
+  const request = registry.request({ ...consumer, alias: "data", permissions, target: { kind: "create", name: "Map" } });
+  const approved = registry.review(request.requestId, { approve: true });
+  const requirement = { alias: "data", databaseId: approved.databaseId! };
+  const resolver = createLocalDatabaseResolver(registry);
+  const database = createDatabasesContext({ ...consumer, requirements: [requirement], resolver }).get("data");
+  const reference = await database.knowledge.files.createFile({ name: "map.png", mimeType: "image/png", buffer: Buffer.from("image bytes") });
+  const { store } = (await resolver.resolve(requirement, consumer))!;
+  const getValue = store.getValue.bind(store);
+  let downloads = 0;
+  t.mock.method(store, "getValue", async (input: Parameters<typeof getValue>[0]) => {
+    if (input.key === `__knowledge_file:${reference.id}`) downloads++;
+    return getValue(input);
+  });
+  const file = await database.knowledge.files.readFile(reference.id);
+  const retained = await database.knowledge.files.readFile(reference.id);
+  assert.equal(downloads, 2);
+  const first = await file.readBuffer();
+  assert.equal(first.toString(), "image bytes");
+  first.fill(0);
+  assert.equal((await file.readBuffer()).toString(), "image bytes");
+  assert.equal(await file.readBase64(), Buffer.from("image bytes").toString("base64"));
+  assert.equal(downloads, 2);
+  registry.narrow(registry.authorization(approved.bindingRef!)!.grant.grantId, {
+    ...permissions, knowledge: { read: { mode: "none" }, write: { mode: "none" } },
+  });
+  await assert.rejects(file.readBuffer(), /does not allow/);
+  await assert.rejects(retained.readBuffer(), /does not allow/);
+  assert.equal(downloads, 2);
+});

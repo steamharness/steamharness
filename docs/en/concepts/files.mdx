@@ -73,6 +73,8 @@ file.toJSON()
 
 `toLLMImagePart()` only accepts image files; non-images throw an input validation error.
 
+`database.knowledge.files.readFile(id)` reads a database attachment as a content snapshot. Calls such as `readBuffer()` and `readBase64()` on that handle reuse the downloaded content while checking the current database binding and read grant each time. Revoking or narrowing the grant also prevents reads through retained handles.
+
 ## Runtime build file
 
 workflow When generating screenshots, exports, or other files while running, use

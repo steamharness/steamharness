@@ -19,6 +19,8 @@ The host injects `window.steamHarnessKanban`. `getConfiguration()` reads the cur
 
 Identical configuration snapshots do not repeat configuration events or ready notifications. Changes update the existing page. CLI Web and Studio retain the preview during connection recovery; a sustained interruption shows a compact overlay without shifting the map canvas.
 
+The file bridge allows up to 120 seconds to read large attachments, and its background worker uses the same file deadline. A timeout keeps the error and retry action available.
+
 ## Data bridge
 
 ```js

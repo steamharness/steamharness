@@ -1,5 +1,7 @@
 # Unreleased
 
+- Fixed database attachment handles to reuse their downloaded snapshot instead of transferring the entire file again for its content. Every read still validates the current binding and knowledge grant.
+
 - Fixed conversation cancellation to atomically stop and join the target execution tree, preventing coordinators from dispatching work between cancellations. Explicit host cancellation also stops background batches and owned tasks.
 
 - Fixed: Existing Agent sessions discover and persist authorized catalog additions through tool search, so adding Studio diagnostics no longer invalidates the whole directory. Existing descriptions, parameters and replay policies stay pinned; incompatible changes and unauthorized tools remain rejected.

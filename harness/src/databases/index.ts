@@ -144,8 +144,14 @@ export function createDatabasesContext(options: DatabaseConsumer & { requirement
             return value;
           };
           const value = await read();
-          // Recheck authorization even when a resolved file handle was retained.
-          return createResolvedProjectFile(value.file, async () => Buffer.from((await read()).base64, "base64"));
+          // Attachments are immutable snapshots. Revalidate the live grant without
+          // downloading the same (potentially 50 MiB) attachment a second time.
+          return createResolvedProjectFile(value.file, async () => {
+            const resolved = await resolve();
+            assert(resolved, "knowledge", "read", fileKey(fileId));
+            if (resolved.authorization.space.spaceId !== value.file.spaceId) throw new Error("Knowledge attachment is unavailable.");
+            return Buffer.from(value.base64, "base64");
+          });
         },
         async deleteFile(fileId) { return namespace("knowledge").deleteValue(fileKey(fileId)); },
       };

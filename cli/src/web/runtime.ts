@@ -12,6 +12,7 @@ import type { AgentSessionCommand, AgentSessionReceipt } from 'steamharness/agen
 import { WebAccountMemory } from './account-memory';
 import { createSecretStreamRedactor } from './runtime-log';
 import { PROJECT_CONFIG_ENV, readProjectConfig } from '@steamharness/project-manifest';
+import { KANBAN_FILE_BRIDGE_REQUEST_TIMEOUT_MS } from '@steamharness/kanban-project';
 
 export interface WebConnection {
   serverUrl: string;
@@ -107,8 +108,14 @@ export function createWebRuntime(projectDir: string, storageDir: string, connect
     let failureCode: string | undefined;
     let result: T | undefined;
     // Runs wait for completion or explicit cancellation without a wall-clock deadline.
-    const timeout = request.method === 'run' ? undefined : setTimeout(() => { failure = 'Workflow runtime request timed out.'; child.kill('SIGTERM'); }, 30_000);
-    const forcedExit = request.method === 'run' ? undefined : setTimeout(() => child.kill('SIGKILL'), 35_000);
+    const fileBridge = request.method === 'kanban-bridge' && (request.call as { operation?: string } | undefined)?.operation?.startsWith('files.');
+    const requestTimeout = fileBridge ? KANBAN_FILE_BRIDGE_REQUEST_TIMEOUT_MS : 30_000;
+    const timeout = request.method === 'run' ? undefined : setTimeout(() => {
+      failure = 'Workflow runtime request timed out.';
+      if (request.method === 'kanban-bridge') failureCode = 'KANBAN_BRIDGE_TIMEOUT';
+      child.kill('SIGTERM');
+    }, requestTimeout);
+    const forcedExit = request.method === 'run' ? undefined : setTimeout(() => child.kill('SIGKILL'), requestTimeout + 5_000);
     child.stdout!.setEncoding('utf8'); child.stderr!.setEncoding('utf8');
     const redactStderr = createSecretStreamRedactor(secrets);
     const emitStderr = (chunk: string, final = false) => {

@@ -1,5 +1,7 @@
 # Unreleased
 
+- Fixed Kanban attachment workers to use the full file deadline, preventing large map images from being stopped by the ordinary 30-second task limit. Timeouts return a recognized bridge error.
+
 - Fixed the context window usage tooltip to follow light, dark and host themes for its background, text, border and shadow.
 
 - Fixed Studio local analysis to ignore stale imports whose folders were deleted, preventing Start status refresh failures. Missing projects in the current workspace and other read failures remain unavailable.
