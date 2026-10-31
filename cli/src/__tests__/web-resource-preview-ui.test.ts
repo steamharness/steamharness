@@ -42,21 +42,31 @@ async function fixture() {
 
 it('retries a failed map refresh with its saved card reference and replaces the iframe', async () => {
   const f = await fixture();
+  const expectRefreshIcon = (name: 'loading' | 'refresh') => {
+    expect(document.querySelectorAll('.resource-preview-toolbar button')).toHaveLength(1);
+    expect(f.refresh.querySelectorAll('.codicon')).toHaveLength(1);
+    expect(f.refresh.querySelector('.codicon')?.classList.contains(`codicon-${name}`)).toBe(true);
+  };
   const data: ResourcePreviewData = { card: { id: 'map', kind: 'project', title: 'Map', target: { source: 'local' } }, format: 'kanban',
     kanban: { url: '/kanban/first/index.html', nonce: 'first', configuration: { id: 'map', name: 'Map', params: {} } } };
   expect(f.last()).toMatchObject({ type: 'resource-data', id: 'original', reference });
+  expectRefreshIcon('loading');
   await f.reply({ type: 'resource-data', data });
+  expectRefreshIcon('refresh');
   const first = document.querySelector('iframe')!;
   expect(first, document.querySelector('[role=alert]')?.textContent ?? '').not.toBeNull();
   f.refresh.click();
   expect(f.last()).toMatchObject({ type: 'resource-refresh', id: 'original', reference });
   expect(f.refresh.disabled).toBe(true); expect(first.isConnected).toBe(false);
+  expectRefreshIcon('loading');
   await f.reply({ type: 'error', message: 'Access denied' });
   await vi.advanceTimersByTimeAsync(20_000);
   expect(document.querySelector('[role=alert]')?.textContent).toBe('Access denied');
   expect(f.refresh.disabled).toBe(false);
+  expectRefreshIcon('refresh');
   f.refresh.click();
   await f.reply({ type: 'resource-data', id: 'renewed', data: { ...data, kanban: { ...data.kanban, url: '/kanban/second/index.html', nonce: 'second' } } });
+  expectRefreshIcon('refresh');
   expect(document.querySelector('iframe')?.src).toContain('/kanban/second/index.html');
   listeners.get('message')!({ source: document.querySelector('iframe')!.contentWindow, data: { type: KANBAN_PREVIEW_READY_MESSAGE, nonce: 'second' } });
   expect(document.querySelector('.resource-preview-status')?.hasAttribute('hidden')).toBe(true);

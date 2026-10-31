@@ -108,10 +108,10 @@ function render(next: ResourcePreviewData): void {
 async function load(nextSelection?: Message): Promise<void> {
   if (nextSelection) { selection = nextSelection; }
   const generation = ++epoch; status.hidden = false; status.textContent = t('Loading...'); status.setAttribute('role', 'status');
-  closeMethods(); clearTimeout(readyTimer); frame = undefined; content.replaceChildren(); refresh.disabled = true; updateIcon(refresh.querySelector('.codicon')!, 'loading');
+  closeMethods(); clearTimeout(readyTimer); frame = undefined; content.replaceChildren(); refresh.disabled = true; updateIcon(refresh, 'loading');
   try { const reply = await request({ type: nextSelection ? 'resource-select' : data ? 'resource-refresh' : 'resource-data', reference, selection }); if (generation === epoch) { id = reply.id ?? id; render(reply.data); } }
   catch (error) { if (generation === epoch) { content.replaceChildren(); fail(error); } }
-  finally { if (generation === epoch) { refresh.disabled = false; updateIcon(refresh.querySelector('.codicon')!, 'refresh'); } }
+  finally { if (generation === epoch) { refresh.disabled = false; updateIcon(refresh, 'refresh'); } }
 }
 const refresh = iconButton('refresh', t('Refresh'), () => void load());
 app.querySelector('header')!.append(refresh);
