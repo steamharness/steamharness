@@ -431,8 +431,8 @@ textarea::placeholder { color: var(--vscode-input-placeholderForeground); }
 .output-ring { display: inline-flex; align-items: center; justify-content: center; width: 32px; height: 32px; flex: 0 0 32px; border-radius: 4px; }
 .output-ring:focus-visible { outline: 1px solid var(--focus); outline-offset: 2px; }
 .output-ring-track { display: block; width: 18px; height: 18px; border-radius: 50%; background: conic-gradient(var(--muted) var(--output-ring-fill, 0%), color-mix(in srgb, var(--muted) 24%, transparent) 0); mask-image: radial-gradient(farthest-side, transparent calc(100% - 3px), #000 calc(100% - 2.5px)); }
-.output-ring-tooltip { position: fixed; z-index: 200; display: flex; flex-direction: column; align-items: center; gap: 4px; width: max-content; max-width: calc(100vw - 24px); padding: 10px 14px; border: 1px solid #d5dbe2; border-radius: 8px; background: #f3f5f7; color: #252b33; box-shadow: 0 4px 16px #0002; text-align: center; font-size: 13px; line-height: 1.5; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
-.output-ring-heading { color: #59636f; font-size: 12px; }
+.output-ring-tooltip { position: fixed; z-index: 200; display: flex; flex-direction: column; align-items: center; gap: 4px; width: max-content; max-width: calc(100vw - 24px); padding: 10px 14px; border: 1px solid var(--vscode-editorHoverWidget-border, var(--border)); border-radius: 8px; background: var(--vscode-editorHoverWidget-background, var(--vscode-editorWidget-background, var(--vscode-editor-background))); color: var(--vscode-editorHoverWidget-foreground, var(--vscode-editor-foreground)); box-shadow: 0 4px 16px var(--vscode-widget-shadow, #0002); text-align: center; font-size: 13px; line-height: 1.5; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.output-ring-heading { color: var(--muted); font-size: 12px; }
 .output-ring-fullness { font-size: 14px; font-weight: 500; }
 .run-options select { max-width: 220px; font-size: 11px; }
 .composer-main-fields { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(180px, 100%), 1fr)); gap: 14px; max-height: 24vh; overflow: auto; padding: 16px 18px 8px; }

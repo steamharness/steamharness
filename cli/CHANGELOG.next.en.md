@@ -1,5 +1,7 @@
 # Unreleased
 
+- Fixed the context window usage tooltip to follow light, dark and host themes for its background, text, border and shadow.
+
 - Fixed Studio local analysis to ignore stale imports whose folders were deleted, preventing Start status refresh failures. Missing projects in the current workspace and other read failures remain unavailable.
 
 - Fixed composer Stop to include the current conversation's background batches and subagents, keeping Stop available during background work. Disconnected owners pause their remaining tree and user queue until explicit input reconciles it, preventing configuration updates from holding messages indefinitely.
