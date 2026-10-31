@@ -1,4 +1,13 @@
 {
+  "Creating conversation fork": "正在创建分叉会话",
+  "Copying the history through the selected response and saving the new conversation...": "正在复制截至所选回答的上下文，并保存新会话…",
+  "Conversation fork created": "分叉创建成功",
+  "Opening the new conversation...": "正在打开新会话…",
+  "Could not create conversation fork": "分叉创建失败",
+  "Conversation created; could not open it": "分叉已创建，但打开失败",
+  "Failure reason": "失败原因",
+  "Fork creation was not confirmed. Reconnect and check your conversations before trying again.": "分叉创建结果尚未确认，请重新连接并检查会话列表后再尝试。",
+  "The conversation was created, but opening it was not confirmed. Open it from conversation history.": "分叉会话已创建，但尚未确认打开成功。请从会话历史中打开。",
   "Dismiss error": "关闭错误提示",
   "Project details, declarations and entry windows.": "查看项目详情、声明与窗口入口。",
   "Manage configuration profiles, values and publication permissions.": "管理配置方案、配置值与发布权限。",

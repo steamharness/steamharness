@@ -710,9 +710,15 @@ export class ConversationController {
     const confirmed = new Promise<AgentSessionReceipt>((done, fail) => { resolve = done; reject = fail; });
     void confirmed.catch(() => undefined);
     this.agentWaiters.set(key, { ownerId: owner.id, targetId: prepared.targetId, requestId: command.requestId, promise: confirmed, resolve, reject });
-    const timeout = setTimeout(() => reject(Object.assign(new Error('Agent command confirmation timed out. Reconnect to check its result.'), { code: 'AGENT_COMMAND_TIMEOUT' })), 30_000);
+    const timeout = setTimeout(() => reject(Object.assign(new Error(command.type === 'fork'
+      ? t('Fork creation was not confirmed. Reconnect and check your conversations before trying again.')
+      : 'Agent command confirmation timed out. Reconnect to check its result.'), { code: 'AGENT_COMMAND_TIMEOUT' })), 30_000);
     const apply = async (): Promise<AgentSessionReceipt> => {
       if (owner.activeRunId) return this.runtime.agentControl!(owner.activeRunId, prepared, entry.id, attachments);
+      if (prepared.type === 'fork') {
+        if (!this.runtime.forkAgentConversation) throw new Error('Stored conversation forking is unavailable.');
+        return this.runtime.forkAgentConversation(this.project, owner.id, prepared);
+      }
       const anchor = this.agentAnchor(owner);
       if (!anchor) throw new Error('The agent has no resumable owner.');
       this.start(owner, { id: anchor.id!, text: '', params: {}, attachments: [], createdAt: Date.now(), configurationSelection }, anchor);
@@ -724,8 +730,16 @@ export class ConversationController {
       if (owner.agentInterrupted) for (const session of this.sessions.filter(session => (session.agentOwnerId ?? session.id) === owner.id)) delete session.agentInterrupted;
       if (receipt.forkId !== undefined) {
         const fork = this.sessions.find(session => session.agentOwnerId === owner.id && session.agentConversationId === receipt.forkId);
-        if (!fork) this.createAgentView(owner, entry, { id: receipt.forkId, title: `${entry.title} · ${t("Fork")}`, background: false,
-          ...(command.type === 'fork' ? { forkEntryId: command.entryId } : {}) });
+        if (!fork) {
+          const info = { id: receipt.forkId, title: `${entry.title} · ${t("Fork")}`, background: false, parentId: receipt.conversationId,
+            ...(command.type === 'fork' ? { forkEntryId: command.entryId } : {}) };
+          if (owner.agent && !owner.agent.conversations.some(conversation => conversation.id === receipt.forkId)) {
+            const agent = { ...owner.agent, conversations: [...owner.agent.conversations, info] };
+            for (const session of this.sessions.filter(session => (session.agentOwnerId ?? session.id) === owner.id)) session.agent = agent;
+          }
+          const source = this.sessions.find(session => (session.agentOwnerId ?? session.id) === owner.id && session.agentConversationId === receipt.conversationId) ?? entry;
+          this.createAgentView(owner, source, info);
+        }
       }
       this.changed(); await this.persist(); return receipt;
     } catch (error) {

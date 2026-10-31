@@ -12,6 +12,7 @@ import { ConversationMessageIndex, type IndexedUserMessage } from './conversatio
 import { InputPrompt } from './input-prompt';
 import { ConversationTools } from './conversation-tools';
 import { requestAction } from './action-dialog';
+import { ConversationForkDialog } from './conversation-fork-dialog';
 import { renderRequestError, RequestErrorAlert } from './request-error';
 import { isExecutionError } from './execution-error';
 import { ContentSearch } from './content-search';
@@ -186,6 +187,8 @@ function initialize(): void {
   const paramError = document.querySelector<HTMLDivElement>('#parameter-error')!;
   const parameterError = new RequestErrorAlert(paramError);
   const operationError = new RequestErrorAlert(document.querySelector<HTMLElement>('#error')!);
+  const forkDialog = new ConversationForkDialog();
+  window.addEventListener('pagehide', () => forkDialog.dispose());
   const chats = document.querySelector<HTMLElement>('#chats')!;
   const moreHistory = document.querySelector<HTMLButtonElement>('#load-more-history')!;
   const allHistorySearch = document.querySelector<HTMLInputElement>('#search-all-history')!;
@@ -1063,7 +1066,8 @@ function initialize(): void {
         });
         if (result !== undefined && state && state.activeId === sessionId && state.project.uri === projectUri && connectionAvailable && navigationReady()) {
           const requestId = beginAgentNavigation('fork');
-          post({ type: 'agent-command', requestId, command: { type: 'fork', requestId, entryId } });
+          forkDialog.start({ requestId, projectUri: state.project.uri, sessionId: state.activeId });
+          post({ type: 'agent-command', requestId, errorScope: 'fork', command: { type: 'fork', requestId, entryId } });
         }
       });
       fork.classList.add('fork-message'); actions.append(fork);
@@ -1622,7 +1626,9 @@ function initialize(): void {
       return;
     }
     if (message.type === 'error' && agentNavigation?.requestId === message.requestId) agentNavigation = undefined;
+    if (message.type === 'error' && forkDialog.fail(message, message.message)) return;
     if (message.type === 'agent-opened' || message.type === 'agent-receipt' && message.forkSessionId) {
+      if (message.forkSessionId && !forkDialog.matches(message)) return;
       const request = agentNavigation;
       if (!request || message.requestId !== request.requestId || (message.type === 'agent-opened' ? 'open' : 'fork') !== request.type) return;
       agentNavigation = undefined;
@@ -1632,11 +1638,16 @@ function initialize(): void {
         || (message.type === 'agent-opened' ? message.sourceSessionId : message.sessionId) !== request.sessionId) return;
       const targetId = message.forkSessionId ?? message.sessionId;
       const target = state.sessions.find(session => session.id === targetId);
-      if (!target || (target.agentOwnerId ?? target.id) !== request.ownerId) return;
+      if (message.forkSessionId) forkDialog.success(message, targetId);
+      if (!target || (target.agentOwnerId ?? target.id) !== request.ownerId) {
+        if (message.forkSessionId) forkDialog.failOpening(targetId, t('The conversation was created, but opening it was not confirmed. Open it from conversation history.'));
+        return;
+      }
       navigate(targetId); return;
     }
     if (message.type === 'trace-navigate') { navigate(message.sessionId); return; }
     if (message.type === 'navigated' && navigationRequest && navigationRequest.requestId === message.requestId) {
+      forkDialog.opened(message.activeId);
       const refreshParameters = navigationRequest.refreshParameters;
       for (const update of navigationRequest.updates) {
         if (draftUpdates.get(update.id) === update) { draftUpdates.delete(update.id); }
@@ -1650,6 +1661,7 @@ function initialize(): void {
     }
     if (message.type === 'error' && message.requestType === 'navigate') {
       if (!navigationRequest || navigationRequest.requestId !== message.requestId) { return; }
+      if (state) forkDialog.failOpening(state.activeId, message.message);
       if (!message.connectionError) {
         for (const entry of submissions.list()) {
           if (entry.projectUri === state?.project.uri && entry.phase === 'pending' && navigationRequest.updates.some(update => update.id === entry.sessionId && update.create)) submissions.fail(entry.input.id, message.message);

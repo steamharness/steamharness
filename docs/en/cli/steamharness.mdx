@@ -61,6 +61,10 @@ Model and effort use separate Quick controls in the default Agent and assistant.
 
 CLI Web accepts host user model snapshots and updates. Bind a model parameter with `userSetting: { key: "agent.model", mode: "default" }` to open available choices before **Add model** opens Studio settings. Explicit choices become conversation overrides; resetting follows the user default. Entries may also use project model configuration APIs; standalone CLI does not persist Studio user models. Third-party keys are excluded from page state, ordinary history and exports, and durable sessions adopt changes after active work finishes. See [user settings](/en/core-api/user-settings#user-models-and-agents-without-connection-configuration).
 
+## Forking conversations
+
+The fork button below a response asks for confirmation, then shows creation and opening progress in a dialog. Success opens the branch automatically; failures display their reason. If creation succeeds but opening fails, the dialog identifies that result so you can open the saved branch from history. The branch contains history up to and including the selected response, excluding later messages. Creating a branch only changes saved conversation records: it does not call AI, rerun the project or resume old tasks, and works when System AI is unconfigured or unavailable. The original conversation is preserved. Model validation and execution begin when you send new input in the branch.
+
 ## Agent batches and pending user messages
 
 The **Errors** filter in Studio Trace collects run, node and tool failures and model retry reasons. Existing diagnostics remain available after a successful retry and can be filtered by conversation and turn. Execution failures do not occupy the operation alert above the composer. Parameter validation, attachment and resource-opening errors remain in that alert; use **×** to hide them. Dismissing a parameter error does not bypass validation.

@@ -19,12 +19,7 @@ import type { AgentSearchMessage } from "./web-search";
 import type { AgentDefinition, AgentPlanItem, AgentSessionCommand, AgentSessionOptions, AgentSessionReceipt, AgentSessionResources, AgentSessionSnapshot, AgentSessionTask, AgentSessionTurn, AgentSubagentAction, AgentWorkInfo } from "./session-types";
 import { AgentDefinitionsDoc, AgentRoleDoc, AgentWorkProgressDoc, AgentWorkRetryDoc, AgentSessionLifecycleDoc, enqueueAgentWork, waitForAgentWorkChange, type DelegationInput, type DelegationState } from "./subagents";
 import { pageJsonResult, RESULT_PAGE_DESCRIPTION, RESULT_PAGE_PROPERTIES, validateResultPageArgs, type ResultPageArgs } from "./result-pages";
-
-const SessionDoc = defineDoc({
-  kind: "project.session", version: 1, scope: "conversation", history: "rewindable", fork: "initial",
-  initial: () => ({ configurationVersion: 0, promptHash: "", promptVersion: 0,
-    commands: {} as Record<string, JsonObject>, title: "", background: false as boolean, deleted: false as boolean, hostConfigurationHash: "" }),
-});
+import { SessionDoc, canonical, forkSessionConversation, sessionTarget } from "./session-state";
 const initialPlan = () => ({ version: 0, items: [] as { id: string; text: string; status: string }[] });
 const PlanAsOf = defineDoc({ kind: "project.plan.as-of", version: 1, scope: "conversation", history: "rewindable", fork: "asOf", initial: initialPlan });
 const PlanCurrent = defineDoc({ kind: "project.plan.current", version: 1, scope: "conversation", history: "rewindable", fork: "current", initial: initialPlan });
@@ -629,20 +624,16 @@ export class DurableAgentSession {
   }
 
   private async target(id?: number): Promise<Conversation> {
-    const target = id ? await this.harness.conversation(id as ConversationId, context) : this.root;
-    if (!target) throw new Error("The target conversation does not exist.");
-    let record = await this.harness.commit(tx => tx.conversation(target.id), context);
-    const seen = new Set<number>();
-    while (record && record.id !== this.root.id && !seen.has(record.id)) {
-      seen.add(record.id);
-      const parent = record.owner?.conversationId ?? record.parent?.conversationId;
-      record = parent ? await this.harness.commit(tx => tx.conversation(parent), context) : undefined;
-    }
-    if (record?.id !== this.root.id) throw new Error("The target belongs to another session.");
-    return target;
+    return sessionTarget(this.harness, this.root, id);
   }
 
   private async perform(command: AgentSessionCommand): Promise<AgentSessionReceipt> {
+    if (command.type === "fork") {
+      const receipt = await forkSessionConversation(this.harness, this.root, command);
+      await this.attach((await this.harness.conversation(receipt.forkId as ConversationId, context))!);
+      await this.emit();
+      return receipt;
+    }
     if (typeof command.requestId !== "string" || !command.requestId || command.requestId.length > 256 || ["__proto__", "constructor", "prototype"].includes(command.requestId)) throw new Error("A bounded stable requestId is required.");
     const target = await this.target(command.targetId);
     const previous = (await this.harness.snapshot(SessionDoc, target.id, context))?.commands[command.requestId];
@@ -729,16 +720,6 @@ export class DurableAgentSession {
           receipt.taskId = id; await save(tx);
         }, context);
         this.harness.resume();
-        break;
-      }
-      case "fork": {
-        if (!Number.isSafeInteger(command.entryId) || command.entryId < 1) throw new Error("A committed entry is required for a fork.");
-        await target.commit(async tx => {
-          const fork = await tx.forkConversation(target.id, command.entryId as EntryId, { ownership: { kind: "ownerless" } });
-          const doc = await tx.doc(SessionDoc, fork.id); doc.title = "Fork";
-          receipt.forkId = fork.id; await save(tx);
-        }, context);
-        await this.attach((await this.harness.conversation(receipt.forkId as ConversationId, context))!);
         break;
       }
       case "delete": {
@@ -952,11 +933,6 @@ export class DurableAgentSession {
       resources: this.resources([...new Set(frame.rows.flatMap(row => (row.agent.modelTools && !Array.isArray(row.agent.modelTools) ? row.agent.modelTools.add : row.agent.modelTools) ?? []))]),
       ...(live?.compactionFailure ? { compactionFailure: live.compactionFailure.error } : {}) };
   }
-}
-
-function canonical(value: unknown): string {
-  return JSON.stringify(value, (_key, item: unknown) => item && typeof item === "object" && !Array.isArray(item)
-    ? Object.fromEntries(Object.entries(item).sort(([a], [b]) => a.localeCompare(b))) : item);
 }
 
 async function scanAll<T>(read: (cursor: Cursor | undefined) => Promise<{ items: readonly T[]; next?: Cursor }>): Promise<T[]> {

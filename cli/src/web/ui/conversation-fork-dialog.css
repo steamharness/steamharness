@@ -1,0 +1,5 @@
+.conversation-fork-dialog .dialog-body { display: grid; gap: 12px; }
+.conversation-fork-dialog [role="status"] { margin: 0; line-height: 1.6; overflow-wrap: anywhere; }
+.conversation-fork-dialog progress { width: 100%; accent-color: var(--vscode-progressBar-background, var(--vscode-button-background)); }
+.conversation-fork-dialog .fork-error { max-height: min(45vh, 320px); overflow: auto; overflow-wrap: anywhere; color: var(--vscode-errorForeground); }
+.conversation-fork-dialog .prompt-navigation { margin-top: 4px; }

@@ -538,7 +538,7 @@ async function startProjectWebServer(options: WebOptions, credentials: { capabil
     // navigation, export and local draft edits remain available during setup.
     const needsServer = ['workflow-run', 'workflow-rerun', 'workflow-resume', 'send', 'retry', 'resume', 'queue-run', 'queue-promote'].includes(message.type)
       || message.type === 'command' && project.conversation?.commands?.find(entry => entry.command === message.command)?.action.kind !== 'export'
-      || message.type === 'agent-command' && !['cancel', 'withdraw'].includes(message.command?.type);
+      || message.type === 'agent-command' && !['cancel', 'withdraw', 'fork'].includes(message.command?.type);
     if (needsServer && projectServer?.blocking) projectServer.assertAvailable();
     if (message.type === 'ready') await configurations.refresh().catch(() => undefined);
     if (message.type === 'kanban-refresh') {

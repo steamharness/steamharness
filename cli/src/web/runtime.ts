@@ -94,7 +94,7 @@ export function createWebRuntime(projectDir: string, storageDir: string, connect
         if (error) { pending.delete(id); reject(Object.assign(error, { code: 'STEAMHARNESS_WORKER_INTERRUPTED' })); }
       });};
       const configuration=request.configuration as ProjectConfigurationSnapshot|undefined;
-      if(command.type==='cancel'||!configuration?.profilePolicyVersion)send();
+      if(command.type==='cancel'||command.type==='fork'||!configuration?.profilePolicyVersion)send();
       else void configurations((request.project as Project)?.entryId).then(store=>store.snapshot({configuration,required:false})).then(send,reject);
     }));
     child.on('message', (message: any) => {
@@ -182,6 +182,7 @@ export function createWebRuntime(projectDir: string, storageDir: string, connect
       if (!control) throw Object.assign(new Error('The agent session is not ready.'), { code: 'AGENT_NOT_READY' });
       return control(command, scopeId, attachments);
     },
+    forkAgentConversation: (project, conversationId, command) => invoke({ method: 'fork-conversation', project, conversationId, command }),
     kanbanBridge: (project, call) => invoke({ method: 'kanban-bridge', project, call }),
     memoryCapabilities: async project => {
       const auth=connection(),account=`${auth?.serverUrl}:${auth?.memoryToken}:${options.actor?.().userId}`;

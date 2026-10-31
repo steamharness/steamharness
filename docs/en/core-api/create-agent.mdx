@@ -120,6 +120,8 @@ Tool tasks expose `arguments` in both active and completed history: the argument
 
 Sessions expose `update_plan` and, when enabled, `subagent({ task, background?, model?: { provider, modelId } })`. Explicit `toolDefinitions` / executor `tools` lists must declare their permissions along with any native tools; the convenience executor adds update_plan/subagent by default. Foreground completion, background execution, and client connectivity are independent states.
 
+When no execution owner is active, hosts can call `forkAgentConversation({ agentStoreDir, conversationId, command: { type: "fork", requestId, entryId, targetId? } })`. `conversationId` is the original workflow conversation ID; `targetId` optionally selects an internal numeric conversation ID. The API requires exactly one SQLite database in that session directory and acquires its exclusive owner lock. It shares the live `fork` document policies and durable receipts, copying committed history without loading the project, validating AI credentials or resuming pending tasks. With an active owner, send `fork` through its control channel to preserve exclusive storage ownership.
+
 ## Extension Execution And Recovery
 
 `session` also accepts `registry: AgentRegistryReader`, `toolSearch: { catalogs? }`, `codeMode: { memoryLimitBytes?, timeoutMs? }`, and `environment: { id, label, open(target, context) }`. All are opt-in; Code Mode is off by default.

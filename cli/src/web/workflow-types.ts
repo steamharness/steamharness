@@ -214,6 +214,7 @@ export interface Runtime {
   listSkills?(project: Project, entrypointId?: string): Promise<import('steamharness').AgentSkillGuide[]>;
   readSkill?(project: Project, skillId: string, entrypointId?: string): Promise<import('steamharness').AgentSkillPreview>;
   agentControl?(runId: string, command: AgentSessionCommand, scopeId: string, attachments?: Attachment[]): Promise<AgentSessionReceipt>;
+  forkAgentConversation?(project: Project, conversationId: string, command: Extract<AgentSessionCommand, { type: 'fork' }>): Promise<AgentSessionReceipt>;
   available: boolean;
   kanbanBridge?(project: Project, call: KanbanBridgeCall): Promise<unknown>;
   inspect(paths: string[], entryId?: string): Promise<{ projects: Omit<Project, 'uri'>[]; errors: string[] }>;

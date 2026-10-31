@@ -223,7 +223,7 @@ try {
         const agent = await import(resolve('steamharness/agent', pathToFileURL(path.join(runtimeProjectDir, 'package.json')).href));
         agentControl = async ({ command, scopeId, attachments }) => core.withProjectConfiguration(configuration, async () => {
           if (typeof scopeId !== 'string' || !command || typeof command.requestId !== 'string') throw new Error('Invalid agent command.');
-          if(command.type!=='cancel')await core.assertProjectConfigurationAccess(projectDir,configuration, request.project.entryId);
+          if(!['cancel','fork'].includes(command.type))await core.assertProjectConfigurationAccess(projectDir,configuration, request.project.entryId);
           let prepared = command;
           if (attachments?.length) {
             if (command.type !== 'submit' || attachments.length > 32) throw new Error('Invalid agent attachments.');
@@ -239,6 +239,7 @@ try {
             try { return await agent.controlAgentSession(request.conversationId, prepared); }
             catch (error) {
               if (error.code !== 'AGENT_NOT_READY') throw error;
+              if (prepared.type === 'fork') return agent.forkAgentConversation({ agentStoreDir: path.join(dataDir, 'agents'), conversationId: request.conversationId, command: prepared });
               if (controller.signal.aborted) throw Object.assign(new Error('The agent owner disconnected.'), { code: 'STEAMHARNESS_WORKER_INTERRUPTED' });
               if (runFinished) throw Object.assign(new Error(runFailure ?? 'The workflow ended without an active agent session.'), { code: 'AGENT_SESSION_ENDED' });
               await new Promise(resolve => setTimeout(resolve, 25));
@@ -327,6 +328,10 @@ try {
       if (request.kind === 'knowledge') send('result', target.documentId ? await database.knowledge.getDocument(target.documentId) ?? null : await database.knowledge.listDocuments({ pageSize: 100 }));
       else if (target.key) send('result', await (target.scope === 'conversation' ? database.kv.conversation : database.kv).getValue(target.key) ?? null);
       else throw new Error('A database key is required.');
+    } else if (request.method === 'fork-conversation') {
+      const { forkAgentConversation } = await import(resolve('steamharness/agent', coreUrl));
+      if (typeof forkAgentConversation !== 'function') throw new Error('Update this project\'s SteamHarness runtime to fork stored conversations.');
+      send('result', await forkAgentConversation({ agentStoreDir: path.join(dataDir, 'agents'), conversationId: request.conversationId, command: request.command }));
     } else if (request.method === 'cancel-conversation' || request.method === 'delete-conversation') {
       const { cancelAgentConversation } = await import(resolve('steamharness/agent', coreUrl));
       await cancelAgentConversation({ agentStoreDir: path.join(dataDir, 'agents'), conversationId: request.conversationId });

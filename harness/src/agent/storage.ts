@@ -8,6 +8,8 @@ import { Harness, createRegistry, type RegistryReader, type Storage } from "@ear
 import { createModels } from "@earendil-works/pi-ai";
 import { openNodeSqliteStorage } from "@earendil-works/pi-durable/storage/sqlite/node";
 import { HarnessError } from "../workflow/errors";
+import { forkSessionConversation } from "./session-state";
+import type { AgentSessionCommand, AgentSessionReceipt } from "./session-types";
 
 export interface AgentStorageFactory {
   /** Non-secret backend name shown in diagnostics. */
@@ -75,6 +77,23 @@ export async function openAgentStorage(databasePath: string): Promise<{ storage:
   try {
     return { storage: await openNodeSqliteStorage(file), release: () => owner.close() };
   } catch (error) { owner.close(); throw error; }
+}
+
+/** Fork committed history without loading a project, resolving credentials, or resuming tasks. */
+export async function forkAgentConversation(options: { agentStoreDir: string; conversationId: string;
+  command: Extract<AgentSessionCommand, { type: "fork" }> }): Promise<AgentSessionReceipt> {
+  const directory = agentConversationDirectory(options.agentStoreDir, options.conversationId);
+  const files = (await readdir(directory)).filter(name => name.endsWith(".sqlite"));
+  if (files.length !== 1) throw new Error("Fork requires exactly one stored agent session.");
+  const { storage, release } = await openAgentStorage(path.join(directory, files[0]!));
+  let harness: Harness | undefined;
+  try {
+    harness = await Harness.open(storage, { models: createModels(), registry: createRegistry() }, BACKGROUND_CONTEXT);
+    return await forkSessionConversation(harness, await harness.root(BACKGROUND_CONTEXT), options.command);
+  } finally {
+    try { if (harness) await harness.close(BACKGROUND_CONTEXT); else await storage.close(BACKGROUND_CONTEXT); }
+    finally { release(); }
+  }
 }
 
 /** Join the worker first. Supply project definitions to run custom task abort handlers. */
