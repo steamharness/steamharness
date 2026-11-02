@@ -1,5 +1,7 @@
 # Unreleased
 
+- Fixed existing valid logins to authorize Assistant and project memory after upgrades without signing out. The trusted CLI host uses the saved account session to issue short-lived scoped grants; cookies stay out of project processes, page state and diagnostics. Updating memory authorization does not restart the CLI.
+
 - Fixed dependency setup for new projects to ignore unrelated ancestor Corepack settings and respect an explicit npm choice. Updated board templates, execution scripts and bilingual guidance.
 
 - Fixed recent history and imported registrations to stay in sync when folders are deleted or recent entries are removed. Start updates readable project counts while keeping individual read failures in Analysis, without marking all counts unavailable or showing a persistent refresh failure.

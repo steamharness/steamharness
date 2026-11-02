@@ -56,6 +56,28 @@ it('a standalone Web account still opens its own login dialog', () => {
   expect(dialog.showModal).toHaveBeenCalledOnce();
 });
 
+it('memory authorization reaches the host with its purpose and does not sign out', () => {
+  const openHostAccount = vi.fn();
+  const { panel, request, dialog } = fixture(openHostAccount);
+  panel.open(true);
+  expect(openHostAccount).toHaveBeenCalledWith(true);
+  expect(request).not.toHaveBeenCalled();
+  expect(dialog.showModal).not.toHaveBeenCalled();
+});
+
+it('an authenticated standalone account can renew memory authorization without signing out', () => {
+  const { panel, request, dialog } = fixture();
+  panel.update({ status: 'authenticated', revision: 1, serverUrl: 'https://server.test', user: { userId: 'user', email: 'user@example.test', displayName: 'User' } });
+  expect(dialog.querySelector('#login-form').hidden).toBe(true);
+  panel.open(true);
+  expect(dialog.querySelector('#login-form').hidden).toBe(false);
+  expect(dialog.querySelector('#account-profile').hidden).toBe(true);
+  expect(dialog.querySelector('#login-email').value).toBe('user@example.test');
+  expect(request).not.toHaveBeenCalled();
+  panel.open();
+  expect(dialog.querySelector('#login-form').hidden).toBe(true);
+});
+
 it.each(['png', 'jpeg', 'jpg', 'gif', 'webp'])('renders a Server %s data avatar in both the toolbar and account dialog', type => {
   const { panel, button, dialog } = fixture();
   const avatarUrl = `data:image/${type};base64,YXZhdGFy`;

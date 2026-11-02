@@ -154,6 +154,39 @@ test('memory settings never promote an ordinary project key into account memory 
   assert.equal(f.controller.getState().status, 'authenticated');
 });
 
+test('missing memory authorization can be verified without signing out an authenticated account', async t => {
+  const f = await fixture(t);
+  f.commands.get('studio.openSettings')({ section: 'memory' });
+  const settings = f.panel;
+  const requests = f.requests;
+  await settings.message({ type: 'authorize-memory' });
+  const login = f.panel;
+  assert.notEqual(login, settings);
+  assert.equal(login.type, 'studio.login');
+  await login.message({ type: 'ready' });
+  assert.equal(login.webview.messages.at(-1).reauthorize, true);
+  assert.equal(login.webview.messages.at(-1).state.status, 'authenticated');
+  assert.equal(f.controller.getConnection().accessToken, 'test-token');
+  assert.equal(f.requests, requests, 'Project keys must not be used to upgrade memory authorization');
+  await login.message({ type: 'login', serverUrl: 'http://127.0.0.1:7126', email: 'user@example.test', password: 'valid-password' });
+  assert.equal(f.controller.getState().status, 'authenticated');
+  assert.equal(f.panel, settings);
+  assert.equal(settings.webview.messages.filter(message => message.type === 'settings-navigate').at(-1).state.section, 'memory');
+});
+
+test('memory verification reuses a valid session and service outages never open a sign-in form', async t => {
+  const f = await fixture(t, { sessionCookie: 'wf_session=current' });
+  for (const status of [200, 503]) {
+    f.fetch = async () => Response.json(status === 200 ? { errCode: 0, data: { enabled: true } } : { errCode: 503 }, { status });
+    await f.controller.authorizeMemory();
+    assert.equal(f.panel.type, 'studio.settings');
+    await f.panel.message({ type: 'ready' });
+    assert.equal(f.panel.webview.messages.filter(message => message.type === 'settings-navigate').at(-1).state.section, 'memory');
+    assert.equal(f.controller.getState().status, 'authenticated');
+  }
+  assert.equal(f.panels.some(panel => panel.type === 'studio.login'), false);
+});
+
 test('memory replies from a signed-out account cannot enter the settings page', async t => {
   const f = await fixture(t, { sessionCookie: 'wf_session=old-session' });
   f.commands.get('studio.openSettings')({ section: 'memory' });

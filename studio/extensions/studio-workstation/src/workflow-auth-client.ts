@@ -16,6 +16,8 @@ export interface Connection {
   accessToken: string;
   /** Secret host credential. Only the CLI host receives it, never a project worker. */
   memoryToken?: string;
+  /** Existing account session, used only by the host to authorize memory. */
+  memorySessionCookie?: string;
   /** Optional private system-AI service connection kept separate from project auth. */
   aiServerUrl?: string;
   aiAccessToken?: string;
@@ -270,6 +272,7 @@ export class Account {
   getConnection(): Connection | undefined {
     const session = this.getSession();
     return session ? { serverUrl: session.serverUrl, accessToken: session.accessToken, ...(session.memoryToken ? { memoryToken:session.memoryToken } : {}),
+      ...(session.sessionCookie ? { memorySessionCookie: session.sessionCookie } : {}),
       ...(this.aiConnection ? { aiServerUrl: this.aiConnection.serverUrl, aiAccessToken: this.aiConnection.accessToken } : {}) } : undefined;
   }
 

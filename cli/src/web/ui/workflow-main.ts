@@ -79,6 +79,7 @@ let editTimer: ReturnType<typeof setTimeout> | undefined, searchTimer: ReturnTyp
 let prompt: InputPrompt | undefined, promptKey = '';
 const narrow = matchMedia('(max-width: 680px)'), dialogs = new ConversationTools(aggregateToolbar.databases, {
   path: target => post({ type: 'open-path', ...target }),
+  account: reason => post({ type: 'open-account', reason }),
   configurations: configurationPanel,
   skills: { load: (requestId, skillId) => post({ type: 'project-skills', requestId, skillId, entrypointId }) },
   tools: () => ({ parameters: parameters(), policies: draft().policies, readOnly: !connected,

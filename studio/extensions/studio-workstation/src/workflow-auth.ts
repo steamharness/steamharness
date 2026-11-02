@@ -30,6 +30,7 @@ export class AccountController implements vscode.Disposable {
   private panel?: vscode.WebviewPanel;
   private loginPanel?: vscode.WebviewPanel;
   private loginBusy = false;
+  private loginForMemory = false;
   private viewState: SettingsViewState = { section: 'general', target: 'user' };
   private settingsTimer?: ReturnType<typeof setTimeout>;
   private settingWrites: Promise<void> = Promise.resolve();
@@ -200,8 +201,24 @@ export class AccountController implements vscode.Disposable {
     this.attachPanel(panel);
   }
 
-  private openLogin(): void {
-    if (this.getState().status === 'authenticated') { this.open({ section: 'account' }); return; }
+  async authorizeMemory(): Promise<void> {
+    const session = this.account.getSession();
+    if (session) {
+      try {
+        await new ServerClient(session.serverUrl).accountMemory(session, 'capabilities');
+        if (this.account.getSession()?.accessToken === session.accessToken) this.open({ section: 'memory' });
+        return;
+      } catch (error) {
+        if (this.account.getSession()?.accessToken !== session.accessToken) return;
+        if ((error as { status?: number }).status !== 401) { this.open({ section: 'memory' }); return; }
+      }
+    }
+    this.openLogin(true);
+  }
+
+  private openLogin(forMemory = false): void {
+    if (!forMemory && this.getState().status === 'authenticated') { this.open({ section: 'account' }); return; }
+    this.loginForMemory = forMemory;
     if (this.loginPanel) { this.loginPanel.reveal(); this.publishLogin(); return; }
     this.attachLoginPanel(vscode.window.createWebviewPanel('studio.login', t('Sign In'), vscode.ViewColumn.Active, {
       enableScripts: true, retainContextWhenHidden: false,
@@ -210,7 +227,7 @@ export class AccountController implements vscode.Disposable {
   }
 
   private publishLogin(): void {
-    void this.loginPanel?.webview.postMessage({ type: 'account', state: this.getState(), busy: this.loginBusy });
+    void this.loginPanel?.webview.postMessage({ type: 'account', state: this.getState(), busy: this.loginBusy, reauthorize: this.loginForMemory });
   }
 
   private attachLoginPanel(panel: vscode.WebviewPanel): void {
@@ -222,7 +239,7 @@ export class AccountController implements vscode.Disposable {
     let pageGeneration = 0;
     const listeners: vscode.Disposable[] = [];
     listeners.push(panel.onDidDispose(() => {
-      if (this.loginPanel === panel) { this.loginPanel = undefined; }
+      if (this.loginPanel === panel) { this.loginPanel = undefined; this.loginForMemory = false; }
       for (const listener of listeners) { listener.dispose(); }
     }), panel.webview.onDidReceiveMessage(async message => {
       if (this.loginPanel !== panel || !message || typeof message !== 'object') { return; }
@@ -240,14 +257,14 @@ export class AccountController implements vscode.Disposable {
         await this.account.login(message.serverUrl, message.email, message.password);
         if (this.getState().status === 'authenticated') {
           await vscode.workspace.getConfiguration('studio').update('project.serverUrl', this.getState().serverUrl, vscode.ConfigurationTarget.Global);
-          if (current()) { this.open({ section: 'account' }); panel.dispose(); }
+          if (current()) { this.open({ section: this.loginForMemory ? 'memory' : 'account' }); panel.dispose(); }
         }
       } catch (error) {
         failure = error instanceof Error ? error.message : t('Sign-in failed.');
       } finally {
         this.loginBusy = false;
         if (current()) {
-          await panel.webview.postMessage({ type: 'login-result', state: this.getState(), message: failure });
+          await panel.webview.postMessage({ type: 'login-result', state: this.getState(), message: failure, reauthorize: this.loginForMemory });
         } else { this.publishLogin(); }
       }
     }));
@@ -410,6 +427,7 @@ export class AccountController implements vscode.Disposable {
         } catch { await panel.webview.postMessage({ type: 'settings-error', message: t('Unable to complete settings action.') }); }
         return;
       }
+      if (message.type === 'authorize-memory') { await this.authorizeMemory(); return; }
       if (message.type === 'open-login') { this.openLogin(); return; }
       const exclusive = ['verify', 'logout'].includes(message.type);
       if (exclusive && busy) { return; }

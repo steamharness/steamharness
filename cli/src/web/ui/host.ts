@@ -293,7 +293,7 @@ export function acquireProjectHost(options: { live?: boolean; connectionBanner?:
   let accountPanel: AccountPanel;
   queueMicrotask(() => {
     const openHostAccount = document.body.dataset.accountHost === 'true'
-      ? () => window.parent.postMessage({ type: 'workflow-account', version: 1 }, '*') : undefined;
+      ? (reauthorize?: boolean) => window.parent.postMessage({ type: 'workflow-account', version: 1, ...(reauthorize ? { reason: 'memory' } : {}) }, '*') : undefined;
     // Pages without a sidebar (Kanban) keep account access in the shared toolbar.
     const accountContainer = document.querySelector<HTMLElement>('#project-menu') ?? document.querySelector<HTMLElement>('.toolbar-actions')!;
     accountPanel = new AccountPanel(accountContainer, request, openHostAccount);
@@ -301,7 +301,7 @@ export function acquireProjectHost(options: { live?: boolean; connectionBanner?:
   return {
     keyboard,
     postMessage: async (message) => {
-      if (message.type === 'open-account') { accountPanel?.open(); return; }
+      if (message.type === 'open-account') { accountPanel?.open(message.reason === 'memory'); return; }
       if (message.type === 'open-project-create') { void projectCreation.open(); return; }
       if (message.type === 'open-project-upload') {
         if (projectSetupHost) window.parent.postMessage({ type: 'workflow-project-upload', version: 1 }, '*');

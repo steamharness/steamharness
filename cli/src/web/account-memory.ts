@@ -20,16 +20,25 @@ export class WebAccountMemory {
     endpoint: string,
     body?: unknown,
   ) {
-    const r = await fetch(`${connection.serverUrl}/api/me${endpoint}`, {
+    const request = (cookie: boolean) => fetch(`${connection.serverUrl}/api/me${endpoint}`, {
       method: body === undefined ? "GET" : "POST",
       headers: {
-        Authorization: `Bearer ${connection.memoryToken}`,
+        ...(cookie
+          ? { Cookie: connection.memorySessionCookie! }
+          : { Authorization: `Bearer ${connection.memoryToken}` }),
         "Content-Type": "application/json",
       },
       body: body === undefined ? undefined : JSON.stringify(body),
       signal: AbortSignal.timeout(5000),
       redirect: "error",
     });
+    // A project API key cannot authorize account memory. Only the trusted
+    // host's existing session can replace a missing/expired manager token.
+    let r = await request(!connection.memoryToken);
+    if (r.status === 401 && connection.memoryToken && connection.memorySessionCookie) {
+      await r.body?.cancel();
+      r = await request(true);
+    }
     const b = await r.json();
     if (!r.ok || b.errCode !== 0)
       throw Object.assign(new Error(b.errMessage ?? "Memory request failed."), {
@@ -37,20 +46,24 @@ export class WebAccountMemory {
       });
     return b.data;
   }
-  private current(c: WebConnection) {
+  private current(c: WebConnection, userId: string | undefined = this.userId()) {
     return (
       this.connection()?.memoryToken === c.memoryToken &&
+      this.connection()?.memorySessionCookie === c.memorySessionCookie &&
       this.connection()?.serverUrl === c.serverUrl &&
-      !!this.userId()
+      this.connection()?.accessToken === c.accessToken &&
+      !!userId && this.userId() === userId
     );
   }
   async grant(project: Project, readOnly = false) {
     const connection = this.connection();
-    if (!connection?.memoryToken || !this.userId())
-      throw new Error("Sign in again to authorize account memory.");
+    const userId = this.userId();
+    if (!(connection?.memoryToken || connection?.memorySessionCookie) || !userId)
+      throw Object.assign(new Error("Account memory authorization is missing. Verify your account authorization."), { status: 401 });
     const directory = await realpath(
       project.assistant?.workdir ?? project.folderPath,
     );
+    if (!this.current(connection, userId)) throw new Error("Account changed.");
     let projectId = project.assistant ? undefined : project.id;
     if (project.assistant)
       try {
@@ -82,7 +95,7 @@ export class WebAccountMemory {
             if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
           }
           const key = hash(
-            `${connection.serverUrl}:${this.userId()}:${directory}`,
+            `${connection.serverUrl}:${userId}:${directory}`,
           );
           const directoryId = map[key] ?? randomUUID();
           if (!map[key]) {
@@ -91,6 +104,7 @@ export class WebAccountMemory {
             await writeFile(temp, JSON.stringify(map), { mode: 0o600 });
             await rename(temp, file);
           }
+          if (!this.current(connection, userId)) throw new Error("Account changed.");
           return this.request(connection, "/memory/grants", {
             directory: true,
             directoryId,
@@ -108,37 +122,29 @@ export class WebAccountMemory {
       );
       grant = await next;
     }
-    if (!this.current(connection)) throw new Error("Account changed.");
+    if (!this.current(connection, userId)) throw new Error("Account changed.");
     return {
       ...grant,
       serverUrl: connection.serverUrl,
       outboxDirectory: path.join(
         this.storageDir,
         "memory-outbox",
-        hash(`${connection.serverUrl}:${this.userId()}:${grant.scope}`),
+        hash(`${connection.serverUrl}:${userId}:${grant.scope}`),
       ),
     };
   }
   async call(project: Project, action: string, input: any = {}) {
     const connection = this.connection();
-    const account = connection?.memoryToken
-      ? hash(`${connection.serverUrl}:${this.userId()}:${connection.memoryToken}`)
+    const userId = this.userId();
+    const account = connection && (connection.memoryToken || connection.memorySessionCookie)
+      ? hash(JSON.stringify([connection.serverUrl, userId, connection.accessToken, connection.memoryToken, connection.memorySessionCookie]))
       : undefined;
     if (account !== this.capabilityAccount) {
       this.capabilityAccount = account;
       this.capabilityCache.clear();
     }
-    if (!connection?.memoryToken) {
-      if (action === "capabilities")
-        return {
-          connected: false,
-          enabled: false,
-          status: "unconfigured",
-          automatic: false,
-          readOnly: true,
-          scopes: [],
-        };
-      throw new Error("Sign in again to authorize account memory.");
+    if (!(connection?.memoryToken || connection?.memorySessionCookie) || !userId) {
+      throw Object.assign(new Error("Account memory authorization is missing. Verify your account authorization."), { status: 401 });
     }
     let cached: any;
     const provider = createServerAgentMemoryProvider({
@@ -146,7 +152,7 @@ export class WebAccountMemory {
       getGrant: async () => (cached ??= await this.grant(project)),
     });
     const check = () => {
-      if (!this.current(connection)) throw new Error("Account changed.");
+      if (!this.current(connection, userId)) throw new Error("Account changed.");
     };
     let result: unknown;
     switch (action) {
@@ -207,7 +213,7 @@ export class WebAccountMemory {
       case "clear": {
         const grant = await this.grant(project);
         result = await this.request(
-          { ...connection, memoryToken: grant.token },
+          { serverUrl: connection.serverUrl, accessToken: connection.accessToken, memoryToken: grant.token },
           "/memory/clear",
           {
             scope: input.scope === "global" ? "global" : grant.scope,

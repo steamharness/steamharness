@@ -19,6 +19,7 @@ import { bindOutputFileLinks, type FileLinkTarget } from './output-file-links';
 export type ProjectSettingsSection = 'overview' | 'configurations' | 'tools' | 'skills' | 'usage' | 'databases' | 'memory';
 export interface ProjectSettingsOptions {
   path?(target: FileLinkTarget): void;
+  account?(reason?: 'memory'): void;
   configurations?: ProjectConfigurationsPanel;
   tools?(): { parameters: Parameters; policies: ToolPolicies; changed(policies: ToolPolicies): void; readOnly?: boolean };
   usage?: { available(): boolean; load(requestId: string): void };
@@ -206,6 +207,17 @@ export class ConversationTools {
     }
     if (project) {
       const client:MemoryClient={call:async(action,input)=>{const base=document.querySelector<HTMLMetaElement>('meta[name=steamharness-base]')?.content??'';const r=await fetch(base+'/api/memory',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action,input}),signal:AbortSignal.timeout(10000)});const b=await r.json();if(!r.ok||b.errCode!==0)throw Object.assign(new Error(b.errMessage),{status:r.status});return b.data;}};
+      const addMemory = () => {
+        if(tabs.some(tab=>tab.id==='memory'))return;
+        const container=document.createElement('div');container.className='project-settings-memory';
+        add('memory',t('Global memory'),'book',t('Private account memory for this project.'),container,()=>{
+          this.memoryPanel=createMemoryPanel({client,locale:document.documentElement.lang||'en',
+            onAuthorize:this.settings.account?()=>{this.close();this.settings.account!('memory');}:undefined});
+          container.append(this.memoryPanel.element);
+        });
+        const tab=tabs.at(-1)!;tab.panel.hidden=true;tab.tab.setAttribute('aria-selected','false');tab.tab.tabIndex=-1;
+        if(initialTab==='memory')this.selectSection?.('memory');
+      };
       const refreshMemory = this.refreshMemory = () => {
         const generation=++this.memoryEpoch;
         void client.call('capabilities').then(capabilities=>{
@@ -219,11 +231,13 @@ export class ConversationTools {
             }
             return;
           }
-          if(existing)return;
-          const container=document.createElement('div');container.className='project-settings-memory';
-          add('memory',t('Global memory'),'book',t('Private account memory for this project.'),container,()=>{this.memoryPanel=createMemoryPanel({client,locale:document.documentElement.lang||'en'});container.append(this.memoryPanel.element);});
-          const tab=tabs.at(-1)!;tab.panel.hidden=true;tab.tab.setAttribute('aria-selected','false');tab.tab.tabIndex=-1;
-        }).catch(()=>undefined);
+          addMemory();
+        }).catch(error=>{
+          if(generation!==this.memoryEpoch||!this.open)return;
+          // Core contacts the provider only for enabled projects. Keep that
+          // entry visible so authorization and service errors can be resolved.
+          if([401,403,503].includes(error?.status))addMemory();
+        });
       };
       refreshMemory();
     }

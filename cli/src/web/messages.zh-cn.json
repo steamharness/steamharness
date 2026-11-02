@@ -1,4 +1,5 @@
 {
+  "Memory authorization is unavailable. Verify your account to restore memory; signing out is not required.": "记忆授权不可用，请验证账号以恢复记忆功能，无需退出当前登录。",
   "Creating conversation fork": "正在创建分叉会话",
   "Copying the history through the selected response and saving the new conversation...": "正在复制截至所选回答的上下文，并保存新会话…",
   "Conversation fork created": "分叉创建成功",

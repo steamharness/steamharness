@@ -3,6 +3,7 @@ import { mkdir, mkdtemp, readFile, realpath, rm, symlink, writeFile } from 'node
 import path from 'node:path';
 import os from 'node:os';
 import { randomUUID } from 'node:crypto';
+import { createServer } from 'node:http';
 import { writeProjectFixture } from '../../scripts/test-project-fixture.mjs';
 import { createWebRuntime, type WebConnection } from '../web/runtime';
 import { startEntryWebServer } from '../web/server';
@@ -40,6 +41,7 @@ it('lists and previews the selected agent through the real worker and authentica
   await mkdir(path.join(root, 'child/guides/child'), { recursive: true });
   await writeFile(path.join(root, 'child/guides/child/SKILL.md'), '---\nname: child\n---\nChild entry guide');
   await writeFile(path.join(root, 'child/index.ts'), `
+    if (JSON.stringify(process.env).includes('legacy-host-only')) throw new Error('Host memory session leaked to worker');
     const agent = steamharness.createAgentConversationProject({ memory: true, skills: { directories: ['guides'] } });
     const wrapper = steamharness.defineProject({ name: 'wrapper', async run() { throw new Error('Preview must not run the wrapper'); } });
     export const executor = steamharness.defineExecutor({ projectType: 'conversation', workflow: wrapper, coreAgent: agent, createInput() { return {}; } });
@@ -57,7 +59,7 @@ it('lists and previews the selected agent through the real worker and authentica
       createInput(context) { return steamharness.createAgentProjectInput(context); } });
   `);
   let connection: WebConnection | undefined;
-  const runtime = createWebRuntime(root, path.join(root, 'data'), () => connection);
+  const runtime = createWebRuntime(root, path.join(root, 'data'), () => connection, { actor: () => ({ userId: 'host-user', isSystemAdmin: false }) });
   const app = await startEntryWebServer({ projectDir: root, dataDir: path.join(root, 'data'), runtime });
   try {
     const token = new URL(app.url).hash.slice('#session='.length);
@@ -99,5 +101,24 @@ it('lists and previews the selected agent through the real worker and authentica
     await expect(runtime.memoryCapabilities!(workflow)).resolves.toMatchObject({ connected: false, enabled: false });
     // An enabled Agent does contact the host; the closed server above is deliberate.
     await expect(runtime.memoryCapabilities!(wrapped)).rejects.toThrow('Memory authorization is unavailable');
+    connection = { ...connection, memoryToken: undefined };
+    await expect(runtime.memoryCapabilities!(wrapped)).rejects.toMatchObject({ metadata: { status: 401 } });
+    const requests: { url?: string; cookie?: string; authorization?: string }[] = [];
+    const memoryServer = createServer((request, response) => {
+      requests.push({ url: request.url, cookie: request.headers.cookie, authorization: request.headers.authorization });
+      response.setHeader('Content-Type', 'application/json');
+      response.end(JSON.stringify({ errCode: 0, data: request.url?.endsWith('/grants')
+        ? { token: 'shmu_worker-only', scope: 'project:skill-project', expiresAt: new Date(Date.now() + 300_000).toISOString() }
+        : { connected: true, enabled: true, status: 'ready', automatic: true, readOnly: false, scopes: ['global', 'project:skill-project'] } }));
+    });
+    await new Promise<void>(resolve => memoryServer.listen(0, '127.0.0.1', resolve));
+    try {
+      connection = { serverUrl: `http://127.0.0.1:${(memoryServer.address() as { port: number }).port}`, accessToken: 'project-test', memorySessionCookie: 'wf_session=legacy-host-only' };
+      await expect(runtime.memoryCapabilities!(wrapped)).resolves.toMatchObject({ connected: true, enabled: true });
+      expect(requests).toEqual([
+        { url: '/api/me/memory/grants', cookie: 'wf_session=legacy-host-only', authorization: undefined },
+        { url: '/api/me/memory/capabilities', cookie: undefined, authorization: 'Bearer shmu_worker-only' },
+      ]);
+    } finally { await new Promise<void>(resolve => memoryServer.close(() => resolve())); }
   } finally { await app.close(); runtime.dispose(); }
 }, 60_000);

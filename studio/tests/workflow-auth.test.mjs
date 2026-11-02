@@ -90,7 +90,7 @@ test('desktop password login verifies the issued token and keeps it out of publi
   await f.account.login(`${serverUrl}/`, user.email, 'correct-password');
   assert.equal(f.account.getState().status, 'authenticated');
   assert.deepEqual(f.account.getState().user, { ...user, avatarUrl: `${serverUrl}/avatar/user.png` });
-  assert.deepEqual(f.account.getConnection(), { serverUrl, accessToken: token });
+  assert.deepEqual(f.account.getConnection(), { serverUrl, accessToken: token, memorySessionCookie: 'wf_session=test-cookie' });
   assert.equal(JSON.parse(f.stored).accessToken, token);
   assert.equal(JSON.stringify(f.events).includes(token), false);
   assert.equal(JSON.parse(f.stored).sessionCookie, 'wf_session=test-cookie');
@@ -134,6 +134,22 @@ test('account memory credentials persist only in secret storage and host connect
   await restored.logout();
   assert.equal(restored.getConnection(), undefined);
   assert.equal(f.stored, undefined);
+});
+
+test('legacy logins restore host memory authorization from their existing session without another login', async () => {
+  const f = fixture();
+  f.stored = JSON.stringify({ serverUrl, accessToken: token, apiKeyId: `key-${token}`, user, sessionCookie: 'wf_session=test-cookie' });
+  for (let restart = 0; restart < 2; restart++) {
+    const restored = new Account(serverUrl, f.secrets, state => f.events.push(state), url => new ServerClient(url, f.fetcher));
+    await restored.restore();
+    await restored.verify();
+    assert.equal(restored.getState().status, 'authenticated');
+    assert.deepEqual(restored.getConnection(), { serverUrl, accessToken: token, memorySessionCookie: 'wf_session=test-cookie' });
+    assert.equal(restored.getSession().memoryToken, undefined);
+    assert.equal(restored.getSession().apiKeyId, `key-${token}`);
+  }
+  assert.ok(f.requests.every(request => !request.url.endsWith('/api/auth/login')));
+  assert.doesNotMatch(JSON.stringify(f.events), /test-cookie|test-studio-session/);
 });
 
 test('a rejected password or missing profile never becomes a saved login', async () => {

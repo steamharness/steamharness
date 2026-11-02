@@ -251,6 +251,7 @@ function initialize(): void {
   });
   const dialogs = new ConversationTools(aggregateToolbar.databases, {
     path: target => post({ type: 'open-path', ...target }),
+    account: reason => post({ type: 'open-account', reason }),
     configurations: configurationPanel,
     skills: { load: (requestId, skillId) => post({ type: 'project-skills', requestId, skillId, entrypointId: entrypoint.value || undefined }) },
     tools: () => ({ parameters: currentParameters(), policies: currentSession()?.toolPermissionPolicies ?? {}, readOnly: readOnly(),
