@@ -93,6 +93,7 @@ test("synchronous provider exceptions exhaust exactly ten durable retries", { ti
   assert.equal(calls, 11);
   const turn = f.snapshot().turns[0]!;
   assert.equal(turn.status, "unanswered"); assert.equal(turn.reason, "model_error");
+  assert.ok(typeof turn.startedAt === "number" && typeof turn.endedAt === "number" && turn.endedAt >= turn.startedAt);
   assert.match(turn.detail ?? "", /501/);
   assert.equal(turn.items.filter(item => item.metadata?.partType === "retry").length, 10);
 });
@@ -600,6 +601,8 @@ test("SQLite reopens configuration, plans and command receipts without replaying
   first.faux.setResponses([ai.fauxAssistantMessage("Persisted")]); first.instance.requestId = "persisted";
   const initial = first.instance.prompt("Hello");
   await until(() => first.snapshot()?.turns.some(turn => turn.status === "done"));
+  const timing = { startedAt: first.snapshot().turns[0]!.startedAt, endedAt: first.snapshot().turns[0]!.endedAt };
+  assert.ok(typeof timing.startedAt === "number" && typeof timing.endedAt === "number" && timing.endedAt >= timing.startedAt);
   await first.instance.control({ type: "configure", requestId: "config", expectedVersion: 0, effort: "high" });
   const plan = { type: "plan" as const, requestId: "plan", expectedVersion: 0, items: [{ id: "a", text: "Keep this", status: "completed" as const }] };
   await first.instance.control(plan);
@@ -616,6 +619,7 @@ test("SQLite reopens configuration, plans and command receipts without replaying
   assert.deepEqual(second.snapshot().plan.items, plan.items);
   assert.deepEqual(await second.instance.control(forkCommand), fork);
   assert.equal(second.faux.state.callCount, 0);
+  assert.deepEqual({ startedAt: second.snapshot().turns[0]!.startedAt, endedAt: second.snapshot().turns[0]!.endedAt }, timing);
   assert.ok(second.snapshot().receipts.some(receipt => receipt.requestId === "config"));
   const remove = { type: "delete" as const, requestId: "delete", targetId: fork.forkId };
   await second.instance.control(remove); await second.instance.control(remove);
@@ -649,6 +653,9 @@ test("foreground cancellation leaves a background subagent alive and cancelling 
   assert.ok(snapshot().tasks.some(task => task.toolName === "wait"));
   const delegation = snapshot().tasks.find(task => task.kind === "project.delegation")!;
   await instance.control({ type: "cancel", requestId: "stop-child", scope: "task", taskId: delegation.id });
+  const stopped = snapshot().turns.find(turn => turn.conversationId === child.id)!;
+  assert.equal(stopped.status, "unanswered"); assert.equal(stopped.reason, "aborted");
+  assert.ok(typeof stopped.startedAt === "number" && typeof stopped.endedAt === "number" && stopped.endedAt >= stopped.startedAt);
   assert.equal(snapshot().tasks.length, 0);
   assert.equal(snapshot().turns.filter(turn => turn.requestId.startsWith("report:")).length, 0);
 });
@@ -787,6 +794,8 @@ test("the durable inbox steers at a tool boundary, withdraws follow ups and neve
   assert.equal(withdrawn.status, "aborted");
   const next = { type: "submit" as const, requestId: "next", prompt: "Next", mode: "followUp" as const };
   await instance.control(next); await instance.control(next);
+  const queued = snapshot().turns.find(turn => turn.requestId === "next")!;
+  assert.equal(queued.status, "queued"); assert.equal(queued.startedAt, undefined); assert.equal(queued.endedAt, undefined);
   tool.resolve();
   await until(() => snapshot().turns.some(turn => turn.requestId === "next" && turn.status === "done"));
   assert.match(seen, /Use detail/); assert.doesNotMatch(seen, /Skip/);
@@ -836,6 +845,34 @@ for (const sqlite of [false, true]) test(`queued promotion preserves input ident
     assert.equal(current.snapshot().turns.find(turn => turn.requestId === "urgent")?.mode, "steer");
     assert.equal(current.faux.state.callCount, 0);
   }
+});
+
+test("subagent turn timing exists before a client opens it and remains fixed after tools finish", async t => {
+  const f = session({ subagents: { tools: ["wait"], maxAgents: 1 }, compaction: { enabled: false } });
+  const gate = latch(); let entered = false;
+  f.instance.state.tools = [{ name: "wait", label: "Wait", description: "Wait", replay: "safe", parameters: ai.Type.Object({}),
+    execute: async () => { entered = true; await gate.promise; return { content: [ai.fauxText("Finished waiting")], details: {} }; } }];
+  const response = (request: ai.TranscriptContext) => {
+    const child = request.messages.some(message => message.role === "user" && message.content === "Timed child");
+    if (request.messages.some(message => message.role === "toolResult")) return ai.fauxAssistantMessage(child ? "Child finished" : "Parent finished");
+    return child ? ai.fauxAssistantMessage([ai.fauxToolCall("wait", {})], { stopReason: "toolUse" })
+      : ai.fauxAssistantMessage([ai.fauxToolCall("subagent", { task: "Timed child", background: true })], { stopReason: "toolUse" });
+  };
+  f.faux.setResponses([response, response, response, response, response]);
+  const before = Date.now(), run = f.instance.prompt("Delegate");
+  t.after(async () => { gate.resolve(); f.lease.resolve(); await run; await f.instance.close(); });
+  const child = () => f.snapshot()?.turns.find(turn => turn.conversationId !== f.snapshot().conversationId);
+  await until(() => entered && child()?.status === "placed");
+  const startedAt = child()!.startedAt;
+  assert.ok(typeof startedAt === "number" && startedAt >= before && startedAt <= Date.now());
+  assert.equal(child()!.endedAt, undefined);
+  await f.instance.control({ type: "snapshot", requestId: "read-running-time" });
+  assert.equal(child()!.startedAt, startedAt);
+  gate.resolve(); await until(() => child()?.status === "done" && typeof child()?.endedAt === "number");
+  const endedAt = child()!.endedAt!;
+  assert.ok(endedAt >= startedAt && endedAt <= Date.now());
+  await f.instance.control({ type: "snapshot", requestId: "read-finished-time" });
+  assert.equal(child()!.startedAt, startedAt); assert.equal(child()!.endedAt, endedAt);
 });
 
 test("background subagents have restricted tools and return exactly one durable parent input", async t => {

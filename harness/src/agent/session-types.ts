@@ -156,6 +156,10 @@ export interface AgentSessionTurn {
   prompt: string;
   mode: "steer" | "followUp" | "reject" | "report";
   status: "queued" | "placed" | "done" | "unanswered";
+  /** Epoch milliseconds when this input was placed for execution, preserved across reopen. */
+  startedAt?: number;
+  /** Persisted run task end time; absent while live or when legacy records lack it. */
+  endedAt?: number;
   entryId?: number;
   answerId?: number;
   reason?: string;

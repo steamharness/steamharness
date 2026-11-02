@@ -1,5 +1,7 @@
 # Unreleased
 
+- Fixed subagent reply durations to use persisted execution timestamps instead of restarting when their detail view is first opened, refreshed or restored.
+
 - Keep the final duration visible after a reply completes, fails or stops, including after refreshing or reopening history. Durable Agent follow-ups are timed separately.
 
 - Fixed history recovery and cross-window synchronization to reconcile completed, failed and stopped Agent turns, clearing stale responding and recovery states without replaying finished replies.

@@ -1,5 +1,7 @@
 # Unreleased
 
+- Durable Agent turn snapshots now expose persisted execution timestamps so hosts can restore elapsed time when opening subagent conversations and history.
+
 - Removed global and account memory, including tools, skills, authorization, service integration and settings controls.
 
 - Fixed conversation branches to support independent root databases with truncated history and historical asOf document checkpoints. Execution identities are renewed without importing tasks, approvals, queues or usage; source cancellation and deletion do not affect the new conversation.

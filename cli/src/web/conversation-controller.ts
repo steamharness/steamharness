@@ -724,18 +724,20 @@ export class ConversationController {
         if (!answer && turn.mode !== 'steer') {
           const id = `session:${turn.conversationId}:${turn.requestId}`;
           const pending = entry.agentCommands?.find(item => item.command.requestId === turn.requestId);
-          entry.messages.push({ id: `${id}:input`, role: 'user', content: input?.text ?? turn.prompt, createdAt: input?.createdAt ?? Date.now(), contextEpoch: turn.epoch,
+          entry.messages.push({ id: `${id}:input`, role: 'user', content: input?.text ?? turn.prompt, createdAt: input?.createdAt ?? turn.startedAt ?? Date.now(), contextEpoch: turn.epoch,
             attachments: input?.attachments ?? pending?.attachments, references: input?.references, ...(input ? { input } : {}) });
-          answer = { id, role: 'assistant', content: '', items: [], createdAt: Date.now(), sessionRequestId: turn.requestId, sessionConversationId: turn.conversationId,
+          answer = { id, role: 'assistant', content: '', items: [], createdAt: turn.startedAt ?? Date.now(), sessionRequestId: turn.requestId, sessionConversationId: turn.conversationId,
             model: input ? conversationModelName(input, projectParameters(this.project, input.entrypointId).fields) : undefined };
           entry.messages.push(answer);
         }
         if (turn.mode === 'steer') {
           const id = `steer:${turn.requestId}`;
-          if (!entry.messages.some(message => message.id === id)) entry.messages.push({ id, role: 'user', content: input?.text ?? turn.prompt, status: 'steer', createdAt: Date.now(), attachments: input?.attachments, references: input?.references });
+          if (!entry.messages.some(message => message.id === id)) entry.messages.push({ id, role: 'user', content: input?.text ?? turn.prompt, status: 'steer', createdAt: turn.startedAt ?? Date.now(), attachments: input?.attachments, references: input?.references });
         }
         if (entry.agentInputs) delete entry.agentInputs[turn.requestId];
         if (!answer) continue;
+        const startedAt = outputTurns[0]?.startedAt;
+        if (startedAt !== undefined) answer.createdAt = startedAt;
         answer.sessionConversationId = turn.conversationId;
         answer.contextEpoch = turn.epoch;
         answer.entryId = turn.answerId;
@@ -769,6 +771,9 @@ export class ConversationController {
           }
         }
         if (!restore) answer.recovering = false;
+        // Authoritative spans repair views first opened mid-run and completed
+        // turns first opened later, including older Web checkpoints.
+        if (startedAt !== undefined && turn.endedAt !== undefined && terminal) answer.durationMs = Math.max(0, turn.endedAt - startedAt);
         const extras = answer.items?.filter(item => item.display) ?? [];
         answer.items = [...outputTurns.flatMap(part => part.items), ...extras]; answer.content = outputText(answer.items);
       }

@@ -34,6 +34,44 @@ function fixture(configurationRevision?: () => number, userSettings?: () => impo
 }
 
 it.each([
+  { status: 'placed', reason: undefined, expected: 'running' },
+  { status: 'done', reason: undefined, expected: 'success' },
+  { status: 'unanswered', reason: 'model_error', expected: 'failed' },
+  { status: 'unanswered', reason: 'aborted', expected: 'aborted' },
+] as const)('opens a $expected child with its persisted execution time instead of the view creation time', async ({ status, reason, expected }) => {
+  vi.useFakeTimers({ toFake: ['Date'] }); const now = Date.now();
+  const f = fixture(); await f.start(); const initial = f.snapshot();
+  const startedAt = now + 10_000, endedAt = now + 45_000;
+  const child: AgentSessionTurn = { requestId: 'delegate:timed', conversationId: 2, prompt: 'Child work', mode: 'followUp', status, reason,
+    epoch: 0, entryId: 3, items: [], startedAt, ...(status === 'placed' ? {} : { endedAt }) };
+  const frame = { ...initial, revision: 2, conversations: [...initial.conversations, { id: 2, parentId: 1, title: 'Timed child', background: true }], turns: [...initial.turns, child] };
+  vi.setSystemTime(now + 50_000); f.emit(frame);
+  expect(f.controller.sessions).toHaveLength(1);
+  vi.setSystemTime(now + 190_000);
+  const id = await f.controller.openAgentConversation(f.controller.current.id, 2);
+  const view = f.controller.sessions.find(session => session.id === id)!, answer = view.messages[1];
+  expect(answer).toMatchObject({ status: expected, createdAt: startedAt });
+  expect(view.messages[0].createdAt).toBe(startedAt);
+  expect(Date.now() - answer.createdAt!).toBe(180_000);
+  expect(answer.durationMs).toBe(status === 'placed' ? undefined : 35_000);
+  const saved = structuredClone({ sessions: f.controller.sessions, activeId: id, selectionVersion: 1 });
+  // Upgrade a checkpoint made by a host that used the first view-open time.
+  const checkpoint = saved.sessions.find(session => session.id === id)!.messages[1];
+  checkpoint.createdAt = now + 190_000;
+  if (status !== 'placed') checkpoint.durationMs = 0;
+  vi.setSystemTime(now + 210_000);
+  const reopened = new ConversationController(f.controller.project, f.runtime, saved, { save: f.save, changed: vi.fn(), log: vi.fn() });
+  controllers.push(reopened);
+  expect(reopened.current.messages[1]).toMatchObject({ status: expected, createdAt: startedAt });
+  expect(reopened.current.messages[1].durationMs).toBe(status === 'placed' ? undefined : 35_000);
+  if (status === 'placed') {
+    f.emit({ ...frame, revision: 3, turns: [...initial.turns, { ...child, status: 'done', endedAt: now + 205_000 }] });
+    expect(answer.durationMs).toBe(195_000);
+  }
+  await f.finish(); expect(f.runtime.run).toHaveBeenCalledOnce();
+});
+
+it.each([
   { status: 'done', reason: undefined, expected: 'success' },
   { status: 'unanswered', reason: 'model_error', expected: 'failed' },
   { status: 'unanswered', reason: 'aborted', expected: 'aborted' },
