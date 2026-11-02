@@ -100,7 +100,6 @@ const AGENT_MODEL_CONTEXT_WINDOWS: ReadonlyArray<readonly [string, number]> = [
   ["gpt-6-astra", 1_050_000],
   ["gpt-5.6-", 872_000],
   ["deepseek-", 1_000_000],
-  ["minimax-m3", 1_000_000],
   ["grok-build-", 256_000],
   ["grok-", 500_000],
   ["claude-", 200_000],

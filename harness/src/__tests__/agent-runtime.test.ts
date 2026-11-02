@@ -898,10 +898,7 @@ test("compact with an empty context completes without calling the model", async 
 test("a custom endpoint gets a window from the model family table", () => {
   // A caller-supplied endpoint is absent from pi's catalog, so without a table
   // the composer row would divide by a number nobody chose.
-  assert.equal(resolveAgentModelContextWindow("MiniMax-M3"), 1_000_000);
-  assert.equal(resolveAgentModelContextWindow("MiniMax-M3.1-Flash"), 1_000_000);
-  assert.equal(resolveAgentModelContextWindow("vendor/MiniMax-M3.1-Flash"), 1_000_000);
-  assert.equal(resolveAgentModelContextWindow("unknown-model"), DEFAULT_AGENT_CONTEXT_WINDOW);
+  assert.equal(resolveAgentModelContextWindow("MiniMax-M3"), DEFAULT_AGENT_CONTEXT_WINDOW);
   assert.equal(resolveAgentModelContextWindow("gpt-5.6-terra"), 872_000);
   assert.equal(resolveAgentModelContextWindow("claude-sonnet-5"), 200_000);
   assert.equal(resolveAgentModelContextWindow("deepseek-v4"), 1_000_000);
