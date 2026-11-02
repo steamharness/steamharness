@@ -334,6 +334,7 @@ async function startProjectWebServer(options: WebOptions, credentials: { capabil
     for (const session of controller.sessions) if (!merged.some(item => item.id === session.id) && ownership!.owns(session.id)) merged.push(session);
     if (!merged.length) return;
     controller.sessions.splice(0, controller.sessions.length, ...merged);
+    controller.restoreAgentState(merged.filter(session => session !== local.get(session.id)));
     if (!merged.some(session => session.id === controller.activeId)) controller.activeId = merged[0].id;
     broadcast();
   };

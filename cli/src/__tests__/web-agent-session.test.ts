@@ -180,6 +180,43 @@ it.each([false, true])('keeps an unfinished durable follow-up running throughout
   f.runs.at(-1)!.finish({ status: 'success' }); await restored.idle();
 });
 
+it.each(['bootstrap', 'follow-up', 'fork'] as const)('settles a stale running %s from its completed durable turn before recovery', async kind => {
+  const f = fixture(); await f.start();
+  const initial = f.snapshot(), conversationId = kind === 'fork' ? 2 : 1;
+  if (kind !== 'bootstrap') f.emit({ ...initial, revision: 2,
+    conversations: [...initial.conversations, ...(kind === 'fork' ? [{ id: 2, title: 'Fork', background: false }] : [])],
+    turns: [...initial.turns, { ...initial.turns[0], requestId: 'completed-follow-up', conversationId, mode: 'followUp', entryId: 3, answerId: 4 }] });
+  const sessionId = kind === 'fork' ? await f.controller.openAgentConversation(f.controller.current.id, 2) : f.controller.current.id;
+  const saved = structuredClone({ sessions: f.controller.sessions, activeId: sessionId, selectionVersion: 1 });
+  const savedAnswer = saved.sessions.find(session => session.id === sessionId)!.messages.at(-1)!;
+  Object.assign(savedAnswer, { status: 'running', recovering: true, createdAt: Date.now() - 70 * 60 * 60 * 1000 });
+  await f.finish();
+  const restored = new ConversationController(f.controller.project, f.runtime, saved, { save: f.save, changed: vi.fn(), log: vi.fn() });
+  controllers.push(restored);
+  const answer = restored.current.messages.at(-1)!;
+  expect(answer).toMatchObject({ status: 'success', recovering: false, content: 'First answer', entryId: kind === 'bootstrap' ? 2 : 4 });
+  expect(messageSettled(answer)).toBe(true); expect(sessionRunning(restored.current)).toBe(false);
+  expect(answer.error).toBeUndefined(); expect(answer.durationMs).toBeUndefined();
+  restored.recover(); await restored.idle();
+  expect(f.runtime.run).toHaveBeenCalledOnce();
+});
+
+it.each([
+  { reason: 'aborted', status: 'aborted' },
+  { reason: 'model_error', status: 'failed' },
+])('restores a terminal $reason over a stale running message without replaying it', async ({ reason, status }) => {
+  const f = fixture(); await f.start(); const initial = f.snapshot();
+  f.emit({ ...initial, revision: 2, turns: [{ ...initial.turns[0], status: 'unanswered', reason, detail: 'Terminal reason' }] });
+  const saved = structuredClone({ sessions: f.controller.sessions, activeId: f.controller.activeId });
+  Object.assign(saved.sessions[0].messages[1], { status: 'running', recovering: true });
+  await f.finish();
+  const restored = new ConversationController(f.controller.project, f.runtime, saved, { save: f.save, changed: vi.fn(), log: vi.fn() });
+  controllers.push(restored);
+  expect(restored.current.messages[1]).toMatchObject({ status, error: 'Terminal reason', recovering: false });
+  expect(messageSettled(restored.current.messages[1])).toBe(true);
+  restored.recover(); await restored.idle(); expect(f.runtime.run).toHaveBeenCalledOnce();
+});
+
 it('keeps the owner alive after its inline answer and confirms a lost IPC receipt from the durable snapshot', async () => {
   const f = fixture(); await f.start();
   expect(f.controller!.running).toBe(false); expect(f.controller!.hasRuns).toBe(true);

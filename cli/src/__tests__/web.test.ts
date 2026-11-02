@@ -14,7 +14,7 @@ import { createWebRuntime, sanitizeWebWorkerEnvironment } from '../web/runtime';
 import { readCliAuthConfig, writeCliAuthConfig } from '../auth-config';
 import { parseHostConfiguration, parseHostConnection, parseHostAuthentication } from '../web/host-config';
 import type { WebHostConfiguration } from '../web/host-config';
-import type { Project, Runtime, Run, Report } from '../web/workflow-types';
+import type { ConversationSession, Project, Runtime, Run, Report } from '../web/workflow-types';
 import { initI18n } from '@steamharness/i18n';
 import { t } from '../web/localization';
 import { resolveHarnessRoot } from './harness-source';
@@ -113,6 +113,34 @@ describe('steamharness web', () => {
     await post({ type: 'session-action', id: app.controller!.current.id, action: 'delete' });
     await expect(readFile(path.join(reference.path, 'nested.txt'))).rejects.toThrow();
     expect(await readFile(path.join(folder, 'source.txt'), 'utf8')).toBe('original bytes');
+  });
+
+  it('reconciles terminal durable turns imported by cross-window history refresh before publishing or saving them', async () => {
+    const { app, directory, runtime, post } = await fixture();
+    app.project.conversation = { durable: { enabled: true }, recovery: { enabled: true } };
+    await app.controller!.persist();
+    const imported: ConversationSession = { id: randomUUID(), title: 'Completed elsewhere', queuePaused: true,
+      queuedInputs: [{ id: 'paused', text: 'Keep waiting', params: {}, attachments: [], createdAt: 1, hostQueued: true }],
+      messages: [{ id: 'reply', role: 'assistant', content: 'Saved checkpoint', status: 'running', recovering: true,
+        sessionRequestId: 'completed', sessionConversationId: 1, createdAt: Date.now() - 70 * 60 * 60 * 1000 }],
+      agent: { version: 1, ownerId: 'remote-owner', revision: 5, conversationId: 1, foreground: false, backgroundCount: 0, epoch: 0,
+        configuration: { version: 0, provider: 'fixture', model: 'one', effort: 'off' }, prompt: { hash: 'digest', version: 1 }, plan: { version: 0, items: [] },
+        tasks: [], history: [], receipts: [], records: [], usage: [], contexts: [], conversations: [{ id: 1, title: 'Main', background: false }],
+        turns: [{ requestId: 'completed', conversationId: 1, prompt: 'Hello', mode: 'followUp', status: 'done', epoch: 0, entryId: 1, answerId: 2,
+          items: [{ id: 'answer', title: 'Output', content: 'Completed answer', contentType: 'markdown' }] }] } };
+    const historyPath = path.join(directory, 'data', 'projects', app.project.id, 'entries', app.project.entryId, 'conversations.json');
+    await writeFile(historyPath, JSON.stringify({ sessions: [...app.controller!.sessions, imported], activeId: app.controller!.activeId, selectionVersion: 1 }));
+    const response = await post({ type: 'ready' });
+    expect(response.status).toBe(200);
+    const state = (await response.json()).messages.find((message: any) => message.type === 'state');
+    expect(state.sessions.find((session: any) => session.id === imported.id).messages[0]).toMatchObject({ status: 'success', recovering: false, content: 'Completed answer' });
+    expect(app.controller!.sessions.find(session => session.id === imported.id)?.messages[0]).toMatchObject({ status: 'success', recovering: false });
+    const acquired = await post({ type: 'draft', sessionId: imported.id, text: 'Next draft', attachments: [] });
+    expect(acquired.status).toBe(200);
+    const saved = JSON.parse(await readFile(historyPath, 'utf8')).sessions.find((session: any) => session.id === imported.id);
+    expect(saved.messages[0]).toMatchObject({ status: 'success', recovering: false, content: 'Completed answer' });
+    expect(saved.queuePaused).toBe(true); expect(saved.queuedInputs).toEqual(imported.queuedInputs);
+    expect(runtime.run).not.toHaveBeenCalled();
   });
 
   it('keeps raw trace and export data out of live snapshots without changing persisted history', async () => {

@@ -57,6 +57,9 @@ export class ConversationController {
   constructor(readonly project: Project, private readonly runtime: Runtime, saved: { sessions?: ConversationSession[]; activeId?: string; selectionVersion?: number }, private readonly options: ControllerOptions) {
     this.sessions = (saved.sessions ?? []).filter((entry) => typeof entry.id === 'string' && typeof entry.title === 'string' && Array.isArray(entry.messages));
     if (!this.sessions.length) { this.sessions.push(this.blank()); }
+    // Durable turns may have committed after the last Web message checkpoint.
+    // Reconcile them before deciding which messages need execution recovery.
+    this.restoreAgentState();
     for (const entry of this.sessions) {
       entry.createdAt ??= entry.messages[0]?.createdAt ?? 0;
       entry.updatedAt ??= entry.messages.at(-1)?.createdAt ?? entry.createdAt;
@@ -92,7 +95,6 @@ export class ConversationController {
     // Legacy histories could retain the first ID even after navigating elsewhere.
     const latest = this.sessions.reduce((latest, entry) => entry.updatedAt! >= latest.updatedAt! ? entry : latest);
     this.activeId = saved.selectionVersion === 1 && this.sessions.some(entry => entry.id === saved.activeId) ? saved.activeId! : latest.id;
-    for (const entry of this.sessions) if (!entry.agentOwnerId && entry.agent) this.projectAgent(entry, entry.agent, true);
   }
   get current(): ConversationSession { return this.sessions.find((entry) => entry.id === this.activeId)!; }
   get running(): boolean { return sessionRunning(this.current); }
@@ -671,6 +673,9 @@ export class ConversationController {
       waiter.resolve(receipt); this.agentWaiters.delete(key);
     }
   }
+  restoreAgentState(sessions = this.sessions): void {
+    for (const entry of sessions) if (!entry.agentOwnerId && entry.agent) this.projectAgent(entry, entry.agent, true);
+  }
   private projectAgent(owner: ConversationSession, snapshot: AgentSessionSnapshot, restore = false): void {
     if (snapshot?.version !== 1 || !Number.isSafeInteger(snapshot.revision)) return;
     if (!restore && owner.agent?.ownerId === snapshot.ownerId && owner.agent.revision >= snapshot.revision) return;
@@ -746,10 +751,12 @@ export class ConversationController {
             'This system AI model is unavailable. Check your subscription in Project configurations.',
           ].includes(answer.error ?? '');
         if (configurationFailure) { delete answer.report; delete answer.durationMs; answer.recovering = false; }
-        if (configurationFailure || answer.status !== 'failed' && (!restore || answer.status === undefined)) {
+        const terminal = turn.status === 'done' || turn.status === 'unanswered';
+        if (configurationFailure || answer.status !== 'failed' && (!restore || answer.status === undefined || terminal && answer.status === 'running')) {
           const stopped = turn.reason === 'aborted';
           answer.status = turn.status === 'done' ? 'success' : turn.status === 'unanswered' ? stopped ? 'aborted' : 'failed' : 'running';
           answer.error = turn.detail ?? (turn.status === 'unanswered' ? stopped ? t('Stopped') : turn.reason : undefined);
+          if (terminal) answer.recovering = false;
         }
         if (!restore) answer.recovering = false;
         const extras = answer.items?.filter(item => item.display) ?? [];
