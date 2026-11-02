@@ -1,6 +1,4 @@
 
-export const TOKEN_USAGE_TOTAL_KEY = "tokenUsage.total";
-export const TOKEN_USAGE_ENTRY_KEY_PREFIX = "tokenUsage.entry.";
 
 export interface TokenUsageDefinition {
   enabled: boolean;
@@ -139,10 +137,6 @@ export function createProjectTokenUsageContext(
       return cloneTokenUsageAggregate(runUsage);
     },
   };
-}
-
-export function createTokenUsageEntryKey(runId: string, sequence: number): string {
-  return `${TOKEN_USAGE_ENTRY_KEY_PREFIX}${encodeTokenUsageKeyPart(runId)}.${sequence}`;
 }
 
 export function createEmptyTokenUsageAggregate(): TokenUsageAggregate {

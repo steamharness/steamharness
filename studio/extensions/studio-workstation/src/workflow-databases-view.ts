@@ -11,6 +11,8 @@ export class DatabaseViews implements vscode.Disposable {
   private projects: Project[] = [];
   private preferred?: Project;
   private resources: any[] = [];
+  private bindings: { kind: string; resourceId: string; alias: string; name: string }[] = [];
+  private projectKey = '';
   private view?: vscode.WebviewView;
   private controller = new AbortController();
   private epoch = 0;
@@ -23,26 +25,36 @@ export class DatabaseViews implements vscode.Disposable {
     this.connectionKey = JSON.stringify(account.getConnection());
     this.subscriptions.push(...(register ? [vscode.window.registerWebviewViewProvider('studio.databases', this, { webviewOptions: { retainContextWhenHidden: true } }), vscode.commands.registerCommand('studio.openDatabases', () => vscode.commands.executeCommand('studio.databases.focus')), vscode.commands.registerCommand('studio.refreshDatabases', () => this.refresh())] : []), account.onDidChange(() => {
       const key = JSON.stringify(account.getConnection()); if (key === this.connectionKey) return;
-      this.connectionKey = key; this.controller.abort(); this.controller = new AbortController(); ++this.epoch; this.resources = []; this.busy = false; this.error = ''; this.publish(); if (this.view?.visible) void this.refresh();
+      this.connectionKey = key; this.controller.abort(); this.controller = new AbortController(); ++this.epoch; this.resources = []; this.bindings = []; this.busy = false; this.error = ''; this.publish(); if (this.view?.visible) void this.refresh();
     })); subscriptions.push(this);
   }
-  update(projects: Project[], preferred?: Project) { this.projects = projects.filter(project => !project.assistant); this.preferred = preferred; this.publish(); }
+  update(projects: Project[], preferred?: Project) {
+    this.projects = projects.filter(project => !project.assistant); this.preferred = preferred;
+    const key = JSON.stringify(this.projects.map(project => [project.id, project.entryId, project.uri, project.databases]));
+    const changed = key !== this.projectKey; this.projectKey = key;
+    if (changed) this.bindings = [];
+    this.publish(); if (changed && this.view?.visible) void this.refresh();
+  }
   async refresh() {
     if (this.disposed) return; const epoch = ++this.epoch, signal = this.controller.signal; this.busy = true; this.error = ''; this.publish();
     try {
       if (!vscode.workspace.isTrusted) throw new Error(t('Trust the current workspace first.'));
       if (!this.account.getConnection() || !this.launcher.database) throw new Error(t('Sign in to SteamHarness Server to manage database resources.'));
       const catalog = await this.launcher.database({ kind: 'host', action: 'catalog' }, signal);
-      if (!signal.aborted && epoch === this.epoch) this.resources = catalog.resources;
+      const bindings = (await Promise.all(this.projects.filter(project => project.id === this.preferred?.id && project.uri === this.preferred?.uri && project.databases.length).map(async project => {
+        const result = await this.launcher.database!({ kind: 'host', action: 'bindings', projectId: project.id, entryId: project.entryId }, signal);
+        return (result.bindings ?? []).filter((binding: { alias: string }) => project.databases.includes(binding.alias)).map((binding: { alias: string; databaseId: string }) => ({ kind: 'databases', resourceId: binding.databaseId, alias: binding.alias, name: projectDisplayName(project) }));
+      }))).flat();
+      if (!signal.aborted && epoch === this.epoch) { this.resources = catalog.resources; this.bindings = bindings; }
     } catch (error) { if (!signal.aborted && epoch === this.epoch) this.error = error instanceof Error ? error.message : String(error); }
     finally { if (!signal.aborted && epoch === this.epoch) { this.busy = false; this.publish(); } }
   }
   private publish() {
     if (this.disposed) return;
-    const usage = this.projects.filter(project => project.id === this.preferred?.id && project.uri === this.preferred?.uri).flatMap(project => [
-      ...project.databases.map(database => ({ kind: 'databases', resourceId: database.databaseId, alias: database.alias, name: projectDisplayName(project) })),
+    const usage = [...this.bindings, ...this.projects.filter(project => project.id === this.preferred?.id && project.uri === this.preferred?.uri).flatMap(project => [
+
       ...(project.knowledgeBases ?? []).map(base => ({ kind: 'knowledge-bases', resourceId: base.knowledgeBaseId, alias: base.alias, name: projectDisplayName(project) })),
-    ]);
+    ])];
     void this.view?.webview.postMessage({ type: 'databases-state', loading: this.busy, error: this.error, authenticated: !!this.account.getConnection(), project: this.preferred?.name,
       databases: this.resources.map(resource => ({ ...resource, key: `${resource.kind}:${resource.id}`, usage: usage.filter(item => item.kind === resource.kind && item.resourceId === resource.id) })) });
   }
@@ -56,8 +68,10 @@ export class DatabaseViews implements vscode.Disposable {
   async openProjectDatabase(project: Project, alias: string) {
     if (!vscode.workspace.isTrusted) throw new Error(t('Trust the current workspace first.'));
     const inspected = await this.launcher.inspect([project.uri]), current = inspected.projects.find(item => item.id === project.id && item.entryId === project.entryId);
-    const requirement = current?.databases.find(item => item.alias === alias); if (!requirement) throw new Error(t('This database reference changed. Reopen the project.'));
-    await this.open('databases', requirement.databaseId);
+    const requirement = current?.databases.find(item => item === alias); if (!requirement) throw new Error(t('This database reference changed. Reopen the project.'));
+    const result = await this.launcher.database!({ kind: 'host', action: 'bindings', projectId: project.id, entryId: project.entryId }, this.controller.signal);
+    const binding = result.bindings?.find((item: { alias: string; databaseId: string }) => item.alias === alias); if (!binding) throw new Error(t('This database reference changed. Reopen the project.'));
+    await this.open('databases', binding.databaseId);
   }
   resolveWebviewView(view: vscode.WebviewView) {
     this.view = view; const nonce = crypto.randomUUID().replace(/-/g, '');

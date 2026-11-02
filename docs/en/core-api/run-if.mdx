@@ -36,7 +36,7 @@ workflow.runIf<Input, Output>(
 |Parameter|Type|Description|
 | --- | --- | --- |
 | `input` | `Input` |Input common to branch judgment and branch execution.|
-| `context` | `RunContext` |runtime context for hooks, provider, KV, files, abortSignal.|
+| `context` | `RunContext` |runtime context for hooks, provider, databases, files, abortSignal.|
 | `options.name` | `string` |Diagram and the branch node title shown in Trace. Default `Run if`.|
 | `options.branches` | `RunIfBranch[]` |If/else-if branches checked in order. The first element is displayed as `if`, and subsequent elements are displayed as `else-if`.|
 | `options.else` | `RunIfElseBranch` |Optional fallback. A miss is thrown when there is no `else`.|

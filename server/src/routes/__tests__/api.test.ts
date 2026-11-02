@@ -10,7 +10,7 @@ import { resolveResourceAccess, type AccessActor, type AccessCapability, type Pr
 import { createApiRouter } from "../api";
 import type { AuditEventPage, UserProfileRecord } from "../../account-db";
 import { PROJECT_CARD_IMAGE_MAX_BYTES, Storage } from "../../storage";
-import type { KVEntryDetail, KVEntryPage, KnowledgeDocumentLinesRecord, KnowledgeDocumentListItem, KnowledgeDocumentPageRecord, KnowledgeDocumentRecord, KnowledgeDocumentSearchResult, TokenUsageDetail, TokenUsagePage } from "../../storage";
+import type { TokenUsageDetail, TokenUsagePage } from "../../storage";
 import { STEAMHARNESS_PROJECT_TYPES } from "@steamharness/project-types";
 
 test("configuration file uploads persist exact raw bytes in the authenticated project without a conversation", async () => {
@@ -945,38 +945,34 @@ test("configuration routes reject unreadable projects before reaching the store"
 
 function entrySet(type: "workflow"|"conversation"|"kanban"="workflow") { return [{entryId:"main",name:"Main",type,root:".",entry:type==="kanban"?"index.html":"index.ts",databases:[]}]; }
 
-test('resource cards resolve the requested entry, database alias and conversation without executing source',async()=>{
+test('knowledge resource cards resolve the selected entry and reject removed KV requests',async()=>{
   const calls:unknown[]=[];
-  const database={kv:{getValue:async(key:string)=>{calls.push(['kv',key]);return 7;},conversation:{getValue:async(key:string)=>{calls.push(['conversation',key]);return 9;}}},knowledge:{getDocument:async(id:string)=>{calls.push(['document',id]);return {id,title:'Guide',markdown:'shared'};},listDocuments:async()=>({items:[],total:0,hasMore:false})}};
-  const storage=createStorageStub({
-    entryDatabases:async(...args)=>{calls.push(args);return {get:(alias:string)=>{assert.equal(alias,'data');return database;}} as unknown as Awaited<ReturnType<Storage['entryDatabases']>>;},
-    entryKnowledgeBases:async(...args)=>{calls.push(args);return {get:(alias:string)=>{assert.equal(alias,'data');return database.knowledge;}} as unknown as Awaited<ReturnType<Storage['entryKnowledgeBases']>>;},
-  });
+  const storage=createStorageStub({ entryKnowledgeBases:async(...args)=>{calls.push(args);return {get:(alias:string)=>{assert.equal(alias,'data');return {getDocument:async(id:string)=>({id,title:'Guide',markdown:'shared'})};}} as unknown as Awaited<ReturnType<Storage['entryKnowledgeBases']>>;} });
   const server=await listen(storage,createPrincipal(false));
   const post=(body:unknown)=>fetch(server.url('/api/projects/demo/entries/agent/resources/read'),{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
   try{
-    assert.equal((await (await post({kind:'kv',database:'data',key:'x',scope:'conversation',conversationId:'thread'})).json()).data,9);
-    assert.deepEqual(calls[0],['demo','agent',{userId:'user-1',isSystemAdmin:false},'draft','thread']);
-    assert.deepEqual(calls[1],['conversation','x']);
     assert.equal((await (await post({kind:'knowledge',knowledgeBase:'data',documentId:'guide'})).json()).data.id,'guide');
-    for(const body of [{kind:'storage',database:'data'},{kind:'kv',database:'data',key:'x',scope:'global'}])assert.equal((await post(body)).status,400);
-    for(const route of ['/api/projects/demo/kv','/api/projects/demo/storage','/api/projects/demo/knowledge','/api/projects/demo/related-projects','/api/projects/demo/dependencies','/api/projects/demo/project-group'])assert.equal((await fetch(server.url(route))).status,404);
+    assert.deepEqual(calls[0],['demo','agent',{userId:'user-1',isSystemAdmin:false}]);
+    assert.equal((await post({kind:'kv',database:'data',key:'x'})).status,400);
+    for(const route of ['/api/projects/demo/kv','/api/projects/demo/storage','/api/projects/demo/knowledge','/api/database-spaces'])assert.equal((await fetch(server.url(route))).status,404);
   }finally{await server.close();}
 });
 
-test('Kanban bridges enforce project roles before using the entry database grant',async()=>{
+test('Kanban bridges enforce project roles before reaching the relationship database',async()=>{
   let calls=0;
   const storage=createStorageStub({
     getProjectAccessSummary:async projectId=>({projectId,projectName:'Board',visibility:'private',member:{projectId,userId:'user-1',role:'guest',createdAt:'2026-10-27'}}),
-    entryDatabases:async(projectId,entryId,actor)=>{assert.equal(projectId,'demo');assert.equal(entryId,'board');assert.equal(actor.userId,'user-1');calls++;return {get:(alias:string)=>{assert.equal(alias,'data');return {kv:{getValue:async()=>1}};}} as unknown as Awaited<ReturnType<Storage['entryDatabases']>>;},
+    entryDatabaseRequirements:async()=>['data'],
+    relationalDatabases:{resolveQueryBinding:async()=>{calls++;return {alias:'data'};}} as unknown as NonNullable<Storage['relationalDatabases']>,
   });
   const server=await listen(storage,createPrincipal(false));
   const post=(operation:string,input:unknown)=>fetch(server.url('/api/projects/demo/kanban/bridge'),{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({entryId:'board',call:{requestId:operation,operation,input}})});
+  const input={database:'data',schemaHash:'a'.repeat(64)};
   try{
-    assert.equal((await post('kv.getValue',{database:'data',key:'map'})).status,200);
-    assert.equal((await post('kv.setValue',{database:'data',key:'map',value:2})).status,403);
+    assert.equal((await post('database.resolve',input)).status,200);
+    assert.equal((await post('database.query',{...input,binding:{alias:'data'},request:{operation:'insert',model:'Task',data:{}}})).status,403);
     assert.equal((await post('files.createFile',{knowledgeBase:'data',name:'map.png',mimeType:'image/png',base64:'aA=='})).status,403);
-    assert.equal((await post('relatedProject.kv.getValue',{alias:'other',key:'x'})).status,400);
+    assert.equal((await post('kv.getValue',{database:'data',key:'x'})).status,400);
     assert.equal(calls,1);
   }finally{await server.close();}
 });

@@ -82,7 +82,7 @@ workflow.createLLMNode<Input, Output>(
 | `usage` | `LanguageModelUsage \| undefined` | token 用量。 |
 | `providerMetadata` | `ProviderMetadata \| undefined` | provider 元信息。 |
 
-当 executor 配置 `tokenUsage: { enabled: true }` 时，节点执行时通过 `getLLMProvider()` 解析出的 provider 会在 `chat` 返回后读取 `LLMChatOutput.usage` 并上报到 `context.tokenUsage`，因此即使 `mapOutput` 不再返回 `usage` 字段也能统计。本次 run 的聚合会出现在 `report.tokenUsage.run`；累计值写入当前项目 KV，存在会话时还会写入该会话 KV。本地宿主可以聚合各项目总量；支持 input、output、reasoning、cached input 和 cache creation/write token 明细。
+当 executor 配置 `tokenUsage: { enabled: true }` 时，节点执行时通过 `getLLMProvider()` 解析出的 provider 会在 `chat` 返回后读取 `LLMChatOutput.usage` 并上报到 `context.tokenUsage`，因此即使 `mapOutput` 不再返回 `usage` 字段也能统计。本次 run 的聚合会出现在 `report.tokenUsage.run`；累计值写入平台项目用量表，存在会话时还会写入该会话用量表。本地宿主可以聚合各项目总量；支持 input、output、reasoning、cached input 和 cache creation/write token 明细。
 
 ## 调用流程
 

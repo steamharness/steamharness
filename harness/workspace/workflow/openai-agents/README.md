@@ -1,8 +1,8 @@
 # openai-agents workflow
 
 OpenAI Agents SDK workflow sample. It calls `@openai/agents`, passes workflow
-conversation context into the SDK run, exposes SDK tools backed by workflow KV
-and PersistentValue-backed project knowledge documents, and streams output
+conversation context into the SDK run, exposes SDK tools backed by conversation state
+and Server-backed knowledge documents, and streams output
 through the current `RunOutputPayload.items` protocol.
 
 ## Install
@@ -49,19 +49,14 @@ steamharness json . --conversation-id openai-agents-test-tool-demo -- \
   --workdir .
 ```
 
-Ask the agent to search or update local project knowledge documents by assigning
-PersistentValue its own local root:
+Ask the agent to search or update an authorized Server knowledge base. Sign in to the local Server and set `knowledgeBases.data` in root `config.json` first:
 
 ```bash
-STEAMHARNESS_PERSISTENT_VALUE_STORE_DIR="$PWD/.workflow-persistent-values" \
 steamharness json . --conversation-id openai-agents-knowledge-demo -- \
-  --message "Use knowledge_documents to list project documents, then search for PersistentValue" \
-  --workdir .
+  --message "Use knowledge_documents to list project documents" --workdir .
 ```
 
-Without a local PersistentValue root, a configured server connection remains an
-alternative backend. Local and server knowledge documents are isolated and are
-not synchronized automatically.
+Conversation state and SDK history use Server runtime tables; knowledge documents use the separately authorized knowledge base. No local storage fallback is provided.
 
 Conversation 模式下，默认 composer 固定映射到 `--message`；旧的 positional
 CLI 输入仍保留兼容，但推荐统一走 `--message`。
@@ -108,7 +103,7 @@ manual approval.
 - Zod schemas for SDK tool parameters.
 - Workflow conversation state passed into the SDK `context`.
 - `context.abortSignal` forwarded into `run(...)`.
-- Conversation-scoped KV for remembered facts and lightweight SDK history.
+- Conversation state for remembered facts and lightweight SDK history.
 - Manual `context.tokenUsage.report(...)` for an external SDK, including
   `cachedInputTokens` and `cacheCreationTokens` when the SDK reports cache read
   or cache write details.
@@ -138,14 +133,13 @@ const output = await workflow.runProject(
   {
     name: "OpenAI Agents core",
     conversationMode: "shared-readonly",
-    kvMode: "isolated",
     outputVisibility: "hidden",
   },
 );
 ```
 
 In normal CLI mode all sample tools stay enabled and the workflow writes
-`openaiAgents.*` KV plus user/assistant conversation messages. In reuse mode,
+conversation state plus user/assistant conversation messages. In reuse mode,
 the caller can disable hosted/native/default tools, memory tools, knowledge
 tools, and pass only custom Agents SDK function tools. Use `knowledgeTools:
 false` when a reusable parent workflow should not expose the project knowledge
@@ -153,11 +147,9 @@ base to the nested agent. Use `writeConversation: false` and `writeAgentState:
 false` when the parent workflow owns transcript/title/history.
 `conversationMode: "shared-readonly"` lets this workflow read recent parent
 messages without appending duplicate messages or changing the title. Use
-`kvMode: "isolated"` when this reusable workflow should not write
-`openaiAgents.*` state into the parent workflow KV namespace, and
 `outputVisibility: "hidden"` when the parent forwards the child stream itself.
 
-The visible answer streams before final KV/conversation/token-usage writes
+The visible answer streams before final conversation/token-usage writes
 complete. Reuse callers that want to show this workflow exactly as-is should
 call `workflow.runProject(...)` from their own output node and forward
 `onOutputChunk` / `onOutput` into the parent stream. Function tool calls are
@@ -182,7 +174,7 @@ The sample defines these tools:
 - `read_context`: returns the current conversation id, recent messages, run
   count, and remembered facts.
 - `remember_fact`: writes a short `{ key, value }` fact into
-  `context.databases.get("data").kv.conversation`.
+  `context.conversation` state.
 - `test_tool`: sends a small HTTP `GET` or `POST` request to a provided
   `http`/`https` URL and returns a compact response summary. The offline test
   starts a local HTTP server to verify that the tool really sends the request,
@@ -190,10 +182,7 @@ The sample defines these tools:
 - `knowledge_documents`: lists, reads, creates, edits, deletes, searches, and
   reads line ranges from project markdown knowledge documents. It reuses the
   core `workflow.*KnowledgeDocument*` helpers and therefore writes only through
-  `context.knowledgeBases.get("data")`. Local runs can use
-  `STEAMHARNESS_PERSISTENT_VALUE_STORE_DIR`; otherwise they use a configured server
-  backend. Calls fail only when neither backend nor an injected store is
-  available, and they never fall back to ordinary local KV.
+  `context.knowledgeBases.get("data")`. Calls require a reachable Server and an authorized knowledge-base binding. Storage errors stop the operation.
 - `local_shell`: when `--local-shell` is set, executes small, safe local shell
   commands in the configured `--workdir`. The sample rejects common
   destructive/network/process commands, write redirection, overly long

@@ -9,7 +9,7 @@
     "output": {
       "mode": "ok",
       "conversationMessages": 1,
-      "kvLastMessage": "workspace-four"
+      "lastMessage": "workspace-four"
     },
     "contentIncludes": [
       "smoke:workspace-four"

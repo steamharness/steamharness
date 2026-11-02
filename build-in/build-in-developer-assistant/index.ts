@@ -44,7 +44,7 @@ const assistantProject = steamharness.createAgentConversationProject({
       await toolApproval.approve({ name: toolId, arguments: args }, context);
     };
 
-    // Run-scoped Knowledge and KV address the assistant's own store, not the
+    // Run-scoped Knowledge address the assistant's own store, not the
     // user's project. Studio Control provides editor capabilities separately.
     const capabilityToolIdsToOffer = new Set([
       "workflow-ui_present_card",

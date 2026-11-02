@@ -5,16 +5,13 @@ import {
   createDisabledProjectConversationContext,
   createLLMNode,
   createLLMStreamNode,
-  createProjectKVContext,
   createProjectTokenUsageContext,
   getLLMProvider,
   runNode,
   runStreamNode,
-  TOKEN_USAGE_TOTAL_KEY,
   type LLMProvider,
   type LLMStreamChunk,
   type NodeContext,
-  type KVStore,
   type TokenUsageAggregate,
   type TokenUsageContext,
 } from "../index";
@@ -44,12 +41,8 @@ test("a storage failure leaves run accounting unchanged and can be retried", asy
 });
 
 test("LLM node provider usage is reported before mapOutput can strip it", async () => {
-  const store = createMemoryKVStore();
-  const kv = createProjectKVContext({
-    store,
-    projectId: "demo",
-    source: { projectId: "demo", runId: "run-llm" },
-  });
+  const store = {};
+  const kv = {};
   const tokenUsage = createProjectTokenUsageContext({
     definition: { enabled: true },
     store: async () => undefined,
@@ -104,11 +97,7 @@ test("LLM node provider usage is reported before mapOutput can strip it", async 
 });
 
 test("token usage parser reads snake case cache creation aliases", async () => {
-  const kv = createProjectKVContext({
-    store: createMemoryKVStore(),
-    projectId: "demo",
-    source: { projectId: "demo", runId: "run-alias" },
-  });
+  const kv = {};
   const tokenUsage = createProjectTokenUsageContext({
     definition: { enabled: true },
     store: async () => undefined,
@@ -150,11 +139,7 @@ test("token usage parser reads snake case cache creation aliases", async () => {
 });
 
 test("token usage parser reads Claude cache creation alias", async () => {
-  const kv = createProjectKVContext({
-    store: createMemoryKVStore(),
-    projectId: "demo",
-    source: { projectId: "demo", runId: "run-claude-alias" },
-  });
+  const kv = {};
   const tokenUsage = createProjectTokenUsageContext({
     definition: { enabled: true },
     store: async () => undefined,
@@ -188,11 +173,7 @@ test("token usage parser reads Claude cache creation alias", async () => {
 });
 
 test("custom node usage-shaped output is not reported automatically", async () => {
-  const kv = createProjectKVContext({
-    store: createMemoryKVStore(),
-    projectId: "demo",
-    source: { projectId: "demo", runId: "run-custom" },
-  });
+  const kv = {};
   const tokenUsage = createProjectTokenUsageContext({
     definition: { enabled: true },
     store: async () => undefined,
@@ -216,15 +197,10 @@ test("custom node usage-shaped output is not reported automatically", async () =
   await runNode(node, {}, context);
 
   assert.equal(tokenUsage.getRunUsage().totalTokens, 0);
-  assert.equal(await kv.getValue(TOKEN_USAGE_TOTAL_KEY), undefined);
 });
 
 test("getLLMProvider reports provider usage for custom node calls", async () => {
-  const kv = createProjectKVContext({
-    store: createMemoryKVStore(),
-    projectId: "demo",
-    source: { projectId: "demo", runId: "run-provider" },
-  });
+  const kv = {};
   const tokenUsage = createProjectTokenUsageContext({
     definition: { enabled: true },
     store: async () => undefined,
@@ -267,11 +243,7 @@ test("getLLMProvider reports provider usage for custom node calls", async () => 
 });
 
 test("LLM stream finish usage is reported once by the stream node", async () => {
-  const kv = createProjectKVContext({
-    store: createMemoryKVStore(),
-    projectId: "demo",
-    source: { projectId: "demo", runId: "run-stream" },
-  });
+  const kv = {};
   const tokenUsage = createProjectTokenUsageContext({
     definition: { enabled: true },
     store: async () => undefined,
@@ -321,7 +293,7 @@ test("LLM stream finish usage is reported once by the stream node", async () => 
 });
 
 function createNodeContext(
-  kv: ReturnType<typeof createProjectKVContext>,
+  _identity: object,
   tokenUsage: TokenUsageContext,
   llm?: LLMProvider,
 ): NodeContext {
@@ -338,40 +310,4 @@ function readAggregate(value: unknown): TokenUsageAggregate {
   assert.equal(typeof value, "object");
   assert.notEqual(value, null);
   return value as TokenUsageAggregate;
-}
-
-function createMemoryKVStore(): KVStore & { values: Map<string, unknown> } {
-  const values = new Map<string, unknown>();
-
-  function createKey(input: {
-    scope: string;
-    projectId?: string;
-    conversationId?: string;
-    key: string;
-  }): string {
-    return [
-      input.scope,
-      input.projectId ?? "",
-      input.conversationId ?? "",
-      input.key,
-    ].join(":");
-  }
-
-  return {
-    values,
-    async getValue(input) {
-      return values.get(createKey(input));
-    },
-    async setValue(input) {
-      values.set(createKey(input), input.value);
-    },
-    async deleteValue(input) {
-      return values.delete(createKey(input));
-    },
-    async updateValue(input, updater) {
-      const next = updater(values.get(createKey(input)));
-      values.set(createKey(input), next);
-      return next;
-    },
-  };
 }

@@ -42,7 +42,6 @@ const STABLE_ERROR_MESSAGE_KEYS: Readonly<Record<string, string>> = Object.freez
   "A database binding and consumer identity are required.": "server:databaseBindingRequired",
   "Database revisions require read access.": "server:databaseRevisionReadRequired",
   "Use the knowledge API.": "server:databaseUseKnowledgeApi",
-  "KV read access is required.": "server:databaseKvReadRequired",
   "A revoked grant cannot be rotated.": "server:databaseGrantRevoked",
   "Project IDs are assigned by the Server. Create a new application to obtain a new ID.": "server:projectIdServerAssigned",
   "Publish the project configuration template before using role-controlled configurations.": "server:configurationPublicationRequired",

@@ -1,4 +1,4 @@
-import { DATABASE_IDENTIFIER_PATTERN, DATABASE_UUID_PATTERN } from '@steamharness/database-spaces';
+import { DATABASE_IDENTIFIER_PATTERN, DATABASE_UUID_PATTERN } from '@steamharness/project-manifest';
 import type { DatabaseManagementState } from '../database-management';
 import type { Project } from '../workflow-types';
 import { t } from '../localization';
@@ -119,7 +119,7 @@ export class ProjectDatabases {
       if (requirement.error) card.append(text('p', requirement.error, 'database-error'));
       if (this.state.environmentOverrides.includes(requirement.alias)) card.append(text('p', t('This database reference is set by the environment.'), 'database-muted'));
       const usage = text('div', '', 'database-entry-usage');
-      for (const entry of this.state.entries.filter(entry => (requirement.kind === 'databases' ? entry.databases : entry.knowledgeBases ?? []).some(database => database.alias === requirement.alias))) {
+      for (const entry of this.state.entries.filter(entry => requirement.kind === 'databases' ? entry.databases.includes(requirement.alias) : (entry.knowledgeBases ?? []).some(database => database.alias === requirement.alias))) {
         const badge = text('span', entry.name, 'database-entry'); badge.dataset.current = String(entry.entryId === this.project.entryId); usage.append(badge);
       }
       card.append(usage); this.content.append(card);

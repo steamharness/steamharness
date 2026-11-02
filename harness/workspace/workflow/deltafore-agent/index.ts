@@ -246,8 +246,8 @@ function createHistoryMessages(
 
 async function readCompactedHistory(context: unknown): Promise<CompactedHistory | undefined> {
   try {
-    const kv = (context as { kv?: { conversation?: { getValue(key: string): Promise<unknown> } } }).kv;
-    const raw = await kv?.conversation?.getValue("context.compactedHistory");
+    const conversation = (context as { conversation?: { getValue(): Promise<{ values: Record<string, unknown> }> } }).conversation;
+    const raw = (await conversation?.getValue())?.values["context.compactedHistory"];
     if (raw && typeof raw === "object" && "summary" in (raw as object)) {
       return raw as CompactedHistory;
     }
@@ -264,11 +264,11 @@ async function writeCompactedHistory(
 ): Promise<void> {
   try {
     if (!shouldCompactHistory(history.length, existing)) return;
-    const kv = (context as { kv?: { conversation?: { setValue(key: string, value: unknown): Promise<void> } } }).kv;
-    if (!kv?.conversation) return;
+    const conversation = (context as { conversation?: { setValue(key: string, value: unknown): Promise<void> } }).conversation;
+    if (!conversation) return;
     const compacted = createCompactedHistorySummary(history, existing);
-    await kv.conversation.setValue("context.compactedHistory", compacted);
+    await conversation.setValue("context.compactedHistory", compacted);
   } catch {
-    // KV write failure is non-fatal
+    // Optional summary caching does not change the committed transcript.
   }
 }

@@ -64,7 +64,7 @@ Prepare backups and write access for at least:
 | `STEAMHARNESS_API_PUBLIC_BASE_URL` | Public HTTP(S) origin for the API. |
 | `STEAMHARNESS_DOCS_PUBLIC_BASE_URL` | Documentation site URL. |
 
-Server never installs dependencies, builds, or loads uploaded project code. Back up source snapshots, avatars, KV data, and knowledge data according to the deployment policy.
+Server never installs dependencies, builds, or loads uploaded project code. Back up source snapshots, avatars, platform history, business databases and knowledge data according to the deployment policy.
 
 ## Administrator names and shared accounts
 
@@ -94,4 +94,4 @@ The `deployment.server` and `deployment.serverWeb` health records may include a 
 
 The local environment sets `STEAMHARNESS_SERVER_DATABASE_ADMIN_URL` automatically. To enable resource administration elsewhere, set it to a PostgreSQL superuser connection dedicated to provisioning. When unset, management returns `DATABASE_UNAVAILABLE`. This identity stays inside Server. Initialization revokes PUBLIC CONNECT/TEMPORARY on the control database, postgres and template1. If another connectable database still permits PUBLIC connections, business credential issuance is refused. Use a dedicated PostgreSQL instance such as the Docker environment above.
 
-Node entries obtain temporary SQL identities for bound resources with an account API key and need connectivity to both Server and PostgreSQL. Keep pools and credentials inside the host. `database bind` stores account/project/entry/alias mappings on the host, outside source packages. Binding does not grant resource access. Rebinding, unbinding and access revocation terminate affected SQL sessions. Browser query forwarding and default KV storage migration remain pending.
+Node entries obtain temporary SQL identities for bound resources with an account API key and need connectivity to both Server and PostgreSQL. Keep pools and credentials inside the host. `database bind` stores account/project/entry/alias mappings on the host, outside source packages. Binding does not grant resource access. Rebinding, unbinding and access revocation terminate affected SQL sessions. Browser descriptors use the authenticated table proxy, checking the binding, access revision and schemaHash on each call. Legacy KV paths are removed.

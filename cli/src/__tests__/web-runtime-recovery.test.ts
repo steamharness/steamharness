@@ -67,7 +67,7 @@ it('allows a large Kanban file to finish after the ordinary worker deadline', as
   runtime.dispose();
 });
 
-it.each(['files.readFile', 'kv.getValue'] as const)('bounds %s workers and returns a safe timeout code', async operation => {
+it.each(['files.readFile', 'database.query'] as const)('bounds %s workers and returns a safe timeout code', async operation => {
   vi.useFakeTimers();
   const child = pendingWorker(); spawn.mockReturnValue(child);
   const runtime = createWebRuntime(process.cwd(), process.cwd(), () => undefined);

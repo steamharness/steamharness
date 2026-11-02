@@ -6,7 +6,6 @@ import {
   createProjectToolPermissionContext,
   createProjectTokenUsageContext,
   createProjectConversationContext,
-  type KVContext,
 } from "steamharness";
 import type {
   AgentFact,
@@ -80,8 +79,8 @@ describe("openai-agents reusable mode", () => {
     expect(tools.map(readToolName)).toEqual(["delta_force_lookup"]);
   });
 
-  it("does not write openai-agents KV or append messages when reuse flags are disabled", async () => {
-    const kv = createMemoryKVContext();
+  it("does not write openai-agents state or append messages when reuse flags are disabled", async () => {
+
     const context = {
       providers: {},
       ...createApprovedTestContext(),
@@ -131,9 +130,9 @@ describe("openai-agents reusable mode", () => {
 
     expect(result.items[0]?.content).toContain("delta_force_lookup");
     expect(state.messages).toHaveLength(1);
-    expect(await kv.conversation.getValue("openaiAgents.runCount")).toBeUndefined();
-    expect(await kv.conversation.getValue("openaiAgents.facts")).toBeUndefined();
-    expect(await kv.conversation.getValue("openaiAgents.history")).toBeUndefined();
+    expect((await context.conversation.getValue()).values["openaiAgents.runCount"]).toBeUndefined();
+    expect((await context.conversation.getValue()).values["openaiAgents.facts"]).toBeUndefined();
+    expect((await context.conversation.getValue()).values["openaiAgents.history"]).toBeUndefined();
   });
 
   it("streams answer chunks before finalize side effects complete", async () => {
@@ -172,7 +171,7 @@ describe("openai-agents reusable mode", () => {
       "streaming ",
       "world",
     ]);
-    expect(await context.databases.get("data").kv.conversation.getValue("openaiAgents.history")).toMatchObject({
+    expect((await context.conversation.getValue()).values["openaiAgents.history"]).toMatchObject({
       historyLength: 2,
     });
   });
@@ -483,13 +482,13 @@ describe("openai-agents reusable mode", () => {
           action: "create",
           documentId: "agent-runbook",
           title: "Agent Runbook",
-          markdown: "# Agent Runbook\n\nUse PersistentValue for knowledge documents.\n\nSearchable line.",
+          markdown: "# Agent Runbook\n\nUse Knowledge for knowledge documents.\n\nSearchable line.",
         }));
         const searchResult = parseToolOutput(await knowledgeTool.invoke(
           { context: {} } as Parameters<typeof knowledgeTool.invoke>[0],
           JSON.stringify({
             action: "search",
-            query: "PersistentValue",
+            query: "Knowledge",
             documentId: "agent-runbook",
             beforeLines: 1,
             afterLines: 1,
@@ -513,7 +512,7 @@ describe("openai-agents reusable mode", () => {
             {
               documentId: "agent-runbook",
               lineNumber: 3,
-              line: "Use PersistentValue for knowledge documents.",
+              line: "Use Knowledge for knowledge documents.",
             },
           ],
         });
@@ -1079,7 +1078,7 @@ function createToolContext(
     submittedAt: Date;
   },
 ) {
-  const persistentValue = createMemoryKVContext();
+
   return {
     ...createApprovedTestContext(),
     conversation: {
@@ -1124,8 +1123,8 @@ function createOpenAIAgentsContext(options: {
   onChunk?: (event: NodeExecutionHookChunkEvent) => void;
   tokenUsageEnabled?: boolean;
 } = {}): RunContext {
-  const kv = createMemoryKVContext();
-  const persistentValue = createMemoryKVContext();
+
+
   const tokenUsage = options.tokenUsageEnabled === true
     ? createProjectTokenUsageContext({
       definition: { enabled: true, display: true },
@@ -1149,50 +1148,6 @@ function createOpenAIAgentsContext(options: {
     nodeHooks: {
       onNodeChunk: options.onChunk,
     },
-  };
-}
-
-function createMemoryKVContext(): KVContext {
-  const values = new Map<string, unknown>();
-
-  function createNamespace(prefix: string) {
-    let pending = Promise.resolve();
-    return {
-      async getValue(key: string) {
-        return values.get(`${prefix}:${key}`);
-      },
-      async setValue(key: string, value: unknown) {
-        values.set(`${prefix}:${key}`, value);
-      },
-      async updateValue(key: string, updater: (current: unknown | undefined) => unknown) {
-        const next = updater(values.get(`${prefix}:${key}`));
-        values.set(`${prefix}:${key}`, next);
-        return next;
-      },
-      async withLock<T>(operation: () => Promise<T> | T): Promise<T> {
-        const previous = pending;
-        let release!: () => void;
-        pending = new Promise<void>((resolve) => {
-          release = resolve;
-        });
-        await previous;
-        try {
-          return await operation();
-        } finally {
-          release();
-        }
-      },
-    };
-  }
-
-  const project = createNamespace("project");
-
-  return {
-    getValue: project.getValue,
-    setValue: project.setValue,
-    updateValue: project.updateValue,
-    withLock: project.withLock,
-    conversation: createNamespace("conversation"),
   };
 }
 

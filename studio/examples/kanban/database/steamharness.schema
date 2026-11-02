@@ -1,0 +1,12 @@
+model Task {
+  id String @id
+  configurationId String
+  title String
+  description String @default("")
+  status String @default("todo")
+  priority String @default("normal")
+  label String @default("development")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  @@index([configurationId, createdAt])
+}

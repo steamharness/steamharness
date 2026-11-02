@@ -21,11 +21,11 @@ async function fixture(database = false) {
   vi.stubEnv('STEAMHARNESS_SERVER_URL', ''); vi.stubEnv('STEAMHARNESS_SERVER_ADMIN_KEY', '');
   const entries = ([['agent', 'conversation'], ['assistant', 'conversation'], ['workflow', 'workflow'], ['board', 'kanban']] as const).map(([entryId, type]) => ({
     entryId, type, name: entryId, root: entryId, entry: type === 'kanban' ? 'index.html' : 'index.ts', configuration: 'configuration.json',
-    databases: database && entryId === 'agent' ? [{ alias: 'data', databaseId: randomUUID() }] : [],
+    databases: database && entryId === 'agent' ? ['data'] : [],
   }));
-  const id = randomUUID(), pkg = { id, name: 'Aggregate test', version: "0.1.0",  entries: entries.map(({databases, ...entry})=>({...entry,databases:databases.map(database=>database.alias)})), defaultEntry: 'agent'  };
+  const id = randomUUID(), pkg = { id, name: 'Aggregate test', version: "0.1.0",  entries: entries.map(({databases, ...entry})=>({...entry,databases:databases})), defaultEntry: 'agent'  };
   await writeProjectFixture(path.join(directory, 'package.json'), JSON.stringify(pkg));
-  if(database) await writeFile(path.join(directory,'config.json'),JSON.stringify({version:1,databases:{data:entries[0]!.databases[0]!.databaseId}}));
+  await writeFile(path.join(directory, 'config.json'), JSON.stringify({ version: 1 }));
   for (const entry of entries) {
     await mkdir(path.join(directory, entry.root), {recursive:true});
     await writeFile(path.join(directory, entry.root, entry.entry), entry.type === 'kanban' ? '<!doctype html><title>Board</title>' : 'export {};');

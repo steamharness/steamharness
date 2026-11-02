@@ -8,11 +8,10 @@ pnpm exec steamharness run . -- --message ok
 pnpm exec steamharness json . -- --message nope --mode fail
 ```
 
-Conversation smoke:
+Conversation smoke (requires a reachable Server and a dedicated test identity):
 
 ```bash
-STEAMHARNESS_KV_STORE_DIR="$PWD/.workflow-kv" \
-  pnpm exec steamharness json . --conversation-id smoke-demo -- --message hello
+pnpm exec steamharness json . --conversation-id smoke-demo -- --message hello
 ```
 
 第二阶段开始，smoke conversation 示例也走默认 composer 的 `--message`

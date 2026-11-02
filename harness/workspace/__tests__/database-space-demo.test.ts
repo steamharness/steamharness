@@ -26,7 +26,7 @@ it('shares an explicitly bound knowledge resource between entries and projects a
   try {
     await cp(path.resolve(import.meta.dirname, '../workflow/database-space-demo'), projectDir, { recursive: true });
     const manifest = JSON.parse(await readFile(path.join(projectDir, 'steamharness.json'), 'utf8'));
-    const options = (entryId: string, target = projectDir) => ({ projectDir: target, entryId, env: {}, knowledgeBaseHost: host, storage: { host: 'local' as const, local: { kvStoreDir: path.join(directory, 'runtime'), runtimePersistence: createMemoryRuntimePersistence() } } });
+    const options = (entryId: string, target = projectDir) => ({ projectDir: target, entryId, env: {}, knowledgeBaseHost: host, storage: { host: 'local' as const, local: { runtimePersistence: createMemoryRuntimePersistence() } } });
     const run = async (entryId: string, action: string, target = projectDir) => {
       const report = await runLocalProjectWithReport({ ...options(entryId, target), args: ['--action', action, '--value', 'shared'] });
       expect(report.status, JSON.stringify(report.result)).toBe('success');

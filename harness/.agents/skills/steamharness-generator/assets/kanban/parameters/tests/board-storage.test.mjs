@@ -14,8 +14,8 @@ const FALLBACK = {
 };
 
 test("serializes versioned tasks and falls back from damaged data", () => {
-  assert.equal(createBoardStorageKey("review"), "kanban.board-state.v1:review");
-  assert.equal(createBoardStorageKey(""), "kanban.board-state.v1:default");
+  assert.equal(createBoardStorageKey("review"), "review");
+  assert.equal(createBoardStorageKey(""), "default");
   assert.deepEqual(serializeBoardState(FALLBACK), {
     version: 1,
     tasks: [{ id: "fallback", title: "Default", description: "", status: "todo" }],
@@ -33,15 +33,15 @@ test("serializes versioned tasks and falls back from damaged data", () => {
 
 test("isolates configuration keys and ignores stale configuration reads", async () => {
   const reads = new Map();
-  const kv = {
-    getValue(key) {
+  const repository = {
+    load(key) {
       const request = deferred();
       reads.set(key, request);
       return request.promise;
     },
-    async setValue() {},
+    async save() {},
   };
-  const controller = createBoardStorageController({ kv });
+  const controller = createBoardStorageController({ repository });
   const first = controller.load("first", FALLBACK);
   await new Promise((resolve) => setImmediate(resolve));
   const second = controller.load("second", FALLBACK);
@@ -66,14 +66,14 @@ test("isolates configuration keys and ignores stale configuration reads", async 
 test("serializes saves in call order", async () => {
   const firstWrite = deferred();
   const writes = [];
-  const kv = {
-    async getValue() { return undefined; },
-    setValue(key, value) {
+  const repository = {
+    async load() { return undefined; },
+    save(key, value) {
       writes.push({ key, value });
       return writes.length === 1 ? firstWrite.promise : Promise.resolve();
     },
   };
-  const controller = createBoardStorageController({ kv });
+  const controller = createBoardStorageController({ repository });
   await controller.load("default", FALLBACK);
   const first = controller.save({ ...FALLBACK, tasks: [] });
   const second = controller.save(FALLBACK);
@@ -93,9 +93,9 @@ test("does not report saved while a newer debounced state is still pending", asy
   let scheduled;
   let writes = 0;
   const controller = createBoardStorageController({
-    kv: {
-      async getValue() { return undefined; },
-      setValue() {
+    repository: {
+      async load() { return undefined; },
+      save() {
         writes += 1;
         return writes === 1 ? firstWrite.promise : Promise.resolve();
       },
@@ -123,15 +123,15 @@ test("does not report saved while a newer debounced state is still pending", asy
 test("retains failed data and retries the same save", async () => {
   const statuses = [];
   let attempts = 0;
-  const kv = {
-    async getValue() { return undefined; },
-    async setValue() {
+  const repository = {
+    async load() { return undefined; },
+    async save() {
       attempts += 1;
       if (attempts === 1) throw new Error("offline");
     },
   };
   const controller = createBoardStorageController({
-    kv,
+    repository,
     onStatus: (status) => statuses.push(status.state),
   });
   await controller.load("default", FALLBACK);
@@ -147,9 +147,9 @@ test("retains a failed save across configuration switches and retries it after r
   const writes = [];
   let failFirstWrite = true;
   const controller = createBoardStorageController({
-    kv: {
-      async getValue() { return undefined; },
-      async setValue(key, value) {
+    repository: {
+      async load() { return undefined; },
+      async save(key, value) {
         writes.push({ key, value });
         if (failFirstWrite) {
           failFirstWrite = false;
@@ -178,37 +178,23 @@ test("retains a failed save across configuration switches and retries it after r
   assert.deepEqual(writes.at(-1).value, serializeBoardState(edited));
 });
 
-test("keeps unbound configuration edits temporary and separate", async () => {
-  const statuses = [];
-  let writes = 0;
-  const controller = createBoardStorageController({
-    kv: {
-      async getValue() { throw Object.assign(new Error("unbound"), { code: "DATABASE_UNBOUND" }); },
-      async setValue() { writes += 1; },
-    },
-    onStatus: status => statuses.push(status),
-  });
-  await controller.load("first", FALLBACK);
-  const edited = { ...FALLBACK, tasks: [] };
-  controller.scheduleSave(edited);
-  await controller.flush();
-  assert.deepEqual((await controller.load("second", FALLBACK)).state, FALLBACK);
-  assert.deepEqual((await controller.load("first", FALLBACK)).state, edited);
-  assert.equal(writes, 0);
-  assert.match(statuses.at(-1).message, /临时模式/);
+test("missing database blocks edits and never falls back to local storage", async () => {
+  const controller = createBoardStorageController();
+  assert.equal((await controller.load('default', FALLBACK)).loadFailed, true);
+  await assert.rejects(controller.save(FALLBACK), /尚未成功加载/);
 });
 
 test("blocks writes after denied, failed or invalid reads and permits retry", async () => {
   for (const invalid of ["DATABASE_ACCESS_DENIED", "offline", { version: 2, tasks: [] }]) {
     let fail = true;
     let writes = 0;
-    const controller = createBoardStorageController({ kv: {
-      async getValue() {
+    const controller = createBoardStorageController({ repository: {
+      async load() {
         if (!fail) return serializeBoardState(FALLBACK);
         if (typeof invalid === "string") throw new Error(invalid);
         return invalid;
       },
-      async setValue() { writes += 1; },
+      async save() { writes += 1; },
     } });
     assert.equal((await controller.load("first", FALLBACK)).loadFailed, true);
     controller.scheduleSave({ ...FALLBACK, tasks: [] });

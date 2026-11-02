@@ -25,7 +25,7 @@ test('assistant bundles resolve every registered entry and its database configur
   const child = { name: 'Control', type: 'workflow', entry: 'index.ts', configuration: 'configuration.json', projectCard: { icon: 'cpu' } };
   const files = { 'package.json': JSON.stringify({ name: 'assistant-npm', version: '9.0.0', type: 'module' }),
     'steamharness.json': JSON.stringify(manifest), 'studio-control/steamharness.json': JSON.stringify(child),
-    'config.json': JSON.stringify({ version: 1, databases: { memory: databaseId } }),
+    'config.json': JSON.stringify({ version: 1 }),
     'configuration.json': '{"version":1,"fields":[]}', 'index.ts': 'export {};',
     'studio-control/index.ts': 'export {};', 'studio-control/configuration.json': '{"version":1,"fields":[]}',
     'skills/SKILL.md': 'Assistant skills', '.env': 'PRIVATE_VALUE=excluded', 'vitest.config.ts': 'export {};',
@@ -36,7 +36,7 @@ test('assistant bundles resolve every registered entry and its database configur
   const main = await resolveProjectEntry(destination, 'main');
   assert.equal(main.manifest.name, 'Assistant');
   assert.equal(main.manifest.version, '0.1.9');
-  assert.deepEqual(main.registration.databases, [{ alias: 'memory', databaseId }]);
+  assert.deepEqual(main.registration.databases, ['memory']);
   assert.equal((await resolveProjectEntry(destination, 'studio-control')).registration.projectCard.icon, 'cpu');
   for (const name of ['steamharness.json', 'studio-control/steamharness.json']) {
     assert.equal(await readFile(path.join(destination, name), 'utf8'), files[name]);

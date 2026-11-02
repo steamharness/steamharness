@@ -4,9 +4,8 @@ import {
   createDisabledProjectConversationContext,
   createDisabledProjectTokenUsageContext,
   createProjectKVContext,
-  createProjectPersistentValueContext,
+  createProjectKnowledgeContext,
   createProjectToolPermissionContext,
-  type KVStore,
 } from "steamharness";
 import { installProjectRuntimeGlobal } from "steamharness/runtime-api";
 import type { RunContext } from "steamharness/types/context";
@@ -45,7 +44,7 @@ describe("pi-agent knowledge_documents tool", () => {
       action: "create",
       documentId: "agent-runbook",
       title: "Agent Runbook",
-      markdown: "# Agent Runbook\n\nUse PersistentValue for knowledge documents.\n\nSearchable line.",
+      markdown: "# Agent Runbook\n\nUse Knowledge for knowledge documents.\n\nSearchable line.",
     }, undefined, undefined, {} as never));
     expect(createResult.action).toBe("create");
     expect(createResult.document.id).toBe("agent-runbook");
@@ -78,14 +77,14 @@ describe("pi-agent knowledge_documents tool", () => {
       matches: Array<{ line: string }>;
     }>(await tool.execute("call-search", {
       action: "search",
-      query: "PersistentValue",
+      query: "Knowledge",
       documentId: "agent-runbook",
       beforeLines: 1,
       afterLines: 1,
       pageSize: 5,
     }, undefined, undefined, {} as never));
     expect(searchResult.totalMatches).toBe(1);
-    expect(searchResult.matches[0]?.line).toContain("PersistentValue");
+    expect(searchResult.matches[0]?.line).toContain("Knowledge");
 
     const linesResult = parseToolResult<{
       action: "read_lines";

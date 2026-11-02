@@ -189,14 +189,7 @@ export class ServerClient {
     const prefix = `/api/projects/${encodeURIComponent(target.projectId)}`;
     const auth = { accessToken: connection.accessToken };
     if (kind === 'knowledge') {
-      return this.request(`${prefix}/knowledge-documents${target.documentId ? `/${encodeURIComponent(target.documentId)}` : '?pageSize=100'}`, auth);
-    }
-    if (kind === 'kv') {
-      const query = new URLSearchParams({ scope: target.scope === 'conversation' ? 'conversation' : 'project' });
-      if (target.conversationId) { query.set('conversationId', target.conversationId); }
-      if (target.key) { query.set('key', target.key); }
-      else { query.set('pageSize', '100'); }
-      return this.request(`${prefix}/kv${target.key ? '/entry' : ''}?${query}`, auth);
+      return this.request(`${prefix}/entries/${encodeURIComponent(target.entryId)}/resources/read`, { ...auth, method: 'POST', body: { kind: 'knowledge', knowledgeBase: target.knowledgeBase, ...(target.documentId ? { documentId: target.documentId } : {}) } });
     }
     if (kind === 'file') {
       const result = await this.request<{ files: { path: string; content: string; encoding?: string }[] }>(`${prefix}/files?target=${encodeURIComponent(target.target || 'latest')}&includeBinary=true`, auth);

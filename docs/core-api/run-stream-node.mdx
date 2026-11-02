@@ -26,7 +26,7 @@ workflow.runStreamNode<Input, Chunk, Output>(
 | --- | --- | --- |
 | `node` | `StreamNodeDefinition` | 要执行的流式节点，通常来自 `createLLMStreamNode` 或流式 `createOutputNode`。 |
 | `input` | `Input` | 节点输入。 |
-| `context` | `NodeContext` | runtime 上下文，用于 hooks、provider、KV、files、abortSignal。 |
+| `context` | `NodeContext` | runtime 上下文，用于 hooks、provider、数据库、files、abortSignal。 |
 
 ## `StreamNodeDefinition`
 

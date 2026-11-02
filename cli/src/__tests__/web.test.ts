@@ -301,10 +301,10 @@ describe('steamharness web', () => {
       STEAMHARNESS_STUDIO_CONTROL_BRIDGE_TOKEN: 'capability-token' });
   });
 
-  it('validates project database overrides before passing them to workers', () => {
+  it('validates knowledge base overrides and rejects removed database mappings before passing them to workers', () => {
     const databaseId = randomUUID();
-    expect(sanitizeWebWorkerEnvironment({ STEAMHARNESS_PROJECT_CONFIG: JSON.stringify({ databases: { data: databaseId } }) }))
-      .toEqual({ STEAMHARNESS_PROJECT_CONFIG: JSON.stringify({ version: 1, databases: { data: databaseId } }) });
+    expect(sanitizeWebWorkerEnvironment({ STEAMHARNESS_PROJECT_CONFIG: JSON.stringify({ knowledgeBases: { data: databaseId } }) }))
+      .toEqual({ STEAMHARNESS_PROJECT_CONFIG: JSON.stringify({ version: 1, knowledgeBases: { data: databaseId } }) });
     for (const value of ['invalid JSON', JSON.stringify({ databases: { data: 'not-a-uuid' } }), JSON.stringify({ apiKey: 'not-project-configuration' })]) {
       expect(() => sanitizeWebWorkerEnvironment({ STEAMHARNESS_PROJECT_CONFIG: value })).toThrow();
     }

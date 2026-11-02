@@ -61,3 +61,27 @@ export function createRemoteRelationalDatabaseHost(connection: { serverUrl: stri
     async release(credentialId) { await request(`/${encodeURIComponent(credentialId)}`, "DELETE"); },
   };
 }
+
+/** Authenticated structured transport for native preview hosts; no SQL credentials enter the page. */
+export function createRemoteDatabaseQueryHost(connection: { serverUrl: string; token: string }, consumer: { projectId: string; entryId: string }): import('./browser-runtime').DatabaseQueryHost {
+  const request = async (endpoint: string, body: unknown) => {
+    let response: Response;
+    try { response = await fetch(`${connection.serverUrl.replace(/\/+$/, '')}/api/databases${endpoint}`, { method: 'POST', redirect: 'error', signal: AbortSignal.timeout(45_000), headers: { Authorization: `Bearer ${connection.token}`, 'Content-Type': 'application/json' }, body: JSON.stringify(body) }); }
+    catch { throw new DatabaseResourceError('DATABASE_UNAVAILABLE', 'Database host is unavailable.'); }
+    const result = await response.json() as { errCode: number; data: any; errMessage?: string };
+    if (!response.ok || result.errCode !== 0) throw new DatabaseResourceError(result.data?.code ?? 'DATABASE_UNAVAILABLE', result.errMessage ?? 'Database query failed.');
+    return result.data;
+  };
+  return {
+    resolve: input => request('/bindings/resolve', { ...consumer, ...input }),
+    query: (binding, schemaHash, query) => request(`/${encodeURIComponent(binding.databaseId)}/query`, {
+      consumer: { ...consumer, alias: binding.alias, schemaHash, binding: { id: binding.id, revision: binding.revision }, accessRevision: binding.accessRevision }, request: query,
+    }),
+  };
+}
+
+export async function executeDatabaseQueryBridge(host: import('./browser-runtime').DatabaseQueryHost, operation: string, input: Record<string, unknown>): Promise<unknown> {
+  if (operation === 'database.resolve') return host.resolve({ alias: String(input.database), schemaHash: String(input.schemaHash) });
+  if (operation !== 'database.query' || !input.binding || typeof input.binding !== 'object' || (input.binding as { alias?: string }).alias !== input.database) throw new DatabaseResourceError('DATABASE_INVALID_REQUEST', 'Invalid database query.');
+  return host.query(input.binding as import('./browser-runtime').DatabaseQueryBinding, String(input.schemaHash), input.request as import('./browser-runtime').DatabaseTableRequest);
+}

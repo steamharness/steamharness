@@ -405,7 +405,7 @@ export async function activateProject(context: vscode.ExtensionContext, launcher
       });
       const disposal = preview.onDidDispose(() => { clearTimeout(timer); listener.dispose(); disposal.dispose(); reject(new Error(t('Unable to open the resource.'))); });
     }) : Promise.resolve();
-    preview.iconPath = new vscode.ThemeIcon(card.kind === 'knowledge' ? 'book' : card.kind === 'kv' ? 'database' : 'preview');
+    preview.iconPath = new vscode.ThemeIcon(card.kind === 'knowledge' ? 'book' : 'preview');
     const clipboard = bindProjectClipboard(preview.webview);
     const subscriptions = [clipboard, preview.webview.onDidReceiveMessage(message => clipboard.receive(message)),
       vscode.window.onDidChangeActiveColorTheme(() => void preview.webview.postMessage({ type: 'workflow-host', theme: theme() })), session.onExit(() => preview.dispose())];

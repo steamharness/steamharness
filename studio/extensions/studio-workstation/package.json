@@ -22,7 +22,6 @@
     "onWebviewPanel:studio.settings",
     "onWebviewPanel:studio.login",
     "onWebviewPanel:studio.tool.databases",
-    "onWebviewPanel:studio.tool.kv",
     "onWebviewPanel:studio.tool.knowledge",
     "onWebviewPanel:studio.tool.info",
     "onWebviewPanel:studio.tool.assistant",

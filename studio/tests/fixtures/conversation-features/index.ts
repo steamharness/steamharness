@@ -90,7 +90,7 @@ const task = steamharness.defineProject({
       for (let index = 0; index < 40; index++) { context.abortSignal.throwIfAborted(); await new Promise((resolve) => setTimeout(resolve, 100)); }
     }
     if (text === 'knowledge') {
-      const document = await context.databases.get('data').knowledge.createDocument( { title: 'Migration note', markdown: 'Stored knowledge content' });
+      const document = await context.knowledgeBases.get('docs').createDocument( { title: 'Migration note', markdown: 'Stored knowledge content' });
       text = document.id;
     }
     if (text === 'timer') {
@@ -118,9 +118,8 @@ const task = steamharness.defineProject({
       const resolved = await context.files.resolveFile(file);
       text += `\nFile: ${file.name}, ${file.mimeType}, bytes=${(await resolved.readBuffer()).length}`;
     }
-    const previous = await context.databases.get('data').kv.conversation.getValue('turns') ?? 0;
-    await context.databases.get('data').kv.conversation.setValue('turns', previous + 1);
-    await context.databases.get('data').kv.setValue('project-note', 'Retained project value');
+    const previous = (await context.conversation.getValue()).values.turns ?? 0;
+    await context.conversation.setValue('turns', previous + 1);
     return steamharness.createOutputPayload({ items: [{ id: 'answer', title: 'Answer', contentType: 'markdown', content: `${text}\nTurn ${previous + 1}` }] });
   },
 });

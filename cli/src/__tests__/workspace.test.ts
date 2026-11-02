@@ -595,7 +595,7 @@ describe("server workspace CLI helpers", () => {
     try {
       const entries=[{entryId:'one',name:'One',type:'workflow',root:'one',entry:'index.ts',databases:[]},{entryId:'two',name:'Two',type:'workflow',root:'two',entry:'index.ts',databases:[]},{entryId:'map',name:'Map',type:'kanban',root:'map',entry:'index.html',databases:['data']}];
       await writeProjectFixture(path.join(root,'package.json'),JSON.stringify({id:'a7e15f8a-e179-4986-8b0d-1e69a0e65b51',name:'Aggregate',version: "0.1.0", defaultEntry:'one',entries}));
-      const config={version:1,databases:{data:'c6033af9-e762-4a4e-a319-523cdb55103e'}};
+      const config={version:1,knowledgeBases:{docs:'c6033af9-e762-4a4e-a319-523cdb55103e'}};
       await writeFile(path.join(root,'config.json'),JSON.stringify(config));
       for(const entry of entries){await mkdir(path.join(root,entry.root),{recursive:true});await writeFile(path.join(root,entry.root,entry.entry),'export {};');}
       const staging=path.join(root,'staging');await stageProjectSource({projectDir:root,projectName:'aggregate',stagingRoot:staging});

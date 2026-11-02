@@ -1,3 +1,5 @@
+import { connectBrowserDatabase } from "./database";
+export * from "./database";
 import type { ParamDefinition } from "./run-workspace/types";
 import { createKanbanMethodsBridgeScript, type KanbanBrowserMethodsApi } from "./methods";
 import { installProjectKeyboardBridge } from "./keyboard";
@@ -59,12 +61,6 @@ export interface KanbanPresentation {
   mode: KanbanPresentationMode;
 }
 
-export interface KanbanBrowserDatabaseKvApi {
-  getValue(key: string): Promise<unknown>;
-  setValue(key: string, value: KanbanJsonValue): Promise<void>;
-
-}
-
 export interface KanbanDatabaseRevision {
   kind?: "knowledgeBases";
   alias: string;
@@ -90,7 +86,7 @@ export interface KanbanBrowserApi {
   getRuntimeLocale(): Promise<KanbanRuntimeLocale>;
   studio: { getLocalAnalysis(): Promise<unknown> };
   methods: KanbanBrowserMethodsApi;
-  databases: { get(alias: string): { kv: KanbanBrowserDatabaseKvApi; subscribe(listener: (event: KanbanDatabaseRevision) => void): () => void } };
+  databases: { connect(descriptor: import("./database").BrowserDatabaseDescriptor): Promise<Record<string, unknown>> };
   knowledgeBases: { get(alias: string): {
     subscribe(listener: (event: KanbanDatabaseRevision) => void): () => void;
     listDocuments(options?: Record<string, unknown>): Promise<unknown>;
@@ -121,9 +117,8 @@ export type KanbanBridgeOperation =
   | "files.createFile"
   | "files.readFile"
   | "files.deleteFile"
-  | "kv.getValue"
-  | "kv.setValue"
-  | "database.revision"
+  | "database.resolve"
+  | "database.query"
   | "knowledge.revision"
   | "knowledge.listDocuments"
   | "knowledge.getDocument"
@@ -152,7 +147,7 @@ const KANBAN_BRIDGE_SAFE_ERRORS = {
   KANBAN_BRIDGE_SESSION_INVALID: "The Kanban preview session is invalid or expired.",
   KANBAN_BRIDGE_SERVER_ERROR: "Kanban project data operation failed.",
   KANBAN_DATA_OPERATION_FAILED: "Kanban project data operation failed.",
-  DATABASE_UNBOUND: "Apply for and bind an approved database space.",
+  DATABASE_UNBOUND: "Apply for and bind an relational database.",
   DATABASE_ACCESS_DENIED: "Database access is not granted.",
   DATABASE_ACCESS_FAILED: "Database authorization is unavailable. Check the binding.",
   KANBAN_FILE_UNAVAILABLE: "Kanban file is unavailable in this project.",
@@ -171,9 +166,8 @@ const KANBAN_BRIDGE_INPUT_FIELDS: Record<KanbanBridgeOperation, readonly string[
   "files.createFile": ["name", "mimeType", "base64"],
   "files.readFile": ["fileId"],
   "files.deleteFile": ["fileId"],
-  "kv.getValue": ["key"],
-  "kv.setValue": ["key", "value"],
-  "database.revision": ["database"],
+  "database.resolve": ["schemaHash"],
+  "database.query": ["schemaHash", "binding", "request"],
   "knowledge.revision": [],
   "knowledge.listDocuments": ["pageSize", "cursor"],
   "knowledge.getDocument": ["documentId"],
@@ -434,6 +428,8 @@ const isJsonValue=(value,seen=new Set())=>{
 };
 const ready=()=>{window.parent.postMessage({type:${readyMessage},nonce:${safeNonce},documentId:methodDocumentId},"*");publishKanbanMethods();};
 const request=(operation,input)=>{
+  input=Object.fromEntries(Object.entries(input).filter(([,value])=>value!==undefined));
+  if(!isJsonValue(input))return Promise.reject(invalidRequest());
   if(pending.size>=${KANBAN_BRIDGE_MAX_PENDING_REQUESTS})return Promise.reject(createError("Too many Kanban bridge requests are pending.","KANBAN_BRIDGE_BUSY"));
   const requestId=Date.now().toString(36)+"-"+(++sequence).toString(36);
   return new Promise((resolve,reject)=>{
@@ -457,16 +453,10 @@ const createFiles=(knowledgeBase)=>Object.freeze({
   readFile:(fileId)=>request("files.readFile",{knowledgeBase,fileId}).then(({file,base64})=>({file,buffer:Uint8Array.from(atob(base64),(char)=>char.charCodeAt(0)).buffer})),
   deleteFile:(fileId)=>request("files.deleteFile",{knowledgeBase,fileId})
 });
-const databaseContexts=new Map();
-const databases=Object.freeze({get:(database)=>{
-  if(typeof database!=="string"||!${DATABASE_ALIAS_PATTERN.toString()}.test(database))throw invalidRequest();
-  if(databaseContexts.has(database))return databaseContexts.get(database);
-  const call=(operation,input={})=>request(operation,{...input,database});
-  const context=Object.freeze({
-    kv:Object.freeze({getValue:(key)=>call("kv.getValue",{key}),setValue:(key,value)=>isJsonValue(value)?call("kv.setValue",{key,value}).then(()=>undefined):Promise.reject(invalidRequest())}),
-    subscribe:(listener)=>{if(typeof listener!=="function")throw invalidRequest();let listeners=databaseRevisionListeners.get(database);if(!listeners){listeners=new Set();databaseRevisionListeners.set(database,listeners);}listeners.add(listener);const revision=databaseRevisions.get(database);if(revision)Promise.resolve().then(()=>{if(listeners.has(listener))listener({alias:database,revision});}).catch(()=>{});return ()=>{listeners.delete(listener);if(!listeners.size)databaseRevisionListeners.delete(database);};}
-  });databaseContexts.set(database,context);return context;
-}});
+const databases=Object.freeze({connect:(descriptor)=>(${connectBrowserDatabase.toString()})(descriptor,{
+  resolve:({alias,schemaHash})=>request("database.resolve",{database:alias,schemaHash}),
+  query:(binding,schemaHash,query)=>request("database.query",{database:binding.alias,binding,schemaHash,request:query})
+})});
 const knowledgeContexts=new Map();
 const knowledgeBases=Object.freeze({get:(knowledgeBase)=>{
   if(typeof knowledgeBase!=="string"||!${DATABASE_ALIAS_PATTERN.toString()}.test(knowledgeBase))throw invalidRequest();
@@ -720,16 +710,11 @@ function validateKanbanBridgeInput(
         throw new Error("Kanban file id is invalid.");
       }
       return;
-    case "kv.getValue":
-      readNonEmptyString(input["key"], "bridge.input.key");
+    case "database.resolve":
+    case "database.query":
+      if (typeof input.schemaHash !== 'string' || !/^[a-f0-9]{64}$/.test(input.schemaHash)) throw new Error('A generated model fingerprint is required.');
+      if (operation === 'database.query' && (!isRecord(input.binding) || !isRecord(input.request) || !isKanbanJsonValue(input.binding) || !isKanbanJsonValue(input.request))) throw new Error('A structured database query is required.');
       return;
-    case "kv.setValue":
-      readNonEmptyString(input["key"], "bridge.input.key");
-      if (input["value"] === undefined || !isKanbanJsonValue(input["value"])) {
-        throw new Error("Kanban bridge KV value must be JSON-serializable and cannot be undefined.");
-      }
-      return;
-    case "database.revision":
     case "knowledge.revision": return;
     case "knowledge.listDocuments":
       readOptionalIntegerInRange(
@@ -802,9 +787,8 @@ function isKanbanBridgeOperation(value: unknown): value is KanbanBridgeOperation
     value === "files.createFile" ||
     value === "files.readFile" ||
     value === "files.deleteFile" ||
-    value === "kv.getValue" ||
-    value === "kv.setValue" ||
-    value === "database.revision" ||
+    value === "database.resolve" ||
+    value === "database.query" ||
     value === "knowledge.revision" ||
     value === "knowledge.listDocuments" ||
     value === "knowledge.getDocument" ||

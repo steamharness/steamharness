@@ -1,11 +1,9 @@
 # {{name}}
 
-这个示例只把看板标题和强调色作为命名配置。任务属于看板业务数据，应在页面内新建、编辑、移动和删除，不通过逗号分隔的参数维护。
+Tasks are stored as relational `Task` rows, separated by configuration ID. The page requires an authenticated SteamHarness Server connection; failed reads block edits and concurrent writes use row versions. Multi-row edits are separate operations.
 
-数据库需先申请、获批并绑定：在根 `config.json` 的 `databases.data` 中填写获批 ID，并在 `steamharness.json` 的入口 `databases` 中声明 `"data"`。任务使用 `window.steamHarnessKanban.databases.get("data").kv` 持久化，键名为 `kanban.board-state.v1:<configurationId|default>`。每个命名配置拥有独立任务数据；未绑定数据库或直接打开页面且宿主未注入 Bridge 时可临时编辑，页面会明确提示刷新后不会保留。读取失败时禁用编辑，避免覆盖已有任务。
+1. Install dependencies, then run `pnpm exec steamharness database generate`.
+2. Explicitly create a database with `steamharness database create`, bind alias `data` using `database bind --help`, and run `database migrate dev --help` to apply the schema.
+3. Run `pnpm build`, then `pnpm dev`.
 
-运行纯逻辑测试：
-
-```bash
-node --test tests/*.test.mjs
-```
+任务存储为关系型 `Task` 表，按配置 ID 区分。先申请数据库、在 Server 绑定 `data`、执行迁移，再构建运行。页面要求 Server 和 PostgreSQL 可达；连接失败时禁止编辑，更新使用行版本检查。不会自动申请数据库或回退本地存储。

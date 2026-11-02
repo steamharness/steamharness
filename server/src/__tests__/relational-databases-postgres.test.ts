@@ -167,7 +167,8 @@ test("independent PostgreSQL resources support provisioning, account grants and 
     await assert.rejects(run({ operation: 'delete', model: 'Record', key: { id: 'row-1' }, rowVersion: changed.rowVersion }, 'table-reader'), { code: 'DATABASE_ACCESS_DENIED' });
     const identity = { projectId: randomUUID(), entryId: 'main', alias: 'main' };
     const binding = await repository.bind('owner', { ...identity, databaseId: c.id, mode: 'read', schemaHash: initial.schemaHash });
-    const consumer = { ...identity, binding, schemaHash: initial.schemaHash };
+    const resolved = await repository.resolveQueryBinding("owner", { ...identity, schemaHash: initial.schemaHash });
+    const consumer = { ...identity, binding, accessRevision: resolved.accessRevision, schemaHash: initial.schemaHash };
     assert.equal((await repository.data('owner', c.id, { operation: 'rows', model: 'Record' }, consumer) as any).mode, 'read');
     await assert.rejects(repository.data('owner', c.id, { operation: 'delete', model: 'Record', key: { id: 'row-1' }, rowVersion: changed.rowVersion }, consumer), { code: 'DATABASE_ACCESS_DENIED' });
     await repository.unbind('owner', identity);

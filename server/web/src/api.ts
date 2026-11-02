@@ -2,10 +2,10 @@ import { isApiSuccess } from "./types";
 import type { AccessPage, ProjectGroup, ProjectRole } from "./types";
 import type { ProjectConfigurationAction, ProjectConfigurationState, ProjectConfigurationExport, ProjectConfigurationFile } from "@steamharness/project-configuration";
 
-import type { AuthSessionState, ApiResponse, AdminUserSummary, AccountInvitationLookupResult, ApiKeyCreateResult, ApiKeyRecord, AuditEventPage, AuditOutcome, DeviceCodeResult, KVEntryDetail, KVEntryPage, KVEntryScope, KVEntryValueType, KnowledgeDocument, KnowledgeDocumentPageRecord, KnowledgeDocumentLinesResult, KnowledgeDocumentSummaryRecord, KnowledgeSearchResultRecord, MeResult, ProjectInvitation, ProjectAccessLinkInfo, ProjectAccessRequest, ProjectSourceAccessSummary, InvitationAcceptResult, InvitationLookupResult, InvitationRole, ProjectMember, UserInvitationResult, ServerHealthData, Summary, VersionSummary } from "./types";
+import type { AuthSessionState, ApiResponse, AdminUserSummary, AccountInvitationLookupResult, ApiKeyCreateResult, ApiKeyRecord, AuditEventPage, AuditOutcome, DeviceCodeResult, KnowledgeDocument, KnowledgeDocumentPageRecord, KnowledgeDocumentLinesResult, KnowledgeDocumentSummaryRecord, KnowledgeSearchResultRecord, MeResult, ProjectInvitation, ProjectAccessLinkInfo, ProjectAccessRequest, ProjectSourceAccessSummary, InvitationAcceptResult, InvitationLookupResult, InvitationRole, ProjectMember, UserInvitationResult, ServerHealthData, Summary, VersionSummary } from "./types";
 import { getCurrentLocale, translateDynamicKey, translateSteamHarnessError, type CommonResourceKey } from "@steamharness/i18n";
 
-import type { ProjectDataSummary, SourceShare } from "./types";
+import type { SourceShare } from "./types";
 
 export class ServerApiClient {
   async systemAiModelCatalog(_signal?: AbortSignal): Promise<ApiResponse<unknown>> {
@@ -28,12 +28,6 @@ export class ServerApiClient {
   knowledgeOperation<T = unknown>(baseId: string, operation: string, input: unknown, signal?: AbortSignal): Promise<ApiResponse<T>> {
     return this.resourceRequest('knowledge-bases', `/${encodeURIComponent(baseId)}/manage`, { operation, input }, 'POST', signal);
   }
-  databasePage(section:string,page:number,search:string,projectId?:string): Promise<ApiResponse<{items:any[];total:number;page:number;pageSize:number}>> {return this.request(`/api/database-spaces?${resourceQuery({section,page,search,projectId})}`);}
-  entryDatabaseBindings(projectId:string,entryId:string): Promise<ApiResponse<any[]>> {return this.request(`/api/database-spaces/consumers/${encodeURIComponent(projectId)}/${encodeURIComponent(entryId)}`);}
-  databaseCatalog(): Promise<ApiResponse<import("@steamharness/database-spaces/catalog").DatabaseCatalogState>> { return this.request("/api/database-spaces"); }
-  databaseAction<T = unknown>(path: string, body: unknown): Promise<ApiResponse<T>> { return this.request(`/api/database-spaces${path}`, {method:"POST",body:JSON.stringify(body)}); }
-  databaseOperation<T = unknown>(spaceId: string, operation: string, input: unknown, signal?: AbortSignal): Promise<ApiResponse<T>> { return this.request(`/api/database-spaces/${encodeURIComponent(spaceId)}/manage`,{method:"POST",body:JSON.stringify({operation,input}),signal}); }
-  databaseValues(spaceId: string, page: number, search: string): Promise<ApiResponse<{items:Array<{key:string;namespace:string;value:unknown;revision:string}>;total:number;page:number;pageSize:number}>> {return this.request(`/api/database-spaces/${encodeURIComponent(spaceId)}/values?${resourceQuery({page,search})}`);}
   async fetchDatabaseFile(spaceId: string, fileId: string, signal?: AbortSignal): Promise<Blob> {
     const result=await this.knowledgeOperation<{file:{mimeType:string};base64:string}>(spaceId,"files.readFile",{fileId},signal);
     if(!isApiSuccess(result)) throw new Error(result.errMessage);

@@ -1,9 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { HarnessError } from "../workflow/errors";
 
-/** Legacy key retained until the KV API is removed. Conversation state no longer uses it. */
-export const CONVERSATION_STATE_KEY = "conversation.state";
-
 export type ConversationRole = "user" | "assistant" | "system" | "tool";
 
 export interface ConversationMessageContract {

@@ -86,7 +86,7 @@ Conversation 模式下，默认 composer 会固定映射到 `--message`；旧的
 - Pi `session.subscribe(...)` events bridged into
   `workflow.createOutputNode({ stream, format })`.
 - A custom Pi SDK `knowledge_documents` tool backed by workflow
-  PersistentValue project documents. It supports `list` / `get` / `create` /
+  Server knowledge documents. It supports `list` / `get` / `create` /
   `edit` / `delete` / `search` / `read_lines`, matching the OpenAI and Claude
   agent samples.
 - Assistant text renders as inline `Output` segments; tool lifecycle events use

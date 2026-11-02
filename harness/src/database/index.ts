@@ -110,3 +110,6 @@ export interface RelationalDatabasesContext {
 export type DatabaseOperation = "findUnique" | "findUniqueOrThrow" | "findFirst" | "findFirstOrThrow" | "findMany" | "count" | "aggregate" | "groupBy"
   | "create" | "createMany" | "createManyAndReturn" | "update" | "updateMany" | "updateManyAndReturn" | "upsert" | "delete" | "deleteMany";
 export type DatabaseModelDelegate<Delegate> = Pick<Delegate, Extract<keyof Delegate, DatabaseOperation>>;
+
+export { createBrowserDatabaseConnector } from "./browser-runtime";
+export type { DatabaseQueryHost, DatabaseQueryBinding, DatabaseTableRequest, DatabaseTable, DatabaseRow, DatabaseJsonModel } from "./browser-runtime";

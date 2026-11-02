@@ -10,7 +10,7 @@ export interface ResourceCardReference {
 
 export interface ResourceCard {
   id: string;
-  kind: 'kv' | 'knowledge' | 'project' | 'browser' | 'file' | 'kanban';
+  kind: 'knowledge' | 'project' | 'browser' | 'file' | 'kanban';
   title: string;
   target: Record<string, string>;
   itemId?: string;
@@ -45,9 +45,7 @@ export function conversationResourceCards(items: OutputItem[], projectId: string
     if (!descriptor) {
       const target: Record<string, unknown> = { source: 'local', projectId, entryId };
       let kind: ResourceCard['kind'] | undefined;
-      if (tool === 'workflow-kv_kv_store' || /workflow-desktop_(?:read|list|write)_project_kv/.test(tool)) {
-        kind = 'kv'; Object.assign(target, { projectId: input.projectId ?? projectId, database: input.database, key: input.key, scope: input.scope ?? 'project', conversationId: input.conversationId ?? conversationId });
-      } else if (tool === 'workflow-knowledge_knowledge_documents' || /workflow-desktop_(?:query|mutate)_project_knowledge/.test(tool)) {
+      if (tool === 'workflow-knowledge_knowledge_documents' || /workflow-desktop_(?:query|mutate)_project_knowledge/.test(tool)) {
         kind = 'knowledge'; Object.assign(target, { projectId: input.projectId ?? projectId, knowledgeBase: input.knowledgeBase, documentId: input.documentId ?? record(output?.document)?.id });
       } else if (tool === 'read' || tool === 'workflow-desktop_open_dock_tool' && input.tool === 'files') {
         kind = 'file'; target.filePath = input.filePath ?? input.path;
@@ -59,14 +57,14 @@ export function conversationResourceCards(items: OutputItem[], projectId: string
         if (input.tool === 'open-project' && input.openedProjectKind === 'project') { kind = 'project'; target.projectId = input.openedProjectId; }
       }
       if (!kind) { continue; }
-      if (kind === 'kv' || kind === 'knowledge') { target.source = input.source ?? storageSource; }
+      if (kind === 'knowledge') { target.source = input.source ?? storageSource; }
       descriptor = { kind, target, title: record(output?.document)?.title };
     }
     const kind = descriptor.kind as ResourceCard['kind'];
-    if (!['kv', 'knowledge', 'project', 'browser', 'file', 'kanban'].includes(kind)) { continue; }
+    if (!['knowledge', 'project', 'browser', 'file', 'kanban'].includes(kind)) { continue; }
     const target = Object.fromEntries(Object.entries(record(descriptor.target) ?? {}).filter((entry): entry is [string, string] => typeof entry[1] === 'string' && entry[1].length < 8192));
     if (target.source === 'current') {
-      target.source = kind === 'kv' || kind === 'knowledge' ? storageSource : 'local';
+      target.source = kind === 'knowledge' ? storageSource : 'local';
       target.projectId ??= projectId; target.entryId ??= entryId;
     }
     if (target.source && !['local', 'server'].includes(target.source)) { continue; }
@@ -75,7 +73,7 @@ export function conversationResourceCards(items: OutputItem[], projectId: string
     } else {
       target.source ??= 'local'; target.projectId ??= projectId;
       if (target.projectId === projectId) target.entryId ??= entryId;
-      if (!target.entryId || kind === 'kv' && !target.database || kind === 'knowledge' && !target.knowledgeBase) continue;
+      if (!target.entryId || kind === 'knowledge' && !target.knowledgeBase) continue;
       if (target.scope === 'conversation') { target.conversationId ??= conversationId; }
       if (kind === 'file' && (!target.filePath || /^(?:[\\/]|[a-z]:)|(?:^|[\\/])\.\.(?:[\\/]|$)/i.test(target.filePath))) { continue; }
     }

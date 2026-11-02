@@ -14,7 +14,6 @@ import {
   createDisabledProjectTokenUsageContext,
   isOutputContentType,
   isOutputItemStreamChunk,
-  type KVContext,
   type RunOutputPayload,
 } from "../index";
 import { runNode, runStreamNode } from "../workflow/index";
@@ -450,7 +449,7 @@ test("createOutputNode stream format receives text, items and chunks", async () 
 });
 
 function createTestProjectContext(): RunContext {
-  const kv = createMemoryKVContext();
+  const kv = {};
 
   return {
     config: {},
@@ -458,35 +457,5 @@ function createTestProjectContext(): RunContext {
     ...createTestResources(),
     conversation: createDisabledProjectConversationContext(),
     tokenUsage: createDisabledProjectTokenUsageContext(),
-  };
-}
-
-function createMemoryKVContext(): KVContext {
-  const values = new Map<string, unknown>();
-
-  function createNamespace(prefix: string) {
-    return {
-      async getValue(key: string) {
-        return values.get(`${prefix}:${key}`);
-      },
-      async setValue(key: string, value: unknown) {
-        values.set(`${prefix}:${key}`, value);
-      },
-      async deleteValue(key: string) {
-        return values.delete(`${prefix}:${key}`);
-      },
-      async updateValue(key: string, updater: (current: unknown | undefined) => unknown) {
-        const next = updater(values.get(`${prefix}:${key}`));
-        values.set(`${prefix}:${key}`, next);
-        return next;
-      },
-    };
-  }
-
-  const project = createNamespace("project");
-
-  return {
-    ...project,
-    conversation: createNamespace("conversation"),
   };
 }

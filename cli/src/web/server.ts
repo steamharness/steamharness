@@ -545,7 +545,7 @@ async function startProjectWebServer(options: WebOptions, credentials: { capabil
       items = current.messages.find(answer => answer.id === reference.messageId)?.items ?? []; scopeId = current.id;
       source = { sessionId: current.id, messageId: reference.messageId, cardId: reference.cardId };
     }
-    const card = conversationResourceCards(items, project.id, project.entryId, scopeId, false ? 'server' : 'local').find(card => card.id === reference.cardId);
+    const card = conversationResourceCards(items, project.id, project.entryId, scopeId, 'local').find(card => card.id === reference.cardId);
     if (!card) { throw new Error(t('This resource no longer exists.')); }
     return { card, reference: source };
   };
@@ -632,7 +632,7 @@ async function startProjectWebServer(options: WebOptions, credentials: { capabil
       const card = message.reference ? findResourceCard(message.reference).card : resources.get(String(message.id)).card;
       const selection = message.selection;
       const target = { ...card.target };
-      if (selection && ['kv', 'knowledge'].includes(card.kind)) {
+      if (selection && card.kind === 'knowledge') {
         for (const key of card.kind === 'knowledge' ? ['documentId'] : ['key', 'scope', 'conversationId']) {
           if (typeof selection[key] === 'string' && selection[key].length <= 8192) { target[key] = selection[key]; }
         }

@@ -36,7 +36,7 @@ workflow.runIf<Input, Output>(
 | 参数 | 类型 | 说明 |
 | --- | --- | --- |
 | `input` | `Input` | 分支判断和分支执行共用的输入。 |
-| `context` | `RunContext` | runtime 上下文，用于 hooks、provider、KV、files、abortSignal。 |
+| `context` | `RunContext` | runtime 上下文，用于 hooks、provider、数据库、files、abortSignal。 |
 | `options.name` | `string` | Diagram 和 Trace 中显示的分支节点标题。默认 `Run if`。 |
 | `options.branches` | `RunIfBranch[]` | 按顺序检查的 if / else-if 分支。第一个元素显示为 `if`，后续元素显示为 `else-if`。 |
 | `options.else` | `RunIfElseBranch` | 可选 fallback。未命中且没有 `else` 时会抛错。 |

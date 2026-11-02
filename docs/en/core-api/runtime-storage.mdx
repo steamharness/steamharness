@@ -15,7 +15,7 @@ Persistent operations require platform sign-in and an available Server. Third-pa
 
 Registered projects are isolated by account, project and entry. The host resolves a local project through workspaces/resolve: existing projects require current membership; only missing projects use a private local workspace. A 403 never falls back to local identity. Assistant workspaces are separate. Projects and conversations add rows to shared tables without creating PostgreSQL databases.
 
-Workspace files, attachments and temporary activity notifications remain host managed. Back them up alongside PostgreSQL. Business models use [SteamHarness Database](/en/core-api/database); business KV, knowledge and configuration are outside this history interface.
+Workspace files, attachments and temporary activity notifications remain host managed. Back them up alongside PostgreSQL. Business models use [SteamHarness Database](/en/core-api/database); business data, knowledge and configuration are outside this history interface.
 
 ## Connect and reopen
 

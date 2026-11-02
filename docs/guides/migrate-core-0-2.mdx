@@ -84,6 +84,6 @@ description: "全新聚合声明"
 
 保留业务代码目录，将其注册到根 entries；移除子模块的 SteamHarness 身份。executor 的 `projectType` 仍描述该入口的运行契约，根 package 不声明单一类型。
 
-用 `context.entries.get(entryId)` 调用聚合内 Workflow；用 `context.databases.get(alias)` 访问获批空间。每个入口分别申请新空间，需要共享时额外申请已有空间的访问授权。
+用 `context.entries.get(entryId)` 调用聚合内 Workflow。关系模型定义并生成描述符后，通过 `context.databases.connect(descriptor)` 连接，绑定由 Server 按账号、项目、入口管理。知识库使用 `context.knowledgeBases.get(alias)` 及独立声明与配置。旧 KV 数据不迁移。
 
 删除旧项目身份的数据时只清理相应旧模型记录，不清空宿主其他业务数据。新项目不会读取旧数据。详见 [Workflow 模型](/concepts/workflow-model) 和 [数据库空间](/concepts/data-storage)。

@@ -44,7 +44,6 @@ export type AppRoute =
 export type AsyncState = {
   global?: string;
   project?: string;
-  kv?: string;
   version?: string;
   account?: string;
   apiKeys?: string;

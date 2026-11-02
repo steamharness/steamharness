@@ -18,8 +18,8 @@ const platform = workflow.getRuntimePlatform();
 const local = workflow.isCli();
 ```
 
-运行平台不决定数据宿主。入口从根 `config.json` 解析别名与数据库 ID，由宿主决定数据位置，并通过 `context.databases.get(alias)` 访问获批空间；本地执行也可使用服务器空间。
+运行平台不决定存储后端。导入生成的数据库描述符并调用 `context.databases.connect(descriptor)`，Server 根据账号和入口绑定选择独立授权的 PostgreSQL 资源。知识库使用 `context.knowledgeBases.get(alias)`。本地开发可在同一台机器运行 Server 与 Docker PostgreSQL。
 
-## 宿主数据库管理
+## 宿主资源管理
 
-受信任的本机宿主可从 `steamharness` 导入 `createLocalDatabaseManagementContext(spaceId, { registry?, conversationNamespace? })`，对已存在的本地空间返回 `DatabaseContext`。该接口使用本机管理身份，与项目 grant 独立；项目授权撤销后，宿主仍可管理留存数据。每次操作检查空间存在，不会创建空间或恢复项目授权。不得通过项目 RPC 或不受信任项目代码向外暴露此管理入口。
+Studio 和 CLI Web 列出 Server 资源，打开经过鉴权的 Server Web 页面管理模型、数据表、附件及账号权限；链接不含账号 token。宿主持有 SQL 凭据、连接与绑定身份，项目 RPC 和 Browser 页面只接收授权的模型操作。不提供本地数据库目录或 KV 管理上下文。

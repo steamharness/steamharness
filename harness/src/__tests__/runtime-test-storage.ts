@@ -13,3 +13,10 @@ export function testConversationStorage(identity: object = {}) {
 export function testExecutionStorage() {
   return { host: 'local' as const, local: { runtimePersistence: createMemoryRuntimePersistence() } };
 }
+
+const agentStores = new Map<string, ReturnType<typeof createMemoryRuntimePersistence>>();
+export function testAgentPersistence(key: string) {
+  let storage = agentStores.get(key); if (!storage) { storage = createMemoryRuntimePersistence(); agentStores.set(key, storage); }
+  return storage;
+}
+export function testAgentStorage(key: string) { return testAgentPersistence(key).agentStorage('test', 'main'); }

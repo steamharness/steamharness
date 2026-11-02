@@ -85,7 +85,7 @@
                   "concepts/payloads-and-errors",
                   "concepts/project-configuration",
                   "concepts/data-storage",
-                  "concepts/kv-and-conversation",
+                  "concepts/database-and-conversation",
                   "concepts/files",
                   "concepts/llm-provider"
                 ]
@@ -356,7 +356,7 @@
                   "en/concepts/payloads-and-errors",
                   "en/concepts/project-configuration",
                   "en/concepts/data-storage",
-                  "en/concepts/kv-and-conversation",
+                  "en/concepts/database-and-conversation",
                   "en/concepts/files",
                   "en/concepts/llm-provider"
                 ]

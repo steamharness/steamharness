@@ -8,8 +8,7 @@ import { assistantWorkspaceManifest } from './assistant-workspace.mjs';
 import {
   inspectLocalProjectStructure, resolveLocalProjectParams, runLocalProjectWithReport, createKanbanArtifactEntryPath,
   createLocalProjectFileStore, createServerProjectFileStore, createProjectFileStore,
-  createLocalProjectKVStore, createProjectKVContext, createProjectPersistentValueContext,
-  listLocalProjectKVEntries, deleteLocalProjectKVEntry, getKnowledgeDocument, listKnowledgeDocuments,
+  createKnowledgeBasesContext, createServerKnowledgeBaseHost, databaseConnectionFromEnv,
   readProjectManifestFromDirectorySync,
 } from './harness.mjs';
 
@@ -99,7 +98,7 @@ try {
       process.env.STEAMHARNESS_DEVELOPER_ASSISTANT_WORKSPACE_MANIFEST = manifestPath;
     }
     const runtimeWorkspace = { kind: request.project.assistant ? 'assistant' : 'local', projectId: request.project.id, entryId: request.project.entryId, localKey: createHash('sha256').update(request.project.assistant?.workdir ?? request.project.folderPath).digest('hex') };
-    const storage = { host: 'local', local: { kvStoreDir: path.join(dataDir, 'kv'), persistentValueStoreDir: path.join(dataDir, 'values'), runtimeWorkspace } };
+    const storage = { host: 'local', local: { runtimeWorkspace } };
     const filesDir = path.join(dataDir, 'files');
     const createdFiles = [];
     const managed = createServerProjectFileStore({ rootDir: filesDir, projectName: request.project.id, conversationId: request.conversationId });
@@ -178,28 +177,12 @@ try {
       send('result', { deleted: true });
     } else if (request.method === 'resource') {
       const target = request.target ?? {};
-      const rootDir = request.kind === 'knowledge' ? path.join(dataDir, 'values') : path.join(dataDir, 'kv');
-      const store = createLocalProjectKVStore({ rootDir, storageKind: request.kind === 'knowledge' ? 'persistent_value' : 'kv' });
-      const context = request.kind === 'knowledge'
-        ? createProjectPersistentValueContext({ store, projectId: request.project.id, conversationId: request.conversationId })
-        : createProjectKVContext({ store, projectId: request.project.id, conversationId: request.conversationId });
-      if (request.kind === 'knowledge') {
-        send('result', target.documentId ? await getKnowledgeDocument({ persistentValue: context }, target.documentId) : await listKnowledgeDocuments({ persistentValue: context }));
-      } else if (target.key) {
-        send('result', await (target.scope === 'conversation' ? context.conversation : context).getValue(target.key) ?? null);
-      } else {
-        send('result', await listLocalProjectKVEntries({ rootDir, storageKind: 'kv', projectId: request.project.id, scope: target.scope === 'conversation' ? 'conversation' : 'project', conversationId: target.scope === 'conversation' ? request.conversationId : undefined, pageSize: 100 }));
-      }
+      if (request.kind !== 'knowledge') throw new Error('Unsupported resource kind.');
+      const registration = readProjectManifestFromDirectorySync(projectDir).entries.find(entry => entry.entryId === request.project.entryId);
+      const connection = databaseConnectionFromEnv();
+      const base = createKnowledgeBasesContext({ projectId: request.project.id, entryId: request.project.entryId, requirements: registration?.knowledgeBases ?? [], host: connection ? createServerKnowledgeBaseHost(connection) : undefined }).get(target.knowledgeBase);
+      send('result', target.documentId ? await base.getDocument(target.documentId) : await base.listDocuments({ pageSize: 100 }));
     } else if (request.method === 'delete-conversation') {
-      for (const [storageKind, rootDir] of [['kv', path.join(dataDir, 'kv')], ['persistent_value', path.join(dataDir, 'values')]]) {
-        const entries = [];
-        let cursor;
-        do {
-          const page = await listLocalProjectKVEntries({ rootDir, storageKind, projectId: request.project.id, scope: 'conversation', conversationId: request.conversationId, pageSize: 100, cursor });
-          entries.push(...page.items); cursor = page.nextCursor;
-        } while (cursor);
-        for (const entry of entries) { await deleteLocalProjectKVEntry({ ...entry, rootDir }); }
-      }
       for (const directory of await readdir(filesDir).catch(() => [])) {
         if (!/^wf_[a-f0-9]{32}$/.test(directory)) { continue; }
         const file = await readManagedFile(directory).catch(() => undefined);

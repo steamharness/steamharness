@@ -1,5 +1,7 @@
 # Unreleased
 
+- Changed: remove KV, PersistentValue, local KV and legacy database-space APIs. Business data uses generated model descriptors, Browser clients use the host table proxy, and conversations and run records use Server runtime tables.
+
 - Added independent knowledgeBases APIs and account bindings. Relational platform tables retain documents, chunks and indexes; private file storage holds attachments, with revision conflicts and revocation-aware retained handles.
 
 - Conversation state, usage and default Agent sessions now use Server PostgreSQL. Added versioned session snapshots, fork/isolation/cancellation helpers and execution abort on lease loss, without legacy KV/SQLite migration.

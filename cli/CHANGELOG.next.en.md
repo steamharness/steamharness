@@ -1,5 +1,7 @@
 # Unreleased
 
+- Changed: task-board templates use generated Browser descriptors and Task rows scoped by configuration, with optimistic row versions. Unbound boards block edits, failed writes retain drafts, and stale pages cannot write to rebound resources.
+
 - Fixed background history recovery starting an executor while an offline fork or receipt replay was pending, preventing Agent lease conflicts and false session-not-ready errors.
 
 - Added knowledge resource/grant/binding and document/attachment commands, plus database data for applied model rows. Catalogs support pagination and search; Web panels open Server resource pages without KV editing or local/remote switches.

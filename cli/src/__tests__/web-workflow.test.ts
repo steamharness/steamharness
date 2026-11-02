@@ -1,3 +1,4 @@
+import { runtimeStorageService } from './runtime-storage-service';
 import { temporaryRuntimePersistence } from "./web-test-storage";
 import { writeProjectFixture } from '../../scripts/test-project-fixture.mjs';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -14,7 +15,6 @@ import { createWebRuntime } from '../web/runtime';
 import { startEntryWebServer as startWebServer } from './web-test-storage';
 import type { Project, Runtime, Report, InputRequest, ConversationSession, ParamState } from '../web/workflow-types';
 import { resolveHarnessRoot } from './harness-source';
-import { LocalDatabaseRegistry } from 'steamharness';
 
 const services: Awaited<ReturnType<typeof startWebServer>>[] = [], folders: string[] = [];
 afterEach(async () => { for (const service of services.splice(0)) { await service.close(); } for (const directory of folders.splice(0)) { await rm(directory, { force: true, recursive: true }); } vi.unstubAllEnvs(); vi.restoreAllMocks(); });
@@ -438,40 +438,35 @@ it('inspects and executes a real offline workflow with its own Core, streaming, 
   } finally { executor.dispose(); }
 }, 30_000);
 
-it('uses environment database mappings in a real child workflow while preserving authored files', async () => {
+it('persists nested conversation state on the Server while preserving authored files', async () => {
   const directory = await mkdtemp(path.join(os.tmpdir(), 'workflow-database-override-')); folders.push(directory);
   vi.spyOn(os, 'homedir').mockReturnValue(directory);
-  vi.stubEnv('STEAMHARNESS_DATABASES_DIR', path.join(directory, 'registry'));
-  const id = randomUUID(), registry = new LocalDatabaseRegistry();
-  const all = { mode: 'all' as const }, permissions = { kv: { read: all, write: all }, knowledge: { read: all, write: all } };
-  const request = registry.request({ projectId: id, entryId: 'child', alias: 'data', permissions, target: { kind: 'create', name: 'Isolated test' } });
-  const databaseId = registry.review(request.requestId, { approve: true }).databaseId!;
-  vi.stubEnv('STEAMHARNESS_PROJECT_CONFIG', JSON.stringify({ databases: { data: databaseId } }));
+  const id = randomUUID();
   await mkdir(path.join(directory, 'node_modules'));
   await symlink(await resolveHarnessRoot(), path.join(directory, 'node_modules/steamharness'), process.platform === 'win32' ? 'junction' : 'dir');
   await mkdir(path.join(directory, 'child'));
   await writeFile(path.join(directory, 'package.json'), JSON.stringify({ name: 'npm-name', version: '9.9.9', type: 'module' }));
   await writeFile(path.join(directory, 'steamharness.json'), JSON.stringify({ id, name: 'Manifest name', version: '1.2.3', defaultEntry: 'child', entries: [{ entryId: 'child', root: 'child' }] }));
-  await writeFile(path.join(directory, 'child/steamharness.json'), JSON.stringify({ type: 'workflow', name: 'Child', entry: 'index.ts', databases: ['data'] }));
-  const config = JSON.stringify({ version: 1, databases: { data: randomUUID() } });
+  await writeFile(path.join(directory, 'child/steamharness.json'), JSON.stringify({ type: 'conversation', name: 'Child', entry: 'index.ts', databases: [] }));
+  const config = JSON.stringify({ version: 1 });
   await writeFile(path.join(directory, 'config.json'), config);
   await writeFile(path.join(directory, 'child/index.ts'), `
     const flow = steamharness.defineProject({name:'override', async run(input, context) {
-      const data = context.databases.get('data');
-      await data.kv.setValue('marker', 'manifest-workflow');
-      return steamharness.createOutputPayload({items:[{title:'Result',content:await data.kv.getValue('marker'),contentType:'text'}]});
+      await context.conversation.setValue('marker', 'manifest-workflow');
+      return steamharness.createOutputPayload({items:[{title:'Result',content:(await context.conversation.getValue()).values.marker,contentType:'text'}]});
     }});
-    export const executor = steamharness.defineExecutor({projectType:'workflow',defaultEntrypoint:'main',entrypoints:[steamharness.defineEntrypoint({id:'main',title:'Main',workflow:flow,createInput:()=>({})})]});
+    export const executor = steamharness.defineExecutor({projectType:'conversation',workflow:flow,createInput:()=>({})});
   `);
-  const executor = createWebRuntime(directory, path.join(directory, 'data'), () => undefined);
+  const connection = await runtimeStorageService().start();
+  const executor = createWebRuntime(directory, path.join(directory, 'data'), () => connection);
   try {
     const inspected = await executor.inspect([directory]);
     expect(inspected.errors).toEqual([]);
     const descriptor = { ...inspected.projects[0]!, uri: pathToFileURL(directory).href };
-    expect(descriptor).toMatchObject({ id, aggregateName: 'Manifest name', manifest: { version: '1.2.3' }, entryId: 'child', databases: [{ alias: 'data', databaseId }] });
-    const report = await executor.run({ project: descriptor, conversationId: 'scope', runId: randomUUID(), entrypointId: 'main', args: [] }, () => {});
+    expect(descriptor).toMatchObject({ id, aggregateName: 'Manifest name', manifest: { version: '1.2.3' }, entryId: 'child', databases: [] });
+    const report = await executor.run({ project: descriptor, conversationId: 'scope', runId: randomUUID(), args: [] }, () => {});
     expect(report.status, JSON.stringify(report.error)).toBe('success');
     expect(report.output?.items?.[0]?.content).toBe('manifest-workflow');
     expect(await readFile(path.join(directory, 'config.json'), 'utf8')).toBe(config);
-  } finally { executor.dispose(); }
+  } finally { executor.dispose(); await connection.close(); }
 }, 30_000);

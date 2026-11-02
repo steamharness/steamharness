@@ -10,7 +10,7 @@ export const DATABASE_ARTIFACT_MANIFEST = "manifest.json";
 export interface DatabaseArtifactManifest {
   kind: "steamharness.database.artifacts";
   version: 1;
-  generator: { name: "steamharness.database"; version: 1; engineVersion: string };
+  generator: { name: "steamharness.database"; version: 2; engineVersion: string };
   databases: Array<{ alias: string; schema: string; schemaHash: string }>;
   sources: Record<string, string>;
   files: Array<{ path: string; size: number; sha256: string }>;
@@ -34,7 +34,7 @@ const hashPattern = /^[a-f0-9]{64}$/;
 
 export function parseDatabaseArtifactManifest(value: unknown): DatabaseArtifactManifest {
   if (!record(value) || value.kind !== "steamharness.database.artifacts" || value.version !== 1
-    || !record(value.generator) || value.generator.name !== "steamharness.database" || value.generator.version !== 1 || typeof value.generator.engineVersion !== "string"
+    || !record(value.generator) || value.generator.name !== "steamharness.database" || value.generator.version !== 2 || typeof value.generator.engineVersion !== "string"
     || !Array.isArray(value.databases) || value.databases.length === 0 || !record(value.sources) || !Array.isArray(value.files) || value.files.length === 0) {
     throw new Error("Invalid database artifact manifest. Run steamharness database generate.");
   }

@@ -8,8 +8,9 @@
       "name": "Conversation migration fixture",
       "root": ".",
       "entry": "index.ts",
-      "databases": [
-        "data"
+      "databases": [],
+      "knowledgeBases": [
+        "docs"
       ]
     }
   ],

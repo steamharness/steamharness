@@ -1,6 +1,5 @@
 import { testExecutionStorage } from './runtime-test-storage';
 import { writeProjectFixture } from '../../scripts/test-project-fixture.mjs';
-import { LocalDatabaseRegistry, createLocalDatabaseResolver, type DatabaseResolver } from "../databases/index";
 import assert from "node:assert/strict";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
@@ -18,9 +17,9 @@ import {
   HarnessError,
 } from "../index";
 
-const fixtureDatabases=new Map<string,DatabaseResolver>();
+
 function runLocalProjectWithReport(options:Parameters<typeof runProject>[0]) {
-  return runProject({...options,databaseResolver:options?.projectDir?fixtureDatabases.get(options.projectDir):undefined});
+  return runProject(options);
 }
 
 test("workspace structure CLI errors use the standalone CLI command", () => {
@@ -106,7 +105,7 @@ test("workflow entrypoint groups validate metadata and reject conflicting defini
 
 test("workflow entrypoints expose group metadata in a flat structure and run independently", async () => {
   const projectDir = await createEntrypointProject();
-  const kvStoreDir = path.join(projectDir, ".kv-test");
+
 
   try {
     const structure = inspectLocalProjectStructure({ projectDir });
@@ -148,7 +147,7 @@ test("workflow entrypoints expose group metadata in a flat structure and run ind
       projectDir,
       entrypointId: "validate",
       args: ["--rule", "strict"],
-      storage: { host: "local", local: { kvStoreDir } },
+      storage: testExecutionStorage(),
     });
     assert.equal(validation.status, "success",JSON.stringify(validation.result));
     assert.equal(validation.entrypointId, "validate");
@@ -169,7 +168,7 @@ test("workflow entrypoints expose group metadata in a flat structure and run ind
     const main = await runLocalProjectWithReport({
       projectDir,
       args: ["--message", "hello"],
-      storage: { host: "local", local: { kvStoreDir } },
+      storage: testExecutionStorage(),
     });
     assert.equal(main.entrypointId, "main");
     assert.equal(main.entrypointTitle, "Complete flow");
@@ -722,22 +721,23 @@ async function createEntrypointProject(): Promise<string> {
     name: "entrypoint-test",
     version: "0.1.0",
     type: "module",
-    defaultEntry:"main",entries:[{entryId:"main",type:"workflow",name:"Main",root:".",entry:"index.ts",databases:["data"]}], projectInfo:{},
+    defaultEntry:"main",entries:[{entryId:"main",type:"workflow",name:"Main",root:".",entry:"index.ts",databases:[]}], projectInfo:{},
   }));
   await writeFile(path.join(projectDir, "index.ts"), `
+    let sharedRule;
     const mainProject = steamharness.defineProject({
       name: "main-flow",
       async run(input, context) {
         return {
           ...input,
-          shared: await context.databases.get("data").kv.getValue("shared-rule"),
+          shared: sharedRule,
         };
       },
     });
     const validateProject = steamharness.defineProject({
       name: "validate-flow",
       async run(input, context) {
-        await context.databases.get("data").kv.setValue("shared-rule", input.rule);
+        sharedRule = input.rule;
         return {
           ...input,
           metadataEntrypointId: context.metadata?.entrypointId,
@@ -797,12 +797,6 @@ async function createEntrypointProject(): Promise<string> {
       ],
     });
   `);
-  const registry=new LocalDatabaseRegistry(path.join(projectDir,".registry"));
-  const all={mode:"all" as const};const permissions={kv:{read:all,write:all},knowledge:{read:all,write:all}};
-  const request=registry.request({projectId:"11111111-1111-4111-8111-111111111111",entryId:"main",alias:"data",target:{kind:"create",name:"Test data"},permissions});
-  const approved=registry.review(request.requestId,{approve:true});
-  await writeFile(path.join(projectDir,"config.json"),JSON.stringify({version:1,databases:{data:approved.databaseId}}));
-  fixtureDatabases.set(projectDir,createLocalDatabaseResolver(registry));
   return projectDir;
 }
 

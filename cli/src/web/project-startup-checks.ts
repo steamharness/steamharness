@@ -6,7 +6,7 @@ export function projectStartupInspector(project: Project, verify: (alias:string,
     await refresh();
     const checks: ProjectServerCheck[] = [];
     let server = false;
-    for (const database of (project.knowledgeBases ?? []).map(item => ({...item,kind:'knowledge-bases' as const}))) {
+    for (const database of [...project.databases.map(alias => ({alias,kind:'databases' as const})), ...(project.knowledgeBases ?? []).map(item => ({...item,kind:'knowledge-bases' as const}))]) {
       let issue: ProjectServerCheck['issue'];
       try { const authorization = await verify(database.alias, database.kind) as { space?: { host?: string } } | undefined; server ||= authorization?.space?.host === 'server'; }
       catch (error) { server ||= (error as { metadata?: { host?: string } }).metadata?.host === 'server'; issue = {kind:'setup-required',projectId:project.id,entryId:project.entryId,database:database.alias}; }

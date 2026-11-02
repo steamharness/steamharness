@@ -1,61 +1,6 @@
-import { readFile, realpath } from 'node:fs/promises';
-import path from 'node:path';
+import { realpath } from 'node:fs/promises';
 import { pathToFileURL } from 'node:url';
-import { resolve } from 'import-meta-resolve';
 import { runDatabaseHostRequest } from './database-host.mjs';
-
-/** Inspect an explicit approved alias using exactly the runtime's data API. */
-export async function runResourceRequest(request, core) {
-  const input = request.input;
-  if (!['kv','knowledge'].includes(input.kind) || !['list','get','save','delete'].includes(input.action)) throw new Error('Invalid resource operation.');
-  const folder = await realpath(request.project.folderPath);
-  const manifest = await core.readProjectManifestFromDirectory(folder);
-  if (manifest.projectId !== request.project.id) throw new Error('The project identity changed.');
-  const entry = core.selectProjectEntry(manifest, request.project.entryId);
-  if (input.kind === 'knowledge') {
-    const requirement = (entry.knowledgeBases ?? []).find(item => item.alias === input.knowledgeBase);
-    if (!requirement) throw new Error('Select a declared knowledge base alias.');
-    if (input.expectedKnowledgeBaseId && input.expectedKnowledgeBaseId !== requirement.knowledgeBaseId) throw new Error('The knowledge base reference changed. Reopen this resource.');
-    const host = request.connection && core.createServerKnowledgeBaseHost({serverUrl: request.connection.serverUrl, token: request.connection.accessToken});
-    const knowledge = core.createKnowledgeBasesContext({projectId: manifest.projectId, entryId: entry.entryId, requirements: entry.knowledgeBases, host}).get(requirement.alias);
-    if (input.source && input.source !== 'server') throw new Error('Knowledge bases are managed by Server.');
-    if (input.action === 'list') {
-      const page = input.query?.trim() ? await knowledge.searchDocuments({query: input.query, pageSize: 30, cursor: input.cursor}) : await knowledge.listDocuments({pageSize: 30, cursor: input.cursor});
-      if (input.query?.trim()) return {items: page.matches.map(match => ({...match, id: `${match.documentId}:${match.lineNumber}`, preview: match.line})), total: page.totalMatches, hasMore: page.hasMore, nextCursor: page.nextCursor, source: 'server', sources: ['server'], search: true};
-      return {...page, source: 'server', sources: ['server'], items: page.items.map(item => ({...item, documentId: item.id, preview: item.markdownPreview}))};
-    }
-    if (input.action === 'get') return await knowledge.getDocument(input.documentId) ?? null;
-    if (input.action === 'delete') return knowledge.deleteDocument(input.documentId, input.expectedRevision);
-    return input.create ? knowledge.createDocument({title: input.title, markdown: input.markdown}) : knowledge.editDocument({id: input.documentId, title: input.title, markdown: input.markdown, expectedRevision: input.expectedRevision});
-  }
-  const requirement = entry.databases.find(item => item.alias === input.database);
-  if (!requirement) throw new Error('Select a declared database alias.');
-  if (input.expectedDatabaseId && input.expectedDatabaseId !== requirement.databaseId) throw new Error('The database reference changed. Close this tab and reopen the database.');
-  let source, sources = [];
-  const local = core.createLocalDatabaseResolver();
-  const remote = request.connection && core.createRemoteDatabaseResolver({serverUrl:request.connection.serverUrl,token:request.connection.accessToken});
-  const resolver = {resolve:async(requirement, consumer)=>await local.resolve(requirement,consumer)??remote?.resolve(requirement,consumer)};
-  const database = core.createDatabasesContext({projectId:manifest.projectId,entryId:entry.entryId,requirements:entry.databases,resolver,conversationId:input.conversationId}).get(requirement.alias);
-  try {
-    source = (await database.getBinding()).space.host; sources = [source];
-    if (input.source && input.source !== source) throw new Error('Database host mismatch.');
-    if (input.kind==='kv') {
-      if (input.action==='list') {
-        const page = await database.listValues({...input,pageSize:30,scope:input.scope??'project'});
-        return {...page,source,sources,items:page.items.map(item=>({...item,id:JSON.stringify([item.scope,item.conversationId??'',item.key]),title:item.key,preview:JSON.stringify(item.value)}))};
-      }
-      if (typeof input.key!=='string'||!input.key.trim()) throw new Error('A KV key is required.');
-      const kv = input.scope==='conversation'?database.kv.conversation:database.kv;
-      if(input.action==='delete') return {removed:await kv.deleteValue(input.key)};
-      if(input.action==='save') await database.transaction(async()=>{
-        if(input.create && await kv.getValue(input.key)!==undefined) throw new Error('This key already exists.');
-        await kv.setValue(input.key,input.value);
-      });
-      const value = await kv.getValue(input.key);
-      return value===undefined?null:{key:input.key,scope:input.scope??'project',conversationId:input.conversationId,value};
-    }
-  } catch(error) {throw Object.assign(error,{source,sources});}
-}
 
 async function main() {
   const chunks = [];
@@ -64,8 +9,7 @@ async function main() {
   const write = process.stdout.write.bind(process.stdout);
   console.log = console.error;
   try {
-    const core = await import(resolve('steamharness', pathToFileURL(path.join(request.project.folderPath, 'package.json')).href));
-    const value = await (request.input.kind === 'host' ? runDatabaseHostRequest(request, core) : runResourceRequest(request, core));
+    const value = await runDatabaseHostRequest(request);
     write(`${JSON.stringify({ value })}\n`);
   } catch (error) {
     const message = String(error.message).replaceAll(request.connection?.accessToken || '\0', '[redacted]');

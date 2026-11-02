@@ -82,7 +82,7 @@ workflow.createLLMNode<Input, Output>(
 | `usage` | `LanguageModelUsage \| undefined` |token usage.|
 | `providerMetadata` | `ProviderMetadata \| undefined` |provider meta information.|
 
-When an executor configures `tokenUsage: { enabled: true }`, the provider resolved by `getLLMProvider()` reports `LLMChatOutput.usage` to `context.tokenUsage` after `chat` returns, so accounting still works when `mapOutput` omits `usage`. The run aggregate appears in `report.tokenUsage.run`; cumulative totals are written to the current project's KV and, when present, its conversation KV. Server derives the system total by aggregating project totals. Input, output, reasoning, cached-input, and cache-creation token details are supported.
+When an executor configures `tokenUsage: { enabled: true }`, the provider resolved by `getLLMProvider()` reports `LLMChatOutput.usage` to `context.tokenUsage` after `chat` returns, so accounting still works when `mapOutput` omits `usage`. The run aggregate appears in `report.tokenUsage.run`; cumulative totals are written to platform usage tables scoped by account, project, entry and conversation. Server derives the system total by aggregating project totals. Input, output, reasoning, cached-input, and cache-creation token details are supported.
 
 ## Call process
 

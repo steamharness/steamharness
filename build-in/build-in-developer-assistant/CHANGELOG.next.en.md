@@ -1,5 +1,7 @@
 # Unreleased
 
+- Changed: generator and repair guidance use relational models, Server bindings and independent knowledge bases. Board templates remove local KV and temporary write modes, retain failed drafts and keep the original page connection.
+
 - Updated generation rules and tool contracts for independent knowledgeBases, versioned documents and private attachments, distinguishing relational Server bindings from knowledge deployment mappings.
 
 - Document platform relational storage as the default conversation, run history and Agent backend, including online requirements, isolation and snapshot APIs.

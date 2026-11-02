@@ -27,7 +27,7 @@ async function fixture(): Promise<{ root: string; generated: string; manifest: D
       files.push({ path: `${target}/${filename}`, size: Buffer.byteLength(content), sha256: databaseArtifactHash(content) });
     }
   }
-  const manifest: DatabaseArtifactManifest = { kind: "steamharness.database.artifacts", version: 1, generator: { name: "steamharness.database", version: 1, engineVersion: "test" },
+  const manifest: DatabaseArtifactManifest = { kind: "steamharness.database.artifacts", version: 1, generator: { name: "steamharness.database", version: 2, engineVersion: "test" },
     databases: [{ alias: "main", schema: "steamharness.schema", schemaHash: databaseArtifactHash("schema") }],
     sources: { "steamharness.database.ts": databaseArtifactHash(source), "steamharness.schema": databaseArtifactHash(await readFile(path.join(root, "steamharness.schema"))) }, files };
   await writeFile(path.join(generated, "manifest.json"), JSON.stringify(manifest));

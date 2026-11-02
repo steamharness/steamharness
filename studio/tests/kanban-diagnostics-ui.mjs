@@ -12,9 +12,9 @@ const root = await realpath(await mkdtemp(path.join(os.tmpdir(), 'kanban-diagnos
 const directory = path.join(root, 'board'); await mkdir(directory);
 const homedir = os.homedir;
 os.homedir = () => root;
-const environmentKeys = ['STEAMHARNESS_CLI_AUTH_DIR', 'STEAMHARNESS_SERVER_URL', 'STEAMHARNESS_SERVER_ADMIN_KEY', 'STEAMHARNESS_DATABASES_DIR'];
+const environmentKeys = ['STEAMHARNESS_CLI_AUTH_DIR', 'STEAMHARNESS_SERVER_URL', 'STEAMHARNESS_SERVER_ADMIN_KEY'];
 const environment = new Map(environmentKeys.map(key => [key, process.env[key]]));
-Object.assign(process.env, { STEAMHARNESS_CLI_AUTH_DIR: path.join(root, 'auth'), STEAMHARNESS_SERVER_URL: '', STEAMHARNESS_SERVER_ADMIN_KEY: '', STEAMHARNESS_DATABASES_DIR: path.join(root, 'databases') });
+Object.assign(process.env, { STEAMHARNESS_CLI_AUTH_DIR: path.join(root, 'auth'), STEAMHARNESS_SERVER_URL: '', STEAMHARNESS_SERVER_ADMIN_KEY: '' });
 register();
 const { startAggregateWebServer } = await import('../../cli/src/web/aggregate-server.ts');
 const { readStudioKanbanDiagnostics } = await import('../extensions/studio-workstation/src/studio-kanban.ts');
@@ -24,15 +24,16 @@ const controller = new AbortController();
 let browser, app, bridge, mcp;
 try {
   const projectId = '26cfe690-1aca-4a56-8904-51b93fc76cc5', entryId = 'map-2d';
-  const entry = { entryId, name: 'Map', type: 'kanban', root: '.', entry: 'index.html', databases: [] };
+  const entry = { entryId, name: 'Map', type: 'kanban', root: '.', entry: 'index.html', databases: [], knowledgeBases: ['docs'] };
   const version = JSON.parse(await readFile(new URL('../../harness/package.json', import.meta.url), 'utf8')).version;
   await writeProjectFixture(path.join(directory, 'package.json'), JSON.stringify({ name: 'diagnostic-fixture', type: 'module', version: '0.1.0', id: projectId, defaultEntry: entryId, entries: [entry], devDependencies: { steamharness: version } }));
+  await writeFile(path.join(directory, 'config.json'), JSON.stringify({version:1,knowledgeBases:{docs:'00000000-0000-4000-8000-000000000001'}}));
   await writeFile(path.join(directory, 'configuration.json'), JSON.stringify({ version: 1, fields: [] }));
   await writeFile(path.join(directory, 'index.html'), `<!doctype html><html><head><title>Diagnostic fixture</title></head><body><p id="status">Loading</p><script>
     const info = { imageReady: false, error: null };
     steamHarnessKanban.methods.register({name:'map.getInfo',description:'Read image state',inputSchema:{type:'object'},readOnly:true},()=>info);
     steamHarnessKanban.methods.register({name:'map.pan',description:'Must never execute',inputSchema:{type:'object'},readOnly:false},()=>{throw new Error('Mutation executed');});
-    steamHarnessKanban.databases.get('data').files.readFile('wf_ab12').catch(error=>{info.error=error.message;document.querySelector('#status').textContent='Image failed: '+error.message;});
+    steamHarnessKanban.knowledgeBases.get('docs').files.readFile('wf_ab12').catch(error=>{info.error=error.message;document.querySelector('#status').textContent='Image failed: '+error.message;});
   </script></body></html>`);
   const descriptor = { id: projectId, entryId, defaultEntry: entryId, aggregateName: 'Fixture', name: 'Map', folderPath: directory, entryRoot: directory, uri: '', projectType: 'kanban', entries: [entry], databases: [], fields: [], entrypoints: [], kanban: { artifactDir: '.', entry: 'index.html' } };
   const runtime = { available: true, inspect: async () => ({ projects: [descriptor], errors: [] }), dispose() {},
@@ -98,7 +99,7 @@ try {
     const info = { imageReady: false };
     steamHarnessKanban.methods.register({name:'map.getInfo',description:'Read image state',inputSchema:{type:'object'},readOnly:true},()=>info);
     steamHarnessKanban.methods.register({name:'map.pan',description:'Must never execute',inputSchema:{type:'object'},readOnly:false},()=>{throw new Error('Mutation executed');});
-    steamHarnessKanban.databases.get('data').files.readFile('wf_ab12').then(async ({file,buffer})=>{
+    steamHarnessKanban.knowledgeBases.get('docs').files.readFile('wf_ab12').then(async ({file,buffer})=>{
       const image=document.querySelector('#map');image.src=URL.createObjectURL(new Blob([buffer],{type:file.mimeType}));await image.decode();
       info.imageReady=true;document.querySelector('#status').textContent='Image ready';
     });

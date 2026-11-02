@@ -105,8 +105,6 @@
   "Entrypoints granted": "入口调用授权",
   "Knowledge read granted": "知识库读取授权",
   "Knowledge write granted": "知识库写入授权",
-  "KV read granted": "KV 读取授权",
-  "KV write granted": "KV 写入授权",
   "Limit reached": "额度已用尽",
   "Loading usage...": "正在加载用量...",
   "Local": "本地",

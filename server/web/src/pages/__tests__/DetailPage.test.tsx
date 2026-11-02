@@ -37,11 +37,10 @@ it('loads configuration for the selected entry and follows a new entry URL',asyn
  await waitFor(()=>expect(service).toHaveBeenLastCalledWith('demo',{action:'get'},'draft','entry-0'));
 });
 it('opens a server resource catalog without requesting legacy project data',async()=>{
- const bindings=vi.spyOn(apiClient,'entryDatabaseBindings');
  const catalog=vi.spyOn(apiClient,'resourceRequest').mockResolvedValue({errCode:0,errMessage:'',data:{items:[],total:0,page:1,pageSize:20}});
  render(<DetailPage {...props({activeTab:'databases'})}/>);
  await waitFor(()=>expect(catalog).toHaveBeenCalledWith('databases','?page=1&pageSize=20&search=',undefined,'GET',expect.any(AbortSignal)));
- expect(bindings).not.toHaveBeenCalled();
+ expect(apiClient).not.toHaveProperty('entryDatabaseBindings');
  expect(screen.getByRole('tab',{name:'Relational databases'})).toBeTruthy();
  expect(screen.getByRole('tab',{name:'Knowledge bases'})).toBeTruthy();
 });

@@ -1,0 +1,42 @@
+---
+title: "数据库与会话"
+description: "业务关系表、知识库与平台会话存储的边界"
+---
+
+# 数据库与会话
+
+业务模型、知识库和平台运行记录各自管理。业务数据库不会随新建项目或新建对话自动创建；显式申请、迁移并绑定后才能访问。
+
+## 业务关系表
+
+在入口目录的 `steamharness.database.ts` 中定义一个或多个别名，在 `steamharness.schema` 中定义模型。入口的 `databases` 列出使用的别名；Server 按当前账号、项目、入口与别名保存资源绑定。项目配置不保存业务数据库 ID 或凭据。
+
+```ts
+import { main } from "./.steamharness/generated/database/node/index.js";
+
+const db = await context.databases.connect(main);
+const users = await db.user.findMany({ orderBy: { id: "asc" } });
+```
+
+每个资源是独立 PostgreSQL database。A、B 项目都定义 `User` 表时，绑定不同资源即可隔离结构和数据；只有显式绑定相同 UUID 才共享。事务限定同一客户端，不提供跨库原子提交。详见 [数据库 API](/core-api/database)。
+
+## 聚合内调用
+
+```ts
+const result = await context.entries.get("jobs")
+  .runEntrypoint("refresh", ["--limit", "10"]);
+```
+
+只可调用已注册的 Workflow 入口。宿主保留用户、取消信号和工具权限，加载目标配置与绑定并再次鉴权。调用方不会因此获得目标入口的数据库句柄。
+
+## 知识库与附件
+
+使用 `context.knowledgeBases.get("docs")` 访问文档及其 `files` 附件。知识库使用独立资源、账号授权和入口绑定，无需业务项目定义 schema。文件字节保存在私有文件存储，元数据和版本保存在关系表；业务表只保存引用。详见 [知识库 API](/core-api/knowledge-documents)。
+
+## Conversation 与运行存储
+
+会话、消息、输入队列、草稿、Run、用量与 Agent 检查点保存在 Server 的平台关系表，按账号、项目、入口和 conversationId 隔离。同一套平台表承载多个项目，无需每个项目另建历史数据库，也不需要业务库权限。
+
+`context.conversation.getValue/setValue/setTitle/appendMessage` 操作当前会话；这些方法与业务模型客户端独立。配置修改从下一次执行生效，恢复审批必须匹配当前项目和入口。
+
+持久历史要求登录和在线连接；本地开发可连接本机 Server 与 Docker PostgreSQL，无需远程数据库。断连明确失败，保留登录和已提交记录。旧 KV、PersistentValue、默认本地 KV 与旧历史不再读取、迁移或双写。文件缓存、项目源码、配置和显式 SQLite 工具按各自用途保留，不作为历史故障的回退存储。详见 [平台运行存储](/core-api/runtime-storage)。

@@ -127,7 +127,7 @@ describe("main sidebar submenus", () => {
 it.each(['sidebar', 'history'] as const)('protects project database drafts during %s navigation', async mode => {
   await i18n.changeLanguage('en');
   const id = 'adbe104c-5528-4db6-817d-bb567996876f';
-  const project: any = { id:'project', name:'Project', entries:[{entryId:'agent',type:'workflow',name:'Agent',root:'.',entry:'index.ts',databases:[{alias:'data',databaseId:id}]}], defaultEntry:'agent', versions:[], hasDraft:true,
+  const project: any = { id:'project', name:'Project', entries:[{entryId:'agent',type:'workflow',name:'Agent',root:'.',entry:'index.ts',databases:[],knowledgeBases:[{alias:'data',databaseId:id}]}], defaultEntry:'agent', versions:[], hasDraft:true,
     projectInfo:{localizedNames:{},declarations:[],platformSupport:{mode:'agnostic'}}, access:resolveResourceAccess([{type:'project',id:'project',role:'owner'}]) };
   vi.mocked(apiClient.listProjects).mockResolvedValue({errCode:0,errMessage:'',data:{items:[project],total:1,page:1,pageSize:20}});
   vi.spyOn(apiClient,'getProject').mockResolvedValue({errCode:0,errMessage:'',data:project});

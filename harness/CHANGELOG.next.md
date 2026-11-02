@@ -1,5 +1,7 @@
 # Unreleased
 
+- 【变更】完全移除 KV、PersistentValue、本地 KV 与旧数据库空间 API；业务数据使用生成的模型描述符，Browser 通过宿主访问关系表，对话与运行记录使用 Server 平台关系表。
+
 - 【新增】独立 knowledgeBases API 和 Server 账号绑定，知识文档、分块与索引使用平台关系表，附件正文保存在私有文件存储；支持文档版本冲突检测和撤权后失效的文件句柄。
 
 - 【变更】Conversation 状态、用量与默认 Agent 会话使用 Server PostgreSQL；新增版本化会话快照及分叉、独立化和取消接口，租约失效中止执行，不迁移旧 KV/SQLite。

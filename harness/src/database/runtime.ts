@@ -18,6 +18,9 @@ interface ConnectionState {
   releasing?: Promise<void>;
   closing?: Promise<void>;
 }
+const connectionClosers = new WeakMap<RelationalDatabasesContext, () => Promise<void>>();
+export async function closeDatabaseConnections(context: RelationalDatabasesContext): Promise<void> { await connectionClosers.get(context)?.(); }
+
 const closed = () => new DatabaseResourceError("DATABASE_CLOSED", "This database connection is closed.");
 
 /** The host owns connection pools and release. The project only receives model delegates. */
@@ -39,7 +42,7 @@ export function createDatabaseConnector(options: {
   };
   const abort = () => { void close(); };
   options.signal?.addEventListener("abort", abort, { once: true });
-  return {
+  const context = {
     async connect<Descriptor extends DatabaseDescriptor>(descriptor: Descriptor): Promise<DatabaseClient<Descriptor>> {
       assertOpen();
       validateDescriptor(descriptor);
@@ -55,6 +58,8 @@ export function createDatabaseConnector(options: {
     },
     close,
   };
+  connectionClosers.set(context, close);
+  return context;
 }
 
 function validateDescriptor(value: DatabaseDescriptor): void {

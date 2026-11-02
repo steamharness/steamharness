@@ -255,7 +255,7 @@ export class ConversationOutput {
 
   private card(card: ResourceCard): HTMLElement {
     const button = document.createElement('button'); button.className = 'resource-card'; button.title = card.title;
-    button.innerHTML = `${iconHtml(card.kind === 'browser' ? 'globe' : card.kind === 'file' ? 'file' : card.kind === 'kv' ? 'database' : card.kind === 'knowledge' ? 'book' : 'folder')}<span>${escapeHtml(card.title)}</span>${iconHtml('arrow-up-right')}`;
+    button.innerHTML = `${iconHtml(card.kind === 'browser' ? 'globe' : card.kind === 'file' ? 'file' : card.kind === 'knowledge' ? 'book' : 'folder')}<span>${escapeHtml(card.title)}</span>${iconHtml('arrow-up-right')}`;
     button.addEventListener('click', () => this.options.resource(card)); return button;
   }
 }

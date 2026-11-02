@@ -80,4 +80,4 @@ You cannot edit or delete a schedule while it has a `pending`, `running`, or `wa
 
 ## Kanban integration
 
-A committed space transaction advances its revision; rollbacks do not notify. Approved Kanban consumers subscribe with `window.steamHarnessKanban.databases.get(alias).subscribe(...)`. Subsequent access rechecks grants. Schedules and fire history are isolated by `projectId + entryId`; internal operations retain `entrypointId`.
+Knowledge-base changes can be observed through `window.steamHarnessKanban.knowledgeBases.get(alias).subscribe(...)`; every subsequent read rechecks authorization. Relational models use the generated table API and explicit reloads. Schedules and fire history remain scoped by `projectId + entryId`, with `entrypointId` identifying internal operations.

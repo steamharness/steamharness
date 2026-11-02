@@ -5,6 +5,7 @@ import { databaseModelMetadata } from './engine';
 export interface TableDataRequest {
   operation: 'models' | 'rows' | 'insert' | 'update' | 'delete'; model?: string;
   page?: number; pageSize?: number; search?: string; where?: Record<string, unknown>;
+  orderBy?: Record<string, 'asc' | 'desc'>;
   data?: Record<string, unknown>; key?: Record<string, unknown>; rowVersion?: string;
   schemaHash?: string;
 }
@@ -79,7 +80,13 @@ export async function executeTableData(client: pg.Client, schema: string, reques
     }
     const where = predicates.length ? ` where ${predicates.join(' and ')}` : '';
     const total = Number((await client.query(`select count(*) as total from ${table}${where}`, values)).rows[0].total);
-    const order = (model.keyFields.length ? model.keyFields : [model.fields[0].name]).map(name => q(fields.get(name)!.column)).join(',');
+    if (request.orderBy !== undefined && (!record(request.orderBy) || Object.keys(request.orderBy).length > 20)) return invalid('Invalid row order.');
+    const ordering = Object.entries(request.orderBy ?? {}).map(([name, direction]) => {
+      const field = fields.get(name); if (!field || !['asc', 'desc'].includes(direction)) return invalid('Invalid row order.');
+      return `${q(field.column)} ${direction}`;
+    });
+    for (const name of model.keyFields.length ? model.keyFields : [model.fields[0].name]) if (!Object.hasOwn(request.orderBy ?? {}, name)) ordering.push(q(fields.get(name)!.column));
+    const order = ordering.join(',');
     const result = await client.query(`select ${projection} from ${table}${where} order by ${order} limit ${parameter(pageSize)} offset ${parameter((page - 1) * pageSize)}`, values);
     return { items: result.rows.map(row), total, page, pageSize };
   }

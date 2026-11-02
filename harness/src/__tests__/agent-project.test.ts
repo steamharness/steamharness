@@ -10,8 +10,6 @@ import test, { after } from "node:test";
 import { Harness, createRegistry } from "@earendil-works/pi-durable";
 import { createModels } from "@earendil-works/pi-ai";
 import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
-import { openNodeSqliteStorage } from "@earendil-works/pi-durable/storage/sqlite/node";
-import { agentConversationDirectory } from "../agent/storage";
 import { createAgentConversationProject, createAgentProjectInput, defineAgentConversationExecutor } from "../agent/project";
 import { normalizeProjectParamDeclarations } from "../executor/param-definition";
 import { parseProjectParamValues } from "../executor/params";
@@ -28,7 +26,6 @@ import { createProjectToolPermissionContext } from "../tool-permissions/index";
 import { readAgentToolDefinitions } from "../agent/permission";
 import { createDisabledProjectTokenUsageContext } from "../token-usage/index";
 import type { RunContext } from "../types/index";
-import type { KVContext } from "../kv/index";
 
 /**
  * A project built from one factory call is what every builtin will ship, so the
@@ -46,39 +43,6 @@ async function createFauxModel() {
   assert.ok(model);
 
   return { ai, faux, models, model };
-}
-
-function createMemoryKV(): KVContext {
-  const values = new Map<string, unknown>();
-
-  function createNamespace(prefix: string) {
-    return {
-      async getValue(key: string) {
-        return values.get(`${prefix}:${key}`);
-      },
-      async setValue(key: string, value: unknown) {
-        values.set(`${prefix}:${key}`, value);
-      },
-      async deleteValue(key: string) {
-        return values.delete(`${prefix}:${key}`);
-      },
-      async updateValue(key: string, updater: (current: unknown | undefined) => unknown) {
-        const next = updater(values.get(`${prefix}:${key}`));
-        values.set(`${prefix}:${key}`, next);
-        return next;
-      },
-    };
-  }
-
-  const project = createNamespace("project");
-
-  return {
-    getValue: project.getValue,
-    setValue: project.setValue,
-    deleteValue: project.deleteValue,
-    updateValue: project.updateValue,
-    conversation: createNamespace("conversation"),
-  } as unknown as KVContext;
 }
 
 for (const outcome of ["success", "failed", "error", "length"] as const) {
@@ -163,7 +127,7 @@ const agentStores = new Set<string>();
 after(async () => { for (const directory of agentStores) await rm(directory, { recursive: true, force: true }); });
 
 function createContext(conversationId: string, files?: FileStore): RunContext {
-  const kv = createMemoryKV();
+  const kv = {};
   const agentStoreDir = mkdtempSync(path.join(tmpdir(), "workflow-agent-store-"));
   agentStores.add(agentStoreDir);
   return {

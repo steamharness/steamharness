@@ -43,7 +43,7 @@ interface EntrypointGroupDefinition {
 | `tools` | `ToolPermissionDefinition[]` | Tools this entrypoint may invoke and their default approval policy. |
 | `tokenUsage` | `TokenUsageDefinition` | Token-usage reporting configuration for this entrypoint. |
 | `registry` | `NodeRegistryEntry[]` | Nodes that can be debugged separately for this entrypoint. |
-| `createContext` | `(context) => Partial<RunContext>` | Adds providers, metadata, and hooks for this entrypoint. KV, PersistentValue, conversation, and files remain runtime-provided. |
+| `createContext` | `(context) => Partial<RunContext>` | Adds providers, metadata, and hooks for this entrypoint. databases, conversation, and files remain runtime-provided. |
 
 `createInput`, `resolveParams`, each registry entry's `createInput`, and `createContext` receive a `ExecutorContext`. When a Workflow entrypoint runs, `entrypointId` and `entrypointTitle` identify the selected entrypoint. The runtime also writes those values to `RunContext.metadata`, runtime events, and the final report.
 

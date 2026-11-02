@@ -7,7 +7,7 @@ export const PRESENTATION_CARD_MCP_TOOL_NAME = "present_card";
 export const PRESENTATION_CARD_MCP_TOOL_ID =
   `${PRESENTATION_CARD_MCP_SERVER_ID}_${PRESENTATION_CARD_MCP_TOOL_NAME}`;
 
-export type PresentationCardKind = "kv" | "knowledge" | "project" | "browser" | "file" | "kanban";
+export type PresentationCardKind = "knowledge" | "project" | "browser" | "file" | "kanban";
 
 export interface PresentationCardToolArgs {
   action: "upsert" | "remove";
@@ -25,10 +25,9 @@ export interface PresentationCardToolArgs {
 
 const CARD_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$/;
 const CARD_KINDS = new Set<PresentationCardKind>([
-  "kv", "knowledge", "project", "browser", "file", "kanban",
+  "knowledge", "project", "browser", "file", "kanban",
 ]);
 const CARD_TARGET_FIELDS: Record<PresentationCardKind, readonly string[]> = {
-  kv: ["source", "projectId", "entryId", "database", "spaceId", "scope", "conversationId", "key"],
   knowledge: ["source", "projectId", "entryId", "knowledgeBase", "documentId"],
   project: ["source", "projectId", "entryId", "configurationId"],
   browser: ["url"],
@@ -122,11 +121,7 @@ function readTarget(kind: PresentationCardKind, value: unknown): Record<string, 
       throw new Error("Card target source is invalid.");
     }
     if (target.source !== "current" && (!target.projectId || !target.entryId)) throw new Error("Card target requires projectId and entryId.");
-    if (kind === "kv" && !target.database) throw new Error("Database cards require a declared database alias.");
     if (kind === "knowledge" && !target.knowledgeBase) throw new Error("Knowledge cards require a declared knowledgeBase alias.");
-    if (kind === "kv" && (!target.key || !["project", "conversation"].includes(target.scope ?? ""))) {
-      throw new Error("KV card requires a key and scope.");
-    }
     if (kind === "file" && (!target.filePath || target.filePath.startsWith("/")
       || /^[A-Za-z]:[\\/]/.test(target.filePath) || target.filePath.includes("\0")
       || target.filePath.replaceAll("\\", "/").split("/").some((segment) => segment === ".." || segment === ""))) {
@@ -147,7 +142,7 @@ export const PRESENTATION_CARD_CAPABILITY: Capability = {
   toolName: PRESENTATION_CARD_MCP_TOOL_NAME,
   toolId: PRESENTATION_CARD_MCP_TOOL_ID,
   title: "Conversation resource card",
-  description: 'Show, update, pin, or remove a resource card in the current Conversation. For a file use {"action":"upsert","cardId":"readme","kind":"file","target":{"source":"current","filePath":"README.md"}}. Omit preview on file, KV and knowledge cards. preview controls the Kanban or Desktop browser preview; Kanban projects and browser cards preview and pin by default. Set target.configurationId to preview a specific named Kanban configuration without selecting or modifying the host configuration. Omitted IDs use the active configuration when the preview opens. Kanban parameter mode=preview is temporary. Persist values with Studio Control manage_configurations using an explicit target, configuration ID and revision.',
+  description: 'Show, update, pin, or remove a resource card in the current Conversation. For a file use {"action":"upsert","cardId":"readme","kind":"file","target":{"source":"current","filePath":"README.md"}}. Omit preview on file and knowledge cards. preview controls the Kanban or Desktop browser preview; Kanban projects and browser cards preview and pin by default. Set target.configurationId to preview a specific named Kanban configuration without selecting or modifying the host configuration. Omitted IDs use the active configuration when the preview opens. Kanban parameter mode=preview is temporary. Persist values with Studio Control manage_configurations using an explicit target, configuration ID and revision.',
   inputSchema: {
     type: "object",
     properties: {
@@ -162,10 +157,10 @@ export const PRESENTATION_CARD_CAPABILITY: Capability = {
             : field === "url" ? "Browser cards: HTTP(S) URL. Required for kind=browser."
             : `Used by ${Object.entries(CARD_TARGET_FIELDS).filter(([, fields]) => fields.includes(field)).map(([kind]) => kind).join(", ")} cards.`,
         }])),
-        description: "Use only fields for the selected kind. File: source, projectId, entryId, filePath. Browser: url. KV: source, projectId, entryId, database, spaceId, scope, conversationId, key. Knowledge: source, projectId, entryId, knowledgeBase, documentId. Kanban/project: source, projectId, entryId, configurationId. source=current resolves missing projectId and entryId from the host.",
+        description: "Use only fields for the selected kind. File: source, projectId, entryId, filePath. Browser: url. Knowledge: source, projectId, entryId, knowledgeBase, documentId. Kanban/project: source, projectId, entryId, configurationId. source=current resolves missing projectId and entryId from the host.",
       },
       pinned: { type: "boolean" },
-      preview: { type: "boolean", description: "Only Kanban, project or browser cards. Omit for file, KV and knowledge cards; false is ignored for those kinds." },
+      preview: { type: "boolean", description: "Only Kanban, project or browser cards. Omit for file and knowledge cards; false is ignored for those kinds." },
       title: { type: "string", minLength: 1, maxLength: 200 },
       kanban: {
         type: "object",

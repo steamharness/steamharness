@@ -11,7 +11,7 @@ type KnowledgeDocumentsAction =
   | "read_lines";
 
 interface KnowledgeDocumentsToolContext {
-  // We only need the PersistentValue slice that the workflow knowledge helpers
+  // We only need the Knowledge slice that the workflow knowledge helpers
   // reach into, but we type against the full RunContext so the helpers
   // accept it directly.
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -26,7 +26,7 @@ export function createKnowledgeDocumentsTools(input: KnowledgeDocumentsToolConte
     tool(
       KNOWLEDGE_DOCUMENTS_TOOL_NAME,
       [
-        "Manage PersistentValue-backed project markdown knowledge documents.",
+        "Manage PostgreSQL-backed project markdown knowledge documents.",
         "Use action=list to see summaries, get to read one document, create/edit/delete to change documents, search to find matching markdown lines, and read_lines for a 1-based inclusive line range.",
         "Before invoking this tool, tell the user in normal assistant text which knowledge document operation you are about to perform and why.",
       ].join(" "),

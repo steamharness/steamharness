@@ -272,6 +272,13 @@ export class RelationalDatabaseRepository {
     if (input.binding && (binding.id !== input.binding.id || binding.revision !== input.binding.revision)) throw new DatabaseResourceError("DATABASE_BINDING_CHANGED", "The database binding changed. Open a new client explicitly.");
     return binding;
   }
+  async resolveQueryBinding(actor: string, input: ConnectionRequest) {
+    return this.bindingLock(actor, input, async () => {
+      const binding = await this.checkedBinding(actor, input);
+      const access = await this.lock(binding.databaseId, () => this.access(actor, binding.databaseId, binding.mode, input.schemaHash));
+      return { ...binding, accessRevision: access.revision };
+    });
+  }
   async openConnection(actor: string, input: ConnectionRequest) {
     return this.bindingLock(actor, input, async () => {
       const binding = await this.checkedBinding(actor, input);
@@ -322,7 +329,7 @@ export class RelationalDatabaseRepository {
   }
 
   /** All table operations serialize with schema changes and permission changes. */
-  async data(actor: string, id: string, input: TableDataRequest, consumer?: ConnectionRequest & { binding: { id: string; revision: number } }) {
+  async data(actor: string, id: string, input: TableDataRequest, consumer?: ConnectionRequest & { binding: { id: string; revision: number }; accessRevision: number }) {
     const work = () => this.lock(id, async () => {
       if (!input || typeof input !== 'object' || !['models', 'rows', 'insert', 'update', 'delete'].includes(input.operation)) throw new DatabaseResourceError('DATABASE_INVALID_REQUEST', 'Invalid table operation.');
       if (input.operation !== 'models' && !/^[a-f0-9]{64}$/.test(consumer?.schemaHash ?? input.schemaHash ?? '')) throw new DatabaseResourceError('DATABASE_SCHEMA_MISMATCH', 'Read the applied model fingerprint before querying table data.');
@@ -330,6 +337,7 @@ export class RelationalDatabaseRepository {
       const binding = consumer ? await this.checkedBinding(actor, consumer) : undefined;
       if (binding && (binding.databaseId !== id || write && binding.mode !== 'write')) throw new DatabaseResourceError('DATABASE_ACCESS_DENIED', 'This database binding is read-only or changed.');
       const access = await this.access(actor, id, write ? 'write' : undefined, consumer?.schemaHash ?? input.schemaHash);
+      if (consumer && access.revision !== consumer.accessRevision) throw new DatabaseResourceError('DATABASE_ACCESS_DENIED', 'Database authorization changed. Open a new client.');
       const applied = await this.applied(id), schema = applied.at(-1)?.schema;
       if (!schema) throw new DatabaseResourceError('DATABASE_SCHEMA_MISMATCH', 'Apply database models before managing table data.');
       const credential = await this.issueCredentialsUnlocked(actor, id, { mode: write ? 'write' : 'read', expectedSchemaHash: access.resource.schemaHash ?? undefined, ttlMs: 60_000 });

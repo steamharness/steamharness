@@ -107,7 +107,6 @@
     "tsx": "^4.21.0",
     "typescript": "^6.0.3",
     "vitest": "^4.1.7",
-    "@steamharness/database-spaces": "workspace:*",
     "@steamharness/project-manifest": "workspace:*"
   }
 }

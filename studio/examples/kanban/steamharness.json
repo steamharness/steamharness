@@ -17,7 +17,7 @@
       "type": "kanban",
       "name": "Studio Kanban",
       "root": ".",
-      "entry": "index.html",
+      "entry": "dist/index.html",
       "configuration": "configuration.json",
       "databases": [
         "data"

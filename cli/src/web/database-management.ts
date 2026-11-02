@@ -36,9 +36,10 @@ export class DatabaseManagement {
   async state(): Promise<DatabaseManagementState> {
     await this.refreshDeclaration();
     const bindings = await this.request<any[]>('databases', `/bindings?projectId=${this.project.id}&entryId=${this.project.entryId}`);
-    const declared = [...bindings.map(item => ({ alias: item.alias, databaseId: item.databaseId, kind: 'databases' as const })), ...(this.project.knowledgeBases ?? []).map(item => ({ alias: item.alias, databaseId: item.knowledgeBaseId, kind: 'knowledge-bases' as const }))];
+    const declared = [...this.project.databases.map(alias => ({ alias, databaseId: bindings.find(item => item.alias === alias)?.databaseId ?? '', kind: 'databases' as const })), ...(this.project.knowledgeBases ?? []).map(item => ({ alias: item.alias, databaseId: item.knowledgeBaseId, kind: 'knowledge-bases' as const }))];
     const requirements = await Promise.all(declared.map(async requirement => {
       try {
+        if (!requirement.databaseId) throw new Error('Bind this alias on the selected Server first.');
         const resource = await this.request(requirement.kind, `/${requirement.databaseId}`);
         const bindings = await this.request<any[]>(requirement.kind, `/bindings?projectId=${this.project.id}&entryId=${this.project.entryId}`);
         if (!bindings.some(binding => binding.alias === requirement.alias && (binding.databaseId ?? binding.knowledgeBaseId) === requirement.databaseId)) throw new Error('Bind this alias on the selected Server first.');
@@ -46,7 +47,7 @@ export class DatabaseManagement {
       } catch (error) { return { ...requirement, status: 'invalid' as const, error: error instanceof Error ? error.message : String(error) }; }
     }));
     const override = JSON.parse(process.env[PROJECT_CONFIG_ENV] ?? '{}');
-    return { projectId: this.project.id, entryId: this.project.entryId, entries: this.project.entries, requirements, environmentOverrides: [...Object.keys(override.databases ?? {}), ...Object.keys(override.knowledgeBases ?? {})], serverUrl: this.connection()?.serverUrl };
+    return { projectId: this.project.id, entryId: this.project.entryId, entries: this.project.entries, requirements, environmentOverrides: [...Object.keys(override.knowledgeBases ?? {})], serverUrl: this.connection()?.serverUrl };
   }
   async dispatch(message: Record<string, any>) {
     await this.refreshDeclaration(); if (message.action === 'get') return this.state();

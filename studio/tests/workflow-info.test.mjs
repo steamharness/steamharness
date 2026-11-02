@@ -45,10 +45,11 @@ test('entry windows and empty database requirements are displayed for all types'
   }
 });
 
-test('database references show only the selected entry alias and database ID', () => {
-  const current = project(); current.databases = [{ alias:'notes',databaseId:'00000000-0000-4000-8000-000000000001' }];
+test('database references show only the selected entry aliases without embedding host bindings', () => {
+  const current = project(); current.databases = ['notes'];
   const items = projectInfoItems(current, {}), data = values(items);
-  assert.equal(data['database:notes:id'],'00000000-0000-4000-8000-000000000001');
+  assert.equal(data['database:notes:alias'],'notes');
+  assert.equal(data['database:notes:id'], undefined);
   assert.equal(Object.keys(data).filter(key=>key.startsWith('database:notes:')).length,1);
 });
 

@@ -16,7 +16,6 @@ export const server: typeof Enserver = {
   databaseBindingRequired: "必须提供数据库绑定和消费方身份。",
   databaseRevisionReadRequired: "订阅数据库修订需要读取权限。",
   databaseUseKnowledgeApi: "请通过知识库接口访问。",
-  databaseKvReadRequired: "需要 KV 读取权限。",
   databaseGrantRevoked: "已撤销的授权不能轮换凭据。",
   projectIdServerAssigned: "项目 ID 由服务器分配。请创建新应用以申请新的 ID。",
   configurationPublicationRequired: "请先发布项目配置模板，再使用按角色控制的配置。",

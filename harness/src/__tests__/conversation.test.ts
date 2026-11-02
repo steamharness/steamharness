@@ -4,16 +4,10 @@ import test from "node:test";
 import {
   createDisabledProjectConversationContext,
   createProjectConversationContext,
-  createProjectKVContext,
-  type KVStore,
 } from "../index";
 
 test("conversation setTitle persists a normalized title and emits updates", async () => {
-  const kv = createProjectKVContext({
-    store: createMemoryKVStore(),
-    projectId: "demo",
-    conversationId: "conv-1",
-  });
+  const kv = {};
   const titleEvents: Array<{ conversationId: string; title?: string; updatedAt: string }> = [];
   const conversation = createProjectConversationContext({
     enabled: true,
@@ -39,7 +33,7 @@ test("conversation setTitle persists a normalized title and emits updates", asyn
 });
 
 test("stable message identities update projections without duplicates or lost state", async () => {
-  const kv = createProjectKVContext({ store: createMemoryKVStore(), projectId: "demo", conversationId: "durable" });
+  const kv = {};
   const conversation = createProjectConversationContext({ enabled: true, projectName: "demo", conversationId: "durable", storage: testConversationStorage(kv) });
   await conversation.setValue("approval", "waiting");
   await conversation.appendMessage({ id: "input", role: "user", content: "Hello" });
@@ -52,11 +46,7 @@ test("stable message identities update projections without duplicates or lost st
 });
 
 test("conversation setTitle clears blank titles without throwing", async () => {
-  const kv = createProjectKVContext({
-    store: createMemoryKVStore(),
-    projectId: "demo",
-    conversationId: "conv-1",
-  });
+  const kv = {};
   const conversation = createProjectConversationContext({
     enabled: true,
     projectName: "demo",
@@ -77,40 +67,3 @@ test("disabled conversation setTitle is a safe no-op", async () => {
   await assert.doesNotReject(() => conversation.setTitle("ignored"));
   assert.equal(await conversation.setTitle("ignored"), undefined);
 });
-
-function createMemoryKVStore(): KVStore {
-  const values = new Map<string, unknown>();
-
-  function createKey(input: {
-    storageKind: string;
-    scope: string;
-    projectId: string;
-    conversationId?: string;
-    key: string;
-  }): string {
-    return [
-      input.storageKind,
-      input.scope,
-      input.projectId,
-      input.conversationId ?? "",
-      input.key,
-    ].join(":");
-  }
-
-  return {
-    async getValue(input) {
-      return values.get(createKey(input));
-    },
-    async setValue(input) {
-      values.set(createKey(input), input.value);
-    },
-    async deleteValue(input) {
-      return values.delete(createKey(input));
-    },
-    async updateValue(input, updater) {
-      const next = updater(values.get(createKey(input)));
-      values.set(createKey(input), next);
-      return next;
-    },
-  };
-}

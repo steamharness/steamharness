@@ -12,7 +12,7 @@ export async function runKanbanDataCall(core: typeof import('steamharness'), pro
     const bases = core.createKnowledgeBasesContext({ projectId: project.id, entryId: project.entryId, requirements: declaration.registration.knowledgeBases ?? [], host: connection ? core.createServerKnowledgeBaseHost(connection) : undefined });
     return core.executeKnowledgeBaseOperation(bases.get(String(input.knowledgeBase)), operation, input);
   }
-  const local = core.createLocalDatabaseResolver(), remote = connection && core.createRemoteDatabaseResolver(connection);
-  const databases = core.createDatabasesContext({ projectId: project.id, entryId: project.entryId, requirements: declaration.registration.databases, resolver: { resolve: async (requirement, consumer) => await local.resolve(requirement, consumer) ?? remote?.resolve(requirement, consumer) } });
-  return core.executeDatabaseOperation(databases.get(String(input.database)), operation, input);
+  if (!declaration.registration.databases.includes(String(input.database))) throw new Error('Declare this database alias on the entry first.');
+  if (!connection) throw new Error('Sign in to SteamHarness Server to access databases.');
+  return core.executeDatabaseQueryBridge(core.createRemoteDatabaseQueryHost(connection, { projectId: project.id, entryId: project.entryId }), operation, input);
 }

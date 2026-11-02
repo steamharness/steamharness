@@ -700,8 +700,6 @@ export const common = {
         deleteKnowledge: { running: "Deleting knowledge document", success: "Deleted knowledge document", failed: "Failed to delete knowledge document" },
         readKnowledge: { running: "Reading knowledge document", success: "Read knowledge document", failed: "Failed to read knowledge document" },
         listKnowledge: { running: "Listing knowledge documents", success: "Listed knowledge documents", failed: "Failed to list knowledge documents" },
-        updateKv: { running: "Updating KV value", success: "Updated KV value", failed: "Failed to update KV value" },
-        readKv: { running: "Reading KV value", success: "Read KV value", failed: "Failed to read KV value" },
         createConfiguration: { running: "Creating project configuration", success: "Created project configuration", failed: "Failed to create project configuration" },
         updateConfiguration: { running: "Updating project configuration", success: "Updated project configuration", failed: "Failed to update project configuration" },
         deleteConfiguration: { running: "Deleting project configuration", success: "Deleted project configuration", failed: "Failed to delete project configuration" },

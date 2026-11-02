@@ -323,13 +323,6 @@ export function createProjectRuntime(context: vscode.ExtensionContext, account: 
         storageDir: path.join(context.globalStorageUri.fsPath, 'workflow', 'web'), nodePath: runtime.nodePath, runtime, connection: account.getConnection(),
         signal: AbortSignal.any([signal, controller.signal]) });
     },
-    resource: async (project, input, signal) => {
-      assertAvailable();
-      const runtime = await selectedRuntime();
-      return requestProjectResource({ project, input, worker: vscode.Uri.joinPath(context.extensionUri, 'dist', 'resources-worker.mjs').fsPath,
-        storageDir: path.join(context.globalStorageUri.fsPath, 'workflow', 'web'), nodePath: runtime.nodePath, runtime, connection: account.getConnection(),
-        signal: AbortSignal.any([signal, controller.signal]) });
-    },
     dispose: () => { controller.abort(); authentication.dispose(); userSettingsChanged.dispose(); userModelsChanged?.dispose(); clearTimeout(settingsTimer); void hosts.close(); },
   };
 }

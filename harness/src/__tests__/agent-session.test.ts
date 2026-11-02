@@ -1,3 +1,4 @@
+import { testAgentStorage } from "./runtime-test-storage";
 import assert from "node:assert/strict";
 import test from "node:test";
 import { mkdtemp, rm } from "node:fs/promises";
@@ -23,7 +24,7 @@ function session(options: import("../agent/session-types").AgentSessionOptions =
   const models = ai.createModels(); models.setProvider(faux.provider);
   const lease = latch();
   const suspend = latch();
-  const instance = new DurableAgent({ models, databasePath, session: options, sessionLease: lease.promise, sessionSuspend: suspend.promise, resumeSession, retryDelayMs: 0, initialState: {
+  const instance = new DurableAgent({ models, storage: databasePath ? testAgentStorage(databasePath) : undefined, session: options, sessionLease: lease.promise, sessionSuspend: suspend.promise, resumeSession, retryDelayMs: 0, initialState: {
     systemPrompt: "Session test", model: models.getModel("faux", "test")!, thinkingLevel: "off", messages: [], tools: [],
   } });
   let snapshot: AgentSessionSnapshot | undefined;
@@ -412,7 +413,7 @@ test("session retry counters restart after successful tool requests and preserve
   assert.deepEqual(reopened.snapshot().turns.find(turn => turn.requestId === "retry-reset")!.items, items);
 });
 
-test("turn usage and live context isolate forks, cached tool rounds and SQLite replay", async t => {
+test("turn usage and live context isolate forks, cached tool rounds and temporary repository replay", async t => {
   const directory = await mkdtemp(path.join(tmpdir(), "agent-session-usage-"));
   t.after(() => rm(directory, { recursive: true, force: true }));
   const database = path.join(directory, "session.sqlite"), first = session({ compaction: { enabled: false } }, database);
@@ -594,7 +595,7 @@ test("an idle steer is a new answered turn and retains the original answer range
   assert.equal(snapshot().turns[0]?.items.map(item => item.content).join(""), "First");
 });
 
-test("SQLite reopens configuration, plans and command receipts without replaying completed work", async t => {
+test("Temporary repository reopens configuration, plans and command receipts without replaying completed work", async t => {
   const directory = await mkdtemp(path.join(tmpdir(), "agent-session-"));
   t.after(() => rm(directory, { recursive: true, force: true }));
   const database = path.join(directory, "session.sqlite"), first = session({}, database);
@@ -660,7 +661,7 @@ test("foreground cancellation leaves a background subagent alive and cancelling 
   assert.equal(snapshot().turns.filter(turn => turn.requestId.startsWith("report:")).length, 0);
 });
 
-for (const sqlite of [false, true]) test(`cancelled tasks stop showing stopping after settling in ${sqlite ? "SQLite" : "memory"}`, async t => {
+for (const sqlite of [false, true]) test(`cancelled tasks stop showing stopping after settling in ${sqlite ? "temporary repository" : "memory"}`, async t => {
   const directory = sqlite ? await mkdtemp(path.join(tmpdir(), "agent-cancel-")) : undefined;
   if (directory) t.after(() => rm(directory, { recursive: true, force: true }));
   const database = directory && path.join(directory, "session.sqlite");
@@ -803,7 +804,7 @@ test("the durable inbox steers at a tool boundary, withdraws follow ups and neve
   assert.equal(faux.state.callCount, 3);
 });
 
-for (const sqlite of [false, true]) test(`queued promotion preserves input identity and images in ${sqlite ? "SQLite" : "memory"}`, async t => {
+for (const sqlite of [false, true]) test(`queued promotion preserves input identity and images in ${sqlite ? "temporary repository" : "memory"}`, async t => {
   const directory = sqlite ? await mkdtemp(path.join(tmpdir(), "agent-promote-")) : undefined;
   const database = directory && path.join(directory, "session.sqlite");
   let current = session({}, database);

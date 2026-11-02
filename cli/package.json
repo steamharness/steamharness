@@ -64,7 +64,6 @@
     "@steamharness/project-configuration": "workspace:*",
     "@steamharness/project-access": "workspace:*",
     "@steamharness/service-urls": "workspace:*",
-    "@steamharness/database-spaces": "workspace:*",
     "@steamharness/project-manifest": "workspace:*"
   },
   "repository": {

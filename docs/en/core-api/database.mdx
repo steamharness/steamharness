@@ -140,7 +140,7 @@ pnpm exec steamharness database unbind . --entry main --alias main --server http
 
 The directory is the aggregate project root containing `steamharness.json`. `--entry` defaults to `defaultEntry`. `bind` generates and validates models in the selected entry's `root`; `--alias` defaults to `main`. Two entries can bind the same alias to different resources, and two projects can define different `User` models. Tables and data are shared only when explicitly binding the same resource UUID.
 
-The host stores bindings by signed-in account and `projectId + entryId + alias`, without changing project files. Declare relational aliases in the entry's `steamharness.database.ts`, outside the legacy KV `steamharness.json.databases` and `config.json.databases` fields. Each account, Server and entry needs its own bindings. A binding selects an already accessible resource and cannot grant access. The default mode inherits account access; `--mode read` can narrow it but cannot elevate permissions.
+The host stores bindings by signed-in account and `projectId + entryId + alias`, without changing project files. Declare aliases in steamharness.database.ts and list them as strings in the entry's steamharness.json databases array. Resource IDs are stored only in Server bindings; config.json.databases is unsupported. Each account, Server and entry needs its own bindings. A binding selects an already accessible resource and cannot grant access. The default mode inherits account access; `--mode read` can narrow it but cannot elevate permissions.
 
 Connect a generated descriptor from a Node workflow's context:
 
@@ -166,7 +166,13 @@ SQL identities normally expire after 5 minutes and renew lazily on subsequent op
 
 Custom Node hosts can import `createRemoteRelationalDatabaseHost` and `createDatabaseConnector` from `steamharness`, supplying an account API key and project/entry identity. Always `await connector.close()` at the end. Keep account and temporary SQL credentials inside the trusted host, outside project parameters, model inputs and Browser code. SQL credential HTTP endpoints accept account Bearer API keys only and reject Cookie sessions and browser Origin headers.
 
-Browser descriptors currently provide types and model metadata. Browser query forwarding is not implemented. Platform conversations, usage and default Agent storage already use separate platform relational tables; replacing existing business KV still requires project model changes.
+## Browser table client
+
+Import a descriptor from the generated `browser/index.js`, bundle it, and call `window.steamHarnessKanban.databases.connect(descriptor)`. Each model exposes `rows({where, orderBy, page, pageSize})`, `insert(data)`, `update({key, rowVersion, data})`, and `delete({key, rowVersion})`. Rows return `{values, rowVersion}` and paginated reads return `{items, total, page, pageSize}`. This interface provides no Browser transactions, raw SQL, or Node relation operations.
+
+Declare the alias in the entry's `databases`, deploy migrations, and bind the resource first. The trusted host retains credentials and validates the binding, account grants, and schema fingerprint on every request. Changed bindings and grants invalidate retained clients; row conflicts require a fresh read while preserving the draft.
+
+Task templates generate descriptors before building `dist/index.html` and store `Task` rows filtered by configurationId. Unbound resources and failed reads disable editing with an explicit error. Legacy KV, PersistentValue, local KV, and KV tools are removed without compatibility or automatic migration.
 
 ## Build and distribute
 

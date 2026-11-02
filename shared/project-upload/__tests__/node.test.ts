@@ -16,14 +16,14 @@ describe("createProjectUploadPlan", () => {
   it("requires config.json when present and copies authored values without environment overrides", async () => {
     const root = await createProject({defaultEntry:"main",entries:[{entryId:"main",type:"workflow",name:"Main",root:".",entry:"index.ts",databases:["data"],knowledgeBases:["docs"]}]});
     const target = await mkdtemp(path.join(os.tmpdir(), "config-upload-")); tempDirectories.push(target);
-    const config = { version: 1, databases: { data: "00000000-0000-4000-8000-000000000001" }, knowledgeBases: { docs: "00000000-0000-4000-8000-000000000001" } };
+    const config = { version: 1, knowledgeBases: { docs: "00000000-0000-4000-8000-000000000001" } };
     await writeFile(path.join(root, "index.ts"), "export {};");
     await writeFile(path.join(root, "config.json"), JSON.stringify(config));
     await writeFile(path.join(root, ".steamharnessignore"), "config.json\n");
     await expect(createProjectUploadPlan(root)).rejects.toThrow('Required upload path "config.json"');
     await writeFile(path.join(root, ".steamharnessignore"), "");
     const before = process.env.STEAMHARNESS_PROJECT_CONFIG;
-    process.env.STEAMHARNESS_PROJECT_CONFIG = JSON.stringify({ databases: { data: "00000000-0000-4000-8000-000000000002" }, knowledgeBases: { docs: "00000000-0000-4000-8000-000000000002" } });
+    process.env.STEAMHARNESS_PROJECT_CONFIG = JSON.stringify({ knowledgeBases: { docs: "00000000-0000-4000-8000-000000000002" } });
     try { await copyProjectUploadFiles(root, target); }
     finally { if (before === undefined) delete process.env.STEAMHARNESS_PROJECT_CONFIG; else process.env.STEAMHARNESS_PROJECT_CONFIG = before; }
     expect(JSON.parse(await readFile(path.join(target, "config.json"), "utf8"))).toEqual(config);

@@ -1,3 +1,4 @@
+import { testAgentStorage } from "./runtime-test-storage";
 import assert from "node:assert/strict";
 import test from "node:test";
 import { mkdtemp, rm } from "node:fs/promises";
@@ -44,7 +45,7 @@ function fixture(databasePath?: string, definitions = roles, resumeSession = fal
   const models = ai.createModels(); models.setProvider(faux.provider);
   const lease = latch(), suspend = latch();
   let snapshot: AgentSessionSnapshot | undefined;
-  const agent = new DurableAgent({ models, databasePath, retryDelayMs: 0, sessionLease: lease.promise, sessionSuspend: suspend.promise, resumeSession, interruptSession,
+  const agent = new DurableAgent({ models, storage: databasePath ? testAgentStorage(databasePath) : undefined, retryDelayMs: 0, sessionLease: lease.promise, sessionSuspend: suspend.promise, resumeSession, interruptSession,
     session: { nativeTools, compaction: { enabled: false }, subagents: { tools: ["research", "record"], definitions, models: allowedModels, maxAgents } },
     initialState: { model: models.getModel("faux", "test")!, systemPrompt: "ROOT COORDINATOR ONLY", tools: [], messages: [], thinkingLevel: "off" } });
   agent.subscribe(event => { const value = event as unknown as { type: string; snapshot: AgentSessionSnapshot }; if (value.type === "project_session") snapshot = value.snapshot; });
@@ -271,7 +272,7 @@ test("stopping during work retry backoff never starts the next attempt", async t
   assert.equal(stopped.agents![0].status, "aborted"); assert.equal(stopped.agents![0].attempt, 1); assert.equal(calls, 1);
 });
 
-for (const reduceLimit of [false, true]) test(`SQLite preserves a scheduled work retry without resetting its budget (reduceLimit=${reduceLimit})`, async t => {
+for (const reduceLimit of [false, true]) test(`temporary repository preserves a scheduled work retry without resetting its budget (reduceLimit=${reduceLimit})`, async t => {
   const directory = await mkdtemp(path.join(tmpdir(), "agent-work-retries-"));
   t.after(() => rm(directory, { recursive: true, force: true }));
   const database = path.join(directory, "session.sqlite");
@@ -406,7 +407,7 @@ for (const partial of [false, true]) test(`child stream failures use the full re
   assert.equal(f.snapshot().turns.find(turn => turn.conversationId === child.childConversationId)!.items.filter(item => item.metadata?.partType === "retry").length, 10);
 });
 
-test("SQLite restores queued role snapshots without adopting a changed role prompt", async t => {
+test("Temporary repository restores queued role snapshots without adopting a changed role prompt", async t => {
   const directory = await mkdtemp(path.join(tmpdir(), "agent-roles-")); t.after(() => rm(directory, { recursive: true, force: true }));
   const database = path.join(directory, "session.sqlite");
   const first = fixture(database, [{ ...roles[0], maxConcurrency: 1 }]);

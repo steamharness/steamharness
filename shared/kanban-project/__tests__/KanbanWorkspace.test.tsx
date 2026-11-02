@@ -135,14 +135,14 @@ describe("KanbanWorkspace", () => {
 
     dispatchBridgeRequest(iframe, {
       requestId: "request-1",
-      operation: "kv.getValue",
-      input: { database:"data", key: "board" },
+      operation: "knowledge.getDocument",
+      input: { knowledgeBase:"data", documentId: "board" },
     });
 
     await waitFor(() => expect(onBridgeRequest).toHaveBeenCalledWith({
       requestId: "request-1",
-      operation: "kv.getValue",
-      input: { database:"data", key: "board" },
+      operation: "knowledge.getDocument",
+      input: { knowledgeBase:"data", documentId: "board" },
     }));
     await waitFor(() => expect(postMessage).toHaveBeenCalledWith({
       type: "steamharness:kanban-bridge-response",
@@ -161,8 +161,8 @@ describe("KanbanWorkspace", () => {
 
     dispatchBridgeRequest(iframe, {
       requestId: "request-forged-project",
-      operation: "kv.getValue",
-      input: { database:"data", key: "board" },
+      operation: "knowledge.getDocument",
+      input: { knowledgeBase:"data", documentId: "board" },
       projectName: "another-project",
     });
 
@@ -183,8 +183,8 @@ describe("KanbanWorkspace", () => {
 
     dispatchBridgeRequest(iframe, {
       requestId: "request-stable",
-      operation: "kv.getValue",
-      input: { database:"data", key: "board" },
+      operation: "knowledge.getDocument",
+      input: { knowledgeBase:"data", documentId: "board" },
     });
     await waitFor(() => expect(firstHandler).toHaveBeenCalledOnce());
 
@@ -210,8 +210,8 @@ describe("KanbanWorkspace", () => {
 
     dispatchBridgeRequest(iframe, {
       requestId: "request-sync-error",
-      operation: "kv.getValue",
-      input: { database:"data", key: "board" },
+      operation: "knowledge.getDocument",
+      input: { knowledgeBase:"data", documentId: "board" },
     });
 
     await waitFor(() => expect(postMessage).toHaveBeenCalledWith(expect.objectContaining({
@@ -232,18 +232,18 @@ describe("KanbanWorkspace", () => {
 
     dispatchBridgeRequest(iframe, {
       requestId: "wrong-nonce",
-      operation: "kv.getValue",
-      input: { database:"data", key: "board" },
+      operation: "knowledge.getDocument",
+      input: { knowledgeBase:"data", documentId: "board" },
     }, { nonce: "wrong" });
     dispatchBridgeRequest(iframe, {
       requestId: "wrong-source",
-      operation: "kv.getValue",
-      input: { database:"data", key: "board" },
+      operation: "knowledge.getDocument",
+      input: { knowledgeBase:"data", documentId: "board" },
     }, { source: window });
     dispatchBridgeRequest(iframe, {
       requestId: "invalid-operation",
       operation: "kv.deleteValue",
-      input: { database:"data", key: "board" },
+      input: { knowledgeBase:"data", documentId: "board" },
     });
 
     expect(onBridgeRequest).not.toHaveBeenCalled();
@@ -292,8 +292,8 @@ describe("KanbanWorkspace", () => {
     for (let index = 0; index < 17; index += 1) {
       dispatchBridgeRequest(iframe, {
         requestId: `request-${index}`,
-        operation: "kv.getValue",
-        input: { database:"data", key: `key-${index}` },
+        operation: "knowledge.getDocument",
+        input: { knowledgeBase:"data", documentId: `key-${index}` },
       });
     }
 
@@ -315,8 +315,8 @@ describe("KanbanWorkspace", () => {
     for (let index = 0; index < 16; index += 1) {
       dispatchBridgeRequest(iframe, {
         requestId: `timeout-${index}`,
-        operation: "kv.getValue",
-        input: { database:"data", key: `key-${index}` },
+        operation: "knowledge.getDocument",
+        input: { knowledgeBase:"data", documentId: `key-${index}` },
       });
     }
     await act(async () => { await Promise.resolve(); });
@@ -328,8 +328,8 @@ describe("KanbanWorkspace", () => {
     });
     dispatchBridgeRequest(iframe, {
       requestId: "after-timeout",
-      operation: "kv.getValue",
-      input: { database:"data", key: "after-timeout" },
+      operation: "knowledge.getDocument",
+      input: { knowledgeBase:"data", documentId: "after-timeout" },
     });
     await act(async () => { await Promise.resolve(); });
 

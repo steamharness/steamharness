@@ -5,7 +5,7 @@ import { downloadServerProject } from './steamharness-server-projects-node';
 import { compareProjectVersions, type DownloadedServerProject, type UpdatedServerProject } from './steamharness-server-projects';
 
 // Source archives exclude host data. Preserve it, dependency installations and editor/SCM state at every depth.
-const preservedDirectories = new Set(['.git', '.hg', '.svn', 'node_modules', '.vscode', '.idea', '.workflow-kv',
+const preservedDirectories = new Set(['.git', '.hg', '.svn', 'node_modules', '.vscode', '.idea',
   '.workflow-persistent-values', '.workflow-runs', '.workflow-schedules', '.steamharness', '.workflow-files', '.data',
   'local-project-registries', 'workflow-files']);
 function preserve(name: string): boolean {

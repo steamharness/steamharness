@@ -1,5 +1,6 @@
 import { isProjectKind, type ProjectKind } from "@steamharness/project-types";
-import { DATABASE_IDENTIFIER_PATTERN, DATABASE_UUID_PATTERN, normalizeDatabaseRequirement, type DatabaseRequirement } from "@steamharness/database-spaces";
+import { DATABASE_IDENTIFIER_PATTERN, DATABASE_UUID_PATTERN } from "./identity";
+export * from "./identity";
 import { normalizeProjectCardMetadata, validateProjectCardMetadata, type ProjectCardMetadata } from "../project-card-metadata/index";
 import { normalizeProjectInfo, type ProjectInfoContract } from "../project-info/index";
 import { readProjectConfig } from "./config";
@@ -21,7 +22,7 @@ export interface ProjectEntry {
   /** Configuration definition JSON, relative to root. */
   configuration?: string;
   /** Resolved host metadata; steamharness.json entries declare only alias strings. */
-  databases: DatabaseRequirement[];
+  databases: string[];
   knowledgeBases?: KnowledgeBaseRequirement[];
   schedulePresets?: unknown[];
 }
@@ -108,7 +109,7 @@ export function readProjectDeclaration(value: unknown, children: Record<string, 
       entry = { ...child, entryId: registration.entryId, root: registration.root };
     }
     const aliases = entry.databases ?? [];
-    if (!Array.isArray(aliases) || aliases.some(alias => typeof alias !== "string" || !DATABASE_IDENTIFIER_PATTERN.test(alias))) throw new Error("Entry databases must contain only alias strings; configure database IDs in config.json.");
+    if (!Array.isArray(aliases) || aliases.some(alias => typeof alias !== "string" || !DATABASE_IDENTIFIER_PATTERN.test(alias))) throw new Error("Entry databases must contain only alias strings; bind relational resources on Server.");
     if (new Set(aliases).size !== aliases.length) throw new Error(`entries[${index}].databases contains duplicate aliases.`);
     const knowledgeAliases = entry.knowledgeBases;
     if (knowledgeAliases !== undefined && (!Array.isArray(knowledgeAliases) || knowledgeAliases.some(alias => typeof alias !== 'string' || !DATABASE_IDENTIFIER_PATTERN.test(alias)) || new Set(knowledgeAliases).size !== knowledgeAliases.length)) throw new Error('Entry knowledgeBases must contain unique alias strings.');
@@ -128,11 +129,7 @@ export function readProjectManifest(value: unknown, configValue?: unknown, env: 
 }
 export function resolveProjectDatabases(declaration: ProjectDeclaration, configValue?: unknown, env: Record<string, string | undefined> = {}): ProjectManifest {
   const config = readProjectConfig(configValue, env);
-  return { ...declaration, entries: declaration.entries.map(({ knowledgeBases, ...entry }) => ({ ...entry, databases: entry.databases.map(alias => {
-    const databaseId = config.databases[alias];
-    if (!databaseId) throw new Error(`Entry "${entry.entryId}" refers to unconfigured database alias "${alias}".`);
-    return { alias, databaseId };
-  }), ...(knowledgeBases === undefined ? {} : { knowledgeBases: knowledgeBases.map(alias => {
+  return { ...declaration, entries: declaration.entries.map(({ knowledgeBases, ...entry }) => ({ ...entry, databases: entry.databases, ...(knowledgeBases === undefined ? {} : { knowledgeBases: knowledgeBases.map(alias => {
     const knowledgeBaseId = config.knowledgeBases?.[alias];
     if (!knowledgeBaseId) throw new Error(`Entry "${entry.entryId}" refers to unconfigured knowledge base alias "${alias}".`);
     return { alias, knowledgeBaseId };
@@ -154,8 +151,8 @@ export function normalizeProjectEntry(value: unknown, field = "entry"): ProjectE
   if (item.type === "kanban" ? !/\.html$/i.test(entry) : !/\.[cm]?[jt]sx?$/i.test(entry)) throw new Error(`${field}.entry must be ${item.type === "kanban" ? "an HTML artifact" : "an executable module"}.`);
   const configuration = item.configuration === undefined ? undefined : normalizeEntryPath(item.configuration, `${field}.configuration`);
   if (!Array.isArray(item.databases)) throw new Error(`${field}.databases must be an array (use [] for no database access).`);
-  const databases = item.databases.map((database, index) => normalizeDatabaseRequirement(database, `${field}.databases[${index}]`));
-  if (new Set(databases.map((database) => database.alias)).size !== databases.length) throw new Error(`${field}.databases contains duplicate aliases.`);
+  const databases = item.databases.map(alias => { if (typeof alias !== "string" || !DATABASE_IDENTIFIER_PATTERN.test(alias)) throw new Error(`${field}.databases must contain alias strings.`); return alias; });
+  if (new Set(databases).size !== databases.length) throw new Error(`${field}.databases contains duplicate aliases.`);
   const knowledgeBases = item.knowledgeBases === undefined ? undefined : normalizeKnowledgeRequirements(item.knowledgeBases);
   if (item.schedulePresets !== undefined && !Array.isArray(item.schedulePresets)) throw new Error(`${field}.schedulePresets must be an array.`);
   return { entryId: item.entryId, type: item.type, name: item.name.trim(), root, entry, databases, ...(knowledgeBases === undefined ? {} : { knowledgeBases }), ...(projectCard === undefined ? {} : { projectCard }), ...(item.projectInfo === undefined ? {} : { projectInfo: normalizeProjectInfo(item.projectInfo) }), ...(configuration === undefined ? {} : { configuration }), ...(item.schedulePresets === undefined ? {} : { schedulePresets: item.schedulePresets as unknown[] }) };

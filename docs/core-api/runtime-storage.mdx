@@ -15,7 +15,7 @@ CLI Web、Studio 的 Conversation、Workflow 历史和助手会话默认保存�
 
 已注册项目按账号、项目和入口隔离；本地项目通过 `workspaces/resolve` 查找真实项目：项目存在时必须通过成员权限检查，只有项目不存在时才使用账号私有的本地工作区。403 不降级为本地工作区。助手工作区另行隔离。创建项目、入口或会话只增加共享表中的记录，不创建 PostgreSQL database。
 
-工作区文件、附件和临时活动通知仍由宿主管理，备份时需一并保存。业务关系表使用 [SteamHarness Database](/core-api/database)；业务 KV、知识库和配置存储不属于这个平台历史接口。
+工作区文件、附件和临时活动通知仍由宿主管理，备份时需一并保存。业务关系表使用 [SteamHarness Database](/core-api/database)；业务关系库、知识库和配置存储不属于这个平台历史接口。
 
 ## 连接与重开
 

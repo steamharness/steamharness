@@ -1,3 +1,4 @@
+import { createMemoryRuntimePersistence } from "steamharness/runtime-storage";
 import { createExampleKnowledgeBases, runApprovedProject as runLocalProjectWithReport } from "../test-databases";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
@@ -12,7 +13,6 @@ import {
   type ExecutionReport,
   type ExecutionStorageOptions,
   type FileReference,
-  type KVStore,
   type RuntimeEvent,
   type StructureReport,
   type UserInputContext,
@@ -822,53 +822,6 @@ function createFixtureRuntimeEventRecorder(projectName: ProjectName) {
   };
 }
 
-function createMemoryKVStore(): KVStore & {
-  values: Map<string, unknown>;
-} {
-  const values = new Map<string, unknown>();
-  const namespaceTails = new Map<string, Promise<void>>();
-  function createKey(input: {
-    storageKind: string;
-    scope: string;
-    projectId: string;
-    conversationId?: string;
-    key: string;
-  }): string {
-    return [input.storageKind, input.scope, input.projectId, input.conversationId ?? "", input.key].join(":");
-  }
-
-  return {
-    values,
-    async getValue(input) {
-      return values.get(createKey(input));
-    },
-    async setValue(input) {
-      values.set(createKey(input), input.value);
-    },
-    async updateValue(input, updater) {
-      const key = createKey(input);
-      const next = updater(values.get(key));
-      values.set(key, next);
-      return next;
-    },
-    async withNamespaceLock(input, operation) {
-      const namespace = [input.storageKind, input.scope, input.projectId, input.conversationId ?? ""].join(":");
-      const previous = namespaceTails.get(namespace) ?? Promise.resolve();
-      let release!: () => void;
-      const completion = new Promise<void>((resolve) => {
-        release = resolve;
-      });
-      namespaceTails.set(namespace, completion);
-      await previous;
-      try {
-        return await operation();
-      } finally {
-        release();
-      }
-    },
-  };
-}
-
 function summarizeStructure(report: StructureReport) {
   // keep structure snapshots stable across Windows and POSIX hosts.
   const projectFiles = report.workflow.files.map((file) => file.replaceAll("\\", "/"));
@@ -1022,7 +975,7 @@ async function createFixtureStorage(
 ): Promise<ExecutionStorageOptions> {
   return {
     host: "local",
-    local: { kvStoreDir: await createTempDir(`${projectName}-kv-`) },
+    local: { runtimePersistence: createMemoryRuntimePersistence() },
   };
 }
 

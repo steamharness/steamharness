@@ -63,12 +63,11 @@ async function fixture(options: { server?: boolean; artifact?: boolean; noParams
   vi.spyOn(os, 'homedir').mockReturnValue(path.join(root, 'host'));vi.stubEnv('STEAMHARNESS_DATABASES_DIR',path.join(root,'registry'));
   const directory = path.join(root, 'board'); await mkdir(directory);
   const descriptor: Project = {entryId:"main",aggregateName:"Test aggregate",defaultEntry:"main",entryRoot:directory,databases:[],entries:[{entryId:"main",name:"Main",type:'kanban',root:".",entry:"index.html",databases:[]}], id, name: 'Board', uri: '', folderPath: directory, projectType: 'kanban', fields: [], entrypoints: [] };
-  const registration={entryId:'main',name:'Board',type:'kanban' as const,root:options.artifact?'dist':'.',entry:options.artifact?'pages/index.html':'index.html',configuration:'configuration.json',databases:[] as core.DatabaseRequirement[]};
-  if(options.real){const registry=new core.LocalDatabaseRegistry();const permissions={kv:{read:{mode:'all' as const},write:{mode:'all' as const}},knowledge:{read:{mode:'all' as const},write:{mode:'all' as const}}};const request=registry.request({projectId:id,entryId:'main',alias:'data',permissions,target:{kind:'create',name:'Board'}});const approval=registry.review(request.requestId,{approve:true});registration.databases=[{alias:'data',databaseId:approval.databaseId!}];}
-  const pkg = { id, name: 'Board', type: 'module', devDependencies: { 'steamharness': await resolveHarnessVersion() }, version: "0.1.0",  defaultEntry:'main',entries:[{...registration,databases:registration.databases.map(database => database.alias)}]  };
+  const registration={entryId:'main',name:'Board',type:'kanban' as const,root:options.artifact?'dist':'.',entry:options.artifact?'pages/index.html':'index.html',configuration:'configuration.json',databases:[] as string[]};
+
+  const pkg = { id, name: 'Board', type: 'module', devDependencies: { 'steamharness': await resolveHarnessVersion() }, version: "0.1.0",  defaultEntry:'main',entries:[{...registration,databases:registration.databases}]  };
   Object.assign(descriptor,{entryRoot:path.resolve(directory,registration.root),entries:[registration],databases:registration.databases});
   await writeProjectFixture(path.join(directory, 'package.json'), JSON.stringify(pkg));
-  if(options.real)await writeFile(path.join(directory,'config.json'),JSON.stringify({version:1,databases:{data:registration.databases[0]!.databaseId}}));
   const artifactRoot = options.artifact ? path.join(directory, 'dist/pages') : directory;
   await mkdir(artifactRoot, { recursive: true }); await writeFile(path.join(artifactRoot, 'index.html'), '<!doctype html><script>window.boardLoaded = true;</script><h1>Board</h1>'); await writeFile(path.join(artifactRoot, 'board.js'), 'window.assetLoaded = true;');
   { await writeFile(path.join(directory, registration.root, 'configuration.json'), JSON.stringify({ version: 1, fields:options.noParams?[]: [{ name: 'title', type: 'string', defaultValue: 'Roadmap' }, { name: 'limit', type: 'number', defaultValue: 5 }, { name: 'visible', type: 'boolean', defaultValue: true }, { name: 'tags', type: 'string', multiple: true, defaultValue: ['a'] }] })); }
@@ -156,7 +155,7 @@ describe('Kanban CLI Web workspace', () => {
     await action('save', { values: { apiKey: 'updated-key' } });
     expect((await state()).kanban.configurations[0].values.apiKey).toBe('updated-key');
     vi.mocked(runtime.kanbanBridge!).mockResolvedValue({ apiKey: 'stored-project-key', secretLabel: 'business data' });
-    expect((await bridge('kv.getValue', { key: 'settings' })).value).toEqual({ apiKey: 'stored-project-key', secretLabel: 'business data' });
+    expect((await bridge('database.query', { database: 'data', schemaHash: 'a'.repeat(64), binding: {}, request: { operation: 'rows', model: 'Settings' } })).value).toEqual({ apiKey: 'stored-project-key', secretLabel: 'business data' });
   });
   it('exports complete configuration values even when they match a host credential or attachment shape', async () => {
     const {app,directory,post,state,action}=await fixture();
@@ -264,11 +263,11 @@ describe('Kanban CLI Web workspace', () => {
     const afterBuild = (await state()).kanban;
     expect(afterBuild.activeConfigurationId).toBe(beforeBuild.activeConfigurationId); expect(afterBuild.revision).toBe(beforeBuild.revision);
   });
-  it('uses the project installed Core for KV without silently creating a local knowledge repository', async () => {
+  it('rejects removed KV calls and requires Server resources without local fallback', async () => {
     const { app, bridge } = await fixture({ real: true });
     expect(app.project.kanban).toEqual({ artifactDir: '.', entry: 'index.html' });
-    expect((await bridge('kv.setValue', { key: 'board', value: { tasks: [1, 2] } })).ok).toBe(true);
-    expect((await bridge('kv.getValue', { key: 'board' })).value).toEqual({ tasks: [1, 2] });
+    expect((await bridge('kv.setValue', { key: 'board', value: { tasks: [1, 2] } })).ok).toBe(false);
+    expect((await bridge('database.resolve', { database: 'data', schemaHash: 'a'.repeat(64) })).ok).toBe(false);
     const document = await bridge('knowledge.createDocument', { title: 'Notes', markdown: 'First' });
     expect(document.ok).toBe(false);
   }, 20_000);

@@ -64,15 +64,6 @@ import {
   getServerLLMCredentials,
 } from "./provider/llm/index";
 import {
-  createKnowledgeDocument,
-  deleteKnowledgeDocument,
-  editKnowledgeDocument,
-  getKnowledgeDocument,
-  listKnowledgeDocuments,
-  readKnowledgeDocumentLines,
-  searchKnowledgeDocuments,
-} from "./knowledge/index";
-import {
   createTimerNode,
   endTimer,
 } from "./timer/index";
@@ -106,7 +97,6 @@ export const projectRuntimeApi = {
   createFileInputNode,
   addOutputItem,
   createDetailsOutputNode,
-  createKnowledgeDocument,
   createInputNode,
   createLLMNode,
   createLLMProviderFromConfig: createLLMProviderFromProjectConfig,
@@ -125,15 +115,12 @@ export const projectRuntimeApi = {
   createToolApprovalGate,
   createProjectCapabilityServer,
   createProjectCapabilityTools,
-  deleteKnowledgeDocument,
   defineEntrypoint: defineProjectEntrypoint,
   defineExecutor: defineProjectExecutor,
   defineProject,
-  editKnowledgeDocument,
   endTimer,
   getConfig,
   getProjectConfiguration,
-  getKnowledgeDocument,
   getRuntimeLocale,
   getRuntimePlatform,
   getLLMProvider,
@@ -148,14 +135,11 @@ export const projectRuntimeApi = {
   runNode,
   runSkillAction,
   runProjectCapabilityAction,
-  listKnowledgeDocuments,
   listProjectCapabilityToolIds,
   normalizeMcpServers,
-  readKnowledgeDocumentLines,
   runStreamNode,
   runWhile,
   runProject,
-  searchKnowledgeDocuments,
   HarnessError,
 };
 

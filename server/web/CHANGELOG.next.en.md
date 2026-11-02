@@ -1,5 +1,7 @@
 # Unreleased
 
+- Removed: project KV pages and legacy management calls. Relational databases and independent knowledge bases remain available through the Server resource catalog.
+
 - Replaced visible KV management with relational and knowledge resource catalogs, account grants, entry bindings, models, row CRUD, revision-aware documents and attachments, retaining draft protection.
 
 - Removed global and account memory, including tools, skills, authorization, service integration and settings controls.

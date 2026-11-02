@@ -11,7 +11,6 @@ export default defineConfig({
   // Inline them so deployed releases only load built JavaScript.
   noExternal: [
     "@steamharness/project-manifest",
-    "@steamharness/database-spaces",
     "@steamharness/service-urls",
     "@steamharness/project-access",
     "@steamharness/project-card-metadata",

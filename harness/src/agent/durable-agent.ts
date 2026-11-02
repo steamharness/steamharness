@@ -22,7 +22,7 @@ import { AGENT_SEARCH_RESUME_PROMPT } from "./web-search";
 import { AgentCompactionResponseError, DEFAULT_AGENT_COMPACTION_SETTINGS, estimateAgentContextTokens, readAgentContextUsage,
   findCompactionSplitIndex, shouldCompactAgent, summarizeAgentMessages, type AgentCompactionSettings } from "./compaction";
 import { createAgentStreamResumePrompt } from "./plan";
-import { openAgentStorage, type AgentStorageFactory } from "./storage";
+import type { AgentStorageFactory } from "./storage";
 import { AgentExtensionResources, mergeAgentRegistries } from "./extensions";
 import { DurableAgentSession } from "./session";
 import { durableContextMessages } from "./durable-context";
@@ -69,7 +69,6 @@ export interface DurableAgentOptions {
   session?: AgentSessionOptions;
   initialState: DurableAgentState;
   models: Models;
-  databasePath?: string;
   storage?: AgentStorageFactory;
   retryDelayMs?: number;
   compaction?: AgentCompactionSettings;
@@ -134,7 +133,6 @@ export class DurableAgent {
     let storage: Storage | undefined;
     try {
       if (this.options.storage) {
-        if (this.options.databasePath !== undefined) throw new Error("Agent storage and databasePath are mutually exclusive.");
         const opened = await this.options.storage.open();
         storage = opened.storage; this.releaseOwner = opened.release;
         const failed = () => {
@@ -145,11 +143,8 @@ export class DurableAgent {
         if (opened.failure?.aborted) { failed(); throw opened.failure.reason; }
         opened.failure?.addEventListener("abort", failed, { once: true });
         this.removeStorageFailureListener = () => opened.failure?.removeEventListener("abort", failed);
-      } else if (this.options.databasePath === undefined) {
-        storage = this.memoryStorage ??= new AgentMemoryStorage();
       } else {
-        const opened = await openAgentStorage(this.options.databasePath);
-        storage = opened.storage; this.releaseOwner = opened.release;
+        storage = this.memoryStorage ??= new AgentMemoryStorage();
       }
       const dynamicModels = new Proxy({} as Models, {
         get: (_target, key) => {
@@ -217,7 +212,7 @@ export class DurableAgent {
             this.state.thinkingLevel = snapshot.configuration.effort;
             await this.emit({ type: "project_session", snapshot } as unknown as AgentEvent);
           }, error => this.fail(error), this.models, storage, registry,
-          (loaded) => this.resources!.snapshot(registry.snapshot(), loaded, this.options.storage?.label ?? (this.options.databasePath ? "SQLite" : "Memory")),
+          (loaded) => this.resources!.snapshot(registry.snapshot(), loaded, this.options.storage?.label ?? "Memory"),
           (provider, model) => provider === this.state.model.provider && model === this.state.model.id
             ? this.state.contextWindow ?? this.state.model.contextWindow : this.models.getModel(provider, model)?.contextWindow);
         this.session.install(this.registry);

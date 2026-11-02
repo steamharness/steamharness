@@ -105,7 +105,7 @@ export async function generateDatabases(projectDirectory: string): Promise<Datab
   const validated = await validateDatabases(root);
   const directory = path.join(root, DATABASE_GENERATED_DIRECTORY);
   const current = await readDatabaseArtifactFiles(root).catch(() => undefined);
-  if (current && current.manifest.generator.engineVersion === engineVersion
+  if (current && current.manifest.generator.version === 2 && current.manifest.generator.engineVersion === engineVersion
     && JSON.stringify(current.manifest.databases) === JSON.stringify(validated.databases)
     && JSON.stringify(current.manifest.sources) === JSON.stringify(validated.sources)) {
     return { directory, databases: validated.databases, cached: true };
@@ -145,7 +145,7 @@ export async function generateDatabases(projectDirectory: string): Promise<Datab
       files.push({ path: file, size: bytes.length, sha256: databaseArtifactHash(bytes) });
     }
     const manifest: DatabaseArtifactManifest = { kind: "steamharness.database.artifacts", version: 1,
-      generator: { name: "steamharness.database", version: 1, engineVersion }, databases: validated.databases, sources: validated.sources, files };
+      generator: { name: "steamharness.database", version: 2, engineVersion }, databases: validated.databases, sources: validated.sources, files };
     await save(stage, DATABASE_ARTIFACT_MANIFEST, JSON.stringify(manifest, null, 2) + "\n");
     for (const [filename, hash] of Object.entries(validated.sources)) {
       if (databaseArtifactHash(await readFile(path.join(root, filename))) !== hash) throw new Error(`${filename} changed during generation. Retry the command.`);
@@ -191,9 +191,9 @@ async function generateDescriptor(stage: string, target: "node" | "browser", dat
   const reserved = new Set(["Client", "TransactionClient", "EngineClient", "Models", "Enums", "DatabaseDescriptor", "NodeDatabaseDescriptor", "DatabaseModelDelegate", "Decimal", "DbNull", "JsonNull", "AnyNull", "database"]);
   const modelNames = schema.metadata.models.map(model => model.name).filter(name => !reserved.has(name));
   const enumNames = schema.metadata.enums.map(item => item.name).filter(name => !reserved.has(name));
-  const delegates = schema.metadata.models.map(model => `  readonly ${JSON.stringify(model.delegate)}: DatabaseModelDelegate<EngineClient[${JSON.stringify(model.delegate)}]>;`).join("\n");
+  const delegates = schema.metadata.models.map(model => target === "node" ? `  readonly ${JSON.stringify(model.delegate)}: DatabaseModelDelegate<EngineClient[${JSON.stringify(model.delegate)}]>;` : `  readonly ${JSON.stringify(model.delegate)}: DatabaseTable<import("../engines/${schemaHash}/browser.js").${model.name}>;`).join("\n");
   const descriptorType = target === "node" ? `NodeDatabaseDescriptor<${JSON.stringify(alias)}, Client>` : `DatabaseDescriptor<${JSON.stringify(alias)}, Client, "browser">`;
-  await save(stage, `${target}/${alias}.ts`, `${banner}import type { DatabaseDescriptor, NodeDatabaseDescriptor, DatabaseModelDelegate } from "steamharness/database";
+  await save(stage, `${target}/${alias}.ts`, `${banner}import type { DatabaseDescriptor, NodeDatabaseDescriptor, DatabaseModelDelegate, DatabaseTable } from "steamharness/database";
 import type { PrismaClient as EngineClient } from "../engines/${schemaHash}/client.js";
 ${modelNames.length ? `export type { ${modelNames.join(", ")} } from "../engines/${schemaHash}/browser.js";` : ""}
 export type * as Models from "../engines/${schemaHash}/browser.js";
@@ -205,7 +205,7 @@ export interface TransactionClient {
 ${delegates}
 }
 export interface Client extends TransactionClient {
-  transaction<Result>(work: (transaction: TransactionClient) => Promise<Result>): Promise<Result>;
+${target === "node" ? "  transaction<Result>(work: (transaction: TransactionClient) => Promise<Result>): Promise<Result>;" : ""}
 }
 export const database: ${descriptorType} = Object.freeze({
   kind: "steamharness.database", version: 1, alias: ${JSON.stringify(alias)}, target: ${JSON.stringify(target)},

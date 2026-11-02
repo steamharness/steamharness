@@ -2,17 +2,7 @@ import { tool } from "@openai/agents";
 import { z } from "zod";
 import type { AgentToolCallSummary } from "./interface";
 
-interface KnowledgeDocumentsToolContext {
-  storage: {
-    local: {
-      persistentValue: {
-        getValue(key: string): Promise<unknown | undefined>;
-        setValue(key: string, value: unknown): Promise<void>;
-        updateValue(key: string, updater: (current: unknown | undefined) => unknown): Promise<unknown>;
-      };
-    };
-  };
-}
+type KnowledgeDocumentsToolContext = Pick<import("steamharness").NodeContext, "knowledgeBases">;
 
 type KnowledgeDocumentsAction = "list" | "get" | "create" | "edit" | "delete" | "search" | "read_lines";
 
@@ -39,7 +29,7 @@ export function createKnowledgeDocumentsTool(input: {
   return tool({
     name: "knowledge_documents",
     description: [
-      "Manage PersistentValue-backed project markdown knowledge documents.",
+      "Manage PostgreSQL-backed project markdown knowledge documents.",
       "Use action=list to see summaries, get to read one document, create/edit/delete to change documents, search to find matching markdown lines, and read_lines for a 1-based inclusive line range.",
     ].join(" "),
     parameters: z.object({
@@ -58,7 +48,7 @@ export function createKnowledgeDocumentsTool(input: {
       maxMarkdownLength: z.number().int().min(100).max(20_000).optional(),
     }),
     async execute(args) {
-      // Project knowledge documents use PersistentValue-backed helpers and
+      // Project knowledge documents use PostgreSQL-backed helpers and
       // never fall back to ordinary local KV.
       const result = await runKnowledgeDocumentsAction(input.context, args);
       input.toolEvents.push({ name: "knowledge_documents", status: "completed" });

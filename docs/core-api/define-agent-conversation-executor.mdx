@@ -59,7 +59,7 @@ Effort 默认 `high`，`/plan` 默认关闭。模型默认或 `modelSource: "use
 
 两点例外：只调用了工具、没有任何正文的一轮不写空的助手消息；带 `hostInput` 的一轮（OpenAI / Responses 网关）完全不写 conversation，因为网关自己保管这段历史——与内置 Conversation 项目的处理一致。
 
-**多轮上下文和未完成任务由 Pi Durable 保存。** Core 按项目、会话和 `sessionKey` 选择 SQLite 文件，按提交保存消息、工具意图与结果、审批等待和用量身份。相同 `runId` 恢复同一请求；已完成请求只重建自身的输出。旧 KV transcript 不再读取，存储失败终止运行。多个 Agent 节点须使用不同 `sessionKey`；`hostInput` 网关运行默认使用内存存储。详见 [createAgentNode](./create-agent-node.mdx)。
+**多轮上下文和未完成任务由 Pi Durable 保存。** Core 按当前账号、项目、入口、会话和 `sessionKey` 选择 Server PostgreSQL 会话，按提交保存消息、工具意图与结果、审批等待和用量身份。相同 `runId` 恢复同一请求；已完成请求只重建自身的输出。旧 KV transcript 不再读取，存储失败终止运行。多个 Agent 节点须使用不同 `sessionKey`；`hostInput` 网关运行默认使用内存存储。详见 [createAgentNode](./create-agent-node.mdx)。
 
 `defineExecutor` 选定 `createAgentConversationProject` 作为 `workflow` 或 `coreAgent` 时，运行时与静态结构报告都会自动继承 `conversation.recovery: { enabled: true }`，并保留项目自己的对话展示配置。配置 `session` 或 `createSession` 时同时继承 durable。CLI Web / Studio 强退重开包含业务任务的会话后，先暂停批次和用户队列，明确输入清理旧执行树，项目显式恢复批次。普通会话按原 `runId` 恢复；只有成功的用户轮次才能自动推进待发队列，后台任务报告不能触发发送。
 

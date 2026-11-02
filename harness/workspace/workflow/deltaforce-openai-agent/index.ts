@@ -298,7 +298,6 @@ async function runDeltaforceOpenAIAgents(
     {
       name: "OpenAI Agents core",
       conversationMode: "shared-readonly",
-      kvMode: "isolated",
       outputVisibility: "hidden",
       metadata: {
         title: "OpenAI Agents core",

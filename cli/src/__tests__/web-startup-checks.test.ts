@@ -3,7 +3,6 @@ import { afterEach, expect, it, vi } from 'vitest';
 import { mkdtemp, realpath, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
-import { LocalDatabaseRegistry, createLocalDatabaseResolver, createDatabasesContext } from 'steamharness';
 import { startEntryWebServer } from './web-test-storage';
 import { ProjectServerConnection } from '../web/project-server-state';
 import { projectStartupInspector } from '../web/project-startup-checks';
@@ -36,12 +35,11 @@ async function fixture(kind: ProjectKind, database = true) {
   const post = (body: object) => fetch(`${app.origin}/api/message`, { method: 'POST', headers: { Authorization: `Bearer ${capability}`, 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
   const state = () => post({ type: 'ready' }).then(r => r.json()).then(r => r.messages[0]);
   const settled = async () => { let result: any; await vi.waitFor(async () => { result = await state(); expect(result.serverData.checking).toBe(false); }); return result; };
-  return { app, runtime, post, state, settled, directory, project, pkg, registry: new LocalDatabaseRegistry() };
+  return { app, runtime, post, state, settled, directory, project, pkg };
 }
 it.each(['workflow', 'conversation', 'kanban'] as const)('opens an unbound %s knowledge requirement without creating local data', async kind => {
   const f = await fixture(kind);
   expect((await f.settled()).serverData).toMatchObject({blocking:true, checks:[{stage:'database',status:'action-required',database:'data'}]});
-  expect(f.registry.read().spaces).toEqual([]);
   if (kind !== 'kanban') expect((await f.post(kind === 'workflow' ? {type:'workflow-run',params:{}} : {type:'send',text:'Run',params:{},attachments:[]})).status).toBe(400);
   expect(f.runtime.run).not.toHaveBeenCalled();
 });
@@ -51,7 +49,7 @@ it.each(['workflow', 'conversation'] as const)('keeps %s drafts when a removed l
   expect((await f.post({type:'databases',action:'request',host:'local',alias:'data',target:{kind:'create',name:'Data'}})).status).toBe(400);
   const state = await f.state();
   if (kind === 'workflow') expect(state.drafts[''].values.subject).toBe('Keep'); else expect(state.sessions[0].draft.text).toBe('Keep');
-  expect(f.registry.read().spaces).toEqual([]); expect(f.runtime.run).not.toHaveBeenCalled();
+  expect(f.runtime.run).not.toHaveBeenCalled();
 });
 it.each(['workflow', 'conversation', 'kanban'] as const)('runs %s without a declared knowledge resource', async kind => {
   const f = await fixture(kind, false);

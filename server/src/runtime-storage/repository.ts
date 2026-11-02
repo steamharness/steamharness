@@ -23,6 +23,32 @@ export class RuntimeStorageRepository {
   init(): Promise<void> { return migrateRuntimeStorage(this.pool, this.options.schema); }
   close(): Promise<void> { return this.pool.end(); }
 
+  async getSystemTokenUsage(options: { pageSize?: number; cursor?: string } = {}): Promise<import('../storage').TokenUsagePage> {
+    const pageSize = Math.min(100, Math.max(1, options.pageSize ?? 20));
+    let after = '';
+    if (options.cursor) {
+      try { after = JSON.parse(Buffer.from(options.cursor, 'base64url').toString('utf8')).projectId; }
+      catch { throw new RuntimeStorageError('RUNTIME_STORAGE_INVALID_REQUEST', 'Invalid usage cursor.'); }
+      if (typeof after !== 'string' || !/^[0-9a-f-]{36}$/.test(after)) throw new RuntimeStorageError('RUNTIME_STORAGE_INVALID_REQUEST', 'Invalid usage cursor.');
+    }
+    const source = `${this.name}.runtime_usage u join ${this.name}.workspaces w on w.id=u.workspace_id`;
+    const system = (await this.pool.query(`select ${usageProjection} from ${source}`)).rows[0];
+    const total = Number((await this.pool.query(`select count(distinct w.project_id) as total from ${source}`)).rows[0].total);
+    const rows = (await this.pool.query(`select w.project_id,${usageProjection} from ${source} where w.project_id>$1 group by w.project_id order by w.project_id limit $2`, [after, pageSize + 1])).rows;
+    const hasMore = rows.length > pageSize;
+    const projects = rows.slice(0, pageSize).map(row => ({ projectId: row.project_id, total: usageAggregate(row), updatedAt: row.updated_at ?? undefined }));
+    return { systemTotal: usageAggregate(system), projects, total, hasMore, ...(hasMore ? { nextCursor: Buffer.from(JSON.stringify({ projectId: projects.at(-1)!.projectId })).toString('base64url') } : {}) };
+  }
+
+  async getProjectTokenUsage(options: { projectId: string; conversationId?: string; includeEntries?: boolean }): Promise<import('../storage').TokenUsageDetail> {
+    const source = `${this.name}.runtime_usage u join ${this.name}.workspaces w on w.id=u.workspace_id`;
+    const projectTotal = usageAggregate((await this.pool.query(`select ${usageProjection} from ${source} where w.project_id=$1`, [options.projectId])).rows[0]);
+    const conversationTotal = options.conversationId === undefined ? undefined : usageAggregate((await this.pool.query(`select ${usageProjection} from ${source} where w.project_id=$1 and u.conversation_id=$2`, [options.projectId, options.conversationId])).rows[0]);
+    // The public inspector already bounds history to a selected conversation.
+    const entries = options.includeEntries ? (await this.pool.query(`select u.record from ${source} where w.project_id=$1 and ($2::text is null or u.conversation_id=$2) order by u.record::jsonb->>'createdAt',u.id limit 1000`, [options.projectId, options.conversationId ?? null])).rows.map(row => JSON.parse(row.record)) : undefined;
+    return { projectId: options.projectId, projectTotal, ...(options.conversationId === undefined ? {} : { conversationId: options.conversationId, conversationTotal }), ...(entries ? { entries } : {}) };
+  }
+
   async registerWorkspace(userId: string, input: RuntimeWorkspaceInput): Promise<OwnedRuntimeWorkspace> {
     const result = await this.pool.query(`insert into ${this.name}.workspaces
       (id,owner_user_id,kind,project_id,entry_id,local_key) values ($1,$2,$3,$4,$5,$6)
@@ -190,3 +216,13 @@ function workspace(row: Record<string, any>): OwnedRuntimeWorkspace {
 }
 function hash(value: string): string { return createHash("sha256").update(value).digest("hex"); }
 function missing(): RuntimeStorageError { return new RuntimeStorageError("RUNTIME_STORAGE_NOT_FOUND", "Runtime storage does not exist for this account."); }
+
+const usageProjection = `coalesce(sum(input_tokens),0) as input_tokens,coalesce(sum(output_tokens),0) as output_tokens,
+  coalesce(sum(total_tokens),0) as total_tokens,coalesce(sum(reasoning_tokens),0) as reasoning_tokens,
+  coalesce(sum(cached_input_tokens),0) as cached_input_tokens,coalesce(sum(cache_creation_tokens),0) as cache_creation_tokens,
+  count(*) as calls,max(u.record::jsonb->>'createdAt') as updated_at`;
+function usageAggregate(row: Record<string, any>): import('steamharness').TokenUsageAggregate {
+  return { inputTokens: Number(row.input_tokens), outputTokens: Number(row.output_tokens), totalTokens: Number(row.total_tokens),
+    reasoningTokens: Number(row.reasoning_tokens), cachedInputTokens: Number(row.cached_input_tokens), cacheCreationTokens: Number(row.cache_creation_tokens),
+    calls: Number(row.calls), ...(row.updated_at ? { updatedAt: row.updated_at } : {}) };
+}

@@ -24,7 +24,7 @@ test("Kanban cards accept an independent named configuration target", async () =
     target: { projectId:context.projectId,entryId:context.entryId,source: "current", configurationId: "configuration-one" }, preview: true };
   assert.deepEqual(await runPresentationCardAction(context, args), args);
   await assert.rejects(() => runPresentationCardAction(context, {
-    ...args, kind: "kv", target: { ...args.target, scope: "project", key: "map" },
+    ...args, kind: "knowledge", target: { ...args.target, scope: "project", key: "map" },
   }), /invalid field/u);
 });
 

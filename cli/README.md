@@ -32,10 +32,7 @@ Hosts can set `deferProjectId: true` to create complete files immediately with a
 without invoking the allocator. Studio uses this mode to open the selected window first;
 dependency installation, ID registration, and validation then run in that project window.
 
-Workflow and Conversation projects include `run:json`; Kanban projects include only `dev`
-and `inspect`. Task boards use `databases.get('data').kv` after an approved database is
-bound. Unbound boards display a temporary mode, and named configurations keep separate
-task data. Failed reads disable editing to avoid overwriting saved tasks.
+Workflow and Conversation projects include `run:json`; Kanban projects generate database descriptors and build their static HTML. Task boards use `databases.connect(data)` with a generated Browser descriptor and persist Task rows in a bound relational resource. Each configuration filters its own rows. Unbound resources and failed reads disable editing; conflicts preserve unsaved work for explicit recovery.
 
 项目模板由上述清单统一维护，提供三种最小项目及四个本地示例。生成模块校验名称、路径和精确版本，
 独占创建目录并分配 UUID；宿主负责安装依赖、展示进度和打开项目。Studio 使用同步副本进行独立构建。

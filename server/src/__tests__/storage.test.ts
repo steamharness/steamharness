@@ -1,3 +1,4 @@
+import type { RuntimeStorageRepository } from "../runtime-storage/repository";
 import { writeProjectFixture } from '../../scripts/test-project-fixture.mjs';
 import {resolveResourceAccess} from "@steamharness/project-access";
 import assert from "node:assert/strict";
@@ -9,13 +10,12 @@ import { gzipSync } from "node:zlib";
 import test from "node:test";
 import { defaultProjectCardIcon, getProjectCardColorContrastRatio, type ProjectCardMetadata } from "@steamharness/project-card-metadata";
 import { Header } from "tar";
-import type { KVNamespaceLockInput, KVStore, KVStoreGetInput, KVStoreSetInput } from "steamharness";
 import { AccountRepository } from "../account-db";
 import {
   ArtifactStorage,
   DatabaseRepository,
 } from "../persistence";
-import { validateArchiveEntries, validateTarArchiveEntries, Storage, type PreparationJob, type KVEntryDetail, type KnowledgeDocumentListItem, type TokenUsagePage } from "../storage";
+import { validateArchiveEntries, validateTarArchiveEntries, Storage, type PreparationJob, type TokenUsagePage } from "../storage";
 
 // assertProjectId now requires UUID format; use fixed UUID fixtures
 const DEMO_WF_ID = "00000000-0000-4000-8000-000000000001";
@@ -338,116 +338,6 @@ test("Storage.saveManagedFiles rolls back earlier files after a filesystem failu
   }
 });
 
-test("DatabaseRepository.getSystemTokenUsage aggregates project totals", async () => {
-  const repository = new DatabaseRepository("postgresql://example.invalid/postgres");
-  const queries: Array<{ sql: string; params: unknown[] }> = [];
-  const pool = Reflect.get(repository, "pool") as {
-    query: (sql: string, params?: unknown[]) => Promise<{ rows: unknown[] }>;
-    end: () => Promise<void>;
-  };
-  const originalQuery = pool.query;
-  const originalEnd = pool.end;
-
-  pool.query = async (sql: string, params: unknown[] = []) => {
-    queries.push({ sql, params });
-    if (/select value\s+from project_storage/.test(sql)) {
-      return { rows: [{ value: createTokenUsageAggregate(300) }] };
-    }
-    if (/select count\(\*\) as total/.test(sql)) {
-      return { rows: [{ total: "1" }] };
-    }
-    return {
-      rows: [
-        {
-          project_id: DEMO_WF_ID,
-          value: createTokenUsageAggregate(100),
-          updated_at: new Date("2026-05-22T00:00:00.000Z"),
-          updated_at_cursor: "2026-05-22T00:00:00.000000Z",
-        },
-      ],
-    };
-  };
-  pool.end = async () => {};
-
-  try {
-    const page = await repository.getSystemTokenUsage({
-      pageSize: 10,
-    });
-
-    assert.equal(page.systemTotal.totalTokens, 300);
-    assert.equal(page.projects[0]?.projectId, DEMO_WF_ID);
-    assert.equal(page.projects[0]?.total.totalTokens, 100);
-    const projectQuery = queries.find((item) => /select\s+project_id,\s+value/.test(item.sql));
-    assert.ok(projectQuery);
-    assert.match(projectQuery.sql, /storage_kind = 'kv'/);
-    assert.match(projectQuery.sql, /scope = 'project'/);
-    assert.match(projectQuery.sql, /key = \$1/);
-    assert.deepEqual(projectQuery.params, ["tokenUsage.total", 11]);
-  } finally {
-    pool.query = originalQuery;
-    pool.end = originalEnd;
-    await pool.end();
-  }
-});
-
-test("DatabaseRepository.getProjectTokenUsage reads project and conversation aggregates", async () => {
-  const repository = new DatabaseRepository("postgresql://example.invalid/postgres");
-  const queries: Array<{ sql: string; params: unknown[] }> = [];
-  const pool = Reflect.get(repository, "pool") as {
-    query: (sql: string, params?: unknown[]) => Promise<{ rows: unknown[] }>;
-    end: () => Promise<void>;
-  };
-  const originalQuery = pool.query;
-  const originalEnd = pool.end;
-
-  pool.query = async (sql: string, params: unknown[] = []) => {
-    queries.push({ sql, params });
-    if (/key like \$3/.test(sql)) {
-      return {
-        rows: [
-          {
-            value: {
-              id: "run-1.1",
-              projectId: DEMO_WF_ID,
-              runId: "run-1",
-              conversationId: "Thread-A",
-              sequence: 1,
-              createdAt: "2026-05-22T00:00:00.000Z",
-              inputTokens: 10,
-              outputTokens: 20,
-              totalTokens: 30,
-              reasoningTokens: 0,
-              cachedInputTokens: 0,
-            },
-          },
-        ],
-      };
-    }
-    return { rows: [{ value: createTokenUsageAggregate(30) }] };
-  };
-  pool.end = async () => {};
-
-  try {
-    const detail = await repository.getProjectTokenUsage({
-      projectId: DEMO_WF_ID,
-      conversationId: "Thread-A",
-      includeEntries: true,
-    });
-
-    assert.equal(detail.projectTotal.totalTokens, 30);
-    assert.equal(detail.conversationTotal?.totalTokens, 30);
-    assert.equal(detail.entries?.length, 1);
-    assert.equal(detail.entries?.[0]?.cacheCreationTokens, 0);
-    const entriesQuery = queries.find((item) => /key like \$3/.test(item.sql));
-    assert.ok(entriesQuery);
-    assert.deepEqual(entriesQuery.params, [DEMO_WF_ID, "Thread-A", "tokenUsage.entry.%"]);
-  } finally {
-    pool.query = originalQuery;
-    pool.end = originalEnd;
-    await pool.end();
-  }
-});
-
 test("Storage token usage inspection requires PostgreSQL storage", async () => {
   const dataRoot = await mkdtemp(path.join(tmpdir(), "workflow-storage-token-"));
   const storage = new Storage({
@@ -485,12 +375,12 @@ test("Storage.getSystemTokenUsage forwards clamped pagination", async () => {
     serverRoot: process.cwd(),
     repoRoot: process.cwd(),
     dataRoot,
-    db: {
+    runtimeStorage: {
       getSystemTokenUsage: async (options: unknown) => {
         calls.push(options);
         return page;
       },
-    } as unknown as DatabaseRepository,
+    } as unknown as RuntimeStorageRepository,
   });
 
   try {
@@ -516,8 +406,8 @@ test("Storage.getProjectTokenUsage preserves conversation filter case", async ()
     serverRoot: process.cwd(),
     repoRoot: process.cwd(),
     dataRoot,
-    db: {
-      getProject: async () => createDbProjectRecord(DEMO_WF_ID, null),
+    db: { getProject: async () => createDbProjectRecord(DEMO_WF_ID, null) } as unknown as DatabaseRepository,
+    runtimeStorage: {
       getProjectTokenUsage: async (options: unknown) => {
         calls.push(options);
         return {
@@ -525,7 +415,7 @@ test("Storage.getProjectTokenUsage preserves conversation filter case", async ()
           projectTotal: createTokenUsageAggregate(0),
         };
       },
-    } as unknown as DatabaseRepository,
+    } as unknown as RuntimeStorageRepository,
   });
 
   try {
@@ -1316,60 +1206,6 @@ async function existsPath(filePath: string): Promise<boolean> {
   } catch {
     return false;
   }
-}
-
-function createKVCursor(cursor: {
-  updatedAt: string;
-  scope: string;
-  projectId: string;
-  conversationId: string;
-  key: string;
-}): string {
-  return Buffer.from(JSON.stringify(cursor), "utf8").toString("base64url");
-}
-
-function createKVRow(key: string, updatedAtCursor: string, overrides: Partial<Record<string, unknown>> = {}): Record<string, unknown> {
-  const value = Object.prototype.hasOwnProperty.call(overrides, "value") ? overrides.value : undefined;
-  const preview = typeof overrides.value_preview === "string"
-    ? overrides.value_preview
-    : value === undefined
-    ? JSON.stringify({ key })
-    : JSON.stringify(value);
-  const row: Record<string, unknown> = {
-    storage_kind: "kv",
-    scope: "conversation",
-    project_id: DEMO_WF_ID,
-    conversation_id: "thread-a",
-    key,
-    value_type: "object",
-    value_size_bytes: 16,
-    value_preview: preview,
-    updated_at: new Date("2026-05-20T00:00:00.123Z"),
-    updated_at_cursor: updatedAtCursor,
-    last_project_id: DEMO_WF_ID,
-    last_run_id: "RUN-A",
-    last_conversation_id: "thread-a",
-  };
-  if (value !== undefined) {
-    row.value = value;
-  }
-  return { ...row, ...overrides };
-}
-
-function createKVSummary(key: string, overrides: Partial<KVEntryDetail> = {}): KVEntryDetail {
-  return {
-    storageKind: "kv",
-    scope: "conversation",
-    key,
-    value: { key },
-    valueType: "object",
-    valueSizeBytes: 16,
-    valuePreview: JSON.stringify({ key }),
-    projectId: DEMO_WF_ID,
-    conversationId: "thread-a",
-    updatedAt: "2026-05-20T00:00:00.123Z",
-    ...overrides,
-  };
 }
 
 function createTokenUsageAggregate(totalTokens: number) {

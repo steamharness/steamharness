@@ -169,14 +169,7 @@ export async function syncWorkspaceProjects(options) {
       const client = await pool.connect();
       try {
         await client.query("begin");
-        // 旧版 non-UUID 项目不再兼容保留，连同 KV/知识库引用一起清掉，
-        // 避免 workspace UUID 项目上传后界面和统计继续混入历史脏数据。
-        await client.query(
-          `delete from project_kv_entries
-            where project_name_key = any($1::text[])
-               or last_project_name = any($1::text[])`,
-          [legacyProjectIds],
-        );
+        // 删除不再支持的 non-UUID 项目及其关联版本。
         await client.query(
           "delete from projects where id = any($1::text[])",
           [legacyProjectIds],

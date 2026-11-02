@@ -95,7 +95,7 @@ export const conversationKnowledgeProject = steamharness.defineProject<Conversat
       messages: nextState.messages,
     });
 
-    // Each conversation maps to one PersistentValue-backed knowledge document.
+    // Each conversation maps to one PostgreSQL-backed knowledge document.
     // dry-run keeps preview-only runs from writing to either configured backend.
     if (!parsed.dryRun) {
       const existing = await context.knowledgeBases.get("data").getDocument(draft.documentId);
@@ -146,7 +146,7 @@ export const executor = steamharness.defineExecutor<ConversationKnowledgeInput, 
           type: "boolean",
           required: false,
           defaultValue: "false",
-          description: "Preview the document without calling PersistentValue-backed knowledge helpers.",
+          description: "Preview the document without calling PostgreSQL-backed knowledge helpers.",
         },
       ],
     },

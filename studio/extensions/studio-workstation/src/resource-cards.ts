@@ -2,7 +2,7 @@ import type { OutputItem } from './workflow-types';
 
 export interface ResourceCard {
   id: string;
-  kind: 'kv' | 'knowledge' | 'project' | 'browser' | 'file' | 'kanban';
+  kind: 'knowledge' | 'project' | 'browser' | 'file' | 'kanban';
   title: string;
   target: Record<string, string>;
   itemId?: string;
@@ -33,9 +33,7 @@ export function conversationResourceCards(items: OutputItem[], projectId: string
     if (!descriptor) {
       const target: Record<string, unknown> = { source: 'local', projectId, conversationId };
       let kind: ResourceCard['kind'] | undefined;
-      if (tool === 'workflow-kv_kv_store' || /workflow-desktop_(?:read|list|write)_project_kv/.test(tool)) {
-        kind = 'kv'; Object.assign(target, { projectId: input.projectId ?? projectId, key: input.key, scope: input.scope ?? 'project', conversationId: input.conversationId ?? conversationId });
-      } else if (tool === 'workflow-knowledge_knowledge_documents' || /workflow-desktop_(?:query|mutate)_project_knowledge/.test(tool)) {
+      if (tool === 'workflow-knowledge_knowledge_documents' || /workflow-desktop_(?:query|mutate)_project_knowledge/.test(tool)) {
         kind = 'knowledge'; Object.assign(target, { projectId: input.projectId ?? projectId, documentId: input.documentId ?? record(output?.document)?.id });
       } else if (tool === 'read' || tool === 'workflow-desktop_open_dock_tool' && input.tool === 'files') {
         kind = 'file'; target.filePath = input.filePath ?? input.path;
@@ -50,7 +48,7 @@ export function conversationResourceCards(items: OutputItem[], projectId: string
       descriptor = { kind, target, title: record(output?.document)?.title };
     }
     const kind = descriptor.kind as ResourceCard['kind'];
-    if (!['kv', 'knowledge', 'project', 'browser', 'file', 'kanban'].includes(kind)) { continue; }
+    if (!['knowledge', 'project', 'browser', 'file', 'kanban'].includes(kind)) { continue; }
     const target = Object.fromEntries(Object.entries(record(descriptor.target) ?? {}).filter((entry): entry is [string, string] => typeof entry[1] === 'string' && entry[1].length < 8192));
     if (target.source === 'current') { target.source = 'local'; target.projectId ??= projectId; }
     if (target.source && !['local', 'server'].includes(target.source)) { continue; }

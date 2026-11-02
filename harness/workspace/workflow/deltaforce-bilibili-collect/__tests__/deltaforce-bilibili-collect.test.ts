@@ -571,7 +571,6 @@ describe("deltaforce-bilibili-collect workflow runtime", () => {
 
 async function runWithMockConfiguration(options: {
   args: string[];
-  persistentValueStore?: KVStore;
   knowledgeBases?: ReturnType<typeof createExampleKnowledgeBases>;
   values?: Record<string, string>;
   onRuntimeEvent?(event: RuntimeEvent): Promise<void> | void;
@@ -586,14 +585,12 @@ async function runWithMockConfiguration(options: {
       storage: {
         host: "local",
         local: {
-          kvStoreDir,
-          persistentValueStore: options.persistentValueStore,
         },
       },
       fileStore: createMemoryFileStore(),
       maxNodeExecutions: 20,
       onRuntimeEvent: options.onRuntimeEvent,
-    }, options.persistentValueStore, options.knowledgeBases);
+    }, undefined, options.knowledgeBases);
   } finally {
     await rm(kvStoreDir, { recursive: true, force: true });
   }

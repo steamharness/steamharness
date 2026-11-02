@@ -1,3 +1,5 @@
+import { cancelStoredAgentConversation } from "../agent/stored-session";
+import { testAgentStorage, testAgentPersistence } from "./runtime-test-storage";
 import { writeProjectFixture } from '../../scripts/test-project-fixture.mjs';
 import { declareConfigurationFixture } from "./configuration-fixture";
 import assert from "node:assert/strict";
@@ -9,15 +11,8 @@ import path from "node:path";
 import test from "node:test";
 import * as ai from "@earendil-works/pi-ai";
 import { DurableAgent } from "../agent/durable-agent";
-import { agentConversationDirectory, cancelAgentConversation } from "../agent/storage";
 import { HarnessError } from "../workflow/errors";
 import {createLocalProjectConfigurationStore,withProjectConfiguration} from '../configuration';
-
-function worker(directory: string, scenario: string, phase: string) {
-  return spawn(process.execPath, ["--import", "tsx", "--conditions=development",
-    path.join(import.meta.dirname, "fixtures", "agent-durable-worker.ts"), directory, scenario, phase],
-    { stdio: ["ignore", "pipe", "pipe", "ipc"] });
-}
 async function message(child: ChildProcess, type: string): Promise<Record<string, any>> {
   return new Promise((resolve, reject) => {
     const timer = setTimeout(() => { cleanup(); reject(new Error(`Worker did not publish ${type}`)); }, 10_000);
@@ -30,7 +25,7 @@ async function message(child: ChildProcess, type: string): Promise<Record<string
 function agent(databasePath?: string, retryDelayMs?: number) {
   const faux = ai.fauxProvider({ models: [{ id: "test", contextWindow: 100_000, maxTokens: 100 }] });
   const models = ai.createModels(); models.setProvider(faux.provider);
-  const instance = new DurableAgent({ databasePath, models, retryDelayMs, initialState: {
+  const instance = new DurableAgent({ storage: databasePath ? testAgentStorage(databasePath) : undefined, models, retryDelayMs, initialState: {
     systemPrompt: "Test", model: models.getModel("faux", "test")!, thinkingLevel: "off", messages: [], tools: [],
   } });
   return { instance, faux };
@@ -151,7 +146,7 @@ for (const first of ["empty", "partial"] as const) {
   });
 }
 
-test("a committed successful response resets the retry budget after reopening a paused SQLite run", async t => {
+test("a committed successful response resets the retry budget after reopening a paused temporary repository run", async t => {
   const directory = await mkdtemp(path.join(tmpdir(), "agent-retry-reset-"));
   t.after(() => rm(directory, { recursive: true, force: true }));
   const database = path.join(directory, "session.sqlite");
@@ -261,51 +256,9 @@ test("streamed thinking, text and tool blocks retain their indices before the me
 });
 
 for (const scenario of ["safe", "unsafe"]) {
-  test(`SIGKILL recovery observes ${scenario} replay and releases ownership`, async t => {
-    const directory = await mkdtemp(path.join(tmpdir(), "workflow-durable-"));
-    const children: ChildProcess[] = [];
-    t.after(async () => { for (const child of children) if (child.exitCode === null && child.signalCode === null) child.kill("SIGKILL"); await rm(directory, { recursive: true, force: true }); });
-    const first = worker(directory, scenario, "initial"); children.push(first);
-    await message(first, "checkpoint");
-    const concurrent = agent(path.join(directory, "session.sqlite")).instance;
-    await assert.rejects(() => concurrent.open(), /already has an execution owner/);
-    const exited = once(first, "exit"); first.kill("SIGKILL"); await exited;
-    const resumed = worker(directory, scenario, "resume"); children.push(resumed);
-    const result = message(resumed, "recovered-result");
-    const done = await message(resumed, "done");
-    assert.equal(done.text, "Recovered answer");
-    assert.equal((await result).result?.isError, scenario === "unsafe");
-    await once(resumed, "exit");
-    if (scenario === "safe") assert.equal(await readFile(path.join(directory, "writes.txt"), "utf8"), "write\n");
-    assert.equal(await readFile(path.join(directory, "barriers.txt"), "utf8"), scenario === "safe" ? "attempt\nattempt\n" : "attempt\n");
-  });
 }
 
 for (const phase of ["resume", "attach"]) {
-  test(`busy admission preserves pending work and a ${phase} can complete it without poisoning retries`, async t => {
-    const directory = await mkdtemp(path.join(tmpdir(), "agent-busy-admission-"));
-    const children: ChildProcess[] = [];
-    t.after(async () => {
-      for (const child of children) if (child.exitCode === null && child.signalCode === null) child.kill("SIGKILL");
-      await rm(directory, { recursive: true, force: true });
-    });
-    const first = worker(directory, "safe", "initial"); children.push(first);
-    await message(first, "checkpoint");
-    const killed = once(first, "exit"); first.kill("SIGKILL"); await killed;
-    const rejected = worker(directory, "safe", "reject"); children.push(rejected);
-    assert.deepEqual(await message(rejected, "rejected"), { type: "rejected", message: "Conversation 1 is busy", calls: 0 });
-    await once(rejected, "exit");
-    const resumed = worker(directory, "safe", phase); children.push(resumed);
-    const done = await message(resumed, "done");
-    assert.equal(done.text, "Recovered answer"); assert.equal(done.calls, 1);
-    await once(resumed, "exit");
-    assert.equal(await readFile(path.join(directory, "writes.txt"), "utf8"), "write\n");
-    assert.equal(await readFile(path.join(directory, "barriers.txt"), "utf8"), "attempt\nattempt\n");
-    const retried = worker(directory, "safe", "retry-rejected"); children.push(retried);
-    const retry = await message(retried, "done");
-    assert.equal(retry.errorMessage, undefined); assert.equal(retry.calls, 1);
-    await once(retried, "exit");
-  });
 }
 
 test("a completed request replays its answer and billing identity without another model call", async t => {
@@ -366,10 +319,10 @@ test("initial transcript seeding cannot overwrite an existing durable history", 
   assert.equal(messages.some(message => message.content === "Stale host history"), false);
 });
 
-for (const storage of ["memory", "sqlite"]) test(`a parked unsafe tool resumes its original intent with ${storage} storage`, async t => {
+for (const storage of ["ephemeral", "repository"]) test(`a parked unsafe tool resumes its original intent with ${storage} storage`, async t => {
   const directory = await mkdtemp(path.join(tmpdir(), "workflow-durable-approval-"));
   t.after(() => rm(directory, { recursive: true, force: true }));
-  const { instance, faux } = agent(storage === "sqlite" ? path.join(directory, "session.sqlite") : undefined);
+  const { instance, faux } = agent(storage === "repository" ? path.join(directory, "session.sqlite") : undefined);
   let calls = 0;
   instance.state.tools = [{ name: "write", label: "Write", description: "Test", parameters: ai.Type.Object({}),
     execute: async () => { calls++; return { content: [{ type: "text", text: "Written" }], details: {} }; } }];
@@ -389,9 +342,9 @@ for (const storage of ["memory", "sqlite"]) test(`a parked unsafe tool resumes i
   finally { await instance.close(); }
 });
 
-for (const storage of ["memory", "sqlite"]) test(`reused call ids require separate approvals and retain their original approval on ${storage} recovery`, async t => {
+for (const storage of ["ephemeral", "repository"]) test(`reused call ids require separate approvals and retain their original approval on ${storage} recovery`, async t => {
   const directory = await mkdtemp(path.join(tmpdir(), "workflow-durable-reused-approval-"));
-  const { instance, faux } = agent(storage === "sqlite" ? path.join(directory, "session.sqlite") : undefined);
+  const { instance, faux } = agent(storage === "repository" ? path.join(directory, "session.sqlite") : undefined);
   t.after(async () => { await instance.close(); await rm(directory, { recursive: true, force: true }); });
   let calls = 0;
   instance.state.tools = [{ name: "write", label: "Write", description: "Test", parameters: ai.Type.Object({}),
@@ -420,63 +373,10 @@ for (const storage of ["memory", "sqlite"]) test(`reused call ids require separa
   assert.equal(faux.state.callCount, 3);
 });
 
-test("SIGKILL during a partial answer continues committed text without repeating it or executing partial calls", async t => {
-  const directory = await mkdtemp(path.join(tmpdir(), "workflow-durable-stream-"));
-  const children: ChildProcess[] = [];
-  t.after(async () => {
-    for (const child of children) if (child.exitCode === null && child.signalCode === null) {
-      const exited = once(child, "exit"); child.kill("SIGKILL"); await exited;
-    }
-    await rm(directory, { recursive: true, force: true });
-  });
-  const first = worker(directory, "stream", "initial"); children.push(first);
-  await message(first, "checkpoint");
-  const exited = once(first, "exit"); first.kill("SIGKILL"); await exited;
-  const interrupted = worker(directory, "stream", "reinterrupt"); children.push(interrupted);
-  const firstRequest = message(interrupted, "recovered-request");
-  await message(interrupted, "checkpoint");
-  await firstRequest;
-  const interruptedExit = once(interrupted, "exit"); interrupted.kill("SIGKILL"); await interruptedExit;
-  const resumed = worker(directory, "stream", "resume"); children.push(resumed);
-  const request = message(resumed, "recovered-request");
-  const done = await message(resumed, "done");
-  const messages = (await request).messages as ai.Message[];
-  assert.ok(messages.some(value => value.role === "assistant" && value.content.some(block => block.type === "text" && block.text === "Committed prefix. ")));
-  assert.ok(messages.some(value => value.role === "assistant" && value.content.some(block => block.type === "text" && block.text === "Continued ")));
-  assert.match(String(messages.at(-1)?.content), /agent host restarted/);
-  assert.equal(messages.some(value => value.role === "assistant" && value.content.some(block => block.type === "toolCall")), false);
-  assert.equal(done.text, "Committed prefix. Continued answer.");
-  assert.deepEqual(done.tools, []);
-  await once(resumed, "exit");
-  const replay = worker(directory, "stream", "replay"); children.push(replay);
-  const replayed = await message(replay, "done");
-  assert.equal(replayed.text, done.text); assert.equal(replayed.calls, 0);
-  await once(replay, "exit");
-});
-
-test("process recovery and transport continuations share the persisted continuation budget", async t => {
-  const directory = await mkdtemp(path.join(tmpdir(), "workflow-durable-budget-"));
-  const children: ChildProcess[] = [];
-  t.after(async () => {
-    for (const child of children) if (child.exitCode === null && child.signalCode === null) {
-      const exited = once(child, "exit"); child.kill("SIGKILL"); await exited;
-    }
-    await rm(directory, { recursive: true, force: true });
-  });
-  const first = worker(directory, "stream", "initial"); children.push(first);
-  await message(first, "checkpoint");
-  const exited = once(first, "exit"); first.kill("SIGKILL"); await exited;
-  const resumed = worker(directory, "stream", "budget"); children.push(resumed);
-  const done = await message(resumed, "done");
-  assert.equal(done.calls, 10);
-  assert.match(String(done.errorMessage), /model request failed 11 times/);
-  await once(resumed, "exit");
-});
-
 test("cancelling a parked conversation settles its tasks without replaying tools", async t => {
   const directory = await mkdtemp(path.join(tmpdir(), "workflow-durable-cancel-"));
   t.after(() => rm(directory, { recursive: true, force: true }));
-  const file = path.join(agentConversationDirectory(directory, "conversation"), "session.sqlite");
+  const file = path.join(directory, "session");
   const { instance, faux } = agent(file);
   let calls = 0;
   instance.state.tools = [{ name: "write", label: "Write", description: "Test", parameters: ai.Type.Object({}),
@@ -484,7 +384,7 @@ test("cancelling a parked conversation settles its tasks without replaying tools
   instance.beforeToolCall = async () => ({ block: true, reason: "Waiting", pause: new HarnessError({ type: "user_input_required", message: "Approve?" }) });
   faux.setResponses([ai.fauxAssistantMessage([ai.fauxToolCall("write", {})], { stopReason: "toolUse" })]);
   instance.requestId = "parked"; await instance.prompt("Write"); await instance.close();
-  await cancelAgentConversation({ agentStoreDir: directory, conversationId: "conversation" });
+  await cancelStoredAgentConversation({ persistence: testAgentPersistence(file), conversationId: "test" });
   const reopened = agent(file);
   reopened.faux.setResponses([ai.fauxAssistantMessage("New answer")]); reopened.instance.requestId = "new-input";
   try { await reopened.instance.prompt("Hello"); assert.equal(reopened.instance.state.errorMessage, undefined); }

@@ -108,8 +108,6 @@ try {
   register({ tsconfig: await stat(tsconfig).then(() => tsconfig, () => false) });
   const {  inspectLocalProjectStructure, resolveLocalProjectParams, runLocalProjectWithReport, createKanbanArtifactEntryPath,
   createLocalProjectFileStore, createServerProjectFileStore, createProjectFileStore,
-  createLocalProjectKVStore, createProjectKVContext, createProjectPersistentValueContext,
-  listLocalProjectKVEntries, deleteLocalProjectKVEntry, getKnowledgeDocument, listKnowledgeDocuments,
 } = await import(coreUrl);
   const core = await import(coreUrl);
   // IPC callbacks execute outside the async scope that registered the listener.
@@ -184,7 +182,7 @@ try {
     const { createServerRuntimePersistence } = await import(resolve('steamharness/runtime-storage', coreUrl));
     const connection = core.databaseConnectionFromEnv();
     if (connection) runtimePersistence = createServerRuntimePersistence({ ...connection, workspace: runtimeWorkspace, resolveProject: true });
-    const storage = { host: 'local', local: { kvStoreDir: path.join(dataDir, 'kv'), persistentValueStoreDir: path.join(dataDir, 'values'), runtimeWorkspace, runtimePersistence } };
+    const storage = { host: 'local', local: { runtimeWorkspace, runtimePersistence } };
     const requireRuntimePersistence = () => { if (!runtimePersistence) throw new Error('Sign in to SteamHarness Server to access conversation history.'); return runtimePersistence; };
 
     const filesDir = path.join(dataDir, 'files');
@@ -337,20 +335,14 @@ try {
       send('result', { deleted: true });
     } else if (request.method === 'resource') {
       const target = request.target ?? {};
-      if (typeof (request.kind === 'knowledge' ? target.knowledgeBase : target.database) !== 'string') throw new Error('A declared resource alias is required.');
+      if (request.kind !== 'knowledge' || typeof target.knowledgeBase !== 'string') throw new Error('A declared resource alias is required.');
       const registration = core.selectProjectEntry(await core.readProjectManifestFromDirectory(projectDir), request.project.entryId);
       const connection = core.databaseConnectionFromEnv();
       if (request.kind === 'knowledge') {
         const bases = core.createKnowledgeBasesContext({ projectId: request.project.id, entryId: request.project.entryId, requirements: registration.knowledgeBases ?? [], host: connection ? core.createServerKnowledgeBaseHost(connection) : undefined });
         const base = bases.get(target.knowledgeBase);
         send('result', target.documentId ? await base.getDocument(target.documentId) ?? null : await base.listDocuments({ pageSize: 100 }));
-      } else {
-        const local = core.createLocalDatabaseResolver(), remote = connection && core.createRemoteDatabaseResolver(connection);
-        const databases = core.createDatabasesContext({ projectId: request.project.id, entryId: request.project.entryId, requirements: registration.databases, conversationId: request.conversationId, resolver: { async resolve(requirement, consumer) { return await local.resolve(requirement, consumer) ?? remote?.resolve(requirement, consumer); } } });
-        const database = databases.get(target.database);
-        if (target.key) send('result', await (target.scope === 'conversation' ? database.kv.conversation : database.kv).getValue(target.key) ?? null);
-        else throw new Error('A database key is required.');
-      }
+      } else { throw new Error('Unsupported resource kind.'); }
     } else if (request.method === 'fork-conversation') {
       const { forkStoredAgentConversation } = await import(resolve('steamharness/agent', coreUrl));
       if (typeof forkStoredAgentConversation !== 'function') throw new Error('Update this project\'s SteamHarness runtime to fork stored conversations.');
@@ -387,15 +379,6 @@ try {
       await (request.method === 'delete-conversation' ? deleteStoredAgentConversation : cancelStoredAgentConversation)({ persistence: requireRuntimePersistence(), conversationId: request.conversationId });
       if (request.method === 'cancel-conversation') { send('result', { cancelled: true }); }
       else {
-      for (const [storageKind, rootDir] of [['kv', path.join(dataDir, 'kv')], ['persistent_value', path.join(dataDir, 'values')]]) {
-        const entries = [];
-        let cursor;
-        do {
-          const page = await listLocalProjectKVEntries({ rootDir, storageKind, projectId: `${request.project.id}:${request.project.entryId}`, scope: 'conversation', conversationId: request.conversationId, pageSize: 100, cursor });
-          entries.push(...page.items); cursor = page.nextCursor;
-        } while (cursor);
-        for (const entry of entries) { await deleteLocalProjectKVEntry({ ...entry, rootDir }); }
-      }
       for (const directory of await readdir(filesDir).catch(() => [])) {
         if (!/^wf_[a-f0-9]{32}$/.test(directory)) { continue; }
         const file = await readManagedFile(directory).catch(() => undefined);

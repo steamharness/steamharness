@@ -51,7 +51,7 @@ const toolApproval = steamharness.createToolApprovalGate();
 disableOpenAIAgentsTracing();
 
 interface NodeRunContext {
-  databases: import("steamharness").DatabasesContext;
+  databases: import("steamharness/database").RelationalDatabasesContext;
   conversation: {
     getValue(): Promise<{
       conversationId: string;
@@ -273,9 +273,9 @@ const outputNode = steamharness.createOutputNode<OpenAIAgentsStreamRunInput, Ope
     const answer = runResult.answer.trim() || "No response.";
 
     if (input.writeAgentState) {
-      await context.databases.get("data").kv.conversation.setValue(RUN_COUNT_KEY, input.runCount);
-      await context.databases.get("data").kv.conversation.setValue(FACTS_KEY, runResult.details.facts);
-      await context.databases.get("data").kv.conversation.setValue(HISTORY_KEY, {
+      await context.conversation.setValue(RUN_COUNT_KEY, input.runCount);
+      await context.conversation.setValue(FACTS_KEY, runResult.details.facts);
+      await context.conversation.setValue(HISTORY_KEY, {
         mode: runResult.details.mode,
         historyLength: runResult.details.historyLength,
         lastResponseId: runResult.details.lastResponseId,
@@ -351,8 +351,8 @@ export const openaiAgentsProject = steamharness.defineProject<OpenAIAgentsInput,
   async run(input, context) {
     const parsed = await steamharness.runNode(inputNode, input, context) as OpenAIAgentsParsedInput;
     const state = await context.conversation.getValue();
-    const runCount = Number(await context.databases.get("data").kv.conversation.getValue(RUN_COUNT_KEY) ?? 0) + 1;
-    const facts = readAgentFacts(await context.databases.get("data").kv.conversation.getValue(FACTS_KEY));
+    const runCount = Number(state.values[RUN_COUNT_KEY] ?? 0) + 1;
+    const facts = readAgentFacts(state.values[FACTS_KEY]);
     const result = await steamharness.runStreamNode(
       outputNode,
       {
@@ -407,14 +407,14 @@ export const executor = steamharness.defineExecutor<OpenAIAgentsInput, OpenAIAge
     {
       name: "knowledge_documents",
       label: "Knowledge Documents",
-      description: "Manage PersistentValue-backed project markdown knowledge documents.",
+      description: "Manage PostgreSQL-backed project markdown knowledge documents.",
       enabled: true,
       autoApprove: true,
     },
     {
       name: "remember_fact",
       label: "Remember Fact",
-      description: "Write a short conversation-scoped fact into workflow KV.",
+      description: "Write a short conversation-scoped fact into conversation state.",
       enabled: true,
       autoApprove: true,
     },
@@ -533,7 +533,7 @@ async function runLiveAgent(
           ? "Use remember_fact when the user explicitly asks you to remember a durable preference or fact."
           : "The remember_fact tool is disabled for this run.",
         input.knowledgeTools
-          ? "Use knowledge_documents to list, read, create, edit, delete, search, or read line ranges from the project's PersistentValue-backed markdown knowledge documents."
+          ? "Use knowledge_documents to list, read, create, edit, delete, search, or read line ranges from the project's PostgreSQL-backed markdown knowledge documents."
           : "The knowledge_documents tool is disabled for this run.",
         input.testTool
           ? "Use test_tool when the user asks to make a small HTTP connectivity test or inspect a test endpoint."
@@ -711,7 +711,7 @@ export function createOpenAIAgentTools(input: {
     if (isEnabled("remember_fact")) {
       tools.push(tool({
         name: "remember_fact",
-        description: "Remember a short conversation-scoped fact in workflow KV.",
+        description: "Remember a short conversation-scoped fact in conversation state.",
         parameters: z.object({
           key: z.string().min(1).max(80),
           value: z.string().min(1).max(500),
@@ -722,7 +722,7 @@ export function createOpenAIAgentTools(input: {
             value: args.value,
             updatedAt: new Date().toISOString(),
           });
-          await input.context.databases.get("data").kv.conversation.setValue(FACTS_KEY, facts);
+          await input.context.conversation.setValue(FACTS_KEY, facts);
           toolEvents.push({ name: "remember_fact", status: "completed" });
           return {
             remembered: true,

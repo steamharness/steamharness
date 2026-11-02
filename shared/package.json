@@ -28,7 +28,6 @@
     "typescript": "^6.0.3",
     "vitest": "^4.1.7",
     "@steamharness/project-access": "workspace:*",
-    "@steamharness/database-spaces": "workspace:*",
     "@steamharness/project-manifest": "workspace:*"
   }
 }

@@ -11,7 +11,6 @@ import type {
   NodeMetadata,
 } from "../types/index";
 import type { ConversationContext, ConversationState } from "../conversation/index";
-import type { KVContext, KVNamespace } from "../kv/index";
 import {
   createProjectFailure,
   toProjectError,
@@ -84,13 +83,11 @@ export interface RunWhileOptions<State> {
 }
 
 export type RunProjectConversationMode = "shared" | "shared-readonly";
-export type RunProjectKVMode = "shared" | "isolated";
 
 export interface RunProjectOptions<Output = unknown> {
   name?: string;
   metadata?: Partial<NodeMetadata>;
   conversationMode?: RunProjectConversationMode;
-  kvMode?: RunProjectKVMode;
   outputVisibility?: "visible" | "hidden";
   emitNode?: boolean;
   maxDepth?: number;
@@ -343,7 +340,6 @@ export async function runProject<Input, Output>(
   options?: RunProjectOptions<Output>,
 ): Promise<Output> {
   const conversationMode = resolveRunProjectConversationMode(options);
-  const kvMode = resolveRunProjectKVMode(options);
   const outputVisibility = resolveRunProjectOutputVisibility(options);
   const outputBridge = createRunProjectOutputBridge(options);
   const maxDepth = normalizeMaxIterations(options?.maxDepth, DEFAULT_RUN_STEAMHARNESS_MAX_DEPTH);
@@ -362,7 +358,7 @@ export async function runProject<Input, Output>(
   const childContext = createRunProjectContext(context, {
     workflow,
     conversationMode,
-    kvMode,
+
     outputVisibility,
     outputBridge,
     depth: depth + 1,
@@ -385,7 +381,7 @@ export async function runProject<Input, Output>(
         executionInfo: createProjectCallExecutionInfo({
           workflow,
           conversationMode,
-          kvMode,
+
           outputVisibility,
           outputBridge,
         }),
@@ -412,7 +408,7 @@ export async function runProject<Input, Output>(
         executionInfo: createProjectCallExecutionInfo({
           workflow,
           conversationMode,
-          kvMode,
+
           outputVisibility,
           outputBridge,
         }),
@@ -723,26 +719,18 @@ function resolveRunProjectConversationMode(
   return options?.conversationMode ?? "shared";
 }
 
-function resolveRunProjectKVMode(
-  options: RunProjectOptions | undefined,
-): RunProjectKVMode {
-  return options?.kvMode ?? "shared";
-}
-
 function createRunProjectContext<Input, Output>(
   context: RunContext,
   options: {
     workflow: Definition<Input, Output>;
     conversationMode: RunProjectConversationMode;
-    kvMode: RunProjectKVMode;
-    outputVisibility: "visible" | "hidden";
+      outputVisibility: "visible" | "hidden";
     outputBridge?: RunProjectOutputBridge;
     depth: number;
   },
 ): RunContext {
   if (
     options.conversationMode !== "shared-readonly" &&
-    options.kvMode !== "isolated" &&
     options.outputVisibility !== "hidden" &&
     options.outputBridge === undefined &&
     options.depth === readRunProjectDepth(context)
@@ -752,15 +740,6 @@ function createRunProjectContext<Input, Output>(
 
   const nextContext: RunContext = {
     ...context,
-    databases: options.kvMode === "isolated" ? {
-      connect: descriptor => context.databases.connect(descriptor),
-      list: () => context.databases.list(),
-      get(alias) {
-        const database = context.databases.get(alias);
-        const isolated = { ...database, kv: createRunProjectIsolatedKVContext(database.kv, options.workflow.name) };
-        return isolated;
-      },
-    } : context.databases,
     conversation: options.conversationMode === "shared-readonly"
       ? createReadonlyConversationContext(context.conversation)
       : context.conversation,
@@ -810,44 +789,6 @@ function createReadonlyDisabledConversationState(
   };
 }
 
-function createRunProjectIsolatedKVContext(
-  kv: KVContext,
-  childProjectName: string,
-): KVContext {
-  const projectPrefix = `runProject:${childProjectName}`;
-  const conversationPrefix = `${projectPrefix}:conversation`;
-  const project = createPrefixedKVNamespace(kv, projectPrefix);
-
-  return {
-    getValue: project.getValue,
-    setValue: project.setValue,
-    deleteValue: project.deleteValue,
-    updateValue: project.updateValue,
-    conversation: createPrefixedKVNamespace(kv.conversation, conversationPrefix),
-  };
-}
-
-function createPrefixedKVNamespace(
-  namespace: KVNamespace,
-  prefix: string,
-): KVNamespace {
-  const prefixedKey = (key: string) => `${prefix}:${key}`;
-
-  return {
-    getValue(key) {
-      return namespace.getValue(prefixedKey(key));
-    },
-    setValue(key, value) {
-      return namespace.setValue(prefixedKey(key), value);
-    },
-    deleteValue(key) {
-      return namespace.deleteValue(prefixedKey(key));
-    },
-    updateValue(key, updater) {
-      return namespace.updateValue(prefixedKey(key), updater);
-    },
-  };
-}
 
 function readRunProjectDepth(context: RunContext): number {
   const value = context.metadata?.[RUN_STEAMHARNESS_DEPTH_METADATA_KEY];
@@ -892,20 +833,17 @@ function createProjectCallInfoNode(
 function createProjectCallExecutionInfo<Input, Output>(options: {
   workflow: Definition<Input, Output>;
   conversationMode: RunProjectConversationMode;
-  kvMode: RunProjectKVMode;
   outputVisibility: "visible" | "hidden";
   outputBridge?: RunProjectOutputBridge;
 }): {
   projectName: string;
   conversationMode: RunProjectConversationMode;
-  kvMode: RunProjectKVMode;
   outputVisibility: "visible" | "hidden";
   outputBridge: boolean;
 } {
   return {
     projectName: options.workflow.name,
     conversationMode: options.conversationMode,
-    kvMode: options.kvMode,
     outputVisibility: options.outputVisibility,
     outputBridge: options.outputBridge !== undefined,
   };

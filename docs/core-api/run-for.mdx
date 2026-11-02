@@ -31,7 +31,7 @@ workflow.runFor<State, Item>(
 | 参数 | 类型 | 说明 |
 | --- | --- | --- |
 | `input` | `State` | 初始循环状态。 |
-| `context` | `RunContext` | runtime 上下文，用于 hooks、provider、KV、files、abortSignal。 |
+| `context` | `RunContext` | runtime 上下文，用于 hooks、provider、数据库、files、abortSignal。 |
 | `options.name` | `string` | Diagram 和 Trace 中显示的循环节点标题。默认 `Run for`。 |
 | `options.items` | `Iterable` / `AsyncIterable` | 基于初始状态生成循环项。支持同步、异步 iterable，也支持返回 Promise。 |
 | `options.run` | `function` | 每个 item 的循环体。接收当前状态、item、从 `0` 开始的 index 和 context，返回下一轮状态。 |

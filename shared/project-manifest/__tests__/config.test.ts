@@ -8,8 +8,8 @@ import { readProjectManifestFromDirectory, readProjectManifestFromDirectorySync,
 
 const first = "00000000-0000-4000-8000-000000000001";
 const second = "00000000-0000-4000-8000-000000000002";
-const pkg = { id: first, name: "configured", version: "0.1.0",  defaultEntry: "one", entries: ["one", "two"].map(entryId => ({ entryId, type: "workflow", name: entryId, root: ".", entry: "index.ts", databases: ["data"] }))  };
-const config = () => ({ version: 1, databases: { data: first } });
+const pkg = { id: first, name: "configured", version: "0.1.0",  defaultEntry: "one", entries: ["one", "two"].map(entryId => ({ entryId, type: "workflow", name: entryId, root: ".", entry: "index.ts", knowledgeBases: ["data"] }))  };
+const config = () => ({ version: 1, knowledgeBases: { data: first } });
 
 it("changes every consumer by overriding a single alias without changing authored files", async () => {
   const root = await mkdtemp(path.join(os.tmpdir(), "project-config-"));
@@ -17,22 +17,23 @@ it("changes every consumer by overriding a single alias without changing authore
     await writeFile(path.join(root, "steamharness.json"), JSON.stringify(pkg));
     const authored = JSON.stringify(config());
     await writeFile(path.join(root, "config.json"), authored);
-    const env = { STEAMHARNESS_PROJECT_CONFIG: JSON.stringify({ databases: { data: second } }) };
+    const env = { STEAMHARNESS_PROJECT_CONFIG: JSON.stringify({ knowledgeBases: { data: second } }) };
     const live = await readProjectManifestFromDirectory(root, env);
-    expect(live.entries.map(entry => entry.databases)).toEqual([[{ alias: "data", databaseId: second }], [{ alias: "data", databaseId: second }]]);
+    expect(live.entries.map(entry => entry.knowledgeBases)).toEqual([[{ alias: "data", knowledgeBaseId: second }], [{ alias: "data", knowledgeBaseId: second }]]);
     expect(readProjectManifestFromDirectorySync(root, env)).toEqual(live);
-    expect((await readProjectManifestFromDirectory(root, {})).entries[0]!.databases[0]!.databaseId).toBe(first);
-    await writeFile(path.join(root, "config.json"), JSON.stringify({ ...config(), databases: { data: second } }));
-    expect((await readProjectManifestFromDirectory(root, {})).entries.every(entry => entry.databases[0]!.databaseId === second)).toBe(true);
+    expect((await readProjectManifestFromDirectory(root, {})).entries[0]!.knowledgeBases![0]!.knowledgeBaseId).toBe(first);
+    await writeFile(path.join(root, "config.json"), JSON.stringify({ ...config(), knowledgeBases: { data: second } }));
+    expect((await readProjectManifestFromDirectory(root, {})).entries.every(entry => entry.knowledgeBases![0]!.knowledgeBaseId === second)).toBe(true);
   } finally { await rm(root, { recursive: true, force: true }); }
 });
 
 it("supports IDs from the environment and resolves only each entry's declared aliases", () => {
-  expect(readProjectManifest(pkg, undefined, { STEAMHARNESS_PROJECT_CONFIG: JSON.stringify(config()) }).entries[0]!.databases).toEqual([{ alias: "data", databaseId: first }]);
-  const manifest = readProjectManifest(pkg, config(), { STEAMHARNESS_PROJECT_CONFIG: JSON.stringify({ databases: { archive: second } }) });
-  expect(manifest.entries.every(entry => entry.databases.length === 1)).toBe(true);
-  expect(() => readProjectManifest(pkg)).toThrow('unconfigured database alias "data"');
-  expect(Object.keys(config())).toEqual(["version", "databases"]);
+  expect(readProjectManifest(pkg, undefined, { STEAMHARNESS_PROJECT_CONFIG: JSON.stringify(config()) }).entries[0]!.knowledgeBases).toEqual([{ alias: "data", knowledgeBaseId: first }]);
+  const manifest = readProjectManifest(pkg, config(), { STEAMHARNESS_PROJECT_CONFIG: JSON.stringify({ knowledgeBases: { archive: second } }) });
+  expect(manifest.entries.every(entry => entry.knowledgeBases!.length === 1)).toBe(true);
+  expect(() => readProjectManifest(pkg)).toThrow(/unconfigured knowledge/);
+  expect(Object.keys(config())).toEqual(["version", "knowledgeBases"]);
+  expect(() => readProjectConfig({ version: 1, databases: { data: first } })).toThrow(/unsupported/);
 });
 
 it("overrides knowledge mappings independently for every declared consumer", async () => {
@@ -45,7 +46,7 @@ it("overrides knowledge mappings independently for every declared consumer", asy
     const env = { STEAMHARNESS_PROJECT_CONFIG: JSON.stringify({ knowledgeBases: { data: second } }) };
     const manifest = await readProjectManifestFromDirectory(root, env);
     expect(manifest.entries.map(entry => entry.knowledgeBases)).toEqual([[{ alias: "data", knowledgeBaseId: second }], [{ alias: "data", knowledgeBaseId: second }]]);
-    expect(manifest.entries.every(entry => entry.databases[0]?.databaseId === first)).toBe(true);
+    expect(manifest.entries.every(entry => entry.knowledgeBases![0]?.knowledgeBaseId === second)).toBe(true);
     expect(readProjectManifestFromDirectorySync(root, env)).toEqual(manifest);
     expect(await readFile(path.join(root, "config.json"), "utf8")).toBe(authored);
     expect((await readProjectManifestFromDirectory(root, {})).entries[0]?.knowledgeBases?.[0]?.knowledgeBaseId).toBe(first);
@@ -56,14 +57,14 @@ it("overrides knowledge mappings independently for every declared consumer", asy
 
 it("rejects entry associations, permission declarations, invalid IDs and duplicate IDs", () => {
   for (const invalid of [
-    { ...config(), databases: { data: "invalid" } },
-    { ...config(), databases: { data: first, duplicate: first } },
-    { ...config(), entries: { one: { databases: ["data"] } } },
+    { ...config(), knowledgeBases: { data: "invalid" } },
+    { ...config(), knowledgeBases: { "Invalid Alias": first } },
+    { ...config(), entries: { one: { knowledgeBases: ["data"] } } },
     { ...config(), permissions: {} },
-    { ...config(), entries: { one: { databases: ["data"], permissions: {} } } },
+    { ...config(), entries: { one: { knowledgeBases: ["data"], permissions: {} } } },
   ]) expect(() => readProjectManifest(pkg, invalid)).toThrow();
   expect(() => readProjectConfig(config(), { STEAMHARNESS_PROJECT_CONFIG: "{" })).toThrow("STEAMHARNESS_PROJECT_CONFIG");
-  expect(() => readProjectConfig(config(), { STEAMHARNESS_PROJECT_CONFIG: JSON.stringify({ databases: { data: "invalid" } }) })).toThrow("UUID");
+  expect(() => readProjectConfig(config(), { STEAMHARNESS_PROJECT_CONFIG: JSON.stringify({ knowledgeBases: { data: "invalid" } }) })).toThrow("UUID");
   expect(() => readProjectConfig(config(), { STEAMHARNESS_PROJECT_CONFIG: JSON.stringify({ entries: {} }) })).toThrow("STEAMHARNESS_PROJECT_CONFIG");
 });
 
@@ -73,8 +74,8 @@ it("does not hide malformed files or follow configuration outside the project", 
   try {
     await writeFile(path.join(root, "steamharness.json"), JSON.stringify(pkg));
     await writeFile(path.join(root, "index.ts"), "export {};");
-    await expect(readProjectManifestFromDirectory(root, {})).rejects.toThrow('unconfigured database alias "data"');
-    expect(resolveProjectDeclarationEntrySync(root).registration.databases).toEqual(["data"]);
+    await expect(readProjectManifestFromDirectory(root, {})).rejects.toThrow(/unconfigured knowledge/);
+    expect(resolveProjectDeclarationEntrySync(root).registration.knowledgeBases).toEqual(["data"]);
     await writeFile(path.join(root, "config.json"), "{");
     await expect(readProjectManifestFromDirectory(root, {})).rejects.toThrow();
     await rm(path.join(root, "config.json"));

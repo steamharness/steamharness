@@ -64,7 +64,7 @@ corepack pnpm database:dev server
 | `STEAMHARNESS_API_PUBLIC_BASE_URL` | API 的公开 HTTP(S) origin。 |
 | `STEAMHARNESS_DOCS_PUBLIC_BASE_URL` | 文档站点地址。 |
 
-Server 不安装依赖、不构建或加载上传的项目代码。源码快照、头像、KV 和知识库数据都应纳入备份策略。
+Server 不安装依赖、不构建或加载上传的项目代码。源码快照、头像、平台历史、业务库和知识库数据都应纳入备份策略。
 
 ## 管理员名称与共享账号
 
@@ -94,4 +94,4 @@ Alpha 和正式版使用独立的运行目录、进程、日志和端口。两�
 
 本地环境自动设置 `STEAMHARNESS_SERVER_DATABASE_ADMIN_URL`。启用资源管理时，该变量指向专用于建库的 PostgreSQL 超级用户连接；不设置时关系库管理返回 `DATABASE_UNAVAILABLE`。此身份只在 Server 中使用，不发送给项目或 Browser。初始化会撤销控制库、postgres、template1 的 PUBLIC CONNECT/TEMPORARY；其他可连接库若仍向 PUBLIC 开放，平台会拒绝签发业务身份。因此应使用独立 PostgreSQL 实例，例如上述 Docker 环境。
 
-Node 入口通过账号 API Key 获取绑定资源的临时 SQL 身份，需同时连通此 Server 与 PostgreSQL；连接池和凭据由宿主保留。`database bind` 在宿主按账号、项目、入口和别名存映射，源码包不携带映射。绑定不授予资源权限；重新绑定、解除绑定和授权撤销会终止现有 SQL 会话。浏览器查询代理及 KV 默认存储迁移尚未接入。
+Node 入口通过账号 API Key 获取绑定资源的临时 SQL 身份，需同时连通此 Server 与 PostgreSQL；连接池和凭据由宿主保留。`database bind` 在宿主按账号、项目、入口和别名存映射，源码包不携带映射。绑定不授予资源权限；重新绑定、解除绑定和授权撤销会终止现有 SQL 会话。Browser 通过宿主代理调用受限表 API，每次校验绑定、访问版本与 schemaHash；旧 KV 路径已移除。

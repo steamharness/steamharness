@@ -391,7 +391,6 @@ class ProjectAgentRuntime implements AgentRuntime {
         resumeSession: this.options.resumeSession,
         interruptSession: this.options.interruptSession,
         workdir: this.options.workdir,
-        databasePath: this.options.databasePath,
         storage: this.options.storage,
         retryDelayMs: this.options.retryDelayMs,
         compaction: this.compactionSettings(),

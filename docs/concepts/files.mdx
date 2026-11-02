@@ -98,18 +98,18 @@ const file = await context.files?.createFile?.({
 
 上传后可用 `await context.files.resolveFile(reference)` 读取同一服务器的文件，再调用 `readBuffer()`、`readBase64()` 或 `readDataUrl()`。Remote file store 使用当前连接鉴权访问固定 managed endpoint，不信任引用中的 URL 或本地路径。
 
-Kanban 页面通过 `window.steamHarnessKanban.databases.get(alias).files` 的 `createFile/readFile/deleteFile` 访问获批数据库空间的附件，使用知识库权限。详见 [Kanban 数据 Bridge](/concepts/kanban#数据-bridge)。
+Kanban 页面通过 `window.steamHarnessKanban.knowledgeBases.get(alias).files` 的 `createFile/readFile/deleteFile` 访问已授权知识库的附件。详见 [Kanban 数据 Bridge](/concepts/kanban#数据-bridge)。
 
 Server 将数据库空间的图片及其他附件保存在独立的私有文件存储，PostgreSQL 只记录文件元数据和内容摘要。已有内联附件首次读取时会校验并转存，保留文件 ID、引用和数据版本；转存失败保留原数据。附件仍通过鉴权接口读取，现有 JSON 传输中的 Base64 格式保持兼容。
 
-不要把 base64 文件内容保存进 KV 或会话历史。需要跨轮复用时，保存 `file.toJSON()` 返回的引用元数据。
+不要把 base64 文件内容保存进数据行或会话历史。需要跨轮复用时，保存 `file.toJSON()` 返回的引用元数据。
 
 `workspace/workflow/gpt-image` 示例使用同一套 file param 流程接收一张或多张参考图：
 有当前图片或最近会话历史中存在输入图片引用时，workflow 会解析为 `ResolvedFile[]`
 并调用图片编辑；完全没有图片上下文时才调用图片生成。该示例开启 conversation 模式，跨轮只把
 用户提示、生成摘要和 `file.toJSON()` 引用元数据写入会话历史；后续轮次会尽力解析最近输入图片
 引用并作为上下文参考图传给图片编辑，示例本地最多保留 16 张图片输入。生成结果作为
-Markdown output item 中的 `data:image/...;base64,...` 预览返回，也不把生成图 base64 写入会话 KV，
+Markdown output item 中的 `data:image/...;base64,...` 预览返回，也不把生成图 base64 写入会话状态，
 因此生成图本身不会自动成为下一轮图片输入。需要跨页面或知识库复用生成文件时，应改用
 `context.files.createFile(...)` 生成 server file reference。
 

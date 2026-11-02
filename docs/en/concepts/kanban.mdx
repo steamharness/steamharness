@@ -26,15 +26,18 @@ The file bridge allows up to 120 seconds to read large attachments, and its back
 ## Data bridge
 
 ```js
-const database = window.steamHarnessKanban.databases.get("data");
-const markers = await database.kv.getValue("map:markers");
-await database.kv.setValue("map:markers", markers ?? []);
-const unsubscribe = database.subscribe(({ revision }) => refreshMap(revision));
+import { data } from "./.steamharness/generated/database/browser/index.js";
+const api = window.steamHarnessKanban;
+const database = await api.databases.connect(data);
+const configurationId = api.getConfiguration().id || "default";
+const page = await database.task.rows({ where: { configurationId } });
+const row = await database.task.insert({ id: crypto.randomUUID(), configurationId, title: "Review", status: "todo" });
+await database.task.update({ key: { id: row.values.id }, rowVersion: row.rowVersion, data: { status: "done" } });
 ```
 
 The alias must be declared in this entry's `databases` and approved before use. The host validates entry identity, actor and space grants. Pages cannot select arbitrary projects or spaces. Use `window.steamHarnessKanban.knowledgeBases.get("docs")` for documents and `window.steamHarnessKanban.knowledgeBases.get("docs").files.createFile/readFile/deleteFile` for attachments.
 
-Server stores attachment content in private file storage, retaining metadata and a digest in PostgreSQL. Ordinary KV, revision and list reads do not wait for attachment transfers. Writes, CAS and multi-key transactions retain concurrency checks. Existing inline attachments move on first read without changing file references.
+Server stores knowledge attachments in private file storage; PostgreSQL stores metadata and digests. Table writes use rowVersion concurrency checks. Read and write failures remain explicit; failed writes preserve the saved rows and user draft.
 
 ## Page methods
 
@@ -55,4 +58,4 @@ CLI Web uses `/entries/map/`; Studio opens entries as independent tabs. Server W
 
 Publish the aggregate as one unit. Requirements travel with the package; bindings and credentials do not. See [Database spaces](/en/concepts/data-storage) and [Packaging](/en/cli/workspace/pack).
 
-Knowledge requires an independent `knowledgeBases: ["docs"]` declaration, a root `knowledgeBases.docs` configuration mapping and a Server binding. Subscribe with `knowledgeBases.get("docs").subscribe(...)`; changes to a KV alias with the same name do not trigger this subscription.
+Knowledge requires an independent `knowledgeBases: ["docs"]` declaration, a root `knowledgeBases.docs` configuration mapping and a Server binding. Subscribe with `knowledgeBases.get("docs").subscribe(...)`; changes to a relational alias with the same name do not trigger this subscription.

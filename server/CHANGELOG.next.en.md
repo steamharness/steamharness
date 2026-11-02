@@ -1,5 +1,7 @@
 # Unreleased
 
+- Changed: remove legacy KV, database-space and project KV endpoints. Browser table queries validate the account, binding, access revision and model fingerprint on every call; rebinding and revocation invalidate existing clients.
+
 - Added relational knowledge storage, account grants, versioned bindings, document CAS, Unicode substring search and private attachment collection. Restricted model/row management preserves BigInt/Decimal precision and rejects stale row edits.
 
 - Added platform history, ordered message/queue records, run usage and versioned Agent snapshots with account/entry isolation, revision conflicts, deletion tombstones, project identity resolution and active-session snapshot reads.

@@ -41,7 +41,8 @@ interface ExecutorContextShape {
 }
 
 interface RuntimeContextShape {
-  databases: import("steamharness").DatabasesContext;
+  databases: import("steamharness/database").RelationalDatabasesContext;
+  knowledgeBases: import("steamharness").KnowledgeBasesContext;
   metadata?: Record<string, unknown>;
   conversation?: {
     conversationId?: string;
@@ -125,15 +126,15 @@ declare const steamharness: {
     output: Output | undefined;
   }>;
   getKnowledgeDocument(
-    storage: import("steamharness").DatabaseContext,
+    storage: import("steamharness").KnowledgeBaseContext,
     documentId: string,
   ): Promise<{ id: string } | undefined>;
   createKnowledgeDocument(
-    storage: import("steamharness").DatabaseContext,
+    storage: import("steamharness").KnowledgeBaseContext,
     input: { id?: string; title: string; markdown: string },
   ): Promise<unknown>;
   editKnowledgeDocument(
-    storage: import("steamharness").DatabaseContext,
+    storage: import("steamharness").KnowledgeBaseContext,
     input: { id: string; title?: string; markdown?: string },
   ): Promise<unknown>;
 };

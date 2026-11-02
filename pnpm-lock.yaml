@@ -112,9 +112,6 @@ importers:
       '@steamharness/auth-config':
         specifier: workspace:*
         version: link:../shared/auth-config
-      '@steamharness/database-spaces':
-        specifier: workspace:*
-        version: link:../shared/database-spaces
       '@steamharness/i18n':
         specifier: workspace:*
         version: link:../shared/i18n
@@ -239,9 +236,6 @@ importers:
       '@steamharness/auth-config':
         specifier: workspace:*
         version: link:../shared/auth-config
-      '@steamharness/database-spaces':
-        specifier: workspace:*
-        version: link:../shared/database-spaces
       '@steamharness/kanban-project':
         specifier: workspace:*
         version: link:../shared/kanban-project
@@ -360,9 +354,6 @@ importers:
       '@steamharness/cli':
         specifier: link:../cli
         version: link:../cli
-      '@steamharness/database-spaces':
-        specifier: workspace:*
-        version: link:../shared/database-spaces
       '@steamharness/project-manifest':
         specifier: workspace:*
         version: link:../shared/project-manifest
@@ -526,9 +517,6 @@ importers:
 
   shared:
     devDependencies:
-      '@steamharness/database-spaces':
-        specifier: workspace:*
-        version: link:database-spaces
       '@steamharness/i18n':
         specifier: workspace:*
         version: link:i18n
@@ -575,8 +563,6 @@ importers:
   shared/auth-config: {}
 
   shared/avatar-fallback: {}
-
-  shared/database-spaces: {}
 
   shared/i18n:
     dependencies:
@@ -685,9 +671,6 @@ importers:
 
   shared/project-manifest:
     dependencies:
-      '@steamharness/database-spaces':
-        specifier: workspace:*
-        version: link:../database-spaces
       '@steamharness/project-types':
         specifier: workspace:*
         version: link:../project-types

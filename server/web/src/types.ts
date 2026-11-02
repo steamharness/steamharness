@@ -266,30 +266,6 @@ export interface ProjectAccessLinkInfo {
 }
 
 
-export type KVEntryScope = "project" | "conversation";
-export type KVEntryValueType = "null" | "array" | "object" | "string" | "number" | "boolean";
-
-export interface KVEntrySummary {
-  storageKind: "kv" | "persistent_value";
-  scope: KVEntryScope;
-  key: string;
-  // KV list APIs omit full values; row expansion fetches details.
-  value?: unknown;
-  valueType: KVEntryValueType;
-  valueSizeBytes: number;
-  valuePreview: string;
-  projectId: string;
-  conversationId?: string;
-  updatedAt: string;
-  lastProjectId?: string;
-  lastRunId?: string;
-  lastConversationId?: string;
-}
-
-export interface KVEntryDetail extends KVEntrySummary {
-  value: unknown;
-}
-
 export type AuditOutcome = "success" | "failed" | "denied";
 
 export interface AuditEventRecord {
@@ -314,32 +290,6 @@ export interface AuditEventPage {
   nextCursor?: string;
   hasMore: boolean;
   total: number;
-}
-
-export interface KVEntryPage {
-  items: KVEntrySummary[];
-  nextCursor?: string;
-  hasMore: boolean;
-  // Keys displays the server-side filtered total instead of visible rows.
-  total: number;
-}
-
-export interface ProjectDataSummary {
-  kv: {
-    entryCount: number;
-    projectEntryCount: number;
-    conversationEntryCount: number;
-    valueSizeBytes: number;
-    textCharacterCount: number;
-    updatedAt: string | null;
-  };
-  knowledge: {
-    documentCount: number;
-    characterCount: number;
-    lineCount: number;
-    markdownSizeBytes: number;
-    updatedAt: string | null;
-  };
 }
 
 export interface KnowledgeDocumentSummaryRecord {

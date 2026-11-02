@@ -43,7 +43,7 @@ describe('custom tool resource cards', () => {
   });
 
   it('uses the declared current storage for built-in data tools and current cards while files stay local', () => {
-    const automatic = item('workflow-kv_kv_store', { value: 7 }); (automatic.content as any).input={database:'data'};
+    const automatic = item('workflow-knowledge_knowledge_documents', { document: { id: 'doc' } }); (automatic.content as any).input={knowledgeBase:'data'};
     const explicit = item('workflow-ui_present_card', { action: 'upsert', kind: 'knowledge', target: { source: 'current',knowledgeBase:'data', documentId: 'doc' } });
     const file = item('workflow-ui_present_card', { action: 'upsert', kind: 'file', target: { source: 'current', filePath: 'README.md' } });
     expect(conversationResourceCards([automatic], projectId, "main", conversationId, 'server')[0].target.source).toBe('server');
@@ -53,15 +53,19 @@ describe('custom tool resource cards', () => {
 
   it.each([
     ['kanban', { configurationId: 'named-map' }], ['project', { configurationId: 'named-map' }],
-    ['file', { filePath: 'README.md' }], ['kv', { database: 'data', key: 'map', scope: 'project' }],
+    ['file', { filePath: 'README.md' }],
     ['knowledge', { knowledgeBase: 'data', documentId: 'doc' }],
   ] as const)('preserves an explicit current %s target instead of replacing it with the conversation owner', (kind, fields) => {
     const target = { source: 'current', projectId: 'workspace', entryId: 'map-2d', ...fields };
     const presentation = { action: 'upsert', cardId: 'map', kind, target };
     const output = { content: [{ type: 'text', text: JSON.stringify(presentation) }], details: {} };
     expect(conversationResourceCards([item('workflow-ui_present_card', output)], projectId, 'main', conversationId, 'server')[0].target)
-      .toEqual({ ...target, source: kind === 'kv' || kind === 'knowledge' ? 'server' : 'local' });
+      .toEqual({ ...target, source: kind === 'knowledge' ? 'server' : 'local' });
     expect(target.source).toBe('current');
+  });
+
+  it('rejects removed KV resource cards and tools', () => {
+    expect(conversationResourceCards([item('workflow-kv_kv_store', { value: 1 }), item('workflow-ui_present_card', { action: 'upsert', kind: 'kv', target: { database: 'data', key: 'map' } })], projectId, 'main', conversationId)).toEqual([]);
   });
 
   it('fills only missing current target identifiers and keeps a sibling entry', () => {

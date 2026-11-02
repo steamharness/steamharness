@@ -40,7 +40,7 @@ The Core API section documents the `workflow.*` runtime API available directly t
 | [`runIf`](/en/core-api/run-if) |Execute the if / else-if / else branch and write the branch selection to the run report and Diagram.|
 | [`runFor`](/en/core-api/run-for) |Execute a traceable for loop and let Diagram display the loop body with the loop container.|
 | [`runWhile`](/en/core-api/run-while) |Execute the traceable while loop and let Diagram display the loop body with the loop container.|
-| [`runProject`](/en/core-api/run-workflow) |Call another workflow in the current context, multiplexing KV, session, provider, token usage, and trace.|
+| [`runProject`](/en/core-api/run-workflow) |Call another workflow in the current context, sharing database connections, session, provider, token usage, and trace.|
 | [`Knowledge Documents`](/en/core-api/knowledge-documents) | Manage project Markdown Knowledge documents through an explicit local or server storage context. |
 | [`getConfig`](/en/core-api/get-config) |Read a native JSON configuration value from the current run snapshot.|
 | [`getRuntimePlatform` / `isCli` / `isDesktop`](/en/core-api/runtime-platform) |Determine whether the execution host for the current workflow is CLI or a local desktop host.|
@@ -65,11 +65,11 @@ Most API runs around `input`, `context`, `node`, and `payload`.
 | --- | --- | --- |
 | `config` | `ConfigurationValues` | Immutable configuration values for this run. |
 | `providers` | `ProviderRegistry` |LLM provider the registry and binding tables.|
-| `databases` | `DatabasesContext` | Access approved spaces by alias, including KV, knowledge and transactions. |
+| `databases` | `RelationalDatabasesContext` | Connect a generated descriptor to an independently authorized relational database. |
 | `entries` | `EntriesContext` | List entries and invoke aggregate Workflows with authorization checks. |
 | `projectId` / `entryId` | `string` | Aggregate and current window identity. |
 | `conversation` | `ConversationContext` |Session state read/write entry. `setTitle` can safely suggest UI title; other reads and writes will throw errors when the session is not enabled.|
-| `tokenUsage` | `TokenUsageContext` | Token-usage reporting context. When disabled, `report()` is a no-op; when enabled, it writes KV, run reports, and runtime events. |
+| `tokenUsage` | `TokenUsageContext` | Token-usage reporting context. When disabled, `report()` is a no-op; when enabled, it records platform usage, run reports, and runtime events. |
 | `userInput` | `UserInputContext \| undefined` |Wait/resume entry for user input and tool approval. Local hosts will be injected according to the host capacity.|
 | `files` | `FileStore \| undefined` |File reference resolution entry;`createFile` generates a server-backed run file.|
 | `metadata` | `object \| undefined` |Current execution meta information, such as workflow, runId, conversationId;Workflow run also contains `entrypointId` and `entrypointTitle`.|

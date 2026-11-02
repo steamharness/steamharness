@@ -1,3 +1,4 @@
+import { createMemoryRuntimePersistence } from "steamharness/runtime-storage";
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
@@ -18,7 +19,8 @@ import { createApiRouter } from "../routes/api";
 import { databaseNames } from "../relational-databases/cluster";
 import { RelationalDatabaseRepository } from "../relational-databases/repository";
 import { createDatabaseConnector, createRemoteRelationalDatabaseHost, runLocalProjectWithReport, inspectProjectScripts } from "steamharness";
-import type { NodeDatabaseDescriptor } from "steamharness/database";
+import { createBrowserDatabaseConnector, type DatabaseDescriptor, type DatabaseTable, type NodeDatabaseDescriptor } from "steamharness/database";
+import { createRemoteDatabaseQueryHost } from "steamharness";
 
 const databaseUrl = process.env.STEAMHARNESS_TEST_RELATIONAL_DATABASE_URL;
 
@@ -169,9 +171,25 @@ export const executor = steamharness.defineExecutor({ projectType: "workflow", d
   const reader = await readerConnector.connect(descriptor); assert.equal(await reader.user.count(), 2);
   const browserAttempt = await fetch(`${base}/api/databases/connections`, { method: "POST", headers: { Authorization: `Bearer ${ownerToken}`, "Content-Type": "application/json", Origin: "https://browser.example.test" }, body: JSON.stringify({ ...scope, schemaHash: descriptor.schemaHash }) });
   assert.equal(browserAttempt.status, 403);
+  const browserDescriptor = (await import(pathToFileURL(path.join(project, ".steamharness/generated/database/browser/index.js")).href)).main as DatabaseDescriptor<'main', { user: DatabaseTable<any> }, 'browser'>;
+  const browser = await createBrowserDatabaseConnector(createRemoteDatabaseQueryHost({ serverUrl: base, token: ownerToken }, scope)).connect(browserDescriptor);
+  const browserReader = await createBrowserDatabaseConnector(createRemoteDatabaseQueryHost({ serverUrl: base, token: otherToken }, scope)).connect(browserDescriptor);
+  assert.equal(Reflect.get(browser.user, 'findMany'), undefined);
+  const read = await browser.user.rows({ where: { name: 'Alice' }, orderBy: { name: 'desc' } });
+  assert.equal(read.total, 1); assert.equal(read.items[0].values.count, '9007199254740993');
+  assert.equal(read.items[0].values.balance, '12.34'); assert.equal(read.items[0].values.payload, 'AAH/');
+  assert.equal((await browserReader.user.rows()).total, 2);
+  await assert.rejects(browserReader.user.insert({ id: randomUUID(), name: 'denied-browser-write' }), { code: 'DATABASE_ACCESS_DENIED' });
+  const inserted = await browser.user.insert({ id: randomUUID(), name: 'Browser row' });
+  const updated = await browser.user.update({ key: { id: inserted.values.id }, rowVersion: inserted.rowVersion, data: { name: 'Browser updated' } });
+  await assert.rejects(browser.user.update({ key: { id: inserted.values.id }, rowVersion: inserted.rowVersion, data: { name: 'stale' } }), { code: 'DATABASE_QUERY_FAILED' });
+  assert.deepEqual(await browser.user.delete({ key: { id: updated.values.id }, rowVersion: updated.rowVersion }).then(value => value.deleted), true);
+  assert.equal((await request('/bindings/resolve', ownerToken, 'POST', { ...scope, schemaHash: '0'.repeat(64) })).status, 409);
+  assert.equal((await request(`/${resource.id}/query`, ownerToken, 'POST', { consumer: { ...scope, schemaHash: descriptor.schemaHash, binding: { id: binding.id, revision: binding.revision } }, request: { operation: 'rows', model: 'User' } })).status, 400, 'query requires a pinned access revision');
+
   assert.deepEqual(inspectProjectScripts({ cwd: project, projectDir: project, projectName: "database-runtime-test", entryFile: path.join(project, "index.ts") }).violations, []);
   const report = await runLocalProjectWithReport({ projectDir: project, env: { STEAMHARNESS_SERVER_URL: base, STEAMHARNESS_SERVER_ADMIN_KEY: ownerToken },
-    storage: { host: "local", local: { kvStoreDir: path.join(root, "runtime"), persistentValueStoreDir: path.join(root, "runtime") } } });
+    storage: { host: "local", local: { runtimePersistence: createMemoryRuntimePersistence() } } });
   assert.equal(report.status, "success", JSON.stringify(report.result)); assert.equal(await dbClient.user.count(), 3);
   const credentialCount = async () => (await admin.query(`select count(*)::int as count from "${catalog}".credentials`)).rows[0].count;
   assert.equal(await credentialCount(), 3, "the executor releases its credential at run completion");
@@ -193,7 +211,9 @@ export const executor = steamharness.defineExecutor({ projectType: "workflow", d
   const secondClient = await secondConnector.connect(secondDescriptor);
   const secondRow = await secondClient.user.create({ data: { event: "independent" } }); assert.equal(typeof secondRow.id, "number");
   assert.equal(await secondClient.user.count(), 1); assert.equal(await dbClient.user.count(), 3);
+  await assert.rejects(createBrowserDatabaseConnector(createRemoteDatabaseQueryHost({ serverUrl: base, token: ownerToken }, { projectId: secondId, entryId: 'main' })).connect(browserDescriptor), { code: 'DATABASE_SCHEMA_MISMATCH' });
   await cli("unbind", project);
+  await assert.rejects(browser.user.rows(), { code: 'DATABASE_BINDING_CHANGED' });
   await assert.rejects(dbClient.user.create({ data: { name: "stale" } }), { code: "DATABASE_BINDING_CHANGED" });
   await assert.rejects(connector.connect(descriptor), { code: "DATABASE_UNBOUND" });
   await cli("bind", project, "--database", resource.id);
@@ -206,6 +226,7 @@ export const executor = steamharness.defineExecutor({ projectType: "workflow", d
   const replacement = await connector.connect(descriptor); assert.equal(await replacement.user.count(), 0);
   await replacement.user.create({ data: { name: "replacement" } }); assert.equal(await shared.user.count(), 3);
   await cli("grant", resource.id, "--user", other.user.userId, "--mode", "write");
+  await assert.rejects(browserReader.user.rows(), { code: "DATABASE_BINDING_CHANGED" });
   await assert.rejects(reader.user.findMany(), { code: "DATABASE_BINDING_CHANGED" });
   assert.equal((await request("/bindings", otherToken, "POST", { ...scope, databaseId: resource.id, schemaHash: descriptor.schemaHash, mode: "write" })).status, 200);
   const writer = await readerConnector.connect(descriptor);

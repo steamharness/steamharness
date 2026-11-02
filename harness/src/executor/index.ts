@@ -28,8 +28,9 @@ import type {
 import { resolveProjectEntrySync, type ResolvedProjectEntry } from "@steamharness/project-manifest/node";
 import { projectEntryKey } from "@steamharness/project-manifest";
 import type { AccessActor } from "@steamharness/project-access";
-import { createExecutorHostState, createExecutorResources, type EntryDeclaration } from "./entry-resources";
-import { closeDatabaseConnections, type DatabasesContext, type DatabaseResolver } from "../databases/index";
+import { createExecutorResources, type EntryDeclaration } from "./entry-resources";
+import { closeDatabaseConnections } from "../database/runtime";
+import type { RelationalDatabasesContext } from "../database/index";
 import type { RelationalDatabaseHost } from "../database/host";
 import type { ToolPermissionContext } from "../tool-permissions/index";
 type ProjectDataStorageLocation = "local" | "server";
@@ -98,14 +99,6 @@ import {
   type ConversationContext,
 } from "../conversation/index";
 import {
-  createLocalProjectKVStore,
-  createProjectPersistentValueContext,
-  createProjectKVContext,
-  type KVContext,
-  type KVStore,
-  type PersistentValueContext,
-} from "../kv/index";
-import {
   createProjectTokenUsageContext,
   type TokenUsageContext,
 } from "../token-usage/index";
@@ -138,7 +131,6 @@ import {
 export interface RunWorkspaceProjectOptions {
   entryId?: string;
   actor?: AccessActor;
-  databaseResolver?: DatabaseResolver;
   /** Trusted native host for relational connections; defaults to the signed-in Server. */
   relationalDatabaseHost?: RelationalDatabaseHost;
   knowledgeBaseHost?: import('../knowledge-bases/index').KnowledgeBaseHost;
@@ -174,7 +166,6 @@ export interface RunWorkspaceProjectOptions {
 export interface RunLocalProjectOptions {
   entryId?: string;
   actor?: AccessActor;
-  databaseResolver?: DatabaseResolver;
   /** Trusted native host for relational connections; defaults to the signed-in Server. */
   relationalDatabaseHost?: RelationalDatabaseHost;
   knowledgeBaseHost?: import('../knowledge-bases/index').KnowledgeBaseHost;
@@ -209,12 +200,6 @@ export interface ExecutionStorageBackendOptions {
   runtimePersistence?: RuntimePersistence;
   /** Project, local-folder or assistant workspace identity. */
   runtimeWorkspace?: RuntimeWorkspaceInput;
-  /** Legacy explicit SQLite helper directory, removed from the default execution path. */
-  agentStoreDir?: string;
-  kvStore?: KVStore;
-  kvStoreDir?: string;
-  persistentValueStore?: KVStore;
-  persistentValueStoreDir?: string;
 }
 
 export interface ExecutionStorageOptions {
@@ -272,7 +257,7 @@ async function runWorkspaceProjectWithReportInternal(
   let activeConversationId: string | undefined;
   let tokenUsage: TokenUsageContext | undefined;
   let result: RunResult<unknown>;
-  let resourceDatabases: DatabasesContext | undefined;
+  let resourceDatabases: RelationalDatabasesContext | undefined;
   let activeRuntimeState: ReturnType<typeof createRuntimeStateStorage> | undefined;
 
   try {
@@ -350,15 +335,6 @@ async function runWorkspaceProjectWithReportInternal(
       options.conversationId,
       readInputConversationId(input),
     );
-    const executorStorage = createExecutorStorageContexts({
-      declaration: projectStorageDeclaration,
-      env,
-      projectName: options.projectName,
-      runId: runtime.runId,
-      conversationId: resolvedConversationId,
-      options: options.storage,
-    });
-    const kv = executorStorage.host.kv;
     const runtimeState = activeRuntimeState = createRuntimeStateStorage({
       projectId: projectStorageDeclaration.projectId, entryId: projectStorageDeclaration.entryId,
       rootDir: projectStorageDeclaration.rootDir, runId: runtime.runId, conversationId: resolvedConversationId, env,
@@ -499,7 +475,7 @@ async function debugWorkspaceProjectNodeWithReportInternal(
   let activeConversationId: string | undefined;
   let tokenUsage: TokenUsageContext | undefined;
   let result: RunResult<unknown>;
-  let resourceDatabases: DatabasesContext | undefined;
+  let resourceDatabases: RelationalDatabasesContext | undefined;
   let activeRuntimeState: ReturnType<typeof createRuntimeStateStorage> | undefined;
 
   try {
@@ -573,15 +549,6 @@ async function debugWorkspaceProjectNodeWithReportInternal(
       options.conversationId,
       readInputConversationId(input),
     );
-    const executorStorage = createExecutorStorageContexts({
-      declaration: projectStorageDeclaration,
-      env,
-      projectName: options.projectName,
-      runId: runtime.runId,
-      conversationId: resolvedConversationId,
-      options: options.storage,
-    });
-    const kv = executorStorage.host.kv;
     const runtimeState = activeRuntimeState = createRuntimeStateStorage({
       projectId: projectStorageDeclaration.projectId, entryId: projectStorageDeclaration.entryId,
       rootDir: projectStorageDeclaration.rootDir, runId: runtime.runId, conversationId: resolvedConversationId, env,
@@ -841,7 +808,7 @@ async function runLocalProjectWithReportInternal(
   let startedEventEmitted = false;
   let tokenUsage: TokenUsageContext | undefined;
   let result: RunResult<unknown>;
-  let resourceDatabases: DatabasesContext | undefined;
+  let resourceDatabases: RelationalDatabasesContext | undefined;
   let activeRuntimeState: ReturnType<typeof createRuntimeStateStorage> | undefined;
 
   try {
@@ -922,15 +889,6 @@ async function runLocalProjectWithReportInternal(
       options.conversationId,
       readInputConversationId(input),
     );
-    const executorStorage = createExecutorStorageContexts({
-      declaration: projectStorageDeclaration,
-      env,
-      projectName,
-      runId,
-      conversationId: resolvedConversationId,
-      options: options.storage,
-    });
-    const kv = executorStorage.host.kv;
     const runtimeState = activeRuntimeState = createRuntimeStateStorage({
       projectId: projectStorageDeclaration.projectId, entryId: projectStorageDeclaration.entryId,
       rootDir: projectStorageDeclaration.rootDir, runId: runId, conversationId: resolvedConversationId, env,
@@ -1004,8 +962,6 @@ async function runLocalProjectWithReportInternal(
         project: projectName,
         runId,
         conversationId: conversation.conversationId,
-        agentStoreDir: options.storage?.[options.storage.host]?.agentStoreDir
-          ?? env.STEAMHARNESS_AGENT_STORE_DIR ?? path.join(os.homedir(), ".steamharness", "runtime", projectStorageDeclaration.projectId, projectStorageDeclaration.entryId, "agents"),
         ...extraContext.metadata,
         projectId: projectStorageDeclaration.projectId,
         entryId: projectStorageDeclaration.entryId,
@@ -1427,7 +1383,6 @@ function readInputConversationId(input: unknown): string | undefined {
   return typeof value === "string" && value.trim() !== "" ? value : undefined;
 }
 
-const createExecutorStorageContexts = createExecutorHostState;
 function readProjectStorageDeclaration(projectDir: string, entryId?: string, env?: NodeJS.ProcessEnv): ProjectStorageDeclaration {
   const resolved = resolveProjectEntrySync(projectDir, entryId, env);
   return { ...resolved, projectId: resolved.manifest.projectId, entryId: resolved.registration.entryId };
@@ -1572,13 +1527,6 @@ export async function runWorkspaceProjectFromCli(
     projectName,
     args,
     entrypointId,
-    storage: {
-      host: "local",
-      local: {
-        kvStoreDir: process.env.STEAMHARNESS_KV_STORE_DIR,
-        persistentValueStoreDir: process.env.STEAMHARNESS_PERSISTENT_VALUE_STORE_DIR,
-      },
-    },
   });
 }
 
@@ -1616,13 +1564,6 @@ export async function runWorkspaceProjectReportFromCli(
     projectName,
     args,
     entrypointId: options.entrypointId ?? parsed.entrypointId,
-    storage: {
-      host: "local",
-      local: {
-        kvStoreDir: process.env.STEAMHARNESS_KV_STORE_DIR,
-        persistentValueStoreDir: process.env.STEAMHARNESS_PERSISTENT_VALUE_STORE_DIR,
-      },
-    },
     nodeHooks: options.nodeHooks,
     onDefinedNodes: options.onDefinedNodes,
   });

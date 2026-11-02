@@ -60,7 +60,7 @@ Server checks account grants and consumer bindings. Registered projects addition
 
 Server Web offers relational and knowledge catalogs with server pagination, search and resource creation. Resource pages manage account grants and project entry bindings. Relational pages show applied models, fingerprints and table data; knowledge pages manage documents and attachments. Row mutations require a complete stable key and current row version. Conflicts retain drafts; navigation protects unsaved edits.
 
-Studio's database view and CLI Web's project database panel show resource references and open the corresponding Server Web page without putting account tokens in links. These interfaces no longer expose KV editing or a local/remote KV switch. Remaining legacy KV runtime APIs await removal and are not the storage approach for new projects.
+Studio's database view and CLI Web's project database panel show resource references and open the corresponding Server Web page without putting account tokens in links. These interfaces no longer expose KV editing or a local/remote KV switch. Legacy KV runtime and local storage APIs are removed without compatibility or automatic migration.
 
 ## Persistent history and failures
 

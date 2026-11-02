@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import type { ConversationState, ConversationStateStorage } from "../conversation";
-import { databaseConnectionFromEnv } from "../databases/remote";
+import { databaseConnectionFromEnv } from "../database/connection";
 import type { TokenUsageEntry } from "../token-usage";
 import { RuntimeStorageError, type RuntimeHistoryRecord, type RuntimeWorkspaceInput } from "./contract";
 import { createServerRuntimePersistence, emptyRuntimeRecord, type RuntimeHistoryLease, type RuntimePersistence } from "./history";

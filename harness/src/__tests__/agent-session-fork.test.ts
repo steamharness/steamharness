@@ -6,24 +6,25 @@ import path from "node:path";
 import { BACKGROUND_CONTEXT as context } from "@earendil-works/chord/context";
 import { Harness, ProviderDoc, createRegistry, defineDoc, type ConversationId } from "@earendil-works/pi-durable";
 import { createModels, fauxAssistantMessage } from "@earendil-works/pi-ai";
-import { agentConversationDirectory, forkAgentConversation, openAgentStorage } from "../agent/storage";
 import { SessionDoc } from "../agent/session-state";
 import { forkSessionConversation } from "../agent/session-state";
-import { isolateAgentConversation } from "../agent/isolate";
+import { forkStoredAgentConversation, isolateStoredAgentConversation } from "../agent/stored-session";
+import { createMemoryRuntimePersistence } from "../runtime-storage/memory";
 
 test("offline forks preserve the selected history and document policies with durable command receipts", async t => {
   const directory = await mkdtemp(path.join(tmpdir(), "agent-offline-fork-"));
   t.after(() => rm(directory, { recursive: true, force: true }));
-  const conversationId = "host-session", rootDir = agentConversationDirectory(directory, conversationId);
+  const persistence = createMemoryRuntimePersistence();
+  const conversationId = "host-session", rootDir = directory;
   await mkdir(rootDir, { recursive: true });
   const database = path.join(rootDir, "session.sqlite");
   const AsOf = defineDoc({ kind: "fixture.as-of", version: 1, scope: "conversation", history: "rewindable", fork: "asOf", initial: () => ({ value: "initial" }) });
   const Current = defineDoc({ kind: "fixture.current", version: 1, scope: "conversation", history: "rewindable", fork: "current", initial: () => ({ value: "initial" }) });
   const Initial = defineDoc({ kind: "fixture.initial", version: 1, scope: "conversation", history: "rewindable", fork: "initial", initial: () => ({ value: "initial" }) });
   const open = async () => {
-    const store = await openAgentStorage(database);
+    const store = await persistence.agentStorage(conversationId, "main").open();
     const harness = await Harness.open(store.storage, { models: createModels(), registry: createRegistry() }, context);
-    return { harness, close: async () => { try { await harness.close(context); } finally { store.release(); } } };
+    return { harness, close: async () => { try { await harness.close(context); } finally { await store.release?.(); } } };
   };
   const first = await open();
   const root = await first.harness.root(context);
@@ -36,14 +37,14 @@ test("offline forks preserve the selected history and document policies with dur
     for (const doc of [AsOf, Current, Initial]) (await tx.doc(doc, root.id)).value = "later";
     await tx.appendEntry(root.id, { kind: "project.input", model: [{ role: "user", content: "Later input", timestamp: 3 }] });
   }, context);
-  const options = { agentStoreDir: directory, conversationId, command: { type: "fork" as const, requestId: "offline", entryId: boundary } };
-  try { await assert.rejects(forkAgentConversation(options), /execution owner/); }
+  const options = { persistence, conversationId, command: { type: "fork" as const, requestId: "offline", entryId: boundary } };
+  try { await assert.rejects(forkStoredAgentConversation(options), /execution owner/); }
   finally { await first.close(); }
-  const receipt = await forkAgentConversation(options);
-  assert.deepEqual(await forkAgentConversation(options), receipt);
-  await assert.rejects(forkAgentConversation({ ...options, command: { ...options.command, entryId: boundary + 1000 } }), /another command/);
-  await assert.rejects(forkAgentConversation({ ...options, command: { ...options.command, requestId: "invalid", entryId: boundary + 1000 } }), /not visible/);
-  await assert.rejects(forkAgentConversation({ ...options, command: { ...options.command, requestId: "wrong-target", targetId: 999999 } }), /does not exist/);
+  const receipt = await forkStoredAgentConversation(options);
+  assert.deepEqual(await forkStoredAgentConversation(options), receipt);
+  await assert.rejects(forkStoredAgentConversation({ ...options, command: { ...options.command, entryId: boundary + 1000 } }), /another command/);
+  await assert.rejects(forkStoredAgentConversation({ ...options, command: { ...options.command, requestId: "invalid", entryId: boundary + 1000 } }), /not visible/);
+  await assert.rejects(forkStoredAgentConversation({ ...options, command: { ...options.command, requestId: "wrong-target", targetId: 999999 } }), /does not exist/);
   const reopened = await open();
   try {
     const child = (await reopened.harness.conversation(receipt.forkId as ConversationId, context))!;
@@ -58,13 +59,13 @@ test("offline forks preserve the selected history and document policies with dur
     assert.equal((await reopened.harness.commit(tx => tx.scanConversations({}, 100), context)).items.length, 2);
     assert.ok((await (await reopened.harness.root(context)).context(context)).entries.some(entry => entry.model?.some(message => message.content === "Later input")));
   } finally { await reopened.close(); }
-  const nested = await forkAgentConversation({ ...options, command: { ...options.command, requestId: "nested", targetId: receipt.forkId } });
+  const nested = await forkStoredAgentConversation({ ...options, command: { ...options.command, requestId: "nested", targetId: receipt.forkId } });
   assert.equal(nested.conversationId, receipt.forkId);
   const last = await open();
   try {
     await last.harness.commit(async tx => { (await tx.doc(SessionDoc, receipt.forkId as ConversationId)).deleted = true; }, context);
   } finally { await last.close(); }
-  await assert.rejects(forkAgentConversation({ ...options, command: { ...options.command, requestId: "deleted", targetId: receipt.forkId } }), /deleted/);
+  await assert.rejects(forkStoredAgentConversation({ ...options, command: { ...options.command, requestId: "deleted", targetId: receipt.forkId } }), /deleted/);
 });
 
 test("isolated forks have their own root, lock, provider and document history while the source stays live", async t => {
@@ -72,10 +73,11 @@ test("isolated forks have their own root, lock, provider and document history wh
   t.after(() => rm(directory, { recursive: true, force: true }));
   const AsOf = defineDoc({ kind: "fixture.plan", version: 1, scope: "conversation", history: "rewindable", fork: "asOf", initial: () => ({ value: "initial" }) });
   const Runtime = defineDoc({ kind: "fixture.runtime", version: 1, scope: "conversation", history: "latest", fork: "initial", initial: () => ({ pending: false as boolean }) });
+  const persistence = createMemoryRuntimePersistence();
   const open = async (id: string) => {
-    const store = await openAgentStorage(path.join(agentConversationDirectory(directory, id), "session.sqlite"));
+    const store = await persistence.agentStorage(id, "main").open();
     const harness = await Harness.open(store.storage, { models: createModels(), registry: createRegistry() }, context);
-    return { harness, root: await harness.root(context), close: async () => { try { await harness.close(context); } finally { store.release(); } } };
+    return { harness, root: await harness.root(context), close: async () => { try { await harness.close(context); } finally { await store.release?.(); } } };
   };
   const source = await open("source");
   t.after(source.close);
@@ -89,9 +91,9 @@ test("isolated forks have their own root, lock, provider and document history wh
     return (await tx.appendEntry(source.root.id, { kind: "pi.user", model: [{ role: "user", content: "Second", timestamp: 2 }] })).id;
   }, context);
   const receipt = await forkSessionConversation(source.harness, source.root, { type: "fork", requestId: "live-independent", entryId: second });
-  const options = { agentStoreDir: directory, sourceConversationId: "source", conversationId: "branch", targetId: receipt.forkId!,
+  const options = { persistence, sourceConversationId: "source", conversationId: "branch", targetId: receipt.forkId!,
     replacements: [{ from: "/files/old.png", to: "/branch/new.png" }] };
-  await isolateAgentConversation(options);
+  await isolateStoredAgentConversation(options);
   const branch = await open("branch");
   try {
     assert.deepEqual(await branch.harness.commit(tx => tx.scanConversations({}, 100), context).then(page => page.items), [{ id: branch.root.id }]);
@@ -108,16 +110,16 @@ test("isolated forks have their own root, lock, provider and document history wh
     await source.root.abort(context, { background: true });
     assert.match(JSON.stringify((await branch.root.context(context)).messages), /Branch only/);
   } finally { await branch.close(); }
-  await isolateAgentConversation(options);
+  await isolateStoredAgentConversation(options);
   const again = await open("branch");
   try { assert.match(JSON.stringify((await again.root.context(context)).messages), /Branch only/); }
   finally { await again.close(); }
-  const nested = await forkAgentConversation({ agentStoreDir: directory, conversationId: "branch", command: { type: "fork", requestId: "nested", entryId: first } });
-  await isolateAgentConversation({ agentStoreDir: directory, sourceConversationId: "branch", conversationId: "nested", targetId: nested.forkId!, retireSource: true });
+  const nested = await forkStoredAgentConversation({ persistence, conversationId: "branch", command: { type: "fork", requestId: "nested", entryId: first } });
+  await isolateStoredAgentConversation({ persistence, sourceConversationId: "branch", conversationId: "nested", targetId: nested.forkId!, retireSource: true });
   const child = await open("nested");
   try {
     assert.equal((await child.harness.snapshot(AsOf, child.root.id, context))?.value, "first");
     assert.doesNotMatch(JSON.stringify((await child.root.context(context)).messages), /Second|Branch only/);
   } finally { await child.close(); }
-  await assert.rejects(isolateAgentConversation({ ...options, targetId: source.root.id }), /already exists/);
+  await assert.rejects(isolateStoredAgentConversation({ ...options, targetId: source.root.id }), /already exists/);
 });

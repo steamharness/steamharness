@@ -1,0 +1,41 @@
+---
+title: "Databases and Conversations"
+description: "Separate business models, knowledge resources, and platform runtime records"
+---
+
+# Databases and conversations
+
+Business models, knowledge bases, and runtime records have independent resources and lifecycles. Creating a project or conversation never provisions a business database automatically.
+
+## Business tables
+
+Define aliases in `steamharness.database.ts` and models in `steamharness.schema`. List the aliases in the entry's `databases`. Server stores bindings by account, project, entry, and alias; project configuration contains no business database IDs or credentials.
+
+```ts
+import { main } from "./.steamharness/generated/database/node/index.js";
+const db = await context.databases.connect(main);
+const users = await db.user.findMany({ orderBy: { id: "asc" } });
+```
+
+Each resource owns an independent PostgreSQL database. Projects A and B can both define `User` while binding different resources to isolate schemas and rows. Sharing requires explicitly binding the same UUID. Transactions apply to one client and do not span databases. See [Database API](/en/core-api/database).
+
+## Aggregate calls
+
+```ts
+const result = await context.entries.get("jobs")
+  .runEntrypoint("refresh", ["--limit", "10"]);
+```
+
+Only registered Workflow entries are callable. The host preserves the actor, cancellation, and tool restrictions and checks the target configuration and bindings again. Calling an entry does not grant direct access to its database.
+
+## Knowledge and attachments
+
+Use `context.knowledgeBases.get("docs")` for documents and its `files` member for attachments. Knowledge resources have separate account grants and entry bindings without requiring a project schema. Private file storage holds bytes; relational tables hold metadata and versions. Business rows store references. See [Knowledge API](/en/core-api/knowledge-documents).
+
+## Conversation and runtime storage
+
+Server platform tables store conversations, messages, queues, drafts, runs, usage, and Agent checkpoints, isolated by account, project, entry, and conversation ID. Projects share the platform tables without provisioning a separate history database or requiring business database access.
+
+`context.conversation.getValue/setValue/setTitle/appendMessage` addresses the current conversation independently of business models. Configuration changes apply to the next execution; approval recovery must match the current project and entry.
+
+Persistent history requires login and connectivity. Local development can use a local Server and Docker PostgreSQL. Disconnection fails explicitly while preserving login and committed records. KV, PersistentValue, local KV, and legacy histories are no longer read, migrated, or dual-written. Source files, configuration, file caches, and explicitly selected SQLite tools retain their own purposes and never serve as a fallback history backend. See [Runtime storage](/en/core-api/runtime-storage).

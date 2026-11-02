@@ -1,5 +1,4 @@
 import { createHash, randomUUID } from "node:crypto";
-import { agentConversationDirectory } from "./storage";
 import { agentSessionLease, agentSessionResuming, agentSessionInterrupted, agentSessionSuspended, bindAgentSessionControl } from "./session-control";
 import path from "node:path";
 import { BaseStreamNode } from "../node/base";
@@ -653,7 +652,7 @@ class AgentStreamNode extends BaseStreamNode<AgentInput, OutputItemStreamChunk, 
     const key = readSessionKey(this.options, context);
     const persistence = context.metadata?.["runtimePersistence"] as import("../runtime-storage/history").RuntimePersistence | undefined;
     const durable = context.conversation?.enabled && input.hostInput === undefined;
-    if (durable && !this.options.storage && !this.options.databasePath && !persistence) {
+    if (durable && !this.options.storage && !persistence) {
       throw new Error("Durable conversations require Server runtime persistence or an explicit temporary storage factory.");
     }
     const runtimeOptions: AgentRuntimeInternalOptions = {
@@ -663,8 +662,7 @@ class AgentStreamNode extends BaseStreamNode<AgentInput, OutputItemStreamChunk, 
       sessionSuspend: context.conversation?.conversationId && (input.agent ?? this.options.mode) !== "plan" ? agentSessionSuspended(context.conversation.conversationId) : undefined,
       resumeSession: !!context.conversation?.conversationId && (input.agent ?? this.options.mode) !== "plan" && input.hostInput === undefined && agentSessionResuming(context.conversation.conversationId),
       interruptSession: !!context.conversation?.conversationId && agentSessionInterrupted(context.conversation.conversationId),
-      databasePath: this.options.databasePath,
-      storage: this.options.storage ?? (!this.options.databasePath && durable
+      storage: this.options.storage ?? (durable
         ? persistence?.agentStorage(context.conversation!.conversationId!, key) : undefined),
       workdir: input.workdir ?? this.options.workdir,
       provider: input.provider ?? this.options.provider,

@@ -40,14 +40,14 @@ type JsonSchema = Record<string, unknown>;
 
 export const KNOWLEDGE_DOCUMENTS_TOOL_NAME = "knowledge_documents";
 
-// Pi Agent exposes the same PersistentValue-backed knowledge_documents tool
+// Pi Agent exposes the same PostgreSQL-backed knowledge_documents tool
 // as the OpenAI and Claude agent samples.
 export function createKnowledgeDocumentsTool(input: KnowledgeDocumentsToolContext): ToolDefinition {
   return {
     name: KNOWLEDGE_DOCUMENTS_TOOL_NAME,
     label: "Knowledge Documents",
     description: [
-      "Manage PersistentValue-backed project markdown knowledge documents.",
+      "Manage PostgreSQL-backed project markdown knowledge documents.",
       "Use action=list to see summaries, get to read one document, create/edit/delete to change documents, search to find matching markdown lines, and read_lines for a 1-based inclusive line range.",
       "Before invoking this tool, tell the user in normal assistant text which knowledge document operation you are about to perform and why.",
     ].join(" "),
@@ -62,11 +62,11 @@ export function createKnowledgeDocumentsTool(input: KnowledgeDocumentsToolContex
       try {
         args = normalizeKnowledgeDocumentsArgs(rawParams);
         // routes the Pi custom tool through the shared tool approval
-        // gate before touching PersistentValue-backed knowledge documents.
+        // gate before touching PostgreSQL-backed knowledge documents.
         const decision = await steamharness.createToolApprovalGate().approve({
           name: KNOWLEDGE_DOCUMENTS_TOOL_NAME,
           label: "Knowledge Documents",
-          description: "Manage PersistentValue-backed project markdown knowledge documents.",
+          description: "Manage PostgreSQL-backed project markdown knowledge documents.",
           arguments: args,
         }, input.context);
         if (decision.requestId !== undefined) {

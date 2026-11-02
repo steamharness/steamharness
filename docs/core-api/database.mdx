@@ -140,7 +140,7 @@ pnpm exec steamharness database unbind . --entry main --alias main --server http
 
 目录指向含 `steamharness.json` 的聚合项目根；`--entry` 默认使用 `defaultEntry`。`bind` 在所选入口的 `root` 目录生成并检查模型，`--alias` 默认 `main`。同一聚合项目的不同入口可以分别将 `main` 绑定到不同资源；不同项目也可以各自定义 `User`。只有显式绑定同一个资源 UUID 才共享表和数据。
 
-宿主按当前账号、`projectId + entryId + alias` 保存绑定，不修改项目文件。关系库别名由入口目录的 `steamharness.database.ts` 声明，不写入旧 KV 的 `steamharness.json.databases` 或 `config.json.databases`。换账号、Server 或入口后需要各自绑定。绑定只选择当前账号已经拥有权限的资源，不能授予权限；默认继承账号的读写能力，`--mode read` 可以进一步限制为只读，不能提升账号权限。
+宿主按当前账号、`projectId + entryId + alias` 保存绑定，不修改项目文件。关系库别名由入口目录的 `steamharness.database.ts` 声明，入口 `steamharness.json.databases` 只列别名，不在 `config.json` 保存业务资源 ID。换账号、Server 或入口后需要各自绑定。绑定只选择当前账号已经拥有权限的资源，不能授予权限；默认继承账号的读写能力，`--mode read` 可以进一步限制为只读，不能提升账号权限。
 
 Node 工作流在运行上下文中连接生成的描述符：
 
@@ -166,7 +166,22 @@ export async function createUser(context: RunContext) {
 
 自定义 Node 宿主可从 `steamharness` 导入 `createRemoteRelationalDatabaseHost` 和 `createDatabaseConnector`，提供账号 API Key、项目和入口身份；结束时必须 `await connector.close()`。账号密钥和临时 SQL 凭据只在可信宿主保留，不传入项目参数、模型输入或 Browser。签发 SQL 凭据的 HTTP 接口仅接受账号 Bearer API Key，拒绝 Cookie 会话和带 Origin 的浏览器请求。
 
-Browser 描述符当前用于类型与模型元数据，浏览器查询代理尚未接入。平台会话、用量和默认 Agent 存储已使用独立的平台关系表；现有业务 KV 的替换仍需由项目按模型调整。
+## Browser 表客户端
+
+静态页面从生成的 `browser/index.js` 导入描述符，构建时打包，通过宿主连接：
+
+```ts
+import { data } from "./.steamharness/generated/database/browser/index.js";
+const db = await window.steamHarnessKanban.databases.connect(data);
+const page = await db.task.rows({ where: { configurationId: "default" }, orderBy: { id: "asc" }, page: 1, pageSize: 50 });
+const row = await db.task.insert({ id: crypto.randomUUID(), configurationId: "default", title: "First", status: "todo" });
+await db.task.update({ key: { id: row.values.id }, rowVersion: row.rowVersion, data: { title: "Changed" } });
+await db.task.delete({ key: { id: row.values.id }, rowVersion: row.rowVersion });
+```
+
+入口必须声明 `databases: ["data"]` 并完成资源迁移与账号绑定。页面只传描述符、模型和结构化请求；账号密钥、SQL 凭据和数据库连接串保留在可信宿主。每次查询重新检查绑定 ID、版本、账号授权与 schemaHash；旧客户端在绑定或授权变化后失效。Browser 仅提供表级 `rows/insert/update/delete`，不提供 Node 的关系查询或事务。行更新与删除必须携带完整键与 rowVersion，冲突保留草稿并要求重新读取。
+
+看板模板先执行 `database generate` 再构建 `dist/index.html`。任务保存在 `Task` 行中，并按 configurationId 过滤。未绑定、断连或读取失败会显示错误并禁止编辑，不切换临时本地模式。旧 KV、PersistentValue、本地 KV 和 KV 工具已移除，不自动迁移旧数据。
 
 ## 构建与分发
 
@@ -180,4 +195,4 @@ Server 只读取静态清单、源文件指纹及产物哈希，不执行项目�
 
 数据库目录支持服务端分页、搜索和显式创建。资源详情提供账号授权、入口绑定、已应用模型及表行管理；Studio 和 CLI Web 的浏览操作打开该页面。行读取支持分页、字面文本搜索和标量等值过滤，修改与删除需完整稳定键和 rowVersion，schemaHash 变化后重新加载模型。冲突保留草稿。
 
-JSON 数据中 BigInt 和 Decimal 用字符串无损传输，DateTime 为 ISO，Bytes 为 Base64，列表和 JSON 保留结构。数据库默认值及 @updatedAt 可自动应用；cuid()/uuid() 等由模型客户端生成的默认值在管理端 SQL 新增时须显式填写。此结构化表管理接口不提供关联写入或原始 SQL，也不表示生成的 Browser ORM 已接通。知识库使用独立的 [知识库 API](/core-api/knowledge-documents)。
+JSON 数据中 BigInt 和 Decimal 用字符串无损传输，DateTime 为 ISO，Bytes 为 Base64，列表和 JSON 保留结构。数据库默认值及 @updatedAt 可自动应用；cuid()/uuid() 等由模型客户端生成的默认值在管理端 SQL 新增时须显式填写。此结构化表管理接口与 Browser 表客户端使用同样的请求边界，不提供关联写入、原始 SQL 或 Browser 事务。知识库使用独立的 [知识库 API](/core-api/knowledge-documents)。

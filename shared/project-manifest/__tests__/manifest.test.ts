@@ -3,7 +3,6 @@ import { describe, it, expect } from "vitest";
 import { mkdtemp, mkdir, writeFile, symlink, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { emptyDatabasePermissions } from "../../database-spaces/index";
 import { readProjectManifest, normalizeProjectManifest, selectProjectEntry, projectManifestForDistribution, projectManifestTypes } from "../index";
 import { resolveProjectEntry } from "../node";
 const id = "3bd18168-f4f6-486b-842c-ab9f8098d9d4";
@@ -63,14 +62,14 @@ describe("aggregate project manifest", () => {
     const p = pkg();
     Object.assign(p.entries[0]!, { databases: ["data", "archive"] });
     Object.assign(p.entries[1]!, { databases: ["data"] });
-    const manifest = readProjectManifest(p, { version: 1, databases: { data: id, archive: "00000000-0000-4000-8000-000000000001" } });
+    const manifest = readProjectManifest(p, undefined);
     expect(manifest.entries.map(entry => entry.databases.length)).toEqual([2, 1, 0, 0]);
     expect(manifest.entries[1]!.databases).toEqual([manifest.entries[0]!.databases[0]]);
     expect(normalizeProjectManifest(JSON.parse(JSON.stringify(manifest)))).toEqual(manifest);
-    expect(() => readProjectManifest({ ...pkg(),  ...pkg(), entries: manifest.entries  })).toThrow("only alias strings");
+    expect(readProjectManifest({ ...pkg(), entries: manifest.entries })).toEqual(manifest);
   });
   it("rejects permission declarations, binding references, invalid IDs and duplicate aliases", () => {
-    for (const database of [{ alias: "data", host: "server", permissions: emptyDatabasePermissions() }, { alias: "data", databaseId: id, permissions: emptyDatabasePermissions() }, { alias: "data", databaseId: id, bindingRef: id }, { alias: "data", databaseId: "invalid" }]) {
+    for (const database of [{ alias: "data", host: "server", permissions: {} }, { alias: "data", databaseId: id, permissions: {} }, { alias: "data", databaseId: id, bindingRef: id }, { alias: "data", databaseId: "invalid" }]) {
       const p = pkg(); Object.assign(p.entries[0]!, { databases: [database] });
       expect(() => readProjectManifest(p)).toThrow();
     }

@@ -64,7 +64,7 @@ function fixture(t, options = {}) {
     projectCreationDirectory: path.join(homedir(), 'Documents', 'steamharness-projects'),
     templates: async () => options.templates ?? [ { id: 'workflow-starter', projectType: 'workflow', kind: 'starter', name: 'Workflow', description: 'Minimal' },
       { id: 'workflow-hello', projectType: 'workflow', kind: 'example', name: 'Hello', description: 'Offline' } ],
-    createProject: async input => { f.created = (f.created ?? 0) + 1; await f.create?.(); return { id: f.projectId, idAllocationError: f.idAllocationError, name: input.name, directory: path.join(input.parentDirectory, input.name), projectType: options.projectType ?? 'workflow', entryFile: options.projectType === 'kanban' ? 'index.html' : 'index.ts' }; },
+    createProject: async input => { f.created = (f.created ?? 0) + 1; await f.create?.(); return { id: f.projectId, idAllocationError: f.idAllocationError, name: input.name, directory: path.join(input.parentDirectory, input.name), projectType: options.projectType ?? 'workflow', entryFile: options.templates?.find(template => template.id === input.templateId)?.entryFile ?? (options.projectType === 'kanban' ? 'index.html' : 'index.ts') }; },
     registerProject: async directory => { f.registrations = (f.registrations ?? 0) + 1; await f.register?.(directory); f.manifestId = id; return id; },
     validateProjectCreation: async input => { await f.validate?.(input); },
     installDependencies: async (directory, signal, log) => { f.installs.push(directory); log('install log'); await f.install?.(signal); },

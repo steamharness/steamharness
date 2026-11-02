@@ -153,7 +153,6 @@
     "tsx": "^4.21.0",
     "@steamharness/project-configuration": "workspace:*",
     "@steamharness/project-access": "workspace:*",
-    "@steamharness/database-spaces": "workspace:*",
     "@steamharness/project-manifest": "workspace:*"
   },
   "engines": {

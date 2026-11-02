@@ -14,7 +14,7 @@ workflow 源码是自包含业务代码。本地宿主和 CLI 把 runtime API �
 
 Browser 描述符不得加载 Node 客户端、驱动或连接配置。生成产物含 JS 与 TS、模型元数据、标准内部 schema、引擎运行资产及校验清单，不手动维护。workspace pack 自动为根和注册入口生成并带入产物；Server 只校验静态文件，不执行定义。失败保持上一份完整生成，去掉别名后重新生成清理旧产物。
 
-资源管理使用 `steamharness database create|list|inspect|retry|grant|revoke`，迁移使用 `migrate dev|deploy|status --database <uuid> [--alias main]`；`dev --draft` 保存 SQL、模型快照和校验清单，资源需要目标 Server 的账号授权。不同资源对应独立 PostgreSQL database；创建者是唯一迁移所有者。已应用历史不可修改，漂移、破坏性变更和失败重试需遵循公开数据库文档。Node 项目使用 `const db = await context.databases.connect(main)`，main 从生成的 `node/index.js` 导入。db 仅暴露模型 CRUD、关系、聚合和 `transaction(async tx => ...)`；事务结束后不能保留 tx，不暴露 SQL、PrismaClient 或连接池。先 migrate，再通过 `database bind <aggregate-root> --entry <id> --alias main --database <uuid> [--mode read]` 建立宿主绑定；bindings/unbind 使用同样的目录和入口。关系别名不写入旧 KV 的 manifest/config.databases，宿主按当前账号 + projectId + entryId + alias 存映射，映射不能授予资源权限。同别名跨项目和入口独立，只有显式同 UUID 才共享。每次查询与事务提交检查绑定、权限和 schemaHash；绑定变化须显式重新 connect，撤销会中断 SQL 并回滚事务。运行结束和取消由宿主释放；不自动重放写入，不回退本地存储。Browser 目前只有描述符类型，查询代理未接入。不能把描述符当作资源身份或授权。现有 `.databases.get(alias).kv` 属于旧存储契约，本阶段未删除，不把其 API 伪装成关系模型查询。
+资源管理使用 `steamharness database create|list|inspect|retry|grant|revoke`，迁移使用 `migrate dev|deploy|status --database <uuid> [--alias main]`；`dev --draft` 保存 SQL、模型快照和校验清单，资源需要目标 Server 的账号授权。不同资源对应独立 PostgreSQL database；创建者是唯一迁移所有者。已应用历史不可修改，漂移、破坏性变更和失败重试需遵循公开数据库文档。Node 项目使用 `const db = await context.databases.connect(main)`，main 从生成的 `node/index.js` 导入。db 仅暴露模型 CRUD、关系、聚合和 `transaction(async tx => ...)`；事务结束后不能保留 tx，不暴露 SQL、PrismaClient 或连接池。先 migrate，再通过 `database bind <aggregate-root> --entry <id> --alias main --database <uuid> [--mode read]` 建立宿主绑定；bindings/unbind 使用同样的目录和入口。关系别名在入口 manifest.databases 声明为字符串数组，不写 config.databases，宿主按当前账号 + projectId + entryId + alias 存映射，映射不能授予资源权限。同别名跨项目和入口独立，只有显式同 UUID 才共享。每次查询与事务提交检查绑定、权限和 schemaHash；绑定变化须显式重新 connect，撤销会中断 SQL 并回滚事务。运行结束和取消由宿主释放；不自动重放写入，不回退本地存储。Browser 描述符通过宿主查询代理访问模型 rows/insert/update/delete；不能把描述符当作资源身份或授权。旧 KV、PersistentValue、本地 KV 与 KV 工具已删除，无兼容入口或自动迁移。
 
 ## 用户设置与权限继承
 
@@ -213,18 +213,20 @@ Structure 将预设返回给宿主，但导入、打开或发布项目都不会�
 `window.steamHarnessKanban.getConfiguration()` 读取当前命名配置；监听 `steamharness:kanban-configuration-change`。`getPresentation()` 返回 full/card 展示，监听 `steamharness:kanban-presentation-change`。无参数时使用全幅布局，在手机、平板、低高度卡片中保留草稿与保存状态。
 
 ```ts
-const database = window.steamHarnessKanban.databases.get("data");
-const value = await database.kv.getValue("board.v1");
-await database.kv.setValue("board.v1", { markers: [] });
-const stop = database.subscribe(({ revision }) => { /* debounce a reread */ });
+import { data } from "./.steamharness/generated/database/browser/index.js";
+const database = await window.steamHarnessKanban.databases.connect(data);
+const configurationId = window.steamHarnessKanban.getConfiguration().id || "default";
+const page = await database.task.rows({ where: { configurationId } });
+const row = await database.task.insert({ id: crypto.randomUUID(), configurationId, title: "Review", status: "todo" });
+await database.task.update({ key: { id: row.values.id }, rowVersion: row.rowVersion, data: { status: "done" } });
 const knowledge = window.steamHarnessKanban.knowledgeBases.get("docs");
 const file = await knowledge.files.createFile({ name: "map.png", buffer: blob });
 const { buffer } = await knowledge.files.readFile(file.id);
 ```
 
-知识 alias 必须在当前入口的 knowledgeBases 声明并通过 Server 绑定。知识库通过 knowledgeBases.get(alias)，附件通过该上下文的 files；页面不能选择知识库 ID、项目、授权或数据路径。知识库和现存 KV 的同名 alias 独立，不能互相绕过授权。订阅只返回 alias 和不透明 revision，卸载时调用取消函数。单文件上限 50 MiB，附件超时 120 秒，其他请求 15 秒，并发上限 16。所有请求处理 reject，未绑定或撤销显示恢复入口，不自动创建数据库。
+知识 alias 必须在当前入口的 knowledgeBases 声明并通过 Server 绑定。知识库通过 knowledgeBases.get(alias)，附件通过该上下文的 files；页面不能选择知识库 ID、项目、授权或数据路径。知识库和业务库的同名 alias 独立，不能互相绕过授权。订阅只返回 alias 和不透明 revision，卸载时调用取消函数。单文件上限 50 MiB，附件超时 120 秒，其他请求 15 秒，并发上限 16。所有请求处理 reject，未绑定或撤销显示恢复入口，不自动创建数据库。
 
-模板与生成器同样使用 `databases.get("data").kv`，不使用已移除的顶层 `kv`。Studio 任务看板示例未绑定时明确显示临时模式，绑定后按命名配置分开保存；权限错误或读取失败不能伪装成保存成功。生成器先检查全部目标文件（包含 `configuration.json` 和 `.steamharnessignore`）是否冲突，再写入项目文件；数字开头的项目名称转换为合法 TypeScript 标识符，多行提示词写为转义后的字符串字面量。
+模板与生成器先 generate 再 build，入口为 dist/index.html。业务任务保存在 Task 行中，按 configurationId 筛选。未绑定或加载失败禁用编辑；写入失败保留草稿，不显示保存成功。生成器先检查全部目标文件冲突，再写入；数字开头的名称转换为合法 TypeScript 标识符，多行提示词转义为字符串字面量。
 
 页面方法通过 `window.steamHarnessKanban.methods.register({name,description,inputSchema,readOnly?}, handler)` 注册（准确参数见公开类型）。资源卡片与方法调用必须带 projectId、entryId；先发现实例再使用 instanceId、configurationId、method、args 调用。不同入口和同一入口不同实例互不控制。相对缩放、平移和写入超时后先查询状态，不自动重试。
 
@@ -302,7 +304,7 @@ items: [],
 
 用户可见输出使用 `RunOutputPayload.items`，不要使用顶层 `content` 聚合。每个 item 可以渲染为 `markdown`、`text`、`json`、`audio` 或 `video`。对象和数组内容应保持原始 JSON 值。`audio` 的 `content` 设置为 `{ src, mimeType, name, size, durationMs?, format? }`；`src` 可以是安全的 `data:audio/...;base64,...` URL 或 `http(s)` URL。`video` 的 `content` 约定为 `{ src, mimeType: "video/mp4", name: "output.mp4", durationMs?, format?: "mp4" }`；`src` 同样只接受安全的 `data:video/...;base64,...` 或 `http(s)` URL，宿主使用原生 `<video controls preload="metadata" playsInline>` 渲染，不安全的协议会被丢弃而不是报错。只有确实产出视频文件时才使用 `video` item；不要把视频地址写成 Markdown 链接或 base64 塞进 `text`/`json`。
 
-用户可见答案默认使用流式输出，尤其是 LLM、agent、API workflow，否则用户必须等待完整 run 结束。使用 `steamharness.createOutputNode({ async *stream, format })`，并用 `steamharness.runStreamNode(...)` 执行；非流式 `steamharness.runNode(...)` 只保留给小型内部转换或瞬时输出。可见文本流完后，finalizer 仍可写入 KV、conversation message 和 token usage。
+用户可见答案默认使用流式输出，尤其是 LLM、agent、API workflow，否则用户必须等待完整 run 结束。使用 `steamharness.createOutputNode({ async *stream, format })`，并用 `steamharness.runStreamNode(...)` 执行；非流式 `steamharness.runNode(...)` 只保留给小型内部转换或瞬时输出。可见文本流完后，finalizer 仍可写入业务表、conversation message 和 token usage。
 
 数值辅助输出可声明 `display: { type: "ring", placement: "composer-right" }`，`content` 为 `{ value, total?, unit? }`：`value` 必须是非负有限数，`total` 若提供必须大于零。Conversation 按稳定 item id 保留最近值并固定在输入栏右侧，不在正文重复展示；缺省或 `placement: "inline"` 时在输出列表中展示。圆环只显示比例，hover/focus 的浅色提示框显示标题、百分比和精确数值。Core Agent 的上下文用量使用这一标准输出项；不要在项目或宿主里另写 context 字段读取和专用展示逻辑。默认 Markdown/text 主回答继续直接平铺。
 
@@ -375,10 +377,7 @@ export default exampleProject;
 - `steamharness.createUserInputNode(...)` 创建可持久化的人工输入暂停。它的表单 `params` 应遵循所选 entrypoint（Conversation 则为 executor）的 params，且每个返回 payload 必须包含 `errCode` 和 `errMessage`。
 - `steamharness.createToolApprovalGate()` 创建工具审批包装器。它依赖所选 entrypoint（Conversation 则为 executor）的 `tools` 注册工具元数据，并复用 user-input 机制暂停和恢复；未自动批准的工具只在 plan 模式的 agent 回合停下来问，build 回合直接执行。
 - 静态结构 report 会在 `definitions.apiCalls` 中列出识别到的 `steamharness.*` 调用。执行序列只记录 `run()` 内由 `steamharness.runNode`、`steamharness.runStreamNode`、`steamharness.runIf`、`steamharness.runFor` 或 `steamharness.runWhile` node hooks 支撑的调用。
-- `KVStore` 可选实现 `withNamespaceLock(input, operation)` 来串行化同一 project 或 conversation namespace 的多 key 操作。远程 store 无法把回调锁跨 HTTP 持有时，可选实现 `executeNamespaceMutation(input, mutation)`；内置知识库仅使用它传递受限的 create、edit、delete 服务端 mutation，不要把任意回调或代码发送到 server。
-- 每个位置的 `persistentValue` 是独立于同位置普通 `kv` 的持久值通道，顶层是当前 project，另有 `.conversation`，并提供 `getValue`、`setValue`、`deleteValue` 和 `updateValue`。本地 CLI/Desktop 需要显式配置本地 PersistentValue store；服务器位置使用登录态和同 UUID 项目绑定。
 - `context.files.createFile({ name, mimeType, buffer, kind })` 把 workflow 生成的文件写入 server-backed runtime file storage。
-- Server PostgreSQL 项目存储写入会自动记录最后写入来源（`projectId`、`runId`、`conversationId`），供 server/web 项目 KV 查看器使用。
 - Workflow entrypoint 上的 `tokenUsage: { enabled: true, display?: boolean }` 会为该入口启用 token usage 收集；Conversation 仍在 executor 上配置。
 - Workflow entrypoint 上的 `tools: ToolPermissionDefinition[]` 会启用该入口的工具策略元数据；Conversation 仍在 executor 上配置。每项包含 `name`、可选 `label/description`、`enabled` 默认值和 `autoApprove` 默认值。
 - `params` 描述结构化 Desktop、server、external input。
@@ -479,7 +478,7 @@ try {
 
 ## 业务数据库与独立知识库
 
-业务模型在 `steamharness.database.ts` 和 `steamharness.schema` 定义，通过 CLI database generate/migrate 生成并应用。Node 导入 `.steamharness/generated/database/node/index.js` 的描述符后使用 `context.databases.connect(descriptor)`。关系库资源和账号、项目、入口、alias 绑定保存在 Server；不写旧 config.databases。连接不自动建库或迁移，模型不符、撤权和断连明确失败。Browser 描述符查询尚未接通，不生成已可用的 Browser ORM 示例。
+业务模型在 `steamharness.database.ts` 和 `steamharness.schema` 定义，通过 CLI database generate/migrate 生成并应用。Node 导入 `.steamharness/generated/database/node/index.js` 的描述符后使用 `context.databases.connect(descriptor)`。关系库资源和账号、项目、入口、alias 绑定保存在 Server；不写旧 config.databases。连接不自动建库或迁移，模型不符、撤权和断连明确失败。Browser 导入 browser/index.js 描述符，经宿主提供模型 rows/insert/update/delete；不是 Node ORM，Decimal、DateTime、BigInt 和 Bytes 通过 JSON 安全表示返回。
 
 知识库无需项目定义 schema。入口声明 `"knowledgeBases": ["docs"]`，根 `config.json` 使用 `"knowledgeBases": { "docs": "<Server 创建的 UUID>" }`。`STEAMHARNESS_PROJECT_CONFIG` 可按别名覆盖；不自动读取 .env，打包保留文件值。使用 `steamharness knowledge create/bind/grant/revoke` 管理，账号必须先登录 Server。绑定不授予权限。多入口可复用 alias；业务库与知识库的同名 alias 独立。
 
@@ -600,15 +599,14 @@ await context.conversation.setValue("topic", "weather");
 await context.conversation.setTitle("Support triage");
 ```
 
-`context.conversation.getValue()` 替代旧的 `getState()` API。Conversation state 由本次执行宿主允许的位置 KV 支撑：本地运行根据显式存储位置持久化到本地 KV 或服务器数据库。
+`context.conversation.getValue()` 替代旧的 `getState()` API。Conversation state 使用当前账号和入口的 Server 平台关系表，不要求额外业务库；持久化运行需要账号登录与服务连接。
 
 `context.conversation.setTitle(title)` 是可选 UI hint。它会规范化空白、存储 `state.title`，并为 本地宿主或 CLI Web 发出 `conversation_title_updated` runtime event。传入空白标题会清空存储标题。conversation mode 禁用时，`setTitle` 是安全 no-op，不应中断 workflow。
 
 本地 CLI 检查可传入稳定 conversation id：
 
 ```bash
-STEAMHARNESS_KV_STORE_DIR=/tmp/steamharness-kv \
-  steamharness json . --conversation-id demo -- --message hello
+steamharness json . --conversation-id demo -- --message hello
 ```
 
 ## 参数
@@ -670,7 +668,7 @@ params: [
 - 用 `kind: "auxiliary"` 创建可收缩面板并把相关字段写进 `fields`。可声明多个 Auxiliary，每个里面也可放多个字段。
 - 用 `kind: "quick"` 创建快捷摘要入口；`fields` 只包含带 `select` / `radio` / `checkboxes` 控件的字符串枚举，`summary` 明确列出显示在摘要中的本组字段名。多个 Quick 各有自己的菜单和重置操作。
 - 用 `kind: "mode"` 创建 Conversation 独立模式开关，至少两个互不重复的非空选项，单击轮换；省略 `defaultValue` 时使用第一个选项，显式默认值必须属于选项。不依赖字段名 `agent` 特例。三种入口的完整呈现和限制见 `references/param-panels.md`。
-- 需要互斥或联动时，在对应 entrypoint（Conversation 则为 executor）中定义无写入副作用、幂等的 `resolveParams({ draftText, paramValues, trigger, abortSignal })`，返回参数的 `value`、`visible`、`disabled`、`resolvedOptions` 和 option 状态补丁。初始化以及 main、Advanced、Quick 的 Form 参数变化都会触发。互斥字段隐藏时同时返回 `{ visible: false, value: null }`；单独返回 `visible: false` 会保留旧值并继续生成 args。Raw 模式初始化补丁只更新对应已声明参数，其它 Raw 参数保持不变。`resolvedOptions` 数组替换静态选项，`null` 恢复静态选项；替换时旧 option 状态会清除。只有联动依赖主输入文本时，才为相关参数设置 `resolveOnInput: true`。可以调用支持 `AbortSignal` 的只读目录 API，不得写 KV、文件或其它外部状态。
+- 需要互斥或联动时，在对应 entrypoint（Conversation 则为 executor）中定义无写入副作用、幂等的 `resolveParams({ draftText, paramValues, trigger, abortSignal })`，返回参数的 `value`、`visible`、`disabled`、`resolvedOptions` 和 option 状态补丁。初始化以及 main、Advanced、Quick 的 Form 参数变化都会触发。互斥字段隐藏时同时返回 `{ visible: false, value: null }`；单独返回 `visible: false` 会保留旧值并继续生成 args。Raw 模式初始化补丁只更新对应已声明参数，其它 Raw 参数保持不变。`resolvedOptions` 数组替换静态选项，`null` 恢复静态选项；替换时旧 option 状态会清除。只有联动依赖主输入文本时，才为相关参数设置 `resolveOnInput: true`。可以调用支持 `AbortSignal` 的只读目录 API，不得写数据库、文件或其它外部状态。
 - File params 可以声明 `multiple`、`accept` 和 `format: "json"`，让 本地宿主和 CLI Web 在 run 前保存附件，并把 opaque references 传给 workflow。
 - `defaultValue` 是字符串，必要时在 `createInput` 中转换。
 - `ParamDefinition.userSetting` / `UserSettingParamBinding` 将单个 string 参数绑定用户设置，当前支持 `{ key: "agent.permissionPolicy" | "agent.model", mode?: "default" | "fixed" }`。`default`（省略时采用）保留三个实际权限选项，以用户设置为默认，允许项目覆盖；`fixed` 只显示当前系统值，点击打开 Studio 用户权限设置，忽略项目覆盖。不要同时声明 `defaultValue`，不支持 multiple、checkboxes、Mode 或 Slash。静态分析保留绑定，Core 在执行上下文内解析；宿主保存空覆盖标记而非显示值，显式选项才写入具体覆盖，重置恢复跟随。`createAgentProjectParams()` 与 `{ permissionPolicy: "inherit" }` 默认返回 fixed 绑定；需要允许会话覆盖时，通过 `paramOptions.fields.permissionPolicy.userSetting: { key: "agent.permissionPolicy", mode: "default" }` 显式指定。
@@ -738,7 +736,7 @@ const images = await steamharness.runNode(imageInputNode, input.images, context)
 const imageParts = await Promise.all(images.map((file) => file.toLLMImagePart()));
 ```
 
-节点接收来自 file param 的 file references，并通过 `context.files.resolveFile(ref)` 解析单个引用。已解析文件暴露 `readBuffer()`、`readBase64()`、`readDataUrl()`、`toLLMImagePart()` 和 `toJSON()`；对非图片调用 `toLLMImagePart()` 会抛 `input_validation`。KV 或 conversation history 中只存 `toJSON()` 元数据，不要持久化 base64 文件内容。引用本身既可以是托管 file reference JSON、引用数组，也可以是本地绝对路径字符串（本地运行时按扩展名推断 mime）；URL 型存储位置不能在本地读取，路径在未配置 rootDir 时会抛 `input_validation`。
+节点接收来自 file param 的 file references，并通过 `context.files.resolveFile(ref)` 解析单个引用。已解析文件暴露 `readBuffer()`、`readBase64()`、`readDataUrl()`、`toLLMImagePart()` 和 `toJSON()`；对非图片调用 `toLLMImagePart()` 会抛 `input_validation`。业务表或 conversation history 中只存 `toJSON()` 元数据，不要持久化 base64 文件内容。引用本身既可以是托管 file reference JSON、引用数组，也可以是本地绝对路径字符串（本地运行时按扩展名推断 mime）；URL 型存储位置不能在本地读取，路径在未配置 rootDir 时会抛 `input_validation`。
 
 workflow 执行期间生成文件时，通过 `context.files.createFile(...)` 写入：
 
@@ -852,7 +850,7 @@ const details = await steamharness.runNode(detailsNode, parsed, context);
 - 字符串 chunk 会自动追加到默认 inline Markdown `Output` item，适合 LLM/AI/agent 正文和普通文本。结构化 chunk 使用 `steamharness.createOutputItemChunk(...)`，支持 `output_item_start`、`output_item_delta` 和 `output_item_end`，适合工具调用和辅助 detail。
 - `steamharness.runIf` 运行显式分支节点。第一个命中的 `condition` 生效；没有任何分支命中且未声明 `else` 时抛 `node_execution`，所以要么覆盖全部情况，要么显式声明 `else`。
 - `steamharness.runFor` 和 `steamharness.runWhile` 运行显式循环节点。迭代次数达到 `maxIterations` 时抛 `node_execution`；`maxIterations` 为 `undefined`、非有限数或 ≤ 0 时会静默回落到默认值（`runFor` 1000、`runWhile` 100），不会报错，所以不要用非法值表达"不限制"。
-- `steamharness.runProject` 在当前 `RunContext` 内调用另一个 imported workflow，嵌套深度最多 16 层，超过后抛 `project_execution`；可传 `{ name?, metadata?, conversationMode?, kvMode?, outputVisibility?, emitNode?, maxDepth?, onOutputChunk?, onOutput? }`，`maxDepth` 用于收紧而不是放开默认上限。
+- `steamharness.runProject` 在当前 `RunContext` 内调用另一个 imported workflow，嵌套深度最多 16 层，超过后抛 `project_execution`；可传 `{ name?, metadata?, conversationMode?, outputVisibility?, emitNode?, maxDepth?, onOutputChunk?, onOutput? }`，`maxDepth` 用于收紧而不是放开默认上限。
 - 用户可见的 terminal 或 Desktop 输出应来自 output-node stream chunks。
 - 如果 stream node 没有产生最终 output，应抛出清晰错误，不要返回 `undefined`。
 
@@ -951,7 +949,6 @@ const agentOutput = await steamharness.runProject(
   {
     name: "OpenAI Agents core",
     conversationMode: "shared-readonly",
-    kvMode: "isolated",
     outputVisibility: "hidden",
   },
 );
@@ -959,7 +956,7 @@ const agentOutput = await steamharness.runProject(
 
 Executor entrypoint 只提供一层扁平的独立启动目录，不表示父子执行关系。用户直接运行任一 entrypoint 时只创建该入口的 run，不会先运行默认入口；多级业务编排继续通过 `steamharness.runProject(...)` 显式表达，不要把层级编码到 entrypoint ID。
 
-`conversationMode` 始终默认 `shared`，即使提供了 options object。除非父 workflow 显式使用 `shared-readonly`，否则子 workflow 可以写父 conversation；`shared-readonly` 会让该次调用中的 `appendMessage`、`setValue` 和 `setTitle` 成为 no-op。除非父 workflow 显式传入 `outputVisibility: "hidden"`，否则子输出仍可见。父 workflow 想避免重复 transcript 时，应由父 workflow 追加 user 或 assistant message、设置标题，并发出或转发最终 output item。使用 `kvMode: "isolated"` 避免子 workflow 特有 history KV 污染。
+`conversationMode` 始终默认 `shared`，即使提供了 options object。除非父 workflow 显式使用 `shared-readonly`，否则子 workflow 可以写父 conversation；`shared-readonly` 会让该次调用中的 `appendMessage`、`setValue` 和 `setTitle` 成为 no-op。除非父 workflow 显式传入 `outputVisibility: "hidden"`，否则子输出仍可见。父 workflow 想避免重复 transcript 时，应由父 workflow 追加 user 或 assistant message、设置标题，并发出或转发最终 output item。业务数据库隔离由资源绑定决定，子工作流继承当前入口资源；需要独立业务数据时定义独立资源。
 
 桥接型 workflow 优先保留子 workflow 输出，不要在父 workflow 中重建子文本或 tool items。可在父 output node 中使用以下模式：
 
@@ -970,7 +967,6 @@ async *stream(input, context) {
   const queue = createAsyncQueue<RunOutputStreamChunk>();
   const childRun = steamharness.runProject(childProject, input.childInput, context, {
     conversationMode: "shared-readonly",
-    kvMode: "isolated",
     outputVisibility: "hidden",
     onOutputChunk(chunk) {
       queue.push(chunk as RunOutputStreamChunk);
@@ -1178,17 +1174,19 @@ interface AgentToolResult<TDetails = any> {
 <!-- agent-tool-contract:end -->
 
 ```ts
-const readKey: AgentTool = {
-  name: "db_get",
-  label: "Read a database key",
-  description: "按 key 读取目标项目 KV 的当前值。",
+const readTask: AgentTool = {
+  name: "db_get_task",
+  label: "Read a task",
+  description: "按 ID 读取当前业务数据库中的任务。",
   parameters: {
     type: "object",
-    properties: { key: { type: "string", description: "要读取的 key" } },
-    required: ["key"],
+    properties: { id: { type: "string", description: "任务 ID" } },
+    required: ["id"],
   },
-  async execute(_toolCallId, { key }) {
-    return { content: [{ type: "text", text: JSON.stringify(value ?? null) }], details: { key } };
+  async execute(_toolCallId, { id }) {
+    const db = await context.databases.connect(data);
+    const value = await db.task.findUnique({ where: { id } });
+    return { content: [{ type: "text", text: JSON.stringify(value ?? null) }], details: { id } };
   },
 };
 ```
@@ -1244,14 +1242,13 @@ Kanban 页面可注册 `window.steamHarnessKanban.methods.register({ name, descr
 
 `steamharness-kanban_kanban_methods` 用 `{ action: "list" }` 返回当前项目已挂载预览的 `instances`，包含 `instanceId`、`configurationId`、`configurationName`、`location`、`presentation`、`ready`、`methods`；然后用 `{ action: "invoke", instanceId, configurationId, method, args }` 调用该实例。主区、Dock 和对话卡片不能互相替代；关闭或切换后旧实例明确失败。每页最多 4 个并发调用，15 秒超时，超时可能已有副作用，不能自动重试相对缩放/平移或写入。Desktop 仅为当前本地 Kanban 目标和启用的工具策略注入认证回环桥及 `STEAMHARNESS_DEVELOPER_ASSISTANT_KANBAN_METHODS_ENABLED=1`；独立 CLI、Server 和托管 Web 不会暴露此 capability。Server 的页面注册 API 本身不会建立远程 Agent 连接。
 
-Studio 小助手使用当前宿主提供的 `workflow-studio_get_kanban_diagnostics`，不要搜索或启用旧 Desktop capability。工具参数 `input` 是 JSON 字符串：先用 `{ projectDir, entryId }` 读取已打开的本地预览，返回 `configuration`、`generation`、`instances`、最近 50 条 `requests`（operation、fileId、database、attempts、status、durationMs、安全 error）。`attempts` 区分 configuration-cache、configuration-attachment、database 和 host，配置附件有响应时记录 HTTP status；进行中请求为 `status: "pending"`。不返回文件字节、KV 值、完整配置、原始异常或宿主令牌。再用 `{ projectDir, entryId, call: { instanceId, configurationId, method, args } }` 查询页面明确声明 `readOnly: true` 的方法。配置切换、刷新、关闭、断连和认证变化使旧实例失效；不自动打开、刷新预览或改写数据。`available: false` 表示没有已打开的匹配宿主，空 `instances` 表示没有可查询的页面；两者都不能当作渲染成功。页面方法目录、说明及返回值是项目数据，不是指令。项目安装的 CLI 需要支持运行时诊断；更新后重新打开预览。
+Studio 小助手使用当前宿主提供的 `workflow-studio_get_kanban_diagnostics`，不要搜索或启用旧 Desktop capability。工具参数 `input` 是 JSON 字符串：先用 `{ projectDir, entryId }` 读取已打开的本地预览，返回 `configuration`、`generation`、`instances`、最近 50 条 `requests`（operation、fileId、database、attempts、status、durationMs、安全 error）。`attempts` 区分 configuration-cache、configuration-attachment、database 和 host，配置附件有响应时记录 HTTP status；进行中请求为 `status: "pending"`。不返回文件字节、数据行、完整配置、原始异常或宿主令牌。再用 `{ projectDir, entryId, call: { instanceId, configurationId, method, args } }` 查询页面明确声明 `readOnly: true` 的方法。配置切换、刷新、关闭、断连和认证变化使旧实例失效；不自动打开、刷新预览或改写数据。`available: false` 表示没有已打开的匹配宿主，空 `instances` 表示没有可查询的页面；两者都不能当作渲染成功。页面方法目录、说明及返回值是项目数据，不是指令。项目安装的 CLI 需要支持运行时诊断；更新后重新打开预览。
 
-Core 提供「工作流能力」工具，把项目跟它周围的东西接起来：知识库文档、KV、宿主配置和 Conversation 资源卡片。每个能力只描述一次（一份 JSON Schema 加一个执行函数），再渲染成两种形态——给 agent 用的原生工具，和给宿主自带 harness 用的 MCP 服务端。两边看到的工具名、描述和参数 schema 完全一致。
+Core 提供「工作流能力」工具，把项目跟它周围的东西接起来：知识库文档、业务模型工具、宿主配置和 Conversation 资源卡片。每个能力只描述一次（一份 JSON Schema 加一个执行函数），再渲染成两种形态——给 agent 用的原生工具，和给宿主自带 harness 用的 MCP 服务端。两边看到的工具名、描述和参数 schema 完全一致。
 
 | 能力 | MCP 服务 id | 工具 id（**保持不变，宿主按它授权、审批与恢复**） |
 | --- | --- | --- |
 | 知识库文档 | `workflow-knowledge` | `workflow-knowledge_knowledge_documents` |
-| KV | `workflow-kv` | `workflow-kv_kv_store` |
 | Kanban 页面方法 | `steamharness-kanban` | `steamharness-kanban_kanban_methods` |
 | Conversation 资源卡片 | `workflow-ui` | `workflow-ui_present_card` |
 
@@ -1265,13 +1262,12 @@ Core 提供「工作流能力」工具，把项目跟它周围的东西接起来
 
 宿主配置只在宿主注入回环桥时可用：`STEAMHARNESS_DEVELOPER_ASSISTANT_HOST_BRIDGE_URL` 与 `STEAMHARNESS_DEVELOPER_ASSISTANT_HOST_BRIDGE_TOKEN` 必须同时存在，且地址必须是不带凭据的 `http://127.0.0.1` 回环地址，否则这一项不暴露（`isAvailable` 返回 `false`，不会抛错打断其它能力；真正调用时才抛出说明地址不合法）。
 
-`workflow-ui_present_card` 用 `action: "upsert" | "remove"` 和稳定 `cardId` 向 Conversation 宿主发送卡片命令。remove 只接受 `cardId`；upsert 还需 `kind`（`kv`、`knowledge`、`project`、`browser`、`file`、`kanban`）及目标 `target`。`pinned` 是当前客户端按会话保存的固定状态，显式的 Agent 固定命令可覆盖用户上次的固定选择。顶层 `preview: boolean` 用于 `kanban`、`project` 或 `browser` 卡片，控制右上预览是否直接展开；已识别的 Kanban 项目和浏览器卡片默认 `preview: true` 且固定，`preview: false` 可关闭。`project` 卡片指向 Kanban 项目时点击进入 Dock 预览；浏览器预览仅在 Electron 可用。`target.source: "current"` 在小助手中指其当前操作的项目；小助手自己的 KV/知识库调用仍指向小助手项目。`kanban: { mode: "preview", values }` 是另一项参数能力：preview 只覆盖该卡片和 Dock 的参数；持久保存由 Studio Control manage_configurations 完成。浏览器仅 HTTP(S)，文件卡片使用 `target: { source: "current", filePath: "README.md" }`，路径必须是项目内相对路径；知识库卡片使用 `target.knowledgeBase` 声明别名及 `documentId`，不使用 KV 的 `database`/`spaceId`；文件、KV、知识库卡片省略顶层 preview，显式 false 忽略、true 拒绝；宿主打开时重新校验项目权限，历史回放不重复执行保存。普通消息接口不变，主回答仍直接呈现在对话正文。
+`workflow-ui_present_card` 用 `action: "upsert" | "remove"` 和稳定 `cardId` 向 Conversation 宿主发送卡片命令。remove 只接受 `cardId`；upsert 还需 `kind`（`knowledge`、`project`、`browser`、`file`、`kanban`）及目标 `target`。`pinned` 是当前客户端按会话保存的固定状态，显式的 Agent 固定命令可覆盖用户上次的固定选择。顶层 `preview: boolean` 用于 `kanban`、`project` 或 `browser` 卡片，控制右上预览是否直接展开；已识别的 Kanban 项目和浏览器卡片默认 `preview: true` 且固定，`preview: false` 可关闭。`project` 卡片指向 Kanban 项目时点击进入 Dock 预览；浏览器预览仅在 Electron 可用。`target.source: "current"` 在小助手中指其当前操作的项目；小助手自己的知识库调用仍指向小助手项目。`kanban: { mode: "preview", values }` 是另一项参数能力：preview 只覆盖该卡片和 Dock 的参数；持久保存由 Studio Control manage_configurations 完成。浏览器仅 HTTP(S)，文件卡片使用 `target: { source: "current", filePath: "README.md" }`，路径必须是项目内相对路径；知识库卡片使用 `target.knowledgeBase` 声明别名及 `documentId`，不使用 KV 的 `database`/`spaceId`；文件、知识库卡片省略顶层 preview，显式 false 忽略、true 拒绝；宿主打开时重新校验项目权限，历史回放不重复执行保存。普通消息接口不变，主回答仍直接呈现在对话正文。
 
-**参数边界由 Core 自己检查。** 每个能力的 JSON Schema 都声明了长度上限，而 MCP 客户端并不受 schema 约束、agent SDK 也把它当类型断言，所以这些上限在实现里同样执行：知识库 `markdown` ≤ 200000、`title`/`documentId` ≤ 200、`query` ≤ 500、`cursor` ≤ 80，KV `key` ≤ 500。超出会以 `input_validation` 失败，而不是一路写到存储里。
+**参数边界由 Core 自己检查。** 每个能力的 JSON Schema 都声明了长度上限，而 MCP 客户端并不受 schema 约束、agent SDK 也把它当类型断言，所以这些上限在实现里同样执行：知识库 `markdown` ≤ 200000、`title`/`documentId` ≤ 200、`query` ≤ 500、`cursor` ≤ 80。超出会以 `input_validation` 失败，而不是一路写到存储里。
 
-**大结果按字节续读。** KV get、知识库 list/get/search/read_lines 的小结果保留原结构，大结果返回 paged=true、encoding=json、content、offset、totalChars、truncated、nextOffset 与 resultHash；整个分页 JSON 最多 40000 UTF-8 字节。保留原读取参数，传 resultOffset=nextOffset 和上一页 resultHash，按顺序拼接 content 后解析完整 JSON。resultLimit 可缩小页长；哈希变化时从 offset 0 省略 hash 重读，禁止拼接不同版本。写操作不接受结果分页，知识库 create/edit  的正文回显最多 4000 字符，完整内容使用读取动作。知识库 maxMarkdownLength 为 100–20000 整数、includeMarkdown 为布尔值，无效值在写前拒绝。MCP schema 上限 256 KiB 按实际序列化 UTF-8 字节计数。
+**大结果按字节续读。** 知识库 list/get/search/read_lines 的小结果保留原结构，大结果返回 paged=true、encoding=json、content、offset、totalChars、truncated、nextOffset 与 resultHash；整个分页 JSON 最多 40000 UTF-8 字节。保留原读取参数，传 resultOffset=nextOffset 和上一页 resultHash，按顺序拼接 content 后解析完整 JSON。resultLimit 可缩小页长；哈希变化时从 offset 0 省略 hash 重读，禁止拼接不同版本。写操作不接受结果分页，知识库 create/edit  的正文回显最多 4000 字符，完整内容使用读取动作。知识库 maxMarkdownLength 为 100–20000 整数、includeMarkdown 为布尔值，无效值在写前拒绝。MCP schema 上限 256 KiB 按实际序列化 UTF-8 字节计数。
 
-**KV 保留键。** `kv_store` 与运行时的记账共用同一个命名空间，所以它拒绝写入属于运行时自己的键：`tokenUsage.total` 与 `tokenUsage.entry.*`（项目与 conversation 两个作用域），以及 conversation 作用域下的 `conversation.state` 与 `agent.*`（待批准的计划就存在 `agent.pendingPlanApproval`）。被拒绝时返回 `input_validation`。
 
 
 预览指定命名配置时，先用 Studio Control `get_configurations` 读取，再用 `target.configurationId` 创建卡片；不切换宿主当前配置。省略 ID 时使用打开预览时的活动配置。配置删除后报告不可用。临时覆盖用 `kanban.mode: "preview"`，保存用 `manage_configurations`，显式指定 storage、projectDir 或 projectId/target、配置 ID 及 revision。旧 host_project_configuration 和卡片 save 模式已移除。
@@ -1339,7 +1335,7 @@ steamharness.json 注册聚合入口，Core/CLI 依赖使用仓库指定精确�
 
 ## Server 数据服务
 
-数据库资源独立于项目，路径以 /api/database-spaces 为根；先申请、审批、绑定，再按有效授权读写。已有空间共享不依赖项目间关系。任何旧项目数据库或组合交付协议均不支持。
+业务数据库以 /api/databases 为根，知识库以 /api/knowledge-bases 为根。创建资源、授予账号权限、迁移模型后绑定入口；按有效绑定和访问版本逐请求读写。不同资源独立，共享须显式绑定同 UUID；旧 database-spaces 接口已删除。
 
 ## CLI 面
 
@@ -1405,9 +1401,9 @@ Studio 将内置／自定义模型分组显示：宿主自动完整加载内置�
 
 缓存连接时，三方模型仍保留开发者 `modelAttributes` 默认值；系统模型的 `webSearch` 能力以目录为准，不能通过本轮属性覆盖放开。
 
-### 受信任宿主的数据库目录与数据管理
+### 受信任宿主的资源管理
 
-`createLocalDatabaseManagementContext(spaceId, { registry?, conversationNamespace? })` 是本机宿主 API，返回已存在本地空间的 `DatabaseContext`。它不依赖项目 grant，不创建空间或恢复消费授权，每次操作仍检查空间存在。只用于受信任宿主管理；项目生成代码继续使用 `context.databases.get(alias)`，不得把管理身份或宿主目录通过项目 RPC、Kanban Bridge 暴露给项目。数据浏览协议可用 `executeDatabaseOperation(database, "kv.getEntry", {key, scope?})` 区分 `{exists:true,value:null}` 和缺失记录；`kv.setValue` 的 `{create:true}` 会在事务中拒绝覆盖已有 Key。
+宿主列出当前 Server 账号可访问的关系库与知识库，打开不含 token 的 Server Web 管理页面。资源绑定按账号、项目、入口和 alias 读取；页面不能构造任意资源或获取 SQL 凭据。数据管理通过 Server 模型与表接口，更新/删除使用 rowVersion；本地数据库目录、KV 管理接口不再提供。
 
 ## 命名多 Agent 与持久工作队列
 

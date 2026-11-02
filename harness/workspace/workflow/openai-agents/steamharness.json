@@ -11,9 +11,7 @@
       "root": ".",
       "entry": "index.ts",
       "configuration": "configuration.json",
-      "databases": [
-        "data"
-      ],
+      "databases": [],
       "knowledgeBases": [
         "data"
       ]

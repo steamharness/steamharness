@@ -5,7 +5,6 @@ import { createMcpToolServer } from "../mcp/server";
 import { loadTypebox } from "../pi";
 import { KANBAN_METHODS_CAPABILITY } from "./kanban-methods";
 import { KNOWLEDGE_CAPABILITY } from "./knowledge";
-import { KV_CAPABILITY } from "./kv";
 import { PRESENTATION_CARD_CAPABILITY } from "./presentation-card";
 import type { Capability } from "./types";
 
@@ -18,7 +17,6 @@ import type { Capability } from "./types";
  */
 export const STEAMHARNESS_CAPABILITIES: readonly Capability[] = [
   KNOWLEDGE_CAPABILITY,
-  KV_CAPABILITY,
   KANBAN_METHODS_CAPABILITY,
   PRESENTATION_CARD_CAPABILITY,
 ];

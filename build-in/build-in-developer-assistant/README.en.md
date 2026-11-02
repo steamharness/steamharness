@@ -14,6 +14,6 @@ Open **Project information → Skills** to see actual skill names, counts and so
 
 Studio's built-in assistant uses a fixed distributed identity. Users do not need to create a personal Server project or apply for a new ID. The application checks area hides after success. Ordinary projects cannot skip registration by copying the ID or declaring themselves built-in. Server AI remains authorized through the current account.
 
-Assistant Knowledge and KV are separate from the assisted project's data. Run-scoped Knowledge and KV tools are not offered, avoiding writes to an unrelated store. Session history remains in the host user data directory. Business databases require declared needs and explicit host approval and binding.
+Assistant Knowledge and business data are separate from the assisted project's data. Run-scoped Knowledge tools are not offered, avoiding writes to an unrelated store. Session history remains in the host user data directory. Business databases require declared needs and explicit host approval and binding.
 
 This project lives at `build-in/build-in-developer-assistant` in the monorepo and references the harness and the CLI through `link:../../harness` and `link:../../cli`. Studio builds the bundled assistant from `build-in/build-in-developer-assistant` and can resolve development dependencies from this repository. Verify changes with `pnpm typecheck`, `pnpm test`, `pnpm coverage`, `pnpm build` and `git diff --check`. Studio documents its integration in `docs/workflow-workstation.md`.

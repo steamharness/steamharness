@@ -34,7 +34,7 @@ async function fixture() {
   let connection: { serverUrl: string; accessToken: string } | undefined = { serverUrl: 'https://steamharness.test', accessToken: 'test-only-token' };
   const previews = new ResourcePreviews(owner, runtime, storageDir, () => connection, () => [board.folderPath]);
   openedPreviews.push(previews);
-  const card = (kind: ResourceCard['kind'], target: Record<string, string>, extra: Partial<ResourceCard> = {}): ResourceCard => ({ id: 'card', kind, title: 'Resource', target:{entryId:'main',...(kind==='knowledge'?{knowledgeBase:'data'}:kind==='kv'?{database:'data'}:{}),...target}, ...extra });
+  const card = (kind: ResourceCard['kind'], target: Record<string, string>, extra: Partial<ResourceCard> = {}): ResourceCard => ({ id: 'card', kind, title: 'Resource', target:{entryId:'main',...(kind==='knowledge'?{knowledgeBase:'data'}:{}),...target}, ...extra });
   return { root, owner, board, runtime, storageDir, previews, card, logout: () => { connection = undefined; previews.clear(); } };
 }
 
@@ -149,14 +149,6 @@ describe('resource previews', () => {
     vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(JSON.stringify({ errCode: 0, data: { id: 'doc', markdown: '# Document' } })));
     const result = await previews.open(card('knowledge', { source: 'server', projectId: owner.id, documentId: 'doc' }));
     expect(result.data.project).toBe(owner);
-  });
-
-  it('preserves the foreign KV key, scope and conversation in the permission-checked request', async () => {
-    const { previews, card } = await fixture();
-    const fetcher = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(JSON.stringify({ errCode: 0, data: { key: 'state', value: 7 } })));
-    await previews.open(card('kv', { source: 'server', projectId: 'database', key: 'state', scope: 'conversation', conversationId: 'session-b' }));
-    const url = new URL(String(fetcher.mock.calls[0][0]));
-    expect(url.pathname).toBe('/api/projects/database/entries/main/resources/read');expect(JSON.parse(String(fetcher.mock.calls[0][1]!.body))).toMatchObject({database:'data',scope:'conversation',conversationId:'session-b',key:'state'});
   });
 
   it('does not guess a local directory from a card project UUID', async () => {
@@ -286,9 +278,9 @@ describe('resource previews', () => {
   it('allows preview reads but blocks data mutations and invalidates open previews on logout', async () => {
     const { previews, card, board, runtime, logout } = await fixture();
     const result = await previews.open(card('project', { source: 'local', projectId: board.id }, { preview: true }));
-    await previews.bridge(result.id, { requestId: 'read', operation: 'kv.getValue', input: {database:'data', key: 'map' } });
-    expect(runtime.kanbanBridge).toHaveBeenCalledWith(expect.objectContaining({ id: board.id }), expect.objectContaining({ operation: 'kv.getValue' }));
-    await expect(previews.bridge(result.id, { requestId: 'write', operation: 'kv.setValue', input: {database:'data', key: 'map', value: 'changed' } })).rejects.toThrow('read-only');
+    await previews.bridge(result.id, { requestId: 'read', operation: 'database.query', input: {database:'data', schemaHash: 'a'.repeat(64), binding: {}, request: { operation: 'rows', model: 'Task' } } });
+    expect(runtime.kanbanBridge).toHaveBeenCalledWith(expect.objectContaining({ id: board.id }), expect.objectContaining({ operation: 'database.query' }));
+    await expect(previews.bridge(result.id, { requestId: 'write', operation: 'database.query', input: {database:'data', schemaHash: 'a'.repeat(64), binding: {}, request: { operation: 'insert', model: 'Task', data: { title: 'changed' } } } })).rejects.toThrow('read-only');
     logout(); expect(() => previews.get(result.id)).toThrow(); expect(await previews.asset(new URL(result.data.kanban!.url, 'http://localhost'))).toBeUndefined();
   });
 
@@ -297,8 +289,9 @@ describe('resource previews', () => {
     const result = await previews.open(card('kanban', { source: 'local', projectId: board.id }));
     let finish!: (value: unknown) => void;
     vi.mocked(runtime.kanbanBridge!).mockImplementation(() => new Promise(resolve => { finish = resolve; }));
-    const reading = previews.bridge(result.id, { requestId: 'read', operation: 'kv.getValue', input: {database:'data', key: 'map' } });
+    const reading = previews.bridge(result.id, { requestId: 'read', operation: 'database.query', input: {database:'data', schemaHash: 'a'.repeat(64), binding: {}, request: { operation: 'rows', model: 'Task' } } });
     const rejected = expect(reading).rejects.toThrow('Resource access changed');
+    await vi.waitFor(() => expect(finish).toBeTypeOf('function'));
     previews.clear(); finish({ private: 'previous account data' });
     await rejected;
   });
@@ -427,7 +420,7 @@ describe('resource previews', () => {
         expect(preview.data).toMatchObject({ format: 'kanban', project: { id: map.id },
           kanban: { configuration: { id: configurationId, params: { title: 'Named map' } } } });
         expect(await (await originalFetch(new URL(preview.data.kanban.url, app.url))).text()).toContain('Map preview');
-        const call = { requestId: 'read', operation: 'kv.getValue', input: {database:'data', key: 'map' } };
+        const call = { requestId: 'read', operation: 'database.query', input: {database:'data', schemaHash: 'a'.repeat(64), binding: {}, request: { operation: 'rows', model: 'Task' } } };
         expect(await request({ type: 'resource-bridge', id: preview.id ?? opened.id, call })).toMatchObject({ value: { value: { points: ['Spawn'] } } });
         expect(runtime.kanbanBridge).toHaveBeenCalledWith(expect.objectContaining({id:map.id,entryId:'main'}),call);
       }

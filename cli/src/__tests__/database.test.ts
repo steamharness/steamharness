@@ -92,6 +92,24 @@ db.$queryRaw;
 // @ts-expect-error The runtime owns connection lifecycle.
 db.$disconnect;
 `);
+        if (target === "browser") await writeFile(path.join(root, 'browser.ts'), `
+import type { DatabaseClient, DatabaseJsonModel } from 'steamharness/database';
+import { main, audit } from './.steamharness/generated/database/browser/index.js';
+declare const context: { databases: import('steamharness/database').RelationalDatabasesContext };
+const db = await context.databases.connect(main);
+const result = await db.user.rows({ where: { email: 'alice' }, orderBy: { email: 'asc' }, pageSize: 20 });
+const email: string = result.items[0].values.email;
+await db.user.update({ key: { id: 'id' }, rowVersion: result.items[0].rowVersion, data: { email: 'bob' } });
+await db.user.delete({ key: { id: 'id' }, rowVersion: '123' });
+// @ts-expect-error Browser does not execute Node ORM operations.
+await db.user.findMany();
+// @ts-expect-error Browser does not expose transactions.
+await db.transaction(() => {});
+// @ts-expect-error The model has no event field.
+await db.user.insert({ event: 'invalid' });
+type Scalars = DatabaseJsonModel<{ at: Date | null; total: bigint; amounts: { toFixed(): string }[]; bytes: Uint8Array }>;
+const scalars: Scalars = { at: null, total: '9007199254740993', amounts: ['1.25'], bytes: 'AA==' };
+`);
         expect(typecheck(root, `${target}.ts`, target === "browser")).toEqual([]);
         if (target === "node") {
           await writeFile(path.join(root, "core-context.ts"), `import { main } from "./.steamharness/generated/database/node/index.js";

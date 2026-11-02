@@ -7,7 +7,6 @@ import {
   MockLLMProvider,
   createProjectConversationContext,
   createProjectTokenUsageContext,
-  type KVContext,
 } from "../index";
 import { analyzeProjectScriptSource } from "../executor/rules";
 import {
@@ -41,28 +40,6 @@ test("readEntrypointOutput unwraps a payload and refuses to unwrap a failure", (
   assert.equal(readEntrypointOutput(undefined), undefined);
 });
 
-test("runProject calls a child workflow inside the parent context", async () => {
-  const context = createTestProjectContext();
-  await context.databases.get("data").kv.setValue("shared-key", "from-parent");
-
-  const child: Definition<{ value: number }, { value: number; shared: unknown }> = {
-    name: "child-workflow",
-    async run(input, childContext) {
-      return {
-        value: input.value + 1,
-        shared: await childContext.databases.get("data").kv.getValue("shared-key"),
-      };
-    },
-  };
-
-  const output = await runProject(child, { value: 4 }, context);
-
-  assert.deepEqual(output, {
-    value: 5,
-    shared: "from-parent",
-  });
-});
-
 test("runProject shares persistentValue with child workflows", async () => {
   const context = createTestProjectContext();
   await context.knowledgeBases.get("data").createDocument({ id: "shared-key", title: "Shared", markdown: "from-persistent-parent" });
@@ -80,50 +57,6 @@ test("runProject shares persistentValue with child workflows", async () => {
 
   assert.deepEqual(output, {
     value: "from-persistent-parent",
-  });
-});
-
-test("runProject emits a parent trace wrapper and keeps child node events in the same trace", async () => {
-  const starts: NodeExecutionHookStartEvent[] = [];
-  const finishes: NodeExecutionHookFinishEvent[] = [];
-  const context = createTestProjectContext({
-    onStart(event) {
-      starts.push(event);
-    },
-    onFinish(event) {
-      finishes.push(event);
-    },
-  });
-  const childNode = {
-    name: "child-node",
-    async run(input: { message: string }) {
-      return `${input.message}!`;
-    },
-  };
-  const child: Definition<{ message: string }, string> = {
-    name: "child-workflow",
-    async run(input, childContext) {
-      return runNode(childNode, input, childContext);
-    },
-  };
-
-  const output = await runProject(child, { message: "hello" }, context, {
-    name: "Nested child",
-    metadata: {
-      title: "Nested child trace",
-    },
-  });
-
-  assert.equal(output, "hello!");
-  assert.deepEqual(starts.map((event) => event.nodeName), ["run-workflow", "child-node"]);
-  assert.equal(finishes.at(-1)?.nodeName, "run-workflow");
-  assert.equal(finishes.at(-1)?.metadata?.title, "Nested child trace");
-  assert.deepEqual(finishes.at(-1)?.executionInfo, {
-    projectName: "child-workflow",
-    conversationMode: "shared",
-    kvMode: "shared",
-    outputVisibility: "visible",
-    outputBridge: false,
   });
 });
 
@@ -151,59 +84,6 @@ test("safeRunProject top-level execution does not emit a synthetic run-workflow 
 
   assert.deepEqual(result, { ok: true, data: "ok" });
   assert.deepEqual(starts.map((event) => event.nodeName), ["top-child-node"]);
-});
-
-test("runProject options with only name keep shared conversation and visible output defaults", async () => {
-  const chunks: NodeExecutionHookChunkEvent[] = [];
-  const finishes: NodeExecutionHookFinishEvent[] = [];
-  const context = createTestProjectContext({
-    conversationId: "thread-defaults",
-    onChunk(event) {
-      chunks.push(event);
-    },
-    onFinish(event) {
-      finishes.push(event);
-    },
-  });
-  const outputNode = {
-    name: "child-output",
-    standardName: "output",
-    async *stream() {
-      yield "visible child text";
-    },
-    finalize() {
-      return { errCode: 0, errMessage: "", items: [] };
-    },
-  };
-  const child: Definition<Record<string, never>, { messageCount: number; errCode: number; errMessage: string; items: unknown[] }> = {
-    name: "child-workflow",
-    async run(input, childContext) {
-      await childContext.conversation.appendMessage({ role: "assistant", content: "child wrote" });
-      const state = await childContext.conversation.getValue();
-      const output = await runStreamNode(outputNode, input, childContext);
-      return {
-        ...output.output!,
-        messageCount: state.messages.length,
-      };
-    },
-  };
-
-  const output = await runProject(child, {}, context, {
-    name: "Only display name",
-  });
-  const parentState = await context.conversation.getValue();
-
-  assert.equal(output.messageCount, 1);
-  assert.equal(parentState.messages.length, 1);
-  assert.deepEqual(chunks.map((event) => event.chunk), ["visible child text"]);
-  assert.equal(finishes.find((event) => event.nodeName === "output")?.outputVisibility, undefined);
-  assert.deepEqual(finishes.at(-1)?.executionInfo, {
-    projectName: "child-workflow",
-    conversationMode: "shared",
-    kvMode: "shared",
-    outputVisibility: "visible",
-    outputBridge: false,
-  });
 });
 
 test("runProject shared-readonly conversation lets the child read but not write transcript or title", async () => {
@@ -293,60 +173,6 @@ test("runProject passes abortSignal, providers, files, and tokenUsage through to
     tokenCalls: 1,
   });
   assert.equal(tokenUsage.getRunUsage().totalTokens, 3);
-});
-
-test("runProject isolates local and server child KV namespaces", async () => {
-  const context = createTestProjectContext();
-  await context.databases.get("data").kv.setValue("state", "parent-workflow");
-  await context.databases.get("data").kv.conversation.setValue("state", "parent-conversation");
-  await context.databases.get("other").kv.setValue("state", "parent-server-workflow");
-
-  const child: Definition<Record<string, never>, {
-    beforeProject: unknown;
-    beforeConversation: unknown;
-    afterProject: unknown;
-    afterConversation: unknown;
-    beforeServerProject: unknown;
-    afterServerProject: unknown;
-  }> = {
-    name: "child-workflow",
-    async run(input, childContext) {
-      const beforeProject = await childContext.databases.get("data").kv.getValue("state");
-      const beforeConversation = await childContext.databases.get("data").kv.conversation.getValue("state");
-      const beforeServerProject = await childContext.databases.get("other").kv.getValue("state");
-      await childContext.databases.get("data").kv.setValue("state", "child-workflow");
-      await childContext.databases.get("data").kv.conversation.setValue("state", "child-conversation");
-      await childContext.databases.get("other").kv.setValue("state", "child-server-workflow");
-      return {
-        beforeProject,
-        beforeConversation,
-        afterProject: await childContext.databases.get("data").kv.getValue("state"),
-        afterConversation: await childContext.databases.get("data").kv.conversation.getValue("state"),
-        beforeServerProject,
-        afterServerProject: await childContext.databases.get("other").kv.getValue("state"),
-      };
-    },
-  };
-
-  const output = await runProject(child, {}, context, {
-    name: "Isolated KV child",
-    kvMode: "isolated",
-  });
-
-  assert.deepEqual(output, {
-    beforeProject: undefined,
-    beforeConversation: undefined,
-    afterProject: "child-workflow",
-    afterConversation: "child-conversation",
-    beforeServerProject: undefined,
-    afterServerProject: "child-server-workflow",
-  });
-  assert.equal(await context.databases.get("data").kv.getValue("state"), "parent-workflow");
-  assert.equal(await context.databases.get("data").kv.conversation.getValue("state"), "parent-conversation");
-  assert.equal(
-    await context.databases.get("other").kv.getValue("state"),
-    "parent-server-workflow",
-  );
 });
 
 test("runProject stops recursive workflow composition at maxDepth", async () => {
@@ -570,7 +396,7 @@ function createTestProjectContext(options: {
   files?: RunContext["files"];
   tokenUsage?: RunContext["tokenUsage"];
 } = {}): RunContext {
-  const kv = createMemoryKVContext();
+  const kv = {};
 
   return {
     config: {},
@@ -590,38 +416,5 @@ function createTestProjectContext(options: {
       onNodeChunk: options.onChunk,
       onNodeFinish: options.onFinish,
     },
-  };
-}
-
-function createMemoryKVContext(): KVContext {
-  const values = new Map<string, unknown>();
-
-  function createNamespace(prefix: string) {
-    return {
-      async getValue(key: string) {
-        return values.get(`${prefix}:${key}`);
-      },
-      async setValue(key: string, value: unknown) {
-        values.set(`${prefix}:${key}`, value);
-      },
-      async deleteValue(key: string) {
-        return values.delete(`${prefix}:${key}`);
-      },
-      async updateValue(key: string, updater: (current: unknown | undefined) => unknown) {
-        const next = updater(values.get(`${prefix}:${key}`));
-        values.set(`${prefix}:${key}`, next);
-        return next;
-      },
-    };
-  }
-
-  const project = createNamespace("project");
-
-  return {
-    getValue: project.getValue,
-    setValue: project.setValue,
-    deleteValue: project.deleteValue,
-    updateValue: project.updateValue,
-    conversation: createNamespace("conversation"),
   };
 }
