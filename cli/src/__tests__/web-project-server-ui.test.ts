@@ -56,6 +56,51 @@ async function fixture(kind: 'workflow' | 'conversation', language: 'en' | 'zh-C
   return { emit, render, project };
 }
 
+it.each([
+  ['conversation', 'en'], ['conversation', 'zh-CN'], ['workflow', 'en'], ['workflow', 'zh-CN'],
+] as const)('checks %s silently and only shows failures, including after retry (%s)', async (kind, language) => {
+  const f = await fixture(kind, language);
+  const guidance = document.getElementById('server-guidance')!;
+  const checks: NonNullable<ProjectServerState['checks']> = [
+    { id: 'project', projectId: f.project.id, stage: 'registration', status: 'checking' },
+    { id: 'database:data', projectId: f.project.id, stage: 'database', database: 'data', status: 'waiting' },
+  ];
+  await f.render();
+  expect(guidance.hidden).toBe(true);
+  await f.render({ checking: true });
+  expect(guidance.hidden).toBe(true);
+  await f.render({ checking: true, issue: { kind: 'checking' } });
+  expect(guidance.hidden).toBe(true);
+  await f.render({ checking: true, checks });
+  expect(guidance.hidden).toBe(true);
+  await f.render({ checking: true, checks: checks.map(check => ({ ...check, status: 'passed' })) });
+  expect(guidance.hidden).toBe(true);
+  await f.render({ checking: false, checks: checks.map(check => ({ ...check, status: 'passed' })) });
+  expect(guidance.hidden).toBe(true);
+
+  const failed: ProjectServerState = { checking: false, blocking: true, issue: { kind: 'project-unavailable' },
+    checks: [{ ...checks[0], status: 'action-required', issue: { kind: 'project-unavailable' } }] };
+  await f.render(failed);
+  expect(guidance.hidden).toBe(false);
+  const retry = document.querySelector<HTMLButtonElement>('#server-guidance-retry')!;
+  expect(retry.textContent).toBe(language === 'en' ? 'Check again' : '重新检查');
+  retry.click();
+  expect(host.postMessage).toHaveBeenCalledWith(expect.objectContaining({ type: 'project-server-check' }));
+  expect(retry.disabled).toBe(true);
+  await f.render({ checking: true, checks });
+  expect(guidance.hidden).toBe(true);
+  await f.render(failed);
+  f.emit({ type: 'project-server-checked' });
+  expect(guidance.hidden).toBe(false);
+  expect(retry.disabled).toBe(false);
+  await f.render({ checking: false });
+  expect(guidance.hidden).toBe(true);
+  if (kind === 'conversation') {
+    expect(document.querySelector<HTMLTextAreaElement>('#message')!.value).toBe('Original draft');
+    expect(document.getElementById('transcript')!.textContent).toContain('Previous result');
+  }
+});
+
 it.each(['workflow', 'conversation'] as const)('keeps %s startup guidance after replacement and ignores states from the retired service', async kind => {
   const f = await fixture(kind, 'en');
   const old = await f.render({ checking: false });

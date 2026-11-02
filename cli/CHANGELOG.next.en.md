@@ -1,5 +1,7 @@
 # Unreleased
 
+- Run project startup checks silently in the background. Conversation, Workflow and Kanban pages in Studio and standalone CLI Web show setup guidance and rechecking only when a check fails.
+
 - Fixed subagent reply durations to use persisted execution timestamps instead of restarting when their detail view is first opened, refreshed or restored.
 
 - Keep the final duration visible after a reply completes, fails or stops, including after refreshing or reopening history. Durable Agent follow-ups are timed separately.

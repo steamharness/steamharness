@@ -64,6 +64,8 @@ Start follows English or Simplified Chinese, light and dark themes, and narrow e
 
 Each project uses its own installed `steamharness` and `@steamharness/cli`. Different entry tabs share one project host. Closing one tab releases only that entry; the last tab releases the host. Reopening restores entry history. Resource and trace panels provide KV, knowledge, and execution diagnostics.
 
+When opening Workflow, Conversation or Kanban, project checks run silently in the background. The checks area stays hidden while checks run and after they pass. Only failures show setup guidance and **Check again**; the notice hides once the issue is resolved and checks pass.
+
 Core Agent uses the standard output presentation protocol to pin its context ring to the right of the composer. Hover or keyboard focus opens a light gray tooltip with the percentage and exact token counts. Each conversation retains its own output, including while awaiting confirmation and after reopening history.
 
 Conversation and Assistant composers adapt to the available height. In short windows, long drafts, attachments and primary parameters scroll within the input area while Send and parameter controls remain visible. The default Assistant tool and additional Assistant tabs in Steam use the same layout.
@@ -73,7 +75,7 @@ The built-in assistant uses an independent working directory and offers coding t
 
 The assistant can inspect an already open local Kanban entry with the read-only `get_kanban_diagnostics` tool. Its `input` is a JSON string: first pass `{ projectDir, entryId }` to read the current configuration, connected page instances and methods, and the latest 50 bridge requests with routing, HTTP status, pending state and safe failure categories. Then pass `call: { instanceId, configurationId, method, args }` using the returned instance and configuration to query methods explicitly declared `readOnly: true`, such as a map's `imageReady` state. Diagnostics do not open or refresh previews or change configurations or data. Closed previews, absent page instances and stale instances return unavailable status or failures. The project's installed CLI must support this capability; reopen the preview after updating it. Upload and backend byte-readback checks do not prove page rendering.
 
-Assistant is a distributed built-in application for all users. It keeps its fixed ID without requiring a personal Server project. The checks area hides after success. History stays in the host user data directory. Server AI still requires account authorization, and the built-in identity does not grant data access to other Server projects.
+Assistant is a distributed built-in application for all users. It keeps its fixed ID without requiring a personal Server project. History stays in the host user data directory. Server AI still requires account authorization, and the built-in identity does not grant data access to other Server projects.
 
 If Assistant fails to load, **Retry** immediately shows progress and a spinner while preventing duplicate clicks. A successful retry opens the conversation; a failed retry displays the specific reason and enables another attempt.
 
