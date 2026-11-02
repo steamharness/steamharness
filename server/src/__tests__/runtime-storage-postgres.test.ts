@@ -22,7 +22,7 @@ async function fixture(t: TestContext) {
 test("runtime migrations serialize startup and reject edited applied migrations", enabled, async t => {
   const { repository, admin, schema } = await fixture(t);
   await Promise.all([repository.init(), repository.init()]);
-  assert.equal((await admin.query(`select count(*) from ${schema}.schema_migrations`)).rows[0].count, "2");
+  assert.equal((await admin.query(`select count(*) from ${schema}.schema_migrations`)).rows[0].count, "3");
   await admin.query(`update ${schema}.schema_migrations set checksum='changed'`);
   await assert.rejects(repository.init(), /checksum/);
   assert.equal((await admin.query(`select count(*) from ${schema}.workspaces`)).rows[0].count, "0");
@@ -164,7 +164,8 @@ test("usage upserts one relational receipt across response loss and recovery", e
   const ownerToken = token(), lease = await repository.openSession("alice", workspace.id, "host:core:thread", ownerToken);
   const access = { ownerToken, fence: lease.fence };
   const entry = { id: "billing", projectId: workspace.projectId, runId: "run", conversationId: "thread", sequence: 1, createdAt: new Date().toISOString(),
-    inputTokens: 10, outputTokens: 5, totalTokens: 15, reasoningTokens: 0, cachedInputTokens: 0, cacheCreationTokens: 0 };
+    inputTokens: 10, outputTokens: 5, totalTokens: 15, reasoningTokens: 0, cachedInputTokens: 0, cacheCreationTokens: 0,
+    metadata: { text: 'NUL\0 and lone surrogate \ud800' } };
   const operation: RuntimeStorageOperation = { kind: "usage", requestId: randomUUID(), entry };
   await repository.operation("alice", lease.sessionId, access, operation); await repository.operation("alice", lease.sessionId, access, operation);
   await repository.operation("alice", lease.sessionId, access, { ...operation, requestId: randomUUID(), entry: { ...entry, totalTokens: 18, outputTokens: 8 } });
@@ -174,6 +175,15 @@ test("usage upserts one relational receipt across response loss and recovery", e
   assert.equal(detail.projectTotal.totalTokens, 18);
   assert.equal(detail.conversationTotal?.calls, 1);
   assert.equal(detail.entries?.[0]?.totalTokens, 18);
+  assert.deepEqual(detail.entries?.[0]?.metadata, entry.metadata);
+  assert.equal(detail.projectTotal.updatedAt, entry.createdAt);
+  // Recreate the previous relational schema and prove additive timestamp
+  // backfill also preserves payloads PostgreSQL cannot parse as JSONB.
+  await admin.query(`alter table ${schema}.runtime_usage drop column created_at; delete from ${schema}.schema_migrations where version=3`);
+  await repository.init();
+  const migrated = await repository.getProjectTokenUsage({ projectId: workspace.projectId, includeEntries: true });
+  assert.deepEqual(migrated.entries, detail.entries);
+  assert.equal(migrated.projectTotal.updatedAt, entry.createdAt);
   assert.equal((await repository.getProjectTokenUsage({ projectId: workspace.projectId, conversationId: 'Thread' })).conversationTotal?.totalTokens, 0);
   const other = await repository.registerWorkspace('bob', workspaceInput());
   const otherToken = token(), otherLease = await repository.openSession('bob', other.id, 'host:core:thread', otherToken);

@@ -28,4 +28,4 @@ pnpm exec steamharness workspace download <project-id> --target latest --path ./
 `upload --file` 接受已打包归档，`--no-wait` 返回准备任务，`preparation` 查询静态准备结果。`file-upload/file-download/file-delete` 管理业务文件。`--server`、`--token` 可覆盖保存的登录信息；不要把凭据加入 manifest。
 
 
-配置模板、方案、快照与附件按入口保存。数据库通过 CLI Web、Studio 或 Server Web 的独立空间管理申请与绑定，下载后需重新获批。
+配置模板、方案、快照与附件按入口保存。关系库通过 Server Web 或 CLI database 命令创建、授权、迁移并绑定入口；下载项目不会携带账号绑定，使用前检查当前账号的资源权限与入口绑定。知识库按 knowledgeBases 配置和授权连接。

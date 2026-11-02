@@ -100,7 +100,7 @@ const file = await context.files?.createFile?.({
 
 Kanban 页面通过 `window.steamHarnessKanban.knowledgeBases.get(alias).files` 的 `createFile/readFile/deleteFile` 访问已授权知识库的附件。详见 [Kanban 数据 Bridge](/concepts/kanban#数据-bridge)。
 
-Server 将数据库空间的图片及其他附件保存在独立的私有文件存储，PostgreSQL 只记录文件元数据和内容摘要。已有内联附件首次读取时会校验并转存，保留文件 ID、引用和数据版本；转存失败保留原数据。附件仍通过鉴权接口读取，现有 JSON 传输中的 Base64 格式保持兼容。
+Server 将知识库图片及其他附件保存在独立的私有文件存储，PostgreSQL 记录元数据、大小和内容摘要。每次读取都检查当前绑定与账号权限；JSON 传输使用 Base64。旧 KV 的内联附件不自动迁移，备份时需同时保留 PostgreSQL 与文件存储。
 
 不要把 base64 文件内容保存进数据行或会话历史。需要跨轮复用时，保存 `file.toJSON()` 返回的引用元数据。
 

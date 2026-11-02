@@ -1,6 +1,6 @@
 import pg from "pg";
 import { randomBytes } from "node:crypto";
-import { DatabaseResourceError, type DatabaseAccessMode } from "steamharness/database";
+import { DatabaseResourceError, type DatabaseAccessMode, type DatabaseMigration } from "steamharness/database";
 import { createPostgresPool } from "../postgres";
 import { DATABASE_HISTORY_SCHEMA, identifier as q, literal } from "./schema";
 
@@ -62,10 +62,56 @@ export class DatabaseCluster {
           ordinal integer primary key, name text not null unique, checksum text not null,
           schema_hash text not null, model_schema text not null, applied_at timestamptz not null default clock_timestamp()
         );
-        alter table ${q(DATABASE_HISTORY_SCHEMA)}.history owner to ${q(names.owner)};
         revoke all on ${q(DATABASE_HISTORY_SCHEMA)}.history from public`);
     });
+    await this.protectHistory(id);
     await this.disableRole(names.owner);
+  }
+
+  /** Model SQL must not own its ledger, even when it uses escaped identifiers or dynamic SQL. */
+  async protectHistory(id: string): Promise<void> {
+    const names = databaseNames(id), schema = q(DATABASE_HISTORY_SCHEMA);
+    await this.withAdminDatabase(names.database, async client => {
+      await client.query(`begin;
+        alter schema ${schema} owner to current_user;
+        alter table ${schema}.history owner to current_user;
+        revoke all on schema ${schema} from public, ${q(names.owner)}, ${q(names.read)}, ${q(names.write)};
+        grant usage on schema ${schema} to ${q(names.owner)};
+        revoke all on ${schema}.history from public, ${q(names.owner)}, ${q(names.read)}, ${q(names.write)};
+        grant insert on ${schema}.history to ${q(names.owner)};
+        create table if not exists ${schema}.migration_authorization (
+          singleton boolean primary key default true check(singleton), ordinal integer not null,
+          name text not null, checksum text not null, schema_hash text not null, model_schema text not null
+        );
+        alter table ${schema}.migration_authorization owner to current_user;
+        revoke all on ${schema}.migration_authorization from public, ${q(names.owner)}, ${q(names.read)}, ${q(names.write)};
+        create or replace function ${schema}.guard_history_insert() returns trigger
+        language plpgsql security definer set search_path=pg_catalog as $guard$
+        begin
+          delete from ${schema}.migration_authorization where singleton and ordinal=new.ordinal
+            and name=new.name and checksum=new.checksum and schema_hash=new.schema_hash and model_schema=new.model_schema;
+          if not found then raise exception using errcode='42501', message='Migration history requires runner authorization.'; end if;
+          return new;
+        end;
+        $guard$;
+        alter function ${schema}.guard_history_insert() owner to current_user;
+        revoke all on function ${schema}.guard_history_insert() from public;
+        drop trigger if exists steamharness_history_insert on ${schema}.history;
+        create trigger steamharness_history_insert before insert on ${schema}.history for each row execute function ${schema}.guard_history_insert();
+        commit;`);
+    });
+  }
+
+  /** Authorize exactly the runner's next ledger row; the model identity cannot alter this gate. */
+  async authorizeMigration(id: string, record?: { migration: DatabaseMigration; ordinal: number }): Promise<void> {
+    await this.withAdminDatabase(databaseNames(id).database, async client => {
+      if (!record) { await client.query(`delete from ${q(DATABASE_HISTORY_SCHEMA)}.migration_authorization`); return; }
+      const { migration, ordinal } = record;
+      await client.query(`insert into ${q(DATABASE_HISTORY_SCHEMA)}.migration_authorization(singleton,ordinal,name,checksum,schema_hash,model_schema)
+        values(true,$1,$2,$3,$4,$5) on conflict(singleton) do update set ordinal=excluded.ordinal,name=excluded.name,
+        checksum=excluded.checksum,schema_hash=excluded.schema_hash,model_schema=excluded.model_schema`,
+      [ordinal, migration.name, migration.checksum, migration.schemaHash, migration.schema]);
+    });
   }
 
   async assertIsolation(role: string, allowedDatabase: string): Promise<void> {

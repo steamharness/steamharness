@@ -68,6 +68,8 @@ export class RelationalDatabaseRepository {
         if (row.status !== "ready") await this.provision(row.id, row.owner_user_id);
         else await this.lock(row.id, async () => {
           await this.cluster.disableRole(databaseNames(row.id).owner);
+          await this.cluster.protectHistory(row.id);
+          await this.cluster.authorizeMigration(row.id);
           await this.cluster.cleanShadow(row.id);
           // A crashed planning request also leaves a shadow database, without
           // a running deploy. Clean transient identities under the same lock.
@@ -409,13 +411,15 @@ export class RelationalDatabaseRepository {
       });
     });
   }
-  private async applySql(client: pg.Client, sql: string, record?: { migration: DatabaseMigration; ordinal: number }): Promise<void> {
+  private async applySql(client: pg.Client, sql: string, record?: { databaseId: string; migration: DatabaseMigration; ordinal: number }): Promise<void> {
+    if (record) await this.cluster.authorizeMigration(record.databaseId, record);
     try {
       await client.query("begin"); await client.query(sql);
       if (record) await client.query(`insert into ${q(DATABASE_HISTORY_SCHEMA)}.history(ordinal,name,checksum,schema_hash,model_schema) values($1,$2,$3,$4,$5)`,
         [record.ordinal, record.migration.name, record.migration.checksum, record.migration.schemaHash, record.migration.schema]);
       await client.query("commit");
     } catch { await client.query("rollback").catch(() => undefined); throw new DatabaseResourceError("DATABASE_MIGRATION_FAILED", "Migration SQL failed; its transaction was rolled back."); }
+    finally { if (record) await this.cluster.authorizeMigration(record.databaseId); }
   }
   async deploy(actor: string, id: string, input: { migrations: readonly DatabaseMigration[]; schemaHash: string; acceptDataLoss?: boolean }): Promise<DatabaseMigrationState[]> {
     validateMigrationHistory(input.migrations);
@@ -442,7 +446,7 @@ export class RelationalDatabaseRepository {
         await this.revokeCredentials(id);
         await this.cluster.withMigration(id, async (client, url) => {
           for (const migration of pending) {
-            await this.applySql(client, migration.sql, { migration, ordinal: applied.length + 1 });
+            await this.applySql(client, migration.sql, { databaseId: id, migration, ordinal: applied.length + 1 });
             applied = await this.synchronizeHistory(id);
           }
           if (!emptyDifference(await schemaDifference(url, input.migrations.at(-1)!.schema))) throw new DatabaseResourceError("DATABASE_SCHEMA_DRIFT", "The applied migration does not match its declared models.");

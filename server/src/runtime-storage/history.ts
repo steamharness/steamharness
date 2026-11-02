@@ -37,12 +37,12 @@ export class PostgresRuntimeHistory {
 
   async usage(entry: TokenUsageEntry, sessionKey: string): Promise<void> {
     if (sessionKey !== `host:core:${entry.conversationId ?? entry.runId}`) throw new RuntimeStorageError("RUNTIME_STORAGE_ACCESS_DENIED", "Usage requires its run or conversation lease.");
-    const result = await this.client.query(`insert into ${this.schema}.runtime_usage(workspace_id,id,run_id,conversation_id,input_tokens,output_tokens,total_tokens,reasoning_tokens,cached_input_tokens,cache_creation_tokens,record)
-      values($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) on conflict(workspace_id,id) do update set
+    const result = await this.client.query(`insert into ${this.schema}.runtime_usage(workspace_id,id,run_id,conversation_id,input_tokens,output_tokens,total_tokens,reasoning_tokens,cached_input_tokens,cache_creation_tokens,record,created_at)
+      values($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) on conflict(workspace_id,id) do update set
       input_tokens=excluded.input_tokens,output_tokens=excluded.output_tokens,total_tokens=excluded.total_tokens,
-      reasoning_tokens=excluded.reasoning_tokens,cached_input_tokens=excluded.cached_input_tokens,cache_creation_tokens=excluded.cache_creation_tokens,record=excluded.record
+      reasoning_tokens=excluded.reasoning_tokens,cached_input_tokens=excluded.cached_input_tokens,cache_creation_tokens=excluded.cache_creation_tokens,record=excluded.record,created_at=excluded.created_at
       where runtime_usage.run_id=excluded.run_id and runtime_usage.conversation_id is not distinct from excluded.conversation_id`,
-      [this.workspaceId, JSON.stringify(entry.id), entry.runId, entry.conversationId ?? null, entry.inputTokens, entry.outputTokens, entry.totalTokens, entry.reasoningTokens, entry.cachedInputTokens, entry.cacheCreationTokens, JSON.stringify(entry)]);
+      [this.workspaceId, JSON.stringify(entry.id), entry.runId, entry.conversationId ?? null, entry.inputTokens, entry.outputTokens, entry.totalTokens, entry.reasoningTokens, entry.cachedInputTokens, entry.cacheCreationTokens, JSON.stringify(entry), entry.createdAt]);
     if (!result.rowCount) throw new RuntimeStorageError("RUNTIME_STORAGE_IDEMPOTENCY_CONFLICT", "The usage receipt already belongs to another run or conversation.");
   }
 }

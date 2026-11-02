@@ -17,8 +17,8 @@ export async function copyAgentConversation(source: Storage, destination: Storag
       entries.push(...page.items); cursor = page.next;
     } while (cursor);
     await destination.commit([{ type: "conversation", value: { id: ROOT_CONVERSATION_ID } }], context);
-    let nextId = Math.max(1, ...entries.map(entry => entry.id)) + 1;
-    const docs = new Map<string, { id: DocumentId; value: string }>();
+    let nextId = entries.reduce((next, entry) => Math.max(next, entry.id + 1), 2);
+    const docs = new Map<string, { id: DocumentId; sourceId: DocumentId; version: number; value: string }>();
     const replacements = [...options.replacements ?? []].filter(item => item.from && item.from !== item.to).sort((a, b) => b.from.length - a.from.length);
     const rewrite = (value: unknown): unknown => typeof value === "string" ? replacements.reduce((text, item) => text.split(item.from).join(item.to), value)
       : Array.isArray(value) ? value.map(rewrite) : value && typeof value === "object" ? Object.fromEntries(Object.entries(value).map(([key, item]) => [key, rewrite(item)])) : value;
@@ -33,17 +33,23 @@ export async function copyAgentConversation(source: Storage, destination: Storag
           if (!stored) throw new Error("A source document could not be read.");
           const key = JSON.stringify([record.kind, record.key ?? null]), value = rewrite(stored.value) as JsonObject, serialized = JSON.stringify(value);
           seen.add(key);
-          const previous = docs.get(key);
-          if (previous?.value === serialized) continue;
+          let previous = docs.get(key);
+          // Identical JSON can still represent a schema-version transition or
+          // a retired document's replacement. Preserve both in copied history.
+          if (previous && previous.sourceId !== record.id) {
+            writes.push({ type: "document.retire", id: previous.id }); docs.delete(key); previous = undefined;
+          }
+          if (previous?.value === serialized && previous.version === stored.version) continue;
           const content = { kind: "base" as const, version: stored.version, value };
           if (previous) writes.push({ type: "document.change", id: previous.id, content });
           else {
             const { createdAt: _createdAt, retiredAt: _retiredAt, ...definition } = record;
             const id = nextId++ as DocumentId;
             writes.push({ type: "document.create", record: { ...definition, id, scope: { kind: "conversation", conversationId: ROOT_CONVERSATION_ID } } as DocumentCreate, content });
-            docs.set(key, { id, value: serialized });
+            docs.set(key, { id, sourceId: record.id, version: stored.version, value: serialized });
           }
           docs.get(key)!.value = serialized;
+          docs.get(key)!.version = stored.version;
         }
         pageCursor = page.next;
       } while (pageCursor);

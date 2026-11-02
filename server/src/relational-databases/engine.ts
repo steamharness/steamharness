@@ -31,7 +31,8 @@ export async function validateModel(source: string): Promise<void> {
   try {
     const dmmf = await getDMMF({ datamodel: modelSchema(source) });
     if (!dmmf.datamodel.models.length) throw new Error("Empty model.");
-    if (dmmf.datamodel.models.some(model => model.name[0].toLowerCase() + model.name.slice(1) === "transaction")) throw new Error("Reserved model name.");
+    const delegates = dmmf.datamodel.models.map(model => model.name[0].toLowerCase() + model.name.slice(1));
+    if (delegates.some((name, index) => ["constructor", "prototype", "__proto__", "then", "transaction"].includes(name) || delegates.indexOf(name) !== index)) throw new Error("Conflicting or reserved model name.");
   } catch (error) {
     if (error instanceof DatabaseResourceError) throw error;
     throw new DatabaseResourceError("DATABASE_SCHEMA_INVALID", "Database models are invalid. Run steamharness database validate for authored diagnostics.");
@@ -91,7 +92,9 @@ export async function databaseModelMetadata(source: string) {
   const { datamodel } = await getDMMF({ datamodel: modelSchema(source) });
   return datamodel.models.map(model => ({
     name: model.name, delegate: model.name[0].toLowerCase() + model.name.slice(1), table: model.dbName ?? model.name,
-    fields: model.fields.filter(field => field.kind !== 'object').map(field => ({ name: field.name, column: field.dbName ?? field.name, type: field.type, required: field.isRequired, list: field.isList, generated: field.isGenerated, hasDefault: field.hasDefaultValue, updatedAt: field.isUpdatedAt, id: field.isId })),
+    fields: model.fields.filter(field => field.kind !== 'object').map(field => ({ name: field.name, column: field.dbName ?? field.name, type: field.type, nativeType: field.nativeType?.[0],
+      enumValues: field.kind === 'enum' ? datamodel.enums.find(item => item.name === field.type)?.values.map(value => ({ name: value.name, column: value.dbName ?? value.name })) : undefined,
+      required: field.isRequired, list: field.isList, generated: field.isGenerated, hasDefault: field.hasDefaultValue, updatedAt: field.isUpdatedAt, id: field.isId })),
     keyFields: model.primaryKey?.fields ?? (model.fields.some(field => field.isId) ? model.fields.filter(field => field.isId).map(field => field.name) : model.uniqueFields.find(fields => fields.every(name => model.fields.find(field => field.name === name)?.isRequired)) ?? model.fields.filter(field => field.isUnique && field.isRequired).slice(0, 1).map(field => field.name)),
   }));
 }

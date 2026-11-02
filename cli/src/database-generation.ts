@@ -67,7 +67,10 @@ export async function validateDatabases(projectDirectory: string): Promise<Valid
       try {
         const dmmf = await getDMMF({ datamodel: [[schema, datamodel]] });
         if (dmmf.datamodel.models.length === 0) throw new Error("Define at least one queryable model.");
-        if (dmmf.datamodel.models.some(model => model.name[0].toLowerCase() + model.name.slice(1) === "transaction")) throw new Error("The model name Transaction conflicts with the database transaction API. Choose another model name.");
+        const delegates = dmmf.datamodel.models.map(model => model.name[0].toLowerCase() + model.name.slice(1));
+        if (delegates.some((name, index) => ["constructor", "prototype", "__proto__", "then", "transaction"].includes(name) || delegates.indexOf(name) !== index)) {
+          throw new Error("Model names must produce unique client names and cannot use reserved names: constructor, prototype, __proto__, then, transaction.");
+        }
         const config = await getConfig({ datamodel });
         schemas.set(schemaHash, { source, schema, schemaHash, datamodel, dmmf, config, metadata: metadataFor(dmmf) });
       } catch (error) {

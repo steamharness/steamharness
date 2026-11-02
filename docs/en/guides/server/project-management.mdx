@@ -1,11 +1,11 @@
 ---
 title: "Project management"
-description: "Manage aggregate entries, membership, versions and independent database spaces."
+description: "Manage aggregate entries, membership, versions and independent data resources."
 ---
 
 # Project management
 
-Project managers use Server Web to manage members, invitations, source access, and independent database spaces. Server stores project metadata, permissions, and version snapshots; it never executes uploaded project code.
+Project managers use Server Web to manage members, invitations, source access, and independent data resources. Server stores project metadata, permissions, and version snapshots; it never executes uploaded project code.
 
 The aggregate entry list displays each entry’s `projectCard` icon, foreground and background. These properties live in entry declarations and travel with source uploads and version snapshots. Entries have no independent versions; the aggregate owns the root version.
 
@@ -58,9 +58,9 @@ Uploads only extract, statically validate and save files. Server never installs 
 
 A developer upload cannot modify management metadata or ownership. Guests download published versions; draft reads require developer access. Archives exclude KV, PersistentValue, SQLite, environment files and CLI credentials.
 
-## Entries and database spaces
+## Entries and data resources
 
-All aggregate entries share a project version, source archive and installation unit; configurations are entry-scoped. Accounts explicitly create, grant, migrate and bind relational resources. Knowledge bases use independent knowledgeBases declarations and root alias-to-UUID mappings, with STEAMHARNESS_PROJECT_CONFIG deployment overrides. Resource grants and project membership capabilities are both checked. Binding grants no access; deleting a project retains independent resources.
+All aggregate entries share a project version, source archive and installation unit; configurations are entry-scoped. Accounts explicitly create, grant, migrate and bind relational resources. Knowledge bases use independent knowledgeBases declarations and root alias-to-UUID mappings, with STEAMHARNESS_PROJECT_CONFIG deployment overrides. Membership protects project source and configuration; data access checks the relevant account resource grant and effective binding. Binding grants no access; deleting a project retains independent resources.
 
 ## System administration and audit
 
@@ -92,7 +92,7 @@ Projects declaring `profilePolicy` filter configurations using actual project an
 
 Personal configurations for v2 projects default to the latest published template. Source-draft access does not expose unpublished author fields or defaults. Maintainers, owners and system administrators retain official draft management. Role-controlled configurations must have a published template before developers use them.
 
-The database catalog separates relational and knowledge resources with search and server pagination. Relational details show applied models, fields, fingerprints and paginated rows, with JSON insert/update/delete. Updates and deletes require a complete stable key and current row version. Knowledge details provide document lists, search, revision-aware editing and attachments. Resource pages manage account read/write grants and entry bindings. Navigation protects unsaved drafts; conflicts retain edits.
+The database catalog separates relational and knowledge resources with search and server pagination. Relational details show applied models, fields, fingerprints and paginated rows, with JSON insert/update/delete. Updates and deletes require a complete stable key and current row version. Knowledge details provide document lists, search, revision-aware editing and attachments. Resource pages manage account read/write grants and entry bindings. Navigation protects unsaved drafts; conflicts retain edits. Table DateTime values use ISO strings with a timezone and UTC semantics, and mapped enums use authored names. See the [Database API](/en/core-api/database) for encoding details.
 
 Knowledge attachment contents use Server private file storage; PostgreSQL retains metadata, size and SHA-256. Backups must retain both the database and file storage directory. Legacy KV attachments are not imported, and there is no dual write or local fallback.
 

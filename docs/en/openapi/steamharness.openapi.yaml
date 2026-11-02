@@ -264,7 +264,7 @@ paths:
     post:
       tags: [Relational Databases]
       summary: "Manage applied model rows"
-      description: "Account grants authorize bounded scalar CRUD under a restricted SQL role. models returns applied metadata and schemaHash. Every other operation requires that schemaHash. rows uses server pagination/search and scalar equality. update/delete require complete stable key and xmin rowVersion; stale edits fail. BigInt and Decimal use decimal strings, DateTime ISO, Bytes Base64. Application-generated defaults such as cuid must be supplied explicitly; database defaults and @updatedAt are applied. No raw SQL or relation mutation input is accepted."
+      description: "Account grants authorize bounded scalar CRUD under a restricted SQL role. models returns applied metadata and schemaHash. Every other operation requires that schemaHash. rows uses server pagination/search and scalar equality. update/delete require complete stable key and xmin rowVersion; stale edits fail. BigInt and Decimal use decimal strings, DateTime requires ISO with a timezone and uses UTC, Bytes uses Base64. Native dates return UTC midnight; time-only types use 1970-01-01. Enums use authored names with database mappings resolved by Server. Omitted lists without defaults become empty arrays. Application-generated defaults such as cuid must be supplied explicitly; database defaults and @updatedAt are applied. No raw SQL or relation mutation input is accepted."
       security:
         - BearerAuth: []
         - SessionCookie: []

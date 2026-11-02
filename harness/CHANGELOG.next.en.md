@@ -1,5 +1,7 @@
 # Unreleased
 
+- Fixed independent conversation copies losing document version changes and replacement identities when their JSON content stayed equal, preserving checkpoints for later forks.
+
 - Changed: remove KV, PersistentValue, local KV and legacy database-space APIs. Business data uses generated model descriptors, Browser clients use the host table proxy, and conversations and run records use Server runtime tables.
 
 - Added independent knowledgeBases APIs and account bindings. Relational platform tables retain documents, chunks and indexes; private file storage holds attachments, with revision conflicts and revocation-aware retained handles.

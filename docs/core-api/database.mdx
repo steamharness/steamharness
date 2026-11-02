@@ -44,7 +44,7 @@ model Post {
 }
 ```
 
-`audit` 可以独立定义另一张 `User`，例如 `id Int`、`actor String`、`event String`。类型按别名模块分别导出，字段不会混用。当前生成目标固定为 PostgreSQL，校验与生成使用锁定的 Prisma 7.10.1；不接受自定义 datasource 或 generator。`Transaction` 模型名与封装的 `transaction` 方法冲突，需要另选模型名。
+`audit` 可以独立定义另一张 `User`，例如 `id Int`、`actor String`、`event String`。类型按别名模块分别导出，字段不会混用。当前生成目标固定为 PostgreSQL，校验与生成使用锁定的 Prisma 7.10.1；不接受自定义 datasource 或 generator。模型名首字母转为小写后必须保持唯一，不能使用 `constructor`、`prototype`、`__proto__`、`then` 或 `transaction`；例如 `User` 与 `user` 不能在同一库共存，`Transaction` 也需另选名称。
 
 ## 校验与生成
 
@@ -122,7 +122,7 @@ pnpm exec steamharness database migrate status --database <database-id> --server
 
 `migrate dev` 比较已应用历史与当前模型，保存迁移并更新生成产物；省略 `--draft` 时同时部署。`migrate deploy` 只应用已有迁移；存在未部署迁移时先部署，再生成下一次变更。迁移写在模型旁的 `migrations/<17位时间戳>_<名称>/`，包含 `migration.sql`、`steamharness.schema` 模型快照和 `steamharness.migration.json` 校验清单，需随项目源码提交。复用同一模型文件的别名复用这份迁移历史。
 
-Server 使用临时影子数据库重放并校验每一步模型，再在目标库逐条以事务提交 SQL 和历史。已应用的历史不能遗漏、重排或修改；实时结构与历史模型不一致时拒绝继续。失败 SQL 回滚，已完成的前序迁移保留；修正数据条件后可用同一历史重试。重复部署不会重复执行已提交步骤，进程中断后通过库内历史恢复。
+Server 使用临时影子数据库重放并校验每一步模型，再在目标库逐条以事务提交 SQL 和历史。已应用的历史不能遗漏、重排或修改；实时结构与历史模型不一致时拒绝继续。失败 SQL 回滚，已完成的前序迁移保留；修正数据条件后可用同一历史重试。重复部署不会重复执行已提交步骤，进程中断后通过库内历史恢复。迁移历史由平台管理员持有，迁移身份不能修改、删除或伪造记录；每次只允许写入当前部署步骤授权的历史。
 
 删除表、删除列或部分字段重写需要审阅 SQL，并显式增加 `--accept-data-loss`。SQL 支持模型表、枚举、索引及数据变更；事务、权限、过程代码和内部迁移历史由平台管理。迁移期间撤销已有业务连接，失败或中断后需成功重试部署才能重新签发连接。
 
@@ -195,4 +195,4 @@ Server 只读取静态清单、源文件指纹及产物哈希，不执行项目�
 
 数据库目录支持服务端分页、搜索和显式创建。资源详情提供账号授权、入口绑定、已应用模型及表行管理；Studio 和 CLI Web 的浏览操作打开该页面。行读取支持分页、字面文本搜索和标量等值过滤，修改与删除需完整稳定键和 rowVersion，schemaHash 变化后重新加载模型。冲突保留草稿。
 
-JSON 数据中 BigInt 和 Decimal 用字符串无损传输，DateTime 为 ISO，Bytes 为 Base64，列表和 JSON 保留结构。数据库默认值及 @updatedAt 可自动应用；cuid()/uuid() 等由模型客户端生成的默认值在管理端 SQL 新增时须显式填写。此结构化表管理接口与 Browser 表客户端使用同样的请求边界，不提供关联写入、原始 SQL 或 Browser 事务。知识库使用独立的 [知识库 API](/core-api/knowledge-documents)。
+JSON 数据中 BigInt 和 Decimal 用字符串无损传输，DateTime 输入必须是带时区的 ISO 字符串，读写统一按 UTC 解释；日期类型以 UTC 零点返回，仅时间类型以 1970-01-01 为日期返回。枚举使用模型声明值，`@map` 的数据库值由服务端转换。Bytes 为 Base64，列表和 JSON 保留结构；未提供且无默认值的列表写入空数组。数据库默认值及 @updatedAt 可自动应用；cuid()/uuid() 等由模型客户端生成的默认值在管理端 SQL 新增时须显式填写。此结构化表管理接口与 Browser 表客户端使用同样的请求边界，不提供关联写入、原始 SQL 或 Browser 事务。知识库使用独立的 [知识库 API](/core-api/knowledge-documents)。

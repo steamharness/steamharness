@@ -1,5 +1,7 @@
 # Unreleased
 
+- Fixed table data consistency for UTC dates, mapped enums and lists. Database privileges and per-step authorization protect migration history, and usage statistics preserve metadata containing special Unicode.
+
 - Changed: remove legacy KV, database-space and project KV endpoints. Browser table queries validate the account, binding, access revision and model fingerprint on every call; rebinding and revocation invalidate existing clients.
 
 - Added relational knowledge storage, account grants, versioned bindings, document CAS, Unicode substring search and private attachment collection. Restricted model/row management preserves BigInt/Decimal precision and rejects stale row edits.

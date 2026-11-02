@@ -154,6 +154,16 @@ db.$queryRaw;
     } finally { await rm(root, { recursive: true, force: true }); }
   }, 30_000);
 
+  it("rejects models whose client names are reserved or collide before generating unusable clients", async () => {
+    const root = await fixture();
+    try {
+      for (const source of [...['Then', 'Prototype', 'Constructor', 'Transaction'].map(name => `model ${name} {\n id String @id\n}`), 'model User {\n id String @id\n}\nmodel user {\n id String @id\n}']) {
+        await writeFile(path.join(root, 'database/main/steamharness.schema'), source);
+        await expect(validateDatabases(root)).rejects.toThrow(/unique client names.*reserved names/);
+      }
+    } finally { await rm(root, { recursive: true, force: true }); }
+  });
+
   it("automatically generates packaged artifacts, restores them on download, and excludes runtime files", async () => {
     const root = await fixture(), stageRoot = await mkdtemp(path.join(os.tmpdir(), "steamharness-database-pack-"));
     try {

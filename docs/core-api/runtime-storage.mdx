@@ -82,7 +82,7 @@ Core executor 自动注入相同仓储到 Conversation 状态和 Token 用量，
 | `exportAgentSession({ persistence, conversationId })` | 读取已提交的一致快照，源 owner 活动时也可读取；不启动模型。 |
 | `importAgentSession({ persistence, conversationId, sessionKey, snapshot })` | 向新的空会话导入版本化快照，不覆盖现有或已删除会话。 |
 | `forkStoredAgentConversation({ persistence, conversationId, command })` | 空闲 owner 下按已提交 entry 分叉，复用持久回执；活动 owner 使用控制通道。 |
-| `isolateStoredAgentConversation({ persistence, sourceConversationId, conversationId, targetId, replacements?, retireSource? })` | 将分支导入独立会话，保留截断历史与文档策略，不复制任务、审批、队列或用量。 |
+| `isolateStoredAgentConversation({ persistence, sourceConversationId, conversationId, targetId, replacements?, retireSource? })` | 将分支导入独立会话，保留截断历史与文档策略，包括内容相同时的文档版本变化及删除后重建的身份，不复制任务、审批、队列或用量。 |
 | `cancelStoredAgentConversation({ persistence, conversationId })` | 没有活动 owner 时取消已保存的执行树。 |
 | `deleteStoredAgentConversation({ persistence, conversationId })` | 取消并删除 Agent 会话与 Conversation 状态。 |
 
@@ -90,7 +90,7 @@ Core executor 自动注入相同仓储到 Conversation 状态和 Token 用量，
 
 ## 数据与备份
 
-Server 在现有平台数据库的 `steamharness_runtime` schema 内维护版本迁移和专用关系表：工作区、历史及有序子记录、用量、会话、对话、条目、任务、输入、文档版本、提交日志与幂等回执。创建工作区不会创建新的 PostgreSQL database。记录身份、状态与检索条件使用独立列和索引；不透明 JSON 载荷使用文本保存，以完整保留合法 JSON 的特殊键及 Unicode。
+Server 在现有平台数据库的 `steamharness_runtime` schema 内维护版本迁移和专用关系表：工作区、历史及有序子记录、用量、会话、对话、条目、任务、输入、文档版本、提交日志与幂等回执。创建工作区不会创建新的 PostgreSQL database。记录身份、状态与检索条件使用独立列和索引；不透明 JSON 载荷使用文本保存，以完整保留合法 JSON 的特殊键及 Unicode。用量时间戳使用独立关系列进行排序与汇总，不解析元数据。
 
 备份包含整个 PostgreSQL 数据库，并按项目需要备份附件和工作区文件。SQLite 专用的导入、导出、分叉和取消工具仅适用于显式选择 databasePath 的编程式实例；默认宿主使用上述仓储 API。在线会话控制仍通过活动 owner 执行。
 

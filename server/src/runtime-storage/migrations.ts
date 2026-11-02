@@ -148,6 +148,12 @@ create table __SCHEMA__.runtime_usage (
 create index on __SCHEMA__.runtime_usage(workspace_id,conversation_id,run_id);
 `;
 
+const USAGE_TIMESTAMP = `
+alter table __SCHEMA__.runtime_usage add column created_at text;
+create index on __SCHEMA__.runtime_usage(workspace_id,conversation_id,created_at,id);
+-- migrateRuntimeStorage backfills JSON text in Node before enforcing NOT NULL.
+`;
+
 export async function migrateRuntimeStorage(pool: pg.Pool, schema = RUNTIME_STORAGE_SCHEMA): Promise<void> {
   const name = runtimeSchemaName(schema);
   const client = await pool.connect();
@@ -156,7 +162,7 @@ export async function migrateRuntimeStorage(pool: pg.Pool, schema = RUNTIME_STOR
     await client.query("select pg_advisory_xact_lock(hashtextextended($1,0))", [`steamharness:runtime-storage:migrations:${schema}`]);
     await client.query(`create schema if not exists ${name}`);
     await client.query(`create table if not exists ${name}.schema_migrations (version integer primary key, checksum text not null, applied_at timestamptz not null default clock_timestamp())`);
-    for (const [index, source] of [INITIAL_SCHEMA, HISTORY_SCHEMA].entries()) {
+    for (const [index, source] of [INITIAL_SCHEMA, HISTORY_SCHEMA, USAGE_TIMESTAMP].entries()) {
     const version = index + 1;
     const checksum = createHash("sha256").update(source).digest("hex");
     const applied = await client.query(`select checksum from ${name}.schema_migrations where version=$1`, [version]);
@@ -164,6 +170,20 @@ export async function migrateRuntimeStorage(pool: pg.Pool, schema = RUNTIME_STOR
       if (applied.rows[0].checksum !== checksum) throw new Error(`Runtime storage migration ${version} checksum does not match.`);
     } else {
       await client.query(source.replaceAll("__SCHEMA__", name));
+      if (version === 3) {
+        // PostgreSQL JSON extraction decodes the entire payload and rejects valid
+        // JSON containing escaped NUL or lone surrogates, even inside metadata.
+        for (;;) {
+          const batch = await client.query(`select workspace_id,id,record from ${name}.runtime_usage where created_at is null limit 256`);
+          if (!batch.rowCount) break;
+          for (const row of batch.rows) {
+            const { createdAt } = JSON.parse(row.record);
+            if (typeof createdAt !== 'string' || !Number.isFinite(Date.parse(createdAt))) throw new Error('Invalid stored usage timestamp.');
+            await client.query(`update ${name}.runtime_usage set created_at=$3 where workspace_id=$1 and id=$2`, [row.workspace_id, row.id, createdAt]);
+          }
+        }
+        await client.query(`alter table ${name}.runtime_usage alter column created_at set not null`);
+      }
       await client.query(`insert into ${name}.schema_migrations (version,checksum) values ($1,$2)`, [version, checksum]);
     }
     }

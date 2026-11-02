@@ -1,5 +1,7 @@
 # Unreleased
 
+- Fixed database validation accepting conflicting or reserved model client names that could not be connected after generation.
+
 - Changed: task-board templates use generated Browser descriptors and Task rows scoped by configuration, with optimistic row versions. Unbound boards block edits, failed writes retain drafts, and stale pages cannot write to rebound resources.
 
 - Fixed background history recovery starting an executor while an offline fork or receipt replay was pending, preventing Agent lease conflicts and false session-not-ready errors.

@@ -43,7 +43,7 @@ Core Agent 入口在强退重启后按原运行身份恢复未完成任务。宿
 
 CLI Web 的“项目信息 → 数据库”展示关系库和独立知识库引用、状态及共享入口。关联操作使用各自绑定规则，浏览操作打开 Server Web 对应资源，URL 不含账号 token；资源创建、授权和数据编辑在 Server Web 或 CLI 管理命令中完成。
 
-根 `config.json` 集中记录别名和获批 ID，各入口在实际所属的 `steamharness.json` 中只声明使用的别名，支持 `STEAMHARNESS_PROJECT_CONFIG` 覆盖。一个入口可关联多个数据库；保存映射不授予权限。详见 [数据库空间](/concepts/data-storage)。
+入口在 `steamharness.json` 中分别声明 `databases` 与 `knowledgeBases` 别名。关系库资源由 Server 按账号、项目、入口和别名绑定；根 `config.json.knowledgeBases` 记录知识库别名到 UUID 的映射，支持 `STEAMHARNESS_PROJECT_CONFIG` 覆盖。一个入口可关联多个资源，绑定不授予权限。详见 [项目数据存储](/concepts/data-storage)。
 
 ## 检查与输出
 
@@ -104,4 +104,4 @@ Conversation、Workflow 与助手历史默认写入当前账号的 Server Postgr
 
 `steamharness knowledge` 提供 `create / list / grants / grant / revoke / bind / unbind / bindings / operation`。绑定使用 `--knowledge-base <UUID>`、`--alias <alias>`、`--entry <entry>`，缺省 alias 为 main。`list --page 2 --page-size 20 --search Docs` 在服务端分页和过滤。`operation <UUID> knowledge.listDocuments < input.json` 接受 JSON 标准输入，操作请求不自动重放；附件正文传输上限 50 MiB。
 
-`steamharness database data <UUID> < request.json` 管理已应用模型的表数据，operation 为 `models / rows / insert / update / delete`。先读取 models 的 schemaHash，后续请求传该值；更新和删除还需要当前 rowVersion 和完整稳定 key。请求输入上限 4 MiB。BigInt、Decimal 使用十进制字符串，DateTime 使用 ISO，Bytes 使用 Base64。`database list` 也支持上述分页参数。详见 [知识库 API](/core-api/knowledge-documents) 与 [数据库 API](/core-api/database)。
+`steamharness database data <UUID> < request.json` 管理已应用模型的表数据，operation 为 `models / rows / insert / update / delete`。先读取 models 的 schemaHash，后续请求传该值；更新和删除还需要当前 rowVersion 和完整稳定 key。请求输入上限 4 MiB。BigInt、Decimal 使用十进制字符串，DateTime 使用带时区的 ISO 并按 UTC 读写，Bytes 使用 Base64；枚举使用声明值，未提供且无默认值的列表写为空数组。`database list` 也支持上述分页参数。详见 [知识库 API](/core-api/knowledge-documents) 与 [数据库 API](/core-api/database)。

@@ -82,7 +82,7 @@ The following helpers are exported from steamharness/agent and accept persistenc
 | exportAgentSession({ persistence, conversationId }) | Read a consistent committed snapshot, including while the source owner is active, without loading a model. |
 | importAgentSession({ persistence, conversationId, sessionKey, snapshot }) | Import into a new empty session without overwriting existing or deleted sessions. |
 | forkStoredAgentConversation({ persistence, conversationId, command }) | Fork committed history under an idle owner with durable receipts; use the control channel for an active owner. |
-| isolateStoredAgentConversation({ persistence, sourceConversationId, conversationId, targetId, replacements?, retireSource? }) | Create an independent session with cutoff history and document policies, excluding tasks, approvals, queues and usage. |
+| isolateStoredAgentConversation({ persistence, sourceConversationId, conversationId, targetId, replacements?, retireSource? }) | Create an independent session with cutoff history and document policies, preserving document version changes and replacement identities even when content is equal, excluding tasks, approvals, queues and usage. |
 | cancelStoredAgentConversation({ persistence, conversationId }) | Cancel a stored execution tree without an active owner. |
 | deleteStoredAgentConversation({ persistence, conversationId }) | Cancel and delete Agent sessions and Conversation state. |
 
@@ -90,7 +90,7 @@ The storage snapshot is `{ format: "steamharness.agent-session", version: 1, nex
 
 ## Data and backups
 
-Server maintains versioned migrations and dedicated relational tables inside the platform database's `steamharness_runtime` schema: workspaces, sessions, conversations, entries, tasks, submissions, document revisions and operation receipts. Registering a workspace does not create a PostgreSQL database. Identity, lifecycle and query fields have separate columns and indexes. Opaque JSON payloads use text to preserve valid special keys and Unicode losslessly.
+Server maintains versioned migrations and dedicated relational tables inside the platform database's `steamharness_runtime` schema: workspaces, sessions, conversations, entries, tasks, submissions, document revisions and operation receipts. Registering a workspace does not create a PostgreSQL database. Identity, lifecycle and query fields have separate columns and indexes. Opaque JSON payloads use text to preserve valid special keys and Unicode losslessly. Usage sorting and aggregation use a separate timestamp column without parsing metadata.
 
 Back up PostgreSQL together with attachments and workspace files. SQLite-specific export, import, fork and cancellation helpers apply only to explicitly configured databasePath instances. Default hosts use the repository helpers above; active sessions use their owner control channel.
 

@@ -9,16 +9,15 @@ Server Web is the browser administration client for SteamHarness Server. After s
 
 ## Project workspace
 
-Project lists display type sets and match any entry type. Details expose entries, entry configurations, versions and membership. Independent database management provides requests, approval, shared grants and data browsing.
+Project lists display type sets and match any entry type. Details expose entries, entry configurations, versions and membership. Independent relational and knowledge management provides explicit creation, account read/write grants, entry bindings and data browsing.
 
-Uploaded packages must register nonempty `steamharness.json.entries` and a valid `defaultEntry`. Names and display platforms belong to projectInfo. Database aliases and IDs belong to root config.json; package entries list the aliases they use.
+Uploaded packages must register nonempty `steamharness.json.entries` and a valid `defaultEntry`. Names and display platforms belong to projectInfo. Entries declare relational and knowledge aliases in steamharness.json. Server stores relational resource bindings by account, project, entry and alias; root config.json stores knowledge alias-to-ID mappings under knowledgeBases.
 
 ## Projects and data
 
 - Use [Workspace CLI](/en/cli/server-workspace) to create, upload, publish, and download projects.
 - Configure membership and group ownership in [Project management](/en/guides/server/project-management), and grants on the database page.
 - Relational resources provide account grants, model migrations and table data management. Knowledge resources provide documents, search, revision checks and private attachments. Platform relational tables retain runtime history.
-- Database spaces require request, approval and binding, separate from source and membership requests.
 - Kanban keeps static previews, configuration, and the data Bridge. A preview uses a short-lived capability bound to a project, user, and version; its iframe does not inherit account credentials.
 
 ## Accounts and settings

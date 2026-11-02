@@ -101,7 +101,7 @@ After upload, `await context.files.resolveFile(reference)` resolves a file on th
 
 Kanban pages use `createFile/readFile/deleteFile` on `window.steamHarnessKanban.knowledgeBases.get(alias).files` to access authorized knowledge-base attachments. See [Kanban data Bridge](/en/concepts/kanban#data-bridge).
 
-Server saves space images and other attachments in separate private file storage; PostgreSQL retains file metadata and a content digest. Existing inline attachments are validated and moved on first read, preserving their IDs, references and data revisions. A failed migration retains the original data. Reads still require authorization, and the existing Base64 JSON wire format remains compatible.
+Server saves knowledge images and other attachments in separate private file storage; PostgreSQL retains metadata, sizes and content digests. Every read checks the current binding and account grant; JSON transport uses Base64. Legacy inline KV attachments are not migrated automatically. Backups must retain both PostgreSQL and file storage.
 
 Do not save base64 file contents into business rows or session history. Save the reference metadata returned by `file.toJSON()` when cross-round multiplexing is required.
 

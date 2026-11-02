@@ -1,12 +1,14 @@
 # Unreleased
 
+- Document reserved model names, UTC dates, mapped enums and document version preservation for independent conversations in generation guidance.
+
 - Changed: generator and repair guidance use relational models, Server bindings and independent knowledge bases. Board templates remove local KV and temporary write modes, retain failed drafts and keep the original page connection.
 
 - Updated generation rules and tool contracts for independent knowledgeBases, versioned documents and private attachments, distinguishing relational Server bindings from knowledge deployment mappings.
 
 - Document platform relational storage as the default conversation, run history and Agent backend, including online requirements, isolation and snapshot APIs.
 
-- Updated the project generator reference with independent database resources, versioned migrations, entry bindings and typed Node queries and transactions; the browser proxy remains pending.
+- Updated the project generator reference with independent database resources, versioned migrations, entry bindings and typed Node queries and transactions; browsers use restricted table queries.
 
 - Document SteamHarness Database multi-database definitions, dual-target generation, packaging, and current connection boundaries in generator guidance.
 

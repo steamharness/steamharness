@@ -45,7 +45,7 @@ export class RuntimeStorageRepository {
     const projectTotal = usageAggregate((await this.pool.query(`select ${usageProjection} from ${source} where w.project_id=$1`, [options.projectId])).rows[0]);
     const conversationTotal = options.conversationId === undefined ? undefined : usageAggregate((await this.pool.query(`select ${usageProjection} from ${source} where w.project_id=$1 and u.conversation_id=$2`, [options.projectId, options.conversationId])).rows[0]);
     // The public inspector already bounds history to a selected conversation.
-    const entries = options.includeEntries ? (await this.pool.query(`select u.record from ${source} where w.project_id=$1 and ($2::text is null or u.conversation_id=$2) order by u.record::jsonb->>'createdAt',u.id limit 1000`, [options.projectId, options.conversationId ?? null])).rows.map(row => JSON.parse(row.record)) : undefined;
+    const entries = options.includeEntries ? (await this.pool.query(`select u.record from ${source} where w.project_id=$1 and ($2::text is null or u.conversation_id=$2) order by u.created_at,u.id limit 1000`, [options.projectId, options.conversationId ?? null])).rows.map(row => JSON.parse(row.record)) : undefined;
     return { projectId: options.projectId, projectTotal, ...(options.conversationId === undefined ? {} : { conversationId: options.conversationId, conversationTotal }), ...(entries ? { entries } : {}) };
   }
 
@@ -220,7 +220,7 @@ function missing(): RuntimeStorageError { return new RuntimeStorageError("RUNTIM
 const usageProjection = `coalesce(sum(input_tokens),0) as input_tokens,coalesce(sum(output_tokens),0) as output_tokens,
   coalesce(sum(total_tokens),0) as total_tokens,coalesce(sum(reasoning_tokens),0) as reasoning_tokens,
   coalesce(sum(cached_input_tokens),0) as cached_input_tokens,coalesce(sum(cache_creation_tokens),0) as cache_creation_tokens,
-  count(*) as calls,max(u.record::jsonb->>'createdAt') as updated_at`;
+  count(*) as calls,max(u.created_at) as updated_at`;
 function usageAggregate(row: Record<string, any>): import('steamharness').TokenUsageAggregate {
   return { inputTokens: Number(row.input_tokens), outputTokens: Number(row.output_tokens), totalTokens: Number(row.total_tokens),
     reasoningTokens: Number(row.reasoning_tokens), cachedInputTokens: Number(row.cached_input_tokens), cacheCreationTokens: Number(row.cache_creation_tokens),

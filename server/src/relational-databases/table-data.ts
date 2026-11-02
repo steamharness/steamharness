@@ -29,7 +29,14 @@ function inputValue(field: Field, value: unknown): unknown {
   if (field.type === 'Float') return typeof value === 'number' && Number.isFinite(value) ? value : invalid('Float fields require a finite number.');
   if (field.type === 'BigInt') return typeof value === 'string' && /^-?\d{1,20}$/.test(value) ? value : invalid('BigInt fields require a decimal string.');
   if (field.type === 'Decimal') return (typeof value === 'string' && /^[+-]?\d+(?:\.\d+)?(?:e[+-]?\d+)?$/i.test(value) || typeof value === 'number' && Number.isFinite(value)) ? String(value) : invalid('Decimal fields require a decimal string or number.');
-  if (field.type === 'DateTime') return typeof value === 'string' && /^\d{4}-\d\d-\d\dT/.test(value) && Number.isFinite(Date.parse(value)) ? new Date(value) : invalid('DateTime fields require an ISO date string.');
+  if (field.type === 'DateTime') {
+    if (typeof value !== 'string' || !/^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d(?:\.\d+)?(?:Z|[+-]\d\d:\d\d)$/.test(value) || !Number.isFinite(Date.parse(value))) return invalid('DateTime fields require an ISO date string with a timezone.');
+    // pg serializes Date in the process timezone. Prisma stores timestamp and
+    // date/time native types in UTC, including those without a SQL timezone.
+    const iso = new Date(value).toISOString();
+    return field.nativeType === 'Date' ? iso.slice(0, 10) : ['Time', 'Timetz'].includes(field.nativeType ?? '') ? iso.slice(11) : iso;
+  }
+  if (field.enumValues) return field.enumValues.find(item => item.name === value)?.column ?? invalid('Choose an authored enum value.');
   if (field.type === 'Bytes') {
     if (typeof value !== 'string') return invalid('Bytes fields require base64.');
     const bytes = Buffer.from(value, 'base64');
@@ -38,11 +45,17 @@ function inputValue(field: Field, value: unknown): unknown {
   return typeof value === 'string' && !value.includes('\0') ? value : invalid('String and enum fields require text.');
 }
 function outputValue(field: Field, value: unknown): unknown {
-  if (value === null) return null;
+  if (value === null) return field.list ? [] : null;
   if (field.list) return (value as unknown[]).map(item => outputValue({ ...field, list: false }, item));
   if (field.type === 'BigInt' || field.type === 'Decimal') return String(value);
   if (field.type === 'Bytes') return (value as Buffer).toString('base64');
-  if (value instanceof Date) return value.toISOString();
+  if (field.type === 'DateTime') {
+    const text = String(value).replace(' ', 'T');
+    const timestamp = field.nativeType === 'Date' ? `${text}T00:00:00Z`
+      : ['Time', 'Timetz'].includes(field.nativeType ?? '') ? `1970-01-01T${text}` : text;
+    return new Date(/(?:Z|[+-]\d\d(?::?\d\d)?)$/.test(timestamp) ? timestamp.replace(/([+-]\d\d)$/, '$1:00') : `${timestamp}Z`).toISOString();
+  }
+  if (field.enumValues) return field.enumValues.find(item => item.column === value)?.name ?? invalid('The stored enum value is outside the applied model.');
   return value;
 }
 
@@ -56,7 +69,7 @@ export async function executeTableData(client: pg.Client, schema: string, reques
   // Avoid reserving a user model field name for the transport's row version.
   let versionAlias = '__steamharness_row_version';
   while (fields.has(versionAlias)) versionAlias += '_';
-  const columns = model.fields.map(field => `${q(field.column)}${['BigInt', 'Decimal'].includes(field.type) ? `::text${field.list ? '[]' : ''}` : ''} as ${q(field.name)}`).join(',');
+  const columns = model.fields.map(field => `${q(field.column)}${['BigInt', 'Decimal', 'DateTime'].includes(field.type) || field.enumValues && field.list ? `::text${field.list ? '[]' : ''}` : ''} as ${q(field.name)}`).join(',');
   const table = `public.${q(model.table)}`;
   const values: unknown[] = [];
   const parameter = (value: unknown) => { values.push(value); return `$${values.length}`; };
@@ -105,7 +118,7 @@ export async function executeTableData(client: pg.Client, schema: string, reques
       const field = fields.get(name); if (!field || field.generated) return invalid('Only writable scalar model fields may be edited.');
       return `${q(field.column)}=${parameter(inputValue(field, value))}`;
     });
-    for (const field of model.fields.filter(field => field.updatedAt && !Object.hasOwn(request.data!, field.name))) updates.push(`${q(field.column)}=${parameter(new Date())}`);
+    for (const field of model.fields.filter(field => field.updatedAt && !Object.hasOwn(request.data!, field.name))) updates.push(`${q(field.column)}=${parameter(inputValue(field, new Date().toISOString()))}`);
     const changed = await client.query(`update ${table} set ${updates.join(',')} where ${conditions.join(' and ')} returning ${projection}`, values);
     if (!changed.rowCount) throw new DatabaseResourceError('DATABASE_QUERY_FAILED', 'This row changed or was deleted. Reload before retrying.');
     return row(changed.rows[0]);
@@ -113,6 +126,7 @@ export async function executeTableData(client: pg.Client, schema: string, reques
   if (!record(request.data) || Object.keys(request.data).length > 100) return invalid();
   const data = { ...request.data };
   for (const field of model.fields.filter(field => field.updatedAt && !Object.hasOwn(data, field.name))) data[field.name] = new Date().toISOString();
+  for (const field of model.fields.filter(field => field.list && !field.hasDefault && !Object.hasOwn(data, field.name))) data[field.name] = [];
   const entries = Object.entries(data);
   const names = entries.map(([name]) => { const field = fields.get(name); if (!field || field.generated) return invalid('Only writable scalar model fields may be inserted.'); return q(field.column); });
   const parameters = entries.map(([name, value]) => parameter(inputValue(fields.get(name)!, value)));

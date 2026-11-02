@@ -1,6 +1,13 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { checkMigrationSql, destructiveMigration, hash, modelHash, modelSchema, validateMigrationHistory } from "../relational-databases/schema";
+import { validateModel } from "../relational-databases/engine";
+
+test("model validation rejects reserved and colliding client delegates before deployment", async () => {
+  for (const source of [...['Then', 'Prototype', 'Constructor', 'Transaction'].map(name => `model ${name} {\n id String @id\n}`), 'model User {\n id String @id\n}\nmodel user {\n id String @id\n}']) {
+    await assert.rejects(validateModel(source), { code: 'DATABASE_SCHEMA_INVALID' });
+  }
+});
 
 test("model migrations reject connection blocks, transaction control and history edits", () => {
   for (const source of ['datasource db { provider = "postgresql" }', 'generator client { provider = "x" }']) {

@@ -41,7 +41,7 @@ Core API 分组记录业务 workflow 可直接使用的 `workflow.*` 运行时 A
 | [`runFor`](/core-api/run-for) | 执行可追踪的 for 循环，并让 Diagram 用循环容器展示循环体。 |
 | [`runWhile`](/core-api/run-while) | 执行可追踪的 while 循环，并让 Diagram 用循环容器展示循环体。 |
 | [`runProject`](/core-api/run-workflow) | 在当前上下文中调用另一个 workflow，复用数据库连接、会话、provider、token usage 和 trace。 |
-| [`Knowledge Documents`](/core-api/knowledge-documents) | 通过获批数据库空间管理 Markdown 知识库。 |
+| [`Knowledge Documents`](/core-api/knowledge-documents) | 通过独立 knowledgeBases 声明、账号授权与绑定管理 Markdown 知识库。 |
 | [`getConfig`](/core-api/get-config) | 读取当前运行快照中的原生类型配置值。 |
 | [`getRuntimePlatform` / `isCli` / `isDesktop`](/core-api/runtime-platform) | 判断当前 workflow 的执行宿主是 CLI 还是本地桌面宿主。 |
 | [`getRuntimeLocale`](/core-api/runtime-locale) | 读取当前运行宿主选择的简体中文或英文，用于已启用国际化的用户可见输出。 |

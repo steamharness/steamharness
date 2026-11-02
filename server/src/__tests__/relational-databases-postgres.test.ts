@@ -118,6 +118,17 @@ test("independent PostgreSQL resources support provisioning, account grants and 
     } finally { await writer.end(); }
     await assert.rejects(repository.issueCredentials("owner", a.id, { expectedSchemaHash: "0".repeat(64) }), { code: "DATABASE_SCHEMA_MISMATCH" });
   });
+  await t.test("migration identities cannot rewrite or forge managed history through escaped SQL identifiers", async () => {
+    await repository.cluster.withMigration(a.id, async client => {
+      await assert.rejects(client.query(String.raw`DELETE FROM U&"steamharness_migratio\006es".history WHERE false`), { code: '42501' });
+      await assert.rejects(client.query('UPDATE steamharness_migrations.history SET checksum=checksum WHERE false'), { code: '42501' });
+      for (const sql of ['TRUNCATE steamharness_migrations.history', 'DROP TABLE steamharness_migrations.history', 'ALTER TABLE steamharness_migrations.history DISABLE TRIGGER ALL', 'DROP SCHEMA steamharness_migrations CASCADE']) {
+        await assert.rejects(client.query(sql), { code: '42501' });
+      }
+      await assert.rejects(client.query("INSERT INTO steamharness_migrations.history(ordinal,name,checksum,schema_hash,model_schema) VALUES(999,'forged','x','x','x')"), { code: '42501' });
+    });
+    assert.equal((await repository.history('owner', a.id)).length, 1);
+  });
   await t.test("table management preserves scalar values, validates models and rejects stale edits", async () => {
     const c = await create("owner", "Managed table");
     const schema = `model Record {

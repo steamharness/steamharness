@@ -56,6 +56,40 @@ test('session snapshots preserve historical documents and reserved IDs while a s
   await opened.release?.();
 });
 
+test('isolated conversations preserve document versions and incarnations when their values stay equal', async () => {
+  const persistence = createMemoryRuntimePersistence();
+  const opened = await persistence.agentStorage('source', 'main').open();
+  const definition = { kind: 'plan', scope: { kind: 'conversation' as const, conversationId: 1 as never }, history: 'rewindable' as const, fork: 'asOf' as const };
+  await opened.storage.commit([
+    { type: 'conversation', value: { id: 1 as never } },
+    { type: 'document.create', record: { ...definition, id: 2 as never }, content: { kind: 'base', version: 1, value: { text: 'same' } } },
+    { type: 'entry', value: { id: 3 as never, conversationId: 1 as never, kind: 'message' } },
+  ], context);
+  await opened.storage.commit([
+    { type: 'document.change', id: 2 as never, content: { kind: 'base', version: 2, value: { text: 'same' } } },
+    { type: 'entry', value: { id: 4 as never, conversationId: 1 as never, kind: 'message' } },
+  ], context);
+  await opened.storage.commit([
+    { type: 'document.retire', id: 2 as never },
+    { type: 'document.create', record: { ...definition, id: 5 as never }, content: { kind: 'base', version: 2, value: { text: 'same' } } },
+    { type: 'entry', value: { id: 6 as never, conversationId: 1 as never, kind: 'message' } },
+  ], context);
+  await opened.storage.commit([{ type: 'document.change', id: 5 as never, content: { kind: 'base', version: 3, value: { text: 'same' } } }], context);
+  try {
+    await isolateStoredAgentConversation({ persistence, sourceConversationId: 'source', conversationId: 'branch', targetId: 1 });
+    const branch = new SnapshotMemoryStorage(await persistence.exportSession(agentRuntimeSessionKey('branch', 'main')));
+    const copied = [];
+    for (const [entryId, version] of [[3, 1], [4, 2], [6, 2]]) {
+      const at = (await branch.entry(entryId as never, context))!.commitSeq;
+      const doc = (await branch.findDocument(definition, at, context))!;
+      assert.equal((await branch.document(doc.id, at, context))?.version, version);
+      copied.push(doc.id);
+    }
+    assert.equal(copied[0], copied[1]); assert.notEqual(copied[1], copied[2]);
+    assert.equal((await branch.document(copied[2]!, 'current', context))?.version, 3);
+  } finally { await opened.release?.(); }
+});
+
 test('durable conversation execution requires storage before business code runs', async t => {
   const directory = await mkdtemp(path.join(tmpdir(), 'runtime-history-required-'));
   t.after(() => rm(directory, { recursive: true, force: true }));
