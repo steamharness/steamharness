@@ -14,7 +14,7 @@ workflow 源码是自包含业务代码。本地宿主和 CLI 把 runtime API �
 
 Browser 描述符不得加载 Node 客户端、驱动或连接配置。生成产物含 JS 与 TS、模型元数据、标准内部 schema、引擎运行资产及校验清单，不手动维护。workspace pack 自动为根和注册入口生成并带入产物；Server 只校验静态文件，不执行定义。失败保持上一份完整生成，去掉别名后重新生成清理旧产物。
 
-当前仅有定义、校验、类型与打包能力；不能生成可执行的 `context.databases.connect()`、资源申请或迁移调用，也不能把描述符当成数据库身份或授权。现有 `.databases.get(alias).kv` 属于旧存储契约，本阶段未删除，不把其 API 伪装成关系模型查询。
+资源管理使用 `steamharness database create|list|inspect|retry|grant|revoke`，迁移使用 `migrate dev|deploy|status --database <uuid> [--alias main]`；`dev --draft` 保存 SQL、模型快照和校验清单，资源需要目标 Server 的账号授权。不同资源对应独立 PostgreSQL database；创建者是唯一迁移所有者。已应用历史不可修改，漂移、破坏性变更和失败重试需遵循公开数据库文档。当前尚不能生成可执行的 `context.databases.connect()`；不能把描述符当作资源身份或授权。现有 `.databases.get(alias).kv` 属于旧存储契约，本阶段未删除，不把其 API 伪装成关系模型查询。
 
 ## 用户设置与权限继承
 

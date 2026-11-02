@@ -94,4 +94,4 @@ pnpm exec steamharness db validate .
 pnpm exec steamharness database generate .
 ```
 
-See [SteamHarness Database](/en/core-api/database). These commands define and generate models; resource provisioning, migrations, and replacement of existing KV are outside their scope.
+Resource and migration management also provides `create / list / inspect / retry / grant / revoke` and `migrate dev / deploy / status`. `migrate dev --draft` saves reviewable SQL, a model snapshot and checksums; `deploy` applies existing history only. `--database` selects a resource UUID and `--alias` a model declaration (default main). Management commands require a target Server account login; `--server` and `--token` override the target. See [SteamHarness Database](/en/core-api/database). Core query connections and KV replacement are still pending.

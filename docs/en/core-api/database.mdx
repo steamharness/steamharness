@@ -90,7 +90,43 @@ function listAudit(db: DatabaseClient<typeof audit>) {
 
 Models are also available as `Models.User` and `UserModel`, and enums as `Enums.Status`, avoiding collisions with wrapper types. Relation filters, `select`, `include`, compound unique keys, and results preserve model type inference. `Client` exposes model operations and the type of `transaction(callback)`. Connection lifecycle, raw SQL, and extensions are outside the project client. Import `Decimal`, `DbNull`, `JsonNull`, and `AnyNull` from `steamharness/database` or an alias module. Browser code uses the same model types and imports descriptors from `browser/index.js`.
 
-Descriptors contain `alias`, `target`, `provider`, `schemaHash`, and `metadata`; they do not open connections. This entry currently provides definitions, validation, types, and generated assets. Resource provisioning, physical database binding, migrations, and query execution are not connected.
+Descriptors contain `alias`, `target`, `provider`, `schemaHash`, and `metadata`; they do not open connections. Use the management commands below to provision resources and migrate them.
+
+## Provision independent databases and grant access
+
+A resource UUID identifies one independent PostgreSQL database with separate migration, read and write roles in the same instance. Projects A and B can each provision a resource and define a different `User` table. Their schemas and data are isolated. Opening a project or creating a conversation does not provision a database. Reusing a model file across aliases does not share a resource automatically.
+
+Sign in to the target Server account with `steamharness workspace login`. These commands use the saved account API key; `--server` and `--token` override it. `STEAMHARNESS_SERVER_URL` and `STEAMHARNESS_SERVER_ADMIN_KEY` are also supported. A system administrator key without an account identity is insufficient.
+
+```sh
+pnpm exec steamharness database create orders --server http://127.0.0.1:18126
+pnpm exec steamharness database list --server http://127.0.0.1:18126
+pnpm exec steamharness database inspect <database-id> --server http://127.0.0.1:18126
+pnpm exec steamharness database grant <database-id> --user <account-id> --mode read --server http://127.0.0.1:18126
+pnpm exec steamharness database revoke <database-id> --user <account-id> --server http://127.0.0.1:18126
+```
+
+The creator owns the resource and its migrations. Shared accounts receive `read` or `write` access and cannot manage grants or migrations. Revoking or narrowing access invalidates issued identities and terminates their existing connections. Resource responses contain no database URLs, passwords or administration credentials, and list only resources the current account owns or can access.
+
+Creation records retain `requested / provisioning / ready / failed` status and the failing stage. Supply a stable `--request-id <uuid>` to retrieve the same request after response loss. The same account and request ID never create a second resource. Resume failed provisioning with `database retry <database-id>`. Incomplete provisioning produces a nonzero CLI exit code.
+
+## Generate and deploy migrations
+
+Pass the resource ID as a command option, outside the model and definition. `--alias` selects a project model declaration and defaults to `main`:
+
+```sh
+pnpm exec steamharness database migrate dev . --database <database-id> --alias main --name init --draft --server http://127.0.0.1:18126
+pnpm exec steamharness database migrate deploy . --database <database-id> --alias main --server http://127.0.0.1:18126
+pnpm exec steamharness database migrate status --database <database-id> --server http://127.0.0.1:18126
+```
+
+`migrate dev` compares applied history with the current models, saves a migration and refreshes generated assets. Without `--draft`, it also deploys. `migrate deploy` applies existing migrations only. Deploy pending migrations before generating another change. Commit the `migrations/<17-digit-timestamp>_<name>/` directories beside the model file. Each contains `migration.sql`, a `steamharness.schema` snapshot and a `steamharness.migration.json` checksum manifest. Aliases reusing one model file share its migration files.
+
+Server replays history in a temporary shadow database and verifies each model snapshot, then commits each target migration and its history in one transaction. Applied history cannot be omitted, reordered or edited. Live schema drift blocks further migrations. Failed SQL rolls back while previously committed migrations remain. After fixing data conditions, retry the same history. Repeated deploys skip committed steps, and restarts recover from database-local history.
+
+Dropping tables or columns and some column rewrites require SQL review and explicit `--accept-data-loss`. SQL supports model tables, enums, indexes and data changes. The platform owns transaction control, privileges, procedural code restrictions and internal migration history. Migrations revoke existing business connections; a failed or interrupted migration must be successfully retried before new connections can be issued.
+
+Resource management HTTP APIs live under `/api/databases`. Project/entry binding, Core query connections and Browser query forwarding are still pending.
 
 ## Build and distribute
 

@@ -25,7 +25,236 @@ tags:
     description: 独立空间、显式申请审批、消费方绑定与共享授权。
   - name: Runtime Storage
     description: Account-private Agent records, execution leases and relational checkpoints.
+  - name: Relational Databases
+    description: Independent PostgreSQL resources, account sharing and immutable model migrations.
 paths:
+  /api/databases:
+    get:
+      tags: [Relational Databases]
+      summary: List owned and granted database resources
+      description: Account identity required. Resource ownership controls grants and migrations. No database credentials are returned.
+      security:
+        - BearerAuth: []
+        - SessionCookie: []
+      responses:
+        "200":
+          description: Successful database management response.
+          content:
+            application/json:
+              schema: {"type": "object", "additionalProperties": false, "properties": {"errCode": {"type": "integer", "const": 0}, "errMessage": {"type": "string", "const": ""}, "data": {"type": "object", "additionalProperties": false, "properties": {"items": {"type": "array", "items": {"$ref": "#/components/schemas/RelationalDatabaseResource"}}}, "required": ["items"]}}, "required": ["errCode", "errMessage", "data"]}
+        default:
+          $ref: "#/components/responses/HarnessError"
+    post:
+      tags: [Relational Databases]
+      summary: Request and provision an independent database
+      description: Account identity required. Resource ownership controls grants and migrations. No database credentials are returned.
+      security:
+        - BearerAuth: []
+        - SessionCookie: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {"type": "object", "additionalProperties": false, "properties": {"name": {"type": "string", "minLength": 1, "maxLength": 128}, "requestId": {"type": "string", "format": "uuid"}}, "required": ["name", "requestId"]}
+      responses:
+        "200":
+          description: Successful database management response.
+          content:
+            application/json:
+              schema: {"type": "object", "additionalProperties": false, "properties": {"errCode": {"type": "integer", "const": 0}, "errMessage": {"type": "string", "const": ""}, "data": {"$ref": "#/components/schemas/RelationalDatabaseResource"}}, "required": ["errCode", "errMessage", "data"]}
+        default:
+          $ref: "#/components/responses/HarnessError"
+  /api/databases/{databaseId}:
+    get:
+      tags: [Relational Databases]
+      summary: Inspect an accessible database resource
+      description: Account identity required. Resource ownership controls grants and migrations. No database credentials are returned.
+      security:
+        - BearerAuth: []
+        - SessionCookie: []
+      parameters:
+        - name: databaseId
+          in: path
+          required: true
+          schema: {"type": "string", "format": "uuid"}
+      responses:
+        "200":
+          description: Successful database management response.
+          content:
+            application/json:
+              schema: {"type": "object", "additionalProperties": false, "properties": {"errCode": {"type": "integer", "const": 0}, "errMessage": {"type": "string", "const": ""}, "data": {"$ref": "#/components/schemas/RelationalDatabaseResource"}}, "required": ["errCode", "errMessage", "data"]}
+        default:
+          $ref: "#/components/responses/HarnessError"
+  /api/databases/{databaseId}/retry:
+    post:
+      tags: [Relational Databases]
+      summary: Retry failed database provisioning
+      description: Account identity required. Resource ownership controls grants and migrations. No database credentials are returned.
+      security:
+        - BearerAuth: []
+        - SessionCookie: []
+      parameters:
+        - name: databaseId
+          in: path
+          required: true
+          schema: {"type": "string", "format": "uuid"}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {"type": "object", "additionalProperties": false, "properties": {}}
+      responses:
+        "200":
+          description: Successful database management response.
+          content:
+            application/json:
+              schema: {"type": "object", "additionalProperties": false, "properties": {"errCode": {"type": "integer", "const": 0}, "errMessage": {"type": "string", "const": ""}, "data": {"$ref": "#/components/schemas/RelationalDatabaseResource"}}, "required": ["errCode", "errMessage", "data"]}
+        default:
+          $ref: "#/components/responses/HarnessError"
+  /api/databases/{databaseId}/grants:
+    get:
+      tags: [Relational Databases]
+      summary: List database account grants
+      description: Account identity required. Resource ownership controls grants and migrations. No database credentials are returned.
+      security:
+        - BearerAuth: []
+        - SessionCookie: []
+      parameters:
+        - name: databaseId
+          in: path
+          required: true
+          schema: {"type": "string", "format": "uuid"}
+      responses:
+        "200":
+          description: Successful database management response.
+          content:
+            application/json:
+              schema: {"type": "object", "additionalProperties": false, "properties": {"errCode": {"type": "integer", "const": 0}, "errMessage": {"type": "string", "const": ""}, "data": {"type": "array", "items": {"$ref": "#/components/schemas/RelationalDatabaseGrant"}}}, "required": ["errCode", "errMessage", "data"]}
+        default:
+          $ref: "#/components/responses/HarnessError"
+    post:
+      tags: [Relational Databases]
+      summary: Grant or narrow database read or write access
+      description: Account identity required. Resource ownership controls grants and migrations. No database credentials are returned.
+      security:
+        - BearerAuth: []
+        - SessionCookie: []
+      parameters:
+        - name: databaseId
+          in: path
+          required: true
+          schema: {"type": "string", "format": "uuid"}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {"type": "object", "additionalProperties": false, "properties": {"userId": {"type": "string", "minLength": 1, "maxLength": 256}, "mode": {"type": "string", "enum": ["read", "write"]}}, "required": ["userId", "mode"]}
+      responses:
+        "200":
+          description: Successful database management response.
+          content:
+            application/json:
+              schema: {"type": "object", "additionalProperties": false, "properties": {"errCode": {"type": "integer", "const": 0}, "errMessage": {"type": "string", "const": ""}, "data": {"$ref": "#/components/schemas/RelationalDatabaseGrant"}}, "required": ["errCode", "errMessage", "data"]}
+        default:
+          $ref: "#/components/responses/HarnessError"
+  /api/databases/{databaseId}/grants/{userId}:
+    delete:
+      tags: [Relational Databases]
+      summary: Revoke access and terminate issued connections
+      description: Account identity required. Resource ownership controls grants and migrations. No database credentials are returned.
+      security:
+        - BearerAuth: []
+        - SessionCookie: []
+      parameters:
+        - name: databaseId
+          in: path
+          required: true
+          schema: {"type": "string", "format": "uuid"}
+        - name: userId
+          in: path
+          required: true
+          schema: {"type": "string"}
+      responses:
+        "200":
+          description: Successful database management response.
+          content:
+            application/json:
+              schema: {"type": "object", "additionalProperties": false, "properties": {"errCode": {"type": "integer", "const": 0}, "errMessage": {"type": "string", "const": ""}, "data": {"type": "null"}}, "required": ["errCode", "errMessage", "data"]}
+        default:
+          $ref: "#/components/responses/HarnessError"
+  /api/databases/{databaseId}/migrations:
+    get:
+      tags: [Relational Databases]
+      summary: Read immutable applied migration history
+      description: Account identity required. Resource ownership controls grants and migrations. No database credentials are returned.
+      security:
+        - BearerAuth: []
+        - SessionCookie: []
+      parameters:
+        - name: databaseId
+          in: path
+          required: true
+          schema: {"type": "string", "format": "uuid"}
+      responses:
+        "200":
+          description: Successful database management response.
+          content:
+            application/json:
+              schema: {"type": "object", "additionalProperties": false, "properties": {"errCode": {"type": "integer", "const": 0}, "errMessage": {"type": "string", "const": ""}, "data": {"type": "array", "items": {"$ref": "#/components/schemas/DatabaseMigrationState"}}}, "required": ["errCode", "errMessage", "data"]}
+        default:
+          $ref: "#/components/responses/HarnessError"
+  /api/databases/{databaseId}/migrations/plan:
+    post:
+      tags: [Relational Databases]
+      summary: Validate history and generate a migration against current models
+      description: Account identity required. Resource ownership controls grants and migrations. No database credentials are returned.
+      security:
+        - BearerAuth: []
+        - SessionCookie: []
+      parameters:
+        - name: databaseId
+          in: path
+          required: true
+          schema: {"type": "string", "format": "uuid"}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {"type": "object", "additionalProperties": false, "properties": {"schema": {"type": "string", "minLength": 1, "maxLength": 1048576}, "migrations": {"type": "array", "maxItems": 1000, "items": {"$ref": "#/components/schemas/DatabaseMigration"}}}, "required": ["schema", "migrations"]}
+      responses:
+        "200":
+          description: Successful database management response.
+          content:
+            application/json:
+              schema: {"type": "object", "additionalProperties": false, "properties": {"errCode": {"type": "integer", "const": 0}, "errMessage": {"type": "string", "const": ""}, "data": {"$ref": "#/components/schemas/DatabaseMigrationPlan"}}, "required": ["errCode", "errMessage", "data"]}
+        default:
+          $ref: "#/components/responses/HarnessError"
+  /api/databases/{databaseId}/migrations/deploy:
+    post:
+      tags: [Relational Databases]
+      summary: Replay shadow history and transactionally deploy pending migrations
+      description: Account identity required. Resource ownership controls grants and migrations. No database credentials are returned.
+      security:
+        - BearerAuth: []
+        - SessionCookie: []
+      parameters:
+        - name: databaseId
+          in: path
+          required: true
+          schema: {"type": "string", "format": "uuid"}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {"type": "object", "additionalProperties": false, "properties": {"migrations": {"type": "array", "maxItems": 1000, "items": {"$ref": "#/components/schemas/DatabaseMigration"}}, "schemaHash": {"type": "string", "pattern": "^[a-f0-9]{64}$"}, "acceptDataLoss": {"type": "boolean", "default": false}}, "required": ["migrations", "schemaHash"]}
+      responses:
+        "200":
+          description: Successful database management response.
+          content:
+            application/json:
+              schema: {"type": "object", "additionalProperties": false, "properties": {"errCode": {"type": "integer", "const": 0}, "errMessage": {"type": "string", "const": ""}, "data": {"type": "array", "items": {"$ref": "#/components/schemas/DatabaseMigrationState"}}}, "required": ["errCode", "errMessage", "data"]}
+        default:
+          $ref: "#/components/responses/HarnessError"
   /api/runtime-storage/workspaces:
     post:
       tags:
@@ -3862,6 +4091,11 @@ components:
           schema:
             $ref: "#/components/schemas/ApiFailure"
   schemas:
+    RelationalDatabaseResource: {"type": "object", "additionalProperties": false, "properties": {"id": {"type": "string", "format": "uuid"}, "name": {"type": "string"}, "ownerUserId": {"type": "string"}, "migrationOwnerUserId": {"type": "string"}, "status": {"type": "string", "enum": ["requested", "provisioning", "ready", "failed"]}, "stage": {"type": "string", "enum": ["requested", "roles", "database", "permissions", "ready"]}, "failureCode": {"type": ["string", "null"]}, "schemaHash": {"type": ["string", "null"]}, "migrationName": {"type": ["string", "null"]}, "migrationStatus": {"type": "string", "enum": ["idle", "running", "failed"]}, "createdAt": {"type": "string", "format": "date-time"}, "updatedAt": {"type": "string", "format": "date-time"}}, "required": ["id", "name", "ownerUserId", "migrationOwnerUserId", "status", "stage", "failureCode", "schemaHash", "migrationName", "migrationStatus", "createdAt", "updatedAt"]}
+    RelationalDatabaseGrant: {"type": "object", "additionalProperties": false, "properties": {"databaseId": {"type": "string", "format": "uuid"}, "userId": {"type": "string"}, "mode": {"type": "string", "enum": ["read", "write"]}, "revision": {"type": "integer", "minimum": 1}, "revoked": {"type": "boolean"}}, "required": ["databaseId", "userId", "mode", "revision", "revoked"]}
+    DatabaseMigration: {"type": "object", "additionalProperties": false, "properties": {"name": {"type": "string", "pattern": "^[0-9]{17}_[a-z][a-z0-9_]{0,63}$"}, "sql": {"type": "string", "maxLength": 4194304}, "checksum": {"type": "string", "pattern": "^[a-f0-9]{64}$"}, "schema": {"type": "string", "minLength": 1, "maxLength": 1048576}, "schemaHash": {"type": "string", "pattern": "^[a-f0-9]{64}$"}}, "required": ["name", "sql", "checksum", "schema", "schemaHash"]}
+    DatabaseMigrationState: {"type": "object", "additionalProperties": false, "properties": {"name": {"type": "string"}, "checksum": {"type": "string", "pattern": "^[a-f0-9]{64}$"}, "schemaHash": {"type": "string", "pattern": "^[a-f0-9]{64}$"}, "appliedAt": {"type": "string", "format": "date-time"}}, "required": ["name", "checksum", "schemaHash", "appliedAt"]}
+    DatabaseMigrationPlan: {"type": "object", "additionalProperties": false, "properties": {"sql": {"type": ["string", "null"]}, "schemaHash": {"type": "string", "pattern": "^[a-f0-9]{64}$"}, "destructive": {"type": "boolean"}}, "required": ["sql", "schemaHash", "destructive"]}
     RuntimeStorageId:
       type: integer
       minimum: 1

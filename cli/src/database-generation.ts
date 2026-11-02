@@ -4,7 +4,7 @@ import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { resolve as resolveModule } from "import-meta-resolve";
 import { tsImport } from "tsx/esm/api";
-import { parseDatabaseDefinitions, type DatabaseMetadata } from "steamharness/database";
+import { DATABASE_ENGINE_VERSION, parseDatabaseDefinitions, type DatabaseMetadata } from "steamharness/database";
 import { readProjectDeclarationFromDirectory } from "@steamharness/project-manifest/node";
 import { DATABASE_ARTIFACT_MANIFEST, DATABASE_DEFINITION_FILE, DATABASE_GENERATED_DIRECTORY,
   assertRegularPath, databaseArtifactHash, readDatabaseArtifactFiles, type DatabaseArtifactManifest } from "@steamharness/project-upload/database-artifacts";
@@ -14,7 +14,7 @@ const require = createRequire(import.meta.url);
 const { generateClient } = require("@prisma/client-generator-ts") as typeof import("@prisma/client-generator-ts");
 const { getDMMF, getConfig } = require("@prisma/internals") as typeof import("@prisma/internals");
 const ts = require("typescript") as typeof import("typescript");
-const engineVersion = "7.10.1";
+const engineVersion = DATABASE_ENGINE_VERSION;
 const generatorRequire = createRequire(require.resolve("@prisma/client-generator-ts"));
 const engineCommit: string = generatorRequire("@prisma/engines-version").enginesVersion;
 

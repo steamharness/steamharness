@@ -89,3 +89,7 @@ Alpha 和正式版使用独立的运行目录、进程、日志和端口。两�
 发布流水线只从受保护 ref 读取生产变量，并校验构建版本和静态资源。恢复操作不删除数据卷、不提交运行时配置，也不把密钥写入 artifact。
 
 健康信息中的 `deployment.server` 与 `deployment.serverWeb` 可携带独立的 `deploymentId`。相同产品版本多次部署时，用该标识和 `commitSha` 区分实际来源；`currentRelease.docsUrl` 指向本次部署的同语言日志，旧发布元数据继续使用版本日志地址。
+
+`corepack pnpm test:relational-databases` 会另起临时 PostgreSQL 17 容器，验证独立业务库、读写隔离、撤销连接、迁移回滚及账号鉴权下的真实 CLI 链路，结束后自动清理。业务资源每个 UUID 对应独立 database；平台 Agent 记录仍使用平台库的共享关系表。
+
+本地环境自动设置 `STEAMHARNESS_SERVER_DATABASE_ADMIN_URL`。启用资源管理时，该变量指向专用于建库的 PostgreSQL 超级用户连接；不设置时关系库管理返回 `DATABASE_UNAVAILABLE`。此身份只在 Server 中使用，不发送给项目或 Browser。初始化会撤销控制库、postgres、template1 的 PUBLIC CONNECT/TEMPORARY；其他可连接库若仍向 PUBLIC 开放，平台会拒绝签发业务身份。因此应使用独立 PostgreSQL 实例，例如上述 Docker 环境。

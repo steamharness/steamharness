@@ -57,12 +57,16 @@
     "test:scripts": "node --test --test-reporter=spec scripts/__tests__/*.test.mjs",
     "test:postgres": "node scripts/test-postgres.mjs",
     "test:runtime-storage": "node scripts/test-runtime-storage.mjs",
+    "test:relational-databases": "node scripts/test-relational-databases.mjs",
     "database:dev": "node scripts/relational-dev.mjs",
     "typecheck": "tsc --noEmit",
     "typecheck:all": "pnpm typecheck && pnpm typecheck:web",
     "release:prepare": "node scripts/prepare-release.mjs"
   },
   "dependencies": {
+    "@prisma/adapter-pg": "7.10.1",
+    "@prisma/driver-adapter-utils": "7.10.1",
+    "@prisma/internals": "7.10.1",
     "@steamharness/i18n": "workspace:*",
     "@steamharness/kanban-project": "workspace:*",
     "@steamharness/project-card-metadata": "workspace:*",
@@ -82,7 +86,8 @@
     "unzipper": "^0.12.3",
     "zod": "4.4.3",
     "@steamharness/project-access": "workspace:*",
-    "@steamharness/service-urls": "workspace:*"
+    "@steamharness/service-urls": "workspace:*",
+    "@prisma/schema-engine-wasm": "8.1.0-1.d1b3f377ca835d73fd50954a5e22128b9ebdd6b8"
   },
   "devDependencies": {
     "@steamharness/cli": "0.1.1",

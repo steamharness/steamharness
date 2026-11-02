@@ -1,5 +1,7 @@
 # Unreleased
 
+- Updated the project generator reference with independent database resources and versioned migration commands; query connections remain pending.
+
 - Document SteamHarness Database multi-database definitions, dual-target generation, packaging, and current connection boundaries in generator guidance.
 
 - Documented Server PostgreSQL Agent storage in generator guidance, including stable workspace/session identities, account authorization and lease recovery boundaries.

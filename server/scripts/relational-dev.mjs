@@ -31,6 +31,7 @@ export async function relationalDevelopmentEnvironment() {
     STEAMHARNESS_REPO_ROOT: serverRoot,
     STEAMHARNESS_SERVER_DATA_DIR: path.join(serverRoot, ".data/relational-dev"),
     STEAMHARNESS_DATABASE_URL: `postgresql://steamharness_dev:${encodeURIComponent(values.STEAMHARNESS_SERVER_DEV_DATABASE_PASSWORD)}@127.0.0.1:18125/steamharness_platform`,
+    STEAMHARNESS_SERVER_DATABASE_ADMIN_URL: `postgresql://steamharness_dev:${encodeURIComponent(values.STEAMHARNESS_SERVER_DEV_DATABASE_PASSWORD)}@127.0.0.1:18125/steamharness_platform`,
     STEAMHARNESS_SERVER_HOST: "127.0.0.1",
     STEAMHARNESS_SERVER_PORT: "18126",
     STEAMHARNESS_SERVER_STRICT_PORT: "1",

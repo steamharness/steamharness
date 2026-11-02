@@ -281,6 +281,18 @@ importers:
 
   server:
     dependencies:
+      '@prisma/adapter-pg':
+        specifier: 7.10.1
+        version: 7.10.1
+      '@prisma/driver-adapter-utils':
+        specifier: 7.10.1
+        version: 7.10.1
+      '@prisma/internals':
+        specifier: 7.10.1
+        version: 7.10.1(magicast@0.5.5)(typescript@6.0.3)
+      '@prisma/schema-engine-wasm':
+        specifier: 8.1.0-1.d1b3f377ca835d73fd50954a5e22128b9ebdd6b8
+        version: 8.1.0-1.d1b3f377ca835d73fd50954a5e22128b9ebdd6b8
       '@steamharness/i18n':
         specifier: workspace:*
         version: link:../shared/i18n
@@ -1636,6 +1648,9 @@ packages:
   '@paralleldrive/cuid2@3.3.0':
     resolution: {integrity: sha512-OqiFvSOF0dBSesELYY2CAMa4YINvlLpvKOz/rv6NeZEqiyttlHgv98Juwv4Ch+GrEV7IZ8jfI2VcEoYUjXXCjw==}
     hasBin: true
+
+  '@prisma/adapter-pg@7.10.1':
+    resolution: {integrity: sha512-EP9ruPYHjKP80WZlb5qVaEXKgZjJieBFjAxcBtQnDAHD6+16UN4keVmBh6L/RUpuDQT2FQRbvKNgq5d4Ix+IkQ==}
 
   '@prisma/client-common@7.10.1':
     resolution: {integrity: sha512-Q9ios/WRQAwBpl3GaOrplzSl0lxxy7lHEZ1hf5FZ4rKYkXNQQbjlg+ifBhYuT3j5QNNOEPfDjSjm/DUfiFEAuQ==}
@@ -4651,6 +4666,10 @@ packages:
     resolution: {integrity: sha512-VpZrUqU5A69eQyW2c5CA1jtLecCsN2U/bD6VilrFDWq5+5UIEVO7nazS3TEcHf1zuPYO/sqGvUvW62g86RXZuA==}
     engines: {node: '>=4'}
 
+  postgres-array@3.0.4:
+    resolution: {integrity: sha512-nAUSGfSDGOaOAEGwqsRY27GPOea7CNipJPOA7lPbdEpx5Kg3qzdP0AaWC5MlhTWV9s4hFX39nomVZ+C4tnGOJQ==}
+    engines: {node: '>=12'}
+
   postgres-bytea@1.0.1:
     resolution: {integrity: sha512-5+5HqXnsZPE65IJZSMkZtURARZelel2oXUEO8rH83VS/hxH5vv1uHquPg5wZs8yMAfdv971IU+kcPUczi7NVBQ==}
     engines: {node: '>=0.10.0'}
@@ -6352,6 +6371,15 @@ snapshots:
       '@noble/hashes': 2.4.0
       bignumber.js: 9.3.1
       error-causes: 3.0.2
+
+  '@prisma/adapter-pg@7.10.1':
+    dependencies:
+      '@prisma/driver-adapter-utils': 7.10.1
+      '@types/pg': 8.23.1
+      pg: 8.23.1
+      postgres-array: 3.0.4
+    transitivePeerDependencies:
+      - pg-native
 
   '@prisma/client-common@7.10.1(magicast@0.5.5)(typescript@6.0.3)':
     dependencies:
@@ -9796,6 +9824,8 @@ snapshots:
       source-map-js: 1.2.2
 
   postgres-array@2.0.0: {}
+
+  postgres-array@3.0.4: {}
 
   postgres-bytea@1.0.1: {}
 

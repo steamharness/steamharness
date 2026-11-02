@@ -54,8 +54,8 @@ export async function main(argv = process.argv.slice(2)): Promise<number> {
 }
 
 function formatHelp(): string {
-  const databaseHelp = i18n.language.startsWith("zh") ? "数据库定义校验与代码生成" : "Validate database definitions and generate clients";
-  return `${i18n.t("rootHelp", { ns: "cli" })}\n\n  steamharness database <init|validate|generate> [project-directory]  ${databaseHelp}\n\n  steamharness configuration [project-directory] < request.json  ${i18n.language.startsWith('zh') ? '读取或管理项目配置' : 'Read or manage project configurations'}\n  steamharness web [project-directory]  ${i18n.language.startsWith('zh') ? '\u5728\u6d4f\u89c8\u5668\u6253\u5f00\u672c\u5730\u9879\u76ee' : 'Open a local project in a browser'}`;
+  const databaseHelp = i18n.language.startsWith("zh") ? "数据库定义、代码生成、资源与迁移管理" : "Define, generate, provision and migrate databases";
+  return `${i18n.t("rootHelp", { ns: "cli" })}\n\n  steamharness database <command> [options]  ${databaseHelp}\n\n  steamharness configuration [project-directory] < request.json  ${i18n.language.startsWith('zh') ? '读取或管理项目配置' : 'Read or manage project configurations'}\n  steamharness web [project-directory]  ${i18n.language.startsWith('zh') ? '\u5728\u6d4f\u89c8\u5668\u6253\u5f00\u672c\u5730\u9879\u76ee' : 'Open a local project in a browser'}`;
 }
 
 /**

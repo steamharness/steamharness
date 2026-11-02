@@ -1,5 +1,7 @@
 # Unreleased
 
+- Added an account-authenticated independent PostgreSQL database catalog, recoverable provisioning, read/write roles and connection revocation, with shadow validation, transactional migrations, immutable history and restart recovery.
+
 - Added static inventory, source fingerprint, and hash verification for SteamHarness Database generated assets in uploads and snapshots. Other local runtime data stays excluded; Server does not execute database definitions.
 
 - Added relational Agent storage and account-authenticated APIs for unpublished local workspaces, exclusive leases and safe retries, plus an isolated PostgreSQL 17 Docker development environment.

@@ -90,7 +90,43 @@ function listAudit(db: DatabaseClient<typeof audit>) {
 
 模型也可通过 `Models.User`、`UserModel` 引用，枚举可通过 `Enums.Status` 引用，避免与封装类型同名。关系过滤、`select`、`include`、复合唯一键及返回值沿用底层模型类型推断。`Client` 只暴露模型操作和 `transaction(callback)` 的类型，生命周期、原始 SQL 与扩展接口不属于业务客户端。`Decimal`、`DbNull`、`JsonNull`、`AnyNull` 可从 `steamharness/database` 或对应别名模块导入。Browser 使用同样的模型类型，从 `browser/index.js` 引入描述符。
 
-描述符包含 `alias`、`target`、`provider`、`schemaHash`、`metadata`，不建立连接。此入口目前提供定义、校验、类型与生成产物；资源申请、物理数据库绑定、迁移和查询执行没有接入。
+描述符包含 `alias`、`target`、`provider`、`schemaHash`、`metadata`，不建立连接。资源申请和迁移由下列管理命令完成。
+
+## 申请独立数据库与授权
+
+数据库资源按 UUID 隔离，每个资源在同一个 PostgreSQL 实例中拥有独立 database，以及迁移、只读、读写角色。A、B 项目分别申请资源后，都可以定义 `User` 表；它们的结构和数据互不影响。申请发生在显式命令中，不会因为打开项目或新建对话自动建库。不同别名使用同一模型文件，也不自动共享资源。
+
+先通过 `steamharness workspace login` 登录目标 Server 的账号。以下命令使用保存的账号 API Key；可用 `--server`、`--token` 显式指定目标，也支持 `STEAMHARNESS_SERVER_URL`、`STEAMHARNESS_SERVER_ADMIN_KEY`。仅有系统管理密钥而没有账号身份时会被拒绝。
+
+```sh
+pnpm exec steamharness database create orders --server http://127.0.0.1:18126
+pnpm exec steamharness database list --server http://127.0.0.1:18126
+pnpm exec steamharness database inspect <database-id> --server http://127.0.0.1:18126
+pnpm exec steamharness database grant <database-id> --user <account-id> --mode read --server http://127.0.0.1:18126
+pnpm exec steamharness database revoke <database-id> --user <account-id> --server http://127.0.0.1:18126
+```
+
+创建者是资源所有者和唯一迁移所有者。共享权限为 `read` 或 `write`，共享账号不能管理授权或迁移。撤销或收窄授权会撤销已签发连接身份并终止对应连接。资源查询仅返回当前账号拥有或获授权的资源，不返回数据库地址、角色密码或管理连接。
+
+创建记录包含 `requested / provisioning / ready / failed` 状态及失败步骤。为创建指定稳定的 `--request-id <uuid>`，可在响应丢失后查询同一申请；同一账号、请求 ID 不会重复建库。失败使用 `database retry <database-id>` 继续原资源；CLI 遇到未就绪状态返回非零退出码。
+
+## 生成与部署迁移
+
+资源 ID 通过命令参数指定，不写入模型或数据库定义。`--alias` 选择项目中的模型声明，默认 `main`：
+
+```sh
+pnpm exec steamharness database migrate dev . --database <database-id> --alias main --name init --draft --server http://127.0.0.1:18126
+pnpm exec steamharness database migrate deploy . --database <database-id> --alias main --server http://127.0.0.1:18126
+pnpm exec steamharness database migrate status --database <database-id> --server http://127.0.0.1:18126
+```
+
+`migrate dev` 比较已应用历史与当前模型，保存迁移并更新生成产物；省略 `--draft` 时同时部署。`migrate deploy` 只应用已有迁移；存在未部署迁移时先部署，再生成下一次变更。迁移写在模型旁的 `migrations/<17位时间戳>_<名称>/`，包含 `migration.sql`、`steamharness.schema` 模型快照和 `steamharness.migration.json` 校验清单，需随项目源码提交。复用同一模型文件的别名复用这份迁移历史。
+
+Server 使用临时影子数据库重放并校验每一步模型，再在目标库逐条以事务提交 SQL 和历史。已应用的历史不能遗漏、重排或修改；实时结构与历史模型不一致时拒绝继续。失败 SQL 回滚，已完成的前序迁移保留；修正数据条件后可用同一历史重试。重复部署不会重复执行已提交步骤，进程中断后通过库内历史恢复。
+
+删除表、删除列或部分字段重写需要审阅 SQL，并显式增加 `--accept-data-loss`。SQL 支持模型表、枚举、索引及数据变更；事务、权限、过程代码和内部迁移历史由平台管理。迁移期间撤销已有业务连接，失败或中断后需成功重试部署才能重新签发连接。
+
+资源管理 HTTP API 位于 `/api/databases`。本阶段提供资源与迁移管理；项目/入口绑定、Core 查询连接和 Browser 查询代理仍待接入。
 
 ## 构建与分发
 

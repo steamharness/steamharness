@@ -4,6 +4,7 @@ import type { ProjectAccessRequest, ProjectAccessRequestStatus } from "@steamhar
 import { readProjectDeclaration, selectProjectEntry, projectManifestForDistribution, PROJECT_CONFIG_ENV, readProjectConfig, type ProjectEntry } from '@steamharness/project-manifest';
 import { DatabaseSpaceRepository } from './database-spaces';
 import { RuntimeStorageRepository } from './runtime-storage/repository';
+import { RelationalDatabaseRepository } from './relational-databases/repository';
 import { type AccessActor, type AccessCapability, type ResourceAccess } from "@steamharness/project-access";
 import {isDeepStrictEqual} from "node:util";
 import { bindConfigurationProfiles, configurationAccessView, type ConfigurationProfilePolicy, type ConfigurationAccess, bindConfigurationTemplate, configurationAgentModelPolicy, createPublicationDraft, parsePublicationDraft, freezeConfigurationTemplate, parseConfigurationTemplate, configurationTemplatePath, CONFIGURATION_TEMPLATE_FILE, type ConfigurationPublicationDraft, type ProjectConfigurationTemplate, configurationCapability, parseConfigurationFile, validateConfigurationFileSelection, type ProjectConfigurationField,parseConfigurationField, applyConfigurationAction, configurationSnapshot, exportConfigurations, parseConfigurationDefinition, readConfigurationState, validateConfigurationAction, ProjectConfigurationError, type ProjectConfigurationAction, type ProjectConfigurationState, type ProjectConfigurationExport, type ProjectConfiguration } from "@steamharness/project-configuration";
@@ -435,6 +436,7 @@ const TEXT_EXTENSIONS = new Set([
 export class Storage {
   readonly databases: DatabaseSpaceRepository;
   readonly runtimeStorage?: RuntimeStorageRepository;
+  readonly relationalDatabases?: RelationalDatabaseRepository;
   readonly serverRoot: string;
   readonly repoRoot: string;
   readonly dataRoot: string;
@@ -462,6 +464,7 @@ export class Storage {
     dataRoot?: string;
     db?: DatabaseRepository;
     runtimeStorage?: RuntimeStorageRepository;
+    relationalDatabases?: RelationalDatabaseRepository;
     artifacts?: ArtifactStorage;
     objectStorage?: ObjectStorage;
     kanbanPreviewCapabilitySecret?: string;
@@ -472,6 +475,7 @@ export class Storage {
     this.dataRoot = options.dataRoot ?? path.join(options.serverRoot, ".data");
     this.db = options.db;
     this.runtimeStorage = options.runtimeStorage ?? (options.db ? new RuntimeStorageRepository(options.db.connectionString) : undefined);
+    this.relationalDatabases = options.relationalDatabases;
     this.databases = new DatabaseSpaceRepository(options.db?.connectionString, options.objectStorage ?? new LocalStorage({ root: path.join(this.dataRoot, 'object-storage'), publicBaseUrl: 'http://localhost' }));
     this.artifacts = options.artifacts;
     this.objectStorage = options.objectStorage;
@@ -488,6 +492,7 @@ export class Storage {
     await this.db?.init();
     await this.databases.init();
     await this.runtimeStorage?.init();
+    await this.relationalDatabases?.init();
     await this.resumePendingPreparationJobs();
     if (this.artifacts) void this.artifacts.init().catch(() => {
       console.warn("[steamharness-server] artifact storage initialization failed; continuing with degraded artifact availability.");
@@ -1977,6 +1982,7 @@ export class Storage {
   }
 
   async close(): Promise<void> {
+    await this.relationalDatabases?.close();
     await this.runtimeStorage?.close();
     await this.databases.close();
     await this.db?.close();
@@ -3091,7 +3097,9 @@ export async function createStorageFromEnv(): Promise<Storage> {
   const connectionString = process.env.STEAMHARNESS_DATABASE_URL?.trim();
   if (!connectionString) throw new Error("STEAMHARNESS_DATABASE_URL is required for project storage.");
   const objectStorage = createProjectObjectStorageFromEnv({ dataRoot });
-  const storage = new Storage({ repoRoot, serverRoot, dataRoot, db: new DatabaseRepository(connectionString),
+  const databaseAdminUrl = process.env.STEAMHARNESS_SERVER_DATABASE_ADMIN_URL?.trim();
+  const relationalDatabases = databaseAdminUrl ? new RelationalDatabaseRepository(connectionString, { adminConnectionString: databaseAdminUrl }) : undefined;
+  const storage = new Storage({ repoRoot, serverRoot, dataRoot, db: new DatabaseRepository(connectionString), relationalDatabases,
     objectStorage, artifacts: new ArtifactStorage(objectStorage) });
   await storage.init();
   return storage;

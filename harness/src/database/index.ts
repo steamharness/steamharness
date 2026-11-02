@@ -1,4 +1,5 @@
 export { Decimal, DbNull, JsonNull, AnyNull } from "./engine-browser";
+export * from "./resources";
 
 /** Project-authored database definitions. Resource IDs and credentials belong to the host. */
 export interface DatabaseDefinition {

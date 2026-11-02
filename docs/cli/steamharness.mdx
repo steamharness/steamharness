@@ -94,4 +94,4 @@ pnpm exec steamharness db validate .
 pnpm exec steamharness database generate .
 ```
 
-详见 [SteamHarness Database](/core-api/database)。这些命令提供定义和代码生成，不申请资源、执行迁移或替换现有 KV。
+资源与迁移管理还提供 `create / list / inspect / retry / grant / revoke`、`migrate dev / deploy / status`。`migrate dev --draft` 保存可审阅的 SQL、模型快照与校验清单，`deploy` 只应用已有历史；`--database` 指定资源 UUID，`--alias` 指定模型别名（默认 main）。管理命令需要目标 Server 的账号登录，可用 `--server` 和 `--token` 覆盖。详见 [SteamHarness Database](/core-api/database)。Core 查询连接与 KV 替换尚未接入。
