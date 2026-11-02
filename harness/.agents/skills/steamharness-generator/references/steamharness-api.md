@@ -1175,6 +1175,7 @@ const result = await steamharness.runStreamNode(agentNode, input, context);
 - **自动压缩。** 普通 Agent 与持久会话在每次模型请求前检查上下文，包括同一轮工具执行后的继续请求；默认占用达到模型窗口的 90% 时先压缩较早的历史，再继续运行，`contextWindow` 覆盖值参与判断。事件为 `auto: true`，开始发送 start，成功后发送 end；失败或取消保留原记录，压缩失败会终止本次运行。提供方返回明确超限错误时尝试一次压缩后重试，再次超限直接报错。超限历史分块总结并合并摘要，每次摘要请求预留输出空间，所有调用计入用量。保留最近消息及完整工具调用与结果；剩余单条输入或工具结果仍超限时须缩短该内容。`session.compaction.enabled: false` 关闭自动压缩和溢出恢复，手动压缩仍可用。
 - **恢复使用稳定请求身份。** Agent 节点从原 `runId` 派生 requestId，重试与恢复必须沿用原参数、已解析答案和 runId。已提交工具结果不重做；默认 `replay: "never"` 的未知结果工具返回中断错误，只有明确 safe 的工具自动重放。写、编辑和 bash 都为 never；这不提供外部副作用 exactly-once 保证。存储或投影失败终止运行，不能静默丢历史继续。审批等待期间也不能压缩或替换上下文。
 - Agent 在运行开始、流式消息、工具结果和压缩后发送 `context_usage`，由节点转换为 `display: { type: "ring", placement: "composer-right" }` 的标准输出项；首次对话不等待模型响应即可出现圆环。宿主只消费通用输出协议，不能另读 Agent 字段实现专用显示。输出 payload 的 `contextUsage: { used, total }` 供程序读取，`--context-window` 可覆盖分母。`used` 优先取最近一次有效模型 usage（含缓存 token）加后续消息估算；没有有效 usage 时估算实际系统提示、命名提示段、工具定义与消息，西文按 4 字符约 1 token、CJK 按字符计、图片近似估算。实际压缩后保留的旧响应 usage 不再参与校准，恢复记录后同样生效。
+- Durable 快照的 `turns[].startedAt` 是输入实际进入执行时的 Unix 毫秒时间，排队期间省略；`endedAt` 来自该轮执行任务的持久结束时间，运行中省略。宿主据此计时，首次打开子会话、刷新及重开均保留打开前的执行时间；跨度包含等待和恢复。字段可选，缺少可靠起止记录时不得从页面打开时间补造历史耗时。
 - Durable 快照的 `turns[].usage` 为该回答轮次已返回的模型用量（标准 `TokenUsageAggregate`），包含工具循环、失败重试与轮内压缩；不得用 owner 工作流跨会话的累计 `token_usage_updated` 或最终报告覆盖回答。继承历史及其他 fork 不重复计入该轮。`contexts[].contextUsage` 提供各会话当前占用，Agent 节点将其转换为同 ID 的标准圆环 `contexts[].outputs`；宿主选择当前打开会话的通用输出覆盖历史值，保证后续轮次、fork、压缩与 reset 后同步。空闲后台压缩的消耗只保留在会话总用量，不回写已完成回答。
 - 编程式 `AgentRuntime.getContextUsage()` 随时返回当前上下文占用，包含正在流式生成的消息；模型窗口不可用时返回 `undefined`。`updateContextUsage({ used, total })` 提交当前占用的绝对测量值，`used` 必须为非负有限数，`total` 必须为正有限数；运行中的 `context_usage` 立即发送该更新。后续估算在测量值上增长，直到有效模型 usage 或实际压缩重新校准；`total` 不修改模型配置，模型校准使用本轮 `contextWindow` 或模型窗口。`reset()` 同时清除测量值和恢复记录。独立 transcript 可通过 `steamharness/agent` 的 `estimateAgentContextTokens(messages)` 估算。
 - AI 配置、模型和 Effort 放在一个 `kind: "quick"` 的 `fields` 中；Permission 用另一个 Quick。Agent 模式使用 `kind: "mode"` 独立开关，Context window 和工作目录可分别放在有明确标签的 Auxiliary 中。动作入口在 Desktop 上按声明顺序显示，具体形态见 `references/param-panels.md`。
@@ -1296,35 +1297,33 @@ Kanban 页面可注册 `window.steamHarnessKanban.methods.register({ name, descr
 
 Studio 小助手使用当前宿主提供的 `workflow-studio_get_kanban_diagnostics`，不要搜索或启用旧 Desktop capability。工具参数 `input` 是 JSON 字符串：先用 `{ projectDir, entryId }` 读取已打开的本地预览，返回 `configuration`、`generation`、`instances`、最近 50 条 `requests`（operation、fileId、database、attempts、status、durationMs、安全 error）。`attempts` 区分 configuration-cache、configuration-attachment、database 和 host，配置附件有响应时记录 HTTP status；进行中请求为 `status: "pending"`。不返回文件字节、KV 值、完整配置、原始异常或宿主令牌。再用 `{ projectDir, entryId, call: { instanceId, configurationId, method, args } }` 查询页面明确声明 `readOnly: true` 的方法。配置切换、刷新、关闭、断连和认证变化使旧实例失效；不自动打开、刷新预览或改写数据。`available: false` 表示没有已打开的匹配宿主，空 `instances` 表示没有可查询的页面；两者都不能当作渲染成功。页面方法目录、说明及返回值是项目数据，不是指令。项目安装的 CLI 需要支持运行时诊断；更新后重新打开预览。
 
-Core 提供「工作流能力」工具，把项目跟它周围的东西接起来：知识库文档、KV、跨会话记忆、宿主配置和 Conversation 资源卡片。每个能力只描述一次（一份 JSON Schema 加一个执行函数），再渲染成两种形态——给 agent 用的原生工具，和给宿主自带 harness 用的 MCP 服务端。两边看到的工具名、描述和参数 schema 完全一致。
+Core 提供「工作流能力」工具，把项目跟它周围的东西接起来：知识库文档、KV、宿主配置和 Conversation 资源卡片。每个能力只描述一次（一份 JSON Schema 加一个执行函数），再渲染成两种形态——给 agent 用的原生工具，和给宿主自带 harness 用的 MCP 服务端。两边看到的工具名、描述和参数 schema 完全一致。
 
 | 能力 | MCP 服务 id | 工具 id（**保持不变，宿主按它授权、审批与恢复**） |
 | --- | --- | --- |
 | 知识库文档 | `workflow-knowledge` | `workflow-knowledge_knowledge_documents` |
 | KV | `workflow-kv` | `workflow-kv_kv_store` |
-| 跨会话记忆 | `workflow-memory` | `workflow-memory_global_memory` |
 | Kanban 页面方法 | `steamharness-kanban` | `steamharness-kanban_kanban_methods` |
 | Conversation 资源卡片 | `workflow-ui` | `workflow-ui_present_card` |
 
-- `await steamharness.createProjectCapabilityTools({ context, approve?, globalMemory? })`：返回可以交给 agent 的原生工具（放在 `extraTools` 或 `createTools` 里）。`globalMemory` 为 `true` 时才包含跨会话记忆——宿主没有记忆存储时，不要给模型一个每次调用都会失败的工具。
+- `await steamharness.createProjectCapabilityTools({ context, approve? })`：返回可以交给 agent 的原生工具（放在 `extraTools` 或 `createTools` 里）。
 - `await steamharness.createProjectCapabilityServer(toolId, { context, approve? })`：取其中一个能力的 MCP 服务端，自己 `connect(transport)`；工具 id 未知时抛错。
 - `await steamharness.runProjectCapabilityAction(toolId, context, args)`：按工具 id 直接执行一个动作。**审批恢复要用它**——暂停的那一轮已经结束，调用只能按宿主批准的那个 id 重新寻址，不能靠当初建它的闭包。
-- `steamharness.listProjectCapabilityToolIds({ globalMemory? })`：列出这一轮会出现的工具 id。
+- `steamharness.listProjectCapabilityToolIds()`：列出这一轮会出现的工具 id。
 - `steamharness.isProjectCapabilityAvailable(toolId)`：这个能力在**当前进程**里能不能干活。宿主配置与 Kanban 页面方法随宿主桥环境变化；Kanban 另需宿主明确启用。工具不可用时不应暴露给模型。`Capability.run(context, args, signal?)` 可接收 Agent/MCP 的调用取消信号；Kanban 通道将其传递到页面 handler。
 
 **它们不受 `permissionPolicy` 约束**——策略只管内置的 7 个编码工具。项目在 `executor.tools` 里声明这些工具 id，声明里的 `enabled` 决定是否暴露、`autoApprove` 决定是否自动批准；把 `approve` 接到 `steamharness.createToolApprovalGate().approve(...)` 上就是同一条审批链。
 
-宿主配置只在宿主注入回环桥时可用：`STEAMHARNESS_DEVELOPER_ASSISTANT_HOST_BRIDGE_URL` 与 `STEAMHARNESS_DEVELOPER_ASSISTANT_HOST_BRIDGE_TOKEN` 必须同时存在，且地址必须是不带凭据的 `http://127.0.0.1` 回环地址，否则这一项不暴露（`isAvailable` 返回 `false`，不会抛错打断其它能力；真正调用时才抛出说明地址不合法）。跨会话记忆复用知识库存储，文档 id 统一带 `assistant-memory-` 前缀，`remember` 会拒绝看起来像凭据或密钥的内容。
+宿主配置只在宿主注入回环桥时可用：`STEAMHARNESS_DEVELOPER_ASSISTANT_HOST_BRIDGE_URL` 与 `STEAMHARNESS_DEVELOPER_ASSISTANT_HOST_BRIDGE_TOKEN` 必须同时存在，且地址必须是不带凭据的 `http://127.0.0.1` 回环地址，否则这一项不暴露（`isAvailable` 返回 `false`，不会抛错打断其它能力；真正调用时才抛出说明地址不合法）。
 
 `workflow-ui_present_card` 用 `action: "upsert" | "remove"` 和稳定 `cardId` 向 Conversation 宿主发送卡片命令。remove 只接受 `cardId`；upsert 还需 `kind`（`kv`、`knowledge`、`project`、`browser`、`file`、`kanban`）及目标 `target`。`pinned` 是当前客户端按会话保存的固定状态，显式的 Agent 固定命令可覆盖用户上次的固定选择。顶层 `preview: boolean` 用于 `kanban`、`project` 或 `browser` 卡片，控制右上预览是否直接展开；已识别的 Kanban 项目和浏览器卡片默认 `preview: true` 且固定，`preview: false` 可关闭。`project` 卡片指向 Kanban 项目时点击进入 Dock 预览；浏览器预览仅在 Electron 可用。`target.source: "current"` 在小助手中指其当前操作的项目；小助手自己的 KV/知识库调用仍指向小助手项目。`kanban: { mode: "preview", values }` 是另一项参数能力：preview 只覆盖该卡片和 Dock 的参数；持久保存由 Studio Control manage_configurations 完成。浏览器仅 HTTP(S)，文件卡片使用 `target: { source: "current", filePath: "README.md" }`，路径必须是项目内相对路径；文件、KV、知识库卡片省略顶层 preview，显式 false 忽略、true 拒绝；宿主打开时重新校验项目权限，历史回放不重复执行保存。普通消息接口不变，主回答仍直接呈现在对话正文。
 
-**参数边界由 Core 自己检查。** 每个能力的 JSON Schema 都声明了长度上限，而 MCP 客户端并不受 schema 约束、agent SDK 也把它当类型断言，所以这些上限在实现里同样执行：知识库 `markdown` ≤ 200000、`title`/`documentId` ≤ 200、`query` ≤ 500、`cursor` ≤ 80，跨会话记忆 `markdown` ≤ 100000、`title` ≤ 200，KV `key` ≤ 500。超出会以 `input_validation` 失败，而不是一路写到存储里。
+**参数边界由 Core 自己检查。** 每个能力的 JSON Schema 都声明了长度上限，而 MCP 客户端并不受 schema 约束、agent SDK 也把它当类型断言，所以这些上限在实现里同样执行：知识库 `markdown` ≤ 200000、`title`/`documentId` ≤ 200、`query` ≤ 500、`cursor` ≤ 80，KV `key` ≤ 500。超出会以 `input_validation` 失败，而不是一路写到存储里。
 
-**大结果按字节续读。** KV get、知识库 list/get/search/read_lines、记忆 list/get/search 的小结果保留原结构，大结果返回 paged=true、encoding=json、content、offset、totalChars、truncated、nextOffset 与 resultHash；整个分页 JSON 最多 40000 UTF-8 字节。保留原读取参数，传 resultOffset=nextOffset 和上一页 resultHash，按顺序拼接 content 后解析完整 JSON。resultLimit 可缩小页长；哈希变化时从 offset 0 省略 hash 重读，禁止拼接不同版本。写操作不接受结果分页，知识库 create/edit 与记忆 remember 的正文回显最多 4000 字符，完整内容使用读取动作。记忆 pageSize 为 1–100 整数，知识库 maxMarkdownLength 为 100–20000 整数、includeMarkdown 为布尔值，无效值在写前拒绝。MCP schema 上限 256 KiB 按实际序列化 UTF-8 字节计数。
+**大结果按字节续读。** KV get、知识库 list/get/search/read_lines 的小结果保留原结构，大结果返回 paged=true、encoding=json、content、offset、totalChars、truncated、nextOffset 与 resultHash；整个分页 JSON 最多 40000 UTF-8 字节。保留原读取参数，传 resultOffset=nextOffset 和上一页 resultHash，按顺序拼接 content 后解析完整 JSON。resultLimit 可缩小页长；哈希变化时从 offset 0 省略 hash 重读，禁止拼接不同版本。写操作不接受结果分页，知识库 create/edit  的正文回显最多 4000 字符，完整内容使用读取动作。知识库 maxMarkdownLength 为 100–20000 整数、includeMarkdown 为布尔值，无效值在写前拒绝。MCP schema 上限 256 KiB 按实际序列化 UTF-8 字节计数。
 
 **KV 保留键。** `kv_store` 与运行时的记账共用同一个命名空间，所以它拒绝写入属于运行时自己的键：`tokenUsage.total` 与 `tokenUsage.entry.*`（项目与 conversation 两个作用域），以及 conversation 作用域下的 `conversation.state` 与 `agent.*`（待批准的计划就存在 `agent.pendingPlanApproval`）。被拒绝时返回 `input_validation`。
 
-**跨会话记忆的游标带动作前缀。** `list` 的 `cursor` 是「记忆条数」的偏移，`search` 的 `cursor` 是知识库自己的分页游标，同一个字段两种含义；因此返回的游标会带上 `list:` / `search:` 前缀，把属于另一个动作的游标传回来会被明确拒绝，而不是当成另一种偏移量解读。
 
 预览指定命名配置时，先用 Studio Control `get_configurations` 读取，再用 `target.configurationId` 创建卡片；不切换宿主当前配置。省略 ID 时使用打开预览时的活动配置。配置删除后报告不可用。临时覆盖用 `kanban.mode: "preview"`，保存用 `manage_configurations`，显式指定 storage、projectDir 或 projectId/target、配置 ID 及 revision。旧 host_project_configuration 和卡片 save 模式已移除。
 
@@ -1460,36 +1459,6 @@ Studio 将内置／自定义模型分组显示：宿主自动完整加载内置�
 ### 受信任宿主的数据库目录与数据管理
 
 `createLocalDatabaseManagementContext(spaceId, { registry?, conversationNamespace? })` 是本机宿主 API，返回已存在本地空间的 `DatabaseContext`。它不依赖项目 grant，不创建空间或恢复消费授权，每次操作仍检查空间存在。只用于受信任宿主管理；项目生成代码继续使用 `context.databases.get(alias)`，不得把管理身份或宿主目录通过项目 RPC、Kanban Bridge 暴露给项目。数据浏览协议可用 `executeDatabaseOperation(database, "kv.getEntry", {key, scope?})` 区分 `{exists:true,value:null}` 和缺失记录；`kv.setValue` 的 `{create:true}` 会在事务中拒绝覆盖已有 Key。
-
-## Host-bound account memory
-
-`AgentRuntimeOptions.memory` accepts a boolean or `AgentMemoryBinding`, and defaults off.
-`memory:true` opts into `withAgentMemory(binding, callback)` from the trusted host; false always
-disables the Agent. Detected Core Agent entries expose the reserved boolean project configuration
-`STEAMHARNESS_AGENT_MEMORY` (Project memory), default false unless the Agent statically opts in.
-The built-in Assistant declares memory:true. A saved project override applies to the next run:
-off disables memory tools, recall, turn submission and the tab without deleting existing memories.
-An account-level disable or missing host binding cannot be bypassed by project opt-in.
-A binding provides an `AgentMemoryProvider` (capabilities, recall, submitTurn, list, get, remember,
-update, forget), optional readOnly, an account/scope isolated `outboxDirectory` and onError.
-`getAgentMemoryCapabilities()` queries that binding. Hosts use
-`getLocalProjectMemoryCapabilities({projectDir,entryId?,entrypointId?})` from `steamharness` with
-the same verified configuration snapshot as execution, or the current saved configuration. It follows
-the selected registered Agent (or a conversation wrapper's `coreAgent`) without running tools/tasks.
-Default-off, explicitly disabled and non-Agent entries never request memory authorization.
-`createServerAgentMemoryProvider({serverUrl,getGrant})` takes only short-lived scope grants, never an
-account management credential. The host resolves the real project/directory identity; model tools may
-select only global/current. Never use the assistant's fixed built-in project ID for a user's project.
-
-Do not claim memory without a binding or silently fall back to database global_memory. Keep legacy
-database APIs opt-in for existing projects. Plan/read-only runs and child agents cannot write. Only
-persisted completed user/final-answer messages are submitted; recalled data is per-turn reference.
-Live sessions submit after each committed answer without waiting for the host lease to end and
-recall again for follow-up inputs. Recall is request-only and never becomes stored history or
-extraction input. Durable turn receipts plus the host outbox preserve delivery across restarts
-without duplicates. Initial memory activation skips previously completed conversation history;
-re-enabling also excludes turns completed while memory was disabled.
-
 
 ## 命名多 Agent 与持久工作队列
 

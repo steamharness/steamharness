@@ -45,7 +45,7 @@ beforeEach(() => {
   databases = new ProjectDatabases(host);
   dialogs = new ConversationTools(databases, {
     path: target => host.postMessage({ type: 'open-path', ...target }),
-    account: reason => host.postMessage({ type: 'open-account', reason }),
+    account: () => host.postMessage({ type: 'open-account' }),
     configurations,
     tools: () => ({ parameters: { fields: [], tools }, policies, changed: policiesChanged, readOnly }),
     usage: { available: () => available, load: requestId => host.postMessage({ type: 'usage', requestId }) },
@@ -224,54 +224,4 @@ it('matches keyboard navigation to the responsive tab orientation and releases i
   Object.defineProperty(media, 'matches', { value: false }); media.dispatchEvent(new Event('change'));
   expect(navigation.getAttribute('aria-orientation')).toBe('vertical');
   dialogs.close(); expect(remove).toHaveBeenCalledWith('change', expect.any(Function));
-});
-
-
-it('updates the memory tab only when project configuration changes and rejects stale capabilities',async()=>{
- let enabled=false;
- const fetcher=vi.fn(async()=>new Response(JSON.stringify({errCode:0,data:{connected:enabled,enabled,status:'ready',scopes:['global'],readOnly:false,automatic:true}})));
- vi.stubGlobal('fetch',fetcher);
- dialogs.updatePermissions(0);dialogs.projectInfo(project);await settle();
- expect(tab('memory')).toBeNull();expect(fetcher).toHaveBeenCalledTimes(1);
- dialogs.updatePermissions(0);await settle();expect(fetcher).toHaveBeenCalledTimes(1);
- enabled=true;dialogs.updatePermissions(1);await settle();expect(tab('memory')).toBeTruthy();
- const dialog=document.querySelector('dialog');
- dialogs.updatePermissions(1);await settle();expect(fetcher).toHaveBeenCalledTimes(2);
- enabled=false;dialogs.updatePermissions(2);await settle();expect(tab('memory')).toBeNull();expect(document.querySelector('dialog')).toBe(dialog);
- let finish!:(value:Response)=>void;
- fetcher.mockImplementationOnce(()=>new Promise(resolve=>{finish=resolve;}));
- dialogs.updatePermissions(3);dialogs.close();
- finish(new Response(JSON.stringify({errCode:0,data:{connected:true,enabled:true}})));await settle();
- expect(tab('memory')).toBeNull();
-});
-
-it.each(['en', 'zh-CN'])('keeps memory authorization failures visible and opens account authorization in %s', async language => {
-  document.documentElement.lang = language;
-  const fetcher = vi.fn(async () => Response.json({ errCode: 401, errMessage: 'Memory authorization expired' }, { status: 401 }));
-  vi.stubGlobal('fetch', fetcher);
-  try {
-    dialogs.projectInfo(project); await settle();
-    expect(tab('memory')).toBeTruthy();
-    tab('memory').click(); await settle();
-    expect(panel('memory').textContent).toContain(language === 'en' ? 'Verify your account authorization' : '验证当前账号的访问授权');
-    expect(panel('memory').textContent).not.toContain(language === 'en' ? 'not configured' : '尚未配置');
-    click(language === 'en' ? 'Verify account authorization' : '验证账号授权', panel('memory'));
-    expect(dialogs.open).toBe(false);
-    expect(host.postMessage).toHaveBeenLastCalledWith({ type: 'open-account', reason: 'memory' });
-  } finally { document.documentElement.lang = 'en'; }
-});
-
-it('retains the memory section on a temporary service failure and ignores a closed failure response', async () => {
-  vi.stubGlobal('fetch', vi.fn(async () => Response.json({ errCode: 503 }, { status: 503 })));
-  dialogs.projectInfo(project); await settle();
-  expect(tab('memory')).toBeTruthy();
-  tab('memory').click(); await settle();
-  expect(panel('memory').textContent).toContain('Memory is unavailable');
-  expect(panel('memory').textContent).not.toContain('Verify your account');
-  dialogs.close();
-  let fail!: (value: Response) => void;
-  vi.stubGlobal('fetch', vi.fn(() => new Promise(resolve => { fail = resolve; })));
-  dialogs.projectInfo(project); dialogs.close();
-  fail(Response.json({ errCode: 401 }, { status: 401 })); await settle();
-  expect(tab('memory')).toBeNull();
 });

@@ -1,6 +1,6 @@
 import { build, defineConfig } from "tsup";
 import path from "node:path";
-import { copyFile, cp } from "node:fs/promises";
+import { copyFile, cp, rm } from "node:fs/promises";
 import { createRequire } from "node:module";
 
 const codemodeRequire = createRequire(import.meta.resolve("@earendil-works/pi-codemode"));
@@ -63,6 +63,7 @@ export default defineConfig({
       outDir: "dist", format: ["esm"], platform: "browser", target: "es2022", bundle: true, splitting: false,
       clean: false, dts: false, tsconfig: "tsconfig.json" });
     await copyFile(codemodeRequire.resolve("quickjs-wasi/quickjs.wasm"), path.resolve("dist/quickjs.wasm"));
+    await rm(path.resolve("dist/skills"), { recursive: true, force: true });
     await cp(path.resolve("src/agent/skills"), path.resolve("dist/skills"), { recursive: true });
   },
   tsconfig: "tsconfig.json",

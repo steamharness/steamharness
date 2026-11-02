@@ -24,13 +24,99 @@ function fixture(configurationRevision?: () => number, userSettings?: () => impo
       items: [{ id: 'first', title: 'Output', content: 'First answer', contentType: 'markdown', collapsed: false, metadata: { kind: 'agent-part', partType: 'text' } }] }],
   });
   const emit = (value: AgentSessionSnapshot) => runs.at(-1)!.emit({ type: 'node_chunk', chunk: { type: 'output_item_start', item: { id: 'agent-session', content: value, metadata: { kind: 'agent-session' } } } });
-  const start = async () => {
+  const start = async (status: AgentSessionTurn['status'] = 'done') => {
     await controller.send({ text: 'First', params: { model: 'one' }, attachments: [] });
-    await vi.waitFor(() => expect(runs).toHaveLength(1)); emit(snapshot());
+    await vi.waitFor(() => expect(runs).toHaveLength(1));
+    const initial = snapshot(); emit({ ...initial, foreground: status === 'placed', turns: initial.turns.map(turn => ({ ...turn, status })) });
   };
   const finish = async () => { runs.at(-1)?.finish({ status: 'success' }); await controller.idle(); };
   return { controller, runtime, runs, snapshot, emit, start, finish, save };
 }
+
+it.each([
+  { status: 'placed', reason: undefined, expected: 'running' },
+  { status: 'done', reason: undefined, expected: 'success' },
+  { status: 'unanswered', reason: 'model_error', expected: 'failed' },
+  { status: 'unanswered', reason: 'aborted', expected: 'aborted' },
+] as const)('opens a $expected child with its persisted execution time instead of the view creation time', async ({ status, reason, expected }) => {
+  vi.useFakeTimers({ toFake: ['Date'] }); const now = Date.now();
+  const f = fixture(); await f.start(); const initial = f.snapshot();
+  const startedAt = now + 10_000, endedAt = now + 45_000;
+  const child: AgentSessionTurn = { requestId: 'delegate:timed', conversationId: 2, prompt: 'Child work', mode: 'followUp', status, reason,
+    epoch: 0, entryId: 3, items: [], startedAt, ...(status === 'placed' ? {} : { endedAt }) };
+  const frame = { ...initial, revision: 2, conversations: [...initial.conversations, { id: 2, parentId: 1, title: 'Timed child', background: true }], turns: [...initial.turns, child] };
+  vi.setSystemTime(now + 50_000); f.emit(frame);
+  expect(f.controller.sessions).toHaveLength(1);
+  vi.setSystemTime(now + 190_000);
+  const id = await f.controller.openAgentConversation(f.controller.current.id, 2);
+  const view = f.controller.sessions.find(session => session.id === id)!, answer = view.messages[1];
+  expect(answer).toMatchObject({ status: expected, createdAt: startedAt });
+  expect(view.messages[0].createdAt).toBe(startedAt);
+  expect(Date.now() - answer.createdAt!).toBe(180_000);
+  expect(answer.durationMs).toBe(status === 'placed' ? undefined : 35_000);
+  const saved = structuredClone({ sessions: f.controller.sessions, activeId: id, selectionVersion: 1 });
+  // Upgrade a checkpoint made by a host that used the first view-open time.
+  const checkpoint = saved.sessions.find(session => session.id === id)!.messages[1];
+  checkpoint.createdAt = now + 190_000;
+  if (status !== 'placed') checkpoint.durationMs = 0;
+  vi.setSystemTime(now + 210_000);
+  const reopened = new ConversationController(f.controller.project, f.runtime, saved, { save: f.save, changed: vi.fn(), log: vi.fn() });
+  controllers.push(reopened);
+  expect(reopened.current.messages[1]).toMatchObject({ status: expected, createdAt: startedAt });
+  expect(reopened.current.messages[1].durationMs).toBe(status === 'placed' ? undefined : 35_000);
+  if (status === 'placed') {
+    f.emit({ ...frame, revision: 3, turns: [...initial.turns, { ...child, status: 'done', endedAt: now + 205_000 }] });
+    expect(answer.durationMs).toBe(195_000);
+  }
+  await f.finish(); expect(f.runtime.run).toHaveBeenCalledOnce();
+});
+
+it.each([
+  { status: 'done', reason: undefined, expected: 'success' },
+  { status: 'unanswered', reason: 'model_error', expected: 'failed' },
+  { status: 'unanswered', reason: 'aborted', expected: 'aborted' },
+] as const)('freezes a $expected reply duration before its owner exits and retains it on reopen', async ({ status, reason, expected }) => {
+  vi.useFakeTimers({ toFake: ['Date'] }); const startedAt = Date.now();
+  const f = fixture(); await f.start('placed');
+  const answer = f.controller.current.messages[1], initial = f.snapshot();
+  expect(answer.durationMs).toBeUndefined();
+  vi.setSystemTime(startedAt + 12_500);
+  const terminal = { ...initial, revision: 2, turns: [{ ...initial.turns[0], status, reason }] };
+  f.emit(terminal);
+  expect(answer).toMatchObject({ status: expected, durationMs: 12_500 });
+  expect(f.controller.hasRuns).toBe(true);
+  vi.setSystemTime(startedAt + 70_000); f.emit({ ...terminal, revision: 3 });
+  expect(answer.durationMs).toBe(12_500);
+  f.runs[0].finish({ status: expected, durationMs: 70_000 }); await f.controller.idle();
+  expect(answer.durationMs).toBe(12_500);
+  await f.controller.persist();
+  const saved = structuredClone({ sessions: f.controller.sessions, activeId: f.controller.activeId });
+  vi.setSystemTime(startedAt + 70 * 60 * 60 * 1000);
+  const restored = new ConversationController(f.controller.project, f.runtime, saved, { save: f.save, changed: vi.fn(), log: vi.fn() });
+  controllers.push(restored);
+  expect(restored.current.messages[1]).toMatchObject({ status: expected, durationMs: 12_500 });
+  restored.recover(); expect(f.runtime.run).toHaveBeenCalledOnce();
+});
+
+it('times follow-up execution independently of idle time and the host queue', async () => {
+  vi.useFakeTimers({ toFake: ['Date'] }); const startedAt = Date.now();
+  const f = fixture(); await f.start(); const initial = f.snapshot();
+  const firstDuration = f.controller.current.messages[1].durationMs;
+  expect(firstDuration).toBeTypeOf('number');
+  vi.setSystemTime(startedAt + 3_600_000);
+  const turn: AgentSessionTurn = { requestId: 'timed-follow-up', conversationId: 1, prompt: 'Next', mode: 'followUp', status: 'queued', epoch: 0, items: [] };
+  f.emit({ ...initial, revision: 2, turns: [...initial.turns, turn] });
+  expect(f.controller.current.messages).toHaveLength(2);
+  vi.setSystemTime(startedAt + 3_610_000);
+  f.emit({ ...initial, revision: 3, foreground: true, turns: [...initial.turns, { ...turn, status: 'placed', entryId: 3 }] });
+  const answer = f.controller.current.messages.at(-1)!;
+  vi.setSystemTime(startedAt + 3_614_400);
+  f.emit({ ...initial, revision: 4, turns: [...initial.turns, { ...turn, status: 'done', entryId: 3, answerId: 4 }] });
+  expect(answer).toMatchObject({ status: 'success', durationMs: 4_400 });
+  expect(f.controller.current.messages[1].durationMs).toBe(firstDuration);
+  vi.setSystemTime(startedAt + 7_200_000); await f.finish();
+  expect(answer.durationMs).toBe(4_400); expect(f.controller.current.messages[1].durationMs).toBe(firstDuration);
+});
 
 it('checkpoints streaming projections once a second while explicit saves include the newest frame immediately', async () => {
   vi.useFakeTimers(); const f = fixture(); await f.start(); f.save.mockClear();
@@ -180,6 +266,44 @@ it.each([false, true])('keeps an unfinished durable follow-up running throughout
   f.runs.at(-1)!.finish({ status: 'success' }); await restored.idle();
 });
 
+it.each(['bootstrap', 'follow-up', 'fork'] as const)('settles a stale running %s from its completed durable turn before recovery', async kind => {
+  const f = fixture(); await f.start();
+  const initial = f.snapshot(), conversationId = kind === 'fork' ? 2 : 1;
+  if (kind !== 'bootstrap') f.emit({ ...initial, revision: 2,
+    conversations: [...initial.conversations, ...(kind === 'fork' ? [{ id: 2, title: 'Fork', background: false }] : [])],
+    turns: [...initial.turns, { ...initial.turns[0], requestId: 'completed-follow-up', conversationId, mode: 'followUp', entryId: 3, answerId: 4 }] });
+  const sessionId = kind === 'fork' ? await f.controller.openAgentConversation(f.controller.current.id, 2) : f.controller.current.id;
+  const saved = structuredClone({ sessions: f.controller.sessions, activeId: sessionId, selectionVersion: 1 });
+  const savedAnswer = saved.sessions.find(session => session.id === sessionId)!.messages.at(-1)!;
+  Object.assign(savedAnswer, { status: 'running', recovering: true, createdAt: Date.now() - 70 * 60 * 60 * 1000 });
+  delete savedAnswer.durationMs; // Legacy histories have no reliable elapsed time.
+  await f.finish();
+  const restored = new ConversationController(f.controller.project, f.runtime, saved, { save: f.save, changed: vi.fn(), log: vi.fn() });
+  controllers.push(restored);
+  const answer = restored.current.messages.at(-1)!;
+  expect(answer).toMatchObject({ status: 'success', recovering: false, content: 'First answer', entryId: kind === 'bootstrap' ? 2 : 4 });
+  expect(messageSettled(answer)).toBe(true); expect(sessionRunning(restored.current)).toBe(false);
+  expect(answer.error).toBeUndefined(); expect(answer.durationMs).toBeUndefined();
+  restored.recover(); await restored.idle();
+  expect(f.runtime.run).toHaveBeenCalledOnce();
+});
+
+it.each([
+  { reason: 'aborted', status: 'aborted' },
+  { reason: 'model_error', status: 'failed' },
+])('restores a terminal $reason over a stale running message without replaying it', async ({ reason, status }) => {
+  const f = fixture(); await f.start(); const initial = f.snapshot();
+  f.emit({ ...initial, revision: 2, turns: [{ ...initial.turns[0], status: 'unanswered', reason, detail: 'Terminal reason' }] });
+  const saved = structuredClone({ sessions: f.controller.sessions, activeId: f.controller.activeId });
+  Object.assign(saved.sessions[0].messages[1], { status: 'running', recovering: true });
+  await f.finish();
+  const restored = new ConversationController(f.controller.project, f.runtime, saved, { save: f.save, changed: vi.fn(), log: vi.fn() });
+  controllers.push(restored);
+  expect(restored.current.messages[1]).toMatchObject({ status, error: 'Terminal reason', recovering: false });
+  expect(messageSettled(restored.current.messages[1])).toBe(true);
+  restored.recover(); await restored.idle(); expect(f.runtime.run).toHaveBeenCalledOnce();
+});
+
 it('keeps the owner alive after its inline answer and confirms a lost IPC receipt from the durable snapshot', async () => {
   const f = fixture(); await f.start();
   expect(f.controller!.running).toBe(false); expect(f.controller!.hasRuns).toBe(true);
@@ -271,7 +395,8 @@ it('keeps per-turn usage authoritative over owner totals, other forks and final 
 });
 
 it('retains plan revisions and execution in one answer through durable snapshots and replay', async () => {
-  const f = fixture(); await f.start();
+  vi.useFakeTimers({ toFake: ['Date'] }); const startedAt = Date.now();
+  const f = fixture(); await f.start('placed');
   const frame = f.snapshot(), answer = f.controller!.current.messages[1];
   const plan: AgentSessionTurn = { ...frame.turns[0], items: [{ id: 'plan-7', title: 'Output', content: 'Seven-day plan', contentType: 'markdown' }],
     usage: { inputTokens: 100, outputTokens: 10, totalTokens: 110, reasoningTokens: 0, cachedInputTokens: 0, cacheCreationTokens: 0, calls: 1, updatedAt: '2026-10-16T00:00:00Z' } };
@@ -279,12 +404,18 @@ it('retains plan revisions and execution in one answer through durable snapshots
     items: [{ id: 'plan-30', title: 'Output', content: 'Thirty-day plan', contentType: 'markdown' }] };
   const built: AgentSessionTurn = { ...plan, requestId: `${answer.runId}:agent:plan:approve`, prompt: 'Execute the plan', entryId: 5, answerId: 6,
     items: [{ id: 'built', title: 'Output', content: 'Plan executed', contentType: 'markdown' }] };
-  f.emit({ ...frame, revision: 2, turns: [plan, revised] });
+  vi.setSystemTime(startedAt + 2_000); f.emit({ ...frame, revision: 2, turns: [plan, revised] });
   expect(answer.items?.map(item => item.id)).toEqual(['plan-7', 'plan-30']);
+  expect(answer.durationMs).toBe(2_000);
+  vi.setSystemTime(startedAt + 62_000);
   f.emit({ ...frame, revision: 3, turns: [plan, revised, { ...built, status: 'placed', answerId: undefined, items: [] }] });
   expect(answer.items?.map(item => item.id)).toEqual(['plan-7', 'plan-30']);
   expect(answer.status).toBe('running');
+  expect(answer.durationMs).toBeUndefined();
+  vi.setSystemTime(startedAt + 65_000);
   f.emit({ ...frame, revision: 4, turns: [plan, revised, built] });
+  expect(answer.durationMs).toBe(65_000);
+  vi.setSystemTime(startedAt + 70_000);
   f.emit({ ...frame, revision: 5, turns: [plan, revised, built] });
   expect(f.controller!.current.messages).toHaveLength(2);
   expect(answer.items?.map(item => item.id)).toEqual(['plan-7', 'plan-30', 'built']);
@@ -297,6 +428,7 @@ it('retains plan revisions and execution in one answer through durable snapshots
   saved.sessions[0].messages[1].content = 'Plan executed';
   const reopened = new ConversationController(f.controller!.project, f.runtime, saved, { save: f.save, changed: vi.fn(), log: vi.fn() });
   controllers.push(reopened);
+  expect(reopened.current.messages[1].durationMs).toBe(65_000);
   expect(reopened.current.messages[1].items?.map(item => item.id)).toEqual(['plan-7', 'plan-30', 'built']);
   expect(f.runtime.run).toHaveBeenCalledOnce();
 });

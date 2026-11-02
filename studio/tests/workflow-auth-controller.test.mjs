@@ -14,13 +14,13 @@ class Emitter {
   dispose() { this.listeners.clear(); }
 }
 
-async function fixture(t, { signedIn = true, memoryToken, sessionCookie } = {}) {
+async function fixture(t, { signedIn = true, sessionCookie, deferInitialization = false, initialFetch } = {}) {
   const focus = new Emitter(), secretsChanged = new Emitter(), configuration = new Emitter(), intervals = new Set(), sessions = [];
   const serverUrl = 'http://127.0.0.1:7126';
   const f = { profile: { userId: 'user', email: 'user@example.test', displayName: 'User', avatarUrl: 'data:image/png;base64,b2xk' }, languagePreference: 'system', requests: 0, messages: [], opened: [], copied: [], commands: new Map(), executed: [], serializers: new Map(), panels: [] };
   const defaults = { 'editor.fontSize': 14, 'studio.project.serverUrl': serverUrl };
   const user = {}, workspace = {}, writes = [];
-  let stored = signedIn ? JSON.stringify({ serverUrl, accessToken: 'test-token', apiKeyId: 'test-key', user: f.profile, memoryToken, sessionCookie }) : undefined;
+  let stored = signedIn ? JSON.stringify({ serverUrl, accessToken: 'test-token', apiKeyId: 'test-key', user: f.profile, sessionCookie }) : undefined;
   const disposable = { dispose() {} };
   const vscode = {
     EventEmitter: Emitter, StatusBarAlignment: { Left: 1 },
@@ -88,9 +88,12 @@ async function fixture(t, { signedIn = true, memoryToken, sessionCookie } = {}) 
   });
   const context = { extension: { packageJSON: { version: '0.1.0' } }, subscriptions: [], secrets: { get: async key => key === 'studio.agent.models' ? undefined : stored, store: async (_key, value) => { stored = value; }, delete: async () => { stored = undefined; }, onDidChange: secretsChanged.event } };
   const controller = new module.exports.AccountController(context);
-  t.after(() => controller.dispose());
-  await controller.initialize();
+  f.fetch = initialFetch;
+  const initialization = controller.initialize();
+  t.after(async () => { await initialization; controller.dispose(); });
+  if (!deferInitialization) await initialization;
   return Object.assign(f, { controller, intervals, sessions, vscode, user, workspace, writes,
+    initialization,
     focus: focused => { vscode.window.state.focused = focused; focus.fire({ focused }); },
     poll: () => { for (const timer of intervals) { timer.callback(); } },
   });
@@ -103,104 +106,6 @@ async function until(read) {
   }
   assert.fail('Expected asynchronous operation did not finish');
 }
-
-test('memory settings reuse an existing account session without exposing it to the webview', async t => {
-  const f = await fixture(t, { sessionCookie: 'wf_session=existing-account-session' });
-  f.commands.get('studio.openSettings')({ section: 'memory' });
-  const requests = [];
-  f.fetch = async (url, options) => {
-    requests.push({ url: String(url), options });
-    return Response.json({ errCode: 0, data: { connected: true, status: 'ready' } });
-  };
-  await f.message({ type: 'settings-memory', requestId: 'memory-request', action: 'capabilities' });
-  assert.equal(requests.length, 1);
-  assert.equal(requests[0].url, 'http://127.0.0.1:7126/api/me/memory/capabilities');
-  assert.equal(requests[0].options.headers.Cookie, 'wf_session=existing-account-session');
-  assert.equal(requests[0].options.headers.Authorization, undefined, 'Project API keys cannot manage account memory');
-  assert.equal(requests[0].options.redirect, 'error');
-  const result = f.messages.find(message => message.requestId === 'memory-request');
-  assert.equal(result.error, undefined);
-  assert.equal(result.data.status, 'ready');
-  assert.doesNotMatch(JSON.stringify(f.messages), /existing-account-session|test-token/);
-});
-
-test('memory settings can use a valid account session after its separate memory credential expires', async t => {
-  const f = await fixture(t, { memoryToken: 'shma_expired', sessionCookie: 'wf_session=valid-session' });
-  f.commands.get('studio.openSettings')({ section: 'memory' });
-  const requests = [];
-  f.fetch = async (url, options) => {
-    requests.push({ url: String(url), options });
-    return options.headers.Authorization
-      ? Response.json({ errCode: 401, errMessage: 'Expired credential' }, { status: 401 })
-      : Response.json({ errCode: 0, data: { items: [] } });
-  };
-  await f.message({ type: 'settings-memory', requestId: 'list-request', action: 'list', input: { query: '中文 / test' } });
-  assert.equal(requests.length, 2);
-  assert.equal(requests[0].options.headers.Authorization, 'Bearer shma_expired');
-  assert.equal(requests[1].options.headers.Cookie, 'wf_session=valid-session');
-  assert.equal(requests[1].options.headers.Authorization, undefined);
-  assert.equal(new URL(requests[1].url).searchParams.get('query'), '中文 / test');
-  assert.equal(f.messages.find(message => message.requestId === 'list-request').error, undefined);
-  assert.doesNotMatch(JSON.stringify(f.messages), /shma_expired|valid-session|test-token/);
-});
-
-test('memory settings never promote an ordinary project key into account memory access', async t => {
-  const f = await fixture(t);
-  f.commands.get('studio.openSettings')({ section: 'memory' });
-  const requests = f.requests;
-  await f.message({ type: 'settings-memory', requestId: 'missing-auth', action: 'capabilities' });
-  assert.equal(f.requests, requests);
-  assert.equal(f.messages.find(message => message.requestId === 'missing-auth').status, 401);
-  assert.equal(f.controller.getState().status, 'authenticated');
-});
-
-test('missing memory authorization can be verified without signing out an authenticated account', async t => {
-  const f = await fixture(t);
-  f.commands.get('studio.openSettings')({ section: 'memory' });
-  const settings = f.panel;
-  const requests = f.requests;
-  await settings.message({ type: 'authorize-memory' });
-  const login = f.panel;
-  assert.notEqual(login, settings);
-  assert.equal(login.type, 'studio.login');
-  await login.message({ type: 'ready' });
-  assert.equal(login.webview.messages.at(-1).reauthorize, true);
-  assert.equal(login.webview.messages.at(-1).state.status, 'authenticated');
-  assert.equal(f.controller.getConnection().accessToken, 'test-token');
-  assert.equal(f.requests, requests, 'Project keys must not be used to upgrade memory authorization');
-  await login.message({ type: 'login', serverUrl: 'http://127.0.0.1:7126', email: 'user@example.test', password: 'valid-password' });
-  assert.equal(f.controller.getState().status, 'authenticated');
-  assert.equal(f.panel, settings);
-  assert.equal(settings.webview.messages.filter(message => message.type === 'settings-navigate').at(-1).state.section, 'memory');
-});
-
-test('memory verification reuses a valid session and service outages never open a sign-in form', async t => {
-  const f = await fixture(t, { sessionCookie: 'wf_session=current' });
-  for (const status of [200, 503]) {
-    f.fetch = async () => Response.json(status === 200 ? { errCode: 0, data: { enabled: true } } : { errCode: 503 }, { status });
-    await f.controller.authorizeMemory();
-    assert.equal(f.panel.type, 'studio.settings');
-    await f.panel.message({ type: 'ready' });
-    assert.equal(f.panel.webview.messages.filter(message => message.type === 'settings-navigate').at(-1).state.section, 'memory');
-    assert.equal(f.controller.getState().status, 'authenticated');
-  }
-  assert.equal(f.panels.some(panel => panel.type === 'studio.login'), false);
-});
-
-test('memory replies from a signed-out account cannot enter the settings page', async t => {
-  const f = await fixture(t, { sessionCookie: 'wf_session=old-session' });
-  f.commands.get('studio.openSettings')({ section: 'memory' });
-  let finish;
-  f.fetch = async url => String(url).endsWith('/memory/capabilities')
-    ? new Promise(resolve => { finish = resolve; })
-    : Response.json({ errCode: 0, data: { ok: true } });
-  const pending = f.message({ type: 'settings-memory', requestId: 'old-account', action: 'capabilities' });
-  await until(() => finish);
-  await f.commands.get('studio.logout')();
-  finish(Response.json({ errCode: 0, data: { private: 'old account memory' } }));
-  await pending;
-  assert.equal(f.messages.some(message => message.requestId === 'old-account'), false);
-});
 
 test('settings and account commands share one tab and navigate to their requested categories', async t => {
   const f = await fixture(t);

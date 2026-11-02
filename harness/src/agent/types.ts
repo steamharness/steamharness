@@ -408,8 +408,6 @@ export type AgentToolFactory = (
 ) => AgentTool[] | AgentToolSet | Promise<AgentTool[] | AgentToolSet>;
 
 export interface AgentRuntimeOptions {
-  /** Off by default. true opts into host memory; project configuration can disable it. false always disables memory. */
-  memory?: boolean | import("./memory").AgentMemoryBinding;
   /** Use host settings when supported, otherwise project models. "project" always uses project models. */
   modelSource?: "user-settings" | "project";
   /** Enable durable session control, task projections, and background work. */

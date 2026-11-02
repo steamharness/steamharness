@@ -251,7 +251,7 @@ function initialize(): void {
   });
   const dialogs = new ConversationTools(aggregateToolbar.databases, {
     path: target => post({ type: 'open-path', ...target }),
-    account: reason => post({ type: 'open-account', reason }),
+    account: () => post({ type: 'open-account' }),
     configurations: configurationPanel,
     skills: { load: (requestId, skillId) => post({ type: 'project-skills', requestId, skillId, entrypointId: entrypoint.value || undefined }) },
     tools: () => ({ parameters: currentParameters(), policies: currentSession()?.toolPermissionPolicies ?? {}, readOnly: readOnly(),
@@ -624,7 +624,7 @@ function initialize(): void {
     textarea.disabled = readOnly() || busy() && !pendingSend();
     entrypoint.disabled = busy() || parametersLoading();
     document.querySelector<HTMLButtonElement>('#new')!.disabled = false;
-    dialogs.updatePermissions?.(state?.parameterRevision);
+    dialogs.updatePermissions?.();
     const waiting = currentSession()?.messages.some((message) => message.pendingInput);
     app.dataset.runState = state.running ? 'running' : waiting ? 'waiting' : sendBlocked() ? 'submitting' : 'idle';
     const attach = document.querySelector<HTMLButtonElement>('#attach')!;

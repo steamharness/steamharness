@@ -219,7 +219,7 @@ export class DurableAgentSession {
       const parent = await this.harness.conversation(record.owner.conversationId, context);
       const tools = (await parent?.agent(context))?.tools ?? [];
       if (toolName === "subagent" || !tools.some(tool => tool.name === toolName)
-        || !(this.options.subagents.tools.includes(toolName) || !definition && toolName === "memory")
+        || !this.options.subagents.tools.includes(toolName)
         || definition && (!definition.tools.includes(toolName) || !current?.tools.includes(toolName))) {
         throw new Error(`Tool is not authorized for this agent role: ${toolName}`);
       }
@@ -269,14 +269,9 @@ export class DurableAgentSession {
           const currentDefinition = this.options.subagents.definitions?.find(item => item.id === definition?.id);
           const allowed = new Set((definition?.tools ?? this.options.subagents.tools).filter(name =>
             this.options.subagents!.tools.includes(name) && (!definition || currentDefinition?.tools.includes(name))));
-          const tools = parentAgent.tools.filter(tool => (allowed.has(tool.name) || !definition && tool.name === "memory") && tool.name !== "subagent");
+          const tools = parentAgent.tools.filter(tool => allowed.has(tool.name) && tool.name !== "subagent");
           if (definition && (!this.options.subagents.definitions?.some(item => item.id === definition.id)
             || definition.tools.some(name => !this.options.subagents!.tools.includes(name)))) throw new Error("The agent role is no longer authorized by this project.");
-          const modelTools = tools.map(tool => tool.name === "memory" ? {...tool,parameters:Type.Object({
-            action:Type.Union([Type.Literal("list"),Type.Literal("get"),Type.Literal("search")]),
-            scope:Type.Optional(Type.Union([Type.Literal("global"),Type.Literal("current")])),
-            id:Type.Optional(Type.String()),query:Type.Optional(Type.String()),cursor:Type.Optional(Type.String()),
-          },{additionalProperties:false})} : tool);
           const model = this.options.subagents.model ?? definition?.model ?? task.input.model;
           if (model && !this.allowedChildModel(model)) throw this.childModelError();
           // Admission and child creation share the Session commit line. Waiters have
@@ -310,7 +305,7 @@ export class DurableAgentSession {
               const childModel = model ?? parentAgent.model!;
               const registered = this.models.getModel(childModel.provider, childModel.modelId);
               const effort = (definition?.effort ?? parentAgent.thinkingLevel ?? "off") as "medium";
-              await configure(tx, child.id, { tools: tools as ToolRegistration[], modelTools: modelTools as ToolRegistration[],
+              await configure(tx, child.id, { tools: tools as ToolRegistration[], modelTools: tools as ToolRegistration[],
                 model: childModel, thinkingLevel: registered ? clampThinkingLevel(registered, effort) : effort,
                 ...(parentAgent.cwd ? { cwd: parentAgent.cwd } : {}) });
               if (definition) {
@@ -860,6 +855,7 @@ export class DurableAgentSession {
         prompt: { hash: info.promptHash, version: info.promptVersion }, plan: { version: plan.version, items: plan.items as AgentPlanItem[] },
         ...(contextUsage ? { contextUsage } : {}) });
       const byId = new Map(entries.map(entry => [entry.id, entry]));
+      const tasksById = new Map<number, typeof allTasks[number]>(allTasks.map(task => [task.id, task]));
       for (const task of allTasks) {
         const slots = [...(live?.tools ?? []), ...(live?.nestedTools ?? [])];
         const slot = slots.find(slot => slot.taskId === task.id);
@@ -909,7 +905,17 @@ export class DurableAgentSession {
         const partial = submission.status === "placed" ? live?.generation?.message as unknown as AssistantMessage | undefined : undefined;
         const failure = [...visible].reverse().find(entry => entry.kind === "project.failure");
         const detail = failure ? object(failure.data).message : submission.status === "unanswered" ? submission.detail : undefined;
+        // Input timestamps are stamped when placed, independently of when a
+        // client first opens the conversation. Task spans also survive reopen.
+        const startedAt = entry?.model?.find(message => message.role === "user")?.timestamp;
+        const runTaskIds = new Set(visible.flatMap(item => item.byTaskId === undefined ? [] : [item.byTaskId]));
+        const ends = [...runTaskIds].flatMap(id => {
+          const task = tasksById.get(id);
+          return task?.kind === "pi.generation" && task.endedAt !== undefined ? [task.endedAt] : [];
+        });
+        const endedAt = (failure || submission.status === "done" || submission.status === "unanswered") && ends.length ? Math.max(...ends) : undefined;
         turns.push({ requestId: submission.requestId, conversationId: record.id, prompt: typeof prompt === "string" ? prompt : prompt.filter(block => block.type === "text").map(block => block.text).join(""), mode, status: failure ? "unanswered" : submission.status,
+          ...(startedAt === undefined ? {} : { startedAt }), ...(endedAt === undefined ? {} : { endedAt }),
           epoch: entries.filter(entry => entry.kind === "pi.reset" && entry.id < (submission.entry ?? Infinity)).length,
           ...(submission.entry === undefined ? {} : { entryId: submission.entry }), ...(submission.status === "done" ? { answerId: submission.answer } : {}),
           ...(failure ? { reason: "model_error" } : submission.status === "unanswered" ? { reason: submission.reason } : {}),

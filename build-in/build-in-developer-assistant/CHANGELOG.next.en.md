@@ -4,6 +4,8 @@
 
 - Documented Server PostgreSQL Agent storage in generator guidance, including stable workspace/session identities, account authorization and lease recovery boundaries.
 
+- Removed global and account memory, including tools, skills, authorization, service integration and settings controls.
+
 - Fixed both generated boards to use the database alias API, clearly mark temporary edits without a binding, and prevent overwriting tasks after failed reads. Preflight checks include configuration, ignore files and symlink conflicts to avoid partial projects; database binding guidance is corrected. Generator scaffolds also support names beginning with digits and multiline prompts.
 
 - Fixed: Existing Assistant conversations discover newly added Studio diagnostics while keeping existing tools usable. Catalog additions preserve checks on existing definitions and permissions.
@@ -16,16 +18,11 @@
 
 - Added generator guidance for named agents, durable concurrency queues, management commands and staged safe retries.
 
-- Changed: The Assistant explicitly opts into account memory and supports project-level opt-out; ordinary Core Agent projects default to memory off.
-
 - [Changed] The assistant uses only built-in/custom Settings models in Studio and hides project AI models. Standalone CLI Web automatically uses project model configuration.
-
 
 - Fixed: Update generator references for bounded retries of model-call exceptions and manual compaction, distinguishing provider failures from host storage, usage and observer failures.
 
 - Fixed: Document Core Agent retry behavior for in-stream transient upstream failures and connection interruptions, including preservation of partial text and committed tool results.
-
-- Added: Use host-bound account memory in the built-in assistant; remove the old database memory wiring and unbound capability promises.
 
 - Renamed the project generation skill to steamharness-generator, including its directory, assistant prompts, development and packaging references, and documentation.
 
@@ -56,7 +53,7 @@
 
 - The permission control now displays the actual user policy and opens permission settings directly, without an extra inheritance choice. Coding tools, prompts, and Studio Control share one settings snapshot. Generator references now cover the user settings API, inheritance precedence, the hostless fallback, and safe session updates.
 
-- Assistant now explicitly uses local storage and its fixed built-in identity. CLI built-in application checks let users use it without creating personal Server projects. History and memory never write to a shared Server project, while Server AI still requires account authorization.
+- Assistant now explicitly uses local storage and its fixed built-in identity. CLI built-in application checks let users use it without creating personal Server projects. History never writes to a shared Server project, while Server AI still requires account authorization.
 
 - Updated generator guidance to preserve structured Server storage errors and distinguish project registration, optional source upload and related data grants.
 
@@ -106,7 +103,8 @@
 - Added authorized tool discovery with Studio Control connecting on the first search. Hosts can opt into QuickJS Code Mode through an environment variable; it remains off by default. Update generation guidance for durable extensions, tasks, remote execution and storage, with cross-process recovery checks for nested script tools and background timers.
 - Enabled durable sessions and task plans in Developer Assistant, with restricted background subagents (up to 4, read/grep/find/ls only, no recursive delegation), single-result reporting, and fork plan inheritance. Studio / CLI Web displays tasks, plans, records, and parent/child usage.
 - Updated generation guidance for session leases, controls/snapshots, child-tool permissions, configuration switching, and background compaction. Offline tests exercise the real workflow through background tool crash recovery and result deduplication.
-- Update Agent recovery guidance for retained memory approvals, initial context that preserves durable history, and continuation from committed stream fragments. Verify the actual assistant's SIGKILL recovery and output and usage replay.
+- Update Agent recovery guidance for retained approvals, initial context that preserves durable history, and continuation from committed stream fragments. Verify the actual assistant's SIGKILL recovery and output and usage replay.
+
 - Enable Pi Durable recovery for Project Assistant, preserving committed tool results, questions and plan approvals across processes without duplicating answers, writes or usage. Update tool contracts and generator guidance for Pi 1.2.0, SQLite, stable request identities and durable cancellation.
 
 ### Changes
@@ -150,7 +148,8 @@
 - Changed AI and permission triggers to icons plus the current selection, dropping the right trigger's text first at narrow widths.
 - Changed the default Auto approve policy to allow directories outside the workspace.
 - Changed the prompt and Studio Control to follow each turn's policy, with Workspace and Read only keeping their path boundaries.
-- Changed the default host to Studio VS Code with an independent working directory, keeping Core coding tools, skills, memory, and resource cards.
+- Changed the default host to Studio VS Code with an independent working directory, keeping Core coding tools, skills, and resource cards.
+
 - Changed generator guidance to cover method registration, disposal, cancellation, and state queries after timeouts.
 - Changed Kanban previews to run independently by configuration ID without touching the host's active configuration, and to document pinned height and borders.
 - Changed the Kanban skill to separate small-card presentation from device dimensions through the presentation API, keeping read-only cards on content while preserving edit state.

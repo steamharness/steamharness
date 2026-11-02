@@ -4,7 +4,6 @@ import { spawn } from "node:child_process";
 import { pathToFileURL } from "node:url";
 import { prepareDevelopmentSources } from "./development-sources.mjs";
 import { resolveRepositoryMode } from "./repository-mode.mjs";
-import { runDevelopmentServer } from "./development-memory.mjs";
 
 const root = path.resolve(import.meta.dirname, "..");
 
@@ -116,29 +115,32 @@ async function main() {
     ? "dist + static web"
     : plan.hotReload ? "source watch + Vite HMR" : "source + manual web reload";
   process.stdout.write(`[repository:${plan.mode}] Server ${runtime} runtime\n`);
-  if (plan.build !== undefined) await run(plan.build[0], plan.build[1], { cwd: root, env: plan.env });
-  process.exitCode = plan.mode === "dev"
-    ? await runDevelopmentServer({ root, command: plan.command, args: plan.args, env: plan.env })
-    : await run(plan.command, plan.args, { cwd: root, env: plan.env });
+  if (plan.build !== undefined) await runServerCommand(plan.build[0], plan.build[1], { cwd: root, env: plan.env });
+  process.exitCode = await runServerCommand(plan.command, plan.args, { cwd: root, env: plan.env });
 }
 
-function run(command, args, options) {
+export async function runServerCommand(command, args, options) {
   const invocation = createInvocation(command, args);
-  return new Promise((resolve, reject) => {
-    const child = spawn(invocation.command, invocation.args, {
-      cwd: options.cwd,
-      env: options.env,
-      stdio: "inherit",
-    });
-    child.once("error", reject);
-    child.once("exit", (code, signal) => {
-      if (signal !== null) {
-        process.kill(process.pid, signal);
-        return;
-      }
-      resolve(code ?? 1);
-    });
+  const child = spawn(invocation.command, invocation.args, {
+    cwd: options.cwd,
+    env: options.env,
+    stdio: "inherit",
   });
+  const interrupt = () => child.kill("SIGINT");
+  const terminate = () => child.kill("SIGTERM");
+  process.on("SIGINT", interrupt);
+  process.on("SIGTERM", terminate);
+  try {
+    return await new Promise((resolve, reject) => {
+      child.once("error", reject);
+      child.once("exit", (code, signal) => {
+        resolve(code ?? (signal === "SIGINT" ? 130 : signal === "SIGTERM" ? 143 : 1));
+      });
+    });
+  } finally {
+    process.off("SIGINT", interrupt);
+    process.off("SIGTERM", terminate);
+  }
 }
 
 function createInvocation(command, args) {

@@ -2,7 +2,13 @@
 
 - Add database (db) init/validate/generate for steamharness.database.ts and steamharness.schema, including typed dual-target artifacts. Packaging generates assets automatically; upload/download verify static inventories while excluding other local runtime data.
 
-- Fixed Assistant and memory-enabled projects to reuse existing Studio sessions, including older logins and expired memory credentials, without signing out. Account sessions stay in the trusted host and workers receive only short-lived grants for the current scope. Missing or expired authorization keeps a visible memory entry and verification form, with execution logs explaining unavailable recall and saving. Adding memory credentials to an existing login preserves running tasks, and background account verification no longer reports a false account change.
+- Fixed subagent reply durations to use persisted execution timestamps instead of restarting when their detail view is first opened, refreshed or restored.
+
+- Keep the final duration visible after a reply completes, fails or stops, including after refreshing or reopening history. Durable Agent follow-ups are timed separately.
+
+- Fixed history recovery and cross-window synchronization to reconcile completed, failed and stopped Agent turns, clearing stale responding and recovery states without replaying finished replies.
+
+- Removed global and account memory, including tools, skills, authorization, service integration and settings controls.
 
 - Fixed forks to run as independent new conversations with isolated models, modes, permissions, execution locks and recovery. Source deletion preserves branches, historical attachments are copied, old execution controls are removed, and legacy shared-host forks migrate safely. Worker startup now retains early control commands, preventing follow-up confirmation timeouts after reopening.
 - Fixed duplicate refresh icons in conversation Kanban preview headers during loading and repeated refreshes.
@@ -31,8 +37,6 @@
 
 - Fixed sending new input after Stop and handling legacy queues and edited submission identities. Queue-enabled conversations accept consecutive sends; Send now and withdrawal respond immediately and restore failed actions, while Stop and failure keep older messages paused.
 
-- Fixed memory job feedback to distinguish paused authorization from extraction failures, explain recovery, and disable unavailable or repeated retries without reporting edit conflicts.
-
 - Fixed: Workflow, Conversation and Kanban pages in Studio handle project shortcuts first and forward unhandled keys to Studio, preserving text editing, clipboard shortcuts and IME input.
 
 - Added: Project configuration reuses the AI model list for a single subagent selection with Follow main model. Removed selections stay unavailable, and Studio can configure child models while using Settings for the main model.
@@ -49,20 +53,13 @@
 
 - Added: Interrupt unfinished managed execution trees on reopening and require explicit batch recovery. Keep pending user input separate from business queues; only successful user turns advance it, never background reports.
 
-- Added: A Project memory switch defaults off for ordinary projects and on for the Assistant. Memory navigation updates quietly when configuration changes, and disabled projects cannot call memory operations.
-
 - [Changed] Studio model parameters use only Settings models and hide project AI. Standalone CLI Web falls back to project configuration consistently for setup, defaults and requests. Removed project references to Settings models.
 
 - [Fixed] Bound worker shutdown and release conversation ownership after forced exit. Queues advance automatically only after success; failures, cancellation and timeouts retain pending messages, and new explicit input can run before the paused queue.
 
-- Fixed memory panel layout with a continuous list, on-demand details and compact switches. Configuration, outage and authorization states are distinct, with a working return to the list on narrow layouts.
-
-
 - Added: Open local file links, inline code paths and plain absolute paths from Agent replies and plans in the Studio editor, including relative paths, file URIs and line/column locations. Fixed managed attachment link handling.
 
 - Fixed embedded project configuration styles affecting nested dialogs, restoring content and footer spacing when adding or editing models in Project information.
-
-- Added: Show global/current memory in project information according to Core capabilities, with compact details, editing and forgetting; keep account credentials in the host and scope worker grants.
 
 - [Fix] Keep the skill preview return toolbar outside its independent document scroll area, preventing content from overlapping navigation while preserving loading, retry and return states.
 

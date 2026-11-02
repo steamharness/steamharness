@@ -1,21 +1,12 @@
 # Unreleased
 
-- Fixed memory job feedback to distinguish paused authorization from extraction failures, explain recovery, and disable unavailable or repeated retries without reporting edit conflicts.
+- Removed global and account memory, including tools, skills, authorization, service integration and settings controls.
 
 - Added: Project configuration selects one subagent model from existing AI models, with inheritance, permission restrictions and unavailable-selection feedback.
-
-- Added: A localized Project memory switch follows existing configuration permissions, publication and next-run behavior.
-
-- Fixed memory settings page padding and section spacing to match other settings pages and keep content away from page edges.
 
 - Fixed sign-in depending on project and release data. Project load failures preserve authenticated sessions and show a workspace error with refresh recovery.
 
 - [Changed] Project model creation offers only System AI and Third-party AI; removed references to Settings models.
-
-- Fixed account memory setup guidance to request administrator configuration instead of asking signed-in users to sign in again.
-
-
-- Added: Add a settings memory panel with paginated filters, source details, editing, forgetting, scope clearing and failed extraction retries.
 
 - Fixed draft navigation and page-close protection within project database details, discarded KV drafts returning, duplicate attachment preparation and uploads starting after their tab closes. The database root route now returns to the directory.
 
@@ -73,7 +64,6 @@
 - Project lists, detail headers, overviews, and settings consistently display avatars from the projectCard icon and colors.
 
 ### Added
-
 
 ### Changed
 

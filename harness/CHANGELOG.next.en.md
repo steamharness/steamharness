@@ -4,6 +4,10 @@
 
 - Added opt-in Agent storage through `steamharness/runtime-storage`, with account/workspace/session isolation in PostgreSQL, execution leases, idempotent commits and document checkpoints.
 
+- Durable Agent turn snapshots now expose persisted execution timestamps so hosts can restore elapsed time when opening subagent conversations and history.
+
+- Removed global and account memory, including tools, skills, authorization, service integration and settings controls.
+
 - Fixed conversation branches to support independent root databases with truncated history and historical asOf document checkpoints. Execution identities are renewed without importing tasks, approvals, queues or usage; source cancellation and deletion do not affect the new conversation.
 - Fixed durable conversations to fork committed history offline using the same atomic operation and deduplicated receipts as live sessions. Document inheritance policies are preserved without starting models, tools or pending tasks.
 
@@ -25,15 +29,9 @@
 
 - Fixed: Apply up to 10 fallback retries to every model request error without classifying its text or status, including streams, durable sessions, deferred responses and summaries. Retain partial output, committed tool results and per-attempt usage; discard unfinished calls, keep queued inputs pending on failure, and honor cancellation immediately.
 
-- Fixed: Re-enabling project memory skips turns completed while disabled. Static defaults resolve variables within their lexical scope so unrelated locals cannot accidentally enable memory.
-
 - Added: Add named agent roles, durable FIFO concurrency, shared management commands and checkpoint retries. Dynamic sessions and wrapped executors inherit durable control; recovery rechecks role access and retains business task history and progress.
 
 - Fixed: Release losing task waits before rechecking multi-agent concurrency slots. Explicit management actions ignore model-filled legacy result fields so listing or inspecting work is not incorrectly rejected.
-
-- Changed: Project memory defaults off and the built-in Assistant explicitly opts in. A project configuration switch controls authorization, recall, saving and tools without deleting existing memories.
-
-- Fixed: Persistent assistant sessions submit automatic memory after each answer is saved without waiting for process exit. Follow-up turns recall fresh records; durable receipts and the offline outbox prevent duplicate delivery after recovery, and initial activation does not import older conversations.
 
 - [Fixed] Preserve the selected restricted configuration across temporary outages, role changes, and reopening. Guest fallback still enforces execution permissions, and an explicit Ask selection remains saved.
 
@@ -41,18 +39,15 @@
 
 - [Fixed] Core Agent projects and coreAgent wrappers inherit host recovery, reconnecting unfinished work with its original runId after a crash so later input is not blocked by stale busy state.
 
-
 - Fixed: Retry transient request-construction, stream-iteration/result, summary and deferred-fetch exceptions, including nested transport codes and HTTP 408/409/5xx. Manual compaction uses bounded retries while retaining text, tool results and per-attempt summary usage; host storage and callback failures remain terminal.
 
 - Fixed: Retry temporary upstream unavailability, in-stream upstream_error failures without an HTTP status, and connection failures such as ECONNRESET across ordinary requests, durable sessions and automatic compaction, preserving diagnostics, partial text and committed tool results within the existing retry budget.
-
-- Added: Add host-bound account memory providers, the native memory tool, the built-in steamharness-memory skill, and per-turn recall and durable submission.
 
 - Renamed the development project generation skill to steamharness-generator and synchronized skill copies, validation and generator references.
 
 - Added skills.directories to Core Agent nodes and projects so runtime tools and host previews share one declaration. Hosts can list project and Core built-in guides and read complete SKILL.md files by catalog ID without running tool factories or tasks.
 
-- Fixed paged skill catalogs and file listings, byte-bounded JSON continuation with change detection for knowledge/KV/memory and long child results, and bounded write acknowledgements. Fixed large-file tails and read-only environment long-line reads, silent search/list omissions, missing shell truncation and timeout diagnostics, commands starting after cancellation, failed children reported as completed, and UTF-8 MCP schema size checks.
+- Fixed paged skill catalogs and file listings, byte-bounded JSON continuation with change detection for knowledge/KV and long child results, and bounded write acknowledgements. Fixed large-file tails and read-only environment long-line reads, silent search/list omissions, missing shell truncation and timeout diagnostics, commands starting after cancellation, failed children reported as completed, and UTF-8 MCP schema size checks.
 
 - Fixed skill reads with JSON byte-bounded pages and offset/limit/nextOffset continuation, preventing durable output truncation. Subagents advertise only allowed exact model overrides and explain inheritance. File cards expose target fields, actionable errors and ignore inapplicable preview=false.
 

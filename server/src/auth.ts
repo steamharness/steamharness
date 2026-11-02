@@ -11,7 +11,6 @@ export const STEAMHARNESS_AUTH_COOKIE = "steamharness_auth_session";
 export type { AuthenticatedPrincipal } from "./account-auth";
 
 export interface AuthContext {
-  memory?: import("./memory").AccountMemory;
   authService?: AuthService;
   accountDb?: AccountRepository;
   dataDir?: string;

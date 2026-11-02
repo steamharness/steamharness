@@ -62,8 +62,7 @@
                 "group": "使用 Server Web",
                 "pages": [
                   "guides/server/overview",
-                  "guides/server/project-management",
-                  "guides/server/account-memory"
+                  "guides/server/project-management"
                 ]
               },
               {
@@ -115,7 +114,6 @@
                   "core-api/create-agent",
                   "core-api/runtime-storage",
                   "core-api/database",
-                  "core-api/account-memory",
                   "core-api/create-agent-node",
                   "core-api/define-agent-conversation-executor",
                   "core-api/connect-mcp-server",
@@ -335,8 +333,7 @@
                 "group": "Using Server Web",
                 "pages": [
                   "en/guides/server/overview",
-                  "en/guides/server/project-management",
-                  "en/guides/server/account-memory"
+                  "en/guides/server/project-management"
                 ]
               },
               {
@@ -388,7 +385,6 @@
                   "en/core-api/create-agent",
                   "en/core-api/runtime-storage",
                   "en/core-api/database",
-                  "en/core-api/account-memory",
                   "en/core-api/create-agent-node",
                   "en/core-api/define-agent-conversation-executor",
                   "en/core-api/connect-mcp-server",

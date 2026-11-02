@@ -4,8 +4,6 @@ import test from "node:test";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import {
-  GLOBAL_MEMORY_CAPABILITY,
-  GLOBAL_MEMORY_MCP_TOOL_ID,
   KNOWLEDGE_CAPABILITY,
   KNOWLEDGE_MCP_TOOL_ID,
   KV_CAPABILITY,
@@ -155,52 +153,6 @@ test("a capability enforces the bounds its schema declares", async () => {
     }),
     /at most 200000 characters/,
   );
-  await assert.rejects(
-    () => runCapability(GLOBAL_MEMORY_MCP_TOOL_ID, context, {
-      action: "remember",
-      memoryId: "preference",
-      title: "too big",
-      markdown: "m".repeat(100_001),
-    }),
-    /at most 100000 characters/,
-  );
-});
-
-test("a memory cursor says which action it came from", async () => {
-  const context = createContext();
-  await runCapability(GLOBAL_MEMORY_MCP_TOOL_ID, context, {
-    action: "remember",
-    memoryId: "preference",
-    title: "Preference",
-    markdown: "prefers short answers",
-  });
-
-  const listed = await runCapability(GLOBAL_MEMORY_MCP_TOOL_ID, context, {
-    action: "list",
-    pageSize: 1,
-    cursor: "0",
-  }) as { memories: unknown[]; hasMore: boolean; nextCursor?: string };
-  assert.equal(listed.hasMore, false);
-  assert.equal(listed.nextCursor, undefined);
-
-  // `list` counts memories, `search` carries the store's own token; the field
-  // is the same, so a cursor from one is refused by the other rather than
-  // silently read as an offset.
-  await assert.rejects(
-    () => runCapability(GLOBAL_MEMORY_MCP_TOOL_ID, context, {
-      action: "list",
-      cursor: "search:abc",
-    }),
-    /belongs to another action/,
-  );
-  await assert.rejects(
-    () => runCapability(GLOBAL_MEMORY_MCP_TOOL_ID, context, {
-      action: "search",
-      query: "prefers",
-      cursor: "list:0",
-    }),
-    /belongs to another action/,
-  );
 });
 
 type JsonPage = { paged: true; content: string; resultHash: string; nextOffset?: number; truncated: boolean };
@@ -269,22 +221,12 @@ test("result paging detects concurrent changes, validates cursors and never repe
   assert.equal(stored.value, "b".repeat(50_000));
 });
 
-test("memory and document writes return bounded acknowledgements and can be fully read afterward", async () => {
+test("document writes return bounded acknowledgements and can be fully read afterward", async () => {
   const context = createContext();
   const markdown = `START${'中文😀"\\\u0001'.repeat(8000)}END`;
-  const written = await runCapability(GLOBAL_MEMORY_MCP_TOOL_ID, context,
-    { action: "remember", memoryId: "big", title: "Big", markdown }) as { memory: { markdownTruncated: boolean } };
-  assert.ok(Buffer.byteLength(JSON.stringify(written)) <= 40_000);
-  assert.equal(written.memory.markdownTruncated, true);
-  const read = await collectJsonPages(args => runCapability(GLOBAL_MEMORY_MCP_TOOL_ID, context,
-    { action: "get", memoryId: "big", ...args })) as { memory: { markdown: string } };
-  assert.equal(read.memory.markdown, markdown);
   const created = await runCapability(KNOWLEDGE_MCP_TOOL_ID, context,
     { action: "create", documentId: "big-doc", title: "Big doc", markdown, includeMarkdown: true, maxMarkdownLength: 20_000 });
   assert.ok(Buffer.byteLength(JSON.stringify(created)) <= 40_000);
-  for (const pageSize of [0, -1, 1.5, 101, Number.NaN]) {
-    await assert.rejects(() => runCapability(GLOBAL_MEMORY_MCP_TOOL_ID, context, { action: "list", pageSize }), /pageSize/);
-  }
   for (const maxMarkdownLength of [-1, 1.5, 20_001, "100"]) {
     await assert.rejects(() => runCapability(KNOWLEDGE_MCP_TOOL_ID, context,
       { action: "edit", documentId: "big-doc", markdown: "must not write", maxMarkdownLength }), /maxMarkdownLength/);
@@ -351,83 +293,18 @@ test("knowledge reports a missing field as a validation failure, not a crash", a
   );
 });
 
-test("global memory lives in the knowledge store under a reserved prefix", async () => {
-  const context = createContext();
-
-  const remembered = await runCapability(GLOBAL_MEMORY_MCP_TOOL_ID, context, {
-    action: "remember",
-    memoryId: "Release-Cadence",
-    title: "Release cadence",
-    markdown: "Ships on Thursdays.",
-  }) as { action: string; memory: { memoryId: string; id?: string; title: string } };
-  assert.equal(remembered.action, "remember");
-  assert.equal(remembered.memory.memoryId, "release-cadence");
-  assert.equal(remembered.memory.id, undefined);
-
-  const listed = await runCapability(GLOBAL_MEMORY_MCP_TOOL_ID, context, { action: "list" }) as {
-    memories: { memoryId: string }[];
-    hasMore: boolean;
-  };
-  assert.deepEqual(listed.memories.map((memory) => memory.memoryId), ["release-cadence"]);
-  assert.equal(listed.hasMore, false);
-
-  const fetched = await runCapability(GLOBAL_MEMORY_MCP_TOOL_ID, context, {
-    action: "get",
-    memoryId: "release-cadence",
-  }) as { found: boolean };
-  assert.equal(fetched.found, true);
-
-  assert.deepEqual(await runCapability(GLOBAL_MEMORY_MCP_TOOL_ID, context, {
-    action: "forget",
-    memoryId: "release-cadence",
-  }), { action: "forget", memoryId: "release-cadence", id: "assistant-memory-release-cadence", deleted: true });
-});
-
-test("global memory refuses what looks like a credential", async () => {
-  const context = createContext();
-
-  await assert.rejects(
-    () => runCapability(GLOBAL_MEMORY_MCP_TOOL_ID, context, {
-      action: "remember",
-      memoryId: "leak",
-      title: "Token",
-      markdown: `token = ${"ghp_" + "a".repeat(24) + "01"}`,
-    }),
-    /looks like a credential or secret/u,
-  );
-  await assert.rejects(
-    () => runCapability(GLOBAL_MEMORY_MCP_TOOL_ID, context, {
-      action: "remember",
-      memoryId: "Not Valid",
-      title: "T",
-      markdown: "body",
-    }),
-    /lowercase letters/u,
-  );
-});
-
-test("memory is left out of a run the host did not offer it", () => {
+test("capabilities reflect host availability and exclude removed tools", () => {
   const previousUrl = process.env[BRIDGE_URL_ENV];
   const previousToken = process.env[BRIDGE_TOKEN_ENV];
   delete process.env[BRIDGE_URL_ENV];
   delete process.env[BRIDGE_TOKEN_ENV];
 
   try {
-    // Host configuration is missing from the offer for the same reason memory
-    // is: this process has no bridge to reach it through.
     assert.deepEqual(listProjectCapabilityToolIds(), [KNOWLEDGE_MCP_TOOL_ID, KV_MCP_TOOL_ID, PRESENTATION_CARD_MCP_TOOL_ID]);
-    assert.deepEqual(listProjectCapabilityToolIds({ globalMemory: true }), [
-      KNOWLEDGE_MCP_TOOL_ID,
-      KV_MCP_TOOL_ID,
-      GLOBAL_MEMORY_MCP_TOOL_ID,
-      PRESENTATION_CARD_MCP_TOOL_ID,
-    ]);
-
     // The catalogue still describes it — it is the environment, not the
     // declaration, that decided.
-    assert.equal(STEAMHARNESS_CAPABILITIES.length, 5);
+    assert.equal(STEAMHARNESS_CAPABILITIES.length, 4);
     assert.equal(isProjectCapabilityAvailable(KNOWLEDGE_MCP_TOOL_ID), true);
-    assert.equal(isProjectCapabilityAvailable(GLOBAL_MEMORY_MCP_TOOL_ID), true);
     assert.equal(findProjectCapability(KV_MCP_TOOL_ID), KV_CAPABILITY);
     assert.equal(findProjectCapability("nope"), undefined);
     assert.throws(() => isProjectCapabilityAvailable("nope"), /Unknown workflow capability/u);
@@ -467,7 +344,7 @@ test("an unavailable capability is not put in front of the model", async () => {
 test("the agent rendering gates, approves and reports like a tool should", async () => {
   const previousUrl = process.env[BRIDGE_URL_ENV];
   const previousToken = process.env[BRIDGE_TOKEN_ENV];
-  // A host that brought its bridge gets all five; availability is covered on
+  // A host that brought its bridge gets all four; availability is covered on
   // its own below.
   process.env[BRIDGE_URL_ENV] = "http://127.0.0.1:4321/bridge";
   process.env[BRIDGE_TOKEN_ENV] = "token";
@@ -476,7 +353,6 @@ test("the agent rendering gates, approves and reports like a tool should", async
   const approvals: string[] = [];
   const tools = await createProjectCapabilityTools({
     context,
-    globalMemory: true,
     approve: async (toolId) => {
       approvals.push(toolId);
     },
@@ -488,7 +364,6 @@ test("the agent rendering gates, approves and reports like a tool should", async
   assert.deepEqual(tools.map((tool) => tool.name), [
     KNOWLEDGE_MCP_TOOL_ID,
     KV_MCP_TOOL_ID,
-    GLOBAL_MEMORY_MCP_TOOL_ID,
       PRESENTATION_CARD_MCP_TOOL_ID,
   ]);
 

@@ -29,10 +29,7 @@ export function parseHostConnection(value: unknown, options: { allowAi?: boolean
   const aiServerUrl = connection.aiServerUrl === undefined ? undefined : normalizeHostUrl(connection.aiServerUrl, 'AI server');
   if (connection.aiAccessToken !== undefined && (typeof connection.aiAccessToken !== 'string' || !connection.aiAccessToken || connection.aiAccessToken.length > 16_384)) { throw new Error('Invalid host AI login.'); }
   if ((aiServerUrl === undefined) !== (connection.aiAccessToken === undefined)) { throw new Error('AI server URL and token must be configured together.'); }
-  if (connection.memorySessionCookie !== undefined && (typeof connection.memorySessionCookie !== 'string' || !connection.memorySessionCookie || connection.memorySessionCookie.length > 16_384 || /[\r\n\0]/.test(connection.memorySessionCookie))) { throw new Error('Invalid host memory session.'); }
   return { serverUrl: url.toString().replace(/\/+$/, ''), accessToken: connection.accessToken,
-    ...(typeof connection.memoryToken === "string" && /^shma_[A-Za-z0-9_-]{40,100}$/.test(connection.memoryToken) ? {memoryToken:connection.memoryToken}:{}),
-    ...(connection.memorySessionCookie ? { memorySessionCookie: connection.memorySessionCookie } : {}),
     ...(aiServerUrl === undefined ? {} : { aiServerUrl, aiAccessToken: connection.aiAccessToken }) };
 }
 

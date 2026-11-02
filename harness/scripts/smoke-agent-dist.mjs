@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { once } from "node:events";
 import { execFile } from "node:child_process";
-import { cp, mkdir, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
+import { cp, mkdir, mkdtemp, readFile, readdir, rm, symlink, writeFile } from "node:fs/promises";
 import { createServer } from "node:http";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -14,11 +14,13 @@ const databasePath = path.join(temporary, ...Array.from({ length: 8 }, () => "ne
 const manifest = JSON.parse(await readFile(path.join(root, "package.json"), "utf8"));
 let requests = 0;
 let systemPrompt = "";
+const advertisedTools = new Set();
 let codemode = false, scriptOutput = "";
 const server = createServer(async (request, response) => {
   let body = "";
   for await (const chunk of request) body += chunk;
   const input = JSON.parse(body);
+  for (const tool of input.tools ?? []) advertisedTools.add(tool.function?.name);
   systemPrompt = input.messages.filter(message => message.role === "system" || message.role === "developer")
     .map(message => message.content).join("\n");
   requests++;
@@ -43,8 +45,7 @@ try {
   assert.equal(await readFile(path.join(temporary, "dist", skillPath), "utf8"),
     await readFile(path.join(root, "src", "agent", skillPath), "utf8"));
   assert.match(await readFile(path.join(temporary, "dist", "skills", "i-have-adhd", "LICENSE"), "utf8"), /Copyright \(c\) 2026 Ayoub Ghriss/);
-  assert.equal(await readFile(path.join(temporary, 'dist/skills/steamharness-memory/SKILL.md'), 'utf8'),
-    await readFile(path.join(root, 'src/agent/skills/steamharness-memory/SKILL.md'), 'utf8'));
+  assert.equal((await readdir(path.join(temporary, "dist", "skills"))).includes("steamharness-memory"), false);
   await writeFile(path.join(temporary, "package.json"), JSON.stringify({ type: "module" }));
   // Only declared production dependencies are available. Pi, Chord and MCP must
   // load from the copied bundle, without source or development dependencies.
@@ -55,12 +56,6 @@ try {
   }
   await writeFile(path.join(temporary, "consumer.ts"), `
 import { createAgentRegistry, defineAgentTask, defineAgentExtension, type AgentNativeTool, type AgentSessionOptions } from "./dist/agent.js";
-import { AGENT_MEMORY_CONFIGURATION_KEY, AGENT_MEMORY_CONFIGURATION_FIELD, type AgentRuntimeOptions } from "./dist/index.js";
-const memoryKey: "STEAMHARNESS_AGENT_MEMORY" = AGENT_MEMORY_CONFIGURATION_KEY;
-// @ts-expect-error The public memory key retains its literal type.
-const invalidMemoryKey: number = AGENT_MEMORY_CONFIGURATION_KEY;
-const memoryDefault = AGENT_MEMORY_CONFIGURATION_FIELD.defaultValue;
-const optedIn: AgentRuntimeOptions = { memory: true };
 const task = defineAgentTask<{ value: string }, { phase: "done" }, string>({
   name: "test.typed", version: 1, initial: () => ({ phase: "done" }),
   phases: { done: async (task, runtime, context) => {
@@ -85,7 +80,9 @@ void session;
     target: "ES2022", module: "NodeNext", moduleResolution: "NodeNext", strict: true, noEmit: true, skipLibCheck: true, types: ["node"],
   }, files: ["consumer.ts"] }));
   await promisify(execFile)(process.execPath, [path.join(root, "node_modules/typescript/bin/tsc"), "--project", "tsconfig.json"], { cwd: temporary });
-  const { createAgent, withAgentMemory } = await import(pathToFileURL(path.join(temporary, "dist/agent.js")).href);
+  const agentModule = await import(pathToFileURL(path.join(temporary, "dist/agent.js")).href);
+  for (const removed of ["withAgentMemory", "createServerAgentMemoryProvider"]) assert.equal(removed in agentModule, false);
+  const { createAgent } = agentModule;
   server.listen(0, "127.0.0.1");
   await once(server, "listening");
   const address = server.address();
@@ -108,22 +105,10 @@ void session;
   assert.equal(requests, 1);
   assert.match(systemPrompt, /Use the i-have-adhd skill below by default/);
   assert.match(systemPrompt, /### 10\. No preamble/);
+  assert.doesNotMatch(systemPrompt, /# Account memory/);
   assert.equal(usage.length, 2);
   assert.ok(usage[0]);
   assert.equal(usage[0], usage[1]);
-  const submitted = [];
-  const memoryAgent = await withAgentMemory({ provider: {
-    capabilities: async () => ({ connected: true, enabled: true, status: 'ready', automatic: true, readOnly: false, scopes: ['global'] }),
-    recall: async () => [{ id: 'one', scope: 'global', content: 'DIST_MEMORY_SENTINEL', origin: 'manual', version: 1, updatedAt: '2026-01-01', sources: [] }],
-    submitTurn: async turn => { submitted.push(turn); }, list: async () => ({ items: [] }),
-    get: async () => {}, remember: async () => {}, update: async () => {}, forget: async () => {},
-  } }, () => createAgent({ provider: 'openai', model: 'dist-smoke', baseUrl: `http://127.0.0.1:${address.port}/v1`,
-    apiKey: 'offline-fixture', apiKind: 'openai-completions', contextWindow: 8192, workdir: temporary,
-    memory: true, databasePath: path.join(temporary, 'memory-agent.sqlite'), tools: [] }));
-  try { for await (const _event of memoryAgent.run({ prompt: 'A persisted user memory turn', requestId: 'memory-dist' })) { /* Drain. */ } }
-  finally { await memoryAgent.close(); }
-  assert.match(systemPrompt, /# Account memory/); assert.match(systemPrompt, /DIST_MEMORY_SENTINEL/);
-  assert.equal(submitted.length, 1); assert.deepEqual(submitted[0].messages.map(message => message.content), ['A persisted user memory turn', 'Dist durable ready.']);
   codemode = true;
   const sandbox = await createAgent({ provider: "openai", model: "dist-smoke", baseUrl: `http://127.0.0.1:${address.port}/v1`,
     apiKey: "offline-fixture", apiKind: "openai-completions", contextWindow: 8192, workdir: temporary, session: { codeMode: {}, nativeTools: [{
@@ -133,7 +118,9 @@ void session;
   try { for await (const _event of sandbox.run({ prompt: "Execute the script", requestId: "code-dist" })) { /* Drain the real worker. */ } }
   finally { await sandbox.close(); }
   assert.match(scriptOutput, /isolated 42/); assert.match(scriptOutput, /undefined/);
-  console.log("Copied dist: built-in skills, account memory injection/submission, typed extension API, SQLite replay and QuickJS nested execution passed with production dependencies only.");
+  assert.equal(advertisedTools.has("memory"), false);
+  assert.equal(advertisedTools.has("global_memory"), false);
+  console.log("Copied dist: built-in skill injection, typed extension API, SQLite replay and QuickJS nested execution passed with production dependencies only.");
 } finally {
   await new Promise(resolve => { server.close(resolve); server.closeAllConnections(); });
   await rm(temporary, { recursive: true, force: true });

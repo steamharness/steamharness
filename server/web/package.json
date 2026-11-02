@@ -38,8 +38,7 @@
     "typescript": "^6.0.0",
     "vite": "^6.3.0",
     "@steamharness/project-access": "workspace:*",
-    "@steamharness/project-card-metadata": "workspace:*",
-    "@steamharness/account-memory": "workspace:*"
+    "@steamharness/project-card-metadata": "workspace:*"
   },
   "devDependencies": {
     "@testing-library/jest-dom": "6.9.1",

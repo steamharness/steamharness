@@ -1,12 +1,11 @@
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
-import { AGENT_MEMORY_CONFIGURATION_KEY, inspectAggregateProjectStructure, inspectLocalProjectStructure } from "steamharness";
+import { inspectAggregateProjectStructure, inspectLocalProjectStructure } from "steamharness";
 
 const projectDir = path.resolve(process.cwd());
 // Run-scoped Knowledge and KV must not expose the assistant's store as project data.
 const CORE_TOOL_NAMES = [
-  "memory",
   "workflow-ui_present_card",
   "skill",
 ];
@@ -21,7 +20,7 @@ const SESSION_TOOL_NAMES = ["tool_search", "codemode", "update_plan", "subagent"
 const EXPECTED_TOOL_NAMES = [...SESSION_TOOL_NAMES, ...CONTROL_TOOL_NAMES, ...CORE_TOOL_NAMES, ...CODING_TOOL_NAMES];
 
 describe("developer assistant workflow", () => {
-  it("keeps its distributed identity without requiring an assistant memory database", async () => {
+  it("keeps its distributed identity without requiring a data binding", async () => {
     const manifest = JSON.parse(await readFile(path.join(projectDir, "steamharness.json"), "utf8"));
     expect(manifest.id).toBe("a3aca697-b086-459b-84e4-d357ad2d9fb2");
     expect(manifest.entries[0]).toMatchObject({ entryId: "main", type: "conversation" });
@@ -48,8 +47,6 @@ describe("developer assistant workflow", () => {
     const source = await readFile(path.join(projectDir, "index.ts"), "utf8");
 
     expect(structure.diagnostics).toEqual({ warnings: [], violations: [] });
-    expect(structure.configuration?.fields.find(field=>field.name===AGENT_MEMORY_CONFIGURATION_KEY)).toMatchObject({type:"boolean",defaultValue:true});
-    expect(source).toContain("memory: true");
     expect(structure.definitions.apiCalls.map((call) => call.method))
       .toContain("createAgentConversationProject");
     expect(structure.params?.filter((param) => param.panel === "quick").map((param) => param.name))
@@ -130,7 +127,6 @@ describe("developer assistant workflow", () => {
     // The four workflow capabilities come from Core, described once and
     // rendered both as MCP servers and as agent tools.
     expect(source).toContain("steamharness.createProjectCapabilityTools({");
-    expect(source).not.toContain("globalMemory: true");
     // Skills are read on demand rather than injected into every prompt.
     expect(source).toContain('skills: { directories: [SKILLS_DIRECTORY] }');
     expect(source).not.toContain("skillPaths");
@@ -203,7 +199,7 @@ describe("developer assistant workflow", () => {
     expect(prompt).toContain("existing one-shot build script");
     expect(prompt).toContain("Never start dev, watch, serve, HMR");
     expect(prompt).toContain("preview artifact was not updated");
-    expect(prompt).toContain("Never store secrets, credentials or transient progress");
+    expect(prompt).toContain("Do not expose credentials in cards, output or files.");
     expect(prompt).not.toContain("workflow-desktop");
     expect(prompt).not.toContain("create_cloud_app");
     expect(prompt).not.toContain("open_dock_tool");

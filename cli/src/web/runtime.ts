@@ -9,7 +9,6 @@ import { locale } from './localization';
 import { redactProjectData, type Runtime, type Report, type Project } from './workflow-types';
 
 import type { AgentSessionCommand, AgentSessionReceipt } from 'steamharness/agent';
-import { WebAccountMemory } from './account-memory';
 import { createSecretStreamRedactor } from './runtime-log';
 import { PROJECT_CONFIG_ENV, readProjectConfig } from '@steamharness/project-manifest';
 import { KANBAN_FILE_BRIDGE_REQUEST_TIMEOUT_MS } from '@steamharness/kanban-project';
@@ -17,10 +16,6 @@ import { KANBAN_FILE_BRIDGE_REQUEST_TIMEOUT_MS } from '@steamharness/kanban-proj
 export interface WebConnection {
   serverUrl: string;
   accessToken: string;
-  /** Host-only; excluded from worker environment and request payloads. */
-  memoryToken?: string;
-  /** Host-only session fallback for logins created before memory credentials. */
-  memorySessionCookie?: string;
   /** Independent private system-AI connection, never used for project APIs. */
   aiServerUrl?: string;
   aiAccessToken?: string;
@@ -37,12 +32,9 @@ export function cliRoot(): string {
 
 export function createWebRuntime(projectDir: string, storageDir: string, connection: () => WebConnection | undefined,
   options: { entryId?: string; allowSystemAi?: boolean; actor?: () => import('@steamharness/project-access').AccessActor; userSettings?: () => UserSettings | undefined } = {}): Runtime {
-  const memory = new WebAccountMemory(storageDir, connection, () => options.actor?.().userId);
   const root = cliRoot();
   const builtWorker = path.join(root, 'dist/web/worker.mjs');
   const worker = existsSync(builtWorker) ? builtWorker : path.join(root, 'src/web/worker.mjs');
-  const memoryCapabilitiesCache=new Map<string,import('steamharness/agent').AgentMemoryCapabilities>();
-  let memoryCapabilityAccount = '';
   const children = new Set<ChildProcess>();
   const active = new Map<string, ChildProcess>();
   const controls = new Map<string, (command: AgentSessionCommand, scopeId: string, attachments?: unknown[]) => Promise<AgentSessionReceipt>>();
@@ -63,10 +55,9 @@ export function createWebRuntime(projectDir: string, storageDir: string, connect
       : auth;
     if ((request.method === 'run' || request.method === 'resolve') && (request.project as Project)?.requiresLogin && !auth) { reject(new Error('SteamHarness Server login is not configured.')); return; }
     const userSettings = request.userSettings as UserSettings | undefined ?? options.userSettings?.();
-    const secrets = [runtimeAuth?.accessToken ?? '', runtimeAuth?.aiAccessToken ?? '', auth?.memoryToken ?? '', auth?.memorySessionCookie ?? '', ...(userSettings?.agent.models ?? []).flatMap(model => model.source === 'third-party' ? [model.apiKey] : [])];
+    const secrets = [runtimeAuth?.accessToken ?? '', runtimeAuth?.aiAccessToken ?? '', ...(userSettings?.agent.models ?? []).flatMap(model => model.source === 'third-party' ? [model.apiKey] : [])];
     // Workers use the verified page identity, including after logout.
     const env: NodeJS.ProcessEnv = sanitizeWebWorkerEnvironment(process.env);
-    for(const key of Object.keys(env))if(key.startsWith('STEAMHARNESS_MEMORY_')||key.startsWith('STEAMHARNESS_SERVER_MEMORY_'))delete env[key];
     Object.assign(env, { STEAMHARNESS_RUNTIME_PLATFORM: 'cli',
       [STEAMHARNESS_RUNTIME_LOCALE_ENV]: locale(), STEAMHARNESS_LOCALE: locale(),
       STEAMHARNESS_SERVER_URL: runtimeAuth?.serverUrl ?? '', STEAMHARNESS_SERVER_ADMIN_KEY: runtimeAuth?.accessToken ?? '', STEAMHARNESS_SERVER_TOKEN: '',
@@ -80,14 +71,6 @@ export function createWebRuntime(projectDir: string, storageDir: string, connect
     if (env.NODE_OPTIONS) { env.NODE_OPTIONS = env.NODE_OPTIONS.replace(/(?:--conditions=development|--conditions\s+development|-C=development|-C\s+development)/g, ''); }
     const child = spawn(process.execPath, [worker], { cwd: projectDir, env, shell: false, stdio: ['pipe', 'pipe', 'pipe', 'ipc'] });
     children.add(child);
-    child.on('message', (message:any) => {
-      if(message?.type!=='memory-grant'||typeof message.id!=='string')return;
-      if(!['run','memory-capabilities'].includes(String(request.method))||!request.project){child.send({type:'memory-grant-result',id:message.id,error:'Memory is not available.'});return;}
-      void memory.grant(request.project as Project, message.readOnly===true).then(grant=>{
-        if(connection()?.serverUrl!==auth?.serverUrl||connection()?.accessToken!==auth?.accessToken||connection()?.memoryToken!==auth?.memoryToken||connection()?.memorySessionCookie!==auth?.memorySessionCookie)throw new Error('Account changed.');
-        secrets.push(grant.token);if(child.connected)child.send({type:'memory-grant-result',id:message.id,grant});
-      }).catch(error=>{if(child.connected)child.send({type:'memory-grant-result',id:message.id,error:'Memory authorization is unavailable.',status:error?.status});});
-    });
     if (request.method === 'run') { active.set(String(request.runId), child); }
     const pending = new Map<string, { resolve(value: AgentSessionReceipt): void; reject(error: Error): void }>();
     if (request.method === 'run') controls.set(String(request.runId), (command, scopeId, attachments) => new Promise((resolve, reject) => {
@@ -157,9 +140,7 @@ export function createWebRuntime(projectDir: string, storageDir: string, connect
         { code: 'STEAMHARNESS_WORKER_INTERRUPTED' })); }
     });
     child.stdin!.on('error', () => undefined);
-    // An opted-in Agent must report missing authorization rather than silently
-    // disabling memory. Only this boolean crosses the worker boundary.
-    child.stdin!.end(JSON.stringify({ ...request, memoryAvailable:!!auth, userSettings, storageDir, runtimeProjectDir: projectDir, entryId: (request.project as Project)?.entryId ?? request.entryId ?? options.entryId, actor: options.actor?.() }));
+    child.stdin!.end(JSON.stringify({ ...request, userSettings, storageDir, runtimeProjectDir: projectDir, entryId: (request.project as Project)?.entryId ?? request.entryId ?? options.entryId, actor: options.actor?.() }));
   });
   const invokeRun = async (request: Record<string, unknown>, onEvent: (event: Record<string, unknown>) => void, signal: AbortSignal): Promise<Report> => {
     // A replacement host can start before its orphaned worker finishes cleanup.
@@ -189,18 +170,6 @@ export function createWebRuntime(projectDir: string, storageDir: string, connect
     forkAgentConversation: (project, conversationId, command) => invoke({ method: 'fork-conversation', project, conversationId, command }),
     isolateAgentConversation: (project, sourceConversationId, conversationId, targetId, retireSource, fileIds) => invoke({ method: 'isolate-conversation', project, sourceConversationId, conversationId, targetId, retireSource, fileIds }),
     kanbanBridge: (project, call) => invoke({ method: 'kanban-bridge', project, call }),
-    memoryCapabilities: async project => {
-      const auth=connection(),account=JSON.stringify([auth?.serverUrl,auth?.memoryToken,auth?.memorySessionCookie,options.actor?.().userId]);
-      if(account!==memoryCapabilityAccount){memoryCapabilityAccount=account;memoryCapabilitiesCache.clear();}
-      const configuration=await (await configurations(project.entryId)).snapshot({required:false});
-      const key=JSON.stringify([account,project.id,project.uri,project.folderPath,project.entryId,project.assistant?.workdir,configuration.id,configuration.revision]);
-      const current=()=>JSON.stringify([connection()?.serverUrl,connection()?.memoryToken,connection()?.memorySessionCookie,options.actor?.().userId])===account;
-      try{const capabilities=await invoke<import('steamharness/agent').AgentMemoryCapabilities>({method:'memory-capabilities',project,configuration});
-        if(!current())throw new Error('Account changed.');
-        if(capabilities.connected)memoryCapabilitiesCache.set(key,capabilities);else memoryCapabilitiesCache.delete(key);
-        return capabilities;
-      }catch(error){const previous=memoryCapabilitiesCache.get(key);if(previous&&current()&&![401,403,404].includes(Number((error as any)?.metadata?.status)))return {...previous,status:'unavailable'};memoryCapabilitiesCache.delete(key);throw error;}
-    },
     inspect: (paths, entryId) => invoke({ method: 'inspect', paths, entryId }),
     resolveParams: (project, request, entrypointId) => invoke({ method: 'resolve', project, request, entrypointId }),
     run: async (request, onEvent) => {

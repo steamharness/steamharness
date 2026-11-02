@@ -2,12 +2,12 @@ import { t } from '../localization';
 import { parseAgentModels } from '@steamharness/project-configuration';
 import { iconButton, iconHtml, updateIcon } from './ui';
 import { requestAction } from './action-dialog';
-import { AGENT_MEMORY_CONFIGURATION_KEY,AGENT_MEMORY_CONFIGURATION_FIELD,AGENT_MODELS_CONFIGURATION_KEY,applyTemplateValues,configurationCapability,configurationSnapshot,configurationPointerPart,createPublicationDraft,freezeConfigurationTemplate,type ConfigurationPublicationDraft, parseConfigurationField, parseConfigurationFile, validateConfigurationFileSelection, type ProjectConfigurationFile, type ProjectConfigurationAction, type ProjectConfigurationField, type ProjectConfigurationState, type ConfigurationValues } from '@steamharness/project-configuration';
+import { AGENT_MODELS_CONFIGURATION_KEY,applyTemplateValues,configurationCapability,configurationSnapshot,configurationPointerPart,createPublicationDraft,freezeConfigurationTemplate,type ConfigurationPublicationDraft, parseConfigurationField, parseConfigurationFile, validateConfigurationFileSelection, type ProjectConfigurationFile, type ProjectConfigurationAction, type ProjectConfigurationField, type ProjectConfigurationState, type ConfigurationValues } from '@steamharness/project-configuration';
 import './project-configurations.css';
 import { createAgentModelsControl } from './agent-models';
 
-const fieldLabel = (field: ProjectConfigurationField) => field.control === 'ai-models' ? t('AI models') : field.name === AGENT_MEMORY_CONFIGURATION_KEY ? t('Project memory') : field.label || field.name;
-const fieldDescription = (field: ProjectConfigurationField) => field.name === AGENT_MEMORY_CONFIGURATION_KEY ? t(AGENT_MEMORY_CONFIGURATION_FIELD.description!) : field.description ?? field.name;
+const fieldLabel = (field: ProjectConfigurationField) => field.control === 'ai-models' ? t('AI models') : field.label || field.name;
+const fieldDescription = (field: ProjectConfigurationField) => field.description ?? field.name;
 
 type Host = { postMessage(message: Record<string, unknown>): void };
 export interface ProjectConfigurationsPanel {
@@ -539,7 +539,7 @@ export function mountProjectConfigurations(host: Host, embedded?: { open(): void
         overrides.delete(field.name);changed();input.focus();
       }); if(!capability.editable)reset.disabled=true;resets.set(field.name,reset);controls.prepend(reset);
       const control=document.createElement('div'); control.className='configuration-field-control'; control.append(input);
-      if(field.name===AGENT_MEMORY_CONFIGURATION_KEY){input.setAttribute('role','switch');input.classList.add('configuration-memory-switch');fieldHeading.insertBefore(input,controls);}else row.append(control);
+      row.append(control);
       if (field.secret && input instanceof HTMLInputElement && input.type==='password') {
         const reveal=iconButton('eye',t('Show sensitive values'),()=>{const hidden=input.type==='password'; input.type=hidden?'text':'password'; updateIcon(reveal,hidden?'eye-closed':'eye'); reveal.title=reveal.ariaLabel=t(hidden?'Hide sensitive values':'Show sensitive values'); reveal.ariaPressed=String(hidden);}); reveal.ariaPressed='false'; control.classList.add('configuration-secret'); control.append(reveal);
       }

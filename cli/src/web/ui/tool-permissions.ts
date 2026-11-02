@@ -8,7 +8,6 @@ const categories: [string, RegExp][] = [
   ['Agent tools', /^(update_plan|subagent|tool_search|codemode|ask_user)$/],
   ['Knowledge', /^(kb_|workflow-knowledge_|knowledge_documents$)/],
   ['Data storage', /^(kv_|db_|workflow-kv_|kv_store$)/],
-  ['Memory', /^(workflow-memory_|global_memory$)/],
   ['Studio', /^workflow-studio_/],
   ['Resource cards', /^workflow-ui_/],
 ];

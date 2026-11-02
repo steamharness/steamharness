@@ -3,7 +3,6 @@ import type { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import type { NodeContext } from "../../types/context";
 import { createMcpToolServer } from "../mcp/server";
 import { loadTypebox } from "../pi";
-import { GLOBAL_MEMORY_CAPABILITY } from "./global-memory";
 import { KANBAN_METHODS_CAPABILITY } from "./kanban-methods";
 import { KNOWLEDGE_CAPABILITY } from "./knowledge";
 import { KV_CAPABILITY } from "./kv";
@@ -20,7 +19,6 @@ import type { Capability } from "./types";
 export const STEAMHARNESS_CAPABILITIES: readonly Capability[] = [
   KNOWLEDGE_CAPABILITY,
   KV_CAPABILITY,
-  GLOBAL_MEMORY_CAPABILITY,
   KANBAN_METHODS_CAPABILITY,
   PRESENTATION_CARD_CAPABILITY,
 ];
@@ -32,17 +30,10 @@ export interface CapabilityContext {
    * `user_input_required` parks the run instead.
    */
   approve?: (toolId: string, args: unknown) => Promise<void>;
-  /**
-   * Whether durable memory is part of this run.
-   *
-   * A host that offers no memory store leaves it out entirely, so the model
-   * is never shown a tool whose every call would fail.
-   */
-  globalMemory?: boolean;
 }
 
-export function listProjectCapabilityToolIds(options: { globalMemory?: boolean } = {}): string[] {
-  return selectCapabilities(options).map((capability) => capability.toolId);
+export function listProjectCapabilityToolIds(): string[] {
+  return selectCapabilities().map((capability) => capability.toolId);
 }
 
 export function findProjectCapability(toolId: string): Capability | undefined {
@@ -80,7 +71,7 @@ export async function createProjectCapabilityTools(
 ): Promise<AgentTool[]> {
   const Type = await loadTypebox();
 
-  return selectCapabilities(options).map((capability): AgentTool => ({
+  return selectCapabilities().map((capability): AgentTool => ({
     name: capability.toolId,
     label: capability.title,
     description: capability.description,
@@ -146,10 +137,8 @@ export async function runProjectCapabilityAction(
   return requireProjectCapability(toolId).run(context, args);
 }
 
-function selectCapabilities(options: { globalMemory?: boolean }): Capability[] {
-  return STEAMHARNESS_CAPABILITIES.filter(
-    (capability) => capability !== GLOBAL_MEMORY_CAPABILITY || options.globalMemory === true,
-  ).filter((capability) => capability.isAvailable?.() !== false);
+function selectCapabilities(): Capability[] {
+  return STEAMHARNESS_CAPABILITIES.filter((capability) => capability.isAvailable?.() !== false);
 }
 
 function failureEnvelope(

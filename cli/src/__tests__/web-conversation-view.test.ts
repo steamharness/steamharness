@@ -46,6 +46,20 @@ async function fixture(query = '', saved?: object) {
   return { receive, emit, requests, savedState, input: document.querySelector<HTMLTextAreaElement>('#message')! };
 }
 
+it.each(['success', 'failed', 'aborted'])('keeps the final duration in the reply metadata after %s', async status => {
+  const f = await fixture(), startedAt = Date.now();
+  const entry: ConversationSession = { ...session('duration'), messages: [{ id: 'reply', role: 'assistant', content: 'Answer', status: 'running', createdAt: startedAt - 12_000 }] };
+  f.receive([entry], entry.id);
+  const metadata = () => document.querySelector('.assistant .message-metadata')!.textContent;
+  expect(metadata()).toContain('Responding'); expect(metadata()).toContain('Duration 12s');
+  entry.messages[0] = { ...entry.messages[0], status, durationMs: 12_000 };
+  f.receive([entry], entry.id);
+  expect(metadata()).toContain('Duration 12s'); expect(metadata()).not.toContain('Responding');
+  vi.setSystemTime(startedAt + 70 * 60 * 60 * 1000); vi.advanceTimersByTime(1000);
+  f.receive([structuredClone(entry)], entry.id);
+  expect(metadata()).toContain('Duration 12s');
+});
+
 it.each(['bbbbbbbb-1111-2222-3333-444444444444', 'cccccccc-1111-2222-3333-444444444444'])(
   'a new assistant view opens its own blank conversation %s without touching a running conversation or reusing another blank', async id => {
     const f = await fixture(`?projectView=${viewId}&conversationId=${id}&createConversation=1`);

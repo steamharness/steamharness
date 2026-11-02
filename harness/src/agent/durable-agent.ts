@@ -31,9 +31,7 @@ import { AGENT_PROVIDER_MAX_RETRIES } from "./provider-retry";
 import { withEnvironmentByteReads } from "./environment-read";
 import type { AgentSessionCommand, AgentSessionOptions, AgentSessionReceipt, AgentSessionSnapshot } from "./session-types";
 import { AgentRoleDoc } from "./subagents";
-import { recallAgentMemory, submitAgentMemoryTurn, type AgentMemoryBinding } from "./memory";
 import { BUILTIN_AGENT_SKILLS_PROMPT } from "./builtin-skills";
-import { AGENT_MEMORY_SKILL_PROMPT } from "./builtin-memory-skill";
 
 const context = BACKGROUND_CONTEXT;
 const deferred = () => {
@@ -49,19 +47,6 @@ const RunDoc = defineDocFamily({
   initial: () => ({ cutoff: 0, initialized: false as boolean, approvals: {} as JsonObject, usage: {} as JsonObject,
     retries: {} as JsonObject, continuations: {} as JsonObject, pendingRetries: {} as JsonObject, failure: "", end: 0 }),
 });
-const MemoryIdentityDoc = defineDoc({
-  kind: 'project.agent.memory-identity', version: 1, scope: 'conversation', history: 'latest', fork: 'initial',
-  initial: () => ({ id: randomUUID() }),
-});
-const MemorySessionDoc = defineDoc({
-  kind: 'project.agent.memory-session', version: 1, scope: 'conversation', history: 'latest', fork: 'initial',
-  initial: () => ({ cutoff: -1 }),
-});
-const MemoryTurnDoc = defineDocFamily({
-  kind: 'project.agent.memory-turn', version: 1, scope: 'conversation', history: 'latest', fork: 'initial', family: true,
-  initial: () => ({ submitted: false as boolean }),
-});
-
 export interface DurableAgentState {
   systemPrompt: string;
   model: Model<Api>;
@@ -75,8 +60,6 @@ export interface DurableAgentState {
 }
 
 export interface DurableAgentOptions {
-  memoryEnabled?: boolean;
-  memory?: AgentMemoryBinding;
   sessionLease?: Promise<void>;
   sessionSuspend?: Promise<void>;
   /** Reattach the host and scheduler without submitting the workflow's bootstrap prompt. */
@@ -136,14 +119,6 @@ export class DurableAgent {
   private readonly approvedCalls = new Set<string>();
   private readonly searchStates = new Map<string, string>();
   private seeded = false;
-  /** Both identities live in the durable database and survive a host restart. */
-  private memoryIdentity = '';
-  private memoryCutoff = 0;
-  private memorySubmissions = Promise.resolve();
-  private readonly submittedMemoryTurns = new Set<string>();
-  private readonly recalledMemory = new Map<number, { key: string; text: string }>();
-  memoryReadOnly = false;
-  get memoryTurnId(): string | undefined { return this.memoryIdentity && this.activeRequest ? `${this.memoryIdentity}:${this.activeRequest}` : undefined; }
   private fatalFailure?: unknown;
   private failActive?: (error: unknown) => void;
 
@@ -224,22 +199,6 @@ export class DurableAgent {
         },
       }, context);
       this.root = await this.harness.root(context, { agent: { model: { provider: this.state.model.provider, modelId: this.state.model.id } } });
-      const existing = this.options.memoryEnabled ? await this.root.context(context) : undefined;
-      const memory = await this.root.commit(async tx => {
-        const session = await tx.doc(MemorySessionDoc, this.root!.id);
-        if (!existing) {
-          // The next activation must also exclude turns completed while disabled.
-          session.cutoff = -1;
-          return undefined;
-        }
-        const identity = await tx.doc(MemoryIdentityDoc, this.root!.id);
-        // Enabling memory does not import completed conversation history.
-        if (session.cutoff < 0) session.cutoff = Math.max(0, ...existing.entries.map(entry => entry.id));
-        return { id: identity.id, cutoff: session.cutoff };
-      }, context);
-      if (memory) {
-        this.memoryIdentity = memory.id; this.memoryCutoff = memory.cutoff;
-      }
       await this.resources.restore(this.harness, this.root.id, context);
       if (this.options.session) {
         this.session = new DurableAgentSession(this.harness, this.root, this.options.session,
@@ -247,11 +206,6 @@ export class DurableAgent {
             await this.refresh();
             this.state.model = this.models.getModel(snapshot.configuration.provider, snapshot.configuration.model) ?? this.state.model;
             this.state.thinkingLevel = snapshot.configuration.effort;
-            // A live host lease outlives foreground answers. Submit each committed
-            // turn before publishing completion, rather than waiting for that lease.
-            const saving = this.memorySubmissions.then(() => this.submitMemoryTurns(snapshot));
-            this.memorySubmissions = saving.catch(error => { try { this.options.memory?.onError?.(error); } catch {} });
-            await this.memorySubmissions;
             await this.emit({ type: "project_session", snapshot } as unknown as AgentEvent);
           }, error => this.fail(error), this.models, storage, registry,
           (loaded) => this.resources!.snapshot(registry.snapshot(), loaded, this.options.storage?.label ?? (this.options.databasePath ? "SQLite" : "Memory")),
@@ -407,8 +361,7 @@ export class DurableAgent {
     const promptSection = section("workflow", async (input, ctx) => {
       const role = await input.read.snapshot(AgentRoleDoc, input.conversationId, ctx);
       if (typeof role?.definition?.systemPrompt !== "string") return this.state.systemPrompt;
-      return [role.definition.systemPrompt, BUILTIN_AGENT_SKILLS_PROMPT,
-        ...(this.options.memory ? [AGENT_MEMORY_SKILL_PROMPT] : [])].join("\n\n");
+      return [role.definition.systemPrompt, BUILTIN_AGENT_SKILLS_PROMPT].join("\n\n");
     }, { tag: false });
     this.registry.install(defineExtension({
       name: "workflow",
@@ -568,7 +521,6 @@ export class DurableAgent {
           }
           const compacted = await this.compactBeforeRequest(root, api, requestContext);
           const messages = compacted || partials.length > 0 ? (await root.context(context)).messages : request.messages;
-          if (this.options.memory) return { messages: await this.memoryMessages(root, logicalRequestId, messages) };
           if (compacted || partials.length > 0) return { messages };
         },
       }), hook(ToolTask, {
@@ -669,59 +621,6 @@ export class DurableAgent {
     }
   }
 
-  private async memoryMessages(conversation: Conversation, requestId: string, messages: readonly Message[]): Promise<readonly Message[]> {
-    const binding = this.options.memory;
-    if (!binding) return messages;
-    const history = await conversation.context(context);
-    const input = [...history.entries].reverse().find(entry =>
-      ["project.input", "pi.user"].includes(entry.kind) && entry.model?.some(message => message.role === "user"));
-    const user = input?.model?.find(message => message.role === "user");
-    const query = typeof user?.content === "string" ? user.content
-      : user?.content.filter(block => block.type === "text").map(block => block.text).join("") ?? "";
-    const key = JSON.stringify([requestId, query]);
-    let recalled = this.recalledMemory.get(conversation.id);
-    if (recalled?.key !== key) {
-      recalled = { key, text: await recallAgentMemory(binding, query) };
-      this.recalledMemory.set(conversation.id, recalled);
-    }
-    if (!recalled.text) return messages;
-    const system = messages.findIndex(message => message.role === "system");
-    return system < 0 ? [{ role: "system", content: recalled.text, timestamp: Date.now() }, ...messages]
-      : messages.map((message, index) => index === system && message.role === "system"
-        ? { ...message, content: `${message.content}\n\n${recalled.text}` } : message);
-  }
-
-  private async submitMemoryTurns(snapshot: AgentSessionSnapshot): Promise<void> {
-    const binding = this.options.memory;
-    if (!binding || !this.root || (!this.options.databasePath && !this.options.storage)) return;
-    for (const turn of snapshot.turns) {
-      // Owned subagents and their reports are model-generated input, not user evidence.
-      if (turn.conversationId !== this.root.id || turn.mode === "report" || turn.status !== "done"
-        || turn.entryId === undefined || turn.entryId <= this.memoryCutoff || turn.answerId === undefined) continue;
-      const turnId = createHash("sha256").update(`${this.memoryIdentity}:${turn.requestId}`).digest("hex");
-      if (this.submittedMemoryTurns.has(turnId)) continue;
-      const sent = await this.root.commit(async tx => (await tx.doc(MemoryTurnDoc, this.root!.id, turnId, null)).submitted, context);
-      if (sent) { this.submittedMemoryTurns.add(turnId); continue; }
-      let submitted = this.memoryReadOnly || binding.readOnly;
-      if (!submitted) {
-        const history = await this.root.context(context, { at: turn.answerId as EntryRecord["id"] });
-        const answer = history.entries.find(entry => entry.id === turn.answerId)?.model?.find(message => message.role === "assistant");
-        const text = answer?.content.filter(block => block.type === "text").map(block => block.text).join("") ?? "";
-        if (!text.trim() || answer?.stopReason === "error" || answer?.stopReason === "aborted") continue;
-        submitted = await submitAgentMemoryTurn(binding, {
-          turnId, messages: [
-            { id: `${turnId}:user`, role: "user", content: turn.prompt, timestamp: Date.now() },
-            { id: `${turnId}:assistant`, role: "assistant", content: text, timestamp: answer!.timestamp },
-          ],
-        });
-      }
-      if (submitted) {
-        await this.root.commit(async tx => { (await tx.doc(MemoryTurnDoc, this.root!.id, turnId, null)).submitted = true; }, context);
-        this.submittedMemoryTurns.add(turnId);
-      }
-    }
-  }
-
   private adaptTool(tool: AgentTool): ToolRegistration {
     return {
       name: tool.name, description: tool.description, parameters: tool.parameters,
@@ -733,9 +632,6 @@ export class DurableAgent {
       ...(["read", "bash", "grep", "find", "ls"].includes(tool.name) ? { outputLimits: { maxLines: 40_000 } } : {}),
       execute: async (args, api, callContext) => {
         await this.checkConfigurationAccess();
-        if (tool.name === "memory" && api.conversationId !== this.root?.id && !["list", "get", "search"].includes(String((args as {action?:unknown})?.action))) {
-          return {output:[{type:"text",text:"Subagent memory is read-only."}],isError:true};
-        }
         const prefix = `${api.conversationId}:${api.taskId}:`;
         if (!this.approvedCalls.has(`${prefix}${api.callId}`)) {
           const decision = await this.approve({ type: "toolCall", id: api.callId, name: tool.name, arguments: json(args) as JsonObject }, callContext, prefix);
@@ -747,7 +643,7 @@ export class DurableAgent {
         let progress = Promise.resolve();
         let result;
         try {
-          result = await tool.execute(tool.name === "memory" ? `${this.memoryIdentity}:${api.conversationId}:${api.callId}` : api.callId, args, callContext.abortSignal, update => {
+          result = await tool.execute(api.callId, args, callContext.abortSignal, update => {
             const snapshot = json(update);
             progress = progress.then(() => api.details(snapshot, callContext));
             void progress.catch(error => this.fail(error));

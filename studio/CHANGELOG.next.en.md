@@ -1,6 +1,6 @@
 # Unreleased
 
-- Fixed existing valid logins to authorize Assistant and project memory after upgrades without signing out. The trusted CLI host uses the saved account session to issue short-lived scoped grants; cookies stay out of project processes, page state and diagnostics. Updating memory authorization does not restart the CLI.
+- Removed global and account memory, including tools, skills, authorization, service integration and settings controls.
 
 - Fixed dependency setup for new projects to ignore unrelated ancestor Corepack settings and respect an explicit npm choice. Updated board templates, execution scripts and bilingual guidance.
 
@@ -12,8 +12,6 @@
 
 - Resource panels now list distinct databases by their host-managed names, with one option for databases shared across entries. Removed the local/server selector; a read-only icon shows the database location. Name updates and switches between shared entries preserve data and drafts.
 
-- Fixed memory job feedback to distinguish paused authorization from extraction failures, explain recovery, and disable unavailable or repeated retries without reporting edit conflicts.
-
 - Added Studio Control diagnostics for open Kanban entries and read-only page queries, scoped to the aggregate directory, entry and current configuration so the assistant can verify actual image readiness.
 
 - Add: Trace now includes an Errors filter for node, tool and run failures and model retry reasons, retaining diagnostics after success. Composer parameter and operation alerts can be dismissed and ignore late errors from other conversations.
@@ -24,13 +22,7 @@
 
 - Added: Show named roles, sources, phases and completion counts in Tasks, with child conversation navigation, cancellation and failed-item retry through Core control.
 
-- Fixed repeated memory settings reloads during background account checks and system AI connection updates. Preserve filters, details, focus and unsaved drafts; clear previous content when switching accounts or servers, or when sign-in expires.
-
-- Fixed memory settings with descriptive rows and compact switches. Reuse valid account sessions, distinguish service setup from authorization, and discard replies after sign-out.
-
 - Added: Click local file paths in Agent replies and plans to open them in the editor. Resolve relative paths from the project root or Assistant working directory, support line/column locations and paths containing spaces or Unicode, and reuse document previews.
-
-- Added: Add a native account memory panel in settings, clear stale data when switching accounts and bind CLI assistant memory through host authorization.
 
 - Resolve local Node symlinks before preparing child environments, revalidate runtimes for new sessions and status requests, and check every declared toolchain checksum, rejecting paths and links outside the installation.
 
@@ -109,7 +101,6 @@
 
 - Fix: Assistant startup retries immediately show progress and a spinner, prevent duplicate clicks, and display the original reason if retry fails before allowing another attempt.
 
-
 - [Improved] Steam tools initially occupy one third of the window. Manually resized widths are saved per workspace and restored after hiding, mode switches and reloads; temporary window constraints preserve the preferred width.
 
 - Added configuration permission queries, recipient previews and author draft management through Studio Control with read-only enforcement; local RPC uses the current account and publishing checks the draft revision.
@@ -133,7 +124,6 @@
 - [Added] Share project configuration panels and local storage with the standalone CLI for all three project types. Studio Control can query, fully manage, import and export local or Server configurations with the panel closed, subject to project scope and read-only permissions.
 
 ### Opening Projects
-
 
 ### Project Avatars
 

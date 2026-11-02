@@ -79,7 +79,7 @@ let editTimer: ReturnType<typeof setTimeout> | undefined, searchTimer: ReturnTyp
 let prompt: InputPrompt | undefined, promptKey = '';
 const narrow = matchMedia('(max-width: 680px)'), dialogs = new ConversationTools(aggregateToolbar.databases, {
   path: target => post({ type: 'open-path', ...target }),
-  account: reason => post({ type: 'open-account', reason }),
+  account: () => post({ type: 'open-account' }),
   configurations: configurationPanel,
   skills: { load: (requestId, skillId) => post({ type: 'project-skills', requestId, skillId, entrypointId }) },
   tools: () => ({ parameters: parameters(), policies: draft().policies, readOnly: !connected,
@@ -172,7 +172,7 @@ function renderEntrypoints(): void {
   selectEntrypoint(entries.some(entry => entry.id === saved.entrypointId) ? saved.entrypointId : defaultId || undefined);
 }
 function controls(): void {
-  dialogs.updatePermissions?.(state?.parameterRevision);
+  dialogs.updatePermissions?.();
   if (state) { updateProjectAvatar(element('project-info'), state.project); }
   serverGuidance.update(state?.serverData, state?.project.id ?? '', { connected, working: checkingServer || !!state?.serverData?.checking, canCreate: !state?.project.assistant });
   element<HTMLButtonElement>('run').disabled = disabled() || resolving || serverBlocked();

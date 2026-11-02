@@ -57,6 +57,9 @@ export class ConversationController {
   constructor(readonly project: Project, private readonly runtime: Runtime, saved: { sessions?: ConversationSession[]; activeId?: string; selectionVersion?: number }, private readonly options: ControllerOptions) {
     this.sessions = (saved.sessions ?? []).filter((entry) => typeof entry.id === 'string' && typeof entry.title === 'string' && Array.isArray(entry.messages));
     if (!this.sessions.length) { this.sessions.push(this.blank()); }
+    // Durable turns may have committed after the last Web message checkpoint.
+    // Reconcile them before deciding which messages need execution recovery.
+    this.restoreAgentState();
     for (const entry of this.sessions) {
       entry.createdAt ??= entry.messages[0]?.createdAt ?? 0;
       entry.updatedAt ??= entry.messages.at(-1)?.createdAt ?? entry.createdAt;
@@ -92,7 +95,6 @@ export class ConversationController {
     // Legacy histories could retain the first ID even after navigating elsewhere.
     const latest = this.sessions.reduce((latest, entry) => entry.updatedAt! >= latest.updatedAt! ? entry : latest);
     this.activeId = saved.selectionVersion === 1 && this.sessions.some(entry => entry.id === saved.activeId) ? saved.activeId! : latest.id;
-    for (const entry of this.sessions) if (!entry.agentOwnerId && entry.agent) this.projectAgent(entry, entry.agent, true);
   }
   get current(): ConversationSession { return this.sessions.find((entry) => entry.id === this.activeId)!; }
   get running(): boolean { return sessionRunning(this.current); }
@@ -376,7 +378,7 @@ export class ConversationController {
       agentCommands: this.sessions.filter(session => (session.agentOwnerId ?? session.id) === entry.id).flatMap(session => session.agentCommands ?? []),
     };
     const settled = entry.agent?.turns.some(turn => turn.requestId === answer.sessionRequestId && (turn.status === 'done' || turn.status === 'unanswered'));
-    if (!settled) { answer.status = 'running'; answer.error = undefined; }
+    if (!settled) { answer.status = 'running'; answer.error = undefined; delete answer.durationMs; }
     if (!answer.submittingInput) { answer.pendingInput = undefined; }
     entry.updatedAt = Date.now();
     entry.activeRunId = answer.runId;
@@ -451,7 +453,10 @@ export class ConversationController {
       }
       const primaryDone = entry.agent?.turns.some(turn => turn.requestId === answer.sessionRequestId && turn.status === 'done');
       answer.report = report; answer.status = primaryDone && report.status !== 'waiting_for_input' && report.status !== 'failed' ? 'success' : report.status;
-      answer.durationMs = report.durationMs; answer.recovering = false;
+      // A durable owner can outlive many replies; its report measures the
+      // worker lifetime, while each projected turn already owns its duration.
+      if (!entry.agent) answer.durationMs = report.durationMs;
+      answer.recovering = false;
       // Paused reports omit unfinished streams; resumed reports can omit earlier input stages.
       const items = (report.output?.items ?? []).filter(item => item.metadata?.kind !== 'agent-session');
       if ((!entry.agent || report.status === 'waiting_for_input') && report.output && (report.status === 'success' || !answer.items?.length || (report.status !== 'waiting_for_input' && items.length))) {
@@ -515,6 +520,7 @@ export class ConversationController {
         } else if (task.cancelled || this.disposed || answer.status === 'failed') entry.queuePaused = true;
       }
       if (!historical && answer.status !== 'running' && answer.status !== 'failed') answer.recovering = false;
+      if (!historical && answer.status !== 'running' && !answer.recovering) this.finishDuration(answer);
       if (!historical && answer.status !== 'waiting_for_input' && answer.status !== 'running') {
         answer.timers = answer.timers?.map((timer) => timer.status === 'running'
           ? { ...timer, status: 'cleared', endedAt: new Date().toISOString(), durationMs: Math.max(0, Date.now() - new Date(timer.startedAt).getTime()) }
@@ -671,6 +677,9 @@ export class ConversationController {
       waiter.resolve(receipt); this.agentWaiters.delete(key);
     }
   }
+  restoreAgentState(sessions = this.sessions): void {
+    for (const entry of sessions) if (!entry.agentOwnerId && entry.agent) this.projectAgent(entry, entry.agent, true);
+  }
   private projectAgent(owner: ConversationSession, snapshot: AgentSessionSnapshot, restore = false): void {
     if (snapshot?.version !== 1 || !Number.isSafeInteger(snapshot.revision)) return;
     if (!restore && owner.agent?.ownerId === snapshot.ownerId && owner.agent.revision >= snapshot.revision) return;
@@ -715,18 +724,20 @@ export class ConversationController {
         if (!answer && turn.mode !== 'steer') {
           const id = `session:${turn.conversationId}:${turn.requestId}`;
           const pending = entry.agentCommands?.find(item => item.command.requestId === turn.requestId);
-          entry.messages.push({ id: `${id}:input`, role: 'user', content: input?.text ?? turn.prompt, createdAt: input?.createdAt ?? Date.now(), contextEpoch: turn.epoch,
+          entry.messages.push({ id: `${id}:input`, role: 'user', content: input?.text ?? turn.prompt, createdAt: input?.createdAt ?? turn.startedAt ?? Date.now(), contextEpoch: turn.epoch,
             attachments: input?.attachments ?? pending?.attachments, references: input?.references, ...(input ? { input } : {}) });
-          answer = { id, role: 'assistant', content: '', items: [], createdAt: Date.now(), sessionRequestId: turn.requestId, sessionConversationId: turn.conversationId,
+          answer = { id, role: 'assistant', content: '', items: [], createdAt: turn.startedAt ?? Date.now(), sessionRequestId: turn.requestId, sessionConversationId: turn.conversationId,
             model: input ? conversationModelName(input, projectParameters(this.project, input.entrypointId).fields) : undefined };
           entry.messages.push(answer);
         }
         if (turn.mode === 'steer') {
           const id = `steer:${turn.requestId}`;
-          if (!entry.messages.some(message => message.id === id)) entry.messages.push({ id, role: 'user', content: input?.text ?? turn.prompt, status: 'steer', createdAt: Date.now(), attachments: input?.attachments, references: input?.references });
+          if (!entry.messages.some(message => message.id === id)) entry.messages.push({ id, role: 'user', content: input?.text ?? turn.prompt, status: 'steer', createdAt: turn.startedAt ?? Date.now(), attachments: input?.attachments, references: input?.references });
         }
         if (entry.agentInputs) delete entry.agentInputs[turn.requestId];
         if (!answer) continue;
+        const startedAt = outputTurns[0]?.startedAt;
+        if (startedAt !== undefined) answer.createdAt = startedAt;
         answer.sessionConversationId = turn.conversationId;
         answer.contextEpoch = turn.epoch;
         answer.entryId = turn.answerId;
@@ -746,12 +757,23 @@ export class ConversationController {
             'This system AI model is unavailable. Check your subscription in Project configurations.',
           ].includes(answer.error ?? '');
         if (configurationFailure) { delete answer.report; delete answer.durationMs; answer.recovering = false; }
-        if (configurationFailure || answer.status !== 'failed' && (!restore || answer.status === undefined)) {
+        const terminal = turn.status === 'done' || turn.status === 'unanswered';
+        if (configurationFailure || answer.status !== 'failed' && (!restore || answer.status === undefined || terminal && answer.status === 'running')) {
           const stopped = turn.reason === 'aborted';
           answer.status = turn.status === 'done' ? 'success' : turn.status === 'unanswered' ? stopped ? 'aborted' : 'failed' : 'running';
           answer.error = turn.detail ?? (turn.status === 'unanswered' ? stopped ? t('Stopped') : turn.reason : undefined);
+          if (terminal) answer.recovering = false;
+          // Only live transitions can establish elapsed time. Replaying an old
+          // terminal snapshot must not count the time since it was saved.
+          if (!restore && oldTurn?.status !== turn.status) {
+            delete answer.durationMs;
+            if (terminal) this.finishDuration(answer);
+          }
         }
         if (!restore) answer.recovering = false;
+        // Authoritative spans repair views first opened mid-run and completed
+        // turns first opened later, including older Web checkpoints.
+        if (startedAt !== undefined && turn.endedAt !== undefined && terminal) answer.durationMs = Math.max(0, turn.endedAt - startedAt);
         const extras = answer.items?.filter(item => item.display) ?? [];
         answer.items = [...outputTurns.flatMap(part => part.items), ...extras]; answer.content = outputText(answer.items);
       }
@@ -887,9 +909,13 @@ export class ConversationController {
         const turn = entry.agent?.turns.find(turn => turn.requestId === answer.sessionRequestId && turn.conversationId === answer.sessionConversationId);
         if (answer.role === 'assistant' && turn?.status === 'placed') {
           answer.status = 'failed'; answer.error = error; answer.recovering = recovering;
+          if (!recovering) this.finishDuration(answer);
         }
       }
     }
+  }
+  private finishDuration(answer: ConversationMessage): void {
+    if (answer.durationMs === undefined && answer.createdAt !== undefined) answer.durationMs = Math.max(0, Date.now() - answer.createdAt);
   }
   private async retireAgentOwner(owner: ConversationSession): Promise<void> {
     const task = owner.activeRunId && this.tasks.get(owner.activeRunId);
@@ -982,6 +1008,7 @@ export class ConversationController {
       const answer = entry.messages.find(message => message.pendingInput || message.cancelRequested || message.recovering);
       if (!answer) { if (controlError) throw controlError; return; }
       answer.cancelRequested = true; answer.recovering = false; answer.status = 'aborted'; answer.error = t("Stopped");
+      this.finishDuration(answer);
       entry.activeRunId = answer.runId;
       const cancellation: RunTask = { sessionId: entry.id, cancelled: true, finished: Promise.resolve() };
       if (answer.runId) this.tasks.set(answer.runId, cancellation);
