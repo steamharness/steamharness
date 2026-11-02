@@ -19,7 +19,8 @@ export interface AgentDefinition {
   tools: string[];
   model?: { provider: string; modelId: string };
   effort?: string;
-  maxConcurrency?: number;
+  /** Active work for this role. null removes the role limit; omission inherits the session limit. */
+  maxConcurrency?: number | null;
   /** Total work attempts, including the first. Omit to disable automatic work retries. */
   retry?: { maxAttempts: number; delayMs?: number };
   /** Require a nonzero, fully completed AgentWorkProgressDoc before accepting success. */
@@ -70,7 +71,8 @@ export interface AgentSessionOptions {
   subagents?: {
     /** Explicit subset of the parent's tools. Subagents cannot delegate again. */
     tools: string[];
-    maxAgents?: number;
+    /** Active delegations. Defaults to 4; null explicitly removes the limit. */
+    maxAgents?: number | null;
     /** Default work retry policy; a role may override it. Separate from model transport retries. */
     retry?: { maxAttempts: number; delayMs?: number };
     /** Default for all child roles and anonymous delegations. Must be in models. */

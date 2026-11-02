@@ -1,5 +1,7 @@
 # Unreleased
 
+- Updated the generator API reference with unlimited subagent concurrency and safe retries for proven unsent requests while preserving authorization barriers.
+
 - Removed global and account memory, including tools, skills, authorization, service integration and settings controls.
 
 - Fixed both generated boards to use the database alias API, clearly mark temporary edits without a binding, and prevent overwriting tasks after failed reads. Preflight checks include configuration, ignore files and symlink conflicts to avoid partial projects; database binding guidance is corrected. Generator scaffolds also support names beginning with digits and multiline prompts.

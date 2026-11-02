@@ -29,6 +29,8 @@ const DelegationDoc = defineDoc({ kind: "project.delegation", version: 1, scope:
 const plain = <T>(value: T): T => value === undefined ? value : JSON.parse(JSON.stringify(value)) as T;
 const object = (value: unknown): Record<string, unknown> => value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {};
 const textOf = (message: AssistantMessage | undefined): string => message?.content.flatMap(block => block.type === "text" ? [block.text] : []).join("") ?? "";
+const validConcurrency = (value: number | null | undefined) => value == null || Number.isSafeInteger(value) && value > 0;
+const concurrencyLimit = (value: number | null | undefined) => value === null ? Infinity : value ?? 4;
 const validWorkRetry = (retry: AgentDefinition["retry"]) => !retry || Number.isSafeInteger(retry.maxAttempts)
   && retry.maxAttempts >= 1 && retry.maxAttempts <= 10 && Number.isSafeInteger(retry.delayMs ?? 1000)
   && (retry.delayMs ?? 1000) >= 0 && (retry.delayMs ?? 1000) <= 60_000;
@@ -75,7 +77,7 @@ export class DurableAgentSession {
   }
 
   install(registry: Registry): void {
-    if (this.options.subagents && (!Number.isSafeInteger(this.options.subagents.maxAgents ?? 4) || (this.options.subagents.maxAgents ?? 4) < 1)) throw new Error("maxAgents must be a positive integer.");
+    if (this.options.subagents && !validConcurrency(this.options.subagents.maxAgents)) throw new Error("maxAgents must be a positive integer or null.");
     if (this.options.subagents?.model && !this.allowedChildModel(this.options.subagents.model)) throw this.childModelError();
     if (!validWorkRetry(this.options.subagents?.retry)) throw new Error("Agent work retry requires maxAttempts (1-10) and delayMs (0-60000).");
     const definitions = this.options.subagents?.definitions ?? [];
@@ -84,7 +86,7 @@ export class DurableAgentSession {
       if (!/^[a-z][a-z0-9-]{0,63}$/.test(definition.id) || !definition.description?.trim() || !definition.systemPrompt?.trim()
         || definition.systemPrompt.length > 100_000 || !Array.isArray(definition.tools)
         || definition.tools.some(name => !this.options.subagents!.tools.includes(name) || ["subagent", "update_plan"].includes(name))
-        || !Number.isSafeInteger(definition.maxConcurrency ?? 1) || (definition.maxConcurrency ?? 1) < 1
+        || !validConcurrency(definition.maxConcurrency)
         || !validWorkRetry(definition.retry) || definition.requireProgress !== undefined && typeof definition.requireProgress !== "boolean"
         || !this.options.subagents?.model && definition.model && !this.allowedChildModel(definition.model)
         || definition.effort && !["off", "minimal", "low", "medium", "high", "xhigh", "max"].includes(definition.effort)) {
@@ -286,9 +288,11 @@ export class DurableAgentSession {
               const selected = [...active];
               for (const candidate of live.filter(item => object(item.state.checkpoint).phase === "create")) {
                 const candidateInput = candidate.input as DelegationInput;
-                const roleLimit = Number(this.options.subagents!.definitions?.find(item => item.id === candidateInput.agentId)?.maxConcurrency
-                  ?? object(candidateInput.definition).maxConcurrency ?? this.options.subagents!.maxAgents ?? 4);
-                if (selected.length < (this.options.subagents!.maxAgents ?? 4)
+                const currentRole = this.options.subagents!.definitions?.find(item => item.id === candidateInput.agentId);
+                const savedLimit = object(candidateInput.definition).maxConcurrency as number | null | undefined;
+                const roleLimit = concurrencyLimit(currentRole?.maxConcurrency !== undefined ? currentRole.maxConcurrency
+                  : savedLimit !== undefined ? savedLimit : this.options.subagents!.maxAgents);
+                if (selected.length < concurrencyLimit(this.options.subagents!.maxAgents)
                   && selected.filter(item => (item.input as DelegationInput).agentId === candidateInput.agentId).length < roleLimit) selected.push(candidate);
               }
               if (!selected.some(item => item.id === task.id)) {
@@ -350,8 +354,13 @@ export class DurableAgentSession {
               const failed = !!failure || !!progress?.error || incomplete;
               const answer = failure ? `Subagent failed: ${failure.reason}${failure.detail ? `: ${String(failure.detail)}` : ""}` : progress?.error
                 || (incomplete ? "Subagent ended without verified progress completion. Save the required evidence/result and its completion receipt." : textOf(message));
+              // A project receipt can prove a tool request was never sent (for
+              // example, a signed media URL returned 403). It may then repair
+              // the input on the next attempt. Authority failures and Stop
+              // always remain barriers, regardless of business retryability.
               const retryable = progress?.retryable !== false && !/^(aborted|cancelled|interrupted|orphaned)$/.test(failure?.reason ?? "")
-                && !/\bHTTP (?:400|401|403|404|402)\b|not authorized|not allowed|permission denied|invalid api key|insufficient (?:quota|balance)/i.test(answer);
+                && !/\bHTTP (?:401|402)\b|not authorized|not allowed|permission denied|invalid api key|insufficient (?:quota|balance)|configuration is not available to this account/i.test(answer)
+                && (progress?.retryable === true || !/\bHTTP (?:400|403|404)\b/i.test(answer));
               await runtime.commit(() => ({ status: "running", checkpoint: { phase: "report", childId: child.id, answer, failed, retryable, attempt } }), ctx);
               return true;
             });

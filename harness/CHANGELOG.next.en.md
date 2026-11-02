@@ -1,5 +1,7 @@
 # Unreleased
 
+- Added explicit `null` for unlimited total or per-role subagent concurrency, preserving default FIFO limits. Proven unsent tool failures can retry from business receipts; access denials, cancellation and unknown side effects remain retry barriers.
+
 - Durable Agent turn snapshots now expose persisted execution timestamps so hosts can restore elapsed time when opening subagent conversations and history.
 
 - Removed global and account memory, including tools, skills, authorization, service integration and settings controls.
