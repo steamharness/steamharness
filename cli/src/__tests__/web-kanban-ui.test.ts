@@ -164,7 +164,7 @@ it('does not send unchanged configuration back on ready acknowledgements or stat
   expect(configurations()).toHaveLength(2);
 });
 
-it.each(['en', 'zh-CN'] as const)('shows startup checks before mounting Server previews and keeps local previews available (%s)', async language => {
+it.each(['en', 'zh-CN'] as const)('checks startup silently before mounting Server previews and only shows failures (%s)', async language => {
   const { sendState, sources } = await fixture(language);
   const checks: NonNullable<ProjectServerState['checks']> = [{ id: 'project', projectId: 'map', stage: 'registration', status: 'checking' }];
   sendState(1, 'first', undefined, { checking: true, checks });
@@ -173,7 +173,7 @@ it.each(['en', 'zh-CN'] as const)('shows startup checks before mounting Server p
   const overview = document.getElementById('server-checks-list')!;
   const guidance = document.getElementById('server-guidance')!;
   expect(overview.textContent).not.toBe('');
-  expect(guidance.hidden).toBe(false);
+  expect(guidance.hidden).toBe(true);
   sendState(2, 'ready', undefined, { checking: false, checks: [{ ...checks[0], status: 'passed' }] });
   expect(guidance.hidden).toBe(true); expect(frame.src).toContain('/kanban/ready/index.html');
   expect(document.getElementById('preview-stage')!.hidden).toBe(false);

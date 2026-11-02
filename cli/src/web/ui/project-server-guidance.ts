@@ -18,7 +18,7 @@ export class ProjectServerGuidance {
     this.create.onclick = actions.create; this.databases.onclick = actions.databases; this.retry.onclick = actions.retry;
   }
   update(state: ProjectServerState | undefined, _projectId: string, options: GuidanceOptions) {
-    this.container.hidden = !state || !state.checking && !state.issue;
+    this.container.hidden = !state?.issue || state.issue.kind === 'checking';
     if (!state) return;
     const issue = state.issue;
     this.title.textContent = state.checking ? t('Application checks') : issue?.database ? t('Database binding requires attention') : issue?.kind==='access-denied'?t('Project access is required'):t('Complete the Server project setup');

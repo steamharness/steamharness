@@ -39,17 +39,46 @@ test("admission races release losing task subscriptions on every wakeup and on f
   }
   await assert.rejects(waitForAgentWorkChange(ids, async () => { throw new Error("storage unavailable"); }, BACKGROUND_CONTEXT), /storage unavailable/);
 });
-function fixture(databasePath?: string, definitions = roles, resumeSession = false, interruptSession = false, allowedModels: { provider: string; modelId: string }[] = [], nativeTools: AgentSessionOptions["nativeTools"] = []) {
+function fixture(databasePath?: string, definitions = roles, resumeSession = false, interruptSession = false, allowedModels: { provider: string; modelId: string }[] = [], nativeTools: AgentSessionOptions["nativeTools"] = [], maxAgents: number | null = 4) {
   const faux = ai.fauxProvider({ models: [{ id: "test", contextWindow: 100_000, maxTokens: 200 }, { id: "alternate", reasoning: true, contextWindow: 100_000, maxTokens: 200 }] });
   const models = ai.createModels(); models.setProvider(faux.provider);
   const lease = latch(), suspend = latch();
   let snapshot: AgentSessionSnapshot | undefined;
   const agent = new DurableAgent({ models, databasePath, retryDelayMs: 0, sessionLease: lease.promise, sessionSuspend: suspend.promise, resumeSession, interruptSession,
-    session: { nativeTools, compaction: { enabled: false }, subagents: { tools: ["research", "record"], definitions, models: allowedModels, maxAgents: 4 } },
+    session: { nativeTools, compaction: { enabled: false }, subagents: { tools: ["research", "record"], definitions, models: allowedModels, maxAgents } },
     initialState: { model: models.getModel("faux", "test")!, systemPrompt: "ROOT COORDINATOR ONLY", tools: [], messages: [], thinkingLevel: "off" } });
   agent.subscribe(event => { const value = event as unknown as { type: string; snapshot: AgentSessionSnapshot }; if (value.type === "project_session") snapshot = value.snapshot; });
   return { agent, faux, lease, suspend, snapshot: () => snapshot! };
 }
+
+for (const [totalLimit, roleLimit, expected] of [[null, null, 12], [null, 2, 2], [5, null, 5]] as const) test(`explicit unlimited admission preserves independent limits (${totalLimit}/${roleLimit})`, async t => {
+  let active = 0, maximum = 0;
+  const gate = latch();
+  const f = fixture(undefined, [{ ...roles[0], maxConcurrency: roleLimit }], false, false, [], [{
+    name: "research", description: "Concurrent research", parameters: ai.Type.Object({}), replay: "safe",
+    execute: async () => {
+      maximum = Math.max(maximum, ++active);
+      try { await gate.promise; return { output: [ai.fauxText("Done")] }; }
+      finally { active--; }
+    },
+  }], totalLimit);
+  f.faux.setResponses(Array.from({ length: 40 }, () => (request: ai.TranscriptContext) => {
+    if (JSON.stringify(request.messages.filter(message => message.role === "system")).includes("RESEARCH ROLE ONLY")
+      && !request.messages.some(message => message.role === "toolResult")) return ai.fauxAssistantMessage([ai.fauxToolCall("research", {})], { stopReason: "toolUse" });
+    return ai.fauxAssistantMessage("Finished");
+  }));
+  const run = f.agent.prompt("Start");
+  t.after(async () => { gate.resolve(); f.lease.resolve(); await run; await f.agent.close(); });
+  await until(() => !!f.snapshot());
+  for (let index = 0; index < 12; index++) await f.agent.control({ type: "subagent", action: "spawn", requestId: `uncapped-${index}`,
+    agentId: "researcher", workId: `uncapped-${index}`, prompt: `Source ${index}`, background: true });
+  await until(() => active === expected);
+  assert.equal(maximum, expected);
+  if (expected < 12) assert.ok(f.snapshot().agents!.some(work => work.status === "queued"));
+  gate.resolve();
+  await until(() => f.snapshot().agents?.filter(work => work.status === "completed").length === 12);
+  assert.equal(maximum, expected);
+});
 
 test("named management uses its action when a gateway populates legacy result fields", async t => {
   const f = fixture();
@@ -141,7 +170,7 @@ test("failed business verification remains failed and retryable even when the mo
   assert.equal(retry.agents![0].attempt, 2);
 });
 
-for (const blocked of [false, true]) test(`automatic work retries reuse committed context and respect retry barriers (blocked=${blocked})`, async t => {
+for (const [blocked, denied] of [[false, false], [true, false], [false, true]]) test(`automatic work retries reuse committed context and respect retry barriers (blocked=${blocked}, denied=${denied})`, async t => {
   let calls = 0;
   const f = fixture(undefined, [{ ...roles[0], requireProgress: true, retry: { maxAttempts: 3, delayMs: 0 } }], false, false, [], [
     { name: "research", description: "Verify evidence", replay: "safe", parameters: ai.Type.Object({}), execute: async (_args, api, ctx) => {
@@ -150,7 +179,7 @@ for (const blocked of [false, true]) test(`automatic work retries reuse committe
         const owner = (await tx.conversation(api.conversationId))!.owner!;
         const progress = await tx.doc(AgentWorkProgressDoc, owner.conversationId, String(owner.taskId), null);
         progress.total = 1; progress.completed = calls > 1 ? 1 : 0;
-        progress.error = calls > 1 ? "" : "Evidence temporarily unavailable"; progress.retryable = !blocked;
+        progress.error = calls > 1 ? "" : denied ? "HTTP 403: permission denied" : "MEDIA_NOT_SENT: download HTTP 403; refresh the signed source URL"; progress.retryable = !blocked;
       }, ctx);
       return { output: [ai.fauxText(calls > 1 ? "Verified evidence" : "Saved draft checkpoint")], isError: calls === 1 };
     } },
@@ -169,10 +198,10 @@ for (const blocked of [false, true]) test(`automatic work retries reuse committe
   const first = await f.agent.control({ type: "subagent", action: "spawn", requestId: "automatic", agentId: "researcher", workId: "automatic", prompt: "Verify", reportToParent: true });
   await until(() => f.snapshot().agents?.some(work => work.taskId === first.taskId && ["completed", "failed"].includes(work.status)) === true);
   const work = f.snapshot().agents!.find(work => work.taskId === first.taskId)!;
-  assert.equal(work.status, blocked ? "failed" : "completed"); assert.equal(work.attempt, blocked ? 1 : 2);
-  assert.equal(calls, blocked ? 1 : 2); assert.equal(f.snapshot().agents!.length, 1);
+  assert.equal(work.status, blocked || denied ? "failed" : "completed"); assert.equal(work.attempt, blocked || denied ? 1 : 2);
+  assert.equal(calls, blocked || denied ? 1 : 2); assert.equal(f.snapshot().agents!.length, 1);
   await until(() => f.snapshot().turns.filter(turn => turn.mode === "report").length === 1);
-  assert.equal(f.snapshot().turns.filter(turn => turn.conversationId === work.childConversationId).length, blocked ? 1 : 2);
+  assert.equal(f.snapshot().turns.filter(turn => turn.conversationId === work.childConversationId).length, blocked || denied ? 1 : 2);
 });
 
 test("a failed child turn retries after transport exhaustion without inheriting the old unanswered failure", async t => {
