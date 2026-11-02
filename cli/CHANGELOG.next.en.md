@@ -1,5 +1,7 @@
 # Unreleased
 
+- Fixed subagent work with an unconfirmed result to show Awaiting verification with its reason and unfinished progress. Child conversations show the same task receipt as the parent so a finished reply is not mistaken for completed work. Cancellation, independent forks and other conversations retain their own state.
+
 - Run project startup checks silently in the background. Conversation, Workflow and Kanban pages in Studio and standalone CLI Web show setup guidance and rechecking only when a check fails.
 
 - Fixed subagent reply durations to use persisted execution timestamps instead of restarting when their detail view is first opened, refreshed or restored.

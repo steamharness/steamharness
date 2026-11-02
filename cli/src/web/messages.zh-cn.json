@@ -962,6 +962,10 @@
   "{0}/{1} completed": "已完成 {0}/{1}",
   "Current activity: {0}": "当前活动：{0}",
   "Error: {0}": "错误：{0}",
+  "Reason: {0}": "原因：{0}",
+  "Awaiting verification": "待核对",
+  "The request result is unknown. This task has not been verified as complete.": "调用结果尚未确认，当前任务未通过完成核验。",
+  "Task status: {0} · {1}": "任务状态：{0} · {1}",
   "Follow main model": "跟随主模型",
   "Unavailable model: {0}": "模型不可用：{0}"
 }

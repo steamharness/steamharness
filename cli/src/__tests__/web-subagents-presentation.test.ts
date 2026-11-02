@@ -44,4 +44,26 @@ it('shows one live entry on the latest response and routes child navigation thro
   expect(document.querySelector('.subagents-button')).toBe(entry);
   expect(document.querySelector('.subagent-task')).toBe(row); expect(row.open).toBe(true);
   expect(document.activeElement).toBe(focused);
+
+  const job = session.agent!.tasks[0];
+  job.status = 'failed'; job.progress = { completed: 0, total: 3, phase: 'needs_review' };
+  job.details = { error: { message: 'MEDIA_RESULT_UNKNOWN: Headers Timeout Error' } };
+  await render(); expect(row.dataset.state).toBe('needs_review');
+  const child = { id: 'child', title: 'Research video', agentOwnerId: 'parent', agentConversationId: 2, agent: session.agent,
+    messages: [{ id: 'reply', role: 'assistant', content: 'Draft saved; ready=false', status: 'success' }],
+  } as unknown as ConversationSession;
+  const show = async (active: ConversationSession) => {
+    emit({ type: 'state', project, sessions: [session, active], activeId: active.id, running: false }); await vi.advanceTimersByTimeAsync(1);
+  };
+  await show(child);
+  const banner = document.querySelector<HTMLElement>('.child-work-status')!;
+  expect(banner.hidden).toBe(false); expect(banner.dataset.state).toBe('needs_review');
+  expect(banner.textContent).toContain('Awaiting verification'); expect(banner.textContent).toContain('0/3 completed');
+  expect(document.querySelector('#transcript')!.textContent).toContain('Draft saved; ready=false');
+  emit({ type: 'connection', status: 'offline' }); expect(banner.textContent).toContain('Connection lost');
+  emit({ type: 'connection', status: 'connected' });
+  job.status = 'completed'; job.progress = { completed: 3, total: 3, phase: 'ready' }; job.details = {};
+  await show(child); expect(banner.dataset.state).toBe('completed'); expect(banner.textContent).toContain('3/3 completed');
+  await show({ ...child, id: 'fork', forkSource: { sessionId: 'parent' } } as ConversationSession); expect(banner.hidden).toBe(true);
+  await show({ id: 'new', title: 'New conversation', messages: [], agent: session.agent } as ConversationSession); expect(banner.hidden).toBe(true);
 });

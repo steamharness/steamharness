@@ -227,6 +227,13 @@ main { grid-area: main; min-width: 0; min-height: 0; display: flex; flex-directi
 .subagent-task[data-state=running] .subagent-icon > .codicon { animation: spin 1.2s linear infinite; }
 .subagent-task[data-state=failed] .subagent-icon, .subagent-task[data-state=failed] .subagent-status, .subagent-error { color: var(--vscode-errorForeground); }
 .subagent-task[data-state=completed] .subagent-icon { color: var(--vscode-testing-iconPassed, var(--muted)); }
+.subagent-task[data-state=needs_review] .subagent-icon, .subagent-task[data-state=needs_review] .subagent-status, .subagent-task[data-state=needs_review] .subagent-error,
+.child-work-status[data-state=needs_review] .child-work-title, .child-work-status[data-state=needs_review] .subagent-error { color: var(--vscode-editorWarning-foreground, var(--vscode-notificationsWarningIcon-foreground, var(--muted))); }
+.child-work-status { flex: none; min-width: 0; margin: 8px 16px 0; padding: 10px 12px; border: 1px solid var(--border); border-radius: 6px; font-size: 12px; overflow-wrap: anywhere; }
+.child-work-status p { margin: 0 0 6px; }
+.child-work-status p:last-child { margin-bottom: 0; }
+.child-work-title { font-weight: 600; }
+.child-work-status pre { max-height: 100px; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; margin: 6px 0 0; font: 11px/1.6 var(--vscode-editor-font-family, monospace); }
 .subagent-task[open] .subagent-chevron { transform: rotate(90deg); }
 .subagent-detail { padding: 0 2px 10px 24px; font-size: 12px; overflow-wrap: anywhere; }
 .subagent-detail p { margin: 0 0 8px; }

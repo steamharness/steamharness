@@ -17,7 +17,7 @@ import { renderRequestError, RequestErrorAlert } from './request-error';
 import { isExecutionError } from './execution-error';
 import { ContentSearch } from './content-search';
 import { ConversationOutput } from './conversation-output';
-import { conversationSubagents, type ConversationSubagentsState } from './conversation-subagents';
+import { childConversationSubagent, ChildConversationStatus, conversationSubagents, type ConversationSubagentsState } from './conversation-subagents';
 import { collapseIntermediateDefault } from './conversation-presentation';
 import { attachmentSignature } from './attachment-state';
 import { conversationPrompt, pathReferences, type PathReference } from '../conversation-paths';
@@ -79,6 +79,8 @@ function initialize(): void {
       <button class="session-action" data-action="delete" role="menuitem" tabindex="-1">${icon('trash')}<span>${t("Delete conversation")}</span></button>
     </div>`;
 
+  const childWorkStatus = new ChildConversationStatus();
+  document.querySelector('#server-guidance')!.after(childWorkStatus.root);
   const configurationPanel = mountProjectConfigurations(vscode, {
     open: () => { if (state) { parameterActions.close(); dialogs.projectInfo(state.project, 'configurations'); } },
     isOpen: () => dialogs.activeSection === 'configurations',
@@ -1147,6 +1149,14 @@ function initialize(): void {
       connectionAvailable && !serverBlocked(), session.agentInterrupted ?? owner?.agentInterrupted);
   }
 
+  function updateChildWorkStatus(session: ConversationSession): void {
+    const owner = state?.sessions.find(entry => entry.id === session.agentOwnerId);
+    const connected = connectionAvailable && !serverBlocked();
+    childWorkStatus.update(session.agentOwnerId && !session.forkSource
+      ? childConversationSubagent(session.agent ?? owner?.agent, session.agentConversationId, connected, session.agentInterrupted ?? owner?.agentInterrupted)
+      : undefined, connected);
+  }
+
   function updateLatest(): void { latest.hidden = transcript.scrollHeight - transcript.scrollTop - transcript.clientHeight < 100; }
   function syncTranscriptLayout(): void {
     if (transcriptLayoutFrame !== undefined) { return; }
@@ -1222,6 +1232,7 @@ function initialize(): void {
     sourceButton.hidden = !source;
     sourceButton.textContent = source ? `${session.forkSource ? t('Fork') : t('Subagent')} · ${source.title}` : '';
     sourceButton.title = sourceButton.ariaLabel = t('Open source conversation');
+    updateChildWorkStatus(session);
     if (projectChanged || JSON.stringify(previous?.project.entrypoints) !== JSON.stringify(next.project.entrypoints)) {
       historyLimit = historyPageSize;
       const selected = projectChanged ? undefined : entrypoint.value;
@@ -1616,6 +1627,7 @@ function initialize(): void {
       connectionAvailable = message.status === 'connected';
       const session = currentSession();
       const latest = session && [...session.messages].reverse().find(message => message.role === 'assistant');
+      if (session) updateChildWorkStatus(session);
       if (session && latest) {
         const index = session.messages.indexOf(latest);
         messages.get(latest.id || `${index}:${latest.role}`)?.output?.updateSubagents(subagentState(session));

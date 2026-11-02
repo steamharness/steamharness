@@ -2,7 +2,7 @@
 import { afterEach, expect, it, vi } from 'vitest';
 import { initI18n } from '@steamharness/i18n';
 import type { AgentSessionSnapshot, AgentSessionTask } from 'steamharness/agent';
-import { conversationSubagents } from '../web/ui/conversation-subagents';
+import { childConversationSubagent, ChildConversationStatus, conversationSubagents } from '../web/ui/conversation-subagents';
 import { ConversationOutput } from '../web/ui/conversation-output';
 
 const task = (id: number, values: Partial<AgentSessionTask> = {}): AgentSessionTask => ({
@@ -109,4 +109,42 @@ it('keeps newly active work above history and preserves focused details when a t
   const link = row.querySelector<HTMLButtonElement>('.subagent-open')!; link.focus(); frame.tasks[0].status = 'completed'; render(frame);
   expect(Array.from(root.querySelectorAll('.subagent-task'), row => row.getAttribute('data-task-id'))).toEqual(['11', '99', '10', '12', '13']);
   expect(document.activeElement).toBe(link); expect(row.open).toBe(true);
+});
+
+it('distinguishes unconfirmed media outcomes from ordinary failures, cancellation and verified completion', () => {
+  const { root, render } = mount(), frame = snapshot();
+  frame.tasks[0].status = 'failed'; frame.tasks[0].agent!.progress = { completed: 0, total: 3, phase: 'needs_review' };
+  frame.tasks[0].agent!.error = 'MEDIA_RESULT_UNKNOWN: Headers Timeout Error';
+  render(frame, 'success'); root.querySelector<HTMLButtonElement>('.subagents-button')!.click();
+  const model = conversationSubagents(frame, 1, true)!;
+  expect(model.tasks.find(task => task.id === 10)).toMatchObject({ status: 'needs_review', progress: { completed: 0, total: 3 } });
+  expect(root.querySelector('.subagents-button')!.textContent).toContain('1 Awaiting verification');
+  expect(root.querySelector('.subagents-button')!.textContent).toContain('1 Failed');
+  const row = root.querySelector<HTMLElement>('[data-task-id="10"]')!;
+  expect(row.dataset.state).toBe('needs_review'); expect(row.textContent).toContain('Reason: MEDIA_RESULT_UNKNOWN');
+  frame.tasks[0].agent!.progress!.phase = 'research'; // Legacy snapshots only have the original error marker.
+  expect(conversationSubagents(frame, 1, true)!.tasks.find(task => task.id === 10)?.status).toBe('needs_review');
+  frame.tasks[0].status = 'aborted';
+  expect(conversationSubagents(frame, 1, true)!.tasks.find(task => task.id === 10)?.status).toBe('stopped');
+  frame.tasks[0].status = 'completed';
+  expect(conversationSubagents(frame, 1, true)!.tasks.find(task => task.id === 10)?.status).toBe('completed');
+});
+
+it.each(['en', 'zh-CN'] as const)('shows the authoritative business receipt in child details in %s, isolated from independent forks', language => {
+  initI18n({ preference: language });
+  const frame = snapshot(); frame.history = [];
+  frame.tasks[0].status = 'failed'; frame.tasks[0].agent!.error = 'MEDIA_RESULT_UNKNOWN: Headers Timeout Error';
+  frame.tasks[0].agent!.progress = { completed: 0, total: 3, phase: 'needs_review' };
+  const task = childConversationSubagent(frame, 2, true)!;
+  expect(task).toEqual(conversationSubagents(frame, 1, true)!.tasks.find(task => task.id === 10));
+  const banner = new ChildConversationStatus(); document.body.append(banner.root); banner.update(task, true);
+  expect(banner.root.hidden).toBe(false); expect(banner.root.dataset.state).toBe('needs_review');
+  expect(banner.root.textContent).toContain(language === 'en' ? 'Awaiting verification' : '待核对');
+  expect(banner.root.textContent).toContain(language === 'en' ? '0/3 completed' : '已完成 0/3');
+  expect(banner.root.textContent).toContain('Headers Timeout Error');
+  expect(childConversationSubagent(frame, 3, true)).toBeUndefined();
+  expect(childConversationSubagent(frame, 1, true)).toBeUndefined();
+  expect(childConversationSubagent(undefined, 2, true)).toBeUndefined();
+  banner.update(task, false); expect(banner.root.textContent).toContain(language === 'en' ? 'Connection lost' : '连接已断开');
+  banner.update(undefined, true); expect(banner.root.hidden).toBe(true);
 });
