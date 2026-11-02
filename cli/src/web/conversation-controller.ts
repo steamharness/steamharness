@@ -378,7 +378,7 @@ export class ConversationController {
       agentCommands: this.sessions.filter(session => (session.agentOwnerId ?? session.id) === entry.id).flatMap(session => session.agentCommands ?? []),
     };
     const settled = entry.agent?.turns.some(turn => turn.requestId === answer.sessionRequestId && (turn.status === 'done' || turn.status === 'unanswered'));
-    if (!settled) { answer.status = 'running'; answer.error = undefined; }
+    if (!settled) { answer.status = 'running'; answer.error = undefined; delete answer.durationMs; }
     if (!answer.submittingInput) { answer.pendingInput = undefined; }
     entry.updatedAt = Date.now();
     entry.activeRunId = answer.runId;
@@ -453,7 +453,10 @@ export class ConversationController {
       }
       const primaryDone = entry.agent?.turns.some(turn => turn.requestId === answer.sessionRequestId && turn.status === 'done');
       answer.report = report; answer.status = primaryDone && report.status !== 'waiting_for_input' && report.status !== 'failed' ? 'success' : report.status;
-      answer.durationMs = report.durationMs; answer.recovering = false;
+      // A durable owner can outlive many replies; its report measures the
+      // worker lifetime, while each projected turn already owns its duration.
+      if (!entry.agent) answer.durationMs = report.durationMs;
+      answer.recovering = false;
       // Paused reports omit unfinished streams; resumed reports can omit earlier input stages.
       const items = (report.output?.items ?? []).filter(item => item.metadata?.kind !== 'agent-session');
       if ((!entry.agent || report.status === 'waiting_for_input') && report.output && (report.status === 'success' || !answer.items?.length || (report.status !== 'waiting_for_input' && items.length))) {
@@ -517,6 +520,7 @@ export class ConversationController {
         } else if (task.cancelled || this.disposed || answer.status === 'failed') entry.queuePaused = true;
       }
       if (!historical && answer.status !== 'running' && answer.status !== 'failed') answer.recovering = false;
+      if (!historical && answer.status !== 'running' && !answer.recovering) this.finishDuration(answer);
       if (!historical && answer.status !== 'waiting_for_input' && answer.status !== 'running') {
         answer.timers = answer.timers?.map((timer) => timer.status === 'running'
           ? { ...timer, status: 'cleared', endedAt: new Date().toISOString(), durationMs: Math.max(0, Date.now() - new Date(timer.startedAt).getTime()) }
@@ -757,6 +761,12 @@ export class ConversationController {
           answer.status = turn.status === 'done' ? 'success' : turn.status === 'unanswered' ? stopped ? 'aborted' : 'failed' : 'running';
           answer.error = turn.detail ?? (turn.status === 'unanswered' ? stopped ? t('Stopped') : turn.reason : undefined);
           if (terminal) answer.recovering = false;
+          // Only live transitions can establish elapsed time. Replaying an old
+          // terminal snapshot must not count the time since it was saved.
+          if (!restore && oldTurn?.status !== turn.status) {
+            delete answer.durationMs;
+            if (terminal) this.finishDuration(answer);
+          }
         }
         if (!restore) answer.recovering = false;
         const extras = answer.items?.filter(item => item.display) ?? [];
@@ -894,9 +904,13 @@ export class ConversationController {
         const turn = entry.agent?.turns.find(turn => turn.requestId === answer.sessionRequestId && turn.conversationId === answer.sessionConversationId);
         if (answer.role === 'assistant' && turn?.status === 'placed') {
           answer.status = 'failed'; answer.error = error; answer.recovering = recovering;
+          if (!recovering) this.finishDuration(answer);
         }
       }
     }
+  }
+  private finishDuration(answer: ConversationMessage): void {
+    if (answer.durationMs === undefined && answer.createdAt !== undefined) answer.durationMs = Math.max(0, Date.now() - answer.createdAt);
   }
   private async retireAgentOwner(owner: ConversationSession): Promise<void> {
     const task = owner.activeRunId && this.tasks.get(owner.activeRunId);
@@ -989,6 +1003,7 @@ export class ConversationController {
       const answer = entry.messages.find(message => message.pendingInput || message.cancelRequested || message.recovering);
       if (!answer) { if (controlError) throw controlError; return; }
       answer.cancelRequested = true; answer.recovering = false; answer.status = 'aborted'; answer.error = t("Stopped");
+      this.finishDuration(answer);
       entry.activeRunId = answer.runId;
       const cancellation: RunTask = { sessionId: entry.id, cancelled: true, finished: Promise.resolve() };
       if (answer.runId) this.tasks.set(answer.runId, cancellation);

@@ -1,5 +1,7 @@
 # Unreleased
 
+- Keep the final duration visible after a reply completes, fails or stops, including after refreshing or reopening history. Durable Agent follow-ups are timed separately.
+
 - Fixed history recovery and cross-window synchronization to reconcile completed, failed and stopped Agent turns, clearing stale responding and recovery states without replaying finished replies.
 
 - Removed global and account memory, including tools, skills, authorization, service integration and settings controls.

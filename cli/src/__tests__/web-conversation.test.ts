@@ -17,6 +17,22 @@ function fixture(options: { canStart?(): boolean; canDrain?(): boolean } = {}) {
   return { controller, runtime, save };
 }
 
+it.each(['success', 'failed', 'aborted', 'timed_out', 'exception', 'reported'] as const)('persists the elapsed duration for an ordinary %s run', async outcome => {
+  vi.useFakeTimers({ toFake: ['Date'] }); const startedAt = Date.now();
+  const { controller, runtime, save } = fixture();
+  try {
+    vi.mocked(runtime.run).mockImplementationOnce(async () => {
+      vi.setSystemTime(startedAt + 2_600);
+      if (outcome === 'exception') throw new Error('Fixture failure');
+      return outcome === 'reported' ? { status: 'success', durationMs: 1_800 } : { status: outcome };
+    });
+    await controller.send({ text: 'Run', params: {}, attachments: [] }); await controller.idle();
+    const expected = { status: outcome === 'exception' ? 'failed' : outcome === 'reported' ? 'success' : outcome, durationMs: outcome === 'reported' ? 1_800 : 2_600 };
+    expect(controller.current.messages.at(-1)).toMatchObject(expected);
+    expect(save.mock.calls.at(-1)![0][0].messages.at(-1)).toMatchObject(expected);
+  } finally { controller.dispose(); vi.useRealTimers(); }
+});
+
 it.each(['removeQueued', 'promoteQueued'] as const)('resolves edited ordinary queue input by submission identity for %s', async action => {
   const { controller, runtime } = fixture();
   controller.project.conversation = { inputQueue: { enabled: true } };
