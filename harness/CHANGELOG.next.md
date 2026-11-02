@@ -1,5 +1,7 @@
 # Unreleased
 
+- 新增 SteamHarness Database 定义入口：单库／多库 schema、模型元数据及 Node/Browser 类型化描述符；内部引擎由 Core 提供，业务源码无需导入 PrismaClient。
+
 - 【新增】提供 `steamharness/runtime-storage` 服务端 Agent 存储，按账号、工作区和会话隔离 PostgreSQL 记录，支持租约接管、幂等提交和文档检查点；需显式接入。
 
 - 【修复】会话分支可导出为独立根数据库，保留截断历史及 asOf 文档检查点，重新生成执行身份；不继承任务、审批、队列和用量，原会话的停止与删除不影响新对话。

@@ -1,5 +1,7 @@
 # Unreleased
 
+- Document SteamHarness Database multi-database definitions, dual-target generation, packaging, and current connection boundaries in generator guidance.
+
 - Documented Server PostgreSQL Agent storage in generator guidance, including stable workspace/session identities, account authorization and lease recovery boundaries.
 
 - Fixed both generated boards to use the database alias API, clearly mark temporary edits without a binding, and prevent overwriting tasks after failed reads. Preflight checks include configuration, ignore files and symlink conflicts to avoid partial projects; database binding guidance is corrected. Generator scaffolds also support names beginning with digits and multiline prompts.

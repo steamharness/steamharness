@@ -1,0 +1,101 @@
+---
+title: "SteamHarness Database"
+description: "Declare multiple relational databases, validate models, and generate typed Node and Browser descriptors."
+---
+
+# SteamHarness Database
+
+`steamharness/database` defines project databases and their types. Models use Prisma schema syntax, with public files named `steamharness.database.ts` and `steamharness.schema`. Applications do not author a `PrismaClient`, datasource, or generator.
+
+## Single and multiple databases
+
+Create `steamharness.database.ts` in the directory that uses the databases:
+
+```ts
+import { defineDatabases } from "steamharness/database";
+
+export default defineDatabases({
+  main: { schema: "./database/main/steamharness.schema" },
+  audit: { schema: "./database/audit/steamharness.schema" },
+  archive: { schema: "./database/main/steamharness.schema" },
+});
+```
+
+For one database, use `defineDatabase({ schema: "./database/main/steamharness.schema" })`; its alias is `main`. Aliases start with a lowercase letter and contain up to 63 lowercase letters, digits, or underscores. Reserved words and `databases` are unavailable. Paths are relative to the definition file, use `/`, stay inside the project, and cannot traverse symlinks.
+
+Aliases identify local declarations without resource IDs, connection addresses, or grants. Multiple aliases may share a schema and generated implementation while retaining separate descriptors. Reusing `main` in another project or entry does not identify the same resource.
+
+Model files contain models, enums, relations, and constraints only. For example, `database/main/steamharness.schema`:
+
+```prisma
+model User {
+  id    String @id @default(uuid())
+  email String @unique
+  posts Post[]
+}
+
+model Post {
+  id       Int    @id @default(autoincrement())
+  title    String
+  authorId String
+  author   User   @relation(fields: [authorId], references: [id])
+
+  @@unique([authorId, title])
+}
+```
+
+`audit` may define a different `User`, such as `id Int`, `actor String`, and `event String`. Each alias module exports its own types. The current target is PostgreSQL, with validation and generation pinned to Prisma 7.10.1. Custom datasource and generator blocks are rejected. The model name `Transaction` conflicts with the wrapper's `transaction` method; choose another model name.
+
+## Validate and generate
+
+```sh
+pnpm exec steamharness database init .
+pnpm exec steamharness database validate .
+pnpm exec steamharness database generate .
+```
+
+Use `db` as a short alias for `database`. `init` creates a single-database template without overwriting definitions. It adds a `database:generate` package script, generation hooks for existing `dev` and `build` scripts, and a Git ignore rule. Projects with existing definitions can run `validate` and `generate` directly.
+
+Commands execute the local definition file and validate models through WASM without connecting to a database. Schema diagnostics refer to the authored model file and line. A failed generation preserves the previous complete output; a successful generation removes obsolete aliases. Concurrent generation fails explicitly. After a forced process termination, remove a remaining `database.lock` only after confirming that generation is no longer running.
+
+## Generated types
+
+Outputs live in `.steamharness/generated/database`:
+
+| Path | Content |
+| --- | --- |
+| `node/index.js`, `node/index.ts` | Node descriptors and alias index; client implementations load on demand. |
+| `browser/index.js`, `browser/index.ts` | Browser descriptors without Node drivers, connection configuration, or client constructors. |
+| `node/<alias>`, `browser/<alias>` | The database's `Client`, models, query input types, and enums. |
+| `metadata/`, `schemas/`, `engines/` | Model metadata, internal standard schemas, generated implementations, and required runtime assets. |
+| `manifest.json` | Definition and model fingerprints, file inventory, and SHA-256 hashes. |
+
+Type checking resolves adjacent `.ts` files. Runtime imports use matching `.js` files without a TypeScript loader. Maintain definitions and models; do not edit or commit generated outputs.
+
+```ts
+import type { DatabaseClient } from "steamharness/database";
+import { main, audit } from "./.steamharness/generated/database/node/index.js";
+import type { User } from "./.steamharness/generated/database/node/main.js";
+
+function listUsers(db: DatabaseClient<typeof main>) {
+  return db.user.findMany({
+    select: { email: true, posts: { select: { title: true } } },
+  });
+}
+
+function listAudit(db: DatabaseClient<typeof audit>) {
+  return db.user.findMany({ where: { event: "login" } });
+}
+```
+
+Models are also available as `Models.User` and `UserModel`, and enums as `Enums.Status`, avoiding collisions with wrapper types. Relation filters, `select`, `include`, compound unique keys, and results preserve model type inference. `Client` exposes model operations and the type of `transaction(callback)`. Connection lifecycle, raw SQL, and extensions are outside the project client. Import `Decimal`, `DbNull`, `JsonNull`, and `AnyNull` from `steamharness/database` or an alias module. Browser code uses the same model types and imports descriptors from `browser/index.js`.
+
+Descriptors contain `alias`, `target`, `provider`, `schemaHash`, and `metadata`; they do not open connections. This entry currently provides definitions, validation, types, and generated assets. Resource provisioning, physical database binding, migrations, and query execution are not connected.
+
+## Build and distribute
+
+Custom builds should run `database generate` before TypeScript or frontend compilation. `workspace pack` generates definitions found at the aggregate root and registered entry directories, then includes source, models, and the complete generated subtree. `.gitignore` only controls Git. Do not exclude required database files through `.steamharnessignore`.
+
+Server reads static manifests, source fingerprints, and artifact hashes without executing definition files. Download checks the same inventory and hashes and leaves no partial project on failure. Only `.steamharness/generated/database` is included from private runtime directories; other `.steamharness` data stays excluded.
+
+This API defines business models separately from platform records in [Agent server storage](/en/core-api/runtime-storage). It does not automatically replace existing KV or default Agent storage.

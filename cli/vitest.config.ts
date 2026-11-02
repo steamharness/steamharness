@@ -10,7 +10,8 @@ export default defineConfig({
   resolve: {
     conditions: ["development"],
     alias: localHarnessRoot
-      ? { "steamharness": path.join(path.resolve(localHarnessRoot), "src", "index.ts") }
+      ? [{ find: /^steamharness$/, replacement: path.join(path.resolve(localHarnessRoot), "src", "index.ts") },
+        { find: /^steamharness\/database$/, replacement: path.join(path.resolve(localHarnessRoot), "src/database/index.ts") }]
       : undefined,
   },
   test: {

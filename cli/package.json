@@ -28,8 +28,11 @@
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "1.29.0",
+    "@prisma/client-generator-ts": "7.10.1",
+    "@prisma/internals": "7.10.1",
     "import-meta-resolve": "4.2.0",
     "tsx": "^4.21.0",
+    "typescript": "^6.0.3",
     "zod": "4.4.3"
   },
   "peerDependencies": {
@@ -58,7 +61,6 @@
     "semver": "^7.7.4",
     "steamharness": "0.1.2-dev.20261031002",
     "tsup": "^8.5.1",
-    "typescript": "^6.0.3",
     "vitest": "^4.1.7",
     "@steamharness/project-configuration": "workspace:*",
     "@steamharness/project-access": "workspace:*",

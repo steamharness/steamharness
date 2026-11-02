@@ -1,5 +1,7 @@
 # Unreleased
 
+- Add SteamHarness Database definitions for single or multiple schemas, model metadata, and typed Node/Browser descriptors. Core supplies engine dependencies without application-authored PrismaClient imports.
+
 - Added opt-in Agent storage through `steamharness/runtime-storage`, with account/workspace/session isolation in PostgreSQL, execution leases, idempotent commits and document checkpoints.
 
 - Fixed conversation branches to support independent root databases with truncated history and historical asOf document checkpoints. Execution identities are renewed without importing tasks, approvals, queues or usage; source cancellation and deletion do not affect the new conversation.

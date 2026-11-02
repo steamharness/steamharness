@@ -1,3 +1,5 @@
+import { prepareProjectDatabaseArtifacts } from "./database-generation";
+import { isDatabaseArtifactPath, readDatabaseArtifactFiles } from "@steamharness/project-upload/database-artifacts";
 import { readProjectManifestFromDirectory, readProjectDeclarationFromDirectory } from '@steamharness/project-manifest/node';
 import { readProjectDeclaration, projectManifestForDistribution, type ProjectEntry, type ProjectManifest } from "@steamharness/project-manifest";
 import { configurationTemplatePath } from "@steamharness/project-configuration";
@@ -454,12 +456,13 @@ export async function materializeAggregateDownload(download: AggregateDownload, 
     await mkdir(stage, { recursive: true });
     for (const file of download.files) {
       const relative = normalizeProjectFilePath(file.path), portable = createPortableLocalPathKey(relative);
-      if (seen.has(portable) || relative.split("/").some(part => [".git", "node_modules", ".env", ".steamharness", ".data"].includes(part) || part.startsWith(".env."))) throw new Error("Invalid or duplicate download path.");
+      if (seen.has(portable) || relative.split("/").some(part => [".git", "node_modules", ".env", ".data"].includes(part) || part.startsWith(".env.")) || relative.split("/").includes(".steamharness") && !isDatabaseArtifactPath(relative)) throw new Error("Invalid or duplicate download path.");
       seen.add(portable);
       const destination = path.join(stage, ...relative.split("/"));
       await mkdir(path.dirname(destination), { recursive: true }); await writeFile(destination, decodeProjectFileContent(file), { flag: "wx" });
     }
     const pkg = await assertDownloadedProjectMetadata(stage, download.projectId);
+    await verifyDownloadedDatabaseArtifacts(stage, download.files.map(file => normalizeProjectFilePath(file.path)));
     const manifest = await readProjectManifestFromDirectory(stage, {});
     for (const entry of manifest.entries) {
       const templateFile = download.files.find(file => file.path === configurationTemplatePath(entry.entryId));
@@ -472,6 +475,17 @@ export async function materializeAggregateDownload(download: AggregateDownload, 
     await writeFile(path.join(stage, "steamharness.json"), JSON.stringify(projectManifestForDistribution(pkg), null, 2) + "\n");
     await rename(stage, targetDir);
   } finally { await rm(stage, { recursive: true, force: true }); }
+}
+
+async function verifyDownloadedDatabaseArtifacts(root: string, files: string[]): Promise<void> {
+  const owners = new Set(files.filter(isDatabaseArtifactPath).map(filename => filename.slice(0, filename.indexOf(".steamharness/generated/database/"))));
+  for (const prefix of owners) {
+    const artifacts = await readDatabaseArtifactFiles(path.join(root, prefix));
+    if (!artifacts) throw new Error("Downloaded database artifacts are incomplete.");
+    const expected = new Set(artifacts.files.map(file => prefix + file));
+    for (const file of files.filter(file => file.startsWith(prefix + ".steamharness/generated/database/"))) if (!expected.delete(file)) throw new Error("Invalid downloaded database artifact.");
+    if (expected.size) throw new Error("Downloaded database artifacts are incomplete.");
+  }
 }
 
 async function commandPublish(parsed: ParsedArgs): Promise<void> {
@@ -822,6 +836,7 @@ async function stageProjectSource(options: {
   projectName: string;
   stagingRoot: string;
 }): Promise<void> {
+  await prepareProjectDatabaseArtifacts(options.projectDir);
   const uploadPlan=await copyProjectSource(options.projectDir,path.join(options.stagingRoot,options.projectName));
   if(!uploadPlan.projectIgnoreConfigured)process.stderr.write(`${i18n.t('projectIgnoreWarning',{ns:'cli',files:uploadPlan.files.length,bytes:uploadPlan.totalBytes})}\n`);
 }

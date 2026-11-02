@@ -45,6 +45,21 @@
       "types": "./dist/executor/rules.d.ts",
       "development": "./src/executor/rules.ts",
       "import": "./dist/executor/rules.js"
+    },
+    "./database": {
+      "types": "./dist/database.d.ts",
+      "development": "./src/database/index.ts",
+      "import": "./dist/database.js"
+    },
+    "./database/engine": {
+      "types": "./dist/database/engine.d.ts",
+      "development": "./src/database/engine.ts",
+      "import": "./dist/database/engine.js"
+    },
+    "./database/engine-browser": {
+      "types": "./dist/database/engine-browser.d.ts",
+      "development": "./src/database/engine-browser.ts",
+      "import": "./dist/database/engine-browser.js"
     }
   },
   "publishConfig": {
@@ -77,6 +92,18 @@
       "./executor/rules": {
         "types": "./dist/executor/rules.d.ts",
         "import": "./dist/executor/rules.js"
+      },
+      "./database": {
+        "types": "./dist/database.d.ts",
+        "import": "./dist/database.js"
+      },
+      "./database/engine": {
+        "types": "./dist/database/engine.d.ts",
+        "import": "./dist/database/engine.js"
+      },
+      "./database/engine-browser": {
+        "types": "./dist/database/engine-browser.d.ts",
+        "import": "./dist/database/engine-browser.js"
       }
     }
   },
@@ -98,6 +125,7 @@
     "@ai-sdk/anthropic": "^3.0.72",
     "@ai-sdk/openai": "^3.0.54",
     "@date-fns/tz": "1.5.0",
+    "@prisma/client": "7.10.1",
     "@types/json-schema": "^7.0.15",
     "@types/node": "^25.6.0",
     "ai": "^6.0.169",

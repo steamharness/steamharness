@@ -14,3 +14,5 @@ One operation covers every registered entry of one projectId, including code, de
 Archives exclude credentials, host runtime data, Git and node_modules. Authored database aliases and IDs remain in root config.json; environment overrides are excluded. References do not grant access: request host access for another project identity or replace the database ID for another host.
 
 The output is a `.tgz` archive. Packaging is local and creates no remote project or space. Ordinary npm dependencies remain managed by package manifests and lockfiles.
+
+If the aggregate root or a registered entry directory contains `steamharness.database.ts`, packaging generates that directory’s Node/Browser descriptors, model types, and runtime assets first, then includes the complete `.steamharness/generated/database` inventory. Models and generated assets are required; excluding them through `.steamharnessignore` fails explicitly. Other `.steamharness` content stays excluded. See [SteamHarness Database](/en/core-api/database).

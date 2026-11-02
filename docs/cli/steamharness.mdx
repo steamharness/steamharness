@@ -80,3 +80,16 @@ Tasks 显示角色、视频、阶段、排队状态和已完成／目标；可�
 分叉是独立的新对话，使用各自的 SQLite、执行宿主、窗口占用锁和配置，可独立选择模型、推理强度、Plan 模式及工具权限。停止、删除或重开原会话不会停止或删除分支；分支历史中的托管附件复制到新会话。原执行的任务、审批、重试、用量和控制回执不带入新对话。旧版共享宿主的分支在使用或删除原会话前迁移，保留并暂停原有待发队列。项目共享数据库仍由项目配置决定，不会随对话分叉复制。标题下保留来源入口。
 
 创建分叉和打开子会话只响应当前页面、当前会话发起的对应请求；迟到、重复或其他视图的回执不会自动切换对话。子 Agent 的详情页仍属于其所属执行树，只有用户创建的分支作为独立对话管理。
+
+
+## 数据库模型与生成
+
+`steamharness database`（简写 `steamharness db`）提供 `init`、`validate`、`generate`，可带项目目录，默认当前目录。项目在 `steamharness.database.ts` 声明多个别名，在 `steamharness.schema` 定义模型；生成无需数据库连接。`workspace pack` 自动为聚合根与注册入口生成并携带 Node/Browser 产物，上传与下载检查静态清单和哈希。
+
+```sh
+pnpm exec steamharness database init .
+pnpm exec steamharness db validate .
+pnpm exec steamharness database generate .
+```
+
+详见 [SteamHarness Database](/core-api/database)。这些命令提供定义和代码生成，不申请资源、执行迁移或替换现有 KV。

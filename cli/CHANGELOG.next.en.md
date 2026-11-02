@@ -1,5 +1,7 @@
 # Unreleased
 
+- Add database (db) init/validate/generate for steamharness.database.ts and steamharness.schema, including typed dual-target artifacts. Packaging generates assets automatically; upload/download verify static inventories while excluding other local runtime data.
+
 - Fixed Assistant and memory-enabled projects to reuse existing Studio sessions, including older logins and expired memory credentials, without signing out. Account sessions stay in the trusted host and workers receive only short-lived grants for the current scope. Missing or expired authorization keeps a visible memory entry and verification form, with execution logs explaining unavailable recall and saving. Adding memory credentials to an existing login preserves running tasks, and background account verification no longer reports a false account change.
 
 - Fixed forks to run as independent new conversations with isolated models, modes, permissions, execution locks and recovery. Source deletion preserves branches, historical attachments are copied, old execution controls are removed, and legacy shared-host forks migrate safely. Worker startup now retains early control commands, preventing follow-up confirmation timeouts after reopening.

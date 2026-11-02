@@ -6,6 +6,16 @@ workflow 源码是自包含业务代码。本地宿主和 CLI 把 runtime API �
 
 不要在 workflow 源码中从 `"steamharness"` 导入 runtime API。Workflow、Conversation 和 Kanban 的 `package.json` 都必须在 `devDependencies` 中精确记录 `steamharness` 与 `@steamharness/cli` 版本；Core 用于宿主兼容判断，CLI 独立发版并提供外层 `steamharness` 命令。
 
+## SteamHarness Database 定义与生成
+
+关系模型使用 `steamharness/database` 的 `defineDatabase({schema:"./database/main/steamharness.schema"})`（默认别名 main）或 `defineDatabases({main:{schema:"./database/main/steamharness.schema"},audit:{schema:"./database/audit/steamharness.schema"}})`，默认导出到 `steamharness.database.ts`。模型文件统一叫 `steamharness.schema`，只写 Prisma 模型、枚举、关系和约束，不写 datasource、generator、连接 URL、资源 ID 或凭据。生成固定 PostgreSQL / Prisma 7.10.1；多个别名可复用 schema，但各自保留独立描述符。
+
+命令为 `steamharness database init|validate|generate [directory]`，简写 `steamharness db`。init 不覆盖已有定义，为已有 dev/build 脚本加入生成前置步骤。手写定义后，类型检查与构建前先 generate；生成目录 `.steamharness/generated/database` 加入 `.gitignore`，不加入 `.steamharnessignore`。Node 使用 `node/index.js`，Browser 使用 `browser/index.js`。模型与输入类型从对应 `<target>/<alias>.js` 导入，`DatabaseClient<typeof main>` 从 `steamharness/database` 获得该库查询类型。两个库可分别定义不同的 User；不能混用字段。`transaction` 是业务客户端的事务方法名，模型不要命名 Transaction。
+
+Browser 描述符不得加载 Node 客户端、驱动或连接配置。生成产物含 JS 与 TS、模型元数据、标准内部 schema、引擎运行资产及校验清单，不手动维护。workspace pack 自动为根和注册入口生成并带入产物；Server 只校验静态文件，不执行定义。失败保持上一份完整生成，去掉别名后重新生成清理旧产物。
+
+当前仅有定义、校验、类型与打包能力；不能生成可执行的 `context.databases.connect()`、资源申请或迁移调用，也不能把描述符当成数据库身份或授权。现有 `.databases.get(alias).kv` 属于旧存储契约，本阶段未删除，不把其 API 伪装成关系模型查询。
+
 ## 用户设置与权限继承
 
 项目用 `steamharness.getUserSettings(): UserSettings` 读取当前执行的只读快照，形状为 `{ readonly agent: { readonly permissionPolicy: AgentPermissionPolicy; readonly models?: readonly Readonly<UserAgentModel>[] } }`。`AgentPermissionPolicy` 仍只有 `"read-only" | "workspace" | "auto"`。宿主从 SDK 导入 `withUserSettings<T>(settings: UserSettings, run: () => T): T` 注入执行上下文，或用 `parseUserSettings(value: unknown): UserSettings` 校验并复制冻结输入；这两个宿主 API 不注入项目命名空间。非法值（包括用户设置中的 `inherit`）直接抛 `TypeError`，并发上下文互不覆盖；无宿主时 `getUserSettings()` 返回 `auto`。
