@@ -846,6 +846,25 @@ export class DurableAgentSession {
     }
     const delegationChildren = new Map(frame.rows.filter(row => row.record.owner && !deleted.has(row.record.id))
       .map(row => [row.record.owner!.taskId, row.record.id]));
+    // Usage belongs to execution ownership, never to a fork's history. Keep
+    // deleted child ledgers in these totals: hiding a view cannot undo spend.
+    const rowsById = new Map(frame.rows.map(row => [row.record.id, row]));
+    const ownTotals = new Map(frame.rows.map(row => [row.record.id,
+      projectConversationUsage(row.spend, row.entries.filter(entry => entry.conversationId === row.record.id))]));
+    const totals = new Map([...ownTotals].map(([id, own]) => [id, { ...own }]));
+    for (const row of frame.rows) {
+      const own = ownTotals.get(row.record.id)!;
+      const seen = new Set<number>([row.record.id]);
+      let parent = row.record.owner?.conversationId;
+      while (parent !== undefined && !seen.has(parent)) {
+        seen.add(parent);
+        const total = totals.get(parent);
+        if (!total) break;
+        for (const key of usageCounters) total[key] += own[key];
+        parent = rowsById.get(parent)?.record.owner?.conversationId;
+      }
+    }
+    const ownedChildren = new Map(frame.rows.filter(row => row.record.owner).map(row => [row.record.owner!.taskId, row]));
     for (const { record, live, inbox, spend, info, entries, submitted, allTasks, agent, plan } of frame.rows) {
       if (deleted.has(record.id)) continue;
       const conversation = (await this.harness.conversation(record.id, context))!;
@@ -862,7 +881,7 @@ export class DurableAgentSession {
       contexts.push({ conversationId: record.id, foreground: !!live.run, backgroundCount: 0, epoch: entries.filter(entry => entry.kind === "pi.reset").length,
         configuration: { version: info.configurationVersion, provider: agent.model?.provider ?? "", model: agent.model?.modelId ?? "", effort: agent.thinkingLevel ?? "off", ...(agent.cwd ? { cwd: agent.cwd } : {}) },
         prompt: { hash: info.promptHash, version: info.promptVersion }, plan: { version: plan.version, items: plan.items as AgentPlanItem[] },
-        ...(contextUsage ? { contextUsage } : {}) });
+        ...(contextUsage ? { contextUsage } : {}), tokenUsage: totals.get(record.id)! });
       const byId = new Map(entries.map(entry => [entry.id, entry]));
       const tasksById = new Map<number, typeof allTasks[number]>(allTasks.map(task => [task.id, task]));
       for (const task of allTasks) {
@@ -875,11 +894,18 @@ export class DurableAgentSession {
         const model = task.state.status === "running" || task.state.status === "waiting" || task.state.status === "pending" ? task.state.checkpoint : undefined;
         const state = object(model);
         const inspected = inspections.get(task.id);
+        const child = task.kind === "project.delegation" ? ownedChildren.get(task.id) : undefined;
+        const startedAt = task.kind === "project.delegation"
+          ? child?.entries.flatMap(entry => entry.conversationId === child.record.id && (entry.kind === "project.input" || entry.kind === "pi.user")
+            ? (entry.model ?? []).flatMap(message => message.role === "user" ? [message.timestamp] : []) : []).at(0)
+          : task.startedAt;
         const descriptor: AgentSessionTask = {
           id: task.id, conversationId: record.id, ...(task.owner === undefined ? {} : { parentId: task.owner }), kind: task.kind,
           ...(task.kind === "project.delegation" && delegationChildren.has(task.id) ? { childConversationId: delegationChildren.get(task.id)! } : {}),
           label: tool ?? (task.kind === "project.delegation" ? String(object(task.input).prompt ?? "Subagent").slice(0, 120) : task.kind),
           status: task.state.status === "terminal" ? task.state.outcome.status : inspected?.kind === "blocked" ? "blocked" : task.state.status,
+          ...(startedAt === undefined ? {} : { startedAt }), ...(task.endedAt === undefined ? {} : { endedAt: task.endedAt }),
+          ...(task.kind === "project.delegation" ? { usage: child ? totals.get(child.record.id)! : aggregateUsage([]) } : {}),
           ...(state.phase ? { phase: String(state.phase) } : {}), background: task.background || info?.background === true,
           definitionVersion: task.version,
           ...(model === undefined || task.kind.startsWith("pi.") ? {} : { checkpoint: plain(model) }),
@@ -939,7 +965,7 @@ export class DurableAgentSession {
     for (const scope of contexts) scope.backgroundCount = tasks.filter(task => task.background && task.parentId === undefined && task.conversationId === scope.conversationId).length;
     const agent = frame.agent, info = frame.rows.find(row => row.record.id === this.root.id)?.info, plan = frame.plan;
     const live = rootLive as unknown as { run?: unknown; compactionFailure?: { error: string } } | undefined;
-    return { version: 1, ownerId: this.ownerId, revision: ++this.revision, conversationId: this.root.id, foreground: !!live?.run,
+    return { version: 1, capturedAt: Date.now(), ownerId: this.ownerId, revision: ++this.revision, conversationId: this.root.id, foreground: !!live?.run,
       backgroundCount: tasks.filter(task => task.background && task.parentId === undefined && task.conversationId === this.root.id).length, epoch,
       configuration: { version: info?.configurationVersion ?? 0, provider: agent.model?.provider ?? "", model: agent.model?.modelId ?? "", effort: agent.thinkingLevel ?? "off", ...(agent.cwd ? { cwd: agent.cwd } : {}) },
       prompt: { hash: info?.promptHash ?? "", version: info?.promptVersion ?? 0 }, plan: { version: plan?.version ?? 0, items: plain(plan?.items ?? []) as AgentPlanItem[] },
@@ -966,6 +992,20 @@ export function projectSessionUsage(entries: readonly EntryRecord[], requestId: 
     ? (entry.model ?? []).flatMap(message => message.role === "assistant" ? [message.usage] : [])
     : entry.kind === "project.compaction-usage" && object(entry.data).requestId === requestId
       ? [object(entry.data).usage as unknown as Usage] : []);
+  return aggregateUsage(usages);
+}
+
+const usageCounters = ["inputTokens", "outputTokens", "totalTokens", "cachedInputTokens", "cacheCreationTokens", "reasoningTokens", "calls"] as const;
+
+/** The ledger includes retries, resets and idle compaction, independent of visible turn history. */
+export function projectConversationUsage(spend: { models: Record<string, Usage>; tools: Record<string, Usage> }, entries: readonly EntryRecord[]): TokenUsageAggregate {
+  const total = aggregateUsage([...Object.values(spend.models), ...Object.values(spend.tools)]);
+  total.calls = entries.reduce((count, entry) => count + (entry.kind === "pi.assistant"
+    ? (entry.model ?? []).filter(message => message.role === "assistant").length : entry.kind === "project.compaction-usage" ? 1 : 0), 0);
+  return total;
+}
+
+function aggregateUsage(usages: readonly Usage[]): TokenUsageAggregate {
   return usages.reduce<TokenUsageAggregate>((total, usage) => ({
     inputTokens: total.inputTokens + (usage.input ?? 0),
     outputTokens: total.outputTokens + (usage.output ?? 0),

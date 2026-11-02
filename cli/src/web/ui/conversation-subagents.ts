@@ -1,5 +1,5 @@
 import type { AgentSessionSnapshot, AgentSessionTask } from 'steamharness/agent';
-import { t } from '../localization';
+import { locale, t } from '../localization';
 import { iconHtml, iconButton, updateIcon } from './ui';
 
 type Status = 'running' | 'queued' | 'waiting' | 'needs_review' | 'completed' | 'failed' | 'stopped' | 'stopping' | 'interrupted';
@@ -7,9 +7,11 @@ export interface ConversationSubagent {
   id: number; label: string; status: Status; role?: string; childId?: number; attempt?: number;
   phase?: string; activity?: string; result?: string; error?: string;
   progress?: { completed: number; total: number };
+  startedAt?: number; endedAt?: number; totalTokens?: number;
 }
 export interface ConversationSubagentsState {
   ownerId: string; conversationId: number; connected: boolean; tasks: ConversationSubagent[];
+  capturedAt?: number; displayUsage?: boolean;
 }
 const record = (value: unknown): Record<string, unknown> => value && typeof value === 'object' ? value as Record<string, unknown> : {};
 const text = (value: unknown): string | undefined => typeof value === 'string' && value.trim() ? value : undefined;
@@ -47,13 +49,14 @@ export function conversationSubagents(snapshot: AgentSessionSnapshot | undefined
       status, childId, attempt: work?.attempt ?? task.attempt, phase,
       activity: childId === undefined ? undefined : childActivity.get(childId),
       progress: progress && Number.isFinite(progress.total) && progress.total > 0 ? progress : undefined,
+      startedAt: task.startedAt, endedAt: task.endedAt, totalTokens: task.usage?.totalTokens,
       result: work?.result ?? text(details.result),
       error };
   });
   const active = (task: ConversationSubagent): number => ['running', 'queued', 'waiting', 'stopping'].includes(task.status) ? 0 : 1;
   // Outstanding work stays visible above history; progress updates retain stable order.
   tasks.sort((a, b) => active(a) - active(b) || a.id - b.id);
-  return tasks.length ? { ownerId: snapshot.ownerId, conversationId: scope, connected, tasks } : undefined;
+  return tasks.length ? { ownerId: snapshot.ownerId, conversationId: scope, connected, capturedAt: snapshot.capturedAt, tasks } : undefined;
 }
 
 /** Child details show the same delegation receipt as the parent; independent forks have no such owner. */
@@ -74,9 +77,17 @@ const statusIcon = (status: Status): string => ({
 })[status];
 const phaseLabel = (phase: string): string => ({ create: t('Queued'), wait: t('Working'), report: t('Returning result'), needs_review: t('Awaiting verification') } as Record<string, string>)[phase] ?? phase;
 const setText = (element: HTMLElement, value: string): void => { if (element.textContent !== value) element.textContent = value; };
-const taskMeta = (task: ConversationSubagent): string => [t('Task {0}', task.id), task.role && t('Role: {0}', task.role), task.attempt && t('Attempt {0}', task.attempt),
+const taskMeta = (task: ConversationSubagent): string => [t('Task {0}', task.id), statusLabel(task.status), task.role && t('Role: {0}', task.role), task.attempt && t('Attempt {0}', task.attempt),
   task.phase && t('Phase: {0}', phaseLabel(task.phase)), task.progress && t('{0}/{1} completed', task.progress.completed, task.progress.total)].filter(Boolean).join(' · ');
 const taskError = (task: ConversationSubagent): string => task.error ? t(task.status === 'needs_review' ? 'Reason: {0}' : 'Error: {0}', task.error) : '';
+function taskDuration(task: ConversationSubagent, state: ConversationSubagentsState, now: number): string {
+  const end = task.endedAt ?? (task.status === 'interrupted' ? state.capturedAt
+    : ['running', 'waiting', 'stopping'].includes(task.status) ? state.connected ? now : state.capturedAt : undefined);
+  if (!Number.isFinite(task.startedAt) || !Number.isFinite(end)) return '—';
+  const seconds = Math.floor(Math.max(0, end! - task.startedAt!) / 1000);
+  return seconds >= 3600 ? t('{0}h {1}m {2}s', Math.floor(seconds / 3600), Math.floor(seconds / 60) % 60, seconds % 60)
+    : seconds >= 60 ? t('{0}m {1}s', Math.floor(seconds / 60), seconds % 60) : t('{0}s', seconds);
+}
 
 /** A model reply can finish while the delegated business work still lacks a verified result. */
 export class ChildConversationStatus {
@@ -108,7 +119,7 @@ export class ChildConversationStatus {
   }
 }
 interface TaskView {
-  root: HTMLDetailsElement; title: HTMLElement; status: HTMLElement; icon: HTMLElement; meta: HTMLElement;
+  root: HTMLDetailsElement; title: HTMLElement; metrics: HTMLElement; icon: HTMLElement; meta: HTMLElement;
   progress: HTMLProgressElement; activity: HTMLElement; error: HTMLElement; result: HTMLElement; open: HTMLButtonElement;
 }
 
@@ -175,9 +186,9 @@ export class ConversationSubagents {
         const summary = document.createElement('summary');
         const icon = document.createElement('span'); icon.className = 'subagent-icon';
         const title = document.createElement('span'); title.className = 'subagent-title';
-        const status = document.createElement('span'); status.className = 'subagent-status';
+        const metrics = document.createElement('span'); metrics.className = 'subagent-metrics';
         const chevron = document.createElement('span'); chevron.className = 'subagent-chevron'; chevron.innerHTML = iconHtml('chevron-right');
-        summary.append(icon, title, status, chevron);
+        summary.append(icon, title, metrics, chevron);
         const body = document.createElement('div'); body.className = 'subagent-detail';
         const meta = document.createElement('p'); meta.className = 'subagent-meta';
         const progress = document.createElement('progress'); progress.setAttribute('aria-label', t('Task progress'));
@@ -190,12 +201,13 @@ export class ConversationSubagents {
         });
         open.className = 'subagent-open'; open.append(document.createTextNode(t('Open child conversation')));
         body.append(meta, progress, activity, error, result, open); root.append(summary, body);
-        view = { root, title, icon, status, meta, progress, activity, error, result, open }; this.rows.set(task.id, view);
+        view = { root, title, icon, metrics, meta, progress, activity, error, result, open }; this.rows.set(task.id, view);
       }
       view.root.dataset.state = task.status;
       updateIcon(view.icon, statusIcon(task.status));
+      view.icon.title = statusLabel(task.status); view.icon.setAttribute('role', 'img'); view.icon.setAttribute('aria-label', statusLabel(task.status));
       setText(view.title, task.label); view.title.title = task.label;
-      setText(view.status, statusLabel(task.status));
+      this.updateMetrics(view, task, state, Date.now());
       setText(view.meta, taskMeta(task));
       view.progress.hidden = !task.progress;
       if (task.progress) { view.progress.max = task.progress.total; view.progress.value = Math.max(0, task.progress.completed); }
@@ -213,6 +225,22 @@ export class ConversationSubagents {
       }
     });
     for (const [id, view] of this.rows) if (!keep.has(id)) { view.root.remove(); this.rows.delete(id); }
+  }
+
+  private updateMetrics(view: TaskView, task: ConversationSubagent, state: ConversationSubagentsState, now: number): void {
+    const duration = taskDuration(task, state, now);
+    const tokens = t('{0} tokens', Number.isFinite(task.totalTokens) ? Number(task.totalTokens).toLocaleString(locale()) : '—');
+    setText(view.metrics, state.displayUsage === false ? duration : `${duration} · ${tokens}`);
+    view.metrics.title = [t('Duration: {0}', duration), ...(state.displayUsage === false ? [] : [tokens])].join('\n');
+  }
+
+  /** Reuse the transcript clock; completed and disconnected rows keep their persisted span. */
+  tick(now = Date.now()): void {
+    if (this.panel.hidden || !this.state) return;
+    for (const task of this.state.tasks) {
+      const view = this.rows.get(task.id);
+      if (view) this.updateMetrics(view, task, this.state, now);
+    }
   }
 
   remove(): void { this.button.remove(); this.summary.remove(); this.panel.remove(); }

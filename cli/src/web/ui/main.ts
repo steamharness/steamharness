@@ -1099,14 +1099,21 @@ function initialize(): void {
     const duration = message.durationMs !== undefined || message.status === 'running' ? t("Duration {0}{1}s", seconds >= 60 ? `${Math.floor(seconds / 60)}m ` : '', seconds % 60) : '';
     const usage = message.tokenUsage?.display ? message.tokenUsage.run : undefined;
     const tokens = usage && (usage.totalTokens ?? (Number(usage.inputTokens ?? 0) + Number(usage.outputTokens ?? 0)));
-    view.metadata.textContent = [status, duration, message.model, tokens ? t('Turn usage: {0} tokens', Number(tokens).toLocaleString(locale())) : ''].filter(Boolean).join(' \u00b7 ');
+    const session = currentSession();
+    const latest = session?.messages.filter(item => item.role === 'assistant').at(-1);
+    const owner = state?.sessions.find(entry => entry.id === session?.agentOwnerId);
+    const snapshot = session?.agent ?? owner?.agent;
+    const conversationUsage = message === latest && state?.project.tokenUsage?.enabled !== false && state?.project.tokenUsage?.display !== false
+      ? snapshot?.contexts?.find(context => context.conversationId === (session?.agentConversationId ?? snapshot.conversationId))?.tokenUsage : undefined;
+    view.metadata.textContent = [status, duration, message.model, tokens ? t('Turn usage: {0} tokens', Number(tokens).toLocaleString(locale())) : '',
+      conversationUsage ? t('Conversation usage: {0} tokens', conversationUsage.totalTokens.toLocaleString(locale())) : ''].filter(Boolean).join(' \u00b7 ');
     view.metadata.title = [view.metadata.textContent, ...(usage ? [
       t('Model calls: {0}', usage.calls ?? 0),
       t('Input: {0} tokens', Number(usage.inputTokens ?? 0).toLocaleString(locale())),
       t('Output: {0} tokens', Number(usage.outputTokens ?? 0).toLocaleString(locale())),
       t('Cache read: {0} tokens', Number(usage.cachedInputTokens ?? 0).toLocaleString(locale())),
       t('Cache write: {0} tokens', Number(usage.cacheCreationTokens ?? 0).toLocaleString(locale())),
-    ] : [])].join('\n');
+    ] : []), ...(conversationUsage ? [t('Includes this conversation and its subagents, including failed and stopped attempts.')] : [])].join('\n');
   }
 
   function updateMessage(view: MessageView, message: ConversationMessage, files: Attachment[], filesSignature: string): void {
@@ -1145,8 +1152,9 @@ function initialize(): void {
 
   function subagentState(session: ConversationSession): ConversationSubagentsState | undefined {
     const owner = state?.sessions.find(entry => entry.id === (session.agentOwnerId ?? session.id));
-    return conversationSubagents(session.agent ?? owner?.agent, session.agentConversationId,
+    const result = conversationSubagents(session.agent ?? owner?.agent, session.agentConversationId,
       connectionAvailable && !serverBlocked(), session.agentInterrupted ?? owner?.agentInterrupted);
+    return result && { ...result, displayUsage: state?.project.tokenUsage?.enabled !== false && state?.project.tokenUsage?.display !== false };
   }
 
   function updateChildWorkStatus(session: ConversationSession): void {

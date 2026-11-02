@@ -223,11 +223,11 @@ main { grid-area: main; min-width: 0; min-height: 0; display: flex; flex-directi
 .subagent-task > summary { display: flex; align-items: center; gap: 8px; min-height: 38px; padding: 7px 2px; cursor: pointer; list-style: none; }
 .subagent-title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; }
 .subagent-icon, .subagent-chevron { display: inline-flex; flex: none; color: var(--muted); }
-.subagent-status { flex: none; color: var(--muted); font-size: 11px; }
+.subagent-metrics { flex: none; color: var(--muted); font-size: 11px; font-variant-numeric: tabular-nums; white-space: nowrap; text-align: right; }
 .subagent-task[data-state=running] .subagent-icon > .codicon { animation: spin 1.2s linear infinite; }
-.subagent-task[data-state=failed] .subagent-icon, .subagent-task[data-state=failed] .subagent-status, .subagent-error { color: var(--vscode-errorForeground); }
+.subagent-task[data-state=failed] .subagent-icon, .subagent-error { color: var(--vscode-errorForeground); }
 .subagent-task[data-state=completed] .subagent-icon { color: var(--vscode-testing-iconPassed, var(--muted)); }
-.subagent-task[data-state=needs_review] .subagent-icon, .subagent-task[data-state=needs_review] .subagent-status, .subagent-task[data-state=needs_review] .subagent-error,
+.subagent-task[data-state=needs_review] .subagent-icon, .subagent-task[data-state=needs_review] .subagent-error,
 .child-work-status[data-state=needs_review] .child-work-title, .child-work-status[data-state=needs_review] .subagent-error { color: var(--vscode-editorWarning-foreground, var(--vscode-notificationsWarningIcon-foreground, var(--muted))); }
 .child-work-status { flex: none; min-width: 0; margin: 8px 16px 0; padding: 10px 12px; border: 1px solid var(--border); border-radius: 6px; font-size: 12px; overflow-wrap: anywhere; }
 .child-work-status p { margin: 0 0 6px; }

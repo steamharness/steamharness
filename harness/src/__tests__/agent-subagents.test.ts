@@ -202,6 +202,14 @@ for (const [blocked, denied] of [[false, false], [true, false], [false, true]]) 
   assert.equal(calls, blocked || denied ? 1 : 2); assert.equal(f.snapshot().agents!.length, 1);
   await until(() => f.snapshot().turns.filter(turn => turn.mode === "report").length === 1);
   assert.equal(f.snapshot().turns.filter(turn => turn.conversationId === work.childConversationId).length, blocked || denied ? 1 : 2);
+  const frame = f.snapshot(), childTurns = frame.turns.filter(turn => turn.conversationId === work.childConversationId);
+  const childTokens = childTurns.reduce((total, turn) => total + (turn.usage?.totalTokens ?? 0), 0);
+  const childCalls = childTurns.reduce((total, turn) => total + (turn.usage?.calls ?? 0), 0);
+  assert.ok(childTokens > 0, "Failed verification still consumes tokens");
+  assert.equal(frame.history.find(task => task.id === work.taskId)!.usage!.totalTokens, childTokens);
+  assert.equal(frame.contexts.find(scope => scope.conversationId === work.childConversationId)!.tokenUsage!.calls, childCalls);
+  const ownTokens = frame.turns.filter(turn => turn.conversationId === frame.conversationId).reduce((total, turn) => total + (turn.usage?.totalTokens ?? 0), 0);
+  assert.equal(frame.contexts.find(scope => scope.conversationId === frame.conversationId)!.tokenUsage!.totalTokens, ownTokens + childTokens);
 });
 
 test("a failed child turn retries after transport exhaustion without inheriting the old unanswered failure", async t => {
@@ -267,8 +275,12 @@ test("stopping during work retry backoff never starts the next attempt", async t
   await until(() => !!f.snapshot());
   const first = await f.agent.control({ type: "subagent", action: "spawn", requestId: "backoff", agentId: "researcher", workId: "backoff", prompt: "Verify" });
   await until(() => f.snapshot().tasks.some(task => task.id === first.taskId && task.phase === "retry"));
+  const used = f.snapshot().tasks.find(task => task.id === first.taskId)!.usage!;
+  assert.ok(used.totalTokens > 0);
   const stopped = await f.agent.control({ type: "subagent", action: "stop", requestId: "stop-backoff", taskId: first.taskId! });
   assert.equal(stopped.agents![0].status, "aborted"); assert.equal(stopped.agents![0].attempt, 1); assert.equal(calls, 1);
+  assert.deepEqual(f.snapshot().history.find(task => task.id === first.taskId)!.usage, used);
+  assert.ok(f.snapshot().contexts.find(scope => scope.conversationId === f.snapshot().conversationId)!.tokenUsage!.totalTokens >= used.totalTokens);
 });
 
 for (const reduceLimit of [false, true]) test(`SQLite preserves a scheduled work retry without resetting its budget (reduceLimit=${reduceLimit})`, async t => {
@@ -492,6 +504,8 @@ test("retry keeps the work identity, history and committed tool results, and dup
   await until(() => !!f.snapshot());
   const first = await f.agent.control({ type: "subagent", action: "spawn", requestId: "initial", agentId: "researcher", workId: "retry-work", prompt: "Retry work" });
   await until(() => f.snapshot().agents?.some(work => work.taskId === first.taskId && work.status === "failed") === true);
+  const failedUsage = f.snapshot().history.find(task => task.id === first.taskId)!.usage!;
+  assert.ok(failedUsage.totalTokens > 0);
   const command = { type: "subagent" as const, action: "retry" as const, requestId: "retry", taskId: first.taskId! };
   const next = await f.agent.control(command);
   assert.equal((await f.agent.control(command)).taskId, next.taskId);
@@ -499,6 +513,13 @@ test("retry keeps the work identity, history and committed tool results, and dup
   const second = f.snapshot().agents!.find(work => work.taskId === next.taskId)!;
   assert.equal(calls, 1); assert.equal(second.workId, "retry-work"); assert.equal(second.attempt, 2); assert.equal(second.retryOf, first.taskId);
   assert.notEqual(second.childConversationId, f.snapshot().agents!.find(work => work.taskId === first.taskId)!.childConversationId);
+  const frame = f.snapshot(), retriedUsage = frame.history.find(task => task.id === second.taskId)!.usage!;
+  assert.deepEqual(frame.history.find(task => task.id === first.taskId)!.usage, failedUsage);
+  assert.equal(retriedUsage.calls, 1, "A retry fork must not bill its inherited history again");
+  assert.ok(frame.history.find(task => task.id === second.taskId)!.startedAt! >= frame.history.find(task => task.id === first.taskId)!.endedAt!,
+    "A retry fork starts at its new input, not the inherited input timestamp");
+  const ownTokens = frame.turns.filter(turn => turn.conversationId === frame.conversationId).reduce((total, turn) => total + (turn.usage?.totalTokens ?? 0), 0);
+  assert.equal(frame.contexts.find(scope => scope.conversationId === frame.conversationId)!.tokenUsage!.totalTokens, ownTokens + failedUsage.totalTokens + retriedUsage.totalTokens);
 });
 
 

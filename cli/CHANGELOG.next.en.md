@@ -1,5 +1,7 @@
 # Unreleased
 
+- [Improved] Subagent rows show elapsed time and token usage on the right, with status in icons and details. The latest response shows conversation usage including owned subagents, updates during background work, freezes elapsed time on settlement or disconnection, and preserves totals on reopen.
+
 - Fixed subagent work with an unconfirmed result to show Awaiting verification with its reason and unfinished progress. Child conversations show the same task receipt as the parent so a finished reply is not mistaken for completed work. Cancellation, independent forks and other conversations retain their own state.
 
 - Run project startup checks silently in the background. Conversation, Workflow and Kanban pages in Studio and standalone CLI Web show setup guidance and rechecking only when a check fails.

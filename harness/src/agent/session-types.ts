@@ -122,6 +122,11 @@ export interface AgentSessionTask {
   kind: string;
   label: string;
   status: string;
+  /** Persisted execution span. Delegations start when their child input is placed, excluding the admission queue. */
+  startedAt?: number;
+  endedAt?: number;
+  /** Committed usage of this delegation's owned child tree, including failed attempts. */
+  usage?: TokenUsageAggregate;
   phase?: string;
   background: boolean;
   stopping: boolean;
@@ -175,6 +180,8 @@ export interface AgentSessionTurn {
 
 export interface AgentSessionSnapshot {
   version: 1;
+  /** Epoch milliseconds of this projection; clients can freeze live spans while disconnected. */
+  capturedAt?: number;
   /** Changes on reopen so a previous owner's sequence cannot suppress new snapshots. */
   ownerId: string;
   revision: number;
@@ -191,6 +198,8 @@ export interface AgentSessionSnapshot {
   conversations: { id: number; parentId?: number; title: string; background: boolean; forkEntryId?: number }[];
   contexts: { conversationId: number; foreground: boolean; backgroundCount: number; epoch: number; configuration: AgentSessionSnapshot['configuration'];
     prompt: AgentSessionSnapshot['prompt']; plan: AgentSessionSnapshot['plan']; contextUsage?: AgentContextUsage;
+    /** Committed conversation usage including owned descendants, even deleted child views; independent forks are excluded. */
+    tokenUsage?: TokenUsageAggregate;
     /** Standard auxiliary outputs supplied by the Agent node for this conversation. */
     outputs?: RunOutputItemInput[] }[];
   records: { id: number; conversationId: number; kind: string; label: string; data?: unknown }[];

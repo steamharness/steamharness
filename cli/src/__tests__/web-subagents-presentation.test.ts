@@ -25,25 +25,41 @@ it('shows one live entry on the latest response and routes child navigation thro
   const session = { id: 'parent', title: 'Parent', messages: [
     { id: 'old', role: 'assistant', content: 'Earlier answer', status: 'success' },
     { id: 'current', role: 'assistant', content: 'Current answer', status: 'running' },
-  ], agent: { ownerId: 'owner', conversationId: 1, contexts: [], turns: [], conversations: [{ id: 1 }, { id: 2, parentId: 1 }],
-    tasks: [{ id: 10, conversationId: 1, kind: 'project.delegation', status: 'waiting', phase: 'wait', childConversationId: 2, label: 'Read video' }], history: [] },
+  ], agent: { ownerId: 'owner', conversationId: 1, capturedAt: Date.now(), contexts: [
+    { conversationId: 1, tokenUsage: { totalTokens: 1400 } }, { conversationId: 2, tokenUsage: { totalTokens: 400 } },
+  ], turns: [], conversations: [{ id: 1 }, { id: 2, parentId: 1 }],
+    tasks: [{ id: 10, conversationId: 1, kind: 'project.delegation', status: 'waiting', phase: 'wait', childConversationId: 2,
+      label: 'Read video', startedAt: Date.now() - 20_000, usage: { totalTokens: 400 } }], history: [] },
   } as unknown as ConversationSession;
   const emit = (data: object) => window.dispatchEvent(new MessageEvent('message', { data }));
   const render = async () => { emit({ type: 'state', project, sessions: [session], activeId: session.id, running: true }); await vi.advanceTimersByTimeAsync(1); };
   await render(); expect(document.querySelectorAll('.subagents-button')).toHaveLength(1);
+  expect(document.querySelector('[data-message-id="current"] .message-metadata')!.textContent).toContain('Conversation usage: 1,400 tokens');
+  expect(document.querySelector('[data-message-id="old"] .message-metadata')!.textContent).not.toContain('Conversation usage');
   const entry = document.querySelector<HTMLButtonElement>('.subagents-button')!; expect(entry.closest('[data-message-id]')?.getAttribute('data-message-id')).toBe('current');
   entry.click(); const row = document.querySelector<HTMLDetailsElement>('.subagent-task')!; row.open = true;
+  expect(row.querySelector('.subagent-metrics')!.textContent).toBe('20s · 400 tokens');
+  await vi.advanceTimersByTimeAsync(1200);
+  expect(row.querySelector('.subagent-metrics')!.textContent).toBe('21s · 400 tokens');
   row.querySelector<HTMLButtonElement>('.subagent-open')!.click();
   expect(host.postMessage).toHaveBeenLastCalledWith({ type: 'agent-open', projectUri: project.uri, sessionId: 'parent', conversationId: 2, agentOwner: 'owner', requestId: expect.any(String) });
   emit({ type: 'connection', status: 'offline' }); expect(row.querySelector<HTMLButtonElement>('.subagent-open')!.disabled).toBe(true);
   emit({ type: 'connection', status: 'connected' }); expect(row.querySelector<HTMLButtonElement>('.subagent-open')!.disabled).toBe(false);
   const focused = row.querySelector<HTMLButtonElement>('.subagent-open')!; focused.focus();
   session.messages.push({ id: 'next', role: 'assistant', content: 'Next answer', status: 'success' });
+  session.agent!.contexts[0].tokenUsage!.totalTokens = 2100;
+  session.agent!.contexts[1].tokenUsage!.totalTokens = 1100;
+  session.agent!.tasks[0].usage!.totalTokens = 1100;
   await render(); expect(document.querySelectorAll('.subagents-button')).toHaveLength(1);
   expect(document.querySelector('.subagents-button')?.closest('[data-message-id]')?.getAttribute('data-message-id')).toBe('next');
   expect(document.querySelector('.subagents-button')).toBe(entry);
   expect(document.querySelector('.subagent-task')).toBe(row); expect(row.open).toBe(true);
   expect(document.activeElement).toBe(focused);
+  expect(document.querySelector('[data-message-id="current"] .message-metadata')!.textContent).not.toContain('Conversation usage');
+  expect(document.querySelector('[data-message-id="next"] .message-metadata')!.textContent).toContain('Conversation usage: 2,100 tokens');
+  expect(row.querySelector('.subagent-metrics')!.textContent).toContain('1,100 tokens');
+  // A repeated full snapshot replaces usage rather than incrementing a counter.
+  await render(); expect(document.querySelector('[data-message-id="next"] .message-metadata')!.textContent).toContain('Conversation usage: 2,100 tokens');
 
   const job = session.agent!.tasks[0];
   job.status = 'failed'; job.progress = { completed: 0, total: 3, phase: 'needs_review' };
@@ -56,6 +72,7 @@ it('shows one live entry on the latest response and routes child navigation thro
     emit({ type: 'state', project, sessions: [session, active], activeId: active.id, running: false }); await vi.advanceTimersByTimeAsync(1);
   };
   await show(child);
+  expect(document.querySelector('[data-message-id="reply"] .message-metadata')!.textContent).toContain('Conversation usage: 1,100 tokens');
   const banner = document.querySelector<HTMLElement>('.child-work-status')!;
   expect(banner.hidden).toBe(false); expect(banner.dataset.state).toBe('needs_review');
   expect(banner.textContent).toContain('Awaiting verification'); expect(banner.textContent).toContain('0/3 completed');
@@ -66,4 +83,8 @@ it('shows one live entry on the latest response and routes child navigation thro
   await show(child); expect(banner.dataset.state).toBe('completed'); expect(banner.textContent).toContain('3/3 completed');
   await show({ ...child, id: 'fork', forkSource: { sessionId: 'parent' } } as ConversationSession); expect(banner.hidden).toBe(true);
   await show({ id: 'new', title: 'New conversation', messages: [], agent: session.agent } as ConversationSession); expect(banner.hidden).toBe(true);
+  project.tokenUsage = { enabled: true, display: false }; await render();
+  expect(document.querySelector('[data-message-id="next"] .message-metadata')!.textContent).not.toContain('Conversation usage');
+  document.querySelector<HTMLButtonElement>('.subagents-button')!.click();
+  expect(document.querySelector('.subagent-metrics')!.textContent).not.toContain('tokens');
 });

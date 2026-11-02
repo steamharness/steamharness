@@ -1,4 +1,9 @@
 {
+  "{0} tokens": "{0} tokens",
+  "{0}h {1}m {2}s": "{0} 时 {1} 分 {2} 秒",
+  "Duration: {0}": "运行耗时：{0}",
+  "Conversation usage: {0} tokens": "会话总用量：{0} tokens",
+  "Includes this conversation and its subagents, including failed and stopped attempts.": "包含当前会话及其子 Agent 的用量，包括失败和停止前的消耗。",
   "Creating conversation fork": "正在创建分叉会话",
   "Copying the history through the selected response and saving the new conversation...": "正在复制截至所选回答的上下文，并保存新会话…",
   "Conversation fork created": "分叉创建成功",

@@ -276,6 +276,7 @@ export class ConversationOutput {
   }
 
   tick(): void {
+    this.subagents?.tick();
     for (const label of Array.from(this.root.querySelectorAll<HTMLElement>('.timer-duration[data-started]'))) {
       const duration = Math.max(0, Date.now() - new Date(label.dataset.started!).getTime());
       label.textContent = `${(duration / 1000).toFixed(1)}s`;

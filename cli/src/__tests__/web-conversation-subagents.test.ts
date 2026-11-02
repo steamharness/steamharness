@@ -21,7 +21,7 @@ const snapshot = (): AgentSessionSnapshot => ({
 } as AgentSessionSnapshot);
 
 const outputs: ConversationOutput[] = [];
-afterEach(() => { for (const output of outputs.splice(0)) output.dispose(); document.body.replaceChildren(); initI18n({ preference: 'en' }); });
+afterEach(() => { for (const output of outputs.splice(0)) output.dispose(); document.body.replaceChildren(); initI18n({ preference: 'en' }); vi.useRealTimers(); });
 function mount() {
   const root = document.createElement('div'), open = vi.fn(); document.body.append(root);
   const output = new ConversationOutput(root, { copy() {}, plan() {}, file() {}, image() {}, resource() {}, subagent: open }); outputs.push(output);
@@ -93,6 +93,35 @@ it.each(['en', 'zh-CN'] as const)('renders localized labels in %s and preserves 
 it('marks interrupted outstanding work without changing successful history', () => {
   const model = conversationSubagents(snapshot(), undefined, true, true)!;
   expect(model.tasks.map(task => task.status)).toEqual(['interrupted', 'interrupted', 'completed', 'failed']);
+});
+
+it.each(['en', 'zh-CN'] as const)('shows execution duration and total tokens on the right in %s, retaining status in the icon and details', language => {
+  vi.useFakeTimers({ toFake: ['Date'] }); vi.setSystemTime(100_000); initI18n({ preference: language });
+  const { root, output, render } = mount(), frame = snapshot(); frame.capturedAt = 90_000;
+  frame.tasks[0].startedAt = 10_000; frame.tasks[0].usage = { totalTokens: 12345 } as AgentSessionTask['usage'];
+  frame.history[0].startedAt = 10_000; frame.history[0].endedAt = 72_000; frame.history[0].usage = { totalTokens: 700 } as AgentSessionTask['usage'];
+  render(frame); root.querySelector<HTMLButtonElement>('.subagents-button')!.click();
+  const active = root.querySelector<HTMLElement>('[data-task-id="10"]')!, finished = root.querySelector<HTMLElement>('[data-task-id="12"]')!;
+  expect(active.querySelector('.subagent-metrics')!.textContent).toBe(language === 'en' ? '1m 30s · 12,345 tokens' : '1 分 30 秒 · 12,345 tokens');
+  expect(active.querySelector('.subagent-icon')!.getAttribute('aria-label')).toBe(language === 'en' ? 'Running' : '运行中');
+  expect(active.querySelector('.subagent-meta')!.textContent).toContain(language === 'en' ? 'Running' : '运行中');
+  expect(active.querySelector('.subagent-status')).toBeNull();
+  const finalMetrics = finished.querySelector('.subagent-metrics')!.textContent;
+  vi.setSystemTime(120_000); output.tick();
+  expect(active.querySelector('.subagent-metrics')!.textContent).toContain(language === 'en' ? '1m 50s' : '1 分 50 秒');
+  expect(finished.querySelector('.subagent-metrics')!.textContent).toBe(finalMetrics);
+  expect(root.querySelector('[data-task-id="11"] .subagent-metrics')!.textContent).toBe('— · — tokens');
+  render(frame, 'success', false); vi.setSystemTime(200_000); output.tick();
+  expect(active.querySelector('.subagent-metrics')!.textContent).toContain(language === 'en' ? '1m 20s' : '1 分 20 秒');
+  output.updateSubagents(conversationSubagents(frame, 1, true, true)); output.tick();
+  expect(active.querySelector('.subagent-metrics')!.textContent).toContain(language === 'en' ? '1m 20s' : '1 分 20 秒');
+  frame.tasks[0].status = 'failed'; frame.tasks[0].endedAt = 80_000; frame.tasks[0].usage!.totalTokens = 14567;
+  render(frame, 'success');
+  expect(active.querySelector('.subagent-metrics')!.textContent).toBe(language === 'en' ? '1m 10s · 14,567 tokens' : '1 分 10 秒 · 14,567 tokens');
+  expect(active.querySelector('.subagent-icon')!.getAttribute('aria-label')).toBe(language === 'en' ? 'Failed' : '失败');
+  // Hosts can keep project token-usage display disabled without hiding timing.
+  output.updateSubagents({ ...conversationSubagents(frame, 1, true)!, displayUsage: false });
+  expect(active.querySelector('.subagent-metrics')!.textContent).not.toContain('tokens');
 });
 
 it('distinguishes a stop request from a settled cancellation and blocked or queued work', () => {

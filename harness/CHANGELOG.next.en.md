@@ -1,5 +1,7 @@
 # Unreleased
 
+- [Added] Durable snapshots expose subagent execution spans and usage, plus conversation totals including owned subagents. Failed, stopped and hidden children retain their spend; retries, reopening and independent forks do not double-count it.
+
 - Added explicit `null` for unlimited total or per-role subagent concurrency, preserving default FIFO limits. Proven unsent tool failures can retry from business receipts; access denials, cancellation and unknown side effects remain retry barriers.
 
 - Durable Agent turn snapshots now expose persisted execution timestamps so hosts can restore elapsed time when opening subagent conversations and history.
