@@ -1,5 +1,7 @@
 # Unreleased
 
+- Fixed MiniMax M3/M3.1 to use a 1M context window when endpoint capacity metadata is absent. After switching from GPT, context outputs and automatic compaction no longer fall back to 272K; explicit overrides and catalogue capacities still take precedence.
+
 - Fixed conversation branches to support independent root databases with truncated history and historical asOf document checkpoints. Execution identities are renewed without importing tasks, approvals, queues or usage; source cancellation and deletion do not affect the new conversation.
 - Fixed durable conversations to fork committed history offline using the same atomic operation and deduplicated receipts as live sessions. Document inheritance policies are preserved without starting models, tools or pending tasks.
 

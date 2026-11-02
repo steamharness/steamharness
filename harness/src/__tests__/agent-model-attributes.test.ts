@@ -71,6 +71,7 @@ test("duplicate modalities collapse instead of repeating", () => {
 
 /** A runtime pointed at a caller-supplied endpoint; nothing is called on it. */
 async function createEndpointRuntime(options: {
+  model?: string;
   modelAttributes?: Parameters<typeof createPiRuntime>[0]["modelAttributes"];
   contextWindow?: number;
 }) {
@@ -114,7 +115,7 @@ test("an explicit window still outranks the catalogue's", async () => {
 });
 
 test("a model nobody described keeps the previous defaults", async () => {
-  const runtime = await createEndpointRuntime({});
+  const runtime = await createEndpointRuntime({ model: "unknown-custom-model" });
 
   assert.equal(runtime.model.contextWindow, DEFAULT_AGENT_CONTEXT_WINDOW);
   assert.equal(runtime.model.maxTokens, DEFAULT_AGENT_MAX_TOKENS);
