@@ -98,7 +98,6 @@ interface DeviceStartResult {
 }
 
 interface DeviceTokenResult {
-  memoryToken?: string;
   accessToken: string;
   apiKey: {
     prefix?: string;
@@ -226,7 +225,6 @@ async function commandLogin(parsed: ParsedArgs): Promise<void> {
   await writeCliAuthConfig({
     serverUrl: server,
     apiKey: completed.data.accessToken,
-    memoryToken: completed.data.memoryToken,
     expiresAt: completed.data.expiresAt ?? completed.data.apiKey.expiresAt,
     user: completed.data.user,
     source: "device_flow",

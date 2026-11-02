@@ -22,7 +22,6 @@ import { Controller } from './workflow-controller';
 import { KanbanController } from './kanban-controller';
 import { createProjectActions } from './workflow-actions';
 import { migrateProjectHistory, type WorkspaceContract } from './workflow-workspace';
-import { WebAccountMemory } from './account-memory';
 import { createWebRuntime, cliRoot, type WebConnection } from './runtime';
 import { redactProjectData, projectWithUserSettings, validateProjectValues, validateConversationCommandStates, mergeProjectParamStates, projectParameters, projectParamArgs, type Runtime, type Project, type ConversationSession, type ConversationDraftUpdate, type Attachment, type ParamValues, type ParamState } from './workflow-types';
 import { conversationResourceCards, type ResourceCardReference } from './resource-cards';
@@ -121,7 +120,6 @@ async function startProjectWebServer(options: WebOptions, credentials: { capabil
   let projectCheckRevision = 0;
   const waitingRuns = new Map<AbortController, string | undefined>();
   const cancelWaitingRuns = (runId?: string) => { for (const [abort, id] of waitingRuns) if (!runId || id === runId) abort.abort(); };
-  const memory = new WebAccountMemory(storageDir, () => connection, () => account.user?.userId);
   const executor = options.runtime ?? createWebRuntime(projectDir, storageDir, () => connection, { entryId: options.entryId, actor: () => ({ userId: account.user?.userId, isSystemAdmin: false }), allowSystemAi: allowAiConnection, userSettings: () => userSettings });
   const runtimeOverrides: Pick<Runtime, 'run' | 'resolveParams' | 'cancel' | 'dispose'> = {
     run: async (request, emit) => {
@@ -393,8 +391,6 @@ async function startProjectWebServer(options: WebOptions, credentials: { capabil
       ? hostManaged ? hostConnection?.aiAccessToken : process.env.STEAMHARNESS_AI_API_KEY ?? config.aiApiKey
       : undefined;
     if (token) { sensitiveTokens.add(token); }
-    const memorySecret=hostManaged?hostConnection?.memoryToken:config.memoryToken; if(memorySecret)sensitiveTokens.add(memorySecret);
-    const memorySessionCookie=hostManaged?hostConnection?.memorySessionCookie:undefined;if(memorySessionCookie)sensitiveTokens.add(memorySessionCookie);
     if (aiToken) { sensitiveTokens.add(aiToken); }
     const identity = signedOut ? '' : `${serverUrl}\n${token}\n${aiServerUrl}\n${aiToken}`;
     const expired = account.expiresAt && Date.parse(account.expiresAt) <= Date.now();
@@ -411,8 +407,6 @@ async function startProjectWebServer(options: WebOptions, credentials: { capabil
     authIdentity = identity;
     const candidate = !signedOut && serverUrl && token ? {
       serverUrl: serverUrl.replace(/\/+$/, ''), accessToken: token,
-      memoryToken: hostManaged ? hostConnection?.memoryToken : config.memoryToken,
-      ...(memorySessionCookie ? { memorySessionCookie } : {}),
       ...(aiServerUrl && aiToken ? { aiServerUrl: aiServerUrl.replace(/\/+$/, ''), aiAccessToken: aiToken } : {}),
     } : undefined;
     if (changed) {
@@ -444,7 +438,11 @@ async function startProjectWebServer(options: WebOptions, credentials: { capabil
         if (epoch !== authEpoch) { return; }
         const profile = result.data?.profile;
         if (!response.ok || result.errCode !== 0 || typeof profile?.userId !== 'string' || !profile.userId || typeof profile.email !== 'string' || typeof profile.displayName !== 'string') { throw new Error('Workflow login is invalid or expired.'); }
-        if (!connection || connection.memoryToken !== candidate.memoryToken || connection.memorySessionCookie !== candidate.memorySessionCookie) { authRevision++; parameterStates.clear(); projectActions?.invalidate(); }
+        if (!connection) {
+          authRevision++;
+          parameterStates.clear();
+          projectActions?.invalidate();
+        }
         connection = candidate;
         if (!background) { kanbanController?.authenticationChanged(); }
         const savedConnection = !hostManaged && candidate.serverUrl === config.serverUrl.replace(/\/+$/, '') && candidate.accessToken === config.apiKey;
@@ -895,18 +893,6 @@ async function startProjectWebServer(options: WebOptions, credentials: { capabil
         const bearer = String(request.headers.authorization ?? '').replace(/^Bearer /, '');
         const readSession = request.method === 'GET' && (url.pathname === '/api/events' || url.pathname.startsWith('/api/file/')) ? url.searchParams.get('session') ?? '' : '';
         if (!authMatches(value) && !authMatches(bearer) && !authMatches(readSession)) { json(response, 401, { message: 'Open the URL printed by steamharness web.' }); return; }
-        if (url.pathname === '/api/memory' && request.method === 'POST') {
-          response.setHeader('Cache-Control','no-store');const input=await readBody(request);const revision=authRevision,userId=account.user?.userId;
-          const current=()=>revision===authRevision&&userId===account.user?.userId;
-          try{
-            const capabilities=await runtime.memoryCapabilities?.(project);
-            if(!current())throw Object.assign(new Error('Account changed.'),{status:409});
-            if(input.action!=='capabilities'&&!capabilities?.enabled)throw Object.assign(new Error(t('Memory is disabled for this project.')),{status:403});
-            const data=input.action==='capabilities'?capabilities??{connected:false,enabled:false,status:'unconfigured',automatic:false,readOnly:true,scopes:[]}:await memory.call(project,String(input.action),input.input);
-            if(!current())throw Object.assign(new Error('Account changed.'),{status:409});
-            json(response,200,{errCode:0,errMessage:'',data});
-          }catch(error){const status=Number((error as {status?:number;metadata?:{status?:number}}).status??(error as {metadata?:{status?:number}}).metadata?.status)||503;json(response,status,{errCode:status,errMessage:(error as Error).message});}return;
-        }
         if (url.pathname === '/api/session' && request.method === 'GET') { json(response, 200, { connected: true }); return; }
         if (url.pathname === '/api/resource-state' && request.method === 'GET') { json(response, 200, { type: 'state', project: { id: project.id, entryId: project.entryId }, authenticationRevision: authRevision, resourceRevision: resources.revision }); return; }
         if (url.pathname === '/api/events' && request.method === 'GET') {
@@ -1001,7 +987,7 @@ async function startProjectWebServer(options: WebOptions, credentials: { capabil
       if (hostManaged && JSON.stringify(value) === JSON.stringify(hostConnection)) { return; }
       authEpoch++; authCheck?.abort();
       resources.clear();
-      hostConnection = value && !allowAiConnection ? { serverUrl: value.serverUrl, accessToken: value.accessToken, memoryToken:value.memoryToken, memorySessionCookie:value.memorySessionCookie } : value;
+      hostConnection = value && !allowAiConnection ? { serverUrl: value.serverUrl, accessToken: value.accessToken } : value;
       hostManaged = true; signedOut = !value;
       await refreshAuth(true);
     },

@@ -11,10 +11,9 @@ export class AccountPanel {
   private readonly dialog = document.createElement('dialog');
   private state?: AccountState;
   private pending = false;
-  private reauthorize = false;
   private returnFocus?: HTMLElement;
 
-  constructor(menu: HTMLElement, private readonly request: (action: AccountAction) => Promise<void>, private readonly openHostAccount?: (reauthorize?: boolean) => void) {
+  constructor(menu: HTMLElement, private readonly request: (action: AccountAction) => Promise<void>, private readonly openHostAccount?: () => void) {
     this.button.id = 'web-account';
     this.button.className = 'web-account';
     this.button.type = 'button';
@@ -73,9 +72,8 @@ export class AccountPanel {
 
   private element<T extends HTMLElement>(selector: string): T { return this.dialog.querySelector<T>(selector)!; }
 
-  open(reauthorize = false): void {
-    if (this.openHostAccount) { this.openHostAccount(reauthorize); return; }
-    this.reauthorize = reauthorize;
+  open(): void {
+    if (this.openHostAccount) { this.openHostAccount(); return; }
     if (!this.dialog.open && document.activeElement && document.activeElement instanceof HTMLElement) { this.returnFocus = document.activeElement; }
     this.render();
     if (!this.dialog.open) { this.dialog.showModal(); }
@@ -96,15 +94,14 @@ export class AccountPanel {
     this.button.querySelector('.web-account-name')!.textContent = name;
     this.button.title = this.button.ariaLabel = state.error || state.user?.email || name;
     for (const avatar of [this.button.querySelector<HTMLElement>('.web-avatar')!, this.element<HTMLElement>('.account-avatar')]) { updateUserAvatar(avatar, state); }
-    this.element<HTMLFormElement>('#login-form').hidden = signedIn && !this.reauthorize;
-    this.element<HTMLElement>('#account-profile').hidden = !signedIn || this.reauthorize;
-    if (this.reauthorize && !this.element<HTMLInputElement>('#login-email').value) this.element<HTMLInputElement>('#login-email').value = state.user?.email ?? '';
+    this.element<HTMLFormElement>('#login-form').hidden = signedIn;
+    this.element<HTMLElement>('#account-profile').hidden = !signedIn;
     const server = this.element<HTMLInputElement>('#server-url');
     if (!server.value || signedIn && document.activeElement !== server) { server.value = state.serverUrl; }
     this.dialog.querySelectorAll<HTMLInputElement | HTMLButtonElement>('input, #login-submit, #browser-login, #verify-login, #account-logout').forEach(element => { element.disabled = this.pending; });
     this.element('#login-submit > span:last-child').textContent = this.pending ? t("Signing in...") : t("Sign in");
     const status = this.element('#account-status');
-    status.textContent = this.reauthorize ? t('Memory authorization is unavailable. Verify your account to restore memory; signing out is not required.') : state.status === 'authenticated' ? t("Signed in; account verified") : this.pending ? t("Verifying account...") : state.status === 'expired' ? t("Sign-in expired") : state.status === 'error' && state.user ? t("Connection not verified") : t("Signed out");
+    status.textContent = state.status === 'authenticated' ? t("Signed in; account verified") : this.pending ? t("Verifying account...") : state.status === 'expired' ? t("Sign-in expired") : state.status === 'error' && state.user ? t("Connection not verified") : t("Signed out");
     status.classList.toggle('connected', state.status === 'authenticated');
     this.showError(state.error);
     if (state.user) {
@@ -122,7 +119,7 @@ export class AccountPanel {
 
   private async perform(action: AccountAction): Promise<void> {
     this.pending = true; this.render(); this.showError();
-    try { await this.request(action); if (action.type === 'login') { this.reauthorize = false; this.pending = false; this.render(); } }
+    try { await this.request(action); if (action.type === 'login') { this.pending = false; this.render(); } }
     catch (error) { this.pending = false; this.render(); this.showError((error as Error).message); }
   }
 }

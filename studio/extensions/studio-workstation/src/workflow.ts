@@ -298,7 +298,7 @@ export async function activateProject(context: vscode.ExtensionContext, launcher
           void openProjectUserSettings(message).catch(error => output.appendLine(`User settings: ${String(error)}`));
           return;
         }
-        if (message?.type === 'workflow-account' && message.version === 1) { if (message.reason === 'memory') void account.authorizeMemory(); else account.open(); }
+        if (message?.type === 'workflow-account' && message.version === 1) { account.open(); }
         else if (!clipboardBinding.receive(message) && !resourceBinding.receive(message) && !pickerBinding.receive(message) && !pathOpenBinding.receive(message) && !downloadBinding.receive(message) && !fileIconsBinding.receive(message)) { traceBinding.receive(message); }
       }));
       panel.webview.html = projectFrameHtml(address.href, projectDisplayName(project), project.uri, theme(), globalThis.crypto.randomUUID().replace(/-/g, ''), vscode.env.language, chromeFor(project.uri, 'viewType' in panel && panel.viewType === 'studio.project'), conversationView, !project.assistant && !!launcher.uploadProject);

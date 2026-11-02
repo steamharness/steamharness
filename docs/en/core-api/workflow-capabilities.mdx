@@ -1,6 +1,6 @@
 ---
 title: "Workflow capabilities"
-description: "Built-in tools connecting a project to knowledge, KV, memory, host configuration, and Conversation resource cards."
+description: "Built-in tools connecting a project to knowledge, KV, host configuration, and Conversation resource cards."
 ---
 
 # Workflow capabilities
@@ -11,7 +11,6 @@ Core ships built-in workflow capabilities, the tools that connect a project to i
 | --- | --- | --- |
 | Knowledge documents | `workflow-knowledge` | `workflow-knowledge_knowledge_documents` |
 | KV | `workflow-kv` | `workflow-kv_kv_store` |
-| Cross-session memory | `workflow-memory` | `workflow-memory_global_memory` |
 | Conversation resource card | `workflow-ui` | `workflow-ui_present_card` |
 
 The tool ids are stable: a host grants, approves and resumes by them, so do not rename them.
@@ -22,7 +21,6 @@ The tool ids are stable: a host grants, approves and resumes by them, so do not 
 const tools: AgentTool[] = await steamharness.createProjectCapabilityTools({
   context: NodeContext,
   approve?: (toolId: string, args: unknown) => Promise<void>,
-  globalMemory?: boolean,
 });
 
 const server: Server = await steamharness.createProjectCapabilityServer(toolId, {
@@ -31,7 +29,7 @@ const server: Server = await steamharness.createProjectCapabilityServer(toolId, 
 });
 
 const result: unknown = await steamharness.runProjectCapabilityAction(toolId, context, args);
-const toolIds: string[] = workflow.listProjectCapabilityToolIds({ globalMemory?: boolean });
+const toolIds: string[] = workflow.listProjectCapabilityToolIds();
 ```
 
 | Member | Description |
@@ -49,27 +47,19 @@ Resuming a paused approval goes through `runProjectCapabilityAction`: the paused
 
 ## Argument checks
 
-Every capability publishes a JSON Schema and enforces it in the implementation too: an MCP client is not bound by the schema and the agent SDK treats it as a type assertion, so a bound that lives only in the schema is not a bound. Knowledge `markdown` ≤ 200,000, `title`/`documentId` ≤ 200, `query` ≤ 500, `cursor` ≤ 80; memory `markdown` ≤ 100,000, `title` ≤ 200; KV `key` ≤ 500. Exceeding one fails as `input_validation`.
+Every capability publishes a JSON Schema and enforces it in the implementation too: an MCP client is not bound by the schema and the agent SDK treats it as a type assertion, so a bound that lives only in the schema is not a bound. Knowledge `markdown` ≤ 200,000, `title`/`documentId` ≤ 200, `query` ≤ 500, `cursor` ≤ 80; KV `key` ≤ 500. Exceeding one fails as `input_validation`.
 
 ## Reading large results
 
-KV `get`, knowledge `list/get/search/read_lines`, and memory `list/get/search` share a result pagination protocol across native tools, MCP and direct action APIs. Small results keep their existing shape. Results exceeding 40,000 UTF-8 bytes return `{ paged: true, encoding: "json", content, offset, totalChars, truncated, nextOffset?, resultHash }`; the complete serialized envelope also fits within that byte limit.
+KV `get`, knowledge `list/get/search/read_lines` share a result pagination protocol across native tools, MCP and direct action APIs. Small results keep their existing shape. Results exceeding 40,000 UTF-8 bytes return `{ paged: true, encoding: "json", content, offset, totalChars, truncated, nextOffset?, resultHash }`; the complete serialized envelope also fits within that byte limit.
 
 Keep the original read arguments and add `resultOffset: nextOffset` and the previous `resultHash`. Concatenate `content` in order, then parse the complete JSON. Offsets count UTF-16 code units; `resultLimit` (a positive integer up to 200000) can request smaller pages. If the result changes, hash validation rejects the continuation; restart at `resultOffset: 0` without the hash. Entry `cursor` values and result character offsets serve separate purposes.
 
-Writes reject result pagination arguments, preventing continuation from repeating a mutation. Knowledge create/edit echoes at most 4000 body characters when requested. Memory remember likewise echoes at most 4000 characters with `markdownLength` and `markdownTruncated`; use read actions for the complete stored content. Memory `pageSize` must be an integer from 1 to 100; knowledge `maxMarkdownLength` must be an integer from 100 to 20000 and `includeMarkdown` must be boolean. Invalid values fail before writing.
+Writes reject result pagination arguments, preventing continuation from repeating a mutation. Knowledge create/edit echoes at most 4000 body characters when requested. Knowledge `maxMarkdownLength` must be an integer from 100 to 20000 and `includeMarkdown` must be boolean. Invalid values fail before writing.
 
 ## Reserved KV keys
 
 `kv_store` shares its namespaces with the runtime, so it refuses to write runtime-owned keys: `tokenUsage.total` and `tokenUsage.entry.*` in both scopes, plus `conversation.state` and `agent.*` in the conversation scope, including waiting decisions such as `agent.pendingPlanApproval`. Agent execution history uses separate Durable SQLite storage; see [createAgentNode](./create-agent-node.mdx). The attempt fails as `input_validation` instead of silently overwriting accounting or run state.
-
-## Cross-session memory
-
-Memory joins only when `globalMemory` is `true`. **Do not turn it on for a host that offers no memory store** — that hands the model a tool whose every call fails.
-
-Memory reuses the knowledge document store under the `assistant-memory-` document id prefix, so it inherits that store's placement, its search and its deletion semantics. `remember` refuses anything that looks like a credential or a secret.
-
-`list` and `search` mean different things by `cursor` — an offset into the memories, and the knowledge store's own paging token — so a returned cursor carries a `list:` or `search:` prefix, and one from the other action is refused rather than read as the wrong kind of offset.
 
 ## Host configuration
 
@@ -127,7 +117,6 @@ const node = steamharness.createAgentNode({
   async createTools(context) {
     return steamharness.createProjectCapabilityTools({
       context,
-      globalMemory: true,
       approve: (toolId, args) => approval.approve({ name: toolId, arguments: args }, context),
     });
   },
@@ -136,4 +125,4 @@ const node = steamharness.createAgentNode({
 
 The tools must be declared in the executor's `tools` (see [createToolApprovalGate](./create-tool-approval-gate.mdx)); otherwise the approval fails as an unregistered tool.
 
-KV, knowledge and memory tools require a `database` alias, checked against entry requirements and effective grants. There is no default project database. Resource cards and Kanban method targets carry `projectId + entryId`.
+KV and knowledge tools require a `database` alias, checked against entry requirements and effective grants. There is no default project database. Resource cards and Kanban method targets carry `projectId + entryId`.

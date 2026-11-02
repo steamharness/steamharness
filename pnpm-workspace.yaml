@@ -1,6 +1,5 @@
 packages:
   - harness
-  - memory-service
   - cli
   - server
   - server/web

@@ -99,8 +99,6 @@ export const serverWeb = {
   accessGrantHighest: "Direct and ancestor group roles are combined using the highest role. Public projects grant signed-in users Guest access.",
   accessReadOnly: "Server data is read only for Guests. Personal configurations remain available.",
 
-  configurationMemory: "Project memory",
-  configurationMemoryDescription: "Allow this project to recall and save private account memories. Changes apply to the next run. Turning this off keeps existing memories.",
   configurationAiModels: "AI models",
   configurationFollowMainModel: "Follow main model",
   configurationUnavailableModel: "Unavailable model: {{model}}",

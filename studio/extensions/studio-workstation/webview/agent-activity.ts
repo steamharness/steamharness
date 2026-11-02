@@ -40,9 +40,9 @@ function toolAction(toolName: string, input: Record<string, unknown>): Pick<Agen
   if (matches(tool, 'todowrite', 'todo_write', 'todoread', 'todo_read')) { return { kind: 'todo', icon: 'checklist', action: t("Update tasks") }; }
   if (matches(tool, 'task', 'subtask', 'agent')) { return { kind: 'task', icon: 'hubot', action: t("Run subtask"), target: first(input, 'description', 'title', 'prompt') }; }
   if (matches(tool, 'question')) { return { kind: 'question', icon: 'comment-discussion', action: t("Ask"), target: first(input, 'title', 'question') }; }
-  if (tool.includes('knowledge_documents') || tool.includes('global_memory')) {
+  if (tool.includes('knowledge_documents')) {
     const action = first(input, 'action');
-    return { kind: 'knowledge', icon: 'book', action: action === 'search' ? t("Search knowledge") : ['create', 'update', 'delete'].includes(action ?? '') ? t("Update knowledge") : t("Read knowledge"), target: first(input, 'title', 'documentId', 'memoryId', 'query') };
+    return { kind: 'knowledge', icon: 'book', action: action === 'search' ? t("Search knowledge") : ['create', 'update', 'delete'].includes(action ?? '') ? t("Update knowledge") : t("Read knowledge"), target: first(input, 'title', 'documentId', 'query') };
   }
   if (tool.includes('kv_store')) { return { kind: 'storage', icon: 'database', action: ['set', 'delete'].includes(String(input.action)) ? t("Update data") : t("Read data"), target: first(input, 'key', 'scope') }; }
   return { kind: 'tool', icon: 'tools', action: t("Call tool"), target: toolName };

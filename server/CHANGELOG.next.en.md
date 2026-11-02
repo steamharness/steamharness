@@ -1,22 +1,14 @@
 # Unreleased
 
-- Fixed Kanban database reads contending for a space-wide exclusive lock and delaying annotations and revision checks behind large attachments. Images and other attachments now use private file storage with metadata and a digest in PostgreSQL; legacy attachments move on first read while retaining references and revisions.
+- Removed global and account memory, including tools, skills, authorization, service integration and settings controls.
 
-- Fixed memory extraction retries after a revoked login by validating the current login and original scope; retained task snapshots prevent retries from undoing edits or clears. Reduced settings query latency for accounts with many past directories.
+- Fixed Kanban database reads contending for a space-wide exclusive lock and delaying annotations and revision checks behind large attachments. Images and other attachments now use private file storage with metadata and a digest in PostgreSQL; legacy attachments move on first read while retaining references and revisions.
 
 - Added: Project configuration accepts agent-model single selectors storing a configured model ID or empty inheritance, with existing permissions and publication rules.
 
 - Fixed file and PostgreSQL project configuration reads overwriting the account's selected profile during a temporary role fallback. Access recovery restores the saved selection; explicit changes and guest isolation remain enforced.
 
 - Fixed project pagination to exclude retained records without aggregate entry declarations consistently with detail reads, preserving their versions and stored data.
-
-- Improved: Development startup supervises local memory with persistent storage and internal credentials, cleans it up on exit, and supports disabling autostart or using an external service.
-
-- Fixed unconfigured memory service guidance to request administrator setup instead of repeated sign-in. Verified existing account sessions can manage memory while project API keys cannot.
-
-- Fixed lasting response-language and style instructions entering global memory across projects. A missing extraction model no longer creates guaranteed-to-fail jobs; temporary outages preserve turns for retry.
-
-- Added: Add private account memory APIs, separate login credentials, scoped authorization, a durable extraction queue and a standalone memory service without embeddings.
 
 - Breaking: project identity, name, version and declarations now use independent `steamharness.json` files. Removed reads and writes of `package.json.id` and `steamHarness`. Aggregates explicitly register child entries whose configuration defines icons, declarations, database aliases and schedules. Unregistered configurations stay inactive, and transfers preserve the parent and child structure.
 

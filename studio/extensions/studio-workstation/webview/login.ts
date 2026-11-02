@@ -54,20 +54,18 @@ function setPending(value: boolean): void {
   status.textContent = value ? t('Signing in...') : '';
 }
 
-function render(state: AccountState, busy = false, failure?: string, reauthorize = false): void {
+function render(state: AccountState, busy = false, failure?: string): void {
   if (previousServer === undefined || previousServer !== state.serverUrl) {
     if (previousServer !== undefined) { email.value = ''; password.value = ''; hidePassword(); }
     server.value = state.serverUrl;
     previousServer = state.serverUrl;
   }
-  const signedIn = state.status === 'authenticated' && !reauthorize;
-  if (reauthorize && !email.value) email.value = state.user?.email ?? '';
+  const signedIn = state.status === 'authenticated';
   if (signedIn) { password.value = ''; hidePassword(); }
   form.hidden = signedIn;
   document.querySelector<HTMLElement>('#login-success')!.hidden = !signedIn;
   document.querySelector('#login-account')!.textContent = signedIn ? state.user?.email ?? '' : '';
   setPending(busy || state.status === 'checking');
-  if (reauthorize && !busy) status.textContent = t('Memory authorization is unavailable. Verify your account to restore memory; signing out is not required.');
   error.textContent = failure ?? state.error ?? '';
   error.hidden = !error.textContent;
   if (state.status === 'expired' && !error.textContent) {
@@ -94,7 +92,7 @@ document.addEventListener('visibilitychange', () => { if (document.hidden) { pas
 window.addEventListener('pagehide', () => { password.value = ''; });
 window.addEventListener('message', event => {
   if (event.data.type === 'account' || event.data.type === 'login-result') {
-    render(event.data.state, event.data.busy === true, event.data.message, event.data.reauthorize === true);
+    render(event.data.state, event.data.busy === true, event.data.message);
   }
 });
 installContextMenu(host, () => []);

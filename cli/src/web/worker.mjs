@@ -118,15 +118,6 @@ try {
   const execute = async () => {
   const language = /^zh/i.test(process.env[core.STEAMHARNESS_RUNTIME_LOCALE_ENV] ?? process.env.STEAMHARNESS_LOCALE ?? 'en') ? 'zh-CN' : 'en';
   const { readProjectInfo, readProjectCardMetadata, resolveProjectName, runKanbanDataCall } = await import(new URL(import.meta.url.includes('/src/web/') ? './kanban-data.ts' : './kanban-data.mjs', import.meta.url));
-  if(request.method==='memory-capabilities'){
-    try{
-      const configuration = await (await core.createLocalProjectConfigurationStore(projectDir, {entryId:request.project.entryId})).snapshot({configuration:request.configuration,required:false});
-      send('result',typeof core.getLocalProjectMemoryCapabilities==='function'
-        ?await core.withProjectConfiguration(configuration,()=>core.getLocalProjectMemoryCapabilities({projectDir:request.project.folderPath,entryId:request.project.entryId,entrypointId:request.entrypointId}))
-        :{connected:false,enabled:false,status:'unconfigured',automatic:false,readOnly:true,scopes:[]});
-    }catch(error){throw Object.assign(error,{metadata:{...error.metadata,status:error.status??error.metadata?.status}});}
-    return;
-  }
   if (request.method === 'inspect') {
     const projects = [];
     const errors = [];
@@ -405,28 +396,7 @@ try {
     } else { throw new Error('Unknown runtime method.'); }
   } else { throw new Error('Unknown runtime method.'); }
   };
-  const memoryPending=new Map();
-  process.on('message', message=>{if(message?.type!=='memory-grant-result')return;const p=memoryPending.get(message.id);if(!p)return;memoryPending.delete(message.id);clearTimeout(p.timer);message.error?p.reject(Object.assign(new Error(message.error),{status:message.status})):p.resolve(message.grant);});
-  let memoryGrant;
-  const getMemoryGrant=()=>memoryGrant&&Date.parse(memoryGrant.expiresAt)>Date.now()+30000?Promise.resolve(memoryGrant):new Promise((resolve,reject)=>{const id=crypto.randomUUID();const timer=setTimeout(()=>{memoryPending.delete(id);reject(new Error('Memory authorization timed out.'));},5000);memoryPending.set(id,{resolve:grant=>{memoryGrant=grant;resolve(grant);},reject,timer});process.send?.({type:'memory-grant',id});});
-  let memoryBinding=false;
-  if(request.memoryAvailable&&['run','memory-capabilities'].includes(request.method)&&core.createServerAgentMemoryProvider&&core.withAgentMemory){
-    // Only an opted-in Agent may request a grant, including during execution.
-    // Populate its outbox before capabilities resolve and Core captures the binding.
-    let provider;
-    const loadProvider=async()=>{const grant=await getMemoryGrant();memoryBinding.outboxDirectory=grant.outboxDirectory;return provider??=core.createServerAgentMemoryProvider({serverUrl:grant.serverUrl,getGrant:getMemoryGrant});};
-    const reported=new Set();
-    memoryBinding={provider:Object.fromEntries(['capabilities','recall','submitTurn','list','get','remember','update','forget'].map(method=>[method,async(...args)=>(await loadProvider())[method](...args)])),onError:error=>{
-      const status=Number(error?.status??error?.metadata?.status),kind=status===401?'authorization':status===403?'permission':'service';
-      if(reported.has(kind))return;reported.add(kind);
-      const zh=/^zh/i.test(process.env.STEAMHARNESS_RUNTIME_LOCALE??'');
-      const text=kind==='authorization'?(zh?'账号记忆授权不可用，本轮不会召回或保存记忆。请在「项目信息 → 全局记忆」中验证账号授权。\n':'Account memory authorization is unavailable. This turn will not recall or save memories. Verify your account authorization in Project information → Global memory.\n')
-        :kind==='permission'?(zh?'当前账号无权使用此项目的记忆，本轮不会召回或保存记忆。请检查账号与项目权限。\n':'Your account cannot access memory for this project. This turn will not recall or save memories. Check your account and project permissions.\n')
-        :zh?'账号记忆暂时不可用。\n':'Account memory is temporarily unavailable.\n';
-      send('event',{type:'runtime_log',text,runId:request.runId});
-    }};
-  }
-  await (core.withAgentMemory?core.withAgentMemory(memoryBinding,()=>withSettings(execute)):withSettings(execute));
+  await withSettings(execute);
 } catch (error) {
   write(`__STEAMHARNESS_WEB__${JSON.stringify({ kind: 'error', error: error.message, code: error.code, metadata: error.metadata, status: error.metadata?.status })}\n`);
   process.exitCode = 1;

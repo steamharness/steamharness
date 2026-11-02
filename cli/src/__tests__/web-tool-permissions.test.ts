@@ -30,16 +30,16 @@ it('groups interleaved built-in, project and MCP tools without losing or duplica
   const f = fixture([
     { name: 'read' }, { name: 'kb_list_documents' }, { name: 'bash' }, { name: 'kv_get_value' },
     { name: 'write' }, { name: 'workflow-studio_open_file' }, { name: 'update_plan' }, { name: 'skill' },
-    { name: 'kb_get_document' }, { name: 'workflow-memory_global_memory' }, { name: 'db_status' },
+    { name: 'kb_get_document' }, { name: 'db_status' },
     { name: 'tikhub_search_posts' }, { name: 'minimax_understand_media' }, { name: 'tikhub_fetch_post' },
     { name: 'mcp__issue_tracker__list' }, { name: 'mcp__issue_tracker__get' }, { name: 'custom' },
     { name: 'workflow-ui_present_card' }, { name: 'tool_search' },
   ]);
   expect(f.sections().map(section => section.querySelector('.tool-group-title')?.textContent)).toEqual([
-    'File tools', 'Knowledge', 'Shell commands', 'Data storage', 'Studio', 'Agent tools', 'Memory',
+    'File tools', 'Knowledge', 'Shell commands', 'Data storage', 'Studio', 'Agent tools',
     'tikhub', 'minimax', 'issue_tracker', 'Other tools', 'Resource cards',
   ]);
-  expect(f.root.querySelectorAll('tbody tr')).toHaveLength(18);
+  expect(f.root.querySelectorAll('tbody tr')).toHaveLength(17);
   expect(f.sections().every(section => !section.open)).toBe(true);
   expect(f.section('File tools').querySelector('.tool-group-count')?.textContent).toBe('2 tools');
   expect(f.section('Knowledge').querySelector('tbody')?.textContent).toBe('kb_list_documentskb_get_document');

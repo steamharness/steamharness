@@ -219,7 +219,7 @@ export class DurableAgentSession {
       const parent = await this.harness.conversation(record.owner.conversationId, context);
       const tools = (await parent?.agent(context))?.tools ?? [];
       if (toolName === "subagent" || !tools.some(tool => tool.name === toolName)
-        || !(this.options.subagents.tools.includes(toolName) || !definition && toolName === "memory")
+        || !this.options.subagents.tools.includes(toolName)
         || definition && (!definition.tools.includes(toolName) || !current?.tools.includes(toolName))) {
         throw new Error(`Tool is not authorized for this agent role: ${toolName}`);
       }
@@ -269,14 +269,9 @@ export class DurableAgentSession {
           const currentDefinition = this.options.subagents.definitions?.find(item => item.id === definition?.id);
           const allowed = new Set((definition?.tools ?? this.options.subagents.tools).filter(name =>
             this.options.subagents!.tools.includes(name) && (!definition || currentDefinition?.tools.includes(name))));
-          const tools = parentAgent.tools.filter(tool => (allowed.has(tool.name) || !definition && tool.name === "memory") && tool.name !== "subagent");
+          const tools = parentAgent.tools.filter(tool => allowed.has(tool.name) && tool.name !== "subagent");
           if (definition && (!this.options.subagents.definitions?.some(item => item.id === definition.id)
             || definition.tools.some(name => !this.options.subagents!.tools.includes(name)))) throw new Error("The agent role is no longer authorized by this project.");
-          const modelTools = tools.map(tool => tool.name === "memory" ? {...tool,parameters:Type.Object({
-            action:Type.Union([Type.Literal("list"),Type.Literal("get"),Type.Literal("search")]),
-            scope:Type.Optional(Type.Union([Type.Literal("global"),Type.Literal("current")])),
-            id:Type.Optional(Type.String()),query:Type.Optional(Type.String()),cursor:Type.Optional(Type.String()),
-          },{additionalProperties:false})} : tool);
           const model = this.options.subagents.model ?? definition?.model ?? task.input.model;
           if (model && !this.allowedChildModel(model)) throw this.childModelError();
           // Admission and child creation share the Session commit line. Waiters have
@@ -310,7 +305,7 @@ export class DurableAgentSession {
               const childModel = model ?? parentAgent.model!;
               const registered = this.models.getModel(childModel.provider, childModel.modelId);
               const effort = (definition?.effort ?? parentAgent.thinkingLevel ?? "off") as "medium";
-              await configure(tx, child.id, { tools: tools as ToolRegistration[], modelTools: modelTools as ToolRegistration[],
+              await configure(tx, child.id, { tools: tools as ToolRegistration[], modelTools: tools as ToolRegistration[],
                 model: childModel, thinkingLevel: registered ? clampThinkingLevel(registered, effort) : effort,
                 ...(parentAgent.cwd ? { cwd: parentAgent.cwd } : {}) });
               if (definition) {

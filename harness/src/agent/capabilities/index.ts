@@ -1,5 +1,5 @@
 // Workflow capabilities: the tools a project's agent reaches its surroundings
-// with — its knowledge store, its KV, its durable memory, its host.
+// with — its knowledge store, its KV and its host.
 //
 // Each capability is described once, as a JSON Schema plus a run function, and
 // rendered twice from that description: as an agent tool, and as an MCP server
@@ -39,15 +39,6 @@ export {
   KV_CAPABILITY,
   runKvAction,
 } from "./kv";
-
-export {
-  GLOBAL_MEMORY_MCP_SERVER_ID,
-  GLOBAL_MEMORY_MCP_TOOL_ID,
-  GLOBAL_MEMORY_MCP_TOOL_NAME,
-  GLOBAL_MEMORY_CAPABILITY,
-  runGlobalMemoryAction,
-  type GlobalMemoryToolArgs,
-} from "./global-memory";
 
 export { readHostConfigurationBridgeConfig } from "./host-configuration";
 

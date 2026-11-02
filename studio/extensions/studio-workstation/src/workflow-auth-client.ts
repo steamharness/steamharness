@@ -1,5 +1,4 @@
 import { t } from './localization';
-import { createMemoryClient } from '../../../../shared/account-memory/index';
 declare const __STEAMHARNESS_DEFAULT_SERVER_URL__: string;
 export const DEFAULT_STEAMHARNESS_SERVER_URL = typeof __STEAMHARNESS_DEFAULT_SERVER_URL__ !== 'undefined'
   ? __STEAMHARNESS_DEFAULT_SERVER_URL__ : 'http://localhost:7126';
@@ -14,10 +13,6 @@ export interface User {
 export interface Connection {
   serverUrl: string;
   accessToken: string;
-  /** Secret host credential. Only the CLI host receives it, never a project worker. */
-  memoryToken?: string;
-  /** Existing account session, used only by the host to authorize memory. */
-  memorySessionCookie?: string;
   /** Optional private system-AI service connection kept separate from project auth. */
   aiServerUrl?: string;
   aiAccessToken?: string;
@@ -46,7 +41,6 @@ interface MeResponse {
   principal?: { apiKeyId?: string; expiresAt?: string };
 }
 interface LoginResponse {
-  memoryToken?: string;
   authenticated: boolean;
   accessToken?: string;
   apiKey?: { id?: string };
@@ -104,23 +98,6 @@ export class ServerClient {
     this.serverUrl = normalizeProjectServerUrl(serverUrl);
   }
 
-  /** Account settings may reuse the authenticated login session; project keys are never accepted. */
-  async accountMemory(session: LoginSession, action: string, input?: Record<string, unknown>): Promise<any> {
-    if (normalizeProjectServerUrl(session.serverUrl) !== this.serverUrl || (!session.memoryToken && !session.sessionCookie)) {
-      throw new AuthError(t('Sign in again to authorize account memory.'), 401);
-    }
-    const call = (headers: Record<string, string>) => createMemoryClient({
-      baseUrl: this.serverUrl, fetch: this.fetcher, headers: () => headers,
-    }).call(action, input);
-    if (session.memoryToken) {
-      try { return await call({ Authorization: `Bearer ${session.memoryToken}` }); }
-      catch (error) {
-        if ((error as { status?: number }).status !== 401 || !session.sessionCookie) { throw error; }
-      }
-    }
-    return call({ Cookie: session.sessionCookie! });
-  }
-
   private async request<T>(path: string, options: {
     accessToken?: string; sessionCookie?: string; body?: object; method?: string;
     headersReceived?: (headers: Headers) => void;
@@ -173,7 +150,6 @@ export class ServerClient {
     }
     return {
       serverUrl: this.serverUrl, accessToken: connection.accessToken,
-      ...(connection.memoryToken ? { memoryToken: connection.memoryToken } : {}),
       user: { userId: profile.userId, email: profile.email, displayName: profile.displayName, avatarUrl },
       apiKeyId: me.principal.apiKeyId, expiresAt: me.principal.expiresAt,
     };
@@ -192,7 +168,7 @@ export class ServerClient {
     if (!result.authenticated || !result.accessToken || !result.apiKey?.id) {
       throw new AuthError(t("The server did not return desktop sign-in credentials."));
     }
-    try { return { ...await this.verify({ serverUrl: this.serverUrl, accessToken: result.accessToken, memoryToken: result.memoryToken }), sessionCookie }; }
+    try { return { ...await this.verify({ serverUrl: this.serverUrl, accessToken: result.accessToken }), sessionCookie }; }
     catch (error) {
       if (sessionCookie) {
         await this.request(`/api/auth/api-keys/${encodeURIComponent(result.apiKey.id)}`, { sessionCookie, method: 'DELETE' }).catch(() => undefined);
@@ -271,8 +247,7 @@ export class Account {
   getSession(): LoginSession | undefined { return this.verified ? this.session : undefined; }
   getConnection(): Connection | undefined {
     const session = this.getSession();
-    return session ? { serverUrl: session.serverUrl, accessToken: session.accessToken, ...(session.memoryToken ? { memoryToken:session.memoryToken } : {}),
-      ...(session.sessionCookie ? { memorySessionCookie: session.sessionCookie } : {}),
+    return session ? { serverUrl: session.serverUrl, accessToken: session.accessToken,
       ...(this.aiConnection ? { aiServerUrl: this.aiConnection.serverUrl, aiAccessToken: this.aiConnection.accessToken } : {}) } : undefined;
   }
 

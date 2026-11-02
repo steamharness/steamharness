@@ -33,7 +33,6 @@ const toolApproval = steamharness.createToolApprovalGate();
  * at, the persona that workspace implies, and the capabilities Studio offers.
  */
 const assistantProject = steamharness.createAgentConversationProject({
-  memory: true,
   modelSource: "user-settings",
   executorName: STEAMHARNESS_NAME,
   outputItemId: OUTPUT_ITEM_ID,
@@ -113,13 +112,6 @@ export const executor = steamharness.defineExecutor<AgentInput, AgentOutputPaylo
     { name: "workflow-studio_set_theme", label: "Studio theme", description: "Change the installed VS Code color theme.", enabled: true, autoApprove: false },
     { name: "workflow-studio_open_terminal", label: "Studio terminal", description: "Open a terminal in a permitted directory without executing commands.", enabled: true, autoApprove: false },
     { name: "workflow-studio_show_view", label: "Studio view", description: "Show Explorer, Search, Source Control, Terminal or Assistant.", enabled: true, autoApprove: false },
-    {
-      name: "memory",
-      label: "Account memory",
-      description: "Remember stable user preferences, changes, and project decisions.",
-      enabled: true,
-      autoApprove: true,
-    },
     {
       name: "workflow-ui_present_card",
       label: "Conversation resource card",

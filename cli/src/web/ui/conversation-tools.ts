@@ -1,6 +1,3 @@
-import { createMemoryPanel } from '@steamharness/account-memory/panel';
-import type { MemoryClient } from '@steamharness/account-memory';
-import '@steamharness/account-memory/styles.css';
 import { t } from '../localization';
 import type { Parameters, ToolPolicies, Project } from '../workflow-types';
 import type { SystemAiUsage } from '../workflow-auth-client';
@@ -16,10 +13,10 @@ import './project-databases.css';
 import './project-settings.css';
 import { bindOutputFileLinks, type FileLinkTarget } from './output-file-links';
 
-export type ProjectSettingsSection = 'overview' | 'configurations' | 'tools' | 'skills' | 'usage' | 'databases' | 'memory';
+export type ProjectSettingsSection = 'overview' | 'configurations' | 'tools' | 'skills' | 'usage' | 'databases';
 export interface ProjectSettingsOptions {
   path?(target: FileLinkTarget): void;
-  account?(reason?: 'memory'): void;
+  account?(): void;
   configurations?: ProjectConfigurationsPanel;
   tools?(): { parameters: Parameters; policies: ToolPolicies; changed(policies: ToolPolicies): void; readOnly?: boolean };
   usage?: { available(): boolean; load(requestId: string): void };
@@ -44,10 +41,6 @@ export class ConversationTools {
   private usageBody?: HTMLElement;
   private opener?: HTMLElement;
   private skillGuides?: SkillGuides;
-  private memoryPanel?: ReturnType<typeof createMemoryPanel>;
-  private memoryEpoch=0;
-  private memoryRevision?: number;
-  private refreshMemory?: () => void;
   private readonly toolSections = new Map<string, boolean>();
   constructor(private readonly databases?: ProjectDatabases, private readonly settings: ProjectSettingsOptions = {}) {
     this.dialog.id = 'project-information-dialog'; this.dialog.className = 'conversation-dialog';
@@ -61,7 +54,6 @@ export class ConversationTools {
   get open(): boolean { return this.dialog.open; }
   get activeSection(): ProjectSettingsSection | undefined { return this.open ? this.section : undefined; }
   private cleanup(): void {
-    this.memoryEpoch++; this.refreshMemory=undefined; this.memoryPanel?.dispose();this.memoryPanel=undefined;
     this.disposeImage?.(); this.disposeImage = undefined; this.disposeProject?.(); this.disposeProject = undefined;
     this.disposeNavigation?.(); this.disposeNavigation = undefined; this.refreshTools = undefined;
     this.skillGuides?.dispose(); this.skillGuides = undefined;
@@ -71,15 +63,12 @@ export class ConversationTools {
     const opener = this.opener; this.opener = undefined; if (opener?.isConnected) opener.focus({ preventScroll: true });
   }
   close(): void { if (this.dialog.open) this.dialog.close(); this.cleanup(); }
-  closeUsage(): void { if (this.usageBody || this.memoryPanel) this.close(); }
+  closeUsage(): void { if (this.usageBody) this.close(); }
   skillsResult(requestId: string | undefined, value?: import('steamharness').AgentSkillGuide[] | import('steamharness').AgentSkillPreview, error?: string): void {
     this.skillGuides?.result(requestId, value, error);
   }
-  updatePermissions(configurationRevision?: number): void {
-    const changed = configurationRevision !== this.memoryRevision;
-    this.memoryRevision = configurationRevision;
+  updatePermissions(): void {
     if (!this.open) return;
-    if (changed) this.refreshMemory?.();
     if (this.settings.tools) this.refreshTools?.(this.settings.tools());
   }
   private show(title: string): void {
@@ -204,42 +193,6 @@ export class ConversationTools {
       const refresh = this.refresh = iconButton('refresh', t('Refresh usage'), () => this.loadUsage(usage.load));
       toolbar.append(refresh); this.usageBody = document.createElement('div'); container.append(toolbar, this.usageBody);
       add('usage', t('AI usage'), 'graph', t('Account balance and current subscription usage.'), container, () => { this.usageOpen = true; this.loadUsage(usage.load); });
-    }
-    if (project) {
-      const client:MemoryClient={call:async(action,input)=>{const base=document.querySelector<HTMLMetaElement>('meta[name=steamharness-base]')?.content??'';const r=await fetch(base+'/api/memory',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action,input}),signal:AbortSignal.timeout(10000)});const b=await r.json();if(!r.ok||b.errCode!==0)throw Object.assign(new Error(b.errMessage),{status:r.status});return b.data;}};
-      const addMemory = () => {
-        if(tabs.some(tab=>tab.id==='memory'))return;
-        const container=document.createElement('div');container.className='project-settings-memory';
-        add('memory',t('Global memory'),'book',t('Private account memory for this project.'),container,()=>{
-          this.memoryPanel=createMemoryPanel({client,locale:document.documentElement.lang||'en',
-            onAuthorize:this.settings.account?()=>{this.close();this.settings.account!('memory');}:undefined});
-          container.append(this.memoryPanel.element);
-        });
-        const tab=tabs.at(-1)!;tab.panel.hidden=true;tab.tab.setAttribute('aria-selected','false');tab.tab.tabIndex=-1;
-        if(initialTab==='memory')this.selectSection?.('memory');
-      };
-      const refreshMemory = this.refreshMemory = () => {
-        const generation=++this.memoryEpoch;
-        void client.call('capabilities').then(capabilities=>{
-          if(generation!==this.memoryEpoch||!this.open)return;
-          const existing=tabs.find(tab=>tab.id==='memory');
-          if(!capabilities.connected||!capabilities.enabled){
-            if(existing){
-              if(this.section==='memory')this.selectSection?.('overview');
-              this.memoryPanel?.dispose();this.memoryPanel=undefined;
-              existing.tab.remove();existing.panel.remove();tabs.splice(tabs.indexOf(existing),1);
-            }
-            return;
-          }
-          addMemory();
-        }).catch(error=>{
-          if(generation!==this.memoryEpoch||!this.open)return;
-          // Core contacts the provider only for enabled projects. Keep that
-          // entry visible so authorization and service errors can be resolved.
-          if([401,403,503].includes(error?.status))addMemory();
-        });
-      };
-      refreshMemory();
     }
     if (project && this.databases) {
       const container = document.createElement('div');

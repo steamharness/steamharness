@@ -195,29 +195,6 @@ test('host credentials use stdin and can change without restarting the CLI', asy
   assert.equal(next.configuration.connection, null);
 });
 
-test('existing memory sessions reach both trusted CLI surfaces through stdin and rotate without restarting', async t => {
-  for (const surface of ['editor', 'assistant']) {
-    const { directory, options } = await fixture(t);
-    const connection = { serverUrl: 'https://steamharness.test', accessToken: 'project-fixture', memorySessionCookie: 'wf_session=legacy-memory-secret' };
-    const session = await startProjectCli({ ...options, surface, connection,
-      ...(surface === 'assistant' ? { assistantProjectDir: directory, assistant: { workdir: directory, roots: [{ uri: `file://${directory}`, folderPath: directory, name: 'Current' }] } } : {}) });
-    t.after(() => session.close());
-    const read = () => fetch(new URL(session.ready.url).origin).then(response => response.json());
-    const initial = await read();
-    assert.deepEqual(initial.configuration.connection, connection);
-    assert.ok(!initial.args.join(' ').includes('legacy-memory-secret'));
-    const nextConnection = { ...connection, memorySessionCookie: 'wf_session=renewed-memory-secret' };
-    session.updateAuth(nextConnection);
-    let next;
-    for (let attempt = 0; attempt < 100; attempt++) {
-      next = await read(); if (next.configuration.connection.memorySessionCookie === nextConnection.memorySessionCookie) break;
-    }
-    assert.deepEqual(next.configuration.connection, nextConnection);
-    assert.equal(next.pid, initial.pid);
-    assert.equal(next.authMessages, 1);
-  }
-});
-
 test('legacy editor CLIs start and rotate project accounts without assistant-only AI fields', async t => {
   const { options } = await fixture(t, '0.1.1', 1, false, 0, 1, 1, 1, 0);
   const project = { serverUrl: 'https://project.test', accessToken: 'project-fixture' };

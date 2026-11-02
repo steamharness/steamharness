@@ -17,12 +17,11 @@ export {resolveProjectConfigurationAccess} from './configuration-access';
 import {
   applyConfigurationAction, configurationSnapshot, configurationAgentModelPolicy, exportConfigurations, parseAgentModelPolicy, parseConfigurationDefinition, readConfigurationState,
   bindConfigurationTemplate, configurationCapability, parseConfigurationTemplate, configurationTemplatePath, CONFIGURATION_TEMPLATE_FILE, type ProjectConfigurationTemplate,
-  PROJECT_CONFIGURATION_FILE, ProjectConfigurationError, validateConfigurationAction, isConfigurationValue, AGENT_MODELS_CONFIGURATION_FIELD, AGENT_MODELS_CONFIGURATION_KEY, AGENT_MEMORY_CONFIGURATION_FIELD, AGENT_MEMORY_CONFIGURATION_KEY,
+  PROJECT_CONFIGURATION_FILE, ProjectConfigurationError, validateConfigurationAction, isConfigurationValue, AGENT_MODELS_CONFIGURATION_FIELD, AGENT_MODELS_CONFIGURATION_KEY,
   bindConfigurationProfiles,configurationAccessView,validateConfigurationSnapshotAccess,type ConfigurationAccess,type ConfigurationProfilePolicy,
   type AgentModelPolicy, type ProjectConfigurationDefinition, type ProjectConfigurationField, type ConfigurationValue, type ConfigurationValues, type ProjectConfigurationAction, type ProjectConfigurationSnapshot, type ProjectConfigurationState,
 } from "@steamharness/project-configuration";
 export * from "@steamharness/project-configuration";
-export { AGENT_MEMORY_CONFIGURATION_KEY, AGENT_MEMORY_CONFIGURATION_FIELD } from "@steamharness/project-configuration";
 
 const scope = new AsyncLocalStorage<ProjectConfigurationSnapshot>();
 const directoryScope = new AsyncLocalStorage<{ directory: string; entryId?: string }>();
@@ -43,8 +42,8 @@ export function projectUsesConfiguredAgentModels(projectDir: string, entryFile?:
   return discoverProjectAgentModels(projectDir, undefined, entryFile);
 }
 
-type AgentModelSourceCache = Map<string, { stamp: string; found: boolean; projectModels: boolean; memoryDefault: boolean }>;
-function discoverProjectAgentModels(projectDir: string, cache?: AgentModelSourceCache, entryFile?: string, mode: "found" | "projectModels" | "memoryDefault" = "found"): boolean {
+type AgentModelSourceCache = Map<string, { stamp: string; found: boolean; projectModels: boolean }>;
+function discoverProjectAgentModels(projectDir: string, cache?: AgentModelSourceCache, entryFile?: string, mode: "found" | "projectModels" = "found"): boolean {
   const skipped = new Set(["node_modules", "vendor", "dist", "out", "build", "test", "tests", "__tests__", "fixtures"]);
   const scan = (directory: string): boolean => {
     if (!existsSync(directory)) return false;
@@ -124,26 +123,7 @@ function discoverProjectAgentModels(projectDir: string, cache?: AgentModelSource
         }
         return selected;
       };
-      const memoryEnabled = (argument?: ts.Expression, seen = new Set<ts.Node>()): boolean | undefined => {
-        if (!argument) return undefined;
-        const value = unwrap(argument);
-        if (!ts.isObjectLiteralExpression(value) || seen.has(value)) return false;
-        const visited = new Set([...seen, value]);
-        let enabled: boolean | undefined;
-        for (const property of value.properties) {
-          if (ts.isSpreadAssignment(property)) {
-            enabled = memoryEnabled(property.expression, visited) ?? enabled;
-            continue;
-          }
-          const name = property.name && (ts.isIdentifier(property.name) || ts.isStringLiteral(property.name)) ? property.name.text : undefined;
-          if (name !== "memory") continue;
-          const expression = ts.isPropertyAssignment(property) ? property.initializer : ts.isShorthandPropertyAssignment(property) ? property.name : undefined;
-          const setting = expression && unwrap(expression);
-          enabled = !!setting && (setting.kind === ts.SyntaxKind.TrueKeyword || ts.isObjectLiteralExpression(setting));
-        }
-        return enabled;
-      };
-      let found = false, projectModels = false, memoryDefault = false;
+      let found = false, projectModels = false;
       const visit = (node: ts.Node): void => {
         if (ts.isCallExpression(node)) {
           const expression = node.expression;
@@ -152,12 +132,11 @@ function discoverProjectAgentModels(projectDir: string, cache?: AgentModelSource
             found = true;
             const mode = modelSource(node.arguments[0]);
             projectModels ||= mode === "project" || mode === "unknown";
-            memoryDefault ||= memoryEnabled(node.arguments[0]) === true;
           }
         }
         ts.forEachChild(node, visit);
       };
-      visit(source); cache?.set(file, { stamp, found, projectModels, memoryDefault }); if ({ found, projectModels, memoryDefault }[mode]) return true;
+      visit(source); cache?.set(file, { stamp, found, projectModels }); if ({ found, projectModels }[mode]) return true;
     }
     return false;
   };
@@ -171,9 +150,6 @@ function usesOnlyUserAgentModels(projectDir: string, entryFile?: string, cache?:
 
 function addAgentConfigurationFields(definition: ProjectConfigurationDefinition, projectDir: string, entryFile?: string, cache?: AgentModelSourceCache) {
   if (!discoverProjectAgentModels(projectDir, cache, entryFile)) return;
-  if (!definition.fields.some(field => field.name === AGENT_MEMORY_CONFIGURATION_KEY)) definition.fields.splice(definition.fields.findIndex(field => field.name === AGENT_MODELS_CONFIGURATION_KEY) + 1, 0, {
-    ...structuredClone(AGENT_MEMORY_CONFIGURATION_FIELD), defaultValue: discoverProjectAgentModels(projectDir, cache, entryFile, "memoryDefault"),
-  });
   if (!definition.fields.some(field => field.name === AGENT_MODELS_CONFIGURATION_KEY)) definition.fields.unshift({ ...structuredClone(AGENT_MODELS_CONFIGURATION_FIELD), ...definition.agentModelPolicy });
 }
 
