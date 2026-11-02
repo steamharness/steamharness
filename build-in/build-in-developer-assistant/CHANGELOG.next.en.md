@@ -1,6 +1,6 @@
 # Unreleased
 
-- Updated the project generator reference with independent database resources and versioned migration commands; query connections remain pending.
+- Updated the project generator reference with independent database resources, versioned migrations, entry bindings and typed Node queries and transactions; the browser proxy remains pending.
 
 - Document SteamHarness Database multi-database definitions, dual-target generation, packaging, and current connection boundaries in generator guidance.
 

@@ -104,6 +104,9 @@ export interface NodeDatabaseDescriptor<Alias extends string = string, Client = 
 }
 
 export type DatabaseClient<Descriptor extends DatabaseDescriptor> = NonNullable<Descriptor[typeof databaseClientType]>;
+export interface RelationalDatabasesContext {
+  connect<Descriptor extends DatabaseDescriptor>(descriptor: Descriptor): Promise<DatabaseClient<Descriptor>>;
+}
 export type DatabaseOperation = "findUnique" | "findUniqueOrThrow" | "findFirst" | "findFirstOrThrow" | "findMany" | "count" | "aggregate" | "groupBy"
   | "create" | "createMany" | "createManyAndReturn" | "update" | "updateMany" | "updateManyAndReturn" | "upsert" | "delete" | "deleteMany";
 export type DatabaseModelDelegate<Delegate> = Pick<Delegate, Extract<keyof Delegate, DatabaseOperation>>;

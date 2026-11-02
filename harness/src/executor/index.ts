@@ -26,7 +26,8 @@ import { resolveProjectEntrySync, type ResolvedProjectEntry } from "@steamharnes
 import { projectEntryKey } from "@steamharness/project-manifest";
 import type { AccessActor } from "@steamharness/project-access";
 import { createExecutorHostState, createExecutorResources, type EntryDeclaration } from "./entry-resources";
-import type { DatabaseResolver } from "../databases/index";
+import { closeDatabaseConnections, type DatabasesContext, type DatabaseResolver } from "../databases/index";
+import type { RelationalDatabaseHost } from "../database/host";
 import type { ToolPermissionContext } from "../tool-permissions/index";
 type ProjectDataStorageLocation = "local" | "server";
 import { createLocalProjectConfigurationStore, getProjectConfiguration, withProjectConfiguration, currentConfigurationValues, readProjectConfigurationDefinition, projectUsesConfiguredAgentModels, type ProjectConfigurationSnapshot } from "../configuration";
@@ -135,6 +136,8 @@ export interface RunWorkspaceProjectOptions {
   entryId?: string;
   actor?: AccessActor;
   databaseResolver?: DatabaseResolver;
+  /** Trusted native host for relational connections; defaults to the signed-in Server. */
+  relationalDatabaseHost?: RelationalDatabaseHost;
   inheritedToolPermissions?: ToolPermissionContext;
   authorizeEntry?(entryId: string, entrypointId: string | undefined, actor: AccessActor): Promise<void> | void;
   cwd?: string;
@@ -168,6 +171,8 @@ export interface RunLocalProjectOptions {
   entryId?: string;
   actor?: AccessActor;
   databaseResolver?: DatabaseResolver;
+  /** Trusted native host for relational connections; defaults to the signed-in Server. */
+  relationalDatabaseHost?: RelationalDatabaseHost;
   inheritedToolPermissions?: ToolPermissionContext;
   authorizeEntry?(entryId: string, entrypointId: string | undefined, actor: AccessActor): Promise<void> | void;
   projectDir?: string;
@@ -258,6 +263,7 @@ async function runWorkspaceProjectWithReportInternal(
   let activeConversationId: string | undefined;
   let tokenUsage: TokenUsageContext | undefined;
   let result: RunResult<unknown>;
+  let resourceDatabases: DatabasesContext | undefined;
 
   try {
     await runtime.prepare();
@@ -420,6 +426,7 @@ async function runWorkspaceProjectWithReportInternal(
       ),
     };
 
+    resourceDatabases = context.databases;
     runtime.throwIfAborted();
     result = await safeRunProject(execution.workflow, input, context);
   } catch (error) {
@@ -428,6 +435,8 @@ async function runWorkspaceProjectWithReportInternal(
     result = runtime.abortSignal.aborted
       ? createAbortedProjectResult(runtime.abortSignal, options.projectName)
       : createProjectFailure(diagnosedError);
+  } finally {
+    if (resourceDatabases) await closeDatabaseConnections(resourceDatabases);
   }
 
   return runtime.finish({
@@ -470,6 +479,7 @@ async function debugWorkspaceProjectNodeWithReportInternal(
   let activeConversationId: string | undefined;
   let tokenUsage: TokenUsageContext | undefined;
   let result: RunResult<unknown>;
+  let resourceDatabases: DatabasesContext | undefined;
 
   try {
     await runtime.prepare();
@@ -629,6 +639,7 @@ async function debugWorkspaceProjectNodeWithReportInternal(
       ),
     };
 
+    resourceDatabases = context.databases;
     runtime.throwIfAborted();
     const debugOutput = entry.stream
       ? (await runStreamNode(requireStreamDebugNode(entry), input, context)).output
@@ -643,6 +654,8 @@ async function debugWorkspaceProjectNodeWithReportInternal(
     result = runtime.abortSignal.aborted
       ? createAbortedProjectResult(runtime.abortSignal, options.projectName)
       : createProjectFailure(diagnosedError);
+  } finally {
+    if (resourceDatabases) await closeDatabaseConnections(resourceDatabases);
   }
 
   return runtime.finish({
@@ -797,6 +810,7 @@ async function runLocalProjectWithReportInternal(
   let startedEventEmitted = false;
   let tokenUsage: TokenUsageContext | undefined;
   let result: RunResult<unknown>;
+  let resourceDatabases: DatabasesContext | undefined;
 
   try {
     const modulePath = projectStorageDeclaration.modulePath;
@@ -970,6 +984,7 @@ async function runLocalProjectWithReportInternal(
       ),
     };
 
+    resourceDatabases = context.databases;
     throwIfRunLocalProjectAborted(abortController.signal, projectName);
     result = await safeRunProject(execution.workflow, input, context);
     if (abortController.signal.aborted) {
@@ -991,6 +1006,8 @@ async function runLocalProjectWithReportInternal(
       : createProjectFailure(
           diagnoseModuleImportError(error, projectDir, projectName) ?? error,
         );
+  } finally {
+    if (resourceDatabases) await closeDatabaseConnections(resourceDatabases);
   }
 
   const endedAt = new Date();

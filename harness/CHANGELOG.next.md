@@ -1,6 +1,8 @@
 # Unreleased
 
-- 【新增】公开数据库资源、账号授权、迁移计划与历史类型，统一模型引擎版本；业务查询连接将在后续接入。
+- 【新增】Node 入口通过 `context.databases.connect(descriptor)` 使用类型化关系查询、聚合与事务；逐次检查宿主绑定、授权和模型指纹，自动续期并在执行结束或取消时释放连接。
+
+- 【新增】公开数据库资源、账号授权、迁移计划与历史类型，统一模型引擎版本。
 
 - 新增 SteamHarness Database 定义入口：单库／多库 schema、模型元数据及 Node/Browser 类型化描述符；内部引擎由 Core 提供，业务源码无需导入 PrismaClient。
 

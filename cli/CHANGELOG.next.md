@@ -1,5 +1,7 @@
 # Unreleased
 
+- 【新增】database bind／bindings／unbind 按账号、项目、入口和别名管理宿主关系库绑定，不写入项目资源 ID；执行入口支持 Core 类型化关系查询。
+
 - 【新增】数据库资源申请、查询、失败重试和读写授权命令，以及保存 SQL、模型快照、校验和的版本化迁移；拒绝修改已应用历史、结构漂移和未确认的破坏性迁移。
 
 - 新增 database（db）init／validate／generate：使用 steamharness.database.ts 与 steamharness.schema 生成双目标类型及运行资产；打包自动生成，上传／下载校验静态清单，保留其余本地运行数据的隔离。

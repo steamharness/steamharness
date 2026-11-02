@@ -140,3 +140,20 @@ create table __SCHEMA__.migration_attempts (
   ended_at timestamptz
 );
 `;
+
+/** Additive catalog migration: preserve the immutable phase-three checksum. */
+export const BINDINGS_SQL = `
+create table __SCHEMA__.bindings (
+  id uuid primary key,
+  user_id text not null,
+  project_id text not null,
+  entry_id text not null,
+  alias text not null,
+  database_id uuid not null references __SCHEMA__.resources(id),
+  mode text not null check(mode in ('read','write')),
+  revision integer not null default 1,
+  unique(user_id,project_id,entry_id,alias)
+);
+alter table __SCHEMA__.credentials add column binding_id uuid;
+create index on __SCHEMA__.credentials(binding_id);
+`;

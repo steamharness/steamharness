@@ -5,7 +5,7 @@ import pg from "pg";
 import type { DatabaseMigration } from "steamharness/database";
 import { RelationalDatabaseRepository } from "../relational-databases/repository";
 import { databaseNames } from "../relational-databases/cluster";
-import { hash, modelHash } from "../relational-databases/schema";
+import { CATALOG_SQL, hash, modelHash } from "../relational-databases/schema";
 
 const databaseUrl = process.env.STEAMHARNESS_TEST_RELATIONAL_DATABASE_URL;
 const userSchema = 'model User {\n id String @id\n email String @unique\n}\n';
@@ -32,7 +32,12 @@ test("independent PostgreSQL resources support provisioning, account grants and 
     }
     await admin.query(`drop schema if exists "${catalog}" cascade`); await admin.end();
   });
+  // Start from the previously shipped catalog and prove the binding migration is additive.
+  await admin.query(`create schema "${catalog}"; create table "${catalog}".schema_migrations(version integer primary key,checksum text not null)`);
+  await admin.query(CATALOG_SQL.replaceAll("__SCHEMA__", `"${catalog}"`));
+  await admin.query(`insert into "${catalog}".schema_migrations values(1,$1)`, [hash(CATALOG_SQL)]);
   await repository.init();
+  assert.equal((await admin.query(`select count(*)::int as count from "${catalog}".schema_migrations`)).rows[0].count, 2);
   const create = async (owner: string, name: string) => {
     const resource = await repository.create(owner, { name, requestId: randomUUID() });
     identities.push(resource.id); assert.equal(resource.status, "ready", resource.failureCode ?? undefined); return resource;

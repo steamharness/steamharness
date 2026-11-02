@@ -6,17 +6,18 @@ import { readCliAuthConfig } from "./auth-config";
 import { defaultServerUrl } from "./service-url";
 import { generateDatabases, validateDatabases } from "./database-generation";
 import { readDatabaseMigrations, writeDatabaseMigration } from "./database-migrations";
+import { resolveProjectDeclarationEntrySync } from "@steamharness/project-manifest/node";
 
 export interface DatabaseManagementOptions {
   server: string; token: string; database?: string; alias: string; name?: string; user?: string; mode?: string;
-  requestId?: string; draft: boolean; acceptDataLoss: boolean;
+  requestId?: string; entry?: string; draft: boolean; acceptDataLoss: boolean;
 }
 export async function parseDatabaseManagementArgs(argv: string[]) {
   const saved = await readCliAuthConfig();
   const options: DatabaseManagementOptions = { server: process.env.STEAMHARNESS_SERVER_URL ?? (saved.serverUrl.trim() || defaultServerUrl()),
     token: process.env.STEAMHARNESS_SERVER_ADMIN_KEY ?? saved.apiKey ?? "", alias: "main", draft: false, acceptDataLoss: false };
   const positional: string[] = [];
-  const names = { "--server": "server", "--token": "token", "--database": "database", "--alias": "alias", "--name": "name", "--user": "user", "--mode": "mode", "--request-id": "requestId" } as const;
+  const names = { "--server": "server", "--token": "token", "--database": "database", "--alias": "alias", "--name": "name", "--user": "user", "--mode": "mode", "--request-id": "requestId", "--entry": "entry" } as const;
   for (let index = 0; index < argv.length; index++) {
     const arg = argv[index];
     if (arg === "--draft") { options.draft = true; continue; }
@@ -37,7 +38,7 @@ export async function databaseManagementRequest<T>(options: Pick<DatabaseManagem
   const url = new URL(options.server);
   if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password || url.search || url.hash) throw new Error("Use a Server HTTP URL without credentials, query or fragment.");
   const response = await fetch(`${options.server.replace(/\/$/, "")}/api/databases${endpoint}`, {
-    method, headers: { Authorization: `Bearer ${options.token}`, "Content-Type": "application/json" }, signal: AbortSignal.timeout(180_000),
+    method, redirect: "error", headers: { Authorization: `Bearer ${options.token}`, "Content-Type": "application/json" }, signal: AbortSignal.timeout(180_000),
     ...(body === undefined ? {} : { body: JSON.stringify(body) }),
   });
   const result = await response.json() as { errCode?: number; errMessage?: string; data?: T & { code?: string } };
@@ -53,6 +54,19 @@ export async function manageDatabases(argv: string[]): Promise<void> {
     if (!value || !/^[a-f0-9]{8}-[a-f0-9]{4}-[1-5][a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/i.test(value)) throw new Error("Specify a database resource UUID.");
     return value.toLowerCase();
   };
+  if (["bind", "unbind", "bindings"].includes(command) && args.length <= 1) {
+    const databaseId = command === "bind" ? id(options.database) : undefined;
+    if (options.mode !== undefined && !["read", "write"].includes(options.mode)) throw new Error("Choose --mode read or write.");
+    const declaration = resolveProjectDeclarationEntrySync(path.resolve(args[0] ?? "."), options.entry);
+    const consumer = { projectId: declaration.manifest.projectId, entryId: declaration.registration.entryId, alias: options.alias };
+    if (command === "bindings") { output(await request(`/bindings?projectId=${encodeURIComponent(consumer.projectId)}&entryId=${encodeURIComponent(consumer.entryId)}`)); return; }
+    if (command === "unbind") { await request("/bindings", "DELETE", consumer); output({ unbound: true, ...consumer }); return; }
+    const generated = await generateDatabases(declaration.rootDir);
+    const database = generated.databases.find(item => item.alias === options.alias);
+    if (!database) throw new Error(`Database alias ${JSON.stringify(options.alias)} is not defined for entry ${JSON.stringify(consumer.entryId)}.`);
+    output(await request("/bindings", "POST", { ...consumer, databaseId, schemaHash: database.schemaHash, ...(options.mode ? { mode: options.mode } : {}) }));
+    return;
+  }
   if (command === "list" && !args.length) { output(await request("")); return; }
   if (command === "create" && args.length === 1) {
     const resource = await request<DatabaseResource>("", "POST", { name: args[0], requestId: options.requestId ? id(options.requestId) : randomUUID() });

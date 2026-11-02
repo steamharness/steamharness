@@ -4093,7 +4093,7 @@ function findProjectScriptPaths(projectDir: string, entryFile?: string): string[
   });
 }
 
-function collectProjectScriptPaths(directory: string): string[] {
+function collectProjectScriptPaths(directory: string, projectRoot = directory): string[] {
   const entries = readdirSync(directory);
   const scriptPaths: string[] = [];
 
@@ -4103,10 +4103,11 @@ function collectProjectScriptPaths(directory: string): string[] {
     }
 
     const entryPath = path.join(directory, entry);
+    if (path.relative(projectRoot, entryPath) === path.join(".steamharness", "generated", "database")) continue;
     const stat = statSync(entryPath);
 
     if (stat.isDirectory()) {
-      scriptPaths.push(...collectProjectScriptPaths(entryPath));
+      scriptPaths.push(...collectProjectScriptPaths(entryPath, projectRoot));
       continue;
     }
 

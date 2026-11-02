@@ -14,7 +14,7 @@ workflow 源码是自包含业务代码。本地宿主和 CLI 把 runtime API �
 
 Browser 描述符不得加载 Node 客户端、驱动或连接配置。生成产物含 JS 与 TS、模型元数据、标准内部 schema、引擎运行资产及校验清单，不手动维护。workspace pack 自动为根和注册入口生成并带入产物；Server 只校验静态文件，不执行定义。失败保持上一份完整生成，去掉别名后重新生成清理旧产物。
 
-资源管理使用 `steamharness database create|list|inspect|retry|grant|revoke`，迁移使用 `migrate dev|deploy|status --database <uuid> [--alias main]`；`dev --draft` 保存 SQL、模型快照和校验清单，资源需要目标 Server 的账号授权。不同资源对应独立 PostgreSQL database；创建者是唯一迁移所有者。已应用历史不可修改，漂移、破坏性变更和失败重试需遵循公开数据库文档。当前尚不能生成可执行的 `context.databases.connect()`；不能把描述符当作资源身份或授权。现有 `.databases.get(alias).kv` 属于旧存储契约，本阶段未删除，不把其 API 伪装成关系模型查询。
+资源管理使用 `steamharness database create|list|inspect|retry|grant|revoke`，迁移使用 `migrate dev|deploy|status --database <uuid> [--alias main]`；`dev --draft` 保存 SQL、模型快照和校验清单，资源需要目标 Server 的账号授权。不同资源对应独立 PostgreSQL database；创建者是唯一迁移所有者。已应用历史不可修改，漂移、破坏性变更和失败重试需遵循公开数据库文档。Node 项目使用 `const db = await context.databases.connect(main)`，main 从生成的 `node/index.js` 导入。db 仅暴露模型 CRUD、关系、聚合和 `transaction(async tx => ...)`；事务结束后不能保留 tx，不暴露 SQL、PrismaClient 或连接池。先 migrate，再通过 `database bind <aggregate-root> --entry <id> --alias main --database <uuid> [--mode read]` 建立宿主绑定；bindings/unbind 使用同样的目录和入口。关系别名不写入旧 KV 的 manifest/config.databases，宿主按当前账号 + projectId + entryId + alias 存映射，映射不能授予资源权限。同别名跨项目和入口独立，只有显式同 UUID 才共享。每次查询与事务提交检查绑定、权限和 schemaHash；绑定变化须显式重新 connect，撤销会中断 SQL 并回滚事务。运行结束和取消由宿主释放；不自动重放写入，不回退本地存储。Browser 目前只有描述符类型，查询代理未接入。不能把描述符当作资源身份或授权。现有 `.databases.get(alias).kv` 属于旧存储契约，本阶段未删除，不把其 API 伪装成关系模型查询。
 
 ## 用户设置与权限继承
 

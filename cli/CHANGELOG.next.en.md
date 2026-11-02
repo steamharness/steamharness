@@ -1,5 +1,7 @@
 # Unreleased
 
+- Added database bind/bindings/unbind for host-owned relational bindings by account, project, entry and alias, with Core typed queries in Node runs and no project-persisted resource IDs.
+
 - Added database provisioning, inspection, retry and read/write grant commands, plus versioned migrations with SQL, model snapshots and checksums. Applied-history changes, schema drift and unaccepted destructive migrations are rejected.
 
 - Add database (db) init/validate/generate for steamharness.database.ts and steamharness.schema, including typed dual-target artifacts. Packaging generates assets automatically; upload/download verify static inventories while excluding other local runtime data.

@@ -64,6 +64,136 @@ paths:
               schema: {"type": "object", "additionalProperties": false, "properties": {"errCode": {"type": "integer", "const": 0}, "errMessage": {"type": "string", "const": ""}, "data": {"$ref": "#/components/schemas/RelationalDatabaseResource"}}, "required": ["errCode", "errMessage", "data"]}
         default:
           $ref: "#/components/responses/HarnessError"
+  /api/databases/bindings:
+    get:
+      tags: [Relational Databases]
+      summary: List database bindings for the current account and entry
+      description: Account-scoped host binding. The mapping selects an already granted resource and cannot grant permissions. It is not persisted in project source. Rebinding or unbinding revokes existing SQL connections.
+      security:
+        - BearerAuth: []
+        - SessionCookie: []
+      parameters:
+        - name: projectId
+          in: query
+          required: true
+          schema: {"type": "string", "format": "uuid"}
+        - name: entryId
+          in: query
+          required: true
+          schema: {"type": "string", "pattern": "^[a-z][a-z0-9_-]{0,63}$"}
+      responses:
+        "200":
+          description: Successful database host response.
+          content:
+            application/json:
+              schema: {"type": "object", "additionalProperties": false, "properties": {"errCode": {"type": "integer", "const": 0}, "errMessage": {"type": "string", "const": ""}, "data": {"type": "array", "items": {"$ref": "#/components/schemas/RelationalDatabaseBinding"}}}, "required": ["errCode", "errMessage", "data"]}
+        default:
+          $ref: "#/components/responses/HarnessError"
+    post:
+      tags: [Relational Databases]
+      summary: Bind a generated entry alias to an accessible resource
+      description: Account-scoped host binding. The mapping selects an already granted resource and cannot grant permissions. It is not persisted in project source. Rebinding or unbinding revokes existing SQL connections.
+      security:
+        - BearerAuth: []
+        - SessionCookie: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {"$ref": "#/components/schemas/RelationalDatabaseBindRequest"}
+      responses:
+        "200":
+          description: Successful database host response.
+          content:
+            application/json:
+              schema: {"type": "object", "additionalProperties": false, "properties": {"errCode": {"type": "integer", "const": 0}, "errMessage": {"type": "string", "const": ""}, "data": {"$ref": "#/components/schemas/RelationalDatabaseBinding"}}, "required": ["errCode", "errMessage", "data"]}
+        default:
+          $ref: "#/components/responses/HarnessError"
+    delete:
+      tags: [Relational Databases]
+      summary: Unbind an entry alias and revoke its SQL connections
+      description: Account-scoped host binding. The mapping selects an already granted resource and cannot grant permissions. It is not persisted in project source. Rebinding or unbinding revokes existing SQL connections.
+      security:
+        - BearerAuth: []
+        - SessionCookie: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {"$ref": "#/components/schemas/RelationalDatabaseConsumer"}
+      responses:
+        "200":
+          description: Successful database host response.
+          content:
+            application/json:
+              schema: {"type": "object", "additionalProperties": false, "properties": {"errCode": {"type": "integer", "const": 0}, "errMessage": {"type": "string", "const": ""}, "data": {"type": "null"}}, "required": ["errCode", "errMessage", "data"]}
+        default:
+          $ref: "#/components/responses/HarnessError"
+  /api/databases/connections:
+    post:
+      tags: [Relational Databases]
+      summary: Issue a temporary connection for a bound native entry
+      description: Native Node hosts only. Requires an account Bearer API key; Cookie sessions and browser Origin headers are rejected. Never forward SQL credentials to project RPC. Every operation validates account access and the current entry binding.
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {"$ref": "#/components/schemas/RelationalDatabaseConnectionRequest"}
+      responses:
+        "200":
+          description: Successful database host response.
+          content:
+            application/json:
+              schema: {"type": "object", "additionalProperties": false, "properties": {"errCode": {"type": "integer", "const": 0}, "errMessage": {"type": "string", "const": ""}, "data": {"$ref": "#/components/schemas/RelationalDatabaseConnectionLease"}}, "required": ["errCode", "errMessage", "data"]}
+        default:
+          $ref: "#/components/responses/HarnessError"
+  /api/databases/connections/{credentialId}/authorize:
+    post:
+      tags: [Relational Databases]
+      summary: Revalidate a connection before a query or transaction commit
+      description: Native Node hosts only. Requires an account Bearer API key; Cookie sessions and browser Origin headers are rejected. Never forward SQL credentials to project RPC. Every operation validates account access and the current entry binding.
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: credentialId
+          in: path
+          required: true
+          schema: {"type": "string", "format": "uuid"}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {"$ref": "#/components/schemas/RelationalDatabaseAuthorizeRequest"}
+      responses:
+        "200":
+          description: Successful database host response.
+          content:
+            application/json:
+              schema: {"type": "object", "additionalProperties": false, "properties": {"errCode": {"type": "integer", "const": 0}, "errMessage": {"type": "string", "const": ""}, "data": {"type": "null"}}, "required": ["errCode", "errMessage", "data"]}
+        default:
+          $ref: "#/components/responses/HarnessError"
+  /api/databases/connections/{credentialId}:
+    delete:
+      tags: [Relational Databases]
+      summary: Release a native connection and terminate its SQL sessions
+      description: Native Node hosts only. Requires an account Bearer API key; Cookie sessions and browser Origin headers are rejected. Never forward SQL credentials to project RPC. Every operation validates account access and the current entry binding.
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: credentialId
+          in: path
+          required: true
+          schema: {"type": "string", "format": "uuid"}
+      responses:
+        "200":
+          description: Successful database host response.
+          content:
+            application/json:
+              schema: {"type": "object", "additionalProperties": false, "properties": {"errCode": {"type": "integer", "const": 0}, "errMessage": {"type": "string", "const": ""}, "data": {"type": "null"}}, "required": ["errCode", "errMessage", "data"]}
+        default:
+          $ref: "#/components/responses/HarnessError"
   /api/databases/{databaseId}:
     get:
       tags: [Relational Databases]
@@ -4091,6 +4221,13 @@ components:
           schema:
             $ref: "#/components/schemas/ApiFailure"
   schemas:
+    RelationalDatabaseConsumer: {"type": "object", "additionalProperties": false, "properties": {"projectId": {"type": "string", "format": "uuid"}, "entryId": {"type": "string", "pattern": "^[a-z][a-z0-9_-]{0,63}$"}, "alias": {"type": "string", "pattern": "^[a-z][a-z0-9_]{0,62}$"}}, "required": ["projectId", "entryId", "alias"]}
+    RelationalDatabaseBinding: {"type": "object", "additionalProperties": false, "properties": {"projectId": {"type": "string", "format": "uuid"}, "entryId": {"type": "string", "pattern": "^[a-z][a-z0-9_-]{0,63}$"}, "alias": {"type": "string", "pattern": "^[a-z][a-z0-9_]{0,62}$"}, "id": {"type": "string", "format": "uuid"}, "databaseId": {"type": "string", "format": "uuid"}, "mode": {"type": "string", "enum": ["read", "write"]}, "revision": {"type": "integer", "minimum": 1}}, "required": ["projectId", "entryId", "alias", "id", "databaseId", "mode", "revision"]}
+    RelationalDatabaseBindRequest: {"type": "object", "additionalProperties": false, "properties": {"projectId": {"type": "string", "format": "uuid"}, "entryId": {"type": "string", "pattern": "^[a-z][a-z0-9_-]{0,63}$"}, "alias": {"type": "string", "pattern": "^[a-z][a-z0-9_]{0,62}$"}, "databaseId": {"type": "string", "format": "uuid"}, "mode": {"type": "string", "enum": ["read", "write"]}, "schemaHash": {"type": "string", "pattern": "^[a-f0-9]{64}$"}}, "required": ["projectId", "entryId", "alias", "databaseId", "schemaHash"]}
+    RelationalDatabaseConnectionRequest: {"type": "object", "additionalProperties": false, "properties": {"projectId": {"type": "string", "format": "uuid"}, "entryId": {"type": "string", "pattern": "^[a-z][a-z0-9_-]{0,63}$"}, "alias": {"type": "string", "pattern": "^[a-z][a-z0-9_]{0,62}$"}, "schemaHash": {"type": "string", "pattern": "^[a-f0-9]{64}$"}, "binding": {"type": "object", "additionalProperties": false, "properties": {"id": {"type": "string", "format": "uuid"}, "revision": {"type": "integer", "minimum": 1}}, "required": ["id", "revision"]}}, "required": ["projectId", "entryId", "alias", "schemaHash"]}
+    RelationalDatabaseAuthorizeRequest: {"type": "object", "additionalProperties": false, "properties": {"projectId": {"type": "string", "format": "uuid"}, "entryId": {"type": "string", "pattern": "^[a-z][a-z0-9_-]{0,63}$"}, "alias": {"type": "string", "pattern": "^[a-z][a-z0-9_]{0,62}$"}, "schemaHash": {"type": "string", "pattern": "^[a-f0-9]{64}$"}, "binding": {"type": "object", "additionalProperties": false, "properties": {"id": {"type": "string", "format": "uuid"}, "revision": {"type": "integer", "minimum": 1}}, "required": ["id", "revision"]}}, "required": ["projectId", "entryId", "alias", "schemaHash", "binding"]}
+    RelationalDatabaseCredential: {"type": "object", "additionalProperties": false, "properties": {"id": {"type": "string", "format": "uuid"}, "databaseId": {"type": "string", "format": "uuid"}, "mode": {"type": "string", "enum": ["read", "write"]}, "revision": {"type": "integer", "minimum": 1}, "schemaHash": {"type": ["string", "null"]}, "expiresAt": {"type": "string", "format": "date-time"}, "connectionString": {"type": "string", "description": "Sensitive temporary SQL URL. Native host only; never forward to a browser or project RPC."}}, "required": ["id", "databaseId", "mode", "revision", "schemaHash", "expiresAt", "connectionString"]}
+    RelationalDatabaseConnectionLease: {"type": "object", "additionalProperties": false, "properties": {"binding": {"$ref": "#/components/schemas/RelationalDatabaseBinding"}, "credential": {"$ref": "#/components/schemas/RelationalDatabaseCredential"}}, "required": ["binding", "credential"]}
     RelationalDatabaseResource: {"type": "object", "additionalProperties": false, "properties": {"id": {"type": "string", "format": "uuid"}, "name": {"type": "string"}, "ownerUserId": {"type": "string"}, "migrationOwnerUserId": {"type": "string"}, "status": {"type": "string", "enum": ["requested", "provisioning", "ready", "failed"]}, "stage": {"type": "string", "enum": ["requested", "roles", "database", "permissions", "ready"]}, "failureCode": {"type": ["string", "null"]}, "schemaHash": {"type": ["string", "null"]}, "migrationName": {"type": ["string", "null"]}, "migrationStatus": {"type": "string", "enum": ["idle", "running", "failed"]}, "createdAt": {"type": "string", "format": "date-time"}, "updatedAt": {"type": "string", "format": "date-time"}}, "required": ["id", "name", "ownerUserId", "migrationOwnerUserId", "status", "stage", "failureCode", "schemaHash", "migrationName", "migrationStatus", "createdAt", "updatedAt"]}
     RelationalDatabaseGrant: {"type": "object", "additionalProperties": false, "properties": {"databaseId": {"type": "string", "format": "uuid"}, "userId": {"type": "string"}, "mode": {"type": "string", "enum": ["read", "write"]}, "revision": {"type": "integer", "minimum": 1}, "revoked": {"type": "boolean"}}, "required": ["databaseId", "userId", "mode", "revision", "revoked"]}
     DatabaseMigration: {"type": "object", "additionalProperties": false, "properties": {"name": {"type": "string", "pattern": "^[0-9]{17}_[a-z][a-z0-9_]{0,63}$"}, "sql": {"type": "string", "maxLength": 4194304}, "checksum": {"type": "string", "pattern": "^[a-f0-9]{64}$"}, "schema": {"type": "string", "minLength": 1, "maxLength": 1048576}, "schemaHash": {"type": "string", "pattern": "^[a-f0-9]{64}$"}}, "required": ["name", "sql", "checksum", "schema", "schemaHash"]}

@@ -1,11 +1,12 @@
 import { randomUUID } from "node:crypto";
 import type pg from "pg";
-import { DatabaseResourceError, type DatabaseResource, type DatabaseGrant, type DatabaseAccessMode,
+import { assertDatabaseAlias, DatabaseResourceError, type DatabaseResource, type DatabaseGrant, type DatabaseAccessMode,
+  type DatabaseBinding, type DatabaseConsumerIdentity, type DatabaseBindingIdentity,
   type DatabaseMigration, type DatabaseMigrationState, type DatabaseMigrationPlan } from "steamharness/database";
 import { createPostgresPool } from "../postgres";
 import { DatabaseCluster, databaseNames } from "./cluster";
 import { emptyDifference, schemaDifference, validateModel } from "./engine";
-import { CATALOG_SQL, DATABASE_CATALOG_SCHEMA, DATABASE_HISTORY_SCHEMA, hash, identifier as q,
+import { BINDINGS_SQL, CATALOG_SQL, DATABASE_CATALOG_SCHEMA, DATABASE_HISTORY_SCHEMA, hash, identifier as q,
   modelHash, destructiveMigration, validateMigrationHistory } from "./schema";
 
 interface AppliedMigration extends DatabaseMigrationState { readonly schema: string }
@@ -17,11 +18,20 @@ const userId = (value: string): string => {
   if (!value || value.length > 256 || value.includes("\0")) throw new DatabaseResourceError("DATABASE_INVALID_REQUEST", "An account identity is required.");
   return value;
 };
+function consumerIdentity(value: DatabaseConsumerIdentity): DatabaseConsumerIdentity {
+  const projectId = uuid(value.projectId);
+  if (!/^[a-z][a-z0-9_-]{0,63}$/.test(value.entryId)) throw new DatabaseResourceError("DATABASE_INVALID_REQUEST", "An entry identifier is required.");
+  try { assertDatabaseAlias(value.alias); }
+  catch { throw new DatabaseResourceError("DATABASE_INVALID_REQUEST", "A generated database alias is required."); }
+  return { projectId, entryId: value.entryId, alias: value.alias };
+}
+interface ConnectionRequest extends DatabaseConsumerIdentity { schemaHash: string; binding?: DatabaseBindingIdentity }
 
 export class RelationalDatabaseRepository {
   readonly cluster: DatabaseCluster;
   private readonly pool: pg.Pool;
   private readonly lockPool: pg.Pool;
+  private readonly bindingLockPool: pg.Pool;
   private readonly catalog: string;
   private timer?: ReturnType<typeof setInterval>;
   private cleanupTask?: Promise<void>;
@@ -30,6 +40,7 @@ export class RelationalDatabaseRepository {
     this.catalog = q(options.schema ?? DATABASE_CATALOG_SCHEMA);
     this.pool = createPostgresPool({ connectionString, label: "relational database catalog", max: 6, connectionTimeoutMillis: 10_000 });
     this.lockPool = createPostgresPool({ connectionString, label: "database management locks", max: 4, connectionTimeoutMillis: 10_000 });
+    this.bindingLockPool = createPostgresPool({ connectionString, label: "database binding locks", max: 4, connectionTimeoutMillis: 10_000 });
     this.cluster = new DatabaseCluster(options.adminConnectionString);
   }
   async init(): Promise<void> {
@@ -39,11 +50,13 @@ export class RelationalDatabaseRepository {
       await client.query("select pg_advisory_xact_lock(hashtextextended($1,0))", [`steamharness:database:catalog:${this.catalog}`]);
       await client.query(`create schema if not exists ${this.catalog};
         create table if not exists ${this.catalog}.schema_migrations(version integer primary key,checksum text not null)`);
-      const previous = await client.query(`select checksum from ${this.catalog}.schema_migrations where version=1`);
-      if (previous.rows[0] && previous.rows[0].checksum !== hash(CATALOG_SQL)) throw new Error("Database catalog migration checksum does not match.");
-      if (!previous.rowCount) {
-        await client.query(CATALOG_SQL.replaceAll("__SCHEMA__", this.catalog));
-        await client.query(`insert into ${this.catalog}.schema_migrations values(1,$1)`, [hash(CATALOG_SQL)]);
+      for (const [index, sql] of [CATALOG_SQL, BINDINGS_SQL].entries()) {
+        const version = index + 1, previous = await client.query(`select checksum from ${this.catalog}.schema_migrations where version=$1`, [version]);
+        if (previous.rows[0] && previous.rows[0].checksum !== hash(sql)) throw new Error("Database catalog migration checksum does not match.");
+        if (!previous.rowCount) {
+          await client.query(sql.replaceAll("__SCHEMA__", this.catalog));
+          await client.query(`insert into ${this.catalog}.schema_migrations values($1,$2)`, [version, hash(sql)]);
+        }
       }
       await client.query("commit");
     } catch (error) { await client.query("rollback").catch(() => undefined); throw error; }
@@ -72,7 +85,7 @@ export class RelationalDatabaseRepository {
   }
   async close(): Promise<void> {
     clearInterval(this.timer); await this.cleanupTask;
-    await Promise.all([this.pool.end(), this.lockPool.end(), this.cluster.close()]);
+    await Promise.all([this.pool.end(), this.lockPool.end(), this.bindingLockPool.end(), this.cluster.close()]);
   }
 
   async create(actor: string, input: { name: string; requestId: string }): Promise<DatabaseResource> {
@@ -163,6 +176,9 @@ export class RelationalDatabaseRepository {
     });
   }
   private async revokeCredentials(id: string, actor?: string): Promise<void> {
+    // Fence lease renewal as well as current sessions. Regranting access or a
+    // data-only migration must never revive an old client after its TTL elapses.
+    await this.pool.query(`update ${this.catalog}.bindings set revision=revision+1 where database_id=$1 and ($2::text is null or user_id=$2)`, [id, actor ?? null]);
     const rows = await this.pool.query(`update ${this.catalog}.credentials set revoking=true where database_id=$1 and ($2::text is null or user_id=$2) returning id,role_name`, [id, actor ?? null]);
     for (const row of rows.rows) {
       await this.cluster.dropCredential(row.role_name);
@@ -179,29 +195,121 @@ export class RelationalDatabaseRepository {
     }
   }
 
-  /** Trusted native-host building block. HTTP/Core connection issuance is connected in the next phase. */
-  async issueCredentials(actor: string, id: string, options: { mode?: DatabaseAccessMode; expectedSchemaHash?: string; ttlMs?: number } = {}) {
-    return this.lock(id, async () => {
-      const resource = await this.ready(actor, id);
-      if (resource.migrationStatus !== "idle") throw new DatabaseResourceError("DATABASE_BUSY", "Finish or retry the database migration before opening business connections.");
-      if (options.expectedSchemaHash !== undefined && options.expectedSchemaHash !== resource.schemaHash) throw new DatabaseResourceError("DATABASE_SCHEMA_MISMATCH", "The generated model does not match the applied database migrations.");
-      const grant = resource.ownerUserId === actor ? { mode: "write", revision: 1 } : (await this.pool.query(`select mode,revision from ${this.catalog}.grants where database_id=$1 and user_id=$2 and not revoked`, [id, actor])).rows[0];
-      const mode = options.mode ?? grant.mode;
-      if (!["read", "write"].includes(mode) || mode === "write" && grant.mode !== "write") throw new DatabaseResourceError("DATABASE_ACCESS_DENIED", "This account has read-only database access.");
-      const ttl = options.ttlMs ?? 5 * 60_000;
-      if (!Number.isInteger(ttl) || ttl < 1000 || ttl > 15 * 60_000) throw new DatabaseResourceError("DATABASE_INVALID_REQUEST", "Database credentials must expire within 1 second and 15 minutes.");
-      const credentialId = randomUUID(), role = `shc_${credentialId.replaceAll("-", "")}`, expiresAt = new Date(Date.now() + ttl);
-      await this.pool.query(`insert into ${this.catalog}.credentials(id,database_id,user_id,role_name,expires_at) values($1,$2,$3,$4,$5)`, [credentialId, id, actor, role, expiresAt]);
-      try {
-        const connectionString = await this.cluster.credential(id, role, mode, expiresAt);
-        return { id: credentialId, databaseId: id, mode: mode as DatabaseAccessMode, revision: grant.revision as number,
-          expiresAt: expiresAt.toISOString(), schemaHash: resource.schemaHash, connectionString };
-      } catch (error) {
-        await this.cluster.dropCredential(role);
-        await this.pool.query(`delete from ${this.catalog}.credentials where id=$1`, [credentialId]);
-        throw error;
+  private async bindingLock<T>(actor: string, input: DatabaseConsumerIdentity, work: (identity: DatabaseConsumerIdentity) => Promise<T>): Promise<T> {
+    const identity = consumerIdentity(input), client = await this.bindingLockPool.connect();
+    const key = JSON.stringify([this.catalog, userId(actor), identity.projectId, identity.entryId, identity.alias]);
+    let locked = false;
+    try {
+      locked = (await client.query("select pg_try_advisory_lock(hashtextextended($1,0)) as locked", [key])).rows[0].locked;
+      if (!locked) throw new DatabaseResourceError("DATABASE_BUSY", "Another operation is changing this database binding. Retry shortly.");
+      return await work(identity);
+    } finally { try { if (locked) await client.query("select pg_advisory_unlock(hashtextextended($1,0))", [key]); } finally { client.release(); } }
+  }
+  private async findBinding(actor: string, identity: DatabaseConsumerIdentity): Promise<DatabaseBinding | undefined> {
+    const result = await this.pool.query(`select * from ${this.catalog}.bindings where user_id=$1 and project_id=$2 and entry_id=$3 and alias=$4`, [actor, identity.projectId, identity.entryId, identity.alias]);
+    return result.rows[0] ? bindingView(result.rows[0]) : undefined;
+  }
+  async bindings(actor: string, projectId: string, entryId: string): Promise<DatabaseBinding[]> {
+    const identity = consumerIdentity({ projectId, entryId, alias: "main" });
+    return (await this.pool.query(`select * from ${this.catalog}.bindings where user_id=$1 and project_id=$2 and entry_id=$3 order by alias`, [userId(actor), identity.projectId, identity.entryId])).rows.map(bindingView);
+  }
+  private async access(actor: string, id: string, mode?: DatabaseAccessMode, schemaHash?: string) {
+    const resource = await this.ready(actor, id);
+    if (resource.migrationStatus !== "idle") throw new DatabaseResourceError("DATABASE_BUSY", "Finish or retry the database migration before opening business connections.");
+    if (schemaHash !== undefined && schemaHash !== resource.schemaHash) throw new DatabaseResourceError("DATABASE_SCHEMA_MISMATCH", "The generated model does not match the applied database migrations.");
+    const grant = resource.ownerUserId === actor ? { mode: "write", revision: 1 } : (await this.pool.query(`select mode,revision from ${this.catalog}.grants where database_id=$1 and user_id=$2 and not revoked`, [id, actor])).rows[0];
+    const requestedMode = mode ?? grant?.mode;
+    if (!grant || !["read", "write"].includes(requestedMode) || requestedMode === "write" && grant.mode !== "write") throw new DatabaseResourceError("DATABASE_ACCESS_DENIED", "This account has read-only database access.");
+    return { mode: requestedMode as DatabaseAccessMode, revision: grant.revision as number, resource };
+  }
+  private async revokeBindingCredentials(binding: DatabaseBinding): Promise<void> {
+    await this.lock(binding.databaseId, async () => {
+      const rows = await this.pool.query(`update ${this.catalog}.credentials set revoking=true where binding_id=$1 returning id,role_name`, [binding.id]);
+      for (const row of rows.rows) {
+        await this.cluster.dropCredential(row.role_name);
+        await this.pool.query(`delete from ${this.catalog}.credentials where id=$1`, [row.id]);
       }
     });
+  }
+  /** A binding selects a resource already granted to this account; it cannot grant resource access. */
+  async bind(actor: string, input: DatabaseConsumerIdentity & { databaseId: string; mode?: DatabaseAccessMode; schemaHash: string }): Promise<DatabaseBinding> {
+    const id = uuid(input.databaseId);
+    return this.bindingLock(actor, input, async identity => {
+      // Validate before disconnecting an existing, valid mapping.
+      const access = await this.lock(id, () => this.access(actor, id, input.mode, input.schemaHash));
+      const previous = await this.findBinding(actor, identity);
+      if (previous?.databaseId === id && previous.mode === access.mode) return previous;
+      if (previous) await this.revokeBindingCredentials(previous);
+      return this.lock(id, async () => {
+        await this.access(actor, id, access.mode, input.schemaHash);
+        const row = await this.pool.query(`insert into ${this.catalog}.bindings(id,user_id,project_id,entry_id,alias,database_id,mode) values($1,$2,$3,$4,$5,$6,$7)
+          on conflict(user_id,project_id,entry_id,alias) do update set database_id=excluded.database_id,mode=excluded.mode,revision=${this.catalog}.bindings.revision+1 returning *`,
+        [randomUUID(), actor, identity.projectId, identity.entryId, identity.alias, id, access.mode]);
+        return bindingView(row.rows[0]);
+      });
+    });
+  }
+  async unbind(actor: string, input: DatabaseConsumerIdentity): Promise<void> {
+    await this.bindingLock(actor, input, async identity => {
+      const previous = await this.findBinding(actor, identity);
+      if (!previous) return;
+      await this.revokeBindingCredentials(previous);
+      await this.pool.query(`delete from ${this.catalog}.bindings where id=$1`, [previous.id]);
+    });
+  }
+  private async checkedBinding(actor: string, input: ConnectionRequest): Promise<DatabaseBinding> {
+    const binding = await this.findBinding(actor, consumerIdentity(input));
+    if (!binding) throw new DatabaseResourceError(input.binding ? "DATABASE_BINDING_CHANGED" : "DATABASE_UNBOUND", "This project entry's database alias is not bound on this host.");
+    if (input.binding && (binding.id !== input.binding.id || binding.revision !== input.binding.revision)) throw new DatabaseResourceError("DATABASE_BINDING_CHANGED", "The database binding changed. Open a new client explicitly.");
+    return binding;
+  }
+  async openConnection(actor: string, input: ConnectionRequest) {
+    return this.bindingLock(actor, input, async () => {
+      const binding = await this.checkedBinding(actor, input);
+      const credential = await this.lock(binding.databaseId, () => this.issueCredentialsUnlocked(actor, binding.databaseId, { mode: binding.mode, expectedSchemaHash: input.schemaHash }, binding.id));
+      return { binding, credential };
+    });
+  }
+  async authorizeConnection(actor: string, credentialId: string, input: ConnectionRequest): Promise<void> {
+    await this.bindingLock(actor, input, async () => {
+      const binding = await this.checkedBinding(actor, input);
+      await this.lock(binding.databaseId, async () => {
+        await this.access(actor, binding.databaseId, binding.mode, input.schemaHash);
+        const credential = await this.pool.query(`select id from ${this.catalog}.credentials where id=$1 and user_id=$2 and binding_id=$3 and database_id=$4 and not revoking and expires_at>clock_timestamp()`, [uuid(credentialId), actor, binding.id, binding.databaseId]);
+        if (!credential.rowCount) throw new DatabaseResourceError("DATABASE_CONNECTION_EXPIRED", "This database connection expired or was revoked. Open a new client.");
+      });
+    });
+  }
+  async closeConnection(actor: string, credentialId: string): Promise<void> {
+    const rows = await this.pool.query(`select database_id from ${this.catalog}.credentials where id=$1 and user_id=$2 and binding_id is not null`, [uuid(credentialId), userId(actor)]);
+    if (!rows.rowCount) return;
+    await this.lock(rows.rows[0].database_id, async () => {
+      const result = await this.pool.query(`update ${this.catalog}.credentials set revoking=true where id=$1 and user_id=$2 returning role_name`, [credentialId, actor]);
+      if (!result.rowCount) return;
+      await this.cluster.dropCredential(result.rows[0].role_name);
+      await this.pool.query(`delete from ${this.catalog}.credentials where id=$1`, [credentialId]);
+    });
+  }
+
+  /** Trusted native-host building block; projects receive the model facade, never this credential. */
+  async issueCredentials(actor: string, id: string, options: { mode?: DatabaseAccessMode; expectedSchemaHash?: string; ttlMs?: number } = {}) {
+    return this.lock(id, () => this.issueCredentialsUnlocked(actor, id, options));
+  }
+  private async issueCredentialsUnlocked(actor: string, id: string, options: { mode?: DatabaseAccessMode; expectedSchemaHash?: string; ttlMs?: number }, bindingId?: string) {
+    const { mode, revision, resource } = await this.access(actor, id, options.mode, options.expectedSchemaHash);
+    const ttl = options.ttlMs ?? 5 * 60_000;
+    if (!Number.isInteger(ttl) || ttl < 1000 || ttl > 15 * 60_000) throw new DatabaseResourceError("DATABASE_INVALID_REQUEST", "Database credentials must expire within 1 second and 15 minutes.");
+    const credentialId = randomUUID(), role = `shc_${credentialId.replaceAll("-", "")}`, expiresAt = new Date(Date.now() + ttl);
+    await this.pool.query(`insert into ${this.catalog}.credentials(id,database_id,user_id,role_name,expires_at,binding_id) values($1,$2,$3,$4,$5,$6)`, [credentialId, id, actor, role, expiresAt, bindingId ?? null]);
+    try {
+      const connectionString = await this.cluster.credential(id, role, mode, expiresAt);
+      return { id: credentialId, databaseId: id, mode, revision,
+        expiresAt: expiresAt.toISOString(), schemaHash: resource.schemaHash, connectionString };
+    } catch (error) {
+      await this.cluster.dropCredential(role);
+      await this.pool.query(`delete from ${this.catalog}.credentials where id=$1`, [credentialId]);
+      throw error;
+    }
   }
 
   private async applied(id: string): Promise<AppliedMigration[]> {
@@ -312,4 +420,7 @@ function resourceView(row: pg.QueryResultRow): DatabaseResource {
 }
 function grantView(row: pg.QueryResultRow): DatabaseGrant {
   return { databaseId: row.database_id, userId: row.user_id, mode: row.mode, revision: row.revision, revoked: row.revoked };
+}
+function bindingView(row: pg.QueryResultRow): DatabaseBinding {
+  return { id: row.id, projectId: row.project_id, entryId: row.entry_id, alias: row.alias, databaseId: row.database_id, mode: row.mode, revision: row.revision };
 }

@@ -9,6 +9,11 @@ import { createKnowledgeDocument, deleteKnowledgeDocument, describeKnowledgeMuta
 import { LocalDatabaseRegistry } from "./local-registry";
 import { createLocalDatabaseSpaceStore } from "./local-store";
 import { registerDatabaseKnowledgeContext } from "./knowledge-context";
+import { createDatabaseConnector } from "../database/runtime";
+import type { RelationalDatabaseHost } from "../database/host";
+import type { RelationalDatabasesContext } from "../database/index";
+export { createDatabaseConnector } from "../database/runtime";
+export * from "../database/host";
 export * from "@steamharness/database-spaces";
 export * from "@steamharness/database-spaces/catalog";
 export * from "./local-registry";
@@ -34,7 +39,7 @@ export interface DatabaseContext {
   subscribe(listener: (revision: string) => void, options?: { signal?: AbortSignal; onError?: (error: unknown) => void }): () => void;
   transaction<T>(operation: (database: DatabaseContext) => Promise<T> | T): Promise<T>;
 }
-export interface DatabasesContext {
+export interface DatabasesContext extends RelationalDatabasesContext {
   list(): ReadonlyArray<DatabaseRequirement>;
   get(alias: string): DatabaseContext;
 }
@@ -75,11 +80,17 @@ export function createLocalDatabaseManagementContext(spaceId: string, options: {
   }).get('space');
 }
 
-export function createDatabasesContext(options: DatabaseConsumer & { requirements: readonly DatabaseRequirement[]; resolver?: DatabaseResolver; conversationId?: string; runId?: string; conversationNamespace?: string }): DatabasesContext {
+const connectionClosers = new WeakMap<DatabasesContext, () => Promise<void>>();
+/** Host lifecycle hook; never part of the project-facing database API. */
+export async function closeDatabaseConnections(context: DatabasesContext): Promise<void> { await connectionClosers.get(context)?.(); }
+
+export function createDatabasesContext(options: DatabaseConsumer & { requirements: readonly DatabaseRequirement[]; resolver?: DatabaseResolver; relationalDatabaseHost?: RelationalDatabaseHost; signal?: AbortSignal; conversationId?: string; runId?: string; conversationNamespace?: string }): DatabasesContext {
   const requirements = options.requirements.map((item) => normalizeDatabaseRequirement(item));
   if (new Set(requirements.map(item => item.alias)).size !== requirements.length) throw new Error("Database aliases must be unique within an entry.");
   const contexts = new Map<string, DatabaseContext>();
-  return {
+  const connector = createDatabaseConnector({ projectId: options.projectId, entryId: options.entryId, host: options.relationalDatabaseHost, signal: options.signal });
+  const context: DatabasesContext = {
+    connect: connector.connect,
     list: () => structuredClone(requirements),
     get(alias) {
       const requirement = requirements.find((item) => item.alias === alias);
@@ -211,6 +222,8 @@ export function createDatabasesContext(options: DatabaseConsumer & { requirement
       contexts.set(alias, context); return context;
     },
   };
+  connectionClosers.set(context, connector.close);
+  return context;
 }
 
 export { executeDatabaseOperation } from "./operations";

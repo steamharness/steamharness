@@ -1,5 +1,7 @@
 # Unreleased
 
+- Added entry-scoped relational bindings, account API key-only SQL leases and per-operation authorization. Rebinding, access changes and cancellation revoke SQL identities and prevent stale clients from switching resources.
+
 - Added an account-authenticated independent PostgreSQL database catalog, recoverable provisioning, read/write roles and connection revocation, with shadow validation, transactional migrations, immutable history and restart recovery.
 
 - Added static inventory, source fingerprint, and hash verification for SteamHarness Database generated assets in uploads and snapshots. Other local runtime data stays excluded; Server does not execute database definitions.

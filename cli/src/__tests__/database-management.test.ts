@@ -1,10 +1,11 @@
-import { mkdtemp, mkdir, readFile, rm, symlink, writeFile } from "node:fs/promises";
+import { mkdtemp, mkdir, readFile, realpath, rm, symlink, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { databaseArtifactHash } from "@steamharness/project-upload/database-artifacts";
 import { databaseManagementRequest, manageDatabases, parseDatabaseManagementArgs } from "../database-management";
 import { migrationModelHash, readDatabaseMigrations, writeDatabaseMigration } from "../database-migrations";
+import * as generation from "../database-generation";
 
 vi.mock("../auth-config", () => ({ readCliAuthConfig: async () => ({ serverUrl: "https://server.example.test", apiKey: "test-account-token" }) }));
 afterEach(() => { vi.restoreAllMocks(); vi.unstubAllGlobals(); vi.unstubAllEnvs(); });
@@ -44,6 +45,34 @@ describe("database resource CLI", () => {
       id, status: "failed", failureCode: "DATABASE_PROVISION_FAILED",
     } }))));
     await expect(manageDatabases(["retry", id, "--token", "test"])).rejects.toThrow("DATABASE_PROVISION_FAILED");
+  });
+
+  it("binds the selected entry on the host without persisting IDs or credentials into the project", async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "steamharness-binding-"));
+    try {
+      await writeFile(path.join(root, "index.ts"), "export {};\n");
+      const declaration = { id, name: "binding-test", version: "0.1.0", defaultEntry: "main", entries: ["main", "worker"].map(entryId => ({ entryId, name: entryId, root: ".", entry: "index.ts", type: "workflow", databases: [] })) };
+      const source = JSON.stringify(declaration); await writeFile(path.join(root, "steamharness.json"), source);
+      const generate = vi.spyOn(generation, "generateDatabases").mockResolvedValue({ directory: root, cached: true, databases: [{ alias: "main", schema: "steamharness.schema", schemaHash: migration.schemaHash }] });
+      const fetcher = vi.fn().mockImplementation(() => Promise.resolve(new Response(JSON.stringify({ errCode: 0, data: {} }))));
+      vi.stubGlobal("fetch", fetcher); vi.spyOn(process.stdout, "write").mockImplementation(() => true);
+      await manageDatabases(["bind", root, "--database", id, "--entry", "worker", "--mode", "read", "--token", "test"]);
+      expect(generate).toHaveBeenCalledWith(await realpath(root));
+      expect(fetcher.mock.calls[0][0]).toMatch(/\/api\/databases\/bindings$/);
+      expect(JSON.parse(fetcher.mock.calls[0][1].body)).toEqual({ projectId: id, entryId: "worker", alias: "main", databaseId: id, schemaHash: migration.schemaHash, mode: "read" });
+      expect(await readFile(path.join(root, "steamharness.json"), "utf8")).toBe(source);
+      await expect(readFile(path.join(root, "config.json"))).rejects.toThrow();
+      await manageDatabases(["bindings", root, "--entry", "worker", "--token", "test"]);
+      expect(fetcher.mock.calls[1][0]).toContain(`projectId=${id}&entryId=worker`);
+      await manageDatabases(["unbind", root, "--entry", "worker", "--token", "test"]);
+      expect(fetcher.mock.calls[2][1].method).toBe("DELETE");
+      expect(JSON.parse(fetcher.mock.calls[2][1].body)).toEqual({ projectId: id, entryId: "worker", alias: "main" });
+      expect(generate).toHaveBeenCalledTimes(1);
+      await expect(manageDatabases(["bind", root, "--database", id, "--alias", "missing"])).rejects.toThrow("not defined");
+      await expect(manageDatabases(["bind", root, "--database", "bad"])).rejects.toThrow("UUID");
+      await expect(manageDatabases(["bind", root, "--database", id, "--entry", "missing"])).rejects.toThrow();
+      expect(fetcher).toHaveBeenCalledTimes(3);
+    } finally { await rm(root, { recursive: true, force: true }); }
   });
 });
 

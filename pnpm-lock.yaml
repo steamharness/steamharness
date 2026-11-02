@@ -196,6 +196,9 @@ importers:
       '@date-fns/tz':
         specifier: 1.5.0
         version: 1.5.0
+      '@prisma/adapter-pg':
+        specifier: 7.10.1
+        version: 7.10.1
       '@prisma/client':
         specifier: 7.10.1
         version: 7.10.1(prisma@7.10.1(@types/node@25.9.9)(@types/react-dom@19.3.0(@types/react@19.3.0))(@types/react@19.3.0)(magicast@0.5.5)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)(typescript@6.0.3))(typescript@6.0.3)

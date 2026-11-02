@@ -754,6 +754,7 @@ function createRunProjectContext<Input, Output>(
   const nextContext: RunContext = {
     ...context,
     databases: options.kvMode === "isolated" ? {
+      connect: descriptor => context.databases.connect(descriptor),
       list: () => context.databases.list(),
       get(alias) {
         const database = context.databases.get(alias);

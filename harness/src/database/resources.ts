@@ -17,6 +17,24 @@ export interface DatabaseResource {
 }
 
 export type DatabaseAccessMode = "read" | "write";
+
+/** Resolved by the host for the signed-in account; never embedded in project source. */
+export interface DatabaseConsumerIdentity {
+  readonly projectId: string;
+  readonly entryId: string;
+  readonly alias: string;
+}
+export interface DatabaseBinding extends DatabaseConsumerIdentity {
+  readonly id: string;
+  readonly databaseId: string;
+  readonly mode: DatabaseAccessMode;
+  readonly revision: number;
+}
+
+export interface DatabaseBindingIdentity {
+  readonly id: string;
+  readonly revision: number;
+}
 export interface DatabaseGrant {
   readonly databaseId: string;
   readonly userId: string;
@@ -50,9 +68,17 @@ export interface DatabaseMigrationPlan {
 export type DatabaseResourceErrorCode = "DATABASE_INVALID_REQUEST" | "DATABASE_NOT_FOUND" | "DATABASE_ACCESS_DENIED"
   | "DATABASE_NOT_READY" | "DATABASE_BUSY" | "DATABASE_UNAVAILABLE" | "DATABASE_PROVISION_FAILED"
   | "DATABASE_UNSAFE_CLUSTER" | "DATABASE_HISTORY_CONFLICT" | "DATABASE_SCHEMA_DRIFT" | "DATABASE_SCHEMA_INVALID"
-  | "DATABASE_MIGRATION_FAILED" | "DATABASE_DESTRUCTIVE_MIGRATION" | "DATABASE_SCHEMA_MISMATCH";
+  | "DATABASE_MIGRATION_FAILED" | "DATABASE_DESTRUCTIVE_MIGRATION" | "DATABASE_SCHEMA_MISMATCH"
+  | "DATABASE_UNBOUND" | "DATABASE_BINDING_CHANGED" | "DATABASE_CONNECTION_EXPIRED" | "DATABASE_CLOSED"
+  | "DATABASE_TARGET_UNSUPPORTED" | "DATABASE_QUERY_FAILED";
 
+const databaseResourceErrorBrand = Symbol.for("steamharness.database.resource-error");
 export class DatabaseResourceError extends Error {
+  readonly [databaseResourceErrorBrand] = true;
+  // Node and browser-safe entrypoints may be bundled independently.
+  static [Symbol.hasInstance](value: unknown): boolean {
+    return value instanceof Error && Reflect.get(value, databaseResourceErrorBrand) === true;
+  }
   constructor(readonly code: DatabaseResourceErrorCode, message: string) {
     super(message); this.name = "DatabaseResourceError";
   }

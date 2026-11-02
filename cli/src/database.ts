@@ -9,7 +9,7 @@ export async function main(argv: string[]): Promise<number> {
   if (!command || ["help", "--help", "-h"].includes(command)) {
     process.stdout.write(`${help()}\n`); return 0;
   }
-  if (["create", "list", "inspect", "retry", "grant", "revoke", "migrate"].includes(command)) { await manageDatabases(argv); return 0; }
+  if (["create", "list", "inspect", "retry", "grant", "revoke", "migrate", "bind", "unbind", "bindings"].includes(command)) { await manageDatabases(argv); return 0; }
   if (!["init", "validate", "generate"].includes(command) || args.length > 1 || args[0]?.startsWith("-")) throw new Error(help());
   const directory = path.resolve(args[0] ?? ".");
   if (command === "init") {
@@ -23,7 +23,7 @@ export async function main(argv: string[]): Promise<number> {
 }
 
 function help(): string {
-  return `SteamHarness Database\n\n  steamharness database init [project-directory]\n  steamharness database validate [project-directory]\n  steamharness database generate [project-directory]\n  steamharness database create <name> [--request-id <uuid>]\n  steamharness database list\n  steamharness database inspect <database-id>\n  steamharness database retry <database-id>\n  steamharness database grant <database-id> --user <account-id> --mode <read|write>\n  steamharness database revoke <database-id> --user <account-id>\n  steamharness database migrate dev [directory] --database <id> [--alias main] [--name init] [--draft]\n  steamharness database migrate deploy [directory] --database <id> [--alias main] [--accept-data-loss]\n  steamharness database migrate status --database <id>\n\n${i18n.language.startsWith("zh") ? "简写：steamharness db。资源与迁移命令使用 workspace login 的账号；可用 --server、--token 指定目标。定义文件：steamharness.database.ts；模型文件：steamharness.schema。" : "Alias: steamharness db. Management and migration commands use the workspace login; --server and --token override the target. Definitions: steamharness.database.ts; models: steamharness.schema."}`;
+  return `SteamHarness Database\n\n  steamharness database init [project-directory]\n  steamharness database validate [project-directory]\n  steamharness database generate [project-directory]\n  steamharness database create <name> [--request-id <uuid>]\n  steamharness database list\n  steamharness database inspect <database-id>\n  steamharness database retry <database-id>\n  steamharness database grant <database-id> --user <account-id> --mode <read|write>\n  steamharness database revoke <database-id> --user <account-id>\n  steamharness database bind [directory] --database <id> [--entry <id>] [--alias main] [--mode read|write]\n  steamharness database bindings [directory] [--entry <id>]\n  steamharness database unbind [directory] [--entry <id>] [--alias main]\n  steamharness database migrate dev [directory] --database <id> [--alias main] [--name init] [--draft]\n  steamharness database migrate deploy [directory] --database <id> [--alias main] [--accept-data-loss]\n  steamharness database migrate status --database <id>\n\n${i18n.language.startsWith("zh") ? "简写：steamharness db。资源与迁移命令使用 workspace login 的账号；可用 --server、--token 指定目标。定义文件：steamharness.database.ts；模型文件：steamharness.schema。" : "Alias: steamharness db. Management and migration commands use the workspace login; --server and --token override the target. Definitions: steamharness.database.ts; models: steamharness.schema."}`;
 }
 
 export async function initializeDatabase(directory: string): Promise<void> {

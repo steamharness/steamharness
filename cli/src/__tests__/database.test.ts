@@ -32,9 +32,9 @@ async function fixture(): Promise<string> {
   await writeFile(path.join(root, "steamharness.database.ts"), `import { defineDatabases } from "steamharness/database";\nexport default defineDatabases({ main: {schema:"./database/main/steamharness.schema"}, audit: {schema:"./database/audit/steamharness.schema"}, archive: {schema:"./database/main/steamharness.schema"} });\n`);
   return root;
 }
-function typecheck(root: string, filename: string, browser = false): string[] {
-  const program = ts.createProgram([path.join(root, filename)], { module: ts.ModuleKind.NodeNext, moduleResolution: ts.ModuleResolutionKind.NodeNext, target: ts.ScriptTarget.ES2022,
-    strict: true, skipLibCheck: true, noEmit: true, types: [], lib: browser ? ["lib.es2022.d.ts", "lib.dom.d.ts"] : ["lib.es2022.d.ts"] });
+function typecheck(root: string, filename: string, browser = false, application = false): string[] {
+  const program = ts.createProgram([path.join(root, filename)], { module: application ? ts.ModuleKind.ESNext : ts.ModuleKind.NodeNext, moduleResolution: application ? ts.ModuleResolutionKind.Bundler : ts.ModuleResolutionKind.NodeNext, target: ts.ScriptTarget.ES2022,
+    strict: true, skipLibCheck: true, noEmit: true, types: [], lib: browser || application ? ["lib.es2022.d.ts", "lib.dom.d.ts"] : ["lib.es2022.d.ts"] });
   return ts.getPreEmitDiagnostics(program).map(diagnostic => ts.flattenDiagnosticMessageText(diagnostic.messageText, "\n"));
 }
 
@@ -65,6 +65,14 @@ import type { Models, ClientModel } from "./.steamharness/generated/database/${t
 declare const customer: Models.Client;
 const customerRecord: ClientModel = customer;
 declare const db: DatabaseClient<typeof main>;
+declare const context: { databases: import("steamharness/database").RelationalDatabasesContext };
+const connected = await context.databases.connect(main);
+const connectedRows = await connected.user.findMany({select: { email: true }});
+const connectedEmail: string = connectedRows[0].email;
+// @ts-expect-error The Core connection preserves the selected model result.
+connectedRows[0].status;
+// @ts-expect-error The facade does not expose raw SQL.
+connected.$queryRaw;
 declare const log: DatabaseClient<typeof audit>;
 declare const old: DatabaseClient<typeof archive>;
 const rows = await db.user.findMany({ where: { status: Status.ACTIVE }, select: { email: true, posts: { select: { title: true } } } });
@@ -85,6 +93,19 @@ db.$queryRaw;
 db.$disconnect;
 `);
         expect(typecheck(root, `${target}.ts`, target === "browser")).toEqual([]);
+        if (target === "node") {
+          await writeFile(path.join(root, "core-context.ts"), `import { main } from "./.steamharness/generated/database/node/index.js";
+declare const context: import("steamharness").RunContext;
+const db = await context.databases.connect(main);
+const rows = await db.user.findMany({select: { email: true }});
+const email: string = rows[0].email;
+// @ts-expect-error Core retains selected model results.
+rows[0].status;
+// @ts-expect-error Core exposes model queries only.
+db.$queryRaw;
+`);
+          expect(typecheck(root, "core-context.ts", false, true)).toEqual([]);
+        }
       }
       const bundle = await build({ entryPoints: [path.join(generated.directory, "browser/index.js")], bundle: true, platform: "browser", format: "iife", globalName: "GeneratedDatabases", write: false, metafile: true });
       expect(bundle.outputFiles[0].text).not.toMatch(/["']node:|class PrismaClient\b|loadEngine|connectionString|postgres:\/\//);

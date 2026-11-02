@@ -1,6 +1,8 @@
 # Unreleased
 
-- Added public database resource, account grant, migration plan and history types with a shared model engine version. Query connections remain pending.
+- Added typed relational queries, aggregation and transactions through `context.databases.connect(descriptor)` for Node entries, with per-operation binding/access/model checks, lease renewal and run cleanup.
+
+- Added public database resource, account grant, migration plan and history types with a shared model engine version.
 
 - Add SteamHarness Database definitions for single or multiple schemas, model metadata, and typed Node/Browser descriptors. Core supplies engine dependencies without application-authored PrismaClient imports.
 
