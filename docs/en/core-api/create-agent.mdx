@@ -16,6 +16,7 @@ Core Agent includes the [i-have-adhd](https://github.com/ayghri/i-have-adhd) com
 ```ts
 const agent = await workflow.createAgent({
   databasePath?: string,
+  storage?: AgentStorageFactory,
   workdir?: string,
   systemPrompt?: string,
   provider?: string,
@@ -169,6 +170,8 @@ Each existing tool must retain its originally persisted name, description, schem
 The host supplies `AgentExecutionEnv` with the declared stable id and target cwd. A reopened session cannot change environment identity; use a new session for another target. Remote read/write/edit/bash use that environment; grep/find/ls never fall back to local execution. Additional tools remain explicit project capabilities. File scope, shell permissions and remote MCP must be enforced by the target environment and catalog factory. Core does not provision a cloud sandbox. Shutdown stops the Harness before environment cleanup and catalog disposal; connection credentials are not in resource snapshots.
 
 Studio Trace adds Tasks, Plan, Records and Usage alongside its original timeline; CLI Web no longer shows a task sidebar. Task details show versions, checkpoints, wake times, scripts and nested calls. Records shows extension/catalog status, Code Mode, storage and the local/remote target. There is no database form, and main answers remain inline.
+
+For account-private PostgreSQL persistence through Server, inject [`createServerAgentStorage`](/en/core-api/runtime-storage).
 
 ### Storage And Backups
 

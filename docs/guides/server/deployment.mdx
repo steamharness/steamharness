@@ -31,6 +31,23 @@ pnpm start
 
 不要提交真实 `.env`、数据库连接串或服务密钥。`*.env.example` 只维护变量结构和占位值。
 
+## 独立的本地关系数据库
+
+调试平台 Agent 存储时，在源码检出的 Server 目录运行：
+
+```sh
+corepack pnpm database:dev up
+corepack pnpm database:dev server
+```
+
+第一条命令启动独立的 `postgres:17-alpine` 容器 `steamharness-relational-postgres`，只绑定 `127.0.0.1:18125`，平台库名为 `steamharness_platform`；第二条在 `127.0.0.1:18126` 启动本地 Server。运行数据使用 `.data/relational-dev`，不加载普通开发 `.env`，连接目标固定为此本机数据库。
+
+首次启动在 `docker/relational-dev/.env` 生成随机数据库密码、认证密钥和初始化管理员密码，文件由 Git 忽略。初始化账号为 `admin@relational.local`，密码从该本机文件读取；不要复制到源码、文档或命令输出。既有数据库容器和数据卷不受影响。
+
+`corepack pnpm database:dev status` 查看容器状态，`corepack pnpm database:dev down` 停止此环境并保留数据卷。退出 Server 使用 Ctrl+C。`corepack pnpm test:runtime-storage` 另起临时 PostgreSQL 17 容器执行完整存储契约与 HTTP 测试，结束后自动清理。
+
+平台记录写入共享的 `steamharness_runtime` schema，不按项目创建 PostgreSQL database。Core 接入见 [Agent 服务端存储](/core-api/runtime-storage)。
+
 ## 持久化配置
 
 至少为以下内容准备备份和写入权限：

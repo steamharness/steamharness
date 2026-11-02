@@ -10,6 +10,7 @@ export default defineConfig({
     index: "src/index.ts",
     agent: "src/agent/index.ts",
     "runtime-api": "src/runtime-api.ts",
+    "runtime-storage": "src/runtime-storage/index.ts",
     "node/output": "src/node/output/index.ts",
     "types/context": "src/types/context.ts",
     "executor/rules": "src/executor/rules.ts",
@@ -50,7 +51,7 @@ export default defineConfig({
       "@steamharness/database-spaces/catalog": ["./vendor/shared/database-spaces/catalog.ts"],
     } },
     resolve: ["@steamharness/project-configuration", "@steamharness/project-access", "@steamharness/openai-responses", "@steamharness/project-types", "@steamharness/project-manifest", "@steamharness/project-manifest/node", "@steamharness/database-spaces", "@steamharness/database-spaces/catalog"],
-    entry: { index: "src/index.ts", agent: "src/agent/index.ts", "runtime-api": "src/runtime-api.ts", "node/output": "src/node/output/index.ts",
+    entry: { index: "src/index.ts", agent: "src/agent/index.ts", "runtime-api": "src/runtime-api.ts", "runtime-storage": "src/runtime-storage/index.ts", "node/output": "src/node/output/index.ts",
       "types/context": "src/types/context.ts", "executor/rules": "src/executor/rules.ts" },
   },
   async onSuccess() {

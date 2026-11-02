@@ -16,6 +16,7 @@ Core Agent 内置 [i-have-adhd](https://github.com/ayghri/i-have-adhd) 沟通技
 ```ts
 const agent = await workflow.createAgent({
   databasePath?: string,
+  storage?: AgentStorageFactory,
   workdir?: string,
   systemPrompt?: string,
   provider?: string,
@@ -73,6 +74,8 @@ const agent = await workflow.createAgent({
 | `allowedDirectories` | `string[]` | 允许读写根目录，默认只有 `workdir`。 |
 | `extraTools` | `AgentTool[]` | 内置工具之外再加的工具，见下方「自带工具」。 |
 | `models` / `resolvedModel` | pi 类型 | 需要复用自建 provider 集合或直接指定模型时使用。 |
+
+通过 Server 与 PostgreSQL 保存 Agent 记录时，注入 [`createServerAgentStorage`](/core-api/runtime-storage)。
 
 ## 持久会话控制
 

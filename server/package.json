@@ -56,6 +56,8 @@
     "test:server": "tsx --conditions=development --test --test-reporter=spec --test-concurrency=2 src/__tests__/*.test.ts src/routes/__tests__/*.test.ts",
     "test:scripts": "node --test --test-reporter=spec scripts/__tests__/*.test.mjs",
     "test:postgres": "node scripts/test-postgres.mjs",
+    "test:runtime-storage": "node scripts/test-runtime-storage.mjs",
+    "database:dev": "node scripts/relational-dev.mjs",
     "typecheck": "tsc --noEmit",
     "typecheck:all": "pnpm typecheck && pnpm typecheck:web",
     "release:prepare": "node scripts/prepare-release.mjs"

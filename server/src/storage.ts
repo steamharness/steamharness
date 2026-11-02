@@ -3,6 +3,7 @@ import { readProjectManifestFromDirectory } from '@steamharness/project-manifest
 import type { ProjectAccessRequest, ProjectAccessRequestStatus } from "@steamharness/project-access";
 import { readProjectDeclaration, selectProjectEntry, projectManifestForDistribution, PROJECT_CONFIG_ENV, readProjectConfig, type ProjectEntry } from '@steamharness/project-manifest';
 import { DatabaseSpaceRepository } from './database-spaces';
+import { RuntimeStorageRepository } from './runtime-storage/repository';
 import { type AccessActor, type AccessCapability, type ResourceAccess } from "@steamharness/project-access";
 import {isDeepStrictEqual} from "node:util";
 import { bindConfigurationProfiles, configurationAccessView, type ConfigurationProfilePolicy, type ConfigurationAccess, bindConfigurationTemplate, configurationAgentModelPolicy, createPublicationDraft, parsePublicationDraft, freezeConfigurationTemplate, parseConfigurationTemplate, configurationTemplatePath, CONFIGURATION_TEMPLATE_FILE, type ConfigurationPublicationDraft, type ProjectConfigurationTemplate, configurationCapability, parseConfigurationFile, validateConfigurationFileSelection, type ProjectConfigurationField,parseConfigurationField, applyConfigurationAction, configurationSnapshot, exportConfigurations, parseConfigurationDefinition, readConfigurationState, validateConfigurationAction, ProjectConfigurationError, type ProjectConfigurationAction, type ProjectConfigurationState, type ProjectConfigurationExport, type ProjectConfiguration } from "@steamharness/project-configuration";
@@ -433,6 +434,7 @@ const TEXT_EXTENSIONS = new Set([
 ]);
 export class Storage {
   readonly databases: DatabaseSpaceRepository;
+  readonly runtimeStorage?: RuntimeStorageRepository;
   readonly serverRoot: string;
   readonly repoRoot: string;
   readonly dataRoot: string;
@@ -459,6 +461,7 @@ export class Storage {
     repoRoot: string;
     dataRoot?: string;
     db?: DatabaseRepository;
+    runtimeStorage?: RuntimeStorageRepository;
     artifacts?: ArtifactStorage;
     objectStorage?: ObjectStorage;
     kanbanPreviewCapabilitySecret?: string;
@@ -468,6 +471,7 @@ export class Storage {
     this.repoRoot = options.repoRoot;
     this.dataRoot = options.dataRoot ?? path.join(options.serverRoot, ".data");
     this.db = options.db;
+    this.runtimeStorage = options.runtimeStorage ?? (options.db ? new RuntimeStorageRepository(options.db.connectionString) : undefined);
     this.databases = new DatabaseSpaceRepository(options.db?.connectionString, options.objectStorage ?? new LocalStorage({ root: path.join(this.dataRoot, 'object-storage'), publicBaseUrl: 'http://localhost' }));
     this.artifacts = options.artifacts;
     this.objectStorage = options.objectStorage;
@@ -483,6 +487,7 @@ export class Storage {
       strict: process.env.NODE_ENV === "production" && process.env.STEAMHARNESS_SERVER_DEV !== "1" });
     await this.db?.init();
     await this.databases.init();
+    await this.runtimeStorage?.init();
     await this.resumePendingPreparationJobs();
     if (this.artifacts) void this.artifacts.init().catch(() => {
       console.warn("[steamharness-server] artifact storage initialization failed; continuing with degraded artifact availability.");
@@ -1972,6 +1977,7 @@ export class Storage {
   }
 
   async close(): Promise<void> {
+    await this.runtimeStorage?.close();
     await this.databases.close();
     await this.db?.close();
   }

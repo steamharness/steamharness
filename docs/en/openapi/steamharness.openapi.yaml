@@ -26,7 +26,161 @@ tags:
     description: 独立空间、显式申请审批、消费方绑定与共享授权。
   - name: Account Memory
     description: Account-private global, project and directory memory, BM25 retrieval and asynchronous L0/L1 extraction.
+  - name: Runtime Storage
+    description: Account-private Agent records, execution leases and relational checkpoints.
 paths:
+  /api/runtime-storage/workspaces:
+    post:
+      tags:
+        - Runtime Storage
+      summary: Register or find an account-private Agent workspace
+      description: Requires an account Bearer token or account session cookie. An administrator key alone is insufficient. Project workspaces require
+        current project read access and a registered entry. Local/Assistant workspaces support unpublished projects without granting access to
+        registered project data.
+      security:
+        - BearerAuth: []
+        - SessionCookie: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RuntimeWorkspaceInput"
+      responses:
+        "200":
+          description: Existing or newly registered account-private workspace.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RuntimeWorkspaceResponse"
+        default:
+          $ref: "#/components/responses/HarnessError"
+  /api/runtime-storage/workspaces/{workspaceId}:
+    get:
+      tags:
+        - Runtime Storage
+      summary: Read an account-owned Agent workspace
+      description: Other accounts receive 404, including system administrators. Project access and entry registration are rechecked.
+      security:
+        - BearerAuth: []
+        - SessionCookie: []
+      parameters:
+        - name: workspaceId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Account-owned workspace.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RuntimeWorkspaceResponse"
+        default:
+          $ref: "#/components/responses/HarnessError"
+  /api/runtime-storage/workspaces/{workspaceId}/sessions/open:
+    post:
+      tags:
+        - Runtime Storage
+      summary: Acquire an exclusive Agent execution lease
+      description: The workspace and sessionKey identify persistent history. Repeating an active ownerToken returns the same lease. Another active owner
+        receives 409. Takeover after expiry increments the fence. Owner tokens are stored only as hashes.
+      security:
+        - BearerAuth: []
+        - SessionCookie: []
+      parameters:
+        - name: workspaceId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required:
+                - sessionKey
+                - ownerToken
+              properties:
+                sessionKey:
+                  type: string
+                  minLength: 1
+                  maxLength: 512
+                  description: Stable host identity without NUL.
+                ownerToken:
+                  type: string
+                  minLength: 32
+                  maxLength: 128
+                  writeOnly: true
+      responses:
+        "200":
+          description: Session lease, 30 seconds by default.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/RuntimeStorageResponse"
+                  - type: object
+                    properties:
+                      data:
+                        $ref: "#/components/schemas/RuntimeStorageLease"
+        default:
+          $ref: "#/components/responses/HarnessError"
+  /api/runtime-storage/sessions/{sessionId}/operations:
+    post:
+      tags:
+        - Runtime Storage
+      summary: Execute a typed Agent storage operation under the current lease
+      description: Account ownership, current project access, owner token, lease expiry and fence are verified for every request. Maximum body is 16 MiB.
+        Commit and mintId persist requestId and result in the same transaction. Retrying identical content returns the original result; changing content
+        for an existing ID returns 409. No SQL or executable code is accepted. Errors include RUNTIME_STORAGE_LEASE_LOST, RUNTIME_STORAGE_OWNER_CONFLICT
+        and RUNTIME_STORAGE_IDEMPOTENCY_CONFLICT in data.code.
+      security:
+        - BearerAuth: []
+        - SessionCookie: []
+      parameters:
+        - name: sessionId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required:
+                - ownerToken
+                - fence
+                - operation
+              properties:
+                ownerToken:
+                  type: string
+                  minLength: 32
+                  maxLength: 128
+                  writeOnly: true
+                fence:
+                  $ref: "#/components/schemas/RuntimeStorageId"
+                operation:
+                  $ref: "#/components/schemas/RuntimeStorageOperation"
+      responses:
+        "200":
+          description: Record, page, commit sequence, ID, renewed lease or null.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RuntimeStorageResponse"
+        default:
+          $ref: "#/components/responses/HarnessError"
   /health:
     get:
       tags:
@@ -4291,6 +4445,315 @@ components:
           schema:
             $ref: "#/components/schemas/ApiFailure"
   schemas:
+    RuntimeStorageId:
+      type: integer
+      minimum: 1
+      maximum: 9007199254740991
+    RuntimeWorkspaceInput:
+      type: object
+      additionalProperties: false
+      required:
+        - kind
+        - projectId
+        - entryId
+      properties:
+        kind:
+          type: string
+          enum:
+            - project
+            - local
+            - assistant
+        projectId:
+          type: string
+          format: uuid
+        entryId:
+          type: string
+          pattern: ^[a-z][a-z0-9_-]{0,63}$
+        localKey:
+          type: string
+          minLength: 1
+          maxLength: 512
+          description: Stable host identity without NUL.
+      oneOf:
+        - properties:
+            kind:
+              const: project
+          not:
+            required:
+              - localKey
+        - properties:
+            kind:
+              type: string
+              enum:
+                - local
+                - assistant
+          required:
+            - localKey
+    RuntimeWorkspace:
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - ownerUserId
+        - kind
+        - projectId
+        - entryId
+      properties:
+        id:
+          type: string
+          format: uuid
+        ownerUserId:
+          type: string
+        kind:
+          type: string
+          enum:
+            - project
+            - local
+            - assistant
+        projectId:
+          type: string
+          format: uuid
+        entryId:
+          type: string
+        localKey:
+          type: string
+    RuntimeStorageResponse:
+      type: object
+      required:
+        - errCode
+        - errMessage
+        - data
+      properties:
+        errCode:
+          type: integer
+          const: 0
+        errMessage:
+          type: string
+          const: ""
+        data:
+          description: Typed operation result. Missing records and void results use null; pages contain items and optional next cursor.
+    RuntimeWorkspaceResponse:
+      allOf:
+        - $ref: "#/components/schemas/RuntimeStorageResponse"
+        - type: object
+          properties:
+            data:
+              $ref: "#/components/schemas/RuntimeWorkspace"
+    RuntimeStorageLease:
+      type: object
+      additionalProperties: false
+      required:
+        - sessionId
+        - fence
+        - expiresAt
+        - durationMs
+      properties:
+        sessionId:
+          type: string
+          format: uuid
+        fence:
+          $ref: "#/components/schemas/RuntimeStorageId"
+        expiresAt:
+          type: string
+          format: date-time
+        durationMs:
+          type: integer
+          minimum: 250
+          maximum: 120000
+    RuntimeStoragePoint:
+      oneOf:
+        - type: string
+          const: current
+        - type: integer
+          minimum: 0
+          maximum: 9007199254740991
+    RuntimeStorageOperation:
+      description: Core RuntimeStorageOperation contract. Record and query fields are validated per kind; use the SDK for complete typed record/document
+        definitions. Invalid fields, record types, cursors and scan orders are rejected. No SQL or executable project code is accepted.
+      oneOf:
+        - type: object
+          additionalProperties: false
+          required:
+            - kind
+            - requestId
+            - writes
+          properties:
+            kind:
+              type: string
+              enum:
+                - commit
+            requestId:
+              type: string
+              format: uuid
+            writes:
+              type: array
+              maxItems: 10000
+              items:
+                type: object
+                required:
+                  - type
+                properties:
+                  type:
+                    type: string
+                    enum:
+                      - conversation
+                      - entry
+                      - task
+                      - submission
+                      - document.create
+                      - document.copy
+                      - document.change
+                      - document.retire
+                  value:
+                    type: object
+                    description: Typed conversation/entry/task/submission record with numeric ID.
+                  record:
+                    type: object
+                    description: Document creation metadata.
+                  content:
+                    type: object
+                    description: Versioned JSON object base or Chord delta.
+                  source:
+                    type: object
+                    description: Copy source document ID and historical point.
+                  id:
+                    $ref: "#/components/schemas/RuntimeStorageId"
+        - type: object
+          additionalProperties: false
+          required:
+            - kind
+            - requestId
+          properties:
+            kind:
+              type: string
+              enum:
+                - mintId
+            requestId:
+              type: string
+              format: uuid
+        - type: object
+          additionalProperties: false
+          required:
+            - kind
+          properties:
+            kind:
+              type: string
+              enum:
+                - renew
+                - release
+        - type: object
+          additionalProperties: false
+          required:
+            - kind
+            - id
+          properties:
+            kind:
+              type: string
+              enum:
+                - conversation
+                - task
+                - submission
+            id:
+              $ref: "#/components/schemas/RuntimeStorageId"
+        - type: object
+          additionalProperties: false
+          required:
+            - kind
+            - id
+          properties:
+            kind:
+              type: string
+              enum:
+                - entry
+            id:
+              $ref: "#/components/schemas/RuntimeStorageId"
+            conversationId:
+              $ref: "#/components/schemas/RuntimeStorageId"
+        - type: object
+          additionalProperties: false
+          required:
+            - kind
+            - conversationId
+          properties:
+            kind:
+              type: string
+              enum:
+                - head
+            conversationId:
+              $ref: "#/components/schemas/RuntimeStorageId"
+            atOrBeforeEntryId:
+              $ref: "#/components/schemas/RuntimeStorageId"
+        - type: object
+          additionalProperties: false
+          required:
+            - kind
+            - query
+            - limit
+          properties:
+            kind:
+              type: string
+              enum:
+                - conversations
+                - entries
+                - tasks
+                - submissions
+                - documents
+            query:
+              type: object
+              description: Kind-specific filters and order. Entry scans require conversationId; document scans require scope and at.
+            limit:
+              type: integer
+              minimum: 1
+              maximum: 10000
+            cursor:
+              type: object
+              description: Opaque next cursor from the preceding page.
+        - type: object
+          additionalProperties: false
+          required:
+            - kind
+            - conversationId
+            - requestId
+          properties:
+            kind:
+              type: string
+              enum:
+                - submissionByRequest
+            conversationId:
+              $ref: "#/components/schemas/RuntimeStorageId"
+            requestId:
+              type: string
+        - type: object
+          additionalProperties: false
+          required:
+            - kind
+            - address
+            - at
+          properties:
+            kind:
+              type: string
+              enum:
+                - findDocument
+            address:
+              type: object
+              description: Document kind, scope and optional key.
+            at:
+              $ref: "#/components/schemas/RuntimeStoragePoint"
+        - type: object
+          additionalProperties: false
+          required:
+            - kind
+            - id
+            - at
+          properties:
+            kind:
+              type: string
+              enum:
+                - document
+            id:
+              $ref: "#/components/schemas/RuntimeStorageId"
+            at:
+              $ref: "#/components/schemas/RuntimeStoragePoint"
     MemoryResponse:
       type: object
       required: [errCode, errMessage, data]

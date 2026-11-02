@@ -31,6 +31,23 @@ pnpm start
 
 Never commit real `.env` files, database connection strings, or service keys. `*.env.example` files contain variable names and placeholders only.
 
+## Isolated local relational database
+
+To develop platform Agent storage, run from a source checkout's Server directory:
+
+```sh
+corepack pnpm database:dev up
+corepack pnpm database:dev server
+```
+
+The first command starts a separate `postgres:17-alpine` container, `steamharness-relational-postgres`, bound only to `127.0.0.1:18125` with the `steamharness_platform` database. The second starts Server on `127.0.0.1:18126`, using `.data/relational-dev`. It skips ordinary development env files and fixes the database target to this local instance.
+
+The first run creates random database, authentication and bootstrap administrator secrets in the Git-ignored `docker/relational-dev/.env`. The bootstrap account is `admin@relational.local`; read its password from that local file and keep it out of source, documentation and command output. Existing database containers and volumes are unaffected.
+
+Use `corepack pnpm database:dev status` to inspect this container and `corepack pnpm database:dev down` to stop it while preserving its volume. Stop Server with Ctrl+C. `corepack pnpm test:runtime-storage` uses a separate temporary PostgreSQL 17 container for complete storage conformance and HTTP tests, then removes the container.
+
+Platform records share the `steamharness_runtime` schema without a PostgreSQL database per project. See [Agent Server storage](/en/core-api/runtime-storage) for Core integration.
+
 ## Persistent configuration
 
 Prepare backups and write access for at least:

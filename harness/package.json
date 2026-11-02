@@ -26,6 +26,11 @@
       "development": "./src/runtime-api.ts",
       "import": "./dist/runtime-api.js"
     },
+    "./runtime-storage": {
+      "types": "./dist/runtime-storage.d.ts",
+      "development": "./src/runtime-storage/index.ts",
+      "import": "./dist/runtime-storage.js"
+    },
     "./node/output": {
       "types": "./dist/node/output.d.ts",
       "development": "./src/node/output/index.ts",
@@ -56,6 +61,10 @@
       "./runtime-api": {
         "types": "./dist/runtime-api.d.ts",
         "import": "./dist/runtime-api.js"
+      },
+      "./runtime-storage": {
+        "types": "./dist/runtime-storage.d.ts",
+        "import": "./dist/runtime-storage.js"
       },
       "./node/output": {
         "types": "./dist/node/output.d.ts",

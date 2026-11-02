@@ -1,0 +1,70 @@
+---
+title: "Agent Server storage"
+description: "Persist Agent conversations, tasks, submissions and document checkpoints through SteamHarness Server and PostgreSQL."
+---
+
+# Agent Server storage
+
+`steamharness/runtime-storage` provides `createServerAgentStorage` to persist Agent records in Server's PostgreSQL database. Agents execute in CLI, Studio or your Node.js process. Server authenticates data access and never loads executable project code.
+
+## Connect and reopen
+
+```ts
+import { createAgent } from "steamharness/agent";
+import { createServerAgentStorage } from "steamharness/runtime-storage";
+
+const agent = await createAgent({
+  workdir: process.cwd(),
+  storage: createServerAgentStorage({
+    serverUrl: "http://127.0.0.1:18126",
+    token: () => readAccountToken(),
+    workspace: {
+      kind: "local",
+      projectId: "2e22c651-788b-4f26-b652-10a0c16154b7",
+      entryId: "main",
+      localKey: "host-owned-folder-id",
+    },
+    sessionKey: "host-owned-conversation-id",
+  }),
+});
+```
+
+The host implements `readAccountToken()` to return the current account's Server Bearer token. Keep it out of project source, connection URLs and model input. An administrator key does not replace account authentication. `storage` and `databasePath` are mutually exclusive. Configure models, tools and session controls as described in [createAgent](/en/core-api/create-agent).
+
+| Option | Meaning |
+| --- | --- |
+| `serverUrl` | HTTP(S) Server base URL without credentials, query or fragment. |
+| `token` | Account token or synchronous/asynchronous token function, evaluated for every request. |
+| `workspace` | A workspace definition below, or a registered `{ id: workspaceId }`. |
+| `sessionKey` | Stable conversation identity persisted by the host and reused on reopen. |
+| `requestTimeoutMs` | HTTP attempt timeout, default 10 seconds. |
+| `retryDelayMs` | Transient retry delay base, default 100 milliseconds; at most two retries. |
+| `fetch` | Optional HTTP transport; defaults to Node.js `fetch`. |
+
+| `workspace.kind` | Required fields and access |
+| --- | --- |
+| `project` | `projectId`, `entryId`. Requires read access to an existing project and a registered entry, rechecked on every operation. |
+| `local` | `projectId`, `entryId`, `localKey`. Supports unpublished local projects with account-private data. |
+| `assistant` | Same as `local`, for a host's Assistant workspace. |
+
+Project IDs must be UUIDs. Entry IDs start with a lowercase letter and contain lowercase letters, digits, `_` or `-`, up to 64 characters. `localKey` and `sessionKey` are stable identities of 1–512 characters without NUL. A host-managed folder ID is suitable for `localKey`; it does not grant project access.
+
+The account, workspace kind, project, entry and local identity locate a workspace; the workspace plus `sessionKey` locate a session. Accounts, entries, local folders and sessions remain isolated. System administrators do not inherit access to other accounts' private histories. Reopening restores committed conversations, tasks, submission receipts, fork ancestry and document checkpoints without migrating SQLite or legacy KV.
+
+## Ownership, retries and failures
+
+A session has one execution owner at a time. Server grants a 30-second lease by default; the client renews about every 10 seconds. Closing waits for in-flight storage requests before releasing the lease. After a process exits unexpectedly, another owner can acquire the expired lease. Takeover increments a fence, rejecting requests from the old owner.
+
+Commits and ID allocation keep stable request IDs, returning the original result after a lost response without duplicate records or reused IDs. Network errors, timeouts and HTTP 429/502/503/504 use bounded retries; 401/403 fail immediately. Failed renewal rejects subsequent storage operations without switching to local or memory storage. Storage idempotency does not guarantee exactly-once external tool effects; tool recovery still follows replay and approval policies.
+
+`RuntimeStorageError.code` distinguishes `RUNTIME_STORAGE_OWNER_CONFLICT`, `RUNTIME_STORAGE_LEASE_LOST`, `RUNTIME_STORAGE_IDEMPOTENCY_CONFLICT`, `RUNTIME_STORAGE_ACCESS_DENIED`, `RUNTIME_STORAGE_NOT_FOUND` and `RUNTIME_STORAGE_UNAVAILABLE`. Invalid operations use `AgentStorageRequestError`.
+
+## Data and backups
+
+Server maintains versioned migrations and dedicated relational tables inside the platform database's `steamharness_runtime` schema: workspaces, sessions, conversations, entries, tasks, submissions, document revisions and operation receipts. Registering a workspace does not create a PostgreSQL database. Identity, lifecycle and query fields have separate columns and indexes. Opaque JSON payloads use text to preserve valid special keys and Unicode losslessly.
+
+Back up PostgreSQL and the required attachments and workspace files. SQLite import, export, offline fork and offline cancellation helpers do not apply to this backend. Online session controls continue through the active owner.
+
+CLI/Studio keep their existing defaults; select this backend by injecting `storage`. This API stores platform Agent records. It does not define project relational tables or Prisma schemas.
+
+See [Deployment and release](/en/guides/server/deployment) for local development and [OpenAPI](/en/openapi/steamharness.openapi.yaml) for HTTP details.

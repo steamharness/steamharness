@@ -1,5 +1,7 @@
 # Unreleased
 
+- Added relational Agent storage and account-authenticated APIs for unpublished local workspaces, exclusive leases and safe retries, plus an isolated PostgreSQL 17 Docker development environment.
+
 - Fixed Kanban database reads contending for a space-wide exclusive lock and delaying annotations and revision checks behind large attachments. Images and other attachments now use private file storage with metadata and a digest in PostgreSQL; legacy attachments move on first read while retaining references and revisions.
 
 - Fixed memory extraction retries after a revoked login by validating the current login and original scope; retained task snapshots prevent retries from undoing edits or clears. Reduced settings query latency for accounts with many past directories.

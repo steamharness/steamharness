@@ -1,5 +1,7 @@
 # Unreleased
 
+- Added opt-in Agent storage through `steamharness/runtime-storage`, with account/workspace/session isolation in PostgreSQL, execution leases, idempotent commits and document checkpoints.
+
 - Fixed conversation branches to support independent root databases with truncated history and historical asOf document checkpoints. Execution identities are renewed without importing tasks, approvals, queues or usage; source cancellation and deletion do not affect the new conversation.
 - Fixed durable conversations to fork committed history offline using the same atomic operation and deduplicated receipts as live sessions. Document inheritance policies are preserved without starting models, tools or pending tasks.
 

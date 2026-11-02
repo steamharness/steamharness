@@ -1,5 +1,6 @@
 import { normalizeProjectManifest } from "@steamharness/project-manifest";
 import { createDatabaseSpaceRouter } from './database-spaces';
+import { createRuntimeStorageRouter } from './runtime-storage';
 import { createGroupRouter, requestActor, pageQuery } from "./groups";
 import { resolveResourceAccess, type AccessCapability } from "@steamharness/project-access";
 import type { ProjectConfigurationAction, ProjectConfigurationState } from "@steamharness/project-configuration";
@@ -510,6 +511,7 @@ export function createApiRouter(
   const router = Router();
   router.use(createGroupRouter(storage));
   router.use(createDatabaseSpaceRouter(storage));
+  router.use(createRuntimeStorageRouter(storage));
   const authenticateRequest = requireAuthenticatedPrincipal();
   const authenticate = (req: Request, res: Response, next: NextFunction): void => {
     if (getRequestPrincipal(req)) next();
