@@ -36,6 +36,7 @@ workflow.runStreamNode<Input, Chunk, Output>(
 | `standardName` | 标准节点类型名，例如 `llm-stream`、`output`。 |
 | `metadata` | 结构图和 UI 元信息。 |
 | `stream` | 流式执行函数，接收 `input` 和 `NodeContext`。必填。 |
+| `accumulateChunk` | 可选 `(chunks: Chunk[], chunk: Chunk) => void`，原地更新本次运行保留的 chunks；默认逐个追加。只影响内存收集、返回的 `chunks` 和 `finalize` 输入，每个原始 chunk 仍触发 hook。 |
 | `finalize` | 可选聚合函数，用 chunks 生成最终输出。 |
 
 ## 执行过程
@@ -53,8 +54,10 @@ workflow.runStreamNode<Input, Chunk, Output>(
 
 | 字段 | 类型 | 说明 |
 | --- | --- | --- |
-| `chunks` | `Chunk[]` | 收集到的所有 chunk，顺序与流输出一致。 |
+| `chunks` | `Chunk[]` | 默认收集所有 chunk；提供 `accumulateChunk` 时返回该收集器保留的 chunks。 |
 | `output` | `Output \| undefined` | `finalize` 结果。节点没有 `finalize` 时为 `undefined`。 |
+
+Core Agent 节点仅保留最新完整 `agent-session` 快照，避免长时间运行时累积同一会话的历史视图。正文、工具和错误事件仍按原顺序保留；最终输出包含最新会话状态。
 
 ## 错误
 

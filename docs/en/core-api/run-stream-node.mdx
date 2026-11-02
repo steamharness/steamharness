@@ -36,6 +36,7 @@ workflow.runStreamNode<Input, Chunk, Output>(
 | `standardName` |Standard node type name, such as `llm-stream`, `output`.|
 | `metadata` |Structure diagram and UI meta information.|
 | `stream` |Streaming execution function, receiving `input` and `NodeContext`. Required.|
+| `accumulateChunk` |Optional `(chunks: Chunk[], chunk: Chunk) => void` that mutates this run's retained chunks; the default appends every chunk. It only changes in-memory collection, returned `chunks` and `finalize` input. Hooks still receive every original chunk.|
 | `finalize` |An optional aggregate function that uses chunks to generate the final output.|
 
 ## Execution process
@@ -53,8 +54,10 @@ workflow.runStreamNode<Input, Chunk, Output>(
 
 |Field|Type|Description|
 | --- | --- | --- |
-| `chunks` | `Chunk[]` |All chunks collected, in the same order as the stream output.|
+| `chunks` | `Chunk[]` |All chunks by default, or the chunks retained by `accumulateChunk` when provided.|
 | `output` | `Output \| undefined` |`finalize` Results. `undefined` when the node has no `finalize`.|
+
+Core Agent nodes retain only the latest complete `agent-session` snapshot so long-running owners do not accumulate historical views of the same session. Text, tool and error events remain in their original order; final output includes the latest session state.
 
 ## Error
 

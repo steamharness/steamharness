@@ -142,6 +142,10 @@ Tool approval, questions and plan approval pause through `user_input_required` c
 
 With inline `conversation.recovery: { enabled: true }`, CLI Web and Studio recover after worker interruption or reopening. Explicit stop must persist cancellation intent, stop the worker, then call `cancelAgentConversation({ agentStoreDir, conversationId })` to settle durable tasks. The function is exported from `steamharness/agent`.
 
+Unexpected worker exits under a live host automatically recover up to three times, including business batches and subagents. Recovery preserves task identities, child conversations and committed tool results; unknown side effects still follow each tool's replay policy. Reopening managed work after the host itself was forcibly closed still requires explicit input. User queues stay paused during recovery; child completion or background reports cannot release them on their own.
+
+The main Agent can use `subagent` actions `list` / `get` to inspect work status and failure reasons, `wait` to await completion, `send` to append input to a running child, `retry` to resume retryable failed work, and `stop` to cancel an item. `send` cannot restart settled work. Cancellation never automatically retries; unknown writes require verification, and retries follow role and project budgets. If the whole execution process crashes, the host must restore the execution tree before the main Agent can manage it again.
+
 Ordinary failures emit `agent-error` before rethrowing; pauses and cancellations propagate without an error row.
 
 ## Example

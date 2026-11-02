@@ -491,10 +491,14 @@ export class ConversationController {
       } else if (interrupted) {
         const managed = entry.agent?.tasks.some(task => !task.kind.startsWith('pi.'));
         answer.recoveryAttempts = (answer.recoveryAttempts ?? 0) + (this.disposed ? 0 : 1);
-        restart = !managed && !this.disposed && answer.recoveryAttempts <= 3;
-        if (!historical) {
-          answer.status = managed ? 'aborted' : this.disposed || restart ? 'running' : 'failed';
-          answer.recovering = !managed;
+        // Only an unexpected worker exit under this live host resumes the
+        // existing durable tree. Reopening a dead host still requires input.
+        restart = !this.disposed && answer.recoveryAttempts <= 3;
+        for (const session of this.sessions.filter(session => (session.agentOwnerId ?? session.id) === entry.id)) session.queuePaused = true;
+        const settled = entry.agent?.turns.some(turn => turn.requestId === answer.sessionRequestId && (turn.status === 'done' || turn.status === 'unanswered'));
+        if (!historical && !settled) {
+          answer.status = managed && !restart ? 'aborted' : this.disposed || restart ? 'running' : 'failed';
+          answer.recovering = restart || !managed;
           answer.error = restart || this.disposed ? undefined : t("Run interrupted");
         }
         if (historical && !restart && !this.disposed) this.failAgentTurns(entry, t("Run interrupted"), !managed);

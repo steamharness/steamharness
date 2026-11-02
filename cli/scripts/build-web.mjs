@@ -18,3 +18,4 @@ const codicons = path.dirname(require.resolve('@vscode/codicons/package.json'));
 await cp(path.join(codicons, 'dist'), path.join(output, 'codicons'), { recursive: true });
 await cp(path.join(root, 'src/web/theme.css'), path.join(output, 'theme.css'));
 await cp(path.join(root, 'src/web/worker.mjs'), path.join(output, 'worker.mjs'));
+await cp(path.join(root, 'src/web/worker-transport.mjs'), path.join(output, 'worker-transport.mjs'));

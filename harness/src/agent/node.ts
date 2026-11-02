@@ -20,6 +20,7 @@ import { createAgentAskRequest, readAgentAskAnswers, readAgentQuestions } from "
 import { resolveAgentPermissionPolicySetting } from "./permission";
 import {
   createAgentCompactionChunks,
+  createAgentChunkCollector,
   createAgentErrorChunks,
   createAgentNoticeChunks,
   createAgentOutputItemId,
@@ -221,6 +222,7 @@ export function createAgentNode(
 
 class AgentStreamNode extends BaseStreamNode<AgentInput, OutputItemStreamChunk, AgentOutputPayload> {
   private readonly options: AgentNodeOptions;
+  accumulateChunk = createAgentChunkCollector<OutputItemStreamChunk>();
 
   constructor(options: AgentNodeOptions) {
     super({

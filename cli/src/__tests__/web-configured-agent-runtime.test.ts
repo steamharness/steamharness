@@ -309,10 +309,14 @@ it.each(['project', 'user-settings'] as const)('switches %s models in a durable 
       expect(app.controller!.current.messages.filter(message => message.role === 'assistant')).toMatchObject(expected);
       // A stale selection is resolved against the new configuration, never used
       // to restart the owner before the new input's parameters are available.
-      const result = await post({ type: 'send', requestId: crypto.randomUUID(), text: `Input ${index}`, params: index ? { model: models[index - 1].id } : {}, attachments: [] });
+      const requestId = crypto.randomUUID();
+      const result = await post({ type: 'send', requestId, text: `Input ${index}`, params: index ? { model: models[index - 1].id } : {}, attachments: [] });
       expect(result.some((message: { type: string }) => message.type === 'error'), JSON.stringify(result)).toBe(false);
       await expect.poll(() => {
-        const answer = app!.controller!.current.messages.at(-1);
+        // Admission can precede the next durable snapshot. An old completed
+        // reply cannot establish success for the newly submitted input.
+        const answer = app!.controller!.current.messages.find(message => message.role === 'assistant'
+          && (message.id === requestId || message.sessionRequestId === requestId));
         if (answer?.status === 'failed') throw new Error(`Turn ${index}: ${answer.error}`);
         return answer?.status;
       }, { timeout: 12_000 }).toBe('success');
@@ -348,11 +352,13 @@ it.each(['project', 'user-settings'] as const)('switches %s models in a durable 
     const currentOwner = () => app!.controller!.sessions.find(session => session.id === owner.id)!;
     const currentFork = () => app!.controller!.sessions.find(session => session.id === forkId)!;
     const continueFork = async (text: string) => {
-      const result = await post({ type: 'send', sessionId: forkId, requestId: crypto.randomUUID(), text,
+      const requestId = crypto.randomUUID();
+      const result = await post({ type: 'send', sessionId: forkId, requestId, text,
         params: forkParams, attachments: [] });
       expect(result.some((message: { type: string }) => message.type === 'error'), JSON.stringify(result)).toBe(false);
       await expect.poll(() => {
-        const answer = app!.controller!.sessions.find(session => session.id === forkId)!.messages.at(-1);
+        const answer = currentFork().messages.find(message => message.role === 'assistant'
+          && (message.id === requestId || message.sessionRequestId === requestId));
         if (answer?.status === 'failed') throw new Error(answer.error);
         return answer?.status;
       }, { timeout: 12_000 }).toBe('success');

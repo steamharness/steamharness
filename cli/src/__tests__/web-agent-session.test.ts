@@ -187,15 +187,14 @@ it('keeps Stop available for owned background tasks without including independen
   await f.finish();
 });
 
-it.each(['failed', 'aborted', 'interrupted'] as const)('settles a disconnected managed tree after %s before accepting input with new configuration', async failure => {
+it.each(['failed', 'aborted'] as const)('settles a disconnected managed tree after %s before accepting input with new configuration', async failure => {
   let revision = 0;
   const f = fixture(() => revision); await f.start(); const owner = f.controller.current, initial = f.snapshot();
   f.emit({ ...initial, revision: 2, backgroundCount: 1,
     tasks: [{ id: 42, conversationId: 1, kind: 'app.batch', label: 'Waiting for sources', status: 'running', background: true, stopping: false, blockedOn: [] }] });
   owner.queuedInputs = [{ id: 'waiting', text: 'Wait for user success', params: { model: 'one' }, attachments: [], createdAt: 1, hostQueued: true }];
   owner.queuePaused = true;
-  if (failure === 'interrupted') f.runs[0].fail(Object.assign(new Error('Worker exited'), { code: 'STEAMHARNESS_WORKER_INTERRUPTED' }));
-  else f.runs[0].finish({ status: failure, result: failure === 'failed' ? { error: { message: 'Owner failed' } } : undefined });
+  f.runs[0].finish({ status: failure, result: failure === 'failed' ? { error: { message: 'Owner failed' } } : undefined });
   await f.controller.idle();
   expect(f.runs).toHaveLength(1); expect(owner.agentInterrupted).toBe(true); expect(sessionRunning(owner)).toBe(false);
   revision = 1;
@@ -215,6 +214,56 @@ it.each(['failed', 'aborted', 'interrupted'] as const)('settles a disconnected m
     expect.objectContaining({ command: expect.objectContaining({ type: 'submit', requestId: 'explicit-new' }) }),
   ]);
   await f.finish();
+});
+
+it.each(['placed', 'done'] as const)('resumes the same managed execution tree after an unexpected worker exit (parent=%s)', async status => {
+  const f = fixture(); await f.start(status);
+  const owner = f.controller.current, initial = owner.agent!, answer = owner.messages[1];
+  const tasks = [{ id: 42, conversationId: 1, kind: 'project.delegation', label: 'Research', status: 'running', background: true, stopping: false, blockedOn: [] }];
+  const child = { requestId: 'research', conversationId: 2, prompt: 'Research one source', mode: 'followUp' as const, status: 'placed' as const, epoch: 0, entryId: 3, items: [] };
+  const frame = { ...initial, revision: 2, backgroundCount: 1, tasks,
+    conversations: [...initial.conversations, { id: 2, parentId: 1, title: 'Research', background: true }], turns: [...initial.turns, child] };
+  f.emit(frame);
+  owner.queuedInputs = [{ id: 'waiting', text: 'Keep queued', params: {}, attachments: [], createdAt: 1, hostQueued: true }];
+  const childId = await f.controller.openAgentConversation(owner.id, 2);
+  const view = f.controller.sessions.find(session => session.id === childId)!;
+  f.runs[0].fail(Object.assign(new Error('Worker crashed'), { code: 'STEAMHARNESS_WORKER_INTERRUPTED' }));
+  await vi.waitFor(() => expect(f.runs).toHaveLength(2));
+  expect(vi.mocked(f.runtime.run).mock.calls[1][0]).toMatchObject({ resumeAgent: true, interruptAgent: false, runId: answer.runId });
+  expect(owner.agentInterrupted).toBeUndefined(); expect(view.agentInterrupted).toBeUndefined();
+  expect(owner.queuePaused).toBe(true); expect(view.queuePaused).toBe(true);
+  expect(answer.status).toBe(status === 'done' ? 'success' : 'running');
+  f.emit({ ...frame, ownerId: 'recovered', revision: 1 });
+  vi.mocked(f.runtime.agentControl!).mockImplementation(async (_run, command) => ({ requestId: command.requestId, conversationId: 1, status: 'accepted' }));
+  await f.controller.agentCommand(owner.id, { type: 'subagent', action: 'get', taskId: 42, requestId: 'inspect-recovered' });
+  expect(f.runtime.agentControl).toHaveBeenCalledWith(answer.runId, expect.objectContaining({ action: 'get', taskId: 42 }), owner.id, undefined);
+  f.emit({ ...frame, ownerId: 'recovered', revision: 2, tasks: [], history: [{ ...tasks[0], status: 'completed' }], backgroundCount: 0,
+    turns: [...initial.turns, { ...child, status: 'done' }, { ...child, requestId: 'background-report', conversationId: 1, mode: 'report', status: 'done' }] });
+  await Promise.resolve();
+  expect(owner.queuedInputs?.map(input => input.id)).toEqual(['waiting']); expect(owner.queuePaused).toBe(true);
+  expect(f.runtime.agentControl).toHaveBeenCalledTimes(1);
+  owner.queuedInputs = [];
+  f.emit({ ...initial, ownerId: 'recovered', revision: 3, turns: initial.turns.map(turn => ({ ...turn, status: 'done' })) });
+  await f.finish();
+  expect(owner.messages.filter(message => message.role === 'user' && message.content === 'First')).toHaveLength(1);
+  expect(answer.status).toBe('success');
+});
+
+it('pauses managed work and queued input after three failed automatic owner recoveries', async () => {
+  const f = fixture(); await f.start('placed');
+  const owner = f.controller.current, initial = owner.agent!;
+  f.emit({ ...initial, revision: 2, tasks: [{ id: 42, conversationId: 1, kind: 'project.delegation', label: 'Research', status: 'running', background: true, stopping: false, blockedOn: [] }] });
+  owner.queuedInputs = [{ id: 'waiting', text: 'Keep queued', params: {}, attachments: [], createdAt: 1, hostQueued: true }];
+  for (let attempt = 1; attempt <= 4; attempt++) {
+    await vi.waitFor(() => expect(f.runs).toHaveLength(attempt));
+    f.runs.at(-1)!.fail(Object.assign(new Error('Worker crashed'), { code: 'STEAMHARNESS_WORKER_INTERRUPTED' }));
+  }
+  await f.controller.idle();
+  expect(f.runs).toHaveLength(4);
+  expect(owner.agentInterrupted).toBe(true); expect(owner.queuePaused).toBe(true);
+  expect(owner.messages[1]).toMatchObject({ status: 'aborted', recovering: false, recoveryAttempts: 4 });
+  expect(owner.queuedInputs?.map(input => input.id)).toEqual(['waiting']);
+  f.controller.recover(); expect(f.runs).toHaveLength(4);
 });
 
 it('deduplicates a committed durable turn without requiring saved input presentation metadata', async () => {

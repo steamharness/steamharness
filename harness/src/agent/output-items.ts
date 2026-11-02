@@ -1,5 +1,22 @@
-import type { OutputItemStreamChunk, RunOutputItemInput } from "../node/output/index";
+import type { OutputItemStreamChunk, OutputStreamChunk, RunOutputItemInput } from "../node/output/index";
 import type { AgentSearchSource, AgentTurnContinuationKind } from "./types";
+
+/** Preserve events while replacing retained full-session views in each run. */
+export function createAgentChunkCollector<Chunk extends OutputStreamChunk>(): (chunks: Chunk[], chunk: Chunk) => void {
+  const runs = new WeakMap<Chunk[], Map<string, number>>();
+  return (chunks, chunk) => {
+    const session = typeof chunk !== "string" && (chunk.type === "output_item_start"
+      ? chunk.item.metadata?.kind === "agent-session" : chunk.type === "output_item_end" && chunk.itemId === "agent-session");
+    if (!session || typeof chunk === "string") { chunks.push(chunk); return; }
+    // Full snapshots grow with history; retaining previous views can consume
+    // gigabytes in a long-lived owner. Text and tool deltas stay untouched.
+    let indices = runs.get(chunks);
+    if (!indices) { indices = new Map(); runs.set(chunks, indices); }
+    const index = indices.get(chunk.type);
+    if (index !== undefined) chunks[index] = chunk;
+    else { indices.set(chunk.type, chunks.length); chunks.push(chunk); }
+  };
+}
 
 export function formatAgentSearchSources(sources: readonly AgentSearchSource[]): string {
   return sources.flatMap(source => {

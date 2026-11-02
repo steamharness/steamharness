@@ -209,6 +209,8 @@ export abstract class BaseStreamNode<Input, Chunk, Output = void>
   extends NodeExecutionStore
   implements StreamNodeDefinition<Input, Chunk, Output>
 {
+  accumulateChunk?(chunks: Chunk[], chunk: Chunk): void;
+
   finalize?(
     chunks: Chunk[],
     context: NodeContext,

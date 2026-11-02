@@ -565,6 +565,12 @@ class ProjectAgentRuntime implements AgentRuntime {
             // Only the text after the final tool call is the completed plan.
             answer = "";
           }
+          // A slow host needs the latest session view, not a backlog of full
+          // histories. Ordinary deltas and tool events retain their order.
+          if (normalized.type === "session") {
+            const pending = queue.findIndex(event => event.type === "session");
+            if (pending !== -1) queue.splice(pending, 1);
+          }
           queue.push(normalized);
         }
         if (event.type === "message_start") lastDeltaUpdate = 0;

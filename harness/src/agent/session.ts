@@ -56,6 +56,7 @@ export class DurableAgentSession {
   private readonly workMutations = new Map<number, Promise<void>>();
   private stopped = false;
   private pending = false;
+  private dirty = false;
   private timer?: ReturnType<typeof setTimeout>;
   private notify?: () => void;
   private readonly planDoc;
@@ -585,15 +586,24 @@ export class DurableAgentSession {
   }
 
   private schedule(): void {
-    if (this.stopped || this.pending) return;
+    if (this.stopped) return;
+    this.dirty = true;
+    if (this.pending) return;
     this.pending = true;
     this.timer = setTimeout(() => {
-      this.timer = undefined; this.pending = false;
-      this.snapshots = this.snapshots.then(async () => { if (!this.stopped) await this.emit(); }).catch(error => this.report(error));
+      this.timer = undefined; this.dirty = false;
+      void this.emit().catch(error => this.report(error)).finally(() => {
+        this.pending = false;
+        if (this.dirty) this.schedule();
+      });
     }, 50);
   }
 
-  async emit(): Promise<void> { await this.publish(await this.snapshot()); }
+  emit(): Promise<void> {
+    const next = this.snapshots.then(async () => { await this.publish(await this.snapshot()); });
+    this.snapshots = next.catch(() => undefined);
+    return next;
+  }
 
   async stop(): Promise<void> {
     this.stopped = true;

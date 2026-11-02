@@ -25,6 +25,21 @@ import type {
   Definition,
 } from "../types/index";
 
+test("stream collectors compact retained chunks without dropping hook events or sharing state across runs", async () => {
+  const seen: number[] = [];
+  const node = {
+    name: "latest",
+    async *stream() { yield 1; yield 2; yield 3; },
+    accumulateChunk(chunks: number[], chunk: number) { chunks.splice(0, chunks.length, chunk); },
+    finalize(chunks: number[]) { return chunks[0]; },
+  };
+  const context = createTestProjectContext({ onChunk: event => { seen.push(event.chunk as number); } });
+  const first = await runStreamNode(node, {}, context), second = await runStreamNode(node, {}, context);
+  assert.deepEqual(first, { chunks: [3], output: 3 });
+  assert.deepEqual(second, first); assert.notEqual(first.chunks, second.chunks);
+  assert.deepEqual(seen, [1, 2, 3, 1, 2, 3]);
+});
+
 test("readEntrypointOutput unwraps a payload and refuses to unwrap a failure", () => {
   assert.deepEqual(readEntrypointOutput({ errCode: 0, errMessage: "", output: { id: "note-1" } }), {
     id: "note-1",

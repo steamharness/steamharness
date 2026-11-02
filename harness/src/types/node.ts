@@ -36,6 +36,8 @@ export interface StreamNodeDefinition<Input, Chunk, Output = void> {
   standardName?: string;
   metadata?: NodeMetadata;
   stream(input: Input, context: NodeContext): AsyncIterable<Chunk>;
+  /** Optional in-memory collector. Hooks still receive every original chunk. */
+  accumulateChunk?(chunks: Chunk[], chunk: Chunk): void;
   finalize?: (
     chunks: Chunk[],
     context: NodeContext,

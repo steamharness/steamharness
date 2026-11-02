@@ -21,6 +21,7 @@ import {
   AGENT_OUTPUT_KINDS,
   applyAgentItemOrder,
   createAgentItemOrderTracker,
+  createAgentChunkCollector,
 } from "./output-items";
 import { readAgentToolDefinitions } from "./permission";
 import { readRuntimeLocaleSafe } from "./plan";
@@ -129,6 +130,7 @@ export function createAgentConversationProject(
     },
   });
 
+  outputNode.accumulateChunk = createAgentChunkCollector();
   const params = options.params ?? createAgentProjectParams(options);
   return registerAgentProject(defineProject<AgentInput, AgentOutputPayload>({
     name: executorName,

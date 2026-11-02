@@ -5,6 +5,7 @@ import { createHash } from 'node:crypto';
 import { register } from 'tsx/esm/api';
 import { resolve } from 'import-meta-resolve';
 import { pathToFileURL, fileURLToPath } from 'node:url';
+import { createWorkerTransport } from './worker-transport.mjs';
 let ts;
 let assistantScopeDirectory;
 let agentHost;
@@ -25,7 +26,8 @@ const sendAgentReceipt = message => new Promise(resolve => {
 
 
 const write = process.stdout.write.bind(process.stdout);
-const send = (kind, value) => write(`__STEAMHARNESS_WEB__${JSON.stringify({ kind, value })}\n`);
+const sendMessage = createWorkerTransport(process.stdout);
+const send = (kind, value) => sendMessage({ kind, value });
 console.log = console.error;
 const controller = new AbortController();
 const shutdown = (suspend = false) => {
@@ -159,7 +161,7 @@ try {
         errors.push(`${folderPath}: ${[error.message, ...new Set(details)].join('\n')}`);
       }
     }
-    send('result', { projects, errors });
+    await send('result', { projects, errors });
   } else if (request.project?.folderPath) {
     const projectKey = createHash('sha256').update(request.project.assistant ? `assistant:${request.project.id}:${request.project.assistant.workdir}` : request.project.folderPath).digest('hex').slice(0, 24);
     const { projectDataDirectory } = await import(new URL(import.meta.url.includes('/src/web/') ? './project-data-directory.ts' : './project-data-directory.mjs', import.meta.url));
@@ -191,7 +193,7 @@ try {
       const reference = { ...file, storage: 'local', url: undefined, path: previewPath };
       await writeFile(path.join(filesDir, file.id, 'metadata.json'), JSON.stringify(reference));
       createdFiles.push(reference);
-      if (request.method === 'run') { send('event', { type: 'file_created', file: reference, runId: request.runId }); }
+      if (request.method === 'run') { await send('event', { type: 'file_created', file: reference, runId: request.runId }); }
       return reference;
     };
     const readManagedFile = async (id) => {
@@ -204,12 +206,12 @@ try {
       if (typeof core.listLocalProjectSkills !== 'function' || typeof core.readLocalProjectSkill !== 'function') {
         throw new Error('Update this project\'s SteamHarness runtime to browse its skill guides.');
       }
-      send('result', request.skillId === undefined ? await core.listLocalProjectSkills(options)
+      await send('result', request.skillId === undefined ? await core.listLocalProjectSkills(options)
         : await core.readLocalProjectSkill({ ...options, skillId: request.skillId }));
     } else if (request.method === 'kanban-bridge') {
-      send('result', await runKanbanDataCall(core, request.project, request.storageDir, request.call));
+      await send('result', await runKanbanDataCall(core, request.project, request.storageDir, request.call));
     } else if (request.method === 'resolve') {
-      send('result', await resolveLocalProjectParams({
+      await send('result', await resolveLocalProjectParams({
         projectDir: request.project.folderPath,
         entryId: request.project.entryId,
         actor: request.actor,
@@ -293,8 +295,8 @@ try {
         return report;
       }, error => { runFailure = error.message; throw error; }).finally(() => { runFinished = true; });
       const initialCommands = (request.agentCommands ?? []).map(async command => {
-        try { const receipt = await agentControl?.(command); send('event', { type: 'agent_command_receipt', receipt }); }
-        catch (error) { send('event', { type: 'agent_command_failed', requestId: command.command.requestId, targetId: command.command.targetId, message: error.message, code: error.code }); }
+        try { const receipt = await agentControl?.(command); await send('event', { type: 'agent_command_receipt', receipt }); }
+        catch (error) { await send('event', { type: 'agent_command_failed', requestId: command.command.requestId, targetId: command.command.targetId, message: error.message, code: error.code }); }
       });
       const report = await running;
       await Promise.all(initialCommands);
@@ -304,7 +306,7 @@ try {
       const items = request.project.projectType === 'workflow'
         ? [...new Map(outputItems.map((item, index) => [item.id ?? `item-${index}`, item])).values()]
         : outputItems;
-      send('result', { ...report, output: { items }, files: createdFiles });
+      await send('result', { ...report, output: { items }, files: createdFiles });
     } else if (request.method === 'upload') {
       if (!Array.isArray(request.files) || request.files.length > 32) { throw new Error('Too many attachments.'); }
       const references = [];
@@ -318,15 +320,15 @@ try {
         const buffer = typeof file.path === 'string' ? await readFile(file.path) : Buffer.from(file.data ?? '', 'base64');
         references.push(await createFile({ name: file.name, mimeType: file.mimeType, buffer }));
       }
-      send('result', references);
+      await send('result', references);
     } else if (request.method === 'file') {
-      send('result', await readManagedFile(request.id));
+      await send('result', await readManagedFile(request.id));
     } else if (request.method === 'delete-files') {
       for (const id of request.ids ?? []) {
         const file = await readManagedFile(id).catch(() => undefined);
         if (file?.reference.conversationId === request.conversationId) { await rm(path.join(filesDir, id), { recursive: true, force: true }); }
       }
-      send('result', { deleted: true });
+      await send('result', { deleted: true });
     } else if (request.method === 'resource') {
       const target = request.target ?? {};
       if (typeof target.database !== 'string') throw new Error('A declared database alias is required.');
@@ -336,13 +338,13 @@ try {
       const remote = connection && core.createRemoteDatabaseResolver(connection);
       const databases = core.createDatabasesContext({ projectId: request.project.id, entryId: request.project.entryId, requirements: registration.databases, conversationId: request.conversationId, resolver: { async resolve(requirement, consumer) { return await local.resolve(requirement, consumer) ?? remote?.resolve(requirement, consumer); } } });
       const database = databases.get(target.database);
-      if (request.kind === 'knowledge') send('result', target.documentId ? await database.knowledge.getDocument(target.documentId) ?? null : await database.knowledge.listDocuments({ pageSize: 100 }));
-      else if (target.key) send('result', await (target.scope === 'conversation' ? database.kv.conversation : database.kv).getValue(target.key) ?? null);
+      if (request.kind === 'knowledge') await send('result', target.documentId ? await database.knowledge.getDocument(target.documentId) ?? null : await database.knowledge.listDocuments({ pageSize: 100 }));
+      else if (target.key) await send('result', await (target.scope === 'conversation' ? database.kv.conversation : database.kv).getValue(target.key) ?? null);
       else throw new Error('A database key is required.');
     } else if (request.method === 'fork-conversation') {
       const { forkAgentConversation } = await import(resolve('steamharness/agent', coreUrl));
       if (typeof forkAgentConversation !== 'function') throw new Error('Update this project\'s SteamHarness runtime to fork stored conversations.');
-      send('result', await forkAgentConversation({ agentStoreDir: path.join(dataDir, 'agents'), conversationId: request.conversationId, command: request.command }));
+      await send('result', await forkAgentConversation({ agentStoreDir: path.join(dataDir, 'agents'), conversationId: request.conversationId, command: request.command }));
     } else if (request.method === 'isolate-conversation') {
       const { isolateAgentConversation } = await import(resolve('steamharness/agent', coreUrl));
       if (typeof isolateAgentConversation !== 'function') throw new Error('Update this project\'s SteamHarness runtime to create independent conversations.');
@@ -369,11 +371,11 @@ try {
       }
       await isolateAgentConversation({ agentStoreDir: path.join(dataDir, 'agents'), sourceConversationId: request.sourceConversationId,
         conversationId: request.conversationId, targetId: request.targetId, replacements, retireSource: request.retireSource === true });
-      send('result', { replacements, files });
+      await send('result', { replacements, files });
     } else if (request.method === 'cancel-conversation' || request.method === 'delete-conversation') {
       const { cancelAgentConversation } = await import(resolve('steamharness/agent', coreUrl));
       await cancelAgentConversation({ agentStoreDir: path.join(dataDir, 'agents'), conversationId: request.conversationId });
-      if (request.method === 'cancel-conversation') { send('result', { cancelled: true }); }
+      if (request.method === 'cancel-conversation') { await send('result', { cancelled: true }); }
       else {
       for (const [storageKind, rootDir] of [['kv', path.join(dataDir, 'kv')], ['persistent_value', path.join(dataDir, 'values')]]) {
         const entries = [];
@@ -391,14 +393,14 @@ try {
       }
       const agentDirectory = path.join(dataDir, 'agents', createHash('sha256').update(request.conversationId).digest('hex'));
       await rm(agentDirectory, { recursive: true, force: true });
-      send('result', { deleted: true });
+      await send('result', { deleted: true });
       }
     } else { throw new Error('Unknown runtime method.'); }
   } else { throw new Error('Unknown runtime method.'); }
   };
   await withSettings(execute);
 } catch (error) {
-  write(`__STEAMHARNESS_WEB__${JSON.stringify({ kind: 'error', error: error.message, code: error.code, metadata: error.metadata, status: error.metadata?.status })}\n`);
+  await sendMessage({ kind: 'error', error: error.message, code: error.code, metadata: error.metadata, status: error.metadata?.status });
   process.exitCode = 1;
 } finally {
   // Startup failures still owe receipts to controls admitted during loading.

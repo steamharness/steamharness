@@ -1,5 +1,7 @@
 # Unreleased
 
+- Documented full-session snapshot collection, worker crash recovery and main-Agent child management in the generator API reference, preserving paused user queues and safe retry boundaries.
+
 - Updated the generator API reference with unlimited subagent concurrency and safe retries for proven unsent requests while preserving authorization barriers.
 
 - Removed global and account memory, including tools, skills, authorization, service integration and settings controls.

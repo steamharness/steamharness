@@ -142,6 +142,10 @@ Pi Durable Harness 是唯一执行历史来源。会话节点按项目存储目�
 
 项目内联声明 `conversation.recovery: { enabled: true }` 后，CLI Web 和 Studio 宿主可在 worker 意外退出或重新打开时恢复运行。显式停止须先持久保存取消意图、停止 worker，再调用 `cancelAgentConversation({ agentStoreDir, conversationId })` 清理活动任务，防止重启后复活。该函数从 `steamharness/agent` 导出。
 
+活动宿主中的 worker 意外退出最多自动恢复 3 次，包括业务批次与子 Agent。恢复保持原任务、子会话和已提交工具结果；结果未知的副作用仍遵守工具的 replay 策略。宿主自身强退后重新打开含业务任务的会话，仍等待明确输入。恢复期间用户队列暂停，后台子任务或报告完成不能单独推进队列。
+
+主 Agent 可使用 `subagent` 的 `list` / `get` 查询工作状态和失败原因，`wait` 等待完成，`send` 向运行中的子 Agent 追加消息，`retry` 恢复可重试的失败工作，`stop` 停止单项。结束工作不能用 `send` 重启；取消不自动重试，未知写入先核验，重试受角色和项目预算约束。整个执行进程崩溃时，先由宿主恢复执行树，主 Agent 才能继续管理它。
+
 正常错误先输出 `agent-error` 再抛出；暂停和取消直接上抛，不产生错误行。
 
 ## 示例

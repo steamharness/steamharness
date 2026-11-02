@@ -544,7 +544,8 @@ export async function runStreamNode<Input, Chunk, Output>(
 
     for await (const chunk of node.stream(input, context)) {
       throwIfContextAborted(context, nodeName);
-      chunks.push(chunk);
+      if (node.accumulateChunk) node.accumulateChunk(chunks, chunk);
+      else chunks.push(chunk);
       chunkOrder += 1;
       await notifyNodeChunk(context, {
         ...execution,
