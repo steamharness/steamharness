@@ -13,6 +13,9 @@
       "configuration": "configuration.json",
       "databases": [
         "data"
+      ],
+      "knowledgeBases": [
+        "data"
       ]
     }
   ],

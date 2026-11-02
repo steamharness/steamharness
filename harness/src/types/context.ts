@@ -103,6 +103,7 @@ export interface NodeContext {
   config: import("../configuration").ConfigurationValues;
   providers: ProviderRegistry;
   databases: DatabasesContext;
+  knowledgeBases: import('../knowledge-bases/index').KnowledgeBasesContext;
   entries: EntriesContext;
   actor?: AccessActor;
   conversation: ConversationContext;

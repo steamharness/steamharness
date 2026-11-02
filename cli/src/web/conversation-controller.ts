@@ -145,7 +145,10 @@ export class ConversationController {
       const answer = entry.messages.find(message => message.role === 'assistant' && message.status === 'running' && message.recovering && !message.cancelRequested);
       if (!answer) {
         const anchor = this.agentAnchor(entry);
-        const pendingCommands = this.sessions.some(session => (session.agentOwnerId ?? session.id) === entry.id && session.agentCommands?.length);
+        // Stored forks run through the history API. Resuming an executor while
+        // its receipt is pending would race that API for the same Agent lease.
+        const pendingCommands = this.sessions.some(session => (session.agentOwnerId ?? session.id) === entry.id
+          && session.agentCommands?.some(({ command }) => command.type !== 'fork'));
         const activeAgent = entry.agent && (entry.agent.tasks.length || entry.agent.turns.some(turn => turn.status === 'queued' || turn.status === 'placed'));
         if (anchor && (activeAgent || pendingCommands) && (!this.options.canRun || this.options.canRun(entry))) this.start(entry, { id: anchor.id!, text: '', params: {}, attachments: [], createdAt: Date.now() }, anchor);
         continue;

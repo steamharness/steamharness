@@ -22,6 +22,12 @@ export class ServerApiClient {
       : this.request(`/api/projects/${encodeURIComponent(id)}/configurations`, {method:"POST",body:JSON.stringify({target,entryId,call})});
   }
 
+  resourceRequest<T = any>(kind: 'databases' | 'knowledge-bases', endpoint = '', body?: unknown, method = body === undefined ? 'GET' : 'POST', signal?: AbortSignal): Promise<ApiResponse<T>> {
+    return this.request(`/api/${kind}${endpoint}`, { method, signal, ...(body === undefined ? {} : { body: JSON.stringify(body) }) });
+  }
+  knowledgeOperation<T = unknown>(baseId: string, operation: string, input: unknown, signal?: AbortSignal): Promise<ApiResponse<T>> {
+    return this.resourceRequest('knowledge-bases', `/${encodeURIComponent(baseId)}/manage`, { operation, input }, 'POST', signal);
+  }
   databasePage(section:string,page:number,search:string,projectId?:string): Promise<ApiResponse<{items:any[];total:number;page:number;pageSize:number}>> {return this.request(`/api/database-spaces?${resourceQuery({section,page,search,projectId})}`);}
   entryDatabaseBindings(projectId:string,entryId:string): Promise<ApiResponse<any[]>> {return this.request(`/api/database-spaces/consumers/${encodeURIComponent(projectId)}/${encodeURIComponent(entryId)}`);}
   databaseCatalog(): Promise<ApiResponse<import("@steamharness/database-spaces/catalog").DatabaseCatalogState>> { return this.request("/api/database-spaces"); }
@@ -29,7 +35,7 @@ export class ServerApiClient {
   databaseOperation<T = unknown>(spaceId: string, operation: string, input: unknown, signal?: AbortSignal): Promise<ApiResponse<T>> { return this.request(`/api/database-spaces/${encodeURIComponent(spaceId)}/manage`,{method:"POST",body:JSON.stringify({operation,input}),signal}); }
   databaseValues(spaceId: string, page: number, search: string): Promise<ApiResponse<{items:Array<{key:string;namespace:string;value:unknown;revision:string}>;total:number;page:number;pageSize:number}>> {return this.request(`/api/database-spaces/${encodeURIComponent(spaceId)}/values?${resourceQuery({page,search})}`);}
   async fetchDatabaseFile(spaceId: string, fileId: string, signal?: AbortSignal): Promise<Blob> {
-    const result=await this.databaseOperation<{file:{mimeType:string};base64:string}>(spaceId,"files.readFile",{fileId},signal);
+    const result=await this.knowledgeOperation<{file:{mimeType:string};base64:string}>(spaceId,"files.readFile",{fileId},signal);
     if(!isApiSuccess(result)) throw new Error(result.errMessage);
     const bytes=Uint8Array.from(atob(result.data.base64),char=>char.charCodeAt(0)); return new Blob([bytes],{type:result.data.file.mimeType});
   }

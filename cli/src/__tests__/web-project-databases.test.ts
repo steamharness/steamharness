@@ -28,8 +28,8 @@ const click = (label: string, root: ParentNode = document) => {
   expect(control, label).toBeTruthy(); expect(control.disabled, label).toBe(false); control.click(); return control;
 };
 const state = (): DatabaseManagementState => ({ projectId: project.id, entryId: project.entryId, entries: project.entries,
-  requirements: [{ alias: 'data', databaseId, status: 'bound', space: { spaceId: databaseId, name: 'Shared memory', host: 'local', ownerId: 'owner', createdAt: '' }, permissions }],
-  environmentOverrides: [],
+  requirements: [{ alias: 'data', databaseId, kind: 'databases', status: 'bound', space: { name: 'Shared memory', host: 'server' } }],
+  environmentOverrides: [], serverUrl: 'https://server.test',
 });
 const respond = async (value = state(), requestId = requests().at(-1)!.requestId) => {
   emit({ type: 'databases-result', requestId, value }); await vi.advanceTimersByTimeAsync(0);
@@ -83,19 +83,13 @@ it('saves one alias mapping for shared entries and preserves a failed edit for c
   expect(page().textContent).toContain('set by the environment'); expect([...page().querySelectorAll('button')].some(control => control.textContent === 'Change database')).toBe(false);
 });
 
-it('shows only project references and icon actions, and forwards browsing to the host', async () => {
+it('opens authenticated Server management without exposing account tokens or a local data editor', async () => {
   await open();
-  expect(page().querySelector('.database-permissions')).toBeNull();
-  expect(page().querySelector('.database-navigation')).toBeNull();
-  const actions = [...page().querySelectorAll<HTMLButtonElement>('.database-icon-button')];
-  expect(actions.every(action => !!action.getAttribute('aria-label') && !action.textContent?.trim())).toBe(true);
-  click('Browse data in host');
-  expect(requests().at(-1)).toMatchObject({ type: 'database-open', alias: 'data', projectUri: project.uri });
-  expect(requests().at(-1)).not.toHaveProperty('databaseId');
-  emit({ type: 'database-open-result', requestId: requests().at(-1).requestId, error: 'No Web preview' });
-  await vi.advanceTimersByTimeAsync(0);
-  expect(page().textContent).toContain('No Web preview');
+  const link = page().querySelector<HTMLAnchorElement>('a')!;
+  expect(link.href).toBe(`https://server.test/databases/${databaseId}`);
+  expect(link.rel).toContain('noopener');
   expect(page().querySelector('.database-data')).toBeNull();
+  expect(page().textContent).not.toContain('This computer');
   expect(requests().map(message => message.action).filter(Boolean)).toEqual(['get']);
 });
 

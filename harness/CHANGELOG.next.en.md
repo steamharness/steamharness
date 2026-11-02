@@ -1,5 +1,7 @@
 # Unreleased
 
+- Added independent knowledgeBases APIs and account bindings. Relational platform tables retain documents, chunks and indexes; private file storage holds attachments, with revision conflicts and revocation-aware retained handles.
+
 - Conversation state, usage and default Agent sessions now use Server PostgreSQL. Added versioned session snapshots, fork/isolation/cancellation helpers and execution abort on lease loss, without legacy KV/SQLite migration.
 
 - Added typed relational queries, aggregation and transactions through `context.databases.connect(descriptor)` for Node entries, with per-operation binding/access/model checks, lease renewal and run cleanup.

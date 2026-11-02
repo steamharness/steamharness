@@ -29,7 +29,7 @@ const CARD_KINDS = new Set<PresentationCardKind>([
 ]);
 const CARD_TARGET_FIELDS: Record<PresentationCardKind, readonly string[]> = {
   kv: ["source", "projectId", "entryId", "database", "spaceId", "scope", "conversationId", "key"],
-  knowledge: ["source", "projectId", "entryId", "database", "spaceId", "documentId"],
+  knowledge: ["source", "projectId", "entryId", "knowledgeBase", "documentId"],
   project: ["source", "projectId", "entryId", "configurationId"],
   browser: ["url"],
   file: ["source", "projectId", "entryId", "filePath"],
@@ -122,7 +122,8 @@ function readTarget(kind: PresentationCardKind, value: unknown): Record<string, 
       throw new Error("Card target source is invalid.");
     }
     if (target.source !== "current" && (!target.projectId || !target.entryId)) throw new Error("Card target requires projectId and entryId.");
-    if ((kind === "kv" || kind === "knowledge") && !target.database) throw new Error("Database cards require a declared database alias.");
+    if (kind === "kv" && !target.database) throw new Error("Database cards require a declared database alias.");
+    if (kind === "knowledge" && !target.knowledgeBase) throw new Error("Knowledge cards require a declared knowledgeBase alias.");
     if (kind === "kv" && (!target.key || !["project", "conversation"].includes(target.scope ?? ""))) {
       throw new Error("KV card requires a key and scope.");
     }
@@ -161,7 +162,7 @@ export const PRESENTATION_CARD_CAPABILITY: Capability = {
             : field === "url" ? "Browser cards: HTTP(S) URL. Required for kind=browser."
             : `Used by ${Object.entries(CARD_TARGET_FIELDS).filter(([, fields]) => fields.includes(field)).map(([kind]) => kind).join(", ")} cards.`,
         }])),
-        description: "Use only fields for the selected kind. File: source, projectId, entryId, filePath. Browser: url. KV: source, projectId, entryId, database, spaceId, scope, conversationId, key. Knowledge: source, projectId, entryId, database, spaceId, documentId. Kanban/project: source, projectId, entryId, configurationId. source=current resolves missing projectId and entryId from the host.",
+        description: "Use only fields for the selected kind. File: source, projectId, entryId, filePath. Browser: url. KV: source, projectId, entryId, database, spaceId, scope, conversationId, key. Knowledge: source, projectId, entryId, knowledgeBase, documentId. Kanban/project: source, projectId, entryId, configurationId. source=current resolves missing projectId and entryId from the host.",
       },
       pinned: { type: "boolean" },
       preview: { type: "boolean", description: "Only Kanban, project or browser cards. Omit for file, KV and knowledge cards; false is ignored for those kinds." },

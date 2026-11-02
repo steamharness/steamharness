@@ -11,14 +11,10 @@ description: "数据库 KV 与会话"
 
 ```ts
 const database = context.databases.get("data");
-await database.transaction(async db => {
-  await db.kv.setValue("settings:theme", "dark");
-  await db.knowledge.createDocument({
-    id: "guide", title: "Guide", markdown: "# Guide\nShared content",
-  });
-});
+await database.kv.setValue("settings:theme", "dark");
 const theme = await database.kv.getValue("settings:theme");
-const document = await database.knowledge.getDocument("guide");
+const knowledge = context.knowledgeBases.get("docs");
+const document = await knowledge.getDocument("guide");
 ```
 
 `database.kv` 访问共享空间键；`database.kv.conversation` 进一步隔离当前项目、入口和 `conversationId`。相同空间的两个项目可以共享顶层 KV，但不能借相同会话 ID 读取彼此的会话 KV。
@@ -28,7 +24,7 @@ await database.kv.conversation.setValue("lastQuery", "example");
 await database.kv.updateValue("counter", value => Number(value ?? 0) + 1);
 ```
 
-`updateValue` 使用宿主 CAS，冲突时重新读取；需要读写权限。`database.transaction` 在同一空间内提供事务，不能把不同空间的更新合并成一次原子提交。知识库保留键必须通过 `database.knowledge` 访问。
+`updateValue` 使用宿主 CAS，冲突时重新读取；需要读写权限。`database.transaction` 在同一空间内提供事务，不能把不同空间的更新合并成一次原子提交。知识文档独立保存在平台关系表，通过 `context.knowledgeBases.get("docs")` 访问。
 
 ## 聚合内调用
 
@@ -46,7 +42,7 @@ const result = await context.entries.get("database")
 
 ## 知识库和附件
 
-`database.knowledge` 提供文档列表、读取、创建、编辑、删除、搜索和行读取；`database.knowledge.files` 提供附件操作。共享空间的文档、附件、索引和修订遵守相同授权。详见 [知识库 API](/core-api/knowledge-documents)。
+`context.knowledgeBases.get("docs")` 提供文档列表、读取、创建、编辑、删除、搜索和行读取；`context.knowledgeBases.get("docs").files` 提供附件操作。同一知识库的文档、附件、索引和修订遵守知识库授权，与 KV 空间独立。详见 [知识库 API](/core-api/knowledge-documents)。
 
 ## Conversation 状态
 

@@ -32,7 +32,7 @@ await database.kv.setValue("map:markers", markers ?? []);
 const unsubscribe = database.subscribe(({ revision }) => refreshMap(revision));
 ```
 
-必须在该入口的 `databases` 中声明 alias，获批后才能访问。数据 Bridge 在宿主端校验入口、用户及空间授权；页面不能选择任意项目或数据库。知识库通过 `database.knowledge` 访问，附件通过 `database.files.createFile/readFile/deleteFile` 访问。
+必须在该入口的 `databases` 中声明 alias，获批后才能访问。数据 Bridge 在宿主端校验入口、用户及空间授权；页面不能选择任意项目或数据库。知识库通过 `window.steamHarnessKanban.knowledgeBases.get("docs")` 访问，附件通过 `window.steamHarnessKanban.knowledgeBases.get("docs").files.createFile/readFile/deleteFile` 访问。
 
 Server 将附件内容保存到私有文件存储，数据库只保存元数据和摘要。普通 KV、版本和列表读取不会等待附件传输结束；写入、CAS 和多键事务仍保留并发校验。旧内联附件首次读取时兼容转存，现有文件引用无需修改。
 
@@ -54,3 +54,5 @@ Studio 中的快捷键以页面处理为先：在 `keydown` 处理函数中调�
 CLI Web 使用 `/entries/map/`；Studio 可以将入口打开为独立标签；Server Web 提供经过鉴权的静态预览。预览使用沙箱、受约束的相对资源路径和短期能力凭据；`studio.getLocalAnalysis()` 仅由支持的本地 Studio 宿主提供。
 
 发布以整个聚合项目为单位。数据库需求随包保存，绑定与凭据不随安装转移。详见 [数据库空间](/concepts/data-storage) 与 [打包](/cli/workspace/pack)。
+
+知识库必须独立声明 `knowledgeBases: ["docs"]`，根配置映射 `knowledgeBases.docs`，并建立 Server 绑定。可在 `knowledgeBases.get("docs").subscribe(...)` 订阅不透明修订号；同名 KV alias 的更新不会触发此订阅。

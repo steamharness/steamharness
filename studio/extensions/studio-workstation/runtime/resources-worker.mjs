@@ -12,6 +12,22 @@ export async function runResourceRequest(request, core) {
   const manifest = await core.readProjectManifestFromDirectory(folder);
   if (manifest.projectId !== request.project.id) throw new Error('The project identity changed.');
   const entry = core.selectProjectEntry(manifest, request.project.entryId);
+  if (input.kind === 'knowledge') {
+    const requirement = (entry.knowledgeBases ?? []).find(item => item.alias === input.knowledgeBase);
+    if (!requirement) throw new Error('Select a declared knowledge base alias.');
+    if (input.expectedKnowledgeBaseId && input.expectedKnowledgeBaseId !== requirement.knowledgeBaseId) throw new Error('The knowledge base reference changed. Reopen this resource.');
+    const host = request.connection && core.createServerKnowledgeBaseHost({serverUrl: request.connection.serverUrl, token: request.connection.accessToken});
+    const knowledge = core.createKnowledgeBasesContext({projectId: manifest.projectId, entryId: entry.entryId, requirements: entry.knowledgeBases, host}).get(requirement.alias);
+    if (input.source && input.source !== 'server') throw new Error('Knowledge bases are managed by Server.');
+    if (input.action === 'list') {
+      const page = input.query?.trim() ? await knowledge.searchDocuments({query: input.query, pageSize: 30, cursor: input.cursor}) : await knowledge.listDocuments({pageSize: 30, cursor: input.cursor});
+      if (input.query?.trim()) return {items: page.matches.map(match => ({...match, id: `${match.documentId}:${match.lineNumber}`, preview: match.line})), total: page.totalMatches, hasMore: page.hasMore, nextCursor: page.nextCursor, source: 'server', sources: ['server'], search: true};
+      return {...page, source: 'server', sources: ['server'], items: page.items.map(item => ({...item, documentId: item.id, preview: item.markdownPreview}))};
+    }
+    if (input.action === 'get') return await knowledge.getDocument(input.documentId) ?? null;
+    if (input.action === 'delete') return knowledge.deleteDocument(input.documentId, input.expectedRevision);
+    return input.create ? knowledge.createDocument({title: input.title, markdown: input.markdown}) : knowledge.editDocument({id: input.documentId, title: input.title, markdown: input.markdown, expectedRevision: input.expectedRevision});
+  }
   const requirement = entry.databases.find(item => item.alias === input.database);
   if (!requirement) throw new Error('Select a declared database alias.');
   if (input.expectedDatabaseId && input.expectedDatabaseId !== requirement.databaseId) throw new Error('The database reference changed. Close this tab and reopen the database.');
@@ -38,15 +54,6 @@ export async function runResourceRequest(request, core) {
       const value = await kv.getValue(input.key);
       return value===undefined?null:{key:input.key,scope:input.scope??'project',conversationId:input.conversationId,value};
     }
-    const knowledge=database.knowledge;
-    if (input.action==='list') {
-      const page = input.query?.trim()?await knowledge.searchDocuments({query:input.query,pageSize:30,cursor:input.cursor}):await knowledge.listDocuments({pageSize:30,cursor:input.cursor});
-      if (input.query?.trim()) return {items:page.matches.map(match=>({...match,id:`${match.documentId}:${match.lineNumber}`,preview:match.line})),total:page.totalMatches,hasMore:page.hasMore,nextCursor:page.nextCursor,source,sources,search:true};
-      return {...page,source,sources,items:page.items.map(item=>({...item,documentId:item.id,preview:item.markdownPreview}))};
-    }
-    if(input.action==='get') return await knowledge.getDocument(input.documentId)??null;
-    if(input.action==='delete') return {removed:await knowledge.deleteDocument(input.documentId)};
-    return input.create?knowledge.createDocument({title:input.title,markdown:input.markdown}):knowledge.editDocument({id:input.documentId,title:input.title,markdown:input.markdown});
   } catch(error) {throw Object.assign(error,{source,sources});}
 }
 

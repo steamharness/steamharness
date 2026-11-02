@@ -1,4 +1,4 @@
-import { executeDatabaseOperation } from "steamharness";
+import { executeDatabaseOperation, executeKnowledgeBaseOperation } from "steamharness";
 import type { Storage } from "./storage";
 import { HttpError } from "./protocol";
 import { parseKanbanBridgeCall, type KanbanBridgeCall } from "@steamharness/kanban-project";
@@ -10,6 +10,10 @@ export function readKanbanBridgeCall(value: unknown): KanbanBridgeCall {
 export async function invokeServerKanbanBridge(storage: Storage, projectId: string, call: KanbanBridgeCall, options: { entryId: string; actor: AccessActor; target?: string; runtimeLocale?: RuntimeLocale }): Promise<unknown> {
   const { operation, input } = readKanbanBridgeCall(call);
   if (operation === "runtime.getLocale") return options.runtimeLocale ?? "en";
+  if (operation.startsWith('knowledge.') || operation.startsWith('files.')) {
+    const bases = await storage.entryKnowledgeBases(projectId, options.entryId, options.actor, options.target);
+    return executeKnowledgeBaseOperation(bases.get(String(input.knowledgeBase)), operation, input);
+  }
   const database = (await storage.entryDatabases(projectId, options.entryId, options.actor, options.target)).get(String(input.database));
   return executeDatabaseOperation(database,operation,input);
 }

@@ -1,4 +1,3 @@
-import { registerDatabaseKnowledgeContext, databaseKnowledgeContext } from "../databases/knowledge-context";
 import type {
   NodeExecutionHookChunkEvent,
   NodeExecutionHookFinishEvent,
@@ -759,7 +758,6 @@ function createRunProjectContext<Input, Output>(
       get(alias) {
         const database = context.databases.get(alias);
         const isolated = { ...database, kv: createRunProjectIsolatedKVContext(database.kv, options.workflow.name) };
-        registerDatabaseKnowledgeContext(isolated, databaseKnowledgeContext(database));
         return isolated;
       },
     } : context.databases,

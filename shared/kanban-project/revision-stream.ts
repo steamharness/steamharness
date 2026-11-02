@@ -96,7 +96,8 @@ function readKanbanRevision(value: unknown): KanbanDatabaseRevision {
     value["alias"].trim() === "" ||
     value["revision"].trim() === ""
   ) throw new Error("Kanban database revision event is invalid.");
-  return { alias: value["alias"], revision: value["revision"] };
+  if (value["kind"] !== undefined && value["kind"] !== "knowledgeBases") throw new Error("Kanban revision resource kind is invalid.");
+  return { alias: value["alias"], revision: value["revision"], ...(value["kind"] === "knowledgeBases" ? { kind: "knowledgeBases" as const } : {}) };
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

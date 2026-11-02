@@ -141,6 +141,7 @@ export interface RunWorkspaceProjectOptions {
   databaseResolver?: DatabaseResolver;
   /** Trusted native host for relational connections; defaults to the signed-in Server. */
   relationalDatabaseHost?: RelationalDatabaseHost;
+  knowledgeBaseHost?: import('../knowledge-bases/index').KnowledgeBaseHost;
   inheritedToolPermissions?: ToolPermissionContext;
   authorizeEntry?(entryId: string, entrypointId: string | undefined, actor: AccessActor): Promise<void> | void;
   cwd?: string;
@@ -176,6 +177,7 @@ export interface RunLocalProjectOptions {
   databaseResolver?: DatabaseResolver;
   /** Trusted native host for relational connections; defaults to the signed-in Server. */
   relationalDatabaseHost?: RelationalDatabaseHost;
+  knowledgeBaseHost?: import('../knowledge-bases/index').KnowledgeBaseHost;
   inheritedToolPermissions?: ToolPermissionContext;
   authorizeEntry?(entryId: string, entrypointId: string | undefined, actor: AccessActor): Promise<void> | void;
   projectDir?: string;

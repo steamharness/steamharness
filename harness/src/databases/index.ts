@@ -1,14 +1,11 @@
 import { databaseReadPrefixes } from './list';
 import type { KVStoreValuePage } from '../kv/index';
 import { AsyncLocalStorage } from "node:async_hooks";
-import { randomUUID } from "node:crypto";
-import { createResolvedProjectFile, type FileReference, type CreateFileInput, type ResolvedFile } from "../files/index";
 import { assertDatabaseAuthorization, normalizeDatabaseRequirement, DatabaseAccessError, type DatabaseAuthorization, type DatabaseConsumer, type DatabaseRequirement } from "@steamharness/database-spaces";
 import { createProjectKVContext, createProjectPersistentValueContext, normalizeProjectKVKey, type KVContext, type KVNamespace, type KVStore } from "../kv/index";
-import { createKnowledgeDocument, deleteKnowledgeDocument, describeKnowledgeMutationKeys, editKnowledgeDocument, getKnowledgeDocument, isKnowledgeDocumentStorageKey, listKnowledgeDocumentPage, readKnowledgeDocumentLines, searchKnowledgeDocuments, type CreateKnowledgeDocumentInput, type EditKnowledgeDocumentInput, type ListKnowledgeDocumentsInput, type ReadKnowledgeDocumentLinesInput, type SearchKnowledgeDocumentsInput } from "../knowledge/index";
+import { isKnowledgeDocumentStorageKey } from "../knowledge/index";
 import { LocalDatabaseRegistry } from "./local-registry";
 import { createLocalDatabaseSpaceStore } from "./local-store";
-import { registerDatabaseKnowledgeContext } from "./knowledge-context";
 import { createDatabaseConnector } from "../database/runtime";
 import type { RelationalDatabaseHost } from "../database/host";
 import type { RelationalDatabasesContext } from "../database/index";
@@ -20,20 +17,9 @@ export * from "./local-registry";
 export * from "./remote";
 export * from "./bindings";
 
-export interface DatabaseKnowledgeContext {
-  listDocuments(input?: ListKnowledgeDocumentsInput): ReturnType<typeof listKnowledgeDocumentPage>;
-  getDocument(documentId: string): ReturnType<typeof getKnowledgeDocument>;
-  createDocument(input: CreateKnowledgeDocumentInput): ReturnType<typeof createKnowledgeDocument>;
-  editDocument(input: EditKnowledgeDocumentInput): ReturnType<typeof editKnowledgeDocument>;
-  deleteDocument(documentId: string): ReturnType<typeof deleteKnowledgeDocument>;
-  searchDocuments(input: SearchKnowledgeDocumentsInput): ReturnType<typeof searchKnowledgeDocuments>;
-  files: { createFile(input: CreateFileInput): Promise<FileReference>; readFile(fileId: string): Promise<ResolvedFile>; deleteFile(fileId: string): Promise<boolean> };
-  readDocumentLines(input: ReadKnowledgeDocumentLinesInput): ReturnType<typeof readKnowledgeDocumentLines>;
-}
 export interface DatabaseContext {
   listValues(input?: { query?: string; cursor?: string; pageSize?: number; scope?: 'project' | 'conversation' }): Promise<KVStoreValuePage>;
   kv: KVContext;
-  knowledge: DatabaseKnowledgeContext;
   getBinding(): Promise<DatabaseAuthorization>;
   getRevision(): Promise<string>;
   subscribe(listener: (revision: string) => void, options?: { signal?: AbortSignal; onError?: (error: unknown) => void }): () => void;
@@ -135,37 +121,6 @@ export function createDatabasesContext(options: DatabaseConsumer & { requirement
         return result;
       };
       const kv = { ...namespace("kv"), conversation: namespace("kv", true) };
-      const knowledge = () => ({ persistentValue: namespace("knowledge") });
-      const fileKey = (fileId: string) => { if (!/^[0-9a-f-]{36}$/.test(fileId)) throw new Error("Invalid knowledge attachment ID."); return `__knowledge_file:${fileId}`; };
-      const files: DatabaseKnowledgeContext["files"] = {
-        async createFile(input) {
-          const buffer = typeof input.buffer === "string" ? Buffer.from(input.buffer, "base64") : Buffer.from(input.buffer instanceof ArrayBuffer ? new Uint8Array(input.buffer) : input.buffer);
-          if (buffer.length > 50 * 1024 * 1024) throw new Error("Knowledge attachments cannot exceed 50 MiB.");
-          if (typeof input.name !== "string" || !input.name.trim() || input.name.length > 512 || /[\\/\0]/.test(input.name)) throw new Error("Invalid attachment name.");
-          const resolved = await resolve(); const id = randomUUID();
-          const mimeType = input.mimeType || "application/octet-stream";
-          const file: FileReference = { id, name: input.name, mimeType, size: buffer.length, kind: input.kind ?? (mimeType.startsWith("image/") ? "image" : "file"), storage: "database", spaceId: resolved.authorization.space.spaceId, createdAt: new Date().toISOString() };
-          await namespace("knowledge").setValue(fileKey(id), { file, base64: buffer.toString("base64") });
-          return file;
-        },
-        async readFile(fileId) {
-          const read = async () => {
-            const value = await namespace("knowledge").getValue(fileKey(fileId)) as { file: FileReference; base64: string } | undefined;
-            if (!value || typeof value.base64 !== "string" || value.file?.id !== fileId) throw new Error("Knowledge attachment is unavailable.");
-            return value;
-          };
-          const value = await read();
-          // Attachments are immutable snapshots. Revalidate the live grant without
-          // downloading the same (potentially 50 MiB) attachment a second time.
-          return createResolvedProjectFile(value.file, async () => {
-            const resolved = await resolve();
-            assert(resolved, "knowledge", "read", fileKey(fileId));
-            if (resolved.authorization.space.spaceId !== value.file.spaceId) throw new Error("Knowledge attachment is unavailable.");
-            return Buffer.from(value.base64, "base64");
-          });
-        },
-        async deleteFile(fileId) { return namespace("knowledge").deleteValue(fileKey(fileId)); },
-      };
       const context: DatabaseContext = {
         async listValues(input = {}) {
           const resolved = await resolve(); await context.getBinding();
@@ -195,16 +150,6 @@ export function createDatabasesContext(options: DatabaseConsumer & { requirement
           if (options.signal?.aborted) stop(); else { options.signal?.addEventListener("abort", stop, { once: true }); void poll(); }
           return stop;
         },
-        knowledge: {
-          files,
-          listDocuments: (input) => listKnowledgeDocumentPage(knowledge(), input ?? {}),
-          getDocument: (id) => getKnowledgeDocument(knowledge(), id),
-          createDocument: (input) => createKnowledgeDocument(knowledge(), input),
-          editDocument: (input) => editKnowledgeDocument(knowledge(), input),
-          deleteDocument: (id) => deleteKnowledgeDocument(knowledge(), id),
-          searchDocuments: (input) => searchKnowledgeDocuments(knowledge(), input),
-          readDocumentLines: (input) => readKnowledgeDocumentLines(knowledge(), input),
-        },
         async getBinding() {
           const resolved = await resolve();
           // Validate identity and revocation without assuming any read grant.
@@ -218,7 +163,6 @@ export function createDatabasesContext(options: DatabaseConsumer & { requirement
           return pinned.run(resolved, () => resolved.store.withNamespaceLock!({ projectId: resolved.authorization.space.spaceId, storageKind: "kv", scope: "project" }, () => operation(context)));
         },
       };
-      registerDatabaseKnowledgeContext(context, knowledge());
       contexts.set(alias, context); return context;
     },
   };

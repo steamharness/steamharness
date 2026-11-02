@@ -10,14 +10,14 @@ import { resolveProjectDeclarationEntrySync } from "@steamharness/project-manife
 
 export interface DatabaseManagementOptions {
   server: string; token: string; database?: string; alias: string; name?: string; user?: string; mode?: string;
-  requestId?: string; entry?: string; draft: boolean; acceptDataLoss: boolean;
+  requestId?: string; entry?: string; page?: string; pageSize?: string; search?: string; draft: boolean; acceptDataLoss: boolean;
 }
 export async function parseDatabaseManagementArgs(argv: string[]) {
   const saved = await readCliAuthConfig();
   const options: DatabaseManagementOptions = { server: process.env.STEAMHARNESS_SERVER_URL ?? (saved.serverUrl.trim() || defaultServerUrl()),
     token: process.env.STEAMHARNESS_SERVER_ADMIN_KEY ?? saved.apiKey ?? "", alias: "main", draft: false, acceptDataLoss: false };
   const positional: string[] = [];
-  const names = { "--server": "server", "--token": "token", "--database": "database", "--alias": "alias", "--name": "name", "--user": "user", "--mode": "mode", "--request-id": "requestId", "--entry": "entry" } as const;
+  const names = { "--server": "server", "--token": "token", "--database": "database", "--alias": "alias", "--name": "name", "--user": "user", "--mode": "mode", "--request-id": "requestId", "--entry": "entry", "--page": "page", "--page-size": "pageSize", "--search": "search" } as const;
   for (let index = 0; index < argv.length; index++) {
     const arg = argv[index];
     if (arg === "--draft") { options.draft = true; continue; }
@@ -33,17 +33,41 @@ export async function parseDatabaseManagementArgs(argv: string[]) {
   return { positional, options };
 }
 
-export async function databaseManagementRequest<T>(options: Pick<DatabaseManagementOptions, "server" | "token">, endpoint: string, method = "GET", body?: unknown): Promise<T> {
+export async function databaseManagementRequest<T>(options: Pick<DatabaseManagementOptions, "server" | "token">, endpoint: string, method = "GET", body?: unknown, namespace: "databases" | "knowledge-bases" = "databases"): Promise<T> {
   if (!options.token) throw new Error("Account login is required. Run steamharness workspace login first.");
   const url = new URL(options.server);
   if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password || url.search || url.hash) throw new Error("Use a Server HTTP URL without credentials, query or fragment.");
-  const response = await fetch(`${options.server.replace(/\/$/, "")}/api/databases${endpoint}`, {
+  const response = await fetch(`${options.server.replace(/\/$/, "")}/api/${namespace}${endpoint}`, {
     method, redirect: "error", headers: { Authorization: `Bearer ${options.token}`, "Content-Type": "application/json" }, signal: AbortSignal.timeout(180_000),
     ...(body === undefined ? {} : { body: JSON.stringify(body) }),
   });
   const result = await response.json() as { errCode?: number; errMessage?: string; data?: T & { code?: string } };
   if (!response.ok || result.errCode !== 0) throw new Error(`${result.data?.code ? result.data.code + ": " : ""}${result.errMessage ?? `Database request failed (${response.status}).`}`);
   return result.data as T;
+}
+
+/** Bound request input before buffering; terminal invocation must never wait for hidden input. */
+export async function readDatabaseRequestInput(fallback: unknown, maxBytes = 4 * 1024 * 1024): Promise<unknown> {
+  if (process.stdin.isTTY) throw new Error('Redirect a JSON request into standard input.');
+  const parts: Buffer[] = []; let size = 0;
+  for await (const chunk of process.stdin) {
+    const bytes = Buffer.from(chunk); size += bytes.length;
+    if (size > maxBytes) throw new Error('Database request input is too large.');
+    parts.push(bytes);
+  }
+  return size ? JSON.parse(Buffer.concat(parts).toString('utf8')) : fallback;
+}
+export function databaseListQuery(options: Pick<DatabaseManagementOptions, 'page' | 'pageSize' | 'search'>): string {
+  const query = new URLSearchParams();
+  for (const [key, max] of [['page', 1_000_000], ['pageSize', 100]] as const) {
+    const value = options[key];
+    if (value !== undefined) {
+      if (!/^[1-9]\d*$/.test(value) || Number(value) > max) throw new Error(`Invalid ${key}.`);
+      query.set(key, value);
+    }
+  }
+  if (options.search !== undefined) query.set('search', options.search);
+  return query.size ? `?${query}` : '';
 }
 
 export async function manageDatabases(argv: string[]): Promise<void> {
@@ -67,12 +91,16 @@ export async function manageDatabases(argv: string[]): Promise<void> {
     output(await request("/bindings", "POST", { ...consumer, databaseId, schemaHash: database.schemaHash, ...(options.mode ? { mode: options.mode } : {}) }));
     return;
   }
-  if (command === "list" && !args.length) { output(await request("")); return; }
+  if (command === "list" && !args.length) { output(await request(databaseListQuery(options))); return; }
   if (command === "create" && args.length === 1) {
     const resource = await request<DatabaseResource>("", "POST", { name: args[0], requestId: options.requestId ? id(options.requestId) : randomUUID() });
     output(resource);
     if (resource.status !== "ready") throw new Error(`Database provisioning is ${resource.status}; retry resource ${resource.id}. ${resource.failureCode ?? ""}`);
     return;
+  }
+  if (command === "data" && args.length === 1) {
+    const input = await readDatabaseRequestInput({ operation: 'models' });
+    output(await request(`/${id(args[0])}/data`, 'POST', input)); return;
   }
   if (command === "inspect" && args.length === 1) { output(await request(`/${id(args[0])}`)); return; }
   if (command === "retry" && args.length === 1) {

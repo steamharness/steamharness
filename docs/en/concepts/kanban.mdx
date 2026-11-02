@@ -32,7 +32,7 @@ await database.kv.setValue("map:markers", markers ?? []);
 const unsubscribe = database.subscribe(({ revision }) => refreshMap(revision));
 ```
 
-The alias must be declared in this entry's `databases` and approved before use. The host validates entry identity, actor and space grants. Pages cannot select arbitrary projects or spaces. Use `database.knowledge` for documents and `database.files.createFile/readFile/deleteFile` for attachments.
+The alias must be declared in this entry's `databases` and approved before use. The host validates entry identity, actor and space grants. Pages cannot select arbitrary projects or spaces. Use `window.steamHarnessKanban.knowledgeBases.get("docs")` for documents and `window.steamHarnessKanban.knowledgeBases.get("docs").files.createFile/readFile/deleteFile` for attachments.
 
 Server stores attachment content in private file storage, retaining metadata and a digest in PostgreSQL. Ordinary KV, revision and list reads do not wait for attachment transfers. Writes, CAS and multi-key transactions retain concurrency checks. Existing inline attachments move on first read without changing file references.
 
@@ -54,3 +54,5 @@ In Studio, page shortcuts take priority: call `event.preventDefault()` in a `key
 CLI Web uses `/entries/map/`; Studio opens entries as independent tabs. Server Web provides authenticated static previews. Previews use sandboxing, constrained relative asset paths and short-lived capabilities. `studio.getLocalAnalysis()` is available only in supported local Studio hosts.
 
 Publish the aggregate as one unit. Requirements travel with the package; bindings and credentials do not. See [Database spaces](/en/concepts/data-storage) and [Packaging](/en/cli/workspace/pack).
+
+Knowledge requires an independent `knowledgeBases: ["docs"]` declaration, a root `knowledgeBases.docs` configuration mapping and a Server binding. Subscribe with `knowledgeBases.get("docs").subscribe(...)`; changes to a KV alias with the same name do not trigger this subscription.

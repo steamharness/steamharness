@@ -134,7 +134,7 @@ try {
           id: manifest.projectId,
           entryId: registration.entryId, entryRoot: path.resolve(folderPath, registration.root),
           aggregateName: resolveProjectName(pkg.name, projectInfo, language),
-          entries: manifest.entries, defaultEntry: manifest.defaultEntry, databases: registration.databases,
+          entries: manifest.entries, defaultEntry: manifest.defaultEntry, databases: registration.databases, knowledgeBases: registration.knowledgeBases ?? [],
           runtime: { harnessVersion: coreManifest.version, harnessPath },
           folderPath,
           name: resolveProjectName(registration.name, readProjectInfo(registration), language),
@@ -337,16 +337,20 @@ try {
       send('result', { deleted: true });
     } else if (request.method === 'resource') {
       const target = request.target ?? {};
-      if (typeof target.database !== 'string') throw new Error('A declared database alias is required.');
+      if (typeof (request.kind === 'knowledge' ? target.knowledgeBase : target.database) !== 'string') throw new Error('A declared resource alias is required.');
       const registration = core.selectProjectEntry(await core.readProjectManifestFromDirectory(projectDir), request.project.entryId);
-      const local = core.createLocalDatabaseResolver();
       const connection = core.databaseConnectionFromEnv();
-      const remote = connection && core.createRemoteDatabaseResolver(connection);
-      const databases = core.createDatabasesContext({ projectId: request.project.id, entryId: request.project.entryId, requirements: registration.databases, conversationId: request.conversationId, resolver: { async resolve(requirement, consumer) { return await local.resolve(requirement, consumer) ?? remote?.resolve(requirement, consumer); } } });
-      const database = databases.get(target.database);
-      if (request.kind === 'knowledge') send('result', target.documentId ? await database.knowledge.getDocument(target.documentId) ?? null : await database.knowledge.listDocuments({ pageSize: 100 }));
-      else if (target.key) send('result', await (target.scope === 'conversation' ? database.kv.conversation : database.kv).getValue(target.key) ?? null);
-      else throw new Error('A database key is required.');
+      if (request.kind === 'knowledge') {
+        const bases = core.createKnowledgeBasesContext({ projectId: request.project.id, entryId: request.project.entryId, requirements: registration.knowledgeBases ?? [], host: connection ? core.createServerKnowledgeBaseHost(connection) : undefined });
+        const base = bases.get(target.knowledgeBase);
+        send('result', target.documentId ? await base.getDocument(target.documentId) ?? null : await base.listDocuments({ pageSize: 100 }));
+      } else {
+        const local = core.createLocalDatabaseResolver(), remote = connection && core.createRemoteDatabaseResolver(connection);
+        const databases = core.createDatabasesContext({ projectId: request.project.id, entryId: request.project.entryId, requirements: registration.databases, conversationId: request.conversationId, resolver: { async resolve(requirement, consumer) { return await local.resolve(requirement, consumer) ?? remote?.resolve(requirement, consumer); } } });
+        const database = databases.get(target.database);
+        if (target.key) send('result', await (target.scope === 'conversation' ? database.kv.conversation : database.kv).getValue(target.key) ?? null);
+        else throw new Error('A database key is required.');
+      }
     } else if (request.method === 'fork-conversation') {
       const { forkStoredAgentConversation } = await import(resolve('steamharness/agent', coreUrl));
       if (typeof forkStoredAgentConversation !== 'function') throw new Error('Update this project\'s SteamHarness runtime to fork stored conversations.');

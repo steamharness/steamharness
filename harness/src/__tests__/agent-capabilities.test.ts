@@ -193,7 +193,7 @@ test("large KV values and knowledge lines survive JSON paging in direct and MCP 
   try {
     const recovered = await collectJsonPages(async args => {
       const result = await client.callTool({ name: "knowledge_documents",
-        arguments: { database: "data", action: "read_lines", documentId: "big", startLine: 1, endLine: 1, ...args } });
+        arguments: { knowledgeBase: "data", action: "read_lines", documentId: "big", startLine: 1, endLine: 1, ...args } });
       assert.notEqual(result.isError, true);
       return JSON.parse(textOf(result.content));
     }) as { lines: { content: string }[] };
@@ -240,6 +240,8 @@ test("knowledge documents are managed through one tool", async () => {
     action: "list",
     count: 0,
     documents: [],
+    hasMore: false,
+    nextCursor: undefined,
   });
 
   const created = await runCapability(KNOWLEDGE_MCP_TOOL_ID, context, {
@@ -448,7 +450,7 @@ function runCapability(
   context: NodeContext,
   args: Record<string, unknown>,
 ): Promise<unknown> {
-  return runProjectCapabilityAction(toolId, context, {database:"data",...args});
+  return runProjectCapabilityAction(toolId, context, { ...(toolId === KNOWLEDGE_MCP_TOOL_ID ? { knowledgeBase: "data" } : { database: "data" }), ...args });
 }
 
 function createContext(): NodeContext {

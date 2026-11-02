@@ -27,7 +27,284 @@ tags:
     description: Account-private Agent records, execution leases and relational checkpoints.
   - name: Relational Databases
     description: Independent PostgreSQL resources, account sharing and immutable model migrations.
+  - name: Knowledge Bases
+    description: Independent knowledge resources, account grants, versioned documents and private files.
 paths:
+  /api/knowledge-bases:
+    get:
+      tags: [Knowledge Bases]
+      summary: "List accessible knowledge resources"
+      description: "Account identity is required. Administrative keys do not replace account grants. Responses are not cached."
+      security:
+        - BearerAuth: []
+        - SessionCookie: []
+      parameters: [{"name":"page","in":"query","required":false,"schema":{"type":"integer","minimum":1,"maximum":1000000,"default":1}},{"name":"pageSize","in":"query","required":false,"schema":{"type":"integer","minimum":1,"maximum":100,"default":20}},{"name":"search","in":"query","required":false,"schema":{"type":"string","maxLength":256}}]
+      responses:
+        "200":
+          description: Successful resource response.
+          content:
+            application/json:
+              schema: {"type":"object","properties":{"errCode":{"type":"integer","const":0},"errMessage":{"type":"string"},"data":{"type":"object","additionalProperties":false,"properties":{"items":{"type":"array","items":{"$ref":"#/components/schemas/KnowledgeBaseResource"}},"total":{"type":"integer"},"page":{"type":"integer"},"pageSize":{"type":"integer"}},"required":["items","total","page","pageSize"]}},"required":["errCode","errMessage","data"]}
+        default:
+          $ref: "#/components/responses/HarnessError"
+    post:
+      tags: [Knowledge Bases]
+      summary: "Create an independent knowledge resource"
+      description: "Account identity is required. Administrative keys do not replace account grants. Responses are not cached."
+      security:
+        - BearerAuth: []
+        - SessionCookie: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {"type":"object","additionalProperties":false,"properties":{"name":{"type":"string","minLength":1,"maxLength":128},"requestId":{"type":"string","format":"uuid"}},"required":["name","requestId"]}
+      responses:
+        "200":
+          description: Successful resource response.
+          content:
+            application/json:
+              schema: {"type":"object","properties":{"errCode":{"type":"integer","const":0},"errMessage":{"type":"string"},"data":{"$ref":"#/components/schemas/KnowledgeBaseResource"}},"required":["errCode","errMessage","data"]}
+        default:
+          $ref: "#/components/responses/HarnessError"
+  /api/knowledge-bases/bindings:
+    get:
+      tags: [Knowledge Bases]
+      summary: "List current account knowledge bindings"
+      description: "Account identity is required. Administrative keys do not replace account grants. Responses are not cached."
+      security:
+        - BearerAuth: []
+        - SessionCookie: []
+      parameters: [{"name":"projectId","in":"query","required":true,"schema":{"type":"string","format":"uuid"}},{"name":"entryId","in":"query","required":true,"schema":{"type":"string","pattern":"^[a-z][a-z0-9_-]{0,63}$"}}]
+      responses:
+        "200":
+          description: Successful resource response.
+          content:
+            application/json:
+              schema: {"type":"object","properties":{"errCode":{"type":"integer","const":0},"errMessage":{"type":"string"},"data":{"type":"array","items":{"type":"object"}}},"required":["errCode","errMessage","data"]}
+        default:
+          $ref: "#/components/responses/HarnessError"
+    post:
+      tags: [Knowledge Bases]
+      summary: "Bind an entry to an authorized knowledge resource"
+      description: "Binding cannot grant access. Registered projects require writeData capability and a matching knowledge declaration. Local unregistered project IDs are account-scoped. Unchanged bindings keep their revision."
+      security:
+        - BearerAuth: []
+        - SessionCookie: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {"type":"object","additionalProperties":false,"properties":{"projectId":{"type":"string","format":"uuid"},"entryId":{"type":"string","pattern":"^[a-z][a-z0-9_-]{0,63}$"},"alias":{"type":"string","pattern":"^[a-z][a-z0-9_-]{0,63}$"},"knowledgeBaseId":{"type":"string","format":"uuid"},"mode":{"enum":["read","write"]}},"required":["projectId","entryId","alias","knowledgeBaseId"]}
+      responses:
+        "200":
+          description: Successful resource response.
+          content:
+            application/json:
+              schema: {"type":"object","properties":{"errCode":{"type":"integer","const":0},"errMessage":{"type":"string"},"data":{"$ref":"#/components/schemas/KnowledgeBaseBinding"}},"required":["errCode","errMessage","data"]}
+        default:
+          $ref: "#/components/responses/HarnessError"
+    delete:
+      tags: [Knowledge Bases]
+      summary: "Unbind a knowledge alias"
+      description: "Account identity is required. Administrative keys do not replace account grants. Responses are not cached."
+      security:
+        - BearerAuth: []
+        - SessionCookie: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {"type":"object","additionalProperties":false,"properties":{"projectId":{"type":"string","format":"uuid"},"entryId":{"type":"string","pattern":"^[a-z][a-z0-9_-]{0,63}$"},"alias":{"type":"string","pattern":"^[a-z][a-z0-9_-]{0,63}$"}},"required":["projectId","entryId","alias"]}
+      responses:
+        "200":
+          description: Successful resource response.
+          content:
+            application/json:
+              schema: {"type":"object","properties":{"errCode":{"type":"integer","const":0},"errMessage":{"type":"string"},"data":{}},"required":["errCode","errMessage","data"]}
+        default:
+          $ref: "#/components/responses/HarnessError"
+  /api/knowledge-bases/bindings/resolve:
+    post:
+      tags: [Knowledge Bases]
+      summary: "Resolve and authorize a knowledge binding"
+      description: "Account identity is required. Administrative keys do not replace account grants. Responses are not cached."
+      security:
+        - BearerAuth: []
+        - SessionCookie: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {"$ref":"#/components/schemas/KnowledgeBaseIdentity"}
+      responses:
+        "200":
+          description: Successful resource response.
+          content:
+            application/json:
+              schema: {"type":"object","properties":{"errCode":{"type":"integer","const":0},"errMessage":{"type":"string"},"data":{"$ref":"#/components/schemas/KnowledgeBaseBinding"}},"required":["errCode","errMessage","data"]}
+        default:
+          $ref: "#/components/responses/HarnessError"
+  /api/knowledge-bases/{baseId}:
+    get:
+      tags: [Knowledge Bases]
+      summary: "Describe an accessible knowledge base"
+      description: "Account identity is required. Administrative keys do not replace account grants. Responses are not cached."
+      security:
+        - BearerAuth: []
+        - SessionCookie: []
+      parameters: [{"name":"baseId","in":"path","required":true,"schema":{"type":"string","format":"uuid"}}]
+      responses:
+        "200":
+          description: Successful resource response.
+          content:
+            application/json:
+              schema: {"type":"object","properties":{"errCode":{"type":"integer","const":0},"errMessage":{"type":"string"},"data":{"$ref":"#/components/schemas/KnowledgeBaseResource"}},"required":["errCode","errMessage","data"]}
+        default:
+          $ref: "#/components/responses/HarnessError"
+  /api/knowledge-bases/{baseId}/grants:
+    get:
+      tags: [Knowledge Bases]
+      summary: "List knowledge account grants as owner"
+      description: "Account identity is required. Administrative keys do not replace account grants. Responses are not cached."
+      security:
+        - BearerAuth: []
+        - SessionCookie: []
+      parameters: [{"name":"baseId","in":"path","required":true,"schema":{"type":"string","format":"uuid"}}]
+      responses:
+        "200":
+          description: Successful resource response.
+          content:
+            application/json:
+              schema: {"type":"object","properties":{"errCode":{"type":"integer","const":0},"errMessage":{"type":"string"},"data":{"type":"array","items":{"type":"object"}}},"required":["errCode","errMessage","data"]}
+        default:
+          $ref: "#/components/responses/HarnessError"
+    post:
+      tags: [Knowledge Bases]
+      summary: "Grant or replace knowledge account access"
+      description: "Account identity is required. Administrative keys do not replace account grants. Responses are not cached."
+      security:
+        - BearerAuth: []
+        - SessionCookie: []
+      parameters: [{"name":"baseId","in":"path","required":true,"schema":{"type":"string","format":"uuid"}}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {"type":"object","additionalProperties":false,"properties":{"userId":{"type":"string","minLength":1,"maxLength":256},"mode":{"enum":["read","write"]}},"required":["userId","mode"]}
+      responses:
+        "200":
+          description: Successful resource response.
+          content:
+            application/json:
+              schema: {"type":"object","properties":{"errCode":{"type":"integer","const":0},"errMessage":{"type":"string"},"data":{}},"required":["errCode","errMessage","data"]}
+        default:
+          $ref: "#/components/responses/HarnessError"
+  /api/knowledge-bases/{baseId}/grants/{userId}:
+    delete:
+      tags: [Knowledge Bases]
+      summary: "Revoke knowledge account access"
+      description: "Account identity is required. Administrative keys do not replace account grants. Responses are not cached."
+      security:
+        - BearerAuth: []
+        - SessionCookie: []
+      parameters: [{"name":"baseId","in":"path","required":true,"schema":{"type":"string","format":"uuid"}},{"name":"userId","in":"path","required":true,"schema":{"type":"string"}}]
+      responses:
+        "200":
+          description: Successful resource response.
+          content:
+            application/json:
+              schema: {"type":"object","properties":{"errCode":{"type":"integer","const":0},"errMessage":{"type":"string"},"data":{}},"required":["errCode","errMessage","data"]}
+        default:
+          $ref: "#/components/responses/HarnessError"
+  /api/knowledge-bases/{baseId}/operations:
+    post:
+      tags: [Knowledge Bases]
+      summary: "Operate on a declared knowledge resource"
+      description: "Rechecks account, binding ID/revision/accessRevision and registered project capability in the operation. Writes require write mode. Stale document expectedRevision returns 409. Search cursors are tied to resource revision and query. Body limit 70 MiB; file contents up to 50 MiB. No KV fallback or mutation replay."
+      security:
+        - BearerAuth: []
+        - SessionCookie: []
+      parameters: [{"name":"baseId","in":"path","required":true,"schema":{"type":"string","format":"uuid"}}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {"type":"object","additionalProperties":false,"properties":{"projectId":{"type":"string","format":"uuid"},"entryId":{"type":"string","pattern":"^[a-z][a-z0-9_-]{0,63}$"},"alias":{"type":"string","pattern":"^[a-z][a-z0-9_-]{0,63}$"},"knowledgeBaseId":{"type":"string","format":"uuid"},"operation":{"enum":["knowledge.revision","knowledge.listDocuments","knowledge.getDocument","knowledge.createDocument","knowledge.editDocument","knowledge.deleteDocument","knowledge.searchDocuments","knowledge.readDocumentLines","files.createFile","files.readFile","files.deleteFile","files.stat","files.list"]},"input":{"type":"object","description":"Operation-specific input. Documents use documentId (create may use id), title, markdown and optional positive expectedRevision. Lists use pageSize/cursor; search uses query/documentId/beforeLines/afterLines/pageSize/cursor/maxMatches. Files use fileId or name/mimeType/kind/base64. files.list uses page/pageSize. Base64 is transported only; contents are stored privately."},"binding":{"$ref":"#/components/schemas/KnowledgeBaseBinding"}},"required":["projectId","entryId","alias","knowledgeBaseId","operation","input","binding"]}
+      responses:
+        "200":
+          description: Successful resource response.
+          content:
+            application/json:
+              schema: {"type":"object","properties":{"errCode":{"type":"integer","const":0},"errMessage":{"type":"string"},"data":{}},"required":["errCode","errMessage","data"]}
+        default:
+          $ref: "#/components/responses/HarnessError"
+  /api/knowledge-bases/{baseId}/manage:
+    post:
+      tags: [Knowledge Bases]
+      summary: "Manage knowledge documents and private attachments"
+      description: "Account read/write grants authorize management without a consumer binding. Mutations do not retry. Documents use optimistic expectedRevision; attachment contents remain outside SQL."
+      security:
+        - BearerAuth: []
+        - SessionCookie: []
+      parameters: [{"name":"baseId","in":"path","required":true,"schema":{"type":"string","format":"uuid"}}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {"$ref":"#/components/schemas/KnowledgeBaseOperation"}
+      responses:
+        "200":
+          description: Successful resource response.
+          content:
+            application/json:
+              schema: {"type":"object","properties":{"errCode":{"type":"integer","const":0},"errMessage":{"type":"string"},"data":{}},"required":["errCode","errMessage","data"]}
+        default:
+          $ref: "#/components/responses/HarnessError"
+  /api/databases/{databaseId}/data:
+    post:
+      tags: [Relational Databases]
+      summary: "Manage applied model rows"
+      description: "Account grants authorize bounded scalar CRUD under a restricted SQL role. models returns applied metadata and schemaHash. Every other operation requires that schemaHash. rows uses server pagination/search and scalar equality. update/delete require complete stable key and xmin rowVersion; stale edits fail. BigInt and Decimal use decimal strings, DateTime ISO, Bytes Base64. Application-generated defaults such as cuid must be supplied explicitly; database defaults and @updatedAt are applied. No raw SQL or relation mutation input is accepted."
+      security:
+        - BearerAuth: []
+        - SessionCookie: []
+      parameters: [{"name":"databaseId","in":"path","required":true,"schema":{"type":"string","format":"uuid"}}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {"$ref":"#/components/schemas/RelationalTableRequest"}
+      responses:
+        "200":
+          description: Successful resource response.
+          content:
+            application/json:
+              schema: {"type":"object","properties":{"errCode":{"type":"integer","const":0},"errMessage":{"type":"string"},"data":{}},"required":["errCode","errMessage","data"]}
+        default:
+          $ref: "#/components/responses/HarnessError"
+  /api/databases/{databaseId}/query:
+    post:
+      tags: [Relational Databases]
+      summary: "Query rows through a pinned consumer binding"
+      description: "Same bounded table operations as data, additionally requiring the current account/project/entry/alias binding. Read bindings cannot write. This is a structured management protocol, not the generated Browser ORM query contract."
+      security:
+        - BearerAuth: []
+        - SessionCookie: []
+      parameters: [{"name":"databaseId","in":"path","required":true,"schema":{"type":"string","format":"uuid"}}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {"type":"object","additionalProperties":false,"properties":{"consumer":{"type":"object","additionalProperties":false,"properties":{"projectId":{"type":"string","format":"uuid"},"entryId":{"type":"string","pattern":"^[a-z][a-z0-9_-]{0,63}$"},"alias":{"type":"string","pattern":"^[a-z][a-z0-9_-]{0,63}$"},"schemaHash":{"type":"string","pattern":"^[a-f0-9]{64}$"},"binding":{"type":"object","additionalProperties":false,"properties":{"id":{"type":"string","format":"uuid"},"revision":{"type":"integer","minimum":1}},"required":["id","revision"]}},"required":["projectId","entryId","alias","schemaHash","binding"]},"request":{"$ref":"#/components/schemas/RelationalTableRequest"}},"required":["consumer","request"]}
+      responses:
+        "200":
+          description: Successful resource response.
+          content:
+            application/json:
+              schema: {"type":"object","properties":{"errCode":{"type":"integer","const":0},"errMessage":{"type":"string"},"data":{}},"required":["errCode","errMessage","data"]}
+        default:
+          $ref: "#/components/responses/HarnessError"
   /api/databases:
     get:
       tags: [Relational Databases]
@@ -36,12 +313,13 @@ paths:
       security:
         - BearerAuth: []
         - SessionCookie: []
+      parameters: [{"name":"page","in":"query","required":false,"schema":{"type":"integer","minimum":1,"maximum":1000000,"default":1}},{"name":"pageSize","in":"query","required":false,"schema":{"type":"integer","minimum":1,"maximum":100,"default":20}},{"name":"search","in":"query","required":false,"schema":{"type":"string","maxLength":256}}]
       responses:
         "200":
           description: Successful database management response.
           content:
             application/json:
-              schema: {"type": "object", "additionalProperties": false, "properties": {"errCode": {"type": "integer", "const": 0}, "errMessage": {"type": "string", "const": ""}, "data": {"type": "object", "additionalProperties": false, "properties": {"items": {"type": "array", "items": {"$ref": "#/components/schemas/RelationalDatabaseResource"}}}, "required": ["items"]}}, "required": ["errCode", "errMessage", "data"]}
+              schema: {"type": "object", "additionalProperties": false, "properties": {"errCode": {"type": "integer", "const": 0}, "errMessage": {"type": "string", "const": ""}, "data": {"type": "object", "additionalProperties": false, "properties": {"items": {"type": "array", "items": {"$ref": "#/components/schemas/RelationalDatabaseResource"}}, "total": {"type":"integer"}, "page": {"type":"integer"}, "pageSize": {"type":"integer"}}, "required": ["items", "total", "page", "pageSize"]}}, "required": ["errCode", "errMessage", "data"]}
         default:
           $ref: "#/components/responses/HarnessError"
     post:
@@ -4354,6 +4632,11 @@ components:
           schema:
             $ref: "#/components/schemas/ApiFailure"
   schemas:
+    KnowledgeBaseResource: {"type":"object","additionalProperties":false,"properties":{"id":{"type":"string","format":"uuid"},"name":{"type":"string"},"ownerUserId":{"type":"string"},"revision":{"type":"integer"},"createdAt":{"type":"string","format":"date-time"},"mode":{"enum":["read","write"]},"canManage":{"type":"boolean"}},"required":["id","name","ownerUserId","revision","createdAt"]}
+    KnowledgeBaseIdentity: {"type":"object","additionalProperties":false,"properties":{"projectId":{"type":"string","format":"uuid"},"entryId":{"type":"string","pattern":"^[a-z][a-z0-9_-]{0,63}$"},"alias":{"type":"string","pattern":"^[a-z][a-z0-9_-]{0,63}$"},"knowledgeBaseId":{"type":"string","format":"uuid"}},"required":["projectId","entryId","alias","knowledgeBaseId"]}
+    KnowledgeBaseBinding: {"type":"object","additionalProperties":false,"properties":{"id":{"type":"string","format":"uuid"},"revision":{"type":"integer","minimum":1},"knowledgeBaseId":{"type":"string","format":"uuid"},"mode":{"enum":["read","write"]},"accessRevision":{"type":"integer","minimum":0}},"required":["id","revision","knowledgeBaseId","mode","accessRevision"]}
+    KnowledgeBaseOperation: {"type":"object","additionalProperties":false,"properties":{"operation":{"enum":["knowledge.revision","knowledge.listDocuments","knowledge.getDocument","knowledge.createDocument","knowledge.editDocument","knowledge.deleteDocument","knowledge.searchDocuments","knowledge.readDocumentLines","files.createFile","files.readFile","files.deleteFile","files.stat","files.list"]},"input":{"type":"object","description":"Operation-specific input. Documents use documentId (create may use id), title, markdown and optional positive expectedRevision. Lists use pageSize/cursor; search uses query/documentId/beforeLines/afterLines/pageSize/cursor/maxMatches. Files use fileId or name/mimeType/kind/base64. files.list uses page/pageSize. Base64 is transported only; contents are stored privately."}},"required":["operation","input"]}
+    RelationalTableRequest: {"type":"object","additionalProperties":false,"properties":{"operation":{"enum":["models","rows","insert","update","delete"]},"model":{"type":"string","maxLength":128},"page":{"type":"integer","minimum":1,"maximum":1000000},"pageSize":{"type":"integer","minimum":1,"maximum":100},"search":{"type":"string","maxLength":500},"where":{"type":"object"},"data":{"type":"object"},"key":{"type":"object"},"rowVersion":{"type":"string","pattern":"^[0-9]{1,20}$"},"schemaHash":{"type":"string","pattern":"^[a-f0-9]{64}$"}},"required":["operation"]}
     RelationalDatabaseConsumer: {"type": "object", "additionalProperties": false, "properties": {"projectId": {"type": "string", "format": "uuid"}, "entryId": {"type": "string", "pattern": "^[a-z][a-z0-9_-]{0,63}$"}, "alias": {"type": "string", "pattern": "^[a-z][a-z0-9_]{0,62}$"}}, "required": ["projectId", "entryId", "alias"]}
     RelationalDatabaseBinding: {"type": "object", "additionalProperties": false, "properties": {"projectId": {"type": "string", "format": "uuid"}, "entryId": {"type": "string", "pattern": "^[a-z][a-z0-9_-]{0,63}$"}, "alias": {"type": "string", "pattern": "^[a-z][a-z0-9_]{0,62}$"}, "id": {"type": "string", "format": "uuid"}, "databaseId": {"type": "string", "format": "uuid"}, "mode": {"type": "string", "enum": ["read", "write"]}, "revision": {"type": "integer", "minimum": 1}}, "required": ["projectId", "entryId", "alias", "id", "databaseId", "mode", "revision"]}
     RelationalDatabaseBindRequest: {"type": "object", "additionalProperties": false, "properties": {"projectId": {"type": "string", "format": "uuid"}, "entryId": {"type": "string", "pattern": "^[a-z][a-z0-9_-]{0,63}$"}, "alias": {"type": "string", "pattern": "^[a-z][a-z0-9_]{0,62}$"}, "databaseId": {"type": "string", "format": "uuid"}, "mode": {"type": "string", "enum": ["read", "write"]}, "schemaHash": {"type": "string", "pattern": "^[a-f0-9]{64}$"}}, "required": ["projectId", "entryId", "alias", "databaseId", "schemaHash"]}

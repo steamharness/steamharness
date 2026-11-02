@@ -99,3 +99,9 @@ Resource and migration management also provides `create / list / inspect / retry
 ## Platform runtime history
 
 Conversation, Workflow and assistant history use the signed-in account's Server PostgreSQL database, including messages, runs, queues, drafts, parameters, usage and Agent checkpoints. Platform sign-in and connectivity are required even with third-party models; system AI authorization remains separate. Legacy conversations.json, runs.json and default Agent SQLite history are neither read nor migrated. Disconnection or lease loss stops the affected execution while retaining sign-in. Recovery uses committed records; failed turns do not advance queued inputs. Server leases coordinate windows. Attachments, project files and temporary activity notifications remain host managed. See [platform runtime storage](/en/core-api/runtime-storage).
+
+## Knowledge and table management
+
+`steamharness knowledge` provides `create / list / grants / grant / revoke / bind / unbind / bindings / operation`. Bind with `--knowledge-base <UUID>`, `--alias <alias>` and `--entry <entry>`; alias defaults to main. `list --page 2 --page-size 20 --search Docs` paginates and filters on Server. `operation <UUID> knowledge.listDocuments < input.json` reads JSON from stdin without replaying mutations. Attachment contents allow 50 MiB.
+
+`steamharness database data <UUID> < request.json` manages applied models with `models / rows / insert / update / delete`. Read schemaHash from models and send it on later requests. Updates and deletes also require the current rowVersion and complete stable key. Stdin is limited to 4 MiB. Encode BigInt and Decimal as decimal strings, DateTime as ISO and Bytes as Base64. `database list` accepts the same pagination options. See [Knowledge API](/en/core-api/knowledge-documents) and [Database API](/en/core-api/database).

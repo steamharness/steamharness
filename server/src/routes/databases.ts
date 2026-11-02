@@ -37,7 +37,7 @@ export function createDatabaseRouter(storage: Storage): Router {
     void work(req).then(result => res.json(ok(result ?? null)), next);
   };
   const resourceId = (req: Request) => id.parse(req.params.databaseId);
-  router.get("/databases", run(async req => ({ items: await repository().list(account(req)) })));
+  router.get("/databases", run(req => repository().listPage(account(req), { page: req.query.page === undefined ? undefined : Number(req.query.page), pageSize: req.query.pageSize === undefined ? undefined : Number(req.query.pageSize), search: req.query.search === undefined ? undefined : String(req.query.search) })));
   router.post("/databases", run(req => {
     const actor = account(req), input = z.object({ name: z.string().min(1).max(128), requestId: id }).strict().parse(req.body);
     return repository().create(actor, input);
@@ -51,6 +51,9 @@ export function createDatabaseRouter(storage: Storage): Router {
   router.post("/databases/connections", run(req => repository().openConnection(nativeAccount(req), connectionRequest.parse(req.body))));
   router.post("/databases/connections/:credentialId/authorize", run(req => repository().authorizeConnection(nativeAccount(req), id.parse(req.params.credentialId), connectionRequest.extend({ binding: bindingIdentity }).strict().parse(req.body))));
   router.delete("/databases/connections/:credentialId", run(req => repository().closeConnection(nativeAccount(req), id.parse(req.params.credentialId))));
+  const tableRequest = z.object({ operation: z.enum(['models', 'rows', 'insert', 'update', 'delete']), model: z.string().max(128).optional(), page: z.number().int().positive().max(1_000_000).optional(), pageSize: z.number().int().positive().max(100).optional(), search: z.string().max(500).optional(), where: z.record(z.string(), z.unknown()).optional(), data: z.record(z.string(), z.unknown()).optional(), key: z.record(z.string(), z.unknown()).optional(), rowVersion: z.string().max(20).optional(), schemaHash: fingerprint.optional() }).strict();
+  router.post('/databases/:databaseId/data', run(req => repository().data(account(req), resourceId(req), tableRequest.parse(req.body))));
+  router.post('/databases/:databaseId/query', run(req => { const input = z.object({ consumer: connectionRequest.extend({ binding: bindingIdentity }).strict(), request: tableRequest }).strict().parse(req.body); return repository().data(account(req), resourceId(req), input.request, input.consumer); }));
   router.get("/databases/:databaseId", run(req => repository().get(account(req), resourceId(req))));
   router.post("/databases/:databaseId/retry", run(req => { z.object({}).strict().parse(req.body ?? {}); return repository().retry(account(req), resourceId(req)); }));
   router.get("/databases/:databaseId/grants", run(req => repository().grants(account(req), resourceId(req))));

@@ -545,16 +545,6 @@
       ],
       "panel": [
         {
-          "id": "studio-kv",
-          "title": "KV",
-          "icon": "$(database)"
-        },
-        {
-          "id": "studio-knowledge",
-          "title": "%container.studio-knowledge%",
-          "icon": "$(book)"
-        },
-        {
           "id": "studio-trace",
           "title": "%container.studio-trace%",
           "icon": "$(history)"
@@ -589,22 +579,6 @@
           "id": "studio.developerAssistant",
           "name": "%container.studio-assistant%",
           "type": "webview"
-        }
-      ],
-      "studio-kv": [
-        {
-          "id": "studio.kv",
-          "name": "KV",
-          "type": "webview",
-          "when": "studio.projectResourcesAvailable"
-        }
-      ],
-      "studio-knowledge": [
-        {
-          "id": "studio.knowledge",
-          "name": "%container.studio-knowledge%",
-          "type": "webview",
-          "when": "studio.projectResourcesAvailable"
         }
       ],
       "studio-trace": [

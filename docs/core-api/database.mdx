@@ -175,3 +175,9 @@ Browser 描述符当前用于类型与模型元数据，浏览器查询代理尚
 Server 只读取静态清单、源文件指纹及产物哈希，不执行项目定义文件。下载时同样检查清单和哈希，失败不留下半份项目。只有 `.steamharness/generated/database` 可以进入源码包，其余 `.steamharness` 运行数据继续排除。
 
 本入口定义项目业务模型；[平台运行存储](/core-api/runtime-storage) 负责会话、运行历史和 Agent 记录，二者独立管理。声明业务模型不会自动转换现有 KV 数据。
+
+## Server Web 表数据管理
+
+数据库目录支持服务端分页、搜索和显式创建。资源详情提供账号授权、入口绑定、已应用模型及表行管理；Studio 和 CLI Web 的浏览操作打开该页面。行读取支持分页、字面文本搜索和标量等值过滤，修改与删除需完整稳定键和 rowVersion，schemaHash 变化后重新加载模型。冲突保留草稿。
+
+JSON 数据中 BigInt 和 Decimal 用字符串无损传输，DateTime 为 ISO，Bytes 为 Base64，列表和 JSON 保留结构。数据库默认值及 @updatedAt 可自动应用；cuid()/uuid() 等由模型客户端生成的默认值在管理端 SQL 新增时须显式填写。此结构化表管理接口不提供关联写入或原始 SQL，也不表示生成的 Browser ORM 已接通。知识库使用独立的 [知识库 API](/core-api/knowledge-documents)。

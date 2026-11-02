@@ -5,10 +5,8 @@ import { mkdir, mkdtemp, readFile, realpath, rm, writeFile } from 'node:fs/promi
 import os from 'node:os';
 import path from 'node:path';
 import { startWebServer } from './web-test-storage';
-import { LocalDatabaseRegistry } from 'steamharness';
 import type { Project, Report, Runtime } from '../web/workflow-types';
 
-const all = { mode: 'all' as const }, permissions = { kv: { read: all, write: all }, knowledge: { read: all, write: all } };
 const apps: Awaited<ReturnType<typeof startWebServer>>[] = [], folders: string[] = [];
 afterEach(async () => {
   for (const app of apps.splice(0)) await app.close();
@@ -80,18 +78,15 @@ it('keeps parallel entries running while navigating and cancels only the request
   f.active.get('assistant')!.finish({ status: 'success', output: { items: [] } });
 });
 
-it('keeps host catalogs, approvals and data out of CLI Web while retaining explicit alias binding', async () => {
-  const f = await fixture(true);
-  for (const action of ['request', 'review', 'revoke', 'rotate', 'narrow', 'data']) {
-    expect((await f.post('agent', { type: 'databases', action, alias: 'data', host: 'local' })).ok).toBe(false);
+it('requires Server resource management and rejects local and legacy bindings without changing project config', async () => {
+  const f = await fixture(true), config = await readFile(path.join(f.directory, 'config.json'), 'utf8');
+  await f.call('agent', { type: 'draft', text: 'Keep this draft', attachments: [] });
+  for (const action of ['request', 'review', 'revoke', 'rotate', 'narrow', 'data', 'bind']) {
+    expect((await f.post('agent', { type: 'databases', action, alias: 'data', host: 'local', databaseId: randomUUID() })).ok).toBe(false);
   }
-  const registry = new LocalDatabaseRegistry();
-  const request = registry.request({ projectId: (await f.state('agent')).project.id, entryId: 'agent', alias: 'data', permissions, target: { kind: 'create', name: 'Approved by host' } });
-  const approval = registry.review(request.requestId, { approve: true });
-  const result = await f.call('agent', { type: 'databases', action: 'bind', alias: 'data', databaseId: approval.databaseId });
-  expect(result.value.requirements[0]).toMatchObject({ status: 'bound', space: { name: 'Approved by host' } });
-  expect(result.value).not.toHaveProperty('local'); expect(result.value).not.toHaveProperty('server');
-  expect(JSON.parse(await readFile(path.join(f.directory, 'config.json'), 'utf8')).databases.data).toBe(approval.databaseId);
+  expect((await f.post('agent', { type: 'databases', action: 'get' })).ok).toBe(false);
+  expect(await readFile(path.join(f.directory, 'config.json'), 'utf8')).toBe(config);
+  expect(JSON.stringify(await f.state('agent'))).toContain('Keep this draft');
 });
 
 it('keeps saved cross-entry Kanban and image card URLs inside their owning aggregate mount', async () => {

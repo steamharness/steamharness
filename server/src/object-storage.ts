@@ -22,6 +22,8 @@ export interface ObjectStorage {
   uploadPrivateFile(logicalPath: string, filePath: string, contentType?: string): Promise<void>;
   downloadPrivateBuffer(logicalPath: string): Promise<Buffer>;
   downloadPrivateFile(logicalPath: string, filePath: string): Promise<void>;
+  /** Remove private contents; deleting an absent object succeeds. */
+  deletePrivateObject(logicalPath: string): Promise<void>;
   assertPrivateObject(logicalPath: string): Promise<void>;
   /**
    * Return a short-lived signed URL when the backend can mint one, or `undefined`

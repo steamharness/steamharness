@@ -5,6 +5,7 @@ import { readProjectDeclaration, selectProjectEntry, projectManifestForDistribut
 import { DatabaseSpaceRepository } from './database-spaces';
 import { RuntimeStorageRepository } from './runtime-storage/repository';
 import { RelationalDatabaseRepository } from './relational-databases/repository';
+import { KnowledgeBaseRepository } from './knowledge-bases';
 import { type AccessActor, type AccessCapability, type ResourceAccess } from "@steamharness/project-access";
 import {isDeepStrictEqual} from "node:util";
 import { bindConfigurationProfiles, configurationAccessView, type ConfigurationProfilePolicy, type ConfigurationAccess, bindConfigurationTemplate, configurationAgentModelPolicy, createPublicationDraft, parsePublicationDraft, freezeConfigurationTemplate, parseConfigurationTemplate, configurationTemplatePath, CONFIGURATION_TEMPLATE_FILE, type ConfigurationPublicationDraft, type ProjectConfigurationTemplate, configurationCapability, parseConfigurationFile, validateConfigurationFileSelection, type ProjectConfigurationField,parseConfigurationField, applyConfigurationAction, configurationSnapshot, exportConfigurations, parseConfigurationDefinition, readConfigurationState, validateConfigurationAction, ProjectConfigurationError, type ProjectConfigurationAction, type ProjectConfigurationState, type ProjectConfigurationExport, type ProjectConfiguration } from "@steamharness/project-configuration";
@@ -377,6 +378,7 @@ export interface ProjectCreateResult {
 }
 
 export interface KanbanWorkspaceState {
+  knowledgeBases?: import("steamharness").KnowledgeBaseRequirement[];
   projectId: string;
   projectName: string;
   target: string;
@@ -434,6 +436,7 @@ const TEXT_EXTENSIONS = new Set([
   ".yml",
 ]);
 export class Storage {
+  readonly knowledgeBases: KnowledgeBaseRepository;
   readonly databases: DatabaseSpaceRepository;
   readonly runtimeStorage?: RuntimeStorageRepository;
   readonly relationalDatabases?: RelationalDatabaseRepository;
@@ -476,6 +479,7 @@ export class Storage {
     this.db = options.db;
     this.runtimeStorage = options.runtimeStorage ?? (options.db ? new RuntimeStorageRepository(options.db.connectionString) : undefined);
     this.relationalDatabases = options.relationalDatabases;
+    this.knowledgeBases = new KnowledgeBaseRepository(options.db?.connectionString, options.objectStorage ?? new LocalStorage({ root: path.join(this.dataRoot, 'object-storage'), publicBaseUrl: 'http://localhost' }));
     this.databases = new DatabaseSpaceRepository(options.db?.connectionString, options.objectStorage ?? new LocalStorage({ root: path.join(this.dataRoot, 'object-storage'), publicBaseUrl: 'http://localhost' }));
     this.artifacts = options.artifacts;
     this.objectStorage = options.objectStorage;
@@ -491,6 +495,7 @@ export class Storage {
       strict: process.env.NODE_ENV === "production" && process.env.STEAMHARNESS_SERVER_DEV !== "1" });
     await this.db?.init();
     await this.databases.init();
+    await this.knowledgeBases.init();
     await this.runtimeStorage?.init();
     await this.relationalDatabases?.init();
     await this.resumePendingPreparationJobs();
@@ -1982,6 +1987,7 @@ export class Storage {
   }
 
   async close(): Promise<void> {
+    await this.knowledgeBases.close();
     await this.relationalDatabases?.close();
     await this.runtimeStorage?.close();
     await this.databases.close();
@@ -2872,13 +2878,32 @@ export class Storage {
     const registration = configuredDatabaseEntry(metadata.entries, metadata.defaultEntry, entryId);
     if (registration.type !== "kanban") throw new HttpError(409, 409, "The selected entry is not Kanban.");
     const artifact = path.posix.join(registration.root, registration.entry);
-    return { projectId: projectName, projectName: metadata.name, entryId: registration.entryId, databases: registration.databases, target, resolvedTarget: resolved.resolvedTarget, artifactDir: path.posix.dirname(artifact), entry: path.posix.basename(artifact) };
+    return { projectId: projectName, projectName: metadata.name, entryId: registration.entryId, databases: registration.databases, knowledgeBases: registration.knowledgeBases ?? [], target, resolvedTarget: resolved.resolvedTarget, artifactDir: path.posix.dirname(artifact), entry: path.posix.basename(artifact) };
   }
 
   async entryDatabaseRequirements(projectId: string, entryId: string, target = "draft") {
     const metadata = target === "draft" ? await this.readProjectMetadataForEditing(projectId) : await this.readPackageMetadataForTarget(projectId,target);
     return configuredDatabaseEntry(metadata.entries, metadata.defaultEntry, entryId).databases;
   }
+  async entryKnowledgeBaseRequirements(projectId: string, entryId: string, target = "draft") {
+    const metadata = target === "draft" ? await this.readProjectMetadataForEditing(projectId) : await this.readPackageMetadataForTarget(projectId, target);
+    return configuredDatabaseEntry(metadata.entries, metadata.defaultEntry, entryId).knowledgeBases ?? [];
+  }
+  async entryKnowledgeBases(projectId: string, entryId: string, actor: AccessActor, target = "draft") {
+    if (!actor.userId) throw new HttpError(401, 401, "Account login is required for knowledge bases.");
+    await this.requireProjectCapability(projectId, actor, "read");
+    const metadata = target === "draft" ? await this.readProjectMetadataForEditing(projectId) : await this.readPackageMetadataForTarget(projectId, target);
+    const entry = configuredDatabaseEntry(metadata.entries, metadata.defaultEntry, entryId);
+    const { createKnowledgeBasesContext } = await import("steamharness");
+    return createKnowledgeBasesContext({ projectId, entryId: entry.entryId, requirements: entry.knowledgeBases ?? [], host: {
+      resolve: async identity => { await this.requireProjectCapability(projectId, actor, "read"); return this.knowledgeBases.resolveBinding(actor.userId!, identity); },
+      operation: async (identity, binding, operation, input) => {
+        await this.requireProjectCapability(projectId, actor, /\.(?:create|edit|delete)/.test(operation) ? "writeData" : "read");
+        return this.knowledgeBases.operation(actor.userId!, identity.knowledgeBaseId, operation, input as Record<string, unknown>, { identity, binding });
+      },
+    } });
+  }
+
   async entryDatabases(projectId: string, entryId: string, actor: AccessActor, target = "draft", conversationId?: string) {
     await this.requireProjectCapability(projectId, actor, "read");
     const metadata = target === "draft" ? await this.readProjectMetadataForEditing(projectId) : await this.readPackageMetadataForTarget(projectId, target);
@@ -4070,6 +4095,7 @@ function configuredDatabaseEntry(entries: ProjectEntry[], defaultEntry: string, 
   const config = readProjectConfig({
     version: 1,
     databases: Object.fromEntries(entries.flatMap(item => item.databases.map(database => [database.alias, database.databaseId]))),
+    knowledgeBases: Object.fromEntries(entries.flatMap(item => (item.knowledgeBases ?? []).map(base => [base.alias, base.knowledgeBaseId]))),
   }, process.env);
-  return { ...entry, databases: entry.databases.map(database => ({ ...database, databaseId: config.databases[database.alias]! })) };
+  return { ...entry, databases: entry.databases.map(database => ({ ...database, databaseId: config.databases[database.alias]! })), ...(entry.knowledgeBases ? { knowledgeBases: entry.knowledgeBases.map(base => ({ ...base, knowledgeBaseId: config.knowledgeBases![base.alias]! })) } : {}) };
 }

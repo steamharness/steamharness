@@ -16,6 +16,8 @@ async function createCoreSource(files) {
   const dir = await mkdtemp(path.join(os.tmpdir(), "runtime-api-index-"));
   await mkdir(path.join(dir, "entries"), { recursive: true });
   await mkdir(path.join(dir, "databases"), { recursive: true });
+  await mkdir(path.join(dir, "knowledge-bases"), { recursive: true });
+  await writeFile(path.join(dir, "knowledge-bases/index.ts"), "export interface KnowledgeBasesContext { get(alias: string): void }; export interface KnowledgeBaseContext { getDocument(id: string): void }", "utf8");
   for (const [relative, contents] of Object.entries(files)) {
     await writeFile(path.join(dir, relative), contents, "utf8");
   }
@@ -40,7 +42,8 @@ describe("the runtime API index", () => {
     const signatures = storage.members.map((member) => member.signature);
 
     expect(signatures).toContain("kv");
-    expect(signatures).toContain("knowledge");
+    expect(signatures).not.toContain("knowledge");
+    expect(resourceContexts.find(context => context.name === "KnowledgeBaseContext").members.map(member => member.signature)).toContain("getDocument(id)");
     expect(resourceContexts.find(context => context.name === "EntryContext").members.map(member => member.signature)).toContain("runEntrypoint(entrypointId, args, options)");
     // The line the surface must not cross: a relation is not a way to read the
     // target's conversation, and it is not a way to reach a third project.
@@ -84,6 +87,7 @@ describe("the runtime API index", () => {
   it("refuses a context that publishes no members", async () => {
     const coreSource = await createCoreSource({
       "entries/index.ts": "export interface EntriesContext { list(): void }; export interface EntryContext { run(): void }",
+      "knowledge-bases/index.ts": "export interface KnowledgeBasesContext { get(alias: string): void }; export interface KnowledgeBaseContext {}",
       "databases/index.ts": [
         "export interface DatabaseContext { kv: string }",
         "export interface DatabaseKnowledgeContext {}",

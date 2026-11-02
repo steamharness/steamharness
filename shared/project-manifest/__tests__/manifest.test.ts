@@ -88,3 +88,16 @@ describe("aggregate project manifest", () => {
     } finally { await rm(temp, { recursive: true, force: true }); }
   });
 });
+
+describe('independent knowledge declarations', () => {
+  it('resolves config and environment mappings separately from business database aliases', () => {
+    const source = { ...pkg(), entries: [{ ...entry('main'), knowledgeBases: ['docs'] }], defaultEntry: 'main' };
+    const config = { version: 1, knowledgeBases: { docs: id } };
+    const manifest = readProjectManifest(source, config);
+    expect(manifest.entries[0]!.knowledgeBases).toEqual([{ alias: 'docs', knowledgeBaseId: id }]);
+    expect(manifest.entries[0]!.databases).toEqual([]);
+    expect(projectManifestForDistribution(source)).toMatchObject({entries:[{knowledgeBases:['docs']}]});
+    expect(() => readProjectManifest(source)).toThrow('unconfigured knowledge base');
+    expect(() => readProjectManifest({ ...source, entries: [{ ...source.entries[0], knowledgeBases: ['docs', 'docs'] }] }, config)).toThrow();
+  });
+});

@@ -85,3 +85,13 @@ function catalogPool(pool: pg.Pool): pg.Pool {
 export function emptyDifference(sql: string): boolean {
   return sql.replace(/--[^\n]*|\/\*[\s\S]*?\*\//g, "").trim() === "";
 }
+
+/** Metadata comes only from the applied, validated model; clients cannot nominate SQL identifiers. */
+export async function databaseModelMetadata(source: string) {
+  const { datamodel } = await getDMMF({ datamodel: modelSchema(source) });
+  return datamodel.models.map(model => ({
+    name: model.name, delegate: model.name[0].toLowerCase() + model.name.slice(1), table: model.dbName ?? model.name,
+    fields: model.fields.filter(field => field.kind !== 'object').map(field => ({ name: field.name, column: field.dbName ?? field.name, type: field.type, required: field.isRequired, list: field.isList, generated: field.isGenerated, hasDefault: field.hasDefaultValue, updatedAt: field.isUpdatedAt, id: field.isId })),
+    keyFields: model.primaryKey?.fields ?? (model.fields.some(field => field.isId) ? model.fields.filter(field => field.isId).map(field => field.name) : model.uniqueFields.find(fields => fields.every(name => model.fields.find(field => field.name === name)?.isRequired)) ?? model.fields.filter(field => field.isUnique && field.isRequired).slice(0, 1).map(field => field.name)),
+  }));
+}

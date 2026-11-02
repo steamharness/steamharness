@@ -34,7 +34,7 @@ async function fixture() {
   let connection: { serverUrl: string; accessToken: string } | undefined = { serverUrl: 'https://steamharness.test', accessToken: 'test-only-token' };
   const previews = new ResourcePreviews(owner, runtime, storageDir, () => connection, () => [board.folderPath]);
   openedPreviews.push(previews);
-  const card = (kind: ResourceCard['kind'], target: Record<string, string>, extra: Partial<ResourceCard> = {}): ResourceCard => ({ id: 'card', kind, title: 'Resource', target:{entryId:'main',...(['kv','knowledge'].includes(kind)?{database:'data'}:{}),...target}, ...extra });
+  const card = (kind: ResourceCard['kind'], target: Record<string, string>, extra: Partial<ResourceCard> = {}): ResourceCard => ({ id: 'card', kind, title: 'Resource', target:{entryId:'main',...(kind==='knowledge'?{knowledgeBase:'data'}:kind==='kv'?{database:'data'}:{}),...target}, ...extra });
   return { root, owner, board, runtime, storageDir, previews, card, logout: () => { connection = undefined; previews.clear(); } };
 }
 
@@ -74,7 +74,7 @@ describe('resource previews', () => {
     previews.methodReply(preview.id, { ...state, requestId: invoke.requestId, ok: true, value: { imageReady: false } });
     expect((await checking).result).toEqual({ imageReady: false });
     vi.mocked(runtime.kanbanBridge!).mockRejectedValueOnce(new Error('private backend token', { cause: new DOMException('private details', 'TimeoutError') }));
-    await expect(previews.bridge(preview.id, { requestId: 'file-read', operation: 'files.readFile', input: { database: 'data', fileId: 'wf_ab12' } })).rejects.toThrow();
+    await expect(previews.bridge(preview.id, { requestId: 'file-read', operation: 'files.readFile', input: { knowledgeBase: 'data', fileId: 'wf_ab12' } })).rejects.toThrow();
     const diagnostics = await previews.diagnostics(target);
     expect(diagnostics.previews[0]).toMatchObject({ source: 'resource-card', previewId: preview.id });
     expect(diagnostics.requests[0]).toMatchObject({ configurationId: state.configurationId, fileId: 'wf_ab12', error: { category: 'timeout' },
@@ -138,6 +138,7 @@ describe('resource previews', () => {
     const fetcher = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(JSON.stringify({ errCode: 0, data: { id: 'doc', markdown: '# Foreign document' } })));
     const result = await previews.open(card('knowledge', { source: 'server', projectId: 'database', documentId: 'doc' }));
     expect(fetcher).toHaveBeenCalledWith('https://steamharness.test/api/projects/database/entries/main/resources/read', expect.objectContaining({ headers: expect.objectContaining({ Authorization: 'Bearer test-only-token' }), redirect: 'error' }));
+    expect(JSON.parse(String(fetcher.mock.calls[0][1]!.body))).toEqual({ kind: 'knowledge', knowledgeBase: 'data', documentId: 'doc' });
     expect(result.data.format).toBe('markdown'); expect(JSON.stringify(result)).not.toContain('test-only-token');
     fetcher.mockResolvedValue(new Response(JSON.stringify({ errCode: 403, errMessage: 'Access denied' }), { status: 403 }));
     await expect(previews.open(card('knowledge', { source: 'server', projectId: 'private', documentId: 'doc' }))).rejects.toThrow('Access denied');
@@ -330,7 +331,7 @@ describe('resource previews', () => {
       headers: { Authorization: `Bearer ${new URLSearchParams(new URL(app.url).hash.slice(1)).get('session')}`, 'Content-Type': 'application/json' }, body: JSON.stringify(message) });
     try {
       app.controller!.current.messages.push({ id: 'answer', role: 'assistant', content: '', items: [{ metadata: { kind: 'agent-part', partType: 'tool' },
-        content: { tool: 'workflow-ui_present_card', status: 'success', output: { action: 'upsert', cardId: 'doc', kind: 'knowledge', target: { entryId:'main',database:'data',source: 'current', documentId: 'doc' } } } }] });
+        content: { tool: 'workflow-ui_present_card', status: 'success', output: { action: 'upsert', cardId: 'doc', kind: 'knowledge', target: { entryId:'main',knowledgeBase:'data',source: 'current', documentId: 'doc' } } } }] });
       const result = await (await request({ type: 'resource', messageId: 'answer', cardId: 'doc' })).json();
       const id = result.messages[0].id;
       await app.setHostConnection({ ...connection });
@@ -491,7 +492,7 @@ describe('resource previews', () => {
       headers: { Authorization: `Bearer ${new URL(app.url).hash.slice('#session='.length)}`, 'Content-Type': 'application/json' }, body: JSON.stringify(message) });
     app.controller!.current.messages.push({ id: 'answer', role: 'assistant', content: '', items: [{ metadata: { kind: 'agent-part', partType: 'tool' },
       content: { tool: 'workflow-ui_present_card', status: 'success', output: { action: 'upsert', cardId: 'doc', kind: 'knowledge',
-        target: {entryId:'main',database:'data', source: 'server', projectId: owner.id, documentId: 'doc' } } } }] });
+        target: {entryId:'main',knowledgeBase:'data', source: 'server', projectId: owner.id, documentId: 'doc' } } } }] });
     try {
       await app.controller!.persist();
       const opened = (await (await request({ type: 'resource', messageId: 'answer', cardId: 'doc' })).json()).messages[0];

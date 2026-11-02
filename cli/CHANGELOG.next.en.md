@@ -1,5 +1,9 @@
 # Unreleased
 
+- Fixed background history recovery starting an executor while an offline fork or receipt replay was pending, preventing Agent lease conflicts and false session-not-ready errors.
+
+- Added knowledge resource/grant/binding and document/attachment commands, plus database data for applied model rows. Catalogs support pagination and search; Web panels open Server resource pages without KV editing or local/remote switches.
+
 - Conversation, Workflow and assistant history now use platform relational tables with account/entry-isolated messages, queues, drafts, runs and usage. Server leases coordinate windows and crash recovery without legacy JSON/SQLite reads or offline fallback.
 
 - Added database bind/bindings/unbind for host-owned relational bindings by account, project, entry and alias, with Core typed queries in Node runs and no project-persisted resource IDs.

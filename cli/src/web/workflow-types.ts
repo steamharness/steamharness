@@ -89,6 +89,7 @@ export interface Project extends Parameters {
   defaultEntry: string;
   entryRoot: string;
   databases: import("@steamharness/database-spaces").DatabaseRequirement[];
+  knowledgeBases?: import("steamharness").KnowledgeBaseRequirement[];
   projectCard?: import('@steamharness/project-card-metadata').ProjectCardMetadata;
   aggregateProjectCard?: import('@steamharness/project-card-metadata').ProjectCardMetadata;
   id: string;

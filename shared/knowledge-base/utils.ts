@@ -106,6 +106,7 @@ export function toKnowledgeSummary(
   if ("markdownPreview" in document) return document;
   return {
     id: document.id,
+    revision: document.revision,
     title: document.title,
     markdownPreview: markdownFallback.trim().replace(/\s+/g, " ").slice(0, 240),
     createdAt: document.createdAt,
@@ -120,6 +121,7 @@ export function toKnowledgeDocument(
   if ("markdown" in document) return document;
   return {
     id: document.id,
+    revision: document.revision,
     title: document.title,
     markdown,
     createdAt: document.createdAt,

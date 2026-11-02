@@ -85,7 +85,7 @@ async function fixture(options: { server?: boolean; artifact?: boolean; noParams
   const post = (message: object) => fetch(`${app.origin}/api/message`, { method: 'POST', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }, body: JSON.stringify(message) });
   const state = async () => (await post({ type: 'ready' }).then(response => response.json())).messages[0];
   const action = async (action: string, extra: object = {}) => { const current = (await state()).kanban; return post({ type: 'project-configuration', call: {action, id: current.activeConfigurationId, revision: current.revision, ...extra} }); };
-  const bridge = async (operation: string, input = {}) => { const current = (await state()).kanban; return post({ type: 'kanban-bridge', nonce: current.preview.nonce, requestId: 'request', call: { requestId: 'bridge', operation, input: operation.startsWith('studio.')||operation.startsWith('runtime.')?input:{database:'data',...input} } }).then(response => response.json()).then(value => value.messages[0]); };
+  const bridge = async (operation: string, input = {}) => { const current = (await state()).kanban; return post({ type: 'kanban-bridge', nonce: current.preview.nonce, requestId: 'request', call: { requestId: 'bridge', operation, input: operation.startsWith('studio.')||operation.startsWith('runtime.')?input:{[operation.startsWith('knowledge.')||operation.startsWith('files.')?'knowledgeBase':'database']:'data',...input} } }).then(response => response.json()).then(value => value.messages[0]); };
   return { app, root, directory, dataDir, pkg, post, state, action, bridge, runtime };
 }
 
@@ -264,18 +264,13 @@ describe('Kanban CLI Web workspace', () => {
     const afterBuild = (await state()).kanban;
     expect(afterBuild.activeConfigurationId).toBe(beforeBuild.activeConfigurationId); expect(afterBuild.revision).toBe(beforeBuild.revision);
   });
-  it('uses the project installed Core for local KV and knowledge without executing a workflow', async () => {
+  it('uses the project installed Core for KV without silently creating a local knowledge repository', async () => {
     const { app, bridge } = await fixture({ real: true });
     expect(app.project.kanban).toEqual({ artifactDir: '.', entry: 'index.html' });
     expect((await bridge('kv.setValue', { key: 'board', value: { tasks: [1, 2] } })).ok).toBe(true);
     expect((await bridge('kv.getValue', { key: 'board' })).value).toEqual({ tasks: [1, 2] });
-    const document = (await bridge('knowledge.createDocument', { title: 'Notes', markdown: 'First\nSecond' })).value;
-    expect(document.title).toBe('Notes'); expect((await bridge('knowledge.getDocument', { documentId: document.id })).value.markdown).toContain('First');
-    expect((await bridge('knowledge.listDocuments')).ok).toBe(true);
-    expect((await bridge('knowledge.searchDocuments', { query: 'First' })).ok).toBe(true);
-    expect((await bridge('knowledge.readDocumentLines', { documentId: document.id, startLine: 1, endLine: 2 })).ok).toBe(true);
-    expect((await bridge('knowledge.editDocument', { documentId: document.id, markdown: 'Updated' })).ok).toBe(true);
-    expect((await bridge('knowledge.deleteDocument', { documentId: document.id })).ok).toBe(true);
+    const document = await bridge('knowledge.createDocument', { title: 'Notes', markdown: 'First' });
+    expect(document.ok).toBe(false);
   }, 20_000);
   it('reads a configured basemap larger than 2 MiB through the project bridge when attachments return 404', async () => {
     const { app, directory, post, action, bridge, runtime } = await fixture({ server: true, noParams: true });

@@ -47,7 +47,8 @@ const RESOURCE_INTERFACES = [
   { file: "entries/index.ts", name: "EntryContext", title: "Workflow 入口" },
   { file: "databases/index.ts", name: "DatabasesContext", title: "数据库目录" },
   { file: "databases/index.ts", name: "DatabaseContext", title: "独立数据库空间" },
-  { file: "databases/index.ts", name: "DatabaseKnowledgeContext", title: "知识库与附件" },
+  { file: "knowledge-bases/index.ts", name: "KnowledgeBasesContext", title: "知识库目录" },
+  { file: "knowledge-bases/index.ts", name: "KnowledgeBaseContext", title: "知识库与附件" },
 ];
 
 export async function readRuntimeApiIndex() {
@@ -133,7 +134,7 @@ export async function renderRuntimeApiIndex() {
     "**判断「运行时有没有某个能力」时先读这里**，不要去安装包的 `dist/*.d.ts` 或打包产物里翻：",
     "那是某个历史版本的构建产物，不是契约，而且答案就在下面。这里没有列出的能力就是没有。",
     "",
-    "## 聚合入口与数据库（`context.entries` / `context.databases`）",
+    "## 聚合入口与数据库（`context.entries` / `context.databases` / `context.knowledgeBases`）",
     "",
   ];
 
@@ -172,7 +173,7 @@ export async function renderRuntimeCapabilities() {
     ...resourceContexts.map(context => `- ${context.name}: ${context.members.map(member => member.signature).join(", ")}.`),
     "- context.entries.get(entryId) calls Workflow operations inside this aggregate with the original actor and tool restrictions.",
     "- context.databases.get(alias) resolves a project alias to its databaseId; root config.json only stores alias-to-ID mappings, package entries list the aliases they use, STEAMHARNESS_PROJECT_CONFIG overrides deployment values, and hosts maintain all permissions.",
-    "- Database grants are rechecked on every access; knowledge and attachments require knowledge permissions.",
+    "- context.knowledgeBases.get(alias) uses independent knowledgeBases declarations and config mappings. Documents and attachments use the Server repository, with account grants and entry bindings checked on every access. There is no local knowledge fallback.",
     "`;", "",
   ].join("\n");
 }

@@ -68,6 +68,9 @@ it("rejects symlinks in child roots and child configuration files that escape th
 });
 it("requires referenced declarations in source uploads and preserves references through a round trip", async () => {
   const root = await fixture();
+  const child = JSON.parse(await readFile(path.join(root, "agent/steamharness.json"), "utf8"));
+  await writeFile(path.join(root, "agent/steamharness.json"), JSON.stringify({ ...child, knowledgeBases: ["docs"] }));
+  await writeFile(path.join(root, "config.json"), JSON.stringify({ version: 1, databases: { data: id }, knowledgeBases: { docs: id } }));
   await writeFile(path.join(root,".steamharnessignore"),"agent/steamharness.json\n");
   await expect(createProjectUploadPlan(root)).rejects.toThrow(/Required upload path/);
   await writeFile(path.join(root,".steamharnessignore"),"unregistered/\n");
@@ -77,4 +80,6 @@ it("requires referenced declarations in source uploads and preserves references 
   expect(await readFile(path.join(target,"package.json"),"utf8")).toBe(npm);
   expect(JSON.parse(await readFile(path.join(target,"steamharness.json"),"utf8"))).toEqual(rootDocument());
   expect(await readProjectManifestFromDirectory(target,{})).toEqual(await readProjectManifestFromDirectory(root,{}));
+  expect((await readProjectManifestFromDirectory(target, {})).entries[0]?.knowledgeBases).toEqual([{ alias: "docs", knowledgeBaseId: id }]);
+  expect(JSON.parse(await readFile(path.join(target, "agent/steamharness.json"), "utf8")).knowledgeBases).toEqual(["docs"]);
 });

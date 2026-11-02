@@ -66,6 +66,7 @@ export interface KanbanBrowserDatabaseKvApi {
 }
 
 export interface KanbanDatabaseRevision {
+  kind?: "knowledgeBases";
   alias: string;
   revision: string;
 }
@@ -89,22 +90,19 @@ export interface KanbanBrowserApi {
   getRuntimeLocale(): Promise<KanbanRuntimeLocale>;
   studio: { getLocalAnalysis(): Promise<unknown> };
   methods: KanbanBrowserMethodsApi;
-  databases: {
-    get(alias: string): {
-      kv: KanbanBrowserDatabaseKvApi;
-      knowledge: Record<string, (...args: any[]) => Promise<unknown>>;
-  files: {
-    createFile(input: {
-      name: string;
-      mimeType?: string;
-      buffer: Blob | ArrayBuffer | Uint8Array;
-    }): Promise<KanbanFileReference>;
-    readFile(fileId: string): Promise<{ file: KanbanFileReference; buffer: ArrayBuffer }>;
-    deleteFile(fileId: string): Promise<boolean>;
-  };
-      subscribe(listener: (event: KanbanDatabaseRevision) => void): () => void;
-    };
-  };
+  databases: { get(alias: string): { kv: KanbanBrowserDatabaseKvApi; subscribe(listener: (event: KanbanDatabaseRevision) => void): () => void } };
+  knowledgeBases: { get(alias: string): {
+    subscribe(listener: (event: KanbanDatabaseRevision) => void): () => void;
+    listDocuments(options?: Record<string, unknown>): Promise<unknown>;
+    getDocument(documentId: string): Promise<unknown>;
+    createDocument(input: Record<string, unknown>): Promise<unknown>;
+    editDocument(documentId: string, input: Record<string, unknown>): Promise<unknown>;
+    deleteDocument(documentId: string, expectedRevision?: number): Promise<unknown>;
+    searchDocuments(options: Record<string, unknown>): Promise<unknown>;
+    readDocumentLines(documentId: string, options: Record<string, unknown>): Promise<unknown>;
+    files: { createFile(input: { name: string; mimeType?: string; buffer: Blob | ArrayBuffer | Uint8Array }): Promise<KanbanFileReference>; readFile(fileId: string): Promise<{ file: KanbanFileReference; buffer: ArrayBuffer }>; deleteFile(fileId: string): Promise<boolean> };
+  } };
+
 }
 
 export type KanbanRuntimeLocale = "zh-CN" | "en";
@@ -126,6 +124,7 @@ export type KanbanBridgeOperation =
   | "kv.getValue"
   | "kv.setValue"
   | "database.revision"
+  | "knowledge.revision"
   | "knowledge.listDocuments"
   | "knowledge.getDocument"
   | "knowledge.createDocument"
@@ -175,11 +174,12 @@ const KANBAN_BRIDGE_INPUT_FIELDS: Record<KanbanBridgeOperation, readonly string[
   "kv.getValue": ["key"],
   "kv.setValue": ["key", "value"],
   "database.revision": ["database"],
+  "knowledge.revision": [],
   "knowledge.listDocuments": ["pageSize", "cursor"],
   "knowledge.getDocument": ["documentId"],
   "knowledge.createDocument": ["id", "title", "markdown"],
-  "knowledge.editDocument": ["documentId", "title", "markdown"],
-  "knowledge.deleteDocument": ["documentId"],
+  "knowledge.editDocument": ["documentId", "title", "markdown", "expectedRevision"],
+  "knowledge.deleteDocument": ["documentId", "expectedRevision"],
   "knowledge.searchDocuments": [
     "query",
     "documentId",
@@ -192,7 +192,7 @@ const KANBAN_BRIDGE_INPUT_FIELDS: Record<KanbanBridgeOperation, readonly string[
   "knowledge.readDocumentLines": ["documentId", "startLine", "endLine"],
 };
 
-for (const [operation, fields] of Object.entries(KANBAN_BRIDGE_INPUT_FIELDS)) { if (!operation.startsWith("runtime.") && !operation.startsWith("studio.")) (KANBAN_BRIDGE_INPUT_FIELDS as Record<string, readonly string[]>)[operation] = [...fields, "database"]; }
+for (const [operation, fields] of Object.entries(KANBAN_BRIDGE_INPUT_FIELDS)) { if (!operation.startsWith("runtime.") && !operation.startsWith("studio.")) (KANBAN_BRIDGE_INPUT_FIELDS as Record<string, readonly string[]>)[operation] = [...fields, operation.startsWith("knowledge.") || operation.startsWith("files.") ? "knowledgeBase" : "database"]; }
 
 export interface KanbanProjectStructure {
   projectType: "kanban";
@@ -443,7 +443,7 @@ const request=(operation,input)=>{
     catch{window.clearTimeout(timeout);pending.delete(requestId);reject(invalidRequest());}
   });
 };
-const createFiles=(database)=>Object.freeze({
+const createFiles=(knowledgeBase)=>Object.freeze({
   createFile:async(input)=>{
     if(!input||typeof input.name!=="string")throw invalidRequest();
     const source=input.buffer;
@@ -452,10 +452,10 @@ const createFiles=(database)=>Object.freeze({
     const bytes=source instanceof Blob?new Uint8Array(await source.arrayBuffer()):source instanceof ArrayBuffer?new Uint8Array(source):source;
     let binary="";
     for(let offset=0;offset<bytes.length;offset+=32768)binary+=String.fromCharCode(...bytes.subarray(offset,offset+32768));
-    return request("files.createFile",{database,name:input.name,mimeType:input.mimeType||(source instanceof Blob?source.type:undefined)||undefined,base64:btoa(binary)});
+    return request("files.createFile",{knowledgeBase,name:input.name,mimeType:input.mimeType||(source instanceof Blob?source.type:undefined)||undefined,base64:btoa(binary)});
   },
-  readFile:(fileId)=>request("files.readFile",{database,fileId}).then(({file,base64})=>({file,buffer:Uint8Array.from(atob(base64),(char)=>char.charCodeAt(0)).buffer})),
-  deleteFile:(fileId)=>request("files.deleteFile",{database,fileId})
+  readFile:(fileId)=>request("files.readFile",{knowledgeBase,fileId}).then(({file,base64})=>({file,buffer:Uint8Array.from(atob(base64),(char)=>char.charCodeAt(0)).buffer})),
+  deleteFile:(fileId)=>request("files.deleteFile",{knowledgeBase,fileId})
 });
 const databaseContexts=new Map();
 const databases=Object.freeze({get:(database)=>{
@@ -463,14 +463,20 @@ const databases=Object.freeze({get:(database)=>{
   if(databaseContexts.has(database))return databaseContexts.get(database);
   const call=(operation,input={})=>request(operation,{...input,database});
   const context=Object.freeze({
-    files:createFiles(database),
     kv:Object.freeze({getValue:(key)=>call("kv.getValue",{key}),setValue:(key,value)=>isJsonValue(value)?call("kv.setValue",{key,value}).then(()=>undefined):Promise.reject(invalidRequest())}),
-    knowledge:Object.freeze({listDocuments:(options={})=>call("knowledge.listDocuments",options),getDocument:(documentId)=>call("knowledge.getDocument",{documentId}),createDocument:(input)=>call("knowledge.createDocument",input),editDocument:(documentId,input)=>call("knowledge.editDocument",{...input,documentId}),deleteDocument:(documentId)=>call("knowledge.deleteDocument",{documentId}),searchDocuments:(options)=>call("knowledge.searchDocuments",options),readDocumentLines:(documentId,options)=>call("knowledge.readDocumentLines",{...options,documentId})}),
     subscribe:(listener)=>{if(typeof listener!=="function")throw invalidRequest();let listeners=databaseRevisionListeners.get(database);if(!listeners){listeners=new Set();databaseRevisionListeners.set(database,listeners);}listeners.add(listener);const revision=databaseRevisions.get(database);if(revision)Promise.resolve().then(()=>{if(listeners.has(listener))listener({alias:database,revision});}).catch(()=>{});return ()=>{listeners.delete(listener);if(!listeners.size)databaseRevisionListeners.delete(database);};}
   });databaseContexts.set(database,context);return context;
 }});
+const knowledgeContexts=new Map();
+const knowledgeBases=Object.freeze({get:(knowledgeBase)=>{
+  if(typeof knowledgeBase!=="string"||!${DATABASE_ALIAS_PATTERN.toString()}.test(knowledgeBase))throw invalidRequest();
+  if(knowledgeContexts.has(knowledgeBase))return knowledgeContexts.get(knowledgeBase);
+  const call=(operation,input={})=>request(operation,{...input,knowledgeBase});
+  const context=Object.freeze({subscribe:(listener)=>{if(typeof listener!=="function")throw invalidRequest();const key="knowledgeBases:"+knowledgeBase;let listeners=databaseRevisionListeners.get(key);if(!listeners){listeners=new Set();databaseRevisionListeners.set(key,listeners);}listeners.add(listener);const revision=databaseRevisions.get(key);if(revision)Promise.resolve().then(()=>{if(listeners.has(listener))listener({alias:knowledgeBase,revision,kind:"knowledgeBases"});}).catch(()=>{});return ()=>{listeners.delete(listener);if(!listeners.size)databaseRevisionListeners.delete(key);};},files:createFiles(knowledgeBase),listDocuments:(options={})=>call("knowledge.listDocuments",options),getDocument:(documentId)=>call("knowledge.getDocument",{documentId}),createDocument:(input)=>call("knowledge.createDocument",input),editDocument:(documentId,input)=>call("knowledge.editDocument",{...input,documentId}),deleteDocument:(documentId,expectedRevision)=>call("knowledge.deleteDocument",{documentId,expectedRevision}),searchDocuments:(options)=>call("knowledge.searchDocuments",options),readDocumentLines:(documentId,options)=>call("knowledge.readDocumentLines",{...options,documentId})});
+  knowledgeContexts.set(knowledgeBase,context);return context;
+}});
 ${createKanbanMethodsBridgeScript(nonce)}
-Object.defineProperty(window,"steamHarnessKanban",{configurable:false,enumerable:true,value:Object.freeze({getConfiguration:clone,getPresentation:()=>({...presentation}),getRuntimeLocale:()=>request("runtime.getLocale",{}),studio:Object.freeze({getLocalAnalysis:()=>request("studio.getLocalAnalysis",{})}),databases,methods})});
+Object.defineProperty(window,"steamHarnessKanban",{configurable:false,enumerable:true,value:Object.freeze({getConfiguration:clone,getPresentation:()=>({...presentation}),getRuntimeLocale:()=>request("runtime.getLocale",{}),studio:Object.freeze({getLocalAnalysis:()=>request("studio.getLocalAnalysis",{})}),databases,knowledgeBases,methods})});
 window.addEventListener("message",function(event){
   if(event.source!==window.parent||!event.data||event.data.nonce!==${safeNonce})return;
   if(handleKanbanMethodMessage(event.data))return;
@@ -494,10 +500,11 @@ window.addEventListener("message",function(event){
     const alias=event.data.alias;
     const revision=event.data.revision;
     if(typeof alias!=="string"||!${DATABASE_ALIAS_PATTERN.toString()}.test(alias)||typeof revision!=="string"||revision.length===0||revision.length>512)return;
-    if(databaseRevisions.get(alias)===revision)return;
-    databaseRevisions.set(alias,revision);
-    const listeners=databaseRevisionListeners.get(alias);
-    if(listeners)for(const listener of [...listeners])Promise.resolve().then(()=>listener({alias,revision})).catch(()=>{});
+    const key=event.data.kind==="knowledgeBases"?"knowledgeBases:"+alias:alias;
+    if(databaseRevisions.get(key)===revision)return;
+    databaseRevisions.set(key,revision);
+    const listeners=databaseRevisionListeners.get(key);
+    if(listeners)for(const listener of [...listeners])Promise.resolve().then(()=>listener({alias,revision,...(event.data.kind==="knowledgeBases"?{kind:"knowledgeBases"}:{})})).catch(()=>{});
     return;
   }
   if(event.data.type!==${responseMessage}||typeof event.data.requestId!=="string")return;
@@ -675,7 +682,9 @@ function validateKanbanBridgeInput(
   input: Record<string, unknown>,
 ): void {
   const allowedFields = new Set(KANBAN_BRIDGE_INPUT_FIELDS[operation]);
-  if (!operation.startsWith("runtime.") && !operation.startsWith("studio.") && (typeof input.database !== "string" || !DATABASE_ALIAS_PATTERN.test(input.database))) throw new Error("A declared database alias is required.");
+  const aliasField = operation.startsWith("knowledge.") || operation.startsWith("files.") ? "knowledgeBase" : "database";
+  if (!operation.startsWith("runtime.") && !operation.startsWith("studio.") && (typeof input[aliasField] !== "string" || !DATABASE_ALIAS_PATTERN.test(input[aliasField] as string))) throw new Error("A declared resource alias is required.");
+  if (input.expectedRevision !== undefined) readPositiveInteger(input.expectedRevision, "bridge.input.expectedRevision");
   if (Object.keys(input).some((key) => !allowedFields.has(key))) {
     throw new Error(`Kanban bridge ${operation} input contains unsupported fields.`);
   }
@@ -720,7 +729,8 @@ function validateKanbanBridgeInput(
         throw new Error("Kanban bridge KV value must be JSON-serializable and cannot be undefined.");
       }
       return;
-    case "database.revision": return;
+    case "database.revision":
+    case "knowledge.revision": return;
     case "knowledge.listDocuments":
       readOptionalIntegerInRange(
         input["pageSize"],
@@ -795,6 +805,7 @@ function isKanbanBridgeOperation(value: unknown): value is KanbanBridgeOperation
     value === "kv.getValue" ||
     value === "kv.setValue" ||
     value === "database.revision" ||
+    value === "knowledge.revision" ||
     value === "knowledge.listDocuments" ||
     value === "knowledge.getDocument" ||
     value === "knowledge.createDocument" ||

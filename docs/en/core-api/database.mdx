@@ -175,3 +175,9 @@ Custom builds should run `database generate` before TypeScript or frontend compi
 Server reads static manifests, source fingerprints, and artifact hashes without executing definition files. Download checks the same inventory and hashes and leaves no partial project on failure. Only `.steamharness/generated/database` is included from private runtime directories; other `.steamharness` data stays excluded.
 
 This API defines project business models. [Platform runtime storage](/en/core-api/runtime-storage) independently manages conversations, execution history and Agent records. Declaring business models does not convert existing KV data.
+
+## Server Web table management
+
+The catalog supports server pagination, search and explicit creation. Resource details manage account grants, entry bindings, applied models and rows; Studio and CLI Web browsing opens this page. Row reads support pagination, literal text search and scalar equality. Updates and deletes require a complete stable key and rowVersion. Reload models when schemaHash changes. Conflicts retain drafts.
+
+JSON transports BigInt and Decimal as strings, DateTime as ISO and Bytes as Base64, retaining lists and JSON structure. Database defaults and @updatedAt are applied. Client-generated defaults such as cuid()/uuid() must be supplied explicitly for SQL inserts in management. This structured table API does not support relation writes or raw SQL and does not establish generated Browser ORM support. Knowledge uses its independent [API](/en/core-api/knowledge-documents).

@@ -1,5 +1,7 @@
 # Unreleased
 
+- Added relational knowledge storage, account grants, versioned bindings, document CAS, Unicode substring search and private attachment collection. Restricted model/row management preserves BigInt/Decimal precision and rejects stale row edits.
+
 - Added platform history, ordered message/queue records, run usage and versioned Agent snapshots with account/entry isolation, revision conflicts, deletion tombstones, project identity resolution and active-session snapshot reads.
 
 - Added entry-scoped relational bindings, account API key-only SQL leases and per-operation authorization. Rebinding, access changes and cancellation revoke SQL identities and prevent stale clients from switching resources.

@@ -32,6 +32,7 @@ export * from "./types/index";
 export * from "./workflow/index";
 
 export * from "./databases/index";
+export * from "./knowledge-bases/index";
 export * from "./entries/index";
 
 export { readProjectManifest, selectProjectEntry, projectManifestForDistribution } from "@steamharness/project-manifest";

@@ -269,7 +269,7 @@ describe("KanbanWorkspace", () => {
     dispatchBridgeRequest(iframe, {
       requestId: "request-old",
       operation: "knowledge.listDocuments",
-      input: { database:"data",},
+      input: { knowledgeBase:"data",},
     });
     await waitFor(() => expect(onBridgeRequest).toHaveBeenCalledOnce());
     rerender(<KanbanWorkspace {...createProps({

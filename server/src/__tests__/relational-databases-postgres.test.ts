@@ -118,6 +118,63 @@ test("independent PostgreSQL resources support provisioning, account grants and 
     } finally { await writer.end(); }
     await assert.rejects(repository.issueCredentials("owner", a.id, { expectedSchemaHash: "0".repeat(64) }), { code: "DATABASE_SCHEMA_MISMATCH" });
   });
+  await t.test("table management preserves scalar values, validates models and rejects stale edits", async () => {
+    const c = await create("owner", "Managed table");
+    const schema = `model Record {
+ id String @id @default(cuid())
+ title String @map("display_title")
+ count BigInt
+ amount Decimal @db.Decimal(65,30)
+ amounts Decimal[] @db.Decimal(65,30)
+ counts BigInt[]
+ payload Json
+ bytes Bytes
+ at DateTime
+ updated DateTime @updatedAt
+ values String
+ rowVersion String
+ @@map("managed_records")
+}
+`;
+    const plan = await repository.plan("owner", c.id, { schema, migrations: [] });
+    const initial = migration(schema, plan.sql!);
+    await repository.deploy("owner", c.id, { migrations: [initial], schemaHash: initial.schemaHash });
+    const run = (input: any, actor = "owner") => repository.data(actor, c.id, { schemaHash: initial.schemaHash, ...input }) as Promise<any>;
+    const metadata = await run({ operation: 'models' });
+    assert.equal(metadata.models[0].table, 'managed_records');
+    assert.equal(metadata.models[0].fields.find((field: any) => field.name === 'title').column, 'display_title');
+    const data = { id: 'row-1', title: '中文 100%_text', count: '9007199254740993', amount: '12345678901234567890.123456789012345678901234567890', amounts: ['12345678901234567890.123456789012345678901234567890'], counts: ['9223372036854775807'], payload: { nested: ['value', 1] }, bytes: 'AP8=', at: '2026-11-02T00:00:00.000Z', values: 'model-values', rowVersion: 'model-version' };
+    const inserted = await run({ operation: 'insert', model: 'Record', data });
+    assert.equal(inserted.values.count, data.count); assert.equal(inserted.values.amount, data.amount);
+    assert.deepEqual(inserted.values.amounts, data.amounts); assert.deepEqual(inserted.values.counts, data.counts);
+    assert.deepEqual(inserted.values.payload, data.payload); assert.equal(inserted.values.bytes, data.bytes);
+    assert.equal(inserted.values.at, data.at); assert.ok(Date.parse(inserted.values.updated));
+    assert.equal(inserted.values.rowVersion, 'model-version'); assert.match(inserted.rowVersion, /^\d+$/);
+    const page = await run({ operation: 'rows', model: 'Record', pageSize: 1, search: '100%_', where: { id: 'row-1' } });
+    assert.equal(page.total, 1); assert.equal(page.items.length, 1);
+    assert.equal((await run({ operation: 'rows', model: 'Record', search: "' OR 1=1--" })).total, 0);
+    await assert.rejects(run({ operation: 'rows', model: 'Record', schemaHash: undefined }), { code: 'DATABASE_SCHEMA_MISMATCH' });
+    await assert.rejects(run({ operation: 'rows', model: 'Record', schemaHash: '0'.repeat(64) }), { code: 'DATABASE_SCHEMA_MISMATCH' });
+    await assert.rejects(run({ operation: 'rows', model: 'Record; DROP TABLE managed_records' }), { code: 'DATABASE_INVALID_REQUEST' });
+    await assert.rejects(run({ operation: 'rows', model: 'Record', where: { 'id;--': 'row-1' } }), { code: 'DATABASE_INVALID_REQUEST' });
+    await assert.rejects(run({ operation: 'insert', model: 'Record', data: { ...data, id: 'bad', count: 9007199254740992 } }), { code: 'DATABASE_INVALID_REQUEST' });
+    const changed = await run({ operation: 'update', model: 'Record', key: { id: 'row-1' }, rowVersion: inserted.rowVersion, data: { title: 'updated' } });
+    assert.notEqual(changed.rowVersion, inserted.rowVersion); assert.equal(changed.values.title, 'updated');
+    await assert.rejects(run({ operation: 'update', model: 'Record', key: { id: 'row-1' }, rowVersion: inserted.rowVersion, data: { title: 'lost' } }), { code: 'DATABASE_QUERY_FAILED' });
+    await assert.rejects(run({ operation: 'delete', model: 'Record', key: { title: 'updated' }, rowVersion: changed.rowVersion }), { code: 'DATABASE_INVALID_REQUEST' });
+    await repository.grant('owner', c.id, 'table-reader', 'read');
+    assert.equal((await run({ operation: 'rows', model: 'Record' }, 'table-reader')).mode, 'read');
+    await assert.rejects(run({ operation: 'delete', model: 'Record', key: { id: 'row-1' }, rowVersion: changed.rowVersion }, 'table-reader'), { code: 'DATABASE_ACCESS_DENIED' });
+    const identity = { projectId: randomUUID(), entryId: 'main', alias: 'main' };
+    const binding = await repository.bind('owner', { ...identity, databaseId: c.id, mode: 'read', schemaHash: initial.schemaHash });
+    const consumer = { ...identity, binding, schemaHash: initial.schemaHash };
+    assert.equal((await repository.data('owner', c.id, { operation: 'rows', model: 'Record' }, consumer) as any).mode, 'read');
+    await assert.rejects(repository.data('owner', c.id, { operation: 'delete', model: 'Record', key: { id: 'row-1' }, rowVersion: changed.rowVersion }, consumer), { code: 'DATABASE_ACCESS_DENIED' });
+    await repository.unbind('owner', identity);
+    await assert.rejects(repository.data('owner', c.id, { operation: 'rows', model: 'Record' }, consumer), { code: 'DATABASE_BINDING_CHANGED' });
+    assert.deepEqual(await run({ operation: 'delete', model: 'Record', key: { id: 'row-1' }, rowVersion: changed.rowVersion }).then(({ deleted }: any) => ({ deleted })), { deleted: true });
+    assert.equal((await run({ operation: 'rows', model: 'Record' })).total, 0);
+  });
   await t.test("management locks span connections and unsafe PUBLIC access prevents credential issuance", async () => {
     const client = await admin.connect(), key = `steamharness:database:"${catalog}":${a.id}`;
     try {

@@ -4,6 +4,7 @@ import path from "node:path";
 import os from "node:os";
 import { createDatabasesContext, createLocalDatabaseResolver, type DatabaseResolver } from "../databases/index";
 import { createRemoteRelationalDatabaseHost } from "../database/host";
+import { createKnowledgeBasesContext, createServerKnowledgeBaseHost } from '../knowledge-bases/index';
 import { createEntriesContext, projectEntryKey, type ResolvedProjectEntry } from "../entries/index";
 import { createLocalProjectKVStore, createProjectKVContext, createProjectPersistentValueContext } from "../kv/index";
 import type { RunContext } from "../types/context";
@@ -32,6 +33,8 @@ export function createExecutorResources(declaration: EntryDeclaration, options: 
     projectId: declaration.projectId,
     entryId: declaration.entryId,
     actor: options.actor,
+    knowledgeBases: createKnowledgeBasesContext({ projectId: declaration.projectId, entryId: declaration.entryId, requirements: declaration.registration.knowledgeBases ?? [],
+      host: options.knowledgeBaseHost ?? (connection ? createServerKnowledgeBaseHost({ ...connection, signal: options.abortSignal }) : undefined) }),
     databases: createDatabasesContext({ projectId: declaration.projectId, entryId: declaration.entryId, requirements: declaration.registration.databases, resolver, conversationId: options.conversationId, runId: options.runId,
       relationalDatabaseHost: options.relationalDatabaseHost ?? (connection ? createRemoteRelationalDatabaseHost(connection) : undefined), signal: options.abortSignal }),
     entries: createEntriesContext(declaration.manifest, { actor: options.actor ?? { isSystemAdmin: false }, projectId: declaration.projectId, sourceEntryId: declaration.entryId, get abortSignal() { return context().abortSignal; }, get toolPermissions() { return context().toolPermissions; } }, {

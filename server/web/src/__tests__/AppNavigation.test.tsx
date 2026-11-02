@@ -133,13 +133,12 @@ it.each(['sidebar', 'history'] as const)('protects project database drafts durin
   vi.spyOn(apiClient,'getProject').mockResolvedValue({errCode:0,errMessage:'',data:project});
   vi.spyOn(apiClient,'listVersions').mockResolvedValue({errCode:0,errMessage:'',data:{versions:[]} as any});
   vi.spyOn(apiClient,'listProjectMembers').mockResolvedValue({errCode:0,errMessage:'',data:{items:[]} as any});
-  vi.spyOn(apiClient,'databasePage').mockResolvedValue({errCode:0,errMessage:'',data:{items:[{spaceId:id,name:'Memory',canManage:true}],total:1,pageSize:20}});
-  vi.spyOn(apiClient,'databaseValues').mockResolvedValue({errCode:0,errMessage:'',data:{items:[{key:'one',namespace:'space',value:1}],total:1,pageSize:30}});
+  vi.spyOn(apiClient,'resourceRequest').mockImplementation(async (_kind,endpoint,body:any) => ({errCode:0,errMessage:'',data: endpoint?.startsWith('?') ? {items:[{id,name:'Memory'}],total:1,pageSize:20} : endpoint?.endsWith('/grants') ? [] : body?.operation==='models' ? {models:[{name:'Record',fields:[{name:'id',type:'String',required:true}],keyFields:['id']}],schemaHash:'a'.repeat(64),mode:'write'} : body?.operation==='rows' ? {items:[{values:{id:'one'},rowVersion:'42'}],total:1} : {schemaHash:'a'.repeat(64),mode:'write'} } as any));
   window.history.replaceState(null,'','/detail/project/databases');
   render(<App/>);
   fireEvent.click(await screen.findByRole('button',{name:/Memory/}));
-  fireEvent.click(await screen.findByRole('button',{name:'one'}));
-  fireEvent.change(screen.getByLabelText('JSON value'),{target:{value:'42'}});
+  fireEvent.click(await screen.findByRole('button',{name:'Edit'}));
+  fireEvent.change(screen.getByLabelText('Row values (JSON)'),{target:{value:'42'}});
   const navigate = () => {
     if (mode === 'sidebar') fireEvent.click(within(screen.getByRole('navigation',{name:'Main navigation'})).getByRole('button',{name:'Overview'}));
     else { window.history.replaceState(null,'','/projects'); fireEvent.popState(window); }
@@ -148,8 +147,8 @@ it.each(['sidebar', 'history'] as const)('protects project database drafts durin
   expect(await screen.findByRole('alertdialog')).toHaveTextContent('Discard unsaved changes?');
   expect(window.location.pathname).toBe('/detail/project/databases');
   fireEvent.click(screen.getByRole('button',{name:'Keep editing'}));
-  expect(screen.getByLabelText('JSON value')).toHaveValue('42');
+  expect(screen.getByLabelText('Row values (JSON)')).toHaveValue('42');
   navigate(); fireEvent.click(await screen.findByRole('button',{name:'Discard and continue'}));
   await waitFor(() => expect(window.location.pathname).toBe(mode === 'sidebar' ? '/detail/project/project' : '/projects'));
-  expect(screen.queryByLabelText('JSON value')).toBeNull();
+  expect(screen.queryByLabelText('Row values (JSON)')).toBeNull();
 });

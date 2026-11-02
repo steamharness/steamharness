@@ -5,6 +5,7 @@ import { normalizeProjectInfo, type ProjectInfoContract } from "../project-info/
 import { readProjectConfig } from "./config";
 export * from "./config";
 export const PROJECT_MANIFEST_FILE = "steamharness.json";
+export interface KnowledgeBaseRequirement { alias: string; knowledgeBaseId: string }
 
 export interface ProjectEntry {
   entryId: string;
@@ -21,6 +22,7 @@ export interface ProjectEntry {
   configuration?: string;
   /** Resolved host metadata; steamharness.json entries declare only alias strings. */
   databases: DatabaseRequirement[];
+  knowledgeBases?: KnowledgeBaseRequirement[];
   schedulePresets?: unknown[];
 }
 export interface ProjectManifest {
@@ -33,8 +35,9 @@ export interface ProjectManifest {
   entries: ProjectEntry[];
   defaultEntry: string;
 }
-export interface ProjectEntryDeclaration extends Omit<ProjectEntry, "databases"> {
+export interface ProjectEntryDeclaration extends Omit<ProjectEntry, "databases" | "knowledgeBases"> {
   databases: string[];
+  knowledgeBases?: string[];
 }
 export interface ProjectDeclaration extends Omit<ProjectManifest, "entries"> {
   version: string;
@@ -101,13 +104,16 @@ export function readProjectDeclaration(value: unknown, children: Record<string, 
     let entry = registration;
     if (registration.root !== ".") {
       const child = record(children[registration.root as string], `${registration.root}/${PROJECT_MANIFEST_FILE}`);
-      if (Object.keys(child).some(key => !["type", "name", "entry", "configuration", "projectCard", "projectInfo", "databases", "schedulePresets"].includes(key))) throw new Error(`${registration.root}/${PROJECT_MANIFEST_FILE} contains unsupported fields; child entries cannot declare project identity or more entries.`);
+      if (Object.keys(child).some(key => !["type", "name", "entry", "configuration", "projectCard", "projectInfo", "databases", "knowledgeBases", "schedulePresets"].includes(key))) throw new Error(`${registration.root}/${PROJECT_MANIFEST_FILE} contains unsupported fields; child entries cannot declare project identity or more entries.`);
       entry = { ...child, entryId: registration.entryId, root: registration.root };
     }
     const aliases = entry.databases ?? [];
     if (!Array.isArray(aliases) || aliases.some(alias => typeof alias !== "string" || !DATABASE_IDENTIFIER_PATTERN.test(alias))) throw new Error("Entry databases must contain only alias strings; configure database IDs in config.json.");
     if (new Set(aliases).size !== aliases.length) throw new Error(`entries[${index}].databases contains duplicate aliases.`);
-    return { ...normalizeProjectEntry({ ...entry, databases: [] }, `entries[${index}]`), databases: aliases as string[] };
+    const knowledgeAliases = entry.knowledgeBases;
+    if (knowledgeAliases !== undefined && (!Array.isArray(knowledgeAliases) || knowledgeAliases.some(alias => typeof alias !== 'string' || !DATABASE_IDENTIFIER_PATTERN.test(alias)) || new Set(knowledgeAliases).size !== knowledgeAliases.length)) throw new Error('Entry knowledgeBases must contain unique alias strings.');
+    const { knowledgeBases: _knowledge, ...normalized } = normalizeProjectEntry({ ...entry, databases: [], ...(knowledgeAliases === undefined ? {} : { knowledgeBases: [] }) }, `entries[${index}]`);
+    return { ...normalized, databases: aliases as string[], ...(knowledgeAliases === undefined ? {} : { knowledgeBases: knowledgeAliases as string[] }) };
   });
   const defaultType = selectProjectEntry({entries, defaultEntry: input.defaultEntry as string}).type;
   return { projectId: (input.id as string).toLowerCase(), name: input.name as string, version: input.version as string, entries, defaultEntry: input.defaultEntry as string,
@@ -122,16 +128,20 @@ export function readProjectManifest(value: unknown, configValue?: unknown, env: 
 }
 export function resolveProjectDatabases(declaration: ProjectDeclaration, configValue?: unknown, env: Record<string, string | undefined> = {}): ProjectManifest {
   const config = readProjectConfig(configValue, env);
-  return { ...declaration, entries: declaration.entries.map(entry => ({ ...entry, databases: entry.databases.map(alias => {
+  return { ...declaration, entries: declaration.entries.map(({ knowledgeBases, ...entry }) => ({ ...entry, databases: entry.databases.map(alias => {
     const databaseId = config.databases[alias];
     if (!databaseId) throw new Error(`Entry "${entry.entryId}" refers to unconfigured database alias "${alias}".`);
     return { alias, databaseId };
-  }) })) };
+  }), ...(knowledgeBases === undefined ? {} : { knowledgeBases: knowledgeBases.map(alias => {
+    const knowledgeBaseId = config.knowledgeBases?.[alias];
+    if (!knowledgeBaseId) throw new Error(`Entry "${entry.entryId}" refers to unconfigured knowledge base alias "${alias}".`);
+    return { alias, knowledgeBaseId };
+  }) }) })) };
 }
 
 export function normalizeProjectEntry(value: unknown, field = "entry"): ProjectEntry {
   const item = record(value, field);
-  if (Object.keys(item).some((key) => !["entryId", "type", "name", "projectCard", "projectInfo", "root", "entry", "configuration", "databases", "schedulePresets"].includes(key))) throw new Error(`${field} contains unsupported fields.`);
+  if (Object.keys(item).some((key) => !["entryId", "type", "name", "projectCard", "projectInfo", "root", "entry", "configuration", "databases", "knowledgeBases", "schedulePresets"].includes(key))) throw new Error(`${field} contains unsupported fields.`);
   if (typeof item.entryId !== "string" || !DATABASE_IDENTIFIER_PATTERN.test(item.entryId)) throw new Error(`${field}.entryId must be an identifier.`);
   if (!isProjectKind(item.type)) throw new Error(`${field}.type must be workflow, conversation, or kanban.`);
   if (typeof item.name !== "string" || !item.name.trim() || item.name.length > 256) throw new Error(`${field}.name is required.`);
@@ -146,8 +156,20 @@ export function normalizeProjectEntry(value: unknown, field = "entry"): ProjectE
   if (!Array.isArray(item.databases)) throw new Error(`${field}.databases must be an array (use [] for no database access).`);
   const databases = item.databases.map((database, index) => normalizeDatabaseRequirement(database, `${field}.databases[${index}]`));
   if (new Set(databases.map((database) => database.alias)).size !== databases.length) throw new Error(`${field}.databases contains duplicate aliases.`);
+  const knowledgeBases = item.knowledgeBases === undefined ? undefined : normalizeKnowledgeRequirements(item.knowledgeBases);
   if (item.schedulePresets !== undefined && !Array.isArray(item.schedulePresets)) throw new Error(`${field}.schedulePresets must be an array.`);
-  return { entryId: item.entryId, type: item.type, name: item.name.trim(), root, entry, databases, ...(projectCard === undefined ? {} : { projectCard }), ...(item.projectInfo === undefined ? {} : { projectInfo: normalizeProjectInfo(item.projectInfo) }), ...(configuration === undefined ? {} : { configuration }), ...(item.schedulePresets === undefined ? {} : { schedulePresets: item.schedulePresets as unknown[] }) };
+  return { entryId: item.entryId, type: item.type, name: item.name.trim(), root, entry, databases, ...(knowledgeBases === undefined ? {} : { knowledgeBases }), ...(projectCard === undefined ? {} : { projectCard }), ...(item.projectInfo === undefined ? {} : { projectInfo: normalizeProjectInfo(item.projectInfo) }), ...(configuration === undefined ? {} : { configuration }), ...(item.schedulePresets === undefined ? {} : { schedulePresets: item.schedulePresets as unknown[] }) };
+}
+
+function normalizeKnowledgeRequirements(value: unknown): KnowledgeBaseRequirement[] {
+  if (!Array.isArray(value)) throw new Error('knowledgeBases must be an array.');
+  const result = value.map(raw => {
+    const item = record(raw, 'knowledgeBases');
+    if (Object.keys(item).some(key => !['alias', 'knowledgeBaseId'].includes(key)) || typeof item.alias !== 'string' || !DATABASE_IDENTIFIER_PATTERN.test(item.alias) || typeof item.knowledgeBaseId !== 'string' || !DATABASE_UUID_PATTERN.test(item.knowledgeBaseId)) throw new Error('Invalid knowledge base requirement.');
+    return { alias: item.alias, knowledgeBaseId: item.knowledgeBaseId.toLowerCase() };
+  });
+  if (new Set(result.map(item => item.alias)).size !== result.length) throw new Error('knowledgeBases contains duplicate aliases.');
+  return result;
 }
 
 export function selectProjectEntry<T extends { entryId: string }>(manifest: { entries: T[]; defaultEntry: string }, entryId = manifest.defaultEntry): T {

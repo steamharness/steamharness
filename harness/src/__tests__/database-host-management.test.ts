@@ -14,13 +14,12 @@ it('lets the local host inspect retained data after consumer revocation without 
   const request = registry.request({ projectId, entryId: 'main', alias: 'data', permissions: { kv: { read: all, write: all }, knowledge: { read: all, write: all } }, target: { kind: 'create', name: 'Host data' } });
   const approval = registry.review(request.requestId, { approve: true });
   const database = createDatabasesContext({ projectId, entryId: 'main', requirements: [{ alias: 'data', databaseId: approval.databaseId! }], resolver: createLocalDatabaseResolver(registry) }).get('data');
-  await database.kv.setValue('nullable', null); await database.knowledge.createDocument({ title: 'Guide', markdown: 'Retained' });
+  await database.kv.setValue('nullable', null);
   registry.revoke(registry.read().grants[0]!.grantId);
   await assert.rejects(database.kv.getValue('nullable'));
   const host = createLocalDatabaseManagementContext(approval.databaseId!, { registry });
   assert.deepEqual(await executeDatabaseOperation(host, 'kv.getEntry', { key: 'nullable' }), { exists: true, value: null });
   assert.deepEqual(await executeDatabaseOperation(host, 'kv.getEntry', { key: 'missing' }), { exists: false, value: undefined });
-  assert.equal((await host.knowledge.listDocuments()).items.length, 1);
   await assert.rejects(executeDatabaseOperation(host, 'kv.setValue', { key: 'nullable', value: 1, create: true }), /already exists/);
   assert.equal(await host.kv.getValue('nullable'), null);
   await assert.rejects(database.kv.getValue('nullable'));

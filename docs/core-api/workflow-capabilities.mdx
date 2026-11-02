@@ -59,7 +59,7 @@ KV 的 `get`、知识库的 `list/get/search/read_lines` 采用相同的结果�
 
 ## KV 保留键
 
-`kv_store` 与运行时共用同一个命名空间，因此它拒绝写入运行时自己的键：`tokenUsage.total` 与 `tokenUsage.entry.*`（项目与 conversation 两个作用域），以及 conversation 作用域下的 `conversation.state` 与 `agent.*`（包含 `agent.pendingPlanApproval` 等待确认状态）。Agent 执行历史由独立 Durable SQLite 保存，见 [createAgentNode](./create-agent-node.mdx)。被拒绝时返回 `input_validation`，不会静默覆盖记账或运行状态。
+`kv_store` 与运行时共用同一个命名空间，因此它拒绝写入运行时自己的键：`tokenUsage.total` 与 `tokenUsage.entry.*`（项目与 conversation 两个作用域），以及 conversation 作用域下的 `conversation.state` 与 `agent.*`（包含 `agent.pendingPlanApproval` 等待确认状态）。Agent 执行历史默认由平台关系存储保存，见 [运行存储](./runtime-storage.mdx)。被拒绝时返回 `input_validation`，不会静默覆盖记账或运行状态。
 
 ## 宿主配置
 
@@ -69,7 +69,7 @@ KV 的 `get`、知识库的 `list/get/search/read_lines` 采用相同的结果�
 
 Core 知识库和 KV 工具的成功结果可以携带资源卡片摘要，宿主按自身能力展示并打开对应资源。资源目标保留知识库文档 ID 或 KV 键，打开时重新校验权限。
 
-使用 `createAgentNode` / `createAgentConversationProject` 的自定义工具，也可以在成功结果的 `details.resourceCard` 中声明摘要。Core 将它原样传入现有工具输出，共享运行界面自动生成卡片；工具的 `content` 和普通消息接口保持原样。`kind` 支持 `knowledge`、`kv`、`project`、`kanban`、`browser`、`file`，`operation` 为 `read`、`write`、`open` 或 `show`，`title` 可选且最多 200 字符；`target` 使用下文同样的目标字段。资源目标必须携带 `projectId`、`entryId` 和实际数据库 `database` alias；可包含 `spaceId`。失败结果保留工具错误，不生成成功卡片。此摘要不执行写入或固定命令；控制固定与 Kanban 参数使用显式卡片能力。
+使用 `createAgentNode` / `createAgentConversationProject` 的自定义工具，也可以在成功结果的 `details.resourceCard` 中声明摘要。Core 将它原样传入现有工具输出，共享运行界面自动生成卡片；工具的 `content` 和普通消息接口保持原样。`kind` 支持 `knowledge`、`kv`、`project`、`kanban`、`browser`、`file`，`operation` 为 `read`、`write`、`open` 或 `show`，`title` 可选且最多 200 字符；`target` 使用下文同样的目标字段。资源目标必须携带 `projectId`、`entryId` 和对应别名：KV 使用 `database`，知识库使用 `knowledgeBase`。失败结果保留工具错误，不生成成功卡片。此摘要不执行写入或固定命令；控制固定与 Kanban 参数使用显式卡片能力。
 
 ```ts
 return {
@@ -79,13 +79,13 @@ return {
       kind: "knowledge",
       operation: "read",
       title: document.title,
-      target: { source: "server", projectId: context.projectId, entryId: context.entryId, database: "data", documentId: document.id },
+      target: { source: "server", projectId: context.projectId, entryId: context.entryId, knowledgeBase: "docs", documentId: document.id },
     },
   },
 };
 ```
 
-`workflow-ui_present_card` 通过工具结果向支持卡片的宿主发送结构化命令，普通消息接口无需增加字段。项目须在 `executor.tools` 中启用该工具。使用稳定的 `cardId`，`action: "upsert"` 创建或更新卡片，`action: "remove"` 只接受 `cardId` 并移除卡片；`pinned` 控制当前客户端的会话固定状态，显式固定命令可覆盖用户上次的固定选择。顶层 `preview: boolean` 用于 `kanban`、`project` 或 `browser` 卡片，控制对话右上预览是否默认展开；已识别的 Kanban 项目和浏览器卡片默认开启预览并固定，传 `false` 可关闭。预览区与消息正文并排，窄窗口移到消息上方；点击 Kanban 项目卡片进入 Dock 预览。`target` 按资源种类提供 `source`（`local`、`server` 或当前宿主项目的 `current`）和 `projectId`；在小助手中，`current` 指向其当前操作的项目，而小助手自身的 KV/知识库调用仍指向小助手项目。浏览器使用 HTTP(S) `url`，本地文件使用项目内相对 `filePath`，KV 使用 `scope`、`key` 和必要时的 `conversationId`，知识库文档使用 `documentId`。宿主在打开时重新校验目标权限。
+`workflow-ui_present_card` 通过工具结果向支持卡片的宿主发送结构化命令，普通消息接口无需增加字段。项目须在 `executor.tools` 中启用该工具。使用稳定的 `cardId`，`action: "upsert"` 创建或更新卡片，`action: "remove"` 只接受 `cardId` 并移除卡片；`pinned` 控制当前客户端的会话固定状态，显式固定命令可覆盖用户上次的固定选择。顶层 `preview: boolean` 用于 `kanban`、`project` 或 `browser` 卡片，控制对话右上预览是否默认展开；已识别的 Kanban 项目和浏览器卡片默认开启预览并固定，传 `false` 可关闭。预览区与消息正文并排，窄窗口移到消息上方；点击 Kanban 项目卡片进入 Dock 预览。`target` 按资源种类提供 `source`（`local`、`server` 或当前宿主项目的 `current`）和 `projectId`；在小助手中，`current` 指向其当前操作的项目，而小助手自身的 KV/知识库调用仍指向小助手项目。浏览器使用 HTTP(S) `url`，本地文件使用项目内相对 `filePath`，KV 使用 `scope`、`key` 和必要时的 `conversationId`，知识库文档使用独立的 `knowledgeBase` 别名及 `documentId`。宿主在打开时重新校验目标权限。
 
 ```json
 {

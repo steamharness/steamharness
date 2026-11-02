@@ -6,7 +6,7 @@
 
 新增、编辑、拖拽和删除会立即更新界面，并经过 300ms 防抖后按顺序写入 KV。页面顶部显示加载、保存和失败状态；写入失败不会回滚当前任务，可通过“重试”再次保存。
 
-先在宿主申请数据库并获批，在根 `config.json` 的 `databases.data` 中填写获批 ID，并在 `steamharness.json` 的入口 `databases` 中声明 `"data"`；模板不会生成或绑定虚构的数据库 ID。知识库通过 `window.steamHarnessKanban.databases.get("data").knowledge` 访问，权限由宿主授权维护；页面不能选择未声明的数据库或任意数据库路径。
+模板现有 KV 读写需要入口声明 `databases: ["data"]`，并在根 `config.json` 的 `databases.data` 中填写宿主批准的 ID；模板不会生成或绑定虚构资源。知识库独立通过 `window.steamHarnessKanban.knowledgeBases.get("docs")` 访问：入口声明 `knowledgeBases: ["docs"]`，根配置映射 `knowledgeBases.docs`，并在 Server 建立账号、项目与入口绑定。知识库与 KV 的同名别名互相独立；页面不能选择未声明的资源或任意数据库路径。
 
 运行纯逻辑测试：
 

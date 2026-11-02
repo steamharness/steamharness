@@ -30,6 +30,15 @@ async function withManifestLock<T>(packagePath: string, operation: () => Promise
 
 /** Map an alias once and declare it on the selected entry. Grants remain host-managed. */
 export async function bindProjectDatabase(projectDir: string, entryId: string, alias: string, databaseId: string): Promise<void> {
+  return bindProjectResource(projectDir, entryId, alias, databaseId, "databases");
+}
+
+/** Knowledge uses its own resource map and independent host authorization. */
+export async function bindProjectKnowledgeBase(projectDir: string, entryId: string, alias: string, knowledgeBaseId: string): Promise<void> {
+  return bindProjectResource(projectDir, entryId, alias, knowledgeBaseId, "knowledgeBases");
+}
+
+async function bindProjectResource(projectDir: string, entryId: string, alias: string, databaseId: string, resource: "databases" | "knowledgeBases"): Promise<void> {
   const root = await realpath(projectDir);
   const reference = normalizeDatabaseRequirement({ alias, databaseId });
   const packagePath = path.join(root, "steamharness.json");
@@ -51,15 +60,17 @@ export async function bindProjectDatabase(projectDir: string, entryId: string, a
     const entryDocument = JSON.parse(declarationBefore);
     const entry = selectProjectEntry(declaration, entryId);
     // Validate entry paths before the first mapping exists.
-    const paths = { ...declaration, entries: declaration.entries.map(item => ({ ...item, databases: [] })) };
+    const paths = { ...declaration, entries: declaration.entries.map(item => ({ ...item, databases: [], knowledgeBases: [] })) };
     await resolveRegisteredProjectEntry(root, paths, selectProjectEntry(paths, entryId));
     const before = await readConfig();
     const config = readProjectConfig(before === undefined ? undefined : JSON.parse(before));
-    config.databases[reference.alias] = reference.databaseId;
-    const addAlias = !entry.databases.includes(reference.alias);
+    const mapping = config[resource] ??= {};
+    mapping[reference.alias] = reference.databaseId;
+    const aliases = entry[resource] ?? [];
+    const addAlias = !aliases.includes(reference.alias);
     if (addAlias) {
       const target = declarationPath === packagePath ? entryDocument.entries.find((item: { entryId: string }) => item.entryId === entryId) : entryDocument;
-      target.databases = [...entry.databases, reference.alias];
+      target[resource] = [...aliases, reference.alias];
     }
     readProjectConfig(config);
     const temporary = `${configPath}.${randomUUID()}.tmp`;

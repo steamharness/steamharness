@@ -563,7 +563,7 @@ describe("openai-agents reusable mode", () => {
       "openai-agents-tool-3-knowledge_documents",
       "openai-agents-answer",
     ]);
-    expect(await context.databases.get("data").knowledge.getDocument("agent-runbook")).toMatchObject({
+    expect(await context.knowledgeBases.get("data").getDocument("agent-runbook")).toMatchObject({
       id: "agent-runbook",
       title: "Agent Runbook",
     });

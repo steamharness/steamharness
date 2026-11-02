@@ -43,12 +43,12 @@ export function conversationResourceCards(items: OutputItem[], projectId: string
       descriptor = presentation;
     }
     if (!descriptor) {
-      const target: Record<string, unknown> = { source: 'local', projectId, entryId, conversationId, database: input.database };
+      const target: Record<string, unknown> = { source: 'local', projectId, entryId };
       let kind: ResourceCard['kind'] | undefined;
       if (tool === 'workflow-kv_kv_store' || /workflow-desktop_(?:read|list|write)_project_kv/.test(tool)) {
-        kind = 'kv'; Object.assign(target, { projectId: input.projectId ?? projectId, key: input.key, scope: input.scope ?? 'project', conversationId: input.conversationId ?? conversationId });
+        kind = 'kv'; Object.assign(target, { projectId: input.projectId ?? projectId, database: input.database, key: input.key, scope: input.scope ?? 'project', conversationId: input.conversationId ?? conversationId });
       } else if (tool === 'workflow-knowledge_knowledge_documents' || /workflow-desktop_(?:query|mutate)_project_knowledge/.test(tool)) {
-        kind = 'knowledge'; Object.assign(target, { projectId: input.projectId ?? projectId, documentId: input.documentId ?? record(output?.document)?.id });
+        kind = 'knowledge'; Object.assign(target, { projectId: input.projectId ?? projectId, knowledgeBase: input.knowledgeBase, documentId: input.documentId ?? record(output?.document)?.id });
       } else if (tool === 'read' || tool === 'workflow-desktop_open_dock_tool' && input.tool === 'files') {
         kind = 'file'; target.filePath = input.filePath ?? input.path;
       } else if (tool === 'workflow-desktop_open_project' && input.kind === 'project') {
@@ -75,7 +75,7 @@ export function conversationResourceCards(items: OutputItem[], projectId: string
     } else {
       target.source ??= 'local'; target.projectId ??= projectId;
       if (target.projectId === projectId) target.entryId ??= entryId;
-      if (!target.entryId || (kind === 'kv' || kind === 'knowledge') && !target.database) continue;
+      if (!target.entryId || kind === 'kv' && !target.database || kind === 'knowledge' && !target.knowledgeBase) continue;
       if (target.scope === 'conversation') { target.conversationId ??= conversationId; }
       if (kind === 'file' && (!target.filePath || /^(?:[\\/]|[a-z]:)|(?:^|[\\/])\.\.(?:[\\/]|$)/i.test(target.filePath))) { continue; }
     }

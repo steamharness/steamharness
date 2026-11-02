@@ -106,7 +106,7 @@ export class ResourcePreviews {
       if (!registration) throw new Error(t('The resource project is unavailable.'));
       return { ...this.owner, id, entryId, entries: summary.entries, defaultEntry: summary.defaultEntry,
         uri: `workflow-server:${id}/${entryId}`, folderPath: '', entryRoot: '', aggregateName: summary.name,
-        name: registration.name, projectType: registration.type, databases: registration.databases,
+        name: registration.name, projectType: registration.type, databases: registration.databases, knowledgeBases: registration.knowledgeBases ?? [],
         fields: [], entrypoints: [] };
     }
     const workspace = card.kind === 'kanban' || card.kind === 'project' ? this.owner.assistant?.workdir : undefined;
@@ -139,7 +139,7 @@ export class ResourcePreviews {
     const target = card.target, scopeId = target.conversationId ?? '';
     if (card.kind === 'kv' || card.kind === 'knowledge') {
       data.content = target.source==='server'
-        ? await this.server(project!.id,`/entries/${encodeURIComponent(project!.entryId)}/resources/read`,{method:'POST',body:JSON.stringify({kind:card.kind,database:target.database,scope:target.scope,conversationId:target.conversationId,key:target.key,documentId:target.documentId})})
+        ? await this.server(project!.id,`/entries/${encodeURIComponent(project!.entryId)}/resources/read`,{method:'POST',body:JSON.stringify({kind:card.kind,...(card.kind === 'knowledge' ? { knowledgeBase: target.knowledgeBase } : { database: target.database }),scope:target.scope,conversationId:target.conversationId,key:target.key,documentId:target.documentId})})
         : await this.runtime.readResource(project!, scopeId, card.kind, target);
       if (card.kind === 'knowledge' && (data.content === null || data.content === undefined)) { throw new Error(t('This resource no longer exists.')); }
       data.format = card.kind === 'knowledge' && typeof (data.content as { markdown?: unknown }).markdown === 'string' ? 'markdown' : 'json';
@@ -306,7 +306,7 @@ export class ResourcePreviews {
     const data = this.get(id), project = data.project, call = parseKanbanBridgeCall(value);
     if (data.format !== 'kanban' || !project) { throw new Error(t('This project does not provide a Kanban preview.')); }
     // Card previews are temporary and cannot mutate the target's stored data.
-    if (!['runtime.getLocale', 'kv.getValue', 'database.revision', 'knowledge.listDocuments', 'knowledge.getDocument', 'knowledge.searchDocuments', 'knowledge.readDocumentLines', 'files.readFile'].includes(call.operation)) {
+    if (!['runtime.getLocale', 'kv.getValue', 'database.revision', 'knowledge.revision', 'knowledge.listDocuments', 'knowledge.getDocument', 'knowledge.searchDocuments', 'knowledge.readDocumentLines', 'files.readFile'].includes(call.operation)) {
       throw new Error(t('This resource preview is read-only.'));
     }
     if (call.operation === 'runtime.getLocale') { return locale(); }

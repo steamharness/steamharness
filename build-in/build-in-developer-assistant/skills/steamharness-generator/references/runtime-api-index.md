@@ -6,7 +6,7 @@
 **判断「运行时有没有某个能力」时先读这里**，不要去安装包的 `dist/*.d.ts` 或打包产物里翻：
 那是某个历史版本的构建产物，不是契约，而且答案就在下面。这里没有列出的能力就是没有。
 
-## 聚合入口与数据库（`context.entries` / `context.databases`）
+## 聚合入口与数据库（`context.entries` / `context.databases` / `context.knowledgeBases`）
 
 ### 聚合入口目录（`EntriesContext`）
 
@@ -28,22 +28,27 @@
 
 - `listValues(input)`
 - `kv`
-- `knowledge`
 - `getBinding()`
 - `getRevision()`
 - `subscribe(listener, options)`
 - `transaction(operation)`
 
-### 知识库与附件（`DatabaseKnowledgeContext`）
+### 知识库目录（`KnowledgeBasesContext`）
+
+- `list()`
+- `get(alias)`
+
+### 知识库与附件（`KnowledgeBaseContext`）
 
 - `listDocuments(input)`
-- `getDocument(documentId)`
+- `getDocument(id)`
 - `createDocument(input)`
 - `editDocument(input)`
-- `deleteDocument(documentId)`
+- `deleteDocument(id, expectedRevision)`
 - `searchDocuments(input)`
-- `files`
 - `readDocumentLines(input)`
+- `getRevision()`
+- `files`
 
 数据库按 alias 访问，根 config.json 集中记录 alias 与已获批的 databaseId，各入口在 steamharness.json 中仅声明使用的数据库别名；父项目显式登记子目录后才加载其配置，STEAMHARNESS_PROJECT_CONFIG 可覆盖部署值。支持多库和跨入口共享，权限由宿主维护。每次访问重新校验授权。
 会话 KV 按 projectId + entryId + conversationId 隔离。跨入口调用保留用户身份、取消信号与工具权限，加载目标配置快照。

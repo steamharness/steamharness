@@ -1,5 +1,9 @@
 # Unreleased
 
+- 【修复】离线 fork 创建和回执重试期间不再因后台历史恢复启动执行器，避免争抢 Agent 租约或错误提示会话尚未就绪。
+
+- 【新增】knowledge 资源、授权、绑定及文档/附件操作命令，database data 管理已应用模型的表数据；资源列表支持分页搜索，Web 面板打开 Server 资源页并移除 KV 编辑及本地/远程切换。
+
 - 【变更】Conversation、Workflow 与助手运行历史改存平台关系表，消息、队列、草稿、Run 与用量按账号和入口隔离；服务端租约协调窗口和崩溃恢复，不读取旧 JSON/SQLite，不离线降级。
 
 - 【新增】database bind／bindings／unbind 按账号、项目、入口和别名管理宿主关系库绑定，不写入项目资源 ID；执行入口支持 Core 类型化关系查询。

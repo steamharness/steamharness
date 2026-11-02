@@ -276,9 +276,9 @@ async function startProjectWebServer(options: WebOptions, credentials: { capabil
   let conversationController: ConversationController | undefined;
   let kanbanController: KanbanController | undefined;
   projectServer = new ProjectServerConnection(project.id, () => connection, () => {
-    if (projectServer) projectServer.state.blocking = project.databases.length > 0;
+    if (projectServer) projectServer.state.blocking = ((project.knowledgeBases?.length ?? 0) > 0);
     kanbanController?.projectChecksChanged(); broadcast();
-  }, { blocking: project.databases.length > 0, inspect: projectStartupInspector(project, alias => databases.assertBound(alias), () => databases.refreshDeclaration()) });
+  }, { blocking: ((project.knowledgeBases?.length ?? 0) > 0), inspect: projectStartupInspector(project, (alias, kind) => databases.assertBound(alias, kind), () => databases.refreshDeclaration()) });
   const observeStorageFailure = (metadata: Record<string, unknown> | undefined, previous: WebConnection | undefined) => {
     if (isKanban) return;
     if (!previous || previous.serverUrl !== connection?.serverUrl || previous.accessToken !== connection.accessToken) return;
@@ -572,7 +572,7 @@ async function startProjectWebServer(options: WebOptions, credentials: { capabil
       const projectInfo = declaration ? readProjectInfo(declaration.entries.find(entry => entry.entryId === project.entryId)) : project.projectInfo;
       if (revision !== projectCheckRevision) return [state(message.clientId), { type: 'project-server-checked', requestId: message.requestId }];
       project.projectInfo = projectInfo;
-      projectServer!.state.blocking = project.databases.length > 0;
+      projectServer!.state.blocking = ((project.knowledgeBases?.length ?? 0) > 0);
       await refreshAuth(true);
       await projectServer?.settled();
       return [state(message.clientId), { type: 'project-server-checked', requestId: message.requestId }];

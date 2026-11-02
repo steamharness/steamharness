@@ -1,4 +1,4 @@
-import { runApprovedProject as runLocalProjectWithReport } from "../test-databases";
+import { createExampleKnowledgeBases, runApprovedProject as runLocalProjectWithReport } from "../test-databases";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -300,22 +300,15 @@ describe("workspace workflow offline runtime smoke", () => {
 });
 
 describe("conversation knowledge persistence", () => {
-  it("writes a conversation transcript into PersistentValue-backed knowledge documents", async () => {
-    const persistentValueStore = createMemoryKVStore();
+  it("writes a conversation transcript through the independent knowledge context", async () => {
+    const knowledgeBases = createExampleKnowledgeBases();
     const report = await runLocalProjectWithReport({
       projectDir: projectDirectory("conversation-knowledge"),
       projectName: "conversation-knowledge",
       args: ["--message", "记录真实写入", "--title", "Persistent Conversation"],
       conversationId: "persistent-conversation-thread",
-      storage: {
-        host: "local",
-        local: {
-          kvStoreDir: await createTempDir("conversation-knowledge-real-kv-"),
-          persistentValueStore,
-        },
-      },
       maxNodeExecutions: 20,
-    }, persistentValueStore);
+    }, undefined, knowledgeBases);
 
     expect(report.status).toBe("success");
     expect(report.result.ok).toBe(true);
@@ -325,40 +318,9 @@ describe("conversation knowledge persistence", () => {
 
     const output = readOutputObject((report.result.data as { output: unknown }).output);
     const documentId = String(output.documentId);
-    const documentKey = [...persistentValueStore.values.keys()].find(key => key.endsWith(`:knowledge.document.${documentId}`))!;
-    const projectStoragePrefix = documentKey.slice(0, documentKey.indexOf(":knowledge.document."));
-    expect(projectStoragePrefix).not.toContain("2162c99c-4e8a-4ef6-9ba0-e368d36bf198");
-    const index = persistentValueStore.values.get(`${projectStoragePrefix}:knowledge.documents`);
-    const headPageId = (index as { headPageId?: unknown })?.headPageId;
-    const page = typeof headPageId === "string"
-      ? persistentValueStore.values.get(`${projectStoragePrefix}:knowledge.documents.page.${headPageId}`)
-      : undefined;
-    const locator = persistentValueStore.values.get(
-      `${projectStoragePrefix}:knowledge.documents.locator.${documentId}`,
-    );
-    const document = persistentValueStore.values.get(`${projectStoragePrefix}:knowledge.document.${documentId}`);
-
-    // Verifies the real non-dry-run path writes the conversation transcript
-    // through the injected PersistentValue store and bounded v2 index records.
+    const document = await knowledgeBases.get("data").getDocument(documentId);
     expect(output.knowledgeWritten).toBe(true);
-    expect(index).toMatchObject({
-      version: 2,
-      total: 1,
-      nextSequence: 1,
-      headPageId: expect.any(String),
-    });
-    expect(page).toMatchObject({
-      version: 2,
-      entries: [expect.objectContaining({
-        sequence: 1,
-        summary: expect.objectContaining({ id: documentId, title: "Persistent Conversation" }),
-      })],
-    });
-    expect(locator).toMatchObject({
-      version: 2,
-      pageId: headPageId,
-      sequence: 1,
-    });
+    expect((await knowledgeBases.get("data").listDocuments()).total).toBe(1);
     expect(document).toMatchObject({
       id: documentId,
       title: "Persistent Conversation",

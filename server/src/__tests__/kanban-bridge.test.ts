@@ -4,7 +4,7 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
-import { LocalDatabaseRegistry, createDatabasesContext, createLocalDatabaseResolver } from 'steamharness';
+import { LocalDatabaseRegistry, createDatabasesContext, createLocalDatabaseResolver, createKnowledgeBaseContext } from 'steamharness';
 import { invokeServerKanbanBridge, readKanbanBridgeCall } from '../kanban-bridge';
 import type { Storage } from '../storage';
 import type { KanbanBridgeCall } from '@steamharness/kanban-project';
@@ -21,24 +21,29 @@ test('Kanban dispatches KV, knowledge, attachments and revisions through the sel
     const request=registry.request({projectId,entryId:'board',alias:'data',permissions,target:{kind:'create',name:'Board'}});
     const approved=registry.review(request.requestId,{approve:true});
     const databases=createDatabasesContext({projectId,entryId:'board',requirements:[{alias:'data',databaseId:approved.databaseId!}],resolver:createLocalDatabaseResolver(registry)});
-    const storage={entryDatabases:async(...args:unknown[])=>{assert.deepEqual(args,[projectId,'board',actor,'1.0.0']);return databases;}} as unknown as Storage;
-    const call=(operation:KanbanBridgeCall['operation'],input:Record<string,unknown>={})=>invokeServerKanbanBridge(storage,projectId,{requestId:randomUUID(),operation,input:{database:'data',...input}},options);
+    const bytes=Buffer.from([0,137,255,13,10]);
+    const file={id:randomUUID(),spaceId:randomUUID(),storage:'database',name:'map.png',mimeType:'image/png',size:bytes.length,kind:'image',createdAt:new Date().toISOString()};
+    let knowledgeReads=0;
+    const knowledge=createKnowledgeBaseContext(async<T>(operation:string,input:any):Promise<T>=> {
+      if(operation==='knowledge.listDocuments')return {items:[],total:0,hasMore:false} as T;
+      if(operation==='knowledge.revision')return {revision:'knowledge-2'} as T;
+      if(operation==='files.readFile'){assert.equal(input.fileId,file.id);return {file,base64:bytes.toString('base64')} as T;}
+      if(operation==='files.stat')return file as T;
+      throw new Error('Unexpected knowledge operation.');
+    });
+    const storage={
+      entryDatabases:async(...args:unknown[])=>{assert.deepEqual(args,[projectId,'board',actor,'1.0.0']);return databases;},
+      entryKnowledgeBases:async(...args:unknown[])=>{assert.deepEqual(args,[projectId,'board',actor,'1.0.0']);knowledgeReads++;return {get:(alias:string)=>{assert.equal(alias,'data');return knowledge;}};},
+    } as unknown as Storage;
+    const call=(operation:KanbanBridgeCall['operation'],input:Record<string,unknown>={})=>invokeServerKanbanBridge(storage,projectId,{requestId:randomUUID(),operation,input:{[operation.startsWith('knowledge.')||operation.startsWith('files.')?'knowledgeBase':'database']:'data',...input}},options);
     await call('kv.setValue',{key:'board',value:{version:1}});
     assert.deepEqual(await call('kv.getValue',{key:'board'}),{version:1});
     const before=await call('database.revision');
-    await call('knowledge.createDocument',{id:'guide',title:'Guide',markdown:'# Guide\nshared'});
-    assert.equal((await call('knowledge.listDocuments') as {total:number}).total,1);
-    assert.equal((await call('knowledge.getDocument',{documentId:'guide'}) as {markdown:string}).markdown,'# Guide\nshared');
-    await call('knowledge.editDocument',{documentId:'guide',markdown:'updated'});
-    assert.equal((await call('knowledge.searchDocuments',{query:'updated'}) as {totalMatches:number}).totalMatches,1);
-    assert.equal((await call('knowledge.readDocumentLines',{documentId:'guide',startLine:1,endLine:1}) as {totalLines:number}).totalLines,1);
-    assert.notEqual(await call('database.revision'),before);
-    const bytes=Buffer.from([0,137,255,13,10]);
-    const file=await call('files.createFile',{name:'map.png',mimeType:'image/png',base64:bytes.toString('base64')}) as {id:string};
+    assert.equal((await call('knowledge.listDocuments') as {total:number}).total,0);
+    assert.equal(await call('knowledge.revision'),'knowledge-2');
+    assert.equal(await call('database.revision'),before,'knowledge resources do not change KV revisions');
     assert.deepEqual(Buffer.from((await call('files.readFile',{fileId:file.id}) as {base64:string}).base64,'base64'),bytes);
-    assert.equal(await call('files.deleteFile',{fileId:file.id}),true);
-    await call('knowledge.deleteDocument',{documentId:'guide'});
-    assert.equal(await call('knowledge.getDocument',{documentId:'guide'}),null);
+    assert.equal(knowledgeReads,3);
     registry.revoke(registry.authorization(approved.bindingRef!)!.grant.grantId);
     await assert.rejects(call('kv.getValue',{key:'board'}),/host authorization/);
   }finally{await rm(root,{recursive:true,force:true});}

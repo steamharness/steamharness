@@ -62,6 +62,7 @@ export interface Project extends Parameters {
   defaultEntry: string;
   entryRoot: string;
   databases: import('@steamharness/database-spaces').DatabaseRequirement[];
+  knowledgeBases?: { alias: string; knowledgeBaseId: string }[];
   id: string;
   uri: string;
   folderPath: string;

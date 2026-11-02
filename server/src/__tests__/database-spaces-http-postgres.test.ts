@@ -122,7 +122,6 @@ test('database HTTP authorization authorizes database IDs independently of manif
     const guest = open('guest', a, 'database', spaceId);
     assert.equal(await guest.kv.getValue('shared'), 1);
     await assert.rejects(guest.kv.setValue('shared', 2), /Permission denied/);
-    await assert.rejects(guest.knowledge.createDocument({ id: 'denied', title: 'Denied', markdown: 'Denied' }), /Permission denied/);
     await assert.rejects(open('consumer', a, 'database', spaceId).kv.getValue('shared'), /Permission denied/);
     await assert.rejects(open('owner', a, 'limited', spaceId).kv.getValue('shared'), /unavailable/);
     const sharing = await send('consumer', '/database-spaces/requests', { projectId: b, entryId: 'agent', alias: 'data', permissions, target: { kind: 'access', spaceId } });
@@ -130,17 +129,6 @@ test('database HTTP authorization authorizes database IDs independently of manif
     const shared = await send('owner', `/database-spaces/requests/${sharing.requestId}/review`, { approve: true });
     const y = open('consumer', b, 'agent', spaceId);
     assert.equal(await y.kv.getValue('shared'), 1);
-    await y.knowledge.createDocument({ id: 'shared-document', title: 'Shared', markdown: 'Shared text' });
-    assert.equal((await x.knowledge.getDocument('shared-document'))?.markdown, 'Shared text');
-    const revision = await x.getRevision();
-    const file = await y.knowledge.files.createFile({ name: 'shared.txt', buffer: Buffer.from('shared bytes') });
-    assert.notEqual(await x.getRevision(), revision);
-    const retained = await x.knowledge.files.readFile(file.id);
-    assert.equal((await retained.readBuffer()).toString(), 'shared bytes');
-    const attachment = (await pool.query('SELECT value FROM database_space_values WHERE space_id=$1 AND key=$2', [spaceId, `__knowledge_file:${file.id}`])).rows[0].value;
-    assert.equal(attachment.base64, undefined);
-    assert.match(attachment.blob.sha256, /^[a-f0-9]{64}$/);
-    assert.equal(attachment.file.id, file.id);
     // Permissions are maintained by the host, independently of recorded aliases and IDs.
     await send('owner', `/database-spaces/grants/${(await y.getBinding()).grant.grantId}/narrow`, { permissions: { ...permissions, kv: { read: {mode:'prefixes',prefixes:['public:']}, write: none } } });
     await assert.rejects(y.kv.getValue('shared'), /does not allow/);
@@ -155,7 +143,6 @@ test('database HTTP authorization authorizes database IDs independently of manif
     await send('consumer', `/database-spaces/${spaceId}/data`, { ...raw, operation: 'get' }, 403);
     await send('owner', `/database-spaces/grants/${(await y.getBinding()).grant.grantId}/revoke`, {});
     await assert.rejects(y.kv.getValue('shared'), /revoked/);
-    await assert.rejects(y.knowledge.files.readFile(file.id), /revoked/);
     assert.equal((await send('consumer', `/database-spaces/consumers/${b}/agent`))[0].status, 'invalid');
     const retry = await send('consumer', '/database-spaces/requests', { projectId: b, entryId: 'agent', alias: 'data', permissions, target: { kind: 'access', spaceId } });
     await send('owner', `/database-spaces/requests/${retry.requestId}/review`, { approve: false, reason: 'No longer required' });
@@ -163,7 +150,7 @@ test('database HTTP authorization authorizes database IDs independently of manif
     await storage.deleteProject(a, actor('owner'));
     assert.equal((await send('owner', '/database-spaces')).spaces[0].spaceId, spaceId);
     const management = await storage.databases.managementDatabase(spaceId, actor('owner'));
-    assert.equal((await (await management.knowledge.files.readFile(file.id)).readBuffer()).toString(), 'shared bytes');
+    assert.equal(await management.kv.getValue('shared'), 1);
   } finally {
     configureProjectAuthContext({});
     server.closeAllConnections();

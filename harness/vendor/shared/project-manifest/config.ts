@@ -7,6 +7,7 @@ export const PROJECT_CONFIG_ENV = "STEAMHARNESS_PROJECT_CONFIG";
 export interface ProjectConfig {
   version: 1;
   databases: Record<string, string>;
+  knowledgeBases?: Record<string, string>;
 }
 
 function object(value: unknown, field: string): Record<string, unknown> {
@@ -20,7 +21,7 @@ function section(value: unknown, field: string): Record<string, unknown> {
 
 function document(value: unknown, field: string, partial = false): Record<string, unknown> {
   const input = object(value, field);
-  if (Object.keys(input).some(key => !["version", "databases"].includes(key))) throw new Error(`${field} contains unsupported fields.`);
+  if (Object.keys(input).some(key => !["version", "databases", "knowledgeBases"].includes(key))) throw new Error(`${field} contains unsupported fields.`);
   if ((!partial || input.version !== undefined) && input.version !== 1) throw new Error(`${field}.version must be 1.`);
   return input;
 }
@@ -44,5 +45,11 @@ export function readProjectConfig(value: unknown, env: Record<string, string | u
     ids.add(id);
     databases[alias] = id;
   }
-  return { version: 1, databases };
+  const knowledgeValues = { ...section(base.knowledgeBases, `${PROJECT_CONFIG_FILE}.knowledgeBases`), ...section(override.knowledgeBases, `${PROJECT_CONFIG_ENV}.knowledgeBases`) };
+  const knowledgeBases: Record<string, string> = Object.create(null);
+  for (const [alias, id] of Object.entries(knowledgeValues)) {
+    if (!DATABASE_IDENTIFIER_PATTERN.test(alias) || typeof id !== 'string' || !DATABASE_UUID_PATTERN.test(id)) throw new Error(`config.knowledgeBases.${alias} must map an alias to a knowledge base UUID.`);
+    knowledgeBases[alias] = id.toLowerCase();
+  }
+  return { version: 1, databases, ...(Object.keys(knowledgeBases).length ? { knowledgeBases } : {}) };
 }

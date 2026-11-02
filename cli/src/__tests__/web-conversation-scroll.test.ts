@@ -16,7 +16,7 @@ afterEach(() => {
 function card(id: string, kind: 'knowledge' | 'kv'): OutputItem {
   return { id, metadata: { kind: 'agent-part', partType: 'tool' }, content: {
     tool: 'db_status', status: 'success', output: { details: { resourceCard: { kind,
-      title: id, target: { source: 'local', projectId: 'scroll-test',entryId:'main',database:'data', ...(kind === 'kv' ? { key: id } : { documentId: id }) },
+      title: id, target: { source: 'local', projectId: 'scroll-test', entryId: 'main', ...(kind === 'kv' ? { database: 'data', key: id } : { knowledgeBase: 'docs', documentId: id }) },
     } } },
   } };
 }

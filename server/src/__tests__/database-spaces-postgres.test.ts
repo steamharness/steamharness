@@ -7,7 +7,7 @@ import { DatabaseSpaceRepository } from '../database-spaces';
 const databaseUrl=process.env.STEAMHARNESS_TEST_DATABASE_URL?.trim();
 const all={mode:'all' as const},none={mode:'none' as const};
 const permissions={kv:{read:all,write:all},knowledge:{read:all,write:all}};
-test('Server spaces require approval and preserve shared data, indexes, attachments and revisions after revocation', {skip:databaseUrl?false:'STEAMHARNESS_TEST_DATABASE_URL is not configured'},async()=>{
+test('Server spaces require approval and preserve shared KV data and revisions after revocation', {skip:databaseUrl?false:'STEAMHARNESS_TEST_DATABASE_URL is not configured'},async()=>{
   const schema=`spaces_${randomUUID().replaceAll('-','')}`;
   const admin=new pg.Pool({connectionString:databaseUrl});await admin.query(`create schema ${schema}`);
   const url=new URL(databaseUrl!);url.searchParams.set('options',`-c search_path=${schema}`);
@@ -43,14 +43,9 @@ test('Server spaces require approval and preserve shared data, indexes, attachme
     await x.kv.setValue('public:a',1);await x.kv.setValue('public:b',2);await x.kv.setValue('secret',3);
     await Promise.all(Array.from({length:16},(_,i)=>(i%2?x:y).kv.updateValue('counter',value=>Number(value??0)+1)));
     assert.equal(await y.kv.getValue('counter'),16);
-    await Promise.all(Array.from({length:6},(_,i)=>(i%2?x:y).knowledge.createDocument({id:`doc-${i}`,title:`Document ${i}`,markdown:`Shared content ${i}`})));
-    assert.equal((await y.knowledge.listDocuments()).total,6);
-    const file=await x.knowledge.files.createFile({name:'shared.txt',buffer:Buffer.from('shared')});
-    const retained=await y.knowledge.files.readFile(file.id);assert.equal((await retained.readBuffer()).toString(),'shared');
-    await assert.rejects(y.kv.getValue(`__knowledge_file:${file.id}`),/knowledge API/);
-    const revision=await y.getRevision();await x.knowledge.editDocument({id:'doc-1',markdown:'updated'});assert.notEqual(await y.getRevision(),revision);
-    await assert.rejects(x.transaction(async db=>{await db.kv.setValue('rolledback',true);await db.knowledge.deleteDocument('doc-1');throw new Error('rollback');}),/rollback/);
-    assert.equal(await y.kv.getValue('rolledback'),undefined);assert.equal((await y.knowledge.getDocument('doc-1'))?.markdown,'updated');
+    const revision=await y.getRevision();await x.kv.setValue('revision',true);assert.notEqual(await y.getRevision(),revision);
+    await assert.rejects(x.transaction(async db=>{await db.kv.setValue('rolledback',true);throw new Error('rollback');}),/rollback/);
+    assert.equal(await y.kv.getValue('rolledback'),undefined);
     await repository.manage((await y.getBinding()).grant.grantId,'narrow',owner,{...permissions,kv:{read:{mode:'prefixes',prefixes:['public:']},write:none}});
     const page=await y.listValues({pageSize:1});assert.equal(page.total,2);assert.equal(page.items[0]?.key,'public:a');
     const next=await y.listValues({pageSize:1,cursor:page.nextCursor});assert.equal(next.items[0]?.key,'public:b');assert.equal(next.hasMore,false);
@@ -59,8 +54,8 @@ test('Server spaces require approval and preserve shared data, indexes, attachme
     await repository.manage((await y.getBinding()).grant.grantId,'rotate',owner);
     await assert.rejects(repository.data(spaceId,{...b,bindingRef:shared.bindingRef,credentialVersion:1,operation:'revision'},other),/changed/);
     await repository.manage((await y.getBinding()).grant.grantId,'revoke',owner);
-    await assert.rejects(retained.readBuffer(),/revoked/);await assert.rejects(y.getRevision(),/revoked/);
-    assert.equal((await x.knowledge.listDocuments()).total,6);
+    await assert.rejects(y.getRevision(),/revoked/);
+    assert.equal(await x.kv.getValue('shared'),1);
     const denied=await repository.request({...b,alias:'denied',permissions,target:{kind:'access',spaceId}},other);
     await repository.review(denied.requestId,{approve:false,reason:'Denied'},owner);
     assert.equal((await repository.read(other)).requests.find(item=>item.requestId===denied.requestId)?.status,'rejected');

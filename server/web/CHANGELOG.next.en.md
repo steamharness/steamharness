@@ -1,5 +1,7 @@
 # Unreleased
 
+- Replaced visible KV management with relational and knowledge resource catalogs, account grants, entry bindings, models, row CRUD, revision-aware documents and attachments, retaining draft protection.
+
 - Removed global and account memory, including tools, skills, authorization, service integration and settings controls.
 
 - Added: Project configuration selects one subagent model from existing AI models, with inheritance, permission restrictions and unavailable-selection feedback.

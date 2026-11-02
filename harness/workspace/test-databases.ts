@@ -1,3 +1,4 @@
+import { createTestKnowledgeBases } from '../src/__tests__/entry-test-resources';
 import { randomUUID } from 'node:crypto';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { cp, mkdtemp, rm, symlink, writeFile } from 'node:fs/promises';
@@ -30,7 +31,7 @@ export function createApprovedTestContext() {
   const {databaseId} = registry.review(request.requestId,{approve:true});
   const requirements = [{alias:'data',databaseId:databaseId!}];
   const manifest: ProjectManifest = {projectId,name:'Example',defaultEntry:entryId,entries:[{entryId,type:'workflow',name:'Example',root:'.',entry:'index.ts',databases:requirements}]};
-  return {projectId,entryId,
+  return {projectId,entryId,knowledgeBases:createTestKnowledgeBases(projectId,entryId),
     databases:createDatabasesContext({projectId,entryId,conversationId:'fixture-thread',requirements,resolver:createLocalDatabaseResolver(registry)}),
     entries:createEntriesContext(manifest,{projectId,sourceEntryId:entryId,actor:{isSystemAdmin:false}}, {
       async list(){throw new Error('No cross-entry calls in this fixture');},async run(){throw new Error('No cross-entry calls in this fixture');},
@@ -39,7 +40,7 @@ export function createApprovedTestContext() {
 }
 
 /** Copy and bind a sample before a real run. The published sample stays unbound. */
-export async function runApprovedProject(options: Parameters<typeof runLocalProjectWithReport>[0], databaseStore?: KVStore) {
+export async function runApprovedProject(options: Parameters<typeof runLocalProjectWithReport>[0], databaseStore?: KVStore, knowledgeResources?: ReturnType<typeof createTestKnowledgeBases>) {
   const directory = await mkdtemp(path.join(os.tmpdir(), 'example-approved-run-'));
   const projectDir = path.join(directory,'project');
   try {
@@ -54,12 +55,40 @@ export async function runApprovedProject(options: Parameters<typeof runLocalProj
       const request=registry.request({projectId:manifest.projectId,entryId:entry.entryId,alias:requirement.alias,permissions,target});
       databases[requirement.alias]=registry.review(request.requestId,{approve:true}).databaseId!;
     }
-    await writeFile(path.join(projectDir,'config.json'),JSON.stringify({version:1,databases}));
+    const knowledgeBases: Record<string, string> = {};
+    const fixtures = new Map(manifest.entries.map(entry => {
+      const aliases = (entry.knowledgeBases ?? []).map(base => base.alias);
+      for (const alias of aliases) knowledgeBases[alias] ??= randomUUID();
+      return [entry.entryId, knowledgeResources ?? createTestKnowledgeBases(manifest.projectId, entry.entryId, aliases)] as const;
+    }));
+    await writeFile(path.join(projectDir,'config.json'),JSON.stringify({version:1,databases,knowledgeBases}));
     const resolver=createLocalDatabaseResolver(registry);
     const host = options.storage?.host ?? 'local';
-    return await runLocalProjectWithReport({...options,projectDir,storage: { ...options.storage, host,
+    const bindingIds = new Map<string, string>();
+    return await runLocalProjectWithReport({...options,projectDir,knowledgeBaseHost: {
+      async resolve(identity) {
+        const key = `${identity.entryId}:${identity.alias}`;
+        if (!bindingIds.has(key)) bindingIds.set(key, randomUUID());
+        return { id: bindingIds.get(key)!, revision: 1, accessRevision: 1, mode: 'write', knowledgeBaseId: identity.knowledgeBaseId };
+      },
+      async operation<T>(identity, _binding, operation, input: any): Promise<T> {
+        const context = fixtures.get(identity.entryId)!.get(identity.alias);
+        switch (operation) {
+          case 'knowledge.listDocuments': return await context.listDocuments(input) as T;
+          case 'knowledge.getDocument': return (await context.getDocument(input.documentId) ?? null) as T;
+          case 'knowledge.createDocument': return await context.createDocument(input) as T;
+          case 'knowledge.editDocument': return await context.editDocument({ ...input, id: input.documentId }) as T;
+          case 'knowledge.deleteDocument': return await context.deleteDocument(input.documentId, input.expectedRevision) as T;
+          case 'knowledge.searchDocuments': return await context.searchDocuments(input) as T;
+          case 'knowledge.readDocumentLines': return await context.readDocumentLines(input) as T;
+          default: throw new Error('Unsupported example fixture operation.');
+        }
+      },
+    },storage: { ...options.storage, host,
       [host]: { ...options.storage?.[host], runtimePersistence: options.storage?.[host]?.runtimePersistence ?? createMemoryRuntimePersistence() } },databaseResolver:{async resolve(requirement,consumer){
       const resolved=await resolver.resolve(requirement,consumer);return resolved && databaseStore ? {...resolved,store:databaseStore} : resolved;
     }}});
   } finally { await rm(directory,{recursive:true,force:true}); }
 }
+
+export function createExampleKnowledgeBases() { return createTestKnowledgeBases(randomUUID(), "main"); }

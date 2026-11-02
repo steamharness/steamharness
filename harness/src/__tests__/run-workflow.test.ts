@@ -65,13 +65,13 @@ test("runProject calls a child workflow inside the parent context", async () => 
 
 test("runProject shares persistentValue with child workflows", async () => {
   const context = createTestProjectContext();
-  await context.databases.get("data").knowledge.createDocument({ id: "shared-key", title: "Shared", markdown: "from-persistent-parent" });
+  await context.knowledgeBases.get("data").createDocument({ id: "shared-key", title: "Shared", markdown: "from-persistent-parent" });
 
   const child: Definition<Record<string, never>, { value: unknown }> = {
     name: "child-workflow",
     async run(input, childContext) {
       return {
-        value: (await childContext.databases.get("data").knowledge.getDocument("shared-key"))?.markdown,
+        value: (await childContext.knowledgeBases.get("data").getDocument("shared-key"))?.markdown,
       };
     },
   };

@@ -1,5 +1,6 @@
+import { executeTableData, type TableDataRequest } from "./table-data";
 import { randomUUID } from "node:crypto";
-import type pg from "pg";
+import pg from "pg";
 import { assertDatabaseAlias, DatabaseResourceError, type DatabaseResource, type DatabaseGrant, type DatabaseAccessMode,
   type DatabaseBinding, type DatabaseConsumerIdentity, type DatabaseBindingIdentity,
   type DatabaseMigration, type DatabaseMigrationState, type DatabaseMigrationPlan } from "steamharness/database";
@@ -105,6 +106,14 @@ export class RelationalDatabaseRepository {
     const rows = await this.pool.query(`select r.* from ${this.catalog}.resources r where r.owner_user_id=$1 or exists
       (select 1 from ${this.catalog}.grants g where g.database_id=r.id and g.user_id=$1 and not g.revoked) order by r.created_at,r.id`, [userId(actor)]);
     return rows.rows.map(resourceView);
+  }
+  async listPage(actor: string, input: { page?: number; pageSize?: number; search?: string } = {}) {
+    const page = input.page ?? 1, pageSize = input.pageSize ?? 20, search = input.search ?? '';
+    if (!Number.isSafeInteger(page) || page < 1 || page > 1_000_000 || !Number.isSafeInteger(pageSize) || pageSize < 1 || pageSize > 100 || typeof search !== 'string' || search.length > 500) throw new DatabaseResourceError('DATABASE_INVALID_REQUEST', 'Invalid database pagination.');
+    const where = `(r.owner_user_id=$1 or exists(select 1 from ${this.catalog}.grants g where g.database_id=r.id and g.user_id=$1 and not g.revoked)) and strpos(lower(r.name),lower($2))>0`;
+    const total = Number((await this.pool.query(`select count(*) as total from ${this.catalog}.resources r where ${where}`, [userId(actor), search])).rows[0].total);
+    const rows = await this.pool.query(`select r.* from ${this.catalog}.resources r where ${where} order by r.created_at,r.id limit $3 offset $4`, [actor, search, pageSize, (page - 1) * pageSize]);
+    return { items: rows.rows.map(resourceView), total, page, pageSize };
   }
   async get(actor: string, id: string): Promise<DatabaseResource> {
     const rows = await this.pool.query(`select r.* from ${this.catalog}.resources r where r.id=$1 and (r.owner_user_id=$2 or exists
@@ -310,6 +319,37 @@ export class RelationalDatabaseRepository {
       await this.pool.query(`delete from ${this.catalog}.credentials where id=$1`, [credentialId]);
       throw error;
     }
+  }
+
+  /** All table operations serialize with schema changes and permission changes. */
+  async data(actor: string, id: string, input: TableDataRequest, consumer?: ConnectionRequest & { binding: { id: string; revision: number } }) {
+    const work = () => this.lock(id, async () => {
+      if (!input || typeof input !== 'object' || !['models', 'rows', 'insert', 'update', 'delete'].includes(input.operation)) throw new DatabaseResourceError('DATABASE_INVALID_REQUEST', 'Invalid table operation.');
+      if (input.operation !== 'models' && !/^[a-f0-9]{64}$/.test(consumer?.schemaHash ?? input.schemaHash ?? '')) throw new DatabaseResourceError('DATABASE_SCHEMA_MISMATCH', 'Read the applied model fingerprint before querying table data.');
+      const write = !['models', 'rows'].includes(input.operation);
+      const binding = consumer ? await this.checkedBinding(actor, consumer) : undefined;
+      if (binding && (binding.databaseId !== id || write && binding.mode !== 'write')) throw new DatabaseResourceError('DATABASE_ACCESS_DENIED', 'This database binding is read-only or changed.');
+      const access = await this.access(actor, id, write ? 'write' : undefined, consumer?.schemaHash ?? input.schemaHash);
+      const applied = await this.applied(id), schema = applied.at(-1)?.schema;
+      if (!schema) throw new DatabaseResourceError('DATABASE_SCHEMA_MISMATCH', 'Apply database models before managing table data.');
+      const credential = await this.issueCredentialsUnlocked(actor, id, { mode: write ? 'write' : 'read', expectedSchemaHash: access.resource.schemaHash ?? undefined, ttlMs: 60_000 });
+      const client = new pg.Client({ connectionString: credential.connectionString, connectionTimeoutMillis: 10_000, statement_timeout: 30_000 });
+      try {
+        await client.connect(); await client.query('begin');
+        if (!write) await client.query('set transaction read only');
+        const result = await executeTableData(client, schema, input); await client.query('commit');
+        return { ...result, schemaHash: access.resource.schemaHash, mode: binding?.mode === 'read' ? 'read' : access.mode, canManage: access.resource.ownerUserId === actor };
+      } catch (error) {
+        await client.query('rollback').catch(() => undefined);
+        if (error instanceof DatabaseResourceError) throw error;
+        throw new DatabaseResourceError('DATABASE_QUERY_FAILED', 'Table operation failed. Check field types, required values and unique constraints.');
+      } finally {
+        await client.end().catch(() => undefined);
+        await this.cluster.dropCredential(`shc_${credential.id.replaceAll('-', '')}`);
+        await this.pool.query(`delete from ${this.catalog}.credentials where id=$1`, [credential.id]);
+      }
+    });
+    return consumer ? this.bindingLock(actor, consumer, work) : work();
   }
 
   private async applied(id: string): Promise<AppliedMigration[]> {

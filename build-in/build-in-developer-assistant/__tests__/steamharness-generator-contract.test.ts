@@ -101,7 +101,7 @@ describe("steamharness-generator contract", () => {
     const prompt = await readFile(path.join(root, "assistant-prompt.ts"), "utf8");
     expect(rules).toContain("context.files");
     expect(rules).toContain("不属于全局成员清单");
-    expect(rules).toContain("database.knowledge.files");
+    expect(rules).toContain("knowledge.files");
     expect(rules).toContain("file-upload");
     expect(rules).toContain("file-download");
     expect(prompt).toContain("Binary uploads are distinct from project source publication");

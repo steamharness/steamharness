@@ -12,6 +12,9 @@
       "entry": "index.ts",
       "databases": [
         "data"
+      ],
+      "knowledgeBases": [
+        "data"
       ]
     },
     {
@@ -21,6 +24,9 @@
       "root": ".",
       "entry": "index.ts",
       "databases": [
+        "data"
+      ],
+      "knowledgeBases": [
         "data"
       ]
     }

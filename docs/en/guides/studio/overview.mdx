@@ -23,7 +23,7 @@ Project configurations, field editors, rename and project information dialogs ap
 
 In Steam mode, drag an empty area of the project or tool header to move the application window. The **+** on the left opens tools or instances, while the right keeps only the tools visibility toggle. Buttons, tabs and title text retain their normal clicks and text selection.
 
-The tools workspace has two tab rows: the upper row selects a tool, and the lower row manages its instances. Use **+** in the lower row to open more terminals, browsers, KV views, knowledge views, project information views, assistants, versions views or run traces. Additional projects also keep separate tabs on the right. Select or close each instance independently; resource queries and browser pages retain their own state. Terminal profiles, splitting and renaming live in the lower-row menu. Closing a terminal instance ends that session; closing the Terminal tool tab only hides the tool, so existing sessions remain available when reopening it or returning to IDE.
+The tools workspace has two tab rows: the upper row selects a tool, and the lower row manages its instances. Use **+** in the lower row to open more terminals, browsers, database views, project information views, assistants, versions views or run traces. Additional projects also keep separate tabs on the right. Select or close each instance independently; resource queries and browser pages retain their own state. Terminal profiles, splitting and renaming live in the lower-row menu. Closing a terminal instance ends that session; closing the Terminal tool tab only hides the tool, so existing sessions remain available when reopening it or returning to IDE.
 
 Choose **Editor** to browse and edit project files in the current workspace. Files share the lower tab row, where **+** creates an untitled file. Explorer selections, Quick Open and search results open in the right editor. Native Explorer, Search, Source Control and other sidebar tabs sit to the editor's right; drag the divider to resize them. Switching tools or hiding the tool area retains files and unsaved changes. Closing a file or the Editor tool still prompts to save, and returning to IDE keeps the documents available.
 
@@ -99,7 +99,7 @@ Use the **Project windows** icon in the running page toolbar. Compact cards show
 
 Entries opened from the Assistant sidebar also create and activate new native tabs using the current workspace's assistant configuration. In IDE mode they appear in the editor area; in Steam mode they appear under the project category in the right tool workspace. Closing all new tabs leaves the sidebar session running while the Assistant sidebar remains open. Open failures show an error notification, with details available in the Output panel.
 
-Information displays aggregate identity, version, entry type, database aliases and IDs. KV and knowledge panels select an entry and alias first; an entry can reference multiple databases. Database management supports requests, approval, saving alias/databaseId references, narrowing, revocation and rotation, including pending, rejected and invalid states. Hosts maintain permissions. CLI Web and Studio share a user-level SQLite registry.
+Information displays aggregate identity, version, entry type and resource declarations. The database tool separates relational and knowledge resources for the current Server account, merging shared references by resource kind and UUID. Management links open Server Web for account grants, entry bindings, models, table rows, knowledge documents and attachments without including tokens. Knowledge uses independent knowledgeBases declarations; relational definitions are generated from steamharness.database.ts. Persistent data requires reachable Server and PostgreSQL services. KV editors and local/remote KV switching have been removed.
 
 Checks statically validate registered entries. Missing database bindings affect the corresponding data operations while other entries remain accessible. The current protocol requires aggregate projects and a compatible CLI.
 
@@ -127,7 +127,7 @@ Deleted imported folders are automatically removed from both recent history and 
 
 Use the account entry in the lower left to sign in, verify credentials, or sign out. Select a SteamHarness Server using the application setting `studio.workflow.serverUrl`. VS Code SecretStorage stores credentials outside project source.
 
-Server Web manages cloud projects, versions, knowledge, KV, and other stored data. See [Workspace CLI](/en/cli/server-workspace) for packaging, uploads, and remote management.
+Server Web manages projects, versions, relational databases and knowledge bases. See [Workspace CLI](/en/cli/server-workspace) for packaging, uploads, and remote management.
 
 ## Run from source
 

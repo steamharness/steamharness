@@ -903,5 +903,14 @@
   "Progress": "Progress",
   "Open Settings": "Open Settings",
   "Select a Kanban entry to read runtime diagnostics.": "Select a Kanban entry to read runtime diagnostics.",
-  "Kanban runtime diagnostics are unavailable.": "Kanban runtime diagnostics are unavailable."
+  "Kanban runtime diagnostics are unavailable.": "Kanban runtime diagnostics are unavailable.",
+  "Sign in to SteamHarness Server to manage database resources.": "Sign in to SteamHarness Server to manage database resources.",
+  "Invalid Server address.": "Invalid Server address.",
+  "Manage resources in Server": "Manage resources in Server",
+  "Models, table data and account access are managed by Server.": "Models, table data and account access are managed by Server.",
+  "Resource type": "Resource type",
+  "All resources": "All resources",
+  "Relational databases": "Relational databases",
+  "Knowledge bases": "Knowledge bases",
+  "This database reference changed. Reopen the project.": "This database reference changed. Reopen the project."
 }

@@ -11,14 +11,10 @@ Business data requires an approved database alias declared by the entry. Hosts m
 
 ```ts
 const database = context.databases.get("data");
-await database.transaction(async db => {
-  await db.kv.setValue("settings:theme", "dark");
-  await db.knowledge.createDocument({
-    id: "guide", title: "Guide", markdown: "# Guide\nShared content",
-  });
-});
+await database.kv.setValue("settings:theme", "dark");
 const theme = await database.kv.getValue("settings:theme");
-const document = await database.knowledge.getDocument("guide");
+const knowledge = context.knowledgeBases.get("docs");
+const document = await knowledge.getDocument("guide");
 ```
 
 `database.kv` addresses shared space keys. `database.kv.conversation` additionally isolates the current project, entry and `conversationId`. Projects sharing a space can share top-level KV, but equal conversation IDs do not expose each other's conversation KV.
@@ -28,7 +24,7 @@ await database.kv.conversation.setValue("lastQuery", "example");
 await database.kv.updateValue("counter", value => Number(value ?? 0) + 1);
 ```
 
-`updateValue` uses host CAS and rereads on conflicts; both read and write access are required. `database.transaction` commits within one space, not across spaces. Use `database.knowledge` for knowledge-reserved data.
+`updateValue` uses host CAS and rereads on conflicts; both read and write access are required. `database.transaction` commits within one space, not across spaces. Knowledge documents live in independent platform relational tables and use `context.knowledgeBases.get("docs")`.
 
 ## Calls within the aggregate
 
@@ -46,7 +42,7 @@ Writes record `projectId`, `entryId` and available `runId` and `conversationId`.
 
 ## Knowledge and attachments
 
-`database.knowledge` provides listing, reading, creation, editing, deletion, search and line reads. `database.knowledge.files` manages attachments. Shared documents, files, indexes and revisions use the same authorization. See [Knowledge API](/en/core-api/knowledge-documents).
+`context.knowledgeBases.get("docs")` provides listing, reading, creation, editing, deletion, search and line reads. `context.knowledgeBases.get("docs").files` manages attachments. Documents, files, indexes and revisions use knowledge base authorization, independently of KV spaces. See [Knowledge API](/en/core-api/knowledge-documents).
 
 ## Conversation state
 

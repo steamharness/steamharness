@@ -112,6 +112,10 @@ export class LocalStorage implements ObjectStorage {
     });
   }
 
+  async deletePrivateObject(logicalPath: string): Promise<void> {
+    await rm(this.pathFor(logicalPath), { force: true });
+  }
+
   async assertPrivateObject(logicalPath: string): Promise<void> {
     const info = await stat(this.pathFor(logicalPath)).catch(() => undefined);
     if (info === undefined || !info.isFile()) {

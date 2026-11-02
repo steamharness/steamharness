@@ -217,17 +217,18 @@ const database = window.steamHarnessKanban.databases.get("data");
 const value = await database.kv.getValue("board.v1");
 await database.kv.setValue("board.v1", { markers: [] });
 const stop = database.subscribe(({ revision }) => { /* debounce a reread */ });
-const file = await database.files.createFile({ name: "map.png", buffer: blob });
-const { buffer } = await database.files.readFile(file.id);
+const knowledge = window.steamHarnessKanban.knowledgeBases.get("docs");
+const file = await knowledge.files.createFile({ name: "map.png", buffer: blob });
+const { buffer } = await knowledge.files.readFile(file.id);
 ```
 
-alias 必须在当前入口声明并获批绑定。知识库通过 database.knowledge，附件通过 database.files；页面不能选择 spaceId、项目、授权或数据路径。普通 KV 不能绕过知识库授权。订阅只返回 alias 和不透明 revision，卸载时调用取消函数。单文件上限 50 MiB，附件超时 120 秒，其他请求 15 秒，并发上限 16。所有请求处理 reject，未绑定或撤销显示恢复入口，不自动创建数据库。
+知识 alias 必须在当前入口的 knowledgeBases 声明并通过 Server 绑定。知识库通过 knowledgeBases.get(alias)，附件通过该上下文的 files；页面不能选择知识库 ID、项目、授权或数据路径。知识库和现存 KV 的同名 alias 独立，不能互相绕过授权。订阅只返回 alias 和不透明 revision，卸载时调用取消函数。单文件上限 50 MiB，附件超时 120 秒，其他请求 15 秒，并发上限 16。所有请求处理 reject，未绑定或撤销显示恢复入口，不自动创建数据库。
 
 模板与生成器同样使用 `databases.get("data").kv`，不使用已移除的顶层 `kv`。Studio 任务看板示例未绑定时明确显示临时模式，绑定后按命名配置分开保存；权限错误或读取失败不能伪装成保存成功。生成器先检查全部目标文件（包含 `configuration.json` 和 `.steamharnessignore`）是否冲突，再写入项目文件；数字开头的项目名称转换为合法 TypeScript 标识符，多行提示词写为转义后的字符串字面量。
 
 页面方法通过 `window.steamHarnessKanban.methods.register({name,description,inputSchema,readOnly?}, handler)` 注册（准确参数见公开类型）。资源卡片与方法调用必须带 projectId、entryId；先发现实例再使用 instanceId、configurationId、method、args 调用。不同入口和同一入口不同实例互不控制。相对缩放、平移和写入超时后先查询状态，不自动重试。
 
-文件导入先识别消费端：CLI `workspace file-upload/file-download` 的普通项目托管文件、File 配置字段的配置附件、`databases.get(alias).files` 的数据库附件不是同一种读取权限或通道。数据库附件引用包含 `storage: "database"` 与 `spaceId`；配置附件使用配置所属项目、入口与版本的窄权限读取。通用项目文件下载成功不能证明配置附件或数据库附件可用。迁移前保留原引用，按页面真实调用路径读回相同字节，再查询页面就绪状态（例如 `imageReady`）；无页面证据时如实报告。附件 404 后转向数据库仍失败时检查引用归属，不盲目换接口。大文件超时先诊断传输与存储，不把压缩、有损转码、分片或迁移当作默认修复。
+文件导入先识别消费端：CLI `workspace file-upload/file-download` 的普通项目托管文件、File 配置字段的配置附件、`knowledgeBases.get(alias).files` 的数据库附件不是同一种读取权限或通道。数据库附件引用包含 `storage: "database"` 与 `spaceId`；配置附件使用配置所属项目、入口与版本的窄权限读取。通用项目文件下载成功不能证明配置附件或数据库附件可用。迁移前保留原引用，按页面真实调用路径读回相同字节，再查询页面就绪状态（例如 `imageReady`）；无页面证据时如实报告。附件 404 后转向数据库仍失败时检查引用归属，不盲目换接口。大文件超时先诊断传输与存储，不把压缩、有损转码、分片或迁移当作默认修复。
 
 上传由根 .steamharnessignore 选择文件，不使用 .gitignore；不能排除注册模块、配置或静态产物。发行包不携带数据库、凭据、历史或用户配置。
 
@@ -476,87 +477,35 @@ try {
 
 必须 `await` `steamharness.endTimer(timer, context, { status?, message?, metadata? })`：`timer` 可以是 `steamharness.createTimerNode` 返回的 payload，也可以是 `timerId` 字符串；结束一个未启动的计时器、或重复结束同一个计时器，都会抛 `project_execution`。如果 workflow 业务代码在计时器仍为 `running` 时返回或中止，runtime cleanup 会在终端 report 前把它标记为 `cleared`，避免 UI 保留过期 running 卡片。
 
-## 独立数据库空间
+## 业务数据库与独立知识库
 
-`context.databases.get(alias)` 返回项目别名对应的数据库上下文，访问时按当前入口校验宿主授权。根 `config.json` 示例：
+业务模型在 `steamharness.database.ts` 和 `steamharness.schema` 定义，通过 CLI database generate/migrate 生成并应用。Node 导入 `.steamharness/generated/database/node/index.js` 的描述符后使用 `context.databases.connect(descriptor)`。关系库资源和账号、项目、入口、alias 绑定保存在 Server；不写旧 config.databases。连接不自动建库或迁移，模型不符、撤权和断连明确失败。Browser 描述符查询尚未接通，不生成已可用的 Browser ORM 示例。
 
-```json
-{
-  "version": 1,
-  "databases": {
-    "data": "00000000-0000-4000-8000-000000000001"
-  }
-}
-```
-
-`steamharness.json` 的各入口用 `"databases": ["data"]` 声明使用的别名，不写 ID。一个数据库只配置一个别名，可被多个入口引用；每个入口可引用多个库。业务代码按别名访问，更换库只修改 config.json 中一处 ID。`STEAMHARNESS_PROJECT_CONFIG` 接受 JSON，按别名覆盖 ID；不自动读取 .env。无效或缺失映射明确失败。分发保留文件配置，不写入环境覆盖值。申请和权限由宿主独立维护；保存映射不创建数据库或授予权限。每次访问重新校验授权。
-
-一个空间可被多个 projectId 和 entryId 授权访问。数据按 spaceId 保存，项目删除不删除空间。授权绑定消费方项目和入口，分别限制 KV、知识库的读写和键前缀，审批可缩小权限，撤销和轮换后每次访问立即重新校验。不要把凭据、运行时注册表或数据库数据放进项目源码和发行包。
-
-```ts
-const database = context.databases.get("data");
-await database.kv.updateValue("counter", value => Number(value ?? 0) + 1);
-await database.kv.conversation.setValue("draft", { text: "private" });
-const page = await database.listValues({ pageSize: 50 });
-await database.transaction(async db => {
-  await db.kv.setValue("ready", true);
-  await db.knowledge.createDocument({ id: "guide", title: "Guide", markdown: "# Guide" });
-});
-const unsubscribe = database.subscribe(revision => { /* debounce a reread */ });
-```
-
-KV 的 `.conversation` 使用 projectId + entryId + conversationId 命名空间；共享空间不会暴露另一入口会话。普通 KV 禁止读写知识库保留键和附件。知识库使用 `database.knowledge` 的 `listDocuments/getDocument/createDocument/editDocument/deleteDocument/searchDocuments/readDocumentLines`，附件使用 `database.knowledge.files.createFile/readFile/deleteFile`。`listDocuments` 返回分页结果，cursor 原样回传；附件引用包含 spaceId，读取和保留句柄也重新鉴权。`getRevision`、订阅、CAS、锁和事务均使用空间身份。
-
-事务失败全部回滚，远程事务使用 CAS 并发检查，不能在事务回调中执行不可重试的外部副作用。数据库 API 抛出的授权与未绑定错误必须交给宿主展示，不得吞错后自动创建空间或回退另一宿主。
+知识库无需项目定义 schema。入口声明 `"knowledgeBases": ["docs"]`，根 `config.json` 使用 `"knowledgeBases": { "docs": "<Server 创建的 UUID>" }`。`STEAMHARNESS_PROJECT_CONFIG` 可按别名覆盖；不自动读取 .env，打包保留文件值。使用 `steamharness knowledge create/bind/grant/revoke` 管理，账号必须先登录 Server。绑定不授予权限。多入口可复用 alias；业务库与知识库的同名 alias 独立。
 
 ## 项目知识文档
 
-知识文档 helper 的首参使用显式 DatabaseContext；也可直接调用 database.knowledge：
-
+使用独立上下文，不生成旧 PersistentValue helper：
 
 ```ts
-const storage = context.databases.get("data");
-const created = await steamharness.createKnowledgeDocument(storage, {
-  title: "Runbook",
-  markdown: "# Runbook\n\nUse this on-call note.",
-});
-
-const result = await steamharness.searchKnowledgeDocuments(storage, {
-  query: "on-call",
-  documentId: created.id,
-  beforeLines: 1,
-  afterLines: 1,
-  pageSize: 200,
-});
-
-const excerpt = await steamharness.readKnowledgeDocumentLines(storage, {
-  documentId: created.id,
-  startLine: 10,
-  endLine: 30,
-});
+const knowledge = context.knowledgeBases.get("docs");
+const created = await knowledge.createDocument({ title: "Runbook", markdown: "# Runbook" });
+const current = await knowledge.getDocument(created.id);
+if (current) await knowledge.editDocument({ id: current.id, markdown: "# Updated", expectedRevision: current.revision });
+const page = await knowledge.listDocuments({ pageSize: 20 });
+const matches = await knowledge.searchDocuments({ query: "on-call", pageSize: 20 });
+const lines = await knowledge.readDocumentLines({ documentId: created.id, startLine: 1, endLine: 10 });
+const file = await knowledge.files.createFile({ name: "notes.txt", buffer });
+const resolved = await knowledge.files.readFile(file.id);
+const latest = await knowledge.getDocument(created.id);
+if (latest) await knowledge.deleteDocument(latest.id, latest.revision);
 ```
 
+文档、分块和索引同一 SQL 事务提交；附件正文在私有文件存储，SQL 不保存 Base64。文档包含 revision，编辑和删除推荐传 expectedRevision，冲突保留草稿并重新读取。listDocuments 返回 items、total、hasMore 和可选 nextCursor；搜索支持中文和字面子串，cursor 绑定查询及资源 revision，变化后重新搜索。列表页上限100，搜索pageSize/maxMatches上限1000，前后文各最多100行，行读取最多1000行。
 
-conversation knowledge 应用要保持映射稳定：一个 `context.conversation.conversationId` 派生一个合法知识文档 id；每次 run 通过 `context.conversation` 追加消息；workflow 通过 `steamharness.createKnowledgeDocument` 或 `steamharness.editKnowledgeDocument` 重写完整 transcript markdown。需要离线本地测试时，为 `STEAMHARNESS_PERSISTENT_VALUE_STORE_DIR` 配置临时目录；只有未配置本地或远程 store 的示例才应暴露显式 `--dry-run`。
+附件引用保留 storage: "database" 与 spaceId（知识库 UUID），单文件最多50 MiB，文件桥超时120秒。Node readFile 下载一次，保留句柄每次读取重新鉴权。账号授权、绑定或访问版本变化使旧客户端失效，必须重新打开入口。Server 或 PostgreSQL 不可达时明确失败，不使用本地 KV 回退。显式测试 fixture 可离线运行，不能充当生产存储。
 
-可用 helper：
-
-- `steamharness.listKnowledgeDocuments(storage)` 返回按更新时间倒序排列的摘要。
-- `steamharness.getKnowledgeDocument(storage, documentId)` 返回完整 Markdown 文档或 `undefined`。
-- `steamharness.createKnowledgeDocument(storage, { id?, title, markdown })` 创建文档；`id` 可选，省略时从标题派生。
-- `steamharness.editKnowledgeDocument(storage, { id, title?, markdown? })` 更新标题和或 Markdown。
-- `steamharness.deleteKnowledgeDocument(storage, documentId)` 从索引移除文档并写 tombstone，因为 PersistentValue 目前没有 delete primitive；文档不存在时返回 `{ id, deleted: false }` 而不是抛错，调用方应按 `deleted` 判断结果。
-- `steamharness.searchKnowledgeDocuments(storage, { query, documentId?, beforeLines?, afterLines?, pageSize?, cursor?, maxMatches? })` 按行搜索 Markdown，并返回 `lineNumber`、匹配行和请求的上下文行。`pageSize` 与 `maxMatches` 上限为 1000，`beforeLines` 与 `afterLines` 取值 0–50；`cursor` 是不透明 offset，只能原样回传。
-- `steamharness.readKnowledgeDocumentLines(storage, { documentId, startLine, endLine })` 返回单个文档的 1-based 闭区间行范围，每次最多 1000 行，超过上限抛 `input_validation`。
-- `createKnowledgeDocument` 的 `id` 必须匹配 `^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$`，重复 id 抛 `input_validation`；`editKnowledgeDocument` 对不存在的 id 抛 `input_validation`。
-- create、edit、delete 需要原子写入：目标 `persistentValue` namespace 必须提供 `withLock`，或 store 实现了受限的 `executeMutation`；两者都没有时 helper 直接抛 `project_execution`（提示 "Knowledge document mutations require an atomic PersistentValue namespace lock or mutation executor"）。自建 store 时不要省略这两个能力之一，否则知识库 workflow 会在运行期失败。
-
-Token usage collection 存在 KV 中：
-
-- project `tokenUsage.total` 表示当前项目总用量。
-- conversation `tokenUsage.total` 表示 conversation 聚合用量。
-- conversation `tokenUsage.entry.<runId>.<sequence>` 表示单个 report 明细。
-- 系统总用量由宿主聚合各项目的 `tokenUsage.total`，不写入全局 KV。
+Conversation 历史、队列、Agent checkpoint 和 Token usage 使用平台关系表。不要为它们生成 KV、JSON 或 SQLite 回退；无需为每个会话创建业务数据库。需要把会话整理成知识文档时，由工作流显式调用上述知识 API，并按会话生成稳定文档 ID。
 
 `tokenUsage.enabled` 为 false 或省略时，`context.tokenUsage.report(...)` 是安全 no-op，生成的 workflow 不应添加自己的 fallback storage。启用后，runtime report 包含 `tokenUsage.run`；只有 `display` 为 true 时，本地宿主或 CLI Web 才显示 compact badge。手动上报字段包括 `inputTokens`、`outputTokens`、`totalTokens`、`reasoningTokens`、`cachedInputTokens` 和 `cacheCreationTokens`；本地宿主 badge 可见文本只显示总量，hover/focus 明细分别展示 Input、Output、Reasoning、Cache read、Cache write 和 Calls。
 
@@ -1316,7 +1265,7 @@ Core 提供「工作流能力」工具，把项目跟它周围的东西接起来
 
 宿主配置只在宿主注入回环桥时可用：`STEAMHARNESS_DEVELOPER_ASSISTANT_HOST_BRIDGE_URL` 与 `STEAMHARNESS_DEVELOPER_ASSISTANT_HOST_BRIDGE_TOKEN` 必须同时存在，且地址必须是不带凭据的 `http://127.0.0.1` 回环地址，否则这一项不暴露（`isAvailable` 返回 `false`，不会抛错打断其它能力；真正调用时才抛出说明地址不合法）。
 
-`workflow-ui_present_card` 用 `action: "upsert" | "remove"` 和稳定 `cardId` 向 Conversation 宿主发送卡片命令。remove 只接受 `cardId`；upsert 还需 `kind`（`kv`、`knowledge`、`project`、`browser`、`file`、`kanban`）及目标 `target`。`pinned` 是当前客户端按会话保存的固定状态，显式的 Agent 固定命令可覆盖用户上次的固定选择。顶层 `preview: boolean` 用于 `kanban`、`project` 或 `browser` 卡片，控制右上预览是否直接展开；已识别的 Kanban 项目和浏览器卡片默认 `preview: true` 且固定，`preview: false` 可关闭。`project` 卡片指向 Kanban 项目时点击进入 Dock 预览；浏览器预览仅在 Electron 可用。`target.source: "current"` 在小助手中指其当前操作的项目；小助手自己的 KV/知识库调用仍指向小助手项目。`kanban: { mode: "preview", values }` 是另一项参数能力：preview 只覆盖该卡片和 Dock 的参数；持久保存由 Studio Control manage_configurations 完成。浏览器仅 HTTP(S)，文件卡片使用 `target: { source: "current", filePath: "README.md" }`，路径必须是项目内相对路径；文件、KV、知识库卡片省略顶层 preview，显式 false 忽略、true 拒绝；宿主打开时重新校验项目权限，历史回放不重复执行保存。普通消息接口不变，主回答仍直接呈现在对话正文。
+`workflow-ui_present_card` 用 `action: "upsert" | "remove"` 和稳定 `cardId` 向 Conversation 宿主发送卡片命令。remove 只接受 `cardId`；upsert 还需 `kind`（`kv`、`knowledge`、`project`、`browser`、`file`、`kanban`）及目标 `target`。`pinned` 是当前客户端按会话保存的固定状态，显式的 Agent 固定命令可覆盖用户上次的固定选择。顶层 `preview: boolean` 用于 `kanban`、`project` 或 `browser` 卡片，控制右上预览是否直接展开；已识别的 Kanban 项目和浏览器卡片默认 `preview: true` 且固定，`preview: false` 可关闭。`project` 卡片指向 Kanban 项目时点击进入 Dock 预览；浏览器预览仅在 Electron 可用。`target.source: "current"` 在小助手中指其当前操作的项目；小助手自己的 KV/知识库调用仍指向小助手项目。`kanban: { mode: "preview", values }` 是另一项参数能力：preview 只覆盖该卡片和 Dock 的参数；持久保存由 Studio Control manage_configurations 完成。浏览器仅 HTTP(S)，文件卡片使用 `target: { source: "current", filePath: "README.md" }`，路径必须是项目内相对路径；知识库卡片使用 `target.knowledgeBase` 声明别名及 `documentId`，不使用 KV 的 `database`/`spaceId`；文件、KV、知识库卡片省略顶层 preview，显式 false 忽略、true 拒绝；宿主打开时重新校验项目权限，历史回放不重复执行保存。普通消息接口不变，主回答仍直接呈现在对话正文。
 
 **参数边界由 Core 自己检查。** 每个能力的 JSON Schema 都声明了长度上限，而 MCP 客户端并不受 schema 约束、agent SDK 也把它当类型断言，所以这些上限在实现里同样执行：知识库 `markdown` ≤ 200000、`title`/`documentId` ≤ 200、`query` ≤ 500、`cursor` ≤ 80，KV `key` ≤ 500。超出会以 `input_validation` 失败，而不是一路写到存储里。
 

@@ -59,15 +59,14 @@ test('KV mutations, key search and pagination use the runtime database API',asyn
   await assert.rejects(f.request({kind:'kv',action:'save',key:'bad',value:undefined}),/undefined/);
 });
 
-test('knowledge resources share approved space data, indexes and edits with the runtime',async t=>{
-  const f=await fixture(t),seeded=await f.database.knowledge.createDocument({title:'Runtime document',markdown:'# Evidence\n\nshared storage'});
-  assert.equal((await f.request({kind:'knowledge',action:'list'})).items[0].documentId,seeded.id);
-  const match=await f.request({kind:'knowledge',action:'list',query:'shared'});
-  assert.equal(match.search,true);assert.equal(match.items[0].documentId,seeded.id);assert.equal(match.items[0].lineNumber,3);
-  const created=await f.request({kind:'knowledge',action:'save',create:true,title:'Created',markdown:'original'});
-  await f.request({kind:'knowledge',action:'save',documentId:created.id,title:'Edited',markdown:'changed'});
-  assert.equal((await f.database.knowledge.getDocument(created.id)).markdown,'changed');
-  await f.request({kind:'knowledge',action:'delete',documentId:created.id});assert.equal(await f.database.knowledge.getDocument(created.id),undefined);
+test('knowledge previews reject undeclared aliases and have no local fallback',async t=>{
+  const f=await fixture(t);
+  await assert.rejects(f.request({kind:'knowledge',action:'list',knowledgeBase:'docs'}),/declared knowledge base alias/);
+  f.manifest.entries[0].knowledgeBases=['docs'];
+  await writeProjectFixture(path.join(f.project.folderPath,'package.json'),JSON.stringify(f.manifest));
+  await writeFile(path.join(f.project.folderPath,'config.json'),JSON.stringify({version:1,databases:{data:f.requirement.databaseId},knowledgeBases:{docs:f.requirement.databaseId}}));
+  await assert.rejects(f.request({kind:'knowledge',action:'list',knowledgeBase:'docs'}),/Sign in/);
+  await assert.rejects(f.request({kind:'knowledge',action:'list',knowledgeBase:'docs',expectedKnowledgeBaseId:randomUUID()}),/reference changed/);
 });
 
 test('a bundled worker launched through the managed extension symlink uses the same user registry',async t=>{
@@ -109,7 +108,7 @@ test('open data tabs reject migrated aliases while fresh requests follow config 
   for (const action of ['list', 'get', 'save', 'delete']) {
     await assert.rejects(f.request({ kind: 'kv', action, key: 'draft', value: 'stale draft', expectedDatabaseId: original }), /reference changed/);
   }
-  await assert.rejects(f.request({ kind: 'knowledge', action: 'save', create: true, title: 'Stale', markdown: 'draft', expectedDatabaseId: original }), /reference changed/);
+  await assert.rejects(f.request({ kind: 'knowledge', action: 'save', create: true, title: 'Stale', markdown: 'draft', expectedDatabaseId: original }), /declared knowledge base alias/);
   await f.request({ kind: 'kv', action: 'save', key: 'fresh', value: 'replacement', expectedDatabaseId: replacement });
   assert.equal((await f.request({ kind: 'kv', action: 'get', key: 'fresh' })).value, 'replacement');
   assert.equal(await f.database.kv.getValue('draft'), 'original');

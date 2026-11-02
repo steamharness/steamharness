@@ -96,7 +96,7 @@ manual approval.
   request and returns status, content type, and a short response preview.
 - A `knowledge_documents` function tool backed by the core Knowledge Documents
   helpers. It supports `list`, `get`, `create`, `edit`, `delete`, `search`, and
-  `read_lines` actions against `context.databases.get("data").knowledge`.
+  `read_lines` actions against `context.knowledgeBases.get("data")`.
 - Tool visibility: SDK raw stream text deltas are emitted as normal assistant
   text, while function tool execution is shown as separate `Tool: <name>`
   output items. Avoid forcing the main agent to emit a text preamble before tool
@@ -190,7 +190,7 @@ The sample defines these tools:
 - `knowledge_documents`: lists, reads, creates, edits, deletes, searches, and
   reads line ranges from project markdown knowledge documents. It reuses the
   core `workflow.*KnowledgeDocument*` helpers and therefore writes only through
-  `context.databases.get("data").knowledge`. Local runs can use
+  `context.knowledgeBases.get("data")`. Local runs can use
   `STEAMHARNESS_PERSISTENT_VALUE_STORE_DIR`; otherwise they use a configured server
   backend. Calls fail only when neither backend nor an injected store is
   available, and they never fall back to ordinary local KV.

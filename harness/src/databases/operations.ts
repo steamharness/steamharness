@@ -14,16 +14,6 @@ export async function executeDatabaseOperation(database: DatabaseContext, operat
       });
       return null;
     case 'kv.deleteValue': return kv.deleteValue(String(input.key));
-    case 'knowledge.listDocuments': return database.knowledge.listDocuments(input);
-    case 'knowledge.getDocument': return await database.knowledge.getDocument(String(input.documentId)) ?? null;
-    case 'knowledge.createDocument': return database.knowledge.createDocument(input as any);
-    case 'knowledge.editDocument': return database.knowledge.editDocument({id:String(input.documentId),title:input.title,markdown:input.markdown});
-    case 'knowledge.deleteDocument': return database.knowledge.deleteDocument(String(input.documentId));
-    case 'knowledge.searchDocuments': return database.knowledge.searchDocuments(input as any);
-    case 'knowledge.readDocumentLines': return database.knowledge.readDocumentLines(input as any);
-    case 'files.createFile': return database.knowledge.files.createFile({name:String(input.name),mimeType:input.mimeType,buffer:Buffer.from(String(input.base64),'base64')});
-    case 'files.readFile': { const file=await database.knowledge.files.readFile(String(input.fileId)); return {file:file.toJSON(),base64:await file.readBase64()}; }
-    case 'files.deleteFile': return database.knowledge.files.deleteFile(String(input.fileId));
     default: throw new Error('Unsupported database operation.');
   }
 }

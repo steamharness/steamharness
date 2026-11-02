@@ -72,6 +72,7 @@
     "0067-studio-start-recent-projects.patch": "cd34629bac1d16a8690c3129cde2acfed432805a434a8705973ed62db3360dbe",
     "0068-studio-node-task-runtime.patch": "4ea28f4ef7635c43892a46a2b9b60dfa900388e964857e9f2c5ba70ae0466e69",
     "0069-studio-editor-group-close.patch": "05e4225e875575b921f26ea9aafd1f03af771ebb2c91c2e8ae515b01f0e5007e",
-    "0070-studio-start-partial-status.patch": "70006104597b6604a00a3d492f2dbc56e40c80fd11e001e805b07d655ef52936"
+    "0070-studio-start-partial-status.patch": "70006104597b6604a00a3d492f2dbc56e40c80fd11e001e805b07d655ef52936",
+    "0071-studio-server-resource-management.patch": "e381df9d22a35909114016d6c36dfa7d64a7febc4b5347d591fef9ad9caf1913"
   }
 }

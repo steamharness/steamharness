@@ -2,6 +2,7 @@ import { normalizeProjectManifest } from "@steamharness/project-manifest";
 import { createDatabaseSpaceRouter } from './database-spaces';
 import { createRuntimeStorageRouter } from './runtime-storage';
 import { createDatabaseRouter } from './databases';
+import { createKnowledgeBaseRouter } from './knowledge-bases';
 import { createGroupRouter, requestActor, pageQuery } from "./groups";
 import { resolveResourceAccess, type AccessCapability } from "@steamharness/project-access";
 import type { ProjectConfigurationAction, ProjectConfigurationState } from "@steamharness/project-configuration";
@@ -514,6 +515,7 @@ export function createApiRouter(
   router.use(createDatabaseSpaceRouter(storage));
   router.use(createRuntimeStorageRouter(storage));
   router.use(createDatabaseRouter(storage));
+  router.use(createKnowledgeBaseRouter(storage));
   const authenticateRequest = requireAuthenticatedPrincipal();
   const authenticate = (req: Request, res: Response, next: NextFunction): void => {
     if (getRequestPrincipal(req)) next();
@@ -702,15 +704,16 @@ export function createApiRouter(
   router.post('/projects/:name/entries/:entryId/resources/read', authenticate, json, asyncHandler(async(req,res)=>{
     await requireProjectReadAccess(req,storage);
     const body=readRequiredRecord(req.body,'body');
-    if(Object.keys(body).some(key=>!['kind','database','key','scope','conversationId','documentId'].includes(key)))throw new HttpError(400,400,'Unsupported database resource fields.');
+    if(Object.keys(body).some(key=>!['kind','database','knowledgeBase','key','scope','conversationId','documentId'].includes(key)))throw new HttpError(400,400,'Unsupported database resource fields.');
     const kind=requireString(body['kind'],'kind');
     if(!['kv','knowledge'].includes(kind))throw new HttpError(400,400,'Unsupported database resource kind.');
     const conversationId=readOptionalString(body['conversationId'],'conversationId');
-    const databases=await storage.entryDatabases(req.params.name,req.params.entryId,requestActor(req),'draft',conversationId);
-    const database=databases.get(requireString(body['database'],'database'));
     let data:unknown;
-    if(kind==='knowledge')data=body['documentId']?await database.knowledge.getDocument(requireString(body['documentId'],'documentId')):await database.knowledge.listDocuments({pageSize:100});
-    else {
+    if(kind==='knowledge') {
+      const base=(await storage.entryKnowledgeBases(req.params.name,req.params.entryId,requestActor(req))).get(requireString(body['knowledgeBase'],'knowledgeBase'));
+      data=body['documentId']?await base.getDocument(requireString(body['documentId'],'documentId')):await base.listDocuments({pageSize:100});
+    } else {
+      const database=(await storage.entryDatabases(req.params.name,req.params.entryId,requestActor(req),'draft',conversationId)).get(requireString(body['database'],'database'));
       if(body['scope']!==undefined&&!['project','conversation'].includes(String(body['scope'])))throw new HttpError(400,400,'Invalid database resource scope.');
       data=await(body['scope']==='conversation'?database.kv.conversation:database.kv).getValue(requireString(body['key'],'key'));
     }
@@ -724,7 +727,7 @@ export function createApiRouter(
     asyncHandler(async (req, res) => {
       const body = isRecord(req.body) ? req.body : {};
       const call = readKanbanBridgeCall(body["call"]);
-      const readOperation = ["runtime.getLocale", "files.readFile", "kv.getValue", "database.revision", "knowledge.listDocuments", "knowledge.getDocument", "knowledge.searchDocuments", "knowledge.readDocumentLines"].includes(call.operation);
+      const readOperation = ["runtime.getLocale", "files.readFile", "kv.getValue", "database.revision", "knowledge.revision", "knowledge.listDocuments", "knowledge.getDocument", "knowledge.searchDocuments", "knowledge.readDocumentLines"].includes(call.operation);
       await requireProjectReadAccess(req, storage);
       if (!readOperation) await requireProjectStorageWriteAccess(req, storage);
       const target = body["target"] === undefined ? "draft" : await readableTarget(req, storage, body["target"]);

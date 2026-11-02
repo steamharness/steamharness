@@ -903,5 +903,14 @@
   "Progress": "进度",
   "Open Settings": "打开设置",
   "Select a Kanban entry to read runtime diagnostics.": "请选择 Kanban 入口以读取运行时诊断。",
-  "Kanban runtime diagnostics are unavailable.": "Kanban 运行时诊断不可用。"
+  "Kanban runtime diagnostics are unavailable.": "Kanban 运行时诊断不可用。",
+  "Sign in to SteamHarness Server to manage database resources.": "登录 SteamHarness Server 以管理数据库资源。",
+  "Invalid Server address.": "Server 地址无效。",
+  "Manage resources in Server": "在 Server 中管理资源",
+  "Models, table data and account access are managed by Server.": "模型、表数据和账号权限由 Server 管理。",
+  "Resource type": "资源类型",
+  "All resources": "全部资源",
+  "Relational databases": "关系型数据库",
+  "Knowledge bases": "知识库",
+  "This database reference changed. Reopen the project.": "数据库引用已更改，请重新打开项目。"
 }
