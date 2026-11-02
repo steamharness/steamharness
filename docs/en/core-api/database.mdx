@@ -166,7 +166,7 @@ SQL identities normally expire after 5 minutes and renew lazily on subsequent op
 
 Custom Node hosts can import `createRemoteRelationalDatabaseHost` and `createDatabaseConnector` from `steamharness`, supplying an account API key and project/entry identity. Always `await connector.close()` at the end. Keep account and temporary SQL credentials inside the trusted host, outside project parameters, model inputs and Browser code. SQL credential HTTP endpoints accept account Bearer API keys only and reject Cookie sessions and browser Origin headers.
 
-Browser descriptors currently provide types and model metadata. Browser query forwarding and migration of platform conversations, default Agent storage and existing KV remain for later phases.
+Browser descriptors currently provide types and model metadata. Browser query forwarding is not implemented. Platform conversations, usage and default Agent storage already use separate platform relational tables; replacing existing business KV still requires project model changes.
 
 ## Build and distribute
 
@@ -174,4 +174,4 @@ Custom builds should run `database generate` before TypeScript or frontend compi
 
 Server reads static manifests, source fingerprints, and artifact hashes without executing definition files. Download checks the same inventory and hashes and leaves no partial project on failure. Only `.steamharness/generated/database` is included from private runtime directories; other `.steamharness` data stays excluded.
 
-This API defines business models separately from platform records in [Agent server storage](/en/core-api/runtime-storage). It does not automatically replace existing KV or default Agent storage.
+This API defines project business models. [Platform runtime storage](/en/core-api/runtime-storage) independently manages conversations, execution history and Agent records. Declaring business models does not convert existing KV data.

@@ -1,133 +1,103 @@
-import { userSettingsJsonReplacer } from './user-settings';
 import { createHash } from 'node:crypto';
-import { mkdir, open, rename, stat } from 'node:fs/promises';
-import path from 'node:path';
-import { DatabaseSync } from 'node:sqlite';
+import { emptyRuntimeRecord, type RuntimeHistoryRecord, type RuntimePersistence } from 'steamharness/runtime-storage';
+import { userSettingsJsonReplacer } from './user-settings';
 import type { ConversationSession } from './workflow-types';
 import type { ConversationOwnership } from './conversation-ownership';
 
 interface History { sessions?: ConversationSession[]; activeId?: string; selectionVersion?: number }
 const digest = (value: unknown) => createHash('sha256').update(JSON.stringify(value, userSettingsJsonReplacer)).digest('hex');
-const stamp = (info: { mtimeMs: number; size: number; ino: number }) => `${info.mtimeMs}:${info.size}:${info.ino}`;
-interface StoredSession { content: string }
-interface StoredHistory { stamp: string; sessions: Map<string, StoredSession>; activeId?: string; selectionVersion?: number }
 
-/** Merge only this service's changed sessions under a short cross-process lock. */
+/** Memory projection of Server history. Every changed session is fenced and versioned. */
 export class ConversationHistory {
-  private versions: Map<string, string>;
+  private records = new Map<string, RuntimeHistoryRecord>();
+  private versions = new Map<string, string>();
   private stamp = '';
-  private cached?: StoredHistory;
   private pending: Promise<unknown> = Promise.resolve();
-  constructor(private readonly filename: string, saved: History, private readonly ownership: ConversationOwnership) {
-    this.versions = new Map((saved.sessions ?? []).map(session => {
-      ownership.rememberScope(session.id, session.agentOwnerId ?? session.id);
-      return [session.id, digest(session)];
-    }));
+  private epoch = 0;
+  constructor(private readonly persistence: () => RuntimePersistence | undefined, private readonly ownership: ConversationOwnership) {}
+  async reset(): Promise<void> {
+    this.epoch++;
+    await this.pending;
+    this.records.clear(); this.versions.clear(); this.stamp = '';
   }
-
+  private backend(): RuntimePersistence { const backend = this.persistence(); if (!backend) throw new Error('Sign in to persist conversation history.'); return backend; }
   private enqueue<T>(operation: () => Promise<T>): Promise<T> {
-    const next = this.pending.then(operation, operation);
-    this.pending = next.catch(() => undefined);
-    return next;
+    const next = this.pending.then(operation, operation); this.pending = next.catch(() => undefined); return next;
   }
-
-  private async load(): Promise<StoredHistory> {
-    try {
-      if (this.cached?.stamp === stamp(await stat(this.filename))) return this.cached;
-      // Read and stat one handle: an atomic rename in another service must not
-      // associate the bytes of one revision with the stamp of another.
-      const file = await open(this.filename, 'r');
-      try {
-        const history: History = JSON.parse(await file.readFile('utf8'));
-        return this.cached = { stamp: stamp(await file.stat()), activeId: history.activeId, selectionVersion: history.selectionVersion,
-          sessions: new Map((history.sessions ?? []).map(session => [session.id, {
-            content: JSON.stringify(session, userSettingsJsonReplacer),
-          }])) };
-      } finally { await file.close(); }
-    } catch (error) {
-      if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
-      return this.cached = { stamp: '', sessions: new Map() };
-    }
+  private async load(): Promise<History> {
+    const records = await this.backend().list('conversation');
+    this.records = new Map(records.map(record => [record.key, record]));
+    const sessions = records.map(decodeSession);
+    for (const session of sessions) this.ownership.rememberScope(session.id, session.agentOwnerId ?? session.id);
+    return { sessions };
   }
-
-  private decode(history: StoredHistory): History {
-    return { sessions: [...history.sessions.values()].map(session => JSON.parse(session.content)), activeId: history.activeId, selectionVersion: history.selectionVersion };
-  }
-  read(): Promise<History> { return this.enqueue(async () => this.decode(await this.load())); }
-
+  read(): Promise<History> { return this.enqueue(async () => {
+    const history = await this.load();
+    const selection = (await this.backend().list('workflow')).find(record => record.key === 'conversation-selection');
+    if (typeof selection?.state.activeId === 'string') { history.activeId = selection.state.activeId; history.selectionVersion = 1; }
+    for (const session of history.sessions ?? []) this.versions.set(session.id, digest(session)); return history;
+  }); }
   refresh(acquired: Set<string> = new Set()): Promise<History | undefined> {
     return this.enqueue(async () => {
-      const stored = await this.load();
-      if (!stored.stamp || stored.stamp === this.stamp && !acquired.size) return;
-      const history = this.decode(stored); this.stamp = stored.stamp;
-      for (const session of history.sessions ?? []) {
-        this.ownership.rememberScope(session.id, session.agentOwnerId ?? session.id);
-        if (!this.ownership.owns(session.id) || acquired.has(this.ownership.scope(session.id))) this.versions.set(session.id, digest(session));
-      }
+      const history = await this.load(), stamp = digest([...this.records.values()].map(record => [record.key, record.revision]));
+      if (stamp === this.stamp && !acquired.size) return;
+      this.stamp = stamp;
+      for (const session of history.sessions ?? []) if (!this.ownership.owns(session.id) || acquired.has(this.ownership.scope(session.id))) this.versions.set(session.id, digest(session));
       return history;
     });
   }
-
-  save(sessions: ConversationSession[], activeId: string): Promise<void> {
+  save(sessions: ConversationSession[], _activeId: string): Promise<void> {
+    const epoch = this.epoch;
     const incoming = new Set(sessions.map(session => session.id));
-    const changes = new Map<string, StoredSession & { version: string }>();
-    // Capture before the first await. Only writable or newly-created sessions
-    // need snapshots; unrelated histories remain immutable serialized fragments.
-    for (const session of sessions) {
-      const scope = session.agentOwnerId ?? session.id;
-      this.ownership.rememberScope(session.id, scope);
-      if (this.ownership.owns(session.id) || !this.versions.has(session.id)) {
-        const content = JSON.stringify(session, userSettingsJsonReplacer);
-        changes.set(session.id, { content, version: createHash('sha256').update(content).digest('hex') });
+    const changes = sessions.filter(session => this.ownership.owns(session.id) || !this.versions.has(session.id))
+      .map(session => JSON.parse(JSON.stringify(session, userSettingsJsonReplacer)) as ConversationSession);
+    return this.enqueue(async () => {
+      if (epoch !== this.epoch) return;
+      for (const session of changes) {
+        if (epoch !== this.epoch) return;
+        const version = digest(session); if (this.versions.get(session.id) === version) continue;
+        this.ownership.rememberScope(session.id, session.agentOwnerId ?? session.id);
+        const release = await this.ownership.hold(session.id);
+        try {
+          const record = encodeSession(session, this.records.get(session.id)?.revision ?? 0);
+          const saved = await this.ownership.lease(session.id).write(record);
+          this.records.set(session.id, saved); this.versions.set(session.id, version);
+        } finally { release(); }
       }
-    }
-    return this.enqueue(() => this.write(changes, incoming, activeId));
+      if (epoch !== this.epoch) return;
+      for (const [id, record] of this.records) if (!incoming.has(id) && this.ownership.owns(id)) {
+        await this.ownership.lease(id).delete(record); this.records.delete(id); this.versions.delete(id);
+      }
+      if (incoming.has(_activeId) && this.ownership.owns(_activeId)) {
+        let lease;
+        try { lease = await this.backend().acquire('conversation-selection'); }
+        catch (error) { if ((error as { code?: string }).code !== 'RUNTIME_STORAGE_OWNER_CONFLICT') throw error; }
+        if (lease) try {
+          const previous = (await this.backend().list('workflow')).find(record => record.key === 'conversation-selection');
+          if (previous?.state.activeId !== _activeId) await lease.write({ ...emptyRuntimeRecord('workflow', 'conversation-selection'), revision: previous?.revision ?? 0, state: { activeId: _activeId } });
+        } finally { await lease.close(); }
+      }
+    });
   }
-
-  private async write(changes: Map<string, StoredSession & { version: string }>, incoming: Set<string>, activeId: string): Promise<void> {
-    await mkdir(path.dirname(this.filename), { recursive: true });
-    const lock = new DatabaseSync(`${this.filename}.lock.sqlite`);
-    const started = Date.now();
-    try {
-      for (;;) {
-        try { lock.exec('BEGIN EXCLUSIVE'); break; }
-        catch (error) {
-          if ((error as { errcode?: number }).errcode !== 5 || Date.now() - started > 10_000) throw error;
-          await new Promise(resolve => setTimeout(resolve, 10));
-        }
-      }
-      const history = await this.load();
-      const versions = new Map(this.versions);
-      const merged = new Map(history.sessions);
-      let changed = !history.stamp || history.activeId !== activeId || history.selectionVersion !== 1;
-      for (const id of versions.keys()) if (!incoming.has(id) && this.ownership.owns(id)) {
-        changed = merged.delete(id) || changed; versions.delete(id);
-      }
-      for (const [id, session] of changes) {
-        if ((!merged.has(id) && !this.versions.has(id) || this.ownership.owns(id)) && (session.version !== this.versions.get(id) || !merged.has(id))) {
-          merged.set(id, session); versions.set(id, session.version); changed = true;
-        }
-      }
-      if (!changed) { this.versions = versions; return; }
-      const temporary = `${this.filename}.${process.pid}.tmp`;
-      const file = await open(temporary, 'w', 0o600);
-      let writtenStamp: string;
-      try {
-        await file.writeFile('{"sessions":[');
-        let first = true;
-        for (const session of merged.values()) {
-          if (!first) await file.writeFile(',');
-          await file.writeFile(session.content); first = false;
-        }
-        await file.writeFile(`],"activeId":${JSON.stringify(activeId)},"selectionVersion":1}`);
-        writtenStamp = stamp(await file.stat());
-      } finally { await file.close(); }
-      await rename(temporary, this.filename);
-      this.cached = { stamp: writtenStamp, sessions: merged, activeId, selectionVersion: 1 };
-      // Skip a poll of our own write only after all merged external history has
-      // been observed. Otherwise refresh must still deliver that history.
-      if (this.stamp === history.stamp) this.stamp = writtenStamp;
-      this.versions = versions;
-    } finally { lock.close(); }
+}
+export function encodeSession(session: ConversationSession, revision: number): RuntimeHistoryRecord {
+  const { messages, queuedInputs, agentInputs, agentCommands, ...state } = session;
+  const record = emptyRuntimeRecord('conversation', session.id, session.agentOwnerId ?? session.id);
+  record.revision = revision; record.state = state;
+  record.messages = messages.map((message, index) => { const { events, ...value } = message; return { id: message.id ?? `message:${index}`, value }; });
+  record.events = messages.flatMap((message, messageIndex) => (message.events ?? []).map((event, index) => ({ id: `${messageIndex}:${index}`, value: { messageIndex, event } })));
+  record.queue = [ ...(queuedInputs ?? []).map(value => ({ id: `queued:${value.id}`, value: { type: 'queued', input: value } })),
+    ...Object.entries(agentInputs ?? {}).map(([id, value]) => ({ id: `input:${id}`, value: { type: 'input', key: id, input: value } })),
+    ...(agentCommands ?? []).map((value, index) => ({ id: `command:${index}`, value: { type: 'command', command: value } })) ];
+  return record;
+}
+export function decodeSession(record: RuntimeHistoryRecord): ConversationSession {
+  const session = { ...record.state, messages: record.messages.map(item => ({ ...item.value })), queuedInputs: [] } as unknown as ConversationSession;
+  for (const { value } of record.events) { const message = session.messages[Number(value.messageIndex)]; if (message) (message.events ??= []).push(value.event as Record<string, unknown>); }
+  for (const { value } of record.queue) {
+    if (value.type === 'queued') session.queuedInputs!.push(value.input as never);
+    else if (value.type === 'input') (session.agentInputs ??= {})[String(value.key)] = value.input as never;
+    else if (value.type === 'command') (session.agentCommands ??= []).push(value.command as never);
   }
+  return session;
 }

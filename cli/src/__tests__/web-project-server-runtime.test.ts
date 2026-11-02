@@ -7,10 +7,13 @@ import os from 'node:os';
 import path from 'node:path';
 import { createWebRuntime } from '../web/runtime';
 import { resolveHarnessRoot } from './harness-source';
+import { runtimeStorageService } from './runtime-storage-service';
 
 it.each(['workflow', 'conversation'] as const)('retains structured remote storage errors through the actual %s worker report', async kind => {
   const directory = await mkdtemp(path.join(os.tmpdir(), 'server-guidance-runtime-')), id = crypto.randomUUID();
-  const server = createServer((request, response) => {
+  const storageService = runtimeStorageService();
+  const server = createServer(async (request, response) => {
+    if (await storageService.handle(request, response)) return;
     response.setHeader('Content-Type', 'application/json');
     if (request.url === '/api/auth/me') response.end(JSON.stringify({ errCode: 0, data: { profile: { userId: 'test-user' } } }));
     else { response.writeHead(404); response.end(JSON.stringify({ errCode: 404, errMessage: 'Project or group does not exist.' })); }

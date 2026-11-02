@@ -213,3 +213,4 @@ export { parseAgentModelAttributes } from "./model-attributes";
 
 /** The factory callers use: creates a runnable agent from plain options. */
 export { createAgentRuntime as createAgent } from "./runtime";
+export { exportAgentSession, importAgentSession, forkStoredAgentConversation, isolateStoredAgentConversation, cancelStoredAgentConversation, deleteStoredAgentConversation } from "./stored-session";

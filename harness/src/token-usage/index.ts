@@ -1,5 +1,3 @@
-import type { KVContext } from "../kv/index";
-import { createHash } from "node:crypto";
 
 export const TOKEN_USAGE_TOTAL_KEY = "tokenUsage.total";
 export const TOKEN_USAGE_ENTRY_KEY_PREFIX = "tokenUsage.entry.";
@@ -63,7 +61,7 @@ export interface TokenUsageContext {
 
 export interface TokenUsageContextOptions {
   definition?: TokenUsageDefinition;
-  kv: KVContext;
+  store(entry: TokenUsageEntry): Promise<void>;
   projectId: string;
   runId: string;
   conversationId?: string;
@@ -90,7 +88,7 @@ export function createProjectTokenUsageContext(
     return createDisabledProjectTokenUsageContext();
   }
 
-  // Token usage is executor-level opt-in: enabled controls KV writes, while
+  // Token usage is executor-level opt-in: enabled controls relational writes, while
   // display is carried to reports so UI badges can be hidden without losing
   // accounting data.
   const display = options.definition.display ?? true;
@@ -129,17 +127,10 @@ export function createProjectTokenUsageContext(
         metadata: isRecord(input.metadata) ? { ...input.metadata } : undefined,
       };
 
-      const previous = recordId === undefined ? undefined : runRecords.get(recordId);
+      await options.store(entry);
+      const previous = runRecords.get(entry.id);
       runUsage = replaceUsage(runUsage, previous, entry, createdAt);
-      if (recordId !== undefined) runRecords.set(recordId, entry);
-      await writeTokenUsageAggregate(options.kv, entry, createdAt, recordId);
-      if (options.conversationId !== undefined) {
-        await options.kv.conversation.setValue(
-          recordId === undefined ? createTokenUsageEntryKey(options.runId, sequence)
-            : `${TOKEN_USAGE_ENTRY_KEY_PREFIX}durable.${createHash("sha256").update(recordId).digest("hex")}`,
-          entry,
-        );
-      }
+      runRecords.set(entry.id, entry);
       await options.onUpdate?.(runUsage);
 
       return entry;
@@ -291,33 +282,6 @@ export function readTokenUsageReportInput(
     cachedInputTokens,
     cacheCreationTokens,
   };
-}
-
-async function writeTokenUsageAggregate(
-  kv: KVContext,
-  entry: TokenUsageEntry,
-  updatedAt: string,
-  recordId?: string,
-): Promise<void> {
-  const updater = (current: unknown | undefined) => {
-    const aggregate = readStoredTokenUsageAggregate(current)
-      ?? createEmptyTokenUsageAggregate();
-
-    if (recordId === undefined) return { ...(isRecord(current) ? current : {}), ...addTokenUsageAggregate(aggregate, entry, updatedAt) };
-    // The receipt and aggregate change in the same KV update. A crash between
-    // project and conversation writes is repaired by replaying the same receipt.
-    const receipts = isRecord(current) && isRecord(current.durableReceipts) ? current.durableReceipts : {};
-    const previous = readStoredTokenUsageEntry(receipts[recordId]);
-    return { ...replaceUsage(aggregate, previous, entry, updatedAt), durableReceipts: { ...receipts, [recordId]: entry } };
-  };
-
-  // System totals are derived by aggregating project totals. Only the current
-  // project and, when present, its conversation are written here.
-  await kv.updateValue(TOKEN_USAGE_TOTAL_KEY, updater);
-
-  if (entry.conversationId !== undefined) {
-    await kv.conversation.updateValue(TOKEN_USAGE_TOTAL_KEY, updater);
-  }
 }
 
 function replaceUsage(aggregate: TokenUsageAggregate, previous: TokenUsageEntry | undefined,

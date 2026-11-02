@@ -65,8 +65,8 @@ const node = workflow.createAgentNode({
 | `outputItemId` | `string` | 正文回答所属输出项的 id。OpenAI / Responses 适配器按 id 查找正文，所以它必须与 `conversation.openai.outputItemId` 相同；不传时 id 按会话派生，适配器无法预先知道。 |
 | `skills` | `{ directories: readonly string[] }` | 技能目录；相对当前入口根目录解析。Core 为每轮创建带权限校验的 `skill` 工具；通过 Core Agent 项目声明时也提供宿主只读目录，详见[技能目录与宿主预览](./define-agent-conversation-executor.mdx#技能目录与宿主预览)。 |
 | `createTools` | `(context) => AgentTool[] \| AgentToolSet` | 每次运行前组装内置工具之外的工具。用工厂而不是数组，是因为自带工具要闭包住本轮的 `NodeContext`——它的 storage、审批门和用户输入。要启动有生命周期的东西（例如一个 stdio MCP 子进程）就返回 `{ tools, close?() }`，`close` 会在本轮结束时调用（成功失败都会）。 |
-| `sessionKey` | `string` | 同一项目和会话内的 SQLite 会话隔离键。缺省用 `sessionId`，再缺省用 `agent`；多个 agent 节点须使用不同的值。 |
-| `databasePath` | `string` | 显式指定 Durable SQLite 文件；通常由宿主提供 `storage.agentStoreDir` 后自动选择隔离路径。 |
+| `sessionKey` | `string` | 同一项目和会话内的服务端会话隔离键。缺省用 `sessionId`，再缺省用 `agent`；多个 agent 节点须使用不同的值。 |
+| `databasePath` | `string` | 仅在显式选择本地编程式后端时指定 Durable SQLite 文件；CLI/Studio 默认使用 Server。 |
 | `historyLimit` | `number` | 节点执行历史条数上限，默认 50。 |
 
 ## 输出（`AgentOutputPayload`）
@@ -87,9 +87,9 @@ const node = workflow.createAgentNode({
 
 ## 会话记录
 
-Pi Durable Harness 是唯一执行历史来源。会话节点按项目存储目录、conversationId 和 sessionKey 选择 SQLite 文件，保存消息、工具意图与结果、审批等待和用量记录。普通运行每轮关闭；启用 `session` 的宿主可保持 owner、工具和 AI bridge 存活。宿主可通过 `storage.agentStoreDir` 指定持久目录，默认使用项目本地 `.workflow/agents`。
+Pi Durable Harness 是 Agent 执行历史来源。会话节点默认按账号、项目、入口、conversationId 和 sessionKey 选择 Server PostgreSQL 会话，保存消息、工具意图与结果、审批等待和用量记录。普通运行每轮关闭；启用 `session` 的宿主可保持 owner、工具和 AI bridge 存活。平台 Conversation 状态与用量也写入关系表。需要平台登录与连接，详见[平台运行存储](/core-api/runtime-storage)。
 
-- 同一个 SQLite 会话同时只允许一个执行拥有者；进程退出或被强杀后释放所有权。宿主仍须保证工作目录和数据库持续存在。
+- 同一服务端会话同时只允许一个执行拥有者；正常关闭释放租约，强退后等待租约过期。接管提升 fence，旧进程不能继续写入。宿主仍须保存工作目录与附件。
 - 节点从原 `runId` 派生稳定 `requestId`。恢复或重发同一运行会重建已有输出，不重新执行已提交结果，也不重复追加 Conversation 消息或计费用量。
 - 崩溃时结果不明的工具只有声明 `replay: "safe"` 才能自动重做。默认 `never`；内置写文件、编辑和 bash 都不自动重放，错误结果供模型核查后决定下一步。外部副作用仍需业务幂等保障。
 - 存储或投影失败会终止运行，旧 KV transcript 不再读取；无需迁移旧数据。不会回退为无历史运行。
@@ -106,7 +106,7 @@ Pi Durable Harness 是唯一执行历史来源。会话节点按项目存储目�
 
 `scopeId` 使用外部 workflow conversationId；子会话以快照内数字 `targetId` 寻址。快照通过 `metadata.kind: "agent-session"` 辅助输出发送，不显示为正文。Studio Trace 任务视图、队列、计划、父子计量及配置控制见 [createAgent](./create-agent.mdx)。显式工具权限列表需声明 `update_plan`，启用委派时再声明 `subagent`；子 Agent 仍受父工具、模型白名单及审批约束。
 
-扩展运行通过 `session.registry` 注册任务与 hooks；`createTools` 可返回 `{ tools, catalogs, close? }`，配合 `session.toolSearch: {}` 延迟连接授权目录。启用时还需在工具权限列表声明 `tool_search`；显式启用 `session.codeMode` 时声明 `codemode`，嵌套调用继续使用原工具权限。`session.environment` 指定稳定执行目标，`storage` 可替代自动 SQLite 选择。资源和备份约束见 [扩展执行与恢复](./create-agent.mdx#扩展执行与恢复)。
+扩展运行通过 `session.registry` 注册任务与 hooks；`createTools` 可返回 `{ tools, catalogs, close? }`，配合 `session.toolSearch: {}` 延迟连接授权目录。启用时还需在工具权限列表声明 `tool_search`；显式启用 `session.codeMode` 时声明 `codemode`，嵌套调用继续使用原工具权限。`session.environment` 指定稳定执行目标，`storage` 可显式替代默认服务端仓储。资源和备份约束见 [扩展执行与恢复](./create-agent.mdx#扩展执行与恢复)。
 
 ## 输出项
 

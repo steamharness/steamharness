@@ -40,6 +40,34 @@ export async function isolateAgentConversation(options: { agentStoreDir: string;
     const database = new DatabaseSync(path.join(sourceDir, files[0]!), { readOnly: true });
     try { await backup(database, snapshot); } finally { database.close(); }
     source = await openNodeSqliteStorage(snapshot);
+    destination = await openNodeSqliteStorage(temporary);
+    await copyAgentConversation(source, destination, options);
+    await destination.close(context); destination = undefined;
+    await link(temporary, path.join(destinationDir, files[0]!));
+    completed = true;
+  } finally {
+    try { await source?.close(context); }
+    finally { try { await destination?.close(context); } finally { owner.close(); await Promise.all([snapshot, temporary].flatMap(file => [file, `${file}-wal`, `${file}-shm`]).map(file => rm(file, { force: true }))); } }
+    if (completed && options.retireSource) {
+      const opened = await openAgentStorage(path.join(sourceDir, files[0]!));
+      let harness: Harness | undefined;
+      try {
+        harness = await Harness.open(opened.storage, { models: createModels(), registry: createRegistry() }, context);
+        if (options.targetId === ROOT_CONVERSATION_ID) throw new Error("An independent root cannot retire its source root.");
+        const target = await harness.conversation(options.targetId as ConversationId, context);
+        if (!target) throw new Error("The source conversation does not exist.");
+        await target.abort(context, { background: true });
+        await target.commit(async tx => { (await tx.doc(SessionDoc, target.id)).deleted = true; }, context);
+      } finally { try { if (harness) await harness.close(context); else await opened.storage.close(context); } finally { opened.release(); } }
+    }
+  }
+}
+
+/** Copy committed state only; neither source nor destination starts a scheduler. */
+export async function copyAgentConversation(source: Storage, destination: Storage, options: {
+  sourceConversationId: string; targetId: number; replacements?: readonly { from: string; to: string }[];
+}): Promise<void> {
+  const origin = { sourceConversationId: options.sourceConversationId, targetId: options.targetId };
     const targetId = options.targetId as ConversationId;
     if (!await source.conversation(targetId, context)) throw new Error("The source conversation does not exist.");
     const session = await source.findDocument({ kind: "project.session", scope: { kind: "conversation", conversationId: targetId } }, "current", context);
@@ -50,7 +78,6 @@ export async function isolateAgentConversation(options: { agentStoreDir: string;
       const page = await source.scanEntries({ conversationId: targetId, order: "ascending" }, 256, cursor, context);
       entries.push(...page.items); cursor = page.next;
     } while (cursor);
-    destination = await openNodeSqliteStorage(temporary);
     await destination.commit([{ type: "conversation", value: { id: ROOT_CONVERSATION_ID } }], context);
     let nextId = Math.max(1, ...entries.map(entry => entry.id)) + 1;
     const docs = new Map<string, { id: DocumentId; value: string }>();
@@ -103,23 +130,4 @@ export async function isolateAgentConversation(options: { agentStoreDir: string;
     writes.push({ type: "document.create", record: { id: nextId++ as DocumentId, kind: "project.fork-origin", scope: { kind: "conversation", conversationId: ROOT_CONVERSATION_ID }, history: "latest", fork: "initial" },
       content: { kind: "base", version: 1, value: origin } });
     await destination.commit(writes, context);
-    await destination.close(context); destination = undefined;
-    await link(temporary, path.join(destinationDir, files[0]!));
-    completed = true;
-  } finally {
-    try { await source?.close(context); }
-    finally { try { await destination?.close(context); } finally { owner.close(); await Promise.all([snapshot, temporary].flatMap(file => [file, `${file}-wal`, `${file}-shm`]).map(file => rm(file, { force: true }))); } }
-    if (completed && options.retireSource) {
-      const opened = await openAgentStorage(path.join(sourceDir, files[0]!));
-      let harness: Harness | undefined;
-      try {
-        harness = await Harness.open(opened.storage, { models: createModels(), registry: createRegistry() }, context);
-        if (options.targetId === ROOT_CONVERSATION_ID) throw new Error("An independent root cannot retire its source root.");
-        const target = await harness.conversation(options.targetId as ConversationId, context);
-        if (!target) throw new Error("The source conversation does not exist.");
-        await target.abort(context, { background: true });
-        await target.commit(async tx => { (await tx.doc(SessionDoc, target.id)).deleted = true; }, context);
-      } finally { try { if (harness) await harness.close(context); else await opened.storage.close(context); } finally { opened.release(); } }
-    }
-  }
 }

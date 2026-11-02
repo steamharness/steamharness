@@ -4,7 +4,7 @@ import { randomUUID } from 'node:crypto';
 import { mkdir, mkdtemp, readFile, realpath, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
-import { startWebServer } from '../web/server';
+import { startWebServer } from './web-test-storage';
 import { LocalDatabaseRegistry } from 'steamharness';
 import type { Project, Report, Runtime } from '../web/workflow-types';
 

@@ -1,3 +1,4 @@
+import { runtimeStorageService } from './runtime-storage-service';
 import { expect, it } from 'vitest';
 import { once } from 'node:events';
 import { spawn, type ChildProcess } from 'node:child_process';
@@ -13,6 +14,7 @@ import { resolveHarnessRoot, resolveHarnessVersion } from './harness-source';
 
 it.each(['generation', 'uncooperative-tool'])('recovers a wrapped Agent after its CLI is SIGKILLed during %s without sending its queue after failure', async phase => {
   const directory = await mkdtemp(path.join(os.tmpdir(), 'web-crash-recovery-'));
+  const connection = await runtimeStorageService({ leaseDurationMs: 1500 }).start();
   const applicationId = crypto.randomUUID(), dataDir = path.join(directory, 'data');
   const configurationRoot = path.join(os.homedir(), '.steamharness', 'configurations');
   const configurationKey = createHash('sha256').update(`application:${applicationId}`).digest('hex');
@@ -61,7 +63,7 @@ it.each(['generation', 'uncooperative-tool'])('recovers a wrapped Agent after it
       });
     `);
     cli = spawn(process.execPath, [fileURLToPath(new URL('../../dist/index.js', import.meta.url)), 'web', directory, '--data-dir', dataDir, '--no-open', '--json'],
-      { cwd: directory, stdio: ['ignore', 'pipe', 'pipe'] });
+      { cwd: directory, env: { ...process.env, STEAMHARNESS_SERVER_URL: connection.serverUrl, STEAMHARNESS_SERVER_ADMIN_KEY: connection.accessToken }, stdio: ['ignore', 'pipe', 'pipe'] });
     let output = '', diagnostics = '';
     cli.stderr!.on('data', chunk => { diagnostics = (diagnostics + chunk).slice(-8000); });
     const ready = await new Promise<{ url: string }>((resolve, reject) => {
@@ -102,12 +104,13 @@ it.each(['generation', 'uncooperative-tool'])('recovers a wrapped Agent after it
     workerPid = Number(await readFile(path.join(directory, 'worker-pid'), 'utf8'));
     await post('Queued one'); await post('Queued two');
     const exited = once(cli, 'exit'); cli.kill('SIGKILL'); await exited;
-    restored = await startWebServer({ projectDir: directory, dataDir });
+    restored = await startWebServer({ projectDir: directory, dataDir, host: { surface: 'editor', connection } });
     await expect.poll(() => {
       try { process.kill(workerPid!, 0); return false; } catch (error) { if ((error as NodeJS.ErrnoException).code === 'ESRCH') return true; throw error; }
     }, { timeout: 8000 }).toBe(true);
     workerPid = undefined;
     expect(restored.project.conversation?.recovery?.enabled).toBe(true);
+    await expect.poll(() => restored!.controller!.current.messages.at(-1)?.status, { timeout: 90_000 }).toBe('failed');
     await restored.controller!.idle();
     const session = restored.controller!.current;
     expect(session.messages.filter(message => message.role === 'assistant')).toHaveLength(1);
@@ -121,16 +124,20 @@ it.each(['generation', 'uncooperative-tool'])('recovers a wrapped Agent after it
     await restored.controller!.cancelQueueEdit();
     expect(calls).toBe(failedCalls);
     recovered = true;
-    await restored.controller!.send({ text: 'Explicit input after restart', params: {}, attachments: [] });
+    const resumed = await fetch(new URL('api/message', restored.url), { method: 'POST', headers: {
+      Authorization: `Bearer ${new URL(restored.url).hash.slice('#session='.length)}`, 'Content-Type': 'application/json',
+    }, body: JSON.stringify({ type: 'send', text: 'Explicit input after restart', params: {}, attachments: [] }) });
+    expect(resumed.status, await resumed.text()).toBe(200);
     await restored.controller!.idle();
-    expect(session.messages.filter(message => message.role === 'assistant').map(message => message.status)).toEqual(['failed', 'success', 'success', 'success']);
-    expect(session.queuedInputs).toEqual([]); expect(calls).toBe(failedCalls + 3);
-    expect(session.messages.filter(message => message.role === 'user').map(message => message.content)).toEqual(['Original input', 'Explicit input after restart', 'Queued one', 'Queued two']);
+    const current = restored.controller!.current;
+    expect(current.messages.filter(message => message.role === 'assistant').map(message => message.status)).toEqual(['failed', 'success', 'success', 'success']);
+    expect(current.queuedInputs).toEqual([]); expect(calls).toBe(failedCalls + 3);
+    expect(current.messages.filter(message => message.role === 'user').map(message => message.content)).toEqual(['Original input', 'Explicit input after restart', 'Queued one', 'Queued two']);
     if (phase === 'uncooperative-tool') expect(Number(await readFile(path.join(directory, 'tool-started'), 'utf8'))).not.toBe(Number(await readFile(path.join(directory, 'worker-pid'), 'utf8')));
   } finally {
     if (cli && cli.exitCode === null && cli.signalCode === null) { const exited = once(cli, 'exit'); cli.kill('SIGKILL'); await exited; }
     if (workerPid) try { process.kill(workerPid, 'SIGKILL'); } catch {}
-    await restored?.close();
+    await restored?.close(); await connection.close();
     await new Promise<void>(resolve => { model.close(() => resolve()); model.closeAllConnections(); });
     await rm(directory, { recursive: true, force: true });
     await Promise.all([rm(path.join(configurationRoot, `${configurationKey}.json`), { force: true }), rm(path.join(configurationRoot, `${configurationKey}.json.lock.sqlite`), { force: true }), rm(path.join(configurationRoot, 'snapshots', runKey), { recursive: true, force: true })]);

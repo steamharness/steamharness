@@ -15,7 +15,7 @@ export interface AgentStorageFactory {
   /** Non-secret backend name shown in diagnostics. */
   label: string;
   /** Must acquire an exclusive owner. The Harness closes storage before release is called. */
-  open(): Promise<{ storage: Storage; release?(): void | Promise<void> }>;
+  open(): Promise<{ storage: Storage; failure?: AbortSignal; release?(): void | Promise<void> }>;
 }
 
 function resolveSqlitePath(file: string): string {

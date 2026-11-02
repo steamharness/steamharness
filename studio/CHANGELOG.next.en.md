@@ -1,5 +1,7 @@
 # Unreleased
 
+- Conversation, Workflow and assistant sessions now use the current platform account’s relational storage and Server leases. Analysis reads database history; connectivity loss stops execution while retaining sign-in, without legacy local-history migration.
+
 - Removed global and account memory, including tools, skills, authorization, service integration and settings controls.
 
 - Fixed dependency setup for new projects to ignore unrelated ancestor Corepack settings and respect an explicit npm choice. Updated board templates, execution scripts and bilingual guidance.

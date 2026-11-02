@@ -1,3 +1,5 @@
+import { createMemoryRuntimePersistence, SnapshotMemoryStorage, type RuntimePersistence } from "../runtime-storage/index";
+import { testConversationStorage } from "./runtime-test-storage";
 import { createTestResources } from "./entry-test-resources";
 import assert from "node:assert/strict";
 import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
@@ -165,7 +167,7 @@ function createContext(conversationId: string, files?: FileStore): RunContext {
   const agentStoreDir = mkdtempSync(path.join(tmpdir(), "workflow-agent-store-"));
   agentStores.add(agentStoreDir);
   return {
-    metadata: { agentStoreDir },
+    metadata: { runtimePersistence: createMemoryRuntimePersistence() },
     providers: {},
     ...(files === undefined ? {} : { files }),
     ...createTestResources(),
@@ -173,7 +175,7 @@ function createContext(conversationId: string, files?: FileStore): RunContext {
       enabled: true,
       conversationId,
       projectName: "pi",
-      kv,
+      storage: testConversationStorage(kv),
     }),
     tokenUsage: createDisabledProjectTokenUsageContext(),
     toolPermissions: createProjectToolPermissionContext({
@@ -249,10 +251,10 @@ function readRequestText(content: unknown): string {
 async function readStoredTranscript(
   context: RunContext,
 ): Promise<Array<{ role: string; content: unknown }>> {
-  const directory = agentConversationDirectory(context.metadata!["agentStoreDir"] as string, context.conversation.conversationId!);
-  const files = (await readdir(directory)).filter(file => file.endsWith(".sqlite"));
-  assert.equal(files.length, 1);
-  const storage = await openNodeSqliteStorage(path.join(directory, files[0]!));
+  const persistence = context.metadata!["runtimePersistence"] as RuntimePersistence;
+  const keys = await persistence.agentSessions(context.conversation.conversationId!);
+  assert.equal(keys.length, 1);
+  const storage = new SnapshotMemoryStorage(await persistence.exportSession(keys[0]!));
   const harness = await Harness.open(storage, { models: createModels(), registry: createRegistry() }, BACKGROUND_CONTEXT);
   try { return (await (await harness.root(BACKGROUND_CONTEXT)).context(BACKGROUND_CONTEXT)).messages.filter(message => message.role !== "system"); }
   finally { await harness.close(BACKGROUND_CONTEXT); }
@@ -1849,9 +1851,8 @@ test("a corrupt durable store fails without silently starting a new conversation
 
     const context = createContext("conv-corrupt");
     await executor.workflow.run({ prompt: "First", workdir, errCode: 0, errMessage: "" }, context);
-    const directory = agentConversationDirectory(context.metadata!["agentStoreDir"] as string, "conv-corrupt");
-    const file = (await readdir(directory)).find(file => file.endsWith(".sqlite"))!;
-    await writeFile(path.join(directory, file), "corrupt sqlite");
+    const persistence = context.metadata!["runtimePersistence"] as RuntimePersistence;
+    persistence.agentStorage = () => ({ label: "unavailable fixture", async open() { throw new Error("Corrupt stored state"); } });
     await assert.rejects(async () => executor.workflow.run(
       { prompt: "hello", errCode: 0, errMessage: "", workdir },
       context,

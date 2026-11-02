@@ -6,7 +6,7 @@ import path from 'node:path';
 import { crc32, deflateSync } from 'node:zlib';
 import { initI18n } from '@steamharness/i18n';
 import { ResourcePreviews } from '../web/resource-preview';
-import { startEntryWebServer as startWebServer } from '../web/server';
+import { startEntryWebServer as startWebServer } from './web-test-storage';
 import { cacheVerifiedConfigurationTemplate,createLocalProjectConfigurationStore } from 'steamharness';
 import { createConfigurationState,createPublicationDraft,freezeConfigurationTemplate } from '@steamharness/project-configuration';
 import { readProjectInfo } from '@steamharness/project-info';
@@ -493,6 +493,7 @@ describe('resource previews', () => {
       content: { tool: 'workflow-ui_present_card', status: 'success', output: { action: 'upsert', cardId: 'doc', kind: 'knowledge',
         target: {entryId:'main',database:'data', source: 'server', projectId: owner.id, documentId: 'doc' } } } }] });
     try {
+      await app.controller!.persist();
       const opened = (await (await request({ type: 'resource', messageId: 'answer', cardId: 'doc' })).json()).messages[0];
       const reference = JSON.parse(new URL(opened.url, app.url).searchParams.get('resourceRef')!);
       await app.setHostConnection(undefined);

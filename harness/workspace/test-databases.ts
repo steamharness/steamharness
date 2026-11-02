@@ -5,6 +5,16 @@ import os from 'node:os';
 import path from 'node:path';
 import { afterAll } from 'vitest';
 import { LocalDatabaseRegistry, createDatabasesContext, createEntriesContext, createLocalDatabaseResolver, readProjectManifestFromDirectorySync, runLocalProjectWithReport, type KVStore, type ProjectManifest } from 'steamharness';
+import { createMemoryRuntimePersistence } from 'steamharness/runtime-storage';
+
+/** Disposable runtime persistence, separate from the business KV fixture. */
+export function createTestConversationStorage(): import('steamharness').ConversationStateStorage {
+  let state: import('steamharness').ConversationState | undefined;
+  return {
+    async read(initial) { return structuredClone(state ?? initial); },
+    async update(initial, change) { state = change(structuredClone(state ?? initial)); return structuredClone(state); },
+  };
+}
 
 const permissions = {kv:{read:{mode:'all' as const},write:{mode:'all' as const}},knowledge:{read:{mode:'all' as const},write:{mode:'all' as const}}};
 const directories: string[] = [];
@@ -46,7 +56,9 @@ export async function runApprovedProject(options: Parameters<typeof runLocalProj
     }
     await writeFile(path.join(projectDir,'config.json'),JSON.stringify({version:1,databases}));
     const resolver=createLocalDatabaseResolver(registry);
-    return await runLocalProjectWithReport({...options,projectDir,databaseResolver:{async resolve(requirement,consumer){
+    const host = options.storage?.host ?? 'local';
+    return await runLocalProjectWithReport({...options,projectDir,storage: { ...options.storage, host,
+      [host]: { ...options.storage?.[host], runtimePersistence: options.storage?.[host]?.runtimePersistence ?? createMemoryRuntimePersistence() } },databaseResolver:{async resolve(requirement,consumer){
       const resolved=await resolver.resolve(requirement,consumer);return resolved && databaseStore ? {...resolved,store:databaseStore} : resolved;
     }}});
   } finally { await rm(directory,{recursive:true,force:true}); }

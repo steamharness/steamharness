@@ -1,12 +1,14 @@
 # Unreleased
 
+- Conversation state, usage and default Agent sessions now use Server PostgreSQL. Added versioned session snapshots, fork/isolation/cancellation helpers and execution abort on lease loss, without legacy KV/SQLite migration.
+
 - Added typed relational queries, aggregation and transactions through `context.databases.connect(descriptor)` for Node entries, with per-operation binding/access/model checks, lease renewal and run cleanup.
 
 - Added public database resource, account grant, migration plan and history types with a shared model engine version.
 
 - Add SteamHarness Database definitions for single or multiple schemas, model metadata, and typed Node/Browser descriptors. Core supplies engine dependencies without application-authored PrismaClient imports.
 
-- Added opt-in Agent storage through `steamharness/runtime-storage`, with account/workspace/session isolation in PostgreSQL, execution leases, idempotent commits and document checkpoints.
+- Added Agent storage through `steamharness/runtime-storage`, with account/workspace/session isolation in PostgreSQL, execution leases, idempotent commits and document checkpoints, also available to custom hosts.
 
 - Added explicit `null` for unlimited total or per-role subagent concurrency, preserving default FIFO limits. Proven unsent tool failures can retry from business receipts; access denials, cancellation and unknown side effects remain retry barriers.
 

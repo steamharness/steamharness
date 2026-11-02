@@ -51,3 +51,5 @@ const result = await context.entries.get("database")
 ## Conversation 状态
 
 宿主分别持久化各入口的历史、输入队列、草稿、参数、Token 用量和审批状态。CLI Web 切换窗口保留后台运行；Studio 不同入口标签共享宿主，但拥有独立会话。配置修改从下一次执行生效。恢复时必须同时匹配项目与入口，不能将另一个入口的审批恢复到当前入口。
+
+会话、消息、队列、Run、用量与 Agent 检查点默认保存在 Server 的平台关系表，按账号、项目与入口隔离，不存入业务 KV。CLI/Studio 不再读取旧 JSON 或默认 SQLite 历史，也不自动迁移。持久历史要求登录与在线连接；断连停止执行并保留登录，不回退本地。文件与附件仍按宿主目录保存。见[平台运行存储](/core-api/runtime-storage)。

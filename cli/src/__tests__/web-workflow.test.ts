@@ -1,3 +1,4 @@
+import { temporaryRuntimePersistence } from "./web-test-storage";
 import { writeProjectFixture } from '../../scripts/test-project-fixture.mjs';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createHash, randomUUID } from 'node:crypto';
@@ -10,7 +11,7 @@ import { migrateProjectHistory, projectStorageReferences, type RunRecord, type W
 import { layoutProjectGraph } from '../web/workflow-graph';
 import { t } from '../web/localization';
 import { createWebRuntime } from '../web/runtime';
-import { startEntryWebServer as startWebServer } from '../web/server';
+import { startEntryWebServer as startWebServer } from './web-test-storage';
 import type { Project, Runtime, Report, InputRequest, ConversationSession, ParamState } from '../web/workflow-types';
 import { resolveHarnessRoot } from './harness-source';
 import { LocalDatabaseRegistry } from 'steamharness';
@@ -290,7 +291,7 @@ describe('SteamHarness Web routing and history', () => {
     expect((await state()).account).toMatchObject({ status: 'authenticated', user: { displayName: 'New' } });
   });
 
-  it('uses a separate page and storage, and converts legacy runs once without modifying conversations', async () => {
+  it('uses relational run history and ignores legacy conversation files', async () => {
     const legacy: ConversationSession[] = [{ id: 'old-scope', title: 'Legacy', messages: [
       { role: 'user', content: '["--subject","Old"]', args: ['--subject', 'Old'], entrypointId: 'main' },
       { id: 'old-run', runId: 'old-run', role: 'assistant', content: 'Old output', status: 'success' },
@@ -298,10 +299,10 @@ describe('SteamHarness Web routing and history', () => {
     const { app, post, historyDir, state, runtime: r } = await service(legacy);
     const original = await readFile(path.join(historyDir, 'conversations.json'), 'utf8');
     expect(await fetch(app.origin).then(response => response.text())).toContain('/assets/workflow-workspace.js');
-    expect((await state()).runs).toHaveLength(1);
-    expect(app.projectController!.runs[0]).toMatchObject({ id: 'old-run', scopeId: 'old-scope', args: ['--subject', 'Old'] });
+    expect((await state()).runs).toHaveLength(0);
     await post({ type: 'workflow-run', params: { subject: 'New' } }); await app.projectController!.idle();
-    expect(JSON.parse(await readFile(path.join(historyDir, 'runs.json'), 'utf8')).runs).toHaveLength(2);
+    expect(app.projectController!.runs).toHaveLength(1);
+    await expect(readFile(path.join(historyDir, 'runs.json'))).rejects.toHaveProperty('code', 'ENOENT');
     expect(await readFile(path.join(historyDir, 'conversations.json'), 'utf8')).toBe(original);
     expect(r.run).toHaveBeenCalledWith(expect.objectContaining({ entrypointId: 'main', args: ['--subject', 'New'] }), expect.any(Function));
     expect((await post({ type: 'send', text: 'Wrong surface' })).status).toBe(400);

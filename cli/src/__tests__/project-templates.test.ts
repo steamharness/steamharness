@@ -7,6 +7,7 @@ import { createProjectFromTemplate, listProjectTemplates, prepareProjectTemplate
 import { createWebRuntime } from '../web/runtime';
 import { resolveHarnessRoot } from './harness-source';
 import { defaultProjectCardIcon, getProjectCardColorContrastRatio } from '@steamharness/project-card-metadata';
+import { runtimeStorageService } from './runtime-storage-service';
 
 const folders: string[] = [];
 const versions = { harness: '0.2.4-20260929001', cli: '0.2.4-20261013009.codex-studio-integration' };
@@ -32,6 +33,8 @@ describe('project templates', () => {
   });
 
   it('generates every template with unique identity, portable dependencies and runnable local entrypoints', async () => {
+    const connection = await runtimeStorageService().start();
+    try {
     const parentDirectory = await parent(), ids = new Set<string>();
     for (const template of await listProjectTemplates()) {
       const created = await createProjectFromTemplate({ templateId: template.id, name: template.id, parentDirectory, versions });
@@ -52,7 +55,7 @@ describe('project templates', () => {
       for (const filename of template.files) { expect((await readFile(path.join(created.directory, filename))).length).toBeGreaterThan(0); }
       await linkCore(created.directory);
       await prepareProjectTemplateRuntime(created.directory);
-      const runtime = createWebRuntime(created.directory, path.join(parentDirectory, 'data'), () => {});
+      const runtime = createWebRuntime(created.directory, path.join(parentDirectory, 'data'), () => connection);
       try {
         const inspected = await runtime.inspect([created.directory]); expect(inspected.errors).toEqual([]);
         const project = { ...inspected.projects[0], uri: pathToFileURL(created.directory).href }; expect(project.projectType).toBe(template.projectType);
@@ -73,6 +76,7 @@ describe('project templates', () => {
       } finally { runtime.dispose(); }
     }
     expect(ids.size).toBe(7);
+    } finally { await connection.close(); }
   }, 60_000);
 
   it('preserves authored template sources when preparing the installed runtime', async () => {

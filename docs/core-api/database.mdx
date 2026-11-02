@@ -166,7 +166,7 @@ export async function createUser(context: RunContext) {
 
 自定义 Node 宿主可从 `steamharness` 导入 `createRemoteRelationalDatabaseHost` 和 `createDatabaseConnector`，提供账号 API Key、项目和入口身份；结束时必须 `await connector.close()`。账号密钥和临时 SQL 凭据只在可信宿主保留，不传入项目参数、模型输入或 Browser。签发 SQL 凭据的 HTTP 接口仅接受账号 Bearer API Key，拒绝 Cookie 会话和带 Origin 的浏览器请求。
 
-Browser 描述符当前用于类型与模型元数据，浏览器查询代理尚未接入。平台会话、Agent 默认存储和现有 KV 的迁移在后续阶段完成。
+Browser 描述符当前用于类型与模型元数据，浏览器查询代理尚未接入。平台会话、用量和默认 Agent 存储已使用独立的平台关系表；现有业务 KV 的替换仍需由项目按模型调整。
 
 ## 构建与分发
 
@@ -174,4 +174,4 @@ Browser 描述符当前用于类型与模型元数据，浏览器查询代理尚
 
 Server 只读取静态清单、源文件指纹及产物哈希，不执行项目定义文件。下载时同样检查清单和哈希，失败不留下半份项目。只有 `.steamharness/generated/database` 可以进入源码包，其余 `.steamharness` 运行数据继续排除。
 
-本入口与 [Agent 服务端存储](/core-api/runtime-storage) 分别定义业务模型和平台 Agent 记录，不会自动替换现有 KV 或 Agent 默认存储。
+本入口定义项目业务模型；[平台运行存储](/core-api/runtime-storage) 负责会话、运行历史和 Agent 记录，二者独立管理。声明业务模型不会自动转换现有 KV 数据。

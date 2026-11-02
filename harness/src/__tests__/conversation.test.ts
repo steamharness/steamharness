@@ -1,3 +1,4 @@
+import { testConversationStorage } from "./runtime-test-storage";
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
@@ -18,7 +19,7 @@ test("conversation setTitle persists a normalized title and emits updates", asyn
     enabled: true,
     projectName: "demo",
     conversationId: "conv-1",
-    kv,
+    storage: testConversationStorage(kv),
     onTitleChange(event) {
       titleEvents.push(event);
     },
@@ -39,7 +40,7 @@ test("conversation setTitle persists a normalized title and emits updates", asyn
 
 test("stable message identities update projections without duplicates or lost state", async () => {
   const kv = createProjectKVContext({ store: createMemoryKVStore(), projectId: "demo", conversationId: "durable" });
-  const conversation = createProjectConversationContext({ enabled: true, projectName: "demo", conversationId: "durable", kv });
+  const conversation = createProjectConversationContext({ enabled: true, projectName: "demo", conversationId: "durable", storage: testConversationStorage(kv) });
   await conversation.setValue("approval", "waiting");
   await conversation.appendMessage({ id: "input", role: "user", content: "Hello" });
   await conversation.appendMessage({ id: "answer", role: "assistant", content: "Partial" });
@@ -60,7 +61,7 @@ test("conversation setTitle clears blank titles without throwing", async () => {
     enabled: true,
     projectName: "demo",
     conversationId: "conv-1",
-    kv,
+    storage: testConversationStorage(kv),
   });
 
   await conversation.setTitle("Temporary title");

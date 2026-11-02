@@ -121,6 +121,7 @@ export class DurableAgent {
   private seeded = false;
   private fatalFailure?: unknown;
   private failActive?: (error: unknown) => void;
+  private removeStorageFailureListener?: () => void;
 
   constructor(private readonly options: DurableAgentOptions) {
     this.state = options.initialState;
@@ -136,6 +137,14 @@ export class DurableAgent {
         if (this.options.databasePath !== undefined) throw new Error("Agent storage and databasePath are mutually exclusive.");
         const opened = await this.options.storage.open();
         storage = opened.storage; this.releaseOwner = opened.release;
+        const failed = () => {
+          this.fail(opened.failure?.reason);
+          // Losing ownership stops local task invocations without writing outcomes.
+          void this.harness?.close(context).catch(error => this.fail(error));
+        };
+        if (opened.failure?.aborted) { failed(); throw opened.failure.reason; }
+        opened.failure?.addEventListener("abort", failed, { once: true });
+        this.removeStorageFailureListener = () => opened.failure?.removeEventListener("abort", failed);
       } else if (this.options.databasePath === undefined) {
         storage = this.memoryStorage ??= new AgentMemoryStorage();
       } else {
@@ -217,10 +226,11 @@ export class DurableAgent {
       this.seeded = true;
       await this.refresh();
     } catch (error) {
+      this.removeStorageFailureListener?.(); this.removeStorageFailureListener = undefined;
       if (this.harness) await this.harness.close(context).catch(() => undefined);
       else await storage?.close(context).catch(() => undefined);
       await this.resources?.close(context).catch(() => undefined); this.resources = undefined;
-      await this.releaseOwner?.(); this.releaseOwner = undefined;
+      await Promise.resolve(this.releaseOwner?.()).catch(() => undefined); this.releaseOwner = undefined;
       this.harness = undefined;
       throw error;
     }
@@ -253,6 +263,7 @@ export class DurableAgent {
         finally { await this.harness?.close(context); }
       }
     } finally {
+      this.removeStorageFailureListener?.(); this.removeStorageFailureListener = undefined;
       this.watch = undefined; this.harness = undefined; this.root = undefined;
       this.session = undefined;
       try { await this.resources?.close(context); }

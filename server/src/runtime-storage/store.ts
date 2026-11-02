@@ -9,7 +9,7 @@ import {
 
 type Table = "conversations" | "entries" | "tasks" | "submissions" | "documents";
 type DocumentAction = { create?: DocumentCreate; content?: DocumentContent; copy?: DocumentCopySource; retire: boolean };
-type ReadOperation = Exclude<RuntimeStorageOperation, { kind: "commit" | "mintId" | "renew" | "release" }>;
+type ReadOperation = Exclude<RuntimeStorageOperation, { kind: "commit" | "mintId" | "renew" | "release" | "history.write" | "history.delete" | "usage" | "snapshot.import" | "session.delete" }>;
 
 /** All operations run within a transaction holding this session's fencing row. */
 export class PostgresAgentStorage {

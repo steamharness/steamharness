@@ -1,4 +1,6 @@
 export * from "./contract";
+export * from "./history";
+export { createMemoryRuntimePersistence, SnapshotMemoryStorage } from "./memory";
 export { createServerAgentStorage, ServerAgentStorage, type ServerAgentStorageOptions } from "./server";
 
 // Keep persisted delta semantics aligned with the bundled runtime. This helper

@@ -1,5 +1,7 @@
 import type { Context, JsonValue } from "@earendil-works/chord";
+import { HarnessError } from "../workflow/errors";
 import type { ConversationQuery, DocumentAddress, DocumentPoint, DocumentQuery, EntryQuery, StorageWrite, SubmissionQuery, TaskQuery, Cursor } from "@earendil-works/pi-durable";
+export type { TokenUsageEntry } from "../token-usage";
 
 // The persistence service uses the same versioned record contract as the bundled
 // Agent runtime. Project definitions and executable handlers never cross it.
@@ -45,7 +47,33 @@ export interface RuntimeStorageCredentials {
   fence: number;
 }
 
+/** Host projections are split into ordered relational child records on Server. */
+export type RuntimeHistoryKind = "conversation" | "run" | "workflow" | "state";
+export interface RuntimeHistoryItem { id: string; value: Record<string, unknown> }
+export interface RuntimeHistoryRecord {
+  kind: RuntimeHistoryKind;
+  key: string;
+  scope: string;
+  revision: number;
+  state: Record<string, unknown>;
+  messages: RuntimeHistoryItem[];
+  queue: RuntimeHistoryItem[];
+  events: RuntimeHistoryItem[];
+  values: RuntimeHistoryItem[];
+}
+export interface AgentSessionSnapshot {
+  format: "steamharness.agent-session";
+  version: 1;
+  nextId: number;
+  commits: { seq: number; writes: readonly StorageWrite[] }[];
+}
+
 export type RuntimeStorageOperation =
+  | { kind: "session.delete"; requestId: string }
+  | { kind: "history.write"; requestId: string; record: RuntimeHistoryRecord }
+  | { kind: "history.delete"; requestId: string; record: Pick<RuntimeHistoryRecord, "kind" | "key" | "scope" | "revision"> }
+  | { kind: "usage"; requestId: string; entry: import("../token-usage").TokenUsageEntry }
+  | { kind: "snapshot.import"; requestId: string; snapshot: AgentSessionSnapshot }
   | { kind: "commit"; requestId: string; writes: readonly StorageWrite[] }
   | { kind: "mintId"; requestId: string }
   | { kind: "renew" }
@@ -64,11 +92,12 @@ export type RuntimeStorageOperation =
 
 export type RuntimeStorageErrorCode = "RUNTIME_STORAGE_INVALID_REQUEST" | "RUNTIME_STORAGE_NOT_FOUND" | "RUNTIME_STORAGE_ACCESS_DENIED"
   | "RUNTIME_STORAGE_OWNER_CONFLICT" | "RUNTIME_STORAGE_LEASE_LOST"
+  | "RUNTIME_STORAGE_REVISION_CONFLICT"
   | "RUNTIME_STORAGE_IDEMPOTENCY_CONFLICT" | "RUNTIME_STORAGE_UNAVAILABLE";
 
-export class RuntimeStorageError extends Error {
+export class RuntimeStorageError extends HarnessError {
   constructor(readonly code: RuntimeStorageErrorCode, message: string, options?: ErrorOptions) {
-    super(message, options);
+    super({ type: "execution", message, cause: options?.cause, metadata: { code, ...(code === "RUNTIME_STORAGE_OWNER_CONFLICT" ? { agentFailure: "owner_conflict" } : {}) } });
     this.name = "RuntimeStorageError";
   }
 }

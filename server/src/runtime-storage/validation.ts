@@ -51,7 +51,21 @@ const write = z.discriminatedUnion("type", [
 const scan = { limit: z.number().int().min(1).max(10_000), cursor: object.optional() };
 // Order and cursor diagnostics are produced by the storage contract itself.
 const order = z.string().optional();
+export const historyKindSchema = z.enum(["conversation", "run", "workflow", "state"]);
+const historyIdentity = { kind: historyKindSchema, key: plainText, scope: plainText, revision: z.number().int().min(0).max(Number.MAX_SAFE_INTEGER - 1) };
+const historyItems = z.array(z.object({ id: z.string().max(2048), value: object }).strict()).max(100_000)
+  .refine(items => new Set(items.map(item => item.id)).size === items.length, "Duplicate history item identity.");
+export const snapshotSchema = z.object({ format: z.literal("steamharness.agent-session"), version: z.literal(1), nextId: id.min(2),
+  commits: z.array(z.object({ seq: id, writes: z.array(write).max(10_000) }).strict()).max(100_000) }).strict();
+const count = z.number().int().min(0).max(Number.MAX_SAFE_INTEGER);
 const operationSchema = z.discriminatedUnion("kind", [
+  z.object({ kind: z.literal("session.delete"), requestId: z.uuid() }).strict(),
+  z.object({ kind: z.literal("history.write"), requestId: z.uuid(), record: z.object({ ...historyIdentity, state: object, messages: historyItems, queue: historyItems, events: historyItems, values: historyItems }).strict() }).strict(),
+  z.object({ kind: z.literal("history.delete"), requestId: z.uuid(), record: z.object(historyIdentity).strict() }).strict(),
+  z.object({ kind: z.literal("snapshot.import"), requestId: z.uuid(), snapshot: snapshotSchema }).strict(),
+  z.object({ kind: z.literal("usage"), requestId: z.uuid(), entry: z.object({ id: plainText, projectId: plainText, runId: plainText, conversationId: plainText.optional(), sequence: count,
+    createdAt: z.string().datetime(), inputTokens: count, outputTokens: count, totalTokens: count, reasoningTokens: count, cachedInputTokens: count, cacheCreationTokens: count,
+    nodeName: z.string().optional(), providerName: z.string().optional(), modelId: z.string().optional(), metadata: object.optional() }).strict() }).strict(),
   z.object({ kind: z.literal("commit"), requestId: z.uuid(), writes: z.array(write).max(10_000) }).strict(),
   z.object({ kind: z.literal("mintId"), requestId: z.uuid() }).strict(),
   z.object({ kind: z.literal("renew") }).strict(), z.object({ kind: z.literal("release") }).strict(),
@@ -77,6 +91,7 @@ const workspaceSchema = z.discriminatedUnion("kind", [
 ]);
 export function readRuntimeWorkspace(input: unknown): RuntimeWorkspaceInput { return workspaceSchema.parse(input); }
 export const readRuntimeId = (input: unknown): string => z.uuid().parse(input);
+export const readRuntimeText = (input: unknown): string => plainText.parse(input);
 export const openRuntimeSessionSchema = z.object({ sessionKey: plainText, ownerToken: z.string().min(32).max(128) }).strict();
 export function readRuntimeOperation(input: unknown): { ownerToken: string; fence: number; operation: RuntimeStorageOperation } {
   z.object({ ownerToken: z.string().min(32).max(128), fence: id, operation: operationSchema }).strict().parse(input);

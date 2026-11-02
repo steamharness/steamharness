@@ -98,7 +98,8 @@ try {
       process.env.STEAMHARNESS_DEVELOPER_ASSISTANT_WORKDIR = request.project.assistant.workdir;
       process.env.STEAMHARNESS_DEVELOPER_ASSISTANT_WORKSPACE_MANIFEST = manifestPath;
     }
-    const storage = { host: 'local', local: { kvStoreDir: path.join(dataDir, 'kv'), persistentValueStoreDir: path.join(dataDir, 'values') } };
+    const runtimeWorkspace = { kind: request.project.assistant ? 'assistant' : 'local', projectId: request.project.id, entryId: request.project.entryId, localKey: createHash('sha256').update(request.project.assistant?.workdir ?? request.project.folderPath).digest('hex') };
+    const storage = { host: 'local', local: { kvStoreDir: path.join(dataDir, 'kv'), persistentValueStoreDir: path.join(dataDir, 'values'), runtimeWorkspace } };
     const filesDir = path.join(dataDir, 'files');
     const createdFiles = [];
     const managed = createServerProjectFileStore({ rootDir: filesDir, projectName: request.project.id, conversationId: request.conversationId });

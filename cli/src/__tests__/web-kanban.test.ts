@@ -5,7 +5,7 @@ import path from 'node:path';
 import os from 'node:os';
 import { fileURLToPath } from 'node:url';
 import * as core from 'steamharness';
-import { startEntryWebServer as startWebServer } from '../web/server';
+import { startEntryWebServer as startWebServer } from './web-test-storage';
 import { configurationTemplatePath } from '@steamharness/project-configuration';
 import { runKanbanDataCall, webProjectDataDirectory } from '../web/kanban-data';
 import type { Project, Runtime } from '../web/workflow-types';

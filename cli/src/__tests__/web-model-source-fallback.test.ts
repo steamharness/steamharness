@@ -1,3 +1,4 @@
+import { runtimeStorageService } from './runtime-storage-service';
 import { expect, it } from 'vitest';
 import { once } from 'node:events';
 import { createHash } from 'node:crypto';
@@ -15,7 +16,10 @@ it('falls back to project models in standalone Web and follows later host capabi
   const projectId = crypto.randomUUID(), configurationKey = createHash('sha256').update(`${projectId}:main`).digest('hex');
   const calls: { model: string; key?: string }[] = [];
   let app: Awaited<ReturnType<typeof startEntryWebServer>> | undefined;
+  const storageService = runtimeStorageService();
   const upstream = createServer(async (request, response) => {
+    if (await storageService.handle(request, response)) return;
+    if (request.method === 'GET') { response.setHeader('content-type', 'application/json'); response.end(JSON.stringify({ errCode: 0, data: { profile: { userId: 'fixture-user', email: 'fixture@example.test', displayName: 'Fixture' } } })); return; }
     const chunks: Buffer[] = []; for await (const chunk of request) chunks.push(chunk);
     const body = JSON.parse(Buffer.concat(chunks).toString()); calls.push({ model: body.model, key: request.headers.authorization });
     response.writeHead(200, { 'content-type': 'text/event-stream' });
@@ -34,7 +38,7 @@ it('falls back to project models in standalone Web and follows later host capabi
         createInput(context) { return steamharness.createAgentProjectInput(context); }
       });
     `);
-    app = await startEntryWebServer({ projectDir: directory, dataDir: path.join(directory, 'data') });
+    app = await startEntryWebServer({ projectDir: directory, dataDir: path.join(directory, 'data'), host: { surface: 'editor', connection: { serverUrl: origin, accessToken: 'fixture-account' } } });
     const token = new URL(app.url).hash.slice('#session='.length);
     const post = async (message: object) => {
       const response = await fetch(`${app!.origin}/api/message`, { method: 'POST', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }, body: JSON.stringify(message) });
@@ -77,7 +81,7 @@ it('falls back to project models in standalone Web and follows later host capabi
       { model: project.model, key: `Bearer ${project.apiKey}` },
     ]);
     expect(JSON.stringify(app.project)).not.toContain('fixture-project-key');
-    expect(JSON.stringify(app.controller.current)).not.toContain('fixture-host-key');
+    expect(JSON.stringify(await post({ type: 'ready' }))).not.toContain('fixture-host-key');
   } finally {
     await app?.close();
     await new Promise<void>(resolve => { upstream.close(() => resolve()); upstream.closeAllConnections(); });

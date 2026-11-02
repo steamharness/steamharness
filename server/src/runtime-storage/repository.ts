@@ -1,9 +1,10 @@
 import { createHash, randomUUID } from "node:crypto";
 import type pg from "pg";
-import { RuntimeStorageError, type RuntimeWorkspaceInput, type RuntimeWorkspace, type RuntimeStorageLease, type RuntimeStorageCredentials, type RuntimeStorageOperation } from "steamharness/runtime-storage";
+import { RuntimeStorageError, type AgentSessionSnapshot, type RuntimeHistoryKind, type RuntimeHistoryRecord, type RuntimeWorkspaceInput, type RuntimeWorkspace, type RuntimeStorageLease, type RuntimeStorageCredentials, type RuntimeStorageOperation } from "steamharness/runtime-storage";
 import { createPostgresPool } from "../postgres";
 import { migrateRuntimeStorage, RUNTIME_STORAGE_SCHEMA, runtimeSchemaName } from "./migrations";
 import { PostgresAgentStorage } from "./store";
+import { PostgresRuntimeHistory } from "./history";
 
 export interface OwnedRuntimeWorkspace extends RuntimeWorkspace { ownerUserId: string }
 
@@ -50,6 +51,7 @@ export class RuntimeStorageRepository {
       await client.query(`insert into ${this.name}.agent_sessions (id,workspace_id,session_key) values ($1,$2,$3) on conflict (workspace_id,session_key) do nothing`, [randomUUID(), workspaceId, sessionKey]);
       const selected = await client.query(`select *,lease_expires_at>clock_timestamp() as active from ${this.name}.agent_sessions where workspace_id=$1 and session_key=$2 for update`, [workspaceId, sessionKey]);
       const row = selected.rows[0];
+      if (row.deleted) throw missing();
       const tokenHash = hash(ownerToken);
       if (row.active && row.owner_token_hash !== tokenHash) throw new RuntimeStorageError("RUNTIME_STORAGE_OWNER_CONFLICT", "This agent session already has an execution owner.");
       if (row.active && row.owner_token_hash === tokenHash) return this.lease(row);
@@ -76,10 +78,10 @@ export class RuntimeStorageRepository {
         const updated = await client.query(`update ${this.name}.agent_sessions set lease_expires_at=clock_timestamp()+($2::integer * interval '1 millisecond') where id=$1 returning *`, [sessionId, this.leaseDurationMs]);
         return this.lease(updated.rows[0]);
       }
-      const mutable = operation.kind === "commit" || operation.kind === "mintId";
+      const mutable = ["commit", "mintId", "history.write", "history.delete", "usage", "snapshot.import", "session.delete"].includes(operation.kind);
       const payloadHash = mutable ? hash(JSON.stringify(operation)) : undefined;
       if (mutable) {
-        const previous = await client.query(`select payload_hash,result from ${this.name}.agent_operations where session_id=$1 and request_id=$2`, [sessionId, operation.requestId]);
+        const previous = await client.query(`select payload_hash,result from ${this.name}.agent_operations where session_id=$1 and request_id=$2`, [sessionId, "requestId" in operation ? operation.requestId : undefined]);
         if (previous.rows[0]) {
           if (previous.rows[0].payload_hash !== payloadHash) throw new RuntimeStorageError("RUNTIME_STORAGE_IDEMPOTENCY_CONFLICT", "The runtime storage request ID was reused with different content.");
           return JSON.parse(previous.rows[0].result);
@@ -87,7 +89,32 @@ export class RuntimeStorageRepository {
       }
       const store = new PostgresAgentStorage(client, this.name, sessionId);
       let result: unknown;
-      if (operation.kind === "mintId") {
+      if (session.deleted) throw missing();
+      if (operation.kind === "session.delete") {
+        for (const table of ["agent_entries", "agent_tasks", "agent_submissions", "agent_document_revisions", "agent_documents", "agent_conversations", "agent_record_ids", "agent_commits"]) {
+          await client.query(`delete from ${this.name}.${table} where session_id=$1`, [sessionId]);
+        }
+        await client.query(`update ${this.name}.agent_sessions set deleted=true where id=$1`, [sessionId]);
+      } else if (operation.kind === "history.write" || operation.kind === "history.delete") {
+        const history = new PostgresRuntimeHistory(client, this.name, session.workspace_id);
+        const record = operation.kind === "history.write" ? operation.record : { ...operation.record, state: {}, messages: [], queue: [], events: [], values: [] } as RuntimeHistoryRecord;
+        result = await history.write(record, session.session_key, operation.kind === "history.delete", session.owner_token_hash);
+      } else if (operation.kind === "usage") {
+        const owned = await client.query(`select project_id from ${this.name}.workspaces where id=$1`, [session.workspace_id]);
+        if (owned.rows[0]?.project_id !== operation.entry.projectId) throw new RuntimeStorageError("RUNTIME_STORAGE_ACCESS_DENIED", "Usage must belong to this workspace project.");
+        await new PostgresRuntimeHistory(client, this.name, session.workspace_id).usage(operation.entry, session.session_key);
+      } else if (operation.kind === "snapshot.import") {
+        if (Number(session.next_seq) !== 1 || Number(session.next_id) !== 2) throw new RuntimeStorageError("RUNTIME_STORAGE_REVISION_CONFLICT", "Import requires a new empty agent session.");
+        let nextId = 2, nextSeq = 1;
+        for (const commit of operation.snapshot.commits) {
+          if (commit.seq !== nextSeq) throw new RuntimeStorageError("RUNTIME_STORAGE_INVALID_REQUEST", "Snapshot commits must be contiguous and ordered.");
+          nextId = await store.commit(commit.writes, commit.seq, nextId);
+          await client.query(`insert into ${this.name}.agent_commits(session_id,seq,writes) values($1,$2,$3)`, [sessionId, commit.seq, JSON.stringify(commit.writes)]);
+          nextSeq++;
+        }
+        if (operation.snapshot.nextId < nextId) throw new RuntimeStorageError("RUNTIME_STORAGE_INVALID_REQUEST", "Invalid snapshot ID watermark.");
+        await client.query(`update ${this.name}.agent_sessions set next_id=$2,next_seq=$3 where id=$1`, [sessionId, operation.snapshot.nextId, nextSeq]);
+      } else if (operation.kind === "mintId") {
         const id = Number(session.next_id);
         if (!Number.isSafeInteger(id)) throw new Error("ID space is exhausted");
         await client.query(`update ${this.name}.agent_sessions set next_id=next_id+1 where id=$1`, [sessionId]);
@@ -96,11 +123,39 @@ export class RuntimeStorageRepository {
         const seq = Number(session.next_seq);
         if (!Number.isSafeInteger(seq)) throw new Error("Commit sequence space is exhausted");
         const nextId = await store.commit(operation.writes, seq, Number(session.next_id));
+        await client.query(`insert into ${this.name}.agent_commits(session_id,seq,writes) values($1,$2,$3)`, [sessionId, seq, JSON.stringify(operation.writes)]);
         await client.query(`update ${this.name}.agent_sessions set next_id=$2,next_seq=next_seq+1 where id=$1`, [sessionId, nextId]);
         result = seq;
       } else result = await store.read(operation);
-      if (mutable) await client.query(`insert into ${this.name}.agent_operations (session_id,request_id,payload_hash,result) values ($1,$2,$3,$4)`, [sessionId, operation.requestId, payloadHash, JSON.stringify(result)]);
+      if (mutable) await client.query(`insert into ${this.name}.agent_operations (session_id,request_id,payload_hash,result) values ($1,$2,$3,$4)`, [sessionId, "requestId" in operation ? operation.requestId : undefined, payloadHash, JSON.stringify(result ?? null)]);
       return result;
+    });
+  }
+
+  async history(userId: string, workspaceId: string, kind: RuntimeHistoryKind): Promise<RuntimeHistoryRecord[]> {
+    return this.transaction(async client => {
+      await client.query("set transaction isolation level repeatable read");
+      const owned = await client.query(`select id from ${this.name}.workspaces where id=$1 and owner_user_id=$2`, [workspaceId, userId]);
+      if (!owned.rowCount) throw missing();
+      return new PostgresRuntimeHistory(client, this.name, workspaceId).list(kind);
+    });
+  }
+
+  async agentSessions(userId: string, workspaceId: string, prefix: string): Promise<string[]> {
+    await this.getWorkspace(userId, workspaceId);
+    const result = await this.pool.query(`select session_key from ${this.name}.agent_sessions where workspace_id=$1 and not deleted and starts_with(session_key,$2) order by session_key`, [workspaceId, prefix]);
+    return result.rows.map(row => row.session_key);
+  }
+
+  async snapshot(userId: string, workspaceId: string, sessionKey: string): Promise<AgentSessionSnapshot> {
+    return this.transaction(async client => {
+      await client.query("set transaction isolation level repeatable read");
+      const result = await client.query(`select s.* from ${this.name}.agent_sessions s join ${this.name}.workspaces w on w.id=s.workspace_id where s.workspace_id=$1 and s.session_key=$2 and w.owner_user_id=$3`, [workspaceId, sessionKey, userId]);
+      const session = result.rows[0];
+      if (!session || session.deleted) throw missing();
+      const rows = await client.query(`select seq,writes from ${this.name}.agent_commits where session_id=$1 order by seq`, [session.id]);
+      if (rows.rows.length !== Number(session.next_seq) - 1) throw new RuntimeStorageError("RUNTIME_STORAGE_INVALID_REQUEST", "This session predates versioned snapshots. Start a new conversation.");
+      return { format: "steamharness.agent-session", version: 1, nextId: Number(session.next_id), commits: rows.rows.map(row => ({ seq: Number(row.seq), writes: JSON.parse(row.writes) })) };
     });
   }
 

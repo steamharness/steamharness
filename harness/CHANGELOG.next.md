@@ -1,12 +1,14 @@
 # Unreleased
 
+- 【变更】Conversation 状态、用量与默认 Agent 会话使用 Server PostgreSQL；新增版本化会话快照及分叉、独立化和取消接口，租约失效中止执行，不迁移旧 KV/SQLite。
+
 - 【新增】Node 入口通过 `context.databases.connect(descriptor)` 使用类型化关系查询、聚合与事务；逐次检查宿主绑定、授权和模型指纹，自动续期并在执行结束或取消时释放连接。
 
 - 【新增】公开数据库资源、账号授权、迁移计划与历史类型，统一模型引擎版本。
 
 - 新增 SteamHarness Database 定义入口：单库／多库 schema、模型元数据及 Node/Browser 类型化描述符；内部引擎由 Core 提供，业务源码无需导入 PrismaClient。
 
-- 【新增】提供 `steamharness/runtime-storage` 服务端 Agent 存储，按账号、工作区和会话隔离 PostgreSQL 记录，支持租约接管、幂等提交和文档检查点；需显式接入。
+- 【新增】提供 `steamharness/runtime-storage` 服务端 Agent 存储，按账号、工作区和会话隔离 PostgreSQL 记录，支持租约接管、幂等提交和文档检查点；自定义宿主也可显式接入。
 
 - 【新增】子 Agent 总并发与角色并发支持显式 `null` 不设数量上限，保留默认 FIFO 限额；已证明未发出的工具请求可按业务回执恢复重试，权限拒绝、取消与未知副作用仍阻止重放。
 

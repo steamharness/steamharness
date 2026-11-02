@@ -51,3 +51,5 @@ Writes record `projectId`, `entryId` and available `runId` and `conversationId`.
 ## Conversation state
 
 Hosts persist each entry's history, input queue, drafts, parameters, token usage and approvals independently. CLI Web preserves background runs while switching windows. Studio entry tabs share the host and keep separate conversations. Configuration changes apply to the next execution. Recovery must match both project and entry, including pending approvals.
+
+Conversations, messages, queues, runs, usage and Agent checkpoints use Server platform relational tables, isolated by account, project and entry, independently of business KV. CLI/Studio no longer read or migrate legacy JSON or default SQLite history. Persistent history requires sign-in and connectivity. Disconnection stops execution without clearing sign-in or falling back locally. Files and attachments remain host managed. See [platform runtime storage](/en/core-api/runtime-storage).

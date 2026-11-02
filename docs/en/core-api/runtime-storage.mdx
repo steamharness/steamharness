@@ -1,11 +1,21 @@
 ---
-title: "Agent Server storage"
-description: "Persist Agent conversations, tasks, submissions and document checkpoints through SteamHarness Server and PostgreSQL."
+title: "Platform runtime storage"
+description: "Persist conversations, run history, queues, usage and Agent checkpoints through SteamHarness Server and PostgreSQL."
 ---
 
-# Agent Server storage
+# Platform runtime storage
 
 `steamharness/runtime-storage` provides `createServerAgentStorage` to persist Agent records in Server's PostgreSQL database. Agents execute in CLI, Studio or your Node.js process. Server authenticates data access and never loads executable project code.
+
+## Default storage and isolation
+
+CLI Web, Studio Conversation/Workflow history and assistant sessions use the signed-in account's Server PostgreSQL database by default. Messages, queued inputs, drafts, parameters, runs, events, usage and Agent checkpoints use platform relational tables. The default path no longer reads or writes legacy conversations.json, runs.json or Agent SQLite files, and does not migrate them.
+
+Persistent operations require platform sign-in and an available Server. Third-party models remain independently configurable; persistent conversations still need platform storage. System AI authorization is separate from the storage account. Connectivity failures retain sign-in. Unavailable storage or lost permissions stop the affected execution and report storage errors; revoked credentials mark sign-in as expired. No local storage is created as a fallback.
+
+Registered projects are isolated by account, project and entry. The host resolves a local project through workspaces/resolve: existing projects require current membership; only missing projects use a private local workspace. A 403 never falls back to local identity. Assistant workspaces are separate. Projects and conversations add rows to shared tables without creating PostgreSQL databases.
+
+Workspace files, attachments and temporary activity notifications remain host managed. Back them up alongside PostgreSQL. Business models use [SteamHarness Database](/en/core-api/database); business KV, knowledge and configuration are outside this history interface.
 
 ## Connect and reopen
 
@@ -49,7 +59,7 @@ The host implements `readAccountToken()` to return the current account's Server 
 
 Project IDs must be UUIDs. Entry IDs start with a lowercase letter and contain lowercase letters, digits, `_` or `-`, up to 64 characters. `localKey` and `sessionKey` are stable identities of 1–512 characters without NUL. A host-managed folder ID is suitable for `localKey`; it does not grant project access.
 
-The account, workspace kind, project, entry and local identity locate a workspace; the workspace plus `sessionKey` locate a session. Accounts, entries, local folders and sessions remain isolated. System administrators do not inherit access to other accounts' private histories. Reopening restores committed conversations, tasks, submission receipts, fork ancestry and document checkpoints without migrating SQLite or legacy KV.
+The account, workspace kind, project, entry and local identity locate a workspace; the workspace plus `sessionKey` locate a session. Accounts, entries and sessions remain isolated. Local and assistant workspaces also use the local identity; after resolving a registered project, the same account shares history by project and entry. System administrators do not inherit access to other accounts' private histories. Reopening restores committed conversations, tasks, submission receipts, fork ancestry and document checkpoints without migrating SQLite or legacy KV.
 
 ## Ownership, retries and failures
 
@@ -57,14 +67,33 @@ A session has one execution owner at a time. Server grants a 30-second lease by 
 
 Commits and ID allocation keep stable request IDs, returning the original result after a lost response without duplicate records or reused IDs. Network errors, timeouts and HTTP 429/502/503/504 use bounded retries; 401/403 fail immediately. Failed renewal rejects subsequent storage operations without switching to local or memory storage. Storage idempotency does not guarantee exactly-once external tool effects; tool recovery still follows replay and approval policies.
 
-`RuntimeStorageError.code` distinguishes `RUNTIME_STORAGE_OWNER_CONFLICT`, `RUNTIME_STORAGE_LEASE_LOST`, `RUNTIME_STORAGE_IDEMPOTENCY_CONFLICT`, `RUNTIME_STORAGE_ACCESS_DENIED`, `RUNTIME_STORAGE_NOT_FOUND` and `RUNTIME_STORAGE_UNAVAILABLE`. Invalid operations use `AgentStorageRequestError`.
+`RuntimeStorageError.code` distinguishes `RUNTIME_STORAGE_OWNER_CONFLICT`, `RUNTIME_STORAGE_LEASE_LOST`, `RUNTIME_STORAGE_REVISION_CONFLICT`, `RUNTIME_STORAGE_IDEMPOTENCY_CONFLICT`, `RUNTIME_STORAGE_ACCESS_DENIED`, `RUNTIME_STORAGE_NOT_FOUND` and `RUNTIME_STORAGE_UNAVAILABLE`. Invalid operations use `AgentStorageRequestError`.
+
+## History, snapshots and host integration
+
+`createServerRuntimePersistence({ serverUrl, token, workspace, resolveProject: true })` creates the host repository. `list(kind)` reads conversation, run, workflow or state history. `acquire(scope, onLost)` returns a lease with write(record), delete(identity), usage(entry), assertOwned() and close(). Records carry a revision and ordered message, queue, event and value collections. Writes require the matching scope and revision. Deletion retains a version tombstone so stale windows cannot recreate deleted history.
+
+Core executors inject the repository into Conversation state, usage and Agent nodes. Persistent Conversation execution checks storage before business code runs. A plain Core Workflow without Conversation or persistent usage can execute offline; CLI/Studio run history still requires online storage. Trusted hosts may inject storage.local.runtimePersistence or storage.server.runtimePersistence; tests may explicitly use createMemoryRuntimePersistence(), which is never a connectivity fallback.
+
+The following helpers are exported from steamharness/agent and accept persistence:
+
+| Helper | Purpose |
+| --- | --- |
+| exportAgentSession({ persistence, conversationId }) | Read a consistent committed snapshot, including while the source owner is active, without loading a model. |
+| importAgentSession({ persistence, conversationId, sessionKey, snapshot }) | Import into a new empty session without overwriting existing or deleted sessions. |
+| forkStoredAgentConversation({ persistence, conversationId, command }) | Fork committed history under an idle owner with durable receipts; use the control channel for an active owner. |
+| isolateStoredAgentConversation({ persistence, sourceConversationId, conversationId, targetId, replacements?, retireSource? }) | Create an independent session with cutoff history and document policies, excluding tasks, approvals, queues and usage. |
+| cancelStoredAgentConversation({ persistence, conversationId }) | Cancel a stored execution tree without an active owner. |
+| deleteStoredAgentConversation({ persistence, conversationId }) | Cancel and delete Agent sessions and Conversation state. |
+
+The storage snapshot is `{ format: "steamharness.agent-session", version: 1, nextId, commits }`. It preserves commit order, historical documents and reserved IDs, and differs from the AgentSessionSnapshot UI projection. Forking requires storage access but no system AI. Stop, background ownership and queue pause semantics are preserved. Lease loss or renewal failure aborts local execution. Crash recovery waits for lease expiry and resumes with the original runId and requestId; failed turns do not advance queued input.
 
 ## Data and backups
 
 Server maintains versioned migrations and dedicated relational tables inside the platform database's `steamharness_runtime` schema: workspaces, sessions, conversations, entries, tasks, submissions, document revisions and operation receipts. Registering a workspace does not create a PostgreSQL database. Identity, lifecycle and query fields have separate columns and indexes. Opaque JSON payloads use text to preserve valid special keys and Unicode losslessly.
 
-Back up PostgreSQL and the required attachments and workspace files. SQLite import, export, offline fork and offline cancellation helpers do not apply to this backend. Online session controls continue through the active owner.
+Back up PostgreSQL together with attachments and workspace files. SQLite-specific export, import, fork and cancellation helpers apply only to explicitly configured databasePath instances. Default hosts use the repository helpers above; active sessions use their owner control channel.
 
-CLI/Studio keep their existing defaults; select this backend by injecting `storage`. This API stores platform Agent records. It does not define project relational tables or Prisma schemas.
+CLI/Studio hosts use this repository by default. Standalone createAgent() without storage or databasePath remains a temporary memory instance; inject createServerAgentStorage for persistence. Project business models are a separate API.
 
 See [Deployment and release](/en/guides/server/deployment) for local development and [OpenAPI](/en/openapi/steamharness.openapi.yaml) for HTTP details.

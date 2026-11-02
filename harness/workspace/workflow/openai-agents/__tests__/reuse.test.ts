@@ -1,4 +1,4 @@
-import { createApprovedTestContext } from "../../../test-databases";
+import { createApprovedTestContext, createTestConversationStorage } from "../../../test-databases";
 import { beforeAll, describe, expect, it } from "vitest";
 import { installProjectRuntimeGlobal } from "steamharness/runtime-api";
 import {
@@ -89,7 +89,7 @@ describe("openai-agents reusable mode", () => {
         enabled: true,
         conversationId: "reuse-thread",
         projectName: "openai-agents",
-        kv,
+        storage: createTestConversationStorage(),
       }),
       tokenUsage: createDisabledProjectTokenUsageContext(),
     };
@@ -1129,7 +1129,7 @@ function createOpenAIAgentsContext(options: {
   const tokenUsage = options.tokenUsageEnabled === true
     ? createProjectTokenUsageContext({
       definition: { enabled: true, display: true },
-      kv,
+      store: async () => undefined,
       projectId: "1e43f54c-f4eb-431f-8033-dc2bf0c19903",
       runId: "openai-agents-test-run",
       conversationId: "stream-thread",
@@ -1143,7 +1143,7 @@ function createOpenAIAgentsContext(options: {
       enabled: true,
       conversationId: "stream-thread",
       projectName: "openai-agents",
-      kv,
+      storage: createTestConversationStorage(),
     }),
     tokenUsage,
     nodeHooks: {

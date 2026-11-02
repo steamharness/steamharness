@@ -1,8 +1,7 @@
 import { randomUUID } from "node:crypto";
-import type { KVContext } from "../kv/index";
 import { HarnessError } from "../workflow/errors";
 
-/** Where a conversation's own state lives inside its KV namespace. */
+/** Legacy key retained until the KV API is removed. Conversation state no longer uses it. */
 export const CONVERSATION_STATE_KEY = "conversation.state";
 
 export type ConversationRole = "user" | "assistant" | "system" | "tool";
@@ -44,11 +43,16 @@ export interface ConversationContext {
   ): Promise<ConversationState>;
 }
 
+export interface ConversationStateStorage {
+  read(initial: ConversationState): Promise<ConversationState>;
+  update(initial: ConversationState, change: (state: ConversationState) => ConversationState): Promise<ConversationState>;
+}
+
 export interface ConversationRuntimeOptions {
   enabled?: boolean;
   conversationId?: string;
   projectName: string;
-  kv?: KVContext;
+  storage?: ConversationStateStorage;
   onTitleChange?: (event: {
     conversationId: string;
     title?: string;
@@ -63,11 +67,11 @@ export function createProjectConversationContext(
     return createDisabledProjectConversationContext();
   }
 
-  if (options.kv === undefined) {
+  if (options.storage === undefined) {
     throw new HarnessError({
       type: "input_validation",
       message:
-        "Workflow conversation is enabled, but no workflow KV context was configured.",
+        "Workflow conversation is enabled, but no runtime persistence was configured.",
       metadata: { project: options.projectName },
     });
   }
@@ -84,7 +88,7 @@ export function createProjectConversationContext(
   const store = createProjectConversationStore({
     projectName: options.projectName,
     conversationId,
-    kv: options.kv,
+    storage: options.storage,
     onTitleChange: options.onTitleChange,
   });
 
@@ -121,7 +125,7 @@ export function createDisabledProjectConversationContext(): ConversationContext 
 function createProjectConversationStore(options: {
   projectName: string;
   conversationId: string;
-  kv: KVContext;
+  storage: ConversationStateStorage;
   onTitleChange?: (event: {
     conversationId: string;
     title?: string;
@@ -134,63 +138,31 @@ function createProjectConversationStore(options: {
   appendMessage(message: AppendProjectConversationMessageInput): Promise<ConversationState>;
 } {
   async function readState(): Promise<ConversationState> {
-    const value = await options.kv.conversation.getValue(CONVERSATION_STATE_KEY);
-    if (isProjectConversationState(value)) {
-      return value;
-    }
-
-    return createInitialConversationState(options.projectName, options.conversationId);
+    return options.storage.read(createInitialConversationState(options.projectName, options.conversationId));
   }
 
-  async function writeState(
-    state: ConversationState,
-  ): Promise<ConversationState> {
-    await options.kv.conversation.setValue(CONVERSATION_STATE_KEY, state);
-    return state;
-  }
+  const update = (change: (state: ConversationState) => ConversationState) => options.storage.update(
+    createInitialConversationState(options.projectName, options.conversationId), change);
 
   return {
     readState,
     async setValue(key, value) {
       const normalizedKey = normalizeStateKey(key);
-      const state = await readState();
-      return writeState({
-        ...state,
-        updatedAt: new Date().toISOString(),
-        values: {
-          ...state.values,
-          [normalizedKey]: value,
-        },
-      });
+      return update(state => ({ ...state, updatedAt: new Date().toISOString(), values: { ...state.values, [normalizedKey]: value } }));
     },
     async setTitle(title) {
       const normalizedTitle = normalizeOptionalTitle(title);
-      const state = await readState();
-      const updatedAt = new Date().toISOString();
-      const nextState: ConversationState = {
-        ...state,
-        updatedAt,
-        ...(normalizedTitle === undefined ? {} : { title: normalizedTitle }),
-      };
-      if (normalizedTitle === undefined) {
-        delete nextState.title;
-      }
-
-      // Core code may suggest a conversation title, while the host UI
-      // remains responsible for lock policy and can ignore this update.
-      const written = await writeState(nextState);
-      await options.onTitleChange?.({
-        conversationId: options.conversationId,
-        title: written.title,
-        updatedAt,
+      const written = await update(state => {
+        const next = { ...state, title: normalizedTitle, updatedAt: new Date().toISOString() };
+        if (normalizedTitle === undefined) delete next.title;
+        return next;
       });
+      await options.onTitleChange?.({ conversationId: options.conversationId, title: written.title, updatedAt: written.updatedAt });
       return written;
     },
     async appendMessage(message) {
       const id = message.id ?? randomUUID();
-      return await options.kv.conversation.updateValue(CONVERSATION_STATE_KEY, current => {
-        const state = isProjectConversationState(current) ? current
-          : createInitialConversationState(options.projectName, options.conversationId);
+      return update(state => {
         const existing = state.messages.findIndex(entry => entry.id === id);
         const now = new Date().toISOString();
         const next = { id, role: message.role, content: message.content,
@@ -198,7 +170,7 @@ function createProjectConversationStore(options: {
         const messages = [...state.messages];
         if (existing < 0) messages.push(next); else messages[existing] = next;
         return { ...state, updatedAt: now, messages };
-      }) as ConversationState;
+      });
     },
   };
 }

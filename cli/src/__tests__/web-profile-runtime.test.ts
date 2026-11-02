@@ -9,11 +9,14 @@ import path from 'node:path';
 import {createLocalProjectConfigurationStore} from 'steamharness';
 import {createWebRuntime,type WebConnection} from '../web/runtime';
 import {resolveHarnessRoot} from './harness-source';
+import {runtimeStorageService} from './runtime-storage-service';
 
 it('enforces verified profiles through the real child worker, including downgrade, logout, and old resumes',async()=>{
   const directory=await mkdtemp(path.join(os.tmpdir(),'profile-runtime-')),id=crypto.randomUUID();
   let role='developer';
-  const server=createServer((request,response)=>{
+  const storageService=runtimeStorageService();
+  const server=createServer(async(request,response)=>{
+    if(await storageService.handle(request,response))return;
     response.setHeader('content-type','application/json');
     response.end(JSON.stringify({errCode:0,data:request.url==='/api/auth/me'?{profile:{userId:'alice'}}:{access:{effectiveRole:role}}}));
   });
@@ -46,7 +49,7 @@ it('enforces verified profiles through the real child worker, including downgrad
     connection=undefined;
     await expect(runtime.run({...request,runId:'logged-out'},()=>{})).rejects.toThrow(/not available/);
     const offline=await runtime.run({project,conversationId:'session',runId:'offline-ask',args:[]},()=>{});
-    expect(offline.status).toBe('success');expect(offline.output?.items?.[0].content).toBe('ask');
+    expect(offline.status).toBe('failed');expect(offline.error?.metadata?.code).toBe('RUNTIME_STORAGE_ACCESS_DENIED');
     await expect(runtime.run({project,conversationId:'session',runId:'pre-policy',args:[],resumeConfiguration:true},()=>{})).rejects.toThrow(/no verified configuration snapshot/);
   }finally{
     runtime.dispose();await new Promise<void>(resolve=>{server.close(()=>resolve());server.closeAllConnections();});

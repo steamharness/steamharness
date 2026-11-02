@@ -1,3 +1,4 @@
+import { testExecutionStorage } from './runtime-test-storage';
 import { writeProjectFixture } from '../../scripts/test-project-fixture.mjs';
 import { LocalDatabaseRegistry, createLocalDatabaseResolver, type DatabaseResolver } from "../databases/index";
 import assert from "node:assert/strict";
@@ -398,7 +399,7 @@ test("workflow entrypoint structure does not accept an unrelated same-name workf
 test("unknown workflow entrypoints fail with the allowed catalog", async () => {
   const projectDir = await createEntrypointProject();
   try {
-    const report = await runLocalProjectWithReport({
+    const report = await runLocalProjectWithReport({ storage: testExecutionStorage(),
       projectDir,
       entrypointId: "missing",
     });
@@ -442,13 +443,13 @@ test("conversation executors reject entrypoint selection without changing their 
     assert.equal(structure.entrypoints, undefined);
     assert.equal(structure.execution?.kind, "sequence");
 
-    const conversation = await runLocalProjectWithReport({ projectDir });
+    const conversation = await runLocalProjectWithReport({ storage: testExecutionStorage(), projectDir });
     assert.equal(conversation.status, "success");
     assert.equal(conversation.projectName, "conversation-flow");
     assert.equal(conversation.entrypointId, undefined);
     assert.equal(conversation.entrypointTitle, undefined);
 
-    const report = await runLocalProjectWithReport({
+    const report = await runLocalProjectWithReport({ storage: testExecutionStorage(),
       projectDir,
       entrypointId: "main",
       conversationId: "conversation-1",
@@ -497,7 +498,7 @@ test("workspace runtime layers prepare before inspection and started events incl
       });
     `);
 
-    const report = await runWorkspaceProjectWithReport({
+    const report = await runWorkspaceProjectWithReport({ storage: testExecutionStorage(),
       cwd,
       projectName,
       layers: [{

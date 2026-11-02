@@ -1,6 +1,6 @@
 import { spawn, type ChildProcess } from "node:child_process";
 import { once } from "node:events";
-import { mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -8,20 +8,25 @@ import { pathToFileURL } from "node:url";
 import { afterEach, expect, it } from "vitest";
 import type { AgentOutputPayload, ConversationState, TokenUsageAggregate, UserInputRequest } from "steamharness";
 import type { AgentSessionSnapshot } from "steamharness/agent";
+import { runtimeStorageService } from "./fixtures/runtime-storage-service";
 
 const directories: string[] = [], children: ChildProcess[] = [];
+const connections = new Map<string, Awaited<ReturnType<ReturnType<typeof runtimeStorageService>["start"]>>>();
 const root = path.resolve(import.meta.dirname, "..");
 const loader = createRequire(path.join(root, "node_modules/@steamharness/cli/package.json")).resolve("tsx");
 afterEach(async () => {
   for (const child of children.splice(0)) if (child.exitCode === null && child.signalCode === null) {
     const exited = once(child, "exit"); child.kill("SIGKILL"); await exited;
   }
+  await Promise.all([...connections.values()].map(connection => connection.close())); connections.clear();
   await Promise.all(directories.splice(0).map(directory => rm(directory, { recursive: true, force: true })));
 });
 function worker(directory: string, scenario: string, phase: string) {
+  const connection = connections.get(directory)!;
   const child = spawn(process.execPath, ["--import", pathToFileURL(loader).href, "--conditions=development",
     path.join(import.meta.dirname, "fixtures/durable-assistant-worker.ts"), directory, scenario, phase], {
-    cwd: root, env: { ...process.env, STEAMHARNESS_DEVELOPER_ASSISTANT_HOST: "vscode", STEAMHARNESS_DEVELOPER_ASSISTANT_WORKDIR: directory,
+    cwd: root, env: { ...process.env, STEAMHARNESS_SERVER_URL: connection.serverUrl, STEAMHARNESS_SERVER_ADMIN_KEY: connection.accessToken,
+      STEAMHARNESS_DEVELOPER_ASSISTANT_HOST: "vscode", STEAMHARNESS_DEVELOPER_ASSISTANT_WORKDIR: directory,
       STEAMHARNESS_DEVELOPER_ASSISTANT_WORKSPACE_MANIFEST: path.join(directory, "workspace.json"), STEAMHARNESS_STUDIO_CONTROL_MCP_SERVER: "" },
     stdio: ["ignore", "pipe", "pipe", "ipc"],
   });
@@ -147,16 +152,13 @@ async function finished(directory: string, scenario: string, phase: string, type
     const result = await receive(child, type);
     expect((await exited)[0]).toBe(0); return result;
   } catch (cause) {
-    const locks = await Promise.all((await readdir(path.join(directory, "kv"), { recursive: true }))
-      .filter(name => name.endsWith(".lock")).map(async name => ({ name,
-        record: await readFile(path.join(directory, "kv", name), "utf8").catch(() => "released"),
-      })));
-    throw new Error(`${scenario}/${phase}: ${String(cause)}; KV locks: ${JSON.stringify(locks)}`, { cause });
+    throw new Error(`${scenario}/${phase}: ${String(cause)}`, { cause });
   }
 }
 async function temporary() {
   const directory = await mkdtemp(path.join(tmpdir(), "workflow-assistant-durable-"));
   directories.push(directory);
+  connections.set(directory, await runtimeStorageService({ leaseDurationMs: 1000 }).start());
   const target = { kind: "folder", folderId: "fixture" };
   await writeFile(path.join(directory, "workspace.json"), JSON.stringify({ schemaVersion: 2, primaryTarget: target, warnings: [],
     roots: [{ target, name: "Fixture", rootPath: directory, role: "primary", depth: 0 }] }));

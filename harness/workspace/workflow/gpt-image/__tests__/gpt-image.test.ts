@@ -3,6 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { runLocalProjectWithReport } from "steamharness";
+import { createMemoryRuntimePersistence } from "steamharness/runtime-storage";
 
 const fixtureB64 = "Z3B0LWltYWdlLWZpeHR1cmU=";
 
@@ -182,7 +183,7 @@ async function runWithMockConfiguration(options: {
       } },
       storage: {
         host: "local",
-        local: { kvStoreDir },
+        local: { runtimePersistence: runtimeStorage(kvStoreDir) },
       },
     });
   } finally {
@@ -190,6 +191,13 @@ async function runWithMockConfiguration(options: {
       await rm(kvStoreDir, { recursive: true, force: true });
     }
   }
+}
+
+const persistenceByDirectory = new Map<string, ReturnType<typeof createMemoryRuntimePersistence>>();
+function runtimeStorage(directory: string) {
+  let storage = persistenceByDirectory.get(directory);
+  if (!storage) { storage = createMemoryRuntimePersistence(); persistenceByDirectory.set(directory, storage); }
+  return storage;
 }
 
 function createFixtureImageReference() {

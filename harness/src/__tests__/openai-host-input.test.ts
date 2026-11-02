@@ -1,3 +1,4 @@
+import { testExecutionStorage } from './runtime-test-storage';
 import { writeProjectFixture } from '../../scripts/test-project-fixture.mjs';
 import assert from "node:assert/strict";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
@@ -94,8 +95,8 @@ test("local and workspace execution plus param resolution receive hostInput", as
       export default openaiProject;
     `, "utf8");
 
-    const local = await runLocalProjectWithReport({ projectDir, hostInput });
-    const workspace = await runWorkspaceProjectWithReport({ cwd, projectName, hostInput });
+    const local = await runLocalProjectWithReport({ storage: testExecutionStorage(), projectDir, hostInput });
+    const workspace = await runWorkspaceProjectWithReport({ storage: testExecutionStorage(), cwd, projectName, hostInput });
     for (const report of [local, workspace]) {
       assert.equal(report.status, "success");
       assert.match(JSON.stringify(report.result), /resp_test/u);

@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { randomBytes, randomUUID } from "node:crypto";
 import test, { type TestContext } from "node:test";
 import pg from "pg";
-import { RuntimeStorageError, type AgentStorageWrite, type RuntimeStorageOperation, type RuntimeStorageCredentials } from "steamharness/runtime-storage";
+import { RuntimeStorageError, emptyRuntimeRecord, type AgentStorageWrite, type RuntimeStorageOperation, type RuntimeStorageCredentials } from "steamharness/runtime-storage";
 import { RuntimeStorageRepository } from "../runtime-storage/repository";
 
 const databaseUrl = process.env.STEAMHARNESS_TEST_DATABASE_URL;
@@ -22,7 +22,7 @@ async function fixture(t: TestContext) {
 test("runtime migrations serialize startup and reject edited applied migrations", enabled, async t => {
   const { repository, admin, schema } = await fixture(t);
   await Promise.all([repository.init(), repository.init()]);
-  assert.equal((await admin.query(`select count(*) from ${schema}.schema_migrations`)).rows[0].count, "1");
+  assert.equal((await admin.query(`select count(*) from ${schema}.schema_migrations`)).rows[0].count, "2");
   await admin.query(`update ${schema}.schema_migrations set checksum='changed'`);
   await assert.rejects(repository.init(), /checksum/);
   assert.equal((await admin.query(`select count(*) from ${schema}.workspaces`)).rows[0].count, "0");
@@ -106,3 +106,68 @@ test("concurrent acquisition selects one owner and duplicate reservations select
 function isCode(code: RuntimeStorageError["code"]): (error: unknown) => boolean {
   return error => error instanceof RuntimeStorageError && error.code === code;
 }
+
+
+test("relational history survives repository restart and fences stale revisions, scopes and deletions", enabled, async t => {
+  const { repository, admin, schema } = await fixture(t);
+  const space = await repository.registerWorkspace("alice", workspaceInput());
+  const ownerToken = token(), lease = await repository.openSession("alice", space.id, "host:thread", ownerToken);
+  const credentials = { ownerToken, fence: lease.fence };
+  const record = { ...emptyRuntimeRecord("conversation", "thread"), state: { title: "Committed", queuePaused: true },
+    messages: [{ id: "message", value: { role: "assistant", content: "hello\0world" } }],
+    queue: [{ id: "request", value: { status: "queued", text: "next" } }] };
+  const operation: RuntimeStorageOperation = { kind: "history.write", requestId: randomUUID(), record };
+  const saved = await repository.operation("alice", lease.sessionId, credentials, operation) as typeof record;
+  assert.equal(saved.revision, 1);
+  assert.deepEqual(await repository.operation("alice", lease.sessionId, credentials, operation), saved);
+  assert.equal((await admin.query(`select count(*) from ${schema}.runtime_history_items`)).rows[0].count, "2");
+  await assert.rejects(repository.operation("alice", lease.sessionId, credentials, { ...operation, requestId: randomUUID() }), isCode("RUNTIME_STORAGE_REVISION_CONFLICT"));
+  await assert.rejects(repository.operation("alice", lease.sessionId, credentials, { ...operation, requestId: randomUUID(), record: { ...record, key: "foreign", scope: "foreign" } }), isCode("RUNTIME_STORAGE_ACCESS_DENIED"));
+  const restarted = new RuntimeStorageRepository(databaseUrl!, { schema });
+  try {
+    await restarted.init(); assert.deepEqual(await restarted.history("alice", space.id, "conversation"), [saved]);
+    await assert.rejects(restarted.history("bob", space.id, "conversation"), isCode("RUNTIME_STORAGE_NOT_FOUND"));
+  } finally { await restarted.close(); }
+  await repository.operation("alice", lease.sessionId, credentials, { kind: "history.delete", requestId: randomUUID(), record: saved });
+  assert.deepEqual(await repository.history("alice", space.id, "conversation"), []);
+  await assert.rejects(repository.operation("alice", lease.sessionId, credentials, { ...operation, requestId: randomUUID(), record: saved }), isCode("RUNTIME_STORAGE_REVISION_CONFLICT"));
+});
+
+test("versioned snapshots preserve commit sequence and document history without copying ownership", enabled, async t => {
+  const { repository, admin, schema } = await fixture(t);
+  const workspace = await repository.registerWorkspace("alice", workspaceInput());
+  const ownerToken = token(), lease = await repository.openSession("alice", workspace.id, "agent:source:main", ownerToken);
+  const credentials = { ownerToken, fence: lease.fence };
+  for (const writes of [
+    [{ type: "conversation", value: { id: 1 } }, { type: "document.create", record: { id: 2, kind: "plan", scope: { kind: "conversation", conversationId: 1 }, history: "rewindable", fork: "asOf" }, content: { kind: "base", version: 1, value: { text: "initial" } } }],
+    [{ type: "document.change", id: 2, content: { kind: "base", version: 1, value: { text: "updated" } } }],
+  ] as AgentStorageWrite[][]) await repository.operation("alice", lease.sessionId, credentials, { kind: "commit", requestId: randomUUID(), writes });
+  await repository.operation("alice", lease.sessionId, credentials, { kind: "mintId", requestId: randomUUID() });
+  const snapshot = await repository.snapshot("alice", workspace.id, "agent:source:main");
+  assert.equal(snapshot.commits.length, 2); assert.equal(snapshot.nextId, 4);
+  assert.ok(!JSON.stringify(snapshot).includes(ownerToken));
+  const destinationToken = token(), destination = await repository.openSession("alice", workspace.id, "agent:destination:main", destinationToken);
+  const access = { ownerToken: destinationToken, fence: destination.fence };
+  const operation: RuntimeStorageOperation = { kind: "snapshot.import", requestId: randomUUID(), snapshot };
+  await repository.operation("alice", destination.sessionId, access, operation);
+  await repository.operation("alice", destination.sessionId, access, operation);
+  assert.equal((await admin.query(`select count(*) from ${schema}.agent_commits where session_id=$1`, [destination.sessionId])).rows[0].count, "2");
+  assert.equal(await repository.operation("alice", destination.sessionId, access, { kind: "mintId", requestId: randomUUID() }), 4);
+  const historical = await repository.operation("alice", destination.sessionId, access, { kind: "document", id: 2, at: 1 as never }) as { value: unknown };
+  assert.deepEqual(historical.value, { text: "initial" });
+  await assert.rejects(repository.operation("alice", destination.sessionId, access, { ...operation, requestId: randomUUID() }), isCode("RUNTIME_STORAGE_REVISION_CONFLICT"));
+});
+
+test("usage upserts one relational receipt across response loss and recovery", enabled, async t => {
+  const { repository, admin, schema } = await fixture(t);
+  const workspace = await repository.registerWorkspace("alice", workspaceInput());
+  const ownerToken = token(), lease = await repository.openSession("alice", workspace.id, "host:core:thread", ownerToken);
+  const access = { ownerToken, fence: lease.fence };
+  const entry = { id: "billing", projectId: workspace.projectId, runId: "run", conversationId: "thread", sequence: 1, createdAt: new Date().toISOString(),
+    inputTokens: 10, outputTokens: 5, totalTokens: 15, reasoningTokens: 0, cachedInputTokens: 0, cacheCreationTokens: 0 };
+  const operation: RuntimeStorageOperation = { kind: "usage", requestId: randomUUID(), entry };
+  await repository.operation("alice", lease.sessionId, access, operation); await repository.operation("alice", lease.sessionId, access, operation);
+  await repository.operation("alice", lease.sessionId, access, { ...operation, requestId: randomUUID(), entry: { ...entry, totalTokens: 18, outputTokens: 8 } });
+  const totals = (await admin.query(`select count(*),sum(total_tokens) as total from ${schema}.runtime_usage`)).rows[0];
+  assert.equal(totals.count, "1"); assert.equal(totals.total, "18");
+});

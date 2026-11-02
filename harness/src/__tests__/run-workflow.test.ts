@@ -1,3 +1,4 @@
+import { testConversationStorage } from "./runtime-test-storage";
 import { createTestResources } from "./entry-test-resources";
 import assert from "node:assert/strict";
 import test from "node:test";
@@ -246,7 +247,7 @@ test("runProject passes abortSignal, providers, files, and tokenUsage through to
   const controller = new AbortController();
   const tokenUsage = createProjectTokenUsageContext({
     definition: { enabled: true },
-    kv: createMemoryKVContext(),
+    store: async () => undefined,
     projectId: "parent",
     runId: "run-1",
     conversationId: "thread-1",
@@ -579,7 +580,7 @@ function createTestProjectContext(options: {
       enabled: options.conversationId !== undefined,
       conversationId: options.conversationId,
       projectName: "parent-workflow",
-      kv,
+      storage: testConversationStorage(kv),
     }),
     tokenUsage: options.tokenUsage ?? createDisabledProjectTokenUsageContext(),
     files: options.files,

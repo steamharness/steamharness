@@ -146,7 +146,7 @@ export function createWebRuntime(projectDir: string, storageDir: string, connect
     // A replacement host can start before its orphaned worker finishes cleanup.
     // Wait only for the storage owner of the original recovering request. Never
     // retry admission conflicts or steal a live owner's lock.
-    const deadline = Date.now() + 6_000;
+    const deadline = Date.now() + 35_000;
     while (true) {
       signal.throwIfAborted();
       try {
@@ -155,7 +155,7 @@ export function createWebRuntime(projectDir: string, storageDir: string, connect
       } catch (error) {
         if (disposed || !request.resumeConfiguration && !request.resumeAgent || !agentOwnerConflict(error) || Date.now() >= deadline) throw error;
       }
-      await delay(100, undefined, { signal });
+      await delay(500, undefined, { signal });
     }
   };
   return {
@@ -213,7 +213,7 @@ export function createWebRuntime(projectDir: string, storageDir: string, connect
 function agentOwnerConflict(value: unknown, depth = 0): boolean {
   if (!value || typeof value !== 'object' || depth > 4) return false;
   const error = value as Record<string, any>;
-  return error.metadata?.agentFailure === 'owner_conflict' || ['cause', 'error', 'result'].some(key => agentOwnerConflict(error[key], depth + 1));
+  return error.code === 'RUNTIME_STORAGE_OWNER_CONFLICT' || error.metadata?.code === 'RUNTIME_STORAGE_OWNER_CONFLICT' || error.metadata?.agentFailure === 'owner_conflict' || ['cause', 'error', 'result'].some(key => agentOwnerConflict(error[key], depth + 1));
 }
 
 /**

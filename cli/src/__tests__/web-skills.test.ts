@@ -5,7 +5,7 @@ import os from 'node:os';
 import { randomUUID } from 'node:crypto';
 import { writeProjectFixture } from '../../scripts/test-project-fixture.mjs';
 import { createWebRuntime } from '../web/runtime';
-import { startEntryWebServer } from '../web/server';
+import { startEntryWebServer } from './web-test-storage';
 import { resolveHarnessRoot } from './harness-source';
 
 const folders: string[] = [];

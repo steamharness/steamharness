@@ -19,136 +19,28 @@ import {
   type TokenUsageContext,
 } from "../index";
 
-test("disabled token usage report is a safe no-op", async () => {
-  const kv = createProjectKVContext({
-    store: createMemoryKVStore(),
-    projectId: "demo",
-    conversationId: "conv-1",
-  });
-  const tokenUsage = createProjectTokenUsageContext({
-    definition: { enabled: false },
-    kv,
-    projectId: "demo",
-    runId: "run-1",
-    conversationId: "conv-1",
-  });
-
-  assert.equal(await tokenUsage.report({ totalTokens: 12 }), undefined);
-  assert.equal(await kv.getValue(TOKEN_USAGE_TOTAL_KEY), undefined);
+test("disabled token usage never calls persistence", async () => {
+  const usage = createProjectTokenUsageContext({ definition: { enabled: false }, projectId: "demo", runId: "run", store: async () => { throw new Error("must not write"); } });
+  assert.equal(await usage.report({ totalTokens: 12 }), undefined);
 });
 
-test("manual token usage report writes project and conversation totals plus conversation entries", async () => {
-  const store = createMemoryKVStore();
-  const kv = createProjectKVContext({
-    store,
-    projectId: "demo",
-    conversationId: "conv-1",
-    source: { projectId: "demo", runId: "run-1", conversationId: "conv-1" },
-  });
-  const updates: TokenUsageAggregate[] = [];
-  const tokenUsage = createProjectTokenUsageContext({
-    definition: { enabled: true },
-    kv,
-    projectId: "demo",
-    runId: "run-1",
-    conversationId: "conv-1",
-    onUpdate: (usage) => {
-      updates.push(usage);
-    },
-  });
-
-  const entry = await tokenUsage.report({
-    inputTokens: 2,
-    outputTokens: 3,
-    reasoningTokens: 5,
-    cachedInputTokens: 1,
-    cacheCreationTokens: 4,
-    nodeName: "answer",
-  });
-
-  assert.equal(entry?.totalTokens, 10);
-  assert.equal(entry?.projectId, "demo");
-  assert.equal(entry?.cacheCreationTokens, 4);
-  assert.equal(updates.length, 1);
-  assert.deepEqual(tokenUsage.getRunUsage(), {
-    inputTokens: 2,
-    outputTokens: 3,
-    totalTokens: 10,
-    reasoningTokens: 5,
-    cachedInputTokens: 1,
-    cacheCreationTokens: 4,
-    calls: 1,
-    updatedAt: entry?.createdAt,
-  });
-  assert.equal(readAggregate(await kv.getValue(TOKEN_USAGE_TOTAL_KEY)).totalTokens, 10);
-  assert.equal(readAggregate(await kv.getValue(TOKEN_USAGE_TOTAL_KEY)).cacheCreationTokens, 4);
-  assert.equal(readAggregate(await kv.conversation.getValue(TOKEN_USAGE_TOTAL_KEY)).totalTokens, 10);
-  assert.equal(readAggregate(await kv.conversation.getValue(TOKEN_USAGE_TOTAL_KEY)).cacheCreationTokens, 4);
-  assert.equal(store.values.size, 3);
+test("usage persists one detail per stable receipt and updates run totals after commit", async () => {
+  const records = new Map<string, import("../token-usage").TokenUsageEntry>();
+  const usage = createProjectTokenUsageContext({ definition: { enabled: true }, projectId: "demo", runId: "run", conversationId: "conversation", store: async entry => { records.set(entry.id, entry); } });
+  await usage.report({ recordId: "receipt", inputTokens: 10, outputTokens: 5, cacheCreationTokens: 4 });
+  await usage.report({ recordId: "receipt", inputTokens: 10, outputTokens: 8, cacheCreationTokens: 6 });
+  assert.equal(records.size, 1); assert.equal(records.get("receipt")?.conversationId, "conversation");
+  assert.equal(usage.getRunUsage().totalTokens, 18); assert.equal(usage.getRunUsage().calls, 1);
+  assert.equal(usage.getRunUsage().cacheCreationTokens, 6);
 });
 
-test("durable billing receipts repair a partial write and replace replayed usage", async () => {
-  const store = createMemoryKVStore();
-  const kv = createProjectKVContext({ store, projectId: "durable", conversationId: "session" });
-  const makeUsage = () => createProjectTokenUsageContext({ definition: { enabled: true }, kv,
-    projectId: "durable", conversationId: "session", runId: "same-run" });
-  const update = kv.conversation.updateValue;
-  kv.conversation.updateValue = async () => { throw new Error("crash between aggregates"); };
-  await assert.rejects(() => makeUsage().report({ recordId: "request:response", inputTokens: 10, outputTokens: 5 }), /crash between/);
-  assert.equal(readAggregate(await kv.getValue(TOKEN_USAGE_TOTAL_KEY)).totalTokens, 15);
-  kv.conversation.updateValue = update;
-  const usage = makeUsage();
-  await usage.report({ recordId: "request:response", inputTokens: 10, outputTokens: 5 });
-  await usage.report({ recordId: "request:response", inputTokens: 10, outputTokens: 8 });
-  for (const namespace of [kv, kv.conversation]) {
-    const aggregate = readAggregate(await namespace.getValue(TOKEN_USAGE_TOTAL_KEY));
-    assert.equal(aggregate.totalTokens, 18); assert.equal(aggregate.calls, 1);
-  }
-  assert.equal(usage.getRunUsage().totalTokens, 18);
+test("a storage failure leaves run accounting unchanged and can be retried", async () => {
+  let fail = true;
+  const usage = createProjectTokenUsageContext({ definition: { enabled: true }, projectId: "demo", runId: "run", store: async () => { if (fail) throw new Error("unavailable"); } });
+  await assert.rejects(() => usage.report({ recordId: "receipt", totalTokens: 12 }), /unavailable/);
+  assert.equal(usage.getRunUsage().calls, 0);
+  fail = false; await usage.report({ recordId: "receipt", totalTokens: 12 });
   assert.equal(usage.getRunUsage().calls, 1);
-  assert.equal(store.values.size, 3, "replay upserts one detail record");
-});
-
-test("token usage report upgrades stored aggregate without cache creation tokens", async () => {
-  const store = createMemoryKVStore();
-  const kv = createProjectKVContext({
-    store,
-    projectId: "demo",
-    source: { projectId: "demo", runId: "run-upgrade" },
-  });
-  await kv.setValue(TOKEN_USAGE_TOTAL_KEY, {
-    inputTokens: 1,
-    outputTokens: 2,
-    totalTokens: 3,
-    reasoningTokens: 0,
-    cachedInputTokens: 1,
-    calls: 1,
-    updatedAt: "2026-01-01T00:00:00.000Z",
-  });
-  const tokenUsage = createProjectTokenUsageContext({
-    definition: { enabled: true },
-    kv,
-    projectId: "demo",
-    runId: "run-upgrade",
-  });
-
-  await tokenUsage.report({
-    inputTokens: 4,
-    outputTokens: 5,
-    totalTokens: 9,
-    cacheCreationTokens: 6,
-  });
-
-  assert.deepEqual(readAggregate(await kv.getValue(TOKEN_USAGE_TOTAL_KEY)), {
-    inputTokens: 5,
-    outputTokens: 7,
-    totalTokens: 12,
-    reasoningTokens: 0,
-    cachedInputTokens: 1,
-    cacheCreationTokens: 6,
-    calls: 2,
-    updatedAt: tokenUsage.getRunUsage().updatedAt,
-  });
 });
 
 test("LLM node provider usage is reported before mapOutput can strip it", async () => {
@@ -160,7 +52,7 @@ test("LLM node provider usage is reported before mapOutput can strip it", async 
   });
   const tokenUsage = createProjectTokenUsageContext({
     definition: { enabled: true },
-    kv,
+    store: async () => undefined,
     projectId: "demo",
     runId: "run-llm",
   });
@@ -208,7 +100,7 @@ test("LLM node provider usage is reported before mapOutput can strip it", async 
   assert.equal(tokenUsage.getRunUsage().reasoningTokens, 2);
   assert.equal(tokenUsage.getRunUsage().cachedInputTokens, 1);
   assert.equal(tokenUsage.getRunUsage().cacheCreationTokens, 4);
-  assert.equal(readAggregate(await kv.getValue(TOKEN_USAGE_TOTAL_KEY)).calls, 1);
+  assert.equal(tokenUsage.getRunUsage().calls, 1);
 });
 
 test("token usage parser reads snake case cache creation aliases", async () => {
@@ -219,7 +111,7 @@ test("token usage parser reads snake case cache creation aliases", async () => {
   });
   const tokenUsage = createProjectTokenUsageContext({
     definition: { enabled: true },
-    kv,
+    store: async () => undefined,
     projectId: "demo",
     runId: "run-alias",
   });
@@ -265,7 +157,7 @@ test("token usage parser reads Claude cache creation alias", async () => {
   });
   const tokenUsage = createProjectTokenUsageContext({
     definition: { enabled: true },
-    kv,
+    store: async () => undefined,
     projectId: "demo",
     runId: "run-claude-alias",
   });
@@ -303,7 +195,7 @@ test("custom node usage-shaped output is not reported automatically", async () =
   });
   const tokenUsage = createProjectTokenUsageContext({
     definition: { enabled: true },
-    kv,
+    store: async () => undefined,
     projectId: "demo",
     runId: "run-custom",
   });
@@ -335,7 +227,7 @@ test("getLLMProvider reports provider usage for custom node calls", async () => 
   });
   const tokenUsage = createProjectTokenUsageContext({
     definition: { enabled: true },
-    kv,
+    store: async () => undefined,
     projectId: "demo",
     runId: "run-provider",
   });
@@ -371,7 +263,7 @@ test("getLLMProvider reports provider usage for custom node calls", async () => 
   assert.equal(output.text, "ok");
   assert.equal(tokenUsage.getRunUsage().totalTokens, 7);
   assert.equal(tokenUsage.getRunUsage().calls, 1);
-  assert.equal(readAggregate(await kv.getValue(TOKEN_USAGE_TOTAL_KEY)).totalTokens, 7);
+  assert.equal(tokenUsage.getRunUsage().totalTokens, 7);
 });
 
 test("LLM stream finish usage is reported once by the stream node", async () => {
@@ -382,7 +274,7 @@ test("LLM stream finish usage is reported once by the stream node", async () => 
   });
   const tokenUsage = createProjectTokenUsageContext({
     definition: { enabled: true },
-    kv,
+    store: async () => undefined,
     projectId: "demo",
     runId: "run-stream",
   });

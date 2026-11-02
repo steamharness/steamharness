@@ -8,6 +8,7 @@ import { pathToFileURL, fileURLToPath } from 'node:url';
 let ts;
 let assistantScopeDirectory;
 let agentHost;
+let runtimePersistence;
 let ownerDisconnected = false;
 let shutdownTimer;
 let handleAgentControl;
@@ -30,7 +31,7 @@ console.log = console.error;
 const controller = new AbortController();
 const shutdown = (suspend = false) => {
   // Uncooperative project tools must not keep a dead owner's worker, sockets
-  // or SQLite lock alive forever. Normal cleanup gets a bounded grace period.
+  // or execution lease alive forever. Normal cleanup gets a bounded grace period.
   shutdownTimer ??= setTimeout(() => process.exit(1), 5_000).unref();
   if (suspend && agentHost) agentHost.suspend();
   else { agentHost?.close(); controller.abort(new Error(suspend ? 'Owner disconnected.' : 'Stopped.')); }
@@ -178,7 +179,14 @@ try {
       process.env.STEAMHARNESS_DEVELOPER_ASSISTANT_WORKDIR = assistant.workdir;
       process.env.STEAMHARNESS_DEVELOPER_ASSISTANT_WORKSPACE_MANIFEST = manifestPath;
     }
-    const storage = { host: 'local', local: { kvStoreDir: path.join(dataDir, 'kv'), persistentValueStoreDir: path.join(dataDir, 'values'), agentStoreDir: path.join(dataDir, 'agents') } };
+    const runtimeWorkspace = { kind: request.project.assistant ? 'assistant' : 'local', projectId: request.project.id, entryId: request.project.entryId,
+      localKey: createHash('sha256').update(request.project.assistant?.workdir ?? request.project.folderPath).digest('hex') };
+    const { createServerRuntimePersistence } = await import(resolve('steamharness/runtime-storage', coreUrl));
+    const connection = core.databaseConnectionFromEnv();
+    if (connection) runtimePersistence = createServerRuntimePersistence({ ...connection, workspace: runtimeWorkspace, resolveProject: true });
+    const storage = { host: 'local', local: { kvStoreDir: path.join(dataDir, 'kv'), persistentValueStoreDir: path.join(dataDir, 'values'), runtimeWorkspace, runtimePersistence } };
+    const requireRuntimePersistence = () => { if (!runtimePersistence) throw new Error('Sign in to SteamHarness Server to access conversation history.'); return runtimePersistence; };
+
     const filesDir = path.join(dataDir, 'files');
     const createdFiles = [];
     const managed = createServerProjectFileStore({ rootDir: filesDir, projectName: request.project.id, conversationId: request.conversationId });
@@ -250,7 +258,7 @@ try {
             try { return await agent.controlAgentSession(request.conversationId, prepared); }
             catch (error) {
               if (error.code !== 'AGENT_NOT_READY') throw error;
-              if (prepared.type === 'fork') return agent.forkAgentConversation({ agentStoreDir: path.join(dataDir, 'agents'), conversationId: request.conversationId, command: prepared });
+              if (prepared.type === 'fork') return agent.forkStoredAgentConversation({ persistence: requireRuntimePersistence(), conversationId: request.conversationId, command: prepared });
               if (controller.signal.aborted) throw Object.assign(new Error('The agent owner disconnected.'), { code: 'STEAMHARNESS_WORKER_INTERRUPTED' });
               if (runFinished) throw Object.assign(new Error(runFailure ?? 'The workflow ended without an active agent session.'), { code: 'AGENT_SESSION_ENDED' });
               await new Promise(resolve => setTimeout(resolve, 25));
@@ -340,12 +348,12 @@ try {
       else if (target.key) send('result', await (target.scope === 'conversation' ? database.kv.conversation : database.kv).getValue(target.key) ?? null);
       else throw new Error('A database key is required.');
     } else if (request.method === 'fork-conversation') {
-      const { forkAgentConversation } = await import(resolve('steamharness/agent', coreUrl));
-      if (typeof forkAgentConversation !== 'function') throw new Error('Update this project\'s SteamHarness runtime to fork stored conversations.');
-      send('result', await forkAgentConversation({ agentStoreDir: path.join(dataDir, 'agents'), conversationId: request.conversationId, command: request.command }));
+      const { forkStoredAgentConversation } = await import(resolve('steamharness/agent', coreUrl));
+      if (typeof forkStoredAgentConversation !== 'function') throw new Error('Update this project\'s SteamHarness runtime to fork stored conversations.');
+      send('result', await forkStoredAgentConversation({ persistence: requireRuntimePersistence(), conversationId: request.conversationId, command: request.command }));
     } else if (request.method === 'isolate-conversation') {
-      const { isolateAgentConversation } = await import(resolve('steamharness/agent', coreUrl));
-      if (typeof isolateAgentConversation !== 'function') throw new Error('Update this project\'s SteamHarness runtime to create independent conversations.');
+      const { isolateStoredAgentConversation } = await import(resolve('steamharness/agent', coreUrl));
+      if (typeof isolateStoredAgentConversation !== 'function') throw new Error('Update this project\'s SteamHarness runtime to create independent conversations.');
       const replacements = [], files = [];
       const includedFiles = new Set(request.fileIds ?? []);
       // Copies have deterministic identities so a lost receipt can be retried.
@@ -367,12 +375,12 @@ try {
         if (source.reference.path) replacements.push({ from: source.reference.path, to: previewPath });
         replacements.push({ from: id, to: newId });
       }
-      await isolateAgentConversation({ agentStoreDir: path.join(dataDir, 'agents'), sourceConversationId: request.sourceConversationId,
+      await isolateStoredAgentConversation({ persistence: requireRuntimePersistence(), sourceConversationId: request.sourceConversationId,
         conversationId: request.conversationId, targetId: request.targetId, replacements, retireSource: request.retireSource === true });
       send('result', { replacements, files });
     } else if (request.method === 'cancel-conversation' || request.method === 'delete-conversation') {
-      const { cancelAgentConversation } = await import(resolve('steamharness/agent', coreUrl));
-      await cancelAgentConversation({ agentStoreDir: path.join(dataDir, 'agents'), conversationId: request.conversationId });
+      const { cancelStoredAgentConversation, deleteStoredAgentConversation } = await import(resolve('steamharness/agent', coreUrl));
+      await (request.method === 'delete-conversation' ? deleteStoredAgentConversation : cancelStoredAgentConversation)({ persistence: requireRuntimePersistence(), conversationId: request.conversationId });
       if (request.method === 'cancel-conversation') { send('result', { cancelled: true }); }
       else {
       for (const [storageKind, rootDir] of [['kv', path.join(dataDir, 'kv')], ['persistent_value', path.join(dataDir, 'values')]]) {
@@ -389,8 +397,6 @@ try {
         const file = await readManagedFile(directory).catch(() => undefined);
         if (file?.reference.conversationId === request.conversationId) { await rm(path.join(filesDir, directory), { recursive: true, force: true }); }
       }
-      const agentDirectory = path.join(dataDir, 'agents', createHash('sha256').update(request.conversationId).digest('hex'));
-      await rm(agentDirectory, { recursive: true, force: true });
       send('result', { deleted: true });
       }
     } else { throw new Error('Unknown runtime method.'); }
@@ -405,6 +411,7 @@ try {
   // Flush those replies before closing IPC, so callers get the real failure.
   while (activeAgentControls.size) await Promise.all([...activeAgentControls]);
   agentHost?.close();
+  await runtimePersistence?.close();
   if (assistantScopeDirectory) { await rm(assistantScopeDirectory, { recursive: true, force: true }); }
   // Cleanup has joined the durable scheduler and released its storage owner.
   // A disconnected worker has no further jobs; an unfinished HTTP body must

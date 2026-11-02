@@ -412,6 +412,29 @@ paths:
                 $ref: "#/components/schemas/RuntimeWorkspaceResponse"
         default:
           $ref: "#/components/responses/HarnessError"
+  /api/runtime-storage/workspaces/resolve:
+    post:
+      tags: [Runtime Storage]
+      summary: Resolve registered project or private unpublished workspace
+      description: Existing projects require current read access and a registered entry. Only a missing project resolves to a private local workspace; forbidden access never falls back. Assistant identity remains separate.
+      security:
+        - BearerAuth: []
+        - SessionCookie: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RuntimeWorkspaceInput"
+      responses:
+        "200":
+          description: Account-private resolved workspace.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RuntimeWorkspaceResponse"
+        default:
+          $ref: "#/components/responses/HarnessError"
   /api/runtime-storage/workspaces/{workspaceId}:
     get:
       tags:
@@ -489,15 +512,125 @@ paths:
                         $ref: "#/components/schemas/RuntimeStorageLease"
         default:
           $ref: "#/components/responses/HarnessError"
+  /api/runtime-storage/workspaces/{workspaceId}/history/{kind}:
+    get:
+      tags: [Runtime Storage]
+      summary: Read committed platform history
+      description: Returns account-owned ordered messages, queues, events and values. Project access and entry registration are rechecked. Reads do not acquire execution ownership.
+      security:
+        - BearerAuth: []
+        - SessionCookie: []
+      parameters:
+        - name: workspaceId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: kind
+          in: path
+          required: true
+          schema:
+            $ref: "#/components/schemas/RuntimeHistoryKind"
+      responses:
+        "200":
+          description: Committed account-owned data.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/RuntimeStorageResponse"
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: "#/components/schemas/RuntimeHistoryRecord"
+        default:
+          $ref: "#/components/responses/HarnessError"
+  /api/runtime-storage/workspaces/{workspaceId}/agent-sessions:
+    get:
+      tags: [Runtime Storage]
+      summary: List stored Agent session identities
+      description: Returns non-deleted session keys in the account-owned workspace whose literal prefix matches the query.
+      security:
+        - BearerAuth: []
+        - SessionCookie: []
+      parameters:
+        - name: workspaceId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: prefix
+          in: query
+          required: true
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 512
+      responses:
+        "200":
+          description: Committed account-owned data.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/RuntimeStorageResponse"
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          type: string
+        default:
+          $ref: "#/components/responses/HarnessError"
+  /api/runtime-storage/workspaces/{workspaceId}/snapshot:
+    get:
+      tags: [Runtime Storage]
+      summary: Read a versioned committed Agent session snapshot
+      description: Uses a consistent database snapshot without acquiring or resuming the source execution. An active owner may continue. Deleted sessions return 404.
+      security:
+        - BearerAuth: []
+        - SessionCookie: []
+      parameters:
+        - name: workspaceId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: sessionKey
+          in: query
+          required: true
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 512
+      responses:
+        "200":
+          description: Committed account-owned data.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/RuntimeStorageResponse"
+                  - type: object
+                    properties:
+                      data:
+                        $ref: "#/components/schemas/RuntimeAgentSessionSnapshot"
+        default:
+          $ref: "#/components/responses/HarnessError"
   /api/runtime-storage/sessions/{sessionId}/operations:
     post:
       tags:
         - Runtime Storage
       summary: Execute a typed Agent storage operation under the current lease
       description: Account ownership, current project access, owner token, lease expiry and fence are verified for every request. Maximum body is 16 MiB.
-        Commit and mintId persist requestId and result in the same transaction. Retrying identical content returns the original result; changing content
+        Mutable operations persist requestId and result in the same transaction. Read queries such as submissionByRequest are never cached as mutations. Retrying identical content returns the original result; changing content
         for an existing ID returns 409. No SQL or executable code is accepted. Errors include RUNTIME_STORAGE_LEASE_LOST, RUNTIME_STORAGE_OWNER_CONFLICT
-        and RUNTIME_STORAGE_IDEMPOTENCY_CONFLICT in data.code.
+        RUNTIME_STORAGE_REVISION_CONFLICT and RUNTIME_STORAGE_IDEMPOTENCY_CONFLICT in data.code.
       security:
         - BearerAuth: []
         - SessionCookie: []
@@ -4407,10 +4540,238 @@ components:
         - type: integer
           minimum: 0
           maximum: 9007199254740991
+    RuntimeHistoryKind:
+      type: string
+      enum: [conversation, run, workflow, state]
+    RuntimeHistoryIdentity:
+      type: object
+      additionalProperties: false
+      required: [kind, key, scope, revision]
+      properties:
+        kind:
+          $ref: "#/components/schemas/RuntimeHistoryKind"
+        key:
+          type: string
+          minLength: 1
+          maxLength: 512
+        scope:
+          type: string
+          minLength: 1
+          maxLength: 512
+        revision:
+          type: integer
+          minimum: 0
+          maximum: 9007199254740990
+    RuntimeHistoryItem:
+      type: object
+      additionalProperties: false
+      required: [id, value]
+      properties:
+        id:
+          type: string
+          maxLength: 2048
+        value:
+          type: object
+          additionalProperties: true
+    RuntimeHistoryRecord:
+      type: object
+      additionalProperties: false
+      required: [kind, key, scope, revision, state, messages, queue, events, values]
+      description: Ordered collections have unique item IDs. Writes require host scope ownership and the exact current revision. Deletions retain a revision tombstone.
+      properties:
+        kind:
+          $ref: "#/components/schemas/RuntimeHistoryKind"
+        key:
+          type: string
+          minLength: 1
+          maxLength: 512
+        scope:
+          type: string
+          minLength: 1
+          maxLength: 512
+        revision:
+          type: integer
+          minimum: 0
+          maximum: 9007199254740990
+        state:
+          type: object
+          additionalProperties: true
+        messages:
+          type: array
+          maxItems: 100000
+          items:
+            $ref: "#/components/schemas/RuntimeHistoryItem"
+        queue:
+          type: array
+          maxItems: 100000
+          items:
+            $ref: "#/components/schemas/RuntimeHistoryItem"
+        events:
+          type: array
+          maxItems: 100000
+          items:
+            $ref: "#/components/schemas/RuntimeHistoryItem"
+        values:
+          type: array
+          maxItems: 100000
+          items:
+            $ref: "#/components/schemas/RuntimeHistoryItem"
+    RuntimeAgentSessionSnapshot:
+      type: object
+      additionalProperties: false
+      required: [format, version, nextId, commits]
+      description: Storage snapshot distinct from the UI AgentSessionSnapshot. Preserves historical document commits and reserved IDs without owner credentials. Import requires a new empty session and contiguous sequences.
+      properties:
+        format:
+          type: string
+          const: steamharness.agent-session
+        version:
+          type: integer
+          const: 1
+        nextId:
+          type: integer
+          minimum: 2
+          maximum: 9007199254740991
+        commits:
+          type: array
+          maxItems: 100000
+          items:
+            type: object
+            additionalProperties: false
+            required: [seq, writes]
+            properties:
+              seq:
+                $ref: "#/components/schemas/RuntimeStorageId"
+              writes:
+                type: array
+                maxItems: 10000
+                items:
+                  type: object
+                  description: Typed AgentStorageWrite, identical to commit operation writes.
+    RuntimeUsageEntry:
+      type: object
+      additionalProperties: false
+      required: [id, projectId, runId, sequence, createdAt, inputTokens, outputTokens, totalTokens, reasoningTokens, cachedInputTokens, cacheCreationTokens]
+      description: Receipt belongs to this workspace project and its core run/conversation lease. An existing ID cannot be reused for a different run or conversation.
+      properties:
+        id:
+          type: string
+          minLength: 1
+          maxLength: 512
+        projectId:
+          type: string
+          minLength: 1
+          maxLength: 512
+        runId:
+          type: string
+          minLength: 1
+          maxLength: 512
+        conversationId:
+          type: string
+          minLength: 1
+          maxLength: 512
+        createdAt:
+          type: string
+          format: date-time
+        sequence:
+          type: integer
+          minimum: 0
+          maximum: 9007199254740991
+        inputTokens:
+          type: integer
+          minimum: 0
+          maximum: 9007199254740991
+        outputTokens:
+          type: integer
+          minimum: 0
+          maximum: 9007199254740991
+        totalTokens:
+          type: integer
+          minimum: 0
+          maximum: 9007199254740991
+        reasoningTokens:
+          type: integer
+          minimum: 0
+          maximum: 9007199254740991
+        cachedInputTokens:
+          type: integer
+          minimum: 0
+          maximum: 9007199254740991
+        cacheCreationTokens:
+          type: integer
+          minimum: 0
+          maximum: 9007199254740991
+        nodeName:
+          type: string
+        providerName:
+          type: string
+        modelId:
+          type: string
+        metadata:
+          type: object
+          additionalProperties: true
     RuntimeStorageOperation:
       description: Core RuntimeStorageOperation contract. Record and query fields are validated per kind; use the SDK for complete typed record/document
         definitions. Invalid fields, record types, cursors and scan orders are rejected. No SQL or executable project code is accepted.
       oneOf:
+        - type: object
+          additionalProperties: false
+          required: [kind, requestId]
+          properties:
+            kind:
+              type: string
+              const: session.delete
+            requestId:
+              type: string
+              format: uuid
+        - type: object
+          additionalProperties: false
+          required: [kind, requestId, record]
+          properties:
+            kind:
+              type: string
+              const: history.write
+            requestId:
+              type: string
+              format: uuid
+            record:
+              $ref: "#/components/schemas/RuntimeHistoryRecord"
+        - type: object
+          additionalProperties: false
+          required: [kind, requestId, record]
+          properties:
+            kind:
+              type: string
+              const: history.delete
+            requestId:
+              type: string
+              format: uuid
+            record:
+              $ref: "#/components/schemas/RuntimeHistoryIdentity"
+        - type: object
+          additionalProperties: false
+          required: [kind, requestId, entry]
+          properties:
+            kind:
+              type: string
+              const: usage
+            requestId:
+              type: string
+              format: uuid
+            entry:
+              $ref: "#/components/schemas/RuntimeUsageEntry"
+        - type: object
+          additionalProperties: false
+          required: [kind, requestId, snapshot]
+          properties:
+            kind:
+              type: string
+              const: snapshot.import
+            requestId:
+              type: string
+              format: uuid
+            snapshot:
+              $ref: "#/components/schemas/RuntimeAgentSessionSnapshot"
         - type: object
           additionalProperties: false
           required:

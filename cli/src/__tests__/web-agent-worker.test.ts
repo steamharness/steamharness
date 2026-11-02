@@ -1,3 +1,8 @@
+import { beforeAll, afterAll } from "vitest";
+import { runtimeStorageService } from "./runtime-storage-service";
+let runtimeConnection: Awaited<ReturnType<ReturnType<typeof runtimeStorageService>["start"]>>;
+beforeAll(async () => { runtimeConnection = await runtimeStorageService().start(); });
+afterAll(async () => { await runtimeConnection.close(); });
 import { writeProjectFixture } from '../../scripts/test-project-fixture.mjs';
 import { expect, it } from 'vitest';
 import { once } from 'node:events';
@@ -20,7 +25,7 @@ it('carries host settings into real workers and IPC tools until a durable sessio
   const runKey = createHash('sha256').update(await realpath(directory)).digest('hex');
   const configurationRoot = path.join(os.homedir(), '.steamharness', 'configurations');
   let settings: import('steamharness').UserSettings = { agent: { permissionPolicy: 'auto' } };
-  const runtime = createWebRuntime(directory, path.join(directory, 'data'), () => undefined, { userSettings: () => settings });
+  const runtime = createWebRuntime(directory, path.join(directory, 'data'), () => runtimeConnection, { userSettings: () => settings });
   let run: Promise<unknown> | undefined, snapshot: AgentSessionSnapshot | undefined;
   const toolSets: string[][] = [];
   const model = createServer(async (request, response) => {
@@ -109,7 +114,7 @@ it('preserves the live generation when the worker loses its IPC owner and resume
   const configurationKey = createHash('sha256').update(`application:${applicationId}`).digest('hex');
   const runKey = createHash('sha256').update(await realpath(directory)).digest('hex');
   const configurationRoot = path.join(os.homedir(), '.steamharness', 'configurations');
-  const runtime = createWebRuntime(directory, path.join(directory, 'data'), () => undefined);
+  const runtime = createWebRuntime(directory, path.join(directory, 'data'), () => runtimeConnection);
   let calls = 0, child: ChildProcess | undefined, resumed: Promise<unknown> | undefined;
   let snapshot: AgentSessionSnapshot | undefined;
   const events = (event: Record<string, any>) => {
@@ -139,7 +144,7 @@ it('preserves the live generation when the worker loses its IPC owner and resume
     const inspected = await runtime.inspect([directory]); expect(inspected.errors).toEqual([]);
     const project = { ...inspected.projects[0], uri: '' };
     const request = { method: 'run', project, conversationId: 'disconnect-session', runId: 'disconnect-run', args: ['--message', 'First'], storageDir: path.join(directory, 'data'), runtimeProjectDir: directory };
-    child = spawn(process.execPath, [fileURLToPath(new URL('../web/worker.mjs', import.meta.url))], { cwd: directory, stdio: ['pipe', 'pipe', 'pipe', 'ipc'] });
+    child = spawn(process.execPath, [fileURLToPath(new URL('../web/worker.mjs', import.meta.url))], { cwd: directory, env: { ...process.env, STEAMHARNESS_SERVER_URL: runtimeConnection.serverUrl, STEAMHARNESS_SERVER_ADMIN_KEY: runtimeConnection.accessToken }, stdio: ['pipe', 'pipe', 'pipe', 'ipc'] });
     let output = '', failure = '', lastMessage: unknown;
     child.stderr!.on('data', chunk => { failure += chunk.toString(); });
     child.stdout!.setEncoding('utf8'); child.stdout!.on('data', chunk => {
@@ -187,7 +192,7 @@ it.each(['bootstrap', 'early-ipc'])('reports the original workflow failure to %s
   const configurationKey = createHash('sha256').update(`application:${applicationId}`).digest('hex');
   const runKey = createHash('sha256').update(await realpath(directory)).digest('hex');
   const configurationRoot = path.join(os.homedir(), '.steamharness', 'configurations');
-  const runtime = createWebRuntime(directory, path.join(directory, 'data'), () => undefined);
+  const runtime = createWebRuntime(directory, path.join(directory, 'data'), () => runtimeConnection);
   let child: ChildProcess | undefined;
   try {
     await mkdir(path.join(directory, 'node_modules'));
@@ -229,7 +234,7 @@ it.each(['bootstrap', 'early-ipc'])('reports the original workflow failure to %s
         };
         process.on('newListener', added);
       `);
-      child = spawn(process.execPath, ['--import', pathToFileURL(preload).href, fileURLToPath(new URL('../web/worker.mjs', import.meta.url))], { cwd: directory, stdio: ['pipe', 'pipe', 'pipe', 'ipc'] });
+      child = spawn(process.execPath, ['--import', pathToFileURL(preload).href, fileURLToPath(new URL('../web/worker.mjs', import.meta.url))], { cwd: directory, env: { ...process.env, STEAMHARNESS_SERVER_URL: runtimeConnection.serverUrl, STEAMHARNESS_SERVER_ADMIN_KEY: runtimeConnection.accessToken }, stdio: ['pipe', 'pipe', 'pipe', 'ipc'] });
       const messages: any[] = []; let output = '', diagnostics = '';
       child.on('message', message => messages.push(message));
       child.stdout!.on('data', chunk => { output += chunk; }); child.stderr!.on('data', chunk => { diagnostics += chunk; });
@@ -265,7 +270,7 @@ it('controls the real worker over IPC and replays pending commands after reopeni
     ]) response.write(`data: ${JSON.stringify({ id: 'ipc', object: 'chat.completion.chunk', model: 'ipc-test', ...event })}\n\n`);
     response.end('data: [DONE]\n\n');
   });
-  const runtime = createWebRuntime(directory, path.join(directory, 'data'), () => undefined);
+  const runtime = createWebRuntime(directory, path.join(directory, 'data'), () => runtimeConnection);
   let run: Promise<unknown> | undefined;
   try {
     const harnessRoot = await resolveHarnessRoot();
@@ -324,7 +329,7 @@ it('controls the real worker over IPC and replays pending commands after reopeni
       return snapshot?.turns.some(turn => turn.status === 'done');
     }, { timeout: 15_000 }).toBe(true);
     const ownerId = snapshot!.ownerId;
-    expect(snapshot!.resources).toMatchObject({ codeMode: true, environment: { remote: false }, storage: 'SQLite' });
+    expect(snapshot!.resources).toMatchObject({ codeMode: true, environment: { remote: false }, storage: 'SteamHarness PostgreSQL' });
     expect(snapshot!.resources!.extensions).toContainEqual(expect.objectContaining({ name: 'ipc-extension', tasks: [{ name: 'ipc.timer', version: 1 }] }));
     const task = { type: 'task' as const, requestId: 'ipc-timer', name: 'ipc.timer', input: { wakeAt: Date.now() + 500 }, background: true };
     const taskReceipt = await runtime.agentControl!('ipc-run', task, 'ipc-session');

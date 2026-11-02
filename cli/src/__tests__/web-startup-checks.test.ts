@@ -4,7 +4,7 @@ import { mkdtemp, realpath, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { LocalDatabaseRegistry, createLocalDatabaseResolver, createDatabasesContext } from 'steamharness';
-import { startEntryWebServer } from '../web/server';
+import { startEntryWebServer } from './web-test-storage';
 import { ProjectServerConnection } from '../web/project-server-state';
 import { projectStartupInspector } from '../web/project-startup-checks';
 import type { Project, ProjectKind, Runtime } from '../web/workflow-types';

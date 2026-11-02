@@ -1,4 +1,5 @@
 import { writeProjectFixture } from '../../scripts/test-project-fixture.mjs';
+import { runtimeStorageService } from './runtime-storage-service';
 import { afterEach, expect, it, vi } from 'vitest';
 import { mkdtemp, mkdir, readFile, rm, symlink, writeFile } from 'node:fs/promises';
 import { createHash } from 'node:crypto';
@@ -10,7 +11,7 @@ import { createServer } from 'node:http';
 import { inspectWebProject } from '../web/assistant-project';
 import { parseHostConfiguration } from '../web/host-config';
 import { createWebRuntime } from '../web/runtime';
-import { startEntryWebServer as startWebServer } from '../web/server';
+import { startEntryWebServer as startWebServer } from './web-test-storage';
 import type { Project, Runtime } from '../web/workflow-types';
 import { resolveHarnessRoot } from './harness-source';
 
@@ -124,7 +125,11 @@ it('runs assistant skills locally, isolates workspaces and preserves independent
       tools: [{ name: 'skill', enabled: true, autoApprove: true }], createInput() { return {}; } });
   `);
   const remoteRequests: string[] = [];
-  const server = createServer((request, response) => { remoteRequests.push(request.url!); response.writeHead(404); response.end(); });
+  const storageService = runtimeStorageService();
+  const server = createServer(async (request, response) => {
+    if (await storageService.handle(request, response)) return;
+    remoteRequests.push(request.url!); response.writeHead(404); response.end();
+  });
   server.listen(0, '127.0.0.1'); await once(server, 'listening');
   const connection = { serverUrl: `http://127.0.0.1:${(server.address() as { port: number }).port}`, accessToken: 'assistant-project-fixture',
     aiServerUrl: `http://127.0.0.1:${(server.address() as { port: number }).port}`, aiAccessToken: 'assistant-ai-fixture' };

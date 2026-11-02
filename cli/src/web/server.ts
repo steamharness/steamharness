@@ -1,3 +1,5 @@
+import { createServerRuntimePersistence, type RuntimePersistence } from "steamharness/runtime-storage";
+import { WorkflowHistory } from "./workflow-history";
 import {readProjectDeclarationFromDirectory} from '@steamharness/project-manifest/node';
 import { hydrateUserSettings, userSettingsJsonReplacer } from './user-settings';
 import {configurationCapability} from '@steamharness/project-configuration';
@@ -44,7 +46,7 @@ import { DatabaseManagement } from './database-management';
 import { projectDataDirectory } from './project-data-directory';
 
 type Message = Record<string, any>;
-export interface WebOptions { entryId?: string; mount?: { origin: string; basePath: string; catalog(): unknown; identityChanged?(): void }; projectDir: string; port?: number; dataDir?: string; theme?: 'auto' | 'light' | 'dark'; runtime?: Runtime; host?: WebHostConfiguration }
+export interface WebOptions { entryId?: string; mount?: { origin: string; basePath: string; catalog(): unknown; identityChanged?(): void }; projectDir: string; port?: number; dataDir?: string; theme?: 'auto' | 'light' | 'dark'; runtime?: Runtime; runtimePersistence?: RuntimePersistence; runtimePersistenceForEntry?(entryId: string): RuntimePersistence; host?: WebHostConfiguration }
 
 export { startAggregateWebServer as startWebServer } from "./aggregate-server";
 
@@ -163,12 +165,29 @@ async function startProjectWebServer(options: WebOptions, credentials: { capabil
   const resources = new ResourcePreviews(project, runtime, storageDir, () => connection, () => resourceProjects, () => broadcast(), options.mount?.basePath);
   const key = project.assistant ? createHash('sha256').update(`assistant:${project.id}:${project.assistant.workdir}`).digest('hex').slice(0, 24)
     : path.relative(storageDir, await projectDataDirectory(storageDir, projectDir, project.id, project.entryId));
-  const historyPath = path.join(storageDir, key, 'conversations.json');
+  const activityDirectory = path.join(storageDir, key);
   let saved: { sessions?: ConversationSession[]; activeId?: string; selectionVersion?: number } = {};
-  if (project.projectType !== 'kanban') { try { saved = JSON.parse(await readFile(historyPath, 'utf8')); } catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') { runtime.dispose(); throw new Error(`Cannot read conversation history: ${String(error)}`); } } }
   let pendingSave = Promise.resolve();
-  const ownership = project.projectType === 'conversation' ? new ConversationOwnership(path.join(storageDir, key, 'conversation-owners'), id => conversationController?.sessions.find(session => session.id === id)?.agentOwnerId ?? id) : undefined;
-  const conversationHistory = ownership ? new ConversationHistory(historyPath, saved, ownership) : undefined;
+  let runtimePersistence = options.runtimePersistence;
+  let storageIdentity = '';
+  let storageEpoch = 0;
+  let storageReset = Promise.resolve();
+  let storageInitialization: { epoch: number; promise: Promise<void> } | undefined;
+  let storageReady = Boolean(options.runtimePersistence);
+  let storageError: string | undefined;
+  const ownership = project.projectType === 'conversation' ? new ConversationOwnership(() => runtimePersistence,
+    id => conversationController?.sessions.find(session => session.id === id)?.agentOwnerId ?? id,
+    () => { broadcast(); conversationController?.recover(); },
+    (scope, error) => {
+      for (const session of conversationController?.sessions ?? []) if ((session.agentOwnerId ?? session.id) === scope && session.activeRunId) runtime.cancel(session.activeRunId);
+      storageReady = false; storageError = String((error as Error).message); broadcast();
+    }) : undefined;
+  const conversationHistory = ownership ? new ConversationHistory(() => runtimePersistence, ownership) : undefined;
+  const workflowHistory = project.projectType === 'workflow' ? new WorkflowHistory(() => runtimePersistence, error => {
+    storageReady = false; storageError = error.message;
+    for (const run of projectController?.runs ?? []) if (run.status === 'running') runtime.cancel(run.id);
+    broadcast();
+  }) : undefined;
   let broadcastTimer: ReturnType<typeof setTimeout> | undefined;
   let stateRevision = 0;
   const serverInstanceId = randomBytes(16).toString('hex');
@@ -206,7 +225,7 @@ async function startProjectWebServer(options: WebOptions, credentials: { capabil
   const sharedState = () => {
     const serverData = projectServer?.state;
     const issue = projectServer?.state.issue ?? kanbanController?.serverDataIssue;
-    const result = publicState({ type: 'state', serverInstanceId, aggregate: options.mount?.catalog(), project, configurationError: configurations.error,
+    const result = publicState({ type: 'state', serverInstanceId, runtimeStorage: { ready: storageReady, error: storageError }, aggregate: options.mount?.catalog(), project, configurationError: configurations.error,
     serverData: serverData && projectServerStateWithIssue(serverData, issue, project.id),
     ...(isKanban ? { kanban: kanbanController!.state() } : isProject ? projectActions!.state() : { sessions: conversationState.sessions(controller.sessions) }),
     account: { ...account, user: account.user && { userId: account.user.userId, email: account.user.email, displayName: account.user.displayName, avatarUrl: account.user.avatarUrl } },
@@ -295,33 +314,26 @@ async function startProjectWebServer(options: WebOptions, credentials: { capabil
   applyUserSettings();
   conversationController = isProject || isKanban ? undefined : new ConversationController(project, runtime, saved, {
     canRun: session => ownership?.execute(session.id) ?? true,
-    canStart: () => !projectServer?.blocking || projectServer.ready,
-    canDrain: () => (!projectServer?.blocking || projectServer.ready),
+    canStart: () => storageReady && (!projectServer?.blocking || projectServer.ready),
+    canDrain: () => storageReady && (!projectServer?.blocking || projectServer.ready),
     configurationRevision: () => configurations.state.revision,
     userSettings: () => userSettings,
     independent: session => ownership?.independent(session.id) ?? (() => undefined),
     changed: broadcast,
     log: message => process.stderr.write(`${message}\n`),
     save: (sessions, activeId) => {
-      if (conversationHistory) {
-        pendingSave = conversationHistory.save(sessions, activeId);
-        return pendingSave;
-      }
-      const content = JSON.stringify({ sessions, activeId, selectionVersion: 1 }, userSettingsJsonReplacer);
-      pendingSave = pendingSave.catch(() => undefined).then(async () => {
-        await mkdir(path.dirname(historyPath), { recursive: true });
-        const temp = `${historyPath}.${process.pid}.tmp`;
-        await writeFile(temp, content, { mode: 0o600 }); await rename(temp, historyPath);
-      });
-      return pendingSave;
+      if (!storageReady || !conversationHistory) return Promise.reject(new Error(storageError ?? 'Sign in to persist conversation history.'));
+      pendingSave = conversationHistory.save(sessions, activeId); return pendingSave;
     },
   });
   const controller = conversationController!;
   const refreshHistory = async () => {
+    const epoch = storageEpoch;
     const acquired = ownership?.takeAcquired() ?? new Set<string>();
     for (const id of controller?.executingIds ?? []) acquired.delete(id);
+    if (!storageReady) return;
     const history = await conversationHistory?.refresh(acquired);
-    if (!history?.sessions) return;
+    if (epoch !== storageEpoch || !history?.sessions) return;
     const local = new Map(controller.sessions.map(session => [session.id, session]));
     const merged = history.sessions.map(session => {
       if (ownership!.owns(session.id) && !acquired.has(ownership!.scope(session.id)) && local.has(session.id)) return local.get(session.id)!;
@@ -336,28 +348,13 @@ async function startProjectWebServer(options: WebOptions, credentials: { capabil
     if (!merged.some(session => session.id === controller.activeId)) controller.activeId = merged[0].id;
     broadcast();
   };
-  const runsPath = path.join(storageDir, key, 'runs.json');
-  let workspace: WorkspaceContract | undefined;
-  if (isProject) {
-    try {
-      workspace = JSON.parse(await readFile(runsPath, 'utf8'));
-      if (workspace?.version !== 1 || !Array.isArray(workspace.runs) || !workspace.drafts || typeof workspace.drafts !== 'object') { throw new Error('Invalid Workflow history.'); }
-    } catch (error) {
-      if ((error as NodeJS.ErrnoException).code !== 'ENOENT') { runtime.dispose(); throw error; }
-      workspace = migrateProjectHistory(saved.sessions ?? [], saved.activeId);
-    }
-  }
+  const workspace: WorkspaceContract = { version: 1, runs: [], drafts: {} };
   const projectController = isProject ? new Controller(project, runtime, workspace!, {
     changed: broadcast, legacy: saved.sessions,
     log: message => process.stderr.write(`${message}\n`),
     save: workspace => {
-      const content = JSON.stringify(workspace, userSettingsJsonReplacer);
-      pendingSave = pendingSave.catch(() => undefined).then(async () => {
-        await mkdir(path.dirname(runsPath), { recursive: true });
-        const temp = `${runsPath}.${process.pid}.tmp`;
-        await writeFile(temp, content, { mode: 0o600 }); await rename(temp, runsPath);
-      });
-      return pendingSave;
+      if (!storageReady || !workflowHistory) return Promise.reject(new Error(storageError ?? 'Sign in to persist workflow history.'));
+      pendingSave = workflowHistory.save(workspace); return pendingSave;
     },
   }) : undefined;
   const projectActions = projectController ? createProjectActions(projectController, runtime, project, () => authRevision, broadcast) : undefined;
@@ -372,10 +369,53 @@ async function startProjectWebServer(options: WebOptions, credentials: { capabil
   }) : undefined;
   if (kanbanController) kanbanController.configurationChanged(configurations.state);
   if (kanbanController) { try { await kanbanController.initialize(); } catch (error) { configurations.close(); resources.close(); await kanbanController.close(); runtime.dispose(); throw error; } }
-  if (projectController) { await projectController.persist(); }
   const stopForAuthentication = async () => {
     for (const session of conversationController?.sessions ?? []) { await conversationController!.stop(session); }
     if (projectController) { await projectController.stop('Workflow login changed.'); }
+  };
+  const resetRuntimeStorage = () => {
+    storageEpoch++;
+    storageReady = Boolean(options.runtimePersistence); storageIdentity = ''; storageError = undefined;
+    const resetting = storageReset.then(async () => {
+      await conversationHistory?.reset(); await workflowHistory?.reset(); await ownership?.reset();
+      if (!options.runtimePersistence) { await runtimePersistence?.close(); runtimePersistence = undefined; }
+      if (options.runtimePersistence) {
+        conversationController?.replace(await conversationHistory?.read() ?? {});
+        projectController?.replace(await workflowHistory?.read() ?? {});
+      } else { conversationController?.replace({}); projectController?.replace({}); }
+      selections.clear();
+    });
+    storageReset = resetting.catch(() => undefined); return resetting;
+  };
+  const initializeRuntimeStorage = (): Promise<void> => {
+    if (isKanban || !connection || !account.user) return Promise.resolve();
+    const identity = `${connection.serverUrl}\n${account.user.userId}`;
+    if (storageIdentity === identity && storageReady) return Promise.resolve();
+    const epoch = storageEpoch;
+    if (storageInitialization?.epoch === epoch) return storageInitialization.promise;
+    if (conversationController?.hasRuns || projectController?.runs.some(run => run.status === 'running')) return Promise.resolve();
+    const candidate = connection;
+    const initializing = (async () => {
+    await storageReset;
+    if (epoch !== storageEpoch) return;
+    runtimePersistence ??= createServerRuntimePersistence({ serverUrl: candidate.serverUrl, token: candidate.accessToken, resolveProject: true,
+      workspace: { kind: project.assistant ? 'assistant' : 'local', projectId: project.id, entryId: project.entryId,
+        localKey: createHash('sha256').update(project.assistant?.workdir ?? projectDir).digest('hex') } });
+    try {
+      const history = await conversationHistory?.read();
+      const runs = await workflowHistory?.read();
+      if (epoch !== storageEpoch) return;
+      if (history) { saved = history; conversationController?.replace(history); }
+      if (runs) projectController?.replace(runs);
+      storageIdentity = identity; storageReady = true; storageError = undefined;
+      conversationController?.recover();
+    } catch (error) {
+      if (epoch !== storageEpoch) return;
+      storageReady = false; storageError = String((error as Error).message);
+      process.stderr.write(`Runtime history: ${storageError}\n`);
+    }
+    })().finally(() => { if (storageInitialization?.promise === initializing) storageInitialization = undefined; });
+    storageInitialization = { epoch, promise: initializing }; return initializing;
   };
   const refreshAuth = async (force = false) => {
     if ((passwordLogin || login) && !force) { return; }
@@ -397,7 +437,7 @@ async function startProjectWebServer(options: WebOptions, credentials: { capabil
     const background = !force && identity === authIdentity && account.status === 'authenticated' && !expired;
     if (!force && identity === authIdentity) {
       if (authCheckPending) { return; }
-      if (account.status !== 'error' && !expired && (!background || Date.now() < nextProfileCheck)) { return; }
+      if (account.status !== 'error' && !expired && (!background || Date.now() < nextProfileCheck)) { if (connection) await initializeRuntimeStorage(); return; }
     }
     const epoch = ++authEpoch;
     authCheck?.abort();
@@ -417,7 +457,7 @@ async function startProjectWebServer(options: WebOptions, credentials: { capabil
       parameterStates.clear();
       projectActions?.invalidate();
       kanbanController?.authenticationChanged();
-      if (authenticationInitialized) { await stopForAuthentication(); }
+      if (authenticationInitialized) { await stopForAuthentication(); await resetRuntimeStorage(); }
       if (epoch !== authEpoch) { return; }
     }
     authenticationInitialized = true;
@@ -447,7 +487,7 @@ async function startProjectWebServer(options: WebOptions, credentials: { capabil
         if (!background) { kanbanController?.authenticationChanged(); }
         const savedConnection = !hostManaged && candidate.serverUrl === config.serverUrl.replace(/\/+$/, '') && candidate.accessToken === config.apiKey;
         const expiresAt = result.data.principal?.expiresAt ?? (savedConnection ? config.expiresAt : undefined);
-        if (background && (['userId', 'email', 'displayName', 'avatarUrl'] as const).every(key => profile[key] === account.user?.[key]) && expiresAt === account.expiresAt) { return; }
+        if (background && (['userId', 'email', 'displayName', 'avatarUrl'] as const).every(key => profile[key] === account.user?.[key]) && expiresAt === account.expiresAt) { await initializeRuntimeStorage(); return; }
         account = { ...account, status: 'authenticated', user: profile, expiresAt, revision: account.revision + (background ? 1 : 0) };
       } catch (error) {
         if (epoch !== authEpoch) { return; }
@@ -463,9 +503,14 @@ async function startProjectWebServer(options: WebOptions, credentials: { capabil
         if (epoch === authEpoch) { authCheckPending = false; }
       }
     } else { connection = undefined; }
+    if (connection) await initializeRuntimeStorage();
     if (!background || !connection) projectServer?.authenticationChanged(account);
     broadcast();
   };
+  if (options.runtimePersistence) {
+    const history = await conversationHistory?.read(); if (history) { saved = history; conversationController?.replace(history); }
+    const runs = await workflowHistory?.read(); if (runs) projectController?.replace(runs);
+  }
   await refreshAuth();
   const selectedSession = controller?.sessions.find(session => session.id === saved.activeId) ?? controller?.current;
   const previousReport = isProject ? projectController?.runs[0]?.report : selectedSession?.messages.at(-1)?.report;
@@ -505,6 +550,8 @@ async function startProjectWebServer(options: WebOptions, credentials: { capabil
     return { card, reference: source };
   };
   const handleMessage = async (message: Message): Promise<Message[]> => {
+    const held: Array<() => void> = [];
+    try {
     if (replacementId || message.applicationId && message.applicationId !== `${project.id}:${project.entryId}`) { throw new Error(t('The application ID changed. The new application is opening.')); }
     if (typeof message.type !== 'string') { throw new Error('Invalid message.'); }
     if (message.projectUri && message.projectUri !== project.uri) { throw new Error('Project changed.'); }
@@ -625,16 +672,25 @@ async function startProjectWebServer(options: WebOptions, credentials: { capabil
         updates.push({ id: update.id, create: update.create === true, draft: { text: update.draft.text, editingQueueId: update.draft.editingQueueId, attachments: await readAttachments(update.draft.attachments, update.id), ...(references.length ? { references } : {}) } });
       }
       if (navigationSequences.get(message.clientId) === message.requestId) {
-        const writable = updates.filter(update => {
+        const writable: ConversationDraftUpdate[] = [];
+        for (const update of updates) {
           const session = controller.sessions.find(session => session.id === update.id);
-          try { ownership?.assertWritable(update.id, message.clientId); return true; }
-          catch (error) { if (session && JSON.stringify(update.draft) === JSON.stringify(session.draft)) return false; throw error; }
-        });
+          try {
+            await ownership?.assertWritable(update.id, message.clientId);
+            if (ownership) held.push(await ownership.hold(update.id));
+            writable.push(update);
+          }
+          catch (error) { if (!session || JSON.stringify(update.draft) !== JSON.stringify(session.draft)) throw error; }
+        }
         await refreshHistory();
         await conversationController.navigate(message.id, writable);
         rememberSelection(message.clientId, message.id);
       }
       return reply();
+    }
+    if (ownership && (message.type === 'ready' || message.type === 'select')) {
+      const selectedId = message.type === 'select' ? String(message.id) : selections.get(message.clientId ?? '') ?? controller.activeId;
+      if (controller.sessions.some(session => session.id === selectedId)) await ownership.acquire(selectedId);
     }
     await refreshHistory();
     const replies: Message[] = [];
@@ -644,7 +700,8 @@ async function startProjectWebServer(options: WebOptions, credentials: { capabil
     if (ownership && !readOnly.includes(message.type) && !(message.type === 'session-action' && message.action === 'export')) {
       const target = message.type === 'session-action' ? controller.sessions.find(session => session.id === message.id) : current;
       if (target) {
-        ownership.assertWritable(target.id, message.clientId);
+        await ownership.assertWritable(target.id, message.clientId);
+        held.push(await ownership.hold(target.id));
         await refreshHistory();
         current = controller.sessions.find(session => session.id === current.id)!;
       }
@@ -866,6 +923,7 @@ async function startProjectWebServer(options: WebOptions, credentials: { capabil
       default: throw new Error(`Unsupported action: ${message.type}`);
     }
     return replies;
+    } finally { for (const release of held) release(); }
   };
   let mutations = Promise.resolve();
   const server = createServer((request, response) => {
@@ -945,8 +1003,8 @@ async function startProjectWebServer(options: WebOptions, credentials: { capabil
   try { if (!options.mount) await new Promise<void>((resolve, reject) => { server.once('error', reject); server.listen(options.port ?? 0, '127.0.0.1', () => { server.off('error', reject); resolve(); }); }); }
   catch (error) { projectCreation.close(); projectServer?.close(); ownership?.close(); configurations.close(); resources.close(); clearInterval(authPoll); conversationController?.dispose(); projectController?.dispose(); await kanbanController?.close(); runtime.dispose(); throw error; }
   origin = options.mount?.origin ?? `http://127.0.0.1:${(server.address() as { port: number }).port}`;
-  activity = createLocalActivityWriter(path.dirname(historyPath), project, () => ({
-    runs: summarizeLocalRuns(projectController?.runs, conversationController?.sessions),
+  activity = createLocalActivityWriter(activityDirectory, project, () => ({
+    identity: storageIdentity, runs: summarizeLocalRuns(projectController?.runs, conversationController?.sessions),
     queued: (conversationController?.sessions ?? []).reduce((total, session) => total + (session.queuedInputs?.length ?? 0), 0),
     queuedInputIds: (conversationController?.sessions ?? []).flatMap(session => (session.queuedInputs ?? []).map(input => input.id)),
   }), message => process.stderr.write(`${message}\n`));
@@ -955,9 +1013,10 @@ async function startProjectWebServer(options: WebOptions, credentials: { capabil
   let refreshingHistory = false;
   let accessSignature = '';
   const historyPoll = conversationHistory ? setInterval(() => {
-    if (refreshingHistory || !clients.size) return;
+    if (refreshingHistory || !clients.size && !project.conversation?.recovery?.enabled) return;
     refreshingHistory = true;
     void refreshHistory().then(() => {
+      if (storageReady) conversationController?.recover();
       const signature = JSON.stringify([...clients].map(client => {
         const id = clientIds.get(client) ?? '', selected = selections.get(id) ?? controller.activeId;
         return [id, selected, ownership!.select(id, selected)];
@@ -1000,9 +1059,9 @@ async function startProjectWebServer(options: WebOptions, credentials: { capabil
       for (const client of clients) { client.end(); }
       if (server.listening) await new Promise<void>(resolve => server.close(() => resolve()));
       try {
-        await conversationController?.idle(); await conversationController?.persist();
-        await projectController?.idle(); await projectController?.persist(); await pendingSave;
-      } finally { ownership?.close(); await activity?.close(); }
+        await conversationController?.idle(); if (storageReady) await conversationController?.persist();
+        await projectController?.idle(); if (storageReady) await projectController?.persist(); await pendingSave.catch(() => undefined);
+      } finally { await ownership?.close(); await workflowHistory?.reset(); if (!options.runtimePersistence) await runtimePersistence?.close(); await activity?.close(); }
     })(),
   };
 }

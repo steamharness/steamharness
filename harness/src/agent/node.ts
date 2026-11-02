@@ -651,10 +651,11 @@ class AgentStreamNode extends BaseStreamNode<AgentInput, OutputItemStreamChunk, 
 
   private async resolveRuntime(input: AgentInput, context: NodeContext): Promise<AgentRuntime> {
     const key = readSessionKey(this.options, context);
-    const directory = typeof context.metadata?.["agentStoreDir"] === "string"
-      ? context.metadata["agentStoreDir"] : path.join(input.workdir ?? this.options.workdir ?? process.cwd(), ".workflow", "agents");
-    const sessionDirectory = agentConversationDirectory(directory, context.conversation?.conversationId ?? "ephemeral");
-    const identity = JSON.stringify([context.metadata?.["project"], key]);
+    const persistence = context.metadata?.["runtimePersistence"] as import("../runtime-storage/history").RuntimePersistence | undefined;
+    const durable = context.conversation?.enabled && input.hostInput === undefined;
+    if (durable && !this.options.storage && !this.options.databasePath && !persistence) {
+      throw new Error("Durable conversations require Server runtime persistence or an explicit temporary storage factory.");
+    }
     const runtimeOptions: AgentRuntimeInternalOptions = {
       ...this.options,
       session: input.hostInput === undefined ? await this.options.createSession?.(context) ?? this.options.session : undefined,
@@ -662,8 +663,9 @@ class AgentStreamNode extends BaseStreamNode<AgentInput, OutputItemStreamChunk, 
       sessionSuspend: context.conversation?.conversationId && (input.agent ?? this.options.mode) !== "plan" ? agentSessionSuspended(context.conversation.conversationId) : undefined,
       resumeSession: !!context.conversation?.conversationId && (input.agent ?? this.options.mode) !== "plan" && input.hostInput === undefined && agentSessionResuming(context.conversation.conversationId),
       interruptSession: !!context.conversation?.conversationId && agentSessionInterrupted(context.conversation.conversationId),
-      databasePath: this.options.databasePath ?? (!this.options.storage && context.conversation?.enabled && input.hostInput === undefined
-        ? path.join(sessionDirectory, `${createHash("sha256").update(identity).digest("hex")}.sqlite`) : undefined),
+      databasePath: this.options.databasePath,
+      storage: this.options.storage ?? (!this.options.databasePath && durable
+        ? persistence?.agentStorage(context.conversation!.conversationId!, key) : undefined),
       workdir: input.workdir ?? this.options.workdir,
       provider: input.provider ?? this.options.provider,
       model: input.model ?? this.options.model,

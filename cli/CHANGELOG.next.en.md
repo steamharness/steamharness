@@ -1,5 +1,7 @@
 # Unreleased
 
+- Conversation, Workflow and assistant history now use platform relational tables with account/entry-isolated messages, queues, drafts, runs and usage. Server leases coordinate windows and crash recovery without legacy JSON/SQLite reads or offline fallback.
+
 - Added database bind/bindings/unbind for host-owned relational bindings by account, project, entry and alias, with Core typed queries in Node runs and no project-persisted resource IDs.
 
 - Added database provisioning, inspection, retry and read/write grant commands, plus versioned migrations with SQL, model snapshots and checksums. Applied-history changes, schema drift and unaccepted destructive migrations are rejected.

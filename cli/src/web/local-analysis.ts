@@ -1,6 +1,8 @@
 import type { ProjectDeclaration, ProjectEntryDeclaration } from '@steamharness/project-manifest';
 import { readProjectDeclarationFromDirectory } from '@steamharness/project-manifest/node';
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
+import { createServerRuntimePersistence, type RuntimePersistence } from 'steamharness/runtime-storage';
+import { decodeSession } from './conversation-history';
 import { mkdir, readdir, readFile, realpath, rename, rm, stat, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { performance } from 'node:perf_hooks';
@@ -11,7 +13,7 @@ import type { RunRecord } from './workflow-workspace';
 export interface LocalRunSummary {
   id: string; title: string; status: string; createdAt?: number; durationMs?: number; entrypointId?: string; sessionId?: string;
 }
-interface Activity { version: 1; projectId: string; entryId: string; projectType: string; pid: number; updatedAt: number; runs: Array<LocalRunSummary & { changedAt?: number }>; queued: number; queuedInputIds?: string[] }
+interface Activity { version: 1; projectId: string; entryId: string; projectType: string; pid: number; updatedAt: number; runs: Array<LocalRunSummary & { changedAt?: number }>; queued: number; queuedInputIds?: string[]; identity?: string }
 export interface LocalAnalysisProject { id: string; name: string; folderPath: string; uri: string; inWorkspace?: boolean; projectType?: string; entryId?: string }
 type AnalysisReference = { reference: LocalAnalysisProject } & (
   { manifest: ProjectDeclaration; entry: ProjectEntryDeclaration } | { error: unknown }
@@ -42,7 +44,7 @@ export function summarizeLocalRuns(runs?: RunRecord[], sessions?: ConversationSe
 
 // A separate lease per service keeps another Studio window's live status intact.
 export function createLocalActivityWriter(directory: string, project: Pick<Project, 'id' | 'entryId' | 'projectType'>,
-  state: () => { runs: LocalRunSummary[]; queued: number; queuedInputIds?: string[] }, log: (message: string) => void) {
+  state: () => { runs: LocalRunSummary[]; queued: number; queuedInputIds?: string[]; identity?: string }, log: (message: string) => void) {
   const filename = path.join(directory, 'activity', `${randomUUID()}.json`);
   // Idle windows must not republish runs completed or deleted by another window.
   const runVersion = (run: LocalRunSummary): string => JSON.stringify([run.status, run.durationMs]);
@@ -61,7 +63,7 @@ export function createLocalActivityWriter(directory: string, project: Pick<Proje
       runs: current.runs.filter(run => activeStatus(run.status) || changedRuns.has(run.id))
         .sort((a, b) => (b.createdAt ?? 0) - (a.createdAt ?? 0)).filter((run, index) => index < 100 || activeStatus(run.status))
         .map(run => ({ ...run, changedAt: changedRuns.get(run.id) })),
-      queued: current.queued, queuedInputIds: current.queuedInputIds };
+      queued: current.queued, queuedInputIds: current.queuedInputIds, identity: current.identity };
     pending = pending.catch(() => undefined).then(async () => {
       await mkdir(path.dirname(filename), { recursive: true });
       if (!metadataPublished) {
@@ -93,7 +95,9 @@ function alive(pid: unknown): boolean {
   try { process.kill(Number(pid), 0); return true; } catch (error) { return (error as NodeJS.ErrnoException).code === 'EPERM'; }
 }
 
-export async function readLocalStudioAnalysis(options: { storageDir: string; projects: LocalAnalysisProject[]; locale?: string; now?: number }) {
+export async function readLocalStudioAnalysis(options: { storageDir: string; projects: LocalAnalysisProject[]; locale?: string; now?: number;
+  connection?: { serverUrl: string; accessToken: string }; userId?: string;
+  persistenceForProject?(project: LocalAnalysisProject): RuntimePersistence }) {
   const now = options.now ?? Date.now(), seen = new Set<string>();
   let serverExcluded = 0;
   const projects = [];
@@ -134,22 +138,27 @@ export async function readLocalStudioAnalysis(options: { storageDir: string; pro
       project.name = `${project.name} / ${registration.name}`;
       const root = await projectDataDirectory(options.storageDir, directory, reference.id, registration.entryId);
       const type = registration.type;
-      const workspace = type === 'conversation' || type === 'kanban' ? undefined : await readJson(path.join(root, 'runs.json'));
-      const conversations = type !== 'kanban' && !workspace ? await readJson(path.join(root, 'conversations.json')) : undefined;
-      if (workspace !== undefined && (!record(workspace) || workspace.version !== 1 || !Array.isArray(workspace.runs) || !workspace.runs.every((run: any) => record(run) && typeof run.id === 'string' && run.id))) { throw new Error('Invalid run history.'); }
-      if (conversations !== undefined && (!record(conversations) || !Array.isArray(conversations.sessions) || conversations.sessions.some((session: any) => !record(session)
-        || typeof session.id !== 'string' || !session.id || typeof session.title !== 'string' || !Array.isArray(session.messages)
-        || !session.messages.every((message: any) => record(message) && ['user', 'assistant'].includes(message.role))))) { throw new Error('Invalid conversation history.'); }
-      const historyModifiedAt = workspace || conversations ? (await stat(path.join(root, workspace ? 'runs.json' : 'conversations.json'))
-        .catch((error: NodeJS.ErrnoException) => { if (error.code === 'ENOENT') return undefined; throw error; }))?.mtimeMs ?? 0 : 0;
-      project.projectType = type ?? (workspace ? 'workflow' : conversations ? 'conversation' : 'unknown');
-      const runs = new Map(summarizeLocalRuns(workspace?.runs, conversations?.sessions).map(run => [run.id, run]));
+      project.projectType = type;
+      let storedRuns: RunRecord[] | undefined, storedSessions: ConversationSession[] | undefined;
+      if (type !== 'kanban') {
+        const backend = options.persistenceForProject?.(reference) ?? (options.connection && createServerRuntimePersistence({
+          serverUrl: options.connection.serverUrl, token: options.connection.accessToken, resolveProject: true,
+          workspace: { kind: 'local', projectId: reference.id, entryId: registration.entryId,
+            localKey: createHash('sha256').update(directory).digest('hex') },
+        }));
+        if (!backend) throw new Error('Sign in to read runtime history.');
+        try {
+          if (type === 'conversation') storedSessions = (await backend.list('conversation')).map(decodeSession);
+          else storedRuns = (await backend.list('run')).map(record => ({ ...record.state, items: [], events: [] } as unknown as RunRecord));
+        } finally { if (!options.persistenceForProject) await backend.close(); }
+      }
+      const runs = new Map(summarizeLocalRuns(storedRuns, storedSessions).map(run => [run.id, run]));
       const leases: Activity[] = [];
       for (const file of await readdir(path.join(root, 'activity')).catch((error: NodeJS.ErrnoException) => { if (error.code === 'ENOENT') return []; throw error; })) {
         if (!file.endsWith('.json')) { continue; }
         try {
           const lease = await readJson(path.join(root, 'activity', file));
-          if (lease?.version === 1 && sameProjectId(lease.projectId, reference.id) && lease.entryId === reference.entryId && projectType(lease.projectType)
+          if ((!options.connection || lease?.identity === `${options.connection.serverUrl}\n${options.userId}`) && lease?.version === 1 && sameProjectId(lease.projectId, reference.id) && lease.entryId === reference.entryId && projectType(lease.projectType)
             && (project.projectType === 'unknown' || lease.projectType === project.projectType) && Array.isArray(lease.runs)
             && lease.runs.every((run: any) => record(run) && typeof run.id === 'string' && run.id && typeof run.status === 'string')) { leases.push(lease); }
         } catch { /* A malformed or concurrently removed lease cannot prove liveness. */ }
@@ -162,8 +171,9 @@ export async function readLocalStudioAnalysis(options: { storageDir: string; pro
           for (const id of lease.queuedInputIds) queuedInputs.add(id);
         } else { project.queued += number(lease.queued) ?? 0; }
         for (const run of lease.runs) {
-          if (!activeStatus(run.status) && (number(run.changedAt) === undefined || run.changedAt! < historyModifiedAt)) { continue; }
-          if (!activeStatus(run.status) && live.some(other => other.runs.some(item => item.id === run.id && activeStatus(item.status)))) { continue; }
+          if (!activeStatus(run.status)) continue;
+          const committed = runs.get(run.id);
+          if (committed && !activeStatus(committed.status) && committed.status !== 'unknown') continue;
           runs.set(run.id, summary(run, run.id));
         }
       }

@@ -1,3 +1,4 @@
+import { runtimeStorageService } from './runtime-storage-service';
 import { writeProjectFixture } from '../../scripts/test-project-fixture.mjs';
 import { expect, it } from 'vitest';
 import { once } from 'node:events';
@@ -16,7 +17,9 @@ it('forks through the page protocol without system AI and resumes only when the 
   let aiAvailable = true;
   let phase = 'initial conversation';
   let app: Awaited<ReturnType<typeof startEntryWebServer>> | undefined;
+  const storageService = runtimeStorageService();
   const upstream = createServer(async (request, response) => {
+    if (await storageService.handle(request, response)) return;
     if (request.url === '/api/ai/catalog') {
       catalogCalls++;
       if (!aiAvailable) { response.writeHead(503); response.end('AI unavailable'); return; }

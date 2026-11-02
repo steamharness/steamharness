@@ -91,10 +91,13 @@ export function createProjectRuntime(context: vscode.ExtensionContext, account: 
     for (let attempt = 0; attempt < 3; attempt++) {
       assertAvailable();
       const projects = studioAnalysisProjects(context, analysisProjects);
+      const connection = account.getConnection(), userId = account.getState().user?.userId;
+      const identity = JSON.stringify([connection, userId]);
       const result = await reader.readLocalStudioAnalysis({ storageDir: path.join(context.globalStorageUri.fsPath, 'workflow', 'web'),
-        projects, locale: vscode.env.language });
+        projects, locale: vscode.env.language, connection, userId });
       assertAvailable();
-      if (JSON.stringify(projects) === JSON.stringify(studioAnalysisProjects(context, analysisProjects))) { return result; }
+      if (identity === JSON.stringify([account.getConnection(), account.getState().user?.userId])
+        && JSON.stringify(projects) === JSON.stringify(studioAnalysisProjects(context, analysisProjects))) { return result; }
     }
     throw new Error('Studio project scope changed while reading analysis.');
   })().finally(() => { readingAnalysis = undefined; });

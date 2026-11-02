@@ -1,3 +1,4 @@
+import { testExecutionStorage } from './runtime-test-storage';
 import assert from "node:assert/strict";
 import test from "node:test";
 import { randomUUID } from "node:crypto";
@@ -228,7 +229,7 @@ test("offline execution resolves inherited aliases before constructing input", a
     [["--message", "Question", "-m", "selected", "--agent", "plan"], "selected", "plan"],
     [["--message", "--plan"], "default", "build"],
   ] as const) {
-    const report = await runLocalProjectWithReport({ projectDir: directory, args: [...args] });
+    const report = await runLocalProjectWithReport({ storage: testExecutionStorage(), projectDir: directory, args: [...args] });
     assert.equal(report.status, "success", JSON.stringify(report.result));
     if (report.result.ok) {
       const output = (report.result.data as { output: { model: string; agent: string } }).output;

@@ -18,22 +18,28 @@ export interface ServerAgentStorageOptions {
   fetch?: typeof fetch;
   requestTimeoutMs?: number;
   retryDelayMs?: number;
+  /** A process-private capability reused across this host's related leases. */
+  ownerToken?: string;
+  onLeaseLost?(error: Error): void;
 }
 
-/** Explicit opt-in backend; the default conversation storage changes in a later phase. */
+/** PostgreSQL persistence with one fenced execution owner per session. */
 export function createServerAgentStorage(options: ServerAgentStorageOptions): AgentStorageFactory {
   return {
     label: "SteamHarness PostgreSQL",
     async open() {
       const storage = await ServerAgentStorage.open(options);
-      return { storage, release: () => storage.close() };
+      return { storage, failure: storage.failureSignal, release: () => storage.close() };
     },
   };
 }
 
 export class ServerAgentStorage implements AgentStorage {
+  private readonly failed = new AbortController();
+  get failureSignal(): AbortSignal { return this.failed.signal; }
   private readonly pending = new Set<Promise<unknown>>();
   private heartbeat?: ReturnType<typeof setInterval>;
+  private expiration?: ReturnType<typeof setTimeout>;
   private renewing = false;
   private failure?: Error;
   private closing?: Promise<void>;
@@ -54,32 +60,56 @@ export class ServerAgentStorage implements AgentStorage {
     const workspace = "id" in options.workspace
       ? await request<RuntimeWorkspace>(options, `/workspaces/${encodeURIComponent(options.workspace.id)}`)
       : await request<RuntimeWorkspace>(options, "/workspaces", options.workspace);
-    const ownerToken = randomBytes(32).toString("base64url");
+    const ownerToken = options.ownerToken ?? randomBytes(32).toString("base64url");
     const lease = await request<RuntimeStorageLease>(options, `/workspaces/${workspace.id}/sessions/open`, {
       sessionKey: options.sessionKey, ownerToken,
     });
     const storage = new ServerAgentStorage(options, workspace, lease, ownerToken);
+    storage.scheduleExpiration();
     storage.heartbeat = setInterval(() => {
       if (storage.closed || storage.renewing || storage.failure) return;
       storage.renewing = true;
       void storage.operation<RuntimeStorageLease>({ kind: "renew" }).then(
-        renewed => Object.assign(storage.lease, renewed),
-        error => { storage.failure = error instanceof Error ? error : new Error("Runtime storage lease renewal failed."); },
+        renewed => { Object.assign(storage.lease, renewed); storage.scheduleExpiration(); },
+        error => storage.fail(error),
       ).finally(() => { storage.renewing = false; });
     }, Math.max(250, Math.floor(lease.durationMs / 3)));
     storage.heartbeat.unref();
     return storage;
   }
 
-  private operation<T>(operation: RuntimeStorageOperation, context?: Context): Promise<T> {
+  operation<T>(operation: RuntimeStorageOperation, context?: Context): Promise<T> {
     if (this.closed) return Promise.reject(new Error("ServerAgentStorage is closed"));
     if (this.failure) return Promise.reject(this.failure);
+    try { this.assertOwned(); } catch (error) { this.fail(error); return Promise.reject(error); }
     const promise = request<T>(this.options, `/sessions/${this.lease.sessionId}/operations`, {
       ownerToken: this.ownerToken, fence: this.lease.fence, operation,
     }, context?.abortSignal);
     this.pending.add(promise);
+    void promise.catch(error => {
+      if (error instanceof RuntimeStorageError && ["RUNTIME_STORAGE_LEASE_LOST", "RUNTIME_STORAGE_ACCESS_DENIED", "RUNTIME_STORAGE_UNAVAILABLE", "RUNTIME_STORAGE_NOT_FOUND"].includes(error.code)
+        || error instanceof TypeError || error instanceof SyntaxError || error instanceof DOMException && error.name === "TimeoutError") this.fail(error);
+    });
     void promise.then(() => this.pending.delete(promise), () => this.pending.delete(promise));
     return promise;
+  }
+  private fail(error: unknown): void {
+    if (this.failure || this.closed) return;
+    this.failure = error instanceof Error ? error : new Error("Runtime storage is unavailable.");
+    this.failed.abort(this.failure); this.options.onLeaseLost?.(this.failure);
+  }
+
+  private scheduleExpiration(): void {
+    clearTimeout(this.expiration);
+    if (this.closed || this.failure) return;
+    this.expiration = setTimeout(() => this.fail(new RuntimeStorageError("RUNTIME_STORAGE_LEASE_LOST", "Runtime storage execution ownership expired.")), Math.max(0, Date.parse(this.lease.expiresAt) - Date.now()));
+    this.expiration.unref();
+  }
+
+  assertOwned(): void {
+    if (this.closed) throw new Error("ServerAgentStorage is closed");
+    if (this.failure) throw this.failure;
+    if (Date.parse(this.lease.expiresAt) <= Date.now()) throw new RuntimeStorageError("RUNTIME_STORAGE_LEASE_LOST", "Runtime storage execution ownership expired.");
   }
 
   commit(writes: readonly AgentStorageWrite[], context: Context): Promise<Seq> {
@@ -127,6 +157,7 @@ export class ServerAgentStorage implements AgentStorage {
     if (this.closing) return this.closing;
     this.closed = true;
     clearInterval(this.heartbeat);
+    clearTimeout(this.expiration);
     this.closing = (async () => {
       await Promise.allSettled([...this.pending]);
       try {
@@ -143,7 +174,7 @@ export class ServerAgentStorage implements AgentStorage {
   }
 }
 
-async function request<T>(options: ServerAgentStorageOptions, endpoint: string, body?: unknown, signal?: AbortSignal): Promise<T> {
+export async function runtimeStorageRequest<T>(options: Pick<ServerAgentStorageOptions, "serverUrl" | "token" | "fetch" | "requestTimeoutMs" | "retryDelayMs">, endpoint: string, body?: unknown, signal?: AbortSignal): Promise<T> {
   const serialized = body === undefined ? undefined : JSON.stringify(body);
   const base = options.serverUrl.replace(/\/$/, "");
   for (let attempt = 0; ; attempt++) {
@@ -182,3 +213,5 @@ async function request<T>(options: ServerAgentStorageOptions, endpoint: string, 
     }
   }
 }
+
+const request = runtimeStorageRequest;

@@ -18,7 +18,7 @@ interface ControllerOptions {
   canDrain?(): boolean;
   configurationRevision?(): number;
   userSettings?(): UserSettings;
-  independent?(session: ConversationSession): () => void;
+  independent?(session: ConversationSession): (() => void) | Promise<() => void>;
   /** Capture mutable inputs synchronously, before returning the save promise. */
   save(sessions: ConversationSession[], activeId: string): Promise<void>;
   changed(): void;
@@ -95,6 +95,11 @@ export class ConversationController {
     // Legacy histories could retain the first ID even after navigating elsewhere.
     const latest = this.sessions.reduce((latest, entry) => entry.updatedAt! >= latest.updatedAt! ? entry : latest);
     this.activeId = saved.selectionVersion === 1 && this.sessions.some(entry => entry.id === saved.activeId) ? saved.activeId! : latest.id;
+  }
+  replace(saved: { sessions?: ConversationSession[]; activeId?: string; selectionVersion?: number }): void {
+    if (this.tasks.size) throw new Error('Stop executions before replacing runtime history.');
+    const restored = new ConversationController(this.project, this.runtime, saved, this.options);
+    this.sessions.splice(0, this.sessions.length, ...restored.sessions); this.activeId = restored.activeId;
   }
   get current(): ConversationSession { return this.sessions.find((entry) => entry.id === this.activeId)!; }
   get running(): boolean { return sessionRunning(this.current); }
@@ -575,7 +580,7 @@ export class ConversationController {
       delete entry.agentOwnerId; delete entry.agentConversationId; delete entry.agent;
       delete entry.agentParameters; delete entry.agentInputs; delete entry.agentCommands; delete entry.agentInterrupted;
       let release: (() => void) | undefined;
-      try { release = this.options.independent?.(entry); }
+      try { release = await this.options.independent?.(entry); }
       catch (error) { Object.assign(entry, previous); throw error; }
       // Never replay source controls or send a copied queue just by opening a branch.
       if (entry.queuedInputs?.length) {

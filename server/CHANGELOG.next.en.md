@@ -1,5 +1,7 @@
 # Unreleased
 
+- Added platform history, ordered message/queue records, run usage and versioned Agent snapshots with account/entry isolation, revision conflicts, deletion tombstones, project identity resolution and active-session snapshot reads.
+
 - Added entry-scoped relational bindings, account API key-only SQL leases and per-operation authorization. Rebinding, access changes and cancellation revoke SQL identities and prevent stale clients from switching resources.
 
 - Added an account-authenticated independent PostgreSQL database catalog, recoverable provisioning, read/write roles and connection revocation, with shadow validation, transactional migrations, immutable history and restart recovery.

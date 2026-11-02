@@ -32,7 +32,7 @@ export async function startAggregateWebServer(options: WebOptions) {
     failures.delete(entryId);
     const pending = (async () => {
       try {
-        const runtime = await startEntryWebServer({ ...options, host, projectDir: directory, entryId,
+        const runtime = await startEntryWebServer({ ...options, runtimePersistence: options.runtimePersistenceForEntry?.(entryId) ?? options.runtimePersistence, host, projectDir: directory, entryId,
           mount: { origin, basePath: `/entries/${entryId}`, catalog, identityChanged: reset } }, credentials);
         if (closing) await runtime.close(); else entries.set(entryId, runtime);
       } catch (error) { failures.set(entryId, error instanceof Error ? error.message : String(error)); }
