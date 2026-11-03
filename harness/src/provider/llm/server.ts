@@ -16,6 +16,7 @@ export type {
 } from "./openai-proxy-bridge";
 
 const CREDENTIAL_REFRESH_WINDOW_MS = 60_000;
+const CATALOG_CACHE_TTL_MS = 30_000;
 type ServerLLMSupportedProviderType = Extract<
   LLMProviderType,
   "openai-responses" | "anthropic"
@@ -95,6 +96,8 @@ export interface ServerLLMModelDetails {
 
 export interface GetServerLLMCredentialsOptions {
   signal?: AbortSignal;
+  /** Refresh model metadata even when this process has a recent catalogue. */
+  fresh?: boolean;
 }
 
 interface ServerLLMCredentialRecord {
@@ -138,16 +141,24 @@ interface ServerLLMConnection {
   token: string;
 }
 
+let activeManager: { connection: ServerLLMConnection; fetchImpl: typeof fetch; manager: ServerLLMCredentialManager } | undefined;
+
 export async function getServerLLMCredentials(
   options: GetServerLLMCredentialsOptions = {},
 ): Promise<ServerLLMCredential[]> {
-  const manager = new ServerLLMCredentialManager(resolveServerLLMConnection(process.env));
-  return manager.list(options.signal);
+  options.signal?.throwIfAborted();
+  const connection = resolveServerLLMConnection(process.env);
+  if (!activeManager || activeManager.fetchImpl !== fetch ||
+    activeManager.connection.serverUrl !== connection.serverUrl || activeManager.connection.token !== connection.token) {
+    activeManager = { connection, fetchImpl: fetch, manager: new ServerLLMCredentialManager(connection) };
+  }
+  return activeManager.manager.list(options.signal, options.fresh);
 }
 
 class ServerLLMCredentialManager {
   private catalog?: ServerLLMCredentialCatalog;
   private refreshPromise?: Promise<ServerLLMCredentialCatalog>;
+  private fetchedAt = 0;
 
   constructor(
     private readonly connection: ServerLLMConnection,
@@ -155,8 +166,11 @@ class ServerLLMCredentialManager {
     private readonly now: () => number = Date.now,
   ) {}
 
-  async list(signal?: AbortSignal): Promise<ServerLLMCredential[]> {
-    const catalog = await this.refresh(signal);
+  async list(signal?: AbortSignal, fresh = false): Promise<ServerLLMCredential[]> {
+    const cached = this.catalog;
+    const catalog = !fresh && cached && this.now() - this.fetchedAt < CATALOG_CACHE_TTL_MS &&
+      cached.credentials.every(record => readExpiry(record.expiresAt) - this.now() > CREDENTIAL_REFRESH_WINDOW_MS)
+      ? cached : await this.refresh(signal);
     if (catalog.credentials.length === 0) {
       throw new HarnessError({
         type: "input_validation",
@@ -288,7 +302,9 @@ class ServerLLMCredentialManager {
       } else {
         headers.set("authorization", `Bearer ${token}`);
       }
-      return this.fetchImpl(input, { ...init, headers });
+      const response = await this.fetchImpl(input, { ...init, headers });
+      if (response.status === 401 || response.status === 403) this.catalog = undefined;
+      return response;
     };
   }
 
@@ -304,7 +320,8 @@ class ServerLLMCredentialManager {
     try {
       await this.refresh(signal ?? undefined);
     } catch (error) {
-      if (current && readExpiry(current.expiresAt) > this.now()) {
+      const status = error instanceof HarnessError ? error.metadata?.status : undefined;
+      if (current && readExpiry(current.expiresAt) > this.now() && status !== 401 && status !== 403 && status !== 404) {
         return current.credentialToken;
       }
       throw error;
@@ -339,12 +356,13 @@ class ServerLLMCredentialManager {
   }
 
   private refresh(signal?: AbortSignal): Promise<ServerLLMCredentialCatalog> {
-    if (this.refreshPromise) return this.refreshPromise;
-    const request = this.fetchCatalog(signal).finally(() => {
+    if (this.refreshPromise) return waitForCatalog(this.refreshPromise, signal);
+    // Each caller can cancel its wait without cancelling another run's shared refresh.
+    const request = this.fetchCatalog(AbortSignal.timeout(15_000)).finally(() => {
       if (this.refreshPromise === request) this.refreshPromise = undefined;
     });
     this.refreshPromise = request;
-    return request;
+    return waitForCatalog(request, signal);
   }
 
   private async fetchCatalog(signal?: AbortSignal): Promise<ServerLLMCredentialCatalog> {
@@ -374,6 +392,7 @@ class ServerLLMCredentialManager {
     }
 
     const payload = await readApiResponse<ServerLLMCredentialCatalog>(response);
+    if (response.status === 401 || response.status === 403 || response.status === 404) this.catalog = undefined;
     if (response.status === 404) {
       throw new HarnessError({
         type: "input_validation",
@@ -405,8 +424,19 @@ class ServerLLMCredentialManager {
     }
     const catalog = validateCatalog(payload.data);
     this.catalog = catalog;
+    this.fetchedAt = this.now();
     return catalog;
   }
+}
+
+function waitForCatalog<T>(pending: Promise<T>, signal?: AbortSignal): Promise<T> {
+  if (!signal) return pending;
+  return new Promise<T>((resolve, reject) => {
+    const abort = () => reject(signal.reason);
+    signal.addEventListener('abort', abort, { once: true });
+    pending.then(resolve, reject).finally(() => signal.removeEventListener('abort', abort));
+    if (signal.aborted) abort();
+  });
 }
 
 function resolveServerLLMConnection(env: NodeJS.ProcessEnv): ServerLLMConnection {

@@ -1,5 +1,7 @@
 # Unreleased
 
+- [Fixed] AI model catalogues are cached for 30 seconds and resource display data for 5 seconds. Each resource kind loads its bindings once, concurrent reads are merged, and manual refreshes and edits invalidate display data. Execution checks stay online, independent startup checks run concurrently, and management UI requests time out after 15 seconds.
+
 - [Fixed] Conversation, Workflow and assistant messages, drafts, runs and checkpoints persist locally by default without login or remote database waits for history. Streaming is preserved, login changes retain local history, and analysis reads the same local records.
 
 - Fixed worker crash recovery with relational storage by waiting for the previous execution lease to expire before resuming existing tasks, preserving committed writes and bounded, cancellable recovery.

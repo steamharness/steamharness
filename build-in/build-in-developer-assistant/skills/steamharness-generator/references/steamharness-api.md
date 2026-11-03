@@ -1013,6 +1013,8 @@ const credential = credentials[0];
 const provider = credential.createProvider({ model: credential.models[0] });
 ```
 
+系统 AI 目录按服务地址和账号在进程内复用 30 秒，合并并发刷新；设置或显式刷新可传 `{ signal: abortSignal, fresh: true }`。临近过期的代理凭据仍在线刷新，401/403 后不得复用旧 token。目录和短期 token 不落盘，取消一次等待不取消其他调用的共享刷新。
+
 每个凭据对象公开 `id`、`name`、`platform`、`providerType`、`models`、逐模型 `modelDetails`、`createProvider`、`startLLMProxyBridge` 和兼容方法 `startOpenAIProxyBridge`。`modelDetails` 包含模型显示名称以及 `vision`、`webSearch`、`reasoning`、`toolCalling`；未知模型的能力均为 `false`。短期代理 token 保存在 Core 闭包中，workflow 不应读取、持久化或输出它。联网搜索必须在 `credential.modelDetails` 中找到当前模型，且 `capabilities.webSearch` 明确为 `true` 时才调用 `credential.createProvider({ model, webSearch: true })`，workflow 不要自行按模型 ID 推断。系统 AI 连接只接受独立的 `STEAMHARNESS_AI_SERVER_URL` / `STEAMHARNESS_AI_API_KEY` 或 workspace CLI 保存的 `aiServerUrl` / `aiApiKey`；项目 Server 的 `STEAMHARNESS_SERVER_URL` / `STEAMHARNESS_SERVER_ADMIN_KEY` 不会作为回退，也不会被当作系统 AI 连接。URL 和 token 必须成对使用。Provider 会在调用前检查一小时短凭据，临近到期时合并并发刷新。
 
 只接受 HTTP base URL 的 agent SDK 可以通过 `credential.startLLMProxyBridge({ signal })` 创建临时 loopback 桥。返回的 `baseUrl` 和 `apiKey` 只用于当前本地桥，`apiKey` 不是上游或 Server 凭据；OpenAI Responses 固定使用 `/responses`，Anthropic 固定使用 `/messages`，请求体上限为 50 MiB。兼容方法 `startOpenAIProxyBridge()` 仅允许 OpenAI Responses。调用方必须在 `finally` 中执行 `close()`。

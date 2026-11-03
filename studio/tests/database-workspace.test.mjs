@@ -42,6 +42,17 @@ test('account changes abort and discard old catalog replies', async t => {
   f.account(undefined); assert.equal(signal.aborted, true); finish({ resources }); await tick();
   assert.equal(f.state().databases.length, 0); assert.equal(f.state().authenticated, false);
 });
+test('reopening a resource view uses its recent snapshot and merges concurrent refreshes', async t => {
+  let finish;
+  const f = fixture(t, () => new Promise(resolve => { finish = resolve; }));
+  f.send({ type: 'ready' }); f.send({ type: 'ready' });
+  assert.equal(f.calls.length, 1);
+  finish({ resources }); await tick();
+  f.send({ type: 'ready' }); await tick(); assert.equal(f.calls.length, 1);
+  f.send({ type: 'refresh' }); f.send({ type: 'refresh' }); assert.equal(f.calls.length, 2);
+  assert.equal(f.state().databases.length, 2, 'Existing resources stay visible during refresh');
+  finish({ resources }); await tick();
+});
 test('resource type filters have no local or remote switch and names cannot inject HTML', t => {
   const dom = new JSDOM('<div id="databases-app"></div>', { runScripts: 'outside-only' }); t.after(() => dom.window.close());
   const sent = []; dom.window.acquireVsCodeApi = () => ({ getState: () => undefined, setState() {}, postMessage: message => sent.push(message) }); dom.window.eval(ui);

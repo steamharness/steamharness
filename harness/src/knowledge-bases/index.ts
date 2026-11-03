@@ -1,5 +1,6 @@
 import { createResolvedProjectFile, type CreateFileInput, type FileReference, type ResolvedFile } from '../files/index';
 import type { KnowledgeBaseRequirement } from '@steamharness/project-manifest';
+import { FileReadCache } from '../files/read-cache';
 import type { KnowledgeDocument, KnowledgeDocumentPageRecord, CreateKnowledgeDocumentInput, EditKnowledgeDocumentInput, ListKnowledgeDocumentsInput, SearchKnowledgeDocumentsInput, KnowledgeSearchResultRecord, ReadKnowledgeDocumentLinesInput, KnowledgeDocumentLinesResult } from '../knowledge/index';
 
 export type { KnowledgeBaseRequirement } from '@steamharness/project-manifest';
@@ -83,21 +84,58 @@ export function createKnowledgeBasesContext(options: {
 export function createServerKnowledgeBaseHost(connection: { serverUrl: string; token: string | (() => string | Promise<string>); signal?: AbortSignal }): KnowledgeBaseHost {
   const url = new URL(connection.serverUrl);
   if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password || url.search || url.hash) throw new KnowledgeBaseError('KNOWLEDGE_INVALID_REQUEST', 'Use a Server HTTP(S) URL.');
-  const request = async <T>(endpoint: string, body: unknown): Promise<T> => {
+  type Attachment = { file: FileReference; base64: string };
+  const createScope = (token: string) => ({ token, files: new FileReadCache<Attachment>(), pending: new Map<string, Promise<Attachment>>() });
+  let scope = createScope('');
+  const readToken = async () => {
+    const token = typeof connection.token === 'function' ? await connection.token() : connection.token;
+    if (scope.token !== token) scope = createScope(token);
+    if (!token) { scope.files.clear(); throw new KnowledgeBaseError('KNOWLEDGE_ACCESS_DENIED', 'Account login is required for knowledge bases.'); }
+    return token;
+  };
+  const request = async <T>(endpoint: string, body: unknown, token?: string): Promise<T> => {
     try {
-      const token = typeof connection.token === 'function' ? await connection.token() : connection.token;
-      if (!token) throw new KnowledgeBaseError('KNOWLEDGE_ACCESS_DENIED', 'Account login is required for knowledge bases.');
+      token ??= await readToken();
       const response = await fetch(`${connection.serverUrl.replace(/\/+$/, '')}/api/knowledge-bases${endpoint}`, { method: 'POST', redirect: 'error',
         headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }, body: JSON.stringify(body),
         signal: connection.signal ? AbortSignal.any([connection.signal, AbortSignal.timeout(120_000)]) : AbortSignal.timeout(120_000) });
       const result = await response.json() as { errCode: number; errMessage: string; data: T };
       if (!response.ok || result.errCode !== 0) throw new KnowledgeBaseError(response.status === 401 || response.status === 403 ? 'KNOWLEDGE_ACCESS_DENIED' : response.status === 404 ? 'KNOWLEDGE_NOT_FOUND' : response.status === 409 ? 'KNOWLEDGE_CONFLICT' : response.status === 400 ? 'KNOWLEDGE_INVALID_REQUEST' : 'KNOWLEDGE_UNAVAILABLE', result.errMessage || 'Knowledge operation failed.');
       return result.data;
-    } catch (error) { if (error instanceof KnowledgeBaseError) throw error; throw new KnowledgeBaseError('KNOWLEDGE_UNAVAILABLE', 'Knowledge storage is unavailable. Check the Server connection.'); }
+    } catch (error) { scope.files.clear(); scope.pending.clear(); if (error instanceof KnowledgeBaseError) throw error; throw new KnowledgeBaseError('KNOWLEDGE_UNAVAILABLE', 'Knowledge storage is unavailable. Check the Server connection.'); }
   };
   return {
     resolve: identity => request('/bindings/resolve', identity),
-    operation: (identity, binding, operation, input) => request(`/${identity.knowledgeBaseId}/operations`, { ...identity, binding, operation, input }),
+    async operation<T>(identity: KnowledgeBaseIdentity, binding: KnowledgeBaseBinding, operation: string, input: unknown): Promise<T> {
+      const token = await readToken(), current = scope;
+      const call = <R>(op: string) => request<R>(`/${identity.knowledgeBaseId}/operations`, { ...identity, binding, operation: op, input }, token);
+      if (operation !== 'files.readFile') {
+        // A failed or successful mutation must not leave an earlier download reusable.
+        if (/\.(?:create|edit|delete)/.test(operation)) { current.files.clear(); current.pending.clear(); }
+        const result = await call<T>(operation);
+        if (await readToken() !== token || scope !== current) throw new KnowledgeBaseError('KNOWLEDGE_ACCESS_DENIED', 'Knowledge account changed. Reopen this entry.');
+        return result;
+      }
+      const key = JSON.stringify([identity, binding, input]);
+      let pending = current.pending.get(key);
+      if (!pending) {
+        pending = (async () => {
+          const cached = current.files.get(key);
+          if (cached) {
+            const metadata = await call<FileReference>('files.stat');
+            if (JSON.stringify(metadata) === JSON.stringify(cached.file)) return cached;
+          }
+          const result = await call<Attachment>('files.readFile');
+          // Mutation/identity changes detach the pending entry, so late reads cannot restore it.
+          if (scope === current && current.pending.get(key) === pending) current.files.set(key, structuredClone(result), result.base64.length);
+          return result;
+        })().finally(() => { if (current.pending.get(key) === pending) current.pending.delete(key); });
+        current.pending.set(key, pending);
+      }
+      const result = await pending;
+      if (await readToken() !== token || scope !== current) throw new KnowledgeBaseError('KNOWLEDGE_ACCESS_DENIED', 'Knowledge account changed. Reopen this entry.');
+      return structuredClone(result) as T;
+    },
   };
 }
 

@@ -66,3 +66,14 @@ it('checks live knowledge bindings after refresh and never retries the original 
     expect(f.runtime.run).not.toHaveBeenCalled();
   } finally {monitor.close();}
 });
+it('checks independent aliases concurrently while keeping declaration order', async () => {
+  const started: string[] = [], finish = new Map<string, () => void>();
+  const project = { id, entryId: 'main', databases: ['first', 'second'], knowledgeBases: [{ alias: 'docs', knowledgeBaseId: crypto.randomUUID() }] } as Project;
+  const verify = async (alias: string) => { started.push(alias); await new Promise<void>(resolve => finish.set(alias, resolve)); return {}; };
+  const inspect = projectStartupInspector(project, verify);
+  const pending = inspect(undefined, new AbortController().signal, vi.fn(), { kind: 'sign-in-required', projectId: id });
+  await Promise.resolve();
+  expect(started).toEqual(['first', 'second', 'docs']);
+  finish.get('docs')!(); finish.get('second')!(); finish.get('first')!();
+  expect((await pending).map(check => check.database)).toEqual(['first', 'second', 'docs']);
+});

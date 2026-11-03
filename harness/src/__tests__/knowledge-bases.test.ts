@@ -60,3 +60,31 @@ test('HTTP knowledge host uses account authorization, maps errors, and does not 
   assert.equal(requests, 2);
   assert.throws(() => createServerKnowledgeBaseHost({ serverUrl: 'file:///tmp/local', token: 'x' }), { code: 'KNOWLEDGE_INVALID_REQUEST' });
 });
+
+test('knowledge attachments reuse only account-scoped snapshots after an online metadata check', async () => {
+  const previousFetch = globalThis.fetch;
+  const request = { projectId: randomUUID(), entryId: 'main', alias: 'docs', knowledgeBaseId: randomUUID() };
+  const binding: KnowledgeBaseBinding = { id: randomUUID(), revision: 1, knowledgeBaseId: request.knowledgeBaseId, mode: 'write', accessRevision: 1 };
+  const file = { id: randomUUID(), name: 'image.png', mimeType: 'image/png', kind: 'image', storage: 'database', spaceId: request.knowledgeBaseId, createdAt: new Date().toISOString(), size: 5 };
+  let token = 'one', denied = false, downloads = 0, checks = 0;
+  globalThis.fetch = (async (_url, init) => {
+    const { operation } = JSON.parse(String(init?.body));
+    if (denied) return Response.json({ errCode: 403, errMessage: 'Revoked' }, { status: 403 });
+    if (operation === 'files.readFile') { downloads++; return Response.json({ errCode: 0, data: { file, base64: Buffer.from(token).toString('base64') } }); }
+    if (operation === 'files.stat') { checks++; return Response.json({ errCode: 0, data: file }); }
+    return Response.json({ errCode: 0, data: { deleted: true } });
+  }) as typeof fetch;
+  const host = createServerKnowledgeBaseHost({ serverUrl: 'https://knowledge.test', token: () => token });
+  const read = () => host.operation<{ file: any; base64: string }>(request, binding, 'files.readFile', { fileId: file.id });
+  try {
+    const [first, second] = await Promise.all([read(), read()]);
+    first.file.name = 'edited'; assert.equal(second.file.name, 'image.png'); assert.equal(downloads, 1);
+    await read(); assert.equal(downloads, 1); assert.equal(checks, 1);
+    await host.operation(request, binding, 'files.deleteFile', { fileId: file.id });
+    await read(); assert.equal(downloads, 2);
+    token = 'two'; assert.equal(Buffer.from((await read()).base64, 'base64').toString(), 'two'); assert.equal(downloads, 3);
+    denied = true; await assert.rejects(read(), { code: 'KNOWLEDGE_ACCESS_DENIED' });
+    denied = false; await read(); assert.equal(downloads, 4);
+    token = ''; await assert.rejects(read(), { code: 'KNOWLEDGE_ACCESS_DENIED' });
+  } finally { globalThis.fetch = previousFetch; }
+});

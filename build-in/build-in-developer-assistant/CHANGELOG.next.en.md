@@ -1,5 +1,7 @@
 # Unreleased
 
+- Documented account-scoped system AI catalogue caching, explicit refresh and expiry/revocation handling in the generator API reference.
+
 - Documented full-session snapshot collection, worker crash recovery and main-Agent child management in the generator API reference, preserving paused user queues and safe retry boundaries.
 
 - Document reserved model names, UTC dates, mapped enums and document version preservation for independent conversations in generation guidance.

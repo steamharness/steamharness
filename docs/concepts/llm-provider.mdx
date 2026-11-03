@@ -7,6 +7,8 @@ description: "在 workflow 中声明自有 LLM provider、项目配置和节点�
 
 LLM 能力通过统一的 provider 接口注入 workflow。公开 workflow 使用自己的 provider 配置和 API key；服务端不会替 workflow 保存或代理第三方模型凭据。
 
+使用系统 AI 时，`getServerLLMCredentials({ signal })` 在当前进程按服务地址和账号复用最近 30 秒的目录，并合并并发刷新。`{ fresh: true, signal }` 强制在线刷新；临近过期的代理凭据也会刷新。目录及短期 token 只保存在内存，不落盘；切换账号或服务地址会重新加载，服务端仍逐次验证模型请求的权限。取消一次目录等待不影响其他运行的共享刷新。
+
 ## 创建 provider ref
 
 推荐在 workflow 中创建 provider ref，让节点运行时读取配置：

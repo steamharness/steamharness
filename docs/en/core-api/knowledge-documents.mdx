@@ -59,6 +59,8 @@ Files allow at most 50 MiB. References retain `storage: "database"` and `spaceId
 
 `readFile()` downloads once. Subsequent `readBuffer()` and `readBase64()` calls reuse the content but recheck the current binding and read authorization each time. Revocation invalidates retained handles. Configuration attachments and project-hosted files have separate read permissions and APIs.
 
+Each Server knowledge host keeps a bounded memory cache of up to 32 MiB of Base64 attachment content, scoped to the account, consumer entry, binding version and file. Cache hits first check attachment metadata online to verify access and existence. Writes, revocation, failed reads and account changes invalidate cached content. Mutable documents, lists and search results remain online, and writes still require confirmation. Project-hosted files use conditional requests when the Server provides ETag or Last-Modified, with online authorization on every read.
+
 ## Authorization and failures
 
 Owners manage account `read` / `write` grants. A binding cannot exceed the account grant. Registered projects also require project membership capabilities and an entry resource declaration. Changed grants, bindings or access versions invalidate old clients; reopen the entry. An administrative key cannot replace account identity.

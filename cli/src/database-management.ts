@@ -33,12 +33,12 @@ export async function parseDatabaseManagementArgs(argv: string[]) {
   return { positional, options };
 }
 
-export async function databaseManagementRequest<T>(options: Pick<DatabaseManagementOptions, "server" | "token">, endpoint: string, method = "GET", body?: unknown, namespace: "databases" | "knowledge-bases" = "databases"): Promise<T> {
+export async function databaseManagementRequest<T>(options: Pick<DatabaseManagementOptions, "server" | "token">, endpoint: string, method = "GET", body?: unknown, namespace: "databases" | "knowledge-bases" = "databases", timeoutMs = 180_000): Promise<T> {
   if (!options.token) throw new Error("Account login is required. Run steamharness workspace login first.");
   const url = new URL(options.server);
   if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password || url.search || url.hash) throw new Error("Use a Server HTTP URL without credentials, query or fragment.");
   const response = await fetch(`${options.server.replace(/\/$/, "")}/api/${namespace}${endpoint}`, {
-    method, redirect: "error", headers: { Authorization: `Bearer ${options.token}`, "Content-Type": "application/json" }, signal: AbortSignal.timeout(180_000),
+    method, redirect: "error", headers: { Authorization: `Bearer ${options.token}`, "Content-Type": "application/json" }, signal: AbortSignal.timeout(timeoutMs),
     ...(body === undefined ? {} : { body: JSON.stringify(body) }),
   });
   const result = await response.json() as { errCode?: number; errMessage?: string; data?: T & { code?: string } };

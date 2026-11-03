@@ -11,7 +11,7 @@ import { once } from 'node:events';
 
 const compiled = await build({ entryPoints: ['extensions/studio-workstation/src/user-models.ts'], bundle: true, platform: 'node', format: 'cjs', write: false });
 const module = { exports: {} };
-runInNewContext(compiled.outputFiles[0].text, { module, exports: module.exports, require: createRequire(import.meta.url), structuredClone, URL, AbortController, crypto: globalThis.crypto, TextEncoder, Error });
+runInNewContext(compiled.outputFiles[0].text, { module, exports: module.exports, require: createRequire(import.meta.url), structuredClone, URL, AbortController, crypto: globalThis.crypto, TextEncoder, Error, Date });
 const { UserModels, USER_MODELS_SECRET } = module.exports;
 const compiledLock = await build({ entryPoints: ['extensions/studio-workstation/src/user-models-node.ts'], bundle: true, platform: 'node', format: 'cjs', write: false });
 const lockModule = { exports: {} };
@@ -52,6 +52,27 @@ test('user model secrets persist across workspaces without entering webview stat
 });
 
 const catalog = (models = [{ id: system.model, name: 'Subscribed model' }]) => ({ entries: [{ id: system.credentialId, name: 'My account', models }] });
+
+test('runtime catalogue reads reuse recent snapshots, expire and preserve explicit refresh', async t => {
+  const f = fixture(); t.after(() => f.store.dispose());
+  let calls = 0, now = Date.now(); t.mock.method(Date, 'now', () => now);
+  f.store.registerCatalogProvider({ load: async () => { calls++; return catalog(); } });
+  await f.store.refreshCatalog();
+  const first = await f.store.catalog(signal()); first.entries.length = 0;
+  assert.equal((await f.store.catalog(signal())).entries.length, 1); assert.equal(calls, 1);
+  now += 30_001; await Promise.all([f.store.catalog(signal()), f.store.catalog(signal())]); assert.equal(calls, 2);
+  await f.store.refreshCatalog(); assert.equal(calls, 3);
+});
+
+test('cancelling a runtime catalogue wait does not abort a shared settings refresh', async t => {
+  const f = fixture(); t.after(() => f.store.dispose());
+  let finish, upstreamSignal;
+  f.store.registerCatalogProvider({ load: signal => { upstreamSignal = signal; return new Promise(resolve => { finish = resolve; }); } });
+  const controller = new AbortController();
+  const cancelled = f.store.catalog(controller.signal), other = f.store.catalog(signal());
+  controller.abort(); await assert.rejects(cancelled, /changed/); assert.equal(upstreamSignal.aborted, false);
+  finish(catalog()); assert.equal((await other).entries.length, 1);
+});
 
 test('all built-in models load without saving and only the default reference is persisted', async () => {
   const f = fixture();

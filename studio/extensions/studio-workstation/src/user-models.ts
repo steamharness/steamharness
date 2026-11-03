@@ -28,6 +28,7 @@ export class UserModels implements vscode.Disposable {
   private catalogError?: string;
   private catalogAbort?: AbortController;
   private catalogPending?: Promise<UserModelCatalog>;
+  private catalogValue?: { value: UserModelCatalog; checkedAt: number };
   private connectionIdentity?: string;
   private pending = Promise.resolve();
   private generation = 0;
@@ -67,7 +68,7 @@ export class UserModels implements vscode.Disposable {
   }
   private clearCatalog(): void {
     this.catalogAbort?.abort(); this.catalogAbort = undefined; this.catalogPending = undefined;
-    this.systemModels = []; this.providerNames = {}; this.catalogError = undefined;
+    this.systemModels = []; this.providerNames = {}; this.catalogError = undefined; this.catalogValue = undefined;
   }
   setConnection(connection: { serverUrl: string; accessToken: string } | undefined): void {
     const identity = connection ? JSON.stringify([connection.serverUrl, connection.accessToken]) : undefined;
@@ -80,7 +81,7 @@ export class UserModels implements vscode.Disposable {
     if (this.catalogPending) return this.catalogPending;
     if (!this.provider || this.disposed) return Promise.resolve({ entries: [], unavailable: true });
     const controller = new AbortController(); this.catalogAbort = controller; this.catalogError = undefined;
-    const pending = this.catalog(controller.signal).then(async catalog => {
+    const pending = this.loadCatalog(controller.signal).then(async catalog => {
       const providers: Record<string, string> = {}, seen = new Set<string>();
       const models = await Promise.all(catalog.entries.flatMap(credential => credential.models.map(async model => {
         const reference = JSON.stringify([credential.id, model.id]);
@@ -93,9 +94,13 @@ export class UserModels implements vscode.Disposable {
       })));
       if (controller.signal.aborted || this.disposed || this.catalogAbort !== controller) throw new Error(t('Model catalogue changed. Refresh and try again.'));
       this.systemModels = models.filter((model): model is NonNullable<typeof model> => !!model); this.providerNames = providers;
+      this.catalogValue = { value: structuredClone(catalog), checkedAt: Date.now() };
       return catalog;
     }).catch(error => {
-      if (!controller.signal.aborted && !this.disposed && this.catalogAbort === controller) this.catalogError = error instanceof Error ? error.message : t('Unable to refresh built-in models.');
+      if (!controller.signal.aborted && !this.disposed && this.catalogAbort === controller) {
+        this.catalogValue = undefined;
+        this.catalogError = error instanceof Error ? error.message : t('Unable to refresh built-in models.');
+      }
       throw error;
     }).finally(() => {
       if (this.catalogAbort === controller) { this.catalogPending = undefined; this.catalogAbort = undefined; this.changed(); }
@@ -129,6 +134,20 @@ export class UserModels implements vscode.Disposable {
       }) };
   }
   async catalog(signal: AbortSignal): Promise<UserModelCatalog> {
+    const identity = this.connectionIdentity, provider = this.provider;
+    if (signal.aborted || this.disposed) throw new Error(t('Model catalogue changed. Refresh and try again.'));
+    if (!this.catalogPending && this.catalogValue && Date.now() - this.catalogValue.checkedAt < 30_000) return structuredClone(this.catalogValue.value);
+    const pending = this.refreshCatalog();
+    const result = await new Promise<UserModelCatalog>((resolve, reject) => {
+      const abort = () => reject(new Error(t('Model catalogue changed. Refresh and try again.')));
+      signal.addEventListener('abort', abort, { once: true });
+      pending.then(resolve, reject).finally(() => signal.removeEventListener('abort', abort));
+      if (signal.aborted) abort();
+    });
+    if (signal.aborted || this.disposed || identity !== this.connectionIdentity || provider !== this.provider) throw new Error(t('Model catalogue changed. Refresh and try again.'));
+    return structuredClone(result);
+  }
+  private async loadCatalog(signal: AbortSignal): Promise<UserModelCatalog> {
     const provider = this.provider, identity = this.connectionIdentity;
     if (!provider) return { entries: [], unavailable: true };
     const result = await provider.load(signal);

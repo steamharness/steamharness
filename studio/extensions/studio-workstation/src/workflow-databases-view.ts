@@ -20,22 +20,30 @@ export class DatabaseViews implements vscode.Disposable {
   private error = '';
   private disposed = false;
   private connectionKey: string;
+  private pending?: Promise<void>;
+  private refreshedAt = 0;
   private readonly subscriptions: vscode.Disposable[] = [];
   constructor(private readonly context: vscode.ExtensionContext, private readonly launcher: Launcher, private readonly account: AccountController, private readonly output: vscode.OutputChannel, register = true, subscriptions = context.subscriptions) {
     this.connectionKey = JSON.stringify(account.getConnection());
     this.subscriptions.push(...(register ? [vscode.window.registerWebviewViewProvider('studio.databases', this, { webviewOptions: { retainContextWhenHidden: true } }), vscode.commands.registerCommand('studio.openDatabases', () => vscode.commands.executeCommand('studio.databases.focus')), vscode.commands.registerCommand('studio.refreshDatabases', () => this.refresh())] : []), account.onDidChange(() => {
       const key = JSON.stringify(account.getConnection()); if (key === this.connectionKey) return;
-      this.connectionKey = key; this.controller.abort(); this.controller = new AbortController(); ++this.epoch; this.resources = []; this.bindings = []; this.busy = false; this.error = ''; this.publish(); if (this.view?.visible) void this.refresh();
+      this.connectionKey = key; this.controller.abort(); this.controller = new AbortController(); ++this.epoch; this.pending = undefined; this.refreshedAt = 0; this.resources = []; this.bindings = []; this.busy = false; this.error = ''; this.publish(); if (this.view?.visible) void this.refresh();
     })); subscriptions.push(this);
   }
   update(projects: Project[], preferred?: Project) {
     this.projects = projects.filter(project => !project.assistant); this.preferred = preferred;
     const key = JSON.stringify(this.projects.map(project => [project.id, project.entryId, project.uri, project.databases]));
     const changed = key !== this.projectKey; this.projectKey = key;
-    if (changed) this.bindings = [];
+    if (changed) { this.bindings = []; this.refreshedAt = 0; this.pending = undefined; ++this.epoch; }
     this.publish(); if (changed && this.view?.visible) void this.refresh();
   }
-  async refresh() {
+  refresh(force = true): Promise<void> {
+    if (this.pending) return this.pending;
+    if (!force && this.refreshedAt && Date.now() - this.refreshedAt < 5_000) return Promise.resolve();
+    const pending = this.load().finally(() => { if (this.pending === pending) this.pending = undefined; });
+    this.pending = pending; return pending;
+  }
+  private async load() {
     if (this.disposed) return; const epoch = ++this.epoch, signal = this.controller.signal; this.busy = true; this.error = ''; this.publish();
     try {
       if (!vscode.workspace.isTrusted) throw new Error(t('Trust the current workspace first.'));
@@ -45,7 +53,7 @@ export class DatabaseViews implements vscode.Disposable {
         const result = await this.launcher.database!({ kind: 'host', action: 'bindings', projectId: project.id, entryId: project.entryId }, signal);
         return (result.bindings ?? []).filter((binding: { alias: string }) => project.databases.includes(binding.alias)).map((binding: { alias: string; databaseId: string }) => ({ kind: 'databases', resourceId: binding.databaseId, alias: binding.alias, name: projectDisplayName(project) }));
       }))).flat();
-      if (!signal.aborted && epoch === this.epoch) { this.resources = catalog.resources; this.bindings = bindings; }
+      if (!signal.aborted && epoch === this.epoch) { this.resources = catalog.resources; this.bindings = bindings; this.refreshedAt = Date.now(); }
     } catch (error) { if (!signal.aborted && epoch === this.epoch) this.error = error instanceof Error ? error.message : String(error); }
     finally { if (!signal.aborted && epoch === this.epoch) { this.busy = false; this.publish(); } }
   }
@@ -79,7 +87,7 @@ export class DatabaseViews implements vscode.Disposable {
     view.webview.options = { enableScripts: true, localResourceRoots: [vscode.Uri.joinPath(this.context.extensionUri, 'dist')] };
     view.webview.html = `<!DOCTYPE html><html lang="${vscode.env.language}"><head>${webviewContextMenu(this.context, view)}<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src ${view.webview.cspSource}; font-src ${view.webview.cspSource}; script-src 'nonce-${nonce}';"><link rel="stylesheet" href="${asset('codicons/codicon.css')}"><link rel="stylesheet" href="${asset('databases-ui.css')}"></head><body><div id="databases-app"></div>${localizationHtml(nonce)}<script nonce="${nonce}" src="${asset('databases-ui.js')}"></script></body></html>`;
     const receive = view.webview.onDidReceiveMessage(message => {
-      if (message?.type === 'ready' || message?.type === 'refresh') { void this.refresh(); return; }
+      if (message?.type === 'ready' || message?.type === 'refresh') { void this.refresh(message.type === 'refresh'); return; }
       if (message?.type === 'login') { this.account.open(); return; }
       if (message?.type === 'manage') { void this.open('databases').catch(error => this.output.appendLine(String(error))); return; }
       if (message?.type === 'open' && typeof message.key === 'string') {
@@ -87,9 +95,9 @@ export class DatabaseViews implements vscode.Disposable {
         if (resource) void this.open(resource.kind, resource.id).catch(error => this.output.appendLine(String(error)));
       }
     });
-    const visibility = view.onDidChangeVisibility(() => { if (view.visible) void this.refresh(); });
+    const visibility = view.onDidChangeVisibility(() => { if (view.visible) void this.refresh(false); });
     const disposal = view.onDidDispose(() => { receive.dispose(); visibility.dispose(); disposal.dispose(); if (this.view === view) this.view = undefined; });
-    this.publish(); void this.refresh();
+    this.publish(); void this.refresh(false);
   }
   dispose() { if (this.disposed) return; this.disposed = true; ++this.epoch; this.controller.abort(); for (const subscription of this.subscriptions) subscription.dispose(); }
 }

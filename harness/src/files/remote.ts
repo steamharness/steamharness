@@ -9,6 +9,7 @@ import {
   type FileStore,
 } from "./index";
 import { HarnessError } from "../workflow/errors";
+import { FileReadCache } from './read-cache';
 
 interface ApiResponse<T> {
   errCode: number;
@@ -29,6 +30,8 @@ export class RemoteProjectFileStore implements FileStore {
   private readonly projectName: string;
   private readonly conversationId?: string;
   private readonly fallbackStore: FileStore;
+  private readonly reads = new FileReadCache<{ bytes: Buffer; etag?: string; modified?: string }>();
+  private readonly pending = new Map<string, Promise<Buffer>>();
 
   constructor(options: RemoteProjectFileStoreOptions) {
     this.serverUrl = normalizeServerUrl(options.serverUrl);
@@ -45,22 +48,39 @@ export class RemoteProjectFileStore implements FileStore {
       throw new HarnessError({ type: "input_validation", message: "Workflow file belongs to another project." });
     }
     if (this.serverUrl === "" || this.token === "") throw createProjectFileCreateUnavailableError();
-    return createResolvedProjectFile(normalized, async () => {
+    return createResolvedProjectFile(normalized, () => this.readFile(normalized.id));
+  }
+
+  private async readFile(fileId: string): Promise<Buffer> {
+    const existing = this.pending.get(fileId);
+    if (existing) return Buffer.from(await existing);
+    const pending = (async () => {
+      const cached = this.reads.get(fileId);
       // Use the managed endpoint, never a caller-supplied URL or path with credentials.
       const response = await fetch(
-        `${this.serverUrl}/api/projects/files/${encodeURIComponent(normalized.id)}`,
-        { headers: { Authorization: `Bearer ${this.token}` }, redirect: "error" },
+        `${this.serverUrl}/api/projects/files/${encodeURIComponent(fileId)}`,
+        { headers: { Authorization: `Bearer ${this.token}`,
+          ...(cached?.etag ? { 'If-None-Match': cached.etag } : cached?.modified ? { 'If-Modified-Since': cached.modified } : {}) },
+          redirect: "error", signal: AbortSignal.timeout(120_000) },
       );
+      if (response.status === 304 && cached) return cached.bytes;
       if (!response.ok) {
+        this.reads.delete(fileId);
         const payload = await readApiResponse(response);
         throw new HarnessError({
           type: "execution",
           message: payload.errMessage || `Workflow file read failed with HTTP ${response.status}.`,
-          metadata: { fileId: normalized.id, status: response.status },
+          metadata: { fileId, status: response.status },
         });
       }
-      return Buffer.from(await response.arrayBuffer());
-    });
+      const bytes = Buffer.from(await response.arrayBuffer());
+      const etag = response.headers.get('etag') ?? undefined, modified = response.headers.get('last-modified') ?? undefined;
+      if (etag || modified) this.reads.set(fileId, { bytes, etag, modified }, bytes.length);
+      else this.reads.delete(fileId);
+      return bytes;
+    })().finally(() => this.pending.delete(fileId));
+    this.pending.set(fileId, pending);
+    return Buffer.from(await pending);
   }
 
   async createFile(input: CreateFileInput): Promise<FileReference> {

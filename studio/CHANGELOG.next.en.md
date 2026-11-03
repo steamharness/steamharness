@@ -1,5 +1,7 @@
 # Unreleased
 
+- [Fixed] System model catalogues reuse a 30-second host snapshot and shared refreshes while preserving manual refresh. Resource views briefly reuse display data, merge concurrent refreshes, and clear cached data immediately when accounts change.
+
 - [Fixed] Conversation, Workflow and assistant history default to local SQLite with file locks, and analysis reads local history. Bundled runtime storage avoids per-operation remote waits before replies. System AI and business resources keep separate authorization; cloud storage is explicit or used for on-demand background backup, preserving existing data.
 
 - Removed global and account memory, including tools, skills, authorization, service integration and settings controls.

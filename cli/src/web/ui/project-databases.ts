@@ -93,7 +93,7 @@ export class ProjectDatabases {
     const heading = text('div', '', 'database-section-heading');
     heading.append(text('strong', t('Project databases')));
     const controls = text('div', '', 'database-actions');
-    controls.append(iconButton('link', t('Link database'), () => this.bindingForm()), iconButton('refresh', t('Refresh'), () => void this.run({ action: 'get' })));
+    controls.append(iconButton('link', t('Link database'), () => this.bindingForm()), iconButton('refresh', t('Refresh'), () => void this.run({ action: 'get', fresh: true })));
     heading.append(controls); this.root.append(heading);
     this.error = text('p', '', 'database-error'); this.error.hidden = true; this.error.setAttribute('role', 'status'); this.root.append(this.error);
     this.content = text('div', '', 'database-content'); this.root.append(this.content);

@@ -1,5 +1,7 @@
 # Unreleased
 
+- [Fixed] System AI catalogues use a 30-second, connection-scoped memory cache and shared refreshes. Explicit refresh remains available; expiring credentials refresh online and denied refreshes cannot reuse old tokens. Managed files use conditional requests, and knowledge attachments reuse bounded snapshots after online access checks.
+
 - [Fixed] Runtime history and Agent checkpoints default to local SQLite, removing per-operation network waits from first response. Added `createLocalRuntimePersistence` and explicit background snapshot copying with `copyRuntimePersistence`, preserving opt-in Server storage and existing data.
 
 - [Fixed] Relational transactions wait up to 30 seconds for a pooled connection instead of 5 seconds, and temporary SQL identities renew before expiry to avoid acquisition and commit authorization failures with remote databases. Sent transactions are never automatically replayed.

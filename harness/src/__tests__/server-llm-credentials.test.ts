@@ -161,9 +161,9 @@ test("server LLM credentials canonicalize the configured default model case-inse
     assert.equal((await getServerLLMCredentials())[0]!.defaultModelId, "gpt-test");
     // A default outside the credential's model list still falls back to null
     // so the host can apply its own priority chain.
-    assert.equal((await getServerLLMCredentials())[0]!.defaultModelId, null);
+    assert.equal((await getServerLLMCredentials({ fresh: true }))[0]!.defaultModelId, null);
     // An absent default stays null.
-    assert.equal((await getServerLLMCredentials())[0]!.defaultModelId, null);
+    assert.equal((await getServerLLMCredentials({ fresh: true }))[0]!.defaultModelId, null);
   } finally {
     globalThis.fetch = previousFetch;
     restoreEnvSnapshot(previous);
@@ -428,6 +428,69 @@ test("server LLM OpenAI bridge cancels active upstream requests when closed", as
     globalThis.fetch = previousFetch;
     restoreEnvSnapshot(previous);
   }
+});
+
+test('server AI reuses only recent account-scoped catalogues and supports explicit refresh', async t => {
+  const previousFetch = globalThis.fetch;
+  const previous = snapshotEnv(['STEAMHARNESS_AI_SERVER_URL', 'STEAMHARNESS_AI_API_KEY']);
+  process.env.STEAMHARNESS_AI_SERVER_URL = 'https://catalog-cache.example.test';
+  process.env.STEAMHARNESS_AI_API_KEY = 'first-account';
+  let reads = 0, denied = false, now = Date.now();
+  t.mock.method(Date, 'now', () => now);
+  globalThis.fetch = (async () => {
+    reads++;
+    if (denied) return Response.json({ errCode: 403, errMessage: 'Denied' }, { status: 403 });
+    return createCatalogResponse();
+  }) as typeof fetch;
+  try {
+    await Promise.all([getServerLLMCredentials(), getServerLLMCredentials()]);
+    assert.equal(reads, 1);
+    await getServerLLMCredentials(); assert.equal(reads, 1);
+    now += 30_001; await getServerLLMCredentials(); assert.equal(reads, 2);
+    await getServerLLMCredentials({ fresh: true }); assert.equal(reads, 3);
+    process.env.STEAMHARNESS_AI_API_KEY = 'second-account';
+    await getServerLLMCredentials(); assert.equal(reads, 4);
+    denied = true; await assert.rejects(getServerLLMCredentials({ fresh: true }), /Denied/);
+    await assert.rejects(getServerLLMCredentials(), /Denied/); assert.equal(reads, 6);
+  } finally { globalThis.fetch = previousFetch; restoreEnvSnapshot(previous); }
+});
+
+test('cancelling one catalogue waiter leaves other runs able to use the shared refresh', async () => {
+  const previousFetch = globalThis.fetch;
+  const previous = snapshotEnv(['STEAMHARNESS_AI_SERVER_URL', 'STEAMHARNESS_AI_API_KEY']);
+  process.env.STEAMHARNESS_AI_SERVER_URL = 'https://catalog-cancel.example.test';
+  process.env.STEAMHARNESS_AI_API_KEY = 'account';
+  let finish!: (value: Response) => void, reads = 0;
+  globalThis.fetch = (() => { reads++; return new Promise<Response>(resolve => { finish = resolve; }); }) as typeof fetch;
+  try {
+    const controller = new AbortController();
+    const cancelled = getServerLLMCredentials({ signal: controller.signal });
+    const other = getServerLLMCredentials();
+    controller.abort(new Error('Cancelled'));
+    await assert.rejects(cancelled, /Cancelled/);
+    finish(createCatalogResponse()); assert.equal((await other).length, 1); assert.equal(reads, 1);
+    await getServerLLMCredentials(); assert.equal(reads, 1);
+  } finally { globalThis.fetch = previousFetch; restoreEnvSnapshot(previous); }
+});
+
+test('a denied credential refresh cannot reuse a previously valid proxy token', async () => {
+  const previousFetch = globalThis.fetch;
+  const previous = snapshotEnv(['STEAMHARNESS_AI_SERVER_URL', 'STEAMHARNESS_AI_API_KEY']);
+  process.env.STEAMHARNESS_AI_SERVER_URL = 'https://catalog-denied.example.test';
+  process.env.STEAMHARNESS_AI_API_KEY = 'account';
+  let reads = 0, calls = 0;
+  globalThis.fetch = (async input => {
+    if (String(input).endsWith('/api/ai/catalog')) {
+      if (++reads > 1) return Response.json({ errCode: 403, errMessage: 'Revoked' }, { status: 403 });
+      return createCatalogResponse({ expiresAt: new Date(Date.now() + 30_000).toISOString() });
+    }
+    calls++; throw new Error('A revoked credential reached the proxy');
+  }) as typeof fetch;
+  try {
+    const [credential] = await getServerLLMCredentials();
+    await assert.rejects(credential!.createProvider({ model: 'gpt-test' }).chat({ prompt: 'hello' }), /LLM provider chat call failed/);
+    assert.equal(reads, 2); assert.equal(calls, 0);
+  } finally { globalThis.fetch = previousFetch; restoreEnvSnapshot(previous); }
 });
 
 test("server LLM provider keeps a still-valid token when refresh fails", async () => {
