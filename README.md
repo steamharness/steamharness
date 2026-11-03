@@ -21,7 +21,7 @@
 
 ```sh
 pnpm install                      # harness / cli / server / shared / build-in 的单一 lockfile
-pnpm check                        # skill 与 vendor 副本守卫 + 脚本测试
+pnpm check                        # skill/vendor 副本守卫、脚本测试及 Core/CLI 性能回归
 pnpm typecheck && pnpm test       # 按依赖顺序跑各包自检
 ```
 
@@ -50,6 +50,7 @@ pnpm -C harness/workspace install
 | --- | --- |
 | `pnpm check:skill-copies` | 保证 `build-in/build-in-developer-assistant/skills/` 与 `harness/.agents/skills/` 的共享载荷不漂移（`--fix` 同步） |
 | `pnpm check:vendor-copies` | 保证 `shared/release-tools` 在 vendor 目录与内置项目里的逐字节副本不漂移（`--fix` 同步） |
+| `pnpm test:performance` | 对照已提交基线检查 Core/CLI 的 P50/P95，明显变慢时失败；`-- --suite all` 包含 Studio，见[性能测试说明](scripts/performance/README.md) |
 | `pnpm server:dev` / `pnpm server:start` | 启动 Server（开发监听 / 仅开发源码） |
 | `pnpm studio:dev` / `pnpm studio:web` | 启动工作站 Electron / 浏览器端 |
 

@@ -115,6 +115,7 @@
     "test": "tsx --conditions=development --test --test-reporter=spec --test-concurrency=2 src/__tests__/*.test.ts",
     "coverage": "tsx --conditions=development --test --test-reporter=spec --experimental-test-coverage --test-concurrency=2 src/__tests__/*.test.ts",
     "test:scripts": "node --test --test-reporter=spec scripts/__tests__/*.test.mjs",
+    "test:performance": "node ../scripts/check-performance.mjs --suite harness",
     "test:agent-dist": "node scripts/smoke-agent-dist.mjs",
     "test:workspace": "corepack pnpm build && corepack pnpm -C workspace install --frozen-lockfile && corepack pnpm -C workspace test",
     "release:prepare": "node scripts/prepare-release.mjs",

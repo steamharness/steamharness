@@ -22,6 +22,7 @@
     "test": "pnpm build && vitest run",
     "coverage": "pnpm build && vitest run --coverage",
     "test:scripts": "node --test --test-reporter=spec scripts/__tests__/*.test.mjs",
+    "test:performance": "node ../scripts/check-performance.mjs --suite cli",
     "release:prepare": "node scripts/prepare-release.mjs",
     "release:feature": "node scripts/feature-release.mjs tag",
     "prepack": "pnpm build"

@@ -1,0 +1,262 @@
+{
+  "version": 1,
+  "recordedAt": "2026-11-03T12:39:19.160Z",
+  "revision": "320ab6016959710a8e76918c8ef7349019659958",
+  "environment": {
+    "node": "v24.18.0",
+    "platform": "darwin",
+    "arch": "arm64",
+    "cpu": "Apple M3 Pro"
+  },
+  "profile": {
+    "samples": 21,
+    "warmup": 2,
+    "networkMs": 60,
+    "downloadMs": 80
+  },
+  "policy": {
+    "maxIncreaseRatio": 0.5,
+    "minIncreaseMs": 25
+  },
+  "suites": [
+    "harness",
+    "cli",
+    "studio"
+  ],
+  "metrics": [
+    {
+      "id": "harness.catalog.cold",
+      "p50Ms": 63.0590000000002,
+      "p95Ms": 63.446417,
+      "budgetMs": 150,
+      "workload": {
+        "models": 64,
+        "callers": 1,
+        "expectedRequests": 1
+      }
+    },
+    {
+      "id": "harness.catalog.warm",
+      "p50Ms": 0.07950000000005275,
+      "p95Ms": 0.09033300000010058,
+      "budgetMs": 40,
+      "workload": {
+        "models": 64,
+        "callers": 1,
+        "expectedRequests": 0
+      }
+    },
+    {
+      "id": "harness.catalog.concurrent-cold",
+      "p50Ms": 63.279291999999714,
+      "p95Ms": 64.35950000000003,
+      "budgetMs": 150,
+      "workload": {
+        "models": 64,
+        "callers": 20,
+        "expectedRequests": 1
+      }
+    },
+    {
+      "id": "harness.history.write-200-messages",
+      "p50Ms": 0.5637499999997999,
+      "p95Ms": 0.9577909999998155,
+      "budgetMs": 100,
+      "workload": {
+        "messages": 200,
+        "charactersPerMessage": 512
+      }
+    },
+    {
+      "id": "harness.history.load-100-sessions",
+      "p50Ms": 7.784292000000278,
+      "p95Ms": 9.031332999999904,
+      "budgetMs": 150,
+      "workload": {
+        "sessions": 100,
+        "messagesPerSession": 200,
+        "charactersPerMessage": 512
+      }
+    },
+    {
+      "id": "harness.history.write-during-blocked-backup",
+      "p50Ms": 0.22220800000013696,
+      "p95Ms": 0.2839169999997466,
+      "budgetMs": 100,
+      "workload": {
+        "messages": 200,
+        "charactersPerMessage": 512,
+        "backupBlocked": true
+      }
+    },
+    {
+      "id": "harness.agent.checkpoint",
+      "p50Ms": 0.20279100000016115,
+      "p95Ms": 0.30670799999961673,
+      "budgetMs": 100,
+      "workload": {
+        "payloadBytes": 16384
+      }
+    },
+    {
+      "id": "harness.knowledge-attachment.cold",
+      "p50Ms": 154.14295800000036,
+      "p95Ms": 157.13295800000014,
+      "budgetMs": 300,
+      "workload": {
+        "bytes": 1048576,
+        "expectedDownloads": 1
+      }
+    },
+    {
+      "id": "harness.knowledge-attachment.revalidate",
+      "p50Ms": 63.36895899999945,
+      "p95Ms": 63.96641600000112,
+      "budgetMs": 150,
+      "workload": {
+        "bytes": 1048576,
+        "expectedDownloads": 0,
+        "permissionChecks": 1
+      }
+    },
+    {
+      "id": "harness.managed-attachment.cold",
+      "p50Ms": 145.21145799999977,
+      "p95Ms": 146.37258400000064,
+      "budgetMs": 300,
+      "workload": {
+        "bytes": 1048576,
+        "expectedDownloads": 1
+      }
+    },
+    {
+      "id": "harness.managed-attachment.revalidate",
+      "p50Ms": 62.57999999999993,
+      "p95Ms": 62.78008299999965,
+      "budgetMs": 150,
+      "workload": {
+        "bytes": 1048576,
+        "expectedDownloads": 0,
+        "permissionChecks": 1
+      }
+    },
+    {
+      "id": "cli.resources.cold",
+      "p50Ms": 127.4085,
+      "p95Ms": 129.67883299999994,
+      "budgetMs": 250,
+      "workload": {
+        "aliases": 3,
+        "distinctResources": 2,
+        "expectedRequests": 4
+      }
+    },
+    {
+      "id": "cli.resources.warm",
+      "p50Ms": 0.8172089999998207,
+      "p95Ms": 1.075666000000183,
+      "budgetMs": 40,
+      "workload": {
+        "aliases": 3,
+        "distinctResources": 2,
+        "expectedRequests": 0
+      }
+    },
+    {
+      "id": "cli.bindings.concurrent-online",
+      "p50Ms": 68.05258299999969,
+      "p95Ms": 69.72629099999995,
+      "budgetMs": 150,
+      "workload": {
+        "callers": 20,
+        "expectedRequests": 1
+      }
+    },
+    {
+      "id": "cli.startup.parallel-resource-checks",
+      "p50Ms": 127.89695800000027,
+      "p95Ms": 129.64095799999996,
+      "budgetMs": 250,
+      "workload": {
+        "aliases": 3,
+        "expectedRequests": 3
+      }
+    },
+    {
+      "id": "cli.catalog.warm",
+      "p50Ms": 0.08195800000066811,
+      "p95Ms": 0.1183340000006865,
+      "budgetMs": 40,
+      "workload": {
+        "models": 64,
+        "expectedRequests": 0
+      }
+    },
+    {
+      "id": "cli.conversation.first-output-local-history",
+      "p50Ms": 24.57250000000022,
+      "p95Ms": 25.58929200000057,
+      "budgetMs": 150,
+      "workload": {
+        "simulatedModelMs": 20,
+        "persistence": "local-sqlite",
+        "expectedRemoteRequests": 0
+      }
+    },
+    {
+      "id": "studio.catalog.cold",
+      "p50Ms": 65.67829200000006,
+      "p95Ms": 66.78237500000006,
+      "budgetMs": 150,
+      "workload": {
+        "models": 64,
+        "expectedRequests": 1
+      }
+    },
+    {
+      "id": "studio.catalog.warm",
+      "p50Ms": 0.07154100000002472,
+      "p95Ms": 0.09683300000006057,
+      "budgetMs": 40,
+      "workload": {
+        "models": 64,
+        "expectedRequests": 0
+      }
+    },
+    {
+      "id": "studio.resources.cold",
+      "p50Ms": 123.31270799999993,
+      "p95Ms": 124.86374999999998,
+      "budgetMs": 250,
+      "workload": {
+        "entries": 6,
+        "callers": 1,
+        "expectedRequests": 7
+      }
+    },
+    {
+      "id": "studio.resources.reopen",
+      "p50Ms": 0.0027079999999841675,
+      "p95Ms": 0.0033329999996567494,
+      "budgetMs": 40,
+      "workload": {
+        "entries": 6,
+        "callers": 1,
+        "expectedRequests": 0
+      }
+    },
+    {
+      "id": "studio.resources.concurrent-refresh",
+      "p50Ms": 123.21324999999979,
+      "p95Ms": 125.02416600000015,
+      "budgetMs": 250,
+      "workload": {
+        "entries": 6,
+        "callers": 20,
+        "expectedRequests": 7
+      }
+    }
+  ],
+  "comparisons": [],
+  "failures": []
+}

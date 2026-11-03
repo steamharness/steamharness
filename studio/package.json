@@ -57,7 +57,8 @@
     "test:cli-quick-parameters-ui": "node tests/cli-quick-parameters-ui.mjs",
     "test:project-language-ui": "node tests/project-language-desktop-ui.mjs",
     "test:localization-ui": "node tests/localization-desktop-ui.mjs",
-    "check": "npm run typecheck && npm test",
+    "test:performance": "node ../scripts/check-performance.mjs --suite studio",
+    "check": "npm run typecheck && npm test && npm run test:performance",
     "test:settings-models-ui": "node tests/settings-models-ui.mjs"
   },
   "dependencies": {
